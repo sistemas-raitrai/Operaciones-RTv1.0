@@ -39,6 +39,8 @@
       padding: 1rem;
       box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       text-align: center;
+      text-decoration: none;
+      color: inherit;
     }
     .circle {
       width: 60px;
@@ -60,6 +62,10 @@
       font-size: 0.9rem;
       color: #555;
     }
+    .card:hover {
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
@@ -67,12 +73,16 @@
     <div class="title">Sistema de Operaciones RTv1</div>
     <div class="username">Hola Ignacio!</div>
   </div>
+
   <div class="grid">
-    <div class="card">
+    <!-- 🟦 Tarjeta clickeable que lleva al formulario "registro" -->
+    <a href="registro" class="card">
       <div class="circle main"></div>
       <div class="title-card">REGISTRO DE GRUPOS</div>
       <div class="subtitle-card">Formulario de registro de información de Grupos de Viaje</div>
-    </div>
+    </a>
+
+    <!-- ⬜️ Tarjetas de ejemplo sin funcionalidad -->
     <div class="card">
       <div class="circle placeholder"></div>
       <div class="title-card">--</div>
