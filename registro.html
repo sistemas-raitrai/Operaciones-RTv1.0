@@ -109,6 +109,7 @@
   async function cargarNumeroNegocio() {
     const res = await fetch(sheetURL);
     const datos = await res.json();
+    console.log("🔍 Datos completos recibidos:", datos);
     const lista = document.getElementById("negocioList");
 
     // 🔄 Llenar dropdown
@@ -123,7 +124,9 @@
     const inputNegocio = document.getElementById("numeroNegocio"); // 🟢 ¡Esto faltaba!
 
     function cargarDatosGrupo() {
-      const fila = datos.find(r => r.numeroNegocio === inputNegocio.value);
+      const fila = datos.find(r =>
+        r.numeroNegocio && r.numeroNegocio.trim() === inputNegocio.value.trim()
+      );
     
       if (!fila) {
         console.warn("⚠️ No se encontró el número de negocio:", inputNegocio.value);
