@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Registro de Grupos</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 2rem;
+      background: #f6f6f6;
+    }
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 1rem;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      font-size: 1rem;
+      margin-top: 0.2rem;
+      box-sizing: border-box;
+      text-transform: uppercase; /* ✅ fuerza mayúsculas */
+    }
+    .row {
+      display: flex;
+      gap: 1rem;
+    }
+    .column {
+      flex: 1;
+    }
+    .button-container {
+      margin-top: 2rem;
+      display: flex;
+      gap: 1rem;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 1rem;
+      background-color: #004080;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h2>Registro de Grupo</h2>
+
+  <!-- Dropdown que actúa como buscador + input -->
+  <label for="numeroNegocio">Número de Negocio (Dropdown editable)</label>
+  <input list="negocioList" id="numeroNegocio" name="numeroNegocio" />
+  <datalist id="negocioList">
+    <!-- Estos valores serán cargados desde Google Sheets dinámicamente con JS -->
+  </datalist>
+
+  <!-- Inputs principales -->
+  <div class="row">
+    <div class="column">
+      <label for="nombreGrupo">Nombre Grupo</label>
+      <input id="nombreGrupo" name="nombreGrupo" type="text" />
+    </div>
+    <div class="column">
+      <label for="cantidadGrupo">Cantidad Grupo</label>
+      <input id="cantidadGrupo" name="cantidadGrupo" type="number" />
+    </div>
+  </div>
+
+  <label for="colegio">Colegio</label>
+  <input id="colegio" name="colegio" type="text" />
+
+  <div class="row">
+    <div class="column">
+      <label for="curso">Curso</label>
+      <input id="curso" name="curso" type="text" />
+    </div>
+    <div class="column">
+      <label for="anoViaje">Año Viaje</label>
+      <input id="anoViaje" name="anoViaje" type="text" />
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="column">
+      <label for="destino">Destino</label>
+      <input id="destino" name="destino" type="text" />
+    </div>
+    <div class="column">
+      <label for="programa">Programa</label>
+      <input id="programa" name="programa" type="text" />
+    </div>
+    <div class="column">
+      <label for="hotel">Hotel</label>
+      <input id="hotel" name="hotel" type="text" />
+    </div>
+  </div>
+
+  <label for="asistMedica">Asistencia Médica</label>
+  <input id="asistMedica" name="asistMedica" type="text" />
+
+  <label for="autorizacion">Autorización (observaciones)</label>
+  <textarea id="autorizacion" name="autorizacion" rows="3"></textarea>
+
+  <label for="fechaDeViaje">Fecha de Viaje (observaciones)</label>
+  <textarea id="fechaDeViaje" name="fechaDeViaje" rows="3"></textarea>
+
+  <label for="infoOperaciones">Información para operaciones</label>
+  <textarea id="infoOperaciones" name="infoOperaciones" rows="3"></textarea>
+
+  <div class="button-container">
+    <button onclick="guardarDatos(false)">Solo Guardar</button>
+    <button onclick="guardarDatos(true)">Guardar y Continuar</button>
+  </div>
+
+  <!-- Scripts vendrán después -->
+</body>
+</html>
