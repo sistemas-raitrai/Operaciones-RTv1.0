@@ -4,58 +4,15 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Registro de Grupos</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      padding: 2rem;
-      background: #f6f6f6;
-    }
-    label {
-      font-weight: bold;
-      display: block;
-      margin-top: 1rem;
-    }
-    input, select, textarea {
-      width: 100%;
-      padding: 8px;
-      font-size: 1rem;
-      margin-top: 0.2rem;
-      box-sizing: border-box;
-      text-transform: uppercase; /* ✅ fuerza mayúsculas */
-    }
-    .row {
-      display: flex;
-      gap: 1rem;
-    }
-    .column {
-      flex: 1;
-    }
-    .button-container {
-      margin-top: 2rem;
-      display: flex;
-      gap: 1rem;
-    }
-    button {
-      padding: 10px 20px;
-      font-size: 1rem;
-      background-color: #004080;
-      color: white;
-      border: none;
-      cursor: pointer;
-    }
-  </style>
+  <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
   <h2>Registro de Grupo</h2>
 
-  <!-- Dropdown que actúa como buscador + input -->
   <label for="numeroNegocio">Número de Negocio (Dropdown editable)</label>
   <input list="negocioList" id="numeroNegocio" name="numeroNegocio" />
-  <datalist id="negocioList">
-    <!-- Estos valores serán cargados desde Google Sheets dinámicamente con JS -->
-  </datalist>
+  <datalist id="negocioList"></datalist>
 
-  <!-- Inputs principales -->
   <div class="row">
     <div class="column">
       <label for="nombreGrupo">Nombre Grupo</label>
@@ -116,9 +73,8 @@
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
-  <!-- ✅ SCRIPT que conecta con Google Sheet, llena el datalist y carga valores -->
   <script>
-    const sheetURL = 'https://script.google.com/macros/s/AKfycbxxxxxxxxxxx/exec'; // <- cámbialo por la URL real de tu Apps Script
+    const sheetURL = 'https://script.google.com/macros/s/AKfycbxxxxxxxxxxxx/exec';
 
     const campos = {
       numeroNegocio: 'numeroNegocio',
@@ -137,7 +93,6 @@
       versionFicha: 'text1'
     };
 
-    // Fuerza mayúsculas
     Object.values(campos).forEach(id => {
       const el = document.getElementById(id);
       if (el) {
@@ -147,7 +102,6 @@
       }
     });
 
-    // Carga los datos desde Google Sheets
     async function cargarNumeroNegocio() {
       const res = await fetch(sheetURL);
       const datos = await res.json();
