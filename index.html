@@ -4,89 +4,87 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sistema de Operaciones RTv1</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     body {
       margin: 0;
-      font-family: sans-serif;
-      background: #f4f4f4;
+      font-family: 'Inter', sans-serif;
+      background-color: #f5f5f5;
     }
     header {
-      background: white;
-      padding: 1em;
+      background-color: white;
+      padding: 1rem 2rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
     }
-    .logo {
-      font-weight: bold;
-      font-size: 1.2em;
+    header h1 {
+      margin: 0;
+      font-size: 1.25rem;
+    }
+    header .usuario {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #444;
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 2rem;
       padding: 2rem;
     }
     .card {
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-      padding: 2rem 1rem;
+      background-color: white;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
       text-align: center;
+      transition: 0.2s;
       cursor: pointer;
-      transition: transform 0.2s ease;
     }
     .card:hover {
       transform: translateY(-5px);
     }
-    .card h2 {
-      font-size: 1.1em;
-      margin-bottom: 0.5em;
-    }
-    .circle {
+    .card img {
       width: 60px;
       height: 60px;
+      margin-bottom: 1rem;
       border-radius: 50%;
-      background: #0b2a69;
-      margin: 0 auto 1em;
+      background-color: #ddd;
+    }
+    .card h2 {
+      font-size: 1rem;
+      margin: 0.25rem 0;
+      font-weight: 700;
+    }
+    .card p {
+      font-size: 0.9rem;
+      color: #666;
     }
   </style>
 </head>
 <body>
   <header>
-    <div class="logo">Sistema de Operaciones RTv1</div>
-    <div>
-      <img src="https://www.svgrepo.com/show/508699/user-circle.svg" alt="usuario" width="36">
-    </div>
+    <h1>Sistema de Operaciones RTv1</h1>
+    <div class="usuario">Hola, <span id="nombreUsuario">usuario</span>!</div>
   </header>
-
   <main class="grid">
-    <div class="card" onclick="window.location.href='registro-grupos.html'">
-      <div class="circle"></div>
+    <div class="card" onclick="window.location.href='registro.html'">
+      <img src="https://via.placeholder.com/60/112266/ffffff?text=R" alt="Registro">
       <h2>REGISTRO DE GRUPOS</h2>
       <p>Breve descripción o mensaje atractivo</p>
     </div>
-    <div class="card">
-      <div class="circle" style="background: #ccc;"></div>
-      <h2>--</h2>
-      <p>---</p>
-    </div>
-    <div class="card">
-      <div class="circle" style="background: #ccc;"></div>
-      <h2>--</h2>
-      <p>---</p>
-    </div>
-    <div class="card">
-      <div class="circle" style="background: #ccc;"></div>
-      <h2>--</h2>
-      <p>---</p>
-    </div>
-    <div class="card">
-      <div class="circle" style="background: #ccc;"></div>
-      <h2>--</h2>
-      <p>---</p>
-    </div>
+    <!-- Placeholder para futuras tarjetas -->
+    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
+    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
+    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
+    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
   </main>
+  <script>
+    // Aquí podrías usar sessionStorage o localStorage más adelante para capturar el nombre real
+    const nombreGuardado = localStorage.getItem("usuario") || "Ignacio";
+    document.getElementById("nombreUsuario").textContent = nombreGuardado;
+  </script>
 </body>
 </html>
