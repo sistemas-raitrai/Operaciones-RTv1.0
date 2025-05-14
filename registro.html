@@ -53,8 +53,8 @@
     </div>
   </div>
 
-  <label for="asistMedica">Asistencia Médica</label>
-  <input id="asistMedica" name="asistMedica" type="text" />
+  <label for="asistenciaEnViajes">Asistencia Médica</label>
+  <input id="asistenciaEnViajes" name="asistenciaEnViajes" type="text" />
 
   <label for="autorizacion">Autorización (observaciones)</label>
   <textarea id="autorizacion" name="autorizacion" rows="3"></textarea>
@@ -86,7 +86,7 @@
     destino: 'destino',
     programa: 'programa',
     hotel: 'hotel',
-    asistenciaEnViajes: 'asistMedica',
+    asistenciaEnViajes: 'asistenciaEnViajes',
     autorizacion: 'autorizacion',
     fechaDeViaje: 'fechaDeViaje',
     observaciones: 'observaciones',
@@ -121,11 +121,13 @@
     inputNegocio.addEventListener("change", () => {
       const fila = datos.find(r => r.numeroNegocio === inputNegocio.value);
       if (fila) {
+        console.log("Fila seleccionada:", fila);
         for (const campo in campos) {
           const id = campos[campo];
           const input = document.getElementById(id);
-          if (input && fila[campo] !== undefined) {
-            input.value = fila[campo];
+        if (input) {
+          // solo actualiza si existe ese campo en la fila
+          input.value = fila[campo] !== undefined ? fila[campo] : '';
           }
         }
       } else {
