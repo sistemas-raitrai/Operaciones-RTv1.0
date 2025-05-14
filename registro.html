@@ -126,7 +126,8 @@
 
     function cargarDatosGrupo() {
       const fila = datos.find(r =>
-        r.numeroNegocio && String(r.numeroNegocio).trim() === inputNegocio.value.trim()
+        r.numeroNegocio !== undefined &&
+        String(r.numeroNegocio).trim() === String(inputNegocio.value).trim()
       );
     
       if (!fila) {
