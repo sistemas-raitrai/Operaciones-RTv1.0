@@ -73,69 +73,75 @@
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
-  <script>
-    const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
+<script>
+  const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
 
-    const campos = {
-      numeroNegocio: 'numeroNegocio',
-      nombreGrupo: 'nombreGrupo',
-      cantidadgrupo: 'cantidadGrupo',
-      colegio: 'colegio',
-      curso: 'curso',
-      anoViaje: 'anoViaje',
-      destino: 'destino',
-      programa: 'programa',
-      hotel: 'hotel',
-      asistenciaEnViajes: 'asistMedica',
-      autorizacion: 'autorizacion',
-      fechaDeViaje: 'fechaDeViaje',
-      observaciones: 'infoOperaciones',
-      versionFicha: 'text1'
-    };
+  const campos = {
+    numeroNegocio: 'numeroNegocio',
+    nombreGrupo: 'nombreGrupo',
+    cantidadgrupo: 'cantidadGrupo', // ✅ asegúrate que coincida con el ID en el HTML
+    colegio: 'colegio',
+    curso: 'curso',
+    anoViaje: 'anoViaje',
+    destino: 'destino',
+    programa: 'programa',
+    hotel: 'hotel',
+    asistenciaEnViajes: 'asistMedica',
+    autorizacion: 'autorizacion',
+    fechaDeViaje: 'fechaDeViaje',
+    observaciones: 'infoOperaciones',
+    versionFicha: 'text1'
+  };
 
-    Object.values(campos).forEach(id => {
-      const el = document.getElementById(id);
-      if (el) {
-        el.addEventListener("input", e => {
-          e.target.value = e.target.value.toUpperCase();
-        });
+  Object.values(campos).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener("input", e => {
+        e.target.value = e.target.value.toUpperCase();
+      });
+    }
+  });
+
+  async function cargarNumeroNegocio() {
+    const res = await fetch(sheetURL);
+    const datos = await res.json();
+    const lista = document.getElementById("negocioList");
+
+    // 🔄 Llenar dropdown
+    datos.forEach(fila => {
+      if (fila.numeroNegocio) {
+        const opt = document.createElement("option");
+        opt.value = fila.numeroNegocio;
+        lista.appendChild(opt);
       }
     });
 
-    async function cargarNumeroNegocio() {
-      const res = await fetch(sheetURL);
-      const datos = await res.json();
-      const lista = document.getElementById("negocioList");
-
-      datos.forEach(fila => {
-        if (fila.numeroNegocio) {
-          const opt = document.createElement("option");
-          opt.value = fila.numeroNegocio;
-          lista.appendChild(opt);
-        }
-      });
-
-      const inputNegocio = document.getElementById("numeroNegocio");
-      inputNegocio.addEventListener("change", () => {
-        const fila = datos.find(r => r.numeroNegocio === inputNegocio.value);
-        if (fila) {
-          for (const campo in campos) {
-            const id = campos[campo];
-            const input = document.getElementById(id);
-            if (input && fila[campo]) input.value = fila[campo];
-          }
-        } else {
-          for (const campo in campos) {
-            if (campo !== 'numeroNegocio') {
-              const input = document.getElementById(campos[campo]);
-              if (input) input.value = '';
-            }
+    // 🧠 Al seleccionar un número, rellenar los inputs
+    const inputNegocio = document.getElementById("numeroNegocio");
+    inputNegocio.addEventListener("change", () => {
+      const fila = datos.find(r => r.numeroNegocio === inputNegocio.value);
+      if (fila) {
+        for (const campo in campos) {
+          const id = campos[campo];
+          const input = document.getElementById(id);
+          if (input && fila[campo] !== undefined) {
+            input.value = fila[campo];
           }
         }
-      });
-    }
+      } else {
+        // 🔁 Limpiar si no se encuentra
+        for (const campo in campos) {
+          if (campo !== 'numeroNegocio') {
+            const input = document.getElementById(campos[campo]);
+            if (input) input.value = '';
+          }
+        }
+      }
+    });
+  }
 
-    cargarNumeroNegocio();
-  </script>
+  cargarNumeroNegocio();
+</script>
+
 </body>
 </html>
