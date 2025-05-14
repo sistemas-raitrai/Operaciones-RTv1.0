@@ -124,6 +124,7 @@
     const inputNegocio = document.getElementById("numeroNegocio");
     inputNegocio.addEventListener("change", () => {
       const fila = datos.find(r => r.numeroNegocio === inputNegocio.value);
+      console.log("Fila encontrada (campos reales):", Object.keys(fila));
       if (fila) {
         console.log("Fila seleccionada:", fila);
         for (const campo in campos) {
