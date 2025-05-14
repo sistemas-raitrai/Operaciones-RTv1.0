@@ -23,7 +23,7 @@
       <input id="nombreGrupo" name="nombreGrupo" type="text" />
     </div>
     <div class="column">
-      <label for="cantidadgrupo">Pax</label>
+      <label for="cantidadgrupo">PAX</label>
       <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
     </div>
   </div>
@@ -149,13 +149,20 @@
         if (input) {
           let valor = fila[campo];
       
-          // ✅ Forzar fechaDeViaje como texto plano
+          // ✅ Si fechaDeViaje viene como Date, formatear
           if (campo === "fechaDeViaje" && typeof valor === "object" && valor instanceof Date) {
             valor = valor.toLocaleDateString("es-CL", {
               day: "2-digit",
               month: "long",
               year: "numeric"
             });
+          }
+      
+          // ✅ Limpiar HTML de los campos enriquecidos
+          if (["autorizacion", "fechaDeViaje", "observaciones"].includes(campo)) {
+            const tempDiv = document.createElement("div");
+            tempDiv.innerHTML = valor;
+            valor = tempDiv.textContent || tempDiv.innerText || "";
           }
       
           input.value = valor !== undefined ? String(valor) : '';
