@@ -1,90 +1,98 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sistema de Operaciones RTv1</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     body {
+      font-family: sans-serif;
       margin: 0;
-      font-family: 'Inter', sans-serif;
       background-color: #f5f5f5;
     }
-    header {
-      background-color: white;
-      padding: 1rem 2rem;
+    .header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+      background-color: white;
+      padding: 1rem;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
-    header h1 {
-      margin: 0;
-      font-size: 1.25rem;
+    .title {
+      font-weight: bold;
     }
-    header .usuario {
-      font-size: 0.9rem;
-      font-weight: 500;
-      color: #444;
+    .username {
+      font-weight: bold;
+      color: #1a1a1a;
     }
     .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 2rem;
-      padding: 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      margin: 2rem;
     }
     .card {
-      background-color: white;
-      border-radius: 12px;
-      padding: 1.5rem;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      background: white;
+      border-radius: 8px;
+      width: 220px;
+      padding: 1rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
       text-align: center;
-      transition: 0.2s;
-      cursor: pointer;
     }
-    .card:hover {
-      transform: translateY(-5px);
-    }
-    .card img {
+    .circle {
       width: 60px;
       height: 60px;
-      margin-bottom: 1rem;
       border-radius: 50%;
-      background-color: #ddd;
+      margin: 0 auto 1rem;
     }
-    .card h2 {
-      font-size: 1rem;
-      margin: 0.25rem 0;
-      font-weight: 700;
+    .main {
+      background-color: #0c2a64;
     }
-    .card p {
+    .placeholder {
+      background-color: #ccc;
+    }
+    .title-card {
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle-card {
       font-size: 0.9rem;
-      color: #666;
+      color: #555;
     }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Sistema de Operaciones RTv1</h1>
-    <div class="usuario">Hola, <span id="nombreUsuario">usuario</span>!</div>
-  </header>
-  <main class="grid">
-    <div class="card" onclick="window.location.href='registro.html'">
-      <img src="https://via.placeholder.com/60/112266/ffffff?text=R" alt="Registro">
-      <h2>REGISTRO DE GRUPOS</h2>
-      <p>Breve descripción o mensaje atractivo</p>
+  <div class="header">
+    <div class="title">Sistema de Operaciones RTv1</div>
+    <div class="username">Hola Ignacio!</div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="circle main"></div>
+      <div class="title-card">REGISTRO DE GRUPOS</div>
+      <div class="subtitle-card">Breve descripción o mensaje atractivo</div>
     </div>
-    <!-- Placeholder para futuras tarjetas -->
-    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
-    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
-    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
-    <div class="card"><img src="https://via.placeholder.com/60" alt="--"><h2>--</h2><p>---</p></div>
-  </main>
-  <script>
-    // Aquí podrías usar sessionStorage o localStorage más adelante para capturar el nombre real
-    const nombreGuardado = localStorage.getItem("usuario") || "Ignacio";
-    document.getElementById("nombreUsuario").textContent = nombreGuardado;
-  </script>
+    <div class="card">
+      <div class="circle placeholder"></div>
+      <div class="title-card">--</div>
+      <div class="subtitle-card">---</div>
+    </div>
+    <div class="card">
+      <div class="circle placeholder"></div>
+      <div class="title-card">--</div>
+      <div class="subtitle-card">---</div>
+    </div>
+    <div class="card">
+      <div class="circle placeholder"></div>
+      <div class="title-card">--</div>
+      <div class="subtitle-card">---</div>
+    </div>
+    <div class="card">
+      <div class="circle placeholder"></div>
+      <div class="title-card">--</div>
+      <div class="subtitle-card">---</div>
+    </div>
+  </div>
 </body>
 </html>
