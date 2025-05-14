@@ -23,7 +23,7 @@
       <input id="nombreGrupo" name="nombreGrupo" type="text" />
     </div>
     <div class="column">
-      <label for="cantidadgrupo">Pax</label>
+      <label for="cantidadgrupo">PAX</label>
       <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
     </div>
   </div>
@@ -109,6 +109,7 @@
   async function cargarNumeroNegocio() {
     const res = await fetch(sheetURL);
     const datos = await res.json();
+    console.log("🔍 Ejemplo de fila:", datos[0]);
     console.log("🔍 Datos completos recibidos:", datos);
     const lista = document.getElementById("negocioList");
 
@@ -125,7 +126,7 @@
 
     function cargarDatosGrupo() {
       const fila = datos.find(r =>
-        r.numeroNegocio && r.numeroNegocio.trim() === inputNegocio.value.trim()
+        r.numeroNegocio && String(r.numeroNegocio).trim() === inputNegocio.value.trim()
       );
     
       if (!fila) {
