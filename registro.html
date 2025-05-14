@@ -129,7 +129,7 @@
         for (const campo in campos) {
           const id = campos[campo];
           const input = document.getElementById(id);
-        if (input) {
+          if (input) {
           // solo actualiza si existe ese campo en la fila
           input.value = fila[campo] !== undefined ? fila[campo] : '';
           }
