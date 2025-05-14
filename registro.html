@@ -108,11 +108,80 @@
   <label for="infoOperaciones">Información para operaciones</label>
   <textarea id="infoOperaciones" name="infoOperaciones" rows="3"></textarea>
 
+  <label for="text1">Versión Ficha</label>
+  <input id="text1" name="versionFicha" type="text" />
+
   <div class="button-container">
     <button onclick="guardarDatos(false)">Solo Guardar</button>
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
-  <!-- Scripts vendrán después -->
+  <!-- ✅ SCRIPT que conecta con Google Sheet, llena el datalist y carga valores -->
+  <script>
+    const sheetURL = 'https://script.google.com/macros/s/AKfycbxxxxxxxxxxx/exec'; // <- cámbialo por la URL real de tu Apps Script
+
+    const campos = {
+      numeroNegocio: 'numeroNegocio',
+      nombreGrupo: 'nombreGrupo',
+      cantidadgrupo: 'cantidadGrupo',
+      colegio: 'colegio',
+      curso: 'curso',
+      anoViaje: 'anoViaje',
+      destino: 'destino',
+      programa: 'programa',
+      hotel: 'hotel',
+      asistenciaEnViajes: 'asistMedica',
+      autorizacion: 'autorizacion',
+      fechaDeViaje: 'fechaDeViaje',
+      observaciones: 'infoOperaciones',
+      versionFicha: 'text1'
+    };
+
+    // Fuerza mayúsculas
+    Object.values(campos).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener("input", e => {
+          e.target.value = e.target.value.toUpperCase();
+        });
+      }
+    });
+
+    // Carga los datos desde Google Sheets
+    async function cargarNumeroNegocio() {
+      const res = await fetch(sheetURL);
+      const datos = await res.json();
+      const lista = document.getElementById("negocioList");
+
+      datos.forEach(fila => {
+        if (fila.numeroNegocio) {
+          const opt = document.createElement("option");
+          opt.value = fila.numeroNegocio;
+          lista.appendChild(opt);
+        }
+      });
+
+      const inputNegocio = document.getElementById("numeroNegocio");
+      inputNegocio.addEventListener("change", () => {
+        const fila = datos.find(r => r.numeroNegocio === inputNegocio.value);
+        if (fila) {
+          for (const campo in campos) {
+            const id = campos[campo];
+            const input = document.getElementById(id);
+            if (input && fila[campo]) input.value = fila[campo];
+          }
+        } else {
+          for (const campo in campos) {
+            if (campo !== 'numeroNegocio') {
+              const input = document.getElementById(campos[campo]);
+              if (input) input.value = '';
+            }
+          }
+        }
+      });
+    }
+
+    cargarNumeroNegocio();
+  </script>
 </body>
 </html>
