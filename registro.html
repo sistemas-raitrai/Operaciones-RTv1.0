@@ -120,9 +120,9 @@
       }
     });
 
-    // 🧠 Al seleccionar un número, rellenar los inputs
-    const inputNegocio = document.getElementById("numeroNegocio");
-    inputNegocio.addEventListener("change", () => {
+    const inputNegocio = document.getElementById("numeroNegocio"); // 🟢 ¡Esto faltaba!
+
+    function cargarDatosGrupo() {
       const fila = datos.find(r => r.numeroNegocio === inputNegocio.value);
       console.log("Fila encontrada (campos reales):", Object.keys(fila));
       if (fila) {
@@ -131,12 +131,10 @@
           const id = campos[campo];
           const input = document.getElementById(id);
           if (input) {
-          // solo actualiza si existe ese campo en la fila
-          input.value = fila[campo] !== undefined ? fila[campo] : '';
+            input.value = fila[campo] !== undefined ? fila[campo] : '';
           }
         }
       } else {
-        // 🔁 Limpiar si no se encuentra
         for (const campo in campos) {
           if (campo !== 'numeroNegocio') {
             const input = document.getElementById(campos[campo]);
@@ -144,7 +142,11 @@
           }
         }
       }
-    });
+    }
+    
+    inputNegocio.addEventListener("change", cargarDatosGrupo);
+    inputNegocio.addEventListener("input", cargarDatosGrupo);
+
   }
     
      // Función para guardar y volver
