@@ -7,6 +7,10 @@
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
+    <div style="text-align: right;">
+    <button onclick="window.history.back()" style="border: none; background: none; font-size: 1.5rem; cursor: pointer;">✕</button>
+  </div>
+
   <h2>Registro de Grupo</h2>
 
   <label for="numeroNegocio">Número de Negocio</label>
@@ -69,11 +73,11 @@
   <input id="text1" name="versionFicha" type="text" />
 
   <div class="button-container">
-    <button onclick="guardarDatos(false)">Solo Guardar</button>
+    <button onclick="guardarYVolver()">Guardar y Volver</button>
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
-<script>
+  <script>
   const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
 
   const campos = {
@@ -141,6 +145,14 @@
       }
     });
   }
+    
+     // Función para guardar y volver
+    function guardarYVolver() {
+      guardarDatos(false); // <- esta función se conectará con Excel Online
+      setTimeout(() => {
+        window.history.back();
+      }, 1000);
+    }
 
   cargarNumeroNegocio();
 </script>
