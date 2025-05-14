@@ -4,69 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sistema de Operaciones RTv1</title>
-  <style>
-    body {
-      font-family: sans-serif;
-      margin: 0;
-      background-color: #f5f5f5;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      background-color: white;
-      padding: 1rem;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    .title {
-      font-weight: bold;
-    }
-    .username {
-      font-weight: bold;
-      color: #1a1a1a;
-    }
-    .grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      justify-content: center;
-      margin: 2rem;
-    }
-    .card {
-      background: white;
-      border-radius: 8px;
-      width: 220px;
-      padding: 1rem;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-      text-align: center;
-      text-decoration: none;
-      color: inherit;
-    }
-    .circle {
-      width: 60px;
-      height: 60px;
-      border-radius: 50%;
-      margin: 0 auto 1rem;
-    }
-    .main {
-      background-color: #0c2a64;
-    }
-    .placeholder {
-      background-color: #ccc;
-    }
-    .title-card {
-      font-weight: bold;
-      margin-bottom: 0.5rem;
-    }
-    .subtitle-card {
-      font-size: 0.9rem;
-      color: #555;
-    }
-    .card:hover {
-      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-      cursor: pointer;
-    }
-  </style>
+  <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
   <div class="header">
@@ -75,19 +13,11 @@
   </div>
 
   <div class="grid">
-    <!-- 🟦 Tarjeta clickeable que lleva al formulario "registro" -->
-    <a href="registro" class="card">
+    <a href="registro.html" class="card">
       <div class="circle main"></div>
       <div class="title-card">REGISTRO DE GRUPOS</div>
       <div class="subtitle-card">Formulario de registro de información de Grupos de Viaje</div>
     </a>
-
-    <!-- ⬜️ Tarjetas de ejemplo sin funcionalidad -->
-    <div class="card">
-      <div class="circle placeholder"></div>
-      <div class="title-card">--</div>
-      <div class="subtitle-card">---</div>
-    </div>
     <div class="card">
       <div class="circle placeholder"></div>
       <div class="title-card">--</div>
