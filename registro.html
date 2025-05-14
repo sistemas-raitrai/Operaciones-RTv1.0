@@ -147,7 +147,18 @@
         const id = campos[campo];
         const input = document.getElementById(id);
         if (input) {
-          input.value = fila[campo] !== undefined ? fila[campo] : '';
+          let valor = fila[campo];
+      
+          // ✅ Forzar fechaDeViaje como texto plano
+          if (campo === "fechaDeViaje" && typeof valor === "object" && valor instanceof Date) {
+            valor = valor.toLocaleDateString("es-CL", {
+              day: "2-digit",
+              month: "long",
+              year: "numeric"
+            });
+          }
+      
+          input.value = valor !== undefined ? String(valor) : '';
         }
       }
     }
