@@ -19,30 +19,39 @@
     </div>
   </div>
 
-  <label for="numeroNegocio">Número de Negocio</label>
-  <input list="negocioList" id="numeroNegocio" name="numeroNegocio" />
-  <datalist id="negocioList"></datalist>
-
-  <label for="nombreGrupo">Nombre de Grupo</label>
-  <input list="nombreList" id="nombreGrupo" name="nombreGrupo" />
-  <datalist id="nombreList"></datalist>
-
+  <!-- 🔄 Fila: Número de Negocio + Nombre de Grupo + Pax -->
   <div class="row">
-    <div class="column">
+    <div class="column short">
+      <label for="numeroNegocio">Número de Negocio</label>
+      <input list="negocioList" id="numeroNegocio" name="numeroNegocio" />
+      <datalist id="negocioList"></datalist>
+    </div>
+  
+    <div class="column long">
+      <label for="nombreGrupo">Nombre de Grupo</label>
+      <input list="nombreList" id="nombreGrupo" name="nombreGrupo" />
+      <datalist id="nombreList"></datalist>
+    </div>
+  
+    <div class="column short">
       <label for="cantidadgrupo">Pax</label>
       <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
     </div>
   </div>
 
-  <label for="colegio">Colegio</label>
-  <input id="colegio" name="colegio" type="text" />
-
+  <!-- 🔄 Fila: Colegio + Curso + Año Viaje -->
   <div class="row">
-    <div class="column">
+    <div class="column long">
+      <label for="colegio">Colegio</label>
+      <input id="colegio" name="colegio" type="text" />
+    </div>
+  
+    <div class="column short">
       <label for="curso">Curso</label>
       <input id="curso" name="curso" type="text" />
     </div>
-    <div class="column">
+  
+    <div class="column short">
       <label for="anoViaje">Año Viaje</label>
       <input id="anoViaje" name="anoViaje" type="text" />
     </div>
