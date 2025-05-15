@@ -7,21 +7,27 @@
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
-  <div style="text-align: right;">
-    <button onclick="window.history.back()" style="border: none; background: none; font-size: 1.5rem; cursor: pointer;">&#10005;</button>
+  <div style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>Registro de Grupo</h2>
+    <div>
+      <label for="filtroAno">Filtrar por Año</label>
+      <select id="filtroAno"></select>
+    </div>
   </div>
 
-  <h2>Registro de Grupo</h2>
+  <div style="text-align: right;">
+    <button onclick="window.history.back()" class="boton-cerrar">✕</button>
+  </div>
 
   <label for="numeroNegocio">Número de Negocio</label>
   <input list="negocioList" id="numeroNegocio" name="numeroNegocio" />
   <datalist id="negocioList"></datalist>
 
+  <label for="nombreGrupo">Nombre de Grupo</label>
+  <input list="nombreList" id="nombreGrupo" name="nombreGrupo" />
+  <datalist id="nombreList"></datalist>
+
   <div class="row">
-    <div class="column">
-      <label for="nombreGrupo">Nombre de Grupo</label>
-      <input id="nombreGrupo" name="nombreGrupo" type="text" />
-    </div>
     <div class="column">
       <label for="cantidadgrupo">PAX</label>
       <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
@@ -60,10 +66,10 @@
   <label for="asistenciaEnViajes">Asistencia Médica</label>
   <input id="asistenciaEnViajes" name="asistenciaEnViajes" type="text" />
 
-  <label for="autorizacion">Autorización (observaciones)</label>
+  <label for="autorizacion">Autorización</label>
   <textarea id="autorizacion" name="autorizacion" rows="3"></textarea>
 
-  <label for="fechaDeViaje">Fecha de Viaje (observaciones)</label>
+  <label for="fechaDeViaje">Fecha de Viaje</label>
   <textarea id="fechaDeViaje" name="fechaDeViaje" rows="3"></textarea>
 
   <label for="observaciones">Información para operaciones</label>
@@ -77,7 +83,6 @@
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
-  <!-- Script general -->
   <script src="datosGrupos.js"></script>
 </body>
 </html>
