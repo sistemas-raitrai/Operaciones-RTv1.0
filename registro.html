@@ -7,8 +7,8 @@
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
-    <div style="text-align: right;">
-    <button onclick="window.history.back()" style="border: none; background: none; font-size: 1.5rem; cursor: pointer;">✕</button>
+  <div style="text-align: right;">
+    <button onclick="window.history.back()" style="border: none; background: none; font-size: 1.5rem; cursor: pointer;">&#10005;</button>
   </div>
 
   <h2>Registro de Grupo</h2>
@@ -77,113 +77,7 @@
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
-  <script>
-  const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
-
-  const campos = {
-    numeroNegocio: 'numeroNegocio',
-    nombreGrupo: 'nombreGrupo',
-    cantidadgrupo: 'cantidadgrupo', // ✅ asegúrate que coincida con el ID en el HTML
-    colegio: 'colegio',
-    curso: 'curso',
-    anoViaje: 'anoViaje',
-    destino: 'destino',
-    programa: 'programa',
-    hotel: 'hotel',
-    asistenciaEnViajes: 'asistenciaEnViajes',
-    autorizacion: 'autorizacion',
-    fechaDeViaje: 'fechaDeViaje',
-    observaciones: 'observaciones',
-    versionFicha: 'text1'
-  };
-
-  Object.values(campos).forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener("input", e => {
-        e.target.value = e.target.value.toUpperCase();
-      });
-    }
-  });
-
-  async function cargarNumeroNegocio() {
-    const res = await fetch(sheetURL);
-    const datos = await res.json();
-    console.log("🔍 Ejemplo de fila:", datos[0]);
-    console.log("🔍 Datos completos recibidos:", datos);
-    const lista = document.getElementById("negocioList");
-
-    // 🔄 Llenar dropdown
-    datos.forEach(fila => {
-      if (fila.numeroNegocio) {
-        const opt = document.createElement("option");
-        opt.value = fila.numeroNegocio;
-        lista.appendChild(opt);
-      }
-    });
-
-    const inputNegocio = document.getElementById("numeroNegocio"); // 🟢 ¡Esto faltaba!
-
-    function cargarDatosGrupo() {
-      const fila = datos.find(r =>
-        r.numeroNegocio !== undefined &&
-        String(r.numeroNegocio).trim() === String(inputNegocio.value).trim()
-      );
-    
-      if (!fila) {
-        console.warn("⚠️ No se encontró el número de negocio:", inputNegocio.value);
-        // Limpiar campos excepto número de negocio
-        for (const campo in campos) {
-          if (campo !== 'numeroNegocio') {
-            const input = document.getElementById(campos[campo]);
-            if (input) input.value = '';
-          }
-        }
-        return; // 🔁 IMPORTANTE: salir de la función para no ejecutar el resto
-      }
-    
-      console.log("Fila encontrada:", Object.keys(fila));
-      for (const campo in campos) {
-        const id = campos[campo];
-        const input = document.getElementById(id);
-        if (input) {
-          let valor = fila[campo];
-      
-          // ✅ Si fechaDeViaje viene como Date, formatear
-          if (campo === "fechaDeViaje" && typeof valor === "object" && valor instanceof Date) {
-            valor = valor.toLocaleDateString("es-CL", {
-              day: "2-digit",
-              month: "long",
-              year: "numeric"
-            });
-          }
-      
-          // ✅ Limpiar HTML de los campos enriquecidos
-          if (["autorizacion", "fechaDeViaje", "observaciones"].includes(campo)) {
-            const tempDiv = document.createElement("div");
-            tempDiv.innerHTML = valor;
-            valor = tempDiv.textContent || tempDiv.innerText || "";
-          }
-      
-          input.value = valor !== undefined ? String(valor) : '';
-        }
-      }
-    }
-
-    inputNegocio.addEventListener("change", cargarDatosGrupo);
-    inputNegocio.addEventListener("input", cargarDatosGrupo);
-  }
-    
-     // Función para guardar y volver
-    function guardarYVolver() {
-      guardarDatos(false); // <- esta función se conectará con Excel Online
-      setTimeout(() => {
-        window.history.back();
-      }, 1000);
-    }
-
-  cargarNumeroNegocio();
-</script>
-
+  <!-- Script general -->
+  <script src="datosGrupos.js"></script>
 </body>
 </html>
