@@ -21,11 +21,26 @@ input, select, textarea {
 
 .row {
   display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .column {
+  display: flex;
+  flex-direction: column;
+}
+
+.short {
   flex: 1;
+}
+
+.medium {
+  flex: 2;
+}
+
+.long {
+  flex: 3;
 }
 
 .button-container {
