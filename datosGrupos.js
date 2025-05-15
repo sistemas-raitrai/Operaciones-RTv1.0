@@ -1,7 +1,7 @@
-// ✅ Configuración general
+// ✅ URL del script de Google Apps Script que entrega los datos
 const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
 
-// ✅ Mapeo de campos
+// ✅ Relación entre campos del Google Sheet y los inputs del HTML
 const campos = {
   numeroNegocio: 'numeroNegocio',
   nombreGrupo: 'nombreGrupo',
@@ -19,7 +19,7 @@ const campos = {
   versionFicha: 'text1'
 };
 
-// ✅ Forzar mayúsculas en todos los campos
+// ✅ Forzar mayúsculas automáticamente en todos los inputs del formulario
 Object.values(campos).forEach(id => {
   const el = document.getElementById(id);
   if (el) {
@@ -29,33 +29,61 @@ Object.values(campos).forEach(id => {
   }
 });
 
-// ✅ Cargar y asignar datos
+// ✅ Cargar datos desde Google Sheet y preparar la búsqueda
 async function cargarNumeroNegocio() {
   const res = await fetch(sheetURL);
   const datos = await res.json();
-  console.log("🔍 Ejemplo de fila:", datos[0]);
-  const lista = document.getElementById("negocioList");
-  const inputNegocio = document.getElementById("numeroNegocio");
+  const listaNumero = document.getElementById("negocioList");
+  const listaNombre = document.getElementById("nombreList");
+  const inputNumero = document.getElementById("numeroNegocio");
+  const inputNombre = document.getElementById("nombreGrupo");
+  const filtroAno = document.getElementById("filtroAno");
 
-  // 🔄 Rellenar datalist
-  datos.forEach(fila => {
-    if (fila.numeroNegocio) {
-      const opt = document.createElement("option");
-      opt.value = fila.numeroNegocio;
-      lista.appendChild(opt);
-    }
+  // 🔄 Obtener años únicos desde los datos para el filtro
+  const anosUnicos = [...new Set(datos.map(f => f.anoViaje))].filter(Boolean).sort();
+  filtroAno.innerHTML = '';
+  anosUnicos.forEach(a => {
+    const opt = document.createElement("option");
+    opt.value = a;
+    opt.textContent = a;
+    filtroAno.appendChild(opt);
   });
 
-  function cargarDatosGrupo() {
+  // ✅ Seleccionar año actual por defecto
+  const anioActual = new Date().getFullYear();
+  filtroAno.value = anioActual;
+
+  // ✅ Función para actualizar ambos datalists según filtro de año
+  function actualizarListas() {
+    const anoSeleccionado = filtroAno.value;
+    listaNumero.innerHTML = '';
+    listaNombre.innerHTML = '';
+
+    datos.filter(f => f.anoViaje == anoSeleccionado).forEach(fila => {
+      if (fila.numeroNegocio) {
+        const opt = document.createElement("option");
+        opt.value = fila.numeroNegocio;
+        listaNumero.appendChild(opt);
+      }
+      if (fila.nombreGrupo) {
+        const opt2 = document.createElement("option");
+        opt2.value = fila.nombreGrupo;
+        listaNombre.appendChild(opt2);
+      }
+    });
+  }
+
+  // ✅ Buscar y cargar datos al seleccionar nombre o número
+  function cargarDatosGrupo(valor) {
     const fila = datos.find(r =>
-      r.numeroNegocio !== undefined &&
-      String(r.numeroNegocio).trim() === String(inputNegocio.value).trim()
+      String(r.numeroNegocio).trim() === String(valor).trim() ||
+      String(r.nombreGrupo).trim() === String(valor).trim()
     );
 
     if (!fila) {
-      console.warn("⚠️ No se encontró el número de negocio:", inputNegocio.value);
+      console.warn("⚠️ No se encontró el grupo:", valor);
       for (const campo in campos) {
-        if (campo !== 'numeroNegocio') {
+        if (campo !== 'numeroNegocio' && campo !== 'nombreGrupo') {
           const input = document.getElementById(campos[campo]);
           if (input) input.value = '';
         }
@@ -63,7 +91,6 @@ async function cargarNumeroNegocio() {
       return;
     }
 
-    console.log("Fila seleccionada:", fila);
     for (const campo in campos) {
       const id = campos[campo];
       const input = document.getElementById(id);
@@ -79,7 +106,7 @@ async function cargarNumeroNegocio() {
           });
         }
 
-        // ✅ Limpiar HTML
+        // ✅ Limpiar HTML enriquecido
         if (["autorizacion", "fechaDeViaje", "observaciones"].includes(campo)) {
           const tempDiv = document.createElement("div");
           tempDiv.innerHTML = valor;
@@ -91,11 +118,15 @@ async function cargarNumeroNegocio() {
     }
   }
 
-  inputNegocio.addEventListener("change", cargarDatosGrupo);
-  inputNegocio.addEventListener("input", cargarDatosGrupo);
+  // ✅ Vincular eventos a inputs
+  inputNumero.addEventListener("change", () => cargarDatosGrupo(inputNumero.value));
+  inputNombre.addEventListener("change", () => cargarDatosGrupo(inputNombre.value));
+  filtroAno.addEventListener("change", actualizarListas);
+
+  actualizarListas(); // 🟢 Cargar listas al inicio
 }
 
-// ✅ Guardar y volver
+// ✅ Botón de guardar y volver atrás
 function guardarYVolver() {
   guardarDatos(false);
   setTimeout(() => {
@@ -103,5 +134,5 @@ function guardarYVolver() {
   }, 1000);
 }
 
-// ✅ Inicialización principal
+// ✅ Iniciar todo
 cargarNumeroNegocio();
