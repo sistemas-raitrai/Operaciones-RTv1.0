@@ -36,11 +36,11 @@ input, select, textarea {
 }
 
 .medium {
-  flex: 2;
+  flex: 3;
 }
 
 .long {
-  flex: 3;
+  flex: 6;
 }
 
 .button-container {
