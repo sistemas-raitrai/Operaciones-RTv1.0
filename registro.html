@@ -7,16 +7,16 @@
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
+  <div style="text-align: right;">
+    <button onclick="window.history.back()" class="boton-cerrar">✕</button>
+  </div>
+  
   <div style="display: flex; justify-content: space-between; align-items: center;">
     <h2>Registro de Grupo</h2>
     <div>
       <label for="filtroAno">Filtrar por Año</label>
       <select id="filtroAno"></select>
     </div>
-  </div>
-
-  <div style="text-align: right;">
-    <button onclick="window.history.back()" class="boton-cerrar">✕</button>
   </div>
 
   <label for="numeroNegocio">Número de Negocio</label>
@@ -29,7 +29,7 @@
 
   <div class="row">
     <div class="column">
-      <label for="cantidadgrupo">PAX</label>
+      <label for="cantidadgrupo">Pax</label>
       <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
     </div>
   </div>
