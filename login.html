@@ -12,21 +12,29 @@
     <h2>Ingreso al Sistema</h2>
   </div>
 
-  <!-- 🧾 Tarjeta de ingreso centrada -->
-  <div class="card" style="margin: 3rem auto; max-width: 400px;">
-    <!-- ✉️ Campo correo -->
-    <label for="email">Correo Electrónico</label>
-    <input type="email" id="email" placeholder="correo@ejemplo.com" />
+<!-- 🧾 Tarjeta de ingreso centrada -->
+<div class="card" style="margin: 3rem auto; max-width: 400px;">
+  <!-- ✉️ Campo correo -->
+  <label for="email">Correo Electrónico</label>
+  <input type="email" id="email" placeholder="correo@ejemplo.com" style="text-transform: none;" />
 
-    <!-- 🔑 Campo contraseña -->
-    <label for="password">Contraseña</label>
-    <input type="password" id="password" placeholder="********" />
-
-    <!-- 🚪 Botón de ingreso -->
-    <div class="button-container">
-      <button id="loginBtn">Ingresar</button>
-    </div>
+  <!-- 🔑 Campo contraseña con icono de ver -->
+  <label for="password">Contraseña</label>
+  <div style="position: relative;">
+    <input type="password" id="password" placeholder="********" style="text-transform: none; padding-right: 40px;" />
+    
+    <!-- 👁️ Botón para mostrar/ocultar contraseña -->
+    <button type="button" onclick="togglePassword()" 
+            style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">
+      👁️
+    </button>
   </div>
+
+  <!-- 🚪 Botón de ingreso -->
+  <div class="button-container">
+    <button id="loginBtn">Ingresar</button>
+  </div>
+</div>
 
   <!-- 🔌 Inicialización Firebase desde archivo externo -->
   <script type="module" src="firebase-init.js"></script>
@@ -72,5 +80,12 @@
       }
     });
   </script>
+  <script>
+  // 👁️ Alterna visibilidad de la contraseña
+  function togglePassword() {
+    const input = document.getElementById("password");
+    input.type = input.type === "password" ? "text" : "password";
+  }
+</script>
 </body>
 </html>
