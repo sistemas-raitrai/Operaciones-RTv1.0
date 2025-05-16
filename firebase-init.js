@@ -12,10 +12,10 @@ import {
 
 // ✅ Configuración del proyecto Firebase (la que te entregó Firebase)
 const firebaseConfig = {
-  apiKey: "AIzaSyAdx9nVcV-UiGER3mcz-w9BcSSIzd-t5nE",
+  apiKey: "AIzaSyAdx9nVcV-UiGER3mcz-w9BcSSIZd-t5nE",
   authDomain: "sist-op-rt.firebaseapp.com",
   projectId: "sist-op-rt",
-  storageBucket: "sist-op-rt.appspot.com",
+  storageBucket: "sist-op-rt.firebasestorage.app",
   messagingSenderId: "438607695630",
   appId: "1:438607695630:web:f5a16f319e3ea17fbfd15f"
 };
