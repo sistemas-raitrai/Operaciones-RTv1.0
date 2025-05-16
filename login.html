@@ -1,70 +1,76 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Login | Sistema Operaciones RT</title>
-  <link rel="stylesheet" href="estilos.css">
+  <link rel="stylesheet" href="estilos.css" /> <!-- ✅ Tu CSS general -->
 </head>
 <body>
+  <!-- 🔒 Encabezado -->
   <div class="header">
     <h2>Ingreso al Sistema</h2>
   </div>
 
+  <!-- 🧾 Tarjeta de ingreso centrada -->
   <div class="card" style="margin: 3rem auto; max-width: 400px;">
+    <!-- ✉️ Campo correo -->
     <label for="email">Correo Electrónico</label>
-    <input type="email" id="email" placeholder="correo@ejemplo.com">
+    <input type="email" id="email" placeholder="correo@ejemplo.com" />
 
+    <!-- 🔑 Campo contraseña -->
     <label for="password">Contraseña</label>
-    <input type="password" id="password" placeholder="********">
+    <input type="password" id="password" placeholder="********" />
 
+    <!-- 🚪 Botón de ingreso -->
     <div class="button-container">
-      <button onclick="iniciarSesion()">Ingresar</button>
+      <button id="loginBtn">Ingresar</button>
     </div>
   </div>
 
-  <!-- SDK de Firebase + Inicialización -->
+  <!-- 🔌 Inicialización Firebase desde archivo externo -->
   <script type="module" src="firebase-init.js"></script>
-  <script>
-    // ✅ Lógica del login
-    function iniciarSesion() {
+
+  <!-- ✅ Script de autenticación y redirección -->
+  <script type="module">
+    // 🔽 Importar funciones necesarias de Firebase Auth
+    import {
+      getAuth,
+      signInWithEmailAndPassword,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+
+    // 🔽 Importar tu app Firebase ya inicializada
+    import { app } from './firebase-init.js';
+
+    // ✅ Obtener instancia de autenticación
+    const auth = getAuth(app);
+
+    // 🎯 Acción al hacer clic en el botón de login
+    document.getElementById("loginBtn").addEventListener("click", async () => {
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value.trim();
+
       if (!email || !password) {
         alert("Por favor completa ambos campos.");
         return;
       }
-      login(email, password); // esta función está en firebase-init.js
-    }
+
+      try {
+        // ✅ Intentar login con email y password
+        await signInWithEmailAndPassword(auth, email, password);
+        window.location.href = "index.html"; // 🚀 Redirige al inicio si login exitoso
+      } catch (error) {
+        alert("❌ Error de acceso: " + error.message);
+      }
+    });
+
+    // ✅ Si ya hay una sesión iniciada, redirige automáticamente
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        window.location.href = "index.html"; // ⛔ Evita que el usuario logueado vuelva a login
+      }
+    });
   </script>
-  <script type="module">
-  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-  import { app } from "./firebase-init.js"; // ⚠️ Asegúrate que exportaste `app` desde ahí
-
-  const auth = getAuth(app);
-
-  document.querySelector("button").addEventListener("click", async () => {
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value.trim();
-
-    if (!email || !password) {
-      alert("Por favor completa ambos campos.");
-      return;
-    }
-
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      window.location.href = "index.html"; // ✅ Redirige al index si login es exitoso
-    } catch (error) {
-      alert("⚠️ Error de acceso: " + error.message);
-    }
-  });
-
-  onAuthStateChanged(auth, user => {
-    if (user) {
-      window.location.href = "index.html"; // ⛔ Si ya hay sesión, evita reingreso
-    }
-  });
-</script>
 </body>
 </html>
