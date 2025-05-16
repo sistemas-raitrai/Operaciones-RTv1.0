@@ -56,3 +56,6 @@ window.logout = async function () {
     alert("❌ Error al cerrar sesión: " + error.message);
   }
 };
+
+// ✅ Exportar app para ser reutilizado en otras páginas
+export { app };
