@@ -36,5 +36,23 @@
     </div>
   </div>
   <script type="module" src="firebase-init.js"></script>
+  <script type="module">
+  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+  import { app } from "./firebase-init.js";
+
+  const auth = getAuth(app);
+
+  // ✅ Verifica si hay sesión activa
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      // ⛔ Si no hay usuario logueado, redirige a login.html
+      window.location.href = "login.html";
+    } else {
+      // 👋 Si está logueado, muestra su correo en el encabezado
+      document.querySelector(".username").textContent = `Hola ${user.email}`;
+    }
+  });
+</script>
+
 </body>
 </html>
