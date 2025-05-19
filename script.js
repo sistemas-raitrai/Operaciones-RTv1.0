@@ -27,20 +27,21 @@ document.addEventListener("DOMContentLoaded", () => {
     if (reloj) reloj.textContent = `${hora} - ${fecha}`;
     else console.warn("⚠️ No se encontró el div #reloj");
   }
-window.addEventListener("DOMContentLoaded", () => {
-  // Esperar 100ms a que se cargue el encabezado dinámico
+
+  // 🕒 Activar reloj cada segundo (después de 100ms)
   setTimeout(() => {
     actualizarReloj();
     setInterval(actualizarReloj, 1000);
   }, 100);
 
-// ⏏️ Función global para cerrar sesión
-window.logout = async function () {
-  try {
-    await signOut(auth);
-    alert("Sesión cerrada");
-    window.location.href = "login.html";
-  } catch (error) {
-    alert("Error al cerrar sesión: " + error.message);
-  }
-};
+  // ⏏️ Función global para cerrar sesión
+  window.logout = async function () {
+    try {
+      await signOut(auth);
+      alert("Sesión cerrada");
+      window.location.href = "login.html";
+    } catch (error) {
+      alert("Error al cerrar sesión: " + error.message);
+    }
+  };
+});
