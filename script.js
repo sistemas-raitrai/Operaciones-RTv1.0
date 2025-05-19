@@ -33,7 +33,6 @@ window.addEventListener("DOMContentLoaded", () => {
     actualizarReloj();
     setInterval(actualizarReloj, 1000);
   }, 100);
-});
 
 // ⏏️ Función global para cerrar sesión
 window.logout = async function () {
