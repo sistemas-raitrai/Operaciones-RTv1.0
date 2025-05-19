@@ -61,7 +61,9 @@
         document.getElementById("encabezado").innerHTML = html;
 
         // ✅ Solo una vez que el encabezado esté en el DOM, carga script.js
-        import("./script.js").catch(err => console.error("❌ Error al cargar script.js", err));
+        import("/Operaciones-RTv1.0/script.js").catch(err =>
+      console.error("❌ Error al cargar script.js", err)
+      );
       });
   </script>
 </body>
