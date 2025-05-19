@@ -27,8 +27,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (reloj) reloj.textContent = `${hora} - ${fecha}`;
     else console.warn("⚠️ No se encontró el div #reloj");
   }
-  setInterval(actualizarReloj, 1000);
-  actualizarReloj();
+window.addEventListener("DOMContentLoaded", () => {
+  // Esperar 100ms a que se cargue el encabezado dinámico
+  setTimeout(() => {
+    actualizarReloj();
+    setInterval(actualizarReloj, 1000);
+  }, 100);
 });
 
 // ⏏️ Función global para cerrar sesión
