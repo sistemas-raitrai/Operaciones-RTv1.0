@@ -8,11 +8,11 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
 <body>
-  <div class="header">
-    <div class="title">Sistema de Operaciones RTv1</div>
-    <div class="username">Hola Ignacio!</div>
-  </div>
 
+  <!-- ✅ Encabezado cargado dinámicamente -->
+  <div id="encabezado"></div>
+
+  <!-- ✅ Contenido principal -->
   <div class="grid">
     <a href="registro.html" class="card">
       <div class="circle main"></div>
@@ -35,24 +35,31 @@
       <div class="subtitle-card">---</div>
     </div>
   </div>
+
+  <!-- 🔌 Firebase y lógica de autenticación -->
   <script type="module" src="firebase-init.js"></script>
   <script type="module">
-  import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-  import { app } from "./firebase-init.js";
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+    import { app } from "./firebase-init.js";
 
-  const auth = getAuth(app);
+    const auth = getAuth(app);
 
-  // ✅ Verifica si hay sesión activa
-  onAuthStateChanged(auth, (user) => {
-    if (!user) {
-      // ⛔ Si no hay usuario logueado, redirige a login.html
-      window.location.href = "login.html";
-    } else {
-      // 👋 Si está logueado, muestra su correo en el encabezado
-      document.querySelector(".username").textContent = `Hola ${user.email}`;
-    }
-  });
-</script>
+    onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        window.location.href = "login.html";
+      } else {
+        document.querySelector(".username").textContent = user.email;
+      }
+    });
+  </script>
 
+  <!-- 🧩 Cargar encabezado externo -->
+  <script>
+    fetch("encabezado.html")
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById("encabezado").innerHTML = html;
+      });
+  </script>
 </body>
 </html>
