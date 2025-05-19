@@ -82,8 +82,10 @@ button {
   padding: 1rem;
   box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   text-align: center;
+}
+
+a {
   text-decoration: none;
-  color: inherit;
 }
 
 .circle {
