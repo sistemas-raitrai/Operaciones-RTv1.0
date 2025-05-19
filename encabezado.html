@@ -1,0 +1,25 @@
+<!-- ✅ Encabezado reutilizable del sistema -->
+<header class="header">
+  <!-- 🖼️ Logo de la empresa -->
+  <img src="Logo Raitrai.png" alt="Logo Rai Trai" style="height: 60px; margin-right: 1rem;" />
+
+  <!-- 📊 Título del sistema -->
+  <div style="flex-grow: 1;">
+    <div class="title">SISTEMA DE OPERACIONES RTV1.0</div>
+    <div><strong>Usuario conectado:</strong> <span class="username" style="color: green;"></span></div>
+  </div>
+
+  <!-- ⏰ Reloj -->
+  <div id="reloj" style="font-size: 0.9rem; text-align: right;"></div>
+
+  <!-- 🏠🔄🔙⏏ Botones funcionales -->
+  <div style="display: flex; gap: 0.8rem; align-items: center; margin-left: 1rem;">
+    <a href="https://sistemas-raitrai.github.io/Operaciones-RTv1.0" title="Inicio">
+      <span style="font-size: 1.4rem; cursor: pointer;">🏠</span>
+    </a>
+    <span onclick="location.reload()" title="Actualizar" style="font-size: 1.4rem; cursor: pointer;">🔄</span>
+    <span onclick="history.back()" title="Volver atrás" style="font-size: 1.4rem; cursor: pointer;">⬅️</span>
+    <span onclick="logout()" title="Cerrar sesión" style="font-size: 1.4rem; cursor: pointer;">⏏</span>
+  </div>
+</header>
+
