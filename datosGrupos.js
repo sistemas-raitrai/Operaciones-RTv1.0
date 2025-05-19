@@ -114,6 +114,10 @@ async function cargarNumeroNegocio() {
         }
 
         input.value = valor !== undefined ? String(valor) : '';
+
+        // 🆕 Guardar el valor original como atributo personalizado
+        // Esto permite detectar después si ese valor cambió
+        input.setAttribute("data-original", input.value);
       }
     }
   }
@@ -136,3 +140,73 @@ function guardarYVolver() {
 
 // ✅ Iniciar todo
 cargarNumeroNegocio();
+
+// ✅ Función para guardar datos en la hoja 'BaseOperaciones' y registrar historial
+async function guardarDatos(continuar = true) {
+  const datos = {};
+  const cambios = [];
+
+  // 🔁 1. Recorrer todos los campos del formulario
+  for (const campo in campos) {
+    const id = campos[campo];
+    const input = document.getElementById(id);
+    datos[campo] = input ? input.value.trim() : "";
+  }
+
+  // 👤 2. Agregar usuario que modifica
+  const usuario = firebase.auth().currentUser?.email || "Desconocido";
+  datos.modificadoPor = usuario;
+
+  // 🕒 3. Si el dato es nuevo, agregar quién lo creó y cuándo
+  if (!datos.fechaCreacion) {
+    datos.fechaCreacion = new Date().toISOString();
+    datos.creadoPor = usuario;
+  }
+
+  // 🔍 4. Comparar con valores originales (guardados en data-original)
+  for (const campo in campos) {
+    const id = campos[campo];
+    const input = document.getElementById(id);
+    const valorNuevo = input ? input.value.trim() : "";
+    const valorAnterior = input?.getAttribute("data-original") || "";
+
+    if (valorNuevo !== valorAnterior) {
+      cambios.push({
+        campo,
+        anterior: valorAnterior,
+        nuevo: valorNuevo
+      });
+    }
+  }
+
+  // 📦 5. Armar el cuerpo del envío
+  const payload = {
+    datos,
+    historial: cambios
+  };
+
+  // 🌐 6. URL de tu Web App desplegada (Apps Script)
+  const endpoint = "https://script.google.com/macros/s/AKfycbyCXGlo0v-fNfFnM4UDP0caqnGrpOmqqTCmP7o35XJA9sW040J0OWT_XZKQqMp3WzFx/exec";
+
+  // 🚀 7. Enviar al servidor
+  try {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.ok) {
+      alert("✅ Datos guardados correctamente en la base de operaciones.");
+      if (!continuar) window.history.back(); // volver si es "Guardar y Volver"
+    } else {
+      alert("❌ Error al guardar los datos en la base de operaciones.");
+    }
+  } catch (err) {
+    console.error("❌ Error al enviar datos:", err);
+    alert("❌ No se pudo conectar con el servidor.");
+  }
+}
+
+
+
