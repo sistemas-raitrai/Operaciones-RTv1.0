@@ -1,3 +1,7 @@
+import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+import { app } from "./firebase-init.js";
+const auth = getAuth(app);
+
 // ✅ URL del script de Google Apps Script que entrega los datos
 const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
 
@@ -154,7 +158,7 @@ async function guardarDatos(continuar = true) {
   }
 
   // 👤 2. Agregar usuario que modifica
-  const usuario = firebase.auth().currentUser?.email || "Desconocido";
+  const usuario = auth.currentUser?.email || "Desconocido";
   datos.modificadoPor = usuario;
 
   // 🕒 3. Si el dato es nuevo, agregar quién lo creó y cuándo
