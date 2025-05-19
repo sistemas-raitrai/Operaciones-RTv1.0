@@ -106,6 +106,24 @@
   </div>
 
   <script src="datosGrupos.js"></script>
+
+  <!-- 🔌 Firebase y lógica de autenticación -->
+  <script type="module" src="firebase-init.js"></script>
+  <script type="module">
+    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+    import { app } from "./firebase-init.js";
+
+    const auth = getAuth(app);
+
+    onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        window.location.href = "login.html";
+      } else {
+        document.querySelector(".username").textContent = user.email;
+      }
+    });
+  </script>
+  
     <!-- 🧩 Cargar encabezado externo y luego script general -->
 <script type="module">
   fetch("encabezado.html")
