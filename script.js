@@ -25,6 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     const reloj = document.getElementById("reloj");
     if (reloj) reloj.textContent = `${hora} - ${fecha}`;
+    else console.warn("⚠️ No se encontró el div #reloj");
   }
   setInterval(actualizarReloj, 1000);
   actualizarReloj();
