@@ -54,20 +54,36 @@ async function cargarNumeroNegocio() {
       const anoSeleccionado = filtroAno.value;
       listaNumero.innerHTML = '';
       listaNombre.innerHTML = '';
-
-      datos.filter(f => f.anoViaje == anoSeleccionado).forEach(fila => {
+    
+      const datosFiltrados = datos.filter(f => f.anoViaje == anoSeleccionado);
+    
+      // 🔢 Ordenar número de negocio (menor a mayor)
+      const ordenadosPorNumero = [...datosFiltrados].sort((a, b) =>
+        Number(a.numeroNegocio) - Number(b.numeroNegocio)
+      );
+    
+      ordenadosPorNumero.forEach(fila => {
         if (fila.numeroNegocio) {
           const opt = document.createElement("option");
           opt.value = fila.numeroNegocio;
           listaNumero.appendChild(opt);
         }
-        if (fila.nombreGrupo) {
-          const opt2 = document.createElement("option");
-          opt2.value = fila.nombreGrupo;
-          listaNombre.appendChild(opt2);
-        }
       });
     }
+  // 🔠 Ordenar nombre de grupo (A a Z)
+  const ordenadosPorNombre = [...datosFiltrados].sort((a, b) =>
+    a.nombreGrupo?.localeCompare(b.nombreGrupo || '')
+  );
+
+  ordenadosPorNombre.forEach(fila => {
+    if (fila.nombreGrupo) {
+      const opt2 = document.createElement("option");
+      opt2.value = fila.nombreGrupo;
+      listaNombre.appendChild(opt2);
+    }
+  });
+}
+
 
     // ✅ Buscar y cargar datos al seleccionar nombre o número
     function cargarDatosGrupo(valor) {
