@@ -133,7 +133,7 @@ console.error("❌ Error al cargar datos desde sheetURL:", err);
 // ✅ Función para guardar datos en la hoja 'BaseOperaciones' y registrar historial
 async function guardarDatos(continuar = true) {
 const datos = {};
-const cambios = \[];
+const cambios = [];
 
 for (const campo in campos) {
 const id = campos\[campo];
