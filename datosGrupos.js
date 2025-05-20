@@ -69,20 +69,20 @@ async function cargarNumeroNegocio() {
           listaNumero.appendChild(opt);
         }
       });
+    
+      // 🔠 Ordenar nombre de grupo (A a Z)
+      const ordenadosPorNombre = [...datosFiltrados].sort((a, b) =>
+        a.nombreGrupo?.localeCompare(b.nombreGrupo || '')
+      );
+    
+      ordenadosPorNombre.forEach(fila => {
+        if (fila.nombreGrupo) {
+          const opt2 = document.createElement("option");
+          opt2.value = fila.nombreGrupo;
+          listaNombre.appendChild(opt2);
+        }
+      });
     }
-  // 🔠 Ordenar nombre de grupo (A a Z)
-  const ordenadosPorNombre = [...datosFiltrados].sort((a, b) =>
-    a.nombreGrupo?.localeCompare(b.nombreGrupo || '')
-  );
-
-  ordenadosPorNombre.forEach(fila => {
-    if (fila.nombreGrupo) {
-      const opt2 = document.createElement("option");
-      opt2.value = fila.nombreGrupo;
-      listaNombre.appendChild(opt2);
-    }
-  });
-
     // ✅ Buscar y cargar datos al seleccionar nombre o número
     function cargarDatosGrupo(valor) {
       const fila = datos.find(r =>
