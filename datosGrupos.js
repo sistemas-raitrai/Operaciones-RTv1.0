@@ -170,7 +170,8 @@ async function guardarDatos(continuar = true) {
     historial: cambios
   };
 
-  const endpoint = "https://script.google.com/macros/s/AKfycbyCXGlo0v-fNfFnM4UDP0caqnGrpOmqqTCmP7o35XJA9sW040J0OWT_XZKQqMp3WzFx/exec";
+  // 🟡 AQUÍ debes colocar la URL de tu backend que conectará con Excel Online
+  const endpoint = "https://TU-BACKEND.com/api/guardar-en-excel";
 
   try {
     const res = await fetch(endpoint, {
@@ -180,10 +181,10 @@ async function guardarDatos(continuar = true) {
     });
 
     if (res.ok) {
-      alert("✅ Datos guardados correctamente en la base de operaciones.");
+      alert("✅ Datos guardados correctamente en Excel Online.");
       if (!continuar) window.history.back();
     } else {
-      alert("❌ Error al guardar los datos en la base de operaciones.");
+      alert("❌ Error al guardar los datos en Excel Online.");
     }
   } catch (err) {
     console.error("❌ Error al enviar datos:", err);
