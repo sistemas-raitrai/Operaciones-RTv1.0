@@ -82,8 +82,6 @@ async function cargarNumeroNegocio() {
       listaNombre.appendChild(opt2);
     }
   });
-}
-
 
     // ✅ Buscar y cargar datos al seleccionar nombre o número
     function cargarDatosGrupo(valor) {
