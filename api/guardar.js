@@ -1,95 +1,91 @@
-// ✅ Archivo API para guardar datos en Excel Online (Microsoft 365) desde Vercel
-
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end(); // 🔁 Maneja el preflight
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ error: "Método no permitido" });
+
+  // ✅ Obtener token automáticamente desde Azure
+  async function obtenerAccessToken() {
+    const clientId = process.env.CLIENT_ID;
+    const clientSecret = process.env.CLIENT_SECRET;
+    const tenantId = process.env.TENANT_ID;
+
+    const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: clientId,
+      client_secret: clientSecret,
+      scope: "https://graph.microsoft.com/.default",
+    });
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    const data = await resp.json();
+    if (!data.access_token) throw new Error("No se obtuvo access_token");
+    return data.access_token;
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método no permitido' });
-  }
+  const token = await obtenerAccessToken(); // ✅ token válido automático
 
-  const token = process.env.GRAPH_TOKEN;
   const workbookId = '38e4db77-4608-4481-96d1-712a199e4156';
   const endpointBase = `https://graph.microsoft.com/v1.0/users/ignacio@raitrail.onmicrosoft.com/drive/items/${workbookId}/workbook/worksheets`;
 
   const { datos, historial } = req.body;
-
-  if (!datos || !historial) {
-    return res.status(400).json({ error: 'Datos incompletos.' });
-  }
+  if (!datos || !historial) return res.status(400).json({ error: "Datos incompletos." });
 
   try {
-    // ✅ 1. Insertar en la hoja BaseOperaciones
+    // ✅ 1. Insertar datos en BaseOperaciones
     const insertData = [
-      datos.numeroNegocio,
-      datos.nombreGrupo,
-      datos.cantidadgrupo,
-      datos.colegio,
-      datos.curso,
-      datos.anoViaje,
-      datos.destino,
-      datos.programa,
-      datos.hotel,
-      datos.asistenciaEnViajes,
-      datos.autorizacion,
-      datos.fechaDeViaje,
-      datos.observaciones,
-      datos.versionFicha,
-      datos.creadoPor,
-      datos.fechaCreacion
+      datos.numeroNegocio, datos.nombreGrupo, datos.cantidadgrupo,
+      datos.colegio, datos.curso, datos.anoViaje, datos.destino,
+      datos.programa, datos.hotel, datos.asistenciaEnViajes,
+      datos.autorizacion, datos.fechaDeViaje, datos.observaciones,
+      datos.versionFicha, datos.creadoPor, datos.fechaCreacion
     ];
 
-    const insertResponse = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
-      method: 'POST',
+    const resBase = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        values: [insertData]
-      })
+      body: JSON.stringify({ values: [insertData] }),
     });
 
-    const insertResult = await insertResponse.json();
-    console.log("🧪 Respuesta BaseOperaciones:", insertResult);
+    const resultadoBase = await resBase.json();
+    console.log("📄 BaseOperaciones:", resultadoBase);
 
-    // ✅ 2. Insertar historial si existe
+    // ✅ 2. Insertar historial
     const historialData = historial.map(change => [
-      datos.numeroNegocio,
-      datos.nombreGrupo,
-      datos.anoViaje,
-      change.campo,
-      change.anterior,
-      change.nuevo,
-      datos.modificadoPor,
-      new Date().toISOString()
+      datos.numeroNegocio, datos.nombreGrupo, datos.anoViaje,
+      change.campo, change.anterior, change.nuevo,
+      datos.modificadoPor, new Date().toISOString()
     ]);
 
     if (historialData.length > 0) {
-      const histResponse = await fetch(`${endpointBase}/HistorialCambios/tables/HistorialCambios/rows/add`, {
-        method: 'POST',
+      const resHist = await fetch(`${endpointBase}/HistorialCambios/tables/HistorialCambios/rows/add`, {
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          values: historialData
-        })
+        body: JSON.stringify({ values: historialData }),
       });
 
-      const histResult = await histResponse.json();
-      console.log("🧪 Respuesta HistorialCambios:", histResult);
+      const resultadoHist = await resHist.json();
+      console.log("🕓 HistorialCambios:", resultadoHist);
     }
 
-    res.status(200).json({ message: 'Guardado exitoso en documento Base.' });
+    return res.status(200).json({ message: "✅ Guardado exitoso en Excel Online." });
 
   } catch (err) {
-    console.error('❌ Error al guardar en Excel:', err);
-    res.status(500).json({ error: 'Error interno al guardar en Documento Base.' });
+    console.error("❌ Error al guardar:", err);
+    return res.status(500).json({ error: "Error interno al guardar en Excel." });
   }
 }
