@@ -81,7 +81,7 @@ export default async function handler(req, res) {
       });
     }
 
-    res.status(200).json({ message: 'Datos guardados correctamente en Excel Online.' });
+    res.status(200).json({ message: 'Guardado exitoso en Excel Online.' });
   } catch (err) {
     console.error('❌ Error al guardar en Excel:', err);
     res.status(500).json({ error: 'Error interno al guardar en Excel.' });
