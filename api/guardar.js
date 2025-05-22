@@ -81,9 +81,9 @@ export default async function handler(req, res) {
       });
     }
 
-    res.status(200).json({ message: 'Guardado exitoso en Excel Online.' });
+    res.status(200).json({ message: 'Guardado exitoso en documento Base.' });
   } catch (err) {
     console.error('❌ Error al guardar en Excel:', err);
-    res.status(500).json({ error: 'Error interno al guardar en Excel.' });
+    res.status(500).json({ error: 'Error interno al guardar en Documento Base.' });
   }
 }
