@@ -13,10 +13,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Método no permitido' });
   }
 
-  const token = process.env.GRAPH_TOKEN; // 🔐 Agrega este token en Vercel (Settings > Environment Variables)
+  const token = process.env.GRAPH_TOKEN;
   const workbookId = '38e4db77-4608-4481-96d1-712a199e4156';
   const endpointBase = `https://graph.microsoft.com/v1.0/users/ignacio@raitrail.onmicrosoft.com/drive/items/${workbookId}/workbook/worksheets`;
-
 
   const { datos, historial } = req.body;
 
@@ -25,7 +24,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ✅ 1. Insertar o actualizar fila en la hoja BaseOperaciones
+    // ✅ 1. Insertar en la hoja BaseOperaciones
     const insertData = [
       datos.numeroNegocio,
       datos.nombreGrupo,
@@ -45,7 +44,7 @@ export default async function handler(req, res) {
       datos.fechaCreacion
     ];
 
-    await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
+    const insertResponse = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -56,7 +55,10 @@ export default async function handler(req, res) {
       })
     });
 
-    // ✅ 2. Insertar cada cambio en la hoja HistorialCambios
+    const insertResult = await insertResponse.json();
+    console.log("🧪 Respuesta BaseOperaciones:", insertResult);
+
+    // ✅ 2. Insertar historial si existe
     const historialData = historial.map(change => [
       datos.numeroNegocio,
       datos.nombreGrupo,
@@ -69,7 +71,7 @@ export default async function handler(req, res) {
     ]);
 
     if (historialData.length > 0) {
-      await fetch(`${endpointBase}/HistorialCambios/tables/HistorialCambios/rows/add`, {
+      const histResponse = await fetch(`${endpointBase}/HistorialCambios/tables/HistorialCambios/rows/add`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -79,9 +81,13 @@ export default async function handler(req, res) {
           values: historialData
         })
       });
+
+      const histResult = await histResponse.json();
+      console.log("🧪 Respuesta HistorialCambios:", histResult);
     }
 
     res.status(200).json({ message: 'Guardado exitoso en documento Base.' });
+
   } catch (err) {
     console.error('❌ Error al guardar en Excel:', err);
     res.status(500).json({ error: 'Error interno al guardar en Documento Base.' });
