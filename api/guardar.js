@@ -55,9 +55,9 @@ export default async function handler(req, res) {
     });
     const dataFilas = await buscarExistente.json();
     
-    // ✅ Revisión correcta del número de negocio ya existente en la fila
+    // ✅ Buscar fila existente comparando con el valor en la primera celda (columna A = numeroNegocio)
     const filaExistente = dataFilas.value?.find(fila =>
-      fila?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
+      fila?.values?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
     );
     
     // ✅ 3. Si existe, actualiza la fila. Si no, inserta una nueva
