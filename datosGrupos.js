@@ -181,10 +181,10 @@ async function guardarDatos(continuar = true) {
     });
 
     if (res.ok) {
-      alert("✅ Datos guardados correctamente en Excel Online.");
+      alert("✅ Datos guardados correctamente en Base de Datos Operaciones.");
       if (!continuar) window.history.back();
     } else {
-      alert("❌ Error al guardar los datos en Excel Online.");
+      alert("❌ Error al guardar los datos en Base de Datos Operaciones.");
     }
   } catch (err) {
     console.error("❌ Error al enviar datos:", err);
