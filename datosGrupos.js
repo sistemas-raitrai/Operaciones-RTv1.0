@@ -118,8 +118,10 @@ async function cargarNumeroNegocio() {
           input.setAttribute("data-original", input.value);
         }
       }
+    
+      // ✅ Cargar datos desde Excel Online (BaseOperaciones)
+      cargarDesdeOperaciones(fila.numeroNegocio);
     }
-
     // ✅ Vincular eventos a inputs
     inputNumero.addEventListener("change", () => cargarDatosGrupo(inputNumero.value));
     inputNombre.addEventListener("change", () => cargarDatosGrupo(inputNombre.value));
@@ -216,3 +218,37 @@ window.guardarYVolver = function () {
     window.history.back();
   }, 1000);
 };
+
+async function cargarDesdeOperaciones(numeroNegocio) {
+  if (!numeroNegocio) return;
+
+  try {
+    const resp = await fetch("/api/leerOperaciones", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ numeroNegocio })
+    });
+
+    const resultado = await resp.json();
+    const fila = document.getElementById("filaOperaciones");
+    fila.innerHTML = ""; // limpia la fila
+
+    if (resultado.existe && Array.isArray(resultado.valores)) {
+      resultado.valores.forEach(valor => {
+        const td = document.createElement("td");
+        td.textContent = valor || "";
+        fila.appendChild(td);
+      });
+    } else {
+      // Mostrar fila vacía
+      for (let i = 0; i < 14; i++) {
+        const td = document.createElement("td");
+        td.innerHTML = "&nbsp;";
+        fila.appendChild(td);
+      }
+    }
+
+  } catch (error) {
+    console.error("❌ Error al consultar BaseOperaciones:", error);
+  }
+}
