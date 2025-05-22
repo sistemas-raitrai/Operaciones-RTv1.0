@@ -101,7 +101,6 @@
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
-    <hr>
   <h3 style="margin-top: 40px;">🧾 Datos Guardados</h3>
   <div style="overflow-x: auto;">
     <table id="tablaRegistros" border="1" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
@@ -123,8 +122,23 @@
           <th>Versión</th>
         </tr>
       </thead>
-      <tbody>
-        <!-- Filas serán insertadas dinámicamente con JavaScript -->
+      <tbody id="tbodyTabla">
+        <tr id="filaOperaciones">
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td></td>
+        </tr>
       </tbody>
     </table>
   </div>
