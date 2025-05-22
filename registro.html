@@ -101,6 +101,34 @@
     <button onclick="guardarDatos(true)">Guardar y Continuar</button>
   </div>
 
+    <hr>
+  <h3 style="margin-top: 40px;">🧾 Datos Guardados</h3>
+  <div style="overflow-x: auto;">
+    <table id="tablaRegistros" border="1" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+      <thead style="background-color: #f2f2f2;">
+        <tr>
+          <th>N° Negocio</th>
+          <th>Nombre Grupo</th>
+          <th>Pax</th>
+          <th>Colegio</th>
+          <th>Curso</th>
+          <th>Año Viaje</th>
+          <th>Destino</th>
+          <th>Programa</th>
+          <th>Hotel</th>
+          <th>Asist. Méd</th>
+          <th>Autorización</th>
+          <th>Fecha Viaje</th>
+          <th>Observaciones</th>
+          <th>Versión</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Filas serán insertadas dinámicamente con JavaScript -->
+      </tbody>
+    </table>
+  </div>
+
   <script type="module" src="datosGrupos.js"></script>
 
   <!-- 🔌 Firebase y lógica de autenticación -->
