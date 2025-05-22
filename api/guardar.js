@@ -15,7 +15,8 @@ export default async function handler(req, res) {
 
   const token = process.env.GRAPH_TOKEN; // 🔐 Agrega este token en Vercel (Settings > Environment Variables)
   const workbookId = '38e4db77-4608-4481-96d1-712a199e4156';
-  const endpointBase = `https://graph.microsoft.com/v1.0/me/drive/items/${workbookId}/workbook/worksheets`;
+  const endpointBase = `https://graph.microsoft.com/v1.0/users/ignacio@raitrail.onmicrosoft.com/drive/items/${workbookId}/workbook/worksheets`;
+
 
   const { datos, historial } = req.body;
 
