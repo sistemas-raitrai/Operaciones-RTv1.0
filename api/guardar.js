@@ -40,7 +40,7 @@ export default async function handler(req, res) {
   if (!datos || !historial) return res.status(400).json({ error: "Datos incompletos." });
 
   try {
-    // ✅ 1. Insertar datos en BaseOperaciones
+    // ✅ 1. Armar los datos en el orden de las columnas
     const insertData = [
       datos.numeroNegocio, datos.nombreGrupo, datos.cantidadgrupo,
       datos.colegio, datos.curso, datos.anoViaje, datos.destino,
@@ -48,18 +48,45 @@ export default async function handler(req, res) {
       datos.autorizacion, datos.fechaDeViaje, datos.observaciones,
       datos.versionFicha, datos.creadoPor, datos.fechaCreacion
     ];
-
-    const resBase = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ values: [insertData] }),
+    
+    // ✅ 2. Buscar si ya existe una fila con el mismo número de negocio
+    const buscarExistente = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows`, {
+      headers: { Authorization: `Bearer ${token}` }
     });
-
-    const resultadoBase = await resBase.json();
-    console.log("📄 BaseOperaciones:", resultadoBase);
+    const dataFilas = await buscarExistente.json();
+    
+    const filaExistente = dataFilas.value?.find(fila =>
+      fila.values?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
+    );
+    
+    // ✅ 3. Si existe, actualiza la fila. Si no, inserta una nueva
+    if (filaExistente) {
+      const rowId = filaExistente.id;
+    
+      const resUpdate = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${rowId}`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ values: [insertData] }),
+      });
+    
+      const resultadoUpdate = await resUpdate.json();
+      console.log("🔄 Actualizado:", resultadoUpdate);
+    } else {
+      const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ values: [insertData] }),
+      });
+    
+      const resultadoInsert = await resInsert.json();
+      console.log("🆕 Insertado:", resultadoInsert);
+    }
 
     // ✅ 2. Insertar historial
     const historialData = historial.map(change => [
