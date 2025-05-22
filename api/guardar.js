@@ -64,8 +64,17 @@ export default async function handler(req, res) {
     if (filaExistente) {
       const rowId = filaExistente.id;
     
-      const resUpdate = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${rowId}`, {
-        method: "PATCH",
+      // 🧽 1. Elimina la fila anterior
+      await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${rowId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+    
+      // ➕ 2. Inserta la nueva fila completa con los datos actualizados
+      const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
+        method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
@@ -73,8 +82,8 @@ export default async function handler(req, res) {
         body: JSON.stringify({ values: [insertData] }),
       });
     
-      const resultadoUpdate = await resUpdate.json();
-      console.log("🔄 Actualizado:", resultadoUpdate);
+      const resultadoInsert = await resInsert.json();
+      console.log("🔁 Reemplazada fila:", resultadoInsert);
     } else {
       const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
         method: "POST",
