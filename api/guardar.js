@@ -73,12 +73,42 @@ export default async function handler(req, res) {
       }
     }
     
-    // 🔁 Espera un momento después de las eliminaciones
-    console.log("⌛ Esperando que Excel actualice antes de insertar...");
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  
-    // ➕ Insertar la nueva fila limpia
-    const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
+      // 🔁 Espera un momento después de las eliminaciones
+      console.log("⌛ Esperando que Excel actualice antes de insertar...");
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // 🔄 Revalidar que no quedó ninguna fila duplicada antes de insertar
+      const revalidar = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const filasFinales = await revalidar.json();
+      
+      const sigueExistiendo = filasFinales.value?.some(f =>
+        f?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
+      );
+      
+      if (sigueExistiendo) {
+        console.warn("⚠️ Fila aún existe después de esperar. Esperando 1 segundo más...");
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      
+        // Reintentar una vez más
+        const segundoIntento = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const finalFinal = await segundoIntento.json();
+      
+        const persiste = finalFinal.value?.some(f =>
+          f?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
+        );
+      
+        if (persiste) {
+          console.error("❌ La fila aún persiste después de reintento. Cancelando inserción.");
+          return res.status(409).json({ error: "Conflicto: la fila duplicada no pudo ser eliminada." });
+        }
+      }
+      
+      // ➕ Insertar la nueva fila limpia
+      const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
