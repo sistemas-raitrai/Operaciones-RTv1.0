@@ -126,10 +126,31 @@ export default async function handler(req, res) {
             String(f?.values?.[0]?.[0]).trim() === numeroActual
           ));
           console.error("❌ La fila aún persiste después de reintento. Cancelando inserción.");
-          return res.status(409).json({ error: "Conflicto: la fila duplicada no pudo ser eliminada." });
+          // 🔁 Actualizar la fila existente con los nuevos datos
+          const filaPersistente = finalFinal.value.find(f =>
+            String(f?.values?.[0]?.[0]).trim() === numeroActual
+          );
+          if (filaPersistente?.id) {
+            const patchRes = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${filaPersistente.id}`, {
+              method: "PATCH",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ values: [insertData] }),
+            });
+          
+            if (!patchRes.ok) {
+              const patchText = await patchRes.text();
+              console.error("❌ Error al actualizar la fila duplicada:", patchText);
+              return res.status(500).json({ error: "No se pudo actualizar la fila existente." });
+            }
+          
+            console.log("🛠 Fila duplicada actualizada en lugar de insertada.");
+            return res.status(200).json({ message: "✅ Fila existente actualizada en vez de insertada." });
+          }
         }
       }
-
       
       // ➕ Insertar la nueva fila limpia
       const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
