@@ -83,11 +83,13 @@ export default async function handler(req, res) {
         });
       
         if (!eliminar.ok) {
-          console.error(`❌ Error al eliminar fila ID ${id}`);
+          const errorText = await eliminar.text();
+          console.error(`❌ Error al eliminar fila ID ${id} - Status: ${eliminar.status} - ${errorText}`);
+        } else {
+          console.log(`✅ Fila eliminada con éxito. ID: ${id}`);
         }
       }
-
-    
+      
       // 🔁 Espera un momento después de las eliminaciones
       console.log("⌛ Esperando que Excel actualice antes de insertar...");
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -98,10 +100,9 @@ export default async function handler(req, res) {
       });
       const filasFinales = await revalidar.json();
       
+      const numeroActual = String(datos.numeroNegocio).trim();
       const sigueExistiendo = filasFinales.value?.some(f => {
-        const id = f?.id;
         const valor = String(f?.values?.[0]?.[0]).trim();
-        const numeroActual = String(datos.numeroNegocio).trim();
         return valor === numeroActual;
       });
       
@@ -116,18 +117,19 @@ export default async function handler(req, res) {
         const finalFinal = await segundoIntento.json();
       
         const persiste = finalFinal.value?.some(f => {
-          const id = f?.id;
           const valor = String(f?.values?.[0]?.[0]).trim();
-          const numeroActual = String(datos.numeroNegocio).trim();
           return valor === numeroActual;
         });
       
         if (persiste) {
-          console.warn("❗ Persisten estas filas duplicadas:", finalFinal.value.filter(f => String(f?.values?.[0]?.[0]).trim() === String(datos.numeroNegocio).trim()));
+          console.warn("❗ Persisten estas filas duplicadas:", finalFinal.value.filter(f =>
+            String(f?.values?.[0]?.[0]).trim() === numeroActual
+          ));
           console.error("❌ La fila aún persiste después de reintento. Cancelando inserción.");
           return res.status(409).json({ error: "Conflicto: la fila duplicada no pudo ser eliminada." });
         }
       }
+
       
       // ➕ Insertar la nueva fila limpia
       const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
