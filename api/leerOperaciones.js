@@ -31,7 +31,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { numeroNegocio } = req.body;
+    const body = await req.json?.() || req.body;
+    const numeroNegocio = body?.numeroNegocio;
+
     if (!numeroNegocio) return res.status(400).json({ error: "Falta numeroNegocio" });
 
     const token = await obtenerAccessToken();
