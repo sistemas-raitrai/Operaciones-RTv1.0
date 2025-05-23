@@ -54,24 +54,21 @@ export default async function handler(req, res) {
           headers: { Authorization: `Bearer ${token}` }
         });
         const dataFilas = await buscarExistente.json();
-        // ✅ Buscar todas las filas con el mismo número de negocio
         const filasDuplicadas = dataFilas.value?.filter(fila => {
-          if (!Array.isArray(fila.values) || !fila.id) {
-            console.warn("⚠️ Fila sin estructura esperada. ID:", fila.id, "Values:", fila.values);
+          const id = fila?.id;
+          const valoresFila = fila?.values?.[0];
+        
+          if (!id || !Array.isArray(valoresFila)) {
+            console.warn("⚠️ Fila sin estructura esperada. ID:", id, "Valores:", fila?.values);
             return false;
           }
-          const valor = fila.values[0][0];
-          const id = fila.id;
-
-          if (!id) {
-            console.warn("⚠️ Fila detectada sin ID. No será considerada como duplicada.");
-            return false;
-          }
+        
+          const valor = valoresFila[0];
           console.log("🔎 Verificando fila con ID:", id, "->", valor);
           return valor?.toString().trim() === datos.numeroNegocio.toString().trim();
         });
-    
-    // 🧽 Eliminar todas las coincidencias encontradas
+
+      // 🧽 Eliminar todas las coincidencias encontradas
       for (const fila of filasDuplicadas) {
         const id = fila?.id;
         if (!id) {
