@@ -55,11 +55,18 @@ export default async function handler(req, res) {
     });
     const dataFilas = await buscarExistente.json();
     
-    // ✅ Buscar si ya existe una fila con ese número de negocio
-    const filaExistente = dataFilas.value?.find(fila =>
-      // Accede al primer valor (columna A) de la primera fila de datos
-      fila?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
-    );
+    // ✅ Buscar si ya existe una fila con el mismo número de negocio (más robusto)
+    let filaExistente = null;
+    
+    for (const fila of dataFilas.value || []) {
+      const valorColumnaA = fila?.values?.[0]?.[0]; // Primer campo de la fila
+      console.log("🔎 Comparando:", valorColumnaA, "vs", datos.numeroNegocio);
+    
+      if (valorColumnaA?.toString().trim() === datos.numeroNegocio.toString().trim()) {
+        filaExistente = fila;
+        break;
+      }
+    }
     
     // ✅ 3. Si existe, actualiza la fila. Si no, inserta una nueva
     if (filaExistente) {
