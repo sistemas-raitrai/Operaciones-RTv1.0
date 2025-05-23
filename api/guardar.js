@@ -56,7 +56,7 @@ export default async function handler(req, res) {
         const dataFilas = await buscarExistente.json();
         // ✅ Buscar todas las filas con el mismo número de negocio
         const filasDuplicadas = dataFilas.value?.filter(fila => {
-          const valor = fila?.values?.[0]; // ✅ Así se accede al número de negocio (primer campo de la fila)
+          const valor = fila?.values?.[0]?.[0]; // ✅ Accede al primer campo (columna A) de la fila
           console.log("🔎 Verificando fila:", valor);
           return valor?.toString().trim() === datos.numeroNegocio.toString().trim();
         });
