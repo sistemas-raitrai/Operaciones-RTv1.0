@@ -100,7 +100,7 @@ export default async function handler(req, res) {
       const sigueExistiendo = filasFinales.value?.some(f => {
         const id = f?.id;
         const valor = f?.values?.[0]?.[0];
-        return id && valor?.toString().trim() === datos.numeroNegocio.toString().trim();
+        return id && String(valor).trim() === String(datos.numeroNegocio).trim();
       });
       
       if (sigueExistiendo) {
@@ -116,10 +116,11 @@ export default async function handler(req, res) {
         const persiste = finalFinal.value?.some(f => {
           const id = f?.id;
           const valor = f?.values?.[0]?.[0];
-          return id && valor?.toString().trim() === datos.numeroNegocio.toString().trim();
+          return id && String(valor).trim() === String(datos.numeroNegocio).trim();
         });
       
         if (persiste) {
+          console.warn("❗ Persisten estas filas duplicadas:", finalFinal.value.filter(f => String(f?.values?.[0]?.[0]).trim() === String(datos.numeroNegocio).trim()));
           console.error("❌ La fila aún persiste después de reintento. Cancelando inserción.");
           return res.status(409).json({ error: "Conflicto: la fila duplicada no pudo ser eliminada." });
         }
