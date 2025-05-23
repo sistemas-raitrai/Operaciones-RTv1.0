@@ -56,8 +56,13 @@ export default async function handler(req, res) {
         const dataFilas = await buscarExistente.json();
         // ✅ Buscar todas las filas con el mismo número de negocio
         const filasDuplicadas = dataFilas.value?.filter(fila => {
-          const valor = fila?.values?.[0]?.[0];
-          const id = fila?.id;
+          if (!Array.isArray(fila.values) || !fila.id) {
+            console.warn("⚠️ Fila sin estructura esperada. ID:", fila.id, "Values:", fila.values);
+            return false;
+          }
+          const valor = fila.values[0][0];
+          const id = fila.id;
+
           if (!id) {
             console.warn("⚠️ Fila detectada sin ID. No será considerada como duplicada.");
             return false;
