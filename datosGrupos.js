@@ -141,8 +141,11 @@ async function guardarDatos(continuar = true) {
   for (const campo in campos) {
     const id = campos[campo];
     const input = document.getElementById(id);
-    datos[campo] = input ? input.value.trim() : "";
-  }
+    if (campo === "numeroNegocio") {
+      datos[campo] = String(input.value).trim(); // 🟢 convertir a string y limpiar espacios
+    } else {
+      datos[campo] = input ? input.value.trim() : "";
+    }
 
   const usuario = auth.currentUser?.email || "Desconocido";
   datos.modificadoPor = usuario;
