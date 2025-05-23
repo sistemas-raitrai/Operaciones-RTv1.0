@@ -76,22 +76,7 @@ export default async function handler(req, res) {
     // 🔁 Espera un momento después de las eliminaciones
     console.log("⌛ Esperando que Excel actualice antes de insertar...");
     await new Promise(resolve => setTimeout(resolve, 1000));
-
-    // 🔄 Revalidar que no quedó ninguna fila duplicada antes de insertar
-const revalidar = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999`, {
-  headers: { Authorization: `Bearer ${token}` }
-});
-const filasFinales = await revalidar.json();
-
-const sigueExistiendo = filasFinales.value?.some(f =>
-  f?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
-);
-
-if (sigueExistiendo) {
-  console.error("❌ Aún existe una fila con el mismo número de negocio. Cancelando insert.");
-  return res.status(409).json({ error: "Conflicto: la fila no pudo ser reemplazada." });
-}
-   
+  
     // ➕ Insertar la nueva fila limpia
     const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
       method: "POST",
