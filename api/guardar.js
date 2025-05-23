@@ -63,9 +63,10 @@ export default async function handler(req, res) {
             return false;
           }
         
-          const valor = valoresFila[0];
+          const valor = String(valoresFila[0]).trim();
+          const numeroActual = String(datos.numeroNegocio).trim(); 
           console.log("🔎 Verificando fila con ID:", id, "->", valor);
-          return valor?.toString().trim() === datos.numeroNegocio.toString().trim();
+          return valor === numeroActual;
         });
 
       // 🧽 Eliminar todas las coincidencias encontradas
@@ -99,8 +100,9 @@ export default async function handler(req, res) {
       
       const sigueExistiendo = filasFinales.value?.some(f => {
         const id = f?.id;
-        const valor = f?.values?.[0]?.[0];
-        return id && String(valor).trim() === String(datos.numeroNegocio).trim();
+        const valor = String(f?.values?.[0]?.[0]).trim();
+        const numeroActual = String(datos.numeroNegocio).trim();
+        return valor === numeroActual;
       });
       
       if (sigueExistiendo) {
@@ -115,8 +117,9 @@ export default async function handler(req, res) {
       
         const persiste = finalFinal.value?.some(f => {
           const id = f?.id;
-          const valor = f?.values?.[0]?.[0];
-          return id && String(valor).trim() === String(datos.numeroNegocio).trim();
+          const valor = String(f?.values?.[0]?.[0]).trim();
+          const numeroActual = String(datos.numeroNegocio).trim();
+          return valor === numeroActual;
         });
       
         if (persiste) {
