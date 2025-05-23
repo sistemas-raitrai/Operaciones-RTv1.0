@@ -146,7 +146,7 @@ async function guardarDatos(continuar = true) {
     } else {
       datos[campo] = input ? input.value.trim() : "";
     }
-
+  }
   const usuario = auth.currentUser?.email || "Desconocido";
   datos.modificadoPor = usuario;
 
