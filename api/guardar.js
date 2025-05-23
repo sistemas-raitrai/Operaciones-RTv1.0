@@ -50,14 +50,16 @@ export default async function handler(req, res) {
     ];
     
         // ✅ 2. Buscar si ya existe una fila con el mismo número de negocio
-        const buscarExistente = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows`, {
+        const buscarExistente = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const dataFilas = await buscarExistente.json();
         // ✅ Buscar todas las filas con el mismo número de negocio
-    const filasDuplicadas = dataFilas.value?.filter(fila =>
-      fila?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
-    );
+        const filasDuplicadas = dataFilas.value?.filter(fila => {
+          const valor = fila?.values?.[0]?.[0];
+          console.log("🔎 Verificando fila:", valor);
+          return valor?.toString().trim() === datos.numeroNegocio.toString().trim();
+        });
     
     // 🧽 Eliminar todas las coincidencias encontradas
     if (filasDuplicadas?.length) {
