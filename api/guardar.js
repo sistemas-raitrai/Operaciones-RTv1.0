@@ -147,6 +147,28 @@ export default async function handler(req, res) {
             }
           
             console.log("🛠 Fila duplicada actualizada en lugar de insertada.");
+            
+            // ✅ Insertar historial aunque se haya hecho PATCH
+            if (historial.length > 0) {
+              const historialData = historial.map(change => [
+                datos.numeroNegocio, datos.nombreGrupo, datos.anoViaje,
+                change.campo, change.anterior, change.nuevo,
+                datos.modificadoPor, new Date().toISOString()
+              ]);
+            
+              const resHist = await fetch(`${endpointBase}/HistorialCambios/tables/HistorialCambios/rows/add`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ values: historialData }),
+              });
+            
+              const resultadoHist = await resHist.json();
+              console.log("🕓 HistorialCambios tras PATCH:", resultadoHist);
+            }
+            
             return res.status(200).json({ message: "✅ Fila existente actualizada en vez de insertada." });
           }
         }
