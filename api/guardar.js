@@ -49,62 +49,41 @@ export default async function handler(req, res) {
       datos.versionFicha, datos.creadoPor, datos.fechaCreacion
     ];
     
-    // ✅ 2. Buscar si ya existe una fila con el mismo número de negocio
-    const buscarExistente = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const dataFilas = await buscarExistente.json();
+        // ✅ 2. Buscar si ya existe una fila con el mismo número de negocio
+        const buscarExistente = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const dataFilas = await buscarExistente.json();
+        // ✅ Buscar todas las filas con el mismo número de negocio
+    const filasDuplicadas = dataFilas.value?.filter(fila =>
+      fila?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
+    );
     
-    // ✅ Buscar si ya existe una fila con el mismo número de negocio (más robusto)
-    let filaExistente = null;
-    
-    for (const fila of dataFilas.value || []) {
-      const valorColumnaA = fila?.values?.[0]?.[0]; // Primer campo de la fila
-      console.log("🔎 Comparando:", valorColumnaA, "vs", datos.numeroNegocio);
-    
-      if (valorColumnaA?.toString().trim() === datos.numeroNegocio.toString().trim()) {
-        filaExistente = fila;
-        break;
+    // 🧽 Eliminar todas las coincidencias encontradas
+    if (filasDuplicadas?.length) {
+      for (const fila of filasDuplicadas) {
+        await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${fila.id}`, {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
       }
+      console.log(`🗑️ Eliminadas ${filasDuplicadas.length} fila(s) duplicadas`);
     }
     
-    // ✅ 3. Si existe, actualiza la fila. Si no, inserta una nueva
-    if (filaExistente) {
-      const rowId = filaExistente.id;
+    // ➕ Insertar la nueva fila limpia
+    const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ values: [insertData] }),
+    });
     
-      // 🧽 1. Elimina la fila anterior
-      await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${rowId}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-    
-      // ➕ 2. Inserta la nueva fila completa con los datos actualizados
-      const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ values: [insertData] }),
-      });
-    
-      const resultadoInsert = await resInsert.json();
-      console.log("🔁 Reemplazada fila:", resultadoInsert);
-    } else {
-      const resInsert = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/add`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ values: [insertData] }),
-      });
-    
-      const resultadoInsert = await resInsert.json();
-      console.log("🆕 Insertado:", resultadoInsert);
-    }
+    const resultadoInsert = await resInsert.json();
+    console.log("✅ Insertado nuevo registro:", resultadoInsert);
 
     // ✅ 2. Insertar historial
     const historialData = historial.map(change => [
