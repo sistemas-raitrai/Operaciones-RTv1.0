@@ -97,9 +97,11 @@ export default async function handler(req, res) {
       });
       const filasFinales = await revalidar.json();
       
-      const sigueExistiendo = filasFinales.value?.some(f =>
-        f?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
-      );
+      const sigueExistiendo = filasFinales.value?.some(f => {
+        const id = f?.id;
+        const valor = f?.values?.[0]?.[0];
+        return id && valor?.toString().trim() === datos.numeroNegocio.toString().trim();
+      });
       
       if (sigueExistiendo) {
         console.warn("⚠️ Fila aún existe después de esperar. Esperando 1 segundo más...");
@@ -111,9 +113,11 @@ export default async function handler(req, res) {
         });
         const finalFinal = await segundoIntento.json();
       
-        const persiste = finalFinal.value?.some(f =>
-          f?.values?.[0]?.[0]?.toString().trim() === datos.numeroNegocio.toString().trim()
-        );
+        const persiste = finalFinal.value?.some(f => {
+          const id = f?.id;
+          const valor = f?.values?.[0]?.[0];
+          return id && valor?.toString().trim() === datos.numeroNegocio.toString().trim();
+        });
       
         if (persiste) {
           console.error("❌ La fila aún persiste después de reintento. Cancelando inserción.");
