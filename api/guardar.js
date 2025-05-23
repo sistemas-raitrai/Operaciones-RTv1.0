@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     ];
     
         // ✅ 2. Buscar si ya existe una fila con el mismo número de negocio
-        const buscarExistente = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999`, {
+          const buscarExistente = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999&$select=id,values`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const dataFilas = await buscarExistente.json();
@@ -92,7 +92,7 @@ export default async function handler(req, res) {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       // 🔄 Revalidar que no quedó ninguna fila duplicada antes de insertar
-      const revalidar = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999`, {
+      const revalidar = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999&$select=id,values`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const filasFinales = await revalidar.json();
@@ -106,7 +106,7 @@ export default async function handler(req, res) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       
         // Reintentar una vez más
-        const segundoIntento = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999`, {
+        const segundoIntento = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows?$top=999&$select=id,values`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         const finalFinal = await segundoIntento.json();
