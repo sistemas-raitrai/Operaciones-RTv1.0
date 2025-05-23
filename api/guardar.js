@@ -62,16 +62,23 @@ export default async function handler(req, res) {
         });
     
     // 🧽 Eliminar todas las coincidencias encontradas
-    for (const fila of filasDuplicadas) {
-      const eliminar = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${fila.id}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` }
-      });
-    
-      if (!eliminar.ok) {
-        console.error(`❌ Error al eliminar fila ID ${fila.id}`);
+      for (const fila of filasDuplicadas) {
+        const id = fila?.id;
+        if (!id) {
+          console.warn(`⚠️ Fila sin ID encontrada. Saltando eliminación.`);
+          continue;
+        }
+      
+        const eliminar = await fetch(`${endpointBase}/BaseOperaciones/tables/BaseOperaciones/rows/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      
+        if (!eliminar.ok) {
+          console.error(`❌ Error al eliminar fila ID ${id}`);
+        }
       }
-    }
+
     
       // 🔁 Espera un momento después de las eliminaciones
       console.log("⌛ Esperando que Excel actualice antes de insertar...");
