@@ -46,7 +46,7 @@ export default async function handler(req, res) {
 
     const data = await resp.json();
     const fila = data.value?.find(fila =>
-      fila?.values?.[0]?.toString().trim() === numeroNegocio.toString().trim()
+      fila?.values?.[0]?.[0]?.toString().trim() === numeroNegocio.toString().trim()
     );
 
     if (!fila) return res.status(200).json({ existe: false });
