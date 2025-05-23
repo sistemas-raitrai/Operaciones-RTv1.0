@@ -223,7 +223,7 @@ async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
 
   try {
-    const resp = await fetch("/api/leerOperaciones", {
+    const resp = await fetch("https://operaciones-rtv10.vercel.app/api/leerOperaciones", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ numeroNegocio })
