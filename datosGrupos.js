@@ -177,19 +177,27 @@ async function guardarDatos(continuar = true) {
 
   // 🟡 AQUÍ debes colocar la URL de tu backend que conectará con Excel Online
   const endpoint = "https://operaciones-rtv10.vercel.app/api/guardar";
+  const endpointSheets = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
 
-  try {
-    const res = await fetch(endpoint, {
+    // 📝 Guardar en Excel Online
+    const resExcel = await fetch(endpointExcel, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload)
     });
 
-    if (res.ok) {
-      alert("✅ Datos guardados correctamente en Base de Datos Operaciones.");
+    // 📝 Guardar en Google Sheets
+    const resSheets = await fetch(endpointSheets, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    if (resExcel.ok && resSheets.ok) {
+      alert("✅ Datos guardados correctamente en ambas bases.");
       if (!continuar) window.history.back();
     } else {
-      alert("❌ Error al guardar los datos en Base de Datos Operaciones.");
+      alert("⚠️ Guardado parcial. Revisa las conexiones.");
     }
   } catch (err) {
     console.error("❌ Error al enviar datos:", err);
