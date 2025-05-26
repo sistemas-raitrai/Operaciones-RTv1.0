@@ -21,6 +21,7 @@ const campos = {
   autorizacion: 'autorizacion',
   fechaDeViaje: 'fechaDeViaje',
   observaciones: 'observaciones',
+  fechaCreacion: 'fechaCreacion',
   versionFicha: 'text1'
 };
 
