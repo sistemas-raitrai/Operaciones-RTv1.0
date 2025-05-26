@@ -237,7 +237,7 @@ async function guardarDatos(continuar = true) {
 // ✅ Función para descargar LecturaBaseOperaciones como Excel
 function descargarLecturaExcel() {
   const fileId = "124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI";
-  const gid = "1982739182"; // reemplaza por el GID real de LecturaBaseOperaciones
+  const gid = "1332196755"; // ✅ GID correcto de la hoja 'LecturaBaseOperaciones'
 
   const url = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&gid=${gid}`;
   window.open(url, "_blank");
