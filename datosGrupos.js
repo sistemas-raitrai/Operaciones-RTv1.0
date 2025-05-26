@@ -266,7 +266,8 @@ window.guardarYContinuar = function () {
   setTimeout(() => {
       window.location.href = "infoViajes.html"; // cambia esto si tu URL destino es otra
     }, 1000);
-  };
+};
+window.descargarLecturaExcel = descargarLecturaExcel; // ✅ <-- AGREGA ESTA LÍNEA
 
 async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
