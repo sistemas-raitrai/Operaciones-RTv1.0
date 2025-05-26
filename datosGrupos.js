@@ -260,7 +260,7 @@ async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
 
   try {
-    const resp = await fetch("https://operaciones-rtv10.vercel.app/api/leerOperaciones", {
+    const resp = await fetch("https://script.google.com/macros/s/AKfycbw8rnoex-TfYk-RbRp2Cec77UK2kxuSET3wuEFkk9bQlfGivZQir1ChLT7x-umXFdIM/exec", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ numeroNegocio })
@@ -277,7 +277,6 @@ async function cargarDesdeOperaciones(numeroNegocio) {
         fila.appendChild(td);
       });
     } else {
-      // Mostrar fila vacía
       for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
@@ -286,6 +285,7 @@ async function cargarDesdeOperaciones(numeroNegocio) {
     }
 
   } catch (error) {
-    console.error("❌ Error al consultar BaseOperaciones:", error);
+    console.error("❌ Error al consultar Google Sheets:", error);
   }
 }
+
