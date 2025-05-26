@@ -134,79 +134,78 @@ async function cargarNumeroNegocio() {
 }
 
 // ✅ Función para guardar datos en la hoja 'BaseOperaciones' y registrar historial
-async function guardarDatos(continuar = true) {
-  const datos = {};
-  const cambios = [];
-
-  for (const campo in campos) {
-    const id = campos[campo];
-    const input = document.getElementById(id);
-    if (campo === "numeroNegocio") {
-      datos[campo] = String(input.value).trim(); // 🟢 convertir a string y limpiar espacios
-    } else {
-      datos[campo] = input ? input.value.trim() : "";
+  async function guardarDatos(continuar = true) {
+    const datos = {};
+    const cambios = [];
+  
+    for (const campo in campos) {
+      const id = campos[campo];
+      const input = document.getElementById(id);
+      if (campo === "numeroNegocio") {
+        datos[campo] = String(input.value).trim();
+      } else {
+        datos[campo] = input ? input.value.trim() : "";
+      }
     }
-  }
-  const usuario = auth.currentUser?.email || "Desconocido";
-  datos.modificadoPor = usuario;
-
-  if (!datos.fechaCreacion) {
-    datos.fechaCreacion = new Date().toISOString();
-    datos.creadoPor = usuario;
-  }
-
-  for (const campo in campos) {
-    const id = campos[campo];
-    const input = document.getElementById(id);
-    const valorNuevo = input ? input.value.trim() : "";
-    const valorAnterior = input?.getAttribute("data-original") || "";
-
-    if (valorNuevo !== valorAnterior) {
-      cambios.push({
-        campo,
-        anterior: valorAnterior,
-        nuevo: valorNuevo
+  
+    const usuario = auth.currentUser?.email || "Desconocido";
+    datos.modificadoPor = usuario;
+  
+    if (!datos.fechaCreacion) {
+      datos.fechaCreacion = new Date().toISOString();
+      datos.creadoPor = usuario;
+    }
+  
+    for (const campo in campos) {
+      const id = campos[campo];
+      const input = document.getElementById(id);
+      const valorNuevo = input ? input.value.trim() : "";
+      const valorAnterior = input?.getAttribute("data-original") || "";
+  
+      if (valorNuevo !== valorAnterior) {
+        cambios.push({
+          campo,
+          anterior: valorAnterior,
+          nuevo: valorNuevo
+        });
+      }
+    }
+  
+    const payload = {
+      datos,
+      historial: cambios
+    };
+  
+    const endpoint = "https://operaciones-rtv10.vercel.app/api/guardar";
+    const endpointSheets = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
+  
+    try {
+      // 📝 Guardar en Excel Online
+      const resExcel = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       });
+  
+      // 📝 Guardar en Google Sheets
+      const resSheets = await fetch(endpointSheets, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+  
+      if (resExcel.ok && resSheets.ok) {
+        alert("✅ Datos guardados correctamente.");
+        if (!continuar) window.history.back();
+      } else {
+        alert("⚠️ Guardado parcial. Revisa las conexiones.");
+      }
+  
+    } catch (err) {
+      console.error("❌ Error al enviar datos:", err);
+      alert("❌ No se pudo conectar con el servidor.");
     }
   }
-
-  const payload = {
-    datos,
-    historial: cambios
-  };
-
-  // 🟡 AQUÍ debes colocar la URL de tu backend que conectará con Excel Online
-  const endpoint = "https://operaciones-rtv10.vercel.app/api/guardar";
-  const endpointSheets = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
-
-    // 📝 Guardar en Excel Online
-    const resExcel = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    // 📝 Guardar en Google Sheets
-    const resSheets = await fetch(endpointSheets, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    if (resExcel.ok && resSheets.ok) {
-      alert("✅ Datos guardados correctamente en ambas bases.");
-      if (!continuar) window.history.back();
-    } else {
-      alert("⚠️ Guardado parcial. Revisa las conexiones.");
-    }
-  
-  } // ✅ Esta llave cierra el try correctamente
-  
-  catch (err) {
-    console.error("❌ Error al enviar datos:", err);
-    alert("❌ No se pudo conectar con el servidor.");
-  }
-}
 
 // ✅ Ejecutar todo al cargar el DOM
 document.addEventListener("DOMContentLoaded", () => {
