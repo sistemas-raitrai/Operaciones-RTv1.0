@@ -249,12 +249,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ✅ Exponer funciones globales para los botones HTML
 window.guardarDatos = guardarDatos;
-window.guardarYVolver = function () {
+window.guardarYContinuar = function () {
   guardarDatos(false);
   setTimeout(() => {
-    window.history.back();
-  }, 1000);
-};
+      window.location.href = "infoViajes.html"; // cambia esto si tu URL destino es otra
+    }, 1000);
+  };
 
 async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
