@@ -195,12 +195,18 @@ async function cargarNumeroNegocio() {
     const endpointSheets = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
   
     try {
+      console.time("🧭 TOTAL - Guardar en ambos sistemas");
+      console.time("⏱ fetch ExcelOnline");
+      
       // 📝 Guardar en Excel Online
       const resExcel = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+
+      console.timeEnd("⏱ fetch ExcelOnline");
+      console.time("⏱ fetch GoogleSheets");
   
       // 📝 Guardar en Google Sheets
       const resSheets = await fetch(endpointSheets, {
@@ -208,6 +214,9 @@ async function cargarNumeroNegocio() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
+
+      console.timeEnd("⏱ fetch GoogleSheets");
+      console.timeEnd("🧭 TOTAL - Guardar en ambos sistemas");
   
       if (resExcel.ok && resSheets.ok) {
         alert("✅ Datos guardados correctamente.");
