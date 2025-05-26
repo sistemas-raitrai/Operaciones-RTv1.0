@@ -199,7 +199,10 @@ async function guardarDatos(continuar = true) {
     } else {
       alert("⚠️ Guardado parcial. Revisa las conexiones.");
     }
-  } catch (err) {
+  
+  } // ✅ Esta llave cierra el try correctamente
+  
+  catch (err) {
     console.error("❌ Error al enviar datos:", err);
     alert("❌ No se pudo conectar con el servidor.");
   }
