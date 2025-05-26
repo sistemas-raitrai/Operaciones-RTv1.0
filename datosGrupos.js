@@ -257,6 +257,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 🟢 Cargar datos desde Google Sheets
   cargarNumeroNegocio();
+  
+  // ✅ Enlazar botón de descarga de Excel por ID
+  const btnExportar = document.getElementById("btnExportarExcel");
+  if (btnExportar) {
+    btnExportar.addEventListener("click", descargarLecturaExcel);
+  }
 });
 
 // ✅ Exponer funciones globales para los botones HTML
