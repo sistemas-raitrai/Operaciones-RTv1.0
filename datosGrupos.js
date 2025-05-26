@@ -260,13 +260,10 @@ async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
 
   try {
-    const resp = await fetch("https://script.google.com/macros/s/AKfycbw8rnoex-TfYk-RbRp2Cec77UK2kxuSET3wuEFkk9bQlfGivZQir1ChLT7x-umXFdIM/exec", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ numeroNegocio })
-    });
-
+    const url = `https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
+    const resp = await fetch(url);
     const resultado = await resp.json();
+
     const fila = document.getElementById("filaOperaciones");
     fila.innerHTML = ""; // limpia la fila
 
@@ -285,7 +282,6 @@ async function cargarDesdeOperaciones(numeroNegocio) {
     }
 
   } catch (error) {
-    console.error("❌ Error al consultar Google Sheets:", error);
+    console.error("❌ Error al consultar LecturaBaseOperaciones:", error);
   }
 }
-
