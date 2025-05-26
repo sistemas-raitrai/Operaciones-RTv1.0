@@ -106,15 +106,29 @@ async function cargarNumeroNegocio() {
         const input = document.getElementById(id);
         if (input) {
           let valor = fila[campo];
-
-          // ✅ Limpiar HTML enriquecido
+      
+          // ✅ Limpiar HTML enriquecido si aplica
           if (["autorizacion", "fechaDeViaje", "observaciones"].includes(campo)) {
             const tempDiv = document.createElement("div");
             tempDiv.innerHTML = valor;
             valor = tempDiv.textContent || tempDiv.innerText || "";
           }
-
-          input.value = valor !== undefined ? String(valor) : '';
+      
+          // ✅ Mostrar fecha formateada localmente si es fechaCreacion
+          if (campo === "fechaCreacion" && valor) {
+            const fechaLocal = new Date(valor).toLocaleString('es-CL', {
+              timeZone: 'America/Santiago',
+              day: '2-digit',
+              month: '2-digit',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            });
+            input.value = fechaLocal;
+          } else {
+            input.value = valor !== undefined ? String(valor) : '';
+          }
+      
           input.setAttribute("data-original", input.value);
         }
       }
