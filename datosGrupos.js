@@ -149,91 +149,91 @@ async function cargarNumeroNegocio() {
 }
 
 // ✅ Función para guardar datos en la hoja 'BaseOperaciones' y registrar historial
-  async function guardarDatos(continuar = true) {
-    const datos = {};
-    const cambios = [];
-  
-    for (const campo in campos) {
-      const id = campos[campo];
-      const input = document.getElementById(id);
-      if (campo === "numeroNegocio") {
-        datos[campo] = String(input.value).trim();
-      } else {
-        datos[campo] = input ? input.value.trim() : "";
-      }
-    }
-  
-    const usuario = auth.currentUser?.email || "Desconocido";
-    datos.modificadoPor = usuario;
-  
-    if (!datos.fechaCreacion) {
-      datos.fechaCreacion = new Date().toISOString();
-      datos.creadoPor = usuario;
-    }
-  
-    for (const campo in campos) {
-      const id = campos[campo];
-      const input = document.getElementById(id);
-      const valorNuevo = input ? input.value.trim() : "";
-      const valorAnterior = input?.getAttribute("data-original") || "";
-  
-      if (valorNuevo !== valorAnterior) {
-        cambios.push({
-          campo,
-          anterior: valorAnterior,
-          nuevo: valorNuevo
-        });
-      }
-    }
-  
-    const payload = {
-      datos,
-      historial: cambios
-    };
-  
-    const endpoint = "https://operaciones-rtv10.vercel.app/api/guardar";
-    const endpointSheets = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
-  
-    try {
-      console.time("🧭 TOTAL - Guardar en ambos sistemas");
-      console.time("⏱ fetch ExcelOnline");
-      
-      // 📝 Guardar en Excel Online
-      const resExcel = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+async function guardarDatos(continuar = true) {
+  const datos = {};
+  const cambios = [];
 
-      console.timeEnd("⏱ fetch ExcelOnline");
-      console.time("⏱ fetch GoogleSheets");
-  
-      // 📝 Guardar en Google Sheets
-      const resSheets = await fetch(endpointSheets, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      console.timeEnd("⏱ fetch GoogleSheets");
-      console.timeEnd("🧭 TOTAL - Guardar en ambos sistemas");
-  
-      if (resExcel.ok && resSheets.ok) {
-        alert("✅ Datos guardados correctamente.");
-        console.log("Actualizando tabla para:", datos.numeroNegocio);
-        // ✅ Recargar datos en la tabla de operaciones
-        cargarDesdeOperaciones(datos.numeroNegocio);
-        
-        if (!continuar) window.history.back();
-      } else {
-        alert("⚠️ Guardado parcial. Revisa las conexiones.");
-      }
-  
-    } catch (err) {
-      console.error("❌ Error al enviar datos:", err);
-      alert("❌ No se pudo conectar con el servidor.");
+  for (const campo in campos) {
+    const id = campos[campo];
+    const input = document.getElementById(id);
+    if (campo === "numeroNegocio") {
+      datos[campo] = String(input.value).trim();
+    } else {
+      datos[campo] = input ? input.value.trim() : "";
     }
   }
+
+  const usuario = auth.currentUser?.email || "Desconocido";
+  datos.modificadoPor = usuario;
+
+  // 🕒 Formatear fecha local (Chile) si es nueva creación
+  if (!datos.fechaCreacion) {
+    const ahora = new Date();
+    const fechaChile = ahora.toLocaleString("es-CL", {
+      timeZone: "America/Santiago",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).replace(",", " /");
+
+    datos.fechaCreacion = fechaChile;
+    datos.creadoPor = usuario;
+  }
+
+  for (const campo in campos) {
+    const id = campos[campo];
+    const input = document.getElementById(id);
+    const valorNuevo = input ? input.value.trim() : "";
+    const valorAnterior = input?.getAttribute("data-original") || "";
+
+    if (valorNuevo !== valorAnterior) {
+      cambios.push({
+        campo,
+        anterior: valorAnterior,
+        nuevo: valorNuevo
+      });
+    }
+  }
+
+  const payload = {
+    datos,
+    historial: cambios
+  };
+
+  const endpointSheets = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
+
+  try {
+    console.time("⏱ Guardar Google Sheets");
+
+    // ✅ Guardar solo en Google Sheets
+    const resSheets = await fetch(endpointSheets, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    console.timeEnd("⏱ Guardar Google Sheets");
+
+    if (resSheets.ok) {
+      alert("✅ Datos guardados correctamente.");
+      console.log("Actualizando tabla para:", datos.numeroNegocio);
+      cargarDesdeOperaciones(datos.numeroNegocio);
+
+      if (!continuar) window.history.back();
+    } else {
+      alert("⚠️ No se pudo guardar en Google Sheets.");
+    }
+
+  } catch (err) {
+    console.error("❌ Error al guardar:", err);
+    alert("❌ No se pudo conectar con el servidor.");
+  }
+}
+
 
 // ✅ Ejecutar todo al cargar el DOM
 document.addEventListener("DOMContentLoaded", () => {
