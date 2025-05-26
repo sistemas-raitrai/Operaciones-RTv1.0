@@ -220,6 +220,7 @@ async function cargarNumeroNegocio() {
   
       if (resExcel.ok && resSheets.ok) {
         alert("✅ Datos guardados correctamente.");
+        console.log("Actualizando tabla para:", datos.numeroNegocio);
         // ✅ Recargar datos en la tabla de operaciones
         cargarDesdeOperaciones(datos.numeroNegocio);
         
