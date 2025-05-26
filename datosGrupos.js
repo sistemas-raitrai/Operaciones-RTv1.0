@@ -220,6 +220,9 @@ async function cargarNumeroNegocio() {
   
       if (resExcel.ok && resSheets.ok) {
         alert("✅ Datos guardados correctamente.");
+        // ✅ Recargar datos en la tabla de operaciones
+        cargarDesdeOperaciones(datos.numeroNegocio);
+        
         if (!continuar) window.history.back();
       } else {
         alert("⚠️ Guardado parcial. Revisa las conexiones.");
