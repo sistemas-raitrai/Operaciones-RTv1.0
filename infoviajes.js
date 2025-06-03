@@ -1,105 +1,119 @@
-// ✅ infoviajes.js
+// ✅ infoViajes.js: lógica de formulario Información del Viaje
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+import { app } from "./firebase-init.js";
 
-document.addEventListener("DOMContentLoaded", async () => {
-  const dropdownNumeroNegocio = document.getElementById("numeroNegocio");
-  const form = document.getElementById("formularioViaje");
+const auth = getAuth(app);
 
-  // 🟢 1. Intentar precargar el número de negocio desde sessionStorage
-  const numeroGuardado = sessionStorage.getItem("numeroNegocio");
-  if (numeroGuardado) {
-    const option = document.createElement("option");
-    option.value = numeroGuardado;
-    option.textContent = numeroGuardado;
-    option.selected = true;
-    dropdownNumeroNegocio.appendChild(option);
-  }
+// ✅ IDs de elementos del formulario
+const selectNegocio = document.getElementById("numeroNegocio");
+const selectDestino = document.getElementById("destino");
+const inputFechaInicio = document.getElementById("fechaInicio");
+const inputFechaFin = document.getElementById("fechaFin");
+const inputAdultos = document.getElementById("adultos");
+const inputEstudiantes = document.getElementById("estudiantes");
+const selectTransporte = document.getElementById("transporte");
+const seccionTramos = document.getElementById("seccionTramos");
+const inputCantidadTramos = document.getElementById("cantidadTramos");
+const divDetalleTramos = document.getElementById("detalleTramos");
+const selectCiudades = document.getElementById("ciudades");
+const divHoteles = document.getElementById("seccionHoteles");
+const inputObservaciones = document.getElementById("observaciones");
 
-  // 🟢 2. Cargar todos los números de negocio desde Google Sheets
-  async function cargarNumerosDesdeSheets() {
-    const respuesta = await fetch("https://script.google.com/macros/s/AKfycbxO3PXYmuKlg-UjVMMY.../exec"); // URL real de tu Apps Script
-    const data = await respuesta.json();
-    data.forEach(item => {
-      if (!numeroGuardado || item.numero !== numeroGuardado) {
-        const option = document.createElement("option");
-        option.value = item.numero;
-        option.textContent = item.numero;
-        dropdownNumeroNegocio.appendChild(option);
+const sheetID = "124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI";
+const sheetName = "LecturaBaseOperaciones";
+const sheetURL = `https://opensheet.elk.sh/${sheetID}/${sheetName}`;
+
+// ✅ Cargar número de negocio y destinos existentes desde Google Sheet
+async function cargarNumerosDeNegocio() {
+  try {
+    const res = await fetch(sheetURL);
+    const datos = await res.json();
+    const usados = new Set();
+    selectNegocio.innerHTML = "";
+    selectDestino.innerHTML = "";
+
+    datos.forEach(row => {
+      const num = row.numeroNegocio;
+      if (num && !usados.has(num)) {
+        const opt = document.createElement("option");
+        opt.value = num;
+        opt.textContent = num;
+        selectNegocio.appendChild(opt);
+        usados.add(num);
       }
     });
+
+    // cargar destinos si existen
+    const destinosUnicos = [...new Set(datos.map(r => r.destino).filter(Boolean))];
+    destinosUnicos.forEach(d => {
+      const opt = document.createElement("option");
+      opt.value = d;
+      opt.textContent = d;
+      selectDestino.appendChild(opt);
+    });
+
+    // Ver si viene con número desde registro.html
+    const urlParams = new URLSearchParams(window.location.search);
+    const numero = urlParams.get("numeroNegocio");
+    if (numero) {
+      selectNegocio.value = numero;
+    }
+  } catch (err) {
+    console.error("❌ Error al cargar datos:", err);
   }
+}
 
-  await cargarNumerosDesdeSheets();
+// 🚦 Mostrar sección de tramos si corresponde
+selectTransporte.addEventListener("change", () => {
+  if (selectTransporte.value) {
+    seccionTramos.style.display = "block";
+  } else {
+    seccionTramos.style.display = "none";
+    divDetalleTramos.innerHTML = "";
+  }
+});
 
-  // 🟢 3. Condiciones dinámicas
-  const transporteSelect = document.getElementById("transporte");
-  const campoTramos = document.getElementById("tramosContainer");
+// 🧱 Generar tramos según cantidad
+inputCantidadTramos.addEventListener("input", () => {
+  divDetalleTramos.innerHTML = "";
+  const cantidad = parseInt(inputCantidadTramos.value);
+  if (!cantidad || cantidad < 1) return;
 
-  transporteSelect.addEventListener("change", () => {
-    campoTramos.innerHTML = ""; // Limpia anteriores
-    const tipo = transporteSelect.value;
+  for (let i = 1; i <= cantidad; i++) {
+    const div = document.createElement("div");
+    div.innerHTML = `
+      <h4>Tramo ${i}</h4>
+      <label>Tipo:</label>
+      <select name="tipoTramo${i}">
+        <option value="terrestre">Terrestre</option>
+        <option value="aereo">Aéreo</option>
+      </select>
+      <label>Compañía / Empresa:</label>
+      <input name="empresa${i}" />
+      <label>Conductor o N° de Vuelo:</label>
+      <input name="info${i}" />
+      <label>Fecha y Hora de Salida:</label>
+      <input type="datetime-local" name="salida${i}" />
+      <label>Terminal / Aeropuerto:</label>
+      <input name="lugar${i}" />
+      <hr />
+    `;
+    divDetalleTramos.appendChild(div);
+  }
+});
 
-    const cantidad = prompt("¿Cuántos tramos tiene el viaje?");
-    if (!cantidad || isNaN(cantidad)) return;
+// ✅ Guardar datos en servidor (se implementará después)
+document.getElementById("formInfoViaje").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  alert("Función de guardado pendiente de integrar con backend (columna Q en adelante).");
+});
 
-    for (let i = 1; i <= parseInt(cantidad); i++) {
-      const div = document.createElement("div");
-      div.className = "tramo";
+// ✅ Autenticación
+onAuthStateChanged(auth, (user) => {
+  if (!user) return (window.location.href = "login.html");
+});
 
-      if (tipo.includes("Terrestre")) {
-        div.innerHTML = `
-          <h4>Tramo ${i} (Terrestre)</h4>
-          <input placeholder="Empresa de Bus" />
-          <input placeholder="Conductor 1" />
-          <input placeholder="Conductor 2" />
-          <input type="datetime-local" placeholder="Fecha y hora de salida" />
-          <input placeholder="Terminal de salida" />
-        `;
-      } else if (tipo.includes("Aereo")) {
-        div.innerHTML = `
-          <h4>Tramo ${i} (Aéreo)</h4>
-          <input placeholder="Compañía aérea" />
-          <input placeholder="Número de vuelo" />
-          <input type="datetime-local" placeholder="Fecha y hora de salida" />
-          <input placeholder="Aeropuerto de salida" />
-        `;
-      }
-
-      campoTramos.appendChild(div);
-    }
-  });
-
-  // 🟢 4. Guardar al Google Sheet
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const payload = {
-      numeroNegocio: dropdownNumeroNegocio.value,
-      destino: document.getElementById("destino").value,
-      fechaInicio: document.getElementById("fechaInicio").value,
-      fechaFin: document.getElementById("fechaFin").value,
-      adultos: document.getElementById("adultos").value,
-      estudiantes: document.getElementById("estudiantes").value,
-      transporte: transporteSelect.value,
-      tramos: Array.from(document.querySelectorAll(".tramo")).map(div =>
-        Array.from(div.querySelectorAll("input")).map(i => i.value).join(" | ")
-      ).join(" || "),
-      ciudades: document.getElementById("ciudades").value,
-      hoteles: Array.from(document.getElementById("hoteles").selectedOptions).map(opt => opt.value).join(", "),
-      observaciones: document.getElementById("observaciones").value
-    };
-
-    try {
-      const resp = await fetch("https://script.google.com/macros/s/AKfycbx.../exec", {
-        method: "POST",
-        body: JSON.stringify({ datos: payload }),
-        headers: { "Content-Type": "application/json" }
-      });
-
-      const result = await resp.json();
-      alert(result.mensaje || "Datos guardados correctamente");
-    } catch (err) {
-      console.error("❌ Error al guardar", err);
-      alert("Hubo un problema al guardar los datos.");
-    }
-  });
+// ✅ Ejecutar al cargar
+document.addEventListener("DOMContentLoaded", () => {
+  cargarNumerosDeNegocio();
 });
