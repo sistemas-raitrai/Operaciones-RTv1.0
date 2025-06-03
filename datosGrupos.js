@@ -268,11 +268,16 @@ document.addEventListener("DOMContentLoaded", () => {
 // ✅ Exponer funciones globales para los botones HTML
 window.guardarDatos = guardarDatos;
 window.guardarYContinuar = function () {
+  const numeroNegocio = document.getElementById("numeroNegocio")?.value;
+  if (numeroNegocio) {
+    sessionStorage.setItem("numeroNegocio", numeroNegocio);
+  }
   guardarDatos(false);
   setTimeout(() => {
-      window.location.href = "infoViajes.html"; // cambia esto si tu URL destino es otra
-    }, 1000);
+    window.location.href = "infoViajes.html";
+  }, 1000);
 };
+
 window.descargarLecturaExcel = descargarLecturaExcel; // ✅ <-- AGREGA ESTA LÍNEA
 
 async function cargarDesdeOperaciones(numeroNegocio) {
