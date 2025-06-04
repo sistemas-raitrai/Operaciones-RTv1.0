@@ -1,10 +1,12 @@
-// ✅ infoViajes.js: lógica de formulario Información del Viaje
+// ✅ infoViajes.js – Lectura y escritura con Google Apps Script
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 import { app } from "./firebase-init.js";
-
 const auth = getAuth(app);
 
-// ✅ Referencias a los elementos del DOM
+// 🔗 URL del Web App desplegado (ya funcionando en tu sistema)
+const GAS_URL = "https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec";
+
+// 🌐 Elementos del DOM
 const selectNegocio = document.getElementById("numeroNegocio");
 const selectDestino = document.getElementById("destino");
 const inputFechaInicio = document.getElementById("fechaInicio");
@@ -16,82 +18,90 @@ const seccionTramos = document.getElementById("seccionTramos");
 const inputCantidadTramos = document.getElementById("cantidadTramos");
 const divDetalleTramos = document.getElementById("detalleTramos");
 const selectCiudades = document.getElementById("ciudades");
-const divHoteles = document.getElementById("seccionHoteles");
 const inputObservaciones = document.getElementById("observaciones");
 
+// 📥 Cargar número de negocio y destinos desde hoja pública
 const sheetID = "124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI";
-const sheetName = "LecturaBaseOperaciones";
-const sheetURL = `https://opensheet.elk.sh/${sheetID}/${sheetName}`;
+const hojaLectura = "LecturaBaseOperaciones";
+const urlLectura = `https://opensheet.elk.sh/${sheetID}/${hojaLectura}`;
 
-// ✅ Cargar datos iniciales desde la hoja
 async function cargarNumerosDeNegocio() {
   try {
-    const res = await fetch(sheetURL);
+    const res = await fetch(urlLectura);
     const datos = await res.json();
-    const usados = new Set();
     selectNegocio.innerHTML = "";
     selectDestino.innerHTML = "";
 
+    const usados = new Set();
+
     datos.forEach(row => {
-      const num = row.numeroNegocio;
-      if (num && !usados.has(num)) {
+      if (row.numeroNegocio && !usados.has(row.numeroNegocio)) {
         const opt = document.createElement("option");
-        opt.value = num;
-        opt.textContent = num;
+        opt.value = row.numeroNegocio;
+        opt.textContent = row.numeroNegocio;
         selectNegocio.appendChild(opt);
-        usados.add(num);
+        usados.add(row.numeroNegocio);
       }
     });
 
-    const destinosUnicos = [...new Set(datos.map(r => r.destino).filter(Boolean))];
-    destinosUnicos.forEach(d => {
+    // Cargar destinos únicos
+    const destinosUnicos = [...new Set(datos.map(f => f.destino).filter(Boolean))];
+    destinosUnicos.forEach(dest => {
       const opt = document.createElement("option");
-      opt.value = d;
-      opt.textContent = d;
+      opt.value = dest;
+      opt.textContent = dest;
       selectDestino.appendChild(opt);
     });
 
-    // Verificar si viene con número desde registro.html
-    const urlParams = new URLSearchParams(window.location.search);
-    const numero = urlParams.get("numeroNegocio");
+    // Detectar si viene desde registro.html
+    const numero = sessionStorage.getItem("numeroNegocio") || new URLSearchParams(location.search).get("numeroNegocio");
     if (numero) {
       selectNegocio.value = numero;
       cargarDatosExistentes(numero);
     }
 
-    // También cargar al seleccionar manualmente
     selectNegocio.addEventListener("change", () => {
       cargarDatosExistentes(selectNegocio.value);
     });
 
   } catch (err) {
-    console.error("❌ Error al cargar datos:", err);
+    console.error("❌ Error cargando datos:", err);
   }
 }
 
-// ✅ Cargar info existente si la hay
+// 🧠 Cargar datos existentes desde GAS
 async function cargarDatosExistentes(numeroNegocio) {
   try {
-    const res = await fetch(`https://script.google.com/macros/s/YOUR_DEPLOYED_SCRIPT_ID/exec?numeroNegocio=${numeroNegocio}`);
+    const res = await fetch(`${GAS_URL}?numeroNegocio=${numeroNegocio}`);
     const json = await res.json();
     if (!json.existe) return;
 
     const fila = json.valores;
-    inputFechaInicio.value = fila[16] || ""; // Q
-    inputFechaFin.value = fila[17] || "";    // R
-    inputAdultos.value = fila[18] || "";     // S
-    inputEstudiantes.value = fila[19] || ""; // T
-    selectTransporte.value = fila[20] || ""; // U
-    selectCiudades.value = "";               // V (se manejará como string plano)
-    inputObservaciones.value = fila[24] || ""; // Y
+    const destino = fila[6]; // Columna G
 
-    // Si hay ciudades, seleccionarlas
+    // Asegura que el destino esté en el select
+    if (destino && ![...selectDestino.options].some(opt => opt.value === destino)) {
+      const opt = document.createElement("option");
+      opt.value = destino;
+      opt.textContent = destino;
+      selectDestino.appendChild(opt);
+    }
+
+    selectDestino.value = destino;
+    inputFechaInicio.value = fila[16] || "";
+    inputFechaFin.value = fila[17] || "";
+    inputAdultos.value = fila[18] || "";
+    inputEstudiantes.value = fila[19] || "";
+    selectTransporte.value = fila[20] || "";
+    inputObservaciones.value = fila[24] || "";
+
+    // Ciudades
     const ciudades = fila[21]?.split(",") || [];
-    [...selectCiudades.options].forEach(option => {
-      option.selected = ciudades.includes(option.value);
+    [...selectCiudades.options].forEach(opt => {
+      opt.selected = ciudades.includes(opt.value);
     });
 
-    // Si hay tramos, parsearlos
+    // Tramos
     if (fila[23]) {
       const tramos = JSON.parse(fila[23]);
       inputCantidadTramos.value = tramos.length;
@@ -109,52 +119,37 @@ async function cargarDatosExistentes(numeroNegocio) {
     }
 
   } catch (err) {
-    console.error("⚠️ Error cargando datos existentes:", err);
+    console.error("⚠️ Error cargando fila desde GAS:", err);
   }
 }
 
-// ✅ Mostrar u ocultar tramos según transporte
-selectTransporte.addEventListener("change", () => {
-  if (selectTransporte.value) {
-    seccionTramos.style.display = "block";
-  } else {
-    seccionTramos.style.display = "none";
-    divDetalleTramos.innerHTML = "";
-  }
-});
-
-// ✅ Generar campos de tramos
+// 🧱 Crear tramos dinámicos
 function generarCamposTramos(cantidad) {
   divDetalleTramos.innerHTML = "";
   for (let i = 1; i <= cantidad; i++) {
-    const div = document.createElement("div");
-    div.innerHTML = `
-      <h4>Tramo ${i}</h4>
-      <label>Tipo:</label>
-      <select name="tipoTramo${i}">
-        <option value="terrestre">Terrestre</option>
-        <option value="aereo">Aéreo</option>
-      </select>
-      <label>Compañía / Empresa:</label>
-      <input name="empresa${i}" />
-      <label>Conductor o N° de Vuelo:</label>
-      <input name="info${i}" />
-      <label>Fecha y Hora de Salida:</label>
-      <input type="datetime-local" name="salida${i}" />
-      <label>Terminal / Aeropuerto:</label>
-      <input name="lugar${i}" />
-      <hr />
+    divDetalleTramos.innerHTML += `
+      <div>
+        <h4>Tramo ${i}</h4>
+        <label>Tipo:</label>
+        <select name="tipoTramo${i}">
+          <option value="terrestre">Terrestre</option>
+          <option value="aereo">Aéreo</option>
+        </select>
+        <label>Empresa / Compañía:</label>
+        <input name="empresa${i}" />
+        <label>Conductor / Nº Vuelo:</label>
+        <input name="info${i}" />
+        <label>Fecha y hora salida:</label>
+        <input type="datetime-local" name="salida${i}" />
+        <label>Terminal / Aeropuerto:</label>
+        <input name="lugar${i}" />
+        <hr />
+      </div>
     `;
-    divDetalleTramos.appendChild(div);
   }
 }
 
-inputCantidadTramos.addEventListener("input", () => {
-  const cantidad = parseInt(inputCantidadTramos.value);
-  if (cantidad >= 1) generarCamposTramos(cantidad);
-});
-
-// ✅ Obtener tramos como array
+// 🧩 Obtener tramos como array
 function obtenerTramos() {
   const cantidad = parseInt(inputCantidadTramos.value);
   const tramos = [];
@@ -170,15 +165,14 @@ function obtenerTramos() {
   return tramos;
 }
 
-// ✅ Obtener ciudades seleccionadas
+// 🧠 Ciudades seleccionadas
 function obtenerCiudades() {
-  return [...selectCiudades.selectedOptions].map(opt => opt.value);
+  return [...selectCiudades.selectedOptions].map(o => o.value);
 }
 
-// ✅ Guardar datos
+// 💾 Enviar datos al script GAS (doPost)
 document.getElementById("formInfoViaje").addEventListener("submit", async (e) => {
   e.preventDefault();
-
   const payload = {
     numeroNegocio: selectNegocio.value,
     fechaInicio: inputFechaInicio.value,
@@ -187,33 +181,28 @@ document.getElementById("formInfoViaje").addEventListener("submit", async (e) =>
     estudiantes: inputEstudiantes.value,
     transporte: selectTransporte.value,
     ciudades: obtenerCiudades().join(", "),
-    hoteles: "", // Se puede completar en el futuro
     tramos: JSON.stringify(obtenerTramos()),
     observaciones: inputObservaciones.value
   };
 
   try {
-    const res = await fetch("https://script.google.com/macros/s/YOUR_DEPLOYED_SCRIPT_ID/exec", {
+    const res = await fetch(GAS_URL, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify({ datos: payload }),
+      headers: { "Content-Type": "application/json" }
     });
-    const data = await res.json();
-    if (data.ok) {
-      alert("✅ Datos guardados correctamente");
-    } else {
-      alert("❌ Error al guardar: " + data.error);
-    }
+    const result = await res.text();
+    alert("✅ Datos guardados correctamente");
   } catch (err) {
-    alert("❌ Error inesperado: " + err.message);
+    console.error("❌ Error al guardar:", err);
+    alert("❌ Error al guardar datos");
   }
 });
 
-// ✅ Verificar sesión activa
+// 🔐 Autenticación Firebase
 onAuthStateChanged(auth, (user) => {
   if (!user) window.location.href = "login.html";
 });
 
-// ✅ Al cargar
-document.addEventListener("DOMContentLoaded", () => {
-  cargarNumerosDeNegocio();
-});
+// 🚀 Inicialización
+document.addEventListener("DOMContentLoaded", cargarNumerosDeNegocio);
