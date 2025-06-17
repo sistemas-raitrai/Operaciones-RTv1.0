@@ -237,13 +237,8 @@ async function guardarDatos(continuar = true) {
 // ✅ Función para descargar LecturaBaseOperaciones como Excel
 function descargarLecturaExcel() {
   const fileId = "124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI";
-  const gid = "1332196755"; // ✅ GID correcto de la hoja 'LecturaBaseOperaciones'
-
-<<<<<<< HEAD
-  const url = https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&gid=${gid};
-=======
+  const gid = "1332196755"; // GID correspondiente a LecturaBaseOperaciones
   const url = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&gid=${gid}`;
->>>>>>> parent of 2022828 (Update datosGrupos.js)
   window.open(url, "_blank");
 }
 
@@ -288,11 +283,7 @@ async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
 
   try {
-<<<<<<< HEAD
-    const url = https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(numeroNegocio)};
-=======
     const url = `https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
->>>>>>> parent of 2022828 (Update datosGrupos.js)
     const resp = await fetch(url);
     const resultado = await resp.json();
 
