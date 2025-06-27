@@ -365,3 +365,20 @@ document.getElementById("numeroNegocio").addEventListener("keydown", (e) => {
   }
 });
 
+function cargarDatosDeOperaciones(numeroNegocio) {
+  // Aquí va tu lógica para leer si ese número ya existe en la base de operaciones
+  // Por ejemplo:
+  fetch("URL_DE_TU_BASE_OPERACIONES")
+    .then(res => res.json())
+    .then(datosOperaciones => {
+      const existe = datosOperaciones.some(d => String(d.numeroNegocio).trim() === String(numeroNegocio).trim());
+      const mensaje = existe
+        ? `✅ Ya existe en operaciones (Negocio ${numeroNegocio})`
+        : `⚠️ Aún no está registrado en operaciones`;
+
+      document.getElementById("mensajeExistencia").innerText = mensaje;
+    })
+    .catch(err => {
+      console.error("Error consultando operaciones:", err);
+    });
+}
