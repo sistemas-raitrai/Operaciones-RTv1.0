@@ -165,6 +165,7 @@ async function cargarNumeroNegocio() {
         document.getElementById("filaOperaciones").innerHTML = "";
       }
     });
+    
     inputNombre.addEventListener("change", () => {
       if (!cargaInicialHecha) {
         cargarDatosGrupo(inputNombre.value);
