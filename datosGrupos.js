@@ -1,123 +1,144 @@
-// ✅ Importaciones modernas para Firebase
+// ✅ 1) Importaciones modernas para Firebase
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 import { app } from "./firebase-init.js";
 const auth = getAuth(app);
 let cargaInicialHecha = false;
 
-// ✅ URL del script de Google Apps Script que entrega los datos desde la base de ventas
-const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
+// ✅ 2) URL del Apps Script que entrega los datos “ventas”
+const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
 
-// ✅ Mapeo entre campos del Google Sheet y los IDs de los inputs del HTML
+// ✅ 3) Endpoint Vercel para guardar en BaseOperaciones
+const guardarEndpoint = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
+
+// ✅ 4) URL del Apps Script doGet “Leer Operaciones”
+const operacionesURL = "https://script.google.com/macros/s/AKfycbw8rnoex-TfYk-RbRp2Cec77UK2kxuSET3wuEFkk9bQlfGivZQir1ChLT7x-umXFdIM/exec";
+
+// ✅ 5) Mapeo de campos del sheet a los IDs de los inputs en el HTML
 const campos = {
-  numeroNegocio: 'numeroNegocio',
-  nombreGrupo: 'nombreGrupo',
-  cantidadgrupo: 'cantidadgrupo',
-  colegio: 'colegio',
-  curso: 'curso',
-  anoViaje: 'anoViaje',
-  destino: 'destino',
-  programa: 'programa',
-  hotel: 'hotel',
-  asistenciaEnViajes: 'asistenciaEnViajes',
-  autorizacion: 'autorizacion',
-  fechaDeViaje: 'fechaDeViaje',
-  observaciones: 'observaciones',
-  fechaCreacion: 'fechaCreacion',
-  versionFicha: 'text1'
+  numeroNegocio:    "numeroNegocio",
+  nombreGrupo:      "nombreGrupo",
+  cantidadgrupo:    "cantidadgrupo",
+  colegio:          "colegio",
+  curso:            "curso",
+  anoViaje:         "anoViaje",
+  destino:          "destino",
+  programa:         "programa",
+  hotel:            "hotel",
+  asistenciaEnViajes:"asistenciaEnViajes",
+  autorizacion:     "autorizacion",
+  fechaDeViaje:     "fechaDeViaje",
+  observaciones:    "observaciones",
+  fechaCreacion:    "fechaCreacion",
+  versionFicha:     "text1"
 };
 
-// ─── 1) Carga y monta los datalists de número y nombre ───────────────────────
+// ─────────── 6) Cuando el DOM esté listo, inicia todo ─────────────────────
+document.addEventListener("DOMContentLoaded", () => {
+  // Forzar mayúsculas en todos los campos
+  Object.values(campos).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", e => e.target.value = e.target.value.toUpperCase());
+  });
+
+  // Carga inicial de datalists y listeners
+  cargarNumeroNegocio();
+
+  // Botón Exportar Excel
+  const btnExportar = document.getElementById("btnExportarExcel");
+  if (btnExportar) btnExportar.addEventListener("click", descargarLecturaExcel);
+
+  // Exponer globals para tus botones HTML
+  window.guardarDatos = guardarDatos;
+  window.guardarYContinuar = () => guardarDatos(false);
+  window.descargarLecturaExcel = descargarLecturaExcel;
+});
+
+// ─────────── 7) Carga y monta los datalists de número y nombre ───────────
 async function cargarNumeroNegocio() {
   try {
-    const res = await fetch(sheetURL);
+    const res   = await fetch(sheetURL);
     const datos = await res.json();
-    const listaNumero  = document.getElementById("negocioList");
-    const listaNombre  = document.getElementById("nombreList");
-    const inputNumero  = document.getElementById("numeroNegocio");
-    const inputNombre  = document.getElementById("nombreGrupo");
-    const filtroAno    = document.getElementById("filtroAno");
 
-    // 🔄 Obtener años únicos para el filtro
-    const anosUnicos = [...new Set(datos.map(f => f.anoViaje))].filter(Boolean).sort();
-    filtroAno.innerHTML = '';
-    anosUnicos.forEach(a => {
-      const opt = document.createElement("option");
-      opt.value = opt.textContent = a;
-      filtroAno.appendChild(opt);
-    });
+    const listaNumero = document.getElementById("negocioList");
+    const listaNombre = document.getElementById("nombreList");
+    const inputNumero = document.getElementById("numeroNegocio");
+    const inputNombre = document.getElementById("nombreGrupo");
+    const filtroAno   = document.getElementById("filtroAno");
 
-    // ✅ Seleccionar año actual
-    filtroAno.value = new Date().getFullYear();
-
-    // 🔁 Actualizar ambos datalists según año seleccionado
-    function actualizarListas() {
-      const anoSel = filtroAno.value;
-      listaNumero.innerHTML = listaNombre.innerHTML = '';
-      const datosFil = datos.filter(f => f.anoViaje == anoSel);
-
-      // → datalist númeroNegocio
-      datosFil
-        .sort((a,b) => Number(a.numeroNegocio)-Number(b.numeroNegocio))
-        .forEach(f => {
-          if (f.numeroNegocio) {
-            const o = document.createElement("option");
-            o.value = f.numeroNegocio;
-            listaNumero.appendChild(o);
-          }
-        });
-
-      // → datalist nombreGrupo
-      datosFil
-        .sort((a,b) => (a.nombreGrupo||'').localeCompare(b.nombreGrupo||''))
-        .forEach(f => {
-          if (f.nombreGrupo) {
-            const o = document.createElement("option");
-            o.value = f.nombreGrupo;
-            listaNombre.appendChild(o);
-          }
-        });
+    if (!listaNumero || !listaNombre || !inputNumero || !inputNombre || !filtroAno) {
+      console.error("Faltan elementos de datalist en el DOM");
+      return;
     }
 
-    // ─── 2) Al elegir un número o nombre, poblar el formulario ────────────────
+    // 7.1) Población inicial del filtro de año
+    const anosUnicos = [...new Set(datos.map(r => r.anoViaje))].filter(Boolean).sort();
+    filtroAno.innerHTML = anosUnicos.map(a => `<option value="${a}">${a}</option>`).join("");
+    filtroAno.value = new Date().getFullYear();
+
+    // 7.2) Función que repuebla los datalists según año
+    function actualizarListas() {
+      const año = filtroAno.value;
+      const filtrados = datos.filter(r => r.anoViaje == año);
+
+      listaNumero.innerHTML = filtrados
+        .sort((a,b) => Number(a.numeroNegocio) - Number(b.numeroNegocio))
+        .map(r => `<option value="${r.numeroNegocio}">`)
+        .join("");
+
+      listaNombre.innerHTML = filtrados
+        .sort((a,b) => (a.nombreGrupo||"").localeCompare(b.nombreGrupo||""))
+        .map(r => `<option value="${r.nombreGrupo}">`)
+        .join("");
+    }
+
+    // 7.3) Al seleccionar un número o nombre, carga el formulario
     function cargarDatosGrupo(valor) {
       const fila = datos.find(r =>
-        String(r.numeroNegocio).trim() === String(valor).trim() ||
-        String(r.nombreGrupo).trim()    === String(valor).trim()
+        String(r.numeroNegocio).trim() === valor.trim() ||
+        String(r.nombreGrupo).trim()    === valor.trim()
       );
       if (!fila) {
-        console.warn("⚠️ Grupo no hallado:", valor);
-        // Limpiar campos
-        Object.values(campos).forEach(id => document.getElementById(id).value = '');
+        console.warn("⚠️ Grupo no encontrado:", valor);
+        // Limpia todos los inputs
+        Object.values(campos).forEach(id => {
+          const inp = document.getElementById(id);
+          if (inp) inp.value = "";
+        });
         return;
       }
 
-      // 2.1) Rellenar cada input con su valor
+      // Rellenar cada input con su valor
       Object.entries(campos).forEach(([campo, id]) => {
-        const input = document.getElementById(id);
-        let val = fila[campo] ?? '';
-        // Quitar HTML si lo hay
+        const inp = document.getElementById(id);
+        if (!inp) return;
+        let val = fila[campo] ?? "";
+
+        // Si es campo de HTML, extrae solo texto
         if (["autorizacion","fechaDeViaje","observaciones"].includes(campo)) {
           const tmp = document.createElement("div");
           tmp.innerHTML = val;
-          val = tmp.textContent;
+          val = tmp.textContent || "";
         }
+
         // Formatear fechaCreacion
-        if (campo==="fechaCreacion" && val) {
-          val = new Date(val).toLocaleString('es-CL', {
-            timeZone:'America/Santiago',
-            day:'2-digit',month:'2-digit',year:'numeric',
-            hour:'2-digit',minute:'2-digit'
+        if (campo === "fechaCreacion" && val) {
+          val = new Date(val).toLocaleString("es-CL", {
+            timeZone: "America/Santiago",
+            day: "2-digit", month: "2-digit", year: "numeric",
+            hour: "2-digit", minute: "2-digit"
           });
         }
-        input.value = String(val);
-        input.setAttribute("data-original", input.value);
+
+        inp.value = val;
+        inp.setAttribute("data-original", val);
       });
 
-      // 2.2) Y refrescar la tabla final con operaciones
+      // Finalmente, refresca la tabla de operaciones
       cargarDesdeOperaciones(fila.numeroNegocio);
     }
 
-    // ─── 3) Listeners en los inputs de número y nombre ─────────────────────────
+    // 7.4) Listeners en inputs y filtro
+    filtroAno.addEventListener("change", actualizarListas);
     inputNumero.addEventListener("change", () => {
       if (!cargaInicialHecha) {
         cargarDatosGrupo(inputNumero.value);
@@ -130,131 +151,113 @@ async function cargarNumeroNegocio() {
         cargaInicialHecha = true;
       }
     });
-    filtroAno.addEventListener("change", actualizarListas);
 
-    actualizarListas();  // Carga inicial
+    // Primera ejecución
+    actualizarListas();
+
   } catch (err) {
     console.error("❌ Error al cargar sheetURL:", err);
   }
 }
 
-// ─── 4) Guardar datos en BaseOperaciones y actualizar historial ─────────────
+// ─────────── 8) Guardar datos en BaseOperaciones y registrar historial ─────
 async function guardarDatos(continuar = true) {
-  const datosForm = {}, cambios = [];
+  const datosForm = {};
+  const cambios    = [];
+  const usuario    = auth.currentUser?.email || "Desconocido";
+
+  // Lee todos los inputs
   Object.entries(campos).forEach(([campo,id]) => {
-    const input = document.getElementById(id);
-    datosForm[campo] = campo==="numeroNegocio"
-      ? String(input.value).trim()
-      : input.value.trim();
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    const v = inp.value.trim();
+    datosForm[campo] = campo === "numeroNegocio" ? String(v) : v;
   });
-  const usuario = auth.currentUser?.email || "Desconocido";
   datosForm.modificadoPor = usuario;
 
-  // Fecha de creación si no existe
+  // Si no tiene fechaCreacion, la genera ahora
   if (!datosForm.fechaCreacion) {
-    const ahora = new Date().toLocaleString("es-CL", {
-      timeZone:"America/Santiago", day:"2-digit",month:"2-digit",year:"numeric",
-      hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false
+    datosForm.fechaCreacion = new Date().toLocaleString("es-CL", {
+      timeZone: "America/Santiago",
+      day:"2-digit", month:"2-digit", year:"numeric",
+      hour:"2-digit", minute:"2-digit", second:"2-digit"
     }).replace(",", " /");
-    datosForm.fechaCreacion = ahora;
-    datosForm.creadoPor    = usuario;
+    datosForm.creadoPor = usuario;
   }
 
-  // Detectar cambios
+  // Detecta cambios entre data-original y valor actual
   Object.entries(campos).forEach(([campo,id]) => {
-    const input = document.getElementById(id);
-    const nuevo = input.value.trim();
-    const anterior = input.getAttribute("data-original")||"";
-    if (nuevo !== anterior) {
-      cambios.push({campo,anterior,nuevo});
-    }
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    const nuevo    = inp.value.trim();
+    const original = inp.getAttribute("data-original") || "";
+    if (nuevo !== original) cambios.push({ campo, anterior: original, nuevo });
   });
 
-  const payload = { datos: datosForm, historial: cambios };
-  const endpoint = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
-
   try {
-    console.time("⏱ Guardar Sheets");
-    const res = await fetch(endpoint, {
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
+    console.time("⏱ Guardar Google Sheets");
+    const res = await fetch(guardarEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ datos: datosForm, historial: cambios })
     });
-    console.timeEnd("⏱ Guardar Sheets");
+    console.timeEnd("⏱ Guardar Google Sheets");
+
     if (res.ok) {
       alert("✅ Datos guardados.");
       cargarDesdeOperaciones(datosForm.numeroNegocio);
       if (!continuar) window.history.back();
     } else {
-      alert("⚠️ Falló guardar en Sheets.");
+      alert("⚠️ No se pudo guardar.");
     }
-  } catch(err) {
+  } catch (err) {
     console.error("❌ Error guardando:", err);
     alert("❌ No se pudo conectar.");
   }
 }
 
-// ─── 5) Descarga Excel de LecturaBaseOperaciones ─────────────────────────────
+// ─────────── 9) Descargar Excel de “LecturaBaseOperaciones” ───────────────
 function descargarLecturaExcel() {
   const fileId = "124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI";
   const gid    = "1332196755";
-  window.open(https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&gid=${gid}, "_blank");
+  window.open(
+    `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&gid=${gid}`,
+    "_blank"
+  );
 }
 
-// ─── 6) Al cargar el DOM: activar mayúsculas, listeners principales ─────────
-document.addEventListener("DOMContentLoaded", () => {
-  // Forzar mayúsculas
-  Object.values(campos).forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.addEventListener("input", e => e.target.value = e.target.value.toUpperCase());
-  });
-
-  // Iniciar carga de ventas
-  cargarNumeroNegocio();
-
-  // Botón Excel
-  const btn = document.getElementById("btnExportarExcel");
-  if (btn) btn.addEventListener("click", descargarLecturaExcel);
-});
-
-// Asociar globales para botones HTML
-window.guardarDatos         = guardarDatos;
-window.guardarYContinuar    = () => { guardarDatos(false); };
-window.descargarLecturaExcel = descargarLecturaExcel;
-
-// ─── 7) Función única para refrescar la tabla final (BaseOperaciones) ────────
+// ─────────── 10) Refrescar tabla “BaseOperaciones” según numeroNegocio ─────
 async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
   try {
-    const url = "https://script.google.com/macros/s/AKfycbzr12TXE8-lFd.../exec";
-    const resp = await fetch(url);
-    const { datos } = await resp.json();
+    const resp = await fetch(`${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`);
+    const { existe, valores } = await resp.json();
+
     const tbody = document.getElementById("tbodyTabla");
+    if (!tbody) return;
     tbody.innerHTML = "";
 
-    // Filtrar filas que coinciden exactamente
-    const filas = datos.filter(r => String(r.numeroNegocio).trim() === String(numeroNegocio).trim());
-    if (filas.length) {
-      filas.forEach(r => {
-        const tr = document.createElement("tr");
-        Object.keys(campos).forEach(c => {
-          const td = document.createElement("td");
-          td.textContent = r[c] || "";
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-    } else {
-      // Si no hay, crear fila vacía
+    if (existe) {
+      // Monta una sola fila con los 'valores' en orden de columnas
       const tr = document.createElement("tr");
-      for (let i=0; i<14; i++){
+      Object.keys(campos).forEach((c, i) => {
+        const td = document.createElement("td");
+        td.textContent = valores[i] || "";
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    } else {
+      // Si no existe, crea una fila vacía
+      const tr = document.createElement("tr");
+      Object.keys(campos).forEach(() => {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
         tr.appendChild(td);
-      }
+      });
       tbody.appendChild(tr);
     }
-  } catch(err) {
+
+  } catch (err) {
     console.error("❌ Error al consultar operaciones:", err);
   }
 }
