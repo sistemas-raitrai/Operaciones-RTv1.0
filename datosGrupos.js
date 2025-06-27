@@ -2,6 +2,7 @@
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 import { app } from "./firebase-init.js";
 const auth = getAuth(app);
+let cargaInicialHecha = false;
 
 // ✅ URL del script de Google Apps Script que entrega los datos desde la base de ventas
 const sheetURL = 'https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec';
@@ -138,8 +139,20 @@ async function cargarNumeroNegocio() {
       cargarDesdeOperaciones(fila.numeroNegocio);
     }
     // ✅ Vincular eventos a inputs
-    inputNumero.addEventListener("change", () => cargarDatosGrupo(inputNumero.value));
-    inputNombre.addEventListener("change", () => cargarDatosGrupo(inputNombre.value));
+    inputNumero.addEventListener("change", () => {
+      if (!cargaInicialHecha) {
+        cargarDatosGrupo(inputNumero.value);
+        cargaInicialHecha = true;
+      }
+    });
+    
+    inputNombre.addEventListener("change", () => {
+      if (!cargaInicialHecha) {
+        cargarDatosGrupo(inputNombre.value);
+        cargaInicialHecha = true;
+      }
+    });
+
     filtroAno.addEventListener("change", actualizarListas);
 
     actualizarListas(); // 🟢 Cargar listas al inicio
