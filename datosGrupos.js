@@ -11,7 +11,7 @@ const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9ND
 const guardarEndpoint = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
 
 // ✅ 4) URL del Apps Script doGet “Leer Operaciones”
-const operacionesURL = "https://script.google.com/macros/s/AKfycbw8rnoex-TfYk-RbRp2Cec77UK2kxuSET3wuEFkk9bQlfGivZQir1ChLT7x-umXFdIM/exec";
+const operacionesURL = "https://operaciones-rtv10.vercel.app/api/leer-operaciones";
 
 // ✅ 5) Mapeo de campos del sheet a los IDs de los inputs en el HTML
 const campos = {
@@ -230,31 +230,25 @@ function descargarLecturaExcel() {
 async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
   try {
-    // Llamo al proxy en Vercel en lugar de Google Scripts directo
-    const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Status ${resp.status}`);
+    const resp = await fetch(
+      `${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`
+    );
     const { existe, valores } = await resp.json();
-
-    // ¡OJO! Antes de nada asegúrate de apuntar al tbody de la tabla:
     const tbody = document.getElementById("tbodyTabla");
     tbody.innerHTML = "";
-
     if (existe) {
-      // convierto el array de valores en objeto campo→valor
-      const obj = Object.keys(campos).reduce((o, campo, i) => {
-        o[campo] = valores[i] || "";
+      const obj = Object.keys(campos).reduce((o, c, i) => {
+        o[c] = valores[i] || "";
         return o;
       }, {});
       const tr = document.createElement("tr");
-      Object.keys(campos).forEach(campo => {
+      Object.keys(campos).forEach(c => {
         const td = document.createElement("td");
-        td.textContent = obj[campo];
+        td.textContent = obj[c];
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
     } else {
-      // Si no hay datos, muestro una fila vacía
       const tr = document.createElement("tr");
       Object.keys(campos).forEach(() => {
         const td = document.createElement("td");
@@ -265,7 +259,7 @@ async function cargarDesdeOperaciones(numeroNegocio) {
     }
   } catch (e) {
     console.error("❌ Error al consultar operaciones:", e);
-    // Aquí podrías mostrar un mensaje de error en pantalla si quieres
   }
 }
+
 
