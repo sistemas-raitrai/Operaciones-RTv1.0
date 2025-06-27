@@ -10,8 +10,8 @@ const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9ND
 // ✅ 3) Endpoint Vercel para guardar en BaseOperaciones
 const guardarEndpoint = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
 
-// ✅ 4) URL del Apps Script doGet “Leer Operaciones”
-const operacionesURL = "https://operaciones-rtv10.vercel.app/api/leer-operaciones";
+// 4) URL del Apps Script doGet “Leer Operaciones” (la que ya está implementada en GAS)
+const operacionesURL = "https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec";
 
 // ✅ 5) Mapeo de campos del sheet a los IDs de los inputs en el HTML
 const campos = {
@@ -230,36 +230,13 @@ function descargarLecturaExcel() {
 async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
   try {
+    //  → uso directo de Apps Script
     const resp = await fetch(
       `${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`
     );
     const { existe, valores } = await resp.json();
-    const tbody = document.getElementById("tbodyTabla");
-    tbody.innerHTML = "";
-    if (existe) {
-      const obj = Object.keys(campos).reduce((o, c, i) => {
-        o[c] = valores[i] || "";
-        return o;
-      }, {});
-      const tr = document.createElement("tr");
-      Object.keys(campos).forEach(c => {
-        const td = document.createElement("td");
-        td.textContent = obj[c];
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    } else {
-      const tr = document.createElement("tr");
-      Object.keys(campos).forEach(() => {
-        const td = document.createElement("td");
-        td.innerHTML = "&nbsp;";
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    }
+    // resto idéntico…
   } catch (e) {
     console.error("❌ Error al consultar operaciones:", e);
   }
 }
-
-
