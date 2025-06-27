@@ -224,9 +224,9 @@ window.descargarLecturaExcel = descargarLecturaExcel;
 async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
   try {
-    const resp = await fetch('https://script.google.com/macros/s/…/exec');
+    const url = 'https://script.google.com/macros/s/AKfycbw8rnoex-TfYk-RbRp2Cec77UK2kxuSET3wuEFkk9bQlfGivZQir1ChLT7x-umXFdIM/exec';
+    const resp = await fetch(`${url}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`);
     const { datos } = await resp.json();
-    const tbody = document.getElementById("tbodyTabla");
     tbody.innerHTML = "";
 
     // Filtrar filas exactas por númeroNegocio
