@@ -226,28 +226,35 @@ function descargarLecturaExcel() {
   );
 }
 
-// ─────────── 10) Refrescar tabla “BaseOperaciones” según numeroNegocio ─────
+// 10) Refrescar tabla “BaseOperaciones” según numeroNegocio
 async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
   try {
-    const resp = await fetch(`${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`);
+    // Llamo al proxy en Vercel en lugar de Google Scripts directo
+    const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`Status ${resp.status}`);
     const { existe, valores } = await resp.json();
 
+    // ¡OJO! Antes de nada asegúrate de apuntar al tbody de la tabla:
     const tbody = document.getElementById("tbodyTabla");
-    if (!tbody) return;
     tbody.innerHTML = "";
 
     if (existe) {
-      // Monta una sola fila con los 'valores' en orden de columnas
+      // convierto el array de valores en objeto campo→valor
+      const obj = Object.keys(campos).reduce((o, campo, i) => {
+        o[campo] = valores[i] || "";
+        return o;
+      }, {});
       const tr = document.createElement("tr");
-      Object.keys(campos).forEach((c, i) => {
+      Object.keys(campos).forEach(campo => {
         const td = document.createElement("td");
-        td.textContent = valores[i] || "";
+        td.textContent = obj[campo];
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
     } else {
-      // Si no existe, crea una fila vacía
+      // Si no hay datos, muestro una fila vacía
       const tr = document.createElement("tr");
       Object.keys(campos).forEach(() => {
         const td = document.createElement("td");
@@ -256,8 +263,9 @@ async function cargarDesdeOperaciones(numeroNegocio) {
       });
       tbody.appendChild(tr);
     }
-
-  } catch (err) {
-    console.error("❌ Error al consultar operaciones:", err);
+  } catch (e) {
+    console.error("❌ Error al consultar operaciones:", e);
+    // Aquí podrías mostrar un mensaje de error en pantalla si quieres
   }
 }
+
