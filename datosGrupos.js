@@ -91,36 +91,43 @@ async function cargarNumeroNegocio() {
         .join("");
     }
 
-    // 7.3) Al seleccionar un número o nombre, carga el formulario
+    // 7.3) Al seleccionar un número o nombre, carga el formulario (y siempre refresca operaciones)
     function cargarDatosGrupo(valor) {
+      // 7.3.1) Buscamos en la “base de ventas” si existe ese valor (nº de negocio o nombre)
       const fila = datos.find(r =>
         String(r.numeroNegocio).trim() === valor.trim() ||
         String(r.nombreGrupo).trim()    === valor.trim()
       );
+    
       if (!fila) {
-        console.warn("⚠️ Grupo no encontrado:", valor);
-        // Limpia todos los inputs
+        console.warn("⚠️ Grupo no encontrado en Ventas:", valor);
+    
+        // 7.3.2) Limpiamos todos los inputs del formulario
         Object.values(campos).forEach(id => {
           const inp = document.getElementById(id);
           if (inp) inp.value = "";
         });
+    
+        // 7.3.3) Aunque no exista en Ventas, seguimos cargando la tabla de Operaciones
+        //    para mostrar datos históricos de ese número de negocio
+        cargarDesdeOperaciones(valor);
         return;
       }
-
-      // Rellenar cada input con su valor
+    
+      // 7.3.4) Si sí existe en Ventas, rellenamos cada input con sus datos
       Object.entries(campos).forEach(([campo, id]) => {
         const inp = document.getElementById(id);
         if (!inp) return;
         let val = fila[campo] ?? "";
-
-        // Si es campo de HTML, extrae solo texto
+    
+        // — Si el campo trae HTML, extraemos solo texto
         if (["autorizacion","fechaDeViaje","observaciones"].includes(campo)) {
           const tmp = document.createElement("div");
           tmp.innerHTML = val;
           val = tmp.textContent || "";
         }
-
-        // Formatear fechaCreacion
+    
+        // — Formateamos la fecha de creación a locale 'es-CL'
         if (campo === "fechaCreacion" && val) {
           val = new Date(val).toLocaleString("es-CL", {
             timeZone: "America/Santiago",
@@ -128,14 +135,15 @@ async function cargarNumeroNegocio() {
             hour: "2-digit", minute: "2-digit"
           });
         }
-
+    
         inp.value = val;
         inp.setAttribute("data-original", val);
       });
-
-      // Finalmente, refresca la tabla de operaciones
+    
+      // 7.3.5) Finalmente: refrescamos la tabla de Operaciones para ese número
       cargarDesdeOperaciones(fila.numeroNegocio);
     }
+
 
     // 7.4) Listeners en inputs y filtro
     filtroAno.addEventListener("change", actualizarListas);
