@@ -231,41 +231,28 @@ async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
 
   try {
-    // 10.1) Montas la URL con querystring
-    const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
-
-    // 10.2) Haces fetch y validas el status
+    const url = https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(numeroNegocio)};
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Status ${resp.status}`);
+    const resultado = await resp.json();
 
-    // 10.3) Parseas JSON
-    const { existe, valores } = await resp.json();
+    const fila = document.getElementById("filaOperaciones");
+    fila.innerHTML = ""; // limpia la fila
 
-    // 10.4) Seleccionas el tbody de tu tabla y limpias
-    const tbody = document.getElementById("tbodyTabla");
-    tbody.innerHTML = "";
-
-    if (existe) {
-      // valores es un array con las 14 columnas
-      const tr = document.createElement("tr");
-      valores.forEach(v => {
+    if (resultado.existe && Array.isArray(resultado.valores)) {
+      resultado.valores.forEach(valor => {
         const td = document.createElement("td");
-        td.textContent = v || "";
-        tr.appendChild(td);
+        td.textContent = valor || "";
+        fila.appendChild(td);
       });
-      tbody.appendChild(tr);
     } else {
-      // Si no existe, insertas una fila vacía de 14 celdas
-      const tr = document.createElement("tr");
       for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
-        tr.appendChild(td);
+        fila.appendChild(td);
       }
-      tbody.appendChild(tr);
     }
 
-  } catch (e) {
-    console.error("❌ Error al consultar operaciones:", e);
+  } catch (error) {
+    console.error("❌ Error al consultar LecturaBaseOperaciones:", error);
   }
 }
