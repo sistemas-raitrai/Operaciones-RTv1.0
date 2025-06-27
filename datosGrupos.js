@@ -153,6 +153,18 @@ async function cargarNumeroNegocio() {
         cargaInicialHecha = true;
       }
     });
+
+    // ← Listener para que, cada vez que cambie el valor (aunque no dispare 'change'), actualice la tabla:
+    inputNumero.addEventListener("input", () => {
+      const val = inputNumero.value.trim();
+      if (val) {
+        // siempre refresca operaciones con el valor actual
+        cargarDesdeOperaciones(val);
+      } else {
+        // si borran todo, limpiamos la tabla
+        document.getElementById("filaOperaciones").innerHTML = "";
+      }
+    });
     inputNombre.addEventListener("change", () => {
       if (!cargaInicialHecha) {
         cargarDatosGrupo(inputNombre.value);
