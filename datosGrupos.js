@@ -296,25 +296,47 @@ async function cargarDesdeOperaciones(numeroNegocio) {
   if (!numeroNegocio) return;
 
   try {
-    const url = `https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
+    const url = `https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec`;
     const resp = await fetch(url);
     const resultado = await resp.json();
 
-    const fila = document.getElementById("filaOperaciones");
-    fila.innerHTML = ""; // limpia la fila
+    const cuerpoTabla = document.getElementById("tbodyTabla");
+    cuerpoTabla.innerHTML = ""; // Limpia la tabla completa
 
-    if (resultado.existe && Array.isArray(resultado.valores)) {
-      resultado.valores.forEach(valor => {
-        const td = document.createElement("td");
-        td.textContent = valor || "";
-        fila.appendChild(td);
-      });
-    } else {
-      for (let i = 0; i < 14; i++) {
-        const td = document.createElement("td");
-        td.innerHTML = "&nbsp;";
-        fila.appendChild(td);
+    if (Array.isArray(resultado.datos)) {
+      const coincidencias = resultado.datos.filter(row =>
+        row.numeroNegocio?.includes(numeroNegocio)
+      );
+
+      if (coincidencias.length > 0) {
+        coincidencias.forEach(row => {
+          const tr = document.createElement("tr");
+          const columnas = [
+            "numeroNegocio", "nombreGrupo", "cantidadgrupo", "colegio", "curso",
+            "anoViaje", "destino", "programa", "hotel", "asistenciaEnViajes",
+            "autorizacion", "fechaDeViaje", "observaciones", "versionFicha"
+          ];
+
+          columnas.forEach(col => {
+            const td = document.createElement("td");
+            td.textContent = row[col] || "";
+            tr.appendChild(td);
+          });
+
+          cuerpoTabla.appendChild(tr);
+        });
+      } else {
+        const tr = document.createElement("tr");
+        for (let i = 0; i < 14; i++) {
+          const td = document.createElement("td");
+          td.innerHTML = "&nbsp;";
+          tr.appendChild(td);
+        }
+        cuerpoTabla.appendChild(tr);
       }
+
+    } else {
+      console.warn("⚠️ Respuesta inesperada del servidor:", resultado);
     }
 
   } catch (error) {
