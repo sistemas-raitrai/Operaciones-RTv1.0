@@ -103,6 +103,9 @@ async function cargarNumeroNegocio() {
         return;
       }
 
+      // ✅ Agrega esta línea justo aquí
+      cargarDatosDeOperaciones(fila.numeroNegocio);
+      
       for (const campo in campos) {
         const id = campos[campo];
         const input = document.getElementById(id);
@@ -343,3 +346,22 @@ async function cargarDesdeOperaciones(numeroNegocio) {
     console.error("❌ Error al consultar LecturaBaseOperaciones:", error);
   }
 }
+
+// Detectar cuando cambia manualmente el valor del input
+document.getElementById("numeroNegocio").addEventListener("change", () => {
+  const numero = document.getElementById("numeroNegocio").value.trim();
+  if (numero !== "") {
+    cargarDatosDeOperaciones(numero);
+  }
+});
+
+// Detectar cuando presiona Enter en el campo
+document.getElementById("numeroNegocio").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const numero = document.getElementById("numeroNegocio").value.trim();
+    if (numero !== "") {
+      cargarDatosDeOperaciones(numero);
+    }
+  }
+});
+
