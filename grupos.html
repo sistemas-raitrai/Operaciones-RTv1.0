@@ -3,33 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <title>Visualización de Grupos | RT v1.0</title>
-  <!-- DataTables CSS -->
+  <!-- 1) Estilos de DataTables -->
   <link
     rel="stylesheet"
     href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
   >
-  <!-- Tu CSS global -->
+  <!-- 2) Tu CSS global -->
   <link rel="stylesheet" href="estilos.css">
   <style>
-    #tablaGrupos { width:100% !important; background:white; border-collapse:collapse; }
-    .dataTables_filter { display:none; }
-    #buscador { margin-bottom:1rem; }
+    /* 3) Ajustes específicos de esta página */
+    #tablaGrupos {
+      width: 100% !important;
+      background: white;
+      border-collapse: collapse;
+    }
+    .dataTables_filter { display: none; }
+    #buscador { margin-bottom: 1rem; }
   </style>
 </head>
 <body>
 
-  <!-- Inyectamos el header -->
+  <!-- 4) Punto de montaje del encabezado reutilizable -->
   <div id="encabezado"></div>
 
   <main class="main">
-    <!-- Buscador global -->
+    <!-- 5) Buscador global -->
     <div class="row">
       <div class="column long">
         <label for="buscador">Buscar en cualquier columna</label>
-        <input type="text" id="buscador" placeholder="Palabra clave…">
+        <input type="text" id="buscador" placeholder="Palabra clave…" />
       </div>
     </div>
-    <!-- Filtros -->
+
+    <!-- 6) Filtros por Destino y Año -->
     <div class="row">
       <div class="column short">
         <label for="filtroDestino">Destino</label>
@@ -40,7 +46,8 @@
         <select id="filtroAno"><option value="">Todos</option></select>
       </div>
     </div>
-    <!-- Tabla -->
+
+    <!-- 7) Tabla vacía, que llenaremos con JS -->
     <div class="row">
       <table id="tablaGrupos" class="display">
         <thead>
@@ -60,7 +67,7 @@
     </div>
   </main>
 
-  <!-- 1️⃣ Inyecto encabezado -->
+  <!-- 8) Inyecto el encabezado (header) -->
   <script type="module">
     (async () => {
       const res = await fetch("encabezado.html");
@@ -68,16 +75,16 @@
     })();
   </script>
 
-  <!-- 2️⃣ Firebase/Auth init -->
+  <!-- 9) Inicialización de Firebase/Auth (sin depender del DOM) -->
   <script type="module" src="firebase-init.js" defer></script>
-  <!-- 3️⃣ Script global (reloj, logout, usuario) -->
+  <!-- 10) Script global (reloj, logout, mostrar usuario) -->
   <script type="module" src="script.js" defer></script>
 
-  <!-- 4️⃣ Librerías externas SIN defer -->
+  <!-- 11) Librerías clásicas SIN defer para garantizar que existan antes del módulo -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 
-  <!-- 5️⃣ Lógica de tabla -->
+  <!-- 12) Lógica de la tabla (module, sin defer) -->
   <script type="module">
     import { app } from './firebase-init.js';
     import { getAuth, onAuthStateChanged, signOut }
@@ -85,65 +92,82 @@
 
     const auth = getAuth(app);
 
-    // Solo arrancamos cuando jQuery y DOM listo
+    // 12.1) Espera a que jQuery y el DOM estén listos
     $(function() {
-      // Logout
+      // Conecta el botón logout del encabezado
       $('#btn-logout').click(() =>
         signOut(auth).then(() => location = 'login.html')
       );
-      // Tras autenticación, cargo la tabla
+      // Tras autenticación, carga la tabla
       onAuthStateChanged(auth, user => {
-        if (!user) return location = 'login.html';
-        cargarYMostrarTabla();
+        if (!user) {
+          location = 'login.html';
+        } else {
+          cargarYMostrarTabla();
+        }
       });
     });
 
-    // 🔑 Nombres de campo en el orden de las columnas
-    const campos = [
-      'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
-      'destino','programa','hotel','asistenciaEnViajes','autorizacion',
-      'fechaDeViaje','observaciones','versionFicha','creadoPor','fechaCreacion',
-      'fechaInicio','fechaFin','adultos','estudiantes','transporte',
-      'ciudades','hoteles','tramos','obsLogistica'
-    ];
-
+    /**
+     * 12.2) Obtiene y pinta todos los registros de Operaciones
+     */
     async function cargarYMostrarTabla() {
       console.log('▶ fetch de datos…');
+      // 12.2.1) Llama al endpoint Apps Script que devuelve todas las filas
       const res = await fetch(
         'https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte2a6aFtVDguFGsiL0aaG6Tupn8B807oovR34S0YbR9I9mz0/exec'
       );
-      if (!res.ok) return console.error('Fetch falló', res.status);
-      const json    = await res.json();
-      console.log('▶ Datos:', json);
-      const valores = json.valores || [];
+      if (!res.ok) {
+        console.error('Fetch falló', res.status);
+        return;
+      }
 
-      // Lleno el tbody
+      // 12.2.2) Parsea el JSON
+      const json = await res.json();
+      console.log('▶ Datos recibidos:', json);
+      const valores = Array.isArray(json.valores) ? json.valores : [];
+
+      // 12.2.3) Vacia y rellena el <tbody> directamente con cada celda
       const $tb = $('#tablaGrupos tbody').empty();
-      valores.forEach(r => {
+      valores.forEach(filaArray => {
         const $tr = $('<tr>');
-        campos.forEach(c => $tr.append($('<td>').text(r[c] || '')));
+        filaArray.forEach(celda => {
+          $tr.append($('<td>').text(celda ?? ''));
+        });
         $tb.append($tr);
       });
 
-      // Inicializo DataTable y guardo la instancia
+      // 12.2.4) Inicializa DataTable y guarda la instancia
       const tabla = $('#tablaGrupos').DataTable({
-        language: { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+        language: {
+          url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+        },
         dom: 'lrtip',
         pageLength: 10,
-        order: [[5,'desc']]
+        order: [[5, 'desc']]
       });
 
-      // Buscador y filtros ahora pueden usar esa instancia
-      $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
+      // 12.2.5) Conecta el buscador global
+      $('#buscador').on('input', () =>
+        tabla.search($('#buscador').val()).draw()
+      );
 
-      const uniq = arr => [...new Set(arr.filter(x=>x))].sort();
-      uniq(valores.map(r=>r.destino))
-        .forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
-      uniq(valores.map(r=>r.anoViaje))
-        .forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
+      // 12.2.6) Genera las opciones de filtro a partir de los datos
+      const uniq = arr => [...new Set(arr.filter(x => x))].sort();
+      uniq(valores.map(r => r[6])).forEach(destino =>
+        $('#filtroDestino').append(`<option>${destino}</option>`)
+      );
+      uniq(valores.map(r => r[5])).forEach(ano =>
+        $('#filtroAno').append(`<option>${ano}</option>`)
+      );
 
-      $('#filtroDestino').on('change', () => tabla.column(6).search($('#filtroDestino').val()).draw());
-      $('#filtroAno').on('change',    () => tabla.column(5).search($('#filtroAno').val()).draw());
+      // 12.2.7) Conecta los filtros por columna
+      $('#filtroDestino').on('change', () =>
+        tabla.column(6).search($('#filtroDestino').val()).draw()
+      );
+      $('#filtroAno').on('change', () =>
+        tabla.column(5).search($('#filtroAno').val()).draw()
+      );
     }
   </script>
 </body>
