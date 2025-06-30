@@ -120,3 +120,32 @@ a {
   cursor: pointer;
   color: black; /* ← Cambia aquí el color */
 }
+
+/* Barra de búsqueda y filtros */
+.filter-bar {
+  background-color: #0c2a64;      /* Azul oscuro */
+  color: #e0e0e0;                /* Gris claro para el texto */
+  padding: 1rem;
+}
+.filter-bar label {
+  color: #e0e0e0;
+}
+.filter-bar input,
+.filter-bar select {
+  background-color: #f6f6f6;     /* Gris claro para inputs */
+  color: #000;
+  border: 1px solid #ddd;
+}
+.filter-bar input::placeholder {
+  color: #666;
+}
+
+/* Encabezados de tabla en gris claro */
+#tablaGrupos thead th {
+  background-color: #f6f6f6;
+  color: #000;
+}
+/* Filas alternas un poco más claras */
+#tablaGrupos tbody tr:nth-child(even) {
+  background-color: #fafafa;
+}
