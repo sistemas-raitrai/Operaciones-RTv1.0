@@ -128,48 +128,25 @@
     </table>
   </div>
 
-  <!-- 🔌 Firebase y lógica de autenticación -->
-  <script type="module" src="firebase-init.js"></script>
-  <script type="module">
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-    import { app } from "./firebase-init.js";
+  <!-- ─────────── Scripts (orden correcto) ─────────── -->
 
-    const auth = getAuth(app);
+  <!-- 1️⃣ script.js: global (reloj, logout, mostrar usuario) -->
+  <script type="module" src="/script.js" defer></script>
 
-    onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        window.location.href = "login.html";
-      } else {
-        document.querySelector(".username").textContent = user.email;
-      }
-    });
-  </script>
-  
-    <!-- 🧩 Cargar encabezado externo y luego script general -->
-<script type="module">
-  fetch("encabezado.html")
-    .then(res => res.text())
-    .then(html => {
+  <!-- 2️⃣ Inicialización de Firebase y Auth -->
+  <script type="module" src="firebase-init.js" defer></script>
+
+  <!-- 3️⃣ Lógica de datosGrupos: datalists, formulario y tabla -->
+  <script type="module" src="datosGrupos.js" defer></script>
+
+  <!-- 4️⃣ Carga del encabezado (fetch + montaje de menú, auth en encabezado, etc.) -->
+  <script type="module" defer>
+    (async () => {
+      const res = await fetch("encabezado.html");
+      const html = await res.text();
       document.getElementById("encabezado").innerHTML = html;
-
-      // 1️⃣ Primero carga tu script global (autenticación, reloj, logout…)
-      try {
-        await import("/script.js");
-        console.log("✅ script.js cargado");
-      } catch (e) {
-        console.error("❌ No pude cargar script.js", e);
-        return;
-      }
-
-      // 2️⃣ Luego carga datosGrupos.js (que monta los datalists y la tabla)
-      try {
-        await import("./datosGrupos.js");
-        console.log("✅ datosGrupos.js cargado");
-      } catch (e) {
-        console.error("❌ No pude cargar datosGrupos.js", e);
-      }
-    });
-</script>
+    })();
+  </script>
   
 </body>
 </html>
