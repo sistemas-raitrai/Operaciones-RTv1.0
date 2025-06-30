@@ -272,15 +272,9 @@ async function cargarDesdeOperaciones(busqueda) {
     tbody.innerHTML = "";
 
     if (existe && Array.isArray(valores)) {
-      // 10.3) valores es un array de arrays; filtramos por includes()
-      //     (asumiendo que tu GAS entrega TODOS y luego acá aplicamos includes)
-      const resultados = valores.filter(row =>
-        String(row[0]).trim().includes(busqueda)
-      );
-      console.log("  rows filtrados:", resultados.length);
-
-      if (resultados.length) {
-        resultados.forEach(row => {
+      // Recorremos TODOS los rows, y sólo añadimos los que incluyan la búsqueda:
+      valores.forEach(row => {
+        if (String(row[0]).trim().includes(busqueda)) {
           const tr = document.createElement("tr");
           row.forEach(celda => {
             const td = document.createElement("td");
@@ -288,21 +282,24 @@ async function cargarDesdeOperaciones(busqueda) {
             tr.appendChild(td);
           });
           tbody.appendChild(tr);
-        });
-      } else {
-        // 10.4) Si no hay ningún match parcial, mostramos fila vacía
+        }
+      });
+    
+      // Si no pintamos ninguna fila, mostramos una vacía
+      if (!tbody.children.length) {
         const tr = document.createElement("tr");
-        for (let i = 0; i < valores[0].length; i++) {
+        const cols = valores[0]?.length || 14;
+        for (let i = 0; i < cols; i++) {
           const td = document.createElement("td");
           td.innerHTML = "&nbsp;";
           tr.appendChild(td);
         }
         tbody.appendChild(tr);
       }
+
     } else {
-      // 10.5) Si el endpoint responde existe=false, limpiamos o mostramos fila vacía
+      // (Opcional) si `existe` es false, también mostramos fila vacía
       const tr = document.createElement("tr");
-      // Asumimos 14 columnas
       for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
