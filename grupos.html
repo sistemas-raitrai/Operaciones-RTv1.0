@@ -8,27 +8,15 @@
     rel="stylesheet"
     href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
   >
-  <!-- Tu CSS global -->
+  <!-- Tu CSS global (ahora en la raíz) -->
   <link rel="stylesheet" href="estilos.css">
   <style>
-    /* Ajuste para que la tabla ocupe todo el ancho */
-    #tablaGrupos {
-      width: 100% !important;
-      background: white;
-      border-collapse: collapse;
-    }
-    /* Quitar el buscador por defecto de DataTables */
-    .dataTables_filter {
-      display: none;
-    }
-    /* Pequeños ajustes al input */
-    #buscador {
-      margin-bottom: 1rem;
-    }
+    #tablaGrupos { width:100% !important; background:white; border-collapse:collapse; }
+    .dataTables_filter { display:none; }
+    #buscador { margin-bottom:1rem; }
   </style>
 </head>
 <body>
-  <!-- === Header con tu clase === -->
   <div class="header">
     <div class="row">
       <div class="column short">
@@ -51,15 +39,9 @@
     <div class="row">
       <div class="column long">
         <label for="buscador">Buscar en cualquier columna</label>
-        <input
-          type="text"
-          id="buscador"
-          placeholder="Palabra clave…"
-        >
+        <input type="text" id="buscador" placeholder="Palabra clave…">
       </div>
     </div>
-
-    <!-- Filtros por columna -->
     <div class="row">
       <div class="column short">
         <label for="filtroDestino">Destino</label>
@@ -70,8 +52,6 @@
         <select id="filtroAno"><option value="">Todos</option></select>
       </div>
     </div>
-
-    <!-- Tabla DataTables -->
     <div class="row">
       <table id="tablaGrupos" class="display">
         <thead>
@@ -91,60 +71,26 @@
     </div>
   </main>
 
-  <!-- jQuery + DataTables JS -->
+  <!-- JS -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script
-    src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"
-  ></script>
-
-  <!-- Firebase init + lógica de auth + DataTables (módulo ES) -->
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script type="module">
-    // Importas la inicialización y funciones de tu archivo
     import { app } from './firebase-init.js';
-    import {
-      getAuth,
-      onAuthStateChanged,
-      signOut
-    } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-
+    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
     const auth = getAuth(app);
 
-    // Logout al botón
     document.getElementById('btn-logout')
-      .addEventListener('click', async () => {
-        await signOut(auth);
-        window.location = 'login.html';
-      });
+      .addEventListener('click', () => signOut(auth).then(() => window.location='login.html'));
 
-    // Campos que devuelve tu Web App
-    const campos = [
-      'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
-      'destino','programa','hotel','asistenciaEnViajes','autorizacion',
-      'fechaDeViaje','observaciones','versionFicha','creadoPor','fechaCreacion',
-      'fechaInicio','fechaFin','adultos','estudiantes','transporte',
-      'ciudades','hoteles','tramos','observacionesLogisticas'
-    ];
+    const campos = [ /* tu array de campos */ ];
 
-    // Función principal para levantar la tabla
-    async function init() {
-      // 1) Espera usuario
-      onAuthStateChanged(auth, user => {
-        if (!user) {
-          return window.location = 'login.html';
-        }
-        document.getElementById('usuario-conectado').textContent =
-          'Usuario conectado: ' + (user.email || user.displayName);
-        // 2) Trae datos y renderiza
-        cargarYMostrarTabla();
-      });
-    }
-
-    // Trae JSON y monta DataTable
     async function cargarYMostrarTabla() {
-      const res  = await fetch('https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec');
-      const { valores } = await res.json();
+      const res = await fetch('https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec');
+      if (!res.ok) return console.error('Fetch error:', res.statusText);
+      const json = await res.json();
+      console.log('JSON recibido:', json);
+      const valores = json.valores || [];
 
-      // 3) Render tabla
       const $tb = $('#tablaGrupos tbody').empty();
       valores.forEach(r => {
         const $tr = $('<tr>');
@@ -152,32 +98,24 @@
         $tb.append($tr);
       });
 
-      // 4) Inicializa DataTable
       const tabla = $('#tablaGrupos').DataTable({
-        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-        dom: 'lrtip',
-        pageLength: 10,
-        order: [[5, 'desc']]
+        language: { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+        dom:'lrtip', pageLength:10, order:[[5,'desc']]
       });
+      $('#buscador').on('input', ()=> tabla.search($('#buscador').val()).draw());
 
-      // Buscador global
-      $('#buscador').on('input', function() {
-        tabla.search(this.value).draw();
-      });
-
-      // Filtros
       const uniq = arr => [...new Set(arr.filter(x=>x))].sort();
-      uniq(valores.map(r=>r.destino))
-        .forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
-      uniq(valores.map(r=>r.anoViaje))
-        .forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
-
-      $('#filtroDestino').on('change', ()=> tabla.column(6).search($('#filtroDestino').val()).draw());
-      $('#filtroAno').on('change',    ()=> tabla.column(5).search($('#filtroAno').val()).draw());
+      uniq(valores.map(r=>r.destino)).forEach(d=>$('#filtroDestino').append(`<option>${d}</option>`));
+      uniq(valores.map(r=>r.anoViaje)).forEach(a=>$('#filtroAno').append(`<option>${a}</option>`));
+      $('#filtroDestino').on('change',()=>tabla.column(6).search($('#filtroDestino').val()).draw());
+      $('#filtroAno').on('change',   ()=>tabla.column(5).search($('#filtroAno').val()).draw());
     }
 
-    // Arranca todo
-    init();
+    onAuthStateChanged(auth, user => {
+      if (!user) return window.location='login.html';
+      document.getElementById('usuario-conectado').textContent = 'Usuario conectado: '+(user.email||user.displayName);
+      cargarYMostrarTabla();
+    });
   </script>
 </body>
 </html>
