@@ -60,62 +60,61 @@
     </div>
   </main>
 
-  <!-- 1️⃣ Inyectar el header compartido -->
-  <script type="module" defer>
+    <!-- 1️⃣ Inyectar el header compartido -->
+  <script type="module">
     (async () => {
       const res  = await fetch("encabezado.html");
-      const html = await res.text();
-      document.getElementById("encabezado").innerHTML = html;
+      document.getElementById("encabezado").innerHTML = await res.text();
     })();
   </script>
 
-  <!-- 2️⃣ Inicialización de Firebase/Auth (sin DOM) -->
+  <!-- 2️⃣ Firebase/Auth init (sin DOM) -->
   <script type="module" src="firebase-init.js" defer></script>
 
   <!-- 3️⃣ Script global (reloj, logout, mostrar usuario) -->
   <script type="module" src="script.js" defer></script>
 
-  <!-- 4️⃣ Librerías externas -->
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js" defer></script>
-  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js" defer></script>
+  <!-- 4️⃣ Librerías externas SIN defer -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 
-  <!-- 5️⃣ Tu lógica original para cargar y mostrar la tabla -->
-  <script type="module" defer>
+  <!-- 5️⃣ Tu lógica para cargar y mostrar la tabla (SIN defer) -->
+  <script type="module">
     import { app } from './firebase-init.js';
-    import { getAuth, onAuthStateChanged, signOut } from 
-      "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+    import { getAuth, onAuthStateChanged, signOut }
+      from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
     const auth = getAuth(app);
 
-    // Botón logout que ya tenías
-    document.addEventListener('DOMContentLoaded', () => {
-      document.getElementById('btn-logout')?.addEventListener('click', () => {
-        signOut(auth).then(() => window.location='login.html');
+    // Ejecuta cuando jQuery esté listo
+    $(function() {
+      // Logout
+      $('#btn-logout').click(() =>
+        signOut(auth).then(() => location = 'login.html')
+      );
+
+      // Carga la tabla tras autenticación
+      onAuthStateChanged(auth, user => {
+        if (!user) return location = 'login.html';
+        cargarYMostrarTabla();
       });
     });
 
-    // Aquí tu array de campos
-    const campos = [
-      'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
-      'destino','programa','hotel','asistenciaEnViajes','autorizacion',
-      'fechaDeViaje','observaciones','versionFicha','creadoPor','fechaCreacion',
-      'fechaInicio','fechaFin','adultos','estudiantes','transporte',
-      'ciudades','hoteles','tramos','obsLogistica'
-    ];
+    const campos = [ /* tu array de campos */ ];
 
     async function cargarYMostrarTabla() {
-      const res = await fetch(
-        'https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec'
-      );
-      if (!res.ok) return console.error('Fetch error:', res.statusText);
+      console.log('▶ fetch de datos…');
+      const res = await fetch('https://script.google.com/macros/s/.../exec');
+      if (!res.ok) return console.error('Fetch falló', res.status);
       const json    = await res.json();
+      console.log('▶ Datos:', json);
       const valores = json.valores || [];
 
       // Poblamos la tabla
       const $tb = $('#tablaGrupos tbody').empty();
       valores.forEach(r => {
         const $tr = $('<tr>');
-        campos.forEach(c => $tr.append($('<td>').text(r[c]||'')));
+        campos.forEach(c => $tr.append($('<td>').text(r[c] || '')));
         $tb.append($tr);
       });
 
@@ -125,25 +124,14 @@
         dom:'lrtip', pageLength:10, order:[[5,'desc']]
       });
 
-      // Buscador
+      // Buscador y filtros
       $('#buscador').on('input', ()=> tabla.search($('#buscador').val()).draw());
-
-      // Filtros
       const uniq = arr => [...new Set(arr.filter(x=>x))].sort();
-      uniq(valores.map(r=>r.destino))
-        .forEach(d=>$('#filtroDestino').append(`<option>${d}</option>`));
-      uniq(valores.map(r=>r.anoViaje))
-        .forEach(a=>$('#filtroAno').append(`<option>${a}</option>`));
+      uniq(valores.map(r=>r.destino)).forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
+      uniq(valores.map(r=>r.anoViaje)).forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
       $('#filtroDestino').on('change', ()=> tabla.column(6).search($('#filtroDestino').val()).draw());
       $('#filtroAno').on('change',    ()=> tabla.column(5).search($('#filtroAno').val()).draw());
     }
-
-    // Sólo arrancamos cuando haya sesión activa
-    onAuthStateChanged(auth, user => {
-      if (!user) return window.location='login.html';
-      // El fragmento script.js ya habrá puesto el email en #usuario-conectado
-      cargarYMostrarTabla();
-    });
   </script>
 </body>
 </html>
