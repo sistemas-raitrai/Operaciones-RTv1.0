@@ -43,7 +43,7 @@
       <a href="index.html" class="boton-cerrar">🏠</a>
       <button onclick="location.reload()">🔄</button>
       <button onclick="history.back()">⬅️</button>
-      <button class="boton-cerrar" onclick="logout()">⏏️</button>
+      <button class="boton-cerrar" id="btn-logout">⏏️</button>
     </div>
   </div>
 
@@ -91,42 +91,31 @@
     </div>
   </main>
 
-  <!-- Firebase + tu lógica de auth -->
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
-  <script>
-    // Inicializa Firebase
-    const firebaseConfig = {
-      apiKey: "TU_API_KEY",
-      authDomain: "TU_AUTH_DOMAIN",
-      projectId: "TU_PROJECT_ID",
-      // … completa con tu configuración
-    };
-    firebase.initializeApp(firebaseConfig);
-
-    // Función de logout
-    function logout() {
-      firebase.auth().signOut().then(() => {
-        window.location = 'login.html';
-      });
-    }
-
-    // Muestra el usuario o redirige si no hay
-    firebase.auth().onAuthStateChanged(u => {
-      if (!u) return window.location = 'login.html';
-      document.getElementById('usuario-conectado').textContent =
-        'Usuario conectado: ' + (u.email || u.displayName);
-    });
-  </script>
-
   <!-- jQuery + DataTables JS -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script
     src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"
   ></script>
 
-  <!-- Lógica de datos y DataTables -->
-  <script>
+  <!-- Firebase init + lógica de auth + DataTables (módulo ES) -->
+  <script type="module">
+    // Importas la inicialización y funciones de tu archivo
+    import { app } from './firebase-init.js';
+    import {
+      getAuth,
+      onAuthStateChanged,
+      signOut
+    } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+
+    const auth = getAuth(app);
+
+    // Logout al botón
+    document.getElementById('btn-logout')
+      .addEventListener('click', async () => {
+        await signOut(auth);
+        window.location = 'login.html';
+      });
+
     // Campos que devuelve tu Web App
     const campos = [
       'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
@@ -136,59 +125,59 @@
       'ciudades','hoteles','tramos','observacionesLogisticas'
     ];
 
-    function initDataTablesGrupos() {
-      fetch('https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec')
-        .then(res => res.json())
-        .then(json => {
-          const datos = json.valores || [];
-          renderizarTabla(datos);
-          inicializarFiltros(datos);
-        })
-        .catch(console.error);
+    // Función principal para levantar la tabla
+    async function init() {
+      // 1) Espera usuario
+      onAuthStateChanged(auth, user => {
+        if (!user) {
+          return window.location = 'login.html';
+        }
+        document.getElementById('usuario-conectado').textContent =
+          'Usuario conectado: ' + (user.email || user.displayName);
+        // 2) Trae datos y renderiza
+        cargarYMostrarTabla();
+      });
     }
 
-    function renderizarTabla(datos) {
+    // Trae JSON y monta DataTable
+    async function cargarYMostrarTabla() {
+      const res  = await fetch('https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec');
+      const { valores } = await res.json();
+
+      // 3) Render tabla
       const $tb = $('#tablaGrupos tbody').empty();
-      datos.forEach(r => {
+      valores.forEach(r => {
         const $tr = $('<tr>');
-        campos.forEach(c => $tr.append($('<td>').text(r[c] || '')));
+        campos.forEach(c => $tr.append($('<td>').text(r[c]||'')));
         $tb.append($tr);
       });
 
-      window.tabla = $('#tablaGrupos').DataTable({
+      // 4) Inicializa DataTable
+      const tabla = $('#tablaGrupos').DataTable({
         language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
         dom: 'lrtip',
         pageLength: 10,
         order: [[5, 'desc']]
       });
 
+      // Buscador global
       $('#buscador').on('input', function() {
         tabla.search(this.value).draw();
       });
-    }
 
-    function inicializarFiltros(datos) {
+      // Filtros
       const uniq = arr => [...new Set(arr.filter(x=>x))].sort();
-
-      uniq(datos.map(r=>r.destino))
+      uniq(valores.map(r=>r.destino))
         .forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
-      uniq(datos.map(r=>r.anoViaje))
+      uniq(valores.map(r=>r.anoViaje))
         .forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
 
-      $('#filtroDestino').on('change', function() {
-        tabla.column(6).search(this.value).draw();
-      });
-      $('#filtroAno').on('change', function() {
-        tabla.column(5).search(this.value).draw();
-      });
+      $('#filtroDestino').on('change', ()=> tabla.column(6).search($('#filtroDestino').val()).draw());
+      $('#filtroAno').on('change',    ()=> tabla.column(5).search($('#filtroAno').val()).draw());
     }
 
-    // Arranca tras cargar la página y confirmar auth
-    window.addEventListener('load', () => {
-      firebase.auth().onAuthStateChanged(u => {
-        if (u) initDataTablesGrupos();
-      });
-    });
+    // Arranca todo
+    init();
   </script>
 </body>
 </html>
