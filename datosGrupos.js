@@ -243,93 +243,60 @@ function descargarLecturaExcel() {
   );
 }
 
-/**
- * 10) Refrescar tabla “BaseOperaciones” según numeroNegocio.
- *    Ahora filtrando correctamente dependiendo de si recibes
- *    un array de arrays (tu Apps Script) o de objetos (API).
- */
 async function cargarDesdeOperaciones(busqueda) {
   console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
+  const tbody = document.getElementById("tbodyTabla");
+  tbody.innerHTML = "";
 
-  if (!busqueda) {
-    document.getElementById("tbodyTabla").innerHTML = "";
-    return;
-  }
+  if (!busqueda) return; // sin búsqueda, ya lo limpiamos arriba
 
   try {
     const url  = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
+    console.log("  ↳ fetch a URL:", url);
     const resp = await fetch(url);
+    console.log("  ↳ status:", resp.status);
     if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
 
     const { existe, valores } = await resp.json();
-    console.log("↳ existe:", existe, "| filas en valores:", valores?.length);
+    console.log("  ↳ existe:", existe, "| filas:", valores?.length);
 
-    const tbody = document.getElementById("tbodyTabla");
-    tbody.innerHTML = "";
+    if (existe && Array.isArray(valores) && valores.length) {
+      // Pintamos **todas** las filas que recibimos:
+      valores.forEach(row => {
+        const tr = document.createElement("tr");
 
-    if (existe && Array.isArray(valores)) {
-      const primeraFila = valores[0];
-
-      if (Array.isArray(primeraFila)) {
-        // → Es array de arrays: filtramos y pintamos según row[0]
-        const filtrados = valores.filter(row =>
-          String(row[0]).trim().includes(busqueda)
-        );
-        filtrados.forEach(row => {
-          const tr = document.createElement("tr");
+        // Si es array de arrays:
+        if (Array.isArray(row)) {
           row.forEach(celda => {
             const td = document.createElement("td");
             td.textContent = celda ?? "";
             tr.appendChild(td);
           });
-          tbody.appendChild(tr);
-        });
 
-      } else {
-        // → Es array de objetos: filtramos y pintamos según obj.numeroNegocio
-        const filtrados = valores.filter(obj =>
-          String(obj.numeroNegocio).trim().includes(busqueda)
-        );
-        filtrados.forEach(obj => {
-          const tr = document.createElement("tr");
-          // En el mismo orden que tus <th> en el HTML:
+        // Si es array de objetos:
+        } else {
+          // asegúrate de respetar el orden de tus <th> en el HTML
           [
-            obj.numeroNegocio, obj.nombreGrupo, obj.pax,
-            obj.colegio, obj.curso, obj.anoViaje,
-            obj.destino, obj.programa, obj.hotel,
-            obj.asistenciaEnViajes, obj.autorizacion,
-            obj.fechaDeViaje, obj.observaciones, obj.versionFicha
+            row.numeroNegocio, row.nombreGrupo, row.pax,
+            row.colegio, row.curso, row.anoViaje,
+            row.destino, row.programa, row.hotel,
+            row.asistenciaEnViajes, row.autorizacion,
+            row.fechaDeViaje, row.observaciones, row.versionFicha
           ].forEach(valor => {
             const td = document.createElement("td");
             td.textContent = valor ?? "";
             tr.appendChild(td);
           });
-          tbody.appendChild(tr);
-        });
-      }
-
-      // Si tras el filtrado no pintamos nada, metemos fila vacía:
-      if (!tbody.children.length) {
-        console.warn("⚠️ No coincidencias, añado fila vacía");
-        const tr = document.createElement("tr");
-        const cols = primeraFila
-          ? (Array.isArray(primeraFila)
-              ? primeraFila.length
-              : Object.keys(primeraFila).length)
-          : 14;
-        for (let i = 0; i < cols; i++) {
-          const td = document.createElement("td");
-          td.innerHTML = "&nbsp;";
-          tr.appendChild(td);
         }
+
         tbody.appendChild(tr);
-      }
+      });
 
     } else {
-      // existe=false → fila vacía
-      console.warn("⚠️ existe=false, añado fila vacía");
+      // Si no vino nada o existe=false, una fila vacía
       const tr = document.createElement("tr");
-      for (let i = 0; i < 14; i++) {
+      const cols = 14;
+      for (let i = 0; i < cols; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
         tr.appendChild(td);
@@ -341,4 +308,3 @@ async function cargarDesdeOperaciones(busqueda) {
     console.error("❌ Error al consultar Operaciones:", e);
   }
 }
-
