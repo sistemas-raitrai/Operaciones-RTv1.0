@@ -97,8 +97,10 @@
   <script>
     // Inicializa Firebase
     const firebaseConfig = {
-      apiKey: "...", authDomain: "...", // completa con tu configuración
-      projectId: "...", // etc
+      apiKey: "TU_API_KEY",
+      authDomain: "TU_AUTH_DOMAIN",
+      projectId: "TU_PROJECT_ID",
+      // … completa con tu configuración
     };
     firebase.initializeApp(firebaseConfig);
 
@@ -135,8 +137,8 @@
     ];
 
     function initDataTablesGrupos() {
-      fetch('https://script.google.com/macros/s/TU_ID/exec')
-        .then(r => r.json())
+      fetch('https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec')
+        .then(res => res.json())
         .then(json => {
           const datos = json.valores || [];
           renderizarTabla(datos);
