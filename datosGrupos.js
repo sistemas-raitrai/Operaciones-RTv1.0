@@ -247,76 +247,35 @@ function descargarLecturaExcel() {
   );
 }
 
-/**
- * 10) Refrescar tabla “BaseOperaciones” según numeroNegocio.
- *    Ahora filtrando con includes() para incluir todos los grupos que
- *    contengan el texto ingresado, y refrescando en cada cambio input.
- */
-async function cargarDesdeOperaciones(busqueda) {
-  if (!busqueda) {
-    // Si está vacío, limpiamos la tabla y salimos
-    document.getElementById("tbodyTabla").innerHTML = "";
-    return;
-  }
+// 10) Refrescar tabla “BaseOperaciones” según numeroNegocio
+async function cargarDesdeOperaciones(numeroNegocio) {
+  if (!numeroNegocio) return;
 
   try {
-    // 10.1) Montamos la URL con querystring (igual que antes)
-    const url = `https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(busqueda)}`;
+    // ✅ Pon la URL entre backticks para que funcione la interpolación:
+    const url = https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(numeroNegocio)};
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
+    const resultado = await resp.json();
 
-    // 10.2) Parseamos JSON
-    const { existe, valores } = await resp.json();
+    const fila = document.getElementById("filaOperaciones");
+    fila.innerHTML = ""; // limpia la fila
 
-    const tbody = document.getElementById("tbodyTabla");
-    tbody.innerHTML = "";
-
-    if (existe && Array.isArray(valores)) {
-      // 10.3) valores es un array de arrays; filtramos por includes()
-      //     (asumiendo que tu GAS entrega TODOS y luego acá aplicamos includes)
-      const resultados = valores.filter(row =>
-        String(row[0]).trim().includes(busqueda)
-      );
-
-      if (resultados.length) {
-        resultados.forEach(row => {
-          const tr = document.createElement("tr");
-          row.forEach(celda => {
-            const td = document.createElement("td");
-            td.textContent = celda || "";
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        });
-      } else {
-        // 10.4) Si no hay ningún match parcial, mostramos fila vacía
-        const tr = document.createElement("tr");
-        for (let i = 0; i < valores[0].length; i++) {
-          const td = document.createElement("td");
-          td.innerHTML = "&nbsp;";
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
+    if (resultado.existe && Array.isArray(resultado.valores)) {
+      resultado.valores.forEach(valor => {
+        const td = document.createElement("td");
+        td.textContent = valor || "";
+        fila.appendChild(td);
+      });
     } else {
-      // 10.5) Si el endpoint responde existe=false, limpiamos o mostramos fila vacía
-      const tr = document.createElement("tr");
-      // Asumimos 14 columnas
       for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
-        tr.appendChild(td);
+        fila.appendChild(td);
       }
-      tbody.appendChild(tr);
     }
 
-  } catch (e) {
-    console.error("❌ Error al consultar Operaciones:", e);
+  } catch (error) {
+    console.error("❌ Error al consultar LecturaBaseOperaciones:", error);
   }
 }
-
-// Y asegúrate de llamar a cargarDesdeOperaciones() tanto en change como en input:
-const inputNeg = document.getElementById("numeroNegocio");
-inputNeg.addEventListener("change", () => cargarDatosGrupo(inputNeg.value));
-inputNeg.addEventListener("input", () => cargarDesdeOperaciones(inputNeg.value));
 
