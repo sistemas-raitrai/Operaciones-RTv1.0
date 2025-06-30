@@ -11,90 +11,85 @@
   <!-- Tu CSS global -->
   <link rel="stylesheet" href="css/estilos.css">
   <style>
-    /* Ajustes rápidos para el buscador encima */
+    /* Ajuste para que la tabla ocupe todo el ancho */
+    #tablaGrupos {
+      width: 100% !important;
+      background: white;
+      border-collapse: collapse;
+    }
+    /* Quitar el buscador por defecto de DataTables */
+    .dataTables_filter {
+      display: none;
+    }
+    /* Pequeños ajustes al input */
     #buscador {
       margin-bottom: 1rem;
-      padding: .5rem;
-      width: 100%;
-      max-width: 400px;
-      font-size: 1rem;
-    }
-    .filtro-col {
-      width: 100%;
-      padding: .25rem;
     }
   </style>
 </head>
 <body>
-  <!-- === Header replicado === -->
-  <header>
-    <div class="logo"> <!-- tu logo --> </div>
-    <div class="titulo">SISTEMA DE OPERACIONES RT v1.0</div>
-    <div class="usuario">Usuario conectado: <!-- nombre --> </div>
-    <nav>
-      <a href="index.html">🏠</a>
-      <a href="#" onclick="location.reload()">🔄</a>
-      <a href="javascript:history.back()">⬅️</a>
-      <a href="logout">⏏️</a>
-    </nav>
-  </header>
+  <!-- === Header con tu clase === -->
+  <div class="header">
+    <div class="row">
+      <div class="column short">
+        <img src="logo.png" alt="Logo Rai Trai" style="height:40px;">
+      </div>
+      <div class="column medium">
+        <h2>SISTEMA DE OPERACIONES RT v1.0</h2>
+        <p>Usuario conectado: <!-- nombre dinámico --></p>
+      </div>
+    </div>
+    <div class="row">
+      <a href="index.html" class="boton-cerrar">🏠</a>
+      <button onclick="location.reload()">🔄</button>
+      <button onclick="history.back()">⬅️</button>
+      <button class="boton-cerrar">⏏️</button>
+    </div>
+  </div>
 
-  <main>
-    <h1>Visualización de Grupos</h1>
+  <main class="main">
+    <div class="row">
+      <div class="column long">
+        <label for="buscador">Buscar en cualquier columna</label>
+        <input
+          type="text"
+          id="buscador"
+          placeholder="Palabra clave…"
+        >
+      </div>
+    </div>
 
-    <!-- Buscador global -->
-    <input
-      type="text"
-      id="buscador"
-      placeholder="Buscar en cualquier columna…"
-    >
-
-    <!-- Aquí opcionales selects para filtrar por columna -->
-    <div id="filtros" style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
-      <select id="filtroDestino" class="filtro-col">
-        <option value="">Todos los destinos</option>
-      </select>
-      <select id="filtroAno" class="filtro-col">
-        <option value="">Todos los años</option>
-      </select>
-      <!-- añade más selects si quieres -->
+    <!-- Filtros por columna -->
+    <div class="row">
+      <div class="column short">
+        <label for="filtroDestino">Destino</label>
+        <select id="filtroDestino"></select>
+      </div>
+      <div class="column short">
+        <label for="filtroAno">Año de Viaje</label>
+        <select id="filtroAno"></select>
+      </div>
+      <!-- añade más selects en columnas si lo necesitas -->
     </div>
 
     <!-- Tabla DataTables -->
-    <table id="tablaGrupos" class="display" style="width:100%">
-      <thead>
-        <tr>
-          <th>Num Negocio</th>
-          <th>Grupo</th>
-          <th>Pax Total</th>
-          <th>Colegio</th>
-          <th>Curso</th>
-          <th>Año Viaje</th>
-          <th>Destino</th>
-          <th>Programa</th>
-          <th>Hotel</th>
-          <th>Asist. Viajes</th>
-          <th>Autorización</th>
-          <th>Fecha Viaje</th>
-          <th>Obs.</th>
-          <th>Versión</th>
-          <th>Creado Por</th>
-          <th>Fecha Creación</th>
-          <th>Inicio</th>
-          <th>Fin</th>
-          <th>Adultos</th>
-          <th>Estudiantes</th>
-          <th>Transporte</th>
-          <th>Ciudades</th>
-          <th>Hoteles</th>
-          <th>Tramos</th>
-          <th>Obs. Logíst.</th>
-        </tr>
-      </thead>
-      <tbody>
-        <!-- se llena dinámicamente -->
-      </tbody>
-    </table>
+    <div class="row">
+      <table id="tablaGrupos" class="display">
+        <thead>
+          <tr>
+            <th>Num Negocio</th><th>Grupo</th><th>Pax Total</th>
+            <th>Colegio</th><th>Curso</th><th>Año</th><th>Destino</th>
+            <th>Programa</th><th>Hotel</th><th>Asist. Viajes</th>
+            <th>Autoriz.</th><th>Fecha Viaje</th><th>Obs.</th>
+            <th>Versión</th><th>Creado Por</th><th>F. Creación</th>
+            <th>Inicio</th><th>Fin</th><th>Adultos</th><th>Estudiantes</th>
+            <th>Transporte</th><th>Ciudades</th><th>Hoteles</th>
+            <th>Tramos</th><th>Obs. Logist.</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </main>
 
   <!-- jQuery + DataTables JS -->
@@ -104,70 +99,5 @@
   ></script>
   <script>
     let tabla;
-
-    // Campos a usar
     const campos = [
-      'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
-      'destino','programa','hotel','asistenciaEnViajes','autorizacion',
-      'fechaDeViaje','observaciones','versionFicha','creadoPor','fechaCreacion',
-      'fechaInicio','fechaFin','adultos','estudiantes','transporte',
-      'ciudades','hoteles','tramos','observacionesLogisticas'
-    ];
-
-    // 1. Traer datos de tu Google Script
-    fetch('https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec')
-      .then(res => res.json())
-      .then(json => {
-        const datos = json.valores; // asume un array de objetos
-        poblarTabla(datos);
-        poblarFiltros(datos);
-      })
-      .catch(err => console.error(err));
-
-    function poblarTabla(datos) {
-      const $tbody = $('#tablaGrupos tbody');
-      datos.forEach(row => {
-        const $tr = $('<tr>');
-        campos.forEach(c => {
-          $tr.append( $('<td>').text(row[c] ?? '') );
-        });
-        $tbody.append($tr);
-      });
-
-      // 2. Inicializar DataTable
-      tabla = $('#tablaGrupos').DataTable({
-        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-        dom: 'lrtip',             // l = length, r = processing, t = table, i = info, p = paging. Quitamos la búsqueda por defecto ('f')
-        pageLength: 10,
-        order: [[5, 'desc']],     // orden por añoViaje descendente
-      });
-
-      // 3. Buscador global personalizado
-      $('#buscador').on('input', function() {
-        tabla.search(this.value).draw();
-      });
-    }
-
-    function poblarFiltros(datos) {
-      // ejemplo: únicos destinos y años
-      const destinos = [...new Set(datos.map(r => r.destino))].sort();
-      destinos.forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
-
-      const anos = [...new Set(datos.map(r => r.anoViaje))].sort();
-      anos.forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
-
-      // listeners de filtros por columna
-      $('#filtroDestino').on('change', function() {
-        tabla.column(6)  // la columna destino es índice 6 (0-based)
-             .search(this.value)
-             .draw();
-      });
-      $('#filtroAno').on('change', function() {
-        tabla.column(5)  // añoViaje es columna 5
-             .search(this.value)
-             .draw();
-      });
-    }
-  </script>
-</body>
-</html>
+      'numeroNegocio','nombreGrupo','cantidadgr
