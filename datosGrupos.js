@@ -249,6 +249,7 @@ function descargarLecturaExcel() {
  *    contengan el texto ingresado, y refrescando en cada cambio input.
  */
 async function cargarDesdeOperaciones(busqueda) {
+  console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
   if (!busqueda) {
     // Si está vacío, limpiamos la tabla y salimos
     document.getElementById("tbodyTabla").innerHTML = "";
@@ -258,11 +259,14 @@ async function cargarDesdeOperaciones(busqueda) {
   try {
     // 10.1) Montamos la URL con querystring (igual que antes)
     const url = `https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(busqueda)}`;
+    console.log("  fetch a:", url);
     const resp = await fetch(url);
+    console.log("  status fetch:", resp.status);
     if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
 
     // 10.2) Parseamos JSON
     const { existe, valores } = await resp.json();
+    console.log("  respuesta JSON:", { existe, valores });
 
     const tbody = document.getElementById("tbodyTabla");
     tbody.innerHTML = "";
@@ -273,6 +277,7 @@ async function cargarDesdeOperaciones(busqueda) {
       const resultados = valores.filter(row =>
         String(row[0]).trim().includes(busqueda)
       );
+      console.log("  rows filtrados:", resultados.length);
 
       if (resultados.length) {
         resultados.forEach(row => {
