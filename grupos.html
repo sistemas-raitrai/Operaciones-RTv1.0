@@ -8,32 +8,19 @@
     rel="stylesheet"
     href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
   >
-  <!-- Tu CSS global (ahora en la raíz) -->
+  <!-- Tu CSS global -->
   <link rel="stylesheet" href="estilos.css">
   <style>
+    /* Ajustes específicos de esta página */
     #tablaGrupos { width:100% !important; background:white; border-collapse:collapse; }
     .dataTables_filter { display:none; }
     #buscador { margin-bottom:1rem; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <div class="row">
-      <div class="column short">
-        <img src="Logo Raitrai.png" alt="Logo Rai Trai" style="height:40px;">
-      </div>
-      <div class="column medium">
-        <h2>SISTEMA DE OPERACIONES RT v1.0</h2>
-        <p id="usuario-conectado">Usuario conectado: …</p>
-      </div>
-    </div>
-    <div class="row">
-      <a href="index.html" class="boton-cerrar">🏠</a>
-      <button onclick="location.reload()">🔄</button>
-      <button onclick="history.back()">⬅️</button>
-      <button class="boton-cerrar" id="btn-logout">⏏️</button>
-    </div>
-  </div>
+
+  <!-- 0️⃣ Punto de montaje del encabezado reutilizable -->
+  <div id="encabezado"></div>
 
   <main class="main">
     <div class="row">
@@ -42,6 +29,7 @@
         <input type="text" id="buscador" placeholder="Palabra clave…">
       </div>
     </div>
+
     <div class="row">
       <div class="column short">
         <label for="filtroDestino">Destino</label>
@@ -52,6 +40,7 @@
         <select id="filtroAno"><option value="">Todos</option></select>
       </div>
     </div>
+
     <div class="row">
       <table id="tablaGrupos" class="display">
         <thead>
@@ -71,26 +60,58 @@
     </div>
   </main>
 
-  <!-- JS -->
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-  <script type="module">
+  <!-- 1️⃣ Inyectar el header compartido -->
+  <script type="module" defer>
+    (async () => {
+      const res  = await fetch("encabezado.html");
+      const html = await res.text();
+      document.getElementById("encabezado").innerHTML = html;
+    })();
+  </script>
+
+  <!-- 2️⃣ Inicialización de Firebase/Auth (sin DOM) -->
+  <script type="module" src="firebase-init.js" defer></script>
+
+  <!-- 3️⃣ Script global (reloj, logout, mostrar usuario) -->
+  <script type="module" src="script.js" defer></script>
+
+  <!-- 4️⃣ Librerías externas -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js" defer></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js" defer></script>
+
+  <!-- 5️⃣ Tu lógica original para cargar y mostrar la tabla -->
+  <script type="module" defer>
     import { app } from './firebase-init.js';
-    import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+    import { getAuth, onAuthStateChanged, signOut } from 
+      "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+
     const auth = getAuth(app);
 
-    document.getElementById('btn-logout')
-      .addEventListener('click', () => signOut(auth).then(() => window.location='login.html'));
+    // Botón logout que ya tenías
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('btn-logout')?.addEventListener('click', () => {
+        signOut(auth).then(() => window.location='login.html');
+      });
+    });
 
-    const campos = [ /* tu array de campos */ ];
+    // Aquí tu array de campos
+    const campos = [
+      'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
+      'destino','programa','hotel','asistenciaEnViajes','autorizacion',
+      'fechaDeViaje','observaciones','versionFicha','creadoPor','fechaCreacion',
+      'fechaInicio','fechaFin','adultos','estudiantes','transporte',
+      'ciudades','hoteles','tramos','obsLogistica'
+    ];
 
     async function cargarYMostrarTabla() {
-      const res = await fetch('https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec');
+      const res = await fetch(
+        'https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec'
+      );
       if (!res.ok) return console.error('Fetch error:', res.statusText);
-      const json = await res.json();
-      console.log('JSON recibido:', json);
+      const json    = await res.json();
       const valores = json.valores || [];
 
+      // Poblamos la tabla
       const $tb = $('#tablaGrupos tbody').empty();
       valores.forEach(r => {
         const $tr = $('<tr>');
@@ -98,22 +119,29 @@
         $tb.append($tr);
       });
 
+      // Inicializamos DataTable
       const tabla = $('#tablaGrupos').DataTable({
         language: { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
         dom:'lrtip', pageLength:10, order:[[5,'desc']]
       });
+
+      // Buscador
       $('#buscador').on('input', ()=> tabla.search($('#buscador').val()).draw());
 
+      // Filtros
       const uniq = arr => [...new Set(arr.filter(x=>x))].sort();
-      uniq(valores.map(r=>r.destino)).forEach(d=>$('#filtroDestino').append(`<option>${d}</option>`));
-      uniq(valores.map(r=>r.anoViaje)).forEach(a=>$('#filtroAno').append(`<option>${a}</option>`));
-      $('#filtroDestino').on('change',()=>tabla.column(6).search($('#filtroDestino').val()).draw());
-      $('#filtroAno').on('change',   ()=>tabla.column(5).search($('#filtroAno').val()).draw());
+      uniq(valores.map(r=>r.destino))
+        .forEach(d=>$('#filtroDestino').append(`<option>${d}</option>`));
+      uniq(valores.map(r=>r.anoViaje))
+        .forEach(a=>$('#filtroAno').append(`<option>${a}</option>`));
+      $('#filtroDestino').on('change', ()=> tabla.column(6).search($('#filtroDestino').val()).draw());
+      $('#filtroAno').on('change',    ()=> tabla.column(5).search($('#filtroAno').val()).draw());
     }
 
+    // Sólo arrancamos cuando haya sesión activa
     onAuthStateChanged(auth, user => {
       if (!user) return window.location='login.html';
-      document.getElementById('usuario-conectado').textContent = 'Usuario conectado: '+(user.email||user.displayName);
+      // El fragmento script.js ya habrá puesto el email en #usuario-conectado
       cargarYMostrarTabla();
     });
   </script>
