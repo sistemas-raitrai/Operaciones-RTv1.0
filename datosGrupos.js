@@ -262,11 +262,7 @@ async function cargarDesdeOperaciones(busqueda) {
     console.log("  ↳ fetch a URL:", url);
     const resp = await fetch(url);
     console.log("  ↳ estado de respuesta:", resp.status);
-
-    if (!resp.ok) {
-      console.error("  ↳ ERROR: fetch no OK", resp.status);
-      throw new Error(`Fetch falló con status ${resp.status}`);
-    }
+    if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
 
     const json = await resp.json();
     console.log("  ↳ JSON completo recibido:", json);
@@ -278,24 +274,29 @@ async function cargarDesdeOperaciones(busqueda) {
     tbody.innerHTML = "";
 
     if (existe && Array.isArray(valores)) {
-      // ─── PINTAR TODAS LAS FILAS ───────────────────────
-      valores.forEach((row, idx) => {
-        console.log(`    ↳ pintando fila ${idx}:`, row);
+      // 10.1) Filtrar objetos por numeroNegocio
+      const filtrados = valores.filter(obj =>
+        String(obj.numeroNegocio).trim().includes(busqueda)
+      );
+      console.log("  ↳ filas tras filtrar (objetos):", filtrados.length);
+
+      // 10.2) Pintar cada objeto
+      filtrados.forEach((obj, idx) => {
+        console.log(`    ↳ pintando objeto[${idx}]:`, obj);
         const tr = document.createElement("tr");
-        row.forEach((celda, cidx) => {
+        Object.values(obj).forEach((celda, colIdx) => {
           const td = document.createElement("td");
           td.textContent = celda ?? "";
           tr.appendChild(td);
         });
         tbody.appendChild(tr);
       });
-      // ──────────────────────────────────────────────────
 
-      // Si no pintó nada:
+      // 10.3) Si no pintó nada, meto fila vacía
       if (!tbody.children.length) {
         console.warn("    ⚠️ no se pintó ninguna fila, añado fila vacía");
         const tr = document.createElement("tr");
-        const cols = valores[0]?.length || 14;
+        const cols = Object.keys(valores[0] || {}).length || 14;
         for (let i = 0; i < cols; i++) {
           const td = document.createElement("td");
           td.innerHTML = "&nbsp;";
@@ -307,7 +308,8 @@ async function cargarDesdeOperaciones(busqueda) {
     } else {
       console.warn("  ↳ existe=false o valores no es array, añado fila vacía");
       const tr = document.createElement("tr");
-      for (let i = 0; i < 14; i++) {
+      const cols = Object.keys(valores[0] || {}).length || 14;
+      for (let i = 0; i < cols; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
         tr.appendChild(td);
@@ -319,6 +321,3 @@ async function cargarDesdeOperaciones(busqueda) {
     console.error("❌ Error al consultar Operaciones:", e);
   }
 }
-
-
-
