@@ -159,7 +159,7 @@
       document.getElementById("encabezado").innerHTML = html;
 
       // ✅ Carga script.js una vez que el encabezado ya fue inyectado
-      import("/Operaciones-RTv1.0/script.js")
+      import("/script.js")
         .then(() => console.log("✅ script.js cargado"))
         .catch(err => console.error("❌ Error al cargar script.js", err));
     });
