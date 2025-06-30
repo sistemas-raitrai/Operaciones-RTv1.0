@@ -245,30 +245,36 @@ function descargarLecturaExcel() {
 
 /**
  * 10) Refrescar tabla “BaseOperaciones” según numeroNegocio.
- *    Simple: tu Apps Script devuelve { existe, valores: Array<Array> }.
+ *    Normaliza `valores` a Array<Array>, aunque el GAS devuelva un Array plano.
  */
 async function cargarDesdeOperaciones(numeroNegocio) {
   const tbody = document.getElementById("tbodyTabla");
-  tbody.innerHTML = "";                         // 1) Limpio la tabla
+  tbody.innerHTML = "";                         // 1) limpio la tabla
 
-  if (!numeroNegocio) return;                   // 2) Si no hay búsqueda, salgo
+  if (!numeroNegocio) return;                   // 2) si no hay búsqueda, salgo
 
-  // 3) Montar URL con parámetro
   const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
   console.log("→ fetch a:", url);
 
   try {
     const resp = await fetch(url);
     if (!resp.ok) throw new Error(`Fetch error ${resp.status}`);
-    const { existe, valores } = await resp.json();
-    console.log("→ existe:", existe, "valores:", valores);
+    const { existe, valores: raw } = await resp.json();
+    console.log("→ existe:", existe, "raw valores:", raw);
 
-    // 4) Si no existe o no es array, muestro fila vacía
-    if (!existe || !Array.isArray(valores)) {
+    // 3) Normalizamos a Array<Array>
+    //    - si raw es [], no pintamos nada
+    //    - si raw[0] NO es un Array, envolvemos raw en otro array
+    const valores = Array.isArray(raw[0]) 
+      ? raw 
+      : (raw.length ? [raw] : []);
+
+    // 4) Si no existe o no viene nada, metemos fila vacía y salimos
+    if (!existe || !valores.length) {
       return appendEmptyRow(tbody);
     }
 
-    // 5) Pinto cada fila (Array<Array>)
+    // 5) Pinto cada fila (ahora sí Array<Array>)
     valores.forEach(filaArray => {
       const tr = document.createElement("tr");
       filaArray.forEach(celda => {
@@ -278,11 +284,6 @@ async function cargarDesdeOperaciones(numeroNegocio) {
       });
       tbody.appendChild(tr);
     });
-
-    // 6) Si no pintó nada
-    if (!tbody.children.length) {
-      appendEmptyRow(tbody);
-    }
 
   } catch (err) {
     console.error("❌ Error al consultar Operaciones:", err);
