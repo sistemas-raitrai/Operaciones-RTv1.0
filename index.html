@@ -36,36 +36,20 @@
     </div>
   </div>
 
-  <!-- 🔌 Firebase y lógica de autenticación -->
-  <script type="module" src="firebase-init.js"></script>
-  <script type="module">
-    import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-    import { app } from "./firebase-init.js";
-
-    const auth = getAuth(app);
-
-    onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        window.location.href = "login.html";
-      } else {
-        document.querySelector(".username").textContent = user.email;
-      }
-    });
-  </script>
-
-  <!-- 🧩 Cargar encabezado externo y luego script general -->
-<script type="module">
-  fetch("encabezado.html")
-    .then(res => res.text())
-    .then(html => {
+  <!-- 1️⃣ Carga e inyección del encabezado (que contiene #reloj y .username) -->
+  <script type="module" defer>
+    (async () => {
+      const res  = await fetch("encabezado.html");
+      const html = await res.text();
       document.getElementById("encabezado").innerHTML = html;
-
-      // ✅ Carga script.js una vez que el encabezado ya fue inyectado
-      import("/Operaciones-RTv1.0/script.js")
-        .then(() => console.log("✅ script.js cargado"))
-        .catch(err => console.error("❌ Error al cargar script.js", err));
-    });
-</script>
+      // Ahora que el encabezado está en el DOM, importamos script.js:
+      await import("/script.js");
+      console.log("✅ script.js cargado tras inyectar encabezado");
+    })();
   </script>
+
+  <!-- 2️⃣ Inicialización de Firebase/Auth (sin DOM-dependencias) -->
+  <script type="module" src="firebase-init.js" defer></script>
+
 </body>
 </html>
