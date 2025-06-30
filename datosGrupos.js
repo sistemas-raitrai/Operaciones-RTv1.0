@@ -245,11 +245,12 @@ function descargarLecturaExcel() {
 
 /**
  * 10) Refrescar tabla “BaseOperaciones” según numeroNegocio.
- *    Ahora filtrando con includes() para incluir todos los grupos que
- *    contengan el texto ingresado, y refrescando en cada cambio input.
+ *    Ahora filtrando correctamente dependiendo de si recibes
+ *    un array de arrays (tu Apps Script) o de objetos (API).
  */
 async function cargarDesdeOperaciones(busqueda) {
   console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
+
   if (!busqueda) {
     document.getElementById("tbodyTabla").innerHTML = "";
     return;
@@ -262,54 +263,59 @@ async function cargarDesdeOperaciones(busqueda) {
 
     const { existe, valores } = await resp.json();
     console.log("↳ existe:", existe, "| filas en valores:", valores?.length);
-    
+
     const tbody = document.getElementById("tbodyTabla");
     tbody.innerHTML = "";
 
     if (existe && Array.isArray(valores)) {
-      // ¿Es un array de arrays (sheet) o array de objetos (API)?
       const primeraFila = valores[0];
+
       if (Array.isArray(primeraFila)) {
-        // → Pintamos cada fila-array, filtrando por row[0]
-        valores
-          .filter(row => String(row[0]).trim().includes(busqueda))
-          .forEach(row => {
-            const tr = document.createElement("tr");
-            row.forEach(celda => {
-              const td = document.createElement("td");
-              td.textContent = celda ?? "";
-              tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
+        // → Es array de arrays: filtramos y pintamos según row[0]
+        const filtrados = valores.filter(row =>
+          String(row[0]).trim().includes(busqueda)
+        );
+        filtrados.forEach(row => {
+          const tr = document.createElement("tr");
+          row.forEach(celda => {
+            const td = document.createElement("td");
+            td.textContent = celda ?? "";
+            tr.appendChild(td);
           });
+          tbody.appendChild(tr);
+        });
+
       } else {
-        // → Es array de objetos
-        valores
-          .filter(obj => String(obj.numeroNegocio).trim().includes(busqueda))
-          .forEach(obj => {
-            const tr = document.createElement("tr");
-            // Pintamos en el orden de tus <th> en el HTML:
-            [
-              obj.numeroNegocio, obj.nombreGrupo, obj.pax,
-              obj.colegio, obj.curso, obj.anoViaje,
-              obj.destino, obj.programa, obj.hotel,
-              obj.asistenciaEnViajes, obj.autorizacion,
-              obj.fechaDeViaje, obj.observaciones, obj.versionFicha
-            ].forEach(valor => {
-              const td = document.createElement("td");
-              td.textContent = valor ?? "";
-              tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
+        // → Es array de objetos: filtramos y pintamos según obj.numeroNegocio
+        const filtrados = valores.filter(obj =>
+          String(obj.numeroNegocio).trim().includes(busqueda)
+        );
+        filtrados.forEach(obj => {
+          const tr = document.createElement("tr");
+          // En el mismo orden que tus <th> en el HTML:
+          [
+            obj.numeroNegocio, obj.nombreGrupo, obj.pax,
+            obj.colegio, obj.curso, obj.anoViaje,
+            obj.destino, obj.programa, obj.hotel,
+            obj.asistenciaEnViajes, obj.autorizacion,
+            obj.fechaDeViaje, obj.observaciones, obj.versionFicha
+          ].forEach(valor => {
+            const td = document.createElement("td");
+            td.textContent = valor ?? "";
+            tr.appendChild(td);
           });
+          tbody.appendChild(tr);
+        });
       }
 
-      // Si no pintamos nada → fila vacía
+      // Si tras el filtrado no pintamos nada, metemos fila vacía:
       if (!tbody.children.length) {
         console.warn("⚠️ No coincidencias, añado fila vacía");
         const tr = document.createElement("tr");
         const cols = primeraFila
-          ? (Array.isArray(primeraFila) ? primeraFila.length : Object.keys(primeraFila).length)
+          ? (Array.isArray(primeraFila)
+              ? primeraFila.length
+              : Object.keys(primeraFila).length)
           : 14;
         for (let i = 0; i < cols; i++) {
           const td = document.createElement("td");
@@ -335,3 +341,4 @@ async function cargarDesdeOperaciones(busqueda) {
     console.error("❌ Error al consultar Operaciones:", e);
   }
 }
+
