@@ -51,6 +51,13 @@ document.addEventListener("DOMContentLoaded", () => {
   window.guardarDatos = guardarDatos;
   window.guardarYContinuar = () => guardarDatos(false);
   window.descargarLecturaExcel = descargarLecturaExcel;
+
+  // ————————— Listener para actualizar la tabla al tipear N°Negocio —————————
+  const inputNegocio = document.getElementById("numeroNegocio");
+  inputNegocio.addEventListener("input", () => {
+    cargarDesdeOperaciones(inputNegocio.value.trim());
+  });
+
 });
 
 // ─────────── 7) Carga y monta los datalists de número y nombre ───────────
@@ -302,10 +309,4 @@ async function cargarDesdeOperaciones(busqueda) {
     console.error("❌ Error al consultar Operaciones:", e);
   }
 }
-
-// ————————————— Listener global para actualizar la tabla al tipear N°Negocio —————————————
-const inputNegocio = document.getElementById("numeroNegocio");
-inputNegocio.addEventListener("input", () => {
-  cargarDesdeOperaciones(inputNegocio.value.trim());
-});
 
