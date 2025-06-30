@@ -55,6 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // ————————— Listener para actualizar la tabla al tipear N°Negocio —————————
   const inputNegocio = document.getElementById("numeroNegocio");
   inputNegocio.addEventListener("input", () => {
+    console.log("Listener inputNegocio:", inputNegocio.value);
     cargarDesdeOperaciones(inputNegocio.value.trim());
   });
 
