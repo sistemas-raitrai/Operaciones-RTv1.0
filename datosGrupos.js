@@ -250,53 +250,67 @@ function descargarLecturaExcel() {
  */
 async function cargarDesdeOperaciones(busqueda) {
   console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
-
   if (!busqueda) {
-    console.log("  ↳ sin búsqueda: limpio tabla");
     document.getElementById("tbodyTabla").innerHTML = "";
     return;
   }
 
   try {
-    const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
-    console.log("  ↳ fetch a URL:", url);
+    const url  = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
     const resp = await fetch(url);
-    console.log("  ↳ estado de respuesta:", resp.status);
     if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
 
-    const json = await resp.json();
-    console.log("  ↳ JSON completo recibido:", json);
-
-    const { existe, valores } = json;
-    console.log("  ↳ existe:", existe, "| número de filas en valores:", valores?.length);
-
+    const { existe, valores } = await resp.json();
+    console.log("↳ existe:", existe, "| filas en valores:", valores?.length);
+    
     const tbody = document.getElementById("tbodyTabla");
     tbody.innerHTML = "";
 
     if (existe && Array.isArray(valores)) {
-      // 10.1) Filtrar objetos por numeroNegocio
-      const filtrados = valores.filter(obj =>
-        String(obj.numeroNegocio).trim().includes(busqueda)
-      );
-      console.log("  ↳ filas tras filtrar (objetos):", filtrados.length);
+      // ¿Es un array de arrays (sheet) o array de objetos (API)?
+      const primeraFila = valores[0];
+      if (Array.isArray(primeraFila)) {
+        // → Pintamos cada fila-array, filtrando por row[0]
+        valores
+          .filter(row => String(row[0]).trim().includes(busqueda))
+          .forEach(row => {
+            const tr = document.createElement("tr");
+            row.forEach(celda => {
+              const td = document.createElement("td");
+              td.textContent = celda ?? "";
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+      } else {
+        // → Es array de objetos
+        valores
+          .filter(obj => String(obj.numeroNegocio).trim().includes(busqueda))
+          .forEach(obj => {
+            const tr = document.createElement("tr");
+            // Pintamos en el orden de tus <th> en el HTML:
+            [
+              obj.numeroNegocio, obj.nombreGrupo, obj.pax,
+              obj.colegio, obj.curso, obj.anoViaje,
+              obj.destino, obj.programa, obj.hotel,
+              obj.asistenciaEnViajes, obj.autorizacion,
+              obj.fechaDeViaje, obj.observaciones, obj.versionFicha
+            ].forEach(valor => {
+              const td = document.createElement("td");
+              td.textContent = valor ?? "";
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+      }
 
-      // 10.2) Pintar cada objeto
-      filtrados.forEach((obj, idx) => {
-        console.log(`    ↳ pintando objeto[${idx}]:`, obj);
-        const tr = document.createElement("tr");
-        Object.values(obj).forEach((celda, colIdx) => {
-          const td = document.createElement("td");
-          td.textContent = celda ?? "";
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-
-      // 10.3) Si no pintó nada, meto fila vacía
+      // Si no pintamos nada → fila vacía
       if (!tbody.children.length) {
-        console.warn("    ⚠️ no se pintó ninguna fila, añado fila vacía");
+        console.warn("⚠️ No coincidencias, añado fila vacía");
         const tr = document.createElement("tr");
-        const cols = Object.keys(valores[0] || {}).length || 14;
+        const cols = primeraFila
+          ? (Array.isArray(primeraFila) ? primeraFila.length : Object.keys(primeraFila).length)
+          : 14;
         for (let i = 0; i < cols; i++) {
           const td = document.createElement("td");
           td.innerHTML = "&nbsp;";
@@ -306,10 +320,10 @@ async function cargarDesdeOperaciones(busqueda) {
       }
 
     } else {
-      console.warn("  ↳ existe=false o valores no es array, añado fila vacía");
+      // existe=false → fila vacía
+      console.warn("⚠️ existe=false, añado fila vacía");
       const tr = document.createElement("tr");
-      const cols = Object.keys(valores[0] || {}).length || 14;
-      for (let i = 0; i < cols; i++) {
+      for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
         tr.appendChild(td);
