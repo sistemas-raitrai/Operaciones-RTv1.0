@@ -267,6 +267,7 @@ async function cargarDesdeOperaciones(busqueda) {
     // 10.2) Parseamos JSON
     const { existe, valores } = await resp.json();
     console.log("  respuesta JSON:", { existe, valores });
+    console.table(valores);
 
     const tbody = document.getElementById("tbodyTabla");
     tbody.innerHTML = "";
