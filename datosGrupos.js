@@ -249,35 +249,47 @@ function descargarLecturaExcel() {
  */
 async function cargarDesdeOperaciones(busqueda) {
   console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
-  const tbody = document.getElementById("tbodyTabla");
-  tbody.innerHTML = "";
 
-  if (!busqueda) {
-    // Sin término de búsqueda, dejamos la tabla vacía.
-    return;
-  }
+  const tbody = document.getElementById("tbodyTabla");
+  tbody.innerHTML = "";              // siempre limpio primero
+
+  if (!busqueda) return;             // sin término, no pintamos nada
 
   try {
-    // Montamos URL (usa operacionesURL definido arriba)
     const url  = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
     console.log("  ↳ fetch a URL:", url);
     const resp = await fetch(url);
-    console.log("  ↳ estado de respuesta:", resp.status);
     if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
 
     const { existe, valores } = await resp.json();
-    console.log("  ↳ existe:", existe, "| filas en valores:", valores?.length);
+    console.log("  ↳ existe:", existe, "| total valores:", valores?.length);
 
-    if (existe && Array.isArray(valores)) {
-      // Filtrar filas-array por row[0].includes(busqueda)
-      const matches = valores.filter(row =>
+    if (!existe || !Array.isArray(valores)) {
+      console.warn("  ↳ existe=false o valores no es array → añado fila vacía");
+      // fila vacía de 14 col
+      const tr = document.createElement("tr");
+      for (let i = 0; i < 14; i++) {
+        const td = document.createElement("td");
+        td.innerHTML = "&nbsp;";
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+      return;
+    }
+
+    // Detectar si es array de arrays o array de objetos
+    const primera = valores[0];
+    let matches;
+
+    if (Array.isArray(primera)) {
+      // → array de arrays (sheet GAS)
+      matches = valores.filter(row =>
         String(row[0] ?? "").trim().includes(busqueda)
       );
-      console.log("  ↳ filas tras filtrar (array de arrays):", matches.length);
+      console.log("  ↳ tipo=array de arrays → matches:", matches.length);
 
-      // Pintar cada fila coincidente
       matches.forEach((row, idx) => {
-        console.log(`    ↳ pintando row[${idx}]:`, row);
+        console.log(`    ↳ pintando fila[${idx}]:`, row);
         const tr = document.createElement("tr");
         row.forEach(celda => {
           const td = document.createElement("td");
@@ -287,23 +299,41 @@ async function cargarDesdeOperaciones(busqueda) {
         tbody.appendChild(tr);
       });
 
-      // Si no hubo matches, añadir fila vacía
-      if (!tbody.children.length) {
-        console.warn("    ⚠️ No coincidencias, añado fila vacía");
-        const cols = valores[0]?.length || 14;
-        const tr = document.createElement("tr");
-        for (let i = 0; i < cols; i++) {
-          const td = document.createElement("td");
-          td.innerHTML = "&nbsp;";
-          tr.appendChild(td);
-        }
-        tbody.appendChild(tr);
-      }
     } else {
-      // existe=false o valores no es array
-      console.warn("  ↳ existe=false o valores no es array, añado fila vacía");
+      // → array de objetos (tu API REST)
+      matches = valores.filter(obj =>
+        String(obj.numeroNegocio ?? "").trim().includes(busqueda)
+      );
+      console.log("  ↳ tipo=array de objetos → matches:", matches.length);
+
+      matches.forEach((obj, idx) => {
+        console.log(`    ↳ pintando objeto[${idx}]:`, obj);
+        const tr = document.createElement("tr");
+        // El orden aquí debe coincidir con tus <th>:
+        [
+          obj.numeroNegocio, obj.nombreGrupo, obj.pax,
+          obj.colegio, obj.curso, obj.anoViaje,
+          obj.destino, obj.programa, obj.hotel,
+          obj.asistenciaEnViajes, obj.autorizacion,
+          obj.fechaDeViaje, obj.observaciones, obj.versionFicha
+        ].forEach(valor => {
+          const td = document.createElement("td");
+          td.textContent = valor ?? "";
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Si tras filtrar no dibujamos nada, metemos fila vacía
+    if (!tbody.children.length) {
+      console.warn("  ↳ no hubo coincidencias → añado fila vacía");
+      // columnas = longitud del array o keys del objeto
+      const cols = Array.isArray(primera)
+        ? primera.length
+        : Object.keys(primera).length;
       const tr = document.createElement("tr");
-      for (let i = 0; i < 14; i++) {
+      for (let i = 0; i < cols; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
         tr.appendChild(td);
@@ -315,3 +345,4 @@ async function cargarDesdeOperaciones(busqueda) {
     console.error("❌ Error al consultar Operaciones:", e);
   }
 }
+
