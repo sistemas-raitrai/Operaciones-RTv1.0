@@ -11,7 +11,6 @@
   <!-- Tu CSS global -->
   <link rel="stylesheet" href="estilos.css">
   <style>
-    /* Ajustes específicos de esta página */
     #tablaGrupos { width:100% !important; background:white; border-collapse:collapse; }
     .dataTables_filter { display:none; }
     #buscador { margin-bottom:1rem; }
@@ -19,17 +18,18 @@
 </head>
 <body>
 
-  <!-- 0️⃣ Punto de montaje del encabezado reutilizable -->
+  <!-- Inyectamos el header -->
   <div id="encabezado"></div>
 
   <main class="main">
+    <!-- Buscador global -->
     <div class="row">
       <div class="column long">
         <label for="buscador">Buscar en cualquier columna</label>
         <input type="text" id="buscador" placeholder="Palabra clave…">
       </div>
     </div>
-
+    <!-- Filtros -->
     <div class="row">
       <div class="column short">
         <label for="filtroDestino">Destino</label>
@@ -40,7 +40,7 @@
         <select id="filtroAno"><option value="">Todos</option></select>
       </div>
     </div>
-
+    <!-- Tabla -->
     <div class="row">
       <table id="tablaGrupos" class="display">
         <thead>
@@ -60,25 +60,24 @@
     </div>
   </main>
 
-    <!-- 1️⃣ Inyectar el header compartido -->
+  <!-- 1️⃣ Inyecto encabezado -->
   <script type="module">
     (async () => {
-      const res  = await fetch("encabezado.html");
+      const res = await fetch("encabezado.html");
       document.getElementById("encabezado").innerHTML = await res.text();
     })();
   </script>
 
-  <!-- 2️⃣ Firebase/Auth init (sin DOM) -->
+  <!-- 2️⃣ Firebase/Auth init -->
   <script type="module" src="firebase-init.js" defer></script>
-
-  <!-- 3️⃣ Script global (reloj, logout, mostrar usuario) -->
+  <!-- 3️⃣ Script global (reloj, logout, usuario) -->
   <script type="module" src="script.js" defer></script>
 
   <!-- 4️⃣ Librerías externas SIN defer -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 
-  <!-- 5️⃣ Tu lógica para cargar y mostrar la tabla (SIN defer) -->
+  <!-- 5️⃣ Lógica de tabla -->
   <script type="module">
     import { app } from './firebase-init.js';
     import { getAuth, onAuthStateChanged, signOut }
@@ -86,21 +85,20 @@
 
     const auth = getAuth(app);
 
-    // Ejecuta cuando jQuery esté listo
+    // Solo arrancamos cuando jQuery y DOM listo
     $(function() {
       // Logout
       $('#btn-logout').click(() =>
         signOut(auth).then(() => location = 'login.html')
       );
-
-      // Carga la tabla tras autenticación
+      // Tras autenticación, cargo la tabla
       onAuthStateChanged(auth, user => {
         if (!user) return location = 'login.html';
         cargarYMostrarTabla();
       });
     });
 
-    // 🔑 El array completo de campos, en el orden de tus columnas:
+    // 🔑 Nombres de campo en el orden de las columnas
     const campos = [
       'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
       'destino','programa','hotel','asistenciaEnViajes','autorizacion',
@@ -111,16 +109,15 @@
 
     async function cargarYMostrarTabla() {
       console.log('▶ fetch de datos…');
-      // 🔑 URL completa de tu Apps Script:
       const res = await fetch(
-        'https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec'
+        'https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte2a6aFtVDguFGsiL0aaG6Tupn8B807oovR34S0YbR9I9mz0/exec'
       );
       if (!res.ok) return console.error('Fetch falló', res.status);
       const json    = await res.json();
       console.log('▶ Datos:', json);
       const valores = json.valores || [];
 
-      // Poblamos la tabla
+      // Lleno el tbody
       const $tb = $('#tablaGrupos tbody').empty();
       valores.forEach(r => {
         const $tr = $('<tr>');
@@ -128,19 +125,25 @@
         $tb.append($tr);
       });
 
-      // Inicializamos DataTable
+      // Inicializo DataTable y guardo la instancia
       const tabla = $('#tablaGrupos').DataTable({
         language: { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-        dom:'lrtip', pageLength:10, order:[[5,'desc']]
+        dom: 'lrtip',
+        pageLength: 10,
+        order: [[5,'desc']]
       });
 
-      // Buscador y filtros
-      $('#buscador').on('input', ()=> tabla.search($('#buscador').val()).draw());
+      // Buscador y filtros ahora pueden usar esa instancia
+      $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
+
       const uniq = arr => [...new Set(arr.filter(x=>x))].sort();
-      uniq(valores.map(r=>r.destino)).forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
-      uniq(valores.map(r=>r.anoViaje)).forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
-      $('#filtroDestino').on('change', ()=> tabla.column(6).search($('#filtroDestino').val()).draw());
-      $('#filtroAno').on('change',    ()=> tabla.column(5).search($('#filtroAno').val()).draw());
+      uniq(valores.map(r=>r.destino))
+        .forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
+      uniq(valores.map(r=>r.anoViaje))
+        .forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
+
+      $('#filtroDestino').on('change', () => tabla.column(6).search($('#filtroDestino').val()).draw());
+      $('#filtroAno').on('change',    () => tabla.column(5).search($('#filtroAno').val()).draw());
     }
   </script>
 </body>
