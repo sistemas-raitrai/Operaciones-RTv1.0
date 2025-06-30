@@ -243,60 +243,81 @@ function descargarLecturaExcel() {
   );
 }
 
+// ─────────── 10) Leer “LecturaBaseOperaciones” ───────────────
 async function cargarDesdeOperaciones(busqueda) {
   console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
   const tbody = document.getElementById("tbodyTabla");
   tbody.innerHTML = "";
 
-  if (!busqueda) return; // sin búsqueda, ya lo limpiamos arriba
+  if (!busqueda) return; // sin texto, ya lo limpiamos arriba
 
   try {
     const url  = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
-    console.log("  ↳ fetch a URL:", url);
     const resp = await fetch(url);
-    console.log("  ↳ status:", resp.status);
     if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
 
     const { existe, valores } = await resp.json();
-    console.log("  ↳ existe:", existe, "| filas:", valores?.length);
+    console.log("  ↳ existe:", existe, "| filas en valores:", valores?.length);
 
     if (existe && Array.isArray(valores) && valores.length) {
-      // Pintamos **todas** las filas que recibimos:
-      valores.forEach(row => {
+      const primeraFila = valores[0];
+
+      // ▶︎ 10.1) Si es array de arrays (sheet GAS clásico):
+      if (Array.isArray(primeraFila)) {
+        valores
+          .filter(row => String(row[0]).trim() === busqueda)  // _igual_ o .includes(busqueda) si quieres parcial
+          .forEach(row => {
+            const tr = document.createElement("tr");
+            row.forEach(celda => {
+              const td = document.createElement("td");
+              td.textContent = celda ?? "";
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+
+      // ▶︎ 10.2) Si es array de objetos (API REST):
+      } else {
+        valores
+          .filter(obj => String(obj.numeroNegocio).trim() === busqueda)
+          .forEach(obj => {
+            const tr = document.createElement("tr");
+            // IMPORTANTE: el orden aquí debe coincidir con tus <th>
+            [
+              obj.numeroNegocio, obj.nombreGrupo, obj.pax,
+              obj.colegio, obj.curso, obj.anoViaje,
+              obj.destino, obj.programa, obj.hotel,
+              obj.asistenciaEnViajes, obj.autorizacion,
+              obj.fechaDeViaje, obj.observaciones, obj.versionFicha
+            ].forEach(valor => {
+              const td = document.createElement("td");
+              td.textContent = valor ?? "";
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+      }
+
+      // ▶︎ Si tras filtrar no añadimos nada, metemos fila vacía:
+      if (!tbody.children.length) {
+        console.warn("⚠️ No coincidencias para", busqueda, "añado fila vacía");
+        const cols = Array.isArray(primeraFila)
+          ? primeraFila.length
+          : Object.keys(primeraFila).length;
         const tr = document.createElement("tr");
-
-        // Si es array de arrays:
-        if (Array.isArray(row)) {
-          row.forEach(celda => {
-            const td = document.createElement("td");
-            td.textContent = celda ?? "";
-            tr.appendChild(td);
-          });
-
-        // Si es array de objetos:
-        } else {
-          // asegúrate de respetar el orden de tus <th> en el HTML
-          [
-            row.numeroNegocio, row.nombreGrupo, row.pax,
-            row.colegio, row.curso, row.anoViaje,
-            row.destino, row.programa, row.hotel,
-            row.asistenciaEnViajes, row.autorizacion,
-            row.fechaDeViaje, row.observaciones, row.versionFicha
-          ].forEach(valor => {
-            const td = document.createElement("td");
-            td.textContent = valor ?? "";
-            tr.appendChild(td);
-          });
+        for (let i = 0; i < cols; i++) {
+          const td = document.createElement("td");
+          td.innerHTML = "&nbsp;";
+          tr.appendChild(td);
         }
-
         tbody.appendChild(tr);
-      });
+      }
 
     } else {
-      // Si no vino nada o existe=false, una fila vacía
+      // existe=false → también fila vacía
+      console.warn("⚠️ existe=false o no array, añado fila vacía");
       const tr = document.createElement("tr");
-      const cols = 14;
-      for (let i = 0; i < cols; i++) {
+      for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
         td.innerHTML = "&nbsp;";
         tr.appendChild(td);
