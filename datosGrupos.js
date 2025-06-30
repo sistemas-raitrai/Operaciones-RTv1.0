@@ -245,104 +245,59 @@ function descargarLecturaExcel() {
 
 /**
  * 10) Refrescar tabla “BaseOperaciones” según numeroNegocio.
- *    Filtra usando includes() y pinta todas las filas que contienen la búsqueda.
+ *    Simple: tu Apps Script devuelve { existe, valores: Array<Array> }.
  */
-async function cargarDesdeOperaciones(busqueda) {
-  console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
-
+async function cargarDesdeOperaciones(numeroNegocio) {
   const tbody = document.getElementById("tbodyTabla");
-  tbody.innerHTML = "";              // siempre limpio primero
+  tbody.innerHTML = "";                         // 1) Limpio la tabla
 
-  if (!busqueda) return;             // sin término, no pintamos nada
+  if (!numeroNegocio) return;                   // 2) Si no hay búsqueda, salgo
+
+  // 3) Montar URL con parámetro
+  const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
+  console.log("→ fetch a:", url);
 
   try {
-    const url  = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
-    console.log("  ↳ fetch a URL:", url);
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
-
+    if (!resp.ok) throw new Error(`Fetch error ${resp.status}`);
     const { existe, valores } = await resp.json();
-    console.log("  ↳ existe:", existe, "| total valores:", valores?.length);
+    console.log("→ existe:", existe, "valores:", valores);
 
+    // 4) Si no existe o no es array, muestro fila vacía
     if (!existe || !Array.isArray(valores)) {
-      console.warn("  ↳ existe=false o valores no es array → añado fila vacía");
-      // fila vacía de 14 col
+      return appendEmptyRow(tbody);
+    }
+
+    // 5) Pinto cada fila (Array<Array>)
+    valores.forEach(filaArray => {
       const tr = document.createElement("tr");
-      for (let i = 0; i < 14; i++) {
+      filaArray.forEach(celda => {
         const td = document.createElement("td");
-        td.innerHTML = "&nbsp;";
+        td.textContent = celda ?? "";
         tr.appendChild(td);
-      }
+      });
       tbody.appendChild(tr);
-      return;
-    }
+    });
 
-    // Detectar si es array de arrays o array de objetos
-    const primera = valores[0];
-    let matches;
-
-    if (Array.isArray(primera)) {
-      // → array de arrays (sheet GAS)
-      matches = valores.filter(row =>
-        String(row[0] ?? "").trim().includes(busqueda)
-      );
-      console.log("  ↳ tipo=array de arrays → matches:", matches.length);
-
-      matches.forEach((row, idx) => {
-        console.log(`    ↳ pintando fila[${idx}]:`, row);
-        const tr = document.createElement("tr");
-        row.forEach(celda => {
-          const td = document.createElement("td");
-          td.textContent = celda ?? "";
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-
-    } else {
-      // → array de objetos (tu API REST)
-      matches = valores.filter(obj =>
-        String(obj.numeroNegocio ?? "").trim().includes(busqueda)
-      );
-      console.log("  ↳ tipo=array de objetos → matches:", matches.length);
-
-      matches.forEach((obj, idx) => {
-        console.log(`    ↳ pintando objeto[${idx}]:`, obj);
-        const tr = document.createElement("tr");
-        // El orden aquí debe coincidir con tus <th>:
-        [
-          obj.numeroNegocio, obj.nombreGrupo, obj.pax,
-          obj.colegio, obj.curso, obj.anoViaje,
-          obj.destino, obj.programa, obj.hotel,
-          obj.asistenciaEnViajes, obj.autorizacion,
-          obj.fechaDeViaje, obj.observaciones, obj.versionFicha
-        ].forEach(valor => {
-          const td = document.createElement("td");
-          td.textContent = valor ?? "";
-          tr.appendChild(td);
-        });
-        tbody.appendChild(tr);
-      });
-    }
-
-    // Si tras filtrar no dibujamos nada, metemos fila vacía
+    // 6) Si no pintó nada
     if (!tbody.children.length) {
-      console.warn("  ↳ no hubo coincidencias → añado fila vacía");
-      // columnas = longitud del array o keys del objeto
-      const cols = Array.isArray(primera)
-        ? primera.length
-        : Object.keys(primera).length;
-      const tr = document.createElement("tr");
-      for (let i = 0; i < cols; i++) {
-        const td = document.createElement("td");
-        td.innerHTML = "&nbsp;";
-        tr.appendChild(td);
-      }
-      tbody.appendChild(tr);
+      appendEmptyRow(tbody);
     }
 
-  } catch (e) {
-    console.error("❌ Error al consultar Operaciones:", e);
+  } catch (err) {
+    console.error("❌ Error al consultar Operaciones:", err);
+    appendEmptyRow(tbody);
   }
 }
 
+/** Helper: añade una fila vacía con el mismo nº de columnas que tu <thead> */
+function appendEmptyRow(tbody) {
+  const cols = document.querySelectorAll("#tablaRegistros thead th").length;
+  const tr   = document.createElement("tr");
+  for (let i = 0; i < cols; i++) {
+    const td = document.createElement("td");
+    td.innerHTML = "&nbsp;";
+    tr.appendChild(td);
+  }
+  tbody.appendChild(tr);
+}
