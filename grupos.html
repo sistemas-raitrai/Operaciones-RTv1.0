@@ -32,18 +32,18 @@
   <div class="header">
     <div class="row">
       <div class="column short">
-        <img src="logo.png" alt="Logo Rai Trai" style="height:40px;">
+        <img src="Logo Raitrai.png" alt="Logo Rai Trai" style="height:40px;">
       </div>
       <div class="column medium">
         <h2>SISTEMA DE OPERACIONES RT v1.0</h2>
-        <p>Usuario conectado: <!-- nombre dinámico --></p>
+        <p id="usuario-conectado">Usuario conectado: …</p>
       </div>
     </div>
     <div class="row">
       <a href="index.html" class="boton-cerrar">🏠</a>
       <button onclick="location.reload()">🔄</button>
       <button onclick="history.back()">⬅️</button>
-      <button class="boton-cerrar">⏏️</button>
+      <button class="boton-cerrar" onclick="logout()">⏏️</button>
     </div>
   </div>
 
@@ -63,13 +63,12 @@
     <div class="row">
       <div class="column short">
         <label for="filtroDestino">Destino</label>
-        <select id="filtroDestino"></select>
+        <select id="filtroDestino"><option value="">Todos</option></select>
       </div>
       <div class="column short">
         <label for="filtroAno">Año de Viaje</label>
-        <select id="filtroAno"></select>
+        <select id="filtroAno"><option value="">Todos</option></select>
       </div>
-      <!-- añade más selects en columnas si lo necesitas -->
     </div>
 
     <!-- Tabla DataTables -->
@@ -92,12 +91,102 @@
     </div>
   </main>
 
+  <!-- Firebase + tu lógica de auth -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+  <script>
+    // Inicializa Firebase
+    const firebaseConfig = {
+      apiKey: "...", authDomain: "...", // completa con tu configuración
+      projectId: "...", // etc
+    };
+    firebase.initializeApp(firebaseConfig);
+
+    // Función de logout
+    function logout() {
+      firebase.auth().signOut().then(() => {
+        window.location = 'login.html';
+      });
+    }
+
+    // Muestra el usuario o redirige si no hay
+    firebase.auth().onAuthStateChanged(u => {
+      if (!u) return window.location = 'login.html';
+      document.getElementById('usuario-conectado').textContent =
+        'Usuario conectado: ' + (u.email || u.displayName);
+    });
+  </script>
+
   <!-- jQuery + DataTables JS -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script
     src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"
   ></script>
+
+  <!-- Lógica de datos y DataTables -->
   <script>
-    let tabla;
+    // Campos que devuelve tu Web App
     const campos = [
-      'numeroNegocio','nombreGrupo','cantidadgr
+      'numeroNegocio','nombreGrupo','cantidadgrupo','colegio','curso','anoViaje',
+      'destino','programa','hotel','asistenciaEnViajes','autorizacion',
+      'fechaDeViaje','observaciones','versionFicha','creadoPor','fechaCreacion',
+      'fechaInicio','fechaFin','adultos','estudiantes','transporte',
+      'ciudades','hoteles','tramos','observacionesLogisticas'
+    ];
+
+    function initDataTablesGrupos() {
+      fetch('https://script.google.com/macros/s/TU_ID/exec')
+        .then(r => r.json())
+        .then(json => {
+          const datos = json.valores || [];
+          renderizarTabla(datos);
+          inicializarFiltros(datos);
+        })
+        .catch(console.error);
+    }
+
+    function renderizarTabla(datos) {
+      const $tb = $('#tablaGrupos tbody').empty();
+      datos.forEach(r => {
+        const $tr = $('<tr>');
+        campos.forEach(c => $tr.append($('<td>').text(r[c] || '')));
+        $tb.append($tr);
+      });
+
+      window.tabla = $('#tablaGrupos').DataTable({
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+        dom: 'lrtip',
+        pageLength: 10,
+        order: [[5, 'desc']]
+      });
+
+      $('#buscador').on('input', function() {
+        tabla.search(this.value).draw();
+      });
+    }
+
+    function inicializarFiltros(datos) {
+      const uniq = arr => [...new Set(arr.filter(x=>x))].sort();
+
+      uniq(datos.map(r=>r.destino))
+        .forEach(d => $('#filtroDestino').append(`<option>${d}</option>`));
+      uniq(datos.map(r=>r.anoViaje))
+        .forEach(a => $('#filtroAno').append(`<option>${a}</option>`));
+
+      $('#filtroDestino').on('change', function() {
+        tabla.column(6).search(this.value).draw();
+      });
+      $('#filtroAno').on('change', function() {
+        tabla.column(5).search(this.value).draw();
+      });
+    }
+
+    // Arranca tras cargar la página y confirmar auth
+    window.addEventListener('load', () => {
+      firebase.auth().onAuthStateChanged(u => {
+        if (u) initDataTablesGrupos();
+      });
+    });
+  </script>
+</body>
+</html>
