@@ -128,8 +128,6 @@
     </table>
   </div>
 
-  <script type="module" src="datosGrupos.js"></script>
-
   <!-- 🔌 Firebase y lógica de autenticación -->
   <script type="module" src="firebase-init.js"></script>
   <script type="module">
@@ -154,10 +152,22 @@
     .then(html => {
       document.getElementById("encabezado").innerHTML = html;
 
-      // ✅ Carga script.js una vez que el encabezado ya fue inyectado
-      import("/script.js")
-        .then(() => console.log("✅ script.js cargado"))
-        .catch(err => console.error("❌ Error al cargar script.js", err));
+      // 1️⃣ Primero carga tu script global (autenticación, reloj, logout…)
+      try {
+        await import("/script.js");
+        console.log("✅ script.js cargado");
+      } catch (e) {
+        console.error("❌ No pude cargar script.js", e);
+        return;
+      }
+
+      // 2️⃣ Luego carga datosGrupos.js (que monta los datalists y la tabla)
+      try {
+        await import("./datosGrupos.js");
+        console.log("✅ datosGrupos.js cargado");
+      } catch (e) {
+        console.error("❌ No pude cargar datosGrupos.js", e);
+      }
     });
 </script>
   
