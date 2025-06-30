@@ -251,20 +251,17 @@ function descargarLecturaExcel() {
 async function cargarDesdeOperaciones(busqueda) {
   console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
   if (!busqueda) {
-    // Si está vacío, limpiamos la tabla y salimos
     document.getElementById("tbodyTabla").innerHTML = "";
     return;
   }
 
   try {
-    // 10.1) Montamos la URL con querystring (igual que antes)
-    const url = `https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec?numeroNegocio=${encodeURIComponent(busqueda)}`;
+    const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
     console.log("  fetch a:", url);
     const resp = await fetch(url);
     console.log("  status fetch:", resp.status);
     if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
 
-    // 10.2) Parseamos JSON
     const { existe, valores } = await resp.json();
     console.log("  respuesta JSON:", { existe, valores });
     console.table(valores);
@@ -273,20 +270,23 @@ async function cargarDesdeOperaciones(busqueda) {
     tbody.innerHTML = "";
 
     if (existe && Array.isArray(valores)) {
-      // Recorremos TODOS los rows, y sólo añadimos los que incluyan la búsqueda:
+      // ─── PINTAR TODAS LAS FILAS ───────────────────────
       valores.forEach(row => {
-        if (String(row[0]).trim().includes(busqueda)) {
-          const tr = document.createElement("tr");
-          row.forEach(celda => {
-            const td = document.createElement("td");
-            td.textContent = celda || "";
-            tr.appendChild(td);
-          });
-          tbody.appendChild(tr);
-        }
+        const tr = document.createElement("tr");
+        row.forEach(celda => {
+          const td = document.createElement("td");
+          td.textContent = celda ?? "";
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
       });
-    
-      // Si no pintamos ninguna fila, mostramos una vacía
+      // ──────────────────────────────────────────────────
+
+      // Si luego quieres aplicar de nuevo el filtro por 'busqueda', vuelve a:
+      // valores.filter(row => String(row[0]).trim().includes(busqueda))
+      // y mapea ese array en lugar de 'valores.forEach' directamente.
+
+      // (Opción de fila vacía si no hay datos)
       if (!tbody.children.length) {
         const tr = document.createElement("tr");
         const cols = valores[0]?.length || 14;
@@ -299,7 +299,7 @@ async function cargarDesdeOperaciones(busqueda) {
       }
 
     } else {
-      // (Opcional) si `existe` es false, también mostramos fila vacía
+      // si existe===false, mostrar fila vacía
       const tr = document.createElement("tr");
       for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
@@ -313,4 +313,5 @@ async function cargarDesdeOperaciones(busqueda) {
     console.error("❌ Error al consultar Operaciones:", e);
   }
 }
+
 
