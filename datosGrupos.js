@@ -250,30 +250,39 @@ function descargarLecturaExcel() {
  */
 async function cargarDesdeOperaciones(busqueda) {
   console.log("→ cargarDesdeOperaciones llamado con:", busqueda);
+
   if (!busqueda) {
+    console.log("  ↳ sin búsqueda: limpio tabla");
     document.getElementById("tbodyTabla").innerHTML = "";
     return;
   }
 
   try {
     const url = `${operacionesURL}?numeroNegocio=${encodeURIComponent(busqueda)}`;
-    console.log("  fetch a:", url);
+    console.log("  ↳ fetch a URL:", url);
     const resp = await fetch(url);
-    console.log("  status fetch:", resp.status);
-    if (!resp.ok) throw new Error(`Fetch falló con status ${resp.status}`);
+    console.log("  ↳ estado de respuesta:", resp.status);
 
-    const { existe, valores } = await resp.json();
-    console.log("  respuesta JSON:", { existe, valores });
-    console.table(valores);
+    if (!resp.ok) {
+      console.error("  ↳ ERROR: fetch no OK", resp.status);
+      throw new Error(`Fetch falló con status ${resp.status}`);
+    }
+
+    const json = await resp.json();
+    console.log("  ↳ JSON completo recibido:", json);
+
+    const { existe, valores } = json;
+    console.log("  ↳ existe:", existe, "| número de filas en valores:", valores?.length);
 
     const tbody = document.getElementById("tbodyTabla");
     tbody.innerHTML = "";
 
     if (existe && Array.isArray(valores)) {
       // ─── PINTAR TODAS LAS FILAS ───────────────────────
-      valores.forEach(row => {
+      valores.forEach((row, idx) => {
+        console.log(`    ↳ pintando fila ${idx}:`, row);
         const tr = document.createElement("tr");
-        row.forEach(celda => {
+        row.forEach((celda, cidx) => {
           const td = document.createElement("td");
           td.textContent = celda ?? "";
           tr.appendChild(td);
@@ -282,12 +291,9 @@ async function cargarDesdeOperaciones(busqueda) {
       });
       // ──────────────────────────────────────────────────
 
-      // Si luego quieres aplicar de nuevo el filtro por 'busqueda', vuelve a:
-      // valores.filter(row => String(row[0]).trim().includes(busqueda))
-      // y mapea ese array en lugar de 'valores.forEach' directamente.
-
-      // (Opción de fila vacía si no hay datos)
+      // Si no pintó nada:
       if (!tbody.children.length) {
+        console.warn("    ⚠️ no se pintó ninguna fila, añado fila vacía");
         const tr = document.createElement("tr");
         const cols = valores[0]?.length || 14;
         for (let i = 0; i < cols; i++) {
@@ -299,7 +305,7 @@ async function cargarDesdeOperaciones(busqueda) {
       }
 
     } else {
-      // si existe===false, mostrar fila vacía
+      console.warn("  ↳ existe=false o valores no es array, añado fila vacía");
       const tr = document.createElement("tr");
       for (let i = 0; i < 14; i++) {
         const td = document.createElement("td");
@@ -313,5 +319,6 @@ async function cargarDesdeOperaciones(busqueda) {
     console.error("❌ Error al consultar Operaciones:", e);
   }
 }
+
 
 
