@@ -237,3 +237,17 @@ a {
   margin: 0.5rem 0;
 }
 
+/* Fila impar: blanco puro */
+#tablaGrupos tbody tr:nth-child(odd) {
+  background-color: #ffffff;
+}
+
+/* Fila par: degradado suave de gris muy tenue */
+#tablaGrupos tbody tr:nth-child(even) {
+  background: linear-gradient(
+    to right,
+    rgba(248,249,250,1) 0%,
+    rgba(230,231,233,1) 100%
+  );
+}
+
