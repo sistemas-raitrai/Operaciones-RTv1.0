@@ -197,3 +197,43 @@ a {
   background: #f6f6f6;
   border: 1px solid #cccccc;
 }
+
+/* 1) Asegúrate de que el wrapper de DataTables sea un contenedor flex */
+.dataTables_wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 2) Luego, convierte la línea de controles en un flex row */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_filter,
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  display: inline-block;  /* asegúrate de que sean inline-block */
+}
+
+/* 3) Envuelve length y info/paginación en un mismo flex row */
+.dataTables_wrapper .dataTables_length {
+  order: 2;               /* aparece al final */
+  background: #ffffff;    /* bloque blanco */
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  float: none;            /* resetea floats */
+  margin-left: auto;      /* empuja a la derecha */
+  margin-bottom: 1rem;    /* separa un poco */
+}
+
+/* 4) Alinea la info/paginación a la izquierda */
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate {
+  order: 1;
+  margin-bottom: 1rem;
+}
+
+/* 5) Si usas la búsqueda nativa, ponla en medio (opcional) */
+.dataTables_wrapper .dataTables_filter {
+  order: 3;
+  margin: 0.5rem 0;
+}
+
