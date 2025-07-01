@@ -1,3 +1,6 @@
+/* estilos.css */
+
+/* Base */
 body {
   font-family: sans-serif;
   padding: 2rem;
@@ -16,7 +19,7 @@ input, select, textarea {
   font-size: 1rem;
   margin-top: 0.2rem;
   box-sizing: border-box;
-  text-transform: uppercase; /* ✅ fuerza mayúsculas */
+  text-transform: uppercase; /* fuerza mayúsculas */
 }
 
 .row {
@@ -118,34 +121,57 @@ a {
   background: none;
   font-size: 1.5rem;
   cursor: pointer;
-  color: black; /* ← Cambia aquí el color */
+  color: black;
 }
 
-/* Barra de búsqueda y filtros */
+/* ----------------------------------------------------------------------- */
+/* Estilos específicos para la vista de “Visualización de Grupos”          */
+/* ----------------------------------------------------------------------- */
+
+/* Barra de búsqueda y filtros: azul grisáceo más claro */
 .filter-bar {
-  background-color: #0c2a64;      /* Azul oscuro */
-  color: #e0e0e0;                /* Gris claro para el texto */
+  background-color: #3a4b6a;   /* azul grisáceo suave */
+  color: #f0f4f8;              /* texto gris muy claro */
   padding: 1rem;
 }
+
+/* Etiquetas dentro de la barra */
 .filter-bar label {
-  color: #e0e0e0;
-}
-.filter-bar input,
-.filter-bar select {
-  background-color: #f6f6f6;     /* Gris claro para inputs */
-  color: #000;
-  border: 1px solid #ddd;
-}
-.filter-bar input::placeholder {
-  color: #666;
+  color: #f0f4f8;
 }
 
-/* Encabezados de tabla en gris claro */
-#tablaGrupos thead th {
-  background-color: #f6f6f6;
-  color: #000;
+/* Inputs y selects sobre fondo muy claro */
+.filter-bar input,
+.filter-bar select {
+  background-color: #f6f8fa;   /* gris muy claro */
+  color: #333;
+  border: 1px solid #ccc;
 }
+
+/* Placeholder en gris medio */
+.filter-bar input::placeholder {
+  color: #888;
+}
+
+/* Ajustes de DataTables dentro de esta vista */
+#tablaGrupos {
+  width: 100% !important;
+  background: white;
+  border-collapse: collapse;
+}
+
+/* Oculta la búsqueda nativa de DataTables */
+.dataTables_filter {
+  display: none;
+}
+
+/* Cabecera de tabla en gris suave */
+#tablaGrupos thead th {
+  background-color: #e9ecef;   /* gris muy suave */
+  color: #333;
+}
+
 /* Filas alternas un poco más claras */
 #tablaGrupos tbody tr:nth-child(even) {
-  background-color: #fafafa;
+  background-color: #f8f9fa;   /* gris clarito */
 }
