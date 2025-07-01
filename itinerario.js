@@ -26,9 +26,9 @@ const fldHf     = document.getElementById('m-horaFin');
 const fldAct    = document.getElementById('m-actividad');
 const fldPas    = document.getElementById('m-pasajeros');
 const fldNotas  = document.getElementById('m-notas');
-let editData    = null; //  Guarda la actividad en edición
+let editData    = null; // guarda la actividad en edición
 
-// ② Espera a que el DOM esté listo
+// ② Espera a DOM listo
 document.addEventListener('DOMContentLoaded', () => {
   console.log("▶️ DOMContentLoaded");
   onAuthStateChanged(auth, user => {
@@ -44,10 +44,10 @@ document.addEventListener('DOMContentLoaded', () => {
 async function init() {
   console.log("▶️ init() arrancando");
   try {
-    // ③ Cargo todos los grupos desde Opensheet
+    // ③ Cargo grupos desde Opensheet
     const res   = await fetch(OPENSHEET);
     const datos = await res.json();
-    console.log("▶️ Datos de Opensheet:", datos);
+    console.log("▶️ Datos Opensheet:", datos);
 
     if (!Array.isArray(datos) || datos.length === 0) {
       throw new Error("No hay datos en LecturaBaseOperaciones");
@@ -55,20 +55,18 @@ async function init() {
 
     // ④ Extraigo grupos únicos
     const grupos = [...new Set(datos.map(r => r.numeroNegocio))];
-    console.log("▶️ Grupos únicos encontrados:", grupos);
+    console.log("▶️ Grupos únicos:", grupos);
 
     if (grupos.length === 0) {
       throw new Error("La clave numeroNegocio no existe o está vacía");
     }
 
-    // ⑤ Relleno el <select> con ellos
-    selectGrupo.innerHTML = grupos
-      .map(g => `<option value="${g}">${g}</option>`)
-      .join('');
+    // ⑤ Relleno el <select>
+    selectGrupo.innerHTML = grupos.map(g => `<option>${g}</option>`).join('');
     selectGrupo.addEventListener('change', renderItinerario);
     selectGrupo.value = grupos[0];
 
-    // Pinto la primera vez
+    // Pinto primero
     await renderItinerario();
   } catch (err) {
     console.error("❌ Error en init():", err);
@@ -76,27 +74,27 @@ async function init() {
   }
 }
 
-// Genera rango de fechas entre inicio y fin
+// Genera rango de fechas
 async function getRangoFechas(grupo) {
   console.log(`▶️ getRangoFechas(${grupo})`);
   const res   = await fetch(OPENSHEET);
   const datos = await res.json();
   const fila  = datos.find(r => r.numeroNegocio === grupo);
-  if (!fila) throw new Error(`No encontré datos para el grupo ${grupo}`);
+  if (!fila) throw new Error(`No encontré datos para grupo ${grupo}`);
   const inicio = new Date(fila.fechaInicio);
   const fin    = new Date(fila.fechaFin);
   const arr    = [];
   for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate()+1)) {
     arr.push(d.toISOString().slice(0,10));
   }
-  console.log("▶️ Rango de fechas:", arr);
+  console.log("▶️ Fechas:", arr);
   return arr;
 }
 
-// Pinta todo el itinerario
+// Pinta el itinerario
 async function renderItinerario() {
   const grupo = selectGrupo.value;
-  console.log(`▶️ renderItinerario() para grupo ${grupo}`);
+  console.log(`▶️ renderItinerario() grupo ${grupo}`);
   titleGrupo.textContent = grupo;
   contItinerario.innerHTML = '';
 
@@ -110,9 +108,9 @@ async function renderItinerario() {
   }
 
   // Preparo modal
-  fldFecha.innerHTML = fechas.map(f => `<option value="${f}">${f}</option>`).join('');
+  fldFecha.innerHTML = fechas.map(f => `<option>${f}</option>`).join('');
 
-  // Por cada fecha creo sección y cargo sus actividades
+  // Por día...
   for (const fecha of fechas) {
     const sec = document.createElement('section');
     sec.className = 'dia-seccion';
@@ -135,7 +133,7 @@ async function renderItinerario() {
   }
 }
 
-// Carga y pinta las actividades de un día
+// Carga actividades
 async function loadActivities(grupo, fecha) {
   console.log(`▶️ loadActivities(${grupo}, ${fecha})`);
   try {
@@ -159,15 +157,15 @@ async function loadActivities(grupo, fecha) {
         </td>
       `;
       if (act.alerta) tr.style.border = '2px solid red';
-
       tbody.appendChild(tr);
+
       tr.querySelector('.btn-edit').onclick = () => openModal(act, true);
       tr.querySelector('.btn-del').onclick = async () => {
         if (!confirm('¿Eliminar actividad?')) return;
         await fetch(GAS_URL, {
-          method: 'POST',
+          method:'POST',
           headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ datos: { ...act, borrar:true } })
+          body: JSON.stringify({ datos:{ ...act, borrar:true } })
         });
         loadActivities(grupo, fecha);
       };
@@ -177,44 +175,44 @@ async function loadActivities(grupo, fecha) {
   }
 }
 
-// Abre el modal para crear/editar
+// Abre modal
 function openModal(data, isEdit) {
-  console.log("▶️ openModal:", data, "edit?", isEdit);
+  console.log("▶️ openModal:", data, isEdit);
   editData = isEdit ? data : null;
   document.getElementById('modal-title').textContent = isEdit ? 'Editar actividad' : 'Nueva actividad';
-  fldFecha.value       = data.fecha;
-  fldHi.value          = data.horaInicio || '';
-  fldHf.value          = data.horaFin    || '';
-  fldAct.value         = data.actividad  || '';
-  fldPas.value         = data.pasajeros  || 1;
-  fldNotas.value       = data.notas      || '';
+  fldFecha.value = data.fecha;
+  fldHi.value    = data.horaInicio || '';
+  fldHf.value    = data.horaFin    || '';
+  fldAct.value   = data.actividad  || '';
+  fldPas.value   = data.pasajeros  || 1;
+  fldNotas.value = data.notas      || '';
   modalBg.style.display = modal.style.display = 'block';
 }
 
-// Cierra el modal
+// Cierra modal
 function closeModal() {
   console.log("▶️ closeModal");
   modalBg.style.display = modal.style.display = 'none';
 }
 
-// Guarda los cambios desde el modal
+// Guarda modal
 formModal.onsubmit = async e => {
   e.preventDefault();
   const grupo = selectGrupo.value;
   const payload = {
     numeroNegocio: grupo,
-    fecha:         fldFecha.value,
-    horaInicio:    fldHi.value,
-    horaFin:       fldHf.value,
-    actividad:     fldAct.value,
-    pasajeros:     parseInt(fldPas.value,10),
-    notas:         fldNotas.value
+    fecha: fldFecha.value,
+    horaInicio: fldHi.value,
+    horaFin: fldHf.value,
+    actividad: fldAct.value,
+    pasajeros: parseInt(fldPas.value,10),
+    notas: fldNotas.value
   };
   if (editData) payload.id = editData.id;
   console.log("▶️ Guardando payload:", payload);
 
   await fetch(GAS_URL, {
-    method: 'POST',
+    method:'POST',
     headers:{ 'Content-Type':'application/json' },
     body: JSON.stringify({ datos: payload })
   });
@@ -223,6 +221,6 @@ formModal.onsubmit = async e => {
   loadActivities(grupo, fldFecha.value);
 };
 
-// Eventos de cierre de modal
+// Carga eventos de cierre del modal
 document.getElementById('modal-cancel').onclick = closeModal;
 modalBg.onclick = closeModal;
