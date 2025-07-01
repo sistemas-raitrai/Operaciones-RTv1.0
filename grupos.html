@@ -30,19 +30,24 @@
   <main class="main">
     <div class="filter-bar">
       <div class="row">
-        <div class="column medium">
-          <label for="buscador">Buscar en cualquier columna</label>
+        <!-- Buscador ocupa la columna "long" -->
+        <div class="column long">
+          <label for="buscador">Buscador de palabras claves</label>
           <input type="text" id="buscador" placeholder="…">
         </div>
-      </div>
-      <div class="row">
+        <!-- Filtro Destino ocupa "short" -->
         <div class="column short">
           <label for="filtroDestino">Destino</label>
-          <select id="filtroDestino"><option value="">Todos</option></select>
+          <select id="filtroDestino">
+            <option value="">Todos</option>
+          </select>
         </div>
+        <!-- Filtro Año ocupa "short" -->
         <div class="column short">
           <label for="filtroAno">Año de Viaje</label>
-          <select id="filtroAno"><option value="">Todos</option></select>
+          <select id="filtroAno">
+            <option value="">Todos</option>
+          </select>
         </div>
       </div>
     </div>
