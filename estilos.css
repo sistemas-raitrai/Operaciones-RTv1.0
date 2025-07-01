@@ -128,35 +128,36 @@ a {
 /* Estilos específicos para la vista de “Visualización de Grupos”          */
 /* ----------------------------------------------------------------------- */
 
-/* Barra de búsqueda y filtros: azul grisáceo más claro */
+/* Barra de búsqueda y filtros sobre fondo blanco */
 .filter-bar {
-  background-color: #3a4b6a;   /* azul grisáceo suave */
-  color: #f0f4f8;              /* texto gris muy claro */
+  background-color: #ffffff;  /* Blanco puro */
+  color: #333333;             /* Texto gris oscuro */
   padding: 1rem;
+  border-bottom: 1px solid #dddddd;
 }
 
 /* Etiquetas dentro de la barra */
 .filter-bar label {
-  color: #f0f4f8;
+  color: #333333;
 }
 
 /* Inputs y selects sobre fondo muy claro */
 .filter-bar input,
 .filter-bar select {
-  background-color: #f6f8fa;   /* gris muy claro */
-  color: #333;
-  border: 1px solid #ccc;
+  background-color: #f6f6f6;   /* Gris muy claro */
+  color: #333333;
+  border: 1px solid #cccccc;
 }
 
 /* Placeholder en gris medio */
 .filter-bar input::placeholder {
-  color: #888;
+  color: #888888;
 }
 
 /* Ajustes de DataTables dentro de esta vista */
 #tablaGrupos {
   width: 100% !important;
-  background: white;
+  background: #ffffff;         /* Fondo blanco */
   border-collapse: collapse;
 }
 
@@ -165,13 +166,34 @@ a {
   display: none;
 }
 
-/* Cabecera de tabla en gris suave */
-#tablaGrupos thead th {
-  background-color: #e9ecef;   /* gris muy suave */
-  color: #333;
+/* Contenedor con scroll horizontal para no cortar la tabla */
+.table-container {
+  overflow-x: auto;
+  /* opcional: sombreado interior */
+  box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
 }
 
-/* Filas alternas un poco más claras */
+/* Cabecera de tabla en gris muy suave */
+#tablaGrupos thead th {
+  background-color: #f8f9fa;   /* Gris muy suave */
+  color: #333333;
+}
+
+/* Filas alternas en blanco puro */
 #tablaGrupos tbody tr:nth-child(even) {
-  background-color: #f8f9fa;   /* gris clarito */
+  background-color: #ffffff;
+}
+
+/* Controles de DataTables (Mostrar, paginación, info) */
+.dataTables_wrapper .dataTables_length,
+.dataTables_wrapper .dataTables_paginate,
+.dataTables_wrapper .dataTables_info {
+  background-color: #ffffff;
+  color: #333333;
+  padding: 0.5rem 0;
+}
+
+.dataTables_wrapper .dataTables_length select {
+  background: #f6f6f6;
+  border: 1px solid #cccccc;
 }
