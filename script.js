@@ -11,7 +11,7 @@ document.addEventListener("DOMContentLoaded", () => {
   onAuthStateChanged(auth, user => {
     const userDiv = document.querySelector(".username");
     if (user && userDiv) {
-      userDiv.textContent = `Usuario conectado: ${user.email}`;
+      userDiv.textContent = `${user.email}`;
     }
   });
 
