@@ -74,6 +74,15 @@ async function init() {
   }
 }
 
+/**
+ * ➤ Convierte un string "DD-MM-YYYY" a un Date válido
+ */
+function parseDdMmYyyy(s) {
+  // "29-11-2025" → [29,11,2025]
+  const [d, m, y] = s.split('-').map(x => parseInt(x, 10));
+  return new Date(y, m - 1, d);
+}
+
 // Genera rango de fechas
 async function getRangoFechas(grupo) {
   console.log(`▶️ getRangoFechas(${grupo})`);
@@ -81,11 +90,14 @@ async function getRangoFechas(grupo) {
   const datos = await res.json();
   const fila  = datos.find(r => r.numeroNegocio === grupo);
   if (!fila) throw new Error(`No encontré datos para grupo ${grupo}`);
-  const inicio = new Date(fila.fechaInicio);
-  const fin    = new Date(fila.fechaFin);
-  const arr    = [];
-  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate()+1)) {
-    arr.push(d.toISOString().slice(0,10));
+
+  // parseamos con nuestra función:
+  const inicio = parseDdMmYyyy(fila.fechaInicio);
+  const fin    = parseDdMmYyyy(fila.fechaFin);
+
+  const arr = [];
+  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+    arr.push(d.toISOString().slice(0, 10));
   }
   console.log("▶️ Fechas:", arr);
   return arr;
