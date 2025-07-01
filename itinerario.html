@@ -4,85 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Itinerario de Grupo | RT v1.0</title>
-  <!-- Tu CSS global -->
+  <!-- 1) CSS global + específico -->
   <link rel="stylesheet" href="estilos.css">
-  <!-- Estilos específicos para Itinerario -->
-  <style>
-    .dia-seccion {
-      margin-bottom: 2rem;
-      background: #fff;
-      padding: 1rem;
-      border-radius: 8px;
-    }
-    .dia-seccion h3 { margin-top: 0; }
-    .tabla-itinerario {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 0.5rem;
-    }
-    .tabla-itinerario th,
-    .tabla-itinerario td {
-      border: 1px solid #ddd;
-      padding: 0.5rem;
-      text-align: left;
-    }
-    .tabla-itinerario th { background: #f8f9fa; }
-
-    .btn-add,
-    .btn-edit,
-    .btn-del {
-      background: #004080;
-      color: #fff;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 0.9rem;
-    }
-    .btn-add { background: #0066cc; }
-    .btn-del { background: #cc0000; }
-
-    /* Modal */
-    #modal-backdrop {
-      display: none;
-      position: fixed;
-      top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.5);
-      z-index:100;
-    }
-    #modal {
-      display: none;
-      position: fixed;
-      top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      background:#fff;
-      padding:1rem;
-      border-radius:8px;
-      width:320px;
-      box-shadow:0 2px 8px rgba(0,0,0,0.2);
-      z-index:101;
-    }
-    #modal label { margin-top:0.5rem; display:block; }
-    #modal input,#modal select,#modal textarea { width:100%; margin-top:0.2rem; }
-    #modal .actions { text-align:right; margin-top:1rem; }
-    #modal .actions button { margin-left:0.5rem; }
-  </style>
 </head>
 <body class="itinerario-page">
 
-  <!-- Encabezado reutilizable -->
+  <!-- 2) Encabezado reutilizable -->
   <div id="encabezado"></div>
   <script type="module">
     fetch('encabezado.html')
       .then(r => r.text())
       .then(html => {
         document.getElementById('encabezado').innerHTML = html;
-        import('./script.js');
+        import('./script.js');  // reloj, logout, etc.
       });
   </script>
 
   <main class="main">
-    <!-- Selector de grupo -->
+    <!-- 3) Selector de grupo -->
     <div class="row">
       <div class="column long">
         <h2>Itinerario: <span id="grupo-title"></span></h2>
@@ -93,11 +32,11 @@
       </div>
     </div>
 
-    <!-- Contenedor de secciones día a día -->
+    <!-- 4) Carrusel de días -->
     <div id="itinerario-container"></div>
   </main>
 
-  <!-- Modal de edición/creación -->
+  <!-- 5) Modal de actividad -->
   <div id="modal-backdrop"></div>
   <div id="modal">
     <h3 id="modal-title">Actividad</h3>
@@ -127,9 +66,8 @@
     </form>
   </div>
 
-  <!-- jQuery (opcional) -->
+  <!-- 6) jQuery opcional + script -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <!-- Lógica de Itinerario -->
   <script type="module" src="itinerario.js"></script>
 </body>
 </html>
