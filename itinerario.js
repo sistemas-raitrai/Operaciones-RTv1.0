@@ -13,7 +13,8 @@ const OPENSHEET = "https://opensheet.elk.sh/124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr
 const GAS_URL   = "https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte2a6aFtVDguFGsiL0aaG6Tupn8B807oovR34S0YbR9I9mz0/exec";
 
 // 2) Elementos principales del DOM
-const selectGrupo    = document.getElementById("grupo-select");
+const selectGrupo    = document.getElementById("grupo-select-name");
+const selectGrupo    = document.getElementById("grupo-select-num");
 const titleGrupo     = document.getElementById("grupo-title");
 const contItinerario = document.getElementById("itinerario-container");
 
@@ -42,20 +43,51 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// 5) Init(): carga grupos desde Opensheet y render inicial
 async function init() {
   console.log("▶️ init()");
-  // 5.1) Lectura masiva de la pestaña 'LecturaBaseOperaciones'
+  // 5.1) Traer todos los registros
   const datos = await (await fetch(OPENSHEET)).json();
-  // 5.2) Extraer núm. de negocio únicos
-  const grupos = [...new Set(datos.map(r => r.numeroNegocio))];
-  // 5.3) Llenar el <select>
-  selectGrupo.innerHTML = grupos
-    .map(g => `<option value="${g}">${g}</option>`)
+
+  // 5.2) Extraer pares únicos {numeroNegocio, nombreGrupo}
+  const mapa = new Map();
+  datos.forEach(r => {
+    if (r.numeroNegocio && r.nombreGrupo && !mapa.has(r.numeroNegocio)) {
+      mapa.set(r.numeroNegocio, r.nombreGrupo);
+    }
+  });
+  const grupos = Array.from(mapa.entries());
+  // grupos = [ [ "1511", "ALTAMIRA 2B" ], [ "1373", "LINCOLN COLL." ], … ]
+
+  // 5.3) Poblar ambos <select>
+  selectNum.innerHTML = grupos
+    .map(([num, nombre]) => `<option value="${num}">${num}</option>`)
     .join("");
-  selectGrupo.onchange = renderItinerario;
-  // 5.4) Primer render
+  selectName.innerHTML = grupos
+    .map(([num, nombre]) => `<option value="${num}">${nombre}</option>`)
+    .join("");
+
+  // 5.4) Listeners espejo
+  selectNum.onchange = () => {
+    const num = selectNum.value;
+    selectName.value = num;
+    renderItinerario();
+  };
+  selectName.onchange = () => {
+    const num = selectName.value;
+    selectNum.value = num;
+    renderItinerario();
+  };
+
+  // 5.5) Primer render
   await renderItinerario();
+}
+
+// Dentro de renderItinerario(), actualiza el título
+async function renderItinerario() {
+  const grupo = selectNum.value;
+  const nombre = selectName.options[selectName.selectedIndex].text;
+  titleGrupo.textContent = `${grupo} — ${nombre}`;
+  // … el resto de tu lógica de render …
 }
 
 /**
