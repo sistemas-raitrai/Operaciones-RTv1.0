@@ -149,6 +149,45 @@ async function renderItinerario() {
   }
 }
 
+//Se llama una sola vez al arrancar la app:
+async function setupQuickAdd() {
+  document.getElementById("qa-add").onclick = async () => {
+    const grupo       = selectNum.value;
+    const diaIndex    = parseInt(document.getElementById("qa-dia").value, 10);
+    const horaInicio  = document.getElementById("qa-horaInicio").value;
+    const actividad   = document.getElementById("qa-actividad").value.trim();
+    if (!actividad) return alert("Escribe una actividad");
+
+    const fechas = await getRangoFechas(grupo);
+    const fecha  = fechas[diaIndex];
+
+    // Total de pax desde la fila
+    const fila = await fetch(OPENSHEET)
+                     .then(r=>r.json())
+                     .then(arr=>arr.find(r=>r.numeroNegocio===grupo));
+    const totalPax = parseInt(fila?.cantidadgrupo,10)||0;
+
+    const datos = {
+      numeroNegocio: grupo,
+      fecha,
+      horaInicio,
+      horaFin:    "",       // no nos importa ahora
+      actividad,
+      pasajeros:  totalPax, // por defecto
+      notas:      ""
+    };
+
+    await fetch(GAS_URL, {
+      method:  "POST",
+      headers: { "Content-Type":"application/json" },
+      body:    JSON.stringify({ datos })
+    });
+
+    loadActivities(grupo, fecha);
+    document.getElementById("qa-actividad").value = "";
+  };
+}
+
 /**
  * 9) loadActivities(grupo, fecha)
  *    Lee actividades de tu WebApp y las pinta
