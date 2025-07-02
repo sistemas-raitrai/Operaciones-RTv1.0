@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Itinerario de Grupo | RT v1.0</title>
-  <!-- 1) CSS global + específico -->
+  <!-- CSS global + específico -->
   <link rel="stylesheet" href="estilos.css">
 </head>
 <body class="itinerario-page">
 
-  <!-- 2) Encabezado reutilizable (logo, usuario, reloj, logout) -->
+  <!-- 1) Encabezado: logo, usuario, reloj, logout -->
   <div id="encabezado"></div>
   <script type="module">
     fetch('encabezado.html')
@@ -21,7 +21,7 @@
   </script>
 
   <main class="main">
-    <!-- 3) Selector de grupo: Número y Nombre -->
+    <!-- 2) Selector de grupo: Nº negocio y Nombre -->
     <div class="row">
       <div class="column long">
         <h2>
@@ -40,11 +40,11 @@
       </div>
     </div>
 
-    <!-- 4) Carrusel horizontal de días -->
+    <!-- 3) Carrusel horizontal de días -->
     <div id="itinerario-container"></div>
   </main>
 
-  <!-- 5) Modal de creación/edición de actividad -->
+  <!-- 4) Modal de actividad -->
   <div id="modal-backdrop"></div>
   <div id="modal">
     <h3 id="modal-title">Actividad</h3>
@@ -61,7 +61,6 @@
       <input type="number" id="m-pasajeros" min="1">
       <label for="m-notas">Notas</label>
       <textarea id="m-notas" rows="2"></textarea>
-
       <div class="actions">
         <button type="button" id="modal-cancel">Cancelar</button>
         <button type="submit" id="modal-save">Guardar</button>
@@ -69,7 +68,7 @@
     </form>
   </div>
 
-  <!-- 6) jQuery opcional + carga del script -->
+  <!-- 5) jQuery opcional + tu lógica -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="itinerario.js"></script>
 </body>
