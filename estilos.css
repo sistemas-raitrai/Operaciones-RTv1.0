@@ -389,3 +389,10 @@ a {
 #modal .actions button {
   margin-left: 0.5rem;
 }
+
+.quick-add {
+  background: #fff;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
