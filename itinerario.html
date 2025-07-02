@@ -9,7 +9,7 @@
 </head>
 <body class="itinerario-page">
 
-  <!-- 2) Encabezado reutilizable -->
+  <!-- 2) Encabezado reutilizable (logo, usuario, reloj, logout) -->
   <div id="encabezado"></div>
   <script type="module">
     fetch('encabezado.html')
@@ -21,41 +21,44 @@
   </script>
 
   <main class="main">
-    <!-- 3) Selector de grupo -->
+    <!-- 3) Selector de grupo: Número y Nombre -->
     <div class="row">
       <div class="column long">
-        <h2>Itinerario: <span id="grupo-title"></span></h2>
+        <h2>
+          Itinerario: <span id="grupo-title"></span>
+          &nbsp;DESTINO: <span id="destino-title"></span>
+          &nbsp;PROGRAMA: <span id="programa-title"></span>
+        </h2>
       </div>
       <div class="column short">
-        <label for="grupo-select">Grupo</label>
-        <select id="grupo-select"></select>
+        <label for="grupo-select-num">N° de Negocio</label>
+        <select id="grupo-select-num"></select>
+      </div>
+      <div class="column short">
+        <label for="grupo-select-name">Nombre Grupo</label>
+        <select id="grupo-select-name"></select>
       </div>
     </div>
 
-    <!-- 4) Carrusel de días -->
+    <!-- 4) Carrusel horizontal de días -->
     <div id="itinerario-container"></div>
   </main>
 
-  <!-- 5) Modal de actividad -->
+  <!-- 5) Modal de creación/edición de actividad -->
   <div id="modal-backdrop"></div>
   <div id="modal">
     <h3 id="modal-title">Actividad</h3>
     <form id="modal-form">
       <label for="m-fecha">Fecha</label>
       <select id="m-fecha"></select>
-
       <label for="m-horaInicio">Hora Inicio</label>
       <input type="time" id="m-horaInicio">
-
       <label for="m-horaFin">Hora Fin</label>
       <input type="time" id="m-horaFin">
-
       <label for="m-actividad">Actividad</label>
       <input type="text" id="m-actividad">
-
       <label for="m-pasajeros">Pasajeros</label>
       <input type="number" id="m-pasajeros" min="1">
-
       <label for="m-notas">Notas</label>
       <textarea id="m-notas" rows="2"></textarea>
 
@@ -66,7 +69,7 @@
     </form>
   </div>
 
-  <!-- 6) jQuery opcional + script -->
+  <!-- 6) jQuery opcional + carga del script -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="itinerario.js"></script>
 </body>
