@@ -7,16 +7,16 @@ const auth = getAuth(app);
 console.log("▶️ itinerario.js cargado");
 
 // 1) URLs de datos
-//    - OPENSHEET: convierte tu Google Sheet en JSON público (solo lectura masiva)
-//    - GAS_URL:   tu WebApp de Apps Script (doGet/doPost) para CRUD de actividades
+//    - OPENSHEET: tu hoja pública como JSON (solo lectura masiva)
+//    - GAS_URL:   tu WebApp de Apps Script para CRUD de actividades
 const OPENSHEET = "https://opensheet.elk.sh/124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI/LecturaBaseOperaciones";
 const GAS_URL   = "https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte2a6aFtVDguFGsiL0aaG6Tupn8B807oovR34S0YbR9I9mz0/exec";
 
 // 2) Elementos principales del DOM
-const selectName    = document.getElementById("grupo-select-name");
-const selectNum    = document.getElementById("grupo-select-num");
-const titleGrupo     = document.getElementById("grupo-title");
-const contItinerario = document.getElementById("itinerario-container");
+const selectNum     = document.getElementById("grupo-select-num");   // selector por código
+const selectName    = document.getElementById("grupo-select-name");  // selector por nombre
+const titleGrupo    = document.getElementById("grupo-title");       
+const contItinerario= document.getElementById("itinerario-container");
 
 // 3) Elementos del modal de actividad
 const modalBg   = document.getElementById("modal-backdrop");
@@ -45,7 +45,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function init() {
   console.log("▶️ init()");
-  // 5.1) Traer todos los registros
+  // 5.1) Traer todos los registros de la hoja
   const datos = await (await fetch(OPENSHEET)).json();
 
   // 5.2) Extraer pares únicos {numeroNegocio, nombreGrupo}
@@ -56,38 +56,28 @@ async function init() {
     }
   });
   const grupos = Array.from(mapa.entries());
-  // grupos = [ [ "1511", "ALTAMIRA 2B" ], [ "1373", "LINCOLN COLL." ], … ]
+  // → [ ["1511","ALTAMIRA 2B"], ["1373","LINCOLN COLL."], … ]
 
   // 5.3) Poblar ambos <select>
   selectNum.innerHTML = grupos
-    .map(([num, nombre]) => `<option value="${num}">${num}</option>`)
+    .map(([num])    => `<option value="${num}">${num}</option>`)
     .join("");
   selectName.innerHTML = grupos
-    .map(([num, nombre]) => `<option value="${num}">${nombre}</option>`)
+    .map(([num,n]) => `<option value="${num}">${n}</option>`)
     .join("");
 
-  // 5.4) Listeners espejo
+  // 5.4) Listeners “espejo”
   selectNum.onchange = () => {
-    const num = selectNum.value;
-    selectName.value = num;
+    selectName.value = selectNum.value;
     renderItinerario();
   };
   selectName.onchange = () => {
-    const num = selectName.value;
-    selectNum.value = num;
+    selectNum.value = selectName.value;
     renderItinerario();
   };
 
   // 5.5) Primer render
   await renderItinerario();
-}
-
-// Dentro de renderItinerario(), actualiza el título
-async function renderItinerario() {
-  const grupo = selectNum.value;
-  const nombre = selectName.options[selectName.selectedIndex].text;
-  titleGrupo.textContent = `${grupo} — ${nombre}`;
-  // … el resto de tu lógica de render …
 }
 
 /**
@@ -100,7 +90,7 @@ function parseDdMmYyyy(s) {
 }
 
 // 7) getRangoFechas(grupo)
-//    Calcula array de fechas entre inicio y fin
+//    Calcula array de fechas entre fechaInicio y fechaFin
 async function getRangoFechas(grupo) {
   console.log("▶️ getRangoFechas", grupo);
   const datos = await (await fetch(OPENSHEET)).json();
@@ -116,22 +106,25 @@ async function getRangoFechas(grupo) {
 }
 
 // 8) renderItinerario()
-//    Dibuja un carrusel de días y carga sus actividades
+//    Dibuja carrusel de días y carga sus actividades
 async function renderItinerario() {
-  const grupo = selectGrupo.value;
-  console.log("▶️ renderItinerario", grupo);
-  titleGrupo.textContent = grupo;
-  contItinerario.innerHTML = "";
+  const grupo  = selectNum.value;
+  const nombre = selectName.options[selectName.selectedIndex].text;
+  console.log("▶️ renderItinerario", grupo, nombre);
 
-  // 8.1) Generar fechas
+  // 8.1) Actualizo título
+  titleGrupo.textContent = `Itinerario: ${grupo} — ${nombre}`;
+
+  // 8.2) Limpio y obtengo rango de fechas
+  contItinerario.innerHTML = "";
   const fechas = await getRangoFechas(grupo);
 
-  // 8.2) Llenar select de fecha en el modal
+  // 8.3) Llenar select de fecha en el modal
   fldFecha.innerHTML = fechas
     .map(f => `<option value="${f}">${f}</option>`)
     .join("");
 
-  // 8.3) Por cada fecha, crear tarjeta
+  // 8.4) Por cada fecha, crear tarjeta y cargar actividades
   for (const fecha of fechas) {
     const sec = document.createElement("section");
     sec.className = "dia-seccion";
@@ -143,13 +136,12 @@ async function renderItinerario() {
     `;
     contItinerario.appendChild(sec);
     sec.querySelector(".btn-add").onclick = () => openModal({ fecha }, false);
-    // 8.4) Cargar actividades de ese día
     await loadActivities(grupo, fecha);
   }
 }
 
 // 9) loadActivities(grupo, fecha)
-//    Lee de tu WebApp las actividades y las pinta
+//    Lee de GAS_URL las actividades y las pinta
 async function loadActivities(grupo, fecha) {
   console.log("▶️ loadActivities", grupo, fecha);
   const res = await fetch(
@@ -229,7 +221,7 @@ function closeModal() {
 //     Envía nueva actividad o edición
 formModal.onsubmit = async e => {
   e.preventDefault();
-  const grupo = selectGrupo.value;
+  const grupo = selectNum.value;
   const payload = {
     numeroNegocio: grupo,
     fecha:         fldFecha.value,
