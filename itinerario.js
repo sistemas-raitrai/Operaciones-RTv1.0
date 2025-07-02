@@ -118,6 +118,11 @@ async function renderItinerario() {
   contItinerario.innerHTML = "";
   const fechas = await getRangoFechas(grupo);
 
+  const qaDia = document.getElementById("qa-dia");
+  qaDia.innerHTML = fechas
+  .map((_, i) => `<option value="${i}">Día ${i+1}</option>`)
+  .join("");
+
   // 8.3) Rellenar el select de fecha en el modal
   fldFecha.innerHTML = fechas.map(f => `<option value="${f}">${f}</option>`).join("");
 
