@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
   <title>Itinerario de Grupo | RT v1.0</title>
-  <!-- CSS global + específico -->
+  <!-- 1) CSS global + específico -->
   <link rel="stylesheet" href="estilos.css">
 </head>
 <body class="itinerario-page">
 
-  <!-- 1) Encabezado: logo, usuario, reloj, logout -->
+  <!-- 2) Encabezado reutilizable -->
   <div id="encabezado"></div>
   <script type="module">
     fetch('encabezado.html')
@@ -21,46 +21,44 @@
   </script>
 
   <main class="main">
-    <!-- 2) Selector de grupo: Nº negocio y Nombre -->
+    <!-- 3) Selector de grupo -->
     <div class="row">
       <div class="column long">
-        <h2>
-          Itinerario: <span id="grupo-title"></span>
-          &nbsp;DESTINO: <span id="destino-title"></span>
-          &nbsp;PROGRAMA: <span id="programa-title"></span>
-        </h2>
+        <h2>Itinerario: <span id="grupo-title"></span></h2>
       </div>
       <div class="column short">
-        <label for="grupo-select-num">N° de Negocio</label>
-        <select id="grupo-select-num"></select>
-      </div>
-      <div class="column short">
-        <label for="grupo-select-name">Nombre Grupo</label>
-        <select id="grupo-select-name"></select>
+        <label for="grupo-select">Grupo</label>
+        <select id="grupo-select"></select>
       </div>
     </div>
 
-    <!-- 3) Carrusel horizontal de días -->
+    <!-- 4) Carrusel de días -->
     <div id="itinerario-container"></div>
   </main>
 
-  <!-- 4) Modal de actividad -->
+  <!-- 5) Modal de actividad -->
   <div id="modal-backdrop"></div>
   <div id="modal">
     <h3 id="modal-title">Actividad</h3>
     <form id="modal-form">
       <label for="m-fecha">Fecha</label>
       <select id="m-fecha"></select>
+
       <label for="m-horaInicio">Hora Inicio</label>
       <input type="time" id="m-horaInicio">
+
       <label for="m-horaFin">Hora Fin</label>
       <input type="time" id="m-horaFin">
+
       <label for="m-actividad">Actividad</label>
       <input type="text" id="m-actividad">
+
       <label for="m-pasajeros">Pasajeros</label>
       <input type="number" id="m-pasajeros" min="1">
+
       <label for="m-notas">Notas</label>
       <textarea id="m-notas" rows="2"></textarea>
+
       <div class="actions">
         <button type="button" id="modal-cancel">Cancelar</button>
         <button type="submit" id="modal-save">Guardar</button>
@@ -68,7 +66,7 @@
     </form>
   </div>
 
-  <!-- 5) jQuery opcional + tu lógica -->
+  <!-- 6) jQuery opcional + script -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="itinerario.js"></script>
 </body>
