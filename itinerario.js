@@ -13,7 +13,7 @@ const GAS_URL   = "https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte
 // 2) Elementos principales del DOM
 const selectNum      = document.getElementById("grupo-select-num");   // selector por código
 const selectName     = document.getElementById("grupo-select-name");  // selector por nombre
-const titleGrupo     = document.getElementById("grupo-title");       
+const titleGrupo     = document.getElementById("grupo-title");
 const contItinerario = document.getElementById("itinerario-container");
 
 // 3) Elementos del modal de actividad
@@ -21,29 +21,34 @@ const modalBg   = document.getElementById("modal-backdrop");
 const modal     = document.getElementById("modal");
 const formModal = document.getElementById("modal-form");
 const fldFecha  = document.getElementById("m-fecha");
-const fldHi     = document.getElementById("m-horaInicio");
-const fldHf     = document.getElementById("m-horaFin");
+const fldBloques = document.getElementById("m-bloques");  // contenedor dinámico de bloques
 const fldAct    = document.getElementById("m-actividad");
 const fldPas    = document.getElementById("m-pasajeros");
 const fldNotas  = document.getElementById("m-notas");
-let editData    = null;  // guarda la actividad en edición
+let editData    = null;  // datos de la actividad en edición
 
-// 4) Cuando el DOM esté listo, comprobamos sesión y arrancamos
+// 4) Bloques predefinidos
+const BLOQUES = [
+  { key: 'desayuno', label: 'Desayuno',    start: '07:00', end: '09:00' },
+  { key: 'manana',   label: 'Mañana',      start: '09:00', end: '13:00' },
+  { key: 'almuerzo', label: 'Almuerzo',    start: '13:00', end: '15:00' },
+  { key: 'tarde',    label: 'Tarde',       start: '15:00', end: '19:00' },
+  { key: 'cena',     label: 'Cena',        start: '20:00', end: '22:00' },
+  { key: 'noche',    label: 'Noche',       start: '22:00', end: '03:00' },
+  { key: 'pernocte', label: 'Pernocte',    start: '',      end: ''      },
+];
+
+// 5) Al cargar el DOM, comprobamos sesión y arrancamos
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("▶️ DOM listo");
   onAuthStateChanged(auth, user => {
-    console.log("▶️ Usuario:", user?.email);
     if (!user) return location.href = "login.html";
     init();
   });
 });
 
+// 6) Inicialización: cargar grupos y primer render
 async function init() {
-  console.log("▶️ init()");
-  // 5.1) Leer toda la hoja
   const datos = await (await fetch(OPENSHEET)).json();
-
-  // 5.2) Extraer pares únicos {numeroNegocio, nombreGrupo}
   const mapa = new Map();
   datos.forEach(r => {
     if (r.numeroNegocio && r.nombreGrupo && !mapa.has(r.numeroNegocio)) {
@@ -51,90 +56,61 @@ async function init() {
     }
   });
   const grupos = Array.from(mapa.entries());
-
-  // 5.3) Poblar los dos <select>
-  selectNum.innerHTML  = grupos.map(([num])    => `<option value="${num}">${num}</option>`).join("");
-  selectName.innerHTML = grupos.map(([num,n]) => `<option value="${num}">${n}</option>`).join("");
-
-  // 5.4) Listeners “espejo”
+  selectNum.innerHTML  = grupos.map(([n])=>`<option value="${n}">${n}</option>`).join("");
+  selectName.innerHTML = grupos.map(([n,gn])=>`<option value="${n}">${gn}</option>`).join("");
   selectNum.onchange  = () => { selectName.value = selectNum.value; renderItinerario(); };
   selectName.onchange = () => { selectNum.value  = selectName.value; renderItinerario(); };
-
-  // 5.5) Primer render
   await renderItinerario();
 }
 
 /**
- * 6) parseDdMmYyyy(s)
- *    Convierte "DD-MM-YYYY" → Date
+ * 7) formModal: onsubmit → guarda actividad
+ *    Mantiene horaInicio y horaFin por bloque.
  */
-function parseDdMmYyyy(s) {
-  const [d, m, y] = s.split("-").map(n => parseInt(n, 10));
-  return new Date(y, m - 1, d);
-}
+formModal.onsubmit = async e => {
+  e.preventDefault();
+  const grupo = selectNum.value;
+  // Elegimos bloque activo (el primero seleccionado)
+  const bloqueSel = document.querySelector('input[name="bloque"]:checked');
+  const start = bloqueSel?.dataset.start || fldBloques.querySelector('input[data-key="desayuno"]').value;
+  const end   = bloqueSel?.dataset.end   || fldBloques.querySelector('input[data-key="desayuno_end"]').value;
+  const payload = {
+    numeroNegocio: grupo,
+    fecha:         fldFecha.value,
+    horaInicio:    start,
+    horaFin:       end,
+    actividad:     fldAct.value,
+    pasajeros:     parseInt(fldPas.value,10),
+    notas:         fldNotas.value
+  };
+  if (editData) payload.id = editData.id;
+  await fetch(GAS_URL, {
+    method:  "POST",
+    headers: { "Content-Type":"application/json" },
+    body:    JSON.stringify({ datos: payload })
+  });
+  closeModal();
+  loadActivities(grupo, fldFecha.value);
+};
 
-/**
- * 7) getRangoFechas(grupo)
- *    Devuelve array de fechas ISO entre fechaInicio y fechaFin
- */
-async function getRangoFechas(grupo) {
-  const datos = await (await fetch(OPENSHEET)).json();
-  const fila  = datos.find(r => r.numeroNegocio === grupo);
-  if (!fila) throw new Error(`No datos para ${grupo}`);
-  const inicio = parseDdMmYyyy(fila.fechaInicio);
-  const fin    = parseDdMmYyyy(fila.fechaFin);
-  const dias = [];
-  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
-    dias.push(d.toISOString().slice(0, 10));
-  }
-  return dias;
-}
-
-/**
- * 8) renderItinerario()
- *    Dibuja carrusel de “Día N – Nombre día dd/mm”
- *    y carga sus actividades
- */
+// 8) Render del itinerario: días y actividades
 async function renderItinerario() {
-  const grupo  = selectNum.value;
-  const nombre = selectName.options[selectName.selectedIndex].text;
-  console.log("▶️ renderItinerario", grupo, nombre);
-
-  // 8.1) Recuperar el programa de la hoja
+  const grupo = selectNum.value;
   const datos = await (await fetch(OPENSHEET)).json();
-  const fila  = datos.find(r => r.numeroNegocio === grupo);
-
-  //8.1.a
-  if (!fila) {
-  titleGrupo.textContent = "Programa no encontrado";
-  return;
-  }
-  
-  // Calculamos el total de pax desde la hoja
-  const totalPax = parseInt(fila.cantidadgrupo, 10) || 0;
-  titleGrupo.textContent = fila?.programa || "Programa no encontrado";
-
-  // 8.2) Limpiar contenedor y obtener fechas
+  const fila  = datos.find(r => r.numeroNegocio===grupo) || {};
+  titleGrupo.textContent = fila.programa || "Sin programa";
   contItinerario.innerHTML = "";
   const fechas = await getRangoFechas(grupo);
-
-  const qaDia = document.getElementById("qa-dia");
-  qaDia.innerHTML = fechas
-  .map((_, i) => `<option value="${i}">Día ${i+1}</option>`)
-  .join("");
-
-  // 8.3) Rellenar el select de fecha en el modal
-  fldFecha.innerHTML = fechas.map(f => `<option value="${f}">${f}</option>`).join("");
-
-  // 8.4) Recorremos cada fecha con índice para el “Día N”
-  for (let i = 0; i < fechas.length; i++) {
+  fldFecha.innerHTML = fechas.map(f=>`<option value="${f}">${f}</option>`).join("");
+  // Prepara modal con los 7 bloques
+  prepModalBloques();
+  for (let i=0; i<fechas.length; i++) {
     const fecha = fechas[i];
-    const dObj   = new Date(fecha);
-    const weekday= dObj.toLocaleDateString("es-CL", { weekday:"long" });
-    const dia    = String(dObj.getDate()).padStart(2,"0");
-    const mes    = String(dObj.getMonth()+1).padStart(2,"0");
-    const titulo = `Día ${i+1} – ${weekday.charAt(0).toUpperCase()+weekday.slice(1)} ${dia}/${mes}`;
-
+    const dObj  = new Date(fecha);
+    const weekday = dObj.toLocaleDateString('es-CL',{weekday:'long'});
+    const dd = String(dObj.getDate()).padStart(2,'0'),
+          mm = String(dObj.getMonth()+1).padStart(2,'0');
+    const titulo = `Día ${i+1} – ${weekday.charAt(0).toUpperCase()+weekday.slice(1)} ${dd}/${mm}`;
     const sec = document.createElement("section");
     sec.className     = "dia-seccion";
     sec.dataset.fecha = fecha;
@@ -144,139 +120,106 @@ async function renderItinerario() {
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
     contItinerario.appendChild(sec);
-    sec.querySelector(".btn-add").onclick = () => openModal({ fecha, totalPax }, false);
-    await loadActivities(grupo, fecha);
+    sec.querySelector(".btn-add").onclick = () => openModal({ fecha }, false);
+    await loadActivities(grupo,fecha);
   }
 }
 
-//Se llama una sola vez al arrancar la app:
-async function setupQuickAdd() {
-  document.getElementById("qa-add").onclick = async () => {
-    const grupo       = selectNum.value;
-    const diaIndex    = parseInt(document.getElementById("qa-dia").value, 10);
-    const horaInicio  = document.getElementById("qa-horaInicio").value;
-    const actividad   = document.getElementById("qa-actividad").value.trim();
-    if (!actividad) return alert("Escribe una actividad");
-
-    const fechas = await getRangoFechas(grupo);
-    const fecha  = fechas[diaIndex];
-
-    // Total de pax desde la fila
-    const fila = await fetch(OPENSHEET)
-                     .then(r=>r.json())
-                     .then(arr=>arr.find(r=>r.numeroNegocio===grupo));
-    const totalPax = parseInt(fila?.cantidadgrupo,10)||0;
-
-    const datos = {
-      numeroNegocio: grupo,
-      fecha,
-      horaInicio,
-      horaFin:    "",       // no nos importa ahora
-      actividad,
-      pasajeros:  totalPax, // por defecto
-      notas:      ""
-    };
-
-    await fetch(GAS_URL, {
-      method:  "POST",
-      headers: { "Content-Type":"application/json" },
-      body:    JSON.stringify({ datos })
-    });
-
-    loadActivities(grupo, fecha);
-    document.getElementById("qa-actividad").value = "";
-  };
+// 9) Lee el rango de fechas entre inicio/fin
+function parseDdMmYyyy(s){
+  const [d,m,y]=s.split('-').map(n=>+n);
+  return new Date(y,m-1,d);
+}
+async function getRangoFechas(grupo){
+  const datos=await (await fetch(OPENSHEET)).json();
+  const fila =datos.find(r=>r.numeroNegocio===grupo);
+  const inicio=parseDdMmYyyy(fila.fechaInicio);
+  const fin   =parseDdMmYyyy(fila.fechaFin);
+  const dias=[];
+  for(let d=new Date(inicio);d<=fin;d.setDate(d.getDate()+1)){
+    dias.push(d.toISOString().slice(0,10));
+  }
+  return dias;
 }
 
-/**
- * 9) loadActivities(grupo, fecha)
- *    Lee actividades de tu WebApp y las pinta
- */
-async function loadActivities(grupo, fecha) {
-  const res    = await fetch(`${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1`);
-  const { valores } = await res.json();
-  const ul     = document.querySelector(`section[data-fecha="${fecha}"] .activity-list`);
-  ul.innerHTML = "";
-
-  if (!valores.length) {
-    ul.innerHTML = `<li class="activity-card" style="text-align:center;color:#666">— Sin actividades —</li>`;
+// 10) Pinta actividades de un día (sólo show horaInicio)
+async function loadActivities(grupo,fecha){
+  const res=await fetch(`${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1`);
+  const { valores=[] }=await res.json();
+  const ul=document.querySelector(`section[data-fecha="${fecha}"] .activity-list`);
+  ul.innerHTML="";
+  if(!valores.length){
+    ul.innerHTML=`<li class="activity-card" style="text-align:center;color:#666">— Sin actividades —</li>`;
     return;
   }
-
-  valores.forEach(act => {
-    const li = document.createElement("li");
-    li.className = "activity-card";
-    li.innerHTML = `
-      <h4>${act.horaInicio||"–"}</h4>
+  valores.forEach(act=>{
+    const li=document.createElement("li");
+    li.className="activity-card";
+    li.innerHTML=`
+      <h4>${act.horaInicio}</h4>
       <p><strong>${act.actividad}</strong></p>
-      <p>👥 ${act.pasajeros||0} pax</p>
+      <p>👥 ${act.pasajeros} pax</p>
       <div style="text-align:right">
         <button class="btn-edit">✏️</button>
         <button class="btn-del">🗑️</button>
       </div>
     `;
-    if (act.alerta) li.style.border = "2px solid red";
-
-    li.querySelector(".btn-edit").onclick = () => openModal(act, true);
-    li.querySelector(".btn-del").onclick = async () => {
-      if (!confirm("¿Eliminar actividad?")) return;
-      await fetch(GAS_URL, {
-        method:  "POST",
-        headers: { "Content-Type":"application/json" },
-        body:    JSON.stringify({ datos:{ ...act, borrar:true } })
-      });
-      loadActivities(grupo, fecha);
+    if(act.alerta) li.style.border="2px solid red";
+    li.querySelector(".btn-edit").onclick=()=>openModal(act,true);
+    li.querySelector(".btn-del").onclick=async()=>{
+      if(!confirm("¿Eliminar actividad?"))return;
+      await fetch(GAS_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({datos:{...act,borrar:true}})});
+      loadActivities(grupo,fecha);
     };
-
     ul.appendChild(li);
   });
 }
 
-// 10) openModal(data, isEdit)
-function openModal(data, isEdit) {
-  editData = isEdit ? data : null;
-  document.getElementById("modal-title").textContent = isEdit ? "Editar actividad" : "Nueva actividad";
-  fldFecha.value  = data.fecha;
-  fldHi.value     = data.horaInicio  || "";
-  fldHf.value     = data.horaFin     || "";
-  fldAct.value    = data.actividad   || "";
-  fldPas.value    = isEdit
-                  ? data.pasajeros
-                  : data.totalPax;
-  fldNotas.value  = data.notas       || "";
+// 11) Prepara el formulario del modal con los 7 bloques
+function prepModalBloques(){
+  fldBloques.innerHTML = "";
+  BLOQUES.forEach(b=>{
+    const row = document.createElement("div");
+    row.className="bloque-row";
+    // radio para seleccionar bloque
+    row.innerHTML=`
+      <label>
+        <input type="radio" name="bloque" data-key="${b.key}"
+               data-start="${b.start}" data-end="${b.end}">
+        ${b.label}
+      </label>
+      <input type="time" data-key="${b.key}" value="${b.start}">
+      <input type="time" data-key="${b.key}_end" value="${b.end}">
+    `;
+    fldBloques.appendChild(row);
+  });
+}
+
+// 12) Abre el modal, rellena campos
+function openModal(data,isEdit){
+  editData = isEdit? data : null;
+  document.getElementById("modal-title").textContent = isEdit? "Editar actividad":"Nueva actividad";
+  fldFecha.value   = data.fecha;
+  fldAct.value     = data.actividad||"";
+  fldPas.value     = data.pasajeros || data.totalPax || 0;
+  fldNotas.value   = data.notas||"";
+  // si es edición, marca el bloque correspondiente
+  if(isEdit){
+    fldBloques.querySelectorAll('input[name="bloque"]').forEach(r=>{
+      if(r.dataset.start===data.horaInicio) r.checked=true;
+    });
+    // y actualiza tiempos en inputs
+    fldBloques.querySelectorAll("input[type=time]").forEach(i=>{
+      const key=i.dataset.key;
+      i.value = data[key] || i.value;
+    });
+  }
   modalBg.style.display = modal.style.display = "block";
 }
 
-// 11) closeModal()
-function closeModal() {
+// 13) Cierra el modal
+function closeModal(){
   modalBg.style.display = modal.style.display = "none";
 }
-
-// 12) formModal.onsubmit
-formModal.onsubmit = async e => {
-  e.preventDefault();
-  const grupo = selectNum.value;
-  const payload = {
-    numeroNegocio: grupo,
-    fecha:         fldFecha.value,
-    horaInicio:    fldHi.value,
-    horaFin:       fldHf.value,
-    actividad:     fldAct.value,
-    pasajeros:     parseInt(fldPas.value,10),
-    notas:         fldNotas.value
-  };
-  if (editData) payload.id = editData.id;
-
-  await fetch(GAS_URL, {
-    method:  "POST",
-    headers: { "Content-Type":"application/json" },
-    body:    JSON.stringify({ datos: payload })
-  });
-
-  closeModal();
-  loadActivities(grupo, fldFecha.value);
-};
-
-// 13) Cerrar modal
 document.getElementById("modal-cancel").onclick = closeModal;
 modalBg.onclick = closeModal;
