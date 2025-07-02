@@ -113,7 +113,7 @@ async function renderItinerario() {
   console.log("▶️ renderItinerario", grupo, nombre);
 
   // 8.1) Actualizo título
-  titleGrupo.textContent = `Itinerario: ${grupo} — ${nombre}`;
+  titleGrupo.textContent = fila.programa;
 
   // 8.2) Limpio y obtengo rango de fechas
   contItinerario.innerHTML = "";
