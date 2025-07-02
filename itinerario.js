@@ -4,123 +4,119 @@ import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/
 import { app } from "./firebase-init.js";
 const auth = getAuth(app);
 
-// ① URLs de tus fuentes de datos
-const GAS_URL   = 'https://script.google.com/macros/s/.../exec';
-const OPENSHEET = 'https://opensheet.elk.sh/124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI/LecturaBaseOperaciones';
+console.log("▶️ itinerario.js cargado");
 
-// ② Referencias al DOM
-const selNum      = document.getElementById('grupo-select-num');
-const selName     = document.getElementById('grupo-select-name');
-const titleGrupo  = document.getElementById('grupo-title');
-const titleDest   = document.getElementById('destino-title');
-const titleProg   = document.getElementById('programa-title');
-const contItin    = document.getElementById('itinerario-container');
+// ① URLs de datos
+const GAS_URL   = 'https://script.google.com/macros/s/.../exec';           // tu Web App GAS
+const OPENSHEET = 'https://opensheet.elk.sh/.../LecturaBaseOperaciones';  // lectura del sheet
 
-// Modal
-const modalBg     = document.getElementById('modal-backdrop');
-const modal       = document.getElementById('modal');
-const formModal   = document.getElementById('modal-form');
-const fldFecha    = document.getElementById('m-fecha');
-const fldHi       = document.getElementById('m-horaInicio');
-const fldHf       = document.getElementById('m-horaFin');
-const fldAct      = document.getElementById('m-actividad');
-const fldPas      = document.getElementById('m-pasajeros');
-const fldNotas    = document.getElementById('m-notas');
-let editData      = null; // Para determinar si estamos editando
+// ② DOM elements
+const selNum    = document.getElementById('grupo-select-num');
+const selName   = document.getElementById('grupo-select-name');
+const titleGrp  = document.getElementById('grupo-title');
+const titleDest = document.getElementById('destino-title');
+const titleProg = document.getElementById('programa-title');
+const contItin  = document.getElementById('itinerario-container');
 
-// ③ Espera a DOM y auth
+// ③ Modal elements
+const modalBg   = document.getElementById('modal-backdrop');
+const modal     = document.getElementById('modal');
+const formModal = document.getElementById('modal-form');
+const fldFecha  = document.getElementById('m-fecha');
+const fldHi     = document.getElementById('m-horaInicio');
+const fldHf     = document.getElementById('m-horaFin');
+const fldAct    = document.getElementById('m-actividad');
+const fldPas    = document.getElementById('m-pasajeros');
+const fldNotas  = document.getElementById('m-notas');
+let editData    = null;
+
+// ④ Autenticación + arranque
 document.addEventListener('DOMContentLoaded', () => {
   onAuthStateChanged(auth, user => {
     if (!user) return location.href = 'login.html';
-    init();  
+    init();
   });
 });
 
-// ④ Carga inicial: datos y llenado de selects
-let gruposData = [];
+// ⑤ Inicialización: carga datos base y llena selects
 async function init() {
-  console.log('▶️ init');
-  // 1) Fetch de hoja
   const datos = await (await fetch(OPENSHEET)).json();
-  // 2) Mapea a objetos útiles (uno por primer aparición de cada grupo)
-  const seen = new Set();
-  gruposData = datos.filter(r => {
-    if (!seen.has(r.numeroNegocio)) {
-      seen.add(r.numeroNegocio);
-      return true;
-    }
-    return false;
-  }).map(r => ({
-    numero:     r.numeroNegocio,
-    nombre:     r.nombreGrupo || r.numeroNegocio,
-    destino:    r.destino,
-    programa:   r.programa,
-    fechaInicio:r.fechaInicio,
-    fechaFin:   r.fechaFin
-  }));
 
-  // 3) Rellenar ambos selects
-  selNum.innerHTML  = gruposData.map(g => `<option value="${g.numero}">${g.numero}</option>`).join('');
-  selName.innerHTML = gruposData.map(g => `<option value="${g.numero}">${g.nombre}</option>`).join('');
-  // 4) Sincronizar cambios
-  selNum.onchange  = () => {
-    selName.value = selNum.value;
+  // extraigo los grupos únicos y sus nombres
+  const gruposNum  = [...new Set(datos.map(r => r.numeroNegocio))];
+  const gruposName = [...new Set(datos.map(r => r.nombreGrupo))];
+
+  selNum.innerHTML  = gruposNum.map(n => `<option>${n}</option>`).join('');
+  selName.innerHTML = gruposName.map(n => `<option>${n}</option>`).join('');
+
+  // mantener sincronizados ambos selects
+  selNum.onchange = () => {
+    const num = selNum.value;
+    // busco el nombre del grupo
+    const row = datos.find(r => r.numeroNegocio === num);
+    selName.value = row.nombreGrupo;
     renderItinerario();
   };
   selName.onchange = () => {
-    selNum.value = selName.value;
+    const name = selName.value;
+    const row  = datos.find(r => r.nombreGrupo === name);
+    selNum.value = row.numeroNegocio;
     renderItinerario();
   };
-  // 5) Primera carga
-  selNum.value = gruposData[0].numero;
-  selName.value = gruposData[0].numero;
+
+  // primera render
+  selNum.value = gruposNum[0];
+  selName.value = datos.find(r=>r.numeroNegocio==gruposNum[0]).nombreGrupo;
   await renderItinerario();
 }
 
-// ►►► Helpers
+// ⑥ JSONP helper: inyecta un <script> y resuelve la Promise
+function jsonpFetch(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = `cb_${Date.now()}`;
+    window[cbName] = data => {
+      delete window[cbName];
+      resolve(data);
+    };
+    const s = document.createElement('script');
+    s.src = url + `&callback=${cbName}`;
+    s.onerror = () => reject(new Error('JSONP load error'));
+    document.body.appendChild(s);
+  });
+}
 
-/** Convierte "DD-MM-YYYY" a Date */
+// ⑦ Parseo "DD-MM-YYYY" → Date
 function parseDdMmYyyy(s) {
   const [d,m,y] = s.split('-').map(n=>parseInt(n,10));
   return new Date(y, m-1, d);
 }
 
-/** Devuelve array de YYYY-MM-DD entre inicio y fin */
-async function getRangoFechas(grupoNum) {
-  const g = gruposData.find(x=>x.numero===grupoNum);
-  const inicio = parseDdMmYyyy(g.fechaInicio);
-  const fin    = parseDdMmYyyy(g.fechaFin);
+// ⑧ Obtiene rango de fechas
+async function getRangoFechas(grupo) {
+  const datos = await (await fetch(OPENSHEET)).json();
+  const fila  = datos.find(r=>r.numeroNegocio===grupo);
+  const inicio = parseDdMmYyyy(fila.fechaInicio);
+  const fin    = parseDdMmYyyy(fila.fechaFin);
+  // títulos del header
+  titleGrp.textContent  = grupo;
+  titleDest.textContent = fila.destino;
+  titleProg.textContent = fila.programa;
+  // construyo array de días
   const dias = [];
-  for (let d=new Date(inicio); d<=fin; d.setDate(d.getDate()+1)) {
+  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate()+1)) {
     dias.push(d.toISOString().slice(0,10));
   }
   return dias;
 }
 
-// ⑤ Renderiza todo el itinerario
+// ⑨ Renderiza el carrusel de días
 async function renderItinerario() {
-  const num = selNum.value;
-  const grp = gruposData.find(g=>g.numero===num);
-  // Actualiza encabezado
-  titleGrupo.textContent = num;
-  titleDest.textContent  = grp.destino;
-  titleProg.textContent  = grp.programa;
-
-  contItin.innerHTML = '';  // limpia carrusel
-
-  // obtiene días
-  let fechas = [];
-  try {
-    fechas = await getRangoFechas(num);
-  } catch (e) {
-    contItin.innerHTML = `<p style="color:red;">Error fechas: ${e.message}</p>`;
-    return;
-  }
-
-  // llena el dropdown de fecha en el modal
+  const grupo  = selNum.value;
+  contItin.innerHTML = '';
+  const fechas = await getRangoFechas(grupo);
+  // relleno opciones de fecha en el modal
   fldFecha.innerHTML = fechas.map(f=>`<option>${f}</option>`).join('');
 
-  // por cada día, crea tarjeta
   for (const fecha of fechas) {
     const sec = document.createElement('section');
     sec.className = 'dia-seccion';
@@ -131,15 +127,16 @@ async function renderItinerario() {
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
     contItin.appendChild(sec);
-    sec.querySelector('.btn-add').onclick = () => openModal({ fecha }, false);
-    await loadActivities(num, fecha);
+    sec.querySelector('.btn-add').onclick = () => openModal({fecha}, false);
+    await loadActivities(grupo, fecha);
   }
 }
 
-// ⑥ Carga y pinta actividades para un día
+// ⑩ Carga y pinta actividades usando JSONP
 async function loadActivities(grupo, fecha) {
-  const res = await fetch(`${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1`);
-  const { valores } = await res.json();
+  const url = `${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1`;
+  const json = await jsonpFetch(url);
+  const valores = json.valores || [];
   const ul = document.querySelector(`section[data-fecha="${fecha}"] .activity-list`);
   ul.innerHTML = '';
 
@@ -161,43 +158,37 @@ async function loadActivities(grupo, fecha) {
       </div>
     `;
     if (act.alerta) li.style.border = '2px solid red';
-
     // editar
     li.querySelector('.btn-edit').onclick = () => openModal(act, true);
-    // eliminar
+    // borrar
     li.querySelector('.btn-del').onclick = async () => {
       if (!confirm('¿Eliminar actividad?')) return;
-      await fetch(GAS_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ datos:{ ...act, borrar:true } })
-      });
+      await jsonpFetch(`${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&borrar=1&id=${act.id}`);
       loadActivities(grupo, fecha);
     };
-
     ul.appendChild(li);
   });
 }
 
-// ⑦ Abre modal (nueva o edición)
+// ⑪ Modal: abrir
 function openModal(data, isEdit) {
   editData = isEdit ? data : null;
   document.getElementById('modal-title').textContent = isEdit ? 'Editar actividad' : 'Nueva actividad';
-  fldFecha.value  = data.fecha;
-  fldHi.value     = data.horaInicio || '';
-  fldHf.value     = data.horaFin    || '';
-  fldAct.value    = data.actividad  || '';
-  fldPas.value    = data.pasajeros  || 1;
-  fldNotas.value  = data.notas      || '';
+  fldFecha.value = data.fecha;
+  fldHi.value    = data.horaInicio||'';
+  fldHf.value    = data.horaFin   ||'';
+  fldAct.value   = data.actividad ||'';
+  fldPas.value   = data.pasajeros ||1;
+  fldNotas.value = data.notas     ||'';
   modalBg.style.display = modal.style.display = 'block';
 }
 
-// ⑧ Cierra modal
+// ⑫ Modal: cerrar
 function closeModal() {
   modalBg.style.display = modal.style.display = 'none';
 }
 
-// ⑨ Guardar desde modal
+// ⑬ Guardar desde modal (JSONP)
 formModal.onsubmit = async e => {
   e.preventDefault();
   const grupo = selNum.value;
@@ -208,20 +199,17 @@ formModal.onsubmit = async e => {
     horaFin:       fldHf.value,
     actividad:     fldAct.value,
     pasajeros:     parseInt(fldPas.value,10),
-    notas:         fldNotas.value
+    notas:         fldNotas.value,
   };
   if (editData) payload.id = editData.id;
 
-  await fetch(GAS_URL, {
-    method:'POST',
-    headers:{ 'Content-Type':'application/json' },
-    body: JSON.stringify({ datos: payload })
-  });
-
+  // serializo como query params
+  const qs = new URLSearchParams({ datos: JSON.stringify(payload) });
+  await jsonpFetch(`${GAS_URL}?${qs.toString()}`);
   closeModal();
   loadActivities(grupo, fldFecha.value);
 };
 
-// ⑩ Eventos para cerrar modal al hacer clic fuera o en “Cancelar”
+// ⑭ Cerrar modal al clickar fuera o en “Cancelar”
 document.getElementById('modal-cancel').onclick = closeModal;
 modalBg.onclick = closeModal;
