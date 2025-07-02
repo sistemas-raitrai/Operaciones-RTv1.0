@@ -36,6 +36,29 @@
       </div>
     </div>
 
+  <!-- Panel de creación rápida -->
+  <section id="quick-add" class="quick-add">
+    <h3>Crear actividad rápida</h3>
+    <div class="row">
+      <div class="column short">
+        <label for="qa-dia">Día</label>
+        <select id="qa-dia"></select>
+      </div>
+      <div class="column short">
+        <label for="qa-horaInicio">Hora inicio</label>
+        <input type="time" id="qa-horaInicio" value="07:00">
+      </div>
+      <div class="column medium">
+        <label for="qa-actividad">Actividad</label>
+        <input type="text" id="qa-actividad" placeholder="Nombre de la actividad">
+      </div>
+      <div class="column short">
+        <label>&nbsp;</label>
+        <button id="qa-add" class="btn-add">Añadir</button>
+      </div>
+    </div>
+  </section>
+
     <!-- 4) Carrusel de días -->
     <div id="itinerario-container"></div>
   </main>
