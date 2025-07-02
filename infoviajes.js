@@ -1,208 +1,186 @@
-// ✅ infoViajes.js – Lectura y escritura con Google Apps Script
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 import { app } from "./firebase-init.js";
 const auth = getAuth(app);
 
-// 🔗 URL del Web App desplegado (ya funcionando en tu sistema)
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec";
+console.log("▶️ itinerario.js cargado");
 
-// 🌐 Elementos del DOM
-const selectNegocio = document.getElementById("numeroNegocio");
-const selectDestino = document.getElementById("destino");
-const inputFechaInicio = document.getElementById("fechaInicio");
-const inputFechaFin = document.getElementById("fechaFin");
-const inputAdultos = document.getElementById("adultos");
-const inputEstudiantes = document.getElementById("estudiantes");
-const selectTransporte = document.getElementById("transporte");
-const seccionTramos = document.getElementById("seccionTramos");
-const inputCantidadTramos = document.getElementById("cantidadTramos");
-const divDetalleTramos = document.getElementById("detalleTramos");
-const selectCiudades = document.getElementById("ciudades");
-const inputObservaciones = document.getElementById("observaciones");
+// 1) URLs de datos
+const GAS_URL   = 'https://script.google.com/macros/s/.../exec';
+const OPENSHEET = 'https://opensheet.elk.sh/.../LecturaBaseOperaciones';
 
-// 📥 Cargar número de negocio y destinos desde hoja pública
-const sheetID = "124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI";
-const hojaLectura = "LecturaBaseOperaciones";
-const urlLectura = `https://opensheet.elk.sh/${sheetID}/${hojaLectura}`;
+// 2) Elementos del DOM
+const selectGrupo    = document.getElementById('grupo-select');
+const titleGrupo     = document.getElementById('grupo-title');
+const contItinerario = document.getElementById('itinerario-container');
 
-async function cargarNumerosDeNegocio() {
-  try {
-    const res = await fetch(urlLectura);
-    const datos = await res.json();
-    selectNegocio.innerHTML = "";
-    selectDestino.innerHTML = "";
+// 3) Modal
+const modalBg   = document.getElementById('modal-backdrop');
+const modal     = document.getElementById('modal');
+const formModal = document.getElementById('modal-form');
+const fldFecha  = document.getElementById('m-fecha');
+const fldHi     = document.getElementById('m-horaInicio');
+const fldHf     = document.getElementById('m-horaFin');
+const fldAct    = document.getElementById('m-actividad');
+const fldPas    = document.getElementById('m-pasajeros');
+const fldNotas  = document.getElementById('m-notas');
+let editData    = null;  // para edición
 
-    const usados = new Set();
+// 4) Autenticación + arranque
+document.addEventListener('DOMContentLoaded', () => {
+  console.log("▶️ DOM listo");
+  onAuthStateChanged(auth, user => {
+    console.log("▶️ Usuario:", user?.email);
+    if (!user) return location.href = 'login.html';
+    init();
+  });
+});
 
-    datos.forEach(row => {
-      if (row.numeroNegocio && !usados.has(row.numeroNegocio)) {
-        const opt = document.createElement("option");
-        opt.value = row.numeroNegocio;
-        opt.textContent = row.numeroNegocio;
-        selectNegocio.appendChild(opt);
-        usados.add(row.numeroNegocio);
-      }
-    });
+async function init() {
+  console.log("▶️ init()");
+  // 5) Cargar lista de grupos
+  const datos = await (await fetch(OPENSHEET)).json();
+  const grupos = [...new Set(datos.map(r => r.numeroNegocio))];
+  selectGrupo.innerHTML = grupos.map(g => <option>${g}</option>).join('');
+  selectGrupo.onchange = renderItinerario;
+  await renderItinerario();  // primera render
+}
 
-    // Cargar destinos únicos
-    const destinosUnicos = [...new Set(datos.map(f => f.destino).filter(Boolean))];
-    destinosUnicos.forEach(dest => {
-      const opt = document.createElement("option");
-      opt.value = dest;
-      opt.textContent = dest;
-      selectDestino.appendChild(opt);
-    });
+/**
+ * 6) Parsear fecha DD-MM-YYYY → Date
+ */
+function parseDdMmYyyy(s) {
+  const [d,m,y] = s.split('-').map(n=>parseInt(n,10));
+  return new Date(y, m - 1, d);
+}
 
-    // Detectar si viene desde registro.html
-    const numero = sessionStorage.getItem("numeroNegocio") || new URLSearchParams(location.search).get("numeroNegocio");
-    if (numero) {
-      selectNegocio.value = numero;
-      cargarDatosExistentes(numero);
-    }
+// 7) Obtener rango de fechas del grupo
+async function getRangoFechas(grupo) {
+  console.log("▶️ getRangoFechas", grupo);
+  const datos = await (await fetch(OPENSHEET)).json();
+  const fila  = datos.find(r => r.numeroNegocio === grupo);
+  const inicio = parseDdMmYyyy(fila.fechaInicio);
+  const fin    = parseDdMmYyyy(fila.fechaFin);
+  const dias = [];
+  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate()+1)) {
+    dias.push(d.toISOString().slice(0,10));
+  }
+  return dias;
+}
 
-    selectNegocio.addEventListener("change", () => {
-      cargarDatosExistentes(selectNegocio.value);
-    });
+// 8) Renderizar carrusel de días
+async function renderItinerario() {
+  const grupo = selectGrupo.value;
+  console.log("▶️ renderItinerario", grupo);
+  titleGrupo.textContent = grupo;
+  contItinerario.innerHTML = '';
 
-  } catch (err) {
-    console.error("❌ Error cargando datos:", err);
+  const fechas = await getRangoFechas(grupo);
+  fldFecha.innerHTML = fechas.map(f => <option>${f}</option>).join('');
+
+  for (const fecha of fechas) {
+    const sec = document.createElement('section');
+    sec.className = 'dia-seccion';
+    sec.dataset.fecha = fecha;
+    sec.innerHTML = 
+      <h3>${fecha}</h3>
+      <ul class="activity-list"></ul>
+      <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
+    ;
+    contItinerario.appendChild(sec);
+    sec.querySelector('.btn-add').onclick = () => openModal({ fecha }, false);
+    await loadActivities(grupo, fecha);  // carga cada día
   }
 }
 
-// 🧠 Cargar datos existentes desde GAS
-async function cargarDatosExistentes(numeroNegocio) {
-  try {
-    const res = await fetch(`${GAS_URL}?numeroNegocio=${numeroNegocio}`);
-    const json = await res.json();
-    if (!json.existe) return;
+// 9) Carga y pinta actividades de un día
+async function loadActivities(grupo, fecha) {
+  console.log("▶️ loadActivities", grupo, fecha);
+  const res  = await fetch(${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1);
+  const { valores } = await res.json();
+  const ul = document.querySelector(section[data-fecha="${fecha}"] .activity-list);
+  ul.innerHTML = '';
 
-    const fila = json.valores;
-    const destino = fila[6]; // Columna G
-
-    // Asegura que el destino esté en el select
-    if (destino && ![...selectDestino.options].some(opt => opt.value === destino)) {
-      const opt = document.createElement("option");
-      opt.value = destino;
-      opt.textContent = destino;
-      selectDestino.appendChild(opt);
-    }
-
-    selectDestino.value = destino;
-    inputFechaInicio.value = fila[16] || "";
-    inputFechaFin.value = fila[17] || "";
-    inputAdultos.value = fila[18] || "";
-    inputEstudiantes.value = fila[19] || "";
-    selectTransporte.value = fila[20] || "";
-    inputObservaciones.value = fila[24] || "";
-
-    // Ciudades
-    const ciudades = fila[21]?.split(",") || [];
-    [...selectCiudades.options].forEach(opt => {
-      opt.selected = ciudades.includes(opt.value);
-    });
-
-    // Tramos
-    if (fila[23]) {
-      const tramos = JSON.parse(fila[23]);
-      inputCantidadTramos.value = tramos.length;
-      generarCamposTramos(tramos.length);
-      setTimeout(() => {
-        tramos.forEach((t, i) => {
-          const idx = i + 1;
-          document.querySelector(`[name=tipoTramo${idx}]`).value = t.tipo;
-          document.querySelector(`[name=empresa${idx}]`).value = t.empresa;
-          document.querySelector(`[name=info${idx}]`).value = t.info;
-          document.querySelector(`[name=salida${idx}]`).value = t.salida;
-          document.querySelector(`[name=lugar${idx}]`).value = t.lugar;
-        });
-      }, 100);
-    }
-
-  } catch (err) {
-    console.error("⚠️ Error cargando fila desde GAS:", err);
+  if (!valores.length) {
+    ul.innerHTML = <li class="activity-card" style="text-align:center;color:#666">— Sin actividades —</li>;
+    return;
   }
-}
 
-// 🧱 Crear tramos dinámicos
-function generarCamposTramos(cantidad) {
-  divDetalleTramos.innerHTML = "";
-  for (let i = 1; i <= cantidad; i++) {
-    divDetalleTramos.innerHTML += `
-      <div>
-        <h4>Tramo ${i}</h4>
-        <label>Tipo:</label>
-        <select name="tipoTramo${i}">
-          <option value="terrestre">Terrestre</option>
-          <option value="aereo">Aéreo</option>
-        </select>
-        <label>Empresa / Compañía:</label>
-        <input name="empresa${i}" />
-        <label>Conductor / Nº Vuelo:</label>
-        <input name="info${i}" />
-        <label>Fecha y hora salida:</label>
-        <input type="datetime-local" name="salida${i}" />
-        <label>Terminal / Aeropuerto:</label>
-        <input name="lugar${i}" />
-        <hr />
+  valores.forEach(act => {
+    const li = document.createElement('li');
+    li.className = 'activity-card';
+    li.innerHTML = 
+      <h4>${act.horaInicio||'–'} → ${act.horaFin||'–'}</h4>
+      <p><strong>${act.actividad}</strong></p>
+      <p>👥 ${act.pasajeros||0} pax</p>
+      <div style="text-align:right">
+        <button class="btn-edit">✏️</button>
+        <button class="btn-del">🗑️</button>
       </div>
-    `;
-  }
+    ;
+    if (act.alerta) li.style.border = '2px solid red';
+
+    // editar
+    li.querySelector('.btn-edit').onclick = () => openModal(act, true);
+    // borrar
+    li.querySelector('.btn-del').onclick = async () => {
+      if (!confirm('¿Eliminar actividad?')) return;
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ datos:{ ...act, borrar:true } })
+      });
+      loadActivities(grupo, fecha);
+    };
+    ul.appendChild(li);
+  });
 }
 
-// 🧩 Obtener tramos como array
-function obtenerTramos() {
-  const cantidad = parseInt(inputCantidadTramos.value);
-  const tramos = [];
-  for (let i = 1; i <= cantidad; i++) {
-    tramos.push({
-      tipo: document.querySelector(`[name=tipoTramo${i}]`)?.value || "",
-      empresa: document.querySelector(`[name=empresa${i}]`)?.value || "",
-      info: document.querySelector(`[name=info${i}]`)?.value || "",
-      salida: document.querySelector(`[name=salida${i}]`)?.value || "",
-      lugar: document.querySelector(`[name=lugar${i}]`)?.value || ""
-    });
-  }
-  return tramos;
+// 10) Modal: abrir
+function openModal(data, isEdit) {
+  console.log("▶️ openModal", data, isEdit);
+  editData = isEdit ? data : null;
+  document.getElementById('modal-title').textContent = isEdit ? 'Editar actividad' : 'Nueva actividad';
+  fldFecha.value = data.fecha;
+  fldHi.value    = data.horaInicio || '';
+  fldHf.value    = data.horaFin    || '';
+  fldAct.value   = data.actividad  || '';
+  fldPas.value   = data.pasajeros  || 1;
+  fldNotas.value = data.notas      || '';
+  modalBg.style.display = modal.style.display = 'block';
 }
 
-// 🧠 Ciudades seleccionadas
-function obtenerCiudades() {
-  return [...selectCiudades.selectedOptions].map(o => o.value);
+// 11) Modal: cerrar
+function closeModal() {
+  console.log("▶️ closeModal");
+  modalBg.style.display = modal.style.display = 'none';
 }
 
-// 💾 Enviar datos al script GAS (doPost)
-document.getElementById("formInfoViaje").addEventListener("submit", async (e) => {
+// 12) Guardar desde modal
+formModal.onsubmit = async e => {
   e.preventDefault();
+  const grupo = selectGrupo.value;
   const payload = {
-    numeroNegocio: selectNegocio.value,
-    fechaInicio: inputFechaInicio.value,
-    fechaFin: inputFechaFin.value,
-    adultos: inputAdultos.value,
-    estudiantes: inputEstudiantes.value,
-    transporte: selectTransporte.value,
-    ciudades: obtenerCiudades().join(", "),
-    tramos: JSON.stringify(obtenerTramos()),
-    observaciones: inputObservaciones.value
+    numeroNegocio: grupo,
+    fecha: fldFecha.value,
+    horaInicio: fldHi.value,
+    horaFin: fldHf.value,
+    actividad: fldAct.value,
+    pasajeros: parseInt(fldPas.value,10),
+    notas: fldNotas.value
   };
+  if (editData) payload.id = editData.id;
+  console.log("▶️ Guardando payload", payload);
 
-  try {
-    const res = await fetch(GAS_URL, {
-      method: "POST",
-      body: JSON.stringify({ datos: payload }),
-      headers: { "Content-Type": "application/json" }
-    });
-    const result = await res.text();
-    alert("✅ Datos guardados correctamente");
-  } catch (err) {
-    console.error("❌ Error al guardar:", err);
-    alert("❌ Error al guardar datos");
-  }
-});
+  await fetch(GAS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ datos: payload })
+  });
 
-// 🔐 Autenticación Firebase
-onAuthStateChanged(auth, (user) => {
-  if (!user) window.location.href = "login.html";
-});
+  closeModal();
+  loadActivities(grupo, fldFecha.value);
+};
 
-// 🚀 Inicialización
-document.addEventListener("DOMContentLoaded", cargarNumerosDeNegocio);
+// 13) Eventos para cerrar modal con clic
+document.getElementById('modal-cancel').onclick = closeModal;
+modalBg.onclick = closeModal;
