@@ -6,19 +6,16 @@ const auth = getAuth(app);
 
 console.log("▶️ itinerario.js cargado");
 
-// ① URLs de datos
-const GAS_URL   = 'https://script.google.com/macros/s/.../exec';           // tu Web App GAS
-const OPENSHEET = 'https://opensheet.elk.sh/.../LecturaBaseOperaciones';  // lectura del sheet
+// 1) URLs de datos
+const GAS_URL   = 'https://script.google.com/macros/s/.../exec';
+const OPENSHEET = 'https://opensheet.elk.sh/.../LecturaBaseOperaciones';
 
-// ② DOM elements
-const selNum    = document.getElementById('grupo-select-num');
-const selName   = document.getElementById('grupo-select-name');
-const titleGrp  = document.getElementById('grupo-title');
-const titleDest = document.getElementById('destino-title');
-const titleProg = document.getElementById('programa-title');
-const contItin  = document.getElementById('itinerario-container');
+// 2) Elementos del DOM
+const selectGrupo    = document.getElementById('grupo-select');
+const titleGrupo     = document.getElementById('grupo-title');
+const contItinerario = document.getElementById('itinerario-container');
 
-// ③ Modal elements
+// 3) Modal
 const modalBg   = document.getElementById('modal-backdrop');
 const modal     = document.getElementById('modal');
 const formModal = document.getElementById('modal-form');
@@ -28,80 +25,43 @@ const fldHf     = document.getElementById('m-horaFin');
 const fldAct    = document.getElementById('m-actividad');
 const fldPas    = document.getElementById('m-pasajeros');
 const fldNotas  = document.getElementById('m-notas');
-let editData    = null;
+let editData    = null;  // para edición
 
-// ④ Autenticación + arranque
+// 4) Autenticación + arranque
 document.addEventListener('DOMContentLoaded', () => {
+  console.log("▶️ DOM listo");
   onAuthStateChanged(auth, user => {
+    console.log("▶️ Usuario:", user?.email);
     if (!user) return location.href = 'login.html';
     init();
   });
 });
 
-// ⑤ Inicialización: carga datos base y llena selects
 async function init() {
+  console.log("▶️ init()");
+  // 5) Cargar lista de grupos
   const datos = await (await fetch(OPENSHEET)).json();
-
-  // extraigo los grupos únicos y sus nombres
-  const gruposNum  = [...new Set(datos.map(r => r.numeroNegocio))];
-  const gruposName = [...new Set(datos.map(r => r.nombreGrupo))];
-
-  selNum.innerHTML  = gruposNum.map(n => `<option>${n}</option>`).join('');
-  selName.innerHTML = gruposName.map(n => `<option>${n}</option>`).join('');
-
-  // mantener sincronizados ambos selects
-  selNum.onchange = () => {
-    const num = selNum.value;
-    // busco el nombre del grupo
-    const row = datos.find(r => r.numeroNegocio === num);
-    selName.value = row.nombreGrupo;
-    renderItinerario();
-  };
-  selName.onchange = () => {
-    const name = selName.value;
-    const row  = datos.find(r => r.nombreGrupo === name);
-    selNum.value = row.numeroNegocio;
-    renderItinerario();
-  };
-
-  // primera render
-  selNum.value = gruposNum[0];
-  selName.value = datos.find(r=>r.numeroNegocio==gruposNum[0]).nombreGrupo;
-  await renderItinerario();
+  const grupos = [...new Set(datos.map(r => r.numeroNegocio))];
+  selectGrupo.innerHTML = grupos.map(g => <option>${g}</option>).join('');
+  selectGrupo.onchange = renderItinerario;
+  await renderItinerario();  // primera render
 }
 
-// ⑥ JSONP helper: inyecta un <script> y resuelve la Promise
-function jsonpFetch(url) {
-  return new Promise((resolve, reject) => {
-    const cbName = `cb_${Date.now()}`;
-    window[cbName] = data => {
-      delete window[cbName];
-      resolve(data);
-    };
-    const s = document.createElement('script');
-    s.src = url + `&callback=${cbName}`;
-    s.onerror = () => reject(new Error('JSONP load error'));
-    document.body.appendChild(s);
-  });
-}
-
-// ⑦ Parseo "DD-MM-YYYY" → Date
+/**
+ * 6) Parsear fecha DD-MM-YYYY → Date
+ */
 function parseDdMmYyyy(s) {
   const [d,m,y] = s.split('-').map(n=>parseInt(n,10));
-  return new Date(y, m-1, d);
+  return new Date(y, m - 1, d);
 }
 
-// ⑧ Obtiene rango de fechas
+// 7) Obtener rango de fechas del grupo
 async function getRangoFechas(grupo) {
+  console.log("▶️ getRangoFechas", grupo);
   const datos = await (await fetch(OPENSHEET)).json();
-  const fila  = datos.find(r=>r.numeroNegocio===grupo);
+  const fila  = datos.find(r => r.numeroNegocio === grupo);
   const inicio = parseDdMmYyyy(fila.fechaInicio);
   const fin    = parseDdMmYyyy(fila.fechaFin);
-  // títulos del header
-  titleGrp.textContent  = grupo;
-  titleDest.textContent = fila.destino;
-  titleProg.textContent = fila.programa;
-  // construyo array de días
   const dias = [];
   for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate()+1)) {
     dias.push(d.toISOString().slice(0,10));
@@ -109,46 +69,48 @@ async function getRangoFechas(grupo) {
   return dias;
 }
 
-// ⑨ Renderiza el carrusel de días
+// 8) Renderizar carrusel de días
 async function renderItinerario() {
-  const grupo  = selNum.value;
-  contItin.innerHTML = '';
+  const grupo = selectGrupo.value;
+  console.log("▶️ renderItinerario", grupo);
+  titleGrupo.textContent = grupo;
+  contItinerario.innerHTML = '';
+
   const fechas = await getRangoFechas(grupo);
-  // relleno opciones de fecha en el modal
-  fldFecha.innerHTML = fechas.map(f=>`<option>${f}</option>`).join('');
+  fldFecha.innerHTML = fechas.map(f => <option>${f}</option>).join('');
 
   for (const fecha of fechas) {
     const sec = document.createElement('section');
     sec.className = 'dia-seccion';
     sec.dataset.fecha = fecha;
-    sec.innerHTML = `
+    sec.innerHTML = 
       <h3>${fecha}</h3>
       <ul class="activity-list"></ul>
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
-    `;
-    contItin.appendChild(sec);
-    sec.querySelector('.btn-add').onclick = () => openModal({fecha}, false);
-    await loadActivities(grupo, fecha);
+    ;
+    contItinerario.appendChild(sec);
+    sec.querySelector('.btn-add').onclick = () => openModal({ fecha }, false);
+    await loadActivities(grupo, fecha);  // carga cada día
   }
 }
 
-// ⑩ Carga y pinta actividades usando JSONP
+// 9) Carga y pinta actividades de un día
 async function loadActivities(grupo, fecha) {
-  const url = `${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1`;
-  const json = await jsonpFetch(url);
-  const valores = json.valores || [];
-  const ul = document.querySelector(`section[data-fecha="${fecha}"] .activity-list`);
+  console.log("▶️ loadActivities", grupo, fecha);
+  const res  = await fetch(${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1);
+  const { valores } = await res.json();
+  const ul = document.querySelector(section[data-fecha="${fecha}"] .activity-list);
   ul.innerHTML = '';
 
   if (!valores.length) {
-    ul.innerHTML = `<li class="activity-card" style="text-align:center;color:#666">— Sin actividades —</li>`;
+    ul.innerHTML = <li class="activity-card" style="text-align:center;color:#666">— Sin actividades —</li>;
     return;
   }
 
   valores.forEach(act => {
     const li = document.createElement('li');
     li.className = 'activity-card';
-    li.innerHTML = `
+    li.innerHTML = 
       <h4>${act.horaInicio||'–'} → ${act.horaFin||'–'}</h4>
       <p><strong>${act.actividad}</strong></p>
       <p>👥 ${act.pasajeros||0} pax</p>
@@ -156,60 +118,71 @@ async function loadActivities(grupo, fecha) {
         <button class="btn-edit">✏️</button>
         <button class="btn-del">🗑️</button>
       </div>
-    `;
+    ;
     if (act.alerta) li.style.border = '2px solid red';
+
     // editar
     li.querySelector('.btn-edit').onclick = () => openModal(act, true);
     // borrar
     li.querySelector('.btn-del').onclick = async () => {
       if (!confirm('¿Eliminar actividad?')) return;
-      await jsonpFetch(`${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&borrar=1&id=${act.id}`);
+      await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ datos:{ ...act, borrar:true } })
+      });
       loadActivities(grupo, fecha);
     };
     ul.appendChild(li);
   });
 }
 
-// ⑪ Modal: abrir
+// 10) Modal: abrir
 function openModal(data, isEdit) {
+  console.log("▶️ openModal", data, isEdit);
   editData = isEdit ? data : null;
   document.getElementById('modal-title').textContent = isEdit ? 'Editar actividad' : 'Nueva actividad';
   fldFecha.value = data.fecha;
-  fldHi.value    = data.horaInicio||'';
-  fldHf.value    = data.horaFin   ||'';
-  fldAct.value   = data.actividad ||'';
-  fldPas.value   = data.pasajeros ||1;
-  fldNotas.value = data.notas     ||'';
+  fldHi.value    = data.horaInicio || '';
+  fldHf.value    = data.horaFin    || '';
+  fldAct.value   = data.actividad  || '';
+  fldPas.value   = data.pasajeros  || 1;
+  fldNotas.value = data.notas      || '';
   modalBg.style.display = modal.style.display = 'block';
 }
 
-// ⑫ Modal: cerrar
+// 11) Modal: cerrar
 function closeModal() {
+  console.log("▶️ closeModal");
   modalBg.style.display = modal.style.display = 'none';
 }
 
-// ⑬ Guardar desde modal (JSONP)
+// 12) Guardar desde modal
 formModal.onsubmit = async e => {
   e.preventDefault();
-  const grupo = selNum.value;
+  const grupo = selectGrupo.value;
   const payload = {
     numeroNegocio: grupo,
-    fecha:         fldFecha.value,
-    horaInicio:    fldHi.value,
-    horaFin:       fldHf.value,
-    actividad:     fldAct.value,
-    pasajeros:     parseInt(fldPas.value,10),
-    notas:         fldNotas.value,
+    fecha: fldFecha.value,
+    horaInicio: fldHi.value,
+    horaFin: fldHf.value,
+    actividad: fldAct.value,
+    pasajeros: parseInt(fldPas.value,10),
+    notas: fldNotas.value
   };
   if (editData) payload.id = editData.id;
+  console.log("▶️ Guardando payload", payload);
 
-  // serializo como query params
-  const qs = new URLSearchParams({ datos: JSON.stringify(payload) });
-  await jsonpFetch(`${GAS_URL}?${qs.toString()}`);
+  await fetch(GAS_URL, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ datos: payload })
+  });
+
   closeModal();
   loadActivities(grupo, fldFecha.value);
 };
 
-// ⑭ Cerrar modal al clickar fuera o en “Cancelar”
+// 13) Eventos para cerrar modal con clic
 document.getElementById('modal-cancel').onclick = closeModal;
 modalBg.onclick = closeModal;
