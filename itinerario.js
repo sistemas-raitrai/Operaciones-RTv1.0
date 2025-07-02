@@ -106,30 +106,48 @@ async function getRangoFechas(grupo) {
 }
 
 // 8) renderItinerario()
-//    Dibuja carrusel de días y carga sus actividades
 async function renderItinerario() {
   const grupo  = selectNum.value;
   const nombre = selectName.options[selectName.selectedIndex].text;
   console.log("▶️ renderItinerario", grupo, nombre);
 
-  // 8.1) Actualizo título
+  // -----------------------------
+  // 8.1) Recuperar la fila del grupo
+  // -----------------------------
+  const datos = await (await fetch(OPENSHEET)).json();
+  const fila  = datos.find(r => r.numeroNegocio === grupo);
+  if (!fila) {
+    // Si no existe, lo notificamos y salimos
+    titleGrupo.textContent = "Programa no encontrado";
+    return;
+  }
+
+  // -----------------------------
+  // 8.2) Ahora sí actualizamos el título con el programa
+  // -----------------------------
   titleGrupo.textContent = fila.programa;
 
-  // 8.2) Limpio y obtengo rango de fechas
+  // -----------------------------
+  // 8.3) Limpiar y obtener las fechas
+  // -----------------------------
   contItinerario.innerHTML = "";
   const fechas = await getRangoFechas(grupo);
 
-  // 8.3) Llenar select de fecha en el modal
+  // -----------------------------
+  // 8.4) Poblar el select de fecha del modal
+  // -----------------------------
   fldFecha.innerHTML = fechas
     .map(f => `<option value="${f}">${f}</option>`)
     .join("");
 
-  // 8.4) Por cada fecha, crear tarjeta y cargar actividades
+  // -----------------------------
+  // 8.5) Dibujar cada día y cargar sus actividades
+  // -----------------------------
   for (const fecha of fechas) {
     const sec = document.createElement("section");
-    sec.className = "dia-seccion";
+    sec.className     = "dia-seccion";
     sec.dataset.fecha = fecha;
-    sec.innerHTML = `
+    sec.innerHTML     = `
       <h3>${fecha}</h3>
       <ul class="activity-list"></ul>
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
@@ -139,6 +157,7 @@ async function renderItinerario() {
     await loadActivities(grupo, fecha);
   }
 }
+
 
 // 9) loadActivities(grupo, fecha)
 //    Lee de GAS_URL las actividades y las pinta
