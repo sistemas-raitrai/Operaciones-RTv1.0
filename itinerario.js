@@ -103,6 +103,15 @@ async function renderItinerario() {
   // 8.1) Recuperar el programa de la hoja
   const datos = await (await fetch(OPENSHEET)).json();
   const fila  = datos.find(r => r.numeroNegocio === grupo);
+
+  //8.1.a
+  if (!fila) {
+  titleGrupo.textContent = "Programa no encontrado";
+  return;
+  }
+  
+  // Calculamos el total de pax desde la hoja
+  const totalPax = parseInt(fila.cantidadgrupo, 10) || 0;
   titleGrupo.textContent = fila?.programa || "Programa no encontrado";
 
   // 8.2) Limpiar contenedor y obtener fechas
@@ -130,7 +139,7 @@ async function renderItinerario() {
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
     contItinerario.appendChild(sec);
-    sec.querySelector(".btn-add").onclick = () => openModal({ fecha }, false);
+    sec.querySelector(".btn-add").onclick = () => openModal({ fecha, totalPax }, false);
     await loadActivities(grupo, fecha);
   }
 }
@@ -154,7 +163,7 @@ async function loadActivities(grupo, fecha) {
     const li = document.createElement("li");
     li.className = "activity-card";
     li.innerHTML = `
-      <h4>${act.horaInicio||"–"} → ${act.horaFin||"–"}</h4>
+      <h4>${act.horaInicio||"–"}</h4>
       <p><strong>${act.actividad}</strong></p>
       <p>👥 ${act.pasajeros||0} pax</p>
       <div style="text-align:right">
@@ -187,7 +196,9 @@ function openModal(data, isEdit) {
   fldHi.value     = data.horaInicio  || "";
   fldHf.value     = data.horaFin     || "";
   fldAct.value    = data.actividad   || "";
-  fldPas.value    = data.pasajeros   || 1;
+  fldPas.value    = isEdit
+                  ? data.pasajeros
+                  : data.totalPax;
   fldNotas.value  = data.notas       || "";
   modalBg.style.display = modal.style.display = "block";
 }
