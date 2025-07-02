@@ -13,8 +13,8 @@ const OPENSHEET = "https://opensheet.elk.sh/124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr
 const GAS_URL   = "https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte2a6aFtVDguFGsiL0aaG6Tupn8B807oovR34S0YbR9I9mz0/exec";
 
 // 2) Elementos principales del DOM
-const selectGrupo    = document.getElementById("grupo-select-name");
-const selectGrupo    = document.getElementById("grupo-select-num");
+const selectName    = document.getElementById("grupo-select-name");
+const selectNum    = document.getElementById("grupo-select-num");
 const titleGrupo     = document.getElementById("grupo-title");
 const contItinerario = document.getElementById("itinerario-container");
 
