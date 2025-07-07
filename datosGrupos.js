@@ -70,7 +70,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // ✅ 5) cargarNumeroNegocio(): poblar datalists según año
-// ──────────────────────────────────────────────────────────────────────────────
 async function cargarNumeroNegocio() {
   try {
     const res   = await fetch(sheetURL);
@@ -79,15 +78,16 @@ async function cargarNumeroNegocio() {
     const listaNumero = document.getElementById("negocioList");
     const listaNombre = document.getElementById("nombreList");
     const filtroAno   = document.getElementById("filtroAno");
+    const inputNumero = document.getElementById("numeroNegocio");
+    const inputNombre = document.getElementById("nombreGrupo");
 
-    // 5.1) Rellenar selector de años
+    // 5.1) Rellenar años
     const anosUnicos = [...new Set(datos.map(r => r.anoViaje))].filter(Boolean).sort();
-    filtroAno.innerHTML =
-      `<option value="">Todos</option>` +
+    filtroAno.innerHTML = `<option value="">Todos</option>` +
       anosUnicos.map(a => `<option value="${a}">${a}</option>`).join("");
     filtroAno.value = new Date().getFullYear();
 
-    // 5.2) Refrescar listas según año
+    // 5.2) Refrescar datalists según año
     function actualizarListas() {
       const año = filtroAno.value;
       const filtrados = datos.filter(r => !año || r.anoViaje == año);
@@ -100,9 +100,51 @@ async function cargarNumeroNegocio() {
         .sort((a,b) => (a.nombreGrupo||"").localeCompare(b.nombreGrupo||""))
         .map(r => `<option value="${r.nombreGrupo}">`).join("");
     }
-
     filtroAno.addEventListener("change", actualizarListas);
     actualizarListas();
+
+    // 5.3) Rellenar formulario al elegir un ítem del datalist
+    function cargarDatosGrupo(valor) {
+      const fila = datos.find(r =>
+        String(r.numeroNegocio).trim() === valor.trim() ||
+        String(r.nombreGrupo).trim()    === valor.trim()
+      );
+      if (!fila) {
+        // limpio todo y pinto sólo tabla
+        Object.values(campos).forEach(id => {
+          const inp = document.getElementById(id);
+          if (inp) inp.value = "";
+        });
+        cargarDesdeOperaciones(valor);
+        return;
+      }
+      // relleno cada campo
+      Object.entries(campos).forEach(([campo,id]) => {
+        const inp = document.getElementById(id);
+        if (!inp) return;
+        let val = fila[campo] ?? "";
+        if (["autorizacion","fechaDeViaje","observaciones"].includes(campo)) {
+          const tmp = document.createElement("div");
+          tmp.innerHTML = val;
+          val = tmp.textContent || "";
+        }
+        if (campo === "fechaCreacion" && val) {
+          val = new Date(val).toLocaleString("es-CL", {
+            timeZone:"America/Santiago",
+            day:"2-digit", month:"2-digit", year:"numeric",
+            hour:"2-digit", minute:"2-digit"
+          });
+        }
+        inp.value = val;
+        inp.setAttribute("data-original", val);
+      });
+      // por último refresco la tabla histórica:
+      cargarDesdeOperaciones(fila.numeroNegocio);
+    }
+
+    // 5.4) Listeners en el datalist (change, no input)
+    inputNumero.addEventListener("change", () => cargarDatosGrupo(inputNumero.value));
+    inputNombre.addEventListener("change", () => cargarDatosGrupo(inputNombre.value));
 
   } catch (err) {
     console.error("❌ Error cargando datalists:", err);
