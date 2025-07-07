@@ -13,9 +13,10 @@ let cargaInicialHecha = false;
 // ──────────────────────────────────────────────────────────────────────────────
 // ✅ 2) CONFIGURACIÓN DE ENDPOINTS
 // ──────────────────────────────────────────────────────────────────────────────
-const sheetURL        = "https://script.google.com/macros/s/…/exec";  // Ventas
-const guardarEndpoint = "https://operaciones-rtv10.vercel.app/api/guardar-sheet"; // Sheets POST
-const operacionesURL  = "https://script.google.com/macros/s/…/exec";  // Historial/Operaciones
+
+const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
+const guardarEndpoint = "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
+const operacionesURL  = "https://script.google.com/macros/s/AKfycbzr12TXE8-lFd86P1yK_yRSVyyFFSuUnAHY_jOefJHYQZCQ5yuQGQsoBP2OWh699K22/exec";  // Historial/Operaciones
 
 // ──────────────────────────────────────────────────────────────────────────────
 // ✅ 3) MAPEO DE CAMPOS SHEET → IDs EN HTML
