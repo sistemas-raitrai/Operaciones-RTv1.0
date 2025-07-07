@@ -7,21 +7,18 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth
 import { app, db } from "./firebase-init.js";   // tu init exporta app, auth y db
 import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
-const auth = getAuth(app);        // Autenticación
-let cargaInicialHecha = false;    // Para evitar dobles triggers
+const auth = getAuth(app);
+let cargaInicialHecha = false;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // ✅ 2) CONFIGURACIÓN DE ENDPOINTS
 // ──────────────────────────────────────────────────────────────────────────────
-// Apps Script que devuelve las ventas (BaseOperaciones)
-const sheetURL       = "https://script.google.com/macros/s/…/exec";
-// API Vercel / Google Sheets para guardar cambios
-const guardarEndpoint= "https://operaciones-rtv10.vercel.app/api/guardar-sheet";
-// Apps Script que devuelve el historial de operaciones por númeroNegocio
-const operacionesURL= "https://script.google.com/macros/s/…/exec";
+const sheetURL        = "https://script.google.com/macros/s/…/exec";  // Ventas
+const guardarEndpoint = "https://operaciones-rtv10.vercel.app/api/guardar-sheet"; // Sheets POST
+const operacionesURL  = "https://script.google.com/macros/s/…/exec";  // Historial/Operaciones
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ✅ 3) MAPEO DE CAMPOS DEL SHEET → IDs EN EL HTML
+// ✅ 3) MAPEO DE CAMPOS SHEET → IDs EN HTML
 // ──────────────────────────────────────────────────────────────────────────────
 const campos = {
   numeroNegocio:     "numeroNegocio",
@@ -42,34 +39,36 @@ const campos = {
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ✅ 4) AL CARGAR EL DOM: inicializamos datalists, listeners y export Excel
+// ✅ 4) DOMContentLoaded: inicializar datalists, Excel y listeners
 // ──────────────────────────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
-  // 4.1) Forzar mayúsculas en los inputs mapeados
+  // Forzar mayúsculas en los inputs
   Object.values(campos).forEach(id => {
     const el = document.getElementById(id);
     if (el) el.addEventListener("input", e => e.target.value = e.target.value.toUpperCase());
   });
 
-  cargarNumeroNegocio();  // llena los datalists de N°Negocio y NombreGrupo
+  cargarNumeroNegocio();
 
-  // Exportar hoja como Excel
-  const btnExportar = document.getElementById("btnExportarExcel");
-  if (btnExportar) btnExportar.addEventListener("click", descargarLecturaExcel);
+  // Exportar Excel
+  document.getElementById("btnExportarExcel")
+    ?.addEventListener("click", descargarLecturaExcel);
 
-  // Exponer funciones globales para botones
+  // Botones globales
   window.guardarDatos      = guardarDatos;
   window.guardarYContinuar = () => guardarDatos(false);
 
-  // Al tipear N°Negocio, refresca la tabla de operaciones
+  // Al tipear N°Negocio, refresca tabla
   document.getElementById("numeroNegocio")
-    .addEventListener("input", () => cargarDesdeOperaciones(
-      document.getElementById("numeroNegocio").value.trim()
-    ));
+    .addEventListener("input", () =>
+      cargarDesdeOperaciones(
+        document.getElementById("numeroNegocio").value.trim()
+      )
+    );
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ✅ 5) FUNCIONALIDAD: poblar datalists de número y nombre según año
+// ✅ 5) cargarNumeroNegocio(): poblar datalists según año
 // ──────────────────────────────────────────────────────────────────────────────
 async function cargarNumeroNegocio() {
   try {
@@ -80,27 +79,27 @@ async function cargarNumeroNegocio() {
     const listaNombre = document.getElementById("nombreList");
     const filtroAno   = document.getElementById("filtroAno");
 
-    // 5.1) Rellenar selector de años únicos
+    // 5.1) Rellenar selector de años
     const anosUnicos = [...new Set(datos.map(r => r.anoViaje))].filter(Boolean).sort();
-    filtroAno.innerHTML = `<option value="">Todos</option>` +
+    filtroAno.innerHTML =
+      `<option value="">Todos</option>` +
       anosUnicos.map(a => `<option value="${a}">${a}</option>`).join("");
     filtroAno.value = new Date().getFullYear();
 
-    // 5.2) Función interna para refrescar listas según año
+    // 5.2) Refrescar listas según año
     function actualizarListas() {
       const año = filtroAno.value;
       const filtrados = datos.filter(r => !año || r.anoViaje == año);
 
       listaNumero.innerHTML = filtrados
-        .sort((a,b) => a.numeroNegocio - b.numeroNegocio)
+        .sort((a,b) => Number(a.numeroNegocio) - Number(b.numeroNegocio))
         .map(r => `<option value="${r.numeroNegocio}">`).join("");
 
       listaNombre.innerHTML = filtrados
-        .sort((a,b) => (r => r.nombreGrupo)(a).localeCompare((r => r.nombreGrupo)(b)))
+        .sort((a,b) => (a.nombreGrupo||"").localeCompare(b.nombreGrupo||""))
         .map(r => `<option value="${r.nombreGrupo}">`).join("");
     }
 
-    // 5.3) Listeners de filtro y primera ejecución
     filtroAno.addEventListener("change", actualizarListas);
     actualizarListas();
 
@@ -110,35 +109,31 @@ async function cargarNumeroNegocio() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ✅ 6) GUARDAR: Sheets → Firestore (merge) → Refrescar tabla
+// ✅ 6) guardarDatos(): Sheets → Firestore → refrescar tabla
 // ──────────────────────────────────────────────────────────────────────────────
 async function guardarDatos(continuar = true) {
-  // 6.1) Construcción de datosForm y detección de cambios
   const datosForm = {};
   const cambios   = [];
   const usuario   = auth.currentUser?.email || "Desconocido";
 
-  Object.entries(campos).forEach(([campo, id]) => {
-    const v = document.getElementById(id)?.value.trim() || "";
+  // 6.1) Leer inputs y detectar cambios
+  Object.entries(campos).forEach(([campo,id]) => {
+    const el = document.getElementById(id);
+    const v = el?.value.trim() || "";
     datosForm[campo] = campo === "numeroNegocio" ? String(v) : v;
+    const orig = el?.getAttribute("data-original") || "";
+    if (v !== orig) cambios.push({ campo, anterior: orig, nuevo: v });
   });
   datosForm.modificadoPor = usuario;
+
   if (!datosForm.fechaCreacion) {
     datosForm.fechaCreacion = new Date().toLocaleString("es-CL", {
-      timeZone:"America/Santiago", day:"2-digit", month:"2-digit", year:"numeric",
+      timeZone:"America/Santiago",
+      day:"2-digit", month:"2-digit", year:"numeric",
       hour:"2-digit", minute:"2-digit", second:"2-digit"
     }).replace(",", " /");
     datosForm.creadoPor = usuario;
   }
-
-  // (Opcional) detectar historial:
-  Object.entries(campos).forEach(([campo,id]) => {
-    const inp = document.getElementById(id);
-    const orig = inp?.getAttribute("data-original") || "";
-    if (inp.value.trim() !== orig) {
-      cambios.push({ campo, anterior: orig, nuevo: inp.value.trim() });
-    }
-  });
 
   try {
     // —— 6.2) Guardar en Google Sheets ——
@@ -170,7 +165,7 @@ async function guardarDatos(continuar = true) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ✅ 7) DESCARGAR LA LECTURA COMO EXCEL
+// ✅ 7) descargarLecturaExcel(): exportar LecturaBaseOperaciones como .xlsx
 // ──────────────────────────────────────────────────────────────────────────────
 function descargarLecturaExcel() {
   const fileId = "124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI";
@@ -182,11 +177,11 @@ function descargarLecturaExcel() {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ✅ 8) CARGAR Y PINTAR TABLA DE OPERACIONES POR N°Negocio
+// ✅ 8) cargarDesdeOperaciones(): pinta la tabla de operaciones para un número
 // ──────────────────────────────────────────────────────────────────────────────
 async function cargarDesdeOperaciones(numeroNegocio) {
   const tbody = document.getElementById("tbodyTabla");
-  tbody.innerHTML = "";               // limpiar
+  tbody.innerHTML = "";
 
   if (!numeroNegocio) return;
 
@@ -194,19 +189,14 @@ async function cargarDesdeOperaciones(numeroNegocio) {
     const resp = await fetch(`${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`);
     if (!resp.ok) throw new Error(`Fetch error ${resp.status}`);
     const { existe, valores: raw } = await resp.json();
+    if (!existe || !raw.length) return appendEmptyRow(tbody);
 
-    if (!existe || !raw.length) {
-      return appendEmptyRow(tbody);
-    }
-
-    // si viene un solo array plano, envolvemos en [ [... ] ]
-    const valores = Array.isArray(raw[0]) ? raw : [raw];
-
-    valores.forEach(filaArray => {
+    const filas = Array.isArray(raw[0]) ? raw : [raw];
+    filas.forEach(f => {
       const tr = document.createElement("tr");
-      filaArray.forEach(celda => {
+      f.forEach(c => {
         const td = document.createElement("td");
-        td.textContent = celda ?? "";
+        td.textContent = c ?? "";
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -219,7 +209,7 @@ async function cargarDesdeOperaciones(numeroNegocio) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// ✅ 9) FILA VACÍA (helper)
+// ✅ 9) appendEmptyRow(): helper para mostrar fila vacía
 // ──────────────────────────────────────────────────────────────────────────────
 function appendEmptyRow(tbody) {
   const cols = document.querySelectorAll("#tablaRegistros thead th").length;
