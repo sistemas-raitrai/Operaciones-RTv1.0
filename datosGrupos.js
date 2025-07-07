@@ -1,6 +1,9 @@
 // ✅ 1) Importaciones modernas para Firebase
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 import { app } from "./firebase-init.js";
+import { db } from "./firebase-init.js";
+import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
+
 const auth = getAuth(app);
 let cargaInicialHecha = false;
 
@@ -179,39 +182,10 @@ async function cargarNumeroNegocio() {
 
 // ─────────── 8) Guardar datos en BaseOperaciones y registrar historial ─────
 async function guardarDatos(continuar = true) {
-  const datosForm = {};
-  const cambios    = [];
-  const usuario    = auth.currentUser?.email || "Desconocido";
-
-  // Lee todos los inputs
-  Object.entries(campos).forEach(([campo,id]) => {
-    const inp = document.getElementById(id);
-    if (!inp) return;
-    const v = inp.value.trim();
-    datosForm[campo] = campo === "numeroNegocio" ? String(v) : v;
-  });
-  datosForm.modificadoPor = usuario;
-
-  // Si no tiene fechaCreacion, la genera ahora
-  if (!datosForm.fechaCreacion) {
-    datosForm.fechaCreacion = new Date().toLocaleString("es-CL", {
-      timeZone: "America/Santiago",
-      day:"2-digit", month:"2-digit", year:"numeric",
-      hour:"2-digit", minute:"2-digit", second:"2-digit"
-    }).replace(",", " /");
-    datosForm.creadoPor = usuario;
-  }
-
-  // Detecta cambios entre data-original y valor actual
-  Object.entries(campos).forEach(([campo,id]) => {
-    const inp = document.getElementById(id);
-    if (!inp) return;
-    const nuevo    = inp.value.trim();
-    const original = inp.getAttribute("data-original") || "";
-    if (nuevo !== original) cambios.push({ campo, anterior: original, nuevo });
-  });
+  // … tu código de lectura de inputs y de detección de cambios …
 
   try {
+    // ---- 1️⃣ Guardar en Google Sheets ----
     console.time("⏱ Guardar Google Sheets");
     const res = await fetch(guardarEndpoint, {
       method: "POST",
@@ -220,13 +194,23 @@ async function guardarDatos(continuar = true) {
     });
     console.timeEnd("⏱ Guardar Google Sheets");
 
-    if (res.ok) {
-      alert("✅ Datos guardados.");
-      cargarDesdeOperaciones(datosForm.numeroNegocio);
-      if (!continuar) window.history.back();
-    } else {
-      alert("⚠️ No se pudo guardar.");
+    if (!res.ok) {
+      alert("⚠️ No se pudo guardar en Sheets.");
+      return;
     }
+
+    // ---- 2️⃣ Guardar en Firestore ----
+    await setDoc(
+      doc(db, "grupos", String(datosForm.numeroNegocio)),
+      datosForm,
+      { merge: true }
+    );
+    console.log(`✅ Grupo ${datosForm.numeroNegocio} sincronizado a Firestore`);
+
+    alert("✅ Datos guardados en Sheets y Firestore.");
+    cargarDesdeOperaciones(datosForm.numeroNegocio);
+    if (!continuar) window.history.back();
+
   } catch (err) {
     console.error("❌ Error guardando:", err);
     alert("❌ No se pudo conectar.");
