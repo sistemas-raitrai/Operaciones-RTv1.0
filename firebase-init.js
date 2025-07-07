@@ -1,7 +1,7 @@
-// ✅ Inicialización de Firebase Authentication para el sitio web
-// Este archivo debe ser incluido en TODAS las páginas HTML que requieran autenticación
+// firebase-init.js
+// Inicialización de Firebase (Auth + Firestore) para todas las páginas
 
-// 🔗 Importa el SDK de Firebase desde la CDN (debe ir en el HTML, no aquí)
+// 1️⃣ Importa los SDKs desde la CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-app.js";
 import {
   getAuth,
@@ -9,8 +9,9 @@ import {
   signInWithEmailAndPassword,
   signOut
 } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
-// ✅ Configuración del proyecto Firebase (la que te entregó Firebase)
+// 2️⃣ Tu configuración de Firebase
 const firebaseConfig = {
   apiKey: "AIzaSyAdx9nVcV-UiGER3mcz-w9BcSSIZd-t5nE",
   authDomain: "sist-op-rt.firebaseapp.com",
@@ -20,42 +21,35 @@ const firebaseConfig = {
   appId: "1:438607695630:web:f5a16f319e3ea17fbfd15f"
 };
 
-// ✅ Inicializa Firebase
-const app = initializeApp(firebaseConfig);
+// 3️⃣ Inicializa Firebase App, Auth y Firestore
+const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db   = getFirestore(app);
 
-// ✅ Observador de sesión (se ejecuta cada vez que cambia el estado de autenticación)
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    console.log("✅ Usuario autenticado:", user.email);
-    // Puedes guardar datos del usuario en localStorage o mostrar contenido protegido
+// 4️⃣ Observador de sesión: si no hay user, redirige al login
+onAuthStateChanged(auth, user => {
+  if (!user) {
+    console.warn("⛔ Usuario no autenticado, redirigiendo a login…");
+    // Si estamos en una página distinta de login, volvemos al login
+    if (!location.pathname.endsWith("login.html")) {
+      location.href = "login.html";
+    }
   } else {
-    console.warn("⛔ Usuario no autenticado");
-    // Opcional: redirigir a login.html o mostrar mensaje
+    console.log("✅ Usuario autenticado:", user.email);
   }
 });
 
-// ✅ Función para iniciar sesión
+// 5️⃣ Función para iniciar sesión (usada en login.html)
 window.login = async function (email, password) {
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    alert("Inicio de sesión exitoso");
-    window.location.href = "registro.html"; // o cualquier otra página
-  } catch (error) {
-    alert("❌ Error al iniciar sesión: " + error.message);
-  }
+  await signInWithEmailAndPassword(auth, email, password);
+  // Tras el login, el onAuthStateChanged redirigirá automáticamente
 };
 
-// ✅ Función para cerrar sesión
+// 6️⃣ Función para cerrar sesión (puedes llamarla desde script.js o un botón)
 window.logout = async function () {
-  try {
-    await signOut(auth);
-    alert("Sesión cerrada");
-    window.location.href = "index.html"; // o login.html
-  } catch (error) {
-    alert("❌ Error al cerrar sesión: " + error.message);
-  }
+  await signOut(auth);
+  // onAuthStateChanged también se encargará de la redirección al login
 };
 
-// ✅ Exportar app para ser reutilizado en otras páginas
-export { app };
+// 7️⃣ Exporta los objetos para usarlos en tus otros módulos
+export { app, auth, db };
