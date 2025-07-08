@@ -52,6 +52,26 @@
       </div>
     </div>
 
+    <div class="row" style="margin-bottom: 1rem; gap: 1rem; align-items: center;">
+      <button id="btn-toggle-edit" class="btn">🔓 Activar Edición</button>
+      <button id="btn-view-history" class="btn">📜 Ver Historial</button>
+    </div>
+    
+    <!-- Modal de Historial -->
+    <div id="modalHistorial" class="modal-backdrop" style="display:none;">
+      <div class="modal">
+        <h2>Historial del Grupo</h2>
+        <table id="tablaHistorial">
+          <thead>
+            <tr><th>Fecha</th><th>Usuario</th><th>Acción / Campo</th><th>Antes</th><th>Después</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <button id="btn-close-history">Cerrar</button>
+      </div>
+    </div>
+
+
     <!-- 7) Tabla vacía, que llenaremos con JS -->
     <div class="row">
        <div class="table-container">
@@ -260,6 +280,75 @@
 
         // c) actualiza el data-original
         $td.attr('data-original', nuevo);
+      });
+
+      // 0) Mantengo un flag de edición
+      let editMode = false;
+      
+      $('#btn-toggle-edit').on('click', () => {
+        editMode = !editMode;
+        // Actualizamos el texto del botón
+        $('#btn-toggle-edit').text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+        
+        // Activar / desactivar contenteditable en todas las celdas
+        $('#tablaGrupos tbody td').attr('contenteditable', editMode);
+        
+        if (editMode) {
+          // Loguear en historial que se activó edición
+          addDoc(collection(db,'historial'), {
+            acción: 'ACTIVÓ MODO EDICIÓN',
+            usuario: auth.currentUser.email,
+            timestamp: new Date()
+          });
+        }
+      });
+      
+      // 1) Abrir modal de historial
+      $('#btn-view-history').on('click', async () => {
+        // Suponemos que tenemos seleccionado un grupo:
+        // Por simplicidad, tomamos la primera fila visible:
+        const $firstRow = $('#tablaGrupos tbody tr:visible').first();
+        const num = $firstRow.find('td').eq(0).text().trim();
+        const nombre = $firstRow.find('td').eq(1).text().trim();
+      
+        // Hacemos la query
+        const q = query(
+          collection(db,'historial'),
+          where('numeroNegocio','==', num),
+          where('nombreGrupo','==', nombre),
+          orderBy('timestamp','desc')
+        );
+        const snap = await getDocs(q);
+      
+        // Pintamos en el <tbody> del modal
+        const $tbH = $('#tablaHistorial tbody').empty();
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          const fecha = d.timestamp.toDate().toLocaleString('es-CL');
+          const usuario = d.modificadoPor || d.usuario;
+          // si es acción global:
+          const campo = d.acción || d.campo;
+          const antes = d.anterior || '';
+          const despues = d.nuevo || '';
+      
+          $tbH.append(`
+            <tr>
+              <td>${fecha}</td>
+              <td>${usuario}</td>
+              <td>${campo}</td>
+              <td>${antes}</td>
+              <td>${despues}</td>
+            </tr>
+          `);
+        });
+      
+        // Mostramos el modal
+        $('#modalHistorial').show();
+      });
+      
+      // 2) Cerrar modal
+      $('#btn-close-history').on('click', () => {
+        $('#modalHistorial').hide();
       });
 
   
