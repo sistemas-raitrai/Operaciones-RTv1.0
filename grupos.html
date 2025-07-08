@@ -122,6 +122,17 @@
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
   
     const auth = getAuth(app);
+
+    // 0) Aquí defines tu array de claves Firestore:
+    const camposFire = [
+      "numeroNegocio","nombreGrupo","cantidadgrupo",
+      "adultos","estudiantes","colegio","curso",
+      "anoViaje","destino","programa","inicio",
+      "hotel","asistenciaEnViajes","autorizacion",
+      "fechaDeViaje","observaciones","versionFicha",
+      "creadoPor","fechaCreacion","fin",
+      "transporte","ciudades","hoteles","tramos","obsLogist"
+    ];
   
     $(function() {
       $('#btn-logout').click(() =>
@@ -192,9 +203,12 @@
           const $td = $('<td>')
             .text(celda ?? '')
             .attr('data-doc-id', id)
-            .attr('data-campo', Object.keys(fila)[idx] || '') // opcional, si sabes el nombre
+            .attr('data-campo', campoClave) 
             .attr('data-original', celda);
-          if (editable) $td.attr('contenteditable', 'true');
+          if (editable) {
+            $td.attr('contenteditable', 'true');
+          }
+      
           $tr.append($td);
         });
       
