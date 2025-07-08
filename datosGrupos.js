@@ -4,8 +4,12 @@
 // ✅ 1) IMPORTACIONES DE FIREBASE
 // ──────────────────────────────────────────────────────────────────────────────
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-import { app, db } from "./firebase-init.js";   // tu init exporta app, auth y db
-import { doc, setDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
+import { app, db } from "./firebase-init.js";   // tu init exporta app y db
+import {
+  doc, setDoc,
+  collection, addDoc,
+  query, where, orderBy, getDocs
+} from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
 const auth = getAuth(app);
 let cargaInicialHecha = false;
@@ -247,28 +251,43 @@ function descargarLecturaExcel() {
 async function cargarDesdeOperaciones(numeroNegocio) {
   const tbody = document.getElementById("tbodyTabla");
   tbody.innerHTML = "";
-
   if (!numeroNegocio) return;
 
   try {
-    const resp = await fetch(`${operacionesURL}?numeroNegocio=${encodeURIComponent(numeroNegocio)}`);
-    if (!resp.ok) throw new Error(`Fetch error ${resp.status}`);
-    const { existe, valores: raw } = await resp.json();
-    if (!existe || !raw.length) return appendEmptyRow(tbody);
+    // 1️⃣ Referencia y query
+    const histCol = collection(db, "historial");
+    const q = query(
+      histCol,
+      where("numeroNegocio", "==", numeroNegocio),
+      orderBy("timestamp", "asc")
+    );
 
-    const filas = Array.isArray(raw[0]) ? raw : [raw];
-    filas.forEach(f => {
+    // 2️⃣ Ejecutar query
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      return appendEmptyRow(tbody);
+    }
+
+    // 3️⃣ Pintar filas
+    snapshot.docs.forEach(docSnap => {
+      const data = docSnap.data();
       const tr = document.createElement("tr");
-      f.forEach(c => {
+      // Ajusta columnas según tu <thead>
+      [ data.campo,
+        data.anterior,
+        data.nuevo,
+        data.modificadoPor,
+        data.timestamp.toDate().toLocaleString("es-CL")
+      ].forEach(texto => {
         const td = document.createElement("td");
-        td.textContent = c ?? "";
+        td.textContent = texto ?? "";
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
     });
 
   } catch (err) {
-    console.error("❌ Error al consultar Operaciones:", err);
+    console.error("❌ Error al cargar historial desde Firestore:", err);
     appendEmptyRow(tbody);
   }
 }
