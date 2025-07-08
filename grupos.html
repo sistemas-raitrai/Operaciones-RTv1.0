@@ -136,6 +136,8 @@
     import {
       collection,
       getDocs,
+      query,
+      orderBy,
       doc,
       updateDoc,
       addDoc
@@ -309,42 +311,34 @@
       
       // 1) Abrir modal de historial
       $('#btn-view-history').on('click', async () => {
-        // Suponemos que tenemos seleccionado un grupo:
-        // Por simplicidad, tomamos la primera fila visible:
-        const $firstRow = $('#tablaGrupos tbody tr:visible').first();
-        const num = $firstRow.find('td').eq(0).text().trim();
-        const nombre = $firstRow.find('td').eq(1).text().trim();
-      
-        // Hacemos la query
+        // 1.1) Query sin filtros, sólo ordenada por timestamp desc
         const q = query(
           collection(db,'historial'),
-          where('numeroNegocio','==', num),
-          where('nombreGrupo','==', nombre),
           orderBy('timestamp','desc')
         );
         const snap = await getDocs(q);
       
-        // Pintamos en el <tbody> del modal
+        // 1.2) Pintar en el <tbody> del modal sólo lo que importa
         const $tbH = $('#tablaHistorial tbody').empty();
         snap.forEach(docSnap => {
           const d = docSnap.data();
-          const fecha = d.timestamp.toDate().toLocaleString('es-CL');
+          const fecha   = d.timestamp.toDate().toLocaleString('es-CL');
           const usuario = d.modificadoPor || d.usuario;
-          // si es acción global:
-          const campo = d.acción || d.campo;
-          const antes = d.anterior || '';
-          const despues = d.nuevo || '';
+          // si es acción global (modo edición) viene en d.accion, 
+          // si es un cambio de campo viene en d.campo
+          const accionOCampo = d.accion || d.campo;
       
           $tbH.append(`
             <tr>
               <td>${fecha}</td>
               <td>${usuario}</td>
-              <td>${campo}</td>
-              <td>${antes}</td>
-              <td>${despues}</td>
+              <td>${accionOCampo}</td>
             </tr>
           `);
         });
+      
+        $('#modalHistorial').show();
+      });
       
         // Mostramos el modal
         $('#modalHistorial').show();
