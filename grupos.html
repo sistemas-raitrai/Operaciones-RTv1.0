@@ -282,25 +282,29 @@
         $td.attr('data-original', nuevo);
       });
 
-      // 0) Mantengo un flag de edición
-      let editMode = false;
-      
-      $('#btn-toggle-edit').on('click', () => {
-        editMode = !editMode;
-        // Actualizamos el texto del botón
-        $('#btn-toggle-edit').text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+        // 0) Flag de estado
+        let editMode = false;
         
-        // Activar / desactivar contenteditable en todas las celdas
-        $('#tablaGrupos tbody td').attr('contenteditable', editMode);
+        $('#btn-toggle-edit').on('click', async () => {
+          editMode = !editMode;
         
-        if (editMode) {
-          // Loguear en historial que se activó edición
-          addDoc(collection(db,'historial'), {
-            acción: 'ACTIVÓ MODO EDICIÓN',
-            usuario: auth.currentUser.email,
-            timestamp: new Date()
-          });
-        }
+          // 1) Cambio texto del botón
+          $('#btn-toggle-edit')
+            .text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+        
+          // 2) Pongo o quito contenteditable en todas las celdas
+          $('#tablaGrupos tbody td')
+            .attr('contenteditable', editMode);
+        
+          // 3) Registro en historial la activación o desactivación
+          const accion = editMode 
+            ? 'ACTIVÓ MODO EDICIÓN' 
+            : 'DESACTIVÓ MODO EDICIÓN';
+          await addDoc(collection(db, 'historial'), {
+            acción,
+          usuario: auth.currentUser.email,
+          timestamp: new Date()
+        });
       });
       
       // 1) Abrir modal de historial
