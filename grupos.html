@@ -294,12 +294,14 @@
           $('#tablaGrupos tbody td')
             .attr('contenteditable', editMode);
         
-          // 3) Registro en historial la activación o desactivación
-          const accion = editMode 
-            ? 'ACTIVÓ MODO EDICIÓN' 
-            : 'DESACTIVÓ MODO EDICIÓN';
-          await addDoc(collection(db, 'historial'), {
-            acción,
+        // 3) Registro en historial la activación o desactivación
+        const accion = editMode 
+          ? 'ACTIVÓ MODO EDICIÓN' 
+          : 'DESACTIVÓ MODO EDICIÓN';
+        
+        await addDoc(collection(db, 'historial'), {
+          // usa la misma clave que tu variable:
+          accion,
           usuario: auth.currentUser.email,
           timestamp: new Date()
         });
