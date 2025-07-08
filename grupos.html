@@ -226,9 +226,6 @@
             .attr('data-doc-id', id)
             .attr('data-campo', campoClave) 
             .attr('data-original', celda);
-          if (editable) {
-            $td.attr('contenteditable', 'true');
-          }
       
           $tr.append($td);
         });
@@ -284,7 +281,8 @@
 
         // 0) Flag de estado
         let editMode = false;
-        
+
+        // Botón toggle
         $('#btn-toggle-edit').on('click', async () => {
           editMode = !editMode;
         
