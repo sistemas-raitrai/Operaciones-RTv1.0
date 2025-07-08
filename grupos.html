@@ -128,24 +128,24 @@
           d.numeroNegocio,
           d.nombreGrupo,
           d.cantidadgrupo,
-          d.colegio,
-          d.curso,
+          d.adultos     || '',
+          d.estudiantes || '',
+          //d.colegio,
+          //d.curso,
           d.anoViaje,
           d.destino,
           d.programa,
+          d.inicio      || '',
           d.hotel,
           d.asistenciaEnViajes,
-          d.autorizacion,
+          //d.autorizacion,
           d.fechaDeViaje,
           d.observaciones,
           d.versionFicha,
           d.creadoPor,
           d.fechaCreacion,
           // Y si tienes más campos en Firestore:
-          d.inicio      || '',
           d.fin         || '',
-          d.adultos     || '',
-          d.estudiantes || '',
           d.transporte  || '',
           d.ciudades    || '',
           d.hoteles     || '',
@@ -167,13 +167,15 @@
         language: {
           url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
         },
-        dom: 'lrtip',
-        pageLength: -1,
-        lengthMenu: [
-          [10, 50, 100, -1],
-          [10, 50, 100, 'Todos']
+        dom: 'rtip', // QUITAMOS la “l” (length) del dom
+        pageLength: -1, // -1 significa “Todos”
+        lengthChange: false, // deshabilita el dropdown de length
+          order: [
+          [5, 'desc'],  // primero Año (columna 5)
+          [4, 'desc'],  // luego Curso (columna 4)
+          [3, 'desc'],  // luego Colegio (columna 3)
+          [0, 'desc']   // por último N° Negocio (columna 0)
         ],
-        order: [[5, 'desc']],
         scrollX: true,
         columnDefs: [
           // Oculta las columnas que quieras
