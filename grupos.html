@@ -142,9 +142,7 @@
       }
   
       // 1) Mapear cada doc a un array de valores
-      const valores = snapshot.docs.map(docSnap => {
-        const d = docSnap.data();
-        return {
+        const valores = snapshot.docs.map(docSnap => ({
           id: docSnap.id,
           fila: [
             d.numeroNegocio,
@@ -179,8 +177,10 @@
   
       // 2) Vaciar y rellenar el <tbody>
       const $tb = $('#tablaGrupos tbody').empty();
-      valores.forEach(fila => {
-        const $tr = $('<tr>');
+      valores.forEach(item => {
+          const { id, fila } = item;              // <— extraigo id y el array
+          const $tr = $('<tr>');
+        
         fila.forEach((celda, idx) => {
           // todas las columnas editables, excepto 0 y 1:
           const editable = (idx !== 0 && idx !== 1);
@@ -189,11 +189,10 @@
             .attr('data-doc-id', id)
             .attr('data-campo', Object.keys(fila)[idx] || '') // opcional, si sabes el nombre
             .attr('data-original', celda);
-          if (editable) {
-            $td.attr('contenteditable', 'true');
-          }
+          if (editable) $td.attr('contenteditable', 'true');
           $tr.append($td);
         });
+      
         $tb.append($tr);
       });
   
