@@ -5,7 +5,7 @@
 // ──────────────────────────────────────────────────────────────────────────────
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 import { app, db } from "./firebase-init.js";   // tu init exporta app, auth y db
-import { doc, setDoc } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
+import { doc, setDoc, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
 const auth = getAuth(app);
 let cargaInicialHecha = false;
@@ -160,20 +160,25 @@ async function guardarDatos(continuar = true) {
   const usuario   = auth.currentUser?.email || "Desconocido";
 
   // 6.1) Leer inputs y detectar cambios
-  Object.entries(campos).forEach(([campo,id]) => {
+  Object.entries(campos).forEach(([campo, id]) => {
     const el = document.getElementById(id);
-    const v = el?.value.trim() || "";
+    const v  = el?.value.trim() || "";
     datosForm[campo] = campo === "numeroNegocio" ? String(v) : v;
     const orig = el?.getAttribute("data-original") || "";
     if (v !== orig) cambios.push({ campo, anterior: orig, nuevo: v });
   });
   datosForm.modificadoPor = usuario;
 
+  // Si no hay fechaCreacion, la generamos
   if (!datosForm.fechaCreacion) {
     datosForm.fechaCreacion = new Date().toLocaleString("es-CL", {
-      timeZone:"America/Santiago",
-      day:"2-digit", month:"2-digit", year:"numeric",
-      hour:"2-digit", minute:"2-digit", second:"2-digit"
+      timeZone: "America/Santiago",
+      day:      "2-digit",
+      month:    "2-digit",
+      year:     "numeric",
+      hour:     "2-digit",
+      minute:   "2-digit",
+      second:   "2-digit"
     }).replace(",", " /");
     datosForm.creadoPor = usuario;
   }
@@ -183,7 +188,7 @@ async function guardarDatos(continuar = true) {
     console.time("⏱ Guardar Google Sheets");
     const res = await fetch(guardarEndpoint, {
       method:  "POST",
-      headers: {"Content-Type":"application/json"},
+      headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ datos: datosForm, historial: cambios })
     });
     console.timeEnd("⏱ Guardar Google Sheets");
@@ -197,7 +202,24 @@ async function guardarDatos(continuar = true) {
     );
     console.log(`✅ Grupo ${datosForm.numeroNegocio} sincronizado a Firestore`);
 
-    alert("✅ Datos guardados en Sheets y Firestore.");
+    // —— 6.4) Guardar cada cambio en la colección "historial" ——
+    const histCol = collection(db, "historial");
+    const ts      = new Date();
+    await Promise.all(cambios.map(change =>
+      addDoc(histCol, {
+        numeroNegocio: datosForm.numeroNegocio,
+        nombreGrupo:   datosForm.nombreGrupo,
+        anoViaje:      datosForm.anoViaje,
+        campo:         change.campo,
+        anterior:      change.anterior,
+        nuevo:         change.nuevo,
+        modificadoPor: datosForm.modificadoPor,
+        timestamp:     ts
+      })
+    ));
+    console.log(`✅ ${cambios.length} cambios guardados en historial`);
+
+    alert("✅ Datos guardados en Sheets, Firestore e historial.");
     cargarDesdeOperaciones(datosForm.numeroNegocio);
     if (!continuar) window.history.back();
 
