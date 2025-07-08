@@ -59,10 +59,19 @@
     
     <!-- Modal de Historial -->
     <div id="modalHistorial" class="modal-backdrop" style="display:none;">
-      <div class="modal">
+      <div class="modal" style="max-width:800px; margin:auto; background:white; padding:1rem;">
         <h2>Historial del Grupo</h2>
-        <!-- Buscador específico de historial -->
-        <input type="text" id="buscadorHistorial" placeholder="Buscar en historial…" style="width:100%; margin-bottom:0.5rem;"/>
+        <div style="display:flex; gap:1rem; align-items:center; margin-bottom:0.5rem;">
+          <!-- Input rango de fechas -->
+          <input type="date" id="histInicio" />
+          <input type="date" id="histFin" />
+          <!-- Botón actualizar datos -->
+          <button id="btn-refresh-history">🔄 Actualizar</button>
+          <!-- Buscador global -->
+          <input type="text" id="buscadorHistorial" placeholder="Buscar…" style="flex:1;" />
+          <!-- Cerrar -->
+          <button id="btn-close-history">Cerrar</button>
+        </div>
         <table id="tablaHistorial" class="display" style="width:100%;">
           <thead>
             <tr>
@@ -75,9 +84,9 @@
           </thead>
           <tbody></tbody>
         </table>
-        <button id="btn-close-history">Cerrar</button>
       </div>
     </div>
+
 
 
     <!-- 7) Tabla vacía, que llenaremos con JS -->
