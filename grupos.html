@@ -93,82 +93,98 @@
 
   <!-- 12) Lógica de la tabla (module, sin defer) -->
   <script type="module">
-    import { app } from './firebase-init.js';
+    import { app, db } from './firebase-init.js';
     import { getAuth, onAuthStateChanged, signOut }
       from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-
+    import {
+      collection,
+      getDocs
+    } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+  
     const auth = getAuth(app);
-
-    // 12.1) Espera a que jQuery y el DOM estén listos
+  
     $(function() {
-      // Conecta el botón logout del encabezado
       $('#btn-logout').click(() =>
         signOut(auth).then(() => location = 'login.html')
       );
-      // Tras autenticación, carga la tabla
       onAuthStateChanged(auth, user => {
-        if (!user) {
-          location = 'login.html';
-        } else {
-          cargarYMostrarTabla();
-        }
+        if (!user) location = 'login.html';
+        else cargarYMostrarTabla();
       });
     });
-
-    /**
-     * 12.2) Obtiene y pinta todos los registros de Operaciones
-     */
+  
     async function cargarYMostrarTabla() {
-      console.log('▶ fetch de datos…');
-      // 12.2.1) Llama al endpoint Apps Script que devuelve todas las filas
-      const res = await fetch(
-        'https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte2a6aFtVDguFGsiL0aaG6Tupn8B807oovR34S0YbR9I9mz0/exec'
-      );
-      if (!res.ok) {
-        console.error('Fetch falló', res.status);
+      // 1) Traer todos los grupos de Firestore
+      const snapshot = await getDocs(collection(db, "grupos"));
+      if (snapshot.empty) {
+        console.warn("No hay grupos en Firestore");
         return;
       }
-
-      // 12.2.2) Parsea el JSON
-      const json = await res.json();
-      console.log('▶ Datos recibidos:', json);
-      const valores = Array.isArray(json.valores) ? json.valores : [];
-
-      // 12.2.3) Vacia y rellena el <tbody> directamente con cada celda
+  
+      // 2) Mapear cada doc a un array de valores
+      const valores = snapshot.docs.map(docSnap => {
+        const d = docSnap.data();
+        return [
+          d.numeroNegocio,
+          d.nombreGrupo,
+          d.cantidadgrupo,
+          d.colegio,
+          d.curso,
+          d.anoViaje,
+          d.destino,
+          d.programa,
+          d.hotel,
+          d.asistenciaEnViajes,
+          d.autorizacion,
+          d.fechaDeViaje,
+          d.observaciones,
+          d.versionFicha,
+          d.creadoPor,
+          d.fechaCreacion,
+          // Y si tienes más campos en Firestore:
+          d.inicio      || '',
+          d.fin         || '',
+          d.adultos     || '',
+          d.estudiantes || '',
+          d.transporte  || '',
+          d.ciudades    || '',
+          d.hoteles     || '',
+          d.tramos      || '',
+          d.obsLogist   || ''
+        ];
+      });
+  
+      // 3) Vaciar y rellenar el <tbody>
       const $tb = $('#tablaGrupos tbody').empty();
-      valores.forEach(filaArray => {
+      valores.forEach(fila => {
         const $tr = $('<tr>');
-        filaArray.forEach(celda => {
-          $tr.append($('<td>').text(celda ?? ''));
-        });
+        fila.forEach(c => $tr.append($('<td>').text(c ?? '')));
         $tb.append($tr);
       });
-
+  
+      // 4) Inicializar DataTable con tus ajustes
       const tabla = $('#tablaGrupos').DataTable({
         language: {
           url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
         },
         dom: 'lrtip',
-        pageLength: -1, // Valor por defecto: -1 significa "Todos"
-        // Menú de selección: 10, 50, 100, Todos
+        pageLength: -1,
         lengthMenu: [
           [10, 50, 100, -1],
           [10, 50, 100, 'Todos']
         ],
         order: [[5, 'desc']],
-        scrollX: true,            // Activa scroll horizontal
+        scrollX: true,
         columnDefs: [
-          // Oculta las últimas 5 columnas: transporte, ciudades, hoteles, tramos, obs.logíst.
+          // Oculta las columnas que quieras
           { targets: [3, 4, 9, 10, 11, 12, 13, 14, 15], visible: false }
         ]
       });
-
-      // 12.2.5) Conecta el buscador global
+  
+      // 5) Buscador global y filtros (igual que antes)
       $('#buscador').on('input', () =>
         tabla.search($('#buscador').val()).draw()
       );
-
-      // 12.2.6) Genera las opciones de filtro a partir de los datos
       const uniq = arr => [...new Set(arr.filter(x => x))].sort();
       uniq(valores.map(r => r[6])).forEach(destino =>
         $('#filtroDestino').append(`<option>${destino}</option>`)
@@ -176,8 +192,6 @@
       uniq(valores.map(r => r[5])).forEach(ano =>
         $('#filtroAno').append(`<option>${ano}</option>`)
       );
-
-      // 12.2.7) Conecta los filtros por columna
       $('#filtroDestino').on('change', () =>
         tabla.column(6).search($('#filtroDestino').val()).draw()
       );
