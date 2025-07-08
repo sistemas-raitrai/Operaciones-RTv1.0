@@ -61,9 +61,17 @@
     <div id="modalHistorial" class="modal-backdrop" style="display:none;">
       <div class="modal">
         <h2>Historial del Grupo</h2>
-        <table id="tablaHistorial">
+        <!-- Buscador específico de historial -->
+        <input type="text" id="buscadorHistorial" placeholder="Buscar en historial…" style="width:100%; margin-bottom:0.5rem;"/>
+        <table id="tablaHistorial" class="display" style="width:100%;">
           <thead>
-            <tr><th>Fecha</th><th>Usuario</th><th>Acción / Campo</th><th>Antes</th><th>Después</th></tr>
+            <tr>
+              <th>Fecha</th>
+              <th>Usuario</th>
+              <th>Acción / Campo</th>
+              <th>Antes</th>
+              <th>Después</th>
+            </tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -322,22 +330,40 @@
         const $tbH = $('#tablaHistorial tbody').empty();
         snap.forEach(docSnap => {
           const d = docSnap.data();
-          const fecha   = d.timestamp.toDate().toLocaleString('es-CL');
+          const fecha = d.timestamp.toDate().toLocaleString('es-CL');
           const usuario = d.modificadoPor || d.usuario;
-          // si es acción global (modo edición) viene en d.accion, 
-          // si es un cambio de campo viene en d.campo
           const accionOCampo = d.accion || d.campo;
-      
+          const antes = d.anterior || '';
+          const despues = d.nuevo || '';
           $tbH.append(`
             <tr>
               <td>${fecha}</td>
               <td>${usuario}</td>
               <td>${accionOCampo}</td>
+              <td>${antes}</td>
+              <td>${despues}</td>
             </tr>
           `);
         });
-    
-        // Mostramos el modal
+      
+        // 1.3) Inicializar DataTable (o refrescar si ya existe)
+        if ( $.fn.DataTable.isDataTable('#tablaHistorial') ) {
+          $('#tablaHistorial').DataTable().destroy();
+        }
+        const dtHist = $('#tablaHistorial').DataTable({
+          language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+          pageLength: 15,
+          lengthMenu: [ [15, 30, 50, -1], [15, 30, 50, 'Todos'] ],
+          order: [[0, 'desc']],
+          dom: 'fltip',  // f = filter, l = length, t = table, i = info, p = paging
+        });
+      
+        // 1.4) Conectar nuestro buscador personalizado
+        $('#buscadorHistorial').off('input').on('input', function() {
+          dtHist.search(this.value).draw();
+        });
+      
+        // 1.5) Mostrar el modal
         $('#modalHistorial').show();
       });
       
@@ -345,7 +371,6 @@
       $('#btn-close-history').on('click', () => {
         $('#modalHistorial').hide();
       });
-
   
       // 5) Buscador global y filtros (igual que antes)
       $('#buscador').on('input', () =>
