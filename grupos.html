@@ -115,7 +115,10 @@
       from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
       collection,
-      getDocs
+      getDocs,
+      doc,
+      updateDoc,
+      addDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
   
     const auth = getAuth(app);
@@ -131,59 +134,72 @@
     });
   
     async function cargarYMostrarTabla() {
-      // 1) Traer todos los grupos de Firestore
+      // 0) Traer todos los grupos de Firestore
       const snapshot = await getDocs(collection(db, "grupos"));
       if (snapshot.empty) {
         console.warn("No hay grupos en Firestore");
         return;
       }
   
-      // 2) Mapear cada doc a un array de valores
+      // 1) Mapear cada doc a un array de valores
       const valores = snapshot.docs.map(docSnap => {
         const d = docSnap.data();
-        return [
-          d.numeroNegocio,
-          d.nombreGrupo,
-          d.cantidadgrupo,
-          d.adultos     || '',
-          d.estudiantes || '',
-          d.colegio,
-          d.curso,
-          d.anoViaje,
-          d.destino,
-          d.programa,
-          d.inicio      || '',
-          d.hotel,
-          d.asistenciaEnViajes,
-          d.autorizacion,
-          d.fechaDeViaje,
-          d.observaciones,
-          d.versionFicha,
-          d.creadoPor,
-          d.fechaCreacion,
-          // Y si tienes más campos en Firestore:
-          d.fin         || '',
-          d.transporte  || '',
-          d.ciudades    || '',
-          d.hoteles     || '',
-          d.tramos      || '',
-          d.obsLogist   || ''
-        ];
+        return {
+          id: docSnap.id,
+          fila: [
+            d.numeroNegocio,
+            d.nombreGrupo,
+            d.cantidadgrupo,
+            d.adultos     || '',
+            d.estudiantes || '',
+            d.colegio,
+            d.curso,
+            d.anoViaje,
+            d.destino,
+            d.programa,
+            d.inicio      || '',
+            d.hotel,
+            d.asistenciaEnViajes,
+            d.autorizacion,
+            d.fechaDeViaje,
+            d.observaciones,
+            d.versionFicha,
+            d.creadoPor,
+            d.fechaCreacion,
+            // Y si tienes más campos en Firestore:
+            d.fin         || '',
+            d.transporte  || '',
+            d.ciudades    || '',
+            d.hoteles     || '',
+            d.tramos      || '',
+            d.obsLogist   || ''
+          ]
+        };
       });
   
-      // 3) Vaciar y rellenar el <tbody>
+      // 2) Vaciar y rellenar el <tbody>
       const $tb = $('#tablaGrupos tbody').empty();
       valores.forEach(fila => {
         const $tr = $('<tr>');
-        fila.forEach(c => $tr.append($('<td>').text(c ?? '')));
+        fila.forEach((celda, idx) => {
+          // todas las columnas editables, excepto 0 y 1:
+          const editable = (idx !== 0 && idx !== 1);
+          const $td = $('<td>')
+            .text(celda ?? '')
+            .attr('data-doc-id', id)
+            .attr('data-campo', Object.keys(fila)[idx] || '') // opcional, si sabes el nombre
+            .attr('data-original', celda);
+          if (editable) {
+            $td.attr('contenteditable', 'true');
+          }
+          $tr.append($td);
+        });
         $tb.append($tr);
       });
   
-      // 4) Inicializar DataTable con tus ajustes
+      // 3) Inicializar DataTable con tus ajustes
       const tabla = $('#tablaGrupos').DataTable({
-        language: {
-          url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
-        },
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
         dom: 'rtip', // QUITAMOS la “l” (length) del dom
         pageLength: -1, // -1 significa “Todos”
         lengthChange: false, // deshabilita el dropdown de length
@@ -199,6 +215,34 @@
           { targets: [5, 6], visible: false }
         ]
       });
+
+      // 4) Listener de focusout en celdas editables
+      $('#tablaGrupos tbody').on('focusout', 'td[contenteditable]', async function() {
+        const $td       = $(this);
+        const nuevo     = $td.text().trim();
+        const original  = $td.attr('data-original');
+        if (nuevo === original) return;
+
+        const docId     = $td.attr('data-doc-id');
+        const campo     = $td.attr('data-campo') || $('#tablaGrupos thead th').eq($td.index()).text();
+
+        // a) update en /grupos/{docId}
+        await updateDoc(doc(db, 'grupos', docId), { [campo]: nuevo });
+
+        // b) log en /historial
+        await addDoc(collection(db, 'historial'), {
+          numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
+          campo,
+          anterior: original,
+          nuevo,
+          modificadoPor: auth.currentUser.email,
+          timestamp: new Date()
+        });
+
+        // c) actualiza el data-original
+        $td.attr('data-original', nuevo);
+      });
+
   
       // 5) Buscador global y filtros (igual que antes)
       $('#buscador').on('input', () =>
