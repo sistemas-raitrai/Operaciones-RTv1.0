@@ -142,7 +142,12 @@
       }
   
       // 1) Mapear cada doc a un array de valores
-        const valores = snapshot.docs.map(docSnap => ({
+      const valores = snapshot.docs.map(docSnap => {
+        // extraemos los datos aquí:
+        const d = docSnap.data();
+
+        // y los devolvemos dentro de un objeto literal:
+        return {
           id: docSnap.id,
           fila: [
             d.numeroNegocio,
