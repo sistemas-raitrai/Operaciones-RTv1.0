@@ -10,6 +10,7 @@ import {
   collection, addDoc,
   query, where, orderBy, getDocs
 } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
+import { doc as docRef, getDoc } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
 const auth = getAuth(app);
 let cargaInicialHecha = false;
@@ -251,43 +252,56 @@ function descargarLecturaExcel() {
 async function cargarDesdeOperaciones(numeroNegocio) {
   const tbody = document.getElementById("tbodyTabla");
   tbody.innerHTML = "";
+
   if (!numeroNegocio) return;
 
   try {
-    // 1️⃣ Referencia y query
-    const histCol = collection(db, "historial");
-    const q = query(
-      histCol,
-      where("numeroNegocio", "==", numeroNegocio),
-      orderBy("timestamp", "asc")
-    );
+    // 1️⃣ Referencia al documento
+    const docSnap = await getDoc(docRef(db, "grupos", String(numeroNegocio)));
 
-    // 2️⃣ Ejecutar query
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
+    if (!docSnap.exists()) {
+      // Si no existe aún, dejamos una fila vacía
       return appendEmptyRow(tbody);
     }
 
-    // 3️⃣ Pintar filas
-    snapshot.docs.forEach(docSnap => {
-      const data = docSnap.data();
-      const tr = document.createElement("tr");
-      // Ajusta columnas según tu <thead>
-      [ data.campo,
-        data.anterior,
-        data.nuevo,
-        data.modificadoPor,
-        data.timestamp.toDate().toLocaleString("es-CL")
-      ].forEach(texto => {
-        const td = document.createElement("td");
-        td.textContent = texto ?? "";
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
+    // 2️⃣ Obtenemos los datos
+    const data = docSnap.data();
+
+    // 3️⃣ Creamos una fila con TODOS los campos del 'grupo'
+    const tr = document.createElement("tr");
+
+    // Suponiendo que tu <thead> tiene exactamente estos <th> en este orden:
+    // numeroNegocio, nombreGrupo, cantidadgrupo, colegio, curso,
+    // anoViaje, destino, programa, hotel, asistenciaEnViajes,
+    // autorizacion, fechaDeViaje, observaciones, versionFicha, creadoPor, fechaCreacion
+    // Si añades nuevos campos en Firestore, simplemente agrégalos aquí.
+    [
+      data.numeroNegocio,
+      data.nombreGrupo,
+      data.cantidadgrupo,
+      data.colegio,
+      data.curso,
+      data.anoViaje,
+      data.destino,
+      data.programa,
+      data.hotel,
+      data.asistenciaEnViajes,
+      data.autorizacion,
+      data.fechaDeViaje,
+      data.observaciones,
+      data.versionFicha,
+      data.creadoPor,
+      data.fechaCreacion
+    ].forEach(valor => {
+      const td = document.createElement("td");
+      td.textContent = valor ?? "";
+      tr.appendChild(td);
     });
 
+    tbody.appendChild(tr);
+
   } catch (err) {
-    console.error("❌ Error al cargar historial desde Firestore:", err);
+    console.error("❌ Error al cargar grupo desde Firestore:", err);
     appendEmptyRow(tbody);
   }
 }
