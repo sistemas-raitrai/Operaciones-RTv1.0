@@ -183,6 +183,4 @@ $.fn.dataTable.ext.search.push((settings, rowData /* array de celdas */, rowIdx)
       dtHist.draw();
     });
 
-}             // ← 1) Cierra cargarYMostrarTabla()
-
-);  
+}             // ← 1) Cierra cargarYMostrarTabla() 
