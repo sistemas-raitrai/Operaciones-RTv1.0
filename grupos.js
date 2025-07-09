@@ -180,4 +180,7 @@ $.fn.dataTable.ext.search.push((settings, rowData /* array de celdas */, rowIdx)
 $('#histInicio, #histFin').off('change').on('change', () => {
   dtHist.draw();
 });
+  
+}
 
+}); 
