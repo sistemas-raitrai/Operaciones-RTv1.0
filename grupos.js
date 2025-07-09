@@ -176,11 +176,13 @@ $.fn.dataTable.ext.search.push((settings, rowData /* array de celdas */, rowIdx)
   return cellDate >= min && cellDate <= max;
 });
 
-// Al cambiar cualquiera de las fechas, vuelvo a dibujar la tabla
-$('#histInicio, #histFin').off('change').on('change', () => {
-  dtHist.draw();
-});
-  
-}
+  // Al cambiar cualquiera de las fechas, vuelvo a dibujar la tabla
+  $('#histInicio, #histFin')
+    .off('change')
+    .on('change', () => {
+      dtHist.draw();
+    });
 
-}); 
+}             // ← 1) Cierra cargarYMostrarTabla()
+
+);  
