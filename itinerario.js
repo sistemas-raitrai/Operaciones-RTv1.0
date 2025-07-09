@@ -1,282 +1,237 @@
 // itinerario.js
+import { app, db } from './firebase-init.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import {
+  collection,
+  getDocs,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-import { app } from "./firebase-init.js";
 const auth = getAuth(app);
 
-console.log("▶️ itinerario.js cargado");
-
-// 1) URLs de datos
-const OPENSHEET = "https://opensheet.elk.sh/124rwvhKhVLDnGuGHB1IGIm1-KrtWXencFqr8SfnbhRI/LecturaBaseOperaciones";
-const GAS_URL   = "https://script.google.com/macros/s/AKfycbwkyIMHb_bzAzMWoO3Yte2a6aFtVDguFGsiL0aaG6Tupn8B807oovR34S0YbR9I9mz0/exec";
-
-// 2) Elementos principales del DOM
-const selectNum      = document.getElementById("grupo-select-num");   // selector por código
-const selectName     = document.getElementById("grupo-select-name");  // selector por nombre
-const titleGrupo     = document.getElementById("grupo-title");       
+// DOM elements
+const selectNum      = document.getElementById("grupo-select-num");
+const selectName     = document.getElementById("grupo-select-name");
+const titleGrupo     = document.getElementById("grupo-title");
 const contItinerario = document.getElementById("itinerario-container");
 
-// 3) Elementos del modal de actividad
-const modalBg   = document.getElementById("modal-backdrop");
-const modal     = document.getElementById("modal");
-const formModal = document.getElementById("modal-form");
-const fldFecha  = document.getElementById("m-fecha");
-const fldHi     = document.getElementById("m-horaInicio");
-const fldHf     = document.getElementById("m-horaFin");
-const fldAct    = document.getElementById("m-actividad");
-const fldPas    = document.getElementById("m-pasajeros");
-const fldNotas  = document.getElementById("m-notas");
-let editData    = null;  // guarda la actividad en edición
+const qaDia       = document.getElementById("qa-dia");
+const qaHoraInicio= document.getElementById("qa-horaInicio");
+const qaAct       = document.getElementById("qa-actividad");
+const qaAddBtn    = document.getElementById("qa-add");
 
-// 4) Cuando el DOM esté listo, comprobamos sesión y arrancamos
-document.addEventListener("DOMContentLoaded", () => {
-  console.log("▶️ DOM listo");
-  onAuthStateChanged(auth, user => {
-    console.log("▶️ Usuario:", user?.email);
-    if (!user) return location.href = "login.html";
-    init();
-  });
+const modalBg     = document.getElementById("modal-backdrop");
+const modal       = document.getElementById("modal");
+const formModal   = document.getElementById("modal-form");
+const fldFecha    = document.getElementById("m-fecha");
+const fldHi       = document.getElementById("m-horaInicio");
+const fldHf       = document.getElementById("m-horaFin");
+const fldAct      = document.getElementById("m-actividad");
+const fldPas      = document.getElementById("m-pasajeros");
+const fldNotas    = document.getElementById("m-notas");
+const btnCancel   = document.getElementById("modal-cancel");
+
+let editData = null; // si estamos editando, guardamos aquí el docRef
+
+// 1) Autenticación y arranque
+onAuthStateChanged(auth, user => {
+  if (!user) return location.href = "login.html";
+  initItinerario();
 });
 
-async function init() {
-  console.log("▶️ init()");
-  // 5.1) Leer toda la hoja
-  const datos = await (await fetch(OPENSHEET)).json();
-
-  // 5.2) Extraer pares únicos {numeroNegocio, nombreGrupo}
-  const mapa = new Map();
-  datos.forEach(r => {
-    if (r.numeroNegocio && r.nombreGrupo && !mapa.has(r.numeroNegocio)) {
-      mapa.set(r.numeroNegocio, r.nombreGrupo);
-    }
-  });
-  const grupos = Array.from(mapa.entries());
-
-  // 5.3) Poblar los dos <select>
-  selectNum.innerHTML  = grupos.map(([num])    => `<option value="${num}">${num}</option>`).join("");
-  selectName.innerHTML = grupos.map(([num,n]) => `<option value="${num}">${n}</option>`).join("");
-
-  // 5.4) Listeners “espejo”
-  selectNum.onchange  = () => { selectName.value = selectNum.value; renderItinerario(); };
-  selectName.onchange = () => { selectNum.value  = selectName.value; renderItinerario(); };
-
-  // 5.5) Primer render
-  await renderItinerario();
+async function initItinerario() {
+  // 2) Cargamos todos los grupos de Firestore
+  const snap = await getDocs(collection(db, "grupos"));
+  const grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // 3) Poblar selectNum y selectName
+  selectNum.innerHTML = grupos.map(g =>
+    `<option value="${g.id}">${g.numeroNegocio}</option>`
+  ).join("");
+  selectName.innerHTML = grupos.map(g =>
+    `<option value="${g.id}">${g.nombreGrupo}</option>`
+  ).join("");
+  // 4) Sincronizar ambos selects
+  selectNum.onchange = () => {
+    selectName.value = selectNum.value;
+    renderItinerario();
+  };
+  selectName.onchange = () => {
+    selectNum.value = selectName.value;
+    renderItinerario();
+  };
+  // 5) Quick-add
+  qaAddBtn.onclick = quickAddActivity;
+  // 6) Modal cancel
+  btnCancel.onclick = closeModal;
+  formModal.onsubmit = onSubmitModal;
+  // 7) Primer render
+  selectNum.dispatchEvent(new Event("change"));
 }
 
 /**
- * 6) parseDdMmYyyy(s)
- *    Convierte "DD-MM-YYYY" → Date
- */
-function parseDdMmYyyy(s) {
-  const [d, m, y] = s.split("-").map(n => parseInt(n, 10));
-  return new Date(y, m - 1, d);
-}
-
-/**
- * 7) getRangoFechas(grupo)
- *    Devuelve array de fechas ISO entre fechaInicio y fechaFin
- */
-async function getRangoFechas(grupo) {
-  const datos = await (await fetch(OPENSHEET)).json();
-  const fila  = datos.find(r => r.numeroNegocio === grupo);
-  if (!fila) throw new Error(`No datos para ${grupo}`);
-  const inicio = parseDdMmYyyy(fila.fechaInicio);
-  const fin    = parseDdMmYyyy(fila.fechaFin);
-  const dias = [];
-  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
-    dias.push(d.toISOString().slice(0, 10));
-  }
-  return dias;
-}
-
-/**
- * 8) renderItinerario()
- *    Dibuja carrusel de “Día N – Nombre día dd/mm”
- *    y carga sus actividades
+ * 8) Render carrusel:
+ *    - Lee el documento grupo seleccionado
+ *    - Saca rango de fechas
+ *    - Por cada día crea sección y carga actividades
  */
 async function renderItinerario() {
-  const grupo  = selectNum.value;
-  const nombre = selectName.options[selectName.selectedIndex].text;
-  console.log("▶️ renderItinerario", grupo, nombre);
-
-  // 8.1) Recuperar el programa de la hoja
-  const datos = await (await fetch(OPENSHEET)).json();
-  const fila  = datos.find(r => r.numeroNegocio === grupo);
-
-  //8.1.a
-  if (!fila) {
-  titleGrupo.textContent = "Programa no encontrado";
-  return;
-  }
-  
-  // Calculamos el total de pax desde la hoja
-  const totalPax = parseInt(fila.cantidadgrupo, 10) || 0;
-  titleGrupo.textContent = fila?.programa || "Programa no encontrado";
-
-  // 8.2) Limpiar contenedor y obtener fechas
   contItinerario.innerHTML = "";
-  const fechas = await getRangoFechas(grupo);
-
-  const qaDia = document.getElementById("qa-dia");
-  qaDia.innerHTML = fechas
-  .map((_, i) => `<option value="${i}">Día ${i+1}</option>`)
-  .join("");
-
-  // 8.3) Rellenar el select de fecha en el modal
-  fldFecha.innerHTML = fechas.map(f => `<option value="${f}">${f}</option>`).join("");
-
-  // 8.4) Recorremos cada fecha con índice para el “Día N”
-  for (let i = 0; i < fechas.length; i++) {
-    const fecha = fechas[i];
-    const dObj   = new Date(fecha);
-    const weekday= dObj.toLocaleDateString("es-CL", { weekday:"long" });
-    const dia    = String(dObj.getDate()).padStart(2,"0");
-    const mes    = String(dObj.getMonth()+1).padStart(2,"0");
-    const titulo = `Día ${i+1} – ${weekday.charAt(0).toUpperCase()+weekday.slice(1)} ${dia}/${mes}`;
-
+  const grupoId = selectNum.value;
+  // 8.1) Leer datos del grupo
+  const docG = await getDocs(query(collection(db, "grupos"), where("__name__", "==", grupoId)));
+  const data = docG.docs[0].data();
+  titleGrupo.textContent = data.programa || "–";
+  // 8.2) Rango de fechas entre fechaInicio y fechaFin (formato ISO yyyy-mm-dd)
+  const dias = getDateRange(data.fechaInicio, data.fechaFin);
+  // 8.3) Poblar quick-add día select y modal fecha select
+  qaDia.innerHTML = dias.map((_,i) => `<option value="${i}">Día ${i+1}</option>`).join("");
+  fldFecha.innerHTML = dias.map(d => `<option value="${d}">${d}</option>`).join("");
+  // 8.4) Crear sección por día
+  for (let i = 0; i < dias.length; i++) {
+    const fecha = dias[i];
+    const title = `Día ${i+1} – ${formatDateReadable(fecha)}`;
     const sec = document.createElement("section");
-    sec.className     = "dia-seccion";
+    sec.className = "dia-seccion";
     sec.dataset.fecha = fecha;
-    sec.innerHTML     = `
-      <h3>${titulo}</h3>
+    sec.innerHTML = `
+      <h3>${title}</h3>
       <ul class="activity-list"></ul>
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
     contItinerario.appendChild(sec);
-    sec.querySelector(".btn-add").onclick = () => openModal({ fecha, totalPax }, false);
-    await loadActivities(grupo, fecha);
+    sec.querySelector(".btn-add").onclick = () =>
+      openModal({ fecha }, false);
+    await loadActivities(grupoId, fecha);
   }
 }
 
-//Se llama una sola vez al arrancar la app:
-async function setupQuickAdd() {
-  document.getElementById("qa-add").onclick = async () => {
-    const grupo       = selectNum.value;
-    const diaIndex    = parseInt(document.getElementById("qa-dia").value, 10);
-    const horaInicio  = document.getElementById("qa-horaInicio").value;
-    const actividad   = document.getElementById("qa-actividad").value.trim();
-    if (!actividad) return alert("Escribe una actividad");
-
-    const fechas = await getRangoFechas(grupo);
-    const fecha  = fechas[diaIndex];
-
-    // Total de pax desde la fila
-    const fila = await fetch(OPENSHEET)
-                     .then(r=>r.json())
-                     .then(arr=>arr.find(r=>r.numeroNegocio===grupo));
-    const totalPax = parseInt(fila?.cantidadgrupo,10)||0;
-
-    const datos = {
-      numeroNegocio: grupo,
-      fecha,
-      horaInicio,
-      horaFin:    "",       // no nos importa ahora
-      actividad,
-      pasajeros:  totalPax, // por defecto
-      notas:      ""
-    };
-
-    await fetch(GAS_URL, {
-      method:  "POST",
-      headers: { "Content-Type":"application/json" },
-      body:    JSON.stringify({ datos })
-    });
-
-    loadActivities(grupo, fecha);
-    document.getElementById("qa-actividad").value = "";
-  };
+/** Quick-add: crea nueva actividad con horaInicio y descripción */
+async function quickAddActivity() {
+  const grupoId = selectNum.value;
+  const diaIndex = parseInt(qaDia.value, 10);
+  const fecha = fldFecha.options[diaIndex].value;
+  const actividad = qaAct.value.trim();
+  if (!actividad) return alert("Escribe una actividad");
+  await addDoc(collection(db, "actividades"), {
+    numeroNegocio: grupoId,
+    fecha,
+    horaInicio: qaHoraInicio.value,
+    horaFin: "",
+    actividad,
+    pasajeros: 0,
+    notas: ""
+  });
+  qaAct.value = "";
+  await loadActivities(grupoId, fecha);
 }
 
 /**
- * 9) loadActivities(grupo, fecha)
- *    Lee actividades de tu WebApp y las pinta
+ * loadActivities:
+ *   Lee de Firestore todas las actividades para un grupo+fecha
+ *   y las pinta en el <ul> correspondiente
  */
-async function loadActivities(grupo, fecha) {
-  const res    = await fetch(`${GAS_URL}?numeroNegocio=${grupo}&fecha=${fecha}&alertas=1`);
-  const { valores } = await res.json();
-  const ul     = document.querySelector(`section[data-fecha="${fecha}"] .activity-list`);
+async function loadActivities(grupoId, fecha) {
+  const q = query(
+    collection(db, "actividades"),
+    where("numeroNegocio", "==", grupoId),
+    where("fecha", "==", fecha),
+    orderBy("horaInicio")
+  );
+  const snap = await getDocs(q);
+  const ul = document.querySelector(`section[data-fecha="${fecha}"] .activity-list`);
   ul.innerHTML = "";
-
-  if (!valores.length) {
-    ul.innerHTML = `<li class="activity-card" style="text-align:center;color:#666">— Sin actividades —</li>`;
+  if (snap.empty) {
+    ul.innerHTML = `<li style="text-align:center; color:#666">— Sin actividades —</li>`;
     return;
   }
-
-  valores.forEach(act => {
+  snap.docs.forEach(docSnap => {
+    const a = { id: docSnap.id, ...docSnap.data() };
     const li = document.createElement("li");
     li.className = "activity-card";
     li.innerHTML = `
-      <h4>${act.horaInicio||"–"}</h4>
-      <p><strong>${act.actividad}</strong></p>
-      <p>👥 ${act.pasajeros||0} pax</p>
+      <h4>${a.horaInicio || "–"}</h4>
+      <p><strong>${a.actividad}</strong></p>
+      <p>👥 ${a.pasajeros || 0} pax</p>
       <div style="text-align:right">
         <button class="btn-edit">✏️</button>
         <button class="btn-del">🗑️</button>
-      </div>
-    `;
-    if (act.alerta) li.style.border = "2px solid red";
-
-    li.querySelector(".btn-edit").onclick = () => openModal(act, true);
+      </div>`;
+    // edit
+    li.querySelector(".btn-edit").onclick = () => openModal(a, true);
+    // delete
     li.querySelector(".btn-del").onclick = async () => {
       if (!confirm("¿Eliminar actividad?")) return;
-      await fetch(GAS_URL, {
-        method:  "POST",
-        headers: { "Content-Type":"application/json" },
-        body:    JSON.stringify({ datos:{ ...act, borrar:true } })
-      });
-      loadActivities(grupo, fecha);
+      await deleteDoc(doc(db, "actividades", a.id));
+      loadActivities(grupoId, fecha);
     };
-
     ul.appendChild(li);
   });
 }
 
-// 10) openModal(data, isEdit)
+/** Abre modal para nueva o editar */
 function openModal(data, isEdit) {
   editData = isEdit ? data : null;
   document.getElementById("modal-title").textContent = isEdit ? "Editar actividad" : "Nueva actividad";
-  fldFecha.value  = data.fecha;
-  fldHi.value     = data.horaInicio  || "";
-  fldHf.value     = data.horaFin     || "";
-  fldAct.value    = data.actividad   || "";
-  fldPas.value    = isEdit
-                  ? data.pasajeros
-                  : data.totalPax;
-  fldNotas.value  = data.notas       || "";
+  fldFecha.value = data.fecha;
+  fldHi.value = data.horaInicio || "";
+  fldHf.value = data.horaFin || "";
+  fldAct.value = data.actividad || "";
+  fldPas.value = data.pasajeros || 0;
+  fldNotas.value = data.notas || "";
   modalBg.style.display = modal.style.display = "block";
 }
 
-// 11) closeModal()
+/** Cierra modal */
 function closeModal() {
   modalBg.style.display = modal.style.display = "none";
 }
 
-// 12) formModal.onsubmit
-formModal.onsubmit = async e => {
-  e.preventDefault();
-  const grupo = selectNum.value;
+/** Form modal submit: guarda o actualiza */
+async function onSubmitModal(evt) {
+  evt.preventDefault();
+  const grupoId = selectNum.value;
   const payload = {
-    numeroNegocio: grupo,
-    fecha:         fldFecha.value,
-    horaInicio:    fldHi.value,
-    horaFin:       fldHf.value,
-    actividad:     fldAct.value,
-    pasajeros:     parseInt(fldPas.value,10),
-    notas:         fldNotas.value
+    numeroNegocio: grupoId,
+    fecha: fldFecha.value,
+    horaInicio: fldHi.value,
+    horaFin: fldHf.value,
+    actividad: fldAct.value,
+    pasajeros: parseInt(fldPas.value, 10),
+    notas: fldNotas.value
   };
-  if (editData) payload.id = editData.id;
-
-  await fetch(GAS_URL, {
-    method:  "POST",
-    headers: { "Content-Type":"application/json" },
-    body:    JSON.stringify({ datos: payload })
-  });
-
+  if (editData) {
+    // update
+    await updateDoc(doc(db, "actividades", editData.id), payload);
+  } else {
+    // nuevo
+    await addDoc(collection(db, "actividades"), payload);
+  }
   closeModal();
-  loadActivities(grupo, fldFecha.value);
-};
+  await loadActivities(grupoId, payload.fecha);
+}
 
-// 13) Cerrar modal
-document.getElementById("modal-cancel").onclick = closeModal;
-modalBg.onclick = closeModal;
+/** Util: rango de fechas ISO entre dos "DD-MM-YYYY" o "YYYY-MM-DD" */
+function getDateRange(startStr, endStr) {
+  const start = new Date(startStr);
+  const end   = new Date(endStr);
+  const arr = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+    arr.push(d.toISOString().slice(0,10));
+  }
+  return arr;
+}
+
+/** Util: formatea "YYYY-MM-DD" a "Lunes 01/02" */
+function formatDateReadable(iso) {
+  const d = new Date(iso);
+  const weekday = d.toLocaleDateString("es-CL", { weekday:"long" });
+  const dd = String(d.getDate()).padStart(2,"0");
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  return `${weekday.charAt(0).toUpperCase()+weekday.slice(1)} ${dd}/${mm}`;
+}
