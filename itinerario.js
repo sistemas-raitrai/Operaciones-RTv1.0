@@ -1,21 +1,26 @@
 // itinerario.js
+
+// Importes de Firebase
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection,
   getDocs,
-  doc,
   addDoc,
   updateDoc,
   deleteDoc,
+  doc,
   query,
   where,
   orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+// 0) Instancia de Auth
 const auth = getAuth(app);
 
-// DOM elements
+// ————————————————————————————————————————————————————————————
+// Elementos del DOM
+// ————————————————————————————————————————————————————————————
 const selectNum      = document.getElementById("grupo-select-num");
 const selectName     = document.getElementById("grupo-select-name");
 const titleGrupo     = document.getElementById("grupo-title");
@@ -37,27 +42,40 @@ const fldPas      = document.getElementById("m-pasajeros");
 const fldNotas    = document.getElementById("m-notas");
 const btnCancel   = document.getElementById("modal-cancel");
 
-let editData = null; // si estamos editando, guardamos aquí el docRef
+// Guarda la actividad que se está editando (si hay)
+let editData = null;
 
-// 1) Autenticación y arranque
+// ————————————————————————————————————————————————————————————
+// 1) Espera autenticación y arranca
+// ————————————————————————————————————————————————————————————
 onAuthStateChanged(auth, user => {
-  if (!user) return location.href = "login.html";
-  initItinerario();
+  if (!user) {
+    // Redirige a login si no hay usuario
+    location.href = "login.html";
+  } else {
+    // Si está logueado, inicializa
+    initItinerario();
+  }
 });
 
+// ————————————————————————————————————————————————————————————
+// 2) Inicialización general
+// ————————————————————————————————————————————————————————————
 async function initItinerario() {
-  // 2) Cargamos todos los grupos de Firestore
+  // 2.1) Cargar todos los grupos de Firestore
   const snap = await getDocs(collection(db, "grupos"));
   const grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  // 3) Poblar selectNum y selectName
-  selectNum.innerHTML = grupos.map(g =>
+
+  // 2.2) Poblar selects de número y nombre de grupo
+  selectNum.innerHTML  = grupos.map(g =>
     `<option value="${g.id}">${g.numeroNegocio}</option>`
   ).join("");
   selectName.innerHTML = grupos.map(g =>
     `<option value="${g.id}">${g.nombreGrupo}</option>`
   ).join("");
-  // 4) Sincronizar ambos selects
-  selectNum.onchange = () => {
+
+  // 2.3) Sincronizar ambos selects
+  selectNum.onchange  = () => {
     selectName.value = selectNum.value;
     renderItinerario();
   };
@@ -65,59 +83,69 @@ async function initItinerario() {
     selectNum.value = selectName.value;
     renderItinerario();
   };
-  // 5) Quick-add
+
+  // 2.4) Quick-add botón
   qaAddBtn.onclick = quickAddActivity;
-  // 6) Modal cancel
-  btnCancel.onclick = closeModal;
-  formModal.onsubmit = onSubmitModal;
-  // 7) Primer render
+
+  // 2.5) Modal: cancelar y submit
+  btnCancel.onclick    = closeModal;
+  formModal.onsubmit   = onSubmitModal;
+
+  // 2.6) Dispara el primer render
   selectNum.dispatchEvent(new Event("change"));
 }
 
-/**
- * 8) Render carrusel:
- *    - Lee el documento grupo seleccionado
- *    - Saca rango de fechas
- *    - Por cada día crea sección y carga actividades
- */
+// ————————————————————————————————————————————————————————————
+// 3) Render del carrusel de días y actividades
+// ————————————————————————————————————————————————————————————
 async function renderItinerario() {
+  // Limpio contenedor
   contItinerario.innerHTML = "";
+
   const grupoId = selectNum.value;
-  // 8.1) Leer datos del grupo
+  // 3.1) Leo datos del grupo
   const docG = await getDocs(query(collection(db, "grupos"), where("__name__", "==", grupoId)));
-  const data = docG.docs[0].data();
+  const data = docG.docs[0]?.data() || {};
   titleGrupo.textContent = data.programa || "–";
-  // 8.2) Rango de fechas entre fechaInicio y fechaFin (formato ISO yyyy-mm-dd)
+
+  // 3.2) Genero rango de fechas ISO
   const dias = getDateRange(data.fechaInicio, data.fechaFin);
-  // 8.3) Poblar quick-add día select y modal fecha select
+
+  // 3.3) Poblar quick-add y modal fecha
   qaDia.innerHTML = dias.map((_,i) => `<option value="${i}">Día ${i+1}</option>`).join("");
   fldFecha.innerHTML = dias.map(d => `<option value="${d}">${d}</option>`).join("");
-  // 8.4) Crear sección por día
+
+  // 3.4) Para cada día, creo sección y cargo actividades
   for (let i = 0; i < dias.length; i++) {
     const fecha = dias[i];
-    const title = `Día ${i+1} – ${formatDateReadable(fecha)}`;
+    const titulo = `Día ${i+1} – ${formatDateReadable(fecha)}`;
     const sec = document.createElement("section");
     sec.className = "dia-seccion";
     sec.dataset.fecha = fecha;
     sec.innerHTML = `
-      <h3>${title}</h3>
+      <h3>${titulo}</h3>
       <ul class="activity-list"></ul>
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
     contItinerario.appendChild(sec);
-    sec.querySelector(".btn-add").onclick = () =>
-      openModal({ fecha }, false);
+
+    // Botón interno de añadir
+    sec.querySelector(".btn-add").onclick = () => openModal({ fecha }, false);
+    // Cargo actividades de ese día
     await loadActivities(grupoId, fecha);
   }
 }
 
-/** Quick-add: crea nueva actividad con horaInicio y descripción */
+// ————————————————————————————————————————————————————————————
+// 4) Quick-add: crear actividad rápida
+// ————————————————————————————————————————————————————————————
 async function quickAddActivity() {
   const grupoId = selectNum.value;
   const diaIndex = parseInt(qaDia.value, 10);
-  const fecha = fldFecha.options[diaIndex].value;
-  const actividad = qaAct.value.trim();
+  const fecha    = fldFecha.options[diaIndex].value;
+  const actividad= qaAct.value.trim();
   if (!actividad) return alert("Escribe una actividad");
+
   await addDoc(collection(db, "actividades"), {
     numeroNegocio: grupoId,
     fecha,
@@ -127,15 +155,14 @@ async function quickAddActivity() {
     pasajeros: 0,
     notas: ""
   });
+
   qaAct.value = "";
   await loadActivities(grupoId, fecha);
 }
 
-/**
- * loadActivities:
- *   Lee de Firestore todas las actividades para un grupo+fecha
- *   y las pinta en el <ul> correspondiente
- */
+// ————————————————————————————————————————————————————————————
+// 5) loadActivities: lee y pinta actividades de un día
+// ————————————————————————————————————————————————————————————
 async function loadActivities(grupoId, fecha) {
   const q = query(
     collection(db, "actividades"),
@@ -146,10 +173,12 @@ async function loadActivities(grupoId, fecha) {
   const snap = await getDocs(q);
   const ul = document.querySelector(`section[data-fecha="${fecha}"] .activity-list`);
   ul.innerHTML = "";
+
   if (snap.empty) {
-    ul.innerHTML = `<li style="text-align:center; color:#666">— Sin actividades —</li>`;
+    ul.innerHTML = `<li style="text-align:center;color:#666">— Sin actividades —</li>`;
     return;
   }
+
   snap.docs.forEach(docSnap => {
     const a = { id: docSnap.id, ...docSnap.data() };
     const li = document.createElement("li");
@@ -162,9 +191,9 @@ async function loadActivities(grupoId, fecha) {
         <button class="btn-edit">✏️</button>
         <button class="btn-del">🗑️</button>
       </div>`;
-    // edit
+    // editar
     li.querySelector(".btn-edit").onclick = () => openModal(a, true);
-    // delete
+    // borrar
     li.querySelector(".btn-del").onclick = async () => {
       if (!confirm("¿Eliminar actividad?")) return;
       await deleteDoc(doc(db, "actividades", a.id));
@@ -174,25 +203,31 @@ async function loadActivities(grupoId, fecha) {
   });
 }
 
-/** Abre modal para nueva o editar */
+// ————————————————————————————————————————————————————————————
+// 6) openModal: abre el formulario para nueva/editar
+// ————————————————————————————————————————————————————————————
 function openModal(data, isEdit) {
   editData = isEdit ? data : null;
   document.getElementById("modal-title").textContent = isEdit ? "Editar actividad" : "Nueva actividad";
   fldFecha.value = data.fecha;
-  fldHi.value = data.horaInicio || "";
-  fldHf.value = data.horaFin || "";
-  fldAct.value = data.actividad || "";
-  fldPas.value = data.pasajeros || 0;
-  fldNotas.value = data.notas || "";
+  fldHi.value    = data.horaInicio || "";
+  fldHf.value    = data.horaFin    || "";
+  fldAct.value   = data.actividad  || "";
+  fldPas.value   = data.pasajeros  || 0;
+  fldNotas.value = data.notas      || "";
   modalBg.style.display = modal.style.display = "block";
 }
 
-/** Cierra modal */
+// ————————————————————————————————————————————————————————————
+// 7) closeModal: cierra el modal
+// ————————————————————————————————————————————————————————————
 function closeModal() {
   modalBg.style.display = modal.style.display = "none";
 }
 
-/** Form modal submit: guarda o actualiza */
+// ————————————————————————————————————————————————————————————
+// 8) onSubmitModal: guarda o actualiza al enviar el formulario
+// ————————————————————————————————————————————————————————————
 async function onSubmitModal(evt) {
   evt.preventDefault();
   const grupoId = selectNum.value;
@@ -206,17 +241,19 @@ async function onSubmitModal(evt) {
     notas: fldNotas.value
   };
   if (editData) {
-    // update
+    // actualizar
     await updateDoc(doc(db, "actividades", editData.id), payload);
   } else {
-    // nuevo
+    // crear nuevo
     await addDoc(collection(db, "actividades"), payload);
   }
   closeModal();
   await loadActivities(grupoId, payload.fecha);
 }
 
-/** Util: rango de fechas ISO entre dos "DD-MM-YYYY" o "YYYY-MM-DD" */
+// ————————————————————————————————————————————————————————————
+// 9) util: genera array ISO de fechas entre dos fechas
+// ————————————————————————————————————————————————————————————
 function getDateRange(startStr, endStr) {
   const start = new Date(startStr);
   const end   = new Date(endStr);
@@ -227,11 +264,13 @@ function getDateRange(startStr, endStr) {
   return arr;
 }
 
-/** Util: formatea "YYYY-MM-DD" a "Lunes 01/02" */
+// ————————————————————————————————————————————————————————————
+// 10) util: convierte ISO a "Lunes DD/MM"
+// ————————————————————————————————————————————————————————————
 function formatDateReadable(iso) {
   const d = new Date(iso);
-  const weekday = d.toLocaleDateString("es-CL", { weekday:"long" });
+  const wd = d.toLocaleDateString("es-CL", { weekday:"long" });
   const dd = String(d.getDate()).padStart(2,"0");
   const mm = String(d.getMonth()+1).padStart(2,"0");
-  return `${weekday.charAt(0).toUpperCase()+weekday.slice(1)} ${dd}/${mm}`;
+  return `${wd.charAt(0).toUpperCase()+wd.slice(1)} ${dd}/${mm}`;
 }
