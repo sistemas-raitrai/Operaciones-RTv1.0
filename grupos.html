@@ -3,29 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <title>Visualización de Grupos | RT v1.0</title>
-  <!-- 1) Estilos de DataTables -->
+  <!-- DataTables CSS -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
-  <!-- 2) Tu CSS global -->
+  <!-- Tu CSS -->
   <link rel="stylesheet" href="estilos.css">
-  <style>
-    /* Ajustes específicos */
-    #tablaGrupos { width:100%!important; background:#fff; }
-    .dataTables_filter { display:none; }
-    #buscador { margin-bottom:1rem; }
-    .modal-backdrop {
-      position:fixed; top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center;
-    }
-    .modal { background:#fff; padding:1rem; border-radius:4px; width:90%; max-width:800px; }
-  </style>
 </head>
 <body>
 
-  <!-- Encabezado reutilizable -->
   <div id="encabezado"></div>
 
   <main class="main">
-    <!-- Barra filtros -->
+    <!-- Barra de filtros -->
     <div class="filter-bar">
       <div class="row">
         <div class="column long">
@@ -43,17 +31,17 @@
       </div>
     </div>
 
-    <!-- Botones toggle y ver historial -->
-    <div class="row" style="margin-bottom:1rem; gap:1rem;">
+    <!-- Botones de edición e historial -->
+    <div class="row" style="margin-bottom:1rem;gap:1rem;">
       <button id="btn-toggle-edit">🔓 Activar Edición</button>
       <button id="btn-view-history">📜 Ver Historial</button>
     </div>
 
-    <!-- Modal Historial -->
+    <!-- Modal de Historial -->
     <div id="modalHistorial" class="modal-backdrop" style="display:none;">
       <div class="modal">
         <h2>Historial del Grupo</h2>
-        <div style="display:flex; gap:1rem; align-items:center; margin-bottom:0.5rem;">
+        <div style="display:flex;gap:1rem;align-items:center;margin-bottom:0.5rem;">
           <input type="date" id="histInicio">
           <input type="date" id="histFin">
           <button id="btn-refresh-history">🔄 Actualizar</button>
@@ -71,37 +59,18 @@
       </div>
     </div>
 
-    <!-- Tabla Grupos -->
+    <!-- Tabla de Grupos -->
     <div class="row">
       <div class="table-container">
         <table id="tablaGrupos" class="display">
           <thead>
             <tr>
-              <th>N° Negocio</th>               <!-- 0 -->
-              <th>Nombre de Grupo</th>           <!-- 1 -->
-              <th>Pax</th>                       <!-- 2 -->
-              <th>Adultos</th>                   <!-- 3 -->
-              <th>Estudiantes</th>               <!-- 4 -->
-              <th>Colegio</th>                   <!-- 5 -->
-              <th>Curso</th>                     <!-- 6 -->
-              <th>Año</th>                       <!-- 7 -->
-              <th>Destino</th>                   <!-- 8 -->
-              <th>Programa</th>                  <!-- 9 -->
-              <th>Inicio</th>                    <!-- 10 -->
-              <th>Hotel</th>                     <!-- 11 -->
-              <th>Asist. Viajes</th>             <!-- 12 -->
-              <th>Autoriz.</th>                  <!-- 13 -->
-              <th>Fecha de Viaje</th>            <!-- 14 -->
-              <th>Obs.</th>                      <!-- 15 -->
-              <th>Versión</th>                   <!-- 16 -->
-              <th>Creado Por</th>                <!-- 17 -->
-              <th>F. Creación</th>               <!-- 18 -->
-              <th>Fin</th>                       <!-- 19 -->
-              <th>Transporte</th>                <!-- 20 -->
-              <th>Ciudades</th>                  <!-- 21 -->
-              <th>Hoteles</th>                   <!-- 22 -->
-              <th>Tramos</th>                    <!-- 23 -->
-              <th>Obs. Logist.</th>              <!-- 24 -->
+              <th>N° Negocio</th><th>Nombre de Grupo</th><th>Pax</th>
+              <th>Adultos</th><th>Estudiantes</th><th>Colegio</th><th>Curso</th><th>Año</th>
+              <th>Destino</th><th>Programa</th><th>Inicio</th><th>Hotel</th>
+              <th>Asist. Viajes</th><th>Autoriz.</th><th>Fecha de Viaje</th><th>Obs.</th>
+              <th>Versión</th><th>Creado Por</th><th>F. Creación</th><th>Fin</th>
+              <th>Transporte</th><th>Ciudades</th><th>Hoteles</th><th>Tramos</th><th>Obs. Logist.</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -110,172 +79,16 @@
     </div>
   </main>
 
-  <!-- Header -->
+  <!-- Encabezado común -->
   <script type="module">
-    (async ()=> {
-      const res = await fetch("encabezado.html");
-      document.getElementById("encabezado").innerHTML = await res.text();
+    (async () => {
+      document.getElementById("encabezado").innerHTML = await (await fetch("encabezado.html")).text();
     })();
   </script>
-  <!-- Firebase init y script.js -->
-  <script type="module" src="firebase-init.js" defer></script>
-  <script type="module" src="script.js" defer></script>
-  <!-- jQuery & DataTables -->
+
+  <!-- Inicializaciones -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-
-  <!-- Lógica principal -->
-  <script type="module">
-    import { app, db } from './firebase-init.js';
-    import { getAuth, onAuthStateChanged, signOut }
-      from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-    import {
-      collection, getDocs, query, orderBy,
-      doc, updateDoc, addDoc
-    } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-
-    const auth = getAuth(app);
-
-    // 0) Claves Firestore en orden
-    const camposFire = [
-      "numeroNegocio","nombreGrupo","cantidadgrupo",
-      "adultos","estudiantes","colegio","curso","anoViaje",
-      "destino","programa","inicio","hotel","asistenciaEnViajes",
-      "autorizacion","fechaDeViaje","observaciones","versionFicha",
-      "creadoPor","fechaCreacion","fin","transporte","ciudades",
-      "hoteles","tramos","obsLogist"
-    ];
-
-    let editMode = false, dtHist = null;
-
-    $(function(){
-      $('#btn-logout').click(()=> signOut(auth).then(()=>location='login.html'));
-      onAuthStateChanged(auth, user=>{
-        if(!user) location='login.html';
-        else cargarYMostrarTabla();
-      });
-    });
-
-    async function cargarYMostrarTabla(){
-      const snap = await getDocs(collection(db,'grupos'));
-      if(snap.empty) return console.warn('No hay grupos');
-      // 1) Mapear docs → {id,fila}
-      const valores = snap.docs.map(docSnap=>{
-        const d = docSnap.data();
-        return {
-          id: docSnap.id,
-          fila: camposFire.map(c=> d[c]||'')
-        };
-      });
-      // 2) Render <tbody>
-      const $tb = $('#tablaGrupos tbody').empty();
-      valores.forEach(item=>{
-        const {id,fila} = item;
-        const $tr = $('<tr>');
-        fila.forEach((celda,idx)=>{
-          const $td = $('<td>')
-            .text(celda)
-            .attr('data-doc-id', id)
-            .attr('data-campo', camposFire[idx])
-            .attr('data-original', celda);
-          $tr.append($td);
-        });
-        $tb.append($tr);
-      });
-      // 3) Init DataTable
-      const tabla = $('#tablaGrupos').DataTable({
-        language:{ url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-        dom:'rtip', pageLength:-1, lengthChange:false,
-        order:[[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
-        scrollX:true, columnDefs:[{targets:[5,6],visible:false}]
-      });
-      // 4) Blur listener
-      $('#tablaGrupos tbody').on('focusout','td[contenteditable]', async function(){
-        const $td=$(this), nuevo=$td.text().trim(),
-          orig=$td.attr('data-original');
-        if(nuevo===orig) return;
-        const docId=$td.attr('data-doc-id'),
-              campo=$td.attr('data-campo');
-        await updateDoc(doc(db,'grupos',docId),{[campo]:nuevo});
-        await addDoc(collection(db,'historial'),{
-          numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
-          campo, anterior:orig, nuevo,
-          modificadoPor:auth.currentUser.email,
-          timestamp:new Date()
-        });
-        $td.attr('data-original',nuevo);
-      });
-      // 5) Toggle edición
-      $('#btn-toggle-edit').off('click').on('click',async ()=>{
-        editMode=!editMode;
-        $('#btn-toggle-edit').text(editMode?'🔒 Desactivar Edición':'🔓 Activar Edición');
-        // solo en cols 2–24
-        $('#tablaGrupos tbody tr').each((_,tr)=>{
-          $(tr).find('td').each((i,td)=>{
-            if(i>1) $(td).attr('contenteditable',editMode);
-            else $(td).removeAttr('contenteditable');
-          });
-        });
-        await addDoc(collection(db,'historial'),{
-          accion: editMode?'ACTIVÓ MODO EDICIÓN':'DESACTIVÓ MODO EDICIÓN',
-          usuario:auth.currentUser.email,timestamp:new Date()
-        });
-      });
-      // 6) Ver historial
-      $('#btn-view-history').off('click').on('click',async()=>{
-        await recargarHistorial();
-        $('#modalHistorial').show();
-      });
-      // 7) Recargar historial
-      async function recargarHistorial(){
-        const q = query(collection(db,'historial'),orderBy('timestamp','desc'));
-        const snapH = await getDocs(q);
-        const $tbH = $('#tablaHistorial tbody').empty();
-        snapH.forEach(dSnap=>{
-          const d = dSnap.data(), fecha=d.timestamp.toDate(),
-            ts=fecha.getTime(), str=fecha.toLocaleString('es-CL'),
-            usuario=d.modificadoPor||d.usuario,
-            accion=d.accion||d.campo,
-            antes=d.anterior||'', despues=d.nuevo||'';
-          $tbH.append(`
-            <tr>
-              <td data-timestamp="${ts}">${str}</td>
-              <td>${usuario}</td>
-              <td>${accion}</td>
-              <td>${antes}</td>
-              <td>${despues}</td>
-            </tr>`);
-        });
-        if($.fn.DataTable.isDataTable('#tablaHistorial'))
-          $('#tablaHistorial').DataTable().destroy();
-        dtHist = $('#tablaHistorial').DataTable({
-          language:{ url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-          pageLength:15,lengthMenu:[[15,30,50,-1],[15,30,50,'Todos']],
-          order:[[0,'desc']],dom:'fltip'
-        });
-      }
-      // 8) Actualizar/histor ref, buscador, filtro fechas, cerrar
-      $('#btn-refresh-history').click(recargarHistorial);
-      $('#buscadorHistorial').on('input',()=> dtHist.search($('#buscadorHistorial').val()).draw());
-      $.fn.dataTable.ext.search.push((settings,_,rowIdx)=>{
-        if(settings.nTable.id!=='tablaHistorial') return true;
-        const min = $('#histInicio').val()? new Date($('#histInicio').val()).getTime():-Infinity,
-              max = $('#histFin').val()? new Date($('#histFin').val()).getTime():+Infinity,
-              cell = dtHist.row(rowIdx).node().querySelector('td[data-timestamp]'),
-              ts = parseInt(cell.getAttribute('data-timestamp'),10);
-        return ts>=min && ts<=max;
-      });
-      $('#histInicio,#histFin').on('change',()=>dtHist.draw());
-      $('#btn-close-history').click(()=>$('#modalHistorial').hide());
-      // 9) Buscador global + filtros destino/año
-      $('#buscador').on('input',()=>tabla.search($('#buscador').val()).draw());
-      const uniq=arr=>[...new Set(arr.filter(x=>x))].sort();
-      const all = valores.map(v=>v.fila);
-      uniq(all.map(r=>r[8])).forEach(x=>$('#filtroDestino').append(`<option>${x}</option>`));
-      uniq(all.map(r=>r[7])).forEach(x=>$('#filtroAno').append(`<option>${x}</option>`));
-      $('#filtroDestino').change(()=>tabla.column(8).search($('#filtroDestino').val()).draw());
-      $('#filtroAno').change(()=>tabla.column(7).search($('#filtroAno').val()).draw());
-    }
-  </script>
+  <script type="module" src="grupos.js"></script>
 </body>
 </html>
