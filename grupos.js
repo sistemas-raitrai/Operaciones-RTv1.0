@@ -197,12 +197,26 @@ async function cargarYMostrarTabla() {
     .on('input', () => dtHist.search($('#buscadorHistorial').val()).draw());
   
   // 12) Filtro de fechas (se agrega a ext.search)
-  $.fn.dataTable.ext.search.push((settings, rowData) => {
+  $.fn.dataTable.ext.search.push((settings, rowData, rowIdx) => {
+    // Solo nos interesa el historial
     if (settings.nTable.id !== 'tablaHistorial') return true;
-    const cellDate = Date.parse(rowData[0]);
-    const min = $('#histInicio').val() ? new Date($('#histInicio').val()).getTime() : -Infinity;
-    const max = $('#histFin').val()   ? new Date($('#histFin').val()).getTime()   : +Infinity;
-    return cellDate >= min && cellDate <= max;
+  
+    // Localiza la celda que tiene el data-timestamp
+    const cell = dtHist.row(rowIdx).node().querySelector('td[data-timestamp]');
+    if (!cell) return true; // seguridad
+  
+    const ts = parseInt(cell.getAttribute('data-timestamp'), 10);
+  
+    // Lee los inputs de fecha
+    const min = $('#histInicio').val()
+      ? new Date($('#histInicio').val()).getTime()
+      : -Infinity;
+    const max = $('#histFin').val()
+      ? new Date($('#histFin').val()).getTime()
+      : +Infinity;
+  
+    // Devuelve true si ts está dentro del rango
+    return ts >= min && ts <= max;
   });
   $('#histInicio, #histFin')
     .off('change')
