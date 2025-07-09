@@ -121,6 +121,7 @@ async function cargarYMostrarTabla() {
     // 8.1) Hacer la consulta ordenada
     const q    = query(collection(db,'historial'), orderBy('timestamp','desc'));
     const snap = await getDocs(q);
+    console.log('Historial docs:', snap.docs.length);
   
     // 8.2) Volcar al <tbody> (vaciar antes)
     const $tbH = $('#tablaHistorial tbody').empty();
