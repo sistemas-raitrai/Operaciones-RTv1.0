@@ -117,68 +117,68 @@ async function cargarYMostrarTabla() {
 // ————————————————————————————————————————————————————————————
 // 8) Función que carga y pivota historial
 // ————————————————————————————————————————————————————————————
-async function recargarHistorial() {
-  // 8.1) Hacer la consulta ordenada
-  const q    = query(collection(db,'historial'), orderBy('timestamp','desc'));
-  const snap = await getDocs(q);
-
-  // 8.2) Volcar al <tbody> (vaciar antes)
-  const $tbH = $('#tablaHistorial tbody').empty();
-  snap.forEach(s => {
-    const d     = s.data();
-    const fecha = d.timestamp.toDate();
-    const ts    = fecha.getTime();
-    // Construyo la fila con antes/después
-    $tbH.append(`
-      <tr>
-        <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
-        <td>${d.modificadoPor || d.usuario}</td>
-        <td>${d.numeroNegocio}</td>
-        <td>${d.accion || d.campo}</td>
-        <td>${d.anterior || ''}</td>
-        <td>${d.nuevo    || ''}</td>
-      </tr>
-    `);
-  });
-
-  // 8.3) (Re)Inicializar DataTable
-  if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
-    $('#tablaHistorial').DataTable().destroy();
+  async function recargarHistorial() {
+    // 8.1) Hacer la consulta ordenada
+    const q    = query(collection(db,'historial'), orderBy('timestamp','desc'));
+    const snap = await getDocs(q);
+  
+    // 8.2) Volcar al <tbody> (vaciar antes)
+    const $tbH = $('#tablaHistorial tbody').empty();
+    snap.forEach(s => {
+      const d     = s.data();
+      const fecha = d.timestamp.toDate();
+      const ts    = fecha.getTime();
+      // Construyo la fila con antes/después
+      $tbH.append(`
+        <tr>
+          <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
+          <td>${d.modificadoPor || d.usuario}</td>
+          <td>${d.numeroNegocio}</td>
+          <td>${d.accion || d.campo}</td>
+          <td>${d.anterior || ''}</td>
+          <td>${d.nuevo    || ''}</td>
+        </tr>
+      `);
+    });
+  
+    // 8.3) (Re)Inicializar DataTable
+    if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
+      $('#tablaHistorial').DataTable().destroy();
+    }
+    dtHist = $('#tablaHistorial').DataTable({
+      language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+      pageLength: 15,
+      lengthMenu: [[15,30,50,-1],[15,30,50,'Todos']],
+      order:      [[0,'desc']],
+      dom:        'fltip'  // f = filtro, l = length, t = table, i = info, p = paging
+    });
   }
-  dtHist = $('#tablaHistorial').DataTable({
-    language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    pageLength: 15,
-    lengthMenu: [[15,30,50,-1],[15,30,50,'Todos']],
-    order:      [[0,'desc']],
-    dom:        'fltip'  // f = filtro, l = length, t = table, i = info, p = paging
+  
+  // 9) Conectar botón “Actualizar”
+  $('#btn-refresh-history')
+    .off('click')
+    .on('click', recargarHistorial);
+  
+  // 10) Botón “Cerrar”
+  $('#btn-close-history')
+    .off('click')
+    .on('click', () => $('#modalHistorial').hide());
+  
+  // 11) Buscador global del historial
+  $('#buscadorHistorial')
+    .off('input')
+    .on('input', () => dtHist.search($('#buscadorHistorial').val()).draw());
+  
+  // 12) Filtro de fechas (se agrega a ext.search)
+  $.fn.dataTable.ext.search.push((settings, rowData) => {
+    if (settings.nTable.id !== 'tablaHistorial') return true;
+    const cellDate = Date.parse(rowData[0]);
+    const min = $('#histInicio').val() ? new Date($('#histInicio').val()).getTime() : -Infinity;
+    const max = $('#histFin').val()   ? new Date($('#histFin').val()).getTime()   : +Infinity;
+    return cellDate >= min && cellDate <= max;
   });
-}
-
-// 9) Conectar botón “Actualizar”
-$('#btn-refresh-history')
-  .off('click')
-  .on('click', recargarHistorial);
-
-// 10) Botón “Cerrar”
-$('#btn-close-history')
-  .off('click')
-  .on('click', () => $('#modalHistorial').hide());
-
-// 11) Buscador global del historial
-$('#buscadorHistorial')
-  .off('input')
-  .on('input', () => dtHist.search($('#buscadorHistorial').val()).draw());
-
-// 12) Filtro de fechas (se agrega a ext.search)
-$.fn.dataTable.ext.search.push((settings, rowData) => {
-  if (settings.nTable.id !== 'tablaHistorial') return true;
-  const cellDate = Date.parse(rowData[0]);
-  const min = $('#histInicio').val() ? new Date($('#histInicio').val()).getTime() : -Infinity;
-  const max = $('#histFin').val()   ? new Date($('#histFin').val()).getTime()   : +Infinity;
-  return cellDate >= min && cellDate <= max;
-});
-$('#histInicio, #histFin')
-  .off('change')
-  .on('change', () => dtHist.draw());
+  $('#histInicio, #histFin')
+    .off('change')
+    .on('change', () => dtHist.draw());
 
 } // ← cierre de cargarYMostrarTabla()
