@@ -414,3 +414,46 @@ a {
   border:1px solid #ddd; padding:4px 8px;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Estilos específicos para la vista de “Historial”          */
+/* ----------------------------------------------------------------------- */
+
+/* 1) Header: evita que los controles se envuelvan a la siguiente línea */
+.modal-header {
+  display: flex;
+  flex-wrap: nowrap;       /* que no bajen */
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f8f9fa;
+  border-bottom: 1px solid #ddd;
+}
+
+/* 2) Inputs de fecha más angostos */
+.modal-header input[type="date"] {
+  width: 120px;            /* ajusta a tu gusto */
+  padding: 0.25rem;
+}
+
+/* 3) Buscador más ancho (toma el espacio libre) */
+#buscadorHistorial {
+  flex: 1;                 /* crece para llenar */
+  min-width: 200px;        /* ancho mínimo */
+  padding: 0.25rem;
+}
+
+/* 4) Botón “Actualizar” con fondo personalizado */
+#btn-refresh-history {
+  background-color: #0066cc;  /* azul más intenso */
+  color: #fff;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* 5) Hover del botón para feedback */
+#btn-refresh-history:hover {
+  background-color: #0055aa;
+}
+
