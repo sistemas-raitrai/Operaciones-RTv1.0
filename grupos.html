@@ -39,23 +39,23 @@
 
     <!-- Modal de Historial -->
     <div id="modalHistorial" class="modal-backdrop" style="display:none;">
-      <div class="modal-header">
-        <h2>Historial del Grupo</h2>
-        <div style="display:flex;gap:1rem;align-items:center;margin-bottom:0.5rem;">
-          <input type="date" id="histInicio">
-          <input type="date" id="histFin">
+      <div class="modal">
+        <h2>Historial</h2>
+        <!-- 1) HEADER: controles -->
+        <div class="modal-header">
+          <input type="date" id="histInicio" placeholder="DD-MM-AAAA" />
+          <input type="date" id="histFin"    placeholder="DD-MM-AAAA" />
           <button id="btn-refresh-history">🔄 Actualizar</button>
-          <input type="text" id="buscadorHistorial" placeholder="Buscar…" style="flex:1;">
+          <input type="text" id="buscadorHistorial" placeholder="Buscar…" />
           <button id="btn-close-history">Cerrar</button>
         </div>
-        <table id="tablaHistorial" class="display" style="width:100%;">
-          <thead>
-            <tr>
-              <th>Fecha</th><th>Usuario</th><th>Acción / Campo</th><th>Antes</th><th>Después</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
+        <!-- 2) BODY: tabla con scroll -->
+        <div class="modal-body">
+          <table id="tablaHistorial" class="display" style="width:100%;">
+            <thead>…</thead>
+            <tbody></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
