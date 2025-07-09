@@ -154,33 +154,31 @@ async function recargarHistorial() {
   });
 }
 
-// ————————————————————————————————————————————————————————————
-// 9) Buscador global: ahora siempre sobre todo el dataset
-// ————————————————————————————————————————————————————————————
-$('#buscadorHistorial').off('input').on('input', () => {
-  // Aplica el search *antes* de renderizar la nueva página
-  dtHist.search($('#buscadorHistorial').val()).draw();
-});
+// 9) Conectar botón “Actualizar”
+$('#btn-refresh-history')
+  .off('click')
+  .on('click', recargarHistorial);
 
-// ————————————————————————————————————————————————————————————
-// 10) Filtro por rango de fechas (ext.search usa rowData !)
-// ————————————————————————————————————————————————————————————
-$.fn.dataTable.ext.search.push((settings, rowData /* array de celdas */, rowIdx) => {
+// 10) Botón “Cerrar”
+$('#btn-close-history')
+  .off('click')
+  .on('click', () => $('#modalHistorial').hide());
+
+// 11) Buscador global del historial
+$('#buscadorHistorial')
+  .off('input')
+  .on('input', () => dtHist.search($('#buscadorHistorial').val()).draw());
+
+// 12) Filtro de fechas (se agrega a ext.search)
+$.fn.dataTable.ext.search.push((settings, rowData) => {
   if (settings.nTable.id !== 'tablaHistorial') return true;
-
-  // Convertir el string de la primera columna (fecha) a timestamp
   const cellDate = Date.parse(rowData[0]);
   const min = $('#histInicio').val() ? new Date($('#histInicio').val()).getTime() : -Infinity;
   const max = $('#histFin').val()   ? new Date($('#histFin').val()).getTime()   : +Infinity;
-
   return cellDate >= min && cellDate <= max;
 });
+$('#histInicio, #histFin')
+  .off('change')
+  .on('change', () => dtHist.draw());
 
-  // Al cambiar cualquiera de las fechas, vuelvo a dibujar la tabla
-  $('#histInicio, #histFin')
-    .off('change')
-    .on('change', () => {
-      dtHist.draw();
-    });
-
-}             // ← 1) Cierra cargarYMostrarTabla() 
+} // ← cierre de cargarYMostrarTabla()
