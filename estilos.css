@@ -414,46 +414,57 @@ a {
   border:1px solid #ddd; padding:4px 8px;
 }
 
-/* ----------------------------------------------------------------------- */
-/* Estilos específicos para la vista de “Historial”          */
-/* ----------------------------------------------------------------------- */
-
-/* 1) Header: evita que los controles se envuelvan a la siguiente línea */
+/* ------------------------------------------------------------
+   Modal genérico con header fijo y body scrollable
+--------------------------------------------------------------*/
+.modal {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 8px;
+  max-width: 90vw;
+  max-height: 80vh;
+  padding: 1rem;
+  overflow: hidden; /* importantísimo */
+}
 .modal-header {
   display: flex;
-  flex-wrap: nowrap;       /* que no bajen */
+  flex-wrap: nowrap;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  background: #f8f9fa;
-  border-bottom: 1px solid #ddd;
+  margin-bottom: 0.5rem;
 }
-
-/* 2) Inputs de fecha más angostos */
 .modal-header input[type="date"] {
-  width: 120px;            /* ajusta a tu gusto */
+  width: 120px;
   padding: 0.25rem;
 }
-
-/* 3) Buscador más ancho (toma el espacio libre) */
 #buscadorHistorial {
-  flex: 1;                 /* crece para llenar */
-  min-width: 200px;        /* ancho mínimo */
+  flex: 1;
+  min-width: 200px;
   padding: 0.25rem;
 }
-
-/* 4) Botón “Actualizar” con fondo personalizado */
 #btn-refresh-history {
-  background-color: #0066cc;  /* azul más intenso */
+  background-color: #0066cc;
   color: #fff;
   border: none;
   padding: 0.5rem 0.75rem;
   border-radius: 4px;
   cursor: pointer;
 }
-
-/* 5) Hover del botón para feedback */
 #btn-refresh-history:hover {
   background-color: #0055aa;
 }
-
+.modal-body {
+  flex: 1;               /* ocupa el resto del espacio vertical */
+  overflow: auto;        /* scroll si la tabla es muy grande */
+}
+#tablaHistorial {
+  width: 100%;
+  border-collapse: collapse;
+}
+#tablaHistorial th,
+#tablaHistorial td {
+  border: 1px solid #ddd;
+  padding: 4px 8px;
+  white-space: nowrap;   /* para no reventar celdas */
+}
