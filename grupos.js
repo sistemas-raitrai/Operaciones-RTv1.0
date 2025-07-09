@@ -133,6 +133,7 @@ async function recargarHistorial() {
       <tr>
         <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
         <td>${d.modificadoPor || d.usuario}</td>
+        <td>${d.numeroNegocio}</td>
         <td>${d.accion || d.campo}</td>
         <td>${d.anterior || ''}</td>
         <td>${d.nuevo    || ''}</td>
