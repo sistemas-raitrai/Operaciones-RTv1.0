@@ -115,44 +115,70 @@ async function cargarYMostrarTabla() {
   });
 
 // ————————————————————————————————————————————————————————————
-// 8) Función que carga y pivota historial
+// 8) Función que carga y pivota historial (con más logs)
 // ————————————————————————————————————————————————————————————
   async function recargarHistorial() {
-    // 8.1) Hacer la consulta ordenada
-    const q    = query(collection(db,'historial'), orderBy('timestamp','desc'));
-    const snap = await getDocs(q);
-    console.log('Historial docs:', snap.docs.length);
+    console.group('🔄 recargarHistorial()');
+    try {
+      // 8.1) Comprueba que el <table> exista
+      const $tabla = $('#tablaHistorial');
+      console.log('  → ¿Selector #tablaHistorial existe?', $tabla.length === 1);
+      if (!$tabla.length) {
+        console.error('  × No encontré #tablaHistorial en el DOM');
+        console.groupEnd();
+        return;
+      }
   
-    // 8.2) Volcar al <tbody> (vaciar antes)
-    const $tbH = $('#tablaHistorial tbody').empty();
-    snap.forEach(s => {
-      const d     = s.data();
-      const fecha = d.timestamp.toDate();
-      const ts    = fecha.getTime();
-      // Construyo la fila con antes/después
-      $tbH.append(`
-        <tr>
-          <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
-          <td>${d.modificadoPor || d.usuario}</td>
-          <td>${d.numeroNegocio}</td>
-          <td>${d.accion || d.campo}</td>
-          <td>${d.anterior || ''}</td>
-          <td>${d.nuevo    || ''}</td>
-        </tr>
-      `);
-    });
+      // 8.2) Hago la consulta
+      console.log('  → Consulta a Firestore…');
+      const q    = query(collection(db, 'historial'), orderBy('timestamp', 'desc'));
+      const snap = await getDocs(q);
+      console.log(`  → Documentos recuperados: ${snap.docs.length}`);
   
-    // 8.3) (Re)Inicializar DataTable
-    if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
-      $('#tablaHistorial').DataTable().destroy();
+      // 8.3) Vuelco las filas
+      const $tbH = $tabla.find('tbody').empty();
+      snap.forEach((s, i) => {
+        const d     = s.data();
+        const fecha = d.timestamp?.toDate?.();
+        if (!fecha) {
+          console.warn(`    ⚠️ Doc #${i} no tiene timestamp válido`, d);
+          return;
+        }
+        const ts  = fecha.getTime();
+        $tbH.append(`
+          <tr>
+            <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
+            <td>${d.modificadoPor || d.usuario}</td>
+            <td>${d.numeroNegocio || ''}</td>
+            <td>${d.accion || d.campo}</td>
+            <td>${d.anterior || ''}</td>
+            <td>${d.nuevo || ''}</td>
+          </tr>
+        `);
+      });
+      console.log('  → Filas volcadas en el DOM');
+  
+      // 8.4) Destroy si existía
+      if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
+        console.log('  → Destruyendo instancia previa de DataTable');
+        $('#tablaHistorial').DataTable().destroy();
+      }
+  
+      // 8.5) Re-init DataTable
+      console.log('  → Inicializando DataTable en #tablaHistorial');
+      dtHist = $('#tablaHistorial').DataTable({
+        language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+        pageLength: 15,
+        lengthMenu: [[15,30,50,-1],[15,30,50,'Todos']],
+        order:      [[0,'desc']],
+        dom:        'fltip'
+      });
+  
+      console.log('✅ recargarHistorial() completado correctamente');
+    } catch (err) {
+      console.error('🔥 recargarHistorial() falló con error:', err);
     }
-    dtHist = $('#tablaHistorial').DataTable({
-      language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-      pageLength: 15,
-      lengthMenu: [[15,30,50,-1],[15,30,50,'Todos']],
-      order:      [[0,'desc']],
-      dom:        'fltip'  // f = filtro, l = length, t = table, i = info, p = paging
-    });
+    console.groupEnd();
   }
   
   // 9) Conectar botón “Actualizar”
