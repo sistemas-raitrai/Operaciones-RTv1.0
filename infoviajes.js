@@ -1,19 +1,16 @@
-// —————————————————————————————————————————————————————————————
-// 0) Imports y setup Firebase v9 (modular)
-// —————————————————————————————————————————————————————————————
-import { app } from './firebase-init.js';
+// Importes de Firebase
+import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  getFirestore,
-  collection, getDocs, doc, getDoc, setDoc
+  doc, getDoc, setDoc, updateDoc,
+  collection, getDocs, addDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
-const db   = getFirestore(app);
 
-// —————————————————————————————————————————————————————————————
-// 1) Cache de elementos del DOM
-// —————————————————————————————————————————————————————————————
+// ——————————————————————————————
+// 1) Referencias a los elementos del DOM
+// ——————————————————————————————
 const selNum       = document.getElementById('numeroNegocio');
 const inpNombre    = document.getElementById('nombreGrupo');
 const inpDestino   = document.getElementById('destino');
@@ -25,22 +22,19 @@ const inpTotal     = document.getElementById('totalPax');
 const inpAdultos   = document.getElementById('adultos');
 const inpEst       = document.getElementById('estudiantes');
 const selTran      = document.getElementById('transporte');
-const subformVuelos= document.getElementById('subformVuelos');
-const vuelosCont   = document.getElementById('vuelosContainer');
-const btnAddVuelo  = document.getElementById('btnAddVuelo');
-const subformBuses = document.getElementById('subformBuses');
-const busesCont    = document.getElementById('busesContainer');
+const seccionTramos= document.getElementById('seccionTramos');
+const contTramos   = document.getElementById('tramosDetalle');
+const btnAddTramo  = document.getElementById('btnAddTramo');
 const inpHoteles   = document.getElementById('hoteles');
 const inpCiudades  = document.getElementById('ciudades');
 const inpObs       = document.getElementById('observaciones');
 const form         = document.getElementById('formInfoViaje');
 
-// Contadores para numerar tramos
-let cntVuelo = 0, cntBus = 0;
+let tramoCount = 0; // para numerar tramos
 
-// —————————————————————————————————————————————————————————————
-// 2) Autenticación y arranque
-// —————————————————————————————————————————————————————————————
+// ——————————————————————————————
+// 2) Esperar autenticación y arrancar
+// ——————————————————————————————
 onAuthStateChanged(auth, user => {
   if (!user) {
     location.href = 'login.html';
@@ -49,202 +43,220 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// —————————————————————————————————————————————————————————————
-// 3) Inicializa formulario: carga lista de grupos + wiring
-// —————————————————————————————————————————————————————————————
+// ——————————————————————————————
+// 3) Inicializar: poblar select y poner listeners
+// ——————————————————————————————
 async function initForm() {
-  // 3.1) Leer colección “grupos” para poblar el select
+  // 3.1) Leer todos los grupos de Firestore
   const snap = await getDocs(collection(db, 'grupos'));
-  selNum.innerHTML = snap.docs.map(d =>
-    `<option value="${d.id}">${d.data().numeroNegocio}</option>`
-  ).join('');
-
-  // 3.2) Al cambiar de grupo, carga sus datos
-  selNum.onchange = loadGrupo;
+  // 3.2) Poblar el select de númeroNegocio
+  selNum.innerHTML = snap.docs.map(d => {
+    const data = d.data();
+    return `<option value="${d.id}">${data.numeroNegocio}</option>`;
+  }).join('');
+  // 3.3) Al cambiar de grupo, recarga datos
+  selNum.onchange = cargarGrupo;
   selNum.dispatchEvent(new Event('change'));
 
-  // 3.3) Calcular fecha fin cuando cambian inicio/duración
-  inpInicio.onchange = calcularFin;
-  inpDuracion.oninput= calcularFin;
+  // 3.4) Fechas: recálculo de fin
+  inpInicio.onchange   = calcularFin;
+  inpDuracion.oninput  = calcularFin;
 
-  // 3.4) Ajustar adultos/estudiantes
-  inpAdultos.oninput = ajustarComp;
-  inpEst.oninput     = ajustarComp;
+  // 3.5) Composición: ajusta adultos/estudiantes mutuamente
+  inpAdultos.oninput   = ajustarComp;
+  inpEst.oninput       = ajustarComp;
 
-  // 3.5) Mostrar/ocultar subformularios por transporte
-  selTran.onchange = toggleForms;
+  // 3.6) Transporte: mostrar/ocultar tramos
+  selTran.onchange      = toggleTramos;
+  btnAddTramo.onclick   = addTramo;
 
-  // 3.6) Botones “Añadir tramo”
-  btnAddVuelo.onclick = () => addVuelo();
-  document.getElementById('btnAddBus').onclick = () => addBus();
-
-  // 3.7) Envío de form
-  form.onsubmit = guardarInfo;
+  // 3.7) Envío de formulario
+  form.onsubmit         = guardarInfo;
 }
 
-// —————————————————————————————————————————————————————————————
-// 4) Cargar datos del grupo + info de “viajes” si existe
-// —————————————————————————————————————————————————————————————
-async function loadGrupo() {
-  const id = selNum.value;
-  // 4.1) Datos base en “grupos”
-  const snapG = await getDoc(doc(db, 'grupos', id));
-  const g     = snapG.data()||{};
-  inpNombre.value   = g.nombreGrupo||'';
-  inpDestino.value  = g.destino     ||'';
-  inpPrograma.value = g.programa    ||'';
-  inpTotal.value    = g.cantidadgrupo||'';
+// ——————————————————————————————
+// 4) Cargar datos del grupo y su “viaje”
+// ——————————————————————————————
+async function cargarGrupo() {
+  const id   = selNum.value;
+  const refG = doc(db, 'grupos', id);
+  const snapG= await getDoc(refG);
+  if (!snapG.exists()) return;
+  const g = snapG.data();
 
-  // 4.2) Datos previos de “viajes” (merge)
-  const snapV = await getDoc(doc(db, 'viajes', id));
+  // campos base de “grupos”
+  inpNombre.value   = g.nombreGrupo    || '';
+  inpDestino.value  = g.destino        || '';
+  inpPrograma.value = g.programa       || '';
+  inpTotal.value    = g.cantidadgrupo  || '';
+
+  // intento leer doc “viajes” (antes existía)
+  const refV = doc(db, 'viajes', id);
+  const snapV= await getDoc(refV);
+
   if (snapV.exists()) {
     const v = snapV.data();
-    inpInicio.value   = v.fechaInicio||'';
-    inpDuracion.value = v.duracion   ||'';
-    inpAdultos.value  = v.adultos    ||0;
-    inpEst.value      = v.estudiantes||0;
-    selTran.value     = v.transporte ||'';
-    inpHoteles.value  = (v.hoteles||[]).join('; ');
-    inpCiudades.value = (v.ciudades||[]).join('; ');
-    inpObs.value      = v.observaciones||'';
-
-    // Render de tramos pasados
-    clearTramos();
-    if (v.vuelos) v.vuelos.forEach(addVuelo);
-    if (v.buses)  v.buses.forEach(addBus);
+    inpInicio.value    = v.fechaInicio   || '';
+    inpDuracion.value  = v.duracion      || '';
+    inpAdultos.value   = v.adultos       || '';
+    inpEst.value       = v.estudiantes   || '';
+    selTran.value      = v.transporte    || '';
+    inpHoteles.value   = (v.hoteles || []).join('; ');
+    inpCiudades.value  = (v.ciudades || []).join('; ');
+    inpObs.value       = v.observaciones || '';
+    // mostrar tramos previos
+    toggleTramos();
+    if (v.tramos) renderTramos(v.tramos);
   } else {
-    // limpio form completamente
-    [inpInicio, inpDuracion, inpAdultos, inpEst].forEach(i=>i.value='');
-    selTran.value=''; inpHoteles.value=inpCiudades.value=inpObs.value='';
-    clearTramos();
+    // limpiar si no hay “viaje”
+    inpInicio.value = inpDuracion.value = '';
+    inpAdultos.value = inpEst.value = '';
+    selTran.value = '';
+    inpHoteles.value = inpCiudades.value = inpObs.value = '';
+    contTramos.innerHTML = '';
+    seccionTramos.style.display = 'none';
   }
 
   calcularFin();
-  toggleForms();
 }
 
-// —————————————————————————————————————————————————————————————
-// 5) Calcula fechaFin = fechaInicio + duracion -1
-// —————————————————————————————————————————————————————————————
+// ——————————————————————————————
+// 5) Fecha Fin = Fecha Inicio + Duración – 1
+// ——————————————————————————————
 function calcularFin() {
-  const inicio = inpInicio.valueAsDate;
-  const dias   = parseInt(inpDuracion.value,10);
-  if (!inicio || !dias) {
-    inpFin.value='';
+  if (!inpInicio.value || !inpDuracion.value) {
+    inpFin.value = '';
     return;
   }
-  const f = new Date(inicio);
-  f.setDate(f.getDate() + dias - 1);
-  inpFin.value = f.toISOString().slice(0,10);
+  const dt = new Date(inpInicio.value);
+  dt.setDate(dt.getDate() + Number(inpDuracion.value) - 1);
+  inpFin.value = dt.toISOString().slice(0,10);
 }
 
-// —————————————————————————————————————————————————————————————
-// 6) Adultos/Estudiantes mutuamente condicionados
-// —————————————————————————————————————————————————————————————
+// ——————————————————————————————
+// 6) Adultos y Estudiantes se auto-ajustan
+// ——————————————————————————————
 function ajustarComp(e) {
-  const tot = parseInt(inpTotal.value,10) || 0;
-  const a   = parseInt(inpAdultos.value,10)||0;
-  const s   = parseInt(inpEst.value,10)||0;
-  if (e.target===inpAdultos) {
-    inpEst.value = tot - a;
+  const total = Number(inpTotal.value) || 0;
+  const a     = Number(inpAdultos.value) || 0;
+  const s     = Number(inpEst.value)     || 0;
+  if (e.target === inpAdultos) {
+    inpEst.value = total - a;
   } else {
-    inpAdultos.value = tot - s;
+    inpAdultos.value = total - s;
   }
 }
 
-// —————————————————————————————————————————————————————————————
-// 7) Mostrar/ocultar vuelo/bus según transporte
-// —————————————————————————————————————————————————————————————
-function toggleForms() {
+// ——————————————————————————————
+// 7) Mostrar/ocultar sección de tramos
+// ——————————————————————————————
+function toggleTramos() {
   const t = selTran.value;
-  subformVuelos.style.display = (t==='aereo'||t==='mixto')?'block':'none';
-  subformBuses .style.display = (t==='terrestre'||t==='mixto')?'block':'none';
+  if (t === 'aereo' || t === 'terrestre' || t === 'mixto') {
+    seccionTramos.style.display = 'block';
+    contTramos.innerHTML = '';
+    tramoCount = 0;
+  } else {
+    seccionTramos.style.display = 'none';
+    contTramos.innerHTML = '';
+    tramoCount = 0;
+  }
 }
 
-// —————————————————————————————————————————————————————————————
-// 8) Limpia ambos containers de tramos
-// —————————————————————————————————————————————————————————————
-function clearTramos() {
-  vuelosCont.innerHTML = ''; cntVuelo=0;
-  busesCont.innerHTML  = ''; cntBus =0;
-}
+// ——————————————————————————————
+// 8) Añadir un bloque de “Tramo” (vuelo o bus)
+// ——————————————————————————————
+function addTramo(data = {}) {
+  const tipo = selTran.value;
+  tramoCount++;
+  const idx = tramoCount;
+  let html = '';
 
-// —————————————————————————————————————————————————————————————
-// 9) Añade un tramo de vuelo (usa data opcional para precarga)
-// —————————————————————————————————————————————————————————————
-function addVuelo(data={}) {
-  cntVuelo++;
-  const div = document.createElement('div');
-  div.className = 'tramo'; div.dataset.tipo='vuelo';
-  div.innerHTML = `
-    <fieldset>
-      <legend>Vuelo ${cntVuelo}</legend>
-      <label>Origen:<input name="vueloOrigen"   value="${data.origen||''}"></label>
-      <label>Salida:<input type="time" name="vueloSalida"   value="${data.salida||''}"></label>
-      <label>Aerolínea:
-        <select name="vueloAerolinea">
+  // si incluye aéreo
+  if (tipo === 'aereo' || tipo === 'mixto') {
+    html += `
+      <fieldset class="tramo">
+        <legend>Vuelo ${idx}</legend>
+        <label>Aeropuerto Origen:</label>
+        <input value="${data.origen||''}" /><br/>
+        <label>Salida (hora):</label>
+        <input type="time" value="${data.salida||''}" /><br/>
+        <label>Aerolínea:</label>
+        <select>
           <option${data.aerolinea==='LATAM'?' selected':''}>LATAM</option>
-          <option${data.aerolinea==='SKY'  ?' selected':''}>SKY</option>
-          <option${data.aerolinea==='OTRO' ?' selected':''}>OTRO</option>
-        </select>
-      </label>
-      <label>Nº Vuelo:<input name="vueloNum"      value="${data.numero||''}"></label>
-      <label>Llegada:<input type="time" name="vueloLlegada"  value="${data.llegada||''}"></label>
-      <button type="button" class="remove">Eliminar</button>
-    </fieldset>`;
-  div.querySelector('.remove').onclick = () => div.remove();
-  vuelosCont.appendChild(div);
-}
+          <option${data.aerolinea==='SKY'?' selected':''}>SKY</option>
+          <option${data.aerolinea==='OTRO'?' selected':''}>OTRO</option>
+        </select><br/>
+        <label>N° Vuelo:</label><input value="${data.numero||''}" /><br/>
+        <label>Llegada (hora):</label><input type="time" value="${data.llegada||''}" /><br/>
+        <button type="button" class="btn-del">Eliminar</button>
+      </fieldset>
+    `;
+  }
 
-// —————————————————————————————————————————————————————————————
-// 10) Añade tramo de bus
-// —————————————————————————————————————————————————————————————
-function addBus(data={}) {
-  cntBus++;
+  // si incluye terrestre
+  if (tipo === 'terrestre' || tipo === 'mixto') {
+    html += `
+      <fieldset class="tramo">
+        <legend>Bus ${idx}</legend>
+        <label>Empresa buses:</label><input value="${data.empresa||''}" /><br/>
+        <label>Conductor 1:</label><input value="${data.cond1||''}" /><br/>
+        <label>Conductor 2:</label><input value="${data.cond2||''}" /><br/>
+        <label>Salida lugar:</label><input value="${data.lugarIda||''}" /><br/>
+        <label>Hora ida:</label><input type="time" value="${data.horaIda||''}" /><br/>
+        <label>Retorno lugar:</label><input value="${data.lugarVta||''}" /><br/>
+        <label>Hora regreso:</label><input type="time" value="${data.horaVta||''}" /><br/>
+        <button type="button" class="btn-del">Eliminar</button>
+      </fieldset>
+    `;
+  }
+
   const div = document.createElement('div');
-  div.className = 'tramo'; div.dataset.tipo='bus';
-  div.innerHTML = `
-    <fieldset>
-      <legend>Bus ${cntBus}</legend>
-      <label>Empresa:<input name="busEmpresa"     value="${data.empresa||''}"></label>
-      <label>Cond.1:<input name="busConductor1"  value="${data.conductor1||''}"></label>
-      <label>Cond.2:<input name="busConductor2"  value="${data.conductor2||''}"></label>
-      <label>Ida - Lugar:<input name="busSalidaLugar" value="${data.lugarIda||''}"></label>
-      <label>Ida - Hora:<input type="time" name="busSalidaHora" value="${data.horaIda||''}"></label>
-      <label>Vta - Lugar:<input name="busRetornoLugar" value="${data.lugarVta||''}"></label>
-      <label>Vta - Hora:<input type="time" name="busRetornoHora"  value="${data.horaVta||''}"></label>
-      <button type="button" class="remove">Eliminar</button>
-    </fieldset>`;
-  div.querySelector('.remove').onclick = () => div.remove();
-  busesCont.appendChild(div);
+  div.innerHTML = html;
+  // conectar botón eliminar
+  div.querySelectorAll('.btn-del').forEach(b => {
+    b.onclick = () => b.closest('fieldset').remove();
+  });
+  contTramos.appendChild(div);
 }
 
-// —————————————————————————————————————————————————————————————
-// 11) Guardar todo en Firestore (colección “viajes”)
-// —————————————————————————————————————————————————————————————
+// ——————————————————————————————
+// 9) Renderizar tramos previos
+// ——————————————————————————————
+function renderTramos(tramos) {
+  tramos.forEach(t => addTramo(t));
+}
+
+// ——————————————————————————————
+// 10) Guardar todo en Firestore + historial
+// ——————————————————————————————
 async function guardarInfo(evt) {
   evt.preventDefault();
-  const id = selNum.value;
+  const id     = selNum.value;
+  const docG   = doc(db,'grupos',id);
+  const snapG  = await getDoc(docG);
+  const before = snapG.exists() ? snapG.data() : {};
 
-  // Recojo vuelos y buses en arrays de objetos
-  const vuelos = [...vuelosCont.querySelectorAll('.tramo[data-tipo=vuelo]')].map(fs => ({
-    origen:      fs.querySelector('[name=vueloOrigen]').value,
-    salida:      fs.querySelector('[name=vueloSalida]').value,
-    aerolinea:   fs.querySelector('[name=vueloAerolinea]').value,
-    numero:      fs.querySelector('[name=vueloNum]').value,
-    llegada:     fs.querySelector('[name=vueloLlegada]').value
-  }));
-  const buses = [...busesCont.querySelectorAll('.tramo[data-tipo=bus]')].map(fs => ({
-    empresa:     fs.querySelector('[name=busEmpresa]').value,
-    conductor1:  fs.querySelector('[name=busConductor1]').value,
-    conductor2:  fs.querySelector('[name=busConductor2]').value,
-    lugarIda:    fs.querySelector('[name=busSalidaLugar]').value,
-    horaIda:     fs.querySelector('[name=busSalidaHora]').value,
-    lugarVta:    fs.querySelector('[name=busRetornoLugar]').value,
-    horaVta:     fs.querySelector('[name=busRetornoHora]').value
-  }));
+  // Recojo todos los tramos como objetos
+  const tramos = [...contTramos.querySelectorAll('fieldset.tramo')].map(fs=>{
+    const inputs = fs.querySelectorAll('input,select');
+    return {
+      origen:     inputs[0].value,
+      salida:     inputs[1].value,
+      aerolinea:  inputs[2]?.value||'',
+      numero:     inputs[3]?.value||'',
+      llegada:    inputs[4]?.value||'',
+      empresa:    inputs[5]?.value||'',
+      cond1:      inputs[6]?.value||'',
+      cond2:      inputs[7]?.value||'',
+      lugarIda:   inputs[8]?.value||'',
+      horaIda:    inputs[9]?.value||'',
+      lugarVta:   inputs[10]?.value||'',
+      horaVta:    inputs[11]?.value||''
+    };
+  });
 
-  // Construyo el objeto final
+  // Payload completo
   const payload = {
     fechaInicio:   inpInicio.value,
     duracion:      Number(inpDuracion.value),
@@ -252,15 +264,38 @@ async function guardarInfo(evt) {
     adultos:       Number(inpAdultos.value),
     estudiantes:   Number(inpEst.value),
     transporte:    selTran.value,
-    vuelos, buses,
-    hoteles:       inpHoteles.value.split(';').map(s=>s.trim()).filter(Boolean),
-    ciudades:      inpCiudades.value.split(';').map(s=>s.trim()).filter(Boolean),
+    tramos,
+    hoteles:       inpHoteles.value.split(';').map(s=>s.trim()).filter(x=>x),
+    ciudades:      inpCiudades.value.split(';').map(s=>s.trim()).filter(x=>x),
     observaciones: inpObs.value,
-    modificadoPor: auth.currentUser.email,
-    fechaMod:      new Date().toISOString()
+    actualizadoPor: auth.currentUser.email,
+    actualizadoEn:  new Date()
   };
 
-  // Grabo con merge (no borra campos anteriores)
-  await setDoc(doc(db, 'viajes', id), payload, { merge: true });
-  alert('✅ Información guardada correctamente');
+  // 10.1) Actualiza el doc de grupos
+  await updateDoc(docG, payload);
+
+  // 10.2) Comparar y registrar en historial
+  const cambios = [];
+  for (const k of Object.keys(payload)) {
+    const oldV = JSON.stringify(before[k]||'');
+    const newV = JSON.stringify(payload[k]||'');
+    if (oldV !== newV) {
+      cambios.push({ campo:k, anterior: before[k]||null, nuevo: payload[k] });
+    }
+  }
+  if (cambios.length) {
+    await Promise.all(cambios.map(c =>
+      addDoc(collection(db,'historial'), {
+        numeroNegocio: id,
+        campo:         c.campo,
+        anterior:      c.anterior,
+        nuevo:         c.nuevo,
+        modificadoPor: auth.currentUser.email,
+        timestamp:     new Date()
+      })
+    ));
+  }
+
+  alert('✅ Datos guardados y registrados en historial');
 }
