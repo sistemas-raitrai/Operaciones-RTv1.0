@@ -140,24 +140,55 @@ async function renderItinerario() {
 // 4) Quick-add: crear actividad rápida
 // ————————————————————————————————————————————————————————————
 async function quickAddActivity() {
-  const grupoId = selectNum.value;
-  const diaIndex = parseInt(qaDia.value, 10);
-  const fecha    = fldFecha.options[diaIndex].value;
-  const actividad= qaAct.value.trim();
-  if (!actividad) return alert("Escribe una actividad");
+  try {
+    console.log("▶️ quickAddActivity iniciada");
 
-  await addDoc(collection(db, "actividades"), {
-    numeroNegocio: grupoId,
-    fecha,
-    horaInicio: qaHoraInicio.value,
-    horaFin: "",
-    actividad,
-    pasajeros: 0,
-    notas: ""
-  });
+    const grupoId    = selectNum.value;
+    const diaIndex   = parseInt(qaDia.value, 10);
+    const fechaOpt   = fldFecha.options[diaIndex];
+    console.log("   • selectNum:", grupoId);
+    console.log("   • qaDia.value (índice):", diaIndex);
+    console.log("   • fldFecha.options.length:", fldFecha.options.length);
+    console.log("   • opción seleccionada de fldFecha:", fechaOpt);
 
-  qaAct.value = "";
-  await loadActivities(grupoId, fecha);
+    if (!fechaOpt) {
+      console.error("❌ No existe opción en fldFecha para el índice", diaIndex);
+      return alert("Error interno: día no válido");
+    }
+    const fecha      = fechaOpt.value;
+    const horaInicio = qaHoraInicio.value;
+    const actividad  = qaAct.value.trim();
+
+    console.log("   • fecha:", fecha);
+    console.log("   • horaInicio:", horaInicio);
+    console.log("   • actividad:", actividad);
+
+    if (!actividad) {
+      console.warn("⚠️ quickAddActivity: falta el nombre de actividad");
+      return alert("Escribe una actividad");
+    }
+
+    // Insert en Firestore
+    console.log("   • Agregando a Firestore...");
+    await addDoc(collection(db, "actividades"), {
+      numeroNegocio: grupoId,
+      fecha,
+      horaInicio,
+      horaFin: "",
+      actividad,
+      pasajeros: 0,
+      notas: ""
+    });
+    console.log("   ✔️ Documento creado");
+
+    // Limpio input y recargo lista del día
+    qaAct.value = "";
+    await loadActivities(grupoId, fecha);
+    console.log("▶️ quickAddActivity completada");
+  } catch (e) {
+    console.error("❌ quickAddActivity error:", e);
+    alert("Ocurrió un error al agregar la actividad, mira la consola");
+  }
 }
 
 // ————————————————————————————————————————————————————————————
