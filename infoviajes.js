@@ -76,7 +76,7 @@ async function initForm() {
 // ——————————————————————————————
 async function cargarGrupo() {
   const id    = selNum.value;
-  const snapG = await getDoc(doc(db,'grupos',id));
+  const snapG = await getDoc(doc(db,'grupos'));
   if (!snapG.exists()) return;
   const g = snapG.data();
 
