@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Información del Viaje - RT v1.0</title>
+  <link rel="stylesheet" href="estilos.css" />
+</head>
+<body>
+  <!-- 1) Encabezado reutilizable -->
+  <div id="encabezado"></div>
+  <script type="module">
+    (async () => {
+      // Carga header + script común (reloj, logout...)
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+      await import('./script.js');
+    })();
+  </script>
+
+  <main class="formulario-container">
+    <h2>Información del Viaje</h2>
+    <form id="formInfoViaje">
+      <!-- 2) Selección del grupo -->
+      <label for="numeroNegocio">Número de Negocio:</label>
+      <select id="numeroNegocio"></select>
+
+      <label for="nombreGrupo">Nombre de Grupo:</label>
+      <input type="text" id="nombreGrupo" readonly />
+
+      <!-- 3) Identificación del viaje -->
+      <label for="destino">Destino Principal:</label>
+      <input type="text" id="destino" readonly />
+
+      <label for="programa">Programa:</label>
+      <input type="text" id="programa" readonly />
+
+      <!-- 4) Fechas -->
+      <label for="fechaInicio">Fecha de Inicio:</label>
+      <input type="date" id="fechaInicio" />
+
+      <label for="duracion">Duración (días):</label>
+      <input type="number" id="duracion" min="1" />
+
+      <label for="fechaFin">Fecha de Término:</label>
+      <input type="date" id="fechaFin" readonly />
+
+      <!-- 5) Composición del grupo -->
+      <label for="totalPax">Total Pasajeros:</label>
+      <input type="number" id="totalPax" readonly />
+
+      <label for="adultos">Adultos:</label>
+      <input type="number" id="adultos" min="0" />
+
+      <label for="estudiantes">Estudiantes:</label>
+      <input type="number" id="estudiantes" min="0" />
+
+      <!-- 6) Transporte -->
+      <label for="transporte">Tipo de Transporte:</label>
+      <select id="transporte">
+        <option value="">Seleccione...</option>
+        <option value="terrestre">Terrestre</option>
+        <option value="aereo">Aéreo</option>
+        <option value="mixto">Mixto</option>
+      </select>
+
+      <div id="seccionTramos" style="display:none">
+        <label>Detalle de Tramos:</label>
+        <div id="tramosDetalle"></div>
+      </div>
+
+      <!-- 7) Hoteles y ciudades (multi-select) -->
+      <label for="hoteles">Hoteles asignados:</label>
+      <select id="hoteles" multiple></select>
+
+      <label for="ciudades">Ciudades a recorrer:</label>
+      <select id="ciudades" multiple></select>
+
+      <!-- 8) Observaciones -->
+      <label for="observaciones">Observaciones:</label>
+      <textarea id="observaciones" rows="4"></textarea>
+
+      <!-- 9) Enviar -->
+      <button type="submit">Guardar Información</button>
+    </form>
+  </main>
+
+  <!-- Firebase + jQuery + nuestro JS -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script type="module" src="infoviajes.js"></script>
+</body>
+</html>
