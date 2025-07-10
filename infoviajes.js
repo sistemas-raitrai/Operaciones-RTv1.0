@@ -91,7 +91,7 @@ async function cargarGrupo() {
   inpTotal.value    = g.cantidadgrupo  || '';
 
   // intento leer doc “viajes” (antes existía)
-  const refV = doc(db, 'viajes', id);
+  const refV = doc(db, 'grupos', id);
   const snapV= await getDoc(refV);
 
   if (snapV.exists()) {
