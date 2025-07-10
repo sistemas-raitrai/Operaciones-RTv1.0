@@ -13,25 +13,25 @@ const auth = getAuth(app);
 // ——————————————————————————————
 // 1) Referencias DOM
 // ——————————————————————————————
-const selNum       = document.getElementById('numeroNegocio');
-const inpNombre    = document.getElementById('nombreGrupo');
-const inpDestino   = document.getElementById('destino');
-const inpPrograma  = document.getElementById('programa');
-const inpCoord     = document.getElementById('coordinador');
-const inpInicio    = document.getElementById('fechaInicio');
-const inpDuracion  = document.getElementById('duracion');
-const inpFin       = document.getElementById('fechaFin');
-const inpTotal     = document.getElementById('totalPax');
-const inpAdultos   = document.getElementById('adultos');
-const inpEst       = document.getElementById('estudiantes');
-const selTran      = document.getElementById('transporte');
-const seccionTramos= document.getElementById('seccionTramos');
-const contTramos   = document.getElementById('tramosDetalle');
-const btnAddTramo  = document.getElementById('btnAddTramo');
-const inpHoteles   = document.getElementById('hoteles');
-const inpCiudades  = document.getElementById('ciudades');
-const inpObs       = document.getElementById('observaciones');
-const form         = document.getElementById('formInfoViaje');
+const selNum        = document.getElementById('numeroNegocio');
+const inpNombre     = document.getElementById('nombreGrupo');
+const inpDestino    = document.getElementById('destino');
+const inpPrograma   = document.getElementById('programa');
+const inpCoord      = document.getElementById('coordinador');
+const inpInicio     = document.getElementById('fechaInicio');
+const inpDuracion   = document.getElementById('duracion');
+const inpFin        = document.getElementById('fechaFin');
+const inpTotal      = document.getElementById('totalPax');
+const inpAdultos    = document.getElementById('adultos');
+const inpEst        = document.getElementById('estudiantes');
+const selTran       = document.getElementById('transporte');
+const seccionTramos = document.getElementById('seccionTramos');
+const contTramos    = document.getElementById('tramosDetalle');
+const btnAddTramo   = document.getElementById('btnAddTramo');
+const inpHoteles    = document.getElementById('hoteles');
+const inpCiudades   = document.getElementById('ciudades');
+const inpObs        = document.getElementById('observaciones');
+const form          = document.getElementById('formInfoViaje');
 
 let tramoCount = 0;
 
@@ -72,10 +72,11 @@ async function initForm() {
 }
 
 // ——————————————————————————————
-// 4) cargarGrupo: mezcla “grupos/{id}” + “viajes/{id}”
+// 4) cargarGrupo: mezcla “grupos/{id}” + los campos previos de “viajes”
 // ——————————————————————————————
 async function cargarGrupo() {
-  const id    = selNum.value;
+  const id = selNum.value;
+  // 4.1) cargar siempre de la colección “grupos”
   const snapG = await getDoc(doc(db,'grupos',id));
   if (!snapG.exists()) return;
   const g = snapG.data();
@@ -86,31 +87,20 @@ async function cargarGrupo() {
   inpPrograma.value = g.programa      || '';
   inpTotal.value    = g.cantidadgrupo || '';
 
-  // PRECARGAR COORDINADOR si viene de “viajes”
-  const snapV = await getDoc(doc(db,'viajes',id));
-  if (snapV.exists()) {
-    const v = snapV.data();
-    inpCoord.value    = v.coordinador    || '';
-    inpInicio.value   = v.fechaInicio    || '';
-    inpDuracion.value = v.duracion       || '';
-    inpAdultos.value  = v.adultos        || '';
-    inpEst.value      = v.estudiantes    || '';
-    selTran.value     = v.transporte     || '';
-    inpHoteles.value  = (v.hoteles  || []).join('; ');
-    inpCiudades.value = (v.ciudades || []).join('; ');
-    inpObs.value      = v.observaciones  || '';
-    toggleTramos();
-    if (v.tramos) renderTramos(v.tramos);
-  } else {
-    // limpiar
-    inpCoord.value = '';
-    inpInicio.value= inpDuracion.value= '';
-    inpAdultos.value= inpEst.value= '';
-    selTran.value='';
-    inpHoteles.value= inpCiudades.value= inpObs.value='';
-    contTramos.innerHTML='';
-    seccionTramos.style.display='none';
-  }
+  // 4.2) si había datos anteriores de “viaje” en ese mismo doc de grupos,
+  //      precargamos coordinador y tramos
+  //      (todo está en el mismo documento)
+  inpCoord.value      = g.coordinador    || '';
+  inpInicio.value     = g.fechaInicio    || '';
+  inpDuracion.value   = g.duracion       || '';
+  inpAdultos.value    = g.adultos        || '';
+  inpEst.value        = g.estudiantes    || '';
+  selTran.value       = g.transporte     || '';
+  inpHoteles.value    = (g.hoteles  || []).join('; ');
+  inpCiudades.value   = (g.ciudades || []).join('; ');
+  inpObs.value        = g.observaciones  || '';
+  toggleTramos();
+  if (Array.isArray(g.tramos)) renderTramos(g.tramos);
 
   calcularFin();
 }
@@ -124,7 +114,7 @@ function calcularFin() {
     return;
   }
   const d = new Date(inpInicio.value);
-  d.setDate(d.getDate() + Number(inpDuracion.value) -1);
+  d.setDate(d.getDate() + Number(inpDuracion.value) - 1);
   inpFin.value = d.toISOString().slice(0,10);
 }
 
@@ -166,21 +156,22 @@ function addTramo(data={}) {
   tramoCount++;
   let html = '';
 
-  // VUELO ida+vta
+  // VUELO (ida + vuelta)
   if (tipo==='aereo'||tipo==='mixto') {
     html += `
       <fieldset class="tramo">
         <legend>Vuelo ${tramoCount}</legend>
         <!-- Ida -->
-        <label>Hora Inicio (ida):<input type="time" value="${data.salida||''}"></label>
+        <label>Hora Salida (ida):<input type="time" value="${data.salida||''}"></label>
         <label>Origen (ida):<input value="${data.origen||''}"></label>
-        <label>Aerolínea:<input value="${data.aerolinea||''}"></label>
-        <label>N° Vuelo:<input value="${data.numero||''}"></label>
-        <!-- Vuelta -->
+        <label>Aerolínea (ida):<input value="${data.aerolinea||''}"></label>
+        <label>N° Vuelo (ida):<input value="${data.numero||''}"></label>
+        <!-- Separador -->
         <hr>
+        <!-- Vuelta -->
         <label>Origen (vta):<input value="${data.origenVta||''}"></label>
-        <label>Aerolínea:<input value="${data.aerolineaVta||''}"></label>
-        <label>N° Vuelo:<input value="${data.numeroVta||''}"></label>
+        <label>Aerolínea (vta):<input value="${data.aerolineaVta||''}"></label>
+        <label>N° Vuelo (vta):<input value="${data.numeroVta||''}"></label>
         <label>Hora Salida (vta):<input type="time" value="${data.salidaVta||''}"></label>
         <button type="button" class="btn-del">Eliminar</button>
       </fieldset>
@@ -204,7 +195,7 @@ function addTramo(data={}) {
 
   const div=document.createElement('div');
   div.innerHTML=html;
-  div.querySelectorAll('.btn-del').forEach(b=> b.onclick=()=>b.closest('fieldset').remove());
+  div.querySelectorAll('.btn-del').forEach(b=> b.onclick=()=> b.closest('fieldset').remove());
   contTramos.appendChild(div);
 }
 
@@ -220,33 +211,34 @@ function renderTramos(arr) {
 // ——————————————————————————————
 async function guardarInfo(evt) {
   evt.preventDefault();
-  const id   = selNum.value;
-  const refG = doc(db,'grupos',id);
-  const snapG= await getDoc(refG);
-  const before = snapG.exists()? snapG.data(): {};
+  const id    = selNum.value;
+  const refG  = doc(db,'grupos',id);
+  const snap  = await getDoc(refG);
+  const before = snap.exists()? snap.data(): {};
 
   // recojo tramos
   const tramos = [...contTramos.querySelectorAll('fieldset.tramo')].map(fs=>{
-    const i= fs.querySelectorAll('input');
+    const inp = fs.querySelectorAll('input');
     return {
-      salida:     i[0].value,
-      origen:     i[1].value,
-      aerolinea:  i[2].value,
-      numero:     i[3].value,
-      origenVta:  i[5].value,
-      aerolineaVta:i[6].value,
-      numeroVta:  i[7].value,
-      salidaVta:  i[8].value,
-      lugar:      i[9]?.value||'',
-      hora:       i[10]?.value||'',
-      empresa:    i[11]?.value||'',
-      cond1:      i[12]?.value||'',
-      cond2:      i[13]?.value||''
+      salida:      inp[0].value,
+      origen:      inp[1].value,
+      aerolinea:   inp[2].value,
+      numero:      inp[3].value,
+      origenVta:   inp[5].value,
+      aerolineaVta:inp[6].value,
+      numeroVta:   inp[7].value,
+      salidaVta:   inp[8].value,
+      lugar:       inp[9]?.value||'',
+      hora:        inp[10]?.value||'',
+      empresa:     inp[11]?.value||'',
+      cond1:       inp[12]?.value||'',
+      cond2:       inp[13]?.value||''
     };
   });
 
-  // payload
+  // payload completo
   const payload = {
+    coordinador:   inpCoord.value,
     fechaInicio:   inpInicio.value,
     duracion:      Number(inpDuracion.value),
     fechaFin:      inpFin.value,
@@ -257,28 +249,27 @@ async function guardarInfo(evt) {
     hoteles:       inpHoteles.value.split(';').map(s=>s.trim()).filter(x=>x),
     ciudades:      inpCiudades.value.split(';').map(s=>s.trim()).filter(x=>x),
     observaciones: inpObs.value,
-    coordinador:   inpCoord.value,
     actualizadoPor: auth.currentUser.email,
     actualizadoEn:  new Date()
   };
 
-  // 10.1 actualizar grupo
+  // 10.1) actualizar doc en grupos/{id}
   await updateDoc(refG, payload);
 
-  // 10.2 historial por campo
-  const cambios=[];
-  for(const k in payload){
-    if (JSON.stringify(before[k]||'')!==JSON.stringify(payload[k]||'')){
-      cambios.push({campo:k, anterior:before[k]||null, nuevo:payload[k]});
+  // 10.2) comparar y registrar en historial
+  const cambios = [];
+  for (const k in payload) {
+    if (JSON.stringify(before[k]||'') !== JSON.stringify(payload[k]||'')) {
+      cambios.push({ campo:k, anterior:before[k]||null, nuevo:payload[k] });
     }
   }
-  if(cambios.length){
-    await Promise.all(cambios.map(c=>
+  if (cambios.length) {
+    await Promise.all(cambios.map(c =>
       addDoc(collection(db,'historial'),{
-        numeroNegocio:id,
-        campo:        c.campo,
-        anterior:     c.anterior,
-        nuevo:        c.nuevo,
+        numeroNegocio: id,
+        campo:         c.campo,
+        anterior:      c.anterior,
+        nuevo:         c.nuevo,
         modificadoPor: auth.currentUser.email,
         timestamp:     new Date()
       })
