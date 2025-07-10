@@ -2,7 +2,9 @@
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  doc, getDoc, setDoc
+  doc, getDoc, setDoc,
+  collection,   
+  getDocs  
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -43,7 +45,7 @@ onAuthStateChanged(auth, user => {
 // 2) Carga inicial: leer 'grupos' para poblar select
 // ————————————————————————————————————————————————————————————
 async function initForm() {
-  const snap = await db.collection('grupos').get();
+  const snap = await getDocs(collection(db, 'grupos'));
   // Pobla Número de Negocio
   selNum.innerHTML = snap.docs.map(d=>`
     <option value="${d.id}">${d.data().numeroNegocio}</option>
