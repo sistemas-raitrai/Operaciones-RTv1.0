@@ -2,12 +2,13 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Información del Viaje - RT v1.0</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Información del Viaje | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
-  <!-- 1) Header reutilizable -->
+
+  <!-- 1) Encabezado común (logo, usuario, logout, etc.) -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
@@ -19,23 +20,22 @@
 
   <main class="formulario-container">
     <h2>Información del Viaje</h2>
-    <form id="formInfoViaje">
-      <!-- 2) Selección del grupo (lee de Firestore) -->
-      <label for="numeroNegocio">Número de Negocio:</label>
-      <select id="numeroNegocio"><option>Cargando…</option></select>
 
-      <!-- 1. Identificación del grupo (auto-llenado) -->
+    <form id="formInfoViaje">
+      <!-- 2) Selección y datos base leídos de "grupos" -->
+      <label for="numeroNegocio">Número de Negocio:</label>
+      <select id="numeroNegocio"></select>
+
       <label for="nombreGrupo">Nombre de Grupo:</label>
       <input type="text" id="nombreGrupo" readonly />
 
-      <!-- 2. Identificación del viaje (auto-llenado) -->
-      <label for="destino">Destino:</label>
+      <label for="destino">Destino Principal:</label>
       <input type="text" id="destino" readonly />
 
       <label for="programa">Programa:</label>
       <input type="text" id="programa" readonly />
 
-      <!-- 3. Fechas del viaje -->
+      <!-- 3) Fechas: inicio manual + duración manual → fecha fin auto -->
       <label for="fechaInicio">Fecha de Inicio:</label>
       <input type="date" id="fechaInicio" />
 
@@ -45,7 +45,7 @@
       <label for="fechaFin">Fecha de Término:</label>
       <input type="date" id="fechaFin" readonly />
 
-      <!-- 4. Composición del grupo -->
+      <!-- 4) Composición del grupo -->
       <label for="totalPax">Total Pasajeros:</label>
       <input type="number" id="totalPax" readonly />
 
@@ -55,44 +55,37 @@
       <label for="estudiantes">Estudiantes:</label>
       <input type="number" id="estudiantes" min="0" />
 
-      <!-- 5. Logística: Transporte -->
+      <!-- 5) Transporte y tramos dinámicos -->
       <label for="transporte">Tipo de Transporte:</label>
       <select id="transporte">
-        <option value="">Seleccione…</option>
+        <option value="">Seleccione...</option>
         <option value="terrestre">Terrestre</option>
         <option value="aereo">Aéreo</option>
         <option value="mixto">Mixto</option>
       </select>
 
-      <!-- Sub-formularios según selección -->
-      <div id="subformVuelos" style="display:none">
-        <h4>Tramos de Vuelo</h4>
-        <div id="vuelosContainer"></div>
-        <button type="button" id="btnAddVuelo">+ Añadir Vuelo</button>
-      </div>
-      <div id="subformBuses" style="display:none">
-        <h4>Tramos de Bus</h4>
-        <div id="busesContainer"></div>
-        <button type="button" id="btnAddBus">+ Añadir Bus</button>
+      <div id="seccionTramos" style="display:none">
+        <h4>Detalle de Tramos</h4>
+        <button type="button" id="btnAddTramo">➕ Agregar Tramo</button>
+        <div id="tramosDetalle"></div>
       </div>
 
-      <!-- 6. Hoteles y Ciudades (entradas separadas por “;”) -->
+      <!-- 6) Hoteles y ciudades (entrada libre, separadas por “;”) -->
       <label for="hoteles">Hoteles asignados (sep. “;”):</label>
-      <input type="text" id="hoteles" placeholder="H1; H2; …" />
+      <input type="text" id="hoteles" placeholder="Hotel1; Hotel2; …"/>
 
       <label for="ciudades">Ciudades a recorrer (sep. “;”):</label>
-      <input type="text" id="ciudades" placeholder="C1; C2; …" />
+      <input type="text" id="ciudades" placeholder="Ciudad1; Ciudad2; …"/>
 
-      <!-- 7. Observaciones -->
-      <label for="observaciones">Observaciones:</label>
-      <textarea id="observaciones" rows="4"></textarea>
+      <!-- 7) Observaciones y envío -->
+      <label for="observaciones">Observaciones Logísticas:</label>
+      <textarea id="observaciones" rows="3"></textarea>
 
-      <!-- 8. Botón Guardar -->
       <button type="submit">Guardar Información</button>
     </form>
   </main>
 
-  <!-- Firebase + jQuery + nuestro JS -->
+  <!-- 8) Firebase + jQuery + nuestro JS -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="infoviajes.js"></script>
 </body>
