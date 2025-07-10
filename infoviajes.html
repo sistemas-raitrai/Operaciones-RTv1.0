@@ -8,13 +8,13 @@
 </head>
 <body>
 
-  <!-- 1) Encabezado común (logo, usuario, logout, etc.) -->
+  <!-- 1) Encabezado común (logo, usuario, logout…) -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js'); // reloj, logout, etc.
+      await import('./script.js');
     })();
   </script>
 
@@ -22,20 +22,24 @@
     <h2>Información del Viaje</h2>
 
     <form id="formInfoViaje">
-      <!-- 2) Selección y datos base leídos de "grupos" -->
+      <!-- 2) Selección y datos base de “grupos” -->
       <label for="numeroNegocio">Número de Negocio:</label>
       <select id="numeroNegocio"></select>
 
       <label for="nombreGrupo">Nombre de Grupo:</label>
       <input type="text" id="nombreGrupo" readonly />
 
-      <label for="destino">Destino Principal:</label>
+      <label for="destino">Destino:</label>
       <input type="text" id="destino" readonly />
 
       <label for="programa">Programa:</label>
       <input type="text" id="programa" readonly />
 
-      <!-- 3) Fechas: inicio manual + duración manual → fecha fin auto -->
+      <!-- NUEVO: Coordinador(a) manual por ahora -->
+      <label for="coordinador">Coordinador(a):</label>
+      <input type="text" id="coordinador" placeholder="Nombre coordinador/a" />
+
+      <!-- 3) Fechas: inicio + duración → fin auto -->
       <label for="fechaInicio">Fecha de Inicio:</label>
       <input type="date" id="fechaInicio" />
 
@@ -64,20 +68,20 @@
         <option value="mixto">Mixto</option>
       </select>
 
-      <div id="seccionTramos" style="display:none">
+      <section id="seccionTramos" style="display:none">
         <h4>Detalle de Tramos</h4>
         <button type="button" id="btnAddTramo">➕ Agregar Tramo</button>
         <div id="tramosDetalle"></div>
-      </div>
+      </section>
 
-      <!-- 6) Hoteles y ciudades (entrada libre, separadas por “;”) -->
+      <!-- 6) Hoteles y ciudades libres -->
       <label for="hoteles">Hoteles asignados (sep. “;”):</label>
       <input type="text" id="hoteles" placeholder="Hotel1; Hotel2; …"/>
 
       <label for="ciudades">Ciudades a recorrer (sep. “;”):</label>
       <input type="text" id="ciudades" placeholder="Ciudad1; Ciudad2; …"/>
 
-      <!-- 7) Observaciones y envío -->
+      <!-- 7) Observaciones -->
       <label for="observaciones">Observaciones Logísticas:</label>
       <textarea id="observaciones" rows="3"></textarea>
 
@@ -85,7 +89,7 @@
     </form>
   </main>
 
-  <!-- 8) Firebase + jQuery + nuestro JS -->
+  <!-- 8) Firebase + jQuery + JS específico -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="infoviajes.js"></script>
 </body>
