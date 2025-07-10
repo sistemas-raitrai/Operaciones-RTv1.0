@@ -11,7 +11,7 @@
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
-      // Carga header + script común (reloj, logout...)
+      // Carga header + script común (reloj, logout…)
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
       await import('./script.js');
@@ -64,17 +64,25 @@
         <option value="mixto">Mixto</option>
       </select>
 
-      <div id="seccionTramos" style="display:none">
-        <label>Detalle de Tramos:</label>
-        <div id="tramosDetalle"></div>
+      <!-- Sub-formulario vuelos -->
+      <div id="subformVuelos" style="display:none">
+        <h4>Tramos Aéreos</h4>
+        <div id="vuelosContainer"></div>
+        <button type="button" id="btnAddVuelo">+ Agregar tramo de vuelo</button>
+      </div>
+      <!-- Sub-formulario buses -->
+      <div id="subformBuses" style="display:none">
+        <h4>Tramos Terrestres</h4>
+        <div id="busesContainer"></div>
+        <button type="button" id="btnAddBus">+ Agregar tramo de bus</button>
       </div>
 
-      <!-- 7) Hoteles y ciudades (multi-select) -->
-      <label for="hoteles">Hoteles asignados:</label>
-      <select id="hoteles" multiple></select>
+      <!-- 7) Hoteles y ciudades (separados por “;”) -->
+      <label for="hoteles">Hoteles asignados (sep. “;”):</label>
+      <input type="text" id="hoteles" placeholder="Hotel1; Hotel2; …" />
 
-      <label for="ciudades">Ciudades a recorrer:</label>
-      <select id="ciudades" multiple></select>
+      <label for="ciudades">Ciudades a recorrer (sep. “;”):</label>
+      <input type="text" id="ciudades" placeholder="Ciudad1; Ciudad2; …" />
 
       <!-- 8) Observaciones -->
       <label for="observaciones">Observaciones:</label>
