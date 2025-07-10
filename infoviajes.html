@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Información del Viaje - RT v1.0</title>
+  <title>Información del Viaje – RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
@@ -11,7 +11,7 @@
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
-      // Carga header + script común (reloj, logout…)
+      // Carga el header común y el script.js (reloj/logout…)
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
       await import('./script.js');
@@ -21,7 +21,7 @@
   <main class="formulario-container">
     <h2>Información del Viaje</h2>
     <form id="formInfoViaje">
-      <!-- 2) Selección del grupo -->
+      <!-- 2) Selección e identificación del grupo -->
       <label for="numeroNegocio">Número de Negocio:</label>
       <select id="numeroNegocio"></select>
 
@@ -35,7 +35,7 @@
       <label for="programa">Programa:</label>
       <input type="text" id="programa" readonly />
 
-      <!-- 4) Fechas -->
+      <!-- 4) Fechas del viaje -->
       <label for="fechaInicio">Fecha de Inicio:</label>
       <input type="date" id="fechaInicio" />
 
@@ -55,40 +55,34 @@
       <label for="estudiantes">Estudiantes:</label>
       <input type="number" id="estudiantes" min="0" />
 
-      <!-- 6) Transporte -->
+      <!-- 6) Logística / Transporte -->
       <label for="transporte">Tipo de Transporte:</label>
       <select id="transporte">
-        <option value="">Seleccione...</option>
+        <option value="">— Seleccione —</option>
         <option value="terrestre">Terrestre</option>
         <option value="aereo">Aéreo</option>
         <option value="mixto">Mixto</option>
       </select>
 
-      <!-- Sub-formulario vuelos -->
-      <div id="subformVuelos" style="display:none">
-        <h4>Tramos Aéreos</h4>
-        <div id="vuelosContainer"></div>
-        <button type="button" id="btnAddVuelo">+ Agregar tramo de vuelo</button>
-      </div>
-      <!-- Sub-formulario buses -->
-      <div id="subformBuses" style="display:none">
-        <h4>Tramos Terrestres</h4>
-        <div id="busesContainer"></div>
-        <button type="button" id="btnAddBus">+ Agregar tramo de bus</button>
+      <!-- Aquí se inyectan los subformularios de tramos -->
+      <div id="seccionTramos" style="display:none">
+        <h4>Detalle de Tramos</h4>
+        <div id="tramosDetalle"></div>
+        <button type="button" id="btnAddTramo">+ Agregar Tramo</button>
       </div>
 
-      <!-- 7) Hoteles y ciudades (separados por “;”) -->
+      <!-- 7) Hoteles y ciudades (manual, separados por “;”) -->
       <label for="hoteles">Hoteles asignados (sep. “;”):</label>
-      <input type="text" id="hoteles" placeholder="Hotel1; Hotel2; …" />
+      <input type="text" id="hoteles" placeholder="HOTEL1; HOTEL2; ..." />
 
       <label for="ciudades">Ciudades a recorrer (sep. “;”):</label>
-      <input type="text" id="ciudades" placeholder="Ciudad1; Ciudad2; …" />
+      <input type="text" id="ciudades" placeholder="CIUDAD1; CIUDAD2; ..." />
 
       <!-- 8) Observaciones -->
       <label for="observaciones">Observaciones:</label>
       <textarea id="observaciones" rows="4"></textarea>
 
-      <!-- 9) Enviar -->
+      <!-- 9) Guardar -->
       <button type="submit">Guardar Información</button>
     </form>
   </main>
