@@ -14,7 +14,7 @@
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js'); // reloj, logout…
+      await import('./script.js'); // reloj, logout...
     })();
   </script>
 
@@ -22,14 +22,14 @@
     <h2>Información del Viaje</h2>
 
     <form id="formInfoViaje">
-      <!-- 2) Grupo -->
+      <!-- 2) Selección y datos base leídos de "grupos" -->
       <label for="numeroNegocio">Número de Negocio:</label>
       <select id="numeroNegocio"></select>
 
       <label for="nombreGrupo">Nombre de Grupo:</label>
       <input type="text" id="nombreGrupo" readonly />
 
-      <!-- 3) Destino y Programa con datalist -->
+      <!-- 3) Destino y Programa con datalists para edición libre -->
       <label for="destinoInput">Destino:</label>
       <input list="destinosList" id="destinoInput" placeholder="Elige o escribe..." />
       <datalist id="destinosList"></datalist>
@@ -42,7 +42,7 @@
       <label for="coordinador">Coordinador(a):</label>
       <input type="text" id="coordinador" placeholder="Nombre coordinador/a" />
 
-      <!-- 5) Fechas -->
+      <!-- 5) Fechas y duración -->
       <label for="fechaInicio">Fecha de Inicio:</label>
       <input type="date" id="fechaInicio" />
 
@@ -62,7 +62,7 @@
       <label for="estudiantes">Estudiantes:</label>
       <input type="number" id="estudiantes" min="0" />
 
-      <!-- 7) Transporte y tramos -->
+      <!-- 7) Transporte y tramos dinámicos -->
       <label for="transporte">Tipo de Transporte:</label>
       <select id="transporte">
         <option value="">Seleccione...</option>
@@ -77,13 +77,16 @@
         <div id="tramosDetalle"></div>
       </div>
 
-      <!-- 8) Hoteles por noche -->
-      <div id="nochesContainer"></div>
+      <!-- 8) Hoteles y noches -->
+      <label>Hoteles y Noches:</label>
+      <button type="button" id="btnAddHotel">➕ Agregar Hotel</button>
+      <div id="hotelesContainer"></div>
 
-      <!-- 9) Ciudades y Observaciones -->
+      <!-- 9) Ciudades a recorrer (se auto-llenan) -->
       <label for="ciudades">Ciudades a recorrer:</label>
       <input type="text" id="ciudades" readonly />
 
+      <!-- 10) Observaciones -->
       <label for="observaciones">Observaciones Logísticas:</label>
       <textarea id="observaciones" rows="3"></textarea>
 
