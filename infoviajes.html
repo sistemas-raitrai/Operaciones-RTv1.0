@@ -8,13 +8,13 @@
 </head>
 <body>
 
-  <!-- 1) Encabezado común (logo, usuario, logout, etc.) -->
+  <!-- 1) Encabezado común -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js'); // reloj, logout, etc.
+      await import('./script.js'); // reloj, logout...
     })();
   </script>
 
@@ -22,24 +22,26 @@
     <h2>Información del Viaje</h2>
 
     <form id="formInfoViaje">
-      <!-- 2) Selección y datos base leídos de "grupos" -->
+
+      <!-- 2) Grupo -->
       <label for="numeroNegocio">Número de Negocio:</label>
       <select id="numeroNegocio"></select>
 
       <label for="nombreGrupo">Nombre de Grupo:</label>
       <input type="text" id="nombreGrupo" readonly />
 
+      <!-- 3) Destino / Programa -->
       <label for="destino">Destino Principal:</label>
-      <select id="destino"></select>
-      
-      <label for="programa">Programa:</label>
-      <select id="programa"></select>
+      <select id="destino" contenteditable="true"></select>
 
-      <!-- 2.1) Coordinador(a) libre o sugerido -->
+      <label for="programa">Programa (X/Y):</label>
+      <select id="programa" contenteditable="true"></select>
+
+      <!-- 4) Coordinador -->
       <label for="coordinador">Coordinador(a):</label>
       <input type="text" id="coordinador" placeholder="Nombre coordinador/a" />
 
-      <!-- 3) Fechas: inicio manual + duración → fecha fin auto -->
+      <!-- 5) Fechas -->
       <label for="fechaInicio">Fecha de Inicio:</label>
       <input type="date" id="fechaInicio" />
 
@@ -49,7 +51,7 @@
       <label for="fechaFin">Fecha de Término:</label>
       <input type="date" id="fechaFin" readonly />
 
-      <!-- 4) Composición del grupo -->
+      <!-- 6) Composición -->
       <label for="totalPax">Total Pasajeros:</label>
       <input type="number" id="totalPax" readonly />
 
@@ -59,7 +61,7 @@
       <label for="estudiantes">Estudiantes:</label>
       <input type="number" id="estudiantes" min="0" />
 
-      <!-- 5) Transporte y tramos dinámicos -->
+      <!-- 7) Transporte -->
       <label for="transporte">Tipo de Transporte:</label>
       <select id="transporte">
         <option value="">Seleccione...</option>
@@ -74,14 +76,13 @@
         <div id="tramosDetalle"></div>
       </div>
 
-      <!-- 6) Hoteles y ciudades (entrada libre, separadas por “;”) -->
-      <label for="hoteles">Hoteles asignados (sep. “;”):</label>
-      <input type="text" id="hoteles" placeholder="Hotel1; Hotel2; …"/>
+      <!-- 8) Hoteles por noche -->
+      <div id="nochesContainer"></div>
 
-      <label for="ciudades">Ciudades a recorrer (sep. “;”):</label>
-      <input type="text" id="ciudades" placeholder="Ciudad1; Ciudad2; …"/>
+      <!-- 9) Ciudades / Observaciones -->
+      <label for="ciudades">Ciudades a recorrer:</label>
+      <input type="text" id="ciudades" placeholder="Se añadirán automáticamente" readonly />
 
-      <!-- 7) Observaciones y envío -->
       <label for="observaciones">Observaciones Logísticas:</label>
       <textarea id="observaciones" rows="3"></textarea>
 
@@ -89,7 +90,7 @@
     </form>
   </main>
 
-  <!-- 8) Firebase + jQuery + nuestro JS -->
+  <!-- Firebase + jQuery + JS -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="infoviajes.js"></script>
 </body>
