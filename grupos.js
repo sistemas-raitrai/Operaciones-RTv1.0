@@ -85,7 +85,7 @@ async function cargarYMostrarTabla() {
     buttons: [
       {
         extend: 'colvis',
-        text:    'Ver/Ocultar columnas',
+        text:    'Ver columnas',
         className: 'dt-button',
         columns: ':gt(0)'           // opcional, ":gt(0)" lista todas menos la primera
       }
@@ -98,7 +98,6 @@ async function cargarYMostrarTabla() {
       { targets: [5,6], visible: false }  // p. ej. Colegio y Curso ocultos por defecto
     ]
   });
-
   tabla.buttons().container().appendTo('#toolbar');
 
   // 5) Edición inline en blur
