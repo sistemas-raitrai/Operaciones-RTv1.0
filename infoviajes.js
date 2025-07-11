@@ -182,6 +182,78 @@ function addHotelRow(data={hotel:'',noches:''}) {
   hotelesCtr.appendChild(row);
 }
 
+// ——————————————————————————————
+// 8.b) recalcHotels(): comprueba que la suma de noches ≤ noches del programa
+// ——————————————————————————————
+function recalcHotels() {
+  // extrae noches máximas del programa (X/Y)
+  const progMatch = inpPrograma.value.match(/\/(\d+)$/);
+  const maxNoches = progMatch ? Number(progMatch[1]) : Infinity;
+
+  // recorre las filas de hoteles y suma sus noches
+  const inputs = hotelesCtr.querySelectorAll('.hotel-nights');
+  let suma = 0;
+  inputs.forEach(i => suma += Number(i.value) || 0);
+
+  // si se pasa, aviso y limpio el último cambio
+  if (suma > maxNoches) {
+    alert(`⚠️ Has excedido el total de noches (${maxNoches}). Ajusta por favor.`);
+    // quitar el valor que provocó el exceso
+    const exceso = suma - maxNoches;
+    const last = inputs[inputs.length - 1];
+    last.value = Math.max(0, Number(last.value) - exceso);
+    suma = maxNoches;
+  }
+
+  // Si quieres desactivar añadir más hoteles cuando ya llegaste:
+  const btn = document.getElementById('btnAddHotel');
+  btn.disabled = (suma >= maxNoches);
+}
+
+// ——————————————————————————————
+// 8.c) modifica addHotelRow para enganchar recalc y city‐sync
+// ——————————————————————————————
+function addHotelRow(data={hotel:'',noches:''}) {
+  const dest = inpDestino.value;
+  const opts  = (HOTELES_MAP[dest] || []).map(h =>
+    `<option value="${h.name}">${h.name} (${h.city})</option>`
+  ).join('');
+  const row = document.createElement('div');
+  row.classList.add('hotel-row');
+  row.innerHTML = `
+    <select class="hotel-select">
+      <option value="">-- Seleccionar Hotel --</option>${opts}
+    </select>
+    <input type="number" min="1" class="hotel-nights" placeholder="Noches" value="${data.noches||''}">
+    <button type="button" class="btn-remove">×</button>
+  `;
+  // al cambiar hotel: agrego ciudad
+  row.querySelector('.hotel-select').onchange = e => {
+    const sel = e.target.value;
+    const info = (HOTELES_MAP[dest]||[]).find(h=>h.name===sel);
+    if (info) {
+      const set = new Set(
+        inpCiudades.value.split(';')
+          .map(s=>s.trim()).filter(Boolean)
+      );
+      set.add(info.city);
+      inpCiudades.value = Array.from(set).join('; ');
+    }
+  };
+  // al cambiar noches: recalc
+  const nightsInput = row.querySelector('.hotel-nights');
+  nightsInput.oninput = recalcHotels;
+
+  row.querySelector('.btn-remove').onclick = () => {
+    row.remove();
+    recalcHotels();
+  };
+
+  hotelesCtr.appendChild(row);
+  // y recalculo tras añadir
+  recalcHotels();
+}
+
 async function cargarGrupo() {
   const id=selNum.value;
   const snap=await getDoc(doc(db,'grupos',id));
