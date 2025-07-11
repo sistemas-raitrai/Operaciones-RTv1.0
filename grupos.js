@@ -85,7 +85,7 @@ async function cargarYMostrarTabla() {
     buttons: [
       {
         extend: 'colvis',
-        text:    'Ver columnas',
+        text:    'Ver/Ocultar columnas',
         className: 'dt-button',
         columns: ':gt(0)'           // opcional, ":gt(0)" lista todas menos la primera
       }
