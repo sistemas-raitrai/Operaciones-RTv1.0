@@ -244,7 +244,7 @@ async function cargarYMostrarTabla() {
         pageLength: 15,
         lengthMenu: [[15,30,50,-1],[15,30,50,'Todos']],
         order:      [[0,'desc']],
-        dom:        'fltip'
+        dom:        'ltip'
       });
   
       console.log('✅ recargarHistorial() completado correctamente');
