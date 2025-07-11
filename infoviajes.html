@@ -22,26 +22,27 @@
     <h2>Información del Viaje</h2>
 
     <form id="formInfoViaje">
-
-      <!-- 2) Grupo -->
+      <!-- Grupo -->
       <label for="numeroNegocio">Número de Negocio:</label>
       <select id="numeroNegocio"></select>
 
       <label for="nombreGrupo">Nombre de Grupo:</label>
       <input type="text" id="nombreGrupo" readonly />
 
-      <!-- 3) Destino / Programa -->
-      <label for="destino">Destino Principal:</label>
-      <select id="destino" contenteditable="true"></select>
+      <!-- Destino / Programa con datalist para edición libre -->
+      <label for="destinoSelect">Destino:</label>
+      <input list="destinosList" id="destinoInput" placeholder="Elige o escribe..." />
+      <datalist id="destinosList"></datalist>
 
-      <label for="programa">Programa (X/Y):</label>
-      <select id="programa" contenteditable="true"></select>
+      <label for="programaSelect">Programa (X/Y):</label>
+      <input list="programasList" id="programaInput" placeholder="Elige o escribe..." />
+      <datalist id="programasList"></datalist>
 
-      <!-- 4) Coordinador -->
+      <!-- Coordinador -->
       <label for="coordinador">Coordinador(a):</label>
       <input type="text" id="coordinador" placeholder="Nombre coordinador/a" />
 
-      <!-- 5) Fechas -->
+      <!-- Fechas -->
       <label for="fechaInicio">Fecha de Inicio:</label>
       <input type="date" id="fechaInicio" />
 
@@ -51,7 +52,7 @@
       <label for="fechaFin">Fecha de Término:</label>
       <input type="date" id="fechaFin" readonly />
 
-      <!-- 6) Composición -->
+      <!-- Composición -->
       <label for="totalPax">Total Pasajeros:</label>
       <input type="number" id="totalPax" readonly />
 
@@ -61,7 +62,7 @@
       <label for="estudiantes">Estudiantes:</label>
       <input type="number" id="estudiantes" min="0" />
 
-      <!-- 7) Transporte -->
+      <!-- Transporte -->
       <label for="transporte">Tipo de Transporte:</label>
       <select id="transporte">
         <option value="">Seleccione...</option>
@@ -76,12 +77,12 @@
         <div id="tramosDetalle"></div>
       </div>
 
-      <!-- 8) Hoteles por noche -->
+      <!-- Hoteles por noche -->
       <div id="nochesContainer"></div>
 
-      <!-- 9) Ciudades / Observaciones -->
+      <!-- Ciudades / Observaciones -->
       <label for="ciudades">Ciudades a recorrer:</label>
-      <input type="text" id="ciudades" placeholder="Se añadirán automáticamente" readonly />
+      <input type="text" id="ciudades" readonly />
 
       <label for="observaciones">Observaciones Logísticas:</label>
       <textarea id="observaciones" rows="3"></textarea>
@@ -90,7 +91,7 @@
     </form>
   </main>
 
-  <!-- Firebase + jQuery + JS -->
+  <!-- Scripts -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="infoviajes.js"></script>
 </body>
