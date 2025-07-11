@@ -165,23 +165,6 @@ function addTramo(data={}) {
 
 function renderTramos(arr){ arr.forEach(t=>addTramo(t)); }
 
-function addHotelRow(data={hotel:'',noches:''}) {
-  const dest=inpDestino.value;
-  const opts=(HOTELES_MAP[dest]||[]).map(h=>
-    `<option value="${h.name}">${h.name} (${h.city})</option>`
-  ).join('');
-  const row=document.createElement('div');
-  row.classList.add('hotel-row');
-  row.innerHTML=`
-    <select class="hotel-select">
-      <option value="">-- Seleccionar Hotel --</option>${opts}
-    </select>
-    <input type="number" class="hotel-nights" min="1" placeholder="Noches" value="${data.noches||''}">
-    <button type="button" class="btn-remove">×</button>`;
-  row.querySelector('.btn-remove').onclick=()=>row.remove();
-  hotelesCtr.appendChild(row);
-}
-
 // ——————————————————————————————
 // 8.b) recalcHotels(): comprueba que la suma de noches ≤ noches del programa
 // ——————————————————————————————
