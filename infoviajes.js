@@ -58,6 +58,35 @@ async function initForm() {
     return `<option value="${d.id}">${dta.numeroNegocio}</option>`;
   }).join('');
 
+  const DESTINOS = ['Sur de Chile','Norte de Chile','Bariloche','Brasil'];
+  const PROGRAMAS = [
+    'BARILOCHE 6/5',
+    'BARILOCHE 7/6',
+    'CAMBORIU ECO 8/7',
+    'CAMBORIU VUELO DIRECTO 6/5',
+    'CAMBORIU VUELO DIRECTO 8/7',
+    'SAN PEDRO DE ATACAMA 7/6',
+    'SUR DE CHILE 7/6',
+    'SUR DE CHILE HUILO HUILO 7/6',
+    'SUR DE CHILE PUCON 7/6',
+    'SUR Y BARILOCHE 7/6',
+    'SUR Y BARILOCHE 8/7'
+  ].sort();
+
+  // 3.x.1) Poblar <select id="destino">
+  document.getElementById('destino').innerHTML = DESTINOS
+    .map(d => `<option value="${d}">${d}</option>`).join('');
+
+  // 3.x.2) Poblar <select id="programa">
+  document.getElementById('programa').innerHTML = PROGRAMAS
+    .filter(p => { 
+      // opcional: filtrar programas que contengan el destino seleccionado
+      const selDest = document.getElementById('destino').value;
+      return !selDest || p.includes(selDest.toUpperCase());
+    })
+    .map(p => `<option value="${p}">${p}</option>`)
+    .join('');
+
   // 3.2) Listeners básicos
   selNum.onchange      = cargarGrupo;
   inpInicio.onchange   = calcularFin;
@@ -98,6 +127,9 @@ async function cargarGrupo() {
   inpCiudades.value   = (g.ciudades || []).join('; ');
   inpObs.value        = g.observaciones  || '';
 
+  document.getElementById('destino').value  = g.destino  || '';
+  document.getElementById('programa').value = g.programa || '';
+  
   // 4.3) Tramos previos
   toggleTramos();
   if (Array.isArray(g.tramos)) renderTramos(g.tramos);
