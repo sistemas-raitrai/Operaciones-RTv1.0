@@ -65,7 +65,7 @@ async function cargarYMostrarTabla() {
     dom:'rtip', pageLength:-1, lengthChange:false,
     order:[[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
     scrollX:true,
-    columnDefs:[{ targets:[5,6], visible:false }]
+    columnDefs:[{ targets:[5,6,25], visible:false }]
   });
 
   // 5) Edición inline en blur
