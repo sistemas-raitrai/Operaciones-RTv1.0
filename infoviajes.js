@@ -2,7 +2,8 @@
 // 0) Importes Firebase (v11.7.3 modular)
 // ——————————————————————————————
 import { app, db } from './firebase-init.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import { getAuth, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   doc, getDoc, updateDoc,
   collection, getDocs, addDoc
@@ -50,46 +51,43 @@ onAuthStateChanged(auth, user => {
 // 3) init: poblar select y listeners
 // ——————————————————————————————
 async function initForm() {
-  // leer todos los grupos
+  // 3.1) Leer todos los grupos y poblar select
   const snap = await getDocs(collection(db, 'grupos'));
   selNum.innerHTML = snap.docs.map(d => {
     const dta = d.data();
     return `<option value="${d.id}">${dta.numeroNegocio}</option>`;
   }).join('');
 
-  // listeners
+  // 3.2) Listeners básicos
   selNum.onchange      = cargarGrupo;
   inpInicio.onchange   = calcularFin;
   inpDuracion.oninput  = calcularFin;
   inpAdultos.oninput   = ajustarComp;
   inpEst.oninput       = ajustarComp;
-  selTran.onchange      = toggleTramos;
-  btnAddTramo.onclick   = () => addTramo();
-  form.onsubmit         = guardarInfo;
+  selTran.onchange     = toggleTramos;
+  btnAddTramo.onclick  = () => addTramo();
+  form.onsubmit        = guardarInfo;
 
-  // disparar primera carga
+  // 3.3) Fuerza primera carga
   selNum.dispatchEvent(new Event('change'));
 }
 
 // ——————————————————————————————
-// 4) cargarGrupo: mezcla “grupos/{id}” + los campos previos de “viajes”
+// 4) cargarGrupo: lee ‘grupos/{id}’ y rellena form
 // ——————————————————————————————
 async function cargarGrupo() {
-  const id = selNum.value;
-  // 4.1) cargar siempre de la colección “grupos”
+  const id    = selNum.value;
   const snapG = await getDoc(doc(db,'grupos',id));
   if (!snapG.exists()) return;
   const g = snapG.data();
 
-  // base de grupos
+  // 4.1) Campos base (solo lectura)
   inpNombre.value   = g.nombreGrupo   || '';
   inpDestino.value  = g.destino       || '';
   inpPrograma.value = g.programa      || '';
   inpTotal.value    = g.cantidadgrupo || '';
 
-  // 4.2) si había datos anteriores de “viaje” en ese mismo doc de grupos,
-  //      precargamos coordinador y tramos
-  //      (todo está en el mismo documento)
+  // 4.2) Campos editables (se guardan en el mismo doc)
   inpCoord.value      = g.coordinador    || '';
   inpInicio.value     = g.fechaInicio    || '';
   inpDuracion.value   = g.duracion       || '';
@@ -99,6 +97,8 @@ async function cargarGrupo() {
   inpHoteles.value    = (g.hoteles  || []).join('; ');
   inpCiudades.value   = (g.ciudades || []).join('; ');
   inpObs.value        = g.observaciones  || '';
+
+  // 4.3) Tramos previos
   toggleTramos();
   if (Array.isArray(g.tramos)) renderTramos(g.tramos);
 
@@ -106,7 +106,7 @@ async function cargarGrupo() {
 }
 
 // ——————————————————————————————
-// 5) calcularFin: inicio + duracion -1
+// 5) calcularFin: fechaFin = inicio + duracion - 1
 // ——————————————————————————————
 function calcularFin() {
   if (!inpInicio.value || !inpDuracion.value) {
@@ -119,13 +119,13 @@ function calcularFin() {
 }
 
 // ——————————————————————————————
-// 6) ajustarComp: adultos+est = total
+// 6) ajustarComp: adultos + estudiantes = total
 // ——————————————————————————————
 function ajustarComp(e) {
   const total = Number(inpTotal.value)||0;
   const a     = Number(inpAdultos.value)||0;
   const s     = Number(inpEst.value)||0;
-  if (e.target===inpAdultos) {
+  if (e.target === inpAdultos) {
     inpEst.value = total - a;
   } else {
     inpAdultos.value = total - s;
@@ -133,7 +133,7 @@ function ajustarComp(e) {
 }
 
 // ——————————————————————————————
-// 7) toggleTramos: muestra/oculta sección
+// 7) toggleTramos: mostrar/ocultar sección de tramos
 // ——————————————————————————————
 function toggleTramos() {
   const t = selTran.value;
@@ -149,15 +149,15 @@ function toggleTramos() {
 }
 
 // ——————————————————————————————
-// 8) addTramo: crea fieldset con campos reducidos
+// 8) addTramo: crea un nuevo fieldset con los campos mínimos
 // ——————————————————————————————
-function addTramo(data={}) {
+function addTramo(data = {}) {
   const tipo = selTran.value;
   tramoCount++;
   let html = '';
 
-  // VUELO (ida + vuelta)
-  if (tipo==='aereo'||tipo==='mixto') {
+  // **Vuelo** (ida + vuelta)
+  if (tipo === 'aereo' || tipo === 'mixto') {
     html += `
       <fieldset class="tramo">
         <legend>Vuelo ${tramoCount}</legend>
@@ -166,7 +166,6 @@ function addTramo(data={}) {
         <label>Origen (ida):<input value="${data.origen||''}"></label>
         <label>Aerolínea (ida):<input value="${data.aerolinea||''}"></label>
         <label>N° Vuelo (ida):<input value="${data.numero||''}"></label>
-        <!-- Separador -->
         <hr>
         <!-- Vuelta -->
         <label>Origen (vta):<input value="${data.origenVta||''}"></label>
@@ -178,8 +177,8 @@ function addTramo(data={}) {
     `;
   }
 
-  // BUS terrestre
-  if (tipo==='terrestre'||tipo==='mixto') {
+  // **Bus** (terrestre)
+  if (tipo === 'terrestre' || tipo === 'mixto') {
     html += `
       <fieldset class="tramo">
         <legend>Bus ${tramoCount}</legend>
@@ -193,17 +192,20 @@ function addTramo(data={}) {
     `;
   }
 
-  const div=document.createElement('div');
-  div.innerHTML=html;
-  div.querySelectorAll('.btn-del').forEach(b=> b.onclick=()=> b.closest('fieldset').remove());
+  // Inserto y enlazo “Eliminar”
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('.btn-del').forEach(b =>
+    b.onclick = () => b.closest('fieldset').remove()
+  );
   contTramos.appendChild(div);
 }
 
 // ——————————————————————————————
-// 9) renderTramos: precargar si existen
+// 9) renderTramos: recarga tramos existentes
 // ——————————————————————————————
 function renderTramos(arr) {
-  arr.forEach(t=> addTramo(t));
+  arr.forEach(t => addTramo(t));
 }
 
 // ——————————————————————————————
@@ -213,68 +215,68 @@ async function guardarInfo(evt) {
   evt.preventDefault();
   const id    = selNum.value;
   const refG  = doc(db,'grupos',id);
-  const snap  = await getDoc(refG);
-  const before = snap.exists()? snap.data(): {};
+  const snapG = await getDoc(refG);
+  const before = snapG.exists() ? snapG.data() : {};
 
-  // recojo tramos
-  const tramos = [...contTramos.querySelectorAll('fieldset.tramo')].map(fs=>{
+  // Recojo tramos
+  const tramos = [...contTramos.querySelectorAll('fieldset.tramo')].map(fs => {
     const inp = fs.querySelectorAll('input');
     return {
-      salida:      inp[0].value,
-      origen:      inp[1].value,
-      aerolinea:   inp[2].value,
-      numero:      inp[3].value,
-      origenVta:   inp[5].value,
-      aerolineaVta:inp[6].value,
-      numeroVta:   inp[7].value,
-      salidaVta:   inp[8].value,
-      lugar:       inp[9]?.value||'',
-      hora:        inp[10]?.value||'',
-      empresa:     inp[11]?.value||'',
-      cond1:       inp[12]?.value||'',
-      cond2:       inp[13]?.value||''
+      salida:       inp[0].value,
+      origen:       inp[1].value,
+      aerolinea:    inp[2].value,
+      numero:       inp[3].value,
+      origenVta:    inp[5].value,
+      aerolineaVta: inp[6].value,
+      numeroVta:    inp[7].value,
+      salidaVta:    inp[8].value,
+      lugar:        inp[9]?.value   || '',
+      hora:         inp[10]?.value  || '',
+      empresa:      inp[11]?.value  || '',
+      cond1:        inp[12]?.value  || '',
+      cond2:        inp[13]?.value  || ''
     };
   });
 
-  // payload completo
+  // Payload completo
   const payload = {
-    coordinador:   inpCoord.value,
-    fechaInicio:   inpInicio.value,
-    duracion:      Number(inpDuracion.value),
-    fechaFin:      inpFin.value,
-    adultos:       Number(inpAdultos.value),
-    estudiantes:   Number(inpEst.value),
-    transporte:    selTran.value,
+    coordinador:    inpCoord.value,
+    fechaInicio:    inpInicio.value,
+    duracion:       Number(inpDuracion.value),
+    fechaFin:       inpFin.value,
+    adultos:        Number(inpAdultos.value),
+    estudiantes:    Number(inpEst.value),
+    transporte:     selTran.value,
     tramos,
-    hoteles:       inpHoteles.value.split(';').map(s=>s.trim()).filter(x=>x),
-    ciudades:      inpCiudades.value.split(';').map(s=>s.trim()).filter(x=>x),
-    observaciones: inpObs.value,
+    hoteles:        inpHoteles.value.split(';').map(s=>s.trim()).filter(x=>x),
+    ciudades:       inpCiudades.value.split(';').map(s=>s.trim()).filter(x=>x),
+    observaciones:  inpObs.value,
     actualizadoPor: auth.currentUser.email,
     actualizadoEn:  new Date()
   };
 
-  // 10.1) actualizar doc en grupos/{id}
+  // 10.1) Actualiza el doc en grupos/{id}
   await updateDoc(refG, payload);
 
-  // 10.2) comparar y registrar en historial
+  // 10.2) Compara y registra cada cambio en Firestore “historial”
   const cambios = [];
   for (const k in payload) {
     if (JSON.stringify(before[k]||'') !== JSON.stringify(payload[k]||'')) {
-      cambios.push({ campo:k, anterior:before[k]||null, nuevo:payload[k] });
+      cambios.push({ campo: k, anterior: before[k]||null, nuevo: payload[k] });
     }
   }
   if (cambios.length) {
     await Promise.all(cambios.map(c =>
-      addDoc(collection(db,'historial'),{
-        numeroNegocio: id,
-        campo:         c.campo,
-        anterior:      c.anterior,
-        nuevo:         c.nuevo,
-        modificadoPor: auth.currentUser.email,
-        timestamp:     new Date()
+      addDoc(collection(db,'historial'), {
+        numeroNegocio:  id,
+        campo:          c.campo,
+        anterior:       c.anterior,
+        nuevo:          c.nuevo,
+        modificadoPor:  auth.currentUser.email,
+        timestamp:      new Date()
       })
     ));
   }
 
-  alert('✅ Datos guardados y registrados en historial');
+  alert('✅ Datos guardados y registrados');
 }
