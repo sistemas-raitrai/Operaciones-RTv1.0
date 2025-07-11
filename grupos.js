@@ -62,26 +62,46 @@ async function cargarYMostrarTabla() {
     };
   });
 
-  // 3) Renderizar <tbody>
-  const $tb = $('#tablaGrupos tbody').empty();
+  const destinosUnicos = new Set();
+  const aniosUnicos    = new Set();
+  
   valores.forEach(item => {
-    const $tr = $('<tr>');
-    item.fila.forEach((celda, idx) => {
-      $tr.append(
-        $('<td>')
-          .text(celda)                          // el valor
-          .attr('data-doc-id', item.id)         // para saber de qué doc viene
-          .attr('data-campo', camposFire[idx])  // para saber qué campo actualiza
-          .attr('data-original', celda)         // para comparar si se edita
-      );
-    });
-    $tb.append($tr);
+    const fila = item.fila;
+    destinosUnicos.add(fila[8]);   // columna “Destino” en índice 8
+    aniosUnicos.add(fila[7]);      // columna “Año” en índice 7
   });
+  
+  // convierte Sets a Arrays ordenados
+  const destinos = Array.from(destinosUnicos).sort();
+  const anios    = Array.from(aniosUnicos).sort();
+  
+  // ahora vuelca al <select>
+  const $filtroDestino = $('#filtroDestino').empty().append('<option value="">Todos</option>');
+  destinos.forEach(d => $filtroDestino.append(`<option value="${d}">${d}</option>`));
+  
+  const $filtroAno = $('#filtroAno').empty().append('<option value="">Todos</option>');
+  anios.forEach(a => $filtroAno.append(`<option value="${a}">${a}</option>`));
+  
+    // 3) Renderizar <tbody>
+    const $tb = $('#tablaGrupos tbody').empty();
+    valores.forEach(item => {
+      const $tr = $('<tr>');
+      item.fila.forEach((celda, idx) => {
+        $tr.append(
+          $('<td>')
+            .text(celda)                          // el valor
+            .attr('data-doc-id', item.id)         // para saber de qué doc viene
+            .attr('data-campo', camposFire[idx])  // para saber qué campo actualiza
+            .attr('data-original', celda)         // para comparar si se edita
+        );
+      });
+      $tb.append($tr);
+    });
 
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
     language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    dom:        'Bfrtip rt',        // B = buttons, f = filtro, r = procesamiento, t = tabla
+    dom:        'Brtip rt',        // B = buttons, f = filtro, r = procesamiento, t = tabla
     buttons: [
       {
         extend: 'colvis',
@@ -99,6 +119,27 @@ async function cargarYMostrarTabla() {
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
+
+  // 1) Buscador de palabras clave
+  $('#buscador').on('input', function() {
+    tabla.search(this.value).draw();
+  });
+  
+  // 2) Filtro por Destino (columna índice 8)
+  $('#filtroDestino').on('change', function() {
+    tabla
+      .column(8)            // índice de “Destino”
+      .search(this.value)   // vacío ("") = todos
+      .draw();
+  });
+  
+  // 3) Filtro por Año de Viaje (columna índice 7)
+  $('#filtroAno').on('change', function() {
+    tabla
+      .column(7)            // índice de “Año de Viaje”
+      .search(this.value)
+      .draw();
+  });
 
   // 5) Edición inline en blur
   $('#tablaGrupos tbody').on('focusout','td[contenteditable]', async function(){
