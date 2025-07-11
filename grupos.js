@@ -20,7 +20,7 @@ const camposFire = [
   "anoViaje",       // 7
   "destino",        // 8
   "programa",       // 9
-  "inicio",         // 10
+  "fechaInicio",         // 10
   "hotel",          // 11
   "asistenciaEnViajes", // 12
   "autorizacion",   // 13
@@ -29,7 +29,7 @@ const camposFire = [
   "versionFicha",   // 16
   "creadoPor",      // 17
   "fechaCreacion",  // 18
-  "fin",            // 19
+  "fechaFin",            // 19
   "transporte",     // 20
   "ciudades",       // 21
   "hoteles",        // 22
@@ -57,8 +57,8 @@ async function cargarYMostrarTabla() {
   const valores = snap.docs.map(docSnap => {
     const d = docSnap.data();
     return {
-      id: docSnap.id,
-      fila: camposFire.map(c => d[c] || '')
+      id:  docSnap.id,                        // el ID interno de Firestore
+      fila: camposFire.map(c => d[c] || '')   // [ d["numeroNegocio"], d["nombreGrupo"], … ]
     };
   });
 
@@ -69,10 +69,10 @@ async function cargarYMostrarTabla() {
     item.fila.forEach((celda, idx) => {
       $tr.append(
         $('<td>')
-          .text(celda)
-          .attr('data-doc-id', item.id)
-          .attr('data-campo', camposFire[idx])
-          .attr('data-original', celda)
+          .text(celda)                          // el valor
+          .attr('data-doc-id', item.id)         // para saber de qué doc viene
+          .attr('data-campo', camposFire[idx])  // para saber qué campo actualiza
+          .attr('data-original', celda)         // para comparar si se edita
       );
     });
     $tb.append($tr);
