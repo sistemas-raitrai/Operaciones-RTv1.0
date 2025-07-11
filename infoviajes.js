@@ -1,6 +1,4 @@
-// ——————————————————————————————
-// 0) Importes Firebase (v11.7.3 modular)
-// ——————————————————————————————
+// 0) Importes Firebase
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -11,304 +9,180 @@ import {
 
 const auth = getAuth(app);
 
-// ——————————————————————————————
-// 1) Referencias DOM
-// ——————————————————————————————
-const selNum        = document.getElementById('numeroNegocio');
-const inpNombre     = document.getElementById('nombreGrupo');
-const inpDestino    = document.getElementById('destino');
-const inpPrograma   = document.getElementById('programa');
-const inpCoord      = document.getElementById('coordinador');
-const inpInicio     = document.getElementById('fechaInicio');
-const inpDuracion   = document.getElementById('duracion');
-const inpFin        = document.getElementById('fechaFin');
-const inpTotal      = document.getElementById('totalPax');
-const inpAdultos    = document.getElementById('adultos');
-const inpEst        = document.getElementById('estudiantes');
-const selTran       = document.getElementById('transporte');
-const seccionTramos = document.getElementById('seccionTramos');
-const contTramos    = document.getElementById('tramosDetalle');
-const btnAddTramo   = document.getElementById('btnAddTramo');
-const inpHoteles    = document.getElementById('hoteles');
-const inpCiudades   = document.getElementById('ciudades');
-const inpObs        = document.getElementById('observaciones');
-const form          = document.getElementById('formInfoViaje');
+// 1) DOM
+const selNum       = document.getElementById('numeroNegocio');
+const inpNombre    = document.getElementById('nombreGrupo');
+const selDestino   = document.getElementById('destino');
+const selPrograma  = document.getElementById('programa');
+const inpCoord     = document.getElementById('coordinador');
+const inpInicio    = document.getElementById('fechaInicio');
+const inpDuracion  = document.getElementById('duracion');
+const inpFin       = document.getElementById('fechaFin');
+const inpTotal     = document.getElementById('totalPax');
+const inpAdultos   = document.getElementById('adultos');
+const inpEst       = document.getElementById('estudiantes');
+const selTran      = document.getElementById('transporte');
+const seccionTramos= document.getElementById('seccionTramos');
+const contTramos   = document.getElementById('tramosDetalle');
+const btnAddTramo  = document.getElementById('btnAddTramo');
+const nochesCtr    = document.getElementById('nochesContainer');
+const inpCiudades  = document.getElementById('ciudades');
+const inpObs       = document.getElementById('observaciones');
+const form         = document.getElementById('formInfoViaje');
 
 let tramoCount = 0;
 
-// ——————————————————————————————
-// 2) Autenticación y arranque
-// ——————————————————————————————
+// 2) Datos estáticos
+const DESTINOS = ['Sur de Chile','Norte de Chile','Bariloche','Brasil'];
+const PROGRAMAS = [
+  'BARILOCHE 6/5','BARILOCHE 7/6',
+  'CAMBORIU ECO 8/7','CAMBORIU VUELO DIRECTO 6/5','CAMBORIU VUELO DIRECTO 8/7',
+  'SAN PEDRO DE ATACAMA 7/6',
+  'SUR DE CHILE 7/6','SUR DE CHILE HUILO HUILO 7/6','SUR DE CHILE PUCON 7/6',
+  'SUR Y BARILOCHE 7/6','SUR Y BARILOCHE 8/7'
+].sort();
+
+// Mapa destino → hoteles con su ciudad
+const HOTELES_MAP = {
+  'Sur de Chile': [
+    { name:'BORDELAGO',      city:'Puerto Varas' },
+    { name:'VIENTOS DEL SUR',city:'Pucón' }
+  ],
+  'Norte de Chile': [
+    { name:'LA ALDEA',       city:'San Pedro de Atacama' }
+  ],
+  'Brasil': [
+    { name:'MARIMAR',        city:'Camboriú' },
+    { name:'PLAZA CAMBORIÚ', city:'Camboriú' },
+    { name:'BRUT',           city:'Camboriú' },
+    { name:'HM',             city:'Camboriú' },
+    { name:'GERANIUM',       city:'Camboriú' },
+    { name:'MARAMBAIA',      city:'Camboriú' }
+  ],
+  'Bariloche': [
+    { name:'VILLA HUINID',   city:'Bariloche' },
+    { name:'ECOMAX',         city:'Bariloche' }
+  ]
+};
+
+// 3) Auth + arranque
 onAuthStateChanged(auth, user => {
-  if (!user) {
-    location.href = 'login.html';
-  } else {
-    initForm();
-  }
+  if (!user) return location.href='login.html';
+  initForm();
 });
 
-// ——————————————————————————————
-// 3) init: poblar select y listeners
-// ——————————————————————————————
+// 4) initForm: pobla selects y listeners
 async function initForm() {
-  // 3.1) Leer todos los grupos y poblar select
-  const snap = await getDocs(collection(db, 'grupos'));
-  selNum.innerHTML = snap.docs.map(d => {
-    const dta = d.data();
-    return `<option value="${d.id}">${dta.numeroNegocio}</option>`;
+  // 4.1) Grupos → selectNum
+  const snap = await getDocs(collection(db,'grupos'));
+  selNum.innerHTML = snap.docs.map(d=>{
+    const o = d.data();
+    return `<option value="${d.id}">${o.numeroNegocio}</option>`;
   }).join('');
 
-  const DESTINOS = ['Sur de Chile','Norte de Chile','Bariloche','Brasil'];
-  const PROGRAMAS = [
-    'BARILOCHE 6/5',
-    'BARILOCHE 7/6',
-    'CAMBORIU ECO 8/7',
-    'CAMBORIU VUELO DIRECTO 6/5',
-    'CAMBORIU VUELO DIRECTO 8/7',
-    'SAN PEDRO DE ATACAMA 7/6',
-    'SUR DE CHILE 7/6',
-    'SUR DE CHILE HUILO HUILO 7/6',
-    'SUR DE CHILE PUCON 7/6',
-    'SUR Y BARILOCHE 7/6',
-    'SUR Y BARILOCHE 8/7'
-  ].sort();
+  // 4.2) Destino y Programa
+  selDestino.innerHTML = DESTINOS.map(d=>`<option>${d}</option>`).join('');
+  selPrograma.innerHTML = PROGRAMAS.map(p=>`<option>${p}</option>`).join('');
 
-  // 3.x.1) Poblar <select id="destino">
-  document.getElementById('destino').innerHTML = DESTINOS
-    .map(d => `<option value="${d}">${d}</option>`).join('');
+  // 4.3) Listeners básicos
+  selNum.onchange     = cargarGrupo;
+  selDestino.onchange = onDestinoChange;
+  selPrograma.onchange= onProgramaChange;
+  inpInicio.onchange  = calcularFin;
+  inpDuracion.oninput = calcularFin;
+  inpAdultos.oninput  = ajustarComp;
+  inpEst.oninput      = ajustarComp;
+  selTran.onchange    = toggleTramos;
+  btnAddTramo.onclick = ()=> addTramo();
+  form.onsubmit       = guardarInfo;
 
-  // 3.x.2) Poblar <select id="programa">
-  document.getElementById('programa').innerHTML = PROGRAMAS
-    .filter(p => { 
-      // opcional: filtrar programas que contengan el destino seleccionado
-      const selDest = document.getElementById('destino').value;
-      return !selDest || p.includes(selDest.toUpperCase());
-    })
-    .map(p => `<option value="${p}">${p}</option>`)
-    .join('');
-
-  // 3.2) Listeners básicos
-  selNum.onchange      = cargarGrupo;
-  inpInicio.onchange   = calcularFin;
-  inpDuracion.oninput  = calcularFin;
-  inpAdultos.oninput   = ajustarComp;
-  inpEst.oninput       = ajustarComp;
-  selTran.onchange     = toggleTramos;
-  btnAddTramo.onclick  = () => addTramo();
-  form.onsubmit        = guardarInfo;
-
-  // 3.3) Fuerza primera carga
+  // 4.4) Primera carga
   selNum.dispatchEvent(new Event('change'));
 }
 
-// ——————————————————————————————
-// 4) cargarGrupo: lee ‘grupos/{id}’ y rellena form
-// ——————————————————————————————
-async function cargarGrupo() {
-  const id    = selNum.value;
-  const snapG = await getDoc(doc(db,'grupos',id));
-  if (!snapG.exists()) return;
-  const g = snapG.data();
-
-  // 4.1) Campos base (solo lectura)
-  inpNombre.value   = g.nombreGrupo   || '';
-  inpDestino.value  = g.destino       || '';
-  inpPrograma.value = g.programa      || '';
-  inpTotal.value    = g.cantidadgrupo || '';
-
-  // 4.2) Campos editables (se guardan en el mismo doc)
-  inpCoord.value      = g.coordinador    || '';
-  inpInicio.value     = g.fechaInicio    || '';
-  inpDuracion.value   = g.duracion       || '';
-  inpAdultos.value    = g.adultos        || '';
-  inpEst.value        = g.estudiantes    || '';
-  selTran.value       = g.transporte     || '';
-  inpHoteles.value    = (g.hoteles  || []).join('; ');
-  inpCiudades.value   = (g.ciudades || []).join('; ');
-  inpObs.value        = g.observaciones  || '';
-
-  document.getElementById('destino').value  = g.destino  || '';
-  document.getElementById('programa').value = g.programa || '';
-  
-  // 4.3) Tramos previos
-  toggleTramos();
-  if (Array.isArray(g.tramos)) renderTramos(g.tramos);
-
-  calcularFin();
+// 5) Cuando cambia Destino → refiltra Programas
+function onDestinoChange() {
+  const d = selDestino.value;
+  selPrograma.innerHTML = PROGRAMAS
+    .filter(p => p.toUpperCase().includes(d.toUpperCase()))
+    .map(p=>`<option>${p}</option>`).join('');
+  // También recarga hoteles si ya había programa
+  generateHotelInputs();
 }
 
-// ——————————————————————————————
-// 5) calcularFin: fechaFin = inicio + duracion - 1
-// ——————————————————————————————
-function calcularFin() {
-  if (!inpInicio.value || !inpDuracion.value) {
-    inpFin.value = '';
-    return;
-  }
-  const d = new Date(inpInicio.value);
-  d.setDate(d.getDate() + Number(inpDuracion.value) - 1);
-  inpFin.value = d.toISOString().slice(0,10);
-}
-
-// ——————————————————————————————
-// 6) ajustarComp: adultos + estudiantes = total
-// ——————————————————————————————
-function ajustarComp(e) {
-  const total = Number(inpTotal.value)||0;
-  const a     = Number(inpAdultos.value)||0;
-  const s     = Number(inpEst.value)||0;
-  if (e.target === inpAdultos) {
-    inpEst.value = total - a;
-  } else {
-    inpAdultos.value = total - s;
+// 6) Cuando cambia Programa → extrae duración + noches
+function onProgramaChange() {
+  const txt = selPrograma.value || '';
+  const m = txt.match(/(\d+)\/(\d+)$/);
+  if (m) {
+    inpDuracion.value = m[1];
+    calcularFin();
+    generateHotelInputs(Number(m[2]));
   }
 }
 
-// ——————————————————————————————
-// 7) toggleTramos: mostrar/ocultar sección de tramos
-// ——————————————————————————————
-function toggleTramos() {
-  const t = selTran.value;
-  if (['aereo','terrestre','mixto'].includes(t)) {
-    seccionTramos.style.display = 'block';
-    contTramos.innerHTML = '';
-    tramoCount = 0;
-  } else {
-    seccionTramos.style.display = 'none';
-    contTramos.innerHTML = '';
-    tramoCount = 0;
-  }
-}
-
-// ——————————————————————————————
-// 8) addTramo: crea un nuevo fieldset con los campos mínimos
-// ——————————————————————————————
-function addTramo(data = {}) {
-  const tipo = selTran.value;
-  tramoCount++;
-  let html = '';
-
-  // **Vuelo** (ida + vuelta)
-  if (tipo === 'aereo' || tipo === 'mixto') {
-    html += `
-      <fieldset class="tramo">
-        <legend>Vuelo ${tramoCount}</legend>
-        <!-- Ida -->
-        <label>Hora Salida (ida):<input type="time" value="${data.salida||''}"></label>
-        <label>Origen (ida):<input value="${data.origen||''}"></label>
-        <label>Aerolínea (ida):<input value="${data.aerolinea||''}"></label>
-        <label>N° Vuelo (ida):<input value="${data.numero||''}"></label>
-        <hr>
-        <!-- Vuelta -->
-        <label>Origen (vta):<input value="${data.origenVta||''}"></label>
-        <label>Aerolínea (vta):<input value="${data.aerolineaVta||''}"></label>
-        <label>N° Vuelo (vta):<input value="${data.numeroVta||''}"></label>
-        <label>Hora Salida (vta):<input type="time" value="${data.salidaVta||''}"></label>
-        <button type="button" class="btn-del">Eliminar</button>
-      </fieldset>
-    `;
-  }
-
-  // **Bus** (terrestre)
-  if (tipo === 'terrestre' || tipo === 'mixto') {
-    html += `
-      <fieldset class="tramo">
-        <legend>Bus ${tramoCount}</legend>
-        <label>Lugar Encuentro:<input value="${data.lugar||''}"></label>
-        <label>Hora Inicio:<input type="time" value="${data.hora||''}"></label>
-        <label>Empresa:<input value="${data.empresa||''}"></label>
-        <label>Conductor 1:<input value="${data.cond1||''}"></label>
-        <label>Conductor 2:<input value="${data.cond2||''}"></label>
-        <button type="button" class="btn-del">Eliminar</button>
-      </fieldset>
-    `;
-  }
-
-  // Inserto y enlazo “Eliminar”
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  div.querySelectorAll('.btn-del').forEach(b =>
-    b.onclick = () => b.closest('fieldset').remove()
-  );
-  contTramos.appendChild(div);
-}
-
-// ——————————————————————————————
-// 9) renderTramos: recarga tramos existentes
-// ——————————————————————————————
-function renderTramos(arr) {
-  arr.forEach(t => addTramo(t));
-}
-
-// ——————————————————————————————
-// 10) guardarInfo: updateDoc(grupos/{id}) + historial
-// ——————————————————————————————
-async function guardarInfo(evt) {
-  evt.preventDefault();
-  const id    = selNum.value;
-  const refG  = doc(db,'grupos',id);
-  const snapG = await getDoc(refG);
-  const before = snapG.exists() ? snapG.data() : {};
-
-  // Recojo tramos
-  const tramos = [...contTramos.querySelectorAll('fieldset.tramo')].map(fs => {
-    const inp = fs.querySelectorAll('input');
-    return {
-      salida:       inp[0].value,
-      origen:       inp[1].value,
-      aerolinea:    inp[2].value,
-      numero:       inp[3].value,
-      origenVta:    inp[5].value,
-      aerolineaVta: inp[6].value,
-      numeroVta:    inp[7].value,
-      salidaVta:    inp[8].value,
-      lugar:        inp[9]?.value   || '',
-      hora:         inp[10]?.value  || '',
-      empresa:      inp[11]?.value  || '',
-      cond1:        inp[12]?.value  || '',
-      cond2:        inp[13]?.value  || ''
+// 7) Genera X selects de hotel según noches y destino
+function generateHotelInputs(noches = Number(inpDuracion.value)-1) {
+  nochesCtr.innerHTML = '';
+  const dest = selDestino.value;
+  const hoteles = HOTELES_MAP[dest] || [];
+  for (let i=1; i<=noches; i++) {
+    const sel = document.createElement('select');
+    sel.innerHTML = `<option value="">Noche ${i}…</option>` +
+      hoteles.map(h=>`<option value="${h.name}">${h.name} (${h.city})</option>`).join('');
+    sel.onchange = () => {
+      // al elegir hotel, auto-agrega ciudad
+      const opt = hoteles.find(h=>h.name===sel.value);
+      if (opt) {
+        const list = new Set(inpCiudades.value.split(';').map(s=>s.trim()).filter(Boolean));
+        list.add(opt.city);
+        inpCiudades.value = Array.from(list).join('; ');
+      }
     };
-  });
-
-  // Payload completo
-  const payload = {
-    coordinador:    inpCoord.value,
-    fechaInicio:    inpInicio.value,
-    duracion:       Number(inpDuracion.value),
-    fechaFin:       inpFin.value,
-    adultos:        Number(inpAdultos.value),
-    estudiantes:    Number(inpEst.value),
-    transporte:     selTran.value,
-    tramos,
-    hoteles:        inpHoteles.value.split(';').map(s=>s.trim()).filter(x=>x),
-    ciudades:       inpCiudades.value.split(';').map(s=>s.trim()).filter(x=>x),
-    observaciones:  inpObs.value,
-    actualizadoPor: auth.currentUser.email,
-    actualizadoEn:  new Date()
-  };
-
-  // 10.1) Actualiza el doc en grupos/{id}
-  await updateDoc(refG, payload);
-
-  // 10.2) Compara y registra cada cambio en Firestore “historial”
-  const cambios = [];
-  for (const k in payload) {
-    if (JSON.stringify(before[k]||'') !== JSON.stringify(payload[k]||'')) {
-      cambios.push({ campo: k, anterior: before[k]||null, nuevo: payload[k] });
-    }
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = `<label>Noche ${i}:</label>`;
+    wrapper.appendChild(sel);
+    nochesCtr.appendChild(wrapper);
   }
-  if (cambios.length) {
-    await Promise.all(cambios.map(c =>
-      addDoc(collection(db,'historial'), {
-        numeroNegocio:  id,
-        campo:          c.campo,
-        anterior:       c.anterior,
-        nuevo:          c.nuevo,
-        modificadoPor:  auth.currentUser.email,
-        timestamp:      new Date()
-      })
-    ));
-  }
-
-  alert('✅ Datos guardados y registrados');
 }
+
+// 8) cargarGrupo: precarga todos los campos desde grupos/{id}
+async function cargarGrupo() {
+  const id = selNum.value;
+  const snap = await getDoc(doc(db,'grupos',id));
+  if (!snap.exists()) return;
+  const g = snap.data();
+
+  // Solo lectura
+  inpNombre.value  = g.nombreGrupo    || '';
+  selDestino.value = g.destino        || '';
+  selPrograma.value= g.programa       || '';
+  inpTotal.value   = g.cantidadgrupo  || '';
+
+  // Editables
+  inpCoord.value     = g.coordinador    || '';
+  inpInicio.value    = g.fechaInicio    || '';
+  inpDuracion.value  = g.duracion       || '';
+  inpAdultos.value   = g.adultos        || '';
+  inpEst.value       = g.estudiantes    || '';
+  selTran.value      = g.transporte     || '';
+  inpCiudades.value  = (g.ciudades||[]).join('; ');
+  inpObs.value       = g.observaciones  || '';
+
+  // Fecha fin + hoteles + tramos
+  calcularFin();
+  generateHotelInputs((g.programa.match(/\/(\d+)$/)||[])[1]);
+  if (Array.isArray(g.tramos)) {
+    toggleTramos();
+    g.tramos.forEach(t=>addTramo(t));
+  } else {
+    toggleTramos();
+  }
+}
+
+// Resto de funciones: calcularFin(), ajustarComp(), toggleTramos(), addTramo(), renderTramos(), guardarInfo()
+// — idénticas a las que hemos comentado antes, pero ahora **todo** se guarda en el mismo doc “grupos/{id}”
+// y cada campo modificado queda registrado en “historial”.
+
+// …
+
