@@ -10,12 +10,31 @@ const auth = getAuth(app);
 
 // Propiedades en el mismo orden que aparecen en la tabla
 const camposFire = [
-  "numeroNegocio","nombreGrupo","cantidadgrupo",
-  "adultos","estudiantes","colegio","curso","anoViaje",
-  "destino","programa","inicio","hotel","asistenciaEnViajes",
-  "autorizacion","fechaDeViaje","observaciones","versionFicha",
-  "creadoPor","fechaCreacion","fin","transporte","ciudades",
-  "hoteles","tramos","obsLogist"
+  "numeroNegocio",  // 0
+  "nombreGrupo",    // 1
+  "cantidadgrupo",  // 2
+  "adultos",        // 3
+  "estudiantes",    // 4
+  "colegio",        // 5
+  "curso",          // 6
+  "anoViaje",       // 7
+  "destino",        // 8
+  "programa",       // 9
+  "inicio",         // 10
+  "hotel",          // 11
+  "asistenciaEnViajes", // 12
+  "autorizacion",   // 13
+  "fechaDeViaje",   // 14
+  "observaciones",  // 15
+  "versionFicha",   // 16
+  "creadoPor",      // 17
+  "fechaCreacion",  // 18
+  "fin",            // 19
+  "transporte",     // 20
+  "ciudades",       // 21
+  "hoteles",        // 22
+  "tramos",         // 23
+  "obsLogist"       // 24
 ];
 
 let editMode = false;
