@@ -80,11 +80,22 @@ async function cargarYMostrarTabla() {
 
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
-    language:{ url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    dom:'rtip', pageLength:-1, lengthChange:false,
-    order:[[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
-    scrollX:true,
-    columnDefs:[{ targets:[5,6], visible:false }]
+    language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+    dom:        'Bfrtip rt',        // B = buttons, f = filtro, r = procesamiento, t = tabla
+    buttons: [
+      {
+        extend: 'colvis',
+        text:    'Ver columnas',
+        columns: ':gt(0)'           // opcional, ":gt(0)" lista todas menos la primera
+      }
+    ],
+    pageLength: -1,
+    lengthChange: false,
+    order: [[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
+    scrollX: true,
+    columnDefs: [
+      { targets: [5,6], visible: false }  // p. ej. Colegio y Curso ocultos por defecto
+    ]
   });
 
   // 5) Edición inline en blur
