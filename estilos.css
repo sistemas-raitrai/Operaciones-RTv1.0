@@ -251,6 +251,19 @@ a {
   );
 }
 
+#toolbar .dt-button {
+  background-color: #0b3d91;   /* tu color azul */
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+#toolbar .dt-button:hover {
+  background-color: #092f6f;
+}
+
 /* ----------------------------------------------------------------------- */
 /* Estilos exclusivos del Itinerario de Grupos (añadir al final)           */
 /* ----------------------------------------------------------------------- */
