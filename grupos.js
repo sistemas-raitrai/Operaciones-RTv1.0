@@ -81,11 +81,12 @@ async function cargarYMostrarTabla() {
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
     language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    dom:        'Bfrtip rt',        // B = buttons, f = filtro, r = procesamiento, t = tabla
+    dom:        'frtip rt',        // B = buttons, f = filtro, r = procesamiento, t = tabla
     buttons: [
       {
         extend: 'colvis',
         text:    'Ver columnas',
+        className: 'dt-button',
         columns: ':gt(0)'           // opcional, ":gt(0)" lista todas menos la primera
       }
     ],
