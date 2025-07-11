@@ -223,3 +223,43 @@ async function cargarYMostrarTabla() {
     .on('change', () => dtHist.draw());
 
 } // ← cierre de cargarYMostrarTabla()
+
+// --- al final de grupos.js ---
+
+// 1) Función que lee toda la tabla de DataTables y genera un Excel
+function exportarGrupos() {
+  // Usamos DataTables API para obtener datos tal como se muestran (filtrados, ordenados)
+  const tabla = $('#tablaGrupos').DataTable();
+  // Obtiene un array de arrays: cada fila en un sub-array de celdas de texto
+  const rows = tabla.rows({ search: 'applied' }).data().toArray();
+
+  // Opcional: encabezados igual a las columnas definidas en el HTML (ordenado)
+  const headers = [
+    "N° Negocio","Nombre de Grupo","Pax","Adultos","Estudiantes","Colegio","Curso","Año",
+    "Destino","Programa","Inicio","Hotel","Asist. Viajes","Autoriz.","Fecha de Viaje",
+    "Obs.","Versión","Creado Por","F. Creación","Fin","Transporte","Ciudades","Hoteles",
+    "Tramos","Obs. Logist."
+  ];
+
+  // Prepara un array de objetos (clave=header, valor=celda)
+  const datos = rows.map(row => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+
+  // 2) Genera worksheet y workbook con SheetJS
+  const ws = XLSX.utils.json_to_sheet(datos, { header: headers });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Grupos");
+
+  // 3) Desencadena la descarga
+  XLSX.writeFile(wb, "grupos.xlsx");
+}
+
+// 4) Asocia el botón
+document
+  .getElementById('btn-export-excel')
+  .addEventListener('click', exportarGrupos);
+
+
