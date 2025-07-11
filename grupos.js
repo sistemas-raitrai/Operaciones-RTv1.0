@@ -99,6 +99,8 @@ async function cargarYMostrarTabla() {
     ]
   });
 
+  tabla.buttons().container().appendTo('#toolbar');
+
   // 5) Edición inline en blur
   $('#tablaGrupos tbody').on('focusout','td[contenteditable]', async function(){
     const $td = $(this);
