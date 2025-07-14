@@ -21,7 +21,7 @@ const selectName     = document.getElementById("grupo-select-name");
 const titleGrupo     = document.getElementById("grupo-title");
 const contItinerario = document.getElementById("itinerario-container");
 
-const qaDia          = document.getElementById("qa-dia");           // ahora <select multiple>
+const qaDia          = document.getElementById("qa-dia");           // <select multiple>
 const qaHoraInicio   = document.getElementById("qa-horaInicio");
 const qaAct          = document.getElementById("qa-actividad");
 const qaAddBtn       = document.getElementById("qa-add");
@@ -33,12 +33,12 @@ const fldFecha       = document.getElementById("m-fecha");
 const fldHi          = document.getElementById("m-horaInicio");
 const fldHf          = document.getElementById("m-horaFin");
 const fldAct         = document.getElementById("m-actividad");
-const fldAdultos     = document.getElementById("m-adultos");      // nuevo
-const fldEstudiantes = document.getElementById("m-estudiantes");  // nuevo
+const fldAdultos     = document.getElementById("m-adultos");
+const fldEstudiantes = document.getElementById("m-estudiantes");
 const fldNotas       = document.getElementById("m-notas");
 const btnCancel      = document.getElementById("modal-cancel");
 
-let editData = null; // para saber si editamos (tiene { fecha, idx })
+let editData = null; // { fecha, idx } si estamos editando
 
 // —————————————————————————————————
 // 2) Autenticación y arranque
@@ -51,7 +51,7 @@ onAuthStateChanged(auth, user => {
 async function initItinerario() {
   // 2.1) Traer TODOS los grupos
   const snap   = await getDocs(collection(db,'grupos'));
-  const grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const grupos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
 
   // 2.2) Llenar selects de nombre y número
   selectNum.innerHTML  = grupos.map(g=>
@@ -61,11 +61,11 @@ async function initItinerario() {
     `<option value="${g.id}">${g.nombreGrupo}</option>`
   ).join('');
 
-  // 2.3) Sincronizar selects y lanzar render al cambiar
+  // 2.3) Sincronizar selects y disparar render
   selectNum.onchange  = ()=>{ selectName.value=selectNum.value; renderItinerario(); };
   selectName.onchange = ()=>{ selectNum.value=selectName.value; renderItinerario(); };
 
-  // 2.4) Configurar Quick-Add (multi-día) y Modal
+  // 2.4) Configurar Quick-Add y Modal
   qaAddBtn.onclick   = quickAddActivity;
   btnCancel.onclick  = closeModal;
   formModal.onsubmit = onSubmitModal;
@@ -75,41 +75,42 @@ async function initItinerario() {
 }
 
 // —————————————————————————————————
-// 3) renderItinerario(): muestra carrusel de días y actividades
+// 3) renderItinerario(): muestra días y actividades
 // —————————————————————————————————
 async function renderItinerario() {
   contItinerario.innerHTML = "";
   const grupoId = selectNum.value;
   const refG    = doc(db,'grupos',grupoId);
   const snapG   = await getDoc(refG);
-  const g       = snapG.data()||{};
+  const g       = snapG.data() || {};
 
-  // 3.1) Mostrar nombre de programa
-  titleGrupo.textContent = g.programa||"–";
+  // 3.1) Mostrar programa
+  titleGrupo.textContent = g.programa || "–";
 
-  // 3.2) Si aún no hay `itinerario` en el doc, lo inicializo con un array vacío por fecha
+  // 3.2) Inicializar `itinerario` si no existe
   if (!g.itinerario) {
     const rango = getDateRange(g.fechaInicio, g.fechaFin);
     const init  = {};
-    rango.forEach(f=> init[f]=[]);
-    await updateDoc(refG,{ itinerario: init });
+    rango.forEach(f => init[f] = []);
+    await updateDoc(refG, { itinerario: init });
     g.itinerario = init;
   }
 
-  // 3.3) Ordenar las fechas ISO
+  // 3.3) Fechas ordenadas
   const fechas = Object.keys(g.itinerario)
-    .sort((a,b)=> new Date(a)-new Date(b));
+    .sort((a,b) => new Date(a) - new Date(b));
 
-  // 3.4) Preparar Quick-Add (ahora multiple) y opciones de fecha legibles
+  // 3.4) Preparar Quick-Add (multi-día)
   qaDia.innerHTML = fechas
     .map((_,i)=> `<option value="${i}">Día ${i+1}</option>`)
     .join('');
+  // y menú de fechas en el modal
   fldFecha.innerHTML = fechas
     .map(d=> `<option value="${d}">Día ${fechas.indexOf(d)+1} – ${formatDateReadable(d)}</option>`)
     .join('');
 
-  // 3.5) Construir la grilla de secciones, una por día
-  fechas.forEach((fecha,idx)=>{
+  // 3.5) Construir carrusel: sección por cada día
+  fechas.forEach((fecha, idx) => {
     const sec = document.createElement("section");
     sec.className     = "dia-seccion";
     sec.dataset.fecha = fecha;
@@ -120,37 +121,37 @@ async function renderItinerario() {
     `;
     contItinerario.appendChild(sec);
 
-    // Botón interno abre modal para ese día
+    // botón para abrir modal en esa fecha
     sec.querySelector(".btn-add")
-       .onclick = ()=> openModal({ fecha }, false);
+       .onclick = () => openModal({ fecha }, false);
 
-    // Pinto la lista de actividades
-    const ul = sec.querySelector(".activity-list");
-    const arr = g.itinerario[fecha]||[];
+    // pintar actividades guardadas
+    const ul  = sec.querySelector(".activity-list");
+    const arr = g.itinerario[fecha] || [];
     if (!arr.length) {
       ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
     } else {
-      arr.forEach((act,i)=>{
+      arr.forEach((act, i) => {
         const li = document.createElement("li");
         li.className = "activity-card";
         li.innerHTML = `
-          <h4>${act.horaInicio||"–"}</h4>
+          <h4>${act.horaInicio || "–"}</h4>
           <p><strong>${act.actividad}</strong></p>
-          <p>👥 ${act.pasajeros||0} pax</p>
+          <p>👥 ${act.pasajeros || 0} pax</p>
           <div class="actions">
             <button class="btn-edit" data-idx="${i}">✏️</button>
             <button class="btn-del"  data-idx="${i}">🗑️</button>
           </div>
         `;
-        // Editar
-        li.querySelector(".btn-edit").onclick = ()=> {
+        // editar
+        li.querySelector(".btn-edit").onclick = () => {
           openModal({ ...act, fecha, idx:i }, true);
         };
-        // Borrar
-        li.querySelector(".btn-del").onclick = async ()=> {
+        // borrar
+        li.querySelector(".btn-del").onclick = async () => {
           if (!confirm("¿Eliminar actividad?")) return;
           arr.splice(i,1);
-          await updateDoc(refG,{ [`itinerario.${fecha}`]:arr });
+          await updateDoc(refG, { [`itinerario.${fecha}`]: arr });
           renderItinerario();
         };
         ul.appendChild(li);
@@ -160,16 +161,15 @@ async function renderItinerario() {
 }
 
 // —————————————————————————————————
-// 4) quickAddActivity(): añadir la misma actividad en uno o varios días
+// 4) quickAddActivity(): añade en varios días
 // —————————————————————————————————
 async function quickAddActivity() {
   const grupoId    = selectNum.value;
-  // tomo todos los índices seleccionados
   const indices    = Array.from(qaDia.selectedOptions)
                           .map(o=>parseInt(o.value,10));
   const horaInicio = qaHoraInicio.value;
   const text       = qaAct.value.trim();
-  if (!indices.length||!text) {
+  if (!indices.length || !text) {
     return alert("Selecciona uno o más días y escribe la actividad");
   }
 
@@ -179,20 +179,20 @@ async function quickAddActivity() {
   const fechas= Object.keys(g.itinerario)
                       .sort((a,b)=>new Date(a)-new Date(b));
 
-  // repito push en cada día elegido
+  // insertar en cada día
   for (let idx of indices) {
     const fecha = fechas[idx];
-    const arr   = g.itinerario[fecha]||[];
+    const arr   = g.itinerario[fecha] || [];
     arr.push({
       horaInicio,
       horaFin:    sumarUnaHora(horaInicio),
       actividad:  text,
-      pasajeros:  (g.adultos||0)+(g.estudiantes||0),
+      pasajeros:  (g.adultos||0) + (g.estudiantes||0),
       adultos:    g.adultos||0,
       estudiantes:g.estudiantes||0,
-      notas:""
+      notas: ""
     });
-    await updateDoc(refG,{ [`itinerario.${fecha}`]:arr });
+    await updateDoc(refG, { [`itinerario.${fecha}`]: arr });
   }
 
   qaAct.value = "";
@@ -200,14 +200,14 @@ async function quickAddActivity() {
 }
 
 // —————————————————————————————————
-// 5) openModal(): preparar formulario de crear o editar
+// 5) openModal(): preparar creación/edición
 // —————————————————————————————————
 function openModal(data, isEdit) {
   editData = isEdit ? data : null;
   document.getElementById("modal-title")
           .textContent = isEdit ? "Editar actividad" : "Nueva actividad";
 
-  // Cargo valores existentes o por defecto
+  // cargar valores o por defecto
   fldFecha.value       = data.fecha;
   fldHi.value          = data.horaInicio || "07:00";
   fldHf.value          = isEdit
@@ -218,21 +218,23 @@ function openModal(data, isEdit) {
   fldEstudiantes.value = data.estudiantes ?? 0;
   fldNotas.value       = data.notas      || "";
 
-  // si cambian horaInicio, auto-ajusto fin = +1h
-  fldHi.onchange = ()=> { fldHf.value = sumarUnaHora(fldHi.value); };
+  // si cambia inicio, fin = +1h
+  fldHi.onchange = () => {
+    fldHf.value = sumarUnaHora(fldHi.value);
+  };
 
   modalBg.style.display = modal.style.display = "block";
 }
 
 // —————————————————————————————————
-// 6) closeModal(): cerrar formulario
+// 6) closeModal(): cerrar modal
 // —————————————————————————————————
 function closeModal() {
   modalBg.style.display = modal.style.display = "none";
 }
 
 // —————————————————————————————————
-// 7) onSubmitModal(): guardar o actualizar en Firestore
+// 7) onSubmitModal(): guardar o actualizar
 // —————————————————————————————————
 async function onSubmitModal(evt) {
   evt.preventDefault();
@@ -244,13 +246,14 @@ async function onSubmitModal(evt) {
   const refG      = doc(db,'grupos',grupoId);
   const snapG     = await getDoc(refG);
   const g         = snapG.data();
-  const maxPax    = (g.adultos||0)+(g.estudiantes||0);
+  const maxPax    = (g.adultos||0) + (g.estudiantes||0);
 
-  // Validación: sumatorio no exceda total de grupo
+  // validar no exceder total de grupo
   if (pax > maxPax) {
     return alert(`La suma adultos+estudiantes (${pax}) no puede exceder ${maxPax}`);
   }
 
+  // construir payload
   const payload = {
     horaInicio: fldHi.value,
     horaFin:    fldHf.value,
@@ -261,31 +264,34 @@ async function onSubmitModal(evt) {
     notas:      fldNotas.value
   };
 
-  // actualizo el array correspondiente
-  const arr = g.itinerario[fecha]||[];
+  // leer array existente y actualizar
+  const arr = g.itinerario[fecha] || [];
   if (editData) {
     arr[editData.idx] = payload;
   } else {
     arr.push(payload);
   }
-  await updateDoc(refG,{ [`itinerario.${fecha}`]:arr });
+  await updateDoc(refG, { [`itinerario.${fecha}`]: arr });
 
   closeModal();
   renderItinerario();
 }
 
 // —————————————————————————————————
-// Util: devuelve array ISO entre dos fechas inclusive
+// Util: rango de fechas ISO
 // —————————————————————————————————
 function getDateRange(startStr,endStr) {
-  const out = [], start=new Date(startStr), end=new Date(endStr);
-  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1))
+  const out   = [];
+  const start = new Date(startStr);
+  const end   = new Date(endStr);
+  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)) {
     out.push(d.toISOString().slice(0,10));
+  }
   return out;
 }
 
 // —————————————————————————————————
-// Util: ISO → “Lunes DD/MM” en español
+// Util: ISO → “Lunes DD/MM”
 // —————————————————————————————————
 function formatDateReadable(iso) {
   const d  = new Date(iso);
@@ -296,10 +302,10 @@ function formatDateReadable(iso) {
 }
 
 // —————————————————————————————————
-// Util: sumar 1 hora a un “HH:MM”
+// Util: sumar 1 hora a “HH:MM”
 // —————————————————————————————————
 function sumarUnaHora(hhmm) {
   const [h,m] = hhmm.split(":").map(Number);
-  const d = new Date(); d.setHours(h+1, m);
+  const d = new Date(); d.setHours(h+1,m);
   return d.toTimeString().slice(0,5);
 }
