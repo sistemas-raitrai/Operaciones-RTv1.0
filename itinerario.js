@@ -1,101 +1,305 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Información del Viaje | RT v1.0</title>
-  <link rel="stylesheet" href="estilos.css" />
-</head>
-<body>
+// itinerario.js
 
-  <!-- 1) Encabezado común -->
-  <div id="encabezado"></div>
-  <script type="module">
-    (async () => {
-      const html = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js'); // logout, reloj, etc.
-    })();
-  </script>
+// —————————————————————————————————
+// 0) Importes de Firebase
+// —————————————————————————————————
+import { app, db } from './firebase-init.js';
+import { getAuth, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import {
+  collection, getDocs,
+  doc, getDoc, updateDoc
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-  <main class="formulario-container">
-    <h2>Información del Viaje</h2>
-    <form id="formInfoViaje">
+const auth = getAuth(app);
 
-      <!-- Grupo -->
-      <label for="numeroNegocio">Número de Negocio:</label>
-      <select id="numeroNegocio"></select>
+// —————————————————————————————————
+// 1) Referencias al DOM
+// —————————————————————————————————
+const selectNum      = document.getElementById("grupo-select-num");
+const selectName     = document.getElementById("grupo-select-name");
+const titleGrupo     = document.getElementById("grupo-title");
+const contItinerario = document.getElementById("itinerario-container");
 
-      <label for="nombreGrupo">Nombre de Grupo:</label>
-      <input type="text" id="nombreGrupo" readonly />
+const qaDia          = document.getElementById("qa-dia");           // ahora <select multiple>
+const qaHoraInicio   = document.getElementById("qa-horaInicio");
+const qaAct          = document.getElementById("qa-actividad");
+const qaAddBtn       = document.getElementById("qa-add");
 
-      <!-- Destino con datalist editable -->
-      <label for="destinoInput">Destino:</label>
-      <input list="destinosList" id="destinoInput" placeholder="Elige o escribe..." />
-      <datalist id="destinosList"></datalist>
+const modalBg        = document.getElementById("modal-backdrop");
+const modal          = document.getElementById("modal");
+const formModal      = document.getElementById("modal-form");
+const fldFecha       = document.getElementById("m-fecha");
+const fldHi          = document.getElementById("m-horaInicio");
+const fldHf          = document.getElementById("m-horaFin");
+const fldAct         = document.getElementById("m-actividad");
+const fldAdultos     = document.getElementById("m-adultos");      // nuevo
+const fldEstudiantes = document.getElementById("m-estudiantes");  // nuevo
+const fldNotas       = document.getElementById("m-notas");
+const btnCancel      = document.getElementById("modal-cancel");
 
-      <!-- Programa con datalist editable -->
-      <label for="programaInput">Programa (X/Y):</label>
-      <input list="programasList" id="programaInput" placeholder="Elige o escribe..." />
-      <datalist id="programasList"></datalist>
+let editData = null; // para saber si editamos (tiene { fecha, idx })
 
-      <!-- Coordinador -->
-      <label for="coordinador">Coordinador(a):</label>
-      <input type="text" id="coordinador" placeholder="Nombre coordinador/a" />
+// —————————————————————————————————
+// 2) Autenticación y arranque
+// —————————————————————————————————
+onAuthStateChanged(auth, user => {
+  if (!user) location.href = "login.html";
+  else initItinerario();
+});
 
-      <!-- Fechas -->
-      <label for="fechaInicio">Fecha de Inicio:</label>
-      <input type="date" id="fechaInicio" />
+async function initItinerario() {
+  // 2.1) Traer TODOS los grupos
+  const snap   = await getDocs(collection(db,'grupos'));
+  const grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 
-      <label for="duracion">Duración (días):</label>
-      <input type="number" id="duracion" min="1" />
+  // 2.2) Llenar selects de nombre y número
+  selectNum.innerHTML  = grupos.map(g=>
+    `<option value="${g.id}">${g.numeroNegocio}</option>`
+  ).join('');
+  selectName.innerHTML = grupos.map(g=>
+    `<option value="${g.id}">${g.nombreGrupo}</option>`
+  ).join('');
 
-      <label for="fechaFin">Fecha de Término:</label>
-      <input type="date" id="fechaFin" readonly />
+  // 2.3) Sincronizar selects y lanzar render al cambiar
+  selectNum.onchange  = ()=>{ selectName.value=selectNum.value; renderItinerario(); };
+  selectName.onchange = ()=>{ selectNum.value=selectName.value; renderItinerario(); };
 
-      <!-- Composición -->
-      <label for="totalPax">Total Pasajeros:</label>
-      <input type="number" id="totalPax" readonly />
+  // 2.4) Configurar Quick-Add (multi-día) y Modal
+  qaAddBtn.onclick   = quickAddActivity;
+  btnCancel.onclick  = closeModal;
+  formModal.onsubmit = onSubmitModal;
 
-      <label for="adultos">Adultos:</label>
-      <input type="number" id="adultos" min="0" />
+  // 2.5) Primera carga
+  selectNum.dispatchEvent(new Event('change'));
+}
 
-      <label for="estudiantes">Estudiantes:</label>
-      <input type="number" id="estudiantes" min="0" />
+// —————————————————————————————————
+// 3) renderItinerario(): muestra carrusel de días y actividades
+// —————————————————————————————————
+async function renderItinerario() {
+  contItinerario.innerHTML = "";
+  const grupoId = selectNum.value;
+  const refG    = doc(db,'grupos',grupoId);
+  const snapG   = await getDoc(refG);
+  const g       = snapG.data()||{};
 
-      <!-- Transporte y tramos -->
-      <label for="transporte">Tipo de Transporte:</label>
-      <select id="transporte">
-        <option value="">Seleccione...</option>
-        <option value="terrestre">Terrestre</option>
-        <option value="aereo">Aéreo</option>
-        <option value="mixto">Mixto</option>
-      </select>
+  // 3.1) Mostrar nombre de programa
+  titleGrupo.textContent = g.programa||"–";
 
-      <div id="seccionTramos" style="display:none">
-        <h4>Detalle de Tramos</h4>
-        <button type="button" id="btnAddTramo">➕ Agregar Tramo</button>
-        <div id="tramosDetalle"></div>
-      </div>
+  // 3.2) Si aún no hay `itinerario` en el doc, lo inicializo con un array vacío por fecha
+  if (!g.itinerario) {
+    const rango = getDateRange(g.fechaInicio, g.fechaFin);
+    const init  = {};
+    rango.forEach(f=> init[f]=[]);
+    await updateDoc(refG,{ itinerario: init });
+    g.itinerario = init;
+  }
 
-      <!-- Hoteles y noches -->
-      <label>Hoteles y Noches:</label>
-      <button type="button" id="btnAddHotel">➕ Agregar Hotel</button>
-      <div id="hotelesContainer"></div>
+  // 3.3) Ordenar las fechas ISO
+  const fechas = Object.keys(g.itinerario)
+    .sort((a,b)=> new Date(a)-new Date(b));
 
-      <!-- Ciudades -->
-      <label for="ciudades">Ciudades a recorrer:</label>
-      <input type="text" id="ciudades" readonly />
+  // 3.4) Preparar Quick-Add (ahora multiple) y opciones de fecha legibles
+  qaDia.innerHTML = fechas
+    .map((_,i)=> `<option value="${i}">Día ${i+1}</option>`)
+    .join('');
+  fldFecha.innerHTML = fechas
+    .map(d=> `<option value="${d}">Día ${fechas.indexOf(d)+1} – ${formatDateReadable(d)}</option>`)
+    .join('');
 
-      <!-- Observaciones -->
-      <label for="observaciones">Observaciones Logísticas:</label>
-      <textarea id="observaciones" rows="3"></textarea>
+  // 3.5) Construir la grilla de secciones, una por día
+  fechas.forEach((fecha,idx)=>{
+    const sec = document.createElement("section");
+    sec.className     = "dia-seccion";
+    sec.dataset.fecha = fecha;
+    sec.innerHTML     = `
+      <h3>Día ${idx+1} – ${formatDateReadable(fecha)}</h3>
+      <ul class="activity-list"></ul>
+      <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
+    `;
+    contItinerario.appendChild(sec);
 
-      <button type="submit">Guardar Información</button>
-    </form>
-  </main>
+    // Botón interno abre modal para ese día
+    sec.querySelector(".btn-add")
+       .onclick = ()=> openModal({ fecha }, false);
 
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script type="module" src="infoviajes.js"></script>
-</body>
-</html>
+    // Pinto la lista de actividades
+    const ul = sec.querySelector(".activity-list");
+    const arr = g.itinerario[fecha]||[];
+    if (!arr.length) {
+      ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
+    } else {
+      arr.forEach((act,i)=>{
+        const li = document.createElement("li");
+        li.className = "activity-card";
+        li.innerHTML = `
+          <h4>${act.horaInicio||"–"}</h4>
+          <p><strong>${act.actividad}</strong></p>
+          <p>👥 ${act.pasajeros||0} pax</p>
+          <div class="actions">
+            <button class="btn-edit" data-idx="${i}">✏️</button>
+            <button class="btn-del"  data-idx="${i}">🗑️</button>
+          </div>
+        `;
+        // Editar
+        li.querySelector(".btn-edit").onclick = ()=> {
+          openModal({ ...act, fecha, idx:i }, true);
+        };
+        // Borrar
+        li.querySelector(".btn-del").onclick = async ()=> {
+          if (!confirm("¿Eliminar actividad?")) return;
+          arr.splice(i,1);
+          await updateDoc(refG,{ [`itinerario.${fecha}`]:arr });
+          renderItinerario();
+        };
+        ul.appendChild(li);
+      });
+    }
+  });
+}
+
+// —————————————————————————————————
+// 4) quickAddActivity(): añadir la misma actividad en uno o varios días
+// —————————————————————————————————
+async function quickAddActivity() {
+  const grupoId    = selectNum.value;
+  // tomo todos los índices seleccionados
+  const indices    = Array.from(qaDia.selectedOptions)
+                          .map(o=>parseInt(o.value,10));
+  const horaInicio = qaHoraInicio.value;
+  const text       = qaAct.value.trim();
+  if (!indices.length||!text) {
+    return alert("Selecciona uno o más días y escribe la actividad");
+  }
+
+  const refG  = doc(db,'grupos',grupoId);
+  const snapG = await getDoc(refG);
+  const g     = snapG.data();
+  const fechas= Object.keys(g.itinerario)
+                      .sort((a,b)=>new Date(a)-new Date(b));
+
+  // repito push en cada día elegido
+  for (let idx of indices) {
+    const fecha = fechas[idx];
+    const arr   = g.itinerario[fecha]||[];
+    arr.push({
+      horaInicio,
+      horaFin:    sumarUnaHora(horaInicio),
+      actividad:  text,
+      pasajeros:  (g.adultos||0)+(g.estudiantes||0),
+      adultos:    g.adultos||0,
+      estudiantes:g.estudiantes||0,
+      notas:""
+    });
+    await updateDoc(refG,{ [`itinerario.${fecha}`]:arr });
+  }
+
+  qaAct.value = "";
+  renderItinerario();
+}
+
+// —————————————————————————————————
+// 5) openModal(): preparar formulario de crear o editar
+// —————————————————————————————————
+function openModal(data, isEdit) {
+  editData = isEdit ? data : null;
+  document.getElementById("modal-title")
+          .textContent = isEdit ? "Editar actividad" : "Nueva actividad";
+
+  // Cargo valores existentes o por defecto
+  fldFecha.value       = data.fecha;
+  fldHi.value          = data.horaInicio || "07:00";
+  fldHf.value          = isEdit
+    ? (data.horaFin||sumarUnaHora(fldHi.value))
+    : sumarUnaHora(fldHi.value);
+  fldAct.value         = data.actividad||"";
+  fldAdultos.value     = data.adultos    ?? ((data.pasajeros)||0);
+  fldEstudiantes.value = data.estudiantes ?? 0;
+  fldNotas.value       = data.notas      || "";
+
+  // si cambian horaInicio, auto-ajusto fin = +1h
+  fldHi.onchange = ()=> { fldHf.value = sumarUnaHora(fldHi.value); };
+
+  modalBg.style.display = modal.style.display = "block";
+}
+
+// —————————————————————————————————
+// 6) closeModal(): cerrar formulario
+// —————————————————————————————————
+function closeModal() {
+  modalBg.style.display = modal.style.display = "none";
+}
+
+// —————————————————————————————————
+// 7) onSubmitModal(): guardar o actualizar en Firestore
+// —————————————————————————————————
+async function onSubmitModal(evt) {
+  evt.preventDefault();
+  const grupoId   = selectNum.value;
+  const fecha     = fldFecha.value;
+  const a         = parseInt(fldAdultos.value,10)    || 0;
+  const e         = parseInt(fldEstudiantes.value,10)|| 0;
+  const pax       = a + e;
+  const refG      = doc(db,'grupos',grupoId);
+  const snapG     = await getDoc(refG);
+  const g         = snapG.data();
+  const maxPax    = (g.adultos||0)+(g.estudiantes||0);
+
+  // Validación: sumatorio no exceda total de grupo
+  if (pax > maxPax) {
+    return alert(`La suma adultos+estudiantes (${pax}) no puede exceder ${maxPax}`);
+  }
+
+  const payload = {
+    horaInicio: fldHi.value,
+    horaFin:    fldHf.value,
+    actividad:  fldAct.value.trim(),
+    pasajeros:  pax,
+    adultos:    a,
+    estudiantes:e,
+    notas:      fldNotas.value
+  };
+
+  // actualizo el array correspondiente
+  const arr = g.itinerario[fecha]||[];
+  if (editData) {
+    arr[editData.idx] = payload;
+  } else {
+    arr.push(payload);
+  }
+  await updateDoc(refG,{ [`itinerario.${fecha}`]:arr });
+
+  closeModal();
+  renderItinerario();
+}
+
+// —————————————————————————————————
+// Util: devuelve array ISO entre dos fechas inclusive
+// —————————————————————————————————
+function getDateRange(startStr,endStr) {
+  const out = [], start=new Date(startStr), end=new Date(endStr);
+  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1))
+    out.push(d.toISOString().slice(0,10));
+  return out;
+}
+
+// —————————————————————————————————
+// Util: ISO → “Lunes DD/MM” en español
+// —————————————————————————————————
+function formatDateReadable(iso) {
+  const d  = new Date(iso);
+  const wd = d.toLocaleDateString("es-CL",{ weekday:"long" });
+  const dd = String(d.getDate()).padStart(2,"0");
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  return `${wd.charAt(0).toUpperCase()+wd.slice(1)} ${dd}/${mm}`;
+}
+
+// —————————————————————————————————
+// Util: sumar 1 hora a un “HH:MM”
+// —————————————————————————————————
+function sumarUnaHora(hhmm) {
+  const [h,m] = hhmm.split(":").map(Number);
+  const d = new Date(); d.setHours(h+1, m);
+  return d.toTimeString().slice(0,5);
+}
