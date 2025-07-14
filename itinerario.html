@@ -4,16 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Itinerario de Grupo | RT v1.0</title>
-  <!-- 1) CSS global + específico -->
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body class="itinerario-page">
 
-  <!-- 2) Encabezado reutilizable -->
+  <!-- Encabezado común -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
-      // Carga el header común y el script.js para reloj/logout/etc.
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
       await import('./script.js');
@@ -21,32 +19,28 @@
   </script>
 
   <main class="main">
-    <!-- 3) Selector de grupo -->
+    <!-- Selector de grupo -->
     <div class="row">
       <div class="column long">
         <h2>Programa: <span id="grupo-title">–</span></h2>
       </div>
       <div class="column medium">
         <label for="grupo-select-name">Nombre de Grupo</label>
-        <select id="grupo-select-name">
-          <option value="">Cargando…</option>
-        </select>
+        <select id="grupo-select-name"><option>Cargando…</option></select>
       </div>
       <div class="column short">
         <label for="grupo-select-num">N° Negocio</label>
-        <select id="grupo-select-num">
-          <option value="">Cargando…</option>
-        </select>
+        <select id="grupo-select-num"><option>Cargando…</option></select>
       </div>
     </div>
 
-    <!-- 4) Panel de creación rápida -->
+    <!-- Quick-Add: seleccionar uno o varios días -->
     <section id="quick-add" class="quick-add">
-      <h3>Programar Actividad</h3>
+      <h3>Programador de Actividades</h3>
       <div class="row">
         <div class="column short">
-          <label for="qa-dia">Día</label>
-          <select id="qa-dia"></select>
+          <label for="qa-dia">Día(s)</label>
+          <select id="qa-dia" multiple size="4"></select>
         </div>
         <div class="column short">
           <label for="qa-horaInicio">Hora inicio</label>
@@ -63,13 +57,11 @@
       </div>
     </section>
 
-    <!-- 5) Carrusel de días -->
-    <div id="itinerario-container" class="grid">
-      <!-- Las secciones de cada día se insertarán aquí dinámicamente -->
-    </div>
+    <!-- Carrusel dinámico de días -->
+    <div id="itinerario-container" class="grid"></div>
   </main>
 
-  <!-- 6) Modal de actividad -->
+  <!-- Modal para crear/editar -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal" class="modal" style="display:none;">
     <h3 id="modal-title">Actividad</h3>
@@ -86,8 +78,11 @@
       <label for="m-actividad">Actividad</label>
       <input type="text" id="m-actividad" />
 
-      <label for="m-pasajeros">Pasajeros</label>
-      <input type="number" id="m-pasajeros" min="1" />
+      <label for="m-adultos">Adultos</label>
+      <input type="number" id="m-adultos" min="0" />
+
+      <label for="m-estudiantes">Estudiantes</label>
+      <input type="number" id="m-estudiantes" min="0" />
 
       <label for="m-notas">Notas</label>
       <textarea id="m-notas" rows="2"></textarea>
@@ -99,7 +94,7 @@
     </form>
   </div>
 
-  <!-- 7) Firebase + jQuery + script específico -->
+  <!-- Firebase, jQuery y script -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="itinerario.js"></script>
 </body>
