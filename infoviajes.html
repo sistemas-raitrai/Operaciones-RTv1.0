@@ -42,11 +42,11 @@
 
     <!-- 4) Panel de creación rápida -->
     <section id="quick-add" class="quick-add">
-      <h3>Programar Actividad</h3>
+      <h3>Programador de Actividades</h3>
       <div class="row">
         <div class="column short">
           <label for="qa-dia">Día</label>
-          <select id="qa-dia"></select>
+          <select id="qa-dia" multiple size="5"></select>
         </div>
         <div class="column short">
           <label for="qa-horaInicio">Hora inicio</label>
@@ -88,6 +88,12 @@
 
       <label for="m-pasajeros">Pasajeros</label>
       <input type="number" id="m-pasajeros" min="1" />
+
+      <label for="m-adultos">Adultos</label>
+      <input type="number" id="m-adultos" min="0" />
+
+      <label for="m-estudiantes">Estudiantes</label>
+      <input type="number" id="m-estudiantes" min="0" />
 
       <label for="m-notas">Notas</label>
       <textarea id="m-notas" rows="2"></textarea>
