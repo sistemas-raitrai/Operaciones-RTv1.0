@@ -9,7 +9,7 @@ import {
 
 const auth = getAuth(app);
 
-// 1) DOM refs
+// 1) Referencias DOM
 const selNum        = document.getElementById('numeroNegocio');
 const inpNombre     = document.getElementById('nombreGrupo');
 const inpDestino    = document.getElementById('destinoInput');
@@ -35,48 +35,75 @@ const form          = document.getElementById('formInfoViaje');
 
 let tramoCount = 0;
 
-// 2) Static data
-const DESTINOS = ['Sur de Chile','Norte de Chile','Bariloche','Brasil'];
+// 2) Datos estáticos (mayúsculas)
+const DESTINOS = [
+  'SUR DE CHILE',
+  'NORTE DE CHILE',
+  'SUR DE CHILE Y BARILOCHE',
+  'BARILOCHE',
+  'BRASIL',
+  'OTRO'
+];
 const PROGRAMAS = [
-  'BARILOCHE 6/5','BARILOCHE 7/6',
-  'CAMBORIU ECO 8/7','CAMBORIU VUELO DIRECTO 6/5','CAMBORIU VUELO DIRECTO 8/7',
+  'BARILOCHE 6/5',
+  'BARILOCHE 7/6',
+  'CAMBORIU ECO 8/7',
+  'CAMBORIU VUELO DIRECTO 6/5',
+  'CAMBORIU VUELO DIRECTO 8/7',
   'SAN PEDRO DE ATACAMA 7/6',
-  'SUR DE CHILE 7/6','SUR DE CHILE HUILO HUILO 7/6','SUR DE CHILE PUCON 7/6',
-  'SUR Y BARILOCHE 7/6','SUR Y BARILOCHE 8/7'
+  'SUR DE CHILE 7/6',
+  'SUR DE CHILE HUILO HUILO 7/6',
+  'SUR DE CHILE PUCON 7/6',
+  'SUR Y BARILOCHE 7/6',
+  'SUR Y BARILOCHE 8/7'
 ].sort();
 
-// map destino → hoteles
+// Mapa destino→hoteles
 const HOTELES_MAP = {
-  'Sur de Chile':      [ {name:'BORDELAGO',city:'Puerto Varas'}, {name:'VIENTOS DEL SUR',city:'Pucón'} ],
-  'Norte de Chile':    [ {name:'LA ALDEA',city:'San Pedro de Atacama'} ],
-  'Bariloche':         [ {name:'VILLA HUINID',city:'Bariloche'}, {name:'ECOMAX',city:'Bariloche'} ],
-  'Brasil':            [ {name:'MARIMAR',city:'Camboriú'}, {name:'PLAZA CAMBORIÚ',city:'Camboriú'},
-                         {name:'BRUT',city:'Camboriú'}, {name:'HM',city:'Camboriú'},
-                         {name:'GERANIUM',city:'Camboriú'},{name:'MARAMBAIA',city:'Camboriú'} ]
+  'SUR DE CHILE': [
+    { name:'BORDELAGO',      city:'Puerto Varas' },
+    { name:'VIENTOS DEL SUR',city:'Pucón' }
+  ],
+  'NORTE DE CHILE': [
+    { name:'LA ALDEA',       city:'San Pedro de Atacama' }
+  ],
+  'BARILOCHE': [
+    { name:'VILLA HUINID',   city:'Bariloche' },
+    { name:'ECOMAX',         city:'Bariloche' }
+  ],
+  'BRASIL': [
+    { name:'MARIMAR',        city:'Camboriú' },
+    { name:'PLAZA CAMBORIÚ', city:'Camboriú' },
+    { name:'BRUT',           city:'Camboriú' },
+    { name:'HM',             city:'Camboriú' },
+    { name:'GERANIUM',       city:'Camboriú' },
+    { name:'MARAMBAIA',      city:'Camboriú' }
+  ]
 };
-HOTELES_MAP['Sur de Chile y Bariloche'] = [
-  ...HOTELES_MAP['Sur de Chile'],
-  ...HOTELES_MAP['Bariloche']
+// combinación especial
+HOTELES_MAP['SUR DE CHILE Y BARILOCHE'] = [
+  ...HOTELES_MAP['SUR DE CHILE'],
+  ...HOTELES_MAP['BARILOCHE']
 ];
 
-// 3) Auth + init
+// 3) Autenticación + init
 onAuthStateChanged(auth, user => {
-  if (!user) return location.href='login.html';
-  initForm();
+  if (!user) location.href = 'login.html';
+  else initForm();
 });
 
 async function initForm() {
-  // 3.1) llenar select grupos
+  // 3.1) Poblar select grupos
   const snap = await getDocs(collection(db,'grupos'));
-  selNum.innerHTML = snap.docs.map(d=>
-    `<option value="${d.id}">${d.data().numeroNegocio}</option>`
-  ).join('');
+  selNum.innerHTML = snap.docs
+    .map(d => `<option value="${d.id}">${d.data().numeroNegocio}</option>`)
+    .join('');
 
-  // 3.2) llenar datalists
-  dataDest.innerHTML = DESTINOS.map(d=>`<option>${d}</option>`).join('');
-  dataProg.innerHTML = PROGRAMAS.map(p=>`<option>${p}</option>`).join('');
+  // 3.2) Poblar datalists
+  dataDest.innerHTML = DESTINOS.map(d => `<option>${d}</option>`).join('');
+  dataProg.innerHTML = PROGRAMAS.map(p => `<option>${p}</option>`).join('');
 
-  // 3.3) listeners
+  // 3.3) Listeners
   selNum.onchange      = cargarGrupo;
   inpDestino.onchange  = onDestinoChange;
   inpPrograma.onchange = onProgramaChange;
@@ -85,122 +112,143 @@ async function initForm() {
   inpAdultos.oninput   = ajustarComp;
   inpEst.oninput       = ajustarComp;
   selTran.onchange     = toggleTramos;
-  btnAddTramo.onclick  = ()=> addTramo();
-  btnAddHotel.onclick  = ()=> addHotelRow();
+  btnAddTramo.onclick  = () => addTramo();
+  btnAddHotel.onclick  = () => addHotelRow();
   form.onsubmit        = guardarInfo;
 
-  // 3.4) disparar carga
+  // 3.4) Primera carga
   selNum.dispatchEvent(new Event('change'));
 }
 
+// 4) Cuando cambia destino: filtrar programas + limpiar hoteles/ciudades
 function onDestinoChange() {
   const d = inpDestino.value.toUpperCase();
-  dataProg.innerHTML = PROGRAMAS.filter(p=>p.includes(d))
-                                .map(p=>`<option>${p}</option>`).join('');
-  hotelesCtr.innerHTML='';
-  inpCiudades.value='';
+  dataProg.innerHTML = PROGRAMAS
+    .filter(p => p.includes(d))
+    .map(p => `<option>${p}</option>`)
+    .join('');
+  hotelesCtr.innerHTML = '';
+  inpCiudades.value = '';
 }
 
+// 5) Cuando cambia programa: extraer X/Y → duración + limpiar hoteles
 function onProgramaChange() {
   const txt = inpPrograma.value;
   const m = txt.match(/(\d+)\/(\d+)$/);
-  if (m) { inpDuracion.value=m[1]; calcularFin(); }
-  hotelesCtr.innerHTML='';
+  if (m) {
+    inpDuracion.value = m[1];
+    calcularFin();
+  }
+  hotelesCtr.innerHTML = '';
 }
 
+// 6) Fecha fin = inicio + duracion – 1
 function calcularFin() {
-  if (!inpInicio.value||!inpDuracion.value) {
-    inpFin.value=''; return;
+  if (!inpInicio.value || !inpDuracion.value) {
+    inpFin.value = ''; return;
   }
   const d = new Date(inpInicio.value);
-  d.setDate(d.getDate()+Number(inpDuracion.value)-1);
-  inpFin.value=d.toISOString().slice(0,10);
+  d.setDate(d.getDate() + Number(inpDuracion.value) - 1);
+  inpFin.value = d.toISOString().slice(0,10);
 }
 
+// 7) Adultos + estudiantes = totalPax
 function ajustarComp(e) {
-  const tot=Number(inpTotal.value)||0, a=Number(inpAdultos.value)||0, s=Number(inpEst.value)||0;
-  if(e.target===inpAdultos) inpEst.value=tot-a; else inpAdultos.value=tot-s;
+  const tot = Number(inpTotal.value) || 0;
+  const a   = Number(inpAdultos.value) || 0;
+  const s   = Number(inpEst.value) || 0;
+  if (e.target === inpAdultos) inpEst.value = tot - a;
+  else                          inpAdultos.value = tot - s;
 }
 
+// 8) Mostrar/ocultar tramos
 function toggleTramos() {
-  const t=selTran.value;
-  if(['aereo','terrestre','mixto'].includes(t)){
-    seccionTramos.style.display='block';
-    contTramos.innerHTML=''; tramoCount=0;
+  const t = selTran.value;
+  if (['aereo','terrestre','mixto'].includes(t)) {
+    seccionTramos.style.display = 'block';
+    contTramos.innerHTML = '';
+    tramoCount = 0;
   } else {
-    seccionTramos.style.display='none';
-    contTramos.innerHTML=''; tramoCount=0;
+    seccionTramos.style.display = 'none';
+    contTramos.innerHTML = '';
+    tramoCount = 0;
   }
 }
 
-function addTramo(data={}) {
+// 9) Añadir un tramo (vuelo o bus)
+function addTramo(data = {}) {
   tramoCount++;
-  let html='', tipo=selTran.value;
-  if(['aereo','mixto'].includes(tipo)){
-    html+=`<fieldset class="tramo"><legend>Vuelo ${tramoCount}</legend>
-      <label>Hora Salida (ida):<input type="time" value="${data.salida||''}"></label>
-      <label>Origen (ida):<input value="${data.origen||''}"></label>
-      <label>Aerolínea (ida):<input value="${data.aerolinea||''}"></label>
-      <label>N° Vuelo (ida):<input value="${data.numero||''}"></label><hr>
-      <label>Origen (vta):<input value="${data.origenVta||''}"></label>
-      <label>Aerolínea (vta):<input value="${data.aerolineaVta||''}"></label>
-      <label>N° Vuelo (vta):<input value="${data.numeroVta||''}"></label>
-      <label>Hora Salida (vta):<input type="time" value="${data.salidaVta||''}"></label>
-      <button type="button" class="btn-del">Eliminar</button></fieldset>`;
+  let html = '', tipo = selTran.value;
+
+  if (['aereo','mixto'].includes(tipo)) {
+    html += `
+      <fieldset class="tramo">
+        <legend>Vuelo ${tramoCount}</legend>
+        <label>Hora Salida (ida):<input type="time" value="${data.salida||''}"></label>
+        <label>Origen (ida):<input value="${data.origen||''}"></label>
+        <label>Aerolínea (ida):<input value="${data.aerolinea||''}"></label>
+        <label>N° Vuelo (ida):<input value="${data.numero||''}"></label>
+        <hr>
+        <label>Origen (vta):<input value="${data.origenVta||''}"></label>
+        <label>Aerolínea (vta):<input value="${data.aerolineaVta||''}"></label>
+        <label>N° Vuelo (vta):<input value="${data.numeroVta||''}"></label>
+        <label>Hora Salida (vta):<input type="time" value="${data.salidaVta||''}"></label>
+        <button type="button" class="btn-del">Eliminar</button>
+      </fieldset>`;
   }
-  if(['terrestre','mixto'].includes(tipo)){
-    html+=`<fieldset class="tramo"><legend>Bus ${tramoCount}</legend>
-      <label>Lugar Encuentro:<input value="${data.lugar||''}"></label>
-      <label>Hora Inicio:<input type="time" value="${data.hora||''}"></label>
-      <label>Empresa:<input value="${data.empresa||''}"></label>
-      <label>Conductor 1:<input value="${data.cond1||''}"></label>
-      <label>Conductor 2:<input value="${data.cond2||''}"></label>
-      <button type="button" class="btn-del">Eliminar</button></fieldset>`;
+
+  if (['terrestre','mixto'].includes(tipo)) {
+    html += `
+      <fieldset class="tramo">
+        <legend>Bus ${tramoCount}</legend>
+        <label>Lugar Encuentro:<input value="${data.lugar||''}"></label>
+        <label>Hora Inicio:<input type="time" value="${data.hora||''}"></label>
+        <label>Empresa:<input value="${data.empresa||''}"></label>
+        <label>Conductor 1:<input value="${data.cond1||''}"></label>
+        <label>Conductor 2:<input value="${data.cond2||''}"></label>
+        <button type="button" class="btn-del">Eliminar</button>
+      </fieldset>`;
   }
-  const div=document.createElement('div');
-  div.innerHTML=html;
-  div.querySelectorAll('.btn-del').forEach(b=>b.onclick=()=>b.closest('fieldset').remove());
+
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('.btn-del')
+     .forEach(b => b.onclick = () => b.closest('fieldset').remove());
   contTramos.appendChild(div);
 }
 
-function renderTramos(arr){ arr.forEach(t=>addTramo(t)); }
-
-// ——————————————————————————————
-// 8.b) recalcHotels(): comprueba que la suma de noches ≤ noches del programa
-// ——————————————————————————————
-function recalcHotels() {
-  // extrae noches máximas del programa (X/Y)
-  const progMatch = inpPrograma.value.match(/\/(\d+)$/);
-  const maxNoches = progMatch ? Number(progMatch[1]) : Infinity;
-
-  // recorre las filas de hoteles y suma sus noches
-  const inputs = hotelesCtr.querySelectorAll('.hotel-nights');
-  let suma = 0;
-  inputs.forEach(i => suma += Number(i.value) || 0);
-
-  // si se pasa, aviso y limpio el último cambio
-  if (suma > maxNoches) {
-    alert(`⚠️ Has excedido el total de noches (${maxNoches}). Ajusta por favor.`);
-    // quitar el valor que provocó el exceso
-    const exceso = suma - maxNoches;
-    const last = inputs[inputs.length - 1];
-    last.value = Math.max(0, Number(last.value) - exceso);
-    suma = maxNoches;
-  }
-
-  // Si quieres desactivar añadir más hoteles cuando ya llegaste:
-  const btn = document.getElementById('btnAddHotel');
-  btn.disabled = (suma >= maxNoches);
+// 10) Recargar tramos existentes
+function renderTramos(arr) {
+  arr.forEach(t => addTramo(t));
 }
 
-// ——————————————————————————————
-// 8.c) modifica addHotelRow para enganchar recalc y city‐sync
-// ——————————————————————————————
-function addHotelRow(data={hotel:'',noches:''}) {
-  const dest = inpDestino.value;
-  const opts  = (HOTELES_MAP[dest] || []).map(h =>
+// 11) Validar que la suma de noches === Y
+function recalcHotels() {
+  // Extraer Y del programa “X/Y”
+  const m = inpPrograma.value.match(/\/(\d+)$/);
+  const maxN = m ? Number(m[1]) : Infinity;
+
+  // Sumar noches
+  let suma = 0;
+  hotelesCtr.querySelectorAll('.hotel-nights')
+    .forEach(i => suma += Number(i.value) || 0);
+
+  // Si distinta: bloquear guardado y avisar
+  if (suma !== maxN) {
+    // no dejamos que el botón "Guardar" se active
+    form.querySelector('button[type=submit]').disabled = true;
+  } else {
+    form.querySelector('button[type=submit]').disabled = false;
+  }
+}
+
+// 12) Añadir fila de hotel + noches
+function addHotelRow(data = { nombre:'', noches:'' }) {
+  const dest = inpDestino.value.toUpperCase();
+  const opts = (HOTELES_MAP[dest] || []).map(h =>
     `<option value="${h.name}">${h.name} (${h.city})</option>`
   ).join('');
+
   const row = document.createElement('div');
   row.classList.add('hotel-row');
   row.innerHTML = `
@@ -210,116 +258,152 @@ function addHotelRow(data={hotel:'',noches:''}) {
     <input type="number" min="1" class="hotel-nights" placeholder="Noches" value="${data.noches||''}">
     <button type="button" class="btn-remove">×</button>
   `;
-  // al cambiar hotel: agrego ciudad
+
+  // Al elegir hotel, añadir ciudad
   row.querySelector('.hotel-select').onchange = e => {
     const sel = e.target.value;
-    const info = (HOTELES_MAP[dest]||[]).find(h=>h.name===sel);
+    const info = (HOTELES_MAP[dest]||[]).find(h => h.name === sel);
     if (info) {
       const set = new Set(
-        inpCiudades.value.split(';')
-          .map(s=>s.trim()).filter(Boolean)
+        inpCiudades.value.split(';').map(s=>s.trim()).filter(Boolean)
       );
       set.add(info.city);
       inpCiudades.value = Array.from(set).join('; ');
     }
   };
-  // al cambiar noches: recalc
-  const nightsInput = row.querySelector('.hotel-nights');
-  nightsInput.oninput = recalcHotels;
 
+  // Al cambiar noches, revalidar
+  row.querySelector('.hotel-nights').oninput = recalcHotels;
+
+  // Botón “×” quita fila + revalida
   row.querySelector('.btn-remove').onclick = () => {
     row.remove();
     recalcHotels();
   };
 
   hotelesCtr.appendChild(row);
-  // y recalculo tras añadir
   recalcHotels();
 }
 
+// 13) Cargar grupo desde Firestore
 async function cargarGrupo() {
-  const id=selNum.value;
-  const snap=await getDoc(doc(db,'grupos',id));
-  if(!snap.exists()) return;
-  const g=snap.data();
+  const id = selNum.value;
+  const snap = await getDoc(doc(db,'grupos',id));
+  if (!snap.exists()) return;
+  const g = snap.data();
 
-  inpNombre.value   = g.nombreGrupo||'';
-  inpDestino.value  = g.destino||'';
-  inpPrograma.value = g.programa||'';
-  inpTotal.value    = g.cantidadgrupo||'';
-  inpCoord.value    = g.coordinador||'';
-  inpInicio.value   = g.fechaInicio||'';
-  inpDuracion.value = g.duracion||'';
-  inpAdultos.value  = g.adultos||'';
-  inpEst.value      = g.estudiantes||'';
-  selTran.value     = g.transporte||'';
+  // Rellenar campos base
+  inpNombre.value   = g.nombreGrupo || '';
+  inpDestino.value  = g.destino      || '';
+  inpPrograma.value = g.programa     || '';
+  inpTotal.value    = g.cantidadgrupo|| '';
+
+  // Rellenar resto editable
+  inpCoord.value    = g.coordinador  || '';
+  inpInicio.value   = g.fechaInicio  || '';
+  inpDuracion.value = g.duracion     || '';
+  inpAdultos.value  = g.adultos      || '';
+  inpEst.value      = g.estudiantes  || '';
+  selTran.value     = g.transporte   || '';
   inpCiudades.value = (g.ciudades||[]).join('; ');
-  inpObs.value      = g.observaciones||'';
+  inpObs.value      = g.observaciones|| '';
 
   calcularFin();
-  hotelesCtr.innerHTML='';
-  if(Array.isArray(g.hoteles)) g.hoteles.forEach(h=>addHotelRow(h));
-  if(Array.isArray(g.tramos)){
-    toggleTramos(); renderTramos(g.tramos);
-  } else toggleTramos();
+
+  // Hoteles existentes
+  hotelesCtr.innerHTML = '';
+  if (Array.isArray(g.hoteles)) {
+    g.hoteles.forEach(h => addHotelRow({ nombre: h.nombre, noches: h.noches }));
+  }
+
+  // Tramos existentes
+  if (Array.isArray(g.tramos)) {
+    toggleTramos();
+    renderTramos(g.tramos);
+  } else {
+    toggleTramos();
+  }
 }
 
-async function guardarInfo(e){
+// 14) Guardar + historial
+async function guardarInfo(e) {
   e.preventDefault();
-  const id=selNum.value, refG=doc(db,'grupos',id),
-        snap=await getDoc(refG), before=snap.exists()?snap.data():{};
 
-  const tramos=[...contTramos.querySelectorAll('fieldset.tramo')].map(fs=>{
-    const i=fs.querySelectorAll('input');
-    return {
-      salida:i[0]?.value, origen:i[1]?.value,
-      aerolinea:i[2]?.value, numero:i[3]?.value,
-      origenVta:i[5]?.value, aerolineaVta:i[6]?.value,
-      numeroVta:i[7]?.value, salidaVta:i[8]?.value,
-      lugar:i[9]?.value, hora:i[10]?.value,
-      empresa:i[11]?.value, cond1:i[12]?.value, cond2:i[13]?.value
-    };
-  });
+  // Validar noches exactas
+  const m = inpPrograma.value.match(/\/(\d+)$/);
+  const maxN = m ? Number(m[1]) : Infinity;
+  let sumN = 0;
+  hotelesCtr.querySelectorAll('.hotel-nights')
+    .forEach(i => sumN += Number(i.value)||0);
+  if (sumN !== maxN) {
+    return alert(`❌ La suma de noches debe ser exactamente ${maxN}. Actualmente es ${sumN}.`);
+  }
 
-  const hoteles=[...hotelesCtr.querySelectorAll('.hotel-row')].map(r=>{
-    return {
+  const id = selNum.value;
+  const refG = doc(db,'grupos',id);
+  const snap = await getDoc(refG);
+  const before = snap.exists() ? snap.data() : {};
+
+  // Recolectar tramos
+  const tramos = [...contTramos.querySelectorAll('fieldset.tramo')]
+    .map(fs => {
+      const i = fs.querySelectorAll('input');
+      return {
+        salida:      i[0]?.value, origen:      i[1]?.value,
+        aerolinea:   i[2]?.value, numero:      i[3]?.value,
+        origenVta:   i[5]?.value, aerolineaVta:i[6]?.value,
+        numeroVta:   i[7]?.value, salidaVta:   i[8]?.value,
+        lugar:       i[9]?.value, hora:        i[10]?.value,
+        empresa:     i[11]?.value,cond1:       i[12]?.value,
+        cond2:       i[13]?.value
+      };
+    });
+
+  // Recolectar hoteles
+  const hoteles = [...hotelesCtr.querySelectorAll('.hotel-row')]
+    .map(r => ({
       nombre: r.querySelector('.hotel-select').value,
       noches: Number(r.querySelector('.hotel-nights').value)||0
-    };
-  });
+    }));
 
-  const payload={
-    destino: inpDestino.value,
-    programa: inpPrograma.value,
-    coordinador: inpCoord.value,
-    fechaInicio: inpInicio.value,
-    duracion: Number(inpDuracion.value),
-    fechaFin: inpFin.value,
-    adultos: Number(inpAdultos.value),
-    estudiantes: Number(inpEst.value),
-    transporte: selTran.value,
-    tramos, hoteles,
-    ciudades: inpCiudades.value.split(';').map(s=>s.trim()).filter(Boolean),
+  // Payload
+  const payload = {
+    destino:       inpDestino.value,
+    programa:      inpPrograma.value,
+    coordinador:   inpCoord.value,
+    fechaInicio:   inpInicio.value,
+    duracion:      Number(inpDuracion.value),
+    fechaFin:      inpFin.value,
+    adultos:       Number(inpAdultos.value),
+    estudiantes:   Number(inpEst.value),
+    transporte:    selTran.value,
+    tramos,
+    hoteles,
+    ciudades:      inpCiudades.value.split(';').map(s=>s.trim()).filter(Boolean),
     observaciones: inpObs.value,
     actualizadoPor: auth.currentUser.email,
-    actualizadoEn: new Date()
+    actualizadoEn:  new Date()
   };
 
-  await updateDoc(refG,payload);
+  // Update Firestore
+  await updateDoc(refG, payload);
 
-  const cambios=[];
-  for(let k in payload){
-    if(JSON.stringify(before[k]||'')!==JSON.stringify(payload[k]||'')){
+  // Historial campo a campo
+  const cambios = [];
+  for (let k in payload) {
+    if (JSON.stringify(before[k]||'') !== JSON.stringify(payload[k]||'')) {
       cambios.push({ campo:k, anterior:before[k]||null, nuevo:payload[k] });
     }
   }
-  if(cambios.length){
-    await Promise.all(cambios.map(c=>
+  if (cambios.length) {
+    await Promise.all(cambios.map(c =>
       addDoc(collection(db,'historial'),{
-        numeroNegocio:id, campo:c.campo,
-        anterior:c.anterior, nuevo:c.nuevo,
+        numeroNegocio:id,
+        campo:        c.campo,
+        anterior:     c.anterior,
+        nuevo:        c.nuevo,
         modificadoPor:auth.currentUser.email,
-        timestamp:new Date()
+        timestamp:    new Date()
       })
     ));
   }
