@@ -26,20 +26,25 @@
       </div>
       <div class="column medium">
         <label for="grupo-select-name">Nombre de Grupo</label>
-        <select id="grupo-select-name"><option>Cargando…</option></select>
+        <select id="grupo-select-name">
+          <option value="">Cargando…</option>
+        </select>
       </div>
       <div class="column short">
         <label for="grupo-select-num">N° Negocio</label>
-        <select id="grupo-select-num"><option>Cargando…</option></select>
+        <select id="grupo-select-num">
+          <option value="">Cargando…</option>
+        </select>
       </div>
     </div>
 
-    <!-- Quick-Add: seleccionar uno o varios días -->
+    <!-- Quick-Add multiselección de día(s) -->
     <section id="quick-add" class="quick-add">
-      <h3>Programador de Actividades</h3>
+      <h3>Programador de Actividades:</h3>
       <div class="row">
         <div class="column short">
           <label for="qa-dia">Día(s)</label>
+          <!-- ahora multiple para seleccionar varios días -->
           <select id="qa-dia" multiple size="4"></select>
         </div>
         <div class="column short">
@@ -61,7 +66,7 @@
     <div id="itinerario-container" class="grid"></div>
   </main>
 
-  <!-- Modal para crear/editar -->
+  <!-- Modal para crear/editar actividad -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal" class="modal" style="display:none;">
     <h3 id="modal-title">Actividad</h3>
@@ -94,7 +99,7 @@
     </form>
   </div>
 
-  <!-- Firebase, jQuery y script -->
+  <!-- Firebase + jQuery + script específico -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script type="module" src="itinerario.js"></script>
 </body>
