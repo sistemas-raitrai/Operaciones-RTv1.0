@@ -2,111 +2,100 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Itinerario de Grupo | RT v1.0</title>
-  <!-- 1) CSS global + específico -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Información del Viaje | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
 </head>
-<body class="itinerario-page">
+<body>
 
-  <!-- 2) Encabezado reutilizable -->
+  <!-- 1) Encabezado común -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
-      // Carga el header común y el script.js para reloj/logout/etc.
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js');
+      await import('./script.js'); // logout, reloj, etc.
     })();
   </script>
 
-  <main class="main">
-    <!-- 3) Selector de grupo -->
-    <div class="row">
-      <div class="column long">
-        <h2>Programa: <span id="grupo-title">–</span></h2>
-      </div>
-      <div class="column medium">
-        <label for="grupo-select-name">Nombre de Grupo</label>
-        <select id="grupo-select-name">
-          <option value="">Cargando…</option>
-        </select>
-      </div>
-      <div class="column short">
-        <label for="grupo-select-num">N° Negocio</label>
-        <select id="grupo-select-num">
-          <option value="">Cargando…</option>
-        </select>
-      </div>
-    </div>
+  <main class="formulario-container">
+    <h2>Información del Viaje</h2>
+    <form id="formInfoViaje">
 
-    <!-- 4) Panel de creación rápida -->
-    <section id="quick-add" class="quick-add">
-      <h3>Programador de Actividades</h3>
-      <div class="row">
-        <div class="column short">
-          <label for="qa-dia">Día</label>
-          <select id="qa-dia" multiple size="5"></select>
-        </div>
-        <div class="column short">
-          <label for="qa-horaInicio">Hora inicio</label>
-          <input type="time" id="qa-horaInicio" value="07:00" />
-        </div>
-        <div class="column medium">
-          <label for="qa-actividad">Actividad</label>
-          <input type="text" id="qa-actividad" placeholder="Nombre de la actividad" />
-        </div>
-        <div class="column short">
-          <label>&nbsp;</label>
-          <button id="qa-add" class="btn-add">Añadir</button>
-        </div>
-      </div>
-    </section>
+      <!-- Grupo -->
+      <label for="numeroNegocio">Número de Negocio:</label>
+      <select id="numeroNegocio"></select>
 
-    <!-- 5) Carrusel de días -->
-    <div id="itinerario-container" class="grid">
-      <!-- Las secciones de cada día se insertarán aquí dinámicamente -->
-    </div>
+      <label for="nombreGrupo">Nombre de Grupo:</label>
+      <input type="text" id="nombreGrupo" readonly />
+
+      <!-- Destino con datalist editable -->
+      <label for="destinoInput">Destino:</label>
+      <input list="destinosList" id="destinoInput" placeholder="Elige o escribe..." />
+      <datalist id="destinosList"></datalist>
+
+      <!-- Programa con datalist editable -->
+      <label for="programaInput">Programa (X/Y):</label>
+      <input list="programasList" id="programaInput" placeholder="Elige o escribe..." />
+      <datalist id="programasList"></datalist>
+
+      <!-- Coordinador -->
+      <label for="coordinador">Coordinador(a):</label>
+      <input type="text" id="coordinador" placeholder="Nombre coordinador/a" />
+
+      <!-- Fechas -->
+      <label for="fechaInicio">Fecha de Inicio:</label>
+      <input type="date" id="fechaInicio" />
+
+      <label for="duracion">Duración (días):</label>
+      <input type="number" id="duracion" min="1" />
+
+      <label for="fechaFin">Fecha de Término:</label>
+      <input type="date" id="fechaFin" readonly />
+
+      <!-- Composición -->
+      <label for="totalPax">Total Pasajeros:</label>
+      <input type="number" id="totalPax" readonly />
+
+      <label for="adultos">Adultos:</label>
+      <input type="number" id="adultos" min="0" />
+
+      <label for="estudiantes">Estudiantes:</label>
+      <input type="number" id="estudiantes" min="0" />
+
+      <!-- Transporte y tramos -->
+      <label for="transporte">Tipo de Transporte:</label>
+      <select id="transporte">
+        <option value="">Seleccione...</option>
+        <option value="terrestre">Terrestre</option>
+        <option value="aereo">Aéreo</option>
+        <option value="mixto">Mixto</option>
+      </select>
+
+      <div id="seccionTramos" style="display:none">
+        <h4>Detalle de Tramos</h4>
+        <button type="button" id="btnAddTramo">➕ Agregar Tramo</button>
+        <div id="tramosDetalle"></div>
+      </div>
+
+      <!-- Hoteles y noches -->
+      <label>Hoteles y Noches:</label>
+      <button type="button" id="btnAddHotel">➕ Agregar Hotel</button>
+      <div id="hotelesContainer"></div>
+
+      <!-- Ciudades -->
+      <label for="ciudades">Ciudades a recorrer:</label>
+      <input type="text" id="ciudades" readonly />
+
+      <!-- Observaciones -->
+      <label for="observaciones">Observaciones Logísticas:</label>
+      <textarea id="observaciones" rows="3"></textarea>
+
+      <button type="submit">Guardar Información</button>
+    </form>
   </main>
 
-  <!-- 6) Modal de actividad -->
-  <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
-  <div id="modal" class="modal" style="display:none;">
-    <h3 id="modal-title">Actividad</h3>
-    <form id="modal-form">
-      <label for="m-fecha">Fecha</label>
-      <select id="m-fecha"></select>
-
-      <label for="m-horaInicio">Hora Inicio</label>
-      <input type="time" id="m-horaInicio" />
-
-      <label for="m-horaFin">Hora Fin</label>
-      <input type="time" id="m-horaFin" />
-
-      <label for="m-actividad">Actividad</label>
-      <input type="text" id="m-actividad" />
-
-      <label for="m-pasajeros">Pasajeros</label>
-      <input type="number" id="m-pasajeros" min="1" />
-
-      <label for="m-adultos">Adultos</label>
-      <input type="number" id="m-adultos" min="0" />
-
-      <label for="m-estudiantes">Estudiantes</label>
-      <input type="number" id="m-estudiantes" min="0" />
-
-      <label for="m-notas">Notas</label>
-      <textarea id="m-notas" rows="2"></textarea>
-
-      <div class="actions">
-        <button type="button" id="modal-cancel">Cancelar</button>
-        <button type="submit" id="modal-save">Guardar</button>
-      </div>
-    </form>
-  </div>
-
-  <!-- 7) Firebase + jQuery + script específico -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script type="module" src="itinerario.js"></script>
+  <script type="module" src="infoviajes.js"></script>
 </body>
 </html>
