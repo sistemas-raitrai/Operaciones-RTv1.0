@@ -4,11 +4,8 @@
 // 0) Importes Firebase
 // —————————————————————————————————
 import { app, db } from './firebase-init.js';
-import { getAuth, onAuthStateChanged }
-  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-import {
-  doc, getDoc, updateDoc
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import { collection, getDocs, doc, getDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
@@ -47,27 +44,30 @@ onAuthStateChanged(auth, user => {
 });
 
 async function initItinerario() {
-  // 2.1) Poblar selects de grupos
-  const snap = await getDoc(doc(db,'grupos','__dummy__')); // dummy para forzar import
-  const all = (await db.collection('grupos').get()).docs;
-  const grupos = all.map(d => ({ id:d.id, ...d.data() }));
+  // 1) Cargar todos los grupos
+  const snap = await getDocs(collection(db, 'grupos'));
+  const grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+  // 2) Poblar selects de nombre y número
   selectNum.innerHTML  = grupos.map(g =>
     `<option value="${g.id}">${g.numeroNegocio}</option>`
-  ).join("");
+  ).join('');
   selectName.innerHTML = grupos.map(g =>
     `<option value="${g.id}">${g.nombreGrupo}</option>`
-  ).join("");
+  ).join('');
 
-  // 2.2) Sincronizar selects y renderizar
-  selectNum.onchange = () => {
-    selectName.value = selectNum.value;
-    renderItinerario();
-  };
-  selectName.onchange = () => {
-    selectNum.value = selectName.value;
-    renderItinerario();
-  };
+  // 3) Sincronizar ambos selects
+  selectNum.onchange  = () => { selectName.value = selectNum.value; renderItinerario(); };
+  selectName.onchange = () => { selectNum.value = selectName.value; renderItinerario(); };
+
+  // 4) Quick-add y modal
+  qaAddBtn.onclick   = quickAddActivity;
+  btnCancel.onclick  = closeModal;
+  formModal.onsubmit = onSubmitModal;
+
+  // 5) Primera render
+  selectNum.dispatchEvent(new Event('change'));
+}
 
   // 2.3) Quick-add y modal
   qaAddBtn.onclick    = quickAddActivity;
