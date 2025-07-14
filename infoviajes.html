@@ -7,28 +7,29 @@
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
-  <!-- 1) Encabezado -->
+
+  <!-- 1) Encabezado común -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js');
+      await import('./script.js'); // reloj, logout, etc.
     })();
   </script>
 
   <main class="formulario-container">
     <h2>Información del Viaje</h2>
-    <form id="formInfoViaje">
 
-      <!-- Grupo -->
+    <form id="formInfoViaje">
+      <!-- Grupo base -->
       <label for="numeroNegocio">Número de Negocio:</label>
       <select id="numeroNegocio"></select>
 
       <label for="nombreGrupo">Nombre de Grupo:</label>
       <input type="text" id="nombreGrupo" readonly />
 
-      <!-- Destino / Programa -->
+      <!-- Destino y Programa con datalist -->
       <label for="destinoInput">Destino:</label>
       <input list="destinosList" id="destinoInput" placeholder="Elige o escribe..." />
       <datalist id="destinosList"></datalist>
@@ -41,7 +42,7 @@
       <label for="coordinador">Coordinador(a):</label>
       <input type="text" id="coordinador" placeholder="Nombre coordinador/a" />
 
-      <!-- Fechas -->
+      <!-- Fechas y duración -->
       <label for="fechaInicio">Fecha de Inicio:</label>
       <input type="date" id="fechaInicio" />
 
@@ -61,7 +62,7 @@
       <label for="estudiantes">Estudiantes:</label>
       <input type="number" id="estudiantes" min="0" />
 
-      <!-- Transporte -->
+      <!-- Transporte y tramos -->
       <label for="transporte">Tipo de Transporte:</label>
       <select id="transporte">
         <option value="">Seleccione...</option>
@@ -76,12 +77,12 @@
         <div id="tramosDetalle"></div>
       </div>
 
-      <!-- Hoteles y Noches -->
+      <!-- Hoteles + noches -->
       <label>Hoteles y Noches:</label>
       <button type="button" id="btnAddHotel">➕ Agregar Hotel</button>
       <div id="hotelesContainer"></div>
 
-      <!-- Ciudades -->
+      <!-- Ciudades resultantes (readonly) -->
       <label for="ciudades">Ciudades a recorrer:</label>
       <input type="text" id="ciudades" readonly />
 
