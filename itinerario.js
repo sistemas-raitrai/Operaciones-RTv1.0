@@ -76,7 +76,7 @@ async function initItinerario() {
 
   // 2.4) Primera carga
   selectNum.dispatchEvent(new Event("change"));
-}
+};
 
 // —————————————————————————————————
 // 3) Renderizar todo el itinerario desde `grupos/{id}.itinerario`
