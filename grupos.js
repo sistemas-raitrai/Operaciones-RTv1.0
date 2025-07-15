@@ -21,6 +21,7 @@ const camposFire = [
   "destino",        // 8
   "programa",       // 9
   "fechaInicio",         // 10
+  "fechaFin",            // 19
   "hotel",          // 11
   "asistenciaEnViajes", // 12
   "autorizacion",   // 13
@@ -29,7 +30,7 @@ const camposFire = [
   "versionFicha",   // 16
   "creadoPor",      // 17
   "fechaCreacion",  // 18
-  "fechaFin",            // 19
+  
   "transporte",     // 20
   "ciudades",       // 21
   "hoteles",        // 22
