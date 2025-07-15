@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Itinerario de Grupo | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
-  <!-- CSS de Choices.js para multi-select estilo chips -->
+  <!-- Choices.js CSS -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"
@@ -13,18 +13,16 @@
 </head>
 <body class="itinerario-page">
 
-  <!--  Encabezado reutilizable -->
   <div id="encabezado"></div>
   <script type="module">
-    (async () => {
-      const html = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = html;
+    (async()=>{
+      const html=await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML=html;
       await import('./script.js');
     })();
   </script>
 
   <main class="main">
-    <!-- Selector de Grupo -->
     <div class="row">
       <div class="column long">
         <h2>Programa: <span id="grupo-title">–</span></h2>
@@ -39,9 +37,8 @@
       </div>
     </div>
 
-    <!-- Quick-Add: multi-select de días -->
     <section id="quick-add" class="quick-add">
-      <h3>Programador de Actividades</h3>
+      <h3>Programador Rápido de Actividades </h3>
       <div class="row">
         <div class="column short">
           <label for="qa-dia">Día(s)</label>
@@ -66,11 +63,10 @@
       </div>
     </section>
 
-    <!-- Carrusel dinámico de días -->
     <div id="itinerario-container" class="grid"></div>
   </main>
 
-  <!-- Modal para crear/editar actividad -->
+  <!-- Modal -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal" class="modal" style="display:none;">
     <h3 id="modal-title">Actividad</h3>
@@ -80,7 +76,6 @@
 
       <label for="m-horaInicio">Hora Inicio</label>
       <input type="time" id="m-horaInicio" />
-
       <label for="m-horaFin">Hora Fin</label>
       <input type="time" id="m-horaFin" />
 
@@ -103,7 +98,7 @@
     </form>
   </div>
 
-  <!-- Firebase auth, jQuery, Choices.js y nuestro script -->
+  <!-- Scripts -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script
     src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"
