@@ -115,7 +115,7 @@ async function cargarYMostrarTabla() {
     order: [[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
     scrollX: true,
     columnDefs: [
-      { targets: [5,6], visible: false }  // p. ej. Colegio y Curso ocultos por defecto
+      { targets: [5,6,11,12,13,16,17,18,24], visible: false }  // p. ej. Colegio y Curso ocultos por defecto
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
