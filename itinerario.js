@@ -9,7 +9,7 @@ import { getAuth, onAuthStateChanged } from
 import {
   collection, getDocs, doc, getDoc, updateDoc, addDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-import Choices from 'https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.js';
+import Choices from 'https://unpkg.com/choices.js@10.2.0/public/assets/scripts/choices.min.mjs';
 
 const auth = getAuth(app);
 
