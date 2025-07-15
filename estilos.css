@@ -483,67 +483,118 @@ a {
 }
 
 /* ──────────────────────────────────────────────── */
-/* PERSONALIZACIÓN DE CHOICES.JS (selector múltiple) */
+/* UNIFICAR ESTILO: Quick-Add & Choices.js chips    */
 /* ──────────────────────────────────────────────── */
 
-/* 1) Contenedor interior (donde aparecen los chips) */
-.choices__inner {
-  background-color: #f0f4f8;    /* Un gris muy suave */
-  border: 1px solid #c0cbd6;    /* Un borde claro */
+/* 1) Contenedor Quick-Add entero */
+.quick-add {
+  background-color: #ffffff;
+  border: 1px solid #dddddd;
   border-radius: 6px;
-  padding: 6px 8px;
-  min-height: 44px;             /* Para que no colapse si no hay nada */
+  padding: 1rem;
+  font-family: Arial, sans-serif;
+}
+
+/* 2) Filas/columnas y etiquetas */
+.quick-add .row {
   align-items: center;
-  gap: 4px;
+}
+.quick-add label {
+  margin-bottom: 0.25rem;
+  color: #333333;
 }
 
-/* 2) Lista de chips (items seleccionados) */
-.choices__list--multiple {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-/* 3) Cada chip */
-.choices__item {
-  background-color: #0066cc;    /* Azul corporativo */
-  color: #fff;
+/* 3) Inputs, select y contenedor de Choices */
+.quick-add input,
+.quick-add select,
+.quick-add .choices__inner {
+  background-color: #f9f9f9;
+  border: 1px solid #cccccc;
   border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 0.9rem;
-  text-transform: none;         /* deja el texto como venga */
+  color: #333333;
+  font-size: 0.95rem;
+  padding: 0.5rem;
+  box-shadow: none;
+  text-transform: none; /* placeholder en mayúsculas, valor normal */
 }
 
-/* 4) El botón “×” de cada chip */
-.choices__button {
-  background: rgba(255,255,255,0.3);
-  color: #fff;
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
-  font-size: 0.8rem;
-  margin-left: 4px;
-}
-
-/* 5) El placeholder “Selecciona día(s)” */
+/* 4) Placeholder estilo */
+.quick-add input::placeholder,
 .choices__placeholder {
-  color: #888;
+  color: #999999;
   font-style: italic;
 }
 
-/* 6) Dropdown (cuando abres para buscar) */
-.choices__list--dropdown {
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+/* 5) Botón “Añadir” */
+.quick-add .btn-add {
+  background-color: #004080;
   border-radius: 4px;
-  border: 1px solid #c0cbd6;
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  padding: 0.75rem 1rem;
 }
 
-/* 7) Cada opción del dropdown */
+/* 6) Heights iguales */
+.quick-add .column.short,
+.quick-add .column.medium {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* ──────────────────────────────────────────────── */
+/* Choices.js: personalizar selector múltiple      */
+/* ──────────────────────────────────────────────── */
+
+/* Contenedor de chips */
+.choices__inner {
+  background-color: #f9f9f9 !important;
+  border: 1px solid #cccccc !important;
+  border-radius: 4px !important;
+  min-height: 40px !important;
+  padding: 0.25rem 0.5rem !important;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+/* Cada chip */
+.choices__item--selectable {
+  background-color: #eeeeee !important;
+  color: #333333 !important;
+  border-radius: 3px !important;
+  padding: 4px 8px !important;
+  font-size: 0.85rem !important;
+}
+
+/* Botón “×” de chips */
+.choices__button {
+  color: #666666 !important;
+}
+
+/* Dropdown de opciones */
+.choices__list--dropdown {
+  border: 1px solid #cccccc !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+}
+
+/* Opciones individuales */
 .choices__item--choice {
-  padding: 8px 12px;
-  font-size: 0.95rem;
+  padding: 8px 12px !important;
+  font-size: 0.9rem !important;
+  color: #333333 !important;
 }
 .choices__item--choice.is-highlighted {
-  background-color: #e6f0ff;
+  background-color: #dddddd !important;
 }
+
+/* ──────────────────────────────────────────────── */
+/* Forzar mayúsculas sólo en inputs (no en chips) */
+/* ──────────────────────────────────────────────── */
+input, select, textarea {
+  text-transform: uppercase;
+}
+
+
 
