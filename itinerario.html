@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Itinerario de Grupo | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
-  <!-- 1. Incluimos el CSS de Choices.js -->
+  <!-- CSS de Choices.js para multi-select estilo chips -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"
@@ -13,7 +13,7 @@
 </head>
 <body class="itinerario-page">
 
-  <!-- Encabezado común -->
+  <!--  Encabezado reutilizable -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
@@ -39,13 +39,12 @@
       </div>
     </div>
 
-    <!-- Quick-Add: selección múltiple de días con Choices.js -->
+    <!-- Quick-Add: multi-select de días -->
     <section id="quick-add" class="quick-add">
-      <h3>ProgramadorES de Actividades</h3>
+      <h3>Programador de Actividades</h3>
       <div class="row">
         <div class="column short">
           <label for="qa-dia">Día(s)</label>
-          <!-- select múltiple vacío; Choices.js lo convertirá -->
           <select id="qa-dia" multiple></select>
         </div>
         <div class="column short">
@@ -104,7 +103,7 @@
     </form>
   </div>
 
-  <!-- Firebase, jQuery, Choices.js y nuestro script -->
+  <!-- Firebase auth, jQuery, Choices.js y nuestro script -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script
     src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"
