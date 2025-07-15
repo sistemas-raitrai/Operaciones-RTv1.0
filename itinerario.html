@@ -5,6 +5,11 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Itinerario de Grupo | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
+  <!-- 1. Incluimos el CSS de Choices.js -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"
+  />
 </head>
 <body class="itinerario-page">
 
@@ -19,7 +24,7 @@
   </script>
 
   <main class="main">
-    <!-- Selector de grupo -->
+    <!-- Selector de Grupo -->
     <div class="row">
       <div class="column long">
         <h2>Programa: <span id="grupo-title">–</span></h2>
@@ -34,15 +39,14 @@
       </div>
     </div>
 
-    <!-- Quick-Add con checkboxes -->
+    <!-- Quick-Add: selección múltiple de días con Choices.js -->
     <section id="quick-add" class="quick-add">
-      <h3>Programadores de Actividades</h3>
+      <h3>Programador de Actividades</h3>
       <div class="row">
         <div class="column short">
-          <label>Día(s)</label>
-          <div id="qa-dias" class="qa-dias">
-            <!-- Aquí inyectamos checkboxes dinámicos -->
-          </div>
+          <label for="qa-dia">Día(s)</label>
+          <!-- select múltiple vacío; Choices.js lo convertirá -->
+          <select id="qa-dia" multiple></select>
         </div>
         <div class="column short">
           <label for="qa-horaInicio">Hora inicio</label>
@@ -50,7 +54,11 @@
         </div>
         <div class="column medium">
           <label for="qa-actividad">Actividad</label>
-          <input type="text" id="qa-actividad" placeholder="Nombre de la actividad" />
+          <input
+            type="text"
+            id="qa-actividad"
+            placeholder="Nombre de la actividad"
+          />
         </div>
         <div class="column short">
           <label>&nbsp;</label>
@@ -59,11 +67,11 @@
       </div>
     </section>
 
-    <!-- Carrusel de días -->
+    <!-- Carrusel dinámico de días -->
     <div id="itinerario-container" class="grid"></div>
   </main>
 
-  <!-- Modal para crear/editar -->
+  <!-- Modal para crear/editar actividad -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal" class="modal" style="display:none;">
     <h3 id="modal-title">Actividad</h3>
@@ -96,8 +104,11 @@
     </form>
   </div>
 
-  <!-- Firebase + script -->
+  <!-- Firebase, jQuery, Choices.js y nuestro script -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"
+  ></script>
   <script type="module" src="itinerario.js"></script>
 </body>
 </html>
