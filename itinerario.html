@@ -5,15 +5,22 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Itinerario de Grupo | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
-  <!-- Choices.js CSS para multi‐select estilo “chips” -->
+  <!-- Choices.js CSS -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"
   />
+  <style>
+    /* Estilo para agrandar el modal al 80% ancho */
+    .modal {
+      width: 80%;
+      max-width: 600px;
+    }
+  </style>
 </head>
 <body class="itinerario-page">
 
-  <!-- Encabezado común (login/logout, reloj) -->
+  <!-- Encabezado común -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
@@ -24,7 +31,7 @@
   </script>
 
   <main class="main">
-    <!-- Selectores de Grupo -->
+    <!-- Selector de Grupo -->
     <div class="row">
       <div class="column long">
         <h2>Programa: <span id="grupo-title">–</span></h2>
@@ -39,13 +46,12 @@
       </div>
     </div>
 
-    <!-- Programador Rápido de Actividades -->
+    <!-- Quick-Add: selección múltiple de días con Choices.js -->
     <section id="quick-add" class="quick-add">
-      <h3>Programador de Actividades</h3>
+      <h3>Programador Rápido de Actividades</h3>
       <div class="row">
         <div class="column short">
           <label for="qa-dia">Día(s)</label>
-          <!-- Choices.js convertirá esto en multi‐select estilo tags -->
           <select id="qa-dia" multiple></select>
         </div>
         <div class="column short">
@@ -76,13 +82,11 @@
   <div id="modal" class="modal" style="display:none;">
     <h3 id="modal-title">Actividad</h3>
     <form id="modal-form">
-      <!-- Multi‐select de fechas (editar/mover a N días) -->
-      <label for="m-fecha">Fecha(s)</label>
-      <select id="m-fecha" multiple></select>
+      <label for="m-fecha">Fecha</label>
+      <select id="m-fecha"></select>
 
       <label for="m-horaInicio">Hora Inicio</label>
       <input type="time" id="m-horaInicio" />
-
       <label for="m-horaFin">Hora Fin</label>
       <input type="time" id="m-horaFin" />
 
@@ -95,9 +99,6 @@
       <label for="m-estudiantes">Estudiantes</label>
       <input type="number" id="m-estudiantes" min="0" />
 
-      <label for="m-pax">Total Pax</label>
-      <input type="number" id="m-pax" min="0" />
-
       <label for="m-notas">Notas</label>
       <textarea id="m-notas" rows="2"></textarea>
 
@@ -108,7 +109,7 @@
     </form>
   </div>
 
-  <!-- Dependencias -->
+  <!-- Scripts -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script
     src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"
