@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Itinerario de Grupo | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
-  <!-- Choices.js CSS -->
+  <!-- Choices.js CSS para multi-select estilizado -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"
   />
   <style>
-    /* Estilo para agrandar el modal al 80% ancho */
+    /* Modal más ancho (80%) */
     .modal {
-      width: 80%;
-      max-width: 600px;
+      width: 80% !important;
+      max-width: 800px;
     }
   </style>
 </head>
@@ -48,7 +48,7 @@
 
     <!-- Quick-Add: selección múltiple de días con Choices.js -->
     <section id="quick-add" class="quick-add">
-      <h3>Programador Rápido de Actividades</h3>
+      <h3>Programador de Actividades</h3>
       <div class="row">
         <div class="column short">
           <label for="qa-dia">Día(s)</label>
@@ -109,11 +109,8 @@
     </form>
   </div>
 
-  <!-- Scripts -->
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script
-    src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"
-  ></script>
+  <!-- Firebase, Choices.js y nuestro script -->
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script type="module" src="itinerario.js"></script>
 </body>
 </html>
