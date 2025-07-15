@@ -481,3 +481,69 @@ a {
   padding: 4px 8px;
   white-space: nowrap;   /* para no reventar celdas */
 }
+
+/* ──────────────────────────────────────────────── */
+/* PERSONALIZACIÓN DE CHOICES.JS (selector múltiple) */
+/* ──────────────────────────────────────────────── */
+
+/* 1) Contenedor interior (donde aparecen los chips) */
+.choices__inner {
+  background-color: #f0f4f8;    /* Un gris muy suave */
+  border: 1px solid #c0cbd6;    /* Un borde claro */
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-height: 44px;             /* Para que no colapse si no hay nada */
+  align-items: center;
+  gap: 4px;
+}
+
+/* 2) Lista de chips (items seleccionados) */
+.choices__list--multiple {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* 3) Cada chip */
+.choices__item {
+  background-color: #0066cc;    /* Azul corporativo */
+  color: #fff;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.9rem;
+  text-transform: none;         /* deja el texto como venga */
+}
+
+/* 4) El botón “×” de cada chip */
+.choices__button {
+  background: rgba(255,255,255,0.3);
+  color: #fff;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  font-size: 0.8rem;
+  margin-left: 4px;
+}
+
+/* 5) El placeholder “Selecciona día(s)” */
+.choices__placeholder {
+  color: #888;
+  font-style: italic;
+}
+
+/* 6) Dropdown (cuando abres para buscar) */
+.choices__list--dropdown {
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+  border-radius: 4px;
+  border: 1px solid #c0cbd6;
+}
+
+/* 7) Cada opción del dropdown */
+.choices__item--choice {
+  padding: 8px 12px;
+  font-size: 0.95rem;
+}
+.choices__item--choice.is-highlighted {
+  background-color: #e6f0ff;
+}
+
