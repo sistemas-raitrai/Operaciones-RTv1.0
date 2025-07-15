@@ -46,6 +46,10 @@ input, select, textarea {
   flex: 6;
 }
 
+.quick-add .column.short:nth-child(1) {
+  flex: 0 0 auto;
+}
+
 .button-container {
   margin-top: 2rem;
   display: flex;
