@@ -16,6 +16,11 @@ async function generarTablaCalendario() {
     const data = doc.data();
     const numeroNegocio = doc.id;
     const nombreGrupo = data.nombreGrupo || "Sin nombre";
+    const destino = data.destino || "";
+    const programa = data.programa || "";
+    const cantidadgrupo = data.cantidadgrupo || "";
+    const adultos = data.adultos || "";
+    const estudiantes = data.estudiantes || "";
     const itinerario = data.itinerario || {};
 
     const actividadesPorFecha = {};
@@ -34,6 +39,9 @@ async function generarTablaCalendario() {
     grupos.push({
       numeroNegocio,
       nombreGrupo,
+      destino,
+      programa,
+      grupoResumen: `${cantidadgrupo} (A: ${adultos} E: ${estudiantes})`,
       fechaInicio: data.fechaInicio || "",
       fechaFin: data.fechaFin || "",
       actividadesPorFecha
@@ -48,6 +56,9 @@ async function generarTablaCalendario() {
   encabezado.innerHTML = `
     <th>Número Negocio</th>
     <th>Nombre Grupo</th>
+    <th>Destino</th>
+    <th>Programa</th>
+    <th>Pax</th>
     ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join("")}
   `;
 
@@ -61,6 +72,9 @@ async function generarTablaCalendario() {
       <tr>
         <td>${grupo.numeroNegocio}</td>
         <td>${grupo.nombreGrupo}</td>
+        <td>${grupo.destino}</td>
+        <td>${grupo.programa}</td>
+        <td>${grupo.grupoResumen}</td>
         ${fechasOrdenadas.map(f => {
           const contenido = grupo.actividadesPorFecha[f] || "";
           const clase = (f === inicio || f === fin) ? "inicio-fin" : "";
