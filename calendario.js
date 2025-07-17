@@ -34,6 +34,8 @@ async function generarTablaCalendario() {
     grupos.push({
       numeroNegocio,
       nombreGrupo,
+      fechaInicio: data.fechaInicio || "",
+      fechaFin: data.fechaFin || "",
       actividadesPorFecha
     });
   });
