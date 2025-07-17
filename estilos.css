@@ -128,6 +128,11 @@ a {
   color: black;
 }
 
+.inicio-fin {
+  background-color: #fff59d !important; /* amarillo suave */
+  font-weight: bold;
+}
+
 /* ----------------------------------------------------------------------- */
 /* Estilos específicos para la vista de “Visualización de Grupos”          */
 /* ----------------------------------------------------------------------- */
