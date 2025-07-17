@@ -1,5 +1,5 @@
 import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-import { app, logout } from "./firebase-init.js"; // Asegúrate de que `logout()` esté disponible si lo usas
+import { app } from "./firebase-init.js";
 
 const db = getFirestore(app);
 
