@@ -9,7 +9,7 @@
   <!-- ✅ Encabezado dinámico -->
   <div id="encabezado"></div>
 
-  <h2 style="margin-top: 2rem;">📋 Detalle de Proveedores</h2>
+  <h2 style="margin-top: 2rem;">📋 Detalle Proveedores</h2>
 
   <table id="tabla">
     <thead>
@@ -24,17 +24,29 @@
         <th>Tipo Cobro</th>
         <th>Valor</th>
         <th>Guardar</th>
+        <th>Eliminar</th>
       </tr>
     </thead>
     <tbody id="contenido"></tbody>
   </table>
-  <button onclick="agregarFila()">➕ Nueva fila</button>
+
+  <div style="margin-top: 1rem;">
+    <button onclick="agregarFila()">➕ Nueva fila</button>
+    <button onclick="guardarTodo()">💾 Guardar todo</button>
+  </div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
+    import {
+      collection,
+      getDocs,
+      doc,
+      setDoc,
+      addDoc,
+      deleteDoc
+    } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
-    // 🔒 Validar sesión
     onAuthStateChanged(auth, user => {
       if (!user) {
         window.location.href = 'login.html';
@@ -54,6 +66,7 @@
     };
 
     const tabla = document.getElementById("contenido");
+    const filas = []; // ⏺️ Para guardar referencias de filas
 
     function agregarFila(dato = {}, docId = null) {
       const fila = document.createElement("tr");
@@ -82,36 +95,32 @@
         fila.appendChild(td);
       });
 
-      const tdBtn = document.createElement("td");
-      const btn = document.createElement("button");
-      btn.textContent = "💾";
-      btn.className = "guardar";
-      btn.onclick = async () => {
-        const nuevoDoc = {};
-        inputsRef.forEach(input => {
-          const campo = input.getAttribute("data-campo");
-          nuevoDoc[campo] = campo === "valor" ? Number(input.value) : input.value;
-        });
-        if (docId) {
-          await db.collection("proveedores").doc(docId).set(nuevoDoc);
-          alert("Actualizado en Firebase ✅");
-        } else {
-          await db.collection("proveedores").add(nuevoDoc);
-          alert("Guardado en Firebase ✅");
-        }
-      };
-      tdBtn.appendChild(btn);
-      fila.appendChild(tdBtn);
-      tabla.appendChild(fila);
+      const tdGuardar = document.createElement("td");
+      const btnGuardar = document.createElement("button");
+      btnGuardar.textContent = "💾";
+      btnGuardar.onclick = async () => guardarFila(inputsRef, docId);
+      tdGuardar.appendChild(btnGuardar);
+      fila.appendChild(tdGuardar);
 
-      // 🧩 Soporte para pegar desde Excel (preservando dropdowns)
+      const tdBorrar = document.createElement("td");
+      const btnBorrar = document.createElement("button");
+      btnBorrar.textContent = "🗑️";
+      btnBorrar.onclick = async () => {
+        if (docId) await deleteDoc(doc(db, "proveedores", docId));
+        fila.remove();
+      };
+      tdBorrar.appendChild(btnBorrar);
+      fila.appendChild(tdBorrar);
+
+      tabla.appendChild(fila);
+      filas.push({ inputs: inputsRef, docId });
+
       fila.addEventListener("paste", e => {
         const texto = e.clipboardData.getData("text/plain");
         const valores = texto.split("\t");
         valores.forEach((val, i) => {
           if (inputsRef[i]) {
             inputsRef[i].value = val.trim();
-            // Si es select, asegurar que el valor esté en la lista
             if (inputsRef[i].tagName === "SELECT" && !opciones[inputsRef[i].getAttribute("data-campo")].includes(val.trim())) {
               const nuevaOpcion = document.createElement("option");
               nuevaOpcion.value = val.trim();
@@ -124,13 +133,36 @@
       });
     }
 
+    async function guardarFila(inputsRef, docId) {
+      const nuevoDoc = {};
+      inputsRef.forEach(input => {
+        const campo = input.getAttribute("data-campo");
+        nuevoDoc[campo] = campo === "valor" ? Number(input.value) : input.value;
+      });
+      if (docId) {
+        await setDoc(doc(db, "proveedores", docId), nuevoDoc);
+        alert("Actualizado en Firebase ✅");
+      } else {
+        await addDoc(collection(db, "proveedores"), nuevoDoc);
+        alert("Guardado en Firebase ✅");
+      }
+    }
+
+    async function guardarTodo() {
+      for (const fila of filas) {
+        await guardarFila(fila.inputs, fila.docId);
+      }
+      alert("Todos los registros fueron guardados ✅");
+    }
+
     async function cargarRegistros() {
-      const snapshot = await db.collection("proveedores").get();
-      snapshot.forEach(doc => agregarFila(doc.data(), doc.id));
+      const snapshot = await getDocs(collection(db, "proveedores"));
+      snapshot.forEach(docSnap => agregarFila(docSnap.data(), docSnap.id));
     }
 
     cargarRegistros();
     window.agregarFila = agregarFila;
+    window.guardarTodo = guardarTodo;
 
     fetch('encabezado.html')
       .then(res => res.text())
