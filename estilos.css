@@ -381,6 +381,9 @@ a {
   width: 320px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.2);
   z-index: 101;
+  max-height: 80vh;      /* hasta el 80% de la altura de la ventana */
+  overflow-y: auto;      /* scroll vertical si el contenido excede */
+  padding: 1rem;         /* opcional: mantener un buen padding */
 }
 
 /* Etiquetas dentro del modal */
