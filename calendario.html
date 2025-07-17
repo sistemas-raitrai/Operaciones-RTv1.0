@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Calendario de Actividades</title>
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css"/>
   <link rel="stylesheet" href="estilos.css" />
 </head>
 <body>
@@ -19,20 +20,44 @@
 
   <main>
     <h1>🗓️ Calendario de actividades por día</h1>
-    <table id="tablaCalendario" class="display" style="width:100%">
-      <thead>
-        <tr id="encabezadoCalendario">
-          <!-- columnas dinámicas -->
-        </tr>
-      </thead>
-      <tbody id="cuerpoCalendario">
-        <!-- contenido dinámico -->
-      </tbody>
+
+    <div id="toolbar" class="toolbar">
+      <input type="text" id="buscador" placeholder="🔍 Buscar..." />
+      <select id="filtroDestino"></select>
+      <select id="filtroAno"></select>
+      <button id="btn-toggle-edit">🔓 Activar Edición</button>
+      <button id="btn-view-history">📜 Ver Historial</button>
+      <button id="btn-export-excel">📤 Exportar Excel</button>
+    </div>
+
+    <table id="tablaCalendario" class="display nowrap" style="width:100%">
+      <thead><tr id="encabezadoCalendario"></tr></thead>
+      <tbody id="cuerpoCalendario"></tbody>
     </table>
   </main>
 
+  <!-- Modal de historial -->
+  <div id="modalHistorial" class="modal" style="display:none;">
+    <h2>Historial de cambios</h2>
+    <input type="text" id="buscadorHistorial" placeholder="🔍 Buscar en historial..." />
+    <input type="date" id="histInicio" />
+    <input type="date" id="histFin" />
+    <button id="btn-refresh-history">🔁 Actualizar</button>
+    <button id="btn-close-history">❌ Cerrar</button>
+    <table id="tablaHistorial" class="display" style="width:100%">
+      <thead>
+        <tr><th>Fecha</th><th>Usuario</th><th>N° Negocio</th><th>Campo</th><th>Antes</th><th>Ahora</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
   <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
   <script type="module" src="./firebase-init.js"></script>
   <script type="module" src="./calendario.js"></script>
 </body>
