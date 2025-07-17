@@ -1,7 +1,9 @@
-import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-import { app } from "./firebase-init.js";
+import { db } from "./firebase-init.js"; // ✅ importar db directo
 
-const db = getFirestore(app);
+import {
+  collection,
+  getDocs
+} from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
 // Función principal
 async function generarTablaCalendario() {
