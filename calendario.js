@@ -1,104 +1,228 @@
-import { db } from "./firebase-init.js"; // ✅ importar db directo
-
+import { app, db } from './firebase-init.js';
 import {
-  collection,
-  getDocs
-} from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
+  collection, getDocs, doc, updateDoc, addDoc, query, orderBy
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
-// Función principal
+const auth = getAuth(app);
+let dtHist = null;
+let editMode = false;
+
+const camposFijos = ["numeroNegocio", "nombreGrupo", "destino", "programa", "cantidadgrupo", "adultos", "estudiantes", "fechaInicio", "fechaFin"];
+
+$(function () {
+  $('#btn-logout').click(() => signOut(auth).then(() => location = 'login.html'));
+  onAuthStateChanged(auth, user => {
+    if (!user) location = 'login.html';
+    else generarTablaCalendario();
+  });
+});
+
 async function generarTablaCalendario() {
-  const gruposSnapshot = await getDocs(collection(db, "grupos"));
+  const snapshot = await getDocs(collection(db, "grupos"));
   const grupos = [];
   const fechasUnicas = new Set();
 
-  // Procesamos los datos
-  gruposSnapshot.forEach(doc => {
-    const data = doc.data();
-    const numeroNegocio = doc.id;
-    const nombreGrupo = data.nombreGrupo || "Sin nombre";
-    const destino = data.destino || "";
-    const programa = data.programa || "";
-    const cantidadgrupo = data.cantidadgrupo || "";
-    const adultos = data.adultos || "";
-    const estudiantes = data.estudiantes || "";
-    const itinerario = data.itinerario || {};
+  const destinosSet = new Set();
+  const aniosSet = new Set();
 
-    const actividadesPorFecha = {};
+  snapshot.forEach(docSnap => {
+    const d = docSnap.data();
+    const id = docSnap.id;
+    const fechaInicio = d.fechaInicio || "";
+    const fechaFin = d.fechaFin || "";
+    const itinerario = d.itinerario || {};
 
-    Object.keys(itinerario).forEach(fecha => {
-      const actividades = itinerario[fecha];
-      if (Array.isArray(actividades)) {
-        const textoActividades = actividades.map((act, i) => {
-          return `${act.horaInicio || ""}–${act.horaFin || ""} ${act.actividad || ""}`;
-        }).join("<br>");
-        actividadesPorFecha[fecha] = textoActividades;
-        fechasUnicas.add(fecha);
-      }
-    });
+    Object.keys(itinerario).forEach(fecha => fechasUnicas.add(fecha));
+
+    destinosSet.add(d.destino || "");
+    aniosSet.add(d.anoViaje || "");
 
     grupos.push({
-      numeroNegocio,
-      nombreGrupo,
-      destino,
-      programa,
-      grupoResumen: `${cantidadgrupo} (A: ${adultos} E: ${estudiantes})`,
-      fechaInicio: data.fechaInicio || "",
-      fechaFin: data.fechaFin || "",
-      actividadesPorFecha
+      id,
+      numeroNegocio: id,
+      nombreGrupo: d.nombreGrupo || "",
+      destino: d.destino || "",
+      programa: d.programa || "",
+      cantidadgrupo: d.cantidadgrupo || "",
+      adultos: d.adultos || "",
+      estudiantes: d.estudiantes || "",
+      fechaInicio,
+      fechaFin,
+      itinerario
     });
   });
 
-  // Convertimos fechas a array ordenado
   const fechasOrdenadas = Array.from(fechasUnicas).sort();
+  const destinos = Array.from(destinosSet).sort();
+  const anios = Array.from(aniosSet).sort();
 
-  // Construimos encabezado de tabla
-  const encabezado = document.getElementById("encabezadoCalendario");
-  encabezado.innerHTML = `
-    <th>Número Negocio</th>
-    <th>Nombre Grupo</th>
-    <th>Destino</th>
-    <th>Programa</th>
-    <th>Pax</th>
-    ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join("")}
-  `;
+  // Filtros
+  $('#filtroDestino').empty().append('<option value="">Todos</option>');
+  destinos.forEach(d => $('#filtroDestino').append(`<option value="${d}">${d}</option>`));
 
-  // Construimos cuerpo de tabla
-  const cuerpo = document.getElementById("cuerpoCalendario");
-  cuerpo.innerHTML = grupos.map(grupo => {
-    const inicio = grupo.fechaInicio;
-    const fin    = grupo.fechaFin;
-  
-    return `
-      <tr>
-        <td>${grupo.numeroNegocio}</td>
-        <td>${grupo.nombreGrupo}</td>
-        <td>${grupo.destino}</td>
-        <td>${grupo.programa}</td>
-        <td>${grupo.grupoResumen}</td>
-        ${fechasOrdenadas.map(f => {
-          const contenido = grupo.actividadesPorFecha[f] || "";
-          const clase = (f === inicio || f === fin) ? "inicio-fin" : "";
-          return `<td class="${clase}">${contenido}</td>`;
-        }).join("")}
-      </tr>
-    `;
-  }).join("");
+  $('#filtroAno').empty().append('<option value="">Todos</option>');
+  anios.forEach(a => $('#filtroAno').append(`<option value="${a}">${a}</option>`));
 
-  // Activar DataTable
-  $('#tablaCalendario').DataTable({
+  // Encabezado
+  const $thead = $('#encabezadoCalendario').empty();
+  $thead.append(`<th>N° Negocio</th><th>Grupo</th><th>Destino</th><th>Programa</th><th>Pax</th>`);
+  fechasOrdenadas.forEach(f => $thead.append(`<th>${formatearFechaBonita(f)}</th>`));
+
+  // Cuerpo
+  const $tbody = $('#cuerpoCalendario').empty();
+  grupos.forEach(g => {
+    const $tr = $('<tr>');
+    const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
+
+    $tr.append(
+      $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
+      $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
+      $('<td>').text(g.destino).attr('data-doc-id', g.id),
+      $('<td>').text(g.programa).attr('data-doc-id', g.id),
+      $('<td>').text(resumenPax).attr('data-doc-id', g.id)
+    );
+
+    fechasOrdenadas.forEach(f => {
+      const actividades = g.itinerario[f];
+      const texto = actividades?.map(a => `${a.horaInicio || ""}–${a.horaFin || ""} ${a.actividad || ""}`).join("<br>") || "";
+      const clase = (f === g.fechaInicio || f === g.fechaFin) ? 'inicio-fin' : '';
+      $tr.append(`<td class="${clase}">${texto}</td>`);
+    });
+
+    $tbody.append($tr);
+  });
+
+  const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
+    dom: 'Brtip',
+    buttons: [
+      {
+        extend: 'colvis',
+        text: 'Ver columnas',
+        className: 'dt-button',
+        columns: ':gt(0)'
+      }
+    ],
     language: {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
+  });
+
+  tabla.buttons().container().appendTo('#toolbar');
+
+  $('#buscador').on('input', function () {
+    tabla.search(this.value).draw();
+  });
+
+  $('#filtroDestino').on('change', function () {
+    tabla.column(2).search(this.value).draw();
+  });
+
+  $('#filtroAno').on('change', function () {
+    tabla.column(7).search(this.value).draw();
+  });
+
+  // Edición
+  $('#btn-toggle-edit').off('click').on('click', async () => {
+    editMode = !editMode;
+    $('#btn-toggle-edit').text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+    $('#tablaCalendario tbody td').each((_, td) => {
+      if ($(td).index() > 0 && $(td).index() < 5)
+        $(td).attr('contenteditable', editMode);
+      else
+        $(td).removeAttr('contenteditable');
+    });
+    await addDoc(collection(db, 'historial'), {
+      accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
+      usuario: auth.currentUser.email,
+      timestamp: new Date()
+    });
+  });
+
+  $('#tablaCalendario tbody').on('focusout', 'td[contenteditable]', async function () {
+    const $td = $(this);
+    const nuevo = $td.text().trim();
+    const docId = $td.attr('data-doc-id');
+    const campo = camposFijos[$td.index()];
+    const anterior = $td.attr('data-original') || "";
+
+    if (nuevo !== anterior && campo) {
+      await updateDoc(doc(db, 'grupos', docId), { [campo]: nuevo });
+      await addDoc(collection(db, 'historial'), {
+        numeroNegocio: docId,
+        campo, anterior, nuevo,
+        modificadoPor: auth.currentUser.email,
+        timestamp: new Date()
+      });
+      $td.attr('data-original', nuevo);
+    }
+  });
+
+  $('#btn-view-history').off('click').on('click', async () => {
+    await recargarHistorial();
+    $('#modalHistorial').show();
+  });
+
+  $('#btn-close-history').on('click', () => $('#modalHistorial').hide());
+  $('#btn-refresh-history').on('click', recargarHistorial);
+}
+
+async function recargarHistorial() {
+  const $tabla = $('#tablaHistorial');
+  const snap = await getDocs(query(collection(db, 'historial'), orderBy('timestamp', 'desc')));
+  const $tb = $tabla.find('tbody').empty();
+
+  snap.forEach(doc => {
+    const d = doc.data();
+    const fecha = d.timestamp?.toDate?.();
+    if (!fecha) return;
+    const ts = fecha.getTime();
+    $tb.append(`
+      <tr>
+        <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
+        <td>${d.modificadoPor || d.usuario}</td>
+        <td>${d.numeroNegocio || ''}</td>
+        <td>${d.accion || d.campo}</td>
+        <td>${d.anterior || ''}</td>
+        <td>${d.nuevo || ''}</td>
+      </tr>
+    `);
+  });
+
+  if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
+    $('#tablaHistorial').DataTable().destroy();
+  }
+
+  dtHist = $('#tablaHistorial').DataTable({
+    language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+    order: [[0, 'desc']],
+    dom: 'ltip',
+    pageLength: 15
   });
 }
 
 function formatearFechaBonita(fechaISO) {
   const fecha = new Date(fechaISO);
-  const opciones = { day: 'numeric', month: 'long' }; // sin año
+  const opciones = { day: 'numeric', month: 'long' };
   return fecha.toLocaleDateString('es-CL', opciones);
 }
 
+// Exportación a Excel
+document.getElementById('btn-export-excel').addEventListener('click', exportarCalendario);
 
-// Ejecutar
-generarTablaCalendario();
+function exportarCalendario() {
+  const tabla = $('#tablaCalendario').DataTable();
+  const rows = tabla.rows({ search: 'applied' }).data().toArray();
+  const headers = $("#tablaCalendario thead th").toArray().map(th => th.innerText);
+  const datos = rows.map(row => {
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = row[i]);
+    return obj;
+  });
+
+  const ws = XLSX.utils.json_to_sheet(datos, { header: headers });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Calendario");
+  XLSX.writeFile(wb, "calendario.xlsx");
+}
