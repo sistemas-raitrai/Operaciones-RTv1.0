@@ -22,9 +22,16 @@
     <h1>🗓️ Calendario de actividades por día</h1>
 
     <div id="toolbar" class="toolbar">
-      <input type="text" id="buscador" placeholder="🔍 Buscar..." />
-      <select id="filtroDestino"></select>
-      <select id="filtroAno"></select>
+      <div class="row">
+        <div class="column long">
+          <input type="text" id="buscador" placeholder="🔍 Buscar..." />
+        </div>
+        <div class="column medium">
+          <select id="filtroDestino"></select>
+        </div>
+        <div class="column medium">
+           <select id="filtroAno"></select>
+        </div>
       <button id="btn-toggle-edit">🔓 Activar Edición</button>
       <button id="btn-view-history">📜 Ver Historial</button>
       <button id="btn-export-excel">📤 Exportar Excel</button>
