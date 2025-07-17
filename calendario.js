@@ -15,7 +15,7 @@ async function generarTablaCalendario() {
   gruposSnapshot.forEach(doc => {
     const data = doc.data();
     const numeroNegocio = doc.id;
-    const nombreGrupo = data.nombre || "Sin nombre";
+    const nombreGrupo = data.nombreGrupo || "Sin nombre";
     const itinerario = data.itinerario || {};
 
     const actividadesPorFecha = {};
