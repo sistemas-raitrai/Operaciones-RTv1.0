@@ -56,7 +56,7 @@ async function generarTablaCalendario() {
       <tr>
         <td>${grupo.numeroNegocio}</td>
         <td>${grupo.nombreGrupo}</td>
-        ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join("")
+        ${fechasOrdenadas.map(f => `<td>${grupo.actividadesPorFecha[f] || ""}</td>`).join("")}
       </tr>
     `;
   }).join("");
