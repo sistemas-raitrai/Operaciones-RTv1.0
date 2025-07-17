@@ -9,7 +9,7 @@
   <!-- ✅ Encabezado dinámico -->
   <div id="encabezado"></div>
 
-  <h2 style="margin-top: 2rem;">📋 Detalle Proveedores</h2>
+  <h2 style="margin-top: 2rem;">📋 Detalle de Proveedores</h2>
 
   <table id="tabla">
     <thead>
@@ -137,8 +137,21 @@
       const nuevoDoc = {};
       inputsRef.forEach(input => {
         const campo = input.getAttribute("data-campo");
-        nuevoDoc[campo] = campo === "valor" ? Number(input.value) : input.value;
+        let valor = input.value;
+    
+        // Convertir texto a MAYÚSCULAS (excepto valor numérico)
+        if (campo === "valor") {
+          valor = Number(valor);
+        } else if (campo === "servicio") {
+          // Codificación especial de servicio
+          valor = valor === "Diario" ? "01" : valor === "General" ? "02" : valor.toUpperCase();
+        } else {
+          valor = valor.toUpperCase();
+        }
+    
+        nuevoDoc[campo] = valor;
       });
+    
       if (docId) {
         await setDoc(doc(db, "proveedores", docId), nuevoDoc);
         alert("Actualizado en Firebase ✅");
