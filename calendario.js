@@ -56,7 +56,7 @@ async function generarTablaCalendario() {
       <tr>
         <td>${grupo.numeroNegocio}</td>
         <td>${grupo.nombreGrupo}</td>
-        ${fechasOrdenadas.map(f => `<td>${grupo.actividadesPorFecha[f] || ""}</td>`).join("")}
+        ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join("")
       </tr>
     `;
   }).join("");
@@ -69,6 +69,13 @@ async function generarTablaCalendario() {
     }
   });
 }
+
+function formatearFechaBonita(fechaISO) {
+  const fecha = new Date(fechaISO);
+  const opciones = { day: 'numeric', month: 'long' }; // sin año
+  return fecha.toLocaleDateString('es-CL', opciones);
+}
+
 
 // Ejecutar
 generarTablaCalendario();
