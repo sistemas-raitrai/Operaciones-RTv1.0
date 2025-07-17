@@ -350,3 +350,25 @@ function sumarUnaHora(hhmm) {
   const d     = new Date(); d.setHours(h+1,m);
   return d.toTimeString().slice(0,5);
 }
+
+// —————————————————————————————————
+// 8) obtenerActividadesPorDestino(): busca sugerencias según destino
+// —————————————————————————————————
+async function obtenerActividadesPorDestino(destino) {
+  if (!destino) return [];
+  const ref = collection(db, "proveedores");
+  const snap = await getDocs(ref);
+  const actividades = [];
+  snap.forEach(doc => {
+    const data = doc.data();
+    if (
+      data.destino?.toUpperCase() === destino.toUpperCase() &&
+      data.actividad
+    ) {
+      actividades.push(data.actividad.toUpperCase());
+    }
+  });
+  return [...new Set(actividades)].sort();
+}
+
+
