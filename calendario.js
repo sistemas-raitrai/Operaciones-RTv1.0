@@ -46,7 +46,7 @@ async function generarTablaCalendario() {
   encabezado.innerHTML = `
     <th>Número Negocio</th>
     <th>Nombre Grupo</th>
-    ${fechasOrdenadas.map(f => `<th>${f}</th>`).join("")}
+    ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join("")}
   `;
 
   // Construimos cuerpo de tabla
