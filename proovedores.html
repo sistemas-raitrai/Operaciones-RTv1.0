@@ -9,7 +9,7 @@
   <!-- ✅ Encabezado dinámico -->
   <div id="encabezado"></div>
 
-  <h2 style="margin-top: 2rem;">📋 Detalle Proveedores</h2>
+  <h2 style="margin-top: 2rem;">📋 Detalle de Proveedores</h2>
 
   <table id="tabla">
     <thead>
@@ -47,6 +47,7 @@
       deleteDoc
     } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
+    // Verificación de usuario
     onAuthStateChanged(auth, user => {
       if (!user) {
         window.location.href = 'login.html';
@@ -58,15 +59,16 @@
       }
     });
 
+    // Opciones para los dropdowns
     const opciones = {
-      destino: ["Brasil", "Sur de Chile", "Bariloche", "Norte de Chile"],
-      servicio: ["Diario", "General"],
-      pago: ["Directo", "Indirecto"],
-      tipoCobro: ["Por persona", "Por grupo"]
+      destino: ["BRASIL", "SUR DE CHILE", "BARILOCHE", "NORTE DE CHILE"],
+      servicio: ["DIARIO", "GENERAL"],
+      pago: ["DIRECTO", "INDIRECTO"],
+      tipoCobro: ["POR PERSONA", "POR GRUPO"]
     };
 
     const tabla = document.getElementById("contenido");
-    const filas = []; // ⏺️ Para guardar referencias de filas
+    const filas = [];
 
     function agregarFila(dato = {}, docId = null) {
       const fila = document.createElement("tr");
@@ -76,6 +78,7 @@
       campos.forEach(campo => {
         const td = document.createElement("td");
         let input;
+
         if (opciones[campo]) {
           input = document.createElement("select");
           opciones[campo].forEach(op => {
@@ -88,7 +91,13 @@
         } else {
           input = document.createElement("input");
           input.value = dato[campo] || "";
+          if (campo !== "valor") {
+            input.addEventListener("input", () => {
+              input.value = input.value.toUpperCase();
+            });
+          }
         }
+
         input.setAttribute("data-campo", campo);
         inputsRef.push(input);
         td.appendChild(input);
@@ -115,19 +124,13 @@
       tabla.appendChild(fila);
       filas.push({ inputs: inputsRef, docId });
 
+      // Manejo de pegado desde Excel
       fila.addEventListener("paste", e => {
         const texto = e.clipboardData.getData("text/plain");
         const valores = texto.split("\t");
         valores.forEach((val, i) => {
           if (inputsRef[i]) {
-            inputsRef[i].value = val.trim();
-            if (inputsRef[i].tagName === "SELECT" && !opciones[inputsRef[i].getAttribute("data-campo")].includes(val.trim())) {
-              const nuevaOpcion = document.createElement("option");
-              nuevaOpcion.value = val.trim();
-              nuevaOpcion.textContent = val.trim();
-              inputsRef[i].appendChild(nuevaOpcion);
-              inputsRef[i].value = val.trim();
-            }
+            inputsRef[i].value = val.trim().toUpperCase();
           }
         });
       });
@@ -137,14 +140,20 @@
       const nuevoDoc = {};
       inputsRef.forEach(input => {
         const campo = input.getAttribute("data-campo");
-        nuevoDoc[campo] = campo === "valor" ? Number(input.value) : input.value;
+        let valor = input.value.trim();
+
+        // Formateo especial para servicio
+        if (campo === "servicio") {
+          valor = valor === "DIARIO" ? "01" : valor === "GENERAL" ? "02" : valor;
+        }
+
+        nuevoDoc[campo] = campo === "valor" ? Number(valor) : valor.toUpperCase();
       });
+
       if (docId) {
         await setDoc(doc(db, "proveedores", docId), nuevoDoc);
-        alert("Actualizado en Firebase ✅");
       } else {
         await addDoc(collection(db, "proveedores"), nuevoDoc);
-        alert("Guardado en Firebase ✅");
       }
     }
 
@@ -157,13 +166,17 @@
 
     async function cargarRegistros() {
       const snapshot = await getDocs(collection(db, "proveedores"));
-      snapshot.forEach(docSnap => agregarFila(docSnap.data(), docSnap.id));
+      const docs = [];
+      snapshot.forEach(docSnap => docs.push({ id: docSnap.id, data: docSnap.data() }));
+      docs.sort((a, b) => (a.data.destino || "").localeCompare(b.data.destino || ""));
+      docs.forEach(doc => agregarFila(doc.data, doc.id));
     }
 
     cargarRegistros();
     window.agregarFila = agregarFila;
     window.guardarTodo = guardarTodo;
 
+    // Cargar encabezado común
     fetch('encabezado.html')
       .then(res => res.text())
       .then(data => {
