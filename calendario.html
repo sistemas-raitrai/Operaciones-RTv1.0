@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calendario de Actividades</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
+  <link rel="stylesheet" href="estilos.css" />
+</head>
+<body>
+
+  <!-- 🔺 Encabezado común -->
+  <header class="encabezado">
+    <span onclick="window.location.href='https://sistemas-raitrai.github.io/Operaciones-RTv1.0'">🏠</span>
+    <span onclick="location.reload()">🔄</span>
+    <span onclick="window.history.back()">⬅️</span>
+    <span onclick="logout()">⏏️</span>
+  </header>
+
+  <main>
+    <h1>🗓️ Calendario de actividades por día</h1>
+    <table id="tablaCalendario" class="display" style="width:100%">
+      <thead>
+        <tr id="encabezadoCalendario">
+          <!-- columnas dinámicas -->
+        </tr>
+      </thead>
+      <tbody id="cuerpoCalendario">
+        <!-- contenido dinámico -->
+      </tbody>
+    </table>
+  </main>
+
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script type="module" src="./firebase-init.js"></script>
+  <script type="module" src="./calendario.js"></script>
+</body>
+</html>
