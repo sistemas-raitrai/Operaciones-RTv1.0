@@ -89,6 +89,8 @@ async function renderItinerario() {
   // 3.1) Título (en mayúsculas)
   titleGrupo.textContent = (g.programa||"–").toUpperCase();
 
+  await prepararCampoActividad("qa-actividad", g.destino);
+
   // 3.2) Si no existe `itinerario`, lo inicializo como objeto de arrays
   if (!g.itinerario) {
     const rango = getDateRange(g.fechaInicio, g.fechaFin);
@@ -243,7 +245,8 @@ function openModal(data, isEdit) {
   fldFecha.value       = data.fecha;
   fldHi.value          = data.horaInicio  || "07:00";
   fldHf.value          = data.horaFin     || sumarUnaHora(fldHi.value);
-  fldAct.value         = data.actividad   || "";
+  fldAct.value = data.actividad || "";
+  await prepararCampoActividad("m-actividad", (await getDoc(doc(db, "grupos", selectNum.value))).data().destino);
   fldAdultos.value     = data.adultos     ?? ((data.pasajeros)||0);
   fldEstudiantes.value = data.estudiantes ?? 0;
   fldPax.value         = data.pasajeros   ?? ((data.adultos||0)+(data.estudiantes||0));
@@ -352,7 +355,7 @@ function sumarUnaHora(hhmm) {
 }
 
 // —————————————————————————————————
-// 8) obtenerActividadesPorDestino(): busca sugerencias según destino
+// 8) Obtener lista de actividades según destino del grupo
 // —————————————————————————————————
 async function obtenerActividadesPorDestino(destino) {
   if (!destino) return [];
@@ -370,5 +373,31 @@ async function obtenerActividadesPorDestino(destino) {
   });
   return [...new Set(actividades)].sort();
 }
+
+// —————————————————————————————————
+// 9) Crea un datalist editable y lo asocia a un input
+// —————————————————————————————————
+async function prepararCampoActividad(inputId, destino) {
+  const input = document.getElementById(inputId);
+  const actividades = await obtenerActividadesPorDestino(destino);
+
+  // Elimina datalist anterior si existe
+  const oldList = document.getElementById("lista-" + inputId);
+  if (oldList) oldList.remove();
+
+  // Crear nuevo datalist
+  const dataList = document.createElement("datalist");
+  dataList.id = "lista-" + inputId;
+  actividades.forEach(act => {
+    const opt = document.createElement("option");
+    opt.value = act;
+    dataList.appendChild(opt);
+  });
+  document.body.appendChild(dataList);
+
+  // Enlazar el input al datalist
+  input.setAttribute("list", "lista-" + inputId);
+}
+
 
 
