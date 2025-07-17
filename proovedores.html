@@ -3,17 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Proveedores Rai Trai</title>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-  <script src="firebase-init.js"></script>
-  <style>
-    body { font-family: sans-serif; margin: 20px; }
-    table { border-collapse: collapse; width: 100%; }
-    td, th { border: 1px solid #ccc; padding: 5px; text-align: left; }
-    input, select { width: 100%; box-sizing: border-box; }
-    button.guardar { font-size: 16px; }
-  </style>
+  <link rel="stylesheet" href="estilos.css">
 </head>
 <body>
   <!-- ✅ Encabezado dinámico -->
@@ -40,33 +30,31 @@
   </table>
   <button onclick="agregarFila()">➕ Nueva fila</button>
 
-  <script>
-    // ✅ Cargar encabezado y reloj
-    fetch('encabezado.html')
-      .then(res => res.text())
-      .then(data => {
-        document.getElementById('encabezado').innerHTML = data;
-        if (typeof iniciarReloj === 'function') iniciarReloj();
-      });
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 
-    // 🔒 Redirigir si no está autenticado
-    firebase.auth().onAuthStateChanged(user => {
-      if (!user) window.location.href = 'login.html';
-      else {
-        document.querySelector(".username").textContent = user.email;
+    // 🔒 Validar sesión
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        window.location.href = 'login.html';
+      } else {
+        document.addEventListener("DOMContentLoaded", () => {
+          const usernameSpan = document.querySelector(".username");
+          if (usernameSpan) usernameSpan.textContent = user.email;
+        });
       }
     });
 
-    const db = firebase.firestore();
-    const tabla = document.getElementById("contenido");
-
-    // ✅ Opciones para dropdowns
+    // Opciones para dropdowns
     const opciones = {
       destino: ["Brasil", "Sur de Chile", "Bariloche", "Norte de Chile"],
       servicio: ["Diario", "General"],
       pago: ["Directo", "Indirecto"],
       tipoCobro: ["Por persona", "Por grupo"]
     };
+
+    const tabla = document.getElementById("contenido");
 
     function agregarFila(dato = {}) {
       const fila = document.createElement("tr");
@@ -130,6 +118,15 @@
     }
 
     cargarRegistros();
+    window.agregarFila = agregarFila;
+
+    // ✅ Cargar encabezado
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(data => {
+        document.getElementById('encabezado').innerHTML = data;
+        if (typeof iniciarReloj === 'function') iniciarReloj();
+      });
   </script>
 </body>
 </html>
