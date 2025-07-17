@@ -9,7 +9,7 @@
   <!-- ✅ Encabezado dinámico -->
   <div id="encabezado"></div>
 
-  <h2 style="margin-top: 2rem;">📋 Detalle de Proveedores</h2>
+  <h2 style="margin-top: 2rem;">📋 Detalle Proveedores</h2>
 
   <table id="tabla">
     <thead>
@@ -87,7 +87,7 @@
             option.textContent = op;
             input.appendChild(option);
           });
-          input.value = dato[campo] || "";
+          input.value = opciones[campo].includes(dato[campo]) ? dato[campo] : "";
         } else {
           input = document.createElement("input");
           input.value = dato[campo] || "";
@@ -107,7 +107,10 @@
       const tdGuardar = document.createElement("td");
       const btnGuardar = document.createElement("button");
       btnGuardar.textContent = "💾";
-      btnGuardar.onclick = async () => guardarFila(inputsRef, docId);
+      btnGuardar.onclick = async () => {
+        await guardarFila(inputsRef, docId);
+        alert("Registro guardado ✅");
+      };
       tdGuardar.appendChild(btnGuardar);
       fila.appendChild(tdGuardar);
 
@@ -124,7 +127,6 @@
       tabla.appendChild(fila);
       filas.push({ inputs: inputsRef, docId });
 
-      // Manejo de pegado desde Excel
       fila.addEventListener("paste", e => {
         const texto = e.clipboardData.getData("text/plain");
         const valores = texto.split("\t");
@@ -141,12 +143,9 @@
       inputsRef.forEach(input => {
         const campo = input.getAttribute("data-campo");
         let valor = input.value.trim();
-
-        // Formateo especial para servicio
         if (campo === "servicio") {
           valor = valor === "DIARIO" ? "01" : valor === "GENERAL" ? "02" : valor;
         }
-
         nuevoDoc[campo] = campo === "valor" ? Number(valor) : valor.toUpperCase();
       });
 
@@ -176,7 +175,6 @@
     window.agregarFila = agregarFila;
     window.guardarTodo = guardarTodo;
 
-    // Cargar encabezado común
     fetch('encabezado.html')
       .then(res => res.text())
       .then(data => {
