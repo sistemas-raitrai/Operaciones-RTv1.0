@@ -46,7 +46,6 @@
       }
     });
 
-    // Opciones para dropdowns
     const opciones = {
       destino: ["Brasil", "Sur de Chile", "Bariloche", "Norte de Chile"],
       servicio: ["Diario", "General"],
@@ -56,9 +55,10 @@
 
     const tabla = document.getElementById("contenido");
 
-    function agregarFila(dato = {}) {
+    function agregarFila(dato = {}, docId = null) {
       const fila = document.createElement("tr");
       const campos = ["destino", "actividad", "tipoActividad", "proveedor", "servicio", "ciudad", "pago", "tipoCobro", "valor"];
+      const inputsRef = [];
 
       campos.forEach(campo => {
         const td = document.createElement("td");
@@ -69,58 +69,69 @@
             const option = document.createElement("option");
             option.value = op;
             option.textContent = op;
-            if (dato[campo] === op) option.selected = true;
             input.appendChild(option);
           });
+          input.value = dato[campo] || "";
         } else {
           input = document.createElement("input");
           input.value = dato[campo] || "";
         }
         input.setAttribute("data-campo", campo);
+        inputsRef.push(input);
         td.appendChild(input);
         fila.appendChild(td);
       });
 
-      // 💾 Botón guardar
       const tdBtn = document.createElement("td");
       const btn = document.createElement("button");
       btn.textContent = "💾";
       btn.className = "guardar";
       btn.onclick = async () => {
-        const inputs = fila.querySelectorAll("input, select");
         const nuevoDoc = {};
-        inputs.forEach(input => {
+        inputsRef.forEach(input => {
           const campo = input.getAttribute("data-campo");
           nuevoDoc[campo] = campo === "valor" ? Number(input.value) : input.value;
         });
-        await db.collection("proveedores").add(nuevoDoc);
-        alert("Guardado en Firebase ✅");
+        if (docId) {
+          await db.collection("proveedores").doc(docId).set(nuevoDoc);
+          alert("Actualizado en Firebase ✅");
+        } else {
+          await db.collection("proveedores").add(nuevoDoc);
+          alert("Guardado en Firebase ✅");
+        }
       };
       tdBtn.appendChild(btn);
       fila.appendChild(tdBtn);
       tabla.appendChild(fila);
 
-      // 🧩 Soporte para pegar desde Excel
+      // 🧩 Soporte para pegar desde Excel (preservando dropdowns)
       fila.addEventListener("paste", e => {
         const texto = e.clipboardData.getData("text/plain");
         const valores = texto.split("\t");
-        const inputs = fila.querySelectorAll("input, select");
         valores.forEach((val, i) => {
-          if (inputs[i]) inputs[i].value = val.trim();
+          if (inputsRef[i]) {
+            inputsRef[i].value = val.trim();
+            // Si es select, asegurar que el valor esté en la lista
+            if (inputsRef[i].tagName === "SELECT" && !opciones[inputsRef[i].getAttribute("data-campo")].includes(val.trim())) {
+              const nuevaOpcion = document.createElement("option");
+              nuevaOpcion.value = val.trim();
+              nuevaOpcion.textContent = val.trim();
+              inputsRef[i].appendChild(nuevaOpcion);
+              inputsRef[i].value = val.trim();
+            }
+          }
         });
       });
     }
 
-    // 🔄 Cargar proveedores existentes
     async function cargarRegistros() {
       const snapshot = await db.collection("proveedores").get();
-      snapshot.forEach(doc => agregarFila(doc.data()));
+      snapshot.forEach(doc => agregarFila(doc.data(), doc.id));
     }
 
     cargarRegistros();
     window.agregarFila = agregarFila;
 
-    // ✅ Cargar encabezado
     fetch('encabezado.html')
       .then(res => res.text())
       .then(data => {
