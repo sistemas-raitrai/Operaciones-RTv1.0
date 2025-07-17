@@ -52,11 +52,18 @@ async function generarTablaCalendario() {
   // Construimos cuerpo de tabla
   const cuerpo = document.getElementById("cuerpoCalendario");
   cuerpo.innerHTML = grupos.map(grupo => {
+    const inicio = grupo.fechaInicio;
+    const fin    = grupo.fechaFin;
+  
     return `
       <tr>
         <td>${grupo.numeroNegocio}</td>
         <td>${grupo.nombreGrupo}</td>
-        ${fechasOrdenadas.map(f => `<td>${grupo.actividadesPorFecha[f] || ""}</td>`).join("")}
+        ${fechasOrdenadas.map(f => {
+          const contenido = grupo.actividadesPorFecha[f] || "";
+          const clase = (f === inicio || f === fin) ? "inicio-fin" : "";
+          return `<td class="${clase}">${contenido}</td>`;
+        }).join("")}
       </tr>
     `;
   }).join("");
