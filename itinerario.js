@@ -237,7 +237,7 @@ async function quickAddActivity() {
 // —————————————————————————————————
 // 5) openModal(): precarga modal para crear o editar
 // —————————————————————————————————
-function openModal(data, isEdit) {
+async function openModal(data, isEdit) {
   editData = isEdit ? data : null;
   document.getElementById("modal-title")
           .textContent = isEdit ? "Editar actividad" : "Nueva actividad";
