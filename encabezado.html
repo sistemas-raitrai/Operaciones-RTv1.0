@@ -1,25 +1,135 @@
-<!-- ✅ Encabezado reutilizable del sistema -->
-<header class="header">
-  <!-- 🖼️ Logo de la empresa -->
-  <img src="Logo Raitrai.png" alt="Logo Rai Trai" style="height: 60px; margin-right: 1rem;" />
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Proveedores Rai Trai</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+  <script src="firebase-init.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #ccc; padding: 5px; text-align: left; }
+    input, select { width: 100%; box-sizing: border-box; }
+    button.guardar { font-size: 16px; }
+  </style>
+</head>
+<body>
+  <!-- ✅ Encabezado dinámico -->
+  <div id="encabezado"></div>
 
-  <!-- 📊 Título del sistema -->
-  <div style="flex-grow: 1;">
-    <div class="title">SISTEMA DE OPERACIONES RTv1.0</div>
-    <div><strong>Usuario conectado:</strong> <span class="username" style="color: green;"></span></div>
-  </div>
+  <h2 style="margin-top: 2rem;">📋 Tabla de Proveedores</h2>
 
-  <!-- ⏰ Reloj -->
-  <div id="reloj" style="font-size: 0.9rem; text-align: right;"></div>
+  <table id="tabla">
+    <thead>
+      <tr>
+        <th>Destino</th>
+        <th>Actividad</th>
+        <th>Tipo Actividad</th>
+        <th>Proveedor</th>
+        <th>Servicio</th>
+        <th>Ciudad</th>
+        <th>Pago</th>
+        <th>Tipo Cobro</th>
+        <th>Valor</th>
+        <th>Guardar</th>
+      </tr>
+    </thead>
+    <tbody id="contenido"></tbody>
+  </table>
+  <button onclick="agregarFila()">➕ Nueva fila</button>
 
-  <!-- 🏠🔄🔙⏏ Botones funcionales -->
-  <div style="display: flex; gap: 0.8rem; align-items: center; margin-left: 1rem;">
-    <a href="/" title="Inicio">
-      <span style="font-size: 1.4rem; cursor: pointer;">🏠</span>
-    </a>
-    <span onclick="location.reload()" title="Actualizar" style="font-size: 1.4rem; cursor: pointer;">🔄</span>
-    <span onclick="history.back()" title="Volver atrás" style="font-size: 1.4rem; cursor: pointer;">⬅️</span>
-    <span onclick="logout()" title="Cerrar sesión" style="font-size: 1.4rem; cursor: pointer;">⏏</span>
-  </div>
-</header>
+  <script>
+    // ✅ Cargar encabezado y reloj
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(data => {
+        document.getElementById('encabezado').innerHTML = data;
+        if (typeof iniciarReloj === 'function') iniciarReloj();
+      });
 
+    // 🔒 Redirigir si no está autenticado
+    firebase.auth().onAuthStateChanged(user => {
+      if (!user) window.location.href = 'login.html';
+      else {
+        document.querySelector(".username").textContent = user.email;
+      }
+    });
+
+    const db = firebase.firestore();
+    const tabla = document.getElementById("contenido");
+
+    // ✅ Opciones para dropdowns
+    const opciones = {
+      destino: ["Brasil", "Sur de Chile", "Bariloche", "Norte de Chile"],
+      servicio: ["Diario", "General"],
+      pago: ["Directo", "Indirecto"],
+      tipoCobro: ["Por persona", "Por grupo"]
+    };
+
+    function agregarFila(dato = {}) {
+      const fila = document.createElement("tr");
+      const campos = ["destino", "actividad", "tipoActividad", "proveedor", "servicio", "ciudad", "pago", "tipoCobro", "valor"];
+
+      campos.forEach(campo => {
+        const td = document.createElement("td");
+        let input;
+        if (opciones[campo]) {
+          input = document.createElement("select");
+          opciones[campo].forEach(op => {
+            const option = document.createElement("option");
+            option.value = op;
+            option.textContent = op;
+            if (dato[campo] === op) option.selected = true;
+            input.appendChild(option);
+          });
+        } else {
+          input = document.createElement("input");
+          input.value = dato[campo] || "";
+        }
+        input.setAttribute("data-campo", campo);
+        td.appendChild(input);
+        fila.appendChild(td);
+      });
+
+      // 💾 Botón guardar
+      const tdBtn = document.createElement("td");
+      const btn = document.createElement("button");
+      btn.textContent = "💾";
+      btn.className = "guardar";
+      btn.onclick = async () => {
+        const inputs = fila.querySelectorAll("input, select");
+        const nuevoDoc = {};
+        inputs.forEach(input => {
+          const campo = input.getAttribute("data-campo");
+          nuevoDoc[campo] = campo === "valor" ? Number(input.value) : input.value;
+        });
+        await db.collection("proveedores").add(nuevoDoc);
+        alert("Guardado en Firebase ✅");
+      };
+      tdBtn.appendChild(btn);
+      fila.appendChild(tdBtn);
+      tabla.appendChild(fila);
+
+      // 🧩 Soporte para pegar desde Excel
+      fila.addEventListener("paste", e => {
+        const texto = e.clipboardData.getData("text/plain");
+        const valores = texto.split("\t");
+        const inputs = fila.querySelectorAll("input, select");
+        valores.forEach((val, i) => {
+          if (inputs[i]) inputs[i].value = val.trim();
+        });
+      });
+    }
+
+    // 🔄 Cargar proveedores existentes
+    async function cargarRegistros() {
+      const snapshot = await db.collection("proveedores").get();
+      snapshot.forEach(doc => agregarFila(doc.data()));
+    }
+
+    cargarRegistros();
+  </script>
+</body>
+</html>
