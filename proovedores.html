@@ -9,8 +9,6 @@
   <script src="firebase-init.js"></script>
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    .encabezado { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-    .acciones button { margin-left: 10px; font-size: 18px; cursor: pointer; }
     table { border-collapse: collapse; width: 100%; }
     td, th { border: 1px solid #ccc; padding: 5px; text-align: left; }
     input, select { width: 100%; box-sizing: border-box; }
@@ -18,15 +16,10 @@
   </style>
 </head>
 <body>
-  <div class="encabezado">
-    <h2>📋 Tabla de Proveedores</h2>
-    <div class="acciones">
-      <button onclick="window.location.href='https://sistemas-raitrai.github.io/Operaciones-RTv1.0'">🏠</button>
-      <button onclick="location.reload()">🔄</button>
-      <button onclick="window.history.back()">⬅️</button>
-      <button onclick="firebase.auth().signOut().then(() => window.location.href='login.html')">⏏️</button>
-    </div>
-  </div>
+  <!-- ✅ Encabezado dinámico -->
+  <div id="encabezado"></div>
+
+  <h2 style="margin-top: 2rem;">📋 Tabla de Proveedores</h2>
 
   <table id="tabla">
     <thead>
@@ -48,14 +41,26 @@
   <button onclick="agregarFila()">➕ Nueva fila</button>
 
   <script>
-    // Redirigir si no está autenticado
+    // ✅ Cargar encabezado y reloj
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(data => {
+        document.getElementById('encabezado').innerHTML = data;
+        if (typeof iniciarReloj === 'function') iniciarReloj();
+      });
+
+    // 🔒 Redirigir si no está autenticado
     firebase.auth().onAuthStateChanged(user => {
       if (!user) window.location.href = 'login.html';
+      else {
+        document.querySelector(".username").textContent = user.email;
+      }
     });
 
     const db = firebase.firestore();
     const tabla = document.getElementById("contenido");
 
+    // ✅ Opciones para dropdowns
     const opciones = {
       destino: ["Brasil", "Sur de Chile", "Bariloche", "Norte de Chile"],
       servicio: ["Diario", "General"],
@@ -88,7 +93,7 @@
         fila.appendChild(td);
       });
 
-      // Botón guardar
+      // 💾 Botón guardar
       const tdBtn = document.createElement("td");
       const btn = document.createElement("button");
       btn.textContent = "💾";
@@ -107,7 +112,7 @@
       fila.appendChild(tdBtn);
       tabla.appendChild(fila);
 
-      // Soporte para pegar desde Excel (una fila)
+      // 🧩 Soporte para pegar desde Excel
       fila.addEventListener("paste", e => {
         const texto = e.clipboardData.getData("text/plain");
         const valores = texto.split("\t");
@@ -118,11 +123,10 @@
       });
     }
 
+    // 🔄 Cargar proveedores existentes
     async function cargarRegistros() {
       const snapshot = await db.collection("proveedores").get();
-      snapshot.forEach(doc => {
-        agregarFila(doc.data());
-      });
+      snapshot.forEach(doc => agregarFila(doc.data()));
     }
 
     cargarRegistros();
