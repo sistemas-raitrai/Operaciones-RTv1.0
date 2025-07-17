@@ -608,5 +608,60 @@ input, select, textarea {
   text-transform: uppercase;
 }
 
+/* ----------------------------------------------------------------------- */
+/* Estilos específicos para el calendario de actividades                  */
+/* ----------------------------------------------------------------------- */
+
+/* Tabla de calendario */
+#tablaCalendario {
+  width: 100% !important;
+  background-color: #fff;
+  border-collapse: collapse;
+}
+
+/* Celdas normales con mayor ancho */
+#tablaCalendario th,
+#tablaCalendario td {
+  min-width: 160px; /* ⬅️ DOBLE DE LO NORMAL */
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+}
+
+/* Resaltar celdas de fecha de inicio y fin */
+#tablaCalendario td.inicio-fin {
+  background-color: #fff59d !important; /* amarillo claro */
+  font-weight: bold;
+}
+
+/* Encabezado fijo bonito */
+#tablaCalendario thead th {
+  position: sticky;
+  top: 0;
+  background-color: #f1f1f1;
+  z-index: 1;
+}
+
+/* Botones DataTables (Excel, columnas, etc.) */
+#toolbar .dt-button {
+  background-color: #004080;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  margin: 4px;
+}
+
+#toolbar .dt-button:hover {
+  background-color: #002f5f;
+}
+
+/* Scroll horizontal mejorado */
+.dataTables_wrapper {
+  overflow-x: auto;
+}
 
 
