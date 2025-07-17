@@ -9,7 +9,7 @@
   <!-- ✅ Encabezado dinámico -->
   <div id="encabezado"></div>
 
-  <h2 style="margin-top: 2rem;">📋 Detalle Proveedores</h2>
+  <h2 style="margin-top: 2rem;">📋 Detalle de Proveedores</h2>
 
   <table id="tabla">
     <thead>
@@ -47,7 +47,6 @@
       deleteDoc
     } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
-    // Verificación de usuario
     onAuthStateChanged(auth, user => {
       if (!user) {
         window.location.href = 'login.html';
@@ -59,7 +58,6 @@
       }
     });
 
-    // Opciones para los dropdowns
     const opciones = {
       destino: ["BRASIL", "SUR DE CHILE", "BARILOCHE", "NORTE DE CHILE"],
       servicio: ["DIARIO", "GENERAL"],
@@ -118,7 +116,10 @@
       const btnBorrar = document.createElement("button");
       btnBorrar.textContent = "🗑️";
       btnBorrar.onclick = async () => {
-        if (docId) await deleteDoc(doc(db, "proveedores", docId));
+        if (docId) {
+          await deleteDoc(doc(db, "proveedores", docId));
+          alert("Registro eliminado de Firebase ✅");
+        }
         fila.remove();
       };
       tdBorrar.appendChild(btnBorrar);
