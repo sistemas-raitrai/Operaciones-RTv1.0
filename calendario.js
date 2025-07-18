@@ -110,11 +110,13 @@ async function generarTablaCalendario(userEmail) {
   });
 
   $('#filtroDestino').on('change', function () {
-    tabla.column(2).search(this.value).draw();
+    const val = this.value;
+    tabla.column(2).search(val ? '^' + val + '$' : '', true, false).draw();
   });
-
+  
   $('#filtroAno').on('change', function () {
-    tabla.column(7).search(this.value).draw();
+    const val = this.value;
+    tabla.column(7).search(val ? '^' + val + '$' : '', true, false).draw();
   });
 
   $('#btn-toggle-edit').off('click').on('click', async () => {
