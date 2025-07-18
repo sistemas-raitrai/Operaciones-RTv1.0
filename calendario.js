@@ -113,24 +113,16 @@ async function generarTablaCalendario(userEmail) {
   tabla.buttons().container().appendTo('#toolbar');
   
   // Esperar que el buscador exista en el DOM antes de aplicar el valor
-  function esperarElemento(selector, callback) {
-    const check = setInterval(() => {
-      if ($(selector).length) {
-        clearInterval(check);
-        callback($(selector));
-      }
-    }, 50);
-  }
-  
-  esperarElemento('#buscador', ($input) => {
-    if (numeroNegocioInicial) {
-      $input.val(numeroNegocioInicial).trigger('input');
-    }
-  });
-
   $('#buscador').on('input', function () {
     tabla.search(this.value).draw();
   });
+  
+  // Esperar a que el DataTable esté inicializado y el input listo
+  setTimeout(() => {
+    if (numeroNegocioInicial && $('#buscador').length) {
+      $('#buscador').val(numeroNegocioInicial).trigger('input').focus();
+    }
+  }, 200);
 
   $('#filtroDestino').on('change', function () {
     const val = this.value;
