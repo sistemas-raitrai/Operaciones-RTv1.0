@@ -8,6 +8,13 @@ const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
 
+function getParametroURL(nombre) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(nombre);
+}
+
+const numeroNegocioInicial = getParametroURL("numeroNegocio");
+
 $(function () {
   onAuthStateChanged(auth, user => {
     if (!user) location = 'login.html';
@@ -104,6 +111,11 @@ async function generarTablaCalendario(userEmail) {
   });
 
   tabla.buttons().container().appendTo('#toolbar');
+  
+  // Si vino con parámetro `numeroNegocio`, lo buscamos y lo enfocamos
+  if (numeroNegocioInicial) {
+    tabla.search(numeroNegocioInicial).draw();
+  }
 
   $('#buscador').on('input', function () {
     tabla.search(this.value).draw();
