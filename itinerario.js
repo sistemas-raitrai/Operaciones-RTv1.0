@@ -400,28 +400,26 @@ async function prepararCampoActividad(inputId, destino) {
 }
 
 // —————————————————————————————————
-// 10) Botón para abrir calendario en ventana nueva con foco en grupo actual
+// 10) Abrir calendario dentro de modal (iframe centrado)
 // —————————————————————————————————
 document.getElementById("btnAbrirCalendario").addEventListener("click", () => {
   const grupoId = selectNum.value;
-  if (!grupoId) {
-    alert("Primero selecciona un grupo.");
-    return;
-  }
+  const grupoTxt = selectNum.options[selectNum.selectedIndex].text;
+  if (!grupoId) return alert("Primero selecciona un grupo.");
 
-  // Cargar iframe con parámetro
+  // Insertar número de negocio como búsqueda
   const iframe = document.getElementById("iframe-calendario");
-  iframe.src = `calendario.html?numeroNegocio=${encodeURIComponent(grupoId)}`;
+  iframe.src = `calendario.html?busqueda=${encodeURIComponent(grupoTxt)}`;
 
-  // Mostrar modal
+  // Mostrar modal + backdrop
   document.getElementById("modal-calendario").style.display = "block";
-  document.getElementById("modal-backdrop-calendario").style.display = "block";
+  document.getElementById("modal-backdrop").style.display = "block";
 });
 
-// Función para cerrar el modal
-window.cerrarCalendario = function() {
+// Función global para cerrar calendario desde botón ✖
+window.cerrarCalendario = function () {
   document.getElementById("modal-calendario").style.display = "none";
-  document.getElementById("modal-backdrop-calendario").style.display = "none";
+  document.getElementById("modal-backdrop").style.display = "none";
   document.getElementById("iframe-calendario").src = ""; // limpiar
 };
 
