@@ -9,7 +9,7 @@ const auth = getAuth(app);
 document.addEventListener("DOMContentLoaded", () => {
   // 🔐 Mostrar correo del usuario conectado
   onAuthStateChanged(auth, user => {
-    const userDiv = document.querySelector(".username");
+    const userDiv = document.getElementById("usuario-conectado");
     if (user && userDiv) {
       userDiv.textContent = `${user.email}`;
     }
