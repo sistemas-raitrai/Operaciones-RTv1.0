@@ -399,5 +399,19 @@ async function prepararCampoActividad(inputId, destino) {
   input.setAttribute("list", "lista-" + inputId);
 }
 
+// —————————————————————————————————
+// 10) Botón para abrir calendario en ventana nueva con foco en grupo actual
+// —————————————————————————————————
+document.getElementById("btnAbrirCalendario").addEventListener("click", () => {
+  const grupoId = selectNum.value;
+  if (!grupoId) {
+    alert("Primero selecciona un grupo.");
+    return;
+  }
+
+  // Abrimos ventana con parámetro `numeroNegocio`
+  const url = `calendario.html?numeroNegocio=${encodeURIComponent(grupoId)}`;
+  window.open(url, "_blank", "width=1200,height=700,scrollbars=yes");
+});
 
 
