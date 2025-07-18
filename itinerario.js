@@ -409,9 +409,20 @@ document.getElementById("btnAbrirCalendario").addEventListener("click", () => {
     return;
   }
 
-  // Abrimos ventana con parámetro `numeroNegocio`
-  const url = `calendario.html?numeroNegocio=${encodeURIComponent(grupoId)}`;
-  window.open(url, "_blank", "width=1200,height=700,scrollbars=yes");
+  // Cargar iframe con parámetro
+  const iframe = document.getElementById("iframe-calendario");
+  iframe.src = `calendario.html?numeroNegocio=${encodeURIComponent(grupoId)}`;
+
+  // Mostrar modal
+  document.getElementById("modal-calendario").style.display = "block";
+  document.getElementById("modal-backdrop-calendario").style.display = "block";
 });
+
+// Función para cerrar el modal
+window.cerrarCalendario = function() {
+  document.getElementById("modal-calendario").style.display = "none";
+  document.getElementById("modal-backdrop-calendario").style.display = "none";
+  document.getElementById("iframe-calendario").src = ""; // limpiar
+};
 
 
