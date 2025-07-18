@@ -664,4 +664,24 @@ input, select, textarea {
   overflow-x: auto;
 }
 
+/* Encabezado fijo global */
+header.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background-color: white;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #ccc;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Compensar el espacio que ocupa el header */
+body {
+  padding-top: 90px; /* ajusta si tu header es más alto o más bajo */
+}
 
