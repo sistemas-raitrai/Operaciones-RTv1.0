@@ -685,3 +685,37 @@ body {
   padding-top: 90px; /* ajusta si tu header es más alto o más bajo */
 }
 
+/* Fondo oscuro para modal */
+.modal-backdrop {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0,0,0,0.5);
+  z-index: 999; /* detrás del modal */
+}
+
+/* Ventana modal */
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: white;
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+/* Ícono de cerrar arriba a la derecha */
+.modal button[onclick="cerrarCalendario()"] {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
