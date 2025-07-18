@@ -2,39 +2,31 @@ import { app, db } from './firebase-init.js';
 import {
   collection, getDocs, doc, updateDoc, addDoc, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
 
-const camposFijos = ["numeroNegocio", "nombreGrupo", "destino", "programa", "cantidadgrupo", "adultos", "estudiantes", "fechaInicio", "fechaFin"];
-
 $(function () {
-  $('#btn-logout').click(() => signOut(auth).then(() => location = 'login.html'));
   onAuthStateChanged(auth, user => {
     if (!user) location = 'login.html';
-    else generarTablaCalendario();
+    else generarTablaCalendario(user.email);
   });
 });
 
-async function generarTablaCalendario() {
+async function generarTablaCalendario(userEmail) {
   const snapshot = await getDocs(collection(db, "grupos"));
   const grupos = [];
   const fechasUnicas = new Set();
-
   const destinosSet = new Set();
   const aniosSet = new Set();
 
   snapshot.forEach(docSnap => {
     const d = docSnap.data();
     const id = docSnap.id;
-    const fechaInicio = d.fechaInicio || "";
-    const fechaFin = d.fechaFin || "";
     const itinerario = d.itinerario || {};
-
     Object.keys(itinerario).forEach(fecha => fechasUnicas.add(fecha));
-
     destinosSet.add(d.destino || "");
     aniosSet.add(d.anoViaje || "");
 
@@ -47,8 +39,8 @@ async function generarTablaCalendario() {
       cantidadgrupo: d.cantidadgrupo || "",
       adultos: d.adultos || "",
       estudiantes: d.estudiantes || "",
-      fechaInicio,
-      fechaFin,
+      fechaInicio: d.fechaInicio || "",
+      fechaFin: d.fechaFin || "",
       itinerario
     });
   });
@@ -57,24 +49,20 @@ async function generarTablaCalendario() {
   const destinos = Array.from(destinosSet).sort();
   const anios = Array.from(aniosSet).sort();
 
-  // Filtros
   $('#filtroDestino').empty().append('<option value="">Todos</option>');
   destinos.forEach(d => $('#filtroDestino').append(`<option value="${d}">${d}</option>`));
 
   $('#filtroAno').empty().append('<option value="">Todos</option>');
   anios.forEach(a => $('#filtroAno').append(`<option value="${a}">${a}</option>`));
 
-  // Encabezado
   const $thead = $('#encabezadoCalendario').empty();
   $thead.append(`<th>N° Negocio</th><th>Grupo</th><th>Destino</th><th>Programa</th><th>Pax</th>`);
   fechasOrdenadas.forEach(f => $thead.append(`<th>${formatearFechaBonita(f)}</th>`));
 
-  // Cuerpo
   const $tbody = $('#cuerpoCalendario').empty();
   grupos.forEach(g => {
     const $tr = $('<tr>');
     const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
-
     $tr.append(
       $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
       $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
@@ -84,10 +72,16 @@ async function generarTablaCalendario() {
     );
 
     fechasOrdenadas.forEach(f => {
-      const actividades = g.itinerario[f];
-      const texto = actividades?.map(a => `${a.horaInicio || ""}–${a.horaFin || ""} ${a.actividad || ""}`).join("<br>") || "";
+      const actividades = g.itinerario[f] || [];
+      const texto = actividades.map(a => `${a.horaInicio || ""}–${a.horaFin || ""} ${a.actividad || ""}`).join("\n");
       const clase = (f === g.fechaInicio || f === g.fechaFin) ? 'inicio-fin' : '';
-      $tr.append(`<td class="${clase}">${texto}</td>`);
+      const $td = $('<td>')
+        .addClass(clase)
+        .text(texto)
+        .attr('data-doc-id', g.id)
+        .attr('data-fecha', f)
+        .attr('data-original', texto);
+      $tr.append($td);
     });
 
     $tbody.append($tr);
@@ -123,19 +117,13 @@ async function generarTablaCalendario() {
     tabla.column(7).search(this.value).draw();
   });
 
-  // Edición
   $('#btn-toggle-edit').off('click').on('click', async () => {
     editMode = !editMode;
     $('#btn-toggle-edit').text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
-    $('#tablaCalendario tbody td').each((_, td) => {
-      if ($(td).index() > 0 && $(td).index() < 5)
-        $(td).attr('contenteditable', editMode);
-      else
-        $(td).removeAttr('contenteditable');
-    });
+    $('#tablaCalendario tbody td').attr('contenteditable', editMode);
     await addDoc(collection(db, 'historial'), {
       accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
-      usuario: auth.currentUser.email,
+      usuario: userEmail,
       timestamp: new Date()
     });
   });
@@ -143,18 +131,35 @@ async function generarTablaCalendario() {
   $('#tablaCalendario tbody').on('focusout', 'td[contenteditable]', async function () {
     const $td = $(this);
     const nuevo = $td.text().trim();
+    const original = $td.attr('data-original') || "";
     const docId = $td.attr('data-doc-id');
-    const campo = camposFijos[$td.index()];
-    const anterior = $td.attr('data-original') || "";
+    const fecha = $td.attr('data-fecha');
 
-    if (nuevo !== anterior && campo) {
-      await updateDoc(doc(db, 'grupos', docId), { [campo]: nuevo });
+    if (!docId || nuevo === original) return;
+
+    if (fecha) {
+      const actividades = nuevo.split("\n").map(linea => {
+        const match = linea.match(/^(.*?)[–\-](.*)\s+(.*)$/);
+        return match ? {
+          horaInicio: match[1].trim(),
+          horaFin: match[2].trim(),
+          actividad: match[3].trim()
+        } : { actividad: linea.trim() };
+      });
+
+      await updateDoc(doc(db, 'grupos', docId), {
+        [`itinerario.${fecha}`]: actividades
+      });
+
       await addDoc(collection(db, 'historial'), {
         numeroNegocio: docId,
-        campo, anterior, nuevo,
-        modificadoPor: auth.currentUser.email,
+        campo: `itinerario.${fecha}`,
+        anterior: original,
+        nuevo: nuevo,
+        modificadoPor: userEmail,
         timestamp: new Date()
       });
+
       $td.attr('data-original', nuevo);
     }
   });
@@ -177,10 +182,9 @@ async function recargarHistorial() {
     const d = doc.data();
     const fecha = d.timestamp?.toDate?.();
     if (!fecha) return;
-    const ts = fecha.getTime();
     $tb.append(`
       <tr>
-        <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
+        <td>${fecha.toLocaleString('es-CL')}</td>
         <td>${d.modificadoPor || d.usuario}</td>
         <td>${d.numeroNegocio || ''}</td>
         <td>${d.accion || d.campo}</td>
@@ -204,14 +208,12 @@ async function recargarHistorial() {
 
 function formatearFechaBonita(fechaISO) {
   const fecha = new Date(fechaISO);
-  const opciones = { day: 'numeric', month: 'long' };
+  const opciones = { day: 'numeric', month: 'short' };
   return fecha.toLocaleDateString('es-CL', opciones);
 }
 
-// Exportación a Excel
-document.getElementById('btn-export-excel').addEventListener('click', exportarCalendario);
-
-function exportarCalendario() {
+// Exportar
+document.getElementById('btn-export-excel').addEventListener('click', () => {
   const tabla = $('#tablaCalendario').DataTable();
   const rows = tabla.rows({ search: 'applied' }).data().toArray();
   const headers = $("#tablaCalendario thead th").toArray().map(th => th.innerText);
@@ -225,4 +227,4 @@ function exportarCalendario() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Calendario");
   XLSX.writeFile(wb, "calendario.xlsx");
-}
+});
