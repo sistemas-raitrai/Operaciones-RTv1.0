@@ -111,12 +111,13 @@ async function generarTablaCalendario(userEmail) {
   });
 
   tabla.buttons().container().appendTo('#toolbar');
-
-  // ✅ Si vino con parámetro `numeroNegocio`, lo buscamos y lo enfocamos
-  if (numeroNegocioInicial) {
-    $('#buscador').val(numeroNegocioInicial).trigger('input');
-    tabla.search(numeroNegocioInicial).draw(); // <-- Esto fuerza el filtro
-  }
+  
+  // Esperar que el buscador exista en el DOM antes de aplicar el valor
+  setTimeout(() => {
+    if (numeroNegocioInicial && $('#buscador').length) {
+      $('#buscador').val(numeroNegocioInicial).trigger('input');
+    }
+  }, 100); // espera 100ms para asegurar que el buscador esté renderizado
 
   $('#buscador').on('input', function () {
     tabla.search(this.value).draw();
