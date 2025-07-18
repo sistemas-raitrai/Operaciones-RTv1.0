@@ -114,7 +114,7 @@ async function generarTablaCalendario(userEmail) {
   
   // Si vino con parámetro `numeroNegocio`, lo buscamos y lo enfocamos
   if (numeroNegocioInicial) {
-    tabla.search(numeroNegocioInicial).draw();
+    $('#buscador').val(numeroNegocioInicial).trigger('input');
   }
 
   $('#buscador').on('input', function () {
