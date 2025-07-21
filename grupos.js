@@ -112,6 +112,7 @@ async function cargarYMostrarTabla() {
     lengthChange: false,
     order: [[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
     scrollX: true,
+    autoWidth: false,
     columnDefs: [
       { targets: [7,8,13,14,18,21,22], visible: false },
       { targets: 0, width: '20px' },   // N° Negocio
