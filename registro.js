@@ -1,21 +1,18 @@
 // registro.js
 
-// 1️⃣ IMPORTACIONES DE FIREBASE
+// 1️⃣ IMPORTS FIREBASE
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
-import { app, db }   from "./firebase-init.js";
+import { app, db } from "./firebase-init.js";
 import {
-  doc,
-  setDoc,
-  getDoc,
-  collection,
-  addDoc
+  doc, setDoc, getDoc,
+  collection, addDoc
 } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
-// 2️⃣ CONSTATES Y CATÁLOGOS
+// 2️⃣ CONSTANTES Y CATÁLOGOS
 const auth     = getAuth(app);
-const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
+const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
 
-// 2.1⃣ Campos que vamos a leer/guardar
+// 2.1 Campos a manejar
 const campos = [
   'numeroNegocio','nombreGrupo','cantidadgrupo',
   'colegio','curso','anoViaje',
@@ -26,7 +23,7 @@ const campos = [
   'vendedora'
 ];
 
-// 2.2⃣ Catálogos canónicos de destinos
+// 2.2 Destinos canónicos
 const DESTINOS_CANONICOS = [
   'SUR DE CHILE',
   'NORTE DE CHILE',
@@ -36,7 +33,7 @@ const DESTINOS_CANONICOS = [
   'OTRO'
 ];
 
-// 2.3⃣ Programas permitidos por destino
+// 2.3 Programas válidos por destino
 const PROGRAMAS_POR_DESTINO = {
   'SUR DE CHILE': [
     'SUR DE CHILE 7/6',
@@ -62,38 +59,17 @@ const PROGRAMAS_POR_DESTINO = {
   'OTRO': []
 };
 
-// 2.4⃣ Hoteles permitidos por destino
+// 2.4 Hoteles válidos por destino
 const HOTELES_POR_DESTINO = {
-  'SUR DE CHILE': [
-    'BORDELAGO',
-    'VIENTOS DEL SUR'
-  ],
-  'NORTE DE CHILE': [
-    'LA ALDEA'
-  ],
-  'BARILOCHE': [
-    'VILLA HUINID',
-    'ECOMAX'
-  ],
-  'BRASIL': [
-    'MARIMAR',
-    'PLAZA CAMBORIÚ',
-    'BRUT',
-    'HM',
-    'GERANIUM',
-    'MARAMBAIA'
-  ],
-  'SUR DE CHILE Y BARILOCHE': [
-    // combinación de Sur de Chile + Bariloche
-    'BORDELAGO',
-    'VIENTOS DEL SUR',
-    'VILLA HUINID',
-    'ECOMAX'
-  ],
+  'SUR DE CHILE': ['BORDELAGO','VIENTOS DEL SUR'],
+  'NORTE DE CHILE': ['LA ALDEA'],
+  'BARILOCHE': ['VILLA HUINID','ECOMAX'],
+  'BRASIL': ['MARIMAR','PLAZA CAMBORIÚ','BRUT','HM','GERANIUM','MARAMBAIA'],
+  'SUR DE CHILE Y BARILOCHE': ['BORDELAGO','VIENTOS DEL SUR','VILLA HUINID','ECOMAX'],
   'OTRO': []
 };
 
-// Modo manual: cuando el usuario elige “OTRO” destino
+// Modo manual = true si el usuario elige “OTRO” destino
 let manualMode = false;
 
 // 3️⃣ REFERENCIAS AL DOM
@@ -110,32 +86,29 @@ const elems = {};
   'vendedora','formRegistro','tbodyTabla'
 ].forEach(id => elems[id] = document.getElementById(id));
 
-// 4️⃣ AUTENTICACIÓN Y ARRANQUE
+// 4️⃣ AUTENTICACIÓN
 auth.onAuthStateChanged(user => {
   if (!user) {
-    // si no está logueado, redirigir a login
     location.href = 'login.html';
   } else {
     init();
   }
 });
 
-// 5️⃣ INICIALIZACIÓN DE LA INTERFAZ
+// 5️⃣ INICIALIZACIÓN
 async function init() {
-  // 5.1) Leer datos de ventas desde Google Sheets
+  // 5.1) Traer datos de Ventas
   const ventas = await (await fetch(sheetURL)).json();
 
-  // 5.2) Poblar filtro de años para datalist negocio/nombre
+  // 5.2) Población del filtro de años
   const anos = [...new Set(ventas.map(r => r.anoViaje))].sort();
   elems.filtroAno.innerHTML =
     `<option value="">Todos</option>` +
     anos.map(a => `<option>${a}</option>`).join('');
   elems.filtroAno.value = new Date().getFullYear();
-
-  // al cambiar año, refrescar datalists
   elems.filtroAno.onchange = () => {
-    const y    = elems.filtroAno.value;
-    const list = y ? ventas.filter(r => r.anoViaje == y) : ventas;
+    const año = elems.filtroAno.value;
+    const list = año ? ventas.filter(r => r.anoViaje == año) : ventas;
     elems.negocioList.innerHTML =
       list.map(r => `<option value="${r.numeroNegocio}"></option>`).join('');
     elems.nombreList.innerHTML =
@@ -143,11 +116,11 @@ async function init() {
   };
   elems.filtroAno.dispatchEvent(new Event('change'));
 
-  // 5.3) Cargar destinos canónicos en datalist
+  // 5.3) Poner destinos canónicos
   elems.destinosList.innerHTML =
     DESTINOS_CANONICOS.map(d => `<option>${d}</option>`).join('');
 
-  // 5.4) Asignar listeners a inputs
+  // 5.4) Listeners
   ['numeroNegocio','nombreGrupo'].forEach(id => {
     elems[id].onchange = () => loadVenta(ventas);
   });
@@ -159,48 +132,42 @@ async function init() {
   elems.formRegistro.onsubmit = e => { e.preventDefault(); guardar(); };
 }
 
-// 6️⃣ CUANDO SE CAMBIA EL DESTINO
+// 6️⃣ Cambio de destino
 function handleDestinoChange() {
   const d = elems.destino.value;
   manualMode = (d === 'OTRO');
-
-  // 6.1) Poblar lista de programas para ese destino
+  // Poblar programas
   elems.programasList.innerHTML =
     (PROGRAMAS_POR_DESTINO[d] || [])
       .map(p => `<option>${p}</option>`).join('');
-
-  // 6.2) Poblar lista de hoteles para ese destino
+  // Poblar hoteles
   elems.hoteles.innerHTML =
     (HOTELES_POR_DESTINO[d] || [])
       .map(h => `<option value="${h}">${h}</option>`).join('');
 }
 
-// 7️⃣ CUANDO SE CAMBIA EL PROGRAMA
+// 7️⃣ Cambio de programa
 function handleProgramaChange() {
   if (!manualMode) {
     const p = elems.programa.value;
-
-    // 7.1) Normalizar destino según programa
+    // Sincronizar destino si encaja
     const dest = Object.entries(PROGRAMAS_POR_DESTINO)
       .find(([, arr]) => arr.includes(p))?.[0];
     if (dest && elems.destino.value !== dest) {
       elems.destino.value = dest;
       handleDestinoChange();
     }
-
-    // 7.2) Extraer días y noches de “X/Y”
+    // Extraer días/noches de “X/Y”
     const m = p.match(/(\d+)\/(\d+)$/);
     if (m) {
       elems.duracion.value = m[1];
       elems.noches.value   = m[2];
     }
-
-    // 7.3) Recalcular fecha fin
     calcularFin();
   }
 }
 
-// 8️⃣ CALCULAR FECHA DE TÉRMINO = INICIO + DÍAS - 1
+// 8️⃣ Calcular fecha fin
 function calcularFin() {
   const inicio = elems.fechaInicio.value;
   const dias   = Number(elems.duracion.value) || 0;
@@ -213,7 +180,7 @@ function calcularFin() {
   }
 }
 
-// 9️⃣ AJUSTAR ADULTOS/ESTUDIANTES PARA QUE NO SUPEREN EL TOTAL DE PAX
+// 9️⃣ Ajustar adultos/estudiantes
 function ajustComp(e) {
   const total = Number(elems.cantidadgrupo.value) || 0;
   const val   = Number(e.target.value) || 0;
@@ -224,7 +191,7 @@ function ajustComp(e) {
   }
 }
 
-// 🔟 CARGAR UN REGISTRO EXISTENTE (ventas) AL FORMULARIO
+// 🔟 Cargar registro de Ventas y normalizar
 async function loadVenta(ventas) {
   const v = ventas.find(r =>
     String(r.numeroNegocio) === elems.numeroNegocio.value ||
@@ -232,38 +199,42 @@ async function loadVenta(ventas) {
   );
   if (!v) return;
 
-  // 10.1) Rellenar todos los campos salvo días/noches/fechaFin
+  // 10.1) Rellenar todos los campos (excepto días/noches/fechaFin)
   campos.forEach(c => {
     if (!['duracion','noches','fechaFin'].includes(c)) {
       elems[c].value = v[c] || '';
     }
   });
 
-  // 10.2) Normalizar destino si el texto libre incluye uno canónico
+  // 10.2) Normalizar destino
   const dn = DESTINOS_CANONICOS.find(d =>
     v.destino?.toUpperCase().includes(d)
   ) || 'OTRO';
   elems.destino.value = dn;
   handleDestinoChange();
 
-  // 10.3) Normalizar programa buscando substring
+  // 10.3) Normalizar programa
   const pn = (PROGRAMAS_POR_DESTINO[dn] || [])
     .find(p => v.programa?.toUpperCase().includes(p)) || v.programa || '';
   elems.programa.value = pn;
   handleProgramaChange();
 
-  // 10.4) Recalcular fecha fin
+  // 10.4) Fecha fin
   calcularFin();
 
-  // 10.5) Preseleccionar hoteles: unimos texto libre + canónicos
+  // 10.5) **Lógica de Hoteles**:
+  //   - Parto el texto libre de ventas en un array
+  //   - Unido con hoteles canónicos del destino
   const origText = (v.hotel || '').toUpperCase();
   const libres   = origText
     .split(/,| Y /i)
     .map(h => h.trim())
     .filter(Boolean);
+
   const canonicos = HOTELES_POR_DESTINO[dn] || [];
   const union     = Array.from(new Set([...libres, ...canonicos]));
 
+  // Renderizar `<select multiple>`
   elems.hoteles.innerHTML = union
     .map(h => {
       const sel = libres.includes(h) ? ' selected' : '';
@@ -271,39 +242,33 @@ async function loadVenta(ventas) {
     })
     .join('');
 
-  // 10.6) Pintar historial
+  // 10.6) Pintar tabla histórica
   paintTable(v.numeroNegocio);
 }
 
-// 1️⃣1️⃣ GUARDAR EN FIRESTORE Y REGISTRAR HISTORIAL
+// 1️⃣1️⃣ Guardar en Firestore + registro de historial
 async function guardar() {
   const id     = elems.numeroNegocio.value;
   const ref    = doc(db, 'grupos', id);
   const user   = auth.currentUser.email;
   const payload = {};
 
-  // 11.1) Leer todos los campos
-  campos.forEach(c => {
-    payload[c] = elems[c].value;
-  });
+  // Leer campos
+  campos.forEach(c => payload[c] = elems[c].value);
+  // Hoteles seleccionados
   payload.hoteles        = [...elems.hoteles.selectedOptions].map(o => o.value);
   payload.actualizadoPor = user;
   payload.actualizadoEn  = new Date();
 
-  // 11.2) Guardar (merge para no borrar demás campos)
   await setDoc(ref, payload, { merge: true });
 
-  // 11.3) Registrar cambios en historial
-  const snapBefore = await getDoc(ref);
-  const before     = snapBefore.exists() ? snapBefore.data() : {};
+  // Historial de cambios
+  const beforeSnap = await getDoc(ref);
+  const before     = beforeSnap.exists() ? beforeSnap.data() : {};
   const cambios    = [];
   Object.keys(payload).forEach(k => {
     if (JSON.stringify(before[k]||'') !== JSON.stringify(payload[k]||'')) {
-      cambios.push({
-        campo:    k,
-        anterior: before[k] || null,
-        nuevo:    payload[k]
-      });
+      cambios.push({ campo: k, anterior: before[k]||null, nuevo: payload[k] });
     }
   });
   if (cambios.length) {
@@ -324,7 +289,7 @@ async function guardar() {
   paintTable(id);
 }
 
-// 1️⃣2️⃣ PINTAR LA TABLA CON EL REGISTRO ACTUAL
+// 1️⃣2️⃣ Pintar la tabla con el registro actual
 async function paintTable(id) {
   const snap = await getDoc(doc(db, 'grupos', id));
   if (!snap.exists()) return;
