@@ -46,6 +46,20 @@ $(function(){
   });
 });
 
+function formatearCelda(valor, campo) {
+  // Si es un campo de fecha, lo formatea a dd-mm-aa
+  const camposFecha = ['fechaInicio', 'fechaFin', 'fechaDeViaje', 'fechaCreacion'];
+  if (camposFecha.includes(campo) && valor instanceof Timestamp) {
+    const date = valor.toDate();
+    return date.toLocaleDateString('es-CL', {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit'
+    });
+  }
+  return valor?.toString() || '';
+}
+
 async function cargarYMostrarTabla() {
   // 1) Leer coleccion "grupos"
   const snap = await getDocs(collection(db,'grupos'));
@@ -87,7 +101,7 @@ async function cargarYMostrarTabla() {
       item.fila.forEach((celda, idx) => {
         $tr.append(
           $('<td>')
-            .text(celda)                          // el valor
+            .text(formatearCelda(celda, camposFire[idx]))  // el valor
             .attr('data-doc-id', item.id)         // para saber de qué doc viene
             .attr('data-campo', camposFire[idx])  // para saber qué campo actualiza
             .attr('data-original', celda)         // para comparar si se edita
