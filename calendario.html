@@ -61,6 +61,11 @@
     .then(res => res.text())
     .then(html => {
       document.getElementById('encabezado').innerHTML = html;
+      // Sólo **DESPUÉS** de inyectar el header, cargas tu lógica
+      const s = document.createElement('script');
+      s.type = 'module';
+      s.src = './calendario.js';
+      document.body.appendChild(s);
     });
 </script>
 
