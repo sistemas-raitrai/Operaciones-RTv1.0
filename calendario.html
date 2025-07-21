@@ -62,8 +62,7 @@
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    
-  <!-- Inyectar encabezado y luego los módulos -->
+
   <script>
     fetch('encabezado.html')
       .then(res => res.text())
@@ -71,16 +70,15 @@
         document.getElementById('encabezado').innerHTML = html;
       })
       .then(() => {
-        // 1) Inicializar Firebase
-        const f1 = document.createElement('script');
-        f1.type = 'module';
-        f1.src  = './firebase-init.js';
-        document.body.appendChild(f1);
-        // 2) Cargar tu lógica principal
-        const f2 = document.createElement('script');
-        f2.type = 'module';
-        f2.src  = './calendario.js';
-        document.body.appendChild(f2);
+        // Aquí creamos un único <script type="module"> que arrancará
+        // TODO tu flujo: importa firebase-init.js y luego calendario.js
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.textContent = `
+          import './firebase-init.js';
+          import './calendario.js';
+        `;
+        document.body.appendChild(s);
       });
   </script>
 </body>
