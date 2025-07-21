@@ -14,7 +14,7 @@
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js'); // reloj, logout, etc.
+      await import('./script.js');
     })();
   </script>
 
@@ -25,7 +25,7 @@
     </div>
 
     <!-- Filtro por año -->
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
       <label for="filtroAno">Filtrar por Año</label>
       <select id="filtroAno"></select>
     </div>
@@ -168,7 +168,6 @@
     </div>
   </main>
 
-  <!-- Scripts -->
   <script type="module" src="firebase-init.js" defer></script>
   <script type="module" src="registro.js" defer></script>
 </body>
