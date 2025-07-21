@@ -14,7 +14,7 @@
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js'); // reloj, logout, mostrar usuario...
+      await import('./script.js');
     })();
   </script>
 
@@ -25,14 +25,15 @@
     </div>
 
     <!-- Filtro por año -->
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
       <div class="column short">
-      <label for="filtroAno">Filtrar por Año</label>
-      <select id="filtroAno"></select>
-    </div>
+        <label for="filtroAno">Filtrar por Año</label>
+        <select id="filtroAno"></select>
+      </div>
+    </div> <!-- <-- Cerramos aquí el div del filtro -->
 
     <form id="formRegistro">
-      <!-- Fila 1: Negocio, Grupo, Vendedor(a)-->
+      <!-- Fila 1: Negocio, Grupo, Vendedor(a) -->
       <div class="row">
         <div class="column short">
           <label for="numeroNegocio">N° de Negocio</label>
@@ -97,9 +98,11 @@
       </div>
 
       <!-- Fila 5: Indicaciones de las fechas del viaje -->
-      <div class="column long">
-        <label for="fechaDeViaje">Indicaciones Fecha de Viaje</label>
-        <textarea id="fechaDeViaje" name="fechaDeViaje" rows="2"></textarea>
+      <div class="row">
+        <div class="column long">
+          <label for="fechaDeViaje">Indicaciones Fecha de Viaje</label>
+          <textarea id="fechaDeViaje" name="fechaDeViaje" rows="2"></textarea>
+        </div>
       </div>
 
       <!-- Fila 6: Fecha Inicio, Días, Noches, Fecha Fin -->
@@ -122,7 +125,7 @@
         </div>
       </div>
 
-      <!-- Fila 7: Hoteles (multiple con texto libre + canónicos) -->
+      <!-- Fila 7: Hoteles (múltiple con texto libre + canónicos) -->
       <div class="row">
         <div class="column long">
           <label for="hoteles">Hoteles</label>
@@ -130,7 +133,7 @@
         </div>
       </div>
 
-      <!-- Fila 8: Asistencia Médica, Autorización, Indicaciones -->
+      <!-- Fila 8: Asistencia Médica, Autorización -->
       <div class="row">
         <div class="column medium">
           <label for="asistenciaEnViajes">Asistencia Médica</label>
@@ -145,7 +148,7 @@
       <div class="button-container">
         <button type="submit">Guardar</button>
       </div>
-    </form>
+    </form> <!-- <-- y aquí cerramos el form correctamente -->
 
     <!-- Tabla de datos guardados -->
     <h3 style="margin-top:40px;">🧾 Datos Guardados</h3>
@@ -165,7 +168,6 @@
     </div>
   </main>
 
-  <!-- Scripts -->
   <script type="module" src="firebase-init.js" defer></script>
   <script type="module" src="registro.js" defer></script>
 </body>
