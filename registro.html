@@ -14,7 +14,7 @@
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js'); // reloj, logout, usuario
+      await import('./script.js'); // reloj, logout, mostrar usuario...
     })();
   </script>
 
@@ -26,12 +26,13 @@
 
     <!-- Filtro por año -->
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <div class="column short">
       <label for="filtroAno">Filtrar por Año</label>
       <select id="filtroAno"></select>
     </div>
 
     <form id="formRegistro">
-      <!-- Fila 1 -->
+      <!-- Fila 1: Negocio, Grupo, Vendedor(a)-->
       <div class="row">
         <div class="column short">
           <label for="numeroNegocio">N° de Negocio</label>
@@ -43,13 +44,13 @@
           <input list="nombreList" id="nombreGrupo" name="nombreGrupo" />
           <datalist id="nombreList"></datalist>
         </div>
-        <div class="column short">
-          <label for="cantidadgrupo">Pax</label>
-          <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
+        <div class="column long">
+          <label for="vendedora">Vendedor(a)</label>
+          <input id="vendedora" name="vendedora" type="text" readonly />
         </div>
       </div>
 
-      <!-- Fila 2 -->
+      <!-- Fila 2: Colegio, Curso, Año Viaje -->
       <div class="row">
         <div class="column long">
           <label for="colegio">Colegio</label>
@@ -65,7 +66,23 @@
         </div>
       </div>
 
-      <!-- Fila 3: destino & programa -->
+      <!-- Fila 3: PAX, Adultos y Estudiantes -->
+      <div class="row">
+        <div class="column short">
+          <label for="cantidadgrupo">N° Pax</label>
+          <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
+        </div>
+        <div class="column short">
+          <label for="adultos">N° Adultos</label>
+          <input id="adultos" name="adultos" type="number" min="0" />
+        </div>
+        <div class="column short">
+          <label for="estudiantes">N° Estudiantes</label>
+          <input id="estudiantes" name="estudiantes" type="number" min="0" />
+        </div>
+      </div>
+
+      <!-- Fila 4: Destino y Programa -->
       <div class="row">
         <div class="column medium">
           <label for="destino">Destino</label>
@@ -79,7 +96,13 @@
         </div>
       </div>
 
-      <!-- Fila 4: fecha -->
+      <!-- Fila 5: Indicaciones de las fechas del viaje -->
+      <div class="column long">
+        <label for="fechaDeViaje">Indicaciones Fecha de Viaje</label>
+        <textarea id="fechaDeViaje" name="fechaDeViaje" rows="2"></textarea>
+      </div>
+
+      <!-- Fila 6: Fecha Inicio, Días, Noches, Fecha Fin -->
       <div class="row">
         <div class="column medium">
           <label for="fechaInicio">Fecha de Inicio</label>
@@ -99,19 +122,15 @@
         </div>
       </div>
 
-      <!-- Fila 5: composición pax -->
+      <!-- Fila 7: Hoteles (multiple con texto libre + canónicos) -->
       <div class="row">
-        <div class="column short">
-          <label for="adultos">Adultos</label>
-          <input id="adultos" name="adultos" type="number" min="0" />
-        </div>
-        <div class="column short">
-          <label for="estudiantes">Estudiantes</label>
-          <input id="estudiantes" name="estudiantes" type="number" min="0" />
+        <div class="column long">
+          <label for="hoteles">Hoteles</label>
+          <select id="hoteles" name="hoteles" multiple size="4"></select>
         </div>
       </div>
 
-      <!-- Fila 6: asistencia y autorizaciones -->
+      <!-- Fila 8: Asistencia Médica, Autorización, Indicaciones -->
       <div class="row">
         <div class="column medium">
           <label for="asistenciaEnViajes">Asistencia Médica</label>
@@ -122,35 +141,13 @@
           <textarea id="autorizacion" name="autorizacion" rows="2"></textarea>
         </div>
       </div>
-      <div class="row">
-        <div class="column long">
-          <label for="fechaDeViaje">Indicaciones Fecha de Viaje</label>
-          <textarea id="fechaDeViaje" name="fechaDeViaje" rows="2"></textarea>
-        </div>
-      </div>
-
-      <!-- Fila 7: vendedora -->
-      <div class="row">
-        <div class="column long">
-          <label for="vendedora">Vendedora</label>
-          <input id="vendedora" name="vendedora" type="text" readonly />
-        </div>
-      </div>
-
-      <!-- Fila 8: hoteles -->
-      <div class="row">
-        <div class="column long">
-          <label for="hoteles">Hoteles</label>
-          <select id="hoteles" name="hoteles" multiple size="4"></select>
-        </div>
-      </div>
 
       <div class="button-container">
         <button type="submit">Guardar</button>
       </div>
     </form>
 
-    <!-- Tabla -->
+    <!-- Tabla de datos guardados -->
     <h3 style="margin-top:40px;">🧾 Datos Guardados</h3>
     <div style="overflow-x:auto;">
       <table id="tablaRegistros" border="1" style="width:100%;border-collapse:collapse;font-size:0.9rem;">
