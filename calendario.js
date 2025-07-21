@@ -79,8 +79,8 @@ async function generarTablaCalendario(userEmail) {
   );
 
   // Cabecera de la tabla
-  const $thead = $('#encabezadoCalendario').empty();
-  $thead.append(`
+  const $trhead = $('#encabezadoCalendario').empty();
+  $trhead.append(`
     <th>N° Negocio</th>
     <th>Grupo</th>
     <th>Destino</th>
@@ -93,7 +93,7 @@ async function generarTablaCalendario(userEmail) {
     const fechaObj = new Date(yyyy, mm - 1, dd);
     const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
     // insertar <th> con o sin la clase
-    $thead.append(
+    $trhead.append(
       `<th class="${clase}">${formatearFechaBonita(f)}</th>`
     );
   });
