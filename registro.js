@@ -86,7 +86,8 @@ const elems = {};
   'duracion','noches','fechaFin',
   'adultos','estudiantes',
   'asistenciaEnViajes','autorizacion','fechaDeViaje',
-  'vendedora','formRegistro','tbodyTabla'
+   'vendedora','observaciones', 
+  'formRegistro','tbodyTabla'
 ].forEach(id => elems[id] = document.getElementById(id));
 
 // 4️⃣ Autenticación y arranque
@@ -194,7 +195,12 @@ async function loadVenta(ventas) {
 
   // 10.1) Rellenar campos (excepto días/noches/fechaFin)
   campos.forEach(c => {
-    if (!['duracion','noches','fechaFin'].includes(c)) {
+    if (['autorizacion','fechaDeViaje','observaciones'].includes(c)) {
+      // convertimos cualquier HTML que venga de la hoja a texto plano
+      const tmp = document.createElement('div');
+      tmp.innerHTML = v[c] || '';
+      elems[c].value = tmp.textContent || '';
+    } else if (!['duracion','noches','fechaFin'].includes(c)) {
       elems[c].value = v[c] || '';
     }
   });
@@ -291,7 +297,8 @@ async function paintTable(id) {
     d.duracion, d.noches, d.fechaFin,
     d.adultos, d.estudiantes,
     d.asistenciaEnViajes, d.autorizacion, d.fechaDeViaje,
-    d.vendedora, (d.hoteles||[]).join('; '),
+    d.vendedora,d.observaciones,
+    (d.hoteles||[]).join('; '),
     d.actualizadoPor, d.actualizadoEn.toLocaleString()
   ].forEach(v => {
     const td = document.createElement('td');
