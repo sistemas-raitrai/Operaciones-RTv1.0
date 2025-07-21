@@ -10,31 +10,29 @@ const auth = getAuth(app);
 
 // Propiedades en el mismo orden que aparecen en la tabla
 const camposFire = [
-  "numeroNegocio",  // 0
-  "nombreGrupo",    // 1
-  "cantidadgrupo",  // 2
-  "adultos",        // 3
-  "estudiantes",    // 4
-  "colegio",        // 5
-  "curso",          // 6
-  "anoViaje",       // 7
-  "destino",        // 8
-  "programa",       // 9
-  "fechaInicio",         // 10
-  "hotel",          // 11
-  "asistenciaEnViajes", // 12
-  "autorizacion",   // 13
-  "fechaDeViaje",   // 14
-  "observaciones",  // 15
-  "versionFicha",   // 16
-  "creadoPor",      // 17
-  "fechaCreacion",  // 18
-  "fechaFin",            // 19
-  "transporte",     // 20
-  "ciudades",       // 21
-  "hoteles",        // 22
-  "tramos",         // 23
-  "obsLogist"       // 24
+  "numeroNegocio",      // 0
+  "nombreGrupo",        // 1
+  "anoViaje",           // 2
+  "vendedora",          // 3 
+  "cantidadgrupo",      // 4
+  "adultos",            // 5
+  "estudiantes",        // 6
+  "colegio",            // 7
+  "curso",              // 8
+  "destino",            // 9
+  "programa",           //10
+  "fechaInicio",        //11
+  "fechaFin",           //12
+  "asistenciaEnViajes", //13
+  "autorizacion",       //14
+  "hoteles",            //15
+  "ciudades",           //16
+  "transporte",         //17
+  "tramos",             //18
+  "fechaDeViaje",       //19
+  "observaciones",      //20
+  "creadoPor",          //21
+  "fechaCreacion"      //22
 ];
 
 let editMode = false;
@@ -115,7 +113,7 @@ async function cargarYMostrarTabla() {
     order: [[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
     scrollX: true,
     columnDefs: [
-      { targets: [5,6,11,12,13,16,17,18,24], visible: false }  // p. ej. Colegio y Curso ocultos por defecto
+      { targets: [7,8,13,14,18,21,22], visible: false }  // p. ej. Colegio y Curso ocultos por defecto
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
@@ -128,7 +126,7 @@ async function cargarYMostrarTabla() {
   // 2) Filtro por Destino (columna índice 8)
   $('#filtroDestino').on('change', function() {
     tabla
-      .column(8)            // índice de “Destino”
+      .column(9)            // índice de “Destino”
       .search(this.value)   // vacío ("") = todos
       .draw();
   });
@@ -136,7 +134,7 @@ async function cargarYMostrarTabla() {
   // 3) Filtro por Año de Viaje (columna índice 7)
   $('#filtroAno').on('change', function() {
     tabla
-      .column(7)            // índice de “Año de Viaje”
+      .column(2)            // índice de “Año de Viaje”
       .search(this.value)
       .draw();
   });
@@ -307,12 +305,12 @@ function exportarGrupos() {
   const rows = tabla.rows({ search: 'applied' }).data().toArray();
 
   // Opcional: encabezados igual a las columnas definidas en el HTML (ordenado)
-  const headers = [
-    "N° Negocio","Nombre de Grupo","Pax","Adultos","Estudiantes","Colegio","Curso","Año",
-    "Destino","Programa","Inicio","Hotel","Asist. Viajes","Autoriz.","Fecha de Viaje",
-    "Obs.","Versión","Creado Por","F. Creación","Fin","Transporte","Ciudades","Hoteles",
-    "Tramos","Obs. Logist."
-  ];
+const headers = [
+  "N° Negocio","Nombre de Grupo","Año","Vendedor(a)","Pax","Adultos","Estudiantes",
+  "Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
+  "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
+  "Observaciones","Creado Por","Fecha Creación"
+];
 
   // Prepara un array de objetos (clave=header, valor=celda)
   const datos = rows.map(row => {
