@@ -14,7 +14,7 @@
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js');
+      await import('./script.js'); // reloj, logout, etc.
     })();
   </script>
 
@@ -24,11 +24,10 @@
       <button onclick="window.history.back()" class="boton-cerrar">✕</button>
     </div>
 
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-      <div>
-        <label for="filtroAno">Filtrar por Año</label>
-        <select id="filtroAno"></select>
-      </div>
+    <!-- Filtro por año -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <label for="filtroAno">Filtrar por Año</label>
+      <select id="filtroAno"></select>
     </div>
 
     <form id="formRegistro">
@@ -112,7 +111,7 @@
         </div>
       </div>
 
-      <!-- Fila 6: Asistencia, Autorización, Indicaciones Fecha Viaje -->
+      <!-- Fila 6: Asistencia Médica, Autorización, Indicaciones -->
       <div class="row">
         <div class="column medium">
           <label for="asistenciaEnViajes">Asistencia Médica</label>
@@ -133,12 +132,12 @@
       <!-- Fila 7: Vendedora -->
       <div class="row">
         <div class="column long">
-          <label for="vendedora">Vendedor(a)</label>
+          <label for="vendedora">Vendedora</label>
           <input id="vendedora" name="vendedora" type="text" readonly />
         </div>
       </div>
 
-      <!-- Fila 8: Hoteles (selección múltiple) -->
+      <!-- Fila 8: Hoteles -->
       <div class="row">
         <div class="column long">
           <label for="hoteles">Hoteles</label>
@@ -151,32 +150,17 @@
       </div>
     </form>
 
-    <h3 style="margin-top: 40px;">🧾 Datos Guardados</h3>
-    <div style="overflow-x: auto;">
-      <table id="tablaRegistros" border="1" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
-        <thead style="background-color: #f2f2f2;">
+    <!-- Tabla de datos guardados -->
+    <h3 style="margin-top:40px;">🧾 Datos Guardados</h3>
+    <div style="overflow-x:auto;">
+      <table id="tablaRegistros" border="1" style="width:100%;border-collapse:collapse;font-size:0.9rem;">
+        <thead style="background:#f2f2f2;">
           <tr>
-            <th>N° Negocio</th>
-            <th>Nombre Grupo</th>
-            <th>Pax</th>
-            <th>Colegio</th>
-            <th>Curso</th>
-            <th>Año Viaje</th>
-            <th>Destino</th>
-            <th>Programa</th>
-            <th>Fecha Inicio</th>
-            <th>Días</th>
-            <th>Noches</th>
-            <th>Fecha Término</th>
-            <th>Adultos</th>
-            <th>Estudiantes</th>
-            <th>Asist. Médica</th>
-            <th>Autorización</th>
-            <th>Indicaciones Fecha Viaje</th>
-            <th>Vendedora</th>
-            <th>Hoteles</th>
-            <th>Creado Por</th>
-            <th>Fecha Creación</th>
+            <th>N° Negocio</th><th>Nombre Grupo</th><th>Pax</th><th>Colegio</th><th>Curso</th>
+            <th>Año Viaje</th><th>Destino</th><th>Programa</th><th>Fecha Inicio</th><th>Días</th>
+            <th>Noches</th><th>Fecha Término</th><th>Adultos</th><th>Estudiantes</th>
+            <th>Asist. Médica</th><th>Autorización</th><th>Indicaciones Fecha Viaje</th>
+            <th>Vendedora</th><th>Hoteles</th><th>Creado Por</th><th>Fecha Creación</th>
           </tr>
         </thead>
         <tbody id="tbodyTabla"></tbody>
