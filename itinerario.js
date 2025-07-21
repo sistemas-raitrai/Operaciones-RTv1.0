@@ -130,6 +130,15 @@ async function renderItinerario() {
     const sec = document.createElement("section");
     sec.className     = "dia-seccion";
     sec.dataset.fecha = fecha;
+
+    // ––––– Detectar DOMINGO –––––
+    const [yyyy, mm, dd] = fecha.split('-').map(Number);
+    const dObj = new Date(yyyy, mm - 1, dd);
+    if (dObj.getDay() === 0) {
+      sec.classList.add('domingo');
+    }
+    // ––––––––––––––––––––––––––
+    
     sec.innerHTML     = `
       <h3>Día ${idx+1} – ${formatDateReadable(fecha)}</h3>
       <ul class="activity-list"></ul>
