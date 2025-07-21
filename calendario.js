@@ -194,7 +194,7 @@ async function generarTablaCalendario(userEmail) {
 
   $('#btn-close-history').on('click', () => $('#modalHistorial').hide());
   $('#btn-refresh-history').on('click', recargarHistorial);
-}
+});
 
 async function recargarHistorial() {
   const $tabla = $('#tablaHistorial');
