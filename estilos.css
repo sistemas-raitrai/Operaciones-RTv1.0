@@ -133,8 +133,10 @@ a {
   font-weight: bold;
 }
 
+th.domingo,
 td.domingo {
   border: 1px solid #333333;
+  background-color: #fff8cc; /* o el amarillo suave que prefieras */
 }
 
 
