@@ -98,6 +98,13 @@ async function generarTablaCalendario(userEmail) {
     
       $tr.append($td);
     });
+    }); // cierra fechasOrdenadas.forEach
+
+  }); // cierra grupos.forEach
+
+  }   // cierra generarTablaCalendario
+
+); 
 
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
