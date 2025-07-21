@@ -144,6 +144,14 @@ table.dataTable td {
   box-sizing: border-box;
 }
 
+/* Estilo para domingos en el carrusel de itinerario */
+.dia-seccion.domingo {
+  border: 1px solid #333333;
+  background-color: #facfaf;
+  border-radius: 4px; /* opcional, para que quede más suave */
+  padding: 0.5em;
+  margin-bottom: 1em;
+}
 
 /* ----------------------------------------------------------------------- */
 /* Estilos específicos para la vista de “Visualización de Grupos”          */
