@@ -334,10 +334,14 @@ async function onSubmitModal(evt) {
 // —————————————————————————————————
 // Utilidades de fecha y hora
 // —————————————————————————————————
-function getDateRange(startStr,endStr) {
-  const out=[];
-  for(let d=new Date(startStr); d<=new Date(endStr); d.setDate(d.getDate()+1)){
-    out.push(d.toISOString().slice(0,10));
+function getDateRange(startStr, endStr) {
+  const out = [];
+  let d = new Date(startStr);
+  const end = new Date(endStr);
+  while (d <= end) {
+    const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000); // corregir desfase
+    out.push(localDate.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 1);
   }
   return out;
 }
