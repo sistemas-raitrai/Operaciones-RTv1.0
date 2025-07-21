@@ -115,7 +115,7 @@ async function cargarYMostrarTabla() {
     columnDefs: [
       { targets: [7,8,13,14,18,21,22], visible: false },
       { targets: 0, width: '20px' },   // N° Negocio
-      { targets: 1, width: '150px' },  // Nombre Grupo
+      { targets: 1, width: '300px' },  // Nombre Grupo
       { targets: 2, width: '20px' },   // Año
       { targets: 3, width: '50px' },  // Vendedor(a)
       { targets: 4, width: '20px' },   // Pax
