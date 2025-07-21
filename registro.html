@@ -80,7 +80,7 @@
         </div>
       </div>
 
-      <!-- Fila 4: Fecha Inicio, Días, Noches -->
+      <!-- Fila 4: Fecha Inicio, Días, Noches, Fecha Fin -->
       <div class="row">
         <div class="column medium">
           <label for="fechaInicio">Fecha de Inicio</label>
@@ -93,6 +93,10 @@
         <div class="column short">
           <label for="noches">Noches</label>
           <input id="noches" name="noches" type="number" readonly />
+        </div>
+        <div class="column medium">
+          <label for="fechaFin">Fecha de Término</label>
+          <input type="date" id="fechaFin" name="fechaFin" readonly />
         </div>
       </div>
 
@@ -108,7 +112,25 @@
         </div>
       </div>
 
-      <!-- Fila 6: Vendedora -->
+      <!-- Fila 6: Asistencia, Autorización, Indicaciones Fecha Viaje -->
+      <div class="row">
+        <div class="column medium">
+          <label for="asistenciaEnViajes">Asistencia Médica</label>
+          <input id="asistenciaEnViajes" name="asistenciaEnViajes" type="text" />
+        </div>
+        <div class="column medium">
+          <label for="autorizacion">Autorización</label>
+          <textarea id="autorizacion" name="autorizacion" rows="2"></textarea>
+        </div>
+      </div>
+      <div class="row">
+        <div class="column long">
+          <label for="fechaDeViaje">Indicaciones Fecha de Viaje</label>
+          <textarea id="fechaDeViaje" name="fechaDeViaje" rows="2"></textarea>
+        </div>
+      </div>
+
+      <!-- Fila 7: Vendedora -->
       <div class="row">
         <div class="column long">
           <label for="vendedora">Vendedora</label>
@@ -116,7 +138,7 @@
         </div>
       </div>
 
-      <!-- Fila 7: Hoteles (selección múltiple) -->
+      <!-- Fila 8: Hoteles (selección múltiple) -->
       <div class="row">
         <div class="column long">
           <label for="hoteles">Hoteles</label>
@@ -145,8 +167,12 @@
             <th>Fecha Inicio</th>
             <th>Días</th>
             <th>Noches</th>
+            <th>Fecha Término</th>
             <th>Adultos</th>
             <th>Estudiantes</th>
+            <th>Asist. Médica</th>
+            <th>Autorización</th>
+            <th>Indicaciones Fecha Viaje</th>
             <th>Vendedora</th>
             <th>Hoteles</th>
             <th>Creado Por</th>
