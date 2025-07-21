@@ -14,7 +14,7 @@
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js');
+      await import('./script.js'); // reloj, logout, usuario
     })();
   </script>
 
@@ -31,7 +31,7 @@
     </div>
 
     <form id="formRegistro">
-      <!-- Fila 1: Negocio, Grupo, Pax -->
+      <!-- Fila 1 -->
       <div class="row">
         <div class="column short">
           <label for="numeroNegocio">N° de Negocio</label>
@@ -49,7 +49,7 @@
         </div>
       </div>
 
-      <!-- Fila 2: Colegio, Curso, Año Viaje -->
+      <!-- Fila 2 -->
       <div class="row">
         <div class="column long">
           <label for="colegio">Colegio</label>
@@ -65,7 +65,7 @@
         </div>
       </div>
 
-      <!-- Fila 3: Destino y Programa -->
+      <!-- Fila 3: destino & programa -->
       <div class="row">
         <div class="column medium">
           <label for="destino">Destino</label>
@@ -79,7 +79,7 @@
         </div>
       </div>
 
-      <!-- Fila 4: Fecha Inicio, Días, Noches, Fecha Fin -->
+      <!-- Fila 4: fecha -->
       <div class="row">
         <div class="column medium">
           <label for="fechaInicio">Fecha de Inicio</label>
@@ -99,7 +99,7 @@
         </div>
       </div>
 
-      <!-- Fila 5: Adultos y Estudiantes -->
+      <!-- Fila 5: composición pax -->
       <div class="row">
         <div class="column short">
           <label for="adultos">Adultos</label>
@@ -111,7 +111,7 @@
         </div>
       </div>
 
-      <!-- Fila 6: Asistencia Médica, Autorización, Indicaciones -->
+      <!-- Fila 6: asistencia y autorizaciones -->
       <div class="row">
         <div class="column medium">
           <label for="asistenciaEnViajes">Asistencia Médica</label>
@@ -129,7 +129,7 @@
         </div>
       </div>
 
-      <!-- Fila 7: Vendedora -->
+      <!-- Fila 7: vendedora -->
       <div class="row">
         <div class="column long">
           <label for="vendedora">Vendedora</label>
@@ -137,7 +137,7 @@
         </div>
       </div>
 
-      <!-- Fila 8: Hoteles -->
+      <!-- Fila 8: hoteles -->
       <div class="row">
         <div class="column long">
           <label for="hoteles">Hoteles</label>
@@ -150,7 +150,7 @@
       </div>
     </form>
 
-    <!-- Tabla de datos guardados -->
+    <!-- Tabla -->
     <h3 style="margin-top:40px;">🧾 Datos Guardados</h3>
     <div style="overflow-x:auto;">
       <table id="tablaRegistros" border="1" style="width:100%;border-collapse:collapse;font-size:0.9rem;">
@@ -168,6 +168,7 @@
     </div>
   </main>
 
+  <!-- Scripts -->
   <script type="module" src="firebase-init.js" defer></script>
   <script type="module" src="registro.js" defer></script>
 </body>
