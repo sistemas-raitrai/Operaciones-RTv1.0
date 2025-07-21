@@ -98,7 +98,7 @@ async function generarTablaCalendario(userEmail) {
         .attr('data-original', texto);
     
       $tr.append($td);
-    });
+  });
 
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
