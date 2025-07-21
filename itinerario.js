@@ -336,12 +336,13 @@ async function onSubmitModal(evt) {
 // —————————————————————————————————
 function getDateRange(startStr, endStr) {
   const out = [];
-  let d = new Date(startStr);
-  const end = new Date(endStr);
-  while (d <= end) {
-    const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000); // corregir desfase
-    out.push(localDate.toISOString().slice(0, 10));
-    d.setDate(d.getDate() + 1);
+  const start = new Date(startStr + "T00:00:00"); // Fuerza zona local
+  const end = new Date(endStr + "T00:00:00");
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    out.push(`${yyyy}-${mm}-${dd}`);
   }
   return out;
 }
