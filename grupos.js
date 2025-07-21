@@ -128,7 +128,7 @@ async function cargarYMostrarTabla() {
     scrollX: true,
     autoWidth: false,
     columnDefs: [
-      { targets: [7,8,13,14,18,21,22], visible: false },
+      { targets: [7,8,13,14,16,18,21,22], visible: false },
       { targets: 0, width: '20px' },   // N° Negocio
       { targets: 1, width: '100px' },  // Nombre Grupo
       { targets: 2, width: '20px' },   // Año
