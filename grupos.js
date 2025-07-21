@@ -180,7 +180,7 @@ async function cargarYMostrarTabla() {
   // 5) Edición inline en blur
   $('#tablaGrupos tbody').on('focusout','td[contenteditable]', async function(){
     const $td = $(this);
-    const nuevo = $td.text().trim();
+    const nuevo = $td.text().trim().toUpperCase();
     const orig  = $td.attr('data-original');
     if (nuevo === orig) return;
 
