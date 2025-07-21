@@ -74,9 +74,13 @@
 
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script type="module">
-    document.getElementById('encabezado').innerHTML =
-      await (await fetch('encabezado.html')).text();
-    await import('./viajes.js');
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 1) cargamos el encabezado
+      document.getElementById('encabezado').innerHTML =
+        await (await fetch('encabezado.html')).text();
+      // 2) importamos nuestro código, que a su vez llamará init()
+      await import('./viajes.js');
+    });
   </script>
 </body>
 </html>
