@@ -85,10 +85,9 @@ async function generarTablaCalendario(userEmail) {
       const clases = [];
       if (f === g.fechaInicio || f === g.fechaFin) clases.push('inicio-fin');
     
-      // Detectar si la fecha es domingo
       const [yyyy, mm, dd] = f.split('-').map(Number);
       const fechaObj = new Date(yyyy, mm - 1, dd);
-      if (fechaObj.getDay() === 0) clases.push('domingo'); // Domingo = 0
+      if (fechaObj.getDay() === 0) clases.push('domingo'); // domingo
     
       const $td = $('<td>')
         .addClass(clases.join(' '))
@@ -98,7 +97,7 @@ async function generarTablaCalendario(userEmail) {
         .attr('data-original', texto);
     
       $tr.append($td);
-  });
+    });
 
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
@@ -251,4 +250,4 @@ document.getElementById('btn-export-excel').addEventListener('click', () => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Calendario");
   XLSX.writeFile(wb, "calendario.xlsx");
-}
+});
