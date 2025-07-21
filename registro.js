@@ -15,7 +15,7 @@ import {
 const auth     = getAuth(app);
 const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
 
-// 2.1⃣ Campos del formulario
+// 2.1) Campos del formulario
 const campos = [
   'numeroNegocio','nombreGrupo','cantidadgrupo',
   'colegio','curso','anoViaje',
@@ -26,7 +26,7 @@ const campos = [
   'vendedora','observaciones'
 ];
 
-// 2.2⃣ Destinos canónicos
+// 2.2) Destinos canónicos
 const DESTINOS_CANONICOS = [
   'SUR DE CHILE',
   'NORTE DE CHILE',
@@ -36,7 +36,7 @@ const DESTINOS_CANONICOS = [
   'OTRO'
 ];
 
-// 2.3⃣ Programas por destino
+// 2.3) Programas por destino
 const PROGRAMAS_POR_DESTINO = {
   'SUR DE CHILE': [
     'SUR DE CHILE 7/6',
@@ -62,7 +62,7 @@ const PROGRAMAS_POR_DESTINO = {
   'OTRO': []
 };
 
-// 2.4⃣ Hoteles por destino
+// 2.4) Hoteles por destino
 const HOTELES_POR_DESTINO = {
   'SUR DE CHILE': ['HOTEL BORDELAGO','HOTEL PUCÓN','HOTEL VIENTOS DEL SUR'],
   'NORTE DE CHILE': ['HOTEL LA ALDEA'],
