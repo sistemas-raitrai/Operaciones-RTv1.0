@@ -3,150 +3,163 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Registro de Grupos</title>
+  <title>Registro de Grupos | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
 <body>
-    <!-- ✅ Encabezado cargado dinámicamente -->
+  <!-- Encabezado común -->
   <div id="encabezado"></div>
-  
-  <div style="text-align: right;">
-    <button onclick="window.history.back()" class="boton-cerrar">✕</button>
-  </div>
-  
-  <div style="display: flex; justify-content: space-between; align-items: center;">
-    <h2>Registro de Grupo</h2>
-    <div>
-      <label for="filtroAno">Filtrar por Año</label>
-      <select id="filtroAno"></select>
-    </div>
-  </div>
-
-  <!-- 🔄 Fila: Número de Negocio + Nombre de Grupo + Pax -->
-  <div class="row">
-    <div class="column short">
-      <label for="numeroNegocio">N° de Negocio</label>
-      <input list="negocioList" id="numeroNegocio" name="numeroNegocio" />
-      <datalist id="negocioList"></datalist>
-    </div>
-    <div class="column long">
-      <label for="nombreGrupo">Nombre de Grupo</label>
-      <input list="nombreList" id="nombreGrupo" name="nombreGrupo" />
-      <datalist id="nombreList"></datalist>
-    </div>
-    <div class="column short">
-      <label for="cantidadgrupo">Pax</label>
-      <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
-    </div>
-  </div>
-
-  <!-- 🔄 Fila: Colegio + Curso + Año Viaje  -->
-  <div class="row">
-    <div class="column long">
-      <label for="colegio">Colegio</label>
-      <input id="colegio" name="colegio" type="text" />
-    </div>
-    <div class="column short">
-      <label for="curso">Curso</label>
-      <input id="curso" name="curso" type="text" />
-    </div>
-    <div class="column short">
-      <label for="anoViaje">Año Viaje</label>
-      <input id="anoViaje" name="anoViaje" type="text" />
-    </div>
-  </div>
-
-  <div class="row">
-    <div class="column medium">
-      <label for="destino">Destino que viene de Ventas</label>
-      <input id="destino" name="destino" type="text" />
-    </div>
-    <div class="column medium">
-      <label for="programa">Programa que viene de Ventas</label>
-      <input id="programa" name="programa" type="text" />
-    </div>
-  </div>
-  
-  <div class="row">  
-    <div class="column long">
-      <label for="hotel">Hotel pedido por Ventas</label>
-      <input id="hotel" name="hotel" type="text" />
-    </div>
-    <div class="column short">
-      <label for="asistenciaEnViajes">Asistencia Médica</label>
-      <input id="asistenciaEnViajes" name="asistenciaEnViajes" type="text" />
-    </div>
-  </div>
-
-  <div class="row">
-    <div class="column medium"> 
-      <label for="autorizacion">Autorización</label>
-      <textarea id="autorizacion" name="autorizacion" rows="3"></textarea>
-    </div>
-    <div class="column medium"> 
-      <label for="fechaDeViaje">Indicaciones sobre la Fecha de Viaje</label>
-      <textarea id="fechaDeViaje" name="fechaDeViaje" rows="3"></textarea>
-    </div>
-  </div>
-  
-  <label for="observaciones">Observaciones</label>
-  <textarea id="observaciones" name="observaciones" rows="3"></textarea>
-
-  <label for="text1">Versión Ficha</label>
-  <input id="text1" name="versionFicha" type="text" />
-
-<div class="button-container">
-  <button onclick="guardarDatos(true)">Guardar</button>
-  <button onclick="guardarYContinuar()">Continuar</button>
-  <button id="btnExportarExcel">Exportar Excel</button>
-</div>
-
-  <h3 style="margin-top: 40px;">🧾 Datos Guardados</h3>
-  <div style="overflow-x: auto;">
-    <table id="tablaRegistros" border="1" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
-      <thead style="background-color: #f2f2f2;">
-        <tr>
-          <th>N° Negocio</th>
-          <th>Nombre Grupo</th>
-          <th>Pax</th>
-          <th>Colegio</th>
-          <th>Curso</th>
-          <th>Año Viaje</th>
-          <th>Destino</th>
-          <th>Programa</th>
-          <th>Hotel</th>
-          <th>Asist. Méd</th>
-          <th>Autorización</th>
-          <th>Fecha Viaje</th>
-          <th>Observaciones</th>
-          <th>Versión</th>
-        </tr>
-      </thead>
-      <tbody id="tbodyTabla">
-      </tbody>
-    </table>
-  </div>
-
-  <!-- ─────────── Scripts (orden correcto) ─────────── -->
-
-  <!-- 1️⃣ script.js: global (reloj, logout, mostrar usuario) -->
-  <script type="module" src="script.js" defer></script>
-
-  <!-- 2️⃣ Inicialización de Firebase y Auth -->
-  <script type="module" src="firebase-init.js" defer></script>
-
-  <!-- 3️⃣ Lógica de datosGrupos: datalists, formulario y tabla -->
-  <script type="module" src="datosGrupos.js" defer></script>
-
-  <!-- 4️⃣ Carga del encabezado (fetch + montaje de menú, auth en encabezado, etc.) -->
   <script type="module" defer>
     (async () => {
-      const res = await fetch("encabezado.html");
-      const html = await res.text();
-      document.getElementById("encabezado").innerHTML = html;
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+      await import('./script.js');
     })();
   </script>
-  
+
+  <main class="formulario-container">
+    <h2>Registro de Grupo</h2>
+    <div style="text-align: right;">
+      <button onclick="window.history.back()" class="boton-cerrar">✕</button>
+    </div>
+
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <label for="filtroAno">Filtrar por Año</label>
+        <select id="filtroAno"></select>
+      </div>
+    </div>
+
+    <form id="formRegistro">
+      <!-- Fila 1: Negocio, Grupo, Pax -->
+      <div class="row">
+        <div class="column short">
+          <label for="numeroNegocio">N° de Negocio</label>
+          <input list="negocioList" id="numeroNegocio" name="numeroNegocio" />
+          <datalist id="negocioList"></datalist>
+        </div>
+        <div class="column long">
+          <label for="nombreGrupo">Nombre de Grupo</label>
+          <input list="nombreList" id="nombreGrupo" name="nombreGrupo" />
+          <datalist id="nombreList"></datalist>
+        </div>
+        <div class="column short">
+          <label for="cantidadgrupo">Pax</label>
+          <input id="cantidadgrupo" name="cantidadgrupo" type="number" />
+        </div>
+      </div>
+
+      <!-- Fila 2: Colegio, Curso, Año Viaje -->
+      <div class="row">
+        <div class="column long">
+          <label for="colegio">Colegio</label>
+          <input id="colegio" name="colegio" type="text" />
+        </div>
+        <div class="column short">
+          <label for="curso">Curso</label>
+          <input id="curso" name="curso" type="text" />
+        </div>
+        <div class="column short">
+          <label for="anoViaje">Año Viaje</label>
+          <input id="anoViaje" name="anoViaje" type="text" />
+        </div>
+      </div>
+
+      <!-- Fila 3: Destino y Programa -->
+      <div class="row">
+        <div class="column medium">
+          <label for="destino">Destino</label>
+          <input list="destinosList" id="destino" name="destino" />
+          <datalist id="destinosList"></datalist>
+        </div>
+        <div class="column medium">
+          <label for="programa">Programa (X/Y)</label>
+          <input list="programasList" id="programa" name="programa" />
+          <datalist id="programasList"></datalist>
+        </div>
+      </div>
+
+      <!-- Fila 4: Fecha Inicio, Días, Noches -->
+      <div class="row">
+        <div class="column medium">
+          <label for="fechaInicio">Fecha de Inicio</label>
+          <input type="date" id="fechaInicio" name="fechaInicio" />
+        </div>
+        <div class="column short">
+          <label for="duracion">Días</label>
+          <input id="duracion" name="duracion" type="number" readonly />
+        </div>
+        <div class="column short">
+          <label for="noches">Noches</label>
+          <input id="noches" name="noches" type="number" readonly />
+        </div>
+      </div>
+
+      <!-- Fila 5: Adultos y Estudiantes -->
+      <div class="row">
+        <div class="column short">
+          <label for="adultos">Adultos</label>
+          <input id="adultos" name="adultos" type="number" min="0" />
+        </div>
+        <div class="column short">
+          <label for="estudiantes">Estudiantes</label>
+          <input id="estudiantes" name="estudiantes" type="number" min="0" />
+        </div>
+      </div>
+
+      <!-- Fila 6: Vendedora -->
+      <div class="row">
+        <div class="column long">
+          <label for="vendedora">Vendedora</label>
+          <input id="vendedora" name="vendedora" type="text" readonly />
+        </div>
+      </div>
+
+      <!-- Fila 7: Hoteles (selección múltiple) -->
+      <div class="row">
+        <div class="column long">
+          <label for="hoteles">Hoteles</label>
+          <select id="hoteles" name="hoteles" multiple size="4"></select>
+        </div>
+      </div>
+
+      <div class="button-container">
+        <button type="submit">Guardar</button>
+      </div>
+    </form>
+
+    <h3 style="margin-top: 40px;">🧾 Datos Guardados</h3>
+    <div style="overflow-x: auto;">
+      <table id="tablaRegistros" border="1" style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+        <thead style="background-color: #f2f2f2;">
+          <tr>
+            <th>N° Negocio</th>
+            <th>Nombre Grupo</th>
+            <th>Pax</th>
+            <th>Colegio</th>
+            <th>Curso</th>
+            <th>Año Viaje</th>
+            <th>Destino</th>
+            <th>Programa</th>
+            <th>Fecha Inicio</th>
+            <th>Días</th>
+            <th>Noches</th>
+            <th>Adultos</th>
+            <th>Estudiantes</th>
+            <th>Vendedora</th>
+            <th>Hoteles</th>
+            <th>Creado Por</th>
+            <th>Fecha Creación</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyTabla"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Scripts -->
+  <script type="module" src="firebase-init.js" defer></script>
+  <script type="module" src="registro.js" defer></script>
 </body>
 </html>
