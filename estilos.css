@@ -729,3 +729,7 @@ body {
   border: none;
   display: block;
 }
+
+#hoteles {
+  height: 200px; 
+}
