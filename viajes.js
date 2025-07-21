@@ -7,89 +7,115 @@ import {
   addDoc, updateDoc, deleteDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+// Estado global
 const auth = getAuth(app);
-let grupos = [], vuelos = [];
+let grupos = [], transportes = [];
 let isEdit = false, editId = null;
 let choiceGrupos;
 
 // ——————————————————————————
-// 1) Inicialización tras DOMContentLoaded
+// 1) Auth y arranque en init()
 // ——————————————————————————
-document.addEventListener('DOMContentLoaded', () => {
-  onAuthStateChanged(auth, user => {
-    if (!user) return location.href = 'login.html';
-    init();
-  });
+onAuthStateChanged(auth, user => {
+  if (!user) return location.href = 'login.html';
+  init();
 });
 
-// ——————————————————————————
-// 2) Init: carga grupos, enlaza botón y modal, y render
-// ——————————————————————————
 async function init() {
   await loadGrupos();
-  document.getElementById('btnAddVuelo').onclick = () => openModal();
+  bindUI();
   initModal();
-  renderVuelos();
+  renderTransportes();
 }
 
 // ——————————————————————————
-// 3) loadGrupos()
+// 2) Bind de UI estática
+// ——————————————————————————
+function bindUI() {
+  document.getElementById('btnAddVuelo')
+    .onclick = () => openModal();
+}
+
+// ——————————————————————————
+// 3) Carga grupos desde Firestore
 // ——————————————————————————
 async function loadGrupos() {
-  const snap = await getDocs(collection(db, 'grupos'));
-  grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const snap = await getDocs(collection(db,'grupos'));
+  grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 }
 
 // ——————————————————————————
-// 4) initModal(): enlaza eventos del modal
+// 4) Inicializa el modal y Choices.js
 // ——————————————————————————
 function initModal() {
-  const btnCancel = document.getElementById('modal-cancel');
-  if (btnCancel) btnCancel.onclick = closeModal;
+  // Cancelar
+  document.getElementById('modal-cancel')
+    .onclick = closeModal;
+  // Submit
+  document.getElementById('modal-form')
+    .onsubmit = onSubmit;
 
-  const form = document.getElementById('modal-form');
-  if (form) form.onsubmit = onSubmit;
-
+  // Choices para grupos
   choiceGrupos = new Choices(
     document.getElementById('m-grupos'),
     { removeItemButton: true }
   );
   choiceGrupos.setChoices(
-    grupos.map(g => ({
+    grupos.map(g=>({
       value: g.id,
       label: `${g.numeroNegocio} – ${g.nombreGrupo}`
     })),
-    'value', 'label', false
+    'value','label',false
   );
+
+  // Toggle campos tipo
+  document.getElementById('m-tipo').onchange = e =>
+    toggleFields(e.target.value);
 }
 
 // ——————————————————————————
-// 5) renderVuelos(): dibuja cada vuelo como bloque
+// 5) Mostrar/ocultar campos Aéreo vs Terrestre
 // ——————————————————————————
-async function renderVuelos() {
+function toggleFields(tipo) {
+  document.getElementById('fields-aereo').style.display =
+    tipo === 'aereo' ? 'block' : 'none';
+  document.getElementById('fields-terrestre').style.display =
+    tipo === 'terrestre' ? 'block' : 'none';
+}
+
+// ——————————————————————————
+// 6) Render transportes como tarjetas
+// ——————————————————————————
+async function renderTransportes() {
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
-  const snap = await getDocs(collection(db, 'vuelos'));
-  vuelos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const snap = await getDocs(collection(db,'vuelos'));
+  transportes = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 
-  vuelos.forEach(v => {
+  transportes.forEach(t => {
     const card = document.createElement('div');
     card.className = 'flight-card';
 
-    // header
+    // Cabecera con datos
     card.innerHTML = `
-      <div class="flight-header">
-        <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
-        <p>Ida: ${fmtFecha(v.fechaIda)}</p>
-        <p>Vuelta: ${fmtFecha(v.fechaVuelta)}</p>
+      <div>
+        <h4>✈️ ${t.proveedor||t.empresa} ${t.numero||''}
+           (${t.tipo==='aereo'? t.tipoVuelo:t.tipo})</h4>
+        ${t.tipo==='aereo'
+          ? `<p>Ida: ${fmtFecha(t.fechaIda)}</p>
+             <p>Vuelta: ${fmtFecha(t.fechaVuelta)}</p>`
+          : `<p>${t.horaInicio} – ${t.horaFin}</p>
+             <p>Cond: ${t.conductor1||'-'} / ${t.conductor2||'-'}</p>`}
       </div>
-      <div class="flight-groups">${renderGrupos(v.grupos)}</div>
-      <div class="flight-footer">
-        <div><strong>Total Pax:</strong> ${calculaTotal(v.grupos)}</div>
-        <div>
-          <button class="btn-add" onclick="openModal(${JSON.stringify(v)})">✏️ Editar</button>
-          <button class="btn-add" onclick="deleteVuelo('${v.id}')">🗑️ Eliminar</button>
-        </div>
+      <div>${renderGrupos(t.grupos,t.id)}</div>
+      <div><strong>Total Pax:</strong> ${calculaTotal(t.grupos)}</div>
+      <div class="actions">
+        <button class="btn-add" onclick="openModal(${JSON.stringify(t)})">
+          ✏️ Editar
+        </button>
+        <button class="btn-add" onclick="deleteTransporte('${t.id}')">
+          🗑️ Eliminar
+        </button>
       </div>
     `;
     cont.appendChild(card);
@@ -97,114 +123,173 @@ async function renderVuelos() {
 }
 
 // ——————————————————————————
-// Helper: formatea fecha
+// 7) Formatea fecha «X, DD de MMMM YYYY»
 // ——————————————————————————
 function fmtFecha(iso) {
   const d = new Date(iso);
-  return d.toLocaleDateString('es-CL', {
-    weekday: 'long', day: '2-digit',
-    month: 'long', year: 'numeric'
-  }).replace(/(^\w)/, m => m.toUpperCase());
+  return d.toLocaleDateString('es-CL',{
+    weekday:'long', day:'2-digit',
+    month:'long', year:'numeric'
+  }).replace(/(^\w)/,m=>m.toUpperCase());
 }
 
 // ——————————————————————————
-// Helper: renderiza lista de grupos
+// 8) Renderiza cada grupo dentro de un transporte
 // ——————————————————————————
-function renderGrupos(arr = []) {
+function renderGrupos(arr = [], transporteId) {
   if (!arr.length) return '<p>— Sin grupos —</p>';
-  return arr.map((gObj, idx) => {
-    const g = grupos.find(x => x.id === gObj.id) || {};
-    const a = g.adultos||0, e = g.estudiantes||0;
-    const status = gObj.status==='pendiente'
-      ? '🕗 Pendiente' : '✅ Confirmado';
+  return arr.map((gObj,idx) => {
+    const g = grupos.find(x=>x.id===gObj.id) || {};
+    const a=g.adultos||0, e=g.estudiantes||0;
     return `
       <div class="group-item">
         <div class="group-info">
           • <strong>${g.numeroNegocio} – ${g.nombreGrupo}</strong>
-          (A:${a} E:${e}) <span class="status">${status}</span>
+            (A:${a} E:${e})
+          <span class="status">
+            ${gObj.status==='pendiente'?'🕗 Pendiente':'✅ Confirmado'}
+          </span>
         </div>
         <div>
-          <button class="btn-small" onclick="toggleGroupStatus('${gObj.id}', ${idx})">🔄</button>
-          <button class="btn-small" onclick="removeGroup('${gObj.id}', ${idx})">🗑️</button>
+          <button class="btn-small"
+            onclick="toggleGroupStatus('${transporteId}',${idx})">
+            🔄
+          </button>
+          <button class="btn-small"
+            onclick="removeGroup('${transporteId}',${idx})">
+            🗑️
+          </button>
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 }
 
 // ——————————————————————————
-// Helper: calcula total pax
+// 9) Calcula y muestra totals pax
 // ——————————————————————————
-function calculaTotal(arr = []) {
+function calculaTotal(arr=[]) {
   let a=0,e=0;
-  arr.forEach(gObj => {
-    const g = grupos.find(x => x.id===gObj.id) || {};
-    a += g.adultos||0; e += g.estudiantes||0;
+  arr.forEach(gObj=>{
+    const g = grupos.find(x=>x.id===gObj.id)||{};
+    a+=g.adultos||0; e+=g.estudiantes||0;
   });
   return `${a+e} (A:${a} E:${e})`;
 }
 
 // ——————————————————————————
-// openModal(v?) y onSubmit() (idénticos a antes)
+// 10) Abre modal para nuevo/editar
 // ——————————————————————————
-function openModal(v = null) {
-  isEdit = !!v; editId = v?.id||null;
+function openModal(t=null) {
+  isEdit = !!t; editId = t?.id||null;
   document.getElementById('modal-title').textContent =
-    v?'Editar Vuelo':'Nuevo Vuelo';
-  ['proveedor','numero','fechaIda','fechaVuelta']
-    .forEach(key => document.getElementById(`m-${key}`).value = v?.[key]||'');
-  document.getElementById('m-tipoVuelo').value = v?.tipoVuelo||'regular';
-  document.getElementById('m-statusDefault').value =
-    v?.grupos?.[0]?.status||'confirmado';
+    t ? 'Editar Transporte' : 'Nuevo Transporte';
 
+  // Rellenar campos comunes
+  document.getElementById('m-tipo').value = t?.tipo||'aereo';
+  toggleFields(t?.tipo||'aereo');
+
+  // Aéreo
+  document.getElementById('m-proveedor').value = t?.proveedor||'';
+  document.getElementById('m-numero').value    = t?.numero||'';
+  document.getElementById('m-tipoVuelo').value = t?.tipoVuelo||'regular';
+  document.getElementById('m-fechaIda').value  = t?.fechaIda||'';
+  document.getElementById('m-fechaVuelta').value = t?.fechaVuelta||'';
+
+  // Terrestre
+  document.getElementById('m-empresa').value    = t?.empresa||'';
+  document.getElementById('m-horaInicio').value = t?.horaInicio||'';
+  document.getElementById('m-horaFin').value    = t?.horaFin||'';
+  document.getElementById('m-conductor1').value = t?.conductor1||'';
+  document.getElementById('m-conductor2').value = t?.conductor2||'';
+
+  // Grupos + estado
   choiceGrupos.removeActiveItems();
-  if (v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g=>g.id));
+  if (t?.grupos) {
+    choiceGrupos.setChoiceByValue(t.grupos.map(g=>g.id));
+    document.getElementById('m-statusDefault').value = t.grupos[0].status;
+  }
 
+  // Mostrar modal
   document.getElementById('modal-backdrop').style.display =
   document.getElementById('modal-vuelo').style.display = 'block';
 }
 
+// ——————————————————————————
+// 11) Submit: crea o actualiza en Firestore
+// ——————————————————————————
 async function onSubmit(evt) {
   evt.preventDefault();
-  const sel = choiceGrupos.getValue(true);
-  const st  = document.getElementById('m-statusDefault').value;
-  const gruposArr = sel.map(id=>({ id, status: st }));
-  const v = {
-    proveedor: document.getElementById('m-proveedor').value.trim().toUpperCase(),
-    numero:    document.getElementById('m-numero').value.trim(),
-    tipoVuelo: document.getElementById('m-tipoVuelo').value,
-    fechaIda:  document.getElementById('m-fechaIda').value,
-    fechaVuelta: document.getElementById('m-fechaVuelta').value,
-    grupos:    gruposArr
+  const tipo = document.getElementById('m-tipo').value;
+  // Recojo valores según tipo
+  const base = {
+    tipo,
+    grupos: choiceGrupos.getValue(true)
+      .map(id=>({ id, status: document.getElementById('m-statusDefault').value }))
   };
-  if (isEdit) await updateDoc(doc(db,'vuelos',editId), v);
-  else        await addDoc(collection(db,'vuelos'), v);
-  closeModal(); renderVuelos();
+  const payload = tipo==='aereo'
+    ? {
+        ...base,
+        proveedor:   document.getElementById('m-proveedor').value.trim().toUpperCase(),
+        numero:      document.getElementById('m-numero').value.trim(),
+        tipoVuelo:   document.getElementById('m-tipoVuelo').value,
+        fechaIda:    document.getElementById('m-fechaIda').value,
+        fechaVuelta: document.getElementById('m-fechaVuelta').value
+      }
+    : {
+        ...base,
+        empresa:     document.getElementById('m-empresa').value.trim(),
+        horaInicio:  document.getElementById('m-horaInicio').value,
+        horaFin:     document.getElementById('m-horaFin').value,
+        conductor1:  document.getElementById('m-conductor1').value.trim(),
+        conductor2:  document.getElementById('m-conductor2').value.trim()
+      };
+
+  const ref = doc(db,'vuelos', editId || '');
+  if (isEdit) {
+    await updateDoc(ref, payload);
+  } else {
+    await addDoc(collection(db,'vuelos'), payload);
+  }
+
+  closeModal();
+  renderTransportes();
 }
 
 // ——————————————————————————
-// deleteVuelo, removeGroup, toggleGroupStatus, closeModal
+// 12) Eliminar transporte completo
 // ——————————————————————————
-async function deleteVuelo(id) {
-  if (!confirm('Eliminar vuelo?')) return;
+async function deleteTransporte(id) {
+  if (!confirm('¿Eliminar este transporte?')) return;
   await deleteDoc(doc(db,'vuelos',id));
-  renderVuelos();
+  renderTransportes();
 }
 
-window.removeGroup = async (vueloId, idx) => {
-  const ref = doc(db,'vuelos',vueloId), snap = await getDoc(ref), v = snap.data();
-  v.grupos.splice(idx,1);
-  await updateDoc(ref,{ grupos: v.grupos });
-  renderVuelos();
+// ——————————————————————————
+// 13) Remove single group
+// ——————————————————————————
+window.removeGroup = async (transpId, idx) => {
+  const ref = doc(db,'vuelos',transpId);
+  const snap = await getDoc(ref), data = snap.data();
+  data.grupos.splice(idx,1);
+  await updateDoc(ref,{ grupos: data.grupos });
+  renderTransportes();
 };
 
-window.toggleGroupStatus = async (vueloId, idx) => {
-  const ref = doc(db,'vuelos',vueloId), snap = await getDoc(ref), v = snap.data();
-  v.grupos[idx].status = v.grupos[idx].status==='pendiente' ? 'confirmado':'pendiente';
-  await updateDoc(ref,{ grupos: v.grupos });
-  renderVuelos();
+// ——————————————————————————
+// 14) Toggle group status
+// ——————————————————————————
+window.toggleGroupStatus = async (transpId, idx) => {
+  const ref = doc(db,'vuelos',transpId);
+  const snap = await getDoc(ref), data = snap.data();
+  data.grupos[idx].status = data.grupos[idx].status==='pendiente' 
+    ? 'confirmado' : 'pendiente';
+  await updateDoc(ref,{ grupos: data.grupos });
+  renderTransportes();
 };
 
+// ——————————————————————————
+// 15) Cerrar modal
+// ——————————————————————————
 function closeModal() {
   document.getElementById('modal-backdrop').style.display =
   document.getElementById('modal-vuelo').style.display = 'none';
