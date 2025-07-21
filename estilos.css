@@ -168,6 +168,7 @@ a {
   width: 100% !important;
   background: #ffffff;         /* Fondo blanco */
   border-collapse: collapse;
+  text-transform: uppercase;
 }
 
 /* Oculta la búsqueda nativa de DataTables */
