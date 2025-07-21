@@ -139,6 +139,11 @@ td.domingo {
   background-color: #facfaf; /* o el amarillo suave que prefieras */
 }
 
+table.dataTable th,
+table.dataTable td {
+  box-sizing: border-box;
+}
+
 
 /* ----------------------------------------------------------------------- */
 /* Estilos específicos para la vista de “Visualización de Grupos”          */
