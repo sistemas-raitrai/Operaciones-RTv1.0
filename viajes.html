@@ -9,13 +9,7 @@
 </head>
 <body class="vuelos-page">
   <div id="encabezado"></div>
-  <script type="module">
-    (async () => {
-      document.getElementById('encabezado').innerHTML =
-        await (await fetch('encabezado.html')).text();
-      await import('./viajes.js');
-    })();
-  </script>
+
   <main class="main">
     <div class="row">
       <div class="column long"><h2>Vuelos de Estudio</h2></div>
@@ -64,6 +58,18 @@
     </form>
   </div>
 
+  <!-- Bibliotecas -->
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+  <!-- Ahora sí importamos el módulo, *DESPUÉS* de TODO el HTML -->
+  <script type="module">
+    (async () => {
+      // Cargamos encabezado
+      document.getElementById('encabezado').innerHTML =
+        await (await fetch('encabezado.html')).text();
+      // Importamos nuestra lógica
+      await import('./viajes.js');
+    })();
+  </script>
 </body>
 </html>
