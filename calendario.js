@@ -224,7 +224,8 @@ async function recargarHistorial() {
 }
 
 function formatearFechaBonita(fechaISO) {
-  const fecha = new Date(fechaISO);
+  const [yyyy, mm, dd] = fechaISO.split('-').map(Number);
+  const fecha = new Date(yyyy, mm - 1, dd); // Mes 0-indexado
   const opciones = { day: 'numeric', month: 'short' };
   return fecha.toLocaleDateString('es-CL', opciones);
 }
