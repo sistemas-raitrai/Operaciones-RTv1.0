@@ -346,12 +346,12 @@ function getDateRange(startStr, endStr) {
   }
   return out;
 }
-function formatDateReadable(iso) {
-  const d  = new Date(iso);
-  const wd = d.toLocaleDateString("es-CL",{weekday:"long"});
-  const dd = String(d.getDate()).padStart(2,"0");
-  const mm = String(d.getMonth()+1).padStart(2,"0");
-  return `${wd.charAt(0).toUpperCase()+wd.slice(1)} ${dd}/${mm}`;
+function formatDateReadable(isoStr) {
+  // Evita el desfase creando fecha local correctamente
+  const [yyyy, mm, dd] = isoStr.split('-').map(Number);
+  const d = new Date(yyyy, mm - 1, dd); // sin UTC, sin hora
+  const wd = d.toLocaleDateString("es-CL", { weekday: "long" });
+  return `${wd.charAt(0).toUpperCase() + wd.slice(1)} ${dd.toString().padStart(2, '0')}/${mm.toString().padStart(2, '0')}`;
 }
 function sumarUnaHora(hhmm) {
   const [h,m] = hhmm.split(":").map(Number);
