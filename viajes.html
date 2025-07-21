@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Vuelos de Grupo | RT v1.0</title>
+  <title>Aéreos y Terrestres | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
@@ -30,12 +30,6 @@
     .flight-header h4 {
       margin: 0 0 0.5rem;
     }
-    .flight-details {
-      flex: 1;
-    }
-    .flight-details p {
-      margin: 0.3rem 0;
-    }
     .flight-groups {
       margin: 0.5rem 0;
       padding-left: 1rem;
@@ -51,6 +45,11 @@
       padding: 0.25em 0.5em;
       margin-left: 0.3em;
     }
+    /* Estilos de grupo */
+    .group-item { display: flex; align-items: center; justify-content: space-between; }
+    .group-info { flex: 1; }
+    .group-info strong { color: #0055aa; }
+    .status { margin-left: 0.5em; font-weight: bold; }
   </style>
 </head>
 <body class="vuelos-page">
@@ -58,27 +57,95 @@
 
   <main class="main">
     <div class="row">
-      <div class="column long"><h2>Listado de Aéreos</h2></div>
+      <div class="column long"><h2>Aéreos y Terrestres</h2></div>
       <div class="column short">
-        <button id="btnAddVuelo" class="btn-add">+ Nuevo Vuelo</button>
+        <button id="btnAddVuelo" class="btn-add">+ Nuevo Vuelo/Tramo</button>
       </div>
     </div>
+    <!-- Aquí se montan los bloques .flight-card -->
     <div id="vuelos-container"></div>
   </main>
 
-  <!-- Modal Vuelo igual al anterior -->
+  <!-- Modal para crear/editar un vuelo o tramo -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal-vuelo" class="modal" style="display:none; width:80%; max-width:600px;">
-    <!-- ... formulario idéntico al anterior ... -->
+    <h3 id="modal-title">Vuelo / Tramo</h3>
+    <form id="modal-form">
+      <!-- Selector Tipo -->
+      <label for="m-tipo">Tipo</label>
+      <select id="m-tipo">
+        <option value="aereo">Aéreo</option>
+        <option value="terrestre">Terrestre</option>
+      </select>
+
+      <!-- Campos Aéreo -->
+      <div id="fields-aereo">
+        <label for="m-proveedor">Aerolínea</label>
+        <input type="text" id="m-proveedor" list="lista-aero" />
+        <datalist id="lista-aero"></datalist>
+
+        <label for="m-numero">N° Vuelo</label>
+        <input type="text" id="m-numero" />
+
+        <label for="m-tipoVuelo">Tipo de Vuelo</label>
+        <select id="m-tipoVuelo">
+          <option value="regular">Regular</option>
+          <option value="charter">Charter</option>
+        </select>
+
+        <label for="m-fechaIda">Fecha Ida</label>
+        <input type="date" id="m-fechaIda" />
+
+        <label for="m-fechaVuelta">Fecha Vuelta</label>
+        <input type="date" id="m-fechaVuelta" />
+      </div>
+
+      <!-- Campos Terrestre -->
+      <div id="fields-terrestre" style="display:none;">
+        <label for="m-empresa">Empresa de Buses</label>
+        <input type="text" id="m-empresa" list="lista-empresas" />
+        <datalist id="lista-empresas"></datalist>
+
+        <label for="m-horaInicio">Hora Inicio</label>
+        <input type="time" id="m-horaInicio" />
+
+        <label for="m-horaFin">Hora Fin</label>
+        <input type="time" id="m-horaFin" />
+
+        <label for="m-conductor1">Conductor 1</label>
+        <input type="text" id="m-conductor1" />
+
+        <label for="m-conductor2">Conductor 2</label>
+        <input type="text" id="m-conductor2" />
+      </div>
+
+      <!-- Campos Comunes -->
+      <label for="m-grupos">Grupos en este transporte</label>
+      <select id="m-grupos" multiple></select>
+
+      <label for="m-statusDefault">Estado por defecto</label>
+      <select id="m-statusDefault">
+        <option value="confirmado">✅ Confirmado</option>
+        <option value="pendiente">🕗 Pendiente</option>
+      </select>
+
+      <!-- Acciones -->
+      <div class="actions">
+        <button type="button" id="modal-cancel">Cancelar</button>
+        <button type="submit" id="modal-save">Guardar</button>
+      </div>
+    </form>
   </div>
 
+  <!-- Librerías -->
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <!-- Importamos el JS cuando el DOM esté listo -->
   <script type="module">
     document.addEventListener('DOMContentLoaded', async () => {
-      // 1) cargamos el encabezado
+      // 1) Cargamos encabezado común
       document.getElementById('encabezado').innerHTML =
         await (await fetch('encabezado.html')).text();
-      // 2) importamos nuestro código, que a su vez llamará init()
+      // 2) Importamos nuestra lógica (viajes.js) que define init(), etc.
       await import('./viajes.js');
     });
   </script>
