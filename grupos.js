@@ -113,7 +113,30 @@ async function cargarYMostrarTabla() {
     order: [[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
     scrollX: true,
     columnDefs: [
-      { targets: [7,8,13,14,18,21,22], visible: false }  // p. ej. Colegio y Curso ocultos por defecto
+      { targets: [7,8,13,14,18,21,22], visible: false },
+      { targets: 0, width: '20px' },   // N° Negocio
+      { targets: 1, width: '100px' },  // Nombre Grupo
+      { targets: 2, width: '20px' },   // Año
+      { targets: 3, width: '50px' },  // Vendedor(a)
+      { targets: 4, width: '20px' },   // Pax
+      { targets: 5, width: '20px' },   // Adultos
+      { targets: 6, width: '20px' },   // Estudiantes
+      { targets: 7, width: '70px' },  // Colegio
+      { targets: 8, width: '20px' },  // Curso
+      { targets: 9, width: '70px' },  // Destino
+      { targets: 10, width: '70px' }, // Programa
+      { targets: 11, width: '40px' },  // Inicio
+      { targets: 12, width: '40px' },  // Fin
+      { targets: 13, width: '30px' },  // Seguro
+      { targets: 14, width: '80px' },  // Autorización
+      { targets: 15, width: '50px' },  // Hoteles
+      { targets: 16, width: '80px' }, // Ciudades
+      { targets: 17, width: '50px' }, // Transporte
+      { targets: 18, width: '50px' },  // Tramos
+      { targets: 19, width: '80px' },  // Indicaciones fecha
+      { targets: 20, width: '100px' }, // Observaciones
+      { targets: 21, width: '50px' }, // Creado por
+      { targets: 22, width: '50px' }  // Fecha creación
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
