@@ -87,9 +87,16 @@ async function generarTablaCalendario(userEmail) {
     <th>Programa</th>
     <th>Pax</th>
   `);
-  fechasOrdenadas.forEach(f =>
-    $thead.append(`<th>${formatearFechaBonita(f)}</th>`)
-  );
+  fechasOrdenadas.forEach(f => {
+    // detectar si es domingo
+    const [yyyy, mm, dd] = f.split('-').map(Number);
+    const fechaObj = new Date(yyyy, mm - 1, dd);
+    const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
+    // insertar <th> con o sin la clase
+    $thead.append(
+      `<th class="${clase}">${formatearFechaBonita(f)}</th>`
+    );
+  });
 
   // 3) Construir cuerpo de la tabla
   const $tbody = $('#cuerpoCalendario').empty();
