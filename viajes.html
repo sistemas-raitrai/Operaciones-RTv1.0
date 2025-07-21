@@ -5,7 +5,16 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Vuelos de Grupo | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <link rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <style>
+    /* Ajustes rápidos */
+    .group-item { display: flex; align-items: center; justify-content: space-between; }
+    .group-info { flex: 1; }
+    .group-info strong { color: #0055aa; }
+    .status { margin-left: 0.5em; font-weight: bold; }
+    .btn-small { font-size: 0.9em; padding: 0.2em 0.5em; margin-left: 0.3em; }
+  </style>
 </head>
 <body class="vuelos-page">
   <div id="encabezado"></div>
@@ -46,10 +55,11 @@
       <label for="m-grupos">Grupos en este vuelo</label>
       <select id="m-grupos" multiple></select>
 
-      <label for="m-adultosTotal">Adultos Total (autocalculado)</label>
-      <input type="number" id="m-adultosTotal" readonly />
-      <label for="m-estudiantesTotal">Estudiantes Total (autocalculado)</label>
-      <input type="number" id="m-estudiantesTotal" readonly />
+      <label for="m-statusDefault">Estado por defecto</label>
+      <select id="m-statusDefault">
+        <option value="confirmado">✅ Confirmado</option>
+        <option value="pendiente">🕗 Pendiente</option>
+      </select>
 
       <div class="actions">
         <button type="button" id="modal-cancel">Cancelar</button>
@@ -58,18 +68,11 @@
     </form>
   </div>
 
-  <!-- Bibliotecas -->
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-
-  <!-- Ahora sí importamos el módulo, *DESPUÉS* de TODO el HTML -->
   <script type="module">
-    (async () => {
-      // Cargamos encabezado
-      document.getElementById('encabezado').innerHTML =
-        await (await fetch('encabezado.html')).text();
-      // Importamos nuestra lógica
-      await import('./viajes.js');
-    })();
+    document.getElementById('encabezado').innerHTML =
+      await (await fetch('encabezado.html')).text();
+    await import('./viajes.js');
   </script>
 </body>
 </html>
