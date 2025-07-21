@@ -81,18 +81,24 @@ async function generarTablaCalendario(userEmail) {
     fechasOrdenadas.forEach(f => {
       const actividades = g.itinerario[f] || [];
       const texto = actividades.map(a => `${a.horaInicio || ""}–${a.horaFin || ""} ${a.actividad || ""}`).join("\n");
-      const clase = (f === g.fechaInicio || f === g.fechaFin) ? 'inicio-fin' : '';
+    
+      const clases = [];
+      if (f === g.fechaInicio || f === g.fechaFin) clases.push('inicio-fin');
+    
+      // Detectar si la fecha es domingo
+      const [yyyy, mm, dd] = f.split('-').map(Number);
+      const fechaObj = new Date(yyyy, mm - 1, dd);
+      if (fechaObj.getDay() === 0) clases.push('domingo'); // Domingo = 0
+    
       const $td = $('<td>')
-        .addClass(clase)
+        .addClass(clases.join(' '))
         .text(texto)
         .attr('data-doc-id', g.id)
         .attr('data-fecha', f)
         .attr('data-original', texto);
+    
       $tr.append($td);
     });
-
-    $tbody.append($tr);
-  });
 
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
