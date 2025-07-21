@@ -251,4 +251,4 @@ document.getElementById('btn-export-excel').addEventListener('click', () => {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Calendario");
   XLSX.writeFile(wb, "calendario.xlsx");
-});
+}
