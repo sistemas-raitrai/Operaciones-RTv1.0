@@ -23,7 +23,7 @@ const campos = [
   'duracion','noches','fechaFin',
   'adultos','estudiantes',
   'asistenciaEnViajes','autorizacion','fechaDeViaje',
-  'vendedora'
+  'vendedora','observaciones'
 ];
 
 // 2.2⃣ Destinos canónicos
