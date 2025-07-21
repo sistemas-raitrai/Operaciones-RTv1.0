@@ -8,21 +8,29 @@ const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
 
+// Extrae parámetro de URL
 function getParametroURL(nombre) {
   const params = new URLSearchParams(window.location.search);
   return params.get(nombre);
 }
-
 const numeroNegocioInicial = getParametroURL("numeroNegocio");
 
+// Cuando el DOM y Firebase Auth estén listos:
 $(function () {
   onAuthStateChanged(auth, user => {
-    if (!user) location = 'login.html';
-    else generarTablaCalendario(user.email);
+    if (!user) {
+      location = 'login.html';
+    } else {
+      generarTablaCalendario(user.email);
+    }
   });
-});
+}); // ← cierra $(function)
 
+// ------------------------------------------------------------------
+// Función principal: carga datos, construye tabla y DataTable
+// ------------------------------------------------------------------
 async function generarTablaCalendario(userEmail) {
+  // 1) Leer todos los grupos de Firestore
   const snapshot = await getDocs(collection(db, "grupos"));
   const grupos = [];
   const fechasUnicas = new Set();
@@ -33,6 +41,7 @@ async function generarTablaCalendario(userEmail) {
     const d = docSnap.data();
     const id = docSnap.id;
     const itinerario = d.itinerario || {};
+    // Recolectar todas las fechas usadas
     Object.keys(itinerario).forEach(fecha => fechasUnicas.add(fecha));
     destinosSet.add(d.destino || "");
     aniosSet.add(d.anoViaje || "");
@@ -52,24 +61,42 @@ async function generarTablaCalendario(userEmail) {
     });
   });
 
+  // 2) Preparar selects de filtros y cabecera
   const fechasOrdenadas = Array.from(fechasUnicas).sort();
   const destinos = Array.from(destinosSet).sort();
   const anios = Array.from(aniosSet).sort();
 
+  // Filtro destino
   $('#filtroDestino').empty().append('<option value="">Todos</option>');
-  destinos.forEach(d => $('#filtroDestino').append(`<option value="${d}">${d}</option>`));
+  destinos.forEach(d =>
+    $('#filtroDestino').append(`<option value="${d}">${d}</option>`)
+  );
 
+  // Filtro año
   $('#filtroAno').empty().append('<option value="">Todos</option>');
-  anios.forEach(a => $('#filtroAno').append(`<option value="${a}">${a}</option>`));
+  anios.forEach(a =>
+    $('#filtroAno').append(`<option value="${a}">${a}</option>`)
+  );
 
+  // Cabecera de la tabla
   const $thead = $('#encabezadoCalendario').empty();
-  $thead.append(`<th>N° Negocio</th><th>Grupo</th><th>Destino</th><th>Programa</th><th>Pax</th>`);
-  fechasOrdenadas.forEach(f => $thead.append(`<th>${formatearFechaBonita(f)}</th>`));
+  $thead.append(`
+    <th>N° Negocio</th>
+    <th>Grupo</th>
+    <th>Destino</th>
+    <th>Programa</th>
+    <th>Pax</th>
+  `);
+  fechasOrdenadas.forEach(f =>
+    $thead.append(`<th>${formatearFechaBonita(f)}</th>`)
+  );
 
+  // 3) Construir cuerpo de la tabla
   const $tbody = $('#cuerpoCalendario').empty();
   grupos.forEach(g => {
     const $tr = $('<tr>');
     const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
+    // Cinco primeras celdas fijas
     $tr.append(
       $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
       $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
@@ -78,71 +105,71 @@ async function generarTablaCalendario(userEmail) {
       $('<td>').text(resumenPax).attr('data-doc-id', g.id)
     );
 
+    // Una celda por cada fecha
     fechasOrdenadas.forEach(f => {
       const actividades = g.itinerario[f] || [];
-      const texto = actividades.map(a => `${a.horaInicio || ""}–${a.horaFin || ""} ${a.actividad || ""}`).join("\n");
-    
+      const texto = actividades
+        .map(a => `${a.horaInicio||""}–${a.horaFin||""} ${a.actividad||""}`)
+        .join("\n");
+
+      // Clases condicionales
       const clases = [];
       if (f === g.fechaInicio || f === g.fechaFin) clases.push('inicio-fin');
-    
+
+      // Domingo → clase "domingo"
       const [yyyy, mm, dd] = f.split('-').map(Number);
       const fechaObj = new Date(yyyy, mm - 1, dd);
-      if (fechaObj.getDay() === 0) clases.push('domingo'); // domingo
-    
+      if (fechaObj.getDay() === 0) clases.push('domingo');
+
       const $td = $('<td>')
         .addClass(clases.join(' '))
         .text(texto)
         .attr('data-doc-id', g.id)
         .attr('data-fecha', f)
         .attr('data-original', texto);
-    
-      $tr.append($td);
-    });
-  }); // cierra fechasOrdenadas.forEach
 
+      $tr.append($td);
+    }); // ← cierra fechasOrdenadas.forEach
+
+    $tbody.append($tr);
+  }); // ← cierra grupos.forEach
+
+  // 4) Inicializar DataTable
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
     dom: 'Brtip',
-    buttons: [
-      {
-        extend: 'colvis',
-        text: 'Ver columnas',
-        className: 'dt-button',
-        columns: ':gt(0)'
-      }
-    ],
+    buttons: [{
+      extend: 'colvis',
+      text: 'Ver columnas',
+      className: 'dt-button',
+      columns: ':gt(0)'
+    }],
     language: {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
-
   tabla.buttons().container().appendTo('#toolbar');
-  
-  // Esperar que el buscador exista en el DOM antes de aplicar el valor
-  $('#buscador').on('input', function () {
-    tabla.search(this.value).draw();
-  });
-  
-  // Esperar a que el DataTable esté inicializado y el input listo
-  setTimeout(() => {
-    if (numeroNegocioInicial && $('#buscador').length) {
-      $('#buscador').val(numeroNegocioInicial).trigger('input').focus();
-    }
-  }, 200);
 
+  // 5) Buscador libre
+  $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
+
+  // 6) Aplicar filtro destino
   $('#filtroDestino').on('change', function () {
     const val = this.value;
-    tabla.column(2).search(val ? '^' + val + '$' : '', true, false).draw();
-  });
-  
-  $('#filtroAno').on('change', function () {
-    const val = this.value;
-    tabla.column(7).search(val ? '^' + val + '$' : '', true, false).draw();
+    tabla.column(2).search(val ? '^'+val+'$' : '', true, false).draw();
   });
 
+  // 7) Aplicar filtro año (columna 7 asume 5 fijas + 2 selectores)
+  $('#filtroAno').on('change', function () {
+    const val = this.value;
+    tabla.column(7).search(val ? '^'+val+'$' : '', true, false).draw();
+  });
+
+  // 8) Toggle modo edición
   $('#btn-toggle-edit').off('click').on('click', async () => {
     editMode = !editMode;
-    $('#btn-toggle-edit').text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+    $('#btn-toggle-edit')
+      .text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
     $('#tablaCalendario tbody td').attr('contenteditable', editMode);
     await addDoc(collection(db, 'historial'), {
       accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
@@ -151,68 +178,72 @@ async function generarTablaCalendario(userEmail) {
     });
   });
 
+  // 9) Al salir de edición en cualquier celda, guardo cambios
   $('#tablaCalendario tbody').on('focusout', 'td[contenteditable]', async function () {
     const $td = $(this);
     const nuevo = $td.text().trim();
     const original = $td.attr('data-original') || "";
     const docId = $td.attr('data-doc-id');
     const fecha = $td.attr('data-fecha');
-
     if (!docId || nuevo === original) return;
 
-    if (fecha) {
-      const actividades = nuevo.split("\n").map(linea => {
-        const match = linea.match(/^(.*?)[–\-](.*)\s+(.*)$/);
-        return match ? {
-          horaInicio: match[1].trim(),
-          horaFin: match[2].trim(),
-          actividad: match[3].trim()
-        } : { actividad: linea.trim() };
-      });
+    // Parsear líneas en actividades
+    const actividades = nuevo.split("\n").map(linea => {
+      const match = linea.match(/^(.*?)[–\-](.*)\s+(.*)$/);
+      return match
+        ? { horaInicio: match[1].trim(), horaFin: match[2].trim(), actividad: match[3].trim() }
+        : { actividad: linea.trim() };
+    });
 
-      await updateDoc(doc(db, 'grupos', docId), {
-        [`itinerario.${fecha}`]: actividades
-      });
-
-      await addDoc(collection(db, 'historial'), {
-        numeroNegocio: docId,
-        campo: `itinerario.${fecha}`,
-        anterior: original,
-        nuevo: nuevo,
-        modificadoPor: userEmail,
-        timestamp: new Date()
-      });
-
-      $td.attr('data-original', nuevo);
-    }
+    // Actualizar Firestore
+    await updateDoc(doc(db, 'grupos', docId), {
+      [`itinerario.${fecha}`]: actividades
+    });
+    // Registrar historial
+    await addDoc(collection(db, 'historial'), {
+      numeroNegocio: docId,
+      campo: `itinerario.${fecha}`,
+      anterior: original,
+      nuevo: nuevo,
+      modificadoPor: userEmail,
+      timestamp: new Date()
+    });
+    $td.attr('data-original', nuevo);
   });
 
+  // 10) Ver historial
   $('#btn-view-history').off('click').on('click', async () => {
     await recargarHistorial();
     $('#modalHistorial').show();
   });
-
   $('#btn-close-history').on('click', () => $('#modalHistorial').hide());
   $('#btn-refresh-history').on('click', recargarHistorial);
-});
 
+} // ← cierra generarTablaCalendario
+
+// ------------------------------------------------------------------
+// Recargar historial desde Firestore para modal
+// ------------------------------------------------------------------
 async function recargarHistorial() {
   const $tabla = $('#tablaHistorial');
-  const snap = await getDocs(query(collection(db, 'historial'), orderBy('timestamp', 'desc')));
+  const snap = await getDocs(query(
+    collection(db, 'historial'),
+    orderBy('timestamp', 'desc')
+  ));
   const $tb = $tabla.find('tbody').empty();
 
-  snap.forEach(doc => {
-    const d = doc.data();
+  snap.forEach(docSnap => {
+    const d = docSnap.data();
     const fecha = d.timestamp?.toDate?.();
     if (!fecha) return;
     $tb.append(`
       <tr>
         <td>${fecha.toLocaleString('es-CL')}</td>
-        <td>${d.modificadoPor || d.usuario}</td>
-        <td>${d.numeroNegocio || ''}</td>
-        <td>${d.accion || d.campo}</td>
-        <td>${d.anterior || ''}</td>
-        <td>${d.nuevo || ''}</td>
+        <td>${d.modificadoPor||d.usuario}</td>
+        <td>${d.numeroNegocio||''}</td>
+        <td>${d.accion||d.campo}</td>
+        <td>${d.anterior||''}</td>
+        <td>${d.nuevo||''}</td>
       </tr>
     `);
   });
@@ -220,34 +251,37 @@ async function recargarHistorial() {
   if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
     $('#tablaHistorial').DataTable().destroy();
   }
-
   dtHist = $('#tablaHistorial').DataTable({
     language: { url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    order: [[0, 'desc']],
+    order: [[0,'desc']],
     dom: 'ltip',
     pageLength: 15
   });
 }
 
+// ------------------------------------------------------------------
+// Formatea ISO → “12 dic” en español
+// ------------------------------------------------------------------
 function formatearFechaBonita(fechaISO) {
   const [yyyy, mm, dd] = fechaISO.split('-').map(Number);
-  const fecha = new Date(yyyy, mm - 1, dd); // Mes 0-indexado
-  const opciones = { day: 'numeric', month: 'short' };
-  return fecha.toLocaleDateString('es-CL', opciones);
+  const fecha = new Date(yyyy, mm - 1, dd);
+  return fecha.toLocaleDateString('es-CL',{ day:'numeric', month:'short' });
 }
 
-// Exportar
+// ------------------------------------------------------------------
+// Exportar a Excel con SheetJS
+// ------------------------------------------------------------------
 document.getElementById('btn-export-excel').addEventListener('click', () => {
   const tabla = $('#tablaCalendario').DataTable();
-  const rows = tabla.rows({ search: 'applied' }).data().toArray();
-  const headers = $("#tablaCalendario thead th").toArray().map(th => th.innerText);
+  const rows = tabla.rows({ search:'applied' }).data().toArray();
+  const headers = $("#tablaCalendario thead th")
+    .toArray().map(th => th.innerText);
   const datos = rows.map(row => {
     const obj = {};
-    headers.forEach((h, i) => obj[h] = row[i]);
+    headers.forEach((h,i) => obj[h] = row[i]);
     return obj;
   });
-
-  const ws = XLSX.utils.json_to_sheet(datos, { header: headers });
+  const ws = XLSX.utils.json_to_sheet(datos,{ header:headers });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Calendario");
   XLSX.writeFile(wb, "calendario.xlsx");
