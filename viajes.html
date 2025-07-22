@@ -7,8 +7,9 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+
   <style>
-    /* Contenedor de tarjetas en dos columnas */
+    /* —————— Contenedor de tarjetas en dos columnas —————— */
     #vuelos-container {
       display: flex;
       flex-wrap: wrap;
@@ -27,43 +28,53 @@
       justify-content: space-between;
     }
 
-    /* GRID de 5 columnas para cada fila de grupo */
+    /* —————— GRID de 4 columnas para cada fila de grupo —————— 
+         1) Nº Negocio | 2) Grupo + Pax | 3) Estado + toggle | 4) Borrar */
     .group-item {
       display: grid;
       grid-template-columns:
-        4rem    /* 1) Número de negocio */
-        1fr     /* 2) Nombre del grupo */
-        auto    /* 3) Pax totales */
-        auto    /* 4) Estado + botón */
-        auto;   /* 5) Borrar grupo */
+        4rem    /* 1) Nº Negocio */
+        1fr     /* 2) Grupo + Pax juntos */
+        auto    /* 3) Estado + botón */
+        auto;   /* 4) Borrar grupo */
       align-items: center;
       gap: 0.5rem;
       padding: 0.2rem 0;
     }
-    .group-item .num {
-      font-weight: bold;
-    }
+    /* Dentro de la 2ª columna: flex para nombre + pax */
     .group-item .name {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
       overflow: hidden;
+    }
+    .group-item .name .group-name {
+      white-space: nowrap;
       text-overflow: ellipsis;
+      overflow: hidden;
+    }
+    .group-item .name .pax-inline {
+      font-weight: bold;
       white-space: nowrap;
     }
-    .group-item .pax {
-      text-align: right;
-    }
+    /* Columna de estado + toggle */
     .group-item .status-cell {
       display: flex;
       align-items: center;
       gap: 0.3rem;
     }
-    .group-item .status-cell .btn-small {
-      margin: 0;
-    }
+    /* Columna de borrar */
     .group-item .delete-cell {
       text-align: center;
     }
 
-    /* Botones y acciones */
+    /* —————— Flecha entre fechas —————— */
+    .dates .arrow {
+      margin: 0 0.5rem;
+      vertical-align: middle;
+    }
+
+    /* —————— Botones y acciones —————— */
     .btn-small {
       font-size: 0.9em;
       padding: 0.2em 0.5em;
@@ -74,7 +85,7 @@
       gap: 0.5rem;
     }
 
-    /* Modal estándar */
+    /* —————— Modal estándar —————— */
     .modal-backdrop {
       position: fixed; top:0; left:0; width:100%; height:100%;
       background: rgba(0,0,0,0.5); z-index: 1000;
@@ -87,7 +98,7 @@
       max-height: 90%; overflow-y: auto;
     }
 
-    /* Utilidades fila/columna para el modal */
+    /* —————— Utilidades fila/columna para el modal —————— */
     .row {
       display: flex; flex-wrap: wrap;
       gap: 1rem; margin-bottom: 1rem;
@@ -98,26 +109,16 @@
     .short { flex: 1; }
     .medium { flex: 3; }
     .long { flex: 6; }
-
-    /* Une Ida y Vuelta en una sola línea */
-    .dates {
-      margin: 0.5rem 0;
-      font-size: 0.95rem;
-    }
-    .dates .arrow {
-      margin: 0 0.5rem;
-      vertical-align: middle;
-    }
   </style>
 </head>
 <body class="vuelos-page">
-  <!-- Encabezado cargado dinámicamente -->
+  <!-- Encabezado inyectado dinámicamente -->
   <div id="encabezado"></div>
 
   <main class="main">
     <div class="row">
       <div class="column long">
-        <h2>Detalle Vuelos:</h2>
+        <h2>Detalle de Vuelos:</h2>
       </div>
       <div class="column short">
         <button id="btnAddVuelo" class="btn-add">+ Agregar Vuelo</button>
@@ -176,10 +177,10 @@
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script type="module">
     document.addEventListener('DOMContentLoaded', async () => {
-      // 1) Carga de encabezado común
+      // 1) Carga encabezado común
       const htmlEnc = await fetch('encabezado.html').then(r => r.text());
       document.getElementById('encabezado').innerHTML = htmlEnc;
-      // 2) Importa la lógica JS de 'viajes.js'
+      // 2) Importa la lógica del JS
       await import('./viajes.js');
     });
   </script>
