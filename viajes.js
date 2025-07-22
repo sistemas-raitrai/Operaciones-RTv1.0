@@ -56,56 +56,65 @@ function initModal() {
   );
 }
 
-// 5) Render de tarjetas con grid de 4 columnas
+// 5) Render de tarjetas con grid de 4 columnas y grupos clicables
 async function renderVuelos() {
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
-  const snap = await getDocs(collection(db, 'vuelos'));
-  vuelos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const snap = await getDocs(collection(db,'vuelos'));
+  vuelos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 
   vuelos.forEach(v => {
     const card = document.createElement('div');
     card.className = 'flight-card';
 
-    // formateo de fechas en una línea
+    // formateo de fechas unidas
     const fmt = d => {
       const D = new Date(d);
-      return D.toLocaleDateString('es-CL', {
+      return D.toLocaleDateString('es-CL',{
         weekday:'long', day:'2-digit',
         month:'long', year:'numeric'
       }).replace(/(^\w)/, m=>m.toUpperCase());
     };
 
-    let adultos=0, estudi=0;
-    let adultosC=0, estudiC=0;
+    let adultos = 0, estudi = 0, adultosC = 0, estudiC = 0;
 
-    // Construcción de filas de grupos
-    const gruposHtml = (v.grupos||[]).map((gObj,idx)=>{
-      const g = grupos.find(x=>x.id===gObj.id)||{};
-      const a = g.adultos||0, e = g.estudiantes||0;
+    // construyo las filas de grupos
+    const gruposHtml = (v.grupos||[]).map((gObj, idx) => {
+      const g = grupos.find(x=>x.id===gObj.id) || {};
+      const a = g.adultos || 0, e = g.estudiantes || 0;
       adultos += a; estudi += e;
-      const confirmado = gObj.status!=='pendiente';
-      if(confirmado){ adultosC += a; estudiC += e; }
+      const confirmado = gObj.status !== 'pendiente';
+      if (confirmado) { adultosC += a; estudiC += e; }
 
+      // <-- ESTE return está dentro del callback de map, ¡perfectamente legal!
       return `
         <div class="group-item">
           <div class="num">${g.numeroNegocio}</div>
           <div class="name">
-            <span class="group-name">${g.nombreGrupo}</span>
+            <span class="group-name"
+                  onclick="openGroupModal('${g.id}')">
+              ${g.nombreGrupo}
+            </span>
             <span class="pax-inline">${a+e} (A:${a} E:${e})</span>
           </div>
           <div class="status-cell">
             <span>${confirmado?'✅ Confirmado':'🕗 Pendiente'}</span>
             <button class="btn-small"
-                    onclick="toggleGroupStatus('${v.id}',${idx})">🔄</button>
+                    onclick="toggleGroupStatus('${v.id}',${idx})">
+              🔄
+            </button>
           </div>
           <div class="delete-cell">
             <button class="btn-small"
-                    onclick="removeGroup('${v.id}',${idx})">🗑️</button>
+                    onclick="removeGroup('${v.id}',${idx})">
+              🗑️
+            </button>
           </div>
         </div>`;
-    }).join('');
+    }).join(''); // <-- join es llamado sobre el array de strings
 
+    // aquí montas el HTML principal de la tarjeta
     card.innerHTML = `
       <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
       <p class="dates">
@@ -113,7 +122,7 @@ async function renderVuelos() {
         <span class="arrow">↔️</span>
         Vuelta: ${fmt(v.fechaVuelta)}
       </p>
-      <div>${gruposHtml||'<p>— Sin grupos —</p>'}</div>
+      <div>${gruposHtml || '<p>— Sin grupos —</p>'}</div>
       <p>
         <strong>Total Pax:</strong> ${adultos+estudi}
         (A:${adultos} E:${estudi})
@@ -127,11 +136,11 @@ async function renderVuelos() {
 
     cont.appendChild(card);
 
-    // Atamos handlers
+    // atar handlers de editar y eliminar
     card.querySelector('.btn-edit')
-        .addEventListener('click', ()=>openModal(v));
+        .addEventListener('click', ()=> openModal(v));
     card.querySelector('.btn-del')
-        .addEventListener('click', ()=>deleteVuelo(v.id));
+        .addEventListener('click', ()=> deleteVuelo(v.id));
   });
 }
 
