@@ -17,7 +17,7 @@
     <thead>
       <tr>
         <th>Destino</th>
-        <th>N°</th>
+        <th>N°Identificador</th>
         <th>Actividad</th>
         <th>Servicio</th>
         <th>Tipo de Servicio</th>
@@ -233,6 +233,7 @@ cargarRegistros();
 // ====================================================
 // ====================================================
 // ====================================================
+// ====================================================
 // Soporte para pegado de múltiples filas de una vez:
 const campos = [
   "destino","numero","actividad","servicios","tipoServicio",
@@ -250,7 +251,7 @@ tabla.addEventListener("paste", e => {
 /);
   lineas.forEach(linea => {
     if (!linea) return;
-    // dividimos cada línea en columnas por tab
+    // dividimos cada línea en columnas por tabulador
     const valores = linea.split("	");
     const dato = {};
     campos.forEach((campo, i) => {
@@ -261,6 +262,11 @@ tabla.addEventListener("paste", e => {
   });
 });
 // ====================================================
+
+// Exponer funciones para botones globales
+window.agregarFila = agregarFila;
+window.agregarVariasFilas = agregarVariasFilas;
+window.guardarTodo = guardarTodo;
 
 // Exponer funciones para botones globales
 window.agregarFila = agregarFila;
