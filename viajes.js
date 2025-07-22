@@ -42,12 +42,11 @@ async function loadGrupos() {
 // 4) Botones principales
 // ——————————————————————————
 function bindUI() {
-  // "+ Agregar Vuelo"
-  document.getElementById('btnAddVuelo')
-          .onclick = () => openModal();
-  // "Historial"
-  document.getElementById('btnHistorial')
-          .onclick = () => window.open('historial.html','_blank');
+  const btnAdd = document.getElementById('btnAddVuelo');
+  if (btnAdd) btnAdd.onclick = () => openModal();
+
+  const btnHist = document.getElementById('btnHistorial');
+  if (btnHist) btnHist.onclick = () => abrirHistorial();
 }
 
 // ——————————————————————————
