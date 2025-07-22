@@ -56,46 +56,60 @@ function initModal() {
   );
 }
 
-// 5) Render de tarjetas (reemplaza por esto)
+// 5) Render de tarjetas con grid de grupos y total confirmado
 async function renderVuelos() {
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
-  const snap = await getDocs(collection(db,'vuelos'));
+  const snap = await getDocs(collection(db, 'vuelos'));
   vuelos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
   vuelos.forEach(v => {
+    // Creamos la tarjeta
     const card = document.createElement('div');
     card.className = 'flight-card';
 
-    // formateo de fecha
+    // Formateo de fechas
     const fmt = d => {
       const D = new Date(d);
-      return D.toLocaleDateString('es-CL',{
-        weekday:'long', day:'2-digit',
-        month:'long', year:'numeric'
+      return D.toLocaleDateString('es-CL', {
+        weekday: 'long', day: '2-digit',
+        month: 'long', year: 'numeric'
       }).replace(/(^\w)/, m => m.toUpperCase());
     };
 
-    // construyo las filas de grupos
+    // Contadores totales y confirmados
     let adultos = 0, estudi = 0;
+    let adultosC = 0, estudiC = 0;
+
+    // Construimos las filas de grupos
     const gruposHtml = (v.grupos || []).map((gObj, idx) => {
       const g = grupos.find(x => x.id === gObj.id) || {};
       const a = g.adultos || 0, e = g.estudiantes || 0;
       adultos += a; estudi += e;
+
+      const confirmado = gObj.status !== 'pendiente';
+      if (confirmado) { adultosC += a; estudiC += e; }
+
       return `
         <div class="group-item">
-          <div class="group-info">
-            • <strong>${g.numeroNegocio} – ${g.nombreGrupo}</strong>
-            (A:${a} E:${e})
-            <span class="status">
-              ${gObj.status === 'pendiente' ? '🕗 Pendiente' : '✅ Confirmado'}
-            </span>
+          <!-- 1) Número de negocio -->
+          <div class="num">${g.numeroNegocio}</div>
+          <!-- 2) Nombre de grupo -->
+          <div class="name">${g.nombreGrupo}</div>
+          <!-- 3) Pax totales -->
+          <div class="pax">
+            <strong>${a + e}</strong> (A:${a} E:${e})
           </div>
-          <div>
+          <!-- 4) Estado + botón toggle -->
+          <div class="status-cell">
+            <span>${confirmado ? '✅ Confirmado' : '🕗 Pendiente'}</span>
             <button class="btn-small"
                     onclick="toggleGroupStatus('${v.id}', ${idx})">
               🔄
             </button>
+          </div>
+          <!-- 5) Botón borrar -->
+          <div class="delete-cell">
             <button class="btn-small"
                     onclick="removeGroup('${v.id}', ${idx})">
               🗑️
@@ -104,29 +118,34 @@ async function renderVuelos() {
         </div>`;
     }).join('');
 
-    // monto el innerHTML sin JSON.stringify
+    // Montamos el contenido de la tarjeta
     card.innerHTML = `
       <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
       <p>Ida: ${fmt(v.fechaIda)}</p>
       <p>Vuelta: ${fmt(v.fechaVuelta)}</p>
       <div>${gruposHtml || '<p>— Sin grupos —</p>'}</div>
-      <p><strong>Total Pax:</strong> ${adultos + estudi}
-         (A:${adultos} E:${estudi})</p>
+      <!-- Total general y total confirmados -->
+      <p>
+        <strong>Total Pax:</strong> ${adultos + estudi}
+        (A:${adultos} E:${estudi})
+        – Pax Confirmados: ${adultosC + estudiC}
+        (A:${adultosC} E:${estudiC})
+      </p>
       <div class="actions">
         <button class="btn-add btn-edit">✏️ Editar</button>
         <button class="btn-add btn-del">🗑️ Eliminar</button>
       </div>`;
 
+    // Insertamos la tarjeta en el DOM
     cont.appendChild(card);
 
-    // ahora ata los eventos en JS
+    // Atamos los handlers de Editar y Eliminar
     card.querySelector('.btn-edit')
         .addEventListener('click', () => openModal(v));
     card.querySelector('.btn-del')
         .addEventListener('click', () => deleteVuelo(v.id));
   });
 }
-
 
 // 6) Abre modal
 function openModal(v=null) {
