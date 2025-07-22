@@ -17,7 +17,7 @@
     <thead>
       <tr>
         <th>Destino</th>
-        <th>N°Identificador</th>
+        <th>N°</th>
         <th>Actividad</th>
         <th>Servicio</th>
         <th>Tipo de Servicio</th>
@@ -234,34 +234,34 @@ cargarRegistros();
 // ====================================================
 // ====================================================
 // ====================================================
+// ====================================================
+// ====================================================
 // Soporte para pegado de múltiples filas de una vez:
 const campos = [
   "destino","numero","actividad","servicios","tipoServicio",
   "ciudad","restricciones","proveedor","contacto","correo",
   "tipoCobro","moneda","valorServicio","formaPago"
 ];
-// Escucha pegado en todo el <tbody>
+// Al pegar en el <tbody>, se crean filas por cada línea tabulada
 tabla.addEventListener("paste", e => {
   e.preventDefault();
-  // obtenemos texto plano con tab y saltos de línea
-  const texto = e.clipboardData.getData("text/plain").trim();
-  // dividimos por línea (CRLF o LF)
-  const lineas = texto.split(/
-?
-/);
+  const texto = e.clipboardData.getData("text/plain");
+  const lineas = texto.trim().split(/\r?\n/);
   lineas.forEach(linea => {
     if (!linea) return;
-    // dividimos cada línea en columnas por tabulador
-    const valores = linea.split("	");
+    // Usamos literal '\t' para dividir tabs
+    const valores = linea.split("\t");
     const dato = {};
     campos.forEach((campo, i) => {
-      dato[campo] = (valores[i] || "").trim();
+      dato[campo] = valores[i] ? valores[i].trim() : "";
     });
-    // agregamos fila nueva con datos
     agregarFila(dato, null);
   });
 });
 // ====================================================
+
+// Exponer funciones para botones globales
+wi
 
 // Exponer funciones para botones globales
 window.agregarFila = agregarFila;
