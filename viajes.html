@@ -3,138 +3,81 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Vuelos de Grupo | RT v1.0</title>
+  <title>Planificación de Aéreos | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
-
   <style>
-    /* —————— Contenedor de tarjetas en dos columnas —————— */
+    /* — Contenedor en 2 columnas — */
     #vuelos-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem;
-      margin-top: 1rem;
+      display: flex; flex-wrap: wrap; gap:1rem; margin-top:1rem;
     }
     .flight-card {
-      flex: 1 1 calc(50% - 1rem);
-      border: 1px solid #ccc;
-      border-radius: 8px;
-      padding: 1rem;
-      background: #fafafa;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
+      flex:1 1 calc(50% - 1rem);
+      border:1px solid #ccc; border-radius:8px;
+      padding:1rem; background:#fafafa;
+      box-shadow:0 2px 4px rgba(0,0,0,0.1);
+      display:flex; flex-direction:column; justify-content:space-between;
     }
-
-    /* —————— GRID de 4 columnas para cada fila de grupo —————— 
-         1) Nº Negocio | 2) Grupo + Pax | 3) Estado + toggle | 4) Borrar */
+    /* — GRID de grupos: Nº | Nombre+Pax | Estado | Borrar — */
     .group-item {
-      display: grid;
+      display:grid;
       grid-template-columns:
-        4rem    /* 1) Nº Negocio */
-        1fr     /* 2) Grupo + Pax juntos */
-        auto    /* 3) Estado + botón */
-        auto;   /* 4) Borrar grupo */
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.2rem 0;
+        4rem /* Nº negocio */
+        1fr  /* grupo + pax */
+        auto /* estado+toggle */
+        auto;/* borrar */
+      align-items:center; gap:.5rem; padding:.2rem 0;
     }
-    /* Dentro de la 2ª columna: flex para nombre + pax */
     .group-item .name {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      overflow: hidden;
+      display:flex; align-items:center; gap:.5rem; overflow:hidden;
     }
-    .group-item .name .group-name {
-      white-space: nowrap;
-      text-overflow: ellipsis;
-      overflow: hidden;
-    }
-    .group-item .name .pax-inline {
-      font-weight: bold;
-      white-space: nowrap;
-    }
-    /* Columna de estado + toggle */
-    .group-item .status-cell {
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-    }
-    /* Columna de borrar */
-    .group-item .delete-cell {
-      text-align: center;
-    }
+    .group-name { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; cursor:pointer; }
+    .pax-inline { font-weight:bold; white-space:nowrap; }
+    .status-cell { display:flex; align-items:center; gap:.3rem; }
+    .delete-cell { text-align:center; }
 
-    /* —————— Flecha entre fechas —————— */
-    .dates .arrow {
-      margin: 0 0.5rem;
-      vertical-align: middle;
-    }
+    .dates .arrow { margin:0 .5rem; vertical-align:middle; }
+    .btn-small { font-size:.9em; padding:.2em .5em; }
+    .actions { margin-top:.5rem; display:flex; gap:.5rem; }
 
-    /* —————— Botones y acciones —————— */
-    .btn-small {
-      font-size: 0.9em;
-      padding: 0.2em 0.5em;
-    }
-    .actions {
-      margin-top: 0.5rem;
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    /* —————— Modal estándar —————— */
     .modal-backdrop {
-      position: fixed; top:0; left:0; width:100%; height:100%;
-      background: rgba(0,0,0,0.5); z-index: 1000;
+      position:fixed; top:0;left:0;width:100%;height:100%;
+      background:rgba(0,0,0,0.5);z-index:1000;
     }
     .modal {
-      position: fixed; top:50%; left:50%;
-      transform: translate(-50%,-50%);
-      background: white; padding: 1rem;
-      border-radius: 6px; z-index: 1001;
-      max-height: 90%; overflow-y: auto;
+      position:fixed; top:50%;left:50%;
+      transform:translate(-50%,-50%);
+      background:white;padding:1rem;border-radius:6px;
+      z-index:1001;max-height:90%;overflow-y:auto;
     }
+    .row { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; }
+    .column { display:flex; flex-direction:column; }
+    .short{flex:1;} .medium{flex:3;} .long{flex:6;}
 
-    /* —————— Utilidades fila/columna para el modal —————— */
-    .row {
-      display: flex; flex-wrap: wrap;
-      gap: 1rem; margin-bottom: 1rem;
-    }
-    .column {
-      display: flex; flex-direction: column;
-    }
-    .short { flex: 1; }
-    .medium { flex: 3; }
-    .long { flex: 6; }
-
-    /* Modal de grupo */
-    #group-backdrop { /* mismo estilo que el otro */ }
-    #group-modal { /* mismo estilo que .modal pero ancho menor */ }
-
+    /* histórico & grupo */
+    #group-backdrop{ /* igual */ }
+    #group-modal{ /* igual a .modal */ }
   </style>
 </head>
 <body class="vuelos-page">
-  <!-- Encabezado inyectado dinámicamente -->
+  <!-- encabezado -->
   <div id="encabezado"></div>
 
   <main class="main">
     <div class="row">
       <div class="column long">
-        <h2>Planificación de Aéreos:</h2>
+        <h2>Planificación Aéreos:</h2>
       </div>
       <div class="column short">
         <button id="btnAddVuelo" class="btn-add">+ Agregar Vuelo</button>
+        <button id="btnHistorial" class="btn-add">📜 Historial</button>
       </div>
     </div>
-
-    <!-- Aquí se inyectan las tarjetas de vuelo -->
     <div id="vuelos-container"></div>
   </main>
 
-  <!-- Modal para crear/editar vuelo -->
+  <!-- Modal Vuelo -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal-vuelo" class="modal" style="display:none; width:80%; max-width:600px;">
     <h3 id="modal-title">Vuelo</h3>
@@ -179,7 +122,7 @@
     </form>
   </div>
 
-  <!-- Modal para editar datos de un grupo -->
+  <!-- Modal Grupo -->
   <div id="group-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="group-modal" class="modal" style="display:none; width:80%; max-width:400px;">
     <h3>Editar Grupo</h3>
@@ -208,14 +151,13 @@
     </form>
   </div>
 
-
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script type="module">
     document.addEventListener('DOMContentLoaded', async () => {
-      // 1) Carga encabezado común
-      const htmlEnc = await fetch('encabezado.html').then(r => r.text());
-      document.getElementById('encabezado').innerHTML = htmlEnc;
-      // 2) Importa la lógica del JS
+      // inyecto encabezado común
+      document.getElementById('encabezado').innerHTML =
+        await (await fetch('encabezado.html')).text();
+      // cargo lógica
       await import('./viajes.js');
     });
   </script>
