@@ -32,6 +32,17 @@
     .status { margin-left: 0.5em; font-weight: bold; }
     .btn-small { font-size: 0.9em; padding: 0.2em 0.5em; margin-left: 0.3em; }
     .actions { margin-top: 0.5rem; display: flex; gap: 0.5rem; }
+    .modal-backdrop {
+      position: fixed; top:0; left:0; width:100%; height:100%;
+      background: rgba(0,0,0,0.5); z-index: 1000;
+    }
+    .modal {
+      position: fixed; top:50%; left:50%;
+      transform: translate(-50%,-50%);
+      background: white; padding: 1rem;
+      border-radius: 6px; z-index: 1001;
+      max-height: 90%; overflow-y: auto;
+    }
   </style>
 </head>
 <body class="vuelos-page">
@@ -39,7 +50,7 @@
 
   <main class="main">
     <div class="row">
-      <div class="column long"><h2>Vuelos de Estudio</h2></div>
+      <div class="column long"><h2>Detalle de vuelos:</h2></div>
       <div class="column short">
         <button id="btnAddVuelo" class="btn-add">+ Nuevo Vuelo</button>
       </div>
@@ -47,7 +58,6 @@
     <div id="vuelos-container"></div>
   </main>
 
-  <!-- Modal de vuelos -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal-vuelo" class="modal" style="display:none; width:80%; max-width:600px;">
     <h3 id="modal-title">Vuelo</h3>
@@ -89,10 +99,10 @@
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script type="module">
     document.addEventListener('DOMContentLoaded', async () => {
-      // 1) Encabezado
-      document.getElementById('encabezado').innerHTML =
-        await (await fetch('encabezado.html')).text();
-      // 2) Importar lógica
+      // 1) Carga encabezado común
+      const htmlEnc = await fetch('encabezado.html').then(r => r.text());
+      document.getElementById('encabezado').innerHTML = htmlEnc;
+      // 2) Importa la lógica
       await import('./viajes.js');
     });
   </script>
