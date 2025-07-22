@@ -202,3 +202,71 @@ function closeModal(){
   document.getElementById('modal-backdrop').style.display =
   document.getElementById('modal-vuelo').style.display = 'none';
 }
+
+// 12) Abre modal de Grupo
+window.openGroupModal = (grupoId) => {
+  const g = grupos.find(x => x.id === grupoId);
+  if (!g) return alert("Grupo no encontrado");
+
+  // rellenar campos
+  document.getElementById('g-numeroNegocio').value = g.numeroNegocio;
+  document.getElementById('g-nombreGrupo').value   = g.nombreGrupo;
+  document.getElementById('g-adultos').value      = g.adultos || 0;
+  document.getElementById('g-estudiantes').value  = g.estudiantes || 0;
+
+  // guardamos el id en un atributo
+  document.getElementById('group-form').dataset.grupoId = grupoId;
+
+  // mostramos modal
+  document.getElementById('group-backdrop').style.display = 'block';
+  document.getElementById('group-modal').style.display    = 'block';
+};
+
+// 13) Cierra modal de Grupo
+function closeGroupModal() {
+  document.getElementById('group-backdrop').style.display = 'none';
+  document.getElementById('group-modal').style.display    = 'none';
+}
+
+// 14) Submit para actualizar el grupo en Firestore
+async function onSubmitGroup(evt) {
+  evt.preventDefault();
+  const form = document.getElementById('group-form');
+  const id   = form.dataset.grupoId;
+  const data = {
+    nombreGrupo: document.getElementById('g-nombreGrupo').value.trim(),
+    adultos:     parseInt(document.getElementById('g-adultos').value, 10) || 0,
+    estudiantes: parseInt(document.getElementById('g-estudiantes').value, 10) || 0
+  };
+  // actualizamos en Firestore
+  await updateDoc(doc(db,'grupos',id), data);
+  // refrescamos listado de grupos en memoria y re-render
+  await loadGrupos();
+  renderVuelos();
+  closeGroupModal();
+}
+
+// 15) Dentro de init(), añade:
+document.getElementById('group-cancel')
+        .addEventListener('click', closeGroupModal);
+document.getElementById('group-form')
+        .addEventListener('submit', onSubmitGroup);
+
+// 16) Finalmente, en renderVuelos(), cambia la casilla de nombre:
+// Antes estabas generando:
+//   <div class="name"><span class="group-name">…</span>…</div>
+// Ahora añade el onclick:
+return `
+  <div class="group-item">
+    …
+    <div class="name">
+      <span class="group-name"
+            style="cursor:pointer; text-decoration:underline;"
+            onclick="openGroupModal('${g.id}')">
+        ${g.nombreGrupo}
+      </span>
+      <span class="pax-inline">…</span>
+    </div>
+    …
+  </div>`;
+
