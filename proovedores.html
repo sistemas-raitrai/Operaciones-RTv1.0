@@ -12,7 +12,7 @@
     <thead>
       <tr>
         <th>Destino</th>
-        <th>N°Identificatorio</th>
+        <th>N°</th>
         <th>Actividad</th>
         <th>Servicios</th>
         <th>Tipo de Servicio</th>
@@ -105,14 +105,36 @@
 
     async function guardarFila(inputsRef) {
       const data = {};
-      inputsRef.forEach(input => data[input.dataset.campo] = (input.dataset.campo==='valorServicio') ? Number(input.value)||0 : input.value.trim().toUpperCase());
-      const dest = data.destino;
-      const act = data.actividad;
-      const refDoc = doc(db, 'Actividades', dest);
-      const refSub = doc(refDoc, 'Detalles', act);
-      await setDoc(refSub, data);
+      inputsRef.forEach(input => {
+        const key = input.dataset.campo;
+        const val = input.value.trim();
+        data[key] = (key === 'valorServicio') ? Number(val) || 0 : val.toUpperCase();
+      });
+      const destino = data.destino;
+      const actividad = data.actividad;
+      if (!destino || !actividad) {
+        alert('Debes completar Destino y Actividad antes de guardar.');
+        return;
+      }
+      // Referencia a la subcolección Actividades/{destino}/Detalles
+      const detallesCol = collection(db, 'Actividades', destino, 'Detalles');
+      // Documento con ID igual a la actividad
+      const docRef = doc(detallesCol, actividad);
+      await setDoc(docRef, data);
     }
 
+    async function eliminarFila(inputsRef) {
+      // Obtiene destino y actividad desde los inputs
+      const destino = inputsRef.find(i => i.dataset.campo === 'destino').value;
+      const actividad = inputsRef.find(i => i.dataset.campo === 'actividad').value;
+      if (!destino || !actividad) {
+        alert('Debes completar Destino y Actividad para eliminar.');
+        return;
+      }
+      // Referencia al documento a eliminar
+      const docRef = doc(db, 'Actividades', destino, 'Detalles', actividad);
+      await deleteDoc(docRef);
+    }
     async function eliminarFila(inputsRef) {
       const dest = inputsRef.find(i=>i.dataset.campo==='destino').value;
       const act  = inputsRef.find(i=>i.dataset.campo==='actividad').value;
