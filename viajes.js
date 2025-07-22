@@ -11,7 +11,7 @@ const auth = getAuth(app);
 let grupos = [], vuelos = [];
 let isEdit=false, editId=null, choiceGrupos, currentUserEmail, dtHist=null;
 
-// 1) Autenticación + arranque
+// 1) Autenticación y arranque
 onAuthStateChanged(auth,user=>{
   if(!user) return location.href='login.html';
   currentUserEmail = user.email;
@@ -36,7 +36,7 @@ async function init(){
   document.getElementById('hist-end').onchange   = loadHistorial;
 }
 
-// 2) Carga todos los grupos
+// 2) Cargo grupos
 async function loadGrupos(){
   const snap = await getDocs(collection(db,'grupos'));
   grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
@@ -44,10 +44,10 @@ async function loadGrupos(){
 
 // 3) Botón “Agregar Vuelo”
 function bindUI(){
-  document.getElementById('btnAddVuelo').onclick = ()=> openModal();
+  document.getElementById('btnAddVuelo').onclick = ()=>openModal();
 }
 
-// 4) Prepara modal de Vuelo y Choices.js
+// 4) Modal Vuelo + Choices.js
 function initModal(){
   document.getElementById('modal-cancel').onclick = closeModal;
   document.getElementById('modal-form').onsubmit  = onSubmit;
@@ -61,44 +61,38 @@ function initModal(){
   );
 }
 
-// 5) Render Vuelos (ordenados por ida)
+// 5) Render de vuelos
 async function renderVuelos(){
   const cont = document.getElementById('vuelos-container');
-  cont.innerHTML='';
+  cont.innerHTML = '';
   const snap = await getDocs(collection(db,'vuelos'));
   vuelos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  vuelos.sort((a,b)=> new Date(a.fechaIda)-new Date(b.fechaIda));
+  vuelos.sort((a,b)=>new Date(a.fechaIda)-new Date(b.fechaIda));
 
   for(const v of vuelos){
-    const card = document.createElement('div');
+    const card=document.createElement('div');
     card.className='flight-card';
+    const fmt=iso=>new Date(iso).toLocaleDateString('es-CL',{
+      weekday:'long',day:'2-digit',month:'long',year:'numeric'
+    }).replace(/(^\w)/,m=>m.toUpperCase());
 
-    const fmt = iso=> new Date(iso)
-      .toLocaleDateString('es-CL',{ weekday:'long',day:'2-digit',month:'long',year:'numeric' })
-      .replace(/(^\w)/,m=>m.toUpperCase());
-
-    let totA=0, totE=0, totC=0, confA=0, confE=0, confC=0;
-
-    const filas = (v.grupos||[]).map((gObj,idx)=>{
-      const g = grupos.find(x=>x.id===gObj.id)||{};
+    let totA=0,totE=0,totC=0,confA=0,confE=0,confC=0;
+    const filas=(v.grupos||[]).map((gObj,idx)=>{
+      const g=grupos.find(x=>x.id===gObj.id)||{};
       const a=g.adultos||0, e=g.estudiantes||0;
       const nombresArr = Array.isArray(g.nombresCoordinadores)
         ? g.nombresCoordinadores
-        : (g.nombresCoordinadores ? g.nombresCoordinadores.split(',').map(s=>s.trim()) : ['']);
-      const c = nombresArr.length || 1;
+        : (g.nombresCoordinadores?g.nombresCoordinadores.split(',').map(s=>s.trim()):['']);
+      const c=nombresArr.length||1;
       totA+=a; totE+=e; totC+=c;
-      if(gObj.status==='confirmado') { confA+=a; confE+=e; confC+=c; }
-      const mail = gObj.changedBy||'–';
+      if(gObj.status==='confirmado'){ confA+=a; confE+=e; confC+=c; }
+      const mail=gObj.changedBy||'–';
       return `
         <div class="group-item">
           <div class="num">${g.numeroNegocio}</div>
           <div class="name">
-            <span class="group-name" onclick="openGroupModal('${g.id}')">
-              ${g.nombreGrupo}
-            </span>
-            <span class="pax-inline">
-              ${a+e+c} (A:${a} E:${e} C:${c})
-            </span>
+            <span class="group-name" onclick="openGroupModal('${g.id}')">${g.nombreGrupo}</span>
+            <span class="pax-inline">${a+e+c} (A:${a} E:${e} C:${c})</span>
           </div>
           <div class="status-cell">
             <span>${gObj.status==='confirmado'?'✅ Confirmado':'🕗 Pendiente'}</span>
@@ -116,12 +110,7 @@ async function renderVuelos(){
       <p class="dates">Origen: ${v.origen||'–'} &nbsp; Destino: ${v.destino||'–'}</p>
       <p class="dates">Ida: ${fmt(v.fechaIda)} ↔️ Vuelta: ${fmt(v.fechaVuelta)}</p>
       <div>${filas||'<p>— Sin grupos —</p>'}</div>
-      <p>
-        <strong>Total Pax:</strong> ${totA+totE+totC}
-        (A:${totA} E:${totE} C:${totC})
-        – Confirmados: ${confA+confE+confC}
-        (A:${confA} E:${confE} C:${confC})
-      </p>
+      <p><strong>Total Pax:</strong> ${totA+totE+totC} (A:${totA} E:${totE} C:${totC}) – Confirmados: ${confA+confE+confC} (A:${confA} E:${confE} C:${confC})</p>
       <div class="actions">
         <button class="btn-add btn-edit">✏️ Editar</button>
         <button class="btn-add btn-del">🗑️ Eliminar</button>
@@ -132,27 +121,26 @@ async function renderVuelos(){
   }
 }
 
-// 6) Abre modal Vuelo
+// 6) Abrir modal Vuelo
 function openModal(v=null){
   isEdit=!!v; editId=v?.id||null;
-  document.getElementById('modal-title').textContent = v?'Editar Vuelo':'Nuevo Vuelo';
-  for(const k of ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']){
-    document.getElementById(`m-${k}`).value = v?.[k]||'';
-  }
-  document.getElementById('m-statusDefault').value = v?.grupos?.[0]?.status||'confirmado';
+  document.getElementById('modal-title').textContent=v?'Editar Vuelo':'Nuevo Vuelo';
+  ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']
+    .forEach(k=>document.getElementById(`m-${k}`).value=v?.[k]||'');
+  document.getElementById('m-statusDefault').value=v?.grupos?.[0]?.status||'confirmado';
   choiceGrupos.removeActiveItems();
   if(v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g=>g.id));
-  document.getElementById('modal-backdrop').style.display =
-  document.getElementById('modal-vuelo').style.display = 'block';
+  document.getElementById('modal-backdrop').style.display='block';
+  document.getElementById('modal-vuelo').style.display='block';
 }
 
 // 7) Guardar/Editar Vuelo + Historial
 async function onSubmit(evt){
   evt.preventDefault();
-  const sel = choiceGrupos.getValue(true);
-  const defaultStatus = document.getElementById('m-statusDefault').value;
-  const gruposArr = sel.map(id=>({ id, status:defaultStatus, changedBy:currentUserEmail }));
-  const pay = {
+  const sel=choiceGrupos.getValue(true);
+  const defaultStatus=document.getElementById('m-statusDefault').value;
+  const gruposArr=sel.map(id=>({ id, status:defaultStatus, changedBy:currentUserEmail }));
+  const pay={
     proveedor:document.getElementById('m-proveedor').value.trim().toUpperCase(),
     numero:   document.getElementById('m-numero').value.trim(),
     tipoVuelo:document.getElementById('m-tipoVuelo').value,
@@ -165,44 +153,29 @@ async function onSubmit(evt){
   if(isEdit){
     const before=(await getDoc(doc(db,'vuelos',editId))).data();
     await updateDoc(doc(db,'vuelos',editId),pay);
-    await addDoc(collection(db,'historial'),{
-      tipo:'vuelo-edit', vueloId:editId, antes:before, despues:pay,
-      usuario:currentUserEmail, ts:serverTimestamp()
-    });
+    await addDoc(collection(db,'historial'),{ tipo:'vuelo-edit', vueloId:editId, antes:before, despues:pay, usuario:currentUserEmail, ts:serverTimestamp() });
   } else {
     const ref=await addDoc(collection(db,'vuelos'),pay);
-    await addDoc(collection(db,'historial'),{
-      tipo:'vuelo-new', vueloId:ref.id, antes:null, despues:pay,
-      usuario:currentUserEmail, ts:serverTimestamp()
-    });
+    await addDoc(collection(db,'historial'),{ tipo:'vuelo-new', vueloId:ref.id, antes:null, despues:pay, usuario:currentUserEmail, ts:serverTimestamp() });
   }
-  closeModal();
-  renderVuelos();
+  closeModal(); renderVuelos();
 }
 
 // 8) Eliminar Vuelo + Historial
 async function deleteVuelo(id){
-  if(!confirm('¿Eliminar vuelo completo?'))return;
+  if(!confirm('¿Eliminar vuelo completo?')) return;
   const before=(await getDoc(doc(db,'vuelos',id))).data();
   await deleteDoc(doc(db,'vuelos',id));
-  await addDoc(collection(db,'historial'),{
-    tipo:'vuelo-del', vueloId:id, antes:before, despues:null,
-    usuario:currentUserEmail, ts:serverTimestamp()
-  });
+  await addDoc(collection(db,'historial'),{ tipo:'vuelo-del', vueloId:id, antes:before, despues:null, usuario:currentUserEmail, ts:serverTimestamp() });
   renderVuelos();
 }
 
 // 9) Quitar Grupo + Historial
 window.removeGroup=async(vId,idx)=>{
   const ref=doc(db,'vuelos',vId), snap=await getDoc(ref), data=snap.data();
-  const before=data.grupos[idx];
-  data.grupos.splice(idx,1);
-  await updateDoc(ref,{ grupos:data.grupos });
-  await addDoc(collection(db,'historial'),{
-    tipo:'grupo-remove', vueloId:vId, grupoId:before.id,
-    antes:before, despues:null,
-    usuario:currentUserEmail, ts:serverTimestamp()
-  });
+  const before=data.grupos[idx]; data.grupos.splice(idx,1);
+  await updateDoc(ref,{grupos:data.grupos});
+  await addDoc(collection(db,'historial'),{ tipo:'grupo-remove', vueloId:vId, grupoId:before.id, antes:before, despues:null, usuario:currentUserEmail, ts:serverTimestamp() });
   renderVuelos();
 };
 
@@ -210,41 +183,30 @@ window.removeGroup=async(vId,idx)=>{
 window.toggleStatus=async(vId,idx)=>{
   const ref=doc(db,'vuelos',vId), snap=await getDoc(ref), data=snap.data();
   const old=data.grupos[idx];
-  const neu={ ...old,
-    status:old.status==='pendiente'?'confirmado':'pendiente',
-    changedBy:currentUserEmail
-  };
+  const neu={ ...old, status:old.status==='pendiente'?'confirmado':'pendiente', changedBy:currentUserEmail };
   data.grupos[idx]=neu;
-  await updateDoc(ref,{ grupos:data.grupos });
-  await addDoc(collection(db,'historial'),{
-    tipo:'grupo-status', vueloId:vId, grupoId:old.id,
-    antes:old, despues:neu,
-    usuario:currentUserEmail, ts:serverTimestamp()
-  });
+  await updateDoc(ref,{grupos:data.grupos});
+  await addDoc(collection(db,'historial'),{ tipo:'grupo-status', vueloId:vId, grupoId:old.id, antes:old, despues:neu, usuario:currentUserEmail, ts:serverTimestamp() });
   renderVuelos();
 };
 
 // 11) Cerrar modal Vuelo
 function closeModal(){
-  document.getElementById('modal-backdrop').style.display =
-  document.getElementById('modal-vuelo').style.display = 'none';
+  document.getElementById('modal-backdrop').style.display='none';
+  document.getElementById('modal-vuelo').style.display='none';
 }
 
-// 12) Abre modal Grupo
+// 12) Abrir modal Grupo
 window.openGroupModal=grupoId=>{
   const g=grupos.find(x=>x.id===grupoId);
   if(!g) return alert('Grupo no encontrado');
-  document.getElementById('g-numeroNegocio').value = g.numeroNegocio;
-  document.getElementById('g-nombreGrupo').value   = g.nombreGrupo;
-  document.getElementById('g-empresaBus').value    = g.empresaBus||'';
-  document.getElementById('g-adultos').value       = g.adultos||0;
-  document.getElementById('g-estudiantes').value   = g.estudiantes||0;
-  document.getElementById('g-cantCoordinadores').value = g.cantCoordinadores||1;
-  document.getElementById('g-nombresCoordinadores').value =
-    Array.isArray(g.nombresCoordinadores)
-      ? g.nombresCoordinadores.join(', ')
-      : (g.nombresCoordinadores||'');
-
+  document.getElementById('g-numeroNegocio').value=g.numeroNegocio;
+  document.getElementById('g-nombreGrupo').value  =g.nombreGrupo;
+  document.getElementById('g-empresaBus').value   =g.empresaBus||'';
+  document.getElementById('g-adultos').value      =g.adultos||0;
+  document.getElementById('g-estudiantes').value  =g.estudiantes||0;
+  document.getElementById('g-cantCoordinadores').value = (Array.isArray(g.nombresCoordinadores)?g.nombresCoordinadores.length:1);
+  document.getElementById('g-nombresCoordinadores').value = Array.isArray(g.nombresCoordinadores)?g.nombresCoordinadores.join(', '):'';
   document.getElementById('group-form').dataset.grupoId=grupoId;
   document.getElementById('group-backdrop').style.display='block';
   document.getElementById('group-modal').style.display   ='block';
@@ -259,24 +221,17 @@ function closeGroupModal(){
 // 14) Guardar Grupo + Historial
 async function onSubmitGroup(evt){
   evt.preventDefault();
-  const form=document.getElementById('group-form');
-  const id=form.dataset.grupoId;
+  const form=document.getElementById('group-form'), id=form.dataset.grupoId;
   const before=(await getDoc(doc(db,'grupos',id))).data();
-  const nombresArr = document.getElementById('g-nombresCoordinadores')
-                      .value.split(',').map(s=>s.trim()).filter(Boolean);
+  const nombresArr=document.getElementById('g-nombresCoordinadores').value.split(',').map(s=>s.trim()).filter(Boolean);
   const data={
     empresaBus: document.getElementById('g-empresaBus').value.trim(),
     adultos:    +document.getElementById('g-adultos').value||0,
     estudiantes:+document.getElementById('g-estudiantes').value||0,
-    cantCoordinadores:+document.getElementById('g-cantCoordinadores').value||1,
     nombresCoordinadores:nombresArr
   };
   await updateDoc(doc(db,'grupos',id),data);
-  await addDoc(collection(db,'historial'),{
-    tipo:'grupo-edit', grupoId:id,
-    antes:before, despues:data,
-    usuario:currentUserEmail, ts:serverTimestamp()
-  });
+  await addDoc(collection(db,'historial'),{ tipo:'grupo-edit', grupoId:id, antes:before, despues:data, usuario:currentUserEmail, ts:serverTimestamp() });
   await loadGrupos();
   renderVuelos();
   closeGroupModal();
@@ -299,25 +254,20 @@ function closeHistorialModal(){
 async function loadHistorial(){
   const tbody=document.querySelector('#hist-table tbody');
   tbody.innerHTML='';
-  const q    = query(collection(db,'historial'), orderBy('ts','desc'));
-  const snap = await getDocs(q);
-  for(const docH of snap.docs){
-    const d  = docH.data();
-    const ts = d.ts?.toDate();
-    const tr = document.createElement('tr');
+  const qSnap=query(collection(db,'historial'),orderBy('ts','desc'));
+  const snap=await getDocs(qSnap);
+  for(const dSnap of snap.docs){
+    const d=dSnap.data(), ts=d.ts?.toDate();
+    const tr=document.createElement('tr');
     tr.innerHTML=`
       <td>${ts?ts.toLocaleString('es-CL'):''}</td>
       <td>${d.usuario||''}</td>
       <td>${d.vueloId||d.grupoId||''}</td>
       <td>${d.tipo||''}</td>
       <td>${d.antes?JSON.stringify(d.antes):''}</td>
-      <td>${d.despues?JSON.stringify(d.despues):''}</td>
-    `;
+      <td>${d.despues?JSON.stringify(d.despues):''}</td>`;
     tbody.appendChild(tr);
   }
   if(dtHist) dtHist.destroy();
-  dtHist = $('#hist-table').DataTable({
-    language:{ url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    order:   [[0,'desc']]
-  });
+  dtHist=$('#hist-table').DataTable({ language:{url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'}, order:[[0,'desc']] });
 }
