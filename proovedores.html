@@ -3,26 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <title>Proveedores Rai Trai</title>
+  <!-- Enlaza tus estilos personalizados -->
   <link rel="stylesheet" href="estilos.css">
 </head>
 <body>
-  <!-- ✅ Encabezado dinámico -->
+  <!-- Encabezado dinámico: se carga externamente con fetch -->
   <div id="encabezado"></div>
 
   <h2 style="margin-top: 2rem;">📋 Detalle de Proveedores</h2>
 
+  <!-- Tabla principal de proveedores -->
   <table id="tabla">
     <thead>
       <tr>
         <th>Destino</th>
+        <th>N°</th>
         <th>Actividad</th>
-        <th>Tipo Actividad</th>
-        <th>Proveedor</th>
-        <th>Servicio</th>
+        <th>Servicios</th>
+        <th>Tipo de Servicio</th>
         <th>Ciudad</th>
-        <th>Pago</th>
+        <th>Restricciones</th>
+        <th>Proveedor</th>
+        <th>Contacto</th>
+        <th>Correo</th>
         <th>Tipo Cobro</th>
-        <th>Valor</th>
+        <th>Moneda</th>
+        <th>Valor Servicio</th>
+        <th>Forma de Pago</th>
         <th>Guardar</th>
         <th>Eliminar</th>
       </tr>
@@ -30,12 +37,15 @@
     <tbody id="contenido"></tbody>
   </table>
 
+  <!-- Botones de acción: agregar filas y guardar todo -->
   <div style="margin-top: 1rem;">
     <button onclick="agregarFila()">➕ Nueva fila</button>
+    <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
     <button onclick="guardarTodo()">💾 Guardar todo</button>
   </div>
 
   <script type="module">
+    // Inicialización de Firebase Auth y Firestore
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
     import {
@@ -47,6 +57,7 @@
       deleteDoc
     } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
+    // Verifica sesión: si no hay usuario, redirige a login
     onAuthStateChanged(auth, user => {
       if (!user) {
         window.location.href = 'login.html';
@@ -58,25 +69,41 @@
       }
     });
 
+    // Opciones para generar <select> dinámicos
     const opciones = {
-      destino: ["BRASIL", "SUR DE CHILE", "BARILOCHE", "NORTE DE CHILE"],
-      servicio: ["DIARIO", "GENERAL"],
-      pago: ["DIRECTO", "INDIRECTO"],
-      tipoCobro: ["POR PERSONA", "POR GRUPO"]
+      destino:      ["BRASIL", "SUR DE CHILE", "BARILOCHE", "NORTE DE CHILE", "OTRO"],
+      servicios:    ["DIARIO", "GENERAL", "OTRO"],       // clave 'servicios'
+      tipoServicio: ["NAVEGACIÓN","ALIMENTACIÓN","ATRACCIÓN TURÍSTICA","ENTRETENCIÓN","TOUR","PARQUE ACUÁTICO","DISCO","OTRA"],
+      formaPago:    ["EFECTIVO","CTA CORRIENTE","OTRO"],
+      tipoCobro:    ["POR PERSONA","POR GRUPO","OTRO"],
+      moneda:       ["PESO CHILENO","PESO ARGENTINO","REAL","USD","OTRO"]
     };
 
+    // Referencia al <tbody> donde se añaden las filas
     const tabla = document.getElementById("contenido");
+    // Array para mantener la referencia de inputs y docId por fila
     const filas = [];
 
+    /**
+     * Crea y añade una nueva fila en la tabla.
+     * @param {Object} dato  - Datos preexistentes (para editar)
+     * @param {string} docId - ID del documento en Firestore (si existe)
+     */
     function agregarFila(dato = {}, docId = null) {
       const fila = document.createElement("tr");
-      const campos = ["destino", "actividad", "tipoActividad", "proveedor", "servicio", "ciudad", "pago", "tipoCobro", "valor"];
+      // Lista de campos en orden de columnas
+      const campos = [
+        "destino","numero","actividad","servicios","tipoServicio",
+        "ciudad","restricciones","proveedor","contacto","correo",
+        "tipoCobro","moneda","valorServicio","formaPago"
+      ];
       const inputsRef = [];
 
       campos.forEach(campo => {
         const td = document.createElement("td");
         let input;
 
+        // Si hay opciones definidas para este campo, crea <select>
         if (opciones[campo]) {
           input = document.createElement("select");
           opciones[campo].forEach(op => {
@@ -85,23 +112,27 @@
             option.textContent = op;
             input.appendChild(option);
           });
-          input.value = opciones[campo].includes(dato[campo]) ? dato[campo] : "";
+          input.value = dato[campo] || "";
         } else {
+          // De lo contrario, crea <input> de texto
           input = document.createElement("input");
           input.value = dato[campo] || "";
-          if (campo !== "valor") {
+          // Convierte a mayúsculas salvo en valor numérico
+          if (campo !== "valorServicio") {
             input.addEventListener("input", () => {
               input.value = input.value.toUpperCase();
             });
           }
         }
 
-        input.setAttribute("data-campo", campo);
+        // Guarda la referencia y el nombre de campo
+        input.dataset.campo = campo;
         inputsRef.push(input);
         td.appendChild(input);
         fila.appendChild(td);
       });
 
+      // Celda y botón para guardar individualmente
       const tdGuardar = document.createElement("td");
       const btnGuardar = document.createElement("button");
       btnGuardar.textContent = "💾";
@@ -112,6 +143,7 @@
       tdGuardar.appendChild(btnGuardar);
       fila.appendChild(tdGuardar);
 
+      // Celda y botón para eliminar fila/documento
       const tdBorrar = document.createElement("td");
       const btnBorrar = document.createElement("button");
       btnBorrar.textContent = "🗑️";
@@ -125,9 +157,11 @@
       tdBorrar.appendChild(btnBorrar);
       fila.appendChild(tdBorrar);
 
+      // Añade fila a la tabla y al array de filas
       tabla.appendChild(fila);
       filas.push({ inputs: inputsRef, docId });
 
+      // Permite pegar datos tabulados para autocompletar inputs
       fila.addEventListener("paste", e => {
         const texto = e.clipboardData.getData("text/plain");
         const valores = texto.split("\t");
@@ -139,17 +173,22 @@
       });
     }
 
+    /**
+     * Guarda (o crea) un documento en Firestore con los valores de una fila.
+     * @param {HTMLElement[]} inputsRef - Inputs de la fila
+     * @param {string} docId            - ID existente o null
+     */
     async function guardarFila(inputsRef, docId) {
       const nuevoDoc = {};
       inputsRef.forEach(input => {
-        const campo = input.getAttribute("data-campo");
-        let valor = input.value.trim();
-        if (campo === "servicio") {
-          valor = valor === "DIARIO" ? "01" : valor === "GENERAL" ? "02" : valor;
+        const campo = input.dataset.campo;
+        let val = input.value.trim();
+        if (campo === "valorServicio") {
+          nuevoDoc[campo] = Number(val) || 0;
+        } else {
+          nuevoDoc[campo] = val.toUpperCase();
         }
-        nuevoDoc[campo] = campo === "valor" ? Number(valor) : valor.toUpperCase();
       });
-
       if (docId) {
         await setDoc(doc(db, "proveedores", docId), nuevoDoc);
       } else {
@@ -157,6 +196,17 @@
       }
     }
 
+    /**
+     * Agrega múltiples filas vacías de una vez.
+     * @param {number} n - Cantidad de filas a crear
+     */
+    function agregarVariasFilas(n) {
+      for (let i = 0; i < n; i++) agregarFila();
+    }
+
+    /**
+     * Recorre todas las filas y guarda su contenido.
+     */
     async function guardarTodo() {
       for (const fila of filas) {
         await guardarFila(fila.inputs, fila.docId);
@@ -164,6 +214,9 @@
       alert("Todos los registros fueron guardados ✅");
     }
 
+    /**
+     * Carga los documentos de Firestore al iniciar la página.
+     */
     async function cargarRegistros() {
       const snapshot = await getDocs(collection(db, "proveedores"));
       const docs = [];
@@ -172,10 +225,15 @@
       docs.forEach(doc => agregarFila(doc.data, doc.id));
     }
 
+    // Ejecuta la carga inicial
     cargarRegistros();
+
+    // Exponer funciones para botones globales
     window.agregarFila = agregarFila;
+    window.agregarVariasFilas = agregarVariasFilas;
     window.guardarTodo = guardarTodo;
 
+    // Carga el encabezado externo y arranca el reloj si existe
     fetch('encabezado.html')
       .then(res => res.text())
       .then(data => {
