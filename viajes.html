@@ -3,13 +3,12 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Planificación de Aéreos | RT v1.0</title>
+  <title>Planificación de Viajes Aéreos | RT v1.0</title>
 
   <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css"/>
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
-  <!-- DataTables CSS necesario para el modal Historial -->
   <link rel="stylesheet"
         href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
 
@@ -72,7 +71,7 @@
     /* — Modal de Grupo — */
     #group-modal { max-width:400px; width:80%; }
 
-    /* — Modal de Historial — */
+    /* — Modal Historial — */
     #hist-modal { width:90%; max-width:800px; }
   </style>
 </head>
@@ -84,7 +83,7 @@
   <main class="main">
     <!-- 2) Título + botones -->
     <div class="row">
-      <div class="column long"><h2>Planificación de Aéreos:</h2></div>
+      <div class="column long"><h2>Planificación de Viajes Aéreos:</h2></div>
       <div class="column short">
         <button id="btnAddVuelo" class="btn-add">+ Agregar Vuelo</button>
         <button id="btnHistorial" class="btn-add">📜 Historial</button>
@@ -171,7 +170,8 @@
       </div>
 
       <label for="g-nombresCoordinadores">Nombres Coordinadores</label>
-      <textarea id="g-nombresCoordinadores" rows="2" placeholder="Nombre1, Nombre2"></textarea>
+      <textarea id="g-nombresCoordinadores" rows="2"
+                placeholder="Nombre1, Nombre2…"></textarea>
 
       <div class="actions">
         <button type="button" id="group-cancel">Cancelar</button>
@@ -183,15 +183,13 @@
   <!-- 6) Modal Historial -->
   <div id="hist-backdrop" class="modal-backdrop"></div>
   <div id="hist-modal" class="modal">
-    <div class="actions" style="justify-content:flex-end; margin-bottom:1rem;">
+    <div class="actions" style="justify-content:flex-end;margin-bottom:1rem;">
       <button id="hist-refresh">🔄 Recargar</button>
-      <label>Desde:</label>
-      <input type="date" id="hist-start"/>
-      <label>Hasta:</label>
-      <input type="date" id="hist-end"/>
+      <label>Desde:</label><input type="date" id="hist-start"/>
+      <label>Hasta:</label><input type="date" id="hist-end"/>
       <button id="hist-close">Cerrar</button>
     </div>
-    <table id="hist-table" class="display" style="width:100%;">
+    <table id="hist-table" class="display" style="width:100%">
       <thead>
         <tr>
           <th>Fecha</th><th>Usuario</th><th>Vuelo/Grupo</th>
@@ -202,12 +200,12 @@
     </table>
   </div>
 
-  <!-- Dependencias para Historial -->
+  <!-- Dependencias -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-  <!-- Choices.js -->
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-  <!-- Tu lógica -->
+
+  <!-- Lógica JS -->
   <script type="module" src="./viajes.js"></script>
 </body>
 </html>
