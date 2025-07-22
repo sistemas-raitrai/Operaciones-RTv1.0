@@ -14,7 +14,7 @@
         <th>Destino</th>
         <th>N°</th>
         <th>Actividad</th>
-        <th>Servicio</th>
+        <th>Servicios</th>
         <th>Tipo de Servicio</th>
         <th>Ciudad</th>
         <th>Restricciones</th>
@@ -124,13 +124,17 @@
     }
 
     async function eliminarFila(inputsRef) {
-      // Obtiene destino y actividad desde los inputs
       const destino = inputsRef.find(i => i.dataset.campo === 'destino').value;
       const actividad = inputsRef.find(i => i.dataset.campo === 'actividad').value;
       if (!destino || !actividad) {
         alert('Debes completar Destino y Actividad para eliminar.');
         return;
       }
+      // Referencia al documento a eliminar en la subcolección
+      const docRef = doc(db, 'Actividades', destino, 'Detalles', actividad);
+      await deleteDoc(docRef);
+    }
+
       // Referencia al documento a eliminar
       const docRef = doc(db, 'Actividades', destino, 'Detalles', actividad);
       await deleteDoc(docRef);
