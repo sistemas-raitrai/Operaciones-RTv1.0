@@ -1,10 +1,9 @@
-// viajes.js
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } 
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs, doc, getDoc,
-  addDoc, updateDoc, deleteDoc
+  addDoc, updateDoc, deleteDoc, Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -20,18 +19,20 @@ onAuthStateChanged(auth, user => {
   init();
 });
 
-// ——————————————————————————
-// 2) Init: carga datos y enlaza UI
-// ——————————————————————————
 async function init() {
   await loadGrupos();
   bindUI();
   initModal();
   renderVuelos();
+  // listeners para modal de grupo
+  document.getElementById('group-cancel')
+          .addEventListener('click', closeGroupModal);
+  document.getElementById('group-form')
+          .addEventListener('submit', onSubmitGroup);
 }
 
 // ——————————————————————————
-// 3) Cargo todos los grupos a memoria
+// 2) Carga grupos desde Firestore
 // ——————————————————————————
 async function loadGrupos() {
   const snap = await getDocs(collection(db, 'grupos'));
@@ -39,18 +40,17 @@ async function loadGrupos() {
 }
 
 // ——————————————————————————
-// 4) Botones principales
+// 3) Bind de UI
 // ——————————————————————————
 function bindUI() {
-  const btnAdd = document.getElementById('btnAddVuelo');
-  if (btnAdd) btnAdd.onclick = () => openModal();
-
+  document.getElementById('btnAddVuelo')
+          .onclick = () => openModal();
   const btnHist = document.getElementById('btnHistorial');
-  if (btnHist) btnHist.onclick = () => abrirHistorial();
+  if (btnHist) btnHist.onclick = () => location.href = 'historial.html';
 }
 
 // ——————————————————————————
-// 5) Inicializo Choices.js y modal de vuelo
+// 4) Inicializar modal de Vuelo + Choices.js
 // ——————————————————————————
 function initModal() {
   document.getElementById('modal-cancel')
@@ -62,7 +62,6 @@ function initModal() {
     document.getElementById('m-grupos'),
     { removeItemButton: true }
   );
-  // precargo opciones de grupos
   choiceGrupos.setChoices(
     grupos.map(g => ({
       value: g.id,
@@ -73,58 +72,60 @@ function initModal() {
 }
 
 // ——————————————————————————
-// 6) Render de tarjetas, ordenadas por fechaIda
+// 5) Renderizar tarjetas (ordenadas por fecha de ida)
 // ——————————————————————————
 async function renderVuelos() {
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
 
-  // traigo y ordeno
+  // 5.1) Leer & ordenar
   const snap = await getDocs(collection(db, 'vuelos'));
   vuelos = snap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .sort((a,b) => new Date(a.fechaIda) - new Date(b.fechaIda));
 
+  // 5.2) Pintar cada vuelo
   vuelos.forEach(v => {
+    const userEmail = auth.currentUser.email;
     const card = document.createElement('div');
     card.className = 'flight-card';
 
-    // helper para fechas
-    const fmt = iso => {
-      const D = new Date(iso);
-      return D.toLocaleDateString('es-CL',{
+    // helper de fecha
+    const fmt = iso => new Date(iso)
+      .toLocaleDateString('es-CL', {
         weekday:'long', day:'2-digit',
         month:'long', year:'numeric'
-      }).replace(/(^\w)/, m=>m.toUpperCase());
-    };
+      }).replace(/(^\w)/,m=>m.toUpperCase());
 
-    // contadores totales y confirmados
-    let adultos=0, estudi=0, adultosC=0, estudiC=0;
+    // contadores generales y confirmados
+    let totA=0, totE=0, cA=0, cE=0;
 
-    // filas de grupos
-    const gruposHtml = (v.grupos||[]).map((gObj, idx) => {
-      const g = grupos.find(x=>x.id===gObj.id) || {};
-      const a = g.adultos||0, e = g.estudiantes||0;
-      adultos += a; estudi += e;
-      const confirmado = gObj.status!=='pendiente';
-      if (confirmado) { adultosC+=a; estudiC+=e; }
+    // 5.3) filas de grupos
+    const rows = (v.grupos||[]).map((gObj,idx) => {
+      const g = grupos.find(x=>x.id===gObj.id)||{};
+      const A = g.adultos||0, E = g.estudiantes||0;
+      totA+=A; totE+=E;
+      const confirmed = gObj.status!=='pendiente';
+      if(confirmed){ cA+=A; cE+=E; }
 
       return `
         <div class="group-item">
           <div class="num">${g.numeroNegocio}</div>
           <div class="name">
-            <span 
-              class="group-name" 
-              style="cursor:pointer; text-decoration:underline;"
-              onclick="openGroupModal('${g.id}')">
+            <span class="group-name"
+                  onclick="openGroupModal('${g.id}')">
               ${g.nombreGrupo}
             </span>
-            <span class="pax-inline">${a+e} (A:${a} E:${e})</span>
+            <span class="pax-inline">${A+E} (A:${A} E:${E})</span>
           </div>
           <div class="status-cell">
-            <span title="Últ. cambio: ${gObj.user||'–'}">
-              ${confirmado?'✅ Confirmado':'🕗 Pendiente'}
+            <span>
+              ${confirmed?'✅ Confirmado':'🕗 Pendiente'}
             </span>
+            <!-- email de quien cambió el estado -->
+            <small style="margin-left:.3em; font-size:.85em; color:#666;">
+              ${gObj.lastBy||userEmail}
+            </small>
             <button class="btn-small"
                     onclick="toggleGroupStatus('${v.id}',${idx})">
               🔄
@@ -139,6 +140,7 @@ async function renderVuelos() {
         </div>`;
     }).join('');
 
+    // 5.4) HTML completo de la tarjeta
     card.innerHTML = `
       <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
       <p class="dates">
@@ -146,12 +148,12 @@ async function renderVuelos() {
         <span class="arrow">↔️</span>
         Vuelta: ${fmt(v.fechaVuelta)}
       </p>
-      <div>${gruposHtml || '<p>— Sin grupos —</p>'}</div>
+      <div>${rows||'<p>— Sin grupos —</p>'}</div>
       <p>
-        <strong>Total Pax:</strong> ${adultos+estudi}
-        (A:${adultos} E:${estudi})
-        – Confirmados: ${adultosC+estudiC}
-        (A:${adultosC} E:${estudiC})
+        <strong>Total Pax:</strong> ${totA+totE}
+        (A:${totA} E:${totE})
+        – Confirmados: ${cA+cE}
+        (A:${cA} E:${cE})
       </p>
       <div class="actions">
         <button class="btn-add btn-edit">✏️ Editar</button>
@@ -159,23 +161,20 @@ async function renderVuelos() {
       </div>`;
 
     cont.appendChild(card);
-    // handlers
     card.querySelector('.btn-edit')
-        .addEventListener('click', ()=>openModal(v));
+        .addEventListener('click', () => openModal(v));
     card.querySelector('.btn-del')
-        .addEventListener('click', ()=>deleteVuelo(v.id));
+        .addEventListener('click', () => deleteVuelo(v.id));
   });
 }
 
 // ——————————————————————————
-// 7) Abrir modal de Vuelo (nuevo/editar)
+// 6) Abrir modal de Vuelo
 // ——————————————————————————
 function openModal(v=null) {
   isEdit = !!v; editId = v?.id||null;
   document.getElementById('modal-title')
-          .textContent = v?'Editar Vuelo':'Nuevo Vuelo';
-
-  // pre-llenar campos
+          .textContent = v ? 'Editar Vuelo' : 'Nuevo Vuelo';
   ['proveedor','numero','tipoVuelo','fechaIda','fechaVuelta']
     .forEach(k => document.getElementById(`m-${k}`).value = v?.[k]||'');
 
@@ -183,28 +182,24 @@ function openModal(v=null) {
   document.getElementById('m-statusDefault').value =
     v?.grupos?.[0]?.status||'confirmado';
 
-  // grupos seleccionados
   choiceGrupos.removeActiveItems();
-  if (v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g=>g.id));
+  if(v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g=>g.id));
 
-  // muestro modal
   document.getElementById('modal-backdrop').style.display =
   document.getElementById('modal-vuelo').style.display = 'block';
 }
 
 // ——————————————————————————
-// 8) Guardar/actualizar en Firestore + historial
+// 7) Guardar/actualizar Vuelo + historial
 // ——————————————————————————
 async function onSubmit(evt) {
   evt.preventDefault();
-  const user = auth.currentUser.email;
+  const userEmail = auth.currentUser.email;
   const sel = choiceGrupos.getValue(true);
-  const statusDefault = document.getElementById('m-statusDefault').value;
-  const gruposArr = sel.map(id => ({
-    id,
-    status: statusDefault,
-    user,                     // quien lo configuró
-    timestamp: new Date()     // marca temporal
+  const st0 = document.getElementById('m-statusDefault').value;
+  // array de grupos con estado y quien lo puso
+  const groupArr = sel.map(id => ({
+    id, status: st0, lastBy: userEmail
   }));
 
   const payload = {
@@ -213,99 +208,113 @@ async function onSubmit(evt) {
     tipoVuelo:   document.getElementById('m-tipoVuelo').value,
     fechaIda:    document.getElementById('m-fechaIda').value,
     fechaVuelta: document.getElementById('m-fechaVuelta').value,
-    grupos:      gruposArr
+    grupos:      groupArr
   };
 
-  if (isEdit) {
-    // antes: carga para historial
-    const before = (await getDoc(doc(db,'vuelos',editId))).data();
-    await updateDoc(doc(db,'vuelos',editId), payload);
-    // historial: cambio de todo el vuelo
+  // antes de salvar, registro en historial
+  for (let gObj of groupArr) {
+    const g = grupos.find(x=>x.id===gObj.id);
     await addDoc(collection(db,'historial'), {
-      type: 'vuelo-update',
-      vueloId: editId,
-      before,
-      after: payload,
-      user,
-      timestamp: new Date()
-    });
-  } else {
-    const ref = await addDoc(collection(db,'vuelos'), payload);
-    // historial: creación
-    await addDoc(collection(db,'historial'), {
-      type: 'vuelo-create',
-      vueloId: ref.id,
-      data: payload,
-      user,
-      timestamp: new Date()
+      tipo: isEdit?'edit-vuelo':'new-vuelo',
+      vueloId: editId||null,
+      grupoId: g.id,
+      numeroNegocio: g.numeroNegocio,
+      nombreGrupo: g.nombreGrupo,
+      campo: 'status',
+      anterior: null,
+      nuevo: gObj.status,
+      by: userEmail,
+      timestamp: Timestamp.now()
     });
   }
+
+  if(isEdit) await updateDoc(doc(db,'vuelos',editId), payload);
+  else       await addDoc(collection(db,'vuelos'), payload);
 
   closeModal();
   renderVuelos();
 }
 
 // ——————————————————————————
-// 9) Eliminar vuelo completo
+// 8) Eliminar vuelo + historial
 // ——————————————————————————
 async function deleteVuelo(id) {
   if (!confirm('¿Eliminar vuelo completo?')) return;
+  const userEmail = auth.currentUser.email;
+  // guardo histórico de cada grupo
+  const snap = await getDoc(doc(db,'vuelos',id));
+  for (let gObj of snap.data().grupos || []) {
+    const g = grupos.find(x=>x.id===gObj.id);
+    await addDoc(collection(db,'historial'), {
+      tipo: 'del-vuelo',
+      vueloId: id,
+      grupoId: gObj.id,
+      numeroNegocio: g.numeroNegocio,
+      nombreGrupo: g.nombreGrupo,
+      anterior: gObj.status,
+      nuevo: null,
+      by: userEmail,
+      timestamp: Timestamp.now()
+    });
+  }
   await deleteDoc(doc(db,'vuelos',id));
-  // historial
-  await addDoc(collection(db,'historial'), {
-    type: 'vuelo-delete',
-    vueloId: id,
-    user: auth.currentUser.email,
-    timestamp: new Date()
-  });
   renderVuelos();
 }
 
 // ——————————————————————————
-// 10) Quitar un grupo de un vuelo + historial
+// 9) Quitar grupo de un vuelo + historial
 // ——————————————————————————
 window.removeGroup = async (vueloId, idx) => {
+  const userEmail = auth.currentUser.email;
   const ref = doc(db,'vuelos',vueloId);
   const snap = await getDoc(ref);
-  const data = snap.data();
-  const removed = data.grupos.splice(idx,1)[0];
-  await updateDoc(ref,{ grupos: data.grupos });
+  const v = snap.data();
+  const removed = v.grupos.splice(idx,1)[0];
   // historial
+  const g = grupos.find(x=>x.id===removed.id);
   await addDoc(collection(db,'historial'), {
-    type: 'remove-group',
-    vueloId, group: removed,
-    user: auth.currentUser.email,
-    timestamp: new Date()
+    tipo: 'remove-group',
+    vueloId, grupoId: g.id,
+    numeroNegocio: g.numeroNegocio,
+    nombreGrupo: g.nombreGrupo,
+    anterior: removed.status,
+    nuevo: null,
+    by: userEmail,
+    timestamp: Timestamp.now()
   });
+  await updateDoc(ref, { grupos: v.grupos });
   renderVuelos();
 };
 
 // ——————————————————————————
-// 11) Alternar estado (+user+timestamp) + historial
+// 10) Alternar estado + historial
 // ——————————————————————————
 window.toggleGroupStatus = async (vueloId, idx) => {
+  const userEmail = auth.currentUser.email;
   const ref = doc(db,'vuelos',vueloId);
   const snap = await getDoc(ref);
-  const data = snap.data();
-  const old = { ...data.grupos[idx] };
-  data.grupos[idx].status = old.status==='pendiente' ? 'confirmado' : 'pendiente';
-  data.grupos[idx].user = auth.currentUser.email;
-  data.grupos[idx].timestamp = new Date();
-  await updateDoc(ref,{ grupos: data.grupos });
+  const v = snap.data();
+  const before = v.grupos[idx].status;
+  v.grupos[idx].status = before==='pendiente'?'confirmado':'pendiente';
+  v.grupos[idx].lastBy = userEmail;
   // historial
+  const g = grupos.find(x=>x.id===v.grupos[idx].id);
   await addDoc(collection(db,'historial'), {
-    type: 'toggle-status',
-    vueloId,
-    before: old,
-    after: data.grupos[idx],
-    user: auth.currentUser.email,
-    timestamp: new Date()
+    tipo: 'toggle-status',
+    vueloId, grupoId: g.id,
+    numeroNegocio: g.numeroNegocio,
+    nombreGrupo: g.nombreGrupo,
+    anterior: before,
+    nuevo: v.grupos[idx].status,
+    by: userEmail,
+    timestamp: Timestamp.now()
   });
+  await updateDoc(ref, { grupos: v.grupos });
   renderVuelos();
 };
 
 // ——————————————————————————
-// 12) Cerrar modal de vuelo
+// 11) Cerrar modal Vuelo
 // ——————————————————————————
 function closeModal() {
   document.getElementById('modal-backdrop').style.display =
@@ -313,52 +322,59 @@ function closeModal() {
 }
 
 // ——————————————————————————
-// 13) Modal de Grupo: abrir con datos + editar
+// 12) Modal editar Grupo (coordinadores)
 // ——————————————————————————
-window.openGroupModal = grupoId => {
+window.openGroupModal = (grupoId) => {
   const g = grupos.find(x=>x.id===grupoId);
-  if (!g) return alert('Grupo no encontrado');
-  // relleno
+  if(!g) return alert('Grupo no encontrado');
   document.getElementById('g-numeroNegocio').value = g.numeroNegocio;
   document.getElementById('g-nombreGrupo').value   = g.nombreGrupo;
   document.getElementById('g-adultos').value      = g.adultos||0;
   document.getElementById('g-estudiantes').value  = g.estudiantes||0;
-  // guardo id
+  // coordinadores: campo nuevo
+  document.getElementById('g-coordinadores').value = g.coordinadores||1;
+
   document.getElementById('group-form').dataset.grupoId = grupoId;
-  // muestro modal
   document.getElementById('group-backdrop').style.display = 'block';
   document.getElementById('group-modal').style.display    = 'block';
 };
+
 function closeGroupModal() {
   document.getElementById('group-backdrop').style.display = 'none';
   document.getElementById('group-modal').style.display    = 'none';
 }
+
 // ——————————————————————————
-// 14) Submit grupo + historial
+// 13) Guardar cambios Grupo en Firestore + historial
 // ——————————————————————————
 async function onSubmitGroup(evt) {
   evt.preventDefault();
   const form = document.getElementById('group-form');
   const id   = form.dataset.grupoId;
-  const docRef = doc(db,'grupos',id);
-  const before = (await getDoc(docRef)).data();
-
   const data = {
     nombreGrupo: document.getElementById('g-nombreGrupo').value.trim(),
     adultos:     parseInt(document.getElementById('g-adultos').value,10)||0,
-    estudiantes: parseInt(document.getElementById('g-estudiantes').value,10)||0
+    estudiantes: parseInt(document.getElementById('g-estudiantes').value,10)||0,
+    coordinadores: parseInt(document.getElementById('g-coordinadores').value,10)||1
   };
-  await updateDoc(docRef, data);
-
   // historial
+  const gOld = grupos.find(x=>x.id===id);
   await addDoc(collection(db,'historial'), {
-    type: 'grupo-update',
-    groupId: id,
-    before, after: data,
-    user: auth.currentUser.email,
-    timestamp: new Date()
+    tipo: 'edit-grupo',
+    grupoId: id,
+    numeroNegocio: gOld.numeroNegocio,
+    nombreGrupo: gOld.nombreGrupo,
+    anterior: {
+      adultos: gOld.adultos,
+      estudiantes: gOld.estudiantes,
+      coordinadores: gOld.coordinadores||1
+    },
+    nuevo: data,
+    by: auth.currentUser.email,
+    timestamp: Timestamp.now()
   });
-
+  // actualizar Firestore
+  await updateDoc(doc(db,'grupos',id), data);
   await loadGrupos();
   renderVuelos();
   closeGroupModal();
