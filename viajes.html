@@ -7,81 +7,44 @@
 
   <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css"/>
-  <link rel="stylesheet"
-        href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
-  <link rel="stylesheet"
-        href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
 
   <style>
-    /* — Contenedor de tarjetas en dos columnas — */
+    /* Contenedor de tarjetas */
     #vuelos-container { display:flex; flex-wrap:wrap; gap:1rem; margin-top:1rem; }
-    .flight-card {
-      flex:1 1 calc(50% - 1rem);
-      border:1px solid #ccc; border-radius:8px; padding:1rem;
-      background:#fafafa; box-shadow:0 2px 4px rgba(0,0,0,0.1);
-      display:flex; flex-direction:column; justify-content:space-between;
-    }
+    .flight-card { flex:1 1 calc(50% - 1rem); border:1px solid #ccc; border-radius:8px; padding:1rem; background:#fafafa; box-shadow:0 2px 4px rgba(0,0,0,0.1); display:flex; flex-direction:column; justify-content:space-between; }
 
-    /* — GRID de 4 columnas por grupo — */
-    .group-item {
-      display:grid;
-      grid-template-columns:4rem 1fr auto auto;
-      align-items:center; gap:0.5rem; padding:0.2rem 0;
-    }
-    .group-item .name {
-      display:flex; align-items:center; gap:0.5rem; overflow:hidden;
-    }
-    .group-item .group-name {
-      white-space:nowrap; text-overflow:ellipsis; overflow:hidden;
-      cursor:pointer; text-decoration:underline;
-    }
-    .group-item .pax-inline { font-weight:bold; white-space:nowrap; }
-    .group-item .status-cell { display:flex; align-items:center; gap:0.3rem; }
-    .group-item .status-cell .by-email {
-      font-size:0.8em; color:#666; margin-left:0.5rem;
-    }
-    .group-item .delete-cell { text-align:center; }
+    /* GRID de grupos */
+    .group-item { display:grid; grid-template-columns:4rem 1fr auto auto; align-items:center; gap:0.5rem; padding:0.2rem 0; }
+    .group-name { cursor:pointer; text-decoration:underline; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pax-inline { font-weight:bold; white-space:nowrap; }
+    .status-cell { display:flex; align-items:center; gap:0.3rem; }
+    .by-email { font-size:0.8em; color:#666; margin-left:0.5rem; }
+    .delete-cell { text-align:center; }
 
-    /* — Fechas en línea con flecha — */
+    /* Fechas, botones, utilidades... */
     .dates { margin:0.5rem 0; font-size:0.95rem; }
-    .dates .arrow { margin:0 0.5rem; vertical-align:middle; }
-
-    /* — Botones y acciones — */
-    .btn-small { font-size:0.9em; padding:0.2em 0.5em; }
     .actions { margin-top:0.5rem; display:flex; gap:0.5rem; }
-
-    /* — Modal estándar — */
-    .modal-backdrop {
-      position:fixed; top:0; left:0; width:100%; height:100%;
-      background:rgba(0,0,0,0.5); z-index:1000; display:none;
-    }
-    .modal {
-      position:fixed; top:50%; left:50%;
-      transform:translate(-50%,-50%);
-      background:white; padding:1rem; border-radius:6px;
-      z-index:1001; max-height:90%; overflow:auto;
-      width:80%; max-width:600px; display:none;
-    }
-
-    /* — Utilidades fila/columna — */
+    .btn-small { font-size:0.9em; padding:0.2em 0.5em; }
+    .modal-backdrop { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; display:none; }
+    .modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:1rem; border-radius:6px; z-index:1001; max-height:90%; overflow:auto; width:80%; max-width:600px; display:none; }
     .row { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; }
     .column { display:flex; flex-direction:column; }
-    .short { flex:1; } .medium { flex:3; } .long { flex:6; }
+    .short{flex:1} .medium{flex:3} .long{flex:6}
 
-    /* — Modal de Grupo — */
+    /* Modal Grupo */
     #group-modal { max-width:400px; width:80%; }
 
-    /* — Modal Historial — */
+    /* Modal Historial */
     #hist-modal { width:90%; max-width:800px; }
   </style>
 </head>
 
 <body class="vuelos-page">
-  <!-- 1) Encabezado común -->
   <div id="encabezado"></div>
 
   <main class="main">
-    <!-- 2) Título + botones -->
     <div class="row">
       <div class="column long"><h2>Planificación de Viajes Aéreos:</h2></div>
       <div class="column short">
@@ -89,49 +52,44 @@
         <button id="btnHistorial" class="btn-add">📜 Historial</button>
       </div>
     </div>
-    <!-- 3) Tarjetas de vuelo -->
     <div id="vuelos-container"></div>
   </main>
 
-  <!-- 4) Modal Vuelo -->
+  <!-- Modal Vuelo -->
   <div id="modal-backdrop" class="modal-backdrop"></div>
   <div id="modal-vuelo" class="modal">
     <h3 id="modal-title">Vuelo</h3>
     <form id="modal-form">
-      <label for="m-proveedor">Aerolínea</label>
-      <input type="text" id="m-proveedor" list="lista-aero"/>
-      <datalist id="lista-aero"></datalist>
+      <label>Aerolínea</label>
+      <input id="m-proveedor" list="lista-aero"/><datalist id="lista-aero"></datalist>
 
-      <label for="m-numero">N° Vuelo</label>
-      <input type="text" id="m-numero"/>
+      <label>N° Vuelo</label>
+      <input id="m-numero"/>
 
-      <label for="m-tipoVuelo">Tipo</label>
-      <select id="m-tipoVuelo">
-        <option value="regular">Regular</option>
-        <option value="charter">Charter</option>
-      </select>
+      <label>Tipo</label>
+      <select id="m-tipoVuelo"><option value="regular">Regular</option><option value="charter">Charter</option></select>
 
-      <label for="m-origen">Origen</label>
-      <input type="text" id="m-origen"/>
+      <label>Origen</label>
+      <input id="m-origen"/>
 
-      <label for="m-destino">Destino</label>
-      <input type="text" id="m-destino"/>
+      <label>Destino</label>
+      <input id="m-destino"/>
 
       <div class="row">
         <div class="column medium">
-          <label for="m-fechaIda">Fecha Ida</label>
+          <label>Fecha Ida</label>
           <input type="date" id="m-fechaIda"/>
         </div>
         <div class="column medium">
-          <label for="m-fechaVuelta">Fecha Vuelta</label>
+          <label>Fecha Vuelta</label>
           <input type="date" id="m-fechaVuelta"/>
         </div>
       </div>
 
-      <label for="m-grupos">Grupos en este vuelo</label>
+      <label>Grupos en este vuelo</label>
       <select id="m-grupos" multiple></select>
 
-      <label for="m-statusDefault">Estado por defecto</label>
+      <label>Estado por defecto</label>
       <select id="m-statusDefault">
         <option value="confirmado">✅ Confirmado</option>
         <option value="pendiente">🕗 Pendiente</option>
@@ -139,53 +97,43 @@
 
       <div class="actions">
         <button type="button" id="modal-cancel">Cancelar</button>
-        <button type="submit" id="modal-save">Guardar</button>
+        <button type="submit">Guardar</button>
       </div>
     </form>
   </div>
 
-<!-- 5) Modal Grupo -->
-<div id="group-backdrop" class="modal-backdrop"></div>
-<div id="group-modal" class="modal">
-  <h3>Editar Grupo</h3>
-  <form id="group-form">
-    <label for="g-numeroNegocio">N° Negocio</label>
-    <input type="text" id="g-numeroNegocio" disabled/>
+  <!-- Modal Grupo -->
+  <div id="group-backdrop" class="modal-backdrop"></div>
+  <div id="group-modal" class="modal">
+    <h3>Editar Grupo</h3>
+    <form id="group-form">
+      <label>N° Negocio</label><input id="g-numeroNegocio" disabled/>
+      <label>Nombre Grupo</label><input id="g-nombreGrupo" disabled/>
+      <label>Empresa de Bus</label><input id="g-empresaBus"/>
 
-    <label for="g-nombreGrupo">Nombre Grupo</label>
-    <input type="text" id="g-nombreGrupo" disabled/>
-
-    <label for="g-empresaBus">Empresa de Bus</label>
-    <input type="text" id="g-empresaBus"/>
-
-    <div class="row">
-      <div class="column short">
-        <label for="g-adultos">Adultos</label>
-        <input type="number" id="g-adultos" min="0"/>
+      <div class="row">
+        <div class="column short">
+          <label>Adultos</label><input type="number" id="g-adultos" min="0"/>
+        </div>
+        <div class="column short">
+          <label>Estudiantes</label><input type="number" id="g-estudiantes" min="0"/>
+        </div>
+        <div class="column short">
+          <label>Cant. Coordinadores</label><input type="number" id="g-cantCoordinadores" min="1" value="1"/>
+        </div>
       </div>
-      <div class="column short">
-        <label for="g-estudiantes">Estudiantes</label>
-        <input type="number" id="g-estudiantes" min="0"/>
-      </div>
-      <div class="column short">
-        <label for="g-cantCoordinadores">Coordinadores</label>
-        <input type="number" id="g-cantCoordinadores" min="1" value="1"/>
-      </div>
-    </div>
 
-    <label for="g-nombresCoordinadores">Nombres Coordinadores</label>
-    <textarea id="g-nombresCoordinadores" rows="2"
-              placeholder="Nombre1, Nombre2…"></textarea>
+      <label>Nombres Coordinadores</label>
+      <textarea id="g-nombresCoordinadores" rows="2" placeholder="Nombre1, Nombre2…"></textarea>
 
-    <div class="actions">
-      <button type="button" id="group-cancel">Cancelar</button>
-      <button type="submit" id="group-save">Guardar</button>
-    </div>
-  </form>
-</div>
+      <div class="actions">
+        <button type="button" id="group-cancel">Cancelar</button>
+        <button type="submit">Guardar</button>
+      </div>
+    </form>
   </div>
 
-  <!-- 6) Modal Historial -->
+  <!-- Modal Historial -->
   <div id="hist-backdrop" class="modal-backdrop"></div>
   <div id="hist-modal" class="modal">
     <div class="actions" style="justify-content:flex-end;margin-bottom:1rem;">
@@ -196,10 +144,7 @@
     </div>
     <table id="hist-table" class="display" style="width:100%">
       <thead>
-        <tr>
-          <th>Fecha</th><th>Usuario</th><th>Vuelo/Grupo</th>
-          <th>Acción</th><th>Antes</th><th>Después</th>
-        </tr>
+        <tr><th>Fecha</th><th>Usuario</th><th>Vuelo/Grupo</th><th>Acción</th><th>Antes</th><th>Después</th></tr>
       </thead>
       <tbody></tbody>
     </table>
@@ -209,8 +154,6 @@
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
-
-  <!-- Lógica JS -->
   <script type="module" src="./viajes.js"></script>
 </body>
 </html>
