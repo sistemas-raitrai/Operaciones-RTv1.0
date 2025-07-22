@@ -226,10 +226,36 @@
     }
 
     // Ejecuta la carga inicial
-    cargarRegistros();
+cargarRegistros();
 
-    // Exponer funciones para botones globales
-    window.agregarFila = agregarFila;
+// ====================================================
+// Soporte para pegado de múltiples filas de una vez:
+const campos = [
+  "destino","numero","actividad","servicios","tipoServicio",
+  "ciudad","restricciones","proveedor","contacto","correo",
+  "tipoCobro","moneda","valorServicio","formaPago"
+];
+// Escucha pegado en todo el <tbody>
+tabla.addEventListener("paste", e => {
+  const texto = e.clipboardData.getData("text/plain").trim();
+  const lineas = texto.split(/
+?
+/);
+  lineas.forEach(linea => {
+    const valores = linea.split("	");
+    const dato = {};
+    campos.forEach((campo, i) => {
+      dato[campo] = (valores[i] || "").trim();
+    });
+    agregarFila(dato, null);
+  });
+  e.preventDefault();
+});
+// ====================================================
+
+// Exponer funciones para botones globales
+window.agregarFila = agregarFila;
+window.agregarVariasFilas = agregarVariasFilas;
     window.agregarVariasFilas = agregarVariasFilas;
     window.guardarTodo = guardarTodo;
 
