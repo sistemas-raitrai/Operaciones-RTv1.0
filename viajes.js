@@ -346,60 +346,77 @@ async function onSubmitGroup(evt){
   closeGroupModal();
 }
 
-// ————————————————
-// 15) Mostrar modal Historial
-// ————————————————
-function showHistorialModal() {
+// ——————————————————————————
+// 15) Mostrar modal de Historial
+// ——————————————————————————
+async function showHistorialModal() {
+  // desplegar backdrop y modal
   document.getElementById('hist-backdrop').style.display = 'block';
   document.getElementById('hist-modal').style.display    = 'block';
-  loadHistorial();
+  // cargar los datos
+  await loadHistorial();
 }
 
-// ————————————————
-// 16) Cerrar modal Historial
-// ————————————————
+// ——————————————————————————
+// 16) Cerrar modal de Historial
+// ——————————————————————————
 function closeHistorialModal() {
   document.getElementById('hist-backdrop').style.display = 'none';
   document.getElementById('hist-modal').style.display    = 'none';
 }
 
-// ————————————————
-// 17) Cargar & renderizar Historial
-// ————————————————
-import { query, orderBy } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-let dtHist = null;
+// ——————————————————————————
+// 17) Cargar & renderizar Historial desde Firestore
+// ——————————————————————————
 async function loadHistorial() {
   const tbody = document.querySelector('#hist-table tbody');
   tbody.innerHTML = '';
-  const snap = await getDocs(
-    query(collection(db,'historial'), orderBy('ts','desc'))
-  );
-  for (const h of snap.docs) {
-    const d = h.data();
+
+  // consulta ordenada por timestamp descendente
+  const q    = query(collection(db, 'historial'), orderBy('ts', 'desc'));
+  const snap = await getDocs(q);
+
+  // vuelco cada documento como fila en la tabla
+  for (const docH of snap.docs) {
+    const d     = docH.data();
     const fecha = d.ts?.toDate?.();
-    const tr = document.createElement('tr');
+    const tr    = document.createElement('tr');
+
     tr.innerHTML = `
-      <td>${fecha?fecha.toLocaleString('es-CL'):''}</td>
-      <td>${d.usuario||''}</td>
-      <td>${d.vueloId||d.grupoId||''}</td>
-      <td>${d.tipo}</td>
-      <td>${d.antes?JSON.stringify(d.antes):''}</td>
-      <td>${d.despues?JSON.stringify(d.despues):''}</td>
+      <td>${fecha ? fecha.toLocaleString('es-CL') : ''}</td>
+      <td>${d.usuario   || ''}</td>
+      <td>${d.vueloId   || d.grupoId || ''}</td>
+      <td>${d.tipo      || ''}</td>
+      <td>${d.antes     ? JSON.stringify(d.antes)   : ''}</td>
+      <td>${d.despues   ? JSON.stringify(d.despues) : ''}</td>
     `;
     tbody.appendChild(tr);
   }
+
+  // inicializar o recargar DataTable
   if (dtHist) dtHist.destroy();
   dtHist = $('#hist-table').DataTable({
-    language:{ url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    order:[[0,'desc']]
+    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+    order:    [[0, 'desc']]
   });
 }
 
-// ————————————————
-// 18) Enlazar listeners de Historial al iniciar
-// ————————————————
-document.getElementById('btnHistorial').onclick = showHistorialModal;
-document.getElementById('hist-close').onclick   = closeHistorialModal;
-document.getElementById('hist-refresh').onclick = loadHistorial;
-document.getElementById('hist-start').onchange  = loadHistorial;
-document.getElementById('hist-end').onchange    = loadHistorial;
+// ——————————————————————————
+// 18) Enlazar listeners de Historial dentro de init()
+// ——————————————————————————
+// (tras renderVuelos() y los bindings de Grupo)
+function init() {
+  // ... tus loadGrupos(), bindUI(), initModal(), renderVuelos(), etc.
+
+  // Historial:
+  document.getElementById('btnHistorial')
+          .onclick  = showHistorialModal;
+  document.getElementById('hist-close')
+          .onclick  = closeHistorialModal;
+  document.getElementById('hist-refresh')
+          .onclick  = loadHistorial;
+  document.getElementById('hist-start')
+          .onchange  = loadHistorial;
+  document.getElementById('hist-end')
+          .onchange  = loadHistorial;
+}
