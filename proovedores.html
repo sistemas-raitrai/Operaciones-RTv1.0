@@ -19,7 +19,7 @@
         <th>Destino</th>
         <th>N°</th>
         <th>Actividad</th>
-        <th>Servicio</th>
+        <th>Servicios</th>
         <th>Tipo de Servicio</th>
         <th>Ciudad</th>
         <th>Restricciones</th>
@@ -231,6 +231,7 @@ cargarRegistros();
 // ====================================================
 // ====================================================
 // ====================================================
+// ====================================================
 // Soporte para pegado de múltiples filas de una vez:
 const campos = [
   "destino","numero","actividad","servicios","tipoServicio",
@@ -240,17 +241,21 @@ const campos = [
 // Escucha pegado en todo el <tbody>
 tabla.addEventListener("paste", e => {
   e.preventDefault();
+  // obtenemos texto plano con tab y saltos de línea
   const texto = e.clipboardData.getData("text/plain").trim();
+  // dividimos por línea (CRLF o LF)
   const lineas = texto.split(/
 ?
 /);
   lineas.forEach(linea => {
     if (!linea) return;
+    // dividimos cada línea en columnas por tab
     const valores = linea.split("	");
     const dato = {};
     campos.forEach((campo, i) => {
       dato[campo] = (valores[i] || "").trim();
     });
+    // agregamos fila nueva con datos
     agregarFila(dato, null);
   });
 });
