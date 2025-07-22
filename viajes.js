@@ -346,77 +346,57 @@ async function onSubmitGroup(evt){
   closeGroupModal();
 }
 
-// ——————————————————————————
-// 15) Mostrar modal de Historial
-// ——————————————————————————
-async function showHistorialModal() {
-  // desplegar backdrop y modal
-  document.getElementById('hist-backdrop').style.display = 'block';
-  document.getElementById('hist-modal').style.display    = 'block';
-  // cargar los datos
-  await loadHistorial();
-}
+  // ——————————————————————————
+  // 15) Mostrar modal de Historial
+  // ——————————————————————————
+  document.getElementById('btnHistorial').onclick = async () => {
+    document.getElementById('hist-backdrop').style.display = 'block';
+    document.getElementById('hist-modal').style.display    = 'block';
+    await loadHistorial();
+  };
 
-// ——————————————————————————
-// 16) Cerrar modal de Historial
-// ——————————————————————————
-function closeHistorialModal() {
-  document.getElementById('hist-backdrop').style.display = 'none';
-  document.getElementById('hist-modal').style.display    = 'none';
-}
+  // ——————————————————————————
+  // 16) Cerrar modal de Historial
+  // ——————————————————————————
+  document.getElementById('hist-close').onclick = () => {
+    document.getElementById('hist-backdrop').style.display = 'none';
+    document.getElementById('hist-modal').style.display    = 'none';
+  };
 
-// ——————————————————————————
-// 17) Cargar & renderizar Historial desde Firestore
-// ——————————————————————————
-async function loadHistorial() {
-  const tbody = document.querySelector('#hist-table tbody');
-  tbody.innerHTML = '';
+  // ——————————————————————————
+  // 17) Cargar & renderizar Historial
+  // ——————————————————————————
+  async function loadHistorial() {
+    const tbody = document.querySelector('#hist-table tbody');
+    tbody.innerHTML = '';
+    const q    = query(collection(db,'historial'), orderBy('ts','desc'));
+    const snap = await getDocs(q);
 
-  // consulta ordenada por timestamp descendente
-  const q    = query(collection(db, 'historial'), orderBy('ts', 'desc'));
-  const snap = await getDocs(q);
+    for (const docH of snap.docs) {
+      const d   = docH.data();
+      const ts  = d.ts?.toDate();
+      const tr  = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${ts ? ts.toLocaleString('es-CL') : ''}</td>
+        <td>${d.usuario   || ''}</td>
+        <td>${d.vueloId   || d.grupoId || ''}</td>
+        <td>${d.tipo      || ''}</td>
+        <td>${d.antes     ? JSON.stringify(d.antes)   : ''}</td>
+        <td>${d.despues   ? JSON.stringify(d.despues) : ''}</td>
+      `;
+      tbody.appendChild(tr);
+    }
 
-  // vuelco cada documento como fila en la tabla
-  for (const docH of snap.docs) {
-    const d     = docH.data();
-    const fecha = d.ts?.toDate?.();
-    const tr    = document.createElement('tr');
-
-    tr.innerHTML = `
-      <td>${fecha ? fecha.toLocaleString('es-CL') : ''}</td>
-      <td>${d.usuario   || ''}</td>
-      <td>${d.vueloId   || d.grupoId || ''}</td>
-      <td>${d.tipo      || ''}</td>
-      <td>${d.antes     ? JSON.stringify(d.antes)   : ''}</td>
-      <td>${d.despues   ? JSON.stringify(d.despues) : ''}</td>
-    `;
-    tbody.appendChild(tr);
+    if (dtHist) dtHist.destroy();
+    dtHist = $('#hist-table').DataTable({
+      language:{ url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
+      order:   [[0,'desc']]
+    });
   }
 
-  // inicializar o recargar DataTable
-  if (dtHist) dtHist.destroy();
-  dtHist = $('#hist-table').DataTable({
-    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    order:    [[0, 'desc']]
-  });
-}
-
-// ——————————————————————————
-// 18) Enlazar listeners de Historial dentro de init()
-// ——————————————————————————
-// (tras renderVuelos() y los bindings de Grupo)
-function init() {
-  // ... tus loadGrupos(), bindUI(), initModal(), renderVuelos(), etc.
-
-  // Historial:
-  document.getElementById('btnHistorial')
-          .onclick  = showHistorialModal;
-  document.getElementById('hist-close')
-          .onclick  = closeHistorialModal;
-  document.getElementById('hist-refresh')
-          .onclick  = loadHistorial;
-  document.getElementById('hist-start')
-          .onchange  = loadHistorial;
-  document.getElementById('hist-end')
-          .onchange  = loadHistorial;
-}
+  // ——————————————————————————
+  // 18) Recarga manual
+  // ——————————————————————————
+  document.getElementById('hist-refresh').onclick = loadHistorial;
+  document.getElementById('hist-start').onchange  = loadHistorial;
+  document.getElementById('hist-end').onchange    = loadHistorial;
