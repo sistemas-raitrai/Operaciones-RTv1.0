@@ -148,7 +148,7 @@
       <input type="text" id="g-numeroNegocio" disabled/>
 
       <label for="g-nombreGrupo">Nombre Grupo</label>
-      <input type="text" id="g-nombreGrupo"/>
+      <input type="text" id="g-nombreGrupo" disabled/>
 
       <label for="g-empresaBus">Empresa de Bus</label>
       <input type="text" id="g-empresaBus"/>
@@ -172,6 +172,28 @@
         <button type="submit" id="group-save">Guardar</button>
       </div>
     </form>
+  </div>
+
+  <!-- MODAL HISTORIAL INCRUSTADO -->
+  <div id="hist-backdrop" class="modal-backdrop"></div>
+  <div id="hist-modal" class="modal" style="width:90%; max-width:800px;">
+    <div class="actions" style="margin-bottom:1rem; justify-content:flex-end;">
+      <button id="hist-refresh">🔄 Recargar</button>
+      <label>Desde:</label>
+      <input type="date" id="hist-start"/>
+      <label>Hasta:</label>
+      <input type="date" id="hist-end"/>
+      <button id="hist-close">Cerrar</button>
+    </div>
+    <table id="hist-table" class="display" style="width:100%;">
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Usuario</th><th>Vuelo/Grupo</th>
+          <th>Acción</th><th>Antes</th><th>Después</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </div>
 
   <!-- Dependencia Choices.js -->
