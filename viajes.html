@@ -98,6 +98,16 @@
     .short { flex: 1; }
     .medium { flex: 3; }
     .long { flex: 6; }
+
+    /* Une Ida y Vuelta en una sola línea */
+    .dates {
+      margin: 0.5rem 0;
+      font-size: 0.95rem;
+    }
+    .dates .arrow {
+      margin: 0 0.5rem;
+      vertical-align: middle;
+    }
   </style>
 </head>
 <body class="vuelos-page">
@@ -107,7 +117,7 @@
   <main class="main">
     <div class="row">
       <div class="column long">
-        <h2>Detalle de los Vuelos:</h2>
+        <h2>Detalle de Vuelos:</h2>
       </div>
       <div class="column short">
         <button id="btnAddVuelo" class="btn-add">+ Agregar Vuelo</button>
