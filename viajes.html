@@ -144,40 +144,45 @@
     </form>
   </div>
 
-  <!-- 5) Modal Grupo -->
-  <div id="group-backdrop" class="modal-backdrop"></div>
-  <div id="group-modal" class="modal">
-    <h3>Editar Grupo</h3>
-    <form id="group-form">
-      <label for="g-numeroNegocio">N° Negocio</label>
-      <input type="text" id="g-numeroNegocio" disabled/>
+<!-- 5) Modal Grupo -->
+<div id="group-backdrop" class="modal-backdrop"></div>
+<div id="group-modal" class="modal">
+  <h3>Editar Grupo</h3>
+  <form id="group-form">
+    <label for="g-numeroNegocio">N° Negocio</label>
+    <input type="text" id="g-numeroNegocio" disabled/>
 
-      <label for="g-nombreGrupo">Nombre Grupo</label>
-      <input type="text" id="g-nombreGrupo" disabled/>
+    <label for="g-nombreGrupo">Nombre Grupo</label>
+    <input type="text" id="g-nombreGrupo" disabled/>
 
-      <label for="g-empresaBus">Empresa de Bus</label>
-      <input type="text" id="g-empresaBus"/>
+    <label for="g-empresaBus">Empresa de Bus</label>
+    <input type="text" id="g-empresaBus"/>
 
-      <div class="row">
-        <div class="column short">
-          <label for="g-adultos">Adultos</label>
-          <input type="number" id="g-adultos" min="0"/>
-        </div>
-        <div class="column short">
-          <label for="g-estudiantes">Estudiantes</label>
-          <input type="number" id="g-estudiantes" min="0"/>
-        </div>
+    <div class="row">
+      <div class="column short">
+        <label for="g-adultos">Adultos</label>
+        <input type="number" id="g-adultos" min="0"/>
       </div>
-
-      <label for="g-nombresCoordinadores">Nombres Coordinadores</label>
-      <textarea id="g-nombresCoordinadores" rows="2"
-                placeholder="Nombre1, Nombre2…"></textarea>
-
-      <div class="actions">
-        <button type="button" id="group-cancel">Cancelar</button>
-        <button type="submit" id="group-save">Guardar</button>
+      <div class="column short">
+        <label for="g-estudiantes">Estudiantes</label>
+        <input type="number" id="g-estudiantes" min="0"/>
       </div>
-    </form>
+      <div class="column short">
+        <label for="g-cantCoordinadores">Cantidad Coordinadores</label>
+        <input type="number" id="g-cantCoordinadores" min="1" value="1"/>
+      </div>
+    </div>
+
+    <label for="g-nombresCoordinadores">Nombres Coordinadores</label>
+    <textarea id="g-nombresCoordinadores" rows="2"
+              placeholder="Nombre1, Nombre2…"></textarea>
+
+    <div class="actions">
+      <button type="button" id="group-cancel">Cancelar</button>
+      <button type="submit" id="group-save">Guardar</button>
+    </div>
+  </form>
+</div>
   </div>
 
   <!-- 6) Modal Historial -->
