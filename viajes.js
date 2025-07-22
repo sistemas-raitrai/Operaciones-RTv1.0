@@ -56,59 +56,77 @@ function initModal() {
   );
 }
 
-// 5) Render de tarjetas
+// 5) Render de tarjetas (reemplaza por esto)
 async function renderVuelos() {
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
   const snap = await getDocs(collection(db,'vuelos'));
-  vuelos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  vuelos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
   vuelos.forEach(v => {
     const card = document.createElement('div');
     card.className = 'flight-card';
 
+    // formateo de fecha
     const fmt = d => {
       const D = new Date(d);
       return D.toLocaleDateString('es-CL',{
         weekday:'long', day:'2-digit',
         month:'long', year:'numeric'
-      }).replace(/(^\w)/,m=>m.toUpperCase());
+      }).replace(/(^\w)/, m => m.toUpperCase());
     };
 
-    let adultos=0, estudi=0;
-    const items = (v.grupos||[]).map((gObj,idx)=>{
-      const g = grupos.find(x=>x.id===gObj.id)||{};
-      const a=g.adultos||0, e=g.estudiantes||0;
-      adultos+=a; estudi+=e;
+    // construyo las filas de grupos
+    let adultos = 0, estudi = 0;
+    const gruposHtml = (v.grupos || []).map((gObj, idx) => {
+      const g = grupos.find(x => x.id === gObj.id) || {};
+      const a = g.adultos || 0, e = g.estudiantes || 0;
+      adultos += a; estudi += e;
       return `
         <div class="group-item">
           <div class="group-info">
-            • <strong>${g.numeroNegocio} – ${g.nombreGrupo}</strong> (A:${a} E:${e})
+            • <strong>${g.numeroNegocio} – ${g.nombreGrupo}</strong>
+            (A:${a} E:${e})
             <span class="status">
-              ${gObj.status==='pendiente'?'🕗 Pendiente':'✅ Confirmado'}
+              ${gObj.status === 'pendiente' ? '🕗 Pendiente' : '✅ Confirmado'}
             </span>
           </div>
           <div>
-            <button class="btn-small" onclick="toggleGroupStatus('${v.id}',${idx})">🔄</button>
-            <button class="btn-small" onclick="removeGroup('${v.id}',${idx})">🗑️</button>
+            <button class="btn-small"
+                    onclick="toggleGroupStatus('${v.id}', ${idx})">
+              🔄
+            </button>
+            <button class="btn-small"
+                    onclick="removeGroup('${v.id}', ${idx})">
+              🗑️
+            </button>
           </div>
         </div>`;
     }).join('');
 
+    // monto el innerHTML sin JSON.stringify
     card.innerHTML = `
       <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
       <p>Ida: ${fmt(v.fechaIda)}</p>
       <p>Vuelta: ${fmt(v.fechaVuelta)}</p>
-      <div>${items||'<p>— Sin grupos —</p>'}</div>
-      <p><strong>Total Pax:</strong> ${adultos+estudi} (A:${adultos} E:${estudi})</p>
+      <div>${gruposHtml || '<p>— Sin grupos —</p>'}</div>
+      <p><strong>Total Pax:</strong> ${adultos + estudi}
+         (A:${adultos} E:${estudi})</p>
       <div class="actions">
-        <button onclick="openModal(${JSON.stringify(v)})" class="btn-add">✏️ Editar</button>
-        <button onclick="deleteVuelo('${v.id}')" class="btn-add">🗑️ Eliminar</button>
+        <button class="btn-add btn-edit">✏️ Editar</button>
+        <button class="btn-add btn-del">🗑️ Eliminar</button>
       </div>`;
 
     cont.appendChild(card);
+
+    // ahora ata los eventos en JS
+    card.querySelector('.btn-edit')
+        .addEventListener('click', () => openModal(v));
+    card.querySelector('.btn-del')
+        .addEventListener('click', () => deleteVuelo(v.id));
   });
 }
+
 
 // 6) Abre modal
 function openModal(v=null) {
