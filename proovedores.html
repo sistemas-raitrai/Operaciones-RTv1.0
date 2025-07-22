@@ -8,13 +8,14 @@
 <body>
   <div id="encabezado"></div>
   <h2 style="margin-top: 2rem;">📋 Detalle de Actividades</h2>
+
   <table id="tabla">
     <thead>
       <tr>
         <th>Destino</th>
-        <th>N°</th>
+        <th>N° Identificatorio</th>
         <th>Actividad</th>
-        <th>Servicios</th>
+        <th>Servicio</th>
         <th>Tipo de Servicio</th>
         <th>Ciudad</th>
         <th>Restricciones</th>
@@ -31,6 +32,7 @@
     </thead>
     <tbody id="contenido"></tbody>
   </table>
+
   <div style="margin-top: 1rem;">
     <button onclick="agregarFila()">➕ Nueva fila</button>
     <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
@@ -40,141 +42,172 @@
   <script type="module">
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-    import {
-      collection,
-      getDocs,
-      doc,
-      setDoc,
-      deleteDoc
-    } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+    import { collection, getDocs, doc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+    // Asegura sesión
     onAuthStateChanged(auth, user => {
       if (!user) window.location.href = 'login.html';
     });
 
+    // Opciones para selects
     const opciones = {
-      destino: ['BRASIL','SUR DE CHILE','BARILOCHE','NORTE DE CHILE','OTRO'],
-      servicios: ['DIARIO','GENERAL','OTRO'],
+      destino:      ['BRASIL','SUR DE CHILE','BARILOCHE','NORTE DE CHILE','OTRO'],
+      servicios:    ['DIARIO','GENERAL','OTRO'],
       tipoServicio: ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENCIÓN','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
-      formaPago: ['EFECTIVO','CTA CORRIENTE','OTRO'],
-      tipoCobro: ['POR PERSONA','POR GRUPO','OTRO'],
-      moneda: ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
+      formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
+      tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
+      moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
     };
 
     const tabla = document.getElementById('contenido');
     const filas = [];
-    const campos = ['destino','numero','actividad','servicios','tipoServicio','ciudad','restricciones','proveedor','contacto','correo','tipoCobro','moneda','valorServicio','formaPago'];
+    const campos = [
+      'destino','numero','actividad','servicios','tipoServicio',
+      'ciudad','restricciones','proveedor','contacto','correo',
+      'tipoCobro','moneda','valorServicio','formaPago'
+    ];
 
-    function agregarFila(dato = {}, docMeta = {}) {
+    // Crea una fila: si 'dato' viene vacío, es una nueva
+    function agregarFila(dato = {}) {
       const fila = document.createElement('tr');
-      const inputsRef = [];
-      campos.forEach(campo => {
+      const inputs = [];
+
+      campos.forEach(c => {
         const td = document.createElement('td');
         let input;
-        if (opciones[campo]) {
+        if (opciones[c]) {
           input = document.createElement('select');
-          opciones[campo].forEach(opt => {
-            const o = document.createElement('option'); o.value = opt; o.textContent = opt;
+          opciones[c].forEach(opt => {
+            const o = document.createElement('option');
+            o.value = opt; o.textContent = opt;
             input.appendChild(o);
           });
-          input.value = dato[campo] || '';
+          input.value = dato[c] || '';
         } else {
           input = document.createElement('input');
-          input.value = dato[campo] || '';
-          if (campo !== 'valorServicio') input.addEventListener('input',()=>input.value=input.value.toUpperCase());
+          input.value = dato[c] || '';
+          if (c !== 'valorServicio') {
+            input.addEventListener('input', () => input.value = input.value.toUpperCase());
+          }
         }
-        input.dataset.campo = campo;
-        inputsRef.push(input);
+        input.dataset.campo = c;
+        inputs.push(input);
         td.appendChild(input);
         fila.appendChild(td);
       });
-      // Guardar
+
+      // Botón Guardar
       const tdG = document.createElement('td');
-      const btnG = document.createElement('button'); btnG.textContent='💾';
-      btnG.onclick = async () => { await guardarFila(inputsRef); alert('Guardado ✅'); };
-      tdG.appendChild(btnG); fila.appendChild(tdG);
-      // Eliminar
+      const btnG = document.createElement('button');
+      btnG.textContent = '💾';
+      btnG.onclick = async () => {
+        await guardarFila(inputs);
+        alert('Guardado ✅');
+      };
+      tdG.appendChild(btnG);
+      fila.appendChild(tdG);
+
+      // Botón Eliminar
       const tdE = document.createElement('td');
-      const btnE = document.createElement('button'); btnE.textContent='🗑️';
-      btnE.onclick = async () => { await eliminarFila(inputsRef); fila.remove(); };
-      tdE.appendChild(btnE); fila.appendChild(tdE);
+      const btnE = document.createElement('button');
+      btnE.textContent = '🗑️';
+      btnE.onclick = async () => {
+        await eliminarFila(inputs);
+        fila.remove();
+      };
+      tdE.appendChild(btnE);
+      fila.appendChild(tdE);
+
+      // Pegado por celda
+      fila.addEventListener('paste', e => {
+        e.preventDefault();
+        const vals = e.clipboardData.getData('text/plain').split('\t');
+        vals.forEach((v, i) => {
+          if (inputs[i]) inputs[i].value = v.trim().toUpperCase();
+        });
+      });
 
       tabla.appendChild(fila);
-      filas.push({ inputs: inputsRef });
+      filas.push(inputs);
     }
 
-    async function guardarFila(inputsRef) {
+    // Guarda una sola fila en Actividades/{destino}/Detalles/{actividad}
+    async function guardarFila(inputs) {
       const data = {};
-      inputsRef.forEach(input => {
-        const key = input.dataset.campo;
-        const val = input.value.trim();
-        data[key] = (key === 'valorServicio') ? Number(val) || 0 : val.toUpperCase();
-      });
-      const destino = data.destino;
-      const actividad = data.actividad;
+      inputs.forEach(i => data[i.dataset.campo] =
+        i.dataset.campo === 'valorServicio'
+          ? Number(i.value) || 0
+          : i.value.trim().toUpperCase()
+      );
+      const { destino, actividad } = data;
       if (!destino || !actividad) {
-        alert('Debes completar Destino y Actividad antes de guardar.');
+        alert('Completa Destino y Actividad antes de guardar.');
         return;
       }
-      // Referencia a la subcolección Actividades/{destino}/Detalles
-      const detallesCol = collection(db, 'Actividades', destino, 'Detalles');
-      // Documento con ID igual a la actividad
-      const docRef = doc(detallesCol, actividad);
-      await setDoc(docRef, data);
+      const col = collection(db, 'Actividades', destino, 'Detalles');
+      const ref = doc(col, actividad);
+      await setDoc(ref, data);
     }
 
-    async function eliminarFila(inputsRef) {
-      const destino = inputsRef.find(i => i.dataset.campo === 'destino').value;
-      const actividad = inputsRef.find(i => i.dataset.campo === 'actividad').value;
+    // Elimina documento correspondiente
+    async function eliminarFila(inputs) {
+      const destino  = inputs.find(i => i.dataset.campo==='destino').value;
+      const actividad= inputs.find(i => i.dataset.campo==='actividad').value;
       if (!destino || !actividad) {
-        alert('Debes completar Destino y Actividad para eliminar.');
+        alert('Completa Destino y Actividad antes de eliminar.');
         return;
       }
-      // Referencia al documento a eliminar en la subcolección
-      const docRef = doc(db, 'Actividades', destino, 'Detalles', actividad);
-      await deleteDoc(docRef);
+      const ref = doc(db, 'Actividades', destino, 'Detalles', actividad);
+      await deleteDoc(ref);
     }
 
-      // Referencia al documento a eliminar
-      const docRef = doc(db, 'Actividades', destino, 'Detalles', actividad);
-      await deleteDoc(docRef);
-    }
-    async function eliminarFila(inputsRef) {
-      const dest = inputsRef.find(i=>i.dataset.campo==='destino').value;
-      const act  = inputsRef.find(i=>i.dataset.campo==='actividad').value;
-      await deleteDoc(doc(db,'Actividades',dest,'Detalles',act));
+    // Agrega N filas vacías
+    function agregarVariasFilas(n) {
+      for (let i=0; i<n; i++) agregarFila();
     }
 
-    function agregarVariasFilas(n){ for(let i=0;i<n;i++) agregarFila(); }
-    async function guardarTodo(){ for(const f of filas) await guardarFila(f.inputs); alert('Todos guardados ✅'); }
+    // Guarda todas las filas en un solo clic
+    async function guardarTodo() {
+      for (const inputs of filas) {
+        await guardarFila(inputs);
+      }
+      alert('Todos los registros guardados ✅');
+    }
 
-    async function cargarRegistros(){
-      const actSnap = await getDocs(collection(db,'Actividades'));
-      for(const docD of actSnap.docs){
-        const destino = docD.id;
+    // Carga inicial: recorre Actividades y subcolección Detalles
+    async function cargarRegistros() {
+      const destSnap = await getDocs(collection(db,'Actividades'));
+      for (const d of destSnap.docs) {
+        const destino = d.id;
         const detSnap = await getDocs(collection(db,'Actividades',destino,'Detalles'));
-        detSnap.forEach(d=>agregarFila({ destino, ...d.data() }));
+        detSnap.forEach(docSnap => {
+          agregarFila({ destino, ...docSnap.data() });
+        });
       }
     }
 
-    cargarRegistros();
-
-    // Pegado múltiple
-    tabla.addEventListener('paste', e=>{
+    // Soporte pegado múltiple en <tbody>
+    tabla.addEventListener('paste', e => {
       e.preventDefault();
-      e.clipboardData.getData('text/plain').trim().split(/\r?\n/).forEach(line=>{
-        if(!line) return;
-        const vals = line.split('\t');
-        const d={}; campos.forEach((c,i)=>d[c]=vals[i]?vals[i].trim(): '');
-        agregarFila(d);
+      const lineas = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
+      lineas.forEach(l => {
+        const vals = l.split('\t');
+        const dato = {};
+        campos.forEach((c,i) => dato[c] = vals[i] ? vals[i].trim() : '');
+        agregarFila(dato);
       });
     });
 
-    window.agregarFila=agregarFila;
-    window.agregarVariasFilas=agregarVariasFilas;
-    window.guardarTodo=guardarTodo;
+    // Exponer API al global (para los onclick)
+    window.agregarFila = agregarFila;
+    window.agregarVariasFilas = agregarVariasFilas;
+    window.guardarTodo = guardarTodo;
 
-    fetch('encabezado.html').then(r=>r.text()).then(html=>{document.getElementById('encabezado').innerHTML=html;});
+    // Inicia carga de datos y encabezado
+    cargarRegistros();
+    fetch('encabezado.html')
+      .then(r => r.text())
+      .then(html => document.getElementById('encabezado').innerHTML = html);
   </script>
 </body>
 </html>
