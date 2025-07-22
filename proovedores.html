@@ -229,6 +229,7 @@
 cargarRegistros();
 
 // ====================================================
+// ====================================================
 // Soporte para pegado de múltiples filas de una vez:
 const campos = [
   "destino","numero","actividad","servicios","tipoServicio",
@@ -237,11 +238,13 @@ const campos = [
 ];
 // Escucha pegado en todo el <tbody>
 tabla.addEventListener("paste", e => {
+  e.preventDefault();
   const texto = e.clipboardData.getData("text/plain").trim();
   const lineas = texto.split(/
 ?
 /);
   lineas.forEach(linea => {
+    if (!linea) return;
     const valores = linea.split("	");
     const dato = {};
     campos.forEach((campo, i) => {
@@ -249,7 +252,6 @@ tabla.addEventListener("paste", e => {
     });
     agregarFila(dato, null);
   });
-  e.preventDefault();
 });
 // ====================================================
 
