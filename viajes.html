@@ -109,6 +109,11 @@
     .short { flex: 1; }
     .medium { flex: 3; }
     .long { flex: 6; }
+
+    /* Modal de grupo */
+    #group-backdrop { /* mismo estilo que el otro */ }
+    #group-modal { /* mismo estilo que .modal pero ancho menor */ }
+
   </style>
 </head>
 <body class="vuelos-page">
@@ -173,6 +178,36 @@
       </div>
     </form>
   </div>
+
+  <!-- Modal para editar datos de un grupo -->
+  <div id="group-backdrop" class="modal-backdrop" style="display:none;"></div>
+  <div id="group-modal" class="modal" style="display:none; width:80%; max-width:400px;">
+    <h3>Editar Grupo</h3>
+    <form id="group-form">
+      <label for="g-numeroNegocio">N° Negocio</label>
+      <input type="text" id="g-numeroNegocio" disabled />
+
+      <label for="g-nombreGrupo">Nombre Grupo</label>
+      <input type="text" id="g-nombreGrupo" />
+
+      <div class="row">
+        <div class="column short">
+          <label for="g-adultos">Adultos</label>
+          <input type="number" id="g-adultos" min="0" />
+        </div>
+        <div class="column short">
+          <label for="g-estudiantes">Estudiantes</label>
+          <input type="number" id="g-estudiantes" min="0" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="group-cancel">Cancelar</button>
+        <button type="submit" id="group-save">Guardar</button>
+      </div>
+    </form>
+  </div>
+
 
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script type="module">
