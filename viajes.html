@@ -43,6 +43,40 @@
       border-radius: 6px; z-index: 1001;
       max-height: 90%; overflow-y: auto;
     }
+    .group-item {
+  display: grid;
+  grid-template-columns: 
+    4rem   /* N° Negocio */
+    1fr    /* Nombre del grupo */
+    auto   /* Pax totales */
+    auto   /* Estado + botón */
+    auto;  /* Borrar */
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+    }
+    
+    .group-item .num {
+      font-weight: bold;
+    }
+    
+    .group-item .pax {
+      text-align: right;
+    }
+    
+    .group-item .status-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    
+    .group-item .status-cell .btn-small {
+      margin: 0;
+    }
+    
+    .group-item .delete-cell {
+      text-align: center;
+    }
   </style>
 </head>
 <body class="vuelos-page">
