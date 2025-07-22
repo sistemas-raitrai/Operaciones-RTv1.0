@@ -347,37 +347,38 @@ async function onSubmitGroup(evt){
 }
 
 // ————————————————
-// MODAL HISTORIAL INLINE
+// 15) Mostrar modal Historial
 // ————————————————
-
-// 15) Mostrar modal
 function showHistorialModal() {
   document.getElementById('hist-backdrop').style.display = 'block';
   document.getElementById('hist-modal').style.display    = 'block';
   loadHistorial();
 }
 
-// 16) Cerrar modal
+// ————————————————
+// 16) Cerrar modal Historial
+// ————————————————
 function closeHistorialModal() {
   document.getElementById('hist-backdrop').style.display = 'none';
   document.getElementById('hist-modal').style.display    = 'none';
 }
 
-// 17) Cargar datos de historial y montar DataTable
+// ————————————————
+// 17) Cargar & renderizar Historial
+// ————————————————
+import { query, orderBy } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 let dtHist = null;
 async function loadHistorial() {
   const tbody = document.querySelector('#hist-table tbody');
   tbody.innerHTML = '';
-  // Consulta ordenada por timestamp descendente
-  const snap = await getDocs(query(
-    collection(db,'historial'),
-    orderBy('ts','desc')
-  ));
-  for (const docH of snap.docs) {
-    const d = docH.data();
+  const snap = await getDocs(
+    query(collection(db,'historial'), orderBy('ts','desc'))
+  );
+  for (const h of snap.docs) {
+    const d = h.data();
     const fecha = d.ts?.toDate?.();
-    const row = document.createElement('tr');
-    row.innerHTML = `
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
       <td>${fecha?fecha.toLocaleString('es-CL'):''}</td>
       <td>${d.usuario||''}</td>
       <td>${d.vueloId||d.grupoId||''}</td>
@@ -385,18 +386,18 @@ async function loadHistorial() {
       <td>${d.antes?JSON.stringify(d.antes):''}</td>
       <td>${d.despues?JSON.stringify(d.despues):''}</td>
     `;
-    tbody.appendChild(row);
+    tbody.appendChild(tr);
   }
-  // (re)inicia DataTable
   if (dtHist) dtHist.destroy();
   dtHist = $('#hist-table').DataTable({
     language:{ url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    order:[[0,'desc']],
-    // ajusta ancho, scroll, etc. si quieres…
+    order:[[0,'desc']]
   });
 }
 
-// 18) En init(), enlaza los listeners:
+// ————————————————
+// 18) Enlazar listeners de Historial al iniciar
+// ————————————————
 document.getElementById('btnHistorial').onclick = showHistorialModal;
 document.getElementById('hist-close').onclick   = closeHistorialModal;
 document.getElementById('hist-refresh').onclick = loadHistorial;
