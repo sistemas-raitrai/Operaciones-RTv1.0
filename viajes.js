@@ -121,8 +121,11 @@ async function renderVuelos() {
     // Montamos el contenido de la tarjeta
     card.innerHTML = `
       <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
-      <p>Ida: ${fmt(v.fechaIda)}</p>
-      <p>Vuelta: ${fmt(v.fechaVuelta)}</p>
+      <p class="dates">
+        Ida: ${fmt(v.fechaIda)}
+        <span class="arrow">↔️</span>
+        Vuelta: ${fmt(v.fechaVuelta)}
+      </p>
       <div>${gruposHtml || '<p>— Sin grupos —</p>'}</div>
       <!-- Total general y total confirmados -->
       <p>
