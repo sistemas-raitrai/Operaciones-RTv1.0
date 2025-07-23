@@ -6,29 +6,77 @@
   <!-- Tu hoja de estilos general -->
   <link rel="stylesheet" href="estilos.css">
   <style>
-    /* ————— Estructura y tablas ————— */
+    /* ————— Layout del header con botón de Proveedores ————— */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      margin-bottom: 1rem;
+    }
+    header h2 {
+      margin: 0;
+    }
+    header button {
+      background: #0055A4;
+      color: white;
+      border: none;
+      padding: .5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* ————— Estructura de las secciones y tablas ————— */
     .section { margin-bottom: 3rem; }
-    .section h3 { margin-top: 1rem; }
-    .section table { width: 100%; border-collapse: collapse; }
-    .section th, .section td {
+    .section h3 { margin: .5rem 0; }
+    .section table {
+      display: grid;
+      grid-template-columns:
+        1fr   /* # */
+        4fr   /* Servicio */
+        3fr   /* Tipo Servicio */
+        3fr   /* Categoría */
+        2fr   /* Ciudad */
+        5fr   /* Restricciones */
+        3fr   /* Proveedor */
+        2fr   /* Tipo Cobro */
+        1fr   /* Moneda */
+        2fr   /* Valor Servicio */
+        2fr   /* Forma de Pago */
+        auto auto; /* Guardar / Eliminar */
+      width: 100%;
+      border-collapse: collapse;
+    }
+    /* Necesario para que thead/tbody hereden el grid */
+    .section thead,
+    .section tbody {
+      display: contents;
+    }
+    .section th,
+    .section td {
       border: 1px solid #ccc;
       padding: 4px;
       box-sizing: border-box;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
     }
+
+    /* ————— Inputs y selects ————— */
     select, input {
       width: 100%;
       box-sizing: border-box;
-      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
     }
-    /* Tooltip nativo al hacer hover */
-    .section td input:hover,
-    .section td select:hover {
+    /* Solo los inputs muestran tooltip al hacer hover */
+    .section td input:hover {
       overflow: visible;
+      white-space: normal;
     }
 
-    /* ————— Botones de control ————— */
+    /* ————— Botones de control internos ————— */
     .controls { margin: .5rem 0; }
     .controls button { margin-right: .5rem; }
 
@@ -50,12 +98,11 @@
       position: relative;
     }
     #modal .close {
-      position: absolute;
-      top: 8px; right: 8px;
+      position: absolute; top: 8px; right: 8px;
       cursor: pointer;
     }
 
-    /* ————— Floating editor ————— */
+    /* ————— Editor flotante para inputs de texto ————— */
     .floating-editor {
       position: absolute;
       z-index: 1000;
@@ -67,13 +114,17 @@
   </style>
 </head>
 <body>
-  <div id="encabezado"></div>
-  <h2>📋 Listado de Servicios</h2>
 
-  <!-- Botón modal proveedores -->
-  <button style="position:absolute; top:1rem; right:1rem;" onclick="openModal()">
-    🛠️ Administrar Proveedores
-  </button>
+  <!-- Encabezado dinámico externo -->
+  <div id="encabezado"></div>
+
+  <!-- Header con título y botón de Proveedores -->
+  <header>
+    <h2>📋 Listado de Servicios</h2>
+    <button onclick="openModal()">🛠️ Administrar Proveedores</button>
+  </header>
+
+  <!-- Modal embebido para proveedores -->
   <div id="modal">
     <div class="content">
       <span class="close" onclick="closeModal()">✖️</span>
@@ -81,20 +132,24 @@
     </div>
   </div>
 
+  <!-- Contenedor donde se montarán las 5 secciones por destino -->
   <div id="secciones"></div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
-    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+    import { onAuthStateChanged }
+      from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
       collection, getDocs, query, orderBy,
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // Sesión
-    onAuthStateChanged(auth, u => { if (!u) window.location.href = 'login.html'; });
+    // ——— Sesión ———
+    onAuthStateChanged(auth, user => {
+      if (!user) window.location.href = 'login.html';
+    });
 
-    // Valores fijos
+    // ——— Datos estáticos ———
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -102,19 +157,22 @@
       tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
       moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
     };
+    // Campos (ya sin "numero")
     const campos = [
       'servicio','tipoServicio','categoria',
       'ciudad','restricciones','proveedor','tipoCobro',
       'moneda','valorServicio','formaPago'
     ];
+    // Destinos fijos + "OTRO" para sección final
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
+
     const container = document.getElementById('secciones');
 
-    // Modal
+    // ——— Funciones modal ———
     function openModal(){ document.getElementById('modal').style.display = 'flex'; }
     function closeModal(){ document.getElementById('modal').style.display = 'none'; }
 
-    // Floating editor
+    // ——— Editor flotante para inputs ———
     let floating;
     function showFloatingEditor(input) {
       if (floating) floating.remove();
@@ -136,7 +194,7 @@
       floating.focus();
     }
 
-    // Crea la sección por destino
+    // ——— Crea una sección para un destino fijo (o null="OTRO") ———
     function crearSeccion(destFijo) {
       const isOtro = destFijo === null;
       let destActivo = destFijo;
@@ -144,28 +202,32 @@
       sec.className = 'section';
       sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
 
-      // Construye la tabla
+      // — Tabla y cabecera —
       const tbl = document.createElement('table');
       const thead = document.createElement('thead');
       const hr = document.createElement('tr');
-      // Columna #
       hr.appendChild(Object.assign(document.createElement('th'),{ textContent: '#' }));
       if (isOtro) {
         hr.appendChild(Object.assign(document.createElement('th'),{ textContent: 'Destino' }));
       }
-      ['Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar']
-        .forEach(t => {
-          const th = document.createElement('th');
-          th.textContent = t;
-          hr.appendChild(th);
-        });
+      [
+        'Servicio','Tipo Servicio','Categoría','Ciudad',
+        'Restricciones','Proveedor','Tipo Cobro','Moneda',
+        'Valor Servicio','Forma de Pago','Guardar','Eliminar'
+      ].forEach(t => {
+        const th = document.createElement('th');
+        th.textContent = t;
+        hr.appendChild(th);
+      });
       thead.appendChild(hr);
       tbl.appendChild(thead);
+
+      // Cuerpo
       const tbody = document.createElement('tbody');
       tbl.appendChild(tbody);
       sec.appendChild(tbl);
 
-      // Controles
+      // — Controles (añadir fila, 10 filas, guardar todo) —
       const ctrl = document.createElement('div');
       ctrl.className = 'controls';
       ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
@@ -181,9 +243,10 @@
         });
       sec.appendChild(ctrl);
 
+      // Array interno de filas
       const filasArr = [];
 
-      // Actualiza numeración
+      // — Numera cada fila según su posición —
       function updateNums() {
         tbody.querySelectorAll('tr').forEach((tr,i) => {
           let td = tr.querySelector('td.rownum');
@@ -196,7 +259,7 @@
         });
       }
 
-      // Carga proveedores para esa fila
+      // — Carga select de proveedores desde Firestore para un <tr> dado —
       async function loadProv(tr) {
         const sel = tr.querySelector('[data-campo=proveedor]');
         sel.innerHTML = '<option value="">—</option>';
@@ -207,15 +270,15 @@
         snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
       }
 
-      // Añade una fila
+      // — Añade una nueva fila (vacía o con prefill+ref) —
       function add(prefill = {}, ref = null) {
         const tr = document.createElement('tr');
         const inputs = [];
 
-        // #
+        // Columna número
         tr.appendChild(Object.assign(document.createElement('td'),{ className: 'rownum' }));
 
-        // OTRO: destino editable
+        // Si es OTRO, incluimos input destino editable
         if (isOtro) {
           const td = document.createElement('td');
           const inp = document.createElement('input');
@@ -228,29 +291,33 @@
           inputs.push(inp);
         }
 
-        // Columnas dinámicas
+        // Columnas dinámicas según campos[]
         campos.forEach(c => {
           const td = document.createElement('td');
           let inp;
+
+          // Select de proveedores
           if (c === 'proveedor') {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             inp.innerHTML = '<option value="">—</option>';
           }
+          // Los dropdowns de opciones
           else if (opciones[c]) {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             if (c==='categoria'||c==='formaPago') inp.multiple = true;
-            opciones[c].forEach(opt => inp.appendChild(new Option(opt,opt)));
+            opciones[c].forEach(o=>inp.appendChild(new Option(o,o)));
             // Prefill
             if (prefill[c]) {
-              const arr = Array.isArray(prefill[c]) ? prefill[c] : [prefill[c]];
-              arr.forEach(v => {
-                const o = Array.from(inp.options).find(o=>o.value===v);
-                if (o) o.selected = true;
+              const arr = Array.isArray(prefill[c])? prefill[c] : [prefill[c]];
+              arr.forEach(v=>{
+                const opt = Array.from(inp.options).find(o=>o.value===v);
+                if (opt) opt.selected = true;
               });
             }
           }
+          // Inputs de texto
           else {
             inp = document.createElement('input');
             inp.value = prefill[c]||'';
@@ -258,56 +325,60 @@
               inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
             }
             inp.dataset.campo = c;
-            // Floating
+            // Editor flotante
             inp.addEventListener('focus', ()=> showFloatingEditor(inp));
             inp.title = inp.value;
           }
+
           td.appendChild(inp);
           tr.appendChild(td);
           inputs.push(inp);
         });
 
-        // Si no es OTRO, carga proveedores
+        // Si no es OTRO, cargamos proveedores
         if (!isOtro) {
           destActivo = destFijo;
-          setTimeout(()=> loadProv(tr),0);
+          setTimeout(()=> loadProv(tr), 0);
         }
 
-        // Guardar individual
+        // — Botón Guardar fila individual —
         const tdG = document.createElement('td');
         const btnG = document.createElement('button');
         btnG.textContent = '💾';
         btnG.onclick = async () => {
           try { await save(inputs); alert('✅'); }
-          catch(e){ alert('⚠️ '+e.message); }
+          catch(e){ alert('⚠️ '+ e.message); }
         };
         tdG.appendChild(btnG);
         tr.appendChild(tdG);
 
-        // Eliminar
+        // — Botón Eliminar fila —
         const tdD = document.createElement('td');
         const btnD = document.createElement('button');
         btnD.textContent = '🗑️';
         btnD.onclick = async () => {
           if (ref) { await deleteDoc(ref); alert('✅'); }
-          tr.remove(); updateNums();
+          tr.remove();
+          updateNums();
         };
         tdD.appendChild(btnD);
         tr.appendChild(tdD);
 
-        // Pegado
+        // Pegado tab-a-tab
         tr.addEventListener('paste', e => {
           e.preventDefault();
           const vs = e.clipboardData.getData('text/plain').split('\t');
-          inputs.forEach((inp,i)=>{ if (vs[i]!=null) inp.value = vs[i].trim().toUpperCase(); });
+          inputs.forEach((inp,i)=>{
+            if (vs[i] != null) inp.value = vs[i].trim().toUpperCase();
+          });
         });
 
         tbody.appendChild(tr);
-        filasArr.push({inputs,ref});
+        filasArr.push({ inputs, ref });
         updateNums();
       }
 
-      // Guarda fila
+      // — Guarda una sola fila en Firestore —
       async function save(inputs) {
         const data = {};
         inputs.forEach(i => {
@@ -320,15 +391,15 @@
         if (!data.servicio) throw new Error('Falta Servicio');
         if (!data.proveedor)throw new Error('Falta Proveedor');
 
-        // Aseguramos doc padre
-        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        // Aseguramos doc padre sin borrar subcolecciones
+        await setDoc(doc(db,'Servicios',destino),{ _created:true },{ merge:true });
         // Subcolección Listado
         const col = collection(db,'Servicios',destino,'Listado');
-        const dr  = doc(col,data.servicio);
-        await setDoc(dr,data);
+        const dr  = doc(col, data.servicio);
+        await setDoc(dr, data);
       }
 
-      // Guarda todo
+      // — Guarda todas las filas de la sección —
       async function saveAll() {
         for (const f of filasArr) {
           await save(f.inputs);
@@ -336,12 +407,12 @@
         alert('✅ Todos guardados');
       }
 
-      // Carga inicial
+      // — Carga inicial desde Firestore para secciones fijas —
       if (!isOtro) {
         (async()=>{
           const col = collection(db,'Servicios',destFijo,'Listado');
           const snap = await getDocs(col);
-          snap.forEach(d => {
+          snap.forEach(d=>{
             const o = d.data();
             o.servicio = d.id;
             add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
@@ -352,13 +423,14 @@
       return sec;
     }
 
-    // Montar todas las secciones
-    destinos.forEach(d=> container.appendChild(crearSeccion(d)));
+    // — Montar todas las secciones —
+    destinos.forEach(d => container.appendChild(crearSeccion(d)));
 
-    // Header externo
+    // — Cargar header externo —
     fetch('encabezado.html')
       .then(r=>r.text())
       .then(html=>document.getElementById('encabezado').innerHTML = html);
+
   </script>
 </body>
 </html>
