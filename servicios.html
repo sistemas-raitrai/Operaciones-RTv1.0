@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Servicios Rai Trai</title>
-  <link rel="stylesheet" href="estilos.css">
+  <!-- Tu hoja de estilos general -->
+  <link rel="stylesheet" href="estilos.css" />
   <style>
-    /* ——— Header y botón Proveedores ——— */
+    /* ——— Layout del header con botón de Proveedores ——— */
     header {
       display: flex;
       justify-content: space-between;
@@ -15,32 +17,26 @@
     header h2 { margin: 0; }
     header button {
       background: #0055A4;
-      color: white;
+      color: #fff;
       border: none;
       padding: .5rem 1rem;
       border-radius: 4px;
       cursor: pointer;
     }
 
-    /* ——— Contenedor de sección con scroll horizontal ——— */
-    .section {
-      margin-bottom: 2rem;
-    }
-    .section h3 {
-      margin: .5rem 0;
-    }
-    .table-wrapper {
-      overflow-x: auto;
-    }
+    /* ——— Sección con scroll horizontal ——— */
+    .section { margin-bottom: 2rem; }
+    .section h3 { margin: .5rem 0; }
+    .table-wrapper { overflow-x: auto; }
 
-    /* ——— Tabla estándar con anchos proporcionales ——— */
+    /* ——— Tabla con anchos proporcionales ——— */
     table {
       width: 100%;
       border-collapse: collapse;
       table-layout: fixed;
     }
     thead th {
-      background: #f5f5f5;
+      background: #f9f9f9;
       position: sticky;
       top: 0;
       z-index: 1;
@@ -52,62 +48,82 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    /* Definimos anchos relativos */
-    th:nth-child(1), td:nth-child(1)   { width: 5%;  }  /* # */
-    th:nth-child(2), td:nth-child(2)   { width: 20%; }  /* Servicio */
-    th:nth-child(3), td:nth-child(3)   { width: 12%; }  /* Tipo Servicio */
-    th:nth-child(4), td:nth-child(4)   { width: 12%; }  /* Categoría */
-    th:nth-child(5), td:nth-child(5)   { width: 10%; }  /* Ciudad */
-    th:nth-child(6), td:nth-child(6)   { width: 20%; }  /* Restricciones */
-    th:nth-child(7), td:nth-child(7)   { width: 12%; }  /* Proveedor */
-    th:nth-child(8), td:nth-child(8)   { width: 10%; }  /* Tipo Cobro */
-    th:nth-child(9), td:nth-child(9)   { width: 8%;  }  /* Moneda */
-    th:nth-child(10), td:nth-child(10) { width: 10%; }  /* Valor Servicio */
-    th:nth-child(11), td:nth-child(11) { width: 10%; }  /* Forma de Pago */
+    /* porcentajes aproximados según tu petición */
+    th:nth-child(1),  td:nth-child(1)  { width: 5%; }
+    th:nth-child(2),  td:nth-child(2)  { width: 20%; }
+    th:nth-child(3),  td:nth-child(3)  { width: 12%; }
+    th:nth-child(4),  td:nth-child(4)  { width: 12%; }
+    th:nth-child(5),  td:nth-child(5)  { width: 10%; }
+    th:nth-child(6),  td:nth-child(6)  { width: 20%; }
+    th:nth-child(7),  td:nth-child(7)  { width: 12%; }
+    th:nth-child(8),  td:nth-child(8)  { width: 10%; }
+    th:nth-child(9),  td:nth-child(9)  { width: 8%;  }
+    th:nth-child(10), td:nth-child(10) { width: 10%; }
+    th:nth-child(11), td:nth-child(11) { width: 10%; }
     th:nth-child(12), td:nth-child(12),
-    th:nth-child(13), td:nth-child(13) { width: auto; } /* Guardar / Eliminar */
+    th:nth-child(13), td:nth-child(13) { width: auto; }
 
     /* ——— Inputs y selects ——— */
     input, select {
       width: 100%;
       box-sizing: border-box;
     }
-    /* Tooltip en inputs al pasar el cursor */
     td input:hover {
       overflow: visible;
       white-space: normal;
     }
 
-    /* ——— Botones internos ——— */
+    /* ——— Botones de control internos ——— */
     .controls { margin: .5rem 0; }
     .controls button { margin-right: .5rem; }
 
-    /* ——— Modal Proveedores ——— */
-    #modal {
+    /* ——— Modal Proveedores (backdrop + cuadro) ——— */
+    #backdrop-prov {
       display: none;
       position: fixed;
-      top: 0; left: 0;
+      top:0; left:0;
       width:100%; height:100%;
       background: rgba(0,0,0,0.5);
-      align-items: center;
-      justify-content: center;
+      z-index: 100;
     }
-    #modal .content {
-      background: white;
-      padding: 1rem;
-      border-radius: 4px;
+    #modal-prov {
+      display: none;
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
       width: 90%; max-width: 800px;
-      position: relative;
+      background: #fff;
+      border-radius: 4px;
+      z-index: 101;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
     }
-    #modal .close {
-      position: absolute; top:8px; right:8px;
+    #modal-prov .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .5rem 1rem;
+      border-bottom: 1px solid #ddd;
+    }
+    #modal-prov .header h3 {
+      margin:0;
+      font-size: 1.1rem;
+    }
+    #modal-prov .header button {
+      background: transparent;
+      border: none;
+      font-size: 1.2rem;
       cursor: pointer;
     }
+    #modal-prov iframe {
+      width:100%;
+      height:70vh;
+      border:none;
+    }
 
-    /* ——— Editor flotante ——— */
+    /* ——— Floating editor ——— */
     .floating-editor {
       position: absolute;
-      z-index: 1000;
+      z-index: 200;
       width: 300px;
       height: 80px;
       resize: both;
@@ -116,20 +132,29 @@
   </style>
 </head>
 <body>
+
+  <!-- Header común -->
   <div id="encabezado"></div>
+
   <header>
-    <h2>📋 Lista de Servicios</h2>
-    <button onclick="openModal()">🛠️ Administrar Proveedores</button>
+    <h2>📋 Listado de Servicios</h2>
+    <!-- dispara el modal de proveedores -->
+    <button onclick="openProveedores()">🛠️ Administrar Proveedores</button>
   </header>
 
-  <div id="modal">
-    <div class="content">
-      <span class="close" onclick="closeModal()">✖️</span>
-      <iframe src="proveedores.html"
-              style="width:100%;height:80vh;border:none;"></iframe>
+  <!-- Backdrop genérico -->
+  <div id="backdrop-prov" onclick="closeProveedores()"></div>
+
+  <!-- Modal que carga proveedores.html en un iframe -->
+  <div id="modal-prov">
+    <div class="header">
+      <h3>Administrar Proveedores</h3>
+      <button onclick="closeProveedores()">✖️</button>
     </div>
+    <iframe id="iframe-prov" src=""></iframe>
   </div>
 
+  <!-- Aquí montas tus secciones con la tabla -->
   <div id="secciones"></div>
 
   <script type="module">
@@ -146,7 +171,7 @@
       if (!u) window.location.href = 'login.html';
     });
 
-    // — Datos fijos —
+    // — Datos fijos (como antes) —
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -162,12 +187,8 @@
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
     const container = document.getElementById('secciones');
-    const modal     = document.getElementById('modal');
 
-    function openModal()  { modal.style.display = 'flex'; }
-    function closeModal() { modal.style.display = 'none'; }
-
-    // Editor flotante
+    // — Floating editor (igual que tenías) —
     let floating = null;
     function showFloatingEditor(input) {
       if (floating) floating.remove();
@@ -189,32 +210,32 @@
       floating.focus();
     }
 
-    // Genera cada sección
+    // — Generar todas las secciones y tablas (idéntico a tu código) —
     destinos.forEach(d => container.appendChild(crearSeccion(d)));
 
     function crearSeccion(destFijo) {
       const isOtro = destFijo === null;
       let destActivo = destFijo;
-
       const sec = document.createElement('div');
       sec.className = 'section';
       sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
 
-      // Wrapper con scroll
+      // wrapper para scroll
       const wrap = document.createElement('div');
       wrap.className = 'table-wrapper';
 
+      // tabla / thead / tbody...
       const table = document.createElement('table');
       const thead = document.createElement('thead');
       const trh = document.createElement('tr');
 
-      // Encabezados
+      // encabezados
       const headers = ['#'];
       if (isOtro) headers.push('Destino');
       headers.push(
-        'Servicio','Tipo Servicio','Categoría','Ciudad',
-        'Restricciones','Proveedor','Tipo Cobro','Moneda',
-        'Valor Servicio','Forma de Pago','Guardar','Eliminar'
+        'Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones',
+        'Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago',
+        'Guardar','Eliminar'
       );
       headers.forEach(txt => {
         const th = document.createElement('th');
@@ -229,7 +250,7 @@
       wrap.appendChild(table);
       sec.appendChild(wrap);
 
-      // Controles
+      // controles (➕, ➕➕, 💾)
       const ctrl = document.createElement('div');
       ctrl.className = 'controls';
       ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
@@ -237,8 +258,8 @@
           const btn = document.createElement('button');
           btn.textContent = lbl;
           btn.onclick = () => {
-            if (i === 0) addRow();
-            if (i === 1) [...Array(10)].forEach(addRow);
+            if (i === 0) add();
+            if (i === 1) [...Array(10)].forEach(add);
             if (i === 2) saveAll();
           };
           ctrl.appendChild(btn);
@@ -247,68 +268,71 @@
 
       const rows = [];
 
-      function updateNums() {
-        tbody.querySelectorAll('tr').forEach((tr,i) => {
-          const numCell = tr.querySelector('.rownum');
-          if (numCell) numCell.textContent = i+1;
-        });
-      }
-
       async function loadProvs(tr) {
         const sel = tr.querySelector('select[data-campo=proveedor]');
         sel.innerHTML = '<option value="">—</option>';
         if (!destActivo) return;
         const col = collection(db,'Proveedores',destActivo,'Listado');
-        const q   = query(col, orderBy('proveedor','asc'));
-        const snap = await getDocs(q);
+        const q   = query(col,orderBy('proveedor','asc'));
+        const snap= await getDocs(q);
         snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
       }
 
-      function addRow(prefill={}, ref=null) {
+      function updateNums() {
+        tbody.querySelectorAll('tr').forEach((tr,i)=>{
+          const num = tr.querySelector('.rownum');
+          num && (num.textContent = i+1);
+        });
+      }
+
+      function add(prefill={}, ref=null) {
         const tr = document.createElement('tr');
         const inputs = [];
 
-        // Número
+        // columna número
         const tdNum = document.createElement('td');
         tdNum.className = 'rownum';
         tr.appendChild(tdNum);
 
-        // Destino editable en OTRO
+        // destino editable en sección OTRO
         if (isOtro) {
           const td = document.createElement('td');
           const inp = document.createElement('input');
           inp.placeholder = 'Destino';
           inp.value = prefill.destino||'';
           inp.dataset.campo = 'destino';
-          inp.oninput = () => destActivo = inp.value.toUpperCase();
+          inp.oninput = ()=> destActivo = inp.value.toUpperCase();
           td.appendChild(inp);
           tr.appendChild(td);
           inputs.push(inp);
         }
 
-        // Columnas dinámicas
+        // columnas dinámicas
         campos.forEach(c => {
           const td = document.createElement('td');
           let inp;
-
-          if (c === 'proveedor') {
+          // dropdown proveedores
+          if (c==='proveedor') {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             inp.innerHTML = '<option value="">—</option>';
           }
+          // selects fijos
           else if (opciones[c]) {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             if (c==='categoria'||c==='formaPago') inp.multiple = true;
-            opciones[c].forEach(o => inp.appendChild(new Option(o,o)));
+            opciones[c].forEach(o=> inp.appendChild(new Option(o,o)));
+            // prefill
             if (prefill[c]) {
               const arr = Array.isArray(prefill[c])? prefill[c]:[prefill[c]];
               arr.forEach(v=>{
-                const opt = [...inp.options].find(o=>o.value===v);
+                const opt = [...inp.options].find(x=>x.value===v);
                 if (opt) opt.selected = true;
               });
             }
           }
+          // inputs de texto
           else {
             inp = document.createElement('input');
             inp.value = prefill[c]||'';
@@ -324,39 +348,39 @@
           inputs.push(inp);
         });
 
-        // carga proveedores
+        // cargar proveedores
         if (!isOtro) {
           destActivo = destFijo;
-          setTimeout(()=> loadProvs(tr), 0);
+          setTimeout(()=> loadProvs(tr),0);
         }
 
-        // Guardar individual
+        // botón 💾
         const tdG = document.createElement('td');
-        const btG = document.createElement('button');
-        btG.textContent = '💾';
-        btG.onclick = async () => {
+        const bG  = document.createElement('button');
+        bG.textContent = '💾';
+        bG.onclick = async ()=>{
           try { await saveRow(inputs); alert('✅'); }
-          catch (e){ alert('⚠️ '+e.message); }
+          catch(e){ alert('⚠️ '+e.message); }
         };
-        tdG.appendChild(btG);
+        tdG.appendChild(bG);
         tr.appendChild(tdG);
 
-        // Eliminar
+        // botón 🗑️
         const tdD = document.createElement('td');
-        const btD = document.createElement('button');
-        btD.textContent = '🗑️';
-        btD.onclick = async () => {
+        const bD  = document.createElement('button');
+        bD.textContent = '🗑️';
+        bD.onclick = async ()=>{
           if (ref) { await deleteDoc(ref); alert('✅'); }
           tr.remove(); updateNums();
         };
-        tdD.appendChild(btD);
+        tdD.appendChild(bD);
         tr.appendChild(tdD);
 
-        // Pegado tab-a-tab
-        tr.addEventListener('paste', e => {
+        // pegado tab­a­tab
+        tr.addEventListener('paste', e=>{
           e.preventDefault();
           const vs = e.clipboardData.getData('text/plain').split('\t');
-          inputs.forEach((inp,i)=>{
+          inputs.forEach((inp,i)=> {
             if (vs[i]!=null) inp.value = vs[i].trim().toUpperCase();
           });
         });
@@ -373,15 +397,14 @@
             ? [...i.selectedOptions].map(o=>o.value)
             : i.value.trim().toUpperCase();
         });
-        const destino = isOtro? data.destino: destActivo;
+        const destino = isOtro ? data.destino : destActivo;
         if (!destino)      throw new Error('Falta Destino');
         if (!data.servicio) throw new Error('Falta Servicio');
         if (!data.proveedor)throw new Error('Falta Proveedor');
 
         await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
         const col = collection(db,'Servicios',destino,'Listado');
-        const dr  = doc(col,data.servicio);
-        await setDoc(dr,data);
+        await setDoc(doc(col,data.servicio), data);
       }
 
       async function saveAll() {
@@ -394,12 +417,11 @@
       // carga inicial
       if (!isOtro) {
         (async()=>{
-          const col = collection(db,'Servicios',destFijo,'Listado');
+          const col  = collection(db,'Servicios',destFijo,'Listado');
           const snap = await getDocs(query(col,orderBy('servicio','asc')));
           snap.forEach(d=>{
-            const o = d.data();
-            o.servicio = d.id;
-            addRow(o, doc(db,'Servicios',destFijo,'Listado',d.id));
+            const o = d.data(); o.servicio = d.id;
+            add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
           });
         })();
       }
@@ -407,7 +429,19 @@
       return sec;
     }
 
-    // cargamos header externo
+    // — Funciones para modal de Proveedores —
+    function openProveedores() {
+      document.getElementById('iframe-prov').src = 'proveedores.html';
+      document.getElementById('backdrop-prov').style.display = 'block';
+      document.getElementById('modal-prov').style.display     = 'block';
+    }
+    function closeProveedores() {
+      document.getElementById('iframe-prov').src = '';
+      document.getElementById('backdrop-prov').style.display = 'none';
+      document.getElementById('modal-prov').style.display     = 'none';
+    }
+
+    // — Carga encabezado común —
     fetch('encabezado.html')
       .then(r=>r.text())
       .then(html=> document.getElementById('encabezado').innerHTML = html);
