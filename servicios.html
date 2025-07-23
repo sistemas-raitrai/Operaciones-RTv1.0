@@ -160,7 +160,8 @@
       });
       const { destino, servicio } = data;
       if (!destino || !servicio) throw new Error('Completa Destino y Servicio.');
-      const docRef = doc(db, 'Servicios', destino, servicio);
+      // Referencia a documento correcto: colección Servicios/{destino} y doc servicio
+const docRef = doc(collection(db, 'Servicios', destino), servicio);
       await setDoc(docRef, data);
       // Actualizar ref en filas
       const filaMeta = filas.find(f => f.inputs === inputs);
@@ -201,7 +202,14 @@
       for (const d of destSnap.docs) {
         const destino = d.id;
         const servSnap = await getDocs(collection(db, 'Servicios', destino));
-        servSnap.forEach(snap => {
+      // Encabezado de sección para cada destino
+      const headerRow = document.createElement('tr');
+      const th = document.createElement('th');
+      th.colSpan = campos.length + 2; // columnas más botones
+      th.textContent = destino;
+      headerRow.appendChild(th);
+      tabla.appendChild(headerRow);
+      servSnap.forEach(snap => {
           const data = snap.data();
           data.destino = destino;
           data.servicio = snap.id;
