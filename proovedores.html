@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="estilos.css">
   <style>
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 4px; }
+    th, td { border: 1px solid #ccc; padding: 4px; text-align: left; }
     .controls { margin: 1rem 0; }
     .controls button { margin-right: .5rem; }
   </style>
@@ -22,7 +22,7 @@
         <th>Proveedor</th>
         <th>Contacto</th>
         <th>Teléfono</th>
-        <th>Correo electrónico</th>
+        <th>Correo</th>
         <th>Guardar</th>
         <th>Eliminar</th>
       </tr>
@@ -52,21 +52,19 @@
     function crearSelectDestino(valor = '') {
       const sel = document.createElement('select');
       sel.dataset.campo = 'destino';
-      // opción placeholder
-      const ph = new Option('— Seleccione —','');
-      ph.selected = true;
-      sel.appendChild(ph);
-      destinos.forEach(d => {
+      sel.appendChild(new Option('— Seleccione —',''));
+      for (const d of destinos) {
         const o = new Option(d, d);
         if (d === valor) o.selected = true;
         sel.appendChild(o);
-      });
+      }
       sel.onchange = () => {
         if (sel.value === 'OTRO') {
           const inp = document.createElement('input');
           inp.placeholder = 'Nuevo destino...';
           inp.dataset.campo = 'destino';
           sel.replaceWith(inp);
+          inp.focus();
         }
       };
       return sel;
@@ -98,52 +96,50 @@
         const td = document.createElement('td');
         const inp = document.createElement('input');
         inp.value = prefill[field] || '';
-        if (field !== 'correo') {
-          inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
-        }
+        if (field !== 'correo') inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
         inp.dataset.campo = field;
         td.appendChild(inp);
         tr.appendChild(td);
         inputs.push(inp);
       });
 
-      // Guardar
+      // Guardar fila
       const tdG = document.createElement('td');
       const btnG = document.createElement('button');
       btnG.textContent = '💾';
       btnG.onclick = async () => {
-        // forzar blur para actualizar select
-        document.activeElement.blur();
+        document.activeElement.blur(); // forzar blur
         try {
           await guardarFila(inputs, ref);
-          alert('✅ Proveedor guardado');
+          alert('✅ Guardado');
         } catch (e) {
+          console.error('Datos en inputs:', inputs.map(i=>`${i.dataset.campo}=${i.value}`));
           alert('⚠️ ' + e.message);
         }
       };
       tdG.appendChild(btnG);
       tr.appendChild(tdG);
 
-      // Eliminar
+      // Eliminar fila
       const tdE = document.createElement('td');
       const btnE = document.createElement('button');
       btnE.textContent = '🗑️';
       btnE.onclick = async () => {
         if (ref) {
           await deleteDoc(ref);
-          alert('✅ Proveedor eliminado');
+          alert('✅ Eliminado');
         }
         tr.remove();
       };
       tdE.appendChild(btnE);
       tr.appendChild(tdE);
 
-      // Pegado por fila
+      // Pegado fila
       tr.addEventListener('paste', e => {
         e.preventDefault();
         const vals = e.clipboardData.getData('text/plain').split('\t');
         inputs.forEach((inp,i) => {
-          if (vals[i] !== undefined) inp.value = vals[i].trim().toUpperCase();
+          if (vals[i]!==undefined) inp.value = vals[i].trim().toUpperCase();
         });
       });
 
@@ -152,35 +148,34 @@
     }
 
     function agregarVariasFilas(n) {
-      for (let i = 0; i < n; i++) agregarFila();
+      for (let i=0; i<n; i++) agregarFila();
     }
 
     async function guardarFila(inputs, ref) {
       const data = {};
-      inputs.forEach(inp => {
-        const k = inp.dataset.campo;
-        data[k] = inp.value.trim();
-      });
-      if (!data.destino) throw new Error('Debe elegir un Destino');
+      inputs.forEach(inp => data[inp.dataset.campo] = inp.value.trim());
+      console.log('guardarFila, destino=', JSON.stringify(data.destino));
+      if (!data.destino) throw new Error('Debe seleccionar o escribir un Destino');
       if (!data.proveedor) throw new Error('Debe ingresar un Proveedor');
       const colRef = collection(db, 'Proveedores', data.destino, 'Listado');
       if (ref) {
         await setDoc(ref, data);
       } else {
         const docRef = await addDoc(colRef, data);
-        filas.find(f => f.inputs === inputs).ref = docRef;
+        filas.find(f=>f.inputs===inputs).ref = docRef;
       }
     }
 
     async function guardarTodo() {
-      for (const f of filas) {
+      for (const {inputs,ref} of filas) {
         try {
-          await guardarFila(f.inputs, f.ref);
+          await guardarFila(inputs, ref);
         } catch(e) {
+          console.error('Error al guardar fila:', e);
           alert('⚠️ ' + e.message);
         }
       }
-      alert('📑 Todos procesados');
+      alert('📑 Proceso finalizado');
     }
 
     async function cargarProveedores() {
@@ -193,9 +188,8 @@
         snap.forEach(docSnap => {
           const d = docSnap.data();
           d.destino = destino;
-          agregarFila(
-            d,
-            doc(db, 'Proveedores', destino, 'Listado', docSnap.id)
+          agregarFila(d,
+            doc(db,'Proveedores',destino,'Listado',docSnap.id)
           );
         });
       }
@@ -208,21 +202,19 @@
       lines.forEach(line => {
         const vals = line.split('\t');
         const obj = {};
-        ['destino','proveedor','contacto','telefono','correo'].forEach((c,i) => {
-          obj[c] = vals[i] || '';
-        });
+        ['destino','proveedor','contacto','telefono','correo']
+          .forEach((c,i)=> obj[c] = vals[i]||'');
         agregarFila(obj);
       });
     });
 
-    window.agregarFila      = agregarFila;
+    window.agregarFila = agregarFila;
     window.agregarVariasFilas = agregarVariasFilas;
-    window.guardarTodo      = guardarTodo;
+    window.guardarTodo = guardarTodo;
 
     cargarProveedores();
     fetch('encabezado.html')
-      .then(r => r.text())
-      .then(h => document.getElementById('encabezado').innerHTML = h);
+      .then(r=>r.text()).then(h=>document.getElementById('encabezado').innerHTML=h);
   </script>
 </body>
 </html>
