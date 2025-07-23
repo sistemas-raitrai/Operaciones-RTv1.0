@@ -6,147 +6,65 @@
   <title>Servicios Rai Trai</title>
   <link rel="stylesheet" href="estilos.css" />
   <style>
-    /* ——— Layout del header con botón de Proveedores ——— */
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-    }
-    header h2 { margin: 0; }
-    header button {
-      background: #0055A4;
-      color: #fff;
-      border: none;
-      padding: .5rem 1rem;
-      border-radius: 4px;
-      cursor: pointer;
-    }
+    /* ——— Layout header ——— */
+    header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem }
+    header h2 { margin:0 }
+    header button{ background:#0055A4;color:#fff;border:none;padding:.5rem 1rem;border-radius:4px;cursor:pointer }
 
-    /* ——— Contenedor scrollable ——— */
-    .table-wrapper {
-      overflow-x: auto;    /* scroll horizontal */
-      margin-bottom: 2rem;
-    }
+    /* ——— Secciones con scroll ——— */
+    .section { margin-bottom:2rem }
+    .section h3{ margin:.5rem 0 }
+    .table-wrapper { overflow-x:auto }
 
     /* ——— Tabla nativa ——— */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-    }
-    thead th {
-      position: sticky;
-      top: 0;
-      background: #f9f9f9;
-      z-index: 2;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 4px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      min-width: 0;
-    }
+    table { width:100%; border-collapse:collapse; table-layout:fixed }
+    thead th { position:sticky; top:0; background:#f9f9f9; z-index:2 }
+    th,td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }
 
     /* ——— Anchos aproximados ——— */
-    th:nth-child(1),  td:nth-child(1)   { width:   5%; }
-    th:nth-child(2),  td:nth-child(2)   { width:  20%; }
-    th:nth-child(3),  td:nth-child(3)   { width:  12%; }
-    th:nth-child(4),  td:nth-child(4)   { width:  12%; }
-    th:nth-child(5),  td:nth-child(5)   { width:  10%; }
-    th:nth-child(6),  td:nth-child(6)   { width:  20%; }
-    th:nth-child(7),  td:nth-child(7)   { width:  12%; }
-    th:nth-child(8),  td:nth-child(8)   { width:  10%; }
-    th:nth-child(9),  td:nth-child(9)   { width:   8%; }
-    th:nth-child(10), td:nth-child(10)  { width:  10%; }
-    th:nth-child(11), td:nth-child(11)  { width:  10%; }
-    th:nth-child(12), td:nth-child(12),
-    th:nth-child(13), td:nth-child(13)  { width: auto; }
+    th:nth-child(1),td:nth-child(1){width:5%}
+    th:nth-child(2),td:nth-child(2){width:20%}
+    th:nth-child(3),td:nth-child(3){width:12%}
+    th:nth-child(4),td:nth-child(4){width:12%}
+    th:nth-child(5),td:nth-child(5){width:10%}
+    th:nth-child(6),td:nth-child(6){width:20%}
+    th:nth-child(7),td:nth-child(7){width:12%}
+    th:nth-child(8),td:nth-child(8){width:10%}
+    th:nth-child(9),td:nth-child(9){width:8%}
+    th:nth-child(10),td:nth-child(10){width:10%}
+    th:nth-child(11),td:nth-child(11){width:10%}
+    th:nth-child(12),td:nth-child(12),th:nth-child(13),td:nth-child(13){width:auto}
 
-    /* ——— Sticky columnas Guardar/Eliminar ——— */
-    .col-save {
-      position: sticky;
-      right: 3.5rem;      /* espacio para el botón Eliminar */
-      background: #fff;
-      z-index: 3;
-    }
-    .col-del {
-      position: sticky;
-      right: 0;
-      background: #fff;
-      z-index: 3;
-    }
-    thead .col-save,
-    thead .col-del {
-      z-index: 4;
-    }
+    /* ——— Sticky Guardar/Eliminar ——— */
+    .col-save { position:sticky; right:3.5rem; background:#fff; z-index:3 }
+    .col-del  { position:sticky; right:0;      background:#fff; z-index:3 }
+    thead .col-save, thead .col-del { z-index:4 }
 
-    /* ——— Botones de control internos ——— */
-    .controls { margin: .5rem 0; }
-    .controls button { margin-right: .5rem; }
+    /* ——— Controles internos ——— */
+    .controls{ margin:.5rem 0 }
+    .controls button{ margin-right:.5rem }
 
-    /* ——— Modal Proveedores ——— */
-    #backdrop-prov {
-      display: none;
-      position: fixed; top:0; left:0;
-      width:100%; height:100%;
-      background: rgba(0,0,0,0.5);
-      z-index: 100;
-    }
-    #modal-prov {
-      display: none;
-      position: fixed;
-      top:50%; left:50%;
-      transform: translate(-50%,-50%);
-      width:90%; max-width:800px;
-      background:#fff;
-      border-radius:4px;
-      z-index:101;
-      box-shadow:0 2px 10px rgba(0,0,0,0.2);
-    }
-    #modal-prov .header {
-      display:flex;
-      justify-content:space-between;
-      align-items:center;
-      padding:.5rem 1rem;
-      border-bottom:1px solid #ddd;
-    }
-    #modal-prov .header h3 { margin:0; font-size:1.1rem; }
-    #modal-prov .header button {
-      background:transparent;
-      border:none;
-      font-size:1.2rem;
-      cursor:pointer;
-    }
-    #modal-prov iframe {
-      width:100%;
-      height:70vh;
-      border:none;
-    }
+    /* ——— Modal proveedores ——— */
+    #backdrop-prov{ display:none; position:fixed; top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:100 }
+    #modal-prov{ display:none; position:fixed; top:50%;left:50%;transform:translate(-50%,-50%);width:90%;max-width:800px;background:#fff;border-radius:4px;z-index:101;box-shadow:0 2px 10px rgba(0,0,0,0.2) }
+    #modal-prov .header{ display:flex;justify-content:space-between;align-items:center;padding:.5rem 1rem;border-bottom:1px solid #ddd }
+    #modal-prov .header h3{ margin:0;font-size:1.1rem }
+    #modal-prov .header button{ background:transparent;border:none;font-size:1.2rem;cursor:pointer }
+    #modal-prov iframe { width:100%;height:70vh;border:none }
 
     /* ——— Floating editor ——— */
-    .floating-editor {
-      position:absolute;
-      z-index:200;
-      width:300px;
-      height:80px;
-      resize:both;
-      box-sizing:border-box;
-    }
+    .floating-editor{ position:absolute; z-index:200; width:300px; height:80px; resize:both; box-sizing:border-box }
   </style>
 </head>
 <body>
-
-  <!-- Header común -->
+  <!-- Encabezado externo -->
   <div id="encabezado"></div>
   <header>
-    <h2>📋 Servicios</h2>
+    <h2>📋 Lista Servicios</h2>
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
-  <!-- Modal Proveedores -->
+  <!-- Modal proveedores -->
   <div id="backdrop-prov" onclick="closeProveedores()"></div>
   <div id="modal-prov">
     <div class="header">
@@ -156,23 +74,8 @@
     <iframe id="iframe-prov" src=""></iframe>
   </div>
 
-  <!-- TABLA SCROLLABLE -->
-  <div class="table-wrapper">
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Servicio</th>
-          <!-- ... tus demás cabeceras ... -->
-          <th class="col-save">Guardar</th>
-          <th class="col-del">Eliminar</th>
-        </tr>
-      </thead>
-      <tbody id="tbody-servicios">
-        <!-- Filas inyectadas por JavaScript -->
-      </tbody>
-    </table>
-  </div>
+  <!-- Aquí montamos N secciones -->
+  <div id="secciones"></div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
@@ -183,170 +86,257 @@
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // Autenticación
-    onAuthStateChanged(auth, user => {
-      if (!user) location.href = 'login.html';
-      else init();
-    });
-
-    // Parámetros fijos
+    // Datos fijos
     const opciones = {
-      tipoServicio: ['DIARIO','GENERAL','OTRO'],
-      categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
-      formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
-      tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
-      moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
+      tipoServicio:['DIARIO','GENERAL','OTRO'],
+      categoria:   ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
+      formaPago:   ['EFECTIVO','CTA CORRIENTE','OTRO'],
+      tipoCobro:   ['POR PERSONA','POR GRUPO','OTRO'],
+      moneda:      ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
     };
     const campos = ['servicio','tipoServicio','categoria','ciudad','restricciones','proveedor','tipoCobro','moneda','valorServicio','formaPago'];
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
-    let floating = null;
-    function showFloatingEditor(input) {
-      if (floating) floating.remove();
-      floating = document.createElement('textarea');
-      floating.className = 'floating-editor';
-      floating.value = input.value;
+    let floating=null;
+    function showFloatingEditor(input){
+      if(floating) floating.remove();
+      floating=document.createElement('textarea');
+      floating.className='floating-editor';
+      floating.value=input.value;
       document.body.appendChild(floating);
-      const r = input.getBoundingClientRect();
-      floating.style.top  = (r.bottom + scrollY + 4) + 'px';
-      floating.style.left = (r.left   + scrollX)     + 'px';
-      floating.oninput = () => { input.value = floating.value; input.title = floating.value; };
-      floating.onblur  = () => { floating.remove(); floating = null; };
+      const r=input.getBoundingClientRect();
+      floating.style.top=`${r.bottom+scrollY+4}px`;
+      floating.style.left=`${r.left+scrollX}px`;
+      floating.oninput=()=>{input.value=floating.value;input.title=floating.value};
+      floating.onblur=()=>{floating.remove();floating=null};
       floating.focus();
     }
 
-    function init() {
+    // Inicialización tras login
+    onAuthStateChanged(auth,u=>{
+      if(!u) location.href='login.html';
+      else init();
+    });
+
+    function init(){
       // Carga encabezado
       fetch('encabezado.html')
         .then(r=>r.text())
-        .then(html=> document.getElementById('encabezado').innerHTML = html);
+        .then(html=>document.getElementById('encabezado').innerHTML=html);
 
-      // Renderiza secciones / filas
-      destinos.forEach(dest => renderSeccion(dest));
+      // Monta cada sección
+      destinos.forEach(d=> createSection(d));
 
-      // Listener modal Proveedores
+      // Modal proveedores
       document.getElementById('btnProv').onclick = openProveedores;
       window.closeProveedores = closeProveedores;
     }
 
-    async function renderSeccion(destFijo) {
-      // Para simplificar, pongo todo en un único <tbody>;
-      // si necesitas secciones separadas, adapta creando múltiples tablas.
-      const tbody = document.getElementById('tbody-servicios');
-      const destino = destFijo|| 'OTRO';
+    function createSection(destFijo){
+      const isOtro=destFijo===null;
+      let destActivo=destFijo;
+      const sec=document.createElement('div');
+      sec.className='section';
+      sec.innerHTML=`<h3>${isOtro?'OTRO':destFijo}</h3>`;
 
-      // Cargar datos de Firestore
-      const snap = await getDocs(query(
-        collection(db,'Servicios',destino,'Listado'),
-        orderBy('servicio','asc')
-      ));
+      const wrap=document.createElement('div');
+      wrap.className='table-wrapper';
+      const tbl=document.createElement('table');
+      const thead=document.createElement('thead');
+      const trh=document.createElement('tr');
 
-      snap.forEach(docSnap => {
-        const data = docSnap.data();
-        const tr = document.createElement('tr');
+      // Cabeceras
+      const headers=['#'];
+      if(isOtro) headers.push('Destino');
+      headers.push('Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar');
+      headers.forEach(txt=>{
+        const th=document.createElement('th');
+        th.textContent=txt;
+        if(txt==='Guardar') th.classList.add('col-save');
+        if(txt==='Eliminar')th.classList.add('col-del');
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      tbl.appendChild(thead);
 
-        // Columna número
-        const tdNum = document.createElement('td');
-        tdNum.textContent = (tbody.children.length + 1);
-        tr.appendChild(tdNum);
+      const tbody=document.createElement('tbody');
+      tbl.appendChild(tbody);
+      wrap.appendChild(tbl);
+      sec.appendChild(wrap);
 
-        // Columnas de datos
-        campos.forEach(c => {
-          const td = document.createElement('td');
-          let inp;
+      // Botones ➕ ➕➕ 💾
+      const ctrl=document.createElement('div');
+      ctrl.className='controls';
+      ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
+        .forEach((lbl,i)=>{
+          const b=document.createElement('button');
+          b.textContent=lbl;
+          b.onclick=()=>{ if(i===0)add(); if(i===1)[...Array(10)].forEach(add); if(i===2)saveAll() };
+          ctrl.appendChild(b);
+        });
+      sec.appendChild(ctrl);
 
-          if (c === 'proveedor') {
-            inp = document.createElement('select');
-            inp.dataset.campo = c;
-            inp.innerHTML = '<option>—</option>';
-            // Carga proveedores del destino
-            getDocs(query(
-              collection(db,'Proveedores',destino,'Listado'),
-              orderBy('proveedor','asc')
-            )).then(s => {
-              s.forEach(d => {
-                const o = new Option(d.id,d.id);
-                if (d.id === data[c]) o.selected = true;
-                inp.appendChild(o);
-              });
-            });
-          }
-          else if (opciones[c]) {
-            inp = document.createElement('select');
-            inp.dataset.campo = c;
-            opciones[c].forEach(o=> inp.appendChild(new Option(o,o)));
-            if (data[c]) {
-              inp.value = data[c];
-            }
-          }
-          else {
-            inp = document.createElement('input');
-            inp.value = data[c]||'';
-            if (c!=='valorServicio') {
-              inp.oninput = ()=> inp.value = inp.value.toUpperCase();
-            }
-            inp.dataset.campo = c;
-            inp.onfocus      = ()=> showFloatingEditor(inp);
-            inp.title        = inp.value;
-          }
+      document.getElementById('secciones').appendChild(sec);
 
+      const rows=[];
+      // Carga inicial de Firestore
+      if(!isOtro){
+        (async()=>{
+          const snap=await getDocs(query(
+            collection(db,'Servicios',destFijo,'Listado'),
+            orderBy('servicio','asc')
+          ));
+          snap.forEach(d=>{
+            const o=d.data(); o.servicio=d.id;
+            add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
+          });
+        })();
+      }
+
+      async function loadProvs(tr){
+        const sel=tr.querySelector('select[data-campo=proveedor]');
+        sel.innerHTML='<option value="">—</option>';
+        if(!destActivo) return;
+        const snap=await getDocs(query(
+          collection(db,'Proveedores',destActivo,'Listado'),
+          orderBy('proveedor','asc')
+        ));
+        snap.forEach(d=>sel.appendChild(new Option(d.id,d.id)));
+      }
+
+      function updateNums(){
+        tbody.querySelectorAll('tr').forEach((tr,i)=>{
+          const n=tr.querySelector('.rownum');
+          if(n) n.textContent=i+1;
+        });
+      }
+
+      function add(prefill={}, ref=null){
+        const tr=document.createElement('tr');
+        const inputs=[];
+        // Número
+        const tdN=document.createElement('td');
+        tdN.className='rownum';
+        tr.appendChild(tdN);
+
+        // Destino editable para OTRO
+        if(isOtro){
+          const td=document.createElement('td');
+          const inp=document.createElement('input');
+          inp.placeholder='Destino';
+          inp.value=prefill.destino||'';
+          inp.dataset.campo='destino';
+          inp.oninput=()=>destActivo=inp.value.toUpperCase();
           td.appendChild(inp);
           tr.appendChild(td);
+          inputs.push(inp);
+        }
+
+        // Campos fijos
+        campos.forEach(c=>{
+          const td=document.createElement('td');
+          let inp;
+          if(c==='proveedor'){
+            inp=document.createElement('select');
+            inp.dataset.campo=c;
+            inp.innerHTML='<option value="">—</option>';
+          }
+          else if(opciones[c]){
+            inp=document.createElement('select');
+            inp.dataset.campo=c;
+            if(c==='categoria'||c==='formaPago') inp.multiple=true;
+            opciones[c].forEach(o=>inp.appendChild(new Option(o,o)));
+            if(prefill[c]){
+              const arr=Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
+              arr.forEach(v=>{
+                const o2=[...inp.options].find(x=>x.value===v);
+                if(o2) o2.selected=true;
+              });
+            }
+          } else {
+            inp=document.createElement('input');
+            inp.value=prefill[c]||'';
+            if(c!=='valorServicio') inp.oninput=()=>inp.value=inp.value.toUpperCase();
+            inp.dataset.campo=c;
+            inp.onfocus=()=>showFloatingEditor(inp);
+            inp.title=inp.value;
+          }
+          td.appendChild(inp);
+          tr.appendChild(td);
+          inputs.push(inp);
         });
 
+        // Carga proveedores
+        if(!isOtro){
+          destActivo=destFijo;
+          setTimeout(()=>loadProvs(tr),0);
+        }
+
         // Botón Guardar
-        const tdSave = document.createElement('td');
-        tdSave.classList.add('col-save');
-        const btnSave= document.createElement('button');
-        btnSave.textContent = '💾';
-        btnSave.onclick = async () => {
-          // Recoge valores
-          const payload = {};
-          tr.querySelectorAll('td').forEach((cell,i) => {
-            if (i===0) return; // salto número
-            const campo = campos[i-1];
-            const inp   = cell.firstChild;
-            payload[campo] = inp.multiple
-              ? [...inp.selectedOptions].map(o=>o.value)
-              : inp.value.trim().toUpperCase();
-          });
-          // Actualiza Firestore
-          await setDoc(doc(db,'Servicios',destino), {_created:true}, {merge:true});
-          await setDoc(
-            doc(collection(db,'Servicios',destino,'Listado'), payload.servicio),
-            payload
-          );
-          alert('✅ Guardado');
+        const tdG=document.createElement('td');
+        tdG.classList.add('col-save');
+        const bG=document.createElement('button');
+        bG.textContent='💾';
+        bG.onclick=async()=>{
+          try{ await saveRow(inputs); alert('✅'); }
+          catch(e){ alert('⚠️ '+e.message); }
         };
-        tdSave.appendChild(btnSave);
-        tr.appendChild(tdSave);
+        tdG.appendChild(bG); tr.appendChild(tdG);
 
         // Botón Eliminar
-        const tdDel = document.createElement('td');
-        tdDel.classList.add('col-del');
-        const btnDel= document.createElement('button');
-        btnDel.textContent = '🗑️';
-        btnDel.onclick = async () => {
-          await deleteDoc(doc(db,'Servicios',destino,'Listado', data.servicio));
-          tr.remove();
+        const tdD=document.createElement('td');
+        tdD.classList.add('col-del');
+        const bD=document.createElement('button');
+        bD.textContent='🗑️';
+        bD.onclick=async()=>{
+          if(ref) await deleteDoc(ref);
+          tr.remove(); updateNums();
         };
-        tdDel.appendChild(btnDel);
-        tr.appendChild(tdDel);
+        tdD.appendChild(bD); tr.appendChild(tdD);
+
+        // Pegado tab-a-tab
+        tr.addEventListener('paste',e=>{
+          e.preventDefault();
+          const vs=e.clipboardData.getData('text/plain').split('\t');
+          inputs.forEach((i,j)=>{ if(vs[j]!=null) i.value=vs[j].trim().toUpperCase() });
+        });
 
         tbody.appendChild(tr);
-      });
+        rows.push({inputs,ref});
+        updateNums();
+      }
+
+      async function saveRow(inputs){
+        const data={};
+        inputs.forEach(i=>{
+          data[i.dataset.campo]= i.multiple
+            ?[...i.selectedOptions].map(o=>o.value)
+            :i.value.trim().toUpperCase();
+        });
+        const destino=isOtro?data.destino:destActivo;
+        if(!destino) throw new Error('Falta Destino');
+        if(!data.servicio) throw new Error('Falta Servicio');
+        if(!data.proveedor)throw new Error('Falta Proveedor');
+
+        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        await setDoc(doc(collection(db,'Servicios',destino,'Listado'),data.servicio),data);
+      }
+
+      async function saveAll(){
+        for(let r of rows) await saveRow(r.inputs);
+        alert('✅ Todos guardados');
+      }
     }
 
-    // Modal Proveedores
-    function openProveedores() {
-      document.getElementById('iframe-prov').src = 'proveedores.html';
-      document.getElementById('backdrop-prov').style.display = 'block';
-      document.getElementById('modal-prov').style.display   = 'block';
+    function openProveedores(){
+      document.getElementById('iframe-prov').src='proveedores.html';
+      document.getElementById('backdrop-prov').style.display='block';
+      document.getElementById('modal-prov').style.display='block';
     }
-    function closeProveedores() {
-      document.getElementById('iframe-prov').src = '';
-      document.getElementById('backdrop-prov').style.display = 'none';
-      document.getElementById('modal-prov').style.display   = 'none';
+    function closeProveedores(){
+      document.getElementById('iframe-prov').src='';
+      document.getElementById('backdrop-prov').style.display='none';
+      document.getElementById('modal-prov').style.display='none';
     }
   </script>
 </body>
