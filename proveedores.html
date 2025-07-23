@@ -41,57 +41,33 @@
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
       collection, getDocs, query, orderBy,
-      doc, setDoc, addDoc, deleteDoc
+      doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
     onAuthStateChanged(auth, user => {
       if (!user) window.location.href = 'login.html';
     });
 
-    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
     const tablaBody = document.getElementById('contenido');
     const filas = [];
 
-    function crearSelectDestino(valor = '') {
-      const sel = document.createElement('select');
-      sel.dataset.campo = 'destino';
-      sel.appendChild(new Option('— Seleccione —',''));
-      destinos.forEach(d => {
-        const o = new Option(d, d);
-        if (d === valor) o.selected = true;
-        sel.appendChild(o);
-      });
-      sel.onchange = () => {
-        if (sel.value === 'OTRO') {
-          const inp = document.createElement('input');
-          inp.placeholder = 'Nuevo destino...';
-          inp.dataset.campo = 'destino';
-          sel.replaceWith(inp);
-          inp.focus();
-        }
-      };
-      return sel;
-    }
-
+    // Crea una fila en la tabla, con opcional prefill y ref de Firestore
     function agregarFila(prefill = {}, ref = null) {
       const tr = document.createElement('tr');
       const inputs = [];
 
-      // Destino
-      const tdDest = document.createElement('td');
-      let inpDest;
-      if (prefill.destino && !destinos.includes(prefill.destino)) {
-        inpDest = document.createElement('input');
-        inpDest.value = prefill.destino;
-        inpDest.dataset.campo = 'destino';
-      } else {
-        inpDest = crearSelectDestino(prefill.destino);
-      }
-      tdDest.appendChild(inpDest);
-      tr.appendChild(tdDest);
-      inputs.push(inpDest);
+      // Campo DESTINO
+      const td0 = document.createElement('td');
+      const inp0 = document.createElement('input');
+      inp0.value = prefill.destino || '';
+      inp0.placeholder = 'Destino';
+      inp0.dataset.campo = 'destino';
+      inp0.addEventListener('input', () => inp0.value = inp0.value.toUpperCase());
+      td0.appendChild(inp0);
+      tr.appendChild(td0);
+      inputs.push(inp0);
 
-      // Proveedor / Contacto / Teléfono / Correo
+      // Campos: proveedor, contacto, teléfono, correo
       ['proveedor','contacto','telefono','correo'].forEach(c => {
         const td = document.createElement('td');
         const inp = document.createElement('input');
@@ -103,7 +79,7 @@
         inputs.push(inp);
       });
 
-      // Guardar fila
+      // Botón GUARDAR
       const tdG = document.createElement('td');
       const btnG = document.createElement('button');
       btnG.textContent = '💾';
@@ -119,7 +95,7 @@
       tdG.appendChild(btnG);
       tr.appendChild(tdG);
 
-      // Eliminar fila
+      // Botón ELIMINAR
       const tdE = document.createElement('td');
       const btnE = document.createElement('button');
       btnE.textContent = '🗑️';
@@ -133,11 +109,11 @@
       tdE.appendChild(btnE);
       tr.appendChild(tdE);
 
-      // Pegado en celda
+      // Pegado por fila (tab a tab)
       tr.addEventListener('paste', e => {
         e.preventDefault();
         const vals = e.clipboardData.getData('text/plain').split('\t');
-        inputs.forEach((inp,i) => {
+        inputs.forEach((inp, i) => {
           if (vals[i] !== undefined) inp.value = vals[i].trim().toUpperCase();
         });
       });
@@ -146,21 +122,24 @@
       filas.push({inputs, ref});
     }
 
+    // Crea N filas vacías
     function agregarVariasFilas(n) {
-      for (let i=0; i<n; i++) agregarFila();
+      for (let i = 0; i < n; i++) agregarFila();
     }
 
+    // Guarda (o actualiza) un proveedor en Proveedores/{destino}/Listado/{proveedor}
     async function guardarFila(inputs, ref) {
       const data = {};
       inputs.forEach(i => data[i.dataset.campo] = i.value.trim());
-      if (!data.destino)   throw new Error('Debe elegir un Destino');
-      if (!data.proveedor) throw new Error('Debe ingresar un Proveedor');
+      if (!data.destino)   throw new Error('Debe ingresar Destino');
+      if (!data.proveedor) throw new Error('Debe ingresar Proveedor');
       const col = collection(db, 'Proveedores', data.destino, 'Listado');
       const docRef = doc(col, data.proveedor);
       await setDoc(docRef, data);
-      if (!ref) filas.find(f=>f.inputs===inputs).ref = docRef;
+      if (!ref) filas.find(f => f.inputs === inputs).ref = docRef;
     }
 
+    // Guarda todas las filas
     async function guardarTodo() {
       for (const f of filas) {
         try { await guardarFila(f.inputs, f.ref); }
@@ -169,19 +148,29 @@
       alert('📑 Proceso completado');
     }
 
+    // Carga dinámicamente TODOS los destinos y sus proveedores
     async function cargarProveedores() {
-      console.log('🔄 cargando proveedores...');
-      for (const destino of destinos) {
-        const col = collection(db,'Proveedores',destino,'Listado');
-        const q = query(col, orderBy('proveedor','asc'));
+      console.log('🔄 cargando destinos...');
+      // 1) leemos todas las docs bajo Proveedores/
+      const rootSnap = await getDocs(collection(db, 'Proveedores'));
+      console.log('📂 destinos encontrados:', rootSnap.size);
+
+      for (const destDoc of rootSnap.docs) {
+        const destino = destDoc.id;           // p.ej. "Brasil"
+        const col = collection(db, 'Proveedores', destino, 'Listado');
+        const q   = query(col, orderBy('proveedor','asc'));
         const snap = await getDocs(q);
-        snap.forEach(docSnap => {
-          const d = docSnap.data();
+        console.log(`📑 ${destino}: ${snap.size} proveedores`);
+        // 2) agregamos una fila por cada proveedor
+        snap.forEach(s => {
+          const d = s.data();
           d.destino = destino;
-          agregarFila(d, doc(db,'Proveedores',destino,'Listado',docSnap.id));
+          agregarFila(d,
+            doc(db, 'Proveedores', destino, 'Listado', s.id)
+          );
         });
       }
-      console.log('✅ proveedores cargados:', filas.length);
+      console.log('✅ carga completa, filas en tabla:', filas.length);
     }
 
     // Pegado masivo en toda la tabla
@@ -192,21 +181,23 @@
         const vals = line.split('\t');
         const obj = {};
         ['destino','proveedor','contacto','telefono','correo']
-          .forEach((c,i)=> obj[c]=vals[i]||'');
+          .forEach((c,i)=> obj[c] = vals[i] || '');
         agregarFila(obj);
       });
     });
 
+    // Exponer funciones globales para los botones
     window.agregarFila        = agregarFila;
     window.agregarVariasFilas = agregarVariasFilas;
     window.guardarTodo        = guardarTodo;
 
-    // Ejecutar carga inicial ANTES de cualquier otra cosa
+    // EJECUCIÓN INICIAL
     cargarProveedores();
 
     fetch('encabezado.html')
       .then(r=>r.text())
       .then(html=>document.getElementById('encabezado').innerHTML = html);
+
   </script>
 </body>
 </html>
