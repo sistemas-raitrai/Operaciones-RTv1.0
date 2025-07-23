@@ -47,21 +47,22 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      min-width: 0; /* para que funcione dentro de table-layout: fixed */
     }
-    /* porcentajes aproximados según tu petición */
+    /* Anchos aproximados según tu petición */
     th:nth-child(1),  td:nth-child(1)  { width: 5%; }
-    th:nth-child(2),  td:nth-child(2)  { width: 20%; }
-    th:nth-child(3),  td:nth-child(3)  { width: 12%; }
-    th:nth-child(4),  td:nth-child(4)  { width: 12%; }
-    th:nth-child(5),  td:nth-child(5)  { width: 10%; }
-    th:nth-child(6),  td:nth-child(6)  { width: 20%; }
-    th:nth-child(7),  td:nth-child(7)  { width: 12%; }
-    th:nth-child(8),  td:nth-child(8)  { width: 10%; }
-    th:nth-child(9),  td:nth-child(9)  { width: 8%;  }
-    th:nth-child(10), td:nth-child(10) { width: 10%; }
-    th:nth-child(11), td:nth-child(11) { width: 10%; }
+    th:nth-child(2),  td:nth-child(2)  { width:20%; }
+    th:nth-child(3),  td:nth-child(3)  { width:12%; }
+    th:nth-child(4),  td:nth-child(4)  { width:12%; }
+    th:nth-child(5),  td:nth-child(5)  { width:10%; }
+    th:nth-child(6),  td:nth-child(6)  { width:20%; }
+    th:nth-child(7),  td:nth-child(7)  { width:12%; }
+    th:nth-child(8),  td:nth-child(8)  { width:10%; }
+    th:nth-child(9),  td:nth-child(9)  { width: 8%; }
+    th:nth-child(10), td:nth-child(10){ width:10%; }
+    th:nth-child(11), td:nth-child(11){ width:10%; }
     th:nth-child(12), td:nth-child(12),
-    th:nth-child(13), td:nth-child(13) { width: auto; }
+    th:nth-child(13), td:nth-child(13){ width:auto; }
 
     /* ——— Inputs y selects ——— */
     input, select {
@@ -81,8 +82,8 @@
     #backdrop-prov {
       display: none;
       position: fixed;
-      top:0; left:0;
-      width:100%; height:100%;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
       background: rgba(0,0,0,0.5);
       z-index: 100;
     }
@@ -90,7 +91,7 @@
       display: none;
       position: fixed;
       top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
+      transform: translate(-50%, -50%);
       width: 90%; max-width: 800px;
       background: #fff;
       border-radius: 4px;
@@ -105,7 +106,7 @@
       border-bottom: 1px solid #ddd;
     }
     #modal-prov .header h3 {
-      margin:0;
+      margin: 0;
       font-size: 1.1rem;
     }
     #modal-prov .header button {
@@ -115,9 +116,9 @@
       cursor: pointer;
     }
     #modal-prov iframe {
-      width:100%;
-      height:70vh;
-      border:none;
+      width: 100%;
+      height: 70vh;
+      border: none;
     }
 
     /* ——— Floating editor ——— */
@@ -133,19 +134,19 @@
 </head>
 <body>
 
-  <!-- Header común -->
+  <!-- Header externo -->
   <div id="encabezado"></div>
 
   <header>
-    <h2>📋 Listado de Servicios</h2>
+    <h2>📋 Lista de Servicios</h2>
     <!-- dispara el modal de proveedores -->
-    <button onclick="openProveedores()">🛠️ Administrar Proveedores</button>
+    <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
-  <!-- Backdrop genérico -->
+  <!-- Backdrop del modal de proveedores -->
   <div id="backdrop-prov" onclick="closeProveedores()"></div>
 
-  <!-- Modal que carga proveedores.html en un iframe -->
+  <!-- Modal que carga proveedores.html en iframe -->
   <div id="modal-prov">
     <div class="header">
       <h3>Administrar Proveedores</h3>
@@ -154,7 +155,7 @@
     <iframe id="iframe-prov" src=""></iframe>
   </div>
 
-  <!-- Aquí montas tus secciones con la tabla -->
+  <!-- Contenedor de todas las secciones/tablas -->
   <div id="secciones"></div>
 
   <script type="module">
@@ -167,11 +168,11 @@
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
     // — Sesión —
-    onAuthStateChanged(auth, u => {
-      if (!u) window.location.href = 'login.html';
+    onAuthStateChanged(auth, user => {
+      if (!user) window.location.href = 'login.html';
     });
 
-    // — Datos fijos (como antes) —
+    // — Datos fijos —
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -188,7 +189,7 @@
 
     const container = document.getElementById('secciones');
 
-    // — Floating editor (igual que tenías) —
+    // — Floating editor para inputs de texto largos —
     let floating = null;
     function showFloatingEditor(input) {
       if (floating) floating.remove();
@@ -210,7 +211,7 @@
       floating.focus();
     }
 
-    // — Generar todas las secciones y tablas (idéntico a tu código) —
+    // — Generar secciones/tablas —
     destinos.forEach(d => container.appendChild(crearSeccion(d)));
 
     function crearSeccion(destFijo) {
@@ -220,16 +221,15 @@
       sec.className = 'section';
       sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
 
-      // wrapper para scroll
+      // wrapper con scroll horizontal
       const wrap = document.createElement('div');
       wrap.className = 'table-wrapper';
 
-      // tabla / thead / tbody...
+      // construyo la tabla
       const table = document.createElement('table');
       const thead = document.createElement('thead');
       const trh = document.createElement('tr');
-
-      // encabezados
+      // encabezados dinámicos
       const headers = ['#'];
       if (isOtro) headers.push('Destino');
       headers.push(
@@ -250,7 +250,7 @@
       wrap.appendChild(table);
       sec.appendChild(wrap);
 
-      // controles (➕, ➕➕, 💾)
+      // controles de fila
       const ctrl = document.createElement('div');
       ctrl.className = 'controls';
       ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
@@ -268,6 +268,7 @@
 
       const rows = [];
 
+      // carga opciones de Proveedores
       async function loadProvs(tr) {
         const sel = tr.querySelector('select[data-campo=proveedor]');
         sel.innerHTML = '<option value="">—</option>';
@@ -278,13 +279,15 @@
         snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
       }
 
+      // renumera la columna #
       function updateNums() {
         tbody.querySelectorAll('tr').forEach((tr,i)=>{
           const num = tr.querySelector('.rownum');
-          num && (num.textContent = i+1);
+          if (num) num.textContent = i+1;
         });
       }
 
+      // añade una fila (vacía o con prefill/ref)
       function add(prefill={}, ref=null) {
         const tr = document.createElement('tr');
         const inputs = [];
@@ -294,7 +297,7 @@
         tdNum.className = 'rownum';
         tr.appendChild(tdNum);
 
-        // destino editable en sección OTRO
+        // destino editable (solo en OTRO)
         if (isOtro) {
           const td = document.createElement('td');
           const inp = document.createElement('input');
@@ -307,17 +310,18 @@
           inputs.push(inp);
         }
 
-        // columnas dinámicas
+        // columnas fijas según campos[]
         campos.forEach(c => {
           const td = document.createElement('td');
           let inp;
-          // dropdown proveedores
+
+          // select Proveedor
           if (c==='proveedor') {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             inp.innerHTML = '<option value="">—</option>';
           }
-          // selects fijos
+          // selects de opciones
           else if (opciones[c]) {
             inp = document.createElement('select');
             inp.dataset.campo = c;
@@ -327,7 +331,7 @@
             if (prefill[c]) {
               const arr = Array.isArray(prefill[c])? prefill[c]:[prefill[c]];
               arr.forEach(v=>{
-                const opt = [...inp.options].find(x=>x.value===v);
+                const opt = Array.from(inp.options).find(x=>x.value===v);
                 if (opt) opt.selected = true;
               });
             }
@@ -348,24 +352,24 @@
           inputs.push(inp);
         });
 
-        // cargar proveedores
+        // carga proveedores si no es OTRO
         if (!isOtro) {
           destActivo = destFijo;
-          setTimeout(()=> loadProvs(tr),0);
+          setTimeout(()=> loadProvs(tr), 0);
         }
 
-        // botón 💾
+        // botón guardar fila
         const tdG = document.createElement('td');
         const bG  = document.createElement('button');
         bG.textContent = '💾';
         bG.onclick = async ()=>{
           try { await saveRow(inputs); alert('✅'); }
-          catch(e){ alert('⚠️ '+e.message); }
+          catch(e){ alert('⚠️ '+ e.message); }
         };
         tdG.appendChild(bG);
         tr.appendChild(tdG);
 
-        // botón 🗑️
+        // botón eliminar fila
         const tdD = document.createElement('td');
         const bD  = document.createElement('button');
         bD.textContent = '🗑️';
@@ -376,7 +380,7 @@
         tdD.appendChild(bD);
         tr.appendChild(tdD);
 
-        // pegado tab­a­tab
+        // pegado tab-a-tab
         tr.addEventListener('paste', e=>{
           e.preventDefault();
           const vs = e.clipboardData.getData('text/plain').split('\t');
@@ -390,6 +394,7 @@
         updateNums();
       }
 
+      // guarda una sola fila
       async function saveRow(inputs) {
         const data = {};
         inputs.forEach(i=>{
@@ -402,11 +407,14 @@
         if (!data.servicio) throw new Error('Falta Servicio');
         if (!data.proveedor)throw new Error('Falta Proveedor');
 
-        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        // doc padre
+        await setDoc(doc(db,'Servicios',destino), {_created:true}, {merge:true});
+        // subcolección Listado
         const col = collection(db,'Servicios',destino,'Listado');
         await setDoc(doc(col,data.servicio), data);
       }
 
+      // guarda todas las filas
       async function saveAll() {
         for (const r of rows) {
           await saveRow(r.inputs);
@@ -414,13 +422,14 @@
         alert('✅ Todos guardados');
       }
 
-      // carga inicial
+      // carga inicial de Firestore
       if (!isOtro) {
-        (async()=>{
+        (async ()=>{
           const col  = collection(db,'Servicios',destFijo,'Listado');
           const snap = await getDocs(query(col,orderBy('servicio','asc')));
           snap.forEach(d=>{
-            const o = d.data(); o.servicio = d.id;
+            const o = d.data();
+            o.servicio = d.id;
             add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
           });
         })();
@@ -429,22 +438,26 @@
       return sec;
     }
 
-    // — Funciones para modal de Proveedores —
+    // — Funciones para el modal de Proveedores —
     function openProveedores() {
       document.getElementById('iframe-prov').src = 'proveedores.html';
       document.getElementById('backdrop-prov').style.display = 'block';
-      document.getElementById('modal-prov').style.display     = 'block';
+      document.getElementById('modal-prov').style.display   = 'block';
     }
     function closeProveedores() {
       document.getElementById('iframe-prov').src = '';
       document.getElementById('backdrop-prov').style.display = 'none';
-      document.getElementById('modal-prov').style.display     = 'none';
+      document.getElementById('modal-prov').style.display   = 'none';
     }
 
-    // — Carga encabezado común —
+    // Aquí registramos el listener justo después de definir las funciones
+    document.getElementById('btnProv')
+            .addEventListener('click', openProveedores);
+
+    // — Carga header externo —
     fetch('encabezado.html')
-      .then(r=>r.text())
-      .then(html=> document.getElementById('encabezado').innerHTML = html);
+      .then(r => r.text())
+      .then(html => document.getElementById('encabezado').innerHTML = html);
 
   </script>
 </body>
