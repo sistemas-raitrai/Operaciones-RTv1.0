@@ -130,6 +130,14 @@
       resize: both;
       box-sizing: border-box;
     }
+
+    td:last-child,    /* columna Eliminar */
+    td:nth-last-child(2) /* columna Guardar */ {
+      position: sticky;
+      right: 0;
+      background: #fff; /* para que no se transparente */
+      z-index: 2;
+    }
   </style>
 </head>
 <body>
@@ -138,7 +146,7 @@
   <div id="encabezado"></div>
 
   <header>
-    <h2>📋 Lista de Servicios</h2>
+    <h2>📋 Servicios</h2>
     <!-- dispara el modal de proveedores -->
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
