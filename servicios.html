@@ -5,20 +5,13 @@
   <title>Servicios Rai Trai</title>
   <link rel="stylesheet" href="estilos.css">
   <style>
-    /* Anchos predefinidos para columnas */
-    .w-xs { width: 5%; }
-    .w-sm { width: 10%; }
-    .w-md { width: 20%; }
-    .w-lg { width: 30%; }
-
     .section { margin-bottom: 3rem; }
     .section h3 { margin-top: 1rem; }
     .section table { width: 100%; border-collapse: collapse; }
     .section th, .section td { border: 1px solid #ccc; padding: 4px; box-sizing: border-box; }
-    select, input { width:100%; box-sizing:border-box; }
+    select, input { width: 100%; box-sizing: border-box; }
     .controls { margin: .5rem 0; }
     .controls button { margin-right: .5rem; }
-
     /* Modal proveedores */
     #modal { display:none; position:fixed; top:0;left:0; width:100%;height:100%;
              background:rgba(0,0,0,0.5); align-items:center; justify-content:center; }
@@ -56,52 +49,45 @@
 
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
-      categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENCIÓN','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
+      categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
       formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
       tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
       moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
     };
     const campos = [
-      'destino','numero','servicio','tipoServicio','categoria',
+      'servicio','tipoServicio','categoria',
       'ciudad','restricciones','proveedor','tipoCobro',
       'moneda','valorServicio','formaPago'
     ];
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
     const container = document.getElementById('secciones');
 
-    // ===================================================
-    // Funciones modal
+    // Modal
     function openModal(){ document.getElementById('modal').style.display='flex'; }
     function closeModal(){ document.getElementById('modal').style.display='none'; }
 
-    // ===================================================
-    // Crea sección para un destino (o "OTRO")
+    // Construye cada sección por destino
     function crearSeccion(destinoFijo) {
-      const isOtro = destinoFijo===null;
+      const isOtro = destinoFijo === null;
       let destinoActivo = destinoFijo;
       const section = document.createElement('div');
       section.className = 'section';
-      section.innerHTML = `<h3>${isOtro?'OTRO':destinoFijo}</h3>`;
+      section.innerHTML = `<h3>${ isOtro ? 'OTRO' : destinoFijo }</h3>`;
 
-      // Tabla y cabecera
+      // Tabla
       const table = document.createElement('table');
       const thead = document.createElement('thead');
       const headRow = document.createElement('tr');
       if (isOtro) {
         const th = document.createElement('th');
         th.textContent='Destino';
-        th.className='w-sm';
         headRow.appendChild(th);
       }
-      // Define anchos: ajusta clases según tu preferencia
-      const definiciones = [
-        'w-xs','w-sm','w-md','w-sm','w-sm','w-sm','w-sm','w-lg','w-sm','w-sm','w-sm','w-sm','w-sm','w-xs','w-xs'
-      ];
-      ['N°','Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar']
-        .forEach((txt,i) => {
+      // Ahora sin la columna Nº
+      ['Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar']
+        .forEach(txt => {
           const th = document.createElement('th');
-          th.textContent=txt;
-          th.className=definiciones[isOtro? i : i+1]||'';
+          th.textContent = txt;
           headRow.appendChild(th);
         });
       thead.appendChild(headRow);
@@ -113,101 +99,64 @@
 
       // Controles
       const ctrl = document.createElement('div');
-      ctrl.className='controls';
-      ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo'].forEach((lab,idx)=>{
-        const btn=document.createElement('button');
-        btn.textContent=lab;
-        btn.onclick=()=>{
-          if(idx===0) renderFila();
-          if(idx===1) Array.from({length:10}).forEach(renderFila);
-          if(idx===2) guardarTodo();
-        };
-        ctrl.appendChild(btn);
-      });
+      ctrl.className = 'controls';
+      ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
+        .forEach((lab,i)=>{
+          const b = document.createElement('button');
+          b.textContent = lab;
+          b.onclick = ()=> {
+            if(i===0) addFila();
+            if(i===1) Array.from({length:10}).forEach(addFila);
+            if(i===2) guardarTodo();
+          };
+          ctrl.appendChild(b);
+        });
       section.appendChild(ctrl);
 
-      const filasArr=[];
-
-      // Numeración
-      function actualizarNumeros(){
-        tbody.querySelectorAll('tr').forEach((tr,i)=>{
-          let td=tr.querySelector('td.rownum');
-          if(!td){
-            td=document.createElement('td');
-            td.className='rownum w-xs';
-            tr.insertBefore(td,tr.firstChild);
-          }
-          td.textContent=i+1;
-        });
-      }
-
-      // Crea select Destino
-      function crearSelectDestino(val=''){
-        const sel=document.createElement('select');
-        sel.dataset.campo='destino';
-        sel.appendChild(new Option('—',''));
-        destinos.filter(d=>d).forEach(d=>{
-          const o=new Option(d,d);
-          if(d===val) o.selected=true;
-          sel.appendChild(o);
-        });
-        sel.onchange=()=>{ destinoActivo=sel.value; cargarProveedoresFila(tr); };
-        return sel;
-      }
-
-      // Pobla proveedores
-      async function cargarProveedoresFila(tr){
-        const dest=destinoActivo;
-        const sel=tr.querySelector('[data-campo=proveedor]');
-        sel.innerHTML='<option value="">—</option>';
-        if(!dest) return;
-        const col=collection(db,'Proveedores',dest,'Listado');
-        const q=query(col,orderBy('proveedor','asc'));
-        const snap=await getDocs(q);
-        snap.forEach(s=>sel.appendChild(new Option(s.id,s.id)));
-      }
+      const filasArr = [];
 
       // Render fila
-      function renderFila(prefill={}, ref=null){
-        const tr=document.createElement('tr');
-        const inputs=[];
+      function addFila(prefill={}, ref=null){
+        const tr = document.createElement('tr');
+        const inputs = [];
 
-        // columna destino o número
+        // Destino en OTRO
         if(isOtro){
-          const td=document.createElement('td');
-          const inp=document.createElement('input');
-          inp.placeholder='Destino';
-          inp.value=prefill.destino||'';
-          inp.dataset.campo='destino';
-          inp.addEventListener('input',()=>destinoActivo=inp.value.toUpperCase());
+          const td = document.createElement('td');
+          const inp = document.createElement('input');
+          inp.placeholder = 'Destino';
+          inp.value = prefill.destino||'';
+          inp.dataset.campo = 'destino';
+          inp.addEventListener('input', ()=> destinoActivo = inp.value.toUpperCase());
           td.appendChild(inp); tr.appendChild(td); inputs.push(inp);
         }
 
         // resto campos
         campos.forEach(c=>{
-          if(c==='destino' && !isOtro) return;
-          const td=document.createElement('td');
+          const td = document.createElement('td');
           let inp;
-          if(c==='destino'){
-            inp=crearSelectDestino(prefill.destino||destinoActivo);
+          if(c==='proveedor'){
+            // select proveedor
+            inp = document.createElement('select');
+            inp.dataset.campo='proveedor';
+            inp.innerHTML = '<option value="">—</option>';
           }
           else if(opciones[c]){
-            inp=document.createElement('select');
+            inp = document.createElement('select');
             inp.dataset.campo=c;
             if(c==='categoria'||c==='formaPago') inp.multiple=true;
-            opciones[c].forEach(o=>inp.appendChild(new Option(o,o)));
+            opciones[c].forEach(opt=>inp.appendChild(new Option(opt,opt)));
             // prefill
             if(prefill[c]){
-              const arr=Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
+              const arr = Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
               arr.forEach(v=>{
-                const opt=Array.from(inp.options).find(o=>o.value===v);
-                if(opt) opt.selected=true;
+                const o = Array.from(inp.options).find(o=>o.value===v);
+                if(o) o.selected=true;
               });
             }
-          }
-          else{
-            inp=document.createElement('input');
-            inp.value=prefill[c]||'';
+          } else {
+            inp = document.createElement('input');
+            inp.value = prefill[c]||'';
             if(c!=='valorServicio')
               inp.addEventListener('input',()=>inp.value=inp.value.toUpperCase());
             inp.dataset.campo=c;
@@ -217,24 +166,34 @@
           inputs.push(inp);
         });
 
-        // botones
-        const tdG=document.createElement('td');
-        const btnG=document.createElement('button'); btnG.textContent='💾';
+        // cargar proveedores al cambiar destino
+        if(!isOtro){
+          // dest fijo
+          destinoActivo = destinoFijo;
+          // apenas se dibuje
+          setTimeout(()=> loadProveedores(tr),0);
+        }
+
+        // Botones guardar/eliminar
+        const tdG=document.createElement('td'),
+              btnG=document.createElement('button');
+        btnG.textContent='💾';
         btnG.onclick=async()=>{
-          try{ await guardarFila(inputs); alert('✅'); }
+          try{ await saveFila(inputs); alert('✅'); }
           catch(e){ alert('⚠️ '+e.message); }
         };
         tdG.appendChild(btnG); tr.appendChild(tdG);
 
-        const tdD=document.createElement('td');
-        const btnD=document.createElement('button'); btnD.textContent='🗑️';
+        const tdD=document.createElement('td'),
+              btnD=document.createElement('button');
+        btnD.textContent='🗑️';
         btnD.onclick=async()=>{
           if(ref){ await deleteDoc(ref); alert('✅'); }
-          tr.remove(); actualizarNumeros();
+          tr.remove();
         };
         tdD.appendChild(btnD); tr.appendChild(tdD);
 
-        // pegado individual
+        // pegado
         tr.addEventListener('paste',e=>{
           e.preventDefault();
           const vals=e.clipboardData.getData('text/plain').split('\t');
@@ -242,60 +201,56 @@
         });
 
         tbody.appendChild(tr);
-        filasArr.push({inputs:inputs,ref});
-        actualizarNumeros();
-        // carga proveedores
-        if(!isOtro) cargarProveedoresFila(tr);
+        filasArr.push({inputs,ref});
       }
 
-      // guardar fila
-      async function guardarFila(inputs){
-        const data={destino:destinoActivo};
-        inputs.forEach(i=>{
-          const k=i.dataset.campo;
-          if(i.multiple)
-            data[k]=[...i.selectedOptions].map(o=>o.value);
-          else
-            data[k]=i.value.trim().toUpperCase();
-        });
-        if(!data.destino||!data.servicio) throw new Error('Falta destino/servicio');
-        // padre
-        const padre=doc(db,'Servicios',data.destino);
-        await setDoc(padre,{_created:true},{merge:true});
-        // listado
-        const col=collection(db,'Servicios',data.destino,'Listado');
-        const sdoc=doc(col,data.servicio);
-        await setDoc(sdoc,data);
+      // carga proveedores de Firestore
+      async function loadProveedores(tr){
+        const sel = tr.querySelector('[data-campo=proveedor]');
+        sel.innerHTML = '<option value="">—</option>';
+        if(!destinoActivo) return;
+        const col = collection(db,'Proveedores',destinoActivo,'Listado');
+        const q   = query(col, orderBy('proveedor','asc'));
+        const snap=await getDocs(q);
+        snap.forEach(d=> sel.appendChild(new Option(d.id,d.id)));
+      }
+
+      // guardar en Firestore
+      async function saveFila(inputs){
+        const data = {};
+        inputs.forEach(i=> data[i.dataset.campo] = 
+          i.multiple
+            ? [...i.selectedOptions].map(o=>o.value)
+            : i.value.trim().toUpperCase()
+        );
+        const dest = isOtro ? data.destino : destinoActivo;
+        if(!dest) throw new Error('Falta Destino');
+        if(!data.servicio) throw new Error('Falta Servicio');
+        if(!data.proveedor) throw new Error('Falta Proveedor');
+
+        // doc padre
+        await setDoc(doc(db,'Servicios',dest),{_created:true},{merge:true});
+        // subcolección
+        const col = collection(db,'Servicios',dest,'Listado');
+        const docRef = doc(col, data.servicio);
+        await setDoc(docRef,data);
       }
 
       // guardar todo
       async function guardarTodo(){
-        for(const f of filasArr)
-          await guardarFila(f.inputs);
-        alert('Todos guardados ✅');
+        for(const f of filasArr) await saveFila(f.inputs);
+        alert('✅ Todos guardados');
       }
-
-      // masivo
-      tbody.addEventListener('paste',e=>{
-        e.preventDefault();
-        const lines=e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
-        lines.forEach(ln=>{
-          const vals=ln.split('\t');
-          const obj={};
-          campos.forEach((c,i)=>obj[c]=vals[i]||'');
-          renderFila(obj);
-        });
-      });
 
       // carga inicial
       if(!isOtro){
         (async()=>{
-          destinoActivo=destinoFijo;
-          const col=collection(db,'Servicios',destinoActivo,'Listado');
-          const snap=await getDocs(col);
+          const col = collection(db,'Servicios',destinoFijo,'Listado');
+          const snap = await getDocs(col);
           snap.forEach(dS=>{
-            const d=dS.data(); d.servicio=dS.id;
-            renderFila(d, doc(db,'Servicios',destinoActivo,'Listado',dS.id));
+            const obj = dS.data();
+            obj.servicio = dS.id;
+            addFila(obj, doc(db,'Servicios',destinoFijo,'Listado',dS.id));
           });
         })();
       }
@@ -304,10 +259,12 @@
     }
 
     // monta secciones
-    destinos.forEach(d=>container.appendChild(crearSeccion(d)));
+    destinos.forEach(d=> container.appendChild(crearSeccion(d)));
 
-    // encabezado externo
-    fetch('encabezado.html').then(r=>r.text()).then(h=>document.getElementById('encabezado').innerHTML=h);
+    // fetch encabezado
+    fetch('encabezado.html')
+      .then(r=>r.text())
+      .then(html=>document.getElementById('encabezado').innerHTML=html);
   </script>
 </body>
 </html>
