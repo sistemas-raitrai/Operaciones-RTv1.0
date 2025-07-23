@@ -10,6 +10,7 @@
     .controls { margin: 1rem 0; }
     .controls button { margin-right: .5rem; }
     select, input { width: 100%; box-sizing: border-box; }
+    th.rownum, td.rownum { width: 2rem; text-align: center; }
   </style>
 </head>
 <body>
@@ -19,9 +20,10 @@
   <table id="tabla">
     <thead>
       <tr>
+        <th class="rownum">#</th>
         <th>Destino</th>
         <th>Proveedor</th>
-        <th>Noimbre del Contacto</th>
+        <th>Nombre Contacto</th>
         <th>Teléfono</th>
         <th>Correo electrónico</th>
         <th>💾</th>
@@ -33,7 +35,7 @@
 
   <div class="controls">
     <button onclick="agregarFila()">➕ Nueva fila</button>
-    <button onclick="agregarVariasFilas(10)">➕ Agregar 10 filas</button>
+    <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
     <button onclick="guardarTodo()">💾 Guardar todo</button>
   </div>
 
@@ -45,18 +47,26 @@
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // Redirige si no hay sesión
     onAuthStateChanged(auth, user => {
       if (!user) window.location.href = 'login.html';
     });
 
-    // **Lista fija de destinos** (en mayúsculas)
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
-
     const tablaBody = document.getElementById('contenido');
     const filas = [];
 
-    // Crea el dropdown de destinos con opción OTRO
+    function actualizarNumeros() {
+      tablaBody.querySelectorAll('tr').forEach((tr,i) => {
+        let td = tr.querySelector('td.rownum');
+        if (!td) {
+          td = document.createElement('td');
+          td.className = 'rownum';
+          tr.insertBefore(td, tr.firstChild);
+        }
+        td.textContent = i + 1;
+      });
+    }
+
     function crearSelectDestino(value = '') {
       const sel = document.createElement('select');
       sel.dataset.campo = 'destino';
@@ -71,7 +81,7 @@
           const inp = document.createElement('input');
           inp.placeholder = 'Escribe nuevo destino';
           inp.dataset.campo = 'destino';
-          inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
+          inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
           sel.replaceWith(inp);
           inp.focus();
         }
@@ -79,17 +89,20 @@
       return sel;
     }
 
-    // Añade una fila a la tabla
     function agregarFila(prefill = {}, ref = null) {
       const tr = document.createElement('tr');
       const inputs = [];
 
-      // --- Destino: dropdown o input si OTRO ---
+      // columna # (fila) - se rellenará en actualizarNumeros
+      const placeholderTd = document.createElement('td');
+      placeholderTd.className = 'rownum';
+      tr.appendChild(placeholderTd);
+
+      // Destino
       const td0 = document.createElement('td');
       let inp0;
       const destVal = (prefill.destino||'').toUpperCase();
       if (destVal && !destinos.includes(destVal)) {
-        // ya era un destino libre
         inp0 = document.createElement('input');
         inp0.value = destVal;
         inp0.dataset.campo = 'destino';
@@ -101,21 +114,19 @@
       tr.appendChild(td0);
       inputs.push(inp0);
 
-      // --- Proveedor / Contacto / Teléfono / Correo ---
+      // Proveedor / Contacto / Teléfono / Correo
       ['proveedor','contacto','telefono','correo'].forEach(c => {
         const td = document.createElement('td');
         const inp = document.createElement('input');
         inp.value = prefill[c] || '';
-        if (c !== 'correo') {
-          inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
-        }
+        if (c!=='correo') inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
         inp.dataset.campo = c;
         td.appendChild(inp);
         tr.appendChild(td);
         inputs.push(inp);
       });
 
-      // --- Botón Guardar fila ---
+      // Guardar
       const tdG = document.createElement('td');
       const btnG = document.createElement('button');
       btnG.textContent = '💾';
@@ -131,42 +142,39 @@
       tdG.appendChild(btnG);
       tr.appendChild(tdG);
 
-      // --- Botón Eliminar fila ---
+      // Eliminar
       const tdE = document.createElement('td');
       const btnE = document.createElement('button');
       btnE.textContent = '🗑️';
       btnE.onclick = async () => {
-        if (ref) {
-          await deleteDoc(ref);
-          alert('✅ Eliminado');
-        }
+        if (ref) { await deleteDoc(ref); alert('✅ Eliminado'); }
         tr.remove();
+        actualizarNumeros();
       };
       tdE.appendChild(btnE);
       tr.appendChild(tdE);
 
-      // --- Pegado tab a tab ---
+      // Pegado tab-a-tab
       tr.addEventListener('paste', e => {
         e.preventDefault();
         const vals = e.clipboardData.getData('text/plain').split('\t');
-        inputs.forEach((inp,i) => {
-          if (vals[i] != null) inp.value = vals[i].trim().toUpperCase();
+        inputs.forEach((inp,i)=> {
+          if (vals[i]!=null) inp.value = vals[i].trim().toUpperCase();
         });
       });
 
       tablaBody.appendChild(tr);
       filas.push({inputs, ref});
+      actualizarNumeros();
     }
 
-    // Agrega N filas vacías
     function agregarVariasFilas(n) {
-      for (let i=0; i<n; i++) agregarFila();
+      for (let i=0;i<n;i++) agregarFila();
     }
 
-    // Guarda o actualiza un proveedor
     async function guardarFila(inputs, ref) {
       const data = {};
-      inputs.forEach(i => data[i.dataset.campo] = i.value.trim());
+      inputs.forEach(i=> data[i.dataset.campo] = i.value.trim());
       // Forzar mayúsculas
       data.destino   = data.destino.toUpperCase();
       data.proveedor = data.proveedor.toUpperCase();
@@ -174,44 +182,59 @@
       if (!data.destino)   throw new Error('Debe ingresar Destino');
       if (!data.proveedor) throw new Error('Debe ingresar Proveedor');
 
-      // 1) Crear documento padre
-      const destinoDoc = doc(db,'Proveedores',data.destino);
-      await setDoc(destinoDoc,{_created:true},{merge:true});
+      // *** chequeo duplicados en tabla actual ***
+      const iguales = filas.some(f=>{
+        if(f.inputs===inputs) return false;
+        const d = f.inputs.find(i=>i.dataset.campo==='destino').value;
+        const p = f.inputs.find(i=>i.dataset.campo==='proveedor').value;
+        return d===data.destino && (
+          p===data.proveedor ||
+          p.includes(data.proveedor) ||
+          data.proveedor.includes(p)
+        );
+      });
+      if (iguales) {
+        if (!confirm(`Ya existe un proveedor similar (“${data.proveedor}”) para ${data.destino}.\n¿Guardar de todas formas?`)) {
+          throw new Error('Guardado cancelado por duplicado');
+        }
+      }
 
-      // 2) Guardar en subcolección Listado
-      const listCol = collection(db,'Proveedores',data.destino,'Listado');
-      const provDoc = doc(listCol, data.proveedor);
-      await setDoc(provDoc, data);
+      // 1) crear doc padre
+      const padre = doc(db,'Proveedores',data.destino);
+      await setDoc(padre,{_created:true},{merge:true});
 
-      if (!ref) filas.find(f=>f.inputs===inputs).ref = provDoc;
+      // 2) guardar en Listado
+      const col = collection(db,'Proveedores',data.destino,'Listado');
+      const pd  = doc(col,data.proveedor);
+      await setDoc(pd,data);
+
+      if (!ref) filas.find(f=>f.inputs===inputs).ref = pd;
     }
 
-    // Guarda todas
     async function guardarTodo() {
       for (const f of filas) {
-        try { await guardarFila(f.inputs, f.ref); }
+        try { await guardarFila(f.inputs,f.ref); }
         catch(e){ alert('⚠️ '+e.message); }
       }
-      alert('📑 Todos guardados');
+      alert('📑 Todo guardado');
     }
 
-    // Carga inicial: itera destinos fijos y lee su Listado
     async function cargarProveedores() {
       for (const d of destinos) {
         const destino = d.toUpperCase();
         const col = collection(db,'Proveedores',destino,'Listado');
         const q   = query(col, orderBy('proveedor','asc'));
-        const snap = await getDocs(q);
-        snap.forEach(s => {
-          const dta = s.data();
-          dta.destino = destino;
-          agregarFila(dta, doc(db,'Proveedores',destino,'Listado',s.id));
+        const snap= await getDocs(q);
+        snap.forEach(s=>{
+          const o = s.data();
+          o.destino = destino;
+          agregarFila(o, doc(db,'Proveedores',destino,'Listado',s.id));
         });
       }
     }
 
-    // Pegado masivo en toda la tabla
-    tablaBody.addEventListener('paste', e => {
+    // pegado masivo en toda la tabla
+    tablaBody.addEventListener('paste',e=>{
       e.preventDefault();
       const lines = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
       lines.forEach(line=>{
@@ -227,7 +250,6 @@
     window.agregarVariasFilas = agregarVariasFilas;
     window.guardarTodo        = guardarTodo;
 
-    // Arranque
     cargarProveedores();
 
     fetch('encabezado.html')
