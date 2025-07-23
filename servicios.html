@@ -44,12 +44,11 @@
   </div>
 
   <script type="module">
-    // Import Firebase Auth y Firestore
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import { collection, getDocs, doc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // Redirige si no hay usuario autenticado
+    // Asegura sesión
     onAuthStateChanged(auth, user => {
       if (!user) window.location.href = 'login.html';
     });
@@ -94,8 +93,8 @@
             o.value = opt; o.textContent = opt;
             // Selecciona si dato[c] lo incluye
             if (dato[c]) {
-              const valores = Array.isArray(dato[c]) ? dato[c] : [dato[c]];
-              if (valores.includes(opt)) o.selected = true;
+              const vals = Array.isArray(dato[c]) ? dato[c] : [dato[c]];
+              if (vals.includes(opt)) o.selected = true;
             }
             input.appendChild(o);
           });
@@ -127,7 +126,11 @@
       const tdE = document.createElement('td');
       const btnE = document.createElement('button'); btnE.textContent='🗑️';
       btnE.onclick = async () => {
-        await eliminarFila(ref, tr);
+        if (ref) {
+          await deleteDoc(ref);
+          alert('Documento eliminado de Firebase ✅');
+        }
+        tr.remove();
       };
       tdE.appendChild(btnE); tr.appendChild(tdE);
 
@@ -152,7 +155,6 @@
       inputs.forEach(i => {
         const k = i.dataset.campo;
         if (i.multiple) {
-          // Array de valores seleccionados
           data[k] = Array.from(i.selectedOptions).map(o => o.value);
         } else {
           data[k] = k === 'valorServicio' ? Number(i.value) || 0 : i.value.trim().toUpperCase();
@@ -160,23 +162,8 @@
       });
       const { destino, servicio } = data;
       if (!destino || !servicio) throw new Error('Completa Destino y Servicio.');
-      // Referencia a documento correcto: colección Servicios/{destino} y doc servicio
-const docRef = doc(collection(db, 'Servicios', destino), servicio);
+      const docRef = doc(collection(db, 'Servicios', destino), servicio);
       await setDoc(docRef, data);
-      // Actualizar ref en filas
-      const filaMeta = filas.find(f => f.inputs === inputs);
-      filaMeta.ref = docRef;
-    }
-
-    /**
-     * Elimina documento Firestore si existe, y quita la fila del DOM.
-     */
-    async function eliminarFila(ref, tr) {
-      if (ref) {
-        await deleteDoc(ref);
-        alert('Documento eliminado de Firebase ✅');
-      }
-      tr.remove();
     }
 
     // Varias filas nuevas
@@ -187,11 +174,7 @@ const docRef = doc(collection(db, 'Servicios', destino), servicio);
     // Guarda todas las filas
     async function guardarTodo() {
       for (const { inputs } of filas) {
-        try {
-          await guardarFila(inputs);
-        } catch (e) {
-          console.error(e);
-        }
+        try { await guardarFila(inputs); } catch {};
       }
       alert('Todos guardados correctamente ✅');
     }
@@ -201,15 +184,16 @@ const docRef = doc(collection(db, 'Servicios', destino), servicio);
       const destSnap = await getDocs(collection(db, 'Servicios'));
       for (const d of destSnap.docs) {
         const destino = d.id;
+        // Título de seccion por destino
+        const header = document.createElement('tr');
+        const th = document.createElement('th');
+        th.colSpan = campos.length + 2;
+        th.textContent = destino;
+        header.appendChild(th);
+        tabla.appendChild(header);
+
         const servSnap = await getDocs(collection(db, 'Servicios', destino));
-      // Encabezado de sección para cada destino
-      const headerRow = document.createElement('tr');
-      const th = document.createElement('th');
-      th.colSpan = campos.length + 2; // columnas más botones
-      th.textContent = destino;
-      headerRow.appendChild(th);
-      tabla.appendChild(headerRow);
-      servSnap.forEach(snap => {
+        servSnap.forEach(snap => {
           const data = snap.data();
           data.destino = destino;
           data.servicio = snap.id;
@@ -230,16 +214,12 @@ const docRef = doc(collection(db, 'Servicios', destino), servicio);
       });
     });
 
-    // Enlazar funciones globales
     window.agregarFila = agregarFila;
     window.agregarVariasFilas = agregarVariasFilas;
     window.guardarTodo = guardarTodo;
 
-    // Iniciar carga de datos y encabezado
     cargarRegistros();
-    fetch('encabezado.html')
-      .then(r => r.text())
-      .then(html => document.getElementById('encabezado').innerHTML = html);
+    fetch('encabezado.html').then(r=>r.text()).then(html=>document.getElementById('encabezado').innerHTML=html);
   </script>
 </body>
 </html>
