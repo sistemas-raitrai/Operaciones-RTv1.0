@@ -5,260 +5,258 @@
   <title>Servicios Rai Trai</title>
   <link rel="stylesheet" href="estilos.css">
   <style>
-    .section { margin-bottom: 3rem; }
-    .section h3 { margin-top: 1rem; }
-    .section table { width: 100%; border-collapse: collapse; }
-    .section th, .section td { border: 1px solid #ccc; padding: 4px; }
-    .controls { margin: .5rem 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 4px; }
+    .controls { margin: 1rem 0; }
+    .controls button { margin-right: .5rem; }
+    select, input { width: 100%; box-sizing: border-box; }
   </style>
 </head>
 <body>
   <div id="encabezado"></div>
   <h2>📋 Listado de Servicios</h2>
-  <div id="secciones"></div>
+
+  <!-- Botón para lanzar el gestor de proveedores -->
+  <button onclick="window.open('proveedores.html','Proveedores','width=800,height=600')">
+    🛠️ Administrar Proveedores
+  </button>
+
+  <table id="tabla">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Destino</th>
+        <th>N° Identificatorio</th>
+        <th>Servicio</th>
+        <th>Tipo Servicio</th>
+        <th>Categoría</th>
+        <th>Ciudad</th>
+        <th>Restricciones</th>
+        <th>Proveedor</th>
+        <th>Tipo Cobro</th>
+        <th>Moneda</th>
+        <th>Valor Servicio</th>
+        <th>Forma de Pago</th>
+        <th>💾</th>
+        <th>🗑️</th>
+      </tr>
+    </thead>
+    <tbody id="contenido"></tbody>
+  </table>
+
+  <div class="controls">
+    <button onclick="agregarFila()">➕ Nueva fila</button>
+    <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
+    <button onclick="guardarTodo()">💾 Guardar todo</button>
+  </div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
-      collection, getDocs, doc, setDoc, deleteDoc
+      collection, getDocs, query, orderBy,
+      doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // Si no hay usuario, redirige
-    onAuthStateChanged(auth, u => { if (!u) window.location.href = 'login.html'; });
+    onAuthStateChanged(auth, user => {
+      if (!user) window.location.href='login.html';
+    });
 
-    // Opciones para selects
-    const opciones = {
-      tipoServicio: ['DIARIO','GENERAL','OTRO'],
-      categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENCIÓN','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
-      formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
-      tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
-      moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
-    };
-    // Campos en orden
+    // Destinos fijos
+    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
+
     const campos = [
       'destino','numero','servicio','tipoServicio','categoria',
-      'ciudad','restricciones','proveedor','contacto','correo',
-      'tipoCobro','moneda','valorServicio','formaPago'
+      'ciudad','restricciones','proveedor','tipoCobro',
+      'moneda','valorServicio','formaPago'
     ];
 
-    function crearSeccion(destinoFijo) {
-      const isOtro = destinoFijo === null;
-      let destinoActivo = destinoFijo;
-      const section = document.createElement('div');
-      section.className = 'section';
-      section.innerHTML = `<h3>${ isOtro ? 'OTRO' : destinoFijo }</h3>`;
+    const tablaBody = document.getElementById('contenido');
+    const filas = [];
 
-      // Cabecera de tabla
-      const table = document.createElement('table');
-      const thead = document.createElement('thead');
-      const headRow = document.createElement('tr');
-      if (isOtro) {
-        const th = document.createElement('th');
-        th.textContent = 'Destino';
-        headRow.appendChild(th);
-      }
-      ['N°','Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Contacto','Correo','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar']
-        .forEach(txt => {
-          const th = document.createElement('th');
-          th.textContent = txt;
-          headRow.appendChild(th);
-        });
-      thead.appendChild(headRow);
-      table.appendChild(thead);
+    function actualizarNumeros() {
+      tablaBody.querySelectorAll('tr').forEach((tr,i) => {
+        let td = tr.querySelector('td.rownum');
+        if (!td) {
+          td = document.createElement('td');
+          td.className = 'rownum';
+          tr.insertBefore(td, tr.firstChild);
+        }
+        td.textContent = i+1;
+      });
+    }
 
-      const tbody = document.createElement('tbody');
-      table.appendChild(tbody);
-      section.appendChild(table);
+    // Crea el <select> de destino (igual que antes)
+    function crearSelectDestino(valor='') {
+      const sel = document.createElement('select');
+      sel.dataset.campo = 'destino';
+      sel.appendChild(new Option('—',''));
+      destinos.forEach(d => {
+        const o = new Option(d,d);
+        if (d===valor) o.selected = true;
+        sel.appendChild(o);
+      });
+      sel.onchange = () => {
+        sel.value = sel.value.toUpperCase();
+        cargarProveedoresFila(sel.closest('tr'));
+      };
+      return sel;
+    }
 
-      // Botones de control
-      const ctrl = document.createElement('div');
-      ctrl.className = 'controls';
-      ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
-        .forEach((lbl,i) => {
-          const btn = document.createElement('button');
-          btn.textContent = lbl;
-          btn.onclick = () => {
-            if (i === 0) renderFila();
-            if (i === 1) Array.from({length:10}).forEach(renderFila);
-            if (i === 2) guardarTodo();
-          };
-          ctrl.appendChild(btn);
-        });
-      section.appendChild(ctrl);
+    // Carga el <select> de proveedores para la fila dada
+    async function cargarProveedoresFila(tr) {
+      const destino = tr.querySelector('[data-campo=destino]').value;
+      const selProv = tr.querySelector('[data-campo=proveedor]');
+      // limpia opciones
+      selProv.innerHTML = '<option value="">—</option>';
+      if (!destino) return;
+      const col = collection(db,'Proveedores',destino,'Listado');
+      const q   = query(col,orderBy('proveedor','asc'));
+      const snap = await getDocs(q);
+      snap.forEach(docSnap => {
+        const p = docSnap.id;
+        const o = new Option(p,p);
+        selProv.appendChild(o);
+      });
+    }
 
-      const filas = [];
+    function agregarFila(prefill={}, ref=null) {
+      const tr = document.createElement('tr');
+      const inputs = [];
 
-      // Renderiza una sola fila
-      function renderFila(prefill = {}, ref = null) {
-        const tr = document.createElement('tr');
-        const inputs = [];
+      // columna #
+      const td0 = document.createElement('td');
+      td0.className = 'rownum';
+      tr.appendChild(td0);
 
-        campos.forEach(c => {
-          if (c === 'destino' && isOtro) {
-            const td = document.createElement('td');
-            const inp = document.createElement('input');
-            inp.placeholder = 'Destino';
-            inp.value = prefill.destino || '';
-            inp.addEventListener('change', () => {
-              destinoActivo = inp.value.trim().toUpperCase();
-            });
-            td.appendChild(inp);
-            tr.appendChild(td);
-            inputs.push(inp);
-            return;
-          }
-          if (c === 'destino' && !isOtro) return;
-
-          const td = document.createElement('td');
-          let inp;
-          if (opciones[c]) {
-            inp = document.createElement('select');
-            if (c === 'categoria' || c === 'formaPago') inp.multiple = true;
-            opciones[c].forEach(opt => {
-              const o = new Option(opt, opt);
-              if (prefill[c]) {
-                const arr = Array.isArray(prefill[c]) ? prefill[c] : [prefill[c]];
-                if (arr.includes(opt)) o.selected = true;
-              }
-              inp.appendChild(o);
-            });
-          } else {
-            inp = document.createElement('input');
-            inp.value = prefill[c] || '';
-            if (c !== 'valorServicio') {
-              inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
-            }
+      campos.forEach(c => {
+        const td = document.createElement('td');
+        let inp;
+        if (c==='destino') {
+          inp = crearSelectDestino((prefill[c]||'').toUpperCase());
+        } else if (c==='proveedor') {
+          // provisión de un <select>
+          inp = document.createElement('select');
+          inp.dataset.campo = 'proveedor';
+          inp.innerHTML = '<option value="">—</option>';
+        } else if (['tipoServicio','categoria','formaPago'].includes(c)) {
+          // estos eran selects
+          inp = document.createElement('select');
+          inp.dataset.campo = c;
+          // podrías rellenar sus opciones aquí...
+        } else {
+          inp = document.createElement('input');
+          inp.value = prefill[c]||'';
+          if (c!=='valorServicio') {
+            inp.addEventListener('input',()=>inp.value=inp.value.toUpperCase());
           }
           inp.dataset.campo = c;
-          inputs.push(inp);
-          td.appendChild(inp);
-          tr.appendChild(td);
-        });
-
-        // Botón Guardar fila
-        const tdG = document.createElement('td');
-        const btnG = document.createElement('button');
-        btnG.textContent = '💾';
-        btnG.onclick = async () => {
-          try {
-            await guardarFila(inputs);
-            alert('Guardado ✅');
-          } catch (e) {
-            alert('Error: ' + e.message);
-          }
-        };
-        tdG.appendChild(btnG);
-        tr.appendChild(tdG);
-
-        // Botón Eliminar fila
-        const tdD = document.createElement('td');
-        const btnD = document.createElement('button');
-        btnD.textContent = '🗑️';
-        btnD.onclick = async () => {
-          if (ref) {
-            await deleteDoc(ref);
-            alert('Eliminado ✅');
-          }
-          tr.remove();
-        };
-        tdD.appendChild(btnD);
-        tr.appendChild(tdD);
-
-        // Pegado individual celda
-        tr.addEventListener('paste', e => {
-          e.preventDefault();
-          const vals = e.clipboardData.getData('text/plain').split('\t');
-          vals.forEach((v,i) => {
-            if (inputs[i]) inputs[i].value = v.trim().toUpperCase();
-          });
-        });
-
-        tbody.appendChild(tr);
-        filas.push({inputs, ref});
-      }
-
-      // Guarda una fila en: Servicios/{destino}/Listado/{servicio}
-      async function guardarFila(inputs) {
-        const data = { destino: destinoActivo };
-        inputs.forEach(i => {
-          const k = i.dataset.campo;
-          if (i.multiple) {
-            data[k] = Array.from(i.selectedOptions).map(o => o.value);
-          } else if (k === 'destino') {
-            data.destino = i.value.trim().toUpperCase();
-          } else {
-            data[k] = (k === 'valorServicio')
-              ? Number(i.value) || 0
-              : i.value.trim().toUpperCase();
-          }
-        });
-        if (!data.destino || !data.servicio) {
-          throw new Error('Completa destino y servicio.');
         }
-        const refDoc = doc(
-          collection(db, 'Servicios', data.destino, 'Listado'),
-          data.servicio
-        );
-        await setDoc(refDoc, data);
-      }
+        td.appendChild(inp);
+        tr.appendChild(td);
+        inputs.push(inp);
+      });
 
-      // Guarda todas las filas de esta sección
-      async function guardarTodo() {
-        for (const f of filas) {
-          await guardarFila(f.inputs);
-        }
-        alert('Todos guardados ✅');
-      }
+      // botón Guardar
+      const tdG = document.createElement('td');
+      const btnG = document.createElement('button');
+      btnG.textContent='💾';
+      btnG.onclick=async()=>{
+        try{ await guardarFila(inputs,ref); alert('✅ Guardado'); }
+        catch(e){ alert('⚠️ '+e.message); }
+      };
+      tdG.appendChild(btnG); tr.appendChild(tdG);
 
-      // Pegado masivo de varias filas completas
-      tbody.addEventListener('paste', e => {
+      // botón Eliminar
+      const tdE = document.createElement('td');
+      const btnE = document.createElement('button');
+      btnE.textContent='🗑️';
+      btnE.onclick=async()=>{
+        if(ref){ await deleteDoc(ref); alert('✅ Eliminado'); }
+        tr.remove();
+        actualizarNumeros();
+      };
+      tdE.appendChild(btnE); tr.appendChild(tdE);
+
+      // pegado tab-a-tab
+      tr.addEventListener('paste',e=>{
         e.preventDefault();
-        const lines = e.clipboardData
-          .getData('text/plain')
-          .trim()
-          .split(/\r?\n/);
-        lines.forEach(line => {
-          const vals = line.split('\t');
-          const obj = {};
-          campos.forEach((c,i) => obj[c] = vals[i] || '');
-          renderFila(obj);
+        const vals = e.clipboardData.getData('text/plain').split('\t');
+        inputs.forEach((inp,i)=>{
+          if(vals[i]!=null) inp.value=vals[i].trim().toUpperCase();
         });
       });
 
-      // Carga inicial desde Firestore (solo en secciones fijas)
-      if (!isOtro) {
-        (async () => {
-          destinoActivo = destinoFijo;
-          const snap = await getDocs(
-            collection(db, 'Servicios', destinoActivo, 'Listado')
-          );
-          snap.forEach(docSnap => {
-            const d = docSnap.data();
-            d.servicio = docSnap.id;
-            renderFila(d, doc(
-              db,
-              'Servicios',
-              destinoActivo,
-              'Listado',
-              docSnap.id
-            ));
-          });
-        })();
-      }
-
-      return section;
+      tablaBody.appendChild(tr);
+      filas.push({inputs,ref});
+      actualizarNumeros();
+      // si venía prefill, carga providers
+      if (prefill.destino) cargarProveedoresFila(tr);
     }
 
-    // Genera 5 secciones: 4 destinos + OTRO
-    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
-    const cont = document.getElementById('secciones');
-    destinos.forEach(d => cont.appendChild(crearSeccion(d)));
+    function agregarVariasFilas(n){
+      for(let i=0;i<n;i++) agregarFila();
+    }
 
-    // Carga header externo
-    fetch('encabezado.html')
-      .then(r => r.text())
-      .then(html => document.getElementById('encabezado').innerHTML = html);
+    async function guardarFila(inputs, ref){
+      const data = {};
+      inputs.forEach(i=> data[i.dataset.campo]=i.value.trim().toUpperCase());
+      if(!data.destino)   throw new Error('Falta Destino');
+      if(!data.servicio)  throw new Error('Falta Servicio');
+      if(!data.proveedor) throw new Error('Falta Proveedor');
+
+      // doc padre
+      const dDoc = doc(db,'Servicios',data.destino);
+      await setDoc(dDoc,{_created:true},{merge:true});
+      // guardar en subcolección
+      const col = collection(db,'Servicios',data.destino);
+      const sDoc = doc(col,data.servicio);
+      await setDoc(sDoc,data);
+
+      if(!ref){
+        filas.find(f=>f.inputs===inputs).ref=sDoc;
+      }
+    }
+
+    async function guardarTodo(){
+      for(const f of filas){
+        try{ await guardarFila(f.inputs,f.ref); }
+        catch(e){ alert('⚠️ '+e.message); }
+      }
+      alert('📑 Todos guardados');
+    }
+
+    async function cargarServicios(){
+      for(const d of destinos){
+        const dest = d.toUpperCase();
+        const col = collection(db,'Servicios',dest);
+        const snap = await getDocs(col);
+        snap.forEach(docSnap=>{
+          const data = docSnap.data();
+          data.destino=data.destino.toUpperCase();
+          agregarFila(data, doc(db,'Servicios',dest,docSnap.id));
+        });
+      }
+    }
+
+    // pegado masivo tabla entera
+    tablaBody.addEventListener('paste',e=>{
+      e.preventDefault();
+      const lines=e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
+      lines.forEach(line=>{
+        const vals = line.split('\t');
+        const obj={};
+        campos.forEach((c,i)=>obj[c]=vals[i]||'');
+        agregarFila(obj);
+      });
+    });
+
+    window.agregarFila=agregarFila;
+    window.agregarVariasFilas=agregarVariasFilas;
+    window.guardarTodo=guardarTodo;
+
+    cargarServicios();
+    fetch('encabezado.html').then(r=>r.text()).then(html=>document.getElementById('encabezado').innerHTML=html);
   </script>
 </body>
 </html>
