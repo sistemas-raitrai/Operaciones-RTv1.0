@@ -11,17 +11,17 @@
     header h2 { margin:0 }
     header button{ background:#0055A4;color:#fff;border:none;padding:.5rem 1rem;border-radius:4px;cursor:pointer }
 
-    /* ——— Secciones con scroll ——— */
+    /* ——— Sección + scroll ——— */
     .section { margin-bottom:2rem }
     .section h3{ margin:.5rem 0 }
     .table-wrapper { overflow-x:auto }
 
-    /* ——— Tabla nativa ——— */
+    /* ——— Tabla ——— */
     table { width:100%; border-collapse:collapse; table-layout:fixed }
     thead th { position:sticky; top:0; background:#f9f9f9; z-index:2 }
-    th,td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }
+    th, td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }
 
-    /* ——— Anchos aproximados ——— */
+    /* ——— Anchos ——— */
     th:nth-child(1),td:nth-child(1){width:5%}
     th:nth-child(2),td:nth-child(2){width:20%}
     th:nth-child(3),td:nth-child(3){width:12%}
@@ -35,14 +35,9 @@
     th:nth-child(11),td:nth-child(11){width:10%}
     th:nth-child(12),td:nth-child(12),th:nth-child(13),td:nth-child(13){width:auto}
 
-    /* ——— Sticky Guardar/Eliminar ——— */
-    .col-save { position:sticky; right:3.5rem; background:#fff; z-index:3 }
-    .col-del  { position:sticky; right:0;      background:#fff; z-index:3 }
-    thead .col-save, thead .col-del { z-index:4 }
-
-    /* ——— Controles internos ——— */
-    .controls{ margin:.5rem 0 }
-    .controls button{ margin-right:.5rem }
+    /* ——— Controles ——— */
+    .controls{ margin:.5rem 0; display:flex; gap:.5rem }
+    .controls button{ padding:.3rem .8rem; border:none; background:#0055A4; color:#fff; border-radius:4px; cursor:pointer }
 
     /* ——— Modal proveedores ——— */
     #backdrop-prov{ display:none; position:fixed; top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:100 }
@@ -57,14 +52,13 @@
   </style>
 </head>
 <body>
-  <!-- Encabezado externo -->
   <div id="encabezado"></div>
   <header>
-    <h2>📋 Lista Servicios</h2>
+    <h2>📋 Servicios</h2>
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
-  <!-- Modal proveedores -->
+  <!-- Modal -->
   <div id="backdrop-prov" onclick="closeProveedores()"></div>
   <div id="modal-prov">
     <div class="header">
@@ -74,7 +68,7 @@
     <iframe id="iframe-prov" src=""></iframe>
   </div>
 
-  <!-- Aquí montamos N secciones -->
+  <!-- Secciones -->
   <div id="secciones"></div>
 
   <script type="module">
@@ -83,10 +77,9 @@
       from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
       collection, getDocs, query, orderBy,
-      doc, setDoc, deleteDoc
+      doc, deleteDoc, setDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // Datos fijos
     const opciones = {
       tipoServicio:['DIARIO','GENERAL','OTRO'],
       categoria:   ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -96,8 +89,8 @@
     };
     const campos = ['servicio','tipoServicio','categoria','ciudad','restricciones','proveedor','tipoCobro','moneda','valorServicio','formaPago'];
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
-
     let floating=null;
+
     function showFloatingEditor(input){
       if(floating) floating.remove();
       floating=document.createElement('textarea');
@@ -107,79 +100,66 @@
       const r=input.getBoundingClientRect();
       floating.style.top=`${r.bottom+scrollY+4}px`;
       floating.style.left=`${r.left+scrollX}px`;
-      floating.oninput=()=>{input.value=floating.value;input.title=floating.value};
-      floating.onblur=()=>{floating.remove();floating=null};
+      floating.oninput=()=>{ input.value=floating.value; input.title=floating.value };
+      floating.onblur=()=>{ floating.remove(); floating=null };
       floating.focus();
     }
 
-    // Inicialización tras login
     onAuthStateChanged(auth,u=>{
-      if(!u) location.href='login.html';
-      else init();
+      if(!u) return location.href='login.html';
+      init();
     });
 
     function init(){
-      // Carga encabezado
-      fetch('encabezado.html')
-        .then(r=>r.text())
-        .then(html=>document.getElementById('encabezado').innerHTML=html);
-
-      // Monta cada sección
-      destinos.forEach(d=> createSection(d));
-
-      // Modal proveedores
+      // Header común
+      fetch('encabezado.html').then(r=>r.text()).then(html=>document.getElementById('encabezado').innerHTML=html);
+      // Secciones
+      destinos.forEach(d=>createSection(d));
+      // Modal Proveedores
       document.getElementById('btnProv').onclick = openProveedores;
       window.closeProveedores = closeProveedores;
     }
 
     function createSection(destFijo){
-      const isOtro=destFijo===null;
-      let destActivo=destFijo;
-      const sec=document.createElement('div');
-      sec.className='section';
+      const isOtro = destFijo===null;
+      let destActivo = destFijo;
+      const sec = document.createElement('div'); sec.className='section';
       sec.innerHTML=`<h3>${isOtro?'OTRO':destFijo}</h3>`;
 
-      const wrap=document.createElement('div');
-      wrap.className='table-wrapper';
+      const wrap=document.createElement('div'); wrap.className='table-wrapper';
       const tbl=document.createElement('table');
       const thead=document.createElement('thead');
       const trh=document.createElement('tr');
-
-      // Cabeceras
-      const headers=['#'];
-      if(isOtro) headers.push('Destino');
-      headers.push('Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar');
-      headers.forEach(txt=>{
-        const th=document.createElement('th');
-        th.textContent=txt;
-        if(txt==='Guardar') th.classList.add('col-save');
-        if(txt==='Eliminar')th.classList.add('col-del');
-        trh.appendChild(th);
-      });
-      thead.appendChild(trh);
-      tbl.appendChild(thead);
-
-      const tbody=document.createElement('tbody');
-      tbl.appendChild(tbody);
-      wrap.appendChild(tbl);
-      sec.appendChild(wrap);
-
-      // Botones ➕ ➕➕ 💾
-      const ctrl=document.createElement('div');
-      ctrl.className='controls';
-      ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
-        .forEach((lbl,i)=>{
-          const b=document.createElement('button');
-          b.textContent=lbl;
-          b.onclick=()=>{ if(i===0)add(); if(i===1)[...Array(10)].forEach(add); if(i===2)saveAll() };
-          ctrl.appendChild(b);
+      // Encabezados
+      ['','Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago']
+        .forEach(txt=>{
+          const th=document.createElement('th'); th.textContent=txt;
+          trh.appendChild(th);
         });
-      sec.appendChild(ctrl);
+      thead.appendChild(trh); tbl.appendChild(thead);
+      const tbody=document.createElement('tbody');
+      tbl.appendChild(tbody); wrap.appendChild(tbl); sec.appendChild(wrap);
 
+      // Controles
+      const ctrl=document.createElement('div'); ctrl.className='controls';
+      const botones=[
+        ['➕ Nueva fila', add],
+        ['➕➕ Agregar 10 filas', ()=>[...Array(10)].forEach(add)],
+        ['💾 Guardar todo', saveAll],
+        ['💾 Guardar seleccionadas', saveSelected],
+        ['🗑️ Eliminar seleccionadas', deleteSelected]
+      ];
+      botones.forEach(([txt,fn])=>{
+        const b=document.createElement('button');
+        b.textContent=txt; b.onclick=fn;
+        ctrl.appendChild(b);
+      });
+      sec.appendChild(ctrl);
       document.getElementById('secciones').appendChild(sec);
 
       const rows=[];
-      // Carga inicial de Firestore
+
+      // Carga inicial
       if(!isOtro){
         (async()=>{
           const snap=await getDocs(query(
@@ -204,35 +184,16 @@
         snap.forEach(d=>sel.appendChild(new Option(d.id,d.id)));
       }
 
-      function updateNums(){
-        tbody.querySelectorAll('tr').forEach((tr,i)=>{
-          const n=tr.querySelector('.rownum');
-          if(n) n.textContent=i+1;
-        });
-      }
-
-      function add(prefill={}, ref=null){
+      function add(prefill={},ref=null){
         const tr=document.createElement('tr');
         const inputs=[];
-        // Número
-        const tdN=document.createElement('td');
-        tdN.className='rownum';
-        tr.appendChild(tdN);
 
-        // Destino editable para OTRO
-        if(isOtro){
-          const td=document.createElement('td');
-          const inp=document.createElement('input');
-          inp.placeholder='Destino';
-          inp.value=prefill.destino||'';
-          inp.dataset.campo='destino';
-          inp.oninput=()=>destActivo=inp.value.toUpperCase();
-          td.appendChild(inp);
-          tr.appendChild(td);
-          inputs.push(inp);
-        }
+        // Checkbox de selección
+        const tdChk=document.createElement('td');
+        const chk=document.createElement('input'); chk.type='checkbox';
+        tdChk.appendChild(chk); tr.appendChild(tdChk);
 
-        // Campos fijos
+        // Campos
         campos.forEach(c=>{
           const td=document.createElement('td');
           let inp;
@@ -240,18 +201,14 @@
             inp=document.createElement('select');
             inp.dataset.campo=c;
             inp.innerHTML='<option value="">—</option>';
-          }
-          else if(opciones[c]){
+          } else if(opciones[c]){
             inp=document.createElement('select');
             inp.dataset.campo=c;
             if(c==='categoria'||c==='formaPago') inp.multiple=true;
             opciones[c].forEach(o=>inp.appendChild(new Option(o,o)));
             if(prefill[c]){
               const arr=Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
-              arr.forEach(v=>{
-                const o2=[...inp.options].find(x=>x.value===v);
-                if(o2) o2.selected=true;
-              });
+              arr.forEach(v=>{const o2=[...inp.options].find(x=>x.value===v); if(o2) o2.selected=true});
             }
           } else {
             inp=document.createElement('input');
@@ -261,70 +218,60 @@
             inp.onfocus=()=>showFloatingEditor(inp);
             inp.title=inp.value;
           }
-          td.appendChild(inp);
-          tr.appendChild(td);
+          td.appendChild(inp); tr.appendChild(td);
           inputs.push(inp);
         });
 
-        // Carga proveedores
+        // Proveedores dinámico
         if(!isOtro){
           destActivo=destFijo;
           setTimeout(()=>loadProvs(tr),0);
         }
 
-        // Botón Guardar
-        const tdG=document.createElement('td');
-        tdG.classList.add('col-save');
-        const bG=document.createElement('button');
-        bG.textContent='💾';
-        bG.onclick=async()=>{
-          try{ await saveRow(inputs); alert('✅'); }
-          catch(e){ alert('⚠️ '+e.message); }
-        };
-        tdG.appendChild(bG); tr.appendChild(tdG);
-
-        // Botón Eliminar
-        const tdD=document.createElement('td');
-        tdD.classList.add('col-del');
-        const bD=document.createElement('button');
-        bD.textContent='🗑️';
-        bD.onclick=async()=>{
-          if(ref) await deleteDoc(ref);
-          tr.remove(); updateNums();
-        };
-        tdD.appendChild(bD); tr.appendChild(tdD);
-
-        // Pegado tab-a-tab
-        tr.addEventListener('paste',e=>{
-          e.preventDefault();
-          const vs=e.clipboardData.getData('text/plain').split('\t');
-          inputs.forEach((i,j)=>{ if(vs[j]!=null) i.value=vs[j].trim().toUpperCase() });
-        });
-
         tbody.appendChild(tr);
-        rows.push({inputs,ref});
-        updateNums();
-      }
-
-      async function saveRow(inputs){
-        const data={};
-        inputs.forEach(i=>{
-          data[i.dataset.campo]= i.multiple
-            ?[...i.selectedOptions].map(o=>o.value)
-            :i.value.trim().toUpperCase();
-        });
-        const destino=isOtro?data.destino:destActivo;
-        if(!destino) throw new Error('Falta Destino');
-        if(!data.servicio) throw new Error('Falta Servicio');
-        if(!data.proveedor)throw new Error('Falta Proveedor');
-
-        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
-        await setDoc(doc(collection(db,'Servicios',destino,'Listado'),data.servicio),data);
+        rows.push({inputs,ref,checkbox:chk});
       }
 
       async function saveAll(){
-        for(let r of rows) await saveRow(r.inputs);
+        for(const r of rows) await commit(r);
         alert('✅ Todos guardados');
+      }
+
+      async function saveSelected(){
+        const sel=rows.filter(r=>r.checkbox.checked);
+        for(const r of sel) await commit(r);
+        alert('💾 Seleccionadas guardadas');
+      }
+
+      async function deleteSelected(){
+        const sel=rows.filter(r=>r.checkbox.checked);
+        for(const r of sel){
+          if(r.ref) await deleteDoc(r.ref);
+          r.checkbox.closest('tr').remove();
+        }
+        // limpia array
+        rows.splice(0,rows.length,...rows.filter(r=>!r.checkbox.checked));
+        alert('🗑️ Seleccionadas eliminadas');
+      }
+
+      async function commit(r){
+        const data={};
+        r.inputs.forEach(i=>{
+          data[i.dataset.campo] = i.multiple
+            ? [...i.selectedOptions].map(o=>o.value)
+            : i.value.trim().toUpperCase();
+        });
+        const destino = isOtro? data.destino : destActivo;
+        if(!destino) throw new Error('Falta Destino');
+        if(!data.servicio) throw new Error('Falta Servicio');
+        if(!data.proveedor) throw new Error('Falta Proveedor');
+        // crea documento padre
+        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        // subcolección
+        await setDoc(
+          doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
+          data
+        );
       }
     }
 
