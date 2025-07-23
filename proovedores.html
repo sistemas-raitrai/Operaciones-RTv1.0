@@ -20,8 +20,8 @@
       <tr>
         <th>Destino</th>
         <th>Proveedor</th>
-        <th>Contacto</th>
-        <th>Teléfono</th>
+        <th>Nombre Contacto</th>
+        <th>Teléfono/Celular</th>
         <th>Correo electrónico</th>
         <th>💾</th>
         <th>🗑️</th>
@@ -40,7 +40,7 @@
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
-      collection, getDocs, query, orderBy, doc, setDoc, deleteDoc
+      collection, getDocs, query, orderBy, doc, setDoc, addDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
     onAuthStateChanged(auth, user => {
@@ -49,7 +49,6 @@
 
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
 
-    // crea un <select> con placeholder y opción OTRO
     function crearSelectDestino(valor = '') {
       const sel = document.createElement('select');
       sel.dataset.campo = 'destino';
@@ -78,7 +77,7 @@
       const tr = document.createElement('tr');
       const inputs = [];
 
-      // Destino
+      // -- Destino --
       const td0 = document.createElement('td');
       let inp0;
       if (prefill.destino && !destinos.includes(prefill.destino)) {
@@ -92,20 +91,21 @@
       tr.appendChild(td0);
       inputs.push(inp0);
 
-      // Proveedor, Contacto, Teléfono, Correo
+      // -- Proveedor / Contacto / Teléfono / Correo --
       ['proveedor','contacto','telefono','correo'].forEach(field => {
         const td = document.createElement('td');
         const inp = document.createElement('input');
         inp.value = prefill[field] || '';
-        if (field!=='correo')
-          inp.addEventListener('input', ()=>inp.value = inp.value.toUpperCase());
+        if (field !== 'correo') {
+          inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
+        }
         inp.dataset.campo = field;
         td.appendChild(inp);
         tr.appendChild(td);
         inputs.push(inp);
       });
 
-      // Botón Guardar
+      // -- Guardar fila individual --
       const tdG = document.createElement('td');
       const btnG = document.createElement('button');
       btnG.textContent = '💾';
@@ -121,7 +121,7 @@
       tdG.appendChild(btnG);
       tr.appendChild(tdG);
 
-      // Botón Eliminar
+      // -- Eliminar --
       const tdE = document.createElement('td');
       const btnE = document.createElement('button');
       btnE.textContent = '🗑️';
@@ -135,12 +135,12 @@
       tdE.appendChild(btnE);
       tr.appendChild(tdE);
 
-      // Pegado de fila
+      // -- Pegado por fila --
       tr.addEventListener('paste', e => {
         e.preventDefault();
         const vals = e.clipboardData.getData('text/plain').split('\t');
         inputs.forEach((inp,i) => {
-          if (vals[i]!==undefined) inp.value = vals[i].trim().toUpperCase();
+          if (vals[i] !== undefined) inp.value = vals[i].trim().toUpperCase();
         });
       });
 
@@ -152,18 +152,18 @@
       for (let i=0; i<n; i++) agregarFila();
     }
 
-    // Guarda en Proveedores/{destino}/{proveedor}
+    // -- Guarda en Proveedores/{destino}/Listado/{proveedor} --
     async function guardarFila(inputs, ref) {
       const data = {};
       inputs.forEach(inp => data[inp.dataset.campo] = inp.value.trim());
       if (!data.destino)   throw new Error('Debe elegir un Destino');
       if (!data.proveedor) throw new Error('Debe ingresar un Proveedor');
-      const docRef = doc(db, 'Proveedores', data.destino, data.proveedor);
+      const colRef = collection(db, 'Proveedores', data.destino, 'Listado');
+      const id = data.proveedor;
+      const docRef = doc(colRef, id);
       await setDoc(docRef, data);
-      // actualizar ref en memoria
       if (!ref) {
-        const f = filas.find(f => f.inputs===inputs);
-        f.ref = docRef;
+        filas.find(f => f.inputs === inputs).ref = docRef;
       }
     }
 
@@ -172,26 +172,24 @@
         try { await guardarFila(f.inputs, f.ref); }
         catch(e){ alert('⚠️ '+e.message); }
       }
-      alert('📑 Proceso finalizado');
+      alert('📑 Proceso completado');
     }
 
-    // Carga inicial ordenada
+    // -- Carga inicial ordenada por proveedor asc --
     async function cargarProveedores() {
       for (const destino of destinos) {
-        const q = query(
-          collection(db, 'Proveedores', destino),
-          orderBy('proveedor','asc')
-        );
+        const colRef = collection(db, 'Proveedores', destino, 'Listado');
+        const q = query(colRef, orderBy('proveedor','asc'));
         const snap = await getDocs(q);
-        snap.forEach(ds => {
-          const d = ds.data();
+        snap.forEach(s => {
+          const d = s.data();
           d.destino = destino;
-          agregarFila(d, doc(db,'Proveedores',destino,ds.id));
+          agregarFila(d, doc(db, 'Proveedores', destino, 'Listado', s.id));
         });
       }
     }
 
-    // Pegado masivo
+    // -- Pegado masivo tabla entera --
     tablaBody.addEventListener('paste', e => {
       e.preventDefault();
       const lines = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
@@ -199,19 +197,19 @@
         const vals = line.split('\t');
         const obj = {};
         ['destino','proveedor','contacto','telefono','correo']
-          .forEach((c,i)=> obj[c]=vals[i]||'');
+          .forEach((c,i)=>obj[c]=vals[i]||'');
         agregarFila(obj);
       });
     });
 
-    window.agregarFila      = agregarFila;
+    window.agregarFila       = agregarFila;
     window.agregarVariasFilas = agregarVariasFilas;
-    window.guardarTodo      = guardarTodo;
+    window.guardarTodo       = guardarTodo;
 
     cargarProveedores();
     fetch('encabezado.html')
       .then(r=>r.text())
-      .then(h=>document.getElementById('encabezado').innerHTML=h);
+      .then(h=>document.getElementById('encabezado').innerHTML = h);
   </script>
 </body>
 </html>
