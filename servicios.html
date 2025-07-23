@@ -138,19 +138,19 @@
   <div id="encabezado"></div>
 
   <header>
-    <h2>📋 Listado de Servicios</h2>
+    <h2>📋 Lista de Servicios</h2>
     <!-- dispara el modal de proveedores -->
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
   <!-- Backdrop del modal de proveedores -->
-  <div id="backdrop-prov"></div>
+  <div id="backdrop-prov" onclick="closeProveedores()"></div>
 
   <!-- Modal que carga proveedores.html en iframe -->
   <div id="modal-prov">
     <div class="header">
       <h3>Administrar Proveedores</h3>
-      <button id="btnCloseProv">✖️</button>
+      <button onclick="closeProveedores()">✖️</button>
     </div>
     <iframe id="iframe-prov" src=""></iframe>
   </div>
@@ -173,18 +173,23 @@
     });
 
     // — Datos fijos —
-    const opciones = { /* …igual que antes…*/ };
-    const campos   = [ /* …igual que antes…*/ ];
+    const opciones = {
+      tipoServicio: ['DIARIO','GENERAL','OTRO'],
+      categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
+      formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
+      tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
+      moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
+    };
+    const campos = [
+      'servicio','tipoServicio','categoria',
+      'ciudad','restricciones','proveedor','tipoCobro',
+      'moneda','valorServicio','formaPago'
+    ];
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
-    const container    = document.getElementById('secciones');
-    const backdropProv = document.getElementById('backdrop-prov');
-    const modalProv    = document.getElementById('modal-prov');
-    const iframeProv   = document.getElementById('iframe-prov');
-    const btnProv      = document.getElementById('btnProv');
-    const btnClose     = document.getElementById('btnCloseProv');
+    const container = document.getElementById('secciones');
 
-    // — Floating editor para inputs largos —
+    // — Floating editor para inputs de texto largos —
     let floating = null;
     function showFloatingEditor(input) {
       if (floating) floating.remove();
@@ -206,22 +211,7 @@
       floating.focus();
     }
 
-    // — Modal Proveedores —
-    function openProveedores() {
-      iframeProv.src           = 'proveedores.html';
-      backdropProv.style.display = 'block';
-      modalProv.style.display    = 'block';
-    }
-    function closeProveedores() {
-      iframeProv.src           = '';
-      backdropProv.style.display = 'none';
-      modalProv.style.display    = 'none';
-    }
-    btnProv .addEventListener('click', openProveedores);
-    btnClose.addEventListener('click', closeProveedores);
-    backdropProv.addEventListener('click', closeProveedores);
-
-    // — Generar todas las secciones/tablas —
+    // — Generar secciones/tablas —
     destinos.forEach(d => container.appendChild(crearSeccion(d)));
 
     function crearSeccion(destFijo) {
@@ -238,7 +228,8 @@
       // construyo la tabla
       const table = document.createElement('table');
       const thead = document.createElement('thead');
-      const trh   = document.createElement('tr');
+      const trh = document.createElement('tr');
+      // encabezados dinámicos
       const headers = ['#'];
       if (isOtro) headers.push('Destino');
       headers.push(
@@ -277,15 +268,18 @@
 
       const rows = [];
 
+      // carga opciones de Proveedores
       async function loadProvs(tr) {
         const sel = tr.querySelector('select[data-campo=proveedor]');
         sel.innerHTML = '<option value="">—</option>';
         if (!destActivo) return;
-        const col  = collection(db,'Proveedores',destActivo,'Listado');
-        const snap = await getDocs(query(col,orderBy('proveedor','asc')));
+        const col = collection(db,'Proveedores',destActivo,'Listado');
+        const q   = query(col,orderBy('proveedor','asc'));
+        const snap= await getDocs(q);
         snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
       }
 
+      // renumera la columna #
       function updateNums() {
         tbody.querySelectorAll('tr').forEach((tr,i)=>{
           const num = tr.querySelector('.rownum');
@@ -293,6 +287,7 @@
         });
       }
 
+      // añade una fila (vacía o con prefill/ref)
       function add(prefill={}, ref=null) {
         const tr = document.createElement('tr');
         const inputs = [];
@@ -302,14 +297,14 @@
         tdNum.className = 'rownum';
         tr.appendChild(tdNum);
 
-        // destino editable en sección OTRO
+        // destino editable (solo en OTRO)
         if (isOtro) {
-          const td  = document.createElement('td');
+          const td = document.createElement('td');
           const inp = document.createElement('input');
-          inp.placeholder  = 'Destino';
-          inp.value        = prefill.destino||'';
-          inp.dataset.campo= 'destino';
-          inp.oninput      = ()=> destActivo = inp.value.toUpperCase();
+          inp.placeholder = 'Destino';
+          inp.value = prefill.destino||'';
+          inp.dataset.campo = 'destino';
+          inp.oninput = ()=> destActivo = inp.value.toUpperCase();
           td.appendChild(inp);
           tr.appendChild(td);
           inputs.push(inp);
@@ -319,8 +314,9 @@
         campos.forEach(c => {
           const td = document.createElement('td');
           let inp;
-          // dropdown proveedores
-          if (c === 'proveedor') {
+
+          // select Proveedor
+          if (c==='proveedor') {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             inp.innerHTML = '<option value="">—</option>';
@@ -328,7 +324,7 @@
           // selects de opciones
           else if (opciones[c]) {
             inp = document.createElement('select');
-            inp.dataset.campo= c;
+            inp.dataset.campo = c;
             if (c==='categoria'||c==='formaPago') inp.multiple = true;
             opciones[c].forEach(o=> inp.appendChild(new Option(o,o)));
             // prefill
@@ -347,8 +343,8 @@
             if (c!=='valorServicio')
               inp.oninput = ()=> inp.value = inp.value.toUpperCase();
             inp.dataset.campo = c;
-            inp.onfocus      = ()=> showFloatingEditor(inp);
-            inp.title        = inp.value;
+            inp.onfocus = ()=> showFloatingEditor(inp);
+            inp.title = inp.value;
           }
 
           td.appendChild(inp);
@@ -359,10 +355,10 @@
         // carga proveedores si no es OTRO
         if (!isOtro) {
           destActivo = destFijo;
-          setTimeout(()=> loadProvs(tr),0);
+          setTimeout(()=> loadProvs(tr), 0);
         }
 
-        // botón 💾
+        // botón guardar fila
         const tdG = document.createElement('td');
         const bG  = document.createElement('button');
         bG.textContent = '💾';
@@ -373,7 +369,7 @@
         tdG.appendChild(bG);
         tr.appendChild(tdG);
 
-        // botón 🗑️
+        // botón eliminar fila
         const tdD = document.createElement('td');
         const bD  = document.createElement('button');
         bD.textContent = '🗑️';
@@ -398,6 +394,7 @@
         updateNums();
       }
 
+      // guarda una sola fila
       async function saveRow(inputs) {
         const data = {};
         inputs.forEach(i=>{
@@ -417,6 +414,7 @@
         await setDoc(doc(col,data.servicio), data);
       }
 
+      // guarda todas las filas
       async function saveAll() {
         for (const r of rows) {
           await saveRow(r.inputs);
@@ -439,6 +437,22 @@
 
       return sec;
     }
+
+    // — Funciones para el modal de Proveedores —
+    function openProveedores() {
+      document.getElementById('iframe-prov').src = 'proveedores.html';
+      document.getElementById('backdrop-prov').style.display = 'block';
+      document.getElementById('modal-prov').style.display   = 'block';
+    }
+    function closeProveedores() {
+      document.getElementById('iframe-prov').src = '';
+      document.getElementById('backdrop-prov').style.display = 'none';
+      document.getElementById('modal-prov').style.display   = 'none';
+    }
+
+    // Aquí registramos el listener justo después de definir las funciones
+    document.getElementById('btnProv')
+            .addEventListener('click', openProveedores);
 
     // — Carga header externo —
     fetch('encabezado.html')
