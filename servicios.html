@@ -54,6 +54,7 @@
       overflow: hidden;
       white-space: nowrap;
       text-overflow: ellipsis;
+      min-width: 0;      /* Evita overflow en grid */
     }
 
     /* ——— Inputs y selects ——— */
@@ -105,29 +106,16 @@
       height: 80px;
       resize: both;
     }
-
-    .section table {
-      display: grid;
-      grid-template-columns:
-        1fr 4fr 3fr 3fr 2fr 5fr 3fr 2fr 1fr 2fr 2fr auto auto;
-    }
-    .section thead,
-    .section tbody { display: contents; }
-
-    .section th, .section td {
-      min-width: 0;
-    }
-    
   </style>
 </head>
 <body>
 
-  <!-- Header dinámico externo -->
+  <!-- Header externo -->
   <div id="encabezado"></div>
 
   <!-- Título y botón Proveedores -->
   <header>
-    <h2>📋 Listado de Servicios</h2>
+    <h2>📋 Lista de Servicios</h2>
     <button onclick="openModal()">🛠️ Administrar Proveedores</button>
   </header>
 
@@ -409,7 +397,7 @@
         alert('✅ Todos guardados');
       }
 
-      // Carga inicial
+      // Carga inicial (ordenada ascendente por ID de servicio)
       if (!isOtro) {
         (async () => {
           const col  = collection(db,'Servicios',destFijo,'Listado');
