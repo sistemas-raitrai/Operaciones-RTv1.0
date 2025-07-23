@@ -15,7 +15,6 @@
   <div id="encabezado"></div>
   <h2>📋 Listado de Proveedores</h2>
 
-  <!-- Tabla de proveedores -->
   <table id="tabla">
     <thead>
       <tr>
@@ -31,7 +30,6 @@
     <tbody id="contenido"></tbody>
   </table>
 
-  <!-- Botones de acción -->
   <div class="controls">
     <button onclick="agregarFila()">➕ Nueva fila</button>
     <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
@@ -42,7 +40,7 @@
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
-      collection, getDocs, doc, setDoc, addDoc, deleteDoc
+      collection, getDocs, query, orderBy, doc, setDoc, addDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
     onAuthStateChanged(auth, user => {
@@ -51,14 +49,17 @@
 
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
 
+    // select de destino con opción vacía al inicio
     function crearSelectDestino(valor = '') {
       const sel = document.createElement('select');
+      sel.dataset.campo = 'destino';
+      // opción placeholder
+      sel.appendChild(new Option('— Seleccione —',''));
       destinos.forEach(d => {
         const o = new Option(d, d);
         if (d === valor) o.selected = true;
         sel.appendChild(o);
       });
-      sel.dataset.campo = 'destino';
       sel.onchange = () => {
         if (sel.value === 'OTRO') {
           const inp = document.createElement('input');
@@ -90,7 +91,7 @@
       tr.appendChild(tdDest);
       inputs.push(inpDest);
 
-      // Campos: proveedor, contacto, telefono, correo
+      // Proveedor, contacto, teléfono, correo
       ['proveedor','contacto','telefono','correo'].forEach(field => {
         const td = document.createElement('td');
         const inp = document.createElement('input');
@@ -112,11 +113,12 @@
         try {
           await guardarFila(inputs, ref);
           alert('Guardado ✅');
-        } catch(err) {
-          alert('Error: ' + err.message);
+        } catch (e) {
+          alert('Error: ' + e.message);
         }
       };
-      tdG.appendChild(btnG); tr.appendChild(tdG);
+      tdG.appendChild(btnG);
+      tr.appendChild(tdG);
 
       // Eliminar
       const tdE = document.createElement('td');
@@ -129,13 +131,14 @@
         }
         tr.remove();
       };
-      tdE.appendChild(btnE); tr.appendChild(tdE);
+      tdE.appendChild(btnE);
+      tr.appendChild(tdE);
 
-      // Pegado por fila
+      // Pegado en fila (celda a celda)
       tr.addEventListener('paste', e => {
         e.preventDefault();
         const vals = e.clipboardData.getData('text/plain').split('\t');
-        inputs.forEach((inp, i) => {
+        inputs.forEach((inp,i) => {
           if (vals[i] !== undefined) inp.value = vals[i].trim().toUpperCase();
         });
       });
@@ -145,7 +148,7 @@
     }
 
     function agregarVariasFilas(n) {
-      for (let i=0; i<n; i++) agregarFila();
+      for (let i = 0; i < n; i++) agregarFila();
     }
 
     async function guardarFila(inputs, ref) {
@@ -161,9 +164,7 @@
         await setDoc(ref, data);
       } else {
         const docRef = await addDoc(colRef, data);
-        // actualizar ref en memoria
-        const f = filas.find(f => f.inputs === inputs);
-        f.ref = docRef;
+        filas.find(f => f.inputs === inputs).ref = docRef;
       }
     }
 
@@ -175,12 +176,21 @@
     }
 
     async function cargarProveedores() {
+      // recorremos destinos en orden
       for (const destino of destinos) {
-        const snap = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
+        // consulta ordenada por proveedor ascendente
+        const q = query(
+          collection(db, 'Proveedores', destino, 'Listado'),
+          orderBy('proveedor','asc')
+        );
+        const snap = await getDocs(q);
         snap.forEach(docSnap => {
           const d = docSnap.data();
           d.destino = destino;
-          agregarFila(d, doc(db,'Proveedores', destino, 'Listado', docSnap.id));
+          agregarFila(
+            d,
+            doc(db, 'Proveedores', destino, 'Listado', docSnap.id)
+          );
         });
       }
     }
@@ -207,7 +217,7 @@
     cargarProveedores();
     fetch('encabezado.html')
       .then(r=>r.text())
-      .then(h=>document.getElementById('encabezado').innerHTML=h);
+      .then(h=>document.getElementById('encabezado').innerHTML = h);
   </script>
 </body>
 </html>
