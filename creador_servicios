@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Servicios Rai Trai</title>
+  <!-- Tu hoja de estilos general -->
+  <link rel="stylesheet" href="estilos.css" />
+  <style>
+    /* ——— Layout del header con botón de Proveedores ——— */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    header h2 { margin: 0; }
+    header button {
+      background: #0055A4;
+      color: #fff;
+      border: none;
+      padding: .5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    /* ——— Sección con scroll horizontal ——— */
+    .section { margin-bottom: 2rem; }
+    .section h3 { margin: .5rem 0; }
+    .table-wrapper {
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+
+    /* ——— Tabla con anchos proporcionales ——— */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    thead th {
+      background: #f9f9f9;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 4px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    /* Anchos aproximados según tu petición */
+    th:nth-child(1),  td:nth-child(1)  { width: 5%; }
+    th:nth-child(2),  td:nth-child(2)  { width:20%; }
+    th:nth-child(3),  td:nth-child(3)  { width:12%; }
+    th:nth-child(4),  td:nth-child(4)  { width:12%; } /* Categoría */
+    th:nth-child(5),  td:nth-child(5)  { width:10%; }
+    th:nth-child(6),  td:nth-child(6)  { width:20%; }
+    th:nth-child(7),  td:nth-child(7)  { width:12%; }
+    th:nth-child(8),  td:nth-child(8)  { width:10%; }
+    th:nth-child(9),  td:nth-child(9)  { width: 8%; }
+    th:nth-child(10), td:nth-child(10){ width:10%; }
+    th:nth-child(11), td:nth-child(11){ width:10%; } /* Forma de Pago */
+    th:nth-child(12), td:nth-child(12),
+    th:nth-child(13), td:nth-child(13){ width:auto; }
+
+    /* ——— Inputs y selects ——— */
+    input, select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+    td input:hover {
+      overflow: visible;
+      white-space: normal;
+    }
+
+    /* ——— Botones Save/Delete sticky ——— */
+    thead th:nth-last-child(2),
+    tbody td:nth-last-child(2) {
+      position: sticky;
+      right: 2.5rem;
+      background: #fff;
+      z-index: 10;
+    }
+    thead th:last-child,
+    tbody td:last-child {
+      position: sticky;
+      right: 0;
+      background: #fff;
+      z-index: 10;
+    }
+
+    /* ——— Ocultar las columnas Categoría (4ª) y Forma de Pago (11ª) ——— */
+    thead th:nth-child(4),
+    tbody td:nth-child(4),
+    thead th:nth-child(11),
+    tbody td:nth-child(11) {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header externo -->
+  <div id="encabezado"></div>
+
+  <header>
+    <h2>📋 Lista de Servicios</h2>
+    <!-- dispara el modal de proveedores -->
+    <button id="btnProv">🛠️ Administrar Proveedores</button>
+  </header>
+
+  <!-- Backdrop del modal de proveedores -->
+  <div id="backdrop-prov" onclick="closeProveedores()"></div>
+
+  <!-- Modal que carga proveedores.html en iframe -->
+  <div id="modal-prov">
+    <div class="header">
+      <h3>Administrar Proveedores</h3>
+      <button onclick="closeProveedores()">✖️</button>
+    </div>
+    <iframe id="iframe-prov" src=""></iframe>
+  </div>
+
+  <!-- Contenedor de todas las secciones/tablas -->
+  <div id="secciones"></div>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { onAuthStateChanged }
+      from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+    import {
+      collection, getDocs, query, orderBy,
+      doc, setDoc, deleteDoc
+    } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+
+    // — Sesión —
+    onAuthStateChanged(auth, user => {
+      if (!user) window.location.href = 'login.html';
+    });
+
+    // — Datos fijos —
+    const opciones = {
+      tipoServicio: ['DIARIO','GENERAL','OTRO'],
+      categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
+      formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
+      tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
+      moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
+    };
+    const campos = [
+      'servicio','tipoServicio','categoria',
+      'ciudad','restricciones','proveedor','tipoCobro',
+      'moneda','valorServicio','formaPago'
+    ];
+    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
+
+    const container = document.getElementById('secciones');
+
+    // — Floating editor para inputs de texto largos —
+    let floating = null;
+    function showFloatingEditor(input) {
+      if (floating) floating.remove();
+      floating = document.createElement('textarea');
+      floating.className = 'floating-editor';
+      floating.value = input.value;
+      document.body.appendChild(floating);
+      const r = input.getBoundingClientRect();
+      floating.style.top  = (r.bottom + scrollY + 4) + 'px';
+      floating.style.left = (r.left + scrollX) + 'px';
+      floating.oninput = () => {
+        input.value = floating.value;
+        input.title = floating.value;
+      };
+      floating.onblur = () => {
+        floating.remove();
+        floating = null;
+      };
+      floating.focus();
+    }
+
+    // — Generar secciones/tablas —
+    destinos.forEach(d => container.appendChild(crearSeccion(d)));
+
+    function crearSeccion(destFijo) {
+      const isOtro = destFijo === null;
+      let destActivo = destFijo;
+      const sec = document.createElement('div');
+      sec.className = 'section';
+      sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrapper';
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const trh = document.createElement('tr');
+      const headers = ['#'];
+      if (isOtro) headers.push('Destino');
+      headers.push(
+        'Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones',
+        'Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago',
+        'Guardar','Eliminar'
+      );
+      headers.forEach(txt => {
+        const th = document.createElement('th');
+        th.textContent = txt;
+        trh.appendChild(th);
+      });
+      thead.appendChild(trh);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      sec.appendChild(wrap);
+
+      const ctrl = document.createElement('div');
+      ctrl.className = 'controls';
+      ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
+        .forEach((lbl,i) => {
+          const btn = document.createElement('button');
+          btn.textContent = lbl;
+          btn.onclick = () => {
+            if (i === 0) add();
+            if (i === 1) [...Array(10)].forEach(add);
+            if (i === 2) saveAll();
+          };
+          ctrl.appendChild(btn);
+        });
+      sec.appendChild(ctrl);
+
+      const rows = [];
+
+      async function loadProvs(tr) {
+        const sel = tr.querySelector('select[data-campo=proveedor]');
+        sel.innerHTML = '<option value="">—</option>';
+        if (!destActivo) return;
+        const col = collection(db,'Proveedores',destActivo,'Listado');
+        const q   = query(col,orderBy('proveedor','asc'));
+        const snap= await getDocs(q);
+        snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
+      }
+
+      function updateNums() {
+        tbody.querySelectorAll('tr').forEach((tr,i)=>{
+          const num = tr.querySelector('.rownum');
+          if (num) num.textContent = i+1;
+        });
+      }
+
+      function add(prefill={}, ref=null) {
+        const tr = document.createElement('tr');
+        const inputs = [];
+
+        const tdNum = document.createElement('td');
+        tdNum.className = 'rownum';
+        tr.appendChild(tdNum);
+
+        if (isOtro) {
+          const td = document.createElement('td');
+          const inp = document.createElement('input');
+          inp.placeholder = 'Destino';
+          inp.value = prefill.destino||'';
+          inp.dataset.campo = 'destino';
+          inp.oninput = ()=> destActivo = inp.value.toUpperCase();
+          td.appendChild(inp);
+          tr.appendChild(td);
+          inputs.push(inp);
+        }
+
+        campos.forEach(c => {
+          const td = document.createElement('td');
+          let inp;
+          if (c==='proveedor') {
+            inp = document.createElement('select');
+            inp.dataset.campo = c;
+            inp.innerHTML = '<option value="">—</option>';
+          }
+          else if (opciones[c]) {
+            inp = document.createElement('select');
+            inp.dataset.campo = c;
+            if (c==='categoria'||c==='formaPago') inp.multiple = true;
+            opciones[c].forEach(o=> inp.appendChild(new Option(o,o)));
+            if (prefill[c]) {
+              const arr = Array.isArray(prefill[c])? prefill[c]:[prefill[c]];
+              arr.forEach(v=>{
+                const opt = Array.from(inp.options).find(x=>x.value===v);
+                if (opt) opt.selected = true;
+              });
+            }
+          }
+          else {
+            inp = document.createElement('input');
+            inp.value = prefill[c]||'';
+            if (c!=='valorServicio')
+              inp.oninput = ()=> inp.value = inp.value.toUpperCase();
+            inp.dataset.campo = c;
+            inp.onfocus = ()=> showFloatingEditor(inp);
+            inp.title = inp.value;
+          }
+          td.appendChild(inp);
+          tr.appendChild(td);
+          inputs.push(inp);
+        });
+
+        if (!isOtro) {
+          destActivo = destFijo;
+          setTimeout(()=> loadProvs(tr), 0);
+        }
+
+        const tdG = document.createElement('td');
+        const bG  = document.createElement('button');
+        bG.textContent = '💾';
+        bG.onclick = async ()=>{
+          try { await saveRow(inputs); alert('✅'); }
+          catch(e){ alert('⚠️ '+ e.message); }
+        };
+        tdG.appendChild(bG);
+        tr.appendChild(tdG);
+
+        const tdD = document.createElement('td');
+        const bD  = document.createElement('button');
+        bD.textContent = '🗑️';
+        bD.onclick = async ()=>{
+          if (ref) { await deleteDoc(ref); alert('✅'); }
+          tr.remove(); updateNums();
+        };
+        tdD.appendChild(bD);
+        tr.appendChild(tdD);
+
+        tr.addEventListener('paste', e=>{
+          e.preventDefault();
+          const vs = e.clipboardData.getData('text/plain').split('\t');
+          inputs.forEach((inp,i)=> {
+            if (vs[i]!=null) inp.value = vs[i].trim().toUpperCase();
+          });
+        });
+
+        tbody.appendChild(tr);
+        rows.push({ inputs, ref });
+        updateNums();
+      }
+
+      async function saveRow(inputs) {
+        const data = {};
+        inputs.forEach(i=>{
+          data[i.dataset.campo] = i.multiple
+            ? [...i.selectedOptions].map(o=>o.value)
+            : i.value.trim().toUpperCase();
+        });
+        const destino = isOtro ? data.destino : destActivo;
+        if (!destino)      throw new Error('Falta Destino');
+        if (!data.servicio) throw new Error('Falta Servicio');
+        if (!data.proveedor)throw new Error('Falta Proveedor');
+
+        await setDoc(doc(db,'Servicios',destino), {_created:true}, {merge:true});
+        const col = collection(db,'Servicios',destino,'Listado');
+        await setDoc(doc(col,data.servicio), data);
+      }
+
+      async function saveAll() {
+        for (const r of rows) {
+          await saveRow(r.inputs);
+        }
+        alert('✅ Todos guardados');
+      }
+
+      if (!isOtro) {
+        (async ()=>{
+          const col  = collection(db,'Servicios',destFijo,'Listado');
+          const snap = await getDocs(query(col,orderBy('servicio','asc')));
+          snap.forEach(d=>{
+            const o = d.data();
+            o.servicio = d.id;
+            add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
+          });
+        })();
+      }
+
+      return sec;
+    }
+
+    function openProveedores() {
+      document.getElementById('iframe-prov').src = 'proveedores.html';
+      document.getElementById('backdrop-prov').style.display = 'block';
+      document.getElementById('modal-prov').style.display   = 'block';
+    }
+    function closeProveedores() {
+      document.getElementById('iframe-prov').src = '';
+      document.getElementById('backdrop-prov').style.display = 'none';
+      document.getElementById('modal-prov').style.display   = 'none';
+    }
+
+    document.getElementById('btnProv')
+            .addEventListener('click', openProveedores);
+
+    window.openProveedores  = openProveedores;
+    window.closeProveedores = closeProveedores;
+
+    fetch('encabezado.html')
+      .then(r => r.text())
+      .then(html => document.getElementById('encabezado').innerHTML = html);
+
+  </script>
+</body>
+</html>
