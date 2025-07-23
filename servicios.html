@@ -54,7 +54,7 @@
 <body>
   <div id="encabezado"></div>
   <header>
-    <h2>📋 Servicios</h2>
+    <h2>📋Lista de Servicios</h2>
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
@@ -90,7 +90,7 @@
     const campos = ['servicio','tipoServicio','categoria','ciudad','restricciones','proveedor','tipoCobro','moneda','valorServicio','formaPago'];
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
-    let floating = null;
+    let floating=null;
     function showFloatingEditor(input){
       if(floating) floating.remove();
       floating=document.createElement('textarea');
@@ -111,27 +111,38 @@
     });
 
     function init(){
-      // Carga header
-      fetch('encabezado.html').then(r=>r.text()).then(html=>{
-        document.getElementById('encabezado').innerHTML = html;
-      });
-      // Construye secciones
+      fetch('encabezado.html')
+        .then(r=>r.text()).then(html=>document.getElementById('encabezado').innerHTML=html);
       destinos.forEach(d=>createSection(d));
-      // Modal proveedores
-      document.getElementById('btnProv').onclick = openProveedores;
-      window.closeProveedores = closeProveedores;
+      document.getElementById('btnProv').onclick=openProveedores;
+      window.closeProveedores=closeProveedores;
     }
 
     function createSection(destFijo){
-      const isOtro = destFijo===null;
-      let destActivo = destFijo;
-      const sec = document.createElement('div');
-      sec.className='section';
-      sec.innerHTML=`<h3>${isOtro?'OTRO':destFijo}</h3>`;
+      const isOtro=destFijo===null;
+      let destActivo=destFijo;
 
-      // tabla
-      const wrap=document.createElement('div');
-      wrap.className='table-wrapper';
+      const sec=document.createElement('div'); sec.className='section';
+      sec.innerHTML=`<h3>${isOtro?'OTRO':destFijo}</h3>`;
+      document.getElementById('secciones').appendChild(sec);
+
+      // Controles arriba de la tabla
+      const ctrl=document.createElement('div'); ctrl.className='controls';
+      [
+        ['➕ Nueva fila', add],
+        ['➕➕ Agregar 10 filas', ()=>[...Array(10)].forEach(add)],
+        ['💾 Guardar todo', saveAll],
+        ['💾 Guardar seleccionadas', saveSelected],
+        ['🗑️ Eliminar seleccionadas', deleteSelected]
+      ].forEach(([txt,fn])=>{
+        const b=document.createElement('button');
+        b.textContent=txt; b.onclick=fn;
+        ctrl.appendChild(b);
+      });
+      sec.appendChild(ctrl);
+
+      // Tabla
+      const wrap=document.createElement('div'); wrap.className='table-wrapper';
       const tbl=document.createElement('table');
       const thead=document.createElement('thead');
       const trh=document.createElement('tr');
@@ -148,43 +159,27 @@
       wrap.appendChild(tbl);
       sec.appendChild(wrap);
 
-      // controles
-      const ctrl=document.createElement('div'); ctrl.className='controls';
-      [
-        ['➕ Nueva fila', add],
-        ['➕➕ Agregar 10 filas', ()=>[...Array(10)].forEach(add)],
-        ['💾 Guardar todo', saveAll],
-        ['💾 Guardar seleccionadas', saveSelected],
-        ['🗑️ Eliminar seleccionadas', deleteSelected]
-      ].forEach(([txt,fn])=>{
-        const b=document.createElement('button');
-        b.textContent=txt; b.onclick=fn;
-        ctrl.appendChild(b);
-      });
-      sec.appendChild(ctrl);
-      document.getElementById('secciones').appendChild(sec);
+      const rows=[];
 
-      const rows = [];
-
-      // carga inicial desde Firestore
+      // Carga inicial
       if(!isOtro){
         (async()=>{
-          const snap = await getDocs(query(
+          const snap=await getDocs(query(
             collection(db,'Servicios',destFijo,'Listado'),
             orderBy('servicio','asc')
           ));
           snap.forEach(d=>{
-            const o = d.data(); o.servicio = d.id;
+            const o=d.data(); o.servicio=d.id;
             add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
           });
         })();
       }
 
       async function loadProvs(tr){
-        const sel = tr.querySelector('select[data-campo=proveedor]');
+        const sel=tr.querySelector('select[data-campo=proveedor]');
         sel.innerHTML='<option value="">—</option>';
         if(!destActivo) return;
-        const snap = await getDocs(query(
+        const snap=await getDocs(query(
           collection(db,'Proveedores',destActivo,'Listado'),
           orderBy('proveedor','asc')
         ));
@@ -195,14 +190,12 @@
         const tr=document.createElement('tr');
         const inputs=[];
 
-        // checkbox de selección
+        // checkbox
         const tdChk=document.createElement('td');
-        const chk=document.createElement('input');
-        chk.type='checkbox';
-        tdChk.appendChild(chk);
-        tr.appendChild(tdChk);
+        const chk=document.createElement('input'); chk.type='checkbox';
+        tdChk.appendChild(chk); tr.appendChild(tdChk);
 
-        // resto de campos
+        // campos
         campos.forEach(c=>{
           const td=document.createElement('td');
           let inp;
@@ -219,7 +212,7 @@
               const arr=Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
               arr.forEach(v=>{
                 const opt=[...inp.options].find(x=>x.value===v);
-                if(opt) opt.selected = true;
+                if(opt) opt.selected=true;
               });
             }
           } else {
@@ -235,7 +228,6 @@
           inputs.push(inp);
         });
 
-        // carga proveedores dinámicos
         if(!isOtro){
           destActivo=destFijo;
           setTimeout(()=>loadProvs(tr),0);
@@ -246,19 +238,17 @@
       }
 
       async function commit(r, idx){
-        const data = {};
+        const data={};
         r.inputs.forEach(i=>{
           data[i.dataset.campo] = i.multiple
             ? [...i.selectedOptions].map(o=>o.value)
             : i.value.trim().toUpperCase();
         });
-        const destino = isOtro ? data.destino : destActivo;
+        const destino=isOtro? data.destino: destActivo;
         if(!destino) throw new Error(`Fila ${idx}: Falta Destino`);
         if(!data.servicio) throw new Error(`Fila ${idx}: Falta Servicio`);
         if(!data.proveedor) throw new Error(`Fila ${idx}: Falta Proveedor`);
-        // crea/merge padre
         await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
-        // crea subcolección
         await setDoc(
           doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
           data
@@ -268,42 +258,33 @@
       async function saveAll(){
         const errs=[];
         for(let i=0;i<rows.length;i++){
-          try{ await commit(rows[i],i+1) }
+          try{ await commit(rows[i], i+1) }
           catch(e){ errs.push(e.message) }
         }
-        alert(
-          errs.length
-            ? '⚠️ Errores:\n'+errs.join('\n')
-            : '✅ Todos guardados'
-        );
+        alert(errs.length? '⚠️ Errores:\n'+errs.join('\n') : '✅ Todos guardados');
       }
 
       async function saveSelected(){
-        const sel = rows.filter(r=>r.checkbox.checked);
+        const sel=rows.filter(r=>r.checkbox.checked);
         if(sel.length===0){ alert('❗ No hay filas seleccionadas'); return; }
         const errs=[];
-        sel.forEach(async(r,i)=>{
-          const idx = rows.indexOf(r)+1;
-          try{ await commit(r,idx) }
+        for(let r of sel){
+          const idx=rows.indexOf(r)+1;
+          try{ await commit(r, idx) }
           catch(e){ errs.push(e.message) }
-        });
-        setTimeout(()=>{
-          alert(
-            errs.length
-              ? '⚠️ Errores:\n'+errs.join('\n')
-              : '✅ Seleccionadas guardadas'
-          );
-        },50);
+        }
+        alert(errs.length? '⚠️ Errores:\n'+errs.join('\n') : '✅ Seleccionadas guardadas');
       }
 
       async function deleteSelected(){
         const sel=rows.filter(r=>r.checkbox.checked);
         if(sel.length===0){ alert('❗ No hay filas seleccionadas'); return; }
-        sel.forEach(async(r)=>{
+        for(let r of sel){
           if(r.ref) await deleteDoc(r.ref);
           r.checkbox.closest('tr').remove();
-          rows.splice(rows.indexOf(r),1);
-        });
+        }
+        // limpia array
+        rows.splice(0, rows.length, ...rows.filter(r=>!r.checkbox.checked));
         alert('🗑️ Seleccionadas eliminadas');
       }
     }
