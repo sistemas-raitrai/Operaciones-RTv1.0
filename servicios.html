@@ -198,46 +198,52 @@
       for(let i=0;i<n;i++) agregarFila();
     }
 
-    async function guardarFila(inputs, ref){
+    // Guarda una fila en: Servicios/{destino}/Listado/{servicio}
+    async function guardarFila(inputs, ref) {
       const data = {};
-      inputs.forEach(i=> data[i.dataset.campo]=i.value.trim().toUpperCase());
-      if(!data.destino)   throw new Error('Falta Destino');
-      if(!data.servicio)  throw new Error('Falta Servicio');
-      if(!data.proveedor) throw new Error('Falta Proveedor');
+      inputs.forEach(i => data[i.dataset.campo] = i.value.trim().toUpperCase());
+      if (!data.destino)   throw new Error('Falta Destino');
+      if (!data.servicio)  throw new Error('Falta Servicio');
+      if (!data.proveedor) throw new Error('Falta Proveedor');
 
-      // doc padre
-      const dDoc = doc(db,'Servicios',data.destino);
-      await setDoc(dDoc,{_created:true},{merge:true});
-      // guardar en subcolección
-      const col = collection(db,'Servicios',data.destino);
-      const sDoc = doc(col,data.servicio);
-      await setDoc(sDoc,data);
+      // Crear doc padre (merge para no sobreescribir subcolecciones)
+      const padre = doc(db, 'Servicios', data.destino);
+      await setDoc(padre, { _created: true }, { merge: true });
 
-      if(!ref){
-        filas.find(f=>f.inputs===inputs).ref=sDoc;
+      // --- Aquí: subcolección "Listado" ---
+      const col = collection(db, 'Servicios', data.destino, 'Listado');
+      const servDoc = doc(col, data.servicio);
+      await setDoc(servDoc, data);
+
+      if (!ref) {
+        filas.find(f => f.inputs === inputs).ref = servDoc;
       }
     }
 
-    async function guardarTodo(){
-      for(const f of filas){
-        try{ await guardarFila(f.inputs,f.ref); }
-        catch(e){ alert('⚠️ '+e.message); }
+    // Guarda todo
+    async function guardarTodo() {
+      for (const f of filas) {
+        await guardarFila(f.inputs, f.ref);
       }
       alert('📑 Todos guardados');
     }
 
-    async function cargarServicios(){
-      for(const d of destinos){
+    // Carga inicial: recorre cada destino y lee su subcolección "Listado"
+    async function cargarServicios() {
+      for (const d of destinos) {
         const dest = d.toUpperCase();
-        const col = collection(db,'Servicios',dest);
+        // *** Aquí también: Leer subcolección Listado ***
+        const col = collection(db, 'Servicios', dest, 'Listado');
         const snap = await getDocs(col);
-        snap.forEach(docSnap=>{
+        snap.forEach(docSnap => {
           const data = docSnap.data();
-          data.destino=data.destino.toUpperCase();
-          agregarFila(data, doc(db,'Servicios',dest,docSnap.id));
+          data.destino = dest;
+          data.servicio = docSnap.id;
+          agregarFila(data, doc(db, 'Servicios', dest, 'Listado', docSnap.id));
         });
       }
     }
+
 
     // pegado masivo tabla entera
     tablaBody.addEventListener('paste',e=>{
