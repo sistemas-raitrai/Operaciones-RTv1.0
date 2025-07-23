@@ -138,6 +138,30 @@
       background: #fff; /* para que no se transparente */
       z-index: 2;
     }
+
+    .table-wrapper {
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+    
+    /* Sticky también en los <th> de Guardar y Eliminar */
+    thead th:nth-last-child(2),
+    thead th:last-child,
+    tbody td:nth-last-child(2),
+    tbody td:last-child {
+      position: sticky;
+      right: 0;
+      background: #fff;
+      z-index: 10;
+    }
+    
+    /* El segundo-último (Guardar) va un poquito más a la izquierda */
+    thead th:nth-last-child(2),
+    tbody td:nth-last-child(2) {
+      right: 2.5rem; /* el ancho aproximado del ultimo botón */
+    }
+
+    
   </style>
 </head>
 <body>
@@ -146,7 +170,7 @@
   <div id="encabezado"></div>
 
   <header>
-    <h2>📋 Servicios</h2>
+    <h2>📋 Lista de Servicios</h2>
     <!-- dispara el modal de proveedores -->
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
