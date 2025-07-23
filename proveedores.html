@@ -2,42 +2,94 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Proveedores Rai Trai</title>
+  <title>Servicios Rai Trai</title>
   <link rel="stylesheet" href="estilos.css">
   <style>
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 4px; }
-    .controls { margin: 1rem 0; }
+    /* ————— Estilos de sección y tabla ————— */
+    .section { margin-bottom: 3rem; }
+    .section h3 { margin-top: 1rem; }
+
+    .section table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    .section th, .section td {
+      border: 1px solid #ccc;
+      padding: 4px;
+      box-sizing: border-box;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+    /* Anchos proporcionales: suman 29fr */
+    .section th:nth-child(1), .section td:nth-child(1)   { width:  1fr; } /* # */
+    .section th:nth-child(2), .section td:nth-child(2)   { width:  5fr; } /* Servicio */
+    .section th:nth-child(3), .section td:nth-child(3)   { width:  3fr; } /* Tipo Servicio */
+    .section th:nth-child(4), .section td:nth-child(4)   { width:  3fr; } /* Categoría */
+    .section th:nth-child(5), .section td:nth-child(5)   { width:  2fr; } /* Ciudad */
+    .section th:nth-child(6), .section td:nth-child(6)   { width:  5fr; } /* Restricciones */
+    .section th:nth-child(7), .section td:nth-child(7)   { width:  3fr; } /* Proveedor */
+    .section th:nth-child(8), .section td:nth-child(8)   { width:  2fr; } /* Tipo Cobro */
+    .section th:nth-child(9), .section td:nth-child(9)   { width:  1fr; } /* Moneda */
+    .section th:nth-child(10),.section td:nth-child(10)  { width:  2fr; } /* Valor Servicio */
+    .section th:nth-child(11),.section td:nth-child(11)  { width:  2fr; } /* Forma de Pago */
+    /* Guardar/Eliminar se ajustan solos */
+
+    /* ————— Botones de control ————— */
+    .controls { margin: .5rem 0; }
     .controls button { margin-right: .5rem; }
-    select, input { width: 100%; box-sizing: border-box; }
-    th.rownum, td.rownum { width: 2rem; text-align: center; }
+
+    /* ————— Modal proveedores ————— */
+    #modal {
+      display: none;
+      position: fixed;
+      top:0; left:0;
+      width:100%; height:100%;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+    }
+    #modal .content {
+      background: #fff;
+      padding: 1rem;
+      border-radius: 4px;
+      width: 90%; max-width: 800px;
+      position: relative;
+    }
+    #modal .close {
+      position: absolute;
+      top: 8px; right: 8px;
+      cursor: pointer;
+    }
+
+    /* ————— Floating editor ————— */
+    .floating-editor {
+      position: absolute;
+      z-index: 1000;
+      box-sizing: border-box;
+      width: 300px;
+      height: 80px;
+      resize: both;
+    }
   </style>
 </head>
 <body>
   <div id="encabezado"></div>
-  <h2>📋 Listado de Proveedores</h2>
+  <h2>📋 Listado de Servicios</h2>
 
-  <table id="tabla">
-    <thead>
-      <tr>
-        <th class="rownum">#</th>
-        <th>Destino</th>
-        <th>Proveedor</th>
-        <th>Nombre Contacto</th>
-        <th>Teléfono</th>
-        <th>Correo electrónico</th>
-        <th>💾</th>
-        <th>🗑️</th>
-      </tr>
-    </thead>
-    <tbody id="contenido"></tbody>
-  </table>
-
-  <div class="controls">
-    <button onclick="agregarFila()">➕ Nueva fila</button>
-    <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
-    <button onclick="guardarTodo()">💾 Guardar todo</button>
+  <!-- Botón modal proveedores -->
+  <button style="position:absolute; top:1rem; right:1rem;" onclick="openModal()">
+    🛠️ Administrar Proveedores
+  </button>
+  <div id="modal">
+    <div class="content">
+      <span class="close" onclick="closeModal()">✖️</span>
+      <iframe src="proveedores.html" style="width:100%; height:80vh; border:none;"></iframe>
+    </div>
   </div>
+
+  <div id="secciones"></div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
@@ -47,214 +99,260 @@
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    onAuthStateChanged(auth, user => {
-      if (!user) window.location.href = 'login.html';
-    });
+    // 1️⃣ Asegura sesión
+    onAuthStateChanged(auth, u => { if (!u) window.location.href = 'login.html'; });
 
-    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
-    const tablaBody = document.getElementById('contenido');
-    const filas = [];
+    // 2️⃣ Datos fijos
+    const opciones = {
+      tipoServicio: ['DIARIO','GENERAL','OTRO'],
+      categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
+      formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
+      tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
+      moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
+    };
+    const campos = [
+      'servicio','tipoServicio','categoria',
+      'ciudad','restricciones','proveedor','tipoCobro',
+      'moneda','valorServicio','formaPago'
+    ];
+    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
+    const container = document.getElementById('secciones');
 
-    function actualizarNumeros() {
-      tablaBody.querySelectorAll('tr').forEach((tr,i) => {
-        let td = tr.querySelector('td.rownum');
-        if (!td) {
-          td = document.createElement('td');
-          td.className = 'rownum';
-          tr.insertBefore(td, tr.firstChild);
-        }
-        td.textContent = i + 1;
+    // 3️⃣ Modal proveedores
+    function openModal(){ document.getElementById('modal').style.display = 'flex'; }
+    function closeModal(){ document.getElementById('modal').style.display = 'none'; }
+
+    // 4️⃣ Floating editor
+    let floating;
+    function showFloatingEditor(input) {
+      if (floating) floating.remove();
+      floating = document.createElement('textarea');
+      floating.className = 'floating-editor';
+      floating.value = input.value;
+      document.body.appendChild(floating);
+      const r = input.getBoundingClientRect();
+      floating.style.top  = (r.bottom + scrollY + 4) + 'px';
+      floating.style.left = (r.left   + scrollX) + 'px';
+      floating.addEventListener('input', () => {
+        input.value = floating.value;
+        input.title = floating.value;
       });
+      floating.addEventListener('blur', () => {
+        floating.remove();
+        floating = null;
+      });
+      floating.focus();
     }
 
-    function crearSelectDestino(value = '') {
-      const sel = document.createElement('select');
-      sel.dataset.campo = 'destino';
-      sel.appendChild(new Option('— Seleccione —',''));
-      destinos.forEach(d => {
-        const o = new Option(d, d);
-        if (d === value) o.selected = true;
-        sel.appendChild(o);
-      });
-      sel.onchange = () => {
-        if (sel.value === 'OTRO') {
+    // 5️⃣ Crea cada sección (destino)
+    function crearSeccion(destFijo) {
+      const isOtro = destFijo === null;
+      let destActivo = destFijo;
+      const sec = document.createElement('div');
+      sec.className = 'section';
+      sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
+
+      // Tabla
+      const tbl = document.createElement('table');
+      const thead = document.createElement('thead');
+      const hr = document.createElement('tr');
+      // Columna #
+      hr.appendChild(Object.assign(document.createElement('th'),{ textContent: '#' }));
+      if (isOtro) {
+        hr.appendChild(Object.assign(document.createElement('th'),{ textContent: 'Destino' }));
+      }
+      ['Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar']
+        .forEach(t => {
+          const th = document.createElement('th');
+          th.textContent = t;
+          hr.appendChild(th);
+        });
+      thead.appendChild(hr);
+      tbl.appendChild(thead);
+      const tbody = document.createElement('tbody');
+      tbl.appendChild(tbody);
+      sec.appendChild(tbl);
+
+      // Controles
+      const ctrl = document.createElement('div');
+      ctrl.className = 'controls';
+      ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
+        .forEach((lab,i) => {
+          const b = document.createElement('button');
+          b.textContent = lab;
+          b.onclick = () => {
+            if (i===0) add();
+            if (i===1) Array.from({length:10}).forEach(add);
+            if (i===2) saveAll();
+          };
+          ctrl.appendChild(b);
+        });
+      sec.appendChild(ctrl);
+
+      const filasArr = [];
+
+      // Actualiza numeración
+      function updateNums() {
+        tbody.querySelectorAll('tr').forEach((tr,i) => {
+          let td = tr.querySelector('td.rownum');
+          if (!td) {
+            td = document.createElement('td');
+            td.className = 'rownum';
+            tr.insertBefore(td, tr.firstChild);
+          }
+          td.textContent = i+1;
+        });
+      }
+
+      // Carga select proveedores
+      async function loadProv(tr) {
+        const sel = tr.querySelector('[data-campo=proveedor]');
+        sel.innerHTML = '<option value="">—</option>';
+        if (!destActivo) return;
+        const col = collection(db,'Proveedores',destActivo,'Listado');
+        const q   = query(col,orderBy('proveedor','asc'));
+        const snap = await getDocs(q);
+        snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
+      }
+
+      // Añade fila nueva o prefill
+      function add(prefill={}, ref=null) {
+        const tr = document.createElement('tr');
+        const inputs = [];
+        // #
+        tr.appendChild(Object.assign(document.createElement('td'),{ className:'rownum' }));
+        // OTRO: destino libre
+        if (isOtro) {
+          const td = document.createElement('td');
           const inp = document.createElement('input');
-          inp.placeholder = 'Escribe nuevo destino';
+          inp.placeholder = 'Destino';
+          inp.value = prefill.destino||'';
           inp.dataset.campo = 'destino';
-          inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
-          sel.replaceWith(inp);
-          inp.focus();
+          inp.addEventListener('input', ()=> destActivo = inp.value.toUpperCase());
+          td.appendChild(inp);
+          tr.appendChild(td);
+          inputs.push(inp);
         }
-      };
-      return sel;
-    }
-
-    function agregarFila(prefill = {}, ref = null) {
-      const tr = document.createElement('tr');
-      const inputs = [];
-
-      // columna # (fila) - se rellenará en actualizarNumeros
-      const placeholderTd = document.createElement('td');
-      placeholderTd.className = 'rownum';
-      tr.appendChild(placeholderTd);
-
-      // Destino
-      const td0 = document.createElement('td');
-      let inp0;
-      const destVal = (prefill.destino||'').toUpperCase();
-      if (destVal && !destinos.includes(destVal)) {
-        inp0 = document.createElement('input');
-        inp0.value = destVal;
-        inp0.dataset.campo = 'destino';
-        inp0.addEventListener('input', ()=> inp0.value = inp0.value.toUpperCase());
-      } else {
-        inp0 = crearSelectDestino(destVal);
-      }
-      td0.appendChild(inp0);
-      tr.appendChild(td0);
-      inputs.push(inp0);
-
-      // Proveedor / Contacto / Teléfono / Correo
-      ['proveedor','contacto','telefono','correo'].forEach(c => {
-        const td = document.createElement('td');
-        const inp = document.createElement('input');
-        inp.value = prefill[c] || '';
-        if (c!=='correo') inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
-        inp.dataset.campo = c;
-        td.appendChild(inp);
-        tr.appendChild(td);
-        inputs.push(inp);
-      });
-
-      // Guardar
-      const tdG = document.createElement('td');
-      const btnG = document.createElement('button');
-      btnG.textContent = '💾';
-      btnG.onclick = async () => {
-        document.activeElement.blur();
-        try {
-          await guardarFila(inputs, ref);
-          alert('✅ Guardado');
-        } catch(e) {
-          alert('⚠️ ' + e.message);
-        }
-      };
-      tdG.appendChild(btnG);
-      tr.appendChild(tdG);
-
-      // Eliminar
-      const tdE = document.createElement('td');
-      const btnE = document.createElement('button');
-      btnE.textContent = '🗑️';
-      btnE.onclick = async () => {
-        if (ref) { await deleteDoc(ref); alert('✅ Eliminado'); }
-        tr.remove();
-        actualizarNumeros();
-      };
-      tdE.appendChild(btnE);
-      tr.appendChild(tdE);
-
-      // Pegado tab-a-tab
-      tr.addEventListener('paste', e => {
-        e.preventDefault();
-        const vals = e.clipboardData.getData('text/plain').split('\t');
-        inputs.forEach((inp,i)=> {
-          if (vals[i]!=null) inp.value = vals[i].trim().toUpperCase();
+        // Columnas dinámicas
+        campos.forEach(c => {
+          const td = document.createElement('td');
+          let inp;
+          if (c==='proveedor') {
+            inp = document.createElement('select');
+            inp.dataset.campo = c;
+            inp.innerHTML = '<option value="">—</option>';
+          }
+          else if (opciones[c]) {
+            inp = document.createElement('select');
+            inp.dataset.campo = c;
+            if (c==='categoria'||c==='formaPago') inp.multiple = true;
+            opciones[c].forEach(opt => inp.appendChild(new Option(opt,opt)));
+            if (prefill[c]) {
+              const arr = Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
+              arr.forEach(v=>{
+                const o = Array.from(inp.options).find(o=>o.value===v);
+                if (o) o.selected = true;
+              });
+            }
+          }
+          else {
+            inp = document.createElement('input');
+            inp.value = prefill[c]||'';
+            if (c!=='valorServicio')
+              inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
+            inp.dataset.campo = c;
+            inp.addEventListener('focus', ()=> showFloatingEditor(inp));
+            inp.title = inp.value;
+          }
+          td.appendChild(inp);
+          tr.appendChild(td);
+          inputs.push(inp);
         });
-      });
-
-      tablaBody.appendChild(tr);
-      filas.push({inputs, ref});
-      actualizarNumeros();
-    }
-
-    function agregarVariasFilas(n) {
-      for (let i=0;i<n;i++) agregarFila();
-    }
-
-    async function guardarFila(inputs, ref) {
-      const data = {};
-      inputs.forEach(i=> data[i.dataset.campo] = i.value.trim());
-      // Forzar mayúsculas
-      data.destino   = data.destino.toUpperCase();
-      data.proveedor = data.proveedor.toUpperCase();
-
-      if (!data.destino)   throw new Error('Debe ingresar Destino');
-      if (!data.proveedor) throw new Error('Debe ingresar Proveedor');
-
-      // *** chequeo duplicados en tabla actual ***
-      const iguales = filas.some(f=>{
-        if(f.inputs===inputs) return false;
-        const d = f.inputs.find(i=>i.dataset.campo==='destino').value;
-        const p = f.inputs.find(i=>i.dataset.campo==='proveedor').value;
-        return d===data.destino && (
-          p===data.proveedor ||
-          p.includes(data.proveedor) ||
-          data.proveedor.includes(p)
-        );
-      });
-      if (iguales) {
-        if (!confirm(`Ya existe un proveedor similar (“${data.proveedor}”) para ${data.destino}.\n¿Guardar de todas formas?`)) {
-          throw new Error('Guardado cancelado por duplicado');
+        // Carga proveedores si no es OTRO
+        if (!isOtro) {
+          destActivo = destFijo;
+          setTimeout(()=> loadProv(tr), 0);
         }
-      }
-
-      // 1) crear doc padre
-      const padre = doc(db,'Proveedores',data.destino);
-      await setDoc(padre,{_created:true},{merge:true});
-
-      // 2) guardar en Listado
-      const col = collection(db,'Proveedores',data.destino,'Listado');
-      const pd  = doc(col,data.proveedor);
-      await setDoc(pd,data);
-
-      if (!ref) filas.find(f=>f.inputs===inputs).ref = pd;
-    }
-
-    async function guardarTodo() {
-      for (const f of filas) {
-        try { await guardarFila(f.inputs,f.ref); }
-        catch(e){ alert('⚠️ '+e.message); }
-      }
-      alert('📑 Todo guardado');
-    }
-
-    async function cargarProveedores() {
-      for (const d of destinos) {
-        const destino = d.toUpperCase();
-        const col = collection(db,'Proveedores',destino,'Listado');
-        const q   = query(col, orderBy('proveedor','asc'));
-        const snap= await getDocs(q);
-        snap.forEach(s=>{
-          const o = s.data();
-          o.destino = destino;
-          agregarFila(o, doc(db,'Proveedores',destino,'Listado',s.id));
+        // Botón guardar
+        const tdG = document.createElement('td');
+        const btnG = document.createElement('button');
+        btnG.textContent = '💾';
+        btnG.onclick = async()=>{
+          try{ await save(inputs); alert('✅'); }
+          catch(e){ alert('⚠️ '+e.message); }
+        };
+        tdG.appendChild(btnG);
+        tr.appendChild(tdG);
+        // Botón eliminar
+        const tdD = document.createElement('td');
+        const btnD = document.createElement('button');
+        btnD.textContent = '🗑️';
+        btnD.onclick= async()=>{
+          if(ref){ await deleteDoc(ref); alert('✅'); }
+          tr.remove(); updateNums();
+        };
+        tdD.appendChild(btnD);
+        tr.appendChild(tdD);
+        // Pegado tab-a-tab
+        tr.addEventListener('paste', e=>{
+          e.preventDefault();
+          const vs = e.clipboardData.getData('text/plain').split('\t');
+          inputs.forEach((inp,i)=>{ if(vs[i]!=null) inp.value = vs[i].trim().toUpperCase(); });
         });
+        tbody.appendChild(tr);
+        filasArr.push({inputs,ref});
+        updateNums();
       }
+
+      // Guarda una fila
+      async function save(inputs) {
+        const data = {};
+        inputs.forEach(i=>{
+          data[i.dataset.campo] = i.multiple
+            ? [...i.selectedOptions].map(o=>o.value)
+            : i.value.trim().toUpperCase();
+        });
+        const destino = isOtro ? data.destino : destActivo;
+        if (!destino)      throw new Error('Falta Destino');
+        if (!data.servicio) throw new Error('Falta Servicio');
+        if (!data.proveedor)throw new Error('Falta Proveedor');
+        // Asegurar doc padre
+        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        // Subcolección Listado
+        const col = collection(db,'Servicios',destino,'Listado');
+        const dr  = doc(col,data.servicio);
+        await setDoc(dr,data);
+      }
+
+      // Guarda todo
+      async function saveAll(){
+        for(const f of filasArr) await save(f.inputs);
+        alert('✅ Todos guardados');
+      }
+
+      // Carga inicial
+      if (!isOtro) {
+        (async()=>{
+          const col = collection(db,'Servicios',destFijo,'Listado');
+          const snap = await getDocs(col);
+          snap.forEach(d=>{
+            const o = d.data();
+            o.servicio = d.id;
+            add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
+          });
+        })();
+      }
+
+      return sec;
     }
 
-    // pegado masivo en toda la tabla
-    tablaBody.addEventListener('paste',e=>{
-      e.preventDefault();
-      const lines = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
-      lines.forEach(line=>{
-        const vals = line.split('\t');
-        const obj = {};
-        ['destino','proveedor','contacto','telefono','correo']
-          .forEach((c,i)=> obj[c]=vals[i]||'');
-        agregarFila(obj);
-      });
-    });
+    // Monta las 5 secciones
+    destinos.forEach(d=> container.appendChild(crearSeccion(d)));
 
-    window.agregarFila        = agregarFila;
-    window.agregarVariasFilas = agregarVariasFilas;
-    window.guardarTodo        = guardarTodo;
-
-    cargarProveedores();
-
+    // Carga header dinámico
     fetch('encabezado.html')
       .then(r=>r.text())
-      .then(html=>document.getElementById('encabezado').innerHTML=html);
+      .then(html=>document.getElementById('encabezado').innerHTML = html);
   </script>
 </body>
 </html>
