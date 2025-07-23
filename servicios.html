@@ -12,12 +12,11 @@
     select, input { width: 100%; box-sizing: border-box; }
     .controls { margin: .5rem 0; }
     .controls button { margin-right: .5rem; }
-    /* Modal proveedores */
-    #modal { display:none; position:fixed; top:0;left:0; width:100%;height:100%;
-             background:rgba(0,0,0,0.5); align-items:center; justify-content:center; }
-    #modal .modal-content { background:#fff; padding:1rem; border-radius:4px;
-                             width:90%; max-width:800px; position:relative; }
-    #modal .close-btn { position:absolute; top:8px; right:8px; cursor:pointer; }
+    /* Modal */
+    #modal { display:none; position:fixed; top:0;left:0; width:100%;height:100%; background:rgba(0,0,0,0.5);
+             align-items:center; justify-content:center; }
+    #modal .content { background:#fff; padding:1rem; border-radius:4px; width:90%; max-width:800px; position:relative; }
+    #modal .close { position:absolute; top:8px; right:8px; cursor:pointer; }
   </style>
 </head>
 <body>
@@ -29,8 +28,8 @@
     🛠️ Administrar Proveedores
   </button>
   <div id="modal">
-    <div class="modal-content">
-      <span class="close-btn" onclick="closeModal()">✖️</span>
+    <div class="content">
+      <span class="close" onclick="closeModal()">✖️</span>
       <iframe src="proveedores.html" style="width:100%; height:80vh; border:none;"></iframe>
     </div>
   </div>
@@ -45,7 +44,7 @@
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    onAuthStateChanged(auth, u => { if (!u) window.location.href='login.html'; });
+    onAuthStateChanged(auth, u=>{ if(!u) window.location.href='login.html'; });
 
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
@@ -54,109 +53,114 @@
       tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
       moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
     };
+    // ya no hay campo "numero"
     const campos = [
       'servicio','tipoServicio','categoria',
       'ciudad','restricciones','proveedor','tipoCobro',
       'moneda','valorServicio','formaPago'
     ];
-    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
+    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE',null];
     const container = document.getElementById('secciones');
 
-    // Modal
     function openModal(){ document.getElementById('modal').style.display='flex'; }
     function closeModal(){ document.getElementById('modal').style.display='none'; }
 
-    // Construye cada sección por destino
-    function crearSeccion(destinoFijo) {
-      const isOtro = destinoFijo === null;
-      let destinoActivo = destinoFijo;
-      const section = document.createElement('div');
-      section.className = 'section';
-      section.innerHTML = `<h3>${ isOtro ? 'OTRO' : destinoFijo }</h3>`;
+    function crearSeccion(destFijo){
+      const isOtro = destFijo===null;
+      let destActivo = destFijo;
+      const sec = document.createElement('div');
+      sec.className='section';
+      sec.innerHTML=`<h3>${isOtro?'OTRO':destFijo}</h3>`;
 
-      // Tabla
-      const table = document.createElement('table');
+      const tbl = document.createElement('table');
       const thead = document.createElement('thead');
-      const headRow = document.createElement('tr');
-      if (isOtro) {
-        const th = document.createElement('th');
-        th.textContent='Destino';
-        headRow.appendChild(th);
+      const hr = document.createElement('tr');
+      // columna #
+      hr.appendChild(Object.assign(document.createElement('th'),{textContent:'#'}));
+      if(isOtro){
+        hr.appendChild(Object.assign(document.createElement('th'),{textContent:'Destino'}));
       }
-      // Ahora sin la columna Nº
       ['Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones','Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar']
-        .forEach(txt => {
-          const th = document.createElement('th');
-          th.textContent = txt;
-          headRow.appendChild(th);
+        .forEach(t=>{
+          const th=document.createElement('th');
+          th.textContent=t;
+          hr.appendChild(th);
         });
-      thead.appendChild(headRow);
-      table.appendChild(thead);
+      thead.appendChild(hr);
+      tbl.appendChild(thead);
+      const tbody=document.createElement('tbody');
+      tbl.appendChild(tbody);
+      sec.appendChild(tbl);
 
-      const tbody = document.createElement('tbody');
-      table.appendChild(tbody);
-      section.appendChild(table);
-
-      // Controles
-      const ctrl = document.createElement('div');
-      ctrl.className = 'controls';
+      // controles
+      const ctrl=document.createElement('div');
+      ctrl.className='controls';
       ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
         .forEach((lab,i)=>{
-          const b = document.createElement('button');
-          b.textContent = lab;
-          b.onclick = ()=> {
-            if(i===0) addFila();
-            if(i===1) Array.from({length:10}).forEach(addFila);
-            if(i===2) guardarTodo();
-          };
+          const b=document.createElement('button');
+          b.textContent=lab;
+          b.onclick=()=>{ if(i===0) add(); if(i===1) Array(10).fill().forEach(()=>add()); if(i===2) saveAll(); };
           ctrl.appendChild(b);
         });
-      section.appendChild(ctrl);
+      sec.appendChild(ctrl);
 
-      const filasArr = [];
+      const filasArr=[];
 
-      // Render fila
-      function addFila(prefill={}, ref=null){
-        const tr = document.createElement('tr');
-        const inputs = [];
+      function updateNums(){
+        tbody.querySelectorAll('tr').forEach((tr,i)=>{
+          let td=tr.querySelector('td.rownum');
+          if(!td){
+            td=document.createElement('td');
+            td.className='rownum';
+            tr.insertBefore(td,tr.firstChild);
+          }
+          td.textContent=i+1;
+        });
+      }
 
-        // Destino en OTRO
+      // añade fila
+      function add(prefill={},ref=null){
+        const tr=document.createElement('tr');
+        const inputs=[];
+
+        // #
+        tr.appendChild(Object.assign(document.createElement('td'),{className:'rownum'}));
+
+        // OTRO: destino editable
         if(isOtro){
-          const td = document.createElement('td');
-          const inp = document.createElement('input');
-          inp.placeholder = 'Destino';
-          inp.value = prefill.destino||'';
-          inp.dataset.campo = 'destino';
-          inp.addEventListener('input', ()=> destinoActivo = inp.value.toUpperCase());
+          const td=document.createElement('td');
+          const inp=document.createElement('input');
+          inp.placeholder='Destino';
+          inp.value=prefill.destino||'';
+          inp.dataset.campo='destino';
+          inp.addEventListener('input',()=>destActivo=inp.value.toUpperCase());
           td.appendChild(inp); tr.appendChild(td); inputs.push(inp);
         }
 
-        // resto campos
         campos.forEach(c=>{
-          const td = document.createElement('td');
+          const td=document.createElement('td');
           let inp;
           if(c==='proveedor'){
-            // select proveedor
-            inp = document.createElement('select');
-            inp.dataset.campo='proveedor';
-            inp.innerHTML = '<option value="">—</option>';
+            inp=document.createElement('select');
+            inp.dataset.campo=c;
+            inp.innerHTML='<option value="">—</option>';
           }
           else if(opciones[c]){
-            inp = document.createElement('select');
+            inp=document.createElement('select');
             inp.dataset.campo=c;
             if(c==='categoria'||c==='formaPago') inp.multiple=true;
-            opciones[c].forEach(opt=>inp.appendChild(new Option(opt,opt)));
+            opciones[c].forEach(o=>inp.appendChild(new Option(o,o)));
             // prefill
             if(prefill[c]){
-              const arr = Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
+              const arr=Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
               arr.forEach(v=>{
-                const o = Array.from(inp.options).find(o=>o.value===v);
-                if(o) o.selected=true;
+                const opt=Array.from(inp.options).find(o=>o.value===v);
+                if(opt) opt.selected=true;
               });
             }
           } else {
-            inp = document.createElement('input');
-            inp.value = prefill[c]||'';
+            inp=document.createElement('input');
+            inp.value=prefill[c]||'';
             if(c!=='valorServicio')
               inp.addEventListener('input',()=>inp.value=inp.value.toUpperCase());
             inp.dataset.campo=c;
@@ -166,105 +170,104 @@
           inputs.push(inp);
         });
 
-        // cargar proveedores al cambiar destino
+        // carga proveedores fijo
         if(!isOtro){
-          // dest fijo
-          destinoActivo = destinoFijo;
-          // apenas se dibuje
-          setTimeout(()=> loadProveedores(tr),0);
+          destActivo=destFijo;
+          setTimeout(()=> loadProv(tr),0);
         }
 
-        // Botones guardar/eliminar
+        // guardar
         const tdG=document.createElement('td'),
               btnG=document.createElement('button');
         btnG.textContent='💾';
         btnG.onclick=async()=>{
-          try{ await saveFila(inputs); alert('✅'); }
+          try{ await save(inputs); alert('✅'); }
           catch(e){ alert('⚠️ '+e.message); }
         };
         tdG.appendChild(btnG); tr.appendChild(tdG);
 
+        // eliminar
         const tdD=document.createElement('td'),
               btnD=document.createElement('button');
         btnD.textContent='🗑️';
         btnD.onclick=async()=>{
           if(ref){ await deleteDoc(ref); alert('✅'); }
-          tr.remove();
+          tr.remove(); updateNums();
         };
         tdD.appendChild(btnD); tr.appendChild(tdD);
 
         // pegado
         tr.addEventListener('paste',e=>{
           e.preventDefault();
-          const vals=e.clipboardData.getData('text/plain').split('\t');
-          inputs.forEach((inp,i)=>{ if(vals[i]!=null) inp.value=vals[i].trim().toUpperCase(); });
+          const vs=e.clipboardData.getData('text/plain').split('\t');
+          inputs.forEach((inp,i)=>{ if(vs[i]!=null) inp.value=vs[i].trim().toUpperCase(); });
         });
 
         tbody.appendChild(tr);
-        filasArr.push({inputs,ref});
+        filasArr.push({inputs:inputs,ref});
+        updateNums();
       }
 
-      // carga proveedores de Firestore
-      async function loadProveedores(tr){
-        const sel = tr.querySelector('[data-campo=proveedor]');
-        sel.innerHTML = '<option value="">—</option>';
-        if(!destinoActivo) return;
-        const col = collection(db,'Proveedores',destinoActivo,'Listado');
-        const q   = query(col, orderBy('proveedor','asc'));
+      // cargar proveedores de FS
+      async function loadProv(tr){
+        const sel=tr.querySelector('[data-campo=proveedor]');
+        sel.innerHTML='<option value="">—</option>';
+        if(!destActivo) return;
+        const col=collection(db,'Proveedores',destActivo,'Listado');
+        const q=query(col,orderBy('proveedor','asc'));
         const snap=await getDocs(q);
         snap.forEach(d=> sel.appendChild(new Option(d.id,d.id)));
       }
 
-      // guardar en Firestore
-      async function saveFila(inputs){
-        const data = {};
-        inputs.forEach(i=> data[i.dataset.campo] = 
-          i.multiple
+      // guardar fila
+      async function save(inputs){
+        const data={};
+        inputs.forEach(i=>{
+          data[i.dataset.campo]= i.multiple
             ? [...i.selectedOptions].map(o=>o.value)
             : i.value.trim().toUpperCase()
-        );
-        const dest = isOtro ? data.destino : destinoActivo;
-        if(!dest) throw new Error('Falta Destino');
-        if(!data.servicio) throw new Error('Falta Servicio');
+        });
+        const destino= isOtro? data.destino: destActivo;
+        if(!destino)    throw new Error('Falta Destino');
+        if(!data.servicio)  throw new Error('Falta Servicio');
         if(!data.proveedor) throw new Error('Falta Proveedor');
 
-        // doc padre
-        await setDoc(doc(db,'Servicios',dest),{_created:true},{merge:true});
-        // subcolección
-        const col = collection(db,'Servicios',dest,'Listado');
-        const docRef = doc(col, data.servicio);
-        await setDoc(docRef,data);
+        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        const col=collection(db,'Servicios',destino,'Listado');
+        const dr=doc(col,data.servicio);
+        await setDoc(dr,data);
       }
 
       // guardar todo
-      async function guardarTodo(){
-        for(const f of filasArr) await saveFila(f.inputs);
+      async function saveAll(){
+        for(const f of filasArr) await save(f.inputs);
         alert('✅ Todos guardados');
       }
 
       // carga inicial
       if(!isOtro){
         (async()=>{
-          const col = collection(db,'Servicios',destinoFijo,'Listado');
-          const snap = await getDocs(col);
-          snap.forEach(dS=>{
-            const obj = dS.data();
-            obj.servicio = dS.id;
-            addFila(obj, doc(db,'Servicios',destinoFijo,'Listado',dS.id));
+          const col=collection(db,'Servicios',destFijo,'Listado');
+          const snap=await getDocs(col);
+          snap.forEach(d=>{
+            const o=d.data();
+            o.servicio=d.id;
+            add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
           });
         })();
       }
 
-      return section;
+      return sec;
     }
 
-    // monta secciones
-    destinos.forEach(d=> container.appendChild(crearSeccion(d)));
+    // monta
+    destinos.forEach(d=>container.appendChild(crearSeccion(d)));
 
-    // fetch encabezado
+    // encabezado
     fetch('encabezado.html')
       .then(r=>r.text())
-      .then(html=>document.getElementById('encabezado').innerHTML=html);
+      .then(h=>document.getElementById('encabezado').innerHTML=h);
+
   </script>
 </body>
 </html>
