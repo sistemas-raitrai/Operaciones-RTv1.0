@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="estilos.css">
   <style>
     table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 4px; text-align: left; }
+    th, td { border: 1px solid #ccc; padding: 4px; }
     .controls { margin: 1rem 0; }
     .controls button { margin-right: .5rem; }
   </style>
@@ -49,12 +49,13 @@
 
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
 
-    // select de destino con opción vacía al inicio
     function crearSelectDestino(valor = '') {
       const sel = document.createElement('select');
       sel.dataset.campo = 'destino';
       // opción placeholder
-      sel.appendChild(new Option('— Seleccione —',''));
+      const ph = new Option('— Seleccione —','');
+      ph.selected = true;
+      sel.appendChild(ph);
       destinos.forEach(d => {
         const o = new Option(d, d);
         if (d === valor) o.selected = true;
@@ -84,6 +85,7 @@
       if (prefill.destino && !destinos.includes(prefill.destino)) {
         inpDest = document.createElement('input');
         inpDest.value = prefill.destino;
+        inpDest.dataset.campo = 'destino';
       } else {
         inpDest = crearSelectDestino(prefill.destino);
       }
@@ -110,11 +112,13 @@
       const btnG = document.createElement('button');
       btnG.textContent = '💾';
       btnG.onclick = async () => {
+        // forzar blur para actualizar select
+        document.activeElement.blur();
         try {
           await guardarFila(inputs, ref);
-          alert('Guardado ✅');
+          alert('✅ Proveedor guardado');
         } catch (e) {
-          alert('Error: ' + e.message);
+          alert('⚠️ ' + e.message);
         }
       };
       tdG.appendChild(btnG);
@@ -127,14 +131,14 @@
       btnE.onclick = async () => {
         if (ref) {
           await deleteDoc(ref);
-          alert('Eliminado ✅');
+          alert('✅ Proveedor eliminado');
         }
         tr.remove();
       };
       tdE.appendChild(btnE);
       tr.appendChild(tdE);
 
-      // Pegado en fila (celda a celda)
+      // Pegado por fila
       tr.addEventListener('paste', e => {
         e.preventDefault();
         const vals = e.clipboardData.getData('text/plain').split('\t');
@@ -157,8 +161,8 @@
         const k = inp.dataset.campo;
         data[k] = inp.value.trim();
       });
-      if (!data.destino) throw new Error('Falta Destino');
-      if (!data.proveedor) throw new Error('Falta Proveedor');
+      if (!data.destino) throw new Error('Debe elegir un Destino');
+      if (!data.proveedor) throw new Error('Debe ingresar un Proveedor');
       const colRef = collection(db, 'Proveedores', data.destino, 'Listado');
       if (ref) {
         await setDoc(ref, data);
@@ -170,15 +174,17 @@
 
     async function guardarTodo() {
       for (const f of filas) {
-        await guardarFila(f.inputs, f.ref);
+        try {
+          await guardarFila(f.inputs, f.ref);
+        } catch(e) {
+          alert('⚠️ ' + e.message);
+        }
       }
-      alert('Todos guardados ✅');
+      alert('📑 Todos procesados');
     }
 
     async function cargarProveedores() {
-      // recorremos destinos en orden
       for (const destino of destinos) {
-        // consulta ordenada por proveedor ascendente
         const q = query(
           collection(db, 'Proveedores', destino, 'Listado'),
           orderBy('proveedor','asc')
@@ -195,11 +201,10 @@
       }
     }
 
-    // Pegado masivo en toda la tabla
+    // Pegado masivo
     tablaBody.addEventListener('paste', e => {
       e.preventDefault();
-      const text = e.clipboardData.getData('text/plain').trim();
-      const lines = text.split(/\r?\n/);
+      const lines = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
       lines.forEach(line => {
         const vals = line.split('\t');
         const obj = {};
@@ -210,14 +215,14 @@
       });
     });
 
-    window.agregarFila = agregarFila;
+    window.agregarFila      = agregarFila;
     window.agregarVariasFilas = agregarVariasFilas;
-    window.guardarTodo = guardarTodo;
+    window.guardarTodo      = guardarTodo;
 
     cargarProveedores();
     fetch('encabezado.html')
-      .then(r=>r.text())
-      .then(h=>document.getElementById('encabezado').innerHTML = h);
+      .then(r => r.text())
+      .then(h => document.getElementById('encabezado').innerHTML = h);
   </script>
 </body>
 </html>
