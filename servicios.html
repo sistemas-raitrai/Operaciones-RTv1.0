@@ -57,7 +57,7 @@
     // Configuración de dropdowns
     const opciones = {
       destino:      ['BRASIL','SUR DE CHILE','BARILOCHE','NORTE DE CHILE','OTRO'],
-      tipoServicio: ['DIARIO','GENERAL','OTRO'],    // antes 'servicios'
+      tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENCIÓN','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
       formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
       tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
@@ -66,6 +66,7 @@
 
     const tabla = document.getElementById('contenido');
     const filas = [];
+    // Campos en orden de columna
     const campos = [
       'destino','numero','servicio','tipoServicio','categoria',
       'ciudad','restricciones','proveedor','contacto','correo',
@@ -75,7 +76,7 @@
     /**
      * Añade una fila al DOM y al array filas.
      * @param {Object} dato - valores iniciales
-     * @param {any}   ref  - referencia doc Firestore (null si nueva)
+     * @param {any} ref - referencia doc Firestore (null si nueva)
      */
     function agregarFila(dato = {}, ref = null) {
       const tr = document.createElement('tr');
@@ -86,16 +87,22 @@
         let input;
         if (opciones[c]) {
           input = document.createElement('select');
+          // Multi-select para categoría y formaPago
+          if (c === 'categoria' || c === 'formaPago') input.multiple = true;
           opciones[c].forEach(opt => {
             const o = document.createElement('option');
             o.value = opt; o.textContent = opt;
+            // Selecciona si dato[c] lo incluye
+            if (dato[c]) {
+              const valores = Array.isArray(dato[c]) ? dato[c] : [dato[c]];
+              if (valores.includes(opt)) o.selected = true;
+            }
             input.appendChild(o);
           });
-          input.value = dato[c] || '';
         } else {
           input = document.createElement('input');
           input.value = dato[c] || '';
-          if (c !== 'valorServicio') input.addEventListener('input',() => input.value = input.value.toUpperCase());
+          if (c !== 'valorServicio') input.addEventListener('input', () => input.value = input.value.toUpperCase());
         }
         input.dataset.campo = c;
         inputs.push(input);
@@ -106,24 +113,35 @@
       // Botón Guardar fila individual
       const tdG = document.createElement('td');
       const btnG = document.createElement('button'); btnG.textContent='💾';
-      btnG.onclick = async () => { await guardarFila(inputs); alert('Guardado ✅'); };
+      btnG.onclick = async () => {
+        try {
+          await guardarFila(inputs);
+          alert('Fila guardada correctamente ✅');
+        } catch (e) {
+          alert('Error al guardar: ' + e.message);
+        }
+      };
       tdG.appendChild(btnG); tr.appendChild(tdG);
 
       // Botón Eliminar
       const tdE = document.createElement('td');
       const btnE = document.createElement('button'); btnE.textContent='🗑️';
-      btnE.onclick = async () => { await eliminarFila(ref, tr); };
+      btnE.onclick = async () => {
+        await eliminarFila(ref, tr);
+      };
       tdE.appendChild(btnE); tr.appendChild(tdE);
 
       // Pegado de celda a celda
       tr.addEventListener('paste', e => {
         e.preventDefault();
         const vals = e.clipboardData.getData('text/plain').split('\t');
-        vals.forEach((v,i) => { if (inputs[i]) inputs[i].value = v.trim().toUpperCase(); });
+        vals.forEach((v,i) => {
+          if (inputs[i]) inputs[i].value = v.trim().toUpperCase();
+        });
       });
 
       tabla.appendChild(tr);
-      filas.push({ inputs, ref, tr });
+      filas.push({ inputs, ref });
     }
 
     /**
@@ -133,14 +151,19 @@
       const data = {};
       inputs.forEach(i => {
         const k = i.dataset.campo;
-        data[k] = k==='valorServicio' ? Number(i.value)||0 : i.value.trim().toUpperCase();
+        if (i.multiple) {
+          // Array de valores seleccionados
+          data[k] = Array.from(i.selectedOptions).map(o => o.value);
+        } else {
+          data[k] = k === 'valorServicio' ? Number(i.value) || 0 : i.value.trim().toUpperCase();
+        }
       });
       const { destino, servicio } = data;
-      if (!destino || !servicio) return alert('Completa Destino y Servicio');
+      if (!destino || !servicio) throw new Error('Completa Destino y Servicio.');
       const docRef = doc(db, 'Servicios', destino, servicio);
       await setDoc(docRef, data);
       // Actualizar ref en filas
-      const filaMeta = filas.find(f => f.inputs===inputs);
+      const filaMeta = filas.find(f => f.inputs === inputs);
       filaMeta.ref = docRef;
     }
 
@@ -148,30 +171,41 @@
      * Elimina documento Firestore si existe, y quita la fila del DOM.
      */
     async function eliminarFila(ref, tr) {
-      if (ref) await deleteDoc(ref);
+      if (ref) {
+        await deleteDoc(ref);
+        alert('Documento eliminado de Firebase ✅');
+      }
       tr.remove();
     }
 
     // Varias filas nuevas
-    function agregarVariasFilas(n) { for(let i=0;i<n;i++) agregarFila(); }
+    function agregarVariasFilas(n) {
+      for (let i = 0; i < n; i++) agregarFila();
+    }
 
     // Guarda todas las filas
     async function guardarTodo() {
-      for (const {inputs} of filas) await guardarFila(inputs);
-      alert('Todos guardados ✅');
+      for (const { inputs } of filas) {
+        try {
+          await guardarFila(inputs);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      alert('Todos guardados correctamente ✅');
     }
 
     // Carga inicial: lee Servicios/{destino}/{servicio}
     async function cargarRegistros() {
-      const destSnap = await getDocs(collection(db,'Servicios'));
+      const destSnap = await getDocs(collection(db, 'Servicios'));
       for (const d of destSnap.docs) {
         const destino = d.id;
-        const servSnap = await getDocs(collection(db,'Servicios',destino));
+        const servSnap = await getDocs(collection(db, 'Servicios', destino));
         servSnap.forEach(snap => {
           const data = snap.data();
           data.destino = destino;
           data.servicio = snap.id;
-          agregarFila(data, doc(db,'Servicios',destino,snap.id));
+          agregarFila(data, doc(db, 'Servicios', destino, snap.id));
         });
       }
     }
@@ -181,8 +215,9 @@
       e.preventDefault();
       e.clipboardData.getData('text/plain').trim().split(/\r?\n/).forEach(line => {
         if (!line) return;
-        const vals = line.split('\t'); const dato = {};
-        campos.forEach((c,i) => dato[c] = vals[i]?vals[i].trim(): '');
+        const vals = line.split('\t');
+        const dato = {};
+        campos.forEach((c, i) => dato[c] = vals[i] ? vals[i].trim() : '');
         agregarFila(dato);
       });
     });
@@ -192,9 +227,11 @@
     window.agregarVariasFilas = agregarVariasFilas;
     window.guardarTodo = guardarTodo;
 
-    // Iniciar
+    // Iniciar carga de datos y encabezado
     cargarRegistros();
-    fetch('encabezado.html').then(r=>r.text()).then(html=>document.getElementById('encabezado').innerHTML=html);
+    fetch('encabezado.html')
+      .then(r => r.text())
+      .then(html => document.getElementById('encabezado').innerHTML = html);
   </script>
 </body>
 </html>
