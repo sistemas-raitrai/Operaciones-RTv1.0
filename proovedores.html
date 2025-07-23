@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Proveedores Rai Trai</title>
+  <!-- Estilos propios -->
+  <link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+  <!-- Header dinámico -->
+  <div id="encabezado"></div>
+  <h2 style="margin-top: 2rem;">📋 Listado de Proveedores</h2>
+
+  <!-- Tabla de proveedores -->
+  <table id="tabla">
+    <thead>
+      <tr>
+        <th>Destino</th>
+        <th>Proveedor</th>
+        <th>Contacto</th>
+        <th>Teléfono</th>
+        <th>Correo</th>
+        <th>Guardar</th>
+        <th>Eliminar</th>
+      </tr>
+    </thead>
+    <tbody id="contenido"></tbody>
+  </table>
+
+  <!-- Botones de acción -->
+  <div style="margin-top:1rem;">
+    <button onclick="agregarFila()">➕ Nueva fila</button>
+    <button onclick="guardarTodo()">💾 Guardar todo</button>
+  </div>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+    import {
+      collection, getDocs, doc, setDoc, addDoc, deleteDoc
+    } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+
+    // Verifica sesión
+    onAuthStateChanged(auth, user => {
+      if (!user) window.location.href = 'login.html';
+    });
+
+    const tabla = document.getElementById('contenido');
+    const filas = [];
+
+    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
+
+    // Crea un select de destinos con opción OTRO
+    function crearSelectDestino(valor = '') {
+      const sel = document.createElement('select');
+      destinos.forEach(d => {
+        const o = new Option(d, d);
+        if (d === valor) o.selected = true;
+        sel.appendChild(o);
+      });
+      // Si elige OTRO, añade un input para nombre real
+      sel.onchange = () => {
+        if (sel.value === 'OTRO') {
+          const input = document.createElement('input');
+          input.placeholder = 'Nuevo destino...';
+          input.dataset.campo = 'destino';
+          sel.replaceWith(input);
+        }
+      };
+      sel.dataset.campo = 'destino';
+      return sel;
+    }
+
+    // Agrega una fila nueva o cargada
+    function agregarFila(dato = {}, ref = null) {
+      const tr = document.createElement('tr');
+      const inputs = [];
+
+      // Destino
+      const tdD = document.createElement('td');
+      let inpD;
+      if (dato.destino && !destinos.includes(dato.destino)) {
+        // valor personalizado
+        inpD = document.createElement('input');
+        inpD.value = dato.destino;
+      } else {
+        inpD = crearSelectDestino(dato.destino);
+      }
+      inputs.push(inpD);
+      tdD.appendChild(inpD);
+      tr.appendChild(tdD);
+
+      // Proveedor
+      ['proveedor','contacto','telefono','correo'].forEach(campo => {
+        const td = document.createElement('td');
+        const inp = document.createElement('input');
+        inp.value = dato[campo] || '';
+        if (campo !== 'correo') {
+          inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
+        }
+        inp.dataset.campo = campo;
+        inputs.push(inp);
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+
+      // Botón Guardar
+      const tdG = document.createElement('td');
+      const btnG = document.createElement('button');
+      btnG.textContent = '💾';
+      btnG.onclick = async () => {
+        await guardarFila(inputs, ref);
+        alert('Proveedor guardado ✅');
+      };
+      tdG.appendChild(btnG);
+      tr.appendChild(tdG);
+
+      // Botón Eliminar
+      const tdE = document.createElement('td');
+      const btnE = document.createElement('button');
+      btnE.textContent = '🗑️';
+      btnE.onclick = async () => {
+        if (ref) {
+          await deleteDoc(ref);
+          alert('Proveedor eliminado ✅');
+        }
+        tr.remove();
+      };
+      tdE.appendChild(btnE);
+      tr.appendChild(tdE);
+
+      tabla.appendChild(tr);
+      filas.push({ inputs, ref });
+    }
+
+    // Guarda o actualiza un proveedor en Firestore
+    async function guardarFila(inputs, ref) {
+      const data = {};
+      inputs.forEach(i => {
+        const k = i.dataset.campo;
+        let v = i.value.trim();
+        if (k !== 'correo') v = v.toUpperCase();
+        data[k] = v;
+      });
+      if (!data.destino) throw new Error('Falta destino');
+      if (!data.proveedor) throw new Error('Falta proveedor');
+      const col = collection(db, 'Proveedores', data.destino, 'Listado');
+      if (ref) {
+        await setDoc(ref, data);
+      } else {
+        const docRef = await addDoc(col, data);
+        // actualizar ref en memoria
+        const f = filas.find(f => f.inputs === inputs);
+        f.ref = docRef;
+      }
+    }
+
+    // Guarda todas las filas
+    async function guardarTodo() {
+      for (const {inputs, ref} of filas) {
+        await guardarFila(inputs, ref);
+      }
+      alert('Todos los proveedores guardados ✅');
+    }
+
+    // Carga inicial de proveedores por destino
+    async function cargarProveedores() {
+      for (const destino of destinos) {
+        const snap = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          d.destino = destino;
+          agregarFila(d, doc(db,'Proveedores', destino, 'Listado', docSnap.id));
+        });
+      }
+    }
+
+    // Inicia
+    cargarProveedores();
+    window.agregarFila = agregarFila;
+    window.guardarTodo = guardarTodo;
+
+    fetch('encabezado.html')
+      .then(r => r.text())
+      .then(html => document.getElementById('encabezado').innerHTML = html);
+  </script>
+</body>
+</html>
