@@ -17,7 +17,7 @@ const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9ND
 
 // Campos relevantes del formulario
 const campos = [
-  'numeroNegocio','nombreGrupo','cantidadgrupo',
+  'numeroNegocio','identificador','nombreGrupo','cantidadgrupo',
   'colegio','curso','anoViaje',
   'destino','programa','fechaInicio',
   'duracion','noches','fechaFin',
@@ -60,7 +60,7 @@ let manualMode = false;
 // 3️⃣ REFERENCIAS AL DOM
 const elems = {};
 [
-  'filtroAno','negocioList','nombreList',
+  'filtroAno','negocioList','identificador','nombreList',
   'destinosList','programasList','hoteles',
   'numeroNegocio','nombreGrupo','cantidadgrupo',
   'colegio','curso','anoViaje',
@@ -160,6 +160,7 @@ async function loadDatos(ventas) {
   );
   if (venta) {
     campos.forEach(c => {
+      if (c === 'identificador') return;  
       if (!['duracion','noches','fechaFin'].includes(c)) {
         const tmp = document.createElement('div');
         tmp.innerHTML = venta[c] || '';
@@ -238,7 +239,7 @@ async function paintTable(id) {
   tbody.innerHTML = '';
   const tr = document.createElement('tr');
   [
-    d.numeroNegocio, d.nombreGrupo, d.cantidadgrupo,
+    d.numeroNegocio, d.identificador, d.nombreGrupo, d.cantidadgrupo,
     d.colegio, d.curso, d.anoViaje,
     d.destino, d.programa, d.fechaInicio,
     d.duracion, d.noches, d.fechaFin,
