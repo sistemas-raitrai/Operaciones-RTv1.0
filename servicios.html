@@ -54,11 +54,10 @@
 <body>
   <div id="encabezado"></div>
   <header>
-    <h2>📋Lista de Servicios</h2>
+    <h2>📋LISTA DE SERVICIOS</h2>
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
-  <!-- Modal -->
   <div id="backdrop-prov" onclick="closeProveedores()"></div>
   <div id="modal-prov">
     <div class="header">
@@ -68,7 +67,6 @@
     <iframe id="iframe-prov" src=""></iframe>
   </div>
 
-  <!-- Secciones -->
   <div id="secciones"></div>
 
   <script type="module">
@@ -126,7 +124,6 @@
       sec.innerHTML=`<h3>${isOtro?'OTRO':destFijo}</h3>`;
       document.getElementById('secciones').appendChild(sec);
 
-      // Controles arriba de la tabla
       const ctrl=document.createElement('div'); ctrl.className='controls';
       [
         ['➕ Nueva fila', add],
@@ -141,7 +138,6 @@
       });
       sec.appendChild(ctrl);
 
-      // Tabla
       const wrap=document.createElement('div'); wrap.className='table-wrapper';
       const tbl=document.createElement('table');
       const thead=document.createElement('thead');
@@ -161,21 +157,20 @@
 
       const rows=[];
 
-      // Carga inicial
       if(!isOtro){
         (async()=>{
           const snap=await getDocs(query(
             collection(db,'Servicios',destFijo,'Listado'),
             orderBy('servicio','asc')
           ));
-          snap.forEach(d=>{
+          for(let d of snap.docs){
             const o=d.data(); o.servicio=d.id;
-            add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
-          });
+            await add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
+          }
         })();
       }
 
-      async function loadProvs(tr){
+      async function loadProvs(tr, selectedProv){
         const sel=tr.querySelector('select[data-campo=proveedor]');
         sel.innerHTML='<option value="">—</option>';
         if(!destActivo) return;
@@ -184,25 +179,23 @@
           orderBy('proveedor','asc')
         ));
         snap.forEach(d=>sel.appendChild(new Option(d.id,d.id)));
+        if(selectedProv) sel.value=selectedProv;
       }
 
-      function add(prefill={}, ref=null){
+      async function add(prefill={}, ref=null){
         const tr=document.createElement('tr');
         const inputs=[];
 
-        // checkbox
         const tdChk=document.createElement('td');
         const chk=document.createElement('input'); chk.type='checkbox';
         tdChk.appendChild(chk); tr.appendChild(tdChk);
 
-        // campos
-        campos.forEach(c=>{
+        for(let c of campos){
           const td=document.createElement('td');
           let inp;
           if(c==='proveedor'){
             inp=document.createElement('select');
             inp.dataset.campo=c;
-            inp.innerHTML='<option value="">—</option>';
           } else if(opciones[c]){
             inp=document.createElement('select');
             inp.dataset.campo=c;
@@ -223,14 +216,13 @@
             inp.onfocus=()=>showFloatingEditor(inp);
             inp.title=inp.value;
           }
-          td.appendChild(inp);
-          tr.appendChild(td);
+          td.appendChild(inp); tr.appendChild(td);
           inputs.push(inp);
-        });
+        }
 
         if(!isOtro){
           destActivo=destFijo;
-          setTimeout(()=>loadProvs(tr),0);
+          await loadProvs(tr, prefill.proveedor);
         }
 
         tbody.appendChild(tr);
@@ -245,9 +237,9 @@
             : i.value.trim().toUpperCase();
         });
         const destino=isOtro? data.destino: destActivo;
-        if(!destino) throw new Error(`Fila ${idx}: Falta Destino`);
-        if(!data.servicio) throw new Error(`Fila ${idx}: Falta Servicio`);
-        if(!data.proveedor) throw new Error(`Fila ${idx}: Falta Proveedor`);
+        if(!destino) throw new Error(`F${idx}: Falta Destino`);
+        if(!data.servicio) throw new Error(`F${idx}: Falta Servicio`);
+        if(!data.proveedor) throw new Error(`F${idx}: Falta Proveedor`);
         await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
         await setDoc(
           doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
@@ -283,7 +275,6 @@
           if(r.ref) await deleteDoc(r.ref);
           r.checkbox.closest('tr').remove();
         }
-        // limpia array
         rows.splice(0, rows.length, ...rows.filter(r=>!r.checkbox.checked));
         alert('🗑️ Seleccionadas eliminadas');
       }
