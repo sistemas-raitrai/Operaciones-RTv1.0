@@ -3,70 +3,77 @@
 <head>
   <meta charset="UTF-8">
   <title>Servicios Rai Trai</title>
-  <!-- Tu hoja de estilos general -->
   <link rel="stylesheet" href="estilos.css">
   <style>
-    /* ——— Layout del header con botón de Proveedores ——— */
+    /* ——— Header y botón Proveedores ——— */
     header {
       display: flex;
-      align-items: center;
       justify-content: space-between;
+      align-items: center;
       margin-bottom: 1rem;
     }
     header h2 { margin: 0; }
     header button {
       background: #0055A4;
-      color: #fff;
+      color: white;
       border: none;
       padding: .5rem 1rem;
       border-radius: 4px;
       cursor: pointer;
     }
 
-    /* ——— Secciones y tabla en grid para anchos proporcionales ——— */
-    .section { margin-bottom: 3rem; }
-    .section h3 { margin: .5rem 0; }
-    .section table {
-      display: grid;
-      grid-template-columns:
-        1fr   /* # */
-        4fr   /* Servicio */
-        3fr   /* Tipo Servicio */
-        3fr   /* Categoría */
-        2fr   /* Ciudad */
-        5fr   /* Restricciones */
-        3fr   /* Proveedor */
-        2fr   /* Tipo Cobro */
-        1fr   /* Moneda */
-        2fr   /* Valor Servicio */
-        2fr   /* Forma de Pago */
-        auto auto; /* Guardar / Eliminar */
+    /* ——— Contenedor de sección con scroll horizontal ——— */
+    .section {
+      margin-bottom: 2rem;
+    }
+    .section h3 {
+      margin: .5rem 0;
+    }
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    /* ——— Tabla estándar con anchos proporcionales ——— */
+    table {
       width: 100%;
       border-collapse: collapse;
+      table-layout: fixed;
     }
-    .section thead,
-    .section tbody { display: contents; }
-    .section th,
-    .section td {
+    thead th {
+      background: #f5f5f5;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    th, td {
       border: 1px solid #ccc;
       padding: 4px;
-      box-sizing: border-box;
-      overflow: hidden;
       white-space: nowrap;
+      overflow: hidden;
       text-overflow: ellipsis;
-      min-width: 0;      /* Evita overflow en grid */
     }
+    /* Definimos anchos relativos */
+    th:nth-child(1), td:nth-child(1)   { width: 5%;  }  /* # */
+    th:nth-child(2), td:nth-child(2)   { width: 20%; }  /* Servicio */
+    th:nth-child(3), td:nth-child(3)   { width: 12%; }  /* Tipo Servicio */
+    th:nth-child(4), td:nth-child(4)   { width: 12%; }  /* Categoría */
+    th:nth-child(5), td:nth-child(5)   { width: 10%; }  /* Ciudad */
+    th:nth-child(6), td:nth-child(6)   { width: 20%; }  /* Restricciones */
+    th:nth-child(7), td:nth-child(7)   { width: 12%; }  /* Proveedor */
+    th:nth-child(8), td:nth-child(8)   { width: 10%; }  /* Tipo Cobro */
+    th:nth-child(9), td:nth-child(9)   { width: 8%;  }  /* Moneda */
+    th:nth-child(10), td:nth-child(10) { width: 10%; }  /* Valor Servicio */
+    th:nth-child(11), td:nth-child(11) { width: 10%; }  /* Forma de Pago */
+    th:nth-child(12), td:nth-child(12),
+    th:nth-child(13), td:nth-child(13) { width: auto; } /* Guardar / Eliminar */
 
     /* ——— Inputs y selects ——— */
     input, select {
       width: 100%;
       box-sizing: border-box;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
-    /* Tooltip para inputs de texto */
-    .section td input:hover {
+    /* Tooltip en inputs al pasar el cursor */
+    td input:hover {
       overflow: visible;
       white-space: normal;
     }
@@ -80,20 +87,20 @@
       display: none;
       position: fixed;
       top: 0; left: 0;
-      width: 100%; height: 100%;
+      width:100%; height:100%;
       background: rgba(0,0,0,0.5);
       align-items: center;
       justify-content: center;
     }
     #modal .content {
-      background: #fff;
+      background: white;
       padding: 1rem;
       border-radius: 4px;
       width: 90%; max-width: 800px;
       position: relative;
     }
     #modal .close {
-      position: absolute; top: 8px; right: 8px;
+      position: absolute; top:8px; right:8px;
       cursor: pointer;
     }
 
@@ -101,49 +108,45 @@
     .floating-editor {
       position: absolute;
       z-index: 1000;
-      box-sizing: border-box;
       width: 300px;
       height: 80px;
       resize: both;
+      box-sizing: border-box;
     }
   </style>
 </head>
 <body>
-
-  <!-- Header externo -->
   <div id="encabezado"></div>
-
-  <!-- Título y botón Proveedores -->
   <header>
     <h2>📋 Lista de Servicios</h2>
     <button onclick="openModal()">🛠️ Administrar Proveedores</button>
   </header>
 
-  <!-- Modal embebido -->
   <div id="modal">
     <div class="content">
       <span class="close" onclick="closeModal()">✖️</span>
-      <iframe src="proveedores.html" style="width:100%; height:80vh; border:none;"></iframe>
+      <iframe src="proveedores.html"
+              style="width:100%;height:80vh;border:none;"></iframe>
     </div>
   </div>
 
-  <!-- Contenedor de secciones -->
   <div id="secciones"></div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
-    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+    import { onAuthStateChanged }
+      from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
       collection, getDocs, query, orderBy,
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
     // — Sesión —
-    onAuthStateChanged(auth, user => {
-      if (!user) window.location.href = 'login.html';
+    onAuthStateChanged(auth, u => {
+      if (!u) window.location.href = 'login.html';
     });
 
-    // — Datos estáticos —
+    // — Datos fijos —
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -158,15 +161,13 @@
     ];
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
-    // Referencias DOM
     const container = document.getElementById('secciones');
     const modal     = document.getElementById('modal');
 
-    // — Funciones modal —
     function openModal()  { modal.style.display = 'flex'; }
     function closeModal() { modal.style.display = 'none'; }
 
-    // — Editor flotante —
+    // Editor flotante
     let floating = null;
     function showFloatingEditor(input) {
       if (floating) floating.remove();
@@ -176,50 +177,57 @@
       document.body.appendChild(floating);
       const r = input.getBoundingClientRect();
       floating.style.top  = (r.bottom + scrollY + 4) + 'px';
-      floating.style.left = (r.left   + scrollX) + 'px';
-      floating.addEventListener('input', () => {
+      floating.style.left = (r.left + scrollX) + 'px';
+      floating.oninput = () => {
         input.value = floating.value;
         input.title = floating.value;
-      });
-      floating.addEventListener('blur', () => {
+      };
+      floating.onblur = () => {
         floating.remove();
         floating = null;
-      });
+      };
       floating.focus();
     }
 
-    // — Crea sección por destino —
+    // Genera cada sección
+    destinos.forEach(d => container.appendChild(crearSeccion(d)));
+
     function crearSeccion(destFijo) {
       const isOtro = destFijo === null;
       let destActivo = destFijo;
+
       const sec = document.createElement('div');
       sec.className = 'section';
       sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
 
-      // Tabla y cabecera
-      const tbl = document.createElement('table');
+      // Wrapper con scroll
+      const wrap = document.createElement('div');
+      wrap.className = 'table-wrapper';
+
+      const table = document.createElement('table');
       const thead = document.createElement('thead');
-      const hr = document.createElement('tr');
-      hr.appendChild(Object.assign(document.createElement('th'),{ textContent: '#' }));
-      if (isOtro) {
-        hr.appendChild(Object.assign(document.createElement('th'),{ textContent: 'Destino' }));
-      }
-      [
+      const trh = document.createElement('tr');
+
+      // Encabezados
+      const headers = ['#'];
+      if (isOtro) headers.push('Destino');
+      headers.push(
         'Servicio','Tipo Servicio','Categoría','Ciudad',
         'Restricciones','Proveedor','Tipo Cobro','Moneda',
         'Valor Servicio','Forma de Pago','Guardar','Eliminar'
-      ].forEach(txt => {
+      );
+      headers.forEach(txt => {
         const th = document.createElement('th');
         th.textContent = txt;
-        hr.appendChild(th);
+        trh.appendChild(th);
       });
-      thead.appendChild(hr);
-      tbl.appendChild(thead);
+      thead.appendChild(trh);
+      table.appendChild(thead);
 
-      // Cuerpo
       const tbody = document.createElement('tbody');
-      tbl.appendChild(tbody);
-      sec.appendChild(tbl);
+      table.appendChild(tbody);
+      wrap.appendChild(table);
+      sec.appendChild(wrap);
 
       // Controles
       const ctrl = document.createElement('div');
@@ -229,61 +237,56 @@
           const btn = document.createElement('button');
           btn.textContent = lbl;
           btn.onclick = () => {
-            if (i === 0) add();
-            if (i === 1) [...Array(10)].forEach(() => add());
+            if (i === 0) addRow();
+            if (i === 1) [...Array(10)].forEach(addRow);
             if (i === 2) saveAll();
           };
           ctrl.appendChild(btn);
         });
       sec.appendChild(ctrl);
 
-      const filasArr = [];
+      const rows = [];
 
-      // Actualiza numeración
       function updateNums() {
         tbody.querySelectorAll('tr').forEach((tr,i) => {
-          let td = tr.querySelector('td.rownum');
-          if (!td) {
-            td = document.createElement('td');
-            td.className = 'rownum';
-            tr.insertBefore(td, tr.firstChild);
-          }
-          td.textContent = i + 1;
+          const numCell = tr.querySelector('.rownum');
+          if (numCell) numCell.textContent = i+1;
         });
       }
 
-      // Carga select de proveedores
-      async function loadProv(tr) {
-        const sel = tr.querySelector('[data-campo=proveedor]');
+      async function loadProvs(tr) {
+        const sel = tr.querySelector('select[data-campo=proveedor]');
         sel.innerHTML = '<option value="">—</option>';
         if (!destActivo) return;
         const col = collection(db,'Proveedores',destActivo,'Listado');
-        const snap = await getDocs(query(col, orderBy('proveedor','asc')));
-        snap.forEach(d => sel.appendChild(new Option(d.id, d.id)));
+        const q   = query(col, orderBy('proveedor','asc'));
+        const snap = await getDocs(q);
+        snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
       }
 
-      // Añade fila
-      function add(prefill = {}, ref = null) {
+      function addRow(prefill={}, ref=null) {
         const tr = document.createElement('tr');
         const inputs = [];
 
-        // Columna número
-        tr.appendChild(Object.assign(document.createElement('td'),{ className: 'rownum' }));
+        // Número
+        const tdNum = document.createElement('td');
+        tdNum.className = 'rownum';
+        tr.appendChild(tdNum);
 
-        // Si es OTRO, input destino editable
+        // Destino editable en OTRO
         if (isOtro) {
           const td = document.createElement('td');
           const inp = document.createElement('input');
           inp.placeholder = 'Destino';
-          inp.value = prefill.destino || '';
+          inp.value = prefill.destino||'';
           inp.dataset.campo = 'destino';
-          inp.addEventListener('input', () => destActivo = inp.value.toUpperCase());
+          inp.oninput = () => destActivo = inp.value.toUpperCase();
           td.appendChild(inp);
           tr.appendChild(td);
           inputs.push(inp);
         }
 
-        // Campos dinámicos
+        // Columnas dinámicas
         campos.forEach(c => {
           const td = document.createElement('td');
           let inp;
@@ -296,24 +299,23 @@
           else if (opciones[c]) {
             inp = document.createElement('select');
             inp.dataset.campo = c;
-            if (c === 'categoria' || c === 'formaPago') inp.multiple = true;
-            opciones[c].forEach(o => inp.appendChild(new Option(o, o)));
+            if (c==='categoria'||c==='formaPago') inp.multiple = true;
+            opciones[c].forEach(o => inp.appendChild(new Option(o,o)));
             if (prefill[c]) {
-              const arr = Array.isArray(prefill[c]) ? prefill[c] : [prefill[c]];
-              arr.forEach(v => {
-                const opt = Array.from(inp.options).find(o => o.value === v);
+              const arr = Array.isArray(prefill[c])? prefill[c]:[prefill[c]];
+              arr.forEach(v=>{
+                const opt = [...inp.options].find(o=>o.value===v);
                 if (opt) opt.selected = true;
               });
             }
           }
           else {
             inp = document.createElement('input');
-            inp.value = prefill[c] || '';
-            if (c !== 'valorServicio') {
-              inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
-            }
+            inp.value = prefill[c]||'';
+            if (c!=='valorServicio')
+              inp.oninput = ()=> inp.value = inp.value.toUpperCase();
             inp.dataset.campo = c;
-            inp.addEventListener('focus', () => showFloatingEditor(inp));
+            inp.onfocus = ()=> showFloatingEditor(inp);
             inp.title = inp.value;
           }
 
@@ -322,90 +324,82 @@
           inputs.push(inp);
         });
 
-        // Si no es OTRO, carga proveedores
+        // carga proveedores
         if (!isOtro) {
           destActivo = destFijo;
-          setTimeout(() => loadProv(tr), 0);
+          setTimeout(()=> loadProvs(tr), 0);
         }
 
-        // Botón Guardar fila
+        // Guardar individual
         const tdG = document.createElement('td');
-        const btnG = document.createElement('button');
-        btnG.textContent = '💾';
-        btnG.addEventListener('click', async () => {
-          try { await save(inputs); alert('✅'); }
-          catch (e) { alert('⚠️ ' + e.message); }
-        });
-        tdG.appendChild(btnG);
+        const btG = document.createElement('button');
+        btG.textContent = '💾';
+        btG.onclick = async () => {
+          try { await saveRow(inputs); alert('✅'); }
+          catch (e){ alert('⚠️ '+e.message); }
+        };
+        tdG.appendChild(btG);
         tr.appendChild(tdG);
 
-        // Botón Eliminar fila
+        // Eliminar
         const tdD = document.createElement('td');
-        const btnD = document.createElement('button');
-        btnD.textContent = '🗑️';
-        btnD.addEventListener('click', async () => {
-          if (ref) {
-            await deleteDoc(ref);
-            alert('✅');
-          }
-          tr.remove();
-          updateNums();
-        });
-        tdD.appendChild(btnD);
+        const btD = document.createElement('button');
+        btD.textContent = '🗑️';
+        btD.onclick = async () => {
+          if (ref) { await deleteDoc(ref); alert('✅'); }
+          tr.remove(); updateNums();
+        };
+        tdD.appendChild(btD);
         tr.appendChild(tdD);
 
         // Pegado tab-a-tab
         tr.addEventListener('paste', e => {
           e.preventDefault();
           const vs = e.clipboardData.getData('text/plain').split('\t');
-          inputs.forEach((inp,i) => {
-            if (vs[i] != null) inp.value = vs[i].trim().toUpperCase();
+          inputs.forEach((inp,i)=>{
+            if (vs[i]!=null) inp.value = vs[i].trim().toUpperCase();
           });
         });
 
         tbody.appendChild(tr);
-        filasArr.push({ inputs, ref });
+        rows.push({ inputs, ref });
         updateNums();
       }
 
-      // Guarda una fila
-      async function save(inputs) {
+      async function saveRow(inputs) {
         const data = {};
-        inputs.forEach(i => {
+        inputs.forEach(i=>{
           data[i.dataset.campo] = i.multiple
-            ? [...i.selectedOptions].map(o => o.value)
+            ? [...i.selectedOptions].map(o=>o.value)
             : i.value.trim().toUpperCase();
         });
-        const destino = isOtro ? data.destino : destActivo;
+        const destino = isOtro? data.destino: destActivo;
         if (!destino)      throw new Error('Falta Destino');
         if (!data.servicio) throw new Error('Falta Servicio');
         if (!data.proveedor)throw new Error('Falta Proveedor');
 
-        // Aseguro doc padre
-        await setDoc(doc(db,'Servicios',destino), { _created: true }, { merge: true });
-        // Subcolección Listado
+        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
         const col = collection(db,'Servicios',destino,'Listado');
-        const dr  = doc(col, data.servicio);
-        await setDoc(dr, data);
+        const dr  = doc(col,data.servicio);
+        await setDoc(dr,data);
       }
 
-      // Guarda todas las filas
       async function saveAll() {
-        for (const f of filasArr) {
-          await save(f.inputs);
+        for (const r of rows) {
+          await saveRow(r.inputs);
         }
         alert('✅ Todos guardados');
       }
 
-      // Carga inicial (ordenada ascendente por ID de servicio)
+      // carga inicial
       if (!isOtro) {
-        (async () => {
-          const col  = collection(db,'Servicios',destFijo,'Listado');
-          const snap = await getDocs(query(col, orderBy('servicio','asc')));
-          snap.forEach(d => {
-            const obj = d.data();
-            obj.servicio = d.id;
-            add(obj, doc(db,'Servicios',destFijo,'Listado',d.id));
+        (async()=>{
+          const col = collection(db,'Servicios',destFijo,'Listado');
+          const snap = await getDocs(query(col,orderBy('servicio','asc')));
+          snap.forEach(d=>{
+            const o = d.data();
+            o.servicio = d.id;
+            addRow(o, doc(db,'Servicios',destFijo,'Listado',d.id));
           });
         })();
       }
@@ -413,13 +407,10 @@
       return sec;
     }
 
-    // Montar secciones
-    destinos.forEach(d => container.appendChild(crearSeccion(d)));
-
-    // Cargar encabezado externo
+    // cargamos header externo
     fetch('encabezado.html')
-      .then(r => r.text())
-      .then(html => document.getElementById('encabezado').innerHTML = html);
+      .then(r=>r.text())
+      .then(html=> document.getElementById('encabezado').innerHTML = html);
 
   </script>
 </body>
