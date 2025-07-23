@@ -3,223 +3,210 @@
 <head>
   <meta charset="UTF-8">
   <title>Servicios Rai Trai</title>
-  <!-- Estilos propios -->
   <link rel="stylesheet" href="estilos.css">
+  <style>
+    .section { margin-bottom: 3rem; }
+    .section h3 { margin-top: 1rem; }
+    .section table { width: 100%; border-collapse: collapse; }
+    .section th, .section td { border: 1px solid #ccc; padding: 4px; }
+    .controls { margin: .5rem 0; }
+  </style>
 </head>
 <body>
-  <!-- Header dinámico -->
   <div id="encabezado"></div>
-  <h2 style="margin-top: 2rem;">📋 Listado de Servicios</h2>
+  <h2>📋 Listado de Servicios</h2>
 
-  <!-- Tabla de servicios -->
-  <table id="tabla">
-    <thead>
-      <tr>
-        <th>Destino</th>
-        <th>N° Identificatorio</th>
-        <th>Servicio</th>
-        <th>Tipo de Servicio</th>
-        <th>Categoría</th>
-        <th>Ciudad</th>
-        <th>Restricciones</th>
-        <th>Proveedor</th>
-        <th>Contacto</th>
-        <th>Correo</th>
-        <th>Tipo Cobro</th>
-        <th>Moneda</th>
-        <th>Valor Servicio</th>
-        <th>Forma de Pago</th>
-        <th>Guardar</th>
-        <th>Eliminar</th>
-      </tr>
-    </thead>
-    <tbody id="contenido"></tbody>
-  </table>
-
-  <!-- Botones de acción -->
-  <div style="margin-top:1rem;">
-    <button onclick="agregarFila()">➕ Nueva fila</button>
-    <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
-    <button onclick="guardarTodo()">💾 Guardar todo</button>
-  </div>
+  <!-- Contenedores para cada sección -->
+  <div id="secciones"></div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-    import { collection, getDocs, doc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+    import {
+      collection, getDocs, doc, setDoc, deleteDoc
+    } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // Asegura sesión
-    onAuthStateChanged(auth, user => {
-      if (!user) window.location.href = 'login.html';
-    });
+    // verifica sesión
+    onAuthStateChanged(auth, u => { if (!u) window.location.href='login.html'; });
 
-    // Configuración de dropdowns
+    // opciones dropdown
     const opciones = {
-      destino:      ['BRASIL','SUR DE CHILE','BARILOCHE','NORTE DE CHILE','OTRO'],
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENCIÓN','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
       formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
       tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
       moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
     };
+    const campos = ['destino','numero','servicio','tipoServicio','categoria','ciudad','restricciones','proveedor','contacto','correo','tipoCobro','moneda','valorServicio','formaPago'];
 
-    const tabla = document.getElementById('contenido');
-    const filas = [];
-    // Campos en orden de columna
-    const campos = [
-      'destino','numero','servicio','tipoServicio','categoria',
-      'ciudad','restricciones','proveedor','contacto','correo',
-      'tipoCobro','moneda','valorServicio','formaPago'
-    ];
+    // crea cada sección: destino fijo o “otro”
+    function crearSeccion(destinoFijo) {
+      const isOtro = destinoFijo === null;
+      const section = document.createElement('div');
+      section.className = 'section';
+      // título
+      const h3 = document.createElement('h3');
+      h3.textContent = isOtro ? 'OTRO' : destinoFijo;
+      section.appendChild(h3);
 
-    /**
-     * Añade una fila al DOM y al array filas.
-     * @param {Object} dato - valores iniciales
-     * @param {any} ref - referencia doc Firestore (null si nueva)
-     */
-    function agregarFila(dato = {}, ref = null) {
-      const tr = document.createElement('tr');
-      const inputs = [];
-
-      campos.forEach(c => {
-        const td = document.createElement('td');
-        let input;
-        if (opciones[c]) {
-          input = document.createElement('select');
-          // Multi-select para categoría y formaPago
-          if (c === 'categoria' || c === 'formaPago') input.multiple = true;
-          opciones[c].forEach(opt => {
-            const o = document.createElement('option');
-            o.value = opt; o.textContent = opt;
-            // Selecciona si dato[c] lo incluye
-            if (dato[c]) {
-              const vals = Array.isArray(dato[c]) ? dato[c] : [dato[c]];
-              if (vals.includes(opt)) o.selected = true;
-            }
-            input.appendChild(o);
-          });
-        } else {
-          input = document.createElement('input');
-          input.value = dato[c] || '';
-          if (c !== 'valorServicio') input.addEventListener('input', () => input.value = input.value.toUpperCase());
-        }
-        input.dataset.campo = c;
-        inputs.push(input);
-        td.appendChild(input);
-        tr.appendChild(td);
-      });
-
-      // Botón Guardar fila individual
-      const tdG = document.createElement('td');
-      const btnG = document.createElement('button'); btnG.textContent='💾';
-      btnG.onclick = async () => {
-        try {
-          await guardarFila(inputs);
-          alert('Fila guardada correctamente ✅');
-        } catch (e) {
-          alert('Error al guardar: ' + e.message);
-        }
-      };
-      tdG.appendChild(btnG); tr.appendChild(tdG);
-
-      // Botón Eliminar
-      const tdE = document.createElement('td');
-      const btnE = document.createElement('button'); btnE.textContent='🗑️';
-      btnE.onclick = async () => {
-        if (ref) {
-          await deleteDoc(ref);
-          alert('Documento eliminado de Firebase ✅');
-        }
-        tr.remove();
-      };
-      tdE.appendChild(btnE); tr.appendChild(tdE);
-
-      // Pegado de celda a celda
-      tr.addEventListener('paste', e => {
-        e.preventDefault();
-        const vals = e.clipboardData.getData('text/plain').split('\t');
-        vals.forEach((v,i) => {
-          if (inputs[i]) inputs[i].value = v.trim().toUpperCase();
-        });
-      });
-
-      tabla.appendChild(tr);
-      filas.push({ inputs, ref });
-    }
-
-    /**
-     * Guarda o actualiza documento en Servicios/{destino}/{servicio}
-     */
-    async function guardarFila(inputs) {
-      const data = {};
-      inputs.forEach(i => {
-        const k = i.dataset.campo;
-        if (i.multiple) {
-          data[k] = Array.from(i.selectedOptions).map(o => o.value);
-        } else {
-          data[k] = k === 'valorServicio' ? Number(i.value) || 0 : i.value.trim().toUpperCase();
-        }
-      });
-      const { destino, servicio } = data;
-      if (!destino || !servicio) throw new Error('Completa Destino y Servicio.');
-      const docRef = doc(collection(db, 'Servicios', destino), servicio);
-      await setDoc(docRef, data);
-    }
-
-    // Varias filas nuevas
-    function agregarVariasFilas(n) {
-      for (let i = 0; i < n; i++) agregarFila();
-    }
-
-    // Guarda todas las filas
-    async function guardarTodo() {
-      for (const { inputs } of filas) {
-        try { await guardarFila(inputs); } catch {};
+      // tabla
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const trHead = document.createElement('tr');
+      // si es OTRO, incluimos columna Destino
+      if (isOtro) {
+        trHead.appendChild(Object.assign(document.createElement('th'),{textContent:'Destino'}));
       }
-      alert('Todos guardados correctamente ✅');
-    }
-
-    // Carga inicial: lee Servicios/{destino}/{servicio}
-    async function cargarRegistros() {
-      const destSnap = await getDocs(collection(db, 'Servicios'));
-      for (const d of destSnap.docs) {
-        const destino = d.id;
-        // Título de seccion por destino
-        const header = document.createElement('tr');
+      // resto de cabeceras
+      [
+        'N°','Servicio','Tipo Servicio','Categoría','Ciudad',
+        'Restricciones','Proveedor','Contacto','Correo',
+        'Tipo Cobro','Moneda','Valor Servicio','Forma de Pago','Guardar','Eliminar'
+      ].forEach(t => {
         const th = document.createElement('th');
-        th.colSpan = campos.length + 2;
-        th.textContent = destino;
-        header.appendChild(th);
-        tabla.appendChild(header);
+        th.textContent = t;
+        trHead.appendChild(th);
+      });
+      thead.appendChild(trHead);
+      table.appendChild(thead);
 
-        const servSnap = await getDocs(collection(db, 'Servicios', destino));
-        servSnap.forEach(snap => {
-          const data = snap.data();
-          data.destino = destino;
-          data.servicio = snap.id;
-          agregarFila(data, doc(db, 'Servicios', destino, snap.id));
+      const tbody = document.createElement('tbody');
+      table.appendChild(tbody);
+      section.appendChild(table);
+
+      // botones
+      const ctr = document.createElement('div');
+      ctr.className = 'controls';
+      ['Nueva fila','Agregar 10 filas','Guardar todo'].forEach((label,idx) => {
+        const btn = document.createElement('button');
+        btn.textContent = idx===0?'➕ '+label: idx===1?'➕➕ '+label:'💾 '+label;
+        btn.onclick = () => {
+          if (idx===0) renderFila();
+          if (idx===1) Array.from({length:10}).forEach(renderFila);
+          if (idx===2) guardarTodo();
+        };
+        ctr.appendChild(btn);
+      });
+      section.appendChild(ctr);
+
+      // lógica interna de la sección
+      const filas = [];
+      let destinoActivo = destinoFijo; // null para OTRO
+
+      // crea una fila y la agrega a tbody
+      function renderFila(prefill={}, ref=null) {
+        const tr = document.createElement('tr');
+        const inputs = [];
+        campos.forEach(c => {
+          // si OTRO y primer campo, destino input
+          if (c==='destino' && isOtro) {
+            const td = document.createElement('td');
+            const inp = document.createElement('input');
+            inp.value = prefill.destino||'';
+            inp.placeholder = 'Destino';
+            td.appendChild(inp);
+            tr.appendChild(td);
+            inputs.push(inp);
+            inp.addEventListener('change',() => destinoActivo=inp.value.trim().toUpperCase());
+            return;
+          }
+          // omitimos columna destino en fijos
+          if (c==='destino' && !isOtro) return;
+          // demás
+          const td = document.createElement('td');
+          let inp;
+          if (opciones[c]) {
+            inp = document.createElement('select');
+            if (c==='categoria'||c==='formaPago') inp.multiple=true;
+            opciones[c].forEach(opt=>{
+              const o=new Option(opt,opt);
+              if (prefill[c]) {
+                const vals=Array.isArray(prefill[c])?prefill[c]:[prefill[c]];
+                if (vals.includes(opt)) o.selected=true;
+              }
+              inp.appendChild(o);
+            });
+          } else {
+            inp = document.createElement('input');
+            inp.value = prefill[c]||'';
+            if (c!=='valorServicio') inp.addEventListener('input',()=>inp.value=inp.value.toUpperCase());
+          }
+          inp.dataset.campo=c;
+          inputs.push(inp);
+          td.appendChild(inp);
+          tr.appendChild(td);
         });
+
+        // botones por fila
+        const tdSave=document.createElement('td');
+        const bS=document.createElement('button');
+        bS.textContent='💾'; bS.onclick=()=>guardarFila(inputs);
+        tdSave.appendChild(bS); tr.appendChild(tdSave);
+
+        const tdDel=document.createElement('td');
+        const bD=document.createElement('button');
+        bD.textContent='🗑️';
+        bD.onclick=async()=>{
+          if(ref) await deleteDoc(ref);
+          tr.remove();
+        };
+        tdDel.appendChild(bD); tr.appendChild(tdDel);
+
+        tbody.appendChild(tr);
+        filas.push({inputs,ref});
       }
+
+      // guarda una fila
+      async function guardarFila(inputs) {
+        const data = {};
+        inputs.forEach(i=>{
+          const k=i.dataset.campo;
+          if (i.multiple)
+            data[k]=[...i.selectedOptions].map(o=>o.value);
+          else if (k==='destino')
+            data.destino = i.value.trim().toUpperCase();
+          else
+            data[k] = k==='valorServicio'?Number(i.value)||0:i.value.trim().toUpperCase();
+        });
+        // para fijos, destinoActivo es fijo
+        if (!isOtro) data.destino=destinoActivo;
+        if (!data.destino || !data.servicio) {
+          alert('Completa destino y servicio.');
+          return;
+        }
+        const refDoc = doc(collection(db,'Servicios',data.destino),data.servicio);
+        await setDoc(refDoc,data);
+        alert('Guardado ✅');
+      }
+
+      // guarda todo
+      async function guardarTodo() {
+        for(const f of filas) await guardarFila(f.inputs);
+        alert('Todos guardados ✅');
+      }
+
+      // carga inicial de Firestore
+      (async()=>{
+        if(!isOtro){
+          destinoActivo = destinoFijo;
+          const snap = await getDocs(collection(db,'Servicios',destinoActivo));
+          snap.forEach(s=>{
+            const d=s.data(); d.servicio=s.id; renderFila(d,doc(db,'Servicios',destinoActivo,s.id));
+          });
+        }
+      })();
+
+      return section;
     }
 
-    // Pegado masivo
-    tabla.addEventListener('paste', e => {
-      e.preventDefault();
-      e.clipboardData.getData('text/plain').trim().split(/\r?\n/).forEach(line => {
-        if (!line) return;
-        const vals = line.split('\t');
-        const dato = {};
-        campos.forEach((c, i) => dato[c] = vals[i] ? vals[i].trim() : '');
-        agregarFila(dato);
-      });
-    });
+    // lista destinos fijos + OTRO
+    const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE',null];
+    const cont = document.getElementById('secciones');
+    destinos.forEach(d=>cont.appendChild(crearSeccion(d)));
 
-    window.agregarFila = agregarFila;
-    window.agregarVariasFilas = agregarVariasFilas;
-    window.guardarTodo = guardarTodo;
-
-    cargarRegistros();
-    fetch('encabezado.html').then(r=>r.text()).then(html=>document.getElementById('encabezado').innerHTML=html);
+    // header
+    fetch('encabezado.html')
+      .then(r=>r.text()).then(html=>document.getElementById('encabezado').innerHTML=html);
   </script>
 </body>
 </html>
