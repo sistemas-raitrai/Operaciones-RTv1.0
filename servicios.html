@@ -453,6 +453,9 @@
     // Aquí registramos el listener justo después de definir las funciones
     document.getElementById('btnProv')
             .addEventListener('click', openProveedores);
+    
+    window.openProveedores  = openProveedores;
+    window.closeProveedores = closeProveedores;
 
     // — Carga header externo —
     fetch('encabezado.html')
