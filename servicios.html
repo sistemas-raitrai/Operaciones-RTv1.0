@@ -4,7 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Servicios Rai Trai</title>
-  <!-- Tu hoja de estilos general -->
   <link rel="stylesheet" href="estilos.css" />
   <style>
     /* ——— Layout del header con botón de Proveedores ——— */
@@ -27,7 +26,10 @@
     /* ——— Sección con scroll horizontal ——— */
     .section { margin-bottom: 2rem; }
     .section h3 { margin: .5rem 0; }
-    .table-wrapper { overflow-x: auto; }
+    .table-wrapper {
+      overflow-x: auto;
+      overflow-y: visible;
+    }
 
     /* ——— Tabla con anchos proporcionales ——— */
     table {
@@ -47,22 +49,22 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      min-width: 0; /* para que funcione dentro de table-layout: fixed */
+      min-width: 0;
     }
-    /* Anchos aproximados según tu petición */
-    th:nth-child(1),  td:nth-child(1)  { width: 5%; }
-    th:nth-child(2),  td:nth-child(2)  { width:20%; }
-    th:nth-child(3),  td:nth-child(3)  { width:12%; }
-    th:nth-child(4),  td:nth-child(4)  { width:12%; }
-    th:nth-child(5),  td:nth-child(5)  { width:10%; }
-    th:nth-child(6),  td:nth-child(6)  { width:20%; }
-    th:nth-child(7),  td:nth-child(7)  { width:12%; }
-    th:nth-child(8),  td:nth-child(8)  { width:10%; }
-    th:nth-child(9),  td:nth-child(9)  { width: 8%; }
-    th:nth-child(10), td:nth-child(10){ width:10%; }
-    th:nth-child(11), td:nth-child(11){ width:10%; }
+    /* anchos aproximados */
+    th:nth-child(1), td:nth-child(1)   { width: 5%; }
+    th:nth-child(2), td:nth-child(2)   { width:20%; }
+    th:nth-child(3), td:nth-child(3)   { width:12%; }
+    th:nth-child(4), td:nth-child(4)   { width:12%; }
+    th:nth-child(5), td:nth-child(5)   { width:10%; }
+    th:nth-child(6), td:nth-child(6)   { width:20%; }
+    th:nth-child(7), td:nth-child(7)   { width:12%; }
+    th:nth-child(8), td:nth-child(8)   { width:10%; }
+    th:nth-child(9), td:nth-child(9)   { width: 8%; }
+    th:nth-child(10), td:nth-child(10) { width:10%; }
+    th:nth-child(11), td:nth-child(11) { width:10%; }
     th:nth-child(12), td:nth-child(12),
-    th:nth-child(13), td:nth-child(13){ width:auto; }
+    th:nth-child(13), td:nth-child(13) { width:auto; }
 
     /* ——— Inputs y selects ——— */
     input, select {
@@ -78,7 +80,7 @@
     .controls { margin: .5rem 0; }
     .controls button { margin-right: .5rem; }
 
-    /* ——— Modal Proveedores (backdrop + cuadro) ——— */
+    /* ——— Modal Proveedores ——— */
     #backdrop-prov {
       display: none;
       position: fixed;
@@ -105,10 +107,7 @@
       padding: .5rem 1rem;
       border-bottom: 1px solid #ddd;
     }
-    #modal-prov .header h3 {
-      margin: 0;
-      font-size: 1.1rem;
-    }
+    #modal-prov .header h3 { margin: 0; font-size: 1.1rem; }
     #modal-prov .header button {
       background: transparent;
       border: none;
@@ -131,54 +130,35 @@
       box-sizing: border-box;
     }
 
-    td:last-child,    /* columna Eliminar */
-    td:nth-last-child(2) /* columna Guardar */ {
+    /* ——— Sticky columns específicas ——— */
+    .col-save {
       position: sticky;
-      right: 0;
-      background: #fff; /* para que no se transparente */
+      right: 3.5rem; /* ajustar si cambian botones */
+      background: #fff;
       z-index: 2;
     }
-
-    .table-wrapper {
-      overflow-x: auto;
-      overflow-y: visible;
-    }
-    
-    /* Sticky también en los <th> de Guardar y Eliminar */
-    thead th:nth-last-child(2),
-    thead th:last-child,
-    tbody td:nth-last-child(2),
-    tbody td:last-child {
+    .col-del {
       position: sticky;
       right: 0;
       background: #fff;
-      z-index: 10;
+      z-index: 2;
     }
-    
-    /* El segundo-último (Guardar) va un poquito más a la izquierda */
-    thead th:nth-last-child(2),
-    tbody td:nth-last-child(2) {
-      right: 2.5rem; /* el ancho aproximado del ultimo botón */
+    thead .col-save,
+    thead .col-del {
+      z-index: 3;
     }
-
-    
   </style>
 </head>
 <body>
 
-  <!-- Header externo -->
   <div id="encabezado"></div>
 
   <header>
-    <h2>📋 Lista de Servicios</h2>
-    <!-- dispara el modal de proveedores -->
+    <h2>📋 Servicios</h2>
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
-  <!-- Backdrop del modal de proveedores -->
   <div id="backdrop-prov" onclick="closeProveedores()"></div>
-
-  <!-- Modal que carga proveedores.html en iframe -->
   <div id="modal-prov">
     <div class="header">
       <h3>Administrar Proveedores</h3>
@@ -187,7 +167,6 @@
     <iframe id="iframe-prov" src=""></iframe>
   </div>
 
-  <!-- Contenedor de todas las secciones/tablas -->
   <div id="secciones"></div>
 
   <script type="module">
@@ -199,12 +178,10 @@
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // — Sesión —
-    onAuthStateChanged(auth, user => {
-      if (!user) window.location.href = 'login.html';
+    onAuthStateChanged(auth, u => {
+      if (!u) window.location.href = 'login.html';
     });
 
-    // — Datos fijos —
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -218,10 +195,8 @@
       'moneda','valorServicio','formaPago'
     ];
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
-
     const container = document.getElementById('secciones');
 
-    // — Floating editor para inputs de texto largos —
     let floating = null;
     function showFloatingEditor(input) {
       if (floating) floating.remove();
@@ -243,7 +218,6 @@
       floating.focus();
     }
 
-    // — Generar secciones/tablas —
     destinos.forEach(d => container.appendChild(crearSeccion(d)));
 
     function crearSeccion(destFijo) {
@@ -251,17 +225,15 @@
       let destActivo = destFijo;
       const sec = document.createElement('div');
       sec.className = 'section';
-      sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
+      sec.innerHTML = `<h3>${ isOtro?'OTRO':destFijo }</h3>`;
 
-      // wrapper con scroll horizontal
       const wrap = document.createElement('div');
       wrap.className = 'table-wrapper';
-
-      // construyo la tabla
       const table = document.createElement('table');
       const thead = document.createElement('thead');
       const trh = document.createElement('tr');
-      // encabezados dinámicos
+
+      // encabezados
       const headers = ['#'];
       if (isOtro) headers.push('Destino');
       headers.push(
@@ -272,6 +244,8 @@
       headers.forEach(txt => {
         const th = document.createElement('th');
         th.textContent = txt;
+        if (txt==='Guardar') th.classList.add('col-save');
+        if (txt==='Eliminar') th.classList.add('col-del');
         trh.appendChild(th);
       });
       thead.appendChild(trh);
@@ -282,7 +256,7 @@
       wrap.appendChild(table);
       sec.appendChild(wrap);
 
-      // controles de fila
+      // controles
       const ctrl = document.createElement('div');
       ctrl.className = 'controls';
       ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
@@ -290,9 +264,9 @@
           const btn = document.createElement('button');
           btn.textContent = lbl;
           btn.onclick = () => {
-            if (i === 0) add();
-            if (i === 1) [...Array(10)].forEach(add);
-            if (i === 2) saveAll();
+            if (i===0) add();
+            if (i===1) [...Array(10)].forEach(add);
+            if (i===2) saveAll();
           };
           ctrl.appendChild(btn);
         });
@@ -300,36 +274,33 @@
 
       const rows = [];
 
-      // carga opciones de Proveedores
       async function loadProvs(tr) {
         const sel = tr.querySelector('select[data-campo=proveedor]');
         sel.innerHTML = '<option value="">—</option>';
         if (!destActivo) return;
-        const col = collection(db,'Proveedores',destActivo,'Listado');
-        const q   = query(col,orderBy('proveedor','asc'));
-        const snap= await getDocs(q);
-        snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
+        const snap = await getDocs(query(
+          collection(db,'Proveedores',destActivo,'Listado'),
+          orderBy('proveedor','asc')
+        ));
+        snap.forEach(d=> sel.appendChild(new Option(d.id,d.id)));
       }
 
-      // renumera la columna #
       function updateNums() {
-        tbody.querySelectorAll('tr').forEach((tr,i)=>{
-          const num = tr.querySelector('.rownum');
-          if (num) num.textContent = i+1;
+        tbody.querySelectorAll('tr').forEach((tr,i)=> {
+          const n = tr.querySelector('.rownum');
+          if (n) n.textContent = i+1;
         });
       }
 
-      // añade una fila (vacía o con prefill/ref)
       function add(prefill={}, ref=null) {
         const tr = document.createElement('tr');
         const inputs = [];
-
-        // columna número
+        // número
         const tdNum = document.createElement('td');
         tdNum.className = 'rownum';
         tr.appendChild(tdNum);
 
-        // destino editable (solo en OTRO)
+        // destino editable
         if (isOtro) {
           const td = document.createElement('td');
           const inp = document.createElement('input');
@@ -342,33 +313,28 @@
           inputs.push(inp);
         }
 
-        // columnas fijas según campos[]
-        campos.forEach(c => {
+        // resto de campos
+        campos.forEach(c=>{
           const td = document.createElement('td');
           let inp;
-
-          // select Proveedor
           if (c==='proveedor') {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             inp.innerHTML = '<option value="">—</option>';
           }
-          // selects de opciones
           else if (opciones[c]) {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             if (c==='categoria'||c==='formaPago') inp.multiple = true;
             opciones[c].forEach(o=> inp.appendChild(new Option(o,o)));
-            // prefill
             if (prefill[c]) {
               const arr = Array.isArray(prefill[c])? prefill[c]:[prefill[c]];
               arr.forEach(v=>{
-                const opt = Array.from(inp.options).find(x=>x.value===v);
-                if (opt) opt.selected = true;
+                const o2= [...inp.options].find(x=>x.value===v);
+                if (o2) o2.selected = true;
               });
             }
           }
-          // inputs de texto
           else {
             inp = document.createElement('input');
             inp.value = prefill[c]||'';
@@ -378,41 +344,40 @@
             inp.onfocus = ()=> showFloatingEditor(inp);
             inp.title = inp.value;
           }
-
           td.appendChild(inp);
           tr.appendChild(td);
           inputs.push(inp);
         });
 
-        // carga proveedores si no es OTRO
         if (!isOtro) {
           destActivo = destFijo;
           setTimeout(()=> loadProvs(tr), 0);
         }
 
-        // botón guardar fila
+        // guardar
         const tdG = document.createElement('td');
-        const bG  = document.createElement('button');
+        tdG.classList.add('col-save');
+        const bG = document.createElement('button');
         bG.textContent = '💾';
-        bG.onclick = async ()=>{
+        bG.onclick = async()=>{
           try { await saveRow(inputs); alert('✅'); }
-          catch(e){ alert('⚠️ '+ e.message); }
+          catch(e){ alert('⚠️ '+e.message); }
         };
         tdG.appendChild(bG);
         tr.appendChild(tdG);
 
-        // botón eliminar fila
+        // eliminar
         const tdD = document.createElement('td');
-        const bD  = document.createElement('button');
+        tdD.classList.add('col-del');
+        const bD = document.createElement('button');
         bD.textContent = '🗑️';
-        bD.onclick = async ()=>{
+        bD.onclick = async()=>{
           if (ref) { await deleteDoc(ref); alert('✅'); }
           tr.remove(); updateNums();
         };
         tdD.appendChild(bD);
         tr.appendChild(tdD);
 
-        // pegado tab-a-tab
         tr.addEventListener('paste', e=>{
           e.preventDefault();
           const vs = e.clipboardData.getData('text/plain').split('\t');
@@ -424,14 +389,8 @@
         tbody.appendChild(tr);
         rows.push({ inputs, ref });
         updateNums();
+      }
 
-        console.log('Fila añadida, últimas celdas:', {
-          guardar: tr.querySelector('td:nth-last-child(2)'),
-          eliminar: tr.querySelector('td:last-child')
-        });
-      } 
-
-      // guarda una sola fila
       async function saveRow(inputs) {
         const data = {};
         inputs.forEach(i=>{
@@ -439,34 +398,34 @@
             ? [...i.selectedOptions].map(o=>o.value)
             : i.value.trim().toUpperCase();
         });
-        const destino = isOtro ? data.destino : destActivo;
+        const destino = isOtro? data.destino : destActivo;
         if (!destino)      throw new Error('Falta Destino');
         if (!data.servicio) throw new Error('Falta Servicio');
         if (!data.proveedor)throw new Error('Falta Proveedor');
 
-        // doc padre
-        await setDoc(doc(db,'Servicios',destino), {_created:true}, {merge:true});
-        // subcolección Listado
-        const col = collection(db,'Servicios',destino,'Listado');
-        await setDoc(doc(col,data.servicio), data);
+        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        await setDoc(
+          doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
+          data
+        );
       }
 
-      // guarda todas las filas
       async function saveAll() {
-        for (const r of rows) {
+        for (let r of rows) {
           await saveRow(r.inputs);
         }
         alert('✅ Todos guardados');
       }
 
-      // carga inicial de Firestore
+      // carga inicial
       if (!isOtro) {
-        (async ()=>{
-          const col  = collection(db,'Servicios',destFijo,'Listado');
-          const snap = await getDocs(query(col,orderBy('servicio','asc')));
+        (async()=>{
+          const snap = await getDocs(query(
+            collection(db,'Servicios',destFijo,'Listado'),
+            orderBy('servicio','asc')
+          ));
           snap.forEach(d=>{
-            const o = d.data();
-            o.servicio = d.id;
+            const o = d.data(); o.servicio = d.id;
             add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
           });
         })();
@@ -475,7 +434,6 @@
       return sec;
     }
 
-    // — Funciones para el modal de Proveedores —
     function openProveedores() {
       document.getElementById('iframe-prov').src = 'proveedores.html';
       document.getElementById('backdrop-prov').style.display = 'block';
@@ -487,17 +445,16 @@
       document.getElementById('modal-prov').style.display   = 'none';
     }
 
-    // Aquí registramos el listener justo después de definir las funciones
     document.getElementById('btnProv')
-            .addEventListener('click', openProveedores);
-    
+      .addEventListener('click', openProveedores);
     window.openProveedores  = openProveedores;
     window.closeProveedores = closeProveedores;
 
-    // — Carga header externo —
     fetch('encabezado.html')
-      .then(r => r.text())
-      .then(html => document.getElementById('encabezado').innerHTML = html);
+      .then(r=>r.text())
+      .then(html=>{
+        document.getElementById('encabezado').innerHTML = html;
+      });
 
   </script>
 </body>
