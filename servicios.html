@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Servicios Rai Trai</title>
-  <!-- Tu hoja de estilos general -->
+  <!-- Hoja de estilos general -->
   <link rel="stylesheet" href="estilos.css">
   <style>
     /* ————— Layout del header con botón de Proveedores ————— */
@@ -11,22 +11,19 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      position: relative;
       margin-bottom: 1rem;
     }
-    header h2 {
-      margin: 0;
-    }
+    header h2 { margin: 0; }
     header button {
       background: #0055A4;
-      color: white;
+      color: #fff;
       border: none;
       padding: .5rem 1rem;
       border-radius: 4px;
       cursor: pointer;
     }
 
-    /* ————— Estructura de las secciones y tablas ————— */
+    /* ————— Secciones y tabla en grid para anchos proporcionales ————— */
     .section { margin-bottom: 3rem; }
     .section h3 { margin: .5rem 0; }
     .section table {
@@ -47,11 +44,8 @@
       width: 100%;
       border-collapse: collapse;
     }
-    /* Necesario para que thead/tbody hereden el grid */
     .section thead,
-    .section tbody {
-      display: contents;
-    }
+    .section tbody { display: contents; }
     .section th,
     .section td {
       border: 1px solid #ccc;
@@ -63,24 +57,24 @@
     }
 
     /* ————— Inputs y selects ————— */
-    select, input {
+    input, select {
       width: 100%;
       box-sizing: border-box;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    /* Solo los inputs muestran tooltip al hacer hover */
+    /* Tooltip para inputs de texto */
     .section td input:hover {
       overflow: visible;
       white-space: normal;
     }
 
-    /* ————— Botones de control internos ————— */
+    /* ————— Botones internos ————— */
     .controls { margin: .5rem 0; }
     .controls button { margin-right: .5rem; }
 
-    /* ————— Modal para Proveedores ————— */
+    /* ————— Modal Proveedores ————— */
     #modal {
       display: none;
       position: fixed;
@@ -102,7 +96,7 @@
       cursor: pointer;
     }
 
-    /* ————— Editor flotante para inputs de texto ————— */
+    /* ————— Editor flotante ————— */
     .floating-editor {
       position: absolute;
       z-index: 1000;
@@ -115,16 +109,16 @@
 </head>
 <body>
 
-  <!-- Encabezado dinámico externo -->
+  <!-- Header externo -->
   <div id="encabezado"></div>
 
-  <!-- Header con título y botón de Proveedores -->
+  <!-- Título y botón Proveedores -->
   <header>
     <h2>📋 Listado de Servicios</h2>
     <button onclick="openModal()">🛠️ Administrar Proveedores</button>
   </header>
 
-  <!-- Modal embebido para proveedores -->
+  <!-- Modal embebido -->
   <div id="modal">
     <div class="content">
       <span class="close" onclick="closeModal()">✖️</span>
@@ -132,24 +126,21 @@
     </div>
   </div>
 
-  <!-- Contenedor donde se montarán las 5 secciones por destino -->
+  <!-- Contenedor de secciones -->
   <div id="secciones"></div>
 
   <script type="module">
     import { auth, db } from './firebase-init.js';
-    import { onAuthStateChanged }
-      from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+    import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
       collection, getDocs, query, orderBy,
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-    // ——— Sesión ———
-    onAuthStateChanged(auth, user => {
-      if (!user) window.location.href = 'login.html';
-    });
+    // — Sesión —
+    onAuthStateChanged(auth, u => { if (!u) window.location.href = 'login.html'; });
 
-    // ——— Datos estáticos ———
+    // — Datos estáticos —
     const opciones = {
       tipoServicio: ['DIARIO','GENERAL','OTRO'],
       categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -157,22 +148,21 @@
       tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
       moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
     };
-    // Campos (ya sin "numero")
     const campos = [
       'servicio','tipoServicio','categoria',
       'ciudad','restricciones','proveedor','tipoCobro',
       'moneda','valorServicio','formaPago'
     ];
-    // Destinos fijos + "OTRO" para sección final
     const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
     const container = document.getElementById('secciones');
 
-    // ——— Funciones modal ———
-    function openModal(){ document.getElementById('modal').style.display = 'flex'; }
-    function closeModal(){ document.getElementById('modal').style.display = 'none'; }
+    // — Funciones modal —
+    function openModal(){ modal.style.display = 'flex'; }
+    function closeModal(){ modal.style.display = 'none'; }
+    const modal = document.getElementById('modal');
 
-    // ——— Editor flotante para inputs ———
+    // — Editor flotante —
     let floating;
     function showFloatingEditor(input) {
       if (floating) floating.remove();
@@ -183,40 +173,38 @@
       const r = input.getBoundingClientRect();
       floating.style.top  = (r.bottom + scrollY + 4) + 'px';
       floating.style.left = (r.left   + scrollX) + 'px';
-      floating.addEventListener('input', () => {
+      floating.oninput = () => {
         input.value = floating.value;
         input.title = floating.value;
-      });
-      floating.addEventListener('blur', () => {
-        floating.remove();
-        floating = null;
-      });
+      };
+      floating.onblur = () => floating.remove();
       floating.focus();
     }
 
-    // ——— Crea una sección para un destino fijo (o null="OTRO") ———
+    // — Crea sección por destino —
     function crearSeccion(destFijo) {
-      const isOtro = destFijo === null;
+      const isOtro = destFijo===null;
       let destActivo = destFijo;
       const sec = document.createElement('div');
       sec.className = 'section';
-      sec.innerHTML = `<h3>${ isOtro ? 'OTRO' : destFijo }</h3>`;
+      sec.innerHTML = `<h3>${ isOtro? 'OTRO': destFijo }</h3>`;
 
-      // — Tabla y cabecera —
+      // Tabla y cabecera
       const tbl = document.createElement('table');
       const thead = document.createElement('thead');
       const hr = document.createElement('tr');
-      hr.appendChild(Object.assign(document.createElement('th'),{ textContent: '#' }));
+      // #: primera columna
+      hr.appendChild(Object.assign(document.createElement('th'),{ textContent:'#' }));
       if (isOtro) {
-        hr.appendChild(Object.assign(document.createElement('th'),{ textContent: 'Destino' }));
+        hr.appendChild(Object.assign(document.createElement('th'),{ textContent:'Destino' }));
       }
       [
-        'Servicio','Tipo Servicio','Categoría','Ciudad',
-        'Restricciones','Proveedor','Tipo Cobro','Moneda',
-        'Valor Servicio','Forma de Pago','Guardar','Eliminar'
-      ].forEach(t => {
+        'Servicio','Tipo Servicio','Categoría','Ciudad','Restricciones',
+        'Proveedor','Tipo Cobro','Moneda','Valor Servicio','Forma de Pago',
+        'Guardar','Eliminar'
+      ].forEach(txt => {
         const th = document.createElement('th');
-        th.textContent = t;
+        th.textContent = txt;
         hr.appendChild(th);
       });
       thead.appendChild(hr);
@@ -227,28 +215,27 @@
       tbl.appendChild(tbody);
       sec.appendChild(tbl);
 
-      // — Controles (añadir fila, 10 filas, guardar todo) —
+      // Controles
       const ctrl = document.createElement('div');
       ctrl.className = 'controls';
       ['➕ Nueva fila','➕➕ Agregar 10 filas','💾 Guardar todo']
-        .forEach((lab,i) => {
-          const b = document.createElement('button');
-          b.textContent = lab;
-          b.onclick = () => {
-            if (i === 0) add();
-            if (i === 1) [...Array(10)].forEach(() => add());
-            if (i === 2) saveAll();
+        .forEach((lbl,i) => {
+          const btn = document.createElement('button');
+          btn.textContent = lbl;
+          btn.onclick = () => {
+            if (i===0) add();
+            if (i===1) [...Array(10)].forEach(add);
+            if (i===2) saveAll();
           };
-          ctrl.appendChild(b);
+          ctrl.appendChild(btn);
         });
       sec.appendChild(ctrl);
 
-      // Array interno de filas
       const filasArr = [];
 
-      // — Numera cada fila según su posición —
+      // Actualiza numeración
       function updateNums() {
-        tbody.querySelectorAll('tr').forEach((tr,i) => {
+        tbody.querySelectorAll('tr').forEach((tr,i)=>{
           let td = tr.querySelector('td.rownum');
           if (!td) {
             td = document.createElement('td');
@@ -259,74 +246,72 @@
         });
       }
 
-      // — Carga select de proveedores desde Firestore para un <tr> dado —
+      // Carga dropdown proveedores
       async function loadProv(tr) {
         const sel = tr.querySelector('[data-campo=proveedor]');
         sel.innerHTML = '<option value="">—</option>';
         if (!destActivo) return;
         const col = collection(db,'Proveedores',destActivo,'Listado');
-        const q   = query(col,orderBy('proveedor','asc'));
-        const snap = await getDocs(q);
-        snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
+        const snap = await getDocs(query(col, orderBy('proveedor','asc')));
+        snap.forEach(d=> sel.appendChild(new Option(d.id,d.id)));
       }
 
-      // — Añade una nueva fila (vacía o con prefill+ref) —
-      function add(prefill = {}, ref = null) {
+      // Añade fila
+      function add(prefill={}, ref=null) {
         const tr = document.createElement('tr');
         const inputs = [];
 
-        // Columna número
-        tr.appendChild(Object.assign(document.createElement('td'),{ className: 'rownum' }));
+        // #: columna índice
+        tr.appendChild(Object.assign(document.createElement('td'),{ className:'rownum' }));
 
-        // Si es OTRO, incluimos input destino editable
+        // "OTRO": input destino
         if (isOtro) {
           const td = document.createElement('td');
           const inp = document.createElement('input');
           inp.placeholder = 'Destino';
           inp.value = prefill.destino||'';
           inp.dataset.campo = 'destino';
-          inp.addEventListener('input', ()=> destActivo = inp.value.toUpperCase());
+          inp.oninput = ()=> destActivo = inp.value.toUpperCase();
           td.appendChild(inp);
           tr.appendChild(td);
           inputs.push(inp);
         }
 
-        // Columnas dinámicas según campos[]
+        // Columnas dinámicas
         campos.forEach(c => {
           const td = document.createElement('td');
           let inp;
 
-          // Select de proveedores
-          if (c === 'proveedor') {
+          // Dropdown proveedores
+          if (c==='proveedor') {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             inp.innerHTML = '<option value="">—</option>';
           }
-          // Los dropdowns de opciones
+          // Otros selects
           else if (opciones[c]) {
             inp = document.createElement('select');
             inp.dataset.campo = c;
             if (c==='categoria'||c==='formaPago') inp.multiple = true;
-            opciones[c].forEach(o=>inp.appendChild(new Option(o,o)));
+            opciones[c].forEach(o=> inp.appendChild(new Option(o,o)));
             // Prefill
             if (prefill[c]) {
-              const arr = Array.isArray(prefill[c])? prefill[c] : [prefill[c]];
+              const arr = Array.isArray(prefill[c])? prefill[c]: [prefill[c]];
               arr.forEach(v=>{
-                const opt = Array.from(inp.options).find(o=>o.value===v);
-                if (opt) opt.selected = true;
+                const o = [...inp.options].find(o=>o.value===v);
+                if (o) o.selected = true;
               });
             }
           }
-          // Inputs de texto
+          // Inputs texto
           else {
             inp = document.createElement('input');
             inp.value = prefill[c]||'';
             if (c!=='valorServicio') {
-              inp.addEventListener('input', ()=> inp.value = inp.value.toUpperCase());
+              inp.oninput = ()=> inp.value = inp.value.toUpperCase();
             }
             inp.dataset.campo = c;
-            // Editor flotante
-            inp.addEventListener('focus', ()=> showFloatingEditor(inp));
+            inp.onfocus = ()=> showFloatingEditor(inp);
             inp.title = inp.value;
           }
 
@@ -335,71 +320,69 @@
           inputs.push(inp);
         });
 
-        // Si no es OTRO, cargamos proveedores
+        // Si no es OTRO, cargar proveedores
         if (!isOtro) {
           destActivo = destFijo;
-          setTimeout(()=> loadProv(tr), 0);
+          setTimeout(()=> loadProv(tr),0);
         }
 
-        // — Botón Guardar fila individual —
+        // Guardar fila
         const tdG = document.createElement('td');
         const btnG = document.createElement('button');
         btnG.textContent = '💾';
-        btnG.onclick = async () => {
+        btnG.onclick = async ()=>{
           try { await save(inputs); alert('✅'); }
-          catch(e){ alert('⚠️ '+ e.message); }
+          catch(e){ alert('⚠️ '+e.message); }
         };
         tdG.appendChild(btnG);
         tr.appendChild(tdG);
 
-        // — Botón Eliminar fila —
+        // Eliminar fila
         const tdD = document.createElement('td');
         const btnD = document.createElement('button');
         btnD.textContent = '🗑️';
-        btnD.onclick = async () => {
+        btnD.onclick = async ()=>{
           if (ref) { await deleteDoc(ref); alert('✅'); }
-          tr.remove();
-          updateNums();
+          tr.remove(); updateNums();
         };
         tdD.appendChild(btnD);
         tr.appendChild(tdD);
 
         // Pegado tab-a-tab
-        tr.addEventListener('paste', e => {
+        tr.onpaste = e=> {
           e.preventDefault();
           const vs = e.clipboardData.getData('text/plain').split('\t');
-          inputs.forEach((inp,i)=>{
-            if (vs[i] != null) inp.value = vs[i].trim().toUpperCase();
+          inputs.forEach((inp,i)=> {
+            if (vs[i]!=null) inp.value = vs[i].trim().toUpperCase();
           });
-        });
+        };
 
         tbody.appendChild(tr);
-        filasArr.push({ inputs, ref });
+        filasArr.push({inputs,ref});
         updateNums();
       }
 
-      // — Guarda una sola fila en Firestore —
+      // Guarda 1 fila
       async function save(inputs) {
         const data = {};
-        inputs.forEach(i => {
+        inputs.forEach(i=>{
           data[i.dataset.campo] = i.multiple
             ? [...i.selectedOptions].map(o=>o.value)
             : i.value.trim().toUpperCase();
         });
-        const destino = isOtro ? data.destino : destActivo;
+        const destino = isOtro? data.destino: destActivo;
         if (!destino)      throw new Error('Falta Destino');
         if (!data.servicio) throw new Error('Falta Servicio');
         if (!data.proveedor)throw new Error('Falta Proveedor');
 
-        // Aseguramos doc padre sin borrar subcolecciones
-        await setDoc(doc(db,'Servicios',destino),{ _created:true },{ merge:true });
-        // Subcolección Listado
+        // Doc padre
+        await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+        // Subcolección
         const col = collection(db,'Servicios',destino,'Listado');
-        const dr  = doc(col, data.servicio);
-        await setDoc(dr, data);
+        await setDoc(doc(col,data.servicio), data);
       }
 
-      // — Guarda todas las filas de la sección —
+      // Guarda todas
       async function saveAll() {
         for (const f of filasArr) {
           await save(f.inputs);
@@ -407,7 +390,7 @@
         alert('✅ Todos guardados');
       }
 
-      // — Carga inicial desde Firestore para secciones fijas —
+      // Carga inicial de Firestore
       if (!isOtro) {
         (async()=>{
           const col = collection(db,'Servicios',destFijo,'Listado');
@@ -423,13 +406,13 @@
       return sec;
     }
 
-    // — Montar todas las secciones —
-    destinos.forEach(d => container.appendChild(crearSeccion(d)));
+    // Montar secciones
+    destinos.forEach(d=> container.appendChild(crearSeccion(d)));
 
-    // — Cargar header externo —
+    // Cargar encabezado externo
     fetch('encabezado.html')
       .then(r=>r.text())
-      .then(html=>document.getElementById('encabezado').innerHTML = html);
+      .then(html=> document.getElementById('encabezado').innerHTML = html);
 
   </script>
 </body>
