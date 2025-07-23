@@ -424,7 +424,11 @@
         tbody.appendChild(tr);
         rows.push({ inputs, ref });
         updateNums();
-      }
+
+        console.log('Fila añadida, últimas celdas:', {
+        guardar: tr.querySelector('td:nth-last-child(2)'),
+        eliminar: tr.querySelector('td:last-child')
+      });
 
       // guarda una sola fila
       async function saveRow(inputs) {
