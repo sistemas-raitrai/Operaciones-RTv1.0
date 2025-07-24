@@ -246,26 +246,55 @@ async function quickAddActivity() {
 // —————————————————————————————————
 // 5) openModal(): precarga modal para crear o editar
 // —————————————————————————————————
+// —————————————————————————————————
+// 5) openModal(): precarga modal para crear o editar
+// —————————————————————————————————
 async function openModal(data, isEdit) {
   editData = isEdit ? data : null;
   document.getElementById("modal-title")
           .textContent = isEdit ? "Editar actividad" : "Nueva actividad";
 
+  // 1) Fecha y horas / actividad / notas
   fldFecha.value       = data.fecha;
   fldHi.value          = data.horaInicio  || "07:00";
   fldHf.value          = data.horaFin     || sumarUnaHora(fldHi.value);
-  fldAct.value = data.actividad || "";
-  await prepararCampoActividad("m-actividad", (await getDoc(doc(db, "grupos", selectNum.value))).data().destino);
-  fldAdultos.value     = data.adultos     ?? ((data.pasajeros)||0);
-  fldEstudiantes.value = data.estudiantes ?? 0;
-  fldPax.value         = data.pasajeros   ?? ((data.adultos||0)+(data.estudiantes||0));
+  fldAct.value         = data.actividad   || "";
+  await prepararCampoActividad(
+    "m-actividad",
+    (await getDoc(doc(db, "grupos", selectNum.value))).data().destino
+  );
   fldNotas.value       = data.notas       || "";
 
-  // si cambian horaInicio, actualizamos horaFin = +1h
-  fldHi.onchange = ()=> fldHf.value = sumarUnaHora(fldHi.value);
+  // 2) Carga de totals (adultos, estudiantes, pax) desde Firebase
+  const snapG = await getDoc(doc(db, "grupos", selectNum.value));
+  const g     = snapG.data() || {};
+  const totalAdults    = g.adultos     || 0;
+  const totalStudents  = g.estudiantes || 0;
+  const totalPax       = totalAdults + totalStudents;
 
+  if (isEdit) {
+    // Si estamos editando, dejamos los valores previos de esa actividad
+    fldAdultos.value     = data.adultos     ?? totalAdults;
+    fldEstudiantes.value = data.estudiantes ?? totalStudents;
+    fldPax.value         = data.pasajeros   ?? totalPax;
+  } else {
+    // En nuevo, siempre inicializamos con los totales del grupo
+    fldAdultos.value     = totalAdults;
+    fldEstudiantes.value = totalStudents;
+    fldPax.value         = totalPax;
+  }
+
+  // 3) Sincronizar horaFin si cambian horaInicio
+  fldHi.onchange = () => {
+    fldHf.value = sumarUnaHora(fldHi.value);
+    // y recalculamos pax también si quisieras forzar recálculo automático:
+    // fldPax.value = totalAdults + totalStudents;
+  };
+
+  // 4) Mostrar modal
   modalBg.style.display = modal.style.display = "block";
 }
+
 
 // —————————————————————————————————
 // 6) closeModal(): cierra el modal
