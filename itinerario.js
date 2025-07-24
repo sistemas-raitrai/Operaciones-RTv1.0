@@ -395,20 +395,30 @@ function sumarUnaHora(hhmm) {
 async function obtenerActividadesPorDestino(destino) {
   if (!destino) return [];
 
-  // Construye la ruta: servicios/{destino}/Listado
-  const ref = collection(db, "servicios", destino, "Listado");
+  // Asegúrate de usar exactamente la mayúscula/minúscula de tus colecciones:
+  const colecServicios = "Servicios"; 
+  const colecListado   = "Listado";
+
+  // Opcional: normaliza el destino al formato exacto de tu ID de documento
+  // por ejemplo "BRASIL" o "Sur de Chile".
+  const destId = destino.toString().toUpperCase(); 
+  console.log("Cargando actividades para:", colecServicios, "/", destId, "/", colecListado);
+
+  // 1) Crea la referencia a la subcolección correcta
+  const ref = collection(db, colecServicios, destId, colecListado);
+
+  // 2) Trae los docs
   const snap = await getDocs(ref);
 
-  const actividades = [];
-  snap.forEach(docSnap => {
-    // Asumo que el nombre de la actividad está en doc.id
-    // o en un campo 'nombre' dentro del documento: ajústalo según tu esquema
-    actividades.push(
-      (docSnap.data().nombreActividad || docSnap.id).toUpperCase()
-    );
+  // 3) Empuja al array (aquí asumo que el nombre está en un campo 'nombre'
+  //    si no, usa docSnap.id)
+  const actividades = snap.docs.map(docSnap => {
+    const data = docSnap.data();
+    // Ajusta si tu campo se llama distinto:
+    return (data.nombre || docSnap.id).toString().toUpperCase();
   });
 
-  // Elimina duplicados y ordena alfabéticamente
+  // 4) Quita duplicados y ordena
   return [...new Set(actividades)].sort();
 }
 
