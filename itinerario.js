@@ -7,7 +7,7 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs, doc, getDoc,
-  updateDoc, addDoc, deleteDoc
+  updateDoc, addDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -26,6 +26,8 @@ const qaAct          = document.getElementById("qa-actividad");
 const qaAddBtn       = document.getElementById("qa-add");
 
 const btnGuardarTpl  = document.getElementById("btnGuardarTpl");
+const btnCargarTpl   = document.getElementById("btnCargarTpl");
+const selPlantillas  = document.getElementById("sel-plantillas");
 
 const modalBg        = document.getElementById("modal-backdrop");
 const modal          = document.getElementById("modal");
@@ -77,6 +79,7 @@ async function initItinerario() {
   formModal.onsubmit = onSubmitModal;
 
   btnGuardarTpl.onclick  = guardarPlantilla;
+  btnCargarTpl.onclick   = cargarPlantilla;
   await cargarListaPlantillas();
 
   selectNum.dispatchEvent(new Event('change'));
@@ -295,62 +298,93 @@ function sumarUnaHora(hhmm){
 // 9) Plantillas: guardar y cargar
 // —————————————————————————————————
 async function guardarPlantilla(){
-  const nombre = prompt("Nombre de la plantilla:");
+  const nombre=prompt("Nombre de la plantilla:");
   if(!nombre) return;
-  const grupoId = selectNum.value;
-  const snapG = await getDoc(doc(db,'grupos',grupoId));
-  const g = snapG.data()||{};
-  const datosParaPlantilla = {};
+  const grupoId=selectNum.value;
+  const snapG=await getDoc(doc(db,'grupos',grupoId));
+  const g=snapG.data()||{};
+  const datosParaPlantilla={};
   for(const fecha in g.itinerario){
-    datosParaPlantilla[fecha] = g.itinerario[fecha].map(act=>({
+    datosParaPlantilla[fecha]=g.itinerario[fecha].map(act=>({
       horaInicio:act.horaInicio,
-      horaFin:   act.horaFin,
-      actividad: act.actividad,
-      notas:     act.notas
+      horaFin:act.horaFin,
+      actividad:act.actividad,
+      notas:act.notas
     }));
   }
   await addDoc(collection(db,'plantillasItinerario'),{
     nombre, creador:auth.currentUser.email,
-    createdAt:new Date(),
-    datos:datosParaPlantilla
+    createdAt:new Date(), datos:datosParaPlantilla
   });
   alert("Plantilla guardada");
   await cargarListaPlantillas();
-}  // <- aquí cierra la función
-
-// Lista de plantillas con cargar al click y ❌ para borrar
-async function cargarListaPlantillas() {
-  const ul = document.getElementById('plantillas-lista');
-  ul.innerHTML = "";
-  const snap = await getDocs(collection(db, 'plantillasItinerario'));
-  snap.docs.forEach(docSnap => {
-    const { nombre } = docSnap.data();
-    const li = document.createElement('li');
-    // texto clicable para cargar:
-    const span = document.createElement('span');
-    span.textContent = nombre;
-    span.style.cursor = 'pointer';
-    span.onclick = () => cargarPlantilla(docSnap.id);
-    li.appendChild(span);
-    // botón ❌ para borrar:
-    const btn = document.createElement('button');
-    btn.textContent = '❌';
-    btn.title = 'Borrar plantilla';
-    btn.onclick = async e => {
-      e.stopPropagation();
-      if (!confirm(`¿Borrar plantilla “${nombre}”?`)) return;
-      await deleteDoc(doc(db, 'plantillasItinerario', docSnap.id));
-      cargarListaPlantillas();
-    };
-    li.appendChild(btn);
-    ul.appendChild(li);
+}
+async function cargarListaPlantillas(){
+  selPlantillas.innerHTML="";
+  const snap=await getDocs(collection(db,'plantillasItinerario'));
+  snap.docs.forEach(d=>{
+    const data=d.data();
+    const opt=document.createElement("option");
+    opt.value=d.id;
+    opt.textContent=data.nombre;
+    selPlantillas.appendChild(opt);
   });
 }
+async function cargarPlantilla() {
+  const tplId = selPlantillas.value;
+  if (!tplId) return alert("Selecciona una plantilla");
 
-async function cargarPlantilla(tplId) {
-  // …tu lógica confirm/reemplazar-agregar usando tplId…
+  // 1) Obtén plantilla y grupo
+  const [tplSnap, grpSnap] = await Promise.all([
+    getDoc(doc(db, 'plantillasItinerario', tplId)),
+    getDoc(doc(db, 'grupos', selectNum.value))
+  ]);
+  if (!tplSnap.exists()) return alert("Plantilla no encontrada");
+  const tpl = tplSnap.data().datos;
+  const g   = grpSnap.data() || {};
+
+  // 2) Pregunta al usuario: reemplazar o agregar
+  const reemplazar = confirm(
+    "¿Quieres REEMPLAZAR el itinerario actual?\n" +
+    "Pulsa [OK] para Reemplazar, [Cancelar] para Agregar."
+  );
+
+  // 3) Construye el nuevo itinerario según elección
+  const nuevoIt = {};
+  if (reemplazar) {
+    // Solo la plantilla (con pax recalculado)
+    for (const fecha in tpl) {
+      nuevoIt[fecha] = tpl[fecha].map(act => ({
+        ...act,
+        pasajeros:  (g.adultos||0) + (g.estudiantes||0),
+        adultos:    g.adultos || 0,
+        estudiantes: g.estudiantes || 0
+      }));
+    }
+  } else {
+    // Empalmar: mantiene existentes y luego agrega plantilla
+    const origIt = g.itinerario || {};
+    // Copia todo lo existente
+    for (const fecha in origIt) {
+      nuevoIt[fecha] = origIt[fecha].slice();
+    }
+    // Para cada fecha de la plantilla, la añade al final
+    for (const fecha in tpl) {
+      const base = nuevoIt[fecha] || [];
+      const extras = tpl[fecha].map(act => ({
+        ...act,
+        pasajeros:  (g.adultos||0) + (g.estudiantes||0),
+        adultos:    g.adultos || 0,
+        estudiantes: g.estudiantes || 0
+      }));
+      nuevoIt[fecha] = base.concat(extras);
+    }
+  }
+
+  // 4) Guarda en Firestore y recarga UI
+  await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
+  renderItinerario();
 }
-
 
 // —————————————————————————————————
 // 10) Actividades por destino
