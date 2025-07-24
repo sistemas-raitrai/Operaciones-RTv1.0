@@ -328,44 +328,58 @@ async function loadHistorial(){
 }
 
 function exportToExcel(){
-  // 1) Construir un array de objetos plano con tus datos
-  //    Aquí un ejemplo con vuelos y sus totales:
-  const data = vuelos.map(v => {
-    // calcula totales de este vuelo igual que en renderVuelos:
+  // Hoja 1: resumen de vuelos
+  const resumen = vuelos.map(v => {
     let totA=0, totE=0, totC=0;
     (v.grupos||[]).forEach(gObj => {
-      const g = grupos.find(x=>x.id===gObj.id) || {};
-      const a = parseInt(g.adultos||0,10);
-      const e = parseInt(g.estudiantes||0,10);
-      const nombresArr = Array.isArray(g.nombresCoordinadores)
-        ? g.nombresCoordinadores
-        : (g.nombresCoordinadores
-           ? g.nombresCoordinadores.split(',').map(s=>s.trim())
-           : []);
-      const c = nombresArr.length || 1;
-      totA += a; totE += e; totC += c;
+      const g = grupos.find(x=>x.id===gObj.id)||{};
+      totA += parseInt(g.adultos||0,10);
+      totE += parseInt(g.estudiantes||0,10);
+      totC += Array.isArray(g.nombresCoordinadores)
+                ? g.nombresCoordinadores.length
+                : (g.nombresCoordinadores
+                   ? g.nombresCoordinadores.split(',').length
+                   : 1);
     });
     return {
-      Aerolínea:    v.proveedor,
-      Vuelo:        v.numero,
-      Tipo:         v.tipoVuelo,
-      Origen:       v.origen,
-      Destino:      v.destino,
-      Fecha_Ida:    v.fechaIda,
+      Aerolínea: v.proveedor,
+      Vuelo: v.numero,
+      Tipo: v.tipoVuelo,
+      Origen: v.origen,
+      Destino: v.destino,
+      Fecha_Ida: v.fechaIda,
       Fecha_Vuelta: v.fechaVuelta,
       Total_Adultos: totA,
       Total_Estudiantes: totE,
       Total_Coordinadores: totC,
-      Total_Pax:    totA + totE + totC
+      Total_Pax: totA+totE+totC
     };
   });
 
-  // 2) Convierte a hoja de cálculo
-  const ws = XLSX.utils.json_to_sheet(data);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Vuelos");
+  // Hoja 2: detalle de grupos
+  const detalle = [];
+  vuelos.forEach(v => {
+    (v.grupos||[]).forEach(gObj => {
+      const g = grupos.find(x=>x.id===gObj.id)||{};
+      detalle.push({
+        Vuelo: v.numero,
+        Grupo_Numero: g.numeroNegocio,
+        Grupo_Nombre: g.nombreGrupo,
+        Estado: gObj.status,
+        Cambiado_Por: gObj.changedBy || ''
+      });
+    });
+  });
 
-  // 3) Descarga automática
-  XLSX.writeFile(wb, "planificacion_vuelos.xlsx");
+  // Construir libro
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.json_to_sheet(resumen);
+  const ws2 = XLSX.utils.json_to_sheet(detalle);
+  XLSX.utils.book_append_sheet(wb, ws1, "Resumen_Vuelos");
+  XLSX.utils.book_append_sheet(wb, ws2, "Detalle_Grupos");
+
+  // Descargar
+  XLSX.writeFile(wb, "planificacion_vuelos_completa.xlsx");
 }
+
 
