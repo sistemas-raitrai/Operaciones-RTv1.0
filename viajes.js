@@ -76,24 +76,43 @@ async function renderVuelos(){
       weekday:'long',day:'2-digit',month:'long',year:'numeric'
     }).replace(/(^\w)/,m=>m.toUpperCase());
 
-    let totA=0,totE=0,totC=0,confA=0,confE=0,confC=0;
-    const filas=(v.grupos||[]).map((gObj,idx)=>{
-      const g=grupos.find(x=>x.id===gObj.id)||{};
-      const a=g.adultos||0, e=g.estudiantes||0;
+    // inicializamos como números
+    let totA=0, totE=0, totC=0, confA=0, confE=0, confC=0;
+
+    const filas = (v.grupos || []).map((gObj, idx) => {
+      const g = grupos.find(x => x.id === gObj.id) || {};
+
+      // ——— Aquí forzamos a número ———
+      const a = Number(g.adultos)     || 0;
+      const e = Number(g.estudiantes) || 0;
+      // ————————————————————————
+
+      // Contar coordinadores
       const nombresArr = Array.isArray(g.nombresCoordinadores)
         ? g.nombresCoordinadores
-        : (g.nombresCoordinadores?g.nombresCoordinadores.split(',').map(s=>s.trim()):['']);
-      const c=nombresArr.length||1;
-      totA+=a; totE+=e; totC+=c;
-      if(gObj.status==='confirmado'){ confA+=a; confE+=e; confC+=c; }
-        }
+        : (g.nombresCoordinadores
+           ? g.nombresCoordinadores.split(',').map(s=>s.trim())
+           : ['']);
+      const c = nombresArr.length || 1;
+
+      // Sumas numéricas
+      totA += a;
+      totE += e;
+      totC += c;
+      if (gObj.status === 'confirmado') {
+        confA += a;
+        confE += e;
+        confC += c;
+      }
+
+      const mail = gObj.changedBy || '–';
 
       return `
         <div class="group-item">
           <div class="num">${g.numeroNegocio}</div>
           <div class="name">
             <span class="group-name" onclick="openGroupModal('${g.id}')">${g.nombreGrupo}</span>
-            <span class="pax-inline">${a+e+c} (A:${a} E:${e} C:${c})</span>
+            <span class="pax-inline">${a + e + c} (A:${a} E:${e} C:${c})</span>
           </div>
           <div class="status-cell">
             <span>${gObj.status==='confirmado'?'✅ Confirmado':'🕗 Pendiente'}</span>
@@ -106,16 +125,20 @@ async function renderVuelos(){
         </div>`;
     }).join('');
 
-    card.innerHTML=`
+    card.innerHTML = `
       <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
       <p class="dates">Origen: ${v.origen||'–'} &nbsp; Destino: ${v.destino||'–'}</p>
       <p class="dates">Ida: ${fmt(v.fechaIda)} ↔️ Vuelta: ${fmt(v.fechaVuelta)}</p>
-      <div>${filas||'<p>— Sin grupos —</p>'}</div>
-      <p><strong>Total Pax:</strong> ${totA+totE+totC} (A:${totA} E:${totE} C:${totC}) – Confirmados: ${confA+confE+confC} (A:${confA} E:${confE} C:${confC})</p>
+      <div>${filas || '<p>— Sin grupos —</p>'}</div>
+      <p><strong>Total Pax:</strong>
+         ${totA + totE + totC} (A:${totA} E:${totE} C:${totC})
+         – Confirmados: ${confA + confE + confC}
+         (A:${confA} E:${confE} C:${confC})</p>
       <div class="actions">
         <button class="btn-add btn-edit">✏️ Editar</button>
         <button class="btn-add btn-del">🗑️ Eliminar</button>
       </div>`;
+
     cont.appendChild(card);
     card.querySelector('.btn-edit').onclick = ()=>openModal(v);
     card.querySelector('.btn-del').onclick  = ()=>deleteVuelo(v.id);
