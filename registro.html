@@ -30,10 +30,11 @@
         <label for="filtroAno">Filtrar por Año</label>
         <select id="filtroAno"></select>
       </div>
-    </div> <!-- <-- Cerramos aquí el div del filtro -->
+    </div>
 
-    <form id="formRegistro">
-      <!-- Fila 1: Negocio, Grupo, Vendedor(a) -->
+    <!-- Formulario sin submit en Enter -->
+    <form id="formRegistro" onsubmit="return false;">
+      <!-- Fila 1 -->
       <div class="row">
         <div class="column short">
           <label for="numeroNegocio">N° de Negocio</label>
@@ -62,7 +63,7 @@
         </div>
       </div>
 
-      <!-- Fila 2: Colegio, Curso, Año Viaje -->
+      <!-- Fila 2 -->
       <div class="row">
         <div class="column long">
           <label for="colegio">Colegio</label>
@@ -82,7 +83,7 @@
         </div>
       </div>
 
-      <!-- Fila 3: PAX, Adultos y Estudiantes -->
+      <!-- Fila 3 -->
       <div class="row">
         <div class="column short">
           <label for="cantidadgrupo">N° Pax</label>
@@ -98,7 +99,7 @@
         </div>
       </div>
 
-      <!-- Fila 4: Destino y Programa -->
+      <!-- Fila 4 -->
       <div class="row">
         <div class="column medium">
           <label for="destino">Destino</label>
@@ -112,7 +113,7 @@
         </div>
       </div>
 
-      <!-- Fila 5: Indicaciones de las fechas del viaje -->
+      <!-- Fila 5 -->
       <div class="row">
         <div class="column long">
           <label for="fechaDeViaje">Indicaciones para la Fecha del Viaje</label>
@@ -120,7 +121,7 @@
         </div>
       </div>
 
-      <!-- Fila 6: Fecha Inicio, Días, Noches, Fecha Fin -->
+      <!-- Fila 6 -->
       <div class="row">
         <div class="column medium">
           <label for="fechaInicio">Fecha de Inicio</label>
@@ -140,7 +141,7 @@
         </div>
       </div>
 
-      <!-- Fila 7: Hoteles (múltiple con texto libre + canónicos) -->
+      <!-- Fila 7 -->
       <div class="row">
         <div class="column long">
           <label for="hoteles">Hoteles</label>
@@ -148,7 +149,7 @@
         </div>
       </div>
 
-      <!-- Fila 8: Asistencia Médica, Autorización -->
+      <!-- Fila 8 -->
       <div class="row">
         <div class="column medium">
           <label for="autorizacion">Sobre Autorizaciones de Gerencia</label>
@@ -160,10 +161,11 @@
         </div>
       </div>
 
+      <!-- Botón de guardado manual -->
       <div class="button-container">
-        <button type="submit">Guardar</button>
+        <button type="button" id="btnGuardar">Guardar</button>
       </div>
-    </form> <!-- <-- y aquí cerramos el form correctamente -->
+    </form>
 
     <!-- Tabla de datos guardados -->
     <h3 style="margin-top:40px;">🧾 Datos Guardados</h3>
