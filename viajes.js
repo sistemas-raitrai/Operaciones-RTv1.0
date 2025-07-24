@@ -86,7 +86,8 @@ async function renderVuelos(){
       const c=nombresArr.length||1;
       totA+=a; totE+=e; totC+=c;
       if(gObj.status==='confirmado'){ confA+=a; confE+=e; confC+=c; }
-      const mail=gObj.changedBy||'–';
+        }
+
       return `
         <div class="group-item">
           <div class="num">${g.numeroNegocio}</div>
