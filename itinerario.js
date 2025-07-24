@@ -43,6 +43,18 @@ let editData    = null;   // { fecha, idx } cuando editamos
 let choicesDias = null;   // instancia global de Choices.js
 
 // —————————————————————————————————
+// Función global para sumar numéricamente
+// —————————————————————————————————
+function actualizarPax() {
+  const a = parseInt(fldAdultos.value, 10) || 0;
+  const e = parseInt(fldEstudiantes.value, 10) || 0;
+  fldPax.value = a + e;
+}
+// Enganchar escuchas **una sola vez**:
+fldAdultos.addEventListener('input', actualizarPax);
+fldEstudiantes.addEventListener('input', actualizarPax);
+
+// —————————————————————————————————
 // 2) Autenticación y arranque
 // —————————————————————————————————
 onAuthStateChanged(auth, user => {
@@ -134,23 +146,19 @@ async function renderItinerario() {
     // ––––– Detectar DOMINGO –––––
     const [yyyy, mm, dd] = fecha.split('-').map(Number);
     const dObj = new Date(yyyy, mm - 1, dd);
-    if (dObj.getDay() === 0) {
-      sec.classList.add('domingo');
-    }
+    if (dObj.getDay() === 0) sec.classList.add('domingo');
     // ––––––––––––––––––––––––––
-    
-    sec.innerHTML     = `
+
+    sec.innerHTML = `
       <h3>Día ${idx+1} – ${formatDateReadable(fecha)}</h3>
       <ul class="activity-list"></ul>
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
     contItinerario.appendChild(sec);
 
-    // botón interno para añadir
     sec.querySelector(".btn-add")
        .onclick = ()=> openModal({ fecha }, false);
 
-    // Pinto las actividades, ordenadas por horaInicio
     const ul  = sec.querySelector(".activity-list");
     const arr = (g.itinerario[fecha]||[]).slice()
       .sort((a,b)=> a.horaInicio.localeCompare(b.horaInicio));
@@ -170,25 +178,24 @@ async function renderItinerario() {
             <button class="btn-del"  data-idx="${i}">🗑️</button>
           </div>
         `;
-        // editar
-        li.querySelector(".btn-edit").onclick = ()=> openModal({ ...act, fecha, idx:i }, true);
-        // borrar
-        li.querySelector(".btn-del").onclick = async ()=>{
-          if(!confirm("¿Eliminar actividad?")) return;
-          const orig = g.itinerario[fecha];
-          // registro historial
-          await addDoc(collection(db,'historial'), {
-            numeroNegocio: grupoId,
-            accion:        'BORRAR ACTIVIDAD',
-            anterior:      orig.map(a=>a.actividad).join(' – '),
-            nuevo:         '', 
-            usuario:       auth.currentUser.email,
-            timestamp:     new Date()
-          });
-          orig.splice(i,1);
-          await updateDoc(refG,{ [`itinerario.${fecha}`]:orig });
-          renderItinerario();
-        };
+        li.querySelector(".btn-edit")
+          .onclick = ()=> openModal({ ...act, fecha, idx:i }, true);
+        li.querySelector(".btn-del")
+          .onclick = async ()=>{
+            if (!confirm("¿Eliminar actividad?")) return;
+            const orig = g.itinerario[fecha];
+            await addDoc(collection(db,'historial'), {
+              numeroNegocio: grupoId,
+              accion:        'BORRAR ACTIVIDAD',
+              anterior:      orig.map(a=>a.actividad).join(' – '),
+              nuevo:         '',
+              usuario:       auth.currentUser.email,
+              timestamp:     new Date()
+            });
+            orig.splice(i,1);
+            await updateDoc(refG,{ [`itinerario.${fecha}`]:orig });
+            renderItinerario();
+          };
         ul.appendChild(li);
       });
     }
@@ -216,7 +223,6 @@ async function quickAddActivity() {
   for (let idx of selIdx) {
     const f   = fechas[idx];
     const arr = g.itinerario[f]||[];
-    // payload
     const item = {
       horaInicio,
       horaFin:    sumarUnaHora(horaInicio),
@@ -226,7 +232,6 @@ async function quickAddActivity() {
       estudiantes:g.estudiantes||0,
       notas:      ""
     };
-    // historial CREAR
     await addDoc(collection(db,'historial'), {
       numeroNegocio: grupoId,
       accion:        'CREAR ACTIVIDAD',
@@ -251,24 +256,21 @@ async function openModal(data, isEdit) {
   document.getElementById("modal-title")
           .textContent = isEdit ? "Editar actividad" : "Nueva actividad";
 
-  // 1) Cargo el total de adultos/estudiantes desde Firestore
+  // 1) Cargo el total de adultos/estudiantes
   const snapG = await getDoc(doc(db, "grupos", selectNum.value));
   const g     = snapG.data() || {};
   const totalAdults   = g.adultos     || 0;
   const totalStudents = g.estudiantes || 0;
 
-  // 2) Preparo campos de fecha/hora/actividad/notas
+  // 2) Campos de fecha/hora/actividad/notas
   fldFecha.value = data.fecha;
   fldHi.value    = data.horaInicio  || "07:00";
   fldHf.value    = data.horaFin     || sumarUnaHora(fldHi.value);
   fldAct.value   = data.actividad   || "";
-  await prepararCampoActividad(
-    "m-actividad",
-    g.destino
-  );
+  await prepararCampoActividad("m-actividad", g.destino);
   fldNotas.value = data.notas       || "";
 
-  // 3) Inicializo Adultos, Estudiantes y PAX
+  // 3) Inicializo Adultos y Estudiantes
   if (isEdit) {
     fldAdultos.value     = data.adultos     ?? totalAdults;
     fldEstudiantes.value = data.estudiantes ?? totalStudents;
@@ -276,17 +278,10 @@ async function openModal(data, isEdit) {
     fldAdultos.value     = totalAdults;
     fldEstudiantes.value = totalStudents;
   }
-  // PAX numérico desde el primer valor
-  fldPax.value = Number(fldAdultos.value) + Number(fldEstudiantes.value);
+  // 4) Inicializo PAX numérico
+  actualizarPax();
 
-  // 4) Engancho (una sola vez) la función de recálculo
-  //    Si ya la habías enganchado, podrías primero removerla:
-  fldAdultos.removeEventListener('input', actualizarPax);
-  fldEstudiantes.removeEventListener('input', actualizarPax);
-  fldAdultos.addEventListener('input', actualizarPax);
-  fldEstudiantes.addEventListener('input', actualizarPax);
-
-  // 5) Aseguro que horaFin sume +1h si cambias horaInicio
+  // 5) Sincronizar horaFin
   fldHi.onchange = () => {
     fldHf.value = sumarUnaHora(fldHi.value);
   };
@@ -294,14 +289,6 @@ async function openModal(data, isEdit) {
   // 6) Abro el modal
   modalBg.style.display = modal.style.display = "block";
 }
-
-// Función externa para no redeclararla en cada openModal()
-function actualizarPax() {
-  const a = parseInt(fldAdultos.value, 10) || 0;
-  const e = parseInt(fldEstudiantes.value, 10) || 0;
-  fldPax.value = a + e;
-}
-
 
 // —————————————————————————————————
 // 6) closeModal(): cierra el modal
@@ -341,11 +328,9 @@ async function onSubmitModal(evt) {
   };
 
   const refG = doc(db,'grupos',grupoId);
-  // array actual
   const arr = (g.itinerario?.[fecha]||[]).slice();
 
   if (editData) {
-    // historial MODIFICAR: guardo lista anterior y nueva
     const antes = arr.map(x=>x.actividad).join(' – ');
     arr[editData.idx] = payload;
     const despues = arr.map(x=>x.actividad).join(' – ');
@@ -358,7 +343,6 @@ async function onSubmitModal(evt) {
       timestamp:     new Date()
     });
   } else {
-    // nunca debería llegar aquí: crear_ solo en quickAdd
     arr.push(payload);
     await addDoc(collection(db,'historial'), {
       numeroNegocio: grupoId,
@@ -370,7 +354,6 @@ async function onSubmitModal(evt) {
     });
   }
 
-  // guardo en Firestore y recargo UI
   await updateDoc(refG,{ [`itinerario.${fecha}`]:arr });
   closeModal();
   renderItinerario();
@@ -381,7 +364,7 @@ async function onSubmitModal(evt) {
 // —————————————————————————————————
 function getDateRange(startStr, endStr) {
   const out = [];
-  const start = new Date(startStr + "T00:00:00"); // Fuerza zona local
+  const start = new Date(startStr + "T00:00:00");
   const end = new Date(endStr + "T00:00:00");
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const yyyy = d.getFullYear();
@@ -391,21 +374,23 @@ function getDateRange(startStr, endStr) {
   }
   return out;
 }
+
 function formatDateReadable(isoStr) {
-  // Evita el desfase creando fecha local correctamente
   const [yyyy, mm, dd] = isoStr.split('-').map(Number);
-  const d = new Date(yyyy, mm - 1, dd); // sin UTC, sin hora
+  const d = new Date(yyyy, mm - 1, dd);
   const wd = d.toLocaleDateString("es-CL", { weekday: "long" });
   return `${wd.charAt(0).toUpperCase() + wd.slice(1)} ${dd.toString().padStart(2, '0')}/${mm.toString().padStart(2, '0')}`;
 }
+
 function sumarUnaHora(hhmm) {
   const [h,m] = hhmm.split(":").map(Number);
-  const d     = new Date(); d.setHours(h+1,m);
+  const d     = new Date();
+  d.setHours(h+1,m);
   return d.toTimeString().slice(0,5);
 }
 
 // —————————————————————————————————
-// 8) Obtener lista de actividades según destino del grupo
+// 8) Obtener lista de actividades según destino
 // —————————————————————————————————
 async function obtenerActividadesPorDestino(destino) {
   if (!destino) return [];
@@ -414,10 +399,7 @@ async function obtenerActividadesPorDestino(destino) {
   const actividades = [];
   snap.forEach(doc => {
     const data = doc.data();
-    if (
-      data.destino?.toUpperCase() === destino.toUpperCase() &&
-      data.actividad
-    ) {
+    if (data.destino?.toUpperCase() === destino.toUpperCase() && data.actividad) {
       actividades.push(data.actividad.toUpperCase());
     }
   });
@@ -425,17 +407,13 @@ async function obtenerActividadesPorDestino(destino) {
 }
 
 // —————————————————————————————————
-// 9) Crea un datalist editable y lo asocia a un input
+// 9) Crear datalist y asociar a input
 // —————————————————————————————————
 async function prepararCampoActividad(inputId, destino) {
   const input = document.getElementById(inputId);
   const actividades = await obtenerActividadesPorDestino(destino);
-
-  // Elimina datalist anterior si existe
   const oldList = document.getElementById("lista-" + inputId);
   if (oldList) oldList.remove();
-
-  // Crear nuevo datalist
   const dataList = document.createElement("datalist");
   dataList.id = "lista-" + inputId;
   actividades.forEach(act => {
@@ -444,33 +422,25 @@ async function prepararCampoActividad(inputId, destino) {
     dataList.appendChild(opt);
   });
   document.body.appendChild(dataList);
-
-  // Enlazar el input al datalist
   input.setAttribute("list", "lista-" + inputId);
 }
 
 // —————————————————————————————————
-// 10) Abrir calendario dentro de modal (iframe centrado)
+// 10) Abrir calendario dentro de modal
 // —————————————————————————————————
 document.getElementById("btnAbrirCalendario").addEventListener("click", () => {
   const grupoId = selectNum.value;
   const grupoTxt = selectNum.options[selectNum.selectedIndex].text;
   if (!grupoId) return alert("Primero selecciona un grupo.");
-
-  // Insertar número de negocio como búsqueda
   const iframe = document.getElementById("iframe-calendario");
   iframe.src = `calendario.html?busqueda=${encodeURIComponent(grupoTxt)}`;
-
-  // Mostrar modal + backdrop
   document.getElementById("modal-calendario").style.display = "block";
-  document.getElementById("modal-backdrop").style.display = "block";
+  document.getElementById("modal-backdrop").style.display  = "block";
 });
 
-// Función global para cerrar calendario desde botón ✖
+// Función global para cerrar calendario
 window.cerrarCalendario = function () {
   document.getElementById("modal-calendario").style.display = "none";
-  document.getElementById("modal-backdrop").style.display = "none";
-  document.getElementById("iframe-calendario").src = ""; // limpiar
+  document.getElementById("modal-backdrop").style.display  = "none";
+  document.getElementById("iframe-calendario").src        = "";
 };
-
-
