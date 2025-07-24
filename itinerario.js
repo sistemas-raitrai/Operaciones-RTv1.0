@@ -396,30 +396,42 @@ async function obtenerActividadesPorDestino(destino) {
   if (!destino) return [];
 
   // Asegúrate de usar exactamente la mayúscula/minúscula de tus colecciones:
-  const colecServicios = "Servicios"; 
+  const colecServicios = "Servicios";
   const colecListado   = "Listado";
 
-  // Opcional: normaliza el destino al formato exacto de tu ID de documento
-  // por ejemplo "BRASIL" o "Sur de Chile".
-  const destId = destino.toString().toUpperCase(); 
-  console.log("Cargando actividades para:", colecServicios, "/", destId, "/", colecListado);
+  // 0) Dividir destinos compuestos con " Y "
+  //    Ej: "SUR DE CHILE Y BARILOCHE" → ["SUR DE CHILE", "BARILOCHE"]
+  const partes = destino
+    .toString()
+    .split(/\s+Y\s+/i)
+    .map(s => s.trim().toUpperCase());
 
-  // 1) Crea la referencia a la subcolección correcta
-  const ref = collection(db, colecServicios, destId, colecListado);
+  const todas = [];
 
-  // 2) Trae los docs
-  const snap = await getDocs(ref);
+  // Para cada parte, hacemos la misma consulta:
+  for (const parte of partes) {
+    // Normalizamos el ID al formato exacto de tu documento
+    const destId = parte;
+    console.log("Cargando actividades para:", colecServicios, "/", destId, "/", colecListado);
 
-  // 3) Empuja al array (aquí asumo que el nombre está en un campo 'nombre'
-  //    si no, usa docSnap.id)
-  const actividades = snap.docs.map(docSnap => {
-    const data = docSnap.data();
-    // Ajusta si tu campo se llama distinto:
-    return (data.nombre || docSnap.id).toString().toUpperCase();
-  });
+    try {
+      // 1) Crea la referencia a la subcolección correcta
+      const ref  = collection(db, colecServicios, destId, colecListado);
+      // 2) Trae los docs
+      const snap = await getDocs(ref);
+
+      // 3) Empuja al array (campo 'nombre' o doc.id)
+      snap.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        todas.push((data.nombre || docSnap.id).toString().toUpperCase());
+      });
+    } catch (err) {
+      console.warn(`No se encontró ${colecServicios}/${parte}/${colecListado}`, err);
+    }
+  }
 
   // 4) Quita duplicados y ordena
-  return [...new Set(actividades)].sort();
+  return [...new Set(todas)].sort();
 }
 
 // —————————————————————————————————
