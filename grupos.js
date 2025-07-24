@@ -12,27 +12,28 @@ const auth = getAuth(app);
 const camposFire = [
   "numeroNegocio",      // 0
   "nombreGrupo",        // 1
-  "anoViaje",           // 2
-  "vendedora",          // 3 
-  "cantidadgrupo",      // 4
-  "adultos",            // 5
-  "estudiantes",        // 6
-  "colegio",            // 7
-  "curso",              // 8
-  "destino",            // 9
-  "programa",           //10
-  "fechaInicio",        //11
-  "fechaFin",           //12
-  "asistenciaEnViajes", //13
-  "autorizacion",       //14
-  "hoteles",            //15
-  "ciudades",           //16
-  "transporte",         //17
-  "tramos",             //18
-  "fechaDeViaje",       //19
-  "observaciones",      //20
-  "creadoPor",          //21
-  "fechaCreacion"      //22
+  "identificador",      // 2
+  "anoViaje",           // 3
+  "vendedora",          // 4 
+  "cantidadgrupo",      // 5
+  "adultos",            // 6
+  "estudiantes",        // 7
+  "colegio",            // 8
+  "curso",              // 9
+  "destino",            // 10
+  "programa",           // 11
+  "fechaInicio",        // 12
+  "fechaFin",           // 13
+  "asistenciaEnViajes", // 14
+  "autorizacion",       // 15
+  "hoteles",            // 16
+  "ciudades",           // 17
+  "transporte",         // 18
+  "tramos",             // 19
+  "fechaDeViaje",       // 20
+  "observaciones",      // 21
+  "creadoPor",          // 22
+  "fechaCreacion"      //  23
 ];
 
 let editMode = false;
@@ -128,30 +129,31 @@ async function cargarYMostrarTabla() {
     scrollX: true,
     autoWidth: false,
     columnDefs: [
-      { targets: [7,8,13,14,16,18,21,22], visible: false },
+      { targets: [8,9,14,15,17,19,22,23], visible: false },
       { targets: 0, width: '20px' },   // N° Negocio
-      { targets: 1, width: '100px' },  // Nombre Grupo
-      { targets: 2, width: '20px' },   // Año
-      { targets: 3, width: '50px' },  // Vendedor(a)
-      { targets: 4, width: '20px' },   // Pax
-      { targets: 5, width: '20px' },   // Adultos
-      { targets: 6, width: '20px' },   // Estudiantes
-      { targets: 7, width: '70px' },  // Colegio
-      { targets: 8, width: '20px' },  // Curso
-      { targets: 9, width: '70px' },  // Destino
-      { targets: 10, width: '70px' }, // Programa
-      { targets: 11, width: '40px' },  // Inicio
-      { targets: 12, width: '40px' },  // Fin
-      { targets: 13, width: '30px' },  // Seguro
-      { targets: 14, width: '80px' },  // Autorización
-      { targets: 15, width: '50px' },  // Hoteles
-      { targets: 16, width: '80px' }, // Ciudades
-      { targets: 17, width: '50px' }, // Transporte
-      { targets: 18, width: '50px' },  // Tramos
-      { targets: 19, width: '80px' },  // Indicaciones fecha
-      { targets: 20, width: '100px' }, // Observaciones
-      { targets: 21, width: '50px' }, // Creado por
-      { targets: 22, width: '50px' }  // Fecha creación
+      { targets: 1, width: '20px' },  // Nombre Grupo
+      { targets: 2, width: '100px' },  // Nombre Grupo
+      { targets: 3, width: '20px' },   // Año
+      { targets: 4, width: '50px' },  // Vendedor(a)
+      { targets: 5, width: '20px' },   // Pax
+      { targets: 6, width: '20px' },   // Adultos
+      { targets: 7, width: '20px' },   // Estudiantes
+      { targets: 8, width: '70px' },  // Colegio
+      { targets: 9, width: '20px' },  // Curso
+      { targets: 10, width: '70px' },  // Destino
+      { targets: 11, width: '70px' }, // Programa
+      { targets: 12, width: '40px' },  // Inicio
+      { targets: 13, width: '40px' },  // Fin
+      { targets: 14, width: '30px' },  // Seguro
+      { targets: 15, width: '80px' },  // Autorización
+      { targets: 16, width: '50px' },  // Hoteles
+      { targets: 17, width: '80px' }, // Ciudades
+      { targets: 18, width: '50px' }, // Transporte
+      { targets: 19, width: '50px' },  // Tramos
+      { targets: 20, width: '80px' },  // Indicaciones fecha
+      { targets: 21, width: '100px' }, // Observaciones
+      { targets: 22, width: '50px' }, // Creado por
+      { targets: 23, width: '50px' }  // Fecha creación
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
@@ -164,7 +166,7 @@ async function cargarYMostrarTabla() {
   // 2) Filtro por Destino (columna índice 8)
   $('#filtroDestino').on('change', function() {
     tabla
-      .column(9)            // índice de “Destino”
+      .column(10)            // índice de “Destino”
       .search(this.value)   // vacío ("") = todos
       .draw();
   });
@@ -172,7 +174,7 @@ async function cargarYMostrarTabla() {
   // 3) Filtro por Año de Viaje (columna índice 7)
   $('#filtroAno').on('change', function() {
     tabla
-      .column(2)            // índice de “Año de Viaje”
+      .column(3)            // índice de “Año de Viaje”
       .search(this.value)
       .draw();
   });
@@ -344,7 +346,7 @@ function exportarGrupos() {
 
   // Opcional: encabezados igual a las columnas definidas en el HTML (ordenado)
 const headers = [
-  "N° Negocio","Nombre de Grupo","Año","Vendedor(a)","Pax","Adultos","Estudiantes",
+  "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Pax","Adultos","Estudiantes",
   "Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
   "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
   "Observaciones","Creado Por","Fecha Creación"
