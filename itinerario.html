@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Itinerario de Grupo | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
-  <!-- Choices.js CSS (global) -->
   <link
     rel="stylesheet"
     href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"
@@ -13,13 +12,12 @@
 </head>
 <body class="itinerario-page">
 
-  <!-- Encabezado común -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      await import('./script.js');
+      await import('./itinerario.js');
     })();
   </script>
 
@@ -31,11 +29,11 @@
       </div>
       <div class="column medium">
         <label for="grupo-select-name">Nombre de Grupo</label>
-        <select id="grupo-select-name"><option>Cargando…</option></select>
+        <select id="grupo-select-name"></select>
       </div>
       <div class="column short">
         <label for="grupo-select-num">N° Negocio</label>
-        <select id="grupo-select-num"><option>Cargando…</option></select>
+        <select id="grupo-select-num"></select>
       </div>
       <div class="column short">
         <label>&nbsp;</label>
@@ -43,14 +41,28 @@
       </div>
     </div>
 
-    <!-- Quick-Add: selección múltiple de días -->
+    <!-- Plantillas -->
+    <div class="row" style="margin-top:1rem;">
+      <div class="column medium">
+        <button id="btnGuardarTpl" class="btn-add">💾 Guardar plantilla</button>
+      </div>
+      <div class="column medium">
+        <label for="sel-plantillas">Cargar plantilla</label>
+        <select id="sel-plantillas"><option value="">(ninguna)</option></select>
+      </div>
+      <div class="column short">
+        <label>&nbsp;</label>
+        <button id="btnCargarTpl" class="btn-add">📥 Cargar</button>
+      </div>
+    </div>
+
+    <!-- Quick-Add y Carrusel -->
     <section id="quick-add" class="quick-add">
       <h3>Programador de Actividades</h3>
-        <div class="column">
-          <label for="qa-dia">Día(s)</label>
-          <!-- Choices.js lo convertirá en un multi-tag -->
-          <select id="qa-dia" multiple></select>
-        </div>
+      <div class="column">
+        <label for="qa-dia">Día(s)</label>
+        <select id="qa-dia" multiple></select>
+      </div>
       <div class="row">
         <div class="column short">
           <label for="qa-horaInicio">Hora inicio</label>
@@ -58,11 +70,7 @@
         </div>
         <div class="column medium">
           <label for="qa-actividad">Actividad</label>
-          <input
-            type="text"
-            id="qa-actividad"
-            placeholder="Nombre de la actividad"
-          />
+          <input type="text" id="qa-actividad" placeholder="Nombre de la actividad" />
         </div>
         <div class="column short">
           <label>&nbsp;</label>
@@ -71,39 +79,30 @@
       </div>
     </section>
 
-    <!-- Carrusel dinámico de días -->
     <div id="itinerario-container" class="grid"></div>
   </main>
 
-  <!-- Modal para crear/editar actividad -->
+  <!-- Modal actividad -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal" class="modal" style="display:none; width:80%; max-width:600px;">
     <h3 id="modal-title">Actividad</h3>
     <form id="modal-form">
       <label for="m-fecha">Fecha</label>
       <select id="m-fecha"></select>
-
       <label for="m-horaInicio">Hora Inicio</label>
       <input type="time" id="m-horaInicio" />
-
       <label for="m-horaFin">Hora Fin</label>
       <input type="time" id="m-horaFin" />
-
       <label for="m-actividad">Actividad</label>
       <input type="text" id="m-actividad" />
-
       <label for="m-adultos">Adultos</label>
       <input type="number" id="m-adultos" min="0" />
-
       <label for="m-estudiantes">Estudiantes</label>
       <input type="number" id="m-estudiantes" min="0" />
-
       <label for="m-pax">Total Pax</label>
       <input type="number" id="m-pax" min="0" />
-
       <label for="m-notas">Notas</label>
       <textarea id="m-notas" rows="2"></textarea>
-
       <div class="actions">
         <button type="button" id="modal-cancel">Cancelar</button>
         <button type="submit" id="modal-save">Guardar</button>
@@ -111,21 +110,14 @@
     </form>
   </div>
 
-  <!-- en itinerario.html -->
-  <div id="modal-backdrop" class="modal-backdrop" style="display: none;"></div>
-  <!-- Modal de Calendario -->
-  <div id="modal-calendario" class="modal" style="display: none;">
+  <!-- Modal calendario -->
+  <div id="modal-calendario" class="modal" style="display:none;">
     <button onclick="cerrarCalendario()">✖</button>
-    <iframe id="iframe-calendario" src="" width="100%" height="600" style="border: none;"></iframe>
+    <iframe id="iframe-calendario" width="100%" height="600" style="border:none;"></iframe>
   </div>
 
-  <!-- Scripts globales -->
+  <!-- Recursos externos -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <!-- Choices.js (global) -->
-  <script
-    src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"
-  ></script>
-  <!-- Firebase y nuestro módulo -->
-  <script type="module" src="itinerario.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
 </body>
 </html>
