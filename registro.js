@@ -70,6 +70,7 @@ const elems = {};
   'asistenciaEnViajes','autorizacion','fechaDeViaje',
   'vendedora','observaciones',
   'formRegistro','tbodyTabla'
+  elems.btnGuardar = document.getElementById('btnGuardar');
 ].forEach(id => elems[id] = document.getElementById(id));
 
 // 4️⃣ AUTENTICACIÓN Y ARRANQUE
@@ -107,7 +108,10 @@ async function init() {
   elems.fechaInicio.onchange  = calcularFin;
   elems.adultos.oninput       = ajustComp;
   elems.estudiantes.oninput   = ajustComp;
-  elems.formRegistro.onsubmit = e => { e.preventDefault(); guardar(); };
+  elems.formRegistro.addEventListener('keydown', e => {
+    if (e.key === 'Enter') e.preventDefault();
+  });
+  elems.btnGuardar.onclick = guardar;
 }
 
 // 6️⃣ FUNCIONES DE CAMBIO
@@ -188,6 +192,16 @@ async function loadDatos(ventas) {
   // Buscar en Firebase y pintar tabla si existe
   const snap = await getDoc(doc(db, 'grupos', id));
   if (snap.exists()) paintTable(id);
+  // 7.2) luego Firebase
+  const ref  = doc(db, 'grupos', id);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    // vuelca identificador si existe
+    const data = snap.data();
+    if (data.identificador) elems.identificador.value = data.identificador;
+    // pinta la fila
+    paintTable(id);
+  }
 }
 
 // 8️⃣ GUARDAR EN FIREBASE Y REGISTRAR HISTORIAL
