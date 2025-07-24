@@ -246,53 +246,60 @@ async function quickAddActivity() {
 // —————————————————————————————————
 // 5) openModal(): precarga modal para crear o editar
 // —————————————————————————————————
-// —————————————————————————————————
-// 5) openModal(): precarga modal para crear o editar
-// —————————————————————————————————
 async function openModal(data, isEdit) {
   editData = isEdit ? data : null;
   document.getElementById("modal-title")
           .textContent = isEdit ? "Editar actividad" : "Nueva actividad";
 
-  // 1) Fecha y horas / actividad / notas
-  fldFecha.value       = data.fecha;
-  fldHi.value          = data.horaInicio  || "07:00";
-  fldHf.value          = data.horaFin     || sumarUnaHora(fldHi.value);
-  fldAct.value         = data.actividad   || "";
-  await prepararCampoActividad(
-    "m-actividad",
-    (await getDoc(doc(db, "grupos", selectNum.value))).data().destino
-  );
-  fldNotas.value       = data.notas       || "";
-
-  // 2) Carga de totals (adultos, estudiantes, pax) desde Firebase
+  // 1) Cargo el total de adultos/estudiantes desde Firestore
   const snapG = await getDoc(doc(db, "grupos", selectNum.value));
   const g     = snapG.data() || {};
-  const totalAdults    = g.adultos     || 0;
-  const totalStudents  = g.estudiantes || 0;
-  const totalPax       = totalAdults + totalStudents;
+  const totalAdults   = g.adultos     || 0;
+  const totalStudents = g.estudiantes || 0;
 
+  // 2) Preparo campos de fecha/hora/actividad/notas
+  fldFecha.value = data.fecha;
+  fldHi.value    = data.horaInicio  || "07:00";
+  fldHf.value    = data.horaFin     || sumarUnaHora(fldHi.value);
+  fldAct.value   = data.actividad   || "";
+  await prepararCampoActividad(
+    "m-actividad",
+    g.destino
+  );
+  fldNotas.value = data.notas       || "";
+
+  // 3) Inicializo Adultos, Estudiantes y PAX
   if (isEdit) {
-    // Si estamos editando, dejamos los valores previos de esa actividad
     fldAdultos.value     = data.adultos     ?? totalAdults;
     fldEstudiantes.value = data.estudiantes ?? totalStudents;
-    fldPax.value         = data.pasajeros   ?? totalPax;
   } else {
-    // En nuevo, siempre inicializamos con los totales del grupo
     fldAdultos.value     = totalAdults;
     fldEstudiantes.value = totalStudents;
-    fldPax.value         = totalPax;
   }
+  // PAX numérico desde el primer valor
+  fldPax.value = Number(fldAdultos.value) + Number(fldEstudiantes.value);
 
-  // 3) Sincronizar horaFin si cambian horaInicio
+  // 4) Engancho (una sola vez) la función de recálculo
+  //    Si ya la habías enganchado, podrías primero removerla:
+  fldAdultos.removeEventListener('input', actualizarPax);
+  fldEstudiantes.removeEventListener('input', actualizarPax);
+  fldAdultos.addEventListener('input', actualizarPax);
+  fldEstudiantes.addEventListener('input', actualizarPax);
+
+  // 5) Aseguro que horaFin sume +1h si cambias horaInicio
   fldHi.onchange = () => {
     fldHf.value = sumarUnaHora(fldHi.value);
-    // y recalculamos pax también si quisieras forzar recálculo automático:
-    // fldPax.value = totalAdults + totalStudents;
   };
 
-  // 4) Mostrar modal
+  // 6) Abro el modal
   modalBg.style.display = modal.style.display = "block";
+}
+
+// Función externa para no redeclararla en cada openModal()
+function actualizarPax() {
+  const a = parseInt(fldAdultos.value, 10) || 0;
+  const e = parseInt(fldEstudiantes.value, 10) || 0;
+  fldPax.value = a + e;
 }
 
 
