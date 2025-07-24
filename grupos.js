@@ -80,8 +80,8 @@ async function cargarYMostrarTabla() {
   
   valores.forEach(item => {
     const fila = item.fila;
-    destinosUnicos.add(fila[8]);   // columna “Destino” en índice 8
-    aniosUnicos.add(fila[7]);      // columna “Año” en índice 7
+    destinosUnicos.add(fila[10]);   // columna “Destino” 
+    aniosUnicos.add(fila[3]);      // columna “Año” 
   });
   
   // convierte Sets a Arrays ordenados
