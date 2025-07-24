@@ -13,7 +13,8 @@ import {
 
 // 2️⃣ CONSTANTES Y CATÁLOGOS
 const auth     = getAuth(app);
-const sheetURL = "https://script.google.com/macros/s/.../exec"; // tu URL
+const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
+
 
 const campos = [
   'numeroNegocio','identificador','nombreGrupo','cantidadgrupo',
