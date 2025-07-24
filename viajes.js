@@ -65,37 +65,35 @@ function initModal(){
 async function renderVuelos(){
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
+
+  // Carga y ordena
   const snap = await getDocs(collection(db,'vuelos'));
   vuelos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   vuelos.sort((a,b)=>new Date(a.fechaIda)-new Date(b.fechaIda));
 
+  // Recorre cada vuelo
   for(const v of vuelos){
-    const card=document.createElement('div');
-    card.className='flight-card';
-    const fmt=iso=>new Date(iso).toLocaleDateString('es-CL',{
-      weekday:'long',day:'2-digit',month:'long',year:'numeric'
-    }).replace(/(^\w)/,m=>m.toUpperCase());
+    // Inicializa totales por vuelo
+    let totA = 0, totE = 0, totC = 0;
+    let confA = 0, confE = 0, confC = 0;
 
-    // inicializamos como números
-    let totA=0, totE=0, totC=0, confA=0, confE=0, confC=0;
-
+    // Construye las filas de grupos
     const filas = (v.grupos || []).map((gObj, idx) => {
-      const g = grupos.find(x => x.id === gObj.id) || {};
+      const g = grupos.find(x=>x.id===gObj.id) || {};
 
-      // ——— Aquí forzamos a número ———
-      const a = Number(g.adultos)     || 0;
-      const e = Number(g.estudiantes) || 0;
-      // ————————————————————————
+      // ——— Forzamos a número ———
+      const a = parseInt(g.adultos     || 0, 10);
+      const e = parseInt(g.estudiantes || 0, 10);
 
-      // Contar coordinadores
+      // Contamos coordinadores
       const nombresArr = Array.isArray(g.nombresCoordinadores)
         ? g.nombresCoordinadores
         : (g.nombresCoordinadores
            ? g.nombresCoordinadores.split(',').map(s=>s.trim())
            : ['']);
-      const c = nombresArr.length || 1;
+      const c = nombresArr.length;
 
-      // Sumas numéricas
+      // Suma numérica
       totA += a;
       totE += e;
       totC += c;
@@ -105,43 +103,75 @@ async function renderVuelos(){
         confC += c;
       }
 
-      const mail = gObj.changedBy || '–';
+      const totalRow = a + e + c;
+      const mail     = gObj.changedBy || '–';
 
       return `
         <div class="group-item">
           <div class="num">${g.numeroNegocio}</div>
           <div class="name">
-            <span class="group-name" onclick="openGroupModal('${g.id}')">${g.nombreGrupo}</span>
-            <span class="pax-inline">${a + e + c} (A:${a} E:${e} C:${c})</span>
+            <span class="group-name"
+                  onclick="openGroupModal('${g.id}')">
+              ${g.nombreGrupo}
+            </span>
+            <span class="pax-inline">
+              ${totalRow} (A:${a} E:${e} C:${c})
+            </span>
           </div>
           <div class="status-cell">
-            <span>${gObj.status==='confirmado'?'✅ Confirmado':'🕗 Pendiente'}</span>
+            <span>
+              ${gObj.status==='confirmado'
+                ? '✅ Confirmado'
+                : '🕗 Pendiente'}
+            </span>
             <span class="by-email">${mail}</span>
-            <button class="btn-small" onclick="toggleStatus('${v.id}',${idx})">🔄</button>
+            <button class="btn-small"
+                    onclick="toggleStatus('${v.id}',${idx})">
+              🔄
+            </button>
           </div>
           <div class="delete-cell">
-            <button class="btn-small" onclick="removeGroup('${v.id}',${idx})">🗑️</button>
+            <button class="btn-small"
+                    onclick="removeGroup('${v.id}',${idx})">
+              🗑️
+            </button>
           </div>
         </div>`;
     }).join('');
 
+    // Crea la tarjeta completa
+    const fmt = iso => new Date(iso)
+      .toLocaleDateString('es-CL',{
+        weekday:'long',day:'2-digit',month:'long',year:'numeric'
+      }).replace(/(^\w)/,m=>m.toUpperCase());
+
+    const card = document.createElement('div');
+    card.className = 'flight-card';
     card.innerHTML = `
       <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
-      <p class="dates">Origen: ${v.origen||'–'} &nbsp; Destino: ${v.destino||'–'}</p>
-      <p class="dates">Ida: ${fmt(v.fechaIda)} ↔️ Vuelta: ${fmt(v.fechaVuelta)}</p>
+      <p class="dates">
+        Origen: ${v.origen||'–'} &nbsp; Destino: ${v.destino||'–'}
+      </p>
+      <p class="dates">
+        Ida: ${fmt(v.fechaIda)} ↔️ Vuelta: ${fmt(v.fechaVuelta)}
+      </p>
       <div>${filas || '<p>— Sin grupos —</p>'}</div>
       <p><strong>Total Pax:</strong>
-         ${totA + totE + totC} (A:${totA} E:${totE} C:${totC})
+         ${totA + totE + totC}
+         (A:${totA} E:${totE} C:${totC})
          – Confirmados: ${confA + confE + confC}
-         (A:${confA} E:${confE} C:${confC})</p>
+         (A:${confA} E:${confE} C:${confC})
+      </p>
       <div class="actions">
         <button class="btn-add btn-edit">✏️ Editar</button>
         <button class="btn-add btn-del">🗑️ Eliminar</button>
       </div>`;
 
-    cont.appendChild(card);
+    // Añade event listeners
     card.querySelector('.btn-edit').onclick = ()=>openModal(v);
-    card.querySelector('.btn-del').onclick  = ()=>deleteVuelo(v.id);
+    card.querySelector('.btn-del' ).onclick = ()=>deleteVuelo(v.id);
+
+    cont.appendChild(card);
   }
 }
 
