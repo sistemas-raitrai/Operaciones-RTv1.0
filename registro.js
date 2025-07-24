@@ -100,7 +100,7 @@ async function init() {
   elems.destinosList.innerHTML =
     DESTINOS_CANONICOS.map(d => `<option>${d}</option>`).join('');
 
-  ['numeroNegocio','nombreGrupo'].forEach(id => {
+  ['numeroNegocio','nombreGrupo','identificador'].forEach(id => {
     elems[id].onchange = () => loadDatos(ventas);
   });
 
@@ -193,19 +193,24 @@ async function loadDatos(ventas) {
   }
 
   // 7.2) luego Firebase
-  const ref  = doc(db, 'grupos', elems.numeroNegocio.value);
+  const negocio   = elems.numeroNegocio.value;
+  const identific = elems.identificador.value;
+  const docId     = `${negocio}-${identific}`;
+  const ref       = doc(db, 'grupos', docId);
   const snap = await getDoc(ref);
   if (snap.exists()) {
     const data = snap.data();
     if (data.identificador) elems.identificador.value = data.identificador;
-    paintTable(elems.numeroNegocio.value);
+    paintTable(docId);
   }
 }
 
 // 8️⃣ GUARDAR EN FIREBASE Y REGISTRAR HISTORIAL
 async function guardar() {
-  const id = elems.numeroNegocio.value;
-  const ref = doc(db, 'grupos', id);
+  const negocio   = elems.numeroNegocio.value;
+  const identific = elems.identificador.value;
+  const docId     = `${negocio}-${identific}`;
+  const ref       = doc(db,'grupos',docId);
   const user = auth.currentUser.email;
   const payload = {};
   campos.forEach(c => payload[c] = elems[c].value);
@@ -228,7 +233,7 @@ async function guardar() {
     const col = collection(db, 'historial');
     await Promise.all(cambios.map(c =>
       addDoc(col, {
-        numeroNegocio: id,
+        numeroNegocio: docId,
         campo: c.campo,
         anterior: c.anterior,
         nuevo: c.nuevo,
@@ -239,7 +244,7 @@ async function guardar() {
   }
 
   alert('✅ Datos guardados en Firestore');
-  paintTable(id);
+  paintTable(docId);
 }
 
 // 9️⃣ PINTAR TABLA INFERIOR
