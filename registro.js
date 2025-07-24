@@ -100,9 +100,15 @@ async function init() {
   elems.destinosList.innerHTML =
     DESTINOS_CANONICOS.map(d => `<option>${d}</option>`).join('');
 
-  ['numeroNegocio','nombreGrupo','identificador'].forEach(id => {
-    elems[id].onchange = () => loadDatos(ventas);
-  });
+  ['numeroNegocio','nombreGrupo']
+     .forEach(id => elems[id].onchange = () => loadDatos(ventas));
+  // Cuando sólo cambie el identificador, recarga la tabla DB
+  elems.identificador.onchange = () => {
+    const negocio   = elems.numeroNegocio.value;
+    const identific = elems.identificador.value;
+    const docId     = `${negocio}-${identific}`;
+    paintTable(docId);
+  };
 
   elems.destino.onchange      = handleDestinoChange;
   elems.programa.onchange     = handleProgramaChange;
