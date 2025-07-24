@@ -70,8 +70,9 @@ const elems = {};
   'asistenciaEnViajes','autorizacion','fechaDeViaje',
   'vendedora','observaciones',
   'formRegistro','tbodyTabla'
-  elems.btnGuardar = document.getElementById('btnGuardar');
 ].forEach(id => elems[id] = document.getElementById(id));
+
+elems.btnGuardar = document.getElementById('btnGuardar');
 
 // 4️⃣ AUTENTICACIÓN Y ARRANQUE
 auth.onAuthStateChanged(user => {
@@ -189,9 +190,6 @@ async function loadDatos(ventas) {
     elems.hoteles.innerHTML = union.map(h => `<option value="${h}" ${libres.includes(h) ? 'selected' : ''}>${h}</option>`).join('');
   }
 
-  // Buscar en Firebase y pintar tabla si existe
-  const snap = await getDoc(doc(db, 'grupos', id));
-  if (snap.exists()) paintTable(id);
   // 7.2) luego Firebase
   const ref  = doc(db, 'grupos', id);
   const snap = await getDoc(ref);
