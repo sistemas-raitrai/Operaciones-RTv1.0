@@ -125,7 +125,7 @@ async function cargarYMostrarTabla() {
     ],
     pageLength: -1,
     lengthChange: false,
-    order: [[8,'desc'],[9,'desc'],[10,'desc'],[1,'desc']],
+    order: [[9,'desc'],[10,'desc'],[11,'desc'],[1,'desc']],
     scrollX: true,
     autoWidth: false,
     columnDefs: [
