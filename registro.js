@@ -156,7 +156,7 @@ function ajustComp(e) {
 
 // 7️⃣ CARGAR DATOS DESDE VENTAS Y FIREBASE
 async function loadDatos(ventas) {
-  const id = elems.numeroNegocio.value || '';
+  let id = elems.numeroNegocio.value || '';
   const nombre = elems.nombreGrupo.value || '';
 
   // Buscar coincidencia en ventas
