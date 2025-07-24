@@ -390,19 +390,25 @@ function sumarUnaHora(hhmm) {
 }
 
 // —————————————————————————————————
-// 8) Obtener lista de actividades según destino
+// 8) Obtiene todas las actividades desde Servicios/{destino}/Listado
 // —————————————————————————————————
 async function obtenerActividadesPorDestino(destino) {
   if (!destino) return [];
-  const ref = collection(db, "proveedores");
+
+  // Construye la ruta: servicios/{destino}/Listado
+  const ref = collection(db, "servicios", destino, "Listado");
   const snap = await getDocs(ref);
+
   const actividades = [];
-  snap.forEach(doc => {
-    const data = doc.data();
-    if (data.destino?.toUpperCase() === destino.toUpperCase() && data.actividad) {
-      actividades.push(data.actividad.toUpperCase());
-    }
+  snap.forEach(docSnap => {
+    // Asumo que el nombre de la actividad está en doc.id
+    // o en un campo 'nombre' dentro del documento: ajústalo según tu esquema
+    actividades.push(
+      (docSnap.data().nombreActividad || docSnap.id).toUpperCase()
+    );
   });
+
+  // Elimina duplicados y ordena alfabéticamente
   return [...new Set(actividades)].sort();
 }
 
