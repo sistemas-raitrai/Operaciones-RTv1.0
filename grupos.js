@@ -11,8 +11,8 @@ const auth = getAuth(app);
 // Propiedades en el mismo orden que aparecen en la tabla
 const camposFire = [
   "numeroNegocio",      // 0
-  "nombreGrupo",        // 1
-  "identificador",      // 2
+  "identificador",      // 1
+  "nombreGrupo",        // 2
   "anoViaje",           // 3
   "vendedora",          // 4 
   "cantidadgrupo",      // 5
