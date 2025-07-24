@@ -276,12 +276,12 @@ document.getElementById("btnAbrirGrupos")
     document.getElementById("modal-grupos").style.display = "block";
     document.getElementById("modal-grupos-backdrop").style.display = "block";
     // Si quieres pasar algún parámetro, cambia src dinámicamente:
-    // document.getElementById("iframe-grupos").src = "grupos.html?filtro=" + elems.anoViaje.value;
+    document.getElementById("iframe-grupos").src = "grupos.html?filtro=" + elems.anoViaje.value;
   });
 
 window.cerrarGrupos = function() {
   document.getElementById("modal-grupos").style.display = "none";
   document.getElementById("modal-grupos-backdrop").style.display = "none";
   // limpia el iframe si necesitas:
-  // document.getElementById("iframe-grupos").src = "";
+  document.getElementById("iframe-grupos").src = "";
 };
