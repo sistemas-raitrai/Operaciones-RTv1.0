@@ -45,6 +45,7 @@ async function loadGrupos(){
 // 3) Botón “Agregar Vuelo”
 function bindUI(){
   document.getElementById('btnAddVuelo').onclick = ()=>openModal();
+  document.getElementById('btnExportExcel').onclick = exportToExcel;
 }
 
 // 4) Modal Vuelo + Choices.js
@@ -325,3 +326,46 @@ async function loadHistorial(){
   if(dtHist) dtHist.destroy();
   dtHist=$('#hist-table').DataTable({ language:{url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'}, order:[[0,'desc']] });
 }
+
+function exportToExcel(){
+  // 1) Construir un array de objetos plano con tus datos
+  //    Aquí un ejemplo con vuelos y sus totales:
+  const data = vuelos.map(v => {
+    // calcula totales de este vuelo igual que en renderVuelos:
+    let totA=0, totE=0, totC=0;
+    (v.grupos||[]).forEach(gObj => {
+      const g = grupos.find(x=>x.id===gObj.id) || {};
+      const a = parseInt(g.adultos||0,10);
+      const e = parseInt(g.estudiantes||0,10);
+      const nombresArr = Array.isArray(g.nombresCoordinadores)
+        ? g.nombresCoordinadores
+        : (g.nombresCoordinadores
+           ? g.nombresCoordinadores.split(',').map(s=>s.trim())
+           : []);
+      const c = nombresArr.length || 1;
+      totA += a; totE += e; totC += c;
+    });
+    return {
+      Aerolínea:    v.proveedor,
+      Vuelo:        v.numero,
+      Tipo:         v.tipoVuelo,
+      Origen:       v.origen,
+      Destino:      v.destino,
+      Fecha_Ida:    v.fechaIda,
+      Fecha_Vuelta: v.fechaVuelta,
+      Total_Adultos: totA,
+      Total_Estudiantes: totE,
+      Total_Coordinadores: totC,
+      Total_Pax:    totA + totE + totC
+    };
+  });
+
+  // 2) Convierte a hoja de cálculo
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Vuelos");
+
+  // 3) Descarga automática
+  XLSX.writeFile(wb, "planificacion_vuelos.xlsx");
+}
+
