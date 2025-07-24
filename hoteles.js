@@ -36,7 +36,7 @@ async function init(){
   document.getElementById('hist-end').onchange   = loadHistorial;
 }
 
-// 2) Cargo grupos de Firestore
+// 2) Cargo grupos
 async function loadGrupos(){
   const snap = await getDocs(collection(db,'grupos'));
   grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
@@ -44,8 +44,8 @@ async function loadGrupos(){
 
 // 3) Botones principales
 function bindUI(){
-  document.getElementById('btnAddHotel').onclick    = ()=>openModal();
-  document.getElementById('btnExportExcel').onclick = exportToExcel;
+  document.getElementById('btnAddHotel').onclick     = ()=>openModal();
+  document.getElementById('btnExportExcel').onclick  = exportToExcel;
 }
 
 // 4) Modal Hotel + Choices.js
@@ -62,7 +62,26 @@ function initModal(){
   );
 }
 
-// 5) Render de hoteles
+// Helper: rango de fechas inclusive
+function getDateRange(startIso, endIso) {
+  const res = [];
+  let cur = new Date(startIso);
+  const end = new Date(endIso);
+  while (cur <= end) {
+    res.push(cur.toISOString().slice(0,10));
+    cur.setDate(cur.getDate()+1);
+  }
+  return res;
+}
+
+// Helper: formatear “jueves, 28 de noviembre de 2025”
+function fmtLong(iso) {
+  return new Date(iso).toLocaleDateString('es-CL',{
+    weekday:'long', day:'2-digit', month:'long', year:'numeric'
+  }).replace(/(^\w)/,m=>m.toUpperCase());
+}
+
+// 5) Render de hoteles con grilla diaria
 async function renderHoteles(){
   const cont = document.getElementById('hoteles-container');
   cont.innerHTML = '';
@@ -72,72 +91,40 @@ async function renderHoteles(){
   hoteles.sort((a,b)=>new Date(a.fechaIn)-new Date(b.fechaIn));
 
   for(const h of hoteles){
-    let totA=0, totE=0, totC=0, confA=0, confE=0, confC=0;
-
-    const filas = (h.grupos||[]).map((gObj, idx) => {
-      const g = grupos.find(x=>x.id===gObj.id)||{};
-      const a = parseInt(g.adultos||0,10);
-      const e = parseInt(g.estudiantes||0,10);
-      const nombresArr = Array.isArray(g.nombresCoordinadores)
-        ? g.nombresCoordinadores
-        : (g.nombresCoordinadores
-           ? g.nombresCoordinadores.split(',').map(s=>s.trim())
-           : ['']);
-      const c = nombresArr.length||1;
-
-      totA += a; totE += e; totC += c;
-      if(gObj.status==='confirmado'){
-        confA += a; confE += e; confC += c;
-      }
-
-      const totalRow = a+e+c;
-      const mail = gObj.changedBy||'–';
-
-      return `
-        <div class="group-item">
-          <div class="num">${g.numeroNegocio}</div>
-          <div class="name">
-            <span class="group-name"
-                  onclick="openGroupModal('${g.id}')">
-              ${g.nombreGrupo}
-            </span>
-            <span class="pax-inline">
-              ${totalRow} (A:${a} E:${e} C:${c})
-            </span>
-          </div>
-          <div class="status-cell">
-            <span>${gObj.status==='confirmado'?'✅':'🕗'}</span>
-            <span class="by-email">${mail}</span>
-            <button class="btn-small"
-                    onclick="toggleStatus('${h.id}',${idx})">🔄</button>
-          </div>
-          <div class="delete-cell">
-            <button class="btn-small"
-                    onclick="removeGroup('${h.id}',${idx})">🗑️</button>
-          </div>
-        </div>`;
-    }).join('');
-
-    const fmt = iso => new Date(iso).toLocaleDateString('es-CL',{
-      weekday:'short',day:'2-digit',month:'short'
+    // genera fechas y ocupación
+    const fechas = getDateRange(h.fechaIn, h.fechaOut);
+    const ocupPorDia = fechas.map(fecha => {
+      let suma = 0;
+      (h.grupos||[]).forEach(gObj => {
+        const g = grupos.find(x=>x.id===gObj.id)||{};
+        const a = parseInt(g.adultos||0,10);
+        const e = parseInt(g.estudiantes||0,10);
+        const c = Array.isArray(g.nombresCoordinadores)
+                  ? g.nombresCoordinadores.length
+                  : (g.nombresCoordinadores
+                     ? g.nombresCoordinadores.split(',').length
+                     : 1);
+        if (fecha >= h.fechaIn && fecha <= h.fechaOut) {
+          suma += a+e+c;
+        }
+      });
+      return suma;
     });
 
+    // celdas HTML
+    const filaFechas = fechas.map((f,i)=>`
+      <div class="dia-cell">
+        <strong>${new Date(f).toLocaleDateString('es-CL',{day:'2-digit',month:'short'})}</strong>
+        ${ocupPorDia[i]}
+      </div>`).join('');
+
+    // crea card
     const card = document.createElement('div');
     card.className='hotel-card';
     card.innerHTML=`
       <h4>🏨 ${h.nombre}</h4>
-      <p class="dates">
-        In: ${fmt(h.fechaIn)} ↔️ Out: ${fmt(h.fechaOut)}
-      </p>
-      <p>
-        Capacidad: Sng:${h.single} Dob:${h.double}
-        Tri:${h.triple} Cuad:${h.quad}
-      </p>
-      <div>${filas||'<p>— Sin grupos —</p>'}</div>
-      <p>
-        <strong>Total Pax:</strong> ${totA+totE+totC}
-         – Conf: ${confA+confE+confC}
-      </p>
+      <p class="dates">${fmtLong(h.fechaIn)} ↔️ ${fmtLong(h.fechaOut)}</p>
+      <div class="ocupacion-grid">${filaFechas}</div>
       <div class="actions">
         <button class="btn-add btn-edit">✏️ Editar</button>
         <button class="btn-add btn-del">🗑️ Eliminar</button>
@@ -151,17 +138,15 @@ async function renderHoteles(){
 
 // 6) Abrir modal Hotel
 function openModal(h=null){
-  isEdit = !!h;
-  editId = h?.id||null;
+  isEdit = !!h; editId = h?.id||null;
   document.getElementById('modal-title').textContent = h?'Editar Hotel':'Nuevo Hotel';
-  ['nombre','fechaIn','fechaOut','single','double','triple','quad'].forEach(k=>
-    document.getElementById(`h-${k}`).value = h?.[k]||''
-  );
+  ['nombre','fechaIn','fechaOut','single','double','triple','quad']
+    .forEach(k=>document.getElementById(`h-${k}`).value = h?.[k]||'');
   document.getElementById('h-statusDefault').value = h?.grupos?.[0]?.status||'confirmado';
   choiceGrupos.removeActiveItems();
   if(h?.grupos) choiceGrupos.setChoiceByValue(h.grupos.map(x=>x.id));
   document.getElementById('modal-backdrop').style.display='block';
-  document.getElementById('modal-hotel').style.display   ='block';
+  document.getElementById('modal-hotel').style.display='block';
 }
 
 // 7) Guardar/Editar Hotel + Historial
@@ -199,8 +184,7 @@ async function onSubmitHotel(evt){
       usuario:currentUserEmail, ts:serverTimestamp()
     });
   }
-  closeModal();
-  renderHoteles();
+  closeModal(); renderHoteles();
 }
 
 // 8) Eliminar Hotel
@@ -257,8 +241,7 @@ function closeModal(){
   document.getElementById('modal-hotel').style.display   ='none';
 }
 
-// 12) Grupo modal & guardar grupo: copia desde viajes.js **literal**
-
+// 12) Modal Grupo & Guardar Grupo (idéntico a viajes.js)
 async function onSubmitGroup(evt){
   evt.preventDefault();
   const form = document.getElementById('group-form');
@@ -283,22 +266,53 @@ async function onSubmitGroup(evt){
   closeGroupModal();
 }
 
-// 13) Historial: copia loadHistorial() de viajes.js sin cambios.
+// 13) Historial (idéntico a viajes.js)
+async function showHistorialModal(){
+  document.getElementById('hist-backdrop').style.display='block';
+  document.getElementById('hist-modal').style.display   ='block';
+  await loadHistorial();
+}
+function closeHistorialModal(){
+  document.getElementById('hist-backdrop').style.display='none';
+  document.getElementById('hist-modal').style.display   ='none';
+}
+async function loadHistorial(){
+  const tbody = document.querySelector('#hist-table tbody');
+  tbody.innerHTML = '';
+  const q = query(collection(db,'historial'),orderBy('ts','desc'));
+  const snap = await getDocs(q);
+  for(const dSnap of snap.docs){
+    const d = dSnap.data(), ts = d.ts?.toDate();
+    const tr = document.createElement('tr');
+    tr.innerHTML=`
+      <td>${ts?ts.toLocaleString('es-CL'):''}</td>
+      <td>${d.usuario||''}</td>
+      <td>${d.hotelId||d.grupoId||''}</td>
+      <td>${d.tipo||''}</td>
+      <td>${d.antes?JSON.stringify(d.antes):''}</td>
+      <td>${d.despues?JSON.stringify(d.despues):''}</td>`;
+    tbody.appendChild(tr);
+  }
+  if(dtHist) dtHist.destroy();
+  dtHist = $('#hist-table').DataTable({
+    language:{url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'},
+    order:[[0,'desc']]
+  });
+}
 
-// 14) Exportar a Excel (Opción A: detalle por grupo)
+// 14) Exportar a Excel (detalle por grupo)
 function exportToExcel(){
   const data = [];
   hoteles.forEach(h => {
-    h.grupos.forEach(gObj => {
+    (h.grupos||[]).forEach(gObj => {
       const g = grupos.find(x=>x.id===gObj.id)||{};
       const a = parseInt(g.adultos||0,10);
       const e = parseInt(g.estudiantes||0,10);
-      const nombresArr = Array.isArray(g.nombresCoordinadores)
-        ? g.nombresCoordinadores
-        : (g.nombresCoordinadores
-           ? g.nombresCoordinadores.split(',').map(s=>s.trim())
-           : []);
-      const c = nombresArr.length||1;
+      const c = Array.isArray(g.nombresCoordinadores)
+                ? g.nombresCoordinadores.length
+                : (g.nombresCoordinadores
+                   ? g.nombresCoordinadores.split(',').length
+                   : 1);
       data.push({
         Hotel:      h.nombre,
         CheckIn:    h.fechaIn,
@@ -314,7 +328,6 @@ function exportToExcel(){
       });
     });
   });
-
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);
   XLSX.utils.book_append_sheet(wb, ws, "DetalleHoteles");
