@@ -11,6 +11,9 @@ import {
   addDoc
 } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
+// Array global de ventas (Sheet)
+let ventas = [];
+
 // 2️⃣ CONSTANTES Y CATÁLOGOS
 const auth     = getAuth(app);
 const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
@@ -82,7 +85,7 @@ auth.onAuthStateChanged(user => {
 
 // 5️⃣ INICIALIZACIÓN
 async function init() {
-  const ventas = await (await fetch(sheetURL)).json();
+  ventas = await (await fetch(sheetURL)).json();
   const anos = [...new Set(ventas.map(r => r.anoViaje))].sort();
 
   elems.filtroAno.innerHTML =
@@ -238,8 +241,10 @@ async function guardar() {
     ));
   }
 
-  alert('✅ Datos guardados en Firestore');
+  
   paintTable(id);
+  loadDatos(ventas);
+  alert('✅ Datos guardados en Firestore');
 }
 
 // 9️⃣ PINTAR TABLA INFERIOR
