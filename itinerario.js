@@ -295,32 +295,28 @@ function sumarUnaHora(hhmm){
 // 9) Plantillas: guardar y cargar
 // —————————————————————————————————
 async function guardarPlantilla(){
-  const nombre=prompt("Nombre de la plantilla:");
+  const nombre = prompt("Nombre de la plantilla:");
   if(!nombre) return;
-  const grupoId=selectNum.value;
-  const snapG=await getDoc(doc(db,'grupos',grupoId));
-  const g=snapG.data()||{};
-  const datosParaPlantilla={};
+  const grupoId = selectNum.value;
+  const snapG = await getDoc(doc(db,'grupos',grupoId));
+  const g = snapG.data()||{};
+  const datosParaPlantilla = {};
   for(const fecha in g.itinerario){
-    datosParaPlantilla[fecha]=g.itinerario[fecha].map(act=>({
+    datosParaPlantilla[fecha] = g.itinerario[fecha].map(act=>({
       horaInicio:act.horaInicio,
-      horaFin:act.horaFin,
-      actividad:act.actividad,
-      notas:act.notas
+      horaFin:   act.horaFin,
+      actividad: act.actividad,
+      notas:     act.notas
     }));
   }
   await addDoc(collection(db,'plantillasItinerario'),{
     nombre, creador:auth.currentUser.email,
-    createdAt:new Date(), datos:datosParaPlantilla
+    createdAt:new Date(),
+    datos:datosParaPlantilla
   });
   alert("Plantilla guardada");
   await cargarListaPlantillas();
-}
-
-  // 4) Guarda en Firestore y recarga UI
-  await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
-  renderItinerario();
-}
+}  // <- aquí cierra la función
 
 // Lista de plantillas con cargar al click y ❌ para borrar
 async function cargarListaPlantillas() {
