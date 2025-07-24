@@ -19,8 +19,11 @@
   </script>
 
   <main class="formulario-container">
-    <h2>REGISTRO DE GRUPOS</h2>
-    <div style="text-align: right;">
+    <h2>Registro de Grupo</h2>
+    <div style="text-align: right; display: flex; justify-content: flex-end; gap: 0.5rem;">
+      <!-- 📋 Abrir Grupos -->
+      <button id="btnAbrirGrupos" class="btn-add" title="Ver lista de grupos">📋</button>
+      <!-- ✕ Cerrar -->
       <button onclick="window.history.back()" class="boton-cerrar">✕</button>
     </div>
 
@@ -182,6 +185,13 @@
         </thead>
         <tbody id="tbodyTabla"></tbody>
       </table>
+    </div>
+
+    <!-- Modal para Grupos -->
+    <div id="modal-grupos-backdrop" class="modal-backdrop" style="display:none;"></div>
+    <div id="modal-grupos" class="modal" style="display:none; width:80%; max-width:800px;">
+      <button onclick="cerrarGrupos()">✖</button>
+      <iframe id="iframe-grupos" src="grupos.html" width="100%" height="600" style="border:none;"></iframe>
     </div>
   </main>
 
