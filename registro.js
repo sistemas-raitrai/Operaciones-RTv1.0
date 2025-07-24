@@ -164,6 +164,8 @@ async function loadDatos(ventas) {
     String(r.numeroNegocio) === id || r.nombreGrupo === nombre
   );
   if (venta) {
+    elems.numeroNegocio.value = venta.numeroNegocio;
+    id = String(venta.numeroNegocio);
     campos.forEach(c => {
       if (c === 'identificador') return;  
       if (!['duracion','noches','fechaFin'].includes(c)) {
@@ -191,14 +193,12 @@ async function loadDatos(ventas) {
   }
 
   // 7.2) luego Firebase
-  const ref  = doc(db, 'grupos', id);
+  const ref  = doc(db, 'grupos', elems.numeroNegocio.value);
   const snap = await getDoc(ref);
   if (snap.exists()) {
-    // vuelca identificador si existe
     const data = snap.data();
     if (data.identificador) elems.identificador.value = data.identificador;
-    // pinta la fila
-    paintTable(id);
+    paintTable(elems.numeroNegocio.value);
   }
 }
 
