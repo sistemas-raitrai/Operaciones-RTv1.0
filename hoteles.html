@@ -7,16 +7,50 @@
 
   <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css"/>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+  <link rel="stylesheet"
+        href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
 
   <style>
-    /* TARJETAS DE HOTELES */
-    #hoteles-container { display:flex; flex-wrap:wrap; gap:1rem; margin-top:1rem; }
-    .hotel-card { flex:1 1 calc(50% - 1rem); border:1px solid #ccc; border-radius:8px; padding:1rem; background:#fafafa; box-shadow:0 2px 4px rgba(0,0,0,0.1); display:flex; flex-direction:column; justify-content:space-between; }
-    .dates { margin:0.5rem 0; font-size:0.95rem; }
-    .actions { margin-top:0.5rem; display:flex; gap:0.5rem; }
+    /* CONTENEDOR PRINCIPAL */
+    #hoteles-container {
+      display:flex;
+      flex-wrap:wrap;
+      gap:1rem;
+      margin-top:1rem;
+    }
+    .hotel-card {
+      flex:1 1 calc(50% - 1rem);
+      border:1px solid #ccc;
+      border-radius:8px;
+      padding:1rem;
+      background:#fafafa;
+      box-shadow:0 2px 4px rgba(0,0,0,0.1);
+      display:flex;
+      flex-direction:column;
+      gap:0.5rem;
+    }
+    .dates { margin:0; font-size:0.95rem; color:#555; }
+    .actions { margin-top:auto; display:flex; gap:0.5rem; }
     .btn-small { font-size:0.9em; padding:0.2em 0.5em; }
+
+    /* GRILLA DE OCUPACIÓN */
+    .ocupacion-grid {
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(80px,1fr));
+      gap:0.3rem;
+    }
+    .dia-cell {
+      background:#e0f7fa;
+      padding:0.3rem;
+      text-align:center;
+      font-size:0.8rem;
+      border-radius:4px;
+    }
+    .dia-cell strong { display:block; font-size:0.85rem; }
+
+    /* GRID DE GRUPOS (Modal) y demás estilos copiados de viajes.html */
     .group-item { display:grid; grid-template-columns:4rem 1fr auto auto; align-items:center; gap:0.5rem; padding:0.2rem 0; }
     .group-name { cursor:pointer; text-decoration:underline; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .pax-inline { font-weight:bold; white-space:nowrap; }
@@ -32,7 +66,7 @@
 </head>
 
 <body class="hoteles-page">
-  <!-- Header común -->
+  <!-- ENCABEZADO COMÚN -->
   <div id="encabezado"></div>
   <script type="module">
     (async () => {
@@ -41,7 +75,7 @@
     })();
   </script>
 
-  <!-- Controles -->
+  <!-- CONTROLES PRINCIPALES -->
   <main class="main">
     <div class="row">
       <div class="column long"><h2>Planificación de Hoteles:</h2></div>
@@ -58,7 +92,7 @@
     <div id="hoteles-container"></div>
   </main>
 
-  <!-- Modal Hotel -->
+  <!-- MODAL HOTEL -->
   <div id="modal-backdrop" class="modal-backdrop"></div>
   <div id="modal-hotel" class="modal">
     <h3 id="modal-title">Hotel</h3>
@@ -68,28 +102,20 @@
 
       <div class="row">
         <div class="column medium">
-          <label>Fecha Check-In</label>
+          <label>Check-In</label>
           <input type="date" id="h-fechaIn" required/>
         </div>
         <div class="column medium">
-          <label>Fecha Check-Out</label>
+          <label>Check-Out</label>
           <input type="date" id="h-fechaOut" required/>
         </div>
       </div>
 
       <div class="row">
-        <div class="column short">
-          <label>Singles</label><input type="number" id="h-single" min="0" value="0"/>
-        </div>
-        <div class="column short">
-          <label>Dobles</label><input type="number" id="h-double" min="0" value="0"/>
-        </div>
-        <div class="column short">
-          <label>Triples</label><input type="number" id="h-triple" min="0" value="0"/>
-        </div>
-        <div class="column short">
-          <label>Cuádruples</label><input type="number" id="h-quad"   min="0" value="0"/>
-        </div>
+        <div class="column short"><label>Singles</label><input type="number" id="h-single" min="0" value="0"/></div>
+        <div class="column short"><label>Dobles</label><input type="number" id="h-double" min="0" value="0"/></div>
+        <div class="column short"><label>Triples</label><input type="number" id="h-triple" min="0" value="0"/></div>
+        <div class="column short"><label>Cuádruples</label><input type="number" id="h-quad"   min="0" value="0"/></div>
       </div>
 
       <label>Grupos</label>
@@ -108,24 +134,18 @@
     </form>
   </div>
 
-  <!-- Modal Grupo (idéntico al de viajes.html) -->
+  <!-- MODAL EDITAR GRUPO -->
   <div id="group-backdrop" class="modal-backdrop"></div>
   <div id="group-modal" class="modal">
     <h3>Editar Grupo</h3>
     <form id="group-form" data-grupo-id="">
       <label>N° Negocio</label><input id="g-numeroNegocio" disabled/>
       <label>Nombre Grupo</label><input id="g-nombreGrupo" disabled/>
-      <label>Empresa de Bus</label><input id="g-empresaBus"/>
+      <label>Empresa Bus</label><input id="g-empresaBus"/>
       <div class="row">
-        <div class="column short">
-          <label>Adultos</label><input type="number" id="g-adultos" min="0"/>
-        </div>
-        <div class="column short">
-          <label>Estudiantes</label><input type="number" id="g-estudiantes" min="0"/>
-        </div>
-        <div class="column short">
-          <label>Coordinadores</label><input type="number" id="g-cantCoordinadores" min="1"/>
-        </div>
+        <div class="column short"><label>Adultos</label><input type="number" id="g-adultos" min="0"/></div>
+        <div class="column short"><label>Estudiantes</label><input type="number" id="g-estudiantes" min="0"/></div>
+        <div class="column short"><label>Coordinadores</label><input type="number" id="g-cantCoordinadores" min="1"/></div>
       </div>
       <label>Nombres Coordinadores</label>
       <textarea id="g-nombresCoordinadores" rows="2"></textarea>
@@ -136,7 +156,7 @@
     </form>
   </div>
 
-  <!-- Modal Historial (idéntico al de viajes.html) -->
+  <!-- MODAL HISTORIAL -->
   <div id="hist-backdrop" class="modal-backdrop"></div>
   <div id="hist-modal" class="modal">
     <div class="actions" style="justify-content:flex-end;margin-bottom:1rem;">
@@ -148,15 +168,14 @@
     <table id="hist-table" class="display" style="width:100%">
       <thead>
         <tr>
-          <th>Fecha</th><th>Usuario</th><th>Hotel/Grupo</th>
-          <th>Acción</th><th>Antes</th><th>Después</th>
+          <th>Fecha</th><th>Usuario</th><th>Hotel/Grupo</th><th>Acción</th><th>Antes</th><th>Después</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Dependencias JS -->
+  <!-- DEPENDENCIAS JS -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
