@@ -434,26 +434,140 @@ async function cargarListaPlantillas() {
 }
 
 async function cargarPlantilla() {
-  // … lógica existente …
+  const tplId = selPlantillas.value;
+  if (!tplId) {
+    return alert("Selecciona una plantilla");
+  }
+
+  // 1) Traigo plantilla y datos del grupo
+  const [tplSnap, grpSnap] = await Promise.all([
+    getDoc(doc(db, 'plantillasItinerario', tplId)),
+    getDoc(doc(db, 'grupos', selectNum.value))
+  ]);
+
+  if (!tplSnap.exists()) {
+    return alert("Plantilla no encontrada");
+  }
+  const tpl = tplSnap.data().datos;      // { fecha: [ {horaInicio,…}, … ], … }
+  const g   = grpSnap.data() || {};
+
+  // 2) Confirmar modo REEMPLAZAR vs AGREGAR
+  const reemplazar = confirm(
+    "¿Quieres REEMPLAZAR el itinerario actual?\n" +
+    "Pulsa [OK] para Reemplazar, [Cancelar] para Agregar."
+  );
+
+  // 3) Reconstruyo itinerario según elección
+  const nuevoIt = {};
+
+  // Parseo totales como números
+  const totalAdults   = parseInt(g.adultos, 10)     || 0;
+  const totalStudents = parseInt(g.estudiantes, 10) || 0;
+
+  if (reemplazar) {
+    // Solo datos de la plantilla
+    for (const fecha in tpl) {
+      nuevoIt[fecha] = tpl[fecha].map(act => ({
+        ...act,
+        pasajeros:   totalAdults + totalStudents,
+        adultos:     totalAdults,
+        estudiantes: totalStudents
+      }));
+    }
+  } else {
+    // Conservo lo que ya hay y añado la plantilla al final
+    const origIt = g.itinerario || {};
+    // 3.1 Copio originales
+    for (const fecha in origIt) {
+      nuevoIt[fecha] = origIt[fecha].slice();
+    }
+    // 3.2 Para cada fecha de la plantilla, la concateno
+    for (const fecha in tpl) {
+      const base = nuevoIt[fecha] || [];
+      const adicionales = tpl[fecha].map(act => ({
+        ...act,
+        pasajeros:   totalAdults + totalStudents,
+        adultos:     totalAdults,
+        estudiantes: totalStudents
+      }));
+      nuevoIt[fecha] = base.concat(adicionales);
+    }
+  }
+
+  // 4) Grabo en Firestore y refresco UI
+  await updateDoc(doc(db, 'grupos', selectNum.value), {
+    itinerario: nuevoIt
+  });
+  renderItinerario();
 }
+
 
 // —————————————————————————————————
 // Autocomplete de actividades
 // —————————————————————————————————
 async function obtenerActividadesPorDestino(destino) {
-  // … lógica existente …
+  if (!destino) return [];
+  const colecServicios = "Servicios";
+  const colecListado   = "Listado";
+  // el destino puede tener varios separados por “ Y ”
+  const partes = destino.toString()
+    .split(/\s+Y\s+/i)
+    .map(s => s.trim().toUpperCase());
+  const todas = [];
+  for (const parte of partes) {
+    const ref = collection(db, colecServicios, parte, colecListado);
+    try {
+      const snap = await getDocs(ref);
+      snap.docs.forEach(ds =>
+        todas.push((ds.data().nombre || ds.id).toUpperCase())
+      );
+    } catch (e) {
+      // si no existe esa sub-colección, ignoramos
+    }
+  }
+  // sin duplicados y ordenado
+  return [...new Set(todas)].sort();
 }
-async function prepararCampoActividad(inputId,destino){
-  // … lógica existente …
+
+async function prepararCampoActividad(inputId, destino) {
+  const input = document.getElementById(inputId);
+  const acts  = await obtenerActividadesPorDestino(destino);
+  // elimino el datalist anterior si existía
+  const oldList = document.getElementById("lista-" + inputId);
+  if (oldList) oldList.remove();
+
+  // creo uno nuevo
+  const dl = document.createElement("datalist");
+  dl.id = "lista-" + inputId;
+  acts.forEach(a => {
+    const opt = document.createElement("option");
+    opt.value = a;
+    dl.appendChild(opt);
+  });
+  document.body.appendChild(dl);
+  input.setAttribute("list", "lista-" + inputId);
 }
 
 // —————————————————————————————————
 // Calendario modal
 // —————————————————————————————————
 document.getElementById("btnAbrirCalendario")
-  .addEventListener("click", ()=>{
-    // … lógica existente …
-});
+  .addEventListener("click", () => {
+    const grupoTxt = selectNum
+      .options[selectNum.selectedIndex]
+      .text;
+    if (!selectNum.value) {
+      return alert("Selecciona un grupo");
+    }
+    const iframe = document.getElementById("iframe-calendario");
+    iframe.src = `calendario.html?busqueda=${encodeURIComponent(grupoTxt)}`;
+    document.getElementById("modal-calendario").style.display   = "block";
+    document.getElementById("modal-backdrop").style.display    = "block";
+  });
+
 window.cerrarCalendario = () => {
-  // … lógica existente …
+  document.getElementById("modal-calendario").style.display   = "none";
+  document.getElementById("modal-backdrop").style.display    = "none";
+  document.getElementById("iframe-calendario").src           = "";
 };
+
