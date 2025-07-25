@@ -11,6 +11,8 @@ import {
   addDoc
 } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
+let datosCargados = false;
+
 // 2️⃣ CONSTANTES Y CATÁLOGOS
 const auth     = getAuth(app);
 const sheetURL = "https://script.google.com/macros/s/AKfycbzuyexFe0dUTBNtRLPL9NDdt8-elJH5gk2O_yb0vsdpTWTgx_E0R0UnPsIGzRhzTjf1JA/exec";
@@ -100,16 +102,24 @@ async function init() {
   elems.destinosList.innerHTML =
     DESTINOS_CANONICOS.map(d => `<option>${d}</option>`).join('');
 
-  ['numeroNegocio','nombreGrupo']
-     .forEach(id => elems[id].onchange = () => loadDatos(ventas));
-  // Cuando sólo cambie el identificador, recarga la tabla DB
-  elems.identificador.onchange = () => {
-    const negocio   = elems.numeroNegocio.value;
-    const identific = elems.identificador.value;
-    const docId     = `${negocio}-${identific}`;
-    paintTable(docId);
+  elems.numeroNegocio.onchange = () => {
+    if (!datosCargados) loadDatos(ventas);
+    else cargarTablaInferior();
   };
+  elems.nombreGrupo.onchange = () => {
+    if (!datosCargados) loadDatos(ventas);
+    else cargarTablaInferior();
+  };
+  // Cuando sólo cambie el identificador, recarga la tabla DB
+  //elems.identificador.onchange = () => {
+    //const negocio   = elems.numeroNegocio.value;
+    //const identific = elems.identificador.value;
+    //const docId     = `${negocio}-${identific}`;
+    //paintTable(docId);
+  //};
 
+  elems.identificador.onchange = () => cargarTablaInferior();
+  
   elems.destino.onchange      = handleDestinoChange;
   elems.programa.onchange     = handleProgramaChange;
   elems.fechaInicio.onchange  = calcularFin;
@@ -162,6 +172,12 @@ function ajustComp(e) {
 
 // 7️⃣ CARGAR DATOS DESDE VENTAS Y FIREBASE
 async function loadDatos(ventas) {
+  // Si ya cargaste, no vuelvas a cargar desde ventas
+  if (datosCargados) {
+    cargarTablaInferior(); // Pero sí actualiza la tabla
+    return;
+  }
+
   let id = elems.numeroNegocio.value || '';
   const nombre = elems.nombreGrupo.value || '';
 
@@ -173,7 +189,7 @@ async function loadDatos(ventas) {
     elems.numeroNegocio.value = venta.numeroNegocio;
     id = String(venta.numeroNegocio);
     campos.forEach(c => {
-      if (c === 'identificador') return;  
+      if (c === 'identificador') return;
       if (!['duracion','noches','fechaFin'].includes(c)) {
         const tmp = document.createElement('div');
         tmp.innerHTML = venta[c] || '';
@@ -198,31 +214,42 @@ async function loadDatos(ventas) {
     elems.hoteles.innerHTML = union.map(h => `<option value="${h}" ${libres.includes(h) ? 'selected' : ''}>${h}</option>`).join('');
   }
 
-  // 7.2) luego Firebase
-  const negocio   = elems.numeroNegocio.value;
-  const identific = elems.identificador.value;
-  const docId     = `${negocio}-${identific}`;
-  const ref       = doc(db, 'grupos', docId);
-  const snap = await getDoc(ref);
-  if (snap.exists()) {
-    const data = snap.data();
-    if (data.identificador) elems.identificador.value = data.identificador;
+  datosCargados = true; // Ya no volverá a cargar desde ventas
+  cargarTablaInferior(); // Pero sí se carga la tabla si hay datos
+}
+
+function cargarTablaInferior() {
+  const negocio = elems.numeroNegocio.value.trim();
+  const identific = elems.identificador.value.trim();
+  const nombre = elems.nombreGrupo.value.trim();
+  if (negocio && identific && nombre) {
+    const docId = `${negocio}-${identific}`;
     paintTable(docId);
   }
 }
 
+
 // 8️⃣ GUARDAR EN FIREBASE Y REGISTRAR HISTORIAL
 async function guardar() {
-  const negocio   = elems.numeroNegocio.value;
-  const identific = elems.identificador.value;
-  const docId     = `${negocio}-${identific}`;
-  const ref       = doc(db,'grupos',docId);
-  const user = auth.currentUser.email;
+  let negocio   = elems.numeroNegocio.value.trim().replace(/\//g, '-');
+  let identific = elems.identificador.value.trim().replace(/\//g, '-');
+
+  if (!negocio || !identific || !elems.nombreGrupo.value.trim()) {
+    alert('⚠️ Debes completar número de negocio, identificador y nombre de grupo.');
+    return;
+  }
+
+  const docId = `${negocio}-${identific}`;
+  const ref   = doc(db, 'grupos', docId);
+  const user  = auth.currentUser.email;
+
   const payload = {};
   campos.forEach(c => payload[c] = elems[c].value);
-  payload.hoteles = [...elems.hoteles.selectedOptions].map(o => o.value);
+  payload.numeroNegocio = negocio;
+  payload.identificador = identific;
+  payload.hoteles = [...elems.hoteles.selectedOptions].map(o => o.value.trim()).filter(Boolean);
   payload.actualizadoPor = user;
-  payload.actualizadoEn = new Date();
+  payload.actualizadoEn  = new Date();
 
   const snapB = await getDoc(ref);
   const before = snapB.exists() ? snapB.data() : {};
