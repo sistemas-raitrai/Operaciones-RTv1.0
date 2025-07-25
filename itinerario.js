@@ -169,10 +169,12 @@ async function renderItinerario() {
       arr.forEach((act,i)=>{
         const li = document.createElement("li");
         li.className = "activity-card";
+        const paxCalc = (parseInt(act.adultos, 10) || 0) + (parseInt(act.estudiantes, 10) || 0);
+    
         li.innerHTML = `
           <h4>${act.horaInicio} – ${act.horaFin}</h4>
           <p><strong>${act.actividad}</strong></p>
-          <p>👥 ${act.pasajeros} pax (A:${act.adultos} E:${act.estudiantes})</p>
+          <p>👥 ${paxCalc} pax (A:${act.adultos} E:${act.estudiantes})</p>
           <div class="actions">
             <button class="btn-edit" data-idx="${i}">✏️</button>
             <button class="btn-del"  data-idx="${i}">🗑️</button>
