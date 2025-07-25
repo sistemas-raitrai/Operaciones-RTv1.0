@@ -421,86 +421,68 @@ async function guardarPlantilla() {
   await cargarListaPlantillas();
 }
 
-async function cargarListaPlantillas() {
-  selPlantillas.innerHTML = "";
-  const snap = await getDocs(collection(db,'plantillasItinerario'));
-  snap.docs.forEach(d => {
-    const data = d.data();
-    const opt  = document.createElement("option");
-    opt.value  = d.id;
-    opt.textContent = data.nombre;
-    selPlantillas.appendChild(opt);
-  });
-}
-
 async function cargarPlantilla() {
   const tplId = selPlantillas.value;
-  if (!tplId) {
-    return alert("Selecciona una plantilla");
-  }
+  if (!tplId) return alert("Selecciona una plantilla");
 
-  // 1) Traigo plantilla y datos del grupo
+  // 1) Obtén plantilla y grupo
   const [tplSnap, grpSnap] = await Promise.all([
     getDoc(doc(db, 'plantillasItinerario', tplId)),
     getDoc(doc(db, 'grupos', selectNum.value))
   ]);
-
-  if (!tplSnap.exists()) {
-    return alert("Plantilla no encontrada");
-  }
-  const tpl = tplSnap.data().datos;      // { fecha: [ {horaInicio,…}, … ], … }
+  if (!tplSnap.exists()) return alert("Plantilla no encontrada");
+  const tpl = tplSnap.data().datos;
   const g   = grpSnap.data() || {};
 
-  // 2) Confirmar modo REEMPLAZAR vs AGREGAR
+  // 2) Primer confirm: ¿está seguro que desea cargar un nuevo itinerario?
+  const ok = confirm(
+    "¿Seguro que quieres cargar un nuevo itinerario?\n" +
+    "Pulsa [OK] para continuar, [Cancelar] para volver al editor."
+  );
+  if (!ok) return;  // si cancela, salimos y volvemos al editor
+
+  // 3) Segundo confirm: Reemplazar o Agregar
   const reemplazar = confirm(
-    "¿Quieres REEMPLAZAR el itinerario actual?\n" +
-    "Pulsa [OK] para Reemplazar, [Cancelar] para Agregar."
+    "Pulsa [OK] para REEMPLAZAR todas las actividades,\n" +
+    "[Cancelar] para AGREGAR las de la plantilla al itinerario actual."
   );
 
-  // 3) Reconstruyo itinerario según elección
+  // 4) Construye el nuevo itinerario según elección
   const nuevoIt = {};
-
-  // Parseo totales como números
-  const totalAdults   = parseInt(g.adultos, 10)     || 0;
-  const totalStudents = parseInt(g.estudiantes, 10) || 0;
-
   if (reemplazar) {
-    // Solo datos de la plantilla
+    // Sólo la plantilla (con pax recalculado)
     for (const fecha in tpl) {
       nuevoIt[fecha] = tpl[fecha].map(act => ({
         ...act,
-        pasajeros:   totalAdults + totalStudents,
-        adultos:     totalAdults,
-        estudiantes: totalStudents
+        pasajeros:   (g.adultos||0) + (g.estudiantes||0),
+        adultos:     g.adultos || 0,
+        estudiantes: g.estudiantes || 0
       }));
     }
   } else {
-    // Conservo lo que ya hay y añado la plantilla al final
+    // Empalmar: mantiene existentes y luego añade plantilla
     const origIt = g.itinerario || {};
-    // 3.1 Copio originales
+    // Copia todo lo existente
     for (const fecha in origIt) {
       nuevoIt[fecha] = origIt[fecha].slice();
     }
-    // 3.2 Para cada fecha de la plantilla, la concateno
+    // Añade cada fecha de la plantilla al final
     for (const fecha in tpl) {
-      const base = nuevoIt[fecha] || [];
-      const adicionales = tpl[fecha].map(act => ({
+      const base   = nuevoIt[fecha] || [];
+      const extras = tpl[fecha].map(act => ({
         ...act,
-        pasajeros:   totalAdults + totalStudents,
-        adultos:     totalAdults,
-        estudiantes: totalStudents
+        pasajeros:   (g.adultos||0) + (g.estudiantes||0),
+        adultos:     g.adultos || 0,
+        estudiantes: g.estudiantes || 0
       }));
-      nuevoIt[fecha] = base.concat(adicionales);
+      nuevoIt[fecha] = base.concat(extras);
     }
   }
 
-  // 4) Grabo en Firestore y refresco UI
-  await updateDoc(doc(db, 'grupos', selectNum.value), {
-    itinerario: nuevoIt
-  });
+  // 5) Guarda en Firestore y recarga UI
+  await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
   renderItinerario();
 }
-
 
 // —————————————————————————————————
 // Autocomplete de actividades
