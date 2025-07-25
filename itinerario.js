@@ -421,6 +421,18 @@ async function guardarPlantilla() {
   await cargarListaPlantillas();
 }
 
+async function cargarListaPlantillas() {
+  selPlantillas.innerHTML = "";
+  const snap = await getDocs(collection(db,'plantillasItinerario'));
+  snap.docs.forEach(d => {
+    const data = d.data();
+    const opt  = document.createElement("option");
+    opt.value  = d.id;
+    opt.textContent = data.nombre;
+    selPlantillas.appendChild(opt);
+  });
+}
+
 async function cargarPlantilla() {
   const tplId = selPlantillas.value;
   if (!tplId) return alert("Selecciona una plantilla");
