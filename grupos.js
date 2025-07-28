@@ -128,6 +128,12 @@ async function cargarYMostrarTabla() {
     order: [[9,'desc'],[10,'desc'],[11,'desc'],[1,'desc']],
     scrollX: true,
     autoWidth: false,
+    fixedHeader: {
+      header: true,
+      // si tienes un header global o una barra fija arriba,
+      // ajusta este offset a su altura (en px):
+      headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
+    },
     columnDefs: [
       { targets: [8,9,14,15,17,19,22,23], visible: false },
       { targets: 0, width: '20px' },   // N° Negocio
