@@ -26,6 +26,17 @@ $(function () {
   });
 }); // ← cierra $(function)
 
+// Devuelve “Domingo 14 dic”, “Lunes 15 dic”, etc.
+function formatearDiaFechaBonita(fechaISO) {
+  const [yyyy, mm, dd] = fechaISO.split('-').map(Number);
+  const fecha = new Date(yyyy, mm - 1, dd);
+  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const nombreDia = dias[fecha.getDay()];
+  const diaMes = fecha.toLocaleDateString('es-CL', { day:'numeric', month:'short' });
+  // Capitalizar primera letra
+  return nombreDia.charAt(0).toUpperCase() + nombreDia.slice(1) + ' ' + diaMes;
+}
+
 // ------------------------------------------------------------------
 // Función principal: carga datos, construye tabla y DataTable
 // ------------------------------------------------------------------
@@ -112,7 +123,7 @@ async function generarTablaCalendario(userEmail) {
     const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
     // insertar <th> con o sin la clase
     $trhead.append(
-      `<th class="${clase}">${formatearFechaBonita(f)}</th>`
+      `<th class="${clase}">${formatearDiaFechaBonita(f)}</th>`
     );
   });
 
