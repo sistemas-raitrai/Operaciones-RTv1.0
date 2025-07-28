@@ -197,7 +197,18 @@ async function generarTablaCalendario(userEmail) {
   tabla.columns.adjust();                        // al cargar
   $(window).on('resize', () => tabla.columns.adjust());               // al redimensionar ventana
   tabla.on('column-visibility.dt', () => tabla.columns.adjust());    // al ocultar/mostrar columnas
-  
+
+  tabla.fixedHeader.adjust();
+  $(window).on('resize', () => {
+    tabla.columns.adjust();
+    tabla.fixedHeader.adjust();
+  });
+
+  tabla.on('draw.dt', () => {
+    tabla.columns.adjust();
+    tabla.fixedHeader.adjust();
+  });
+    
   // 5) Buscador libre
   $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
 
