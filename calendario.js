@@ -16,15 +16,12 @@ function getParametroURL(nombre) {
 const numeroNegocioInicial = getParametroURL("numeroNegocio");
 
 // Cuando el DOM y Firebase Auth estén listos:
-$(function () {
+$(function(){
   onAuthStateChanged(auth, user => {
-    if (!user) {
-      location = 'login.html';
-    } else {
-      generarTablaCalendario(user.email);
-    }
+    if (!user) location = 'login.html';
+    else generarTablaCalendario(user.email);
   });
-}); // ← cierra $(function)
+});
 
 // Devuelve “Domingo 14 dic”, “Lunes 15 dic”, etc.
 function formatearDiaFechaBonita(fechaISO) {
