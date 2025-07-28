@@ -167,6 +167,13 @@ async function generarTablaCalendario(userEmail) {
     $tbody.append($tr);
   }); // ← cierra grupos.forEach
 
+  // ──────────────────────────────────────────────────────────
+  // ➡️  CALCULA AQUÍ EL OFFSET sumando tu encabezado + toolbar
+  // ──────────────────────────────────────────────────────────
+  const altoEncabezado = $('#encabezado').outerHeight() || 0;
+  const altoToolbar   = $('#toolbar').outerHeight()  || 0;
+  const headerOffset  = altoEncabezado + altoToolbar;
+
   // 4) Inicializar DataTable
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
