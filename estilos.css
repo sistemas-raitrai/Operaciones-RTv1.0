@@ -754,3 +754,44 @@ body {
 #hoteles {
   height: 80px; 
 }
+
+/* ----------------------------------------------------------------------- */
+/* Estilos específicos para el calendario de actividades                  */
+/* ----------------------------------------------------------------------- */
+
+#tablaCalendario {
+  width: 100% !important;
+  background-color: #fff;
+  border-collapse: collapse;
+}
+
+#tablaCalendario th,
+#tablaCalendario td {
+  min-width: 160px; /* ⬅️ DOBLE DE LO NORMAL */
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+  white-space: pre-wrap;
+}
+
+/* Resaltar celdas de fecha de inicio y fin */
+#tablaCalendario td.inicio-fin {
+  background-color: #fff59d !important;
+  font-weight: bold;
+}
+
+/* ——————————————————————————————————————————————
+   Aquí agregas la regla para fijar el encabezado 
+   —————————————————————————————————————————————— */
+#tablaCalendario thead th {
+  position: sticky;
+  top: 0;
+  background-color: #f1f1f1;  /* ajusta al color de tu header */
+  z-index: 2;                 /* para que quede siempre encima */
+}
+
+/* Botones DataTables (Excel, columnas, etc.) */
+#toolbar .dt-button {
+  /* … */
+}
+
