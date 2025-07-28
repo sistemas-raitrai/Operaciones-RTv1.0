@@ -156,6 +156,7 @@ async function generarTablaCalendario(userEmail) {
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
     dom: 'Brtip',
+    pageLength: grupos.length, 
     buttons: [{
       extend: 'colvis',
       text: 'Ver columnas',
