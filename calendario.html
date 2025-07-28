@@ -78,6 +78,13 @@
       .then(html => {
         document.getElementById('encabezado').innerHTML = html;
       })
+      .then(() => {
+        // ¡Ahora sí! cargamos tu módulo
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.src  = './calendario.js';
+        document.body.appendChild(s);
+      })
       .catch(console.error);
   </script>
 
