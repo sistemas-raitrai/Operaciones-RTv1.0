@@ -61,6 +61,17 @@ async function generarTablaCalendario(userEmail) {
     });
   });
 
+  // ────────────────  
+  // Ordenar grupos por destino y luego por fechaInicio  
+  // ────────────────  
+  grupos.sort((a, b) => {
+    // 1) Comparar destinos
+    const cmp = a.destino.localeCompare(b.destino);
+    if (cmp !== 0) return cmp;
+    // 2) Si destinos iguales, comparar fechaInicio (YYYY-MM-DD)
+    return a.fechaInicio.localeCompare(b.fechaInicio);
+  });
+
   // 2) Preparar selects de filtros y cabecera
   const fechasOrdenadas = Array.from(fechasUnicas).sort();
   const destinos = Array.from(destinosSet).sort();
