@@ -165,7 +165,10 @@ async function generarTablaCalendario(userEmail) {
     dom: 'Brtip',
     pageLength: grupos.length, 
     order: [],
-    fixedHeader: true, 
+    fixedHeader: {
+      header: true,
+      headerOffset: 90    // ajusta este valor a la altura de tu header global
+    },
     buttons: [{
       extend: 'colvis',
       text: 'Ver columnas',
