@@ -180,6 +180,9 @@ async function generarTablaCalendario(userEmail) {
       header: true,
       headerOffset: 90    // ajusta este valor a la altura de tu header global
     },
+    fixedColumns:{
+      leftColumns: 5  // fija las primeras 5 columnas (N° Negocio, Grupo, Destino, Programa, Pax)
+    },
     buttons: [{
       extend: 'colvis',
       text: 'Ver columnas',
