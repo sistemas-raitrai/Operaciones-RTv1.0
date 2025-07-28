@@ -38,6 +38,8 @@ function formatearDiaFechaBonita(fechaISO) {
 // Función principal: carga datos, construye tabla y DataTable
 // ------------------------------------------------------------------
 async function generarTablaCalendario(userEmail) {
+  console.log("Inicializando calendario.js");
+  console.log("tablaCalendario existe?", !!document.getElementById('tablaCalendario'));
   // 1) Leer todos los grupos de Firestore
   const snapshot = await getDocs(collection(db, "grupos"));
   const grupos = [];
@@ -173,6 +175,12 @@ async function generarTablaCalendario(userEmail) {
   const altoEncabezado = $('#encabezado').outerHeight() || 0;
   const altoToolbar   = $('#toolbar').outerHeight()  || 0;
   const headerOffset  = altoEncabezado + altoToolbar;
+
+  // Check DOM antes de crear DataTable
+  if (!document.getElementById('tablaCalendario')) {
+    alert('La tabla no está lista en el DOM');
+    return;
+  }
 
   // 4) Inicializar DataTable
   const tabla = $('#tablaCalendario').DataTable({
