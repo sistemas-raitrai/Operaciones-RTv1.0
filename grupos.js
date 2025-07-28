@@ -173,6 +173,13 @@ async function cargarYMostrarTabla() {
     tabla.columns.adjust();
     tabla.fixedHeader.adjust();
   });
+
+  // Al hacer scroll horizontal sobre la propia tabla:
+  $('.dataTables_scrollBody').on('scroll', () => {
+    tabla.columns.adjust();
+    tabla.fixedHeader.adjust();
+  });
+  
   $(window).on('resize', () => {
     tabla.columns.adjust();
     tabla.fixedHeader.adjust();
