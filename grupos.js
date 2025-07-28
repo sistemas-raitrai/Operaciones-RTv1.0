@@ -111,6 +111,13 @@ async function cargarYMostrarTabla() {
       $tb.append($tr);
     });
 
+  const altoEncabezadoComun = $('#encabezado').outerHeight()   || 0;
+  const altoFilterBar      = $('.filter-bar').outerHeight()   || 0;
+  const altoToolbar        = $('#toolbar').outerHeight()      || 0;
+  const headerOffset       = altoEncabezadoComun
+                           + altoFilterBar
+                           + altoToolbar;
+  
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
     language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
@@ -130,9 +137,7 @@ async function cargarYMostrarTabla() {
     autoWidth: false,
     fixedHeader: {
       header: true,
-      // si tienes un header global o una barra fija arriba,
-      // ajusta este offset a su altura (en px):
-      headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
+      headerOffset: headerOffset
     },
     columnDefs: [
       { targets: [8,9,14,15,17,19,22,23], visible: false },
