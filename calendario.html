@@ -68,22 +68,18 @@
   <script src="https://cdn.datatables.net/fixedcolumns/4.2.2/js/dataTables.fixedColumns.min.js"></script>
 
   <script>
+    // primero el encabezado común, si lo necesitas:
     fetch('encabezado.html')
       .then(res => res.text())
       .then(html => {
         document.getElementById('encabezado').innerHTML = html;
-      })
-      .then(() => {
-        // Aquí creamos un único <script type="module"> que arrancará
-        // TODO tu flujo: importa firebase-init.js y luego calendario.js
-        const s = document.createElement('script');
-        s.type = 'module';
-        s.textContent = `
-          import './firebase-init.js';
-          import './calendario.js';
-        `;
-        document.body.appendChild(s);
       });
+  </script>
+
+  <!-- aquí, sin esperar fetch, arrancamos el módulo -->
+  <script type="module">
+    import './firebase-init.js';
+    import './calendario.js';
   </script>
 </body>
 </html>
