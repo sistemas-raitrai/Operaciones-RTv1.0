@@ -182,7 +182,7 @@ async function generarTablaCalendario(userEmail) {
     order: [],
     fixedHeader: {
       header: true,
-      headerOffset: 90    // ajusta este valor a la altura de tu header global
+      headerOffset // ajusta este valor a la altura de tu header global
     },
     fixedColumns:{
       leftColumns: 5  // fija las primeras 5 columnas (N° Negocio, Grupo, Destino, Programa, Pax)
