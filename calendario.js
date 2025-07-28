@@ -164,6 +164,7 @@ async function generarTablaCalendario(userEmail) {
     scrollX: true,
     dom: 'Brtip',
     pageLength: grupos.length, 
+    order: [],              // ← así respeta el orden que ya pusiste en el DOM
     buttons: [{
       extend: 'colvis',
       text: 'Ver columnas',
@@ -174,8 +175,7 @@ async function generarTablaCalendario(userEmail) {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
-  tabla.buttons().container().appendTo('#toolbar');
-
+  
   // 5) Buscador libre
   $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
 
