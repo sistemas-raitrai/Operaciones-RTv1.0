@@ -164,7 +164,8 @@ async function generarTablaCalendario(userEmail) {
     scrollX: true,
     dom: 'Brtip',
     pageLength: grupos.length, 
-    order: [],              // ← así respeta el orden que ya pusiste en el DOM
+    order: [],
+    fixedHeader: true, 
     buttons: [{
       extend: 'colvis',
       text: 'Ver columnas',
