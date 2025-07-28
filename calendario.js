@@ -190,6 +190,13 @@ async function generarTablaCalendario(userEmail) {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
+
+  // ——————————————————————
+  //  Reajustar anchos para evitar descuadres
+  // ——————————————————————
+  tabla.columns.adjust();                        // al cargar
+  $(window).on('resize', () => tabla.columns.adjust());               // al redimensionar ventana
+  tabla.on('column-visibility.dt', () => tabla.columns.adjust());    // al ocultar/mostrar columnas
   
   // 5) Buscador libre
   $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
