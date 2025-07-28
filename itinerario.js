@@ -391,7 +391,7 @@ function formatDateReadable(isoStr) {
   const ddp = String(dd).padStart(2, '0');
   const mmp = String(mm).padStart(2, '0');
   return `${dayName} ${ddp}/${mmp}`;
-} // ← Aquí cerramos la función
+}  // ← ¡Cierre de formato de función aquí!
 
 function sumarUnaHora(hhmm) {
   const [h,m] = hhmm.split(":").map(Number);
@@ -399,6 +399,7 @@ function sumarUnaHora(hhmm) {
   d.setHours(h+1, m);
   return d.toTimeString().slice(0,5);
 }
+
 // —————————————————————————————————
 // Plantillas: guardar y cargar
 // —————————————————————————————————
