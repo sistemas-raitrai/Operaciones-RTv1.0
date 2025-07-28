@@ -167,6 +167,17 @@ async function cargarYMostrarTabla() {
       { targets: 23, width: '50px' }  // Fecha creación
     ]
   });
+
+  // 🔄 Cada vez que cambie algo, recalcula anchos y ajusta el header fijo
+  tabla.on('init.dt draw.dt column-visibility.dt', () => {
+    tabla.columns.adjust();
+    tabla.fixedHeader.adjust();
+  });
+  $(window).on('resize', () => {
+    tabla.columns.adjust();
+    tabla.fixedHeader.adjust();
+  });
+  
   tabla.buttons().container().appendTo('#toolbar');
 
   // 1) Buscador de palabras clave
