@@ -58,7 +58,6 @@
     </table>
   </div>
 
-
   <!-- 1) jQuery + DataTables core -->
   <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
@@ -72,7 +71,7 @@
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
   <script src="https://cdn.datatables.net/fixedcolumns/4.2.2/js/dataTables.fixedColumns.min.js"></script>
 
-  <!-- 4) Header común -->
+  <!-- 4) Inyectar encabezado común -->
   <script>
     fetch('encabezado.html')
       .then(res => res.text())
@@ -82,7 +81,8 @@
       .catch(console.error);
   </script>
 
-  <!-- 5) Tu lógica en módulo -->
+  <!-- 5) Por último, tu lógica en calendario.js -->
   <script type="module" src="./calendario.js"></script>
 </body>
 </html>
+
