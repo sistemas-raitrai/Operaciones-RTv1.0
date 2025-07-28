@@ -787,7 +787,7 @@ body {
   position: sticky;
   top: 0;
   background-color: #f1f1f1;  /* ajusta al color de tu header */
-  z-index: 2;                 /* para que quede siempre encima */
+  z-index: 10;                 /* para que quede siempre encima */
 }
 
 /* Botones DataTables (Excel, columnas, etc.) */
