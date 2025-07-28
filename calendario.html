@@ -59,27 +59,30 @@
   </div>
 
 
+  <!-- 1) jQuery + DataTables core -->
   <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+
+  <!-- 2) Buttons (colVis) + SheetJS (Excel) -->
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- 3) FixedHeader + FixedColumns -->
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
   <script src="https://cdn.datatables.net/fixedcolumns/4.2.2/js/dataTables.fixedColumns.min.js"></script>
 
+  <!-- 4) Header común -->
   <script>
-    // primero el encabezado común, si lo necesitas:
     fetch('encabezado.html')
       .then(res => res.text())
       .then(html => {
         document.getElementById('encabezado').innerHTML = html;
-      });
+      })
+      .catch(console.error);
   </script>
 
-  <!-- aquí, sin esperar fetch, arrancamos el módulo -->
-  <script type="module">
-    import './firebase-init.js';
-    import './calendario.js';
-  </script>
+  <!-- 5) Tu lógica en módulo -->
+  <script type="module" src="./calendario.js"></script>
 </body>
 </html>
