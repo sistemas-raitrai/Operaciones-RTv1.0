@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Gira de Estudio - Rai Trai</title>
+  <link rel="stylesheet" href="estilos.css" />
+  <style>
+    .header-rt { display: flex; align-items: center; padding: 2rem 1rem 1rem 1rem; background: #fff; border-bottom: 2px solid #00A88F; }
+    .header-rt img { height: 56px; margin-right: 1.5rem; }
+    .header-rt h1 { margin: 0; font-size: 2rem; color: #00A88F; }
+    .grupo-info { margin: 2rem 0 1.5rem 0; padding: 1.5rem; background: #f5f9f8; border-radius: 1rem; border-left: 6px solid #00A88F; }
+    .grupo-info label { font-weight: bold; margin-right: .5rem; }
+    .itinerario-titulo { font-size: 1.25rem; color: #00A88F; margin-top:2rem;}
+    .itinerario-grid { display: grid; grid-template-columns: 120px 1fr; gap: 0.8rem; align-items: flex-start;}
+    .itinerario-dia { font-weight: bold; color: #00A88F; background: #e6f5f2; border-radius: 1rem; padding:.3rem 1rem; margin-bottom:.3rem;}
+    .itinerario-act { margin-bottom:.5rem; padding: .7rem 1rem; border-radius: .6rem; background: #fff; box-shadow: 0 2px 8px #00a88f11; }
+    @media(max-width:600px){
+      .itinerario-grid{grid-template-columns: 1fr;}
+    }
+  </style>
+</head>
+<body>
+  <!-- Encabezado solo logo y empresa -->
+  <header class="header-rt">
+    <img src="logo-raitrai.png" alt="Rai Trai" />
+    <h1>Gira de Estudio</h1>
+  </header>
+
+  <!-- Info del grupo -->
+  <section id="grupo-info" class="grupo-info">
+    <div><label>Nombre de Grupo:</label><span id="info-nombreGrupo">—</span></div>
+    <div><label>Colegio:</label><span id="info-colegio">—</span></div>
+    <div><label>Curso:</label><span id="info-curso">—</span></div>
+    <div><label>Año de Viaje:</label><span id="info-anoViaje">—</span></div>
+    <div><label>Destino:</label><span id="info-destino">—</span></div>
+    <div><label>Vendedor(a):</label><span id="info-vendedora">—</span></div>
+    <div><label>Cantidad de Viajeros:</label>
+      <span id="info-cantidadgrupo">—</span> (<span id="info-adultos">—</span> adultos, <span id="info-estudiantes">—</span> estudiantes)
+    </div>
+    <div><label>Fechas:</label>
+      <span id="info-fechas">—</span>
+    </div>
+  </section>
+
+  <!-- Itinerario -->
+  <div class="itinerario-titulo">Itinerario Diario</div>
+  <div id="itinerario-container" class="itinerario-grid"></div>
+
+  <!-- Firebase y JS -->
+  <script type="module" src="giradeestudio.js"></script>
+</body>
+</html>
