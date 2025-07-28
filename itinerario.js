@@ -370,29 +370,23 @@ async function onSubmitModal(evt) {
 // —————————————————————————————————
 function getDateRange(startStr, endStr) {
   const out = [];
-  const start = new Date(startStr + "T00:00:00");
-  const end   = new Date(endStr   + "T00:00:00");
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
+  // Descompón YYYY-MM-DD en números
+  const [sy, sm, sd] = startStr.split("-").map(Number);
+  const [ey, em, ed] = endStr.split("-").map(Number);
+
+  // Crea fechas en zona local (mes base 0)
+  const start = new Date(sy, sm - 1, sd);
+  const end   = new Date(ey, em - 1, ed);
+
+  // Recorre de principio a fin, día a día
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const yyyy = d.getFullYear();
-    const mm   = String(d.getMonth()+1).padStart(2,'0');
-    const dd   = String(d.getDate()).padStart(2,'0');
+    const mm   = String(d.getMonth() + 1).padStart(2, "0");
+    const dd   = String(d.getDate()     ).padStart(2, "0");
     out.push(`${yyyy}-${mm}-${dd}`);
   }
   return out;
 }
-function formatDateReadable(isoStr) {
-  const [yyyy,mm,dd] = isoStr.split('-').map(Number);
-  const d  = new Date(yyyy, mm-1, dd);
-  const wd = d.toLocaleDateString("es-CL", { weekday:"long" });
-  return `${wd.charAt(0).toUpperCase()+wd.slice(1)} ${dd.toString().padStart(2,'0')}/${mm.toString().padStart(2,'0')}`;
-}
-function sumarUnaHora(hhmm) {
-  const [h,m] = hhmm.split(":").map(Number);
-  const d = new Date();
-  d.setHours(h+1, m);
-  return d.toTimeString().slice(0,5);
-}
-
 // —————————————————————————————————
 // Plantillas: guardar y cargar
 // —————————————————————————————————
