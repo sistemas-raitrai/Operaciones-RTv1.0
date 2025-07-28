@@ -294,6 +294,12 @@ table.dataTable td {
   background-color: #092f6f;
 }
 
+/* Quita el margen entre el scrollHead (clon del header) y el scrollBody */
+.dataTables_scrollHead {
+  margin-bottom: 0 !important;
+}
+
+
 /* ----------------------------------------------------------------------- */
 /* Estilos exclusivos del Itinerario de Grupos (añadir al final)           */
 /* ----------------------------------------------------------------------- */
