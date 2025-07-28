@@ -111,13 +111,7 @@ async function cargarYMostrarTabla() {
       $tb.append($tr);
     });
 
-  const altoEncabezadoComun = $('#encabezado').outerHeight()   || 0;
-  const altoFilterBar      = $('.filter-bar').outerHeight()   || 0;
-  const altoToolbar        = $('#toolbar').outerHeight()      || 0;
-  const headerOffset       = altoEncabezadoComun
-                           + altoFilterBar
-                           + altoToolbar;
-  
+
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
     language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
@@ -166,6 +160,28 @@ async function cargarYMostrarTabla() {
       { targets: 22, width: '50px' }, // Creado por
       { targets: 23, width: '50px' }  // Fecha creación
     ]
+  });
+
+  // REAJUSTE CONTINUO DE ANCHOS
+  function reajustaAnchos() {
+    tabla.columns.adjust();
+    tabla.fixedHeader.adjust();
+  }
+
+  // Cada vez que DataTables cambie su layout:
+  tabla
+    .on('init.dt draw.dt column-visibility.dt', reajustaAnchos)
+    .on('fixedHeader::reposition',              reajustaAnchos);
+
+  // Scroll horizontal interno:
+  $('.dataTables_scrollBody').on('scroll',    reajustaAnchos);
+
+  // Resize de ventana:
+  $(window).on('resize',                      reajustaAnchos);
+
+  // fuerza el top correcto cada vez que FixedHeader reposiciona su clon
+  tabla.on('fixedHeader::reposition', () => {
+    $('.fixedHeader-floating').css('top', headerOffset + 'px');
   });
 
   // 🔄 Cada vez que cambie algo, recalcula anchos y ajusta el header fijo
