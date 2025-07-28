@@ -16,30 +16,20 @@ function getParametroURL(nombre) {
 const numeroNegocioInicial = getParametroURL("numeroNegocio");
 
 // Cuando el DOM y Firebase Auth estén listos:
-$(function(){
+$(function () {
   onAuthStateChanged(auth, user => {
-    if (!user) location = 'login.html';
-    else generarTablaCalendario(user.email);
+    if (!user) {
+      location = 'login.html';
+    } else {
+      generarTablaCalendario(user.email);
+    }
   });
-});
-
-// Devuelve “Domingo 14 dic”, “Lunes 15 dic”, etc.
-function formatearDiaFechaBonita(fechaISO) {
-  const [yyyy, mm, dd] = fechaISO.split('-').map(Number);
-  const fecha = new Date(yyyy, mm - 1, dd);
-  const dias = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
-  const nombreDia = dias[fecha.getDay()];
-  const diaMes = fecha.toLocaleDateString('es-CL', { day:'numeric', month:'short' });
-  // Capitalizar primera letra
-  return nombreDia.charAt(0).toUpperCase() + nombreDia.slice(1) + ' ' + diaMes;
-}
+}); // ← cierra $(function)
 
 // ------------------------------------------------------------------
 // Función principal: carga datos, construye tabla y DataTable
 // ------------------------------------------------------------------
 async function generarTablaCalendario(userEmail) {
-  console.log("Inicializando calendario.js");
-  console.log("tablaCalendario existe?", !!document.getElementById('tablaCalendario'));
   // 1) Leer todos los grupos de Firestore
   const snapshot = await getDocs(collection(db, "grupos"));
   const grupos = [];
@@ -122,7 +112,7 @@ async function generarTablaCalendario(userEmail) {
     const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
     // insertar <th> con o sin la clase
     $trhead.append(
-      `<th class="${clase}">${formatearDiaFechaBonita(f)}</th>`
+      `<th class="${clase}">${formatearFechaBonita(f)}</th>`
     );
   });
 
@@ -169,19 +159,6 @@ async function generarTablaCalendario(userEmail) {
     $tbody.append($tr);
   }); // ← cierra grupos.forEach
 
-  // ──────────────────────────────────────────────────────────
-  // ➡️  CALCULA AQUÍ EL OFFSET sumando tu encabezado + toolbar
-  // ──────────────────────────────────────────────────────────
-  const altoEncabezado = $('#encabezado').outerHeight() || 0;
-  const altoToolbar   = $('#toolbar').outerHeight()  || 0;
-  const headerOffset  = altoEncabezado + altoToolbar;
-
-  // Check DOM antes de crear DataTable
-  if (!document.getElementById('tablaCalendario')) {
-    alert('La tabla no está lista en el DOM');
-    return;
-  }
-
   // 4) Inicializar DataTable
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
@@ -190,10 +167,7 @@ async function generarTablaCalendario(userEmail) {
     order: [],
     fixedHeader: {
       header: true,
-      headerOffset: headerOffset // ajusta este valor a la altura de tu header global
-    },
-    fixedColumns:{
-      leftColumns: 5  // fija las primeras 5 columnas (N° Negocio, Grupo, Destino, Programa, Pax)
+      headerOffset: 90    // ajusta este valor a la altura de tu header global
     },
     buttons: [{
       extend: 'colvis',
@@ -205,25 +179,7 @@ async function generarTablaCalendario(userEmail) {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
-
-  // ——————————————————————
-  //  Reajustar anchos para evitar descuadres
-  // ——————————————————————
-  tabla.columns.adjust();                        // al cargar
-  $(window).on('resize', () => tabla.columns.adjust());               // al redimensionar ventana
-  tabla.on('column-visibility.dt', () => tabla.columns.adjust());    // al ocultar/mostrar columnas
-
-  tabla.fixedHeader.adjust();
-  $(window).on('resize', () => {
-    tabla.columns.adjust();
-    tabla.fixedHeader.adjust();
-  });
-
-  tabla.on('draw.dt', () => {
-    tabla.columns.adjust();
-    tabla.fixedHeader.adjust();
-  });
-    
+  
   // 5) Buscador libre
   $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
 
