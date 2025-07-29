@@ -152,29 +152,44 @@
     </form>
   </div>
 
-  <!-- MODAL GRUPO (simplificado, sin nombres coordinadores) -->
-  <div class="row">
-    <div class="column short">
-      <label>PAX</label>
-      <input type="number" id="g-cantidadGrupo" min="0"/>
-    </div>
-    <div class="column short">
-      <label>ADULTOS</label>
-      <input type="number" id="g-adultos" min="0"/>
-    </div>
-    <div class="column short">
-      <label>ESTUDIANTES</label>
-      <input type="number" id="g-estudiantes" min="0"/>
-    </div>
-    <div class="column short">
-      <label>COORDINADORES</label>
-      <input type="number" id="g-coordinadores" min="0"/>
-    </div>
-    <div class="column short">
-      <label>TOTAL FINAL</label>
-      <input type="number" id="g-cantidadTotal" readonly style="background:#eee;font-weight:bold;" />
-    </div>
+  <!-- MODAL EDITAR GRUPO -->
+<div id="group-backdrop" class="modal-backdrop"></div>
+  <div id="group-modal" class="modal">
+    <h3>EDITAR GRUPO</h3>
+    <form id="group-form">
+      <label>N° NEGOCIO</label>
+      <input id="g-numeroNegocio" readonly />
+      <label>NOMBRE GRUPO</label>
+      <input id="g-nombreGrupo" readonly />
+      <div class="row">
+        <div class="column short">
+          <label>PAX</label>
+          <input type="number" id="g-cantidadGrupo" min="0"/>
+        </div>
+        <div class="column short">
+          <label>ADULTOS</label>
+          <input type="number" id="g-adultos" min="0"/>
+        </div>
+        <div class="column short">
+          <label>ESTUDIANTES</label>
+          <input type="number" id="g-estudiantes" min="0"/>
+        </div>
+        <div class="column short">
+          <label>COORDINADORES</label>
+          <input type="number" id="g-coordinadores" min="0"/>
+        </div>
+        <div class="column short">
+          <label>TOTAL FINAL</label>
+          <input type="number" id="g-cantidadTotal" readonly style="background:#eee;font-weight:bold;" />
+        </div>
+      </div>
+      <div class="actions">
+        <button type="button" id="group-cancel">CANCELAR</button>
+        <button type="submit">GUARDAR</button>
+      </div>
+    </form>
   </div>
+
 
   <!-- MODAL HISTORIAL -->
   <div id="hist-backdrop" class="modal-backdrop"></div>
