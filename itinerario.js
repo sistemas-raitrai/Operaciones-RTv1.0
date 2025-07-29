@@ -404,7 +404,7 @@ function sumarUnaHora(hhmm) {
 }
 
 // —————————————————————————————————
-// Plantillas: guardar y cargar
+// Plantillas: guardar
 // —————————————————————————————————
 async function guardarPlantilla() {
   const nombre = prompt("Nombre de la plantilla:");
@@ -412,20 +412,27 @@ async function guardarPlantilla() {
   const grupoId = selectNum.value;
   const snapG   = await getDoc(doc(db,'grupos',grupoId));
   const g       = snapG.data()||{};
-  const datosParaPlantilla = {};
-  for (const fecha in g.itinerario) {
-    datosParaPlantilla[fecha] = g.itinerario[fecha].map(act=>({
-      horaInicio: act.horaInicio,
-      horaFin:    act.horaFin,
-      actividad:  act.actividad,
-      notas:      act.notas
-    }));
+
+  // Nuevo: en vez de por fecha, por día en orden
+  const actividadesPorDia = [];
+  const fechas = Object.keys(g.itinerario)
+    .sort((a,b)=> new Date(a)-new Date(b));
+  for (const fecha of fechas) {
+    // Guardamos solo actividades, NO la fecha
+    actividadesPorDia.push(
+      (g.itinerario[fecha]||[]).map(act => ({
+        horaInicio: act.horaInicio,
+        horaFin:    act.horaFin,
+        actividad:  act.actividad,
+        notas:      act.notas
+      }))
+    );
   }
   await addDoc(collection(db,'plantillasItinerario'), {
     nombre,
     creador:   auth.currentUser.email,
     createdAt: new Date(),
-    datos:     datosParaPlantilla
+    dias: actividadesPorDia  // Cambiado "datos" por "dias"
   });
   alert("Plantilla guardada");
   await cargarListaPlantillas();
@@ -443,6 +450,7 @@ async function cargarListaPlantillas() {
   });
 }
 
+// ——— CARGAR PLANTILLA ———
 async function cargarPlantilla() {
   const tplId = selPlantillas.value;
   if (!tplId) return alert("Selecciona una plantilla");
@@ -453,58 +461,59 @@ async function cargarPlantilla() {
     getDoc(doc(db, 'grupos', selectNum.value))
   ]);
   if (!tplSnap.exists()) return alert("Plantilla no encontrada");
-  const tpl = tplSnap.data().datos;
+
+  // Nuevo: actividades ordenadas por día (array)
+  const diasPlantilla = tplSnap.data().dias;
   const g   = grpSnap.data() || {};
 
-  // 2) Primer confirm: ¿está seguro que desea cargar un nuevo itinerario?
+  // Fechas reales del grupo (ordenadas)
+  const fechas = Object.keys(g.itinerario || {})
+    .sort((a,b)=> new Date(a)-new Date(b));
+
+  // Confirmaciones igual que antes...
   const ok = confirm(
     "¿Seguro que quieres cargar un nuevo itinerario?\n" +
     "Pulsa [OK] para continuar, [Cancelar] para volver al editor."
   );
-  if (!ok) return;  // si cancela, salimos y volvemos al editor
-
-  // 3) Segundo confirm: Reemplazar o Agregar
+  if (!ok) return;
   const reemplazar = confirm(
     "Pulsa [OK] para REEMPLAZAR todas las actividades,\n" +
     "[Cancelar] para AGREGAR las de la plantilla al itinerario actual."
   );
 
-  // 4) Construye el nuevo itinerario según elección
+  // 4) Construye el nuevo itinerario
   const nuevoIt = {};
   if (reemplazar) {
-    // Sólo la plantilla (con pax recalculado)
-    for (const fecha in tpl) {
-      nuevoIt[fecha] = tpl[fecha].map(act => ({
+    // Solo las actividades de la plantilla (ajustadas a las fechas del grupo)
+    fechas.forEach((fecha, idx) => {
+      nuevoIt[fecha] = (diasPlantilla[idx] || []).map(act => ({
         ...act,
         pasajeros:   (g.adultos||0) + (g.estudiantes||0),
         adultos:     g.adultos || 0,
         estudiantes: g.estudiantes || 0
       }));
-    }
+    });
   } else {
-    // Empalmar: mantiene existentes y luego añade plantilla
-    const origIt = g.itinerario || {};
-    // Copia todo lo existente
-    for (const fecha in origIt) {
-      nuevoIt[fecha] = origIt[fecha].slice();
+    // Empalmar: mantiene existentes y añade las nuevas
+    for (const fecha in g.itinerario) {
+      // Copia las actividades actuales
+      nuevoIt[fecha] = (g.itinerario[fecha]||[]).slice();
     }
-    // Añade cada fecha de la plantilla al final
-    for (const fecha in tpl) {
-      const base   = nuevoIt[fecha] || [];
-      const extras = tpl[fecha].map(act => ({
+    fechas.forEach((fecha, idx) => {
+      const extras = (diasPlantilla[idx] || []).map(act => ({
         ...act,
         pasajeros:   (g.adultos||0) + (g.estudiantes||0),
         adultos:     g.adultos || 0,
         estudiantes: g.estudiantes || 0
       }));
-      nuevoIt[fecha] = base.concat(extras);
-    }
+      nuevoIt[fecha] = (nuevoIt[fecha]||[]).concat(extras);
+    });
   }
 
-  // 5) Guarda en Firestore y recarga UI
   await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
   renderItinerario();
 }
+
 
 // —————————————————————————————————
 // Autocomplete de actividades
