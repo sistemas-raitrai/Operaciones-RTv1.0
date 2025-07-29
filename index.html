@@ -71,7 +71,7 @@
       const html = await res.text();
       document.getElementById("encabezado").innerHTML = html;
       // Ahora que el encabezado está en el DOM, importamos script.js:
-      await import("/script.js");
+      await import("./script.js");
       console.log("✅ script.js cargado tras inyectar encabezado");
     })();
   </script>
