@@ -11,14 +11,12 @@
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
 
   <style>
-    /* TARJETAS DE VUELOS */
     #vuelos-container { display:flex; flex-wrap:wrap; gap:1rem; margin-top:1rem; }
     .flight-card { flex:1 1 calc(50% - 1rem); border:1px solid #ccc; border-radius:8px; padding:1rem; background:#fafafa; box-shadow:0 2px 4px rgba(0,0,0,0.1); display:flex; flex-direction:column; justify-content:space-between; }
     .dates { margin:0.5rem 0; font-size:0.95rem; }
     .actions { margin-top:0.5rem; display:flex; gap:0.5rem; }
     .btn-small { font-size:0.9em; padding:0.2em 0.5em; }
 
-    /* GRID DE GRUPOS */
     .group-item { display:grid; grid-template-columns:4rem 1fr auto auto; align-items:center; gap:0.5rem; padding:0.2rem 0; }
     .group-name { cursor:pointer; text-decoration:underline; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .pax-inline { font-weight:bold; white-space:nowrap; }
@@ -31,11 +29,20 @@
     .modal { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:1rem; border-radius:6px; z-index:1001; max-height:90%; overflow:auto; width:80%; max-width:600px; display:none; }
     #group-modal { max-width:400px; }
     #hist-modal  { width:90%; max-width:800px; }
+    #paxextra-modal { max-width:350px; }
+
+    /* TRAMOS */
+    #tramos-section { background:#f6f6ff; border-radius:6px; padding:0.5rem; margin:0.7rem 0; }
+    .tramo-row { display:flex; gap:0.3rem; align-items:center; margin-bottom:0.3rem; }
+    .tramo-row input, .tramo-row select { width:6.5em; font-size:0.96em; text-transform:uppercase; }
+    .tramo-row .long { width:11em; }
+    .tramo-row .tramo-remove { background:#ff4444; color:white; border:none; border-radius:3px; padding:2px 7px; cursor:pointer; }
 
     /* UTILIDADES */
     .row { display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem; }
     .column { display:flex; flex-direction:column; }
     .short{flex:1} .medium{flex:3} .long{flex:6}
+    input, select, textarea { text-transform:uppercase; }
   </style>
 </head>
 
@@ -46,97 +53,146 @@
   <!-- 2) Tu contenido principal -->
   <main class="main">
     <div class="row">
-        <div class="column long"><h2>PLANIFICACIÓN DE VUELOS:</h2>
+      <div class="column long"><h2>PLANIFICACIÓN DE VUELOS:</h2></div>
+      <div class="column medium">
+        <button id="btnAddVuelo" class="btn-add">+ AGREGAR NUEVO</button>
       </div>
       <div class="column medium">
-        <button id="btnAddVuelo" class="btn-add">+ Agregar Nuevo</button>
+        <button id="btnHistorial" class="btn-add">📜 HISTORIAL</button>
       </div>
       <div class="column medium">
-        <button id="btnHistorial" class="btn-add">📜 Historial</button>
-      </div>
-      <div class="column medium">
-        <button id="btnExportExcel" class="btn-add">⬇️ Exportar Excel</button>
+        <button id="btnExportExcel" class="btn-add">⬇️ EXPORTAR EXCEL</button>
       </div>
     </div>
     <div id="vuelos-container"></div>
   </main>
 
-  <!-- Modal Vuelo -->
+  <!-- MODAL VUELO (único o múltiple) -->
   <div id="modal-backdrop" class="modal-backdrop"></div>
   <div id="modal-vuelo" class="modal">
-    <h3 id="modal-title">Vuelo</h3>
+    <h3 id="modal-title">VUELO</h3>
     <form id="modal-form">
-      <label>Aerolínea</label><input id="m-proveedor" list="lista-aero"/><datalist id="lista-aero"></datalist>
-      <label>N° Vuelo</label><input id="m-numero"/>
-      <label>Tipo</label>
-      <select id="m-tipoVuelo">
-        <option value="regular">Regular</option>
-        <option value="charter">Charter</option>
-      </select>
-      <label>Origen</label><input id="m-origen"/>
-      <label>Destino</label><input id="m-destino"/>
       <div class="row">
-        <div class="column medium">
-          <label>Fecha Ida</label><input type="date" id="m-fechaIda"/>
+        <div class="column short">
+          <label>AEROLÍNEA</label><input id="m-proveedor" list="lista-aero"/><datalist id="lista-aero"></datalist>
         </div>
-        <div class="column medium">
-          <label>Fecha Vuelta</label><input type="date" id="m-fechaVuelta"/>
+        <div class="column short">
+          <label>N° VUELO</label><input id="m-numero"/>
+        </div>
+        <div class="column short">
+          <label>TIPO</label>
+          <select id="m-tipoVuelo">
+            <option value="regular">REGULAR</option>
+            <option value="charter">CHARTER</option>
+          </select>
         </div>
       </div>
-      <label>Grupos</label><select id="m-grupos" multiple></select>
-      <label>Estado por defecto</label>
+      <div id="campos-vuelo-unico">
+        <div class="row">
+          <div class="column medium">
+            <label>ORIGEN</label><input id="m-origen"/>
+          </div>
+          <div class="column medium">
+            <label>DESTINO</label><input id="m-destino"/>
+          </div>
+        </div>
+        <div class="row">
+          <div class="column medium">
+            <label>FECHA IDA</label><input type="date" id="m-fechaIda"/>
+          </div>
+          <div class="column medium">
+            <label>FECHA VUELTA</label><input type="date" id="m-fechaVuelta"/>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECCIÓN TRAMOS PARA VUELO REGULAR -->
+      <div id="tramos-section" style="display:none">
+        <h4>MÚLTIPLES TRAMOS DEL VUELO</h4>
+        <div id="tramos-list"></div>
+        <button type="button" id="btnAddTramo" style="background:#009966;color:white;margin:0.5em 0;">+ AGREGAR TRAMO</button>
+      </div>
+
+      <label>GRUPOS</label>
+      <select id="m-grupos" multiple></select>
+      <label>ESTADO POR DEFECTO</label>
       <select id="m-statusDefault">
-        <option value="confirmado">✅ Confirmado</option>
-        <option value="pendiente">🕗 Pendiente</option>
+        <option value="confirmado">✅ CONFIRMADO</option>
+        <option value="pendiente">🕗 PENDIENTE</option>
       </select>
       <div class="actions">
-        <button type="button" id="modal-cancel">Cancelar</button>
-        <button type="submit">Guardar</button>
+        <button type="button" id="modal-cancel">CANCELAR</button>
+        <button type="submit">GUARDAR</button>
       </div>
     </form>
   </div>
 
-  <!-- Modal Grupo -->
+  <!-- MODAL AGREGAR PAX EXTRA -->
+  <div id="paxextra-backdrop" class="modal-backdrop"></div>
+  <div id="paxextra-modal" class="modal">
+    <h3>AGREGAR PAX EXTRA</h3>
+    <form id="paxextra-form">
+      <label>NOMBRE O REFERENCIA</label>
+      <input id="paxextra-nombre" maxlength="40" placeholder="EJ: PREMIO RIFA, JUAN PÉREZ"/>
+      <label>CANTIDAD</label>
+      <input id="paxextra-cantidad" type="number" min="1" value="1"/>
+      <label>ESTADO</label>
+      <select id="paxextra-status">
+        <option value="confirmado">✅ CONFIRMADO</option>
+        <option value="pendiente">🕗 PENDIENTE</option>
+      </select>
+      <div class="actions">
+        <button type="button" id="paxextra-cancel">CANCELAR</button>
+        <button type="submit">GUARDAR</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- MODAL GRUPO (simplificado, sin nombres coordinadores) -->
   <div id="group-backdrop" class="modal-backdrop"></div>
   <div id="group-modal" class="modal">
-    <h3>Editar Grupo</h3>
+    <h3>EDITAR GRUPO</h3>
     <form id="group-form">
-      <label>N° Negocio</label><input id="g-numeroNegocio" disabled/>
-      <label>Nombre Grupo</label><input id="g-nombreGrupo" disabled/>
-      <label>Empresa de Bus</label><input id="g-empresaBus"/>
+      <label>N° NEGOCIO</label><input id="g-numeroNegocio" disabled/>
+      <label>NOMBRE GRUPO</label><input id="g-nombreGrupo" disabled/>
       <div class="row">
         <div class="column short">
-          <label>Adultos</label><input type="number" id="g-adultos" min="0"/>
+          <label>PAX</label>
+          <input type="number" id="g-cantidadGrupo" min="0"/>
         </div>
         <div class="column short">
-          <label>Estudiantes</label><input type="number" id="g-estudiantes" min="0"/>
+          <label>ADULTOS</label>
+          <input type="number" id="g-adultos" min="0"/>
         </div>
         <div class="column short">
-          <label>Coordinadores</label><input type="number" id="g-cantCoordinadores" min="1" value="1"/>
+          <label>ESTUDIANTES</label>
+          <input type="number" id="g-estudiantes" min="0"/>
+        </div>
+        <div class="column short">
+          <label>COORDINADORES</label>
+          <input type="number" id="g-coordinadores" min="0"/>
         </div>
       </div>
-      <label>Nombres Coordinadores</label>
-      <textarea id="g-nombresCoordinadores" rows="2" placeholder="Nombre1, Nombre2…"></textarea>
       <div class="actions">
-        <button type="button" id="group-cancel">Cancelar</button>
-        <button type="submit">Guardar</button>
+        <button type="button" id="group-cancel">CANCELAR</button>
+        <button type="submit">GUARDAR</button>
       </div>
     </form>
   </div>
 
-  <!-- Modal Historial -->
+  <!-- MODAL HISTORIAL -->
   <div id="hist-backdrop" class="modal-backdrop"></div>
   <div id="hist-modal" class="modal">
     <div class="actions" style="justify-content:flex-end;margin-bottom:1rem;">
-      <button id="hist-refresh">🔄 Recargar</button>
-      <label>Desde:</label><input type="date" id="hist-start"/>
-      <label>Hasta:</label><input type="date" id="hist-end"/>
-      <button id="hist-close">Cerrar</button>
+      <button id="hist-refresh">🔄 RECARGAR</button>
+      <label>DESDE:</label><input type="date" id="hist-start"/>
+      <label>HASTA:</label><input type="date" id="hist-end"/>
+      <button id="hist-close">CERRAR</button>
     </div>
     <table id="hist-table" class="display" style="width:100%">
       <thead>
         <tr>
-          <th>Fecha</th><th>Usuario</th><th>Vuelo/Grupo</th><th>Acción</th><th>Antes</th><th>Después</th>
+          <th>FECHA</th><th>USUARIO</th><th>VUELO/GRUPO</th><th>ACCIÓN</th><th>ANTES</th><th>DESPUÉS</th>
         </tr>
       </thead>
       <tbody></tbody>
