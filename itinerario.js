@@ -511,7 +511,7 @@ async function cargarPlantilla() {
         }))
       );
     });
-
+  }
   await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
   renderItinerario();
 }
