@@ -45,6 +45,8 @@ const btnCancel      = document.getElementById("modal-cancel");
 
 let editData    = null;   // { fecha, idx }
 let choicesDias = null;   // Choices.js instance
+let choicesGrupoNum = null;  // Choices para selectNum (número de negocio)
+let choicesGrupoNom = null;  // Choices para selectName (nombre de grupo)
 
 // —————————————————————————————————
 // Función global para sumar numéricamente
@@ -69,7 +71,7 @@ async function initItinerario() {
   // 2.1) Cargo todos los grupos
   const snap   = await getDocs(collection(db,'grupos'));
   const grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-
+  
   // 2.2) Poblamos selects
   selectNum.innerHTML  = grupos.map(g=>
     `<option value="${g.id}">${g.numeroNegocio}</option>`
@@ -77,22 +79,51 @@ async function initItinerario() {
   selectName.innerHTML = grupos.map(g=>
     `<option value="${g.id}">${g.nombreGrupo.toUpperCase()}</option>`
   ).join('');
-
-  // 2.3) Sincronizo selects y render inicial
-  selectNum.onchange  = ()=>{ selectName.value=selectNum.value; renderItinerario(); };
-  selectName.onchange = ()=>{ selectNum.value=selectName.value; renderItinerario(); };
-
-  // 2.4) Quick-Add, Modal y Plantillas
-  qaAddBtn.onclick   = quickAddActivity;
-  btnCancel.onclick  = closeModal;
-  formModal.onsubmit = onSubmitModal;
-  btnGuardarTpl.onclick = guardarPlantilla;
-  btnCargarTpl.onclick  = cargarPlantilla;
-  await cargarListaPlantillas();
-
-  // 2.5) Primera carga
-  selectNum.dispatchEvent(new Event('change'));
-}
+  
+  // 2.2.1) Inicializa Choices.js para autocompletar/búsqueda (solo una vez)
+  if (!choicesGrupoNum) {
+    choicesGrupoNum = new Choices(selectNum, {
+      searchEnabled: true,
+      itemSelectText: '',
+      placeholderValue: 'Buscar número de negocio',
+      shouldSort: false
+    });
+  } else {
+    choicesGrupoNum.setChoices(grupos.map(g=>({value: g.id, label: g.numeroNegocio})), 'value', 'label', true);
+  }
+  
+  if (!choicesGrupoNom) {
+    choicesGrupoNom = new Choices(selectName, {
+      searchEnabled: true,
+      itemSelectText: '',
+      placeholderValue: 'Buscar nombre de grupo',
+      shouldSort: false
+    });
+  } else {
+    choicesGrupoNom.setChoices(grupos.map(g=>({value: g.id, label: g.nombreGrupo.toUpperCase()})), 'value', 'label', true);
+  }
+  
+    // 2.3) Sincronizo ambos Choices.js
+    choicesGrupoNum.passedElement.element.onchange = () => {
+      choicesGrupoNom.setChoiceByValue(selectNum.value);
+      renderItinerario();
+    };
+    choicesGrupoNom.passedElement.element.onchange = () => {
+      choicesGrupoNum.setChoiceByValue(selectName.value);
+      renderItinerario();
+    };
+  
+    // 2.4) Quick-Add, Modal y Plantillas
+    qaAddBtn.onclick   = quickAddActivity;
+    btnCancel.onclick  = closeModal;
+    formModal.onsubmit = onSubmitModal;
+    btnGuardarTpl.onclick = guardarPlantilla;
+    btnCargarTpl.onclick  = cargarPlantilla;
+    await cargarListaPlantillas();
+  
+    // 2.5) Primera carga
+    selectNum.dispatchEvent(new Event('change'));
+  }
 
 // —————————————————————————————————
 // 3) renderItinerario(): crea grilla y pinta actividades
