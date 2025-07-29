@@ -6,19 +6,11 @@
   <title>Editor de Itinerarios | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
-
 </head>
 <body class="itinerario-page">
 
   <div id="encabezado"></div>
-  <script type="module">
-    (async () => {
-      const html = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = html;
-      await import('./itinerario.js');
-    })();
-  </script>
-
+  
   <main class="main">
     <!-- Selector de Grupo -->
     <div class="row">
@@ -115,6 +107,16 @@
   <!-- Recursos externos -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+  <script type="module">
+    (async () => {
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+      await import('./firebase-init.js');
+      await import('./script.js');      // Header: usuario, reloj, botones
+      await import('./itinerario.js');  // Lógica de esta página
+    })();
+  </script>
 
 </body>
 </html>
