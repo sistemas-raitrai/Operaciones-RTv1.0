@@ -75,6 +75,7 @@
 
   <div id="secciones"></div>
 
+  <!-- SOLO este bloque, no pongas nada de lógica interna aquí -->
   <script type="module">
     (async () => {
       // 1. Inyectar encabezado HTML
@@ -86,8 +87,6 @@
       await import('./script.js');      // usuario/reloj/header
       await import('./servicios.js');   // tu lógica de esta página
     })();
-    
- 
   </script>
 </body>
 </html>
