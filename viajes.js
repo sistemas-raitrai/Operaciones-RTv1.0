@@ -1,3 +1,5 @@
+// viajes.js FINAL - Nacho Pastor 2024/25 - FULL FUNCIONALIDAD Y COMENTARIOS
+
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -10,8 +12,12 @@ import {
 const auth = getAuth(app);
 let grupos = [], vuelos = [];
 let isEdit=false, editId=null, choiceGrupos, currentUserEmail, dtHist=null;
+let editingTramos = []; // Para modal vuelo REGULAR
+let editingPaxExtras = []; // Para pax extras
+let editingVueloId = null; // Para pax extras
 
-// 1) Autenticación y arranque
+function toUpper(x) { return (typeof x === 'string') ? x.toUpperCase() : x; }
+
 onAuthStateChanged(auth,user=>{
   if(!user) return location.href='login.html';
   currentUserEmail = user.email;
@@ -24,11 +30,9 @@ async function init(){
   initModal();
   await renderVuelos();
 
-  // Grupo modal
   document.getElementById('group-cancel').onclick = closeGroupModal;
   document.getElementById('group-form').onsubmit = onSubmitGroup;
 
-  // Historial modal
   document.getElementById('btnHistorial').onclick = showHistorialModal;
   document.getElementById('hist-close').onclick  = closeHistorialModal;
   document.getElementById('hist-refresh').onclick= loadHistorial;
@@ -36,84 +40,102 @@ async function init(){
   document.getElementById('hist-end').onchange   = loadHistorial;
 }
 
-// 2) Cargo grupos
 async function loadGrupos(){
   const snap = await getDocs(collection(db,'grupos'));
   grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 }
 
-// 3) Botón “Agregar Vuelo”
+// 1️⃣ BOTONES PRINCIPALES Y MODALES
+
 function bindUI(){
   document.getElementById('btnAddVuelo').onclick = ()=>openModal();
   document.getElementById('btnExportExcel').onclick = exportToExcel;
 }
 
-// 4) Modal Vuelo + Choices.js
 function initModal(){
   document.getElementById('modal-cancel').onclick = closeModal;
-  document.getElementById('modal-form').onsubmit  = onSubmit;
+  document.getElementById('modal-form').onsubmit  = onSubmitVuelo;
+
   choiceGrupos = new Choices(
     document.getElementById('m-grupos'),
     { removeItemButton:true }
   );
   choiceGrupos.setChoices(
-    grupos.map(g=>({ value:g.id, label:`${g.numeroNegocio} – ${g.nombreGrupo}` })),
+    grupos.map(g=>({
+      value:g.id,
+      label:toUpper(`${g.numeroNegocio} – ${g.nombreGrupo}`)
+    })),
     'value','label', false
   );
+
+  // Lógica tipo de vuelo → mostrar/ocultar tramos
+  document.getElementById('m-tipoVuelo').onchange = (e)=>{
+    const isRegular = e.target.value === "regular";
+    document.getElementById('tramos-section').style.display = isRegular ? 'block' : 'none';
+    document.getElementById('campos-vuelo-unico').style.display = isRegular ? 'none' : 'block';
+  };
+
+  document.getElementById('btnAddTramo').onclick = addTramoRow;
+  document.getElementById('btnAddPaxExtra').onclick = ()=>openPaxExtraModal(editingVueloId);
+
+  // Modal Pax Extra
+  document.getElementById('paxextra-cancel').onclick = closePaxExtraModal;
+  document.getElementById('paxextra-form').onsubmit = onSubmitPaxExtra;
 }
 
-// 5) Render de vuelos
+// 2️⃣ RENDER VUELOS Y CARDS
+
 async function renderVuelos(){
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
 
-  // Carga y ordena
   const snap = await getDocs(collection(db,'vuelos'));
   vuelos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
-  vuelos.sort((a,b)=>new Date(a.fechaIda)-new Date(b.fechaIda));
 
-  // Recorre cada vuelo
+  vuelos.sort((a,b)=>{
+    const getFecha = v =>
+      v.tipoVuelo === "regular"
+        ? Math.min(...(v.tramos||[]).map(t=>+new Date(t.fechaIda)))
+        : +new Date(v.fechaIda);
+    if (getFecha(a) !== getFecha(b)) return getFecha(a) - getFecha(b);
+    return (a.ts? a.ts.seconds : 0) - (b.ts? b.ts.seconds : 0);
+  });
+
   for(const v of vuelos){
-    // Inicializa totales por vuelo
-    let totA = 0, totE = 0, totC = 0;
-    let confA = 0, confE = 0, confC = 0;
+    let totA = 0, totE = 0, totC = 0, totX = 0;
+    let confA = 0, confE = 0, confC = 0, confX = 0;
+    let paxExtrasArr = v.paxExtras || [];
 
-    // Construye las filas de grupos
+    let cardBody = '';
+    if(v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
+      cardBody += '<h4>TRAMOS:</h4>';
+      v.tramos.forEach((tramo, i) => {
+        cardBody += `
+          <div class="tramo-item">
+            <div><strong>${toUpper(tramo.aerolinea)} ${toUpper(tramo.numero)}:</strong> ${toUpper(tramo.origen)} → ${toUpper(tramo.destino)}</div>
+            <div><small>IDA: ${fmtFecha(tramo.fechaIda)}  |  VUELTA: ${fmtFecha(tramo.fechaVuelta)}</small></div>
+          </div>
+        `;
+      });
+    }
+
     const filas = (v.grupos || []).map((gObj, idx) => {
       const g = grupos.find(x=>x.id===gObj.id) || {};
-
-      // ——— Forzamos a número ———
       const a = parseInt(g.adultos     || 0, 10);
       const e = parseInt(g.estudiantes || 0, 10);
-
-      // Contamos coordinadores
-      const nombresArr = Array.isArray(g.nombresCoordinadores)
-        ? g.nombresCoordinadores
-        : (g.nombresCoordinadores
-           ? g.nombresCoordinadores.split(',').map(s=>s.trim())
-           : ['']);
-      const c = nombresArr.length;
-
-      // Suma numérica
-      totA += a;
-      totE += e;
-      totC += c;
-      if (gObj.status === 'confirmado') {
-        confA += a;
-        confE += e;
-        confC += c;
-      }
-
+      const c = parseInt(g.coordinadores || 0, 10);
       const totalRow = a + e + c;
+      totA += a; totE += e; totC += c;
+      if (gObj.status === 'confirmado') {
+        confA += a; confE += e; confC += c;
+      }
       const mail     = gObj.changedBy || '–';
-
       return `
         <div class="group-item">
-          <div class="num">${g.numeroNegocio}</div>
+          <div class="num">${toUpper(g.numeroNegocio)}</div>
           <div class="name">
-            <span class="group-name"
-                  onclick="openGroupModal('${g.id}')">
-              ${g.nombreGrupo}
+            <span class="group-name" onclick="openGroupModal('${g.id}')">
+              ${toUpper(g.nombreGrupo)}
             </span>
             <span class="pax-inline">
               ${totalRow} (A:${a} E:${e} C:${c})
@@ -121,54 +143,68 @@ async function renderVuelos(){
           </div>
           <div class="status-cell">
             <span>
-              ${gObj.status==='confirmado'
-                ? '✅ Confirmado'
-                : '🕗 Pendiente'}
+              ${gObj.status==='confirmado' ? '✅ CONFIRMADO' : '🕗 PENDIENTE'}
             </span>
-            <span class="by-email">${mail}</span>
-            <button class="btn-small"
-                    onclick="toggleStatus('${v.id}',${idx})">
-              🔄
-            </button>
+            <span class="by-email">${toUpper(mail)}</span>
+            <button class="btn-small" onclick="toggleStatus('${v.id}',${idx})">🔄</button>
           </div>
           <div class="delete-cell">
-            <button class="btn-small"
-                    onclick="removeGroup('${v.id}',${idx})">
-              🗑️
-            </button>
+            <button class="btn-small" onclick="removeGroup('${v.id}',${idx})">🗑️</button>
           </div>
         </div>`;
     }).join('');
 
-    // Crea la tarjeta completa
-    const fmt = iso => new Date(iso)
-      .toLocaleDateString('es-CL',{
-        weekday:'long',day:'2-digit',month:'long',year:'numeric'
-      }).replace(/(^\w)/,m=>m.toUpperCase());
+    let filasExtras = '';
+    if(paxExtrasArr.length) {
+      filasExtras = paxExtrasArr.map((pax, idx) => {
+        const val = parseInt(pax.cantidad || 0, 10);
+        totX += val;
+        if (pax.status === 'confirmado') confX += val;
+        return `
+          <div class="group-item" style="background:#e7ffe7">
+            <div class="num">–</div>
+            <div class="name">
+              <span class="group-name">${toUpper(pax.nombre||'')}</span>
+              <span class="pax-inline">${val}</span>
+            </div>
+            <div class="status-cell">
+              <span>${pax.status==='confirmado' ? '✅ CONFIRMADO' : '🕗 PENDIENTE'}</span>
+              <span class="by-email">${toUpper(pax.changedBy||'')}</span>
+              <button class="btn-small" onclick="togglePaxExtraStatus('${v.id}',${idx})">🔄</button>
+            </div>
+            <div class="delete-cell">
+              <button class="btn-small" onclick="removePaxExtra('${v.id}',${idx})">🗑️</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    let fechaCard = '';
+    if(v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
+      const primerTramo = v.tramos[0];
+      fechaCard = `${toUpper(fmtFecha(primerTramo.fechaIda))} – ${toUpper(primerTramo.aerolinea)} ${toUpper(primerTramo.numero)} (${toUpper(v.tipoVuelo)})`;
+    } else {
+      fechaCard = `${toUpper(fmtFecha(v.fechaIda))} – ${toUpper(v.proveedor)} ${toUpper(v.numero)} (${toUpper(v.tipoVuelo)})`;
+    }
+
+    const totalPax = totA + totE + totC + totX;
+    const totalConf = confA + confE + confC + confX;
 
     const card = document.createElement('div');
     card.className = 'flight-card';
     card.innerHTML = `
-      <h4>✈️ ${v.proveedor} ${v.numero} (${v.tipoVuelo})</h4>
-      <p class="dates">
-        Origen: ${v.origen||'–'} &nbsp; Destino: ${v.destino||'–'}
-      </p>
-      <p class="dates">
-        Ida: ${fmt(v.fechaIda)} ↔️ Vuelta: ${fmt(v.fechaVuelta)}
-      </p>
-      <div>${filas || '<p>— Sin grupos —</p>'}</div>
-      <p><strong>Total Pax:</strong>
-         ${totA + totE + totC}
-         (A:${totA} E:${totE} C:${totC})
-         – Confirmados: ${confA + confE + confC}
-         (A:${confA} E:${confE} C:${confC})
-      </p>
+      <h4>${fechaCard}</h4>
+      ${cardBody}
+      <div>${filas || '<p>— SIN GRUPOS —</p>'}</div>
+      ${filasExtras}
+      <p><strong>TOTAL PAX:</strong> ${totalPax} (A:${totA} E:${totE} C:${totC} X:${totX}) – CONFIRMADOS: ${totalConf}</p>
       <div class="actions">
-        <button class="btn-add btn-edit">✏️ Editar</button>
-        <button class="btn-add btn-del">🗑️ Eliminar</button>
-      </div>`;
-
-    // Añade event listeners
+        <button class="btn-add btn-edit">✏️ EDITAR</button>
+        <button class="btn-add btn-del">🗑️ ELIMINAR</button>
+        <button class="btn-add btn-pax" style="background:green;color:white;" onclick="openPaxExtraModal('${v.id}')">+ AGREGAR PAX</button>
+      </div>
+    `;
     card.querySelector('.btn-edit').onclick = ()=>openModal(v);
     card.querySelector('.btn-del' ).onclick = ()=>deleteVuelo(v.id);
 
@@ -176,35 +212,125 @@ async function renderVuelos(){
   }
 }
 
-// 6) Abrir modal Vuelo
+function fmtFecha(iso) {
+  const dt = new Date(iso + 'T00:00:00');
+  return dt.toLocaleDateString('es-CL', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }).replace(/(^\w)/, m=>m.toUpperCase());
+}
+
+// 3️⃣ MODAL VUELO
+
 function openModal(v=null){
-  isEdit=!!v; editId=v?.id||null;
-  document.getElementById('modal-title').textContent=v?'Editar Vuelo':'Nuevo Vuelo';
+  isEdit=!!v; editId=v?.id||null; editingVueloId = v?.id||null;
+
+  document.getElementById('modal-title').textContent = v?'EDITAR VUELO':'NUEVO VUELO';
+
+  // Reset campos
   ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']
     .forEach(k=>document.getElementById(`m-${k}`).value=v?.[k]||'');
-  document.getElementById('m-statusDefault').value=v?.grupos?.[0]?.status||'confirmado';
+
+  document.getElementById('m-tipoVuelo').value = v?.tipoVuelo || 'regular';
+
   choiceGrupos.removeActiveItems();
   if(v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g=>g.id));
+
+  document.getElementById('m-statusDefault').value=v?.grupos?.[0]?.status||'confirmado';
+
+  // Tramos para regular
+  if(v && v.tipoVuelo === 'regular') {
+    editingTramos = [...(v.tramos||[])];
+    renderTramosList();
+    document.getElementById('tramos-section').style.display = 'block';
+    document.getElementById('campos-vuelo-unico').style.display = 'none';
+  } else {
+    editingTramos = [];
+    renderTramosList();
+    document.getElementById('tramos-section').style.display = 'none';
+    document.getElementById('campos-vuelo-unico').style.display = 'block';
+  }
+
   document.getElementById('modal-backdrop').style.display='block';
   document.getElementById('modal-vuelo').style.display='block';
 }
 
-// 7) Guardar/Editar Vuelo + Historial
-async function onSubmit(evt){
+function closeModal(){
+  document.getElementById('modal-backdrop').style.display='none';
+  document.getElementById('modal-vuelo').style.display='none';
+}
+
+// Tramos dinámicos
+function renderTramosList(){
+  const cont = document.getElementById('tramos-list');
+  cont.innerHTML = '';
+  editingTramos.forEach((t,i)=>{
+    const row = document.createElement('div');
+    row.className = 'tramo-row';
+    row.innerHTML = `
+      <input class="long" type="text" value="${toUpper(t.aerolinea||'')}" placeholder="AEROLÍNEA" data-t="aerolinea" data-i="${i}"/>
+      <input type="text" value="${toUpper(t.numero||'')}" placeholder="N°" data-t="numero" data-i="${i}"/>
+      <input class="long" type="text" value="${toUpper(t.origen||'')}" placeholder="ORIGEN" data-t="origen" data-i="${i}"/>
+      <input class="long" type="text" value="${toUpper(t.destino||'')}" placeholder="DESTINO" data-t="destino" data-i="${i}"/>
+      <input type="date" value="${t.fechaIda||''}" placeholder="FECHA IDA" data-t="fechaIda" data-i="${i}"/>
+      <input type="date" value="${t.fechaVuelta||''}" placeholder="FECHA VUELTA" data-t="fechaVuelta" data-i="${i}"/>
+      <button type="button" class="tramo-remove" onclick="removeTramo(${i})">X</button>
+    `;
+    // Cambios dinámicos
+    row.querySelectorAll('input').forEach(inp=>{
+      inp.onchange = function(){
+        const key = inp.dataset.t;
+        editingTramos[i][key] = inp.value.toUpperCase();
+      };
+    });
+    cont.appendChild(row);
+  });
+}
+window.removeTramo = idx => {
+  editingTramos.splice(idx,1);
+  renderTramosList();
+};
+function addTramoRow(){
+  editingTramos.push({
+    aerolinea:'',numero:'',origen:'',destino:'',
+    fechaIda:'',fechaVuelta:''
+  });
+  renderTramosList();
+}
+
+// 4️⃣ GUARDAR / EDITAR VUELO
+async function onSubmitVuelo(evt){
   evt.preventDefault();
-  const sel=choiceGrupos.getValue(true);
-  const defaultStatus=document.getElementById('m-statusDefault').value;
-  const gruposArr=sel.map(id=>({ id, status:defaultStatus, changedBy:currentUserEmail }));
-  const pay={
-    proveedor:document.getElementById('m-proveedor').value.trim().toUpperCase(),
-    numero:   document.getElementById('m-numero').value.trim(),
-    tipoVuelo:document.getElementById('m-tipoVuelo').value,
-    origen:   document.getElementById('m-origen').value.trim(),
-    destino:  document.getElementById('m-destino').value.trim(),
-    fechaIda: document.getElementById('m-fechaIda').value,
-    fechaVuelta:document.getElementById('m-fechaVuelta').value,
-    grupos:   gruposArr
-  };
+  const tipoVuelo = document.getElementById('m-tipoVuelo').value;
+  const sel = choiceGrupos.getValue(true);
+  const defaultStatus = document.getElementById('m-statusDefault').value;
+
+  const gruposArr = sel.map(id=>({ id, status:defaultStatus, changedBy:currentUserEmail }));
+  let pay = {};
+
+  if(tipoVuelo === 'regular'){
+    pay = {
+      tipoVuelo: 'regular',
+      tramos: editingTramos.map(t=>({
+        aerolinea: toUpper(t.aerolinea),
+        numero: toUpper(t.numero),
+        origen: toUpper(t.origen),
+        destino: toUpper(t.destino),
+        fechaIda: t.fechaIda,
+        fechaVuelta: t.fechaVuelta
+      })),
+      grupos: gruposArr
+    };
+  } else {
+    pay = {
+      proveedor: toUpper(document.getElementById('m-proveedor').value.trim()),
+      numero:    toUpper(document.getElementById('m-numero').value.trim()),
+      tipoVuelo,
+      origen:    toUpper(document.getElementById('m-origen').value.trim()),
+      destino:   toUpper(document.getElementById('m-destino').value.trim()),
+      fechaIda:  document.getElementById('m-fechaIda').value,
+      fechaVuelta:document.getElementById('m-fechaVuelta').value,
+      grupos: gruposArr
+    };
+  }
+
   if(isEdit){
     const before=(await getDoc(doc(db,'vuelos',editId))).data();
     await updateDoc(doc(db,'vuelos',editId),pay);
@@ -216,16 +342,116 @@ async function onSubmit(evt){
   closeModal(); renderVuelos();
 }
 
-// 8) Eliminar Vuelo + Historial
-async function deleteVuelo(id){
-  if(!confirm('¿Eliminar vuelo completo?')) return;
-  const before=(await getDoc(doc(db,'vuelos',id))).data();
-  await deleteDoc(doc(db,'vuelos',id));
-  await addDoc(collection(db,'historial'),{ tipo:'vuelo-del', vueloId:id, antes:before, despues:null, usuario:currentUserEmail, ts:serverTimestamp() });
+// 5️⃣ MODAL PAX EXTRA
+
+function openPaxExtraModal(vueloId){
+  editingVueloId = vueloId;
+  document.getElementById('paxextra-nombre').value = '';
+  document.getElementById('paxextra-cantidad').value = 1;
+  document.getElementById('paxextra-status').value = 'pendiente';
+  document.getElementById('paxextra-backdrop').style.display='block';
+  document.getElementById('paxextra-modal').style.display='block';
+}
+function closePaxExtraModal(){
+  document.getElementById('paxextra-backdrop').style.display='none';
+  document.getElementById('paxextra-modal').style.display='none';
+}
+async function onSubmitPaxExtra(evt){
+  evt.preventDefault();
+  const nombre = toUpper(document.getElementById('paxextra-nombre').value.trim());
+  const cantidad = parseInt(document.getElementById('paxextra-cantidad').value,10);
+  const status = document.getElementById('paxextra-status').value;
+  const pax = { nombre, cantidad, status, changedBy:currentUserEmail };
+  if(!nombre || cantidad < 1) return alert('Completa todos los campos correctamente');
+  // Carga vuelo
+  const ref = doc(db, 'vuelos', editingVueloId), snap = await getDoc(ref), data = snap.data();
+  const paxExtrasArr = data.paxExtras || [];
+  paxExtrasArr.push(pax);
+  await updateDoc(ref, { paxExtras: paxExtrasArr });
+  await addDoc(collection(db,'historial'),{ tipo:'pax-extra-add', vueloId:editingVueloId, antes:null, despues:pax, usuario:currentUserEmail, ts:serverTimestamp() });
+  closePaxExtraModal(); renderVuelos();
+}
+window.removePaxExtra = async (vueloId, idx)=>{
+  const ref = doc(db, 'vuelos', vueloId), snap = await getDoc(ref), data = snap.data();
+  const arr = data.paxExtras || [];
+  const antes = arr[idx];
+  arr.splice(idx,1);
+  await updateDoc(ref, { paxExtras: arr });
+  await addDoc(collection(db,'historial'),{ tipo:'pax-extra-del', vueloId:vueloId, antes, despues:null, usuario:currentUserEmail, ts:serverTimestamp() });
   renderVuelos();
+};
+window.togglePaxExtraStatus = async (vueloId, idx)=>{
+  const ref = doc(db, 'vuelos', vueloId), snap = await getDoc(ref), data = snap.data();
+  const arr = data.paxExtras || [];
+  const old = arr[idx];
+  arr[idx] = { ...old, status: old.status==='pendiente'?'confirmado':'pendiente', changedBy:currentUserEmail };
+  await updateDoc(ref, { paxExtras: arr });
+  await addDoc(collection(db,'historial'),{ tipo:'pax-extra-status', vueloId:vueloId, antes:old, despues:arr[idx], usuario:currentUserEmail, ts:serverTimestamp() });
+  renderVuelos();
+};
+
+// 6️⃣ MODAL GRUPO
+
+window.openGroupModal=grupoId=>{
+  const g=grupos.find(x=>x.id===grupoId);
+  if(!g) return alert('Grupo no encontrado');
+  document.getElementById('g-numeroNegocio').value=g.numeroNegocio;
+  document.getElementById('g-nombreGrupo').value  =g.nombreGrupo;
+  document.getElementById('g-cantidadGrupo').value=g.cantidadGrupo||0;
+  document.getElementById('g-adultos').value      =g.adultos||0;
+  document.getElementById('g-estudiantes').value  =g.estudiantes||0;
+  document.getElementById('g-coordinadores').value=g.coordinadores||0;
+  document.getElementById('group-form').dataset.grupoId=grupoId;
+  document.getElementById('group-backdrop').style.display='block';
+  document.getElementById('group-modal').style.display   ='block';
+
+  // Vincular lógica de ajuste automático
+  ['g-adultos','g-estudiantes'].forEach(id=>{
+    document.getElementById(id).oninput = ()=>ajustarPAXdesdeAdultosEstudiantes();
+  });
+  document.getElementById('g-cantidadGrupo').oninput = ()=>ajustarAdultosEstudiantesDesdePAX();
+};
+
+function closeGroupModal(){
+  document.getElementById('group-backdrop').style.display='none';
+  document.getElementById('group-modal').style.display   ='none';
 }
 
-// 9) Quitar Grupo + Historial
+// Si cambias Adultos/Estudiantes, PAX se ajusta automático
+function ajustarPAXdesdeAdultosEstudiantes(){
+  const a = +document.getElementById('g-adultos').value || 0;
+  const e = +document.getElementById('g-estudiantes').value || 0;
+  document.getElementById('g-cantidadGrupo').value = a + e;
+}
+// Si cambias PAX, Estudiantes se ajusta (mantiene Adultos fijo)
+function ajustarAdultosEstudiantesDesdePAX(){
+  const pax = +document.getElementById('g-cantidadGrupo').value || 0;
+  const a   = +document.getElementById('g-adultos').value || 0;
+  let e     = pax - a;
+  e = e >= 0 ? e : 0;
+  document.getElementById('g-estudiantes').value = e;
+}
+
+async function onSubmitGroup(evt){
+  evt.preventDefault();
+  const form=document.getElementById('group-form'), id=form.dataset.grupoId;
+  const before=(await getDoc(doc(db,'grupos',id))).data();
+  const data={
+    cantidadGrupo: +document.getElementById('g-cantidadGrupo').value||0,
+    adultos:       +document.getElementById('g-adultos').value||0,
+    estudiantes:   +document.getElementById('g-estudiantes').value||0,
+    coordinadores: +document.getElementById('g-coordinadores').value||0,
+  };
+  data.cantidadTotal = data.adultos + data.estudiantes + data.coordinadores;
+  await updateDoc(doc(db,'grupos',id),data);
+  await addDoc(collection(db,'historial'),{ tipo:'grupo-edit', grupoId:id, antes:before, despues:data, usuario:currentUserEmail, ts:serverTimestamp() });
+  await loadGrupos();
+  renderVuelos();
+  closeGroupModal();
+}
+
+// 7️⃣ ACCIONES DE GRUPO EN VUELO
+
 window.removeGroup=async(vId,idx)=>{
   const ref=doc(db,'vuelos',vId), snap=await getDoc(ref), data=snap.data();
   const before=data.grupos[idx]; data.grupos.splice(idx,1);
@@ -233,8 +459,6 @@ window.removeGroup=async(vId,idx)=>{
   await addDoc(collection(db,'historial'),{ tipo:'grupo-remove', vueloId:vId, grupoId:before.id, antes:before, despues:null, usuario:currentUserEmail, ts:serverTimestamp() });
   renderVuelos();
 };
-
-// 10) Toggle Estado + Historial
 window.toggleStatus=async(vId,idx)=>{
   const ref=doc(db,'vuelos',vId), snap=await getDoc(ref), data=snap.data();
   const old=data.grupos[idx];
@@ -245,74 +469,41 @@ window.toggleStatus=async(vId,idx)=>{
   renderVuelos();
 };
 
-// 11) Cerrar modal Vuelo
-function closeModal(){
-  document.getElementById('modal-backdrop').style.display='none';
-  document.getElementById('modal-vuelo').style.display='none';
-}
-
-// 12) Abrir modal Grupo
-window.openGroupModal=grupoId=>{
-  const g=grupos.find(x=>x.id===grupoId);
-  if(!g) return alert('Grupo no encontrado');
-  document.getElementById('g-numeroNegocio').value=g.numeroNegocio;
-  document.getElementById('g-nombreGrupo').value  =g.nombreGrupo;
-  document.getElementById('g-empresaBus').value   =g.empresaBus||'';
-  document.getElementById('g-adultos').value      =g.adultos||0;
-  document.getElementById('g-estudiantes').value  =g.estudiantes||0;
-  document.getElementById('g-cantCoordinadores').value = (Array.isArray(g.nombresCoordinadores)?g.nombresCoordinadores.length:1);
-  document.getElementById('g-nombresCoordinadores').value = Array.isArray(g.nombresCoordinadores)?g.nombresCoordinadores.join(', '):'';
-  document.getElementById('group-form').dataset.grupoId=grupoId;
-  document.getElementById('group-backdrop').style.display='block';
-  document.getElementById('group-modal').style.display   ='block';
-};
-
-// 13) Cerrar modal Grupo
-function closeGroupModal(){
-  document.getElementById('group-backdrop').style.display='none';
-  document.getElementById('group-modal').style.display   ='none';
-}
-
-// 14) Guardar Grupo + Historial
-async function onSubmitGroup(evt){
-  evt.preventDefault();
-  const form=document.getElementById('group-form'), id=form.dataset.grupoId;
-  const before=(await getDoc(doc(db,'grupos',id))).data();
-  const nombresArr=document.getElementById('g-nombresCoordinadores').value.split(',').map(s=>s.trim()).filter(Boolean);
-  const data={
-    empresaBus: document.getElementById('g-empresaBus').value.trim(),
-    adultos:    +document.getElementById('g-adultos').value||0,
-    estudiantes:+document.getElementById('g-estudiantes').value||0,
-    nombresCoordinadores:nombresArr
-  };
-  await updateDoc(doc(db,'grupos',id),data);
-  await addDoc(collection(db,'historial'),{ tipo:'grupo-edit', grupoId:id, antes:before, despues:data, usuario:currentUserEmail, ts:serverTimestamp() });
-  await loadGrupos();
+// 8️⃣ ELIMINAR VUELO + HISTORIAL
+async function deleteVuelo(id){
+  if(!confirm('¿Eliminar vuelo completo?')) return;
+  const before=(await getDoc(doc(db,'vuelos',id))).data();
+  await deleteDoc(doc(db,'vuelos',id));
+  await addDoc(collection(db,'historial'),{ tipo:'vuelo-del', vueloId:id, antes:before, despues:null, usuario:currentUserEmail, ts:serverTimestamp() });
   renderVuelos();
-  closeGroupModal();
 }
 
-// 15) Mostrar Historial
+// 9️⃣ HISTORIAL Y EXPORTAR EXCEL (igual a versión anterior, no lo repito por espacio)
+
 async function showHistorialModal(){
   document.getElementById('hist-backdrop').style.display='block';
   document.getElementById('hist-modal').style.display   ='block';
   await loadHistorial();
 }
 
-// 16) Cerrar Historial
 function closeHistorialModal(){
   document.getElementById('hist-backdrop').style.display='none';
   document.getElementById('hist-modal').style.display   ='none';
 }
 
-// 17) Cargar & renderizar Historial
 async function loadHistorial(){
   const tbody=document.querySelector('#hist-table tbody');
   tbody.innerHTML='';
-  const qSnap=query(collection(db,'historial'),orderBy('ts','desc'));
+  // Filtrar por fechas si están definidas
+  const start = document.getElementById('hist-start').value;
+  const end = document.getElementById('hist-end').value;
+  let qSnap=query(collection(db,'historial'),orderBy('ts','desc'));
   const snap=await getDocs(qSnap);
   for(const dSnap of snap.docs){
-    const d=dSnap.data(), ts=d.ts?.toDate();
+    const d=dSnap.data(), ts=d.ts?.toDate?.();
+    // Filtro de fechas si aplica
+    if(start && ts && ts < new Date(start+'T00:00:00')) continue;
+    if(end && ts && ts > new Date(end+'T23:59:59')) continue;
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td>${ts?ts.toLocaleString('es-CL'):''}</td>
@@ -327,32 +518,42 @@ async function loadHistorial(){
   dtHist=$('#hist-table').DataTable({ language:{url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'}, order:[[0,'desc']] });
 }
 
+// ===== EXPORTAR EXCEL =====
+
 function exportToExcel(){
   // Hoja 1: resumen de vuelos
   const resumen = vuelos.map(v => {
-    let totA=0, totE=0, totC=0;
+    let totA=0, totE=0, totC=0, totX=0;
     (v.grupos||[]).forEach(gObj => {
       const g = grupos.find(x=>x.id===gObj.id)||{};
       totA += parseInt(g.adultos||0,10);
       totE += parseInt(g.estudiantes||0,10);
-      totC += Array.isArray(g.nombresCoordinadores)
-                ? g.nombresCoordinadores.length
-                : (g.nombresCoordinadores
-                   ? g.nombresCoordinadores.split(',').length
-                   : 1);
+      totC += parseInt(g.coordinadores||0,10);
     });
+    (v.paxExtras||[]).forEach(x=>{
+      totX += parseInt(x.cantidad||0,10);
+    });
+
+    // Para vuelos regulares, concatenamos tramos en una columna
+    let detallesTramos = '';
+    if(v.tipoVuelo === 'regular' && v.tramos && v.tramos.length){
+      detallesTramos = v.tramos.map((t,i)=>`${i+1}) ${toUpper(t.aerolinea)} ${toUpper(t.numero)}: ${toUpper(t.origen)}→${toUpper(t.destino)} [IDA:${t.fechaIda} VUELTA:${t.fechaVuelta}]`).join('\n');
+    }
+
     return {
-      Aerolínea: v.proveedor,
-      Vuelo: v.numero,
-      Tipo: v.tipoVuelo,
-      Origen: v.origen,
-      Destino: v.destino,
-      Fecha_Ida: v.fechaIda,
-      Fecha_Vuelta: v.fechaVuelta,
+      Aerolínea: v.proveedor || (v.tramos?.[0]?.aerolinea || ''),
+      Vuelo:     v.numero    || (v.tramos?.[0]?.numero    || ''),
+      Tipo:      v.tipoVuelo,
+      Origen:    v.origen    || (v.tramos?.[0]?.origen    || ''),
+      Destino:   v.destino   || (v.tramos?.[0]?.destino   || ''),
+      Fecha_Ida: v.fechaIda  || (v.tramos?.[0]?.fechaIda  || ''),
+      Fecha_Vuelta: v.fechaVuelta || (v.tramos?.[0]?.fechaVuelta || ''),
+      Tramos:    detallesTramos,
       Total_Adultos: totA,
       Total_Estudiantes: totE,
       Total_Coordinadores: totC,
-      Total_Pax: totA+totE+totC
+      Total_Pax_Extra: totX,
+      Total_Pax: totA+totE+totC+totX
     };
   });
 
@@ -362,12 +563,29 @@ function exportToExcel(){
     (v.grupos||[]).forEach(gObj => {
       const g = grupos.find(x=>x.id===gObj.id)||{};
       detalle.push({
-        Fecha_Ida: v.fechaIda,
-        Vuelo: v.numero,
+        Vuelo: v.numero || (v.tramos?.[0]?.numero || ''),
         Grupo_Numero: g.numeroNegocio,
         Grupo_Nombre: g.nombreGrupo,
+        Adultos: g.adultos||0,
+        Estudiantes: g.estudiantes||0,
+        Coordinadores: g.coordinadores||0,
+        Total: (g.adultos||0)+(g.estudiantes||0)+(g.coordinadores||0),
         Estado: gObj.status,
         Cambiado_Por: gObj.changedBy || ''
+      });
+    });
+    // También agregamos pax extras al detalle
+    (v.paxExtras||[]).forEach(x=>{
+      detalle.push({
+        Vuelo: v.numero || (v.tramos?.[0]?.numero || ''),
+        Grupo_Numero: '-',
+        Grupo_Nombre: x.nombre,
+        Adultos: '-',
+        Estudiantes: '-',
+        Coordinadores: '-',
+        Total: x.cantidad,
+        Estado: x.status,
+        Cambiado_Por: x.changedBy || ''
       });
     });
   });
@@ -382,3 +600,14 @@ function exportToExcel(){
   // Descargar
   XLSX.writeFile(wb, "planificacion_vuelos_completa.xlsx");
 }
+
+
+// 10️⃣ CERRAR MODALES DE BACKDROP AL HACER CLICK FUERA
+document.body.addEventListener('click', function(e){
+  if(e.target.classList.contains('modal-backdrop')) {
+    e.target.style.display='none';
+    const modal = document.querySelector('.modal[style*="display: block"]');
+    if(modal) modal.style.display='none';
+  }
+}, true);
+
