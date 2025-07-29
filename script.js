@@ -10,29 +10,32 @@ document.addEventListener("DOMContentLoaded", () => {
   // 🔐 Mostrar correo del usuario conectado
   onAuthStateChanged(auth, user => {
     const userDiv = document.getElementById("usuario-conectado");
-    if (user && userDiv) {
-      userDiv.textContent = `${user.email}`;
-    }
+    if (userDiv) userDiv.textContent = user ? user.email : "";
   });
 
   // 🕒 Mostrar hora actual en <div id="reloj">
   function actualizarReloj() {
     const ahora = new Date();
-    const opciones = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
-    const hora = ahora.toLocaleTimeString("es-CL", opciones);
+    const hora = ahora.toLocaleTimeString("es-CL", { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const fecha = ahora.toLocaleDateString("es-CL", {
-      day: '2-digit', month: 'short', year: 'numeric'
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
     });
     const reloj = document.getElementById("reloj");
-    if (reloj) reloj.textContent = `${hora} - ${fecha}`;
+    if (reloj) reloj.textContent = `${hora} | ${fecha}`;
     else console.warn("⚠️ No se encontró el div #reloj");
   }
+  setInterval(actualizarReloj, 1000);
+  actualizarReloj();
 
-  // 🕒 Activar reloj cada segundo (después de 100ms)
-  setTimeout(() => {
-    actualizarReloj();
-    setInterval(actualizarReloj, 1000);
-  }, 100);
+  // 🏠 Home dinámico (soporta Vercel y GitHub Pages)
+  const btnHome = document.getElementById("btn-home");
+  if (btnHome) {
+    if (location.hostname.includes("github.io")) {
+      btnHome.href = "https://sistemas-raitrai.github.io/Operaciones-RTv1.0/";
+    } else {
+      btnHome.href = "/";
+    }
+  }
 
   // ⏏️ Función global para cerrar sesión
   window.logout = async function () {
