@@ -6,6 +6,7 @@
   <title>Servicios Rai Trai</title>
   <!-- Tu hoja de estilos general -->
   <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <style>
     /* ——— Layout del header con botón de Proveedores ——— */
     header {
@@ -495,9 +496,21 @@
     window.closeProveedores = closeProveedores;
 
     // — Carga header externo —
-    fetch('encabezado.html')
-      .then(r => r.text())
-      .then(html => document.getElementById('encabezado').innerHTML = html);
+    <script>
+      fetch('encabezado.html')
+        .then(res => res.text())
+        .then(html => {
+          document.getElementById('encabezado').innerHTML = html;
+        })
+        .then(() => {
+          const s = document.createElement('script');
+          s.type = 'module';
+          s.textContent = `
+            import './firebase-init.js';
+            import './script.js';
+          `;
+          document.body.appendChild(s);
+        });
 
   </script>
 </body>
