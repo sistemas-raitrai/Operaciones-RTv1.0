@@ -65,14 +65,16 @@
   </div>
 
   <!-- 1️⃣ Carga e inyección del encabezado (que contiene #reloj y .username) -->
-  <script type="module" defer>
+  <script type="module">
     (async () => {
-      const res  = await fetch("encabezado.html");
-      const html = await res.text();
-      document.getElementById("encabezado").innerHTML = html;
-      // Ahora que el encabezado está en el DOM, importamos script.js:
-      await import("./script.js");
-      console.log("✅ script.js cargado tras inyectar encabezado");
+      // 1. Espera a que el encabezado esté en el DOM
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+      // 2. Importa firebase-init.js PRIMERO y espera a que esté inicializado
+      await import('./firebase-init.js');
+      // 3. Ahora importa script.js (que depende de firebase-init.js)
+      await import('./script.js');
+      console.log('✅ script.js cargado tras inyectar encabezado y firebase');
     })();
   </script>
 
