@@ -30,11 +30,14 @@ document.addEventListener("DOMContentLoaded", () => {
   // 🏠 Home dinámico (soporta Vercel y GitHub Pages)
   const btnHome = document.getElementById("btn-home");
   if (btnHome) {
-    if (location.hostname.includes("github.io")) {
-      btnHome.href = "https://sistemas-raitrai.github.io/Operaciones-RTv1.0/";
-    } else {
-      btnHome.href = "/";
-    }
+    btnHome.addEventListener("click", function (e) {
+      e.preventDefault(); // Cancela el href default siempre
+      if (location.hostname.includes("github.io")) {
+        window.location.href = "https://sistemas-raitrai.github.io/Operaciones-RTv1.0/";
+      } else {
+        window.location.href = "/";
+      }
+    });
   }
 
   // ⏏️ Función global para cerrar sesión
