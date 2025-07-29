@@ -43,16 +43,7 @@
   <!-- 1) Contenedor donde se injecta el header -->
   <div id="encabezado"></div>
 
-  <!-- 2) Script que carga dinámicamente 'encabezado.html' -->
-  <script type="module">
-    (async () => {
-      const html = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = html;
-      // Si el header necesita sus propios scripts, podrías importarlos aquí.
-    })();
-  </script>
-
-  <!-- 3) Tu contenido principal -->
+  <!-- 2) Tu contenido principal -->
   <main class="main">
     <div class="row">
         <div class="column long"><h2>PLANIFICACIÓN DE VUELOS:</h2>
@@ -157,6 +148,18 @@
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script type="module" src="./viajes.js"></script>
+  <script type="module">
+    (async () => {
+      // 1. Cargar el encabezado común (header)
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+  
+      // 2. Importar los scripts necesarios (en orden)
+      await import('./firebase-init.js');
+      await import('./script.js');    // Global: usuario, reloj, botones
+      await import('./viajes.js');    // Lógica propia de esta página
+    })();
+  </script>
+
 </body>
 </html>
