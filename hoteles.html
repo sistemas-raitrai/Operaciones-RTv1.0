@@ -6,7 +6,9 @@
   <title>Planificación de Hoteles | RT v1.0</title>
 
   <!-- Estilos globales -->
-  <link rel="stylesheet" href="estilos.css"/>
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
   <link rel="stylesheet"
@@ -180,6 +182,24 @@
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script type="module" src="./hoteles.js"></script>
+
+      <!-- Encabezado común -->
+  <script type="module">
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById('encabezado').innerHTML = html;
+      })
+      .then(() => {
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.textContent = 
+          import './firebase-init.js';
+          import './hoteles.js';
+        ;
+        document.body.appendChild(s);
+      });
+  </script>
+
 </body>
 </html>
