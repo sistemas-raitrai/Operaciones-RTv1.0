@@ -352,6 +352,8 @@ function openPaxExtraModal(vueloId){
   document.getElementById('paxextra-backdrop').style.display='block';
   document.getElementById('paxextra-modal').style.display='block';
 }
+window.openPaxExtraModal = openPaxExtraModal;
+
 function closePaxExtraModal(){
   document.getElementById('paxextra-backdrop').style.display='none';
   document.getElementById('paxextra-modal').style.display='none';
@@ -400,16 +402,26 @@ window.openGroupModal=grupoId=>{
   document.getElementById('g-cantidadGrupo').value=g.cantidadGrupo||0;
   document.getElementById('g-adultos').value      =g.adultos||0;
   document.getElementById('g-estudiantes').value  =g.estudiantes||0;
-  document.getElementById('g-coordinadores').value=g.coordinadores||0;
+  if (!g.coordinadores || g.coordinadores === 0) {
+    document.getElementById('g-coordinadores').value = 1;
+  } else {
+    document.getElementById('g-coordinadores').value = g.coordinadores;
+  }
   document.getElementById('group-form').dataset.grupoId=grupoId;
   document.getElementById('group-backdrop').style.display='block';
   document.getElementById('group-modal').style.display   ='block';
 
-  // Vincular lógica de ajuste automático
+  // 1) Ajuste automático de PAX ↔ adultos/estudiantes
   ['g-adultos','g-estudiantes'].forEach(id=>{
     document.getElementById(id).oninput = ()=>ajustarPAXdesdeAdultosEstudiantes();
   });
   document.getElementById('g-cantidadGrupo').oninput = ()=>ajustarAdultosEstudiantesDesdePAX();
+
+  // 2) Recalcula el TOTAL FINAL en cada cambio
+  ['g-adultos','g-estudiantes','g-coordinadores'].forEach(id=>{
+    document.getElementById(id).oninput = recalcularTotalFinal;
+  });
+  recalcularTotalFinal(); // Y al abrir el modal
 };
 
 function closeGroupModal(){
@@ -430,6 +442,13 @@ function ajustarAdultosEstudiantesDesdePAX(){
   let e     = pax - a;
   e = e >= 0 ? e : 0;
   document.getElementById('g-estudiantes').value = e;
+}
+
+function recalcularTotalFinal() {
+  const a = +document.getElementById('g-adultos').value || 0;
+  const e = +document.getElementById('g-estudiantes').value || 0;
+  const c = +document.getElementById('g-coordinadores').value || 0;
+  document.getElementById('g-cantidadTotal').value = a + e + c;
 }
 
 async function onSubmitGroup(evt){
