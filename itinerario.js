@@ -486,7 +486,8 @@ async function cargarPlantilla() {
   if (reemplazar) {
     // Solo las actividades de la plantilla (ajustadas a las fechas del grupo)
     fechas.forEach((fecha, idx) => {
-      nuevoIt[fecha] = (diasPlantilla[idx] || []).map(act => ({
+      const acts = Array.isArray(diasPlantilla[idx]) ? diasPlantilla[idx] : [];
+      nuevoIt[fecha] = acts.map(act => ({
         ...act,
         pasajeros:   (g.adultos||0) + (g.estudiantes||0),
         adultos:     g.adultos || 0,
@@ -500,15 +501,16 @@ async function cargarPlantilla() {
       nuevoIt[fecha] = (g.itinerario[fecha]||[]).slice();
     }
     fechas.forEach((fecha, idx) => {
-      const extras = (diasPlantilla[idx] || []).map(act => ({
-        ...act,
-        pasajeros:   (g.adultos||0) + (g.estudiantes||0),
-        adultos:     g.adultos || 0,
-        estudiantes: g.estudiantes || 0
-      }));
-      nuevoIt[fecha] = (nuevoIt[fecha]||[]).concat(extras);
+      const extras = Array.isArray(diasPlantilla[idx]) ? diasPlantilla[idx] : [];
+      nuevoIt[fecha] = (nuevoIt[fecha]||[]).concat(
+        extras.map(act => ({
+          ...act,
+          pasajeros:   (g.adultos||0) + (g.estudiantes||0),
+          adultos:     g.adultos || 0,
+          estudiantes: g.estudiantes || 0
+        }))
+      );
     });
-  }
 
   await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
   renderItinerario();
