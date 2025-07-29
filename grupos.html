@@ -8,8 +8,9 @@
   <!-- Buttons extension CSS -->
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.1/css/buttons.dataTables.min.css">
   <!-- Tu CSS -->
-  <link rel="stylesheet" href="estilos.css">
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css"/>
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
 <body>
 
@@ -111,12 +112,6 @@
     </div>
   </main>
 
-  <!-- Encabezado común -->
-  <script type="module">
-    (async () => {
-      document.getElementById("encabezado").innerHTML = await (await fetch("encabezado.html")).text();
-    })();
-  </script>
 
   <!-- Inicializaciones -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -128,6 +123,24 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
   <!-- Tu lógica -->
-  <script type="module" src="grupos.js"></script>
+    <!-- Encabezado común -->
+  <script type="module">
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById('encabezado').innerHTML = html;
+      })
+      .then(() => {
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.textContent = `
+          import './firebase-init.js';
+          import './script.js';
+          import './grupos.js'; // <-- tu lógica de página
+        `;
+        document.body.appendChild(s);
+      });
+  </script>
+  
 </body>
 </html>
