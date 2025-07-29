@@ -496,7 +496,7 @@
     window.closeProveedores = closeProveedores;
 
     // — Carga header externo —
-    <script>
+    <script type="module">
       fetch('encabezado.html')
         .then(res => res.text())
         .then(html => {
@@ -508,10 +508,10 @@
           s.textContent = `
             import './firebase-init.js';
             import './script.js';
+            import './servicios.js'; // ← mueve toda la lógica de servicios aquí
           `;
           document.body.appendChild(s);
         });
-
-  </script>
+    </script>
 </body>
 </html>
