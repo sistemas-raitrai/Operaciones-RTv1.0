@@ -1,20 +1,23 @@
 <!-- ✅ Encabezado reutilizable del sistema -->
-<header class="header">
+<header class="header" style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 1rem; background: #f4f8ff; border-bottom: 2px solid #e2e8f0;">
   <!-- 🖼️ Logo de la empresa -->
   <img src="Logo Raitrai.png" alt="Logo Rai Trai" style="height: 60px; margin-right: 1rem;" />
 
-  <!-- 📊 Título del sistema -->
+  <!-- 📊 Título del sistema + usuario -->
   <div style="flex-grow: 1;">
-    <div class="title">SISTEMA DE OPERACIONES RTv1.0</div>
-    <div><strong>Usuario conectado:</strong> <span id="usuario-conectado" style="color: green;"></span></div>
+    <div class="title" style="font-weight: bold; font-size: 1.2rem;">SISTEMA DE OPERACIONES RTv1.0</div>
+    <div>
+      <strong>Usuario conectado:</strong>
+      <span id="usuario-conectado" style="color: green;"></span>
+    </div>
   </div>
 
   <!-- ⏰ Reloj -->
-  <div id="reloj" style="font-size: 0.9rem; text-align: right;"></div>
+  <div id="reloj" style="font-size: 0.9rem; text-align: right; min-width: 270px;"></div>
 
   <!-- 🏠🔄🔙⏏ Botones funcionales -->
   <div style="display: flex; gap: 0.8rem; align-items: center; margin-left: 1rem;">
-    <a href="/" title="Inicio">
+    <a id="btn-home" href="#" title="Inicio">
       <span style="font-size: 1.4rem; cursor: pointer;">🏠</span>
     </a>
     <span onclick="location.reload()" title="Actualizar" style="font-size: 1.4rem; cursor: pointer;">🔄</span>
