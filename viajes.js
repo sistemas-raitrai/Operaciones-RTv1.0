@@ -180,27 +180,44 @@ async function renderVuelos(){
       }).join('');
     }
 
-    // ——— NUEVO TÍTULO DE LA CARD DE VUELO, AL ESTILO DE LA IMAGEN 1
+    // CABECERA ESTILO IMAGEN: título, fecha ida / fecha vuelta, origen/destino y separación
     let fechaCard = "";
     if (v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
       const primerTramo = v.tramos[0];
+      const fechaIda = fmtFechaLarga(primerTramo.fechaIda);
+      const fechaVuelta = fmtFechaLarga(primerTramo.fechaVuelta);
       fechaCard = `
         <div class="titulo-vuelo" style="margin-bottom:.5em;">
-          <span style="font-size:1.1em">✈️ ${toUpper(primerTramo.aerolinea || v.proveedor)} ${toUpper(primerTramo.numero || v.numero)} (${toUpper(v.tipoVuelo)})</span><br>
-          <span style="font-weight:bold;">${toUpper(fmtFecha(primerTramo.fechaIda))}</span>
-          <span style="font-weight:bold;">${toUpper(fmtFecha(fechaFin))}</span>
-          <div style="font-size:.96em;color:#555;">
-            Origen: ${toUpper(primerTramo.origen||v.origen||'')} &nbsp; Destino: ${toUpper(primerTramo.destino||v.destino||'')}
+          <div style="font-size:1.1em; font-weight:bold;">
+            <span style="margin-right:.4em;">✈️</span>
+            ${toUpper(primerTramo.aerolinea || v.proveedor)} ${toUpper(primerTramo.numero || v.numero)} (${toUpper(v.tipoVuelo)})
+          </div>
+          <div style="font-weight:bold; margin:.15em 0 .6em 0; font-size:.98em;">
+            ${fechaIda}${fechaVuelta ? ' / ' + fechaVuelta : ''}
+          </div>
+          <div style="font-size:.97em; color:#444; margin-bottom:.7em;">
+            <span>Origen: ${toUpper(primerTramo.origen||v.origen||'')}</span>
+            &nbsp;&nbsp;
+            <span>Destino: ${toUpper(primerTramo.destino||v.destino||'')}</span>
           </div>
         </div>
       `;
     } else {
+      const fechaIda = fmtFechaLarga(v.fechaIda);
+      const fechaVuelta = fmtFechaLarga(v.fechaVuelta);
       fechaCard = `
         <div class="titulo-vuelo" style="margin-bottom:.5em;">
-          <span style="font-size:1.1em">✈️ ${toUpper(v.proveedor || '')} ${toUpper(v.numero || '')} (${toUpper(v.tipoVuelo)})</span><br>
-          <span style="font-weight:bold;">${toUpper(fmtFecha(v.fechaIda))}</span>
-          <div style="font-size:.96em;color:#555;">
-            Origen: ${toUpper(v.origen||'')} &nbsp; Destino: ${toUpper(v.destino||'')}
+          <div style="font-size:1.1em; font-weight:bold;">
+            <span style="margin-right:.4em;">✈️</span>
+            ${toUpper(v.proveedor || '')} ${toUpper(v.numero || '')} (${toUpper(v.tipoVuelo)})
+          </div>
+          <div style="font-weight:bold; margin:.15em 0 .6em 0; font-size:.98em;">
+            ${fechaIda}${fechaVuelta ? ' / ' + fechaVuelta : ''}
+          </div>
+          <div style="font-size:.97em; color:#444; margin-bottom:.7em;">
+            <span>Origen: ${toUpper(v.origen||'')}</span>
+            &nbsp;&nbsp;
+            <span>Destino: ${toUpper(v.destino||'')}</span>
           </div>
         </div>
       `;
@@ -234,6 +251,13 @@ async function renderVuelos(){
 function fmtFecha(iso) {
   const dt = new Date(iso + 'T00:00:00');
   return dt.toLocaleDateString('es-CL', { weekday:'long', day:'2-digit', month:'long', year:'numeric' }).replace(/(^\w)/, m=>m.toUpperCase());
+}
+
+function fmtFechaLarga(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso + 'T00:00:00');
+  let txt = dt.toLocaleDateString('es-CL', { weekday:'long', day:'2-digit', month:'long', year:'numeric' });
+  return txt.toUpperCase();
 }
 
 // 3️⃣ MODAL VUELO
