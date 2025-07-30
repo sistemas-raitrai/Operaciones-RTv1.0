@@ -465,12 +465,6 @@ window.togglePaxExtraStatus = async (vueloId, idx)=>{
   renderVuelos();
 };
 
-function closePaxExtraModal(){
-  paxExtraEditMode = false; paxExtraEditIdx = null;
-  document.getElementById('paxextra-backdrop').style.display='none';
-  document.getElementById('paxextra-modal').style.display='none';
-}
-
 // 6️⃣ MODAL GRUPO
 
 window.openGroupModal=grupoId=>{
