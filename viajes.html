@@ -68,52 +68,70 @@
     <div id="vuelos-container"></div>
   </main>
 
-  <!-- MODAL VUELO (único o múltiple) -->
+  <!-- MODAL VUELO -->
   <div id="modal-backdrop" class="modal-backdrop"></div>
-  <div id="modal-vuelo" class="modal">
-    <h3 id="modal-title">VUELO</h3>
+  <div id="modal-vuelo" class="modal" style="max-width:900px;">
+    <h3 id="modal-title">NUEVO VUELO</h3>
     <form id="modal-form">
+  
       <div class="row">
         <div class="column short">
-          <label>AEROLÍNEA</label><input id="m-proveedor" list="lista-aero"/><datalist id="lista-aero"></datalist>
+          <label>AEROLÍNEA</label>
+          <input id="m-proveedor" list="lista-aero" />
+          <datalist id="lista-aero"></datalist>
         </div>
         <div class="column short">
-          <label>N° VUELO</label><input id="m-numero"/>
+          <label>N° VUELO</label>
+          <input id="m-numero" />
         </div>
         <div class="column short">
           <label>TIPO</label>
           <select id="m-tipoVuelo">
-            <option value="regular">REGULAR</option>
             <option value="charter">CHARTER</option>
+            <option value="regular">REGULAR</option>
           </select>
         </div>
       </div>
-      <div id="campos-vuelo-unico">
+  
+      <!-- SIMPLE VUELO (si no es múltiples tramos) -->
+      <div id="campos-vuelo-simple">
         <div class="row">
           <div class="column medium">
-            <label>ORIGEN</label><input id="m-origen"/>
+            <label>ORIGEN</label>
+            <input id="m-origen" />
           </div>
           <div class="column medium">
-            <label>DESTINO</label><input id="m-destino"/>
+            <label>DESTINO</label>
+            <input id="m-destino" />
           </div>
         </div>
         <div class="row">
           <div class="column medium">
-            <label>FECHA IDA</label><input type="date" id="m-fechaIda"/>
+            <label>FECHA IDA</label>
+            <input type="date" id="m-fechaIda" />
           </div>
           <div class="column medium">
-            <label>FECHA VUELTA</label><input type="date" id="m-fechaVuelta"/>
+            <label>FECHA VUELTA</label>
+            <input type="date" id="m-fechaVuelta" />
           </div>
         </div>
       </div>
-
-      <!-- SECCIÓN TRAMOS PARA VUELO REGULAR -->
+  
+      <!-- OPCIÓN MULTITRAMO SOLO PARA REGULAR -->
+      <div id="multitramo-opcion" style="display:none; margin:0.8em 0;">
+        <label>
+          <input type="checkbox" id="m-multitramo" />
+          Usar múltiples tramos
+        </label>
+      </div>
+  
+      <!-- SECCIÓN TRAMOS -->
       <div id="tramos-section" style="display:none">
         <h4>MÚLTIPLES TRAMOS DEL VUELO</h4>
         <div id="tramos-list"></div>
         <button type="button" id="btnAddTramo" style="background:#009966;color:white;margin:0.5em 0;">+ AGREGAR TRAMO</button>
       </div>
-
+  
       <label>GRUPOS</label>
       <select id="m-grupos" multiple></select>
       <label>ESTADO POR DEFECTO</label>
@@ -121,16 +139,15 @@
         <option value="confirmado">✅ CONFIRMADO</option>
         <option value="pendiente">🕗 PENDIENTE</option>
       </select>
-
-      <!-- BOTÓN AGREGAR PAX EXTRA -->
+  
       <button type="button" id="btnAddPaxExtra" style="background:green;color:white;margin:0.5em 0;">+ AGREGAR PAX EXTRA</button>
-      
       <div class="actions">
         <button type="button" id="modal-cancel">CANCELAR</button>
         <button type="submit">GUARDAR</button>
       </div>
     </form>
   </div>
+
 
   <!-- MODAL AGREGAR PAX EXTRA -->
   <div id="paxextra-backdrop" class="modal-backdrop"></div>
