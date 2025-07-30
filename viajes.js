@@ -187,7 +187,7 @@ async function renderVuelos(){
       tituloCard = `
         <div class="titulo-vuelo" style="margin-bottom:.5em;">
           <span style="font-size:1.1em">✈️ ${toUpper(primerTramo.aerolinea || v.proveedor)} ${toUpper(primerTramo.numero || v.numero)} (${toUpper(v.tipoVuelo)})</span><br>
-          <span style="font-weight:bold;">${toUpper(fmtFechaCorto(primerTramo.fechaIda))}</span>
+          <span style="font-weight:bold;">${toUpper(fmtFecha(primerTramo.fechaIda))}</span>
           <div style="font-size:.96em;color:#555;">
             Origen: ${toUpper(primerTramo.origen||v.origen||'')} &nbsp; Destino: ${toUpper(primerTramo.destino||v.destino||'')}
           </div>
