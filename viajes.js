@@ -741,6 +741,7 @@ function exportToExcel(){
     // También agregamos pax extras al detalle
     (v.paxExtras||[]).forEach(x=>{
       detalle.push({
+        Fecha_Ida: v.fechaIda,
         Vuelo: v.numero || (v.tramos?.[0]?.numero || ''),
         Grupo_Numero: '-',
         Grupo_Nombre: x.nombre,
