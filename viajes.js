@@ -180,13 +180,31 @@ async function renderVuelos(){
       }).join('');
     }
 
-    let fechaCard = '';
-    if(v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
+    // ——— NUEVO TÍTULO DE LA CARD DE VUELO, AL ESTILO DE LA IMAGEN 1
+    let tituloCard = "";
+    if (v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
       const primerTramo = v.tramos[0];
-      fechaCard = `${toUpper(fmtFecha(primerTramo.fechaIda))} – ${toUpper(primerTramo.aerolinea)} ${toUpper(primerTramo.numero)} (${toUpper(v.tipoVuelo)})`;
+      tituloCard = `
+        <div class="titulo-vuelo" style="margin-bottom:.5em;">
+          <span style="font-size:1.1em">✈️ ${toUpper(primerTramo.aerolinea || v.proveedor)} ${toUpper(primerTramo.numero || v.numero)} (${toUpper(v.tipoVuelo)})</span><br>
+          <span style="font-weight:bold;">${toUpper(fmtFechaCorto(primerTramo.fechaIda))}</span>
+          <div style="font-size:.96em;color:#555;">
+            Origen: ${toUpper(primerTramo.origen||v.origen||'')} &nbsp; Destino: ${toUpper(primerTramo.destino||v.destino||'')}
+          </div>
+        </div>
+      `;
     } else {
-      fechaCard = `${toUpper(fmtFecha(v.fechaIda))} – ${toUpper(v.proveedor)} ${toUpper(v.numero)} (${toUpper(v.tipoVuelo)})`;
+      tituloCard = `
+        <div class="titulo-vuelo" style="margin-bottom:.5em;">
+          <span style="font-size:1.1em">✈️ ${toUpper(v.proveedor || '')} ${toUpper(v.numero || '')} (${toUpper(v.tipoVuelo)})</span><br>
+          <span style="font-weight:bold;">${toUpper(fmtFechaCorto(v.fechaIda))}</span>
+          <div style="font-size:.96em;color:#555;">
+            Origen: ${toUpper(v.origen||'')} &nbsp; Destino: ${toUpper(v.destino||'')}
+          </div>
+        </div>
+      `;
     }
+
 
     const totalPax = totA + totE + totC + totX;
     const totalConf = confA + confE + confC + confX;
