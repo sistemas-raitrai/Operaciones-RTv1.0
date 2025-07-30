@@ -11,6 +11,9 @@ import {
 
 let paxExtraEditMode = false;
 let paxExtraEditIdx = null;
+// VARIABLES DOM MODAL VUELO (deben estar arriba para usarlas en todo el archivo)
+let tipoVueloEl, multitramoChkEl, camposSimpleEl, multitramoOpEl, tramosSectionEl;
+
 
 const auth = getAuth(app);
 let grupos = [], vuelos = [];
@@ -59,6 +62,13 @@ function initModal(){
   document.getElementById('modal-cancel').onclick = closeModal;
   document.getElementById('modal-form').onsubmit  = onSubmitVuelo;
 
+  // Selecciona los elementos DOM que usarás en todo el archivo
+  tipoVueloEl     = document.getElementById('m-tipoVuelo');
+  multitramoChkEl = document.getElementById('m-multitramo');
+  camposSimpleEl  = document.getElementById('campos-vuelo-simple');
+  multitramoOpEl  = document.getElementById('multitramo-opcion');
+  tramosSectionEl = document.getElementById('tramos-section');
+
   choiceGrupos = new Choices(
     document.getElementById('m-grupos'),
     { removeItemButton:true }
@@ -71,11 +81,38 @@ function initModal(){
     'value','label', false
   );
 
-  // Lógica tipo de vuelo → mostrar/ocultar tramos
-  document.getElementById('m-tipoVuelo').onchange = (e)=>{
-    const isRegular = e.target.value === "regular";
-    document.getElementById('tramos-section').style.display = isRegular ? 'block' : 'none';
-    document.getElementById('campos-vuelo-unico').style.display = isRegular ? 'none' : 'block';
+  // Siempre parte en charter simple al abrir
+  tipoVueloEl.value = "charter";
+  camposSimpleEl.style.display = 'block';
+  multitramoOpEl.style.display = 'none';
+  tramosSectionEl.style.display = 'none';
+  if(multitramoChkEl) multitramoChkEl.checked = false;
+
+  // Cuando cambia el tipo de vuelo (regular/charter)
+  tipoVueloEl.onchange = function() {
+    const tipo = tipoVueloEl.value;
+    if (tipo === "charter") {
+      camposSimpleEl.style.display = 'block';
+      multitramoOpEl.style.display = 'none';
+      tramosSectionEl.style.display = 'none';
+      if(multitramoChkEl) multitramoChkEl.checked = false;
+    } else if (tipo === "regular") {
+      camposSimpleEl.style.display = 'block';
+      multitramoOpEl.style.display = 'block';
+      tramosSectionEl.style.display = 'none';
+      if(multitramoChkEl) multitramoChkEl.checked = false;
+    }
+  };
+
+  // Cuando activas/desactivas “múltiples tramos”
+  if(multitramoChkEl) multitramoChkEl.onchange = function() {
+    if (multitramoChkEl.checked) {
+      camposSimpleEl.style.display = 'none';
+      tramosSectionEl.style.display = 'block';
+    } else {
+      tramosSectionEl.style.display = 'none';
+      camposSimpleEl.style.display = 'block';
+    }
   };
 
   document.getElementById('btnAddTramo').onclick = addTramoRow;
@@ -270,36 +307,49 @@ function fmtFechaLarga(iso) {
 
 function openModal(v=null){
   isEdit=!!v; editId=v?.id||null; editingVueloId = v?.id||null;
-
   document.getElementById('modal-title').textContent = v?'EDITAR VUELO':'NUEVO VUELO';
 
-  // Reset campos
+  // Reset campos principales
   ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']
     .forEach(k=>document.getElementById(`m-${k}`).value=v?.[k]||'');
 
-  document.getElementById('m-tipoVuelo').value = v?.tipoVuelo || 'regular';
+  // Estado por defecto
+  tipoVueloEl.value = v?.tipoVuelo || 'charter';
+  camposSimpleEl.style.display = 'block';
+  multitramoOpEl.style.display = (v?.tipoVuelo === 'regular') ? 'block' : 'none';
+  tramosSectionEl.style.display = 'none';
+  if(multitramoChkEl) multitramoChkEl.checked = false;
 
-  choiceGrupos.removeActiveItems();
-  if(v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g=>g.id));
-
-  document.getElementById('m-statusDefault').value=v?.grupos?.[0]?.status||'confirmado';
-
-  // Tramos para regular
-  if(v && v.tipoVuelo === 'regular') {
-    editingTramos = [...(v.tramos||[])];
-    renderTramosList();
-    document.getElementById('tramos-section').style.display = 'block';
-    document.getElementById('campos-vuelo-unico').style.display = 'none';
+  // Si es regular y tiene tramos, marca multitramo
+  if(v && v.tipoVuelo === 'regular'){
+    multitramoOpEl.style.display = 'block';
+    if(v.tramos && v.tramos.length){
+      multitramoChkEl.checked = true;
+      camposSimpleEl.style.display = 'none';
+      tramosSectionEl.style.display = 'block';
+      editingTramos = [...v.tramos];
+      renderTramosList();
+    } else {
+      multitramoChkEl.checked = false;
+      camposSimpleEl.style.display = 'block';
+      tramosSectionEl.style.display = 'none';
+      editingTramos = [];
+      renderTramosList();
+    }
   } else {
     editingTramos = [];
     renderTramosList();
-    document.getElementById('tramos-section').style.display = 'none';
-    document.getElementById('campos-vuelo-unico').style.display = 'block';
   }
+
+  // Grupos y estado
+  choiceGrupos.removeActiveItems();
+  if(v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g=>g.id));
+  document.getElementById('m-statusDefault').value=v?.grupos?.[0]?.status||'confirmado';
 
   document.getElementById('modal-backdrop').style.display='block';
   document.getElementById('modal-vuelo').style.display='block';
 }
+
 
 function closeModal(){
   document.getElementById('modal-backdrop').style.display='none';
@@ -350,11 +400,13 @@ async function onSubmitVuelo(evt){
   const tipoVuelo = document.getElementById('m-tipoVuelo').value;
   const sel = choiceGrupos.getValue(true);
   const defaultStatus = document.getElementById('m-statusDefault').value;
-
   const gruposArr = sel.map(id=>({ id, status:defaultStatus, changedBy:currentUserEmail }));
   let pay = {};
 
-  if(tipoVuelo === 'regular'){
+  // Detectar si es multitramo
+  const multitramo = multitramoChkEl && multitramoChkEl.checked;
+
+  if(tipoVuelo === 'regular' && multitramo){
     pay = {
       tipoVuelo: 'regular',
       tramos: editingTramos.map(t=>({
@@ -367,7 +419,19 @@ async function onSubmitVuelo(evt){
       })),
       grupos: gruposArr
     };
-  } else {
+  } else if(tipoVuelo === 'regular'){ // regular simple
+    pay = {
+      tipoVuelo: 'regular',
+      tramos: [], // sin tramos
+      proveedor: toUpper(document.getElementById('m-proveedor').value.trim()),
+      numero:    toUpper(document.getElementById('m-numero').value.trim()),
+      origen:    toUpper(document.getElementById('m-origen').value.trim()),
+      destino:   toUpper(document.getElementById('m-destino').value.trim()),
+      fechaIda:  document.getElementById('m-fechaIda').value,
+      fechaVuelta:document.getElementById('m-fechaVuelta').value,
+      grupos: gruposArr
+    };
+  } else { // charter
     pay = {
       proveedor: toUpper(document.getElementById('m-proveedor').value.trim()),
       numero:    toUpper(document.getElementById('m-numero').value.trim()),
@@ -380,6 +444,7 @@ async function onSubmitVuelo(evt){
     };
   }
 
+  // Guardado igual que antes
   if(isEdit){
     const before=(await getDoc(doc(db,'vuelos',editId))).data();
     await updateDoc(doc(db,'vuelos',editId),pay);
