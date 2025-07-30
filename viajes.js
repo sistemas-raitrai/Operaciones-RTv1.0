@@ -726,6 +726,7 @@ function exportToExcel(){
     (v.grupos||[]).forEach(gObj => {
       const g = grupos.find(x=>x.id===gObj.id)||{};
       detalle.push({
+        Fecha_Ida: v.fechaIda,
         Vuelo: v.numero || (v.tramos?.[0]?.numero || ''),
         Grupo_Numero: g.numeroNegocio,
         Grupo_Nombre: g.nombreGrupo,
