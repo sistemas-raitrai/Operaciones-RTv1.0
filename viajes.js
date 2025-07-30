@@ -215,7 +215,7 @@ async function renderVuelos(){
             ${toUpper(v.proveedor || '')} ${toUpper(v.numero || '')} (${toUpper(v.tipoVuelo)})
           </div>
           <div style="font-weight:bold; margin:.15em 0 .6em 0; font-size:.98em;">
-            ${fechaIda}${fechaVuelta ? ' / ' + fechaVuelta : ''}
+            <span style="color:red">${fechaIda}</span>${fechaVuelta ? ' / <span style="color:red">' + fechaVuelta + '</span>' : ''}
           </div>
           <div style="font-size:.97em; color:#444; margin-bottom:.7em;">
             <span>Origen: ${toUpper(v.origen||'')}</span>
