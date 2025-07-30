@@ -161,7 +161,7 @@ async function renderVuelos(){
         totX += val;
         if (pax.status === 'confirmado') confX += val;
         return `
-          <div class="group-item" style="background:#e7ffe7">
+          <div class="group-item" style="background:#ffebe7">
             <div class="num">–</div>
             <div class="name">
               <span class="group-name">${toUpper(pax.nombre||'')}</span>
