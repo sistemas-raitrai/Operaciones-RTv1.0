@@ -110,17 +110,20 @@ async function renderVuelos(){
     let paxExtrasArr = v.paxExtras || [];
 
     let cardBody = '';
-    if(v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
-      cardBody += '<h4>TRAMOS:</h4>';
+    if (v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
+      cardBody += `<div class="tramos" style="margin-bottom:0.7em;">`;
       v.tramos.forEach((tramo, i) => {
         cardBody += `
-          <div class="tramo-item">
-            <div><strong>${toUpper(tramo.aerolinea)} ${toUpper(tramo.numero)}:</strong> ${toUpper(tramo.origen)} → ${toUpper(tramo.destino)}</div>
-            <div><small>IDA: ${fmtFecha(tramo.fechaIda)}  |  VUELTA: ${fmtFecha(tramo.fechaVuelta)}</small></div>
+          <div class="tramo" style="margin-bottom:0.5em;">
+            <span style="font-weight:bold;font-size:1.05em;">✈️ ${toUpper(tramo.aerolinea)} ${toUpper(tramo.numero)}</span> <span style="font-size:.97em;">(${toUpper(v.tipoVuelo)})</span><br>
+            <span style="color:red">${fmtFechaLarga(tramo.fechaIda)}</span><br>
+            <span style="color:#444;">Origen: ${toUpper(tramo.origen)} — Destino: ${toUpper(tramo.destino)}</span>
           </div>
         `;
       });
+      cardBody += `</div>`;
     }
+
 
     const filas = (v.grupos || []).map((gObj, idx) => {
       const g = grupos.find(x=>x.id===gObj.id) || {};
