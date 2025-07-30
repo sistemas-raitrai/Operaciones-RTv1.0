@@ -444,7 +444,7 @@ async function onSubmitPaxExtra(evt){
   // Reinicia flags
   paxExtraEditMode = false; paxExtraEditIdx = null;
   closePaxExtraModal(); renderVuelos();
-});
+}
 
 window.removePaxExtra = async (vueloId, idx)=>{
   const ref = doc(db, 'vuelos', vueloId), snap = await getDoc(ref), data = snap.data();
