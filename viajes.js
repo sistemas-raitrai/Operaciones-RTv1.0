@@ -9,6 +9,9 @@ import {
   serverTimestamp, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+let paxExtraEditMode = false;
+let paxExtraEditIdx = null;
+
 const auth = getAuth(app);
 let grupos = [], vuelos = [];
 let isEdit=false, editId=null, choiceGrupos, currentUserEmail, dtHist=null;
@@ -123,7 +126,7 @@ async function renderVuelos(){
       const g = grupos.find(x=>x.id===gObj.id) || {};
       const a = parseInt(g.adultos     || 0, 10);
       const e = parseInt(g.estudiantes || 0, 10);
-      const c = parseInt(g.coordinadores || 0, 10);
+      const c = Math.max(parseInt(g.coordinadores ?? 1, 10), 1);
       const totalRow = a + e + c;
       totA += a; totE += e; totC += c;
       if (gObj.status === 'confirmado') {
@@ -164,7 +167,7 @@ async function renderVuelos(){
           <div class="group-item" style="background:#ffebe7">
             <div class="num">–</div>
             <div class="name">
-              <span class="group-name">${toUpper(pax.nombre||'')}</span>
+              <span class="group-name" style="cursor:pointer;text-decoration:underline;" onclick="window.editPaxExtra('${v.id}',${idx})">${toUpper(pax.nombre||'')}</span>
               <span class="pax-inline">${val}</span>
             </div>
             <div class="status-cell">
@@ -397,6 +400,22 @@ function openPaxExtraModal(vueloId){
 }
 window.openPaxExtraModal = openPaxExtraModal;
 
+window.editPaxExtra = (vueloId, idx) => {
+  paxExtraEditMode = true;
+  paxExtraEditIdx = idx;
+  editingVueloId = vueloId;
+  // Trae datos actuales
+  getDoc(doc(db, 'vuelos', vueloId)).then(snap => {
+    const data = snap.data();
+    const pax = (data.paxExtras || [])[idx] || {};
+    document.getElementById('paxextra-nombre').value = pax.nombre || '';
+    document.getElementById('paxextra-cantidad').value = pax.cantidad || 1;
+    document.getElementById('paxextra-status').value = pax.status || 'pendiente';
+    document.getElementById('paxextra-backdrop').style.display='block';
+    document.getElementById('paxextra-modal').style.display='block';
+  });
+};
+
 function closePaxExtraModal(){
   document.getElementById('paxextra-backdrop').style.display='none';
   document.getElementById('paxextra-modal').style.display='none';
@@ -408,14 +427,25 @@ async function onSubmitPaxExtra(evt){
   const status = document.getElementById('paxextra-status').value;
   const pax = { nombre, cantidad, status, changedBy:currentUserEmail };
   if(!nombre || cantidad < 1) return alert('Completa todos los campos correctamente');
-  // Carga vuelo
   const ref = doc(db, 'vuelos', editingVueloId), snap = await getDoc(ref), data = snap.data();
-  const paxExtrasArr = data.paxExtras || [];
-  paxExtrasArr.push(pax);
-  await updateDoc(ref, { paxExtras: paxExtrasArr });
-  await addDoc(collection(db,'historial'),{ tipo:'pax-extra-add', vueloId:editingVueloId, antes:null, despues:pax, usuario:currentUserEmail, ts:serverTimestamp() });
+  let paxExtrasArr = data.paxExtras || [];
+  if (paxExtraEditMode && paxExtraEditIdx !== null) {
+    // Modo edición
+    const antes = paxExtrasArr[paxExtraEditIdx];
+    paxExtrasArr[paxExtraEditIdx] = pax;
+    await updateDoc(ref, { paxExtras: paxExtrasArr });
+    await addDoc(collection(db,'historial'),{ tipo:'pax-extra-edit', vueloId:editingVueloId, antes, despues:pax, usuario:currentUserEmail, ts:serverTimestamp() });
+  } else {
+    // Nuevo
+    paxExtrasArr.push(pax);
+    await updateDoc(ref, { paxExtras: paxExtrasArr });
+    await addDoc(collection(db,'historial'),{ tipo:'pax-extra-add', vueloId:editingVueloId, antes:null, despues:pax, usuario:currentUserEmail, ts:serverTimestamp() });
+  }
+  // Reinicia flags
+  paxExtraEditMode = false; paxExtraEditIdx = null;
   closePaxExtraModal(); renderVuelos();
-}
+});
+
 window.removePaxExtra = async (vueloId, idx)=>{
   const ref = doc(db, 'vuelos', vueloId), snap = await getDoc(ref), data = snap.data();
   const arr = data.paxExtras || [];
@@ -434,6 +464,12 @@ window.togglePaxExtraStatus = async (vueloId, idx)=>{
   await addDoc(collection(db,'historial'),{ tipo:'pax-extra-status', vueloId:vueloId, antes:old, despues:arr[idx], usuario:currentUserEmail, ts:serverTimestamp() });
   renderVuelos();
 };
+
+function closePaxExtraModal(){
+  paxExtraEditMode = false; paxExtraEditIdx = null;
+  document.getElementById('paxextra-backdrop').style.display='none';
+  document.getElementById('paxextra-modal').style.display='none';
+}
 
 // 6️⃣ MODAL GRUPO
 
@@ -502,7 +538,7 @@ async function onSubmitGroup(evt){
     cantidadGrupo: +document.getElementById('g-cantidadGrupo').value||0,
     adultos:       +document.getElementById('g-adultos').value||0,
     estudiantes:   +document.getElementById('g-estudiantes').value||0,
-    coordinadores: +document.getElementById('g-coordinadores').value||0,
+    coordinadores: Math.max(+document.getElementById('g-coordinadores').value||1, 1),
   };
   data.cantidadTotal = data.adultos + data.estudiantes + data.coordinadores;
   await updateDoc(doc(db,'grupos',id),data);
