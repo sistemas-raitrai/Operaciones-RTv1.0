@@ -495,6 +495,9 @@ window.openGroupModal=grupoId=>{
     document.getElementById(id).oninput = recalcularTotalFinal;
   });
   recalcularTotalFinal(); // Y al abrir el modal
+
+  // --- AJUSTE FINAL: Si el PAX está en 0, lo calcula automáticamente
+  if (!g.cantidadGrupo || g.cantidadGrupo === 0) ajustarPAXdesdeAdultosEstudiantes();
 };
 
 function closeGroupModal(){
