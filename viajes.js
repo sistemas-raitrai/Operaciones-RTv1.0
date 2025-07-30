@@ -181,10 +181,10 @@ async function renderVuelos(){
     }
 
     // ——— NUEVO TÍTULO DE LA CARD DE VUELO, AL ESTILO DE LA IMAGEN 1
-    let tituloCard = "";
+    let fechaCard = "";
     if (v.tipoVuelo === "regular" && v.tramos && v.tramos.length) {
       const primerTramo = v.tramos[0];
-      tituloCard = `
+      fechaCard = `
         <div class="titulo-vuelo" style="margin-bottom:.5em;">
           <span style="font-size:1.1em">✈️ ${toUpper(primerTramo.aerolinea || v.proveedor)} ${toUpper(primerTramo.numero || v.numero)} (${toUpper(v.tipoVuelo)})</span><br>
           <span style="font-weight:bold;">${toUpper(fmtFecha(primerTramo.fechaIda))}</span>
@@ -194,7 +194,7 @@ async function renderVuelos(){
         </div>
       `;
     } else {
-      tituloCard = `
+      fechaCard = `
         <div class="titulo-vuelo" style="margin-bottom:.5em;">
           <span style="font-size:1.1em">✈️ ${toUpper(v.proveedor || '')} ${toUpper(v.numero || '')} (${toUpper(v.tipoVuelo)})</span><br>
           <span style="font-weight:bold;">${toUpper(fmtFecha(v.fechaIda))}</span>
