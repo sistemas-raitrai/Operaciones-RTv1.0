@@ -762,11 +762,11 @@ body {
 }
 
 /* oculta por defecto los botones de intercambio */
-.swap-btn {
+.swap-icon {
   display: none;
 }
 
-.swap-btn {
+.swap-icon {
   background: none;
   color: red;
   border: none;
@@ -775,7 +775,7 @@ body {
   font-size: 1em;          /* toma el tamaño de fuente normal */
   cursor: pointer;
 }
-.swap-btn:hover {
+.swap-icon:hover {
   color: #007bff;          /* opcional: cambia color al pasar el mouse */
 }
 
