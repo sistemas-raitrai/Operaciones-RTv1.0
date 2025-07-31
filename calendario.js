@@ -7,6 +7,8 @@ import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/
 const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
+let pendingSwapDay = null;
+let pendingSwapAct = null;
 
 // Extrae parámetro de URL
 function getParametroURL(nombre) {
