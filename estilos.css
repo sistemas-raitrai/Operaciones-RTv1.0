@@ -813,10 +813,12 @@ th.swap-pending {
 /* Horarios con peso normal */
 .hora {
   font-weight: normal;
+  color: #7d8585
   /* opcional: color, tamaño, etc. */
 }
 
 /* Actividades en negrita */
 .actividad {
   font-weight: bold;
+  color: black
 }
