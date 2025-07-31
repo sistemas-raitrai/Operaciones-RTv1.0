@@ -1,6 +1,6 @@
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, doc, updateDoc, addDoc, query, orderBy
+  collection, getDocs, doc, getDoc, updateDoc, addDoc, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
@@ -208,37 +208,56 @@ async function generarTablaCalendario(userEmail) {
     });
   });
 
-  // 9) Al salir de edición en cualquier celda, guardo cambios
+    // 9) Al salir de edición en cualquier celda, guardo cambios
   $('#tablaCalendario tbody').on('focusout', 'td[contenteditable]', async function () {
-    const $td = $(this);
-    const nuevo = $td.text().trim();
+    const $td      = $(this);
+    const nuevoTxt = $td.text().trim();
     const original = $td.attr('data-original') || "";
-    const docId = $td.attr('data-doc-id');
-    const fecha = $td.attr('data-fecha');
-    if (!docId || nuevo === original) return;
-
-    // Parsear líneas en actividades
-    const actividades = nuevo.split("\n").map(linea => {
-      const match = linea.match(/^(.*?)[–\-](.*)\s+(.*)$/);
-      return match
-        ? { horaInicio: match[1].trim(), horaFin: match[2].trim(), actividad: match[3].trim() }
+    const docId    = $td.attr('data-doc-id');
+    const fecha    = $td.attr('data-fecha');
+    if (!docId || nuevoTxt === original) return;
+  
+    // 1) Traer el documento completo para conservar adultos/estudiantes
+    const ref    = doc(db, 'grupos', docId);
+    const snap   = await getDoc(ref);
+    const g      = snap.data();
+    const arrOld = g.itinerario?.[fecha] || [];
+  
+    // 2) Parsear cada línea en un objeto base {horaInicio, horaFin, actividad}
+    const líneas = nuevoTxt.split("\n");
+    const parsed = líneas.map(linea => {
+      const m = linea.match(/^(.*?)–(.*?)\s+(.*)$/);
+      return m
+        ? { horaInicio: m[1].trim(), horaFin: m[2].trim(), actividad: m[3].trim() }
         : { actividad: linea.trim() };
     });
-
-    // Actualizar Firestore
-    await updateDoc(doc(db, 'grupos', docId), {
-      [`itinerario.${fecha}`]: actividades
+  
+    // 3) Mezclar cada objeto nuevo con el original para no perder campos
+    const arrUp = parsed.map((n, idx) => {
+      const orig = arrOld[idx] || {};
+      return {
+        ...orig,                            // trae adultos, estudiantes, notas…
+        horaInicio: n.horaInicio ?? orig.horaInicio,
+        horaFin:    n.horaFin    ?? orig.horaFin,
+        actividad:  n.actividad  ?? orig.actividad
+      };
     });
-    // Registrar historial
+  
+    // 4) Guardar el array resultante en Firestore
+    await updateDoc(ref, {
+      [`itinerario.${fecha}`]: arrUp
+    });
+  
+    // 5) Registrar en historial y actualizar atributo data-original
     await addDoc(collection(db, 'historial'), {
       numeroNegocio: docId,
-      campo: `itinerario.${fecha}`,
-      anterior: original,
-      nuevo: nuevo,
-      modificadoPor: userEmail,
-      timestamp: new Date()
+      campo:         `itinerario.${fecha}`,
+      anterior:      original,
+      nuevo:         nuevoTxt,
+      modificadoPor: auth.currentUser.email,
+      timestamp:     new Date()
     });
-    $td.attr('data-original', nuevo);
+    $td.attr('data-original', nuevoTxt);
   });
 
   // 10) Ver historial
