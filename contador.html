@@ -31,75 +31,17 @@
 
   <script type="module">
     (async () => {
-      // 1. Inyectar encabezado común
-      const encabezadoHtml = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = encabezadoHtml;
-
-      // 2. Inicializar Firebase y Auth
-      const { app, db } = await import('./firebase-init.js');
-      const { getAuth, onAuthStateChanged, signOut } = await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js');
-      const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js');
-
-      const auth = getAuth(app);
-      onAuthStateChanged(auth, user => {
-        if (!user) location.href = 'login.html';
-      });
-      document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(auth));
-
-      // 3. Leer colecciones
-      const [gruposSnap, serviciosSnap, proveedoresSnap] = await Promise.all([
-        getDocs(collection(db, 'grupos')),
-        getDocs(collection(db, 'servicios')),
-        getDocs(collection(db, 'proveedores'))
-      ]);
-      const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const servicios = serviciosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const proveedores = proveedoresSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      // map proveedorId -> nombre
-      const proveedorMap = proveedores.reduce((m, p) => (m[p.id] = p.nombreProveedor || p.nombre, m), {});
-
-      // 4. Obtener fechas únicas desde itinerarios de grupos
-      const fechasSet = new Set();
-      grupos.forEach(g => Array.isArray(g.itinerario) && g.itinerario.forEach(i => fechasSet.add(i.dia)));
-      const fechas = Array.from(fechasSet).sort();
-
-      // 5. Construir encabezado de tabla
-      const thead = document.getElementById('thead-actividades');
-      const headerCols = ['Actividad', 'Destino', 'Proveedor'];
-      let trHead = '<tr>' +
-        headerCols.map((h, i) => `<th class="fixed-col-${i+1}">${h}</th>`).join('') +
-        fechas.map(d => `<th>${d}</th>`).join('') +
-        '</tr>';
-      thead.innerHTML = trHead;
-
-      // 6. Poblar cuerpo de tabla
-      const tbody = document.getElementById('tbody-actividades');
-      // Orden alfabético por destino + actividad
-      servicios.sort((a, b) => (a.destino + a.nombreActividad).localeCompare(b.destino + b.nombreActividad));
-
-      servicios.forEach(s => {
-        const actividad = s.nombreActividad;
-        const destino = s.destino;
-        const proveedor = proveedorMap[s.proveedorId] || '-';
-        let row = '<tr>' +
-          `<td class="fixed-col-1">${actividad}</td>` +
-          `<td class="fixed-col-2">${destino}</td>` +
-          `<td class="fixed-col-3">${proveedor}</td>`;
-
-        fechas.forEach(dia => {
-          // Sumar pax de grupos que tengan esa actividad+destino en el día
-          const totalPax = grupos.reduce((sum, g) => {
-            const pax = g.cantidadgrupo || 0;
-            const match = Array.isArray(g.itinerario) && g.itinerario.some(i => i.dia === dia && i.actividad === actividad && i.destino === destino);
-            return sum + (match ? pax : 0);
-          }, 0);
-          row += `<td>${totalPax}</td>`;
-        });
-
-        row += '</tr>';
-        tbody.insertAdjacentHTML('beforeend', row);
-      });
+      // 1️⃣ Inyectar encabezado común
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+      // 2️⃣ Inicializar Firebase
+      await import('./firebase-init.js');
+      // 3️⃣ Cargar lógica de contador de actividades
+      await import('./contador.js');
+      console.log('✅ contador.js cargado tras inyectar encabezado y firebase');
     })();
   </script>
+  <!-- Carga Firebase sin bloquear DOM -->
+  <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
