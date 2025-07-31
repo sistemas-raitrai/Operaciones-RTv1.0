@@ -11,7 +11,9 @@
     table { border-collapse: collapse; width: 100%; }
     th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
     thead th { background: #f0f0f0; }
-    .fixed-col { position: sticky; left: 0; background: #fff; z-index: 1; }
+    .fixed-col { position: sticky; left: 0; background: #fff; z-index: 2; }
+    .fixed-col-2 { position: sticky; left: 100px; background: #fff; z-index: 1; }
+    .fixed-col-3 { position: sticky; left: 250px; background: #fff; z-index: 1; }
   </style>
 </head>
 <body>
@@ -37,44 +39,52 @@
       const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js');
 
       const auth = getAuth(app);
-      onAuthStateChanged(auth, user => {
-        if (!user) location.href = 'login.html';
-      });
+      onAuthStateChanged(auth, user => { if (!user) location.href = 'login.html'; });
       document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(auth));
 
-      // 1) Cargar colecciones
-      const [gruposSnap, serviciosSnap] = await Promise.all([
+      // Cargar colecciones
+      const [gruposSnap, serviciosSnap, provSnap] = await Promise.all([
         getDocs(collection(db, 'grupos')),
-        getDocs(collection(db, 'servicios'))
+        getDocs(collection(db, 'servicios')),
+        getDocs(collection(db, 'proveedores'))
       ]);
       const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const servicios = serviciosSnap.docs.map(d => d.data());
+      const servicios = serviciosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const proveedores = provSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const proveedorMap = proveedores.reduce((m, p) => (m[p.id] = p.nombreProveedor || p.nombre, m), {});
 
-      // 2) Extraer fechas únicas de itinerarios
+      // Fechas únicas de itinerarios
       const fechasSet = new Set();
-      grupos.forEach(g => {
-        if (Array.isArray(g.itinerario)) g.itinerario.forEach(i => fechasSet.add(i.dia));
-      });
+      grupos.forEach(g => Array.isArray(g.itinerario) && g.itinerario.forEach(i => fechasSet.add(i.dia)));
       const fechas = Array.from(fechasSet).sort();
 
-      // 3) Actividades únicas (servicios)
-      const actividades = servicios.map(s => s.nombreActividad).sort();
-
-      // 4) Construir encabezado de tabla
+      // Construir encabezado: Actividad, Destino, Proveedor + fechas
       const thead = document.getElementById('thead-actividades');
-      let ths = '<tr><th class="fixed-col">Actividad</th>' + fechas.map(f => `<th>${f}</th>`).join('') + '</tr>';
+      let headerCols = ['Actividad', 'Destino', 'Proveedor'];
+      let ths = '<tr>' +
+        headerCols.map((h, idx) => `<th class="fixed-col${idx+1}">${h}</th>`).join('') +
+        fechas.map(f => `<th>${f}</th>`).join('') +
+        '</tr>';
       thead.innerHTML = ths;
 
-      // 5) Poblar filas: para cada actividad, contar pax
+      // Poblar filas
       const tbody = document.getElementById('tbody-actividades');
-      actividades.forEach(act => {
-        let row = `<tr><td class="fixed-col">${act}</td>`;
+      // Ordenar servicios por destino alfab.
+      servicios.sort((a,b) => (a.destino + a.nombreActividad).localeCompare(b.destino + b.nombreActividad));
+      servicios.forEach(s => {
+        const actividad = s.nombreActividad;
+        const destino = s.destino;
+        const proveedor = proveedorMap[s.proveedorId] || '-';
+        let row = `<tr>` +
+          `<td class="fixed-col-1">${actividad}</td>` +
+          `<td class="fixed-col-2">${destino}</td>` +
+          `<td class="fixed-col-3">${proveedor}</td>`;
         fechas.forEach(dia => {
-          // sumar pax de grupos cuyo itinerario en dia coincide en actividad
+          // sumar pax de grupos que tengan en su itinerario este dia, actividad y destino
           const totalPax = grupos.reduce((sum, g) => {
             const pax = g.cantidadgrupo || g.pax || 0;
-            const tiene = Array.isArray(g.itinerario) && g.itinerario.some(i => i.dia === dia && i.actividad === act);
-            return sum + (tiene ? pax : 0);
+            const match = Array.isArray(g.itinerario) && g.itinerario.some(i => i.dia === dia && i.actividad === actividad && i.destino === destino);
+            return sum + (match ? pax : 0);
           }, 0);
           row += `<td>${totalPax}</td>`;
         });
