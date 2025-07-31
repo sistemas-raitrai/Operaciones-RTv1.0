@@ -250,8 +250,9 @@ async function renderItinerario() {
         ul.appendChild(li);
       });
     }
-        });   // ← cierra sorted.forEach
+        
   });     // ← cierra fechas.forEach
+
 } 
 
 // —————————————————————————————————
