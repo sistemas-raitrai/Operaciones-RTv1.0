@@ -133,9 +133,11 @@ async function generarTablaCalendario(userEmail) {
     // Una celda por cada fecha
     fechasOrdenadas.forEach(f => {
       const actividades = g.itinerario[f] || [];
-      const texto = actividades
-        .map(a => `${a.horaInicio||""}–${a.horaFin||""} ${a.actividad||""}`)
-        .join("\n");
+      const html = actividades.map(a => {
+        const time = `${a.horaInicio||''}–${a.horaFin||''}`;
+        const act  = a.actividad   || '';
+        return `<span class="hora">${time}</span> <strong class="actividad">${act}</strong>`;
+      }).join('<br>');
 
       // Clases condicionales
       const clases = [];
@@ -148,7 +150,7 @@ async function generarTablaCalendario(userEmail) {
 
       const $td = $('<td>')
         .addClass(clases.join(' '))
-        .text(texto)
+        .html(html)  
         .attr('data-doc-id', g.id)
         .attr('data-fecha', f)
         .attr('data-original', texto);
