@@ -153,7 +153,7 @@ async function generarTablaCalendario(userEmail) {
         .html(html)  
         .attr('data-doc-id', g.id)
         .attr('data-fecha', f)
-        .attr('data-original', texto);
+        .attr('data-original', actividades.map(a => `${a.horaInicio||""}–${a.horaFin||""} ${a.actividad||""}`).join("\n"));
 
       $tr.append($td);
     }); // ← cierra fechasOrdenadas.forEach
