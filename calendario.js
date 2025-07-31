@@ -132,7 +132,15 @@ async function generarTablaCalendario(userEmail) {
 
     // Una celda por cada fecha
     fechasOrdenadas.forEach(f => {
-      const actividades = g.itinerario[f] || [];
+      // 1) Obtengo el array (o un array vacío si no hay dato)
+      const actividades = g.itinerario[f] ? [...g.itinerario[f]] : [];
+      
+      // 2) Lo ordeno por horaInicio ascendente
+      actividades.sort((a, b) => {
+        const h1 = a.horaInicio || '00:00';
+        const h2 = b.horaInicio || '00:00';
+        return h1.localeCompare(h2);
+      });
       const html = actividades.map(a => {
         const time = `${a.horaInicio||''}–${a.horaFin||''}`;
         const act  = a.actividad   || '';
