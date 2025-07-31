@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Conteo de Actividades | RT v1.0</title>
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+</head>
+<body>
+  <!-- ✅ Encabezado cargado dinámicamente -->
+  <div id="encabezado"></div>
+
+  <!-- ✅ Filtros y tabla -->
+  <h2>Conteo de Actividades</h2>
+  <div class="filtros">
+    <select id="filtro-dia"><option value="">-- Día --</option></select>
+    <select id="filtro-destino"><option value="">-- Destino --</option></select>
+    <select id="filtro-grupo"><option value="">-- Grupo --</option></select>
+    <button id="btn-filtrar">Filtrar</button>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Día</th><th>Destino</th><th>Grupo</th><th>Actividad</th><th>Cantidad</th>
+      </tr>
+    </thead>
+    <tbody id="tabla-actividades"></tbody>
+  </table>
+
+  <!-- 1️⃣ Carga dinámica de encabezado y scripts -->
+  <script type="module">
+    (async () => {
+      // Inyectar encabezado común
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+      // Luego inicializar Firebase y Auth
+      await import('./firebase-init.js');
+      // Finalmente, carga la lógica de conteo
+      await import('./conteo-actividades.js');
+      console.log('✅ Conteo de actividades listo');
+    })();
+  </script>
+
+  <!-- 2️⃣ Módulo auxiliar (no bloquea DOM) -->
+  <script type="module" src="firebase-init.js" defer></script>
+</body>
+</html>
