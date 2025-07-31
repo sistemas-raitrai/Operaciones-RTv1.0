@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
 <body>
-  <!-- ✅ Encabezado cargado dinámicamente -->
+  <!-- ✅ Encabezado común -->
   <div id="encabezado"></div>
 
   <!-- ✅ Filtros y tabla -->
@@ -28,21 +28,100 @@
     <tbody id="tabla-actividades"></tbody>
   </table>
 
-  <!-- 1️⃣ Carga dinámica de encabezado y scripts -->
+  <!-- 1️⃣ Cargo dinámico del encabezado -->
   <script type="module">
     (async () => {
-      // Inyectar encabezado común
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-      // Luego inicializar Firebase y Auth
-      await import('./firebase-init.js');
-      // Finalmente, carga la lógica de conteo
-      await import('./conteo-actividades.js');
-      console.log('✅ Conteo de actividades listo');
     })();
   </script>
 
-  <!-- 2️⃣ Módulo auxiliar (no bloquea DOM) -->
+  <!-- 2️⃣ Inicialización de Firebase/Auth -->
   <script type="module" src="firebase-init.js" defer></script>
+
+  <!-- 3️⃣ Lógica de conexión a Firestore y conteo -->
+  <script type="module">
+    import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+    import { getDocs, collection } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+    import { app, db } from './firebase-init.js';
+
+    const auth = getAuth(app);
+    const filtroDia = document.getElementById('filtro-dia');
+    const filtroDestino = document.getElementById('filtro-destino');
+    const filtroGrupo = document.getElementById('filtro-grupo');
+    const btnFiltrar = document.getElementById('btn-filtrar');
+    const tablaBody = document.getElementById('tabla-actividades');
+
+    let datosCombinados = [];
+
+    // Comprueba sesión y carga datos
+    onAuthStateChanged(auth, user => {
+      if (!user) {
+        location.href = 'login.html';
+      } else {
+        cargarDatos();
+      }
+    });
+
+    // Función principal
+    async function cargarDatos() {
+      datosCombinados = [];
+      const gruposSnap = await getDocs(collection(db, 'grupos'));
+      const provSnap = await getDocs(collection(db, 'actividadesProveedores'));
+
+      const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const actividadesProv = provSnap.docs.map(d => d.data());
+
+      grupos.forEach(gr => {
+        if (Array.isArray(gr.itinerario)) {
+          gr.itinerario.forEach(item => {
+            const { dia, destino, actividad } = item;
+            const count = actividadesProv.filter(a =>
+              a.dia === dia && a.grupoId === gr.id && a.destino === destino && a.actividad === actividad
+            ).length;
+            datosCombinados.push({ dia, destino, grupo: gr.nombreGrupo, actividad, cantidad: count });
+          });
+        }
+      });
+
+      poblarFiltros();
+      renderTabla(datosCombinados);
+    }
+
+    function poblarFiltros() {
+      [...new Set(datosCombinados.map(x => x.dia))].sort()
+        .forEach(d => filtroDia.append(new Option(d, d)));
+      [...new Set(datosCombinados.map(x => x.destino))].sort()
+        .forEach(d => filtroDestino.append(new Option(d, d)));
+      [...new Set(datosCombinados.map(x => x.grupo))].sort()
+        .forEach(g => filtroGrupo.append(new Option(g, g)));
+    }
+
+    function renderTabla(data) {
+      tablaBody.innerHTML = '';
+      data.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.dia}</td>
+          <td>${item.destino}</td>
+          <td>${item.grupo}</td>
+          <td>${item.actividad}</td>
+          <td>${item.cantidad}</td>
+        `;
+        tablaBody.append(tr);
+      });
+    }
+
+    btnFiltrar.addEventListener('click', () => {
+      const d = filtroDia.value, dest = filtroDestino.value, gr = filtroGrupo.value;
+      const filtrados = datosCombinados.filter(x =>
+        (!d || x.dia === d) && (!dest || x.destino === dest) && (!gr || x.grupo === gr)
+      );
+      renderTabla(filtrados);
+    });
+
+    // Opcional: botón de logout si lo inyecta encabezado
+    document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(auth));
+  </script>
 </body>
 </html>
