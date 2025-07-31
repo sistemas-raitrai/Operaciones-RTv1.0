@@ -768,6 +768,7 @@ body {
 
 .swap-btn {
   background: none;
+  color: red;
   border: none;
   padding: 0;
   margin-left: 4px;        /* separa un poquito del texto */
