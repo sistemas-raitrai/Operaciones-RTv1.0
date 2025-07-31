@@ -114,7 +114,7 @@ async function generarTablaCalendario(userEmail) {
     $trhead.append(
       `<th class="${clase}" data-fecha="${f}">
          ${formatearFechaBonita(f)}
-         <button class="btn-swap-day swap-btn" title="Intercambiar Día">⇄</button>
+         <button type="button" class="swap-btn btn-swap-day" title="Intercambiar Día">⇄</button>
        </th>`
     );
   });
