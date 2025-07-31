@@ -3,32 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Conteo de Actividades | RT v1.0</title>
+  <title>Calendario de Actividades | RT v1.0</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css" />
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <style>
-    .scroll-table { overflow-x: auto; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
-    thead th { background: #f0f0f0; }
-    /* Columnas fijas */
+    /* Columnas fijas: Destino, Actividad, Proveedor */
     .fixed-col-1 { position: sticky; left: 0; background: #fff; z-index: 3; }
     .fixed-col-2 { position: sticky; left: 200px; background: #fff; z-index: 2; }
-    .fixed-col-3 { position: sticky; left: 350px; background: #fff; z-index: 1; }
+    .fixed-col-3 { position: sticky; left: 400px; background: #fff; z-index: 1; }
+    .dataTables_scrollHeadInner table { width: 100% !important; }
   </style>
 </head>
 <body>
-  <!-- Encabezado común cargado dinámicamente -->
+
+  <!-- Encabezado común -->
   <div id="encabezado"></div>
 
-  <h2>Resumen de Actividades por Día</h2>
-  <div class="scroll-table">
-    <table>
-      <thead id="thead-actividades"></thead>
-      <tbody id="tbody-actividades"></tbody>
-    </table>
-  </div>
+  <main>
+    <h1>🗓️ Calendario de Actividades</h1>
+    <div class="toolbar">
+      <input type="text" id="buscador" placeholder="🔍 Buscar actividad, destino o proveedor..." />
+      <select id="filtroDestino"><option value="">Todos los destinos</option></select>
+      <button id="btn-export-excel">📤 Exportar Excel</button>
+    </div>
 
+    <div class="dataTables_scroll">
+      <table id="tablaConteo" class="display nowrap" style="width:100%">
+        <thead id="thead-actividades"></thead>
+        <tbody id="tbody-actividades"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- Librerías JS -->
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
+
+  <!-- Carga dinámico de encabezado y scripts -->
   <script type="module">
     (async () => {
       // 1️⃣ Inyectar encabezado común
@@ -38,10 +55,31 @@
       await import('./firebase-init.js');
       // 3️⃣ Cargar lógica de contador de actividades
       await import('./contador.js');
-      console.log('✅ contador.js cargado tras inyectar encabezado y firebase');
+      // 4️⃣ Inicializar DataTables
+      $(document).ready(() => {
+        const table = $('#tablaConteo').DataTable({
+          scrollX: true,
+          fixedHeader: true,
+          dom: 'Bfrtip',
+          buttons: ['colvis', 'excel'],
+          initComplete: function() {
+            // Poblado de filtroDestino
+            const destinos = new Set();
+            table.column(1).data().each(d => destinos.add(d));
+            destinos.forEach(dest => $('#filtroDestino').append(new Option(dest, dest)));
+            $('#filtroDestino').on('change', function() {
+              table.column(1).search(this.value).draw();
+            });
+            $('#buscador').on('keyup', function() {
+              table.search(this.value).draw();
+            });
+          }
+        });
+      });
     })();
   </script>
-  <!-- Carga Firebase sin bloquear DOM -->
+
+  <!-- Inicializar Firebase -->
   <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
