@@ -1,6 +1,6 @@
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, doc, updateDoc, addDoc, query, orderBy
+  collection, getDocs, getdoc, doc, updateDoc, addDoc, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
@@ -112,7 +112,10 @@ async function generarTablaCalendario(userEmail) {
     const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
     // insertar <th> con o sin la clase
     $trhead.append(
-      `<th class="${clase}">${formatearFechaBonita(f)}</th>`
+      `<th class="${clase}" data-fecha="${f}">
+         ${formatearFechaBonita(f)}
+         <button class="btn-swap-day swap-btn" title="Intercambiar Día">⇄</button>
+       </th>`
     );
   });
 
@@ -146,12 +149,22 @@ async function generarTablaCalendario(userEmail) {
       const fechaObj = new Date(yyyy, mm - 1, dd);
       if (fechaObj.getDay() === 0) clases.push('domingo');
 
+      // dividimos en líneas y envolvemos cada una
+      const líneas = texto.split('\n');
+      const htmlLines = líneas.map((l, i) => `
+        <div class="act-line" data-idx="${i}">
+          <span>${l}</span>
+          <button class="btn-swap-act swap-btn" title="Intercambiar Actividad">⇄</button>
+        </div>
+      `).join('');
+      
       const $td = $('<td>')
         .addClass(clases.join(' '))
-        .text(texto)
+        .html(htmlLines)
         .attr('data-doc-id', g.id)
         .attr('data-fecha', f)
         .attr('data-original', texto);
+
 
       $tr.append($td);
     }); // ← cierra fechasOrdenadas.forEach
@@ -179,6 +192,42 @@ async function generarTablaCalendario(userEmail) {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
+
+  // ocultar botones de swap
+  $('.swap-btn').hide();
+  
+  // swap días
+  $(document).on('click', '.btn-swap-day', async function() {
+    const fechaA = $(this).closest('th').data('fecha');
+    const docId  = numeroNegocioInicial;
+    const otras  = fechasOrdenadas.filter(f=>f!==fechaA);
+    const fechaB = prompt(`Intercambiar ${fechaA} con:`, otras.join('\n'));
+    if (!otras.includes(fechaB)) return alert('Fecha inválida');
+    await swapDias(docId, fechaA, fechaB);
+    location.reload();
+  });
+  
+  // swap actividad
+  $(document).on('click', '.btn-swap-act', async function() {
+    const $line  = $(this).closest('.act-line');
+    const idxA   = +$line.data('idx');
+    const $td    = $line.closest('td');
+    const fechaA = $td.data('fecha');
+    const docId  = $td.data('doc-id');
+  
+    const otras = fechasOrdenadas.filter(f=>f!==fechaA);
+    const fechaB= prompt(`Intercambiar actividad de ${fechaA} con fecha:`, otras.join('\n'));
+    if (!otras.includes(fechaB)) return alert('Fecha inválida');
+  
+    const snap  = await getDoc(doc(db,'grupos',docId));
+    const arrB  = snap.data().itinerario[fechaB]||[];
+    const optsB = arrB.map((a,i)=> `${i}: ${a.horaInicio}–${a.horaFin} ${a.actividad}`).join('\n');
+    const idxB  = +prompt(`Elige índice en ${fechaB}:\n${optsB}`);
+    if (isNaN(idxB)||idxB<0||idxB>=arrB.length) return alert('Índice inválido');
+  
+    await swapUnaActividad(docId, fechaA, idxA, fechaB, idxB);
+    location.reload();
+  });
   
   // 5) Buscador libre
   $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
@@ -200,6 +249,10 @@ async function generarTablaCalendario(userEmail) {
     editMode = !editMode;
     $('#btn-toggle-edit')
       .text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+    
+    // mostrar u ocultar botones de intercambio
+    $('.swap-btn').toggle(editMode);
+    
     $('#tablaCalendario tbody td').attr('contenteditable', editMode);
     await addDoc(collection(db, 'historial'), {
       accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
@@ -316,3 +369,31 @@ document.getElementById('btn-export-excel').addEventListener('click', () => {
   XLSX.utils.book_append_sheet(wb, ws, "Calendario");
   XLSX.writeFile(wb, "calendario.xlsx");
 });
+
+// intercambia todas las actividades de dos días
+async function swapDias(docId, fechaA, fechaB) {
+  const ref  = doc(db,'grupos',docId);
+  const snap = await getDoc(ref);
+  const g    = snap.data();
+  const a    = g.itinerario[fechaA] || [];
+  const b    = g.itinerario[fechaB] || [];
+  await updateDoc(ref, {
+    [`itinerario.${fechaA}`]: b,
+    [`itinerario.${fechaB}`]: a
+  });
+}
+
+// intercambia dos actividades puntuales
+async function swapUnaActividad(docId, fechaA, idxA, fechaB, idxB) {
+  const ref  = doc(db,'grupos',docId);
+  const snap = await getDoc(ref);
+  const g    = snap.data();
+  const a    = g.itinerario[fechaA] || [];
+  const b    = g.itinerario[fechaB] || [];
+  [a[idxA], b[idxB]] = [b[idxB], a[idxA]];
+  await updateDoc(ref, {
+    [`itinerario.${fechaA}`]: a,
+    [`itinerario.${fechaB}`]: b
+  });
+}
+
