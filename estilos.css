@@ -766,6 +766,17 @@ body {
   display: none;
 }
 
+.swap-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-left: 4px;        /* separa un poquito del texto */
+  font-size: 1em;          /* toma el tamaño de fuente normal */
+  cursor: pointer;
+}
+.swap-btn:hover {
+  color: #007bff;          /* opcional: cambia color al pasar el mouse */
+}
 
 #tablaCalendario {
   width: 100% !important;
