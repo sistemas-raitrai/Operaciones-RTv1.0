@@ -194,50 +194,65 @@ async function renderItinerario() {
        .onclick = ()=> openModal({ fecha }, false);
 
     const ul  = sec.querySelector(".activity-list");
-    const arr = (g.itinerario[fecha]||[]).slice()
-      .sort((a,b)=> a.horaInicio.localeCompare(b.horaInicio));
-
-    if (!arr.length) {
+    // 1) Array original y auxiliar con su índice real
+    const original = g.itinerario[fecha] || [];
+    const withIndex = original.map((act, idx) => ({ act, originalIdx: idx }));
+    
+    // 2) Array ordenado solo para mostrar, sin alterar el original
+    const sorted = withIndex.slice().sort((a, b) =>
+      a.act.horaInicio.localeCompare(b.act.horaInicio)
+    );
+    
+    if (!sorted.length) {
       ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
     } else {
-      arr.forEach((act,i)=>{
+      sorted.forEach(({ act, originalIdx }) => {
         const li = document.createElement("li");
         li.className = "activity-card";
-        const paxCalc = (parseInt(act.adultos, 10) || 0) + (parseInt(act.estudiantes, 10) || 0);
+        const paxCalc = (parseInt(act.adultos, 10) || 0)
+                      + (parseInt(act.estudiantes, 10) || 0);
     
         li.innerHTML = `
           <h4>${act.horaInicio} – ${act.horaFin}</h4>
           <p><strong>${act.actividad}</strong></p>
           <p>👥 ${paxCalc} pax (A:${act.adultos} E:${act.estudiantes})</p>
           <div class="actions">
-            <button class="btn-edit" data-idx="${i}">✏️</button>
-            <button class="btn-del"  data-idx="${i}">🗑️</button>
+            <button class="btn-edit">✏️</button>
+            <button class="btn-del">🗑️</button>
           </div>
         `;
+    
+        // Editar usando originalIdx
         li.querySelector(".btn-edit")
-          .onclick = ()=> openModal({ ...act, fecha, idx:i }, true);
+          .onclick = () => openModal({ ...act, fecha, idx: originalIdx }, true);
+    
+        // Borrar usando originalIdx
         li.querySelector(".btn-del")
-          .onclick = async ()=>{
+          .onclick = async () => {
             if (!confirm("¿Eliminar actividad?")) return;
-            await addDoc(collection(db,'historial'), {
+            // Registro en historial (opcional)
+            await addDoc(collection(db, 'historial'), {
               numeroNegocio: grupoId,
               accion:        'BORRAR ACTIVIDAD',
-              anterior:      (g.itinerario[fecha]||[]).map(a=>a.actividad).join(' – '),
+              anterior:      original.map(a => a.actividad).join(' – '),
               nuevo:         '',
               usuario:       auth.currentUser.email,
               timestamp:     new Date()
             });
-            g.itinerario[fecha].splice(i,1);
-            await updateDoc(doc(db,'grupos',grupoId), {
-              [`itinerario.${fecha}`]: g.itinerario[fecha]
+            // Elimino del array original en la posición correcta
+            original.splice(originalIdx, 1);
+            await updateDoc(doc(db, 'grupos', grupoId), {
+              [`itinerario.${fecha}`]: original
             });
             renderItinerario();
           };
+    
         ul.appendChild(li);
       });
     }
-  });
-}
+        });   // ← cierra sorted.forEach
+  });     // ← cierra fechas.forEach
+} 
 
 // —————————————————————————————————
 // 4) quickAddActivity(): añade en varios días
