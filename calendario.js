@@ -1,14 +1,12 @@
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, getDoc, doc, updateDoc, addDoc, query, orderBy
+  collection, getDocs, doc, updateDoc, addDoc, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
-let pendingSwapDay = null;
-let pendingSwapAct = null;
 
 // Extrae parámetro de URL
 function getParametroURL(nombre) {
@@ -114,10 +112,7 @@ async function generarTablaCalendario(userEmail) {
     const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
     // insertar <th> con o sin la clase
     $trhead.append(
-      `<th class="${clase}" data-fecha="${f}">
-         ${formatearFechaBonita(f)}
-         <span class="swap-icon swap-day" title="Intercambiar Día">⇄</span>
-       </th>`
+      `<th class="${clase}">${formatearFechaBonita(f)}</th>`
     );
   });
 
@@ -151,22 +146,12 @@ async function generarTablaCalendario(userEmail) {
       const fechaObj = new Date(yyyy, mm - 1, dd);
       if (fechaObj.getDay() === 0) clases.push('domingo');
 
-      // dividimos en líneas y envolvemos cada una
-      const líneas = texto.split('\n');
-      const htmlLines = líneas.map((l, i) => `
-        <div class="act-line" data-idx="${i}">
-          <span>${l}</span>
-          <span class="swap-icon swap-act" title="Intercambiar Actividad">⇄</span>
-        </div>
-      `).join('');
-      
       const $td = $('<td>')
         .addClass(clases.join(' '))
-        .html(htmlLines)
+        .text(texto)
         .attr('data-doc-id', g.id)
         .attr('data-fecha', f)
         .attr('data-original', texto);
-
 
       $tr.append($td);
     }); // ← cierra fechasOrdenadas.forEach
@@ -194,85 +179,6 @@ async function generarTablaCalendario(userEmail) {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
-
- 
-  // swap días
-  $(document).on('click', '.swap-day', async function() {
-    const fechaA = $(this).closest('th').data('fecha');
-    const docId  = numeroNegocioInicial;
-    const otras  = fechasOrdenadas.filter(f=>f!==fechaA);
-    const fechaB = prompt(`Intercambiar ${fechaA} con:`, otras.join('\n'));
-    if (!otras.includes(fechaB)) return alert('Fecha inválida');
-    await swapDias(docId, fechaA, fechaB);
-    location.reload();
-  });
-
-  // --- Swap Días ---
-  $(document).on('click', 'th .swap-icon', async function() {
-    if (!editMode) return;
-    const fecha = $(this).closest('th').data('fecha');
-    if (!pendingSwapDay) {
-      pendingSwapDay = fecha;
-      $('th').removeClass('swap-pending');
-      $(`th[data-fecha="${fecha}"]`).addClass('swap-pending');
-    } else if (pendingSwapDay === fecha) {
-      pendingSwapDay = null;
-      $('th').removeClass('swap-pending');
-    } else {
-      await swapDias(numeroNegocioInicial, pendingSwapDay, fecha);
-      pendingSwapDay = null;
-      $('th').removeClass('swap-pending');
-      location.reload();
-    }
-  });
-  
-  // --- Swap Actividades ---
-  $(document).on('click', '.act-line .swap-icon', async function() {
-    if (!editMode) return;
-    const $line = $(this).closest('.act-line');
-    const idx   = +$line.data('idx');
-    const $td   = $line.closest('td');
-    const fecha = $td.data('fecha');
-    const docId = $td.data('doc-id');
-  
-    if (!pendingSwapAct) {
-      pendingSwapAct = { docId, fecha, idx };
-      $('.act-line').removeClass('swap-pending');
-      $line.addClass('swap-pending');
-    } else {
-      const A = pendingSwapAct, B = { docId, fecha, idx };
-      if (A.docId !== B.docId) {
-        alert("Ambas actividades deben pertenecer al mismo grupo");
-      } else {
-        await swapUnaActividad(docId, A.fecha, A.idx, B.fecha, B.idx);
-        location.reload();
-      }
-      pendingSwapAct = null;
-      $('.act-line').removeClass('swap-pending');
-    }
-  });
-  
-  // swap actividad
-  $(document).on('click', '.swap-day', async function() {
-    const $line  = $(this).closest('.act-line');
-    const idxA   = +$line.data('idx');
-    const $td    = $line.closest('td');
-    const fechaA = $td.data('fecha');
-    const docId  = $td.data('doc-id');
-  
-    const otras = fechasOrdenadas.filter(f=>f!==fechaA);
-    const fechaB= prompt(`Intercambiar actividad de ${fechaA} con fecha:`, otras.join('\n'));
-    if (!otras.includes(fechaB)) return alert('Fecha inválida');
-  
-    const snap  = await getDoc(doc(db,'grupos',docId));
-    const arrB  = snap.data().itinerario[fechaB]||[];
-    const optsB = arrB.map((a,i)=> `${i}: ${a.horaInicio}–${a.horaFin} ${a.actividad}`).join('\n');
-    const idxB  = +prompt(`Elige índice en ${fechaB}:\n${optsB}`);
-    if (isNaN(idxB)||idxB<0||idxB>=arrB.length) return alert('Índice inválido');
-  
-    await swapUnaActividad(docId, fechaA, idxA, fechaB, idxB);
-    location.reload();
-  });
   
   // 5) Buscador libre
   $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
@@ -294,13 +200,7 @@ async function generarTablaCalendario(userEmail) {
     editMode = !editMode;
     $('#btn-toggle-edit')
       .text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
-    
-    // mostrar u ocultar botones de intercambio
-     document.body.classList.toggle('modo-edicion', editMode);
-
-    // activar o desactivar contenido editable    
     $('#tablaCalendario tbody td').attr('contenteditable', editMode);
-    
     await addDoc(collection(db, 'historial'), {
       accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
       usuario: userEmail,
@@ -417,30 +317,94 @@ document.getElementById('btn-export-excel').addEventListener('click', () => {
   XLSX.writeFile(wb, "calendario.xlsx");
 });
 
-// intercambia todas las actividades de dos días
-async function swapDias(docId, fechaA, fechaB) {
-  const ref  = doc(db,'grupos',docId);
-  const snap = await getDoc(ref);
-  const g    = snap.data();
-  const a    = g.itinerario[fechaA] || [];
-  const b    = g.itinerario[fechaB] || [];
-  await updateDoc(ref, {
-    [`itinerario.${fechaA}`]: b,
-    [`itinerario.${fechaB}`]: a
-  });
-}
 
-// intercambia dos actividades puntuales
-async function swapUnaActividad(docId, fechaA, idxA, fechaB, idxB) {
-  const ref  = doc(db,'grupos',docId);
-  const snap = await getDoc(ref);
-  const g    = snap.data();
-  const a    = g.itinerario[fechaA] || [];
-  const b    = g.itinerario[fechaB] || [];
-  [a[idxA], b[idxB]] = [b[idxB], a[idxA]];
-  await updateDoc(ref, {
-    [`itinerario.${fechaA}`]: a,
-    [`itinerario.${fechaB}`]: b
-  });
-}
 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Calendario de Actividades</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css"/>
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+</head>
+<body>
+
+  <!-- 🔺 Encabezado común -->
+  <div id="encabezado"></div>
+
+  <main>
+    <h1>🗓️ Calendario de actividades por día</h1>
+
+    <div id="toolbar" class="toolbar">
+      <div class="row">
+        <div class="column long">
+          <input type="text" id="buscador" placeholder="🔍 Buscar..." />
+        </div>
+        <div class="column medium">
+          <select id="filtroDestino"></select>
+        </div>
+        <div class="column medium">
+           <select id="filtroAno"></select>
+        </div>
+        
+        <button id="btn-toggle-edit">🔓 Activar Edición</button>
+        <button id="btn-view-history">📜 Ver Historial</button>
+        <button id="btn-export-excel">📤 Exportar Excel</button>
+      </div>
+    </div>  
+
+    <table id="tablaCalendario" class="display nowrap" style="width:100%">
+      <thead><tr id="encabezadoCalendario"></tr></thead>
+      <tbody id="cuerpoCalendario"></tbody>
+    </table>
+  </main>
+
+  <!-- Modal de historial -->
+  <div id="modalHistorial" class="modal" style="display:none;">
+    <h2>Historial de cambios</h2>
+    <input type="text" id="buscadorHistorial" placeholder="🔍 Buscar en historial..." />
+    <input type="date" id="histInicio" />
+    <input type="date" id="histFin" />
+    <button id="btn-refresh-history">🔁 Actualizar</button>
+    <button id="btn-close-history">❌ Cerrar</button>
+    <table id="tablaHistorial" class="display" style="width:100%">
+      <thead>
+        <tr><th>Fecha</th><th>Usuario</th><th>N° Negocio</th><th>Campo</th><th>Antes</th><th>Ahora</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
+
+  <script>
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById('encabezado').innerHTML = html;
+      })
+      .then(() => {
+        // Aquí creamos un único <script type="module"> que arrancará
+        // TODO tu flujo: importa firebase-init.js y luego calendario.js
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.textContent = `
+          import './firebase-init.js';
+          import './script.js'; 
+          import './calendario.js';
+        `;
+        document.body.appendChild(s);
+      });
+  </script>
+</body>
+</html>
