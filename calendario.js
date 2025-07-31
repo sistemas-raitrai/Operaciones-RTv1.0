@@ -1,6 +1,6 @@
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, getdoc, doc, updateDoc, addDoc, query, orderBy
+  collection, getDocs, getDoc, doc, updateDoc, addDoc, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
