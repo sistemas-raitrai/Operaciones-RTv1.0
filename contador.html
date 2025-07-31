@@ -6,122 +6,82 @@
   <title>Conteo de Actividades | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+  <style>
+    .scroll-table { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem; text-align: center; }
+    thead th { background: #f0f0f0; }
+    .fixed-col { position: sticky; left: 0; background: #fff; z-index: 1; }
+  </style>
 </head>
 <body>
-  <!-- ✅ Encabezado común -->
+  <!-- Encabezado común -->
   <div id="encabezado"></div>
 
-  <!-- ✅ Filtros y tabla -->
-  <h2>Conteo de Actividades:</h2>
-  <div class="filtros">
-    <select id="filtro-dia"><option value="">-- Día --</option></select>
-    <select id="filtro-destino"><option value="">-- Destino --</option></select>
-    <select id="filtro-grupo"><option value="">-- Grupo --</option></select>
-    <button id="btn-filtrar">Filtrar</button>
+  <h2>Resumen de Actividades por Día</h2>
+  <div class="scroll-table">
+    <table id="tabla-actividades">
+      <thead id="thead-actividades"></thead>
+      <tbody id="tbody-actividades"></tbody>
+    </table>
   </div>
-  <table>
-    <thead>
-      <tr>
-        <th>Día</th><th>Destino</th><th>Grupo</th><th>Actividad</th><th>Cantidad</th>
-      </tr>
-    </thead>
-    <tbody id="tabla-actividades"></tbody>
-  </table>
 
-  <!-- 1️⃣ Cargo dinámico del encabezado -->
   <script type="module">
     (async () => {
+      // Inyectar encabezado
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-    })();
-  </script>
+      // Inicializar Firebase
+      const { app, db } = await import('./firebase-init.js');
+      const { getAuth, onAuthStateChanged, signOut } = await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js');
+      const { getDocs, collection } = await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js');
 
-  <!-- 2️⃣ Inicialización de Firebase/Auth -->
-  <script type="module" src="firebase-init.js" defer></script>
+      const auth = getAuth(app);
+      onAuthStateChanged(auth, user => {
+        if (!user) location.href = 'login.html';
+      });
+      document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(auth));
 
-  <!-- 3️⃣ Lógica de conexión a Firestore y conteo -->
-  <script type="module">
-    import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-    import { getDocs, collection } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-    import { app, db } from './firebase-init.js';
-
-    const auth = getAuth(app);
-    const filtroDia = document.getElementById('filtro-dia');
-    const filtroDestino = document.getElementById('filtro-destino');
-    const filtroGrupo = document.getElementById('filtro-grupo');
-    const btnFiltrar = document.getElementById('btn-filtrar');
-    const tablaBody = document.getElementById('tabla-actividades');
-
-    let datosCombinados = [];
-
-    // Comprueba sesión y carga datos
-    onAuthStateChanged(auth, user => {
-      if (!user) {
-        location.href = 'login.html';
-      } else {
-        cargarDatos();
-      }
-    });
-
-    // Función principal
-    async function cargarDatos() {
-      datosCombinados = [];
-      const gruposSnap = await getDocs(collection(db, 'grupos'));
-      const provSnap = await getDocs(collection(db, 'actividadesProveedores'));
-
+      // 1) Cargar colecciones
+      const [gruposSnap, serviciosSnap] = await Promise.all([
+        getDocs(collection(db, 'grupos')),
+        getDocs(collection(db, 'servicios'))
+      ]);
       const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      const actividadesProv = provSnap.docs.map(d => d.data());
+      const servicios = serviciosSnap.docs.map(d => d.data());
 
-      grupos.forEach(gr => {
-        if (Array.isArray(gr.itinerario)) {
-          gr.itinerario.forEach(item => {
-            const { dia, destino, actividad } = item;
-            const count = actividadesProv.filter(a =>
-              a.dia === dia && a.grupoId === gr.id && a.destino === destino && a.actividad === actividad
-            ).length;
-            datosCombinados.push({ dia, destino, grupo: gr.nombreGrupo, actividad, cantidad: count });
-          });
-        }
+      // 2) Extraer fechas únicas de itinerarios
+      const fechasSet = new Set();
+      grupos.forEach(g => {
+        if (Array.isArray(g.itinerario)) g.itinerario.forEach(i => fechasSet.add(i.dia));
       });
+      const fechas = Array.from(fechasSet).sort();
 
-      poblarFiltros();
-      renderTabla(datosCombinados);
-    }
+      // 3) Actividades únicas (servicios)
+      const actividades = servicios.map(s => s.nombreActividad).sort();
 
-    function poblarFiltros() {
-      [...new Set(datosCombinados.map(x => x.dia))].sort()
-        .forEach(d => filtroDia.append(new Option(d, d)));
-      [...new Set(datosCombinados.map(x => x.destino))].sort()
-        .forEach(d => filtroDestino.append(new Option(d, d)));
-      [...new Set(datosCombinados.map(x => x.grupo))].sort()
-        .forEach(g => filtroGrupo.append(new Option(g, g)));
-    }
+      // 4) Construir encabezado de tabla
+      const thead = document.getElementById('thead-actividades');
+      let ths = '<tr><th class="fixed-col">Actividad</th>' + fechas.map(f => `<th>${f}</th>`).join('') + '</tr>';
+      thead.innerHTML = ths;
 
-    function renderTabla(data) {
-      tablaBody.innerHTML = '';
-      data.forEach(item => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td>${item.dia}</td>
-          <td>${item.destino}</td>
-          <td>${item.grupo}</td>
-          <td>${item.actividad}</td>
-          <td>${item.cantidad}</td>
-        `;
-        tablaBody.append(tr);
+      // 5) Poblar filas: para cada actividad, contar pax
+      const tbody = document.getElementById('tbody-actividades');
+      actividades.forEach(act => {
+        let row = `<tr><td class="fixed-col">${act}</td>`;
+        fechas.forEach(dia => {
+          // sumar pax de grupos cuyo itinerario en dia coincide en actividad
+          const totalPax = grupos.reduce((sum, g) => {
+            const pax = g.cantidadgrupo || g.pax || 0;
+            const tiene = Array.isArray(g.itinerario) && g.itinerario.some(i => i.dia === dia && i.actividad === act);
+            return sum + (tiene ? pax : 0);
+          }, 0);
+          row += `<td>${totalPax}</td>`;
+        });
+        row += '</tr>';
+        tbody.insertAdjacentHTML('beforeend', row);
       });
-    }
-
-    btnFiltrar.addEventListener('click', () => {
-      const d = filtroDia.value, dest = filtroDestino.value, gr = filtroGrupo.value;
-      const filtrados = datosCombinados.filter(x =>
-        (!d || x.dia === d) && (!dest || x.destino === dest) && (!gr || x.grupo === gr)
-      );
-      renderTabla(filtrados);
-    });
-
-    // Opcional: botón de logout si lo inyecta encabezado
-    document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(auth));
+    })();
   </script>
 </body>
 </html>
