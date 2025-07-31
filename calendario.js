@@ -195,9 +195,7 @@ async function generarTablaCalendario(userEmail) {
     }
   });
 
-  // ocultar botones de swap
-  $('.swap-icon').hide();
-  
+ 
   // swap días
   $(document).on('click', '.swap-day', async function() {
     const fechaA = $(this).closest('th').data('fecha');
@@ -298,9 +296,11 @@ async function generarTablaCalendario(userEmail) {
       .text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
     
     // mostrar u ocultar botones de intercambio
-     $('.swap-icon').toggle(editMode);
-    
+     document.body.classList.toggle('modo-edicion', editMode);
+
+    // activar o desactivar contenido editable    
     $('#tablaCalendario tbody td').attr('contenteditable', editMode);
+    
     await addDoc(collection(db, 'historial'), {
       accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
       usuario: userEmail,
