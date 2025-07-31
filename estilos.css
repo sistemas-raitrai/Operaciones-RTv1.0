@@ -761,9 +761,11 @@ body {
   height: 80px; 
 }
 
-/* ----------------------------------------------------------------------- */
-/* Estilos específicos para el calendario de actividades                  */
-/* ----------------------------------------------------------------------- */
+/* oculta por defecto los botones de intercambio */
+.swap-btn {
+  display: none;
+}
+
 
 #tablaCalendario {
   width: 100% !important;
