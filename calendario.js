@@ -233,15 +233,22 @@ async function generarTablaCalendario(userEmail) {
     });
   
     // 3) Mezclar cada objeto nuevo con el original para no perder campos
+    console.group(`Depuración itinerario.${fecha}`);
+    console.log('arrOld (antes del cambio):', arrOld);
+    console.log('parsed  (líneas editadas):', parsed);
+
     const arrUp = parsed.map((n, idx) => {
       const orig = arrOld[idx] || {};
       return {
-        ...orig,                            // trae adultos, estudiantes, notas…
+        ...orig,                            
         horaInicio: n.horaInicio ?? orig.horaInicio,
         horaFin:    n.horaFin    ?? orig.horaFin,
         actividad:  n.actividad  ?? orig.actividad
       };
     });
+
+    console.log('arrUp  (resultado mezcla):', arrUp);
+    console.groupEnd();
   
     // 4) Guardar el array resultante en Firestore
     await updateDoc(ref, {
