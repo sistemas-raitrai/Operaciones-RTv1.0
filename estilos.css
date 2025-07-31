@@ -639,29 +639,6 @@ input, select, textarea {
 /* Estilos específicos para el calendario de actividades                  */
 /* ----------------------------------------------------------------------- */
 
-/* Tabla de calendario */
-#tablaCalendario {
-  width: 100% !important;
-  background-color: #fff;
-  border-collapse: collapse;
-}
-
-/* Celdas normales con mayor ancho */
-#tablaCalendario th,
-#tablaCalendario td {
-  min-width: 160px; /* ⬅️ DOBLE DE LO NORMAL */
-  padding: 6px 10px;
-  text-align: left;
-  vertical-align: top;
-  white-space: pre-wrap;
-}
-
-/* Resaltar celdas de fecha de inicio y fin */
-#tablaCalendario td.inicio-fin {
-  background-color: #fff59d !important; /* amarillo claro */
-  font-weight: bold;
-}
-
 /* Encabezado fijo bonito */
 #tablaCalendario thead th {
   position: sticky;
@@ -761,24 +738,9 @@ body {
   height: 80px; 
 }
 
-/* oculta por defecto los botones de intercambio */
-.swap-icon {
-  display: none;
-}
-
-.swap-icon {
-  background: none;
-  color: red;
-  border: none;
-  padding: 0;
-  margin-left: 4px;        /* separa un poquito del texto */
-  font-size: 1em;          /* toma el tamaño de fuente normal */
-  cursor: pointer;
-}
-.swap-icon:hover {
-  color: #007bff;          /* opcional: cambia color al pasar el mouse */
-}
-
+/* ──────────────────────────────────────────────── */
+/* Sticky header para el calendario                */
+/* ──────────────────────────────────────────────── */
 #tablaCalendario {
   width: 100% !important;
   background-color: #fff;
@@ -800,18 +762,51 @@ body {
   font-weight: bold;
 }
 
-/* ——————————————————————————————————————————————
-   Aquí agregas la regla para fijar el encabezado 
-   —————————————————————————————————————————————— */
 #tablaCalendario thead th {
   position: sticky;
   top: 0;
-  background-color: #f1f1f1;  /* ajusta al color de tu header */
-  z-index: 10;                 /* para que quede siempre encima */
+  background-color: #f1f1f1;
+  z-index: 10;
 }
 
-/* Botones DataTables (Excel, columnas, etc.) */
-#toolbar .dt-button {
-  /* … */
+/* ──────────────────────────────────────────────── */
+/* Swap icons y modo edición (única sección)       */
+/* ──────────────────────────────────────────────── */
+
+/* Oculta siempre los iconos de intercambio por defecto */
+.swap-icon {
+  display: none;
+  background: none;
+  color: red;
+  border: none;
+  padding: 0;
+  margin-left: 4px;
+  font-size: 1em;
+  cursor: pointer;
+}
+.swap-icon:hover {
+  color: #007bff;
+}
+
+/* Cuando el body tenga la clase modo-edicion, muéstralos */
+body.modo-edicion .swap-icon {
+  display: inline-block;
+}
+
+/* Cada línea de actividad en flex para alinear hora/descripción/icono */
+.act-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+.act-line .descripcion {
+  flex: 1;
+  margin-left: 8px;
+}
+
+/* Marca la columna pendiente al hacer el primer click */
+th.swap-pending {
+  outline: 2px dashed #ff9800;
 }
 
