@@ -196,7 +196,7 @@ async function generarTablaCalendario(userEmail) {
   });
 
   // ocultar botones de swap
-  $('.swap-btn').hide();
+  $('.swap-icon').hide();
   
   // swap días
   $(document).on('click', '.swap-day', async function() {
