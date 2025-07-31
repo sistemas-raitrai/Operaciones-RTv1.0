@@ -116,7 +116,7 @@ async function generarTablaCalendario(userEmail) {
     $trhead.append(
       `<th class="${clase}" data-fecha="${f}">
          ${formatearFechaBonita(f)}
-         <button type="button" class="swap-btn btn-swap-day" title="Intercambiar Día">⇄</button>
+         <span class="swap-icon swap-day" title="Intercambiar Día">⇄</span>
        </th>`
     );
   });
@@ -156,7 +156,7 @@ async function generarTablaCalendario(userEmail) {
       const htmlLines = líneas.map((l, i) => `
         <div class="act-line" data-idx="${i}">
           <span>${l}</span>
-          <button class="btn-swap-act swap-btn" title="Intercambiar Actividad">⇄</button>
+          <span class="swap-icon swap-act" title="Intercambiar Actividad">⇄</span>
         </div>
       `).join('');
       
@@ -199,7 +199,7 @@ async function generarTablaCalendario(userEmail) {
   $('.swap-btn').hide();
   
   // swap días
-  $(document).on('click', '.btn-swap-day', async function() {
+  $(document).on('click', '.swap-day', async function() {
     const fechaA = $(this).closest('th').data('fecha');
     const docId  = numeroNegocioInicial;
     const otras  = fechasOrdenadas.filter(f=>f!==fechaA);
@@ -208,9 +208,54 @@ async function generarTablaCalendario(userEmail) {
     await swapDias(docId, fechaA, fechaB);
     location.reload();
   });
+
+  // --- Swap Días ---
+  $(document).on('click', 'th .swap-icon', async function() {
+    if (!editMode) return;
+    const fecha = $(this).closest('th').data('fecha');
+    if (!pendingSwapDay) {
+      pendingSwapDay = fecha;
+      $('th').removeClass('swap-pending');
+      $(`th[data-fecha="${fecha}"]`).addClass('swap-pending');
+    } else if (pendingSwapDay === fecha) {
+      pendingSwapDay = null;
+      $('th').removeClass('swap-pending');
+    } else {
+      await swapDias(numeroNegocioInicial, pendingSwapDay, fecha);
+      pendingSwapDay = null;
+      $('th').removeClass('swap-pending');
+      location.reload();
+    }
+  });
+  
+  // --- Swap Actividades ---
+  $(document).on('click', '.act-line .swap-icon', async function() {
+    if (!editMode) return;
+    const $line = $(this).closest('.act-line');
+    const idx   = +$line.data('idx');
+    const $td   = $line.closest('td');
+    const fecha = $td.data('fecha');
+    const docId = $td.data('doc-id');
+  
+    if (!pendingSwapAct) {
+      pendingSwapAct = { docId, fecha, idx };
+      $('.act-line').removeClass('swap-pending');
+      $line.addClass('swap-pending');
+    } else {
+      const A = pendingSwapAct, B = { docId, fecha, idx };
+      if (A.docId !== B.docId) {
+        alert("Ambas actividades deben pertenecer al mismo grupo");
+      } else {
+        await swapUnaActividad(docId, A.fecha, A.idx, B.fecha, B.idx);
+        location.reload();
+      }
+      pendingSwapAct = null;
+      $('.act-line').removeClass('swap-pending');
+    }
+  });
   
   // swap actividad
-  $(document).on('click', '.btn-swap-act', async function() {
+  $(document).on('click', '.swap-day', async function() {
     const $line  = $(this).closest('.act-line');
     const idxA   = +$line.data('idx');
     const $td    = $line.closest('td');
@@ -253,7 +298,7 @@ async function generarTablaCalendario(userEmail) {
       .text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
     
     // mostrar u ocultar botones de intercambio
-    $('.swap-btn').toggle(editMode);
+     $('.swap-icon').toggle(editMode);
     
     $('#tablaCalendario tbody td').attr('contenteditable', editMode);
     await addDoc(collection(db, 'historial'), {
