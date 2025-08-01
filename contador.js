@@ -33,8 +33,8 @@ async function init() {
   // 3️⃣ Leer colecciones en paralelo
   const [gruposSnap, serviciosSnap, proveedoresSnap] = await Promise.all([
     getDocs(collection(db, 'grupos')),
-    getDocs(collection(db, 'servicios')),
-    getDocs(collection(db, 'proveedores'))
+    getDocs(collection(db, 'Servicios')),
+    getDocs(collection(db, 'Proveedores'))
   ]);
 
   // Convertir snapshots a arrays de objetos
