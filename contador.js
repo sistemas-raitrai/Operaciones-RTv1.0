@@ -129,6 +129,7 @@ async function init() {
           <button class="btn-reserva"
                   data-destino="${servicio.destino}"
                   data-actividad="${servicio.nombre}">
+                  data-proveedor="${servicio.proveedor}">
             CREAR
           </button>
         </td>`;
@@ -216,6 +217,7 @@ async function abrirModalReserva(event) {
   const btn       = event.currentTarget;
   const destino   = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
+  const proveedor = btn.dataset.proveedor;
 
   // 1️⃣ rellenar "Para:" y "Asunto:"
   // provInfo viene de un mapa global `proveedores[actividad]`
