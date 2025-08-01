@@ -17,7 +17,7 @@
 
   <style>
     /* Fija encabezado superior */
-    table.dataTable thead th {
+    table.dataTable thead th:not(.tablaNoSticky th) {
       position: sticky;
       top: 0;
       background-color: #f9f9f9;
@@ -52,7 +52,7 @@
     </div>
 
     <!-- 3️⃣ Tabla principal -->
-    <table id="tablaConteo" class="display nowrap" style="width:100%">
+      <table id="tablaConteo" class="display nowrap tablaNoSticky" style="width:100%">
       <thead id="thead-actividades"></thead>
       <tbody id="tbody-actividades"></tbody>
     </table>
