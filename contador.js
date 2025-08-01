@@ -161,10 +161,17 @@ async function init() {
       // Buscador general y filtro por destino
       $('#buscador').on('keyup', function () {
         const entrada = $(this).val();
-        const palabras = entrada.split(/[,; ]+/).filter(p => p); // divide por coma, punto y coma o espacio
-        const regex = palabras.length ? palabras.map(p => `(?=.*${p})`).join('') : '';
+        const palabras = entrada.split(/[,;]+/).map(p => p.trim()).filter(p => p);
+        const regex = palabras.length
+          ? palabras.map(p => `(?=.*${escapeRegExp(p)})`).join('|')
+          : '';
         api.search(regex, true, false).draw();
       });
+      
+      // Utilidad para escapar caracteres especiales en RegExp
+      function escapeRegExp(text) {
+        return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      }
       $('#filtroDestino').on('change', () =>
         api.column(1).search($('#filtroDestino').val()).draw());
 
