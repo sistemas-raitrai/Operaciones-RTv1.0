@@ -1,139 +1,128 @@
 // contador.js
 
-// —————————————— Importes de Firebase ——————————————
-import { getAuth, onAuthStateChanged, signOut }
-  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-import { getDocs, collection }
-  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+// ———————————————————————————————
+// 1️⃣ Importes de Firebase
+// ———————————————————————————————
 import { app, db } from './firebase-init.js';
+import {
+  getDocs, collection
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import {
+  getAuth, onAuthStateChanged, signOut
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
-// ————————— Referencias al DOM —————————
+// ———————————————————————————————
+// 2️⃣ Referencias al DOM
+// ———————————————————————————————
 const thead = document.getElementById('thead-actividades');
 const tbody = document.getElementById('tbody-actividades');
 
-// —————— 1️⃣ Control de sesión Firebase ——————
+// ———————————————————————————————
+// 3️⃣ Control de sesión
+// ———————————————————————————————
 const auth = getAuth(app);
 onAuthStateChanged(auth, user => {
-  if (!user) {
-    // Si no hay usuario, redirige a login
-    location.href = 'login.html';
-  } else {
-    // Si está autenticado, arrancar lógica
-    init();
-  }
+  if (!user) location.href = 'login.html';
+  else init(); // si hay sesión, ejecuta todo
 });
-// Botón “Cerrar sesión” inyectado en encabezado.html
 document.getElementById('logoutBtn')?.addEventListener('click', () => {
   signOut(auth);
 });
 
-/**
- * 2️⃣ Función principal:
- *   • Lee datos de Firestore (grupos, proveedores, servicios)
- *   • Monta cabecera con fechas dinámicas
- *   • Rellena filas con conteo de pasajeros
- *   • Inicializa DataTables al final
- */
+// —————————————————————————————————————————————————————
+// 4️⃣ Función principal: lee y muestra tabla de conteo
+// —————————————————————————————————————————————————————
 async function init() {
-  // ——— 3️⃣ Leer “grupos” de Firestore ———
+  // ——— 4.1) Leer colección 'grupos'
   const gruposSnap = await getDocs(collection(db, 'grupos'));
   const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  // ——— 4️⃣ Leer “Proveedores” (colección plana) ———
-  // Para mapear proveedorId → nombreProveedor
-  const provSnap = await getDocs(collection(db, 'Proveedores'));
-  const proveedores = provSnap.docs.map(d => ({
-    id: d.id,
-    nombre: d.data().nombreProveedor
-  }));
-  const proveedorMap = proveedores.reduce((map, p) => {
-    map[p.id] = p.nombre;
-    return map;
-  }, {});
-
-  // ——— 5️⃣ Leer “Servicios” (subcolecciones) ———
-  // Cada doc en “Servicios” es un destino; su subcolección “Listado” tiene las actividades
+  // ——— 4.2) Leer todos los servicios desde todas las subcolecciones
   const servicios = [];
   const serviciosRoot = await getDocs(collection(db, 'Servicios'));
-  for (const docDestino of serviciosRoot.docs) {
-    const destino = docDestino.id;
+  for (const doc of serviciosRoot.docs) {
+    const destino = doc.id;
     const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
-    listadoSnap.docs.forEach(sDoc => {
-      const data = sDoc.data();
+    listadoSnap.docs.forEach(s => {
+      const data = s.data();
       servicios.push({
         destino,
-        nombreActividad: sDoc.id,
-        proveedorId: data.proveedor   // campo “proveedor” en cada actividad
+        nombre: s.id,
+        proveedor: data.proveedor || ''
       });
     });
   }
 
-  // ——— 6️⃣ Extraer fechas únicas de todos los itinerarios ———
-  const fechasSet = new Set();
-  grupos.forEach(g => {
-    if (Array.isArray(g.itinerario)) {
-      g.itinerario.forEach(item => {
-        const label = item.dia
-          .toDate()
-          .toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
-        fechasSet.add(label);
-      });
+  // ——— 4.3) Leer proveedores una sola vez
+  const proveedoresSnap = await getDocs(collection(db, 'Proveedores', 'BRASIL', 'Listado'));
+  const proveedores = {};
+  proveedoresSnap.docs.forEach(doc => {
+    const data = doc.data();
+    if (data.proveedor) {
+      proveedores[data.proveedor] = {
+        contacto: data.contacto || '',
+        telefono: data.telefono || '',
+        correo: data.correo || '',
+        destino: data.destino || ''
+      };
     }
   });
-  const fechas = Array.from(fechasSet).sort((a, b) => {
-    const [da, ma] = a.split('/').map(Number);
-    const [db, mb] = b.split('/').map(Number);
-    return new Date(0, ma - 1, da) - new Date(0, mb - 1, db);
+
+  // ——— 4.4) Extraer fechas únicas de todos los itinerarios
+  const fechasSet = new Set();
+  grupos.forEach(g => {
+    const itinerario = g.itinerario || {};
+    Object.keys(itinerario).forEach(fecha => {
+      fechasSet.add(fecha); // formato '2025-11-29'
+    });
   });
+  const fechasOrdenadas = Array.from(fechasSet).sort(); // orden cronológico
 
-  // ——— 7️⃣ Construir <thead> dinámico con columnas fijas + fechas ———
-  const headerCols = ['Actividad', 'Destino', 'Proveedor'];
-  thead.innerHTML =
-    '<tr>' +
-      headerCols.map((h, i) =>
-        `<th class="fixed-col-${i+1}">${h}</th>`
-      ).join('') +
-      fechas.map(f => `<th>${f}</th>`).join('') +
-    '</tr>';
+  // ——— 4.5) Generar <thead> dinámico
+  thead.innerHTML = `
+    <tr>
+      <th class="fixed-col-1">Actividad</th>
+      <th class="fixed-col-2">Destino</th>
+      <th class="fixed-col-3">Proveedor</th>
+      ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join('')}
+    </tr>`;
 
-  // ——— 8️⃣ Ordenar servicios alfabéticamente por destino+actividad ———
+  // ——— 4.6) Ordenar servicios por destino + nombre
   servicios.sort((a, b) =>
-    (a.destino + a.nombreActividad)
-      .localeCompare(b.destino + b.nombreActividad)
+    (a.destino + a.nombre).localeCompare(b.destino + b.nombre)
   );
 
-  // ——— 9️⃣ Rellenar <tbody> con filas y conteo de PAX por fecha ———
-  servicios.forEach(s => {
-    const proveedorStr = proveedorMap[s.proveedorId] || '-';
-    let row = `<tr>
-      <td class="fixed-col-1">${s.nombreActividad}</td>
-      <td class="fixed-col-2">${s.destino}</td>
-      <td class="fixed-col-3">${proveedorStr}</td>`;
+  // ——— 4.7) Generar filas por servicio
+  servicios.forEach(servicio => {
+    const prov = proveedores[servicio.proveedor];
+    const proveedorStr = prov ? servicio.proveedor : '-';
 
-    fechas.forEach(dia => {
-      const sumaPax = grupos.reduce((sum, g) => {
-        const pax = g.cantidadgrupo || 0;
-        const coincide = Array.isArray(g.itinerario) &&
-          g.itinerario.some(item => {
-            const label = item.dia
-              .toDate()
-              .toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
-            return (
-              label === dia &&
-              item.actividad === s.nombreActividad &&
-              item.destino === s.destino
-            );
-          });
-        return sum + (coincide ? pax : 0);
-      }, 0);
-      row += `<td>${sumaPax}</td>`;
+    let fila = `
+      <tr>
+        <td class="fixed-col-1">${servicio.nombre}</td>
+        <td class="fixed-col-2">${servicio.destino}</td>
+        <td class="fixed-col-3">${proveedorStr}</td>`;
+
+    fechasOrdenadas.forEach(fecha => {
+      let totalPax = 0;
+
+      grupos.forEach(g => {
+        const actividades = g.itinerario?.[fecha] || [];
+        actividades.forEach(act => {
+          if (act.actividad === servicio.nombre) {
+            totalPax += (act.adultos || 0) + (act.estudiantes || 0);
+          }
+        });
+      });
+
+      fila += `<td>${totalPax}</td>`;
     });
 
-    row += '</tr>';
-    tbody.insertAdjacentHTML('beforeend', row);
+    fila += '</tr>';
+    tbody.insertAdjacentHTML('beforeend', fila);
   });
 
-  // ——— 🔟 Inicializar DataTables tras poblar la tabla ———
+  // ——— 4.8) Activar DataTables con filtros
   $('#tablaConteo').DataTable({
     scrollX: true,
     fixedHeader: true,
@@ -142,25 +131,32 @@ async function init() {
       { extend: 'colvis', text: 'Ver columnas' },
       { extend: 'excelHtml5', text: 'Descargar Excel' }
     ],
-    initComplete() {
+    initComplete: function () {
       const api = this.api();
 
-      // Poblado dinámico del filtro de destinos (columna 1)
-      const dests = Array.from(new Set(api.column(1).data().toArray()));
-      dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
+      // Agrega filtro de destinos
+      const destinos = new Set(api.column(1).data().toArray());
+      destinos.forEach(d => {
+        $('#filtroDestino').append(new Option(d, d));
+      });
 
-      // Conectar buscador y filtro
+      // Buscador general y filtro por destino
       $('#buscador').on('keyup', () =>
-        api.search($('#buscador').val()).draw()
-      );
+        api.search($('#buscador').val()).draw());
       $('#filtroDestino').on('change', () =>
-        api.column(1).search($('#filtroDestino').val()).draw()
-      );
+        api.column(1).search($('#filtroDestino').val()).draw());
 
-      // Botón externo de export
+      // Exportar Excel (botón externo)
       $('#btn-export-excel').on('click', () =>
-        api.button('.buttons-excel').trigger()
-      );
+        api.button('.buttons-excel').trigger());
     }
   });
+}
+
+// ————————————————————————————————————————
+// Función utilitaria para mostrar fechas bonitas
+// ————————————————————————————————————————
+function formatearFechaBonita(isoDate) {
+  const [yyyy, mm, dd] = isoDate.split('-');
+  return `${dd}/${mm}`;
 }
