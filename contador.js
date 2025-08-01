@@ -240,7 +240,7 @@ async function abrirModalReserva(event) {
 
     cuerpo += `➡️ Fecha ${formatearFechaBonita(f)}:\n`;
     lista.forEach(g => {
-      cuerpo += `  - N° Negocio: ${g.id}, Grupo: ${g.nombreGrupo}, Pax: ${g.cantidadgrupo}\n`;
+      cuerpo += `  - N°: ${g.id}, Colegio o Grupo: ${g.nombreGrupo}, Cantidad de Pax: ${g.cantidadgrupo}\n`;
     });
     cuerpo += `\n`;
   });
@@ -258,38 +258,57 @@ async function abrirModalReserva(event) {
 async function guardarPendiente() {
   const asunto   = document.getElementById('modalAsunto').value;
   const actividad = asunto.split('Reserva: ')[1];
-  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).dataset.destino;
-  const fecha     = document.getElementById('modalFecha').value;
+  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
+                            .dataset.destino;
   const cuerpo    = document.getElementById('modalCuerpo').value;
 
-  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-  await updateDoc(ref, {
-    [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo }
-  });
+  // Por cada fecha en la que haya grupos, marcamos PENDIENTE
+  for (const f of fechasOrdenadas) {
+    const hay = grupos.some(g =>
+      (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
+    );
+    if (!hay) continue;
+    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+    await updateDoc(ref, {
+      [`reservas.${f}`]: { estado: 'PENDIENTE', cuerpo }
+    });
+  }
+
+  // Actualizar texto del botón
   document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
-    .textContent = 'PENDIENTE';
+          .textContent = 'PENDIENTE';
 }
 
-// —————————————————————————————————————————————
-// Función: enviarReserva — dispara mailto y marca ENVIADA
-// —————————————————————————————————————————————
+/**
+ * Dispara mailto y guarda ENVIADA **todas** las fechas
+ */
 async function enviarReserva() {
   const para     = document.getElementById('modalPara').value;
   const asunto   = document.getElementById('modalAsunto').value;
   const cuerpo   = document.getElementById('modalCuerpo').value;
-  const fecha    = document.getElementById('modalFecha').value;
   const actividad = asunto.split('Reserva: ')[1];
-  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).dataset.destino;
+  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
+                            .dataset.destino;
 
+  // Disparar mailto con todo el cuerpo ya completo
   window.location.href =
     `mailto:${para}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 
-  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-  await updateDoc(ref, {
-    [`reservas.${fecha}`]: { estado: 'ENVIADA', cuerpo }
-  });
+  // Y guardamos ENVIADA en Firestore para cada fecha con grupos
+  for (const f of fechasOrdenadas) {
+    const hay = grupos.some(g =>
+      (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
+    );
+    if (!hay) continue;
+    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+    await updateDoc(ref, {
+      [`reservas.${f}`]: { estado: 'ENVIADA', cuerpo }
+    });
+  }
+
+  // Marcar botón y cerrar modal
   document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
-    .textContent = 'ENVIADA';
+          .textContent = 'ENVIADA';
   document.getElementById('modalReserva').style.display = 'none';
 }
 
