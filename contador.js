@@ -129,7 +129,13 @@ async function init() {
   // ——— 4.8) Activar DataTables con filtros
   $('#tablaConteo').DataTable({
     scrollX: true,
-    fixedHeader: true,
+    fixedHeader: {
+      header: true,
+      headerOffset: 90
+    },
+    fixedColumns: {
+      leftColumns: 1
+    },
     dom: 'Bfrtip',
     buttons: [
       { extend: 'colvis', text: 'Ver columnas' },
