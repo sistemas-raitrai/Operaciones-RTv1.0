@@ -83,7 +83,6 @@ async function init() {
       };
     }
   });
-
   // ahora asigna al global:
   proveedores = proveedoresLocal;
 
@@ -254,54 +253,6 @@ async function abrirModalReserva(event) {
   // 4) mostrar modal
   document.getElementById('modalReserva').style.display = 'block';
 }
-
-// —————————————————————————————————————————————
-// Función: abrirModalReserva — carga datos y muestra modal
-// —————————————————————————————————————————————
-async function abrirModalReserva(event) {
-  const btn = event.currentTarget;
-  const destino   = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-
-  // Poblar selector de fechas
-  const selF = document.getElementById('modalFecha');
-  selF.innerHTML = fechasOrdenadas
-    .map(f => `<option value="${f}">${formatearFechaBonita(f)}</option>`)
-    .join('');
-
-  // Obtener contacto y correo del proveedor
-  const provSnap = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
-  let contacto = '', correo = '';
-  provSnap.docs.forEach(dSnap => {
-    const d = dSnap.data();
-    if (d.proveedor === actividad) {
-      contacto = d.contacto  || '';
-      correo   = d.correo    || '';
-    }
-  });
-  document.getElementById('modalPara').value    = correo;
-  document.getElementById('modalAsunto').value  = `Reserva: ${actividad} en ${destino}`;
-
-  // Generar plantilla
-  function generarPlantilla() {
-    const f = selF.value;
-    let cuerpo = `Estimado/a ${contacto}:\n\nEnvío detalle de reserva para:\n\n`;
-    cuerpo += `Actividad: ${actividad}\nFecha: ${formatearFechaBonita(f)}\n\nGrupos:\n`;
-    grupos.forEach(g => {
-      if ((g.itinerario?.[f] || []).find(a => a.actividad === actividad)) {
-        cuerpo += `- N° Negocio: ${g.id}, Grupo: ${g.nombreGrupo}, Pax: ${g.cantidadgrupo}\n`;
-      }
-    });
-    cuerpo += `\nAtte.\nOperaciones RaiTrai`;
-    document.getElementById('modalCuerpo').value = cuerpo;
-  }
-  selF.onchange = generarPlantilla;
-  generarPlantilla();
-
-  // Mostrar modal
-  document.getElementById('modalReserva').style.display = 'block';
-}
-
 // —————————————————————————————————————————————
 // Función: guardarPendiente — marca como PENDIENTE en Firestore
 // —————————————————————————————————————————————
