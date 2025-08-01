@@ -217,42 +217,41 @@ async function abrirModalReserva(event) {
   const destino   = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
 
-  // 1) selector de fechas
-  const selF = document.getElementById('modalFecha');
-  selF.innerHTML = fechasOrdenadas
-    .map(f => `<option value="${f}">${formatearFechaBonita(f)}</option>`)
-    .join('');
-
-  // 2) leer directamente del mapa global:
-  const provInfo = proveedores[actividad] || { contacto: '', correo: '' };
-  const contacto = provInfo.contacto;
-  const correo   = provInfo.correo;
-
-  document.getElementById('modalPara').value   = correo;
+  // 1️⃣ rellenar "Para:" y "Asunto:"
+  // provInfo viene de un mapa global `proveedores[actividad]`
+  const provInfo = proveedores[actividad] || { contacto:'', correo:'' };
+  document.getElementById('modalPara').value   = provInfo.correo;
   document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
 
-  // 3) plantilla base
-  function generarPlantilla() {
-    const f = selF.value;
-    let cuerpo = `Estimado/a ${contacto}:\n\n`;
-    cuerpo += `Envío detalle de reserva para:\n\n`;
-    cuerpo += `Actividad: ${actividad}\n`;
-    cuerpo += `Fecha: ${formatearFechaBonita(f)}\n\n`;
-    cuerpo += `Grupos:\n`;
-    grupos.forEach(g => {
-      if ((g.itinerario?.[f]||[]).some(a => a.actividad === actividad)) {
-        cuerpo += `- N° Negocio: ${g.id}, Grupo: ${g.nombreGrupo}, Pax: ${g.cantidadgrupo}\n`;
-      }
-    });
-    cuerpo += `\nAtte.\nOperaciones RaiTrai`;
-    document.getElementById('modalCuerpo').value = cuerpo;
-  }
-  selF.onchange = generarPlantilla;
-  generarPlantilla();
+  // 2️⃣ generar el cuerpo del email con **todas** las fechas
+  let cuerpo = `Estimado/a ${provInfo.contacto}:\n\n`;
+  cuerpo += `Envio detalle de reserva para:\n\n`;
+  cuerpo += `Actividad: ${actividad}\n`;
+  cuerpo += `Destino: ${destino}\n\n`;
+  cuerpo += `Fechas y grupos:\n\n`;
 
-  // 4) mostrar modal
+  // Recorremos todas las fechas y listamos solo aquellas con PAX
+  fechasOrdenadas.forEach(f => {
+    // filtrar los grupos que tengan pax en esta fecha para la actividad
+    const lista = grupos.filter(g =>
+      (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
+    );
+    if (!lista.length) return;  // si no hay pasajeros, saltar
+
+    cuerpo += `➡️ Fecha ${formatearFechaBonita(f)}:\n`;
+    lista.forEach(g => {
+      cuerpo += `  - N° Negocio: ${g.id}, Grupo: ${g.nombreGrupo}, Pax: ${g.cantidadgrupo}\n`;
+    });
+    cuerpo += `\n`;
+  });
+
+  cuerpo += `Atte.\nOperaciones RaiTrai`;
+
+  // 3️⃣ volcar en el textarea y mostrar modal
+  document.getElementById('modalCuerpo').value = cuerpo;
   document.getElementById('modalReserva').style.display = 'block';
 }
+
 // —————————————————————————————————————————————
 // Función: guardarPendiente — marca como PENDIENTE en Firestore
 // —————————————————————————————————————————————
