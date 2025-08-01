@@ -3,73 +3,39 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🗓️ Contador de Actividades | RT v1.0</title>
-
-  <!-- Estilos de DataTables y tu CSS propio -->
-  <link 
-    rel="stylesheet" 
-    href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" 
-  />
-  <link 
-    rel="stylesheet" 
-    href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" 
-  />
-  <link 
-    rel="stylesheet" 
-    href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css" 
-  />
+  <title>Conteo de Actividades | RT v1.0</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css" />
   <link rel="stylesheet" href="estilos.css" />
-
-  <!-- Icono -->
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
-
   <style>
     /* Columnas fijas: Destino, Actividad, Proveedor */
     .fixed-col-1 { position: sticky; left: 0; background: #fff; z-index: 3; }
     .fixed-col-2 { position: sticky; left: 200px; background: #fff; z-index: 2; }
     .fixed-col-3 { position: sticky; left: 400px; background: #fff; z-index: 1; }
-    /* Aseguramos que el header de DataTables ocupe todo el ancho */
-    .dataTables_scrollHeadInner table { width: 100% !important; }
   </style>
 </head>
 <body>
 
-  <!-- 1️⃣ Encabezado común -->
+  <!-- Encabezado común -->
   <div id="encabezado"></div>
 
   <main>
-    <h1>🗓️ Contador de Actividades:</h1>
-
-    <!-- 2️⃣ Barra de herramientas -->
+    <h1>🗓️ Conteo de Actividades</h1>
     <div class="toolbar">
-      <!-- Buscador global -->
-      <input 
-        type="text" 
-        id="buscador" 
-        placeholder="🔍 Buscar actividad, destino o proveedor…" 
-      />
-      <!-- Filtro de destino -->
-      <select id="filtroDestino">
-        <option value="">Todos los destinos</option>
-      </select>
-      <!-- Botón external para exportar Excel -->
+      <input type="text" id="buscador" placeholder="🔍 Buscar actividad, destino o proveedor..." />
+      <select id="filtroDestino"><option value="">Todos los destinos</option></select>
       <button id="btn-export-excel">📤 Exportar Excel</button>
     </div>
 
-    <!-- 3️⃣ Contenedor de la tabla con scroll -->
-    <div class="dataTables_scroll">
-      <table 
-        id="tablaConteo" 
-        class="display nowrap" 
-        style="width:100%"
-      >
-        <thead id="thead-actividades"></thead>
-        <tbody id="tbody-actividades"></tbody>
-      </table>
-    </div>
+    <table id="tablaConteo" class="display nowrap" style="width:100%">
+      <thead id="thead-actividades"></thead>
+      <tbody id="tbody-actividades"></tbody>
+    </table>
   </main>
 
-  <!-- 4️⃣ Librerías JS de DataTables y dependencias -->
+  <!-- JS Dependencies -->
   <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
@@ -77,52 +43,64 @@
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
 
-  <!-- 5️⃣ Carga dinámica: encabezado, Firebase y contador -->
+  <!-- Carga dinámico de encabezado y lógica -->
   <script type="module">
     (async () => {
-      // a) Inyectar encabezado común
+      // Inyectar encabezado
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-
-      // b) Inicializar Firebase (exporta `app` y `db`)
+      // Init Firebase
       await import('./firebase-init.js');
-
-      // c) Ejecutar la construcción de la tabla
+      // Cargar datos
       await import('./contador.js');
 
-      // d) Una vez completada la tabla, inicializar DataTables
+      // Inicializar DataTable después de render
       const table = $('#tablaConteo').DataTable({
         scrollX: true,
         fixedHeader: true,
         dom: 'Bfrtip',
         buttons: [
           { extend: 'colvis', text: 'Ver columnas' },
-          { extend: 'excelHtml5', text: 'Descargar Excel' }
+          { extend: 'excelHtml5', text: 'Exportar Excel' }
         ],
         initComplete: function() {
-          // Poblar filtroDestino con los valores reales de la columna 1 (Destino)
-          const destSet = new Set(this.column(1).data().toArray());
+          // Poblado de filtroDestino dinámico
+          const destSet = new Set(table.column(1).data().toArray());
           destSet.forEach(d => $('#filtroDestino').append(new Option(d, d)));
-
-          // Conexión de los controles de filtro
           $('#filtroDestino').on('change', function() {
             table.column(1).search(this.value).draw();
-          });
+            });
+
+  // 8️⃣ Inicializar DataTable aquí, tras terminar la construcción de la tabla
+  const table = $('#tablaConteo').DataTable({
+    scrollX: true,
+    fixedHeader: true,
+    dom: 'Bfrtip',
+    buttons: [
+      { extend: 'colvis', text: 'Ver columnas' },
+      { extend: 'excelHtml5', text: 'Descargar Excel' }
+    ],
+    initComplete() {
+      // Poblado de filtroDestino
+      const dests = new Set(table.column(1).data().toArray());
+      dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
+      $('#filtroDestino').on('change', () => table.column(1).search($('#filtroDestino').val()).draw());
+      $('#buscador').on('keyup', () => table.search($('#buscador').val()).draw());
+      $('#btn-export-excel').on('click', () => table.button('.buttons-excel').trigger());
+    }
+  });
           $('#buscador').on('keyup', function() {
             table.search(this.value).draw();
           });
-
-          // Botón externo para exportar
-          $('#btn-export-excel').on('click', () => {
-            table.button('.buttons-excel').trigger();
-          });
         }
       });
+
+      // Export button externo
+      $('#btn-export-excel').on('click', () => table.button('.buttons-excel').trigger());
     })();
   </script>
 
-  <!-- 6️⃣ Cargar Firebase-init de forma deferida -->
+  <!-- Firebase Init -->
   <script type="module" src="firebase-init.js" defer></script>
-
 </body>
 </html>
