@@ -15,8 +15,19 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <style>
-    /* Columnas fijas: Destino, Actividad, Proveedor */
-    .fixed-col-1 { position: sticky; left: 0; background: #fff; z-index: 3; }
+    .sticky-col {
+      position: sticky;
+      left: 0;
+      background: white;
+      z-index: 1;
+      border-right: 1px solid #ccc;
+    }
+    
+    /* Deja fija la celda del encabezado "Actividad" */
+    .sticky-header {
+      top: 0;
+      z-index: 2;
+    }
 
     /* Asegura que el header fijo ocupe todo el ancho */
     .dataTables_scrollHeadInner table { width: 100% !important; }
