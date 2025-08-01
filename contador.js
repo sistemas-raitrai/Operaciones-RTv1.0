@@ -159,8 +159,12 @@ async function init() {
       });
 
       // Buscador general y filtro por destino
-      $('#buscador').on('keyup', () =>
-        api.search($('#buscador').val()).draw());
+      $('#buscador').on('keyup', function () {
+        const entrada = $(this).val();
+        const palabras = entrada.split(/[,; ]+/).filter(p => p); // divide por coma, punto y coma o espacio
+        const regex = palabras.length ? palabras.map(p => `(?=.*${p})`).join('') : '';
+        api.search(regex, true, false).draw();
+      });
       $('#filtroDestino').on('change', () =>
         api.column(1).search($('#filtroDestino').val()).draw());
 
