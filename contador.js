@@ -128,7 +128,7 @@ async function init() {
         <td>
           <button class="btn-reserva"
                   data-destino="${servicio.destino}"
-                  data-actividad="${servicio.nombre}">
+                  data-actividad="${servicio.nombre}"
                   data-proveedor="${servicio.proveedor}">
             CREAR
           </button>
