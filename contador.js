@@ -124,7 +124,14 @@ async function init() {
         });
       });
 
-      fila += `<td>${totalPax}</td>`;
+      const datosCelda = {
+        actividad: servicio.nombre,
+        fecha,
+      };
+      
+      fila += `<td class="celda-interactiva" data-info='${JSON.stringify(datosCelda)}' style="cursor:pointer; color:#0055a4; text-decoration:underline;">
+        ${totalPax}
+      </td>`;
     });
 
     fila += '</tr>';
@@ -180,6 +187,45 @@ async function init() {
       $('#btn-export-excel').on('click', () =>
         api.button('.buttons-excel').trigger());
     }
+  });
+    document.querySelectorAll('.celda-interactiva').forEach(celda => {
+    celda.addEventListener('click', () => {
+      const { actividad, fecha } = JSON.parse(celda.dataset.info);
+      const tbodyModal = document.querySelector('#tablaModal tbody');
+      tbodyModal.innerHTML = '';
+  
+      const gruposCoincidentes = [];
+  
+      grupos.forEach(g => {
+        const actividades = g.itinerario?.[fecha] || [];
+        const match = actividades.find(act => act.actividad === actividad);
+        if (match) {
+          gruposCoincidentes.push({
+            numeroNegocio: g.numeroNegocio || '',
+            nombreGrupo: g.nombreGrupo || '',
+            cantidadgrupo: g.cantidadgrupo || '',
+            programa: g.programa || ''
+          });
+        }
+      });
+  
+      if (gruposCoincidentes.length > 0) {
+        gruposCoincidentes.forEach(g => {
+          tbodyModal.insertAdjacentHTML('beforeend', `
+            <tr>
+              <td>${g.numeroNegocio}</td>
+              <td>${g.nombreGrupo}</td>
+              <td>${g.cantidadgrupo}</td>
+              <td>${g.programa}</td>
+            </tr>
+          `);
+        });
+      } else {
+        tbodyModal.innerHTML = '<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>';
+      }
+  
+      document.getElementById('modalDetalle').style.display = 'block';
+    });
   });
 }
 
