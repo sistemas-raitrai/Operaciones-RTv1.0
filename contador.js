@@ -13,115 +13,106 @@ const tbody = document.getElementById('tbody-actividades');
 const auth = getAuth(app);
 onAuthStateChanged(auth, user => {
   if (!user) {
-    // Redirige al login si no hay sesión
     location.href = 'login.html';
   } else {
-    // Si hay sesión, empieza a construir la tabla
-    init();
+    init();  // arrancar solo si hay usuario
   }
 });
-// Botón de logout inyectado en encabezado.html
-document.getElementById('logoutBtn')?.addEventListener('click', () => {
-  signOut(auth);
-});
+document.getElementById('logoutBtn')?.addEventListener('click', () =>
+  signOut(auth)
+);
 
 /**
- * 2️⃣ Función principal: monta cabecera y filas,
- *    luego inicia DataTables al final
+ * 2️⃣ Función principal: lee datos, monta tabla y luego activa DataTables
  */
 async function init() {
-  // 3️⃣ Leer grupos como antes
+  // —————— Lectura de Grupos ——————
   const gruposSnap = await getDocs(collection(db, 'grupos'));
   const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  
-  // 4️⃣ Construir el array de servicios recorriendo subcolecciones:
-  //    Colección Servicios → documentos por destino → subcolección 'Listado'
+
+  // —————— Lectura de Servicios en subcolecciones ——————
   const servicios = [];
-  const serviciosDestSnap = await getDocs(collection(db, 'Servicios')); 
-  for (const destDoc of serviciosDestSnap.docs) {
-    const destino = destDoc.id;
-    const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
-    listadoSnap.docs.forEach(sDoc => {
-      servicios.push({
-        destino,
-        nombreActividad: sDoc.id
-      });
+  const serviciosRoot = await getDocs(collection(db, 'Servicios'));
+  for (const docDestino of serviciosRoot.docs) {
+    const destino = docDestino.id;
+    const listado = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
+    listado.docs.forEach(s => {
+      servicios.push({ destino, nombreActividad: s.id });
     });
   }
-  console.log('Servicios extraídos:', servicios.length, servicios);
-  
-  // 5️⃣ Construir el array de proveedores de igual forma
+
+  // —————— Lectura de Proveedores en subcolecciones ——————
   const proveedores = [];
-  const provDestSnap = await getDocs(collection(db, 'Proveedores'));
-  for (const destDoc of provDestSnap.docs) {
-    const destino = destDoc.id;
-    const listProvSnap = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
-    listProvSnap.docs.forEach(pDoc => {
-      proveedores.push({
-        destino,
-        nombreProveedor: pDoc.id
-      });
+  const provRoot = await getDocs(collection(db, 'Proveedores'));
+  for (const docDestino of provRoot.docs) {
+    const destino = docDestino.id;
+    const listado = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
+    listado.docs.forEach(p => {
+      proveedores.push({ destino, nombreProveedor: p.id });
     });
   }
-  console.log('Proveedores extraídos:', proveedores.length, proveedores);
-  
-  // 6️⃣ Mapa destino → lista de proveedores
-  const proveedorMap = proveedores.reduce((map, p) => {
-    if (!map[p.destino]) map[p.destino] = [];
-    map[p.destino].push(p.nombreProveedor);
-    return map;
+  // Mapa destino → lista de proveedores
+  const proveedorMap = proveedores.reduce((m, p) => {
+    m[p.destino] = m[p.destino] || [];
+    m[p.destino].push(p.nombreProveedor);
+    return m;
   }, {});
 
-  // 6️⃣ Extraer fechas únicas
+  // —————— Extraer todas las fechas de itinerarios ——————
   const fechasSet = new Set();
-  grupos.forEach(gr => {
-    if (Array.isArray(gr.itinerario)) {
-      gr.itinerario.forEach(i => fechasSet.add(i.dia));
+  grupos.forEach(g => {
+    if (Array.isArray(g.itinerario)) {
+      g.itinerario.forEach(i => fechasSet.add(i.dia));
     }
   });
   const fechas = Array.from(fechasSet).sort();
-  
-  // 7️⃣ Construir cabecera dinámica
+
+  // —————— Construir <thead> dinámico ——————
   const headerCols = ['Actividad','Destino','Proveedor'];
-  thead.innerHTML = '<tr>' +
-    headerCols.map((h,i)=>`<th class="fixed-col-${i+1}">${h}</th>`).join('') +
-    fechas.map(f=>`<th>${f}</th>`).join('') +
+  thead.innerHTML =
+    '<tr>' +
+      headerCols.map((h,i) =>
+        `<th class="fixed-col-${i+1}">${h}</th>`
+      ).join('') +
+      fechas.map(f => `<th>${f}</th>`).join('') +
     '</tr>';
-  
-  // 8️⃣ Ordenar servicios
-  servicios.sort((a,b)=>
+
+  // —————— Ordenar servicios alfabéticamente ——————
+  servicios.sort((a,b) =>
     (a.destino + a.nombreActividad)
-     .localeCompare(b.destino + b.nombreActividad)
+      .localeCompare(b.destino + b.nombreActividad)
   );
-  
-  // 9️⃣ Rellenar filas
+
+  // —————— Rellenar <tbody> con conteo de PAX cruzando itinerarios ——————
   servicios.forEach(s => {
-    const proveedoresStr = (proveedorMap[s.destino]||[]).join(', ');
-  
+    // cada fila: nombreActividad, destino, proveedores
+    const provStr = (proveedorMap[s.destino] || []).join(', ');
     let row = `<tr>
       <td class="fixed-col-1">${s.nombreActividad}</td>
       <td class="fixed-col-2">${s.destino}</td>
-      <td class="fixed-col-3">${proveedoresStr || '-'}</td>`;
-  
+      <td class="fixed-col-3">${provStr || '-'}</td>`;
+
+    // Para cada fecha, sumar los grupos que tengan esa actividad en el itinerario
     fechas.forEach(dia => {
-      const totalPax = grupos.reduce((sum, gr) => {
-        const pax = gr.cantidadgrupo||0;
-        const esta = Array.isArray(gr.itinerario) &&
-          gr.itinerario.some(i =>
-            i.dia===dia &&
-            i.actividad===s.nombreActividad &&
-            i.destino===s.destino
+      const sumaPax = grupos.reduce((sum, g) => {
+        const pax = g.cantidadgrupo || 0;
+        // ¿Tiene este grupo la actividad s.nombreActividad el día 'dia'?
+        const tiene = Array.isArray(g.itinerario) &&
+          g.itinerario.some(item =>
+            item.dia === dia &&
+            item.actividad === s.nombreActividad &&
+            item.destino === s.destino
           );
-        return sum + (esta ? pax : 0);
-      },0);
-      row += `<td>${totalPax}</td>`;
+        return sum + (tiene ? pax : 0);
+      }, 0);
+      row += `<td>${sumaPax}</td>`;
     });
-  
+
     row += '</tr>';
     tbody.insertAdjacentHTML('beforeend', row);
   });
 
-  // 9️⃣ FINAL: inicializar DataTables **después** de poblar la tabla
+  // —————— Inicializar DataTables ——————
   const table = $('#tablaConteo').DataTable({
     scrollX: true,
     fixedHeader: true,
@@ -130,26 +121,21 @@ async function init() {
       { extend: 'colvis', text: 'Ver columnas' },
       { extend: 'excelHtml5', text: 'Descargar Excel' }
     ],
-      initComplete() {
-        // Obtenemos la instancia API correctamente
-        const api = this.api();
-      
-        // Poblado dinámico del filtro de destinos (columna 1)
-        const dests = new Set(api.column(1).data().toArray());
-        dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
-      
-        // Conexión de filtro y buscador
-        $('#filtroDestino').on('change', () => {
-          api.column(1).search($('#filtroDestino').val()).draw();
-        });
-        $('#buscador').on('keyup', () => {
-          api.search($('#buscador').val()).draw();
-        });
-      
-        // Botón externo de export
-        $('#btn-export-excel').on('click', () =>
-          api.button('.buttons-excel').trigger()
-        );
-      }
+    initComplete() {
+      const api = this.api();
+      // Pasa valores al filtroDestino
+      const dests = Array.from(new Set(api.column(1).data().toArray()));
+      dests.forEach(d => $('#filtroDestino').append(new Option(d,d)));
+
+      // Enlaces buscador y filtro
+      $('#buscador').on('keyup', () => api.search($('#buscador').val()).draw());
+      $('#filtroDestino').on('change', () =>
+        api.column(1).search($('#filtroDestino').val()).draw()
+      );
+      // Botón externo de export
+      $('#btn-export-excel').on('click', () =>
+        api.button('.buttons-excel').trigger()
+      );
+    }
   });
 }
