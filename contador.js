@@ -132,7 +132,7 @@ async function init() {
                   data-proveedor="${servicio.proveedor}">
             CREAR
           </button>
-        </td>`;
+        </td>`
 
     fechasOrdenadas.forEach(fecha => {
       let totalPax = 0;
