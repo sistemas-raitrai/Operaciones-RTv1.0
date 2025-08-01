@@ -42,6 +42,11 @@ async function init() {
   const servicios = serviciosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
   const proveedores = proveedoresSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
+  console.log('Datos cargados:');
+  console.log('  grupos:', grupos.length, grupos);
+  console.log('  servicios:', servicios.length, servicios);
+  console.log('  proveedores:', proveedores.length, proveedores);
+
   // 4️⃣ Mapa proveedorId → nombre
   const proveedorMap = proveedores.reduce((map, p) => {
     map[p.id] = p.nombreProveedor || p.nombre;
