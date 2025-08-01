@@ -109,22 +109,26 @@ async function init() {
       { extend: 'colvis', text: 'Ver columnas' },
       { extend: 'excelHtml5', text: 'Descargar Excel' }
     ],
-    initComplete() {
-      // Poblado dinámico del filtro de destinos
-      const dests = new Set(this.column(1).data().toArray());
-      dests.forEach(d => $('#filtroDestino').append(new Option(d,d)));
-
-      // Conexión de filtro y buscador
-      $('#filtroDestino').on('change', () => 
-        table.column(1).search($('#filtroDestino').val()).draw()
-      );
-      $('#buscador').on('keyup', () => 
-        table.search($('#buscador').val()).draw()
-      );
-      // Botón externo de export
-      $('#btn-export-excel').on('click', () =>
-        table.button('.buttons-excel').trigger()
-      );
-    }
+      initComplete() {
+        // Obtenemos la instancia API correctamente
+        const api = this.api();
+      
+        // Poblado dinámico del filtro de destinos (columna 1)
+        const dests = new Set(api.column(1).data().toArray());
+        dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
+      
+        // Conexión de filtro y buscador
+        $('#filtroDestino').on('change', () => {
+          api.column(1).search($('#filtroDestino').val()).draw();
+        });
+        $('#buscador').on('keyup', () => {
+          api.search($('#buscador').val()).draw();
+        });
+      
+        // Botón externo de export
+        $('#btn-export-excel').on('click', () =>
+          api.button('.buttons-excel').trigger()
+        );
+      }
   });
 }
