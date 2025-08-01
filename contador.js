@@ -30,31 +30,49 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => {
  *    luego inicia DataTables al final
  */
 async function init() {
-  // 3️⃣ Leer colecciones en paralelo
-  const [gruposSnap, serviciosSnap, proveedoresSnap] = await Promise.all([
-    getDocs(collection(db, 'grupos')),
-    getDocs(collection(db, 'Servicios')),
-    getDocs(collection(db, 'Proveedores'))
-  ]);
-
-  // Convertir snapshots a arrays de objetos
+  // 3️⃣ Leer grupos como antes
+  const gruposSnap = await getDocs(collection(db, 'grupos'));
   const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const servicios = serviciosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const proveedores = proveedoresSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-  console.log('Datos cargados:');
-  console.log('  grupos:', grupos.length, grupos);
-  console.log('  servicios:', servicios.length, servicios);
-  console.log('Primer servicio:', servicios[0]);
-  console.log('  proveedores:', proveedores.length, proveedores);
-
-  // 4️⃣ Mapa proveedorId → nombre
+  
+  // 4️⃣ Construir el array de servicios recorriendo subcolecciones:
+  //    Colección Servicios → documentos por destino → subcolección 'Listado'
+  const servicios = [];
+  const serviciosDestSnap = await getDocs(collection(db, 'Servicios')); 
+  for (const destDoc of serviciosDestSnap.docs) {
+    const destino = destDoc.id;
+    const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
+    listadoSnap.docs.forEach(sDoc => {
+      servicios.push({
+        destino,
+        nombreActividad: sDoc.id
+      });
+    });
+  }
+  console.log('Servicios extraídos:', servicios.length, servicios);
+  
+  // 5️⃣ Construir el array de proveedores de igual forma
+  const proveedores = [];
+  const provDestSnap = await getDocs(collection(db, 'Proveedores'));
+  for (const destDoc of provDestSnap.docs) {
+    const destino = destDoc.id;
+    const listProvSnap = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
+    listProvSnap.docs.forEach(pDoc => {
+      proveedores.push({
+        destino,
+        nombreProveedor: pDoc.id
+      });
+    });
+  }
+  console.log('Proveedores extraídos:', proveedores.length, proveedores);
+  
+  // 6️⃣ Mapa destino → lista de proveedores
   const proveedorMap = proveedores.reduce((map, p) => {
-    map[p.id] = p.nombreProveedor || p.nombre;
+    if (!map[p.destino]) map[p.destino] = [];
+    map[p.destino].push(p.nombreProveedor);
     return map;
   }, {});
 
-  // 5️⃣ Obtener todas las fechas únicas de los itinerarios
+  // 6️⃣ Extraer fechas únicas
   const fechasSet = new Set();
   grupos.forEach(gr => {
     if (Array.isArray(gr.itinerario)) {
@@ -62,46 +80,43 @@ async function init() {
     }
   });
   const fechas = Array.from(fechasSet).sort();
-
-  // 6️⃣ Construir cabecera dinámica
-  const headerCols = ['Actividad', 'Destino', 'Proveedor'];
-  thead.innerHTML =
-    '<tr>' +
-      // Columnas fijas
-      headerCols.map((h,i) =>
-        `<th class="fixed-col-${i+1}">${h}</th>`
-      ).join('') +
-      // Columnas de fechas
-      fechas.map(f => `<th>${f}</th>`).join('') +
+  
+  // 7️⃣ Construir cabecera dinámica
+  const headerCols = ['Actividad','Destino','Proveedor'];
+  thead.innerHTML = '<tr>' +
+    headerCols.map((h,i)=>`<th class="fixed-col-${i+1}">${h}</th>`).join('') +
+    fechas.map(f=>`<th>${f}</th>`).join('') +
     '</tr>';
-
-  // 7️⃣ Ordenar servicios alfabéticamente
-  servicios.sort((a,b) =>
+  
+  // 8️⃣ Ordenar servicios
+  servicios.sort((a,b)=>
     (a.destino + a.nombreActividad)
-      .localeCompare(b.destino + b.nombreActividad)
+     .localeCompare(b.destino + b.nombreActividad)
   );
-
-  // 8️⃣ Rellenar filas con el conteo de PAX por fecha
+  
+  // 9️⃣ Rellenar filas
   servicios.forEach(s => {
+    const proveedoresStr = (proveedorMap[s.destino]||[]).join(', ');
+  
     let row = `<tr>
       <td class="fixed-col-1">${s.nombreActividad}</td>
       <td class="fixed-col-2">${s.destino}</td>
-      <td class="fixed-col-3">${proveedorMap[s.proveedorId]||'-'}</td>`;
-
+      <td class="fixed-col-3">${proveedoresStr || '-'}</td>`;
+  
     fechas.forEach(dia => {
       const totalPax = grupos.reduce((sum, gr) => {
-        const pax = gr.cantidadgrupo || 0;
-        const match = Array.isArray(gr.itinerario) &&
+        const pax = gr.cantidadgrupo||0;
+        const esta = Array.isArray(gr.itinerario) &&
           gr.itinerario.some(i =>
-            i.dia === dia &&
-            i.actividad === s.nombreActividad &&
-            i.destino === s.destino
+            i.dia===dia &&
+            i.actividad===s.nombreActividad &&
+            i.destino===s.destino
           );
-        return sum + (match ? pax : 0);
-      }, 0);
+        return sum + (esta ? pax : 0);
+      },0);
       row += `<td>${totalPax}</td>`;
     });
-
+  
     row += '</tr>';
     tbody.insertAdjacentHTML('beforeend', row);
   });
