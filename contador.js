@@ -45,6 +45,7 @@ async function init() {
   console.log('Datos cargados:');
   console.log('  grupos:', grupos.length, grupos);
   console.log('  servicios:', servicios.length, servicios);
+  console.log('Primer servicio:', servicios[0]);
   console.log('  proveedores:', proveedores.length, proveedores);
 
   // 4️⃣ Mapa proveedorId → nombre
