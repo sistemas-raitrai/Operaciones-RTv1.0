@@ -1,106 +1,78 @@
-// Importamos Auth y Firestore
-import { getAuth, onAuthStateChanged, signOut } 
-  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-import { getDocs, collection } 
-  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-import { app, db } from './firebase-init.js';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🗓️ Contador de Actividades | RT v1.0</title>
 
-// Referencias al DOM
-const thead = document.getElementById('thead-actividades');
-const tbody = document.getElementById('tbody-actividades');
+  <!-- CSS de DataTables y botones -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" />
+  <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css" />
 
-// 1️⃣ Control de sesión Firebase
-const auth = getAuth(app);
-onAuthStateChanged(auth, user => {
-  if (!user) {
-    // Si no hay usuario logueado, volvemos al login
-    location.href = 'login.html';
-  } else {
-    // Si hay sesión, arrancamos la lógica
-    init();
-  }
-});
-// Botón Cerrar sesión (inyectado en encabezado.html)
-document.getElementById('logoutBtn')?.addEventListener('click', () => {
-  signOut(auth);
-});
+  <!-- Tu CSS propio -->
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-/**
- * Función principal: lee datos de Firestore y monta la tabla
- */
-async function init() {
-  // 2️⃣ Leer las tres colecciones en paralelo
-  const [gruposSnap, serviciosSnap, proveedoresSnap] = await Promise.all([
-    getDocs(collection(db, 'grupos')),
-    getDocs(collection(db, 'servicios')),
-    getDocs(collection(db, 'proveedores'))
-  ]);
+  <style>
+    /* Columnas fijas: Destino, Actividad, Proveedor */
+    .fixed-col-1 { position: sticky; left: 0; background: #fff; z-index: 3; }
+    .fixed-col-2 { position: sticky; left: 200px; background: #fff; z-index: 2; }
+    .fixed-col-3 { position: sticky; left: 400px; background: #fff; z-index: 1; }
+    /* Asegura que el header fijo ocupe todo el ancho */
+    .dataTables_scrollHeadInner table { width: 100% !important; }
+  </style>
+</head>
+<body>
 
-  // Transformamos a arrays de objetos
-  const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const servicios = serviciosSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-  const proveedores = proveedoresSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  <!-- 1️⃣ Encabezado común (login, navegación) -->
+  <div id="encabezado"></div>
 
-  // 3️⃣ Mapa rápido proveedorId → nombre
-  const proveedorMap = proveedores.reduce((map, p) => {
-    map[p.id] = p.nombreProveedor || p.nombre;
-    return map;
-  }, {});
+  <main>
+    <h1>🗓️ Contador de Actividades</h1>
 
-  // 4️⃣ Extraer fechas únicas de todos los itinerarios
-  const fechasSet = new Set();
-  grupos.forEach(gr => {
-    if (Array.isArray(gr.itinerario)) {
-      gr.itinerario.forEach(i => fechasSet.add(i.dia));
-    }
-  });
-  const fechas = Array.from(fechasSet).sort();
+    <!-- 2️⃣ Barra de herramientas -->
+    <div class="toolbar">
+      <input type="text" id="buscador" placeholder="🔍 Buscar actividad, destino o proveedor…" />
+      <select id="filtroDestino">
+        <option value="">Todos los destinos</option>
+      </select>
+      <button id="btn-export-excel">📤 Exportar Excel</button>
+    </div>
 
-  // 5️⃣ Construir el <thead> dinámico
-  const headerCols = ['Actividad', 'Destino', 'Proveedor'];
-  const ths =
-    '<tr>' +
-    headerCols.map((h, i) => `<th class="fixed-col-${i+1}">${h}</th>`).join('') +
-    fechas.map(fecha => `<th>${fecha}</th>`).join('') +
-    '</tr>';
-  thead.innerHTML = ths;
+    <!-- 3️⃣ Tabla con scroll horizontal -->
+    <div class="dataTables_scroll">
+      <table id="tablaConteo" class="display nowrap" style="width:100%">
+        <thead id="thead-actividades"></thead>
+        <tbody id="tbody-actividades"></tbody>
+      </table>
+    </div>
+  </main>
 
-  // 6️⃣ Orden alfabético de servicios por destino + nombre de actividad
-  servicios.sort((a, b) =>
-    (a.destino + a.nombreActividad).localeCompare(b.destino + b.nombreActividad)
-  );
+  <!-- 4️⃣ Librerías JS necesarias -->
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
 
-  // 7️⃣ Rellenar <tbody> con cada fila y el conteo de PAX
-  servicios.forEach(s => {
-    const actividad = s.nombreActividad;
-    const destino = s.destino;
-    const proveedor = proveedorMap[s.proveedorId] || '-';
+  <!-- 5️⃣ Flujo de carga: header, Firebase, contador -->
+  <script type="module">
+    (async () => {
+      // a) Inyecta el encabezado común (login, reloj, usuario)
+      const headerHtml = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = headerHtml;
 
-    // Empezamos la fila con los tres campos fijos
-    let row = 
-      `<tr>
-        <td class="fixed-col-1">${actividad}</td>
-        <td class="fixed-col-2">${destino}</td>
-        <td class="fixed-col-3">${proveedor}</td>`;
+      // b) Inicializa Firebase (exporta app y db)
+      await import('./firebase-init.js');
 
-    // Para cada fecha, sumamos los pax de todos los grupos que hagan esa actividad+destino en ese día
-    fechas.forEach(dia => {
-      const totalPax = grupos.reduce((sum, gr) => {
-        const pax = gr.cantidadgrupo || 0;
-        const haceEstaActividad = 
-          Array.isArray(gr.itinerario) &&
-          gr.itinerario.some(i =>
-            i.dia === dia &&
-            i.actividad === actividad &&
-            i.destino === destino
-          );
-        return sum + (haceEstaActividad ? pax : 0);
-      }, 0);
+      // c) Ejecuta toda la construcción de la tabla y DataTables
+      await import('./contador.js');
+    })();
+  </script>
 
-      row += `<td>${totalPax}</td>`;
-    });
-
-    row += '</tr>';
-    tbody.insertAdjacentHTML('beforeend', row);
-  });
-}
+  <!-- 6️⃣ Inicializar Firebase sin bloquear DOM -->
+  <script type="module" src="firebase-init.js" defer></script>
+</body>
+</html>
