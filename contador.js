@@ -137,6 +137,9 @@ async function init() {
       leftColumns: 1
     },
     dom: 'Bfrtip',
+    language: {
+      url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+    },
     buttons: [
       { extend: 'colvis', text: 'Ver columnas' },
       { extend: 'excelHtml5', text: 'Descargar Excel' }
