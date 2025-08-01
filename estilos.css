@@ -822,3 +822,22 @@ th.swap-pending {
   font-weight: bold;
   color: black
 }
+
+
+/* Clase específica solo para esta tabla */
+.sticky-actividades thead th {
+  position: sticky;
+  top: 0;
+  background-color: #f9f9f9;
+  z-index: 10;
+}
+
+/* Fijar primera columna */
+.sticky-actividades td:first-child,
+.sticky-actividades th:first-child {
+  position: sticky;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 5;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+}
