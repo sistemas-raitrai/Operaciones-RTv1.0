@@ -42,7 +42,10 @@ async function init() {
   // ——— 4️⃣ Leer “Proveedores” (colección plana) ———
   // Para mapear proveedorId → nombreProveedor
   const provSnap = await getDocs(collection(db, 'Proveedores'));
-  const proveedores = provSnap.docs.map(d => ({ id: d.id, nombre: d.data().nombreProveedor }));
+  const proveedores = provSnap.docs.map(d => ({
+    id: d.id,
+    nombre: d.data().nombreProveedor
+  }));
   const proveedorMap = proveedores.reduce((map, p) => {
     map[p.id] = p.nombre;
     return map;
@@ -56,10 +59,11 @@ async function init() {
     const destino = docDestino.id;
     const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
     listadoSnap.docs.forEach(sDoc => {
+      const data = sDoc.data();
       servicios.push({
         destino,
         nombreActividad: sDoc.id,
-        proveedorId: sDoc.data().proveedor   // campo 'proveedor' en cada actividad
+        proveedorId: data.proveedor   // campo “proveedor” en cada actividad
       });
     });
   }
@@ -69,8 +73,9 @@ async function init() {
   grupos.forEach(g => {
     if (Array.isArray(g.itinerario)) {
       g.itinerario.forEach(item => {
-        const dateObj = item.dia.toDate();
-        const label = dateObj.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
+        const label = item.dia
+          .toDate()
+          .toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
         fechasSet.add(label);
       });
     }
@@ -110,18 +115,21 @@ async function init() {
         const pax = g.cantidadgrupo || 0;
         const coincide = Array.isArray(g.itinerario) &&
           g.itinerario.some(item => {
-            const label = item.dia.toDate()
+            const label = item.dia
+              .toDate()
               .toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
-            return label === dia &&
+            return (
+              label === dia &&
               item.actividad === s.nombreActividad &&
-              item.destino === s.destino;
+              item.destino === s.destino
+            );
           });
         return sum + (coincide ? pax : 0);
       }, 0);
       row += `<td>${sumaPax}</td>`;
     });
 
-    row += `</tr>`;
+    row += '</tr>';
     tbody.insertAdjacentHTML('beforeend', row);
   });
 
@@ -136,14 +144,19 @@ async function init() {
     ],
     initComplete() {
       const api = this.api();
-      // Poblado dinámico del filtro de destinos
+
+      // Poblado dinámico del filtro de destinos (columna 1)
       const dests = Array.from(new Set(api.column(1).data().toArray()));
       dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
+
       // Conectar buscador y filtro
-      $('#buscador').on('keyup', () => api.search($('#buscador').val()).draw());
+      $('#buscador').on('keyup', () =>
+        api.search($('#buscador').val()).draw()
+      );
       $('#filtroDestino').on('change', () =>
         api.column(1).search($('#filtroDestino').val()).draw()
       );
+
       // Botón externo de export
       $('#btn-export-excel').on('click', () =>
         api.button('.buttons-excel').trigger()
