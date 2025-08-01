@@ -5,41 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Contador de Actividades | RT v1.0</title>
 
-  <!-- DataTables base -->
+  <!-- DataTables base y extensiones -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
-  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-  
-  <!-- Extensiones: FixedHeader y FixedColumns -->
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css">
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/4.3.0/css/fixedColumns.dataTables.min.css">
-  
-  <!-- Tu CSS propio -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" />
+
+  <!-- Estilos personalizados -->
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <style>
-    .sticky-col {
+    /* Fija encabezado superior */
+    table.dataTable thead th {
       position: sticky;
-      left: 0;
-      background: white;
-      z-index: 1;
-      border-right: 1px solid #ccc;
-    }
-    
-    /* Deja fija la celda del encabezado "Actividad" */
-    .sticky-header {
       top: 0;
-      z-index: 2;
+      background-color: #f9f9f9;
+      z-index: 10;
     }
 
-    /* Asegura que el header fijo ocupe todo el ancho */
-    .dataTables_scrollHeadInner table { width: 100% !important; }
+    /* Asegura que la tabla se mantenga sin saltos horizontales */
+    th, td {
+      white-space: nowrap;
+    }
+
+    /* Evita que el encabezado se desplace al usar scroll horizontal */
+    .dataTables_scrollHeadInner table {
+      width: 100% !important;
+    }
   </style>
 </head>
 <body>
 
-  <!-- 1️⃣ Encabezado común (login, navegación) -->
+  <!-- 1️⃣ Encabezado común (usuario, navegación) -->
   <div id="encabezado"></div>
 
   <main>
@@ -53,13 +51,11 @@
       </select>
     </div>
 
-    <!-- 3️⃣ Tabla con scroll horizontal -->
-    <div class="dataTables_scroll">
-      <table id="tablaConteo" class="display nowrap" style="width:100%">
-        <thead id="thead-actividades"></thead>
-        <tbody id="tbody-actividades"></tbody>
-      </table>
-    </div>
+    <!-- 3️⃣ Tabla principal -->
+    <table id="tablaConteo" class="display nowrap" style="width:100%">
+      <thead id="thead-actividades"></thead>
+      <tbody id="tbody-actividades"></tbody>
+    </table>
   </main>
 
   <!-- 4️⃣ Librerías JS necesarias -->
@@ -72,22 +68,22 @@
   <script src="https://cdn.datatables.net/fixedcolumns/4.3.0/js/dataTables.fixedColumns.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
 
-  <!-- 5️⃣ Flujo de carga: header, Firebase, contador -->
+  <!-- 5️⃣ Flujo de carga modular -->
   <script type="module">
     (async () => {
-      // a) Inyecta el encabezado común (login, reloj, usuario)
+      // a) Cargar encabezado (con login y controles)
       const headerHtml = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = headerHtml;
 
-      // b) Inicializa Firebase (exporta app y db)
+      // b) Firebase inicializado
       await import('./firebase-init.js');
 
-      // c) Ejecuta toda la construcción de la tabla y DataTables
+      // c) Ejecutar lógica principal del contador
       await import('./contador.js');
     })();
   </script>
 
-  <!-- 6️⃣ Inicializar Firebase sin bloquear DOM -->
+  <!-- 6️⃣ Firebase en segundo plano (por si se requiere directo) -->
   <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
