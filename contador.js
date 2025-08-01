@@ -17,21 +17,28 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 // ———————————————————————————————
-// 2️⃣ Referencias al DOM
+// 2️⃣ Variables de estado global
+// ———————————————————————————————
+// Guardamos los grupos y las fechas para poder reutilizarlos en los eventos
+let grupos = [];
+let fechasOrdenadas = [];
+
+// ———————————————————————————————
+// 3️⃣ Referencias al DOM
 // ———————————————————————————————
 const thead = document.getElementById('thead-actividades');
 const tbody = document.getElementById('tbody-actividades');
 
 // ———————————————————————————————
-// 3️⃣ Control de sesión Firebase
+// 4️⃣ Control de sesión Firebase
 // ———————————————————————————————
 const auth = getAuth(app);
 onAuthStateChanged(auth, user => {
   if (!user) {
-    // Si no hay sesión, vuelve al login
+    // Sin sesión activa → login
     location.href = 'login.html';
   } else {
-    // Si está autenticado, arrancamos la app
+    // Con sesión → init
     init();
   }
 });
@@ -40,14 +47,14 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => {
 });
 
 // —————————————————————————————————————————————————————
-// 4️⃣ Función principal: carga datos, construye tabla y eventos
+// 5️⃣ Función principal: carga datos y construye la tabla
 // —————————————————————————————————————————————————————
 async function init() {
-  // ——— 4.1) Leer colección "grupos"
+  // ——— 5.1) Leer colección "grupos"
   const gruposSnap = await getDocs(collection(db, 'grupos'));
-  const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  // ——— 4.2) Leer "Servicios" (cada destino → subcolección "Listado")
+  // ——— 5.2) Leer "Servicios" (cada destino → subcolección "Listado")
   const servicios = [];
   const serviciosRoot = await getDocs(collection(db, 'Servicios'));
   for (const destinoDoc of serviciosRoot.docs) {
@@ -63,11 +70,11 @@ async function init() {
     });
   }
 
-  // ——— 4.3) Leer "Proveedores" (plano BRASIL/Listado)
+  // ——— 5.3) Leer "Proveedores" (BRASIL/Listado)
   const proveedoresSnap = await getDocs(collection(db, 'Proveedores', 'BRASIL', 'Listado'));
   const proveedores = {};
-  proveedoresSnap.docs.forEach(docSnap => {
-    const d = docSnap.data();
+  proveedoresSnap.docs.forEach(pSnap => {
+    const d = pSnap.data();
     if (d.proveedor) {
       proveedores[d.proveedor] = {
         contacto: d.contacto || '',
@@ -76,19 +83,21 @@ async function init() {
     }
   });
 
-  // ——— 4.4) Extraer fechas únicas con al menos un pax > 0
+  // ——— 5.4) Extraer fechas únicas con algún pax > 0
   const fechasSet = new Set();
   grupos.forEach(g => {
     const itin = g.itinerario || {};
     Object.entries(itin).forEach(([fecha, acts]) => {
-      if (acts.some(a => (parseInt(a.adultos)||0)+(parseInt(a.estudiantes)||0) > 0)) {
+      if (acts.some(a =>
+          (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0) > 0
+        )) {
         fechasSet.add(fecha);
       }
     });
   });
-  const fechasOrdenadas = Array.from(fechasSet).sort();
+  fechasOrdenadas = Array.from(fechasSet).sort();
 
-  // ——— 4.5) Generar <thead> dinámico (incluye columna Reserva)
+  // ——— 5.5) Generar <thead> dinámico (incluye columna Reserva)
   thead.innerHTML = `
     <tr>
       <th class="sticky-col sticky-header">Actividad</th>
@@ -98,12 +107,12 @@ async function init() {
       ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join('')}
     </tr>`;
 
-  // ——— 4.6) Orden alfabético de servicios
+  // ——— 5.6) Ordenar alfabéticamente los servicios
   servicios.sort((a, b) =>
     (a.destino + a.nombre).localeCompare(b.destino + b.nombre)
   );
 
-  // ——— 4.7) Construir filas por servicio
+  // ——— 5.7) Construir filas por cada servicio
   servicios.forEach(servicio => {
     const provInfo = proveedores[servicio.proveedor] || {};
     const proveedorStr = provInfo.contacto ? servicio.proveedor : '-';
@@ -124,14 +133,12 @@ async function init() {
     fechasOrdenadas.forEach(fecha => {
       let totalPax = 0;
       grupos.forEach(g => {
-        const acts = g.itinerario?.[fecha] || [];
-        acts.forEach(a => {
+        (g.itinerario?.[fecha] || []).forEach(a => {
           if (a.actividad === servicio.nombre) {
             totalPax += (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0);
           }
         });
       });
-
       fila += `
         <td class="celda-interactiva"
             data-info='${JSON.stringify({ actividad: servicio.nombre, fecha })}'
@@ -144,8 +151,8 @@ async function init() {
     tbody.insertAdjacentHTML('beforeend', fila);
   });
 
-  // ——— 4.8) Inicializar DataTables con filtros y búsqueda
-  $('#tablaConteo').DataTable({
+  // ——— 5.8) Inicializar DataTables con filtros y búsqueda
+  const table = $('#tablaConteo').DataTable({
     scrollX: true,
     paging: false,
     fixedHeader: { header: true, headerOffset: 90 },
@@ -160,136 +167,142 @@ async function init() {
     ],
     initComplete: function () {
       const api = this.api();
-      // Poblado dinámico de filtroDestino
-      const dests = new Set(api.column(1).data().toArray());
-      dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
+      // Poblado dinámico del filtroDestino
+      new Set(api.column(1).data().toArray())
+        .forEach(d => $('#filtroDestino').append(new Option(d, d)));
 
-      // Búsqueda tolerante a comas/puntos y comas
+      // Buscador con comas/puntos y comas
       $('#buscador').on('keyup', () => {
         const val = $('#buscador').val();
-        const palabras = val.split(/[,;]+/).map(p => p.trim()).filter(p => p);
-        const regex = palabras.length
-          ? palabras.map(p => `(?=.*${escapeRegExp(p)})`).join('|')
+        const terms = val.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        const rex = terms.length
+          ? terms.map(t => `(?=.*${escapeRegExp(t)})`).join('|')
           : '';
-        api.search(regex, true, false).draw();
+        api.search(rex, true, false).draw();
       });
 
-      // Filtro de destinos
+      // Filtro por destino
       $('#filtroDestino').on('change', () =>
         api.column(1).search($('#filtroDestino').val()).draw()
       );
     }
   });
 
-  // ——— 4.9) Click en celdas para detalle de grupos
+  // ——— 5.9) Click en celdas para mostrar modal detalle
   document.querySelectorAll('.celda-interactiva').forEach(celda => {
     celda.addEventListener('click', () => {
       const { actividad, fecha } = JSON.parse(celda.dataset.info);
-      mostrarGruposCoincidentes(actividad, fecha, grupos);
+      mostrarGruposCoincidentes(actividad, fecha);
     });
   });
 
-  // ——— 4.10) Click en “CREAR” para abrir modal de Reserva
+  // ——— 5.🔟 Click en “CREAR” para abrir modal de Reserva
   document.querySelectorAll('.btn-reserva').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const destino   = btn.dataset.destino;
-      const actividad = btn.dataset.actividad;
-
-      // 1) Poblar selector de fechas
-      const selF = document.getElementById('modalFecha');
-      selF.innerHTML = fechasOrdenadas
-        .map(f => `<option value="${f}">${formatearFechaBonita(f)}</option>`)
-        .join('');
-
-      // 2) Obtener datos de proveedor (contacto, correo)
-      const provSnap = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
-      let contacto = '', correo = '';
-      provSnap.docs.forEach(dSnap => {
-        const d = dSnap.data();
-        if (d.proveedor === actividad) {
-          contacto = d.contacto  || '';
-          correo   = d.correo    || '';
-        }
-      });
-      document.getElementById('modalPara').value   = correo;
-      document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
-
-      // 3) Generar plantilla base
-      const generarPlantilla = () => {
-        const f = selF.value;
-        let cuerpo = `Estimado/a ${contacto}:\n\n`;
-        cuerpo += `Envío detalle de reserva para:\n\n`;
-        cuerpo += `Actividad: ${actividad}\n`;
-        cuerpo += `Fecha: ${formatearFechaBonita(f)}\n\n`;
-        cuerpo += `Grupos:\n`;
-        grupos.forEach(g => {
-          if ((g.itinerario?.[f] || []).find(a => a.actividad === actividad)) {
-            cuerpo += `- N° Negocio: ${g.id}, Grupo: ${g.nombreGrupo}, Pax: ${g.cantidadgrupo}\n`;
-          }
-        });
-        cuerpo += `\nAtte.\nOperaciones RaiTrai`;
-        document.getElementById('modalCuerpo').value = cuerpo;
-      };
-      selF.onchange = generarPlantilla;
-      generarPlantilla();
-
-      // 4) Mostrar modal
-      document.getElementById('modalReserva').style.display = 'block';
-    });
+    btn.addEventListener('click', abrirModalReserva);
   });
 
-  // ——— 4.11) Botones dentro del modal de Reserva
+  // ——— 5.⓫ Botones dentro del modal de Reserva
   document.getElementById('btnCerrarReserva').onclick = () => {
     document.getElementById('modalReserva').style.display = 'none';
   };
+  document.getElementById('btnGuardarPendiente').onclick = guardarPendiente;
+  document.getElementById('btnEnviarReserva').onclick = enviarReserva;
+} // ← fin init()
 
-  document.getElementById('btnGuardarPendiente').onclick = async () => {
-    const cuerpo   = document.getElementById('modalCuerpo').value;
-    const fecha    = document.getElementById('modalFecha').value;
-    const asunto   = document.getElementById('modalAsunto').value;
-    const actividad = asunto.split('Reserva: ')[1];
-    const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).dataset.destino;
+// —————————————————————————————————————————————
+// Función: abrirModalReserva — carga datos y muestra modal
+// —————————————————————————————————————————————
+async function abrirModalReserva(event) {
+  const btn = event.currentTarget;
+  const destino   = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
 
-    // Guardar en Firestore como PENDIENTE
-    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-    await updateDoc(ref, {
-      [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo }
+  // Poblar selector de fechas
+  const selF = document.getElementById('modalFecha');
+  selF.innerHTML = fechasOrdenadas
+    .map(f => `<option value="${f}">${formatearFechaBonita(f)}</option>`)
+    .join('');
+
+  // Obtener contacto y correo del proveedor
+  const provSnap = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
+  let contacto = '', correo = '';
+  provSnap.docs.forEach(dSnap => {
+    const d = dSnap.data();
+    if (d.proveedor === actividad) {
+      contacto = d.contacto  || '';
+      correo   = d.correo    || '';
+    }
+  });
+  document.getElementById('modalPara').value    = correo;
+  document.getElementById('modalAsunto').value  = `Reserva: ${actividad} en ${destino}`;
+
+  // Generar plantilla
+  function generarPlantilla() {
+    const f = selF.value;
+    let cuerpo = `Estimado/a ${contacto}:\n\nEnvío detalle de reserva para:\n\n`;
+    cuerpo += `Actividad: ${actividad}\nFecha: ${formatearFechaBonita(f)}\n\nGrupos:\n`;
+    grupos.forEach(g => {
+      if ((g.itinerario?.[f] || []).find(a => a.actividad === actividad)) {
+        cuerpo += `- N° Negocio: ${g.id}, Grupo: ${g.nombreGrupo}, Pax: ${g.cantidadgrupo}\n`;
+      }
     });
+    cuerpo += `\nAtte.\nOperaciones RaiTrai`;
+    document.getElementById('modalCuerpo').value = cuerpo;
+  }
+  selF.onchange = generarPlantilla;
+  generarPlantilla();
 
-    // Actualizar texto del botón
-    document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).textContent = 'PENDIENTE';
-  };
+  // Mostrar modal
+  document.getElementById('modalReserva').style.display = 'block';
+}
 
-  document.getElementById('btnEnviarReserva').onclick = async () => {
-    const para     = document.getElementById('modalPara').value;
-    const asunto   = document.getElementById('modalAsunto').value;
-    const cuerpo   = document.getElementById('modalCuerpo').value;
-    const fecha    = document.getElementById('modalFecha').value;
-    const actividad = asunto.split('Reserva: ')[1];
-    const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).dataset.destino;
+// —————————————————————————————————————————————
+// Función: guardarPendiente — marca como PENDIENTE en Firestore
+// —————————————————————————————————————————————
+async function guardarPendiente() {
+  const asunto   = document.getElementById('modalAsunto').value;
+  const actividad = asunto.split('Reserva: ')[1];
+  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).dataset.destino;
+  const fecha     = document.getElementById('modalFecha').value;
+  const cuerpo    = document.getElementById('modalCuerpo').value;
 
-    // Disparar mailto:
-    window.location.href = `mailto:${para}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+  await updateDoc(ref, {
+    [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo }
+  });
+  document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
+    .textContent = 'PENDIENTE';
+}
 
-    // Guardar en Firestore como ENVIADA
-    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-    await updateDoc(ref, {
-      [`reservas.${fecha}`]: { estado: 'ENVIADA', cuerpo }
-    });
+// —————————————————————————————————————————————
+// Función: enviarReserva — dispara mailto y marca ENVIADA
+// —————————————————————————————————————————————
+async function enviarReserva() {
+  const para     = document.getElementById('modalPara').value;
+  const asunto   = document.getElementById('modalAsunto').value;
+  const cuerpo   = document.getElementById('modalCuerpo').value;
+  const fecha    = document.getElementById('modalFecha').value;
+  const actividad = asunto.split('Reserva: ')[1];
+  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).dataset.destino;
 
-    // Actualizar botón y cerrar modal
-    document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).textContent = 'ENVIADA';
-    document.getElementById('modalReserva').style.display = 'none';
-  };
-} // ← fin de init()
+  window.location.href =
+    `mailto:${para}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 
-// ————————————————————————————————————————
-// Función para mostrar detalle de grupos en modal
-// ————————————————————————————————————————
-function mostrarGruposCoincidentes(actividad, fecha, grupos) {
+  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+  await updateDoc(ref, {
+    [`reservas.${fecha}`]: { estado: 'ENVIADA', cuerpo }
+  });
+  document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
+    .textContent = 'ENVIADA';
+  document.getElementById('modalReserva').style.display = 'none';
+}
+
+// —————————————————————————————————————————————
+// Función: mostrarGruposCoincidentes — modal detalle grupos
+// —————————————————————————————————————————————
+function mostrarGruposCoincidentes(actividad, fecha) {
   const tb = document.querySelector('#tablaModal tbody');
   tb.innerHTML = '';
-
   const lista = grupos
     .filter(g => (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad))
     .map(g => ({
@@ -298,8 +311,7 @@ function mostrarGruposCoincidentes(actividad, fecha, grupos) {
       cantidadgrupo: g.cantidadgrupo,
       programa:      g.programa
     }));
-
-  if (lista.length === 0) {
+  if (!lista.length) {
     tb.innerHTML = '<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>';
   } else {
     lista.forEach(g => {
@@ -309,24 +321,22 @@ function mostrarGruposCoincidentes(actividad, fecha, grupos) {
           <td>${g.nombreGrupo}</td>
           <td>${g.cantidadgrupo}</td>
           <td>${g.programa}</td>
-        </tr>
-      `);
+        </tr>`);
     });
   }
-
   document.getElementById('modalDetalle').style.display = 'block';
 }
 
 // ————————————————————————————————————————
-// Función utilitaria para formatear fecha YYYY-MM-DD → DD/MM
+// Utilitaria: formatearFechaBonita (YYYY-MM-DD → DD/MM)
 // ————————————————————————————————————————
-function formatearFechaBonita(isoDate) {
-  const [yyyy, mm, dd] = isoDate.split('-');
+function formatearFechaBonita(iso) {
+  const [yyyy, mm, dd] = iso.split('-');
   return `${dd}/${mm}`;
 }
 
 // ————————————————————————————————————————
-// Escapar caracteres especiales en regex
+// Utilitaria: escapeRegExp (para búsqueda segura)
 // ————————————————————————————————————————
 function escapeRegExp(text) {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
