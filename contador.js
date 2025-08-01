@@ -22,6 +22,7 @@ import {
 // Guardamos los grupos y las fechas para poder reutilizarlos en los eventos
 let grupos = [];
 let fechasOrdenadas = [];
+let proveedores = {};
 
 // ———————————————————————————————
 // 3️⃣ Referencias al DOM
@@ -72,16 +73,19 @@ async function init() {
 
   // ——— 5.3) Leer "Proveedores" (BRASIL/Listado)
   const proveedoresSnap = await getDocs(collection(db, 'Proveedores', 'BRASIL', 'Listado'));
-  const proveedores = {};
+  const proveedoresLocal = {};
   proveedoresSnap.docs.forEach(pSnap => {
     const d = pSnap.data();
     if (d.proveedor) {
-      proveedores[d.proveedor] = {
+      proveedoresLocal[d.proveedor] = {
         contacto: d.contacto || '',
         correo:   d.correo   || ''
       };
     }
   });
+
+  // ahora asigna al global:
+  proveedores = proveedoresLocal;
 
   // ——— 5.4) Extraer fechas únicas con algún pax > 0
   const fechasSet = new Set();
@@ -208,6 +212,48 @@ async function init() {
   document.getElementById('btnGuardarPendiente').onclick = guardarPendiente;
   document.getElementById('btnEnviarReserva').onclick = enviarReserva;
 } // ← fin init()
+
+async function abrirModalReserva(event) {
+  const btn       = event.currentTarget;
+  const destino   = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
+
+  // 1) selector de fechas
+  const selF = document.getElementById('modalFecha');
+  selF.innerHTML = fechasOrdenadas
+    .map(f => `<option value="${f}">${formatearFechaBonita(f)}</option>`)
+    .join('');
+
+  // 2) leer directamente del mapa global:
+  const provInfo = proveedores[actividad] || { contacto: '', correo: '' };
+  const contacto = provInfo.contacto;
+  const correo   = provInfo.correo;
+
+  document.getElementById('modalPara').value   = correo;
+  document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
+
+  // 3) plantilla base
+  function generarPlantilla() {
+    const f = selF.value;
+    let cuerpo = `Estimado/a ${contacto}:\n\n`;
+    cuerpo += `Envío detalle de reserva para:\n\n`;
+    cuerpo += `Actividad: ${actividad}\n`;
+    cuerpo += `Fecha: ${formatearFechaBonita(f)}\n\n`;
+    cuerpo += `Grupos:\n`;
+    grupos.forEach(g => {
+      if ((g.itinerario?.[f]||[]).some(a => a.actividad === actividad)) {
+        cuerpo += `- N° Negocio: ${g.id}, Grupo: ${g.nombreGrupo}, Pax: ${g.cantidadgrupo}\n`;
+      }
+    });
+    cuerpo += `\nAtte.\nOperaciones RaiTrai`;
+    document.getElementById('modalCuerpo').value = cuerpo;
+  }
+  selF.onchange = generarPlantilla;
+  generarPlantilla();
+
+  // 4) mostrar modal
+  document.getElementById('modalReserva').style.display = 'block';
+}
 
 // —————————————————————————————————————————————
 // Función: abrirModalReserva — carga datos y muestra modal
