@@ -108,9 +108,13 @@ async function init() {
 
       grupos.forEach(g => {
         const actividades = g.itinerario?.[fecha] || [];
+  
         actividades.forEach(act => {
           if (act.actividad === servicio.nombre) {
-            totalPax += (act.adultos || 0) + (act.estudiantes || 0);
+            // ✅ Corregido: asegurarse que se sumen como números
+            const adultos = parseInt(act.adultos) || 0;
+            const estudiantes = parseInt(act.estudiantes) || 0;
+            totalPax += adultos + estudiantes;
           }
         });
       });
