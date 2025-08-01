@@ -1,109 +1,117 @@
-// Importes de Firebase Auth y Firestore
+// contador.js
+
+// —————————————— Importes de Firebase ——————————————
 import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import { getDocs, collection }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { app, db } from './firebase-init.js';
 
-// Referencias a <thead> y <tbody>
+// ————————— Referencias al DOM —————————
 const thead = document.getElementById('thead-actividades');
 const tbody = document.getElementById('tbody-actividades');
 
-// 1️⃣ Control de sesión
+// —————— 1️⃣ Control de sesión Firebase ——————
 const auth = getAuth(app);
 onAuthStateChanged(auth, user => {
   if (!user) {
+    // Si no hay usuario, redirige a login
     location.href = 'login.html';
   } else {
-    init();  // arrancar solo si hay usuario
+    // Si está autenticado, arrancar lógica
+    init();
   }
 });
-document.getElementById('logoutBtn')?.addEventListener('click', () =>
-  signOut(auth)
-);
+// Botón “Cerrar sesión” inyectado en encabezado.html
+document.getElementById('logoutBtn')?.addEventListener('click', () => {
+  signOut(auth);
+});
 
 /**
- * 2️⃣ Función principal: lee datos, monta tabla y luego activa DataTables
+ * 2️⃣ Función principal:
+ *   • Lee datos de Firestore (grupos, proveedores, servicios)
+ *   • Monta cabecera con fechas dinámicas
+ *   • Rellena filas con conteo de pasajeros
+ *   • Inicializa DataTables al final
  */
 async function init() {
-  // —————— Lectura de Grupos ——————
+  // ——— 3️⃣ Leer “grupos” de Firestore ———
   const gruposSnap = await getDocs(collection(db, 'grupos'));
   const grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  // —————— Lectura de Servicios en subcolecciones ——————
+  // ——— 4️⃣ Leer “Proveedores” (colección plana) ———
+  // Para mapear proveedorId → nombreProveedor
+  const provSnap = await getDocs(collection(db, 'Proveedores'));
+  const proveedores = provSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const proveedorMap = proveedores.reduce((map, p) => {
+    map[p.id] = p.nombreProveedor;
+    return map;
+  }, {});
+
+  // ——— 5️⃣ Leer “Servicios” (subcolecciones) ———
+  // Cada doc en “Servicios” es un destino, su subcolección “Listado” tiene las actividades
   const servicios = [];
   const serviciosRoot = await getDocs(collection(db, 'Servicios'));
   for (const docDestino of serviciosRoot.docs) {
     const destino = docDestino.id;
-    const listado = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
-    listado.docs.forEach(s => {
-      servicios.push({ destino, nombreActividad: s.id });
+    // Campo “proveedor” en docDestino indica el id del proveedor
+    const proveedorId = docDestino.data().proveedor;
+    const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
+    listadoSnap.docs.forEach(sDoc => {
+      servicios.push({
+        destino,
+        nombreActividad: sDoc.id,
+        proveedorId
+      });
     });
   }
 
-  // —————— Lectura de Proveedores en subcolecciones ——————
-  const proveedores = [];
-  const provRoot = await getDocs(collection(db, 'Proveedores'));
-  for (const docDestino of provRoot.docs) {
-    const destino = docDestino.id;
-    const listado = await getDocs(collection(db, 'Proveedores', destino, 'Listado'));
-    listado.docs.forEach(p => {
-      proveedores.push({ destino, nombreProveedor: p.id });
-    });
-  }
-  // Mapa destino → lista de proveedores
-  const proveedorMap = proveedores.reduce((m, p) => {
-    m[p.destino] = m[p.destino] || [];
-    m[p.destino].push(p.nombreProveedor);
-    return m;
-  }, {});
-
-  // —————— Extraer todas las fechas de itinerarios ——————
+  // ——— 6️⃣ Extraer fechas únicas de todos los itinerarios ———
   const fechasSet = new Set();
   grupos.forEach(g => {
     if (Array.isArray(g.itinerario)) {
-      g.itinerario.forEach(i => fechasSet.add(i.dia));
+      g.itinerario.forEach(item => fechasSet.add(item.dia));
     }
   });
   const fechas = Array.from(fechasSet).sort();
 
-  // —————— Construir <thead> dinámico ——————
-  const headerCols = ['Actividad','Destino','Proveedor'];
+  // ——— 7️⃣ Construir <thead> dinámico con columnas fijas + fechas ———
+  const headerCols = ['Actividad', 'Destino', 'Proveedor'];
   thead.innerHTML =
     '<tr>' +
-      headerCols.map((h,i) =>
+      // Columnas fijas
+      headerCols.map((h, i) =>
         `<th class="fixed-col-${i+1}">${h}</th>`
       ).join('') +
+      // Columnas de fechas
       fechas.map(f => `<th>${f}</th>`).join('') +
     '</tr>';
 
-  // —————— Ordenar servicios alfabéticamente ——————
-  servicios.sort((a,b) =>
+  // ——— 8️⃣ Ordenar servicios alfabéticamente por destino+actividad ———
+  servicios.sort((a, b) =>
     (a.destino + a.nombreActividad)
       .localeCompare(b.destino + b.nombreActividad)
   );
 
-  // —————— Rellenar <tbody> con conteo de PAX cruzando itinerarios ——————
+  // ——— 9️⃣ Rellenar <tbody> con filas y conteo de PAX por fecha ———
   servicios.forEach(s => {
-    // cada fila: nombreActividad, destino, proveedores
-    const provStr = (proveedorMap[s.destino] || []).join(', ');
+    const proveedorStr = proveedorMap[s.proveedorId] || '-';
     let row = `<tr>
       <td class="fixed-col-1">${s.nombreActividad}</td>
       <td class="fixed-col-2">${s.destino}</td>
-      <td class="fixed-col-3">${provStr || '-'}</td>`;
+      <td class="fixed-col-3">${proveedorStr}</td>`;
 
-    // Para cada fecha, sumar los grupos que tengan esa actividad en el itinerario
+    // Para cada fecha, sumar cantidadgrupo de los grupos que tengan esa actividad+destino en ese día
     fechas.forEach(dia => {
       const sumaPax = grupos.reduce((sum, g) => {
         const pax = g.cantidadgrupo || 0;
-        // ¿Tiene este grupo la actividad s.nombreActividad el día 'dia'?
-        const tiene = Array.isArray(g.itinerario) &&
+        const coincide = Array.isArray(g.itinerario) &&
           g.itinerario.some(item =>
             item.dia === dia &&
             item.actividad === s.nombreActividad &&
             item.destino === s.destino
           );
-        return sum + (tiene ? pax : 0);
+        return sum + (coincide ? pax : 0);
       }, 0);
       row += `<td>${sumaPax}</td>`;
     });
@@ -112,7 +120,7 @@ async function init() {
     tbody.insertAdjacentHTML('beforeend', row);
   });
 
-  // —————— Inicializar DataTables ——————
+  // ——— 🔟 Inicializar DataTables tras poblar la tabla ———
   const table = $('#tablaConteo').DataTable({
     scrollX: true,
     fixedHeader: true,
@@ -123,15 +131,17 @@ async function init() {
     ],
     initComplete() {
       const api = this.api();
-      // Pasa valores al filtroDestino
-      const dests = Array.from(new Set(api.column(1).data().toArray()));
-      dests.forEach(d => $('#filtroDestino').append(new Option(d,d)));
 
-      // Enlaces buscador y filtro
+      // Poblado dinámico del filtro de destinos (columna 1)
+      const dests = Array.from(new Set(api.column(1).data().toArray()));
+      dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
+
+      // Conectar buscador y filtro
       $('#buscador').on('keyup', () => api.search($('#buscador').val()).draw());
       $('#filtroDestino').on('change', () =>
         api.column(1).search($('#filtroDestino').val()).draw()
       );
+
       // Botón externo de export
       $('#btn-export-excel').on('click', () =>
         api.button('.buttons-excel').trigger()
