@@ -81,7 +81,7 @@ async function init() {
   // ——— 4.5) Generar <thead> dinámico
   thead.innerHTML = `
     <tr>
-      <th class="fixed-col-1">Actividad</th>
+      <th class="sticky-col sticky-header">Actividad</th>
       <th>Destino</th>
       <th>Proveedor</th>
       ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join('')}
@@ -99,7 +99,7 @@ async function init() {
 
     let fila = `
       <tr>
-        <td class="fixed-col-1">${servicio.nombre}</td>
+        <td class="sticky-col">${servicio.nombre}</td>
         <td>${servicio.destino}</td>
         <td>${proveedorStr}</td>`;
 
