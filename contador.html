@@ -3,39 +3,53 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Conteo de Actividades | RT v1.0</title>
+  <title>🗓️ Contador de Actividades | RT v1.0</title>
+
+  <!-- CSS de DataTables y botones -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css" />
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css" />
+
+  <!-- Tu CSS propio -->
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+
   <style>
     /* Columnas fijas: Destino, Actividad, Proveedor */
     .fixed-col-1 { position: sticky; left: 0; background: #fff; z-index: 3; }
     .fixed-col-2 { position: sticky; left: 200px; background: #fff; z-index: 2; }
     .fixed-col-3 { position: sticky; left: 400px; background: #fff; z-index: 1; }
+    /* Asegura que el header fijo ocupe todo el ancho */
+    .dataTables_scrollHeadInner table { width: 100% !important; }
   </style>
 </head>
 <body>
 
-  <!-- Encabezado común -->
+  <!-- 1️⃣ Encabezado común (login, navegación) -->
   <div id="encabezado"></div>
 
   <main>
-    <h1>🗓️ Conteo de Actividades</h1>
+    <h1>🗓️ Contador de Actividades</h1>
+
+    <!-- 2️⃣ Barra de herramientas -->
     <div class="toolbar">
-      <input type="text" id="buscador" placeholder="🔍 Buscar actividad, destino o proveedor..." />
-      <select id="filtroDestino"><option value="">Todos los destinos</option></select>
+      <input type="text" id="buscador" placeholder="🔍 Buscar actividad, destino o proveedor…" />
+      <select id="filtroDestino">
+        <option value="">Todos los destinos</option>
+      </select>
       <button id="btn-export-excel">📤 Exportar Excel</button>
     </div>
 
-    <table id="tablaConteo" class="display nowrap" style="width:100%">
-      <thead id="thead-actividades"></thead>
-      <tbody id="tbody-actividades"></tbody>
-    </table>
+    <!-- 3️⃣ Tabla con scroll horizontal -->
+    <div class="dataTables_scroll">
+      <table id="tablaConteo" class="display nowrap" style="width:100%">
+        <thead id="thead-actividades"></thead>
+        <tbody id="tbody-actividades"></tbody>
+      </table>
+    </div>
   </main>
 
-  <!-- JS Dependencies -->
+  <!-- 4️⃣ Librerías JS necesarias -->
   <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
@@ -43,64 +57,22 @@
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
 
-  <!-- Carga dinámico de encabezado y lógica -->
+  <!-- 5️⃣ Flujo de carga: header, Firebase, contador -->
   <script type="module">
     (async () => {
-      // Inyectar encabezado
-      const html = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = html;
-      // Init Firebase
+      // a) Inyecta el encabezado común (login, reloj, usuario)
+      const headerHtml = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = headerHtml;
+
+      // b) Inicializa Firebase (exporta app y db)
       await import('./firebase-init.js');
-      // Cargar datos
+
+      // c) Ejecuta toda la construcción de la tabla y DataTables
       await import('./contador.js');
-
-      // Inicializar DataTable después de render
-      const table = $('#tablaConteo').DataTable({
-        scrollX: true,
-        fixedHeader: true,
-        dom: 'Bfrtip',
-        buttons: [
-          { extend: 'colvis', text: 'Ver columnas' },
-          { extend: 'excelHtml5', text: 'Exportar Excel' }
-        ],
-        initComplete: function() {
-          // Poblado de filtroDestino dinámico
-          const destSet = new Set(table.column(1).data().toArray());
-          destSet.forEach(d => $('#filtroDestino').append(new Option(d, d)));
-          $('#filtroDestino').on('change', function() {
-            table.column(1).search(this.value).draw();
-            });
-
-  // 8️⃣ Inicializar DataTable aquí, tras terminar la construcción de la tabla
-  const table = $('#tablaConteo').DataTable({
-    scrollX: true,
-    fixedHeader: true,
-    dom: 'Bfrtip',
-    buttons: [
-      { extend: 'colvis', text: 'Ver columnas' },
-      { extend: 'excelHtml5', text: 'Descargar Excel' }
-    ],
-    initComplete() {
-      // Poblado de filtroDestino
-      const dests = new Set(table.column(1).data().toArray());
-      dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
-      $('#filtroDestino').on('change', () => table.column(1).search($('#filtroDestino').val()).draw());
-      $('#buscador').on('keyup', () => table.search($('#buscador').val()).draw());
-      $('#btn-export-excel').on('click', () => table.button('.buttons-excel').trigger());
-    }
-  });
-          $('#buscador').on('keyup', function() {
-            table.search(this.value).draw();
-          });
-        }
-      });
-
-      // Export button externo
-      $('#btn-export-excel').on('click', () => table.button('.buttons-excel').trigger());
     })();
   </script>
 
-  <!-- Firebase Init -->
+  <!-- 6️⃣ Inicializar Firebase sin bloquear DOM -->
   <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
