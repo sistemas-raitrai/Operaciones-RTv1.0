@@ -82,8 +82,8 @@ async function init() {
   thead.innerHTML = `
     <tr>
       <th class="fixed-col-1">Actividad</th>
-      <th class="fixed-col-2">Destino</th>
-      <th class="fixed-col-3">Proveedor</th>
+      <th>Destino</th>
+      <th>Proveedor</th>
       ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join('')}
     </tr>`;
 
