@@ -189,13 +189,19 @@ async function init() {
     }
   });
     document.querySelectorAll('.celda-interactiva').forEach(celda => {
-    celda.addEventListener('click', () => {
-      const { actividad, fecha } = JSON.parse(celda.dataset.info);
+      celda.addEventListener('click', () => {
+        const { actividad, fecha } = JSON.parse(celda.dataset.info);
+        mostrarGruposCoincidentes(actividad, fecha);
+      });
+    });
+    
+    // Función reutilizable para mostrar grupos
+    function mostrarGruposCoincidentes(actividad, fecha) {
       const tbodyModal = document.querySelector('#tablaModal tbody');
       tbodyModal.innerHTML = '';
-  
+    
       const gruposCoincidentes = [];
-  
+    
       grupos.forEach(g => {
         const actividades = g.itinerario?.[fecha] || [];
         const match = actividades.find(act => act.actividad === actividad);
@@ -208,7 +214,7 @@ async function init() {
           });
         }
       });
-  
+    
       if (gruposCoincidentes.length > 0) {
         gruposCoincidentes.forEach(g => {
           tbodyModal.insertAdjacentHTML('beforeend', `
@@ -223,10 +229,24 @@ async function init() {
       } else {
         tbodyModal.innerHTML = '<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>';
       }
-  
+    
       document.getElementById('modalDetalle').style.display = 'block';
+    
+      // Guardar valores para el botón actualizar
+      const btnActualizar = document.getElementById('btnActualizarModal');
+      if (btnActualizar) {
+        btnActualizar.dataset.actividad = actividad;
+        btnActualizar.dataset.fecha = fecha;
+      }
+    }
+    
+    // Accionar botón Actualizar
+    document.getElementById('btnActualizarModal')?.addEventListener('click', () => {
+      const btn = document.getElementById('btnActualizarModal');
+      const actividad = btn.dataset.actividad;
+      const fecha = btn.dataset.fecha;
+      mostrarGruposCoincidentes(actividad, fecha);
     });
-  });
 }
 
 // ————————————————————————————————————————
