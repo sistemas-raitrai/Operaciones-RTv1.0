@@ -221,7 +221,7 @@ async function abrirModalReserva(event) {
 
   // 1️⃣ rellenar "Para:" y "Asunto:"
   // provInfo viene de un mapa global `proveedores[actividad]`
-  const provInfo = proveedores[actividad] || { contacto:'', correo:'' };
+  const provInfo  = proveedores[proveedor] || { contacto:'', correo:'' };
   document.getElementById('modalPara').value   = provInfo.correo;
   document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
 
