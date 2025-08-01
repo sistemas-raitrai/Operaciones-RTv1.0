@@ -68,15 +68,20 @@ async function init() {
     }
   });
 
-  // ——— 4.4) Extraer fechas únicas de todos los itinerarios
+  // ——— 4.4) Extraer fechas únicas que tengan al menos un total mayor a 0
   const fechasSet = new Set();
   grupos.forEach(g => {
     const itinerario = g.itinerario || {};
-    Object.keys(itinerario).forEach(fecha => {
-      fechasSet.add(fecha); // formato '2025-11-29'
+    Object.entries(itinerario).forEach(([fecha, actividades]) => {
+      const hayPax = actividades?.some(act => {
+        const adultos = parseInt(act.adultos) || 0;
+        const estudiantes = parseInt(act.estudiantes) || 0;
+        return adultos + estudiantes > 0;
+      });
+      if (hayPax) fechasSet.add(fecha);
     });
   });
-  const fechasOrdenadas = Array.from(fechasSet).sort(); // orden cronológico
+  const fechasOrdenadas = Array.from(fechasSet).sort();
 
   // ——— 4.5) Generar <thead> dinámico
   thead.innerHTML = `
