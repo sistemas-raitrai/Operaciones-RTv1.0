@@ -247,6 +247,13 @@ async function abrirModalReserva(event) {
 
   cuerpo += `Atte.\nOperaciones RaiTrai`;
 
+  const btnPendiente = document.getElementById('btnGuardarPendiente');
+  const btnEnviar    = document.getElementById('btnEnviarReserva');
+  btnPendiente.dataset.destino   = destino;
+  btnPendiente.dataset.actividad = actividad;
+  btnEnviar   .dataset.destino   = destino;
+  btnEnviar   .dataset.actividad = actividad;
+
   // 3️⃣ volcar en el textarea y mostrar modal
   document.getElementById('modalCuerpo').value = cuerpo;
   document.getElementById('modalReserva').style.display = 'block';
@@ -256,25 +263,19 @@ async function abrirModalReserva(event) {
 // Función: guardarPendiente — marca como PENDIENTE en Firestore
 // —————————————————————————————————————————————
 async function guardarPendiente() {
-  const asunto   = document.getElementById('modalAsunto').value;
-  const actividad = asunto.split('Reserva: ')[1];
-  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
-                            .dataset.destino;
-  const cuerpo    = document.getElementById('modalCuerpo').value;
+  // en lugar de parsear el asunto y buscar el botón original:
+  const btn      = document.getElementById('btnGuardarPendiente');
+  const destino  = btn.dataset.destino;
+  const actividad= btn.dataset.actividad;
+  const cuerpo   = document.getElementById('modalCuerpo').value;
+  const fecha    = document.getElementById('modalFecha').value;
 
-  // Por cada fecha en la que haya grupos, marcamos PENDIENTE
-  for (const f of fechasOrdenadas) {
-    const hay = grupos.some(g =>
-      (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
-    );
-    if (!hay) continue;
-    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-    await updateDoc(ref, {
-      [`reservas.${f}`]: { estado: 'PENDIENTE', cuerpo }
-    });
-  }
+  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+  await updateDoc(ref, {
+    [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo }
+  });
 
-  // Actualizar texto del botón
+  // actualizo el texto del botón CREAR
   document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
           .textContent = 'PENDIENTE';
 }
@@ -283,30 +284,30 @@ async function guardarPendiente() {
  * Dispara mailto y guarda ENVIADA **todas** las fechas
  */
 async function enviarReserva() {
-  const para     = document.getElementById('modalPara').value;
-  const asunto   = document.getElementById('modalAsunto').value;
-  const cuerpo   = document.getElementById('modalCuerpo').value;
-  const actividad = asunto.split('Reserva: ')[1];
-  const destino   = document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
-                            .dataset.destino;
+  const btn       = document.getElementById('btnEnviarReserva');
+  const destino   = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
+  const para      = document.getElementById('modalPara').value;
+  const asunto    = document.getElementById('modalAsunto').value;
+  const cuerpo    = document.getElementById('modalCuerpo').value;
 
-  // Disparar mailto con todo el cuerpo ya completo
+  // disparo mailto:
   window.location.href =
     `mailto:${para}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 
-  // Y guardamos ENVIADA en Firestore para cada fecha con grupos
+  // guardo ENVIADA en Firestore para cada fecha
   for (const f of fechasOrdenadas) {
-    const hay = grupos.some(g =>
+    if (grupos.some(g =>
       (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
-    );
-    if (!hay) continue;
-    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-    await updateDoc(ref, {
-      [`reservas.${f}`]: { estado: 'ENVIADA', cuerpo }
-    });
+    )) {
+      const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+      await updateDoc(ref, {
+        [`reservas.${f}`]: { estado: 'ENVIADA', cuerpo }
+      });
+    }
   }
 
-  // Marcar botón y cerrar modal
+  // actualizo el botón CREAR y cierro modal
   document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
           .textContent = 'ENVIADA';
   document.getElementById('modalReserva').style.display = 'none';
