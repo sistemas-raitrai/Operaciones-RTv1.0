@@ -42,26 +42,24 @@ async function init() {
   // ——— 4️⃣ Leer “Proveedores” (colección plana) ———
   // Para mapear proveedorId → nombreProveedor
   const provSnap = await getDocs(collection(db, 'Proveedores'));
-  const proveedores = provSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const proveedores = provSnap.docs.map(d => ({ id: d.id, nombre: d.data().nombreProveedor }));
   const proveedorMap = proveedores.reduce((map, p) => {
-    map[p.id] = p.nombreProveedor;
+    map[p.id] = p.nombre;
     return map;
   }, {});
 
   // ——— 5️⃣ Leer “Servicios” (subcolecciones) ———
-  // Cada doc en “Servicios” es un destino, su subcolección “Listado” tiene las actividades
+  // Cada doc en “Servicios” es un destino; su subcolección “Listado” tiene las actividades
   const servicios = [];
   const serviciosRoot = await getDocs(collection(db, 'Servicios'));
   for (const docDestino of serviciosRoot.docs) {
     const destino = docDestino.id;
-    // Campo “proveedor” en docDestino indica el id del proveedor
-    const proveedorId = docDestino.data().proveedor;
     const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
     listadoSnap.docs.forEach(sDoc => {
       servicios.push({
         destino,
         nombreActividad: sDoc.id,
-        proveedorId
+        proveedorId: sDoc.data().proveedor   // campo 'proveedor' en cada actividad
       });
     });
   }
@@ -70,20 +68,26 @@ async function init() {
   const fechasSet = new Set();
   grupos.forEach(g => {
     if (Array.isArray(g.itinerario)) {
-      g.itinerario.forEach(item => fechasSet.add(item.dia));
+      g.itinerario.forEach(item => {
+        const dateObj = item.dia.toDate();
+        const label = dateObj.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
+        fechasSet.add(label);
+      });
     }
   });
-  const fechas = Array.from(fechasSet).sort();
+  const fechas = Array.from(fechasSet).sort((a, b) => {
+    const [da, ma] = a.split('/').map(Number);
+    const [db, mb] = b.split('/').map(Number);
+    return new Date(0, ma - 1, da) - new Date(0, mb - 1, db);
+  });
 
   // ——— 7️⃣ Construir <thead> dinámico con columnas fijas + fechas ———
   const headerCols = ['Actividad', 'Destino', 'Proveedor'];
   thead.innerHTML =
     '<tr>' +
-      // Columnas fijas
       headerCols.map((h, i) =>
         `<th class="fixed-col-${i+1}">${h}</th>`
       ).join('') +
-      // Columnas de fechas
       fechas.map(f => `<th>${f}</th>`).join('') +
     '</tr>';
 
@@ -101,27 +105,28 @@ async function init() {
       <td class="fixed-col-2">${s.destino}</td>
       <td class="fixed-col-3">${proveedorStr}</td>`;
 
-    // Para cada fecha, sumar cantidadgrupo de los grupos que tengan esa actividad+destino en ese día
     fechas.forEach(dia => {
       const sumaPax = grupos.reduce((sum, g) => {
         const pax = g.cantidadgrupo || 0;
         const coincide = Array.isArray(g.itinerario) &&
-          g.itinerario.some(item =>
-            item.dia === dia &&
-            item.actividad === s.nombreActividad &&
-            item.destino === s.destino
-          );
+          g.itinerario.some(item => {
+            const label = item.dia.toDate()
+              .toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit' });
+            return label === dia &&
+              item.actividad === s.nombreActividad &&
+              item.destino === s.destino;
+          });
         return sum + (coincide ? pax : 0);
       }, 0);
       row += `<td>${sumaPax}</td>`;
     });
 
-    row += '</tr>';
+    row += `</tr>`;
     tbody.insertAdjacentHTML('beforeend', row);
   });
 
   // ——— 🔟 Inicializar DataTables tras poblar la tabla ———
-  const table = $('#tablaConteo').DataTable({
+  $('#tablaConteo').DataTable({
     scrollX: true,
     fixedHeader: true,
     dom: 'Bfrtip',
@@ -131,17 +136,14 @@ async function init() {
     ],
     initComplete() {
       const api = this.api();
-
-      // Poblado dinámico del filtro de destinos (columna 1)
+      // Poblado dinámico del filtro de destinos
       const dests = Array.from(new Set(api.column(1).data().toArray()));
       dests.forEach(d => $('#filtroDestino').append(new Option(d, d)));
-
       // Conectar buscador y filtro
       $('#buscador').on('keyup', () => api.search($('#buscador').val()).draw());
       $('#filtroDestino').on('change', () =>
         api.column(1).search($('#filtroDestino').val()).draw()
       );
-
       // Botón externo de export
       $('#btn-export-excel').on('click', () =>
         api.button('.buttons-excel').trigger()
