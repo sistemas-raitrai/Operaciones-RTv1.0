@@ -100,8 +100,8 @@ async function init() {
     let fila = `
       <tr>
         <td class="fixed-col-1">${servicio.nombre}</td>
-        <td class="fixed-col-2">${servicio.destino}</td>
-        <td class="fixed-col-3">${proveedorStr}</td>`;
+        <td>${servicio.destino}</td>
+        <td>${proveedorStr}</td>`;
 
     fechasOrdenadas.forEach(fecha => {
       let totalPax = 0;
