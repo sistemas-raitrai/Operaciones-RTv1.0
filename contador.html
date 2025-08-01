@@ -84,6 +84,42 @@
       </div>
     </div>
 
+    <!-- Modal de Reserva -->
+    <div id="modalReserva" style="display:none; position:fixed;
+         top:0; left:0; width:100%; height:100%;
+         background:rgba(0,0,0,0.5); z-index:9999;">
+      <div style="background:white; margin:5% auto; padding:1rem;
+                  width:80%; max-width:600px; position:relative;">
+        <h3>Enviar Reserva</h3>
+    
+        <label>
+          Fecha:
+          <select id="modalFecha"></select>
+        </label>
+    
+        <label>
+          Para:
+          <input type="email" id="modalPara" style="width:100%;" />
+        </label>
+    
+        <label>
+          Asunto:
+          <input type="text" id="modalAsunto" style="width:100%;" />
+        </label>
+    
+        <label>
+          Cuerpo:
+          <textarea id="modalCuerpo" style="width:100%; height:200px;"></textarea>
+        </label>
+    
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+          <button id="btnCerrarReserva">Cerrar</button>
+          <button id="btnGuardarPendiente">Guardar Pendiente</button>
+          <button id="btnEnviarReserva">Enviar</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   
