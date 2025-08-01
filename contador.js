@@ -134,6 +134,7 @@ async function init() {
   // ——— 4.8) Activar DataTables con filtros
   $('#tablaConteo').DataTable({
     scrollX: true,
+    paging: false, 
     fixedHeader: {
       header: true,
       headerOffset: 90
