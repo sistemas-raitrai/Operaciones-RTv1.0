@@ -320,25 +320,6 @@ async function guardarPendiente() {
     document.getElementById('modalReserva').style.display = 'none';
   }
 
-
-  // guardo ENVIADA en Firestore para cada fecha
-  for (const f of fechasOrdenadas) {
-    if (grupos.some(g =>
-      (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
-    )) {
-      const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-      await updateDoc(ref, {
-        [`reservas.${f}`]: { estado: 'ENVIADA', cuerpo }
-      });
-    }
-  }
-
-  // actualizo el botón CREAR y cierro modal
-  document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
-          .textContent = 'ENVIADA';
-  document.getElementById('modalReserva').style.display = 'none';
-}
-
 // —————————————————————————————————————————————
 // Función: mostrarGruposCoincidentes — modal detalle grupos
 // —————————————————————————————————————————————
