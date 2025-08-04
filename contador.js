@@ -134,15 +134,27 @@ async function init() {
   let rowsHTML = servicios.map((servicio, i) => {
     const reservas = todosLosReservas[i];
     // ① determinamos el texto del botón
-    const todasEnviadas = fechasOrdenadas.every(
-      f => reservas[f]?.estado === 'ENVIADA'
+    // 1️⃣ extraigo sólo las fechas donde realmente hubo pasajeros
+    const fechasConPax = fechasOrdenadas.filter(fecha =>
+      grupos.some(g =>
+        (g.itinerario?.[fecha]||[])
+          .some(a => a.actividad === servicio.nombre)
+      )
+    );
+    
+    // 2️⃣ compruebo que **todas** esas fechas estén enviadas
+    const todasEnviadas = fechasConPax.every(fecha =>
+      reservas[fecha]?.estado === 'ENVIADA'
     );
     const tieneAlguna = Object.keys(reservas).length > 0;
-    const textoBtn = todasEnviadas
-      ? 'ENVIADA'
-      : tieneAlguna
-        ? 'PENDIENTE'
-        : 'CREAR';
+    let textoBtn;
+    if (!tieneAlguna) {
+      textoBtn = 'CREAR';
+    } else if (todasEnviadas) {
+      textoBtn = 'ENVIADA';
+    } else {
+      textoBtn = 'PENDIENTE';
+    }
   
     // ② datos de proveedor
     const provInfo = proveedores[servicio.proveedor] || {};
