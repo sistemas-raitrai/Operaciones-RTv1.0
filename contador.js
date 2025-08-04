@@ -116,29 +116,39 @@ async function init() {
     (a.destino + a.nombre).localeCompare(b.destino + b.nombre)
   );
 
-  // ——— 5.7) Construir filas por cada servicio
-  for (const servicio of servicios) {
-    const provInfo    = proveedores[servicio.proveedor] || {};
-    const proveedorStr= provInfo.contacto ? servicio.proveedor : '-';
-  
-    // ——— ① Leemos el subdocumento de reservas
-    const refSvc      = doc(db, 'Servicios', servicio.destino, 'Listado', servicio.nombre);
-    const snapSvc     = await getDoc(refSvc);
-    const reservas    = snapSvc.exists() ? snapSvc.data().reservas || {} : {};
-  
-    // ——— ② Determinamos estado del botón
-    // fechasOrdenadas sólo incluye fechas con pax>0
-    const todasEnviadas = fechasOrdenadas
-      .filter(f => /* aquí podrías comprobar si hay pax en esa fecha, si quieres */ true)
-      .every(f => reservas[f]?.estado === 'ENVIADA');
-    const tieneAlguna  = Object.keys(reservas).length > 0;
-    const textoBtn     = todasEnviadas
+  // ——— 5.7) PRE-FETCH de TODOS los subdocumentos de reservas en paralelo
+  //  a) Creamos un array de referencias apuntando a cada doc de reserva
+  const referencias = servicios.map(s =>
+    doc(db, 'Servicios', s.destino, 'Listado', s.nombre)
+  );
+  //  b) Lanzamos todas las lecturas a la vez
+  const snapshots = await Promise.all(
+    referencias.map(ref => getDoc(ref))
+  );
+  //  c) Extraemos el objeto `reservas` de cada snapshot
+  const todosLosReservas = snapshots.map(snap =>
+    (snap.exists() && snap.data().reservas) ? snap.data().reservas : {}
+  );
+
+  // ——— 5.8) Montar TODO el HTML de las filas en un string
+  let rowsHTML = servicios.map((servicio, i) => {
+    const reservas = todosLosReservas[i];
+    // ① determinamos el texto del botón
+    const todasEnviadas = fechasOrdenadas.every(
+      f => reservas[f]?.estado === 'ENVIADA'
+    );
+    const tieneAlguna = Object.keys(reservas).length > 0;
+    const textoBtn = todasEnviadas
       ? 'ENVIADA'
       : tieneAlguna
         ? 'PENDIENTE'
         : 'CREAR';
   
-    // ——— ③ Construimos la fila con el estado real
+    // ② datos de proveedor
+    const provInfo = proveedores[servicio.proveedor] || {};
+    const proveedorStr = provInfo.contacto ? servicio.proveedor : '-';
+  
+    // ③ construimos la fila
     let fila = `
       <tr>
         <td class="sticky-col">${servicio.nombre}</td>
@@ -152,16 +162,17 @@ async function init() {
             ${textoBtn}
           </button>
         </td>`;
-
+  
+    // ④ celdas de conteo
     fechasOrdenadas.forEach(fecha => {
-      let totalPax = 0;
-      grupos.forEach(g => {
-        (g.itinerario?.[fecha] || []).forEach(a => {
-          if (a.actividad === servicio.nombre) {
-            totalPax += (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0);
-          }
-        });
-      });
+      const totalPax = grupos.reduce((sum, g) => {
+        return sum + (g.itinerario?.[fecha]||[])
+          .filter(a => a.actividad === servicio.nombre)
+          .reduce((s2,a) =>
+            s2 + (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)
+          , 0);
+      }, 0);
+  
       fila += `
         <td class="celda-interactiva"
             data-info='${JSON.stringify({ actividad: servicio.nombre, fecha })}'
@@ -169,17 +180,28 @@ async function init() {
           ${totalPax}
         </td>`;
     });
+  
+    return fila + '</tr>';
+  }).join('');
+  
+  // ⑤ volcamos TODO de una sola vez
+  tbody.innerHTML = rowsHTML;
 
-    fila += '</tr>';
-    tbody.insertAdjacentHTML('beforeend', fila);
-  }
-
-  // ——— 5.8 Click en “CREAR” para abrir modal de Reserva
-  document.querySelectorAll('.btn-reserva').forEach(btn => {
-    btn.addEventListener('click', abrirModalReserva);
+  // ——— 5.9) Delegación de eventos en <tbody>
+  tbody.addEventListener('click', e => {
+    // si clic en botón RESERVA
+    if (e.target.matches('.btn-reserva')) {
+      abrirModalReserva({ currentTarget: e.target });
+    }
+    // si clic en celda interactiva
+    const celda = e.target.closest('.celda-interactiva');
+    if (celda) {
+      const { actividad, fecha } = JSON.parse(celda.dataset.info);
+      mostrarGruposCoincidentes(actividad, fecha);
+    }
   });
 
-  // ——— 5.9) Inicializar DataTables con filtros y búsqueda
+  // ——— 5.10 Inicializar DataTables con filtros y búsqueda
   const table = $('#tablaConteo').DataTable({
     scrollX: true,
     paging: false,
@@ -214,14 +236,6 @@ async function init() {
         api.column(1).search($('#filtroDestino').val()).draw()
       );
     }
-  });
-
-  // ——— 5.10) Click en celdas para mostrar modal detalle
-  document.querySelectorAll('.celda-interactiva').forEach(celda => {
-    celda.addEventListener('click', () => {
-      const { actividad, fecha } = JSON.parse(celda.dataset.info);
-      mostrarGruposCoincidentes(actividad, fecha);
-    });
   });
 
   // ——— 5.11 Botones dentro del modal de Reserva
