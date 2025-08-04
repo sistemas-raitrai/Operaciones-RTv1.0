@@ -245,7 +245,7 @@ async function abrirModalReserva(event) {
 
   //  c) construir cuerpo
   let cuerpo = `Estimado/a ${provInfo.contacto}:\n\n`;
-  cuerpo += `Envio detalle de reserva para:\n\n`;
+  cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
   cuerpo += `Actividad: ${actividad}\n`;
   cuerpo += `Destino: ${destino}\n`;
   cuerpo += `Total PAX: (${totalGlobal})\n\n`;
