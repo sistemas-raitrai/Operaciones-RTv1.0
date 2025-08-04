@@ -314,7 +314,11 @@ async function guardarPendiente() {
       )) {
         const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
         await updateDoc(ref, {
-          [`reservas.${f}`]: { estado: 'ENVIADA', cuerpo }
+          [`reservas.${f}`]: {
+            estado: 'ENVIADA',
+            cuerpo,
+            totalEnviado: totalGlobal   // <-- guardamos el total que enviamos
+          }
         });
       }
     }
