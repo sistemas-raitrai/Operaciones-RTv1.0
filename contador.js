@@ -224,39 +224,44 @@ async function abrirModalReserva(event) {
   const provInfo  = proveedores[proveedor] || { contacto:'', correo:'' };
   document.getElementById('modalPara').value   = provInfo.correo;
   document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
+  
+  // ——— 2️⃣ generar el cuerpo del email con totales y coordinadores ———
+  //  a) prefiltrar fechas que tengan pasajeros para esta actividad
+  const perDateData = fechasOrdenadas
+    .map(fecha => {
+      const lista = grupos.filter(g =>
+        (g.itinerario?.[fecha]||[]).some(a => a.actividad === actividad)
+      );
+      const paxTotal = lista.reduce(
+        (sum, g) => sum + (parseInt(g.cantidadgrupo)||0),
+        0
+      );
+      return { fecha, lista, paxTotal, coordinators: lista.length };
+    })
+    .filter(d => d.lista.length > 0);
 
-  // 2️⃣ generar el cuerpo del email con **todas** las fechas
+  //  b) total global de pax
+  const totalGlobal = perDateData.reduce((sum, d) => sum + d.paxTotal, 0);
+
+  //  c) construir cuerpo
   let cuerpo = `Estimado/a ${provInfo.contacto}:\n\n`;
   cuerpo += `Envio detalle de reserva para:\n\n`;
   cuerpo += `Actividad: ${actividad}\n`;
-  cuerpo += `Destino: ${destino}\n\n`;
+  cuerpo += `Destino: ${destino}\n`;
+  cuerpo += `Total PAX: (${totalGlobal})\n\n`;
   cuerpo += `Fechas y grupos:\n\n`;
 
-  // Recorremos todas las fechas y listamos solo aquellas con PAX
-  fechasOrdenadas.forEach(f => {
-    // filtrar los grupos que tengan pax en esta fecha para la actividad
-    const lista = grupos.filter(g =>
-      (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
-    );
-    if (!lista.length) return;  // si no hay pasajeros, saltar
-
-    cuerpo += `➡️ Fecha ${formatearFechaBonita(f)}:\n`;
+  perDateData.forEach(({ fecha, lista, paxTotal, coordinators }) => {
+    cuerpo += `➡️ Fecha ${formatearFechaBonita(fecha)} - Cantidad Total (${paxTotal}) - Cantidad Coordinadores (${coordinators}):\n\n`;
     lista.forEach(g => {
-      cuerpo += `  - N°: ${g.id}, Colegio o Grupo: ${g.nombreGrupo}, Cantidad de Pax: ${g.cantidadgrupo}\n`;
+      cuerpo += `  - N°: ${g.id}, Colegio: ${g.nombreGrupo}, Cantidad de Pax: ${g.cantidadgrupo}\n`;
     });
     cuerpo += `\n`;
   });
 
   cuerpo += `Atte.\nOperaciones RaiTrai`;
 
-  const btnPendiente = document.getElementById('btnGuardarPendiente');
-  const btnEnviar    = document.getElementById('btnEnviarReserva');
-  btnPendiente.dataset.destino   = destino;
-  btnPendiente.dataset.actividad = actividad;
-  btnEnviar   .dataset.destino   = destino;
-  btnEnviar   .dataset.actividad = actividad;
-
-  // 3️⃣ volcar en el textarea y mostrar modal
+  // ——— 3️⃣ vuelca en el textarea y muestra modal ———
   document.getElementById('modalCuerpo').value = cuerpo;
   document.getElementById('modalReserva').style.display = 'block';
 }
