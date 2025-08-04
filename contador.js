@@ -177,8 +177,6 @@ async function init() {
   // ——— 5.8 Click en “CREAR” para abrir modal de Reserva
   document.querySelectorAll('.btn-reserva').forEach(btn => {
     btn.addEventListener('click', abrirModalReserva);
-  });
-
 
   // ——— 5.9) Inicializar DataTables con filtros y búsqueda
   const table = $('#tablaConteo').DataTable({
