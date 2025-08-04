@@ -117,28 +117,10 @@ async function init() {
   );
 
   // ——— 5.7) Construir filas por cada servicio
-  for (const servicio of servicios) {
-    const provInfo    = proveedores[servicio.proveedor] || {};
-    const proveedorStr= provInfo.contacto ? servicio.proveedor : '-';
-  
-    // ——— ① Leemos el subdocumento de reservas
-    const refSvc      = doc(db, 'Servicios', servicio.destino, 'Listado', servicio.nombre);
-    const snapSvc     = await getDoc(refSvc);
-    const reservas    = snapSvc.exists() ? snapSvc.data().reservas || {} : {};
-  
-    // ——— ② Determinamos estado del botón
-    // fechasOrdenadas sólo incluye fechas con pax>0
-    const todasEnviadas = fechasOrdenadas
-      .filter(f => /* aquí podrías comprobar si hay pax en esa fecha, si quieres */ true)
-      .every(f => reservas[f]?.estado === 'ENVIADA');
-    const tieneAlguna  = Object.keys(reservas).length > 0;
-    const textoBtn     = todasEnviadas
-      ? 'ENVIADA'
-      : tieneAlguna
-        ? 'PENDIENTE'
-        : 'CREAR';
-  
-    // ——— ③ Construimos la fila con el estado real
+  servicios.forEach(servicio => {
+    const provInfo = proveedores[servicio.proveedor] || {};
+    const proveedorStr = provInfo.contacto ? servicio.proveedor : '-';
+
     let fila = `
       <tr>
         <td class="sticky-col">${servicio.nombre}</td>
@@ -149,9 +131,9 @@ async function init() {
                   data-destino="${servicio.destino}"
                   data-actividad="${servicio.nombre}"
                   data-proveedor="${servicio.proveedor}">
-            ${textoBtn}
+            CREAR
           </button>
-        </td>`;
+        </td>`
 
     fechasOrdenadas.forEach(fecha => {
       let totalPax = 0;
@@ -172,14 +154,9 @@ async function init() {
 
     fila += '</tr>';
     tbody.insertAdjacentHTML('beforeend', fila);
-  }
-
-  // ——— 5.8 Click en “CREAR” para abrir modal de Reserva
-  document.querySelectorAll('.btn-reserva').forEach(btn => {
-    btn.addEventListener('click', abrirModalReserva);
   });
 
-  // ——— 5.9) Inicializar DataTables con filtros y búsqueda
+  // ——— 5.8) Inicializar DataTables con filtros y búsqueda
   const table = $('#tablaConteo').DataTable({
     scrollX: true,
     paging: false,
@@ -216,7 +193,7 @@ async function init() {
     }
   });
 
-  // ——— 5.10) Click en celdas para mostrar modal detalle
+  // ——— 5.9) Click en celdas para mostrar modal detalle
   document.querySelectorAll('.celda-interactiva').forEach(celda => {
     celda.addEventListener('click', () => {
       const { actividad, fecha } = JSON.parse(celda.dataset.info);
@@ -224,7 +201,12 @@ async function init() {
     });
   });
 
-  // ——— 5.11 Botones dentro del modal de Reserva
+  // ——— 5.🔟 Click en “CREAR” para abrir modal de Reserva
+  document.querySelectorAll('.btn-reserva').forEach(btn => {
+    btn.addEventListener('click', abrirModalReserva);
+  });
+
+  // ——— 5.⓫ Botones dentro del modal de Reserva
   document.getElementById('btnCerrarReserva').onclick = () => {
     document.getElementById('modalReserva').style.display = 'none';
   };
