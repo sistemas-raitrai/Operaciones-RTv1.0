@@ -285,17 +285,41 @@ async function guardarPendiente() {
 /**
  * Dispara mailto y guarda ENVIADA **todas** las fechas
  */
-async function enviarReserva() {
-  const btn       = document.getElementById('btnEnviarReserva');
-  const destino   = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-  const para      = document.getElementById('modalPara').value;
-  const asunto    = document.getElementById('modalAsunto').value;
-  const cuerpo    = document.getElementById('modalCuerpo').value;
+  async function enviarReserva() {
+    const btn       = document.getElementById('btnEnviarReserva');
+    const destino   = btn.dataset.destino;
+    const actividad = btn.dataset.actividad;
+    const para      = document.getElementById('modalPara').value;
+    const asunto    = document.getElementById('modalAsunto').value;
+    const cuerpo    = document.getElementById('modalCuerpo').value;
+  
+    // ——— Abrir Gmail Web en nueva pestaña ———
+    const baseUrl = 'https://mail.google.com/mail/u/0/?view=cm&fs=1';
+    const params = [
+      `to=${encodeURIComponent(para)}`,
+      `su=${encodeURIComponent(asunto)}`,
+      `body=${encodeURIComponent(cuerpo)}`
+    ].join('&');
+    window.open(`${baseUrl}&${params}`, '_blank');
+  
+    // ——— Luego guardas “ENVIADA” en Firestore igual que antes ———
+    for (const f of fechasOrdenadas) {
+      if (grupos.some(g =>
+        (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
+      )) {
+        const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+        await updateDoc(ref, {
+          [`reservas.${f}`]: { estado: 'ENVIADA', cuerpo }
+        });
+      }
+    }
+  
+    // Actualizas el botón y cierras modal
+    document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
+            .textContent = 'ENVIADA';
+    document.getElementById('modalReserva').style.display = 'none';
+  }
 
-  // disparo mailto:
-  window.location.href =
-    `mailto:${para}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
 
   // guardo ENVIADA en Firestore para cada fecha
   for (const f of fechasOrdenadas) {
