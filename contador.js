@@ -175,23 +175,30 @@ async function init() {
           </button>
         </td>`;
   
-    // ④ celdas de conteo
-    fechasOrdenadas.forEach(fecha => {
-      const totalPax = grupos.reduce((sum, g) => {
-        return sum + (g.itinerario?.[fecha]||[])
-          .filter(a => a.actividad === servicio.nombre)
-          .reduce((s2,a) =>
-            s2 + (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)
-          , 0);
-      }, 0);
+  // ——— 5.8) dentro de rowsHTML, ahora con conteo de grupos
+  fechasOrdenadas.forEach(fecha => {
+    // 1️⃣ Total de pasajeros para esta actividad en esta fecha
+    const totalPax = grupos.reduce((sum, g) => {
+      return sum + (g.itinerario?.[fecha]||[])
+        .filter(a => a.actividad === servicio.nombre)
+        .reduce((s2, a) =>
+          s2 + (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)
+        , 0);
+    }, 0);
   
-      fila += `
-        <td class="celda-interactiva"
-            data-info='${JSON.stringify({ actividad: servicio.nombre, fecha })}'
-            style="cursor:pointer;color:#0055a4;text-decoration:underline;">
-          ${totalPax}
-        </td>`;
-    });
+    // 2️⃣ Número de grupos que tienen al menos 1 pax en esa actividad/fecha
+    const groupCount = grupos.filter(g =>
+      (g.itinerario?.[fecha]||[]).some(a => a.actividad === servicio.nombre)
+    ).length;
+  
+    // 3️⃣ Mostramos "210 (5)" por ejemplo
+    fila += `
+      <td class="celda-interactiva"
+          data-info='${JSON.stringify({ actividad: servicio.nombre, fecha })}'
+          style="cursor:pointer;color:#0055a4;text-decoration:underline;">
+        ${totalPax} (${groupCount})
+      </td>`;
+  });
   
     return fila + '</tr>';
   }).join('');
