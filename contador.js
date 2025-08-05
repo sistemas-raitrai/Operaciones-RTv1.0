@@ -385,18 +385,36 @@ async function guardarPendiente() {
 // Función: mostrarGruposCoincidentes — modal detalle grupos
 // —————————————————————————————————————————————
 function mostrarGruposCoincidentes(actividad, fecha) {
-  const tb = document.querySelector('#tablaModal tbody');
-  tb.innerHTML = '';
+  // 1️⃣ Filtramos los grupos que coinciden
   const lista = grupos
-    .filter(g => (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad))
+    .filter(g => (g.itinerario?.[fecha] || [])
+      .some(a => a.actividad === actividad)
+    )
     .map(g => ({
       numeroNegocio: g.id,
       nombreGrupo:   g.nombreGrupo,
       cantidadgrupo: g.cantidadgrupo,
       programa:      g.programa
     }));
+
+  // 2️⃣ Calculamos totales
+  const totalGrupos = lista.length;
+  const totalPAX = lista.reduce((sum, g) =>
+    sum + (parseInt(g.cantidadgrupo, 10) || 0)
+  , 0);
+
+  // 3️⃣ Actualizamos el título del modal
+  document.querySelector('#modalDetalle h3').textContent =
+    `Detalle de grupos — Total PAX: ${totalPAX} — Total Grupos: ${totalGrupos}`;
+
+  // 4️⃣ Rellenamos la tabla
+  const tb = document.querySelector('#tablaModal tbody');
+  tb.innerHTML = '';
   if (!lista.length) {
-    tb.innerHTML = '<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>';
+    tb.innerHTML = `
+      <tr>
+        <td colspan="4" style="text-align:center;">Sin datos</td>
+      </tr>`;
   } else {
     lista.forEach(g => {
       tb.insertAdjacentHTML('beforeend', `
@@ -408,6 +426,8 @@ function mostrarGruposCoincidentes(actividad, fecha) {
         </tr>`);
     });
   }
+
+  // 5️⃣ Mostramos el modal
   document.getElementById('modalDetalle').style.display = 'block';
 }
 
