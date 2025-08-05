@@ -725,23 +725,27 @@ function resetSwap() {
 }
 
 async function handleDateEdit(oldFecha) {
-  // Pido la nueva fecha para el Día 1
+  // 1) Pido la nueva fecha para el Día 1  
   const nueva1 = prompt("Nueva fecha para este día (YYYY-MM-DD):", oldFecha);
   if (!nueva1) return;
 
+  // 2) Obtengo el ID de grupo y los datos actuales
   const grupoId = selectNum.value;
-  const snapG   = await getDoc(doc(db, 'grupos', grupoId));
-  const g       = snapG.data();
-  
-  // Ordeno las fechas originales
+  if (!grupoId) {
+    alert("Selecciona primero un grupo.");
+    return;
+  }
+  const snapG = await getDoc(doc(db, 'grupos', grupoId));
+  const g     = snapG.data();
+
+  // 3) Ordeno las fechas originales
   const fechas = Object.keys(g.itinerario)
     .sort((a, b) => new Date(a) - new Date(b));
 
-  // Construyo manualmente el rango consecutivo a partir de nueva1
+  // 4) Construyo manualmente el nuevo rango consecutivo
   const diasCount = fechas.length;
   const newRango  = [];
   const [yy, mm, dd] = nueva1.split("-").map(Number);
-
   for (let i = 0; i < diasCount; i++) {
     const d = new Date(yy, mm - 1, dd);
     d.setDate(d.getDate() + i);
@@ -751,13 +755,13 @@ async function handleDateEdit(oldFecha) {
     newRango.push(`${yyyy}-${m2}-${d2}`);
   }
 
-  // Reasigno cada día al nuevo rango manteniendo sus actividades
+  // 5) Reasigno cada día al nuevo rango (manteniendo actividades)
   const newIt = {};
   fechas.forEach((fAnt, idx) => {
     newIt[newRango[idx]] = g.itinerario[fAnt];
   });
 
-  // Guardo en Firestore y refresco la vista
+  // 6) Actualizo en Firestore y refresco la vista
   await updateDoc(doc(db, 'grupos', grupoId), { itinerario: newIt });
   renderItinerario();
 }
