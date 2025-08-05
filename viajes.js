@@ -47,18 +47,23 @@ function filterVuelos(query) {
 
 /** ——— RELLENA tabla #flights-list con Aerolínea / Vuelo / Fecha Ida ——— */
 function renderFlightsList() {
-  // tomamos el input para luego poder setearlo al hacer clic
+  const tables = document.querySelectorAll('.flights-list');
+  if (!tables.length) return;
+
+  // cuántos vuelos ponemos en cada columna
+  const perColumn = Math.ceil(vuelos.length / tables.length);
   const searchEl = document.getElementById('search-input');
 
-  // recorremos cada tabla que tenga la clase flights-list
-  document.querySelectorAll('.flights-list').forEach(table => {
+  tables.forEach((table, colIdx) => {
     const tbody = table.querySelector('tbody');
-    // si tbody es null, significa que la tabla no existe o no tiene <tbody>
-    if (!tbody) return;  
+    tbody.innerHTML = '';
 
-    tbody.innerHTML = '';      // limpiamos contenido
+    // slice del array: [colIdx*perColumn .. colIdx*perColumn+perColumn)
+    const start = colIdx * perColumn;
+    const end   = start + perColumn;
+    const chunk = vuelos.slice(start, end);
 
-    vuelos.forEach(v => {
+    chunk.forEach(v => {
       const airline   = v.proveedor || v.tramos?.[0]?.aerolinea || '–';
       const flightNum = v.numero    || v.tramos?.[0]?.numero    || '–';
       const date      = v.tramos?.[0]?.fechaIda || v.fechaIda || '–';
@@ -66,12 +71,12 @@ function renderFlightsList() {
       const tr = document.createElement('tr');
       tr.style.cursor = 'pointer';
       tr.innerHTML = `
-        <td style="padding:.4em;">${airline}</td>
-        <td style="padding:.4em;">${flightNum}</td>
-        <td style="padding:.4em;">${date}</td>
+        <td style="padding:.3em .5em;">${airline}</td>
+        <td style="padding:.3em .5em;">${flightNum}</td>
+        <td style="padding:.3em .5em;">${date}</td>
       `;
 
-      // al clicar, en lugar de scroll, llenamos el filtro
+      // al clicar, volcamos el filtro y refrescamos las cards
       tr.onclick = () => {
         searchEl.value = flightNum;
         filterVuelos(flightNum.toLowerCase());
@@ -81,6 +86,7 @@ function renderFlightsList() {
     });
   });
 }
+
 
 onAuthStateChanged(auth,user=>{
   if(!user) return location.href='login.html';
