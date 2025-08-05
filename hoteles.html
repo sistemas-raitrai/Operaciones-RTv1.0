@@ -2,16 +2,21 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Distribución de hoteles | RT v1.0</title>
-  <link rel="stylesheet" href="estilos.css" />
-  <link rel="stylesheet" href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Distribución Hotelera | RT v1.0</title>
+  <link rel="stylesheet" href="estilos.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css"/>
+  <style>
+    /* Ajustes mínimos para el calendario */
+    .occupancy-table { width:100%; border-collapse:collapse; margin-top:1em; }
+    .occupancy-table th, .occupancy-table td { border:1px solid #ccc; padding:.3em; text-align:center; }
+  </style>
 </head>
 <body>
   <!-- Encabezado común -->
   <div id="encabezado"></div>
 
-  <h1>DISTRIBUCIÓN HOTELERA
+  <h1>DISTRIBUCIÓN HOTELERA</h1>
 
   <div class="controls">
     <input type="text" id="search-input" placeholder="Buscar hotel..." />
@@ -22,39 +27,40 @@
   <!-- Contenedor de tarjetas de hoteles -->
   <div id="hoteles-container"></div>
 
-  <!-- Listado en tablas auxiliares -->
+  <!-- Tablas auxiliares (listado simple) -->
   <div class="table-wrapper">
     <table class="hotels-list">
-      <thead>
-        <tr><th>Hotel</th><th>Dirección</th><th>Capacidad</th></tr>
-      </thead>
+      <thead><tr><th>Hotel</th><th>Dirección</th><th>Capacidad</th></tr></thead>
       <tbody></tbody>
     </table>
     <table class="hotels-list">
-      <thead>
-        <tr><th>Hotel</th><th>Dirección</th><th>Capacidad</th></tr>
-      </thead>
+      <thead><tr><th>Hotel</th><th>Dirección</th><th>Capacidad</th></tr></thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Modal Hotel -->
-  <div id="modal-backdrop" class="modal-backdrop" style="display:none"></div>
-  <div id="modal-hotel" class="modal"style="display:none">
+  <!-- Modal Hotel (crear/editar) -->
+  <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
+  <div id="modal-hotel" class="modal" style="display:none;">
     <h2 id="modal-title">Nuevo Hotel</h2>
     <form id="modal-form">
       <label>Nombre: <input id="m-nombre" type="text" required /></label>
-      <label>Dirección: <input id="m-direccion" type="text" required /></label>
-      <label>Capacidad Total: <input id="m-capacidad" type="number" min="1" required /></label>
-      <label>Disponible Desde: <input id="m-fechaInicio" type="date" /></label>
-      <label>Disponible Hasta: <input id="m-fechaFin" type="date" /></label>
+      <label>Disponible Desde: <input id="m-fechaInicio" type="date" required /></label>
+      <label>Hasta:            <input id="m-fechaFin"    type="date" required /></label>
+      <fieldset>
+        <legend>Distribución de habitaciones</legend>
+        <label>Singles:    <input id="m-singles"  type="number" min="0" value="0" /></label>
+        <label>Dobles:     <input id="m-dobles"   type="number" min="0" value="0" /></label>
+        <label>Triples:    <input id="m-triples"  type="number" min="0" value="0" /></label>
+        <label>Cuádruples: <input id="m-cuadruples" type="number" min="0" value="0" /></label>
+      </fieldset>
       <label>Status Default Grupos:
         <select id="m-statusDefault">
           <option value="confirmado">Confirmado</option>
           <option value="pendiente">Pendiente</option>
         </select>
       </label>
-      <label>Grupos:
+      <label>Grupos a asignar:
         <select id="m-grupos" multiple></select>
       </label>
       <button type="submit">Guardar</button>
@@ -63,19 +69,31 @@
   </div>
 
   <!-- Modal Historial -->
-  <div id="hist-backdrop" class="modal-backdrop" style="display:none"></div>
-  <div id="hist-modal" class="modal" style="display:none">
+  <div id="hist-backdrop" class="modal-backdrop" style="display:none;"></div>
+  <div id="hist-modal" class="modal" style="display:none;">
     <h2>Historial de Cambios</h2>
     <label>Desde: <input id="hist-start" type="date" /></label>
-    <label>Hasta: <input id="hist-end" type="date" /></label>
+    <label>Hasta: <input id="hist-end"   type="date" /></label>
     <button id="hist-refresh">Refrescar</button>
     <button id="hist-close">Cerrar</button>
     <table id="hist-table">
       <thead>
-        <tr><th>Fecha</th><th>Usuario</th><th>HotelID</th><th>Tipo</th><th>Antes</th><th>Después</th></tr>
+        <tr>
+          <th>Fecha</th><th>Usuario</th><th>HotelID</th>
+          <th>Tipo</th><th>Antes</th><th>Después</th>
+        </tr>
       </thead>
       <tbody></tbody>
     </table>
+  </div>
+
+  <!-- Modal Ocupación diaria -->
+  <div id="occ-backdrop" class="modal-backdrop" style="display:none;"></div>
+  <div id="modal-occupancy" class="modal" style="display:none; width:90%; max-width:800px;">
+    <h2>Ocupación Hotel</h2>
+    <div id="occ-header"></div>
+    <table class="occupancy-table" id="occ-table"></table>
+    <button id="occ-close">Cerrar</button>
   </div>
 
   <script src="https://unpkg.com/choices.js/public/assets/scripts/choices.min.js"></script>
