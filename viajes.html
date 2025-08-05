@@ -50,6 +50,15 @@
       padding: .3em .5em;
       border-bottom: 1px solid #ddd;
     }
+
+    .flight-card.highlight {
+      animation: highlight 1.5s ease-out;
+    }
+    
+    @keyframes highlight {
+      from { background-color: rgba(255, 255, 0, 0.6); }
+      to   { background-color: transparent; }
+    }
   </style>
 </head>
 
@@ -59,7 +68,7 @@
 
   <!-- 2) Tu contenido principal -->
   <main class="main">
-      <div class="column long"><h2>PLANIFICACIÓN DE VIAJES</h2></div>
+      <div class="column long"><h2>PLANIFICACIÓN DE VIAJES:</h2></div>
     <div class="row">
       <div class="column long">
         <input id="search-input" type="text" placeholder="🔎 Buscar vuelos y grupos…" style="margin-left:1em; margin-right:3em; padding:.3em;"/>
