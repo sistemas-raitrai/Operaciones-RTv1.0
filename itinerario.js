@@ -47,6 +47,10 @@ let editData    = null;   // { fecha, idx }
 let choicesDias = null;   // Choices.js instance
 let choicesGrupoNum = null;  // Choices para selectNum (número de negocio)
 let choicesGrupoNom = null;  // Choices para selectName (nombre de grupo)
+let editMode     = false;  // indica si estamos en modo edición
+let swapOrigin   = null;   // punto de partida para intercambio
+let swapType     = null;   // 'actividad' o 'dia'
+
 
 // —————————————————————————————————
 // Función global para sumar numéricamente
@@ -120,10 +124,23 @@ async function initItinerario() {
     btnGuardarTpl.onclick = guardarPlantilla;
     btnCargarTpl.onclick  = cargarPlantilla;
     await cargarListaPlantillas();
-  
+ 
     // 2.5) Primera carga
     selectNum.dispatchEvent(new Event('change'));
   }
+
+  // ————— Botón Activar/Desactivar edición —————
+  const btnToggleEdit = document.getElementById("btnToggleEdit");
+  btnToggleEdit.onclick = () => {
+    editMode = !editMode;
+    btnToggleEdit.textContent = editMode ? "Desactivar edición" : "Activar edición";
+    // deshabilitamos Quick-Add y modal para evitar conflictos
+    document.getElementById("quick-add").style.display = editMode ? "none" : "";
+    btnGuardarTpl.disabled = editMode;
+    btnCargarTpl.disabled  = editMode;
+    renderItinerario();
+  };
+
 
 // —————————————————————————————————
 // 3) renderItinerario(): crea grilla y pinta actividades
@@ -173,6 +190,15 @@ async function renderItinerario() {
     .map((d,i)=>`<option value="${d}">Día ${i+1} – ${formatDateReadable(d)}</option>`)
     .join('');
 
+  // Helper para crear un elemento con clase y texto
+  function createBtn(icon, cls) {
+    const b = document.createElement("span");
+    b.className = cls;
+    b.textContent = icon;
+    b.style.cursor = "pointer";
+    return b;
+  }
+
   // Pinto cada día
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement("section");
@@ -188,6 +214,23 @@ async function renderItinerario() {
       <ul class="activity-list"></ul>
       <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
+
+    if (editMode) {
+      // 1) Añadimos iconos al <h3> para swap-dia y editar fecha
+      const h3 = sec.querySelector("h3");
+      const btnSwapDay = createBtn("🔄", "btn-swap-day");
+      const btnEditDate = createBtn("✏️", "btn-edit-date");
+      btnSwapDay.dataset.fecha = fecha;
+      btnEditDate.dataset.fecha = fecha;
+      h3.appendChild(btnSwapDay);
+      h3.appendChild(btnEditDate);
+    
+      // 2) Handler intercambio de días
+      btnSwapDay.onclick = () => handleSwapClick("dia", fecha);
+      // 3) Handler edición de fecha
+      btnEditDate.onclick = () => handleDateEdit(fecha);
+    }
+   
     contItinerario.appendChild(sec);
 
     sec.querySelector(".btn-add")
@@ -246,7 +289,16 @@ async function renderItinerario() {
             });
             renderItinerario();
           };
-    
+
+        if (editMode) {
+          // icono swap-actividad
+          const btnSwapAct = createBtn("🔄", "btn-swap-act");
+          btnSwapAct.dataset.fecha = fecha;
+          btnSwapAct.dataset.idx   = originalIdx;
+          li.querySelector(".actions").appendChild(btnSwapAct);
+          btnSwapAct.onclick = () => handleSwapClick("actividad", { fecha, idx: originalIdx });
+        }
+        
         ul.appendChild(li);
       });
     }
@@ -628,3 +680,76 @@ window.cerrarCalendario = () => {
   document.getElementById("iframe-calendario").src           = "";
 };
 
+// Manejador de clics de swap (actividad o día)
+async function handleSwapClick(type, info) {
+  // 1) Si no hay origen, lo registramos
+  if (!swapOrigin) {
+    swapOrigin = { type, info };
+    // resaltamos visualmente
+    document.querySelectorAll(`[data-fecha="${info.fecha}"]`)[0]
+      .classList.add("swap-selected");
+    return;
+  }
+  // 2) Si el tipo no coincide, ignorar y resetear
+  if (swapOrigin.type !== type) {
+    alert("Debe intercambiar dos elementos del mismo tipo.");
+    resetSwap();
+    return;
+  }
+  // 3) Ejecutar intercambio
+  const grupoId = selectNum.value;
+  const snapG   = await getDoc(doc(db,'grupos',grupoId));
+  const it      = { ...snapG.data().itinerario };
+  
+  if (type === "dia") {
+    const f1 = swapOrigin.info;
+    const f2 = info;
+    [ it[f1], it[f2] ] = [ it[f2], it[f1] ];  // swap arrays
+  } else {
+    // actividad ↔ actividad
+    const { fecha: f1, idx: i1 } = swapOrigin.info;
+    const { fecha: f2, idx: i2 } = info;
+    [ it[f1][i1], it[f2][i2] ] = [ it[f2][i2], it[f1][i1] ];
+  }
+  
+  await updateDoc(doc(db,'grupos',grupoId), { itinerario: it });
+  resetSwap();
+  renderItinerario();
+}
+
+// Limpia el estado de swap y quita resaltados
+function resetSwap() {
+  swapOrigin = null;
+  document.querySelectorAll(".swap-selected")
+    .forEach(el => el.classList.remove("swap-selected"));
+}
+
+async function handleDateEdit(oldFecha) {
+  // 1) Pedimos la nueva fecha de día 1
+  const nueva1 = prompt("Nueva fecha para este día (YYYY-MM-DD):", oldFecha);
+  if (!nueva1) return;
+  const grupoId = selectNum.value;
+  const snapG   = await getDoc(doc(db,'grupos',grupoId));
+  const g       = snapG.data();
+  const fechas  = Object.keys(g.itinerario)
+                     .sort((a,b)=>new Date(a)-new Date(b));
+  // 2) Generamos rango consecutivo
+  const rango   = getDateRange(nueva1, null); 
+  // — nota: ajusta getDateRange para aceptar sólo inicio y generar tantas fechas como días originales:
+  const diasCount = fechas.length;
+  const newRango = [];
+  const [yy,mm,dd] = nueva1.split("-").map(Number);
+  for (let i=0; i<diasCount; i++) {
+    const d = new Date(yy,mm-1,dd);
+    d.setDate(d.getDate() + i);
+    newRango.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`);
+  }
+  // 3) Reconstruimos el itinerario con las nuevas claves
+  const newIt = {};
+  fechas.forEach((fAnt, idx) => {
+    newIt[newRango[idx]] = g.itinerario[fAnt];
+  });
+  // 4) Guardamos y refrescamos
+  await updateDoc(doc(db,'grupos',grupoId), { itinerario: newIt });
+  renderItinerario();
+}
