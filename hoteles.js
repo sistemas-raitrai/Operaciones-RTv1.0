@@ -244,7 +244,12 @@ function exportToExcel() {
 // Cerrar modales al hacer click fuera
 document.body.addEventListener('click', e => {
   if (e.target.classList.contains('modal-backdrop')) {
+    // Ocultar el backdrop
     e.target.style.display = 'none';
-    document.querySelector('.modal[style*="display: block"]')?.style.display = 'none';
+    // Buscar cualquier modal abierto y ocultarlo
+    const openModal = document.querySelector('.modal[style*="display: block"]');
+    if (openModal) {
+      openModal.style.display = 'none';
+    }
   }
 }, true);
