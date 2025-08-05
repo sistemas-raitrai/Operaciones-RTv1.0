@@ -725,31 +725,39 @@ function resetSwap() {
 }
 
 async function handleDateEdit(oldFecha) {
-  // 1) Pedimos la nueva fecha de día 1
+  // Pido la nueva fecha para el Día 1
   const nueva1 = prompt("Nueva fecha para este día (YYYY-MM-DD):", oldFecha);
   if (!nueva1) return;
+
   const grupoId = selectNum.value;
-  const snapG   = await getDoc(doc(db,'grupos',grupoId));
+  const snapG   = await getDoc(doc(db, 'grupos', grupoId));
   const g       = snapG.data();
-  const fechas  = Object.keys(g.itinerario)
-                     .sort((a,b)=>new Date(a)-new Date(b));
-  // 2) Generamos rango consecutivo
-  const rango   = getDateRange(nueva1, null); 
-  // — nota: ajusta getDateRange para aceptar sólo inicio y generar tantas fechas como días originales:
+  
+  // Ordeno las fechas originales
+  const fechas = Object.keys(g.itinerario)
+    .sort((a, b) => new Date(a) - new Date(b));
+
+  // Construyo manualmente el rango consecutivo a partir de nueva1
   const diasCount = fechas.length;
-  const newRango = [];
-  const [yy,mm,dd] = nueva1.split("-").map(Number);
-  for (let i=0; i<diasCount; i++) {
-    const d = new Date(yy,mm-1,dd);
+  const newRango  = [];
+  const [yy, mm, dd] = nueva1.split("-").map(Number);
+
+  for (let i = 0; i < diasCount; i++) {
+    const d = new Date(yy, mm - 1, dd);
     d.setDate(d.getDate() + i);
-    newRango.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`);
+    const yyyy = d.getFullYear();
+    const m2   = String(d.getMonth() + 1).padStart(2, "0");
+    const d2   = String(d.getDate()     ).padStart(2, "0");
+    newRango.push(`${yyyy}-${m2}-${d2}`);
   }
-  // 3) Reconstruimos el itinerario con las nuevas claves
+
+  // Reasigno cada día al nuevo rango manteniendo sus actividades
   const newIt = {};
   fechas.forEach((fAnt, idx) => {
     newIt[newRango[idx]] = g.itinerario[fAnt];
   });
-  // 4) Guardamos y refrescamos
-  await updateDoc(doc(db,'grupos',grupoId), { itinerario: newIt });
+
+  // Guardo en Firestore y refresco la vista
+  await updateDoc(doc(db, 'grupos', grupoId), { itinerario: newIt });
   renderItinerario();
 }
