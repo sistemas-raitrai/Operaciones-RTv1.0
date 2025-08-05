@@ -44,6 +44,12 @@
     .column { display:flex; flex-direction:column; }
     .short{flex:1} .medium{flex:3} .long{flex:6}
     input, select, textarea { text-transform:uppercase; }
+
+    #flights-list td,
+    #flights-list th {
+      padding: .3em .5em;
+      border-bottom: 1px solid #ddd;
+    }
   </style>
 </head>
 
@@ -69,16 +75,18 @@
       </div>
     </div>
 
-    <table id="flights-list" class="flight-list" style="width:100%; margin:1em 0; border-collapse:collapse;">
-      <thead style="background:#f0f0f0;">
-        <tr>
-          <th style="padding:.5em; text-align:left;">AEROLÍNEA</th>
-          <th style="padding:.5em; text-align:left;">VUELO</th>
-          <th style="padding:.5em; text-align:left;">FECHA IDA</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+    <div style="width: 30%;">
+      <table id="flights-list" style="width: 100%; border-collapse: collapse; font-size: .9em;">
+        <thead>
+          <tr>
+            <th style="text-align:left; padding: .3em;">Aerolínea</th>
+            <th style="text-align:left; padding: .3em;">Vuelo</th>
+            <th style="text-align:left; padding: .3em;">Fecha</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
   
     <div id="vuelos-container"></div>
     
