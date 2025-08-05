@@ -75,17 +75,43 @@
       </div>
     </div>
 
-    <div style="width: 30%;">
-      <table id="flights-list" style="width: 100%; border-collapse: collapse; font-size: .9em;">
-        <thead>
-          <tr>
-            <th style="text-align:left; padding: .3em;">Aerolínea</th>
-            <th style="text-align:left; padding: .3em;">Vuelo</th>
-            <th style="text-align:left; padding: .3em;">Fecha</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+    <div id="flights-list-container" style="display:flex; gap:1rem; margin-top:1rem;">
+      <div style="flex:1;">
+        <table class="flights-list" id="flights-list-1" style="width:100%; border-collapse:collapse; font-size:.9em;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:.3em;">Aerolínea</th>
+              <th style="text-align:left; padding:.3em;">Vuelo</th>
+              <th style="text-align:left; padding:.3em;">Fecha</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div style="flex:1;">
+        <table class="flights-list" id="flights-list-2" style="width:100%; border-collapse:collapse; font-size:.9em;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:.3em;">Aerolínea</th>
+              <th style="text-align:left; padding:.3em;">Vuelo</th>
+              <th style="text-align:left; padding:.3em;">Fecha</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div style="flex:1;">
+        <table class="flights-list" id="flights-list-3" style="width:100%; border-collapse:collapse; font-size:.9em;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:.3em;">Aerolínea</th>
+              <th style="text-align:left; padding:.3em;">Vuelo</th>
+              <th style="text-align:left; padding:.3em;">Fecha</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
     </div>
   
     <div id="vuelos-container"></div>
