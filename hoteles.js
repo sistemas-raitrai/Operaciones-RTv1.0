@@ -1,7 +1,8 @@
-// hoteles.js – Distribución Hotelera (versión mejorada)
+// hoteles.js – Distribución Hotelera (versión completa y mejorada)
 
 import { app, db } from './firebase-init.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import { getAuth, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection,
   getDocs,
@@ -15,36 +16,44 @@ import {
   orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-let hoteles = [];
-let grupos   = [];
-let isEdit   = false;
-let editId   = null;
-let currentUserEmail = null;
-let choiceGrupos     = null;
+let hoteles            = [];
+let grupos             = [];
+let isEdit             = false;
+let editId             = null;
+let currentUserEmail   = null;
+let choiceGrupos       = null;
 
 /** ——— UTILITARIOS ——— **/
 const toUpper = x => typeof x === 'string' ? x.toUpperCase() : x;
 
-/**
- * Formatea una fecha ISO (YYYY-MM-DD) a
- * "Lunes 15 de septiembre de 2025"
- */
+/** Formatea YYYY-MM-DD a "Lunes 15 de septiembre de 2025" */
 function fmtFecha(iso) {
+  if (!iso) return '';
   const dt = new Date(iso + 'T00:00:00');
   return dt.toLocaleDateString('es-CL', {
-    weekday: 'long',
-    day:     '2-digit',
-    month:   'long',
-    year:    'numeric'
+    weekday: 'long', day: '2-digit',
+    month: 'long', year: 'numeric'
   }).replace(/^\w/, c => c.toUpperCase());
+}
+
+/** ——— FILTRO BUSCADOR ——— **/
+function filterHoteles(q) {
+  const terms = q
+    .toLowerCase()
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
+  document.querySelectorAll('.hotel-card').forEach(card => {
+    const txt = card.textContent.toLowerCase();
+    const show = !terms.length || terms.some(term => txt.includes(term));
+    card.style.display = show ? '' : 'none';
+  });
 }
 
 /** ——— INICIALIZACIÓN ——— **/
 const auth = getAuth(app);
 onAuthStateChanged(auth, user => {
-  if (!user) {
-    return location.href = 'login.html';
-  }
+  if (!user) return location.href = 'login.html';
   currentUserEmail = user.email;
   init();
 });
@@ -57,19 +66,17 @@ async function init() {
   hideAllModals();
 }
 
-/** Carga todos los grupos disponibles para el selector */
+/** Carga grupos de Firestore */
 async function loadGrupos() {
   const snap = await getDocs(collection(db, 'grupos'));
   grupos = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-/** Conecta los controles de la UI principal */
+/** Conecta la UI (botones y buscador) */
 function initUI() {
-  // Buscador
   document.getElementById('search-input')
     .addEventListener('input', e => filterHoteles(e.target.value));
 
-  // Botones principales
   document.getElementById('btnAddHotel')
     .addEventListener('click', () => openHotelModal(null));
   document.getElementById('btnHistorial')
@@ -77,13 +84,12 @@ function initUI() {
   document.getElementById('btnExportExcel')
     .addEventListener('click', exportToExcel);
 
-  // Cerrar modales
   document.getElementById('hist-close')
     .addEventListener('click', closeHistorialModal);
   document.getElementById('occ-close')
     .addEventListener('click', closeOccupancyModal);
 
-  // Clic en backdrop cierra modales
+  // Cerrar modales al click en backdrop
   document.body.addEventListener('click', e => {
     if (e.target.classList.contains('modal-backdrop')) {
       hideAllModals();
@@ -97,9 +103,9 @@ function hideAllModals() {
   document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
 }
 
-/** ——— MODAL HOTEL (crear/editar/asignar) ——— **/
+/** ——— MODAL HOTEL ——— **/
 function initModal() {
-  // Choices.js para selección de grupos
+  // Choices.js para multiselect de grupos
   choiceGrupos = new Choices(
     document.getElementById('m-grupos'),
     { removeItemButton: true }
@@ -115,35 +121,33 @@ function initModal() {
 }
 
 /**
- * Abre el modal de hotel.
- * Si `h` es null, abre en modo 'crear'.
- * Si `h` es un objeto hotel, abre en modo 'editar/asignar'.
+ * Abre el modal para crear o editar/asignar grupos.
+ * @param {object|null} h Objeto hotel o null para nuevo
  */
 function openHotelModal(h) {
   isEdit = !!h;
   editId = h?.id ?? null;
 
-  // Título del modal
   document.getElementById('modal-title').textContent =
-    isEdit ? `ASIGNAR GRUPOS — ${toUpper(h.nombre)}` : 'NUEVO HOTEL';
+    isEdit
+      ? `ASIGNAR GRUPOS — ${toUpper(h.nombre)}`
+      : 'NUEVO HOTEL';
 
-  // Campos del formulario
-  const fields = ['nombre','fechaInicio','fechaFin','singles','dobles','triples','cuadruples'];
-  fields.forEach(key => {
-    document.getElementById(`m-${key}`).value = h?.[key] ?? '';
-  });
+  // Rellena campos
+  ['nombre','fechaInicio','fechaFin','singles','dobles','triples','cuadruples']
+    .forEach(key => {
+      document.getElementById(`m-${key}`).value = h?.[key] ?? '';
+    });
 
-  // Status default para grupos
   document.getElementById('m-statusDefault').value =
     h?.grupos?.[0]?.status ?? 'confirmado';
 
-  // Precarga grupos asignados
+  // Precarga selección de grupos
   choiceGrupos.removeActiveItems();
   if (Array.isArray(h?.grupos)) {
     choiceGrupos.setChoiceByValue(h.grupos.map(g => g.id));
   }
 
-  // Muestra modal
   document.getElementById('modal-backdrop').style.display = 'block';
   document.getElementById('modal-hotel').style.display   = 'block';
 }
@@ -153,11 +157,10 @@ function closeHotelModal() {
   document.getElementById('modal-hotel').style.display   = 'none';
 }
 
-/** Maneja Crear o Editar hotel */
+/** Envía el formulario de creación/edición */
 async function onSubmitHotel(evt) {
   evt.preventDefault();
 
-  // Construye payload básico
   const payload = {
     nombre:      toUpper(document.getElementById('m-nombre').value.trim()),
     fechaInicio: document.getElementById('m-fechaInicio').value,
@@ -168,38 +171,36 @@ async function onSubmitHotel(evt) {
     cuadruples:+document.getElementById('m-cuadruples').value||0
   };
 
-  // Asignación de grupos
-  const selectedIds = choiceGrupos.getValue(true);
+  // Asigna grupos
+  const selIds = choiceGrupos.getValue(true);
   const defaultStatus = document.getElementById('m-statusDefault').value;
-  payload.grupos = selectedIds.map(id => ({
+  payload.grupos = selIds.map(id => ({
     id,
-    status:   defaultStatus,
+    status:    defaultStatus,
     changedBy: currentUserEmail
   }));
 
   if (isEdit) {
-    // Editar existente
     const beforeSnap = await getDoc(doc(db,'hoteles',editId));
     const beforeData = beforeSnap.data();
     await updateDoc(doc(db,'hoteles',editId), payload);
     await addDoc(collection(db,'historial'), {
-      tipo: 'hotel-edit',
-      hotelId: editId,
-      antes:  beforeData,
-      despues: payload,
-      usuario: currentUserEmail,
-      ts:     serverTimestamp()
+      tipo:     'hotel-edit',
+      hotelId:  editId,
+      antes:    beforeData,
+      despues:  payload,
+      usuario:  currentUserEmail,
+      ts:       serverTimestamp()
     });
   } else {
-    // Nuevo hotel
     const ref = await addDoc(collection(db,'hoteles'), payload);
     await addDoc(collection(db,'historial'), {
-      tipo: 'hotel-new',
-      hotelId: ref.id,
-      antes:  null,
-      despues: payload,
-      usuario: currentUserEmail,
-      ts:     serverTimestamp()
+      tipo:     'hotel-new',
+      hotelId:  ref.id,
+      antes:    null,
+      despues:  payload,
+      usuario:  currentUserEmail,
+      ts:       serverTimestamp()
     });
   }
 
@@ -207,12 +208,11 @@ async function onSubmitHotel(evt) {
   await renderHoteles();
 }
 
-/** ——— RENDER DE TARJETAS DE HOTEL ——— **/
+/** ——— RENDER TARJETAS DE HOTEL ——— **/
 async function renderHoteles() {
   const cont = document.getElementById('hoteles-container');
   cont.innerHTML = '';
 
-  // Trae todos los hoteles
   const snap = await getDocs(collection(db,'hoteles'));
   hoteles = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -221,52 +221,39 @@ async function renderHoteles() {
     card.className = 'hotel-card';
     card.dataset.id = h.id;
 
-    // Encabezado rojo con rango de fechas
     const header = `
       <div class="encabezado-rojo">
         ${toUpper(h.nombre)} —
         ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
       </div>`;
 
-    // Listado de grupos asignados (opcional)
-    const gruposHtml = (h.grupos || []).map((gObj, idx) => {
-      const grp = grupos.find(x => x.id === gObj.id) || {};
-      const A = +grp.adultos || 0;
-      const E = +grp.estudiantes || 0;
-      const C = +grp.coordinadores || 0;
-      const total = A + E + C;
+    const gruposHtml = (h.grupos||[]).map((gObj, idx) => {
+      const grp = grupos.find(x => x.id===gObj.id) || {};
+      const A = +grp.adultos||0, E = +grp.estudiantes||0, C = +grp.coordinadores||0;
+      const total = A+E+C;
       return `
         <div class="group-item">
-          <div style="width:4em; font-weight:bold;">
-            ${toUpper(grp.numeroNegocio)}
-          </div>
+          <div style="width:4em;font-weight:bold;">${toUpper(grp.numeroNegocio)}</div>
           <div style="flex:1;">
             <div>${total} (A:${A} E:${E} C:${C})</div>
-            <div style="font-size:.9em; color:#555;">
+            <div style="font-size:.9em;color:#555;">
               ${fmtFecha(grp.fechaInicio)} → ${fmtFecha(grp.fechaFin)}
             </div>
           </div>
           <div class="status-cell">
             ${gObj.status==='confirmado' ? '✅ CONFIRMADO' : '🕗 PENDIENTE'}
           </div>
-          <div style="display:flex; gap:.3em;">
+          <div style="display:flex;gap:.3em;">
             <button class="btn-small"
-                    onclick="openHotelModal(${JSON.stringify(h)})">
-              ✏️
-            </button>
+                    onclick="openHotelModal(${JSON.stringify(h)})">✏️</button>
             <button class="btn-small"
-                    onclick="removeGroup('${h.id}',${idx})">
-              🗑️
-            </button>
+                    onclick="removeGroup('${h.id}',${idx})">🗑️</button>
             <button class="btn-small"
-                    onclick="swapGroup('${h.id}',${idx})">
-              🔄
-            </button>
+                    onclick="swapGroup('${h.id}',${idx})">🔄</button>
           </div>
         </div>`;
     }).join('');
 
-    // Botones de acción bajo la lista
     const actions = `
       <div style="margin-top:.7em;">
         <button class="btn-small"
@@ -274,9 +261,7 @@ async function renderHoteles() {
           ✏️ ASIGNAR GRUPOS
         </button>
         <button class="btn-small"
-                onclick="deleteHotel('${h.id}')">
-          🗑️ ELIMINAR
-        </button>
+                onclick="deleteHotel('${h.id}')">🗑️ ELIMINAR</button>
         <button class="btn-small"
                 onclick="openOccupancyModal('${h.id}')">
           📊 OCUPACIÓN
@@ -287,7 +272,7 @@ async function renderHoteles() {
     cont.appendChild(card);
   });
 
-  // Reaplica filtro
+  // reaplica filtro tras render
   filterHoteles(document.getElementById('search-input').value);
 }
 
@@ -298,40 +283,38 @@ async function deleteHotel(id) {
   const before = snap.data();
   await deleteDoc(doc(db,'hoteles',id));
   await addDoc(collection(db,'historial'), {
-    tipo: 'hotel-del',
-    hotelId: id,
-    antes: before,
-    despues: null,
-    usuario: currentUserEmail,
-    ts: serverTimestamp()
+    tipo:     'hotel-del',
+    hotelId:  id,
+    antes:    before,
+    despues:  null,
+    usuario:  currentUserEmail,
+    ts:       serverTimestamp()
   });
   await renderHoteles();
 }
 
-/** ——— QUITAR GRUPO DE HOTEL ——— **/
+/** ——— QUITAR GRUPO ——— **/
 window.removeGroup = async (hotelId, idx) => {
   const ref = doc(db,'hoteles',hotelId);
   const snap = await getDoc(ref);
   const data = snap.data();
   const before = data.grupos[idx];
   data.grupos.splice(idx,1);
-  await updateDoc(ref, { grupos: data.grupos });
+  await updateDoc(ref,{ grupos: data.grupos });
   await addDoc(collection(db,'historial'), {
-    tipo: 'hotel-grupo-del',
+    tipo:     'hotel-grupo-del',
     hotelId,
-    antes: before,
-    despues: null,
-    usuario: currentUserEmail,
-    ts: serverTimestamp()
+    antes:    before,
+    despues:  null,
+    usuario:  currentUserEmail,
+    ts:       serverTimestamp()
   });
   await renderHoteles();
 };
 
 /** ——— INTERCAMBIAR GRUPO ——— **/
 window.swapGroup = (hotelId, idx) => {
-  // Debes implementar o enlazar aquí tu función de intercambio
-  // por ejemplo: window.openSwapModal(hotelId, idx);
-  console.warn('swapGroup: implementar modal de intercambio');
+  console.warn('swapGroup: implementar aquí tu modal de intercambio');
 };
 
 /** ——— HISTORIAL ——— **/
@@ -349,9 +332,9 @@ async function loadHistorial() {
   tbody.innerHTML = '';
   const start = document.getElementById('hist-start').value;
   const end   = document.getElementById('hist-end').value;
-  const qSnap = await getDocs(query(collection(db,'historial'), orderBy('ts','desc')));
-  qSnap.docs.forEach(dSnap => {
-    const d = dSnap.data(), ts = d.ts?.toDate();
+  const snap  = await getDocs(query(collection(db,'historial'), orderBy('ts','desc')));
+  snap.docs.forEach(dSnap => {
+    const d  = dSnap.data(), ts = d.ts?.toDate();
     if (start && ts < new Date(start+'T00:00:00')) return;
     if (end   && ts > new Date(end+'T23:59:59')) return;
     const tr = document.createElement('tr');
@@ -371,21 +354,16 @@ window.openOccupancyModal = async hotelId => {
   const snap = await getDoc(doc(db,'hoteles',hotelId));
   const h    = { id: snap.id, ...snap.data() };
 
-  // Header
   document.getElementById('occ-header').innerHTML = `
     <strong>${h.nombre}</strong><br>
-    ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
-  `;
+    ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}`;
 
-  // Generar días
-  const start = new Date(h.fechaInicio);
-  const end   = new Date(h.fechaFin);
+  const start = new Date(h.fechaInicio), end = new Date(h.fechaFin);
   const days  = [];
   for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
     days.push(new Date(d));
   }
 
-  // Construir tabla
   const tbl = document.getElementById('occ-table');
   tbl.innerHTML = `
     <thead>
@@ -394,20 +372,20 @@ window.openOccupancyModal = async hotelId => {
     <tbody>
       ${days.map(d => {
         const iso = d.toISOString().slice(0,10);
-        const arr = (h.grupos||[]).filter(g => {
-          const grp = grupos.find(x=>x.id===g.id) || {};
+        const arr = (h.grupos||[]).filter(gObj => {
+          const grp = grupos.find(x=>x.id===gObj.id) || {};
           return grp.fechaInicio <= iso && iso < grp.fechaFin;
         });
         const numG = arr.length;
-        const totalPax = arr.reduce((sum, gObj) => {
+        const pax  = arr.reduce((s,gObj) => {
           const grp = grupos.find(x=>x.id===gObj.id) || {};
-          return sum + ((+grp.adultos||0) + (+grp.estudiantes||0) + (+grp.coordinadores||0));
+          return s + ((+grp.adultos||0)+(+grp.estudiantes||0)+(+grp.coordinadores||0));
         }, 0);
         return `
           <tr>
             <td>${iso}</td>
             <td>${numG}</td>
-            <td>${totalPax}</td>
+            <td>${pax}</td>
           </tr>`;
       }).join('')}
     </tbody>`;
@@ -439,11 +417,11 @@ function exportToExcel() {
     (h.grupos||[]).forEach(gObj => {
       const grp = grupos.find(x=>x.id===gObj.id) || {};
       detalle.push({
-        Hotel:   h.nombre,
-        Grupo:   grp.numeroNegocio,
-        CheckIn: grp.fechaInicio,
-        CheckOut:grp.fechaFin,
-        Estado:  gObj.status
+        Hotel:    h.nombre,
+        Grupo:    grp.numeroNegocio,
+        CheckIn:  grp.fechaInicio,
+        CheckOut: grp.fechaFin,
+        Estado:   gObj.status
       });
     });
   });
