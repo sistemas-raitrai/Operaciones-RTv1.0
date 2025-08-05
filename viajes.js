@@ -222,6 +222,9 @@ async function renderVuelos(){
   });
 
   for(const v of vuelos){
+    const airline   = v.proveedor || v.tramos?.[0]?.aerolinea || '';
+    const flightNum = v.numero    || v.tramos?.[0]?.numero    || '';
+    const date      = v.tramos?.[0]?.fechaIda || v.fechaIda || '';
     let totA = 0, totE = 0, totC = 0, totX = 0;
     let confA = 0, confE = 0, confC = 0, confX = 0;
     let paxExtrasArr = v.paxExtras || [];
