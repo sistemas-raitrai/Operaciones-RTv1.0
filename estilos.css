@@ -158,8 +158,12 @@ table.dataTable td {
   'FILL' 0,
   'wght' 400,
   'GRAD' 0,
-  'opsz' 200
+  'opsz' 48
 }
+
+.material-symbols-outlined {
+  /* escala el glifo a 48px */
+  font-size: 48px;
 
 /* ----------------------------------------------------------------------- */
 /* Estilos específicos para la vista de “Visualización de Grupos”          */
