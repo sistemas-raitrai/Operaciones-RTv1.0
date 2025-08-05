@@ -47,10 +47,6 @@ function filterVuelos(rawQuery) {
   });
 }
 
-// ——— En tu bindUI o donde definas el oninput del buscador ———
-const searchEl = document.getElementById('search-input');
-searchEl.oninput = () => filterVuelos(searchEl.value);
-
 /** ——— RELLENA tabla #flights-list con Aerolínea / Vuelo / Fecha Ida ——— */
 function renderFlightsList() {
   const tables = document.querySelectorAll('.flights-list');
