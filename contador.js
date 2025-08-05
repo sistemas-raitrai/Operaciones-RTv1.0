@@ -403,9 +403,9 @@ function mostrarGruposCoincidentes(actividad, fecha) {
     sum + (parseInt(g.cantidadgrupo, 10) || 0)
   , 0);
 
-  // 3️⃣ Actualizamos el título del modal
+  // 3️⃣ Actualizamos el título del modal con la fecha formateada
   document.querySelector('#modalDetalle h3').textContent =
-    `Detalle de grupos — Total PAX: ${totalPAX} — Total Grupos: ${totalGrupos}`;
+    `Detalle de grupos para el día ${formatearFechaBonita(fecha)} — Total PAX: ${totalPAX} — Total Grupos: ${totalGrupos}`;
 
   // 4️⃣ Rellenamos la tabla
   const tb = document.querySelector('#tablaModal tbody');
