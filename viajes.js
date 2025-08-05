@@ -24,6 +24,56 @@ let editingVueloId = null; // Para pax extras
 
 function toUpper(x) { return (typeof x === 'string') ? x.toUpperCase() : x; }
 
+/** ——— FILTRAR cards y grupos según búsqueda ——— */
+function filterVuelos(query) {
+  document.querySelectorAll('.flight-card').forEach(card => {
+    const vueloText = card.querySelector('.titulo-vuelo')?.textContent.toLowerCase() || '';
+    const matchVuelo = vueloText.includes(query);
+
+    let anyGroupVisible = false;
+    card.querySelectorAll('.group-item').forEach(item => {
+      const txt = item.textContent.toLowerCase();
+      if (!query || txt.includes(query)) {
+        item.style.display = '';
+        anyGroupVisible = true;
+      } else {
+        item.style.display = 'none';
+      }
+    });
+
+    card.style.display = (!query || matchVuelo || anyGroupVisible) ? '' : 'none';
+  });
+}
+
+/** ——— RELLENA tabla #flights-list con Aerolínea / Vuelo / Fecha Ida ——— */
+function renderFlightsList() {
+  const tbody = document.querySelector('#flights-list tbody');
+  tbody.innerHTML = '';
+  vuelos.forEach(v => {
+    const aerolínea = v.proveedor || v.tramos?.[0]?.aerolinea || '–';
+    const vuelo     = v.numero    || v.tramos?.[0]?.numero    || '–';
+    const fechaIda  = v.tramos?.[0]?.fechaIda || v.fechaIda || '–';
+
+    const tr = document.createElement('tr');
+    tr.style.cursor = 'pointer';
+    tr.innerHTML = `
+      <td style="padding:.4em;">${aerolínea}</td>
+      <td style="padding:.4em;">${vuelo}</td>
+      <td style="padding:.4em;">${fechaIda}</td>
+    `;
+    tr.onclick = () => {
+      const card = document.querySelector(`.flight-card[data-vuelo-id="${v.id}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        card.style.transition = 'background .4s';
+        card.style.background = '#ffffcc';
+        setTimeout(() => card.style.background = '', 800);
+      }
+    };
+    tbody.appendChild(tr);
+  });
+}
+
 onAuthStateChanged(auth,user=>{
   if(!user) return location.href='login.html';
   currentUserEmail = user.email;
@@ -275,6 +325,7 @@ async function renderVuelos(){
 
     const card = document.createElement('div');
     card.className = 'flight-card';
+    card.dataset.vueloId = v.id;
     card.innerHTML = `
       <h4>${fechaCard}</h4>
       ${cardBody}
@@ -292,33 +343,8 @@ async function renderVuelos(){
 
     cont.appendChild(card);
   }
-}
 
-function filterVuelos(query) {
-  document.querySelectorAll('.flight-card').forEach(card => {
-    // 1) Comprueba si coincide el header del vuelo
-    const vueloText = card.querySelector('.titulo-vuelo')?.textContent.toLowerCase() || '';
-    const matchVuelo = vueloText.includes(query);
-
-    // 2) Filtra cada grupo dentro de la tarjeta
-    let anyGroupVisible = false;
-    card.querySelectorAll('.group-item').forEach(item => {
-      const txt = item.textContent.toLowerCase();
-      if (!query || txt.includes(query)) {
-        item.style.display = '';
-        anyGroupVisible = true;
-      } else {
-        item.style.display = 'none';
-      }
-    });
-
-    // 3) Muestra la tarjeta si coincide vuelo o hay al menos un grupo visible
-    if (!query || matchVuelo || anyGroupVisible) {
-      card.style.display = '';
-    } else {
-      card.style.display = 'none';
-    }
-  });
+  renderFlightsList();  
 }
 
 function fmtFecha(iso) {
