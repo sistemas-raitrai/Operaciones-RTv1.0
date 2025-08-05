@@ -47,27 +47,38 @@ function filterVuelos(query) {
 
 /** ——— RELLENA tabla #flights-list con Aerolínea / Vuelo / Fecha Ida ——— */
 function renderFlightsList() {
-  const tbody = document.querySelector('#flights-list tbody');
-  tbody.innerHTML = '';
-  vuelos.forEach(v => {
-    const aerolinea = v.proveedor || v.tramos?.[0]?.aerolinea || '–';
-    const vuelo     = v.numero    || v.tramos?.[0]?.numero    || '–';
-    const fecha     = v.tramos?.[0]?.fechaIda || v.fechaIda || '–';
+  // tomamos el input para luego poder setearlo al hacer clic
+  const searchEl = document.getElementById('search-input');
 
-    const tr = document.createElement('tr');
-    tr.style.cursor = 'pointer';
-    tr.innerHTML = `
-      <td>${aerolinea}</td>
-      <td>${vuelo}</td>
-      <td>${fecha}</td>
-    `;
-    tr.onclick = () => {
-      // construimos la query y la aplicamos
-      const q = (aerolinea + ' ' + vuelo).toLowerCase();
-      document.getElementById('search-input').value = q;
-      filterVuelos(q);
-    };
-    tbody.appendChild(tr);
+  // recorremos cada tabla que tenga la clase flights-list
+  document.querySelectorAll('.flights-list').forEach(table => {
+    const tbody = table.querySelector('tbody');
+    // si tbody es null, significa que la tabla no existe o no tiene <tbody>
+    if (!tbody) return;  
+
+    tbody.innerHTML = '';      // limpiamos contenido
+
+    vuelos.forEach(v => {
+      const airline   = v.proveedor || v.tramos?.[0]?.aerolinea || '–';
+      const flightNum = v.numero    || v.tramos?.[0]?.numero    || '–';
+      const date      = v.tramos?.[0]?.fechaIda || v.fechaIda || '–';
+
+      const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.innerHTML = `
+        <td style="padding:.4em;">${airline}</td>
+        <td style="padding:.4em;">${flightNum}</td>
+        <td style="padding:.4em;">${date}</td>
+      `;
+
+      // al clicar, en lugar de scroll, llenamos el filtro
+      tr.onclick = () => {
+        searchEl.value = flightNum;
+        filterVuelos(flightNum.toLowerCase());
+      };
+
+      tbody.appendChild(tr);
+    });
   });
 }
 
