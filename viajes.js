@@ -25,25 +25,31 @@ let editingVueloId = null; // Para pax extras
 function toUpper(x) { return (typeof x === 'string') ? x.toUpperCase() : x; }
 
 /** ——— FILTRAR cards y grupos según búsqueda ——— */
-function filterVuelos(query) {
+function filterVuelos(rawQuery) {
+  // 1️⃣ Convertimos el input en un array de términos (trim + lowercase)
+  const terms = rawQuery
+    .toLowerCase()
+    .split(',')
+    .map(t => t.trim())
+    .filter(Boolean);
+
   document.querySelectorAll('.flight-card').forEach(card => {
-    const vueloText = card.querySelector('.titulo-vuelo')?.textContent.toLowerCase() || '';
-    const matchVuelo = vueloText.includes(query);
+    // 2️⃣ Tomamos todo el texto visible de la tarjeta
+    const text = card.textContent.toLowerCase();
 
-    let anyGroupVisible = false;
-    card.querySelectorAll('.group-item').forEach(item => {
-      const txt = item.textContent.toLowerCase();
-      if (!query || txt.includes(query)) {
-        item.style.display = '';
-        anyGroupVisible = true;
-      } else {
-        item.style.display = 'none';
-      }
-    });
+    // 3️⃣ Si no hay términos, mostramos todo. Si hay, mostramos
+    //    si ALGUNO de los términos aparece en el texto
+    const match = terms.length === 0
+      ? true
+      : terms.some(term => text.includes(term));
 
-    card.style.display = (!query || matchVuelo || anyGroupVisible) ? '' : 'none';
+    card.style.display = match ? '' : 'none';
   });
 }
+
+// ——— En tu bindUI o donde definas el oninput del buscador ———
+const searchEl = document.getElementById('search-input');
+searchEl.oninput = () => filterVuelos(searchEl.value);
 
 /** ——— RELLENA tabla #flights-list con Aerolínea / Vuelo / Fecha Ida ——— */
 function renderFlightsList() {
