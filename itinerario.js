@@ -133,7 +133,7 @@ async function initItinerario() {
   const btnToggleEdit = document.getElementById("btnToggleEdit");
   btnToggleEdit.onclick = () => {
     editMode = !editMode;
-    btnToggleEdit.textContent = editMode ? "Desactivar edición" : "Activar edición";
+    btnToggleEdit.textContent = editMode ? "🔒 Desactivar edición" : "🔓 Activar edición";
     // deshabilitamos Quick-Add y modal para evitar conflictos
     document.getElementById("quick-add").style.display = editMode ? "none" : "";
     btnGuardarTpl.disabled = editMode;
