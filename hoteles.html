@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Distribución Hotelera | RT v1.0</title>
   <link rel="stylesheet" href="estilos.css"/>
   <link rel="stylesheet" href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css"/>
   <style>
-    /* Ajustes mínimos para el calendario */
+    /* Para la tabla de ocupación */
     .occupancy-table { width:100%; border-collapse:collapse; margin-top:1em; }
-    .occupancy-table th, .occupancy-table td { border:1px solid #ccc; padding:.3em; text-align:center; }
+    .occupancy-table th, .occupancy-table td {
+      border:1px solid #ccc; padding:.3em; text-align:center;
+    }
   </style>
 </head>
 <body>
@@ -21,37 +23,26 @@
   <div class="controls">
     <input type="text" id="search-input" placeholder="Buscar hotel..." />
     <button id="btnAddHotel">Nuevo Hotel</button>
+    <button id="btnHistorial">Historial</button>
     <button id="btnExportExcel">Exportar Excel</button>
   </div>
 
   <!-- Contenedor de tarjetas de hoteles -->
   <div id="hoteles-container"></div>
 
-  <!-- Tablas auxiliares (listado simple) -->
-  <div class="table-wrapper">
-    <table class="hotels-list">
-      <thead><tr><th>Hotel</th><th>Dirección</th><th>Capacidad</th></tr></thead>
-      <tbody></tbody>
-    </table>
-    <table class="hotels-list">
-      <thead><tr><th>Hotel</th><th>Dirección</th><th>Capacidad</th></tr></thead>
-      <tbody></tbody>
-    </table>
-  </div>
-
-  <!-- Modal Hotel (crear/editar) -->
+  <!-- Modal Crear/Editar Hotel -->
   <div id="modal-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal-hotel" class="modal" style="display:none;">
     <h2 id="modal-title">Nuevo Hotel</h2>
     <form id="modal-form">
       <label>Nombre: <input id="m-nombre" type="text" required /></label>
       <label>Disponible Desde: <input id="m-fechaInicio" type="date" required /></label>
-      <label>Hasta:            <input id="m-fechaFin"    type="date" required /></label>
+      <label>Hasta: <input id="m-fechaFin" type="date" required /></label>
       <fieldset>
         <legend>Distribución de habitaciones</legend>
-        <label>Singles:    <input id="m-singles"  type="number" min="0" value="0" /></label>
-        <label>Dobles:     <input id="m-dobles"   type="number" min="0" value="0" /></label>
-        <label>Triples:    <input id="m-triples"  type="number" min="0" value="0" /></label>
+        <label>Singles:    <input id="m-singles"    type="number" min="0" value="0" /></label>
+        <label>Dobles:     <input id="m-dobles"     type="number" min="0" value="0" /></label>
+        <label>Triples:    <input id="m-triples"    type="number" min="0" value="0" /></label>
         <label>Cuádruples: <input id="m-cuadruples" type="number" min="0" value="0" /></label>
       </fieldset>
       <label>Status Default Grupos:
@@ -87,16 +78,18 @@
     </table>
   </div>
 
-  <!-- Modal Ocupación diaria -->
+  <!-- Modal Ocupación Diaria -->
   <div id="occ-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal-occupancy" class="modal" style="display:none; width:90%; max-width:800px;">
     <h2>Ocupación Hotel</h2>
     <div id="occ-header"></div>
-    <table class="occupancy-table" id="occ-table"></table>
+    <table id="occ-table" class="occupancy-table"></table>
     <button id="occ-close">Cerrar</button>
   </div>
 
+  <!-- Librerías -->
   <script src="https://unpkg.com/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module" src="firebase-init.js"></script>
   <script type="module" src="hoteles.js"></script>
 </body>
