@@ -45,19 +45,52 @@
     .short{flex:1} .medium{flex:3} .long{flex:6}
     input, select, textarea { text-transform:uppercase; }
 
-    #flights-list td,
-    #flights-list th {
-      padding: .3em .5em;
-      border-bottom: 1px solid #ddd;
-    }
-
-    .flight-card.highlight {
-      animation: highlight 1.5s ease-out;
+    /* Contenedor flex para tener 3 columnas */
+    .flights-container {
+      display: flex;
+      gap: 1rem;              /* separación horizontal entre tablas */
     }
     
-    @keyframes highlight {
-      from { background-color: rgba(255, 255, 0, 0.6); }
-      to   { background-color: transparent; }
+    /* Cada bloque con borde, radio y overflow */
+    .flights-list-wrapper {
+      flex: 1;                /* igual ancho */
+      border: 1px solid #ccc; /* borde gris claro */
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    
+    /* Tabla sin bordes colapsados, para poder separar filas */
+    .flights-list {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    
+    /* Encabezado con fondo */
+    .flights-list th {
+      background: #f5f5f5;
+      padding: .5em;
+      text-align: left;
+    }
+    
+    /* Celdas con padding consistente */
+    .flights-list td {
+      padding: .5em;
+    }
+    
+    /* Cada fila tiene su línea divisoria */
+    .flights-list tbody tr {
+      border-bottom: 1px solid #eee;
+    }
+    
+    /* Quitar la línea en la última fila */
+    .flights-list tbody tr:last-child {
+      border-bottom: none;
+    }
+    
+    /* Hover para enfatizar el item */
+    .flights-list tbody tr:hover {
+      background: #fafafa;
     }
   </style>
 </head>
@@ -68,7 +101,7 @@
 
   <!-- 2) Tu contenido principal -->
   <main class="main">
-      <div class="column long"><h2>PLANIFICACIÓN DE VIAJES</h2></div>
+      <div class="column long"><h2>PLANIFICACIÓN DE VIAJES:</h2></div>
     <div class="row">
       <div class="column long">
         <input id="search-input" type="text" placeholder="🔎 Buscar vuelos y grupos…" style="margin-left:1em; margin-right:3em; padding:.3em;"/>
@@ -85,24 +118,30 @@
     </div>
 
     <div id="flights-list-container" style="display:flex; gap:1rem; margin-top:1rem;">
-      <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
-        <thead>
-          <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
-        <thead>
-          <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-      <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
-        <thead>
-          <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
-        </thead>
-        <tbody></tbody>
-      </table>
+      <div class="flights-list-wrapper">
+        <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
+          <thead>
+            <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="flights-list-wrapper">
+        <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
+          <thead>
+            <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div> 
+      <div class="flights-list-wrapper">
+        <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
+          <thead>
+            <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>  
     </div>
   
     <div id="vuelos-container"></div>
