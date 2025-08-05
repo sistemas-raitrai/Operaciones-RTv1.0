@@ -130,18 +130,24 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
 
   <!-- 5️⃣ Flujo de carga modular -->
-  <script type="module">
-    (async () => {
-      // a) Cargar encabezado (con login y controles)
-      const headerHtml = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = headerHtml;
-
-      // b) Firebase inicializado
-      await import('./firebase-init.js');
-
-      // c) Ejecutar lógica principal del contador
-      await import('./contador.js');
-    })();
+  <script>
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById('encabezado').innerHTML = html;
+      })
+      .then(() => {
+        // Aquí creamos un único <script type="module"> que arrancará
+        // TODO tu flujo: importa firebase-init.js y luego calendario.js
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.textContent = `
+          import './firebase-init.js';
+          import './script.js'; 
+          import './contador.js';
+        `;
+        document.body.appendChild(s);
+      });
   </script>
 
   <!-- 6️⃣ Firebase en segundo plano (por si se requiere directo) -->
