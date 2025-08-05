@@ -78,8 +78,21 @@ function renderFlightsList() {
 
       // al clicar, volcamos el filtro y refrescamos las cards
       tr.onclick = () => {
+        // 1) llenamos el buscador y filtramos las cards
         searchEl.value = flightNum;
         filterVuelos(flightNum.toLowerCase());
+      
+        // 2) buscamos la card exacta por atributos y hacemos scroll
+        const selector = `.flight-card` +
+          `[data-flight="${flightNum}"]` +
+          `[data-date="${date}"]`;
+        const target = document.querySelector(selector);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          // opcional: un pequeño highlight
+          target.classList.add('highlight');
+          setTimeout(() => target.classList.remove('highlight'), 1500);
+        }
       };
 
       tbody.appendChild(tr);
@@ -340,6 +353,9 @@ async function renderVuelos(){
     const card = document.createElement('div');
     card.className = 'flight-card';
     card.dataset.vueloId = v.id;
+    card.dataset.airline = airline;    // p.ej. "LATAM"
+    card.dataset.flight  = flightNum;  // p.ej. "LA21"
+    card.dataset.date    = date;       // p.ej. "2025-09-25"
     card.innerHTML = `
       <h4>${fechaCard}</h4>
       ${cardBody}
