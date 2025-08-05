@@ -640,6 +640,17 @@ table.dataTable td {
   background-color: #dddddd !important;
 }
 
+.swap-selected {
+  outline: 2px solid #007bff;
+  background-color: rgba(0,123,255,0.1);
+}
+.btn-swap-day,
+.btn-edit-date,
+.btn-swap-act {
+  margin-left: 0.5em;
+  font-size: 0.9em;
+}
+
 /* ──────────────────────────────────────────────── */
 /* Forzar mayúsculas sólo en inputs (no en chips) */
 /* ──────────────────────────────────────────────── */
