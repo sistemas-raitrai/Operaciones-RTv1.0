@@ -50,25 +50,22 @@ function renderFlightsList() {
   const tbody = document.querySelector('#flights-list tbody');
   tbody.innerHTML = '';
   vuelos.forEach(v => {
-    const aerolínea = v.proveedor || v.tramos?.[0]?.aerolinea || '–';
+    const aerolinea = v.proveedor || v.tramos?.[0]?.aerolinea || '–';
     const vuelo     = v.numero    || v.tramos?.[0]?.numero    || '–';
-    const fechaIda  = v.tramos?.[0]?.fechaIda || v.fechaIda || '–';
+    const fecha     = v.tramos?.[0]?.fechaIda || v.fechaIda || '–';
 
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
     tr.innerHTML = `
-      <td style="padding:.4em;">${aerolínea}</td>
-      <td style="padding:.4em;">${vuelo}</td>
-      <td style="padding:.4em;">${fechaIda}</td>
+      <td>${aerolinea}</td>
+      <td>${vuelo}</td>
+      <td>${fecha}</td>
     `;
     tr.onclick = () => {
-      const card = document.querySelector(`.flight-card[data-vuelo-id="${v.id}"]`);
-      if (card) {
-        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        card.style.transition = 'background .4s';
-        card.style.background = '#ffffcc';
-        setTimeout(() => card.style.background = '', 800);
-      }
+      // construimos la query y la aplicamos
+      const q = (aerolinea + ' ' + vuelo).toLowerCase();
+      document.getElementById('search-input').value = q;
+      filterVuelos(q);
     };
     tbody.appendChild(tr);
   });
