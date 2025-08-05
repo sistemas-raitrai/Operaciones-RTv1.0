@@ -59,7 +59,7 @@
 
   <!-- 2) Tu contenido principal -->
   <main class="main">
-      <div class="column long"><h2>PLANIFICACIÓN DE VIAJES:</h2></div>
+      <div class="column long"><h2>PLANIFICACIÓN DE VIAJES</h2></div>
     <div class="row">
       <div class="column long">
         <input id="search-input" type="text" placeholder="🔎 Buscar vuelos y grupos…" style="margin-left:1em; margin-right:3em; padding:.3em;"/>
@@ -76,42 +76,24 @@
     </div>
 
     <div id="flights-list-container" style="display:flex; gap:1rem; margin-top:1rem;">
-      <div style="flex:1;">
-        <table class="flights-list" id="flights-list-1" style="width:100%; border-collapse:collapse; font-size:.9em;">
-          <thead>
-            <tr>
-              <th style="text-align:left; padding:.3em;">Aerolínea</th>
-              <th style="text-align:left; padding:.3em;">Vuelo</th>
-              <th style="text-align:left; padding:.3em;">Fecha</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div style="flex:1;">
-        <table class="flights-list" id="flights-list-2" style="width:100%; border-collapse:collapse; font-size:.9em;">
-          <thead>
-            <tr>
-              <th style="text-align:left; padding:.3em;">Aerolínea</th>
-              <th style="text-align:left; padding:.3em;">Vuelo</th>
-              <th style="text-align:left; padding:.3em;">Fecha</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div style="flex:1;">
-        <table class="flights-list" id="flights-list-3" style="width:100%; border-collapse:collapse; font-size:.9em;">
-          <thead>
-            <tr>
-              <th style="text-align:left; padding:.3em;">Aerolínea</th>
-              <th style="text-align:left; padding:.3em;">Vuelo</th>
-              <th style="text-align:left; padding:.3em;">Fecha</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
+        <thead>
+          <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
+        <thead>
+          <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
+        <thead>
+          <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
     </div>
   
     <div id="vuelos-container"></div>
