@@ -56,6 +56,9 @@ async function loadGrupos(){
 function bindUI(){
   document.getElementById('btnAddVuelo').onclick = ()=>openModal();
   document.getElementById('btnExportExcel').onclick = exportToExcel;
+
+  const searchEl = document.getElementById('search-input');
+  searchEl.oninput = () => filterVuelos(searchEl.value.trim().toLowerCase());
 }
 
 function initModal(){
@@ -289,6 +292,33 @@ async function renderVuelos(){
 
     cont.appendChild(card);
   }
+}
+
+function filterVuelos(query) {
+  document.querySelectorAll('.flight-card').forEach(card => {
+    // 1) Comprueba si coincide el header del vuelo
+    const vueloText = card.querySelector('.titulo-vuelo')?.textContent.toLowerCase() || '';
+    const matchVuelo = vueloText.includes(query);
+
+    // 2) Filtra cada grupo dentro de la tarjeta
+    let anyGroupVisible = false;
+    card.querySelectorAll('.group-item').forEach(item => {
+      const txt = item.textContent.toLowerCase();
+      if (!query || txt.includes(query)) {
+        item.style.display = '';
+        anyGroupVisible = true;
+      } else {
+        item.style.display = 'none';
+      }
+    });
+
+    // 3) Muestra la tarjeta si coincide vuelo o hay al menos un grupo visible
+    if (!query || matchVuelo || anyGroupVisible) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
 }
 
 function fmtFecha(iso) {
