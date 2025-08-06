@@ -141,7 +141,7 @@ async function renderHoteles(){
       <h3>${toUpper(h.nombre)}</h3>
       <div class="subtitulo">DESTINO: ${toUpper(h.destino)}</div>
       <div class="subsubtitulo">
-       || → DESDE ${fmtFecha(h.fechaInicio)} || → HASTA ${fmtFecha(h.fechaFin)} ||
+      → DESDE: ${fmtFecha(h.fechaInicio)} || → HASTA: ${fmtFecha(h.fechaFin)}
       </div>`;
 
     // 2.2️⃣ Cada bloque de grupo asignado
@@ -312,7 +312,7 @@ function openAssignModal(hotelId, assignId){
   choiceGrupo.setChoices(
     candidatos.map(g=>({
       value: g.id,
-      label: `${g.numeroNegocio} – ${g.nombreGrupo} (${g.cantidadGrupo} pax)`
+      label: `${g.numeroNegocio} – ${g.nombreGrupo} (${g.cantidadgrupo} pax)`
     })),
     'value','label', false
   );
@@ -373,7 +373,7 @@ async function onSubmitAssign(e) {
   // 1️⃣ Recuperar datos del grupo
   const gId = document.getElementById('a-grupo').value;
   const g   = grupos.find(x => x.id === gId) || {};
-  const maxPax = g.cantidadGrupo || 0;
+  const maxPax = g.cantidadgrupo || 0;
 
   // 2️⃣ Sumar adultos y estudiantes (todos los sexos)
   const adSum = ['M','F','O']
