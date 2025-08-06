@@ -269,6 +269,11 @@ async function abrirModalReserva(event) {
   const btn       = event.currentTarget;
   const destino   = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
+  const fecha = fechasOrdenadas.find(f =>
+    (grupos.some(g =>
+      g.itinerario?.[f]?.some(a=>a.actividad===actividad)
+    ))
+  );
   const proveedor = btn.dataset.proveedor;
 
   // 1️⃣ rellenar "Para:" y "Asunto:"
@@ -320,6 +325,7 @@ async function abrirModalReserva(event) {
   const btnPend = document.getElementById('btnGuardarPendiente');
   btnPend.dataset.destino   = destino;
   btnPend.dataset.actividad = actividad;
+  btnPend.dataset.fecha     = fecha;  
 
   const btnEnv = document.getElementById('btnEnviarReserva');
   btnEnv.dataset.destino    = destino;
@@ -337,9 +343,9 @@ async function guardarPendiente() {
   const btn      = document.getElementById('btnGuardarPendiente');
   const destino  = btn.dataset.destino;
   const actividad= btn.dataset.actividad;
+  const fecha     = btn.dataset.fecha;
   const cuerpo   = document.getElementById('modalCuerpo').value;
-  const fecha    = document.getElementById('modalFecha').value;
-
+ 
   const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
   await updateDoc(ref, {
     [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo }
