@@ -105,6 +105,18 @@
       width:100%; padding:.5em; border:none;
       border-radius:4px; cursor:pointer; font-weight:bold;
     }
+     
+    /* ========== Para el modal de asignar, filas limpias ========== */
+    .assign-row {
+      display: flex;
+      gap: 1em;
+      margin-bottom: .5em;
+    }
+    .assign-row label {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
   </style>
 </head>
 <body>
@@ -170,21 +182,32 @@
         <select id="a-grupo" required></select>
       </label>
       <div id="grupo-fechas" style="font-size:.9em;color:#555;margin:.5em 0;"></div>
-      <label>Check-in:<input id="a-checkin"  type="date" required/></label>
-      <label>Check-out:<input id="a-checkout" type="date" required/></label>
-      <label>Noches:<input id="a-noches" type="number" min="1" required readonly/></label>
-      <fieldset><legend>Adultos</legend>
-        <label>M:<input id="a-ad-M" type="number" min="0" value="0"/></label>
-        <label>F:<input id="a-ad-F" type="number" min="0" value="0"/></label>
-        <label>O:<input id="a-ad-O" type="number" min="0" value="0"/></label>
+      <div class="assign-row">
+        <label>Check-in:<input id="a-checkin"  type="date" required/></label>
+        <label>Check-out:<input id="a-checkout" type="date" required/></label>
+        <label>Noches:<input id="a-noches"    type="number" min="1" readonly/></label>
+      </div>
+  
+      <fieldset>
+        <legend>Adultos (max = <span id="max-pax">0</span>)</legend>
+        <div class="assign-row">
+          <label>Masculino:<input id="a-ad-M" type="number" min="0" value="0"/></label>
+          <label>Femenino:<input id="a-ad-F" type="number" min="0" value="0"/></label>
+          <label>Otro:<input       id="a-ad-O" type="number" min="0" value="0"/></label>
+        </div>
       </fieldset>
-      <fieldset><legend>Estudiantes</legend>
-        <label>M:<input id="a-es-M" type="number" min="0" value="0"/></label>
-        <label>F:<input id="a-es-F" type="number" min="0" value="0"/></label>
-        <label>O:<input id="a-es-O" type="number" min="0" value="0"/></label>
+  
+      <fieldset>
+        <legend>Estudiantes (max = <span id="max-pax">0</span>)</legend>
+        <div class="assign-row">
+          <label>Masculino:<input id="a-es-M" type="number" min="0" value="0"/></label>
+          <label>Femenino:<input id="a-es-F" type="number" min="0" value="0"/></label>
+          <label>Otro:<input       id="a-es-O" type="number" min="0" value="0"/></label>
+        </div>
       </fieldset>
+  
       <label>Coordinadores:<input id="a-coordinadores" type="number" min="1" value="1"/></label>
-
+  
       <div style="margin-top:1em;">
         <button type="submit">Guardar Asignación</button>
         <button type="button" id="assign-cancel">Cancelar</button>
