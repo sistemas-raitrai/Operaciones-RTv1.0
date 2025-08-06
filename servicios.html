@@ -65,28 +65,30 @@
     <button id="btnProv">🛠️ Administrar Proveedores</button>
   </header>
 
-  <div id="backdrop-prov" onclick="closeProveedores()"></div>
-  <div id="modal-prov">
-    <div class="header">
-      <h3>Administrar Proveedores</h3>
-      <button onclick="closeProveedores()">✖️</button>
+  <div class="row">
+    <div id="backdrop-prov" onclick="closeProveedores()"></div>
+    <div id="modal-prov">
+      <div class="header">
+        <h3>Administrar Proveedores</h3>
+        <button onclick="closeProveedores()">✖️</button>
+      </div>
+      <iframe id="iframe-prov" src=""></iframe>
     </div>
-    <iframe id="iframe-prov" src=""></iframe>
+  
+    <!-- Filtro de destinos -->
+    <div id="filter-container" style="margin:.5rem 0;">
+      <label for="destFilter">Filtrar destinos:</label>
+      <select id="destFilter" multiple style="margin-left:.5rem;">
+        <option value="ALL">— Todos —</option>
+        <option value="BRASIL">BRASIL</option>
+        <option value="BARILOCHE">BARILOCHE</option>
+        <option value="SUR DE CHILE">SUR DE CHILE</option>
+        <option value="NORTE DE CHILE">NORTE DE CHILE</option>
+        <option value="OTRO">OTRO</option>
+      </select>
+    </div>
   </div>
-
-  <!-- Filtro de destinos -->
-  <div id="filter-container" style="margin:.5rem 0;">
-    <label for="destFilter">Filtrar destinos:</label>
-    <select id="destFilter" multiple style="margin-left:.5rem;">
-      <option value="ALL">— Todos —</option>
-      <option value="BRASIL">BRASIL</option>
-      <option value="BARILOCHE">BARILOCHE</option>
-      <option value="SUR DE CHILE">SUR DE CHILE</option>
-      <option value="NORTE DE CHILE">NORTE DE CHILE</option>
-      <option value="OTRO">OTRO</option>
-    </select>
-  </div>
-
+  
   <div id="secciones"></div>
 
   <!-- SOLO este bloque, no pongas nada de lógica interna aquí -->
