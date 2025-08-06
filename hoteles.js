@@ -154,7 +154,7 @@ async function renderHoteles(){
       html += `
         <div class="group-block">
           <div class="group-header">
-            ${g.numeroNegocio} — ${toUpper(g.nombreGrupo)}
+            ${g.numeroNegocio} — ${g.identificador} - ${toUpper(g.nombreGrupo)}
             &nbsp; PAX: ${totalSinCoord}
             (A:${a.adultos.M}/${a.adultos.F}/${a.adultos.O}
              – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O})
@@ -335,7 +335,7 @@ function openAssignModal(hotelId, assignId){
   choiceGrupo.setChoices(
     candidatos.map(g=>({
       value: g.id,
-      label: `${g.numeroNegocio} – ${g.nombreGrupo} (${g.cantidadgrupo} pax)`
+      label: `${g.numeroNegocio} – ${g.identificador} - ${g.nombreGrupo} (${g.cantidadgrupo} pax)`
     })),
     'value','label', false
   );
@@ -593,6 +593,7 @@ function exportToExcel() {
       detalle.push({
         Hotel:    h.nombre,
         Grupo:    grp.numeroNegocio,
+        IUdentificador:    grp.identificador,
         CheckIn:  grp.fechaInicio,
         CheckOut: grp.fechaFin,
         Estado:   gObj.status
