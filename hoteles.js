@@ -565,7 +565,9 @@ function openOccupancyModal(hotelId){
   const start=new Date(h.fechaInicio), end=new Date(h.fechaFin), rows=[];
   for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
     const iso=d.toISOString().slice(0,10);
-    const dayAss=occ.filter(a=>a.checkIn<=iso && iso<a.checkOut);
+    const dayAss = occ.filter(a =>
+      a.checkIn <= iso && iso < a.checkOut && a.status === "confirmado"
+    );
     const gruposCount=dayAss.length;
     const totals = dayAss.reduce((acc,a)=>{
       acc.adultos.M += a.adultos.M;
