@@ -419,6 +419,10 @@ async function onSubmitAssign(e) {
     return alert(`Debes asignar exactamente ${g.estudiantes} estudiantes.`);
   }
 
+  const status = document.getElementById('a-status')?.value
+              || hoteles.find(h=>h.id===editHotelId)?.statusDefault
+              || 'pendiente';
+
   // 5️⃣ Si pasa validación, construir payload
   const payload = {
     hotelId:   editHotelId,
@@ -437,6 +441,7 @@ async function onSubmitAssign(e) {
       O: Number(document.getElementById('a-es-O').value)
     },
     coordinadores: Number(document.getElementById('a-coordinadores').value),
+    status,
     changedBy:     currentUserEmail,
     ts:            serverTimestamp()
   };
