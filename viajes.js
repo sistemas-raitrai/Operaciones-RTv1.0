@@ -158,7 +158,7 @@ function initModal(){
   choiceGrupos.setChoices(
     grupos.map(g=>({
       value:g.id,
-      label:toUpper(`${g.numeroNegocio} – ${g.nombreGrupo}`)
+      label:toUpper(`${g.numeroNegocio} - ${g.identificador} – ${g.nombreGrupo}`)
     })),
     'value','label', false
   );
@@ -260,7 +260,7 @@ async function renderVuelos(){
       const mail     = gObj.changedBy || '–';
       return `
         <div class="group-item">
-          <div class="num">${toUpper(g.numeroNegocio)}</div>
+          <div class="num">${toUpper(g.numeroNegocio)} - ${toUpper(g.identificador)}</div>
           <div class="name">
             <span class="group-name" onclick="openGroupModal('${g.id}')">
               ${toUpper(g.nombreGrupo)}
@@ -630,6 +630,7 @@ window.openGroupModal=grupoId=>{
   const g=grupos.find(x=>x.id===grupoId);
   if(!g) return alert('Grupo no encontrado');
   document.getElementById('g-numeroNegocio').value=g.numeroNegocio;
+  document.getElementById('g-identificador').value=g.identificador;
   document.getElementById('g-nombreGrupo').value  =g.nombreGrupo;
   document.getElementById('g-cantidadGrupo').value=g.cantidadGrupo||0;
   document.getElementById('g-adultos').value      =g.adultos||0;
@@ -820,6 +821,7 @@ function exportToExcel(){
         Fecha_Ida: v.fechaIda,
         Vuelo: v.numero || (v.tramos?.[0]?.numero || ''),
         Grupo_Numero: g.numeroNegocio,
+        Grupo_Identificador: g.identificador,
         Grupo_Nombre: g.nombreGrupo,
         Adultos: g.adultos||0,
         Estudiantes: g.estudiantes||0,
