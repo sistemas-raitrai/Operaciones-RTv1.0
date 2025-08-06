@@ -260,7 +260,8 @@ async function renderVuelos(){
       const mail     = gObj.changedBy || '–';
       return `
         <div class="group-item">
-          <div class="num">${toUpper(g.numeroNegocio)} - ${toUpper(g.identificador)}</div>
+          <div class="num">${toUpper(g.numeroNegocio)}</div>
+          <div class="num">${toUpper(g.identificador)}</div>
           <div class="name">
             <span class="group-name" onclick="openGroupModal('${g.id}')">
               ${toUpper(g.nombreGrupo)}
