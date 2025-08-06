@@ -13,6 +13,13 @@ let isEditAssign = false, editAssignId = null;
 let currentUserEmail = null;
 let choiceDestino = null, choiceGrupo = null;
 
+function fmtFechaCorta(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
 // Utilitarios
 const toUpper = x => typeof x==='string'?x.toUpperCase():x;
 function fmtFecha(iso) {
@@ -119,72 +126,85 @@ function filterHoteles(q){
 async function renderHoteles(){
   const cont = document.getElementById('hoteles-container');
   cont.innerHTML = '';
+
+  // 1️⃣ Traer hoteles y asignaciones ya cargadas
   const snap = await getDocs(collection(db,'hoteles'));
   hoteles = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 
+  // 2️⃣ Para cada hotel, construyo su tarjeta
   for(const h of hoteles){
-    // asignaciones de este hotel
-    const asigns = asignaciones.filter(a=>a.hotelId===h.id);
+    // Filtrar asignaciones solo de este hotel
+    const asigns = asignaciones.filter(a => a.hotelId === h.id);
 
-    // HTML grupos asignados
-    const htmlAsigns = asigns.map(a=>{
+    // 2.1️⃣ Cabecera del hotel
+    let html = `
+      <h3>${toUpper(h.nombre)}</h3>
+      <div class="subtitulo">DESTINO: ${toUpper(h.destino)}</div>
+      <div class="subsubtitulo">
+        DISPONIBILIDAD: ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
+      </div>`;
+
+    // 2.2️⃣ Cada bloque de grupo asignado
+    for(const a of asigns){
       const g = grupos.find(x=>x.id===a.grupoId) || {};
-      const totAd = a.adultos.M + a.adultos.F + a.adultos.O;
-      const totEs = a.estudiantes.M + a.estudiantes.F + a.estudiantes.O;
-      return `
-        <div class="group-item">
-          <div style="width:4em;font-weight:bold;">
-            ${toUpper(g.numeroNegocio)}
+      const totalPax = 
+        a.adultos.M + a.adultos.F + a.adultos.O +
+        a.estudiantes.M + a.estudiantes.F + a.estudiantes.O +
+        a.coordinadores;
+
+      html += `
+        <div class="group-block">
+          <div class="group-header">
+            ${g.numeroNegocio} — ${g.id} — ${toUpper(g.nombreGrupo)}
+            &nbsp; PAX: ${totalPax}
+            (A:${a.adultos.M}/${a.adultos.F}/${a.adultos.O}
+             – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O}
+             – C:${a.coordinadores})
+            <button class="btn-status">
+              ${a.status==='confirmado' ? '✅' : '🕗'}
+            </button>
           </div>
-          <div style="flex:1;">
-            <div>
-              Pax: A(${a.adultos.M}/${a.adultos.F}/${a.adultos.O})
-                  E(${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O})
-                  C(${a.coordinadores})
-            </div>
-            <div style="font-size:.9em;color:#555;">
-              ${a.checkIn} → ${a.checkOut} (${a.noches} noches)
-            </div>
+          <div class="group-dates">
+            CHEQ IN: ${fmtFechaCorta(a.checkIn)}
+            CHEQ OUT: ${fmtFechaCorta(a.checkOut)}
+            (${a.noches} noches)
           </div>
-          <div style="display:flex;gap:.3em;">
+          <div style="margin-top:.3em; display:flex; gap:.3em;">
             <button class="btn-small" data-act="editA" data-id="${a.id}">✏️</button>
             <button class="btn-small" data-act="delA"  data-id="${a.id}">🗑️</button>
           </div>
         </div>`;
-    }).join('');
+    }
 
-    // Tarjeta hotel
+    // 2.3️⃣ Acciones generales del hotel
+    html += `
+      <div style="margin-top:.7em;">
+        <button class="btn-small" data-act="editH"   data-id="${h.id}">✏️ EDITAR</button>
+        <button class="btn-small" data-act="assignH" data-id="${h.id}">🔗 ASIGNAR</button>
+        <button class="btn-small" data-act="delH"    data-id="${h.id}">🗑️ ELIMINAR</button>
+        <button class="btn-small" data-act="occH"    data-id="${h.id}">📊 OCUPACIÓN</button>
+      </div>`;
+
+    // 2.4️⃣ Renderizar la card
     const card = document.createElement('div');
     card.className = 'hotel-card';
-    card.innerHTML = `
-      <div class="encabezado-rojo">
-        ${toUpper(h.nombre)} —
-        ${toUpper(h.destino)} —
-        ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
-      </div>
-      ${htmlAsigns}
-      <div style="margin-top:.7em;">
-        <button class="btn-small" data-act="editH" data-id="${h.id}">✏️ EDITAR HOTEL</button>
-        <button class="btn-small" data-act="assignH" data-id="${h.id}">🔗 ASIGNAR GRUPO</button>
-        <button class="btn-small" data-act="delH"  data-id="${h.id}">🗑️ ELIMINAR HOTEL</button>
-        <button class="btn-small" data-act="occH"  data-id="${h.id}">📊 OCUPACIÓN</button>
-      </div>`;
+    card.innerHTML = html;
     cont.appendChild(card);
   }
-  
-  // Delegación
-  cont.querySelectorAll('.btn-small').forEach(b=>{
-    const act = b.dataset.act, id = b.dataset.id;
-    if (act === 'editH')   b.onclick = () => openHotelModal(hoteles.find(x=>x.id===id));
-    if (act === 'assignH') b.onclick = () => openAssignModal(id, null);
-    if (act === 'delH')    b.onclick = () => deleteHotel(id);
-    if (act === 'editA')   b.onclick = () => openAssignModal(null, id);
-    if (act === 'delA')    b.onclick = () => deleteAssign(id);
-    if (act === 'occH')    b.onclick = () => openOccupancyModal(id);
+
+  // 3️⃣ Delegación de eventos de todos los botones
+  cont.querySelectorAll('.btn-small').forEach(btn=>{
+    const act = btn.dataset.act, id = btn.dataset.id;
+    if(act==='editH')   btn.onclick = () => openHotelModal(hoteles.find(x=>x.id===id));
+    if(act==='assignH') btn.onclick = () => openAssignModal(id, null);
+    if(act==='delH')    btn.onclick = () => deleteHotel(id);
+    if(act==='editA')   btn.onclick = () => openAssignModal(null, id);
+    if(act==='delA')    btn.onclick = () => deleteAssign(id);
+    if(act==='occH')    btn.onclick = () => openOccupancyModal(id);
   });
 
-  // Finalmente reaplicas el filtro
-  filterHoteles( document.getElementById('search-input').value );
+  // 4️⃣ Reaplicar filtro de búsqueda
+  filterHoteles(document.getElementById('search-input').value.trim().toLowerCase());
 }
   
 // abrir/cerrar Hotel
@@ -257,57 +277,21 @@ async function deleteHotel(id){
 
 // ─── Modal Asignar Grupo ────────────────────────────────
 function setupAssignModal(){
-  // 1) Choices para selector de grupos
   choiceGrupo = new Choices(
     document.getElementById('a-grupo'),
     { removeItemButton:false }
   );
-  choiceGrupo.setChoices(
-    grupos.map(g=>({
-      value: g.id,
-      label: `${g.numeroNegocio} – ${g.nombreGrupo}`
-    })),
-    'value','label', false
-  );
-
-  // 2) Cancelar / submit del form
   document.getElementById('assign-cancel')
     .addEventListener('click', closeAssignModal);
   document.getElementById('assign-form')
     .addEventListener('submit', onSubmitAssign);
 
-  // 3) Al cambiar de grupo, actualiza max-pax y rangos
-  document.getElementById('a-grupo').addEventListener('change', e => {
-    const gid = e.target.value;
-    const g   = grupos.find(x=>x.id===gid) || {};
-    // muestra capacidad máxima
-    document.getElementById('max-pax').textContent = g.cantidadGrupo || 0;
-
-    // rango de fechas del grupo
-    document.getElementById('grupo-fechas').textContent =
-      `Rango: ${g.fechaInicio} → ${g.fechaFin}`;
-
-    // fija min/max y valores iniciales en los date inputs
-    const ci = document.getElementById('a-checkin');
-    const co = document.getElementById('a-checkout');
-    ci.min = g.fechaInicio;  ci.max = g.fechaFin;  ci.value = g.fechaInicio;
-    co.min = g.fechaInicio;  co.max = g.fechaFin;  co.value = g.fechaFin;
-
-    // recalcula noches
-    const noches = Math.round(
-      (new Date(co.value) - new Date(ci.value)) / (1000*60*60*24)
-    );
-    document.getElementById('a-noches').value = noches;
-  });
-
-  // 4) Al cambiar cualquiera de los date inputs, recalcula las noches
-  ['a-checkin','a-checkout'].forEach(id => {
+  // Recalcular noches al cambiar fechas
+  ['a-checkin','a-checkout'].forEach(id=>{
     document.getElementById(id).addEventListener('change', () => {
       const ci = document.getElementById('a-checkin').value;
       const co = document.getElementById('a-checkout').value;
-      const noches = Math.round(
-        (new Date(co) - new Date(ci)) / (1000*60*60*24)
-      );
+      const noches = Math.round((new Date(co) - new Date(ci)) / (1000*60*60*24));
       document.getElementById('a-noches').value = noches;
     });
   });
@@ -317,11 +301,29 @@ function openAssignModal(hotelId, assignId){
   isEditAssign = !!assignId;
   editHotelId  = hotelId;
   editAssignId = assignId;
+
+  // 1) filtrar choices según destino del hotel
+  const hotel = hoteles.find(h=>h.id===hotelId);
+  const dest  = hotel?.destino || '';
+  const candidatos = grupos.filter(g =>
+    g.destino === dest || (g.destino||'').includes(dest)
+  );
+  choiceGrupo.clearChoices();
+  choiceGrupo.setChoices(
+    candidatos.map(g=>({
+      value: g.id,
+      label: `${g.numeroNegocio} – ${g.nombreGrupo} (${g.cantidadGrupo} pax)`
+    })),
+    'value','label', false
+  );
+
+  // 2) si estamos editando, carga datos; si no, limpia
+  document.getElementById('assign-form').reset();
+  choiceGrupo.removeActiveItems();
   document.getElementById('assign-title').textContent =
     isEditAssign ? 'Editar Asignación' : 'Nueva Asignación';
 
-  // Si editamos, cargamos datos
-  if(isEditAssign){
+  if (isEditAssign) {
     const a = asignaciones.find(x=>x.id===assignId);
     choiceGrupo.setChoiceByValue([a.grupoId]);
     document.getElementById('a-checkin').value  = a.checkIn;
@@ -334,11 +336,30 @@ function openAssignModal(hotelId, assignId){
     document.getElementById('a-es-F').value     = a.estudiantes.F;
     document.getElementById('a-es-O').value     = a.estudiantes.O;
     document.getElementById('a-coordinadores').value = a.coordinadores;
-  } else {
-    document.getElementById('assign-form').reset();
-    choiceGrupo.removeActiveItems();
   }
 
+  // 3) cuando el usuario seleccione un grupo, actualiza máx y rango
+  document.getElementById('a-grupo')
+    .addEventListener('change', e => {
+      const gid = e.target.value;
+      const g   = grupos.find(x=>x.id===gid) || {};
+      // actualizar máximos por tipo
+      document.getElementById('max-adultos').textContent    = g.adultos    || 0;
+      document.getElementById('max-estudiantes').textContent= g.estudiantes|| 0;
+      // rango de fechas
+      document.getElementById('grupo-fechas').textContent =
+        `Rango: ${fmtFechaCorta(g.fechaInicio)} → ${fmtFechaCorta(g.fechaFin)}`;
+      // fijar inputs de fecha
+      const ci = document.getElementById('a-checkin');
+      const co = document.getElementById('a-checkout');
+      ci.min = g.fechaInicio; ci.max = g.fechaFin; ci.value = g.fechaInicio;
+      co.min = g.fechaInicio; co.max = g.fechaFin; co.value = g.fechaFin;
+      // recalcular noches
+      document.getElementById('a-noches').value =
+        Math.round((new Date(co.value)-new Date(ci.value))/(1000*60*60*24));
+    });
+
+  // 4) mostrar modal
   document.getElementById('assign-backdrop').style.display='block';
   document.getElementById('modal-assign').style.display='block';
 }
@@ -349,28 +370,36 @@ function closeAssignModal(){ hideModals(); }
 async function onSubmitAssign(e) {
   e.preventDefault();
 
-  // 1️⃣ Recuperar el grupo y su capacidad total
-  const grupoId = document.getElementById('a-grupo').value;
-  const grupo   = grupos.find(g => g.id === grupoId);
-  const maxPax  = grupo?.cantidadGrupo || 0;
+  // 1️⃣ Recuperar datos del grupo
+  const gId = document.getElementById('a-grupo').value;
+  const g   = grupos.find(x => x.id === gId) || {};
+  const maxPax = g.cantidadGrupo || 0;
 
-  // 2️⃣ Sumar adultos + estudiantes (sin diferenciar sexo)
-  const sumaAdultos = ['M','F','O']
-    .reduce((acc, k) => acc + Number(document.getElementById(`a-ad-${k}`).value), 0);
-  const sumaEst    = ['M','F','O']
-    .reduce((acc, k) => acc + Number(document.getElementById(`a-es-${k}`).value), 0);
+  // 2️⃣ Sumar adultos y estudiantes (todos los sexos)
+  const adSum = ['M','F','O']
+    .reduce((sum, k) => sum + Number(document.getElementById(`a-ad-${k}`).value), 0);
+  const esSum = ['M','F','O']
+    .reduce((sum, k) => sum + Number(document.getElementById(`a-es-${k}`).value), 0);
 
-  if (sumaAdultos + sumaEst > maxPax) {
+  // 3️⃣ Validar que no se pase del total de pax
+  if (adSum + esSum > maxPax) {
     return alert(
-      `No puedes asignar más pax de las que tiene el grupo.\n` +
-      `Total adultos+estudiantes = ${sumaAdultos + sumaEst}, máximo = ${maxPax}`
+      `Total adultos+estudiantes = ${adSum + esSum} excede la capacidad del grupo (${maxPax}).`
     );
   }
 
-  // 3️⃣ Si pasa la validación, construyes el payload
+  // 4️⃣ (Opcional) Validar que coincidan exactamente con la configuración del grupo
+  if (adSum !== (g.adultos || 0)) {
+    return alert(`Debes asignar exactamente ${g.adultos} adultos.`);
+  }
+  if (esSum !== (g.estudiantes || 0)) {
+    return alert(`Debes asignar exactamente ${g.estudiantes} estudiantes.`);
+  }
+
+  // 5️⃣ Si pasa validación, construir payload
   const payload = {
     hotelId:   editHotelId,
-    grupoId,
+    grupoId:   gId,
     checkIn:   document.getElementById('a-checkin').value,
     checkOut:  document.getElementById('a-checkout').value,
     noches:    Number(document.getElementById('a-noches').value),
@@ -389,35 +418,36 @@ async function onSubmitAssign(e) {
     ts:            serverTimestamp()
   };
 
-  // 4️⃣ Guardado / edición en Firestore + historial
+  // 6️⃣ Guardar o actualizar en Firestore + historial
   if (isEditAssign) {
     const before = asignaciones.find(a => a.id === editAssignId);
     await updateDoc(doc(db, 'hotelAssignments', editAssignId), payload);
-    await addDoc(collection(db,'historial'), {
-      tipo:   'assign-edit',
-      docId:  editAssignId,
-      antes:  before,
+    await addDoc(collection(db, 'historial'), {
+      tipo:    'assign-edit',
+      docId:   editAssignId,
+      antes:   before,
       despues: payload,
       usuario: currentUserEmail,
       ts:      serverTimestamp()
     });
   } else {
-    const ref = await addDoc(collection(db,'hotelAssignments'), payload);
-    await addDoc(collection(db,'historial'), {
-      tipo:   'assign-new',
-      docId:  ref.id,
-      antes:  null,
+    const ref = await addDoc(collection(db, 'hotelAssignments'), payload);
+    await addDoc(collection(db, 'historial'), {
+      tipo:    'assign-new',
+      docId:   ref.id,
+      antes:   null,
       despues: payload,
       usuario: currentUserEmail,
       ts:      serverTimestamp()
     });
   }
 
-  // 5️⃣ Refrescar UI y cerrar modal
+  // 7️⃣ Refrescar UI y cerrar modales
   await loadAsignaciones();
   await renderHoteles();
   hideModals();
 }
+
 
 // eliminar asignación
 async function deleteAssign(id){
@@ -531,7 +561,7 @@ function exportToExcel() {
     Dobles:    h.dobles,
     Triples:   h.triples,
     Cuadruples:h.cuadruples,
-    Grupos:    (h.grupos||[]).length
+    Grupos: asignaciones.filter(a=>a.hotelId===h.id).length
   }));
   const detalle=[];
   hoteles.forEach(h=>{
