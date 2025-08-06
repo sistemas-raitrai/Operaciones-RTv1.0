@@ -123,30 +123,30 @@ function filterHoteles(q){
   });
 }
 
-// 1️⃣ Reemplaza renderHoteles completamente por esto:
-async function renderHoteles(){
+async function renderHoteles() {
   const cont = document.getElementById('hoteles-container');
   cont.innerHTML = '';
 
-  // Cargamos hoteles (la colección "hoteles")
-  const snapH = await getDocs(collection(db,'hoteles'));
-  hoteles = snapH.docs.map(d=>({ id:d.id, ...d.data() }));
+  // 1️⃣ Cargar hoteles desde Firestore
+  const snapH = await getDocs(collection(db, 'hoteles'));
+  hoteles = snapH.docs.map(d => ({ id: d.id, ...d.data() }));
 
-  for(const h of hoteles){
-    // Filtramos sólo las asignaciones de este hotel
-    const asigns = asignaciones.filter(a=>a.hotelId===h.id);
+  for (const h of hoteles) {
+    // 2️⃣ Filtrar asignaciones de este hotel
+    const asigns = asignaciones.filter(a => a.hotelId === h.id);
 
-    // 2.1 Cabecera del hotel
+    // 2.1 Cabecera de hotel
     let html = `
       <h3>${toUpper(h.nombre)}</h3>
       <div class="subtitulo">DESTINO: ${toUpper(h.destino)}</div>
       <div class="subsubtitulo">
         DISPONIBILIDAD: ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
-      </div>`;
+      </div>
+    `;
 
-    // 2.2 Cada bloque de grupo asignado
-    for(const a of asigns){
-      const g = grupos.find(x=>x.id===a.grupoId);
+    // 2.2 Cada bloque de grupo asignado (igual que vuelos)
+    for (const a of asigns) {
+      const g = grupos.find(x => x.id === a.grupoId);
       if (!g) {
         html += `<div class="group-block group-missing">
           <div class="group-header" style="color:red;">
@@ -157,7 +157,7 @@ async function renderHoteles(){
             CHEQ OUT: ${fmtFechaCorta(a.checkOut)}
           </div>
         </div>`;
-        continue; // sigue con la siguiente asignación
+        continue;
       }
       const adSum = a.adultos.M + a.adultos.F + a.adultos.O;
       const esSum = a.estudiantes.M + a.estudiantes.F + a.estudiantes.O;
@@ -165,26 +165,31 @@ async function renderHoteles(){
 
       html += `
         <div class="group-block">
-          <div class="group-header">
-            ${g.numeroNegocio} - ${g.identificador} — ${toUpper(g.nombreGrupo)}
-            &nbsp; PAX: ${totalSinCoord}
-            (A:${a.adultos.M}/${a.adultos.F}/${a.adultos.O}
-             – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O})
-            + ${a.coordinadores} Coordinador(es)
-            <button class="btn-status" data-act="togA" data-id="${a.id}">
-              ${a.status==='confirmado' ? '✅' : '🕗'}
-            </button>
+          <div class="group-header" style="gap: 0.5em; flex-wrap: wrap;">
+            <span>
+              <strong>${g.numeroNegocio} - ${g.identificador} — ${toUpper(g.nombreGrupo)}</strong>
+              &nbsp; PAX: ${totalSinCoord}
+              (A:${a.adultos.M}/${a.adultos.F}/${a.adultos.O}
+               – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O})
+              + ${a.coordinadores} Coord.
+            </span>
+            <span class="status-cell">
+              ${a.status === 'confirmado'
+                ? '✅ <span style="color:green;">CONFIRMADO</span>'
+                : '🕗 <span style="color:#da9a00;">PENDIENTE</span>'}
+              <span class="by-email" style="font-size:0.92em;color:#666;">${a.changedBy || ''}</span>
+              <button class="btn-small" style="margin-left:0.5em;" data-act="togA" data-id="${a.id}">🔄</button>
+              <button class="btn-small" data-act="editA" data-id="${a.id}">✏️</button>
+              <button class="btn-small" data-act="delA"  data-id="${a.id}">🗑️</button>
+            </span>
           </div>
           <div class="group-dates">
             CHEQ IN: ${fmtFechaCorta(a.checkIn)}
             CHEQ OUT: ${fmtFechaCorta(a.checkOut)}
             (${a.noches} noches)
           </div>
-          <div style="margin-top:.3em; display:flex; gap:.3em;">
-            <button class="btn-small" data-act="editA" data-id="${a.id}">✏️</button>
-            <button class="btn-small" data-act="delA"  data-id="${a.id}">🗑️</button>
-          </div>
-        </div>`;
+        </div>
+      `;
     }
 
     // 2.3 Acciones generales del hotel
@@ -194,7 +199,8 @@ async function renderHoteles(){
         <button class="btn-small" data-act="assignH" data-id="${h.id}">🔗 ASIGNAR</button>
         <button class="btn-small" data-act="delH"    data-id="${h.id}">🗑️ ELIMINAR</button>
         <button class="btn-small" data-act="occH"    data-id="${h.id}">📊 OCUPACIÓN</button>
-      </div>`;
+      </div>
+    `;
 
     // 2.4 Render de la tarjeta
     const card = document.createElement('div');
@@ -203,16 +209,16 @@ async function renderHoteles(){
     cont.appendChild(card);
   }
 
-  // 3️⃣ Delegar todos los botones (incluye el toggle de estado)
-  cont.querySelectorAll('.btn-small, .btn-status').forEach(btn=>{
+  // 3️⃣ Delegar todos los botones
+  cont.querySelectorAll('.btn-small, .btn-status').forEach(btn => {
     const act = btn.dataset.act, id = btn.dataset.id;
-    if(act==='editH')   btn.onclick = ()=>openHotelModal(hoteles.find(x=>x.id===id));
-    if(act==='assignH') btn.onclick = ()=>openAssignModal(id, null);
-    if(act==='delH')    btn.onclick = ()=>deleteHotel(id);
-    if(act==='editA')   btn.onclick = ()=>openAssignModal(null, id);
-    if(act==='delA')    btn.onclick = ()=>deleteAssign(id);
-    if(act==='occH')    btn.onclick = ()=>openOccupancyModal(id);
-    if(act==='togA')    btn.onclick = ()=>toggleAssignStatus(id);
+    if (act === 'editH')   btn.onclick = () => openHotelModal(hoteles.find(x => x.id === id));
+    if (act === 'assignH') btn.onclick = () => openAssignModal(id, null);
+    if (act === 'delH')    btn.onclick = () => deleteHotel(id);
+    if (act === 'editA')   btn.onclick = () => openAssignModal(null, id);
+    if (act === 'delA')    btn.onclick = () => deleteAssign(id);
+    if (act === 'occH')    btn.onclick = () => openOccupancyModal(id);
+    if (act === 'togA')    btn.onclick = () => toggleAssignStatus(id);
   });
 
   // 4️⃣ Reaplicar filtro
