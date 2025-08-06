@@ -165,6 +165,7 @@ async function renderHoteles(){
       ${htmlAsigns}
       <div style="margin-top:.7em;">
         <button class="btn-small" data-act="editH" data-id="${h.id}">✏️ EDITAR HOTEL</button>
+        <button class="btn-small" data-act="assignH" data-id="${h.id}">🔗 ASIGNAR GRUPO</button>
         <button class="btn-small" data-act="delH"  data-id="${h.id}">🗑️ ELIMINAR HOTEL</button>
         <button class="btn-small" data-act="occH"  data-id="${h.id}">📊 OCUPACIÓN</button>
       </div>`;
