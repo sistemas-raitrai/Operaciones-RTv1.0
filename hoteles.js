@@ -123,44 +123,43 @@ function filterHoteles(q){
   });
 }
 
+// 1️⃣ Reemplaza renderHoteles completamente por esto:
 async function renderHoteles(){
   const cont = document.getElementById('hoteles-container');
   cont.innerHTML = '';
 
-  // 1️⃣ Traer hoteles y asignaciones ya cargadas
-  const snap = await getDocs(collection(db,'hoteles'));
-  hoteles = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  // Cargamos hoteles (la colección "hoteles")
+  const snapH = await getDocs(collection(db,'hoteles'));
+  hoteles = snapH.docs.map(d=>({ id:d.id, ...d.data() }));
 
-  // 2️⃣ Para cada hotel, construyo su tarjeta
   for(const h of hoteles){
-    // Filtrar asignaciones solo de este hotel
-    const asigns = asignaciones.filter(a => a.hotelId === h.id);
+    // Filtramos sólo las asignaciones de este hotel
+    const asigns = asignaciones.filter(a=>a.hotelId===h.id);
 
-    // 2.1️⃣ Cabecera del hotel
+    // 2.1 Cabecera del hotel
     let html = `
       <h3>${toUpper(h.nombre)}</h3>
       <div class="subtitulo">DESTINO: ${toUpper(h.destino)}</div>
       <div class="subsubtitulo">
-      DISPONIBLE: → DESDE: ${fmtFecha(h.fechaInicio)} || → HASTA: ${fmtFecha(h.fechaFin)}
+        DISPONIBILIDAD: ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
       </div>`;
 
-    // 2.2️⃣ Cada bloque de grupo asignado
+    // 2.2 Cada bloque de grupo asignado
     for(const a of asigns){
       const g = grupos.find(x=>x.id===a.grupoId) || {};
-      const totalPax = 
-        a.adultos.M + a.adultos.F + a.adultos.O +
-        a.estudiantes.M + a.estudiantes.F + a.estudiantes.O +
-        a.coordinadores;
+      const adSum = a.adultos.M + a.adultos.F + a.adultos.O;
+      const esSum = a.estudiantes.M + a.estudiantes.F + a.estudiantes.O;
+      const totalSinCoord = adSum + esSum;
 
       html += `
         <div class="group-block">
           <div class="group-header">
-            ${g.numeroNegocio} — ${g.id} — ${toUpper(g.nombreGrupo)}
-            &nbsp; PAX: ${totalPax}
+            ${g.numeroNegocio} — ${toUpper(g.nombreGrupo)}
+            &nbsp; PAX: ${totalSinCoord}
             (A:${a.adultos.M}/${a.adultos.F}/${a.adultos.O}
-             – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O}
-             – C:${a.coordinadores})
-            <button class="btn-status">
+             – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O})
+            + ${a.coordinadores} Coordinador(es)
+            <button class="btn-status" data-act="togA" data-id="${a.id}">
               ${a.status==='confirmado' ? '✅' : '🕗'}
             </button>
           </div>
@@ -176,7 +175,7 @@ async function renderHoteles(){
         </div>`;
     }
 
-    // 2.3️⃣ Acciones generales del hotel
+    // 2.3 Acciones generales del hotel
     html += `
       <div style="margin-top:.7em;">
         <button class="btn-small" data-act="editH"   data-id="${h.id}">✏️ EDITAR</button>
@@ -185,26 +184,50 @@ async function renderHoteles(){
         <button class="btn-small" data-act="occH"    data-id="${h.id}">📊 OCUPACIÓN</button>
       </div>`;
 
-    // 2.4️⃣ Renderizar la card
+    // 2.4 Render de la tarjeta
     const card = document.createElement('div');
     card.className = 'hotel-card';
     card.innerHTML = html;
     cont.appendChild(card);
   }
 
-  // 3️⃣ Delegación de eventos de todos los botones
-  cont.querySelectorAll('.btn-small').forEach(btn=>{
+  // 3️⃣ Delegar todos los botones (incluye el toggle de estado)
+  cont.querySelectorAll('.btn-small, .btn-status').forEach(btn=>{
     const act = btn.dataset.act, id = btn.dataset.id;
-    if(act==='editH')   btn.onclick = () => openHotelModal(hoteles.find(x=>x.id===id));
-    if(act==='assignH') btn.onclick = () => openAssignModal(id, null);
-    if(act==='delH')    btn.onclick = () => deleteHotel(id);
-    if(act==='editA')   btn.onclick = () => openAssignModal(null, id);
-    if(act==='delA')    btn.onclick = () => deleteAssign(id);
-    if(act==='occH')    btn.onclick = () => openOccupancyModal(id);
+    if(act==='editH')   btn.onclick = ()=>openHotelModal(hoteles.find(x=>x.id===id));
+    if(act==='assignH') btn.onclick = ()=>openAssignModal(id, null);
+    if(act==='delH')    btn.onclick = ()=>deleteHotel(id);
+    if(act==='editA')   btn.onclick = ()=>openAssignModal(null, id);
+    if(act==='delA')    btn.onclick = ()=>deleteAssign(id);
+    if(act==='occH')    btn.onclick = ()=>openOccupancyModal(id);
+    if(act==='togA')    btn.onclick = ()=>toggleAssignStatus(id);
   });
 
-  // 4️⃣ Reaplicar filtro de búsqueda
-  filterHoteles(document.getElementById('search-input').value.trim().toLowerCase());
+  // 4️⃣ Reaplicar filtro
+  filterHoteles(document.getElementById('search-input').value);
+}
+
+// 5️⃣ Agrega al final (o donde estén tus helpers) esta función para alternar el status:
+async function toggleAssignStatus(assignId) {
+  // 1) Buscar la asignación
+  const a = asignaciones.find(x=>x.id===assignId);
+  if(!a) return;
+  // 2) Nuevo valor
+  const nuevo = a.status==='pendiente' ? 'confirmado' : 'pendiente';
+  // 3) Guardar en Firestore
+  await updateDoc(doc(db,'hotelAssignments',assignId),{ status: nuevo, changedBy: currentUserEmail });
+  // 4) Registrar en historial
+  await addDoc(collection(db,'historial'),{
+    tipo: 'assign-status',
+    docId: assignId,
+    antes: a,
+    despues: { ...a, status: nuevo },
+    usuario: currentUserEmail,
+    ts: serverTimestamp()
+  });
+  // 5) Recargar UI
+  await loadAsignaciones();
+  await renderHoteles();
 }
   
 // abrir/cerrar Hotel
