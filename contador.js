@@ -67,7 +67,7 @@ async function init() {
       servicios.push({
         destino,
         nombre: sDoc.id,
-        proveedor: data.proveedor || data.Proveedor ||| ''
+        proveedor: data.proveedor || data.Proveedor || ''
       });
     });
   }
