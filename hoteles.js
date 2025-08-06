@@ -257,55 +257,57 @@ async function deleteHotel(id){
 
 // ─── Modal Asignar Grupo ────────────────────────────────
 function setupAssignModal(){
-  // Choices para selector de grupos
+  // 1) Choices para selector de grupos
   choiceGrupo = new Choices(
     document.getElementById('a-grupo'),
     { removeItemButton:false }
   );
   choiceGrupo.setChoices(
     grupos.map(g=>({
-      value:g.id,
-      label:`${g.numeroNegocio} – ${g.nombreGrupo}`
+      value: g.id,
+      label: `${g.numeroNegocio} – ${g.nombreGrupo}`
     })),
     'value','label', false
   );
 
-    // Cuando cambio de grupo, guardo su cantidadGrupo para validación
-  document.getElementById('a-grupo').addEventListener('change', e=>{
-    const gid = e.target.value;
-    const g = grupos.find(x=>x.id===gid);
-    document.getElementById('max-pax').textContent = g?.cantidadGrupo || 0;
-
+  // 2) Cancelar / submit del form
   document.getElementById('assign-cancel')
-    .addEventListener('click',closeAssignModal);
-
+    .addEventListener('click', closeAssignModal);
   document.getElementById('assign-form')
-    .addEventListener('submit',onSubmitAssign);
+    .addEventListener('submit', onSubmitAssign);
 
-  // Al cambiar grupo, ajustamos fechas
-  document.getElementById('a-grupo')
-    .addEventListener('change',e=>{
-      const gid=e.target.value;
-      const g=grupos.find(x=>x.id===gid);
-      if(!g) return;
-      document.getElementById('grupo-fechas').textContent =
-        `Rango: ${g.fechaInicio} → ${g.fechaFin}`;
-      const ci = document.getElementById('a-checkin');
-      const co = document.getElementById('a-checkout');
-      ci.min = g.fechaInicio; ci.max = g.fechaFin;
-      co.min = g.fechaInicio; co.max = g.fechaFin;
-      ci.value = g.fechaInicio;
-      co.value = g.fechaFin;
-      document.getElementById('a-noches').value =
-        (new Date(co.value)-new Date(ci.value))/(1000*60*60*24);
-    });
+  // 3) Al cambiar de grupo, actualiza max-pax y rangos
+  document.getElementById('a-grupo').addEventListener('change', e => {
+    const gid = e.target.value;
+    const g   = grupos.find(x=>x.id===gid) || {};
+    // muestra capacidad máxima
+    document.getElementById('max-pax').textContent = g.cantidadGrupo || 0;
 
-  // Recalcula noches al cambiar fechas
-  ['a-checkin','a-checkout'].forEach(id=>{
-    document.getElementById(id).addEventListener('change',()=>{
-      const ci=document.getElementById('a-checkin').value;
-      const co=document.getElementById('a-checkout').value;
-      const noches = (new Date(co)-new Date(ci))/(1000*60*60*24);
+    // rango de fechas del grupo
+    document.getElementById('grupo-fechas').textContent =
+      `Rango: ${g.fechaInicio} → ${g.fechaFin}`;
+
+    // fija min/max y valores iniciales en los date inputs
+    const ci = document.getElementById('a-checkin');
+    const co = document.getElementById('a-checkout');
+    ci.min = g.fechaInicio;  ci.max = g.fechaFin;  ci.value = g.fechaInicio;
+    co.min = g.fechaInicio;  co.max = g.fechaFin;  co.value = g.fechaFin;
+
+    // recalcula noches
+    const noches = Math.round(
+      (new Date(co.value) - new Date(ci.value)) / (1000*60*60*24)
+    );
+    document.getElementById('a-noches').value = noches;
+  });
+
+  // 4) Al cambiar cualquiera de los date inputs, recalcula las noches
+  ['a-checkin','a-checkout'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+      const ci = document.getElementById('a-checkin').value;
+      const co = document.getElementById('a-checkout').value;
+      const noches = Math.round(
+        (new Date(co) - new Date(ci)) / (1000*60*60*24)
+      );
       document.getElementById('a-noches').value = noches;
     });
   });
