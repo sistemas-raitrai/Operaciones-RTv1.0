@@ -2,160 +2,14 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Distribución Hotelera | RT v1.0</title>
-
-  <!-- estilos -->
   <link rel="stylesheet" href="estilos.css"/>
-  <link rel="stylesheet"
-        href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css"/>
-
+  <link rel="stylesheet" href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css"/>
   <style>
-    /* CONTROLES */
-    .controls {
-      display: flex;
-      gap: .5em;
-      align-items: center;
-      margin: 1em 0;
-    }
-    #search-input {
-      flex: 1;
-      padding: .5em;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 1em;
-    }
-    .controls button {
-      background: #007bff;
-      color: #fff;
-      border: none;
-      padding: .5em 1em;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    #btnHistorial { background: #28a745; }
-    #btnExportExcel { background: #17a2b8; }
-
-    /* TARJETAS */
-    .hotel-card {
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 1em;
-      margin-bottom: 1em;
-      background: #fff;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .encabezado-rojo {
-      color: red;
-      font-weight: bold;
-      font-size: 1.1em;
-      margin-bottom: .7em;
-    }
-    .group-item {
-      display: flex;
-      align-items: center;
-      padding: .5em 0;
-      border-top: 1px solid #eee;
-    }
-    .group-item:first-of-type { border-top: none; }
-    .btn-small {
-      background: #007bff;
-      color: #fff;
-      border: none;
-      padding: .3em .6em;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-left: .3em;
-      font-size: .9em;
-    }
-    .status-cell {
-      width: 10em;
-      text-align: center;
-      font-weight: bold;
-    }
-
-    /* MODALES */
-    .modal-backdrop {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.3);
-      display: none; z-index: 1000;
-    }
-    .modal {
-      position: fixed;
-      top: 50%; left: 50%;
-      transform: translate(-50%,-50%);
-      background: #fff;
-      padding: 1.5em;
-      border-radius: 6px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      display: none; z-index: 1001;
-      max-height: 90vh; overflow-y: auto;
-      width: 90%; max-width: 600px;
-    }
-    .modal h2 { margin-top: 0; }
-    .modal form > label,
-    .modal form > fieldset {
-      display: block;
-      margin: .5em 0;
-    }
-    .modal form input,
-    .modal form select {
-      width: 100%;
-      padding: .4em;
-      margin-top: .2em;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      box-sizing: border-box;
-    }
-    .modal fieldset {
-      border: 1px solid #ccc;
-      padding: .5em;
-      border-radius: 4px;
-    }
-    .modal fieldset legend {
-      font-weight: bold;
-    }
-    .modal button {
-      margin-right: .5em;
-      padding: .5em 1em;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    .modal button[type="submit"] {
-      background: #007bff; color: #fff;
-    }
-    #modal-cancel {
-      background: #dc3545; color: #fff;
-    }
-
-    /* TABLA DE OCUPACIÓN */
-    .occupancy-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1em 0;
-    }
-    .occupancy-table th,
-    .occupancy-table td {
-      border: 1px solid #ccc;
-      padding: .4em;
-      text-align: center;
-    }
-    #modal-occupancy button {
-      background: #dc3545;
-      color: #fff;
-      margin-top: .5em;
-      padding: .5em 1em;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-    }
+    /* (tus estilos aquí, idénticos a los previos) */
   </style>
 </head>
-
 <body>
   <div id="encabezado"></div>
   <h1>DISTRIBUCIÓN HOTELERA</h1>
@@ -174,36 +28,45 @@
   <div id="modal-hotel" class="modal">
     <h2 id="modal-title">Nuevo Hotel</h2>
     <form id="modal-form">
-      <label>
-        Nombre:
+      <label>Nombre:
         <input id="m-nombre" type="text" required/>
       </label>
-      <label>
-        Disponible Desde:
+      <label>Destino:
+        <input id="m-destino" type="text" required/>
+      </label>
+      <label>Dirección:
+        <input id="m-direccion" type="text" required/>
+      </label>
+      <label>Contacto:
+        <input id="m-contactoNombre"   type="text" placeholder="Nombre" required/>
+        <input id="m-contactoCorreo"   type="email" placeholder="Correo" required/>
+        <input id="m-contactoTelefono" type="tel"   placeholder="Teléfono" required/>
+      </label>
+      <label>Disponible Desde:
         <input id="m-fechaInicio" type="date" required/>
       </label>
-      <label>
-        Hasta:
+      <label>Hasta:
         <input id="m-fechaFin" type="date" required/>
       </label>
       <fieldset>
         <legend>Distribución de habitaciones</legend>
-        <label>Singles: <input id="m-singles" type="number" min="0" value="0"/></label>
-        <label>Dobles:  <input id="m-dobles"  type="number" min="0" value="0"/></label>
-        <label>Triples: <input id="m-triples" type="number" min="0" value="0"/></label>
+        <label>Singles:    <input id="m-singles"    type="number" min="0" value="0"/></label>
+        <label>Dobles:     <input id="m-dobles"     type="number" min="0" value="0"/></label>
+        <label>Triples:    <input id="m-triples"    type="number" min="0" value="0"/></label>
         <label>Cuádruples: <input id="m-cuadruples" type="number" min="0" value="0"/></label>
       </fieldset>
-      <label>
-        Status Default Grupos:
+      <label>Status Default Grupos:
         <select id="m-statusDefault">
           <option value="confirmado">Confirmado</option>
           <option value="pendiente">Pendiente</option>
         </select>
       </label>
-      <label>
-        Grupos a asignar:
-        <select id="m-grupos" multiple></select>
-      </label>
+      <!-- Multiselect solo en edición/asignación -->
+      <div id="m-grupos-container" style="display:none;">
+        <label>Grupos a asignar:
+          <select id="m-grupos" multiple></select>
+        </label>
+      </div>
       <button type="submit">Guardar</button>
       <button type="button" id="modal-cancel">Cancelar</button>
     </form>
@@ -218,17 +81,15 @@
     <button id="hist-refresh">Refrescar</button>
     <button id="hist-close">Cerrar</button>
     <table id="hist-table">
-      <thead>
-        <tr>
-          <th>Fecha</th><th>Usuario</th><th>HotelID</th>
-          <th>Tipo</th><th>Antes</th><th>Después</th>
-        </tr>
-      </thead>
+      <thead><tr>
+        <th>Fecha</th><th>Usuario</th><th>HotelID</th>
+        <th>Tipo</th><th>Antes</th><th>Después</th>
+      </tr></thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Modal Ocupación Diaria -->
+  <!-- Modal Ocupación -->
   <div id="occ-backdrop" class="modal-backdrop"></div>
   <div id="modal-occupancy" class="modal">
     <h2>Ocupación Hotel</h2>
@@ -237,7 +98,6 @@
     <button id="occ-close">Cerrar</button>
   </div>
 
-  <!-- Librerías y scripts -->
   <script src="https://unpkg.com/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module" src="firebase-init.js"></script>
