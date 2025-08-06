@@ -1,3 +1,4 @@
+<!-- servicios.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -23,15 +24,15 @@
 
     /* ——— Anchos ——— */
     th:nth-child(1),td:nth-child(1){width:5%}
-    th:nth-child(2),td:nth-child(2){width:20%}
-    th:nth-child(3),td:nth-child(3){width:12%}
+    th:nth-child(2),td:nth-child(2){width:5%}
+    th:nth-child(3),td:nth-child(3){width:20%}
     th:nth-child(4),td:nth-child(4){width:12%}
-    th:nth-child(5),td:nth-child(5){width:10%}
-    th:nth-child(6),td:nth-child(6){width:20%}
-    th:nth-child(7),td:nth-child(7){width:12%}
-    th:nth-child(8),td:nth-child(8){width:10%}
-    th:nth-child(9),td:nth-child(9){width:8%}
-    th:nth-child(10),td:nth-child(10){width:10%}
+    th:nth-child(5),td:nth-child(5){width:12%}
+    th:nth-child(6),td:nth-child(6){width:10%}
+    th:nth-child(7),td:nth-child(7){width:20%}
+    th:nth-child(8),td:nth-child(8){width:12%}
+    th:nth-child(9),td:nth-child(9){width:10%}
+    th:nth-child(10),td:nth-child(10){width:8%}
     th:nth-child(11),td:nth-child(11){width:10%}
     th:nth-child(12),td:nth-child(12),th:nth-child(13),td:nth-child(13){width:auto}
 
@@ -50,9 +51,9 @@
     /* ——— Floating editor ——— */
     .floating-editor{ position:absolute; z-index:200; width:300px; height:80px; resize:both; box-sizing:border-box }
 
-    /* Ocultar columna Categoría (4ª columna) */
-    table th:nth-child(4),
-    table td:nth-child(4) {
+    /* Ocultar columna Categoría (5ª columna) */
+    table th:nth-child(5),
+    table td:nth-child(5) {
       display: none;
     }
   </style>
@@ -73,6 +74,19 @@
     <iframe id="iframe-prov" src=""></iframe>
   </div>
 
+  <!-- Filtro de destinos -->
+  <div id="filter-container" style="margin:.5rem 0;">
+    <label for="destFilter">Filtrar destinos:</label>
+    <select id="destFilter" multiple style="margin-left:.5rem;">
+      <option value="">— Todos —</option>
+      <option value="BRASIL">BRASIL</option>
+      <option value="BARILOCHE">BARILOCHE</option>
+      <option value="SUR DE CHILE">SUR DE CHILE</option>
+      <option value="NORTE DE CHILE">NORTE DE CHILE</option>
+      <option value="OTRO">OTRO</option>
+    </select>
+  </div>
+
   <div id="secciones"></div>
 
   <!-- SOLO este bloque, no pongas nada de lógica interna aquí -->
@@ -85,7 +99,7 @@
       // 2. Importar en orden
       await import('./firebase-init.js');
       await import('./script.js');      // usuario/reloj/header
-      await import('./servicios.js');   // tu lógica de esta página
+      await import('./servicios.js');   // lógica de esta página
     })();
   </script>
 </body>
