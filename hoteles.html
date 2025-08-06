@@ -37,11 +37,12 @@
       <label>Dirección:
         <input id="m-direccion" type="text" required/>
       </label>
-      <label>Contacto:
+      <fieldset>
+        <legend>Contacto</legend>
         <input id="m-contactoNombre"   type="text" placeholder="Nombre" required/>
         <input id="m-contactoCorreo"   type="email" placeholder="Correo" required/>
         <input id="m-contactoTelefono" type="tel"   placeholder="Teléfono" required/>
-      </label>
+      </fieldset>
       <label>Disponible Desde:
         <input id="m-fechaInicio" type="date" required/>
       </label>
@@ -61,14 +62,16 @@
           <option value="pendiente">Pendiente</option>
         </select>
       </label>
-      <!-- Multiselect solo en edición/asignación -->
+      <!-- Sólo en modo edición/asignación -->
       <div id="m-grupos-container" style="display:none;">
         <label>Grupos a asignar:
           <select id="m-grupos" multiple></select>
         </label>
       </div>
-      <button type="submit">Guardar</button>
-      <button type="button" id="modal-cancel">Cancelar</button>
+      <div style="margin-top:1em;">
+        <button type="submit">Guardar</button>
+        <button type="button" id="modal-cancel">Cancelar</button>
+      </div>
     </form>
   </div>
 
@@ -78,18 +81,22 @@
     <h2>Historial de Cambios</h2>
     <label>Desde: <input id="hist-start" type="date"/></label>
     <label>Hasta: <input id="hist-end"   type="date"/></label>
-    <button id="hist-refresh">Refrescar</button>
-    <button id="hist-close">Cerrar</button>
+    <div>
+      <button id="hist-refresh">Refrescar</button>
+      <button id="hist-close">Cerrar</button>
+    </div>
     <table id="hist-table">
-      <thead><tr>
-        <th>Fecha</th><th>Usuario</th><th>HotelID</th>
-        <th>Tipo</th><th>Antes</th><th>Después</th>
-      </tr></thead>
+      <thead>
+        <tr>
+          <th>Fecha</th><th>Usuario</th><th>HotelID</th>
+          <th>Tipo</th><th>Antes</th><th>Después</th>
+        </tr>
+      </thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Modal Ocupación -->
+  <!-- Modal Ocupación Diaria -->
   <div id="occ-backdrop" class="modal-backdrop"></div>
   <div id="modal-occupancy" class="modal">
     <h2>Ocupación Hotel</h2>
