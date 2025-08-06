@@ -677,6 +677,8 @@ function showFloatingDetail(td, html) {
   setTimeout(()=>document.addEventListener('mousedown', cerrar),50);
 }
 
+function closeOccupancyModal(){ hideModals(); }
+
 // ─── EXPORTAR EXCEL ─────────────────────────────────────
 function exportToExcel() {
   const resumen = hoteles.map(h=>({
