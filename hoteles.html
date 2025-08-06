@@ -210,12 +210,6 @@
         <label>Triples:<input id="m-triples"    type="number" min="0" value="0"/></label>
         <label>Cuádruples:<input id="m-cuadruples" type="number" min="0" value="0"/></label>
       </fieldset>
-      <label>Status Default Grupos:
-        <select id="m-statusDefault">
-          <option value="confirmado">Confirmado</option>
-          <option value="pendiente">Pendiente</option>
-        </select>
-      </label>
 
       <!-- botón abre modal Asignar Grupo -->
       <button type="button" id="btnOpenAssign">✏️ ASIGNAR GRUPO</button>
@@ -232,12 +226,6 @@
   <div id="modal-assign" class="modal">
     <h2 id="assign-title">Asignar Grupo</h2>
     <form id="assign-form">
-      <label>Status:
-        <select id="a-status" required>
-          <option value="pendiente">Pendiente</option>
-          <option value="confirmado">Confirmado</option>
-        </select>
-      </label>
       <label>Grupo:
         <select id="a-grupo" required></select>
       </label>
