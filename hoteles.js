@@ -173,11 +173,16 @@ async function renderHoteles() {
                – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O})
               + ${a.coordinadores} Coord.
             </span>
-            <span class="status-cell">
-              ${a.status === 'confirmado'
-                ? '✅ <span style="color:green;">CONFIRMADO</span>'
-                : '🕗 <span style="color:#da9a00;">PENDIENTE</span>'}
-              <span class="by-email" style="font-size:0.92em;color:#666;">${a.changedBy || ''}</span>
+            <span class="status-cell" style="display: flex; align-items: center; gap: .5em;">
+              <span class="status-ico" style="font-size:1.2em;">
+                ${a.status === 'confirmado' ? '✅' : '🕗'}
+              </span>
+              <span class="status-txt" style="font-weight:bold; color:${a.status==='confirmado' ? '#28a745' : '#da9a00'};">
+                ${a.status === 'confirmado' ? 'CONFIRMADO' : 'PENDIENTE'}
+              </span>
+              <span class="by-email" style="font-size:0.92em;color:#666;">
+                ${a.changedBy || ''}
+              </span>
               <button class="btn-small" style="margin-left:0.5em;" data-act="togA" data-id="${a.id}">🔄</button>
               <button class="btn-small" data-act="editA" data-id="${a.id}">✏️</button>
               <button class="btn-small" data-act="delA"  data-id="${a.id}">🗑️</button>
