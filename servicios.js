@@ -45,12 +45,21 @@ function init(){
 
 function setupFilter(){
   const sel = document.getElementById('destFilter');
+  // Pre-selecciona “ALL”
+  sel.querySelector('option[value="ALL"]').selected = true;
+
   sel.addEventListener('change', () => {
     const vals = [...sel.selectedOptions].map(o => o.value);
+    // Mostrar todo si ALL está seleccionado o no hay selección
+    const mostrarTodas = vals.includes('ALL') || vals.length === 0;
     document.querySelectorAll('.section').forEach(sec => {
       const title = sec.querySelector('h3').textContent;
-      sec.style.display = (vals.length > 0 && !vals.includes(title)) ? 'none' : '';
+      sec.style.display = (mostrarTodas || vals.includes(title)) ? '' : 'none';
     });
+    // Si mostramos todas, quedarnos sólo con ALL marcado
+    if (mostrarTodas) {
+      [...sel.options].forEach(o => o.selected = o.value === 'ALL');
+    }
   });
 }
 
