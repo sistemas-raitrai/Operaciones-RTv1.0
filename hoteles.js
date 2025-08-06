@@ -382,17 +382,6 @@ function openAssignModal(hotelId, assignId){
     document.getElementById('a-coordinadores').value = a.coordinadores;
   }
 
-  // 2.b) Siempre setea el status en el modal (evita valores vacíos/incorrectos)
-  const statusSel = document.getElementById('a-status');
-  if (statusSel) {
-    if (isEditAssign) {
-      const a = asignaciones.find(x => x.id === assignId);
-      statusSel.value = a?.status || (hotel?.statusDefault || 'pendiente');
-    } else {
-      statusSel.value = hotel?.statusDefault || 'pendiente';
-    }
-  }
-
   // 3) cuando el usuario seleccione un grupo, actualiza máx y rango
   document.getElementById('a-grupo')
     .addEventListener('change', e => {
@@ -473,8 +462,6 @@ async function onSubmitAssign(e) {
       O: Number(document.getElementById('a-es-O').value)
     },
     coordinadores: Number(document.getElementById('a-coordinadores').value),
-    status,
-    changedBy:     currentUserEmail,
     ts:            serverTimestamp()
   };
 
