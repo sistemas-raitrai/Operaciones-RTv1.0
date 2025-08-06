@@ -315,6 +315,17 @@ async function abrirModalReserva(event) {
 
   // ——— 3️⃣ vuelca en el textarea y muestra modal ———
   document.getElementById('modalCuerpo').value = cuerpo;
+
+  // ←––– AÑADE ESTAS LÍNEAS antes de mostrar el modal:
+  const btnPend = document.getElementById('btnGuardarPendiente');
+  btnPend.dataset.destino   = destino;
+  btnPend.dataset.actividad = actividad;
+
+  const btnEnv = document.getElementById('btnEnviarReserva');
+  btnEnv.dataset.destino    = destino;
+  btnEnv.dataset.actividad  = actividad;
+  
+  // 4️⃣ finalmente muestra el modal
   document.getElementById('modalReserva').style.display = 'block';
 }
 
