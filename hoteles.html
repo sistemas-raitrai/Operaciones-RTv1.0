@@ -2,174 +2,113 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <title>Distribución Hotelera | RT v1.0</title>
 
-  <!-- Tus estilos globales -->
+  <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css"/>
+  <link rel="stylesheet"
+        href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css"/>
 
   <style>
     /* ========== OCULTAR MODALES POR DEFECTO ========== */
     .modal, .modal-backdrop { display: none; }
 
-    /* ========== CONTROLES (idéntico a viajes.html) ========== */
+    /* ========== CONTROLES ========== */
     .controls {
-      display: flex;
-      gap: 0.5em;
-      align-items: center;
-      margin: 1em 0;
+      display: flex; gap: .5em; align-items: center; margin: 1em 0;
     }
-    .controls input#search-input {
-      flex: 1;
-      padding: 0.5em;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      font-size: 1em;
+    #search-input {
+      flex:1; padding:.5em; border:1px solid #ccc; border-radius:4px;
+      font-size:1em;
     }
     .controls button {
-      background: #007bff;
-      color: #fff;
-      border: none;
-      padding: 0.5em 1em;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
-      font-size: 0.9em;
+      background:#007bff; color:#fff; border:none;
+      padding:.5em 1em; border-radius:4px; cursor:pointer;
+      font-weight:bold; font-size:.9em;
     }
-    .controls #btnHistorial  { background: #28a745; }
-    .controls #btnExportExcel{ background: #17a2b8; }
+    #btnHistorial  { background:#28a745; }
+    #btnExportExcel{ background:#17a2b8; }
 
-    /* ========== TARJETAS DE HOTEL ========== */
+    /* ========== TARJETAS ========== */
     .hotel-card {
-      border: 1px solid #ddd;
-      border-radius: 6px;
-      padding: 1em;
-      margin-bottom: 1em;
-      background: #fff;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border:1px solid #ddd; border-radius:6px; padding:1em;
+      margin-bottom:1em; background:#fff;
+      box-shadow:0 1px 3px rgba(0,0,0,0.05);
     }
-    .hotel-card .encabezado-rojo {
-      color: red;
-      font-weight: bold;
-      font-size: 1.1em;
-      margin-bottom: 0.7em;
+    .encabezado-rojo {
+      color:red; font-weight:bold; font-size:1.1em;
+      margin-bottom:.7em;
     }
-    .hotel-card .group-item {
-      display: flex;
-      align-items: center;
-      padding: 0.5em 0;
-      border-top: 1px solid #eee;
+    .btn-small {
+      background:#007bff; color:#fff; border:none;
+      padding:.3em .6em; border-radius:4px; cursor:pointer;
+      font-size:.9em; margin-left:.3em;
     }
-    .hotel-card .group-item:first-of-type {
-      border-top: none;
+    .status-cell {
+      width:10em; text-align:center; font-weight:bold;
     }
-    .hotel-card .btn-small {
-      background: #007bff;
-      color: #fff;
-      border: none;
-      padding: 0.2em 0.5em;
-      border-radius: 4px;
-      cursor: pointer;
-      margin-left: 0.3em;
-      font-size: 0.9em;
+    .group-item {
+      display:flex; align-items:center; margin:.4em 0;
+      border-top:1px solid #eee; padding-top:.4em;
     }
-    .hotel-card .status-cell {
-      width: 10em;
-      text-align: center;
-      font-weight: bold;
-    }
+    .group-item:first-of-type { border-top:none; padding-top:0; }
 
     /* ========== MODALES ========== */
     .modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.3);
-      z-index: 1000;
+      position:fixed; inset:0;
+      background:rgba(0,0,0,0.3); z-index:1000;
     }
     .modal {
-      position: fixed;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%,-50%);
-      background: #fff;
-      padding: 1.5em;
-      border-radius: 6px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-      z-index: 1001;
-      max-height: 90vh;
-      overflow-y: auto;
-      width: 90%;
-      max-width: 600px;
+      position:fixed; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      background:#fff; padding:1.5em; border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.2);
+      z-index:1001; max-height:90vh; overflow-y:auto;
+      width:90%; max-width:600px;
     }
-    .modal h2 {
-      margin-top: 0;
-    }
+    .modal h2 { margin-top:0; }
     .modal form > label,
     .modal form > fieldset {
-      display: block;
-      margin: 0.5em 0;
+      display:block; margin:.5em 0;
     }
     .modal form input,
     .modal form select {
-      width: 100%;
-      padding: 0.4em;
-      margin-top: 0.2em;
-      border: 1px solid #ccc;
-      border-radius: 4px;
-      box-sizing: border-box;
+      width:100%; padding:.4em; margin-top:.2em;
+      border:1px solid #ccc; border-radius:4px;
+      box-sizing:border-box;
     }
     .modal form fieldset {
-      border: 1px solid #ccc;
-      padding: 0.5em;
-      border-radius: 4px;
+      border:1px solid #ccc; padding:.5em; border-radius:4px;
     }
     .modal form fieldset legend {
-      font-weight: bold;
+      font-weight:bold;
     }
     .modal form button {
-      margin-right: 0.5em;
-      padding: 0.5em 1em;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
+      margin-right:.5em; padding:.5em 1em;
+      border:none; border-radius:4px; cursor:pointer;
+      font-weight:bold;
     }
-    .modal form button[type="submit"] {
-      background: #007bff;
-      color: #fff;
-    }
-    .modal form button#modal-cancel {
-      background: #dc3545;
-      color: #fff;
-    }
+    button[type="submit"] { background:#007bff; color:#fff; }
+    #modal-cancel       { background:#dc3545; color:#fff; }
 
-    /* ========== TABLA DE OCUPACIÓN ========== */
+    /* ========== TABLA OCUPACIÓN ========== */
     .occupancy-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 1em 0;
+      width:100%; border-collapse:collapse; margin:1em 0;
     }
     .occupancy-table th,
     .occupancy-table td {
-      border: 1px solid #ccc;
-      padding: 0.4em;
-      text-align: center;
+      border:1px solid #ccc; padding:.4em; text-align:center;
     }
     #modal-occupancy button {
-      background: #dc3545;
-      color: #fff;
-      margin-top: 0.5em;
-      width: 100%;
-      padding: 0.5em;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-weight: bold;
+      background:#dc3545; color:#fff; margin-top:.5em;
+      width:100%; padding:.5em; border:none;
+      border-radius:4px; cursor:pointer; font-weight:bold;
     }
   </style>
 </head>
 <body>
+
   <div id="encabezado"></div>
   <h1>DISTRIBUCIÓN HOTELERA</h1>
 
@@ -187,33 +126,23 @@
   <div id="modal-hotel" class="modal">
     <h2 id="modal-title">Nuevo Hotel</h2>
     <form id="modal-form">
-      <label>Nombre:
-        <input id="m-nombre" type="text" required/>
-      </label>
+      <label>Nombre:<input id="m-nombre" type="text" required/></label>
       <label>Destino:
-        <input id="m-destino" type="text" required/>
+        <select id="m-destino" required></select>
       </label>
-      <label>Dirección:
-        <input id="m-direccion" type="text" required/>
-      </label>
-      <fieldset>
-        <legend>Contacto</legend>
+      <label>Dirección:<input id="m-direccion" type="text" required/></label>
+      <fieldset><legend>Contacto</legend>
         <input id="m-contactoNombre"   type="text" placeholder="Nombre" required/>
         <input id="m-contactoCorreo"   type="email" placeholder="Correo" required/>
         <input id="m-contactoTelefono" type="tel"   placeholder="Teléfono" required/>
       </fieldset>
-      <label>Disponible Desde:
-        <input id="m-fechaInicio" type="date" required/>
-      </label>
-      <label>Hasta:
-        <input id="m-fechaFin" type="date" required/>
-      </label>
-      <fieldset>
-        <legend>Distribución de habitaciones</legend>
-        <label>Singles:    <input id="m-singles"    type="number" min="0" value="0"/></label>
-        <label>Dobles:     <input id="m-dobles"     type="number" min="0" value="0"/></label>
-        <label>Triples:    <input id="m-triples"    type="number" min="0" value="0"/></label>
-        <label>Cuádruples: <input id="m-cuadruples" type="number" min="0" value="0"/></label>
+      <label>Disponible Desde:<input id="m-fechaInicio" type="date" required/></label>
+      <label>Hasta:<input id="m-fechaFin" type="date" required/></label>
+      <fieldset><legend>Distribución habitaciones</legend>
+        <label>Singles:<input id="m-singles"    type="number" min="0" value="0"/></label>
+        <label>Dobles: <input id="m-dobles"     type="number" min="0" value="0"/></label>
+        <label>Triples:<input id="m-triples"    type="number" min="0" value="0"/></label>
+        <label>Cuádruples:<input id="m-cuadruples" type="number" min="0" value="0"/></label>
       </fieldset>
       <label>Status Default Grupos:
         <select id="m-statusDefault">
@@ -221,14 +150,44 @@
           <option value="pendiente">Pendiente</option>
         </select>
       </label>
-      <div id="m-grupos-container" style="display:none;">
-        <label>Grupos a asignar:
-          <select id="m-grupos" multiple></select>
-        </label>
-      </div>
+
+      <!-- botón abre modal Asignar Grupo -->
+      <button type="button" id="btnOpenAssign">✏️ ASIGNAR GRUPO</button>
+
       <div style="margin-top:1em;">
-        <button type="submit">Guardar</button>
+        <button type="submit">Guardar Hotel</button>
         <button type="button" id="modal-cancel">Cancelar</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Modal Asignar/Editar Grupo -->
+  <div id="assign-backdrop" class="modal-backdrop"></div>
+  <div id="modal-assign" class="modal">
+    <h2 id="assign-title">Asignar Grupo</h2>
+    <form id="assign-form">
+      <label>Grupo:
+        <select id="a-grupo" required></select>
+      </label>
+      <div id="grupo-fechas" style="font-size:.9em;color:#555;margin:.5em 0;"></div>
+      <label>Check-in:<input id="a-checkin"  type="date" required/></label>
+      <label>Check-out:<input id="a-checkout" type="date" required/></label>
+      <label>Noches:<input id="a-noches" type="number" min="1" required readonly/></label>
+      <fieldset><legend>Adultos</legend>
+        <label>M:<input id="a-ad-M" type="number" min="0" value="0"/></label>
+        <label>F:<input id="a-ad-F" type="number" min="0" value="0"/></label>
+        <label>O:<input id="a-ad-O" type="number" min="0" value="0"/></label>
+      </fieldset>
+      <fieldset><legend>Estudiantes</legend>
+        <label>M:<input id="a-es-M" type="number" min="0" value="0"/></label>
+        <label>F:<input id="a-es-F" type="number" min="0" value="0"/></label>
+        <label>O:<input id="a-es-O" type="number" min="0" value="0"/></label>
+      </fieldset>
+      <label>Coordinadores:<input id="a-coordinadores" type="number" min="1" value="1"/></label>
+
+      <div style="margin-top:1em;">
+        <button type="submit">Guardar Asignación</button>
+        <button type="button" id="assign-cancel">Cancelar</button>
       </div>
     </form>
   </div>
@@ -239,22 +198,19 @@
     <h2>Historial de Cambios</h2>
     <label>Desde: <input id="hist-start" type="date"/></label>
     <label>Hasta: <input id="hist-end"   type="date"/></label>
-    <div style="margin: .5em 0;">
+    <div style="margin:.5em 0;">
       <button id="hist-refresh">Refrescar</button>
       <button id="hist-close">Cerrar</button>
     </div>
     <table id="hist-table">
       <thead>
-        <tr>
-          <th>Fecha</th><th>Usuario</th><th>HotelID</th>
-          <th>Tipo</th><th>Antes</th><th>Después</th>
-        </tr>
+        <tr><th>Fecha</th><th>Usuario</th><th>DocID</th><th>Tipo</th><th>Antes</th><th>Después</th></tr>
       </thead>
       <tbody></tbody>
     </table>
   </div>
 
-  <!-- Modal Ocupación Diaria -->
+  <!-- Modal Ocupación -->
   <div id="occ-backdrop" class="modal-backdrop"></div>
   <div id="modal-occupancy" class="modal">
     <h2>Ocupación Hotel</h2>
@@ -263,6 +219,7 @@
     <button id="occ-close">Cerrar</button>
   </div>
 
+  <!-- Scripts -->
   <script src="https://unpkg.com/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script type="module" src="firebase-init.js"></script>
