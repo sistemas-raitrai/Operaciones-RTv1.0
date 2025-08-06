@@ -14,7 +14,7 @@
   <style>
     /* ========== OCULTAR MODALES POR DEFECTO ========== */
     .modal, .modal-backdrop { display: none; }
-
+  
     /* ========== CONTROLES ========== */
     .controls {
       display: flex; gap: .5em; align-items: center; margin: 1em 0;
@@ -30,7 +30,7 @@
     }
     #btnHistorial  { background:#28a745; }
     #btnExportExcel{ background:#17a2b8; }
-
+  
     /* ========== TARJETAS ========== */
     .hotel-card {
       border:1px solid #ddd; border-radius:6px; padding:1em;
@@ -40,28 +40,66 @@
     .subtitulo    { font-size: .95em; color: #444; margin-top: .3em; }
     .subsubtitulo { font-size: .9em;  color: #666; margin-bottom: .7em; }
     .group-block  { border-top:1px solid #eee; padding: .5em 0; }
-    .group-header { font-weight: bold; display:flex; align-items:center; gap:.5em; }
+  
+    /* FLEX PARA ENCABEZADO DE GRUPO */
+    .group-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.5em;
+      font-weight: bold;
+    }
+    .group-main {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: .5em;
+      min-width: 180px;
+    }
+    .status-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.4em;
+      font-weight: bold;
+      margin-left: .8em;
+      min-width: 8em;
+    }
+    .by-email {
+      font-size: 0.93em;
+      color: #888;
+      margin-left: .2em;
+      font-weight: normal;
+      white-space: nowrap;
+    }
+    .group-actions {
+      display: flex;
+      align-items: center;
+      gap: .2em;
+      margin-left: auto;
+    }
     .group-dates  { font-size:.9em; color:#555; margin-left:1em; }
-    .btn-status   { margin-left:auto; background:transparent; border:none; font-size:1.1em; }
-
-    .encabezado-rojo {
-      color:red; font-weight:bold; font-size:1.1em;
-      margin-bottom:.7em;
+  
+    .btn-status   { 
+      background:transparent; border:none; font-size:1.2em;
+      margin-left: .2em;
+      cursor: pointer;
     }
     .btn-small {
       background:#007bff; color:#fff; border:none;
       padding:.3em .6em; border-radius:4px; cursor:pointer;
       font-size:.9em; margin-left:.3em;
     }
-    .status-cell {
-      width:10em; text-align:center; font-weight:bold;
+    .encabezado-rojo {
+      color:red; font-weight:bold; font-size:1.1em;
+      margin-bottom:.7em;
     }
     .group-item {
       display:flex; align-items:center; margin:.4em 0;
       border-top:1px solid #eee; padding-top:.4em;
     }
     .group-item:first-of-type { border-top:none; padding-top:0; }
-
+  
     /* ========== MODALES ========== */
     .modal-backdrop {
       position:fixed; inset:0;
@@ -99,7 +137,7 @@
     }
     button[type="submit"] { background:#007bff; color:#fff; }
     #modal-cancel       { background:#dc3545; color:#fff; }
-
+  
     /* ========== TABLA OCUPACIÓN ========== */
     .occupancy-table {
       width:100%; border-collapse:collapse; margin:1em 0;
