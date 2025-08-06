@@ -72,19 +72,25 @@ async function init() {
     });
   }
 
-  // ——— 5.3) Leer "Proveedores" (BRASIL/Listado)
-  const proveedoresSnap = await getDocs(collection(db, 'Proveedores', 'BRASIL', 'Listado'));
+  // ——— 5.3) Leer TODOS los proveedores de **todas** las regiones
   const proveedoresLocal = {};
-  proveedoresSnap.docs.forEach(pSnap => {
-    const d = pSnap.data();
-    if (d.proveedor) {
-      proveedoresLocal[d.proveedor] = {
-        contacto: d.contacto || '',
-        correo:   d.correo   || ''
-      };
-    }
-  });
-  // ahora asigna al global:
+  //  a) lee cada documento de nivel región en "Proveedores"
+  const regionesSnap = await getDocs(collection(db, 'Proveedores'));
+  for (const regionDoc of regionesSnap.docs) {
+    const region = regionDoc.id; // p.ej. "SUR DE CHILE", "BRASIL", etc.
+    const listadoSnap = await getDocs(
+      collection(db, 'Proveedores', region, 'Listado')
+    );
+    listadoSnap.docs.forEach(pSnap => {
+      const d = pSnap.data();
+      if (d.proveedor) {
+        proveedoresLocal[d.proveedor] = {
+          contacto: d.contacto || '',
+          correo:   d.correo   || ''
+        };
+      }
+    });
+  }
   proveedores = proveedoresLocal;
 
   // ——— 5.4) Extraer fechas únicas con algún pax > 0
