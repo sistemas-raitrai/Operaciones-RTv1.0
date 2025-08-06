@@ -146,7 +146,19 @@ async function renderHoteles(){
 
     // 2.2 Cada bloque de grupo asignado
     for(const a of asigns){
-      const g = grupos.find(x=>x.id===a.grupoId) || {};
+      const g = grupos.find(x=>x.id===a.grupoId);
+      if (!g) {
+        html += `<div class="group-block group-missing">
+          <div class="group-header" style="color:red;">
+            Grupo eliminado o no encontrado (ID: ${a.grupoId})
+          </div>
+          <div class="group-dates">
+            CHEQ IN: ${fmtFechaCorta(a.checkIn)}
+            CHEQ OUT: ${fmtFechaCorta(a.checkOut)}
+          </div>
+        </div>`;
+        continue; // sigue con la siguiente asignación
+      }
       const adSum = a.adultos.M + a.adultos.F + a.adultos.O;
       const esSum = a.estudiantes.M + a.estudiantes.F + a.estudiantes.O;
       const totalSinCoord = adSum + esSum;
@@ -361,6 +373,17 @@ function openAssignModal(hotelId, assignId){
     document.getElementById('a-coordinadores').value = a.coordinadores;
   }
 
+  // 2.b) Siempre setea el status en el modal (evita valores vacíos/incorrectos)
+  const statusSel = document.getElementById('a-status');
+  if (statusSel) {
+    if (isEditAssign) {
+      const a = asignaciones.find(x => x.id === assignId);
+      statusSel.value = a?.status || (hotel?.statusDefault || 'pendiente');
+    } else {
+      statusSel.value = hotel?.statusDefault || 'pendiente';
+    }
+  }
+
   // 3) cuando el usuario seleccione un grupo, actualiza máx y rango
   document.getElementById('a-grupo')
     .addEventListener('change', e => {
@@ -395,6 +418,10 @@ async function onSubmitAssign(e) {
 
   // 1️⃣ Recuperar datos del grupo
   const gId = document.getElementById('a-grupo').value;
+  if (!gId) {
+    alert('Selecciona un grupo');
+    return;
+  }
   const g   = grupos.find(x => x.id === gId) || {};
   const maxPax = g.cantidadgrupo || 0;
 
