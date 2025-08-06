@@ -170,7 +170,13 @@
     .status-txt.pendiente {
       color: #da9a00;
     }
-
+    .detalle-grupos-popup {
+      animation: fadein 0.15s;
+    }
+    @keyframes fadein {
+      from { opacity:0; transform:translateY(-10px);}
+      to   { opacity:1; transform:translateY(0);}
+    }
   </style>
 </head>
 <body>
