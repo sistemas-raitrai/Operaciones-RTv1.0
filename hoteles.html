@@ -2,12 +2,171 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Distribución Hotelera | RT v1.0</title>
+
+  <!-- Tus estilos globales -->
   <link rel="stylesheet" href="estilos.css"/>
   <link rel="stylesheet" href="https://unpkg.com/choices.js/public/assets/styles/choices.min.css"/>
+
   <style>
-    /* (tus estilos aquí, idénticos a los previos) */
+    /* ========== OCULTAR MODALES POR DEFECTO ========== */
+    .modal, .modal-backdrop { display: none; }
+
+    /* ========== CONTROLES (idéntico a viajes.html) ========== */
+    .controls {
+      display: flex;
+      gap: 0.5em;
+      align-items: center;
+      margin: 1em 0;
+    }
+    .controls input#search-input {
+      flex: 1;
+      padding: 0.5em;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1em;
+    }
+    .controls button {
+      background: #007bff;
+      color: #fff;
+      border: none;
+      padding: 0.5em 1em;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 0.9em;
+    }
+    .controls #btnHistorial  { background: #28a745; }
+    .controls #btnExportExcel{ background: #17a2b8; }
+
+    /* ========== TARJETAS DE HOTEL ========== */
+    .hotel-card {
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 1em;
+      margin-bottom: 1em;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .hotel-card .encabezado-rojo {
+      color: red;
+      font-weight: bold;
+      font-size: 1.1em;
+      margin-bottom: 0.7em;
+    }
+    .hotel-card .group-item {
+      display: flex;
+      align-items: center;
+      padding: 0.5em 0;
+      border-top: 1px solid #eee;
+    }
+    .hotel-card .group-item:first-of-type {
+      border-top: none;
+    }
+    .hotel-card .btn-small {
+      background: #007bff;
+      color: #fff;
+      border: none;
+      padding: 0.2em 0.5em;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: 0.3em;
+      font-size: 0.9em;
+    }
+    .hotel-card .status-cell {
+      width: 10em;
+      text-align: center;
+      font-weight: bold;
+    }
+
+    /* ========== MODALES ========== */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 1000;
+    }
+    .modal {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%,-50%);
+      background: #fff;
+      padding: 1.5em;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 1001;
+      max-height: 90vh;
+      overflow-y: auto;
+      width: 90%;
+      max-width: 600px;
+    }
+    .modal h2 {
+      margin-top: 0;
+    }
+    .modal form > label,
+    .modal form > fieldset {
+      display: block;
+      margin: 0.5em 0;
+    }
+    .modal form input,
+    .modal form select {
+      width: 100%;
+      padding: 0.4em;
+      margin-top: 0.2em;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .modal form fieldset {
+      border: 1px solid #ccc;
+      padding: 0.5em;
+      border-radius: 4px;
+    }
+    .modal form fieldset legend {
+      font-weight: bold;
+    }
+    .modal form button {
+      margin-right: 0.5em;
+      padding: 0.5em 1em;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .modal form button[type="submit"] {
+      background: #007bff;
+      color: #fff;
+    }
+    .modal form button#modal-cancel {
+      background: #dc3545;
+      color: #fff;
+    }
+
+    /* ========== TABLA DE OCUPACIÓN ========== */
+    .occupancy-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1em 0;
+    }
+    .occupancy-table th,
+    .occupancy-table td {
+      border: 1px solid #ccc;
+      padding: 0.4em;
+      text-align: center;
+    }
+    #modal-occupancy button {
+      background: #dc3545;
+      color: #fff;
+      margin-top: 0.5em;
+      width: 100%;
+      padding: 0.5em;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
   </style>
 </head>
 <body>
@@ -62,7 +221,6 @@
           <option value="pendiente">Pendiente</option>
         </select>
       </label>
-      <!-- Sólo en modo edición/asignación -->
       <div id="m-grupos-container" style="display:none;">
         <label>Grupos a asignar:
           <select id="m-grupos" multiple></select>
@@ -81,7 +239,7 @@
     <h2>Historial de Cambios</h2>
     <label>Desde: <input id="hist-start" type="date"/></label>
     <label>Hasta: <input id="hist-end"   type="date"/></label>
-    <div>
+    <div style="margin: .5em 0;">
       <button id="hist-refresh">Refrescar</button>
       <button id="hist-close">Cerrar</button>
     </div>
