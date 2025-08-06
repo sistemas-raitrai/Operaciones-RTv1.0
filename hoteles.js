@@ -141,7 +141,7 @@ async function renderHoteles(){
       <h3>${toUpper(h.nombre)}</h3>
       <div class="subtitulo">DESTINO: ${toUpper(h.destino)}</div>
       <div class="subsubtitulo">
-        DISPONIBLE DURANTE ${fmtFecha(h.fechaInicio)} HASTA ${fmtFecha(h.fechaFin)}
+        DESDE ${fmtFecha(h.fechaInicio)} HASTA ${fmtFecha(h.fechaFin)}
       </div>`;
 
     // 2.2️⃣ Cada bloque de grupo asignado
