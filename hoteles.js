@@ -265,7 +265,6 @@ function openHotelModal(h){
   document.getElementById('m-contactoNombre').value   = h?.contactoNombre   ?? '';
   document.getElementById('m-contactoCorreo').value   = h?.contactoCorreo   ?? '';
   document.getElementById('m-contactoTelefono').value = h?.contactoTelefono ?? '';
-  document.getElementById('m-statusDefault').value    = h?.statusDefault   ?? 'confirmado';
 
   document.getElementById('modal-backdrop').style.display='block';
   document.getElementById('modal-hotel').style.display  ='block';
@@ -288,8 +287,7 @@ async function onSubmitHotel(e){
     singles:   +document.getElementById('m-singles').value||0,
     dobles:    +document.getElementById('m-dobles').value||0,
     triples:   +document.getElementById('m-triples').value||0,
-    cuadruples:+document.getElementById('m-cuadruples').value||0,
-    statusDefault: document.getElementById('m-statusDefault').value
+    cuadruples:+document.getElementById('m-cuadruples').value||0
   };
   if(isEditHotel){
     const bef=(await getDoc(doc(db,'hoteles',editHotelId))).data();
@@ -456,10 +454,6 @@ async function onSubmitAssign(e) {
   if (esSum !== (g.estudiantes || 0)) {
     return alert(`Debes asignar exactamente ${g.estudiantes} estudiantes.`);
   }
-
-  const status = document.getElementById('a-status')?.value
-              || hoteles.find(h=>h.id===editHotelId)?.statusDefault
-              || 'pendiente';
 
   // 5️⃣ Si pasa validación, construir payload
   const payload = {
