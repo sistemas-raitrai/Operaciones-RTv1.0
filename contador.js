@@ -67,7 +67,7 @@ async function init() {
       servicios.push({
         destino,
         nombre: sDoc.id,
-        proveedor: data.proveedor || ''
+        proveedor: data.proveedor || data.Proveedor ||| ''
       });
     });
   }
@@ -275,6 +275,9 @@ async function abrirModalReserva(event) {
     ))
   );
   const proveedor = btn.dataset.proveedor;
+
+  console.log('🛈 abrirModalReserva:', { destino, actividad, proveedor });
+  console.log('🛈 proveedores disponibles:', proveedores);
 
   // 1️⃣ rellenar "Para:" y "Asunto:"
   // provInfo viene de un mapa global `proveedores[actividad]`
