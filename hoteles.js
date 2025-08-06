@@ -540,22 +540,30 @@ async function loadHistorial(){
 }
 
 // ─── OCUPACIÓN ──────────────────────────────────────────
-function openOccupancyModal(hotelId){
-  const h = hoteles.find(x=>x.id===hotelId);
-  const occ = asignaciones.filter(a=>a.hotelId===hotelId);
+function formateaFechaBonita(iso) {
+  // Devuelve 02-12-2025
+  const d = new Date(iso + 'T00:00:00');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `${dd}-${mm}-${d.getFullYear()}`;
+}
 
-  document.getElementById('occ-header').innerHTML=`
+function openOccupancyModal(hotelId) {
+  const h = hoteles.find(x => x.id === hotelId);
+  const occ = asignaciones.filter(a => a.hotelId === hotelId);
+
+  document.getElementById('occ-header').innerHTML = `
     <strong>${h.nombre}</strong> — ${fmtFecha(h.fechaInicio)}→${fmtFecha(h.fechaFin)}`;
 
-  // calcular días
-  const start=new Date(h.fechaInicio), end=new Date(h.fechaFin), rows=[];
-  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
-    const iso=d.toISOString().slice(0,10);
+  // Calcular días
+  const start = new Date(h.fechaInicio), end = new Date(h.fechaFin), rows = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const iso = d.toISOString().slice(0, 10);
     const dayAss = occ.filter(a =>
       a.checkIn <= iso && iso < a.checkOut && a.status === "confirmado"
     );
-    const gruposCount=dayAss.length;
-    const totals = dayAss.reduce((acc,a)=>{
+    const gruposCount = dayAss.length;
+    const totals = dayAss.reduce((acc, a) => {
       acc.adultos.M += a.adultos.M;
       acc.adultos.F += a.adultos.F;
       acc.adultos.O += a.adultos.O;
@@ -563,41 +571,111 @@ function openOccupancyModal(hotelId){
       acc.estudiantes.F += a.estudiantes.F;
       acc.estudiantes.O += a.estudiantes.O;
       acc.coordinadores += a.coordinadores;
+      // Para detalle de grupos
+      acc.grupos.push(a.grupoId);
       return acc;
-    },{
-      adultos:{M:0,F:0,O:0},
-      estudiantes:{M:0,F:0,O:0},
-      coordinadores:0
+    }, {
+      adultos: { M: 0, F: 0, O: 0 },
+      estudiantes: { M: 0, F: 0, O: 0 },
+      coordinadores: 0,
+      grupos: []
     });
-    rows.push({ iso, gruposCount, totals });
+    // Totales para mostrar
+    const totalPax = totals.adultos.M + totals.adultos.F + totals.adultos.O +
+      totals.estudiantes.M + totals.estudiantes.F + totals.estudiantes.O;
+    const totalFull = totalPax + totals.coordinadores;
+    rows.push({ 
+      iso, 
+      gruposCount, 
+      totals, 
+      totalPax, 
+      totalFull,
+      grupos: totals.grupos // para el detalle
+    });
   }
 
-  const tbl=document.getElementById('occ-table');
-  tbl.innerHTML=`
+  // Render tabla
+  const tbl = document.getElementById('occ-table');
+  tbl.innerHTML = `
     <thead>
       <tr>
         <th>Fecha</th>
         <th>Grupos</th>
         <th>A M/F/O</th>
         <th>E M/F/O</th>
-        <th>C</th>
+        <th>Total Pax</th>
+        <th>Coord.</th>
+        <th>Total+Coord.</th>
       </tr>
     </thead>
     <tbody>
-      ${rows.map(r=>`
+      ${rows.map((r, idx) => `
         <tr>
-          <td>${r.iso}</td>
-          <td>${r.gruposCount}</td>
-          <td>${r.totals.adultos.M}/${r.totals.adultos.F}/${r.totals.adultos.O}</td>
-          <td>${r.totals.estudiantes.M}/${r.totals.estudiantes.F}/${r.totals.estudiantes.O}</td>
+          <td>${formateaFechaBonita(r.iso)}</td>
+          <td class="celda-detalle-grupos" data-idx="${idx}" style="cursor:pointer; color: #007bff; text-decoration:underline;">
+            ${r.gruposCount}
+          </td>
+          <td>(${r.totals.adultos.M + r.totals.adultos.F + r.totals.adultos.O}) ${r.totals.adultos.M} | ${r.totals.adultos.F} | ${r.totals.adultos.O}</td>
+          <td>(${r.totals.estudiantes.M + r.totals.estudiantes.F + r.totals.estudiantes.O}) ${r.totals.estudiantes.M} | ${r.totals.estudiantes.F} | ${r.totals.estudiantes.O}</td>
+          <td>${r.totalPax}</td>
           <td>${r.totals.coordinadores}</td>
-        </tr>`).join('')}
-    </tbody>`;
+          <td>${r.totalFull}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+  `;
 
-  document.getElementById('occ-backdrop').style.display='block';
-  document.getElementById('modal-occupancy').style.display='block';
+  // Evento para mostrar detalle de grupos
+  tbl.querySelectorAll('.celda-detalle-grupos').forEach(td => {
+    td.addEventListener('click', e => {
+      const idx = td.dataset.idx;
+      const r = rows[idx];
+      if (r.grupos.length === 0) {
+        showFloatingDetail(td, "Sin grupos ese día");
+      } else {
+        // Buscar datos de los grupos (numeroNegocio y nombre)
+        const detalles = r.grupos.map(gid => {
+          const g = grupos.find(x => x.id === gid);
+          return g ? `<div>(${g.numeroNegocio}) ${g.nombreGrupo}</div>` : `<div>Grupo eliminado</div>`;
+        }).join('');
+        showFloatingDetail(td, detalles);
+      }
+    });
+  });
+
+  document.getElementById('occ-backdrop').style.display = 'block';
+  document.getElementById('modal-occupancy').style.display = 'block';
 }
-function closeOccupancyModal(){ hideModals(); }
+
+// **Ventana flotante para el detalle de grupos**
+function showFloatingDetail(td, html) {
+  // Quita anterior si hay
+  document.querySelectorAll('.detalle-grupos-popup').forEach(e => e.remove());
+  const div = document.createElement('div');
+  div.className = 'detalle-grupos-popup';
+  div.innerHTML = html;
+  Object.assign(div.style, {
+    position: 'absolute',
+    zIndex: 2000,
+    background: '#fff',
+    border: '1px solid #007bff',
+    boxShadow: '0 2px 12px #007bff33',
+    padding: '1em',
+    borderRadius: '7px',
+    left: (td.getBoundingClientRect().left + window.scrollX) + 'px',
+    top: (td.getBoundingClientRect().bottom + window.scrollY) + 'px',
+    minWidth: '200px'
+  });
+  document.body.appendChild(div);
+  // Cierra al hacer clic fuera
+  const cerrar = (e) => {
+    if (!div.contains(e.target)) {
+      div.remove();
+      document.removeEventListener('mousedown', cerrar);
+    }
+  };
+  setTimeout(()=>document.addEventListener('mousedown', cerrar),50);
+}
 
 // ─── EXPORTAR EXCEL ─────────────────────────────────────
 function exportToExcel() {
