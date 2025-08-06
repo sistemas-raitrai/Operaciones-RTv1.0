@@ -354,6 +354,9 @@ async function guardarPendiente() {
   // actualizo el texto del botón CREAR
   document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
           .textContent = 'PENDIENTE';
+
+    // ←––––– aquí cierras el modal
+  document.getElementById('modalReserva').style.display = 'none';  
 }
 
 /**
