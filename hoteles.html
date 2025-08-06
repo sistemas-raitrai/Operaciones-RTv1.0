@@ -260,7 +260,17 @@
   <!-- Scripts -->
   <script src="https://unpkg.com/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script type="module" src="firebase-init.js"></script>
-  <script type="module" src="hoteles.js"></script>
+  <script type="module">
+    (async () => {
+      // 1. Cargar el encabezado común (header)
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+  
+      // 2. Importar los scripts necesarios (en orden)
+      await import('./firebase-init.js');
+      await import('./script.js');    // Global: usuario, reloj, botones
+      await import('./hoteles.js');    // Lógica propia de esta página
+    })();
+  </script>
 </body>
 </html>
