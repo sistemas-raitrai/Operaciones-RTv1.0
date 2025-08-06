@@ -7,24 +7,22 @@ import {
   serverTimestamp, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-let hoteles          = [];
-let grupos           = [];
-let isEdit           = false;
-let editId           = null;
-let currentUserEmail = null;
-let choiceGrupos     = null;
+let hoteles = [], grupos = [];
+let isEdit = false, editId = null, currentUserEmail = null;
+let choiceGrupos = null;
 
-// Utilitarios
+// ─── Utilitarios ───────────────────────────────────────────
 const toUpper = x => typeof x==='string'?x.toUpperCase():x;
 function fmtFecha(iso) {
   if(!iso) return '';
   const dt = new Date(iso+'T00:00:00');
-  return dt.toLocaleDateString('es-CL', {
-    weekday:'long', day:'2-digit', month:'long', year:'numeric'
-  }).replace(/^\w/, c=>c.toUpperCase());
+  return dt.toLocaleDateString('es-CL',{
+    weekday:'long',day:'2-digit',
+    month:'long',year:'numeric'
+  }).replace(/^\w/,c=>c.toUpperCase());
 }
 
-// Autenticación e init
+// ─── Arranque ──────────────────────────────────────────────
 const auth = getAuth(app);
 onAuthStateChanged(auth, user => {
   if(!user) return location.href='login.html';
@@ -37,19 +35,21 @@ async function init() {
   setupUI();
   setupModal();
   await renderHoteles();
-  hideAllModals();
 }
 
+// ─── Carga Grupos ─────────────────────────────────────────
 async function loadGrupos() {
   const snap = await getDocs(collection(db,'grupos'));
   grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 }
 
-// UI principal
+// ─── UI Principal ─────────────────────────────────────────
 function setupUI() {
+  // Buscador
   document.getElementById('search-input')
     .addEventListener('input', e=>filterHoteles(e.target.value));
 
+  // Botones barra
   document.getElementById('btnAddHotel')
     .addEventListener('click', ()=>openHotelModal(null));
   document.getElementById('btnHistorial')
@@ -57,11 +57,15 @@ function setupUI() {
   document.getElementById('btnExportExcel')
     .addEventListener('click', exportToExcel);
 
+  // Cerrar modales
   document.getElementById('hist-close')
     .addEventListener('click', closeHistorialModal);
   document.getElementById('occ-close')
     .addEventListener('click', closeOccupancyModal);
+  document.getElementById('modal-cancel')
+    .addEventListener('click', closeHotelModal);
 
+  // Click en backdrop cierra
   document.body.addEventListener('click', e=>{
     if(e.target.classList.contains('modal-backdrop'))
       hideAllModals();
@@ -75,16 +79,12 @@ function hideAllModals() {
     .forEach(m=>m.style.display='none');
 }
 
-// Modal hotel
+// ─── Modal Hotel ──────────────────────────────────────────
 function setupModal() {
-  // Choices.js
   choiceGrupos = new Choices(
     document.getElementById('m-grupos'),
     { removeItemButton:true }
   );
-
-  document.getElementById('modal-cancel')
-    .addEventListener('click', closeHotelModal);
   document.getElementById('modal-form')
     .addEventListener('submit', onSubmitHotel);
 }
@@ -93,13 +93,15 @@ function filterHoteles(q) {
   const terms = q.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
   document.querySelectorAll('.hotel-card').forEach(card=>{
     const txt = card.textContent.toLowerCase();
-    card.style.display = (!terms.length || terms.some(t=>txt.includes(t)))?'':'none';
+    card.style.display = (!terms.length||terms.some(t=>txt.includes(t)))?'':'none';
   });
 }
 
+// ─── Render Tarjetas ──────────────────────────────────────
 async function renderHoteles() {
   const cont = document.getElementById('hoteles-container');
   cont.innerHTML = '';
+
   const snap = await getDocs(collection(db,'hoteles'));
   hoteles = snap.docs.map(d=>({ id:d.id, ...d.data() }));
 
@@ -107,48 +109,50 @@ async function renderHoteles() {
     const card = document.createElement('div');
     card.className = 'hotel-card';
 
-    // header
+    // Encabezado
     const header = `
       <div class="encabezado-rojo">
         ${toUpper(h.nombre)} —
         ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
       </div>`;
 
-    // grupos list
+    // Lista de grupos
     const gruposHtml = (h.grupos||[]).map((gObj,idx)=>{
       const grp = grupos.find(x=>x.id===gObj.id)||{};
       const A=+grp.adultos||0, E=+grp.estudiantes||0, C=+grp.coordinadores||0;
       const tot=A+E+C;
       return `
-      <div class="group-item">
-        <div style="width:4em;font-weight:bold;">${toUpper(grp.numeroNegocio)}</div>
-        <div style="flex:1;">
-          <div>${tot} (A:${A} E:${E} C:${C})</div>
-          <div style="font-size:.9em;color:#555;">
-            ${fmtFecha(grp.fechaInicio)} → ${fmtFecha(grp.fechaFin)}
+        <div class="group-item">
+          <div style="width:4em;font-weight:bold;">
+            ${toUpper(grp.numeroNegocio)}
           </div>
-        </div>
-        <div class="status-cell">
-          ${gObj.status==='confirmado'?'✅ CONFIRMADO':'🕗 PENDIENTE'}
-        </div>
-        <div style="display:flex;gap:.3em;">
-          <button class="btn-small" data-action="assign" data-id="${h.id}">✏️</button>
-          <button class="btn-small" data-action="remove" data-id="${h.id}" data-idx="${idx}">🗑️</button>
-          <button class="btn-small" data-action="swap"   data-id="${h.id}" data-idx="${idx}">🔄</button>
-        </div>
-      </div>`;
+          <div style="flex:1;">
+            <div>${tot} (A:${A} E:${E} C:${C})</div>
+            <div style="font-size:.9em;color:#555;">
+              ${fmtFecha(grp.fechaInicio)} → ${fmtFecha(grp.fechaFin)}
+            </div>
+          </div>
+          <div class="status-cell">
+            ${gObj.status==='confirmado'?'✅ CONFIRMADO':'🕗 PENDIENTE'}
+          </div>
+          <div style="display:flex;gap:.3em;">
+            <button class="btn-small" data-act="edit" data-id="${h.id}">✏️</button>
+            <button class="btn-small" data-act="delg" data-id="${h.id}" data-idx="${idx}">🗑️</button>
+            <button class="btn-small" data-act="swap" data-id="${h.id}" data-idx="${idx}">🔄</button>
+          </div>
+        </div>`;
     }).join('');
 
-    // acciones principales
+    // Botones abajo
     const actions = `
       <div style="margin-top:.7em;">
-        <button class="btn-small" data-action="assign" data-id="${h.id}">
+        <button class="btn-small" data-act="edit" data-id="${h.id}">
           ✏️ ASIGNAR GRUPOS
         </button>
-        <button class="btn-small" data-action="delete" data-id="${h.id}">
+        <button class="btn-small" data-act="del" data-id="${h.id}">
           🗑️ ELIMINAR
         </button>
-        <button class="btn-small" data-action="occup" data-id="${h.id}">
+        <button class="btn-small" data-act="occ" data-id="${h.id}">
           📊 OCUPACIÓN
         </button>
       </div>`;
@@ -157,52 +161,36 @@ async function renderHoteles() {
     cont.appendChild(card);
   });
 
-  // Delegación de eventos en container
+  // Delegación de botones
   cont.querySelectorAll('.btn-small').forEach(btn=>{
-    const act = btn.dataset.action;
-    const id  = btn.dataset.id;
-    const idx = btn.dataset.idx;
-    if(act==='assign') {
-      btn.onclick = ()=>openHotelModal(hoteles.find(x=>x.id===id));
-    }
-    if(act==='delete') {
-      btn.onclick = ()=>deleteHotel(id);
-    }
-    if(act==='remove') {
-      btn.onclick = ()=>removeGroup(id, Number(idx));
-    }
-    if(act==='swap') {
-      btn.onclick = ()=>swapGroup(id, Number(idx));
-    }
-    if(act==='occup') {
-      btn.onclick = ()=>openOccupancyModal(id);
-    }
+    const act = btn.dataset.act, id = btn.dataset.id, idx = btn.dataset.idx;
+    if(act==='edit') btn.onclick = ()=>openHotelModal(hoteles.find(x=>x.id===id));
+    if(act==='del')  btn.onclick = ()=>deleteHotel(id);
+    if(act==='delg') btn.onclick = ()=>removeGroup(id, +idx);
+    if(act==='swap') btn.onclick = ()=>swapGroup(id, +idx);
+    if(act==='occ')  btn.onclick = ()=>openOccupancyModal(id);
   });
 
   filterHoteles(document.getElementById('search-input').value);
 }
 
+// ─── Abrir/Cerrar Modal Hotel ─────────────────────────────
 function openHotelModal(h) {
   isEdit = !!h; editId = h?.id ?? null;
   document.getElementById('modal-title').textContent =
     isEdit ? `ASIGNAR GRUPOS — ${toUpper(h.nombre)}` : 'NUEVO HOTEL';
 
-  // Campos básicos
+  // Rellenar campos
   ['nombre','destino','direccion','fechaInicio','fechaFin','singles','dobles','triples','cuadruples']
-    .forEach(k => {
-      document.getElementById(`m-${k}`).value = h?.[k] ?? '';
-    });
-  document.getElementById('m-contactoNombre').value  = h?.contactoNombre  ?? '';
-  document.getElementById('m-contactoCorreo').value  = h?.contactoCorreo  ?? '';
-  document.getElementById('m-contactoTelefono').value= h?.contactoTelefono?? '';
+    .forEach(k => document.getElementById(`m-${k}`).value = h?.[k] ?? '');
+  document.getElementById('m-contactoNombre').value   = h?.contactoNombre   ?? '';
+  document.getElementById('m-contactoCorreo').value   = h?.contactoCorreo   ?? '';
+  document.getElementById('m-contactoTelefono').value = h?.contactoTelefono ?? '';
+  document.getElementById('m-statusDefault').value    = h?.grupos?.[0]?.status ?? 'confirmado';
 
-  // Status default
-  document.getElementById('m-statusDefault').value =
-    h?.grupos?.[0]?.status ?? 'confirmado';
-
-  // Multiselect solo en edición
+  // Mostrar multiselect solo en edición
   const grpCont = document.getElementById('m-grupos-container');
-  if (isEdit) {
+  if(isEdit) {
     grpCont.style.display = 'block';
     choiceGrupos.removeActiveItems();
     choiceGrupos.setChoiceByValue((h.grupos||[]).map(g=>g.id));
@@ -210,17 +198,22 @@ function openHotelModal(h) {
     grpCont.style.display = 'none';
   }
 
+  // Mostrar modal
   document.getElementById('modal-backdrop').style.display = 'block';
   document.getElementById('modal-hotel').style.display   = 'block';
 }
 
+function closeHotelModal() {
+  hideAllModals();
+}
+
+// ─── Envío formulario ─────────────────────────────────────
 async function onSubmitHotel(evt) {
   evt.preventDefault();
-
   const payload = {
-    nombre:      toUpper(document.getElementById('m-nombre').value.trim()),
-    destino:     toUpper(document.getElementById('m-destino').value.trim()),
-    direccion:   toUpper(document.getElementById('m-direccion').value.trim()),
+    nombre: toUpper(document.getElementById('m-nombre').value.trim()),
+    destino: toUpper(document.getElementById('m-destino').value.trim()),
+    direccion: toUpper(document.getElementById('m-direccion').value.trim()),
     contactoNombre:   toUpper(document.getElementById('m-contactoNombre').value.trim()),
     contactoCorreo:   document.getElementById('m-contactoCorreo').value.trim(),
     contactoTelefono: document.getElementById('m-contactoTelefono').value.trim(),
@@ -232,25 +225,22 @@ async function onSubmitHotel(evt) {
     cuadruples:+document.getElementById('m-cuadruples').value||0
   };
 
-  if (isEdit) {
+  if(isEdit) {
     const sel = choiceGrupos.getValue(true);
-    const status0 = document.getElementById('m-statusDefault').value;
-    payload.grupos = sel.map(id=>({
-      id, status: status0, changedBy: currentUserEmail
-    }));
+    const st = document.getElementById('m-statusDefault').value;
+    payload.grupos = sel.map(id=>({ id, status:st, changedBy:currentUserEmail }));
   }
 
-  if (isEdit) {
-    const beforeSnap = await getDoc(doc(db,'hoteles',editId));
-    const beforeData = beforeSnap.data();
-    await updateDoc(doc(db,'hoteles',editId), payload);
+  if(isEdit) {
+    const before = (await getDoc(doc(db,'hoteles',editId))).data();
+    await updateDoc(doc(db,'hoteles',editId),payload);
     await addDoc(collection(db,'historial'),{
       tipo:'hotel-edit', hotelId:editId,
-      antes:beforeData, despues:payload,
+      antes:before, despues:payload,
       usuario:currentUserEmail, ts:serverTimestamp()
     });
   } else {
-    const ref = await addDoc(collection(db,'hoteles'), payload);
+    const ref = await addDoc(collection(db,'hoteles'),payload);
     await addDoc(collection(db,'historial'),{
       tipo:'hotel-new', hotelId:ref.id,
       antes:null, despues:payload,
@@ -258,14 +248,14 @@ async function onSubmitHotel(evt) {
     });
   }
 
-  hideAllModals();
   await renderHoteles();
+  hideAllModals();
 }
 
+// ─── Eliminar Hotel ─────────────────────────────────────
 async function deleteHotel(id) {
-  if (!confirm('¿Eliminar hotel?')) return;
-  const snap = await getDoc(doc(db,'hoteles',id));
-  const before = snap.data();
+  if(!confirm('¿Eliminar hotel?')) return;
+  const before = (await getDoc(doc(db,'hoteles',id))).data();
   await deleteDoc(doc(db,'hoteles',id));
   await addDoc(collection(db,'historial'),{
     tipo:'hotel-del', hotelId:id,
