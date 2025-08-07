@@ -687,13 +687,24 @@ function openOccupancyModal(hotelId) {
     const totalPax = totals.adultos.M + totals.adultos.F + totals.adultos.O +
       totals.estudiantes.M + totals.estudiantes.F + totals.estudiantes.O;
     const totalFull = totalPax + totals.coordinadores;
+
+    const hab = { singles:0, dobles:0, triples:0, cuadruples:0 };
+    dayAss.forEach(a => {
+      const h = a.habitaciones || {};
+      hab.singles    += Number(h.singles    || 0);
+      hab.dobles     += Number(h.dobles     || 0);
+      hab.triples    += Number(h.triples    || 0);
+      hab.cuadruples += Number(h.cuadruples || 0);
+    });
+    
     rows.push({ 
       iso, 
       gruposCount, 
       totals, 
       totalPax, 
       totalFull,
-      grupos: totals.grupos // para el detalle
+      grupos: totals.grupos,
+      hab
     });
   }
 
@@ -706,6 +717,7 @@ function openOccupancyModal(hotelId) {
         <th>Grupos</th>
         <th>A M/F/O</th>
         <th>E M/F/O</th>
+        <th>Habitaciones Ocupadas</th>
         <th>Total Pax</th>
         <th>Coord.</th>
         <th>Total+Coord.</th>
@@ -720,6 +732,7 @@ function openOccupancyModal(hotelId) {
           </td>
           <td>(${r.totals.adultos.M + r.totals.adultos.F + r.totals.adultos.O}) ${r.totals.adultos.M} | ${r.totals.adultos.F} | ${r.totals.adultos.O}</td>
           <td>(${r.totals.estudiantes.M + r.totals.estudiantes.F + r.totals.estudiantes.O}) ${r.totals.estudiantes.M} | ${r.totals.estudiantes.F} | ${r.totals.estudiantes.O}</td>
+          <td> S: ${r.hab.singles} | D: ${r.hab.dobles} | T: ${r.hab.triples} | C: ${r.hab.cuadruples}</td>
           <td>${r.totalPax}</td>
           <td>${r.totals.coordinadores}</td>
           <td>${r.totalFull}</td>
