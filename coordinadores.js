@@ -36,6 +36,31 @@ function gapDays(finA, iniB){ // días de descanso entre viajes (excluye el día
   return Math.round((B - A)/86400000) - 1;
 }
 
+function normalizarFechasGrupo(x) {
+  // 1) Si ya vienen fechas normalizadas
+  let ini = x.fechaInicio || x.fecha_inicio || x.inicio || x.fecha || x.fechaDeViaje;
+  let fin = x.fechaFin || x.fecha_fin || x.fin;
+
+  // 2) Si hay itinerario: usa el primer y último día como rango
+  if ((!ini || !fin) && x.itinerario && typeof x.itinerario === 'object') {
+    const keys = Object.keys(x.itinerario)
+      .filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k))
+      .sort();
+    if (keys.length) {
+      ini = ini || keys[0];
+      fin = fin || keys[keys.length - 1];
+    }
+  }
+
+  // 3) Si solo hay fechaDeViaje + duracion/noches
+  if (ini && !fin && (x.duracion || x.noches)) {
+    const days = Number(x.duracion) || (Number(x.noches) + 1) || 1;
+    fin = addDaysISO(ini, days - 1);
+  }
+
+  return { ini, fin };
+}
+
 // ------------------------------
 // Carga datos
 // ------------------------------
@@ -53,16 +78,31 @@ async function loadCoordinadores(){
 async function loadGrupos(){
   GRUPOS = [];
   ID2GRUPO.clear();
+
   const snap = await getDocs(collection(db,'grupos'));
   snap.forEach(d=>{
     const x = d.data();
     x.id = d.id;
     x.numeroNegocio = x.numeroNegocio || d.id;
-    x.aliasGrupo = x.aliasGrupo || limpiarAlias(x.nombreGrupo||'');
+    x.aliasGrupo = x.aliasGrupo || limpiarAlias(x.nombreGrupo || '');
+
+    const { ini, fin } = normalizarFechasGrupo(x);
+    if (!ini || !fin) {
+      // grupo sin rango utilizable -> lo ignoramos
+      console.warn('Grupo sin rango de fechas, omitido:', x.numeroNegocio || x.id, x);
+      return;
+    }
+
+    x.fechaInicio = ini;
+    x.fechaFin = fin;
+
     GRUPOS.push(x);
     ID2GRUPO.set(x.id, x);
   });
+
   GRUPOS.sort((a,b)=>cmpISO(a.fechaInicio,b.fechaInicio));
+
+  console.log(`GRUPOS cargados: ${GRUPOS.length}`);
 }
 
 async function loadSets(){
