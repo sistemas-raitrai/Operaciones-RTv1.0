@@ -146,6 +146,19 @@
     .occupancy-table td {
       border:1px solid #ccc; padding:.4em; text-align:center;
     }
+
+    #modal-occupancy {
+      max-height: 80vh;       
+      overflow: auto;         
+    }
+    .occupancy-table th {
+      position: sticky;
+      top: 0;
+      background: #fff;     
+      z-index: 2;
+      box-shadow: 0 2px 0 #eee;
+    }
+    
     #modal-occupancy button {
       background:#dc3545; color:#fff; margin-top:.5em;
       width:100%; padding:.5em; border:none;
@@ -182,7 +195,7 @@
 <body>
   <!-- 1) Contenedor donde se injecta el header -->
   <div id="encabezado"></div>
-  <h1>DISTRIBUCIÓN HOTELERA:</h1>
+  <h1>DISTRIBUCIÓN HOTELERA</h1>
 
   <div class="controls">
     <input type="text" id="search-input" placeholder="Buscar hotel..."/>
