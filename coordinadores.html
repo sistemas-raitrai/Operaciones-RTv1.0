@@ -1,29 +1,100 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <title>Asignación de Coordinadores | Sistema Operaciones RT</title>
-  <link rel="stylesheet" href="estilos.css">
+  <meta charset="UTF-8" />
+  <title>Coordinadores | Conjuntos de Viajes</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
   <style>
-    .alerta { color: #b51c1c; font-weight: bold; }
-    .warning { color: #e68c00; }
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
-    .asignacion-table { margin-top: 2em; }
-    .small-btn { padding: 2px 8px; font-size: 0.85em; }
-    .picker-range { width: 150px; }
+    .page { padding: 1rem 1.2rem; }
+    h2 { margin: .6rem 0 1rem; }
+    .toolbar { display:flex; gap:.5rem; margin:.8rem 0 1.2rem; flex-wrap:wrap; }
+    .btn { background:#1f64b2; color:#fff; border:none; padding:.5rem .8rem; border-radius:6px; cursor:pointer; }
+    .btn.secondary { background:#5a6a7a; }
+    .btn.ghost { background:#e8eef6; color:#1f64b2; }
+    .btn.small { padding:.3rem .55rem; font-size:.9rem; }
+    .grid { display:grid; grid-template-columns: 280px 1fr; gap:1rem; align-items:start; }
+    .panel { border:1px solid #ddd; border-radius:10px; background:#fff; }
+    .panel > .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; font-weight:600; }
+    .panel > .bd { padding:.6rem .8rem; }
+    .list { max-height:58vh; overflow:auto; }
+    .card { border:1px solid #ddd; border-radius:12px; background:#fff; margin:.6rem 0; }
+    .card .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
+    .card .bd { padding:.6rem .8rem; }
+    .muted { color:#666; }
+    .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+    .tag { background:#eef3fa; color:#1f64b2; padding:.1rem .4rem; border-radius:6px; font-size:.85rem; }
+    .warn { color:#c57e00; font-weight:600; }
+    .err { color:#b11; font-weight:700; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border:1px solid #eee; padding:.4rem .5rem; text-align:left; }
+    th { background:#f8fafc; }
+    input[type="text"] { width:100%; box-sizing:border-box; padding:.35rem .45rem; }
+    select { padding:.35rem .45rem; }
+    /* Modal básico */
+    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; }
+    .modal { position:fixed; top:6vh; left:50%; transform:translateX(-50%); width:min(980px,96vw); background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2); display:none; }
+    .modal .hd { padding:.8rem 1rem; border-bottom:1px solid #eee; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
+    .modal .bd { padding:1rem; max-height:70vh; overflow:auto; }
+    .modal .ft { padding:.8rem 1rem; border-top:1px solid #eee; display:flex; justify-content:flex-end; gap:.5rem; }
+    .x { cursor:pointer; font-size:1.4rem; line-height:1; }
+    .picker-range { width:180px; }
+    .empty { color:#777; font-style:italic; padding:.4rem 0; }
+    .pill { padding:.06rem .35rem; border-radius:999px; background:#f1f5f9; font-size:.78rem; }
   </style>
 </head>
 <body>
   <div id="encabezado"></div>
-  <h2>👥 Asignación de Coordinadores</h2>
-  <div style="display: flex; gap: 2em;">
-    <!-- Gestión de coordinadores -->
-    <div style="flex:1;">
-      <h3>Lista de coordinadores</h3>
-      <button id="btn-add-coord">Agregar coordinador</button>
-      <table id="tabla-coords">
+
+  <div class="page">
+    <h2>👥 Asignación por Conjuntos de Viajes</h2>
+
+    <div class="toolbar">
+      <button class="btn" id="btn-modal-coords">Gestionar coordinadores</button>
+      <button class="btn ghost" id="btn-sugerir">Sugerir conjuntos (auto)</button>
+      <button class="btn ghost" id="btn-nuevo-conjunto">Nuevo conjunto vacío</button>
+      <button class="btn secondary" id="btn-guardar">Guardar cambios</button>
+      <span id="msg" class="muted"></span>
+    </div>
+
+    <div class="grid">
+      <!-- Viajes libres -->
+      <div class="panel">
+        <div class="hd">🧳 Viajes libres</div>
+        <div class="bd list">
+          <div id="lista-viajes-libres" class="empty">Sin datos…</div>
+        </div>
+      </div>
+
+      <!-- Conjuntos -->
+      <div class="panel">
+        <div class="hd">🗂️ Conjuntos</div>
+        <div class="bd" id="conjuntos-wrap">
+          <div class="empty">Aún no hay conjuntos. Usa “Sugerir conjuntos (auto)” o “Nuevo conjunto vacío”.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: Gestionar coordinadores -->
+  <div id="mb" class="modal-backdrop"></div>
+  <div id="modal-coords" class="modal" role="dialog" aria-modal="true">
+    <div class="hd">
+      <div>Gestionar coordinadores</div>
+      <div class="x" id="close-modal">×</div>
+    </div>
+    <div class="bd">
+      <div class="row" style="justify-content:space-between;">
+        <div class="row">
+          <button class="btn small" id="btn-add-coord">+ Agregar</button>
+          <button class="btn small" id="btn-add-lote">+ Agregar por Excel</button>
+          <input type="file" id="input-excel" accept=".xlsx,.xls" style="display:none;">
+        </div>
+        <div class="muted">Nombre es obligatorio. Fechas disponibles son opcionales.</div>
+      </div>
+
+      <table id="tabla-coords" style="margin-top:.6rem;">
         <thead>
           <tr>
             <th>Nombre *</th>
@@ -33,49 +104,31 @@
             <th>Acción</th>
           </tr>
         </thead>
-        <tbody>
-          <!-- Coordinadores aquí -->
-        </tbody>
+        <tbody></tbody>
       </table>
+      <div class="empty muted" id="hint-empty-coords" style="display:none; margin-top:.6rem;">
+        No hay coordinadores aún. Agrega manual o carga un Excel con una columna <b>Nombre</b>.
+      </div>
     </div>
-    <!-- Asignación a grupos -->
-    <div style="flex:2;">
-      <h3>Asignar coordinadores a grupos</h3>
-      <table id="tabla-grupos" class="asignacion-table">
-        <thead>
-          <tr>
-            <th>Alias Grupo *</th>
-            <th>Fechas</th>
-            <th>Coordinador sugerido</th>
-            <th>Asignar</th>
-            <th>Alerta</th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- Grupos aquí -->
-        </tbody>
-      </table>
-      <button id="btn-auto-asignar">Asignar automático</button>
-      <button id="btn-guardar">Guardar cambios</button>
-      <span id="msg-guardar"></span>
-      <button id="btn-exportar" style="float:right;">Exportar a Excel</button>
+    <div class="ft">
+      <button class="btn secondary" id="btn-guardar-coords">Guardar coordinadores</button>
+      <button class="btn ghost" id="btn-cerrar">Cerrar</button>
     </div>
   </div>
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script type="module">
+
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- Carga encabezado y scripts de la app -->
+  <script type="module">
+    // Encabezado común
     fetch('encabezado.html')
-      .then(res => res.text())
-      .then(html => {
-        document.getElementById('encabezado').innerHTML = html;
-      })
+      .then(r => r.text())
+      .then(html => { document.getElementById('encabezado').innerHTML = html; })
       .then(() => {
         const s = document.createElement('script');
         s.type = 'module';
-        s.textContent = `
-          import './firebase-init.js';
-          import './script.js';
-          import './coordinadores.js'; // <-- tu lógica de página
-        `;
+        s.src = './coordinadores.js';  // este archivo
         document.body.appendChild(s);
       });
   </script>
