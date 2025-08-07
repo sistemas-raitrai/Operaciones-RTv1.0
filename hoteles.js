@@ -140,7 +140,7 @@ async function renderHoteles() {
     // 2.1 Cabecera de hotel
     let html = `
       <h3>${toUpper(h.nombre)}</h3>
-      <div class="subtitulo" color: red>DESTINO: ${toUpper(h.destino)}</div>
+      <div class="subtitulo" "color= red">DESTINO: ${toUpper(h.destino)}</div>
       <div class="subsubtitulo">
         DISPONIBILIDAD: ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
       </div>
