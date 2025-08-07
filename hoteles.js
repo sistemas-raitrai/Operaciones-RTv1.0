@@ -432,7 +432,12 @@ function openAssignModal(hotelId, assignId){
   choiceGrupo.removeActiveItems();
   document.getElementById('assign-title').textContent =
     isEditAssign ? 'Editar Asignación' : 'Nueva Asignación';
-
+  
+  // Limpiar campos personalizados
+  ['g-adultos','g-estudiantes','g-cantidadgrupo'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  
   if (isEditAssign) {
     const a = asignaciones.find(x=>x.id===assignId);
     choiceGrupo.setChoiceByValue([a.grupoId]);
@@ -446,13 +451,22 @@ function openAssignModal(hotelId, assignId){
     document.getElementById('a-es-F').value     = a.estudiantes.F;
     document.getElementById('a-es-O').value     = a.estudiantes.O;
     document.getElementById('a-coordinadores').value = a.coordinadores;
-
+  
+    // Cargar habitaciones si existen
     const hab = a.habitaciones || {};
     document.getElementById('a-singles').value    = hab.singles    ?? 0;
     document.getElementById('a-dobles').value     = hab.dobles     ?? 0;
     document.getElementById('a-triples').value    = hab.triples    ?? 0;
     document.getElementById('a-cuadruples').value = hab.cuadruples ?? 0;
+  
+    // Cargar datos generales si existen
+    // Busca el grupo en la base local (por id), si no, usa los del assignment
+    const g = grupos.find(x => x.id === a.grupoId) || {};
+    document.getElementById('g-adultos').value = g.adultos || a.adultosTotal || 0;
+    document.getElementById('g-estudiantes').value = g.estudiantes || a.estudiantesTotal || 0;
+    document.getElementById('g-cantidadgrupo').value = g.cantidadgrupo || a.cantidadgrupo || 0;
   }
+
 
   // 3) cuando el usuario seleccione un grupo, actualiza máx y rango
   document.getElementById('a-grupo')
@@ -473,7 +487,12 @@ function openAssignModal(hotelId, assignId){
       // recalcular noches
       document.getElementById('a-noches').value =
         Math.round((new Date(co.value)-new Date(ci.value))/(1000*60*60*24));
+      // ---- NUEVO: cargar adultos, estudiantes, cantidadgrupo
+      document.getElementById('g-adultos').value      = g.adultos      || 0;
+      document.getElementById('g-estudiantes').value  = g.estudiantes  || 0;
+      document.getElementById('g-cantidadgrupo').value= g.cantidadgrupo|| 0;
     });
+
 
   // 4) mostrar modal
   document.getElementById('assign-backdrop').style.display='block';
@@ -517,31 +536,41 @@ async function onSubmitAssign(e) {
     alert('Selecciona un grupo');
     return;
   }
-  const g   = grupos.find(x => x.id === gId) || {};
-  const maxPax = g.cantidadgrupo || 0;
+  // Datos generales desde inputs editables:
+  const newAdultos      = Number(document.getElementById('g-adultos').value);
+  const newEstudiantes  = Number(document.getElementById('g-estudiantes').value);
+  const newCantidad     = Number(document.getElementById('g-cantidadgrupo').value);
 
-  // 2️⃣ Sumar adultos y estudiantes (todos los sexos)
+  // Sumar adultos y estudiantes de asignación (por sexo)
   const adSum = ['M','F','O']
     .reduce((sum, k) => sum + Number(document.getElementById(`a-ad-${k}`).value), 0);
   const esSum = ['M','F','O']
     .reduce((sum, k) => sum + Number(document.getElementById(`a-es-${k}`).value), 0);
 
-  // 3️⃣ Validar que no se pase del total de pax
-  if (adSum + esSum > maxPax) {
-    return alert(
-      `Total adultos+estudiantes = ${adSum + esSum} excede la capacidad del grupo (${maxPax}).`
-    );
+  // VALIDACIÓN PRINCIPAL: Suma adultos+estudiantes == cantidadgrupo
+  if (newAdultos + newEstudiantes !== newCantidad) {
+    return alert(`La suma de adultos (${newAdultos}) y estudiantes (${newEstudiantes}) debe ser igual a pasajeros totales (${newCantidad}). Corrige los datos.`);
   }
 
-  // 4️⃣ (Opcional) Validar que coincidan exactamente con la configuración del grupo
-  if (adSum !== (g.adultos || 0)) {
-    return alert(`Debes asignar exactamente ${g.adultos} adultos.`);
+  // Ahora, la asignación NO puede asignar más de lo que los valores dicen
+  if (adSum !== newAdultos) {
+    return alert(`Debes asignar exactamente ${newAdultos} adultos (la suma de sexos no coincide).`);
   }
-  if (esSum !== (g.estudiantes || 0)) {
-    return alert(`Debes asignar exactamente ${g.estudiantes} estudiantes.`);
+  if (esSum !== newEstudiantes) {
+    return alert(`Debes asignar exactamente ${newEstudiantes} estudiantes (la suma de sexos no coincide).`);
   }
 
-  // 5️⃣ Si pasa validación, construir payload
+  // No puedes asignar más pax en habitaciones que adultos+estudiantes
+  const singles    = Number(document.getElementById('a-singles').value)    || 0;
+  const dobles     = Number(document.getElementById('a-dobles').value)     || 0;
+  const triples    = Number(document.getElementById('a-triples').value)    || 0;
+  const cuadruples = Number(document.getElementById('a-cuadruples').value) || 0;
+  const paxHab = singles*1 + dobles*2 + triples*3 + cuadruples*4;
+  if (paxHab > 0 && paxHab !== (newAdultos + newEstudiantes)) {
+    return alert(`El total de personas en habitaciones (${paxHab}) no coincide con el total de adultos + estudiantes (${newAdultos + newEstudiantes}).`);
+  }
+
+  // Construir el payload para Firestore
   const payload = {
     hotelId:   editHotelId,
     grupoId:   gId,
@@ -559,16 +588,15 @@ async function onSubmitAssign(e) {
       O: Number(document.getElementById('a-es-O').value)
     },
     coordinadores: Number(document.getElementById('a-coordinadores').value),
-    ts:            serverTimestamp()
+    habitaciones: { singles, dobles, triples, cuadruples },
+    ts:            serverTimestamp(),
+    // NUEVO: Guarda los datos generales editados en el assignment
+    adultosTotal: newAdultos,
+    estudiantesTotal: newEstudiantes,
+    cantidadgrupo: newCantidad
   };
 
-  const singles = Number(document.getElementById('a-singles').value) || 0;
-  const dobles  = Number(document.getElementById('a-dobles').value)  || 0;
-  const triples = Number(document.getElementById('a-triples').value) || 0;
-  const cuadruples = Number(document.getElementById('a-cuadruples').value) || 0;
-  payload.habitaciones = { singles, dobles, triples, cuadruples };
-
-  // 6️⃣ Guardar o actualizar en Firestore + historial
+  // Guardar/actualizar en Firestore + historial
   if (isEditAssign) {
     const before = asignaciones.find(a => a.id === editAssignId);
     await updateDoc(doc(db, 'hotelAssignments', editAssignId), payload);
@@ -592,12 +620,11 @@ async function onSubmitAssign(e) {
     });
   }
 
-  // 7️⃣ Refrescar UI y cerrar modales
+  // Refrescar UI y cerrar modales
   await loadAsignaciones();
   await renderHoteles();
   hideModals();
 }
-
 
 // eliminar asignación
 async function deleteAssign(id){
