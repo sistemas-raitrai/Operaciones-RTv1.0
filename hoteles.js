@@ -60,7 +60,7 @@ async function loadGrupos(){
   // Destinos únicos
   const destinos = [...new Set(grupos.map(g=>g.destino))];
   choiceDestino = new Choices(
-    document.getElementById('m-'),
+    document.getElementById('m-destino'),
     { searchEnabled:false }
   );
   choiceDestino.setChoices(
