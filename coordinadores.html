@@ -123,21 +123,17 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- Carga encabezado y scripts de la app -->
+    <!-- Carga encabezado y scripts de la app -->
   <script type="module">
+    // Sigue cargando el encabezado igual que antes
     fetch('encabezado.html')
       .then(r => r.text())
-      .then(html => { document.getElementById('encabezado').innerHTML = html; })
-      .then(() => {
-        const s = document.createElement('script');
-        s.type = 'module';
-        s.textContent = `
-          import './firebase-init.js';
-          import './script.js';
-          import './coordinadores.js';
-        `;
-        document.body.appendChild(s);
-      });
+      .then(html => { document.getElementById('encabezado').innerHTML = html; });
   </script>
+  
+  <!-- Carga los módulos con cache-buster para forzar versión nueva -->
+  <script type="module" src="./firebase-init.js?v=20250807-2"></script>
+  <script type="module" src="./script.js?v=20250807-2"></script>
+  <script type="module" src="./coordinadores.js?v=20250807-2"></script>
 </body>
 </html>
