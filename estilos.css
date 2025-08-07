@@ -864,3 +864,10 @@ th.swap-pending {
   z-index: 5;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
 }
+
+.btn-small.selected-swap {
+  background: #007bff !important;
+  color: #fff !important;
+  border-radius: 4px;
+  border: 1.5px solid #003366;
+}
