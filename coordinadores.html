@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Asignación de Coordinadores | Sistema Operaciones RT</title>
+  <link rel="stylesheet" href="estilos.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <style>
+    .alerta { color: #b51c1c; font-weight: bold; }
+    .warning { color: #e68c00; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { border: 1px solid #ccc; padding: 5px; text-align: center; }
+    .asignacion-table { margin-top: 2em; }
+    .small-btn { padding: 2px 8px; font-size: 0.85em; }
+    .picker-range { width: 150px; }
+  </style>
+</head>
+<body>
+  <div id="encabezado"></div>
+  <h2>👥 Asignación de Coordinadores</h2>
+  <div style="display: flex; gap: 2em;">
+    <!-- Gestión de coordinadores -->
+    <div style="flex:1;">
+      <h3>Lista de coordinadores</h3>
+      <button id="btn-add-coord">Agregar coordinador</button>
+      <table id="tabla-coords">
+        <thead>
+          <tr>
+            <th>Nombre *</th>
+            <th>RUT</th>
+            <th>Correo</th>
+            <th>Fechas disponibles</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Coordinadores aquí -->
+        </tbody>
+      </table>
+    </div>
+    <!-- Asignación a grupos -->
+    <div style="flex:2;">
+      <h3>Asignar coordinadores a grupos</h3>
+      <table id="tabla-grupos" class="asignacion-table">
+        <thead>
+          <tr>
+            <th>Alias Grupo *</th>
+            <th>Fechas</th>
+            <th>Coordinador sugerido</th>
+            <th>Asignar</th>
+            <th>Alerta</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Grupos aquí -->
+        </tbody>
+      </table>
+      <button id="btn-auto-asignar">Asignar automático</button>
+      <button id="btn-guardar">Guardar cambios</button>
+      <span id="msg-guardar"></span>
+      <button id="btn-exportar" style="float:right;">Exportar a Excel</button>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="coordinadores.js" type="module"></script>
+</body>
+</html>
