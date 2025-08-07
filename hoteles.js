@@ -446,6 +446,12 @@ function openAssignModal(hotelId, assignId){
     document.getElementById('a-es-F').value     = a.estudiantes.F;
     document.getElementById('a-es-O').value     = a.estudiantes.O;
     document.getElementById('a-coordinadores').value = a.coordinadores;
+
+    const hab = a.habitaciones || {};
+    document.getElementById('a-singles').value    = hab.singles    ?? 0;
+    document.getElementById('a-dobles').value     = hab.dobles     ?? 0;
+    document.getElementById('a-triples').value    = hab.triples    ?? 0;
+    document.getElementById('a-cuadruples').value = hab.cuadruples ?? 0;
   }
 
   // 3) cuando el usuario seleccione un grupo, actualiza máx y rango
@@ -472,9 +478,34 @@ function openAssignModal(hotelId, assignId){
   // 4) mostrar modal
   document.getElementById('assign-backdrop').style.display='block';
   document.getElementById('modal-assign').style.display='block';
+
+  ['a-singles','a-dobles','a-triples','a-cuadruples','a-ad-M','a-ad-F','a-ad-O','a-es-M','a-es-F','a-es-O'].forEach(id => {
+  document.getElementById(id).addEventListener('input', chequearHabitacionesVsPax);
+  });
+  document.getElementById('a-grupo').addEventListener('change', chequearHabitacionesVsPax);
 }
 
 function closeAssignModal(){ hideModals(); }
+
+function chequearHabitacionesVsPax() {
+  const singles    = Number(document.getElementById('a-singles').value)    || 0;
+  const dobles     = Number(document.getElementById('a-dobles').value)     || 0;
+  const triples    = Number(document.getElementById('a-triples').value)    || 0;
+  const cuadruples = Number(document.getElementById('a-cuadruples').value) || 0;
+  const paxHab = singles*1 + dobles*2 + triples*3 + cuadruples*4;
+  const adSum = ['M','F','O'].reduce((sum, k) => sum + Number(document.getElementById(`a-ad-${k}`).value), 0);
+  const esSum = ['M','F','O'].reduce((sum, k) => sum + Number(document.getElementById(`a-es-${k}`).value), 0);
+  const totalPax = adSum + esSum;
+
+  let aviso = '';
+  if (paxHab > 0 && paxHab !== totalPax) {
+    aviso = `⚠️ Atención: El total de personas en habitaciones (${paxHab}) no coincide con el total de pasajeros asignados (${totalPax}).`;
+  }
+  const avisoDiv = document.getElementById('habitaciones-aviso');
+  avisoDiv.textContent = aviso;
+  avisoDiv.style.display = aviso ? 'block' : 'none';
+}
+
 
 // guardar asignación
 async function onSubmitAssign(e) {
@@ -530,6 +561,12 @@ async function onSubmitAssign(e) {
     coordinadores: Number(document.getElementById('a-coordinadores').value),
     ts:            serverTimestamp()
   };
+
+  const singles = Number(document.getElementById('a-singles').value) || 0;
+  const dobles  = Number(document.getElementById('a-dobles').value)  || 0;
+  const triples = Number(document.getElementById('a-triples').value) || 0;
+  const cuadruples = Number(document.getElementById('a-cuadruples').value) || 0;
+  payload.habitaciones = { singles, dobles, triples, cuadruples };
 
   // 6️⃣ Guardar o actualizar en Firestore + historial
   if (isEditAssign) {
