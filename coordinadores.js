@@ -25,6 +25,20 @@ const addDaysISO = (iso, n) => {
   d.setDate(d.getDate() + n);
   return toISO(d);
 };
+
+// 🔒 Convierte string/Timestamp/Date → 'YYYY-MM-DD'
+function asISO(v){
+  if (!v) return null;
+  if (typeof v === 'string') {
+    const d = new Date(v);                 // acepta '2025-12-19'
+    return isNaN(d) ? null : toISO(d);     // ignora textos tipo "SALIDA DESDE..."
+  }
+  if (v.toDate)    return toISO(v.toDate());            // Firestore Timestamp
+  if (v.seconds)   return toISO(new Date(v.seconds*1000));
+  if (v instanceof Date) return toISO(v);
+  return null;
+}
+
 const cmpISO = (a,b) => (new Date(a) - new Date(b));
 const overlap = (a1,a2,b1,b2) => !(new Date(a2) < new Date(b1) || new Date(b2) < new Date(a1));
 const inAnyRange = (ini, fin, ranges=[]) =>
@@ -37,11 +51,11 @@ function gapDays(finA, iniB){ // días de descanso entre viajes (excluye el día
 }
 
 function normalizarFechasGrupo(x) {
-  // 1) Si ya vienen fechas normalizadas
-  let ini = x.fechaInicio || x.fecha_inicio || x.inicio || x.fecha || x.fechaDeViaje;
-  let fin = x.fechaFin || x.fecha_fin || x.fin;
+  // candidatos directos (acepta varios nombres y formatos)
+  let ini = asISO(x.fechaInicio || x.fecha_inicio || x.inicio || x.fecha || x.fechaDeViaje || x.fechaViaje || x.fechaInicioViaje);
+  let fin = asISO(x.fechaFin    || x.fecha_fin    || x.fin    || x.fechaFinal   || x.fechaFinViaje);
 
-  // 2) Si hay itinerario: usa el primer y último día como rango
+  // desde itinerario (claves 'YYYY-MM-DD')
   if ((!ini || !fin) && x.itinerario && typeof x.itinerario === 'object') {
     const keys = Object.keys(x.itinerario)
       .filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k))
@@ -52,11 +66,15 @@ function normalizarFechasGrupo(x) {
     }
   }
 
-  // 3) Si solo hay fechaDeViaje + duracion/noches
+  // fecha base + duración/noches
   if (ini && !fin && (x.duracion || x.noches)) {
     const days = Number(x.duracion) || (Number(x.noches) + 1) || 1;
     fin = addDaysISO(ini, days - 1);
   }
+
+  // fallback: 1 día
+  if (ini && !fin) fin = ini;
+  if (fin && !ini) ini = fin;
 
   return { ini, fin };
 }
@@ -80,6 +98,8 @@ async function loadGrupos(){
   ID2GRUPO.clear();
 
   const snap = await getDocs(collection(db,'grupos'));
+  console.log('Docs en colección "grupos":', snap.size);
+
   snap.forEach(d=>{
     const x = d.data();
     x.id = d.id;
@@ -88,8 +108,7 @@ async function loadGrupos(){
 
     const { ini, fin } = normalizarFechasGrupo(x);
     if (!ini || !fin) {
-      // grupo sin rango utilizable -> lo ignoramos
-      console.warn('Grupo sin rango de fechas, omitido:', x.numeroNegocio || x.id, x);
+      console.warn('Omitido por falta de rango:', x.numeroNegocio || x.id, x);
       return;
     }
 
@@ -100,9 +119,8 @@ async function loadGrupos(){
     ID2GRUPO.set(x.id, x);
   });
 
-  GRUPOS.sort((a,b)=>cmpISO(a.fechaInicio,b.fechaInicio));
-
-  console.log(`GRUPOS cargados: ${GRUPOS.length}`);
+  GRUPOS.sort((a,b)=> (new Date(a.fechaInicio) - new Date(b.fechaInicio)));
+  console.log('GRUPOS cargados:', GRUPOS.length);
 }
 
 async function loadSets(){
