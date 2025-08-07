@@ -61,7 +61,23 @@
       <button id="btn-exportar" style="float:right;">Exportar a Excel</button>
     </div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script src="coordinadores.js" type="module"></script>
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script type="module">
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(html => {
+        document.getElementById('encabezado').innerHTML = html;
+      })
+      .then(() => {
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.textContent = `
+          import './firebase-init.js';
+          import './script.js';
+          import './coordinadores.js'; // <-- tu lógica de página
+        `;
+        document.body.appendChild(s);
+      });
+  </script>
 </body>
 </html>
