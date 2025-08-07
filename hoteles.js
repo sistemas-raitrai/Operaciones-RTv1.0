@@ -593,7 +593,9 @@ async function onSubmitAssign(e) {
     // NUEVO: Guarda los datos generales editados en el assignment
     adultosTotal: newAdultos,
     estudiantesTotal: newEstudiantes,
-    cantidadgrupo: newCantidad
+    cantidadgrupo: newCantidad,
+    status: 'confirmado',
+    changedBy: currentUserEmail
   };
 
   // Guardar/actualizar en Firestore + historial
