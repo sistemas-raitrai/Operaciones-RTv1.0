@@ -121,14 +121,17 @@
 
   <!-- Carga encabezado y scripts de la app -->
   <script type="module">
-    // Encabezado común
     fetch('encabezado.html')
       .then(r => r.text())
       .then(html => { document.getElementById('encabezado').innerHTML = html; })
       .then(() => {
         const s = document.createElement('script');
         s.type = 'module';
-        s.src = './coordinadores.js';  // este archivo
+        s.textContent = `
+          import './firebase-init.js';
+          import './script.js';
+          import './coordinadores.js';
+        `;
         document.body.appendChild(s);
       });
   </script>
