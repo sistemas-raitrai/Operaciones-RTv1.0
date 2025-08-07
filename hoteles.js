@@ -12,6 +12,8 @@ let isEditHotel = false, editHotelId = null;
 let isEditAssign = false, editAssignId = null;
 let currentUserEmail = null;
 let choiceDestino = null, choiceGrupo = null;
+let swapMode = false;
+let swapFirstAssignId = null;
 
 function fmtFechaCorta(iso) {
   const d = new Date(iso + 'T00:00:00');
@@ -186,6 +188,7 @@ async function renderHoteles() {
               <button class="btn-small" style="margin-left:0.5em;" data-act="togA" data-id="${a.id}">🔄</button>
               <button class="btn-small" data-act="editA" data-id="${a.id}">✏️</button>
               <button class="btn-small" data-act="delA"  data-id="${a.id}">🗑️</button>
+              <button class="btn-small" data-act="swapA" data-id="${a.id}">🚀</button>
             </span>
           </div>
           <div class="group-dates">
@@ -224,11 +227,74 @@ async function renderHoteles() {
     if (act === 'delA')    btn.onclick = () => deleteAssign(id);
     if (act === 'occH')    btn.onclick = () => openOccupancyModal(id);
     if (act === 'togA')    btn.onclick = () => toggleAssignStatus(id);
+    if (act === 'swapA') btn.onclick = () => handleSwapClick(id, btn);
   });
 
   // 4️⃣ Reaplicar filtro
   filterHoteles(document.getElementById('search-input').value);
 }
+
+function handleSwapClick(assignId, btn) {
+  // Si ya estamos en modo swap y hay uno seleccionado:
+  if (swapMode && swapFirstAssignId && swapFirstAssignId !== assignId) {
+    const first = asignaciones.find(a => a.id === swapFirstAssignId);
+    const second = asignaciones.find(a => a.id === assignId);
+    if (!first || !second) return;
+    // Realiza el swap
+    swapAssignments(first, second);
+    // Limpia visual y estado
+    swapMode = false;
+    swapFirstAssignId = null;
+    document.querySelectorAll('.btn-small.selected-swap').forEach(b => b.classList.remove('selected-swap'));
+  } else {
+    // Selecciona el primero
+    swapMode = true;
+    swapFirstAssignId = assignId;
+    // Marca botón
+    document.querySelectorAll('.btn-small.selected-swap').forEach(b => b.classList.remove('selected-swap'));
+    btn.classList.add('selected-swap');
+  }
+}
+
+// Quita selección si se hace click fuera
+document.body.addEventListener('click', e => {
+  if (!e.target.classList.contains('btn-small') || e.target.dataset.act !== 'swapA') {
+    swapMode = false;
+    swapFirstAssignId = null;
+    document.querySelectorAll('.btn-small.selected-swap').forEach(b => b.classList.remove('selected-swap'));
+  }
+}, true);
+
+async function swapAssignments(a1, a2) {
+  // Intercambia hotelId, fechas, noches, etc. Mantiene grupoId y los datos de pasajeros originales
+  const { hotelId: h1, checkIn: in1, checkOut: out1, noches: n1 } = a1;
+  const { hotelId: h2, checkIn: in2, checkOut: out2, noches: n2 } = a2;
+
+  // Swapea hotel y fechas
+  await updateDoc(doc(db, 'hotelAssignments', a1.id), {
+    hotelId: h2, checkIn: in2, checkOut: out2, noches: n2
+  });
+  await updateDoc(doc(db, 'hotelAssignments', a2.id), {
+    hotelId: h1, checkIn: in1, checkOut: out1, noches: n1
+  });
+
+  // Historial
+  await addDoc(collection(db, 'historial'), {
+    tipo: 'swap-assign',
+    ids: [a1.id, a2.id],
+    antes: { a1, a2 },
+    despues: {
+      a1: { ...a1, hotelId: h2, checkIn: in2, checkOut: out2, noches: n2 },
+      a2: { ...a2, hotelId: h1, checkIn: in1, checkOut: out1, noches: n1 }
+    },
+    usuario: currentUserEmail,
+    ts: serverTimestamp()
+  });
+
+  await loadAsignaciones();
+  await renderHoteles();
+}
+
 
 // 5️⃣ Agrega al final (o donde estén tus helpers) esta función para alternar el status:
 async function toggleAssignStatus(assignId) {
