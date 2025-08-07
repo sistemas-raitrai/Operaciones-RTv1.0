@@ -151,6 +151,13 @@
       max-height: 80vh;       
       overflow: auto;         
     }
+    
+    #occ-table-wrapper {
+      max-height: 65vh;
+      overflow-y: auto;
+      margin-top: .5em;
+    }
+    
     .occupancy-table th {
       position: sticky;
       top: 0;
@@ -329,7 +336,9 @@
   <div id="modal-occupancy" class="modal">
     <h2>Ocupación Hotel</h2>
     <div id="occ-header"></div>
-    <table id="occ-table" class="occupancy-table"></table>
+    <div id="occ-table-wrapper">
+      <table id="occ-table" class="occupancy-table"></table>
+    </div>
     <button id="occ-close">Cerrar</button>
   </div>
 
