@@ -15,6 +15,8 @@ let COORDS = [];   // [{id?, nombre, rut, correo, fechasDisponibles:[{inicio,fin
 let GRUPOS = [];   // [{id, numeroNegocio, nombreGrupo, aliasGrupo, fechaInicio, fechaFin}]
 let SETS = [];     // [{id?, viajes:[grupoId], coordinadorId:null, confirmado:false, alertas:[]}]
 let ID2GRUPO = new Map();
+let swapMode = false;
+let swapFirst = null; // { setIdx:number, grupoId:string }
 
 // ------------------------------
 // Helpers fecha
@@ -33,8 +35,8 @@ function asISO(v){
     const d = new Date(v);                 // acepta '2025-12-19'
     return isNaN(d) ? null : toISO(d);     // ignora textos tipo "SALIDA DESDE..."
   }
-  if (v.toDate)    return toISO(v.toDate());            // Firestore Timestamp
-  if (v.seconds)   return toISO(new Date(v.seconds*1000));
+  if (v?.toDate)  return toISO(v.toDate());           // Firestore Timestamp
+  if (v?.seconds) return toISO(new Date(v.seconds*1000));
   if (v instanceof Date) return toISO(v);
   return null;
 }
@@ -226,6 +228,7 @@ function renderSets(){
         <td style="width:24%">${v.fechaInicio} → ${v.fechaFin}</td>
         <td style="width:24%"><span class="muted">#${v.numeroNegocio}</span></td>
         <td style="width:16%">
+          <button class="btn small" data-swap="${v.id}" data-set="${idx}">Swap</button>
           <button class="btn small" data-move="${v.id}" data-set="${idx}">Mover…</button>
           <button class="btn small" data-del="${v.id}" data-set="${idx}">Quitar</button>
         </td>
@@ -324,30 +327,87 @@ function renderSets(){
       evaluarAlertas(); render();
     };
   });
+
+  // Swap
+  elWrapSets.querySelectorAll('button[data-swap]').forEach(btn=>{
+    btn.onclick = ()=>{
+      const setIdx = +btn.dataset.set;
+      const gid    = btn.dataset.swap;
+      handleSwapClick(setIdx, gid, btn);
+    };
+  });
+
+  // Cancelar swap al hacer click fuera
+  document.body.addEventListener('click', e=>{
+    if (!e.target.closest('button[data-swap]')) {
+      swapMode = false; swapFirst = null;
+      elWrapSets.querySelectorAll('button[data-swap].selected-swap')
+        .forEach(b=> b.classList.remove('selected-swap'));
+    }
+  }, true);
 }
 
 // ------------------------------
-// Sugerir conjuntos (greedy con 1 día descanso)
+// Sugerir conjuntos (minimiza coordinadores)
+// Greedy tipo interval-partitioning con prioridad por set que queda libre antes.
+// Regla: preferir >=1 día descanso; permitir 0 días pero solo dos tramos seguidos.
 // ------------------------------
 function sugerirConjuntos(){
-  const usados = new Set();
-  const ordenados = GRUPOS.slice().sort((a,b)=>cmpISO(a.fechaInicio,b.fechaInicio));
-  const sets = [];
+  // Orden por fecha de inicio
+  const ordenados = GRUPOS.slice().sort((a,b)=> cmpISO(a.fechaInicio, b.fechaInicio));
+
+  // Cada set de trabajo mantiene: viajes[], lastFin, zeroChain
+  const workSets = []; // [{viajes:[], lastFin:'YYYY-MM-DD', zeroChain:number}]
 
   for (const g of ordenados){
-    if (usados.has(g.id)) continue;
-    // intenta poner en un set existente que termine antes con 1 día libre
-    let puesto = false;
-    for (const s of sets){
-      const last = ID2GRUPO.get(s.viajes[s.viajes.length-1]);
-      if (cmpISO(addDaysISO(last.fechaFin,1), g.fechaInicio) <= 0){ // >=1 día descanso
-        s.viajes.push(g.id); usados.add(g.id); puesto = true; break;
+    // Buscar el set "más pronto disponible" que acepte este viaje
+    let bestIdx = -1;
+    let bestAvail = null;
+
+    for (let i=0; i<workSets.length; i++){
+      const s = workSets[i];
+      const gap = gapDays(s.lastFin, g.fechaInicio); // >=1 ideal; 0 permitido si zeroChain<2
+      const aceptable = (gap >= 1) || (gap === 0 && s.zeroChain < 2);
+      if (!aceptable) continue;
+
+      // fecha disponible para comparar (cuanto antes, mejor)
+      const avail = addDaysISO(s.lastFin, 1); // queda libre al día siguiente del último fin
+      if (bestIdx === -1 || cmpISO(avail, bestAvail) < 0){
+        bestIdx = i;
+        bestAvail = avail;
       }
     }
-    if (!puesto){ sets.push({viajes:[g.id], coordinadorId:null, confirmado:false}); usados.add(g.id); }
+
+    if (bestIdx === -1){
+      // No hay set compatible → crear nuevo (nuevo coordinador)
+      workSets.push({
+        viajes:   [g.id],
+        lastFin:  g.fechaFin,
+        zeroChain: 0
+      });
+    } else {
+      // Colocar en el set elegido
+      const s = workSets[bestIdx];
+      const gap = gapDays(s.lastFin, g.fechaInicio);
+      s.viajes.push(g.id);
+      s.zeroChain = (gap === 0) ? (s.zeroChain + 1) : 0;
+      s.lastFin   = g.fechaFin;
+    }
   }
-  SETS = sets;
-  evaluarAlertas(); render();
+
+  // Volcar a SETS (limpio: sin lastFin/zeroChain)
+  SETS = workSets.map(() => ({
+    viajes: [],
+    coordinadorId: null,
+    confirmado: false,
+    alertas: []
+  }));
+  for (let i=0; i<workSets.length; i++){
+    SETS[i].viajes = workSets[i].viajes.slice();
+  }
+
+  evaluarAlertas();
+  render();
 }
 
 // ------------------------------
@@ -454,6 +514,38 @@ function agregarViajeAConjunto(setIdx){
   evaluarAlertas(); render();
 }
 
+// --- Swap entre conjuntos (estilo hoteles)
+function handleSwapClick(setIdx, grupoId, btn){
+  // primer click → seleccionar origen
+  if (!swapMode){
+    swapMode = true;
+    swapFirst = { setIdx, grupoId };
+    elWrapSets.querySelectorAll('button[data-swap].selected-swap')
+      .forEach(b=> b.classList.remove('selected-swap'));
+    btn.classList.add('selected-swap');
+    return;
+  }
+  // segundo click → si es distinto, intercambiar
+  if (swapFirst && (swapFirst.setIdx !== setIdx || swapFirst.grupoId !== grupoId)){
+    swapBetweenSets(swapFirst, { setIdx, grupoId });
+  }
+  // limpiar estado visual
+  swapMode = false; swapFirst = null;
+  elWrapSets.querySelectorAll('button[data-swap].selected-swap')
+    .forEach(b=> b.classList.remove('selected-swap'));
+}
+
+function swapBetweenSets(a, b){
+  // Quitar de cada set
+  SETS[a.setIdx].viajes = SETS[a.setIdx].viajes.filter(id=>id!==a.grupoId);
+  SETS[b.setIdx].viajes = SETS[b.setIdx].viajes.filter(id=>id!==b.grupoId);
+  // Intercambiar
+  SETS[a.setIdx].viajes.push(b.grupoId);
+  SETS[b.setIdx].viajes.push(a.grupoId);
+  evaluarAlertas();
+  render();
+}
+
 // ------------------------------
 // Sugerir coordinador para un conjunto (disponible en todos los viajes)
 // ------------------------------
@@ -472,7 +564,7 @@ function sugerirCoordinador(setIdx){
 async function guardarTodo(){
   elMsg.textContent = 'Guardando…';
 
-  // 1) Guarda alias y set para cada grupo
+  // 1) Guarda alias en cada grupo
   for (const g of GRUPOS){
     await updateDoc(doc(db,'grupos', g.id), {
       aliasGrupo: g.aliasGrupo || null
