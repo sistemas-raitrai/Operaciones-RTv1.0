@@ -46,6 +46,19 @@
       outline:2px solid #1f64b2;
       box-shadow:0 0 0 3px #d9e9ff inset;
     }
+    /* Forzar ancho completo de las cards en la columna de Conjuntos */
+    #conjuntos-wrap .card{
+      display: block;      /* por si estilos globales la tienen inline-block */
+      width: 100%;         /* ocupar todo el ancho del panel */
+      max-width: none;     /* anula posibles límites del css global */
+    }
+    
+    /* Asegurar que la tabla se estire */
+    #conjuntos-wrap table{ width:100%; }
+    
+    /* (Opcional) hacer la columna izquierda un poco más ancha */
+    .grid{ grid-template-columns: 340px 1fr; } /* antes tenías 280px 1fr */
+
   </style>
 </head>
 <body>
