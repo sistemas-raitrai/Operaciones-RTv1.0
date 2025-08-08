@@ -274,43 +274,19 @@ async function cargarYMostrarTabla() {
   });
 
   // =========================================================
-  // 8) TOTALES — botón + lógica + popover (DRILL-DOWN)
+  // 8) TOTALES — funciones locales y exposición global
   // =========================================================
   const $modalTot = $('#modalTotales');
   const $popover  = $('#tot-popover');
-
-  // abrir/cerrar
-  $('#btn-totales').off('click').on('click', () => {
-    // 1) Calcular rango por defecto desde GRUPOS_RAW
-    const conInicio = GRUPOS_RAW.filter(g => g.fechaInicio instanceof Date);
-    if (conInicio.length) {
-      // ordena por fechaInicio ascendente
-      conInicio.sort((a,b) => a.fechaInicio - b.fechaInicio);
   
-      const primero = conInicio[0];                               // primer grupo que viaja (por inicio)
-      const ultimo  = conInicio[conInicio.length - 1];            // último grupo que INICIA viaje
-      const ini     = primero.fechaInicio;                        // inicio = fechaInicio del primero
-      const fin     = ultimo.fechaFin || ultimo.fechaInicio;      // fin = fechaFin del último (o su inicio si no tiene fin)
-  
-      $('#totInicio').val(toInputDate(ini));
-      $('#totFin').val(toInputDate(fin));
-    } else {
-      // sin fechas válidas
-      $('#totInicio').val('');
-      $('#totFin').val('');
-    }
-  
-    // 2) Limpia UI y abre
-    $('#tot-resumen').empty();
-    $('#tot-tablas').empty();
-    $popover.hide();
-    $modalTot.show();
-  
-    // 3) (opcional) calcula de inmediato con ese rango:
-    renderTotales();
-  });
-
-
+  // helper (ya lo tienes arriba; si no, déjalo aquí)
+  function toInputDate(d) {
+    if (!(d instanceof Date)) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
   function overlaps(ini, fin, min, max) {
     if (!ini && !fin) return false;
     ini = ini || fin; fin = fin || ini;
@@ -318,18 +294,42 @@ async function cargarYMostrarTabla() {
     if (max && ini > max) return false;
     return true;
   }
-
+  
+  function openTotales() {
+    // Rango por defecto: primer inicio → fin del último que inicia
+    const conInicio = GRUPOS_RAW.filter(g => g.fechaInicio instanceof Date);
+    if (conInicio.length) {
+      conInicio.sort((a,b) => a.fechaInicio - b.fechaInicio);
+      const primero = conInicio[0];
+      const ultimo  = conInicio[conInicio.length-1];
+      const ini     = primero.fechaInicio;
+      const fin     = ultimo.fechaFin || ultimo.fechaInicio;
+      $('#totInicio').val(toInputDate(ini));
+      $('#totFin').val(toInputDate(fin));
+    } else {
+      $('#totInicio').val('');
+      $('#totFin').val('');
+    }
+  
+    // Limpia UI y abre
+    $('#tot-resumen').empty();
+    $('#tot-tablas').empty();
+    $popover.hide();
+    $modalTot.show();
+  
+    // Si quieres calcular automáticamente:
+    renderTotales();
+  }
+  
   function renderTotales() {
     const min = $('#totInicio').val() ? new Date($('#totInicio').val() + 'T00:00:00') : null;
     const max = $('#totFin').val()    ? new Date($('#totFin').val()    + 'T23:59:59') : null;
-
-    // Filtrar por rango de fechas (solapamiento con inicio/fin del grupo)
+  
     const lista = GRUPOS_RAW.filter(g => {
       if (!min && !max) return true;
       return overlaps(g.fechaInicio, g.fechaFin, min, max);
     });
-
-    // Categorías por identificador
+  
     const cats = { '101': [], '201/202': [], '301/302/303': [] };
     for (const g of lista) {
       const idn = parseInt(String(g.identificador).replace(/[^\d]/g,''), 10);
@@ -337,76 +337,66 @@ async function cargarYMostrarTabla() {
       else if (idn === 201 || idn === 202) cats['201/202'].push(g);
       else if ([301,302,303].includes(idn)) cats['301/302/303'].push(g);
     }
-
-    // Totales pax
+  
     const sum = (arr, k) => arr.reduce((acc,x)=>acc+(x[k]||0),0);
     const totPax  = sum(lista,'cantidadgrupo');
     const totAdul = sum(lista,'adultos');
     const totEst  = sum(lista,'estudiantes');
-
-    // Rango efectivo detectado
+  
     const fechasValidas = lista.flatMap(g => [g.fechaInicio, g.fechaFin]).filter(Boolean).sort((a,b)=>a-b);
     const minReal = fechasValidas[0] ? fechasValidas[0].toLocaleDateString('es-CL') : '—';
     const maxReal = fechasValidas[fechasValidas.length-1] ? fechasValidas[fechasValidas.length-1].toLocaleDateString('es-CL') : '—';
-
-    // —— Resumen en “pills”
+  
     const $res = $('#tot-resumen').empty();
     const PILL_INDEX = [];
-
+    const $tbx = $('#tot-tablas').empty();
+  
     const addPill = (label, arr, key) => {
       const i = PILL_INDEX.push({ key, arr }) - 1;
-      const $p = $(`<div class="tot-pill" data-pill="${i}" title="Click para ver grupos"></div>`)
+      $('<div class="tot-pill" data-pill="'+i+'" title="Click para ver grupos"></div>')
         .append(`<span>${label}:</span>`)
         .append(`<span>${arr.length}</span>`)
-        .append(`<small>grupos</small>`)
-        .on('click', (ev) => showPopover(ev, PILL_INDEX[i], label));
-      $res.append($p);
+        .append('<small>grupos</small>')
+        .on('click', (ev) => showPopover(ev, PILL_INDEX[i], label))
+        .appendTo($res);
     };
-
+  
     addPill('Identificador 101', cats['101'], 'id101');
     addPill('Identificador 201/202', cats['201/202'], 'id201_202');
     addPill('Identificador 301/302/303', cats['301/302/303'], 'id301_303');
-
-    const $pax = $(`<div class="tot-pill" title="Totales de personas"></div>`)
+  
+    $('<div class="tot-pill" title="Totales de personas"></div>')
       .append(`<span>👥 Pax</span><span>${totPax}</span>`)
-      .append(`<small>(Adultos ${totAdul} / Estudiantes ${totEst})</small>`);
-    $res.append($pax);
-
-    const $rng = $(`<div class="tot-pill" title="Rango efectivo"></div>`)
-      .append(`<span>🗓️ Rango</span><span>${minReal} → ${maxReal}</span>`);
-    $res.append($rng);
-
-    // —— Desgloses
-    const $tbx = $('#tot-tablas').empty();
-
+      .append(`<small>(Adultos ${totAdul} / Estudiantes ${totEst})</small>`)
+      .appendTo($res);
+  
+    $('<div class="tot-pill" title="Rango efectivo"></div>')
+      .append(`<span>🗓️ Rango</span><span>${minReal} → ${maxReal}</span>`)
+      .appendTo($res);
+  
     const mkTabla = (titulo, filas, includePax=true) => {
-      const $wrap = $('<div></div>');
-      $wrap.append(`<h3 style="margin:.5rem 0;">${titulo}</h3>`);
+      const $wrap = $('<div></div>').append(`<h3 style="margin:.5rem 0;">${titulo}</h3>`);
       const $t = $(`<table><thead><tr>
         <th>${titulo}</th><th># Grupos</th>${includePax?'<th>Pax</th>':''}
       </tr></thead><tbody></tbody></table>`);
       const $tb = $t.find('tbody');
-
       filas.forEach(row => {
         const i = PILL_INDEX.push({ key: `${titulo}:${row.clave}`, arr: row.grupos }) - 1;
         const paxTd = includePax ? `<td>${row.pax}</td>` : '';
-        const $tr = $(`<tr>
+        $tb.append(`<tr>
           <td>${row.clave || '—'}</td>
-          <td><button class="mini-link" data-pill="${i}">${row.grupos.length}</button></td>
+          <td><button class="mini-link" data-pill="${i}" type="button">${row.grupos.length}</button></td>
           ${paxTd}
         </tr>`);
-        $tb.append($tr);
       });
-
       $t.on('click','button.mini-link', (ev) => {
         const idx = parseInt(ev.currentTarget.getAttribute('data-pill'),10);
         showPopover(ev, PILL_INDEX[idx], titulo);
       });
-
       $wrap.append($t);
       $tbx.append($wrap);
     };
-
+  
     const groupBy = (arr, key) => {
       const map = new Map();
       for (const g of arr) {
@@ -420,15 +410,14 @@ async function cargarYMostrarTabla() {
         pax: sum(grupos,'cantidadgrupo')
       })).sort((a,b)=> b.grupos.length - a.grupos.length);
     };
-
+  
     mkTabla('Año',        groupBy(lista, 'anoViaje'));
     mkTabla('Vendedor(a)',groupBy(lista, 'vendedora'));
     mkTabla('Destino',    groupBy(lista, 'destino'));
     mkTabla('Programa',   groupBy(lista, 'programa'));
     mkTabla('Hoteles',    groupBy(lista, 'hoteles'));
     mkTabla('Transporte', groupBy(lista, 'transporte'));
-
-    // —— Popover flotante con lista de grupos
+  
     function showPopover(ev, bucket, titulo) {
       const items = (bucket?.arr || []);
       const html = `
@@ -439,11 +428,9 @@ async function cargarYMostrarTabla() {
               ${g.numeroNegocio} — ${g.nombreGrupo}
             </a>
           </li>`).join('')}
-        </ul>
-      `;
+        </ul>`;
       $popover.html(html);
-
-      // posicionarlo cerca del cursor
+  
       const vw = $(window).width(), vh = $(window).height();
       const w  = Math.min(420, vw - 24);
       $popover.css({ width: w + 'px' });
@@ -451,8 +438,7 @@ async function cargarYMostrarTabla() {
       const left = Math.min(clickX + 12, window.scrollX + vw - w - 12);
       const top  = Math.min(clickY + 12, window.scrollY + vh - 24);
       $popover.css({ left: left + 'px', top: top + 'px' }).show();
-
-      // click en un grupo → resaltar fila en la tabla principal
+  
       $popover.off('click', 'a.go-row').on('click', 'a.go-row', (e) => {
         e.preventDefault();
         const num = e.currentTarget.getAttribute('data-num') || '';
@@ -473,8 +459,12 @@ async function cargarYMostrarTabla() {
       });
     }
   }
-  // ======= FIN TOTALES =======
-
+  
+  // Exponer funciones para handlers globales
+  window.__RT_totales = {
+    open: openTotales,
+    render: renderTotales
+  };
   // ————————————————————————————————————————————————————————————
   // 9) Función que carga y pivota historial (igual que tenías)
   // ————————————————————————————————————————————————————————————
@@ -574,3 +564,29 @@ const headers = [
 document
   .getElementById('btn-export-excel')
   .addEventListener('click', exportarGrupos);
+
+// Handlers robustos (delegados) para el modal Totales
+$(document).off('click.RTtot');
+
+$(document).on('click.RTtot', '#btn-totales', function (e) {
+  e.preventDefault();
+  window.__RT_totales?.open();
+});
+
+$(document).on('click.RTtot', '#btn-tot-calcular', function (e) {
+  e.preventDefault();
+  window.__RT_totales?.render();
+});
+
+$(document).on('click.RTtot', '#btn-tot-cerrar', function (e) {
+  e.preventDefault();
+  $('#tot-popover').hide();
+  $('#modalTotales').hide();
+});
+
+// Cerrar popover al hacer click fuera (sin cerrar el modal)
+$(document).on('click.RTtot', function (e) {
+  if (!$(e.target).closest('#tot-popover, .tot-pill, .mini-link').length) {
+    $('#tot-popover').hide();
+  }
+});
