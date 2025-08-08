@@ -40,6 +40,7 @@
       <button id="btn-toggle-edit">🔓 Activar Edición</button>
       <button id="btn-view-history">📜 Ver Historial</button>
       <button id="btn-export-excel">📥 Exportar</button>
+      <button id="btn-totales">📊 Totales</button>
       <!-- El botón “Ver columnas” se inyectará aquí -->
     </div>
 
@@ -73,6 +74,30 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal de Totales -->
+    <div id="modalTotales" class="modal-backdrop" style="display:none;">
+      <div class="modal">
+        <h2>Totales</h2>
+    
+        <div class="modal-header">
+          <label>Desde <input type="date" id="totInicio"></label>
+          <label>Hasta <input type="date" id="totFin"></label>
+          <button id="btn-tot-calcular">⚙️ Calcular</button>
+          <button id="btn-tot-cerrar">Cerrar</button>
+        </div>
+    
+        <!-- Resumen en pills -->
+        <div id="tot-resumen" class="tot-resumen"></div>
+    
+        <!-- Desgloses (tablas) -->
+        <div id="tot-tablas" class="tot-tablas"></div>
+      </div>
+    
+      <!-- Popover flotante (drill-down) -->
+      <div id="tot-popover" class="tot-popover" style="display:none;"></div>
+    </div>
+
 
     <!-- Tabla de Grupos -->
     <div class="row">
