@@ -87,6 +87,15 @@ function parseFechaPosible(v) {
   return null;
 }
 
+// Convierte Date -> "YYYY-MM-DD" para <input type="date">
+function toInputDate(d) {
+  if (!(d instanceof Date)) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 async function cargarYMostrarTabla() {
   // 1) Leer coleccion "grupos"
   const snap = await getDocs(collection(db,'grupos'));
@@ -272,25 +281,35 @@ async function cargarYMostrarTabla() {
 
   // abrir/cerrar
   $('#btn-totales').off('click').on('click', () => {
+    // 1) Calcular rango por defecto desde GRUPOS_RAW
+    const conInicio = GRUPOS_RAW.filter(g => g.fechaInicio instanceof Date);
+    if (conInicio.length) {
+      // ordena por fechaInicio ascendente
+      conInicio.sort((a,b) => a.fechaInicio - b.fechaInicio);
+  
+      const primero = conInicio[0];                               // primer grupo que viaja (por inicio)
+      const ultimo  = conInicio[conInicio.length - 1];            // último grupo que INICIA viaje
+      const ini     = primero.fechaInicio;                        // inicio = fechaInicio del primero
+      const fin     = ultimo.fechaFin || ultimo.fechaInicio;      // fin = fechaFin del último (o su inicio si no tiene fin)
+  
+      $('#totInicio').val(toInputDate(ini));
+      $('#totFin').val(toInputDate(fin));
+    } else {
+      // sin fechas válidas
+      $('#totInicio').val('');
+      $('#totFin').val('');
+    }
+  
+    // 2) Limpia UI y abre
     $('#tot-resumen').empty();
     $('#tot-tablas').empty();
     $popover.hide();
     $modalTot.show();
-  });
-  $('#btn-tot-cerrar').off('click').on('click', () => {
-    $popover.hide();
-    $modalTot.hide();
-  });
-
-  // cerrar popover al hacer click fuera
-  $(document).off('click.totales').on('click.totales', (e) => {
-    if (!$(e.target).closest('#tot-popover, .tot-pill, .mini-link').length) $popover.hide();
-  });
-
-  // Calcular
-  $('#btn-tot-calcular').off('click').on('click', () => {
+  
+    // 3) (opcional) calcula de inmediato con ese rango:
     renderTotales();
   });
+
 
   function overlaps(ini, fin, min, max) {
     if (!ini && !fin) return false;
