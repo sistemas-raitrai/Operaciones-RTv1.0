@@ -334,6 +334,44 @@ table.dataTable td {
 
 .highlight-row { outline:2px solid #0a84ff; outline-offset:-2px; background:#eaf3ff !important; }
 
+/* ===== Modal Totales: tamaño y scroll ===== */
+#modalTotales .modal {
+  width: min(1100px, 95vw);
+  max-height: 85vh;           /* limita el alto del modal */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;           /* evita scroll doble en el contenedor */
+}
+
+/* Encabezado del modal siempre visible */
+#modalTotales .modal-header {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 3;
+  padding-bottom: .5rem;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+}
+
+/* Área que SÍ scrollea */
+#modalTotales .tot-body {
+  flex: 1 1 auto;
+  overflow: auto;             /* 👈 aquí ocurre el scroll interno */
+  padding: .5rem 0;
+}
+
+/* Encabezados de tablas pegados dentro del scroll */
+#modalTotales .tot-tablas th {
+  position: sticky;
+  top: 0;
+  background: #f7f7f7;
+  z-index: 2;
+}
+
+
 /* ----------------------------------------------------------------------- */
 /* Estilos exclusivos del Itinerario de Grupos (añadir al final)           */
 /* ----------------------------------------------------------------------- */
