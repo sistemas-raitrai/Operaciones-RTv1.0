@@ -311,6 +311,28 @@ table.dataTable td {
   margin-bottom: 0 !important;
 }
 
+/* ====== Totales ====== */
+.tot-resumen { display:flex; flex-wrap:wrap; gap:.5rem; margin:.75rem 0; }
+.tot-pill {
+  display:inline-flex; align-items:center; gap:.5rem;
+  padding:.4rem .7rem; border:1px solid #ccc; border-radius:999px;
+  cursor:pointer; user-select:none; font-weight:600;
+}
+.tot-pill small { opacity:.7; font-weight:400; }
+.tot-tablas table { width:100%; border-collapse:collapse; margin:.75rem 0; }
+.tot-tablas th, .tot-tablas td { border:1px solid #ddd; padding:.45rem; text-align:left; }
+.tot-tablas th { background:#f7f7f7; position:sticky; top:0; }
+
+.tot-popover {
+  position:absolute; z-index:9999; background:#fff; border:1px solid #ccc;
+  border-radius:8px; padding:.6rem .8rem; box-shadow:0 8px 28px rgba(0,0,0,.15);
+  max-width:min(420px, 90vw); max-height:50vh; overflow:auto; font-size:.95rem;
+}
+.tot-popover h4 { margin:.1rem 0 .4rem; font-size:1rem; }
+.tot-popover ul { margin:0; padding-left:1rem; }
+.tot-popover li { margin:.15rem 0; }
+
+.highlight-row { outline:2px solid #0a84ff; outline-offset:-2px; background:#eaf3ff !important; }
 
 /* ----------------------------------------------------------------------- */
 /* Estilos exclusivos del Itinerario de Grupos (añadir al final)           */
