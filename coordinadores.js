@@ -200,7 +200,7 @@ function renderLibres(){
   elWrapLibres.innerHTML = libres.map(g=>`
     <div class="card">
       <div class="hd">
-        <div><b>${g.aliasGrupo||'(sin alias)'}</b> <span class="muted">#${g.numeroNegocio}</span></div>
+        <div><b title="${escapeHtml(g.nombreGrupo||'')}">${g.aliasGrupo||'(sin alias)'}</b> <span class="muted">#${g.numeroNegocio}</span></div>
         <button class="btn small" data-add="${g.id}">Agregar a conjunto…</button>
       </div>
       <div class="bd">
@@ -224,7 +224,14 @@ function renderSets(){
     // lista viajes
     const rows = viajes.map(v=>`
       <tr>
-        <td style="width:36%"><input type="text" data-alias="${v.id}" value="${v.aliasGrupo||''}"></td>
+        <td style="width:36%">
+          <input
+            type="text"
+            data-alias="${v.id}"
+            value="${v.aliasGrupo||''}"
+            title="${escapeHtml(v.nombreGrupo||'')}"
+          >
+        </td>
         <td style="width:24%">${v.fechaInicio} → ${v.fechaFin}</td>
         <td style="width:24%"><span class="muted">#${v.numeroNegocio}</span></td>
         <td style="width:16%">
