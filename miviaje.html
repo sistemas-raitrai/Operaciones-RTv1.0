@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Mi Viaje | RT</title>
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+</head>
+<body class="itinerario-page">
+
+  <!-- Encabezado liviano sin auth -->
+  <header class="header" style="display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;border-bottom:1px solid #ddd;background:#fff;">
+    <img src="Logo Raitrai.png" alt="Rai Trai" style="height:36px;width:auto;">
+    <h1 style="font-size:1.25rem;margin:0;">Mi Viaje</h1>
+    <div style="margin-left:auto;font-size:.9rem;color:#666;" id="resumen-pax"></div>
+  </header>
+
+  <main class="main">
+    <!-- Cabecera de grupo (solo lectura) -->
+    <div class="row">
+      <div class="column long">
+        <h2>PROGRAMA:<span id="grupo-title">–</span></h2>
+      </div>
+      <div class="column medium">
+        <label>Nombre de Grupo</label>
+        <div id="grupo-nombre" class="readonly-field">—</div>
+      </div>
+      <div class="column short">
+        <label>N° Negocio</label>
+        <div id="grupo-numero" class="readonly-field">—</div>
+      </div>
+    </div>
+
+    <!-- Info secundaria -->
+    <div class="row">
+      <div class="column medium">
+        <label>Destino</label>
+        <div id="grupo-destino" class="readonly-field">—</div>
+      </div>
+      <div class="column medium">
+        <label>Fechas</label>
+        <div id="grupo-fechas" class="readonly-field">—</div>
+      </div>
+    </div>
+
+    <!-- Contenedor del itinerario -->
+    <div id="itinerario-container" class="grid"></div>
+  </main>
+
+  <!-- Firebase + página -->
+  <script type="module">
+    // No cargamos script.js (auth); solo Firestore y este JS
+    import './firebase-init.js';
+    import './miviaje.js';
+  </script>
+</body>
+</html>
