@@ -583,6 +583,35 @@ async function onSubmitAssign(e) {
     return alert(`El total de personas en habitaciones (${paxHab}) no coincide con el total de adultos + estudiantes (${newAdultos + newEstudiantes}).`);
   }
 
+  // ---- Sync de los datos generales hacia el documento del GRUPO ----
+  const gRef    = doc(db, 'grupos', gId);
+  const gSnap   = await getDoc(gRef);
+  const gBefore = gSnap.data() || {};
+  
+  const gUpdate = {
+    adultos:       newAdultos,
+    estudiantes:   newEstudiantes,
+    // mantengo ambas keys por compatibilidad con tu código
+    cantidadgrupo: newCantidad,
+    cantidadGrupo: newCantidad
+  };
+  
+  await updateDoc(gRef, gUpdate);
+  
+  // Historial de la sincronización con grupos (opcional pero recomendado)
+  await addDoc(collection(db,'historial'),{
+    tipo:    'grupo-update-from-assign',
+    grupoId: gId,
+    antes: {
+      adultos:       gBefore.adultos ?? 0,
+      estudiantes:   gBefore.estudiantes ?? 0,
+      cantidadgrupo: (gBefore.cantidadgrupo ?? gBefore.cantidadGrupo ?? 0)
+    },
+    despues: gUpdate,
+    usuario: currentUserEmail,
+    ts:      serverTimestamp()
+  });
+
   // Construir el payload para Firestore
   const payload = {
     hotelId:   hotelIdFinal,
@@ -638,9 +667,12 @@ async function onSubmitAssign(e) {
 
   // Refrescar UI y cerrar modales
   await loadAsignaciones();
+  await loadGrupos();
   await renderHoteles();
   hideModals();
 }
+
+
 
 // eliminar asignación
 async function deleteAssign(id){
