@@ -730,60 +730,58 @@ function openOccupancyModal(hotelId) {
   const h = hoteles.find(x => x.id === hotelId);
   const occ = asignaciones.filter(a => a.hotelId === hotelId);
 
-  document.getElementById('occ-header').innerHTML = `
-    <strong>${h.nombre}</strong> — ${fmtFecha(h.fechaInicio)}→${fmtFecha(h.fechaFin)}`;
+  document.getElementById('occ-header').innerHTML =
+    `<strong>${h.nombre}</strong> — ${fmtFecha(h.fechaInicio)}→${fmtFecha(h.fechaFin)}`;
 
-  // Calcular días
   const start = new Date(h.fechaInicio), end = new Date(h.fechaFin), rows = [];
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const iso = d.toISOString().slice(0, 10);
+
+    // Sólo asignaciones confirmadas que ocupan esa noche
     const dayAss = occ.filter(a =>
       a.checkIn <= iso && iso < a.checkOut && a.status === "confirmado"
     );
+
     const gruposCount = dayAss.length;
+
     const totals = dayAss.reduce((acc, a) => {
-      acc.adultos.M += a.adultos.M;
-      acc.adultos.F += a.adultos.F;
-      acc.adultos.O += a.adultos.O;
-      acc.estudiantes.M += a.estudiantes.M;
-      acc.estudiantes.F += a.estudiantes.F;
-      acc.estudiantes.O += a.estudiantes.O;
-      acc.coordinadores += a.coordinadores;
-      // Para detalle de grupos
+      acc.adultos.M     += Number(a.adultos?.M || 0);
+      acc.adultos.F     += Number(a.adultos?.F || 0);
+      acc.adultos.O     += Number(a.adultos?.O || 0);
+      acc.estudiantes.M += Number(a.estudiantes?.M || 0);
+      acc.estudiantes.F += Number(a.estudiantes?.F || 0);
+      acc.estudiantes.O += Number(a.estudiantes?.O || 0);
+      acc.coordinadores += Number(a.coordinadores || 0);
+      acc.conductores   += Number(a.conductores   || 0);   // ← NUEVO
       acc.grupos.push(a.grupoId);
       return acc;
     }, {
       adultos: { M: 0, F: 0, O: 0 },
       estudiantes: { M: 0, F: 0, O: 0 },
       coordinadores: 0,
+      conductores: 0,                                        // ← NUEVO
       grupos: []
     });
-    // Totales para mostrar
-    const totalPax = totals.adultos.M + totals.adultos.F + totals.adultos.O +
-      totals.estudiantes.M + totals.estudiantes.F + totals.estudiantes.O;
-    const totalFull = totalPax + totals.coordinadores;
 
+    const totalPax  = totals.adultos.M + totals.adultos.F + totals.adultos.O
+                    + totals.estudiantes.M + totals.estudiantes.F + totals.estudiantes.O;
+
+    const totalFull = totalPax + totals.coordinadores + totals.conductores; // ← CAMBIO
+
+    // Habitaciones ocupadas
     const hab = { singles:0, dobles:0, triples:0, cuadruples:0 };
     dayAss.forEach(a => {
-      const h = a.habitaciones || {};
-      hab.singles    += Number(h.singles    || 0);
-      hab.dobles     += Number(h.dobles     || 0);
-      hab.triples    += Number(h.triples    || 0);
-      hab.cuadruples += Number(h.cuadruples || 0);
+      const hh = a.habitaciones || {};
+      hab.singles    += Number(hh.singles    || 0);
+      hab.dobles     += Number(hh.dobles     || 0);
+      hab.triples    += Number(hh.triples    || 0);
+      hab.cuadruples += Number(hh.cuadruples || 0);
     });
-    
-    rows.push({ 
-      iso, 
-      gruposCount, 
-      totals, 
-      totalPax, 
-      totalFull,
-      grupos: totals.grupos,
-      hab
-    });
+
+    rows.push({ iso, gruposCount, totals, totalPax, totalFull, grupos: totals.grupos, hab });
   }
 
-  // Render tabla
+  // Render tabla (agregamos columna "Cond." y renombramos el total)
   const tbl = document.getElementById('occ-table');
   tbl.innerHTML = `
     <thead>
@@ -795,42 +793,42 @@ function openOccupancyModal(hotelId) {
         <th>Habitaciones Ocupadas</th>
         <th>Total Pax</th>
         <th>Coord.</th>
-        <th>Total+Coord.</th>
+        <th>Cond.</th>                 <!-- NUEVO -->
+        <th>Total+Coord.+Cond.</th>    <!-- CAMBIO -->
       </tr>
     </thead>
     <tbody>
       ${rows.map((r, idx) => `
         <tr>
           <td>${formateaFechaBonita(r.iso)}</td>
-          <td class="celda-detalle-grupos" data-idx="${idx}" style="cursor:pointer; color: #007bff; text-decoration:underline;">
+          <td class="celda-detalle-grupos" data-idx="${idx}" style="cursor:pointer; color:#007bff; text-decoration:underline;">
             ${r.gruposCount}
           </td>
-          <td>(${r.totals.adultos.M + r.totals.adultos.F + r.totals.adultos.O}) ${r.totals.adultos.M} | ${r.totals.adultos.F} | ${r.totals.adultos.O}</td>
-          <td>(${r.totals.estudiantes.M + r.totals.estudiantes.F + r.totals.estudiantes.O}) ${r.totals.estudiantes.M} | ${r.totals.estudiantes.F} | ${r.totals.estudiantes.O}</td>
-          <td> S: ${r.hab.singles} | D: ${r.hab.dobles} | T: ${r.hab.triples} | C: ${r.hab.cuadruples}</td>
+          <td>(${r.totals.adultos.M + r.totals.adultos.F + r.totals.adultos.O})
+              ${r.totals.adultos.M} | ${r.totals.adultos.F} | ${r.totals.adultos.O}</td>
+          <td>(${r.totals.estudiantes.M + r.totals.estudiantes.F + r.totals.estudiantes.O})
+              ${r.totals.estudiantes.M} | ${r.totals.estudiantes.F} | ${r.totals.estudiantes.O}</td>
+          <td>S: ${r.hab.singles} | D: ${r.hab.dobles} | T: ${r.hab.triples} | C: ${r.hab.cuadruples}</td>
           <td>${r.totalPax}</td>
           <td>${r.totals.coordinadores}</td>
+          <td>${r.totals.conductores}</td>  <!-- NUEVO -->
           <td>${r.totalFull}</td>
         </tr>
       `).join('')}
     </tbody>
   `;
 
-  // Evento para mostrar detalle de grupos
+  // Detalle emergente de grupos (igual que antes)
   tbl.querySelectorAll('.celda-detalle-grupos').forEach(td => {
-    td.addEventListener('click', e => {
+    td.addEventListener('click', () => {
       const idx = td.dataset.idx;
       const r = rows[idx];
-      if (r.grupos.length === 0) {
-        showFloatingDetail(td, "Sin grupos ese día");
-      } else {
-        // Buscar datos de los grupos (numeroNegocio y nombre)
-        const detalles = r.grupos.map(gid => {
-          const g = grupos.find(x => x.id === gid);
-          return g ? `<div>(${g.numeroNegocio}) ${g.nombreGrupo}</div>` : `<div>Grupo eliminado</div>`;
-        }).join('');
-        showFloatingDetail(td, detalles);
-      }
+      if (!r.grupos.length) return showFloatingDetail(td, "Sin grupos ese día");
+      const detalles = r.grupos.map(gid => {
+        const g = grupos.find(x => x.id === gid);
+        return g ? `<div>(${g.numeroNegocio}) ${g.nombreGrupo}</div>` : `<div>Grupo eliminado</div>`;
+      }).join('');
+      showFloatingDetail(td, detalles);
     });
   });
 
