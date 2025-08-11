@@ -3,7 +3,7 @@ import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs, doc, getDoc,
-  addDoc, updateDoc, deleteDoc,
+  addDoc, updateDoc, deleteDoc, setDoc, 
   serverTimestamp, query, where, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -215,7 +215,8 @@ async function renderHoteles() {
         <button class="btn-small" data-act="editH"   data-id="${h.id}">✏️ EDITAR</button>
         <button class="btn-small" data-act="assignH" data-id="${h.id}">🔗 ASIGNAR</button>
         <button class="btn-small" data-act="delH"    data-id="${h.id}">🗑️ ELIMINAR</button>
-        <button class="btn-small" data-act="occH"    data-id="${h.id}">📊 OCUPACIÓN</button>
+        <button class="btn-small" data-act="espH"    data-id="${h.id}">🧩 ESPECIALES</button>
+        <button class="btn-small" data-act="occH"    data-id="${h.id}">📊 OCUPACIÓN</button>        
       </div>
     `;
 
@@ -235,6 +236,7 @@ async function renderHoteles() {
     if (act === 'editA')   btn.onclick = () => openAssignModal(btn.dataset.hid || null, id);
     if (act === 'delA')    btn.onclick = () => deleteAssign(id);
     if (act === 'occH')    btn.onclick = () => openOccupancyModal(id);
+    if (act === 'espH')    btn.onclick = () => openSpecialsModal(id);
     if (act === 'togA')    btn.onclick = () => toggleAssignStatus(id);
     if (act === 'swapA') btn.onclick = () => handleSwapClick(id, btn);
   });
@@ -1031,3 +1033,290 @@ function exportToExcel() {
   XLSX.writeFile(wb, `distribucion_hotelera_${fecha}.xlsx`);
 }
 
+// ============================
+// ESPECIALES (Conductores/Coord)
+// ============================
+
+// Capacidad por tipo
+const CAP = { C:4, T:3, D:2, S:1 };
+
+// Parsea prioridad "CTDS" -> ['C','T','D','S']
+function parsePrioridad(code) {
+  return code.split('');
+}
+
+// Greedy: empaqueta 'n' personas siguiendo prioridad (C/T/D/S)
+function packRooms(n, prioridad = ['C','T','D','S']) {
+  const out = { C:0, T:0, D:0, S:0 };
+  let rem = Number(n||0);
+  if (rem <= 0) return out;
+
+  for (const typ of prioridad) {
+    const cap = CAP[typ];
+    if (!cap) continue;
+    const k = Math.floor(rem / cap);
+    if (k > 0) {
+      out[typ] += k;
+      rem -= k * cap;
+    }
+  }
+  if (rem > 0) {
+    // Lo que reste, singles
+    out.S += rem;
+    rem = 0;
+  }
+  return out;
+}
+
+// Suma 2 packs {C,T,D,S}
+function addPack(a, b) {
+  return { C:a.C+b.C, T:a.T+b.T, D:a.D+b.D, S:a.S+b.S };
+}
+
+// Formatea pack a "C:1 T:0 D:2 S:0"
+function packStr(p) {
+  return `C:${p.C} T:${p.T} D:${p.D} S:${p.S}`;
+}
+
+// Recorre fechas [start..end] inclusive
+function* eachDateISO(startISO, endISO) {
+  const d = new Date(startISO+'T00:00:00');
+  const end = new Date(endISO+'T00:00:00');
+  for (; d<=end; d.setDate(d.getDate()+1)) {
+    yield d.toISOString().slice(0,10);
+  }
+}
+
+// Calcula conteos diarios por categoría (conductores, coordM, coordF)
+function calcDailyStaffForHotel(hotelId) {
+  // filtro asignaciones del hotel y confirmadas
+  const occ = asignaciones.filter(a => a.hotelId === hotelId && a.status === 'confirmado');
+  // mapa iso -> { cond, coordM, coordF }
+  const daily = new Map();
+  // necesitamos rango usando el hotel
+  const h = hoteles.find(x=>x.id===hotelId);
+  if (!h) return { daily, start: null, end: null };
+  const start = h.fechaInicio, end = h.fechaFin;
+
+  for (const iso of eachDateISO(start, end)) {
+    daily.set(iso, { cond:0, coordM:0, coordF:0, raw:[] });
+  }
+
+  for (const a of occ) {
+    for (const [iso, rec] of daily) {
+      if (a.checkIn <= iso && iso < a.checkOut) {
+        const cond = Number(a.conductores || 0);
+        const cm   = Number(a.coordM || 0); // opcional si los agregas a futuro
+        const cf   = Number(a.coordF || 0); // opcional si los agregas a futuro
+        let cTot   = Number(a.coordinadores || 0);
+
+        // Si hay M/F específicos, úsalos; si no, deja todo en 'cTot'
+        const useMF = (cm + cf) > 0;
+        rec.cond   += cond;
+        rec.coordM += useMF ? cm : 0;
+        rec.coordF += useMF ? cf : 0;
+        // coordinadores sin sexo → los listamos como "raw" para avisar
+        if (!useMF && cTot>0) rec.raw.push({grupoId:a.grupoId, sinSexo:cTot});
+
+        // Si quieres forzar algo: podrías repartir sinSexo entre M/F aquí.
+      }
+    }
+  }
+
+  return { daily, start, end };
+}
+
+// Segmenta por cambios: devuelve [{start,end,packCond,packCM,packCF}]
+function buildSegmentedPlan(daily, prioridad) {
+  const entries = [...daily.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+  if (!entries.length) return [];
+
+  const segs = [];
+  let segStart = entries[0][0];
+  let prevKey  = null;
+  let prevVal  = null;
+
+  function packRec(rec) {
+    return {
+      cond : packRooms(rec.cond, prioridad),
+      cm   : packRooms(rec.coordM, prioridad),
+      cf   : packRooms(rec.coordF, prioridad),
+    };
+  }
+
+  for (const [iso, rec] of entries) {
+    const pk = JSON.stringify([rec.cond, rec.coordM, rec.coordF]);
+    if (prevKey === null) {
+      prevKey = pk;
+      prevVal = packRec(rec);
+      segStart = iso;
+    } else if (pk !== prevKey) {
+      // cerramos segmento anterior
+      segs.push({ start: segStart, end: prevISO(iso), packs: prevVal });
+      // reabrimos
+      prevKey = pk;
+      prevVal = packRec(rec);
+      segStart = iso;
+    }
+  }
+  // último
+  const lastISO = entries[entries.length-1][0];
+  segs.push({ start: segStart, end: lastISO, packs: prevVal });
+  return segs;
+}
+
+function prevISO(iso) {
+  const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()-1);
+  return d.toISOString().slice(0,10);
+}
+
+// Plan estático: toma el máximo diario en todo el rango
+function buildStaticPlan(daily, prioridad) {
+  let max = { cond:0, coordM:0, coordF:0 };
+  for (const [, rec] of daily) {
+    if (rec.cond   > max.cond)   max.cond = rec.cond;
+    if (rec.coordM > max.coordM) max.coordM = rec.coordM;
+    if (rec.coordF > max.coordF) max.coordF = rec.coordF;
+  }
+  const packs = {
+    cond : packRooms(max.cond, prioridad),
+    cm   : packRooms(max.coordM, prioridad),
+    cf   : packRooms(max.coordF, prioridad),
+  };
+  // Un único segmento: todo el rango
+  const entries = [...daily.keys()].sort();
+  if (!entries.length) return [];
+  return [{ start: entries[0], end: entries[entries.length-1], packs }];
+}
+
+// Expande segmentos a día a día para pintar la tabla
+function expandPlanToDaily(segs) {
+  const byDay = new Map();
+  for (const seg of segs) {
+    for (const iso of eachDateISO(seg.start, seg.end)) {
+      byDay.set(iso, {
+        cond: seg.packs.cond,
+        cm:   seg.packs.cm,
+        cf:   seg.packs.cf
+      });
+    }
+  }
+  return byDay;
+}
+
+// Render modal ESPECIALES
+async function openSpecialsModal(hotelId) {
+  const h = hoteles.find(x=>x.id===hotelId);
+  if (!h) return;
+  document.getElementById('spec-title').innerHTML =
+    `Especiales — <strong>${h.nombre}</strong> (${fmtFecha(h.fechaInicio)}→${fmtFecha(h.fechaFin)})`;
+
+  // Eventos básicos
+  document.getElementById('spec-close').onclick = closeSpecialsModal;
+  document.getElementById('spec-recalc').onclick = () => calcAndRenderSpecials(hotelId);
+  document.getElementById('spec-save').onclick   = () => saveSpecialsPlan(hotelId);
+
+  // Abre modal
+  document.getElementById('spec-backdrop').style.display='block';
+  document.getElementById('modal-specials').style.display='block';
+
+  // Primera carga
+  await calcAndRenderSpecials(hotelId);
+}
+
+function closeSpecialsModal() {
+  document.getElementById('spec-backdrop').style.display='none';
+  document.getElementById('modal-specials').style.display='none';
+}
+
+// Hace el cálculo según modo y prioridad seleccionados y lo pinta
+async function calcAndRenderSpecials(hotelId) {
+  const modo   = document.getElementById('spec-modo').value;         // 'estatico' | 'segmentado'
+  const prc    = parsePrioridad(document.getElementById('spec-prioridad').value); // ['C','T','D','S']
+  const { daily, start, end } = calcDailyStaffForHotel(hotelId);
+
+  // Avisos por coordinadores sin sexo
+  const warns = [];
+  for (const [iso, rec] of daily) {
+    if (rec.raw && rec.raw.length) {
+      warns.push(`• ${iso}: ${rec.raw.reduce((s,r)=>s+r.sinSexo,0)} coord. sin sexo (grupos: ${rec.raw.map(r=>r.grupoId).join(', ')})`);
+    }
+  }
+  document.getElementById('spec-warnings').innerHTML =
+    warns.length ? (`<div><strong>Atención:</strong><br>${warns.join('<br>')}</div>`) : '';
+
+  // Construye plan
+  const segs = (modo === 'estatico')
+    ? buildStaticPlan(daily, prc)
+    : buildSegmentedPlan(daily, prc);
+
+  // Render resumen por segmentos
+  const sumHtml = segs.map(s => `
+    <div style="padding:.4rem; border:1px solid #eee; border-radius:6px; margin:.3rem 0;">
+      <strong>${fmtFechaCorta(s.start)}</strong> → <strong>${fmtFechaCorta(s.end)}</strong>
+      <div>Conductores: ${packStr(s.packs.cond)}</div>
+      <div>Coord. M:    ${packStr(s.packs.cm)}</div>
+      <div>Coord. F:    ${packStr(s.packs.cf)}</div>
+    </div>
+  `).join('') || '<em>Sin datos para este rango.</em>';
+  document.getElementById('spec-summary').innerHTML = sumHtml;
+
+  // Render tabla diaria
+  const dailyPlan = expandPlanToDaily(segs);
+  const rows = [];
+  // Asegura orden por fecha
+  const allDays = [...daily.keys()].sort();
+  for (const iso of allDays) {
+    const pack = dailyPlan.get(iso) || { cond:{C:0,T:0,D:0,S:0}, cm:{C:0,T:0,D:0,S:0}, cf:{C:0,T:0,D:0,S:0} };
+    rows.push(`
+      <tr>
+        <td>${formateaFechaBonita(iso)}</td>
+        <td>${packStr(pack.cond)}</td>
+        <td>${packStr(pack.cm)}</td>
+        <td>${packStr(pack.cf)}</td>
+      </tr>
+    `);
+  }
+  document.querySelector('#spec-table tbody').innerHTML = rows.join('');
+
+  // Guarda plan actual en memoria para botón Guardar
+  window.__lastSpecialsPlan__ = { hotelId, modo, prioridad: prc, segs, start, end };
+}
+
+// Guarda el plan en Firestore (1 documento por hotel)
+async function saveSpecialsPlan(hotelId) {
+  const plan = window.__lastSpecialsPlan__;
+  if (!plan || plan.hotelId !== hotelId) {
+    alert('No hay plan calculado para guardar.');
+    return;
+  }
+  const payload = {
+    hotelId,
+    ts: serverTimestamp(),
+    createdBy: currentUserEmail,
+    prefs: {
+      modo: plan.modo,
+      prioridad: plan.prioridad.join('')
+    },
+    plan: plan.segs.map(s => ({
+      start: s.start,
+      end: s.end,
+      cond: s.packs.cond,
+      coordM: s.packs.cm,
+      coordF: s.packs.cf
+    }))
+  };
+
+  // Un doc por hotelId (para poder sobreescribir/recalcular)
+  await setDoc(doc(db,'hotelSpecials', hotelId), payload, { merge:true });
+
+  await addDoc(collection(db,'historial'),{
+    tipo: 'specials-save',
+    hotelId,
+    plan: payload,
+    usuario: currentUserEmail,
+    ts: serverTimestamp()
+  });
+
+  alert('Plan de “ESPECIALES” guardado.');
+}
