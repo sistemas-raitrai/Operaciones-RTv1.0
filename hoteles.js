@@ -186,7 +186,7 @@ async function renderHoteles() {
                 ${a.changedBy || ''}
               </span>
               <button class="btn-small" style="margin-left:0.5em;" data-act="togA" data-id="${a.id}">🔄</button>
-              <button class="btn-small" data-act="editA" data-id="${a.id}">✏️</button>
+              <button class="btn-small" data-act="editA" data-id="${a.id}" data-hid="${h.id}">✏️</button>
               <button class="btn-small" data-act="delA"  data-id="${a.id}">🗑️</button>
               <button class="btn-small" data-act="swapA" data-id="${a.id}">🚀</button>
             </span>
@@ -223,7 +223,7 @@ async function renderHoteles() {
     if (act === 'editH')   btn.onclick = () => openHotelModal(hoteles.find(x => x.id === id));
     if (act === 'assignH') btn.onclick = () => openAssignModal(id, null);
     if (act === 'delH')    btn.onclick = () => deleteHotel(id);
-    if (act === 'editA')   btn.onclick = () => openAssignModal(null, id);
+    if (act === 'editA')   btn.onclick = () => openAssignModal(btn.dataset.hid || null, id);
     if (act === 'delA')    btn.onclick = () => deleteAssign(id);
     if (act === 'occH')    btn.onclick = () => openOccupancyModal(id);
     if (act === 'togA')    btn.onclick = () => toggleAssignStatus(id);
@@ -409,15 +409,19 @@ function setupAssignModal(){
 
 function openAssignModal(hotelId, assignId){
   isEditAssign = !!assignId;
-  editHotelId  = hotelId;
+  if (!hotelId && assignId) {
+    const aExist = asignaciones.find(x => x.id === assignId);
+    hotelId = aExist?.hotelId || null;
+  }
+  editHotelId = hotelId;
   editAssignId = assignId;
 
   // 1) filtrar choices según destino del hotel
-  const hotel = hoteles.find(h=>h.id===hotelId);
-  const dest  = hotel?.destino || '';
-  const candidatos = grupos.filter(g =>
-    g.destino === dest || (g.destino||'').includes(dest)
-  );
+  const hotel = hoteles.find(h => h.id === editHotelId);
+  const dest  = hotel?.destino;
+  const candidatos = dest
+    ? grupos.filter(g => g.destino === dest || (g.destino||'').includes(dest))
+    : grupos.slice(); // si no hay hotel, muestra todos
   choiceGrupo.clearChoices();
   choiceGrupo.setChoices(
     candidatos.map(g=>({
@@ -430,12 +434,12 @@ function openAssignModal(hotelId, assignId){
   // 2) si estamos editando, carga datos; si no, limpia
   document.getElementById('assign-form').reset();
   choiceGrupo.removeActiveItems();
-  document.getElementById('assign-title').textContent =
+  
+  document.getElementById('assign-title').textContent = 
+    isEditAssign ? 'Editar Asignación' : 'Nueva Asignación';
 
   // defaults (campos nuevos)
   document.getElementById('a-conductores').value = '0'; // ← nuevo
-  
-    isEditAssign ? 'Editar Asignación' : 'Nueva Asignación';
   
   // Limpiar campos personalizados
   ['g-adultos','g-estudiantes','g-cantidadgrupo'].forEach(id => {
@@ -534,6 +538,10 @@ function chequearHabitacionesVsPax() {
 // guardar asignación
 async function onSubmitAssign(e) {
   e.preventDefault();
+  
+  // fallback para no perder el hotel en edición
+  const existing     = isEditAssign ? asignaciones.find(x => x.id === editAssignId) : null;
+  const hotelIdFinal = isEditAssign ? (editHotelId || existing?.hotelId) : editHotelId;
 
   // 1️⃣ Recuperar datos del grupo
   const gId = document.getElementById('a-grupo').value;
@@ -577,7 +585,7 @@ async function onSubmitAssign(e) {
 
   // Construir el payload para Firestore
   const payload = {
-    hotelId:   editHotelId,
+    hotelId:   hotelIdFinal,
     grupoId:   gId,
     checkIn:   document.getElementById('a-checkin').value,
     checkOut:  document.getElementById('a-checkout').value,
