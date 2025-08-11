@@ -213,7 +213,22 @@
         <div id="tramos-list"></div>
         <button type="button" id="btnAddTramo" style="background:#009966;color:white;margin:0.5em 0;">+ AGREGAR TRAMO</button>
       </div>
-  
+
+      <!-- ====== RESERVA: FECHA LÍMITE + ESTADO ====== -->
+      <div class="row" id="reserva-row">
+        <div class="column medium">
+          <label>FECHA LÍMITE RESERVA</label>
+          <input type="date" id="m-reservaFechaLimite" />
+        </div>
+        <div class="column medium">
+          <label>ESTADO RESERVA</label>
+          <select id="m-reservaEstado">
+            <option value="pendiente">⏳ PENDIENTE</option>
+            <option value="enviada">📨 ENVIADA</option>
+          </select>
+        </div>
+      </div>
+
       <label>GRUPOS</label>
       <select id="m-grupos" multiple></select>
       <label>ESTADO POR DEFECTO</label>
