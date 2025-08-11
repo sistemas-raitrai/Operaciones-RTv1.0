@@ -1320,3 +1320,106 @@ async function saveSpecialsPlan(hotelId) {
 
   alert('Plan de “ESPECIALES” guardado.');
 }
+
+// ---------- ESPECIALES: editor M/F por grupo ----------
+
+async function renderSpecSplitEditor(hotelId){
+  const body = document.querySelector('#spec-split-table tbody');
+  body.innerHTML = '';
+
+  // puedes filtrar sólo confirmados si prefieres
+  const occ = asignaciones.filter(a => a.hotelId === hotelId /* && a.status === 'confirmado' */);
+
+  occ.forEach(a => {
+    const total = Number(a.coordinadores || 0);
+    if (total <= 0) return;
+
+    const g = grupos.find(x => x.id === a.grupoId) || {};
+    const m = Number(a.coordM ?? 0);
+    const f = Number(a.coordF ?? Math.max(total - m, 0));
+
+    const tr = document.createElement('tr');
+    tr.dataset.id = a.id;
+    tr.dataset.total = String(total);
+    tr.dataset.name = `${g.numeroNegocio || ''} ${g.identificador || ''} — ${g.nombreGrupo || ''}`.trim();
+
+    tr.innerHTML = `
+      <td>${tr.dataset.name}</td>
+      <td>${total}</td>
+      <td><input type="number" min="0" class="spec-inp" data-id="${a.id}" data-k="M" value="${m}" style="width:80px"></td>
+      <td><input type="number" min="0" class="spec-inp" data-id="${a.id}" data-k="F" value="${f}" style="width:80px"></td>
+      <td class="spec-ok" data-id="${a.id}" style="font-weight:bold;"></td>
+    `;
+    body.appendChild(tr);
+  });
+
+  // validación visual
+  updateSplitOkStates();
+
+  // listeners de inputs
+  body.querySelectorAll('.spec-inp').forEach(inp=>{
+    inp.addEventListener('input', updateSplitOkStates);
+  });
+
+  // guardar
+  document.getElementById('spec-split-save').onclick = () => saveSplitAndRecalc(hotelId);
+}
+
+function updateSplitOkStates(){
+  document.querySelectorAll('#spec-split-table tbody tr').forEach(tr=>{
+    const id    = tr.dataset.id;
+    const total = Number(tr.dataset.total);
+    const m = Number(tr.querySelector(`input[data-id="${id}"][data-k="M"]`).value || 0);
+    const f = Number(tr.querySelector(`input[data-id="${id}"][data-k="F"]`).value || 0);
+    const sum = m + f;
+
+    const cell = tr.querySelector('.spec-ok');
+    cell.textContent = (sum === total) ? '✔' : `≠ ${sum}/${total}`;
+    cell.style.color = (sum === total) ? '#28a745' : '#c00';
+  });
+}
+
+async function saveSplitAndRecalc(hotelId){
+  const rows = Array.from(document.querySelectorAll('#spec-split-table tbody tr'));
+  const updates = [];
+
+  for (const tr of rows){
+    const id    = tr.dataset.id;
+    const name  = tr.dataset.name;
+    const total = Number(tr.dataset.total);
+    const m = Number(tr.querySelector(`input[data-id="${id}"][data-k="M"]`).value || 0);
+    const f = Number(tr.querySelector(`input[data-id="${id}"][data-k="F"]`).value || 0);
+
+    if (m + f !== total){
+      alert(`La suma M+F debe ser ${total} en el grupo: ${name}`);
+      return;
+    }
+    updates.push({ id, m, f, total });
+  }
+
+  for (const u of updates){
+    const ref = doc(db, 'hotelAssignments', u.id);
+    const before = asignaciones.find(x=>x.id===u.id);
+    await updateDoc(ref, {
+      coordM: u.m,
+      coordF: u.f,
+      coordinadores: u.total,
+      changedBy: currentUserEmail,
+      ts: serverTimestamp()
+    });
+    await addDoc(collection(db,'historial'),{
+      tipo: 'assign-coord-split',
+      docId: u.id,
+      antes: before,
+      despues: { ...before, coordM: u.m, coordF: u.f, coordinadores: u.total },
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
+  }
+
+  // refrescar memoria local y recalcular el plan
+  await loadAsignaciones();
+  await calcAndRenderSpecials(hotelId);
+
+  alert('Distribución M/F guardada y plan recalculado.');
+}
