@@ -355,6 +355,18 @@ async function renderVuelos(){
     const totalPax = totA + totE + totC + totX;
     const totalConf = confA + confE + confC + confX;
 
+    // ===== Línea "Fecha Límite" + chip =====
+    const reservaFechaTxt = v.reservaFechaLimite ? fmtFechaLarga(v.reservaFechaLimite) : '—';
+    const chip = reservaChipMeta(v);
+    const changedByTxt = v.reservaChangedBy ? ` <span class="by-email">${toUpper(v.reservaChangedBy)}</span>` : '';
+    const lineaReservaHTML = `
+      <div style="display:flex; align-items:center; gap:.6em; margin:.4em 0 .2em 0;">
+        <div><strong>Fecha Límite:</strong> ${reservaFechaTxt}</div>
+        <button class="chip-reserva ${chip.claseExtra}" onclick="toggleReservaEstado('${v.id}')">${chip.texto}</button>
+        ${changedByTxt}
+      </div>
+    `;
+
     const card = document.createElement('div');
     card.className = 'flight-card';
     card.dataset.vueloId = v.id;
@@ -367,6 +379,7 @@ async function renderVuelos(){
       <div>${filas || '<p>— SIN GRUPOS —</p>'}</div>
       ${filasExtras}
       <p><strong>TOTAL PAX:</strong> ${totalPax} (A:${totA} E:${totE} C:${totC} X:${totX}) – CONFIRMADOS: ${totalConf}</p>
+      ${lineaReservaHTML}
       <div class="actions">
         <button class="btn-add btn-edit">✏️ EDITAR</button>
         <button class="btn-add btn-del">🗑️ ELIMINAR</button>
@@ -394,6 +407,29 @@ function fmtFechaLarga(iso) {
   return txt.toUpperCase();
 }
 
+// ===== Helpers reserva =====
+function daysUntil(iso) {
+  if (!iso) return null;
+  // Normalizar a medianoche local
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(iso + 'T00:00:00');
+  const diffMs = d - today;
+  return Math.floor(diffMs / (1000*60*60*24));
+}
+
+function reservaChipMeta(v) {
+  // Devuelve {texto, claseExtra}
+  const estado = (v.reservaEstado || 'pendiente').toLowerCase();
+  if (estado === 'enviada') return { texto:'📨 RESERVA ENVIADA', claseExtra:'chip-verde' };
+
+  // pendiente
+  const dd = daysUntil(v.reservaFechaLimite);
+  if (dd === null) return { texto:'⏳ RESERVA PENDIENTE', claseExtra:'chip-gris' };
+  if (dd < 0)      return { texto:'⏳ RESERVA PENDIENTE', claseExtra:'chip-rojo' };
+  if (dd <= 7)     return { texto:'⏳ RESERVA PENDIENTE', claseExtra:'chip-ambar' };
+  return { texto:'⏳ RESERVA PENDIENTE', claseExtra:'chip-gris' };
+}
+
 // 3️⃣ MODAL VUELO
 
 function openModal(v=null){
@@ -403,6 +439,10 @@ function openModal(v=null){
   // Reset campos principales
   ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']
     .forEach(k=>document.getElementById(`m-${k}`).value=v?.[k]||'');
+
+  // Reserva: setear fecha límite y estado (default: pendiente al crear)
+  document.getElementById('m-reservaFechaLimite').value = v?.reservaFechaLimite || '';
+  document.getElementById('m-reservaEstado').value      = v?.reservaEstado || 'pendiente';
 
   // Estado por defecto
   tipoVueloEl.value = v?.tipoVuelo || 'charter';
@@ -488,6 +528,8 @@ function addTramoRow(){
 // 4️⃣ GUARDAR / EDITAR VUELO
 async function onSubmitVuelo(evt){
   evt.preventDefault();
+  const reservaFechaLimite = document.getElementById('m-reservaFechaLimite').value || null;
+  const reservaEstadoForm  = (document.getElementById('m-reservaEstado')?.value) || 'pendiente';
   const tipoVuelo = document.getElementById('m-tipoVuelo').value;
   const sel = choiceGrupos.getValue(true);
   const defaultStatus = document.getElementById('m-statusDefault').value;
@@ -508,7 +550,9 @@ async function onSubmitVuelo(evt){
         fechaIda: t.fechaIda,
         fechaVuelta: t.fechaVuelta
       })),
-      grupos: gruposArr
+      grupos: gruposArr,
+      reservaFechaLimite,
+      reservaEstado: reservaEstadoForm
     };
   } else if(tipoVuelo === 'regular'){ // regular simple
     pay = {
@@ -520,7 +564,9 @@ async function onSubmitVuelo(evt){
       destino:   toUpper(document.getElementById('m-destino').value.trim()),
       fechaIda:  document.getElementById('m-fechaIda').value,
       fechaVuelta:document.getElementById('m-fechaVuelta').value,
-      grupos: gruposArr
+      grupos: gruposArr,
+      reservaFechaLimite,
+      reservaEstado: reservaEstadoForm
     };
   } else { // charter
     pay = {
@@ -531,19 +577,42 @@ async function onSubmitVuelo(evt){
       destino:   toUpper(document.getElementById('m-destino').value.trim()),
       fechaIda:  document.getElementById('m-fechaIda').value,
       fechaVuelta:document.getElementById('m-fechaVuelta').value,
-      grupos: gruposArr
+      grupos: gruposArr,
+      reservaFechaLimite,
+      reservaEstado: reservaEstadoForm
     };
   }
 
-  // Guardado igual que antes
-  if(isEdit){
-    const before=(await getDoc(doc(db,'vuelos',editId))).data();
-    await updateDoc(doc(db,'vuelos',editId),pay);
-    await addDoc(collection(db,'historial'),{ tipo:'vuelo-edit', vueloId:editId, antes:before, despues:pay, usuario:currentUserEmail, ts:serverTimestamp() });
+  if (isEdit) {
+    const before = (await getDoc(doc(db,'vuelos', editId))).data();
+  
+    // Si el estado de reserva cambió en el modal, deja rastro de quién y cuándo
+    if (before?.reservaEstado !== pay.reservaEstado) {
+      pay.reservaChangedBy = currentUserEmail;
+      pay.reservaTs = serverTimestamp();
+    }
+  
+    await updateDoc(doc(db,'vuelos', editId), pay);
+    await addDoc(collection(db,'historial'), {
+      tipo: 'vuelo-edit',
+      vueloId: editId,
+      antes: before,
+      despues: pay,
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
   } else {
-    const ref=await addDoc(collection(db,'vuelos'),pay);
-    await addDoc(collection(db,'historial'),{ tipo:'vuelo-new', vueloId:ref.id, antes:null, despues:pay, usuario:currentUserEmail, ts:serverTimestamp() });
+    const ref = await addDoc(collection(db,'vuelos'), pay);
+    await addDoc(collection(db,'historial'), {
+      tipo: 'vuelo-new',
+      vueloId: ref.id,
+      antes: null,
+      despues: pay,
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
   }
+
   closeModal(); renderVuelos();
 }
 
@@ -621,6 +690,32 @@ window.togglePaxExtraStatus = async (vueloId, idx)=>{
   arr[idx] = { ...old, status: old.status==='pendiente'?'confirmado':'pendiente', changedBy:currentUserEmail };
   await updateDoc(ref, { paxExtras: arr });
   await addDoc(collection(db,'historial'),{ tipo:'pax-extra-status', vueloId:vueloId, antes:old, despues:arr[idx], usuario:currentUserEmail, ts:serverTimestamp() });
+  renderVuelos();
+};
+
+window.toggleReservaEstado = async (vueloId) => {
+  const ref  = doc(db, 'vuelos', vueloId);
+  const snap = await getDoc(ref);
+  const before = snap.data() || {};
+  const old = (before.reservaEstado || 'pendiente').toLowerCase();
+  const neu = (old === 'pendiente') ? 'enviada' : 'pendiente';
+
+  const update = {
+    reservaEstado: neu,
+    reservaChangedBy: currentUserEmail,
+    reservaTs: serverTimestamp()
+  };
+  await updateDoc(ref, update);
+
+  await addDoc(collection(db,'historial'), {
+    tipo:'reserva-status',
+    vueloId,
+    antes:{ reservaEstado: old },
+    despues:{ reservaEstado: neu },
+    usuario: currentUserEmail,
+    ts: serverTimestamp()
+  });
+
   renderVuelos();
 };
 
