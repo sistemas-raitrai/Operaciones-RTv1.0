@@ -1,6 +1,6 @@
 // miviaje.js — visor SOLO LECTURA por numeroNegocio (sin autenticación)
 
-import { app, db } from './firebase-init.js';
+import { app, db } from './firebase-core.js';
 import {
   collection, doc, getDoc, getDocs, query, where, limit
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
