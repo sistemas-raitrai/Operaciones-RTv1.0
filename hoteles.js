@@ -422,75 +422,124 @@ function setupAssignModal(){
 function openAssignModal(hotelId, assignId){
   isEditAssign = !!assignId;
 
-  // fallback: si vienes desde "editar", toma el hotel de la asignación
+  // si vienes desde editar y no mandaron hotelId, recupéralo de la asignación
   if (!hotelId && assignId) {
-    const aExist = asignaciones.find(x => x.id === assignId);
-    hotelId = aExist?.hotelId || null;
+    const ex = asignaciones.find(x => x.id === assignId);
+    hotelId = ex?.hotelId || null;
   }
   editHotelId  = hotelId;
   editAssignId = assignId;
 
-  // 1) filtrar choices según destino del hotel
+  // 1) opciones del grupo (filtradas por destino si hay hotel)
   const hotel = hoteles.find(h => h.id === editHotelId);
   const dest  = hotel?.destino;
   const candidatos = dest
     ? grupos.filter(g => g.destino === dest || (g.destino||'').includes(dest))
     : grupos.slice();
 
-  // ✅ limpiar y cargar opciones del Choices existente
   choiceGrupo.clearChoices();
   choiceGrupo.setChoices(
     candidatos.map(g => ({
       value: g.id,
       label: `${g.numeroNegocio} – ${g.identificador} - ${g.nombreGrupo} (${g.cantidadgrupo} pax)`
     })),
-    'value', 'label', true
+    'value','label', true
   );
 
-  // 2) reset form y defaults
-  document.getElementById('assign-form').reset();
+  // 2) reset UI base
+  const form = document.getElementById('assign-form');
+  form.reset();
   choiceGrupo.removeActiveItems();
   document.getElementById('assign-title').textContent =
     isEditAssign ? 'Editar Asignación' : 'Nueva Asignación';
   document.getElementById('a-conductores').value = '0';
 
-  // 3) si es edición, rellenar campos...
-  if (isEditAssign) {
-    const a = asignaciones.find(x=>x.id===assignId);
-    choiceGrupo.setChoiceByValue([a.grupoId]);
-    // ... (lo demás igual que ya tienes)
-  }
-
-  // ✅ NO acumular listeners: usa .onchange en vez de addEventListener
+  // 3) onchange del select (con guardia para no sobrescribir al cargar)
+  let filling = false;
   const selGrupo = document.getElementById('a-grupo');
   selGrupo.onchange = (e) => {
+    if (filling) return; // ⛔ no toques nada mientras estoy cargando
     const gid = e.target.value;
     const g   = grupos.find(x=>x.id===gid) || {};
-    document.getElementById('max-adultos').textContent     = g.adultos    || 0;
-    document.getElementById('max-estudiantes').textContent = g.estudiantes|| 0;
+
+    // topes y rótulos
+    document.getElementById('max-adultos').textContent     = g.adultos    ?? 0;
+    document.getElementById('max-estudiantes').textContent = g.estudiantes?? 0;
     document.getElementById('grupo-fechas').textContent =
       `Rango: ${fmtFechaCorta(g.fechaInicio)} → ${fmtFechaCorta(g.fechaFin)}`;
+
+    // límites de fecha (NO sobreescribo valores si ya existen)
     const ci = document.getElementById('a-checkin');
     const co = document.getElementById('a-checkout');
-    ci.min = g.fechaInicio; ci.max = g.fechaFin; ci.value = g.fechaInicio;
-    co.min = g.fechaInicio; co.max = g.fechaFin; co.value = g.fechaFin;
+    ci.min = g.fechaInicio; ci.max = g.fechaFin;
+    co.min = g.fechaInicio; co.max = g.fechaFin;
+    if (!ci.value) ci.value = g.fechaInicio;
+    if (!co.value) co.value = g.fechaFin;
+
     document.getElementById('a-noches').value =
       Math.round((new Date(co.value)-new Date(ci.value))/(1000*60*60*24));
-    document.getElementById('g-adultos').value       = g.adultos       || 0;
-    document.getElementById('g-estudiantes').value   = g.estudiantes   || 0;
-    document.getElementById('g-cantidadgrupo').value = g.cantidadgrupo || 0;
+
+    // totales “de referencia” del grupo
+    document.getElementById('g-adultos').value       = g.adultos ?? 0;
+    document.getElementById('g-estudiantes').value   = g.estudiantes ?? 0;
+    document.getElementById('g-cantidadgrupo').value = g.cantidadgrupo ?? g.cantidadGrupo ?? 0;
   };
 
-  // 4) mostrar modal
+  // 4) si es edición, rellenar TODO desde Firestore
+  if (isEditAssign) {
+    filling = true;
+    const a = asignaciones.find(x=>x.id===assignId);
+
+    // seleccionar el grupo (debe existir en choices)
+    choiceGrupo.setChoiceByValue([a.grupoId]);
+
+    // pinta topes/labels del grupo (sin tocar valores por el guardia)
+    selGrupo.onchange({ target: { value: a.grupoId } });
+
+    // fechas/noches
+    document.getElementById('a-checkin').value  = a.checkIn;
+    document.getElementById('a-checkout').value = a.checkOut;
+    document.getElementById('a-noches').value   =
+      a.noches ?? Math.round((new Date(a.checkOut)-new Date(a.checkIn))/(1000*60*60*24));
+
+    // pax por sexo
+    document.getElementById('a-ad-M').value = a.adultos?.M ?? 0;
+    document.getElementById('a-ad-F').value = a.adultos?.F ?? 0;
+    document.getElementById('a-ad-O').value = a.adultos?.O ?? 0;
+    document.getElementById('a-es-M').value = a.estudiantes?.M ?? 0;
+    document.getElementById('a-es-F').value = a.estudiantes?.F ?? 0;
+    document.getElementById('a-es-O').value = a.estudiantes?.O ?? 0;
+
+    // totales del grupo (campos “Adultos totales / Estudiantes / Pasajeros”)
+    const g = grupos.find(x=>x.id===a.grupoId) || {};
+    document.getElementById('g-adultos').value       = g.adultos       ?? a.adultosTotal      ?? 0;
+    document.getElementById('g-estudiantes').value   = g.estudiantes   ?? a.estudiantesTotal  ?? 0;
+    document.getElementById('g-cantidadgrupo').value = (g.cantidadgrupo ?? g.cantidadGrupo) ?? a.cantidadgrupo ?? 0;
+
+    // habitaciones
+    const hab = a.habitaciones || {};
+    document.getElementById('a-singles').value    = hab.singles    ?? 0;
+    document.getElementById('a-dobles').value     = hab.dobles     ?? 0;
+    document.getElementById('a-triples').value    = hab.triples    ?? 0;
+    document.getElementById('a-cuadruples').value = hab.cuadruples ?? 0;
+
+    // staff
+    document.getElementById('a-coordinadores').value = a.coordinadores ?? 0;
+    document.getElementById('a-conductores').value   = a.conductores   ?? 0;
+
+    filling = false;
+  } else {
+    // creación: dispara para pintar topes del grupo elegido
+    selGrupo.onchange({ target: selGrupo });
+  }
+
+  // 5) abrir modal y enganchar validaciones
   document.getElementById('assign-backdrop').style.display='block';
   document.getElementById('modal-assign').style.display='block';
 
-  // listeners de validación de habitaciones (estos sí pueden repetirse sin problema,
-  // pero si quieres evitar duplicados, asígnalos una sola vez fuera o usa .oninput)
-  ['a-singles','a-dobles','a-triples','a-cuadruples','a-ad-M','a-ad-F','a-ad-O','a-es-M','a-es-F','a-es-O'].forEach(id => {
-    document.getElementById(id).oninput = chequearHabitacionesVsPax;
-  });
-  selGrupo.onchange && selGrupo.onchange({ target: selGrupo }); // dispara una vez si ya hay valor
+  ['a-singles','a-dobles','a-triples','a-cuadruples','a-ad-M','a-ad-F','a-ad-O','a-es-M','a-es-F','a-es-O']
+    .forEach(id => { document.getElementById(id).oninput = chequearHabitacionesVsPax; });
+  chequearHabitacionesVsPax();
 }
 
 function closeAssignModal(){ hideModals(); }
