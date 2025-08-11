@@ -202,7 +202,7 @@
 <body>
   <!-- 1) Contenedor donde se injecta el header -->
   <div id="encabezado"></div>
-  <h1>DISTRIBUCIÓN HOTELERA</h1>
+  <h1>DISTRIBUCIÓN HOTELERA:</h1>
 
   <div class="controls">
     <input type="text" id="search-input" placeholder="Buscar hotel..."/>
@@ -360,7 +360,31 @@
   
     <div class="modal-body" style="max-height:70vh; overflow:auto;">
       <div id="spec-summary" style="margin-bottom:1rem;"></div>
-  
+
+      <div id="spec-split" style="margin:.75rem 0; border-top:1px solid #eee; padding-top:.5rem;">
+        <h4 style="margin:.3rem 0;">Dividir coordinadores por sexo (por grupo)</h4>
+        <p style="margin:.2rem 0 .5rem;color:#555;">
+          Edita M/F por grupo. La suma debe igualar a <em>Coordinadores</em>.
+        </p>
+      
+        <table id="spec-split-table" class="table">
+          <thead>
+            <tr>
+              <th>Grupo</th>
+              <th>Coordinadores</th>
+              <th>Masculino</th>
+              <th>Femenino</th>
+              <th>OK</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      
+        <div style="text-align:right">
+          <button id="spec-split-save" class="btn-small">Guardar M/F y recalcular</button>
+        </div>
+      </div>
+
       <div style="margin:.5rem 0;">
         <label>Modo cálculo:
           <select id="spec-modo">
