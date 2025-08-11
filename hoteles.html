@@ -202,7 +202,7 @@
 <body>
   <!-- 1) Contenedor donde se injecta el header -->
   <div id="encabezado"></div>
-  <h1>DISTRIBUCIÓN HOTELERA:</h1>
+  <h1>DISTRIBUCIÓN HOTELERA</h1>
 
   <div class="controls">
     <input type="text" id="search-input" placeholder="Buscar hotel..."/>
@@ -347,6 +347,56 @@
       <table id="occ-table" class="occupancy-table"></table>
     </div>
     <button id="occ-close">Cerrar</button>
+  </div>
+
+  <!-- Backdrop -->
+  <div id="spec-backdrop" class="modal-backdrop" style="display:none;"></div>
+  
+  <!-- Modal ESPECIALES -->
+  <div id="modal-specials" class="modal" style="display:none; max-width:1000px; width:95%;">
+    <div class="modal-header">
+      <h3 id="spec-title">Especiales</h3>
+    </div>
+  
+    <div class="modal-body" style="max-height:70vh; overflow:auto;">
+      <div id="spec-summary" style="margin-bottom:1rem;"></div>
+  
+      <div style="margin:.5rem 0;">
+        <label>Modo cálculo:
+          <select id="spec-modo">
+            <option value="estatico">Estático (máximo por tramo)</option>
+            <option value="segmentado">Segmentado (exacto por cambios)</option>
+          </select>
+        </label>
+        <label style="margin-left:1rem;">Prioridad:
+          <select id="spec-prioridad">
+            <option value="CTDS">C→T→D→S (recomendado)</option>
+            <option value="TCDS">T→C→D→S</option>
+            <option value="DCTS">D→C→T→S</option>
+          </select>
+        </label>
+        <button id="spec-recalc" class="btn-small">↻ Recalcular</button>
+        <button id="spec-save"   class="btn-small">💾 Guardar</button>
+      </div>
+  
+      <table id="spec-table" class="table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Conductores (C/T/D/S)</th>
+            <th>Coord. M (C/T/D/S)</th>
+            <th>Coord. F (C/T/D/S)</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+  
+      <div id="spec-warnings" style="margin-top:.5rem;color:#c00;"></div>
+    </div>
+  
+    <div class="modal-footer" style="text-align:right;">
+      <button id="spec-close" class="btn-small">Cerrar</button>
+    </div>
   </div>
 
   <!-- Scripts -->
