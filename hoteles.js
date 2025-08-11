@@ -1222,6 +1222,8 @@ async function openSpecialsModal(hotelId) {
 
   // Primera carga
   await calcAndRenderSpecials(hotelId);
+  await renderSpecSplitEditor(hotelId);   // 👈 carga tabla M/F por grupo
+  await calcAndRenderSpecials(hotelId);   // 👈 calcula plan con M/F (si ya hay)
 }
 
 function closeSpecialsModal() {
