@@ -173,7 +173,7 @@ async function renderHoteles() {
               &nbsp; PAX: ${totalSinCoord}
               (A:${a.adultos.M}/${a.adultos.F}/${a.adultos.O}
                – E:${a.estudiantes.M}/${a.estudiantes.F}/${a.estudiantes.O})
-              + ${a.coordinadores} Coord.
+              + ${a.coordinadores} Coord. + ${a.conductores || 0} Cond.
             </span>
             <span class="status-cell" style="display: flex; align-items: center; gap: .5em;">
               <span class="status-ico" style="font-size:1.2em;">
@@ -431,6 +431,10 @@ function openAssignModal(hotelId, assignId){
   document.getElementById('assign-form').reset();
   choiceGrupo.removeActiveItems();
   document.getElementById('assign-title').textContent =
+
+  // defaults (campos nuevos)
+  document.getElementById('a-conductores').value = '0'; // ← nuevo
+  
     isEditAssign ? 'Editar Asignación' : 'Nueva Asignación';
   
   // Limpiar campos personalizados
@@ -451,6 +455,7 @@ function openAssignModal(hotelId, assignId){
     document.getElementById('a-es-F').value     = a.estudiantes.F;
     document.getElementById('a-es-O').value     = a.estudiantes.O;
     document.getElementById('a-coordinadores').value = a.coordinadores;
+    document.getElementById('a-conductores').value   = a.conductores ?? 0;
   
     // Cargar habitaciones si existen
     const hab = a.habitaciones || {};
@@ -588,6 +593,7 @@ async function onSubmitAssign(e) {
       O: Number(document.getElementById('a-es-O').value)
     },
     coordinadores: Number(document.getElementById('a-coordinadores').value),
+    conductores: Number(document.getElementById('a-conductores').value),
     habitaciones: { singles, dobles, triples, cuadruples },
     ts:            serverTimestamp(),
     // NUEVO: Guarda los datos generales editados en el assignment
@@ -824,37 +830,137 @@ function showFloatingDetail(td, html) {
 
 function closeOccupancyModal(){ hideModals(); }
 
-// ─── EXPORTAR EXCEL ─────────────────────────────────────
+// ─── EXPORTAR EXCEL (mejorado) ─────────────────────────
 function exportToExcel() {
-  const resumen = hoteles.map(h=>({
-    Nombre:    h.nombre,
-    Destino:   h.destino,
-    Desde:     h.fechaInicio,
-    Hasta:     h.fechaFin,
-    Singles:   h.singles,
-    Dobles:    h.dobles,
-    Triples:   h.triples,
-    Cuadruples:h.cuadruples,
-    Grupos: asignaciones.filter(a=>a.hotelId===h.id).length
-  }));
-  const detalle=[];
-  hoteles.forEach(h=>{
-    (h.grupos||[]).forEach(gObj=>{
-      const grp=grupos.find(x=>x.id===gObj.id)||{};
+  const safeNum = v => Number(v || 0);
+
+  // Mapa: hotelId -> asignaciones de ese hotel
+  const asignPorHotel = new Map();
+  hoteles.forEach(h => {
+    asignPorHotel.set(h.id, asignaciones.filter(a => a.hotelId === h.id));
+  });
+
+  // ---------- RESUMEN POR HOTEL ----------
+  const resumen = hoteles.map(h => {
+    const as = asignPorHotel.get(h.id) || [];
+
+    const gruposCount = as.length;
+
+    const adTotal = as.reduce((s, a) =>
+      s + safeNum(a.adultos?.M) + safeNum(a.adultos?.F) + safeNum(a.adultos?.O), 0);
+    const esTotal = as.reduce((s, a) =>
+      s + safeNum(a.estudiantes?.M) + safeNum(a.estudiantes?.F) + safeNum(a.estudiantes?.O), 0);
+    const pax = adTotal + esTotal;
+
+    const coord = as.reduce((s, a) => s + safeNum(a.coordinadores), 0);
+    const cond  = as.reduce((s, a) => s + safeNum(a.conductores),   0);
+    const totalStaff = pax + coord + cond;
+
+    const singles = as.reduce((s, a) => s + safeNum(a.habitaciones?.singles),    0);
+    const dobles  = as.reduce((s, a) => s + safeNum(a.habitaciones?.dobles),     0);
+    const triples = as.reduce((s, a) => s + safeNum(a.habitaciones?.triples),    0);
+    const cuads   = as.reduce((s, a) => s + safeNum(a.habitaciones?.cuadruples), 0);
+
+    const noches  = as.reduce((s, a) => s + safeNum(a.noches), 0);
+    const rnS = as.reduce((s, a) => s + safeNum(a.habitaciones?.singles)    * safeNum(a.noches), 0);
+    const rnD = as.reduce((s, a) => s + safeNum(a.habitaciones?.dobles)     * safeNum(a.noches), 0);
+    const rnT = as.reduce((s, a) => s + safeNum(a.habitaciones?.triples)    * safeNum(a.noches), 0);
+    const rnC = as.reduce((s, a) => s + safeNum(a.habitaciones?.cuadruples) * safeNum(a.noches), 0);
+
+    const fechas = as.flatMap(a => [a.checkIn, a.checkOut]).filter(Boolean);
+    const asignDesde = fechas.length ? fechas.reduce((m, f) => f < m ? f : m) : '';
+    const asignHasta = fechas.length ? fechas.reduce((M, f) => f > M ? f : M) : '';
+
+    return {
+      Hotel: h.nombre,
+      Destino: h.destino,
+      'Dispon. desde': h.fechaInicio,
+      'Dispon. hasta': h.fechaFin,
+      'Asign. desde': asignDesde,
+      'Asign. hasta': asignHasta,
+      Grupos: gruposCount,
+      'Adultos': adTotal,
+      'Estudiantes': esTotal,
+      'PAX Totales': pax,
+      Coordinadores: coord,
+      Conductores: cond,
+      'Total+Staff': totalStaff,
+      Singles: singles,
+      Dobles: dobles,
+      Triples: triples,
+      Cuádruples: cuads,
+      'Noches asignadas': noches,
+      'RoomNights S': rnS,
+      'RoomNights D': rnD,
+      'RoomNights T': rnT,
+      'RoomNights C': rnC
+    };
+  }).sort((a,b)=> (a.Destino||'').localeCompare(b.Destino||'') || (a.Hotel||'').localeCompare(b.Hotel||''));
+
+  // ---------- DETALLE DE ASIGNACIONES ----------
+  const detalle = [];
+  hoteles.forEach(h => {
+    const as = asignPorHotel.get(h.id) || [];
+    as.forEach(a => {
+      const g = grupos.find(x => x.id === a.grupoId) || {};
+      const adM = safeNum(a.adultos?.M), adF = safeNum(a.adultos?.F), adO = safeNum(a.adultos?.O);
+      const esM = safeNum(a.estudiantes?.M), esF = safeNum(a.estudiantes?.F), esO = safeNum(a.estudiantes?.O);
+      const adSum = adM + adF + adO;
+      const esSum = esM + esF + esO;
+      const pax   = adSum + esSum;
+
       detalle.push({
-        Hotel:    h.nombre,
-        Grupo:    grp.numeroNegocio,
-        Identificador:    grp.identificador,
-        CheckIn:  grp.fechaInicio,
-        CheckOut: grp.fechaFin,
-        Estado:   gObj.status
+        Hotel: h.nombre,
+        Destino: h.destino,
+        Grupo: g.numeroNegocio,
+        NombreGrupo: g.nombreGrupo,
+        Identificador: g.identificador,
+        CheckIn: a.checkIn,
+        CheckOut: a.checkOut,
+        Noches: safeNum(a.noches),
+        'Adultos M': adM, 'Adultos F': adF, 'Adultos O': adO,
+        'Estudiantes M': esM, 'Estudiantes F': esF, 'Estudiantes O': esO,
+        'Adultos Totales': adSum,
+        'Estudiantes Totales': esSum,
+        'PAX Totales': pax,
+        Coordinadores: safeNum(a.coordinadores),
+        Conductores: safeNum(a.conductores),
+        'Total+Staff': pax + safeNum(a.coordinadores) + safeNum(a.conductores),
+        Singles: safeNum(a.habitaciones?.singles),
+        Dobles:  safeNum(a.habitaciones?.dobles),
+        Triples: safeNum(a.habitaciones?.triples),
+        Cuádruples: safeNum(a.habitaciones?.cuadruples),
+        Estado: a.status
       });
     });
   });
+
+  // ---------- Excel: crear libro y hojas ----------
   const wb  = XLSX.utils.book_new();
   const ws1 = XLSX.utils.json_to_sheet(resumen);
   const ws2 = XLSX.utils.json_to_sheet(detalle);
-  XLSX.utils.book_append_sheet(wb,ws1,'Resumen_Hoteles');
-  XLSX.utils.book_append_sheet(wb,ws2,'Detalle_Grupos');
-  XLSX.writeFile(wb,'distribucion_hotelera.xlsx');
+
+  // Autofiltro y ancho de columnas
+  function fitToColumn(rows){
+    if (!rows.length) return [];
+    const headers = Object.keys(rows[0]);
+    const widths = headers.map(h => Math.max(h.length, ...rows.map(r => String(r[h] ?? '').length)) + 2);
+    return widths.map(w => ({ wch: w }));
+  }
+  function setAutofilter(ws, rows){
+    if(!rows.length) return;
+    const cols = Object.keys(rows[0]).length;
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:rows.length, c:cols-1} }) };
+  }
+  ws1['!cols'] = fitToColumn(resumen);
+  ws2['!cols'] = fitToColumn(detalle);
+  setAutofilter(ws1, resumen);
+  setAutofilter(ws2, detalle);
+
+  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen_Hoteles');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Detalle_Asignaciones');
+
+  const fecha = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `distribucion_hotelera_${fecha}.xlsx`);
 }
+
