@@ -1,13 +1,19 @@
 // miviaje.js — visor SOLO LECTURA (sin autenticación)
+// - Lee un grupo por ?id=<docId> (único) o por ?numeroNegocio=
+// - Soporta números compuestos (1475 / 1411, 1475-1411, 1475,1411, 1475 y 1411)
+// - Si hay varios matches, muestra un selector con links ?id=
+// - Botones: Copiar enlace, Imprimir (con formato textual limpio para PDF)
+// - Flag &notas=0 para ocultar notas en pantalla/impresión
+
 import { app, db } from './firebase-core.js';
 import {
   collection, doc, getDoc, getDocs, query, where, limit
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Parámetros de URL: soporta ?id= y ?numeroNegocio=,
-   y también /miviaje/<numero> como segmento.
-   Devuelve { numeroNegocio, id } (strings, pueden venir vacíos).
+   Lectura de parámetros:
+   - /miviaje/<numero> como segmento
+   - ?numeroNegocio= y ?id= (insensible a mayúsculas)
 ────────────────────────────────────────────────────────────────────────── */
 function getParamsFromURL() {
   const parts = location.pathname.split('/').filter(Boolean);
@@ -16,11 +22,11 @@ function getParamsFromURL() {
 
   const qs = new URLSearchParams(location.search);
 
-  // numeroNegocio (case-insensitive)
+  // numeroNegocio
   const numeroKey = [...qs.keys()].find(k => k.toLowerCase() === 'numeronegocio');
   const numero = (seg || (numeroKey ? qs.get(numeroKey) : '') || '').trim();
 
-  // id (case-insensitive)
+  // id
   const idKey = [...qs.keys()].find(k => k.toLowerCase() === 'id');
   const id = idKey ? qs.get(idKey).trim() : '';
 
@@ -28,12 +34,12 @@ function getParamsFromURL() {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Tokeniza números compuestos:
+   Tokenizador de números compuestos:
    "1475 / 1411", "1475-1411", "1475, 1411", "1475 y 1411"
 ────────────────────────────────────────────────────────────────────────── */
 function splitNumeroCompuesto(value) {
   if (!value) return [];
-  // separadores: / , -  o la palabra " y " (con espacios)
+  // separadores: / , -  o la palabra " y " (con espacios alrededor)
   return value
     .split(/(?:\s*[\/,-]\s*|\s+y\s+)/i)
     .map(s => s.trim())
@@ -41,8 +47,8 @@ function splitNumeroCompuesto(value) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Genera VARIANTES del compuesto con y sin espacios y con distintos separadores,
-   para matchear docs que hayan guardado "1417 / 1419", "1417/1419", "1417 - 1419", etc.
+   Variantes compuestas con/sin espacios y distintos separadores:
+   "1417/1419", "1417 / 1419", "1417-1419", "1417, 1419", etc.
 ────────────────────────────────────────────────────────────────────────── */
 function buildCompositeVariants(value) {
   const partes = splitNumeroCompuesto(value);
@@ -52,9 +58,9 @@ function buildCompositeVariants(value) {
 
   for (const sep of seps) {
     variants.add(partes.join(sep));           // sin espacios
-    variants.add(partes.join(` ${sep} `));    // espacios a ambos lados
-    variants.add(partes.join(` ${sep}`));     // espacio izquierdo
-    variants.add(partes.join(`${sep} `));     // espacio derecho
+    variants.add(partes.join(` ${sep} `));    // espacios ambos lados
+    variants.add(partes.join(` ${sep}`));     // espacio izq
+    variants.add(partes.join(`${sep} `));     // espacio der
   }
   return [...variants];
 }
@@ -68,14 +74,14 @@ async function fetchGrupoById(id) {
   return s.exists() ? { id: s.id, ...s.data() } : null;
 }
 
-// Devuelve array de grupos que coinciden con el (posible) compuesto
+// Busca coincidencias por numeroNegocio (maneja compuestos y variantes)
 async function buscarGruposPorNumero(numeroNegocio) {
   if (!numeroNegocio) return [];
 
-  const vistos = new Map(); // id -> doc (para deduplicar)
-  const push = (snap) => snap.forEach(d => vistos.set(d.id, { id: d.id, ...d.data() }));
+  const vistos = new Map();          // id -> doc (dedup)
+  const push = snap => snap.forEach(d => vistos.set(d.id, { id: d.id, ...d.data() }));
 
-  // 0) Igualdad exacta con la cadena completa recibida
+  // 0) Igualdad exacta al string recibido
   let snap = await getDocs(query(
     collection(db, 'grupos'),
     where('numeroNegocio', '==', numeroNegocio),
@@ -83,7 +89,7 @@ async function buscarGruposPorNumero(numeroNegocio) {
   ));
   push(snap);
 
-  // 0.b) Variantes compuestas con y sin espacios y distintos separadores
+  // 0.b) Variantes compuestas
   const variantes = buildCompositeVariants(numeroNegocio);
   for (const v of variantes) {
     const s = await getDocs(query(
@@ -105,7 +111,7 @@ async function buscarGruposPorNumero(numeroNegocio) {
     push(snap);
   }
 
-  // 2) Partes del número compuesto: busca cada token como string y como número
+  // 2) Cada parte del compuesto (string y number)
   const partes = splitNumeroCompuesto(numeroNegocio);
   for (const p of partes) {
     const s1 = await getDocs(query(
@@ -130,7 +136,7 @@ async function buscarGruposPorNumero(numeroNegocio) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
-   Render de selector cuando hay múltiples matches
+   Selector cuando hay múltiples coincidencias
 ────────────────────────────────────────────────────────────────────────── */
 function renderSelector(lista, cont) {
   const hideNotes = new URLSearchParams(location.search).get('notas') === '0';
@@ -194,6 +200,43 @@ function getDateRange(startStr, endStr) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+   Texto de impresión (formato solicitado)
+────────────────────────────────────────────────────────────────────────── */
+function buildPrintText(grupo, fechasOrdenadas) {
+  let out = '';
+
+  fechasOrdenadas.forEach((fecha, idx) => {
+    // Título del día
+    out += `Día ${idx + 1} – ${formatDateReadable(fecha)}\n`;
+
+    // Actividades ordenadas
+    const arr = (grupo.itinerario?.[fecha] || []).slice()
+      .sort((a, b) => (a?.horaInicio || '99:99').localeCompare(b?.horaInicio || '99:99'));
+
+    if (!arr.length) {
+      out += '— Sin actividades —\n\n';
+      return;
+    }
+
+    arr.forEach(act => {
+      const hi = act.horaInicio || '--:--';
+      const hf = act.horaFin ? ` – ${act.horaFin}` : '';
+      const name = (act.actividad || '').toString().toUpperCase();
+
+      const a = parseInt(act.adultos, 10) || 0;
+      const e = parseInt(act.estudiantes, 10) || 0;
+      const pax = (a + e) || act.pasajeros || 0;
+
+      out += `${hi}${hf}  ${name} 👥 ${pax} pax (A:${a} E:${e})\n\n`;
+    });
+
+    out += '\n';
+  });
+
+  return out.trimEnd();
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    Render principal
 ────────────────────────────────────────────────────────────────────────── */
 async function main() {
@@ -206,13 +249,13 @@ async function main() {
   const fechasEl  = document.getElementById('grupo-fechas');
   const resumenPax= document.getElementById('resumen-pax');
   const cont      = document.getElementById('itinerario-container');
+  const printEl   = document.getElementById('print-block');
 
-  // Botones y flags
+  // Flags + botones
   const hideNotes = new URLSearchParams(location.search).get('notas') === '0';
   const btnPrint  = document.getElementById('btnPrint');
   const btnShare  = document.getElementById('btnShare');
 
-  // Imprimir / Guardar PDF
   btnPrint?.addEventListener('click', () => window.print());
 
   if (!numeroNegocio && !id) {
@@ -220,10 +263,10 @@ async function main() {
     return;
   }
 
-  // 1) Si viene id, úsalo (es único)
+  // 1) Preferir id (único)
   let g = await fetchGrupoById(id);
 
-  // 2) Si no hay id o no encontró, buscar por número (puede devolver múltiples)
+  // 2) Buscar por número si no había id o no se encontró
   if (!g) {
     const lista = await buscarGruposPorNumero(numeroNegocio);
 
@@ -234,18 +277,18 @@ async function main() {
     if (lista.length > 1) {
       renderSelector(lista, cont);
 
-      // Enlace de compartir manteniendo el número original
+      // Enlace para compartir manteniendo el número original
       const shareUrl = `${location.origin}${location.pathname}?numeroNegocio=${encodeURIComponent(numeroNegocio)}${hideNotes ? '&notas=0' : ''}`;
       btnShare?.addEventListener('click', async () => {
         await navigator.clipboard.writeText(shareUrl);
         alert('Enlace copiado');
       });
-      return; // aquí termina si hay selector
+      return; // se corta aquí (el usuario elige)
     }
-    g = lista[0]; // único resultado
+    g = lista[0];
   }
 
-  // Enlace de compartir preferentemente con id único
+  // Enlace para compartir (preferir id)
   const idLink   = g?.id ? `?id=${encodeURIComponent(g.id)}` 
                          : `?numeroNegocio=${encodeURIComponent(numeroNegocio || '')}`;
   const shareUrl = `${location.origin}${location.pathname}${idLink}${hideNotes ? '&notas=0' : ''}`;
@@ -254,7 +297,6 @@ async function main() {
       await navigator.clipboard.writeText(shareUrl);
       alert('Enlace copiado');
     } catch {
-      // Fallback por si Clipboard API falla
       const i = document.createElement('input');
       i.value = shareUrl;
       document.body.appendChild(i);
@@ -263,7 +305,7 @@ async function main() {
     }
   });
 
-  // Cabecera
+  // Cabecera del grupo
   titleEl.textContent   = ` ${(g.programa || '—').toUpperCase()}`;
   nombreEl.textContent  = g.nombreGrupo || '—';
   numEl.textContent     = g.numeroNegocio ?? g.id ?? '—';
@@ -274,7 +316,7 @@ async function main() {
   const totalE = parseInt(g.estudiantes, 10) || 0;
   resumenPax.textContent = `👥 Total pax: ${totalA + totalE} (A:${totalA} · E:${totalE})`;
 
-  // Fechas
+  // Armar listado de fechas
   let fechas = [];
   if (g.itinerario && typeof g.itinerario === 'object') {
     fechas = Object.keys(g.itinerario).sort((a, b) => new Date(a) - new Date(b));
@@ -284,10 +326,11 @@ async function main() {
 
   if (!fechas.length) {
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
+    if (printEl) printEl.textContent = '';
     return;
   }
 
-  // Render del itinerario
+  // Render visual (tarjetas)
   cont.innerHTML = '';
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement('section');
@@ -329,10 +372,17 @@ async function main() {
 
     cont.appendChild(sec);
   });
+
+  // Texto de impresión
+  if (printEl) {
+    printEl.textContent = buildPrintText(g, fechas);
+  }
 }
 
 main().catch(err => {
   console.error('Firestore error:', err?.code || err?.message, err);
   document.getElementById('itinerario-container').innerHTML =
     `<p style="padding:1rem;color:#b00;">Error cargando el itinerario.</p>`;
+  const printEl = document.getElementById('print-block');
+  if (printEl) printEl.textContent = '';
 });
