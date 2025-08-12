@@ -106,6 +106,36 @@ async function main() {
   const resumenPax= document.getElementById('resumen-pax');
   const cont      = document.getElementById('itinerario-container');
 
+  // Parámetro opcional para ocultar notas: ?notas=0
+  const hideNotes = new URLSearchParams(location.search).get('notas') === '0';
+
+  // Botones de acción
+  const btnPrint = document.getElementById('btnPrint');
+  const btnShare = document.getElementById('btnShare');
+
+  // Imprimir / Guardar PDF
+  btnPrint?.addEventListener('click', () => window.print());
+
+  // Enlace para compartir (si la URL es /miviaje/NNN genero con query por compatibilidad)
+  const shareUrl = `${location.origin}${location.pathname.includes('/miviaje/')
+                    ? location.pathname
+                    : location.pathname}?numeroNegocio=${encodeURIComponent(numeroNegocio)}${hideNotes ? '&notas=0' : ''}`;
+
+  btnShare?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      alert('Enlace copiado al portapapeles');
+    } catch {
+      // Fallback por si el clipboard falla
+      const i = document.createElement('input');
+      i.value = shareUrl;
+      document.body.appendChild(i);
+      i.select(); document.execCommand('copy');
+      i.remove();
+      alert('Enlace copiado');
+    }
+  });
+
   if (!numeroNegocio) {
     cont.innerHTML = `<p style="padding:1rem;">Falta el número de negocio en la URL.</p>`;
     return;
@@ -172,13 +202,17 @@ async function main() {
       arr.forEach(act => {
         const paxCalc = (parseInt(act.adultos,10)||0) + (parseInt(act.estudiantes,10)||0);
         const li = document.createElement('li');
-        li.className = 'activity-card';
+        const notesHtml = (!hideNotes && act.notas)
+          ? `<p style="opacity:.85;">📝 ${act.notas}</p>`
+          : '';
+        
         li.innerHTML = `
           <h4>${act.horaInicio || '--:--'}${act.horaFin ? ' – ' + act.horaFin : ''}</h4>
           <p><strong>${(act.actividad||'').toString().toUpperCase()}</strong></p>
           <p>👥 ${paxCalc || act.pasajeros || 0} pax${(act.adultos||act.estudiantes)?` (A:${act.adultos||0} E:${act.estudiantes||0})`:''}</p>
-          ${ act.notas ? `<p style="opacity:.85;">📝 ${act.notas}</p>` : '' }
+          ${notesHtml}
         `;
+
         ul.appendChild(li);
       });
     }
