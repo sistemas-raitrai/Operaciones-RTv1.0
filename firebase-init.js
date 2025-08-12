@@ -1,7 +1,5 @@
-// firebase-init.js
-// Inicialización de Firebase (Auth + Firestore) para todas las páginas
+// firebase-init.js — Sistema principal (Operaciones RT)
 
-// 1️⃣ Importa los SDKs desde la CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-app.js";
 import {
   getAuth,
@@ -11,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js";
 
-// 2️⃣ Tu configuración de Firebase
+// --- Firebase config (mismo proyecto)
 const firebaseConfig = {
   apiKey: "AIzaSyAdx9nVcV-UiGER3mcz-w9BcSSIZd-t5nE",
   authDomain: "sist-op-rt.firebaseapp.com",
@@ -21,57 +19,53 @@ const firebaseConfig = {
   appId: "1:438607695630:web:f5a16f319e3ea17fbfd15f"
 };
 
-// 3️⃣ Inicializa Firebase App, Auth y Firestore
-const app  = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db   = getFirestore(app);
+export const app  = initializeApp(firebaseConfig);
+export const auth = getAuth(app);
+export const db   = getFirestore(app);
 
-// 👇 URL del portal (GitHub Pages o tu subdominio)
+// 👉 URL del portal (GitHub Pages o dominio propio)
 const PORTAL_URL = "https://sistemas-raitrai.github.io/portal-coordinadores-rt/";
 
-// 4️⃣ Observador de sesión + guardia por rol/página
-onAuthStateChanged(auth, async (user) => {
-  const current = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+// 👉 Lista blanca de correos que SÍ pueden usar el sistema principal
+const STAFF_EMAILS = new Set([
+  "aleoperaciones@raitrai.cl",
+  "tomas@raitrai.cl",
+  "operaciones@raitrai.cl",
+  "anamaria@raitrai.cl",
+  "sistemas@raitrai.cl",
+].map(e => e.toLowerCase()));
 
-  // Páginas públicas (no chequean sesión)
-  const PUBLIC = new Set(['login.html']);
+// Páginas públicas del sistema principal
+const PUBLIC = new Set(["login.html"]);
+
+// --- Guardia global
+onAuthStateChanged(auth, async (user) => {
+  const current = (location.pathname.split("/").pop() || "index.html").toLowerCase();
+
+  // No logueado → solo páginas públicas
   if (!user) {
-    if (!PUBLIC.has(current)) location.href = 'login.html';
+    if (!PUBLIC.has(current)) location.href = "login.html";
     return;
   }
 
-  //  ✅ Obtener rol desde custom claims
-  const token = await user.getIdTokenResult(true);
-  const role  = token.claims.role || 'usuario'; // fallback para cuentas antiguas
+  const email = (user.email || "").toLowerCase();
+  const isStaff = STAFF_EMAILS.has(email);
 
-  //  ✅ Allowed roles por PÁGINA (automático):
-  //     Por defecto TODA página es sólo del sistema principal
-  //     (admin/supervisor/usuario) y NO permite coordinador,
-  //     a menos que la página lo indique en <body data-roles="...">
-  const rolesFromDom = (document.body?.dataset?.roles || 'admin,supervisor,usuario')
-    .split(',').map(s => s.trim().toLowerCase());
-
-  if (!rolesFromDom.includes(role)) {
-    if (role === 'coordinador') {
-      // 👇 usa replace para que no pueda volver con “atrás”
-      location.replace(PORTAL_URL);
-    } else {
-      location.href = 'login.html';
-    }
+  if (!isStaff) {
+    // Usuario autenticado que NO es staff → enviar al portal
+    // replace() para que no vuelva con "atrás"
+    location.replace(PORTAL_URL);
+    return;
   }
+
+  // (Opcional) Si un staff está en login.html, llévalo al home
+  if (current === "login.html") location.href = "index.html";
 });
 
-// 5️⃣ Función para iniciar sesión (usada en login.html)
-window.login = async function (email, password) {
+// Helpers de login/logout
+window.login = async (email, password) => {
   await signInWithEmailAndPassword(auth, email, password);
-  // Tras el login, el onAuthStateChanged redirigirá automáticamente
 };
-
-// 6️⃣ Función para cerrar sesión (puedes llamarla desde script.js o un botón)
-window.logout = async function () {
+window.logout = async () => {
   await signOut(auth);
-  // onAuthStateChanged también se encargará de la redirección al login
 };
-
-// 7️⃣ Exporta los objetos para usarlos en tus otros módulos
-export { app, auth, db };
