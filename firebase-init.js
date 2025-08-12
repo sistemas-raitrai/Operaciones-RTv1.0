@@ -26,6 +26,9 @@ const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
+// 👇 URL del portal (GitHub Pages o tu subdominio)
+const PORTAL_URL = "https://sistemas-raitrai.github.io/portal-coordinadores-rt/";
+
 // 4️⃣ Observador de sesión + guardia por rol/página
 onAuthStateChanged(auth, async (user) => {
   const current = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
@@ -49,12 +52,10 @@ onAuthStateChanged(auth, async (user) => {
     .split(',').map(s => s.trim().toLowerCase());
 
   if (!rolesFromDom.includes(role)) {
-    // Si es coordinador, lo mando a su portal
     if (role === 'coordinador') {
-      if (current !== 'coordinadores.html' && current !== 'index.html')
-        location.href = 'coordinadores.html';
+      // 👇 usa replace para que no pueda volver con “atrás”
+      location.replace(PORTAL_URL);
     } else {
-      // Cualquier otro rol sin permiso -> al login
       location.href = 'login.html';
     }
   }
