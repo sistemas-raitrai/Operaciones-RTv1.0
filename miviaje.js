@@ -4,10 +4,11 @@ import {
   collection, doc, getDoc, getDocs, query, where, limit
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-/* -------------------------------------------
-   Parámetros de URL: soporta ?id= y ?numeroNegocio=
+/* ──────────────────────────────────────────────────────────────────────────
+   Parámetros de URL: soporta ?id= y ?numeroNegocio=,
    y también /miviaje/<numero> como segmento.
-------------------------------------------- */
+   Devuelve { numeroNegocio, id } (strings, pueden venir vacíos).
+────────────────────────────────────────────────────────────────────────── */
 function getParamsFromURL() {
   const parts = location.pathname.split('/').filter(Boolean);
   const i = parts.findIndex(p => p.toLowerCase().includes('miviaje'));
@@ -26,10 +27,10 @@ function getParamsFromURL() {
   return { numeroNegocio: numero, id };
 }
 
-/* -------------------------------------------
+/* ──────────────────────────────────────────────────────────────────────────
    Tokeniza números compuestos:
    "1475 / 1411", "1475-1411", "1475, 1411", "1475 y 1411"
-------------------------------------------- */
+────────────────────────────────────────────────────────────────────────── */
 function splitNumeroCompuesto(value) {
   if (!value) return [];
   // separadores: / , -  o la palabra " y " (con espacios)
@@ -39,9 +40,28 @@ function splitNumeroCompuesto(value) {
     .filter(Boolean);
 }
 
-/* -------------------------------------------
+/* ──────────────────────────────────────────────────────────────────────────
+   Genera VARIANTES del compuesto con y sin espacios y con distintos separadores,
+   para matchear docs que hayan guardado "1417 / 1419", "1417/1419", "1417 - 1419", etc.
+────────────────────────────────────────────────────────────────────────── */
+function buildCompositeVariants(value) {
+  const partes = splitNumeroCompuesto(value);
+  if (partes.length < 2) return [];
+  const seps = ['/', '-', ','];
+  const variants = new Set();
+
+  for (const sep of seps) {
+    variants.add(partes.join(sep));           // sin espacios
+    variants.add(partes.join(` ${sep} `));    // espacios a ambos lados
+    variants.add(partes.join(` ${sep}`));     // espacio izquierdo
+    variants.add(partes.join(`${sep} `));     // espacio derecho
+  }
+  return [...variants];
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    Búsquedas
-------------------------------------------- */
+────────────────────────────────────────────────────────────────────────── */
 async function fetchGrupoById(id) {
   if (!id) return null;
   const s = await getDoc(doc(db, 'grupos', id));
@@ -52,16 +72,27 @@ async function fetchGrupoById(id) {
 async function buscarGruposPorNumero(numeroNegocio) {
   if (!numeroNegocio) return [];
 
-  const vistos = new Map(); // id -> doc
-  const push = snap => snap.forEach(d => vistos.set(d.id, { id: d.id, ...d.data() }));
+  const vistos = new Map(); // id -> doc (para deduplicar)
+  const push = (snap) => snap.forEach(d => vistos.set(d.id, { id: d.id, ...d.data() }));
 
-  // 0) Igualdad exacta con la cadena completa (por si el doc guarda "1475 / 1411")
+  // 0) Igualdad exacta con la cadena completa recibida
   let snap = await getDocs(query(
     collection(db, 'grupos'),
     where('numeroNegocio', '==', numeroNegocio),
     limit(10)
   ));
   push(snap);
+
+  // 0.b) Variantes compuestas con y sin espacios y distintos separadores
+  const variantes = buildCompositeVariants(numeroNegocio);
+  for (const v of variantes) {
+    const s = await getDocs(query(
+      collection(db, 'grupos'),
+      where('numeroNegocio', '==', v),
+      limit(10)
+    ));
+    push(s);
+  }
 
   // 1) Igualdad como número (si aplica)
   const asNum = Number(numeroNegocio);
@@ -74,10 +105,10 @@ async function buscarGruposPorNumero(numeroNegocio) {
     push(snap);
   }
 
-  // 2) Partes del número compuesto: busca cada token como string y número
+  // 2) Partes del número compuesto: busca cada token como string y como número
   const partes = splitNumeroCompuesto(numeroNegocio);
   for (const p of partes) {
-    let s1 = await getDocs(query(
+    const s1 = await getDocs(query(
       collection(db, 'grupos'),
       where('numeroNegocio', '==', p),
       limit(10)
@@ -86,7 +117,7 @@ async function buscarGruposPorNumero(numeroNegocio) {
 
     const pn = Number(p);
     if (!Number.isNaN(pn)) {
-      let s2 = await getDocs(query(
+      const s2 = await getDocs(query(
         collection(db, 'grupos'),
         where('numeroNegocio', '==', pn),
         limit(10)
@@ -98,9 +129,9 @@ async function buscarGruposPorNumero(numeroNegocio) {
   return [...vistos.values()];
 }
 
-/* -------------------------------------------
+/* ──────────────────────────────────────────────────────────────────────────
    Render de selector cuando hay múltiples matches
-------------------------------------------- */
+────────────────────────────────────────────────────────────────────────── */
 function renderSelector(lista, cont) {
   const hideNotes = new URLSearchParams(location.search).get('notas') === '0';
   cont.innerHTML = `
@@ -121,9 +152,9 @@ function renderSelector(lista, cont) {
   `;
 }
 
-/* -------------------------------------------
+/* ──────────────────────────────────────────────────────────────────────────
    Helpers de formato
-------------------------------------------- */
+────────────────────────────────────────────────────────────────────────── */
 function formatDateRange(ini, fin) {
   if (!ini || !fin) return '—';
   try {
@@ -162,24 +193,26 @@ function getDateRange(startStr, endStr) {
   return out;
 }
 
-/* -------------------------------------------
+/* ──────────────────────────────────────────────────────────────────────────
    Render principal
-------------------------------------------- */
+────────────────────────────────────────────────────────────────────────── */
 async function main() {
   const { numeroNegocio, id } = getParamsFromURL();
-  const titleEl = document.getElementById('grupo-title');
-  const nombreEl = document.getElementById('grupo-nombre');
-  const numEl = document.getElementById('grupo-numero');
+
+  const titleEl   = document.getElementById('grupo-title');
+  const nombreEl  = document.getElementById('grupo-nombre');
+  const numEl     = document.getElementById('grupo-numero');
   const destinoEl = document.getElementById('grupo-destino');
-  const fechasEl = document.getElementById('grupo-fechas');
-  const resumenPax = document.getElementById('resumen-pax');
-  const cont = document.getElementById('itinerario-container');
+  const fechasEl  = document.getElementById('grupo-fechas');
+  const resumenPax= document.getElementById('resumen-pax');
+  const cont      = document.getElementById('itinerario-container');
 
   // Botones y flags
   const hideNotes = new URLSearchParams(location.search).get('notas') === '0';
-  const btnPrint = document.getElementById('btnPrint');
-  const btnShare = document.getElementById('btnShare');
+  const btnPrint  = document.getElementById('btnPrint');
+  const btnShare  = document.getElementById('btnShare');
 
+  // Imprimir / Guardar PDF
   btnPrint?.addEventListener('click', () => window.print());
 
   if (!numeroNegocio && !id) {
@@ -187,7 +220,7 @@ async function main() {
     return;
   }
 
-  // 1) Si viene id, úsalo
+  // 1) Si viene id, úsalo (es único)
   let g = await fetchGrupoById(id);
 
   // 2) Si no hay id o no encontró, buscar por número (puede devolver múltiples)
@@ -200,25 +233,28 @@ async function main() {
     }
     if (lista.length > 1) {
       renderSelector(lista, cont);
-      // preparar enlace de compartir con el número original
+
+      // Enlace de compartir manteniendo el número original
       const shareUrl = `${location.origin}${location.pathname}?numeroNegocio=${encodeURIComponent(numeroNegocio)}${hideNotes ? '&notas=0' : ''}`;
       btnShare?.addEventListener('click', async () => {
         await navigator.clipboard.writeText(shareUrl);
         alert('Enlace copiado');
       });
-      return;
+      return; // aquí termina si hay selector
     }
-    g = lista[0];
+    g = lista[0]; // único resultado
   }
 
   // Enlace de compartir preferentemente con id único
-  const idLink = g?.id ? `?id=${encodeURIComponent(g.id)}` : `?numeroNegocio=${encodeURIComponent(numeroNegocio || '')}`;
+  const idLink   = g?.id ? `?id=${encodeURIComponent(g.id)}` 
+                         : `?numeroNegocio=${encodeURIComponent(numeroNegocio || '')}`;
   const shareUrl = `${location.origin}${location.pathname}${idLink}${hideNotes ? '&notas=0' : ''}`;
   btnShare?.addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
       alert('Enlace copiado');
     } catch {
+      // Fallback por si Clipboard API falla
       const i = document.createElement('input');
       i.value = shareUrl;
       document.body.appendChild(i);
@@ -228,11 +264,11 @@ async function main() {
   });
 
   // Cabecera
-  titleEl.textContent = ` ${(g.programa || '—').toUpperCase()}`;
-  nombreEl.textContent = g.nombreGrupo || '—';
-  numEl.textContent = g.numeroNegocio ?? g.id ?? '—';
+  titleEl.textContent   = ` ${(g.programa || '—').toUpperCase()}`;
+  nombreEl.textContent  = g.nombreGrupo || '—';
+  numEl.textContent     = g.numeroNegocio ?? g.id ?? '—';
   destinoEl.textContent = g.destino || '—';
-  fechasEl.textContent = formatDateRange(g.fechaInicio, g.fechaFin);
+  fechasEl.textContent  = formatDateRange(g.fechaInicio, g.fechaFin);
 
   const totalA = parseInt(g.adultos, 10) || 0;
   const totalE = parseInt(g.estudiantes, 10) || 0;
@@ -251,7 +287,7 @@ async function main() {
     return;
   }
 
-  // Render
+  // Render del itinerario
   cont.innerHTML = '';
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement('section');
@@ -266,6 +302,7 @@ async function main() {
     const ul = sec.querySelector('.activity-list');
     const arr = (g.itinerario?.[fecha] || []).slice();
 
+    // Orden por hora de inicio (los vacíos al final)
     arr.sort((a, b) => (a?.horaInicio || '99:99').localeCompare(b?.horaInicio || '99:99'));
 
     if (!arr.length) {
