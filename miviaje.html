@@ -4,29 +4,52 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Mi Viaje | RT</title>
+
+  <!-- Tus estilos globales (no los toco) -->
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+
+  <!-- Estilos específicos para impresión -->
   <style>
-    @media print { .btn-add { display:none !important; } }
+    /* Bloque sólo visible en impresión (texto plano del itinerario) */
+    .print-only {
+      display: none;
+      white-space: pre-wrap;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    }
+    @media print {
+      /* Oculta UI visual (header, grillas, botones) cuando se imprime */
+      header, .grid, .btn-add { display: none !important; }
+      /* Muestra el bloque de impresión */
+      .print-only {
+        display: block !important;
+        font-size: 12pt;
+        line-height: 1.35;
+        margin: 0;
+        padding: 0;
+      }
+      body { background:#fff; color:#000; }
+    }
   </style>
 </head>
+
 <body class="itinerario-page">
 
-  <!-- Encabezado liviano sin auth -->
+  <!-- Encabezado liviano SIN autenticación -->
   <header class="header" style="display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;border-bottom:1px solid #ddd;background:#fff;">
     <img src="Logo Raitrai.png" alt="Rai Trai" style="height:36px;width:auto;">
     <h1 style="font-size:1.25rem;margin:0;">Mi Viaje</h1>
-  
-    <!-- espacio flexible -->
-    <div style="margin-left:auto;font-size:.9rem;color:#666;" id="resumen-pax"></div>
-  
-    <!-- 👇 botones nuevos -->
+
+    <!-- Resumen de pax a la derecha -->
+    <div id="resumen-pax" style="margin-left:auto;font-size:.9rem;color:#666;"></div>
+
+    <!-- Botones utilitarios (no se muestran al imprimir por CSS) -->
     <button id="btnShare" class="btn-add" title="Copiar enlace para compartir">🔗 Copiar enlace</button>
     <button id="btnPrint" class="btn-add" title="Imprimir / Guardar en PDF">🖨️ Imprimir</button>
   </header>
 
   <main class="main">
-    <!-- Cabecera de grupo (solo lectura) -->
+    <!-- Cabecera de grupo (sólo lectura) -->
     <div class="row">
       <div class="column long">
         <h2>PROGRAMA:<span id="grupo-title">–</span></h2>
@@ -53,13 +76,15 @@
       </div>
     </div>
 
-    <!-- Contenedor del itinerario -->
+    <!-- Contenedor visual (tarjetas) -->
     <div id="itinerario-container" class="grid"></div>
+
+    <!-- Contenedor textual SÓLO para impresión -->
+    <pre id="print-block" class="print-only"></pre>
   </main>
 
-  <!-- Firebase + página -->
+  <!-- Sólo cargamos el visor público (sin auth) -->
   <script type="module">
-    // No cargamos script.js (auth); solo Firestore y este JS
     import './miviaje.js';
   </script>
 </body>
