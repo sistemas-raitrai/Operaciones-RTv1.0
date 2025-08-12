@@ -26,16 +26,37 @@ const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
-// 4️⃣ Observador de sesión: si no hay user, redirige al login
-onAuthStateChanged(auth, user => {
+// 4️⃣ Observador de sesión + guardia por rol/página
+onAuthStateChanged(auth, async (user) => {
+  const current = (location.pathname.split('/').pop() || 'index.html').toLowerCase();
+
+  // Páginas públicas (no chequean sesión)
+  const PUBLIC = new Set(['login.html']);
   if (!user) {
-    console.warn("⛔ Usuario no autenticado, redirigiendo a login…");
-    // Si estamos en una página distinta de login, volvemos al login
-    if (!location.pathname.endsWith("login.html")) {
-      location.href = "login.html";
+    if (!PUBLIC.has(current)) location.href = 'login.html';
+    return;
+  }
+
+  //  ✅ Obtener rol desde custom claims
+  const token = await user.getIdTokenResult(true);
+  const role  = token.claims.role || 'usuario'; // fallback para cuentas antiguas
+
+  //  ✅ Allowed roles por PÁGINA (automático):
+  //     Por defecto TODA página es sólo del sistema principal
+  //     (admin/supervisor/usuario) y NO permite coordinador,
+  //     a menos que la página lo indique en <body data-roles="...">
+  const rolesFromDom = (document.body?.dataset?.roles || 'admin,supervisor,usuario')
+    .split(',').map(s => s.trim().toLowerCase());
+
+  if (!rolesFromDom.includes(role)) {
+    // Si es coordinador, lo mando a su portal
+    if (role === 'coordinador') {
+      if (current !== 'coordinadores.html' && current !== 'index.html')
+        location.href = 'coordinadores.html';
+    } else {
+      // Cualquier otro rol sin permiso -> al login
+      location.href = 'login.html';
     }
-  } else {
-    console.log("✅ Usuario autenticado:", user.email);
   }
 });
 
