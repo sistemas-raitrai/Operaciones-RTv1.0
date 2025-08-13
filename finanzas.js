@@ -1,46 +1,38 @@
-// finanzas.js — Módulo Finanzas Operaciones RT (mejorado)
+// finanzas.js — Módulo Finanzas Operaciones RT (agrupado por servicio en modal)
 
 // Firebase
 import { app, db } from './firebase-init.js';
-import {
-  collection, getDocs
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-import {
-  getAuth, onAuthStateChanged
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 // ============================
 // 0) Configurable por país/rutas
 // ============================
 const RUTA_SERVICIOS    = 'Servicios/BRASIL/Listado';       // ⚠️ ajusta si usas otro país
-const RUTA_PROVEEDORES  = 'Proveedores/BRASIL/Listado';     // ⚠️ opcional si quieres meta del proveedor
+const RUTA_PROVEEDORES  = 'Proveedores/BRASIL/Listado';     // opcional
 const RUTA_HOTELES      = 'Hoteles/BRASIL/Listado';         // opcional
 const RUTA_ASIGNACIONES = 'Hoteles/BRASIL/Asignaciones';    // opcional
-const RUTA_GRUPOS       = 'grupos';                         // colección principal de grupos
+const RUTA_GRUPOS       = 'grupos';                         // principal
 
 // ============================
 // 1) Estado global + helpers
 // ============================
 const auth = getAuth(app);
 
-let GRUPOS = [];        // [{ id, nombreGrupo, numeroNegocio, destino, adultos, estudiantes, cantidadgrupo, itinerario{ 'YYYY-MM-DD':[items] } }]
-let SERVICIOS = [];     // [{ id, destino, servicio, proveedor, moneda, tipoCobro, valorServicio, ... }]
-let PROVEEDORES = {};   // { slugProveedor: {...} }
-let HOTELES = [];       // opcional
-let ASIGNACIONES = [];  // opcional
+let GRUPOS = [];
+let SERVICIOS = [];
+let PROVEEDORES = {};
+let HOTELES = [];
+let ASIGNACIONES = [];
 
-let LINE_ITEMS = [];    // filas de actividades calculadas
-let LINE_HOTEL = [];    // filas de hotel (si activas hoteles)
+let LINE_ITEMS = [];
+let LINE_HOTEL = [];
 
 const el   = id => document.getElementById(id);
 const fmt  = n => (n ?? 0).toLocaleString('es-CL');
 const money = n => '$' + fmt(Math.round(n || 0));
-const slug  = s => (s || '')
-  .toString().normalize('NFD').replace(/\p{Diacritic}/gu, '')
-  .toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
-const norm  = s => (s || '')
-  .toString().normalize('NFD').replace(/\p{Diacritic}/gu, '')
-  .toUpperCase().trim();
+const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
+const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
 
 function paxDeGrupo(g) {
   const a = Number(g.adultos || g.ADULTOS || 0);
@@ -89,7 +81,6 @@ async function loadGrupos() {
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// (Opcional) Hoteles
 async function loadHotelesYAsignaciones() {
   try {
     const snapH = await getDocs(collection(db, RUTA_HOTELES));
@@ -106,7 +97,6 @@ async function loadHotelesYAsignaciones() {
 // 3) Resolver Servicio (match DESTINO + SERVICIO, proveedor para desempatar)
 // ============================
 function resolverServicio(itemActividad, destinoGrupo) {
-  // del itinerario pueden venir {actividad, servicio?, proveedor?}
   const act = norm(itemActividad?.actividad || itemActividad?.servicio || '');
   const dest = norm(destinoGrupo || '');
   const provIt = norm(itemActividad?.proveedor || '');
@@ -153,7 +143,6 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
         const svc = resolverServicio(item, destinoGrupo);
 
         if (!svc) {
-          // línea de diagnóstico para detectar faltantes de tarifario
           out.push({
             tipo: 'actividad',
             proveedor: item.proveedor || '(desconocido)',
@@ -167,51 +156,35 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
             tarifa: 0,
             pagoTipo: 'por_grupo',
             pagoFrecuencia: 'unitario',
-            totalMoneda: 0,
-            totalCLP: 0,
+            totalMoneda: 0, totalCLP: 0,
             nota: 'Sin tarifario en Servicios (destino+actividad no encontrado)'
           });
           continue;
         }
 
-        // --- Campos en Servicios (alias para nombres posibles) ---
         const proveedor = svc.proveedor || '(sin proveedor)';
-
         const monedaRaw = (svc.moneda || svc.MONEDA || 'CLP').toString().toUpperCase();
         const moneda = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
-
         const tipoCobroRaw = (svc.tipoCobro || svc.tipo_cobro || '').toString().toUpperCase();
         const esPorPersona = tipoCobroRaw.includes('PERSONA') || tipoCobroRaw.includes('PAX');
+        const valor = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
 
-        const valor = Number(
-          svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0
-        );
-
-        // --- Cálculo ---
         const multiplicador = esPorPersona ? pax : 1;
         const totalMoneda = valor * multiplicador;
-
         const tc = pickTC(moneda);
         const totalCLP = (tc ? totalMoneda * tc : null);
 
         out.push({
           tipo: 'actividad',
-          proveedor,
-          proveedorSlug: slug(proveedor),
+          proveedor, proveedorSlug: slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
-          destinoGrupo,
-          fecha: fechaISO,
-          grupoId: g.id,
-          nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
+          destinoGrupo, fecha: fechaISO,
+          grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
           numeroNegocio: g.numeroNegocio || g.id,
-          pax,
-          moneda,          // normalizada
-          tarifa: valor,   // valorServicio
-          pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo', // para UI/modal/export
-          pagoFrecuencia: 'unitario', // cada día del itinerario ya es una línea
-          totalMoneda,
-          totalCLP,
-          nota: ''
+          pax, moneda, tarifa: valor,
+          pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo',
+          pagoFrecuencia: 'unitario',
+          totalMoneda, totalCLP, nota: ''
         });
       }
     }
@@ -220,7 +193,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 }
 
 // ============================
-// 5) (Opcional) Construir items de hotel desde ASIGNACIONES
+// 5) (Opcional) Hoteles
 // ============================
 function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHoteles) {
   const out = [];
@@ -239,14 +212,13 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const start = asg.fechaInicio, end = asg.fechaFin;
     if (!start || !end) continue;
 
-    // noches dentro del rango
     const nights = [];
     let cur = new Date(start + 'T00:00:00');
     const fin = new Date(end + 'T00:00:00');
     while (cur < fin) {
-      const iso = cur.toISOString().slice(0, 10);
+      const iso = cur.toISOString().slice(0,10);
       if (within(iso, fechaDesde, fechaHasta)) nights.push(iso);
-      cur.setDate(cur.getDate() + 1);
+      cur.setDate(cur.getDate()+1);
     }
 
     const hotel = mapHotel[asg.hotelId] || {};
@@ -261,7 +233,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     let totalPorNoche = 0;
     if (tipoCobro === 'por_pax_noche') totalPorNoche = tarifa * pax;
     else if (tipoCobro === 'por_grupo_noche') totalPorNoche = tarifa;
-    else if (tipoCobro === 'por_hab_noche') totalPorNoche = tarifa; // ajustar si tienes #habitaciones
+    else if (tipoCobro === 'por_hab_noche') totalPorNoche = tarifa;
 
     const tc = pickTC(moneda);
     const totalMoneda = totalPorNoche * nights.length;
@@ -269,10 +241,8 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
 
     out.push({
       tipo: 'hotel',
-      hotel: hotelNombre,
-      destinoGrupo,
-      grupoId: g.id,
-      nombreGrupo: g.nombreGrupo || '',
+      hotel: hotelNombre, destinoGrupo,
+      grupoId: g.id, nombreGrupo: g.nombreGrupo || '',
       numeroNegocio: g.numeroNegocio || g.id,
       noches: nights.length,
       moneda, tarifa, tipoCobro,
@@ -454,17 +424,104 @@ function renderTablaHoteles(mapHoteles) {
   }
 }
 
-// ===== Modal detalle proveedor =====
+// ====== Helpers para modal agrupado ======
+function agruparItemsPorServicio(items) {
+  const map = new Map(); // servicio -> {clp, usd, brl, clpConv, count, items:[]}
+  for (const it of items) {
+    const key = it.servicio || '(sin nombre)';
+    const o = map.get(key) || { clp:0, usd:0, brl:0, clpConv:0, count:0, items:[] };
+    if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
+    if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
+    if ((it.moneda === 'BRL' || it.moneda === 'R$') && it.totalMoneda) o.brl += it.totalMoneda;
+    if (typeof it.totalCLP === 'number') o.clpConv += it.totalCLP;
+    o.count++;
+    o.items.push(it);
+    map.set(key, o);
+  }
+  // ordenar por CLP convertido desc
+  return [...map.entries()]
+    .map(([servicio, v]) => ({ servicio, ...v }))
+    .sort((a,b) => (b.clpConv - a.clpConv));
+}
+
+// ===== Modal detalle proveedor (RESUMEN POR SERVICIO + DETALLE) =====
 function openModalProveedor(slugProv, data) {
   const backdrop = el('backdrop');
   const modal = el('modal');
 
   el('modalTitle').textContent = `Detalle — ${data?.nombre || slugProv}`;
-  el('modalSub').textContent   = `Ítems: ${data.items.length} — Destinos: ${[...data.destinos].join(', ')}`;
+  el('modalSub').textContent   = `Destinos: ${[...data.destinos].join(', ')}`;
 
-  const tb = el('tblDetalleProv').querySelector('tbody');
+  // === Construir HTML del cuerpo: resumen + detalle ===
+  const cont = modal.querySelector('.fin-modal-body');
+  const resumen = agruparItemsPorServicio(data.items);
+
+  cont.innerHTML = `
+    <div class="scroll-x" style="margin-bottom: .5rem;">
+      <table class="fin-table" id="tblProvResumen">
+        <thead>
+          <tr>
+            <th>Servicio</th>
+            <th class="right">CLP</th>
+            <th class="right">USD</th>
+            <th class="right">BRL</th>
+            <th class="right">Total CLP (conv.)</th>
+            <th class="right"># Ítems</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div class="row" id="detToolbar" style="justify-content:flex-end; margin:.25rem 0 .5rem 0;">
+      <button class="btn ghost" id="btnDetClear" style="display:none;">Ver todos</button>
+    </div>
+
+    <div class="scroll-x">
+      <table class="fin-table" id="tblDetalleProv">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Grupo</th>
+            <th>Destino</th>
+            <th>Servicio</th>
+            <th class="right">Pax</th>
+            <th>Modalidad</th>
+            <th>Moneda</th>
+            <th class="right">Tarifa</th>
+            <th class="right">Total (mon)</th>
+            <th class="right">Total CLP</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot><tr>
+          <th colspan="9" class="right">Total CLP</th>
+          <th id="modalTotalCLP" class="right">$0</th>
+        </tr></tfoot>
+      </table>
+    </div>
+  `;
+
+  // --- Pintar resumen por servicio ---
+  const tbRes = cont.querySelector('#tblProvResumen tbody');
+  for (const r of resumen) {
+    tbRes.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${r.servicio}</td>
+        <td class="right">${fmt(r.clp)}</td>
+        <td class="right">${fmt(r.usd)}</td>
+        <td class="right">${fmt(r.brl)}</td>
+        <td class="right">${money(r.clpConv)}</td>
+        <td class="right">${fmt(r.count)}</td>
+        <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicio)}">Ver detalle</button></td>
+      </tr>
+    `);
+  }
+
+  // --- Pintar detalle completo (ordenado por fecha/grupo) ---
+  const tb = cont.querySelector('#tblDetalleProv tbody');
   tb.innerHTML = '';
-
   const rows = [...data.items].sort((a,b) =>
     (a.fecha || '').localeCompare(b.fecha || '') ||
     (a.nombreGrupo || '').localeCompare(b.nombreGrupo || '')
@@ -474,7 +531,7 @@ function openModalProveedor(slugProv, data) {
   for (const it of rows) {
     if (typeof it.totalCLP === 'number') totCLP += it.totalCLP;
     tb.insertAdjacentHTML('beforeend', `
-      <tr>
+      <tr data-svc="${slug(it.servicio || '')}">
         <td>${it.fecha || ''}</td>
         <td>${it.nombreGrupo || it.numeroNegocio || it.grupoId}</td>
         <td>${it.destinoGrupo || ''}</td>
@@ -490,15 +547,36 @@ function openModalProveedor(slugProv, data) {
   }
   el('modalTotalCLP').textContent = money(totCLP);
 
+  // --- Filtro de detalle por servicio desde el resumen ---
+  const btnClear = cont.querySelector('#btnDetClear');
+  cont.querySelectorAll('.btn-det-svc').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const svc = btn.getAttribute('data-svc');
+      const rows = cont.querySelectorAll('#tblDetalleProv tbody tr');
+      let hayFiltro = false;
+      rows.forEach(tr => {
+        const ok = tr.getAttribute('data-svc') === svc;
+        tr.style.display = ok ? '' : 'none';
+        if (ok) hayFiltro = true;
+      });
+      btnClear.style.display = hayFiltro ? '' : 'none';
+    });
+  });
+  btnClear.addEventListener('click', () => {
+    cont.querySelectorAll('#tblDetalleProv tbody tr').forEach(tr => tr.style.display = '');
+    btnClear.style.display = 'none';
+  });
+
+  // Mostrar modal
   backdrop.style.display = 'block';
   modal.style.display = 'block';
-  document.body.classList.add('modal-open'); // bloquear scroll fondo
+  document.body.classList.add('modal-open');
 }
 
 function closeModal() {
   el('backdrop').style.display = 'none';
   el('modal').style.display = 'none';
-  document.body.classList.remove('modal-open'); // restaurar scroll
+  document.body.classList.remove('modal-open');
 }
 
 // ============================
@@ -559,7 +637,6 @@ function recalcular() {
   LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, destinosSel, inclAct);
   LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, inclHot);
 
-  // Diagnóstico de faltantes
   logDiagnostico(LINE_ITEMS);
 
   renderKPIs(LINE_ITEMS, LINE_HOTEL);
@@ -652,12 +729,7 @@ function bindUI() {
 async function boot() {
   onAuthStateChanged(auth, async () => {
     try {
-      await Promise.all([
-        loadGrupos(),
-        loadServicios(),
-        loadProveedores(),
-        loadHotelesYAsignaciones(), // no rompe si no existen
-      ]);
+      await Promise.all([ loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones() ]);
       poblarFiltrosBasicos();
       aplicarRangoPorAnio();
       bindUI();
