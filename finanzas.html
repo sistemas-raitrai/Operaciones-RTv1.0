@@ -77,6 +77,43 @@
   .modal h3{ margin:.25rem 0; }
   .modal .close{ border:none; background:#f3f4f6; padding:.4rem .6rem; border-radius:.5rem; cursor:pointer; }
 
+    /* ===== Forzar layout ancho en FINANZAS ===== */
+  body.finanzas-page main.container{
+    max-width:none !important;
+    width:100% !important;           /* usar todo el ancho disponible */
+    margin:0 auto;
+    display:grid !important;         /* 2 columnas: filtros + contenido */
+    grid-template-columns:360px minmax(720px, 1fr);
+    gap:1rem;
+    box-sizing:border-box;
+  }
+  
+  /* Header de la página a lo ancho */
+  body.finanzas-page main.container > header.page{
+    grid-column:1 / -1;
+  }
+  
+  /* Aside de filtros (asegúrate que tenga id="filtersCard") */
+  body.finanzas-page #filtersCard{
+    grid-column:1;
+    position:sticky; top:64px; align-self:start;
+  }
+  
+  /* TODO lo demás (KPIs + tablas) a la columna derecha y estirado */
+  body.finanzas-page main.container > *:not(header.page):not(#filtersCard){
+    grid-column:2 / -1;
+    width:100%; min-width:0;
+  }
+  
+  /* Quita límites residuales de cartas/tablas */
+  body.finanzas-page .card,
+  body.finanzas-page .kpis,
+  body.finanzas-page section.card,
+  body.finanzas-page #secHoteles { width:100%; }
+  
+  /* Por si estilos globales centran .container */
+  body.finanzas-page .container { justify-content:stretch !important; }
+
   </style>
 </head>
 <body>
