@@ -375,39 +375,59 @@ async function guardarPendiente() {
     const btn       = document.getElementById('btnEnviarReserva');
     const destino   = btn.dataset.destino;
     const actividad = btn.dataset.actividad;
-    const para      = document.getElementById('modalPara').value;
-    const asunto    = document.getElementById('modalAsunto').value;
+    const para      = document.getElementById('modalPara').value.trim();
+    const asunto    = document.getElementById('modalAsunto').value.trim();
     const cuerpo    = document.getElementById('modalCuerpo').value;
   
-    // ——— Abrir Gmail Web en nueva pestaña ———
+    // 1) Abrir Gmail con el borrador
     const baseUrl = 'https://mail.google.com/mail/u/0/?view=cm&fs=1';
-    const params = [
+    const params  = [
       `to=${encodeURIComponent(para)}`,
       `su=${encodeURIComponent(asunto)}`,
       `body=${encodeURIComponent(cuerpo)}`
     ].join('&');
     window.open(`${baseUrl}&${params}`, '_blank');
   
-    // ——— Luego guardas “ENVIADA” en Firestore igual que antes ———
-    for (const f of fechasOrdenadas) {
-      if (grupos.some(g =>
-        (g.itinerario?.[f]||[]).some(a => a.actividad === actividad)
-      )) {
-        const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-        await updateDoc(ref, {
-          [`reservas.${f}`]: {
+    // 2) Construir el payload de actualización por cada fecha con pax>0
+    try {
+      const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+      const payload = {};
+  
+      for (const f of fechasOrdenadas) {
+        // Total de pax de ESTA actividad en ESTA fecha (adultos + estudiantes)
+        const totalEnviado = grupos.reduce((sum, g) => {
+          const acts = g.itinerario?.[f] || [];
+          const t = acts
+            .filter(a => a.actividad === actividad)
+            .reduce((acc, a) => acc + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+          return sum + t;
+        }, 0);
+  
+        if (totalEnviado > 0) {
+          payload[`reservas.${f}`] = {
             estado: 'ENVIADA',
             cuerpo,
-            totalEnviado: totalGlobal   // <-- guardamos el total que enviamos
-          }
-        });
+            totalEnviado
+          };
+        }
       }
-    }
   
-    // Actualizas el botón y cierras modal
-    document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
-            .textContent = 'ENVIADA';
-    document.getElementById('modalReserva').style.display = 'none';
+      // Si hay algo que guardar, lo guardamos de una
+      if (Object.keys(payload).length > 0) {
+        await updateDoc(ref, payload);
+      }
+  
+      // 3) Actualizar UI y cerrar modal
+      const boton = document.querySelector(
+        `.btn-reserva[data-actividad="${actividad}"][data-destino="${destino}"]`
+      );
+      if (boton) boton.textContent = 'ENVIADA';
+  
+      document.getElementById('modalReserva').style.display = 'none';
+    } catch (err) {
+      console.error('Error al guardar ENVIADA por fecha:', err);
+      alert('No se pudo guardar el estado ENVIADA en Firestore. Revisa la consola.');
+    }
   }
 
 // —————————————————————————————————————————————
