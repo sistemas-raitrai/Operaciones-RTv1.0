@@ -62,14 +62,18 @@
     .floating-editor{ position:absolute; z-index:200; width:300px; height:80px; resize:both; box-sizing:border-box }
 
     /* Ocultar columna Categoría (5ª columna) */
+    /* Mantén oculta SOLO la 5ª (Categoría) */
     table th:nth-child(5),
     table td:nth-child(5) {
       display: none;
     }
-
+    
+    /* FORMA DE PAGO (columna 15): visibilidad + ancho mínimo */
     table th:nth-child(15),
     table td:nth-child(15) {
       display: table-cell !important;
+      width: 12% !important;     /* o 10% / 140px si prefieres */
+      min-width: 140px !important;
     }
   </style>
 </head>
