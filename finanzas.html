@@ -1,4 +1,4 @@
-<!-- finanzas.html — Módulo Finanzas Operaciones RT (sin .card) -->
+<!-- finanzas.html — Módulo Finanzas Operaciones RT (layout ancho, sin .card) -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -8,45 +8,57 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <style>
-    /* ===== Layout general (scope solo a esta página) ===== */
-    body.finanzas-page { background:#f7f7f8; }
-    /* contenedor ancho y grid de 2 columnas: filtros + contenido */
+    /* ======= Scope SOLO para esta página ======= */
+    :root{ --fin-gap:1rem; --fin-panel-bg:#fff; --fin-panel-bd:#e5e7eb; }
+
+    body.finanzas-page{ background:#f7f7f8; }
+
+    /* Contenedor general (no usamos .container para evitar choques) */
     #fin-main{
       width:min(1800px,98vw);
       margin:0 auto;
       padding:1rem;
       display:grid;
-      grid-template-columns:360px 1fr;
-      gap:1rem;
+      grid-template-columns:360px 1fr;   /* filtros | contenido */
+      gap:var(--fin-gap);
       box-sizing:border-box;
     }
-    /* header ocupa ancho completo */
-    #fin-main > header.page{ grid-column:1 / -1; display:flex; align-items:center; justify-content:space-between; gap:.75rem; margin:.5rem 0; }
+    /* header de la página ocupa el ancho completo */
+    #fin-main > header.page{
+      grid-column:1 / -1;
+      display:flex; align-items:center; justify-content:space-between; gap:.75rem;
+      margin:.5rem 0;
+    }
     header.page h2{ margin:0; font-weight:700; }
     .row{ display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; }
+    /* Por si algo intenta forzar ancho: */
+    #fin-main > *{ min-width:0; }
 
-    /* ===== Paneles (reemplazo de .card) ===== */
+    /* ======= Paneles (reemplazo de .card) ======= */
     .panel{
-      background:#fff; border:1px solid #e5e7eb; border-radius:12px;
-      box-shadow:0 1px 2px rgba(0,0,0,.05); padding:1rem;
       width:100%;
+      background:var(--fin-panel-bg);
+      border:1px solid var(--fin-panel-bd);
+      border-radius:12px;
+      box-shadow:0 1px 2px rgba(0,0,0,.05);
+      padding:1rem;
     }
     .panel--sticky{ position:sticky; top:64px; align-self:start; }
     .panel h3{ margin:.25rem 0 .6rem; }
 
-    /* ===== Filtros ===== */
+    /* ======= Filtros (columna izquierda) ======= */
     .controls label{ font-weight:600; display:block; }
     select[multiple]{ min-width:220px; min-height:120px; }
     input[type="search"], input[type="number"], input[type="date"]{ padding:.35rem .5rem; width:100%; }
-    .chips{ display:flex; gap:.4rem; flex-wrap:wrap; margin-top:.5rem; }
+    .chips{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
     .chip{ background:#f3f4f6; border:1px solid #e5e7eb; padding:.2rem .5rem; border-radius:999px; font-size:.8rem; }
 
-    /* ===== KPIs ===== */
+    /* ======= KPIs (columna derecha) ======= */
     .kpi-grid{
+      grid-column:2 / -1;
       display:grid;
       grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-      gap:.75rem;
-      grid-column:2 / -1;
+      gap:var(--fin-gap);
     }
     .kpi-tile{
       background:#fff; border:1px solid #e5e7eb; border-radius:12px;
@@ -56,7 +68,7 @@
     .kpi-tile .big{ font-size:1.25rem; font-weight:800; }
     .muted{ color:#6b7280; font-size:.9rem; }
 
-    /* ===== Tablas ===== */
+    /* ======= Secciones de tablas (columna derecha) ======= */
     .fin-section{ grid-column:2 / -1; }
     .scroll-x{ overflow-x:auto; }
     .fin-table{ width:100%; border-collapse:collapse; }
@@ -64,28 +76,48 @@
     .fin-table th{ background:#fafafa; position:sticky; top:0; z-index:1; }
     .right{ text-align:right; }
 
-    /* ===== Botones ===== */
+    /* ======= Botones ======= */
     .btn{ background:#111827; color:#fff; border:none; padding:.5rem .8rem; border-radius:.5rem; cursor:pointer; font-weight:600; }
     .btn.ghost{ background:transparent; color:#111827; border:1px solid #e5e7eb; }
     .btn.secondary{ background:#e5e7eb; color:#111827; }
 
-    /* ===== Modal (IDs que usa tu JS) ===== */
-    #backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; }
-    #modal{
-      position:fixed; inset:auto 0 0 0; margin:auto; top:6%;
-      width:min(1100px,96%); max-height:88%; overflow:auto;
-      background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); padding:1rem; display:none;
+    /* ======= MODAL encapsulado (no usa .modal genérico) ======= */
+    #backdrop{
+      position: fixed; inset: 0; background: rgba(0,0,0,.55);
+      display:none; z-index:2000;
     }
-    #modal header{ display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:#fff; padding:.25rem 0; }
+    #modal{
+      position: fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+      width:min(1200px,94vw); max-height:86vh; background:#fff;
+      border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.35);
+      display:none; overflow:hidden; z-index:2001;
+    }
+    #modal > header{
+      position:sticky; top:0; background:#fff; padding:.6rem 1rem;
+      border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between;
+    }
     #modal .close{ border:none; background:#f3f4f6; padding:.4rem .6rem; border-radius:.5rem; cursor:pointer; }
+    .fin-modal-body{ max-height:calc(86vh - 64px); overflow:auto; padding:.75rem 1rem; }
+    #modal .fin-table thead th{ position:sticky; top:0; background:#fafafa; z-index:1; }
+
+    /* Bloquear scroll del fondo cuando está abierto */
+    body.modal-open{ overflow:hidden; }
+
+    /* ======= Evitar “superposición” de paneles en pantallas estrechas ======= */
+    @media (max-width: 1100px){
+      #fin-main{ grid-template-columns:1fr; }
+      .kpi-grid, .fin-section{ grid-column:1 / -1; }
+      .panel--sticky{ position:static; } /* en móvil no fijamos filtros */
+    }
   </style>
 </head>
 
 <body class="finanzas-page">
-  <!-- Encabezado común -->
+  <!-- Encabezado común del sitio -->
   <div id="encabezado"></div>
 
   <main id="fin-main">
+    <!-- Header local de la página -->
     <header class="page">
       <div class="row">
         <img src="Logo Raitrai.png" alt="Rai Trai" style="height:36px;width:auto;">
@@ -143,7 +175,7 @@
       <div class="kpi-tile">
         <h4>Total CLP (convertido)</h4>
         <div id="kpiTotCLP" class="big">$0</div>
-        <div class="muted" id="kpiOtrosMon">USD/BRL no convertidos: —</div>
+        <div class="muted" id="kpiOtrosMon">USD/BRL no convertidos: 0</div>
       </div>
       <div class="kpi-tile">
         <h4>Proveedores incluidos</h4>
@@ -225,37 +257,59 @@
       <h3 id="modalTitle">Detalle de proveedor</h3>
       <button class="close" id="modalClose">Cerrar</button>
     </header>
-    <div class="muted" id="modalSub"></div>
-    <div class="scroll-x" style="margin-top:.5rem;">
-      <table class="fin-table" id="tblDetalleProv">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Grupo</th>
-            <th>Destino</th>
-            <th>Actividad/Servicio</th>
-            <th class="right">Pax</th>
-            <th>Modalidad</th>
-            <th>Moneda</th>
-            <th class="right">Tarifa</th>
-            <th class="right">Total (mon)</th>
-            <th class="right">Total CLP</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-        <tfoot>
-          <tr>
-            <th colspan="9" class="right">Total CLP</th>
-            <th id="modalTotalCLP" class="right">$0</th>
-          </tr>
-        </tfoot>
-      </table>
+
+    <div class="muted" id="modalSub" style="padding:0 1rem;"></div>
+
+    <div class="fin-modal-body">
+      <div class="scroll-x">
+        <table class="fin-table" id="tblDetalleProv">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Grupo</th>
+              <th>Destino</th>
+              <th>Actividad/Servicio</th>
+              <th class="right">Pax</th>
+              <th>Modalidad</th>
+              <th>Moneda</th>
+              <th class="right">Tarifa</th>
+              <th class="right">Total (mon)</th>
+              <th class="right">Total CLP</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot>
+            <tr>
+              <th colspan="9" class="right">Total CLP</th>
+              <th id="modalTotalCLP" class="right">$0</th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   </div>
 
-  <!-- Encabezado + utilidades globales -->
+  <!-- Scripts -->
   <script type="module" src="script.js"></script>
-  <!-- Lógica del módulo -->
   <script type="module" src="finanzas.js"></script>
+  <script>
+    // por si tu finanzas.js aún no bloquea el scroll del fondo:
+    (function(){
+      const b = document.body, backdrop = document.getElementById('backdrop'), modal = document.getElementById('modal');
+      window.addEventListener('keydown', e => { if(e.key==='Escape') closeModal && closeModal(); });
+      window.openModalProveedor && (function(orig){
+        window.openModalProveedor = function(){
+          orig.apply(this, arguments);
+          b.classList.add('modal-open');
+        };
+      })(window.openModalProveedor);
+      window.closeModal && (function(orig){
+        window.closeModal = function(){
+          orig.apply(this, arguments);
+          b.classList.remove('modal-open');
+        };
+      })(window.closeModal);
+    })();
+  </script>
 </body>
 </html>
