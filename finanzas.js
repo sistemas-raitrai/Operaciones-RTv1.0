@@ -1,11 +1,9 @@
-// finanzas.js — Módulo Finanzas Operaciones RT
-// Autor: Nacho + Asistente — 2025-08-13
-// Carga Grupos (+itinerario), Servicios, Proveedores y (opcional) Hoteles/Asignaciones.
-// Calcula totales por destino y proveedor, con modal de detalle.
+// finanzas.js — Módulo Finanzas Operaciones RT (mejorado)
 
+// Firebase
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, doc, getDoc
+  collection, getDocs
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged
@@ -14,36 +12,40 @@ import {
 // ============================
 // 0) Configurable por país/rutas
 // ============================
-const RUTA_SERVICIOS = 'Servicios/BRASIL/Listado';          // ⚠️ Ajusta si usas otro país
-const RUTA_PROVEEDORES = 'Proveedores/BRASIL/Listado';      // ⚠️ Ajusta si usas otro país
-// Si más adelante activas hoteles:
-const RUTA_HOTELES = 'Hoteles/BRASIL/Listado';              // Opcional
-const RUTA_ASIGNACIONES = 'Hoteles/BRASIL/Asignaciones';    // Opcional
-const RUTA_GRUPOS = 'grupos';                                // Tu colección principal de grupos
+const RUTA_SERVICIOS    = 'Servicios/BRASIL/Listado';       // ⚠️ ajusta si usas otro país
+const RUTA_PROVEEDORES  = 'Proveedores/BRASIL/Listado';     // ⚠️ opcional si quieres meta del proveedor
+const RUTA_HOTELES      = 'Hoteles/BRASIL/Listado';         // opcional
+const RUTA_ASIGNACIONES = 'Hoteles/BRASIL/Asignaciones';    // opcional
+const RUTA_GRUPOS       = 'grupos';                         // colección principal de grupos
 
 // ============================
 // 1) Estado global + helpers
 // ============================
 const auth = getAuth(app);
 
-let GRUPOS = [];             // [{id, nombreGrupo, numeroNegocio, destino, cantidadgrupo, adultos, estudiantes, fechaInicio, fechaFin, itinerario:{'YYYY-MM-DD':[ ... ]}}]
-let SERVICIOS = [];          // [{id, servicio, proveedor, ciudad/destino, precio, moneda, pagoTipo, pagoFrecuencia, ...}]
-let PROVEEDORES = {};        // Map by slugProveedor -> {id, proveedor, ...}
-let HOTELES = [];            // Opcional
-let ASIGNACIONES = [];       // Opcional
+let GRUPOS = [];        // [{ id, nombreGrupo, numeroNegocio, destino, adultos, estudiantes, cantidadgrupo, itinerario{ 'YYYY-MM-DD':[items] } }]
+let SERVICIOS = [];     // [{ id, destino, servicio, proveedor, moneda, tipoCobro, valorServicio, ... }]
+let PROVEEDORES = {};   // { slugProveedor: {...} }
+let HOTELES = [];       // opcional
+let ASIGNACIONES = [];  // opcional
 
-let LINE_ITEMS = [];         // Salida base: filas calculables de actividades (y opcionalmente hoteles)
-let LINE_HOTEL = [];         // Filas hotel (si activas hoteles)
+let LINE_ITEMS = [];    // filas de actividades calculadas
+let LINE_HOTEL = [];    // filas de hotel (si activas hoteles)
 
-const el = id => document.getElementById(id);
-const fmt = n => (n ?? 0).toLocaleString('es-CL');
-const money = (n) => '₲$'.replace('₲', '') + fmt(Math.round(n || 0)); // $1.234
-const slug = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
+const el   = id => document.getElementById(id);
+const fmt  = n => (n ?? 0).toLocaleString('es-CL');
+const money = n => '$' + fmt(Math.round(n || 0));
+const slug  = s => (s || '')
+  .toString().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+  .toLowerCase().trim().replace(/[^a-z0-9]+/g, '-');
+const norm  = s => (s || '')
+  .toString().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+  .toUpperCase().trim();
 
 function paxDeGrupo(g) {
-  const a = Number(g.adultos || 0);
-  const e = Number(g.estudiantes || 0);
-  const cg = Number(g.cantidadgrupo || 0);
+  const a = Number(g.adultos || g.ADULTOS || 0);
+  const e = Number(g.estudiantes || g.ESTUDIANTES || 0);
+  const cg = Number(g.cantidadgrupo || g.CANTIDADGRUPO || g.pax || g.PAX || 0);
   return (a + e) || cg || 0;
 }
 
@@ -56,11 +58,12 @@ function within(dateISO, d1, d2) {
 }
 
 function pickTC(moneda) {
-  const usd = Number(el('tcUSD').value || 0);
-  const brl = Number(el('tcBRL').value || 0);
-  if (moneda === 'CLP') return 1;
-  if (moneda === 'USD') return usd > 0 ? usd : null;
-  if (moneda === 'BRL' || moneda === 'R$' || moneda === 'REAL' || moneda === 'REALES') return brl > 0 ? brl : null;
+  const m = norm(moneda);
+  const usd = Number(el('tcUSD')?.value || 0);
+  const brl = Number(el('tcBRL')?.value || 0);
+  if (m === 'CLP') return 1;
+  if (m === 'USD') return usd > 0 ? usd : null;
+  if (m === 'BRL' || m === 'R$' || m === 'REAL' || m === 'REALES') return brl > 0 ? brl : null;
   return null;
 }
 
@@ -69,7 +72,7 @@ function pickTC(moneda) {
 // ============================
 async function loadServicios() {
   const snap = await getDocs(collection(db, RUTA_SERVICIOS));
-  SERVICIOS = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+  SERVICIOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 async function loadProveedores() {
@@ -77,63 +80,66 @@ async function loadProveedores() {
   PROVEEDORES = {};
   snap.docs.forEach(d => {
     const data = d.data();
-    PROVEEDORES[slug(data.proveedor)] = { id:d.id, ...data };
+    PROVEEDORES[slug(data.proveedor)] = { id: d.id, ...data };
   });
 }
 
 async function loadGrupos() {
   const snap = await getDocs(collection(db, RUTA_GRUPOS));
-  GRUPOS = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+  GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
 // (Opcional) Hoteles
 async function loadHotelesYAsignaciones() {
   try {
     const snapH = await getDocs(collection(db, RUTA_HOTELES));
-    HOTELES = snapH.docs.map(d => ({ id:d.id, ...d.data() }));
-  } catch(e) { HOTELES = []; }
+    HOTELES = snapH.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { HOTELES = []; }
 
   try {
     const snapA = await getDocs(collection(db, RUTA_ASIGNACIONES));
-    ASIGNACIONES = snapA.docs.map(d => ({ id:d.id, ...d.data() }));
-  } catch(e) { ASIGNACIONES = []; }
+    ASIGNACIONES = snapA.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch { ASIGNACIONES = []; }
 }
 
 // ============================
-// 3) Resolución de servicio desde el item de itinerario
+// 3) Resolver Servicio (match DESTINO + SERVICIO, proveedor para desempatar)
 // ============================
-// Busca por (actividad → servicio) y/o por proveedor/destino cuando aplique.
 function resolverServicio(itemActividad, destinoGrupo) {
-  // Estructura esperada del item en itinerario: { actividad, proveedor?, servicio? ... }
-  const act = itemActividad?.actividad || itemActividad?.servicio || '';
-  const prov = itemActividad?.proveedor || '';
-  const sAct = slug(act);
-  const sProv = slug(prov);
-  const sDest = slug(destinoGrupo || '');
+  // del itinerario pueden venir {actividad, servicio?, proveedor?}
+  const act = norm(itemActividad?.actividad || itemActividad?.servicio || '');
+  const dest = norm(destinoGrupo || '');
+  const provIt = norm(itemActividad?.proveedor || '');
 
-  // 1) match exacto por servicio == actividad + (opcional) proveedor
-  let cand = SERVICIOS.filter(s => slug(s.servicio) === sAct);
-  if (sProv) cand = cand.filter(s => slug(s.proveedor) === sProv);
+  // 1) destino + servicio
+  let cand = SERVICIOS.filter(s =>
+    norm(s.servicio) === act &&
+    norm(s.destino || s.DESTINO || s.ciudad || s.CIUDAD) === dest
+  );
 
-  // 2) si hay más de uno, intenta por ciudad/destino
-  if (cand.length > 1 && sDest) {
-    cand = cand.filter(s => slug(s.destino || s.ciudad) === sDest);
+  // 2) si no hay, relajar a solo servicio
+  if (cand.length === 0) {
+    cand = SERVICIOS.filter(s => norm(s.servicio) === act);
   }
 
-  // 3) si sigue habiendo más de uno, toma el primero (o nada si ninguno)
+  // 3) si hay varios y el ítem trae proveedor, afinar
+  if (cand.length > 1 && provIt) {
+    const afin = cand.filter(s => norm(s.proveedor) === provIt);
+    if (afin.length) cand = afin;
+  }
+
   return cand[0] || null;
 }
 
 // ============================
-// 4) Construcción de LINE_ITEMS desde GRUPOS + itinerario
+// 4) Construcción de LINE_ITEMS (actividades)
 // ============================
 function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActividades) {
   const out = [];
-
   if (!incluirActividades) return out;
 
   for (const g of GRUPOS) {
-    const destinoGrupo = g.destino || g.ciudad || '';
+    const destinoGrupo = g.destino || g.DESTINO || g.ciudad || '';
     if (destinosSel.size && !destinosSel.has(destinoGrupo)) continue;
 
     const pax = paxDeGrupo(g);
@@ -141,21 +147,20 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
     for (const fechaISO of Object.keys(it)) {
       if (!within(fechaISO, fechaDesde, fechaHasta)) continue;
-
       const arr = Array.isArray(it[fechaISO]) ? it[fechaISO] : [];
+
       for (const item of arr) {
         const svc = resolverServicio(item, destinoGrupo);
+
         if (!svc) {
-          // Si no mapeó, lo registramos como ítem pendiente (igual visible en detalle si quisieras)
+          // línea de diagnóstico para detectar faltantes de tarifario
           out.push({
             tipo: 'actividad',
             proveedor: item.proveedor || '(desconocido)',
             proveedorSlug: slug(item.proveedor || '(desconocido)'),
             servicio: item.actividad || item.servicio || '(sin nombre)',
-            destinoGrupo,
-            fecha: fechaISO,
-            grupoId: g.id,
-            nombreGrupo: g.nombreGrupo || '',
+            destinoGrupo, fecha: fechaISO,
+            grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
             numeroNegocio: g.numeroNegocio || g.id,
             pax,
             moneda: 'CLP',
@@ -164,39 +169,46 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
             pagoFrecuencia: 'unitario',
             totalMoneda: 0,
             totalCLP: 0,
-            nota: 'Sin tarifario vinculado'
+            nota: 'Sin tarifario en Servicios (destino+actividad no encontrado)'
           });
           continue;
         }
 
-        const moneda = (svc.moneda || 'CLP').toUpperCase();
-        const tarifa = Number(svc.precio || 0);
-        const pagoTipo = (svc.pagoTipo || 'por_grupo').toLowerCase();           // 'por_pax' | 'por_grupo'
-        const pagoFrecuencia = (svc.pagoFrecuencia || 'unitario').toLowerCase(); // 'diario' | 'unitario'
+        // --- Campos en Servicios (alias para nombres posibles) ---
+        const proveedor = svc.proveedor || '(sin proveedor)';
 
-        const multiplicadorBase = (pagoTipo === 'por_pax') ? pax : 1;
-        // Si la actividad se repite varios días, ya viene separada por fecha,
-        // por lo que 'diario' ya está contemplado por línea/fecha.
-        const totalMoneda = tarifa * multiplicadorBase;
+        const monedaRaw = (svc.moneda || svc.MONEDA || 'CLP').toString().toUpperCase();
+        const moneda = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
+
+        const tipoCobroRaw = (svc.tipoCobro || svc.tipo_cobro || '').toString().toUpperCase();
+        const esPorPersona = tipoCobroRaw.includes('PERSONA') || tipoCobroRaw.includes('PAX');
+
+        const valor = Number(
+          svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0
+        );
+
+        // --- Cálculo ---
+        const multiplicador = esPorPersona ? pax : 1;
+        const totalMoneda = valor * multiplicador;
 
         const tc = pickTC(moneda);
         const totalCLP = (tc ? totalMoneda * tc : null);
 
         out.push({
           tipo: 'actividad',
-          proveedor: svc.proveedor || item.proveedor || '(sin proveedor)',
-          proveedorSlug: slug(svc.proveedor || item.proveedor || '(sin proveedor)'),
+          proveedor,
+          proveedorSlug: slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
           destinoGrupo,
           fecha: fechaISO,
           grupoId: g.id,
-          nombreGrupo: g.nombreGrupo || '',
+          nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
           numeroNegocio: g.numeroNegocio || g.id,
           pax,
-          moneda,
-          tarifa,
-          pagoTipo,
-          pagoFrecuencia,
+          moneda,          // normalizada
+          tarifa: valor,   // valorServicio
+          pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo', // para UI/modal/export
+          pagoFrecuencia: 'unitario', // cada día del itinerario ya es una línea
           totalMoneda,
           totalCLP,
           nota: ''
@@ -204,22 +216,16 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
       }
     }
   }
-
   return out;
 }
 
 // ============================
 // 5) (Opcional) Construir items de hotel desde ASIGNACIONES
 // ============================
-// Para usar esto, tus docs de asignación deberían tener: { grupoId, hotelId, destino, fechaInicio, fechaFin, tarifa, moneda, tipoCobro }
-// - tipoCobro: 'por_pax_noche' | 'por_hab_noche' | 'por_grupo_noche' (ajústalo a tu realidad)
-// Si no existen campos de tarifa/moneda, se marcará faltante y no sumará CLP.
 function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHoteles) {
   const out = [];
-  if (!incluirHoteles) return out;
-  if (!ASIGNACIONES.length) return out;
+  if (!incluirHoteles || !ASIGNACIONES.length) return out;
 
-  // Index hotel
   const mapHotel = {};
   for (const h of HOTELES) mapHotel[h.id] = h;
 
@@ -230,40 +236,32 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const destinoGrupo = g.destino || asg.destino || '';
     if (destinosSel.size && !destinosSel.has(destinoGrupo)) continue;
 
-    // Fechas
-    const start = asg.fechaInicio;
-    const end   = asg.fechaFin;
+    const start = asg.fechaInicio, end = asg.fechaFin;
     if (!start || !end) continue;
 
-    // Recorremos noches (start inclusive → end exclusive)
+    // noches dentro del rango
     const nights = [];
     let cur = new Date(start + 'T00:00:00');
     const fin = new Date(end + 'T00:00:00');
     while (cur < fin) {
-      const iso = cur.toISOString().slice(0,10);
+      const iso = cur.toISOString().slice(0, 10);
       if (within(iso, fechaDesde, fechaHasta)) nights.push(iso);
-      cur.setDate(cur.getDate()+1);
+      cur.setDate(cur.getDate() + 1);
     }
 
     const hotel = mapHotel[asg.hotelId] || {};
     const hotelNombre = hotel.nombre || asg.hotelNombre || '(hotel)';
 
     const pax = paxDeGrupo(g);
-    const moneda = (asg.moneda || hotel.moneda || 'CLP').toUpperCase();
+    const monedaRaw = (asg.moneda || hotel.moneda || 'CLP').toString().toUpperCase();
+    const moneda = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
     const tarifa = Number(asg.tarifa || hotel.tarifa || 0);
     const tipoCobro = (asg.tipoCobro || hotel.tipoCobro || 'por_pax_noche').toLowerCase();
 
-    // Total por noche
     let totalPorNoche = 0;
     if (tipoCobro === 'por_pax_noche') totalPorNoche = tarifa * pax;
     else if (tipoCobro === 'por_grupo_noche') totalPorNoche = tarifa;
-    else if (tipoCobro === 'por_hab_noche') {
-      // Si cobraran por habitación, aquí deberías multiplicar por #habitaciones asignadas esa noche.
-      // Como no tenemos ese dato aquí, dejamos tarifa como total por noche (ajústalo si corresponde).
-      totalPorNoche = tarifa;
-    } else {
-      totalPorNoche = tarifa;
-    }
+    else if (tipoCobro === 'por_hab_noche') totalPorNoche = tarifa; // ajustar si tienes #habitaciones
 
     const tc = pickTC(moneda);
     const totalMoneda = totalPorNoche * nights.length;
@@ -281,7 +279,6 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       totalMoneda, totalCLP,
     });
   }
-
   return out;
 }
 
@@ -289,15 +286,14 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
 // 6) Agregaciones
 // ============================
 function agruparPorDestino(items) {
-  const r = new Map(); // destino -> { clp, usd, brl, count }
+  const r = new Map();
   for (const it of items) {
     const key = it.destinoGrupo || it.destino || '(sin destino)';
-    const o = r.get(key) || { clp:0, usd:0, brl:0, count:0 };
+    const o = r.get(key) || { clp:0, usd:0, brl:0, clpConvertido:0, count:0 };
     if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
     if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
     if ((it.moneda === 'BRL' || it.moneda === 'R$') && it.totalMoneda) o.brl += it.totalMoneda;
-    // si tuvo CLP convertido:
-    if (typeof it.totalCLP === 'number') o.clpConvertido = (o.clpConvertido || 0) + it.totalCLP;
+    if (typeof it.totalCLP === 'number') o.clpConvertido += it.totalCLP;
     o.count++;
     r.set(key, o);
   }
@@ -305,7 +301,7 @@ function agruparPorDestino(items) {
 }
 
 function agruparPorProveedor(items) {
-  const r = new Map(); // proveedorSlug -> { nombre, destinos:Set, clp, usd, brl, count, items:[] }
+  const r = new Map();
   for (const it of items) {
     const slugProv = it.proveedorSlug || slug(it.proveedor || '(sin proveedor)');
     const nombre = it.proveedor || '(sin proveedor)';
@@ -323,7 +319,7 @@ function agruparPorProveedor(items) {
 }
 
 function agruparPorHotel(itemsHotel) {
-  const r = new Map(); // hotel -> { destino, clp, usd, brl, noches }
+  const r = new Map();
   for (const it of itemsHotel) {
     const key = it.hotel || '(hotel)';
     const o = r.get(key) || { destino: it.destinoGrupo || '(sin destino)', clp:0, usd:0, brl:0, clpConv:0, noches:0 };
@@ -374,14 +370,12 @@ function renderTablaDestinos(mapDest) {
   const tb = el('tblDestinos').querySelector('tbody');
   tb.innerHTML = '';
   const rows = [];
-  mapDest.forEach((v, k) => {
-    rows.push({
-      destino: k,
-      clpConv: v.clpConvertido || 0,
-      clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
-      count: v.count || 0
-    });
-  });
+  mapDest.forEach((v, k) => rows.push({
+    destino: k,
+    clpConv: v.clpConvertido || 0,
+    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
+    count: v.count || 0
+  }));
   rows.sort((a,b) => b.clpConv - a.clpConv);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
@@ -400,17 +394,15 @@ function renderTablaProveedores(mapProv) {
   const tb = el('tblProveedores').querySelector('tbody');
   tb.innerHTML = '';
   const rows = [];
-  mapProv.forEach((v, key) => {
-    rows.push({
-      slug: key,
-      nombre: v.nombre,
-      destinos: [...v.destinos].join(', '),
-      clpConv: v.clpConv || 0,
-      clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
-      count: v.count || 0,
-      items: v.items
-    });
-  });
+  mapProv.forEach((v, key) => rows.push({
+    slug: key,
+    nombre: v.nombre,
+    destinos: [...v.destinos].join(', '),
+    clpConv: v.clpConv || 0,
+    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
+    count: v.count || 0,
+    items: v.items
+  }));
   rows.sort((a,b) => b.clpConv - a.clpConv);
 
   for (const r of rows) {
@@ -429,7 +421,6 @@ function renderTablaProveedores(mapProv) {
     `);
   }
 
-  // Bind modal
   tb.querySelectorAll('button[data-prov]').forEach(btn => {
     btn.addEventListener('click', () => {
       const slugProv = btn.getAttribute('data-prov');
@@ -442,14 +433,12 @@ function renderTablaHoteles(mapHoteles) {
   const tb = el('tblHoteles').querySelector('tbody');
   tb.innerHTML = '';
   const rows = [];
-  mapHoteles.forEach((v, k) => {
-    rows.push({
-      hotel: k, destino: v.destino,
-      clpConv: v.clpConv || 0,
-      clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
-      noches: v.noches || 0
-    });
-  });
+  mapHoteles.forEach((v, k) => rows.push({
+    hotel: k, destino: v.destino,
+    clpConv: v.clpConv || 0,
+    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
+    noches: v.noches || 0
+  }));
   rows.sort((a,b) => b.clpConv - a.clpConv);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
@@ -469,13 +458,17 @@ function renderTablaHoteles(mapHoteles) {
 function openModalProveedor(slugProv, data) {
   const backdrop = el('backdrop');
   const modal = el('modal');
+
   el('modalTitle').textContent = `Detalle — ${data?.nombre || slugProv}`;
-  el('modalSub').textContent = `Ítems: ${data.items.length} — Destinos: ${[...data.destinos].join(', ')}`;
+  el('modalSub').textContent   = `Ítems: ${data.items.length} — Destinos: ${[...data.destinos].join(', ')}`;
 
   const tb = el('tblDetalleProv').querySelector('tbody');
   tb.innerHTML = '';
 
-  const rows = [...data.items].sort((a,b) => (a.fecha||'').localeCompare(b.fecha||'') || (a.nombreGrupo||'').localeCompare(b.nombreGrupo||'') );
+  const rows = [...data.items].sort((a,b) =>
+    (a.fecha || '').localeCompare(b.fecha || '') ||
+    (a.nombreGrupo || '').localeCompare(b.nombreGrupo || '')
+  );
 
   let totCLP = 0;
   for (const it of rows) {
@@ -497,42 +490,42 @@ function openModalProveedor(slugProv, data) {
   }
   el('modalTotalCLP').textContent = money(totCLP);
 
-  // Mostrar
   backdrop.style.display = 'block';
   modal.style.display = 'block';
+  document.body.classList.add('modal-open'); // bloquear scroll fondo
 }
+
 function closeModal() {
   el('backdrop').style.display = 'none';
   el('modal').style.display = 'none';
+  document.body.classList.remove('modal-open'); // restaurar scroll
 }
 
 // ============================
-// 8) Recalcular (reading filtros)
+// 8) Recalcular (leyendo filtros)
 // ============================
 function getDestinosSeleccionados() {
   const sel = el('filtroDestino');
-  const vals = [...sel.selectedOptions].map(o => o.value);
-  return new Set(vals);
+  return new Set([...sel.selectedOptions].map(o => o.value));
 }
 
 function poblarFiltrosBasicos() {
-  // Año: usar años presentes en grupos (o actual ±1)
   const anios = new Set();
   const hoy = new Date();
   const anioActual = hoy.getFullYear();
+
   for (const g of GRUPOS) {
     const a = Number(g.anoViaje || g.anio || g.year || anioActual);
     if (a) anios.add(a);
   }
-  if (!anios.size) { anios.add(anioActual); anios.add(anioActual+1); }
+  if (!anios.size) { anios.add(anioActual); anios.add(anioActual + 1); }
   const arrAnios = [...anios].sort((a,b)=>a-b);
-  el('filtroAnio').innerHTML = arrAnios.map(a => `<option value="${a}" ${a===anioActual?'selected':''}>${a}</option>`).join('');
+  el('filtroAnio').innerHTML = arrAnios
+    .map(a => `<option value="${a}" ${a===anioActual?'selected':''}>${a}</option>`).join('');
 
-  // Destinos: desde grupos
   const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   el('filtroDestino').innerHTML = dests.map(d => `<option value="${d}">${d}</option>`).join('');
-  // Chips
-  renderChipsDestino(dests.slice(0,6)); // muestra algunos como referencia
+  renderChipsDestino(dests.slice(0,6));
 }
 
 function aplicarRangoPorAnio() {
@@ -540,6 +533,20 @@ function aplicarRangoPorAnio() {
   if (!anio) return;
   el('fechaDesde').value = `${anio}-01-01`;
   el('fechaHasta').value = `${anio}-12-31`;
+}
+
+function logDiagnostico(items){
+  const faltantes = items.filter(x => x.nota && x.nota.includes('Sin tarifario'));
+  if (faltantes.length){
+    const top = {};
+    for (const f of faltantes){
+      const k = `${norm(f.destinoGrupo)} | ${norm(f.servicio)}`;
+      top[k] = (top[k]||0)+1;
+    }
+    console.group('Actividades SIN match en Servicios (destino+actividad)');
+    console.table(Object.entries(top).map(([k,v]) => ({ clave:k, ocurrencias:v })));
+    console.groupEnd();
+  }
 }
 
 function recalcular() {
@@ -552,7 +559,9 @@ function recalcular() {
   LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, destinosSel, inclAct);
   LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, inclHot);
 
-  // Render KPIs y tablas
+  // Diagnóstico de faltantes
+  logDiagnostico(LINE_ITEMS);
+
   renderKPIs(LINE_ITEMS, LINE_HOTEL);
 
   const mapDest = agruparPorDestino([...LINE_ITEMS, ...LINE_HOTEL]);
@@ -572,7 +581,7 @@ function recalcular() {
 }
 
 // ============================
-// 9) Export CSV (simple, summary por proveedor + detalle aparte)
+// 9) Export CSV
 // ============================
 function exportCSV() {
   const header = ['Fecha','Proveedor','Servicio','Grupo','Destino','Pax','Modalidad','Moneda','Tarifa','TotalMoneda','TotalCLP'];
@@ -595,10 +604,9 @@ function exportCSV() {
     ].join(','));
   }
 
-  // Hoteles
   for (const it of LINE_HOTEL) {
     rows.push([
-      '', // fecha (resumen por conjunto)
+      '',
       (it.hotel || '').replaceAll(',',' '),
       `HOTEL (${it.tipoCobro})`,
       (it.nombreGrupo || it.numeroNegocio || it.grupoId || '').replaceAll(',',' '),
@@ -625,10 +633,7 @@ function exportCSV() {
 // 10) Boot
 // ============================
 function bindUI() {
-  el('filtroAnio').addEventListener('change', () => {
-    aplicarRangoPorAnio();
-    recalcular();
-  });
+  el('filtroAnio').addEventListener('change', () => { aplicarRangoPorAnio(); recalcular(); });
   el('filtroDestino').addEventListener('change', recalcular);
   el('fechaDesde').addEventListener('change', recalcular);
   el('fechaHasta').addEventListener('change', recalcular);
@@ -641,12 +646,11 @@ function bindUI() {
 
   el('modalClose').addEventListener('click', closeModal);
   el('backdrop').addEventListener('click', closeModal);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 }
 
 async function boot() {
-  onAuthStateChanged(auth, async user => {
-    // Si quieres exigir auth, puedes redirigir si !user.
-    // Aquí solo mostramos el email si existe (script.js ya setea #usuario-conectado).
+  onAuthStateChanged(auth, async () => {
     try {
       await Promise.all([
         loadGrupos(),
