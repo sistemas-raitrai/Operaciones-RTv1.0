@@ -35,15 +35,34 @@ const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 const allSections = []; // { name:string, getAOA:()=>string[][] }
 
 // Carga perezosa de SheetJS
-function loadXLSX(){
+function loadScript(src){
   return new Promise((resolve, reject) => {
-    if (window.XLSX) return resolve(window.XLSX);
     const s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.20.0/dist/xlsx.full.min.js';
-    s.onload = () => resolve(window.XLSX);
-    s.onerror = reject;
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve();
+    s.onerror = () => reject(new Error('Script load error: ' + src));
     document.head.appendChild(s);
   });
+}
+
+async function loadXLSX(){
+  if (window.XLSX) return window.XLSX;
+  // Probar varios CDNs por si alguno está bloqueado
+  const cdns = [
+    'https://cdn.jsdelivr.net/npm/xlsx@0.20.0/dist/xlsx.full.min.js',
+    'https://unpkg.com/xlsx@0.20.0/dist/xlsx.full.min.js',
+    'https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js'
+  ];
+  for (const url of cdns){
+    try {
+      await loadScript(url);
+      if (window.XLSX) return window.XLSX;
+    } catch(e) {
+      // sigue probando el siguiente
+    }
+  }
+  throw new Error('No se pudo cargar XLSX desde los CDNs.');
 }
 
 function downloadBlob(blob, filename){
@@ -80,20 +99,21 @@ function init(){
   destinos.forEach(d => createSection(d));
 
   // Botón "Administrar Proveedores" ya existe (id=btnProv).
-  // Aquí inyectamos un grupo de botones a la derecha del header
-  const headerEl = document.querySelector('header');
-  const btnProv  = document.getElementById('btnProv');
-  if (headerEl && btnProv){
+  const btnProv = document.getElementById('btnProv');
+  const headerEl = btnProv ? btnProv.closest('header') : null; // evita tomar el header de encabezado.html
+  if (headerEl && btnProv) {
     const group = document.createElement('div');
     group.style.display = 'flex';
     group.style.gap = '.5rem';
-    headerEl.replaceChild(group, btnProv);
+
+    // Inserta el contenedor justo antes del botón y luego mueve el botón dentro
+    headerEl.insertBefore(group, btnProv);
     group.appendChild(btnProv);
 
     const btnAll = document.createElement('button');
     btnAll.id = 'btnExportAll';
     btnAll.textContent = '⬇️ Exportar todo';
-    btnAll.onclick = exportAllSections;     // ⬅️ GLOBAL
+    btnAll.onclick = exportAllSections;
     group.appendChild(btnAll);
   }
 
