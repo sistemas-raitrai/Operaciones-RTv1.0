@@ -1,4 +1,4 @@
-<!-- proveedores.html -->
+<!-- proveedores.html (MEJORADO + COMENTADO, manteniendo todo lo que funcionaba) -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,6 +6,7 @@
   <title>Proveedores Rai Trai</title>
   <link rel="stylesheet" href="estilos.css">
   <style>
+    /* ====== Cabecera y filtros ====== */
     header { display:flex; justify-content:space-between; align-items:center; margin:.5rem 0 }
     header h2 { margin:0 }
     .row { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
@@ -13,17 +14,19 @@
     select[multiple] { min-width:220px; min-height:90px }
     input[type="search"] { padding:.4rem .6rem; min-width:260px }
 
+    /* ====== Secciones ====== */
     .section { margin:1.25rem 0; }
     .section h3 { margin:.25rem 0 .5rem }
     .controls { display:flex; gap:.5rem; margin:.5rem 0 }
     .controls button{ padding:.35rem .8rem; border:none; background:#0055A4; color:#fff; border-radius:4px; cursor:pointer }
 
+    /* ====== Tabla ====== */
     .table-wrapper { overflow-x:auto }
     table { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:.25rem }
     thead th { position:sticky; top:0; background:#f9f9f9; z-index:2 }
     th, td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; text-align:left }
 
-    /* Anchos razonables */
+    /* Anchos en secciones FIJAS (sin columna Destino) */
     .tbl-fixed th:nth-child(1), .tbl-fixed td:nth-child(1){ width:28% } /* Proveedor */
     .tbl-fixed th:nth-child(2), .tbl-fixed td:nth-child(2){ width:22% } /* Contacto */
     .tbl-fixed th:nth-child(3), .tbl-fixed td:nth-child(3){ width:16% } /* Teléfono */
@@ -31,7 +34,7 @@
     .tbl-fixed th:nth-child(5), .tbl-fixed td:nth-child(5){ width:5% }  /* 💾 */
     .tbl-fixed th:nth-child(6), .tbl-fixed td:nth-child(6){ width:5% }  /* 🗑️ */
 
-    /* En sección OTRO, hay columna “Destino” adicional al inicio */
+    /* Anchos en sección OTRO (con columna Destino) */
     .tbl-otro th:nth-child(1), .tbl-otro td:nth-child(1){ width:18% }   /* Destino */
     .tbl-otro th:nth-child(2), .tbl-otro td:nth-child(2){ width:26% }   /* Proveedor */
     .tbl-otro th:nth-child(3), .tbl-otro td:nth-child(3){ width:20% }   /* Contacto */
@@ -39,6 +42,9 @@
     .tbl-otro th:nth-child(5), .tbl-otro td:nth-child(5){ width:18% }   /* Correo */
     .tbl-otro th:nth-child(6), .tbl-otro td:nth-child(6){ width:3% }    /* 💾 */
     .tbl-otro th:nth-child(7), .tbl-otro td:nth-child(7){ width:3% }    /* 🗑️ */
+
+    /* Editor flotante reutilizable (lo maneja script.js de servicios; aquí no se usa) */
+    .floating-editor{ position:absolute; z-index:200; width:300px; height:80px; resize:both; box-sizing:border-box }
   </style>
 </head>
 <body>
@@ -48,7 +54,7 @@
   </header>
 
   <div class="row">
-    <!-- Filtro de destinos (como en servicios.html) -->
+    <!-- Filtro de destinos (igual al de servicios.html) -->
     <div id="filter-container">
       <label for="destFilter">Filtrar destinos:</label>
       <select id="destFilter" multiple>
@@ -61,7 +67,7 @@
       </select>
     </div>
 
-    <!-- Buscador global -->
+    <!-- Buscador global (filtra filas dentro de las secciones visibles) -->
     <div>
       <label for="search">Buscador:</label>
       <input id="search" type="search" placeholder="Proveedor / Contacto / Teléfono / Correo">
@@ -78,26 +84,27 @@
       collection, getDocs, query, orderBy,
       doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-    import './script.js'; // Header, usuario, reloj
+    import './script.js'; // Header dinámico, usuario, reloj, etc.
 
     (async () => {
-      // Inyectar encabezado
+      /* ==============================
+         0) Encabezado y Auth Gate
+         ============================== */
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
 
-      // Auth gate
       onAuthStateChanged(auth, u => { if (!u) location.href = 'login.html' });
 
-      // ——————————————————————————————————————————
-      // Config
-      // ——————————————————————————————————————————
-      const DESTINOS_FIJOS = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE']; // secciones fijas
-      const DEST_OTRO = null; // sección libre (ingresas el destino manualmente)
+      /* ==============================
+         1) Config
+         ============================== */
+      const DESTINOS_FIJOS = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE'];
+      const DEST_OTRO = null; // sección libre, usuario define el destino manualmente
       const seccionesWrap = document.getElementById('secciones');
 
-      // ——————————————————————————————————————————
-      // Filtro por destino (igual al de servicios.js)
-      // ——————————————————————————————————————————
+      /* ==============================
+         2) Filtro por destino (multi)
+         ============================== */
       setupFilter();
       function setupFilter(){
         const sel = document.getElementById('destFilter');
@@ -107,70 +114,78 @@
           const vals = [...sel.selectedOptions].map(o => o.value);
           const mostrarTodas = vals.includes('ALL') || vals.length === 0;
           document.querySelectorAll('.section').forEach(sec => {
-            const title = sec.querySelector('h3').textContent; // BRASIL, BARILOCHE, ...
+            const title = sec.querySelector('h3').textContent; // BRASIL / BARILOCHE / ...
             sec.style.display = (mostrarTodas || vals.includes(title)) ? '' : 'none';
           });
-          // Si mostramos todas, dejamos solo ALL marcado
+          // Si mostramos todas, dejar solo ALL marcado
           if (mostrarTodas) {
             [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
           }
         });
       }
 
-      // ——————————————————————————————————————————
-      // Buscador global
-      // ——————————————————————————————————————————
+      /* ==============================
+         3) Buscador global
+            - Ignora mayúsculas/tildes
+            - Oculta/mostrar filas (no secciones)
+         ============================== */
       setupSearch();
-      function setupSearch(){
-        const input = document.getElementById('search');
-        input.addEventListener('input', () => {
-          const q = input.value.trim().toUpperCase();
-          document.querySelectorAll('tbody tr').forEach(tr => {
-            // tomamos texto visible de las celdas de datos
-            const t = tr.textContent.toUpperCase();
-            tr.style.display = t.includes(q) ? '' : 'none';
-          });
-
-          // Si el buscador oculta todas las filas de una sección, igual dejamos visible la sección;
-          // el filtro de destinos es el que controla visibilidad de secciones.
+      function norm(s){
+        return (s || '').toString()
+          .normalize('NFD').replace(/\p{Diacritic}/gu,'')
+          .toUpperCase();
+      }
+      function applySearch(){
+        const q = norm(document.getElementById('search')?.value || '');
+        document.querySelectorAll('#secciones tbody tr').forEach(tr => {
+          // Tomamos contenido de inputs de la fila
+          let t = '';
+          tr.querySelectorAll('input').forEach(inp => t += (inp.value || '') + ' ');
+          tr.style.display = norm(t).includes(q) ? '' : 'none';
         });
       }
+      function setupSearch(){
+        const input = document.getElementById('search');
+        if(!input) return;
+        input.addEventListener('input', applySearch);
+      }
 
-      // ——————————————————————————————————————————
-      // Crear secciones por destino
-      // ——————————————————————————————————————————
+      /* ==============================
+         4) Construir secciones por destino
+         ============================== */
       const secciones = [];
       DESTINOS_FIJOS.forEach(d => secciones.push(createSection(d)));
       secciones.push(createSection(DEST_OTRO)); // sección “OTRO”
 
-      // Cargar datos de destinos fijos
+      // Cargar datos Firestore para secciones fijas
       for (const sec of secciones) {
         if (sec.isOtro) continue;
         await sec.cargarDesdeFirestore();
       }
 
-      // ——————————————————————————————————————————
-      // FACTORÍA DE SECCIONES
-      // ——————————————————————————————————————————
+      /* =========================================================
+         5) Factoría de secciones (cada destino maneja su tabla)
+         ========================================================= */
       function createSection(destFijo){
         const isOtro = destFijo === null;
         const titulo = isOtro ? 'OTRO' : destFijo;
 
+        // Contenedor de la sección
         const sec = document.createElement('div');
         sec.className = 'section';
         sec.innerHTML = `<h3>${titulo}</h3>`;
         seccionesWrap.appendChild(sec);
 
-        // Controles
+        // Controles de la sección
         const ctrl = document.createElement('div');
         ctrl.className = 'controls';
-        const btnNueva = mkBtn('➕ Nueva fila', () => addRow());
-        const btnDiez  = mkBtn('➕➕ Agregar 10 filas', () => { for(let i=0;i<10;i++) addRow(); });
+        const btnNueva   = mkBtn('➕ Nueva fila', () => addRow());
+        const btnDiez    = mkBtn('➕➕ Agregar 10 filas', () => { for(let i=0;i<10;i++) addRow(); });
         const btnSaveAll = mkBtn('💾 Guardar todo', saveAll);
         ctrl.append(btnNueva, btnDiez, btnSaveAll);
         sec.appendChild(ctrl);
 
-        // Tabla
+        // Tabla de la sección
         const wrap = document.createElement('div');
         wrap.className = 'table-wrapper';
         const tbl = document.createElement('table');
@@ -190,14 +205,20 @@
         wrap.appendChild(tbl);
         sec.appendChild(wrap);
 
-        const rows = []; // { inputs, ref?, tr }
+        // Estado interno de filas de esta sección
+        const rows = []; // { inputs:[], ref?:DocumentReference, tr:HTMLTableRowElement }
 
-        // Pega masiva por sección (líneas con tab)
+        /* ---------------------------------------------------------
+           Pegado MASIVO por SECCIÓN (varias líneas tipo Excel)
+           - Solo se activa si NO hay un input enfocado.
+           - Cada línea -> nueva fila, campos separados por TAB.
+           --------------------------------------------------------- */
         tbody.addEventListener('paste', e => {
-          // evita que se dispare el pegado de una celda individual primero
-          if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+          const ae = document.activeElement;
+          if (ae && /^(INPUT|TEXTAREA|SELECT)$/i.test(ae.tagName)) return; // si estás en una celda, no interceptar
           e.preventDefault();
-          const lines = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
+          const lines = (e.clipboardData.getData('text/plain') || '')
+            .trim().split(/\r?\n/);
           for (const line of lines) {
             const vals = line.split('\t');
             const obj = {};
@@ -210,12 +231,14 @@
           }
         });
 
-        // API fila
+        /* -----------------------
+           API: agregar una fila
+           ----------------------- */
         function addRow(prefill = {}, ref = null){
           const tr = document.createElement('tr');
           const inputs = [];
 
-          // (OTRO) Destino manual
+          // (Solo en OTRO) Columna "Destino"
           if (isOtro) {
             const td = document.createElement('td');
             const inp = document.createElement('input');
@@ -228,7 +251,7 @@
             inputs.push(inp);
           }
 
-          // Proveedor, Contacto, Teléfono, Correo
+          // Proveedor / Contacto / Teléfono / Correo
           const fields = ['proveedor','contacto','telefono','correo'];
           fields.forEach(field => {
             const td = document.createElement('td');
@@ -243,7 +266,7 @@
             inputs.push(inp);
           });
 
-          // Guardar fila
+          // Guardar fila individual
           const tdG = document.createElement('td');
           const btnG = mkBtn('💾', async () => {
             try {
@@ -267,22 +290,54 @@
           tdE.appendChild(btnE);
           tr.appendChild(tdE);
 
-          // Pegado tab-a-tab dentro de la fila
-          tr.addEventListener('paste', e => {
-            e.preventDefault();
-            const vals = e.clipboardData.getData('text/plain').split('\t');
-            inputs.forEach((inp,i) => {
-              if (vals[i] !== undefined) {
-                const v = vals[i].trim();
-                inp.value = (inp.dataset.campo === 'correo') ? v : v.toUpperCase();
+          /* -------------------------------------------------------
+             Pegado INTELIGENTE por CELDA
+             - Si pegas texto simple => deja el pegado nativo en esa celda.
+               (y normaliza mayúsculas después).
+             - Si pegas una cadena con TABs / saltos de línea =>
+               reparte los valores desde la celda actual hacia la derecha.
+             ------------------------------------------------------- */
+          inputs.forEach((inp, startIdx) => {
+            inp.addEventListener('paste', e => {
+              const dt = e.clipboardData || window.clipboardData;
+              const text = (dt && dt.getData('text')) || '';
+              const hasGrid = text.includes('\t') || /\r?\n/.test(text);
+
+              if (!hasGrid) {
+                // Pegado normal + normalización de mayúsculas (menos correo)
+                setTimeout(() => {
+                  if (inp.dataset.campo !== 'correo') inp.value = inp.value.toUpperCase();
+                  applySearch(); // mantener coherencia con filtro activo
+                }, 0);
+                return; // no prevenimos
               }
+
+              // Pegado tipo Excel (fila parcial o completa)
+              e.preventDefault();
+              const tokens = text.replace(/\r\n/g, '\n')
+                                 .split(/\t|\n/)
+                                 .filter(t => t.length);
+              for (let k = 0; k < tokens.length && (startIdx + k) < inputs.length; k++) {
+                const target = inputs[startIdx + k];
+                const raw = tokens[k].trim();
+                target.value = (target.dataset.campo === 'correo') ? raw : raw.toUpperCase();
+                target.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              applySearch();
             });
           });
 
+          // Inserta la fila y registra en memoria
           tbody.appendChild(tr);
           rows.push({ inputs, ref, tr });
+
+          // Si hay búsqueda activa, evaluar la nueva fila
+          applySearch();
         }
 
+        /* -----------------------------------
+           Guardar una fila (merge en Firestore)
+           ----------------------------------- */
         async function guardarFila(inputs, ref){
           const data = {};
           inputs.forEach(inp => {
@@ -291,14 +346,14 @@
           });
 
           const destino = isOtro ? data.destino : destFijo;
-          if (!destino)          throw new Error('Falta Destino');
-          if (!data.proveedor)   throw new Error('Falta Proveedor');
+          if (!destino)        throw new Error('Falta Destino');
+          if (!data.proveedor) throw new Error('Falta Proveedor');
 
-          // Asegura doc padre Proveedores/{destino}
+          // Asegura padre: Proveedores/{destino}
           const destinoDoc = doc(db, 'Proveedores', destino);
           await setDoc(destinoDoc, { _created: true }, { merge: true });
 
-          // Subcolección Listado
+          // Subcolección: Proveedores/{destino}/Listado/{proveedor}
           const listCol = collection(db, 'Proveedores', destino, 'Listado');
           const provDoc = doc(listCol, data.proveedor);
           await setDoc(provDoc, {
@@ -309,13 +364,16 @@
             correo:    data.correo    || ''
           }, { merge: true });
 
-          // si era nuevo, enlaza su ref
+          // Si era nuevo, guarda la ref para permitir eliminar luego
           if (!ref) {
             const r = rows.find(r => r.inputs === inputs);
             if (r) r.ref = provDoc;
           }
         }
 
+        /* -----------------------------------
+           Guardar TODAS las filas de la sección
+           ----------------------------------- */
         async function saveAll(){
           for (const r of rows) {
             try {
@@ -327,13 +385,15 @@
           alert('Todos guardados ✅');
         }
 
+        /* -----------------------------------
+           Cargar datos de Firestore (secciones fijas)
+           ----------------------------------- */
         async function cargarDesdeFirestore(){
           const colRef = collection(db, 'Proveedores', destFijo, 'Listado');
           const q = query(colRef, orderBy('proveedor','asc'));
           const snap = await getDocs(q);
           snap.forEach(docSnap => {
             const d = docSnap.data();
-            // en secciones fijas, “destino” lo fija la sección
             addRow(
               {
                 proveedor: d.proveedor || docSnap.id,
@@ -346,9 +406,10 @@
           });
         }
 
+        // Utilitario para botones
         function mkBtn(txt, fn){ const b=document.createElement('button'); b.textContent=txt; b.onclick=fn; return b; }
 
-        // Exponer API mínima de la sección
+        // API pública mínima de la sección
         return {
           isOtro,
           cargarDesdeFirestore
