@@ -1,3 +1,4 @@
+<!-- proveedores.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -5,243 +6,355 @@
   <title>Proveedores Rai Trai</title>
   <link rel="stylesheet" href="estilos.css">
   <style>
-    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 4px; text-align: left; }
-    .controls { margin: 1rem 0; }
-    .controls button { margin-right: .5rem; }
-    select, input { width: 100%; box-sizing: border-box; }
+    header { display:flex; justify-content:space-between; align-items:center; margin:.5rem 0 }
+    header h2 { margin:0 }
+    .row { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+    label { font-weight:600 }
+    select[multiple] { min-width:220px; min-height:90px }
+    input[type="search"] { padding:.4rem .6rem; min-width:260px }
+
+    .section { margin:1.25rem 0; }
+    .section h3 { margin:.25rem 0 .5rem }
+    .controls { display:flex; gap:.5rem; margin:.5rem 0 }
+    .controls button{ padding:.35rem .8rem; border:none; background:#0055A4; color:#fff; border-radius:4px; cursor:pointer }
+
+    .table-wrapper { overflow-x:auto }
+    table { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:.25rem }
+    thead th { position:sticky; top:0; background:#f9f9f9; z-index:2 }
+    th, td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; text-align:left }
+
+    /* Anchos razonables */
+    .tbl-fixed th:nth-child(1), .tbl-fixed td:nth-child(1){ width:28% } /* Proveedor */
+    .tbl-fixed th:nth-child(2), .tbl-fixed td:nth-child(2){ width:22% } /* Contacto */
+    .tbl-fixed th:nth-child(3), .tbl-fixed td:nth-child(3){ width:16% } /* Teléfono */
+    .tbl-fixed th:nth-child(4), .tbl-fixed td:nth-child(4){ width:24% } /* Correo */
+    .tbl-fixed th:nth-child(5), .tbl-fixed td:nth-child(5){ width:5% }  /* 💾 */
+    .tbl-fixed th:nth-child(6), .tbl-fixed td:nth-child(6){ width:5% }  /* 🗑️ */
+
+    /* En sección OTRO, hay columna “Destino” adicional al inicio */
+    .tbl-otro th:nth-child(1), .tbl-otro td:nth-child(1){ width:18% }   /* Destino */
+    .tbl-otro th:nth-child(2), .tbl-otro td:nth-child(2){ width:26% }   /* Proveedor */
+    .tbl-otro th:nth-child(3), .tbl-otro td:nth-child(3){ width:20% }   /* Contacto */
+    .tbl-otro th:nth-child(4), .tbl-otro td:nth-child(4){ width:12% }   /* Teléfono */
+    .tbl-otro th:nth-child(5), .tbl-otro td:nth-child(5){ width:18% }   /* Correo */
+    .tbl-otro th:nth-child(6), .tbl-otro td:nth-child(6){ width:3% }    /* 💾 */
+    .tbl-otro th:nth-child(7), .tbl-otro td:nth-child(7){ width:3% }    /* 🗑️ */
   </style>
 </head>
 <body>
   <div id="encabezado"></div>
-  <h2>📋 Listado de Proveedores</h2>
+  <header>
+    <h2>📋 LISTADO DE PROVEEDORES</h2>
+  </header>
 
-  <table id="tabla">
-    <thead>
-      <tr>
-        <th>Destino</th>
-        <th>Proveedor</th>
-        <th>Nombre Contacto</th>
-        <th>Teléfono</th>
-        <th>Correo electrónico</th>
-        <th>💾</th>
-        <th>🗑️</th>
-      </tr>
-    </thead>
-    <tbody id="contenido"></tbody>
-  </table>
+  <div class="row">
+    <!-- Filtro de destinos (como en servicios.html) -->
+    <div id="filter-container">
+      <label for="destFilter">Filtrar destinos:</label>
+      <select id="destFilter" multiple>
+        <option value="ALL">— Todos —</option>
+        <option value="BRASIL">BRASIL</option>
+        <option value="BARILOCHE">BARILOCHE</option>
+        <option value="SUR DE CHILE">SUR DE CHILE</option>
+        <option value="NORTE DE CHILE">NORTE DE CHILE</option>
+        <option value="OTRO">OTRO</option>
+      </select>
+    </div>
 
-  <div class="controls">
-    <button onclick="agregarFila()">➕ Nueva fila</button>
-    <button onclick="agregarVariasFilas(10)">➕➕ Agregar 10 filas</button>
-    <button onclick="guardarTodo()">💾 Guardar todo</button>
+    <!-- Buscador global -->
+    <div>
+      <label for="search">Buscador:</label>
+      <input id="search" type="search" placeholder="Proveedor / Contacto / Teléfono / Correo">
+    </div>
   </div>
 
-  <script type="module">    
+  <!-- Secciones por destino -->
+  <div id="secciones"></div>
+
+  <script type="module">
     import { auth, db } from './firebase-init.js';
     import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
     import {
       collection, getDocs, query, orderBy,
-      doc, setDoc, deleteDoc, addDoc
+      doc, setDoc, deleteDoc
     } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
     import './script.js'; // Header, usuario, reloj
 
-    // TODO LO DEMÁS VA DENTRO DEL ASYNC
     (async () => {
-      // 1. Cargar encabezado externo solo UNA vez
+      // Inyectar encabezado
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
 
-      // Redirige si no hay sesión activa
-      onAuthStateChanged(auth, user => {
-        if (!user) window.location.href = 'login.html';
-      });
+      // Auth gate
+      onAuthStateChanged(auth, u => { if (!u) location.href = 'login.html' });
 
-      // Destinos posibles
-      const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
-  
-      // Referencias al DOM
-      const tablaBody = document.getElementById('contenido');
-      const filas = [];
-  
-      // Crea el select de destino (con opción “OTRO” que se convierte en input)
-      function crearSelectDestino(valor = '') {
-        const sel = document.createElement('select');
-        sel.dataset.campo = 'destino';
-        sel.appendChild(new Option('— Seleccione —',''));
-        destinos.forEach(d => {
-          const o = new Option(d, d);
-          if (d === valor) o.selected = true;
-          sel.appendChild(o);
-        });
-        sel.onchange = () => {
-          if (sel.value === 'OTRO') {
-            const inp = document.createElement('input');
-            inp.placeholder = 'Nuevo destino...';
-            inp.dataset.campo = 'destino';
-            inp.value = '';
-            sel.replaceWith(inp);
-            inp.focus();
-          }
-        };
-        return sel;
-      }
-  
-      // Función para agregar una fila nueva
-      function agregarFila(prefill = {}, ref = null) {
-        const tr = document.createElement('tr');
-        const inputs = [];
-  
-        // Destino
-        const tdDest = document.createElement('td');
-        let inpDest;
-        if (prefill.destino && !destinos.includes(prefill.destino)) {
-          inpDest = document.createElement('input');
-          inpDest.value = prefill.destino;
-        } else {
-          inpDest = crearSelectDestino(prefill.destino);
-        }
-        inpDest.dataset.campo = 'destino';
-        tdDest.appendChild(inpDest);
-        tr.appendChild(tdDest);
-        inputs.push(inpDest);
-  
-        // Proveedor, contacto, teléfono, correo
-        ['proveedor','contacto','telefono','correo'].forEach(field => {
-          const td = document.createElement('td');
-          const inp = document.createElement('input');
-          inp.value = prefill[field] || '';
-          if (field !== 'correo') {
-            inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
-          }
-          inp.dataset.campo = field;
-          td.appendChild(inp);
-          tr.appendChild(td);
-          inputs.push(inp);
-        });
-  
-        // Botón Guardar fila individual
-        const tdG = document.createElement('td');
-        const btnG = document.createElement('button');
-        btnG.textContent = '💾';
-        btnG.onclick = async () => {
-          try {
-            await guardarFila(inputs, ref);
-            alert('Guardado ✅');
-          } catch (e) {
-            alert('Error: ' + e.message);
-          }
-        };
-        tdG.appendChild(btnG);
-        tr.appendChild(tdG);
-  
-        // Botón Eliminar fila
-        const tdE = document.createElement('td');
-        const btnE = document.createElement('button');
-        btnE.textContent = '🗑️';
-        btnE.onclick = async () => {
-          if (ref) {
-            await deleteDoc(ref);
-            alert('Eliminado ✅');
-          }
-          tr.remove();
-        };
-        tdE.appendChild(btnE);
-        tr.appendChild(tdE);
-  
-        // Pegado tab-a-tab
-        tr.addEventListener('paste', e => {
-          e.preventDefault();
-          const vals = e.clipboardData.getData('text/plain').split('\t');
-          inputs.forEach((inp,i) => {
-            if (vals[i] !== undefined) inp.value = vals[i].trim().toUpperCase();
+      // ——————————————————————————————————————————
+      // Config
+      // ——————————————————————————————————————————
+      const DESTINOS_FIJOS = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE']; // secciones fijas
+      const DEST_OTRO = null; // sección libre (ingresas el destino manualmente)
+      const seccionesWrap = document.getElementById('secciones');
+
+      // ——————————————————————————————————————————
+      // Filtro por destino (igual al de servicios.js)
+      // ——————————————————————————————————————————
+      setupFilter();
+      function setupFilter(){
+        const sel = document.getElementById('destFilter');
+        // Pre-selecciona “ALL”
+        [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
+        sel.addEventListener('change', () => {
+          const vals = [...sel.selectedOptions].map(o => o.value);
+          const mostrarTodas = vals.includes('ALL') || vals.length === 0;
+          document.querySelectorAll('.section').forEach(sec => {
+            const title = sec.querySelector('h3').textContent; // BRASIL, BARILOCHE, ...
+            sec.style.display = (mostrarTodas || vals.includes(title)) ? '' : 'none';
           });
+          // Si mostramos todas, dejamos solo ALL marcado
+          if (mostrarTodas) {
+            [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
+          }
         });
-  
-        tablaBody.appendChild(tr);
-        filas.push({ inputs, ref });
       }
-  
-      // Crear N filas
-      function agregarVariasFilas(n) {
-        for (let i = 0; i < n; i++) agregarFila();
-      }
-  
-      // Guarda o actualiza un proveedor en Firestore
-      async function guardarFila(inputs, ref) {
-        const data = {};
-        inputs.forEach(inp => {
-          const k = inp.dataset.campo;
-          data[k] = inp.value.trim();
+
+      // ——————————————————————————————————————————
+      // Buscador global
+      // ——————————————————————————————————————————
+      setupSearch();
+      function setupSearch(){
+        const input = document.getElementById('search');
+        input.addEventListener('input', () => {
+          const q = input.value.trim().toUpperCase();
+          document.querySelectorAll('tbody tr').forEach(tr => {
+            // tomamos texto visible de las celdas de datos
+            const t = tr.textContent.toUpperCase();
+            tr.style.display = t.includes(q) ? '' : 'none';
+          });
+
+          // Si el buscador oculta todas las filas de una sección, igual dejamos visible la sección;
+          // el filtro de destinos es el que controla visibilidad de secciones.
         });
-        if (!data.destino)   throw new Error('Falta Destino');
-        if (!data.proveedor) throw new Error('Falta Proveedor');
-        // Asegurar doc padre “Proveedores/{destino}”
-        const destinoDoc = doc(db, 'Proveedores', data.destino);
-        await setDoc(destinoDoc, { _created: true }, { merge: true });
-        // Subcolección “Listado”
-        const listCol = collection(db, 'Proveedores', data.destino, 'Listado');
-        const provDoc = doc(listCol, data.proveedor);
-        await setDoc(provDoc, data);
-        // Asignar ref si es nuevo
-        if (!ref) {
-          filas.find(f => f.inputs === inputs).ref = provDoc;
+      }
+
+      // ——————————————————————————————————————————
+      // Crear secciones por destino
+      // ——————————————————————————————————————————
+      const secciones = [];
+      DESTINOS_FIJOS.forEach(d => secciones.push(createSection(d)));
+      secciones.push(createSection(DEST_OTRO)); // sección “OTRO”
+
+      // Cargar datos de destinos fijos
+      for (const sec of secciones) {
+        if (sec.isOtro) continue;
+        await sec.cargarDesdeFirestore();
+      }
+
+      // ——————————————————————————————————————————
+      // FACTORÍA DE SECCIONES
+      // ——————————————————————————————————————————
+      function createSection(destFijo){
+        const isOtro = destFijo === null;
+        const titulo = isOtro ? 'OTRO' : destFijo;
+
+        const sec = document.createElement('div');
+        sec.className = 'section';
+        sec.innerHTML = `<h3>${titulo}</h3>`;
+        seccionesWrap.appendChild(sec);
+
+        // Controles
+        const ctrl = document.createElement('div');
+        ctrl.className = 'controls';
+        const btnNueva = mkBtn('➕ Nueva fila', () => addRow());
+        const btnDiez  = mkBtn('➕➕ Agregar 10 filas', () => { for(let i=0;i<10;i++) addRow(); });
+        const btnSaveAll = mkBtn('💾 Guardar todo', saveAll);
+        ctrl.append(btnNueva, btnDiez, btnSaveAll);
+        sec.appendChild(ctrl);
+
+        // Tabla
+        const wrap = document.createElement('div');
+        wrap.className = 'table-wrapper';
+        const tbl = document.createElement('table');
+        tbl.className = isOtro ? 'tbl-otro' : 'tbl-fixed';
+
+        const thead = document.createElement('thead');
+        const trh   = document.createElement('tr');
+        const headers = isOtro
+          ? ['Destino','Proveedor','Nombre Contacto','Teléfono','Correo electrónico','💾','🗑️']
+          : ['Proveedor','Nombre Contacto','Teléfono','Correo electrónico','💾','🗑️'];
+        headers.forEach(t => { const th=document.createElement('th'); th.textContent=t; trh.appendChild(th); });
+        thead.appendChild(trh);
+        tbl.appendChild(thead);
+
+        const tbody = document.createElement('tbody');
+        tbl.appendChild(tbody);
+        wrap.appendChild(tbl);
+        sec.appendChild(wrap);
+
+        const rows = []; // { inputs, ref?, tr }
+
+        // Pega masiva por sección (líneas con tab)
+        tbody.addEventListener('paste', e => {
+          // evita que se dispare el pegado de una celda individual primero
+          if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+          e.preventDefault();
+          const lines = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
+          for (const line of lines) {
+            const vals = line.split('\t');
+            const obj = {};
+            if (isOtro) {
+              ['destino','proveedor','contacto','telefono','correo'].forEach((c,i)=>obj[c]=vals[i]||'');
+            } else {
+              ['proveedor','contacto','telefono','correo'].forEach((c,i)=>obj[c]=vals[i]||'');
+            }
+            addRow(obj);
+          }
+        });
+
+        // API fila
+        function addRow(prefill = {}, ref = null){
+          const tr = document.createElement('tr');
+          const inputs = [];
+
+          // (OTRO) Destino manual
+          if (isOtro) {
+            const td = document.createElement('td');
+            const inp = document.createElement('input');
+            inp.placeholder = 'Destino';
+            inp.value = prefill.destino || '';
+            inp.dataset.campo = 'destino';
+            inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
+            td.appendChild(inp);
+            tr.appendChild(td);
+            inputs.push(inp);
+          }
+
+          // Proveedor, Contacto, Teléfono, Correo
+          const fields = ['proveedor','contacto','telefono','correo'];
+          fields.forEach(field => {
+            const td = document.createElement('td');
+            const inp = document.createElement('input');
+            inp.value = prefill[field] || '';
+            if (field !== 'correo') {
+              inp.addEventListener('input', () => inp.value = inp.value.toUpperCase());
+            }
+            inp.dataset.campo = field;
+            td.appendChild(inp);
+            tr.appendChild(td);
+            inputs.push(inp);
+          });
+
+          // Guardar fila
+          const tdG = document.createElement('td');
+          const btnG = mkBtn('💾', async () => {
+            try {
+              await guardarFila(inputs, ref);
+              alert('Guardado ✅');
+            } catch (e) {
+              alert('Error: ' + e.message);
+            }
+          });
+          tdG.appendChild(btnG);
+          tr.appendChild(tdG);
+
+          // Eliminar fila
+          const tdE = document.createElement('td');
+          const btnE = mkBtn('🗑️', async () => {
+            if (ref) await deleteDoc(ref);
+            tr.remove();
+            const idx = rows.findIndex(r => r.tr === tr);
+            if (idx >= 0) rows.splice(idx,1);
+          });
+          tdE.appendChild(btnE);
+          tr.appendChild(tdE);
+
+          // Pegado tab-a-tab dentro de la fila
+          tr.addEventListener('paste', e => {
+            e.preventDefault();
+            const vals = e.clipboardData.getData('text/plain').split('\t');
+            inputs.forEach((inp,i) => {
+              if (vals[i] !== undefined) {
+                const v = vals[i].trim();
+                inp.value = (inp.dataset.campo === 'correo') ? v : v.toUpperCase();
+              }
+            });
+          });
+
+          tbody.appendChild(tr);
+          rows.push({ inputs, ref, tr });
         }
-      }
-  
-      // Guarda todas las filas
-      async function guardarTodo() {
-        for (const f of filas) {
-          try {
-            await guardarFila(f.inputs, f.ref);
-          } catch (e) {
-            alert('Error: ' + e.message);
+
+        async function guardarFila(inputs, ref){
+          const data = {};
+          inputs.forEach(inp => {
+            const k = inp.dataset.campo;
+            data[k] = inp.value.trim();
+          });
+
+          const destino = isOtro ? data.destino : destFijo;
+          if (!destino)          throw new Error('Falta Destino');
+          if (!data.proveedor)   throw new Error('Falta Proveedor');
+
+          // Asegura doc padre Proveedores/{destino}
+          const destinoDoc = doc(db, 'Proveedores', destino);
+          await setDoc(destinoDoc, { _created: true }, { merge: true });
+
+          // Subcolección Listado
+          const listCol = collection(db, 'Proveedores', destino, 'Listado');
+          const provDoc = doc(listCol, data.proveedor);
+          await setDoc(provDoc, {
+            destino,
+            proveedor: data.proveedor || '',
+            contacto:  data.contacto  || '',
+            telefono:  data.telefono  || '',
+            correo:    data.correo    || ''
+          }, { merge: true });
+
+          // si era nuevo, enlaza su ref
+          if (!ref) {
+            const r = rows.find(r => r.inputs === inputs);
+            if (r) r.ref = provDoc;
           }
         }
-        alert('Todos guardados ✅');
-      }
-  
-      // Carga inicial de proveedores desde Firestore
-      async function cargarProveedores() {
-        for (const destino of destinos) {
-          // Leer subcolección Listado
-          const colRef = collection(db, 'Proveedores', destino, 'Listado');
+
+        async function saveAll(){
+          for (const r of rows) {
+            try {
+              await guardarFila(r.inputs, r.ref);
+            } catch (e) {
+              alert('Error: ' + e.message);
+            }
+          }
+          alert('Todos guardados ✅');
+        }
+
+        async function cargarDesdeFirestore(){
+          const colRef = collection(db, 'Proveedores', destFijo, 'Listado');
           const q = query(colRef, orderBy('proveedor','asc'));
           const snap = await getDocs(q);
           snap.forEach(docSnap => {
             const d = docSnap.data();
-            d.destino = destino;
-            // Renderizar fila con prefill y ref
-            agregarFila(
-              d,
-              doc(db, 'Proveedores', destino, 'Listado', docSnap.id)
+            // en secciones fijas, “destino” lo fija la sección
+            addRow(
+              {
+                proveedor: d.proveedor || docSnap.id,
+                contacto:  d.contacto  || '',
+                telefono:  d.telefono  || '',
+                correo:    d.correo    || ''
+              },
+              doc(db, 'Proveedores', destFijo, 'Listado', docSnap.id)
             );
           });
         }
+
+        function mkBtn(txt, fn){ const b=document.createElement('button'); b.textContent=txt; b.onclick=fn; return b; }
+
+        // Exponer API mínima de la sección
+        return {
+          isOtro,
+          cargarDesdeFirestore
+        };
       }
-  
-      // Pegado masivo en toda la tabla
-      tablaBody.addEventListener('paste', e => {
-        e.preventDefault();
-        const lines = e.clipboardData.getData('text/plain').trim().split(/\r?\n/);
-        lines.forEach(line => {
-          const vals = line.split('\t');
-          const obj = {};
-          ['destino','proveedor','contacto','telefono','correo']
-            .forEach((c,i) => obj[c] = vals[i] || '');
-          agregarFila(obj);
-        });
-      });
-  
-      // Exponer funciones globales para los botones
-      window.agregarFila = agregarFila;
-      window.agregarVariasFilas = agregarVariasFilas;
-      window.guardarTodo = guardarTodo;
-
-      // Ejecutar carga inicial
-      cargarProveedores();
-
-    })(); // <--- ¡Agrega esto aquí!
+    })();
   </script>
 </body>
 </html>
