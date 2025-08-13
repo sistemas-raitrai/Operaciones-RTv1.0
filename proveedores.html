@@ -1,4 +1,4 @@
-<!-- proveedores.html (MEJORADO + COMENTADO, manteniendo todo lo que funcionaba) -->
+<!-- proveedores.html (MEJORADO + BLOQUE DE FILTROS TIPO servicios.html) -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -6,15 +6,11 @@
   <title>Proveedores Rai Trai</title>
   <link rel="stylesheet" href="estilos.css">
   <style>
-    /* ====== Cabecera y filtros ====== */
+    /* ====== Cabecera ====== */
     header { display:flex; justify-content:space-between; align-items:center; margin:.5rem 0 }
     header h2 { margin:0 }
-    .row { display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
-    label { font-weight:600 }
-    select[multiple] { min-width:220px; min-height:90px }
-    input[type="search"] { padding:.4rem .6rem; min-width:260px }
 
-    /* ====== Secciones ====== */
+    /* ====== Secciones y controles ====== */
     .section { margin:1.25rem 0; }
     .section h3 { margin:.25rem 0 .5rem }
     .controls { display:flex; gap:.5rem; margin:.5rem 0 }
@@ -28,22 +24,63 @@
 
     /* Anchos en secciones FIJAS (sin columna Destino) */
     .tbl-fixed th:nth-child(1), .tbl-fixed td:nth-child(1){ width:28% } /* Proveedor */
-    .tbl-fixed th:nth-child(2), .tbl-fixed td:nth-child(2){ width:22% } /* Contacto */
-    .tbl-fixed th:nth-child(3), .tbl-fixed td:nth-child(3){ width:16% } /* Teléfono */
-    .tbl-fixed th:nth-child(4), .tbl-fixed td:nth-child(4){ width:24% } /* Correo */
-    .tbl-fixed th:nth-child(5), .tbl-fixed td:nth-child(5){ width:5% }  /* 💾 */
-    .tbl-fixed th:nth-child(6), .tbl-fixed td:nth-child(6){ width:5% }  /* 🗑️ */
+    .tbl-fixed th:nth-child(2), .tbl-fixed td:nth-child(2){ width:22% } /* Contacto  */
+    .tbl-fixed th:nth-child(3), .tbl-fixed td:nth-child(3){ width:16% } /* Teléfono  */
+    .tbl-fixed th:nth-child(4), .tbl-fixed td:nth-child(4){ width:24% } /* Correo    */
+    .tbl-fixed th:nth-child(5), .tbl-fixed td:nth-child(5){ width:5% }  /* 💾        */
+    .tbl-fixed th:nth-child(6), .tbl-fixed td:nth-child(6){ width:5% }  /* 🗑️        */
 
     /* Anchos en sección OTRO (con columna Destino) */
-    .tbl-otro th:nth-child(1), .tbl-otro td:nth-child(1){ width:18% }   /* Destino */
+    .tbl-otro th:nth-child(1), .tbl-otro td:nth-child(1){ width:18% }   /* Destino   */
     .tbl-otro th:nth-child(2), .tbl-otro td:nth-child(2){ width:26% }   /* Proveedor */
-    .tbl-otro th:nth-child(3), .tbl-otro td:nth-child(3){ width:20% }   /* Contacto */
-    .tbl-otro th:nth-child(4), .tbl-otro td:nth-child(4){ width:12% }   /* Teléfono */
-    .tbl-otro th:nth-child(5), .tbl-otro td:nth-child(5){ width:18% }   /* Correo */
-    .tbl-otro th:nth-child(6), .tbl-otro td:nth-child(6){ width:3% }    /* 💾 */
-    .tbl-otro th:nth-child(7), .tbl-otro td:nth-child(7){ width:3% }    /* 🗑️ */
+    .tbl-otro th:nth-child(3), .tbl-otro td:nth-child(3){ width:20% }   /* Contacto  */
+    .tbl-otro th:nth-child(4), .tbl-otro td:nth-child(4){ width:12% }   /* Teléfono  */
+    .tbl-otro th:nth-child(5), .tbl-otro td:nth-child(5){ width:18% }   /* Correo    */
+    .tbl-otro th:nth-child(6), .tbl-otro td:nth-child(6){ width:3% }    /* 💾        */
+    .tbl-otro th:nth-child(7), .tbl-otro td:nth-child(7){ width:3% }    /* 🗑️        */
 
-    /* Editor flotante reutilizable (lo maneja script.js de servicios; aquí no se usa) */
+    /* ====== BLOQUE DE FILTROS (igual a servicios.html) ====== */
+    .filters{
+      display: grid;
+      grid-template-columns: minmax(280px, 340px) 1fr; /* select izq, buscador ocupa el resto */
+      align-items: end;
+      gap: 1rem;
+      width: 100%;
+      background:#fff; border:1px solid #ddd; border-radius:6px;
+      padding:.75rem 1rem; margin:.75rem 0 1rem;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    @media (max-width: 900px){
+      .filters{ grid-template-columns: 1fr; }
+    }
+    .filters .field{
+      display:flex; flex-direction:column; gap:.25rem;
+    }
+    .filters .field label{
+      margin:0 !important; font-weight:600; color:#333;
+    }
+    /* Select multi (destinos) */
+    #destFilter{
+      width: 100%;
+      min-width: 280px;
+      height: 150px;
+      border:1px solid #bbb; border-radius:6px;
+      padding:.35rem .5rem; box-sizing:border-box;
+      background:#f9f9f9;
+    }
+    /* Buscador expandible */
+    #search{
+      width:100%; height: 42px;
+      border:1px solid #bbb; border-radius:6px;
+      padding: 0 .75rem; box-sizing:border-box;
+      background:#fff;
+    }
+    #destFilter:focus, #search:focus{
+      outline: 2px solid #0b3d91;
+      border-color: #0b3d91;
+    }
+
+    /* Editor flotante (por consistencia; aquí no se usa) */
     .floating-editor{ position:absolute; z-index:200; width:300px; height:80px; resize:both; box-sizing:border-box }
   </style>
 </head>
@@ -53,10 +90,10 @@
     <h2>📋 LISTADO DE PROVEEDORES</h2>
   </header>
 
-  <div class="row">
-    <!-- Filtro de destinos (igual al de servicios.html) -->
-    <div id="filter-container">
-      <label for="destFilter">Filtrar destinos:</label>
+  <!-- Filtros (destinos + buscador) en tarjeta full-width -->
+  <div id="filters" class="filters">
+    <div class="field">
+      <label for="destFilter">Filtrar destinos</label>
       <select id="destFilter" multiple>
         <option value="ALL">— Todos —</option>
         <option value="BRASIL">BRASIL</option>
@@ -67,10 +104,9 @@
       </select>
     </div>
 
-    <!-- Buscador global (filtra filas dentro de las secciones visibles) -->
-    <div>
-      <label for="search">Buscador:</label>
-      <input id="search" type="search" placeholder="Proveedor / Contacto / Teléfono / Correo">
+    <div class="field">
+      <label for="search">Buscador</label>
+      <input id="search" type="search" placeholder="PROVEEDOR / CONTACTO / TELÉFONO / CORREO">
     </div>
   </div>
 
@@ -87,48 +123,43 @@
     import './script.js'; // Header dinámico, usuario, reloj, etc.
 
     (async () => {
-      /* ==============================
+      /* ===========================
          0) Encabezado y Auth Gate
-         ============================== */
+         =========================== */
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-
       onAuthStateChanged(auth, u => { if (!u) location.href = 'login.html' });
 
-      /* ==============================
+      /* ===========================
          1) Config
-         ============================== */
+         =========================== */
       const DESTINOS_FIJOS = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE'];
-      const DEST_OTRO = null; // sección libre, usuario define el destino manualmente
+      const DEST_OTRO = null; // sección libre
       const seccionesWrap = document.getElementById('secciones');
 
-      /* ==============================
+      /* ===========================
          2) Filtro por destino (multi)
-         ============================== */
+         =========================== */
       setupFilter();
       function setupFilter(){
         const sel = document.getElementById('destFilter');
-        // Pre-selecciona “ALL”
         [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
         sel.addEventListener('change', () => {
           const vals = [...sel.selectedOptions].map(o => o.value);
           const mostrarTodas = vals.includes('ALL') || vals.length === 0;
           document.querySelectorAll('.section').forEach(sec => {
-            const title = sec.querySelector('h3').textContent; // BRASIL / BARILOCHE / ...
+            const title = sec.querySelector('h3').textContent;
             sec.style.display = (mostrarTodas || vals.includes(title)) ? '' : 'none';
           });
-          // Si mostramos todas, dejar solo ALL marcado
           if (mostrarTodas) {
             [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
           }
         });
       }
 
-      /* ==============================
+      /* ===========================
          3) Buscador global
-            - Ignora mayúsculas/tildes
-            - Oculta/mostrar filas (no secciones)
-         ============================== */
+         =========================== */
       setupSearch();
       function norm(s){
         return (s || '').toString()
@@ -138,7 +169,6 @@
       function applySearch(){
         const q = norm(document.getElementById('search')?.value || '');
         document.querySelectorAll('#secciones tbody tr').forEach(tr => {
-          // Tomamos contenido de inputs de la fila
           let t = '';
           tr.querySelectorAll('input').forEach(inp => t += (inp.value || '') + ' ');
           tr.style.display = norm(t).includes(q) ? '' : 'none';
@@ -150,14 +180,13 @@
         input.addEventListener('input', applySearch);
       }
 
-      /* ==============================
-         4) Construir secciones por destino
-         ============================== */
+      /* ===========================
+         4) Construir secciones
+         =========================== */
       const secciones = [];
       DESTINOS_FIJOS.forEach(d => secciones.push(createSection(d)));
-      secciones.push(createSection(DEST_OTRO)); // sección “OTRO”
+      secciones.push(createSection(DEST_OTRO)); // “OTRO”
 
-      // Cargar datos Firestore para secciones fijas
       for (const sec of secciones) {
         if (sec.isOtro) continue;
         await sec.cargarDesdeFirestore();
@@ -170,13 +199,11 @@
         const isOtro = destFijo === null;
         const titulo = isOtro ? 'OTRO' : destFijo;
 
-        // Contenedor de la sección
         const sec = document.createElement('div');
         sec.className = 'section';
         sec.innerHTML = `<h3>${titulo}</h3>`;
         seccionesWrap.appendChild(sec);
 
-        // Controles de la sección
         const ctrl = document.createElement('div');
         ctrl.className = 'controls';
         const btnNueva   = mkBtn('➕ Nueva fila', () => addRow());
@@ -185,7 +212,6 @@
         ctrl.append(btnNueva, btnDiez, btnSaveAll);
         sec.appendChild(ctrl);
 
-        // Tabla de la sección
         const wrap = document.createElement('div');
         wrap.className = 'table-wrapper';
         const tbl = document.createElement('table');
@@ -205,17 +231,12 @@
         wrap.appendChild(tbl);
         sec.appendChild(wrap);
 
-        // Estado interno de filas de esta sección
-        const rows = []; // { inputs:[], ref?:DocumentReference, tr:HTMLTableRowElement }
+        const rows = []; // { inputs:[], ref?, tr }
 
-        /* ---------------------------------------------------------
-           Pegado MASIVO por SECCIÓN (varias líneas tipo Excel)
-           - Solo se activa si NO hay un input enfocado.
-           - Cada línea -> nueva fila, campos separados por TAB.
-           --------------------------------------------------------- */
+        /* Pegado MASIVO por sección (tipo Excel) */
         tbody.addEventListener('paste', e => {
           const ae = document.activeElement;
-          if (ae && /^(INPUT|TEXTAREA|SELECT)$/i.test(ae.tagName)) return; // si estás en una celda, no interceptar
+          if (ae && /^(INPUT|TEXTAREA|SELECT)$/i.test(ae.tagName)) return;
           e.preventDefault();
           const lines = (e.clipboardData.getData('text/plain') || '')
             .trim().split(/\r?\n/);
@@ -231,14 +252,10 @@
           }
         });
 
-        /* -----------------------
-           API: agregar una fila
-           ----------------------- */
         function addRow(prefill = {}, ref = null){
           const tr = document.createElement('tr');
           const inputs = [];
 
-          // (Solo en OTRO) Columna "Destino"
           if (isOtro) {
             const td = document.createElement('td');
             const inp = document.createElement('input');
@@ -251,7 +268,6 @@
             inputs.push(inp);
           }
 
-          // Proveedor / Contacto / Teléfono / Correo
           const fields = ['proveedor','contacto','telefono','correo'];
           fields.forEach(field => {
             const td = document.createElement('td');
@@ -266,7 +282,6 @@
             inputs.push(inp);
           });
 
-          // Guardar fila individual
           const tdG = document.createElement('td');
           const btnG = mkBtn('💾', async () => {
             try {
@@ -279,7 +294,6 @@
           tdG.appendChild(btnG);
           tr.appendChild(tdG);
 
-          // Eliminar fila
           const tdE = document.createElement('td');
           const btnE = mkBtn('🗑️', async () => {
             if (ref) await deleteDoc(ref);
@@ -290,13 +304,6 @@
           tdE.appendChild(btnE);
           tr.appendChild(tdE);
 
-          /* -------------------------------------------------------
-             Pegado INTELIGENTE por CELDA
-             - Si pegas texto simple => deja el pegado nativo en esa celda.
-               (y normaliza mayúsculas después).
-             - Si pegas una cadena con TABs / saltos de línea =>
-               reparte los valores desde la celda actual hacia la derecha.
-             ------------------------------------------------------- */
           inputs.forEach((inp, startIdx) => {
             inp.addEventListener('paste', e => {
               const dt = e.clipboardData || window.clipboardData;
@@ -304,15 +311,13 @@
               const hasGrid = text.includes('\t') || /\r?\n/.test(text);
 
               if (!hasGrid) {
-                // Pegado normal + normalización de mayúsculas (menos correo)
                 setTimeout(() => {
                   if (inp.dataset.campo !== 'correo') inp.value = inp.value.toUpperCase();
-                  applySearch(); // mantener coherencia con filtro activo
+                  applySearch();
                 }, 0);
-                return; // no prevenimos
+                return;
               }
 
-              // Pegado tipo Excel (fila parcial o completa)
               e.preventDefault();
               const tokens = text.replace(/\r\n/g, '\n')
                                  .split(/\t|\n/)
@@ -327,17 +332,11 @@
             });
           });
 
-          // Inserta la fila y registra en memoria
           tbody.appendChild(tr);
           rows.push({ inputs, ref, tr });
-
-          // Si hay búsqueda activa, evaluar la nueva fila
           applySearch();
         }
 
-        /* -----------------------------------
-           Guardar una fila (merge en Firestore)
-           ----------------------------------- */
         async function guardarFila(inputs, ref){
           const data = {};
           inputs.forEach(inp => {
@@ -349,11 +348,9 @@
           if (!destino)        throw new Error('Falta Destino');
           if (!data.proveedor) throw new Error('Falta Proveedor');
 
-          // Asegura padre: Proveedores/{destino}
           const destinoDoc = doc(db, 'Proveedores', destino);
           await setDoc(destinoDoc, { _created: true }, { merge: true });
 
-          // Subcolección: Proveedores/{destino}/Listado/{proveedor}
           const listCol = collection(db, 'Proveedores', destino, 'Listado');
           const provDoc = doc(listCol, data.proveedor);
           await setDoc(provDoc, {
@@ -364,30 +361,20 @@
             correo:    data.correo    || ''
           }, { merge: true });
 
-          // Si era nuevo, guarda la ref para permitir eliminar luego
           if (!ref) {
             const r = rows.find(r => r.inputs === inputs);
             if (r) r.ref = provDoc;
           }
         }
 
-        /* -----------------------------------
-           Guardar TODAS las filas de la sección
-           ----------------------------------- */
         async function saveAll(){
           for (const r of rows) {
-            try {
-              await guardarFila(r.inputs, r.ref);
-            } catch (e) {
-              alert('Error: ' + e.message);
-            }
+            try { await guardarFila(r.inputs, r.ref); }
+            catch (e) { alert('Error: ' + e.message); }
           }
           alert('Todos guardados ✅');
         }
 
-        /* -----------------------------------
-           Cargar datos de Firestore (secciones fijas)
-           ----------------------------------- */
         async function cargarDesdeFirestore(){
           const colRef = collection(db, 'Proveedores', destFijo, 'Listado');
           const q = query(colRef, orderBy('proveedor','asc'));
@@ -406,14 +393,9 @@
           });
         }
 
-        // Utilitario para botones
         function mkBtn(txt, fn){ const b=document.createElement('button'); b.textContent=txt; b.onclick=fn; return b; }
 
-        // API pública mínima de la sección
-        return {
-          isOtro,
-          cargarDesdeFirestore
-        };
+        return { isOtro, cargarDesdeFirestore };
       }
     })();
   </script>
