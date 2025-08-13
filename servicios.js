@@ -1,4 +1,5 @@
-// servicios.js
+// servicios.js (versión mejorada y comentada, manteniendo TODO lo que ya funciona)
+
 import { auth, db } from './firebase-init.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
@@ -6,6 +7,9 @@ import {
   doc, deleteDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+/* ===========================
+   1) Catálogos y configuración
+   =========================== */
 const opciones = {
   tipoServicio: ['DIARIO','GENERAL','OTRO'],
   categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
@@ -13,9 +17,17 @@ const opciones = {
   tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
   moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
 };
-const campos = ['servicio','tipoServicio','categoria','ciudad','restricciones','proveedor','tipoCobro','moneda','valorServicio','formaPago'];
+// Orden y nombres de campos en la tabla
+const campos = [
+  'servicio','tipoServicio','categoria','ciudad','restricciones',
+  'proveedor','tipoCobro','moneda','valorServicio','formaPago'
+];
+// Secciones por destino; `null` representa la sección "OTRO"
 const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
+/* ===========================
+   2) Editor flotante (no tocar)
+   =========================== */
 let floating = null;
 function showFloatingEditor(input){
   if(floating) floating.remove();
@@ -31,22 +43,34 @@ function showFloatingEditor(input){
   floating.focus();
 }
 
+/* ===============================================
+   3) Autenticación: si no hay sesión, redirige
+   =============================================== */
 onAuthStateChanged(auth, u => {
   if(!u) return location.href = 'login.html';
   init();
 });
 
+/* =====================================================
+   4) Inicialización de la página (filtros y construcción)
+   ===================================================== */
 function init(){
-  setupFilter();
+  setupFilter();   // Filtro por destino (multiselect con "— Todos —")
+  setupSearch();   // 🔎 Buscador global (nuevo)
   destinos.forEach(d => createSection(d));
+  // Botón para abrir el modal de proveedores
   document.getElementById('btnProv').onclick = openProveedores;
+  // Cierre del modal desde el botón "✖️"
   window.closeProveedores = closeProveedores;
 }
 
+/* =======================================
+   5) Filtro por destino (sin cambios)
+   ======================================= */
 function setupFilter(){
   const sel = document.getElementById('destFilter');
-  // Pre-selecciona “ALL”
-  sel.querySelector('option[value="ALL"]').selected = true;
+  // Pre-selecciona “ALL” y desmarca otros por claridad
+  [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
 
   sel.addEventListener('change', () => {
     const vals = [...sel.selectedOptions].map(o => o.value);
@@ -58,22 +82,67 @@ function setupFilter(){
     });
     // Si mostramos todas, quedarnos sólo con ALL marcado
     if (mostrarTodas) {
-      [...sel.options].forEach(o => o.selected = o.value === 'ALL');
+      [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
     }
   });
 }
 
+/* =========================================================
+   6) Buscador global (NUEVO) – filtra filas en todas las
+      secciones por cualquier texto visible/editable.
+   ========================================================= */
+// Normaliza a mayúsculas sin tildes/diacríticos
+function _norm(s){
+  return (s || '')
+    .toString()
+    .normalize('NFD').replace(/\p{Diacritic}/gu,'')
+    .toUpperCase();
+}
+
+// Aplica el término de búsqueda a TODAS las filas visibles
+function applySearch(){
+  const input = document.getElementById('srvSearch');
+  if(!input) return; // por si falta el input en el HTML
+  const q = _norm(input.value.trim());
+  const rows = document.querySelectorAll('#secciones tbody tr');
+
+  rows.forEach(tr => {
+    // Recolectamos texto de inputs y selects de la fila
+    let txt = '';
+    tr.querySelectorAll('input, select').forEach(el => {
+      if (el.tagName === 'SELECT' && el.multiple) {
+        txt += [...el.selectedOptions].map(o => o.value).join(' ') + ' ';
+      } else if (el.tagName === 'SELECT') {
+        txt += (el.value || '') + ' ';
+      } else {
+        txt += (el.value || '') + ' ';
+      }
+    });
+    tr.style.display = _norm(txt).includes(q) ? '' : 'none';
+  });
+}
+
+// Instala el listener del buscador
+function setupSearch(){
+  const input = document.getElementById('srvSearch'); // <input id="srvSearch">
+  if(!input) return;
+  input.addEventListener('input', applySearch);
+}
+
+/* ==========================================================
+   7) Construcción de una sección (destino) con su tabla
+   ========================================================== */
 function createSection(destFijo){
   const isOtro = destFijo === null;
   let destActivo = destFijo;
 
-  // sección contenedora
+  // ——— sección contenedora
   const sec = document.createElement('div');
   sec.className = 'section';
   sec.innerHTML = `<h3>${isOtro ? 'OTRO' : destFijo}</h3>`;
   document.getElementById('secciones').appendChild(sec);
 
-  // controles
+  // ——— controles superiores
   const ctrl = document.createElement('div');
   ctrl.className = 'controls';
   [
@@ -90,12 +159,12 @@ function createSection(destFijo){
   });
   sec.appendChild(ctrl);
 
-  // tabla
+  // ——— tabla
   const wrap = document.createElement('div');
   wrap.className = 'table-wrapper';
   const tbl = document.createElement('table');
 
-  // cabecera con columna número
+  // ——— cabecera con columna de selección y número
   const thead = document.createElement('thead');
   const trh   = document.createElement('tr');
   const headerTitles = [
@@ -112,15 +181,16 @@ function createSection(destFijo){
   thead.appendChild(trh);
   tbl.appendChild(thead);
 
-  // cuerpo
+  // ——— cuerpo
   const tbody = document.createElement('tbody');
   tbl.appendChild(tbody);
   wrap.appendChild(tbl);
   sec.appendChild(wrap);
 
-  const rows = [];
+  // Estructura de filas en memoria
+  const rows = []; // { inputs:[], ref?, checkbox:HTMLInputElement }
 
-  // cargar datos existentes
+  // ——— carga de datos existentes para destinos fijos
   if(!isOtro){
     (async () => {
       const snap = await getDocs(query(
@@ -135,7 +205,11 @@ function createSection(destFijo){
     })();
   }
 
-  // helpers
+  /* -----------------------
+     Helpers internos
+     ----------------------- */
+
+  // Cargar proveedores en el <select> según el destino activo
   async function loadProvs(tr, selProv){
     const sel = tr.querySelector('select[data-campo=proveedor]');
     sel.innerHTML = '<option value="">—</option>';
@@ -148,18 +222,19 @@ function createSection(destFijo){
     if(selProv) sel.value = selProv;
   }
 
+  // Re-numera la columna "No"
   function updateRowNumbers(){
     rows.forEach((r,i) => {
       r.checkbox.closest('tr').children[1].textContent = i + 1;
     });
   }
 
-  // añadir fila al inicio
+  // Añadir fila al INICIO del tbody
   async function add(prefill = {}, ref = null){
     const tr = document.createElement('tr');
     const inputs = [];
 
-    // checkbox
+    // checkbox (selección múltiple)
     const tdChk = document.createElement('td');
     const chk   = document.createElement('input');
     chk.type    = 'checkbox';
@@ -170,14 +245,18 @@ function createSection(destFijo){
     const tdNum = document.createElement('td');
     tr.appendChild(tdNum);
 
-    // celdas de datos
+    // celdas de datos (en el orden de `campos`)
     for(let c of campos){
       const td = document.createElement('td');
       let inp;
+
       if(c === 'proveedor'){
+        // Select que se llena con proveedores del destino activo
         inp = document.createElement('select');
         inp.dataset.campo = c;
+
       } else if(opciones[c]){
+        // Catálogos (algunos son multiselect)
         inp = document.createElement('select');
         inp.dataset.campo = c;
         if(c === 'categoria' || c === 'formaPago') inp.multiple = true;
@@ -189,36 +268,45 @@ function createSection(destFijo){
             if(opt) opt.selected = true;
           });
         }
+
       } else {
+        // Inputs de texto/número
         inp = document.createElement('input');
         inp.value = prefill[c] || '';
+        // Todo menos valorServicio se guarda en mayúsculas
         if(c !== 'valorServicio') inp.oninput = ()=> inp.value = inp.value.toUpperCase();
         inp.dataset.campo = c;
+        // Editor flotante para textos largos
         inp.onfocus = ()=> showFloatingEditor(inp);
         inp.title   = inp.value;
       }
+
       td.appendChild(inp);
       tr.appendChild(td);
       inputs.push(inp);
     }
 
+    // Para destinos fijos, cargar proveedores automáticamente
     if(!isOtro){
       destActivo = destFijo;
       await loadProvs(tr, prefill.proveedor);
     }
 
-    // insertar al inicio
+    // Insertar al INICIO y registrar en memoria
     tbody.insertBefore(tr, tbody.firstChild);
     rows.unshift({ inputs, ref, checkbox: chk });
     updateRowNumbers();
 
-    // interceptar paste para que no se creen filas
+    // Evitar que el pegado en una celda dispare pegados masivos
     inputs.forEach(inp => {
       inp.addEventListener('paste', e => e.stopPropagation());
     });
+
+    // Si hay un término activo en el buscador, evaluar la nueva fila
+    applySearch();
   }
 
-  // guardar una fila
+  // Construye el objeto y guarda/actualiza una fila en Firestore
   async function commit(r, idx){
     const data = {};
     r.inputs.forEach(i => {
@@ -226,19 +314,22 @@ function createSection(destFijo){
         ? [...i.selectedOptions].map(o=>o.value)
         : i.value.trim().toUpperCase();
     });
+
     const destino = isOtro ? data.destino : destActivo;
-    if(!destino)     throw new Error(`F${idx}: Falta Destino`);
-    if(!data.servicio)throw new Error(`F${idx}: Falta Servicio`);
+    if(!destino)       throw new Error(`F${idx}: Falta Destino`);
+    if(!data.servicio) throw new Error(`F${idx}: Falta Servicio`);
     if(!data.proveedor)throw new Error(`F${idx}: Falta Proveedor`);
 
+    // Asegura documento padre de la colección de servicios por destino
     await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+    // Guarda en subcolección Listado usando `servicio` como id
     await setDoc(
       doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
       data
     );
   }
 
-  // guardar todo
+  // Guardar TODAS las filas de la sección
   async function saveAll(){
     const errs = [];
     for(let i=0;i<rows.length;i++){
@@ -249,7 +340,7 @@ function createSection(destFijo){
     alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Todos guardados');
   }
 
-  // guardar seleccionadas
+  // Guardar SOLO las seleccionadas con el checkbox
   async function saveSelected(){
     const sel = rows.filter(r=>r.checkbox.checked);
     if(sel.length === 0){
@@ -266,7 +357,7 @@ function createSection(destFijo){
     alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Seleccionadas guardadas');
   }
 
-  // eliminar seleccionadas
+  // Eliminar SOLO las seleccionadas (y sus docs si tenían ref)
   async function deleteSelected(){
     const sel = rows.filter(r=>r.checkbox.checked);
     if(sel.length === 0){
@@ -277,12 +368,16 @@ function createSection(destFijo){
       if(r.ref) await deleteDoc(r.ref);
       r.checkbox.closest('tr').remove();
     }
+    // Mantener solo las no marcadas en memoria
     rows.splice(0, rows.length, ...rows.filter(r=>!r.checkbox.checked));
     updateRowNumbers();
     alert('🗑️ Seleccionadas eliminadas');
   }
 }
 
+/* =====================================================
+   8) Apertura / cierre del modal de proveedores (igual)
+   ===================================================== */
 function openProveedores(){
   document.getElementById('iframe-prov').src='proveedores.html';
   document.getElementById('backdrop-prov').style.display='block';
