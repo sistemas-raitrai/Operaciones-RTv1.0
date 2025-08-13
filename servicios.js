@@ -1,4 +1,4 @@
-// servicios.js (versión mejorada y comentada, manteniendo TODO lo que ya funciona)
+// servicios.js (con Exportar Excel por sección + Botón GLOBAL "Exportar todo")
 
 import { auth, db } from './firebase-init.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -16,36 +16,51 @@ const opciones = {
   formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
   tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
   moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO'],
-  // NUEVO: selector de Voucher
-  voucher:      ['FISICO','ELECTRONICO','NO APLICA']
+  voucher:      ['FISICO','ELECTRONICO','NO APLICA'] // para la columna Voucher
 };
 
-// Orden y nombres de campos en la tabla (en este orden se renderizan y guardan)
-// ⬇️ Insertamos Indicaciones, Voucher y Clave entre Proveedor y Tipo de Cobro
+// Orden y nombres de campos (mismo orden visual y de guardado)
 const campos = [
   'servicio','tipoServicio','categoria','ciudad','restricciones',
   'proveedor','indicaciones','voucher','clave','tipoCobro','moneda','valorServicio','formaPago'
 ];
 
-// Secciones por destino; `null` representa la sección "OTRO" (sin cambios)
+// Secciones por destino; `null` representa la sección "OTRO"
 const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
 /* ===========================
-   2) Editor flotante (no tocar)
+   2) Utilidades globales (para exportación)
    =========================== */
-let floating = null;
-function showFloatingEditor(input){
-  if(floating) floating.remove();
-  floating = document.createElement('textarea');
-  floating.className = 'floating-editor';
-  floating.value = input.value;
-  document.body.appendChild(floating);
-  const r = input.getBoundingClientRect();
-  floating.style.top  = `${r.bottom + scrollY + 4}px`;
-  floating.style.left = `${r.left + scrollX}px`;
-  floating.oninput = () => { input.value = floating.value; input.title = floating.value; };
-  floating.onblur  = () => { floating.remove(); floating = null; };
-  floating.focus();
+// Registro de secciones para exportación global
+const allSections = []; // { name:string, getAOA:()=>string[][] }
+
+// Carga perezosa de SheetJS
+function loadXLSX(){
+  return new Promise((resolve, reject) => {
+    if (window.XLSX) return resolve(window.XLSX);
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.20.0/dist/xlsx.full.min.js';
+    s.onload = () => resolve(window.XLSX);
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  a.remove(); URL.revokeObjectURL(url);
+}
+
+function aoaToCSV(aoa){
+  const esc = v => {
+    const s = (v ?? '').toString();
+    if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+    return s;
+  };
+  return aoa.map(row => row.map(esc).join(',')).join('\n');
 }
 
 /* ===============================================
@@ -63,12 +78,32 @@ function init(){
   setupFilter();   // Filtro por destino (multiselect con "— Todos —")
   setupSearch();   // 🔎 Buscador global
   destinos.forEach(d => createSection(d));
+
+  // Botón "Administrar Proveedores" ya existe (id=btnProv).
+  // Aquí inyectamos un grupo de botones a la derecha del header
+  const headerEl = document.querySelector('header');
+  const btnProv  = document.getElementById('btnProv');
+  if (headerEl && btnProv){
+    const group = document.createElement('div');
+    group.style.display = 'flex';
+    group.style.gap = '.5rem';
+    headerEl.replaceChild(group, btnProv);
+    group.appendChild(btnProv);
+
+    const btnAll = document.createElement('button');
+    btnAll.id = 'btnExportAll';
+    btnAll.textContent = '⬇️ Exportar todo';
+    btnAll.onclick = exportAllSections;     // ⬅️ GLOBAL
+    group.appendChild(btnAll);
+  }
+
+  // Modal proveedores (callbacks globales)
   document.getElementById('btnProv').onclick = openProveedores;
   window.closeProveedores = closeProveedores;
 }
 
 /* =======================================
-   5) Filtro por destino (sin cambios)
+   5) Filtro por destino
    ======================================= */
 function setupFilter(){
   const sel = document.getElementById('destFilter');
@@ -127,13 +162,13 @@ function createSection(destFijo){
   const isOtro = destFijo === null;
   let destActivo = destFijo;
 
-  // ——— sección contenedora
+  // ——— contenedor de sección
   const sec = document.createElement('div');
   sec.className = 'section';
   sec.innerHTML = `<h3>${isOtro ? 'OTRO' : destFijo}</h3>`;
   document.getElementById('secciones').appendChild(sec);
 
-  // ——— controles superiores
+  // ——— controles (incluye exportar por sección)
   const ctrl = document.createElement('div');
   ctrl.className = 'controls';
   [
@@ -141,7 +176,8 @@ function createSection(destFijo){
     ['➕➕ Agregar 10 filas', ()=>[...Array(10)].forEach(add)],
     ['💾 Guardar todo',      saveAll],
     ['💾 Guardar seleccionadas', saveSelected],
-    ['🗑️ Eliminar seleccionadas', deleteSelected]
+    ['🗑️ Eliminar seleccionadas', deleteSelected],
+    ['⬇️ Exportar Excel',    exportExcel]    // ⬅️ POR SECCIÓN
   ].forEach(([txt, fn]) => {
     const b = document.createElement('button');
     b.textContent = txt;
@@ -155,7 +191,7 @@ function createSection(destFijo){
   wrap.className = 'table-wrapper';
   const tbl = document.createElement('table');
 
-  // ——— cabecera (con columnas nuevas)
+  // ——— cabecera
   const thead = document.createElement('thead');
   const trh   = document.createElement('tr');
   const headerTitles = [
@@ -164,7 +200,7 @@ function createSection(destFijo){
     'Restricciones','Proveedor',
     'Indicaciones',              // NUEVA
     'Voucher',                   // NUEVA
-    'Clave',                     // NUEVA (autogenerada si voucher = ELECTRONICO)
+    'Clave',                     // NUEVA
     'Tipo Cobro','Moneda','Valor Servicio','Forma de Pago'
   ];
   headerTitles.forEach(txt => {
@@ -181,7 +217,7 @@ function createSection(destFijo){
   wrap.appendChild(tbl);
   sec.appendChild(wrap);
 
-  // ——— Claves únicas por sección (para evitar colisiones locales)
+  // ——— Claves únicas por sección (evitar colisiones locales)
   const clavesUsadas = new Set();
   function generarClaveUnica(){
     const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -206,7 +242,6 @@ function createSection(destFijo){
       for(let d of snap.docs){
         const o = d.data();
         o.servicio = d.id;
-        // Si ya existe "clave", reservarla para evitar colisiones
         if (o.clave) clavesUsadas.add(o.clave);
         await add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
       }
@@ -216,8 +251,6 @@ function createSection(destFijo){
   /* -----------------------
      Helpers internos
      ----------------------- */
-
-  // Cargar proveedores en el <select> según el destino activo
   async function loadProvs(tr, selProv){
     const sel = tr.querySelector('select[data-campo=proveedor]');
     sel.innerHTML = '<option value="">—</option>';
@@ -230,14 +263,13 @@ function createSection(destFijo){
     if(selProv) sel.value = selProv;
   }
 
-  // Re-numera la columna "No"
   function updateRowNumbers(){
     rows.forEach((r,i) => {
       r.checkbox.closest('tr').children[1].textContent = i + 1;
     });
   }
 
-  // Añadir fila al INICIO del tbody (con Indicaciones, Voucher y Clave)
+  // Añadir fila
   async function add(prefill = {}, ref = null){
     const tr = document.createElement('tr');
     const inputs = [];
@@ -253,18 +285,16 @@ function createSection(destFijo){
     const tdNum = document.createElement('td');
     tr.appendChild(tdNum);
 
-    // celdas de datos (en el orden de `campos`)
+    // celdas en orden de `campos`
     for(let c of campos){
       const td = document.createElement('td');
       let inp;
 
       if(c === 'proveedor'){
-        // Select que se llena con proveedores del destino activo
         inp = document.createElement('select');
         inp.dataset.campo = c;
       }
       else if (c === 'voucher'){
-        // NUEVO: Select con 3 opciones
         inp = document.createElement('select');
         inp.dataset.campo = c;
         opciones.voucher.forEach(v => inp.appendChild(new Option(v, v)));
@@ -274,17 +304,14 @@ function createSection(destFijo){
         }
       }
       else if (c === 'clave'){
-        // NUEVO: Clave autogenerada si voucher = ELECTRONICO (solo lectura)
         inp = document.createElement('input');
         inp.dataset.campo = c;
         inp.readOnly = true;
         inp.value = prefill[c] || '';
         inp.title = inp.value;
-        // Si viene prefill, reservarla para no duplicar
         if (inp.value) clavesUsadas.add(inp.value);
       }
       else if(opciones[c]){
-        // Catálogos (algunos son multiselect)
         inp = document.createElement('select');
         inp.dataset.campo = c;
         if(c === 'categoria' || c === 'formaPago') inp.multiple = true;
@@ -297,13 +324,10 @@ function createSection(destFijo){
           });
         }
       } else {
-        // Inputs de texto/número
         inp = document.createElement('input');
         inp.value = prefill[c] || '';
-        // Todo menos valorServicio se guarda en mayúsculas
         if(c !== 'valorServicio') inp.oninput = ()=> inp.value = (inp.value || '').toString().toUpperCase();
         inp.dataset.campo = c;
-        // Editor flotante para textos medianos/largos (indicaciones/restricciones, etc.)
         inp.onfocus = ()=> showFloatingEditor(inp);
         inp.title   = inp.value;
       }
@@ -313,13 +337,12 @@ function createSection(destFijo){
       inputs.push(inp);
     }
 
-    // Para destinos fijos, cargar proveedores automáticamente
     if(!isOtro){
       destActivo = destFijo;
       await loadProvs(tr, prefill.proveedor);
     }
 
-    // —— Vínculo Voucher ↔ Clave ——
+    // Voucher ↔ Clave
     const voucherSel = tr.querySelector('select[data-campo="voucher"]');
     const claveInp   = tr.querySelector('input[data-campo="clave"]');
     if (voucherSel && claveInp){
@@ -333,29 +356,26 @@ function createSection(destFijo){
         claveInp.title = claveInp.value;
       };
       voucherSel.addEventListener('change', ensureClave);
-
-      // Prefill: si viene ELECTRONICO sin clave → generar
       if (voucherSel.value === 'ELECTRONICO' && !claveInp.value){
         claveInp.value = generarClaveUnica();
         claveInp.title = claveInp.value;
       }
     }
 
-    // Insertar al INICIO y registrar en memoria
+    // Insertar y registrar
     tbody.insertBefore(tr, tbody.firstChild);
     rows.unshift({ inputs, ref, checkbox: chk });
     updateRowNumbers();
 
-    // Evitar que el pegado dispare pegados masivos
+    // Evitar pegados masivos
     inputs.forEach(inp => {
       inp.addEventListener('paste', e => e.stopPropagation());
     });
 
-    // Si hay término activo en el buscador, evaluar la nueva fila
-    applySearch();
+    applySearch(); // si hay filtro activo
   }
 
-  // Construye el objeto y guarda/actualiza una fila en Firestore
+  // Guardar fila -> Firestore
   async function commit(r, idx){
     const data = {};
     r.inputs.forEach(i => {
@@ -364,23 +384,18 @@ function createSection(destFijo){
         : (i.value ?? '').toString().trim().toUpperCase();
     });
 
-    // NOTA: tu lógica de "destino" se mantiene tal cual
     const destino = isOtro ? data.destino : destActivo;
     if(!destino)       throw new Error(`F${idx}: Falta Destino`);
     if(!data.servicio) throw new Error(`F${idx}: Falta Servicio`);
     if(!data.proveedor)throw new Error(`F${idx}: Falta Proveedor`);
 
-    // Asegura documento padre de la colección de servicios por destino
     await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
-
-    // Guarda en subcolección Listado usando `servicio` como id
     await setDoc(
       doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
       data
     );
   }
 
-  // Guardar TODAS las filas de la sección
   async function saveAll(){
     const errs = [];
     for(let i=0;i<rows.length;i++){
@@ -391,7 +406,6 @@ function createSection(destFijo){
     alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Todos guardados');
   }
 
-  // Guardar SOLO las seleccionadas con el checkbox
   async function saveSelected(){
     const sel = rows.filter(r=>r.checkbox.checked);
     if(sel.length === 0){
@@ -408,7 +422,6 @@ function createSection(destFijo){
     alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Seleccionadas guardadas');
   }
 
-  // Eliminar SOLO las seleccionadas (y sus docs si tenían ref)
   async function deleteSelected(){
     const sel = rows.filter(r=>r.checkbox.checked);
     if(sel.length === 0){
@@ -419,15 +432,107 @@ function createSection(destFijo){
       if(r.ref) await deleteDoc(r.ref);
       r.checkbox.closest('tr').remove();
     }
-    // Mantener solo las no marcadas en memoria
-    rows.splice(0, rows.length, ...rows.filter(r=>!r.checkbox.checked));
+    // Mantener solo las no marcadas
+    const restantes = rows.filter(r=>!r.checkbox.checked);
+    rows.splice(0, rows.length, ...restantes);
     updateRowNumbers();
     alert('🗑️ Seleccionadas eliminadas');
+  }
+
+  /* ===========================
+     Exportación POR SECCIÓN
+     =========================== */
+  function rowsVisibles(){
+    return rows.filter(r => {
+      const tr = r.checkbox.closest('tr');
+      return tr && tr.offsetParent !== null && tr.style.display !== 'none';
+    });
+  }
+
+  function toAOA(){
+    // Cabeceras: tomamos del thead (omitimos '' y 'No')
+    const headers = ['No', ...headerTitles.slice(2)];
+    const body = rowsVisibles().map(r => {
+      const row = [];
+      row.push(rows.indexOf(r) + 1); // No
+      r.inputs.forEach(inp => {
+        if (inp.multiple) row.push([...inp.selectedOptions].map(o=>o.value).join(' | '));
+        else row.push((inp.value ?? '').toString());
+      });
+      return row;
+    });
+    return [headers, ...body];
+  }
+
+  async function exportExcel(){
+    const aoa = toAOA();
+    const nombre = `Servicios_${isOtro ? 'OTRO' : destFijo}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    try {
+      const XLSX = await loadXLSX();
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb, ws, (isOtro ? 'OTRO' : destFijo).slice(0,31));
+      XLSX.writeFile(wb, nombre);
+    } catch {
+      const csv = aoaToCSV(aoa);
+      downloadBlob(new Blob([csv], {type:'text/csv;charset=utf-8'}), nombre.replace(/\.xlsx$/i,'.csv'));
+      alert('No se pudo cargar XLSX. Se exportó CSV (abre en Excel).');
+    }
+  }
+
+  // 👉 Registrar esta sección para el EXPORT GLOBAL
+  allSections.push({
+    name: (isOtro ? 'OTRO' : destFijo),
+    getAOA: toAOA
+  });
+}
+
+/* =========================================================
+   8) Exportación GLOBAL (todas las secciones a un .xlsx)
+   ========================================================= */
+async function exportAllSections(){
+  const fecha = new Date().toISOString().slice(0,10);
+  try {
+    const XLSX = await loadXLSX();
+    const wb = XLSX.utils.book_new();
+
+    allSections.forEach(sec => {
+      const aoa = sec.getAOA();                 // respeta buscador (filas visibles)
+      const ws  = XLSX.utils.aoa_to_sheet(aoa);
+      XLSX.utils.book_append_sheet(wb, ws, sec.name.slice(0,31));
+    });
+
+    XLSX.writeFile(wb, `Servicios_TODOS_${fecha}.xlsx`);
+  } catch {
+    // Fallback: un CSV por sección
+    allSections.forEach(sec => {
+      const csv = aoaToCSV(sec.getAOA());
+      downloadBlob(new Blob([csv], {type:'text/csv;charset=utf-8'}), `Servicios_${sec.name}_${fecha}.csv`);
+    });
+    alert('No se pudo cargar XLSX. Se exportó un CSV por sección.');
   }
 }
 
 /* =====================================================
-   8) Apertura / cierre del modal de proveedores (igual)
+   9) Editor flotante (se mantiene igual)
+   ===================================================== */
+let floating = null;
+function showFloatingEditor(input){
+  if(floating) floating.remove();
+  floating = document.createElement('textarea');
+  floating.className = 'floating-editor';
+  floating.value = input.value;
+  document.body.appendChild(floating);
+  const r = input.getBoundingClientRect();
+  floating.style.top  = `${r.bottom + scrollY + 4}px`;
+  floating.style.left = `${r.left + scrollX}px`;
+  floating.oninput = () => { input.value = floating.value; input.title = floating.value; };
+  floating.onblur  = () => { floating.remove(); floating = null; };
+  floating.focus();
+}
+
+/* =====================================================
+   10) Modal de proveedores (igual)
    ===================================================== */
 function openProveedores(){
   document.getElementById('iframe-prov').src='proveedores.html';
