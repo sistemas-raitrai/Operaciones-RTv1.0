@@ -8,46 +8,74 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <style>
-    /* ====== Ajustes rápidos de layout ====== */
-    body { background:#f7f7f8; }
-    header.page { display:flex; align-items:center; gap:.75rem; justify-content:space-between; margin:.75rem 0; }
-    header.page h2 { margin:0; font-weight:700; }
-    .row { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; }
-    .card { background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); padding:1rem; }
-    .kpis { display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:.75rem; }
-    .kpis .kpi h4 { margin:.25rem 0 .35rem; font-size:.95rem; color:#374151;}
-    .kpis .kpi .big { font-size:1.25rem; font-weight:800; }
-    .muted { color:#6b7280; font-size:.9rem; }
-    .table { width:100%; border-collapse: collapse; }
-    .table th, .table td { border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left; }
-    .table th { background:#fafafa; position:sticky; top:0; z-index:1; }
-    .right { text-align:right; }
-    .controls label { font-weight:600; }
-    select[multiple] { min-width:220px; min-height:90px; }
-    input[type="search"], input[type="number"], input[type="date"] { padding:.35rem .5rem; }
-    .btn { background:#111827; color:#fff; border:none; padding:.5rem .8rem; border-radius:.5rem; cursor:pointer; font-weight:600; }
-    .btn.secondary { background:#e5e7eb; color:#111827; }
-    .btn.ghost { background:transparent; color:#111827; border:1px solid #e5e7eb; }
-    .badge { background:#eef2ff; color:#3730a3; padding:.1rem .4rem; border-radius:.5rem; font-size:.75rem; }
-    .warn { color:#b45309; }
-    .ok { color:#059669; }
-
-    /* ====== Modal ====== */
-    .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; }
-    .modal { position:fixed; inset:auto 0 0 0; margin:auto; top:6%; width:min(1100px,96%); max-height:88%; overflow:auto;
-             background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); padding:1rem; display:none; }
-    .modal header { display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:#fff; padding:.25rem 0; }
-    .modal h3 { margin:.25rem 0; }
-    .modal .close { border:none; background:#f3f4f6; padding:.4rem .6rem; border-radius:.5rem; cursor:pointer; }
-
-    /* ====== Chips filtro destino ====== */
-    .chips { display:flex; gap:.4rem; flex-wrap:wrap; }
-    .chip { background:#f3f4f6; border:1px solid #e5e7eb; padding:.2rem .5rem; border-radius:999px; font-size:.8rem; }
-
-    /* Scroll horizontal en tablas anchas */
-    .scroll-x { overflow-x:auto; }
-    /* Ensancha solo esta página */
-    body.finanzas-page main.container { max-width: 1800px !important; width: calc(100vw - 2rem); }
+  /* ====== Página Finanzas – layout ancho 2 columnas ====== */
+  body { background:#f7f7f8; }
+  
+  /* Contenedor ancho solo en esta página */
+  body.finanzas-page .container{
+    display:block !important;
+    max-width:1800px; width:min(1800px,98vw);
+    margin:0 auto; padding:1rem;
+  }
+  
+  /* Shell de 2 columnas: aside (filtros) + contenido */
+  body.finanzas-page .fin-shell{
+    display:grid; grid-template-columns:360px 1fr;
+    gap:1rem; align-items:start;
+  }
+  /* TODO lo que NO es el primer hijo (aside) va a la columna derecha */
+  body.finanzas-page .fin-shell > :not(:first-child){
+    grid-column:2 / -1; width:100%; min-width:0;
+  }
+  
+  /* Aside fijo */
+  .sticky{ position:sticky; top:64px; align-self:start; }
+  
+  /* ====== Header/KPIs/cards ====== */
+  header.page{ display:flex; align-items:center; gap:.75rem; justify-content:space-between; margin:.75rem 0; }
+  header.page h2{ margin:0; font-weight:700; }
+  .row{ display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; }
+  .card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; box-shadow:0 1px 2px rgba(0,0,0,.05); padding:1rem; }
+  
+  .kpis{ display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:.75rem; }
+  .kpis .kpi h4{ margin:.25rem 0 .35rem; font-size:.95rem; color:#374151; }
+  .kpis .kpi .big{ font-size:1.25rem; font-weight:800; }
+  .muted{ color:#6b7280; font-size:.9rem; }
+  
+  /* ====== Tablas ====== */
+  .table{ width:100%; border-collapse:collapse; }
+  .table th, .table td{ border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left; }
+  .table th{ background:#fafafa; position:sticky; top:0; z-index:1; }
+  .right{ text-align:right; }
+  .scroll-x{ overflow-x:auto; }
+  
+  /* ====== Controles ====== */
+  .controls label{ font-weight:600; }
+  select[multiple]{ min-width:220px; min-height:120px; }
+  input[type="search"], input[type="number"], input[type="date"]{ padding:.35rem .5rem; width:100%; }
+  
+  .btn{ background:#111827; color:#fff; border:none; padding:.5rem .8rem; border-radius:.5rem; cursor:pointer; font-weight:600; }
+  .btn.secondary{ background:#e5e7eb; color:#111827; }
+  .btn.ghost{ background:transparent; color:#111827; border:1px solid #e5e7eb; }
+  
+  .badge{ background:#eef2ff; color:#3730a3; padding:.1rem .4rem; border-radius:.5rem; font-size:.75rem; }
+  .warn{ color:#b45309; }
+  .ok{ color:#059669; }
+  
+  /* ====== Chips filtro destino ====== */
+  .chips{ display:flex; gap:.4rem; flex-wrap:wrap; }
+  .chip{ background:#f3f4f6; border:1px solid #e5e7eb; padding:.2rem .5rem; border-radius:999px; font-size:.8rem; }
+  
+  /* ====== Modal ====== */
+  .modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; }
+  .modal{
+    position:fixed; inset:auto 0 0 0; margin:auto; top:6%;
+    width:min(1100px,96%); max-height:88%; overflow:auto;
+    background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.25); padding:1rem; display:none;
+  }
+  .modal header{ display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:#fff; padding:.25rem 0; }
+  .modal h3{ margin:.25rem 0; }
+  .modal .close{ border:none; background:#f3f4f6; padding:.4rem .6rem; border-radius:.5rem; cursor:pointer; }
 
   </style>
 </head>
