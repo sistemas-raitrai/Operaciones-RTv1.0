@@ -22,22 +22,26 @@
     thead th { position:sticky; top:0; background:#f9f9f9; z-index:2 }
     th, td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }
 
-    /* ——— Anchos ——— */
-    th:nth-child(1),td:nth-child(1){width:5%}
-    th:nth-child(2),td:nth-child(2){width:5%}
-    th:nth-child(3),td:nth-child(3){width:20%}
-    th:nth-child(4),td:nth-child(4){width:12%}
-    th:nth-child(5),td:nth-child(5){width:12%}
-    th:nth-child(6),td:nth-child(6){width:10%}
-    th:nth-child(7),td:nth-child(7){width:20%}
-    th:nth-child(8),td:nth-child(8){width:12%}
-    th:nth-child(9),td:nth-child(9){width:10%}
-    th:nth-child(10),td:nth-child(10){width:8%}
-    th:nth-child(11),td:nth-child(11){width:10%}
-    th:nth-child(12),td:nth-child(12),th:nth-child(13),td:nth-child(13){width:auto}
+    /* ——— Anchos (actualizados a 15 columnas) ——— */
+    /* 1: chk | 2: No | 3: Servicio | 4: Tipo Serv | 5: Categoría (oculta) | 6: Ciudad | 7: Restricciones | 8: Proveedor | 9: Indicaciones | 10: Voucher | 11: Clave | 12: Tipo Cobro | 13: Moneda | 14: Valor | 15: Forma de Pago */
+    th:nth-child(1),  td:nth-child(1)  { width:5% }
+    th:nth-child(2),  td:nth-child(2)  { width:5% }
+    th:nth-child(3),  td:nth-child(3)  { width:20% }
+    th:nth-child(4),  td:nth-child(4)  { width:12% }
+    th:nth-child(5),  td:nth-child(5)  { width:12% } /* Oculta abajo */
+    th:nth-child(6),  td:nth-child(6)  { width:10% }
+    th:nth-child(7),  td:nth-child(7)  { width:20% }
+    th:nth-child(8),  td:nth-child(8)  { width:12% }
+    th:nth-child(9),  td:nth-child(9)  { width:18% }  /* Indicaciones */
+    th:nth-child(10), td:nth-child(10) { width:10% }  /* Voucher */
+    th:nth-child(11), td:nth-child(11) { width:12% }  /* Clave */
+    th:nth-child(12), td:nth-child(12) { width:10% }  /* Tipo Cobro */
+    th:nth-child(13), td:nth-child(13) { width:8% }   /* Moneda */
+    th:nth-child(14), td:nth-child(14) { width:10% }  /* Valor Servicio */
+    th:nth-child(15), td:nth-child(15) { width:auto } /* Forma de Pago */
 
     /* ——— Controles ——— */
-    .controls{ margin:.5rem 0; display:flex; gap:.5rem }
+    .controls{ margin:.5rem 0; display:flex; gap:.5rem; flex-wrap:wrap }
     .controls button{ padding:.3rem .8rem; border:none; background:#0055A4; color:#fff; border-radius:4px; cursor:pointer }
 
     /* ——— Modal proveedores ——— */
@@ -45,7 +49,7 @@
     #modal-prov{
       display:none; position:fixed; top:50%; left:50%;
       transform:translate(-50%,-50%);
-      width:clamp(900px, 95vw, 1400px);       /* mínimo 900px, hasta 95% del viewport, tope 1400px */
+      width:clamp(900px, 95vw, 1400px);
       background:#fff; border-radius:4px; z-index:101;
       box-shadow:0 2px 10px rgba(0,0,0,0.2);
     }
@@ -80,7 +84,7 @@
       </div>
       <iframe id="iframe-prov" src=""></iframe>
     </div>
-  
+
     <!-- Filtro de destinos -->
     <div id="filter-container" style="margin:.5rem 0;">
       <label for="destFilter">Filtrar destinos:</label>
@@ -97,10 +101,10 @@
     <div>
       <label for="srvSearch">Buscador:</label>
       <input id="srvSearch" type="search"
-             placeholder="Servicio / Proveedor / Ciudad / Restricciones" />
-    </div>   
+             placeholder="Servicio / Proveedor / Ciudad / Restricciones / Indicaciones / Voucher / Clave" />
+    </div>
   </div>
-  
+
   <div id="secciones"></div>
 
   <!-- SOLO este bloque, no pongas nada de lógica interna aquí -->
