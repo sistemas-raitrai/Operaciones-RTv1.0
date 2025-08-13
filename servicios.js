@@ -15,14 +15,19 @@ const opciones = {
   categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
   formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
   tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
-  moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO']
+  moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO'],
+  // NUEVO: selector de Voucher
+  voucher:      ['FISICO','ELECTRONICO','NO APLICA']
 };
-// Orden y nombres de campos en la tabla
+
+// Orden y nombres de campos en la tabla (en este orden se renderizan y guardan)
+// ⬇️ Insertamos Indicaciones, Voucher y Clave entre Proveedor y Tipo de Cobro
 const campos = [
   'servicio','tipoServicio','categoria','ciudad','restricciones',
-  'proveedor','tipoCobro','moneda','valorServicio','formaPago'
+  'proveedor','indicaciones','voucher','clave','tipoCobro','moneda','valorServicio','formaPago'
 ];
-// Secciones por destino; `null` representa la sección "OTRO"
+
+// Secciones por destino; `null` representa la sección "OTRO" (sin cambios)
 const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
 /* ===========================
@@ -56,11 +61,9 @@ onAuthStateChanged(auth, u => {
    ===================================================== */
 function init(){
   setupFilter();   // Filtro por destino (multiselect con "— Todos —")
-  setupSearch();   // 🔎 Buscador global (nuevo)
+  setupSearch();   // 🔎 Buscador global
   destinos.forEach(d => createSection(d));
-  // Botón para abrir el modal de proveedores
   document.getElementById('btnProv').onclick = openProveedores;
-  // Cierre del modal desde el botón "✖️"
   window.closeProveedores = closeProveedores;
 }
 
@@ -69,18 +72,14 @@ function init(){
    ======================================= */
 function setupFilter(){
   const sel = document.getElementById('destFilter');
-  // Pre-selecciona “ALL” y desmarca otros por claridad
   [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
-
   sel.addEventListener('change', () => {
     const vals = [...sel.selectedOptions].map(o => o.value);
-    // Mostrar todo si ALL está seleccionado o no hay selección
     const mostrarTodas = vals.includes('ALL') || vals.length === 0;
     document.querySelectorAll('.section').forEach(sec => {
       const title = sec.querySelector('h3').textContent;
       sec.style.display = (mostrarTodas || vals.includes(title)) ? '' : 'none';
     });
-    // Si mostramos todas, quedarnos sólo con ALL marcado
     if (mostrarTodas) {
       [...sel.options].forEach(o => o.selected = (o.value === 'ALL'));
     }
@@ -88,26 +87,20 @@ function setupFilter(){
 }
 
 /* =========================================================
-   6) Buscador global (NUEVO) – filtra filas en todas las
-      secciones por cualquier texto visible/editable.
+   6) Buscador global – filtra filas en todas las secciones
    ========================================================= */
-// Normaliza a mayúsculas sin tildes/diacríticos
 function _norm(s){
   return (s || '')
     .toString()
     .normalize('NFD').replace(/\p{Diacritic}/gu,'')
     .toUpperCase();
 }
-
-// Aplica el término de búsqueda a TODAS las filas visibles
 function applySearch(){
   const input = document.getElementById('srvSearch');
-  if(!input) return; // por si falta el input en el HTML
+  if(!input) return;
   const q = _norm(input.value.trim());
   const rows = document.querySelectorAll('#secciones tbody tr');
-
   rows.forEach(tr => {
-    // Recolectamos texto de inputs y selects de la fila
     let txt = '';
     tr.querySelectorAll('input, select').forEach(el => {
       if (el.tagName === 'SELECT' && el.multiple) {
@@ -121,10 +114,8 @@ function applySearch(){
     tr.style.display = _norm(txt).includes(q) ? '' : 'none';
   });
 }
-
-// Instala el listener del buscador
 function setupSearch(){
-  const input = document.getElementById('srvSearch'); // <input id="srvSearch">
+  const input = document.getElementById('srvSearch');
   if(!input) return;
   input.addEventListener('input', applySearch);
 }
@@ -164,14 +155,17 @@ function createSection(destFijo){
   wrap.className = 'table-wrapper';
   const tbl = document.createElement('table');
 
-  // ——— cabecera con columna de selección y número
+  // ——— cabecera (con columnas nuevas)
   const thead = document.createElement('thead');
   const trh   = document.createElement('tr');
   const headerTitles = [
     '', 'No',
     'Servicio','Tipo Servicio','Categoría','Ciudad',
-    'Restricciones','Proveedor','Tipo Cobro',
-    'Moneda','Valor Servicio','Forma de Pago'
+    'Restricciones','Proveedor',
+    'Indicaciones',              // NUEVA
+    'Voucher',                   // NUEVA
+    'Clave',                     // NUEVA (autogenerada si voucher = ELECTRONICO)
+    'Tipo Cobro','Moneda','Valor Servicio','Forma de Pago'
   ];
   headerTitles.forEach(txt => {
     const th = document.createElement('th');
@@ -187,6 +181,18 @@ function createSection(destFijo){
   wrap.appendChild(tbl);
   sec.appendChild(wrap);
 
+  // ——— Claves únicas por sección (para evitar colisiones locales)
+  const clavesUsadas = new Set();
+  function generarClaveUnica(){
+    const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    do {
+      code = Array.from({length:12}, () => ABC[Math.floor(Math.random()*ABC.length)]).join('');
+    } while (clavesUsadas.has(code));
+    clavesUsadas.add(code);
+    return code;
+  }
+
   // Estructura de filas en memoria
   const rows = []; // { inputs:[], ref?, checkbox:HTMLInputElement }
 
@@ -200,6 +206,8 @@ function createSection(destFijo){
       for(let d of snap.docs){
         const o = d.data();
         o.servicio = d.id;
+        // Si ya existe "clave", reservarla para evitar colisiones
+        if (o.clave) clavesUsadas.add(o.clave);
         await add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
       }
     })();
@@ -229,12 +237,12 @@ function createSection(destFijo){
     });
   }
 
-  // Añadir fila al INICIO del tbody
+  // Añadir fila al INICIO del tbody (con Indicaciones, Voucher y Clave)
   async function add(prefill = {}, ref = null){
     const tr = document.createElement('tr');
     const inputs = [];
 
-    // checkbox (selección múltiple)
+    // checkbox
     const tdChk = document.createElement('td');
     const chk   = document.createElement('input');
     chk.type    = 'checkbox';
@@ -254,8 +262,28 @@ function createSection(destFijo){
         // Select que se llena con proveedores del destino activo
         inp = document.createElement('select');
         inp.dataset.campo = c;
-
-      } else if(opciones[c]){
+      }
+      else if (c === 'voucher'){
+        // NUEVO: Select con 3 opciones
+        inp = document.createElement('select');
+        inp.dataset.campo = c;
+        opciones.voucher.forEach(v => inp.appendChild(new Option(v, v)));
+        if (prefill[c]) {
+          const opt = [...inp.options].find(o => o.value === prefill[c]);
+          if (opt) opt.selected = true;
+        }
+      }
+      else if (c === 'clave'){
+        // NUEVO: Clave autogenerada si voucher = ELECTRONICO (solo lectura)
+        inp = document.createElement('input');
+        inp.dataset.campo = c;
+        inp.readOnly = true;
+        inp.value = prefill[c] || '';
+        inp.title = inp.value;
+        // Si viene prefill, reservarla para no duplicar
+        if (inp.value) clavesUsadas.add(inp.value);
+      }
+      else if(opciones[c]){
         // Catálogos (algunos son multiselect)
         inp = document.createElement('select');
         inp.dataset.campo = c;
@@ -268,15 +296,14 @@ function createSection(destFijo){
             if(opt) opt.selected = true;
           });
         }
-
       } else {
         // Inputs de texto/número
         inp = document.createElement('input');
         inp.value = prefill[c] || '';
         // Todo menos valorServicio se guarda en mayúsculas
-        if(c !== 'valorServicio') inp.oninput = ()=> inp.value = inp.value.toUpperCase();
+        if(c !== 'valorServicio') inp.oninput = ()=> inp.value = (inp.value || '').toString().toUpperCase();
         inp.dataset.campo = c;
-        // Editor flotante para textos largos
+        // Editor flotante para textos medianos/largos (indicaciones/restricciones, etc.)
         inp.onfocus = ()=> showFloatingEditor(inp);
         inp.title   = inp.value;
       }
@@ -292,17 +319,39 @@ function createSection(destFijo){
       await loadProvs(tr, prefill.proveedor);
     }
 
+    // —— Vínculo Voucher ↔ Clave ——
+    const voucherSel = tr.querySelector('select[data-campo="voucher"]');
+    const claveInp   = tr.querySelector('input[data-campo="clave"]');
+    if (voucherSel && claveInp){
+      const ensureClave = () => {
+        const v = voucherSel.value;
+        if (v === 'ELECTRONICO'){
+          if (!claveInp.value) claveInp.value = generarClaveUnica();
+        } else {
+          if (claveInp.value) claveInp.value = '';
+        }
+        claveInp.title = claveInp.value;
+      };
+      voucherSel.addEventListener('change', ensureClave);
+
+      // Prefill: si viene ELECTRONICO sin clave → generar
+      if (voucherSel.value === 'ELECTRONICO' && !claveInp.value){
+        claveInp.value = generarClaveUnica();
+        claveInp.title = claveInp.value;
+      }
+    }
+
     // Insertar al INICIO y registrar en memoria
     tbody.insertBefore(tr, tbody.firstChild);
     rows.unshift({ inputs, ref, checkbox: chk });
     updateRowNumbers();
 
-    // Evitar que el pegado en una celda dispare pegados masivos
+    // Evitar que el pegado dispare pegados masivos
     inputs.forEach(inp => {
       inp.addEventListener('paste', e => e.stopPropagation());
     });
 
-    // Si hay un término activo en el buscador, evaluar la nueva fila
+    // Si hay término activo en el buscador, evaluar la nueva fila
     applySearch();
   }
 
@@ -312,9 +361,10 @@ function createSection(destFijo){
     r.inputs.forEach(i => {
       data[i.dataset.campo] = i.multiple
         ? [...i.selectedOptions].map(o=>o.value)
-        : i.value.trim().toUpperCase();
+        : (i.value ?? '').toString().trim().toUpperCase();
     });
 
+    // NOTA: tu lógica de "destino" se mantiene tal cual
     const destino = isOtro ? data.destino : destActivo;
     if(!destino)       throw new Error(`F${idx}: Falta Destino`);
     if(!data.servicio) throw new Error(`F${idx}: Falta Servicio`);
@@ -322,6 +372,7 @@ function createSection(destFijo){
 
     // Asegura documento padre de la colección de servicios por destino
     await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
+
     // Guarda en subcolección Listado usando `servicio` como id
     await setDoc(
       doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
