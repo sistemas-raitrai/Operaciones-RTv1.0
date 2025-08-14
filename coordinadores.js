@@ -1,11 +1,11 @@
-// coordinadores.js — Viajes + Gestión de coordinadores (con filtros y resumen)
-// ----------------------------------------------------------------------------
-// Novedades:
-// - Campo TELEFONO para coordinadores (Nombre, RUT, Teléfono, Correo, Disponibilidad).
-// - Conjuntos se muestran como "Viajes" (solo naming de UI).
-// - En cada viaje se muestra: #Negocio, Identificador, Programa y Destino.
-// - Panel de Resumen + Filtros (destino, programa, rango de fechas y buscador por comas).
-// - Los filtros afectan los "Viajes libres", el resumen y el selector "Agregar viaje".
+// coordinadores.js — VIAJES + GESTIÓN DE COORDINADORES
+// ----------------------------------------------------
+// - Esquema coordinadores: { nombre, rut, telefono, correo, disponibilidad:[{inicio,fin}], activo, notas, meta }
+// - Back-compat: mapea fechasDisponibles → disponibilidad al cargar.
+// - UI: "Conjuntos" → "Viajes". Sugerir, mover, swap, confirmar, alertas.
+// - Filtros + Resumen (destino, programa, fechas, buscador por comas).
+// - Estadísticas de viajes (totales, distribución, consistencia, asignaciones).
+// - Guardado: alias en grupos; conjuntosCoordinadores; refs en grupos (conjuntoId, coordinador).
 
 import { app, db } from './firebase-init.js';
 import {
@@ -21,7 +21,7 @@ let GRUPOS = [];   // [{id, numeroNegocio, nombreGrupo, aliasGrupo, fechaInicio,
 let SETS   = [];   // [{id?, viajes:[grupoId], coordinadorId:null, confirmado:false, alertas:[]}]
 let ID2GRUPO = new Map();
 
-// Filtros y resumen
+// Filtros
 const FILTER = { destino:'', programa:'', desde:'', hasta:'', tokens:[] };
 
 // Swap
@@ -29,7 +29,7 @@ let swapMode  = false;
 let swapFirst = null;
 
 // ------------------------------
-// Helpers de fecha
+// Fecha helpers
 // ------------------------------
 const toISO = d => (new Date(d)).toISOString().slice(0,10);
 const addDaysISO = (iso, n) => { const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+n); return toISO(d); };
@@ -46,7 +46,6 @@ const overlap = (a1,a2,b1,b2)=>!(new Date(a2)<new Date(b1)||new Date(b2)<new Dat
 const inAnyRange = (ini,fin,ranges=[]) => (ranges||[]).some(r=> new Date(ini)>=new Date(r.inicio) && new Date(fin)<=new Date(r.fin));
 function gapDays(finA, iniB){ const A=new Date(finA+'T00:00:00'); const B=new Date(iniB+'T00:00:00'); return Math.round((B-A)/86400000)-1; }
 
-// Normaliza y detecta rango útil de un grupo
 function normalizarFechasGrupo(x){
   let ini = asISO(x.fechaInicio||x.fecha_inicio||x.inicio||x.fecha||x.fechaDeViaje||x.fechaViaje||x.fechaInicioViaje);
   let fin = asISO(x.fechaFin   ||x.fecha_fin   ||x.fin   ||x.fechaFinal   ||x.fechaFinViaje);
@@ -98,16 +97,11 @@ async function loadGrupos(){
     const {ini,fin} = normalizarFechasGrupo(x);
     if (!ini||!fin) return;
 
-    // Mejor esfuerzo: campos informativos
     const identificador = x.identificador || x.identificadorGrupo || x.codigoGrupo || x.codigo || '';
     const programa      = x.programa || x.nombrePrograma || x.programaNombre || '';
     const destino       = x.destino || x.destinoPrincipal || x.ciudadDestino || x.ciudad || x.paisDestino || '';
 
-    const g = {
-      ...x,
-      fechaInicio:ini, fechaFin:fin,
-      identificador, programa, destino
-    };
+    const g = { ...x, fechaInicio:ini, fechaFin:fin, identificador, programa, destino };
     GRUPOS.push(g);
     ID2GRUPO.set(g.id, g);
   });
@@ -124,7 +118,6 @@ async function loadSets(){
   });
   SETS.forEach(s=> s.viajes = s.viajes.filter(id=>ID2GRUPO.has(id)));
   evaluarAlertas();
-  // Poblamos opciones de filtros al tener GRUPOS
   populateFilterOptions();
 }
 
@@ -132,17 +125,20 @@ async function loadSets(){
 // DOM
 // ------------------------------
 const $ = sel => document.querySelector(sel);
+
 const elWrapLibres = $('#lista-viajes-libres');
 const elWrapSets   = $('#conjuntos-wrap');
 const elMsg        = $('#msg');
 
-// Filtros + resumen
 const selDestino = $('#f-destino');
 const selPrograma= $('#f-programa');
 const inpDesde   = $('#f-desde');
 const inpHasta   = $('#f-hasta');
 const inpBuscar  = $('#f-buscar');
 const wrapResumen= $('#resumen-wrap');
+
+// NUEVO: estadísticas
+const wrapStatsViajes = $('#stats-viajes-wrap');
 
 // Modal
 const mb               = $('#mb');
@@ -162,7 +158,7 @@ $('#btn-sugerir').onclick        = sugerirConjuntos;
 $('#btn-nuevo-conjunto').onclick = ()=>{ SETS.push({viajes:[], coordinadorId:null, confirmado:false, alertas:[]}); render(); };
 $('#btn-guardar').onclick        = guardarTodo;
 
-// Modal handlers
+// Modal
 btnOpenModal.onclick     = ()=>{ openModal(); renderCoordsTable(); };
 btnCloseModal.onclick    = closeModal;
 btnCerrar.onclick        = closeModal;
@@ -172,19 +168,18 @@ btnAddLote.onclick       = ()=> inputExcel.click();
 inputExcel.onchange      = handleExcel;
 
 // ------------------------------
-// Filtros + resumen
+// Filtros + Resumen
 // ------------------------------
 function norm(s){ return (s??'').toString().trim().toLowerCase(); }
 function parseTokens(s){ return (s||'').split(',').map(t=>norm(t)).filter(Boolean); }
 
 function populateFilterOptions(){
-  if (!selDestino || !selPrograma) return; // por si no existe en HTML
+  if (!selDestino || !selPrograma) return;
   const dests = [...new Set(GRUPOS.map(g=>g.destino).filter(Boolean))].sort();
   const progs = [...new Set(GRUPOS.map(g=>g.programa).filter(Boolean))].sort();
   selDestino.innerHTML = `<option value="">Todos los destinos</option>` + dests.map(d=>`<option>${escapeHtml(d)}</option>`).join('');
   selPrograma.innerHTML= `<option value="">Todos los programas</option>` + progs.map(p=>`<option>${escapeHtml(p)}</option>`).join('');
 
-  // listeners
   selDestino.onchange = ()=>{ FILTER.destino = selDestino.value; render(); };
   selPrograma.onchange= ()=>{ FILTER.programa= selPrograma.value; render(); };
   inpDesde && (inpDesde.onchange = ()=>{ FILTER.desde = inpDesde.value||''; render(); });
@@ -204,19 +199,15 @@ function matchFilter(g){
   }
   return true;
 }
-
-function gruposFiltrados(baseArr){
-  return (baseArr||GRUPOS).filter(matchFilter);
-}
+function gruposFiltrados(baseArr){ return (baseArr||GRUPOS).filter(matchFilter); }
 
 function renderResumen(){
   if (!wrapResumen) return;
   const arr = gruposFiltrados(GRUPOS);
-
   const by = (keyFn)=> arr.reduce((m,g)=>{ const k=keyFn(g)||'(sin dato)'; m[k]=(m[k]||0)+1; return m; },{});
-  const tDest   = by(g=>g.destino);
-  const tProg   = by(g=>g.programa);
-  const tIni    = by(g=>g.fechaInicio);
+  const tDest = by(g=>g.destino);
+  const tProg = by(g=>g.programa);
+  const tIni  = by(g=>g.fechaInicio);
 
   const mkTable = (title, obj)=>`
     <div class="panel" style="min-width:260px">
@@ -233,7 +224,6 @@ function renderResumen(){
           </table>` : `<div class="empty">Sin datos.</div>`}
       </div>
     </div>`;
-
   wrapResumen.innerHTML = `
     <div class="row" style="gap:.8rem; align-items:flex-start; flex-wrap:wrap;">
       ${mkTable('Por destino', tDest)}
@@ -250,6 +240,7 @@ function render(){
   renderResumen();
   renderLibres();
   renderSets();
+  renderViajesStats(); // NUEVO: estadísticas
   elMsg && (elMsg.textContent = '');
 }
 
@@ -299,9 +290,7 @@ function renderSets(){
 
     const rows = viajes.map(v=>`
       <tr>
-        <td style="width:34%">
-          <input type="text" data-alias="${v.id}" value="${v.aliasGrupo||''}" title="${escapeHtml(v.nombreGrupo||'')}">
-        </td>
+        <td style="width:34%"><input type="text" data-alias="${v.id}" value="${v.aliasGrupo||''}" title="${escapeHtml(v.nombreGrupo||'')}"></td>
         <td style="width:22%">${v.fechaInicio} → ${v.fechaFin}</td>
         <td style="width:28%">
           <div class="muted">#${v.numeroNegocio}</div>
@@ -317,7 +306,7 @@ function renderSets(){
       </tr>
     `).join('');
 
-    // Select coordinador: se muestra solo el nombre
+    // select de coordinador (solo nombre)
     const opts = ['<option value="">(Seleccionar)</option>'].concat(
       COORDS.map(c=>{
         const name = escapeHtml(c.nombre||'(sin nombre)');
@@ -400,7 +389,7 @@ function renderSets(){
 }
 
 // ------------------------------
-// Sugerir conjuntos (naming UI: "Viajes")
+// Sugerir grupos (UI: “Viajes”)
 // ------------------------------
 function sugerirConjuntos(){
   const ordenados = GRUPOS.slice().sort((a,b)=> cmpISO(a.fechaInicio, b.fechaInicio));
@@ -483,7 +472,6 @@ function seleccionarConjuntoDestino(grupoId){
   SETS[idx].viajes.push(grupoId);
   evaluarAlertas(); render();
 }
-
 function moverViajeAotroConjunto(grupoId, desdeIdx){
   if (SETS.length<=1){ alert('No hay otro grupo.'); return; }
   const n = prompt(`Mover al grupo (1..${SETS.length}, distinto de ${desdeIdx+1})`);
@@ -494,7 +482,6 @@ function moverViajeAotroConjunto(grupoId, desdeIdx){
   SETS[to].viajes.push(grupoId);
   evaluarAlertas(); render();
 }
-
 function agregarViajeAConjunto(setIdx){
   const usados = viajesUsadosSetIds();
   const libresAll = GRUPOS.filter(g=>!usados.has(g.id));
@@ -530,7 +517,7 @@ function swapBetweenSets(a,b){
   evaluarAlertas(); render();
 }
 
-// Sugerir coordinador para todo el grupo de viajes
+// Sugerir coordinador para todo el grupo
 function sugerirCoordinador(setIdx){
   const s=SETS[setIdx];
   const viajes=s.viajes.map(id=>ID2GRUPO.get(id)).filter(Boolean);
@@ -545,10 +532,10 @@ function sugerirCoordinador(setIdx){
 async function guardarTodo(){
   elMsg && (elMsg.textContent='Guardando…');
 
-  // 1) Alias de grupos
+  // 1) Alias
   for (const g of GRUPOS){ await updateDoc(doc(db,'grupos', g.id), { aliasGrupo: g.aliasGrupo || null }); }
 
-  // 2) Conjuntos (UI: "Viajes") y refs en grupos
+  // 2) Conjuntos/Viajes y refs en grupos
   for (const s of SETS){
     let setId = s.id;
     const payload = { viajes:s.viajes.slice(), coordinadorId:s.coordinadorId||null, confirmado:!!s.confirmado, meta:{actualizadoEn:serverTimestamp()} };
@@ -587,8 +574,7 @@ function renderCoordsTable(){
   COORDS.forEach((c, idx)=>{
     const filasRangos = (c.disponibilidad||[]).map((r,i)=>`
       <div style="display:flex; gap:.3rem; align-items:center; margin:.15rem 0;">
-        <input class="picker-range" data-cid="${idx}" data-ridx="${i}" type="text"
-               value="${r.inicio && r.fin ? `${r.inicio} a ${r.fin}` : ''}" readonly>
+        <input class="picker-range" data-cid="${idx}" data-ridx="${i}" type="text" value="${r.inicio && r.fin ? `${r.inicio} a ${r.fin}` : ''}" readonly>
         <button class="btn small" data-delrng="${idx}:${i}">❌</button>
       </div>
     `).join('');
@@ -599,10 +585,7 @@ function renderCoordsTable(){
         <td><input type="text" data-f="rut"      data-i="${idx}" value="${c.rut||''}"      placeholder="RUT"></td>
         <td><input type="text" data-f="telefono" data-i="${idx}" value="${c.telefono||''}" placeholder="Teléfono"></td>
         <td><input type="text" data-f="correo"   data-i="${idx}" value="${c.correo||''}"   placeholder="Correo"></td>
-        <td>
-          ${filasRangos}
-          <button class="btn small" data-addrng="${idx}">+ Rango</button>
-        </td>
+        <td>${filasRangos}<button class="btn small" data-addrng="${idx}">+ Rango</button></td>
         <td><button class="btn small" data-delcoord="${idx}">🗑️</button></td>
       </tr>
     `);
@@ -707,6 +690,133 @@ function handleExcel(evt){
     inputExcel.value='';
   };
   reader.readAsBinaryString(file);
+}
+
+// ------------------------------
+// Estadísticas de VIAJES
+// ------------------------------
+function computeViajesStats(){
+  const sizes = SETS.map(s => (s.viajes||[]).length);
+  const totalGrupos = sizes.length;
+  const totalTramos = sizes.reduce((a,b)=>a+b,0);
+
+  const dist = {}; sizes.forEach(n => { dist[n] = (dist[n]||0) + 1; });
+
+  let paresSinDescanso = 0;
+  let gruposConGap0 = 0;
+  let paresSolapados = 0;
+  let paresOrdenMalo = 0;
+
+  let totalErr = 0, totalWarn = 0;
+  let confirmados = 0;
+  let conCoordinador = 0;
+  const coordsAsignados = new Set();
+
+  for (const s of SETS){
+    const viajes = (s.viajes||[])
+      .map(id => ID2GRUPO.get(id))
+      .filter(Boolean)
+      .sort((a,b)=> new Date(a.fechaInicio) - new Date(b.fechaInicio));
+
+    if (s.confirmado) confirmados++;
+    if (s.coordinadorId){ conCoordinador++; coordsAsignados.add(s.coordinadorId); }
+    (s.alertas||[]).forEach(a => (a.tipo==='err'? totalErr++ : totalWarn++));
+
+    let tuvoGap0 = false;
+    for (let i=0;i<viajes.length-1;i++){
+      const A = viajes[i], B = viajes[i+1];
+      const gap = gapDays(A.fechaFin, B.fechaInicio);
+      if (gap < 0) paresOrdenMalo++;
+      if (gap === 0){ paresSinDescanso++; tuvoGap0 = true; }
+      if (overlap(A.fechaInicio, A.fechaFin, B.fechaInicio, B.fechaFin)) paresSolapados++;
+    }
+    if (tuvoGap0) gruposConGap0++;
+  }
+
+  const min = sizes.length ? Math.min(...sizes) : 0;
+  const max = sizes.length ? Math.max(...sizes) : 0;
+  const promedio = totalGrupos ? (totalTramos / totalGrupos) : 0;
+  const mediana = (() => {
+    if (!sizes.length) return 0;
+    const s = sizes.slice().sort((a,b)=>a-b);
+    const m = Math.floor(s.length/2);
+    return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
+  })();
+
+  return {
+    totalGrupos, totalTramos, dist,
+    min, max, promedio, mediana,
+    paresSinDescanso, gruposConGap0, paresSolapados, paresOrdenMalo,
+    totalErr, totalWarn, confirmados, conCoordinador,
+    coordsUnicos: coordsAsignados.size
+  };
+}
+
+function renderViajesStats(){
+  if (!wrapStatsViajes) return;
+  if (!SETS.length){
+    wrapStatsViajes.innerHTML = '<div class="empty">AÚN NO HAY GRUPOS DE VIAJES.</div>';
+    return;
+  }
+  const s = computeViajesStats();
+
+  const tbl = (title, rowsHtml) => `
+    <div class="panel" style="min-width:280px">
+      <div class="hd">${title}</div>
+      <div class="bd">${rowsHtml}</div>
+    </div>`;
+
+  const rowsKV = (kv) => `
+    <table>
+      <thead><tr><th>CLAVE</th><th style="width:90px">TOTAL</th></tr></thead>
+      <tbody>${Object.entries(kv).map(([k,v]) => `<tr><td>${escapeHtml(String(k))}</td><td>${v}</td></tr>`).join('')}</tbody>
+    </table>`;
+
+  const totales = `
+    <table>
+      <tbody>
+        <tr><th>TOTAL DE VIAJES (GRUPOS)</th><td>${s.totalGrupos}</td></tr>
+        <tr><th>TOTAL DE TRAMOS (VIAJES ASIGNADOS)</th><td>${s.totalTramos}</td></tr>
+        <tr><th>PROMEDIO TRAMOS POR VIAJE</th><td>${s.promedio.toFixed(2)}</td></tr>
+        <tr><th>MEDIANA TRAMOS POR VIAJE</th><td>${s.mediana}</td></tr>
+        <tr><th>MÁXIMO / MÍNIMO TRAMOS</th><td>${s.max} / ${s.min}</td></tr>
+      </tbody>
+    </table>`;
+
+  const distOrdenada = Object.fromEntries(
+    Object.entries(s.dist)
+      .sort((a,b)=> Number(b[0]) - Number(a[0]))
+      .map(([tam,cant]) => [`${tam} TRAMO${tam==1?'':'S'}`, cant])
+  );
+
+  const consistencia = `
+    <table>
+      <tbody>
+        <tr><th>PARES SIN DESCANSO (GAP = 0)</th><td>${s.paresSinDescanso}</td></tr>
+        <tr><th>VIAJES CON AL MENOS UN GAP = 0</th><td>${s.gruposConGap0}</td></tr>
+        <tr><th>PARES SOLAPADOS</th><td>${s.paresSolapados}</td></tr>
+        <tr><th>PARES EN ORDEN INCONSISTENTE</th><td>${s.paresOrdenMalo}</td></tr>
+        <tr><th>ALERTAS (ERR / WARN)</th><td>${s.totalErr} / ${s.totalWarn}</td></tr>
+      </tbody>
+    </table>`;
+
+  const asignaciones = `
+    <table>
+      <tbody>
+        <tr><th>VIAJES CONFIRMADOS</th><td>${s.confirmados}</td></tr>
+        <tr><th>VIAJES CON COORDINADOR</th><td>${s.conCoordinador}</td></tr>
+        <tr><th>COORDINADORES ÚNICOS ASIGNADOS</th><td>${s.coordsUnicos}</td></tr>
+      </tbody>
+    </table>`;
+
+  wrapStatsViajes.innerHTML = `
+    <div class="row" style="gap:.8rem; align-items:flex-start; flex-wrap:wrap;">
+      ${tbl('TOTALES', totales)}
+      ${tbl('DISTRIBUCIÓN POR TAMAÑO (TRAMOS POR VIAJE)', rowsKV(distOrdenada))}
+      ${tbl('CONSISTENCIA / ALERTAS', consistencia)}
+      ${tbl('ASIGNACIONES', asignaciones)}
+    </div>
+  `;
 }
 
 // ------------------------------
