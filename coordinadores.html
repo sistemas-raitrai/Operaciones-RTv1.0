@@ -5,18 +5,14 @@
   <title>Viajes | Asignación y Coordinadores</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css" />
-  <!-- Flatpickr -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 
   <style>
-    /* ====== Layout ====== */
     .page { padding: 1rem 1.2rem; }
     h2 { margin: .6rem 0 1rem; }
     .grid { display:grid; grid-template-columns: 340px 1fr; gap:1rem; align-items:start; }
 
-    /* ====== Contenedores ====== */
     .panel { border:1px solid #ddd; border-radius:10px; background:#fff; }
     .panel > .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; font-weight:600; }
     .panel > .bd { padding:.6rem .8rem; }
@@ -26,12 +22,10 @@
     .card .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
     .card .bd { padding:.6rem .8rem; }
 
-    /* ====== Tipografía (UI en mayúsculas, respeta la fuente del sistema) ====== */
     .page, .page * { text-transform: uppercase; }
     .page input, .page select, .page button, .page textarea, .page table { font-family: inherit !important; font-size: 100%; }
     ::placeholder { text-transform: uppercase; }
 
-    /* ====== Utilidades ====== */
     .muted { color:#666; }
     .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
     .tag { background:#eef3fa; color:#1f64b2; padding:.1rem .4rem; border-radius:6px; font-size:.85rem; }
@@ -46,25 +40,24 @@
     select, input[type="date"] { padding:.35rem .45rem; }
     .empty { color:#777; font-style:italic; padding:.4rem 0; }
 
-    /* ====== Botones ====== */
     .btn { background:#1f64b2; color:#fff; border:none; padding:.5rem .8rem; border-radius:6px; cursor:pointer; }
     .btn.secondary { background:#5a6a7a; }
     .btn.ghost     { background:#e8eef6; color:#1f64b2; }
     .btn.small     { padding:.3rem .55rem; font-size:.9rem; }
     .btn.small.selected-swap{ outline:2px solid #1f64b2; box-shadow:0 0 0 3px #d9e9ff inset; }
+    .btn[disabled] { opacity:.65; cursor:not-allowed; }
 
-    /* ====== Modal coordinadores (alto fijo con footer visible) ====== */
     .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; }
-    .modal {
+    .modal{
       position:fixed; left:50%; transform:translateX(-50%);
       top:4vh; width:min(1100px,96vw);
       background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2);
-      display:none;              /* oculto por defecto */
-      max-height:88vh;
-      flex-direction:column;     /* ok, pero sin forzar display aquí */
+      display:none;                   /* oculto por defecto */
+      max-height:88vh;                /* cuerpo con scroll, footer visible */
+      flex-direction:column;
     }
     .modal .hd { padding:.8rem 1rem; border-bottom:1px solid #eee; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
-    .modal .bd { padding:1rem; overflow:auto; flex:1; }
+    .modal .bd { padding:1rem; overflow:auto; }
     .modal .ft { padding:.8rem 1rem; border-top:1px solid #eee; display:flex; justify-content:flex-end; gap:.5rem; }
     .x { cursor:pointer; font-size:1.4rem; line-height:1; }
     .picker-range { width:220px; }
@@ -76,7 +69,7 @@
   <div class="page">
     <h2>Asignación De <b>Viajes</b> Y Coordinadores</h2>
 
-    <!-- 📊 Resumen + filtros -->
+    <!-- Resumen / filtros -->
     <div class="panel" style="margin:.8rem 0;">
       <div class="hd">📊 Resumen Y Filtros</div>
       <div class="bd">
@@ -91,13 +84,13 @@
       </div>
     </div>
 
-    <!-- 📈 Estadísticas -->
+    <!-- Estadísticas -->
     <div class="panel" id="panel-stats-viajes" style="margin:.8rem 0;">
       <div class="hd">📈 Estadísticas De Viajes</div>
-      <div class="bd" id="stats-viajes-wrap"><div class="empty">Aún no hay datos.</div></div>
+      <div class="bd" id="stats-viajes-wrap"><div class="empty">AÚN NO HAY DATOS.</div></div>
     </div>
 
-    <!-- 🔘 Barra de acciones (después del bloque de estadísticas) -->
+    <!-- Acciones (después de estadísticas) -->
     <div class="row" style="gap:.5rem; margin-bottom:1rem;">
       <button class="btn" id="btn-modal-coords">Gestionar coordinadores</button>
       <button class="btn ghost" id="btn-sugerir">Sugerir grupos de viajes (auto)</button>
@@ -106,7 +99,6 @@
       <span id="msg" class="muted"></span>
     </div>
 
-    <!-- Cuerpo -->
     <div class="grid">
       <div class="panel">
         <div class="hd">🧳 Viajes Libres</div>
@@ -122,7 +114,7 @@
     </div>
   </div>
 
-  <!-- ===== Modal: Gestionar coordinadores ===== -->
+  <!-- Modal coordinadores -->
   <div id="mb" class="modal-backdrop"></div>
   <div id="modal-coords" class="modal" role="dialog" aria-modal="true" aria-label="Gestionar coordinadores">
     <div class="hd">
@@ -148,7 +140,7 @@
             <th>Teléfono</th>
             <th>Correo</th>
             <th>Disponibilidad</th>
-            <th>Acción</th>
+            <th style="width:120px">Acción</th>
           </tr>
         </thead>
         <tbody></tbody>
@@ -163,19 +155,15 @@
       <button class="btn ghost" id="btn-cerrar">Cerrar</button>
     </div>
   </div>
-  <!-- ===== /Modal ===== -->
 
-  <!-- Dependencias -->
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- Encabezado global -->
   <script type="module">
     fetch('encabezado.html').then(r=>r.text()).then(html=>{ document.getElementById('encabezado').innerHTML = html; });
   </script>
 
-  <!-- Firebase + scripts -->
   <script type="module" src="./firebase-init.js"></script>
   <script type="module" src="./script.js"></script>
   <script type="module" src="./coordinadores.js"></script>
