@@ -134,6 +134,57 @@ btnAddCoord.onclick = ()=>{
 btnAddLote.onclick = ()=> inputExcel.click();
 inputExcel.onchange = handleExcel;
 
+// Lee un Excel y agrega/actualiza coordinadores en COORDS
+function handleExcel(evt){
+  const file = evt.target.files?.[0];
+  if(!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, { type:'binary' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false, blankrows:false });
+
+      // índices para evitar duplicados
+      const byName = new Map(COORDS.map(c => [ (c.nombre||'').trim().toUpperCase(), c ]));
+      const byRut  = new Map(COORDS.filter(c=>c.rut).map(c => [ c.rut.replace(/\s+/g,'').toUpperCase(), c ]));
+
+      for(const r of rows){
+        const nombre = (r.Nombre || r.NOMBRE || r.nombre || '').toString().trim();
+        if(!nombre) continue;
+
+        const rut      = (r.RUT || r.rut || '').toString().replace(/\s+/g,'').toUpperCase();
+        const telefono = (r.TELEFONO || r['TELÉFONO'] || r.tel || r.Tel || r.telefono || '').toString().trim();
+        const correo   = (r.Correo || r.CORREO || r.Email || r.EMAIL || r.email || '').toString().trim().toLowerCase();
+
+        // busca por RUT o por nombre
+        let c = (rut && byRut.get(rut)) || byName.get(nombre.toUpperCase());
+        if (c){
+          c.nombre   = nombre;
+          c.rut      = rut;
+          c.telefono = telefono;
+          c.correo   = correo;
+        } else {
+          c = { nombre, rut, telefono, correo, disponibilidad:[], _isNew:true };
+          COORDS.unshift(c);            // se agrega arriba como pediste
+          byName.set(nombre.toUpperCase(), c);
+          if (rut) byRut.set(rut, c);
+        }
+      }
+
+      renderCoordsTable();
+      setTimeout(initPickers,10);
+    } catch (err){
+      console.error(err);
+      alert('No se pudo leer el Excel. Asegúrate de que sea .xlsx/.xls y que tenga la columna "Nombre".');
+    } finally {
+      evt.target.value = '';   // limpia el input para permitir recargar
+    }
+  };
+  reader.readAsBinaryString(file);
+}
+
 // ------------------ Helpers ------------------
 function withBusy(btn, busyText, fn, normalText, okText){
   const prev = btn.textContent;
