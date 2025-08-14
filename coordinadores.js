@@ -788,43 +788,82 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':
 
 // ------------------ Guardar cambios (grupos/sets) ------------------
 async function guardarTodo(){
-  // feedback visual ya lo maneja withBusy()
-  // 1) Alias de grupos
-  for (const g of GRUPOS){ await updateDoc(doc(db,'grupos',g.id), { aliasGrupo: g.aliasGrupo || null }); }
+  // feedback visual lo maneja withBusy() en el botón
 
-  // 2) Conjuntos y escritura en grupos
-  for (const s of SETS){
-    let setId=s.id;
-    const payload={ viajes:s.viajes.slice(), coordinadorId:s.coordinadorId||null, confirmado:!!s.confirmado, meta:{ actualizadoEn:serverTimestamp() } };
-    if(!setId){
-      const ref=await addDoc(collection(db,'conjuntosCoordinadores'), { ...payload, meta:{ creadoEn:serverTimestamp(), actualizadoEn:serverTimestamp() } });
-      setId=ref.id; s.id=setId;
-    }else{
-      await setDoc(doc(db,'conjuntosCoordinadores',setId),payload,{merge:true});
-    }
-    const coordNombre = s.coordinadorId ? (COORDS.find(c=>c.id===s.coordinadorId)?.nombre||null) : null;
-
-    for (const gid of s.viajes){
-      await updateDoc(doc(db,'grupos',gid), {
-        conjuntoId:setId,
-        coordinador: coordNombre,                // ← NOMBRE, como pediste
-        coordinadorId: s.coordinadorId || null   // ← opcional, bórralo si no lo quieres
-      });
-    }
-    delete s._isNew;
-  }
-
-  // 3) Limpia grupos sin set
-  const usados=viajesUsadosSetIds();
+  // 0) Guarda alias en cada grupo (no cambia el resto)
   for (const g of GRUPOS){
-    if (!usados.has(g.id)){
-      await updateDoc(doc(db,'grupos',g.id), {
-        conjuntoId:null,
-        coordinador:null,
-        coordinadorId:null
+    await updateDoc(doc(db,'grupos', g.id), { aliasGrupo: g.aliasGrupo || null });
+  }
+
+  // 1) Recorremos todos los sets, pero SOLO persistimos los CONFIRMADOS con coordinador
+  const usadosConfirmados = new Set(); // ids de grupos que quedan realmente asignados
+
+  for (const s of SETS){
+    const estaConfirmado = !!s.confirmado && !!s.coordinadorId;
+
+    if (estaConfirmado){
+      // upsert del set confirmado
+      let setId = s.id;
+      const payload = {
+        viajes: s.viajes.slice(),
+        coordinadorId: s.coordinadorId,
+        confirmado: true,
+        meta: { actualizadoEn: serverTimestamp() }
+      };
+
+      if (!setId){
+        const ref = await addDoc(
+          collection(db,'conjuntosCoordinadores'),
+          { ...payload, meta:{ creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() } }
+        );
+        setId = ref.id; s.id = setId;
+      } else {
+        await setDoc(doc(db,'conjuntosCoordinadores', setId), payload, { merge:true });
+      }
+
+      // nombre del coordinador (para escribirlo en grupos)
+      const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
+
+      // escribe en cada grupo: conjuntoId + NOMBRE del coordinador (y opcional coordinadorId)
+      for (const gid of s.viajes){
+        await updateDoc(doc(db,'grupos', gid), {
+          conjuntoId: setId,
+          coordinador: coordNombre,                // ← NOMBRE visible
+          coordinadorId: s.coordinadorId || null   // ← opcional; bórrala si no la quieres
+        });
+        usadosConfirmados.add(gid);
+      }
+
+      delete s._isNew; // ya no es borrador
+    } else {
+      // NO confirmado ⇒ limpiar en grupos y (si existía) borrar el set en Firestore
+      for (const gid of (s.viajes||[])){
+        await updateDoc(doc(db,'grupos', gid), {
+          conjuntoId: null,
+          coordinador: null,
+          coordinadorId: null
+        });
+      }
+      if (s.id){
+        try { await deleteDoc(doc(db,'conjuntosCoordinadores', s.id)); }
+        catch(e){ console.warn('No se pudo eliminar set desconfirmado', s.id, e); }
+      }
+      // s.id se mantiene vacío (borrador local). No escribimos nada en la base.
+    }
+  }
+
+  // 2) Por seguridad adicional: si quedó algún grupo fuera de cualquier set confirmado, se limpia.
+  for (const g of GRUPOS){
+    if (!usadosConfirmados.has(g.id)){
+      await updateDoc(doc(db,'grupos', g.id), {
+        conjuntoId: null,
+        coordinador: null,
+        coordinadorId: null
       });
     }
   }
+
+  // listo
 }
 
 // ------------------ Boot ------------------
