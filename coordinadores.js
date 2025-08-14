@@ -428,23 +428,54 @@ function renderSets(){
 }
 
 // ------------------ Sugeridor ------------------
+// Recalcula solo para los viajes NO confirmados y conserva los confirmados tal cual
 function sugerirConjuntos(){
-  const ordenados=GRUPOS.slice().sort((a,b)=>cmpISO(a.fechaInicio,b.fechaInicio));
-  const work=[];
-  for (const g of ordenados){
-    let best=-1, avail=null;
+  // 1) Fijar los sets confirmados CON coordinador (se mantienen)
+  const fixedSets = SETS.filter(s => s.confirmado && !!s.coordinadorId);
+
+  // IDs de viajes ya fijados
+  const fixedTripIds = new Set();
+  fixedSets.forEach(s => (s.viajes||[]).forEach(id => fixedTripIds.add(id)));
+
+  // 2) Pool de viajes a re-calcular: todos los que NO están en sets confirmados
+  const pool = GRUPOS
+    .filter(g => !fixedTripIds.has(g.id))
+    .sort((a,b) => cmpISO(a.fechaInicio, b.fechaInicio));
+
+  // 3) Greedy igual que antes, pero SOLO con el pool
+  const work = []; // [{viajes:[], lastFin:'YYYY-MM-DD', zeroChain:0}]
+  for (const g of pool){
+    let best = -1;
+    let bestAvail = null;
     for (let i=0;i<work.length;i++){
-      const s=work[i], gap=gapDays(s.lastFin,g.fechaInicio);
-      const ok=(gap>=1)||(gap===0 && s.zeroChain<2);
-      if(!ok) continue;
-      const a=addDaysISO(s.lastFin,1);
-      if(best===-1 || cmpISO(a,avail)<0){ best=i; avail=a; }
+      const s = work[i];
+      const gap = gapDays(s.lastFin, g.fechaInicio);
+      const ok = (gap >= 1) || (gap === 0 && s.zeroChain < 2);
+      if (!ok) continue;
+      const avail = addDaysISO(s.lastFin, 1);
+      if (best===-1 || cmpISO(avail, bestAvail) < 0){ best = i; bestAvail = avail; }
     }
-    if (best===-1) work.push({viajes:[g.id], lastFin:g.fechaFin, zeroChain:0});
-    else { const s=work[best]; const gap=gapDays(s.lastFin,g.fechaInicio); s.viajes.push(g.id); s.zeroChain=(gap===0)?s.zeroChain+1:0; s.lastFin=g.fechaFin; }
+    if (best === -1){
+      work.push({ viajes:[g.id], lastFin:g.fechaFin, zeroChain:0 });
+    } else {
+      const s = work[best];
+      const gap = gapDays(s.lastFin, g.fechaInicio);
+      s.viajes.push(g.id);
+      s.zeroChain = (gap === 0) ? s.zeroChain + 1 : 0;
+      s.lastFin = g.fechaFin;
+    }
   }
-  SETS=work.map(s=>({viajes:s.viajes.slice(), coordinadorId:null, confirmado:false, alertas:[]}));
-  evaluarAlertas(); sortSetsInPlace(); render();
+
+  // 4) Volcar sugerencias (borradores) + conservar confirmados
+  const suggested = work.map(() => ({ viajes:[], coordinadorId:null, confirmado:false, alertas:[], _isNew:true }));
+  for (let i=0;i<work.length;i++){ suggested[i].viajes = work[i].viajes.slice(); }
+
+  // La UI trabajará con: confirmados tal cual + nuevas sugerencias
+  SETS = fixedSets.concat(suggested);
+
+  evaluarAlertas();
+  sortSetsInPlace();
+  render();
 }
 
 // ------------------ Alertas / Consistencia ------------------
