@@ -1,4 +1,12 @@
-// coordinadores.js — FINAL (destinos aptos, bloqueo por confirmación, guardar por fila, dd/mm/aaaa)
+/* coordinadores.js — FINAL
+   - Conjuntos guardados en coordinadores/{coordId}/conjuntos (subcolección)
+   - Carga por collectionGroup('conjuntos')
+   - Bloqueo por confirmación (en memoria y persistido)
+   - Destinos aptos por coordinador (multi-select + Excel)
+   - Guardado por fila (💾) con meta correcto (creado/actualizado)
+   - Fechas dd/mm/aaaa (flatpickr ES)
+   - Buscador aplicado a CONJUNTOS (coordinador, alias, #negocio, id, programa, destino, fechas…) con tokens separados por coma
+*/
 
 import { app, db } from './firebase-init.js';
 import {
@@ -7,27 +15,30 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* =========================================================
-   Estado en memoria
+   Estado
    ========================================================= */
 let COORDS = [];   // {id, nombre, rut, telefono, correo, destinos:string[], disponibilidad:[{inicio,fin}], activo, notas, _isNew?}
 let GRUPOS = [];   // catálogo de viajes (grupos)
-let SETS   = [];   // grupos de viajes (asignaciones)
+let SETS   = [];   // asignaciones (conjuntos)
 let ID2GRUPO = new Map();
 
-let DESTINOS = []; // catálogo (MAYÚSCULA) a partir de GRUPOS
+let DESTINOS = []; // catálogo (normalizado) desde GRUPOS
 
-const FILTER = { destino:'', programa:'', desde:'', hasta:'', tokens:[] };
+// Filtros de catálogo (resumen/libres)
+const FILTER = { destino:'', programa:'', desde:'', hasta:'' };
+
+// Buscador de CONJUNTOS (tokens)
+const SEARCH = { tokens: [] };
 
 let swapMode  = false;
 let swapFirst = null;
 
 /* =========================================================
-   Helpers de fecha y formato
+   Helpers fecha/formato
    ========================================================= */
 const toISO = d => (new Date(d)).toISOString().slice(0,10);
 const addDaysISO = (iso, n) => { const D=new Date(iso+'T00:00:00'); D.setDate(D.getDate()+n); return toISO(D); };
 
-// 🔒 Convierte string/Date/Timestamp → 'YYYY-MM-DD'
 function asISO(v){
   if (!v) return null;
   if (typeof v === 'string'){ const d = new Date(v); return isNaN(d) ? null : toISO(d); }
@@ -42,7 +53,7 @@ const overlap  = (a1,a2,b1,b2)=>!(new Date(a2)<new Date(b1)||new Date(b2)<new Da
 const inAnyRange = (ini,fin,ranges=[]) => (ranges||[]).some(r=> new Date(ini)>=new Date(r.inicio) && new Date(fin)<=new Date(r.fin));
 function gapDays(finA, iniB){ const A=new Date(finA+'T00:00:00'); const B=new Date(iniB+'T00:00:00'); return Math.round((B-A)/86400000)-1; }
 
-// 👉 dd/mm/aaaa
+// dd/mm/aaaa
 function fmtDMY(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
 
 /* =========================================================
@@ -56,15 +67,16 @@ function cleanDestinos(arr){
     .filter((v,i,a)=>a.indexOf(v)===i)
     .sort();
 }
-function isAptoDestino(coord, destino){ // lista vacía = apto para todos
+function isAptoDestino(coord, destino){
   const d = normDest(destino);
   if (!d) return true;
   const L = coord?.destinos || [];
+  // lista vacía = apto para todos
   return !L.length || L.includes(d);
 }
 
 /* =========================================================
-   Carga desde Firestore
+   Carga Firestore
    ========================================================= */
 async function loadCoordinadores(){
   COORDS = [];
@@ -83,7 +95,7 @@ async function loadCoordinadores(){
       rut:(x.rut||'').trim(),
       telefono:(x.telefono||'').trim(),
       correo:(x.correo||'').trim().toLowerCase(),
-      destinos: cleanDestinos(x.destinos || x.destinosAptos || []), // 👈 NUEVO
+      destinos: cleanDestinos(x.destinos || x.destinosAptos || []),
       disponibilidad,
       activo:(x.activo!==false),
       notas:(x.notas||'').trim()
@@ -114,25 +126,27 @@ async function loadGrupos(){
 
 async function loadSets(){
   SETS = [];
-  // leemos TODOS los conjuntos sin saber el coord de antemano
+  // Lee TODOS los conjuntos sin saber el coordinador de antemano
   const snap = await getDocs(collectionGroup(db, 'conjuntos'));
   snap.forEach(d => {
     const x = d.data();
-    const conjuntoId = d.id;
-    const coordinadorId = d.ref.parent.parent.id; // padre del padre = doc del coordinador
-    const viajes = (x.viajes || []).filter(id => ID2GRUPO.has(id));
+    const conjuntoId    = d.id;
+    const coordinadorId = d.ref.parent.parent.id;   // doc padre del padre = coordinador
+    const viajes        = (x.viajes || []).filter(id => ID2GRUPO.has(id)); // normaliza arreglo
+
     SETS.push({
       id: conjuntoId,
       viajes,
       coordinadorId,
       confirmado: !!x.confirmado,
       alertas: [],
-      _ownerCoordId: coordinadorId  // ← para detectar “movidas” entre coords al guardar
+      _ownerCoordId: coordinadorId  // para detectar “movidas” entre coords al guardar
     });
   });
+
   evaluarAlertas();
   sortSetsInPlace();
-  populateFilterOptions();
+  populateFilterOptions(); // cataloga destinos/programas para filtros
 }
 
 /* =========================================================
@@ -143,11 +157,15 @@ const elWrapLibres = $('#lista-viajes-libres');
 const elWrapSets   = $('#conjuntos-wrap');
 const elMsg        = $('#msg');
 
+// Filtros de catálogo (resumen/libres)
 const selDestino = $('#f-destino');
 const selPrograma= $('#f-programa');
 const inpDesde   = $('#f-desde');
 const inpHasta   = $('#f-hasta');
-const inpBuscar  = $('#f-buscar');
+
+// Buscador de CONJUNTOS (ubícalo en la cabecera de “Viajes”)
+const inpBuscarSets = $('#buscar-sets');
+
 const wrapResumen= $('#resumen-wrap');
 const wrapStats  = $('#stats-viajes-wrap');
 
@@ -165,83 +183,49 @@ const tbodyCoords      = $('#tabla-coords tbody');
 const hintEmptyCoords  = $('#hint-empty-coords');
 
 // Toolbar
-$('#btn-sugerir').onclick = sugerirConjuntos;
-$('#btn-nuevo-conjunto').onclick = ()=>{
+$('#btn-sugerir')?.addEventListener('click', sugerirConjuntos);
+$('#btn-nuevo-conjunto')?.addEventListener('click', ()=>{
   SETS.unshift({viajes:[], coordinadorId:null, confirmado:false, alertas:[], _isNew:true});
   render();
-};
-$('#btn-guardar').onclick = ()=>withBusy($('#btn-guardar'), 'Guardando…', guardarTodo, 'Guardar cambios', '✅ Guardado');
+});
+$('#btn-guardar')?.addEventListener('click', ()=>withBusy($('#btn-guardar'), 'Guardando…', guardarTodo, 'Guardar cambios', '✅ Guardado'));
 
 // Modal handlers
-btnOpenModal.onclick  = ()=>{ openModal(); renderCoordsTable(); };
-btnCloseModal.onclick = closeModal;
-btnCerrar.onclick     = closeModal;
-btnGuardarCoords.onclick = ()=>withBusy(btnGuardarCoords, 'Guardando…', saveCoordsModal, 'Guardar coordinadores', '✅ Guardado');
-btnAddCoord.onclick = ()=>{
+btnOpenModal?.addEventListener('click', ()=>{ openModal(); renderCoordsTable(); });
+btnCloseModal?.addEventListener('click', closeModal);
+btnCerrar?.addEventListener('click', closeModal);
+btnGuardarCoords?.addEventListener('click', ()=>withBusy(btnGuardarCoords, 'Guardando…', saveCoordsModal, 'Guardar coordinadores', '✅ Guardado'));
+btnAddCoord?.addEventListener('click', ()=>{
   COORDS.unshift({nombre:'', rut:'', telefono:'', correo:'', destinos:[], disponibilidad:[], _isNew:true});
   renderCoordsTable(); setTimeout(initPickers,10);
-};
-btnAddLote.onclick = ()=> inputExcel.click();
-inputExcel.onchange = handleExcel;
+});
+btnAddLote?.addEventListener('click', ()=> inputExcel.click());
+inputExcel?.addEventListener('change', handleExcel);
 
-/* =========================================================
-   Excel → COORDS (con columna opcional "Destinos")
-   ========================================================= */
-function handleExcel(evt){
-  const file = evt.target.files?.[0];
-  if(!file) return;
+// Filtros (catálogo)
+function populateFilterOptions(){
+  // catálogo de destinos en MAYÚSCULA
+  DESTINOS = [...new Set(GRUPOS.map(g=>normDest(g.destino)).filter(Boolean))].sort();
 
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    try{
-      const wb = XLSX.read(e.target.result, { type:'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false, blankrows:false });
+  const dests=[...new Set(GRUPOS.map(g=>g.destino).filter(Boolean))].sort();
+  const progs=[...new Set(GRUPOS.map(g=>g.programa).filter(Boolean))].sort();
+  if (selDestino)  selDestino.innerHTML  = `<option value="">Todos los destinos</option>` + dests.map(d=>`<option>${escapeHtml(d)}</option>`).join('');
+  if (selPrograma) selPrograma.innerHTML = `<option value="">Todos los programas</option>` + progs.map(p=>`<option>${escapeHtml(p)}</option>`).join('');
 
-      const byName = new Map(COORDS.map(c => [ (c.nombre||'').trim().toUpperCase(), c ]));
-      const byRut  = new Map(COORDS.filter(c=>c.rut).map(c => [ c.rut.replace(/\s+/g,'').toUpperCase(), c ]));
+  selDestino?.addEventListener('change',  ()=>{ FILTER.destino = selDestino.value; render(); });
+  selPrograma?.addEventListener('change', ()=>{ FILTER.programa= selPrograma.value; render(); });
+  inpDesde?.addEventListener('change',    ()=>{ FILTER.desde   = inpDesde.value||''; render(); });
+  inpHasta?.addEventListener('change',    ()=>{ FILTER.hasta   = inpHasta.value||''; render(); });
 
-      for(const r of rows){
-        const nombre = (r.Nombre || r.NOMBRE || r.nombre || '').toString().trim();
-        if(!nombre) continue;
-
-        const rut      = (r.RUT || r.rut || '').toString().replace(/\s+/g,'').toUpperCase();
-        const telefono = (r.TELEFONO || r['TELÉFONO'] || r.tel || r.Tel || r.telefono || '').toString().trim();
-        const correo   = (r.Correo || r.CORREO || r.Email || r.EMAIL || r.email || '').toString().trim().toLowerCase();
-        const destinosCell = (r.Destinos || r.DESTINOS || r.destinos || '').toString();
-        const destinosXLS  = cleanDestinos(destinosCell.split(','));
-
-        let c = (rut && byRut.get(rut)) || byName.get(nombre.toUpperCase());
-        if (c){
-          c.nombre   = nombre;
-          c.rut      = rut;
-          c.telefono = telefono;
-          c.correo   = correo;
-          if (destinosXLS.length){
-            c.destinos = cleanDestinos([...(c.destinos||[]), ...destinosXLS]);
-          }
-        } else {
-          c = { nombre, rut, telefono, correo, destinos:destinosXLS, disponibilidad:[], _isNew:true };
-          COORDS.unshift(c);
-          byName.set(nombre.toUpperCase(), c);
-          if (rut) byRut.set(rut, c);
-        }
-      }
-
-      renderCoordsTable();
-      setTimeout(initPickers,10);
-    } catch (err){
-      console.error(err);
-      alert('No se pudo leer el Excel. Asegúrate de que sea .xlsx/.xls y que tenga la columna "Nombre".');
-    } finally {
-      evt.target.value = '';
-    }
-  };
-  reader.readAsBinaryString(file);
+  // Buscador de CONJUNTOS (tokens separados por coma)
+  inpBuscarSets?.addEventListener('input', ()=>{
+    SEARCH.tokens = parseTokens(inpBuscarSets.value);
+    renderSets(); // sólo re-pinto conjuntos (más ágil)
+  });
 }
 
 /* =========================================================
-   Utils varias (busy, filtros, etc.)
+   Utils generales
    ========================================================= */
 function withBusy(btn, busyText, fn, normalText, okText){
   const prev = btn.textContent;
@@ -287,41 +271,49 @@ function firstStartISO(s){
 function norm(s){ return (s??'').toString().trim().toLowerCase(); }
 function parseTokens(s){ return (s||'').split(',').map(t=>norm(t)).filter(Boolean); }
 
-function populateFilterOptions(){
-  // catálogo de destinos en MAYÚSCULA
-  DESTINOS = [...new Set(GRUPOS.map(g=>normDest(g.destino)).filter(Boolean))].sort();
-
-  const dests=[...new Set(GRUPOS.map(g=>g.destino).filter(Boolean))].sort();
-  const progs=[...new Set(GRUPOS.map(g=>g.programa).filter(Boolean))].sort();
-  selDestino.innerHTML = `<option value="">Todos los destinos</option>` + dests.map(d=>`<option>${escapeHtml(d)}</option>`).join('');
-  selPrograma.innerHTML= `<option value="">Todos los programas</option>` + progs.map(p=>`<option>${escapeHtml(p)}</option>`).join('');
-  selDestino.onchange = ()=>{ FILTER.destino=selDestino.value; render(); };
-  selPrograma.onchange= ()=>{ FILTER.programa=selPrograma.value; render(); };
-  inpDesde.onchange   = ()=>{ FILTER.desde = inpDesde.value||''; render(); };
-  inpHasta.onchange   = ()=>{ FILTER.hasta = inpHasta.value||''; render(); };
-  inpBuscar.oninput   = ()=>{ FILTER.tokens = parseTokens(inpBuscar.value); render(); };
-}
-
 function gruposFiltrados(arr=GRUPOS){
   return arr.filter(g=>{
     if (FILTER.destino && !norm(g.destino).includes(norm(FILTER.destino))) return false;
     if (FILTER.programa && !norm(g.programa).includes(norm(FILTER.programa))) return false;
     if (FILTER.desde && g.fechaInicio < FILTER.desde) return false;
     if (FILTER.hasta && g.fechaInicio > FILTER.hasta) return false;
-    if (FILTER.tokens?.length){
-      const hay=[g.aliasGrupo,g.nombreGrupo,g.numeroNegocio,g.identificador,g.programa,g.destino].map(norm);
-      if (!FILTER.tokens.every(tok=>hay.some(h=>h && h.includes(tok)))) return false;
-    }
     return true;
+  });
+}
+
+// Conjuntos filtrados por SEARCH.tokens (AND entre tokens)
+function setsFiltrados(arr=SETS){
+  const toks = SEARCH.tokens || [];
+  if (!toks.length) return arr;
+
+  return arr.filter(s=>{
+    const coordName = s.coordinadorId ? (COORDS.find(c=>c.id===s.coordinadorId)?.nombre||'') : '';
+    const viajes = (s.viajes||[]).map(id=>ID2GRUPO.get(id)).filter(Boolean);
+
+    // Campos buscables (todo en minúsculas)
+    const hay = [];
+    hay.push(norm(coordName));
+    viajes.forEach(v=>{
+      hay.push(
+        norm(v.aliasGrupo),
+        norm(v.nombreGrupo),
+        norm('#'+(v.numeroNegocio||'')),
+        norm(v.identificador),
+        norm(v.programa),
+        norm(v.destino),
+        norm(v.id||'')
+      );
+      hay.push(norm(fmtDMY(v.fechaInicio)), norm(fmtDMY(v.fechaFin)));
+      hay.push(norm(v.fechaInicio), norm(v.fechaFin));
+    });
+
+    return toks.every(tok => hay.some(h => h && h.includes(tok)));
   });
 }
 
 /* =========================================================
    BLOQUEO por confirmación (coordinadores ya en uso)
    ========================================================= */
-// -------- BLOQUEO por confirmación --------
-// Bloquea coordinadores ya confirmados, tanto los que estén en SETS
-// como los que ya quedaron persistidos en GRUPOS (conjuntoId + coordinadorId).
 function getBlockedCoordIds(exceptSetIdx = null){
   const blocked = new Set();
 
@@ -333,11 +325,9 @@ function getBlockedCoordIds(exceptSetIdx = null){
     }
   });
 
-  // b) Confirmados persistidos en grupos (por si SETS no los tiene cargados)
-  //    Cualquier grupo con conjuntoId y coordinadorId se considera ya en uso.
+  // b) Confirmados persistidos en grupos
   GRUPOS.forEach(g=>{
     if (g.conjuntoId && g.coordinadorId){
-      // si estamos evaluando un set concreto y ese mismo set ya usa al coord, no lo bloqueamos
       if (exceptSetIdx!==null && SETS[exceptSetIdx]?.coordinadorId === g.coordinadorId) return;
       blocked.add(g.coordinadorId);
     }
@@ -347,7 +337,7 @@ function getBlockedCoordIds(exceptSetIdx = null){
 }
 
 /* =========================================================
-   Render principal
+   Render
    ========================================================= */
 function render(){
   sortSetsInPlace();
@@ -355,7 +345,7 @@ function render(){
   renderLibres();
   renderSets();
   renderViajesStats();
-  elMsg.textContent='';
+  elMsg && (elMsg.textContent='');
 }
 
 function renderResumen(){
@@ -376,12 +366,12 @@ function renderResumen(){
         `:`<div class="empty">Sin datos.</div>`}
       </div>
     </div>`;
-  $('#resumen-wrap').innerHTML=`
+  wrapResumen && (wrapResumen.innerHTML=`
     <div class="row" style="gap:.8rem; align-items:flex-start; flex-wrap:wrap;">
       ${mk('Por destino',tDest)}
       ${mk('Por fecha de inicio',tIniDMY)}
       ${mk('Por programa',tProg)}
-    </div>`;
+    </div>`);
 }
 
 function viajesUsadosSetIds(){ const s=new Set(); SETS.forEach(x=>x.viajes.forEach(id=>s.add(id))); return s; }
@@ -390,6 +380,7 @@ function renderLibres(){
   const usados=viajesUsadosSetIds();
   const libresAll=GRUPOS.filter(g=>!usados.has(g.id));
   const libres=gruposFiltrados(libresAll);
+  if (!elWrapLibres) return;
   if (!libres.length){ elWrapLibres.innerHTML='<div class="empty">No hay viajes libres.</div>'; return; }
   elWrapLibres.innerHTML=libres.map(g=>`
     <div class="card">
@@ -406,9 +397,13 @@ function renderLibres(){
 }
 
 function renderSets(){
-  if (!SETS.length){ elWrapSets.innerHTML='<div class="empty">Sin viajes asignados.</div>'; return; }
+  if (!elWrapSets) return;
+  const list = setsFiltrados(SETS);      // ← aplica BUSCADOR de conjuntos
+  if (!list.length){ elWrapSets.innerHTML='<div class="empty">Sin viajes asignados (sin resultados en la búsqueda).</div>'; return; }
+
   elWrapSets.innerHTML='';
-  SETS.forEach((s,idx)=>{
+  list.forEach((s)=>{
+    const idx = SETS.indexOf(s); // índice real (para handlers)
     const viajes=s.viajes.map(id=>ID2GRUPO.get(id)).filter(Boolean);
 
     // Destinos del set (en MAYÚSCULA) para aptitud
@@ -458,7 +453,7 @@ function renderSets(){
       <div class="card">
         <div class="hd">
           <div class="row">
-            <span class="tag">Viajes ${idx+1}</span>
+            <span class="tag">VIAJES ${idx+1}</span>
             ${s._isNew?'<span class="pill">Nuevo</span>':''}
             ${s.confirmado?'<span class="pill">Confirmado</span>':''}
           </div>
@@ -481,12 +476,12 @@ function renderSets(){
       </div>`);
   });
 
-  // Handlers
+  // Handlers de la lista (usan índices reales guardados en data-*)
   elWrapSets.querySelectorAll('input[data-alias]').forEach(inp=>{
     inp.onchange=()=>{ const g=ID2GRUPO.get(inp.dataset.alias); if(g){ g.aliasGrupo=inp.value; } };
   });
   elWrapSets.querySelectorAll('button[data-del]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.set; SETS[i].viajes = SETS[i].viajes.filter(id=>id!==btn.dataset.del); evaluarAlertas(); render(); };
+    btn.onclick=()=>{ const i=+btn.dataset.set; SETS[i].viajes = SETS[i].viajes.filter(id=>id!==btn.dataset.del); evaluarAlertas(); renderSets(); };
   });
   elWrapSets.querySelectorAll('button[data-move]').forEach(btn=>{
     btn.onclick=()=>{ const i=+btn.dataset.set; moverViajeAotroConjunto(btn.dataset.move,i); };
@@ -495,16 +490,16 @@ function renderSets(){
     btn.onclick=()=>agregarViajeAConjunto(+btn.dataset.addv);
   });
   elWrapSets.querySelectorAll('button[data-delset]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.delset; if(!confirm('¿Eliminar este grupo de viajes?'))return; SETS.splice(i,1); evaluarAlertas(); render(); };
+    btn.onclick=()=>{ const i=+btn.dataset.delset; if(!confirm('¿Eliminar este grupo de viajes?'))return; SETS.splice(i,1); evaluarAlertas(); renderSets(); };
   });
   elWrapSets.querySelectorAll('button[data-sugerirc]').forEach(btn=>{
     btn.onclick=()=>sugerirCoordinador(+btn.dataset.sugerirc);
   });
   elWrapSets.querySelectorAll('button[data-confirm]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.confirm; SETS[i].confirmado=!SETS[i].confirmado; render(); };
+    btn.onclick=()=>{ const i=+btn.dataset.confirm; SETS[i].confirmado=!SETS[i].confirmado; renderSets(); };
   });
   elWrapSets.querySelectorAll('select[data-coord]').forEach(sel=>{
-    sel.onchange=()=>{ const i=+sel.dataset.coord; SETS[i].coordinadorId = sel.value||null; evaluarAlertas(); render(); };
+    sel.onchange=()=>{ const i=+sel.dataset.coord; SETS[i].coordinadorId = sel.value||null; evaluarAlertas(); renderSets(); };
   });
 
   elWrapSets.querySelectorAll('button[data-swap]').forEach(btn=>{
@@ -520,11 +515,8 @@ function renderSets(){
 }
 
 /* =========================================================
-   Sugeridor (solo viajes NO confirmados; mantiene confirmados)
+   Sugeridor (respeta confirmados memoria + persistido)
    ========================================================= */
-// ------------------ Sugeridor ------------------
-// Recalcula SOLO para viajes NO confirmados.
-// Toma como fijos tanto los confirmados en SETS como los persistidos en GRUPOS.
 function sugerirConjuntos(){
   // 1) Fijos en memoria (SETS)
   const fixedSetsMem = SETS.filter(s => s.confirmado && !!s.coordinadorId);
@@ -532,33 +524,25 @@ function sugerirConjuntos(){
   fixedSetsMem.forEach(s => (s.viajes||[]).forEach(id => fixedTripIds.add(id)));
 
   // 2) Fijos persistidos en GRUPOS (reconstruye por conjuntoId/coordinadorId)
-  const mapConjunto = new Map(); // conjuntoId -> { id, viajes:[], coordinadorId, confirmado:true, alertas:[] }
+  const mapConjunto = new Map();
   for (const g of GRUPOS){
     if (g.conjuntoId && g.coordinadorId){
       if (!mapConjunto.has(g.conjuntoId)){
-        mapConjunto.set(g.conjuntoId, {
-          id: g.conjuntoId,
-          viajes: [],
-          coordinadorId: g.coordinadorId,
-          confirmado: true,
-          alertas: []
-        });
+        mapConjunto.set(g.conjuntoId, { id:g.conjuntoId, viajes:[], coordinadorId:g.coordinadorId, confirmado:true, alertas:[] });
       }
       mapConjunto.get(g.conjuntoId).viajes.push(g.id);
     }
   }
   const fixedFromGrupos = Array.from(mapConjunto.values());
-
-  // Evita duplicar: si ya fijamos por memoria, no repitamos
   const fixedFromGruposFiltered = fixedFromGrupos.filter(fs => !fs.viajes.some(id => fixedTripIds.has(id)));
 
-  // 3) Pool a recalcular = todos los viajes que NO están en ningún fijo (memoria o persistido)
+  // 3) Pool a recalcular = viajes que no están en ningún fijo
   fixedFromGruposFiltered.forEach(fs => fs.viajes.forEach(id => fixedTripIds.add(id)));
   const pool = GRUPOS
     .filter(g => !fixedTripIds.has(g.id))
     .sort((a,b) => cmpISO(a.fechaInicio, b.fechaInicio));
 
-  // 4) Greedy sobre el pool (mismo algoritmo)
+  // 4) Greedy sobre el pool
   const work = []; // [{viajes:[], lastFin, zeroChain}]
   for (const g of pool){
     let best = -1;
@@ -582,20 +566,20 @@ function sugerirConjuntos(){
     }
   }
 
-  // 5) Volcar sugerencias (borradores)
+  // 5) Sugerencias (borradores)
   const suggested = work.map(() => ({ viajes:[], coordinadorId:null, confirmado:false, alertas:[], _isNew:true }));
   for (let i=0;i<work.length;i++){ suggested[i].viajes = work[i].viajes.slice(); }
 
-  // 6) Resultado final = fijos (memoria) + fijos (persistidos) + sugerencias
+  // 6) Resultado: fijos (memoria) + fijos (persistido) + sugerencias
   SETS = fixedSetsMem.concat(fixedFromGruposFiltered).concat(suggested);
 
   evaluarAlertas();
   sortSetsInPlace();
-  render();
+  renderSets(); // solo refresco conjuntos
 }
 
 /* =========================================================
-   Alertas / Consistencia (incluye aptitud de destinos)
+   Alertas / Consistencia (incluye aptitud destinos)
    ========================================================= */
 function evaluarAlertas(){
   SETS.forEach(s=> s.alertas=[]);
@@ -615,13 +599,11 @@ function evaluarAlertas(){
     if (s.coordinadorId){
       const c=COORDS.find(x=>x.id===s.coordinadorId);
       if (c){
-        // Disponibilidad
         viajes.forEach(v=>{
           if (!inAnyRange(v.fechaInicio,v.fechaFin,c.disponibilidad||[])){
             s.alertas.push({tipo:'warn', msg:`Coordinador fuera de disponibilidad en ${v.aliasGrupo||v.nombreGrupo}`});
           }
         });
-        // Aptitud por destino (si el coord tiene lista)
         if ((c.destinos||[]).length){
           viajes.forEach(v=>{
             const d = normDest(v.destino);
@@ -658,14 +640,14 @@ function seleccionarConjuntoDestino(grupoId){
   const n=prompt(`¿A qué grupo mover este viaje? (1..${SETS.length})`); if (!n) return;
   const idx=(+n)-1; if (idx<0||idx>=SETS.length){ alert('Número inválido'); return; }
   if (SETS.some(s=>s.viajes.includes(grupoId))) SETS.forEach(s=> s.viajes=s.viajes.filter(id=>id!==grupoId));
-  SETS[idx].viajes.push(grupoId); evaluarAlertas(); render();
+  SETS[idx].viajes.push(grupoId); evaluarAlertas(); renderSets();
 }
 function moverViajeAotroConjunto(grupoId, desdeIdx){
   if (SETS.length<=1){ alert('No hay otro grupo.'); return; }
   const n=prompt(`Mover al grupo (1..${SETS.length}, distinto de ${desdeIdx+1})`); if(!n) return;
   const to=(+n)-1; if(to===desdeIdx||to<0||to>=SETS.length){ alert('Número inválido'); return; }
   SETS[desdeIdx].viajes = SETS[desdeIdx].viajes.filter(id=>id!==grupoId);
-  SETS[to].viajes.push(grupoId); evaluarAlertas(); render();
+  SETS[to].viajes.push(grupoId); evaluarAlertas(); renderSets();
 }
 function agregarViajeAConjunto(setIdx){
   const usados=viajesUsadosSetIds();
@@ -675,7 +657,7 @@ function agregarViajeAConjunto(setIdx){
   const listado=libres.map((g,i)=>`${i+1}) ${g.aliasGrupo||g.nombreGrupo} [${fmtDMY(g.fechaInicio)}→${fmtDMY(g.fechaFin)}] • #${g.numeroNegocio} • ${g.programa||''} • ${g.destino||''}`).join('\n');
   const n=prompt(`Selecciona # de viaje a agregar (filtrado):\n${listado}`); if(!n) return;
   const i=(+n)-1; if(i<0||i>=libres.length) return;
-  SETS[setIdx].viajes.push(libres[i].id); evaluarAlertas(); render();
+  SETS[setIdx].viajes.push(libres[i].id); evaluarAlertas(); renderSets();
 }
 function handleSwapClick(setIdx, grupoId, btn){
   if (!swapMode){ swapMode=true; swapFirst={setIdx,grupoId}; elWrapSets.querySelectorAll('button[data-swap].selected-swap').forEach(b=>b.classList.remove('selected-swap')); btn.classList.add('selected-swap'); return; }
@@ -687,10 +669,10 @@ function swapBetweenSets(a,b){
   SETS[b.setIdx].viajes=SETS[b.setIdx].viajes.filter(id=>id!==b.grupoId);
   SETS[a.setIdx].viajes.push(b.grupoId);
   SETS[b.setIdx].viajes.push(a.grupoId);
-  evaluarAlertas(); render();
+  evaluarAlertas(); renderSets();
 }
 
-// Sugerir coordinador para un grupo (filtra bloqueados, disponibilidad y aptitud por destino)
+// Sugerir coordinador (filtra bloqueados, disponibilidad y aptitud por destino)
 function sugerirCoordinador(setIdx){
   const s=SETS[setIdx];
   const viajes=s.viajes.map(id=>ID2GRUPO.get(id)).filter(Boolean);
@@ -704,7 +686,7 @@ function sugerirCoordinador(setIdx){
   );
   if (!ok.length){ alert('No hay coordinadores disponibles (fechas/destinos) que cubran todo el grupo.'); return; }
   s.coordinadorId = ok[0].id;
-  evaluarAlertas(); render();
+  evaluarAlertas(); renderSets();
 }
 
 /* =========================================================
@@ -726,30 +708,48 @@ function cleanRanges(arr){
     .filter(r=>r.inicio && r.fin && (new Date(r.inicio)<=new Date(r.fin)));
 }
 
-// Guardar UNA fila (botón 💾 de la fila)
+// 💾 Guardar UNA fila de coordinador (con meta correcto)
 async function saveOneCoord(i){
   const c = COORDS[i];
   const nombre=(c.nombre||'').trim();
   if (!nombre){ alert('Debe indicar nombre.'); return; }
-  const payload={
+
+  const base = {
     nombre,
     rut:(c.rut||'').replace(/\s+/g,'').toUpperCase(),
     telefono:(c.telefono||'').trim(),
     correo:(c.correo||'').trim().toLowerCase(),
-    destinos: cleanDestinos(c.destinos),                     // 👈 guarda destinos aptos
+    destinos: cleanDestinos(c.destinos),
     disponibilidad: cleanRanges(c.disponibilidad),
     activo:(c.activo!==false),
     notas:(c.notas||'').trim(),
-    'meta.actualizadoEn': serverTimestamp()
   };
-  let id = c.id || await findCoordId({ rut: payload.rut, nombre: payload.nombre });
+
+  // Resolver ID (por rut o nombre) o crear slug
+  let id = c.id || await findCoordId({ rut: base.rut, nombre: base.nombre });
+  let isNew = false;
+
   if (!id){
-    const wanted=slugNombre(payload.nombre);
-    const exists=await getDoc(doc(db,'coordinadores', wanted));
-    id = exists.exists()? `${wanted}-${Date.now().toString(36).slice(-4)}` : wanted;
+    const wanted = slugNombre(base.nombre);
+    const exists = await getDoc(doc(db,'coordinadores', wanted));
+    id   = exists.exists() ? `${wanted}-${Date.now().toString(36).slice(-4)}` : wanted;
+    isNew = true;
   }
-  await setDoc(doc(db,'coordinadores', id), {...payload, meta:{ creadoEn: serverTimestamp() }}, { merge:true });
-  c.id=id; delete c._isNew;
+
+  const ref = doc(db, 'coordinadores', id);
+  await setDoc(
+    ref,
+    {
+      ...base,
+      meta: isNew
+        ? { creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() }
+        : { actualizadoEn: serverTimestamp() }
+    },
+    { merge: true }
+  );
+
+  c.id = id;
+  delete c._isNew;
 }
 
 // Guardar todas las filas del modal
@@ -760,11 +760,11 @@ async function saveCoordsModal(){
     await saveOneCoord(i);
   }
   await loadCoordinadores();
-  closeModal(); evaluarAlertas(); render();
+  closeModal(); evaluarAlertas(); renderSets();
 }
 
 /* =========================================================
-   Estadísticas de viajes
+   Estadísticas de viajes (sobre todos los SETS)
    ========================================================= */
 function computeViajesStats(){
   const sizes = SETS.map(s => s.viajes?.length || 0);
@@ -825,6 +825,7 @@ function computeViajesStats(){
 }
 
 function renderViajesStats(){
+  if (!wrapStats) return;
   if (!SETS.length){ wrapStats.innerHTML='<div class="empty">AÚN NO HAY GRUPOS DE VIAJES.</div>'; return; }
   const s=computeViajesStats();
 
@@ -873,11 +874,12 @@ function renderViajesStats(){
 /* =========================================================
    Modal coordinadores (con columna DESTINOS)
    ========================================================= */
-function openModal(){ mb.style.display='block'; modal.style.display='flex'; }
-function closeModal(){ modal.style.display='none'; mb.style.display='none'; }
+function openModal(){ mb && (mb.style.display='block'); modal && (modal.style.display='flex'); }
+function closeModal(){ if(modal) modal.style.display='none'; if(mb) mb.style.display='none'; }
 
 function renderCoordsTable(){
-  tbodyCoords.innerHTML=''; hintEmptyCoords.style.display=COORDS.length?'none':'block';
+  if (!tbodyCoords) return;
+  tbodyCoords.innerHTML=''; hintEmptyCoords && (hintEmptyCoords.style.display=COORDS.length?'none':'block');
 
   const arr=COORDS.slice().sort((a,b)=> (!!a._isNew!==!!b._isNew) ? (a._isNew?-1:1) : (a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}));
 
@@ -988,7 +990,7 @@ function initPickers(){
   if (window.flatpickr && window.flatpickr.l10ns && window.flatpickr.l10ns.es){
     flatpickr.localize(flatpickr.l10ns.es);
   }
-  tbodyCoords.querySelectorAll('.picker-range').forEach(inp=>{
+  tbodyCoords?.querySelectorAll('.picker-range')?.forEach(inp=>{
     if (inp._flatpickr) inp._flatpickr.destroy();
     flatpickr(inp, {
       mode:'range',
@@ -1008,7 +1010,7 @@ function initPickers(){
 }
 
 /* =========================================================
-   Utilidades varias
+   Utils varios
    ========================================================= */
 function limpiarAlias(nombreCompleto){
   return (nombreCompleto||'').replace(/\d{4}/g,'')
@@ -1018,10 +1020,13 @@ function limpiarAlias(nombreCompleto){
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
 /* =========================================================
-   Guardar cambios (persiste SOLO confirmados)
+   Guardar CAMBIOS (persiste SOLO confirmados)
+   - Conjuntos se guardan / mueven en coordinadores/{coord}/conjuntos
+   - grupos/{gid} recibe { conjuntoId, coordinador (NOMBRE), coordinadorId }
+   - Conjuntos NO confirmados ⇒ grupos quedan limpios.
    ========================================================= */
 async function guardarTodo(){
-  // 0) alias de grupos como ya lo haces
+  // 0) alias de grupos
   for (const g of GRUPOS){
     await updateDoc(doc(db,'grupos', g.id), { aliasGrupo: g.aliasGrupo || null });
   }
@@ -1032,29 +1037,25 @@ async function guardarTodo(){
     const estaConfirmado = !!s.confirmado && !!s.coordinadorId;
 
     if (estaConfirmado){
-      // payload del conjunto
       const payload = {
         viajes: s.viajes.slice(),
         confirmado: true,
         meta: { actualizadoEn: serverTimestamp() }
       };
 
-      // si cambió de dueño (coordinador) movemos el doc
+      // ¿cambió de dueño? (coordinador distinto)
       if (s.id && s._ownerCoordId && s._ownerCoordId !== s.coordinadorId){
-        // eliminar en el dueño anterior
-        try {
-          await deleteDoc(doc(db, `coordinadores/${s._ownerCoordId}/conjuntos/${s.id}`));
-        } catch (_) {}
-        s.id = null; // forzamos alta nueva debajo del nuevo dueño
+        try { await deleteDoc(doc(db, 'coordinadores', s._ownerCoordId, 'conjuntos', s.id)); } catch (_) {}
+        s.id = null; // forzar alta en nuevo dueño
       }
 
       // upsert bajo el coordinador actual
       let ref;
       if (s.id){
-        ref = doc(db, `coordinadores/${s.coordinadorId}/conjuntos/${s.id}`);
+        ref = doc(db, 'coordinadores', s.coordinadorId, 'conjuntos', s.id);
         await setDoc(ref, payload, { merge:true });
       } else {
-        ref = await addDoc(collection(db, `coordinadores/${s.coordinadorId}/conjuntos`), {
+        ref = await addDoc(collection(db, 'coordinadores', s.coordinadorId, 'conjuntos'), {
           ...payload,
           meta: { creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() }
         });
@@ -1062,21 +1063,21 @@ async function guardarTodo(){
       }
       s._ownerCoordId = s.coordinadorId;
 
-      // nombre del coord (para escribirlo en cada grupo)
+      // nombre del coord para escribirlo en grupos
       const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
 
       for (const gid of s.viajes){
         await updateDoc(doc(db,'grupos', gid), {
           conjuntoId: s.id,
-          coordinador: coordNombre,
-          coordinadorId: s.coordinadorId || null
+          coordinador: coordNombre,                // ← NOMBRE visible
+          coordinadorId: s.coordinadorId || null   // ← opcional, útil para bloqueo
         });
         usadosConfirmados.add(gid);
       }
 
       delete s._isNew;
     } else {
-      // no confirmado: limpiar en grupos + borrar doc si existía bajo su dueño actual
+      // no confirmado: limpiar en grupos + borrar doc si existía
       for (const gid of (s.viajes||[])){
         await updateDoc(doc(db,'grupos', gid), {
           conjuntoId: null,
@@ -1086,12 +1087,12 @@ async function guardarTodo(){
       }
       const owner = s._ownerCoordId || s.coordinadorId;
       if (s.id && owner){
-        try { await deleteDoc(doc(db, `coordinadores/${owner}/conjuntos/${s.id}`)); } catch(_){}
+        try { await deleteDoc(doc(db, 'coordinadores', owner, 'conjuntos', s.id)); } catch(_){}
       }
     }
   }
 
-  // 2) seguridad extra
+  // Seguridad extra: si algún grupo quedó fuera de confirmados, dejarlo limpio
   for (const g of GRUPOS){
     if (!usadosConfirmados.has(g.id)){
       await updateDoc(doc(db,'grupos', g.id), {
