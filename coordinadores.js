@@ -554,46 +554,61 @@ function handleExcel(evt){
 // Estadísticas
 // ------------------------------
 function computeViajesStats(){
-  const sizes=SETS.map(s=>s.viajes?.length||0);
-  const totalGrupos=sizes.length, totalTramos=sizes.reduce((a,b)=>a+b,0);
-  const dist={}; sizes.forEach(n=>{ dist[n]=(dist[n]||0)+1; });
+  const sizes = SETS.map(s => s.viajes?.length || 0);
+  const totalGrupos = sizes.length;
+  const totalTramos = sizes.reduce((a,b)=>a+b,0);
+  const dist = {}; sizes.forEach(n => { dist[n] = (dist[n]||0) + 1; });
 
-  let paresSinDescanso=0, gruposConGap0=0, paresSolapados=0, paresOrdenMalo=0, gruposTodosDescanso=0;
-  let totalErr=0, totalWarn=0, confirmados=0, conCoordinador=0;
-  const coordsAsignados=new Set();
+  let paresSinDescanso = 0,
+      gruposConGap0   = 0,
+      paresSolapados  = 0,
+      paresOrdenMalo  = 0,
+      gruposTodosDescanso = 0;
+
+  let totalErr = 0, totalWarn = 0, confirmados = 0, conCoordinador = 0;
+  const coordsAsignados = new Set();
 
   for (const s of SETS){
-    const viajes=(s.viajes||[]).map(id=>ID2GRUPO.get(id)).filter(Boolean).sort((a,b)=>cmpISO(a.fechaInicio,b.fechaInicio));
+    const viajes = (s.viajes||[])
+      .map(id => ID2GRUPO.get(id)).filter(Boolean)
+      .sort((a,b)=>cmpISO(a.fechaInicio,b.fechaInicio));
+
     if (s.confirmado) confirmados++;
     if (s.coordinadorId){ conCoordinador++; coordsAsignados.add(s.coordinadorId); }
-    (s.alertas||[]).forEach(a=> (a.tipo==='err'? totalErr++ : totalWarn++));
+    (s.alertas||[]).forEach(a => (a.tipo==='err' ? totalErr++ : totalWarn++));
 
-    let tuvo0=false, todos>=1? true:true; // we’ll compute below
-    let todosOK=true;
+    let tuvo0 = false;
+    let todosOK = true; // todos los cambios con >=1 día libre
+
     for (let i=0;i<viajes.length-1;i++){
-      const A=viajes[i], B=viajes[i+1];
-      const gap=gapDays(A.fechaFin, B.fechaInicio);
-      if (gap<0) paresOrdenMalo++;
-      if (gap===0){ paresSinDescanso++; tuvo0=true; }
-      if (gap<1) todosOK=false;
+      const A = viajes[i], B = viajes[i+1];
+      const gap = gapDays(A.fechaFin, B.fechaInicio);
+      if (gap < 0) paresOrdenMalo++;
+      if (gap === 0){ paresSinDescanso++; tuvo0 = true; }
+      if (gap < 1) todosOK = false;
       if (overlap(A.fechaInicio,A.fechaFin,B.fechaInicio,B.fechaFin)) paresSolapados++;
     }
+
     if (tuvo0) gruposConGap0++;
-    if (viajes.length>=2 && todosOK) gruposTodosDescanso++;
+    if (viajes.length >= 2 && todosOK) gruposTodosDescanso++;
   }
 
-  const min=sizes.length?Math.min(...sizes):0;
-  const max=sizes.length?Math.max(...sizes):0;
-  const promedio= totalGrupos? (totalTramos/totalGrupos):0;
-  const mediana=(()=>{
-    if(!sizes.length) return 0;
-    const s=sizes.slice().sort((a,b)=>a-b), m=Math.floor(s.length/2);
-    return s.length%2 ? s[m] : (s[m-1]+s[m])/2;
+  const min = sizes.length ? Math.min(...sizes) : 0;
+  const max = sizes.length ? Math.max(...sizes) : 0;
+  const promedio = totalGrupos ? (totalTramos/totalGrupos) : 0;
+  const mediana = (() => {
+    if (!sizes.length) return 0;
+    const s = sizes.slice().sort((a,b)=>a-b), m = Math.floor(s.length/2);
+    return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
   })();
 
-  return { totalGrupos,totalTramos,dist,min,max,promedio,mediana,
-           paresSinDescanso,gruposConGap0,gruposTodosDescanso,paresSolapados,paresOrdenMalo,
-           totalErr,totalWarn,confirmados,conCoordinador, coordsUnicos:coordsAsignados.size };
+  return {
+    totalGrupos,totalTramos,dist,min,max,promedio,mediana,
+    paresSinDescanso,gruposConGap0,gruposTodosDescanso,
+    paresSolapados,paresOrdenMalo,
+    totalErr,totalWarn,confirmados,conCoordinador,
+    coordsUnicos: coordsAsignados.size
+  };
 }
 
 function renderViajesStats(){
