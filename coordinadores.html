@@ -59,9 +59,9 @@
       position:fixed; left:50%; transform:translateX(-50%);
       top:4vh; width:min(1100px,96vw);
       background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2);
-      display:none;
+      display:none;              /* oculto por defecto */
       max-height:88vh;
-      display:flex; flex-direction:column;
+      flex-direction:column;     /* ok, pero sin forzar display aquí */
     }
     .modal .hd { padding:.8rem 1rem; border-bottom:1px solid #eee; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
     .modal .bd { padding:1rem; overflow:auto; flex:1; }
