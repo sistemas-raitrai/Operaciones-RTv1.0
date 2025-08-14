@@ -5,7 +5,7 @@
   <title>Viajes | Asignación y Coordinadores</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Estilos globales del sistema (restaura tu fuente) -->
+  <!-- Estilos globales del sistema -->
   <link rel="stylesheet" href="estilos.css" />
   <!-- Flatpickr -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -28,7 +28,7 @@
     .card .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
     .card .bd { padding:.6rem .8rem; }
 
-    /* ====== Tipos, chips y tabla ====== */
+    /* ====== Tipos/chips/tabla ====== */
     .muted { color:#666; }
     .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
     .tag { background:#eef3fa; color:#1f64b2; padding:.1rem .4rem; border-radius:6px; font-size:.85rem; }
@@ -61,7 +61,7 @@
     .modal .bd { padding:1rem; max-height:70vh; overflow:auto; }
     .modal .ft { padding:.8rem 1rem; border-top:1px solid #eee; display:flex; justify-content:flex-end; gap:.5rem; }
     .x { cursor:pointer; font-size:1.4rem; line-height:1; }
-    .picker-range { width:180px; }
+    .picker-range { width:210px; }
 
     /* ====== MAYÚSCULAS + heredar fuente (solo visual) ====== */
     .page, .page * { text-transform: uppercase; }
@@ -85,7 +85,7 @@
   <div class="page">
     <h2>Asignación De <b>Viajes</b> Y Coordinadores</h2>
 
-    <!-- Toolbar -->
+    <!-- Barra de acciones PRINCIPAL (antes de estadísticas) -->
     <div class="toolbar">
       <button class="btn" id="btn-modal-coords">Gestionar coordinadores</button>
       <button class="btn ghost" id="btn-sugerir">Sugerir grupos de viajes (auto)</button>
@@ -155,6 +155,7 @@
       <table id="tabla-coords" style="margin-top:.6rem;">
         <thead>
           <tr>
+            <th>#</th>
             <th>Nombre *</th>
             <th>RUT</th>
             <th>Teléfono</th>
@@ -181,16 +182,14 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- Encabezado global (si tu app lo usa) -->
+  <!-- Encabezado global -->
   <script type="module">
-    fetch('encabezado.html')
-      .then(r => r.text())
-      .then(html => { document.getElementById('encabezado').innerHTML = html; });
+    fetch('encabezado.html').then(r=>r.text()).then(html=>{ document.getElementById('encabezado').innerHTML = html; });
   </script>
 
-  <!-- Firebase + scripts de la app -->
+  <!-- Firebase + scripts -->
   <script type="module" src="./firebase-init.js"></script>
-  <script type="module" src="./script.js"></script>        <!-- si tu app lo necesita -->
+  <script type="module" src="./script.js"></script>
   <script type="module" src="./coordinadores.js"></script>
 </body>
 </html>
