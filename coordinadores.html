@@ -2,10 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Asignación de Coordinadores a Viajes</title>
+  <title>Viajes | Asignación y Coordinadores</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Estilos globales del sistema -->
+  <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css" />
   <!-- Flatpickr -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -14,8 +14,6 @@
     /* ====== Layout ====== */
     .page { padding: 1rem 1.2rem; }
     h2 { margin: .6rem 0 1rem; }
-
-    .toolbar { display:flex; gap:.5rem; margin:.8rem 0 1.2rem; flex-wrap:wrap; align-items:center; }
     .grid { display:grid; grid-template-columns: 340px 1fr; gap:1rem; align-items:start; }
 
     /* ====== Contenedores ====== */
@@ -28,7 +26,12 @@
     .card .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
     .card .bd { padding:.6rem .8rem; }
 
-    /* ====== Tipos/chips/tabla ====== */
+    /* ====== Tipografía (UI en mayúsculas, respeta la fuente del sistema) ====== */
+    .page, .page * { text-transform: uppercase; }
+    .page input, .page select, .page button, .page textarea, .page table { font-family: inherit !important; font-size: 100%; }
+    ::placeholder { text-transform: uppercase; }
+
+    /* ====== Utilidades ====== */
     .muted { color:#666; }
     .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
     .tag { background:#eef3fa; color:#1f64b2; padding:.1rem .4rem; border-radius:6px; font-size:.85rem; }
@@ -41,6 +44,7 @@
     th { background:#f8fafc; }
     input[type="text"] { width:100%; box-sizing:border-box; padding:.35rem .45rem; }
     select, input[type="date"] { padding:.35rem .45rem; }
+    .empty { color:#777; font-style:italic; padding:.4rem 0; }
 
     /* ====== Botones ====== */
     .btn { background:#1f64b2; color:#fff; border:none; padding:.5rem .8rem; border-radius:6px; cursor:pointer; }
@@ -48,51 +52,29 @@
     .btn.ghost     { background:#e8eef6; color:#1f64b2; }
     .btn.small     { padding:.3rem .55rem; font-size:.9rem; }
     .btn.small.selected-swap{ outline:2px solid #1f64b2; box-shadow:0 0 0 3px #d9e9ff inset; }
-    .empty { color:#777; font-style:italic; padding:.4rem 0; }
 
-    /* ====== Modal ====== */
+    /* ====== Modal coordinadores (alto fijo con footer visible) ====== */
     .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.4); display:none; }
     .modal {
-      position:fixed; top:6vh; left:50%; transform:translateX(-50%);
-      width:min(980px,96vw); background:#fff; border-radius:12px;
-      box-shadow:0 10px 30px rgba(0,0,0,.2); display:none;
+      position:fixed; left:50%; transform:translateX(-50%);
+      top:4vh; width:min(1100px,96vw);
+      background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2);
+      display:none;
+      max-height:88vh;
+      display:flex; flex-direction:column;
     }
     .modal .hd { padding:.8rem 1rem; border-bottom:1px solid #eee; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
-    .modal .bd { padding:1rem; max-height:70vh; overflow:auto; }
+    .modal .bd { padding:1rem; overflow:auto; flex:1; }
     .modal .ft { padding:.8rem 1rem; border-top:1px solid #eee; display:flex; justify-content:flex-end; gap:.5rem; }
     .x { cursor:pointer; font-size:1.4rem; line-height:1; }
-    .picker-range { width:210px; }
-
-    /* ====== MAYÚSCULAS + heredar fuente (solo visual) ====== */
-    .page, .page * { text-transform: uppercase; }
-    .page input, .page select, .page button, .page textarea,
-    .page table, .page .card, .page .panel {
-      font-family: inherit !important;
-      font-size: 100%;
-    }
-    .flatpickr-calendar, .flatpickr-calendar * {
-      text-transform: uppercase;
-      font-family: inherit !important;
-    }
-    ::placeholder { text-transform: uppercase; }
-    .no-caps, .no-caps * { text-transform: none !important; }
+    .picker-range { width:220px; }
   </style>
 </head>
 <body>
-  <!-- Encabezado global -->
   <div id="encabezado"></div>
 
   <div class="page">
-    <h2>Asignación de Coordinadores a Viajes</h2>
-
-    <!-- Barra de acciones PRINCIPAL (antes de estadísticas) -->
-    <div class="toolbar">
-      <button class="btn" id="btn-modal-coords">Gestionar coordinadores</button>
-      <button class="btn ghost" id="btn-sugerir">Sugerir grupos de viajes (auto)</button>
-      <button class="btn ghost" id="btn-nuevo-conjunto">Nuevo grupo de viajes</button>
-      <button class="btn secondary" id="btn-guardar">Guardar cambios</button>
-      <span id="msg" class="muted"></span>
-    </div>
+    <h2>Asignación De <b>Viajes</b> Y Coordinadores</h2>
 
     <!-- 📊 Resumen + filtros -->
     <div class="panel" style="margin:.8rem 0;">
@@ -103,27 +85,32 @@
           <select id="f-programa"><option>Todos los programas</option></select>
           <input type="date" id="f-desde" title="Desde (fecha de inicio)">
           <input type="date" id="f-hasta" title="Hasta (fecha de inicio)">
-          <input type="text" id="f-buscar" placeholder="Buscar… separa con comas (colegio,parís,2025)" style="min-width:260px">
+          <input type="text" id="f-buscar" placeholder="Buscar… separa con comas (colegio,parís,2025)" style="min-width:280px">
         </div>
         <div id="resumen-wrap" style="margin-top:.8rem;"></div>
       </div>
     </div>
 
-    <!-- 📈 Estadísticas de viajes -->
+    <!-- 📈 Estadísticas -->
     <div class="panel" id="panel-stats-viajes" style="margin:.8rem 0;">
       <div class="hd">📈 Estadísticas De Viajes</div>
-      <div class="bd" id="stats-viajes-wrap">
-        <div class="empty">Aún no hay datos.</div>
-      </div>
+      <div class="bd" id="stats-viajes-wrap"><div class="empty">Aún no hay datos.</div></div>
     </div>
 
-    <!-- Cuerpo: Viajes libres + Viajes (grupos) -->
+    <!-- 🔘 Barra de acciones (después del bloque de estadísticas) -->
+    <div class="row" style="gap:.5rem; margin-bottom:1rem;">
+      <button class="btn" id="btn-modal-coords">Gestionar coordinadores</button>
+      <button class="btn ghost" id="btn-sugerir">Sugerir grupos de viajes (auto)</button>
+      <button class="btn ghost" id="btn-nuevo-conjunto">Nuevo grupo de viajes</button>
+      <button class="btn secondary" id="btn-guardar">Guardar cambios</button>
+      <span id="msg" class="muted"></span>
+    </div>
+
+    <!-- Cuerpo -->
     <div class="grid">
       <div class="panel">
         <div class="hd">🧳 Viajes Libres</div>
-        <div class="bd list">
-          <div id="lista-viajes-libres" class="empty">Sin datos…</div>
-        </div>
+        <div class="bd list"><div id="lista-viajes-libres" class="empty">Sin datos…</div></div>
       </div>
 
       <div class="panel">
@@ -137,7 +124,7 @@
 
   <!-- ===== Modal: Gestionar coordinadores ===== -->
   <div id="mb" class="modal-backdrop"></div>
-  <div id="modal-coords" class="modal" role="dialog" aria-modal="true">
+  <div id="modal-coords" class="modal" role="dialog" aria-modal="true" aria-label="Gestionar coordinadores">
     <div class="hd">
       <div>Gestionar Coordinadores</div>
       <div class="x" id="close-modal">×</div>
@@ -155,7 +142,7 @@
       <table id="tabla-coords" style="margin-top:.6rem;">
         <thead>
           <tr>
-            <th>#</th>
+            <th style="width:40px">#</th>
             <th>Nombre *</th>
             <th>RUT</th>
             <th>Teléfono</th>
@@ -180,6 +167,7 @@
 
   <!-- Dependencias -->
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- Encabezado global -->
