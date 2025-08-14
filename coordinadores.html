@@ -5,47 +5,37 @@
   <title>Viajes | Asignación y Coordinadores</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Tipografía/estilos globales del sistema (restaura tu fuente) -->
+  <!-- Estilos globales del sistema (restaura tu fuente) -->
   <link rel="stylesheet" href="estilos.css" />
-
-  <!-- Flatpickr (datepicker) -->
+  <!-- Flatpickr -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 
   <style>
-    /* ====== Layout general ====== */
+    /* ====== Layout ====== */
     .page { padding: 1rem 1.2rem; }
     h2 { margin: .6rem 0 1rem; }
 
-    .toolbar {
-      display:flex; gap:.5rem; margin:.8rem 0 1.2rem; flex-wrap:wrap;
-      align-items:center;
-    }
-
+    .toolbar { display:flex; gap:.5rem; margin:.8rem 0 1.2rem; flex-wrap:wrap; align-items:center; }
     .grid { display:grid; grid-template-columns: 340px 1fr; gap:1rem; align-items:start; }
 
-    /* ====== Contenedores visuales ====== */
+    /* ====== Contenedores ====== */
     .panel { border:1px solid #ddd; border-radius:10px; background:#fff; }
     .panel > .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; font-weight:600; }
     .panel > .bd { padding:.6rem .8rem; }
-
     .list { max-height:58vh; overflow:auto; }
 
-    .card {
-      border:1px solid #ddd; border-radius:12px; background:#fff; margin:.6rem 0;
-      display:block; width:100%;
-    }
+    .card { border:1px solid #ddd; border-radius:12px; background:#fff; margin:.6rem 0; display:block; width:100%; }
     .card .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
     .card .bd { padding:.6rem .8rem; }
 
-    /* ====== Tipografía y chips ====== */
+    /* ====== Tipos, chips y tabla ====== */
     .muted { color:#666; }
     .row { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
     .tag { background:#eef3fa; color:#1f64b2; padding:.1rem .4rem; border-radius:6px; font-size:.85rem; }
     .pill { padding:.06rem .35rem; border-radius:999px; background:#f1f5f9; font-size:.78rem; }
     .warn { color:#c57e00; font-weight:600; }
-    .err { color:#b11; font-weight:700; }
+    .err  { color:#b11;   font-weight:700; }
 
-    /* ====== Tabla ====== */
     table { width:100%; border-collapse:collapse; }
     th, td { border:1px solid #eee; padding:.4rem .5rem; text-align:left; vertical-align:top; }
     th { background:#f8fafc; }
@@ -55,10 +45,9 @@
     /* ====== Botones ====== */
     .btn { background:#1f64b2; color:#fff; border:none; padding:.5rem .8rem; border-radius:6px; cursor:pointer; }
     .btn.secondary { background:#5a6a7a; }
-    .btn.ghost { background:#e8eef6; color:#1f64b2; }
-    .btn.small { padding:.3rem .55rem; font-size:.9rem; }
+    .btn.ghost     { background:#e8eef6; color:#1f64b2; }
+    .btn.small     { padding:.3rem .55rem; font-size:.9rem; }
     .btn.small.selected-swap{ outline:2px solid #1f64b2; box-shadow:0 0 0 3px #d9e9ff inset; }
-
     .empty { color:#777; font-style:italic; padding:.4rem 0; }
 
     /* ====== Modal ====== */
@@ -72,6 +61,7 @@
     .modal .bd { padding:1rem; max-height:70vh; overflow:auto; }
     .modal .ft { padding:.8rem 1rem; border-top:1px solid #eee; display:flex; justify-content:flex-end; gap:.5rem; }
     .x { cursor:pointer; font-size:1.4rem; line-height:1; }
+    .picker-range { width:180px; }
 
     /* ====== MAYÚSCULAS + heredar fuente (solo visual) ====== */
     .page, .page * { text-transform: uppercase; }
@@ -80,17 +70,16 @@
       font-family: inherit !important;
       font-size: 100%;
     }
-    /* Flatpickr también en mayúscula y con la misma fuente */
     .flatpickr-calendar, .flatpickr-calendar * {
       text-transform: uppercase;
       font-family: inherit !important;
     }
-    /* Si algo NO debe ir en mayúscula, usa la clase no-caps */
+    ::placeholder { text-transform: uppercase; }
     .no-caps, .no-caps * { text-transform: none !important; }
   </style>
 </head>
 <body>
-  <!-- Encabezado global de la app -->
+  <!-- Encabezado global -->
   <div id="encabezado"></div>
 
   <div class="page">
@@ -105,22 +94,30 @@
       <span id="msg" class="muted"></span>
     </div>
 
-    <!-- 📊 Resumen + Filtros -->
+    <!-- 📊 Resumen + filtros -->
     <div class="panel" style="margin:.8rem 0;">
       <div class="hd">📊 Resumen Y Filtros</div>
       <div class="bd">
         <div class="row" style="gap:.5rem; flex-wrap:wrap; align-items:center;">
           <select id="f-destino"><option>Todos los destinos</option></select>
           <select id="f-programa"><option>Todos los programas</option></select>
-          <input type="date" id="f-desde" title="Desde (fecha de inicio)" placeholder="dd-mm-aaaa">
-          <input type="date" id="f-hasta" title="Hasta (fecha de inicio)" placeholder="dd-mm-aaaa">
+          <input type="date" id="f-desde" title="Desde (fecha de inicio)">
+          <input type="date" id="f-hasta" title="Hasta (fecha de inicio)">
           <input type="text" id="f-buscar" placeholder="Buscar… separa con comas (colegio,parís,2025)" style="min-width:260px">
         </div>
         <div id="resumen-wrap" style="margin-top:.8rem;"></div>
       </div>
     </div>
 
-    <!-- Cuerpo: Viajes libres + Viajes (asignados) -->
+    <!-- 📈 Estadísticas de viajes -->
+    <div class="panel" id="panel-stats-viajes" style="margin:.8rem 0;">
+      <div class="hd">📈 Estadísticas De Viajes</div>
+      <div class="bd" id="stats-viajes-wrap">
+        <div class="empty">Aún no hay datos.</div>
+      </div>
+    </div>
+
+    <!-- Cuerpo: Viajes libres + Viajes (grupos) -->
     <div class="grid">
       <div class="panel">
         <div class="hd">🧳 Viajes Libres</div>
@@ -138,14 +135,13 @@
     </div>
   </div>
 
-  <!-- ===== MODAL: Gestionar coordinadores ===== -->
+  <!-- ===== Modal: Gestionar coordinadores ===== -->
   <div id="mb" class="modal-backdrop"></div>
   <div id="modal-coords" class="modal" role="dialog" aria-modal="true">
     <div class="hd">
       <div>Gestionar Coordinadores</div>
       <div class="x" id="close-modal">×</div>
     </div>
-
     <div class="bd">
       <div class="row" style="justify-content:space-between;">
         <div class="row">
@@ -174,27 +170,27 @@
         No hay coordinadores aún. Agrega manual o carga un Excel con columna <b>Nombre</b>.
       </div>
     </div>
-
     <div class="ft">
       <button class="btn secondary" id="btn-guardar-coords">Guardar coordinadores</button>
       <button class="btn ghost" id="btn-cerrar">Cerrar</button>
     </div>
   </div>
-  <!-- ===== /MODAL ===== -->
+  <!-- ===== /Modal ===== -->
 
   <!-- Dependencias -->
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <!-- Encabezado global -->
+  <!-- Encabezado global (si tu app lo usa) -->
   <script type="module">
     fetch('encabezado.html')
       .then(r => r.text())
       .then(html => { document.getElementById('encabezado').innerHTML = html; });
   </script>
 
-  <!-- Firebase init + lógica de la página -->
+  <!-- Firebase + scripts de la app -->
   <script type="module" src="./firebase-init.js"></script>
+  <script type="module" src="./script.js"></script>        <!-- si tu app lo necesita -->
   <script type="module" src="./coordinadores.js"></script>
 </body>
 </html>
