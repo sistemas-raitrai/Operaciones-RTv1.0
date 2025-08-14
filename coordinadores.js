@@ -719,7 +719,7 @@ function renderCoordsTable(){
         <td>
           <div class="row">
             <button class="btn small" data-saverc="${i}">💾 Guardar</button>
-            <button class="btn small" data-delcoord="${i}">🗑️Eliminar</button>
+            <button class="btn small" data-delcoord="${i}">🗑️ Eliminar</button>
           </div>
         </td>
       </tr>`);
