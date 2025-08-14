@@ -91,6 +91,7 @@
     </div>
 
     <!-- Acciones (después de estadísticas) -->
+    <!-- Acciones (después de estadísticas) -->
     <div class="row" style="gap:.5rem; margin-bottom:1rem;">
       <button class="btn" id="btn-modal-coords">Gestionar coordinadores</button>
       <button class="btn ghost" id="btn-sugerir">Sugerir grupos de viajes (auto)</button>
@@ -98,21 +99,37 @@
       <button class="btn secondary" id="btn-guardar">Guardar cambios</button>
       <span id="msg" class="muted"></span>
     </div>
-
+    
     <div class="grid">
       <div class="panel">
         <div class="hd">🧳 Viajes Libres</div>
-        <div class="bd list"><div id="lista-viajes-libres" class="empty">Sin datos…</div></div>
+        <div class="bd list">
+          <div id="lista-viajes-libres" class="empty">Sin datos…</div>
+        </div>
       </div>
-
+    
       <div class="panel">
         <div class="hd">🗂️ Viajes</div>
-        <div class="bd" id="conjuntos-wrap">
-          <div class="empty">Aún no hay grupos de viajes. Usa “Sugerir grupos de viajes (auto)” o “Nuevo grupo de viajes”.</div>
+        <div class="bd">
+          <!-- 🔎 Buscador de conjuntos -->
+          <div class="row" style="margin-bottom:.6rem;">
+            <input
+              id="buscar-sets"
+              type="text"
+              style="width:100%; max-width:520px"
+              placeholder="Buscar en VIAJES… (coordinador, alias, #negocio, id, destino, programa, fecha) — separa con comas"
+            />
+          </div>
+    
+          <!-- Contenedor de los conjuntos -->
+          <div id="conjuntos-wrap">
+            <div class="empty">
+              Aún no hay grupos de viajes. Usa “Sugerir grupos de viajes (auto)” o “Nuevo grupo de viajes”.
+            </div>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
   <!-- Modal coordinadores -->
   <div id="mb" class="modal-backdrop"></div>
