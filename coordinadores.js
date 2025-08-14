@@ -319,14 +319,30 @@ function gruposFiltrados(arr=GRUPOS){
 /* =========================================================
    BLOQUEO por confirmación (coordinadores ya en uso)
    ========================================================= */
+// -------- BLOQUEO por confirmación --------
+// Bloquea coordinadores ya confirmados, tanto los que estén en SETS
+// como los que ya quedaron persistidos en GRUPOS (conjuntoId + coordinadorId).
 function getBlockedCoordIds(exceptSetIdx = null){
   const blocked = new Set();
+
+  // a) Confirmados en memoria (SETS)
   SETS.forEach((s, idx)=>{
     if (s.confirmado && s.coordinadorId){
       if (exceptSetIdx !== null && idx === exceptSetIdx) return;
       blocked.add(s.coordinadorId);
     }
   });
+
+  // b) Confirmados persistidos en grupos (por si SETS no los tiene cargados)
+  //    Cualquier grupo con conjuntoId y coordinadorId se considera ya en uso.
+  GRUPOS.forEach(g=>{
+    if (g.conjuntoId && g.coordinadorId){
+      // si estamos evaluando un set concreto y ese mismo set ya usa al coord, no lo bloqueamos
+      if (exceptSetIdx!==null && SETS[exceptSetIdx]?.coordinadorId === g.coordinadorId) return;
+      blocked.add(g.coordinadorId);
+    }
+  });
+
   return blocked;
 }
 
@@ -506,20 +522,43 @@ function renderSets(){
 /* =========================================================
    Sugeridor (solo viajes NO confirmados; mantiene confirmados)
    ========================================================= */
+// ------------------ Sugeridor ------------------
+// Recalcula SOLO para viajes NO confirmados.
+// Toma como fijos tanto los confirmados en SETS como los persistidos en GRUPOS.
 function sugerirConjuntos(){
-  // 1) Fijar sets confirmados con coordinador
-  const fixedSets = SETS.filter(s => s.confirmado && !!s.coordinadorId);
-
-  // IDs de viajes ya fijados
+  // 1) Fijos en memoria (SETS)
+  const fixedSetsMem = SETS.filter(s => s.confirmado && !!s.coordinadorId);
   const fixedTripIds = new Set();
-  fixedSets.forEach(s => (s.viajes||[]).forEach(id => fixedTripIds.add(id)));
+  fixedSetsMem.forEach(s => (s.viajes||[]).forEach(id => fixedTripIds.add(id)));
 
-  // 2) Pool a recalcular
+  // 2) Fijos persistidos en GRUPOS (reconstruye por conjuntoId/coordinadorId)
+  const mapConjunto = new Map(); // conjuntoId -> { id, viajes:[], coordinadorId, confirmado:true, alertas:[] }
+  for (const g of GRUPOS){
+    if (g.conjuntoId && g.coordinadorId){
+      if (!mapConjunto.has(g.conjuntoId)){
+        mapConjunto.set(g.conjuntoId, {
+          id: g.conjuntoId,
+          viajes: [],
+          coordinadorId: g.coordinadorId,
+          confirmado: true,
+          alertas: []
+        });
+      }
+      mapConjunto.get(g.conjuntoId).viajes.push(g.id);
+    }
+  }
+  const fixedFromGrupos = Array.from(mapConjunto.values());
+
+  // Evita duplicar: si ya fijamos por memoria, no repitamos
+  const fixedFromGruposFiltered = fixedFromGrupos.filter(fs => !fs.viajes.some(id => fixedTripIds.has(id)));
+
+  // 3) Pool a recalcular = todos los viajes que NO están en ningún fijo (memoria o persistido)
+  fixedFromGruposFiltered.forEach(fs => fs.viajes.forEach(id => fixedTripIds.add(id)));
   const pool = GRUPOS
     .filter(g => !fixedTripIds.has(g.id))
     .sort((a,b) => cmpISO(a.fechaInicio, b.fechaInicio));
 
-  // 3) Greedy sobre el pool
+  // 4) Greedy sobre el pool (mismo algoritmo)
   const work = []; // [{viajes:[], lastFin, zeroChain}]
   for (const g of pool){
     let best = -1;
@@ -543,11 +582,12 @@ function sugerirConjuntos(){
     }
   }
 
-  // 4) Volcar y conservar confirmados
+  // 5) Volcar sugerencias (borradores)
   const suggested = work.map(() => ({ viajes:[], coordinadorId:null, confirmado:false, alertas:[], _isNew:true }));
   for (let i=0;i<work.length;i++){ suggested[i].viajes = work[i].viajes.slice(); }
 
-  SETS = fixedSets.concat(suggested);
+  // 6) Resultado final = fijos (memoria) + fijos (persistidos) + sugerencias
+  SETS = fixedSetsMem.concat(fixedFromGruposFiltered).concat(suggested);
 
   evaluarAlertas();
   sortSetsInPlace();
