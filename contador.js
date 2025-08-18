@@ -291,41 +291,47 @@ async function abrirModalReserva(event) {
   document.getElementById('modalPara').value   = provInfo.correo;
   document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
   
-  // ——— 2️⃣ generar el cuerpo del email con totales y coordinadores ———
+  // ——— 2️⃣ generar el cuerpo del email (totales + conteo de grupos) ———
   //  a) prefiltrar fechas que tengan pasajeros para esta actividad
   const perDateData = fechasOrdenadas
     .map(fecha => {
       const lista = grupos.filter(g =>
-        (g.itinerario?.[fecha]||[]).some(a => a.actividad === actividad)
+        (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad)
       );
       const paxTotal = lista.reduce(
-        (sum, g) => sum + (parseInt(g.cantidadgrupo)||0),
+        (sum, g) => sum + (parseInt(g.cantidadgrupo) || 0),
         0
       );
-      return { fecha, lista, paxTotal, coordinators: lista.length };
+      return { fecha, lista, paxTotal };
     })
     .filter(d => d.lista.length > 0);
-
-  //  b) total global de pax
+  
+  //  b) totales globales
   const totalGlobal = perDateData.reduce((sum, d) => sum + d.paxTotal, 0);
-
+  //    grupos únicos a través de TODAS las fechas
+  const gruposUnicos = new Set();
+  perDateData.forEach(({ lista }) => lista.forEach(g => gruposUnicos.add(g.id)));
+  const totalGrupos = gruposUnicos.size;
+  
   //  c) construir cuerpo
-  let cuerpo = `Estimado/a ${provInfo.contacto}:\n\n`;
+  let cuerpo = `Estimado/a ${provInfo.contacto || ''}:\n\n`;
   cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
   cuerpo += `Actividad: ${actividad}\n`;
   cuerpo += `Destino: ${destino}\n`;
+  cuerpo += `Total Grupos: (${totalGrupos})\n`;
   cuerpo += `Total PAX: (${totalGlobal})\n\n`;
   cuerpo += `Fechas y grupos:\n\n`;
-
-  perDateData.forEach(({ fecha, lista, paxTotal, coordinators }) => {
-    cuerpo += `➡️ Fecha ${formatearFechaBonita(fecha)} - Cantidad Total (${paxTotal}) - Cantidad Coordinadores (${coordinators}):\n\n`;
+  
+  perDateData.forEach(({ fecha, lista, paxTotal }) => {
+    cuerpo += `➡️ Fecha ${formatearFechaBonita(fecha)} - Grupos (${lista.length}) - PAX (${paxTotal}):\n\n`;
     lista.forEach(g => {
       cuerpo += `  - N°: ${g.id}, Colegio: ${g.nombreGrupo}, Cantidad de Pax: ${g.cantidadgrupo}\n`;
     });
     cuerpo += `\n`;
   });
-
+  
   cuerpo += `Atte.\nOperaciones RaiTrai`;
+
 
   // ——— 3️⃣ vuelca en el textarea y muestra modal ———
   document.getElementById('modalCuerpo').value = cuerpo;
