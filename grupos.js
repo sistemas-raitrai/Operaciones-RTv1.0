@@ -33,8 +33,11 @@ const camposFire = [
   "fechaDeViaje",       // 20
   "observaciones",      // 21
   "creadoPor",          // 22
-  "fechaCreacion"      //  23
+  "fechaCreacion"       // 23
 ];
+
+// Campos que deben ser numéricos en Firestore
+const NUMERIC_FIELDS = new Set(['cantidadgrupo','adultos','estudiantes']);
 
 let editMode = false;
 let dtHist = null;
@@ -156,13 +159,18 @@ async function cargarYMostrarTabla() {
   valores.forEach(item => {
     const $tr = $('<tr>');
     item.fila.forEach((celda, idx) => {
-      $tr.append(
-        $('<td>')
-          .text(formatearCelda(celda, camposFire[idx]))
-          .attr('data-doc-id', item.id)
-          .attr('data-campo', camposFire[idx])
-          .attr('data-original', celda)
-      );
+      const campo = camposFire[idx];
+      const $td = $('<td>')
+        .text(formatearCelda(celda, campo))
+        .attr('data-doc-id', item.id)
+        .attr('data-campo', campo)
+        .attr('data-original', celda);
+
+      // marca numéricos para validación posterior
+      if (NUMERIC_FIELDS.has(campo)) {
+        $td.attr('data-tipo', 'number');
+      }
+      $tr.append($td);
     });
     $tb.append($tr);
   });
@@ -213,7 +221,10 @@ async function cargarYMostrarTabla() {
       { targets: 20, width: '80px' },
       { targets: 21, width: '100px' },
       { targets: 22, width: '50px' },
-      { targets: 23, width: '50px' }
+      { targets: 23, width: '50px' },
+
+      // Fuerza orden numérico y alinea a la derecha Pax / Adultos / Estudiantes
+      { targets: [5,6,7], type: 'num', className: 'dt-body-right' }
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
@@ -231,24 +242,74 @@ async function cargarYMostrarTabla() {
     tabla.column(3).search(this.value).draw();
   });
 
-  // 5) Edición inline en blur
-  $('#tablaGrupos tbody').on('focusout','td[contenteditable]', async function(){
-    const $td = $(this);
-    const nuevo = $td.text().trim().toUpperCase();
-    const orig  = $td.attr('data-original');
-    if (nuevo === orig) return;
+  // 5) Edición inline en blur (numéricos -> número real en Firestore)
+  $('#tablaGrupos tbody')
+    .off('focusout', 'td[contenteditable]')
+    .on('focusout', 'td[contenteditable]', async function () {
+      const $td   = $(this);
+      const campo = $td.attr('data-campo');
+      const docId = $td.attr('data-doc-id');
+      const orig  = $td.attr('data-original');
 
-    const docId = $td.attr('data-doc-id');
-    const campo = $td.attr('data-campo');
-    await updateDoc(doc(db,'grupos',docId),{ [campo]: nuevo });
-    await addDoc(collection(db,'historial'),{
-      numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
-      campo, anterior: orig, nuevo,
-      modificadoPor: auth.currentUser.email,
-      timestamp: new Date()
+      // valor escrito por el usuario
+      const raw = $td.text().trim();
+
+      let nuevoValor;   // lo que enviaremos a Firestore
+      let displayText;  // lo que dejamos visible en la celda
+
+      if (NUMERIC_FIELDS.has(campo)) {
+        // Validación/normalización numérica (solo enteros)
+        if (raw === '') {
+          nuevoValor  = 0;
+          displayText = '0';
+        } else {
+          const n = Number(raw.replace(/[^\d.-]/g, ''));
+          if (!Number.isFinite(n)) {
+            // inválido -> revertimos visualmente
+            $td.text(String(orig ?? ''));
+            return;
+          }
+          const entero = Math.trunc(n);
+          nuevoValor  = entero;           // Firestore: Number
+          displayText = String(entero);   // UI
+        }
+      } else {
+        // texto normal
+        nuevoValor  = raw.toUpperCase();
+        displayText = nuevoValor;
+      }
+
+      // Si no cambió realmente, salir
+      if (String(orig ?? '') === String(displayText)) return;
+
+      try {
+        // Actualiza en Firestore con el TIPO correcto
+        await updateDoc(doc(db, 'grupos', docId), { [campo]: nuevoValor });
+
+        // Historial
+        await addDoc(collection(db, 'historial'), {
+          numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
+          campo,
+          anterior: orig ?? '',
+          nuevo: displayText,
+          modificadoPor: auth.currentUser.email,
+          timestamp: new Date()
+        });
+
+        // Actualiza atributos/UI locales
+        $td.text(displayText).attr('data-original', displayText);
+
+        // Mantén sincronizado GRUPOS_RAW para Totales si es numérico
+        if (NUMERIC_FIELDS.has(campo)) {
+          const g = GRUPOS_RAW.find(x => x._id === docId);
+          if (g) g[campo] = Number(displayText);
+        }
+      } catch (err) {
+        console.error('Error al guardar edición:', err);
+        // Revertimos visual si falla
+        $td.text(String(orig ?? ''));
+      }
     });
-    $td.attr('data-original', nuevo);
-  });
 
   // 6) Toggle edición
   $('#btn-toggle-edit').off('click').on('click', async () => {
@@ -278,15 +339,7 @@ async function cargarYMostrarTabla() {
   // =========================================================
   const $modalTot = $('#modalTotales');
   const $popover  = $('#tot-popover');
-  
-  // helper (ya lo tienes arriba; si no, déjalo aquí)
-  function toInputDate(d) {
-    if (!(d instanceof Date)) return '';
-    const y = d.getFullYear();
-    const m = String(d.getMonth()+1).padStart(2,'0');
-    const day = String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  }
+
   function overlaps(ini, fin, min, max) {
     if (!ini && !fin) return false;
     ini = ini || fin; fin = fin || ini;
@@ -294,7 +347,7 @@ async function cargarYMostrarTabla() {
     if (max && ini > max) return false;
     return true;
   }
-  
+
   function openTotales() {
     // Rango por defecto: primer inicio → fin del último que inicia
     const conInicio = GRUPOS_RAW.filter(g => g.fechaInicio instanceof Date);
@@ -310,26 +363,26 @@ async function cargarYMostrarTabla() {
       $('#totInicio').val('');
       $('#totFin').val('');
     }
-  
+
     // Limpia UI y abre
     $('#tot-resumen').empty();
     $('#tot-tablas').empty();
     $popover.hide();
     $modalTot.show();
-  
-    // Si quieres calcular automáticamente:
+
+    // Calcular automáticamente
     renderTotales();
   }
-  
+
   function renderTotales() {
     const min = $('#totInicio').val() ? new Date($('#totInicio').val() + 'T00:00:00') : null;
     const max = $('#totFin').val()    ? new Date($('#totFin').val()    + 'T23:59:59') : null;
-  
+
     const lista = GRUPOS_RAW.filter(g => {
       if (!min && !max) return true;
       return overlaps(g.fechaInicio, g.fechaFin, min, max);
     });
-  
+
     const cats = { '101': [], '201/202': [], '301/302/303': [] };
     for (const g of lista) {
       const idn = parseInt(String(g.identificador).replace(/[^\d]/g,''), 10);
@@ -337,20 +390,20 @@ async function cargarYMostrarTabla() {
       else if (idn === 201 || idn === 202) cats['201/202'].push(g);
       else if ([301,302,303].includes(idn)) cats['301/302/303'].push(g);
     }
-  
+
     const sum = (arr, k) => arr.reduce((acc,x)=>acc+(x[k]||0),0);
     const totPax  = sum(lista,'cantidadgrupo');
     const totAdul = sum(lista,'adultos');
     const totEst  = sum(lista,'estudiantes');
-  
+
     const fechasValidas = lista.flatMap(g => [g.fechaInicio, g.fechaFin]).filter(Boolean).sort((a,b)=>a-b);
     const minReal = fechasValidas[0] ? fechasValidas[0].toLocaleDateString('es-CL') : '—';
     const maxReal = fechasValidas[fechasValidas.length-1] ? fechasValidas[fechasValidas.length-1].toLocaleDateString('es-CL') : '—';
-  
+
     const $res = $('#tot-resumen').empty();
     const PILL_INDEX = [];
     const $tbx = $('#tot-tablas').empty();
-  
+
     const addPill = (label, arr, key) => {
       const i = PILL_INDEX.push({ key, arr }) - 1;
       $('<div class="tot-pill" data-pill="'+i+'" title="Click para ver grupos"></div>')
@@ -360,20 +413,20 @@ async function cargarYMostrarTabla() {
         .on('click', (ev) => showPopover(ev, PILL_INDEX[i], label))
         .appendTo($res);
     };
-  
+
     addPill('Identificador 101', cats['101'], 'id101');
     addPill('Identificador 201/202', cats['201/202'], 'id201_202');
     addPill('Identificador 301/302/303', cats['301/302/303'], 'id301_303');
-  
+
     $('<div class="tot-pill" title="Totales de personas"></div>')
       .append(`<span>👥 Pax</span><span>${totPax}</span>`)
       .append(`<small>(Adultos ${totAdul} / Estudiantes ${totEst})</small>`)
       .appendTo($res);
-  
+
     $('<div class="tot-pill" title="Rango efectivo"></div>')
       .append(`<span>🗓️ Rango</span><span>${minReal} → ${maxReal}</span>`)
       .appendTo($res);
-  
+
     const mkTabla = (titulo, filas, includePax=true) => {
       const $wrap = $('<div></div>').append(`<h3 style="margin:.5rem 0;">${titulo}</h3>`);
       const $t = $(`<table><thead><tr>
@@ -396,7 +449,7 @@ async function cargarYMostrarTabla() {
       $wrap.append($t);
       $tbx.append($wrap);
     };
-  
+
     const groupBy = (arr, key) => {
       const map = new Map();
       for (const g of arr) {
@@ -410,14 +463,14 @@ async function cargarYMostrarTabla() {
         pax: sum(grupos,'cantidadgrupo')
       })).sort((a,b)=> b.grupos.length - a.grupos.length);
     };
-  
+
     mkTabla('Año',        groupBy(lista, 'anoViaje'));
     mkTabla('Vendedor(a)',groupBy(lista, 'vendedora'));
     mkTabla('Destino',    groupBy(lista, 'destino'));
     mkTabla('Programa',   groupBy(lista, 'programa'));
     mkTabla('Hoteles',    groupBy(lista, 'hoteles'));
     mkTabla('Transporte', groupBy(lista, 'transporte'));
-  
+
     function showPopover(ev, bucket, titulo) {
       const items = (bucket?.arr || []);
       const html = `
@@ -430,7 +483,7 @@ async function cargarYMostrarTabla() {
           </li>`).join('')}
         </ul>`;
       $popover.html(html);
-  
+
       const vw = $(window).width(), vh = $(window).height();
       const w  = Math.min(420, vw - 24);
       $popover.css({ width: w + 'px' });
@@ -438,7 +491,7 @@ async function cargarYMostrarTabla() {
       const left = Math.min(clickX + 12, window.scrollX + vw - w - 12);
       const top  = Math.min(clickY + 12, window.scrollY + vh - 24);
       $popover.css({ left: left + 'px', top: top + 'px' }).show();
-  
+
       $popover.off('click', 'a.go-row').on('click', 'a.go-row', (e) => {
         e.preventDefault();
         const num = e.currentTarget.getAttribute('data-num') || '';
@@ -459,15 +512,14 @@ async function cargarYMostrarTabla() {
       });
     }
   }
-  
+
   // Exponer funciones para handlers globales
   window.__RT_totales = {
     open: openTotales,
     render: renderTotales
   };
-  // ————————————————————————————————————————————————————————————
-  // 9) Función que carga y pivota historial (igual que tenías)
-  // ————————————————————————————————————————————————————————————
+
+  // 9) Función que carga y pivota historial
   async function recargarHistorial() {
     console.group('🔄 recargarHistorial()');
     try {
@@ -478,7 +530,7 @@ async function cargarYMostrarTabla() {
       const snap = await getDocs(q);
 
       const $tbH = $tabla.find('tbody').empty();
-      snap.forEach((s, i) => {
+      snap.forEach((s) => {
         const d     = s.data();
         const fecha = d.timestamp?.toDate?.();
         if (!fecha) return;
@@ -536,13 +588,13 @@ function exportarGrupos() {
   // Obtiene un array de arrays: cada fila en un sub-array de celdas de texto
   const rows = tabla.rows({ search: 'applied' }).data().toArray();
 
-  // Opcional: encabezados igual a las columnas definidas en el HTML (ordenado)
-const headers = [
-  "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Pax","Adultos","Estudiantes",
-  "Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
-  "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
-  "Observaciones","Creado Por","Fecha Creación"
-];
+  // Encabezados igual a las columnas definidas en el HTML (ordenado)
+  const headers = [
+    "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Pax","Adultos","Estudiantes",
+    "Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
+    "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
+    "Observaciones","Creado Por","Fecha Creación"
+  ];
 
   // Prepara un array de objetos (clave=header, valor=celda)
   const datos = rows.map(row => {
