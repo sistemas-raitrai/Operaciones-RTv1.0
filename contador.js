@@ -606,6 +606,7 @@ function abrirModalEstadisticas(table) {
   document.getElementById('btnCerrarStats').onclick = () => {
     document.getElementById('modalEstadisticas').style.display = 'none';
   };
+  document.getElementById('btnExportarStatsExcel').onclick = exportarEstadisticasExcel;
 
   // Mostrar
   document.getElementById('modalEstadisticas').style.display = 'block';
@@ -901,3 +902,53 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
   modalDet.style.zIndex = '11000'; // por si el inline no fue actualizado
   modalDet.style.display = 'block';
 }
+
+// Convierte una <table> a matriz (AOA) y opcionalmente elimina la última columna ("Ver grupos")
+function tableToAOA(tableEl, dropLast = false) {
+  const aoa = [];
+  const pushRow = (row) => {
+    const cells = Array.from(row.cells).map(td => (td.innerText || '').trim());
+    if (dropLast && cells.length) cells.pop(); // quita "Ver grupos"
+    aoa.push(cells);
+  };
+  if (tableEl.tHead) Array.from(tableEl.tHead.rows).forEach(pushRow);
+  if (tableEl.tBodies?.[0]) Array.from(tableEl.tBodies[0].rows).forEach(pushRow);
+  if (tableEl.tFoot) Array.from(tableEl.tFoot.rows).forEach(pushRow);
+  return aoa;
+}
+
+function exportarEstadisticasExcel() {
+  try {
+    const tAct = document.getElementById('tablaStatsActividad');
+    const tFec = document.getElementById('tablaStatsFecha');
+    const tCom = document.getElementById('tablaStatsCombos');
+
+    if (!tAct || !tFec || !tCom) {
+      alert('No se encuentran las tablas de estadísticas en el DOM.');
+      return;
+    }
+
+    const aoaAct = tableToAOA(tAct, /*dropLast=*/true);
+    const aoaFec = tableToAOA(tFec, /*dropLast=*/true);
+    const aoaCom = tableToAOA(tCom, /*dropLast=*/true);
+
+    // Crea workbook y agrega hojas
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaAct), 'Resumen_Actividad');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaFec), 'Totales_Fecha');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaCom), 'Combinaciones');
+
+    // Nombre de archivo
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mi = String(d.getMinutes()).padStart(2,'0');
+    XLSX.writeFile(wb, `Estadisticas_Actividades_${yyyy}-${mm}-${dd}_${hh}${mi}.xlsx`);
+  } catch (err) {
+    console.error('Error exportando estadísticas:', err);
+    alert('No se pudo generar el Excel de estadísticas. Revisa la consola.');
+  }
+}
+
