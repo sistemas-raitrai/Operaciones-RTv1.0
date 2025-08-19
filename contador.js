@@ -20,7 +20,6 @@ import {
 // ———————————————————————————————
 // 2️⃣ Variables de estado global
 // ———————————————————————————————
-// Guardamos los grupos y las fechas para poder reutilizarlos en los eventos
 let grupos = [];
 let fechasOrdenadas = [];
 let proveedores = {};
@@ -37,10 +36,8 @@ const tbody = document.getElementById('tbody-actividades');
 const auth = getAuth(app);
 onAuthStateChanged(auth, user => {
   if (!user) {
-    // Sin sesión activa → login
     location.href = 'login.html';
   } else {
-    // Con sesión → init
     init();
   }
 });
@@ -74,13 +71,9 @@ async function init() {
 
   // ——— 5.3) Leer TODOS los proveedores de **todas** las regiones
   const proveedoresLocal = {};
-  //  a) lee cada documento de nivel región en "Proveedores"
   const regionesSnap = await getDocs(collection(db, 'Proveedores'));
   for (const regionDoc of regionesSnap.docs) {
-    const region = regionDoc.id; // p.ej. "SUR DE CHILE", "BRASIL", etc.
-    const listadoSnap = await getDocs(
-      collection(db, 'Proveedores', region, 'Listado')
-    );
+    const listadoSnap = await getDocs(collection(db, 'Proveedores', regionDoc.id, 'Listado'));
     listadoSnap.docs.forEach(pSnap => {
       const d = pSnap.data();
       if (d.proveedor) {
@@ -98,9 +91,7 @@ async function init() {
   grupos.forEach(g => {
     const itin = g.itinerario || {};
     Object.entries(itin).forEach(([fecha, acts]) => {
-      if (acts.some(a =>
-          (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0) > 0
-        )) {
+      if (acts.some(a => (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0) > 0)) {
         fechasSet.add(fecha);
       }
     });
@@ -118,55 +109,29 @@ async function init() {
     </tr>`;
 
   // ——— 5.6) Ordenar alfabéticamente los servicios
-  servicios.sort((a, b) =>
-    (a.destino + a.nombre).localeCompare(b.destino + b.nombre)
-  );
+  servicios.sort((a, b) => (a.destino + a.nombre).localeCompare(b.destino + b.nombre));
 
-  // ——— 5.7) PRE-FETCH de TODOS los subdocumentos de reservas en paralelo
-  //  a) Creamos un array de referencias apuntando a cada doc de reserva
-  const referencias = servicios.map(s =>
-    doc(db, 'Servicios', s.destino, 'Listado', s.nombre)
-  );
-  //  b) Lanzamos todas las lecturas a la vez
-  const snapshots = await Promise.all(
-    referencias.map(ref => getDoc(ref))
-  );
-  //  c) Extraemos el objeto `reservas` de cada snapshot
+  // ——— 5.7) PRE-FETCH reservas
+  const referencias = servicios.map(s => doc(db, 'Servicios', s.destino, 'Listado', s.nombre));
+  const snapshots = await Promise.all(referencias.map(ref => getDoc(ref)));
   const todosLosReservas = snapshots.map(snap =>
     (snap.exists() && snap.data().reservas) ? snap.data().reservas : {}
   );
 
-  // ——— 5.8) Montar TODO el HTML de las filas en un string
+  // ——— 5.8) Filas
   let rowsHTML = servicios.map((servicio, i) => {
     const reservas = todosLosReservas[i];
-    // ① determinamos el texto del botón
-    // 1️⃣ extraigo sólo las fechas donde realmente hubo pasajeros
+
     const fechasConPax = fechasOrdenadas.filter(fecha =>
-      grupos.some(g =>
-        (g.itinerario?.[fecha]||[])
-          .some(a => a.actividad === servicio.nombre)
-      )
+      grupos.some(g => (g.itinerario?.[fecha]||[]).some(a => a.actividad === servicio.nombre))
     );
-    
-    // 2️⃣ compruebo que **todas** esas fechas estén enviadas
-    const todasEnviadas = fechasConPax.every(fecha =>
-      reservas[fecha]?.estado === 'ENVIADA'
-    );
+    const todasEnviadas = fechasConPax.every(fecha => reservas[fecha]?.estado === 'ENVIADA');
     const tieneAlguna = Object.keys(reservas).length > 0;
-    let textoBtn;
-    if (!tieneAlguna) {
-      textoBtn = 'CREAR';
-    } else if (todasEnviadas) {
-      textoBtn = 'ENVIADA';
-    } else {
-      textoBtn = 'PENDIENTE';
-    }
-  
-    // ② datos de proveedor
+    let textoBtn = !tieneAlguna ? 'CREAR' : (todasEnviadas ? 'ENVIADA' : 'PENDIENTE');
+
     const provInfo = proveedores[servicio.proveedor] || {};
     const proveedorStr = provInfo.contacto ? servicio.proveedor : '-';
-  
-    // ③ construimos la fila
+
     let fila = `
       <tr>
         <td class="sticky-col">${servicio.nombre}</td>
@@ -180,45 +145,35 @@ async function init() {
             ${textoBtn}
           </button>
         </td>`;
-  
-  // ——— 5.8) dentro de rowsHTML, ahora con conteo de grupos
-  fechasOrdenadas.forEach(fecha => {
-    // 1️⃣ Total de pasajeros para esta actividad en esta fecha
-    const totalPax = grupos.reduce((sum, g) => {
-      return sum + (g.itinerario?.[fecha]||[])
-        .filter(a => a.actividad === servicio.nombre)
-        .reduce((s2, a) =>
-          s2 + (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)
-        , 0);
-    }, 0);
-  
-    // 2️⃣ Número de grupos que tienen al menos 1 pax en esa actividad/fecha
-    const groupCount = grupos.filter(g =>
-      (g.itinerario?.[fecha]||[]).some(a => a.actividad === servicio.nombre)
-    ).length;
-  
-    // 3️⃣ Mostramos "210 (5)" por ejemplo
-    fila += `
-      <td class="celda-interactiva"
-          data-info='${JSON.stringify({ actividad: servicio.nombre, fecha })}'
-          style="cursor:pointer;color:#0055a4;text-decoration:underline;">
-        ${totalPax} (${groupCount})
-      </td>`;
-  });
-  
+
+    fechasOrdenadas.forEach(fecha => {
+      const totalPax = grupos.reduce((sum, g) => {
+        return sum + (g.itinerario?.[fecha]||[])
+          .filter(a => a.actividad === servicio.nombre)
+          .reduce((s2, a) => s2 + ( (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0) ), 0);
+      }, 0);
+
+      const groupCount = grupos.filter(g =>
+        (g.itinerario?.[fecha]||[]).some(a => a.actividad === servicio.nombre)
+      ).length;
+
+      fila += `
+        <td class="celda-interactiva"
+            data-info='${JSON.stringify({ actividad: servicio.nombre, fecha })}'
+            style="cursor:pointer;color:#0055a4;text-decoration:underline;">
+          ${totalPax} (${groupCount})
+        </td>`;
+    });
+
     return fila + '</tr>';
   }).join('');
-  
-  // ⑤ volcamos TODO de una sola vez
   tbody.innerHTML = rowsHTML;
 
   // ——— 5.9) Delegación de eventos en <tbody>
   tbody.addEventListener('click', e => {
-    // si clic en botón RESERVA
     if (e.target.matches('.btn-reserva')) {
       abrirModalReserva({ currentTarget: e.target });
     }
-    // si clic en celda interactiva
     const celda = e.target.closest('.celda-interactiva');
     if (celda) {
       const { actividad, fecha } = JSON.parse(celda.dataset.info);
@@ -226,81 +181,48 @@ async function init() {
     }
   });
 
-  // Normaliza strings para que la búsqueda no considere tildes (á->a, ñ->n, etc.)
+  // ——— 5.10 DataTables: filtros, búsqueda (OR por comas, sin tildes) y botones
   function stripAccents(s) {
     return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
-  // Hace que DataTables compare datos normalizados
-  $.fn.dataTable.ext.type.search.string = function (d) {
-    return stripAccents(d);
-  };
+  $.fn.dataTable.ext.type.search.string = function (d) { return stripAccents(d); };
 
-
-  // ——— 5.10 Inicializar DataTables con filtros, búsqueda (OR por comas, sin tildes) y botones
-  
-  // ➊ Normalización para que la búsqueda ignore tildes/acentos
-  function stripAccents(s) {
-    return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  }
-  $.fn.dataTable.ext.type.search.string = function (d) {
-    return stripAccents(d);
-  };
-  
   const table = $('#tablaConteo').DataTable({
     scrollX: true,
     paging: false,
     fixedHeader: { header: true, headerOffset: 90 },
     fixedColumns: { leftColumns: 1 },
     dom: 'Bfrtip',
-    language: {
-      url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
-    },
+    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
     buttons: [
       { extend: 'colvis', text: 'Ver columnas' },
       {
         extend: 'excelHtml5',
         text: 'Descargar Excel',
-        exportOptions: {
-          columns: ':visible',          // solo columnas visibles
-          modifier: { search: 'applied' } // solo filas filtradas
-        }
+        exportOptions: { columns: ':visible', modifier: { search: 'applied' } }
       },
-      {
-        text: 'Estadísticas',
-        action: () => abrirModalEstadisticas(table)
-      }
+      { text: 'Estadísticas', action: () => abrirModalEstadisticas(table) }
     ],
     initComplete: function () {
       const api = this.api();
-  
-      // ➋ Poblado inicial del filtro de Destino (columna 1)
+
       const destinos = new Set(api.column(1).data().toArray());
       destinos.forEach(d => $('#filtroDestino').append(new Option(d, d)));
-  
-      // ➌ Buscador: términos separados por coma/; = OR (ignorando tildes)
+
       $('#buscador').on('keyup', () => {
         const val = stripAccents($('#buscador').val());
         const terms = val.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-  
-        if (!terms.length) {
-          table.search('').draw();
-          return;
-        }
-  
-        // OR puro entre términos escapados: (t1|t2|t3)
+        if (!terms.length) { api.search('').draw(); return; }
         const rex = '(' + terms.map(t =>
           t.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
         ).join('|') + ')';
-  
-        table.search(rex, true, false).draw(); // regex=true, smart=false
+        api.search(rex, true, false).draw();
       });
-  
-      // ➍ Filtro por Destino (coincidencia exacta, escapada)
+
       $('#filtroDestino').on('change', () => {
         const v = $('#filtroDestino').val();
-        if (!v) {
-          api.column(1).search('').draw();
-        } else {
+        if (!v) api.column(1).search('').draw();
+        else {
           const vEsc = v.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
           api.column(1).search(`^${vEsc}$`, true, false).draw();
         }
@@ -308,57 +230,44 @@ async function init() {
     }
   });
 
-  // ——— 5.11 Botones dentro del modal de Reserva
-  document.getElementById('btnCerrarReserva').onclick = () => {
+  // ——— 5.11 Botones modal Reserva
+  document.getElementById('btnCerrarReserva').onclick = () =>
     document.getElementById('modalReserva').style.display = 'none';
-  };
   document.getElementById('btnGuardarPendiente').onclick = guardarPendiente;
   document.getElementById('btnEnviarReserva').onclick = enviarReserva;
-} // ← fin init()
+} // fin init()
 
+// —————————————————————————————————————————————
+// Reserva
+// —————————————————————————————————————————————
 async function abrirModalReserva(event) {
   const btn       = event.currentTarget;
   const destino   = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
   const fecha = fechasOrdenadas.find(f =>
-    (grupos.some(g =>
-      g.itinerario?.[f]?.some(a=>a.actividad===actividad)
-    ))
+    (grupos.some(g => g.itinerario?.[f]?.some(a=>a.actividad===actividad)))
   );
   const proveedor = btn.dataset.proveedor;
 
-  console.log('🛈 abrirModalReserva:', { destino, actividad, proveedor });
-  console.log('🛈 proveedores disponibles:', proveedores);
-
-  // 1️⃣ rellenar "Para:" y "Asunto:"
-  // provInfo viene de un mapa global `proveedores[actividad]`
   const provInfo  = proveedores[proveedor] || { contacto:'', correo:'' };
   document.getElementById('modalPara').value   = provInfo.correo;
   document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
-  
-  // ——— 2️⃣ generar el cuerpo del email (totales + conteo de grupos) ———
-  //  a) prefiltrar fechas que tengan pasajeros para esta actividad
+
   const perDateData = fechasOrdenadas
     .map(fecha => {
       const lista = grupos.filter(g =>
         (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad)
       );
-      const paxTotal = lista.reduce(
-        (sum, g) => sum + (parseInt(g.cantidadgrupo) || 0),
-        0
-      );
+      const paxTotal = lista.reduce((sum, g) => sum + (parseInt(g.cantidadgrupo) || 0), 0);
       return { fecha, lista, paxTotal };
     })
     .filter(d => d.lista.length > 0);
-  
-  //  b) totales globales
+
   const totalGlobal = perDateData.reduce((sum, d) => sum + d.paxTotal, 0);
-  //    grupos únicos a través de TODAS las fechas
   const gruposUnicos = new Set();
   perDateData.forEach(({ lista }) => lista.forEach(g => gruposUnicos.add(g.id)));
   const totalGrupos = gruposUnicos.size;
-  
-  //  c) construir cuerpo
+
   let cuerpo = `Estimado/a ${provInfo.contacto || ''}:\n\n`;
   cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
   cuerpo += `Actividad: ${actividad}\n`;
@@ -366,7 +275,6 @@ async function abrirModalReserva(event) {
   cuerpo += `Total Grupos: (${totalGrupos})\n`;
   cuerpo += `Total PAX: (${totalGlobal})\n\n`;
   cuerpo += `Fechas y grupos:\n\n`;
-  
   perDateData.forEach(({ fecha, lista, paxTotal }) => {
     cuerpo += `➡️ Fecha ${formatearFechaBonita(fecha)} - Grupos (${lista.length}) - PAX (${paxTotal}):\n\n`;
     lista.forEach(g => {
@@ -374,147 +282,95 @@ async function abrirModalReserva(event) {
     });
     cuerpo += `\n`;
   });
-  
   cuerpo += `Atte.\nOperaciones RaiTrai`;
 
-
-  // ——— 3️⃣ vuelca en el textarea y muestra modal ———
   document.getElementById('modalCuerpo').value = cuerpo;
 
-  // ←––– AÑADE ESTAS LÍNEAS antes de mostrar el modal:
   const btnPend = document.getElementById('btnGuardarPendiente');
   btnPend.dataset.destino   = destino;
   btnPend.dataset.actividad = actividad;
-  btnPend.dataset.fecha     = fecha;  
+  btnPend.dataset.fecha     = fecha;
 
   const btnEnv = document.getElementById('btnEnviarReserva');
   btnEnv.dataset.destino    = destino;
   btnEnv.dataset.actividad  = actividad;
-  
-  // 4️⃣ finalmente muestra el modal
+
   document.getElementById('modalReserva').style.display = 'block';
 }
 
-// —————————————————————————————————————————————
-// Función: guardarPendiente — marca como PENDIENTE en Firestore
-// —————————————————————————————————————————————
 async function guardarPendiente() {
-  // en lugar de parsear el asunto y buscar el botón original:
-  const btn      = document.getElementById('btnGuardarPendiente');
-  const destino  = btn.dataset.destino;
-  const actividad= btn.dataset.actividad;
+  const btn       = document.getElementById('btnGuardarPendiente');
+  const destino   = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
   const fecha     = btn.dataset.fecha;
-  const cuerpo   = document.getElementById('modalCuerpo').value;
- 
+  const cuerpo    = document.getElementById('modalCuerpo').value;
+
   const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-  await updateDoc(ref, {
-    [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo }
-  });
+  await updateDoc(ref, { [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo } });
 
-  // actualizo el texto del botón CREAR
-  document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`)
-          .textContent = 'PENDIENTE';
-
-    // ←––––– aquí cierras el modal
-  document.getElementById('modalReserva').style.display = 'none';  
+  document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).textContent = 'PENDIENTE';
+  document.getElementById('modalReserva').style.display = 'none';
 }
 
-/**
- * Dispara mailto y guarda ENVIADA **todas** las fechas
- */
-  async function enviarReserva() {
-    const btn       = document.getElementById('btnEnviarReserva');
-    const destino   = btn.dataset.destino;
-    const actividad = btn.dataset.actividad;
-    const para      = document.getElementById('modalPara').value.trim();
-    const asunto    = document.getElementById('modalAsunto').value.trim();
-    const cuerpo    = document.getElementById('modalCuerpo').value;
-  
-    // 1) Abrir Gmail con el borrador
-    const baseUrl = 'https://mail.google.com/mail/u/0/?view=cm&fs=1';
-    const params  = [
-      `to=${encodeURIComponent(para)}`,
-      `su=${encodeURIComponent(asunto)}`,
-      `body=${encodeURIComponent(cuerpo)}`
-    ].join('&');
-    window.open(`${baseUrl}&${params}`, '_blank');
-  
-    // 2) Construir el payload de actualización por cada fecha con pax>0
-    try {
-      const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-      const payload = {};
-  
-      for (const f of fechasOrdenadas) {
-        // Total de pax de ESTA actividad en ESTA fecha (adultos + estudiantes)
-        const totalEnviado = grupos.reduce((sum, g) => {
-          const acts = g.itinerario?.[f] || [];
-          const t = acts
-            .filter(a => a.actividad === actividad)
-            .reduce((acc, a) => acc + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
-          return sum + t;
-        }, 0);
-  
-        if (totalEnviado > 0) {
-          payload[`reservas.${f}`] = {
-            estado: 'ENVIADA',
-            cuerpo,
-            totalEnviado
-          };
-        }
+async function enviarReserva() {
+  const btn       = document.getElementById('btnEnviarReserva');
+  const destino   = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
+  const para      = document.getElementById('modalPara').value.trim();
+  const asunto    = document.getElementById('modalAsunto').value.trim();
+  const cuerpo    = document.getElementById('modalCuerpo').value;
+
+  const baseUrl = 'https://mail.google.com/mail/u/0/?view=cm&fs=1';
+  const params  = [`to=${encodeURIComponent(para)}`, `su=${encodeURIComponent(asunto)}`, `body=${encodeURIComponent(cuerpo)}`].join('&');
+  window.open(`${baseUrl}&${params}`, '_blank');
+
+  try {
+    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+    const payload = {};
+
+    for (const f of fechasOrdenadas) {
+      const totalEnviado = grupos.reduce((sum, g) => {
+        const acts = g.itinerario?.[f] || [];
+        const t = acts
+          .filter(a => a.actividad === actividad)
+          .reduce((acc, a) => acc + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+        return sum + t;
+      }, 0);
+
+      if (totalEnviado > 0) {
+        payload[`reservas.${f}`] = { estado: 'ENVIADA', cuerpo, totalEnviado };
       }
-  
-      // Si hay algo que guardar, lo guardamos de una
-      if (Object.keys(payload).length > 0) {
-        await updateDoc(ref, payload);
-      }
-  
-      // 3) Actualizar UI y cerrar modal
-      const boton = document.querySelector(
-        `.btn-reserva[data-actividad="${actividad}"][data-destino="${destino}"]`
-      );
-      if (boton) boton.textContent = 'ENVIADA';
-  
-      document.getElementById('modalReserva').style.display = 'none';
-    } catch (err) {
-      console.error('Error al guardar ENVIADA por fecha:', err);
-      alert('No se pudo guardar el estado ENVIADA en Firestore. Revisa la consola.');
     }
+
+    if (Object.keys(payload).length > 0) await updateDoc(ref, payload);
+
+    const boton = document.querySelector(`.btn-reserva[data-actividad="${actividad}"][data-destino="${destino}"]`);
+    if (boton) boton.textContent = 'ENVIADA';
+    document.getElementById('modalReserva').style.display = 'none';
+  } catch (err) {
+    console.error('Error al guardar ENVIADA por fecha:', err);
+    alert('No se pudo guardar el estado ENVIADA en Firestore. Revisa la consola.');
   }
+}
 
 // —————————————————————————————————————————————
-// Función: mostrarGruposCoincidentes — modal detalle grupos
+// Modal “Detalle de grupos” (click en celdas o desde Estadísticas)
 // —————————————————————————————————————————————
 function mostrarGruposCoincidentes(actividad, fecha) {
-  // 1️⃣ Filtramos los grupos que coinciden
   const lista = grupos
-    .filter(g => (g.itinerario?.[fecha] || [])
-      .some(a => a.actividad === actividad)
-    )
-    .map(g => ({
-      numeroNegocio: g.id,
-      nombreGrupo:   g.nombreGrupo,
-      cantidadgrupo: g.cantidadgrupo,
-      programa:      g.programa
-    }));
+    .filter(g => (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad))
+    .map(g => ({ numeroNegocio: g.id, nombreGrupo: g.nombreGrupo, cantidadgrupo: g.cantidadgrupo, programa: g.programa }));
 
-  // 2️⃣ Calculamos totales
   const totalGrupos = lista.length;
-  const totalPAX = lista.reduce((sum, g) =>
-    sum + (parseInt(g.cantidadgrupo, 10) || 0)
-  , 0);
+  const totalPAX = lista.reduce((sum, g) => sum + (parseInt(g.cantidadgrupo, 10) || 0), 0);
 
-  // 3️⃣ Actualizamos el título del modal con la fecha formateada
   document.querySelector('#modalDetalle h3').textContent =
     `Detalle de grupos para el día ${formatearFechaBonita(fecha)} — Total PAX: ${totalPAX} — Total Grupos: ${totalGrupos}`;
 
-  // 4️⃣ Rellenamos la tabla
   const tb = document.querySelector('#tablaModal tbody');
   tb.innerHTML = '';
   if (!lista.length) {
-    tb.innerHTML = `
-      <tr>
-        <td colspan="4" style="text-align:center;">Sin datos</td>
-      </tr>`;
+    tb.innerHTML = `<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>`;
   } else {
     lista.forEach(g => {
       tb.insertAdjacentHTML('beforeend', `
@@ -526,51 +382,41 @@ function mostrarGruposCoincidentes(actividad, fecha) {
         </tr>`);
     });
   }
-
-  // 5️⃣ Mostramos el modal
-  document.getElementById('modalDetalle').style.display = 'block';
+  const modalDet = document.getElementById('modalDetalle');
+  modalDet.style.zIndex = '11000';
+  modalDet.style.display = 'block';
 }
 
 // ————————————————————————————————————————
-// Utilitaria: formatearFechaBonita (YYYY-MM-DD → DD/MM)
+// Utils
 // ————————————————————————————————————————
 function formatearFechaBonita(iso) {
   const [yyyy, mm, dd] = iso.split('-');
   return `${dd}/${mm}`;
 }
-
-// ————————————————————————————————————————
-// Utilitaria: escapeRegExp (para búsqueda segura)
-// ————————————————————————————————————————
-function escapeRegExp(text) {
-  return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-}
+function escapeRegExp(text) { return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&'); }
 
 // ========== ESTADÍSTICAS ==========
 function getContextoVisible(table) {
-  // 1) Actividades/destinos visibles (filas filtradas)
   const rows = table.rows({ search: 'applied' }).nodes().toArray();
   const pares = rows.map(row => {
     const c0 = row.cells[0]?.textContent?.trim() || '';
     const c1 = row.cells[1]?.textContent?.trim() || '';
     return { actividad: c0, destino: c1, key: `${c0}|||${c1}` };
   });
-  // deduplicar
   const map = new Map();
   pares.forEach(p => { if (!map.has(p.key)) map.set(p.key, p); });
 
-  // 2) Fechas visibles (columnas visibles con data-fecha)
   const fechasVisibles = [];
   table.columns().every(function () {
-    const col = this;
-    const th = col.header();
+    const th = this.header();
     const iso = th?.dataset?.fecha;
-    if (iso && col.visible()) fechasVisibles.push(iso);
+    if (iso && this.visible()) fechasVisibles.push(iso);
   });
 
   return {
-    paresVisibles: Array.from(map.values()), // [{actividad, destino}]
-    fechasVisibles,                          // ['YYYY-MM-DD', ...]
+    paresVisibles: Array.from(map.values()),
+    fechasVisibles,
     actividadesSet: new Set(Array.from(map.values()).map(p => p.actividad))
   };
 }
@@ -588,27 +434,33 @@ function sumarPaxDeActividadEnFechas(g, actividad, fechas) {
 
 function abrirModalEstadisticas(table) {
   const ctx = getContextoVisible(table);
-  window.__ctxStats = ctx; // guarda el contexto (actividades/fechas visibles)
-  // Si no hay nada visible, mostramos aviso
+  window.__ctxStats = ctx;
   if (!ctx.paresVisibles.length || !ctx.fechasVisibles.length) {
     alert('No hay actividades o fechas visibles para calcular.');
     return;
   }
 
-  // Pintar secciones base
+  // Defaults UI (si existen los controles)
+  const elModo    = document.getElementById('modoCombinacion');
+  const elAlc     = document.getElementById('alcanceCombinacion');
+  const elKMax    = document.getElementById('nivelMax');
+  const elSoloMax = document.getElementById('soloTamMax');
+  if (elModo) elModo.value = 'exacto';
+  if (elAlc)  elAlc.value  = 'viaje';
+  if (elKMax) elKMax.value = String(ctx.actividadesSet.size); // auto = N
+  if (elSoloMax) elSoloMax.checked = false;
+
   pintarStatsActividad(ctx);
   pintarStatsFecha(ctx);
-  // Combinaciones (default: incluye + viaje, nivel 3)
   recalcularCombinaciones(ctx);
 
-  // Eventos UI
-  document.getElementById('btnRecalcularStats').onclick = () => recalcularCombinaciones(ctx);
-  document.getElementById('btnCerrarStats').onclick = () => {
-    document.getElementById('modalEstadisticas').style.display = 'none';
-  };
-  document.getElementById('btnExportarStatsExcel').onclick = exportarEstadisticasExcel;
+  const btnRecalc = document.getElementById('btnRecalcularStats');
+  if (btnRecalc) btnRecalc.onclick = () => recalcularCombinaciones(ctx);
+  const btnCerrar = document.getElementById('btnCerrarStats');
+  if (btnCerrar) btnCerrar.onclick = () => (document.getElementById('modalEstadisticas').style.display = 'none');
+  const btnExcel  = document.getElementById('btnExportarStatsExcel');
+  if (btnExcel)  btnExcel.onclick  = exportarEstadisticasExcel;
 
-  // Mostrar
   document.getElementById('modalEstadisticas').style.display = 'block';
 }
 
@@ -642,15 +494,12 @@ function pintarStatsActividad(ctx) {
         <td>${pax}</td>
         <td>${gSet.size}</td>
         <td>${btn}</td>
-      </tr>
-    `);
+      </tr>`);
   });
 
-  // totales
   document.getElementById('statsActividadTotalPax').textContent = totalPax;
   document.getElementById('statsActividadTotalGrupos').textContent = gruposUnicos.size;
 
-  // Delegación de Ver grupos
   tbody.onclick = (e) => {
     const b = e.target.closest('.ver-grupos');
     if (!b) return;
@@ -662,8 +511,6 @@ function pintarStatsActividad(ctx) {
 function pintarStatsFecha(ctx) {
   const tbody = document.getElementById('statsFechaBody');
   tbody.innerHTML = '';
-
-  // Conjunto de actividades visibles (ignoramos destino para conteos)
   const actsVisibles = ctx.actividadesSet;
 
   ctx.fechasVisibles.forEach(fecha => {
@@ -691,8 +538,7 @@ function pintarStatsFecha(ctx) {
         <td>${pax}</td>
         <td>${gSet.size}</td>
         <td>${btn}</td>
-      </tr>
-    `);
+      </tr>`);
   });
 
   tbody.onclick = (e) => {
@@ -703,73 +549,114 @@ function pintarStatsFecha(ctx) {
   };
 }
 
+// ——— Combinaciones observadas (EXACTO por defecto)
 function recalcularCombinaciones(ctx) {
-  const modo = (document.getElementById('modoCombinacion').value || 'incluye'); // incluye | exacto
-  const alcance = (document.getElementById('alcanceCombinacion').value || 'viaje'); // viaje | dia
-  const kMax = parseInt(document.getElementById('nivelMax').value || '3', 10);
+  const modoEl    = document.getElementById('modoCombinacion');
+  const alcanceEl = document.getElementById('alcanceCombinacion');
+  const kMaxEl    = document.getElementById('nivelMax');
+  const soloMaxEl = document.getElementById('soloTamMax');
 
-  // Actividades que realmente tienen presencia (>0 pax) en fechas visibles
-  const actividadesPresentes = Array.from(ctx.actividadesSet).filter(act => {
-    for (const g of grupos) {
-      if (sumarPaxDeActividadEnFechas(g, act, ctx.fechasVisibles) > 0) return true;
-    }
-    return false;
-  });
+  const modo     = (modoEl?.value || 'exacto');         // 'exacto' | 'incluye'
+  const alcance  = (alcanceEl?.value || 'viaje');       // 'viaje' | 'dia'
+  const kMax     = parseInt(kMaxEl?.value || '999', 10);
+  const soloMax  = !!(soloMaxEl?.checked);
 
-  // Generamos combinaciones tamaño 2..kMax
-  const combos = [];
-  for (let k = 1; k <= Math.min(kMax, actividadesPresentes.length); k++) {
-    combos.push(...generarCombinaciones(actividadesPresentes, k));
-  }
-
-  // Pre-cálculos por grupo
-  const actsPorGrupoViaje = new Map();    // id -> Set(acts visibles en fechas visibles)
-  const actsPorGrupoPorDia = new Map();   // id -> {fecha -> Set(acts)}
-
-  for (const g of grupos) {
-    const setViaje = new Set();
-    const porDia = {};
-    for (const f of ctx.fechasVisibles) {
-      const setDia = new Set((g.itinerario?.[f] || [])
-        .filter(a => ctx.actividadesSet.has(a.actividad))
-        .map(a => a.actividad));
-      if (setDia.size) porDia[f] = setDia;
-      setDia.forEach(a => setViaje.add(a));
-    }
-    actsPorGrupoViaje.set(g.id, setViaje);
-    actsPorGrupoPorDia.set(g.id, porDia);
-  }
+  const actsVisibles = new Set(ctx.actividadesSet);
+  const nVisibles    = actsVisibles.size;
 
   const cuerpo = document.getElementById('statsCombosBody');
   cuerpo.innerHTML = '';
 
-  combos.forEach(combo => {
-    const comboSet = new Set(combo);
-    const listaIds = [];
+  const combosMap = new Map(); // key -> Set(ids)
 
-    for (const g of grupos) {
-      const ok = (alcance === 'viaje')
-        ? cumpleEnViaje(actsPorGrupoViaje.get(g.id), comboSet, modo)
-        : cumpleEnAlgúnDia(actsPorGrupoPorDia.get(g.id) || {}, comboSet, modo);
-      if (ok) listaIds.push(g.id);
+  const keyFromSet = (set) => Array.from(set).sort((a,b)=>a.localeCompare(b)).join(' + ');
+  const addCombo = (key, id) => {
+    if (!combosMap.has(key)) combosMap.set(key, new Set());
+    combosMap.get(key).add(id);
+  };
+  const genSubsetsK = (arr, k, cb) => {
+    const n = arr.length, idx = [];
+    const back = (start, depth) => {
+      if (depth === k) { cb(idx.map(i => arr[i]).sort().join(' + ')); return; }
+      for (let i = start; i < n; i++) { idx.push(i); back(i+1, depth+1); idx.pop(); }
+    };
+    back(0, 0);
+  };
+
+  for (const g of grupos) {
+    if (alcance === 'viaje') {
+      const setViaje = new Set();
+      for (const f of ctx.fechasVisibles) {
+        const acts = g.itinerario?.[f] || [];
+        for (const a of acts) if (actsVisibles.has(a.actividad)) setViaje.add(a.actividad);
+      }
+      if (setViaje.size === 0) continue;
+
+      if (modo === 'exacto') {
+        if (setViaje.size <= kMax) addCombo(keyFromSet(setViaje), g.id);
+      } else { // incluye
+        const arr = Array.from(setViaje);
+        const maxK = Math.min(kMax, arr.length);
+        const minK = soloMax ? nVisibles : 1;
+        if (minK <= maxK) {
+          for (let k = minK; k <= maxK; k++) genSubsetsK(arr, k, (key) => addCombo(key, g.id));
+        }
+      }
+
+    } else { // alcance === 'dia'
+      for (const f of ctx.fechasVisibles) {
+        const setDia = new Set(
+          (g.itinerario?.[f] || [])
+            .filter(a => actsVisibles.has(a.actividad))
+            .map(a => a.actividad)
+        );
+        if (setDia.size === 0) continue;
+
+        if (modo === 'exacto') {
+          if (setDia.size <= kMax) addCombo(keyFromSet(setDia), g.id);
+        } else { // incluye
+          const arr = Array.from(setDia);
+          const maxK = Math.min(kMax, arr.length);
+          const minK = soloMax ? nVisibles : 1;
+          if (minK <= maxK) {
+            for (let k = minK; k <= maxK; k++) genSubsetsK(arr, k, (key) => addCombo(key, g.id));
+          }
+        }
+      }
     }
+  }
 
-    if (listaIds.length > 0) {
-      const btn = `<button class="ver-grupos"
-        data-ids="${listaIds.join(',')}"
-        data-titulo="Grupos — ${combo.join(' + ')}"
-        data-context="combo"
-        data-combo="${combo.map(a => encodeURIComponent(a)).join(',')}"
-      >Ver grupos</button>`;
-
-      cuerpo.insertAdjacentHTML('beforeend', `
-        <tr>
-          <td>${combo.join(' + ')}</td>
-          <td>${listaIds.length}</td>
-          <td>${btn}</td>
-        </tr>
-      `);
+  // Filtro "solo tamaño máximo" para EXACTO
+  if (soloMax && modo === 'exacto') {
+    for (const key of Array.from(combosMap.keys())) {
+      const size = key.split(' + ').length;
+      if (size !== nVisibles) combosMap.delete(key);
     }
+  }
+
+  const sorted = Array.from(combosMap.entries()).sort((a, b) => {
+    const sa = a[0].split(' + ').length, sb = b[0].split(' + ').length;
+    if (sa !== sb) return sa - sb;
+    return a[0].localeCompare(b[0]);
+  });
+
+  sorted.forEach(([key, idSet]) => {
+    const idsCsv = Array.from(idSet).join(',');
+    const btn = `<button class="ver-grupos"
+      data-ids="${idsCsv}"
+      data-titulo="Grupos — ${key}"
+      data-context="combo"
+      data-combo="${key.split(' + ').map(encodeURIComponent).join(',')}"
+      data-alcance="${alcance}"
+      data-modo="${modo}"
+    >Ver grupos</button>`;
+
+    cuerpo.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${key}</td>
+        <td>${idSet.size}</td>
+        <td>${btn}</td>
+      </tr>`);
   });
 
   cuerpo.onclick = (e) => {
@@ -778,56 +665,9 @@ function recalcularCombinaciones(ctx) {
     const ids = (b.dataset.ids || '').split(',').filter(Boolean);
     mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos', b.dataset);
   };
-
-  // Helpers de combinación
-  function cumpleEnViaje(setViaje, comboSet, modo) {
-    if (!setViaje || setViaje.size === 0) return false;
-    if (modo === 'incluye') {
-      for (const a of comboSet) if (!setViaje.has(a)) return false;
-      return true;
-    } else { // exacto
-      if (setViaje.size !== comboSet.size) return false;
-      for (const a of comboSet) if (!setViaje.has(a)) return false;
-      return true;
-    }
-  }
-
-  function cumpleEnAlgúnDia(porDia, comboSet, modo) {
-    const fechas = Object.keys(porDia);
-    for (const f of fechas) {
-      const setDia = porDia[f];
-      if (!setDia || setDia.size === 0) continue;
-      if (modo === 'incluye') {
-        let ok = true;
-        for (const a of comboSet) if (!setDia.has(a)) { ok = false; break; }
-        if (ok) return true;
-      } else { // exacto
-        if (setDia.size !== comboSet.size) continue;
-        let ok = true;
-        for (const a of comboSet) if (!setDia.has(a)) { ok = false; break; }
-        if (ok) return true;
-      }
-    }
-    return false;
-    }
 }
 
-function generarCombinaciones(arr, k) {
-  const res = [];
-  const n = arr.length;
-  function backtrack(start, combo) {
-    if (combo.length === k) { res.push([...combo]); return; }
-    for (let i = start; i < n; i++) {
-      combo.push(arr[i]);
-      backtrack(i + 1, combo);
-      combo.pop();
-    }
-  }
-  backtrack(0, []);
-  return res;
-}
-
-// Reusa tu modal de detalle para listas arbitrarias de IDs de grupo
+// ——— Modal “Ver grupos” reutilizable desde Estadísticas
 function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
   const tb = document.querySelector('#tablaModal tbody');
   tb.innerHTML = '';
@@ -835,12 +675,10 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
   const lista = grupos.filter(g => ids.includes(g.id));
   const ctx = window.__ctxStats || { fechasVisibles: [], actividadesSet: new Set() };
 
-  // Helper: PAX específico según contexto
   function paxSegunContexto(g) {
     const ctxType = dataset.context || '';
     if (ctxType === 'actividad') {
       const act = decodeURIComponent(dataset.actividad || '');
-      // suma pax de esa actividad en TODAS las fechas visibles
       return ctx.fechasVisibles.reduce((sum, f) => {
         const acts = g.itinerario?.[f] || [];
         return sum + acts
@@ -851,36 +689,50 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
     if (ctxType === 'fecha') {
       const fsel = dataset.fecha;
       const acts = g.itinerario?.[fsel] || [];
-      // suma pax de actividades visibles en esa fecha
       return acts
         .filter(a => ctx.actividadesSet.has(a.actividad))
         .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
     }
     if (ctxType === 'combo') {
-      const comboActs = (dataset.combo || '')
-        .split(',')
-        .map(x => decodeURIComponent(x))
-        .filter(Boolean);
-      // suma pax de esas actividades en TODAS las fechas visibles
-      return ctx.fechasVisibles.reduce((sum, f) => {
-        const acts = g.itinerario?.[f] || [];
-        return sum + acts
-          .filter(a => comboActs.includes(a.actividad))
-          .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
-      }, 0);
+      const comboActs = (dataset.combo || '').split(',').map(x => decodeURIComponent(x)).filter(Boolean);
+      const alcance = dataset.alcance || 'viaje';
+      const modo    = dataset.modo || 'exacto';
+
+      if (alcance === 'viaje') {
+        return ctx.fechasVisibles.reduce((sum, f) => {
+          const acts = g.itinerario?.[f] || [];
+          return sum + acts
+            .filter(a => comboActs.includes(a.actividad))
+            .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+        }, 0);
+      } else {
+        // mismo día: suma SOLO en días donde cumple la condición
+        let total = 0;
+        for (const f of ctx.fechasVisibles) {
+          const acts = g.itinerario?.[f] || [];
+          const setDia = new Set(acts.filter(a => ctx.actividadesSet.has(a.actividad)).map(a => a.actividad));
+          const comboSet = new Set(comboActs);
+
+          const cumpleExacto = () => (setDia.size === comboSet.size) && [...comboSet].every(a => setDia.has(a));
+          const cumpleIncluye = () => [...comboSet].every(a => setDia.has(a));
+          const ok = (modo === 'exacto') ? cumpleExacto() : cumpleIncluye();
+
+          if (ok) {
+            total += acts
+              .filter(a => comboActs.includes(a.actividad))
+              .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+          }
+        }
+        return total;
+      }
     }
-    // Fallback: si no hay contexto, usar cantidadgrupo
     return parseInt(g.cantidadgrupo, 10) || 0;
   }
 
-  // Calcula total PAX de la selección
   const totalPaxSeleccion = lista.reduce((sum, g) => sum + paxSegunContexto(g), 0);
-
-  // Título con totales
   document.querySelector('#modalDetalle h3').textContent =
     `${titulo} — Total grupos: ${lista.length} — Total PAX: ${totalPaxSeleccion}`;
 
-  // Pinta filas (PAX = según contexto)
   if (!lista.length) {
     tb.innerHTML = `<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>`;
   } else {
@@ -892,53 +744,50 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
           <td>${g.nombreGrupo || ''}</td>
           <td>${pax}</td>
           <td>${g.programa || ''}</td>
-        </tr>
-      `);
+        </tr>`);
     });
   }
 
-  // Asegura que el modal quede por encima del de estadísticas
   const modalDet = document.getElementById('modalDetalle');
-  modalDet.style.zIndex = '11000'; // por si el inline no fue actualizado
+  modalDet.style.zIndex = '11000';
   modalDet.style.display = 'block';
 }
 
-// Convierte una <table> a matriz (AOA) y opcionalmente elimina la última columna ("Ver grupos")
+// ——— Exportar Excel de estadísticas (3 hojas)
 function tableToAOA(tableEl, dropLast = false) {
   const aoa = [];
   const pushRow = (row) => {
     const cells = Array.from(row.cells).map(td => (td.innerText || '').trim());
-    if (dropLast && cells.length) cells.pop(); // quita "Ver grupos"
+    if (dropLast && cells.length) cells.pop();
     aoa.push(cells);
   };
-  if (tableEl.tHead) Array.from(tableEl.tHead.rows).forEach(pushRow);
+  if (tableEl.tHead)  Array.from(tableEl.tHead.rows).forEach(pushRow);
   if (tableEl.tBodies?.[0]) Array.from(tableEl.tBodies[0].rows).forEach(pushRow);
-  if (tableEl.tFoot) Array.from(tableEl.tFoot.rows).forEach(pushRow);
+  if (tableEl.tFoot)  Array.from(tableEl.tFoot.rows).forEach(pushRow);
   return aoa;
 }
 
 function exportarEstadisticasExcel() {
   try {
-    const tAct = document.getElementById('tablaStatsActividad');
-    const tFec = document.getElementById('tablaStatsFecha');
-    const tCom = document.getElementById('tablaStatsCombos');
+    const modal = document.getElementById('modalEstadisticas');
+    const tAct = modal.querySelector('#tablaStatsActividad');
+    const tFec = modal.querySelector('#tablaStatsFecha');
+    const tCom = modal.querySelector('#tablaStatsCombos');
 
     if (!tAct || !tFec || !tCom) {
       alert('No se encuentran las tablas de estadísticas en el DOM.');
       return;
     }
 
-    const aoaAct = tableToAOA(tAct, /*dropLast=*/true);
-    const aoaFec = tableToAOA(tFec, /*dropLast=*/true);
-    const aoaCom = tableToAOA(tCom, /*dropLast=*/true);
+    const aoaAct = tableToAOA(tAct, true);
+    const aoaFec = tableToAOA(tFec, true);
+    const aoaCom = tableToAOA(tCom, true);
 
-    // Crea workbook y agrega hojas
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaAct), 'Resumen_Actividad');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaFec), 'Totales_Fecha');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoaCom), 'Combinaciones');
 
-    // Nombre de archivo
     const d = new Date();
     const yyyy = d.getFullYear();
     const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -951,4 +800,3 @@ function exportarEstadisticasExcel() {
     alert('No se pudo generar el Excel de estadísticas. Revisa la consola.');
   }
 }
-
