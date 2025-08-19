@@ -387,6 +387,9 @@ function mostrarGruposCoincidentes(actividad, fecha) {
   modalDet.style.display = 'block';
 }
 
+// 🔽 Activa ordenamiento en la tabla del modal
+activarOrdenTablaModal();
+
 // ————————————————————————————————————————
 // Utils
 // ————————————————————————————————————————
@@ -753,6 +756,9 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
   modalDet.style.display = 'block';
 }
 
+// 🔽 Activa ordenamiento en la tabla del modal
+activarOrdenTablaModal();
+
 // ——— Exportar Excel de estadísticas (3 hojas)
 function tableToAOA(tableEl, dropLast = false) {
   const aoa = [];
@@ -800,3 +806,25 @@ function exportarEstadisticasExcel() {
     alert('No se pudo generar el Excel de estadísticas. Revisa la consola.');
   }
 }
+
+function activarOrdenTablaModal() {
+  // Si ya estaba inicializado, destruye para re-crear con los datos nuevos
+  if ($.fn.DataTable.isDataTable('#tablaModal')) {
+    $('#tablaModal').DataTable().destroy();
+  }
+  $('#tablaModal').DataTable({
+    paging: false,
+    searching: false,
+    info: false,
+    order: [], // sin orden inicial (respeta el orden en que pintaste)
+    columnDefs: [
+      { targets: 2, type: 'num' } // PAX como numérico
+      // Si tu "N° Negocio" es 100% numérico, puedes añadir:
+      // { targets: 0, type: 'num' }
+    ],
+    language: {
+      url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+    }
+  });
+}
+
