@@ -361,9 +361,7 @@ async function main() {
           : '';
 
         li.innerHTML = `
-          // <h4>${act.horaInicio || '--:--'}${act.horaFin ? ' – ' + act.horaFin : ''}</h4>
           <p><strong>${(act.actividad || '').toString().toUpperCase()}</strong></p>
-          // <p>👥 ${paxCalc || act.pasajeros || 0} pax${(act.adultos || act.estudiantes) ? ` (A:${act.adultos || 0} E:${act.estudiantes || 0})` : ''}</p>
           ${notesHtml}
         `;
         ul.appendChild(li);
