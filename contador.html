@@ -65,7 +65,7 @@
 
     <!-- Modal interno para mostrar detalle de grupos -->
     <div id="modalDetalle" style="display:none; position:fixed; top:10%; left:50%; transform:translateX(-50%);
-      background:white; border:1px solid #ccc; padding:1rem; z-index:9999; width:80%; max-height:80vh; overflow:auto;">
+          background:white; border:1px solid #ccc; padding:1rem; z-index:11000; width:80%; max-height:80vh; overflow:auto;">
       <h3>Detalle de grupos</h3>
       <table border="1" width="100%" id="tablaModal">
         <thead>
@@ -212,6 +212,7 @@
         </details>
     
         <div style="display:flex; justify-content:flex-end; gap:.5rem;">
+          <button id="btnExportarStatsExcel">Descargar Excel</button>
           <button id="btnCerrarStats">Cerrar</button>
         </div>
       </div>
@@ -231,6 +232,7 @@
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
   <script src="https://cdn.datatables.net/fixedcolumns/4.3.0/js/dataTables.fixedColumns.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
 
   <!-- 5️⃣ Flujo de carga modular -->
   <script>
