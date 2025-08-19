@@ -704,7 +704,7 @@ function recalcularCombinaciones(ctx) {
 
   // Generamos combinaciones tamaño 2..kMax
   const combos = [];
-  for (let k = 2; k <= Math.min(kMax, actividadesPresentes.length); k++) {
+  for (let k = 1; k <= Math.min(kMax, actividadesPresentes.length); k++) {
     combos.push(...generarCombinaciones(actividadesPresentes, k));
   }
 
