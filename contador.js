@@ -236,7 +236,16 @@ async function init() {
   };
 
 
-  // ——— 5.10 Inicializar DataTables con filtros, búsqueda sin tildes y botones
+  // ——— 5.10 Inicializar DataTables con filtros, búsqueda (OR por comas, sin tildes) y botones
+  
+  // ➊ Normalización para que la búsqueda ignore tildes/acentos
+  function stripAccents(s) {
+    return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  $.fn.dataTable.ext.type.search.string = function (d) {
+    return stripAccents(d);
+  };
+  
   const table = $('#tablaConteo').DataTable({
     scrollX: true,
     paging: false,
@@ -252,9 +261,8 @@ async function init() {
         extend: 'excelHtml5',
         text: 'Descargar Excel',
         exportOptions: {
-          // Solo lo que está visible/filtrado
-          columns: ':visible',
-          modifier: { search: 'applied' }
+          columns: ':visible',          // solo columnas visibles
+          modifier: { search: 'applied' } // solo filas filtradas
         }
       },
       {
@@ -265,25 +273,37 @@ async function init() {
     initComplete: function () {
       const api = this.api();
   
-      // Poblado dinámico del filtroDestino (columna 1) según filas filtradas al inicio
-      new Set(api.column(1).data().toArray())
-        .forEach(d => $('#filtroDestino').append(new Option(d, d)));
+      // ➋ Poblado inicial del filtro de Destino (columna 1)
+      const destinos = new Set(api.column(1).data().toArray());
+      destinos.forEach(d => $('#filtroDestino').append(new Option(d, d)));
   
-      // Buscador multi-término ignorando tildes
+      // ➌ Buscador: términos separados por coma/; = OR (ignorando tildes)
       $('#buscador').on('keyup', () => {
         const val = stripAccents($('#buscador').val());
         const terms = val.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-        // Construimos regex AND (términos separados por coma) usando lookahead
-        const rex = terms.length
-          ? terms.map(t => `(?=.*${t.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`).join('')
-          : '';
-        api.search(rex, true, false).draw();
+  
+        if (!terms.length) {
+          table.search('').draw();
+          return;
+        }
+  
+        // OR puro entre términos escapados: (t1|t2|t3)
+        const rex = '(' + terms.map(t =>
+          t.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')
+        ).join('|') + ')';
+  
+        table.search(rex, true, false).draw(); // regex=true, smart=false
       });
   
-      // Filtro por destino (coincidencia exacta)
+      // ➍ Filtro por Destino (coincidencia exacta, escapada)
       $('#filtroDestino').on('change', () => {
         const v = $('#filtroDestino').val();
-        api.column(1).search(v || '', true, false).draw();
+        if (!v) {
+          api.column(1).search('').draw();
+        } else {
+          const vEsc = v.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+          api.column(1).search(`^${vEsc}$`, true, false).draw();
+        }
       });
     }
   });
