@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Contador de Actividades | RT v1.0</title>
 
-  <!-- DataTables base y extensiones -->
+  <!-- DataTables base y extensiones (CSS) -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css">
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/4.3.0/css/fixedColumns.dataTables.min.css">
@@ -16,56 +16,62 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <style>
-    /* Fija encabezado superior */
+    /* Encabezado de la tabla fijo en el top al hacer scroll vertical */
     table.dataTable thead th:not(.tablaNoSticky th) {
       position: sticky;
       top: 0;
       background-color: #f9f9f9;
-      z-index: 10;
+      z-index: 10; /* suficiente para quedar por encima del cuerpo de la tabla */
     }
 
-    /* Asegura que la tabla se mantenga sin saltos horizontales */
-    th, td {
-      white-space: nowrap;
-    }
+    /* Evita saltos de línea dentro de celdas (importante por ancho + scroll horizontal) */
+    th, td { white-space: nowrap; }
 
-    /* Evita que el encabezado se desplace al usar scroll horizontal */
-    .dataTables_scrollHeadInner table {
-      width: 100% !important;
-    }
+    /* Evita que el ancho del thead se des-sincronice con el body cuando hay scroll X */
+    .dataTables_scrollHeadInner table { width: 100% !important; }
   </style>
 </head>
 <body>
 
-  <!-- 1️⃣ Encabezado común (usuario, navegación) -->
+  <!-- 1️⃣ Encabezado común (se carga dinámicamente) -->
   <div id="encabezado"></div>
 
   <main>
     <h1>CONTADOR Y RESERVA DE ACTIVIDADES</h1>
 
-    <!-- 2️⃣ Barra de herramientas -->
+    <!-- 2️⃣ Barra de herramientas: buscador + filtro destino
+         * El JS hace OR por comas/; e ignora tildes.
+         * El select se autocompleta con los destinos presentes. -->
     <div class="toolbar">
       <div class="row">
         <div class="column long">
-            <input type="text" id="buscador" placeholder="🔍 Buscar actividad, destino o proveedor. Separar por (,) para multiple opción" />
+          <input
+            type="text"
+            id="buscador"
+            placeholder="🔍 Buscar actividad, destino o proveedor (usa , o ; para múltiples términos)"
+          />
         </div>
         <div class="column medium">
-            <select id="filtroDestino">
+          <select id="filtroDestino">
             <option value="">Todos los destinos</option>
-            </select>
+          </select>
         </div>
       </div>
     </div>
 
-    <!-- 3️⃣ Tabla principal -->
-      <table id="tablaConteo" class="display nowrap sticky-actividades" style="width:100%">
+    <!-- 3️⃣ Tabla principal (el thead y tbody se rellenan desde contador.js)
+         * El thead de fechas lleva data-fecha="YYYY-MM-DD" para detectar columnas visibles. -->
+    <table id="tablaConteo" class="display nowrap sticky-actividades" style="width:100%">
       <thead id="thead-actividades"></thead>
       <tbody id="tbody-actividades"></tbody>
     </table>
 
-    <!-- Modal interno para mostrar detalle de grupos -->
-    <div id="modalDetalle" style="display:none; position:fixed; top:10%; left:50%; transform:translateX(-50%);
-          background:white; border:1px solid #ccc; padding:1rem; z-index:11000; width:80%; max-height:80vh; overflow:auto;">
+    <!-- 4️⃣ Modal DETALLE (reutilizado para “Ver grupos”)
+         * z-index alto para aparecer siempre por encima de otros modales. -->
+    <div id="modalDetalle"
+         style="display:none; position:fixed; top:10%; left:50%; transform:translateX(-50%);
+                background:white; border:1px solid #ccc; padding:1rem; z-index:11000;
+                width:80%; max-height:80vh; overflow:auto;">
       <h3>Detalle de grupos</h3>
       <table border="1" width="100%" id="tablaModal">
         <thead>
@@ -84,33 +90,32 @@
       </div>
     </div>
 
-    <!-- Modal de Reserva -->
-    <div id="modalReserva" style="display:none; position:fixed;
-         top:0; left:0; width:100%; height:100%;
-         background:rgba(0,0,0,0.5); z-index:9999;">
+    <!-- 5️⃣ Modal RESERVA -->
+    <div id="modalReserva"
+         style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:9999;">
       <div style="background:white; margin:2vh auto; padding:1rem;
                   width:80%; max-width:900px;
                   max-height:92vh; overflow:auto; position:relative;
                   display:flex; flex-direction:column; gap:.75rem;">
         <h3>Enviar Reserva</h3>
-       
+
         <label>
           Para:
           <input type="email" id="modalPara" style="width:100%;" />
         </label>
-    
+
         <label>
           Asunto:
           <input type="text" id="modalAsunto" style="width:100%;" />
         </label>
-    
+
         <label>
           Cuerpo:
           <textarea id="modalCuerpo"
-          style="width:100%; min-height:50vh; flex:1 1 auto; resize:vertical;"></textarea>
-
+                    style="width:100%; min-height:50vh; flex:1 1 auto; resize:vertical;"></textarea>
         </label>
-    
+
         <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
           <button id="btnCerrarReserva">Cerrar</button>
           <button id="btnGuardarPendiente">Guardar Pendiente</button>
@@ -119,23 +124,28 @@
       </div>
     </div>
 
-    <!-- Modal de Estadísticas -->
-    <div id="modalEstadisticas" style="display:none; position:fixed;
-         top:0; left:0; width:100%; height:100%;
-         background:rgba(0,0,0,0.5); z-index:9999;">
+    <!-- 6️⃣ Modal ESTADÍSTICAS
+         * Respeta filtros y columnas de fecha visibles.
+         * Incluye controles para combinaciones + exportar a Excel. -->
+    <div id="modalEstadisticas"
+         style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:9999;">
       <div style="background:white; margin:2vh auto; padding:1rem;
                   width:92%; max-width:1100px;
                   max-height:94vh; overflow:auto; position:relative;
                   display:flex; flex-direction:column; gap:.75rem;">
         <h3>Estadísticas (según filtro y columnas visibles)</h3>
-    
-        <!-- Controles de combinaciones -->
-        <div class="row" style="display:flex; gap:1rem; flex-wrap:wrap;">
+
+        <!-- Controles de combinaciones
+             - EXACTO (=) y Todo el viaje por defecto (el JS también lo fuerza al abrir).
+             - Nivel máx.: el JS lo ajusta a N (nº de actividades visibles).
+             - “Solo tamaño máximo (exactas)”: filtra el resultado final a tamaño N. -->
+        <div class="row" style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
           <label>
             Modo:
             <select id="modoCombinacion">
-              <option value="incluye" selected>INCLUYE (⊇)</option>
-              <option value="exacto">EXACTO (=)</option>
+              <option value="incluye">INCLUYE (⊇)</option>
+              <option value="exacto" selected>EXACTO (=)</option>
             </select>
           </label>
           <label>
@@ -154,12 +164,17 @@
               <option>5</option>
             </select>
           </label>
+          <label style="display:flex;gap:.4rem;align-items:center;">
+            <input type="checkbox" id="soloTamMax">
+            Solo tamaño máximo (exactas)
+          </label>
           <button id="btnRecalcularStats">Recalcular</button>
         </div>
-    
+
+        <!-- Resumen por actividad: PAX total + grupos y acceso a “Ver grupos” -->
         <details open>
           <summary><b>Resumen por actividad</b></summary>
-          <table border="1" width="100%">
+          <table id="tablaStatsActividad" border="1" width="100%">
             <thead>
               <tr>
                 <th>Actividad</th>
@@ -180,10 +195,11 @@
             </tfoot>
           </table>
         </details>
-    
+
+        <!-- Totales por fecha: útil para ver picos por día -->
         <details open>
           <summary><b>Totales por fecha</b></summary>
-          <table border="1" width="100%">
+          <table id="tablaStatsFecha" border="1" width="100%">
             <thead>
               <tr>
                 <th>Fecha</th>
@@ -195,11 +211,18 @@
             <tbody id="statsFechaBody"></tbody>
           </table>
         </details>
-    
+
+        <!-- Combinaciones de actividades:
+             * Mostramos solo combinaciones que EXISTEN en los datos (observadas).
+             * “EXACTO” = exactamente ese set dentro del conjunto visible.
+             * “INCLUYE” = contiene al menos esas actividades.
+             * “Mismo día” exige que la combinación ocurra el mismo día. -->
         <details open>
           <summary><b>Combinaciones de actividades</b></summary>
-          <small>Se consideran solo actividades/fechas visibles. “INCLUYE” cuenta grupos que realizan al menos esas actividades; “EXACTO” cuenta grupos que realizan exactamente esa combinación dentro del conjunto visible. “Mismo día” exige que ocurra en el mismo día.</small>
-          <table border="1" width="100%" style="margin-top:.5rem;">
+          <small>
+            Se consideran solo actividades/fechas visibles. “INCLUYE” cuenta grupos que realizan al menos esas actividades; “EXACTO” cuenta grupos que realizan exactamente esa combinación dentro del conjunto visible. “Mismo día” exige que ocurra en el mismo día.
+          </small>
+          <table id="tablaStatsCombos" border="1" width="100%" style="margin-top:.5rem;">
             <thead>
               <tr>
                 <th>Combinación</th>
@@ -210,20 +233,17 @@
             <tbody id="statsCombosBody"></tbody>
           </table>
         </details>
-    
+
+        <!-- Acciones del modal de estadísticas -->
         <div style="display:flex; justify-content:flex-end; gap:.5rem;">
           <button id="btnExportarStatsExcel">Descargar Excel</button>
           <button id="btnCerrarStats">Cerrar</button>
         </div>
       </div>
     </div>
-
-
   </main>
 
-  
-
-  <!-- 4️⃣ Librerías JS necesarias -->
+  <!-- 7️⃣ Librerías JS necesarias (orden recomendado) -->
   <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
@@ -231,31 +251,31 @@
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
   <script src="https://cdn.datatables.net/fixedcolumns/4.3.0/js/dataTables.fixedColumns.min.js"></script>
+
+  <!-- JSZip (requerido por Excel de DataTables) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+  <!-- SheetJS (XLSX) para exportar el Excel del modal de estadísticas -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
 
-  <!-- 5️⃣ Flujo de carga modular -->
+  <!-- 8️⃣ Flujo de carga modular: encabezado + módulos de la app -->
   <script>
     fetch('encabezado.html')
       .then(res => res.text())
-      .then(html => {
-        document.getElementById('encabezado').innerHTML = html;
-      })
+      .then(html => { document.getElementById('encabezado').innerHTML = html; })
       .then(() => {
-        // Aquí creamos un único <script type="module"> que arrancará
-        // TODO tu flujo: importa firebase-init.js y luego calendario.js
+        // Un solo <script type="module"> que arranca todos los módulos necesarios
         const s = document.createElement('script');
         s.type = 'module';
         s.textContent = `
           import './firebase-init.js';
-          import './script.js'; 
+          import './script.js';
           import './contador.js';
         `;
         document.body.appendChild(s);
       });
   </script>
 
-  <!-- 6️⃣ Firebase en segundo plano (por si se requiere directo) -->
+  <!-- 9️⃣ Firebase (opcional: carga en paralelo por si se necesita directo) -->
   <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
