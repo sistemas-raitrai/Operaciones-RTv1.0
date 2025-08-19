@@ -119,6 +119,105 @@
       </div>
     </div>
 
+    <!-- Modal de Estadísticas -->
+    <div id="modalEstadisticas" style="display:none; position:fixed;
+         top:0; left:0; width:100%; height:100%;
+         background:rgba(0,0,0,0.5); z-index:9999;">
+      <div style="background:white; margin:2vh auto; padding:1rem;
+                  width:92%; max-width:1100px;
+                  max-height:94vh; overflow:auto; position:relative;
+                  display:flex; flex-direction:column; gap:.75rem;">
+        <h3>Estadísticas (según filtro y columnas visibles)</h3>
+    
+        <!-- Controles de combinaciones -->
+        <div class="row" style="display:flex; gap:1rem; flex-wrap:wrap;">
+          <label>
+            Modo:
+            <select id="modoCombinacion">
+              <option value="incluye" selected>INCLUYE (⊇)</option>
+              <option value="exacto">EXACTO (=)</option>
+            </select>
+          </label>
+          <label>
+            Alcance:
+            <select id="alcanceCombinacion">
+              <option value="viaje" selected>Todo el viaje</option>
+              <option value="dia">Mismo día</option>
+            </select>
+          </label>
+          <label>
+            Nivel máx. combinación:
+            <select id="nivelMax">
+              <option>2</option>
+              <option selected>3</option>
+              <option>4</option>
+              <option>5</option>
+            </select>
+          </label>
+          <button id="btnRecalcularStats">Recalcular</button>
+        </div>
+    
+        <details open>
+          <summary><b>Resumen por actividad</b></summary>
+          <table border="1" width="100%">
+            <thead>
+              <tr>
+                <th>Actividad</th>
+                <th>Destino</th>
+                <th>Total PAX</th>
+                <th>Grupos</th>
+                <th>Ver grupos</th>
+              </tr>
+            </thead>
+            <tbody id="statsActividadBody"></tbody>
+            <tfoot>
+              <tr>
+                <th colspan="2" style="text-align:right;">Totales:</th>
+                <th id="statsActividadTotalPax">0</th>
+                <th id="statsActividadTotalGrupos">0</th>
+                <th></th>
+              </tr>
+            </tfoot>
+          </table>
+        </details>
+    
+        <details open>
+          <summary><b>Totales por fecha</b></summary>
+          <table border="1" width="100%">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Total PAX</th>
+                <th>Grupos</th>
+                <th>Ver grupos</th>
+              </tr>
+            </thead>
+            <tbody id="statsFechaBody"></tbody>
+          </table>
+        </details>
+    
+        <details open>
+          <summary><b>Combinaciones de actividades</b></summary>
+          <small>Se consideran solo actividades/fechas visibles. “INCLUYE” cuenta grupos que realizan al menos esas actividades; “EXACTO” cuenta grupos que realizan exactamente esa combinación dentro del conjunto visible. “Mismo día” exige que ocurra en el mismo día.</small>
+          <table border="1" width="100%" style="margin-top:.5rem;">
+            <thead>
+              <tr>
+                <th>Combinación</th>
+                <th># Grupos</th>
+                <th>Ver grupos</th>
+              </tr>
+            </thead>
+            <tbody id="statsCombosBody"></tbody>
+          </table>
+        </details>
+    
+        <div style="display:flex; justify-content:flex-end; gap:.5rem;">
+          <button id="btnCerrarStats">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+
   </main>
 
   
