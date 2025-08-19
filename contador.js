@@ -107,14 +107,14 @@ async function init() {
   });
   fechasOrdenadas = Array.from(fechasSet).sort();
 
-  // ——— 5.5) Generar <thead> dinámico (incluye columna Reserva)
+  // ——— 5.5) Generar <thead> dinámico (incluye columna Reserva) con data-fecha
   thead.innerHTML = `
     <tr>
       <th class="sticky-col sticky-header">Actividad</th>
       <th>Destino</th>
       <th>Proveedor</th>
       <th>Reserva</th>
-      ${fechasOrdenadas.map(f => `<th>${formatearFechaBonita(f)}</th>`).join('')}
+      ${fechasOrdenadas.map(f => `<th data-fecha="${f}">${formatearFechaBonita(f)}</th>`).join('')}
     </tr>`;
 
   // ——— 5.6) Ordenar alfabéticamente los servicios
@@ -226,7 +226,17 @@ async function init() {
     }
   });
 
-  // ——— 5.10 Inicializar DataTables con filtros y búsqueda
+  // Normaliza strings para que la búsqueda no considere tildes (á->a, ñ->n, etc.)
+  function stripAccents(s) {
+    return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+  // Hace que DataTables compare datos normalizados
+  $.fn.dataTable.ext.type.search.string = function (d) {
+    return stripAccents(d);
+  };
+
+
+  // ——— 5.10 Inicializar DataTables con filtros, búsqueda sin tildes y botones
   const table = $('#tablaConteo').DataTable({
     scrollX: true,
     paging: false,
@@ -238,28 +248,43 @@ async function init() {
     },
     buttons: [
       { extend: 'colvis', text: 'Ver columnas' },
-      { extend: 'excelHtml5', text: 'Descargar Excel' }
+      {
+        extend: 'excelHtml5',
+        text: 'Descargar Excel',
+        exportOptions: {
+          // Solo lo que está visible/filtrado
+          columns: ':visible',
+          modifier: { search: 'applied' }
+        }
+      },
+      {
+        text: 'Estadísticas',
+        action: () => abrirModalEstadisticas(table)
+      }
     ],
     initComplete: function () {
       const api = this.api();
-      // Poblado dinámico del filtroDestino
+  
+      // Poblado dinámico del filtroDestino (columna 1) según filas filtradas al inicio
       new Set(api.column(1).data().toArray())
         .forEach(d => $('#filtroDestino').append(new Option(d, d)));
-
-      // Buscador con comas/puntos y comas
+  
+      // Buscador multi-término ignorando tildes
       $('#buscador').on('keyup', () => {
-        const val = $('#buscador').val();
+        const val = stripAccents($('#buscador').val());
         const terms = val.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        // Construimos regex AND (términos separados por coma) usando lookahead
         const rex = terms.length
-          ? terms.map(t => `(?=.*${escapeRegExp(t)})`).join('|')
+          ? terms.map(t => `(?=.*${t.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`).join('')
           : '';
         api.search(rex, true, false).draw();
       });
-
-      // Filtro por destino
-      $('#filtroDestino').on('change', () =>
-        api.column(1).search($('#filtroDestino').val()).draw()
-      );
+  
+      // Filtro por destino (coincidencia exacta)
+      $('#filtroDestino').on('change', () => {
+        const v = $('#filtroDestino').val();
+        api.column(1).search(v || '', true, false).draw();
+      });
     }
   });
 
@@ -499,4 +524,291 @@ function formatearFechaBonita(iso) {
 // ————————————————————————————————————————
 function escapeRegExp(text) {
   return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+}
+
+// ========== ESTADÍSTICAS ==========
+function getContextoVisible(table) {
+  // 1) Actividades/destinos visibles (filas filtradas)
+  const rows = table.rows({ search: 'applied' }).nodes().toArray();
+  const pares = rows.map(row => {
+    const c0 = row.cells[0]?.textContent?.trim() || '';
+    const c1 = row.cells[1]?.textContent?.trim() || '';
+    return { actividad: c0, destino: c1, key: `${c0}|||${c1}` };
+  });
+  // deduplicar
+  const map = new Map();
+  pares.forEach(p => { if (!map.has(p.key)) map.set(p.key, p); });
+
+  // 2) Fechas visibles (columnas visibles con data-fecha)
+  const fechasVisibles = [];
+  table.columns().every(function () {
+    const col = this;
+    const th = col.header();
+    const iso = th?.dataset?.fecha;
+    if (iso && col.visible()) fechasVisibles.push(iso);
+  });
+
+  return {
+    paresVisibles: Array.from(map.values()), // [{actividad, destino}]
+    fechasVisibles,                          // ['YYYY-MM-DD', ...]
+    actividadesSet: new Set(Array.from(map.values()).map(p => p.actividad))
+  };
+}
+
+function sumarPaxDeActividadEnFechas(g, actividad, fechas) {
+  let total = 0;
+  for (const f of fechas) {
+    const acts = g.itinerario?.[f] || [];
+    total += acts
+      .filter(a => a.actividad === actividad)
+      .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+  }
+  return total;
+}
+
+function abrirModalEstadisticas(table) {
+  const ctx = getContextoVisible(table);
+  // Si no hay nada visible, mostramos aviso
+  if (!ctx.paresVisibles.length || !ctx.fechasVisibles.length) {
+    alert('No hay actividades o fechas visibles para calcular.');
+    return;
+  }
+
+  // Pintar secciones base
+  pintarStatsActividad(ctx);
+  pintarStatsFecha(ctx);
+  // Combinaciones (default: incluye + viaje, nivel 3)
+  recalcularCombinaciones(ctx);
+
+  // Eventos UI
+  document.getElementById('btnRecalcularStats').onclick = () => recalcularCombinaciones(ctx);
+  document.getElementById('btnCerrarStats').onclick = () => {
+    document.getElementById('modalEstadisticas').style.display = 'none';
+  };
+
+  // Mostrar
+  document.getElementById('modalEstadisticas').style.display = 'block';
+}
+
+function pintarStatsActividad(ctx) {
+  const tbody = document.getElementById('statsActividadBody');
+  tbody.innerHTML = '';
+  let totalPax = 0;
+  const gruposUnicos = new Set();
+
+  ctx.paresVisibles.forEach(({ actividad, destino }) => {
+    let pax = 0;
+    const gSet = new Set();
+    for (const g of grupos) {
+      const t = sumarPaxDeActividadEnFechas(g, actividad, ctx.fechasVisibles);
+      if (t > 0) { pax += t; gSet.add(g.id); }
+    }
+    totalPax += pax;
+    gSet.forEach(id => gruposUnicos.add(id));
+
+    const btn = `<button class="ver-grupos" data-ids="${Array.from(gSet).join(',')}" data-titulo="Grupos — ${actividad} (${destino})">Ver grupos</button>`;
+    tbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${actividad}</td>
+        <td>${destino}</td>
+        <td>${pax}</td>
+        <td>${gSet.size}</td>
+        <td>${btn}</td>
+      </tr>
+    `);
+  });
+
+  // totales
+  document.getElementById('statsActividadTotalPax').textContent = totalPax;
+  document.getElementById('statsActividadTotalGrupos').textContent = gruposUnicos.size;
+
+  // Delegación de Ver grupos
+  tbody.onclick = (e) => {
+    const b = e.target.closest('.ver-grupos');
+    if (!b) return;
+    const ids = (b.dataset.ids || '').split(',').filter(Boolean);
+    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos');
+  };
+}
+
+function pintarStatsFecha(ctx) {
+  const tbody = document.getElementById('statsFechaBody');
+  tbody.innerHTML = '';
+
+  // Conjunto de actividades visibles (ignoramos destino para conteos)
+  const actsVisibles = ctx.actividadesSet;
+
+  ctx.fechasVisibles.forEach(fecha => {
+    let pax = 0;
+    const gSet = new Set();
+
+    for (const g of grupos) {
+      const acts = g.itinerario?.[fecha] || [];
+      const t = acts
+        .filter(a => actsVisibles.has(a.actividad))
+        .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+      if (t > 0) { pax += t; gSet.add(g.id); }
+    }
+
+    const btn = `<button class="ver-grupos" data-ids="${Array.from(gSet).join(',')}" data-titulo="Grupos — ${formatearFechaBonita(fecha)}">Ver grupos</button>`;
+    tbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${formatearFechaBonita(fecha)}</td>
+        <td>${pax}</td>
+        <td>${gSet.size}</td>
+        <td>${btn}</td>
+      </tr>
+    `);
+  });
+
+  tbody.onclick = (e) => {
+    const b = e.target.closest('.ver-grupos');
+    if (!b) return;
+    const ids = (b.dataset.ids || '').split(',').filter(Boolean);
+    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos');
+  };
+}
+
+function recalcularCombinaciones(ctx) {
+  const modo = (document.getElementById('modoCombinacion').value || 'incluye'); // incluye | exacto
+  const alcance = (document.getElementById('alcanceCombinacion').value || 'viaje'); // viaje | dia
+  const kMax = parseInt(document.getElementById('nivelMax').value || '3', 10);
+
+  // Actividades que realmente tienen presencia (>0 pax) en fechas visibles
+  const actividadesPresentes = Array.from(ctx.actividadesSet).filter(act => {
+    for (const g of grupos) {
+      if (sumarPaxDeActividadEnFechas(g, act, ctx.fechasVisibles) > 0) return true;
+    }
+    return false;
+  });
+
+  // Generamos combinaciones tamaño 2..kMax
+  const combos = [];
+  for (let k = 2; k <= Math.min(kMax, actividadesPresentes.length); k++) {
+    combos.push(...generarCombinaciones(actividadesPresentes, k));
+  }
+
+  // Pre-cálculos por grupo
+  const actsPorGrupoViaje = new Map();    // id -> Set(acts visibles en fechas visibles)
+  const actsPorGrupoPorDia = new Map();   // id -> {fecha -> Set(acts)}
+
+  for (const g of grupos) {
+    const setViaje = new Set();
+    const porDia = {};
+    for (const f of ctx.fechasVisibles) {
+      const setDia = new Set((g.itinerario?.[f] || [])
+        .filter(a => ctx.actividadesSet.has(a.actividad))
+        .map(a => a.actividad));
+      if (setDia.size) porDia[f] = setDia;
+      setDia.forEach(a => setViaje.add(a));
+    }
+    actsPorGrupoViaje.set(g.id, setViaje);
+    actsPorGrupoPorDia.set(g.id, porDia);
+  }
+
+  const cuerpo = document.getElementById('statsCombosBody');
+  cuerpo.innerHTML = '';
+
+  combos.forEach(combo => {
+    const comboSet = new Set(combo);
+    const listaIds = [];
+
+    for (const g of grupos) {
+      const ok = (alcance === 'viaje')
+        ? cumpleEnViaje(actsPorGrupoViaje.get(g.id), comboSet, modo)
+        : cumpleEnAlgúnDia(actsPorGrupoPorDia.get(g.id) || {}, comboSet, modo);
+      if (ok) listaIds.push(g.id);
+    }
+
+    if (listaIds.length > 0) {
+      const btn = `<button class="ver-grupos" data-ids="${listaIds.join(',')}" data-titulo="Grupos — ${combo.join(' + ')}">Ver grupos</button>`;
+      cuerpo.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td>${combo.join(' + ')}</td>
+          <td>${listaIds.length}</td>
+          <td>${btn}</td>
+        </tr>
+      `);
+    }
+  });
+
+  cuerpo.onclick = (e) => {
+    const b = e.target.closest('.ver-grupos');
+    if (!b) return;
+    const ids = (b.dataset.ids || '').split(',').filter(Boolean);
+    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos');
+  };
+
+  // Helpers de combinación
+  function cumpleEnViaje(setViaje, comboSet, modo) {
+    if (!setViaje || setViaje.size === 0) return false;
+    if (modo === 'incluye') {
+      for (const a of comboSet) if (!setViaje.has(a)) return false;
+      return true;
+    } else { // exacto
+      if (setViaje.size !== comboSet.size) return false;
+      for (const a of comboSet) if (!setViaje.has(a)) return false;
+      return true;
+    }
+  }
+
+  function cumpleEnAlgúnDia(porDia, comboSet, modo) {
+    const fechas = Object.keys(porDia);
+    for (const f of fechas) {
+      const setDia = porDia[f];
+      if (!setDia || setDia.size === 0) continue;
+      if (modo === 'incluye') {
+        let ok = true;
+        for (const a of comboSet) if (!setDia.has(a)) { ok = false; break; }
+        if (ok) return true;
+      } else { // exacto
+        if (setDia.size !== comboSet.size) continue;
+        let ok = true;
+        for (const a of comboSet) if (!setDia.has(a)) { ok = false; break; }
+        if (ok) return true;
+      }
+    }
+    return false;
+    }
+}
+
+function generarCombinaciones(arr, k) {
+  const res = [];
+  const n = arr.length;
+  function backtrack(start, combo) {
+    if (combo.length === k) { res.push([...combo]); return; }
+    for (let i = start; i < n; i++) {
+      combo.push(arr[i]);
+      backtrack(i + 1, combo);
+      combo.pop();
+    }
+  }
+  backtrack(0, []);
+  return res;
+}
+
+// Reusa tu modal de detalle para listas arbitrarias de IDs de grupo
+function mostrarListaDeGrupos(ids, titulo) {
+  const tb = document.querySelector('#tablaModal tbody');
+  tb.innerHTML = '';
+  const lista = grupos.filter(g => ids.includes(g.id));
+
+  document.querySelector('#modalDetalle h3').textContent =
+    `${titulo} — Total grupos: ${lista.length}`;
+
+  if (!lista.length) {
+    tb.innerHTML = `<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>`;
+  } else {
+    lista.forEach(g => {
+      tb.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td>${g.id}</td>
+          <td>${g.nombreGrupo || ''}</td>
+          <td>${g.cantidadgrupo || ''}</td>
+          <td>${g.programa || ''}</td>
+        </tr>
+      `);
+    });
+  }
+  document.getElementById('modalDetalle').style.display = 'block';
 }
