@@ -361,7 +361,7 @@ async function main() {
           : '';
 
         li.innerHTML = `
-          <p><strong>${(act.actividad || '').toString().toUpperCase()}</strong></p>
+          <p><strong>- ${(act.actividad || '').toString().toUpperCase()}</strong></p>
           ${notesHtml}
         `;
         ul.appendChild(li);
