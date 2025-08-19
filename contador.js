@@ -588,6 +588,7 @@ function sumarPaxDeActividadEnFechas(g, actividad, fechas) {
 
 function abrirModalEstadisticas(table) {
   const ctx = getContextoVisible(table);
+  window.__ctxStats = ctx; // guarda el contexto (actividades/fechas visibles)
   // Si no hay nada visible, mostramos aviso
   if (!ctx.paresVisibles.length || !ctx.fechasVisibles.length) {
     alert('No hay actividades o fechas visibles para calcular.');
@@ -626,7 +627,13 @@ function pintarStatsActividad(ctx) {
     totalPax += pax;
     gSet.forEach(id => gruposUnicos.add(id));
 
-    const btn = `<button class="ver-grupos" data-ids="${Array.from(gSet).join(',')}" data-titulo="Grupos — ${actividad} (${destino})">Ver grupos</button>`;
+    const btn = `<button class="ver-grupos"
+      data-ids="${Array.from(gSet).join(',')}"
+      data-titulo="Grupos — ${actividad} (${destino})"
+      data-context="actividad"
+      data-actividad="${encodeURIComponent(actividad)}"
+    >Ver grupos</button>`;
+
     tbody.insertAdjacentHTML('beforeend', `
       <tr>
         <td>${actividad}</td>
@@ -647,7 +654,7 @@ function pintarStatsActividad(ctx) {
     const b = e.target.closest('.ver-grupos');
     if (!b) return;
     const ids = (b.dataset.ids || '').split(',').filter(Boolean);
-    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos');
+    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos', b.dataset);
   };
 }
 
@@ -670,7 +677,13 @@ function pintarStatsFecha(ctx) {
       if (t > 0) { pax += t; gSet.add(g.id); }
     }
 
-    const btn = `<button class="ver-grupos" data-ids="${Array.from(gSet).join(',')}" data-titulo="Grupos — ${formatearFechaBonita(fecha)}">Ver grupos</button>`;
+    const btn = `<button class="ver-grupos"
+      data-ids="${Array.from(gSet).join(',')}"
+      data-titulo="Grupos — ${formatearFechaBonita(fecha)}"
+      data-context="fecha"
+      data-fecha="${fecha}"
+    >Ver grupos</button>`;
+
     tbody.insertAdjacentHTML('beforeend', `
       <tr>
         <td>${formatearFechaBonita(fecha)}</td>
@@ -685,7 +698,7 @@ function pintarStatsFecha(ctx) {
     const b = e.target.closest('.ver-grupos');
     if (!b) return;
     const ids = (b.dataset.ids || '').split(',').filter(Boolean);
-    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos');
+    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos', b.dataset);
   };
 }
 
@@ -741,7 +754,13 @@ function recalcularCombinaciones(ctx) {
     }
 
     if (listaIds.length > 0) {
-      const btn = `<button class="ver-grupos" data-ids="${listaIds.join(',')}" data-titulo="Grupos — ${combo.join(' + ')}">Ver grupos</button>`;
+      const btn = `<button class="ver-grupos"
+        data-ids="${listaIds.join(',')}"
+        data-titulo="Grupos — ${combo.join(' + ')}"
+        data-context="combo"
+        data-combo="${combo.map(a => encodeURIComponent(a)).join(',')}"
+      >Ver grupos</button>`;
+
       cuerpo.insertAdjacentHTML('beforeend', `
         <tr>
           <td>${combo.join(' + ')}</td>
@@ -756,7 +775,7 @@ function recalcularCombinaciones(ctx) {
     const b = e.target.closest('.ver-grupos');
     if (!b) return;
     const ids = (b.dataset.ids || '').split(',').filter(Boolean);
-    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos');
+    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos', b.dataset);
   };
 
   // Helpers de combinación
@@ -808,27 +827,77 @@ function generarCombinaciones(arr, k) {
 }
 
 // Reusa tu modal de detalle para listas arbitrarias de IDs de grupo
-function mostrarListaDeGrupos(ids, titulo) {
+function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
   const tb = document.querySelector('#tablaModal tbody');
   tb.innerHTML = '';
+
   const lista = grupos.filter(g => ids.includes(g.id));
+  const ctx = window.__ctxStats || { fechasVisibles: [], actividadesSet: new Set() };
 
+  // Helper: PAX específico según contexto
+  function paxSegunContexto(g) {
+    const ctxType = dataset.context || '';
+    if (ctxType === 'actividad') {
+      const act = decodeURIComponent(dataset.actividad || '');
+      // suma pax de esa actividad en TODAS las fechas visibles
+      return ctx.fechasVisibles.reduce((sum, f) => {
+        const acts = g.itinerario?.[f] || [];
+        return sum + acts
+          .filter(a => a.actividad === act)
+          .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+      }, 0);
+    }
+    if (ctxType === 'fecha') {
+      const fsel = dataset.fecha;
+      const acts = g.itinerario?.[fsel] || [];
+      // suma pax de actividades visibles en esa fecha
+      return acts
+        .filter(a => ctx.actividadesSet.has(a.actividad))
+        .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+    }
+    if (ctxType === 'combo') {
+      const comboActs = (dataset.combo || '')
+        .split(',')
+        .map(x => decodeURIComponent(x))
+        .filter(Boolean);
+      // suma pax de esas actividades en TODAS las fechas visibles
+      return ctx.fechasVisibles.reduce((sum, f) => {
+        const acts = g.itinerario?.[f] || [];
+        return sum + acts
+          .filter(a => comboActs.includes(a.actividad))
+          .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+      }, 0);
+    }
+    // Fallback: si no hay contexto, usar cantidadgrupo
+    return parseInt(g.cantidadgrupo, 10) || 0;
+  }
+
+  // Calcula total PAX de la selección
+  const totalPaxSeleccion = lista.reduce((sum, g) => sum + paxSegunContexto(g), 0);
+
+  // Título con totales
   document.querySelector('#modalDetalle h3').textContent =
-    `${titulo} — Total grupos: ${lista.length}`;
+    `${titulo} — Total grupos: ${lista.length} — Total PAX: ${totalPaxSeleccion}`;
 
+  // Pinta filas (PAX = según contexto)
   if (!lista.length) {
     tb.innerHTML = `<tr><td colspan="4" style="text-align:center;">Sin datos</td></tr>`;
   } else {
     lista.forEach(g => {
+      const pax = paxSegunContexto(g);
       tb.insertAdjacentHTML('beforeend', `
         <tr>
           <td>${g.id}</td>
           <td>${g.nombreGrupo || ''}</td>
-          <td>${g.cantidadgrupo || ''}</td>
+          <td>${pax}</td>
           <td>${g.programa || ''}</td>
         </tr>
       `);
     });
   }
-  document.getElementById('modalDetalle').style.display = 'block';
+
+  // Asegura que el modal quede por encima del de estadísticas
+  const modalDet = document.getElementById('modalDetalle');
+  modalDet.style.zIndex = '11000'; // por si el inline no fue actualizado
+  modalDet.style.display = 'block';
 }
