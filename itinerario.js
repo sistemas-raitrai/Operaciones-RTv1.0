@@ -246,19 +246,25 @@ async function renderItinerario() {
       a.act.horaInicio.localeCompare(b.act.horaInicio)
     );
     
+    // 👇 VALORES CENTRALIZADOS DESDE EL GRUPO
+    const A = parseInt(g.adultos, 10) || 0;
+    const E = parseInt(g.estudiantes, 10) || 0;
+    const totalGrupo = (() => {
+      const t = parseInt(g.cantidadgrupo, 10);
+      return Number.isFinite(t) ? t : (A + E);
+    })();
+    
     if (!sorted.length) {
       ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
     } else {
       sorted.forEach(({ act, originalIdx }) => {
         const li = document.createElement("li");
         li.className = "activity-card";
-        const paxCalc = (parseInt(act.adultos, 10) || 0)
-                      + (parseInt(act.estudiantes, 10) || 0);
     
         li.innerHTML = `
           <h4>${act.horaInicio} – ${act.horaFin}</h4>
           <p><strong>${act.actividad}</strong></p>
-          <p>👥 ${paxCalc} pax (A:${act.adultos} E:${act.estudiantes})</p>
+          <p>👥 ${totalGrupo} pax (A:${A} E:${E})</p>
           <div class="actions">
             <button class="btn-edit">✏️</button>
             <button class="btn-del">🗑️</button>
@@ -273,7 +279,6 @@ async function renderItinerario() {
         li.querySelector(".btn-del")
           .onclick = async () => {
             if (!confirm("¿Eliminar actividad?")) return;
-            // Registro en historial (opcional)
             await addDoc(collection(db, 'historial'), {
               numeroNegocio: grupoId,
               accion:        'BORRAR ACTIVIDAD',
@@ -282,26 +287,25 @@ async function renderItinerario() {
               usuario:       auth.currentUser.email,
               timestamp:     new Date()
             });
-            // Elimino del array original en la posición correcta
             original.splice(originalIdx, 1);
             await updateDoc(doc(db, 'grupos', grupoId), {
               [`itinerario.${fecha}`]: original
             });
             renderItinerario();
           };
-
+    
         if (editMode) {
-          // icono swap-actividad
           const btnSwapAct = createBtn("🔄", "btn-swap-act");
           btnSwapAct.dataset.fecha = fecha;
           btnSwapAct.dataset.idx   = originalIdx;
           li.querySelector(".actions").appendChild(btnSwapAct);
           btnSwapAct.onclick = () => handleSwapClick("actividad", { fecha, idx: originalIdx });
         }
-        
+    
         ul.appendChild(li);
       });
     }
+
         
   });     // ← cierra fechas.forEach
 
@@ -371,26 +375,27 @@ async function openModal(data, isEdit) {
 
   const snapG = await getDoc(doc(db,"grupos",selectNum.value));
   const g     = snapG.data()||{};
-  // —– Parséo numérico de totales:
-  const totalAdults   = parseInt(g.adultos, 10)     || 0;
-  const totalStudents = parseInt(g.estudiantes, 10) || 0;
-
+  // —– Parséo numérico desde el GRUPO (no desde la actividad)
+  const A = parseInt(g.adultos, 10) || 0;
+  const E = parseInt(g.estudiantes, 10) || 0;
+  const T = (() => {
+    const t = parseInt(g.cantidadgrupo, 10);
+    return Number.isFinite(t) ? t : (A + E);
+  })();
+  
   fldFecha.value    = data.fecha;
   fldHi.value       = data.horaInicio || "07:00";
   fldHf.value       = data.horaFin    || sumarUnaHora(fldHi.value);
   fldAct.value      = data.actividad  || "";
   await prepararCampoActividad("m-actividad", g.destino);
   fldNotas.value    = data.notas      || "";
-
-  if (isEdit) {
-    fldAdultos.value     = data.adultos     ?? totalAdults;
-    fldEstudiantes.value = data.estudiantes ?? totalStudents;
-  } else {
-    fldAdultos.value     = totalAdults;
-    fldEstudiantes.value = totalStudents;
-  }
-  actualizarPax();
-
+  
+  // 👇 SIEMPRE precargar desde el GRUPO
+  fldAdultos.value     = A;
+  fldEstudiantes.value = E;
+  fldPax.value         = T;
+  
+  // Cuando cambia la hora de inicio, ajusta fin
   fldHi.onchange = () => {
     fldHf.value = sumarUnaHora(fldHi.value);
   };
@@ -419,9 +424,12 @@ async function onSubmitModal(evt) {
   const snapG = await getDoc(doc(db,'grupos',grupoId));
   const g     = snapG.data()||{};
   // valida maxP con parseInt
-  const maxP  = (parseInt(g.adultos,10)||0) + (parseInt(g.estudiantes,10)||0);
-  if (pax > maxP) {
-    return alert(`Adultos+Estudiantes (${pax}) no puede exceder total de grupo (${maxP}).`);
+  const suma = a + e;
+  if (pax !== suma) {
+    return alert(`La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`);
+  }
+  if (a < 0 || e < 0 || pax < 0) {
+    return alert("Los valores no pueden ser negativos.");
   }
 
   const payload = {
@@ -461,6 +469,9 @@ async function onSubmitModal(evt) {
   }
 
   await updateDoc(doc(db,'grupos',grupoId), {
+    adultos: a,
+    estudiantes: e,
+    cantidadgrupo: pax,         // 👈 total centralizado
     [`itinerario.${fecha}`]: arr
   });
   closeModal();
