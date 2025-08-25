@@ -128,27 +128,65 @@ async function loadCoordinadores(){
 
 async function loadGrupos(){
   console.time('loadGrupos');
-  GRUPOS=[]; ID2GRUPO.clear();
+  GRUPOS = [];
+  ID2GRUPO.clear();
+
   try{
-    const snap = await getDocs(collection(db,'grupos'));
-    L('Grupos: snap.size =', snap.size);
+    const ref = collection(db,'grupos');
+    const snap = await getDocs(ref);
+    if (!snap || snap.empty){
+      W('loadGrupos: snapshot vacío (¿colección "grupos" sin lectura o sin docs?)');
+    } else {
+      L('Grupos: snap.size =', snap.size);
+    }
+
+    let omitidosSinFecha = 0;
+    let tomados = 0;
+
+    const primerosIds = [];
     snap.forEach(d=>{
-      const x=d.data(); x.id=d.id;
+      if (primerosIds.length < 8) primerosIds.push(d.id);
+
+      const x = d.data();
+      x.id = d.id;
+
+      // Fallbacks comunes de tus datos
       x.numeroNegocio = x.numeroNegocio || d.id;
-      x.aliasGrupo    = x.aliasGrupo || limpiarAlias(x.nombreGrupo||'');
-      const {ini,fin} = normalizarFechasGrupo(x);
-      if (!ini||!fin) { W('Grupo sin fechas válidas (omitido):', d.id, x.nombreGrupo); return; }
+      x.aliasGrupo    = x.aliasGrupo || limpiarAlias(x.nombreGrupo || String(d.id));
+
+      const { ini, fin } = normalizarFechasGrupo(x);
+      if (!ini || !fin){
+        omitidosSinFecha++;
+        return; // no lo incluimos si no hay fechas válidas
+      }
+
       const g = {
         ...x,
-        fechaInicio:ini, fechaFin:fin,
+        fechaInicio : ini,
+        fechaFin    : fin,
         identificador: x.identificador || x.identificadorGrupo || x.codigoGrupo || x.codigo || '',
-        programa: x.programa || x.nombrePrograma || x.programaNombre || '',
-        destino:  x.destino  || x.destinoPrincipal || x.ciudadDestino || x.ciudad || x.paisDestino || ''
+        programa    : x.programa || x.nombrePrograma || x.programaNombre || '',
+        destino     : x.destino  || x.destinoPrincipal || x.ciudadDestino || x.ciudad || x.paisDestino || ''
       };
-      GRUPOS.push(g); ID2GRUPO.set(g.id,g);
+
+      GRUPOS.push(g);
+      ID2GRUPO.set(g.id, g);
+      tomados++;
     });
-    GRUPOS.sort((a,b)=> cmpISO(a.fechaInicio,b.fechaInicio));
-    L('Grupos cargados:', GRUPOS.length, '| ID2GRUPO size:', ID2GRUPO.size);
+
+    // Orden por fecha de inicio
+    GRUPOS.sort((a,b)=> (new Date(a.fechaInicio) - new Date(b.fechaInicio)));
+
+    // Resumen de diagnóstico
+    L('loadGrupos => tomados:', tomados,
+      '| omitidosSinFecha:', omitidosSinFecha,
+      '| ID2GRUPO size:', ID2GRUPO.size,
+      '| primeros ids:', primerosIds);
+
+    // Si al final quedó vacío, avisa
+    if (!GRUPOS.length){
+      W('loadGrupos: No se cargó ningún grupo. Revisa reglas/permiso y campos de fecha.');
+    }
   }catch(err){
     E('loadGrupos error:', err);
     throw err;
@@ -349,14 +387,45 @@ function withBusy(btn, busyText, fn, normalText, okText){
 }
 
 function normalizarFechasGrupo(x){
-  let ini=asISO(x.fechaInicio||x.fecha_inicio||x.inicio||x.fecha||x.fechaDeViaje||x.fechaViaje||x.fechaInicioViaje);
-  let fin=asISO(x.fechaFin   ||x.fecha_fin   ||x.fin   ||x.fechaFinal   ||x.fechaFinViaje);
-  if ((!ini||!fin) && x.itinerario && typeof x.itinerario==='object'){
+  // Helpers seguros a ISO (YYYY-MM-DD)
+  const toISO = d => (new Date(d)).toISOString().slice(0,10);
+  const asISO = (v)=>{
+    if (!v) return null;
+    if (typeof v === 'string'){ const d = new Date(v); return isNaN(d) ? null : toISO(d); }
+    if (v?.toDate)  return toISO(v.toDate());
+    if (v?.seconds) return toISO(new Date(v.seconds*1000));
+    if (v instanceof Date) return toISO(v);
+    return null;
+  };
+  const addDaysISO = (iso, n) => { const D=new Date(iso+'T00:00:00'); D.setDate(D.getDate()+n); return toISO(D); };
+
+  // Nombres de campos que solemos ver
+  let ini=asISO(
+    x.fechaInicio ?? x.fecha_inicio ?? x.inicio ??
+    x.fecha ?? x.fechaDeViaje ?? x.fechaViaje ?? x.fechaInicioViaje
+  );
+  let fin=asISO(
+    x.fechaFin ?? x.fecha_fin ?? x.fin ??
+    x.fechaFinal ?? x.fechaFinViaje
+  );
+
+  // Derivar desde itinerario { 'YYYY-MM-DD': {...} }
+  if ((!ini || !fin) && x.itinerario && typeof x.itinerario==='object'){
     const ks=Object.keys(x.itinerario).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
-    if (ks.length){ ini=ini||ks[0]; fin=fin||ks[ks.length-1]; }
+    if (ks.length){ ini = ini || ks[0]; fin = fin || ks[ks.length-1]; }
   }
-  if (ini && !fin && (x.duracion||x.noches)){ const days=Number(x.duracion)||(Number(x.noches)+1)||1; fin=addDaysISO(ini,days-1); }
-  if (ini && !fin) fin=ini; if (fin && !ini) ini=fin; return {ini,fin};
+
+  // Calcular fin desde duración/noches
+  if (ini && !fin && (x.duracion || x.noches)){
+    const days = Number(x.duracion) || (Number(x.noches)+1) || 1;
+    fin = addDaysISO(ini, days-1);
+  }
+
+  // Normalizaciones finales
+  if (ini && !fin) fin = ini;
+  if (fin && !ini) ini = fin;
+
+  return { ini, fin };
 }
 
 function sortSetsInPlace(){
