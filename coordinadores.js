@@ -144,9 +144,11 @@ async function loadSets(){
     });
   });
 
-  evaluarAlertas();
+  dedupeSetsInPlace();     // ← asegurar unicidad al cargar
   sortSetsInPlace();
   populateFilterOptions(); // cataloga destinos/programas para filtros
+  evaluarAlertas();
+  renderSets();            // primera pintura de conjuntos (el render() general se llama en el boot)
 }
 
 /* =========================================================
@@ -481,7 +483,7 @@ function renderSets(){
     inp.onchange=()=>{ const g=ID2GRUPO.get(inp.dataset.alias); if(g){ g.aliasGrupo=inp.value; } };
   });
   elWrapSets.querySelectorAll('button[data-del]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.set; SETS[i].viajes = SETS[i].viajes.filter(id=>id!==btn.dataset.del); evaluarAlertas(); renderSets(); };
+    btn.onclick=()=>{ const i=+btn.dataset.set;   SETS[i].viajes = SETS[i].viajes.filter(id => id !== btn.dataset.del); refreshSets(); };
   });
   elWrapSets.querySelectorAll('button[data-move]').forEach(btn=>{
     btn.onclick=()=>{ const i=+btn.dataset.set; moverViajeAotroConjunto(btn.dataset.move,i); };
@@ -490,16 +492,16 @@ function renderSets(){
     btn.onclick=()=>agregarViajeAConjunto(+btn.dataset.addv);
   });
   elWrapSets.querySelectorAll('button[data-delset]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.delset; if(!confirm('¿Eliminar este grupo de viajes?'))return; SETS.splice(i,1); evaluarAlertas(); renderSets(); };
+    btn.onclick=()=>{ const i=+btn.dataset.delset; if(!confirm('¿Eliminar este grupo de viajes?'))return; SETS.splice(i,1); refreshSets(); };
   });
   elWrapSets.querySelectorAll('button[data-sugerirc]').forEach(btn=>{
     btn.onclick=()=>sugerirCoordinador(+btn.dataset.sugerirc);
   });
   elWrapSets.querySelectorAll('button[data-confirm]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.confirm; SETS[i].confirmado=!SETS[i].confirmado; renderSets(); };
+    btn.onclick=()=>{ const i=+btn.dataset.confirm; SETS[i].confirmado=!SETS[i].confirmado; refreshSets(); };
   });
   elWrapSets.querySelectorAll('select[data-coord]').forEach(sel=>{
-    sel.onchange=()=>{ const i=+sel.dataset.coord; SETS[i].coordinadorId = sel.value||null; evaluarAlertas(); renderSets(); };
+    sel.onchange=()=>{ const i=+sel.dataset.coord; SETS[i].coordinadorId = sel.value||null; refreshSets(); };
   });
 
   elWrapSets.querySelectorAll('button[data-swap]').forEach(btn=>{
@@ -573,9 +575,37 @@ function sugerirConjuntos(){
   // 6) Resultado: fijos (memoria) + fijos (persistido) + sugerencias
   SETS = fixedSetsMem.concat(fixedFromGruposFiltered).concat(suggested);
 
-  evaluarAlertas();
+  dedupeSetsInPlace();
   sortSetsInPlace();
-  renderSets(); // solo refresco conjuntos
+  evaluarAlertas();
+  renderSets();
+}
+
+/* =========================================================
+   Unicidad: cada viaje puede estar en un único conjunto
+   ========================================================= */
+function dedupeSetsInPlace() {
+  const owner = new Map(); // gid -> setIndex que lo “posee”
+  for (let i = 0; i < SETS.length; i++) {
+    const orig = Array.isArray(SETS[i].viajes) ? SETS[i].viajes : [];
+    const uniq = [];
+    for (const gid of orig) {
+      if (!ID2GRUPO.has(gid)) continue;      // ignora ids huérfanos
+      if (!owner.has(gid)) {                  // el primer set que lo tiene, se lo queda
+        owner.set(gid, i);
+        uniq.push(gid);
+      }
+      // si ya existe dueño, se omite (evita duplicación entre conjuntos)
+    }
+    SETS[i].viajes = uniq;
+  }
+}
+
+/* Llamada común tras cualquier cambio en SETS */
+function refreshSets() {
+  dedupeSetsInPlace();     // ← garantiza la unicidad (un viaje en un solo conjunto)
+  evaluarAlertas();        // ← recalcula alertas
+  renderSets();            // ← repinta sólo conjuntos
 }
 
 /* =========================================================
@@ -640,14 +670,16 @@ function seleccionarConjuntoDestino(grupoId){
   const n=prompt(`¿A qué grupo mover este viaje? (1..${SETS.length})`); if (!n) return;
   const idx=(+n)-1; if (idx<0||idx>=SETS.length){ alert('Número inválido'); return; }
   if (SETS.some(s=>s.viajes.includes(grupoId))) SETS.forEach(s=> s.viajes=s.viajes.filter(id=>id!==grupoId));
-  SETS[idx].viajes.push(grupoId); evaluarAlertas(); renderSets();
+  SETS[idx].viajes.push(grupoId);
+  refreshSets();
 }
 function moverViajeAotroConjunto(grupoId, desdeIdx){
   if (SETS.length<=1){ alert('No hay otro grupo.'); return; }
   const n=prompt(`Mover al grupo (1..${SETS.length}, distinto de ${desdeIdx+1})`); if(!n) return;
   const to=(+n)-1; if(to===desdeIdx||to<0||to>=SETS.length){ alert('Número inválido'); return; }
   SETS[desdeIdx].viajes = SETS[desdeIdx].viajes.filter(id=>id!==grupoId);
-  SETS[to].viajes.push(grupoId); evaluarAlertas(); renderSets();
+  SETS[to].viajes.push(grupoId);
+  refreshSets();
 }
 function agregarViajeAConjunto(setIdx){
   const usados=viajesUsadosSetIds();
@@ -657,7 +689,8 @@ function agregarViajeAConjunto(setIdx){
   const listado=libres.map((g,i)=>`${i+1}) ${g.aliasGrupo||g.nombreGrupo} [${fmtDMY(g.fechaInicio)}→${fmtDMY(g.fechaFin)}] • #${g.numeroNegocio} • ${g.programa||''} • ${g.destino||''}`).join('\n');
   const n=prompt(`Selecciona # de viaje a agregar (filtrado):\n${listado}`); if(!n) return;
   const i=(+n)-1; if(i<0||i>=libres.length) return;
-  SETS[setIdx].viajes.push(libres[i].id); evaluarAlertas(); renderSets();
+  SETS[setIdx].viajes.push(libres[i].id);
+  refreshSets();
 }
 function handleSwapClick(setIdx, grupoId, btn){
   if (!swapMode){ swapMode=true; swapFirst={setIdx,grupoId}; elWrapSets.querySelectorAll('button[data-swap].selected-swap').forEach(b=>b.classList.remove('selected-swap')); btn.classList.add('selected-swap'); return; }
@@ -669,7 +702,7 @@ function swapBetweenSets(a,b){
   SETS[b.setIdx].viajes=SETS[b.setIdx].viajes.filter(id=>id!==b.grupoId);
   SETS[a.setIdx].viajes.push(b.grupoId);
   SETS[b.setIdx].viajes.push(a.grupoId);
-  evaluarAlertas(); renderSets();
+  refreshSets();
 }
 
 // Sugerir coordinador (filtra bloqueados, disponibilidad y aptitud por destino)
@@ -686,7 +719,7 @@ function sugerirCoordinador(setIdx){
   );
   if (!ok.length){ alert('No hay coordinadores disponibles (fechas/destinos) que cubran todo el grupo.'); return; }
   s.coordinadorId = ok[0].id;
-  evaluarAlertas(); renderSets();
+  refreshSets();
 }
 
 /* =========================================================
