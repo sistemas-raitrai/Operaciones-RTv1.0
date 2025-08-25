@@ -602,10 +602,11 @@ function dedupeSetsInPlace() {
 
 /* Llamada común tras cualquier cambio en SETS */
 function refreshSets() {
-  dedupeSetsInPlace();     // ← garantiza la unicidad (un viaje en un solo conjunto)
-  evaluarAlertas();        // ← recalcula alertas
-  renderSets();            // ← repinta sólo conjuntos
+  dedupeSetsInPlace();     // unicidad (un viaje en un solo conjunto)
+  sortSetsInPlace();       // mantiene el orden después de cambios
+  render();                // repinta TODO: libres + conjuntos + stats + resumen
 }
+
 
 /* =========================================================
    Alertas / Consistencia (incluye aptitud destinos)
