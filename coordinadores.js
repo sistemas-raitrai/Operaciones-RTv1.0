@@ -148,7 +148,7 @@ async function loadSets(){
   sortSetsInPlace();
   populateFilterOptions(); // cataloga destinos/programas para filtros
   evaluarAlertas();
-  renderSets();            // primera pintura de conjuntos (el render() general se llama en el boot)
+  render();            // primera pintura de conjuntos (el render() general se llama en el boot)
 }
 
 /* =========================================================
@@ -376,7 +376,11 @@ function renderResumen(){
     </div>`);
 }
 
-function viajesUsadosSetIds(){ const s=new Set(); SETS.forEach(x=>x.viajes.forEach(id=>s.add(id))); return s; }
+function viajesUsadosSetIds(){
+  const s = new Set();
+  SETS.forEach(x => (x?.viajes || []).forEach(id => s.add(id)));
+  return s;
+}
 
 function renderLibres(){
   const usados=viajesUsadosSetIds();
@@ -793,7 +797,7 @@ async function saveCoordsModal(){
     await saveOneCoord(i);
   }
   await loadCoordinadores();
-  closeModal(); evaluarAlertas(); renderSets();
+  closeModal(); evaluarAlertas(); render();
 }
 
 /* =========================================================
