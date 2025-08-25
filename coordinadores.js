@@ -1324,66 +1324,58 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   console.groupCollapsed('BOOT');
   try{
     console.time('BOOT');
+
     await loadCoordinadores();
+    console.log('[RTV/coord] COORDS cargados =', COORDS.length);
+
     await loadGrupos();
+    console.log('[RTV/coord] GRUPOS cargados =', GRUPOS.length,
+                '| primeros ids =', GRUPOS.slice(0,5).map(g=>g.id));
+
     await loadSets();
+    console.log('[RTV/coord] SETS construidos =', SETS.length);
+
     populateFilterOptions();
     render();
+
   }catch(err){
-    E('BOOT error:', err);
+    console.error('[RTV/coord] BOOT error:', err);
   }finally{
     console.timeEnd('BOOT');
     console.groupEnd();
   }
-});
 
-function handleExcel(evt){
-  const file = evt.target.files?.[0];
-  if(!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    try{
-      const wb = XLSX.read(e.target.result, { type:'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false, blankrows:false });
-
-      const byName = new Map(COORDS.map(c => [ (c.nombre||'').trim().toUpperCase(), c ]));
-      const byRut  = new Map(COORDS.filter(c=>c.rut).map(c => [ c.rut.replace(/\s+/g,'').toUpperCase(), c ]));
-
-      L('Excel filas:', rows.length);
-
-      for(const r of rows){
-        const nombre   = (r.Nombre || r.NOMBRE || r.nombre || '').toString().trim();
-        if(!nombre) continue;
-        const rut      = (r.RUT || r.rut || '').toString().replace(/\s+/g,'').toUpperCase();
-        const telefono = (r.TELEFONO || r['TELÉFONO'] || r.tel || r.Tel || r.telefono || '').toString().trim();
-        const correo   = (r.Correo || r.CORREO || r.Email || r.EMAIL || r.email || '').toString().trim().toLowerCase();
-        const destinosCell = (r.Destinos || r.DESTINOS || r.destinos || '').toString();
-        const destinosXLS  = cleanDestinos(destinosCell.split(','));
-
-        let c = (rut && byRut.get(rut)) || byName.get(nombre.toUpperCase());
-        if (c){
-          c.nombre = nombre; c.rut = rut; c.telefono = telefono; c.correo = correo;
-          if (destinosXLS.length){
-            c.destinos = cleanDestinos([...(c.destinos||[]), ...destinosXLS]);
-          }
-        } else {
-          c = { nombre, rut, telefono, correo, destinos:destinosXLS, disponibilidad:[], _isNew:true };
-          COORDS.unshift(c);
-          byName.set(nombre.toUpperCase(), c);
-          if (rut) byRut.set(rut, c);
-        }
-      }
-
-      renderCoordsTable();
-      setTimeout(initPickers,10);
-    } catch (err){
-      E('handleExcel error:', err);
-      alert('No se pudo leer el Excel. Asegúrate de que sea .xlsx/.xls y que tenga la columna "Nombre".');
-    } finally {
-      evt.target.value = '';
+  // 🔧 Ganchos de depuración desde la consola
+  window.__dbg = {
+    get sizes(){ return { coords: COORDS.length, grupos: GRUPOS.length, sets: SETS.length }; },
+    COORDS, GRUPOS, SETS,
+    reloadAll: async ()=>{
+      await loadCoordinadores();
+      await loadGrupos();
+      await loadSets();
+      render();
+      return { coords: COORDS.length, grupos: GRUPOS.length, sets: SETS.length };
     }
   };
-  reader.readAsBinaryString(file);
+});
+
+/* =========================================================
+   Probe directo a Firestore para "grupos"
+   Llama:  await __probeGrupos()
+   ========================================================= */
+async function __probeGrupos(){
+  try{
+    console.time('__probeGrupos');
+    const snap = await getDocs(collection(db,'grupos'));
+    console.log('[RTV/coord] __probeGrupos size =', snap.size);
+    snap.docs.slice(0,5).forEach(d=>{
+      const x = d.data();
+      console.log(' - id:', d.id, '| fechaInicio:', x.fechaInicio, '| fechaFin:', x.fechaFin, '| identificador:', x.identificador || x.codigo || x.codigoGrupo || '');
+    });
+  }catch(e){
+    console.error('[RTV/coord] __probeGrupos error:', e);
+  }finally{
+    console.timeEnd('__probeGrupos');
+  }
 }
+window.__probeGrupos = __probeGrupos;
