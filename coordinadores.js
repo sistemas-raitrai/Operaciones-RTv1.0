@@ -126,38 +126,44 @@ async function loadSets(){
     });
   });
 
-  // --- B) Reconstruir a partir de grupos con {conjuntoId, coordinadorId}
-  //       (esto cubre datos antiguos donde no existía doc en la subcolección)
-  for (const g of GRUPOS){
-    if (!g.conjuntoId || !g.coordinadorId) continue;
-    const k = g.conjuntoId;
-
-    if (!mapByConj.has(k)){
-      // crear el set “fantasma” basado en grupos
-      mapByConj.set(k, {
-        id: k,
-        viajes: [],
-        coordinadorId: g.coordinadorId,
-        confirmado: true,     // si está en grupos, lo tratamos como confirmado
-        alertas: [],
-        _ownerCoordId: g.coordinadorId
-      });
-    }
-
-    const S = mapByConj.get(k);
-
-    // asegurar coordinadorId (si en el doc faltaba)
-    if (!S.coordinadorId) {
-      S.coordinadorId   = g.coordinadorId;
-      S._ownerCoordId   = g.coordinadorId;
-    }
-
-    // agregar viaje si existe en catálogo
-    if (ID2GRUPO.has(g.id) && !S.viajes.includes(g.id)){
-      S.viajes.push(g.id);
-    }
-  }
-
+   // --- B) Reconstruir a partir de grupos con {conjuntoId, coordinadorId|coordinador}
+   for (const g of GRUPOS){
+     if (!g.conjuntoId) continue;  // ← basta con conjuntoId
+   
+     const k = g.conjuntoId;
+   
+     if (!mapByConj.has(k)){
+       // intentar resolver coordinadorId por id o por nombre
+       let coordId = g.coordinadorId || null;
+       if (!coordId && g.coordinador){ // buscar por nombre exacto (trim/insensible a mayúsculas)
+         const wanted = (g.coordinador||'').trim().toLowerCase();
+         const hit = COORDS.find(c => (c.nombre||'').trim().toLowerCase() === wanted);
+         if (hit) coordId = hit.id;
+       }
+   
+       mapByConj.set(k, {
+         id: k,
+         viajes: [],
+         coordinadorId: coordId,     // puede quedar null si no se encontró
+         confirmado: true,           // si está en grupos, lo tratamos como confirmado
+         alertas: [],
+         _ownerCoordId: coordId || null
+       });
+     }
+   
+     const S = mapByConj.get(k);
+   
+     // si luego aparece un coordinadorId válido, lo completamos
+     if (!S.coordinadorId && g.coordinadorId){
+       S.coordinadorId = g.coordinadorId;
+       S._ownerCoordId = g.coordinadorId;
+     }
+   
+     // agregar viaje si existe en catálogo
+     if (ID2GRUPO.has(g.id) && !S.viajes.includes(g.id)){
+       S.viajes.push(g.id);
+     }
+   }
   // --- C) Volcar a SETS asegurando integridad
   SETS = Array.from(mapByConj.values()).map(S => ({
     ...S,
