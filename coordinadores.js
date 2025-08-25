@@ -797,7 +797,7 @@ async function saveCoordsModal(){
     await saveOneCoord(i);
   }
   await loadCoordinadores();
-  closeModal(); evaluarAlertas(); render();
+  closeModal(); render();
 }
 
 /* =========================================================
