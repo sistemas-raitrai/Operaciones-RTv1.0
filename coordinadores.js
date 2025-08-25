@@ -577,8 +577,7 @@ function sugerirConjuntos(){
 
   dedupeSetsInPlace();
   sortSetsInPlace();
-  evaluarAlertas();
-  renderSets();
+  render();
 }
 
 /* =========================================================
