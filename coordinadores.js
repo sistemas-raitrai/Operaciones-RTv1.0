@@ -103,53 +103,75 @@ async function loadCoordinadores(){
   });
 }
 
-async function loadGrupos(){
-  GRUPOS=[]; ID2GRUPO.clear();
-  const snap = await getDocs(collection(db,'grupos'));
-  snap.forEach(d=>{
-    const x=d.data(); x.id=d.id;
-    x.numeroNegocio = x.numeroNegocio || d.id;
-    x.aliasGrupo    = x.aliasGrupo || limpiarAlias(x.nombreGrupo||'');
-    const {ini,fin} = normalizarFechasGrupo(x);
-    if (!ini||!fin) return;
-    const g = {
-      ...x,
-      fechaInicio:ini, fechaFin:fin,
-      identificador: x.identificador || x.identificadorGrupo || x.codigoGrupo || x.codigo || '',
-      programa: x.programa || x.nombrePrograma || x.programaNombre || '',
-      destino:  x.destino  || x.destinoPrincipal || x.ciudadDestino || x.ciudad || x.paisDestino || ''
-    };
-    GRUPOS.push(g); ID2GRUPO.set(g.id,g);
-  });
-  GRUPOS.sort((a,b)=> cmpISO(a.fechaInicio,b.fechaInicio));
-}
-
 async function loadSets(){
   SETS = [];
-  // Lee TODOS los conjuntos sin saber el coordinador de antemano
+
+  // --- A) Cargar subcolecciones coordinadores/{coord}/conjuntos
+  const mapByConj = new Map(); // conjuntoId -> {id, viajes, coordinadorId, confirmado, alertas, _ownerCoordId}
+
   const snap = await getDocs(collectionGroup(db, 'conjuntos'));
   snap.forEach(d => {
     const x = d.data();
     const conjuntoId    = d.id;
-    const coordinadorId = d.ref.parent.parent.id;   // doc padre del padre = coordinador
-    const viajes        = (x.viajes || []).filter(id => ID2GRUPO.has(id)); // normaliza arreglo
+    const coordinadorId = d.ref.parent.parent.id; // doc del coordinador
+    const viajes        = (x.viajes || []).filter(id => ID2GRUPO.has(id));
 
-    SETS.push({
+    mapByConj.set(conjuntoId, {
       id: conjuntoId,
-      viajes,
+      viajes: viajes.slice(),
       coordinadorId,
       confirmado: !!x.confirmado,
       alertas: [],
-      _ownerCoordId: coordinadorId  // para detectar “movidas” entre coords al guardar
+      _ownerCoordId: coordinadorId
     });
   });
 
-  dedupeSetsInPlace();     // ← asegurar unicidad al cargar
+  // --- B) Reconstruir a partir de grupos con {conjuntoId, coordinadorId}
+  //       (esto cubre datos antiguos donde no existía doc en la subcolección)
+  for (const g of GRUPOS){
+    if (!g.conjuntoId || !g.coordinadorId) continue;
+    const k = g.conjuntoId;
+
+    if (!mapByConj.has(k)){
+      // crear el set “fantasma” basado en grupos
+      mapByConj.set(k, {
+        id: k,
+        viajes: [],
+        coordinadorId: g.coordinadorId,
+        confirmado: true,     // si está en grupos, lo tratamos como confirmado
+        alertas: [],
+        _ownerCoordId: g.coordinadorId
+      });
+    }
+
+    const S = mapByConj.get(k);
+
+    // asegurar coordinadorId (si en el doc faltaba)
+    if (!S.coordinadorId) {
+      S.coordinadorId   = g.coordinadorId;
+      S._ownerCoordId   = g.coordinadorId;
+    }
+
+    // agregar viaje si existe en catálogo
+    if (ID2GRUPO.has(g.id) && !S.viajes.includes(g.id)){
+      S.viajes.push(g.id);
+    }
+  }
+
+  // --- C) Volcar a SETS asegurando integridad
+  SETS = Array.from(mapByConj.values()).map(S => ({
+    ...S,
+    viajes: (S.viajes || []).filter(id => ID2GRUPO.has(id))
+  }));
+
+  // --- D) Unicidad/orden/alertas + repintado completo
+  dedupeSetsInPlace();     // un viaje en un solo conjunto
   sortSetsInPlace();
-  populateFilterOptions(); // cataloga destinos/programas para filtros
+  populateFilterOptions();
   evaluarAlertas();
-  render();            // primera pintura de conjuntos (el render() general se llama en el boot)
+  render();                // repinta TODO: libres + conjuntos + stats + resumen
 }
+
 
 /* =========================================================
    DOM refs
