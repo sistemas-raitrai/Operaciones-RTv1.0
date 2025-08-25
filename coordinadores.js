@@ -103,6 +103,27 @@ async function loadCoordinadores(){
   });
 }
 
+async function loadGrupos(){
+  GRUPOS=[]; ID2GRUPO.clear();
+  const snap = await getDocs(collection(db,'grupos'));
+  snap.forEach(d=>{
+    const x=d.data(); x.id=d.id;
+    x.numeroNegocio = x.numeroNegocio || d.id;
+    x.aliasGrupo    = x.aliasGrupo || limpiarAlias(x.nombreGrupo||'');
+    const {ini,fin} = normalizarFechasGrupo(x);
+    if (!ini||!fin) return;
+    const g = {
+      ...x,
+      fechaInicio:ini, fechaFin:fin,
+      identificador: x.identificador || x.identificadorGrupo || x.codigoGrupo || x.codigo || '',
+      programa: x.programa || x.nombrePrograma || x.programaNombre || '',
+      destino:  x.destino  || x.destinoPrincipal || x.ciudadDestino || x.ciudad || x.paisDestino || ''
+    };
+    GRUPOS.push(g); ID2GRUPO.set(g.id,g);
+  });
+  GRUPOS.sort((a,b)=> cmpISO(a.fechaInicio,b.fechaInicio));
+}
+
 async function loadSets(){
   SETS = [];
 
