@@ -177,12 +177,21 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <script type="module">
-    fetch('encabezado.html').then(r=>r.text()).then(html=>{ document.getElementById('encabezado').innerHTML = html; });
+  <script>
+    fetch('encabezado.html')
+      .then(res => res.text())
+      .then(html => { document.getElementById('encabezado').innerHTML = html; })
+      .then(() => {
+        // Un solo <script type="module"> que arranca todos los módulos necesarios
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.textContent = `
+          import './firebase-init.js';
+          import './script.js';
+          import './coordinadores.js';
+        `;
+        document.body.appendChild(s);
+      });
   </script>
-
-  <script type="module" src="./firebase-init.js"></script>
-  <script type="module" src="./script.js"></script>
-  <script type="module" src="./coordinadores.js"></script>
 </body>
 </html>
