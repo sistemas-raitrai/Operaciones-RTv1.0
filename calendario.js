@@ -8,7 +8,33 @@ const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
 
-// Extrae parámetro de URL
+// ======================================================
+// Helpers de hora y orden de actividades (NUEVO)
+// - Convierte "HH:mm" en minutos; si no hay hora, va al final.
+// - Compara por horaInicio y desempatando por horaFin.
+// ======================================================
+function horaToMin(h) {
+  if (!h || typeof h !== 'string') return Number.POSITIVE_INFINITY;
+  // acepta 8:00, 08:00, 8.00, 8h00
+  const m = h.match(/(\d{1,2})[:h\.]?(\d{2})?/i);
+  if (!m) return Number.POSITIVE_INFINITY;
+  const HH = parseInt(m[1], 10);
+  const MM = m[2] ? parseInt(m[2], 10) : 0;
+  if (isNaN(HH) || isNaN(MM) || HH < 0 || HH > 23 || MM < 0 || MM > 59) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return HH * 60 + MM;
+}
+function compararActividades(a = {}, b = {}) {
+  const ai = horaToMin(a.horaInicio);
+  const bi = horaToMin(b.horaInicio);
+  if (ai !== bi) return ai - bi;
+  const af = horaToMin(a.horaFin);
+  const bf = horaToMin(b.horaFin);
+  return af - bf;
+}
+
+// Extrae parámetro de URL (si lo quieres usar luego)
 function getParametroURL(nombre) {
   const params = new URLSearchParams(window.location.search);
   return params.get(nombre);
@@ -41,7 +67,7 @@ async function generarTablaCalendario(userEmail) {
     const d = docSnap.data();
     const id = docSnap.id;
     const itinerario = d.itinerario || {};
-    // Recolectar todas las fechas usadas
+    // Recolectar todas las fechas usadas en itinerarios
     Object.keys(itinerario).forEach(fecha => fechasUnicas.add(fecha));
     destinosSet.add(d.destino || "");
     aniosSet.add(d.anoViaje || "");
@@ -57,27 +83,15 @@ async function generarTablaCalendario(userEmail) {
       estudiantes: d.estudiantes || "",
       fechaInicio: d.fechaInicio || "",
       fechaFin: d.fechaFin || "",
+      anoViaje: d.anoViaje || "",        // ← NUEVO: lo usamos para el filtro de año
       itinerario
     });
   });
 
   // ───────────────────────────  
-  // Ordenar grupos solo por fechaInicio  
+  // Ordenar grupos solo por fechaInicio (YYYY-MM-DD)
   // ───────────────────────────  
-  grupos.sort((a, b) =>
-    a.fechaInicio.localeCompare(b.fechaInicio)
-  );
-
-  // ────────────────  
-  // Ordenar grupos por destino y luego por fechaInicio  
-  // ────────────────  
-  //grupos.sort((a, b) => {
-    // 1) Comparar destinos
-    //const cmp = a.destino.localeCompare(b.destino);
-    //if (cmp !== 0) return cmp;
-    // 2) Si destinos iguales, comparar fechaInicio (YYYY-MM-DD)
-    //return a.fechaInicio.localeCompare(b.fechaInicio);
-  //});
+  grupos.sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
 
   // 2) Preparar selects de filtros y cabecera
   const fechasOrdenadas = Array.from(fechasUnicas).sort();
@@ -104,16 +118,14 @@ async function generarTablaCalendario(userEmail) {
     <th>Destino</th>
     <th>Programa</th>
     <th>Pax</th>
+    <th>Año</th>      <!-- columna oculta para filtro de año -->
   `);
+  // Encabezados de fechas (domingo con clase 'domingo')
   fechasOrdenadas.forEach(f => {
-    // detectar si es domingo
-    const [yyyy, mm, dd] = f.split('-').map(Number);
-    const fechaObj = new Date(yyyy, mm - 1, dd);
+    const [y1, m1, d1] = f.split('-').map(Number);
+    const fechaObj = new Date(y1, m1 - 1, d1);
     const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
-    // insertar <th> con o sin la clase
-    $trhead.append(
-      `<th class="${clase}">${formatearFechaBonita(f)}</th>`
-    );
+    $trhead.append(`<th class="${clase}">${formatearFechaBonita(f)}</th>`);
   });
 
   // 3) Construir cuerpo de la tabla
@@ -121,29 +133,31 @@ async function generarTablaCalendario(userEmail) {
   grupos.forEach(g => {
     const $tr = $('<tr>');
     const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
-    // Cinco primeras celdas fijas
+    // Seis primeras celdas fijas (la 6ª es el Año y va oculta en DataTables)
     $tr.append(
       $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
       $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
       $('<td>').text(g.destino).attr('data-doc-id', g.id),
       $('<td>').text(g.programa).attr('data-doc-id', g.id),
-      $('<td>').text(resumenPax).attr('data-doc-id', g.id)
+      $('<td>').text(resumenPax).attr('data-doc-id', g.id),
+      $('<td>').text(g.anoViaje).attr('data-doc-id', g.id) // Año (oculto)
     );
 
-    // Una celda por cada fecha
+    // Una celda por cada fecha (ordenando actividades por hora al mostrar)
     fechasOrdenadas.forEach(f => {
       const actividades = g.itinerario[f] || [];
-      const texto = actividades
+      const actividadesOrdenadas = [...actividades].sort(compararActividades);
+      const texto = actividadesOrdenadas
         .map(a => `${a.horaInicio||""}–${a.horaFin||""} ${a.actividad||""}`)
         .join("\n");
 
-      // Clases condicionales
+      // Clases condicionales por día
       const clases = [];
       if (f === g.fechaInicio || f === g.fechaFin) clases.push('inicio-fin');
 
       // Domingo → clase "domingo"
-      const [yyyy, mm, dd] = f.split('-').map(Number);
-      const fechaObj = new Date(yyyy, mm - 1, dd);
+      const [y2, m2, d2] = f.split('-').map(Number);
+      const fechaObj = new Date(y2, m2 - 1, d2);
       if (fechaObj.getDay() === 0) clases.push('domingo');
 
       const $td = $('<td>')
@@ -167,7 +181,7 @@ async function generarTablaCalendario(userEmail) {
     order: [],
     fixedHeader: {
       header: true,
-      headerOffset: 90    // ajusta este valor a la altura de tu header global
+      headerOffset: 90    // ajusta a la altura del header global
     },
     buttons: [{
       extend: 'colvis',
@@ -175,6 +189,10 @@ async function generarTablaCalendario(userEmail) {
       className: 'dt-button',
       columns: ':gt(0)'
     }],
+    // Ocultamos la columna "Año" (index 5) pero la dejamos searchable
+    columnDefs: [
+      { targets: [5], visible: false, searchable: true }
+    ],
     language: {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
@@ -183,19 +201,19 @@ async function generarTablaCalendario(userEmail) {
   // 5) Buscador libre
   $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
 
-  // 6) Aplicar filtro destino
+  // 6) Aplicar filtro destino (columna 2)
   $('#filtroDestino').on('change', function () {
     const val = this.value;
     tabla.column(2).search(val ? '^'+val+'$' : '', true, false).draw();
   });
 
-  // 7) Aplicar filtro año (columna 7 asume 5 fijas + 2 selectores)
+  // 7) Aplicar filtro año sobre la columna oculta 5 (NUEVO: ahora sí funciona)
   $('#filtroAno').on('change', function () {
     const val = this.value;
-    tabla.column(7).search(val ? '^'+val+'$' : '', true, false).draw();
+    tabla.column(5).search(val ? '^'+val+'$' : '', true, false).draw();
   });
 
-  // 8) Toggle modo edición
+  // 8) Toggle modo edición (activa contenteditable en todas las celdas del body)
   $('#btn-toggle-edit').off('click').on('click', async () => {
     editMode = !editMode;
     $('#btn-toggle-edit')
@@ -208,63 +226,64 @@ async function generarTablaCalendario(userEmail) {
     });
   });
 
-    // 9) Al salir de edición en cualquier celda, guardo cambios
+  // 9) Guardar cambios al salir de una celda editable del itinerario
   $('#tablaCalendario tbody').on('focusout', 'td[contenteditable]', async function () {
     const $td      = $(this);
     const nuevoTxt = $td.text().trim();
     const original = $td.attr('data-original') || "";
     const docId    = $td.attr('data-doc-id');
-    const fecha    = $td.attr('data-fecha');
-    if (!docId || nuevoTxt === original) return;
-  
-    // 1) Traer el documento completo para conservar adultos/estudiantes
+    const fecha    = $td.attr('data-fecha'); // solo existe en celdas de itinerario
+    if (!docId || !fecha || nuevoTxt === original) return;   // ← GUARDIA extra
+
+    // 1) Traer el documento completo para conservar datos originales
     const ref    = doc(db, 'grupos', docId);
     const snap   = await getDoc(ref);
     const g      = snap.data();
-    const arrOld = g.itinerario?.[fecha] || [];
-  
-    // 2) Parsear cada línea en un objeto base {horaInicio, horaFin, actividad}
-    const líneas = nuevoTxt.split("\n");
-    const parsed = líneas.map(linea => {
-      const m = linea.match(/^(.*?)–(.*?)\s+(.*)$/);
+    const arrOld = g?.itinerario?.[fecha] || [];
+
+    // 2) Parsear cada línea en {horaInicio, horaFin, actividad}
+    //    Acepta "8:00–9:00 Texto", con guion -, – o — y también sin horas.
+    const lineas = nuevoTxt.split("\n").map(s => s.trim()).filter(s => s.length);
+    const parsed = lineas.map(linea => {
+      const m = linea.match(/^(.*?)\s*[–—-]\s*(.*?)\s+(.*)$/); // start – end actividad
       return m
         ? { horaInicio: m[1].trim(), horaFin: m[2].trim(), actividad: m[3].trim() }
         : { actividad: linea.trim() };
     });
-  
-    // 3) Mezclar cada objeto nuevo con el original para no perder campos
-    console.group(`Depuración itinerario.${fecha}`);
-    console.log('arrOld (antes del cambio):', arrOld);
-    console.log('parsed  (líneas editadas):', parsed);
 
+    // 3) Mezclar con el original para no perder campos no escritos
     const arrUp = parsed.map((n, idx) => {
       const orig = arrOld[idx] || {};
       return {
-        ...orig,                            
+        ...orig,
         horaInicio: n.horaInicio ?? orig.horaInicio,
         horaFin:    n.horaFin    ?? orig.horaFin,
         actividad:  n.actividad  ?? orig.actividad
       };
     });
 
-    console.log('arrUp  (resultado mezcla):', arrUp);
-    console.groupEnd();
-  
-    // 4) Guardar el array resultante en Firestore
+    // 4) Ordenar por hora y guardar en Firestore (NUEVO)
+    const arrOrdenada = [...arrUp].sort(compararActividades);
     await updateDoc(ref, {
-      [`itinerario.${fecha}`]: arrUp
+      [`itinerario.${fecha}`]: arrOrdenada
     });
-  
-    // 5) Registrar en historial y actualizar atributo data-original
+
+    // 5) Construir texto ordenado, registrar historial y sincronizar UI (NUEVO)
+    const textoOrdenado = arrOrdenada
+      .map(a => `${a.horaInicio||""}–${a.horaFin||""} ${a.actividad||""}`)
+      .join("\n");
+
     await addDoc(collection(db, 'historial'), {
       numeroNegocio: docId,
       campo:         `itinerario.${fecha}`,
       anterior:      original,
-      nuevo:         nuevoTxt,
+      nuevo:         textoOrdenado,
       modificadoPor: auth.currentUser.email,
       timestamp:     new Date()
     });
-    $td.attr('data-original', nuevoTxt);
+
+    // Refleja inmediatamente el orden aplicado en la celda
+    $td.text(textoOrdenado).attr('data-original', textoOrdenado);
   });
 
   // 10) Ver historial
@@ -274,7 +293,6 @@ async function generarTablaCalendario(userEmail) {
   });
   $('#btn-close-history').on('click', () => $('#modalHistorial').hide());
   $('#btn-refresh-history').on('click', recargarHistorial);
-
 } // ← cierra generarTablaCalendario
 
 // ------------------------------------------------------------------
@@ -295,9 +313,9 @@ async function recargarHistorial() {
     $tb.append(`
       <tr>
         <td>${fecha.toLocaleString('es-CL')}</td>
-        <td>${d.modificadoPor||d.usuario}</td>
+        <td>${d.modificadoPor||d.usuario||''}</td>
         <td>${d.numeroNegocio||''}</td>
-        <td>${d.accion||d.campo}</td>
+        <td>${d.accion||d.campo||''}</td>
         <td>${d.anterior||''}</td>
         <td>${d.nuevo||''}</td>
       </tr>
