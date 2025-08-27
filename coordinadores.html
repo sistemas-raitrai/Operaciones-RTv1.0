@@ -178,21 +178,24 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-  <script>
-    fetch('encabezado.html')
-      .then(res => res.text())
-      .then(html => { document.getElementById('encabezado').innerHTML = html; })
-      .then(() => {
-        // Un solo <script type="module"> que arranca todos los módulos necesarios
-        const s = document.createElement('script');
-        s.type = 'module';
-        s.textContent = `
-          import './firebase-init.js';
-          import './script.js';
-          import './coordinadores.js';
-        `;
-        document.body.appendChild(s);
-      });
+  <script type="module">
+    // Importa SIEMPRE con ruta absoluta desde la raíz del deployment
+    import '/firebase-init.js?v=2025-08-27-2';   // ← bumpa el número si vuelves a subir
+    import '/script.js?v=2025-08-27-2';
+    import '/coordinadores.js?v=2025-08-27-2';
+  
+    // Diagnóstico en runtime: confirma proyecto y databaseId reales
+    const { getApp } = await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-app.js');
+    const app = getApp();
+    console.log('[coordinadores.html] projectId =', app.options.projectId);
+  
+    const init = await import('/firebase-init.js?v=2025-08-27-2');
+    const { getFirestore, collection, getDocs } =
+      await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js');
+  
+    // Lee con LA MISMA instancia que usa la página
+    const snap = await getDocs(collection(init.db, 'grupos'));
+    console.log('[coordinadores.html] grupos size =', snap.size);
   </script>
 </body>
 </html>
