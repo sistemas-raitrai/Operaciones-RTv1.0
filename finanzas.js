@@ -307,11 +307,13 @@ function agruparPorHotel(itemsHotel) {
 // 7) Render UI
 // ============================
 function renderChipsDestino(destinos) {
-  const cont = el('chipsDestino');
+  const cont = document.getElementById('chipsDestino');
+  if (!cont) return;                       // <- si no existe, salimos sin error
   cont.innerHTML = '';
-  destinos.forEach(d => cont.insertAdjacentHTML('beforeend', `<span class="chip">${d}</span>`));
+  for (const d of destinos) {
+    cont.insertAdjacentHTML('beforeend', `<span class="chip">${d}</span>`);
+  }
 }
-
 function renderKPIs(items, itemsHotel) {
   const totCLP = [...items, ...itemsHotel]
     .reduce((acc, it) => acc + (typeof it.totalCLP === 'number' ? it.totalCLP : 0), 0);
@@ -601,9 +603,15 @@ function poblarFiltrosBasicos() {
   el('filtroAnio').innerHTML = arrAnios
     .map(a => `<option value="${a}" ${a===anioActual?'selected':''}>${a}</option>`).join('');
 
-  const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))]
+                 .sort((a,b) => a.localeCompare(b));
   el('filtroDestino').innerHTML = dests.map(d => `<option value="${d}">${d}</option>`).join('');
-  renderChipsDestino(dests.slice(0,6));
+
+  // Antes: renderChipsDestino(dests.slice(0,6));
+  // Ahora: solo si existe el contenedor, para que no reviente.
+  if (document.getElementById('chipsDestino')) {
+    renderChipsDestino(dests.slice(0, 6));
+  }
 }
 
 function aplicarRangoPorAnio() {
