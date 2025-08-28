@@ -1,21 +1,24 @@
-// finanzas.js — Módulo Finanzas Operaciones RT (agrupado por servicio en modal)
+// finanzas.js — Finanzas Operaciones RT (USD/BRL/ARS + modal por servicio)
+// ===============================================================
+// Mantiene tu lógica, suma ARS, tooltips, prefijo numeroNegocio-identificador,
+// y mejora layout/headers. Completamente comentado.
 
 // Firebase
 import { app, db } from './firebase-init.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
-// ============================
-// 0) Rutas raíz (según tu estructura)
-// ============================
+// ---------------------------------------------------------------
+// 0) Rutas raíz (según tu estructura en Firestore)
+// ---------------------------------------------------------------
 const RUTA_SERVICIOS  = 'Servicios';   // Servicios/{DESTINO}/Listado/*
 const RUTA_PROV_ROOT  = 'Proveedores'; // Proveedores/{DESTINO}/Listado/* (opcional)
 const RUTA_HOTEL_ROOT = 'Hoteles';     // Hoteles/{DESTINO}/(Listado|Asignaciones)/*
 const RUTA_GRUPOS     = 'grupos';      // grupos/*
 
-// ============================
+// ---------------------------------------------------------------
 // 1) Estado + helpers
-// ============================
+// ---------------------------------------------------------------
 const auth = getAuth(app);
 
 let GRUPOS = [];
@@ -24,8 +27,8 @@ let PROVEEDORES = {};
 let HOTELES = [];
 let ASIGNACIONES = [];
 
-let LINE_ITEMS = [];
-let LINE_HOTEL = [];
+let LINE_ITEMS = []; // actividades
+let LINE_HOTEL = []; // hoteles
 
 const el    = id => document.getElementById(id);
 const fmt   = n => (n ?? 0).toLocaleString('es-CL');
@@ -33,6 +36,7 @@ const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
 
+// Unifica variantes de moneda de la BD → USD/BRL/ARS/CLP
 function normalizarMoneda(m){
   const M = (m||'').toString().toUpperCase().trim();
   if (['REAL','REALES','R$','BRL'].includes(M)) return 'BRL';
@@ -48,6 +52,7 @@ function paxDeGrupo(g) {
   return (a + e) || cg || 0;
 }
 
+// Verifica si YYYY-MM-DD cae dentro del rango [d1, d2]
 function within(dateISO, d1, d2) {
   if (!dateISO) return false;
   const t  = new Date(dateISO + 'T00:00:00').getTime();
@@ -56,6 +61,7 @@ function within(dateISO, d1, d2) {
   return t >= t1 && t <= t2;
 }
 
+// Retorna el tipo de cambio → CLP (null si no hay TC indicado)
 function pickTC(moneda) {
   const m   = normalizarMoneda(moneda);
   const usd = Number(el('tcUSD')?.value || 0);
@@ -68,11 +74,11 @@ function pickTC(moneda) {
   return null;
 }
 
-// ============================
-// 2) Carga de datos (por destino)
-// ============================
+// ---------------------------------------------------------------
+// 2) Carga de datos (cada destino tiene una subcolección Listado/*)
+// ---------------------------------------------------------------
 async function loadServicios() {
-  const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS)); // destinos
+  const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS));
   const promSub = [];
   for (const doc of rootSnap.docs) {
     const destinoId = doc.id;
@@ -80,12 +86,7 @@ async function loadServicios() {
       getDocs(collection(doc.ref, 'Listado'))
         .then(snap => snap.docs.map(d => {
           const data = d.data() || {};
-          return {
-            id: d.id,
-            destino: destinoId,
-            servicio: data.servicio || d.id,
-            ...data
-          };
+          return { id:d.id, destino:destinoId, servicio:data.servicio || d.id, ...data };
         }))
         .catch(() => [])
     );
@@ -94,6 +95,7 @@ async function loadServicios() {
   SERVICIOS = arrays.flat();
 }
 
+// Proveedores opcional; guardamos por slug para acceso rápido
 async function loadProveedores() {
   PROVEEDORES = {};
   try {
@@ -102,7 +104,7 @@ async function loadProveedores() {
     for (const doc of rootSnap.docs) {
       promSub.push(
         getDocs(collection(doc.ref, 'Listado'))
-          .then(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })))
+          .then(snap => snap.docs.map(d => ({ id:d.id, ...d.data() })))
           .catch(() => [])
       );
     }
@@ -116,28 +118,28 @@ async function loadProveedores() {
   }
 }
 
+// grupos/*
 async function loadGrupos() {
   const snap = await getDocs(collection(db, RUTA_GRUPOS));
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// Hoteles/{DESTINO}/(Listado|Asignaciones)/*
 async function loadHotelesYAsignaciones() {
-  HOTELES = [];
-  ASIGNACIONES = [];
+  HOTELES = []; ASIGNACIONES = [];
   try {
     const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ROOT));
-    const promListado = [];
-    const promAsign   = [];
+    const promListado = [], promAsign = [];
     for (const doc of rootSnap.docs) {
       const destinoId = doc.id;
       promListado.push(
         getDocs(collection(doc.ref, 'Listado'))
-          .then(snap => snap.docs.map(d => ({ id: d.id, destino: destinoId, ...d.data() })))
+          .then(snap => snap.docs.map(d => ({ id:d.id, destino:destinoId, ...d.data() })))
           .catch(() => [])
       );
       promAsign.push(
         getDocs(collection(doc.ref, 'Asignaciones'))
-          .then(snap => snap.docs.map(d => ({ id: d.id, destino: destinoId, ...d.data() })))
+          .then(snap => snap.docs.map(d => ({ id:d.id, destino:destinoId, ...d.data() })))
           .catch(() => [])
       );
     }
@@ -149,34 +151,34 @@ async function loadHotelesYAsignaciones() {
   }
 }
 
-// ============================
-// 3) Resolver Servicio
-// ============================
+// ---------------------------------------------------------------
+// 3) Resolver Servicio (match por destino+servicio; desempate por proveedor)
+// ---------------------------------------------------------------
 function resolverServicio(itemActividad, destinoGrupo) {
   const act    = norm(itemActividad?.actividad || itemActividad?.servicio || '');
   const dest   = norm(destinoGrupo || '');
   const provIt = norm(itemActividad?.proveedor || '');
 
+  // 1) destino + servicio
   let cand = SERVICIOS.filter(s =>
     norm(s.servicio) === act &&
     norm(s.destino || s.DESTINO || s.ciudad || s.CIUDAD) === dest
   );
 
-  if (cand.length === 0) {
-    cand = SERVICIOS.filter(s => norm(s.servicio) === act);
-  }
+  // 2) fallback a solo servicio
+  if (cand.length === 0) cand = SERVICIOS.filter(s => norm(s.servicio) === act);
 
+  // 3) si hay varios y el ítem trae proveedor, afina
   if (cand.length > 1 && provIt) {
     const afin = cand.filter(s => norm(s.proveedor) === provIt);
     if (afin.length) cand = afin;
   }
-
   return cand[0] || null;
 }
 
-// ============================
-// 4) Construcción de line items
-// ============================
+// ---------------------------------------------------------------
+// 4) Construcción de line items (actividades y hoteles)
+// ---------------------------------------------------------------
 function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActividades) {
   const out = [];
   if (!incluirActividades) return out;
@@ -195,23 +197,22 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
       for (const item of arr) {
         const svc = resolverServicio(item, destinoGrupo);
 
+        // Si no hay servicio tarifado, registramos un marcador "inofensivo"
         if (!svc) {
           out.push({
-            tipo: 'actividad',
+            tipo:'actividad',
             proveedor: item.proveedor || '(desconocido)',
             proveedorSlug: slug(item.proveedor || '(desconocido)'),
             servicio: item.actividad || item.servicio || '(sin nombre)',
             destinoGrupo, fecha: fechaISO,
-            grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
+            grupoId: g.id,
+            nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
             numeroNegocio: g.numeroNegocio || g.id,
             identificador: g.identificador || g.IDENTIFICADOR || '',
-            pax,
-            moneda: 'CLP',
-            tarifa: 0,
-            pagoTipo: 'por_grupo',
-            pagoFrecuencia: 'unitario',
-            totalMoneda: 0, totalCLP: 0,
-            nota: 'Sin tarifario en Servicios (destino+actividad no encontrado)'
+            pax, moneda:'CLP', tarifa:0,
+            pagoTipo:'por_grupo', pagoFrecuencia:'unitario',
+            totalMoneda:0, totalCLP:0,
+            nota:'Sin tarifario en Servicios (destino+actividad no encontrado)'
           });
           continue;
         }
@@ -228,17 +229,18 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
         const totalCLP      = (tc ? totalMoneda * tc : null);
 
         out.push({
-          tipo: 'actividad',
-          proveedor, proveedorSlug: slug(proveedor),
+          tipo:'actividad',
+          proveedor, proveedorSlug:slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
           destinoGrupo, fecha: fechaISO,
-          grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
+          grupoId: g.id,
+          nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
           numeroNegocio: g.numeroNegocio || g.id,
           identificador: g.identificador || g.IDENTIFICADOR || '',
           pax, moneda, tarifa: valor,
           pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo',
-          pagoFrecuencia: 'unitario',
-          totalMoneda, totalCLP, nota: ''
+          pagoFrecuencia:'unitario',
+          totalMoneda, totalCLP, nota:''
         });
       }
     }
@@ -250,8 +252,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
   const out = [];
   if (!incluirHoteles || !ASIGNACIONES.length) return out;
 
-  const mapHotel = {};
-  for (const h of HOTELES) mapHotel[h.id] = h;
+  const mapHotel = {}; for (const h of HOTELES) mapHotel[h.id] = h;
 
   for (const asg of ASIGNACIONES) {
     const g = GRUPOS.find(x => x.id === (asg.grupoId || asg.idGrupo));
@@ -263,6 +264,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const start = asg.fechaInicio, end = asg.fechaFin;
     if (!start || !end) continue;
 
+    // expandimos noches e intersectamos con el rango filtrado
     const nights = [];
     let cur = new Date(start + 'T00:00:00');
     const fin = new Date(end + 'T00:00:00');
@@ -290,12 +292,12 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const totalCLP    = (tc ? totalMoneda * tc : null);
 
     out.push({
-      tipo: 'hotel',
-      hotel: hotelNombre, destinoGrupo,
-      grupoId: g.id, nombreGrupo: g.nombreGrupo || '',
-      numeroNegocio: g.numeroNegocio || g.id,
-      identificador: g.identificador || g.IDENTIFICADOR || '',
-      noches: nights.length,
+      tipo:'hotel',
+      hotel:hotelNombre, destinoGrupo,
+      grupoId:g.id, nombreGrupo:g.nombreGrupo || '',
+      numeroNegocio:g.numeroNegocio || g.id,
+      identificador:g.identificador || g.IDENTIFICADOR || '',
+      noches:nights.length,
       moneda, tarifa, tipoCobro,
       totalMoneda, totalCLP,
     });
@@ -303,9 +305,9 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
   return out;
 }
 
-// ============================
+// ---------------------------------------------------------------
 // 5) Agregaciones (incluye ARS)
-// ============================
+// ---------------------------------------------------------------
 function agruparPorDestino(items) {
   const r = new Map();
   for (const it of items) {
@@ -357,9 +359,9 @@ function agruparPorHotel(itemsHotel) {
   return r;
 }
 
-// ============================
-// 6) Render UI (tooltips + ARS)
-// ============================
+// ---------------------------------------------------------------
+// 6) Render UI (kpis + tablas + modal)
+// ---------------------------------------------------------------
 function renderChipsDestino(destinos) {
   const cont = document.getElementById('chipsDestino');
   if (!cont) return;
@@ -387,17 +389,18 @@ function renderKPIs(items, itemsHotel) {
   el('kpiDest').textContent = destSet.size;
 }
 
+// —— Tablas
 function renderTablaDestinos(mapDest) {
   const tb = el('tblDestinos').querySelector('tbody');
   tb.innerHTML = '';
   const rows = [];
   mapDest.forEach((v, k) => rows.push({
-    destino: k,
-    clpConv: v.clpConvertido || 0,
-    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0, ars: v.ars || 0,
-    count: v.count || 0
+    destino:k,
+    clpConv:v.clpConvertido||0,
+    clp:v.clp||0, usd:v.usd||0, brl:v.brl||0, ars:v.ars||0,
+    count:v.count||0
   }));
-  rows.sort((a,b) => b.clpConv - a.clpConv);
+  rows.sort((a,b)=>b.clpConv - a.clpConv);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
@@ -417,15 +420,12 @@ function renderTablaProveedores(mapProv) {
   tb.innerHTML = '';
   const rows = [];
   mapProv.forEach((v, key) => rows.push({
-    slug: key,
-    nombre: v.nombre,
-    destinos: [...v.destinos].join(', '),
-    clpConv: v.clpConv || 0,
-    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0, ars: v.ars || 0,
-    count: v.count || 0,
-    items: v.items
+    slug:key, nombre:v.nombre, destinos:[...v.destinos].join(', '),
+    clpConv:v.clpConv||0,
+    clp:v.clp||0, usd:v.usd||0, brl:v.brl||0, ars:v.ars||0,
+    count:v.count||0, items:v.items
   }));
-  rows.sort((a,b) => b.clpConv - a.clpConv);
+  rows.sort((a,b)=>b.clpConv - a.clpConv);
 
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
@@ -456,13 +456,13 @@ function renderTablaHoteles(mapHoteles) {
   const tb = el('tblHoteles').querySelector('tbody');
   tb.innerHTML = '';
   const rows = [];
-  mapHoteles.forEach((v, k) => rows.push({
-    hotel: k, destino: v.destino,
-    clpConv: v.clpConv || 0,
-    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0, ars: v.ars || 0,
-    noches: v.noches || 0
+  mapHoteles.forEach((v,k)=>rows.push({
+    hotel:k, destino:v.destino,
+    clpConv:v.clpConv||0,
+    clp:v.clp||0, usd:v.usd||0, brl:v.brl||0, ars:v.ars||0,
+    noches:v.noches||0
   }));
-  rows.sort((a,b) => b.clpConv - a.clpConv);
+  rows.sort((a,b)=>b.clpConv - a.clpConv);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
@@ -478,7 +478,7 @@ function renderTablaHoteles(mapHoteles) {
   }
 }
 
-// ====== Resumen por servicio (incluye ARS) ======
+// —— Resumen por servicio (para modal)
 function agruparItemsPorServicio(items) {
   const map = new Map();
   for (const it of items) {
@@ -489,16 +489,14 @@ function agruparItemsPorServicio(items) {
     if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
     if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
     if (typeof it.totalCLP === 'number') o.clpConv += it.totalCLP;
-    o.count++;
-    o.items.push(it);
+    o.count++; o.items.push(it);
     map.set(key, o);
   }
-  return [...map.entries()]
-    .map(([servicio, v]) => ({ servicio, ...v }))
-    .sort((a,b) => (b.clpConv - a.clpConv));
+  return [...map.entries()].map(([servicio,v])=>({servicio,...v}))
+                           .sort((a,b)=>b.clpConv - a.clpConv);
 }
 
-// ===== Modal detalle proveedor =====
+// Modal detalle proveedor (resumen + detalle)
 function openModalProveedor(slugProv, data) {
   const backdrop = el('backdrop');
   const modal = el('modal');
@@ -510,7 +508,7 @@ function openModalProveedor(slugProv, data) {
   const resumen = agruparItemsPorServicio(data.items);
 
   cont.innerHTML = `
-    <div class="scroll-x" style="margin-bottom: .5rem;">
+    <div class="scroll-x" style="margin-bottom:.5rem;">
       <table class="fin-table" id="tblProvResumen">
         <thead>
           <tr>
@@ -528,7 +526,7 @@ function openModalProveedor(slugProv, data) {
       </table>
     </div>
 
-    <div class="row" id="detToolbar" style="justify-content:flex-end; margin:.25rem 0 .5rem 0;">
+    <div class="row" id="detToolbar" style="justify-content:flex-end;margin:.25rem 0 .5rem 0;">
       <button class="btn ghost" id="btnDetClear" style="display:none;">Ver todos</button>
     </div>
 
@@ -574,7 +572,7 @@ function openModalProveedor(slugProv, data) {
     `);
   }
 
-  // Detalle
+  // Detalle completo ordenado
   const tb = cont.querySelector('#tblDetalleProv tbody');
   tb.innerHTML = '';
   const rows = [...data.items].sort((a,b) =>
@@ -610,7 +608,7 @@ function openModalProveedor(slugProv, data) {
   }
   el('modalTotalCLP').textContent = money(totCLP);
 
-  // Filtro desde el resumen
+  // Filtro desde resumen
   const btnClear = cont.querySelector('#btnDetClear');
   cont.querySelectorAll('.btn-det-svc').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -630,6 +628,7 @@ function openModalProveedor(slugProv, data) {
     btnClear.style.display = 'none';
   });
 
+  // Mostrar
   backdrop.style.display = 'block';
   modal.style.display = 'block';
   document.body.classList.add('modal-open');
@@ -641,9 +640,9 @@ function closeModal() {
   document.body.classList.remove('modal-open');
 }
 
-// ============================
+// ---------------------------------------------------------------
 // 7) Recalcular
-// ============================
+// ---------------------------------------------------------------
 function getDestinosSeleccionados() {
   const sel = el('filtroDestino');
   return new Set([...sel.selectedOptions].map(o => o.value));
@@ -664,11 +663,11 @@ function poblarFiltrosBasicos() {
     .map(a => `<option value="${a}" ${a===anioActual?'selected':''}>${a}</option>`).join('');
 
   const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))]
-                 .sort((a,b) => a.localeCompare(b));
+                 .sort((a,b)=>a.localeCompare(b));
   el('filtroDestino').innerHTML = dests.map(d => `<option value="${d}">${d}</option>`).join('');
 
   if (document.getElementById('chipsDestino')) {
-    renderChipsDestino(dests.slice(0, 6));
+    renderChipsDestino(dests.slice(0,6));
   }
 }
 
@@ -679,6 +678,7 @@ function aplicarRangoPorAnio() {
   el('fechaHasta').value = `${anio}-12-31`;
 }
 
+// Log auxiliar para diagnosticar faltantes de tarifario
 function logDiagnostico(items){
   const faltantes = items.filter(x => x.nota && x.nota.includes('Sin tarifario'));
   if (faltantes.length){
@@ -723,9 +723,9 @@ function recalcular() {
   }
 }
 
-// ============================
-// 8) Export CSV
-// ============================
+// ---------------------------------------------------------------
+// 8) Export CSV (incluye prefijo numeroNegocio-identificador)
+// ---------------------------------------------------------------
 function exportCSV() {
   const header = ['Fecha','Proveedor','Servicio','Grupo','Destino','Pax','Modalidad','Moneda','Tarifa','TotalMoneda','TotalCLP'];
   const rows = [header.join(',')];
@@ -737,7 +737,7 @@ function exportCSV() {
       it.fecha || '',
       (it.proveedor || '').replaceAll(',',' '),
       (it.servicio || '').replaceAll(',',' '),
-      (cod ? `${cod} — ` : '') + (it.nombreGrupo || '').replaceAll(',',' '),
+      ((cod ? `${cod} — ` : '') + (it.nombreGrupo || '')).replaceAll(',',' '),
       (it.destinoGrupo || '').replaceAll(',',' '),
       it.pax || 0,
       modalidad,
@@ -754,7 +754,7 @@ function exportCSV() {
       '',
       (it.hotel || '').replaceAll(',',' '),
       `HOTEL (${it.tipoCobro})`,
-      (cod ? `${cod} — ` : '') + (it.nombreGrupo || '').replaceAll(',',' '),
+      ((cod ? `${cod} — ` : '') + (it.nombreGrupo || '')).replaceAll(',',' '),
       (it.destinoGrupo || '').replaceAll(',',' '),
       it.noches || 0,
       it.tipoCobro || '',
@@ -774,9 +774,9 @@ function exportCSV() {
   URL.revokeObjectURL(url);
 }
 
-// ============================
+// ---------------------------------------------------------------
 // 9) Boot
-// ============================
+// ---------------------------------------------------------------
 function bindUI() {
   el('filtroAnio').addEventListener('change', () => { aplicarRangoPorAnio(); recalcular(); });
   el('filtroDestino').addEventListener('change', recalcular);
@@ -799,7 +799,12 @@ function bindUI() {
 async function boot() {
   onAuthStateChanged(auth, async () => {
     try {
-      await Promise.all([ loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones() ]);
+      await Promise.all([
+        loadGrupos(),
+        loadServicios(),
+        loadProveedores(),
+        loadHotelesYAsignaciones()
+      ]);
       poblarFiltrosBasicos();
       aplicarRangoPorAnio();
       bindUI();
@@ -810,3 +815,7 @@ async function boot() {
   });
 }
 boot();
+
+// Exponer closeModal para el script inline del HTML (opcional)
+window.closeModal = closeModal;
+window.openModalProveedor = openModalProveedor;
