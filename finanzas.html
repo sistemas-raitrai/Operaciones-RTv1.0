@@ -13,13 +13,13 @@
 
     body.finanzas-page{ background:#f7f7f8; }
 
-    /* Contenedor general (no usamos .container para evitar choques) */
+    /* Contenedor general en 2 columnas */
     #fin-main{
       width:min(1800px,98vw);
       margin:0 auto;
       padding:1rem;
       display:grid;
-      grid-template-columns:360px 1fr;   /* filtros | contenido */
+      grid-template-columns:320px minmax(0, 1fr); /* izquierda fija, derecha flexible */
       gap:var(--fin-gap);
       box-sizing:border-box;
     }
@@ -31,8 +31,6 @@
     }
     header.page h2{ margin:0; font-weight:700; }
     .row{ display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; }
-    /* Por si algo intenta forzar ancho: */
-    #fin-main > *{ min-width:0; }
 
     /* ======= Paneles (reemplazo de .card) ======= */
     .panel{
@@ -43,19 +41,27 @@
       box-shadow:0 1px 2px rgba(0,0,0,.05);
       padding:1rem;
     }
-    .panel--sticky{ position:sticky; top:64px; align-self:start; }
-    .panel h3{ margin:.25rem 0 .6rem; }
 
-    /* ======= Filtros (columna izquierda) ======= */
+    /* Columna izquierda (filtros) */
+    .fin-sidebar{ grid-column:1; align-self:start; min-width:0; }
+    .panel--sticky{ position:sticky; top:64px; z-index:1; } /* no sobreponer al contenido */
     .controls label{ font-weight:600; display:block; }
-    select[multiple]{ min-width:220px; min-height:120px; }
+    select[multiple]{ min-width:220px; min-height:120px; width:100%; }
     input[type="search"], input[type="number"], input[type="date"]{ padding:.35rem .5rem; width:100%; }
     .chips{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
     .chip{ background:#f3f4f6; border:1px solid #e5e7eb; padding:.2rem .5rem; border-radius:999px; font-size:.8rem; }
 
-    /* ======= KPIs (columna derecha) ======= */
+    /* Columna derecha (contenido) */
+    .fin-main{
+      grid-column:2;
+      min-width:0;                /* CLAVE: permite que el contenido se encoja sin invadir la izquierda */
+      display:grid;
+      grid-template-columns:1fr;  /* apilado vertical de secciones */
+      gap:var(--fin-gap);
+    }
+
+    /* ======= KPIs ======= */
     .kpi-grid{
-      grid-column:2 / -1;
       display:grid;
       grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
       gap:var(--fin-gap);
@@ -68,11 +74,17 @@
     .kpi-tile .big{ font-size:1.25rem; font-weight:800; }
     .muted{ color:#6b7280; font-size:.9rem; }
 
-    /* ======= Secciones de tablas (columna derecha) ======= */
-    .fin-section{ grid-column:2 / -1; }
+    /* ======= Tablas ======= */
     .scroll-x{ overflow-x:auto; }
-    .fin-table{ width:100%; border-collapse:collapse; }
-    .fin-table th, .fin-table td{ border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left; }
+    .fin-table{
+      width:100%;
+      border-collapse:collapse;
+      table-layout:fixed;           /* evita crecimientos inesperados */
+    }
+    .fin-table th, .fin-table td{
+      border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
     .fin-table th{ background:#fafafa; position:sticky; top:0; z-index:1; }
     .right{ text-align:right; }
 
@@ -103,11 +115,11 @@
     /* Bloquear scroll del fondo cuando está abierto */
     body.modal-open{ overflow:hidden; }
 
-    /* ======= Evitar “superposición” de paneles en pantallas estrechas ======= */
+    /* ======= Responsivo: apilar en pantallas angostas ======= */
     @media (max-width: 1100px){
       #fin-main{ grid-template-columns:1fr; }
-      .kpi-grid, .fin-section{ grid-column:1 / -1; }
-      .panel--sticky{ position:static; } /* en móvil no fijamos filtros */
+      .panel--sticky{ position:static; }
+      .fin-main{ grid-column:1; }
     }
   </style>
 </head>
@@ -131,7 +143,7 @@
     </header>
 
     <!-- Columna izquierda: Filtros -->
-    <aside id="filtersCard" class="panel panel--sticky">
+    <aside class="panel panel--sticky fin-sidebar" id="filtersCard">
       <div class="controls">
         <label for="filtroAnio">Año</label>
         <select id="filtroAnio"></select>
@@ -170,83 +182,86 @@
       </div>
     </aside>
 
-    <!-- KPIs (columna derecha) -->
-    <section class="kpi-grid">
-      <div class="kpi-tile">
-        <h4>Total CLP (convertido)</h4>
-        <div id="kpiTotCLP" class="big">$0</div>
-        <div class="muted" id="kpiOtrosMon">USD/BRL no convertidos: 0</div>
-      </div>
-      <div class="kpi-tile">
-        <h4>Proveedores incluidos</h4>
-        <div id="kpiProv" class="big">0</div>
-        <div class="muted">Con al menos 1 ítem</div>
-      </div>
-      <div class="kpi-tile">
-        <h4>Destinos incluidos</h4>
-        <div id="kpiDest" class="big">0</div>
-        <div class="muted">Filtrados</div>
-      </div>
-    </section>
+    <!-- Columna derecha: todo el contenido -->
+    <section class="fin-main">
+      <!-- KPIs -->
+      <section class="kpi-grid">
+        <div class="kpi-tile">
+          <h4>Total CLP (convertido)</h4>
+          <div id="kpiTotCLP" class="big">$0</div>
+          <div class="muted" id="kpiOtrosMon">USD/BRL no convertidos: 0</div>
+        </div>
+        <div class="kpi-tile">
+          <h4>Proveedores incluidos</h4>
+          <div id="kpiProv" class="big">0</div>
+          <div class="muted">Con al menos 1 ítem</div>
+        </div>
+        <div class="kpi-tile">
+          <h4>Destinos incluidos</h4>
+          <div id="kpiDest" class="big">0</div>
+          <div class="muted">Filtrados</div>
+        </div>
+      </section>
 
-    <!-- Totales por destino -->
-    <section class="panel fin-section">
-      <h3>Totales por destino</h3>
-      <div class="scroll-x">
-        <table class="fin-table" id="tblDestinos">
-          <thead>
-            <tr>
-              <th>Destino</th>
-              <th class="right">Total CLP</th>
-              <th class="right">Total USD</th>
-              <th class="right">Total BRL</th>
-              <th class="right">Ítems</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+      <!-- Totales por destino -->
+      <section class="panel">
+        <h3>Totales por destino</h3>
+        <div class="scroll-x">
+          <table class="fin-table" id="tblDestinos">
+            <thead>
+              <tr>
+                <th>Destino</th>
+                <th class="right">Total CLP</th>
+                <th class="right">Total USD</th>
+                <th class="right">Total BRL</th>
+                <th class="right">Ítems</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
-    <!-- Totales por proveedor -->
-    <section class="panel fin-section">
-      <h3>Totales por proveedor</h3>
-      <div class="scroll-x">
-        <table class="fin-table" id="tblProveedores">
-          <thead>
-            <tr>
-              <th>Proveedor</th>
-              <th>Destino(s)</th>
-              <th class="right">CLP</th>
-              <th class="right">USD</th>
-              <th class="right">BRL</th>
-              <th class="right"># Ítems</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+      <!-- Totales por proveedor -->
+      <section class="panel">
+        <h3>Totales por proveedor</h3>
+        <div class="scroll-x">
+          <table class="fin-table" id="tblProveedores">
+            <thead>
+              <tr>
+                <th>Proveedor</th>
+                <th>Destino(s)</th>
+                <th class="right">CLP</th>
+                <th class="right">USD</th>
+                <th class="right">BRL</th>
+                <th class="right"># Ítems</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
-    <!-- Totales por hotel (opcional) -->
-    <section class="panel fin-section" id="secHoteles" style="display:none;">
-      <h3>Totales por hotel</h3>
-      <div class="scroll-x">
-        <table class="fin-table" id="tblHoteles">
-          <thead>
-            <tr>
-              <th>Hotel</th>
-              <th>Destino</th>
-              <th class="right">CLP</th>
-              <th class="right">USD</th>
-              <th class="right">BRL</th>
-              <th class="right"># Noches</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
+      <!-- Totales por hotel (opcional) -->
+      <section class="panel" id="secHoteles" style="display:none;">
+        <h3>Totales por hotel</h3>
+        <div class="scroll-x">
+          <table class="fin-table" id="tblHoteles">
+            <thead>
+              <tr>
+                <th>Hotel</th>
+                <th>Destino</th>
+                <th class="right">CLP</th>
+                <th class="right">USD</th>
+                <th class="right">BRL</th>
+                <th class="right"># Noches</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
     </section>
   </main>
 
