@@ -121,6 +121,56 @@
       .panel--sticky{ position:static; }
       .fin-main{ grid-column:1; }
     }
+
+    /* === Parche anti-solapamientos y overflow === */
+    
+    /* 1) Asegura 2 columnas sin invadir el carril izquierdo */
+    #fin-main{
+      grid-template-columns: 320px minmax(0, 1fr);
+    }
+    
+    /* 2) Sidebar sticky sin tapar nada y con tope acorde al header */
+    .panel--sticky{
+      position: sticky;
+      top: 64px;       /* ajusta si tu header es más alto/bajo */
+      z-index: 0;      /* por debajo de headers de tablas */
+    }
+    
+    /* 3) Todo lo de la derecha puede encogerse sin empujar al sidebar */
+    .fin-main,
+    .kpi-grid,
+    .panel,
+    .scroll-x{
+      min-width: 0;
+    }
+    
+    /* 4) Tablas: ancho estable y sin “romper” layout */
+    .fin-table{
+      table-layout: fixed;
+      width: 100%;
+    }
+    .fin-table th,
+    .fin-table td{
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .fin-table thead th{
+      position: sticky;
+      top: 0;
+      z-index: 2;  /* por encima del sidebar sticky */
+    }
+    
+    /* 5) Scroll horizontal solo dentro de las tablas, no en toda la página */
+    .scroll-x{ overflow-x: auto; }
+    body.finanzas-page{ overflow-x: hidden; }  /* elimina la barra horizontal global */
+    
+    /* 6) Responsivo: apilar en pantallas angostas */
+    @media (max-width: 1100px){
+      #fin-main{ grid-template-columns: 1fr; }
+      .fin-main{ grid-column: 1; }
+      .panel--sticky{ position: static; }
+    }
   </style>
 </head>
 
