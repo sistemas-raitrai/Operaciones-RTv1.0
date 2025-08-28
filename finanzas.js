@@ -8,10 +8,10 @@ import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/
 // ============================
 // 0) Configurable por país/rutas
 // ============================
-const RUTA_SERVICIOS    = 'Servicios/BRASIL/Listado';       // ⚠️ ajusta si usas otro país
-const RUTA_PROVEEDORES  = 'Proveedores/BRASIL/Listado';     // opcional
-const RUTA_HOTELES      = 'Hoteles/BRASIL/Listado';         // opcional
-const RUTA_ASIGNACIONES = 'Hoteles/BRASIL/Asignaciones';    // opcional
+const RUTA_SERVICIOS    = 'Servicios';       // ⚠️ ajusta si usas otro país
+const RUTA_PROVEEDORES  = 'Proveedores';     // opcional
+const RUTA_HOTELES      = 'Hoteles';         // opcional
+const RUTA_ASIGNACIONES = 'Hoteles';    // opcional
 const RUTA_GRUPOS       = 'grupos';                         // principal
 
 // ============================
