@@ -6,13 +6,12 @@ import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/f
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 // ============================
-// 0) Configurable por país/rutas
+// 0) Configurable por país/rutas (colecciones raíz)
 // ============================
-const RUTA_SERVICIOS    = 'Servicios';       // ⚠️ ajusta si usas otro país
-const RUTA_PROVEEDORES  = 'Proveedores';     // opcional
-const RUTA_HOTELES      = 'Hoteles';         // opcional
-const RUTA_ASIGNACIONES = 'Hoteles';    // opcional
-const RUTA_GRUPOS       = 'grupos';                         // principal
+const RUTA_SERVICIOS   = 'Servicios';   // Servicios/{DESTINO}/Listado/*
+const RUTA_PROV_ROOT   = 'Proveedores'; // Proveedores/{DESTINO}/Listado/* (opcional)
+const RUTA_HOTEL_ROOT  = 'Hoteles';     // Hoteles/{DESTINO}/(Listado|Asignaciones)/*
+const RUTA_GRUPOS      = 'grupos';      // grupos/*
 
 // ============================
 // 1) Estado global + helpers
@@ -28,8 +27,8 @@ let ASIGNACIONES = [];
 let LINE_ITEMS = [];
 let LINE_HOTEL = [];
 
-const el   = id => document.getElementById(id);
-const fmt  = n => (n ?? 0).toLocaleString('es-CL');
+const el    = id => document.getElementById(id);
+const fmt   = n => (n ?? 0).toLocaleString('es-CL');
 const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
@@ -43,14 +42,14 @@ function paxDeGrupo(g) {
 
 function within(dateISO, d1, d2) {
   if (!dateISO) return false;
-  const t = new Date(dateISO + 'T00:00:00').getTime();
+  const t  = new Date(dateISO + 'T00:00:00').getTime();
   const t1 = d1 ? new Date(d1 + 'T00:00:00').getTime() : -Infinity;
   const t2 = d2 ? new Date(d2 + 'T00:00:00').getTime() : Infinity;
   return t >= t1 && t <= t2;
 }
 
 function pickTC(moneda) {
-  const m = norm(moneda);
+  const m   = norm(moneda);
   const usd = Number(el('tcUSD')?.value || 0);
   const brl = Number(el('tcBRL')?.value || 0);
   if (m === 'CLP') return 1;
@@ -60,45 +59,102 @@ function pickTC(moneda) {
 }
 
 // ============================
-// 2) Carga de datos
+// 2) Carga de datos (según tu estructura)
 // ============================
+
+// Servicios/{DESTINO}/Listado/*
 async function loadServicios() {
-  const snap = await getDocs(collection(db, RUTA_SERVICIOS));
-  SERVICIOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS)); // destinos
+  const promSub = [];
+  for (const doc of rootSnap.docs) {
+    const destinoId = doc.id; // p.ej. "BARILOCHE"
+    promSub.push(
+      getDocs(collection(doc.ref, 'Listado')).then(snap =>
+        snap.docs.map(d => {
+          const data = d.data() || {};
+          return {
+            id: d.id,
+            destino: destinoId,
+            servicio: data.servicio || d.id, // fallback: nombre del doc
+            ...data
+          };
+        })
+      ).catch(() => [])
+    );
+  }
+  const arrays = await Promise.all(promSub);
+  SERVICIOS = arrays.flat();
 }
 
+// Proveedores/{DESTINO}/Listado/*  (opcional)
 async function loadProveedores() {
-  const snap = await getDocs(collection(db, RUTA_PROVEEDORES));
   PROVEEDORES = {};
-  snap.docs.forEach(d => {
-    const data = d.data();
-    PROVEEDORES[slug(data.proveedor)] = { id: d.id, ...data };
-  });
+  try {
+    const rootSnap = await getDocs(collection(db, RUTA_PROV_ROOT));
+    const promSub = [];
+    for (const doc of rootSnap.docs) {
+      promSub.push(
+        getDocs(collection(doc.ref, 'Listado'))
+          .then(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })))
+          .catch(() => [])
+      );
+    }
+    const arrays = await Promise.all(promSub);
+    const flat = arrays.flat();
+    flat.forEach(d => {
+      const key = slug(d.proveedor || d.nombre || d.id);
+      PROVEEDORES[key] = { ...d };
+    });
+  } catch (e) {
+    console.warn('Proveedores no disponibles:', e);
+  }
 }
 
+// grupos/*
 async function loadGrupos() {
   const snap = await getDocs(collection(db, RUTA_GRUPOS));
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
+// Hoteles/{DESTINO}/(Listado|Asignaciones)/*
 async function loadHotelesYAsignaciones() {
+  HOTELES = [];
+  ASIGNACIONES = [];
   try {
-    const snapH = await getDocs(collection(db, RUTA_HOTELES));
-    HOTELES = snapH.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch { HOTELES = []; }
+    const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ROOT)); // destinos
+    const promListado = [];
+    const promAsign   = [];
+    for (const doc of rootSnap.docs) {
+      const destinoId = doc.id;
 
-  try {
-    const snapA = await getDocs(collection(db, RUTA_ASIGNACIONES));
-    ASIGNACIONES = snapA.docs.map(d => ({ id: d.id, ...d.data() }));
-  } catch { ASIGNACIONES = []; }
+      // Catálogo de hoteles
+      promListado.push(
+        getDocs(collection(doc.ref, 'Listado'))
+          .then(snap => snap.docs.map(d => ({ id: d.id, destino: destinoId, ...d.data() })))
+          .catch(() => [])
+      );
+
+      // Asignaciones (si existe)
+      promAsign.push(
+        getDocs(collection(doc.ref, 'Asignaciones'))
+          .then(snap => snap.docs.map(d => ({ id: d.id, destino: destinoId, ...d.data() })))
+          .catch(() => [])
+      );
+    }
+    const [arrH, arrA] = await Promise.all([Promise.all(promListado), Promise.all(promAsign)]);
+    HOTELES = arrH.flat();
+    ASIGNACIONES = arrA.flat();
+  } catch (e) {
+    console.warn('Hoteles/Asignaciones no disponibles:', e);
+  }
 }
 
 // ============================
 // 3) Resolver Servicio (match DESTINO + SERVICIO, proveedor para desempatar)
 // ============================
 function resolverServicio(itemActividad, destinoGrupo) {
-  const act = norm(itemActividad?.actividad || itemActividad?.servicio || '');
-  const dest = norm(destinoGrupo || '');
+  const act    = norm(itemActividad?.actividad || itemActividad?.servicio || '');
+  const dest   = norm(destinoGrupo || '');
   const provIt = norm(itemActividad?.proveedor || '');
 
   // 1) destino + servicio
@@ -133,7 +189,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
     if (destinosSel.size && !destinosSel.has(destinoGrupo)) continue;
 
     const pax = paxDeGrupo(g);
-    const it = g.itinerario || {};
+    const it  = g.itinerario || {};
 
     for (const fechaISO of Object.keys(it)) {
       if (!within(fechaISO, fechaDesde, fechaHasta)) continue;
@@ -162,17 +218,17 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
           continue;
         }
 
-        const proveedor = svc.proveedor || '(sin proveedor)';
-        const monedaRaw = (svc.moneda || svc.MONEDA || 'CLP').toString().toUpperCase();
-        const moneda = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
-        const tipoCobroRaw = (svc.tipoCobro || svc.tipo_cobro || '').toString().toUpperCase();
-        const esPorPersona = tipoCobroRaw.includes('PERSONA') || tipoCobroRaw.includes('PAX');
-        const valor = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
+        const proveedor     = svc.proveedor || '(sin proveedor)';
+        const monedaRaw     = (svc.moneda || svc.MONEDA || 'CLP').toString().toUpperCase();
+        const moneda        = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
+        const tipoCobroRaw  = (svc.tipoCobro || svc.tipo_cobro || '').toString().toUpperCase();
+        const esPorPersona  = tipoCobroRaw.includes('PERSONA') || tipoCobroRaw.includes('PAX');
+        const valor         = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
 
         const multiplicador = esPorPersona ? pax : 1;
-        const totalMoneda = valor * multiplicador;
-        const tc = pickTC(moneda);
-        const totalCLP = (tc ? totalMoneda * tc : null);
+        const totalMoneda   = valor * multiplicador;
+        const tc            = pickTC(moneda);
+        const totalCLP      = (tc ? totalMoneda * tc : null);
 
         out.push({
           tipo: 'actividad',
@@ -224,10 +280,10 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const hotel = mapHotel[asg.hotelId] || {};
     const hotelNombre = hotel.nombre || asg.hotelNombre || '(hotel)';
 
-    const pax = paxDeGrupo(g);
+    const pax       = paxDeGrupo(g);
     const monedaRaw = (asg.moneda || hotel.moneda || 'CLP').toString().toUpperCase();
-    const moneda = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
-    const tarifa = Number(asg.tarifa || hotel.tarifa || 0);
+    const moneda    = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
+    const tarifa    = Number(asg.tarifa || hotel.tarifa || 0);
     const tipoCobro = (asg.tipoCobro || hotel.tipoCobro || 'por_pax_noche').toLowerCase();
 
     let totalPorNoche = 0;
@@ -235,9 +291,9 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     else if (tipoCobro === 'por_grupo_noche') totalPorNoche = tarifa;
     else if (tipoCobro === 'por_hab_noche') totalPorNoche = tarifa;
 
-    const tc = pickTC(moneda);
+    const tc          = pickTC(moneda);
     const totalMoneda = totalPorNoche * nights.length;
-    const totalCLP = (tc ? totalMoneda * tc : null);
+    const totalCLP    = (tc ? totalMoneda * tc : null);
 
     out.push({
       tipo: 'hotel',
@@ -274,7 +330,7 @@ function agruparPorProveedor(items) {
   const r = new Map();
   for (const it of items) {
     const slugProv = it.proveedorSlug || slug(it.proveedor || '(sin proveedor)');
-    const nombre = it.proveedor || '(sin proveedor)';
+    const nombre   = it.proveedor || '(sin proveedor)';
     const o = r.get(slugProv) || { nombre, destinos:new Set(), clp:0, usd:0, brl:0, clpConv:0, count:0, items:[] };
     o.destinos.add(it.destinoGrupo || '(sin destino)');
     if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
@@ -308,12 +364,11 @@ function agruparPorHotel(itemsHotel) {
 // ============================
 function renderChipsDestino(destinos) {
   const cont = document.getElementById('chipsDestino');
-  if (!cont) return;                       // <- si no existe, salimos sin error
+  if (!cont) return;
   cont.innerHTML = '';
-  for (const d of destinos) {
-    cont.insertAdjacentHTML('beforeend', `<span class="chip">${d}</span>`);
-  }
+  for (const d of destinos) cont.insertAdjacentHTML('beforeend', `<span class="chip">${d}</span>`);
 }
+
 function renderKPIs(items, itemsHotel) {
   const totCLP = [...items, ...itemsHotel]
     .reduce((acc, it) => acc + (typeof it.totalCLP === 'number' ? it.totalCLP : 0), 0);
@@ -521,7 +576,7 @@ function openModalProveedor(slugProv, data) {
     `);
   }
 
-  // --- Pintar detalle completo (ordenado por fecha/grupo) ---
+  // --- Pintar detalle completo ---
   const tb = cont.querySelector('#tblDetalleProv tbody');
   tb.innerHTML = '';
   const rows = [...data.items].sort((a,b) =>
@@ -607,8 +662,6 @@ function poblarFiltrosBasicos() {
                  .sort((a,b) => a.localeCompare(b));
   el('filtroDestino').innerHTML = dests.map(d => `<option value="${d}">${d}</option>`).join('');
 
-  // Antes: renderChipsDestino(dests.slice(0,6));
-  // Ahora: solo si existe el contenedor, para que no reviente.
   if (document.getElementById('chipsDestino')) {
     renderChipsDestino(dests.slice(0, 6));
   }
@@ -706,8 +759,8 @@ function exportCSV() {
   }
 
   const blob = new Blob([rows.join('\n')], { type:'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
   a.href = url;
   a.download = `finanzas_RT_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
