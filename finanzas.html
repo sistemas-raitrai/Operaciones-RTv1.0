@@ -7,171 +7,128 @@
   <title>Finanzas-Operaciones RT</title>
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
-  <style>
-    /* ======= Scope SOLO para esta página ======= */
-    :root{ --fin-gap:1rem; --fin-panel-bg:#fff; --fin-panel-bd:#e5e7eb; }
+<style>
+  /* ======= Scope SOLO para esta página ======= */
+  :root{ --fin-gap:1.25rem; --fin-panel-bg:#fff; --fin-panel-bd:#e5e7eb; }
 
-    body.finanzas-page{ background:#f7f7f8; }
+  body.finanzas-page{ background:#f7f7f8; overflow-x:hidden; }
 
-    /* Contenedor general en 2 columnas */
-    #fin-main{
-      width:min(1800px,98vw);
-      margin:0 auto;
-      padding:1rem;
-      display:grid;
-      grid-template-columns:320px minmax(0, 1fr); /* izquierda fija, derecha flexible */
-      gap:var(--fin-gap);
-      box-sizing:border-box;
-    }
-    /* header de la página ocupa el ancho completo */
-    #fin-main > header.page{
-      grid-column:1 / -1;
-      display:flex; align-items:center; justify-content:space-between; gap:.75rem;
-      margin:.5rem 0;
-    }
-    header.page h2{ margin:0; font-weight:700; }
-    .row{ display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; }
+  /* Contenedor general en 2 columnas */
+  #fin-main{
+    width:min(1800px,98vw);
+    margin:0 auto;
+    padding:1rem;
+    display:grid;
+    /* Izquierda fija con límites + derecha flexible */
+    grid-template-columns: clamp(260px, 22vw, 300px) minmax(0, 1fr);
+    gap: var(--fin-gap);       /* más aire entre columnas */
+    box-sizing:border-box;
+  }
 
-    /* ======= Paneles (reemplazo de .card) ======= */
-    .panel{
-      width:100%;
-      background:var(--fin-panel-bg);
-      border:1px solid var(--fin-panel-bd);
-      border-radius:12px;
-      box-shadow:0 1px 2px rgba(0,0,0,.05);
-      padding:1rem;
-    }
+  /* Header de la página ocupa el ancho completo */
+  #fin-main > header.page{
+    grid-column:1 / -1;
+    display:flex; align-items:center; justify-content:space-between; gap:.75rem;
+    margin:.5rem 0;
+  }
+  header.page h2{ margin:0; font-weight:700; }
+  .row{ display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; }
 
-    /* Columna izquierda (filtros) */
-    .fin-sidebar{ grid-column:1; align-self:start; min-width:0; }
-    .panel--sticky{ position:sticky; top:64px; z-index:1; } /* no sobreponer al contenido */
-    .controls label{ font-weight:600; display:block; }
-    select[multiple]{ min-width:220px; min-height:120px; width:100%; }
-    input[type="search"], input[type="number"], input[type="date"]{ padding:.35rem .5rem; width:100%; }
-    .chips{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
-    .chip{ background:#f3f4f6; border:1px solid #e5e7eb; padding:.2rem .5rem; border-radius:999px; font-size:.8rem; }
+  /* ======= Paneles ======= */
+  .panel{
+    width:100%;
+    background:var(--fin-panel-bg);
+    border:1px solid var(--fin-panel-bd);
+    border-radius:12px;
+    box-shadow:0 1px 2px rgba(0,0,0,.05);
+    padding:1rem;
+  }
 
-    /* Columna derecha (contenido) */
-    .fin-main{
-      grid-column:2;
-      min-width:0;                /* CLAVE: permite que el contenido se encoja sin invadir la izquierda */
-      display:grid;
-      grid-template-columns:1fr;  /* apilado vertical de secciones */
-      gap:var(--fin-gap);
-    }
+  /* Columna izquierda (filtros) */
+  .fin-sidebar{ grid-column:1; align-self:start; min-width:0; max-width:300px; }
+  .panel--sticky{ position:sticky; top:64px; z-index:1; }  /* debajo de main */
+  .controls label{ font-weight:600; display:block; }
+  select[multiple]{ min-width:220px; min-height:120px; width:100%; }
+  input[type="search"], input[type="number"], input[type="date"]{ padding:.35rem .5rem; width:100%; }
+  .chips{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
+  .chip{ background:#f3f4f6; border:1px solid #e5e7eb; padding:.2rem .5rem; border-radius:999px; font-size:.8rem; }
 
-    /* ======= KPIs ======= */
-    .kpi-grid{
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
-      gap:var(--fin-gap);
-    }
-    .kpi-tile{
-      background:#fff; border:1px solid #e5e7eb; border-radius:12px;
-      box-shadow:0 1px 2px rgba(0,0,0,.05); padding:1rem;
-    }
-    .kpi-tile h4{ margin:.25rem 0 .35rem; font-size:.95rem; color:#374151; }
-    .kpi-tile .big{ font-size:1.25rem; font-weight:800; }
-    .muted{ color:#6b7280; font-size:.9rem; }
+  /* Columna derecha (contenido) */
+  .fin-main{
+    grid-column:2;
+    min-width:0;                     /* evita que empuje al sidebar */
+    display:grid;
+    grid-template-columns:1fr;
+    gap:var(--fin-gap);
+    position:relative; z-index:2;    /* por encima del sticky */
+  }
 
-    /* ======= Tablas ======= */
-    .scroll-x{ overflow-x:auto; }
-    .fin-table{
-      width:100%;
-      border-collapse:collapse;
-      table-layout:fixed;           /* evita crecimientos inesperados */
-    }
-    .fin-table th, .fin-table td{
-      border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    }
-    .fin-table th{ background:#fafafa; position:sticky; top:0; z-index:1; }
-    .right{ text-align:right; }
+  /* ======= KPIs ======= */
+  .kpi-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+    gap:var(--fin-gap);
+    min-width:0;
+  }
+  .kpi-tile{
+    background:#fff; border:1px solid #e5e7eb; border-radius:12px;
+    box-shadow:0 1px 2px rgba(0,0,0,.05); padding:1rem;
+  }
+  .kpi-tile h4{ margin:.25rem 0 .35rem; font-size:.95rem; color:#374151; }
+  .kpi-tile .big{ font-size:1.25rem; font-weight:800; }
+  .muted{ color:#6b7280; font-size:.9rem; }
 
-    /* ======= Botones ======= */
-    .btn{ background:#111827; color:#fff; border:none; padding:.5rem .8rem; border-radius:.5rem; cursor:pointer; font-weight:600; }
-    .btn.ghost{ background:transparent; color:#111827; border:1px solid #e5e7eb; }
-    .btn.secondary{ background:#e5e7eb; color:#111827; }
+  /* ======= Tablas ======= */
+  .scroll-x{ overflow-x:auto; min-width:0; }
+  .fin-table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;    /* evita estiramientos */
+  }
+  .fin-table th, .fin-table td{
+    border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .fin-table thead th{
+    background:#fafafa; position:sticky; top:0; z-index:3; /* por encima del sidebar */
+  }
+  .right{ text-align:right; }
 
-    /* ======= MODAL encapsulado (no usa .modal genérico) ======= */
-    #backdrop{
-      position: fixed; inset: 0; background: rgba(0,0,0,.55);
-      display:none; z-index:2000;
-    }
-    #modal{
-      position: fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-      width:min(1200px,94vw); max-height:86vh; background:#fff;
-      border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.35);
-      display:none; overflow:hidden; z-index:2001;
-    }
-    #modal > header{
-      position:sticky; top:0; background:#fff; padding:.6rem 1rem;
-      border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between;
-    }
-    #modal .close{ border:none; background:#f3f4f6; padding:.4rem .6rem; border-radius:.5rem; cursor:pointer; }
-    .fin-modal-body{ max-height:calc(86vh - 64px); overflow:auto; padding:.75rem 1rem; }
-    #modal .fin-table thead th{ position:sticky; top:0; background:#fafafa; z-index:1; }
+  /* ======= Botones ======= */
+  .btn{ background:#111827; color:#fff; border:none; padding:.5rem .8rem; border-radius:.5rem; cursor:pointer; font-weight:600; }
+  .btn.ghost{ background:transparent; color:#111827; border:1px solid #e5e7eb; }
+  .btn.secondary{ background:#e5e7eb; color:#111827; }
 
-    /* Bloquear scroll del fondo cuando está abierto */
-    body.modal-open{ overflow:hidden; }
+  /* ======= MODAL ======= */
+  #backdrop{
+    position: fixed; inset: 0; background: rgba(0,0,0,.55);
+    display:none; z-index:2000;
+  }
+  #modal{
+    position: fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:min(1200px,94vw); max-height:86vh; background:#fff;
+    border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.35);
+    display:none; overflow:hidden; z-index:2001;
+  }
+  #modal > header{
+    position:sticky; top:0; background:#fff; padding:.6rem 1rem;
+    border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between;
+  }
+  #modal .close{ border:none; background:#f3f4f6; padding:.4rem .6rem; border-radius:.5rem; cursor:pointer; }
+  .fin-modal-body{ max-height:calc(86vh - 64px); overflow:auto; padding:.75rem 1rem; }
+  #modal .fin-table thead th{ position:sticky; top:0; background:#fafafa; z-index:1; }
 
-    /* ======= Responsivo: apilar en pantallas angostas ======= */
-    @media (max-width: 1100px){
-      #fin-main{ grid-template-columns:1fr; }
-      .panel--sticky{ position:static; }
-      .fin-main{ grid-column:1; }
-    }
+  /* Bloquear scroll del fondo cuando está abierto */
+  body.modal-open{ overflow:hidden; }
 
-    /* === Parche anti-solapamientos y overflow === */
-    
-    /* 1) Asegura 2 columnas sin invadir el carril izquierdo */
-    #fin-main{
-      grid-template-columns: 320px minmax(0, 1fr);
-    }
-    
-    /* 2) Sidebar sticky sin tapar nada y con tope acorde al header */
-    .panel--sticky{
-      position: sticky;
-      top: 64px;       /* ajusta si tu header es más alto/bajo */
-      z-index: 0;      /* por debajo de headers de tablas */
-    }
-    
-    /* 3) Todo lo de la derecha puede encogerse sin empujar al sidebar */
-    .fin-main,
-    .kpi-grid,
-    .panel,
-    .scroll-x{
-      min-width: 0;
-    }
-    
-    /* 4) Tablas: ancho estable y sin “romper” layout */
-    .fin-table{
-      table-layout: fixed;
-      width: 100%;
-    }
-    .fin-table th,
-    .fin-table td{
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .fin-table thead th{
-      position: sticky;
-      top: 0;
-      z-index: 2;  /* por encima del sidebar sticky */
-    }
-    
-    /* 5) Scroll horizontal solo dentro de las tablas, no en toda la página */
-    .scroll-x{ overflow-x: auto; }
-    body.finanzas-page{ overflow-x: hidden; }  /* elimina la barra horizontal global */
-    
-    /* 6) Responsivo: apilar en pantallas angostas */
-    @media (max-width: 1100px){
-      #fin-main{ grid-template-columns: 1fr; }
-      .fin-main{ grid-column: 1; }
-      .panel--sticky{ position: static; }
-    }
-  </style>
+  /* ======= Responsivo ======= */
+  @media (max-width:1100px){
+    #fin-main{ grid-template-columns:1fr; }
+    .fin-main{ grid-column:1; }
+    .panel--sticky{ position:static; }
+  }
+</style>
+
 </head>
 
 <body class="finanzas-page">
