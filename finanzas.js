@@ -6,15 +6,15 @@ import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/f
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 // ============================
-// 0) Configurable por país/rutas (colecciones raíz)
+// 0) Rutas raíz (según tu estructura)
 // ============================
-const RUTA_SERVICIOS   = 'Servicios';   // Servicios/{DESTINO}/Listado/*
-const RUTA_PROV_ROOT   = 'Proveedores'; // Proveedores/{DESTINO}/Listado/* (opcional)
-const RUTA_HOTEL_ROOT  = 'Hoteles';     // Hoteles/{DESTINO}/(Listado|Asignaciones)/*
-const RUTA_GRUPOS      = 'grupos';      // grupos/*
+const RUTA_SERVICIOS  = 'Servicios';   // Servicios/{DESTINO}/Listado/*
+const RUTA_PROV_ROOT  = 'Proveedores'; // Proveedores/{DESTINO}/Listado/* (opcional)
+const RUTA_HOTEL_ROOT = 'Hoteles';     // Hoteles/{DESTINO}/(Listado|Asignaciones)/*
+const RUTA_GRUPOS     = 'grupos';      // grupos/*
 
 // ============================
-// 1) Estado global + helpers
+// 1) Estado + helpers
 // ============================
 const auth = getAuth(app);
 
@@ -33,6 +33,14 @@ const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
 
+function normalizarMoneda(m){
+  const M = (m||'').toString().toUpperCase().trim();
+  if (['REAL','REALES','R$','BRL'].includes(M)) return 'BRL';
+  if (['ARS','AR$','ARG','PESO ARGENTINO','PESOS ARGENTINOS','ARGENTINOS','ARGENTINO'].includes(M)) return 'ARS';
+  if (['USD','US$','DOLAR','DÓLAR','DOLLAR'].includes(M)) return 'USD';
+  return 'CLP';
+}
+
 function paxDeGrupo(g) {
   const a = Number(g.adultos || g.ADULTOS || 0);
   const e = Number(g.estudiantes || g.ESTUDIANTES || 0);
@@ -49,44 +57,43 @@ function within(dateISO, d1, d2) {
 }
 
 function pickTC(moneda) {
-  const m   = norm(moneda);
+  const m   = normalizarMoneda(moneda);
   const usd = Number(el('tcUSD')?.value || 0);
   const brl = Number(el('tcBRL')?.value || 0);
+  const ars = Number(el('tcARS')?.value || 0);
   if (m === 'CLP') return 1;
   if (m === 'USD') return usd > 0 ? usd : null;
-  if (m === 'BRL' || m === 'R$' || m === 'REAL' || m === 'REALES') return brl > 0 ? brl : null;
+  if (m === 'BRL') return brl > 0 ? brl : null;
+  if (m === 'ARS') return ars > 0 ? ars : null;
   return null;
 }
 
 // ============================
-// 2) Carga de datos (según tu estructura)
+// 2) Carga de datos (por destino)
 // ============================
-
-// Servicios/{DESTINO}/Listado/*
 async function loadServicios() {
   const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS)); // destinos
   const promSub = [];
   for (const doc of rootSnap.docs) {
-    const destinoId = doc.id; // p.ej. "BARILOCHE"
+    const destinoId = doc.id;
     promSub.push(
-      getDocs(collection(doc.ref, 'Listado')).then(snap =>
-        snap.docs.map(d => {
+      getDocs(collection(doc.ref, 'Listado'))
+        .then(snap => snap.docs.map(d => {
           const data = d.data() || {};
           return {
             id: d.id,
             destino: destinoId,
-            servicio: data.servicio || d.id, // fallback: nombre del doc
+            servicio: data.servicio || d.id,
             ...data
           };
-        })
-      ).catch(() => [])
+        }))
+        .catch(() => [])
     );
   }
   const arrays = await Promise.all(promSub);
   SERVICIOS = arrays.flat();
 }
 
-// Proveedores/{DESTINO}/Listado/*  (opcional)
 async function loadProveedores() {
   PROVEEDORES = {};
   try {
@@ -100,8 +107,7 @@ async function loadProveedores() {
       );
     }
     const arrays = await Promise.all(promSub);
-    const flat = arrays.flat();
-    flat.forEach(d => {
+    arrays.flat().forEach(d => {
       const key = slug(d.proveedor || d.nombre || d.id);
       PROVEEDORES[key] = { ...d };
     });
@@ -110,31 +116,25 @@ async function loadProveedores() {
   }
 }
 
-// grupos/*
 async function loadGrupos() {
   const snap = await getDocs(collection(db, RUTA_GRUPOS));
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// Hoteles/{DESTINO}/(Listado|Asignaciones)/*
 async function loadHotelesYAsignaciones() {
   HOTELES = [];
   ASIGNACIONES = [];
   try {
-    const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ROOT)); // destinos
+    const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ROOT));
     const promListado = [];
     const promAsign   = [];
     for (const doc of rootSnap.docs) {
       const destinoId = doc.id;
-
-      // Catálogo de hoteles
       promListado.push(
         getDocs(collection(doc.ref, 'Listado'))
           .then(snap => snap.docs.map(d => ({ id: d.id, destino: destinoId, ...d.data() })))
           .catch(() => [])
       );
-
-      // Asignaciones (si existe)
       promAsign.push(
         getDocs(collection(doc.ref, 'Asignaciones'))
           .then(snap => snap.docs.map(d => ({ id: d.id, destino: destinoId, ...d.data() })))
@@ -150,25 +150,22 @@ async function loadHotelesYAsignaciones() {
 }
 
 // ============================
-// 3) Resolver Servicio (match DESTINO + SERVICIO, proveedor para desempatar)
+// 3) Resolver Servicio
 // ============================
 function resolverServicio(itemActividad, destinoGrupo) {
   const act    = norm(itemActividad?.actividad || itemActividad?.servicio || '');
   const dest   = norm(destinoGrupo || '');
   const provIt = norm(itemActividad?.proveedor || '');
 
-  // 1) destino + servicio
   let cand = SERVICIOS.filter(s =>
     norm(s.servicio) === act &&
     norm(s.destino || s.DESTINO || s.ciudad || s.CIUDAD) === dest
   );
 
-  // 2) si no hay, relajar a solo servicio
   if (cand.length === 0) {
     cand = SERVICIOS.filter(s => norm(s.servicio) === act);
   }
 
-  // 3) si hay varios y el ítem trae proveedor, afinar
   if (cand.length > 1 && provIt) {
     const afin = cand.filter(s => norm(s.proveedor) === provIt);
     if (afin.length) cand = afin;
@@ -178,7 +175,7 @@ function resolverServicio(itemActividad, destinoGrupo) {
 }
 
 // ============================
-// 4) Construcción de LINE_ITEMS (actividades)
+// 4) Construcción de line items
 // ============================
 function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActividades) {
   const out = [];
@@ -207,6 +204,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
             destinoGrupo, fecha: fechaISO,
             grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
             numeroNegocio: g.numeroNegocio || g.id,
+            identificador: g.identificador || g.IDENTIFICADOR || '',
             pax,
             moneda: 'CLP',
             tarifa: 0,
@@ -219,8 +217,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
         }
 
         const proveedor     = svc.proveedor || '(sin proveedor)';
-        const monedaRaw     = (svc.moneda || svc.MONEDA || 'CLP').toString().toUpperCase();
-        const moneda        = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
+        const moneda        = normalizarMoneda(svc.moneda || svc.MONEDA || 'CLP');
         const tipoCobroRaw  = (svc.tipoCobro || svc.tipo_cobro || '').toString().toUpperCase();
         const esPorPersona  = tipoCobroRaw.includes('PERSONA') || tipoCobroRaw.includes('PAX');
         const valor         = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
@@ -237,6 +234,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
           destinoGrupo, fecha: fechaISO,
           grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
           numeroNegocio: g.numeroNegocio || g.id,
+          identificador: g.identificador || g.IDENTIFICADOR || '',
           pax, moneda, tarifa: valor,
           pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo',
           pagoFrecuencia: 'unitario',
@@ -248,9 +246,6 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
   return out;
 }
 
-// ============================
-// 5) (Opcional) Hoteles
-// ============================
 function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHoteles) {
   const out = [];
   if (!incluirHoteles || !ASIGNACIONES.length) return out;
@@ -281,8 +276,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const hotelNombre = hotel.nombre || asg.hotelNombre || '(hotel)';
 
     const pax       = paxDeGrupo(g);
-    const monedaRaw = (asg.moneda || hotel.moneda || 'CLP').toString().toUpperCase();
-    const moneda    = (monedaRaw === 'REAL' || monedaRaw === 'REALES') ? 'BRL' : monedaRaw;
+    const moneda    = normalizarMoneda(asg.moneda || hotel.moneda || 'CLP');
     const tarifa    = Number(asg.tarifa || hotel.tarifa || 0);
     const tipoCobro = (asg.tipoCobro || hotel.tipoCobro || 'por_pax_noche').toLowerCase();
 
@@ -300,6 +294,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       hotel: hotelNombre, destinoGrupo,
       grupoId: g.id, nombreGrupo: g.nombreGrupo || '',
       numeroNegocio: g.numeroNegocio || g.id,
+      identificador: g.identificador || g.IDENTIFICADOR || '',
       noches: nights.length,
       moneda, tarifa, tipoCobro,
       totalMoneda, totalCLP,
@@ -309,16 +304,17 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
 }
 
 // ============================
-// 6) Agregaciones
+// 5) Agregaciones (incluye ARS)
 // ============================
 function agruparPorDestino(items) {
   const r = new Map();
   for (const it of items) {
     const key = it.destinoGrupo || it.destino || '(sin destino)';
-    const o = r.get(key) || { clp:0, usd:0, brl:0, clpConvertido:0, count:0 };
+    const o = r.get(key) || { clp:0, usd:0, brl:0, ars:0, clpConvertido:0, count:0 };
     if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
     if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
-    if ((it.moneda === 'BRL' || it.moneda === 'R$') && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
     if (typeof it.totalCLP === 'number') o.clpConvertido += it.totalCLP;
     o.count++;
     r.set(key, o);
@@ -331,11 +327,12 @@ function agruparPorProveedor(items) {
   for (const it of items) {
     const slugProv = it.proveedorSlug || slug(it.proveedor || '(sin proveedor)');
     const nombre   = it.proveedor || '(sin proveedor)';
-    const o = r.get(slugProv) || { nombre, destinos:new Set(), clp:0, usd:0, brl:0, clpConv:0, count:0, items:[] };
+    const o = r.get(slugProv) || { nombre, destinos:new Set(), clp:0, usd:0, brl:0, ars:0, clpConv:0, count:0, items:[] };
     o.destinos.add(it.destinoGrupo || '(sin destino)');
     if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
     if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
-    if ((it.moneda === 'BRL' || it.moneda === 'R$') && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
     if (typeof it.totalCLP === 'number') o.clpConv += it.totalCLP;
     o.count++;
     o.items.push(it);
@@ -348,10 +345,11 @@ function agruparPorHotel(itemsHotel) {
   const r = new Map();
   for (const it of itemsHotel) {
     const key = it.hotel || '(hotel)';
-    const o = r.get(key) || { destino: it.destinoGrupo || '(sin destino)', clp:0, usd:0, brl:0, clpConv:0, noches:0 };
+    const o = r.get(key) || { destino: it.destinoGrupo || '(sin destino)', clp:0, usd:0, brl:0, ars:0, clpConv:0, noches:0 };
     if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
     if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
-    if ((it.moneda === 'BRL' || it.moneda === 'R$') && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
     if (typeof it.totalCLP === 'number') o.clpConv += it.totalCLP;
     o.noches += (it.noches || 0);
     r.set(key, o);
@@ -360,7 +358,7 @@ function agruparPorHotel(itemsHotel) {
 }
 
 // ============================
-// 7) Render UI
+// 6) Render UI (tooltips + ARS)
 // ============================
 function renderChipsDestino(destinos) {
   const cont = document.getElementById('chipsDestino');
@@ -370,21 +368,17 @@ function renderChipsDestino(destinos) {
 }
 
 function renderKPIs(items, itemsHotel) {
-  const totCLP = [...items, ...itemsHotel]
-    .reduce((acc, it) => acc + (typeof it.totalCLP === 'number' ? it.totalCLP : 0), 0);
+  const all = [...items, ...itemsHotel];
 
-  const restUSD = [...items, ...itemsHotel]
-    .filter(it => it.moneda === 'USD' && it.totalCLP == null)
-    .reduce((s, it) => s + (it.totalMoneda || 0), 0);
-
-  const restBRL = [...items, ...itemsHotel]
-    .filter(it => (it.moneda === 'BRL' || it.moneda === 'R$') && it.totalCLP == null)
-    .reduce((s, it) => s + (it.totalMoneda || 0), 0);
-
+  const totCLP = all.reduce((acc, it) => acc + (typeof it.totalCLP === 'number' ? it.totalCLP : 0), 0);
   el('kpiTotCLP').textContent = money(totCLP);
-  el('kpiOtrosMon').textContent = (restUSD || restBRL)
-    ? `USD no conv.: ${fmt(restUSD)} — BRL no conv.: ${fmt(restBRL)}`
-    : 'USD/BRL no convertidos: 0';
+
+  const restUSD = all.filter(it => it.moneda === 'USD' && it.totalCLP == null).reduce((s, it) => s + (it.totalMoneda || 0), 0);
+  const restBRL = all.filter(it => it.moneda === 'BRL' && it.totalCLP == null).reduce((s, it) => s + (it.totalMoneda || 0), 0);
+  const restARS = all.filter(it => it.moneda === 'ARS' && it.totalCLP == null).reduce((s, it) => s + (it.totalMoneda || 0), 0);
+
+  el('kpiOtrosMon').textContent =
+    `USD no conv.: ${fmt(restUSD)} — BRL no conv.: ${fmt(restBRL)} — ARS no conv.: ${fmt(restARS)}`;
 
   const provSet = new Set(items.filter(x => x.tipo==='actividad').map(x => x.proveedorSlug));
   el('kpiProv').textContent = provSet.size;
@@ -400,18 +394,19 @@ function renderTablaDestinos(mapDest) {
   mapDest.forEach((v, k) => rows.push({
     destino: k,
     clpConv: v.clpConvertido || 0,
-    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
+    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0, ars: v.ars || 0,
     count: v.count || 0
   }));
   rows.sort((a,b) => b.clpConv - a.clpConv);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
-        <td>${r.destino || '(sin destino)'}</td>
-        <td class="right">${money(r.clpConv)}</td>
-        <td class="right">${fmt(r.usd)}</td>
-        <td class="right">${fmt(r.brl)}</td>
-        <td class="right">${fmt(r.count)}</td>
+        <td title="${r.destino}">${r.destino || '(sin destino)'}</td>
+        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
+        <td class="right" title="${r.usd}">${fmt(r.usd)}</td>
+        <td class="right" title="${r.brl}">${fmt(r.brl)}</td>
+        <td class="right" title="${r.ars}">${fmt(r.ars)}</td>
+        <td class="right" title="${r.count}">${fmt(r.count)}</td>
       </tr>
     `);
   }
@@ -426,7 +421,7 @@ function renderTablaProveedores(mapProv) {
     nombre: v.nombre,
     destinos: [...v.destinos].join(', '),
     clpConv: v.clpConv || 0,
-    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
+    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0, ars: v.ars || 0,
     count: v.count || 0,
     items: v.items
   }));
@@ -435,12 +430,13 @@ function renderTablaProveedores(mapProv) {
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
-        <td>${r.nombre}</td>
-        <td>${r.destinos}</td>
-        <td class="right">${money(r.clpConv)}</td>
-        <td class="right">${fmt(r.usd)}</td>
-        <td class="right">${fmt(r.brl)}</td>
-        <td class="right">${fmt(r.count)}</td>
+        <td title="${r.nombre}">${r.nombre}</td>
+        <td title="${r.destinos}">${r.destinos}</td>
+        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
+        <td class="right" title="${r.usd}">${fmt(r.usd)}</td>
+        <td class="right" title="${r.brl}">${fmt(r.brl)}</td>
+        <td class="right" title="${r.ars}">${fmt(r.ars)}</td>
+        <td class="right" title="${r.count}">${fmt(r.count)}</td>
         <td class="right">
           <button class="btn secondary" data-prov="${r.slug}">Ver detalle</button>
         </td>
@@ -463,45 +459,46 @@ function renderTablaHoteles(mapHoteles) {
   mapHoteles.forEach((v, k) => rows.push({
     hotel: k, destino: v.destino,
     clpConv: v.clpConv || 0,
-    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0,
+    clp: v.clp || 0, usd: v.usd || 0, brl: v.brl || 0, ars: v.ars || 0,
     noches: v.noches || 0
   }));
   rows.sort((a,b) => b.clpConv - a.clpConv);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
-        <td>${r.hotel}</td>
-        <td>${r.destino || ''}</td>
-        <td class="right">${money(r.clpConv)}</td>
-        <td class="right">${fmt(r.usd)}</td>
-        <td class="right">${fmt(r.brl)}</td>
-        <td class="right">${fmt(r.noches)}</td>
+        <td title="${r.hotel}">${r.hotel}</td>
+        <td title="${r.destino || ''}">${r.destino || ''}</td>
+        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
+        <td class="right" title="${r.usd}">${fmt(r.usd)}</td>
+        <td class="right" title="${r.brl}">${fmt(r.brl)}</td>
+        <td class="right" title="${r.ars}">${fmt(r.ars)}</td>
+        <td class="right" title="${r.noches}">${fmt(r.noches)}</td>
       </tr>
     `);
   }
 }
 
-// ====== Helpers para modal agrupado ======
+// ====== Resumen por servicio (incluye ARS) ======
 function agruparItemsPorServicio(items) {
-  const map = new Map(); // servicio -> {clp, usd, brl, clpConv, count, items:[]}
+  const map = new Map();
   for (const it of items) {
     const key = it.servicio || '(sin nombre)';
-    const o = map.get(key) || { clp:0, usd:0, brl:0, clpConv:0, count:0, items:[] };
+    const o = map.get(key) || { clp:0, usd:0, brl:0, ars:0, clpConv:0, count:0, items:[] };
     if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
     if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
-    if ((it.moneda === 'BRL' || it.moneda === 'R$') && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
+    if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
     if (typeof it.totalCLP === 'number') o.clpConv += it.totalCLP;
     o.count++;
     o.items.push(it);
     map.set(key, o);
   }
-  // ordenar por CLP convertido desc
   return [...map.entries()]
     .map(([servicio, v]) => ({ servicio, ...v }))
     .sort((a,b) => (b.clpConv - a.clpConv));
 }
 
-// ===== Modal detalle proveedor (RESUMEN POR SERVICIO + DETALLE) =====
+// ===== Modal detalle proveedor =====
 function openModalProveedor(slugProv, data) {
   const backdrop = el('backdrop');
   const modal = el('modal');
@@ -509,7 +506,6 @@ function openModalProveedor(slugProv, data) {
   el('modalTitle').textContent = `Detalle — ${data?.nombre || slugProv}`;
   el('modalSub').textContent   = `Destinos: ${[...data.destinos].join(', ')}`;
 
-  // === Construir HTML del cuerpo: resumen + detalle ===
   const cont = modal.querySelector('.fin-modal-body');
   const resumen = agruparItemsPorServicio(data.items);
 
@@ -522,6 +518,7 @@ function openModalProveedor(slugProv, data) {
             <th class="right">CLP</th>
             <th class="right">USD</th>
             <th class="right">BRL</th>
+            <th class="right">ARS</th>
             <th class="right">Total CLP (conv.)</th>
             <th class="right"># Ítems</th>
             <th></th>
@@ -560,23 +557,24 @@ function openModalProveedor(slugProv, data) {
     </div>
   `;
 
-  // --- Pintar resumen por servicio ---
+  // Resumen por servicio
   const tbRes = cont.querySelector('#tblProvResumen tbody');
   for (const r of resumen) {
     tbRes.insertAdjacentHTML('beforeend', `
       <tr>
-        <td>${r.servicio}</td>
-        <td class="right">${fmt(r.clp)}</td>
-        <td class="right">${fmt(r.usd)}</td>
-        <td class="right">${fmt(r.brl)}</td>
-        <td class="right">${money(r.clpConv)}</td>
-        <td class="right">${fmt(r.count)}</td>
+        <td title="${r.servicio}">${r.servicio}</td>
+        <td class="right" title="${r.clp}">${fmt(r.clp)}</td>
+        <td class="right" title="${r.usd}">${fmt(r.usd)}</td>
+        <td class="right" title="${r.brl}">${fmt(r.brl)}</td>
+        <td class="right" title="${r.ars}">${fmt(r.ars)}</td>
+        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
+        <td class="right" title="${r.count}">${fmt(r.count)}</td>
         <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicio)}">Ver detalle</button></td>
       </tr>
     `);
   }
 
-  // --- Pintar detalle completo ---
+  // Detalle
   const tb = cont.querySelector('#tblDetalleProv tbody');
   tb.innerHTML = '';
   const rows = [...data.items].sort((a,b) =>
@@ -587,24 +585,32 @@ function openModalProveedor(slugProv, data) {
   let totCLP = 0;
   for (const it of rows) {
     if (typeof it.totalCLP === 'number') totCLP += it.totalCLP;
+
+    const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
+    const grupoTxt = cod ? `${cod} — ${it.nombreGrupo || ''}` : (it.nombreGrupo || it.grupoId || '');
+
     tb.insertAdjacentHTML('beforeend', `
       <tr data-svc="${slug(it.servicio || '')}">
-        <td>${it.fecha || ''}</td>
-        <td>${it.nombreGrupo || it.numeroNegocio || it.grupoId}</td>
-        <td>${it.destinoGrupo || ''}</td>
-        <td>${it.servicio || ''}</td>
-        <td class="right">${fmt(it.pax || 0)}</td>
-        <td>${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}</td>
-        <td>${it.moneda || 'CLP'}</td>
-        <td class="right">${fmt(it.tarifa || 0)}</td>
-        <td class="right">${fmt(it.totalMoneda || 0)}</td>
-        <td class="right">${typeof it.totalCLP === 'number' ? fmt(it.totalCLP) : '—'}</td>
+        <td title="${it.fecha || ''}">${it.fecha || ''}</td>
+        <td title="${grupoTxt}">${grupoTxt}</td>
+        <td title="${it.destinoGrupo || ''}">${it.destinoGrupo || ''}</td>
+        <td title="${it.servicio || ''}">${it.servicio || ''}</td>
+        <td class="right" title="${it.pax || 0}">${fmt(it.pax || 0)}</td>
+        <td title="${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}">
+          ${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}
+        </td>
+        <td title="${it.moneda || 'CLP'}">${it.moneda || 'CLP'}</td>
+        <td class="right" title="${it.tarifa || 0}">${fmt(it.tarifa || 0)}</td>
+        <td class="right" title="${it.totalMoneda || 0}">${fmt(it.totalMoneda || 0)}</td>
+        <td class="right" title="${typeof it.totalCLP === 'number' ? it.totalCLP : ''}">
+          ${typeof it.totalCLP === 'number' ? fmt(it.totalCLP) : '—'}
+        </td>
       </tr>
     `);
   }
   el('modalTotalCLP').textContent = money(totCLP);
 
-  // --- Filtro de detalle por servicio desde el resumen ---
+  // Filtro desde el resumen
   const btnClear = cont.querySelector('#btnDetClear');
   cont.querySelectorAll('.btn-det-svc').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -624,7 +630,6 @@ function openModalProveedor(slugProv, data) {
     btnClear.style.display = 'none';
   });
 
-  // Mostrar modal
   backdrop.style.display = 'block';
   modal.style.display = 'block';
   document.body.classList.add('modal-open');
@@ -637,7 +642,7 @@ function closeModal() {
 }
 
 // ============================
-// 8) Recalcular (leyendo filtros)
+// 7) Recalcular
 // ============================
 function getDestinosSeleccionados() {
   const sel = el('filtroDestino');
@@ -719,7 +724,7 @@ function recalcular() {
 }
 
 // ============================
-// 9) Export CSV
+// 8) Export CSV
 // ============================
 function exportCSV() {
   const header = ['Fecha','Proveedor','Servicio','Grupo','Destino','Pax','Modalidad','Moneda','Tarifa','TotalMoneda','TotalCLP'];
@@ -727,11 +732,12 @@ function exportCSV() {
 
   for (const it of LINE_ITEMS) {
     const modalidad = `${it.pagoTipo||''}/${it.pagoFrecuencia||''}`;
+    const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
     rows.push([
       it.fecha || '',
       (it.proveedor || '').replaceAll(',',' '),
       (it.servicio || '').replaceAll(',',' '),
-      (it.nombreGrupo || it.numeroNegocio || it.grupoId || '').replaceAll(',',' '),
+      (cod ? `${cod} — ` : '') + (it.nombreGrupo || '').replaceAll(',',' '),
       (it.destinoGrupo || '').replaceAll(',',' '),
       it.pax || 0,
       modalidad,
@@ -743,11 +749,12 @@ function exportCSV() {
   }
 
   for (const it of LINE_HOTEL) {
+    const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
     rows.push([
       '',
       (it.hotel || '').replaceAll(',',' '),
       `HOTEL (${it.tipoCobro})`,
-      (it.nombreGrupo || it.numeroNegocio || it.grupoId || '').replaceAll(',',' '),
+      (cod ? `${cod} — ` : '') + (it.nombreGrupo || '').replaceAll(',',' '),
       (it.destinoGrupo || '').replaceAll(',',' '),
       it.noches || 0,
       it.tipoCobro || '',
@@ -768,7 +775,7 @@ function exportCSV() {
 }
 
 // ============================
-// 10) Boot
+// 9) Boot
 // ============================
 function bindUI() {
   el('filtroAnio').addEventListener('change', () => { aplicarRangoPorAnio(); recalcular(); });
@@ -779,6 +786,8 @@ function bindUI() {
   el('inclHoteles').addEventListener('change', recalcular);
   el('tcUSD').addEventListener('change', recalcular);
   el('tcBRL').addEventListener('change', recalcular);
+  const tcARS = el('tcARS'); if (tcARS) tcARS.addEventListener('change', recalcular);
+
   el('btnRecalcular').addEventListener('click', recalcular);
   el('btnExportCSV').addEventListener('click', exportCSV);
 
