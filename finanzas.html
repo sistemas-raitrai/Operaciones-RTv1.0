@@ -211,6 +211,19 @@
     }
     .submodal .card footer{ display:flex; justify-content:flex-end; gap:.5rem; margin-top:.75rem; }
     .abonos-panel .abonos-header{ display:flex; align-items:center; gap:1rem; margin:.25rem 0 .5rem; }
+
+    /* Columna de ACCIONES en ABONOS: que no se corte */
+    #tblAbonos th.actions,
+    #tblAbonos td.actions{
+      white-space: nowrap;        /* mantener en una línea */
+      overflow: visible;          /* que no recorte el contenido */
+      text-overflow: initial;     /* sin puntos suspensivos */
+      min-width: 200px;           /* espacio suficiente para ambos botones */
+    }
+    
+    #tblAbonos td.actions .btn{
+      margin-right: .25rem;       /* separa botones */
+    }
    
   </style>
 </head>
