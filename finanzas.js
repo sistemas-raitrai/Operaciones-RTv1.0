@@ -1,13 +1,14 @@
-// finanzas.js — Finanzas Operaciones RT
+// finanzas.js — Finanzas Operaciones RT (con encabezados ordenables)
 // =====================================================================================
 // - Equivalencias en USD/BRL/ARS/CLP (pivote CLP) con TC actuales (inputs de cabecera)
 // - Modal por proveedor:
 //    • Resumen por servicio (totales eq.) con "VER DETALLE"
 //    • Detalle fila a fila; moneda nativa en NARANJO
 //    • Sección ABONOS por servicio: responsable (email), estado (ORIGINAL/EDITADO/ARCHIVADO),
-//      acciones (VER COMPROBANTE / EDITAR / ARCHIVAR), buscador y ver archivados (botón toggle).
+//      acciones (VER COMPROBANTE / EDITAR / ARCHIVAR), buscador y ver archivados.
 //    • Totales en negrita. SALDO POR PAGAR en rojo si ≠ 0.
-//    • Exportar a EXCEL (formato HTML compatible con Excel).
+//    • Exportar a EXCEL (HTML compatible con Excel).
+// - Tablas con encabezados ordenables (flechas ↑/↓/↕).
 // - Ruta de abonos: Servicios/{DESTINO}/Listado/{SERVICIO}/Abonos/*
 //   Guarda snapshot de TC, responsable y auditoría.
 
@@ -16,7 +17,9 @@ import { app, db } from './firebase-init.js';
 import {
   collection, getDocs, addDoc, updateDoc, doc, serverTimestamp,
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import {
+  getAuth, onAuthStateChanged
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   getStorage, ref as storageRef, uploadBytes, getDownloadURL
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
@@ -52,7 +55,91 @@ const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
 
+// --------- Parsers para ordenamiento ----------
+function parseNumber(val){
+  if (typeof val === 'number') return val;
+  const s = (val ?? '').toString().trim();
+  if (!s) return 0;
+  // Convierte "$1.234.567,89" o "1.234.567" a número
+  const clean = s.replace(/[^\d,.\-]/g,'').replace(/\.(?=\d{3}(?:\D|$))/g,'').replace(',', '.');
+  const n = Number(clean);
+  return isNaN(n) ? 0 : n;
+}
+function parseDate(val){
+  // Espera "YYYY-MM-DD" (si no, intenta Date.parse)
+  const s = (val ?? '').toString().trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s+'T00:00:00').getTime();
+  const t = Date.parse(s);
+  return isNaN(t) ? 0 : t;
+}
+
+// --------- Motor de ordenamiento de tablas ----------
+function makeSortable(table, colTypes=[], options={}){
+  if (!table) return;
+  const thead = table.tHead;
+  if (!thead) return;
+  const ths = [...thead.rows[0].cells];
+
+  // Opcional: columnas a ignorar
+  const skip = new Set(options.skipIdx || []);
+
+  // Inserta/actualiza flechas
+  function setArrow(idx, dir){
+    ths.forEach((th,i)=>{
+      const span = th.querySelector('.sort-arrow') || th.appendChild(Object.assign(document.createElement('span'), {className:'sort-arrow'}));
+      if (i!==idx) { span.textContent = ' ↕'; return; }
+      span.textContent = dir>0 ? ' ↑' : ' ↓';
+    });
+  }
+
+  // Obtiene el valor comparable de una celda
+  function cellValue(tr, idx, type){
+    const txt = tr.cells[idx]?.textContent ?? '';
+    switch((type||'text')){
+      case 'num': 
+      case 'money': return parseNumber(txt);
+      case 'date':  return parseDate(txt);
+      default:      return (txt||'').toString().toLowerCase();
+    }
+  }
+
+  // Handler por columna
+  ths.forEach((th, idx)=>{
+    if (skip.has(idx)) return;
+    th.style.cursor = 'pointer';
+    if (!th.querySelector('.sort-arrow')) {
+      const span = document.createElement('span');
+      span.className = 'sort-arrow';
+      span.textContent = ' ↕';
+      th.appendChild(span);
+    }
+
+    let dir = 0; // 0 sin ordenar, 1 asc, -1 desc
+    th.addEventListener('click', ()=>{
+      // Alterna dirección: 0/↓ -> ↑, ↑ -> ↓
+      dir = dir===1 ? -1 : 1;
+
+      const type = colTypes[idx] || 'text';
+      const tbody = table.tBodies[0];
+      const rows = Array.from(tbody.rows);
+
+      rows.sort((a,b)=>{
+        const va = cellValue(a, idx, type);
+        const vb = cellValue(b, idx, type);
+        if (va < vb) return -1*dir;
+        if (va > vb) return  1*dir;
+        return 0;
+      });
+      // Reinsertar
+      rows.forEach(r => tbody.appendChild(r));
+      setArrow(idx, dir);
+    });
+  });
+}
+
+// -------------------------------
 // Moneda nativa → estándar
+// -------------------------------
 function normalizarMoneda(m){
   const M = (m||'').toString().toUpperCase().trim();
   if (['REAL','REALES','R$','BRL'].includes(M)) return 'BRL';
@@ -252,7 +339,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
           tipo:'actividad',
           proveedor, proveedorSlug:slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
-          servicioId: svc.id,             // <-- para ubicar Abonos
+          servicioId: svc.id,             // para Abonos
           destinoGrupo, fecha: fechaISO,
           grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
           numeroNegocio: g.numeroNegocio || g.id,
@@ -375,7 +462,7 @@ function agruparPorHotel(itemsHotel) {
 }
 
 // -------------------------------
-// 6) Render KPIs + tablas
+// 6) Render KPIs + tablas (con sorters)
 // -------------------------------
 function renderKPIs(items, itemsHotel) {
   const all = [...items, ...itemsHotel];
@@ -418,6 +505,8 @@ function renderTablaDestinos(mapDest) {
       </tr>
     `);
   }
+  // sorters
+  makeSortable(el('tblDestinos'), ['text','money','num','num','num','num']);
 }
 function renderTablaProveedores(mapProv) {
   const tb = el('tblProveedores').querySelector('tbody');
@@ -453,6 +542,8 @@ function renderTablaProveedores(mapProv) {
       openModalProveedor(slugProv, mapProv.get(slugProv));
     });
   });
+
+  makeSortable(el('tblProveedores'), ['text','text','money','num','num','num','num','text'], {skipIdx:[7]});
 }
 function renderTablaHoteles(mapHoteles) {
   const tb = el('tblHoteles').querySelector('tbody');
@@ -477,13 +568,14 @@ function renderTablaHoteles(mapHoteles) {
       </tr>
     `);
   }
+  makeSortable(el('tblHoteles'), ['text','text','money','num','num','num','num']);
 }
 
 // -------------------------------
 // 7) Modal — Abonos helpers
 // -------------------------------
 function abonoEquivalentes(ab) {
-  // usar TC actuales para equivalencias del abono (snapshot solo para auditoría)
+  // usar TC actuales para equivalencias del abono
   return convertirTodas(ab.moneda, Number(ab.monto || 0));
 }
 function abonoEstadoLabel(ab) {
@@ -566,14 +658,15 @@ async function archivarAbono({ destinoId, servicioId, abonoId }) {
 function buildModalShell() {
   const cont = $('.fin-modal-body', el('modal'));
   cont.innerHTML = `
-    <div class="modal-toolbar upper">
-      <input id="modalSearch" type="search" placeholder="BUSCAR EN ABONOS Y DETALLE..." />
+    <div class="modal-toolbar">
+      <input id="modalSearch" type="search" placeholder="BUSCAR EN ABONOS Y DETALLE…" />
+      <label class="switch">
+        <input type="checkbox" id="chkVerArchivados" />
+        <span>VER ARCHIVADOS</span>
+      </label>
       <div class="spacer"></div>
-
-      <!-- ORDEN NUEVO -->
-      <button class="btn blue" id="btnAbonar">ABONAR DINERO</button>
-      <button class="btn" id="btnToggleArchived" aria-pressed="false">VER ARCHIVADOS</button>
-      <button class="btn btn-excel" id="btnExportXLSX">EXPORTAR EXCEL</button>
+      <button class="btn btn-excel" id="btnExportXLS">EXPORTAR EXCEL</button>
+      <button class="btn" id="btnAbonar">ABONAR</button>
     </div>
 
     <div class="scroll-x" style="margin-bottom:.5rem;">
@@ -755,37 +848,12 @@ async function openModalProveedor(slugProv, data) {
   const dests = [...data.destinos];
   const gruposSet = new Set(data.items.map(i => i.grupoId));
   const paxTotal = data.items.reduce((s,i)=> s + (Number(i.pax||0)), 0);
-
-  el('modalTitle').textContent = `DETALLE — ${(data?.nombre || slugProv).toUpperCase()}`;
-  el('modalSub').textContent   =
-    `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)} — AZUL = ABONO (MONEDA/MONTO). LAS EQUIVALENCIAS USAN LOS TC ACTUALES.`;
+  el('modalTitle').textContent =
+    `DETALLE — ${(data?.nombre || slugProv).toUpperCase()}`;
+  el('modalSub').textContent =
+    `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)}`;
 
   const cont = buildModalShell();
-
-  // toolbar handlers
-  const btnAbonar = $('#btnAbonar', cont);
-  const btnArch   = $('#btnToggleArchived', cont);
-  const btnExcel  = $('#btnExportXLSX', cont);
-  const inputQ    = $('#modalSearch', cont);
-
-  // Excel
-  btnExcel.addEventListener('click', () => exportModalToExcel(cont, (data?.nombre||'proveedor')));
-
-  // Buscar en abonos + detalle
-  inputQ.addEventListener('input', (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    const match = (txt) => txt.toLowerCase().includes(q);
-    $$('#tblDetalleProv tbody tr', cont).forEach(tr => tr.style.display = match(tr.textContent||'') ? '' : 'none');
-    $$('#tblAbonos tbody tr', cont).forEach(tr => tr.style.display = match(tr.textContent||'') ? '' : 'none');
-  });
-
-  // toggle VER ARCHIVADOS
-  btnArch.addEventListener('click', () => {
-    const next = btnArch.getAttribute('aria-pressed') !== 'true';
-    btnArch.setAttribute('aria-pressed', String(next));
-    btnArch.classList.toggle('toggled', next);
-    if (cont._abonosCtx) pintarAbonos({ ...cont._abonosCtx, cont });
-  });
 
   // —— Resumen por servicio
   const resumen = agruparItemsPorServicio(data.items);
@@ -804,6 +872,8 @@ async function openModalProveedor(slugProv, data) {
       </tr>
     `);
   }
+  // sorters resumen (última columna sin ordenar)
+  makeSortable($('#tblProvResumen', cont), ['text','money','num','num','num','num','text'], {skipIdx:[6]});
 
   // —— Detalle (moneda nativa en NARANJO)
   const tb = $('#tblDetalleProv tbody', cont);
@@ -840,8 +910,12 @@ async function openModalProveedor(slugProv, data) {
     `);
   }
   $('#modalTotalCLP', cont).textContent = money(totCLP);
+  // sorters detalle
+  makeSortable($('#tblDetalleProv', cont),
+    ['date','text','text','text','num','text','text','num','num','num','num','num']
+  );
 
-  // —— Botón VER TODOS (quitar filtro)
+  // —— Filtro desde resumen
   const btnClear = document.createElement('button');
   btnClear.className = 'btn ghost';
   btnClear.id = 'btnDetClear';
@@ -849,12 +923,10 @@ async function openModalProveedor(slugProv, data) {
   btnClear.style.display = 'none';
   $('.modal-toolbar', cont).prepend(btnClear);
 
-  // Cargar abonos al pulsar "VER DETALLE"
   cont.querySelectorAll('.btn-det-svc').forEach(btn => {
     btn.addEventListener('click', async () => {
       const svcSlug = btn.getAttribute('data-svc');
-
-      // filtrar detalle por servicio
+      // filtrar detalle
       const rows = $$('#tblDetalleProv tbody tr', cont);
       let hayFiltro = false;
       rows.forEach(tr => {
@@ -864,11 +936,11 @@ async function openModalProveedor(slugProv, data) {
       });
       btnClear.style.display = hayFiltro ? '' : 'none';
 
-      // cargar abonos del servicio seleccionado (primer item coincidente)
+      // cargar abonos del servicio seleccionado
       const itemSvc = data.items.find(i => slug(i.servicio||'') === svcSlug);
       if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
         await pintarAbonos({
-          destinoId: itemSvc.destinoGrupo,     // si tu ID de doc difiere del nombre, mapea aquí
+          destinoId: itemSvc.destinoGrupo, // ojo: id del doc destino = nombre
           servicioId: itemSvc.servicioId,
           servicioNombre: itemSvc.servicio || '',
           cont,
@@ -882,12 +954,26 @@ async function openModalProveedor(slugProv, data) {
     limpiarAbonos(cont);
   });
 
-  // botón ABONAR abre submodal si hay contexto
-  btnAbonar.addEventListener('click', () => {
-    if (cont._abonosCtx) abrirSubmodalAbono({ ...cont._abonosCtx, cont, abono:null });
+  // —— Buscador global (abonos + detalle)
+  $('#modalSearch', cont).addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    const match = (txt) => txt.toLowerCase().includes(q);
+    // detalle
+    $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
+      const txt = tr.textContent || '';
+      tr.style.display = match(txt) ? '' : 'none';
+    });
+    // abonos
+    $$('#tblAbonos tbody tr', cont).forEach(tr => {
+      const txt = tr.textContent || '';
+      tr.style.display = match(txt) ? '' : 'none';
+    });
   });
 
-  // Mostrar
+  // —— Export Excel
+  $('#btnExportXLS', cont).addEventListener('click', () => exportModalToExcel(cont, (data?.nombre||'proveedor')));
+
+  // —— Mostrar
   el('backdrop').style.display = 'block';
   modal.style.display = 'block';
   document.body.classList.add('modal-open');
@@ -904,30 +990,24 @@ function limpiarAbonos(cont){
   $('#abTotBRL', cont).textContent = '0';
   $('#abTotARS', cont).textContent = '0';
   paintSaldoCells({clp:0,usd:0,brl:0,ars:0});
-  cont._abonosCtx = null;
-  const btnArch = $('#btnToggleArchived', cont);
-  if (btnArch){
-    btnArch.setAttribute('aria-pressed', 'false');
-    btnArch.classList.remove('toggled');
-  }
+  $('#btnAbonar', cont).onclick = null;
+  $('#chkVerArchivados', cont).checked = false;
 }
 async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
-  // guarda contexto para toggles / abonar / repintar
-  cont._abonosCtx = { destinoId, servicioId, servicioNombre };
-
-  const verArch = $('#btnToggleArchived', cont).getAttribute('aria-pressed') === 'true';
+  const verArch = $('#chkVerArchivados', cont).checked;
   const tbody = $('#tblAbonos tbody', cont);
   tbody.innerHTML = '';
 
   let abonos = await loadAbonos(destinoId, servicioId);
+  // Orden por defecto: fecha desc
   abonos.sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||''));
 
   let tCLP=0, tUSD=0, tBRL=0, tARS=0;
 
   for (const ab of abonos) {
     const eq = abonoEquivalentes(ab);
+    const incluir = abonoIncluido(ab) || verArch;
     const estado = abonoEstadoLabel(ab);
-    const incluir = verArch ? true : abonoIncluido(ab);
 
     if (abonoIncluido(ab)) {
       tCLP += (eq.CLP || 0);
@@ -951,10 +1031,10 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
       <td class="right" title="${eq.BRL==null?'':fmt(eq.BRL)}">${eq.BRL==null?'—':fmt(eq.BRL)}</td>
       <td class="right" title="${eq.ARS==null?'':fmt(eq.ARS)}">${eq.ARS==null?'—':fmt(eq.ARS)}</td>
       <td title="${ab.nota || ''}">${ab.nota || ''}</td>
-      <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank" rel="noopener" title="VER COMPROBANTE">VER</a>` : '—'}</td>
+      <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank" rel="noopener">VER</a>` : '—'}</td>
       <td class="actions">
-        <button class="btn ghost btn-edit" title="EDITAR">EDITAR</button>
-        <button class="btn ghost btn-arch" title="ARCHIVAR">ARCHIVAR</button>
+        <button class="btn ghost btn-edit"   title="EDITAR">EDITAR</button>
+        <button class="btn ghost btn-arch"   title="ARCHIVAR">ARCHIVAR</button>
       </td>
       <td title="${estado}">${estado}</td>
     `;
@@ -978,19 +1058,33 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
   $('#abTotBRL', cont).textContent = fmt(tBRL);
   $('#abTotARS', cont).textContent = fmt(tARS);
 
+  // Botón Abonar
+  $('#btnAbonar', cont).onclick = () =>
+    abrirSubmodalAbono({ cont, destinoId, servicioId, abono: null });
+
+  // switch ver archivados
+  $('#chkVerArchivados', cont).onchange = () =>
+    pintarAbonos({ destinoId, servicioId, servicioNombre, cont });
+
   // Recalcular saldo
   calcSaldoDesdeTablas(cont);
+
+  // sorters abonos (col 11 acciones sin ordenar)
+  makeSortable($('#tblAbonos', cont),
+    ['text','text','date','text','num','num','num','num','num','text','text','text','text'],
+    {skipIdx:[11]}
+  );
 }
 function calcSaldoDesdeTablas(cont){
-  // Totales detalle visibles
+  // Totales servicio visibles en DETALLE
   let sCLP=0, sUSD=0, sBRL=0, sARS=0;
   $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
     if (tr.style.display === 'none') return;
     const cols = tr.querySelectorAll('td');
-    const usd = Number((cols[8].textContent || '0').replaceAll('.','').replace(',','.')) || 0;
-    const brl = Number((cols[9].textContent || '0').replaceAll('.','').replace(',','.')) || 0;
-    const ars = Number((cols[10].textContent|| '0').replaceAll('.','').replace(',','.')) || 0;
-    const clp = Number((cols[11].textContent|| '0').replaceAll('.','').replace(',','.')) || 0;
+    const usd = parseNumber(cols[8].textContent);
+    const brl = parseNumber(cols[9].textContent);
+    const ars = parseNumber(cols[10].textContent);
+    const clp = parseNumber(cols[11].textContent);
     sUSD += usd; sBRL += brl; sARS += ars; sCLP += clp;
   });
 
@@ -1000,10 +1094,10 @@ function calcSaldoDesdeTablas(cont){
     if (tr.style.display === 'none') return;
     if (tr.classList.contains('abono-archivado')) return;
     const cols = tr.querySelectorAll('td');
-    const clp = Number((cols[5].textContent||'0').replaceAll('.','').replace(',','.')) || 0;
-    const usd = Number((cols[6].textContent||'0').replaceAll('.','').replace(',','.')) || 0;
-    const brl = Number((cols[7].textContent||'0').replaceAll('.','').replace(',','.')) || 0;
-    const ars = Number((cols[8].textContent||'0').replaceAll('.','').replace(',','.')) || 0;
+    const clp = parseNumber(cols[5].textContent);
+    const usd = parseNumber(cols[6].textContent);
+    const brl = parseNumber(cols[7].textContent);
+    const ars = parseNumber(cols[8].textContent);
     aCLP += clp; aUSD += usd; aBRL += brl; aARS += ars;
   });
 
@@ -1041,12 +1135,15 @@ function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
     };
     const file = $('#abFile', box).files[0] || null;
 
-    await guardarAbono({ destinoId, servicioId, abonoId: abono?.id || null, data, file });
+    await guardarAbono({
+      destinoId, servicioId,
+      abonoId: abono?.id || null,
+      data, file
+    });
 
     close();
 
-    // repintar
-    await pintarAbonos({ destinoId, servicioId, servicioNombre: (cont._abonosCtx?.servicioNombre||''), cont });
+    await pintarAbonos({ destinoId, servicioId, servicioNombre: '', cont });
     calcSaldoDesdeTablas(cont);
   };
 }
@@ -1061,7 +1158,11 @@ function exportModalToExcel(cont, nombre) {
     { title:'DETALLE',  el: $('#tblDetalleProv', cont) },
     { title:'SALDO',    el: $('#tblSaldo', cont) },
   ];
-  const htmlSheets = tables.map(t => `<h2>${t.title}</h2>${t.el.outerHTML}<br/>`).join('\n');
+  const htmlSheets = tables.map(t => `
+    <h2>${t.title}</h2>
+    ${t.el.outerHTML}
+    <br/>
+  `).join('\n');
 
   const html = `
     <html xmlns:o="urn:schemas-microsoft-com:office:office"
@@ -1069,7 +1170,8 @@ function exportModalToExcel(cont, nombre) {
           xmlns="http://www.w3.org/TR/REC-html40">
     <head><meta charset="UTF-8" /></head>
     <body>${htmlSheets}</body>
-    </html>`;
+    </html>
+  `;
   const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1099,7 +1201,8 @@ function poblarFiltrosBasicos() {
   el('filtroAnio').innerHTML = arrAnios
     .map(a => `<option value="${a}" ${a===anioActual?'selected':''}>${a}</option>`).join('');
 
-  const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+  const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))]
+                 .sort((a,b)=>a.localeCompare(b));
   el('filtroDestino').innerHTML = dests.map(d => `<option value="${d}">${d}</option>`).join('');
 }
 function aplicarRangoPorAnio() {
