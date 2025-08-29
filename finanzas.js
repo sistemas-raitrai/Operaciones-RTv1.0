@@ -940,7 +940,7 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
       <td class="right" title="${eq.ARS==null?'':fmt(eq.ARS)}">${eq.ARS==null?'—':fmt(eq.ARS)}</td>
       <td title="${ab.nota || ''}">${ab.nota || ''}</td>
       <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank" rel="noopener">VER</a>` : '—'}</td>
-      <td>
+      <td class="actions">
         <button class="btn ghost btn-edit"   title="EDITAR">EDITAR</button>
         <button class="btn ghost btn-arch"   title="ARCHIVAR">ARCHIVAR</button>
       </td>
