@@ -610,7 +610,7 @@ function buildModalShell() {
       <div class="spacer"></div>
 
       <!-- ORDEN REQUERIDO -->
-      <button class="btn btn-primary" id="btnAbonar">ABONAR DINERO</button>
+      <button class="btn btn-blue" id="btnAbonar">ABONAR DINERO</button>
       <button class="btn btn-dark" id="btnVerArch" aria-pressed="false">VER ARCHIVADOS</button>
       <button class="btn btn-excel" id="btnExportXLS">EXPORTAR EXCEL</button>
     </div>
