@@ -599,7 +599,6 @@ function buildModalShell() {
     <section class="panel abonos-panel">
       <div class="abonos-header upper">
         <span><b>ABONOS</b></span>
-        <small class="muted">AZUL = ABONO (MONEDA Y MONTO)</small>
       </div>
       <div class="scroll-x">
         <table class="fin-table upper" id="tblAbonos">
