@@ -1,384 +1,48 @@
-<!-- finanzas.html — Finanzas Operaciones RT (encapsulado con #rt-fin) -->
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Finanzas-Operaciones RT</title>
-  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+<style>
+  /* ====== NUEVO: colores/estados modal ====== */
+  .upper thead th, .upper h4, #modal header, .abonos-header { text-transform: uppercase; }
+  #modal header h3 { font-weight: 800; }
+  .bold { font-weight: 700; }
 
-  <!-- (opcional) tu hoja general -->
-  <link rel="stylesheet" href="estilos.css" />
+  /* Moneda nativa de servicio (detalle) en NARANJO */
+  .is-native-service { color:#f97316; font-weight:700; }
 
-  <!-- SheetJS para exportar a XLSX -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  /* ABONOS: palabra ABONO, moneda y monto en AZUL */
+  .abono-blue { color:#2563eb; }
 
-  <!-- ====== CSS SCOPEADO AL MÓDULO (#rt-fin) ====== -->
-  <style>
-    :root{ --fin-gap:1.25rem; --fin-panel-bg:#fff; --fin-panel-bd:#e5e7eb; }
+  /* Emails en minúsculas (no forzar upper) */
+  .email-normal { text-transform:none !important; }
 
-    /* Raíz del módulo */
-    #rt-fin{
-      width:min(1800px,98vw);
-      margin-inline:auto;
-      display:block;
-      color:#111827;
-    }
-    #rt-fin, #rt-fin *{ box-sizing:border-box; }
+  /* Archivados (visibles con switch, grisados y excluidos de sumas) */
+  .abono-archivado { color:#9ca3af; }
 
-    /* Layout general */
-    #rt-fin #fin-main{
-      margin:0;
-      padding:1rem;
-      display:grid;
-      grid-template-columns:1fr;
-      gap:var(--fin-gap);
-    }
+  /* SALDO en rojo cuando ≠ 0 */
+  .saldo-rojo { color:#b91c1c; font-weight:700; }
 
-    /* Header local */
-    #rt-fin #fin-main > header.page{
-      display:flex; align-items:center; justify-content:space-between; gap:.75rem;
-      margin:.5rem 0;
-    }
-    #rt-fin header.page h2{ margin:0; font-weight:700; }
-    #rt-fin .row{ display:flex; flex-wrap:wrap; align-items:center; gap:.75rem; }
+  /* Botón Excel color Excel */
+  .btn-excel { background:#217346; color:#fff; }
 
-    /* Panel genérico */
-    #rt-fin .panel{
-      width:100%;
-      background:var(--fin-panel-bg);
-      border:1px solid var(--fin-panel-bd);
-      border-radius:12px;
-      box-shadow:0 1px 2px rgba(0,0,0,.05);
-      padding:1rem;
-    }
+  /* Toolbar modal */
+  .modal-toolbar{
+    display:flex; align-items:center; gap:.5rem; margin:.25rem 0 .5rem 0;
+  }
+  .modal-toolbar .spacer{ flex:1; }
+  .modal-toolbar input[type="search"]{
+    min-width: 320px; padding:.4rem .5rem; border:1px solid #e5e7eb; border-radius:.5rem;
+  }
+  .switch{ display:flex; align-items:center; gap:.4rem; font-weight:600; }
 
-    /* Filtros (barra) */
-    #rt-fin #filtersCard{ position:static; }
-    #rt-fin #filtersCard .controls{
-      display:grid;
-      grid-auto-flow:column;
-      grid-auto-columns:max-content;
-      grid-template-rows:auto auto;
-      column-gap:16px; row-gap:4px;
-      align-items:end;
-      overflow-x:auto; padding-bottom:.25rem;
-      scrollbar-width:thin;
-    }
-    #rt-fin #filtersCard .controls > label{
-      grid-row:1; margin:0; white-space:nowrap; font-weight:600;
-    }
-    #rt-fin #filtersCard .controls > label + select,
-    #rt-fin #filtersCard .controls > label + input,
-    #rt-fin #filtersCard .controls > label + div{ grid-row:2; }
-
-    /* bloque fechas ocupa ambas filas */
-    #rt-fin #filtersCard .controls > .row{
-      grid-row:1 / span 2; align-items:flex-end; gap:.5rem;
-    }
-    /* checkboxes como bloque único alineado abajo */
-    #rt-fin #filtersCard .controls > label:has(input[type="checkbox"]){
-      grid-row:1 / span 2; align-self:end; padding-top:1.1rem;
-      display:flex; align-items:center; gap:.35rem; font-weight:600;
-    }
-    /* inputs cómodos */
-    #rt-fin #filtersCard .controls input[type="number"],
-    #rt-fin #filtersCard .controls input[type="date"],
-    #rt-fin #filtersCard .controls select{
-      width:auto; min-width:140px; padding:.35rem .5rem;
-    }
-    #rt-fin #filtersCard .controls select[multiple]{ min-width:240px; min-height:110px; }
-
-    /* KPIs */
-    #rt-fin .kpi-grid{
-      display:grid;
-      grid-template-columns:repeat(3, minmax(220px,1fr));
-      gap:var(--fin-gap);
-    }
-    #rt-fin .kpi-tile{
-      background:#fff; border:1px solid #e5e7eb; border-radius:12px;
-      box-shadow:0 1px 2px rgba(0,0,0,.05); padding:1rem;
-    }
-    #rt-fin .kpi-tile h4{ margin:.25rem 0 .35rem; font-size:.95rem; color:#374151; }
-    #rt-fin .kpi-tile .big{ font-size:1.25rem; font-weight:800; }
-    #rt-fin .muted{ color:#6b7280; font-size:.9rem; }
-
-    /* Tablas */
-    #rt-fin .scroll-x{ overflow-x:auto; min-width:0; }
-    #rt-fin .fin-table{ width:100%; border-collapse:collapse; table-layout:fixed; }
-    #rt-fin .fin-table th, #rt-fin .fin-table td{
-      border-bottom:1px solid #eee; padding:.5rem .6rem; text-align:left;
-      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-    }
-    #rt-fin .fin-table thead th{ background:#fafafa; position:sticky; top:0; z-index:3; }
-    #rt-fin .right{ text-align:right; }
-
-    /* Botones */
-    #rt-fin .btn{ background:#111827; color:#fff; border:none; padding:.5rem .8rem; border-radius:.5rem; cursor:pointer; font-weight:600; }
-    #rt-fin .btn.ghost{ background:transparent; color:#111827; border:1px solid #e5e7eb; }
-    #rt-fin .btn.secondary{ background:#e5e7eb; color:#111827; }
-    #rt-fin .btn.blue{ background:#2563eb; color:#fff; }
-    #rt-fin .btn:disabled{ opacity:.5; cursor:not-allowed; }
-
-    /* Modal */
-    #rt-fin #backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:2000; }
-    #rt-fin #modal{
-      position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
-      width:min(1200px,94vw); max-height:86vh; background:#fff;
-      border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.35);
-      display:none; overflow:hidden; z-index:2001;
-    }
-    #rt-fin #modal > header{
-      position:sticky; top:0; background:#fff; padding:.6rem 1rem;
-      border-bottom:1px solid #eee; display:flex; align-items:center; justify-content:space-between;
-    }
-    #rt-fin #modal .close{ border:none; background:#2563eb; color:#fff; padding:.4rem .6rem; border-radius:.5rem; cursor:pointer; }
-    #rt-fin .fin-modal-body{ max-height:calc(86vh - 64px); overflow:auto; padding:.75rem 1rem; }
-    #rt-fin #modal .fin-table thead th{ position:sticky; top:0; background:#fafafa; z-index:1; }
-
-    /* Sub-modal (Abono) */
-    #rt-fin .rt-dialog{
-      position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:2100;
-      background:rgba(0,0,0,.45);
-    }
-    #rt-fin .rt-dialog .card{
-      width:min(560px,92vw); background:#fff; border-radius:12px; padding:1rem;
-      border:1px solid #e5e7eb; box-shadow:0 10px 30px rgba(0,0,0,.25);
-    }
-    #rt-fin .rt-dialog .grid{ display:grid; grid-template-columns:1fr 1fr; gap:.75rem; }
-    #rt-fin .rt-dialog label{ font-weight:600; font-size:.9rem; }
-    #rt-fin .rt-dialog input, #rt-fin .rt-dialog select, #rt-fin .rt-dialog textarea{
-      width:100%; padding:.45rem .55rem; border:1px solid #e5e7eb; border-radius:8px;
-    }
-
-    /* Responsivo */
-    @media (max-width:1100px){
-      #rt-fin .kpi-grid{ grid-template-columns:repeat(2, minmax(220px,1fr)); }
-    }
-    @media (max-width:720px){
-      #rt-fin .kpi-grid{ grid-template-columns:1fr; }
-      #rt-fin #filtersCard .controls{ grid-auto-columns:85%; }
-      #rt-fin #filtersCard .controls select[multiple]{ min-width:85%; }
-      #rt-fin .rt-dialog .grid{ grid-template-columns:1fr; }
-    }
-
-    /* Solo el número en azul (moneda nativa) */
-    .is-native{ color:#2563eb; font-weight:700; background:transparent; border:0; }
-  </style>
-</head>
-
-<body class="finanzas-page">
-  <!-- Encabezado global de tu app -->
-  <div id="encabezado"></div>
-
-  <!-- ✨ Wrapper encapsulado -->
-  <div id="rt-fin">
-    <main id="fin-main">
-      <!-- Header -->
-      <header class="page">
-        <div class="row">
-          <img src="Logo Raitrai.png" alt="Rai Trai" style="height:36px;width:auto;">
-          <h2>Finanzas-Operaciones</h2>
-          <span class="muted" id="usuario-conectado"></span>
-        </div>
-        <div class="row">
-          <button id="btnExportCSV" class="btn ghost">Exportar</button>
-          <button id="btnRecalcular" class="btn">Recalcular</button>
-        </div>
-      </header>
-
-      <!-- Filtros (barra) -->
-      <aside class="panel" id="filtersCard">
-        <div class="controls">
-          <label for="filtroAnio">Año</label>
-          <select id="filtroAnio"></select>
-
-          <label for="filtroDestino">Destino</label>
-          <select id="filtroDestino" multiple></select>
-
-          <!-- Fechas -->
-          <div class="row">
-            <div style="display:flex;flex-direction:column;gap:4px;">
-              <label for="fechaDesde">Desde</label>
-              <input type="date" id="fechaDesde">
-            </div>
-            <div style="display:flex;flex-direction:column;gap:4px;">
-              <label for="fechaHasta">Hasta</label>
-              <input type="date" id="fechaHasta">
-            </div>
-          </div>
-
-          <label class="row" style="gap:.35rem;">
-            <input type="checkbox" id="inclActividades" checked /> Incluir actividades
-          </label>
-          <label class="row" style="gap:.35rem;">
-            <input type="checkbox" id="inclHoteles" /> Incluir hoteles
-          </label>
-
-          <label>Tipos de cambio → CLP</label>
-          <div class="row" style="gap:.5rem;">
-            <input type="number" id="tcUSD" placeholder="USD→CLP" step="1" style="width:120px;">
-            <input type="number" id="tcBRL" placeholder="BRL→CLP" step="1" style="width:120px;">
-            <input type="number" id="tcARS" placeholder="ARS→CLP" step="1" style="width:120px;">
-          </div>
-        </div>
-      </aside>
-
-      <!-- Contenido -->
-      <section class="fin-main">
-        <!-- KPIs -->
-        <section class="kpi-grid">
-          <div class="kpi-tile">
-            <h4>Total CLP (convertido)</h4>
-            <div id="kpiTotCLP" class="big">$0</div>
-            <div class="muted" id="kpiOtrosMon">USD/BRL/ARS no convertidos: 0</div>
-          </div>
-          <div class="kpi-tile">
-            <h4>Proveedores incluidos</h4>
-            <div id="kpiProv" class="big">0</div>
-            <div class="muted">Con al menos 1 ítem</div>
-          </div>
-          <div class="kpi-tile">
-            <h4>Destinos incluidos</h4>
-            <div id="kpiDest" class="big">0</div>
-            <div class="muted">Filtrados</div>
-          </div>
-        </section>
-
-        <!-- Totales por destino -->
-        <section class="panel">
-          <h3>Totales por destino</h3>
-          <div class="scroll-x">
-            <table class="fin-table" id="tblDestinos">
-              <thead>
-                <tr>
-                  <th>Destino</th>
-                  <th class="right">Total CLP</th>
-                  <th class="right">Total USD</th>
-                  <th class="right">Total BRL</th>
-                  <th class="right">Total ARS</th>
-                  <th class="right">Ítems</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- Totales por proveedor -->
-        <section class="panel">
-          <h3>Totales por proveedor</h3>
-          <div class="scroll-x">
-            <table class="fin-table" id="tblProveedores">
-              <thead>
-                <tr>
-                  <th>Proveedor</th>
-                  <th>Destino(s)</th>
-                  <th class="right">CLP</th>
-                  <th class="right">USD</th>
-                  <th class="right">BRL</th>
-                  <th class="right">ARS</th>
-                  <th class="right"># Ítems</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
-
-        <!-- Totales por hotel (opcional) -->
-        <section class="panel" id="secHoteles" style="display:none;">
-          <h3>Totales por hotel</h3>
-          <div class="scroll-x">
-            <table class="fin-table" id="tblHoteles">
-              <thead>
-                <tr>
-                  <th>Hotel</th>
-                  <th>Destino</th>
-                  <th class="right">CLP</th>
-                  <th class="right">USD</th>
-                  <th class="right">BRL</th>
-                  <th class="right">ARS</th>
-                  <th class="right"># Noches</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-        </section>
-      </section>
-    </main>
-
-    <!-- Modal detalle proveedor -->
-    <div id="backdrop"></div>
-    <div id="modal" role="dialog" aria-modal="true">
-      <header>
-        <h3 id="modalTitle">Detalle de proveedor</h3>
-        <button class="close" id="modalClose">Cerrar</button>
-      </header>
-
-      <div class="muted" id="modalSub" style="padding:0 1rem;"></div>
-
-      <div class="fin-modal-body"><!-- se rellena desde JS --></div>
-
-      <!-- Sub-modal Abono -->
-      <div class="rt-dialog" id="abonoDialog" aria-hidden="true">
-        <div class="card">
-          <h3 style="margin:.25rem 0 1rem;">Registrar abono</h3>
-          <div class="grid">
-            <div>
-              <label>Servicio</label>
-              <select id="abnServicio"></select>
-            </div>
-            <div>
-              <label>Destino</label>
-              <select id="abnDestino"></select>
-            </div>
-            <div>
-              <label>Fecha</label>
-              <input type="date" id="abnFecha">
-            </div>
-            <div>
-              <label>Moneda</label>
-              <select id="abnMoneda">
-                <option>CLP</option><option>USD</option><option>BRL</option><option>ARS</option>
-              </select>
-            </div>
-            <div>
-              <label>Monto</label>
-              <input type="number" id="abnMonto" step="0.01">
-            </div>
-            <div>
-              <label>Comprobante (imagen/pdf)</label>
-              <input type="file" id="abnFile" accept="image/*,.pdf">
-            </div>
-          </div>
-          <div style="margin-top:.75rem;">
-            <label>Nota</label>
-            <textarea id="abnNota" rows="3" placeholder="Detalle opcional"></textarea>
-          </div>
-          <div class="row" style="justify-content:flex-end;margin-top:1rem;">
-            <button class="btn ghost" id="abnCancel">Cancelar</button>
-            <button class="btn blue" id="abnSave">Guardar abono</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div><!-- /#rt-fin -->
-
-  <!-- Scripts -->
-  <script type="module" src="script.js"></script>
-  <script type="module" src="finanzas.js"></script>
-  <script>
-    /* helper por si quieres bloquear el scroll del fondo con Escape */
-    (function(){
-      const b=document.body;
-      window.addEventListener('keydown',e=>{ if(e.key==='Escape'&&window.closeModal) closeModal(); });
-      const oOpen=window.openModalProveedor, oClose=window.closeModal;
-      if(oOpen) window.openModalProveedor=function(){ oOpen.apply(this,arguments); b.classList.add('modal-open'); };
-      if(oClose) window.closeModal=function(){ oClose.apply(this,arguments); b.classList.remove('modal-open'); };
-    })();
-  </script>
-</body>
-</html>
+  /* Submodal (crear/editar abono) */
+  .submodal{ position:fixed; inset:0; background:rgba(0,0,0,.45); display:grid; place-items:center; z-index:2500; }
+  .submodal[hidden]{ display:none; }
+  .submodal .card{
+    background:#fff; border-radius:12px; padding:1rem; width:min(680px, 95vw);
+    box-shadow:0 20px 60px rgba(0,0,0,.35);
+  }
+  .submodal .card header{ margin-bottom:.5rem; }
+  .submodal .grid{
+    display:grid; grid-template-columns: repeat(2, minmax(220px,1fr)); gap:.75rem;
+  }
+  .submodal .card footer{ display:flex; justify-content:flex-end; gap:.5rem; margin-top:.75rem; }
+  .abonos-panel .abonos-header{ display:flex; align-items:center; gap:1rem; margin:.25rem 0 .5rem; }
+</style>
