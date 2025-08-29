@@ -762,7 +762,7 @@ async function openModalProveedor(slugProv, data) {
   el('modalTitle').textContent =
     `DETALLE — ${ (data?.nombre || slugProv).toUpperCase() }`;
   el('modalSub').textContent =
-    `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)} — AZUL = ABONO (MONEDA/MONTO). LAS EQUIVALENCIAS USAN LOS TC ACTUALES.`;
+    `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)};
 
   const cont = buildModalShell();
 
