@@ -33,6 +33,7 @@ const STAFF_EMAILS = new Set([
   "operaciones@raitrai.cl",
   "anamaria@raitrai.cl",
   "sistemas@raitrai.cl",
+  "yenny@raitrai.cl",
 ].map(e => e.toLowerCase()));
 
 // Páginas públicas del sistema principal
