@@ -1,9 +1,6 @@
 // finanzas.js — Finanzas Operaciones RT (USD/BRL/ARS + modal por servicio)
 // ===============================================================
-// Mantiene tu lógica, suma ARS, tooltips, prefijo numeroNegocio-identificador,
-// y mejora layout/headers. Completamente comentado.
 
-// Firebase
 import { app, db } from './firebase-init.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -45,6 +42,7 @@ function normalizarMoneda(m){
   return 'CLP';
 }
 
+// pax de grupo
 function paxDeGrupo(g) {
   const a = Number(g.adultos || g.ADULTOS || 0);
   const e = Number(g.estudiantes || g.ESTUDIANTES || 0);
@@ -52,7 +50,7 @@ function paxDeGrupo(g) {
   return (a + e) || cg || 0;
 }
 
-// Verifica si YYYY-MM-DD cae dentro del rango [d1, d2]
+// YYYY-MM-DD ∈ [d1, d2]
 function within(dateISO, d1, d2) {
   if (!dateISO) return false;
   const t  = new Date(dateISO + 'T00:00:00').getTime();
@@ -61,7 +59,7 @@ function within(dateISO, d1, d2) {
   return t >= t1 && t <= t2;
 }
 
-// Retorna el tipo de cambio → CLP (null si no hay TC indicado)
+// Tipo de cambio → CLP (null si no hay)
 function pickTC(moneda) {
   const m   = normalizarMoneda(moneda);
   const usd = Number(el('tcUSD')?.value || 0);
@@ -74,8 +72,37 @@ function pickTC(moneda) {
   return null;
 }
 
+/**
+ * Conversión total a TODAS las monedas usando CLP como pivote.
+ * Devuelve { USD:null|number, BRL:null|number, ARS:null|number, CLP:null|number }
+ * - Siempre respeta la moneda nativa (si no hay TC, al menos esa se ve).
+ */
+function convertirTodas(monedaOrigen, monto){
+  const from = normalizarMoneda(monedaOrigen);
+  const tcFrom = pickTC(from);
+  const tcUSD  = pickTC('USD');
+  const tcBRL  = pickTC('BRL');
+  const tcARS  = pickTC('ARS');
+
+  // a CLP: si no hay TC pero es CLP nativo, usamos monto.
+  const totalCLP = (from === 'CLP')
+    ? (monto ?? null)
+    : (tcFrom ? (monto * tcFrom) : null);
+
+  const conv = { USD:null, BRL:null, ARS:null, CLP:totalCLP };
+
+  // helper: CLP → target
+  const toTarget = (tcTarget) => (totalCLP != null && tcTarget) ? (totalCLP / tcTarget) : null;
+
+  conv.USD = (from === 'USD') ? (monto ?? null) : toTarget(tcUSD);
+  conv.BRL = (from === 'BRL') ? (monto ?? null) : toTarget(tcBRL);
+  conv.ARS = (from === 'ARS') ? (monto ?? null) : toTarget(tcARS);
+
+  return conv;
+}
+
 // ---------------------------------------------------------------
-// 2) Carga de datos (cada destino tiene una subcolección Listado/*)
+// 2) Carga de datos
 // ---------------------------------------------------------------
 async function loadServicios() {
   const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS));
@@ -95,7 +122,6 @@ async function loadServicios() {
   SERVICIOS = arrays.flat();
 }
 
-// Proveedores opcional; guardamos por slug para acceso rápido
 async function loadProveedores() {
   PROVEEDORES = {};
   try {
@@ -118,13 +144,11 @@ async function loadProveedores() {
   }
 }
 
-// grupos/*
 async function loadGrupos() {
   const snap = await getDocs(collection(db, RUTA_GRUPOS));
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// Hoteles/{DESTINO}/(Listado|Asignaciones)/*
 async function loadHotelesYAsignaciones() {
   HOTELES = []; ASIGNACIONES = [];
   try {
@@ -159,16 +183,13 @@ function resolverServicio(itemActividad, destinoGrupo) {
   const dest   = norm(destinoGrupo || '');
   const provIt = norm(itemActividad?.proveedor || '');
 
-  // 1) destino + servicio
   let cand = SERVICIOS.filter(s =>
     norm(s.servicio) === act &&
     norm(s.destino || s.DESTINO || s.ciudad || s.CIUDAD) === dest
   );
 
-  // 2) fallback a solo servicio
   if (cand.length === 0) cand = SERVICIOS.filter(s => norm(s.servicio) === act);
 
-  // 3) si hay varios y el ítem trae proveedor, afina
   if (cand.length > 1 && provIt) {
     const afin = cand.filter(s => norm(s.proveedor) === provIt);
     if (afin.length) cand = afin;
@@ -197,7 +218,6 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
       for (const item of arr) {
         const svc = resolverServicio(item, destinoGrupo);
 
-        // Si no hay servicio tarifado, registramos un marcador "inofensivo"
         if (!svc) {
           out.push({
             tipo:'actividad',
@@ -212,6 +232,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
             pax, moneda:'CLP', tarifa:0,
             pagoTipo:'por_grupo', pagoFrecuencia:'unitario',
             totalMoneda:0, totalCLP:0,
+            totalUSD:null, totalBRL:null, totalARS:null,
             nota:'Sin tarifario en Servicios (destino+actividad no encontrado)'
           });
           continue;
@@ -225,8 +246,9 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
         const multiplicador = esPorPersona ? pax : 1;
         const totalMoneda   = valor * multiplicador;
-        const tc            = pickTC(moneda);
-        const totalCLP      = (tc ? totalMoneda * tc : null);
+
+        // conversión total a todas las monedas
+        const conv = convertirTodas(moneda, totalMoneda);
 
         out.push({
           tipo:'actividad',
@@ -240,7 +262,12 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
           pax, moneda, tarifa: valor,
           pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo',
           pagoFrecuencia:'unitario',
-          totalMoneda, totalCLP, nota:''
+          totalMoneda,
+          totalCLP: conv.CLP,
+          totalUSD: conv.USD,
+          totalBRL: conv.BRL,
+          totalARS: conv.ARS,
+          nota:''
         });
       }
     }
@@ -264,7 +291,6 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const start = asg.fechaInicio, end = asg.fechaFin;
     if (!start || !end) continue;
 
-    // expandimos noches e intersectamos con el rango filtrado
     const nights = [];
     let cur = new Date(start + 'T00:00:00');
     const fin = new Date(end + 'T00:00:00');
@@ -287,9 +313,8 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     else if (tipoCobro === 'por_grupo_noche') totalPorNoche = tarifa;
     else if (tipoCobro === 'por_hab_noche') totalPorNoche = tarifa;
 
-    const tc          = pickTC(moneda);
     const totalMoneda = totalPorNoche * nights.length;
-    const totalCLP    = (tc ? totalMoneda * tc : null);
+    const conv = convertirTodas(moneda, totalMoneda);
 
     out.push({
       tipo:'hotel',
@@ -299,7 +324,11 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       identificador:g.identificador || g.IDENTIFICADOR || '',
       noches:nights.length,
       moneda, tarifa, tipoCobro,
-      totalMoneda, totalCLP,
+      totalMoneda,
+      totalCLP: conv.CLP,
+      totalUSD: conv.USD,
+      totalBRL: conv.BRL,
+      totalARS: conv.ARS,
     });
   }
   return out;
@@ -496,13 +525,13 @@ function agruparItemsPorServicio(items) {
                            .sort((a,b)=>b.clpConv - a.clpConv);
 }
 
-// Modal detalle proveedor (resumen + detalle)
+// Modal detalle proveedor (resumen + detalle CON TODAS LAS MONEDAS)
 function openModalProveedor(slugProv, data) {
   const backdrop = el('backdrop');
   const modal = el('modal');
 
   el('modalTitle').textContent = `Detalle — ${data?.nombre || slugProv}`;
-  el('modalSub').textContent   = `Destinos: ${[...data.destinos].join(', ')}`;
+  el('modalSub').textContent   = `Destinos: ${[...data.destinos].join(', ')} • Azul = moneda nativa del ítem`;
 
   const cont = modal.querySelector('.fin-modal-body');
   const resumen = agruparItemsPorServicio(data.items);
@@ -540,15 +569,16 @@ function openModalProveedor(slugProv, data) {
             <th>Servicio</th>
             <th class="right">Pax</th>
             <th>Modalidad</th>
-            <th>Moneda</th>
             <th class="right">Tarifa</th>
-            <th class="right">Total (mon)</th>
-            <th class="right">Total CLP</th>
+            <th class="right">USD</th>
+            <th class="right">BRL</th>
+            <th class="right">ARS</th>
+            <th class="right">CLP</th>
           </tr>
         </thead>
         <tbody></tbody>
         <tfoot><tr>
-          <th colspan="9" class="right">Total CLP</th>
+          <th colspan="10" class="right">Total CLP</th>
           <th id="modalTotalCLP" class="right">$0</th>
         </tr></tfoot>
       </table>
@@ -572,7 +602,7 @@ function openModalProveedor(slugProv, data) {
     `);
   }
 
-  // Detalle completo ordenado
+  // Detalle (con conversiones y azul en nativa)
   const tb = cont.querySelector('#tblDetalleProv tbody');
   tb.innerHTML = '';
   const rows = [...data.items].sort((a,b) =>
@@ -582,10 +612,15 @@ function openModalProveedor(slugProv, data) {
 
   let totCLP = 0;
   for (const it of rows) {
-    if (typeof it.totalCLP === 'number') totCLP += it.totalCLP;
+    // recalculamos por si cambió TC en UI:
+    const conv = convertirTodas(it.moneda, it.totalMoneda);
+    if (typeof conv.CLP === 'number') totCLP += conv.CLP;
 
     const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
     const grupoTxt = cod ? `${cod} — ${it.nombreGrupo || ''}` : (it.nombreGrupo || it.grupoId || '');
+
+    const cell = (val, isNative) =>
+      `<td class="right ${isNative ? 'is-native' : ''}" title="${val==null?'':fmt(val)}">${val==null?'—':fmt(val)}</td>`;
 
     tb.insertAdjacentHTML('beforeend', `
       <tr data-svc="${slug(it.servicio || '')}">
@@ -597,12 +632,11 @@ function openModalProveedor(slugProv, data) {
         <td title="${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}">
           ${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}
         </td>
-        <td title="${it.moneda || 'CLP'}">${it.moneda || 'CLP'}</td>
         <td class="right" title="${it.tarifa || 0}">${fmt(it.tarifa || 0)}</td>
-        <td class="right" title="${it.totalMoneda || 0}">${fmt(it.totalMoneda || 0)}</td>
-        <td class="right" title="${typeof it.totalCLP === 'number' ? it.totalCLP : ''}">
-          ${typeof it.totalCLP === 'number' ? fmt(it.totalCLP) : '—'}
-        </td>
+        ${cell(conv.USD, it.moneda==='USD')}
+        ${cell(conv.BRL, it.moneda==='BRL')}
+        ${cell(conv.ARS, it.moneda==='ARS')}
+        ${cell(conv.CLP, it.moneda==='CLP')}
       </tr>
     `);
   }
@@ -628,7 +662,6 @@ function openModalProveedor(slugProv, data) {
     btnClear.style.display = 'none';
   });
 
-  // Mostrar
   backdrop.style.display = 'block';
   modal.style.display = 'block';
   document.body.classList.add('modal-open');
@@ -678,7 +711,7 @@ function aplicarRangoPorAnio() {
   el('fechaHasta').value = `${anio}-12-31`;
 }
 
-// Log auxiliar para diagnosticar faltantes de tarifario
+// Log auxiliar
 function logDiagnostico(items){
   const faltantes = items.filter(x => x.nota && x.nota.includes('Sin tarifario'));
   if (faltantes.length){
@@ -724,7 +757,7 @@ function recalcular() {
 }
 
 // ---------------------------------------------------------------
-// 8) Export CSV (incluye prefijo numeroNegocio-identificador)
+// 8) Export CSV (mantenemos columnas actuales)
 // ---------------------------------------------------------------
 function exportCSV() {
   const header = ['Fecha','Proveedor','Servicio','Grupo','Destino','Pax','Modalidad','Moneda','Tarifa','TotalMoneda','TotalCLP'];
@@ -816,6 +849,5 @@ async function boot() {
 }
 boot();
 
-// Exponer closeModal para el script inline del HTML (opcional)
 window.closeModal = closeModal;
 window.openModalProveedor = openModalProveedor;
