@@ -593,8 +593,11 @@ function openModalProveedor(slugProv, data) {
     const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
     const grupoTxt = cod ? `${cod} — ${it.nombreGrupo || ''}` : (it.nombreGrupo || it.grupoId || '');
 
-    const cell = (val, isNative) =>
-      `<td class="right ${isNative ? 'is-native' : ''}" title="${val==null?'':fmt(val)}">${val==null?'—':fmt(val)}</td>`;
+    const cell = (val, isNative) => `
+      <td class="right" title="${val==null ? '' : fmt(val)}">
+        ${val==null ? '—' : (isNative ? `<span class="is-native">${fmt(val)}</span>` : fmt(val))}
+      </td>
+    `;
 
     tb.insertAdjacentHTML('beforeend', `
       <tr data-svc="${slug(it.servicio || '')}">
