@@ -1,16 +1,15 @@
-// finanzas.js — Finanzas Operaciones RT (con encabezados ordenables)
+// finanzas.js — Finanzas Operaciones RT (toolbar corregida + sorters)
 // =====================================================================================
 // - Equivalencias en USD/BRL/ARS/CLP (pivote CLP) con TC actuales (inputs de cabecera)
 // - Modal por proveedor:
 //    • Resumen por servicio (totales eq.) con "VER DETALLE"
 //    • Detalle fila a fila; moneda nativa en NARANJO
 //    • Sección ABONOS por servicio: responsable (email), estado (ORIGINAL/EDITADO/ARCHIVADO),
-//      acciones (VER COMPROBANTE / EDITAR / ARCHIVAR), buscador y ver archivados.
+//      acciones (VER COMPROBANTE / EDITAR / ARCHIVAR), buscador, y botón VER ARCHIVADOS (toggle).
 //    • Totales en negrita. SALDO POR PAGAR en rojo si ≠ 0.
 //    • Exportar a EXCEL (HTML compatible con Excel).
 // - Tablas con encabezados ordenables (flechas ↑/↓/↕).
 // - Ruta de abonos: Servicios/{DESTINO}/Listado/{SERVICIO}/Abonos/*
-//   Guarda snapshot de TC, responsable y auditoría.
 
 // Firebase
 import { app, db } from './firebase-init.js';
@@ -39,13 +38,13 @@ const auth = getAuth(app);
 const storage = getStorage(app);
 
 let GRUPOS = [];
-let SERVICIOS = [];    // [{id, destino, servicio, ...}]
+let SERVICIOS = [];
 let PROVEEDORES = {};
 let HOTELES = [];
 let ASIGNACIONES = [];
 
-let LINE_ITEMS = []; // actividades
-let LINE_HOTEL = []; // hoteles
+let LINE_ITEMS = [];
+let LINE_HOTEL = [];
 
 const el    = id => document.getElementById(id);
 const $     = (sel, root=document) => root.querySelector(sel);
@@ -55,35 +54,26 @@ const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
 
-// --------- Parsers para ordenamiento ----------
+// ---------- parsers + sort ----------
 function parseNumber(val){
   if (typeof val === 'number') return val;
   const s = (val ?? '').toString().trim();
   if (!s) return 0;
-  // Convierte "$1.234.567,89" o "1.234.567" a número
   const clean = s.replace(/[^\d,.\-]/g,'').replace(/\.(?=\d{3}(?:\D|$))/g,'').replace(',', '.');
   const n = Number(clean);
   return isNaN(n) ? 0 : n;
 }
 function parseDate(val){
-  // Espera "YYYY-MM-DD" (si no, intenta Date.parse)
   const s = (val ?? '').toString().trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return new Date(s+'T00:00:00').getTime();
   const t = Date.parse(s);
   return isNaN(t) ? 0 : t;
 }
-
-// --------- Motor de ordenamiento de tablas ----------
 function makeSortable(table, colTypes=[], options={}){
   if (!table) return;
-  const thead = table.tHead;
-  if (!thead) return;
+  const thead = table.tHead; if (!thead) return;
   const ths = [...thead.rows[0].cells];
-
-  // Opcional: columnas a ignorar
   const skip = new Set(options.skipIdx || []);
-
-  // Inserta/actualiza flechas
   function setArrow(idx, dir){
     ths.forEach((th,i)=>{
       const span = th.querySelector('.sort-arrow') || th.appendChild(Object.assign(document.createElement('span'), {className:'sort-arrow'}));
@@ -91,38 +81,28 @@ function makeSortable(table, colTypes=[], options={}){
       span.textContent = dir>0 ? ' ↑' : ' ↓';
     });
   }
-
-  // Obtiene el valor comparable de una celda
   function cellValue(tr, idx, type){
     const txt = tr.cells[idx]?.textContent ?? '';
     switch((type||'text')){
-      case 'num': 
-      case 'money': return parseNumber(txt);
-      case 'date':  return parseDate(txt);
-      default:      return (txt||'').toString().toLowerCase();
+      case 'num': case 'money': return parseNumber(txt);
+      case 'date': return parseDate(txt);
+      default: return (txt||'').toString().toLowerCase();
     }
   }
-
-  // Handler por columna
   ths.forEach((th, idx)=>{
     if (skip.has(idx)) return;
     th.style.cursor = 'pointer';
     if (!th.querySelector('.sort-arrow')) {
       const span = document.createElement('span');
-      span.className = 'sort-arrow';
-      span.textContent = ' ↕';
+      span.className = 'sort-arrow'; span.textContent = ' ↕';
       th.appendChild(span);
     }
-
-    let dir = 0; // 0 sin ordenar, 1 asc, -1 desc
+    let dir = 0;
     th.addEventListener('click', ()=>{
-      // Alterna dirección: 0/↓ -> ↑, ↑ -> ↓
       dir = dir===1 ? -1 : 1;
-
       const type = colTypes[idx] || 'text';
       const tbody = table.tBodies[0];
       const rows = Array.from(tbody.rows);
-
       rows.sort((a,b)=>{
         const va = cellValue(a, idx, type);
         const vb = cellValue(b, idx, type);
@@ -130,7 +110,6 @@ function makeSortable(table, colTypes=[], options={}){
         if (va > vb) return  1*dir;
         return 0;
       });
-      // Reinsertar
       rows.forEach(r => tbody.appendChild(r));
       setArrow(idx, dir);
     });
@@ -173,22 +152,15 @@ function pickTC(moneda) {
   if (m === 'ARS') return ars > 0 ? ars : null;
   return null;
 }
-
-/** Convierte monto desde su moneda nativa a USD/BRL/ARS/CLP (pivote CLP) con TC actuales. */
 function convertirTodas(monedaOrigen, monto){
   const from = normalizarMoneda(monedaOrigen);
   const tcFrom = pickTC(from);
   const tcUSD  = pickTC('USD');
   const tcBRL  = pickTC('BRL');
   const tcARS  = pickTC('ARS');
-
-  const totalCLP = (from === 'CLP')
-    ? (monto ?? null)
-    : (tcFrom ? (monto * tcFrom) : null);
-
+  const totalCLP = (from === 'CLP') ? (monto ?? null) : (tcFrom ? (monto * tcFrom) : null);
   const conv = { USD:null, BRL:null, ARS:null, CLP: totalCLP };
   const toTarget = (tcTarget) => (totalCLP != null && tcTarget) ? (totalCLP / tcTarget) : null;
-
   conv.USD = (from === 'USD') ? (monto ?? null) : toTarget(tcUSD);
   conv.BRL = (from === 'BRL') ? (monto ?? null) : toTarget(tcBRL);
   conv.ARS = (from === 'ARS') ? (monto ?? null) : toTarget(tcARS);
@@ -273,7 +245,6 @@ function resolverServicio(itemActividad, destinoGrupo) {
   const act    = norm(itemActividad?.actividad || itemActividad?.servicio || '');
   const dest   = norm(destinoGrupo || '');
   const provIt = norm(itemActividad?.proveedor || '');
-
   let cand = SERVICIOS.filter(s =>
     norm(s.servicio) === act &&
     norm(s.destino || s.DESTINO || s.ciudad || s.CIUDAD) === dest
@@ -307,7 +278,6 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
       for (const item of arr) {
         const svc = resolverServicio(item, destinoGrupo);
 
-        // Sin tarifario → ítem neutro
         if (!svc) {
           out.push({
             tipo:'actividad',
@@ -339,7 +309,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
           tipo:'actividad',
           proveedor, proveedorSlug:slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
-          servicioId: svc.id,             // para Abonos
+          servicioId: svc.id,
           destinoGrupo, fecha: fechaISO,
           grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
           numeroNegocio: g.numeroNegocio || g.id,
@@ -370,7 +340,6 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const start = asg.fechaInicio, end = asg.fechaFin;
     if (!start || !end) continue;
 
-    // noches dentro del rango
     const nights = [];
     let cur = new Date(start + 'T00:00:00');
     const fin = new Date(end + 'T00:00:00');
@@ -410,7 +379,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
 }
 
 // -------------------------------
-// 5) Agregaciones (sumamos EQUIVALENTES)
+// 5) Agregaciones
 // -------------------------------
 function agruparPorDestino(items) {
   const r = new Map();
@@ -462,7 +431,7 @@ function agruparPorHotel(itemsHotel) {
 }
 
 // -------------------------------
-// 6) Render KPIs + tablas (con sorters)
+// 6) Render KPIs + tablas
 // -------------------------------
 function renderKPIs(items, itemsHotel) {
   const all = [...items, ...itemsHotel];
@@ -505,7 +474,6 @@ function renderTablaDestinos(mapDest) {
       </tr>
     `);
   }
-  // sorters
   makeSortable(el('tblDestinos'), ['text','money','num','num','num','num']);
 }
 function renderTablaProveedores(mapProv) {
@@ -572,38 +540,24 @@ function renderTablaHoteles(mapHoteles) {
 }
 
 // -------------------------------
-// 7) Modal — Abonos helpers
+// 7) Modal — helpers ABONOS
 // -------------------------------
-function abonoEquivalentes(ab) {
-  // usar TC actuales para equivalencias del abono
-  return convertirTodas(ab.moneda, Number(ab.monto || 0));
-}
-function abonoEstadoLabel(ab) {
-  return (ab.estado || 'ORIGINAL').toUpperCase();
-}
-function abonoIncluido(ab) {
-  return (ab.estado || 'ORIGINAL') !== 'ARCHIVADO';
-}
-function nowISODate() {
-  const d = new Date();
-  return d.toISOString().slice(0,10);
-}
-function currentTCSnapshot() {
-  return {
-    USD: Number(el('tcUSD')?.value || 0) || null,
-    BRL: Number(el('tcBRL')?.value || 0) || null,
-    ARS: Number(el('tcARS')?.value || 0) || null,
-  };
-}
+function abonoEquivalentes(ab) { return convertirTodas(ab.moneda, Number(ab.monto || 0)); }
+function abonoEstadoLabel(ab) { return (ab.estado || 'ORIGINAL').toUpperCase(); }
+function abonoIncluido(ab) { return (ab.estado || 'ORIGINAL') !== 'ARCHIVADO'; }
+function nowISODate(){ return new Date().toISOString().slice(0,10); }
+function currentTCSnapshot(){ return {
+  USD: Number(el('tcUSD')?.value || 0) || null,
+  BRL: Number(el('tcBRL')?.value || 0) || null,
+  ARS: Number(el('tcARS')?.value || 0) || null,
+}; }
 
-// Cargar/guardar abonos de un servicio
 async function loadAbonos(destinoId, servicioId) {
   const col = collection(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos`);
   const snap = await getDocs(col);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 async function guardarAbono({ destinoId, servicioId, abonoId, data, file }) {
-  // Subir comprobante (opcional)
   let comprobanteURL = data.comprobanteURL || null;
   if (file) {
     const ref = storageRef(storage, `abonos/${destinoId}/${servicioId}/${Date.now()}_${file.name}`);
@@ -625,18 +579,12 @@ async function guardarAbono({ destinoId, servicioId, abonoId, data, file }) {
 
   if (!abonoId) {
     await addDoc(collection(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos`), {
-      ...base,
-      createdAt: serverTimestamp(),
-      createdByEmail: email,
-      version: 1,
-      historial: [],
+      ...base, createdAt: serverTimestamp(), createdByEmail: email, version: 1, historial: [],
     });
   } else {
     const docRef = doc(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos/${abonoId}`);
     await updateDoc(docRef, {
-      ...base,
-      updatedAt: serverTimestamp(),
-      updatedByEmail: email,
+      ...base, updatedAt: serverTimestamp(), updatedByEmail: email,
       estado: (data.estado || 'EDITADO'),
       version: (Number(data.version || 1) + 1),
     });
@@ -645,11 +593,7 @@ async function guardarAbono({ destinoId, servicioId, abonoId, data, file }) {
 async function archivarAbono({ destinoId, servicioId, abonoId }) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const docRef = doc(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos/${abonoId}`);
-  await updateDoc(docRef, {
-    estado: 'ARCHIVADO',
-    archivedAt: serverTimestamp(),
-    archivedByEmail: email,
-  });
+  await updateDoc(docRef, { estado: 'ARCHIVADO', archivedAt: serverTimestamp(), archivedByEmail: email });
 }
 
 // -------------------------------
@@ -657,16 +601,18 @@ async function archivarAbono({ destinoId, servicioId, abonoId }) {
 // -------------------------------
 function buildModalShell() {
   const cont = $('.fin-modal-body', el('modal'));
+  // estado local del toggle archivados
+  cont.dataset.verArchivados = '0';
+
   cont.innerHTML = `
     <div class="modal-toolbar">
       <input id="modalSearch" type="search" placeholder="BUSCAR EN ABONOS Y DETALLE…" />
-      <label class="switch">
-        <input type="checkbox" id="chkVerArchivados" />
-        <span>VER ARCHIVADOS</span>
-      </label>
       <div class="spacer"></div>
+
+      <!-- ORDEN REQUERIDO -->
+      <button class="btn btn-excel" id="btnAbonar">ABONAR DINERO</button>
+      <button class="btn" id="btnVerArch" aria-pressed="false">VER ARCHIVADOS</button>
       <button class="btn btn-excel" id="btnExportXLS">EXPORTAR EXCEL</button>
-      <button class="btn" id="btnAbonar">ABONAR</button>
     </div>
 
     <div class="scroll-x" style="margin-bottom:.5rem;">
@@ -848,14 +794,20 @@ async function openModalProveedor(slugProv, data) {
   const dests = [...data.destinos];
   const gruposSet = new Set(data.items.map(i => i.grupoId));
   const paxTotal = data.items.reduce((s,i)=> s + (Number(i.pax||0)), 0);
-  el('modalTitle').textContent =
-    `DETALLE — ${(data?.nombre || slugProv).toUpperCase()}`;
-  el('modalSub').textContent =
-    `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)}`;
+  el('modalTitle').textContent = `DETALLE — ${(data?.nombre || slugProv).toUpperCase()}`;
+  el('modalSub').textContent = `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)}`;
 
   const cont = buildModalShell();
 
-  // —— Resumen por servicio
+  // Botón "VER TODOS" (para limpiar filtro desde resumen)
+  const btnClear = document.createElement('button');
+  btnClear.className = 'btn ghost';
+  btnClear.id = 'btnDetClear';
+  btnClear.textContent = 'VER TODOS';
+  btnClear.style.display = 'none';
+  $('.modal-toolbar', cont).prepend(btnClear);
+
+  // ——— Resumen por servicio
   const resumen = agruparItemsPorServicio(data.items);
   const tbRes = $('#tblProvResumen tbody', cont);
   tbRes.innerHTML = '';
@@ -872,10 +824,9 @@ async function openModalProveedor(slugProv, data) {
       </tr>
     `);
   }
-  // sorters resumen (última columna sin ordenar)
   makeSortable($('#tblProvResumen', cont), ['text','money','num','num','num','num','text'], {skipIdx:[6]});
 
-  // —— Detalle (moneda nativa en NARANJO)
+  // ——— Detalle
   const tb = $('#tblDetalleProv tbody', cont);
   tb.innerHTML = '';
   const rows = [...data.items].sort((a,b) =>
@@ -910,23 +861,14 @@ async function openModalProveedor(slugProv, data) {
     `);
   }
   $('#modalTotalCLP', cont).textContent = money(totCLP);
-  // sorters detalle
   makeSortable($('#tblDetalleProv', cont),
     ['date','text','text','text','num','text','text','num','num','num','num','num']
   );
 
-  // —— Filtro desde resumen
-  const btnClear = document.createElement('button');
-  btnClear.className = 'btn ghost';
-  btnClear.id = 'btnDetClear';
-  btnClear.textContent = 'VER TODOS';
-  btnClear.style.display = 'none';
-  $('.modal-toolbar', cont).prepend(btnClear);
-
+  // Filtro por servicio (desde resumen)
   cont.querySelectorAll('.btn-det-svc').forEach(btn => {
     btn.addEventListener('click', async () => {
       const svcSlug = btn.getAttribute('data-svc');
-      // filtrar detalle
       const rows = $$('#tblDetalleProv tbody tr', cont);
       let hayFiltro = false;
       rows.forEach(tr => {
@@ -936,11 +878,10 @@ async function openModalProveedor(slugProv, data) {
       });
       btnClear.style.display = hayFiltro ? '' : 'none';
 
-      // cargar abonos del servicio seleccionado
       const itemSvc = data.items.find(i => slug(i.servicio||'') === svcSlug);
       if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
         await pintarAbonos({
-          destinoId: itemSvc.destinoGrupo, // ojo: id del doc destino = nombre
+          destinoId: itemSvc.destinoGrupo, // mismo id que doc del destino
           servicioId: itemSvc.servicioId,
           servicioNombre: itemSvc.servicio || '',
           cont,
@@ -954,26 +895,47 @@ async function openModalProveedor(slugProv, data) {
     limpiarAbonos(cont);
   });
 
-  // —— Buscador global (abonos + detalle)
+  // Buscador global
   $('#modalSearch', cont).addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
     const match = (txt) => txt.toLowerCase().includes(q);
-    // detalle
     $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
       const txt = tr.textContent || '';
       tr.style.display = match(txt) ? '' : 'none';
     });
-    // abonos
     $$('#tblAbonos tbody tr', cont).forEach(tr => {
       const txt = tr.textContent || '';
       tr.style.display = match(txt) ? '' : 'none';
     });
   });
 
-  // —— Export Excel
+  // Toggle VER ARCHIVADOS (botón negro)
+  const btnArch = $('#btnVerArch', cont);
+  const updateBtnArch = ()=>{
+    const on = cont.dataset.verArchivados === '1';
+    btnArch.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btnArch.textContent = on ? 'VER ARCHIVADOS: ON' : 'VER ARCHIVADOS';
+  };
+  btnArch.addEventListener('click', async ()=>{
+    cont.dataset.verArchivados = cont.dataset.verArchivados === '1' ? '0' : '1';
+    updateBtnArch();
+    // si ya hay un servicio seleccionado, repintar
+    const d = cont.dataset.curDestinoId, s = cont.dataset.curServicioId;
+    if (d && s) {
+      await pintarAbonos({
+        destinoId: d,
+        servicioId: s,
+        servicioNombre: cont.dataset.curServicioNombre || '',
+        cont
+      });
+    }
+  });
+  updateBtnArch();
+
+  // Export Excel
   $('#btnExportXLS', cont).addEventListener('click', () => exportModalToExcel(cont, (data?.nombre||'proveedor')));
 
-  // —— Mostrar
+  // Mostrar
   el('backdrop').style.display = 'block';
   modal.style.display = 'block';
   document.body.classList.add('modal-open');
@@ -981,7 +943,7 @@ async function openModalProveedor(slugProv, data) {
 window.openModalProveedor = openModalProveedor;
 
 // -------------------------------
-// 10) Modal — Abonos render/acciones
+// 10) Modal — Abonos
 // -------------------------------
 function limpiarAbonos(cont){
   $('#tblAbonos tbody', cont).innerHTML = '';
@@ -991,15 +953,21 @@ function limpiarAbonos(cont){
   $('#abTotARS', cont).textContent = '0';
   paintSaldoCells({clp:0,usd:0,brl:0,ars:0});
   $('#btnAbonar', cont).onclick = null;
-  $('#chkVerArchivados', cont).checked = false;
+  cont.dataset.verArchivados = '0';
+  const btnArch = $('#btnVerArch', cont);
+  if (btnArch) { btnArch.setAttribute('aria-pressed','false'); btnArch.textContent = 'VER ARCHIVADOS'; }
 }
 async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
-  const verArch = $('#chkVerArchivados', cont).checked;
+  // guardar contexto para repintar al togglear "ver archivados"
+  cont.dataset.curDestinoId = destinoId;
+  cont.dataset.curServicioId = servicioId;
+  cont.dataset.curServicioNombre = servicioNombre || '';
+
+  const verArch = cont.dataset.verArchivados === '1';
   const tbody = $('#tblAbonos tbody', cont);
   tbody.innerHTML = '';
 
   let abonos = await loadAbonos(destinoId, servicioId);
-  // Orden por defecto: fecha desc
   abonos.sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||''));
 
   let tCLP=0, tUSD=0, tBRL=0, tARS=0;
@@ -1040,7 +1008,6 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
     `;
     if (incluir) tbody.appendChild(tr);
 
-    // acciones fila
     tr.querySelector('.btn-edit').addEventListener('click', () => abrirSubmodalAbono({
       cont, destinoId, servicioId, abono: { ...ab, id: ab.id }
     }));
@@ -1062,21 +1029,16 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
   $('#btnAbonar', cont).onclick = () =>
     abrirSubmodalAbono({ cont, destinoId, servicioId, abono: null });
 
-  // switch ver archivados
-  $('#chkVerArchivados', cont).onchange = () =>
-    pintarAbonos({ destinoId, servicioId, servicioNombre, cont });
-
   // Recalcular saldo
   calcSaldoDesdeTablas(cont);
 
-  // sorters abonos (col 11 acciones sin ordenar)
+  // sorters abonos
   makeSortable($('#tblAbonos', cont),
     ['text','text','date','text','num','num','num','num','num','text','text','text','text'],
     {skipIdx:[11]}
   );
 }
 function calcSaldoDesdeTablas(cont){
-  // Totales servicio visibles en DETALLE
   let sCLP=0, sUSD=0, sBRL=0, sARS=0;
   $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
     if (tr.style.display === 'none') return;
@@ -1088,7 +1050,6 @@ function calcSaldoDesdeTablas(cont){
     sUSD += usd; sBRL += brl; sARS += ars; sCLP += clp;
   });
 
-  // Totales abonos visibles (excluye archivados)
   let aCLP=0,aUSD=0,aBRL=0,aARS=0;
   $$('#tblAbonos tbody tr', cont).forEach(tr => {
     if (tr.style.display === 'none') return;
@@ -1101,13 +1062,7 @@ function calcSaldoDesdeTablas(cont){
     aCLP += clp; aUSD += usd; aBRL += brl; aARS += ars;
   });
 
-  // Saldo = servicio - abonos
-  paintSaldoCells({
-    clp: sCLP - aCLP,
-    usd: sUSD - aUSD,
-    brl: sBRL - aBRL,
-    ars: sARS - aARS,
-  });
+  paintSaldoCells({ clp: sCLP - aCLP, usd: sUSD - aUSD, brl: sBRL - aBRL, ars: sARS - aARS });
 }
 
 // Submodal (crear/editar)
@@ -1135,21 +1090,16 @@ function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
     };
     const file = $('#abFile', box).files[0] || null;
 
-    await guardarAbono({
-      destinoId, servicioId,
-      abonoId: abono?.id || null,
-      data, file
-    });
+    await guardarAbono({ destinoId, servicioId, abonoId: abono?.id || null, data, file });
 
     close();
-
     await pintarAbonos({ destinoId, servicioId, servicioNombre: '', cont });
     calcSaldoDesdeTablas(cont);
   };
 }
 
 // -------------------------------
-// 11) Export Excel (HTML Workbook compatible)
+// 11) Export Excel (HTML workbook)
 // -------------------------------
 function exportModalToExcel(cont, nombre) {
   const tables = [
@@ -1158,20 +1108,14 @@ function exportModalToExcel(cont, nombre) {
     { title:'DETALLE',  el: $('#tblDetalleProv', cont) },
     { title:'SALDO',    el: $('#tblSaldo', cont) },
   ];
-  const htmlSheets = tables.map(t => `
-    <h2>${t.title}</h2>
-    ${t.el.outerHTML}
-    <br/>
-  `).join('\n');
+  const htmlSheets = tables.map(t => `<h2>${t.title}</h2>${t.el.outerHTML}<br/>`).join('\n');
 
-  const html = `
-    <html xmlns:o="urn:schemas-microsoft-com:office:office"
-          xmlns:x="urn:schemas-microsoft-com:office:excel"
-          xmlns="http://www.w3.org/TR/REC-html40">
-    <head><meta charset="UTF-8" /></head>
-    <body>${htmlSheets}</body>
-    </html>
-  `;
+  const html = `<!doctype html>
+  <html xmlns:o="urn:schemas-microsoft-com:office:office"
+        xmlns:x="urn:schemas-microsoft-com:office:excel"
+        xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="UTF-8" /></head>
+  <body>${htmlSheets}</body></html>`;
   const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1181,7 +1125,7 @@ function exportModalToExcel(cont, nombre) {
 }
 
 // -------------------------------
-// 12) Recalcular
+// 12) Recalcular + export CSV
 // -------------------------------
 function getDestinosSeleccionados() {
   const sel = el('filtroDestino');
@@ -1212,7 +1156,6 @@ function aplicarRangoPorAnio() {
   el('fechaHasta').value = `${anio}-12-31`;
 }
 
-// Log auxiliar
 function logDiagnostico(items){
   const faltantes = items.filter(x => x.servicioId == null);
   if (faltantes.length){
@@ -1257,9 +1200,6 @@ function recalcular() {
   }
 }
 
-// -------------------------------
-// 13) Export general (CSV)
-// -------------------------------
 function exportCSV() {
   const header = ['Fecha','Proveedor','Servicio','Grupo','Destino','Pax','Modalidad','Moneda','Tarifa','TotalMoneda','TotalCLP'];
   const rows = [header.join(',')];
