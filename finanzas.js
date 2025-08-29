@@ -1,28 +1,30 @@
-// finanzas.js — Finanzas Operaciones RT (USD/BRL/ARS + Abonos + XLSX)
-// ===================================================================
-// Mantiene tu lógica, suma ARS, tooltips/azul, prefijo numeroNegocio-identificador,
-// modal de abonos con Storage, y exportación XLSX (SheetJS por CDN).
+// finanzas.js — Finanzas Operaciones RT (equivalentes + abonos + XLSX)
+// ====================================================================
 
-// Firebase
 import { app, db } from './firebase-init.js';
-import { collection, getDocs, addDoc } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import {
+  collection, getDocs, addDoc, serverTimestamp, query, orderBy
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
+import {
+  getStorage, ref as sRef, uploadBytes, getDownloadURL
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
 
-// ---------------------------------------------------------------
+// -------------------------------
 // 0) Rutas raíz
-// ---------------------------------------------------------------
-const RUTA_SERVICIOS  = 'Servicios';   // Servicios/{DESTINO}/Listado/*
-const RUTA_PROV_ROOT  = 'Proveedores'; // Proveedores/{DESTINO}/Listado/* (opcional)
-const RUTA_HOTEL_ROOT = 'Hoteles';     // Hoteles/{DESTINO}/(Listado|Asignaciones)/*
-const RUTA_GRUPOS     = 'grupos';      // grupos/*
+// -------------------------------
+const RUTA_SERVICIOS  = 'Servicios';
+const RUTA_PROV_ROOT  = 'Proveedores';
+const RUTA_HOTEL_ROOT = 'Hoteles';
+const RUTA_GRUPOS     = 'grupos';
 
-const auth = getAuth(app);
-const storage = getStorage(app);
-
-// ---------------------------------------------------------------
+// -------------------------------
 // 1) Estado + helpers
-// ---------------------------------------------------------------
+// -------------------------------
+const auth = getAuth(app);
+let storage = null;
+try { storage = getStorage(app); } catch { /* si no está configurado Storage */ }
+
 let GRUPOS = [];
 let SERVICIOS = [];
 let PROVEEDORES = {};
@@ -32,22 +34,13 @@ let ASIGNACIONES = [];
 let LINE_ITEMS = []; // actividades
 let LINE_HOTEL = []; // hoteles
 
-// Estado del modal proveedor
-const MODAL = {
-  provSlug: null,
-  provNombre: null,
-  items: [],
-  resumenServicios: [], // [{ servicioId, servicioNombre, destinoId, monedaNativa, totalsEq, count }]
-  current: null,        // { servicioId, servicioNombre, destinoId, monedaNativa }
-  abonosPorServicio: {} // { `${destinoId}|${servicioId}`: [abono,...] }
-};
-
 const el    = id => document.getElementById(id);
 const fmt   = n => (n ?? 0).toLocaleString('es-CL');
 const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
 
+// normaliza la moneda: USD/BRL/ARS/CLP
 function normalizarMoneda(m){
   const M = (m||'').toString().toUpperCase().trim();
   if (['REAL','REALES','R$','BRL'].includes(M)) return 'BRL';
@@ -71,7 +64,6 @@ function within(dateISO, d1, d2) {
   return t >= t1 && t <= t2;
 }
 
-// Tipos de cambio actuales (inputs)
 function pickTC(moneda) {
   const m   = normalizarMoneda(moneda);
   const usd = Number(el('tcUSD')?.value || 0);
@@ -84,43 +76,27 @@ function pickTC(moneda) {
   return null;
 }
 
-// Equivalencias a todas las monedas usando TC actual (CLP como pivote)
-function eqAll(monto, monedaOrigen){
-  const mo = normalizarMoneda(monedaOrigen);
-  const tc = { CLP:1, USD: pickTC('USD')||0, BRL: pickTC('BRL')||0, ARS: pickTC('ARS')||0 };
-  if (mo === 'CLP'){
-    return {
-      CLP: monto,
-      USD: tc.USD ? monto / tc.USD : 0,
-      BRL: tc.BRL ? monto / tc.BRL : 0,
-      ARS: tc.ARS ? monto / tc.ARS : 0
-    };
-  } else {
-    const toCLP = pickTC(mo) ? monto * pickTC(mo) : 0;
-    return {
-      CLP: toCLP,
-      USD: tc.USD ? toCLP / tc.USD : 0,
-      BRL: tc.BRL ? toCLP / tc.BRL : 0,
-      ARS: tc.ARS ? toCLP / tc.ARS : 0
-    };
-  }
+/** Convierte un monto desde su moneda nativa a USD/BRL/ARS/CLP usando CLP como pivote. */
+function convertirTodas(monedaOrigen, monto){
+  const from = normalizarMoneda(monedaOrigen);
+  const tcFrom = pickTC(from);
+  const tcUSD  = pickTC('USD');
+  const tcBRL  = pickTC('BRL');
+  const tcARS  = pickTC('ARS');
+
+  const totalCLP = (from === 'CLP') ? (monto ?? null) : (tcFrom ? (monto * tcFrom) : null);
+  const conv = { USD:null, BRL:null, ARS:null, CLP: totalCLP };
+  const toTarget = (tcTarget) => (totalCLP != null && tcTarget) ? (totalCLP / tcTarget) : null;
+
+  conv.USD = (from === 'USD') ? (monto ?? null) : toTarget(tcUSD);
+  conv.BRL = (from === 'BRL') ? (monto ?? null) : toTarget(tcBRL);
+  conv.ARS = (from === 'ARS') ? (monto ?? null) : toTarget(tcARS);
+  return conv;
 }
 
-// Suma equivalentes de una lista de items ({totalMoneda, moneda}) a cada moneda
-function sumEq(items){
-  const out = { CLP:0, USD:0, BRL:0, ARS:0 };
-  for (const it of items){
-    const e = eqAll(Number(it.totalMoneda || 0), it.moneda || 'CLP');
-    out.CLP += e.CLP; out.USD += e.USD; out.BRL += e.BRL; out.ARS += e.ARS;
-  }
-  return out;
-}
-
-// ---------------------------------------------------------------
+// -------------------------------
 // 2) Carga de datos
-// ---------------------------------------------------------------
-
-// Servicios/{DESTINO}/Listado/*
+// -------------------------------
 async function loadServicios() {
   const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS));
   const promSub = [];
@@ -166,7 +142,6 @@ async function loadGrupos() {
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// Hoteles/{DESTINO}/(Listado|Asignaciones)/*
 async function loadHotelesYAsignaciones() {
   HOTELES = []; ASIGNACIONES = [];
   try {
@@ -193,9 +168,9 @@ async function loadHotelesYAsignaciones() {
   }
 }
 
-// ---------------------------------------------------------------
+// -------------------------------
 // 3) Resolver Servicio
-// ---------------------------------------------------------------
+// -------------------------------
 function resolverServicio(itemActividad, destinoGrupo) {
   const act    = norm(itemActividad?.actividad || itemActividad?.servicio || '');
   const dest   = norm(destinoGrupo || '');
@@ -213,9 +188,9 @@ function resolverServicio(itemActividad, destinoGrupo) {
   return cand[0] || null;
 }
 
-// ---------------------------------------------------------------
+// -------------------------------
 // 4) Construcción de line items
-// ---------------------------------------------------------------
+// -------------------------------
 function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActividades) {
   const out = [];
   if (!incluirActividades) return out;
@@ -240,15 +215,13 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
             proveedor: item.proveedor || '(desconocido)',
             proveedorSlug: slug(item.proveedor || '(desconocido)'),
             servicio: item.actividad || item.servicio || '(sin nombre)',
-            servicioId: null, servicioDestino: null, monedaNativa: 'CLP',
             destinoGrupo, fecha: fechaISO,
-            grupoId: g.id,
-            nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
+            grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
             numeroNegocio: g.numeroNegocio || g.id,
             identificador: g.identificador || g.IDENTIFICADOR || '',
             pax, moneda:'CLP', tarifa:0,
             pagoTipo:'por_grupo', pagoFrecuencia:'unitario',
-            totalMoneda:0, totalCLP:0,
+            totalMoneda:0, totalCLP:0, totalUSD:null, totalBRL:null, totalARS:null,
             nota:'Sin tarifario en Servicios (destino+actividad no encontrado)'
           });
           continue;
@@ -262,25 +235,22 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
         const multiplicador = esPorPersona ? pax : 1;
         const totalMoneda   = valor * multiplicador;
-        const tc            = pickTC(moneda);
-        const totalCLP      = (tc ? totalMoneda * tc : null);
+        const conv          = convertirTodas(moneda, totalMoneda);
 
         out.push({
           tipo:'actividad',
           proveedor, proveedorSlug:slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
-          servicioId: svc.id || null,
-          servicioDestino: svc.destino || null,
-          monedaNativa: moneda,
           destinoGrupo, fecha: fechaISO,
-          grupoId: g.id,
-          nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
+          grupoId: g.id, nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
           numeroNegocio: g.numeroNegocio || g.id,
           identificador: g.identificador || g.IDENTIFICADOR || '',
           pax, moneda, tarifa: valor,
           pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo',
           pagoFrecuencia:'unitario',
-          totalMoneda, totalCLP, nota:''
+          totalMoneda,
+          totalCLP: conv.CLP, totalUSD: conv.USD, totalBRL: conv.BRL, totalARS: conv.ARS,
+          nota:''
         });
       }
     }
@@ -304,6 +274,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const start = asg.fechaInicio, end = asg.fechaFin;
     if (!start || !end) continue;
 
+    // noches dentro del rango
     const nights = [];
     let cur = new Date(start + 'T00:00:00');
     const fin = new Date(end + 'T00:00:00');
@@ -326,9 +297,8 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     else if (tipoCobro === 'por_grupo_noche') totalPorNoche = tarifa;
     else if (tipoCobro === 'por_hab_noche') totalPorNoche = tarifa;
 
-    const tc          = pickTC(moneda);
     const totalMoneda = totalPorNoche * nights.length;
-    const totalCLP    = (tc ? totalMoneda * tc : null);
+    const conv = convertirTodas(moneda, totalMoneda);
 
     out.push({
       tipo:'hotel',
@@ -338,27 +308,28 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       identificador:g.identificador || g.IDENTIFICADOR || '',
       noches:nights.length,
       moneda, tarifa, tipoCobro,
-      totalMoneda, totalCLP,
+      totalMoneda,
+      totalCLP: conv.CLP, totalUSD: conv.USD, totalBRL: conv.BRL, totalARS: conv.ARS,
     });
   }
   return out;
 }
 
-// ---------------------------------------------------------------
-// 5) Agregaciones
-// ---------------------------------------------------------------
+// -------------------------------
+// 5) Agregaciones (sumamos EQUIVALENTES)
+// -------------------------------
 function agruparPorDestino(items) {
   const r = new Map();
   for (const it of items) {
     const key = it.destinoGrupo || it.destino || '(sin destino)';
-    const o = r.get(key) || { clp:0, usd:0, brl:0, ars:0, clpConvertido:0, count:0 };
-    if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
-    if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
-    if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
-    if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
-    if (typeof it.totalCLP === 'number') o.clpConvertido += it.totalCLP;
-    o.count++;
-    r.set(key, o);
+    const acc = r.get(key) || { clpEq:0, usdEq:0, brlEq:0, arsEq:0, count:0 };
+    const conv = convertirTodas(it.moneda, it.totalMoneda);
+    if (conv.CLP != null) acc.clpEq += conv.CLP;
+    if (conv.USD != null) acc.usdEq += conv.USD;
+    if (conv.BRL != null) acc.brlEq += conv.BRL;
+    if (conv.ARS != null) acc.arsEq += conv.ARS;
+    acc.count++;
+    r.set(key, acc);
   }
   return r;
 }
@@ -368,16 +339,16 @@ function agruparPorProveedor(items) {
   for (const it of items) {
     const slugProv = it.proveedorSlug || slug(it.proveedor || '(sin proveedor)');
     const nombre   = it.proveedor || '(sin proveedor)';
-    const o = r.get(slugProv) || { nombre, destinos:new Set(), clp:0, usd:0, brl:0, ars:0, clpConv:0, count:0, items:[] };
-    o.destinos.add(it.destinoGrupo || '(sin destino)');
-    if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
-    if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
-    if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
-    if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
-    if (typeof it.totalCLP === 'number') o.clpConv += it.totalCLP;
-    o.count++;
-    o.items.push(it);
-    r.set(slugProv, o);
+    const acc = r.get(slugProv) || { nombre, destinos:new Set(), clpEq:0, usdEq:0, brlEq:0, arsEq:0, count:0, items:[] };
+    acc.destinos.add(it.destinoGrupo || '(sin destino)');
+    const conv = convertirTodas(it.moneda, it.totalMoneda);
+    if (conv.CLP != null) acc.clpEq += conv.CLP;
+    if (conv.USD != null) acc.usdEq += conv.USD;
+    if (conv.BRL != null) acc.brlEq += conv.BRL;
+    if (conv.ARS != null) acc.arsEq += conv.ARS;
+    acc.count++;
+    acc.items.push(it);
+    r.set(slugProv, acc);
   }
   return r;
 }
@@ -386,33 +357,34 @@ function agruparPorHotel(itemsHotel) {
   const r = new Map();
   for (const it of itemsHotel) {
     const key = it.hotel || '(hotel)';
-    const o = r.get(key) || { destino: it.destinoGrupo || '(sin destino)', clp:0, usd:0, brl:0, ars:0, clpConv:0, noches:0 };
-    if (it.moneda === 'CLP' && it.totalMoneda) o.clp += it.totalMoneda;
-    if (it.moneda === 'USD' && it.totalMoneda) o.usd += it.totalMoneda;
-    if (it.moneda === 'BRL' && it.totalMoneda) o.brl += it.totalMoneda;
-    if (it.moneda === 'ARS' && it.totalMoneda) o.ars += it.totalMoneda;
-    if (typeof it.totalCLP === 'number') o.clpConv += it.totalCLP;
-    o.noches += (it.noches || 0);
-    r.set(key, o);
+    const acc = r.get(key) || { destino: it.destinoGrupo || '(sin destino)', clpEq:0, usdEq:0, brlEq:0, arsEq:0, noches:0 };
+    const conv = convertirTodas(it.moneda, it.totalMoneda);
+    if (conv.CLP != null) acc.clpEq += conv.CLP;
+    if (conv.USD != null) acc.usdEq += conv.USD;
+    if (conv.BRL != null) acc.brlEq += conv.BRL;
+    if (conv.ARS != null) acc.arsEq += conv.ARS;
+    acc.noches += (it.noches || 0);
+    r.set(key, acc);
   }
   return r;
 }
 
-// ---------------------------------------------------------------
-// 6) Render UI (kpis + tablas principales)
-// ---------------------------------------------------------------
+// -------------------------------
+// 6) Render UI (KPIs + tablas + modal)
+// -------------------------------
 function renderKPIs(items, itemsHotel) {
   const all = [...items, ...itemsHotel];
-
-  const totCLP = all.reduce((acc, it) => acc + (typeof it.totalCLP === 'number' ? it.totalCLP : 0), 0);
+  // total CLP equivalente (sólo donde hay TC)
+  let totCLP = 0, missUSD = 0, missBRL = 0, missARS = 0;
+  for (const it of all){
+    const c = convertirTodas(it.moneda, it.totalMoneda);
+    if (c.CLP != null) totCLP += c.CLP;
+    if (c.USD == null) missUSD += (it.totalMoneda || 0);
+    if (c.BRL == null) missBRL += (it.totalMoneda || 0);
+    if (c.ARS == null) missARS += (it.totalMoneda || 0);
+  }
   el('kpiTotCLP').textContent = money(totCLP);
-
-  const restUSD = all.filter(it => it.moneda === 'USD' && it.totalCLP == null).reduce((s, it) => s + (it.totalMoneda || 0), 0);
-  const restBRL = all.filter(it => it.moneda === 'BRL' && it.totalCLP == null).reduce((s, it) => s + (it.totalMoneda || 0), 0);
-  const restARS = all.filter(it => it.moneda === 'ARS' && it.totalCLP == null).reduce((s, it) => s + (it.totalMoneda || 0), 0);
-
-  el('kpiOtrosMon').textContent =
-    `USD no conv.: ${fmt(restUSD)} — BRL no conv.: ${fmt(restBRL)} — ARS no conv.: ${fmt(restARS)}`;
+  el('kpiOtrosMon').textContent = `USD no conv.: ${fmt(missUSD)} — BRL no conv.: ${fmt(missBRL)} — ARS no conv.: ${fmt(missARS)}`;
 
   const provSet = new Set(items.filter(x => x.tipo==='actividad').map(x => x.proveedorSlug));
   el('kpiProv').textContent = provSet.size;
@@ -427,19 +399,18 @@ function renderTablaDestinos(mapDest) {
   const rows = [];
   mapDest.forEach((v, k) => rows.push({
     destino:k,
-    clpConv:v.clpConvertido||0,
-    clp:v.clp||0, usd:v.usd||0, brl:v.brl||0, ars:v.ars||0,
+    clpEq:v.clpEq||0, usdEq:v.usdEq||0, brlEq:v.brlEq||0, arsEq:v.arsEq||0,
     count:v.count||0
   }));
-  rows.sort((a,b)=>b.clpConv - a.clpConv);
+  rows.sort((a,b)=>b.clpEq - a.clpEq);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
         <td title="${r.destino}">${r.destino || '(sin destino)'}</td>
-        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
-        <td class="right" title="${r.usd}">${fmt(r.usd)}</td>
-        <td class="right" title="${r.brl}">${fmt(r.brl)}</td>
-        <td class="right" title="${r.ars}">${fmt(r.ars)}</td>
+        <td class="right" title="${r.clpEq}">${money(r.clpEq)}</td>
+        <td class="right" title="${r.usdEq}">${fmt(r.usdEq)}</td>
+        <td class="right" title="${r.brlEq}">${fmt(r.brlEq)}</td>
+        <td class="right" title="${r.arsEq}">${fmt(r.arsEq)}</td>
         <td class="right" title="${r.count}">${fmt(r.count)}</td>
       </tr>
     `);
@@ -452,21 +423,20 @@ function renderTablaProveedores(mapProv) {
   const rows = [];
   mapProv.forEach((v, key) => rows.push({
     slug:key, nombre:v.nombre, destinos:[...v.destinos].join(', '),
-    clpConv:v.clpConv||0,
-    clp:v.clp||0, usd:v.usd||0, brl:v.brl||0, ars:v.ars||0,
+    clpEq:v.clpEq||0, usdEq:v.usdEq||0, brlEq:v.brlEq||0, arsEq:v.arsEq||0,
     count:v.count||0, items:v.items
   }));
-  rows.sort((a,b)=>b.clpConv - a.clpConv);
+  rows.sort((a,b)=>b.clpEq - a.clpEq);
 
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
         <td title="${r.nombre}">${r.nombre}</td>
         <td title="${r.destinos}">${r.destinos}</td>
-        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
-        <td class="right" title="${r.usd}">${fmt(r.usd)}</td>
-        <td class="right" title="${r.brl}">${fmt(r.brl)}</td>
-        <td class="right" title="${r.ars}">${fmt(r.ars)}</td>
+        <td class="right" title="${r.clpEq}">${money(r.clpEq)}</td>
+        <td class="right" title="${r.usdEq}">${fmt(r.usdEq)}</td>
+        <td class="right" title="${r.brlEq}">${fmt(r.brlEq)}</td>
+        <td class="right" title="${r.arsEq}">${fmt(r.arsEq)}</td>
         <td class="right" title="${r.count}">${fmt(r.count)}</td>
         <td class="right">
           <button class="btn secondary" data-prov="${r.slug}">Ver detalle</button>
@@ -489,324 +459,479 @@ function renderTablaHoteles(mapHoteles) {
   const rows = [];
   mapHoteles.forEach((v,k)=>rows.push({
     hotel:k, destino:v.destino,
-    clpConv:v.clpConv||0,
-    clp:v.clp||0, usd:v.usd||0, brl:v.brl||0, ars:v.ars||0,
+    clpEq:v.clpEq||0, usdEq:v.usdEq||0, brlEq:v.brlEq||0, arsEq:v.arsEq||0,
     noches:v.noches||0
   }));
-  rows.sort((a,b)=>b.clpConv - a.clpConv);
+  rows.sort((a,b)=>b.clpEq - a.clpEq);
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
       <tr>
         <td title="${r.hotel}">${r.hotel}</td>
         <td title="${r.destino || ''}">${r.destino || ''}</td>
-        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
-        <td class="right" title="${r.usd}">${fmt(r.usd)}</td>
-        <td class="right" title="${r.brl}">${fmt(r.brl)}</td>
-        <td class="right" title="${r.ars}">${fmt(r.ars)}</td>
+        <td class="right" title="${r.clpEq}">${money(r.clpEq)}</td>
+        <td class="right" title="${r.usdEq}">${fmt(r.usdEq)}</td>
+        <td class="right" title="${r.brlEq}">${fmt(r.brlEq)}</td>
+        <td class="right" title="${r.arsEq}">${fmt(r.arsEq)}</td>
         <td class="right" title="${r.noches}">${fmt(r.noches)}</td>
       </tr>
     `);
   }
 }
 
-// ---------------------------------------------------------------
-// 7) Modal proveedor (Resumen+Detalle+Abonos)
-// ---------------------------------------------------------------
+// ====== ABONOS (lectura y alta) ======
+async function leerAbonosPorServicio(items){
+  // unique keys destino|servicio
+  const keys = new Map(); // key -> {destino, servicio}
+  for (const it of items){
+    const k = `${it.destinoGrupo}||${it.servicio}`;
+    if (!keys.has(k)) keys.set(k, { destino: it.destinoGrupo, servicio: it.servicio });
+  }
 
-// Agrupar por servicio conservando servicioId/destino y moneda nativa (la más común)
-function agruparItemsPorServicioConEq(items) {
+  const porServicio = new Map(); // servicio -> { lista, totales{CLP,USD,BRL,ARS}, totEq{CLP,USD,BRL,ARS}, porDestino:Set }
+  for (const {destino, servicio} of keys.values()){
+    try{
+      const ref = collection(db, `${RUTA_SERVICIOS}/${destino}/Listado/${servicio}/Abonos`);
+      const snap = await getDocs(query(ref, orderBy('fecha','asc')));
+      for (const d of snap.docs){
+        const a = d.data();
+        const moneda = normalizarMoneda(a.moneda || 'CLP');
+        const monto  = Number(a.monto || 0);
+        const conv   = convertirTodas(moneda, monto);
+
+        const reg = {
+          id:d.id, servicio, destino,
+          fecha:a.fecha || (a.createdAt?.toDate?.()?.toISOString?.().slice(0,10) || ''),
+          moneda, monto,
+          clpEq:conv.CLP, usdEq:conv.USD, brlEq:conv.BRL, arsEq:conv.ARS,
+          nota:a.nota||'', url:a.url||''
+        };
+
+        const acc = porServicio.get(servicio) || {
+          lista:[], tot:{CLP:0,USD:0,BRL:0,ARS:0}, totEq:{CLP:0,USD:0,BRL:0,ARS:0}, destinos:new Set()
+        };
+        acc.lista.push(reg);
+        acc.destinos.add(destino);
+        acc.tot[moneda] += monto;
+        if (conv.CLP!=null) acc.totEq.CLP += conv.CLP;
+        if (conv.USD!=null) acc.totEq.USD += conv.USD;
+        if (conv.BRL!=null) acc.totEq.BRL += conv.BRL;
+        if (conv.ARS!=null) acc.totEq.ARS += conv.ARS;
+        porServicio.set(servicio, acc);
+      }
+    }catch(e){ console.warn('Abonos no disponibles', servicio, e); }
+  }
+  return porServicio;
+}
+
+async function guardarAbono({servicio, destino, fecha, moneda, monto, nota, file}){
+  const path = `${RUTA_SERVICIOS}/${destino}/Listado/${servicio}/Abonos`;
+  let url = '';
+  if (file && storage){
+    const r = sRef(storage, `abonos/${destino}/${servicio}/${Date.now()}_${file.name}`);
+    await uploadBytes(r, file);
+    url = await getDownloadURL(r);
+  }
+  const tc = { USD:pickTC('USD')||0, BRL:pickTC('BRL')||0, ARS:pickTC('ARS')||0 }; // snapshot TC
+  await addDoc(collection(db, path), {
+    fecha, moneda: normalizarMoneda(moneda), monto: Number(monto||0),
+    nota: nota||'', url, tc,
+    createdAt: serverTimestamp()
+  });
+}
+
+// ====== UTIL XLSX ======
+function exportModalToXLSX({resumen, abonosGlobal, detalle}){
+  if (typeof XLSX === 'undefined'){ alert('No se encontró SheetJS.'); return; }
+
+  const wb = XLSX.utils.book_new();
+
+  // Resumen
+  const ws1 = XLSX.utils.aoa_to_sheet([
+    ['Servicio','CLP (eq.)','USD (eq.)','BRL (eq.)','ARS (eq.)','Saldo (CLP eq.)','# Ítems'],
+    ...resumen.map(r=>[r.servicio, Math.round(r.clpConv), r.usdEq, r.brlEq, r.arsEq, Math.round(r.saldoCLP||0), r.count])
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws1, 'Resumen');
+
+  // Abonos
+  const ws2 = XLSX.utils.aoa_to_sheet([
+    ['Servicio','Destino','Fecha','Moneda','Monto','CLP (eq.)','USD (eq.)','BRL (eq.)','ARS (eq.)','Nota','Comprobante'],
+    ...abonosGlobal.map(a=>[
+      a.servicio, a.destino, a.fecha, a.moneda, a.monto,
+      Math.round(a.clpEq||0), a.usdEq||'', a.brlEq||'', a.arsEq||'', a.nota||'', a.url||''
+    ])
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Abonos');
+
+  // Detalle
+  const ws3 = XLSX.utils.aoa_to_sheet([
+    ['Fecha','Negocio-ID','Grupo','Servicio','Pax','Modalidad','Moneda','Tarifa','USD','BRL','ARS','CLP'],
+    ...detalle.map(d=>[
+      d.fecha, d.cod, d.nombreGrupo, d.servicio, d.pax, d.modalidad, d.moneda, d.tarifa,
+      d.usd, d.brl, d.ars, d.clp
+    ])
+  ]);
+  XLSX.utils.book_append_sheet(wb, ws3, 'Detalle');
+
+  XLSX.writeFile(wb, `finanzas_modal_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+// — Resumen por servicio (para modal)
+function agruparItemsPorServicio(items) {
   const map = new Map();
   for (const it of items) {
-    const key = (it.servicioId || slug(it.servicio)) + '|' + (it.servicioDestino || it.destinoGrupo || '');
-    const o = map.get(key) || {
-      servicioId: it.servicioId,
-      servicioNombre: it.servicio,
-      destinoId: it.servicioDestino || it.destinoGrupo || '',
-      count:0, items:[], monedaCount:{}
-    };
-    o.items.push(it);
-    o.count++;
-    o.monedaCount[it.moneda] = (o.monedaCount[it.moneda]||0)+1;
-    map.set(key, o);
+    const key = it.servicio || '(sin nombre)';
+    const acc = map.get(key) || { usdEq:0, brlEq:0, arsEq:0, clpConv:0, count:0, items:[], destinos:new Set() };
+    const conv = convertirTodas(it.moneda, it.totalMoneda);
+    if (conv.CLP != null) acc.clpConv += conv.CLP;
+    if (conv.USD != null) acc.usdEq  += conv.USD;
+    if (conv.BRL != null) acc.brlEq  += conv.BRL;
+    if (conv.ARS != null) acc.arsEq  += conv.ARS;
+    acc.count++; acc.items.push(it); acc.destinos.add(it.destinoGrupo||'(sin destino)');
+    map.set(key, acc);
   }
-  // producir arreglo con totales equivalentes
-  const rows = [];
-  map.forEach(o => {
-    // moneda nativa = la más frecuente en ese servicio
-    let mon = 'CLP', mmax=0;
-    Object.entries(o.monedaCount).forEach(([k,v]) => { if(v>mmax){ mmax=v; mon=k; } });
-    const totalsEq = sumEq(o.items);
-    rows.push({
-      servicioId: o.servicioId || null,
-      servicioNombre: o.servicioNombre || '(sin servicio)',
-      destinoId: o.destinoId || '',
-      monedaNativa: mon,
-      totalsEq,
-      count: o.count,
-      items: o.items
-    });
-  });
-  // orden por CLP eq (desc)
-  rows.sort((a,b)=> (b.totalsEq.CLP - a.totalsEq.CLP));
-  return rows;
+  return [...map.entries()].map(([servicio,v])=>({servicio,...v}))
+                           .sort((a,b)=>b.clpConv - a.clpConv);
 }
 
-async function loadAbonosServicio(destinoId, servicioId){
-  if (!destinoId || !servicioId) return [];
-  const key = `${destinoId}|${servicioId}`;
-  if (MODAL.abonosPorServicio[key]) return MODAL.abonosPorServicio[key];
+// Modal detalle proveedor
+async function openModalProveedor(slugProv, data) {
+  const backdrop = el('backdrop');
+  const modal = el('modal');
 
-  try{
-    const snap = await getDocs(collection(db, RUTA_SERVICIOS, destinoId, 'Listado', servicioId, 'Abonos'));
-    const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    MODAL.abonosPorServicio[key] = arr;
-    return arr;
-  }catch(e){
-    console.warn('Error cargando abonos', e);
-    MODAL.abonosPorServicio[key] = [];
-    return [];
+  // KPIs de encabezado del modal
+  const destinos = new Set(data.items.map(x=>x.destinoGrupo).filter(Boolean));
+  const grupos   = new Set(data.items.map(x=>x.grupoId));
+  const paxTotal = data.items.reduce((s,x)=>s+(x.pax||0),0);
+
+  el('modalTitle').textContent = `Detalle — ${data?.nombre || slugProv}`;
+  el('modalSub').textContent   =
+    `Destinos: ${[...destinos].join(', ')} • Grupos: ${grupos.size} • Pax: ${fmt(paxTotal)} — ` +
+    `Azul = moneda nativa del ítem. Las equivalencias usan los TC actuales.`;
+
+  const cont = modal.querySelector('.fin-modal-body');
+  const resumen = agruparItemsPorServicio(data.items);
+  const abonosMap = await leerAbonosPorServicio(data.items); // por servicio
+  const abonosGlobal = []; // para export
+
+  // Saldo por servicio (CLP eq.)
+  for (const r of resumen){
+    const ab = abonosMap.get(r.servicio);
+    const abCLP = ab?.totEq?.CLP || 0;
+    r.saldoCLP = (r.clpConv || 0) - abCLP;
   }
-}
 
-function pintarResumenServicios(){
-  const tb = el('tblProvResumen').querySelector('tbody');
-  tb.innerHTML = '';
+  // CONTENIDO
+  cont.innerHTML = `
+    <div class="row" id="modalActions" style="justify-content:flex-end;margin-bottom:.5rem;">
+      <button class="btn ghost" id="btnDetClear" style="display:none;">Ver todos</button>
+      <button class="btn" id="btnExportModal">Exportar XLSX</button>
+      <button class="btn blue" id="btnAbonar" disabled>Abonar</button>
+    </div>
 
-  for (const r of MODAL.resumenServicios){
-    // columna nativa azul: lo marcamos con <span class="is-native">
-    const usdHTML = `<span class="${r.monedaNativa==='USD'?'is-native':''}">${fmt(r.totalsEq.USD)}</span>`;
-    const brlHTML = `<span class="${r.monedaNativa==='BRL'?'is-native':''}">${fmt(r.totalsEq.BRL)}</span>`;
-    const arsHTML = `<span class="${r.monedaNativa==='ARS'?'is-native':''}">${fmt(r.totalsEq.ARS)}</span>`;
-    const clpHTML = `<span class="${r.monedaNativa==='CLP'?'is-native':''}">${money(r.totalsEq.CLP)}</span>`;
+    <div class="scroll-x" style="margin-bottom:.5rem;">
+      <table class="fin-table" id="tblProvResumen">
+        <thead>
+          <tr>
+            <th>Servicio</th>
+            <th class="right">CLP (eq.)</th>
+            <th class="right">USD (eq.)</th>
+            <th class="right">BRL (eq.)</th>
+            <th class="right">ARS (eq.)</th>
+            <th class="right">Saldo (CLP eq.)</th>
+            <th class="right"># Ítems</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
 
-    tb.insertAdjacentHTML('beforeend', `
-      <tr data-svcid="${r.servicioId||''}" data-dest="${r.destinoId||''}">
-        <td title="${r.servicioNombre}">${r.servicioNombre}</td>
-        <td class="right">${clpHTML}</td>
-        <td class="right">${usdHTML}</td>
-        <td class="right">${brlHTML}</td>
-        <td class="right">${arsHTML}</td>
-        <td class="right" data-saldo="clp">—</td>
-        <td class="right">${fmt(r.count)}</td>
-        <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicioNombre)}">Ver detalle</button></td>
+    <section id="secAbonos" class="panel" style="display:none; margin-top:.5rem;">
+      <h4 style="margin-top:0;">Abonos</h4>
+      <div class="scroll-x">
+        <table class="fin-table" id="tblAbonos">
+          <thead>
+            <tr>
+              <th>Servicio</th><th>Destino</th><th>Fecha</th><th>Moneda</th>
+              <th class="right">Monto</th>
+              <th class="right">CLP (eq.)</th><th class="right">USD (eq.)</th>
+              <th class="right">BRL (eq.)</th><th class="right">ARS (eq.)</th>
+              <th>Nota</th><th>Comprobante</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot>
+            <tr>
+              <th colspan="5" class="right">Totales (equivalentes)</th>
+              <th class="right" id="aboTotCLP">$0</th>
+              <th class="right" id="aboTotUSD">0</th>
+              <th class="right" id="aboTotBRL">0</th>
+              <th class="right" id="aboTotARS">0</th>
+              <th colspan="2"></th>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+
+    <section id="secSaldo" class="panel" style="display:none; margin-top:.5rem;">
+      <h4 style="margin-top:0;">Saldo por pagar</h4>
+      <div class="scroll-x">
+        <table class="fin-table" id="tblSaldoPorPagar">
+          <thead>
+            <tr><th></th><th class="right">CLP (eq.)</th><th class="right">USD</th><th class="right">BRL</th><th class="right">ARS</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Saldo total</td>
+              <td class="right" id="saldoCLP">$0</td>
+              <td class="right" id="saldoUSD">0</td>
+              <td class="right" id="saldoBRL">0</td>
+              <td class="right" id="saldoARS">0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="scroll-x" style="margin-top:.5rem;">
+      <table class="fin-table" id="tblDetalleProv">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Negocio-ID</th>
+            <th>Grupo</th>
+            <th>Servicio</th>
+            <th class="right">Pax</th>
+            <th>Modalidad</th>
+            <th>Moneda</th>
+            <th class="right">Tarifa</th>
+            <th class="right">USD</th>
+            <th class="right">BRL</th>
+            <th class="right">ARS</th>
+            <th class="right">CLP</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+        <tfoot><tr>
+          <th colspan="11" class="right">Total CLP (eq.)</th>
+          <th id="modalTotalCLP" class="right">$0</th>
+        </tr></tfoot>
+      </table>
+    </div>
+  `;
+
+  // ----- Rellenar RESUMEN -----
+  const tbRes = cont.querySelector('#tblProvResumen tbody');
+  tbRes.innerHTML = '';
+  for (const r of resumen) {
+    tbRes.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td title="${r.servicio}">${r.servicio}</td>
+        <td class="right" title="${r.clpConv}">${money(r.clpConv)}</td>
+        <td class="right" title="${r.usdEq}">${fmt(r.usdEq)}</td>
+        <td class="right" title="${r.brlEq}">${fmt(r.brlEq)}</td>
+        <td class="right" title="${r.arsEq}">${fmt(r.arsEq)}</td>
+        <td class="right" title="${r.saldoCLP}">${money(r.saldoCLP)}</td>
+        <td class="right" title="${r.count}">${fmt(r.count)}</td>
+        <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicio)}">Ver detalle</button></td>
       </tr>
     `);
   }
 
-  // precalcular saldos CLP de cada fila (after abonos fetch al seleccionar)
-}
+  // ----- Rellenar ABONOS -----
+  let aboTot = {CLP:0,USD:0,BRL:0,ARS:0};
+  const tbAbo = cont.querySelector('#tblAbonos tbody');
+  tbAbo.innerHTML = '';
+  abonosMap.forEach((acc, servicio) => {
+    for (const a of acc.lista){
+      abonosGlobal.push(a);
+      tbAbo.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td>${servicio}</td>
+          <td>${a.destino}</td>
+          <td>${a.fecha||''}</td>
+          <td>${a.moneda}</td>
+          <td class="right">${fmt(a.monto)}</td>
+          <td class="right">${a.clpEq!=null?fmt(a.clpEq):'—'}</td>
+          <td class="right">${a.usdEq!=null?fmt(a.usdEq):'—'}</td>
+          <td class="right">${a.brlEq!=null?fmt(a.brlEq):'—'}</td>
+          <td class="right">${a.arsEq!=null?fmt(a.arsEq):'—'}</td>
+          <td>${a.nota||''}</td>
+          <td>${a.url?`<a href="${a.url}" target="_blank">ver</a>`:''}</td>
+        </tr>
+      `);
+      if (a.clpEq!=null) aboTot.CLP += a.clpEq;
+      if (a.usdEq!=null) aboTot.USD += a.usdEq;
+      if (a.brlEq!=null) aboTot.BRL += a.brlEq;
+      if (a.arsEq!=null) aboTot.ARS += a.arsEq;
+    }
+  });
+  if (abonosGlobal.length){
+    cont.querySelector('#secAbonos').style.display = '';
+    el('aboTotCLP').textContent = money(aboTot.CLP);
+    el('aboTotUSD').textContent = fmt(aboTot.USD);
+    el('aboTotBRL').textContent = fmt(aboTot.BRL);
+    el('aboTotARS').textContent = fmt(aboTot.ARS);
+  }
 
-function pintarDetalleFiltrado(items, monedaNativa){
-  const cont = el('tblDetalleProv').querySelector('tbody');
-  cont.innerHTML = '';
-  let totCLP = 0;
-
-  const rows = [...items].sort((a,b)=>
+  // ----- Rellenar DETALLE -----
+  const tb = cont.querySelector('#tblDetalleProv tbody');
+  tb.innerHTML = '';
+  const rows = [...data.items].sort((a,b) =>
     (a.fecha || '').localeCompare(b.fecha || '') ||
     (a.nombreGrupo || '').localeCompare(b.nombreGrupo || '')
   );
 
-  for (const it of rows){
-    if (typeof it.totalCLP === 'number') totCLP += it.totalCLP;
+  let totCLP = 0;
+  const detalleForXLSX = [];
+  for (const it of rows) {
+    const conv = convertirTodas(it.moneda, it.totalMoneda);
+    if (typeof conv.CLP === 'number') totCLP += conv.CLP;
 
     const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
-    const negocioId = cod || (it.grupoId || '');
-    const grupoTxt = it.nombreGrupo || '';
+    const grupoTxt = it.nombreGrupo || it.grupoId || '';
+    const modalidad = `${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}`;
 
-    cont.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td title="${it.fecha || ''}">${it.fecha || ''}</td>
-        <td title="${negocioId}">${negocioId}</td>
-        <td title="${grupoTxt}">${grupoTxt}</td>
-        <td title="${it.servicio || ''}">${it.servicio || ''}</td>
-        <td class="right" title="${it.pax || 0}">${fmt(it.pax || 0)}</td>
-        <td title="${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}">
-          ${it.pagoTipo === 'por_pax' ? 'por pax' : 'por grupo'} — ${it.pagoFrecuencia || 'unitario'}
-        </td>
+    const cell = (val, isNative) => `
+      <td class="right" title="${val==null ? '' : fmt(val)}">
+        ${val==null ? '—' : (isNative ? `<span class="is-native">${fmt(val)}</span>` : fmt(val))}
+      </td>
+    `;
+
+    tb.insertAdjacentHTML('beforeend', `
+      <tr data-svc="${slug(it.servicio || '')}">
+        <td>${it.fecha || ''}</td>
+        <td>${cod || ''}</td>
+        <td>${grupoTxt}</td>
+        <td>${it.servicio || ''}</td>
+        <td class="right">${fmt(it.pax || 0)}</td>
+        <td>${modalidad}</td>
         <td>${it.moneda || 'CLP'}</td>
         <td class="right">${fmt(it.tarifa || 0)}</td>
-        <td class="right">${fmt(it.totalMoneda || 0)}</td>
-        <td class="right">
-          ${typeof it.totalCLP === 'number' ? fmt(it.totalCLP) : '—'}
-        </td>
+        ${cell(conv.USD, it.moneda==='USD')}
+        ${cell(conv.BRL, it.moneda==='BRL')}
+        ${cell(conv.ARS, it.moneda==='ARS')}
+        ${cell(conv.CLP, it.moneda==='CLP')}
       </tr>
     `);
+
+    detalleForXLSX.push({
+      fecha: it.fecha||'', cod, nombreGrupo:grupoTxt, servicio:it.servicio||'',
+      pax: it.pax||0, modalidad, moneda: it.moneda||'CLP', tarifa: it.tarifa||0,
+      usd: conv.USD||'', brl:conv.BRL||'', ars:conv.ARS||'', clp:conv.CLP||''
+    });
   }
   el('modalTotalCLP').textContent = money(totCLP);
 
-  // resaltar columna nativa en detalle: marcamos todas las celdas de esa moneda con .is-native via CSS? Aquí ya marcamos en resumen; en detalle lo lógico es el valor en USD/BRL/ARS/CLP
-  // Como en detalle sólo mostramos “Moneda” y “Total”, se entiende por contexto.
-}
+  // Saldo total (CLP eq.)
+  const totalServiciosCLP = resumen.reduce((s,r)=>s+(r.clpConv||0),0);
+  const saldoTotalCLP = totalServiciosCLP - aboTot.CLP;
+  const secSaldo = cont.querySelector('#secSaldo');
+  secSaldo.style.display = '';
+  el('saldoCLP').textContent = money(saldoTotalCLP);
+  // USD/BRL/ARS totales de saldo: mostramos los equivalentes de CLP a cada moneda si hay TC
+  const tcUSD = pickTC('USD'), tcBRL = pickTC('BRL'), tcARS = pickTC('ARS');
+  el('saldoUSD').textContent = tcUSD ? fmt(saldoTotalCLP / tcUSD) : '—';
+  el('saldoBRL').textContent = tcBRL ? fmt(saldoTotalCLP / tcBRL) : '—';
+  el('saldoARS').textContent = tcARS ? fmt(saldoTotalCLP / tcARS) : '—';
 
-// Rellena tarjetas + abonos + saldo (tras seleccionar servicio)
-function pintarFinanzasServicio(svc){
-  const items = svc.items;
-  const tot = sumEq(items);
-
-  // Abonos (ya deben estar en MODAL.abonosPorServicio[key])
-  const key = `${svc.destinoId}|${svc.servicioId}`;
-  const abonos = MODAL.abonosPorServicio[key] || [];
-  const abEqItems = abonos.map(a => ({
-    totalMoneda: Number(a.monto || 0),
-    moneda: a.moneda || 'CLP'
-  }));
-  const abo = sumEq(abEqItems);
-  const sal = {
-    CLP: tot.CLP - abo.CLP,
-    USD: tot.USD - abo.USD,
-    BRL: tot.BRL - abo.BRL,
-    ARS: tot.ARS - abo.ARS
-  };
-
-  // Tarjetas
-  const native = svc.monedaNativa;
-  const setVal = (id, value, makeBlue=false) => {
-    const node = el(id);
-    node.textContent = id.includes('CLP') ? money(value) : fmt(value);
-    node.classList.toggle('is-native', !!makeBlue);
-  };
-  setVal('totCLP', tot.CLP, native==='CLP'); setVal('totUSD', tot.USD, native==='USD');
-  setVal('totBRL', tot.BRL, native==='BRL'); setVal('totARS', tot.ARS, native==='ARS');
-
-  setVal('aboCLP', abo.CLP); setVal('aboUSD', abo.USD); setVal('aboBRL', abo.BRL); setVal('aboARS', abo.ARS);
-
-  setVal('salCLP', sal.CLP, native==='CLP'); setVal('salUSD', sal.USD, native==='USD');
-  setVal('salBRL', sal.BRL, native==='BRL'); setVal('salARS', sal.ARS, native==='ARS');
-
-  // Tabla Saldo compacta
-  el('saldoCLP').textContent = money(sal.CLP);
-  el('saldoUSD').textContent = fmt(sal.USD);
-  el('saldoBRL').textContent = fmt(sal.BRL);
-  el('saldoARS').textContent = fmt(sal.ARS);
-
-  // Tabla de Abonos (fila “monto” en azul en su moneda)
-  const tb = el('tblAbonos').querySelector('tbody');
-  tb.innerHTML = '';
-  let totAboEq = { CLP:0, USD:0, BRL:0, ARS:0 };
-  for (const a of abonos){
-    const e = eqAll(Number(a.monto||0), a.moneda||'CLP');
-    totAboEq.CLP += e.CLP; totAboEq.USD += e.USD; totAboEq.BRL += e.BRL; totAboEq.ARS += e.ARS;
-
-    const isC = (m)=> (a.moneda===m?'is-abono':'');
-    tb.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td>${a.fecha || ''}</td>
-        <td>${a.moneda || 'CLP'}</td>
-        <td class="right ${isC('CLP')}">${fmt(a.monto || 0)}</td>
-        <td class="right">${money(e.CLP)}</td>
-        <td class="right">${fmt(e.USD)}</td>
-        <td class="right">${fmt(e.BRL)}</td>
-        <td class="right">${fmt(e.ARS)}</td>
-        <td>${(a.nota || '').toString().slice(0,120)}</td>
-        <td>${a.fileUrl ? `<a href="${a.fileUrl}" target="_blank">ver</a>` : ''}</td>
-      </tr>
-    `);
-  }
-  el('aboTotCLP').textContent = money(totAboEq.CLP);
-  el('aboTotUSD').textContent = fmt(totAboEq.USD);
-  el('aboTotBRL').textContent = fmt(totAboEq.BRL);
-  el('aboTotARS').textContent = fmt(totAboEq.ARS);
-
-  // Mostrar secciones
-  el('resumenTotales').style.display = '';
-  el('secAbonos').style.display = '';
-  el('secSaldo').style.display  = '';
-}
-
-// Abre modal proveedor
-function openModalProveedor(slugProv, data) {
-  MODAL.provSlug = slugProv;
-  MODAL.provNombre = data?.nombre || slugProv;
-  MODAL.items = data.items || [];
-  MODAL.resumenServicios = agruparItemsPorServicioConEq(MODAL.items);
-  MODAL.current = null;
-
-  // Title con destinos + tot grupos/pax
-  const destinosTxt = [...(data.destinos||[])].join(', ');
-  const grupos = new Set(MODAL.items.map(i => i.grupoId));
-  const paxTot = MODAL.items.reduce((s,i)=> s + (Number(i.pax||0)), 0);
-
-  el('modalTitle').textContent = `Detalle — ${MODAL.provNombre} · Destinos: ${destinosTxt} · Grupos: ${fmt(grupos.size)} · Pax: ${fmt(paxTot)}`;
-  el('modalSub').textContent = 'Los montos muestran equivalentes en CLP, USD, BRL y ARS según los tipos de cambio indicados en la cabecera. En azul se resalta la moneda original del servicio y la moneda del abono. El “saldo” = Total − Abonos (mismos TC actuales).';
-
-  // Resumen por servicio
-  pintarResumenServicios();
-
-  // Detalle completo (sin filtro)
-  const tbody = el('tblDetalleProv').querySelector('tbody');
-  tbody.innerHTML = '';
-  el('modalTotalCLP').textContent = money(0);
-  pintarDetalleFiltrado(MODAL.items, null);
-
-  // Ocultar secciones finanzas (hasta que elijan “Ver detalle”)
-  el('resumenTotales').style.display = 'none';
-  el('secAbonos').style.display = 'none';
-  el('secSaldo').style.display  = 'none';
-  el('btnAbonar').disabled = true;
-  el('btnExportModal').disabled = true;
-
-  // Eventos
-  const cont = el('tblProvResumen').querySelector('tbody');
+  // ----- Interacciones -----
+  const btnClear = cont.querySelector('#btnDetClear');
+  let servicioActivoSlug = '';
   cont.querySelectorAll('.btn-det-svc').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const tr = btn.closest('tr');
-      const servicioId = tr.getAttribute('data-svcid');
-      const destinoId  = tr.getAttribute('data-dest') || '';
-      const row = MODAL.resumenServicios.find(r => (r.servicioId||'') === (servicioId||'') && (r.destinoId||'') === destinoId);
+    btn.addEventListener('click', () => {
+      const svc = btn.getAttribute('data-svc');
+      servicioActivoSlug = svc;
+      const rows = cont.querySelectorAll('#tblDetalleProv tbody tr');
+      let hayFiltro = false;
+      rows.forEach(tr => {
+        const ok = tr.getAttribute('data-svc') === svc;
+        tr.style.display = ok ? '' : 'none';
+        if (ok) hayFiltro = true;
+      });
+      btnClear.style.display = hayFiltro ? '' : 'none';
+      // habilitar Abonar sólo si hay filtro activo
+      cont.querySelector('#btnAbonar').disabled = !hayFiltro;
+      // precargar selects del submodal
+      prepararDialogoAbono(resumen, abonosMap, svc);
+    });
+  });
+  btnClear.addEventListener('click', () => {
+    cont.querySelectorAll('#tblDetalleProv tbody tr').forEach(tr => tr.style.display = '');
+    btnClear.style.display = 'none';
+    servicioActivoSlug = '';
+    cont.querySelector('#btnAbonar').disabled = true;
+  });
 
-      if (!row){ return; }
-
-      MODAL.current = {
-        servicioId: row.servicioId, servicioNombre: row.servicioNombre,
-        destinoId: row.destinoId, monedaNativa: row.monedaNativa,
-        items: row.items
-      };
-
-      // Cargar abonos del servicio
-      await loadAbonosServicio(row.destinoId, row.servicioId);
-
-      // Pintar tarjetas, abonos, saldo y detalle filtrado
-      pintarFinanzasServicio(MODAL.current);
-      pintarDetalleFiltrado(row.items, row.monedaNativa);
-
-      // Recalcular saldo CLP eq. de esa fila (ahora que tenemos abonos)
-      const key = `${row.destinoId}|${row.servicioId}`;
-      const abonos = MODAL.abonosPorServicio[key] || [];
-      const aboCLP = abonos.reduce((s,a)=> s + (eqAll(Number(a.monto||0), a.moneda||'CLP').CLP), 0);
-      const saldoCLP = row.totalsEq.CLP - aboCLP;
-      tr.querySelector('[data-saldo="clp"]').textContent = money(saldoCLP);
-
-      // Habilitar botones
-      el('btnDetClear').style.display = '';
-      el('btnAbonar').disabled = false;
-      el('btnExportModal').disabled = false;
+  // Export XLSX
+  cont.querySelector('#btnExportModal').addEventListener('click', () => {
+    exportModalToXLSX({
+      resumen: resumen.map(r=>({ ...r })), // incluye saldo
+      abonosGlobal,
+      detalle: detalleForXLSX
     });
   });
 
-  el('btnDetClear').onclick = () => {
-    // Quitar filtro
-    MODAL.current = null;
-    pintarDetalleFiltrado(MODAL.items, null);
-    el('resumenTotales').style.display = 'none';
-    el('secAbonos').style.display = 'none';
-    el('secSaldo').style.display  = 'none';
-    el('btnDetClear').style.display = 'none';
-    el('btnAbonar').disabled = true;
-    el('btnExportModal').disabled = true;
-    // Reset saldos a “—”
-    el('tblProvResumen').querySelectorAll('tbody [data-saldo="clp"]').forEach(td=> td.textContent='—');
+  // Abrir submodal abono
+  cont.querySelector('#btnAbonar').addEventListener('click', () => {
+    if (!servicioActivoSlug){ alert('Primero filtra con "Ver detalle" sobre un servicio.'); return; }
+    el('abonoDialog').style.display = 'flex';
+  });
+  // Cerrar submodal
+  el('abnCancel').onclick = () => { el('abonoDialog').style.display = 'none'; };
+
+  // Guardar abono
+  el('abnSave').onclick = async () => {
+    const servicio = el('abnServicio').value;
+    const destino  = el('abnDestino').value;
+    const fecha    = el('abnFecha').value;
+    const moneda   = el('abnMoneda').value;
+    const monto    = el('abnMonto').value;
+    const nota     = el('abnNota').value;
+    const file     = el('abnFile').files?.[0];
+
+    if (!servicio || !destino || !fecha || !monto){ alert('Completa servicio, destino, fecha y monto.'); return; }
+    try {
+      await guardarAbono({servicio, destino, fecha, moneda, monto, nota, file});
+      alert('Abono registrado.');
+      el('abonoDialog').style.display = 'none';
+      // refrescamos el modal rápido: volvemos a abrir
+      openModalProveedor(slugProv, data);
+    } catch (e) {
+      console.error(e);
+      alert('No se pudo registrar el abono.');
+    }
   };
 
-  // Exportación XLSX (modal)
-  el('btnExportModal').onclick = () => exportModalXLSX();
-
-  // Abonar
-  el('btnAbonar').onclick = () => openAbonoModal();
-
   // Mostrar modal
-  el('backdrop').style.display = 'block';
-  el('modal').style.display = 'block';
+  backdrop.style.display = 'block';
+  modal.style.display = 'block';
   document.body.classList.add('modal-open');
+}
+
+function prepararDialogoAbono(resumen, abonosMap, servicioSlug){
+  // servicioSlug es el slug(servicio). Debemos poblar selects a partir de ese servicio
+  const findServicio = resumen.find(r => slug(r.servicio) === servicioSlug);
+  const svcSel = el('abnServicio'), dstSel = el('abnDestino');
+  svcSel.innerHTML = '';
+  dstSel.innerHTML = '';
+
+  if (findServicio){
+    // servicio
+    svcSel.insertAdjacentHTML('beforeend', `<option value="${findServicio.servicio}">${findServicio.servicio}</option>`);
+    // destinos posibles (desde los items o desde abonosMap)
+    const dests = new Set(findServicio.items?.map(i=>i.destinoGrupo).filter(Boolean) || []);
+    const ab = abonosMap.get(findServicio.servicio);
+    if (ab) ab.destinos.forEach(d=>dests.add(d));
+    [...dests].forEach(d=> dstSel.insertAdjacentHTML('beforeend', `<option>${d}</option>`));
+  }
+  // valores por defecto
+  el('abnFecha').value = new Date().toISOString().slice(0,10);
+  el('abnMoneda').value = 'CLP';
+  el('abnMonto').value = '';
+  el('abnNota').value = '';
+  el('abnFile').value = '';
 }
 
 function closeModal() {
@@ -815,197 +940,9 @@ function closeModal() {
   document.body.classList.remove('modal-open');
 }
 
-// ---------------------------------------------------------------
-// 8) Export CSV (pantalla principal)
-// ---------------------------------------------------------------
-function exportCSV() {
-  const header = ['Fecha','Proveedor','Servicio','Grupo','Destino','Pax','Modalidad','Moneda','Tarifa','TotalMoneda','TotalCLP'];
-  const rows = [header.join(',')];
-
-  for (const it of LINE_ITEMS) {
-    const modalidad = `${it.pagoTipo||''}/${it.pagoFrecuencia||''}`;
-    const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
-    rows.push([
-      it.fecha || '',
-      (it.proveedor || '').replaceAll(',',' '),
-      (it.servicio || '').replaceAll(',',' '),
-      ((cod ? `${cod} — ` : '') + (it.nombreGrupo || '')).replaceAll(',',' '),
-      (it.destinoGrupo || '').replaceAll(',',' '),
-      it.pax || 0,
-      modalidad,
-      it.moneda || 'CLP',
-      it.tarifa || 0,
-      it.totalMoneda || 0,
-      (typeof it.totalCLP === 'number' ? it.totalCLP : '')
-    ].join(','));
-  }
-
-  for (const it of LINE_HOTEL) {
-    const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
-    rows.push([
-      '',
-      (it.hotel || '').replaceAll(',',' '),
-      `HOTEL (${it.tipoCobro})`,
-      ((cod ? `${cod} — ` : '') + (it.nombreGrupo || '')).replaceAll(',',' '),
-      (it.destinoGrupo || '').replaceAll(',',' '),
-      it.noches || 0,
-      it.tipoCobro || '',
-      it.moneda || 'CLP',
-      it.tarifa || 0,
-      it.totalMoneda || 0,
-      (typeof it.totalCLP === 'number' ? it.totalCLP : '')
-    ].join(','));
-  }
-
-  const blob = new Blob([rows.join('\n')], { type:'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url;
-  a.download = `finanzas_RT_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// ---------------------------------------------------------------
-// 9) Exportación XLSX (contenido del modal)
-// ---------------------------------------------------------------
-function exportModalXLSX(){
-  if (typeof XLSX === 'undefined'){ alert('Librería XLSX no disponible.'); return; }
-
-  // 1) Resumen por servicio
-  const res = [['Servicio','CLP (eq.)','USD','BRL','ARS','Saldo CLP','Items']];
-  el('tblProvResumen').querySelectorAll('tbody tr').forEach(tr=>{
-    const tds = tr.querySelectorAll('td');
-    res.push([
-      tds[0]?.textContent?.trim() || '',
-      tds[1]?.textContent?.trim() || '',
-      tds[2]?.textContent?.trim() || '',
-      tds[3]?.textContent?.trim() || '',
-      tds[4]?.textContent?.trim() || '',
-      tds[5]?.textContent?.trim() || '',
-      tds[6]?.textContent?.trim() || ''
-    ]);
-  });
-
-  // 2) Abonos
-  const abo = [['Fecha','Moneda','Monto','CLP (eq.)','USD (eq.)','BRL (eq.)','ARS (eq.)','Nota','Comprobante']];
-  el('tblAbonos').querySelectorAll('tbody tr').forEach(tr=>{
-    const tds = tr.querySelectorAll('td');
-    abo.push([
-      tds[0]?.textContent?.trim() || '',
-      tds[1]?.textContent?.trim() || '',
-      tds[2]?.textContent?.trim() || '',
-      tds[3]?.textContent?.trim() || '',
-      tds[4]?.textContent?.trim() || '',
-      tds[5]?.textContent?.trim() || '',
-      tds[6]?.textContent?.trim() || '',
-      tds[7]?.textContent?.trim() || '',
-      tds[8]?.textContent?.trim() || ''
-    ]);
-  });
-
-  // 3) Detalle
-  const det = [['Fecha','Negocio-ID','Grupo','Servicio','Pax','Modalidad','Moneda','Tarifa','Total (mon)','Total CLP']];
-  el('tblDetalleProv').querySelectorAll('tbody tr').forEach(tr=>{
-    const tds = tr.querySelectorAll('td');
-    det.push([
-      tds[0]?.textContent?.trim() || '',
-      tds[1]?.textContent?.trim() || '',
-      tds[2]?.textContent?.trim() || '',
-      tds[3]?.textContent?.trim() || '',
-      tds[4]?.textContent?.trim() || '',
-      tds[5]?.textContent?.trim() || '',
-      tds[6]?.textContent?.trim() || '',
-      tds[7]?.textContent?.trim() || '',
-      tds[8]?.textContent?.trim() || '',
-      tds[9]?.textContent?.trim() || ''
-    ]);
-  });
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(res), 'Resumen');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(abo), 'Abonos');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det), 'Detalle');
-
-  XLSX.writeFile(wb, `finanzas_modal_${new Date().toISOString().slice(0,10)}.xlsx`);
-}
-
-// ---------------------------------------------------------------
-// 10) Modal Abono (crud mínimo: create)
-// ---------------------------------------------------------------
-function openAbonoModal(){
-  if (!MODAL.current || !MODAL.current.servicioId){ alert('Selecciona un servicio con "Ver detalle".'); return; }
-  el('abonoServicio').textContent = `${MODAL.current.servicioNombre} · ${MODAL.current.destinoId}`;
-  el('abonoFecha').value = new Date().toISOString().slice(0,10);
-  el('abonoMoneda').value = 'CLP';
-  el('abonoMonto').value = '';
-  el('abonoNota').value  = '';
-  el('abonoFile').value  = '';
-  el('abonoError').style.display = 'none';
-
-  el('abonoBackdrop').style.display = 'block';
-  el('abonoModal').style.display = 'block';
-
-  // Cerrar
-  const close = ()=>{ el('abonoBackdrop').style.display='none'; el('abonoModal').style.display='none'; };
-  el('abonoClose').onclick = close;
-  el('abonoCancel').onclick = close;
-
-  // Guardar
-  el('abonoSave').onclick = async () => {
-    try{
-      const fecha   = el('abonoFecha').value;
-      const moneda  = el('abonoMoneda').value;
-      const monto   = Number(el('abonoMonto').value || 0);
-      const nota    = el('abonoNota').value || '';
-      const file    = el('abonoFile').files[0] || null;
-
-      if (!fecha || !moneda || !monto || monto<=0){
-        el('abonoError').textContent = 'Fecha, moneda y monto son obligatorios.';
-        el('abonoError').style.display = 'block';
-        return;
-      }
-
-      const { destinoId, servicioId } = MODAL.current;
-      const data = {
-        proveedor: MODAL.provNombre,
-        destino: destinoId,
-        servicio: MODAL.current.servicioNombre,
-        fecha, moneda, monto, nota,
-        tcUSD: pickTC('USD')||0, tcBRL: pickTC('BRL')||0, tcARS: pickTC('ARS')||0,
-        createdAt: new Date().toISOString(),
-      };
-
-      // Adjuntar (opcional)
-      if (file){
-        const path = `abonos/${destinoId}/${servicioId}/${Date.now()}_${file.name}`;
-        const r = sRef(storage, path);
-        await uploadBytes(r, file);
-        const url = await getDownloadURL(r);
-        data.fileUrl = url;
-        data.filePath = path;
-      }
-
-      await addDoc(collection(db, RUTA_SERVICIOS, destinoId, 'Listado', servicioId, 'Abonos'), data);
-
-      // refrescar abonos + tarjetas
-      await loadAbonosServicio(destinoId, servicioId);
-      pintarFinanzasServicio(MODAL.current);
-
-      // cerrar
-      el('abonoBackdrop').style.display = 'none';
-      el('abonoModal').style.display   = 'none';
-    }catch(e){
-      console.error(e);
-      el('abonoError').textContent = 'Error guardando el abono.';
-      el('abonoError').style.display = 'block';
-    }
-  };
-}
-
-// ---------------------------------------------------------------
-// 11) Recalcular (pantalla principal)
-// ---------------------------------------------------------------
+// -------------------------------
+// 7) Recalcular
+// -------------------------------
 function getDestinosSeleccionados() {
   const sel = el('filtroDestino');
   return new Set([...sel.selectedOptions].map(o => o.value));
@@ -1025,8 +962,7 @@ function poblarFiltrosBasicos() {
   el('filtroAnio').innerHTML = arrAnios
     .map(a => `<option value="${a}" ${a===anioActual?'selected':''}>${a}</option>`).join('');
 
-  const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))]
-                 .sort((a,b)=>a.localeCompare(b));
+  const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
   el('filtroDestino').innerHTML = dests.map(d => `<option value="${d}">${d}</option>`).join('');
 }
 
@@ -1081,9 +1017,60 @@ function recalcular() {
   }
 }
 
-// ---------------------------------------------------------------
-// 12) Boot
-// ---------------------------------------------------------------
+// -------------------------------
+// 8) Export CSV (general)
+// -------------------------------
+function exportCSV() {
+  const header = ['Fecha','Proveedor','Servicio','Grupo','Destino','Pax','Modalidad','Moneda','Tarifa','TotalMoneda','TotalCLP'];
+  const rows = [header.join(',')];
+
+  for (const it of LINE_ITEMS) {
+    const modalidad = `${it.pagoTipo||''}/${it.pagoFrecuencia||''}`;
+    const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
+    rows.push([
+      it.fecha || '',
+      (it.proveedor || '').replaceAll(',',' '),
+      (it.servicio || '').replaceAll(',',' '),
+      ((cod ? `${cod} — ` : '') + (it.nombreGrupo || '')).replaceAll(',',' '),
+      (it.destinoGrupo || '').replaceAll(',',' '),
+      it.pax || 0,
+      modalidad,
+      it.moneda || 'CLP',
+      it.tarifa || 0,
+      it.totalMoneda || 0,
+      (typeof it.totalCLP === 'number' ? it.totalCLP : '')
+    ].join(','));
+  }
+
+  for (const it of LINE_HOTEL) {
+    const cod = [it.numeroNegocio || it.grupoId, it.identificador].filter(Boolean).join('-');
+    rows.push([
+      '',
+      (it.hotel || '').replaceAll(',',' '),
+      `HOTEL (${it.tipoCobro})`,
+      ((cod ? `${cod} — ` : '') + (it.nombreGrupo || '')).replaceAll(',',' '),
+      (it.destinoGrupo || '').replaceAll(',',' '),
+      it.noches || 0,
+      it.tipoCobro || '',
+      it.moneda || 'CLP',
+      it.tarifa || 0,
+      it.totalMoneda || 0,
+      (typeof it.totalCLP === 'number' ? it.totalCLP : '')
+    ].join(','));
+  }
+
+  const blob = new Blob([rows.join('\n')], { type:'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url;
+  a.download = `finanzas_RT_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// -------------------------------
+// 9) Boot
+// -------------------------------
 function bindUI() {
   el('filtroAnio').addEventListener('change', () => { aplicarRangoPorAnio(); recalcular(); });
   el('filtroDestino').addEventListener('change', recalcular);
@@ -1106,12 +1093,7 @@ function bindUI() {
 async function boot() {
   onAuthStateChanged(auth, async () => {
     try {
-      await Promise.all([
-        loadGrupos(),
-        loadServicios(),
-        loadProveedores(),
-        loadHotelesYAsignaciones()
-      ]);
+      await Promise.all([loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones()]);
       poblarFiltrosBasicos();
       aplicarRangoPorAnio();
       bindUI();
@@ -1123,6 +1105,6 @@ async function boot() {
 }
 boot();
 
-// Exponer closeModal, openModalProveedor si lo necesitas fuera
+// Exponer para helpers
 window.closeModal = closeModal;
 window.openModalProveedor = openModalProveedor;
