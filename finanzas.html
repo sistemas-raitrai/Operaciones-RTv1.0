@@ -244,6 +244,30 @@
     /* Por si aún no lo tenías: moneda nativa en naranjo */
     .is-native-service { color:#d97706; font-weight:700; }
 
+    /* === Iconos en columna ACCIONES (ABONOS) === */
+    #tblAbonos td.actions{
+      width: 220px;              /* mantengo tu ancho fijo */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .icon-actions{
+      display:flex; align-items:center; gap:.25rem;
+    }
+    
+    .icon-btn{
+      background:transparent; border:none; padding:.35rem;
+      border-radius:8px; cursor:pointer; line-height:0;
+    }
+    .icon-btn:hover{ background:#f3f4f6; }
+    .icon-btn:focus-visible{ outline:2px solid #2563eb; outline-offset:2px; }
+    
+    .icon-btn svg{ width:18px; height:18px; display:block; }
+    .icon-btn.edit{ color:#111827; }     /* lápiz */
+    .icon-btn.archive{ color:#6b7280; }  /* archivar */
+    .icon-btn.archive:hover{ color:#b91c1c; } /* toque rojo al pasar */   
+
   </style>
 </head>
 
