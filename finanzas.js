@@ -858,13 +858,6 @@ function buildModalShell() {
   // estado local del toggle archivados
   cont.dataset.verArchivados = '0';
   
-// dentro de openModalProveedor, después de buildModalShell() y de tener 'cont' y 'data'
-const btnXLS = $('#btnExportXLS', cont);
-if (btnXLS) btnXLS.addEventListener('click', () => {
-  exportModalToExcel(cont, data?.nombre || slugProv);
-});
-  
-
   cont.innerHTML = `
     <div class="modal-toolbar">
       <input id="modalSearch" type="search" placeholder="BUSCAR EN ABONOS Y DETALLE…" />
@@ -1016,6 +1009,13 @@ if (btnXLS) btnXLS.addEventListener('click', () => {
     </div>
   `;
   return cont;
+  
+// dentro de openModalProveedor, después de buildModalShell() y de tener 'cont' y 'data'
+const btnXLS = $('#btnExportXLS', cont);
+if (btnXLS) btnXLS.addEventListener('click', () => {
+  exportModalToExcel(cont, data?.nombre || slugProv);
+});
+  
 }
 function paintSaldoCells({ clp, usd, brl, ars }) {
   const neg = (v) => v && Math.abs(v) > 0.0001;
