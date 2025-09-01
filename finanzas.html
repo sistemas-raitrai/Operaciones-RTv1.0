@@ -52,127 +52,91 @@
       box-shadow:0 1px 2px rgba(0,0,0,.05);
       padding:1rem;
     }
-  
-    /* =========================================================
-   FILTROS (BARRA) — versión final alineada
-   ========================================================= */
+
+    /* ============================
+   FILTROS (dos contenedores)
+   ============================ */
     #rt-fin #filtersCard{ position:static; }
     
-    #rt-fin #filtersCard .controls{
+    /* Contenedor general: dos filas (top/bottom) */
+    #rt-fin #filtersCard .controls.two-rows{
       display:grid;
-      grid-template-areas:
-        "destino  anio    checks   tc"
-        "destino  fechas  checks   tc";
-      grid-template-columns: 360px 260px 180px 1fr;
-      grid-template-rows: auto minmax(36px, auto); /* ⬅ añade la 2ª fila con alto mínimo */
-      grid-auto-rows:auto;
-      column-gap:24px;
-      row-gap:8px;
-      align-items:end;
+      row-gap:12px;
       overflow-x:auto;
       padding-bottom:.25rem;
       scrollbar-width:thin;
     }
     
-    /* Áreas */
-    #filtersCard .f-destino{ grid-area:destino; }
-    #filtersCard .f-anio{ grid-area:anio; }
-    #filtersCard .f-fechas{
-      grid-area:fechas;
+    /* -------- Fila superior -------- */
+    #rt-fin #filtersCard .filters-top{
       display:grid;
-      grid-template-columns: 1fr 1fr;  /* Desde | Hasta */
+      grid-template-columns: 360px 260px 1fr;   /* Destino | Año | Fechas */
+      column-gap:24px;
+      align-items:end;                          /* alinea “Desde/Hasta” con selects */
+    }
+    
+    /* Fechas: 2 columnas internas */
+    #rt-fin #filtersCard .f-fechas{
+      display:grid;
+      grid-template-columns: 1fr 1fr;           /* Desde | Hasta */
       gap:10px;
       align-items:end;
     }
-    #filtersCard .f-tc{
-      grid-area:tc;
+    
+    /* -------- Fila inferior -------- */
+    #rt-fin #filtersCard .filters-bottom{
       display:grid;
-      align-content:end;
-      gap:6px;
+      grid-template-columns: 220px 1fr;         /* Checks | Tipo de cambio */
+      column-gap:24px;
+      align-items:end;                          /* alinea con inputs de TC */
     }
     
-    /* === FIX de alineación: checks en 2 filas (Actividades / Hoteles) === */
+    /* Checks bien pegados al borde inferior */
     #filtersCard .f-checks{
-      grid-area:checks;
       display:grid;
-      grid-template-rows: 1fr 1fr;   /* una fila para cada check */
-      align-self:stretch;            /* ocupa alto completo del bloque */
-      align-items:center;            /* centra cada label en su fila */
-      padding-left:12px;             /* aire respecto de “Hasta” */
-      gap:0;                         /* sin gap vertical extra */
+      row-gap:8px;
+      align-content:end;
     }
     #filtersCard .f-checks .chk{
-      display:flex; align-items:center; gap:.45rem;
-      min-height:36px;               /* alto visual similar a inputs */
-      font-weight:600; line-height:1;
+      display:flex; align-items:center; gap:.45rem; font-weight:600;
     }
-    #filtersCard .f-checks .chk input[type="checkbox"]{
-      margin:0; transform:none;      /* sin empuje vertical */
+    #filtersCard .f-checks input[type="checkbox"]{ margin:0; }
+    
+    /* Tipo de cambio en una línea, con wrap si falta ancho */
+    #filtersCard .f-tc .row{
+      display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    }
+    #filtersCard .f-tc .btn{ white-space:nowrap; }
+    
+    /* Campos (label arriba, control abajo) */
+    #filtersCard .field > label{
+      display:block; margin-bottom:4px; font-weight:600; white-space:nowrap;
     }
     
-    /* Labels arriba (destino/año/fechas) */
-    #filtersCard .f-destino label,
-    #filtersCard .f-anio label,
-    #filtersCard .f-fechas label{
-      display:block;
-      margin-bottom:4px;
-      font-weight:600;
-      white-space:nowrap;
-    }
-    
-    /* Controles */
+    /* Tamaños cómodos */
     #filtersCard select[multiple]{ min-height:120px; min-width:240px; }
     #filtersCard input[type="date"],
     #filtersCard select{ min-width:140px; padding:.35rem .5rem; }
     #filtersCard input[type="number"]{ width:110px; padding:.35rem .5rem; text-align:right; }
     
-    /* TC alineado */
-    #filtersCard .f-tc .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-    #filtersCard .f-tc .btn{ white-space:nowrap; }
+    /* -------- Responsive -------- */
+    @media (max-width: 1100px){
+      #rt-fin #filtersCard .filters-top{
+        grid-template-columns: 1fr 1fr;         /* Destino ocupa fila propia */
+        row-gap:10px;
+      }
+      /* Fechas que se acomoden en 2 col si hay espacio */
+    }
     
-    /* Responsive */
-    @media (max-width:1000px){
-      #rt-fin #filtersCard .controls{
-        grid-template-areas:
-          "destino  destino"
-          "anio     checks"
-          "fechas   tc";
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: auto auto auto;
+    @media (max-width: 720px){
+      #rt-fin #filtersCard .filters-top{
+        grid-template-columns: 1fr;             /* una columna */
+      }
+      #rt-fin #filtersCard .filters-bottom{
+        grid-template-columns: 1fr;             /* checks arriba, TC abajo */
+        row-gap:10px;
       }
     }
-
-    /* === FIX de alineación de ACTIVIDADES / HOTELES === */
-
-    /* 2 filas: labels arriba, controles abajo con alto mínimo consistente */
-    #rt-fin #filtersCard .controls{
-      grid-template-rows: auto minmax(40px, auto);
-      align-items: end; /* todos los elementos pegan al borde inferior de su fila */
-    }
-    
-    /* El bloque de checks ocupa las dos filas, pero replica esa estructura
-       para poder “anclar” cada label en su fila correspondiente */
-    #filtersCard .f-checks{
-      display: grid;
-      grid-template-rows: auto minmax(40px, auto); /* 1ª fila (labels) / 2ª fila (controles) */
-      align-self: stretch;       /* ocupa todo el alto disponible del área 'checks' */
-      align-items: end;          /* cada label pegado al borde inferior de su fila */
-      justify-items: start;
-      padding-left: 12px;        /* aire respecto a “Hasta” */
-      gap: 0;                    /* sin separación vertical extra */
-    }
-    
-    /* Cada check como fila “compacta”, sin empujes raros */
-    #filtersCard .f-checks .chk{
-      display:flex; align-items:center; gap:.45rem;
-      line-height:1; margin:0;
-    }
-    #filtersCard .f-checks .chk input[type="checkbox"]{
-      margin:0; transform:none;
-    }
-    
-    /* (IMPORTANTE) elimina cualquier tweak anterior que movía el check hacia arriba */
-    #filtersCard input[type="checkbox"]{ transform:none; }
 
     /* ===== KPIs ===== */
     #rt-fin .kpi-grid{
@@ -339,49 +303,51 @@
 
       <!-- Filtros (barra) -->
       <aside class="panel" id="filtersCard">
-        <div class="controls">
-          <!-- Destino -->
-          <div class="f-destino">
-            <label for="filtroDestino">Destino</label>
-            <select id="filtroDestino" multiple></select>
-          </div>
-      
-          <!-- Año -->
-          <div class="f-anio">
-            <label for="filtroAnio">Año</label>
-            <select id="filtroAnio"></select>
-          </div>
-      
-          <!-- Fechas -->
-          <div class="f-fechas">
-            <div>
-              <label for="fechaDesde">Desde</label>
-              <input type="date" id="fechaDesde">
+        <div class="controls two-rows">
+          <!-- fila superior -->
+          <div class="filters-top">
+            <div class="field f-destino">
+              <label for="filtroDestino">Destino</label>
+              <select id="filtroDestino" multiple></select>
             </div>
-            <div>
-              <label for="fechaHasta">Hasta</label>
-              <input type="date" id="fechaHasta">
+      
+            <div class="field f-anio">
+              <label for="filtroAnio">Año</label>
+              <select id="filtroAnio"></select>
+            </div>
+      
+            <div class="field f-fechas">
+              <div class="field">
+                <label for="fechaDesde">Desde</label>
+                <input type="date" id="fechaDesde">
+              </div>
+              <div class="field">
+                <label for="fechaHasta">Hasta</label>
+                <input type="date" id="fechaHasta">
+              </div>
             </div>
           </div>
       
-          <!-- Checks -->
-          <div class="f-checks">
-            <label class="chk"><input type="checkbox" id="inclActividades" checked> Actividades</label>
-            <label class="chk"><input type="checkbox" id="inclHoteles"> Hoteles</label>
-          </div>
-      
-          <!-- Tipo de cambio -->
-          <div class="f-tc">
-            <div class="row">
-              <input type="number" id="tcUSD" placeholder="USD→CLP" step="1">
-              <input type="number" id="tcBRL" placeholder="BRL→CLP" step="1">
-              <input type="number" id="tcARS" placeholder="ARS→CLP" step="0.01">
-              <button id="btnGuardarTC" class="btn btn-dark">Guardar TC</button>
+          <!-- fila inferior -->
+          <div class="filters-bottom">
+            <div class="f-checks">
+              <label class="chk"><input type="checkbox" id="inclActividades" checked> Actividades</label>
+              <label class="chk"><input type="checkbox" id="inclHoteles"> Hoteles</label>
             </div>
-            <small id="tcInfo" class="muted"></small>
+      
+            <div class="f-tc">
+              <div class="row">
+                <input type="number" id="tcUSD" placeholder="USD→CLP" step="1">
+                <input type="number" id="tcBRL" placeholder="BRL→CLP" step="1">
+                <input type="number" id="tcARS" placeholder="ARS→CLP" step="0.01">
+                <button id="btnGuardarTC" class="btn btn-dark">Guardar TC</button>
+              </div>
+              <small id="tcInfo" class="muted"></small>
+            </div>
           </div>
         </div>
       </aside>
+
 
       <!-- Contenido -->
       <section class="fin-main">
