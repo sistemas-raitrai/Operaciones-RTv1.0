@@ -54,15 +54,17 @@
     }
   
     /* =========================================================
-       FILTROS (BARRA) — versión final alineada como la imagen
-       ========================================================= */
+   FILTROS (BARRA) — versión final alineada
+   ========================================================= */
     #rt-fin #filtersCard{ position:static; }
+    
     #rt-fin #filtersCard .controls{
       display:grid;
       grid-template-areas:
         "destino  anio    checks   tc"
         "destino  fechas  checks   tc";
-      grid-template-columns: 360px 260px 180px 1fr; /* ajusta a gusto */
+      grid-template-columns: 360px 260px 180px 1fr;
+      grid-template-rows: auto minmax(36px, auto); /* ⬅ añade la 2ª fila con alto mínimo */
       grid-auto-rows:auto;
       column-gap:24px;
       row-gap:8px;
@@ -71,7 +73,7 @@
       padding-bottom:.25rem;
       scrollbar-width:thin;
     }
-  
+    
     /* Áreas */
     #filtersCard .f-destino{ grid-area:destino; }
     #filtersCard .f-anio{ grid-area:anio; }
@@ -82,21 +84,33 @@
       gap:10px;
       align-items:end;
     }
-    #filtersCard .f-checks{
-      grid-area:checks;
-      display:grid;
-      gap:10px;              /* separación Actividades/Hoteles */
-      align-content:end;     /* pegado a la línea inferior */
-      margin-left:10px;      /* aire respecto a “Hasta” */
-    }
     #filtersCard .f-tc{
       grid-area:tc;
       display:grid;
       align-content:end;
       gap:6px;
     }
-
-    /* labels arriba */
+    
+    /* === FIX de alineación: checks en 2 filas (Actividades / Hoteles) === */
+    #filtersCard .f-checks{
+      grid-area:checks;
+      display:grid;
+      grid-template-rows: 1fr 1fr;   /* una fila para cada check */
+      align-self:stretch;            /* ocupa alto completo del bloque */
+      align-items:center;            /* centra cada label en su fila */
+      padding-left:12px;             /* aire respecto de “Hasta” */
+      gap:0;                         /* sin gap vertical extra */
+    }
+    #filtersCard .f-checks .chk{
+      display:flex; align-items:center; gap:.45rem;
+      min-height:36px;               /* alto visual similar a inputs */
+      font-weight:600; line-height:1;
+    }
+    #filtersCard .f-checks .chk input[type="checkbox"]{
+      margin:0; transform:none;      /* sin empuje vertical */
+    }
+    
+    /* Labels arriba (destino/año/fechas) */
     #filtersCard .f-destino label,
     #filtersCard .f-anio label,
     #filtersCard .f-fechas label{
@@ -105,22 +119,18 @@
       font-weight:600;
       white-space:nowrap;
     }
-  
-    /* controles */
+    
+    /* Controles */
     #filtersCard select[multiple]{ min-height:120px; min-width:240px; }
     #filtersCard input[type="date"],
     #filtersCard select{ min-width:140px; padding:.35rem .5rem; }
     #filtersCard input[type="number"]{ width:110px; padding:.35rem .5rem; text-align:right; }
     
-    /* checks prolijos */
-    #filtersCard .f-checks .chk{ display:flex; align-items:center; gap:.4rem; font-weight:600; }
-    #filtersCard input[type="checkbox"]{ transform: translateY(1px); }
-    
     /* TC alineado */
     #filtersCard .f-tc .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     #filtersCard .f-tc .btn{ white-space:nowrap; }
     
-    /* responsive */
+    /* Responsive */
     @media (max-width:1000px){
       #rt-fin #filtersCard .controls{
         grid-template-areas:
@@ -128,8 +138,10 @@
           "anio     checks"
           "fechas   tc";
         grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto auto auto;
       }
     }
+
   
     /* ===== KPIs ===== */
     #rt-fin .kpi-grid{
