@@ -857,6 +857,13 @@ function buildModalShell() {
   const cont = $('.fin-modal-body', el('modal'));
   // estado local del toggle archivados
   cont.dataset.verArchivados = '0';
+  
+// dentro de openModalProveedor, después de buildModalShell() y de tener 'cont' y 'data'
+const btnXLS = $('#btnExportXLS', cont);
+if (btnXLS) btnXLS.addEventListener('click', () => {
+  exportModalToExcel(cont, data?.nombre || slugProv);
+});
+  
 
   cont.innerHTML = `
     <div class="modal-toolbar">
