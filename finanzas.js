@@ -1572,22 +1572,11 @@ function bindUI() {
   el('btnRecalcular').addEventListener('click', recalcular);
   el('btnExportCSV').addEventListener('click', exportCSV);
 
+  // ⬇️ NUEVO: guardar TC persistente
+  const btnGuardarTC = el('btnGuardarTC');
+  if (btnGuardarTC) btnGuardarTC.addEventListener('click', guardarTCGuardado);
+
   el('modalClose').addEventListener('click', closeModal);
   el('backdrop').addEventListener('click', closeModal);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 }
-
-async function boot() {
-  onAuthStateChanged(auth, async () => {
-    try {
-      await Promise.all([loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones()]);
-      poblarFiltrosBasicos();
-      aplicarRangoPorAnio();
-      bindUI();
-      recalcular();
-    } catch (e) {
-      console.error('Error cargando datos', e);
-    }
-  });
-}
-boot();
