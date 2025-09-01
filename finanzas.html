@@ -53,42 +53,63 @@
       padding:1rem;
     }
 
-    /* Filtros (barra) */
-    #rt-fin #filtersCard{ position:static; }
+    /* Filtros (barra) — versión corregida */
     #rt-fin #filtersCard .controls{
       display:grid;
       grid-auto-flow:column;
       grid-auto-columns:max-content;
-      grid-template-rows:auto auto;
-      column-gap:16px; row-gap:4px;
+      grid-template-rows:auto auto;          /* 2 filas: etiquetas arriba, controles abajo */
+      column-gap:24px;                       /* + aire entre columnas (antes 16px) */
+      row-gap:6px;
       align-items:end;
-      overflow-x:auto; padding-bottom:.25rem;
+      overflow-x:auto;
+      padding-bottom:.25rem;
       scrollbar-width:thin;
     }
+    
     #rt-fin #filtersCard .controls > label{
       grid-row:1; margin:0; white-space:nowrap; font-weight:600;
     }
     #rt-fin #filtersCard .controls > label + select,
     #rt-fin #filtersCard .controls > label + input,
-    #rt-fin #filtersCard .controls > label + div{ grid-row:2; }
-
-    /* bloque fechas ocupa ambas filas */
+    #rt-fin #filtersCard .controls > label + div{
+      grid-row:2;                            /* el control debajo del label */
+    }
+    
+    /* el bloque de fechas ocupa ambas filas (como lo tenías) */
     #rt-fin #filtersCard .controls > .row{
-      grid-row:1 / span 2; align-items:flex-end; gap:.5rem;
+      grid-row:1 / span 2;
+      align-items:flex-end;
+      gap:.5rem;
     }
-    /* checkboxes como bloque único alineado abajo */
+    
+    /* CHECKS: alineados al fondo y separados del "Hasta" */
     #rt-fin #filtersCard .controls > label:has(input[type="checkbox"]){
-      grid-row:1 / span 2; align-self:end; padding-top:1.1rem;
-      display:flex; align-items:center; gap:.35rem; font-weight:600;
+      grid-row:1 / span 2;                   /* baja hasta la línea de los inputs */
+      align-self:end;
+      display:flex; align-items:center; gap:.4rem; font-weight:600;
+      margin-left:12px;                       /* aire respecto del bloque de fechas */
+      padding-bottom:2px;                     /* micro-ajuste vertical */
     }
-    /* inputs cómodos */
+    /* espacio extra entre Actividades y Hoteles */
+    #rt-fin #filtersCard .controls > label:has(input[type="checkbox"])
+      + label:has(input[type="checkbox"]){
+      margin-left:16px;
+    }
+    
+    /* cajita del check apenas más centrada visualmente */
+    #rt-fin #filtersCard input[type="checkbox"]{
+      transform: translateY(1px);
+    }
+    
+    /* tamaños cómodos de inputs (igual que tenías) */
     #rt-fin #filtersCard .controls input[type="number"],
     #rt-fin #filtersCard .controls input[type="date"],
     #rt-fin #filtersCard .controls select{
       width:auto; min-width:140px; padding:.35rem .5rem;
     }
     #rt-fin #filtersCard .controls select[multiple]{ min-width:240px; min-height:110px; }
-
+    
     /* KPIs */
     #rt-fin .kpi-grid{
       display:grid;
@@ -279,21 +300,6 @@
     column-gap:16px; row-gap:6px;
     align-items:end;
   }
-  
-  /* Áreas */
-  #filtersCard .f-destino{ grid-area: destino; }
-  #filtersCard .f-anio{ grid-area: anio; }
-  #filtersCard .f-fechas{ grid-area: fechas; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  #filtersCard .f-checks{ grid-area: checks; display:grid; gap:8px; align-content:end; }
-  #filtersCard .f-tc{ grid-area: tc; display:grid; align-content:end; gap:4px; }
-  
-  /* Estilos de controles */
-  #filtersCard select[multiple]{ min-height:120px; min-width:240px; }
-  #filtersCard input[type="number"]{ width:100px; text-align:right; }
-  #filtersCard .f-checks .chk{ display:flex; align-items:center; gap:.35rem; font-weight:600; }
-  
-  /* Botón oscuro de TC ya lo tienes como .btn-dark */
-
   </style>
 </head>
 
