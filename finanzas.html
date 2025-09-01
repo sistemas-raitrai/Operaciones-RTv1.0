@@ -61,64 +61,43 @@
     }
     
     /* ====== CAJA IZQUIERDA ====== */
+    /* === 1) Caja izquierda: limitar ancho de 'Destino' === */
     #filtersLeft .controls{
-      display:grid;
-      grid-template-areas:
-        "dest anio"
-        "dest fechas";
-      grid-template-columns: 1fr 280px;
-      column-gap:24px;
-      row-gap:10px;
-      align-items:end;
+      /* antes: 1fr 280px ; ahora fijamos la 1ª columna */
+      grid-template-columns: 380px 280px;   /* ajusta 360–420px a gusto */
     }
     
-    #filtersLeft .f-dest{ grid-area:dest; }
-    #filtersLeft .f-anio{ grid-area:anio; }
-    #filtersLeft .f-fechas{
-      grid-area:fechas;
-      display:grid;
-      grid-template-columns: 1fr 1fr;  /* Desde | Hasta */
-      gap:10px;
-      align-items:end;
+    #filtersLeft .f-dest select[multiple]{
+      width: 100%;
+      max-width: 380px;                     /* mismo valor que la columna */
     }
     
-    /* labels arriba en la caja izquierda */
-    #filtersLeft label{ display:block; margin-bottom:4px; font-weight:600; white-space:nowrap; }
-    
-    /* tamaños cómodos */
-    #filtersLeft select[multiple]{ min-height:120px; min-width:240px; }
-    #filtersLeft input[type="date"],
-    #filtersLeft select{ min-width:140px; padding:.35rem .5rem; }
-    
-    /* ====== CAJA DERECHA ====== */
+    /* === 2) Caja derecha: alinear labels por arriba y dejar todo parejo === */
     #filtersRight .controls{
-      /* 2 columnas: columna de etiqueta (checkbox + texto) y columna de contenido */
-      display:grid;
-      grid-template-columns: 140px 1fr;
-      gap:10px 16px;              /* row-gap | col-gap */
-      align-items:center;
+      grid-template-columns: 140px 1fr;     /* col de etiqueta | col de contenido */
+      align-items: start;                   /* top en lugar de center */
     }
     
-    /* Fila de “Actividades” y fila de “Hoteles” se alinean por el texto */
     #filtersRight .cb{
-      display:flex;
-      align-items:center;
-      gap:.45rem;
-      font-weight:600;
-      white-space:nowrap;
+      align-self: start;                    /* el label (checkbox + texto) al tope */
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      font-weight: 600;
+      padding-top: 2px;                     /* micro ajuste óptico */
     }
     
-    /* Caja con los 3 inputs de TC + botón */
     #filtersRight .tc-row{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      flex-wrap:wrap;
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     }
-    #filtersRight input[type="number"]{ width:110px; padding:.35rem .5rem; text-align:right; }
     
-    /* La info del TC ocupa la columna derecha, debajo de los inputs */
-    #filtersRight .tc-info{ align-self:start; }
+    #filtersRight input[type="number"]{
+      width: 110px; padding: .35rem .5rem; text-align: right;
+    }
+    
+    /* opcional: pequeño margen entre filas de la caja derecha */
+    #filtersRight .cb + .tc-row{ margin-bottom: 4px; }
+    #filtersRight .tc-info{ margin-top: 2px; }
     
     /* micro-ajuste de la cajita del checkbox */
     #filtersRight input[type="checkbox"]{ transform: translateY(1px); }
