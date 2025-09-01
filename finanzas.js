@@ -596,6 +596,141 @@ async function archivarAbono({ destinoId, servicioId, abonoId }) {
   await updateDoc(docRef, { estado: 'ARCHIVADO', archivedAt: serverTimestamp(), archivedByEmail: email });
 }
 
+// --- NUEVO: armar pares destino/servicio únicos para un proveedor ---
+function serviciosUnicosDeProveedor(items){
+  const map = new Map();
+  for (const it of items){
+    if (!it.servicioId || !it.destinoGrupo) continue; // si no hay id no podemos leer Abonos
+    const key = `${it.destinoGrupo}||${it.servicioId}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        destinoId: it.destinoGrupo,
+        servicioId: it.servicioId,
+        servicioNombre: it.servicio || '',
+      });
+    }
+  }
+  return [...map.values()];
+}
+
+// --- NUEVO: carga de abonos en lote para varios servicios ---
+async function loadAbonosLote(pares){
+  return Promise.all(pares.map(async p => {
+    try {
+      const ab = await loadAbonos(p.destinoId, p.servicioId);
+      return { ...p, abonos: ab };
+    } catch(e){
+      return { ...p, abonos: [] };
+    }
+  }));
+}
+
+// --- NUEVO: pintar TODOS los abonos del proveedor en el modal ---
+async function pintarAbonosTodosProveedor({ data, cont }){
+  // Modo actual del panel de abonos = "ALL"
+  cont.dataset.curMode = 'ALL';
+  cont.dataset.curDestinoId = '';
+  cont.dataset.curServicioId = '';
+  cont.dataset.curServicioNombre = '';
+
+  const verArch = cont.dataset.verArchivados === '1';
+  const tbody = $('#tblAbonos tbody', cont);
+  tbody.innerHTML = '';
+
+  const pares = serviciosUnicosDeProveedor(data.items);
+  const lotes = await loadAbonosLote(pares);
+
+  let tCLP=0, tUSD=0, tBRL=0, tARS=0;
+
+  for (const lote of lotes){
+    for (const ab of (lote.abonos || [])){
+      const eq = abonoEquivalentes(ab);
+      const estado = abonoEstadoLabel(ab);
+      const incluir = abonoIncluido(ab) || verArch;
+
+      if (abonoIncluido(ab)) {
+        tCLP += (eq.CLP || 0);
+        tUSD += (eq.USD || 0);
+        tBRL += (eq.BRL || 0);
+        tARS += (eq.ARS || 0);
+      }
+
+      const tr = document.createElement('tr');
+      if (estado === 'ARCHIVADO') tr.classList.add('abono-archivado');
+
+      tr.innerHTML = `
+        <td title="${lote.servicioNombre}">${lote.servicioNombre}</td>
+        <td title="${(ab.updatedByEmail || ab.createdByEmail || '').toLowerCase()}">
+          <span class="email-normal">${(ab.updatedByEmail || ab.createdByEmail || '').toLowerCase()}</span>
+        </td>
+        <td title="${ab.fecha || ''}">${ab.fecha || ''}</td>
+        <td title="${(ab.moneda||'CLP').toUpperCase()}"><span class="abono-blue bold">${(ab.moneda||'CLP').toUpperCase()}</span></td>
+        <td class="right" title="${ab.monto || 0}"><span class="abono-blue bold">${fmt(ab.monto || 0)}</span></td>
+        <td class="right" title="${eq.CLP==null?'':fmt(eq.CLP)}">${eq.CLP==null?'—':fmt(eq.CLP)}</td>
+        <td class="right" title="${eq.USD==null?'':fmt(eq.USD)}">${eq.USD==null?'—':fmt(eq.USD)}</td>
+        <td class="right" title="${eq.BRL==null?'':fmt(eq.BRL)}">${eq.BRL==null?'—':fmt(eq.BRL)}</td>
+        <td class="right" title="${eq.ARS==null?'':fmt(eq.ARS)}">${eq.ARS==null?'—':fmt(eq.ARS)}</td>
+        <td title="${ab.nota || ''}">${ab.nota || ''}</td>
+        <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank" rel="noopener">VER</a>` : '—'}</td>
+        <td class="actions">
+          <div class="icon-actions">
+            <button type="button" class="icon-btn edit btn-edit" aria-label="Editar" title="Editar">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M13.586 3.586a2 2 0 012.828 2.828l-8.95 8.95a2 2 0 01-.878.507l-3.13.9a.5.5 0 01-.62-.62l.9-3.13a2 2 0 01.507-.878l8.95-8.95zM12 4.999l3 3" />
+              </svg>
+            </button>
+            <button type="button" class="icon-btn archive btn-arch" aria-label="Archivar" title="Archivar">
+              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3H3V3zm0 4h14v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm4 2h6v2H7V9z"/>
+              </svg>
+            </button>
+          </div>
+        </td>
+        <td title="${estado}">${estado}</td>
+      `;
+
+      if (incluir) tbody.appendChild(tr);
+
+      // Handlers por fila (necesitamos el par correcto)
+      tr.querySelector('.btn-edit').addEventListener('click', () => {
+        abrirSubmodalAbono({
+          cont,
+          destinoId: lote.destinoId,
+          servicioId: lote.servicioId,
+          abono: { ...ab, id: ab.id }
+        });
+      });
+      tr.querySelector('.btn-arch').addEventListener('click', async () => {
+        if (!confirm('¿ARCHIVAR ESTE ABONO?')) return;
+        await archivarAbono({ destinoId: lote.destinoId, servicioId: lote.servicioId, abonoId: ab.id });
+        // repintar en modo ALL
+        await pintarAbonosTodosProveedor({ data, cont });
+        calcSaldoDesdeTablas(cont);
+      });
+    }
+  }
+
+  // Totales abonos (modo TODOS)
+  $('#abTotCLP', cont).textContent = money(tCLP);
+  $('#abTotUSD', cont).textContent = fmt(tUSD);
+  $('#abTotBRL', cont).textContent = fmt(tBRL);
+  $('#abTotARS', cont).textContent = fmt(tARS);
+
+  // En modo TODOS, el botón ABONAR pide que elijas un servicio
+  $('#btnAbonar', cont).onclick = () => {
+    alert('Selecciona un servicio en el RESUMEN (botón "VER DETALLE") para abonar.');
+  };
+
+  // Recalcular saldo total (toma DETALLE visible - ABONOS visibles/no archivados)
+  calcSaldoDesdeTablas(cont);
+
+  // Sortable (re-usa misma definición de columnas)
+  makeSortable($('#tblAbonos', cont),
+    ['text','text','date','text','num','num','num','num','num','text','text','text','text'],
+    {skipIdx:[11]}
+  );
+}
+
 // -------------------------------
 // 8) Modal — UI
 // -------------------------------
@@ -799,7 +934,7 @@ async function openModalProveedor(slugProv, data) {
 
   const cont = buildModalShell();
 
-  // Botón "VER TODOS" (para limpiar filtro desde resumen)
+  // Botón "VER TODOS" (limpia filtro y vuelve a modo TODOS)
   const btnClear = document.createElement('button');
   btnClear.className = 'btn ghost';
   btnClear.id = 'btnDetClear';
@@ -826,14 +961,13 @@ async function openModalProveedor(slugProv, data) {
   }
   makeSortable($('#tblProvResumen', cont), ['text','money','num','num','num','num','text'], {skipIdx:[6]});
 
-  // ——— Detalle
+  // ——— Detalle de items
   const tb = $('#tblDetalleProv tbody', cont);
   tb.innerHTML = '';
   const rows = [...data.items].sort((a,b) =>
     (a.fecha || '').localeCompare(b.fecha || '') ||
     (a.nombreGrupo || '').localeCompare(b.nombreGrupo || '')
   );
-
   let totCLP = 0;
   for (const it of rows) {
     const conv = convertirTodas(it.moneda, it.totalMoneda);
@@ -865,37 +999,7 @@ async function openModalProveedor(slugProv, data) {
     ['date','text','text','text','num','text','text','num','num','num','num','num']
   );
 
-  // Filtro por servicio (desde resumen)
-  cont.querySelectorAll('.btn-det-svc').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const svcSlug = btn.getAttribute('data-svc');
-      const rows = $$('#tblDetalleProv tbody tr', cont);
-      let hayFiltro = false;
-      rows.forEach(tr => {
-        const ok = tr.getAttribute('data-svc') === svcSlug;
-        tr.style.display = ok ? '' : 'none';
-        if (ok) hayFiltro = true;
-      });
-      btnClear.style.display = hayFiltro ? '' : 'none';
-
-      const itemSvc = data.items.find(i => slug(i.servicio||'') === svcSlug);
-      if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
-        await pintarAbonos({
-          destinoId: itemSvc.destinoGrupo, // mismo id que doc del destino
-          servicioId: itemSvc.servicioId,
-          servicioNombre: itemSvc.servicio || '',
-          cont,
-        });
-      }
-    });
-  });
-  btnClear.addEventListener('click', () => {
-    $$('#tblDetalleProv tbody tr', cont).forEach(tr => tr.style.display = '');
-    btnClear.style.display = 'none';
-    limpiarAbonos(cont);
-  });
-
-  // Buscador global
+  // ——— Buscador global (filtra DETALLE y ABONOS)
   $('#modalSearch', cont).addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
     const match = (txt) => txt.toLowerCase().includes(q);
@@ -907,9 +1011,11 @@ async function openModalProveedor(slugProv, data) {
       const txt = tr.textContent || '';
       tr.style.display = match(txt) ? '' : 'none';
     });
+    // Recalcula SALDO con lo visible
+    calcSaldoDesdeTablas(cont);
   });
 
-  // Toggle VER ARCHIVADOS (botón negro)
+  // ——— Toggle VER ARCHIVADOS
   const btnArch = $('#btnVerArch', cont);
   const updateBtnArch = ()=>{
     const on = cont.dataset.verArchivados === '1';
@@ -919,23 +1025,70 @@ async function openModalProveedor(slugProv, data) {
   btnArch.addEventListener('click', async ()=>{
     cont.dataset.verArchivados = cont.dataset.verArchivados === '1' ? '0' : '1';
     updateBtnArch();
-    // si ya hay un servicio seleccionado, repintar
-    const d = cont.dataset.curDestinoId, s = cont.dataset.curServicioId;
-    if (d && s) {
-      await pintarAbonos({
-        destinoId: d,
-        servicioId: s,
-        servicioNombre: cont.dataset.curServicioNombre || '',
-        cont
-      });
+    // repintar según el modo actual (ALL o ONE)
+    if (cont.dataset.curMode === 'ALL'){
+      await pintarAbonosTodosProveedor({ data, cont });
+    } else {
+      const d = cont.dataset.curDestinoId, s = cont.dataset.curServicioId;
+      if (d && s) {
+        await pintarAbonos({
+          destinoId: d,
+          servicioId: s,
+          servicioNombre: cont.dataset.curServicioNombre || '',
+          cont
+        });
+        calcSaldoDesdeTablas(cont);
+      }
     }
   });
   updateBtnArch();
 
-  // Export Excel
-  $('#btnExportXLS', cont).addEventListener('click', () => exportModalToExcel(cont, (data?.nombre||'proveedor')));
+  // ——— Filtro por servicio (desde el RESUMEN)
+  cont.querySelectorAll('.btn-det-svc').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const svcSlug = btn.getAttribute('data-svc');
+      // Filtra las filas del detalle
+      const rows = $$('#tblDetalleProv tbody tr', cont);
+      let hayFiltro = false;
+      rows.forEach(tr => {
+        const ok = tr.getAttribute('data-svc') === svcSlug;
+        tr.style.display = ok ? '' : 'none';
+        if (ok) hayFiltro = true;
+      });
+      btnClear.style.display = hayFiltro ? '' : 'none';
 
-  // Mostrar
+      // Modo ONE + Abonos del servicio
+      const itemSvc = data.items.find(i => slug(i.servicio||'') === svcSlug);
+      if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
+        cont.dataset.curMode = 'ONE';
+        await pintarAbonos({
+          destinoId: itemSvc.destinoGrupo,
+          servicioId: itemSvc.servicioId,
+          servicioNombre: itemSvc.servicio || '',
+          cont,
+        });
+        calcSaldoDesdeTablas(cont);
+      } else {
+        // si no hay id de servicio, avisa y queda en modo ALL
+        cont.dataset.curMode = 'ALL';
+        await pintarAbonosTodosProveedor({ data, cont });
+      }
+    });
+  });
+
+  // ——— Botón VER TODOS (limpia filtro y vuelve a modo ALL)
+  btnClear.addEventListener('click', async () => {
+    $$('#tblDetalleProv tbody tr', cont).forEach(tr => tr.style.display = '');
+    btnClear.style.display = 'none';
+    cont.dataset.curMode = 'ALL';
+    await pintarAbonosTodosProveedor({ data, cont });
+    calcSaldoDesdeTablas(cont);
+  });
+
+  // ——— Al abrir: modo "TODOS" por defecto para que el SALDO TOTAL considere todos los ABONOS
+  await pintarAbonosTodosProveedor({ data, cont });
+
+  // Mostrar modal
   el('backdrop').style.display = 'block';
   modal.style.display = 'block';
   document.body.classList.add('modal-open');
