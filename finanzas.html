@@ -289,6 +289,73 @@
       #rt-fin #filtersCard .controls select[multiple]{ min-width:85%; }
       #rt-fin .rt-dialog .grid{ grid-template-columns:1fr; }
     }
+
+    /* ====== Bandas pastel para table#tblProveedores ====== */
+    /* Paleta suave (afín a tu azul primario) */
+    :root{
+      --band-prov:   #f8fafc; /* Proveedor */
+      --band-dest:   #f1f5f9; /* Destino(s) */
+      --band-clp:    #eef2ff; /* Grupo CLP (TOTAL/ABONO/SALDO) */
+      --band-usd:    #e0f2fe; /* Grupo USD (TOTAL/ABONO/SALDO) */
+      --band-items:  #fefce8; /* # ítems */
+      --band-action: #f3f4f6; /* Acciones */
+    }
+    
+    /* Proveedor */
+    #tblProveedores thead th:nth-child(1),
+    #tblProveedores tbody td:nth-child(1){ background:var(--band-prov); }
+    
+    /* Destino(s) */
+    #tblProveedores thead th:nth-child(2),
+    #tblProveedores tbody td:nth-child(2){ background:var(--band-dest); }
+    
+    /* CLP group: col 3 (TOTAL), 5 (ABONO), 7 (SALDO) */
+    #tblProveedores thead th:nth-child(3),
+    #tblProveedores tbody td:nth-child(3),
+    #tblProveedores thead th:nth-child(5),
+    #tblProveedores tbody td:nth-child(5),
+    #tblProveedores thead th:nth-child(7),
+    #tblProveedores tbody td:nth-child(7){ background:var(--band-clp); }
+    
+    /* USD group: col 4 (TOTAL), 6 (ABONO), 8 (SALDO) */
+    #tblProveedores thead th:nth-child(4),
+    #tblProveedores tbody td:nth-child(4),
+    #tblProveedores thead th:nth-child(6),
+    #tblProveedores tbody td:nth-child(6),
+    #tblProveedores thead th:nth-child(8),
+    #tblProveedores tbody td:nth-child(8){ background:var(--band-usd); }
+    
+    /* # items */
+    #tblProveedores thead th:nth-child(9),
+    #tblProveedores tbody td:nth-child(9){ background:var(--band-items); }
+    
+    /* Acciones (VER DETALLE) */
+    #tblProveedores thead th:nth-child(10),
+    #tblProveedores tbody td:nth-child(10){ background:var(--band-action); }
+    
+    /* Separadores verticales entre grupos (suaves) */
+    #tblProveedores thead th:nth-child(3),
+    #tblProveedores tbody td:nth-child(3),
+    #tblProveedores thead th:nth-child(4),
+    #tblProveedores tbody td:nth-child(4),
+    #tblProveedores thead th:nth-child(9),
+    #tblProveedores tbody td:nth-child(9){
+      border-left:2px solid #e5e7eb;
+    }
+    
+    /* Botón gris en Acciones */
+    #tblProveedores td:last-child .btn{
+      background:#e5e7eb; color:#111827; border:1px solid #e5e7eb;
+    }
+    #tblProveedores td:last-child .btn:hover{ filter:brightness(0.96); }
+    
+    /* Hover de fila sin perder las bandas */
+    #tblProveedores tbody tr:hover td{
+      box-shadow: inset 0 0 0 9999px rgba(255,255,255,.35);
+    }
+    
+    /* Mantén los números enfocados a la derecha (por si algún user-agent lo pisa) */
+    #tblProveedores td.right{ text-align:right; }
   </style>
 
 </head>
