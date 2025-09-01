@@ -1000,7 +1000,7 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
       <td class="right" title="${eq.ARS==null?'':fmt(eq.ARS)}">${eq.ARS==null?'—':fmt(eq.ARS)}</td>
       <td title="${ab.nota || ''}">${ab.nota || ''}</td>
       <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank" rel="noopener">VER</a>` : '—'}</td>
-      td class="actions">
+      <td class="actions">
         <div class="icon-actions">
           <button type="button" class="icon-btn edit btn-edit" aria-label="Editar" title="Editar">
             <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
