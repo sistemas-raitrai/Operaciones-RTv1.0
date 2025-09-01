@@ -14,7 +14,7 @@
 // Firebase
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, addDoc, updateDoc, doc, serverTimestamp,
+  collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, getDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged
@@ -30,6 +30,46 @@ const RUTA_SERVICIOS  = 'Servicios';
 const RUTA_PROV_ROOT  = 'Proveedores';
 const RUTA_HOTEL_ROOT = 'Hoteles';
 const RUTA_GRUPOS     = 'grupos';
+
+// ---- TC persistente (Firestore) ----
+const RUTA_TC_DOC = ['Config','Finanzas']; // doc("Config/Finanzas")
+
+async function cargarTCGuardado(){
+  try {
+    const ref = doc(db, ...RUTA_TC_DOC);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const d = snap.data() || {};
+      if (el('tcUSD')) el('tcUSD').value = d.tcUSD ?? '';
+      if (el('tcBRL')) el('tcBRL').value = d.tcBRL ?? '';
+      if (el('tcARS')) el('tcARS').value = d.tcARS ?? '';
+      if (el('tcInfo') && d.fechaGuardado) {
+        const f = (d.fechaGuardado || '').toString();
+        const nice = f.slice(0,16).replace('T',' ');
+        el('tcInfo').textContent = `Tipo de cambio – CLP a (guardado el ${nice})`;
+      }
+    }
+  } catch(e){ console.warn('No se pudo cargar TC guardado', e); }
+}
+
+async function guardarTCGuardado(){
+  const data = {
+    tcUSD: Number(el('tcUSD')?.value || 0) || null,
+    tcBRL: Number(el('tcBRL')?.value || 0) || null,
+    tcARS: Number(el('tcARS')?.value || 0) || null,
+    fechaGuardado: new Date().toISOString(),
+    usuario: (auth.currentUser?.email || '').toLowerCase()
+  };
+  await setDoc(doc(db, ...RUTA_TC_DOC), data, { merge:true });
+
+  if (el('tcInfo')) {
+    const nice = data.fechaGuardado.slice(0,16).replace('T',' ');
+    el('tcInfo').textContent = `Tipo de cambio – CLP a (guardado el ${nice})`;
+  }
+  // Opcional: recalcular inmediatamente con el TC guardado
+  recalcular();
+}
+
 
 // -------------------------------
 // 1) Estado + helpers
@@ -477,25 +517,56 @@ function renderTablaDestinos(mapDest) {
   makeSortable(el('tblDestinos'), ['text','money','num','num','num','num']);
 }
 function renderTablaProveedores(mapProv) {
-  const tb = el('tblProveedores').querySelector('tbody');
+  const tbl = el('tblProveedores');
+  const thead = tbl.querySelector('thead');
+  const tb = tbl.querySelector('tbody');
   tb.innerHTML = '';
+
+  // Nuevo encabezado
+  if (thead) {
+    thead.innerHTML = `
+      <tr>
+        <th>Proveedor</th>
+        <th>Destino(s)</th>
+        <th class="right">CLP TOTAL</th>
+        <th class="right">USD TOTAL</th>
+        <th class="right">CLP ABONO</th>
+        <th class="right">USD ABONO</th>
+        <th class="right">CLP SALDO</th>
+        <th class="right">USD SALDO</th>
+        <th class="right"># items</th>
+        <th></th>
+      </tr>`;
+  }
+
+  // Filas (primero solo totales de servicios)
   const rows = [];
   mapProv.forEach((v, key) => rows.push({
-    slug:key, nombre:v.nombre, destinos:[...v.destinos].join(', '),
-    clpEq:v.clpEq||0, usdEq:v.usdEq||0, brlEq:v.brlEq||0, arsEq:v.arsEq||0,
-    count:v.count||0, items:v.items
+    slug: key,
+    nombre: v.nombre,
+    destinos: [...v.destinos].join(', '),
+    totalCLP: v.clpEq || 0,
+    totalUSD: v.usdEq || 0,
+    count: v.count || 0,
+    items: v.items
   }));
-  rows.sort((a,b)=>b.clpEq - a.clpEq);
+  rows.sort((a,b)=>b.totalCLP - a.totalCLP);
 
   for (const r of rows) {
     tb.insertAdjacentHTML('beforeend', `
-      <tr>
+      <tr data-prov="${r.slug}">
         <td title="${r.nombre}">${r.nombre}</td>
         <td title="${r.destinos}">${r.destinos}</td>
-        <td class="right" title="${r.clpEq}">${money(r.clpEq)}</td>
-        <td class="right" title="${r.usdEq}">${fmt(r.usdEq)}</td>
-        <td class="right" title="${r.brlEq}">${fmt(r.brlEq)}</td>
-        <td class="right" title="${r.arsEq}">${fmt(r.arsEq)}</td>
+
+        <td class="right" data-field="totalclp" data-raw="${Math.round(r.totalCLP)}">${money(r.totalCLP)}</td>
+        <td class="right" data-field="totalusd" data-raw="${r.totalUSD}">${fmt(r.totalUSD)}</td>
+
+        <td class="right" data-field="abonoclp">—</td>
+        <td class="right" data-field="abonousd">—</td>
+
+        <td class="right bold" data-field="saldoclp">—</td>
+        <td class="right bold" data-field="saldousd">—</td>
+
         <td class="right" title="${r.count}">${fmt(r.count)}</td>
         <td class="right">
           <button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button>
@@ -504,6 +575,7 @@ function renderTablaProveedores(mapProv) {
     `);
   }
 
+  // Botones "VER DETALLE"
   tb.querySelectorAll('button[data-prov]').forEach(btn => {
     btn.addEventListener('click', () => {
       const slugProv = btn.getAttribute('data-prov');
@@ -511,8 +583,55 @@ function renderTablaProveedores(mapProv) {
     });
   });
 
-  makeSortable(el('tblProveedores'), ['text','text','money','num','num','num','num','text'], {skipIdx:[7]});
+  // Sorters para el nuevo layout (saltando columna acciones)
+  makeSortable(tbl, ['text','text','money','num','money','num','money','num','num','text'], { skipIdx:[9] });
+
+  // Completar abonos y saldos (asíncrono)
+  completarAbonosEnTablaProveedores(mapProv);
 }
+
+async function completarAbonosEnTablaProveedores(mapProv){
+  const tbody = el('tblProveedores').querySelector('tbody');
+
+  for (const [slugProv, provData] of mapProv.entries()) {
+    // pares únicos destino/servicio del proveedor
+    const pares = serviciosUnicosDeProveedor(provData.items);  // ← ya la tienes del modal "TODOS"
+    const lotes = await loadAbonosLote(pares);                  // ← ya la tienes también
+
+    let aCLP = 0, aUSD = 0;
+    for (const lote of lotes) {
+      for (const ab of (lote.abonos || [])) {
+        if (!abonoIncluido(ab)) continue;       // ignora archivados
+        const eq = abonoEquivalentes(ab);       // CLP|USD equivalentes
+        aCLP += (eq.CLP || 0);
+        aUSD += (eq.USD || 0);
+      }
+    }
+
+    // Pinta en la fila
+    const tr = tbody.querySelector(`tr[data-prov="${slugProv}"]`);
+    if (!tr) continue;
+
+    // Totales (raw desde dataset)
+    const totCLP = parseNumber(tr.querySelector('[data-field="totalclp"]').dataset.raw);
+    const totUSD = parseNumber(tr.querySelector('[data-field="totalusd"]').dataset.raw);
+
+    // Abonos
+    tr.querySelector('[data-field="abonoclp"]').textContent = money(aCLP);
+    tr.querySelector('[data-field="abonousd"]').textContent = fmt(aUSD);
+
+    // Saldos
+    const sCLP = (totCLP || 0) - (aCLP || 0);
+    const sUSD = (totUSD || 0) - (aUSD || 0);
+    const cCLP = tr.querySelector('[data-field="saldoclp"]');
+    const cUSD = tr.querySelector('[data-field="saldousd"]');
+    cCLP.textContent = money(sCLP);
+    cUSD.textContent = fmt(sUSD);
+    cCLP.classList.toggle('saldo-rojo', Math.abs(sCLP) > 0.0001);
+    cUSD.classList.toggle('saldo-rojo', Math.abs(sUSD) > 0.0001);
+  }
+}
+
 function renderTablaHoteles(mapHoteles) {
   const tb = el('tblHoteles').querySelector('tbody');
   tb.innerHTML = '';
@@ -1285,6 +1404,21 @@ function exportModalToExcel(cont, nombre) {
   a.download = `finanzas_${slug(nombre)}_${new Date().toISOString().slice(0,10)}.xls`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+async function boot() {
+  onAuthStateChanged(auth, async () => {
+    try {
+      await Promise.all([loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones()]);
+      await cargarTCGuardado();     // ← carga TC persistido (si existe)
+      poblarFiltrosBasicos();
+      aplicarRangoPorAnio();
+      bindUI();
+      recalcular();
+    } catch (e) {
+      console.error('Error cargando datos', e);
+    }
+  });
 }
 
 // -------------------------------
