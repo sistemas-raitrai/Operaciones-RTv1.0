@@ -95,23 +95,41 @@
       align-content:end;
       gap:6px;
     }
+
+    /* labels arriba */
+    #filtersCard .f-destino label,
+    #filtersCard .f-anio label,
+    #filtersCard .f-fechas label{
+      display:block;
+      margin-bottom:4px;
+      font-weight:600;
+      white-space:nowrap;
+    }
   
-    /* Controles */
+    /* controles */
     #filtersCard select[multiple]{ min-height:120px; min-width:240px; }
-    #filtersCard input[type="date"], #filtersCard select{
-      min-width:140px; padding:.35rem .5rem;
-    }
-    #filtersCard input[type="number"]{
-      width:110px; padding:.35rem .5rem; text-align:right;
-    }
-    #filtersCard .f-tc .row{
-      display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-    }
-    #filtersCard .f-tc .btn{ white-space:nowrap; }
-    #filtersCard .f-checks .chk{
-      display:flex; align-items:center; gap:.4rem; font-weight:600;
-    }
+    #filtersCard input[type="date"],
+    #filtersCard select{ min-width:140px; padding:.35rem .5rem; }
+    #filtersCard input[type="number"]{ width:110px; padding:.35rem .5rem; text-align:right; }
+    
+    /* checks prolijos */
+    #filtersCard .f-checks .chk{ display:flex; align-items:center; gap:.4rem; font-weight:600; }
     #filtersCard input[type="checkbox"]{ transform: translateY(1px); }
+    
+    /* TC alineado */
+    #filtersCard .f-tc .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    #filtersCard .f-tc .btn{ white-space:nowrap; }
+    
+    /* responsive */
+    @media (max-width:1000px){
+      #rt-fin #filtersCard .controls{
+        grid-template-areas:
+          "destino  destino"
+          "anio     checks"
+          "fechas   tc";
+        grid-template-columns: 1fr 1fr;
+      }
+    }
   
     /* ===== KPIs ===== */
     #rt-fin .kpi-grid{
