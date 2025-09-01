@@ -66,7 +66,7 @@
       grid-template-areas:
         "dest anio"
         "dest fechas";
-      grid-template-columns: 1fr 280px;
+      grid-template-columns: 380px 280px;
       column-gap:24px;
       row-gap:10px;
       align-items:end;
@@ -96,16 +96,18 @@
       display:grid;
       grid-template-columns: 140px 1fr;
       gap:10px 16px;              /* row-gap | col-gap */
-      align-items:center;
+      align-items: start;
     }
     
     /* Fila de “Actividades” y fila de “Hoteles” se alinean por el texto */
     #filtersRight .cb{
-      display:flex;
-      align-items:center;
+      align-self: start; 
+      display: flex;
+      align-items: center;
       gap:.45rem;
       font-weight:600;
       white-space:nowrap;
+      padding-top: 2px; 
     }
     
     /* Caja con los 3 inputs de TC + botón */
@@ -116,6 +118,10 @@
       flex-wrap:wrap;
     }
     #filtersRight input[type="number"]{ width:110px; padding:.35rem .5rem; text-align:right; }
+
+    /* opcional: pequeño margen entre filas de la caja derecha */
+    #filtersRight .cb + .tc-row{ margin-bottom: 4px; }
+    #filtersRight .tc-info{ margin-top: 2px; }
     
     /* La info del TC ocupa la columna derecha, debajo de los inputs */
     #filtersRight .tc-info{ align-self:start; }
