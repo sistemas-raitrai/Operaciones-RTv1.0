@@ -1000,9 +1000,19 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
       <td class="right" title="${eq.ARS==null?'':fmt(eq.ARS)}">${eq.ARS==null?'—':fmt(eq.ARS)}</td>
       <td title="${ab.nota || ''}">${ab.nota || ''}</td>
       <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank" rel="noopener">VER</a>` : '—'}</td>
-      <td class="actions">
-        <button class="btn ghost btn-edit"   title="EDITAR">EDITAR</button>
-        <button class="btn ghost btn-arch"   title="ARCHIVAR">ARCHIVAR</button>
+      td class="actions">
+        <div class="icon-actions">
+          <button type="button" class="icon-btn edit btn-edit" aria-label="Editar" title="Editar">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M13.586 3.586a2 2 0 012.828 2.828l-8.95 8.95a2 2 0 01-.878.507l-3.13.9a.5.5 0 01-.62-.62l.9-3.13a2 2 0 01.507-.878l8.95-8.95zM12 4.999l3 3" />
+            </svg>
+          </button>
+          <button type="button" class="icon-btn archive btn-arch" aria-label="Archivar" title="Archivar">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3H3V3zm0 4h14v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm4 2h6v2H7V9z"/>
+            </svg>
+          </button>
+        </div>
       </td>
       <td title="${estado}">${estado}</td>
     `;
