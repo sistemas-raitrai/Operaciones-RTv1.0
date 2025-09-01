@@ -94,6 +94,58 @@ const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
 
+// ===== Filtro de destinos y reglas de monedas =====
+function getDestinoFilter(){
+  const sel = el('filtroDestino');
+  const vals = [...sel.selectedOptions].map(o => o.value);
+  const all  = vals.includes('*');
+  const tokens = new Set(vals.filter(v => v !== '*'));
+  return { all, tokens };
+}
+
+// inclusión según modo
+function includeBy(mode, tokens, destino){
+  if (mode === 'ALL') return true;
+  if (!destino) return false;
+  if (!tokens || tokens.size === 0) return true;
+  const D = norm(destino);
+  if (mode === 'EXACT') return tokens.has(destino);
+  if (mode === 'TOKEN') {
+    for (const t of tokens) if (D.includes(norm(t))) return true;
+    return false;
+  }
+  return true;
+}
+
+// Compatibilidad: Set | Function
+function includeDestinoCheck(destinosSel, destinoGrupo){
+  if (typeof destinosSel === 'function') return !!destinosSel(destinoGrupo);
+  if (destinosSel && destinosSel.size)   return destinosSel.has(destinoGrupo);
+  return true; // sin filtro
+}
+
+// Reglas de monedas visibles por destino
+const DESTINO_MONEDAS = {
+  'BARILOCHE': new Set(['USD','ARS']),
+  'SUR DE CHILE': new Set(['CLP']),
+  'NORTE DE CHILE': new Set(['CLP']),
+  'SUR DE CHILE Y BARILOCHE': new Set(['CLP','USD','ARS']),
+  'BRASIL': new Set(['USD','BRL']),
+  'DEFAULT': new Set(['USD','CLP']),
+};
+const TODAS_MONEDAS = ['CLP','USD','BRL','ARS'];
+
+function monedasVisiblesFromFilter(filtro){
+  if (filtro.all || filtro.tokens.size === 0) return TODAS_MONEDAS;
+  const uni = new Set();
+  for (const tok of filtro.tokens){
+    const set = DESTINO_MONEDAS[tok] || DESTINO_MONEDAS.DEFAULT;
+    set.forEach(m => uni.add(m));
+  }
+  return TODAS_MONEDAS.filter(m => uni.has(m));
+}
+
+
 // ---------- parsers + sort ----------
 function parseNumber(val){
   if (typeof val === 'number') return val;
@@ -306,7 +358,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
   for (const g of GRUPOS) {
     const destinoGrupo = g.destino || g.DESTINO || g.ciudad || '';
-    if (destinosSel.size && !destinosSel.has(destinoGrupo)) continue;
+    if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
 
     const pax = paxDeGrupo(g);
     const it  = g.itinerario || {};
@@ -375,7 +427,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     if (!g) continue;
 
     const destinoGrupo = g.destino || asg.destino || '';
-    if (destinosSel.size && !destinosSel.has(destinoGrupo)) continue;
+    if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
 
     const start = asg.fechaInicio, end = asg.fechaFin;
     if (!start || !end) continue;
@@ -453,6 +505,176 @@ function agruparPorProveedor(items) {
     r.set(slugProv, acc);
   }
   return r;
+}
+// ===== Proveedores por MONEDA NATIVA =====
+function agruparPorProveedorMonedaNativa(items){
+  const r = new Map();
+  for (const it of items){
+    const slugProv = it.proveedorSlug || slug(it.proveedor || '(sin proveedor)');
+    const nombre   = it.proveedor || '(sin proveedor)';
+    const m = normalizarMoneda(it.moneda || 'CLP');
+    const acc = r.get(slugProv) || {
+      nombre,
+      destinos: new Set(),
+      totals: { CLP:0, USD:0, BRL:0, ARS:0 },
+      count: 0,
+      items: []
+    };
+    acc.destinos.add(it.destinoGrupo || '(sin destino)');
+    acc.totals[m] = (acc.totals[m] || 0) + (it.totalMoneda || 0); // suma nativa
+    acc.count++;
+    acc.items.push(it);
+    r.set(slugProv, acc);
+  }
+  return r;
+}
+
+function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
+  const tbl = el('tblProveedores');
+  const thead = tbl.querySelector('thead');
+  const tb = tbl.querySelector('tbody');
+  tb.innerHTML = '';
+
+  // Encabezado dinámico
+  const cols = [];
+  visibleCurrencies.forEach(m => {
+    cols.push({ key:`T_${m}`, label:`${m} TOTAL` });
+    cols.push({ key:`A_${m}`, label:`${m} ABONO` });
+    cols.push({ key:`S_${m}`, label:`${m} SALDO` });
+  });
+  thead.innerHTML = `
+    <tr>
+      <th>Proveedor</th>
+      <th>Destino(s)</th>
+      ${cols.map(c => `<th class="right">${c.label}</th>`).join('')}
+      <th class="right"># ítems</th>
+      <th></th>
+    </tr>`;
+
+  // Filas
+  const rows = [];
+  mapProv.forEach((v, key) => rows.push({
+    slug: key,
+    nombre: v.nombre,
+    destinos: [...v.destinos].join(', '),
+    totals: v.totals,
+    count: v.count,
+    items: v.items
+  }));
+  rows.sort((a,b)=>{
+    const sa = (a.totals.CLP||0)+(a.totals.USD||0)+(a.totals.BRL||0)+(a.totals.ARS||0);
+    const sb = (b.totals.CLP||0)+(b.totals.USD||0)+(b.totals.BRL||0)+(b.totals.ARS||0);
+    return sb - sa;
+  });
+
+  // Subtotales (pie)
+  const subtotales = { T:{}, A:{}, S:{} };
+  visibleCurrencies.forEach(m => { subtotales.T[m]=0; subtotales.A[m]=0; subtotales.S[m]=0; });
+
+  for (const r of rows){
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-prov', r.slug);
+
+    let moneyTds = '';
+    for (const c of cols){
+      if (c.key.startsWith('T_')){
+        const m = c.key.slice(2);
+        const val = r.totals[m] || 0;
+        subtotales.T[m] += (val||0);
+        moneyTds += `<td class="right" data-key="${c.key}" data-raw="${val||0}">${val ? fmt(val) : '—'}</td>`;
+      } else {
+        moneyTds += `<td class="right" data-key="${c.key}" data-raw="0">—</td>`;
+      }
+    }
+
+    tr.innerHTML = `
+      <td title="${r.nombre}">${r.nombre}</td>
+      <td title="${r.destinos}">${r.destinos}</td>
+      ${moneyTds}
+      <td class="right">${fmt(r.count)}</td>
+      <td class="right"><button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button></td>
+    `;
+    tb.appendChild(tr);
+  }
+
+  // botones detalle
+  tb.querySelectorAll('button[data-prov]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const slugProv = btn.getAttribute('data-prov');
+      openModalProveedor(slugProv, mapProv.get(slugProv));
+    });
+  });
+
+  // sorters (saltando columna de acciones)
+  const colTypes = ['text','text', ...cols.map(()=> 'num'), 'num', 'text'];
+  const actionIdx = 2 + cols.length + 1; // última columna
+  makeSortable(tbl, colTypes, { skipIdx:[actionIdx] });
+
+  // Completar ABONOS y SALDOS por moneda y pie de subtotales
+  completarAbonosEnTablaProveedoresMonedas(mapProv, visibleCurrencies).then(result => {
+    const tbody = tbl.querySelector('tbody');
+    for (const [slugProv, agg] of Object.entries(result.porProv)){
+      const tr = tbody.querySelector(`tr[data-prov="${slugProv}"]`);
+      if (!tr) continue;
+      let ci = 2; // empieza en la primera monetaria
+      for (const m of visibleCurrencies){
+        // T está en ci; A en ci+1; S en ci+2
+        const tdA = tr.children[ci+1];
+        const tdS = tr.children[ci+2];
+        tdA.textContent = agg.A[m] ? fmt(agg.A[m]) : '—';
+        tdA.dataset.raw = String(agg.A[m] || 0);
+        tdS.textContent = agg.S[m] ? fmt(agg.S[m]) : '—';
+        tdS.dataset.raw = String(agg.S[m] || 0);
+        ci += 3;
+      }
+    }
+
+    const tfoot = tbl.querySelector('tfoot') || tbl.createTFoot();
+    tfoot.innerHTML = `
+      <tr class="bold">
+        <th colspan="2" class="right">SUBTOTALES</th>
+        ${visibleCurrencies.map(m => `
+          <th class="right">${result.subtotales.T[m] ? fmt(result.subtotales.T[m]) : '—'}</th>
+          <th class="right">${result.subtotales.A[m] ? fmt(result.subtotales.A[m]) : '—'}</th>
+          <th class="right">${result.subtotales.S[m] ? fmt(result.subtotales.S[m]) : '—'}</th>
+        `).join('')}
+        <th colspan="2"></th>
+      </tr>`;
+  });
+}
+
+async function completarAbonosEnTablaProveedoresMonedas(mapProv, visibleCurrencies){
+  const porProv = {};
+  const subtotales = { T:{}, A:{}, S:{} };
+  visibleCurrencies.forEach(m => { subtotales.T[m]=0; subtotales.A[m]=0; subtotales.S[m]=0; });
+
+  for (const [slugProv, provData] of mapProv.entries()) {
+    const pares = serviciosUnicosDeProveedor(provData.items);
+    const lotes = await loadAbonosLote(pares);
+
+    const A = { CLP:0, USD:0, BRL:0, ARS:0 };
+    const T = provData.totals;
+    const S = { CLP:T.CLP||0, USD:T.USD||0, BRL:T.BRL||0, ARS:T.ARS||0 };
+
+    for (const lote of lotes) {
+      for (const ab of (lote.abonos || [])) {
+        if (!abonoIncluido(ab)) continue;
+        const m = normalizarMoneda(ab.moneda || 'CLP');
+        const v = Number(ab.monto || 0);
+        A[m] += v;
+      }
+    }
+    for (const m of TODAS_MONEDAS) S[m] = (T[m]||0) - (A[m]||0);
+
+    for (const m of visibleCurrencies){
+      subtotales.T[m] += (T[m]||0);
+      subtotales.A[m] += (A[m]||0);
+      subtotales.S[m] += (S[m]||0);
+    }
+
+    porProv[slugProv] = { A, S };
+  }
+  return { porProv, subtotales };
 }
 function agruparPorHotel(itemsHotel) {
   const r = new Map();
@@ -1450,7 +1672,11 @@ function poblarFiltrosBasicos() {
 
   const dests = [...new Set(GRUPOS.map(g => g.destino).filter(Boolean))]
                  .sort((a,b)=>a.localeCompare(b));
-  el('filtroDestino').innerHTML = dests.map(d => `<option value="${d}">${d}</option>`).join('');
+
+  // “Todos los destinos” (valor *) seleccionado por defecto
+  el('filtroDestino').innerHTML =
+    `<option value="*" selected>Todos los destinos</option>` +
+    dests.map(d => `<option value="${d}">${d}</option>`).join('');
 }
 function aplicarRangoPorAnio() {
   const anio = el('filtroAnio').value;
@@ -1476,23 +1702,36 @@ function logDiagnostico(items){
 function recalcular() {
   const fechaDesde = el('fechaDesde').value || null;
   const fechaHasta = el('fechaHasta').value || null;
-  const destinosSel = getDestinosSeleccionados();
+
+  const filtro = getDestinoFilter();
   const inclAct = el('inclActividades').checked;
   const inclHot = el('inclHoteles').checked;
 
-  LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, destinosSel, inclAct);
-  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, inclHot);
+  // include fns
+  const includeExactFn = (d) => filtro.all || filtro.tokens.size===0 || filtro.tokens.has(d);
+  const includeTokenFn = (d) => filtro.all || filtro.tokens.size===0 ||
+                                 [...filtro.tokens].some(tok => norm(d).includes(norm(tok)));
+
+  // KPIs, Destinos y Hoteles: EXACTO
+  LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, includeExactFn, inclAct);
+  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, includeExactFn, inclHot);
 
   logDiagnostico(LINE_ITEMS);
 
+  // KPIs
   renderKPIs(LINE_ITEMS, LINE_HOTEL);
 
+  // Tabla Destinos (con conversiones)
   const mapDest = agruparPorDestino([...LINE_ITEMS, ...LINE_HOTEL]);
   renderTablaDestinos(mapDest);
 
-  const mapProv = agruparPorProveedor(LINE_ITEMS);
-  renderTablaProveedores(mapProv);
+  // Proveedores: TOKEN + moneda nativa + columnas visibles por destino
+  const itemsProv = construirLineItems(fechaDesde, fechaHasta, includeTokenFn, inclAct);
+  const mapProvNative = agruparPorProveedorMonedaNativa(itemsProv);
+  const visibles = monedasVisiblesFromFilter(filtro);
+  renderTablaProveedoresMonedaNativa(mapProvNative, visibles);
 
+  // Hoteles sección (EXACTO)
   const secH = el('secHoteles');
   if (LINE_HOTEL.length) {
     secH.style.display = '';
@@ -1566,7 +1805,15 @@ window.closeModal = closeModal;
 // -------------------------------
 function bindUI() {
   el('filtroAnio').addEventListener('change', () => { aplicarRangoPorAnio(); recalcular(); });
-  el('filtroDestino').addEventListener('change', recalcular);
+  // Auto-deselección de “Todos los destinos” (*)
+  const selDest = el('filtroDestino');
+  function enforceTodos() {
+    const vals = [...selDest.selectedOptions].map(o => o.value);
+    if (vals.includes('*') && vals.length > 1) {
+      [...selDest.options].forEach(o => o.selected = (o.value === '*'));
+    }
+  }
+  selDest.addEventListener('change', () => { enforceTodos(); recalcular(); });
   el('fechaDesde').addEventListener('change', recalcular);
   el('fechaHasta').addEventListener('change', recalcular);
   el('inclActividades').addEventListener('change', recalcular);
