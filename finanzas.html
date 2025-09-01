@@ -142,7 +142,38 @@
       }
     }
 
-  
+    /* === FIX de alineación de ACTIVIDADES / HOTELES === */
+
+    /* 2 filas: labels arriba, controles abajo con alto mínimo consistente */
+    #rt-fin #filtersCard .controls{
+      grid-template-rows: auto minmax(40px, auto);
+      align-items: end; /* todos los elementos pegan al borde inferior de su fila */
+    }
+    
+    /* El bloque de checks ocupa las dos filas, pero replica esa estructura
+       para poder “anclar” cada label en su fila correspondiente */
+    #filtersCard .f-checks{
+      display: grid;
+      grid-template-rows: auto minmax(40px, auto); /* 1ª fila (labels) / 2ª fila (controles) */
+      align-self: stretch;       /* ocupa todo el alto disponible del área 'checks' */
+      align-items: end;          /* cada label pegado al borde inferior de su fila */
+      justify-items: start;
+      padding-left: 12px;        /* aire respecto a “Hasta” */
+      gap: 0;                    /* sin separación vertical extra */
+    }
+    
+    /* Cada check como fila “compacta”, sin empujes raros */
+    #filtersCard .f-checks .chk{
+      display:flex; align-items:center; gap:.45rem;
+      line-height:1; margin:0;
+    }
+    #filtersCard .f-checks .chk input[type="checkbox"]{
+      margin:0; transform:none;
+    }
+    
+    /* (IMPORTANTE) elimina cualquier tweak anterior que movía el check hacia arriba */
+    #filtersCard input[type="checkbox"]{ transform:none; }
+
     /* ===== KPIs ===== */
     #rt-fin .kpi-grid{
       display:grid;
