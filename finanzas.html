@@ -215,10 +215,10 @@
     /* Columna de ACCIONES en ABONOS: que no se corte */
     #tblAbonos th.actions,
     #tblAbonos td.actions{
-      white-space: nowrap;        /* mantener en una línea */
-      overflow: visible;          /* que no recorte el contenido */
-      text-overflow: initial;     /* sin puntos suspensivos */
-      min-width: 200px;           /* espacio suficiente para ambos botones */
+      width: 220px;          /* fijo: para table-layout:fixed */
+      white-space: nowrap;
+      overflow: hidden;      /* no invadir la celda 'ESTADO' */
+      text-overflow: ellipsis;
     }
     
     #tblAbonos td.actions .btn{
