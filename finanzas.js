@@ -1406,21 +1406,6 @@ function exportModalToExcel(cont, nombre) {
   URL.revokeObjectURL(a.href);
 }
 
-async function boot() {
-  onAuthStateChanged(auth, async () => {
-    try {
-      await Promise.all([loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones()]);
-      await cargarTCGuardado();     // ← carga TC persistido (si existe)
-      poblarFiltrosBasicos();
-      aplicarRangoPorAnio();
-      bindUI();
-      recalcular();
-    } catch (e) {
-      console.error('Error cargando datos', e);
-    }
-  });
-}
-
 // -------------------------------
 // 12) Recalcular + export CSV
 // -------------------------------
@@ -1579,4 +1564,19 @@ function bindUI() {
   el('modalClose').addEventListener('click', closeModal);
   el('backdrop').addEventListener('click', closeModal);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+}
+
+async function boot() {
+  onAuthStateChanged(auth, async () => {
+    try {
+      await Promise.all([loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones()]);
+      await cargarTCGuardado();     // ← carga TC persistido (si existe)
+      poblarFiltrosBasicos();
+      aplicarRangoPorAnio();
+      bindUI();
+      recalcular();
+    } catch (e) {
+      console.error('Error cargando datos', e);
+    }
+  });
 }
