@@ -269,30 +269,30 @@
     .icon-btn.archive:hover{ color:#b91c1c; } /* toque rojo al pasar */
 
     /* Layout tipo “la imagen” */
-#rt-fin #filtersCard .controls{
-  display:grid;
-  grid-template-areas:
-    "destino anio  checks tc"
-    "destino fechas checks tc";
-  grid-template-columns: 360px 260px 160px 1fr; /* ajusta a gusto */
-  grid-auto-rows:auto;
-  column-gap:16px; row-gap:6px;
-  align-items:end;
-}
-
-/* Áreas */
-#filtersCard .f-destino{ grid-area: destino; }
-#filtersCard .f-anio{ grid-area: anio; }
-#filtersCard .f-fechas{ grid-area: fechas; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-#filtersCard .f-checks{ grid-area: checks; display:grid; gap:8px; align-content:end; }
-#filtersCard .f-tc{ grid-area: tc; display:grid; align-content:end; gap:4px; }
-
-/* Estilos de controles */
-#filtersCard select[multiple]{ min-height:120px; min-width:240px; }
-#filtersCard input[type="number"]{ width:100px; text-align:right; }
-#filtersCard .f-checks .chk{ display:flex; align-items:center; gap:.35rem; font-weight:600; }
-
-/* Botón oscuro de TC ya lo tienes como .btn-dark */
+  #rt-fin #filtersCard .controls{
+    display:grid;
+    grid-template-areas:
+      "destino anio  checks tc"
+      "destino fechas checks tc";
+    grid-template-columns: 360px 260px 160px 1fr; /* ajusta a gusto */
+    grid-auto-rows:auto;
+    column-gap:16px; row-gap:6px;
+    align-items:end;
+  }
+  
+  /* Áreas */
+  #filtersCard .f-destino{ grid-area: destino; }
+  #filtersCard .f-anio{ grid-area: anio; }
+  #filtersCard .f-fechas{ grid-area: fechas; display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  #filtersCard .f-checks{ grid-area: checks; display:grid; gap:8px; align-content:end; }
+  #filtersCard .f-tc{ grid-area: tc; display:grid; align-content:end; gap:4px; }
+  
+  /* Estilos de controles */
+  #filtersCard select[multiple]{ min-height:120px; min-width:240px; }
+  #filtersCard input[type="number"]{ width:100px; text-align:right; }
+  #filtersCard .f-checks .chk{ display:flex; align-items:center; gap:.35rem; font-weight:600; }
+  
+  /* Botón oscuro de TC ya lo tienes como .btn-dark */
 
   </style>
 </head>
