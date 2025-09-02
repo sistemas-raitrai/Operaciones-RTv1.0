@@ -744,22 +744,81 @@ function renderTablaProveedores(mapProv) {
   const tb = tbl.querySelector('tbody');
   tb.innerHTML = '';
 
-  // Nuevo encabezado
+  // ——— Encabezado con clases por banda/moneda
   if (thead) {
     thead.innerHTML = `
       <tr>
-        <th>Proveedor</th>
-        <th>Destino(s)</th>
-        <th class="right">CLP TOTAL</th>
-        <th class="right">USD TOTAL</th>
-        <th class="right">CLP ABONO</th>
-        <th class="right">USD ABONO</th>
-        <th class="right">CLP SALDO</th>
-        <th class="right">USD SALDO</th>
-        <th class="right"># items</th>
-        <th></th>
+        <th class="col-prov">Proveedor</th>
+        <th class="col-dest">Destino(s)</th>
+
+        <th class="right col-clp total">CLP TOTAL</th>
+        <th class="right col-usd total">USD TOTAL</th>
+
+        <th class="right col-clp abono">CLP ABONO</th>
+        <th class="right col-usd abono">USD ABONO</th>
+
+        <th class="right col-clp saldo">CLP SALDO</th>
+        <th class="right col-usd saldo">USD SALDO</th>
+
+        <th class="right col-items"># items</th>
+        <th class="col-act"></th>
       </tr>`;
   }
+
+  // ——— Filas base (totales por proveedor)
+  const rows = [];
+  mapProv.forEach((v, key) => rows.push({
+    slug: key,
+    nombre: v.nombre,
+    destinos: [...v.destinos].join(', '),
+    totalCLP: v.clpEq || 0,
+    totalUSD: v.usdEq || 0,
+    count: v.count || 0,
+    items: v.items
+  }));
+  rows.sort((a,b)=>b.totalCLP - a.totalCLP);
+
+  for (const r of rows) {
+    tb.insertAdjacentHTML('beforeend', `
+      <tr data-prov="${r.slug}">
+        <td class="col-prov" title="${r.nombre}">${r.nombre}</td>
+        <td class="col-dest" title="${r.destinos}">${r.destinos}</td>
+
+        <td class="right col-clp total" data-field="totalclp" data-raw="${Math.round(r.totalCLP)}">${money(r.totalCLP)}</td>
+        <td class="right col-usd total" data-field="totalusd" data-raw="${r.totalUSD}">${fmt(r.totalUSD)}</td>
+
+        <td class="right col-clp abono" data-field="abonoclp">—</td>
+        <td class="right col-usd abono" data-field="abonousd">—</td>
+
+        <td class="right bold col-clp saldo" data-field="saldoclp">—</td>
+        <td class="right bold col-usd saldo" data-field="saldousd">—</td>
+
+        <td class="right col-items" title="${r.count}">${fmt(r.count)}</td>
+        <td class="right col-act">
+          <button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button>
+        </td>
+      </tr>
+    `);
+  }
+
+  // ——— Botones "VER DETALLE"
+  tb.querySelectorAll('button[data-prov]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const slugProv = btn.getAttribute('data-prov');
+      openModalProveedor(slugProv, mapProv.get(slugProv));
+    });
+  });
+
+  // ——— Sorters (mismo orden, saltando columna acciones)
+  makeSortable(tbl,
+    ['text','text','money','num','money','num','money','num','num','text'],
+    { skipIdx:[9] }  // la última columna (acciones)
+  );
+
+  // ——— Completar abonos/saldos (ya usa data-field, no cambia)
+  completarAbonosEnTablaProveedores(mapProv);
+}
+
 
   // Filas (primero solo totales de servicios)
   const rows = [];
