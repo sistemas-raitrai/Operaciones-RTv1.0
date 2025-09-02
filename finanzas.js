@@ -121,6 +121,14 @@ const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/
   document.head.appendChild(style);
 })();
 
+// --- Realizaciones (overlay de "hizo" por item) ---
+const RUTA_REALIZACIONES = 'FinanzasRealizaciones';
+const REALIZACIONES = new Map();       // key -> boolean (true=Sí, false=No)
+const REALIZACIONES_INFO = new Map();  // key -> { email, updatedAt }
+
+const keyRealiza = (grupoId, fechaISO, servicioId) =>
+  `${grupoId||''}|${fechaISO||''}|${servicioId||''}`;
+
 // ===== Filtro de destinos y reglas de monedas =====
 function getDestinoFilter(){
   const sel = el('filtroDestino');
@@ -250,6 +258,36 @@ function makeSortable(table, colTypes=[], options={}){
       setArrow(idx, dir);
     });
   });
+}
+
+// === ESTILOS ADICIONALES PARA EL MODAL (una sola vez) ===
+function ensureFinanceStyles() {
+  if (document.getElementById('finanzas-extra-styles')) return;
+  const css = `
+    /* Botón Excel en verde */
+    #btnExportXLS, .btn-excel { background:#1db954 !important; color:#fff !important; }
+
+    /* Abonos (azul) */
+    .abono-amount, #tblAbonos tbody td:nth-child(5) { color:#1976d2; font-weight:600; }
+
+    /* Saldos (rojo si >0, verde si <=0) */
+    .saldo-rojo { color:#b00020 !important; font-weight:700; }
+    .saldo-ok   { color:#2e7d32 !important; font-weight:700; }
+
+    /* Subtotal pago reservado (naranjo) */
+    #tblDetalleProv tfoot tr.row-subtotal-naranja th,
+    #tblDetalleProv tfoot tr.row-subtotal-naranja td {
+      background:#ffedd5; color:#b45309;
+    }
+
+    /* HIZO: botón + email al lado */
+    .hizo-wrap{ display:flex; align-items:center; gap:.5rem; }
+    .hizo-wrap .hizo-email{ font-size:.85em; color:#555; }
+  `;
+  const st = document.createElement('style');
+  st.id = 'finanzas-extra-styles';
+  st.textContent = css;
+  document.head.appendChild(st);
 }
 
 // -------------------------------
@@ -463,6 +501,12 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
       for (const item of arr) {
         const svc = resolverServicio(item, destinoGrupo);
+        // Si existe overlay de realizaciones y está marcado "No", excluir el item
+        const svcIdOverlay = (svc && svc.id) ? svc.id : null;
+        const kOverlay = keyRealiza(g.id, fechaISO, svcIdOverlay);
+        if (svcIdOverlay && REALIZACIONES.has(kOverlay) && REALIZACIONES.get(kOverlay) === false) {
+          continue; // no se considera en finanzas
+        }
 
         if (!svc) {
           out.push({
@@ -1064,6 +1108,41 @@ async function desarchivarAbono({ destinoId, servicioId, abonoId }) {
   await updateDoc(docRef, { estado: 'EDITADO', unarchivedAt: serverTimestamp(), unarchivedByEmail: email });
 }
 
+// --- Cargar realizaciones guardadas (Sí/No por item) ---
+async function loadRealizaciones(){
+  try{
+    const snap = await getDocs(collection(db, RUTA_REALIZACIONES));
+    REALIZACIONES.clear();
+    REALIZACIONES_INFO.clear();
+    for (const d of snap.docs){
+      const x = d.data() || {};
+      const k = keyRealiza(x.grupoId, x.fecha, x.servicioId);
+      REALIZACIONES.set(k, !!x.realizado);
+      REALIZACIONES_INFO.set(k, {
+        email: (x.updatedByEmail || x.createdByEmail || '').toLowerCase(),
+        updatedAt: x.updatedAt || null
+      });
+    }
+  }catch(e){ console.warn('No se pudo cargar FinanzasRealizaciones', e); }
+}
+
+// --- Guardar lote de cambios de realizaciones ---
+async function saveRealizacionesBatch(entries){
+  for (const [k, realizado] of entries){
+    const [grupoId, fecha, servicioId] = k.split('|');
+    await setDoc(
+      doc(db, RUTA_REALIZACIONES, k),
+      {
+        grupoId, fecha, servicioId,
+        realizado: !!realizado,
+        updatedByEmail: (auth.currentUser?.email || '').toLowerCase(),
+        updatedAt: serverTimestamp()
+      },
+      { merge:true }
+    );
+  }
+}
+
 // --- NUEVO: armar pares destino/servicio únicos para un proveedor ---
 function serviciosUnicosDeProveedor(items){
   const map = new Map();
@@ -1107,19 +1186,17 @@ function agruparItemsPorServicioNativo(items){
   return [...map.entries()].map(([servicio,v])=>({servicio,...v})).sort((a,b)=>b.total - a.total);
 }
 
-// Calcula abonos por servicio (moneda NAT) y pinta RESUMEN + SALDO
+// Calcula abonos por servicio (moneda NAT) + llena RESUMEN TOTAL y SALDO por servicio
 async function poblarResumenYSaldo({ data, cont }) {
   const nat = cont.__nat || 'CLP';
-  const resumen = agruparItemsPorServicioNativo(data.items);
+  const pairs = cont.__svcPairs || []; // [{destinoId, servicioId, servicioNombre, moneda}, ...]
 
-  // map servicioSlug -> { destinoId, servicioId, servicioNombre, moneda }
-  const pairs = cont.__svcPairs || [];
+  // 1) Resumen de items por servicio (sumas NATIVAS por servicio)
+  const resumen = agruparItemsPorServicioNativo(data.items); // [{servicio,total,count,servicioId,items:[]}, ...]
 
-  // Lote de abonos
+  // 2) Lote de abonos por servicio
   const lotes = await loadAbonosLote(pairs);
-
-  // Indice rápido por servicioId
-  const abonoPorServicio = {}; // servicioId -> monto nat
+  const abonoPorServicio = {}; // servicioId -> suma (NAT)
   for (const lote of lotes) {
     let sum = 0;
     for (const ab of (lote.abonos || [])) {
@@ -1131,74 +1208,100 @@ async function poblarResumenYSaldo({ data, cont }) {
     abonoPorServicio[lote.servicioId] = (abonoPorServicio[lote.servicioId] || 0) + sum;
   }
 
-  // Pinta RESUMEN
+  // 3) RESUMEN TOTAL (una sola fila + "VER TODOS")
   const tbRes = $('#tblProvResumen tbody', cont);
   tbRes.innerHTML = '';
-  let RES_T=0, RES_A=0, RES_S=0, RES_I=0;
-
+  let TOT_T=0, TOT_A=0, TOT_S=0, TOT_I=0;
   for (const r of resumen) {
     const abo = r.servicioId ? (abonoPorServicio[r.servicioId] || 0) : 0;
     const sal = (r.total || 0) - abo;
-    RES_T += (r.total || 0);
-    RES_A += abo;
-    RES_S += sal;
-    RES_I += (r.count || 0);
-
-    tbRes.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td title="${r.servicio}">${r.servicio}</td>
-        <td class="right bold" title="${r.total}">${money(r.total)}</td>
-        <td class="right abono-cell" title="${abo}">${money(abo)}</td>
-        <td class="right ${sal > 0 ? 'saldo-neg' : 'saldo-ok'}" title="${sal}">${money(sal)}</td>
-        <td class="right" title="${r.count}">${fmt(r.count)}</td>
-        <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicio)}">VER DETALLE</button></td>
-      </tr>
-    `);
+    TOT_T += (r.total || 0);
+    TOT_A += abo;
+    TOT_S += sal;
+    TOT_I += (r.count || 0);
   }
-  $('#resTotNAT', cont).textContent = money(RES_T);
-  $('#resAboNAT', cont).textContent = money(RES_A);
-  $('#resSalNAT', cont).textContent = money(RES_S);
-  $('#resItems',  cont).textContent = fmt(RES_I);
+  const trTotal = document.createElement('tr');
+  trTotal.innerHTML = `
+    <td class="bold">TOTAL</td>
+    <td id="resTotNAT" class="right bold">${money(TOT_T)}</td>
+    <td id="resAboNAT" class="right abono-amount">${money(TOT_A)}</td>
+    <td id="resSalNAT" class="right ${TOT_S>0?'saldo-rojo':'saldo-ok'}">${money(TOT_S)}</td>
+    <td id="resItems" class="right">${fmt(TOT_I)}</td>
+    <td class="right"><button id="btnVerTodos" class="btn secondary">VER TODOS</button></td>
+  `;
+  tbRes.appendChild(trTotal);
 
-  const resSal = $('#resSalNAT', cont);
-  resSal.classList.toggle('saldo-neg', RES_S > 0);
-  resSal.classList.toggle('saldo-ok', RES_S <= 0);
-  
-  const resAbo = $('#resAboNAT', cont);
-  resAbo.classList.add('abono-cell'); // azul
-  
-  makeSortable($('#tblProvResumen', cont),
-    ['text','money','money','money','num','text'], {skipIdx:[5]}
-  );
-
-  // Pinta SALDO por servicio (tabla de abajo)
+  // 4) SALDOS POR ACTIVIDAD/SERVICIO (con botón VER DETALLE)
   const tbSaldo = $('#tblSaldo tbody', cont);
   tbSaldo.innerHTML = '';
   let S_T=0, S_A=0, S_S=0;
-
   for (const r of resumen) {
     const abo = r.servicioId ? (abonoPorServicio[r.servicioId] || 0) : 0;
     const sal = (r.total || 0) - abo;
-    S_T += (r.total || 0);
-    S_A += abo;
-    S_S += sal;
-    tbSaldo.insertAdjacentHTML('beforeend', `
-      <tr data-svc="${slug(r.servicio)}">
-        <td>${r.servicio}</td>
-        <td class="right">${money(r.total || 0)}</td>
-        <td class="right abono-cell">${money(abo)}</td>
-        <td class="right ${sal > 0 ? 'saldo-neg' : 'saldo-ok'}">${money(sal)}</td>
-      </tr>
-    `);
+    S_T += (r.total || 0); S_A += abo; S_S += sal;
+
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-svc', slug(r.servicio));
+    tr.innerHTML = `
+      <td>${r.servicio}</td>
+      <td class="right">${money(r.total || 0)}</td>
+      <td class="right abono-amount">${money(abo)}</td>
+      <td class="right ${sal>0?'saldo-rojo':'saldo-ok'}">${money(sal)}</td>
+      <td class="right">
+        <button class="btn secondary btn-saldo-detalle" data-svc="${slug(r.servicio)}">VER DETALLE</button>
+      </td>
+    `;
+    tbSaldo.appendChild(tr);
   }
   $('#saldoTotNAT', cont).textContent = money(S_T);
   $('#saldoAboNAT', cont).textContent = money(S_A);
-  $('#saldoNAT',    cont).textContent = money(S_S);
+  const celSN = $('#saldoNAT', cont);
+  celSN.textContent = money(S_S);
+  celSN.classList.toggle('saldo-rojo', S_S > 0.0001);
+  celSN.classList.toggle('saldo-ok',   S_S <= 0.0001);
 
-  $('#saldoAboNAT', cont).classList.add('abono-cell');
-  const saldoPie = $('#saldoNAT', cont);
-  saldoPie.classList.toggle('saldo-neg', S_S > 0);
-  saldoPie.classList.toggle('saldo-ok', S_S <= 0);
+  // 5) Acciones: VER TODOS
+  const btnTodos = $('#btnVerTodos', cont);
+  if (btnTodos) {
+    btnTodos.onclick = async () => {
+      // Mostrar todas las actividades y todos los ítems
+      $$('#tblSaldo tbody tr', cont).forEach(tr => tr.style.display = '');
+      $$('#tblDetalleProv tbody tr', cont).forEach(tr => tr.style.display = '');
+      cont.dataset.curMode = 'ALL';
+      await pintarAbonosTodosProveedor({ data, cont });
+      calcSaldoDesdeTablas(cont);
+    };
+  }
+
+  // 6) Acciones: VER DETALLE por actividad (filtra detalle + abonos)
+  tbSaldo.querySelectorAll('.btn-saldo-detalle').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const svcSlug = btn.getAttribute('data-svc');
+
+      // Filtra filas de SALDO
+      $$('#tblSaldo tbody tr', cont).forEach(tr => {
+        tr.style.display = (tr.getAttribute('data-svc') === svcSlug) ? '' : 'none';
+      });
+
+      // Filtra DETALLE
+      $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
+        tr.style.display = (tr.getAttribute('data-svc') === svcSlug) ? '' : 'none';
+      });
+
+      // Cargar abonos de ese servicio
+      const itemSvc = data.items.find(i => slug(i.servicio||'') === svcSlug);
+      if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
+        cont.dataset.curMode = 'ONE';
+        await pintarAbonos({
+          destinoId: itemSvc.destinoGrupo,
+          servicioId: itemSvc.servicioId,
+          servicioNombre: itemSvc.servicio || '',
+          cont,
+        });
+      }
+      calcSaldoDesdeTablas(cont);
+    });
+  });
 }
 
 // --- NUEVO: pintar TODOS los abonos del proveedor en el modal ---
@@ -1304,6 +1407,7 @@ function buildModalShell(natCode) {
     <div class="modal-toolbar">
       <input id="modalSearch" type="search" placeholder="BUSCAR EN ABONOS Y DETALLE…" />
       <div class="spacer"></div>
+      <button class="btn" id="btnGuardarCambios" style="background:#f97316;color:#fff;">GUARDAR CAMBIOS</button>
       <button class="btn blue" id="btnAbonar">ABONAR DINERO</button>
       <button class="btn btn-dark" id="btnVerArch" aria-pressed="false">VER ARCHIVADOS</button>
       <button class="btn btn-excel" id="btnExportXLS">EXPORTAR EXCEL</button>
@@ -1318,7 +1422,7 @@ function buildModalShell(natCode) {
             <th class="right">TOTAL (${natCode})</th>
             <th class="right">ABONO (${natCode})</th>
             <th class="right">SALDO (${natCode})</th>
-            <th class="right"># ÍTEMS</th>
+            <th class="right">N°</th>
             <th></th>
           </tr>
         </thead>
@@ -1377,6 +1481,7 @@ function buildModalShell(natCode) {
               <th class="right">TOTAL (${natCode})</th>
               <th class="right">ABONO (${natCode})</th>
               <th class="right">SALDO (${natCode})</th>
+              <th></th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -1419,7 +1524,7 @@ function buildModalShell(natCode) {
             <th id="modalTotalNAT" class="right">$0</th>
             <th></th>
           </tr>
-          <tr class="bold">
+          <tr class="bold row-subtotal-naranja">
             <th colspan="11" class="right">SUBTOTAL VALOR REAL (${natCode})</th>
             <th id="modalTotalRealNAT" class="right">$0</th>
             <th></th>
@@ -1528,6 +1633,42 @@ async function openModalProveedor(slugProv, data) {
   el('modalTitle').textContent = `DETALLE — ${(data?.nombre || slugProv).toUpperCase()}`;
   el('modalSub').textContent = `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)}${mixed ? ' • ⚠ proveedor con monedas mixtas' : ''}`;
 
+  ensureFinanceStyles(); // aplica colores/estilos del modal
+
+  // Guardar cambios HIZO (Sí/No)
+  const btnSave = $('#btnGuardarCambios', cont);
+  if (btnSave) {
+    btnSave.onclick = async () => {
+      const pending = Array.from((cont.__hizoDirty || new Map()).entries());
+      if (!pending.length) { alert('No hay cambios.'); return; }
+      if (!confirm(`Se guardarán ${pending.length} cambio(s). ¿Estás seguro?`)) return;
+  
+      try {
+        await saveRealizacionesBatch(pending);
+        // recarga overlay y limpia pendientes
+        await loadRealizaciones();
+        cont.__hizoDirty.clear();
+  
+        // refresca abonos/tabla segun modo actual
+        if (cont.dataset.curMode === 'ONE' && cont.dataset.curServicioId && cont.dataset.curDestinoId) {
+          await pintarAbonos({
+            destinoId: cont.dataset.curDestinoId,
+            servicioId: cont.dataset.curServicioId,
+            servicioNombre: cont.dataset.curServicioNombre || '',
+            cont,
+          });
+        } else {
+          await pintarAbonosTodosProveedor({ data, cont });
+        }
+        calcSaldoDesdeTablas(cont);
+        alert('Cambios guardados.');
+      } catch(e){
+        console.error(e);
+        alert('No se pudieron guardar los cambios.');
+      }
+    };
+  }
+
   const cont = buildModalShell(nat);
   cont.__nat = nat;
   cont.__svcPairs = buildSvcPairs(data.items);
@@ -1627,7 +1768,7 @@ async function openModalProveedor(slugProv, data) {
       <td>
         <div class="hizo-wrap">
           <button type="button" class="btn dark btn-hizo" aria-pressed="true">Sí</button>
-          <span class="resp-email">-</span>
+          <span class="hizo-email">-</span>
         </div>
       </td>
       <td title="${modalidad}">${modalidad}</td>
@@ -1637,7 +1778,48 @@ async function openModalProveedor(slugProv, data) {
       <td class="right cel-real" data-real="${deberia}" title="${deberia}">${fmt(deberia)}</td>
     `;
     tb.appendChild(tr);
-  
+
+    // --- Estado inicial HIZO desde Realizaciones guardadas ---
+    cont.__hizoDirty = cont.__hizoDirty || new Map();
+    const btnHizo = tr.querySelector('.btn-hizo');
+    const emailSpan = tr.querySelector('.hizo-email');
+    const keyHz = keyRealiza(it.grupoId, it.fecha, it.servicioId || null);
+    
+    // aplica overlay guardado
+    const saved = REALIZACIONES.get(keyHz);
+    if (saved === false) {
+      tr.setAttribute('data-hizo','0');
+      btnHizo.setAttribute('aria-pressed','false');
+      btnHizo.textContent = 'No';
+      emailSpan.textContent = REALIZACIONES_INFO.get(keyHz)?.email || '-';
+    } else {
+      tr.setAttribute('data-hizo','1');
+      btnHizo.setAttribute('aria-pressed','true');
+      btnHizo.textContent = 'Sí';
+      emailSpan.textContent = '-';
+    }
+    
+    // toggle HIZO
+    btnHizo.addEventListener('click', () => {
+      const on = tr.getAttribute('data-hizo') === '1';
+      const newOn = !on;                      // true = Sí, false = No
+      tr.setAttribute('data-hizo', newOn ? '1' : '0');
+      btnHizo.setAttribute('aria-pressed', newOn ? 'true' : 'false');
+      btnHizo.textContent = newOn ? 'Sí' : 'No';
+    
+      if (!newOn) {
+        emailSpan.textContent = (auth.currentUser?.email || '').toLowerCase();
+      } else {
+        emailSpan.textContent = '-';
+      }
+    
+      // marca cambio pendiente
+      cont.__hizoDirty.set(keyHz, newOn);
+    
+      // recalcula totales (afecta saldos, resumen TOTAL y pie)
+      calcSaldoDesdeTablas(cont);
+    });
+
     // toggle HIZO
     const btnHizo = tr.querySelector('.btn-hizo');
     const respSpan = tr.querySelector('.resp-email');
@@ -1841,7 +2023,7 @@ function calcSaldoDesdeTablas(cont){
   let real      = 0;
   $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
     if (tr.style.display === 'none') return;
-    if (tr.getAttribute('data-hizo') !== '1') return; // si NO hizo, no suma
+    if (tr.getAttribute('data-hizo') !== '1') return;
     const celRes = tr.querySelector('.cel-res');
     const celReal= tr.querySelector('.cel-real');
     reservado += Number(celRes?.dataset?.reservado || 0);
@@ -1858,6 +2040,7 @@ function calcSaldoDesdeTablas(cont){
 
   const saldo = reservado - abonado;
 
+  // Pie de DETALLE
   $('#abTotNAT', cont).textContent        = money(abonado);
   $('#modalTotalNAT', cont).textContent   = money(reservado);
   $('#modalTotalRealNAT', cont).textContent = money(real);
@@ -1865,10 +2048,24 @@ function calcSaldoDesdeTablas(cont){
   // Tabla SALDO (pie global)
   $('#saldoTotNAT', cont).textContent = money(reservado);
   $('#saldoAboNAT', cont).textContent = money(abonado);
-  $('#saldoNAT',    cont).textContent = money(saldo);
-  const cell = $('#saldoNAT', cont);
-  cell.classList.toggle('saldo-neg', saldo > 0.0001);
-  cell.classList.toggle('saldo-ok', saldo <= 0.0001);
+  const cN = $('#saldoNAT', cont);
+  cN.textContent = money(saldo);
+  cN.classList.toggle('saldo-rojo', Math.abs(saldo) > 0.0001);
+  cN.classList.toggle('saldo-ok',   Math.abs(saldo) <= 0.0001);
+
+  // RESUMEN TOTAL (fila única arriba)
+  const rT = $('#resTotNAT', cont);
+  const rA = $('#resAboNAT', cont);
+  const rS = $('#resSalNAT', cont);
+  const rI = $('#resItems',  cont); // si quieres contar items visibles, aquí podrías recalcular
+
+  if (rT) rT.textContent = money(reservado);
+  if (rA) rA.textContent = money(abonado);
+  if (rS) {
+    rS.textContent = money(saldo);
+    rS.classList.toggle('saldo-rojo', saldo > 0.0001);
+    rS.classList.toggle('saldo-ok',   saldo <= 0.0001);
+  }
 }
 
 // Submodal (crear/editar)
@@ -1966,7 +2163,13 @@ function exportModalToExcel(cont, nombre) {
 async function boot() {
   onAuthStateChanged(auth, async () => {
     try {
-      await Promise.all([loadGrupos(), loadServicios(), loadProveedores(), loadHotelesYAsignaciones()]);
+      await Promise.all([
+      loadGrupos(),
+      loadServicios(),
+      loadProveedores(),
+      loadHotelesYAsignaciones(),
+      loadRealizaciones()     // ← NUEVO: overlay de HIZO
+    ]);
       await cargarTCGuardado();     // ← carga TC persistido (si existe)
       poblarFiltrosBasicos();
       aplicarRangoPorAnio();
