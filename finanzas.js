@@ -284,10 +284,29 @@ function getMonedaProveedor(items){
 }
 
 // === Pedir clave para acciones sensibles ===
-function pedirClave(){
-  const k = prompt('Clave requerida (editar/archivar/desarchivar):');
-  return (k || '').trim().toLowerCase() === 'nena';
+function pedirClaveDialog(cont){
+  return new Promise((resolve)=>{
+    const box = $('#claveDialog', cont);
+    const pw  = $('#pwField', box);
+    const tog = $('#pwToggle', box);
+    const ok  = $('#pwOk', box);
+    const cc  = $('#pwCancel', box);
+    box.hidden = false;
+    pw.value = '';
+    pw.type = 'password';
+    tog.setAttribute('aria-pressed','false');
+
+    function close(v){ box.hidden = true; resolve(v); }
+    tog.onclick = () => {
+      const pressed = tog.getAttribute('aria-pressed') === 'true';
+      tog.setAttribute('aria-pressed', pressed ? 'false' : 'true');
+      pw.type = pressed ? 'password' : 'text';
+    };
+    ok.onclick = () => close( (pw.value || '').trim().toLowerCase() === 'nena' );
+    cc.onclick = () => close(false);
+  });
 }
+
 
 // === Pairs destino/servicio con MONEDA ===
 function buildSvcPairs(items){
@@ -1047,6 +1066,102 @@ async function loadAbonosLote(pares){
   }));
 }
 
+// Agrupa items por servicio (nativo) → {servicio, total, count, servicioId, items[]}
+function agruparItemsPorServicioNativo(items){
+  const map = new Map();
+  for (const it of items){
+    const k = it.servicio || '(sin nombre)';
+    const acc = map.get(k) || { total:0, count:0, items:[], servicioId: it.servicioId || null };
+    acc.total += (it.totalMoneda || 0);
+    acc.count++; acc.items.push(it);
+    acc.servicioId = acc.servicioId || it.servicioId || null;
+    map.set(k, acc);
+  }
+  return [...map.entries()].map(([servicio,v])=>({servicio,...v})).sort((a,b)=>b.total - a.total);
+}
+
+// Calcula abonos por servicio (moneda NAT) y pinta RESUMEN + SALDO
+async function poblarResumenYSaldo({ data, cont }) {
+  const nat = cont.__nat || 'CLP';
+  const resumen = agruparItemsPorServicioNativo(data.items);
+
+  // map servicioSlug -> { destinoId, servicioId, servicioNombre, moneda }
+  const pairs = cont.__svcPairs || [];
+
+  // Lote de abonos
+  const lotes = await loadAbonosLote(pairs);
+
+  // Indice rápido por servicioId
+  const abonoPorServicio = {}; // servicioId -> monto nat
+  for (const lote of lotes) {
+    let sum = 0;
+    for (const ab of (lote.abonos || [])) {
+      const estado = (ab.estado || 'ORIGINAL').toUpperCase();
+      if (estado === 'ARCHIVADO') continue;
+      if (normalizarMoneda(ab.moneda) !== nat) continue;
+      sum += Number(ab.monto || 0);
+    }
+    abonoPorServicio[lote.servicioId] = (abonoPorServicio[lote.servicioId] || 0) + sum;
+  }
+
+  // Pinta RESUMEN
+  const tbRes = $('#tblProvResumen tbody', cont);
+  tbRes.innerHTML = '';
+  let RES_T=0, RES_A=0, RES_S=0, RES_I=0;
+
+  for (const r of resumen) {
+    const abo = r.servicioId ? (abonoPorServicio[r.servicioId] || 0) : 0;
+    const sal = (r.total || 0) - abo;
+    RES_T += (r.total || 0);
+    RES_A += abo;
+    RES_S += sal;
+    RES_I += (r.count || 0);
+
+    tbRes.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td title="${r.servicio}">${r.servicio}</td>
+        <td class="right bold" title="${r.total}">${money(r.total)}</td>
+        <td class="right" title="${abo}">${money(abo)}</td>
+        <td class="right" title="${sal}">${money(sal)}</td>
+        <td class="right" title="${r.count}">${fmt(r.count)}</td>
+        <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicio)}">VER DETALLE</button></td>
+      </tr>
+    `);
+  }
+  $('#resTotNAT', cont).textContent = money(RES_T);
+  $('#resAboNAT', cont).textContent = money(RES_A);
+  $('#resSalNAT', cont).textContent = money(RES_S);
+  $('#resItems',  cont).textContent = fmt(RES_I);
+
+  makeSortable($('#tblProvResumen', cont),
+    ['text','money','money','money','num','text'], {skipIdx:[5]}
+  );
+
+  // Pinta SALDO por servicio (tabla de abajo)
+  const tbSaldo = $('#tblSaldo tbody', cont);
+  tbSaldo.innerHTML = '';
+  let S_T=0, S_A=0, S_S=0;
+
+  for (const r of resumen) {
+    const abo = r.servicioId ? (abonoPorServicio[r.servicioId] || 0) : 0;
+    const sal = (r.total || 0) - abo;
+    S_T += (r.total || 0);
+    S_A += abo;
+    S_S += sal;
+    tbSaldo.insertAdjacentHTML('beforeend', `
+      <tr data-svc="${slug(r.servicio)}">
+        <td>${r.servicio}</td>
+        <td class="right">${money(r.total || 0)}</td>
+        <td class="right">${money(abo)}</td>
+        <td class="right">${money(sal)}</td>
+      </tr>
+    `);
+  }
+  $('#saldoTotNAT', cont).textContent = money(S_T);
+  $('#saldoAboNAT', cont).textContent = money(S_A);
+  $('#saldoNAT',    cont).textContent = money(S_S);
+}
+
 // --- NUEVO: pintar TODOS los abonos del proveedor en el modal ---
 async function pintarAbonosTodosProveedor({ data, cont }){
   cont.dataset.curMode = 'ALL';
@@ -1078,7 +1193,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
         <td title="${(ab.updatedByEmail || ab.createdByEmail || '').toLowerCase()}">
           <span class="email-normal">${(ab.updatedByEmail || ab.createdByEmail || '').toLowerCase()}</span>
         </td>
-        <td title="${ab.fecha || ''}">${ab.fecha || ''}</td>
+        <td title="${ab.fecha || ''}">${fechaCortaEs(ab.fecha || '')}</td>
         <td title="${(ab.moneda||'CLP').toUpperCase()}">${(ab.moneda||'CLP').toUpperCase()}</td>
         <td class="right" title="${ab.monto || 0}">${fmt(ab.monto || 0)}</td>
         <td title="${ab.nota || ''}">${ab.nota || ''}</td>
@@ -1104,7 +1219,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
       if (incluir) tbody.appendChild(tr);
 
       tr.querySelector('.btn-edit').addEventListener('click', () => {
-        if (!pedirClave()) return;
+        if (!(await pedirClaveDialog(cont))) return;
         abrirSubmodalAbono({
           cont,
           destinoId: lote.destinoId,
@@ -1115,7 +1230,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
 
       const btnArch = tr.querySelector('.btn-arch');
       if (btnArch) btnArch.addEventListener('click', async () => {
-        if (!pedirClave()) return;
+        if (!(await pedirClaveDialog(cont))) return;
         if (!confirm('¿ARCHIVAR ESTE ABONO?')) return;
         await archivarAbono({ destinoId: lote.destinoId, servicioId: lote.servicioId, abonoId: ab.id });
         await pintarAbonosTodosProveedor({ data, cont });
@@ -1124,7 +1239,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
 
       const btnUn = tr.querySelector('.btn-unarch');
       if (btnUn) btnUn.addEventListener('click', async () => {
-        if (!pedirClave()) return;
+        if (!(await pedirClaveDialog(cont))) return;
         await desarchivarAbono({ destinoId: lote.destinoId, servicioId: lote.servicioId, abonoId: ab.id });
         await pintarAbonosTodosProveedor({ data, cont });
         calcSaldoDesdeTablas(cont);
@@ -1398,20 +1513,41 @@ async function openModalProveedor(slugProv, data) {
     return [...map.entries()].map(([servicio,v])=>({servicio,...v})).sort((a,b)=>b.total - a.total);
   }
 
-  const resumen = agruparItemsPorServicioNativo(data.items);
-  const tbRes = $('#tblProvResumen tbody', cont);
-  tbRes.innerHTML = '';
-  for (const r of resumen) {
-    tbRes.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td title="${r.servicio}">${r.servicio}</td>
-        <td class="right bold" title="${r.total}">${money(r.total)}</td>
-        <td class="right" title="${r.count}">${fmt(r.count)}</td>
-        <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicio)}">VER DETALLE</button></td>
-      </tr>
-    `);
-  }
-  makeSortable($('#tblProvResumen', cont), ['text','money','num','text'], {skipIdx:[3]});
+  await poblarResumenYSaldo({ data, cont });
+  
+  // Activar “VER DETALLE” por servicio (filtro + abonos modo ONE + saldo parcial)
+  cont.querySelectorAll('.btn-det-svc').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const svcSlug = btn.getAttribute('data-svc');
+  
+      // Filtra detalle a ese servicio
+      const rows = $$('#tblDetalleProv tbody tr', cont);
+      rows.forEach(tr => {
+        const ok = tr.getAttribute('data-svc') === svcSlug;
+        tr.style.display = ok ? '' : 'none';
+      });
+  
+      // Abonos de ese servicio
+      const itemSvc = data.items.find(i => slug(i.servicio||'') === svcSlug);
+      if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
+        cont.dataset.curMode = 'ONE';
+        await pintarAbonos({
+          destinoId: itemSvc.destinoGrupo,
+          servicioId: itemSvc.servicioId,
+          servicioNombre: itemSvc.servicio || '',
+          cont,
+        });
+      }
+  
+      // Recalcular saldos con el filtro aplicado
+      // Además, mostrar en #tblSaldo solo esa fila
+      $$('#tblSaldo tbody tr', cont).forEach(tr => {
+        tr.style.display = (tr.getAttribute('data-svc') === svcSlug) ? '' : 'none';
+      });
+      calcSaldoDesdeTablas(cont);
+    });
+  });
+
 
   // === Detalle nativo + columnas nuevas ===
   const tb = $('#tblDetalleProv tbody', cont);
@@ -1420,35 +1556,60 @@ async function openModalProveedor(slugProv, data) {
     (a.fecha || '').localeCompare(b.fecha || '') ||
     (a.nombreGrupo || '').localeCompare(b.nombreGrupo || '')
   );
+  
   let totalReservado = 0;
+  let totalReal      = 0;
+  
   for (const it of rows) {
     const negocioId = (it.numeroNegocio || it.grupoId || '') + (it.identificador ? `-${it.identificador}`:'');
     const grupoTxt  = it.nombreGrupo || '';
     const modalidad = (it.pagoTipo === 'por_pax' ? 'POR PAX' : 'POR GRUPO') + ' — ' + (it.pagoFrecuencia || 'unitario').toUpperCase();
-    const reservado = it.totalMoneda || 0;
-    const deberia   = (it.pagoTipo === 'por_pax') ? (Number(it.tarifa||0) * Number(it.paxReal||0)) : (Number(it.tarifa||0));
+  
+    const reservado = Number(it.totalMoneda || 0);
+    const deberia   = (it.pagoTipo === 'por_pax')
+      ? (Number(it.tarifa||0) * Number(it.paxReal||0))
+      : Number(it.tarifa||0);
+  
     totalReservado += reservado;
-
-    tb.insertAdjacentHTML('beforeend', `
-      <tr data-svc="${slug(it.servicio || '')}">
-        <td title="${it.fecha || ''}">${it.fecha || ''}</td>
-        <td title="${negocioId}">${negocioId}</td>
-        <td title="${grupoTxt}">${grupoTxt}</td>
-        <td title="${it.programa || ''}">${it.programa || ''}</td>
-        <td title="${it.servicio || ''}">${it.servicio || ''}</td>
-        <td class="right" title="${it.pax || 0}">${fmt(it.pax || 0)}</td>
-        <td class="right" title="${it.paxReal || 0}">${fmt(it.paxReal || 0)}</td>
-        <td title="${modalidad}">${modalidad}</td>
-        <td title="${(it.moneda || 'CLP').toUpperCase()}">${(it.moneda || 'CLP').toUpperCase()}</td>
-        <td class="right" title="${it.tarifa || 0}">${fmt(it.tarifa || 0)}</td>
-        <td class="right" title="${reservado}">${fmt(reservado)}</td>
-        <td class="right" title="${deberia}">${fmt(deberia)}</td>
-      </tr>
-    `);
+    totalReal      += deberia;
+  
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-svc', slug(it.servicio || ''));
+    tr.setAttribute('data-hizo', '1'); // por defecto SÍ
+    tr.innerHTML = `
+      <td title="${it.fecha || ''}">${fechaCortaEs(it.fecha || '')}</td>
+      <td title="${negocioId}">${negocioId}</td>
+      <td title="${grupoTxt}">${grupoTxt}</td>
+      <td title="${it.programa || ''}">${it.programa || ''}</td>
+      <td title="${it.servicio || ''}">${it.servicio || ''}</td>
+      <td class="right" title="${it.pax || 0}">${fmt(it.pax || 0)}</td>
+      <td class="right" title="${it.paxReal || 0}">${fmt(it.paxReal || 0)}</td>
+      <td>
+        <button type="button" class="btn dark btn-hizo" aria-pressed="true">Sí</button>
+      </td>
+      <td title="${modalidad}">${modalidad}</td>
+      <td title="${(it.moneda || 'CLP').toUpperCase()}">${(it.moneda || 'CLP').toUpperCase()}</td>
+      <td class="right" title="${it.tarifa || 0}">${fmt(it.tarifa || 0)}</td>
+      <td class="right cel-res" data-reservado="${reservado}" title="${reservado}">${fmt(reservado)}</td>
+      <td class="right cel-real" data-real="${deberia}" title="${deberia}">${fmt(deberia)}</td>
+    `;
+    tb.appendChild(tr);
+  
+    // toggle HIZO
+    const btnHizo = tr.querySelector('.btn-hizo');
+    btnHizo.addEventListener('click', () => {
+      const on = tr.getAttribute('data-hizo') === '1';
+      tr.setAttribute('data-hizo', on ? '0' : '1');
+      btnHizo.setAttribute('aria-pressed', on ? 'false' : 'true');
+      btnHizo.textContent = on ? 'No' : 'Sí';
+      calcSaldoDesdeTablas(cont); // recalc con filtro de "hizo"
+    });
   }
-  $('#modalTotalNAT', cont).textContent = money(totalReservado);
+  
+  $('#modalTotalNAT', cont).textContent      = money(totalReservado);
+  $('#modalTotalRealNAT', cont).textContent  = money(totalReal);
   makeSortable($('#tblDetalleProv', cont),
-    ['date','text','text','text','text','num','num','text','text','num','num','num']
+    ['date','text','text','text','text','num','num','text','text','text','num','num','num']
   );
 
   // === Buscador global (filtra DETALLE y ABONOS) ===
@@ -1569,7 +1730,7 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
       <td title="${(ab.updatedByEmail || ab.createdByEmail || '').toLowerCase()}">
         <span class="email-normal">${(ab.updatedByEmail || ab.createdByEmail || '').toLowerCase()}</span>
       </td>
-      <td title="${ab.fecha || ''}">${ab.fecha || ''}</td>
+      <td title="${ab.fecha || ''}">${fechaCortaEs(ab.fecha || '')}</td>
       <td title="${(ab.moneda||'CLP').toUpperCase()}">${(ab.moneda||'CLP').toUpperCase()}</td>
       <td class="right" title="${ab.monto || 0}">${fmt(ab.monto || 0)}</td>
       <td title="${ab.nota || ''}">${ab.nota || ''}</td>
@@ -1595,13 +1756,13 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
     if (incluir) tbody.appendChild(tr);
 
     tr.querySelector('.btn-edit').addEventListener('click', () => {
-      if (!pedirClave()) return;
+      if (!(await pedirClaveDialog(cont))) return;
       abrirSubmodalAbono({ cont, destinoId, servicioId, abono: { ...ab, id: ab.id } });
     });
 
     const btnArch = tr.querySelector('.btn-arch');
     if (btnArch) btnArch.addEventListener('click', async () => {
-      if (!pedirClave()) return;
+      if (!(await pedirClaveDialog(cont))) return;
       if (!confirm('¿ARCHIVAR ESTE ABONO?')) return;
       await archivarAbono({ destinoId, servicioId, abonoId: ab.id });
       await pintarAbonos({ destinoId, servicioId, servicioNombre, cont });
@@ -1610,7 +1771,7 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
 
     const btnUn = tr.querySelector('.btn-unarch');
     if (btnUn) btnUn.addEventListener('click', async () => {
-      if (!pedirClave()) return;
+      if (!(await pedirClaveDialog(cont))) return;
       await desarchivarAbono({ destinoId, servicioId, abonoId: ab.id });
       await pintarAbonos({ destinoId, servicioId, servicioNombre, cont });
       calcSaldoDesdeTablas(cont);
@@ -1630,11 +1791,16 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
 }
 
 function calcSaldoDesdeTablas(cont){
-  // Detalle: col 10 = RESERVADO (nat)
+  // Detalle: sumar SOLO filas visibles y con data-hizo="1"
   let reservado = 0;
+  let real      = 0;
   $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
     if (tr.style.display === 'none') return;
-    reservado += parseNumber(tr.cells[10].textContent);
+    if (tr.getAttribute('data-hizo') !== '1') return; // si NO hizo, no suma
+    const celRes = tr.querySelector('.cel-res');
+    const celReal= tr.querySelector('.cel-real');
+    reservado += Number(celRes?.dataset?.reservado || 0);
+    real      += Number(celReal?.dataset?.real || 0);
   });
 
   // Abonos: col 4 = MONTO; ignorar archivados y ocultos
@@ -1646,9 +1812,15 @@ function calcSaldoDesdeTablas(cont){
   });
 
   const saldo = reservado - abonado;
-  $('#abTotNAT', cont).textContent = money(abonado);
-  $('#modalTotalNAT', cont).textContent = money(reservado);
-  $('#saldoNAT', cont).textContent = money(saldo);
+
+  $('#abTotNAT', cont).textContent        = money(abonado);
+  $('#modalTotalNAT', cont).textContent   = money(reservado);
+  $('#modalTotalRealNAT', cont).textContent = money(real);
+
+  // Tabla SALDO (pie global)
+  $('#saldoTotNAT', cont).textContent = money(reservado);
+  $('#saldoAboNAT', cont).textContent = money(abonado);
+  $('#saldoNAT',    cont).textContent = money(saldo);
   const cell = $('#saldoNAT', cont);
   cell.classList.toggle('saldo-rojo', Math.abs(saldo) > 0.0001);
 }
