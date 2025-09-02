@@ -34,7 +34,14 @@
       grid-template-columns:1fr;
       gap:var(--fin-gap);
     }
-  
+
+    /* Apila los bloques internos y deja un espacio estándar entre ellos */
+    #rt-fin .fin-main{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: var(--fin-gap);      /* usa el mismo gap que el resto del layout */
+    }
+      
     /* Header local */
     #rt-fin #fin-main > header.page{
       display:flex; align-items:center; justify-content:space-between; gap:.75rem;
