@@ -544,11 +544,18 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
   });
   thead.innerHTML = `
     <tr>
-      <th>Proveedor</th>
-      <th>Destino(s)</th>
-      ${cols.map(c => `<th class="right">${c.label}</th>`).join('')}
-      <th class="right"># ítems</th>
-      <th></th>
+      <th class="col-prov">Proveedor</th>
+      <th class="col-dest">Destino(s)</th>
+      ${
+        cols.map(c => {
+          const [kind, cur] = c.key.split('_');             // p.ej. "T_CLP"
+          const tipo = kind === 'T' ? 'total' : kind === 'A' ? 'abono' : 'saldo';
+          const m = cur.toLowerCase();                      // clp | usd | brl | ars
+          return `<th class="right col-${m} ${tipo}">${c.label}</th>`;
+        }).join('')
+      }
+      <th class="right col-items"># ítems</th>
+      <th class="col-act"></th>
     </tr>`;
 
   // Filas
