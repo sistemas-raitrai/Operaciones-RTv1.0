@@ -818,59 +818,7 @@ function renderTablaProveedores(mapProv) {
   // ——— Completar abonos/saldos (ya usa data-field, no cambia)
   completarAbonosEnTablaProveedores(mapProv);
 }
-
-
-  // Filas (primero solo totales de servicios)
-  const rows = [];
-  mapProv.forEach((v, key) => rows.push({
-    slug: key,
-    nombre: v.nombre,
-    destinos: [...v.destinos].join(', '),
-    totalCLP: v.clpEq || 0,
-    totalUSD: v.usdEq || 0,
-    count: v.count || 0,
-    items: v.items
-  }));
-  rows.sort((a,b)=>b.totalCLP - a.totalCLP);
-
-  for (const r of rows) {
-    tb.insertAdjacentHTML('beforeend', `
-      <tr data-prov="${r.slug}">
-        <td title="${r.nombre}">${r.nombre}</td>
-        <td title="${r.destinos}">${r.destinos}</td>
-
-        <td class="right" data-field="totalclp" data-raw="${Math.round(r.totalCLP)}">${money(r.totalCLP)}</td>
-        <td class="right" data-field="totalusd" data-raw="${r.totalUSD}">${fmt(r.totalUSD)}</td>
-
-        <td class="right" data-field="abonoclp">—</td>
-        <td class="right" data-field="abonousd">—</td>
-
-        <td class="right bold" data-field="saldoclp">—</td>
-        <td class="right bold" data-field="saldousd">—</td>
-
-        <td class="right" title="${r.count}">${fmt(r.count)}</td>
-        <td class="right">
-          <button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button>
-        </td>
-      </tr>
-    `);
-  }
-
-  // Botones "VER DETALLE"
-  tb.querySelectorAll('button[data-prov]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const slugProv = btn.getAttribute('data-prov');
-      openModalProveedor(slugProv, mapProv.get(slugProv));
-    });
-  });
-
-  // Sorters para el nuevo layout (saltando columna acciones)
-  makeSortable(tbl, ['text','text','money','num','money','num','money','num','num','text'], { skipIdx:[9] });
-
-  // Completar abonos y saldos (asíncrono)
-  completarAbonosEnTablaProveedores(mapProv);
-}
-
+  
 async function completarAbonosEnTablaProveedores(mapProv){
   const tbody = el('tblProveedores').querySelector('tbody');
 
@@ -1290,13 +1238,6 @@ function buildModalShell() {
     </div>
   `;
   return cont;
-  
-// dentro de openModalProveedor, después de buildModalShell() y de tener 'cont' y 'data'
-const btnXLS = $('#btnExportXLS', cont);
-if (btnXLS) btnXLS.addEventListener('click', () => {
-  exportModalToExcel(cont, data?.nombre || slugProv);
-});
-  
 }
 function paintSaldoCells({ clp, usd, brl, ars }) {
   const neg = (v) => v && Math.abs(v) > 0.0001;
@@ -1340,6 +1281,11 @@ async function openModalProveedor(slugProv, data) {
   el('modalSub').textContent = `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)}`;
 
   const cont = buildModalShell();
+
+  const btnXLS = $('#btnExportXLS', cont);
+  if (btnXLS) btnXLS.addEventListener('click', () => {
+    exportModalToExcel(cont, data?.nombre || slugProv);
+  });
 
   // Botón "VER TODOS" (limpia filtro y vuelve a modo TODOS)
   const btnClear = document.createElement('button');
