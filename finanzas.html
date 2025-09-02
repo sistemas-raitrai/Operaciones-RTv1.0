@@ -318,69 +318,53 @@
       --ars-3: #93c5fd;
     }
     
-    /* ——— Proveedor / Destino(s) ——— */
-    #tblProveedores thead th:nth-child(1),
-    #tblProveedores tbody td:nth-child(1){ background:var(--band-prov); }
+    /* ===== Bandas por moneda (semánticas) — table#tblProveedores ===== */
+    #tblProveedores th.col-prov, #tblProveedores td.col-prov { background: var(--band-prov); }
+    #tblProveedores th.col-dest, #tblProveedores td.col-dest { background: var(--band-dest); }
     
-    #tblProveedores thead th:nth-child(2),
-    #tblProveedores tbody td:nth-child(2){ background:var(--band-dest); }
+    #tblProveedores th.col-clp.total,  #tblProveedores td.col-clp.total  { background: var(--clp-1); }
+    #tblProveedores th.col-clp.abono,  #tblProveedores td.col-clp.abono  { background: var(--clp-2); }
+    #tblProveedores th.col-clp.saldo,  #tblProveedores td.col-clp.saldo  { background: var(--clp-3); font-weight:700; }
     
-    /* ——— CLP (cols 3–5) ——— */
-    #tblProveedores thead th:nth-child(3),
-    #tblProveedores tbody td:nth-child(3){ background:var(--clp-1); }
-    #tblProveedores thead th:nth-child(4),
-    #tblProveedores tbody td:nth-child(4){ background:var(--clp-2); }
-    #tblProveedores thead th:nth-child(5),
-    #tblProveedores tbody td:nth-child(5){ background:var(--clp-3); font-weight:700; }
+    #tblProveedores th.col-usd.total,  #tblProveedores td.col-usd.total  { background: var(--usd-1); }
+    #tblProveedores th.col-usd.abono,  #tblProveedores td.col-usd.abono  { background: var(--usd-2); }
+    #tblProveedores th.col-usd.saldo,  #tblProveedores td.col-usd.saldo  { background: var(--usd-3); font-weight:700; }
     
-    /* ——— USD (cols 6–8) ——— */
-    #tblProveedores thead th:nth-child(6),
-    #tblProveedores tbody td:nth-child(6){ background:var(--usd-1); }
-    #tblProveedores thead th:nth-child(7),
-    #tblProveedores tbody td:nth-child(7){ background:var(--usd-2); }
-    #tblProveedores thead th:nth-child(8),
-    #tblProveedores tbody td:nth-child(8){ background:var(--usd-3); font-weight:700; }
+    /* (listo para cuando agregues BRL/ARS en la tabla) */
+    #tblProveedores th.col-brl.total,  #tblProveedores td.col-brl.total  { background: var(--brl-1); }
+    #tblProveedores th.col-brl.abono,  #tblProveedores td.col-brl.abono  { background: var(--brl-2); }
+    #tblProveedores th.col-brl.saldo,  #tblProveedores td.col-brl.saldo  { background: var(--brl-3); font-weight:700; }
     
-    /* ——— BRL (cols 9–11) ——— */
-    #tblProveedores thead th:nth-child(9),
-    #tblProveedores tbody td:nth-child(9){ background:var(--brl-1); }
-    #tblProveedores thead th:nth-child(10),
-    #tblProveedores tbody td:nth-child(10){ background:var(--brl-2); }
-    #tblProveedores thead th:nth-child(11),
-    #tblProveedores tbody td:nth-child(11){ background:var(--brl-3); font-weight:700; }
+    #tblProveedores th.col-ars.total,  #tblProveedores td.col-ars.total  { background: var(--ars-1); }
+    #tblProveedores th.col-ars.abono,  #tblProveedores td.col-ars.abono  { background: var(--ars-2); }
+    #tblProveedores th.col-ars.saldo,  #tblProveedores td.col-ars.saldo  { background: var(--ars-3); font-weight:700; }
     
-    /* ——— ARS (cols 12–14) ——— */
-    #tblProveedores thead th:nth-child(12),
-    #tblProveedores tbody td:nth-child(12){ background:var(--ars-1); }
-    #tblProveedores thead th:nth-child(13),
-    #tblProveedores tbody td:nth-child(13){ background:var(--ars-2); }
-    #tblProveedores thead th:nth-child(14),
-    #tblProveedores tbody td:nth-child(14){ background:var(--ars-3); font-weight:700; }
+    #tblProveedores th.col-items, #tblProveedores td.col-items { background: var(--band-items); }
+    #tblProveedores th.col-act,   #tblProveedores td.col-act   { background: var(--band-act); }
     
-    /* ——— # Ítems y Acciones ——— */
-    #tblProveedores thead th:nth-child(15),
-    #tblProveedores tbody td:nth-child(15){ background:var(--band-items); }
+    /* Separadores verticales entre grupos (sin nth-child) */
+    #tblProveedores th.col-clp.total,
+    #tblProveedores td.col-clp.total,
+    #tblProveedores th.col-usd.total,
+    #tblProveedores td.col-usd.total,
+    #tblProveedores th.col-brl.total,
+    #tblProveedores td.col-brl.total,
+    #tblProveedores th.col-ars.total,
+    #tblProveedores td.col-ars.total,
+    #tblProveedores th.col-items,
+    #tblProveedores td.col-items { border-left:2px solid #e5e7eb; }
     
-    #tblProveedores thead th:nth-child(16),
-    #tblProveedores tbody td:nth-child(16){ background:var(--band-act); }
-    
-    /* Separadores de grupo (inicio de CLP, USD, BRL, ARS, Ítems) */
-    #tblProveedores thead th:nth-child(3),
-    #tblProveedores tbody td:nth-child(3),
-    #tblProveedores thead th:nth-child(6),
-    #tblProveedores tbody td:nth-child(6),
-    #tblProveedores thead th:nth-child(9),
-    #tblProveedores tbody td:nth-child(9),
-    #tblProveedores thead th:nth-child(12),
-    #tblProveedores tbody td:nth-child(12),
-    #tblProveedores thead th:nth-child(15),
-    #tblProveedores tbody td:nth-child(15){ border-left:2px solid #e5e7eb; }
-    
-    /* Botón de acciones en gris */
-    #tblProveedores td:last-child .btn{
+    /* Botón de acciones en gris (sin last-child) */
+    #tblProveedores td.col-act .btn{
       background:#e5e7eb; color:#111827; border:1px solid #e5e7eb;
     }
-    #tblProveedores td:last-child .btn:hover{ filter:brightness(0.96); }
+    #tblProveedores td.col-act .btn:hover{ filter:brightness(0.96); }
+    
+    /* (conserva estas que ya tenías) */
+    #tblProveedores tbody tr:hover td{ box-shadow: inset 0 0 0 9999px rgba(255,255,255,.30); }
+    #tblProveedores td.right{ text-align:right; }
+    #tblProveedores td.saldo-rojo{ color:#b91c1c !important; font-weight:800; }
+
     
     /* Hover de fila sutil, sin perder bandas */
     #tblProveedores tbody tr:hover td{
