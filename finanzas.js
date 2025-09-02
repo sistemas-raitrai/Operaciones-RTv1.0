@@ -93,6 +93,33 @@ const fmt   = n => (n ?? 0).toLocaleString('es-CL');
 const money = n => '$' + fmt(Math.round(n || 0));
 const slug  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-');
 const norm  = s => (s || '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase().trim();
+// === Estilos del modal (inyectados 1 sola vez) ===
+(function ensureFinModalStyles(){
+  if (document.getElementById('finModalStyles')) return;
+  const css = `
+    /* Botón Excel verde */
+    #btnExportXLS.btn-excel{ background:#217346 !important; color:#fff !important; border-color:#1e5e38 !important; }
+    #btnExportXLS.btn-excel:hover{ filter:brightness(0.93); }
+
+    /* Colorear SALDO (rojo si >0, verde si <=0) y ABONO (azul) */
+    .saldo-neg{ color:#b91c1c !important; font-weight:600; }   /* rojo */
+    .saldo-ok { color:#166534 !important; font-weight:600; }   /* verde */
+    .abono-cell{ color:#1d4ed8 !important; font-weight:600; }  /* azul */
+
+    /* Fila de SUBTOTAL PAGO RESERVADO en naranjo claro */
+    #tblDetalleProv tfoot tr.row-subtotal-reservado{ background:#fff7ed; }            /* naranja muy claro */
+    #tblDetalleProv tfoot tr.row-subtotal-reservado th,
+    #tblDetalleProv tfoot tr.row-subtotal-reservado td{ border-top:2px solid #fdba74; }
+
+    /* Botón HIZO + correo responsable al lado */
+    .hizo-wrap{ display:flex; gap:.5rem; align-items:center; }
+    .hizo-wrap .resp-email{ font-size:.85em; color:#6b7280; }
+  `;
+  const style = document.createElement('style');
+  style.id = 'finModalStyles';
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
 
 // ===== Filtro de destinos y reglas de monedas =====
 function getDestinoFilter(){
@@ -1121,8 +1148,8 @@ async function poblarResumenYSaldo({ data, cont }) {
       <tr>
         <td title="${r.servicio}">${r.servicio}</td>
         <td class="right bold" title="${r.total}">${money(r.total)}</td>
-        <td class="right" title="${abo}">${money(abo)}</td>
-        <td class="right" title="${sal}">${money(sal)}</td>
+        <td class="right abono-cell" title="${abo}">${money(abo)}</td>
+        <td class="right ${sal > 0 ? 'saldo-neg' : 'saldo-ok'}" title="${sal}">${money(sal)}</td>
         <td class="right" title="${r.count}">${fmt(r.count)}</td>
         <td class="right"><button class="btn secondary btn-det-svc" data-svc="${slug(r.servicio)}">VER DETALLE</button></td>
       </tr>
@@ -1133,6 +1160,13 @@ async function poblarResumenYSaldo({ data, cont }) {
   $('#resSalNAT', cont).textContent = money(RES_S);
   $('#resItems',  cont).textContent = fmt(RES_I);
 
+  const resSal = $('#resSalNAT', cont);
+  resSal.classList.toggle('saldo-neg', RES_S > 0);
+  resSal.classList.toggle('saldo-ok', RES_S <= 0);
+  
+  const resAbo = $('#resAboNAT', cont);
+  resAbo.classList.add('abono-cell'); // azul
+  
   makeSortable($('#tblProvResumen', cont),
     ['text','money','money','money','num','text'], {skipIdx:[5]}
   );
@@ -1152,14 +1186,19 @@ async function poblarResumenYSaldo({ data, cont }) {
       <tr data-svc="${slug(r.servicio)}">
         <td>${r.servicio}</td>
         <td class="right">${money(r.total || 0)}</td>
-        <td class="right">${money(abo)}</td>
-        <td class="right">${money(sal)}</td>
+        <td class="right abono-cell">${money(abo)}</td>
+        <td class="right ${sal > 0 ? 'saldo-neg' : 'saldo-ok'}">${money(sal)}</td>
       </tr>
     `);
   }
   $('#saldoTotNAT', cont).textContent = money(S_T);
   $('#saldoAboNAT', cont).textContent = money(S_A);
   $('#saldoNAT',    cont).textContent = money(S_S);
+
+  $('#saldoAboNAT', cont).classList.add('abono-cell');
+  const saldoPie = $('#saldoNAT', cont);
+  saldoPie.classList.toggle('saldo-neg', S_S > 0);
+  saldoPie.classList.toggle('saldo-ok', S_S <= 0);
 }
 
 // --- NUEVO: pintar TODOS los abonos del proveedor en el modal ---
@@ -1375,7 +1414,7 @@ function buildModalShell(natCode) {
         </thead>
         <tbody></tbody>
         <tfoot>
-          <tr class="bold">
+          <tr class="bold row-subtotal-reservado">
             <th colspan="11" class="right">SUBTOTAL PAGO RESERVADO (${natCode})</th>
             <th id="modalTotalNAT" class="right">$0</th>
             <th></th>
@@ -1586,7 +1625,10 @@ async function openModalProveedor(slugProv, data) {
       <td class="right" title="${it.pax || 0}">${fmt(it.pax || 0)}</td>
       <td class="right" title="${it.paxReal || 0}">${fmt(it.paxReal || 0)}</td>
       <td>
-        <button type="button" class="btn dark btn-hizo" aria-pressed="true">Sí</button>
+        <div class="hizo-wrap">
+          <button type="button" class="btn dark btn-hizo" aria-pressed="true">Sí</button>
+          <span class="resp-email">-</span>
+        </div>
       </td>
       <td title="${modalidad}">${modalidad}</td>
       <td title="${(it.moneda || 'CLP').toUpperCase()}">${(it.moneda || 'CLP').toUpperCase()}</td>
@@ -1598,12 +1640,15 @@ async function openModalProveedor(slugProv, data) {
   
     // toggle HIZO
     const btnHizo = tr.querySelector('.btn-hizo');
+    const respSpan = tr.querySelector('.resp-email');
+
     btnHizo.addEventListener('click', () => {
-      const on = tr.getAttribute('data-hizo') === '1';
+      const on = tr.getAttribute('data-hizo') === '1'; // estaba en "Sí"
       tr.setAttribute('data-hizo', on ? '0' : '1');
       btnHizo.setAttribute('aria-pressed', on ? 'false' : 'true');
       btnHizo.textContent = on ? 'No' : 'Sí';
-      calcSaldoDesdeTablas(cont); // recalc con filtro de "hizo"
+      respSpan.textContent = on ? '-' : ((auth.currentUser?.email || '').toLowerCase() || '-');
+      calcSaldoDesdeTablas(cont);
     });
   }
   
@@ -1822,7 +1867,8 @@ function calcSaldoDesdeTablas(cont){
   $('#saldoAboNAT', cont).textContent = money(abonado);
   $('#saldoNAT',    cont).textContent = money(saldo);
   const cell = $('#saldoNAT', cont);
-  cell.classList.toggle('saldo-rojo', Math.abs(saldo) > 0.0001);
+  cell.classList.toggle('saldo-neg', saldo > 0.0001);
+  cell.classList.toggle('saldo-ok', saldo <= 0.0001);
 }
 
 // Submodal (crear/editar)
