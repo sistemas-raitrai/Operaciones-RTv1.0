@@ -161,6 +161,23 @@ function parseDate(val){
   const t = Date.parse(s);
   return isNaN(t) ? 0 : t;
 }
+// === Fecha corta ES (DD-mes 3 letras) ===
+const MESES_CORTO_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function fechaCortaEs(iso) {
+  if (!iso) return '';
+  // admitimos "YYYY-MM-DD" o Date parseable
+  let y=0, m=0, d=0;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    y = Number(iso.slice(0,4)); m = Number(iso.slice(5,7)); d = Number(iso.slice(8,10));
+  } else {
+    const t = new Date(iso);
+    if (isNaN(t.getTime())) return '';
+    y = t.getFullYear(); m = t.getMonth()+1; d = t.getDate();
+  }
+  const dd = String(d).padStart(2,'0');
+  const mes = MESES_CORTO_ES[(m-1+12)%12];
+  return `${dd}-${mes}`;
+}
 function makeSortable(table, colTypes=[], options={}){
   if (!table) return;
   const thead = table.tHead; if (!thead) return;
@@ -1138,20 +1155,34 @@ function buildModalShell(natCode) {
       <button class="btn btn-excel" id="btnExportXLS">EXPORTAR EXCEL</button>
     </div>
 
+    <!-- RESUMEN POR SERVICIO (MONEDA NATIVA) -->
     <div class="scroll-x" style="margin-bottom:.5rem;">
       <table class="fin-table upper" id="tblProvResumen">
         <thead>
           <tr>
             <th>SERVICIO</th>
-            <th class="right">${natCode}</th>
+            <th class="right">TOTAL (${natCode})</th>
+            <th class="right">ABONO (${natCode})</th>
+            <th class="right">SALDO (${natCode})</th>
             <th class="right"># ÍTEMS</th>
             <th></th>
           </tr>
         </thead>
         <tbody></tbody>
+        <tfoot>
+          <tr class="bold">
+            <th class="right">TOTALES</th>
+            <th id="resTotNAT" class="right">$0</th>
+            <th id="resAboNAT" class="right">$0</th>
+            <th id="resSalNAT" class="right">$0</th>
+            <th id="resItems"  class="right">0</th>
+            <th></th>
+          </tr>
+        </tfoot>
       </table>
     </div>
 
+    <!-- ABONOS -->
     <section class="panel abonos-panel">
       <div class="abonos-header upper"><span><b>ABONOS</b></span></div>
       <div class="scroll-x">
@@ -1181,23 +1212,33 @@ function buildModalShell(natCode) {
       </div>
     </section>
 
+    <!-- SALDOS POR ACTIVIDAD/SERVICIO -->
     <section class="panel">
       <h4 class="upper bold">SALDO POR PAGAR</h4>
       <div class="scroll-x">
         <table class="fin-table upper" id="tblSaldo">
           <thead>
-            <tr><th></th><th class="right">${natCode}</th></tr>
-          </thead>
-          <tbody>
-            <tr class="bold">
-              <td>SALDO TOTAL</td>
-              <td id="saldoNAT" class="right">$0</td>
+            <tr>
+              <th>SERVICIO</th>
+              <th class="right">TOTAL (${natCode})</th>
+              <th class="right">ABONO (${natCode})</th>
+              <th class="right">SALDO (${natCode})</th>
             </tr>
-          </tbody>
+          </thead>
+          <tbody></tbody>
+          <tfoot>
+            <tr class="bold">
+              <th class="right">TOTAL</th>
+              <th id="saldoTotNAT" class="right">$0</th>
+              <th id="saldoAboNAT" class="right">$0</th>
+              <th id="saldoNAT"     class="right">$0</th>
+            </tr>
+          </tfoot>
         </table>
       </div>
     </section>
 
+    <!-- DETALLE POR ÍTEM -->
     <div class="scroll-x">
       <table class="fin-table upper" id="tblDetalleProv">
         <thead>
@@ -1209,18 +1250,24 @@ function buildModalShell(natCode) {
             <th>SERVICIO</th>
             <th class="right">PAX</th>
             <th class="right">PAX REAL</th>
+            <th>HIZO</th>
             <th>MODALIDAD</th>
             <th>MONEDA</th>
             <th class="right">TARIFA</th>
-            <th class="right">RESERVADO (${natCode})</th>
-            <th class="right">DEBERÍA (${natCode})</th>
+            <th class="right">PAGO RESERVADO (${natCode})</th>
+            <th class="right">VALOR REAL (${natCode})</th>
           </tr>
         </thead>
         <tbody></tbody>
         <tfoot>
           <tr class="bold">
-            <th colspan="10" class="right">TOTAL RESERVADO (${natCode})</th>
+            <th colspan="11" class="right">SUBTOTAL PAGO RESERVADO (${natCode})</th>
             <th id="modalTotalNAT" class="right">$0</th>
+            <th></th>
+          </tr>
+          <tr class="bold">
+            <th colspan="11" class="right">SUBTOTAL VALOR REAL (${natCode})</th>
+            <th id="modalTotalRealNAT" class="right">$0</th>
             <th></th>
           </tr>
         </tfoot>
@@ -1259,6 +1306,24 @@ function buildModalShell(natCode) {
         <footer>
           <button class="btn secondary" id="abCancelar">CANCELAR</button>
           <button class="btn" id="abGuardar">GUARDAR</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- Diálogo de clave -->
+    <div id="claveDialog" class="submodal" hidden>
+      <div class="card">
+        <header class="upper bold">CLAVE REQUERIDA</header>
+        <div>
+          <label>Ingrese la clave para continuar</label>
+          <div style="display:flex;gap:.5rem;align-items:center;margin-top:.35rem;">
+            <input id="pwField" type="password" placeholder="••••" style="flex:1;"/>
+            <button id="pwToggle" class="btn secondary" type="button" aria-pressed="false">👁️</button>
+          </div>
+        </div>
+        <footer>
+          <button class="btn secondary" id="pwCancel">CANCELAR</button>
+          <button class="btn blue" id="pwOk">ACEPTAR</button>
         </footer>
       </div>
     </div>
