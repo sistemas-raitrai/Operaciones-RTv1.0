@@ -382,6 +382,13 @@
     #tblProveedores td.right{ text-align:right; }
     /* Resaltar saldos ≠ 0 ya lo haces con .saldo-rojo; esto sólo asegura contraste */
     #tblProveedores td.saldo-rojo{ color:#b91c1c !important; font-weight:800; }
+
+    /* Ancho más cómodo para GRUPO en el modal detalle */
+    #tblDetalleProv thead th:nth-child(3),
+    #tblDetalleProv tbody td:nth-child(3){
+      min-width: 340px;
+      max-width: 560px;
+    }
   </style>
 
 </head>
