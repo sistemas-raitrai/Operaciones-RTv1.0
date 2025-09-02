@@ -584,22 +584,26 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
 
     let moneyTds = '';
     for (const c of cols){
-      if (c.key.startsWith('T_')){
-        const m = c.key.slice(2);
-        const val = r.totals[m] || 0;
-        subtotales.T[m] += (val||0);
-        moneyTds += `<td class="right" data-key="${c.key}" data-raw="${val||0}">${val ? fmt(val) : '—'}</td>`;
-      } else {
-        moneyTds += `<td class="right" data-key="${c.key}" data-raw="0">—</td>`;
+      const [kind, cur] = c.key.split('_');                 // T|A|S + moneda
+      const tipo = kind === 'T' ? 'total' : kind === 'A' ? 'abono' : 'saldo';
+      const m = cur.toLowerCase();
+    
+      if (kind === 'T'){                                     // TOTAL (nativa)
+        const val = r.totals[cur] || 0;
+        moneyTds += `<td class="right col-${m} ${tipo}" data-key="${c.key}" data-raw="${val||0}">
+                       ${val ? fmt(val) : '—'}
+                     </td>`;
+      } else {                                               // ABONO y SALDO (se completan luego)
+        moneyTds += `<td class="right col-${m} ${tipo}" data-key="${c.key}" data-raw="0">—</td>`;
       }
     }
 
     tr.innerHTML = `
-      <td title="${r.nombre}">${r.nombre}</td>
-      <td title="${r.destinos}">${r.destinos}</td>
+      <td class="col-prov"  title="${r.nombre}">${r.nombre}</td>
+      <td class="col-dest"  title="${r.destinos}">${r.destinos}</td>
       ${moneyTds}
-      <td class="right">${fmt(r.count)}</td>
-      <td class="right"><button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button></td>
+      <td class="right col-items">${fmt(r.count)}</td>
+      <td class="right col-act"><button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button></td>
     `;
     tb.appendChild(tr);
   }
@@ -640,11 +644,14 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     tfoot.innerHTML = `
       <tr class="bold">
         <th colspan="2" class="right">SUBTOTALES</th>
-        ${visibleCurrencies.map(m => `
-          <th class="right">${result.subtotales.T[m] ? fmt(result.subtotales.T[m]) : '—'}</th>
-          <th class="right">${result.subtotales.A[m] ? fmt(result.subtotales.A[m]) : '—'}</th>
-          <th class="right">${result.subtotales.S[m] ? fmt(result.subtotales.S[m]) : '—'}</th>
-        `).join('')}
+        ${visibleCurrencies.map(m => {
+          const mm = m.toLowerCase();
+          return `
+            <th class="right col-${mm} total">${result.subtotales.T[m] ? fmt(result.subtotales.T[m]) : '—'}</th>
+            <th class="right col-${mm} abono">${result.subtotales.A[m] ? fmt(result.subtotales.A[m]) : '—'}</th>
+            <th class="right col-${mm} saldo">${result.subtotales.S[m] ? fmt(result.subtotales.S[m]) : '—'}</th>
+          `;
+        }).join('')}
         <th colspan="2"></th>
       </tr>`;
   });
