@@ -397,23 +397,50 @@ function createSection(destFijo){
 
   // Guardar fila -> Firestore
   async function commit(r, idx){
+    // 1) Leer datos de la fila
     const data = {};
     r.inputs.forEach(i => {
       data[i.dataset.campo] = i.multiple
         ? [...i.selectedOptions].map(o=>o.value)
         : (i.value ?? '').toString().trim().toUpperCase();
     });
-
-    const destino = isOtro ? data.destino : destActivo;
-    if(!destino)       throw new Error(`F${idx}: Falta Destino`);
-    if(!data.servicio) throw new Error(`F${idx}: Falta Servicio`);
-    if(!data.proveedor)throw new Error(`F${idx}: Falta Proveedor`);
-
-    await setDoc(doc(db,'Servicios',destino),{_created:true},{merge:true});
-    await setDoc(
-      doc(collection(db,'Servicios',destino,'Listado'),data.servicio),
-      data
-    );
+  
+    // 2) Validaciones mínimas
+    const destino = (destActivo && !isOtro) ? destActivo : data.destino;
+    if(!destino)            throw new Error(`F${idx}: Falta Destino`);
+    if(!data.servicio)      throw new Error(`F${idx}: Falta Servicio`);
+    if(!data.proveedor)     throw new Error(`F${idx}: Falta Proveedor`);
+  
+    // Asegura la "carpeta" de destino
+    await setDoc(doc(db,'Servicios',destino), { _created: true }, { merge: true });
+  
+    // 3) Determinar si es UPDATE simple o "rename/move"
+    const targetId  = data.servicio; // el nuevo ID deseado (por nombre de servicio)
+    const newRef    = doc(db, 'Servicios', destino, 'Listado', targetId);
+  
+    if (r.ref) {
+      // Tenemos doc original → revisar si cambió ID o destino
+      const parts = r.ref.path.split('/'); // Servicios/{dest}/Listado/{id}
+      const oldDest = parts[1];
+      const oldId   = parts[3];
+  
+      const destChanged = oldDest !== destino;
+      const idChanged   = oldId !== targetId;
+  
+      if (!destChanged && !idChanged) {
+        // ✅ Mismo doc → actualizar en sitio
+        await setDoc(r.ref, data);
+      } else {
+        // 🔁 Cambió ID y/o destino → crear nuevo y borrar el viejo
+        await setDoc(newRef, data);
+        try { await deleteDoc(r.ref); } catch(_) {/* si no existe, ignora */}
+        r.ref = newRef; // actualiza referencia de la fila para futuras ediciones
+      }
+    } else {
+      // Fila nueva (sin ref original)
+      await setDoc(newRef, data);
+      r.ref = newRef;
+    }
   }
 
   async function saveAll(){
