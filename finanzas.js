@@ -1218,7 +1218,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
       `;
       if (incluir) tbody.appendChild(tr);
 
-      tr.querySelector('.btn-edit').addEventListener('click', () => {
+      tr.querySelector('.btn-edit').addEventListener('click', async () => {
         if (!(await pedirClaveDialog(cont))) return;
         abrirSubmodalAbono({
           cont,
@@ -1492,6 +1492,7 @@ async function openModalProveedor(slugProv, data) {
   const cont = buildModalShell(nat);
   cont.__nat = nat;
   cont.__svcPairs = buildSvcPairs(data.items);
+  cont.__provData = data;
 
   // botón XLS
   const btnXLS = $('#btnExportXLS', cont);
@@ -1755,11 +1756,10 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
     `;
     if (incluir) tbody.appendChild(tr);
 
-    tr.querySelector('.btn-edit').addEventListener('click', () => {
+    tr.querySelector('.btn-edit').addEventListener('click', async () => {
       if (!(await pedirClaveDialog(cont))) return;
       abrirSubmodalAbono({ cont, destinoId, servicioId, abono: { ...ab, id: ab.id } });
     });
-
     const btnArch = tr.querySelector('.btn-arch');
     if (btnArch) btnArch.addEventListener('click', async () => {
       if (!(await pedirClaveDialog(cont))) return;
@@ -1881,15 +1881,11 @@ function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
 
     close();
     // Repintar según modo actual
+    // Repintar según modo actual
     if (cont.dataset.curMode === 'ONE' && cont.dataset.curServicioId === sId && cont.dataset.curDestinoId === dId){
       await pintarAbonos({ destinoId: dId, servicioId: sId, servicioNombre: cont.dataset.curServicioNombre || '', cont });
     } else {
-      // modo ALL o cambió el par
-      // buscamos nombre para refrescar si justo coincide
-      await pintarAbonosTodosProveedor({ data: { items:[...LINE_ITEMS.filter(i=>i.proveedorSlug===slugProv)] }, cont });
-      // lo anterior es genérico; en la práctica openModalProveedor ya pasó "data" al crear el modal
-      // más simple: vuelve a modo ALL con todos:
-      const prov = { items: [] }; // reparo defensivo
+      await pintarAbonosTodosProveedor({ data: cont.__provData, cont });
     }
     calcSaldoDesdeTablas(cont);
   };
