@@ -1633,8 +1633,13 @@ async function openModalProveedor(slugProv, data) {
   el('modalTitle').textContent = `DETALLE — ${(data?.nombre || slugProv).toUpperCase()}`;
   el('modalSub').textContent = `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)}${mixed ? ' • ⚠ proveedor con monedas mixtas' : ''}`;
 
-  ensureFinanceStyles(); // aplica colores/estilos del modal
-
+  ensureFinanceStyles();
+  
+  const cont = buildModalShell(nat);
+  cont.__nat = nat;
+  cont.__svcPairs = buildSvcPairs(data.items);
+  cont.__provData = data;
+  
   // Guardar cambios HIZO (Sí/No)
   const btnSave = $('#btnGuardarCambios', cont);
   if (btnSave) {
@@ -1645,11 +1650,10 @@ async function openModalProveedor(slugProv, data) {
   
       try {
         await saveRealizacionesBatch(pending);
-        // recarga overlay y limpia pendientes
-        await loadRealizaciones();
+        await loadRealizaciones();           // refresca overlay
         cont.__hizoDirty.clear();
   
-        // refresca abonos/tabla segun modo actual
+        // refresca abonos/tabla según modo actual
         if (cont.dataset.curMode === 'ONE' && cont.dataset.curServicioId && cont.dataset.curDestinoId) {
           await pintarAbonos({
             destinoId: cont.dataset.curDestinoId,
@@ -1817,19 +1821,6 @@ async function openModalProveedor(slugProv, data) {
       cont.__hizoDirty.set(keyHz, newOn);
     
       // recalcula totales (afecta saldos, resumen TOTAL y pie)
-      calcSaldoDesdeTablas(cont);
-    });
-
-    // toggle HIZO
-    const btnHizo = tr.querySelector('.btn-hizo');
-    const respSpan = tr.querySelector('.resp-email');
-
-    btnHizo.addEventListener('click', () => {
-      const on = tr.getAttribute('data-hizo') === '1'; // estaba en "Sí"
-      tr.setAttribute('data-hizo', on ? '0' : '1');
-      btnHizo.setAttribute('aria-pressed', on ? 'false' : 'true');
-      btnHizo.textContent = on ? 'No' : 'Sí';
-      respSpan.textContent = on ? '-' : ((auth.currentUser?.email || '').toLowerCase() || '-');
       calcSaldoDesdeTablas(cont);
     });
   }
