@@ -1673,11 +1673,6 @@ async function openModalProveedor(slugProv, data) {
     };
   }
 
-  const cont = buildModalShell(nat);
-  cont.__nat = nat;
-  cont.__svcPairs = buildSvcPairs(data.items);
-  cont.__provData = data;
-
   // botón XLS
   const btnXLS = $('#btnExportXLS', cont);
   if (btnXLS) btnXLS.addEventListener('click', () => {
