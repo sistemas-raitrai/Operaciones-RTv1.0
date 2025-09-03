@@ -449,6 +449,13 @@
               <input type="checkbox" id="inclActividades" checked>
               <span>Actividades</span>
             </label>
+            <!-- fila Hoteles + info TC -->
+            <label class="cb">
+              <input type="checkbox" id="inclHoteles">
+              <span>Hoteles</span>
+            </label>
+        </aside>
+        <aside class="panel" id="filtersRight">    
             <div class="tc-row">
               <label for="tcUSD">CLP</label>
               <input type="number" id="tcUSD" placeholder="USD→CLP" step="1">
@@ -458,12 +465,6 @@
               <input type="number" id="tcARS" placeholder="ARS→CLP" step="0.01">
               <button id="btnGuardarTC" class="btn btn-dark">Guardar TC</button>
             </div>
-      
-            <!-- fila Hoteles + info TC -->
-            <label class="cb">
-              <input type="checkbox" id="inclHoteles">
-              <span>Hoteles</span>
-            </label>
             <div class="tc-info">
               <small id="tcInfo" class="muted"></small>
             </div>
