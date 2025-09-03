@@ -1427,16 +1427,6 @@ function buildModalShell(natCode) {
           </tr>
         </thead>
         <tbody></tbody>
-        <tfoot>
-          <tr class="bold">
-            <th class="right">TOTALES</th>
-            <th id="resTotNAT" class="right">$0</th>
-            <th id="resAboNAT" class="right">$0</th>
-            <th id="resSalNAT" class="right">$0</th>
-            <th id="resItems"  class="right">0</th>
-            <th></th>
-          </tr>
-        </tfoot>
       </table>
     </div>
 
