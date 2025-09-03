@@ -46,7 +46,7 @@ async function cargarTCGuardado(){
       if (el('tcInfo') && d.fechaGuardado) {
         const f = (d.fechaGuardado || '').toString();
         const nice = f.slice(0,16).replace('T',' ');
-        el('tcInfo').textContent = `Tipo de cambio – CLP a (guardado el ${nice})`;
+        el('tcInfo').textContent = `Tipo de cambio – unidades por 1 USD (guardado el ${nice})`;
       }
     }
   } catch(e){ console.warn('No se pudo cargar TC guardado', e); }
@@ -64,7 +64,7 @@ async function guardarTCGuardado(){
 
   if (el('tcInfo')) {
     const nice = data.fechaGuardado.slice(0,16).replace('T',' ');
-    el('tcInfo').textContent = `Tipo de cambio – CLP a (guardado el ${nice})`;
+    el('tcInfo').textContent = `Tipo de cambio – unidades por 1 USD (guardado el ${nice})`;
   }
   // Opcional: recalcular inmediatamente con el TC guardado
   recalcular();
@@ -300,6 +300,13 @@ function normalizarMoneda(m){
   if (['USD','US$','DOLAR','DÓLAR','DOLLAR'].includes(M)) return 'USD';
   return 'CLP';
 }
+function parsePagoTipo(raw){
+  const s = (raw||'').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').toUpperCase();
+  if (/(PAX|PERSONA)/.test(s)) return 'por_pax';
+  if (/(DIA|POR DIA)/.test(s)) return 'por_dia';
+  if (/OTRO|OTHER/.test(s))     return 'otro';
+  return 'por_grupo';
+}
 function paxDeGrupo(g) {
   const a = Number(g.adultos || g.ADULTOS || 0);
   const e = Number(g.estudiantes || g.ESTUDIANTES || 0);
@@ -316,29 +323,43 @@ function within(dateISO, d1, d2) {
 
 // TC actuales (desde inputs)
 function pickTC(moneda) {
-  const m   = normalizarMoneda(moneda);
-  const usd = Number(el('tcUSD')?.value || 0);
-  const brl = Number(el('tcBRL')?.value || 0);
-  const ars = Number(el('tcARS')?.value || 0);
-  if (m === 'CLP') return 1;
-  if (m === 'USD') return usd > 0 ? usd : null;
-  if (m === 'BRL') return brl > 0 ? brl : null;
-  if (m === 'ARS') return ars > 0 ? ars : null;
+  const m = normalizarMoneda(moneda);
+  const clpPerUSD = Number(el('tcUSD')?.value || 0) || null; // CLP / USD
+  const brlPerUSD = Number(el('tcBRL')?.value || 0) || null; // BRL / USD
+  const arsPerUSD = Number(el('tcARS')?.value || 0) || null; // ARS / USD
+
+  if (m === 'USD') return 1;
+  if (m === 'CLP') return clpPerUSD;
+  if (m === 'BRL') return brlPerUSD;
+  if (m === 'ARS') return arsPerUSD;
   return null;
 }
-function convertirTodas(monedaOrigen, monto){
+
+// Convierte monto desde su moneda origen a {USD, BRL, ARS, CLP} usando USD como pivote
+function convertirTodas(monedaOrigen, monto) {
   const from = normalizarMoneda(monedaOrigen);
-  const tcFrom = pickTC(from);
-  const tcUSD  = pickTC('USD');
-  const tcBRL  = pickTC('BRL');
-  const tcARS  = pickTC('ARS');
-  const totalCLP = (from === 'CLP') ? (monto ?? null) : (tcFrom ? (monto * tcFrom) : null);
-  const conv = { USD:null, BRL:null, ARS:null, CLP: totalCLP };
-  const toTarget = (tcTarget) => (totalCLP != null && tcTarget) ? (totalCLP / tcTarget) : null;
-  conv.USD = (from === 'USD') ? (monto ?? null) : toTarget(tcUSD);
-  conv.BRL = (from === 'BRL') ? (monto ?? null) : toTarget(tcBRL);
-  conv.ARS = (from === 'ARS') ? (monto ?? null) : toTarget(tcARS);
-  return conv;
+  const rFrom = pickTC(from);           // unidades FROM por 1 USD (excepto USD=1)
+  const rCLP  = pickTC('CLP');
+  const rBRL  = pickTC('BRL');
+  const rARS  = pickTC('ARS');
+
+  // Paso 1: llevar a USD
+  let usdVal = null;
+  if (from === 'USD') {
+    usdVal = (typeof monto === 'number') ? monto : Number(monto || 0);
+  } else if (rFrom) {
+    usdVal = (monto || 0) / rFrom;      // (unidades FROM) / (FROM por USD) = USD
+  }
+
+  // Paso 2: desde USD a cada moneda
+  const to = { USD: usdVal, BRL: null, ARS: null, CLP: null };
+  const scale = (rate) => (usdVal != null && rate) ? (usdVal * rate) : null;
+
+  to.BRL = scale(rBRL);
+  to.ARS = scale(rARS);
+  to.CLP = scale(rCLP);
+
+  return to;
 }
 
 // === Moneda nativa del proveedor (asumo 1 sola; si hay mixtas, marco mixed) ===
@@ -531,12 +552,31 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
         const proveedor     = svc.proveedor || '(sin proveedor)';
         const moneda        = normalizarMoneda(svc.moneda || svc.MONEDA || 'CLP');
-        const tipoCobroRaw  = (svc.tipoCobro || svc.tipo_cobro || '').toString().toUpperCase();
-        const esPorPersona  = tipoCobroRaw.includes('PERSONA') || tipoCobroRaw.includes('PAX');
-        const valor         = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
-
-        const multiplicador = esPorPersona ? pax : 1;
-        const totalMoneda   = valor * multiplicador;
+        const tipoCobroRaw = (svc.tipoCobro || svc.tipo_cobro || '').toString();
+        const pagoTipo     = parsePagoTipo(tipoCobroRaw);
+        const valor        = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
+        
+        let totalMoneda = 0;
+        let diaKey = null, diaOwner = 0;
+        
+        if (pagoTipo === 'por_dia') {
+          // 1 cargo por (fecha + destino + servicio)
+          diaKey = `${fechaISO}||${destinoGrupo}||${svc.id}`;
+          construirLineItems.__SEEN_DIA = construirLineItems.__SEEN_DIA || new Set();
+          if (!construirLineItems.__SEEN_DIA.has(diaKey)) {
+            construirLineItems.__SEEN_DIA.add(diaKey);
+            totalMoneda = valor;  // cobra 1 vez ese día
+            diaOwner = 1;         // esta fila “posee” el cobro del día
+          } else {
+            totalMoneda = 0;      // filas extra del mismo día no suman
+          }
+        } else if (pagoTipo === 'por_pax') {
+          totalMoneda = valor * pax;
+        } else if (pagoTipo === 'por_grupo') {
+          totalMoneda = valor;
+        } else { // 'otro'
+          totalMoneda = 0;        // no suma hasta definir regla
+        }
 
         out.push({
           tipo:'actividad',
@@ -551,9 +591,10 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
           numeroNegocio: g.numeroNegocio || g.id,
           identificador: g.identificador || g.IDENTIFICADOR || '',
           pax, moneda, tarifa: valor,
-          pagoTipo: esPorPersona ? 'por_pax' : 'por_grupo',
+          pagoTipo,
           pagoFrecuencia:'unitario',
           totalMoneda,
+          diaKey, diaOwner
         });
       }
     }
@@ -1735,10 +1776,13 @@ async function openModalProveedor(slugProv, data) {
     const grupoTxt  = it.nombreGrupo || '';
     const modalidad = (it.pagoTipo === 'por_pax' ? 'POR PAX' : 'POR GRUPO') + ' — ' + (it.pagoFrecuencia || 'unitario').toUpperCase();
   
-    const reservado = Number(it.totalMoneda || 0);
-    const deberia   = (it.pagoTipo === 'por_pax')
+    const reservado = (it.pagoTipo === 'por_dia')
+      ? (it.diaOwner ? Number(it.tarifa||0) : 0)
+      : Number(it.totalMoneda || 0);
+    
+    const deberia = (it.pagoTipo === 'por_pax')
       ? (Number(it.tarifa||0) * Number(it.paxReal||0))
-      : Number(it.tarifa||0);
+      : (it.pagoTipo === 'por_grupo' ? Number(it.tarifa||0) : 0);
   
     totalReservado += reservado;
     totalReal      += deberia;
@@ -1818,16 +1862,23 @@ async function openModalProveedor(slugProv, data) {
 
   // === Buscador global (filtra DETALLE y ABONOS) ===
   $('#modalSearch', cont).addEventListener('input', (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    const match = (txt) => txt.toLowerCase().includes(q);
+    // "t1, t2, t3" => OR entre tokens
+    const raw = (e.target.value || '').toLowerCase();
+    const tokens = raw.split(',').map(s => s.trim()).filter(Boolean); // coma agrega conceptos
+  
+    const anyMatch = (txt) => {
+      if (!tokens.length) return true;                   // vacío = mostrar todo
+      const low = (txt || '').toLowerCase();
+      return tokens.some(t => low.includes(t));          // NO excluyente (OR)
+    };
+  
     $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
-      const txt = tr.textContent || '';
-      tr.style.display = match(txt) ? '' : 'none';
+      tr.style.display = anyMatch(tr.textContent) ? '' : 'none';
     });
     $$('#tblAbonos tbody tr', cont).forEach(tr => {
-      const txt = tr.textContent || '';
-      tr.style.display = match(txt) ? '' : 'none';
+      tr.style.display = anyMatch(tr.textContent) ? '' : 'none';
     });
+  
     calcSaldoDesdeTablas(cont);
   });
 
