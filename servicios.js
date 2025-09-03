@@ -4,7 +4,7 @@ import { auth, db } from './firebase-init.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs, query, orderBy,
-  doc, deleteDoc, setDoc
+  doc, deleteDoc, setDoc, getDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* ===========================
@@ -429,12 +429,45 @@ function createSection(destFijo){
   
       if (!destChanged && !idChanged) {
         // ✅ Mismo doc → actualizar en sitio
-        await setDoc(r.ref, data);
+        await setDoc(r.ref, data, { merge: true });
       } else {
-        // 🔁 Cambió ID y/o destino → crear nuevo y borrar el viejo
-        await setDoc(newRef, data);
-        try { await deleteDoc(r.ref); } catch(_) {/* si no existe, ignora */}
-        r.ref = newRef; // actualiza referencia de la fila para futuras ediciones
+      // 🔁 Cambió ID y/o destino → crear nuevo y borrar el viejo, preservando historial/aliases
+      // Lee el doc viejo para capturar nombres/aliases previos
+      let oldData = null;
+      try {
+        const oldSnap = await getDoc(r.ref);
+        if (oldSnap.exists()) oldData = oldSnap.data();
+      } catch (_) { /* ignora */ }
+      
+      // Construir set de aliases en MAYÚSCULAS
+      const aliasSet = new Set(
+        (oldData?.aliases || []).map(a => (a || '').toString().toUpperCase())
+      );
+      
+      // Visible anterior: nombre || servicio || oldId
+      const oldVisible = ((oldData?.nombre || oldData?.servicio || oldId) || '')
+        .toString().toUpperCase();
+      const oldIdUpper = (oldId || '').toString().toUpperCase();
+      if (oldVisible) aliasSet.add(oldVisible);
+      if (oldIdUpper) aliasSet.add(oldIdUpper);
+      
+      // Visible nuevo para no duplicarlo en aliases
+      const newVisible = ((data.nombre || data.servicio || targetId) || '')
+        .toString().toUpperCase();
+      aliasSet.delete(newVisible);
+      
+      // Mezcla de datos nuevos + historial
+      const merged = {
+        ...data,
+        aliases: Array.from(aliasSet),
+        prevIds: Array.from(new Set([...(oldData?.prevIds || []), oldId]))
+      };
+      
+      // Crea/actualiza el doc nuevo y luego borra el viejo
+      await setDoc(newRef, merged, { merge: true });
+      try { await deleteDoc(r.ref); } catch (_) { /* ignora */ }
+      
+      r.ref = newRef; // importante para futuras ediciones
       }
     } else {
       // Fila nueva (sin ref original)
