@@ -509,6 +509,9 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
   const out = [];
   if (!incluirActividades) return out;
 
+  // Set local por llamada (evita subcuentas entre recalculados)
+  const seenDia = new Set();
+
   for (const g of GRUPOS) {
     const destinoGrupo = g.destino || g.DESTINO || g.ciudad || '';
     if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
@@ -522,11 +525,12 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
       for (const item of arr) {
         const svc = resolverServicio(item, destinoGrupo);
-        // Si existe overlay de realizaciones y está marcado "No", excluir el item
+
+        // Overlay de realizaciones: si está “No”, se excluye
         const svcIdOverlay = (svc && svc.id) ? svc.id : null;
         const kOverlay = keyRealiza(g.id, fechaISO, svcIdOverlay);
         if (svcIdOverlay && REALIZACIONES.has(kOverlay) && REALIZACIONES.get(kOverlay) === false) {
-          continue; // no se considera en finanzas
+          continue;
         }
 
         if (!svc) {
@@ -550,21 +554,20 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
           continue;
         }
 
-        const proveedor     = svc.proveedor || '(sin proveedor)';
-        const moneda        = normalizarMoneda(svc.moneda || svc.MONEDA || 'CLP');
-        const tipoCobroRaw = (svc.tipoCobro || svc.tipo_cobro || '').toString();
-        const pagoTipo     = parsePagoTipo(tipoCobroRaw);
-        const valor        = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
-        
+        const proveedor   = svc.proveedor || '(sin proveedor)';
+        const moneda      = normalizarMoneda(svc.moneda || svc.MONEDA || 'CLP');
+        const tipoCobroRaw= (svc.tipoCobro || svc.tipo_cobro || '').toString();
+        const pagoTipo    = parsePagoTipo(tipoCobroRaw);
+        const valor       = Number(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
+
         let totalMoneda = 0;
         let diaKey = null, diaOwner = 0;
-        
+
         if (pagoTipo === 'por_dia') {
           // 1 cargo por (fecha + destino + servicio)
           diaKey = `${fechaISO}||${destinoGrupo}||${svc.id}`;
-          construirLineItems.__SEEN_DIA = construirLineItems.__SEEN_DIA || new Set();
-          if (!construirLineItems.__SEEN_DIA.has(diaKey)) {
-            construirLineItems.__SEEN_DIA.add(diaKey);
+          if (!seenDia.has(diaKey)) {
+            seenDia.add(diaKey);
             totalMoneda = valor;  // cobra 1 vez ese día
             diaOwner = 1;         // esta fila “posee” el cobro del día
           } else {
@@ -580,7 +583,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
         out.push({
           tipo:'actividad',
-          proveedor, proveedorSlug:slug(proveedor),
+          proveedor, proveedorSlug: slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
           servicioId: svc.id,
           destinoGrupo, fecha: fechaISO,
@@ -601,6 +604,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
   }
   return out;
 }
+
 function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHoteles) {
   const out = [];
   if (!incluirHoteles || !ASIGNACIONES.length) return out;
@@ -1788,6 +1792,10 @@ async function openModalProveedor(slugProv, data) {
     totalReal      += deberia;
   
     const tr = document.createElement('tr');
+    if (it.pagoTipo === 'por_dia') {
+      tr.dataset.diaKey   = it.diaKey || '';
+      tr.dataset.diaOwner = it.diaOwner ? '1' : '0';
+    }
     tr.setAttribute('data-svc', slug(it.servicio || ''));
     tr.setAttribute('data-hizo', '1'); // por defecto SÍ
     tr.innerHTML = `
@@ -1808,7 +1816,7 @@ async function openModalProveedor(slugProv, data) {
       <td title="${(it.moneda || 'CLP').toUpperCase()}">${(it.moneda || 'CLP').toUpperCase()}</td>
       <td class="right" title="${it.tarifa || 0}">${fmt(it.tarifa || 0)}</td>
       <td class="right cel-res" data-reservado="${reservado}" title="${reservado}">${fmt(reservado)}</td>
-      <td class="right cel-real" data-real="${deberia}" title="${deberia}">${fmt(deberia)}</td>
+      <td class="right cel-real" data-real="${deberia}" data-dia-tarifa="${it.tarifa||0}" title="${deberia}">${fmt(deberia)}</td>
     `;
     tb.appendChild(tr);
 
@@ -2045,19 +2053,7 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
 }
 
 function calcSaldoDesdeTablas(cont){
-  // Detalle: sumar SOLO filas visibles y con data-hizo="1"
-  let reservado = 0;
-  let real      = 0;
-  $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
-    if (tr.style.display === 'none') return;
-    if (tr.getAttribute('data-hizo') !== '1') return;
-    const celRes = tr.querySelector('.cel-res');
-    const celReal= tr.querySelector('.cel-real');
-    reservado += Number(celRes?.dataset?.reservado || 0);
-    real      += Number(celReal?.dataset?.real || 0);
-  });
-
-  // Abonos: col 4 = MONTO; ignorar archivados y ocultos
+  // 1) Abonos (igual)
   let abonado = 0;
   $$('#tblAbonos tbody tr', cont).forEach(tr => {
     if (tr.style.display === 'none') return;
@@ -2065,14 +2061,48 @@ function calcSaldoDesdeTablas(cont){
     abonado += parseNumber(tr.cells[4].textContent);
   });
 
+  // 2) Detalle: filas normales por HIZO=Sí + agrupado POR DÍA
+  let reservado = 0, real = 0;
+  const diaAgg = new Map(); // key -> { anyOn:boolean, tarifa:number, owner:tr }
+
+  $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
+    if (tr.style.display === 'none') return;
+    const hizo = (tr.getAttribute('data-hizo') === '1');
+    const diaKey = tr.dataset.diaKey || '';
+
+    if (diaKey) {
+      const tarifa = Number(tr.querySelector('.cel-real')?.dataset?.diaTarifa || 0);
+      const rec = diaAgg.get(diaKey) || { anyOn:false, tarifa:tarifa, owner:null };
+      rec.anyOn = rec.anyOn || hizo;                   // OR entre filas del mismo día
+      if (tr.dataset.diaOwner === '1') rec.owner = tr; // “fila dueña” del cargo
+      if (!rec.tarifa) rec.tarifa = tarifa;
+      diaAgg.set(diaKey, rec);
+    } else if (hizo) {
+      reservado += Number(tr.querySelector('.cel-res')?.dataset?.reservado || 0);
+      real      += Number(tr.querySelector('.cel-real')?.dataset?.real || 0);
+    }
+  });
+
+  // Consolidar cargos por día (1 vez por key si hubo uso)
+  diaAgg.forEach(({anyOn, tarifa, owner}) => {
+    if (!owner) return;
+    const rCell = owner.querySelector('.cel-real');
+    const pCell = owner.querySelector('.cel-res');
+    const rVal  = anyOn ? tarifa : 0;
+    const pVal  = anyOn ? tarifa : 0;
+    if (rCell){ rCell.dataset.real = String(rVal);   rCell.textContent = fmt(rVal); }
+    if (pCell){ pCell.dataset.reservado = String(pVal); pCell.textContent = fmt(pVal); }
+    real      += rVal;
+    reservado += pVal;
+  });
+
   const saldo = reservado - abonado;
 
-  // Pie de DETALLE
-  $('#abTotNAT', cont).textContent        = money(abonado);
-  $('#modalTotalNAT', cont).textContent   = money(reservado);
+  // Actualiza pies y resumen
+  $('#abTotNAT', cont).textContent          = money(abonado);
+  $('#modalTotalNAT', cont).textContent     = money(reservado);
   $('#modalTotalRealNAT', cont).textContent = money(real);
 
-  // Tabla SALDO (pie global)
   $('#saldoTotNAT', cont).textContent = money(reservado);
   $('#saldoAboNAT', cont).textContent = money(abonado);
   const cN = $('#saldoNAT', cont);
@@ -2080,20 +2110,12 @@ function calcSaldoDesdeTablas(cont){
   cN.classList.toggle('saldo-rojo', Math.abs(saldo) > 0.0001);
   cN.classList.toggle('saldo-ok',   Math.abs(saldo) <= 0.0001);
 
-  // RESUMEN TOTAL (fila única arriba)
-  const rT = $('#resTotNAT', cont);
-  const rA = $('#resAboNAT', cont);
-  const rS = $('#resSalNAT', cont);
-  const rI = $('#resItems',  cont); // si quieres contar items visibles, aquí podrías recalcular
-
+  const rT = $('#resTotNAT', cont), rA = $('#resAboNAT', cont), rS = $('#resSalNAT', cont);
   if (rT) rT.textContent = money(reservado);
   if (rA) rA.textContent = money(abonado);
-  if (rS) {
-    rS.textContent = money(saldo);
-    rS.classList.toggle('saldo-rojo', saldo > 0.0001);
-    rS.classList.toggle('saldo-ok',   saldo <= 0.0001);
-  }
+  if (rS){ rS.textContent = money(saldo); rS.classList.toggle('saldo-rojo', saldo > 0.0001); rS.classList.toggle('saldo-ok', saldo <= 0.0001); }
 }
+
 
 // Submodal (crear/editar)
 function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
