@@ -14,7 +14,7 @@ const opciones = {
   tipoServicio: ['DIARIO','GENERAL','OTRO'],
   categoria:    ['NAVEGACIÓN','ALIMENTACIÓN','ATRACCIÓN TURÍSTICA','ENTRETENIMIENTO','TOUR','PARQUE ACUÁTICO','DISCO','OTRA'],
   formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
-  tipoCobro:    ['POR PERSONA','POR GRUPO','OTRO'],
+  tipoCobro:    ['POR PERSONA','POR GRUPO', 'POR DIA', 'OTRO'],
   moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO'],
   voucher:      ['FISICO','ELECTRONICO','NO APLICA'] // para la columna Voucher
 };
