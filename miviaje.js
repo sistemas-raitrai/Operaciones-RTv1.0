@@ -338,7 +338,7 @@ async function main() {
     sec.dataset.fecha = fecha;
 
     sec.innerHTML = `
-      <h3>Día ${idx + 1} – ${formatDateReadable(fecha)}</h3>
+      <h3 class="dia-titulo"><span class="dia-label">Día ${idx + 1}</span> – <span class="dia-fecha">${formatDateReadable(fecha)}</span></h3>
       <ul class="activity-list"></ul>
     `;
 
