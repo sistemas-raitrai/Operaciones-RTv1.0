@@ -227,7 +227,8 @@ function buildPrintText(grupo, fechasOrdenadas) {
       const e = parseInt(act.estudiantes, 10) || 0;
       const pax = (a + e) || act.pasajeros || 0;
 
-      out += `${hi}${hf}  ${name} 👥 ${pax} pax (A:${a} E:${e})\n\n`;
+      // 👇 En impresión ya NO mostramos (A: / E:). Solo total pax.
+      out += `${hi}${hf}  ${name} 👥 ${pax} pax\n\n`;
     });
 
     out += '\n';
