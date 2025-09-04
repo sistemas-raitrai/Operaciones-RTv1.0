@@ -8,7 +8,7 @@ import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs,
-  doc, getDoc, updateDoc, addDoc, deleteDoc
+  doc, getDoc, updateDoc, addDoc, deleteDoc, getDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
