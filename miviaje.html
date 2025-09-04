@@ -31,7 +31,21 @@
       body { background:#fff; color:#000; }
     }
     .dia-titulo { color:#1D4ED8; font-weight:700; }
+
+    /* Oculta el logo en pantalla; muéstralo fijo arriba-derecha al imprimir */
+    @media screen { #print-logo { display:none; } }
+    @media print {
+      #print-logo {
+        display:block;
+        position:fixed;
+        top:12px; right:12px;
+        width:120px;          /* ajusta tamaño si quieres */
+      }
     
+      /* Asegura que el bloque de texto de impresión se vea en print */
+      #print-block { display:block !important; white-space:pre-wrap; }
+    }
+
   </style>
 </head>
 
@@ -40,6 +54,7 @@
   <!-- Encabezado liviano SIN autenticación -->
   <header class="header" style="display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;border-bottom:1px solid #ddd;background:#fff;">
     <img src="Logo Raitrai.png" alt="Rai Trai" style="height:36px;width:auto;">
+    <img id="print-logo" src="Logo Raitrai.png" alt="RaiTrai" />
     <h1 style="font-size:1.25rem;margin:0;">Mi Viaje</h1>
 
     <!-- Resumen de pax a la derecha -->
