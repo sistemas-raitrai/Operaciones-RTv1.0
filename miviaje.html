@@ -11,37 +11,34 @@
 
   <!-- Estilos específicos para impresión -->
   <style>
-    /* ===== Base (pantalla) ===== */
+    /* ===== Pantalla (base) ===== */
     .print-only{
       display:none;
       white-space:pre-wrap;
       font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
     }
   
-    /* Título día/fecha en azul */
+    /* Día/fecha en azul (también aplica en print) */
     .dia-titulo{ color:#1D4ED8; font-weight:700; }
   
-    /* Logo: oculto en pantalla, visible en impresión */
-    @media screen { #print-logo{ display:none; } }
+    /* Logo solo para impresión */
+    @media screen{ #print-logo{ display:none; } }
   
     /* ===== Impresión ===== */
     @media print{
-      /* Márgenes de la página */
+      /* Márgenes */
       @page{ margin:14mm 12mm; }
   
-      /* Respeta colores (azul de los títulos) */
+      /* Mantener colores */
       *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   
-      /* Mostrar layout visual; ocultar controles y bloque textual */
-      header{ display:flex !important; border:0 !important; padding:0 !important; margin:0 0 8px 0 !important; }
-      .grid{ display:grid !important; gap:14px !important; }
-      .btn-add, .print-only{ display:none !important; }
-      #print-block{ display:none !important; }
+      /* Ocultar header "Mi Viaje" y botones */
+      header, .btn-add{ display:none !important; }
   
-      /* No imprimir el resumen de pax */
-      #resumen-pax{ display:none !important; }
+      /* NO usar el bloque textual; imprimimos el layout visual simplificado */
+      .print-only, #print-block{ display:none !important; }
   
-      /* Logo fijo arriba a la derecha */
+      /* Logo fijo arriba-derecha */
       #print-logo{
         display:block;
         position:fixed;
@@ -49,16 +46,60 @@
         width:120px;
       }
   
-      /* Evitar cortes feos entre actividades/días */
-      .dia-seccion{ break-inside:avoid; page-break-inside:avoid; margin-bottom:10px; }
-      .activity-card{ break-inside:avoid; page-break-inside:avoid; margin:6px 0; }
+      /* LISTA VERTICAL (sin grillas ni tarjetas) */
+      .grid,
+      #itinerario-container,
+      .activity-list{
+        display:block !important;
+        gap:0 !important;
+        width:100% !important;
+      }
   
-      /* Tipografía y colores base en impresión */
+      /* Quitar fondos, bordes, sombras, radios, etc. */
+      .dia-seccion,
+      .activity-card{
+        background:none !important;
+        border:0 !important;
+        box-shadow:none !important;
+        border-radius:0 !important;
+        padding:0 !important;
+        margin:0 !important;
+      }
+  
+      /* Evitar scroll/cortes internos */
+      *, *::before, *::after{ overflow:visible !important; }
+      #itinerario-container,
+      .activity-list{
+        max-height:none !important;
+        height:auto !important;
+        overflow:visible !important;
+      }
+  
+      /* Título del día (azul) y espaciado */
+      .dia-seccion{ break-inside:avoid; page-break-inside:avoid; margin:12px 0 10px 0 !important; }
+      .dia-seccion h3{
+        color:#1D4ED8 !important;
+        background:none !important;
+        border:0 !important;
+        margin:12px 0 6px 0 !important;
+        padding:0 !important;
+        font-size:12pt !important;
+        text-align:left !important;
+      }
+  
+      /* Actividades: solo texto, sin guiones ni cajas */
+      .activity-card p{
+        margin:0 0 4px 0 !important;
+        font-size:11pt !important;
+        font-weight:600;
+      }
+  
       body{ background:#fff; color:#000; font-size:11pt; }
       h1,h2,h3{ margin:0 0 6px 0; }
-      #itinerario-container{ margin-top:10px; }
+      #itinerario-container{ margin-top:10px !important; }
     }
   </style>
+
 
 <img id="print-logo" src="Logo Raitrai.png" alt="RaiTrai" />
   
