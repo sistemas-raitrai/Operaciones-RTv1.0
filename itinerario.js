@@ -14,6 +14,17 @@ import {
 const auth = getAuth(app);
 
 // —————————————————————————————————
+// 0.1) Utilidades de normalización (MEJORA CLAVE)
+//     → evita fallos por mayúsculas, tildes o dobles espacios
+// —————————————————————————————————
+const K = s => (s ?? '')
+  .toString()
+  .normalize('NFD').replace(/\p{Diacritic}/gu,'')
+  .replace(/\s+/g,' ')
+  .trim()
+  .toUpperCase();
+
+// —————————————————————————————————
 // 1) Referencias DOM + estado
 // —————————————————————————————————
 const selectNum      = document.getElementById("grupo-select-num");
@@ -189,33 +200,40 @@ async function prepararCampoActividad(inputId, destino) {
 
 
 // ======================================================
-// NUEVO — Catálogo de servicios por destino (con alias)
+// Catálogo de servicios por destino (ROBUSTO con alias + normalización)
 // ======================================================
 async function getServiciosMaps(destinoStr) {
   const partes = destinoStr
     ? destinoStr.toString().split(/\s+Y\s+/i).map(s => s.trim().toUpperCase())
     : [];
-  const byId = new Map();    // idDoc  -> { id, destino, nombre, data }
-  const byName = new Map();  // NOMBRE -> { id, destino, nombre, data }
+  const byId = new Map();    // idDoc  -> { id, destino, nombre, nombreK, data }
+  const byName = new Map();  // K(NOMBRE/ALIAS/ID/servicio) -> pack
+  const packs = [];
 
   for (const parte of partes) {
     try {
       const snap = await getDocs(collection(db, 'Servicios', parte, 'Listado'));
       snap.forEach(ds => {
-        const id = ds.id;
+        const id   = ds.id;
         const data = ds.data() || {};
         // Nombre visible: prioriza `nombre`, luego `servicio`, luego id
-        const visible = ((data.nombre || data.servicio || id) || '').toString().toUpperCase();
+        const visible = ((data.nombre || data.servicio || id) || '').toString();
+        const pack = { id, destino: parte, nombre: visible.toUpperCase(), nombreK: K(visible), data };
 
-        const pack = { id, destino: parte, nombre: visible, data };
         byId.set(id, pack);
-        byName.set(visible, pack);
+        packs.push(pack);
 
-        // Si usas alias en Servicios (array), también mapéalos:
+        // Index principal por nombre visible
+        byName.set(pack.nombreK, pack);
+        // También por id y por el campo "servicio" si existe
+        byName.set(K(id), pack);
+        if (data.servicio) byName.set(K(data.servicio), pack);
+
+        // Alias opcionales
         if (Array.isArray(data.aliases)) {
           data.aliases.forEach(a => {
-            const k = (a || '').toString().toUpperCase();
-            if (k) byName.set(k, pack);
+            const key = K(a);
+            if (key) byName.set(key, pack);
           });
         }
       });
@@ -223,11 +241,11 @@ async function getServiciosMaps(destinoStr) {
       // Si el destino no existe aún, lo ignoramos
     }
   }
-  return { byId, byName };
+  return { byId, byName, packs };
 }
 
 // ===================================================================
-// NUEVO — Sincroniza actividades del itinerario con la colección Servicios
+// Sincroniza actividades del itinerario con la colección Servicios
 // - Devuelve { it: objetoItinerarioActualizado, changed: boolean }
 // - Si detecta diferencias, actualiza Firestore UNA sola vez.
 // ===================================================================
@@ -242,9 +260,9 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
     const arr = (it[f] || []);
     const nuevoArr = arr.map(act => {
       const res = { ...act };
-      const keyName = (res.actividad || '').toString().toUpperCase();
+      const keyName = K(res.actividad || '');
 
-      // 1) Si tiene servicioId y existe → tomar nombre vigente
+      // 1) Si tiene servicioId y existe → tomar nombre/destino vigentes
       if (res.servicioId && svcMaps.byId.has(res.servicioId)) {
         const sv = svcMaps.byId.get(res.servicioId);
         if (res.actividad !== sv.nombre || res.servicioNombre !== sv.nombre || res.servicioDestino !== sv.destino) {
@@ -254,10 +272,10 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
           hayCambios = true;
         }
       } else {
-        // 2) Resolver por nombre actual (y fijar el id si lo encontramos)
+        // 2) Resolver por nombre normalizado (incluye alias, id y campo "servicio")
         if (svcMaps.byName.has(keyName)) {
           const sv = svcMaps.byName.get(keyName);
-          if (res.servicioId !== sv.id || res.servicioNombre !== sv.nombre || res.servicioDestino !== sv.destino) {
+          if (res.servicioId !== sv.id || res.servicioNombre !== sv.nombre || res.servicioDestino !== sv.destino || res.actividad !== sv.nombre) {
             res.servicioId = sv.id;
             res.servicioNombre = sv.nombre;
             res.servicioDestino = sv.destino;
@@ -303,10 +321,10 @@ async function renderItinerario() {
     g.itinerario = init;
   }
 
-  // ====== NUEVO: traigo el catálogo y sincronizo ======
+  // ====== traigo el catálogo y sincronizo ======
   const svcMaps = await getServiciosMaps(g.destino || '');
   const syncRes = await syncItinerarioServicios(grupoId, g, svcMaps);
-  const IT = syncRes.it; // itinerario ya sincronizado en memoria (y DB si hizo falta)
+  const IT = syncRes.it; // itinerario ya sincronizado (y DB si hizo falta)
 
   // Fechas ordenadas
   const fechas = Object.keys(IT)
@@ -400,12 +418,12 @@ async function renderItinerario() {
       ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
     } else {
       sorted.forEach(({ act, originalIdx }) => {
-        // Nombre visible resuelto en vivo
+        // Nombre visible (resuelto en vivo). Usa id si existe, si no, nombre normalizado
         let visibleName = act.actividad || '';
         if (act.servicioId && svcMaps.byId.has(act.servicioId)) {
           visibleName = svcMaps.byId.get(act.servicioId).nombre;
         } else {
-          const key = (act.actividad || '').toString().toUpperCase();
+          const key = K(act.actividad || '');
           if (svcMaps.byName.has(key)) {
             visibleName = svcMaps.byName.get(key).nombre;
           }
@@ -467,10 +485,11 @@ async function renderItinerario() {
 // —————————————————————————————————
 async function quickAddActivity() {
   const grupoId    = selectNum.value;
-  const selIdx     = choicesDias.getValue(true);
+  const selIdx     = (choicesDias.getValue(true) || []).map(x => parseInt(x,10));
   const horaInicio = qaHoraInicio.value;
-  const text       = qaAct.value.trim().toUpperCase();
-  if (!selIdx.length || !text) {
+  const textRaw    = qaAct.value.trim();
+  const textUpper  = textRaw.toUpperCase();
+  if (!selIdx.length || !textUpper) {
     return alert("Selecciona día(s) y escribe la actividad");
   }
 
@@ -482,7 +501,7 @@ async function quickAddActivity() {
 
   // Resolver servicio por destino
   const svcMaps = await getServiciosMaps(g.destino || '');
-  const key = text.toUpperCase();
+  const key = K(textUpper);
   const sv  = svcMaps.byName.get(key) || null;
 
   const fechas = Object.keys(g.itinerario)
@@ -495,7 +514,7 @@ async function quickAddActivity() {
     const item = {
       horaInicio,
       horaFin:    sumarUnaHora(horaInicio),
-      actividad:  sv ? sv.nombre : text,   // nombre vigente si existe
+      actividad:  sv ? sv.nombre : textUpper,   // nombre vigente si existe
       pasajeros:  totalAdults + totalStudents,  // suma numérica
       adultos:    totalAdults,
       estudiantes:totalStudents,
@@ -587,20 +606,21 @@ async function onSubmitModal(evt) {
   const suma = a + e;
   if (pax !== suma) {
     return alert(`La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`);
-    }
+  }
   if (a < 0 || e < 0 || pax < 0) {
     return alert("Los valores no pueden ser negativos.");
   }
 
   // Resolver servicio por destino, en base al texto del modal
   const svcMaps = await getServiciosMaps(g.destino || '');
-  const typedName = (fldAct.value || '').trim().toUpperCase();
-  const sv = svcMaps.byName.get(typedName) || null;
+  const typedUpper = (fldAct.value || '').trim().toUpperCase();
+  const key = K(typedUpper);
+  const sv = svcMaps.byName.get(key) || null;
 
   const payload = {
     horaInicio: fldHi.value,
     horaFin:    fldHf.value,
-    actividad:  sv ? sv.nombre : typedName,  // nombre vigente si existe
+    actividad:  sv ? sv.nombre : typedUpper,  // nombre vigente si existe
     pasajeros:  pax,
     adultos:    a,
     estudiantes:e,
@@ -684,7 +704,7 @@ function sumarUnaHora(hhmm) {
 }
 
 // —————————————————————————————————
-// Plantillas: guardar
+/** Plantillas: guardar **/
 // —————————————————————————————————
 async function guardarPlantilla() {
   const nombre = prompt("Nombre de la plantilla:");
@@ -718,7 +738,7 @@ async function guardarPlantilla() {
 }
 
 // —————————————————————————————————
-// Función para cargar las plantillas en el select
+/** Plantillas: cargar **/
 // —————————————————————————————————
 async function cargarListaPlantillas() {
   selPlantillas.innerHTML = "";
@@ -732,7 +752,6 @@ async function cargarListaPlantillas() {
   });
 }
 
-// ——— CARGAR PLANTILLA ———
 async function cargarPlantilla() {
   const tplId = selPlantillas.value;
   if (!tplId) return alert("Selecciona una plantilla");
@@ -814,7 +833,9 @@ window.cerrarCalendario = () => {
   document.getElementById("iframe-calendario").src           = "";
 };
 
-// Manejador de clics de swap (actividad o día)
+// —————————————————————————————————
+// Swap (actividad o día)
+// —————————————————————————————————
 async function handleSwapClick(type, info) {
   // 1) Si no hay origen, lo registramos y resaltamos
   if (!swapOrigin) {
@@ -851,14 +872,15 @@ async function handleSwapClick(type, info) {
   renderItinerario();
 }
 
-// Limpia el estado de swap y quita resaltados
 function resetSwap() {
   swapOrigin = null;
   document.querySelectorAll(".swap-selected")
     .forEach(el => el.classList.remove("swap-selected"));
 }
 
+// —————————————————————————————————
 // Editar fecha base (recalcula el rango consecutivo)
+// —————————————————————————————————
 async function handleDateEdit(oldFecha) {
   const nueva1 = prompt("Nueva fecha para este día (YYYY-MM-DD):", oldFecha);
   if (!nueva1) return;
@@ -896,10 +918,10 @@ async function handleDateEdit(oldFecha) {
 }
 
 
-// ===== MIGRACIÓN OPCIONAL: sincronizar TODOS los itinerarios con Servicios =====
-// Pégalo (ya está pegado aquí), recarga la página logueado y ejecútalo en consola:
-//   syncAllItinerariosConServicios(4)   // 4 = nivel de concurrencia sugerido
-// Luego puedes eliminar este bloque si ya no lo necesitas.
+// ===== MIGRACIÓN/UTILIDADES: sincronización y reparación masiva =====
+
+// 1) Sincronizar TODOS los itinerarios con Servicios (usa destino del grupo)
+//    Ejecuta en consola:  syncAllItinerariosConServicios(4)
 window.syncAllItinerariosConServicios = async function(limit = 3){
   const qs = await getDocs(collection(db,'grupos'));
   const grupos = qs.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -923,4 +945,211 @@ window.syncAllItinerariosConServicios = async function(limit = 3){
   await Promise.all(Array.from({length:n}, run));
 
   console.log(`FIN — procesados:${ok}, actualizados:${changed}, errores:${fail}`);
+};
+
+// 2) Índice global de servicios para reparación masiva
+const KNOWN_DESTINOS_REPAIR = [
+  'BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'SUR DE CHILE Y BARILOCHE','NORTE DE CHILE'
+];
+
+async function buildServiciosIndex(includeAll = true, destinosStr = '') {
+  const destinos = includeAll
+    ? KNOWN_DESTINOS_REPAIR
+    : (destinosStr ? destinosStr.split(/\s+Y\s+/i).map(s => s.trim().toUpperCase()) : []);
+
+  const byId   = new Map();
+  const byName = new Map();
+  const packs  = [];
+
+  for (const dest of destinos) {
+    try {
+      const snap = await getDocs(collection(db, 'Servicios', dest, 'Listado'));
+      snap.forEach(ds => {
+        const id   = ds.id;
+        const data = ds.data() || {};
+        const visible = ((data.nombre || data.servicio || id) || '').toString();
+        const pack = { id, destino: dest, nombre: visible.toUpperCase(), nombreK: K(visible), data };
+
+        byId.set(id, pack);
+        byName.set(pack.nombreK, pack);
+        byName.set(K(id), pack);
+        if (data.servicio) byName.set(K(data.servicio), pack);
+
+        if (Array.isArray(data.aliases)) {
+          data.aliases.forEach(a => {
+            const key = K(a);
+            if (key) byName.set(key, pack);
+          });
+        }
+        packs.push(pack);
+      });
+    } catch (_) { /* destino inexistente: ignorar */ }
+  }
+  return { byId, byName, packs };
+}
+
+// 3) Fuzzy simple (Jaccard por palabras) para casos sin alias
+function fuzzyFindService(packs, rawName) {
+  const tgt = K(rawName);
+  const tset = new Set(tgt.split(' ').filter(w => w.length > 2));
+  let best = null, bestScore = 0, second = 0;
+
+  for (const p of packs) {
+    const pset = new Set(p.nombreK.split(' ').filter(w => w.length > 2));
+    const inter = [...tset].filter(x => pset.has(x)).length;
+    if (!inter) continue;
+    const union = new Set([...tset, ...pset]).size || 1;
+    const score = inter / union;
+    if (score > bestScore) {
+      second = bestScore;
+      bestScore = score;
+      best = p;
+    } else if (score > second) {
+      second = score;
+    }
+  }
+  if (best && (bestScore >= 0.8 || (bestScore >= 0.65 && (bestScore - second) >= 0.2))) {
+    return best;
+  }
+  return null;
+}
+
+// 4) Diagnóstico: actividades que hoy no “enganchan” con Servicios
+window.diagnosticarServicios = async function() {
+  const out = [];
+  const snapG = await getDocs(collection(db, 'grupos'));
+
+  const idx = await buildServiciosIndex(true);
+
+  for (const d of snapG.docs) {
+    const g = { id: d.id, ...(d.data() || {}) };
+    const it = g.itinerario || {};
+    const fechas = Object.keys(it).sort((a,b)=> new Date(a) - new Date(b));
+    for (const f of fechas) {
+      (it[f] || []).forEach((act, i) => {
+        const nameK = K(act.actividad || '');
+        const hasId = !!act.servicioId && idx.byId.has(act.servicioId);
+        const byNm  = idx.byName.get(nameK);
+        if (!hasId && !byNm) {
+          out.push({
+            grupoId: g.id,
+            numeroNegocio: g.numeroNegocio || '',
+            nombreGrupo: g.nombreGrupo || '',
+            fecha: f, idx: i,
+            actividad: act.actividad || '',
+          });
+        }
+      });
+    }
+  }
+  console.table(out);
+  console.log(`Total sin resolver: ${out.length}`);
+  return out;
+};
+
+// 5) Reparación masiva (DRY RUN por defecto)
+//    Ejecuta:
+//      repararServiciosAntiguos()                   // simulación
+//      repararServiciosAntiguos({ dryRun:false })   // aplica cambios
+window.repararServiciosAntiguos = async function(opts = {}) {
+  const dryRun    = (opts.dryRun   !== undefined) ? opts.dryRun   : true;
+  const includeAll= (opts.includeAll !== undefined) ? opts.includeAll : true;
+  const fuzzy     = (opts.fuzzy    !== undefined) ? opts.fuzzy    : true;
+
+  const idx = await buildServiciosIndex(includeAll);
+  const packs = idx.packs;
+
+  const qs = await getDocs(collection(db,'grupos'));
+  let gruposProc = 0, gruposMod = 0, actsMod = 0, actsFuzzy = 0, actsNoMatch = 0;
+
+  for (const docG of qs.docs) {
+    const g   = { id: docG.id, ...(docG.data() || {}) };
+    const it  = g.itinerario || {};
+    const fechas = Object.keys(it).sort((a,b)=> new Date(a) - new Date(b));
+
+    let cambiosEnGrupo = false;
+    const nuevoIt = {};
+
+    for (const f of fechas) {
+      const arr = (it[f] || []);
+      const nuevoArr = arr.map(act => {
+        const out = { ...act };
+        const nameK = K(out.actividad || '');
+
+        // Caso 1: ya tiene servicioId válido → refrescar
+        if (out.servicioId && idx.byId.has(out.servicioId)) {
+          const sv = idx.byId.get(out.servicioId);
+          const necesita =
+            out.actividad        !== sv.nombre ||
+            out.servicioNombre   !== sv.nombre ||
+            out.servicioDestino  !== sv.destino;
+          if (necesita) {
+            out.actividad        = sv.nombre;
+            out.servicioNombre   = sv.nombre;
+            out.servicioDestino  = sv.destino;
+            cambiosEnGrupo = true; actsMod++;
+          }
+          return out;
+        }
+
+        // Caso 2: buscar por nombre normalizado (incluye aliases/ids)
+        const byName = idx.byName.get(nameK);
+        if (byName) {
+          if (out.servicioId !== byName.id ||
+              out.servicioNombre !== byName.nombre ||
+              out.servicioDestino !== byName.destino ||
+              out.actividad !== byName.nombre) {
+            out.servicioId      = byName.id;
+            out.servicioNombre  = byName.nombre;
+            out.servicioDestino = byName.destino;
+            out.actividad       = byName.nombre;
+            cambiosEnGrupo = true; actsMod++;
+          }
+          return out;
+        }
+
+        // Caso 3: fuzzy (opcional)
+        if (fuzzy) {
+          const guess = fuzzyFindService(packs, out.actividad || '');
+          if (guess) {
+            out.servicioId      = guess.id;
+            out.servicioNombre  = guess.nombre;
+            out.servicioDestino = guess.destino;
+            out.actividad       = guess.nombre;
+            cambiosEnGrupo = true; actsMod++; actsFuzzy++;
+            return out;
+          }
+        }
+
+        // Sin match → lo dejamos igual
+        actsNoMatch++;
+        return out;
+      });
+
+      nuevoIt[f] = nuevoArr;
+    }
+
+    if (!dryRun && cambiosEnGrupo) {
+      await updateDoc(doc(db,'grupos',g.id), { itinerario: nuevoIt });
+      try {
+        await addDoc(collection(db,'historial'), {
+          numeroNegocio: g.id,
+          accion:        'REPARAR ITINERARIO SERVICIOS',
+          anterior:      '',
+          nuevo:         `Se actualizaron actividades automáticamente`,
+          usuario:       (auth.currentUser && auth.currentUser.email) || 'AUTO',
+          timestamp:     new Date()
+        });
+      } catch(_) {}
+      gruposMod++;
+    }
+
+    gruposProc++;
+    if (dryRun && cambiosEnGrupo) {
+      console.log(`(DRY) ${g.id} — actividades actualizadas (pendiente de escribir)`);
+    }
+  }
+
+  console.log(`FIN Reparación — grupos procesados: ${gruposProc}, grupos modificados: ${gruposMod}, acts modificadas: ${actsMod} (fuzzy:${actsFuzzy}), sin match: ${actsNoMatch}, dryRun: ${dryRun}`);
+  return { gruposProc, gruposMod, actsMod, actsFuzzy, actsNoMatch, dryRun };
 };
