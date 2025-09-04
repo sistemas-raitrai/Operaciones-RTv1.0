@@ -11,44 +11,55 @@
 
   <!-- Estilos específicos para impresión -->
   <style>
-    /* Bloque sólo visible en impresión (texto plano del itinerario) */
-    .print-only {
-      display: none;
-      white-space: pre-wrap;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+    /* ===== Base (pantalla) ===== */
+    .print-only{
+      display:none;
+      white-space:pre-wrap;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
     }
-    @media print {
-      /* Oculta UI visual (header, grillas, botones) cuando se imprime */
-      header, .grid, .btn-add { display: none !important; }
-      /* Muestra el bloque de impresión */
-      .print-only {
-        display: block !important;
-        font-size: 12pt;
-        line-height: 1.35;
-        margin: 0;
-        padding: 0;
-      }
-      body { background:#fff; color:#000; }
-    }
+  
     /* Título día/fecha en azul */
-    .dia-titulo { color:#1D4ED8; font-weight:700; }
-    
-    /* Oculta el logo en pantalla; muéstralo fijo arriba-derecha al imprimir */
-    @media screen { #print-logo { display:none; } }
-    @media print {
-      #print-logo {
+    .dia-titulo{ color:#1D4ED8; font-weight:700; }
+  
+    /* Logo: oculto en pantalla, visible en impresión */
+    @media screen { #print-logo{ display:none; } }
+  
+    /* ===== Impresión ===== */
+    @media print{
+      /* Márgenes de la página */
+      @page{ margin:14mm 12mm; }
+  
+      /* Respeta colores (azul de los títulos) */
+      *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+  
+      /* Mostrar layout visual; ocultar controles y bloque textual */
+      header{ display:flex !important; border:0 !important; padding:0 !important; margin:0 0 8px 0 !important; }
+      .grid{ display:grid !important; gap:14px !important; }
+      .btn-add, .print-only{ display:none !important; }
+      #print-block{ display:none !important; }
+  
+      /* No imprimir el resumen de pax */
+      #resumen-pax{ display:none !important; }
+  
+      /* Logo fijo arriba a la derecha */
+      #print-logo{
         display:block;
         position:fixed;
         top:12px; right:12px;
         width:120px;
       }
-      /* por si en algún momento no ocultas el header, esto esconde el resumen de pax */
-      #resumen-pax { display:none !important; }
-    
-      /* asegura que el bloque de texto se vea en la impresión */
-      #print-block { display:block !important; white-space:pre-wrap; }
+  
+      /* Evitar cortes feos entre actividades/días */
+      .dia-seccion{ break-inside:avoid; page-break-inside:avoid; margin-bottom:10px; }
+      .activity-card{ break-inside:avoid; page-break-inside:avoid; margin:6px 0; }
+  
+      /* Tipografía y colores base en impresión */
+      body{ background:#fff; color:#000; font-size:11pt; }
+      h1,h2,h3{ margin:0 0 6px 0; }
+      #itinerario-container{ margin-top:10px; }
     }
   </style>
+
 <img id="print-logo" src="Logo Raitrai.png" alt="RaiTrai" />
   
 </head>
