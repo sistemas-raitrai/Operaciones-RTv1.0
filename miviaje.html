@@ -97,6 +97,30 @@
       body{ background:#fff; color:#000; font-size:11pt; }
       h1,h2,h3{ margin:0 0 6px 0; }
       #itinerario-container{ margin-top:10px !important; }
+      /* ——— Apilar encabezados en impresión ——— */
+      .row{ 
+        display:block !important;         /* deja de ser grid/flex */
+        margin:0 0 8px 0 !important;
+      }
+      .row .column,
+      .row .long,
+      .row .medium,
+      .row .short{
+        display:block !important;         /* cada bloque a 100% */
+        width:100% !important;
+        margin:0 0 4px 0 !important;
+      }
+      .row h2{ margin:0 0 4px 0 !important; }
+      
+      /* GRUPO (que está fuera de .row) y los secundarios también en columna */
+      main .column{
+        display:block !important;
+        width:100% !important;
+        margin:0 0 4px 0 !important;
+      }
+      
+      /* Un respiro antes del listado de días */
+      #itinerario-container{ margin-top:14px !important; }
     }
   </style>
 
