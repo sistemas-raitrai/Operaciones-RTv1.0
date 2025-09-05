@@ -10,7 +10,7 @@
 
   <style>
     :root{
-      --bg:#0b1020;          /* fondo general profundo */
+      --bg:#0b1020;          /* fondo general */
       --card:#111a36;        /* tarjeta */
       --ink:#e8eefc;         /* texto principal */
       --muted:#9fb0d1;       /* texto secundario */
@@ -18,13 +18,12 @@
       --accent:#6ea8ff;      /* acento (ahora) */
       --accent-2:#2c6fff;    /* acento intenso */
       --ok:#1db954;          /* verde sutil */
-      --warn:#f59e0b;        /* ámbar sutil */
       --fade:.35s;
     }
     *{ box-sizing:border-box; }
     body{ background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
 
-    /* Header (ocultable en monitor) */
+    /* Header (ocultable) */
     header.hideable-ui{
       display:flex; align-items:center; gap:.75rem;
       padding:.6rem 1rem; border-bottom:1px solid rgba(255,255,255,.08);
@@ -39,8 +38,12 @@
       background:var(--card); color:var(--ink); border:1px solid var(--line);
       padding:.45rem .6rem; border-radius:.6rem; font-size:.9rem;
     }
-    .toolbar input[type="range"]{ width:160px; }
+    .toolbar input[type="range"]{ width:120px; }
     .toolbar button{ cursor:pointer; }
+    /* multiselect actividades */
+    .toolbar .multi{
+      min-width:260px; max-width:380px; height:8.5rem; /* visible */
+    }
 
     .content{ padding:1rem; display:grid; gap:1rem; }
     .pill{ font-size:.75rem; color:var(--muted); padding:.15rem .5rem; border:1px solid var(--line); border-radius:999px; }
@@ -53,14 +56,11 @@
     }
     .destino-bloque.fade-out{ opacity:.02; }
     .destino-bloque.is-hidden{ display:none; }
-    .destino-hd{
-      padding:.85rem 1rem; border-bottom:1px solid var(--line);
-      display:flex; align-items:center; gap:.6rem;
-    }
+    .destino-hd{ padding:.85rem 1rem; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:.6rem; }
     .destino-hd h2{ margin:0; font-size:1rem; font-weight:700; letter-spacing:.2px; }
     .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.9rem; padding:.9rem; }
 
-    /* Tarjeta grupo estilo “Antes/Ahora/Después” */
+    /* Tarjeta */
     .card{
       background:var(--card); border:1px solid var(--line); border-radius:16px; padding:.9rem;
       display:grid; gap:.65rem; box-shadow:0 6px 18px rgba(0,0,0,.18);
@@ -68,35 +68,42 @@
     .card h3{ margin:0; font-size:1rem; line-height:1.15; font-weight:800; letter-spacing:.3px; text-transform:uppercase; }
     .sub{ font-size:.82rem; color:var(--muted); line-height:1.25; }
 
+    /* Triptych (Antes/Ahora/Después) */
     .stage{ display:grid; gap:.35rem; }
     .stage-hd{ font-size:.78rem; color:var(--muted); }
     .stage-box{
       border:1px dashed var(--line); border-radius:12px; padding:.55rem .65rem; min-height:48px;
-      display:grid; align-content:center; justify-items:center; text-align:center;
-      background:rgba(255,255,255,.03);
+      display:grid; align-content:center; justify-items:center; text-align:center; background:rgba(255,255,255,.03);
     }
     .stage-box .title{ font-weight:800; font-size:.92rem; letter-spacing:.2px; text-transform:uppercase; }
     .stage-box .time{ font-size:.75rem; color:var(--muted); margin-top:.15rem; }
-
-    /* “Ahora” destacado */
-    .stage-now{
-      border-style:solid; border-color:rgba(110,168,255,.5);
+    .stage-now{ border-style:solid; border-color:rgba(110,168,255,.5);
       background:linear-gradient(180deg, rgba(110,168,255,.18), rgba(44,111,255,.15));
       box-shadow:0 0 0 3px rgba(44,111,255,.08) inset, 0 8px 28px rgba(44,111,255,.15);
     }
     .stage-now .title{ color:#f5f9ff; font-size:1rem; }
     .stage-now .time{ color:#d8e7ff; }
 
-    /* ===== MODO MONITOR: oculta header, HUD minimal ===== */
-    body.monitor .hideable-ui { display:none !important; }
+    /* Día completo */
+    .day-list{ display:grid; gap:.45rem; }
+    .act-item{
+      border:1px dashed var(--line); border-radius:10px; padding:.45rem .6rem;
+      display:flex; justify-content:space-between; gap:.8rem; align-items:baseline;
+      background:rgba(255,255,255,.03);
+    }
+    .act-item .name{ font-weight:800; text-transform:uppercase; font-size:.9rem; }
+    .act-item .time{ font-size:.78rem; color:var(--muted); white-space:nowrap; }
+    .act-item.is-now{ border-color:rgba(110,168,255,.6);
+      background:linear-gradient(180deg, rgba(110,168,255,.18), rgba(44,111,255,.15));
+    }
+    .act-item.is-past{ opacity:.6; }
+
+    /* Modo monitor: oculta header + HUD */
+    body.monitor .hideable-ui{ display:none !important; }
     .hud{
-      position:fixed; right:12px; bottom:10px;
-      background:rgba(0,0,0,.45);
-      border:1px solid var(--line);
-      border-radius:999px;
-      padding:.25rem .6rem;
-      font-size:.78rem; color:var(--muted);
-      z-index:9999; cursor:pointer;
+      position:fixed; right:12px; bottom:10px; background:rgba(0,0,0,.45);
+      border:1px solid var(--line); border-radius:999px; padding:.25rem .6rem;
+      font-size:.78rem; color:var(--muted); z-index:9999; cursor:pointer;
     }
     body:not(.monitor) .hud{ display:none; }
 
@@ -109,7 +116,7 @@
 </head>
 <body>
 
-  <!-- Header (se oculta en “monitor”) -->
+  <!-- Header -->
   <header class="hideable-ui">
     <img src="Logo Raitrai.png" alt="Rai Trai" />
     <h1>¿Dónde están los grupos?</h1>
@@ -134,18 +141,27 @@
       <input id="autoSpeed" type="range" min="1" max="10" value="5" />
       <span class="pill" id="speedLabel">x5</span>
 
+      <label>Vista</label>
+      <select id="viewMode">
+        <option value="TRIPTYCH">Antes / Ahora / Después</option>
+        <option value="FULL_DAY">Itinerario del día</option>
+      </select>
+
+      <label>Ocultar actividades</label>
+      <select id="actFilter" class="multi" multiple></select>
+      <button id="btnClearActs" title="Limpiar selección">Limpiar filtros</button>
+      <span class="pill" id="hiddenCount">0 ocultas</span>
+
       <button id="btnNowReal" title="Usar ahora real">En Vivo</button>
       <button id="btnRefrescar" title="Refrescar ahora">Actualizar</button>
-      <!-- NUEVO: botón para ocultar/mostrar el panel -->
       <button id="btnToggleUI" title="Ocultar/Mostrar panel (M)">Ocultar panel</button>
-
       <span class="pill" id="lastRefresh">—</span>
     </div>
   </header>
 
   <main class="content" id="contenedor"></main>
 
-  <!-- HUD minimal visible solo en modo monitor (clic para mostrar/ocultar) -->
+  <!-- HUD clickeable -->
   <div id="hud" class="hud" title="Click para mostrar/ocultar panel · [M] UI · [F] Pantalla completa"></div>
 
   <script type="module" src="./envivo.js"></script>
