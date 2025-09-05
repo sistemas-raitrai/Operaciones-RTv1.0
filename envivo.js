@@ -5,12 +5,11 @@
 // - Línea de progreso simple según hora del día.
 // - Simulación: constante DEFAULT_FORCE_NOW_ISO y/o query ?now=YYYY-MM-DD[THH:mm].
 // - Auto-refresh: cada 30 min. Botón manual "Refrescar".
-// - Importa app/db desde tu firebase-core.js (público).
+// - Modo monitor: CAROUSEL por destino o SCROLL suave, con control de velocidad.
+// - Muestra Coordinador por grupo (tolerante a distintos esquemas).
 
 import { app, db } from './firebase-core.js';
-import {
-  collection, getDocs
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* ========== Configuración rápida ========== */
 // Fuerza por código (déjalo '' para desactivar). Ejemplo: '2025-12-15T10:00'
@@ -24,46 +23,23 @@ const AUTO_REFRESH_MS = 30 * 60 * 1000; // 30 minutos
 
 /* ========== Utils de fecha/hora ========== */
 function pad2(n){ return String(n).padStart(2,'0'); }
-
-function isoDate(d){
-  return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
-}
+function isoDate(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
 
 // HH:MM -> minutos desde 00:00
 function parseHM(hm=''){
-  const m = /^(\d{1,2}):(\d{2})$/.exec(hm.trim());
+  const m = /^(\d{1,2}):(\d{2})$/.exec((hm||'').trim());
   if(!m) return null;
   const hh = Math.min(23, Math.max(0, parseInt(m[1],10)));
   const mm = Math.min(59, Math.max(0, parseInt(m[2],10)));
   return hh*60 + mm;
 }
-
 // minutos -> HH:MM
-function toHM(mins){
-  const hh = Math.floor(mins/60);
-  const mm = mins%60;
-  return `${pad2(hh)}:${pad2(mm)}`;
-}
-
-// Suma minutos a una "HH:MM"
+function toHM(mins){ const hh=Math.floor(mins/60), mm=mins%60; return `${pad2(hh)}:${pad2(mm)}`; }
+// Suma minutos a "HH:MM"
 function addToHM(hm, minutes){
-  const m = parseHM(hm) ?? 0;
-  const t = Math.max(0, Math.min(24*60-1, m + minutes));
+  const base = parseHM(hm) ?? 0;
+  const t = Math.max(0, Math.min(24*60-1, base + minutes));
   return toHM(t);
-}
-
-// Devuelve un texto bonito con el coordinador del grupo
-function coordinadorTexto(g){
-  // Soporta varios nombres de campo y formatos (string u objeto)
-  const c = g.coordinador ?? g.coordinadorNombre ?? g.coordinadorAsignado ?? null;
-  if(!c) return '—';
-  if (typeof c === 'string') return c;
-
-  // Si es objeto, tratamos de armar: "Nombre (alias) · +56 9 ..."
-  const nombre = c.nombre || c.name || '—';
-  const alias  = c.alias ? ` (${c.alias})` : '';
-  const fono   = c.telefono || c.celular || c.fono || '';
-  return [nombre + alias, fono].filter(Boolean).join(' · ');
 }
 
 /* ========== Manejo de "ahora" (real o simulado) ========== */
@@ -71,44 +47,39 @@ function getQueryNow(){
   const qs = new URLSearchParams(location.search);
   const raw = qs.get('now');
   if(!raw) return null;
-  // Acepta YYYY-MM-DD o YYYY-MM-DDTHH:mm
-  if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/.test(raw)){
-    // Normaliza el espacio a 'T'
-    return raw.replace(' ','T');
-  }
+  if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/.test(raw)) return raw.replace(' ','T');
   return null;
 }
-
-let state = {
-  forceNowIso: getQueryNow() || DEFAULT_FORCE_NOW_ISO || null, // string o null
-};
-
+let state = { forceNowIso: getQueryNow() || DEFAULT_FORCE_NOW_ISO || null };
 function nowDate(){
   if(state.forceNowIso){
-    // Si viene solo fecha, asigna 12:00 local
     let v = state.forceNowIso;
-    if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v = v + 'T12:00';
+    if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v += 'T12:00';
     return new Date(v);
   }
   return new Date();
 }
 
+/* ========== Coordinador (texto) ========== */
+function coordinadorTexto(g){
+  const c = g.coordinador ?? g.coordinadorNombre ?? g.coordinadorAsignado ?? null;
+  if(!c) return '—';
+  if (typeof c === 'string') return c;
+  const nombre = c.nombre || c.name || '—';
+  const alias  = c.alias ? ` (${c.alias})` : '';
+  const fono   = c.telefono || c.celular || c.fono || '';
+  return [nombre + alias, fono].filter(Boolean).join(' · ');
+}
+
 /* ========== Carga de datos ========== */
 async function leerGruposActivosPara(fechaISO){
-  // Leemos TODOS y filtramos en cliente (evitamos índices compuestos).
-  // Si llegasen a ser muchos, podemos optimizar luego con rangos.
+  // Lee TODO y filtra en cliente. (Optimizable si crece mucho.)
   const snap = await getDocs(collection(db,'grupos'));
   const todos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-
-  // Filtra por rango de viaje que contenga fechaISO
-  const activos = todos.filter(g => {
+  return todos.filter(g => {
     if(!g.fechaInicio || !g.fechaFin) return false;
-    // formato YYYY-MM-DD compara bien como string
     return g.fechaInicio <= fechaISO && fechaISO <= g.fechaFin;
   });
-
-  // Además, que tengan itinerario para ese día (si no, igual mostramos como "sin actividades hoy")
-  return activos;
 }
 
 /* ========== Cálculos ANTES/AHORA/DESPUÉS por grupo ========== */
@@ -119,9 +90,7 @@ function ordenarPorHora(arr){
     return ai - bi;
   });
 }
-
 function obtenerFin(act){
-  // Si tiene horaFin válida, úsala; si no, prueba 'duracionMin'/'duracion' (min); si no, por defecto.
   if(act?.horaFin && parseHM(act.horaFin) != null) return act.horaFin;
   const dMin =
     (typeof act?.duracionMin === 'number' && act.duracionMin > 0) ? act.duracionMin :
@@ -130,42 +99,24 @@ function obtenerFin(act){
   const hi = act?.horaInicio || '00:00';
   return addToHM(hi, dMin);
 }
-
-/**
- * Dado el itinerario del día y la "hora actual" (minutos), devuelve:
- * { prev, now, next, progressPct }
- * - prev/now/next: actividad completa (o null) + campos calculados ._iniMin ._finMin
- * - progressPct: 0..100 para llenar la barra (progreso del día, no solo la actividad)
- */
 function analizarDia(arr, nowMin){
   const ord = ordenarPorHora(arr).map(a => ({
     ...a,
     _iniMin: parseHM(a?.horaInicio || '00:00') ?? 0,
     _finMin: parseHM(obtenerFin(a)) ?? 0
   }));
-
-  let prev = null, now = null, next = null;
-
+  let prev=null, now=null, next=null;
   for(let i=0;i<ord.length;i++){
     const a = ord[i];
-    if(a._iniMin <= nowMin && nowMin < a._finMin){ // AHORA
-      now = a;
-      prev = ord[i-1] || null;
-      next = ord[i+1] || null;
-      break;
-    }
-    if(a._finMin <= nowMin) prev = a; // se va actualizando hasta la última finalizada
-    if(nowMin < a._iniMin){ next = a; break; }
+    if(a._iniMin <= nowMin && nowMin < a._finMin){ now=a; prev=ord[i-1]||null; next=ord[i+1]||null; break; }
+    if(a._finMin <= nowMin) prev = a;
+    if(nowMin < a._iniMin){ next=a; break; }
   }
-
-  // Si no encontraron "now", prev/next se habrán quedado correctos
-  // Progreso del día: entre primera y última actividad
   const diaIni = ord.length ? ord[0]._iniMin : 0;
   const diaFin = ord.length ? ord[ord.length-1]._finMin : 24*60;
   const span = Math.max(1, diaFin - diaIni);
   const clamped = Math.min(diaFin, Math.max(diaIni, nowMin));
   const progressPct = Math.round(((clamped - diaIni) / span) * 100);
-
   return { prev, now, next, progressPct, ordenadas: ord };
 }
 
@@ -177,13 +128,12 @@ const btnNowReal = document.getElementById('btnNowReal');
 const btnRefrescar = document.getElementById('btnRefrescar');
 const lastRefresh = document.getElementById('lastRefresh');
 
-function fmtFechaHumana(d){
-  return d.toLocaleString('es-CL', { dateStyle:'medium', timeStyle:'short' });
-}
+const autoModeSel = document.getElementById('autoMode');
+const autoSpeed = document.getElementById('autoSpeed');
+const speedLabel = document.getElementById('speedLabel');
 
-function setLastRefresh(d){
-  lastRefresh.textContent = `Actualizado: ${fmtFechaHumana(d)}`;
-}
+function fmtFechaHumana(d){ return d.toLocaleString('es-CL', { dateStyle:'medium', timeStyle:'short' }); }
+function setLastRefresh(d){ lastRefresh.textContent = `Actualizado: ${fmtFechaHumana(d)}`; }
 
 function buildDestinos(grupos){
   const set = new Set();
@@ -197,7 +147,6 @@ function render(grupos, dNow){
   const dISO = isoDate(dNow);
   const nowMin = dNow.getHours()*60 + dNow.getMinutes();
 
-  // Agrupar por destino (según filtro)
   const filtro = filtroDestino.value || '__ALL__';
   const porDestino = new Map();
   grupos.forEach(g => {
@@ -206,11 +155,8 @@ function render(grupos, dNow){
     if(!porDestino.has(key)) porDestino.set(key, []);
     porDestino.get(key).push(g);
   });
-
-  // Orden: por nombre grupo
   for(const [k, arr] of porDestino) arr.sort((a,b)=>(a.nombreGrupo||'').localeCompare(b.nombreGrupo||''));
 
-  // HTML
   cont.innerHTML = '';
   if(!porDestino.size){
     cont.innerHTML = `<div class="pill">No hay grupos activos para ${dISO}${filtro==='__ALL__'?'':` en ${filtro}`}</div>`;
@@ -220,6 +166,7 @@ function render(grupos, dNow){
   porDestino.forEach((lista, destino) => {
     const blk = document.createElement('section');
     blk.className = 'destino-bloque';
+    blk.dataset.destino = destino;
 
     blk.innerHTML = `
       <div class="destino-hd">
@@ -229,7 +176,6 @@ function render(grupos, dNow){
       </div>
       <div class="grid"></div>
     `;
-
     const grid = blk.querySelector('.grid');
 
     lista.forEach(g => {
@@ -280,45 +226,58 @@ function render(grupos, dNow){
           </div>
         </div>
       `;
-
       grid.appendChild(card);
     });
 
     cont.appendChild(blk);
   });
+
+  // Reinicia modo monitor tras cada render (contenido nuevo)
+  applyAutoMode();
 }
 
 /* ========== Control de UI / Refresh ========== */
+function humanSpeedLabel(){ return `x${autoSpeed.value}`; }
+function secsForCarousel(){
+  // Mapea velocidad (1..10) a segundos por destino (20..2)
+  const v = Number(autoSpeed.value||5);
+  return Math.max(2, 22 - v*2);
+}
+function pxPerStepForScroll(){
+  // Mapea velocidad 1..10 a px/step (1..6)
+  const v = Number(autoSpeed.value||5);
+  return Math.min(6, Math.max(1, Math.round(v*0.6)));
+}
+function stepIntervalMs(){ return 40; } // intervalo del scroll suave
+
 function initUI(){
-  // Cargar valor inicial del simNow desde state.forceNowIso (si existe)
   if(state.forceNowIso){
-    // normalizar a value de input datetime-local (requiere 'YYYY-MM-DDTHH:mm')
     let v = state.forceNowIso;
-    if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v = v + 'T12:00';
-    // quitar segundos si viniesen
-    v = v.replace(/:\d{2}$/, ''); // opcional
+    if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v += 'T12:00';
+    v = v.replace(/:\d{2}$/, '');
     simNowInput.value = v;
   }
-
   simNowInput.addEventListener('change', () => {
-    const val = simNowInput.value; // '' o 'YYYY-MM-DDTHH:mm'
+    const val = simNowInput.value;
     state.forceNowIso = val || null;
-    // Re-render inmediato con nueva hora simulada
     cargarYRender();
   });
-
-  btnNowReal.addEventListener('click', () => {
-    state.forceNowIso = null;
-    simNowInput.value = '';
-    cargarYRender();
-  });
-
+  btnNowReal.addEventListener('click', () => { state.forceNowIso = null; simNowInput.value = ''; cargarYRender(); });
   btnRefrescar.addEventListener('click', () => cargarYRender());
-  filtroDestino.addEventListener('change',   () => cargarYRender());
+  filtroDestino.addEventListener('change', () => cargarYRender());
+
+  autoSpeed.addEventListener('input', () => { speedLabel.textContent = humanSpeedLabel(); applyAutoMode(); });
+  autoModeSel.addEventListener('change', () => applyAutoMode());
+
+  speedLabel.textContent = humanSpeedLabel();
+
+  // Pausa automática por interacción del usuario
+  ['wheel','mousemove','keydown','touchstart'].forEach(evt => {
+    window.addEventListener(evt, () => pauseAuto(6000), { passive:true });
+  });
 }
 
-let autoTimer = null;
-
+let dataTimer = null;
 async function cargarYRender(){
   const dNow = nowDate();
   setLastRefresh(new Date());
@@ -326,24 +285,111 @@ async function cargarYRender(){
   const dISO = isoDate(dNow);
   const grupos = await leerGruposActivosPara(dISO);
 
-  // Primer render: construir filtro de destinos si está vacío
   if(!filtroDestino.options || filtroDestino.options.length <= 1){
     buildDestinos(grupos);
   }
-
   render(grupos, dNow);
 }
 
 function startAutoRefresh(){
-  if(autoTimer) clearInterval(autoTimer);
-  autoTimer = setInterval(() => {
-    cargarYRender().catch(console.error);
-  }, AUTO_REFRESH_MS);
+  if(dataTimer) clearInterval(dataTimer);
+  dataTimer = setInterval(() => { cargarYRender().catch(console.error); }, AUTO_REFRESH_MS);
+}
+
+/* ========== Modo monitor: CAROUSEL / SCROLL ========== */
+let carouselTimer = null;
+let scrollTimer = null;
+let pausedUntil = 0;
+let currentDestinoIndex = 0;
+
+function nowMs(){ return Date.now(); }
+function pauseAuto(ms=6000){ pausedUntil = nowMs() + ms; }
+function isPaused(){ return nowMs() < pausedUntil; }
+
+function stopCarousel(){ if(carouselTimer) { clearInterval(carouselTimer); carouselTimer=null; } }
+function stopScroll(){ if(scrollTimer){ clearInterval(scrollTimer); scrollTimer=null; } }
+
+function allDestBlocks(){
+  return Array.from(cont.querySelectorAll('.destino-bloque'));
+}
+
+function showOnlyDestino(idx){
+  const blocks = allDestBlocks();
+  if(!blocks.length) return;
+
+  // Normaliza índice
+  currentDestinoIndex = ((idx % blocks.length) + blocks.length) % blocks.length;
+
+  blocks.forEach((b, i) => {
+    if(i === currentDestinoIndex){
+      b.classList.remove('is-hidden');
+      // pequeño truco para que el fade se note al entrar/salir
+      requestAnimationFrame(()=> b.classList.remove('fade-out'));
+      // Llevar a la vista (por si hubo scroll)
+      b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      b.classList.add('fade-out');
+      setTimeout(()=> b.classList.add('is-hidden'), 300);
+    }
+  });
+}
+
+function startCarousel(){
+  stopScroll(); stopCarousel();
+  const blocks = allDestBlocks();
+  if(!blocks.length) return;
+
+  // Mostrar el primero visible (o mantener destino actual si existía)
+  showOnlyDestino(currentDestinoIndex || 0);
+
+  const tick = () => {
+    if(isPaused()) return; // no avanza mientras está en pausa por interacción
+    showOnlyDestino(currentDestinoIndex + 1);
+  };
+  const secs = secsForCarousel();
+  carouselTimer = setInterval(tick, secs*1000);
+}
+
+function startScroll(){
+  stopCarousel(); stopScroll();
+
+  // Mostrar TODOS los destinos (por si veníamos del carrusel)
+  allDestBlocks().forEach(b => { b.classList.remove('is-hidden','fade-out'); });
+
+  const stepPx = pxPerStepForScroll();
+  const stepMs = stepIntervalMs();
+
+  const tick = () => {
+    if(isPaused()) return;
+    const bottom = Math.ceil(window.innerHeight + window.scrollY);
+    const full = Math.ceil(document.body.scrollHeight);
+    if(bottom >= full - 2){
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    window.scrollBy(0, stepPx);
+  };
+  scrollTimer = setInterval(tick, stepMs);
+}
+
+function applyAutoMode(){
+  const mode = autoModeSel.value || '__OFF__';
+  if(mode === 'CAROUSEL'){
+    startCarousel();
+  } else if(mode === 'SCROLL'){
+    startScroll();
+  } else {
+    stopCarousel(); stopScroll();
+    // Mostrar todo si está apagado
+    allDestBlocks().forEach(b => { b.classList.remove('is-hidden','fade-out'); });
+  }
 }
 
 /* ========== Boot ========== */
 initUI();
-cargarYRender().then(() => startAutoRefresh()).catch(err => {
-  console.error('Error inicial:', err);
-  cont.innerHTML = `<div class="pill">Error cargando datos.</div>`;
-});
+cargarYRender()
+  .then(() => { startAutoRefresh(); applyAutoMode(); })
+  .catch(err => {
+    console.error('Error inicial:', err);
+    cont.innerHTML = `<div class="pill">Error cargando datos.</div>`;
+  });
