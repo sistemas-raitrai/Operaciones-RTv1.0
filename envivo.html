@@ -10,27 +10,29 @@
 
   <style>
     :root{
-      --bg:#0b1020;
-      --card:#11162b;
-      --ink:#e8eefc;
-      --muted:#93a4c2;
-      --line:#2a3a67;
-      --ok:#16a34a;
-      --next:#2563eb;
-      --prev:#64748b;
-      --accent:#60a5fa;
-      --fade: .35s;
+      --bg:#0b1020;          /* fondo general profundo */
+      --card:#111a36;        /* tarjeta */
+      --ink:#e8eefc;         /* texto principal */
+      --muted:#9fb0d1;       /* texto secundario */
+      --line:#2a3a67;        /* bordes */
+      --accent:#6ea8ff;      /* acento (ahora) */
+      --accent-2:#2c6fff;    /* acento intenso */
+      --ok:#1db954;          /* verde sutil */
+      --warn:#f59e0b;        /* ámbar sutil */
+      --fade:.35s;
     }
-    *{ box-sizing: border-box; }
+    *{ box-sizing:border-box; }
     body{ background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
-    header{
+
+    /* Header (ocultable en monitor) */
+    header.hideable-ui{
       display:flex; align-items:center; gap:.75rem;
       padding:.6rem 1rem; border-bottom:1px solid rgba(255,255,255,.08);
       position:sticky; top:0; backdrop-filter:saturate(1.2) blur(6px); background:rgba(11,16,32,.7);
       z-index:10;
     }
     header img{ height:34px; width:auto; }
-    header h1{ font-size:1.15rem; margin:0; font-weight:700; }
+    header h1{ font-size:1.1rem; margin:0; font-weight:700; }
     .toolbar{ margin-left:auto; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
     .toolbar label{ font-size:.8rem; color:var(--muted); }
     .toolbar select,.toolbar input,.toolbar button{
@@ -40,61 +42,81 @@
     .toolbar input[type="range"]{ width:160px; }
     .toolbar button{ cursor:pointer; }
 
-    .pill{ font-size:.75rem; color:var(--muted); padding:.15rem .5rem; border:1px solid var(--line); border-radius:999px; }
     .content{ padding:1rem; display:grid; gap:1rem; }
+    .pill{ font-size:.75rem; color:var(--muted); padding:.15rem .5rem; border:1px solid var(--line); border-radius:999px; }
+
+    /* Bloques por destino */
     .destino-bloque{
       border:1px solid var(--line); border-radius:14px;
-      background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.01));
-      opacity:1; transition: opacity var(--fade) ease;
+      background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.015));
+      opacity:1; transition:opacity var(--fade) ease;
     }
     .destino-bloque.fade-out{ opacity:.02; }
     .destino-bloque.is-hidden{ display:none; }
-    .destino-hd{ padding:.8rem 1rem; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:.6rem; }
-    .destino-hd h2{ margin:0; font-size:1rem; }
-    .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.8rem; padding:.8rem; }
-    .card{
-      background:var(--card); border:1px solid var(--line); border-radius:14px; padding:.8rem;
-      display:grid; gap:.55rem;
+    .destino-hd{
+      padding:.85rem 1rem; border-bottom:1px solid var(--line);
+      display:flex; align-items:center; gap:.6rem;
     }
-    .card h3{ margin:0; font-size:1rem; line-height:1.1; }
-    .sub{ font-size:.8rem; color:var(--muted); }
-    .row{ display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
-    .badge{ font-size:.72rem; padding:.15rem .45rem; border-radius:.5rem; border:1px solid var(--line); color:var(--muted); }
-    .now{ color:var(--ink); border-color:var(--accent); }
-    .ok{ color:#c6f6d5; border-color:rgba(22,163,74,.6); }
-    .nx{ color:#dbeafe; border-color:rgba(37,99,235,.6); }
-    /* Timeline */
-    .tl{ display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:.4rem; }
-    .bar{
-      height:6px; background:linear-gradient(90deg, var(--prev), var(--next));
-      border-radius:999px; position:relative; overflow:hidden;
-    }
-    .bar .fill{
-      position:absolute; top:0; left:0; bottom:0; width:0%;
-      background:linear-gradient(90deg, var(--ok), var(--accent)); transition:width .3s ease;
-    }
-    .tl-label{ font-size:.78rem; color:var(--muted); }
-    .tile{
-      border:1px dashed var(--line); border-radius:.6rem; padding:.35rem .5rem; background:rgba(255,255,255,.02);
-    }
-    .tile strong{ display:block; font-size:.86rem; color:var(--ink); }
-    .tile small{ display:block; font-size:.72rem; color:var(--muted); }
+    .destino-hd h2{ margin:0; font-size:1rem; font-weight:700; letter-spacing:.2px; }
+    .grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:.9rem; padding:.9rem; }
 
-    .footer{
+    /* Tarjeta grupo estilo “Antes/Ahora/Después” */
+    .card{
+      background:var(--card); border:1px solid var(--line); border-radius:16px; padding:.9rem;
+      display:grid; gap:.65rem; box-shadow:0 6px 18px rgba(0,0,0,.18);
+    }
+    .card h3{ margin:0; font-size:1rem; line-height:1.15; font-weight:800; letter-spacing:.3px; text-transform:uppercase; }
+    .sub{ font-size:.82rem; color:var(--muted); line-height:1.25; }
+
+    .stage{ display:grid; gap:.35rem; }
+    .stage-hd{ font-size:.78rem; color:var(--muted); }
+    .stage-box{
+      border:1px dashed var(--line); border-radius:12px; padding:.55rem .65rem; min-height:48px;
+      display:grid; align-content:center; justify-items:center; text-align:center;
+      background:rgba(255,255,255,.03);
+    }
+    .stage-box .title{ font-weight:800; font-size:.92rem; letter-spacing:.2px; text-transform:uppercase; }
+    .stage-box .time{ font-size:.75rem; color:var(--muted); margin-top:.15rem; }
+
+    /* “Ahora” destacado */
+    .stage-now{
+      border-style:solid; border-color:rgba(110,168,255,.5);
+      background:linear-gradient(180deg, rgba(110,168,255,.18), rgba(44,111,255,.15));
+      box-shadow:0 0 0 3px rgba(44,111,255,.08) inset, 0 8px 28px rgba(44,111,255,.15);
+    }
+    .stage-now .title{ color:#f5f9ff; font-size:1rem; }
+    .stage-now .time{ color:#d8e7ff; }
+
+    /* Footer (ocultable en monitor) */
+    .footer.hideable-ui{
       padding:.5rem 1rem; color:var(--muted); font-size:.8rem;
       border-top:1px solid rgba(255,255,255,.08); display:flex; gap:.8rem; flex-wrap:wrap;
     }
+
+    /* ===== MODO MONITOR: oculta header/footer, HUD minimal ===== */
+    body.monitor .hideable-ui { display:none !important; }
+    .hud{
+      position:fixed; right:12px; bottom:10px;
+      background:rgba(0,0,0,.45);
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:.25rem .6rem;
+      font-size:.78rem; color:var(--muted);
+      z-index:9999;
+    }
+    body:not(.monitor) .hud{ display:none; }
+
     @media print{
-      header,.footer{ display:none !important; }
+      .hideable-ui{ display:none !important; }
       body{ background:#fff; color:#000; }
-      .card,.destino-bloque{ background:#fff; border:1px solid #ccc; }
-      .bar{ background:#ddd; }
-      .bar .fill{ background:#222; }
+      .card,.destino-bloque{ background:#fff; border:1px solid #ccc; box-shadow:none; }
     }
   </style>
 </head>
 <body>
-  <header>
+
+  <!-- Header (se oculta en “monitor”) -->
+  <header class="hideable-ui">
     <img src="Logo Raitrai.png" alt="Rai Trai" />
     <h1>En vivo — ¿Dónde están los grupos?</h1>
 
@@ -125,6 +147,9 @@
   </header>
 
   <main class="content" id="contenedor"></main>
+
+  <!-- HUD minimal visible solo en modo monitor -->
+  <div id="hud" class="hud"></div>
 
   <script type="module" src="./envivo.js"></script>
 </body>
