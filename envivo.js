@@ -41,6 +41,27 @@ function coordinadorTexto(g){
   return [nombre + alias, fono].filter(Boolean).join(' · ');
 }
 
+// Devuelve un texto bonito con la vendedora (o ejecutivo comercial)
+function vendedoraTexto(g){
+  // Soporta varios nombres de campo y formatos (string u objeto)
+  const v =
+    g.vendedora ?? g.vendedoraNombre ?? g.vendedoraAsignada ??
+    g.vendedor ?? g.vendedorNombre ??
+    g.ejecutiva ?? g.ejecutivo ??
+    g.ejecutivaComercial ?? g.ejecutivoComercial ??
+    g.comercial ?? null;
+
+  if (!v) return '—';
+  if (typeof v === 'string') return v;
+
+  // Si viene como objeto
+  const nombre = v.nombre || v.name || '—';
+  const alias  = v.alias ? ` (${v.alias})` : '';
+  const fono   = v.telefono || v.celular || v.fono || '';
+  const mail   = v.email || v.correo || '';
+  return [nombre + alias, fono, mail].filter(Boolean).join(' · ');
+}
+
 /* ===== Datos ===== */
 async function leerGruposActivosPara(fechaISO){
   const snap = await getDocs(collection(db,'grupos'));
@@ -175,6 +196,7 @@ function render(grupos, dNow){
           <h3>${(g.nombreGrupo||'—')}</h3>
           <div class="sub">Programa: ${(g.programa||'—')} · N° ${g.numeroNegocio ?? g.id}</div>
           <div class="sub">Coordinador(a): ${coordinadorTexto(g)}</div>
+          <div class="sub">Vendedor(a): ${vendedoraTexto(g)}</div> 
         </div>
       `;
 
