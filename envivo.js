@@ -193,11 +193,11 @@ function render(grupos, dNow){
 
       const headerHTML = `
         <div>
-          <h3>${(g.nombreGrupo||'—')}</h3>
+          <h3>${(g.nombreGrupo||'—')}· N° ${g.numeroNegocio ?? g.id}</h3>
           <br>
           <div class="sub">Programa: ${(g.programa||'—')}</div>
           <div class="sub">Coordinador(a): ${coordinadorTexto(g)}</div>
-          <div class="sub">Vendedor(a): ${vendedoraTexto(g)} · N° ${g.numeroNegocio ?? g.id}</div> 
+          <div class="sub">Vendedor(a): ${vendedoraTexto(g)}</div> 
         </div>
       `;
 
