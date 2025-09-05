@@ -1,9 +1,8 @@
 // En vivo — dónde están los grupos (solo lectura, sin auth)
-// - Loop fijo para SCROLL y CAROUSEL
-// - Vista TRIPTYCH (Antes/Ahora/Después) o FULL_DAY (itinerario del día)
-// - Multiselect: ocultar actividades por nombre (limpieza visual)
+// - Cards DOBLES de ancho (grilla usa --col-min: 560px)
+// - Vista TRIPTYCH / FULL_DAY, multiselect para ocultar actividades
+// - Monitor (ocultar panel), HUD, atajos M/F, carrusel/scroll en loop
 // - Coordinador(a), simulación ?now=, auto-refresh 30min
-// - Botón ocultar panel + HUD clickeable + atajos M/F
 
 import { app, db } from './firebase-core.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
@@ -97,7 +96,7 @@ function fmtFechaHumana(d){ return d.toLocaleString('es-CL',{dateStyle:'medium',
 function setLastRefresh(d){ if(lastRefresh) lastRefresh.textContent = `Actualizado: ${fmtFechaHumana(d)}`; updateHUD(); }
 
 /* ===== Filtros de actividades ===== */
-const hiddenActs = new Set();               // nombres normalizados a MAYÚSCULAS
+const hiddenActs = new Set();
 function setHiddenFromSelect(){
   hiddenActs.clear();
   Array.from(actFilter.selectedOptions).forEach(o => hiddenActs.add(o.value));
@@ -159,9 +158,9 @@ function render(grupos, dNow){
         <span class="pill">${lista.length} grupo(s)</span>
         <span class="pill">Hoy: ${dISO}</span>
       </div>
-      <div class="grid"></div>
+      <div class="grupo-grid"></div>
     `;
-    const grid = blk.querySelector('.grid');
+    const grid = blk.querySelector('.grupo-grid');
 
     lista.forEach(g=>{
       const crudo = Array.isArray(g.itinerario?.[dISO]) ? g.itinerario[dISO] : [];
@@ -169,9 +168,8 @@ function render(grupos, dNow){
       const anal = analizarDia(hoy, nowMin);
 
       const card = document.createElement('article');
-      card.className = 'card';
+      card.className = 'group-card';
 
-      // Cabecera común
       const headerHTML = `
         <div>
           <h3>${(g.nombreGrupo||'—')}</h3>
@@ -215,7 +213,7 @@ function render(grupos, dNow){
             </div>
           </div>
         `;
-      } else { // FULL_DAY
+      } else {
         const list = ordenarPorHora(hoy);
         const items = list.map(a=>{
           const ini = parseHM(a?.horaInicio || '00:00') ?? 0;
@@ -229,12 +227,7 @@ function render(grupos, dNow){
           `;
         }).join('') || `<div class="act-item"><div class="name">—</div><div class="time">—</div></div>`;
 
-        card.innerHTML = `
-          ${headerHTML}
-          <div class="day-list">
-            ${items}
-          </div>
-        `;
+        card.innerHTML = `${headerHTML}<div class="day-list">${items}</div>`;
       }
 
       grid.appendChild(card);
@@ -325,7 +318,7 @@ async function cargarYRender(){
   lastGrupos = grupos;
 
   if(!filtroDestino.options || filtroDestino.options.length<=1) buildDestinos(grupos);
-  buildActivityOptions(grupos, dISO); // para multiselect
+  buildActivityOptions(grupos, dISO); // opciones multiselect
   render(grupos, dNow);
 }
 function startAutoRefresh(){ if(dataTimer) clearInterval(dataTimer); dataTimer = setInterval(()=>cargarYRender().catch(console.error), AUTO_REFRESH_MS); }
@@ -353,7 +346,6 @@ function showOnlyDestino(idx){
 }
 
 function scheduleCarouselNext(){
-  // reprogramación con setTimeout para evitar drift y asegurar loop
   if(isPaused()){ carouselTimer = setTimeout(scheduleCarouselNext, 250); return; }
   showOnlyDestino(currentDestinoIndex + 1);
   carouselTimer = setTimeout(scheduleCarouselNext, secsForCarousel()*1000);
@@ -365,7 +357,6 @@ function startCarousel(){
   scheduleCarouselNext();
 }
 
-/* Scroll con loop real al llegar abajo */
 function startScroll(){
   stopCarousel(); stopScroll();
   allDestBlocks().forEach(b=>b.classList.remove('is-hidden','fade-out'));
@@ -380,7 +371,6 @@ function startScroll(){
     const maxY  = fullH - viewH;
 
     if(window.scrollY >= maxY - 2){
-      // rebote instantáneo arriba para evitar quedarse pegado
       window.scrollTo(0, 0);
       return;
     }
