@@ -1,18 +1,16 @@
 // envivo.js — En vivo: dónde están los grupos (solo lectura, sin auth)
-// - Vista por DESTINO, tarjetas con “Antes / AHORA / Después”.
-// - Coordinador(a) en cabecera de la tarjeta.
-// - Simulación de fecha/hora (?now=YYYY-MM-DD[THH:mm] o constante).
-// - Auto-refresh cada 30 min.
-// - Modo monitor: oculta UI (header/footer) + HUD; atajos M (UI) y F (fullscreen).
-// - Animación de monitor: Carrusel por destino o Scroll suave con control de velocidad.
+// - Tarjetas “Antes / AHORA / Después” + Coordinador(a).
+// - Botón en header para ocultar/mostrar panel (además HUD clickeable, M/F).
+// - Simulación de fecha (?now=) y auto-refresh 30 min.
+// - Modo monitor: Carrusel por destino o Scroll suave con control de velocidad.
 
 import { app, db } from './firebase-core.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-/* ========== Configuración rápida ========== */
-const DEFAULT_FORCE_NOW_ISO = '';           // '2025-12-15T10:00' para forzar por código
-const DURACION_POR_DEFECTO_MIN = 60;        // si actividad no tiene horaFin/duración
-const AUTO_REFRESH_MS = 30 * 60 * 1000;     // 30 minutos
+/* ========== Configuración ========== */
+const DEFAULT_FORCE_NOW_ISO = '';           // p.ej. '2025-12-15T10:00'
+const DURACION_POR_DEFECTO_MIN = 60;
+const AUTO_REFRESH_MS = 30 * 60 * 1000;
 
 /* ========== Utils fecha/hora ========== */
 const pad2 = n => String(n).padStart(2,'0');
@@ -25,10 +23,10 @@ function addToHM(hm, minutes){ const base=parseHM(hm) ?? 0; const t=Math.max(0,M
 function getParam(name){ const qs=new URLSearchParams(location.search); const v=qs.get(name); return v===null?null:String(v); }
 function getBoolParam(name){ const v=getParam(name); if(v===null) return false; return ['1','true','on','yes'].includes(v.toLowerCase()); }
 
-/* ===== Fullscreen toggle ===== */
+/* ===== Fullscreen ===== */
 async function toggleFullscreen(){ try{ if(!document.fullscreenElement) await document.documentElement.requestFullscreen(); else await document.exitFullscreen(); }catch(_){} }
 
-/* ========== Manejo de “ahora” real/simulado ========== */
+/* ========== “Ahora” real/simulado ========== */
 function getQueryNow(){
   const raw = getParam('now');
   if(!raw) return null;
@@ -45,7 +43,7 @@ function nowDate(){
   return new Date();
 }
 
-/* ========== Coordinador: texto bonito ========== */
+/* ========== Coordinador: texto ========== */
 function coordinadorTexto(g){
   const c = g.coordinador ?? g.coordinadorNombre ?? g.coordinadorAsignado ?? null;
   if(!c) return '—';
@@ -56,14 +54,14 @@ function coordinadorTexto(g){
   return [nombre + alias, fono].filter(Boolean).join(' · ');
 }
 
-/* ========== Lectura de grupos activos para un día ========== */
+/* ========== Datos ========== */
 async function leerGruposActivosPara(fechaISO){
   const snap = await getDocs(collection(db,'grupos'));
   const todos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
   return todos.filter(g => g.fechaInicio && g.fechaFin && g.fechaInicio <= fechaISO && fechaISO <= g.fechaFin);
 }
 
-/* ========== Cálculos ANTES/AHORA/DESPUÉS ========== */
+/* ========== Cálculos del día ========== */
 function ordenarPorHora(arr){
   return (arr||[]).slice().sort((a,b)=>{
     const ai=parseHM(a?.horaInicio || '99:99') ?? 9999;
@@ -90,12 +88,13 @@ function analizarDia(arr, nowMin){
   return { prev, now, next, ordenadas: ord };
 }
 
-/* ========== DOM refs ========== */
+/* ========== DOM ========== */
 const cont = document.getElementById('contenedor');
 const filtroDestino = document.getElementById('filtroDestino');
 const simNowInput = document.getElementById('simNow');
 const btnNowReal = document.getElementById('btnNowReal');
 const btnRefrescar = document.getElementById('btnRefrescar');
+const btnToggleUI = document.getElementById('btnToggleUI');
 const lastRefresh = document.getElementById('lastRefresh');
 const autoModeSel = document.getElementById('autoMode');
 const autoSpeed = document.getElementById('autoSpeed');
@@ -105,14 +104,13 @@ const hud = document.getElementById('hud');
 function fmtFechaHumana(d){ return d.toLocaleString('es-CL',{dateStyle:'medium', timeStyle:'short'}); }
 function setLastRefresh(d){ if(lastRefresh) lastRefresh.textContent = `Actualizado: ${fmtFechaHumana(d)}`; updateHUD(); }
 
-/* Build filtro destinos */
+/* ========== Render ========== */
 function buildDestinos(grupos){
   const set = new Set(); grupos.forEach(g=>{ if(g.destino) set.add(g.destino); });
   const list = ['__ALL__', ...[...set].sort((a,b)=>a.localeCompare(b))];
   filtroDestino.innerHTML = list.map(v=>`<option value="${v}">${v==='__ALL__'?'Todos':v}</option>`).join('');
 }
 
-/* Render principal */
 function render(grupos, dNow){
   const dISO = isoDate(dNow);
   const nowMin = dNow.getHours()*60 + dNow.getMinutes();
@@ -130,7 +128,7 @@ function render(grupos, dNow){
   cont.innerHTML = '';
   if(!porDestino.size){
     cont.innerHTML = `<div class="pill">No hay grupos activos para ${dISO}${filtro==='__ALL__'?'':` en ${filtro}`}</div>`;
-    applyAutoMode(); // limpia timers igual
+    applyAutoMode();
     return;
   }
 
@@ -200,7 +198,7 @@ function render(grupos, dNow){
     cont.appendChild(blk);
   });
 
-  applyAutoMode();  // re-aplica modo monitor tras cada render
+  applyAutoMode();
 }
 
 /* ========== UI / eventos ========== */
@@ -211,14 +209,15 @@ function stepIntervalMs(){ return 40; }
 
 function applyUIMonitorClass(on){
   document.body.classList.toggle('monitor', !!on);
+  if(btnToggleUI) btnToggleUI.textContent = on ? 'Mostrar panel' : 'Ocultar panel';
   updateHUD();
 }
 function toggleMonitor(){ applyUIMonitorClass(!document.body.classList.contains('monitor')); }
 function updateHUD(){
   if(!hud) return;
-  const mode = (autoModeSel.value || '__OFF__');
+  const mode = (autoModeSel?.value || '__OFF__');
   const label = (mode==='__OFF__') ? 'SIN MOVIMIENTO' : mode;
-  hud.textContent = `Actualizado: ${fmtFechaHumana(new Date())} · ${label} · vel ${humanSpeedLabel()} · [M] UI · [F] Fullscreen`;
+  hud.textContent = `Actualizado: ${fmtFechaHumana(new Date())} · ${label} · vel ${humanSpeedLabel()} · click/M: UI · F: fullscreen`;
 }
 
 function initUI(){
@@ -242,12 +241,18 @@ function initUI(){
   autoSpeed?.addEventListener('input', ()=>{ if(speedLabel) speedLabel.textContent=humanSpeedLabel(); applyAutoMode(); updateHUD(); });
   autoModeSel?.addEventListener('change', ()=>{ applyAutoMode(); updateHUD(); });
 
+  // NUEVO: botón para ocultar/mostrar panel
+  btnToggleUI?.addEventListener('click', ()=> toggleMonitor());
+
+  // HUD clickeable para mostrar/ocultar
+  hud?.addEventListener('click', ()=> toggleMonitor());
+
   // Pausa breve por interacción del usuario
   ['wheel','mousemove','keydown','touchstart'].forEach(evt=>{
     window.addEventListener(evt, ()=>pauseAuto(6000), { passive:true });
   });
 
-  // arrancar en monitor si ?monitor=1 o ?ui=off
+  // Arrancar en monitor si ?monitor=1 o ?ui=off
   const startMonitor = getBoolParam('monitor') || (getParam('ui')||'').toLowerCase()==='off';
   applyUIMonitorClass(startMonitor);
 
