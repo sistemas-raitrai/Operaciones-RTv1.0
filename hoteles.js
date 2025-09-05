@@ -445,10 +445,14 @@ function openAssignModal(hotelId, assignId){
   editAssignId = assignId;
 
   const hotel = hoteles.find(h => h.id === editHotelId);
-  const dest  = hotel?.destino;
-  const candidatos = dest
-    ? grupos.filter(g => g.destino === dest || (g.destino||'').includes(dest))
-    : grupos.slice();
+  // Prioriza arriba los grupos que coinciden con el destino del hotel, pero permite TODOS
+  const prefer = new Set([hotel?.destino].filter(Boolean));
+  const candidatos = grupos
+    .slice()
+    .sort((a,b) =>
+      (prefer.has(b.destino) - prefer.has(a.destino)) ||
+      String(a.numeroNegocio||'').localeCompare(String(b.numeroNegocio||''))
+    );
 
   choiceGrupo.clearChoices();
   choiceGrupo.setChoices(
