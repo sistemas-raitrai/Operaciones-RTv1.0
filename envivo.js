@@ -250,7 +250,7 @@ function render(grupos, dNow){
         <div>
           <h3>${(g.nombreGrupo||'—')}</h3>
           <div class="sub">Programa: ${(g.programa||'—')} · N° ${g.numeroNegocio ?? g.id}</div>
-          <div class="sub">Coordinador: ${coordinadorTexto(g)}</div>
+          <div class="sub">Coordinador(a): ${coordinadorTexto(g)}</div>
         </div>
 
         <div class="tl">
