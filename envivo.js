@@ -52,6 +52,20 @@ function addToHM(hm, minutes){
   return toHM(t);
 }
 
+// Devuelve un texto bonito con el coordinador del grupo
+function coordinadorTexto(g){
+  // Soporta varios nombres de campo y formatos (string u objeto)
+  const c = g.coordinador ?? g.coordinadorNombre ?? g.coordinadorAsignado ?? null;
+  if(!c) return '—';
+  if (typeof c === 'string') return c;
+
+  // Si es objeto, tratamos de armar: "Nombre (alias) · +56 9 ..."
+  const nombre = c.nombre || c.name || '—';
+  const alias  = c.alias ? ` (${c.alias})` : '';
+  const fono   = c.telefono || c.celular || c.fono || '';
+  return [nombre + alias, fono].filter(Boolean).join(' · ');
+}
+
 /* ========== Manejo de "ahora" (real o simulado) ========== */
 function getQueryNow(){
   const qs = new URLSearchParams(location.search);
@@ -236,6 +250,7 @@ function render(grupos, dNow){
         <div>
           <h3>${(g.nombreGrupo||'—')}</h3>
           <div class="sub">Programa: ${(g.programa||'—')} · N° ${g.numeroNegocio ?? g.id}</div>
+          <div class="sub">Coordinador: ${coordinadorTexto(g)}</div>
         </div>
 
         <div class="tl">
