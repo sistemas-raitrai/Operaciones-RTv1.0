@@ -1,49 +1,37 @@
-// envivo.js — En vivo: dónde están los grupos (solo lectura, sin auth)
-// - Tarjetas “Antes / AHORA / Después” + Coordinador(a).
-// - Botón en header para ocultar/mostrar panel (además HUD clickeable, M/F).
-// - Simulación de fecha (?now=) y auto-refresh 30 min.
-// - Modo monitor: Carrusel por destino o Scroll suave con control de velocidad.
+// En vivo — dónde están los grupos (solo lectura, sin auth)
+// - Loop fijo para SCROLL y CAROUSEL
+// - Vista TRIPTYCH (Antes/Ahora/Después) o FULL_DAY (itinerario del día)
+// - Multiselect: ocultar actividades por nombre (limpieza visual)
+// - Coordinador(a), simulación ?now=, auto-refresh 30min
+// - Botón ocultar panel + HUD clickeable + atajos M/F
 
 import { app, db } from './firebase-core.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-/* ========== Configuración ========== */
-const DEFAULT_FORCE_NOW_ISO = '';           // p.ej. '2025-12-15T10:00'
+/* ===== Config ===== */
+const DEFAULT_FORCE_NOW_ISO = '';            // ej. '2025-12-15T10:00'
 const DURACION_POR_DEFECTO_MIN = 60;
 const AUTO_REFRESH_MS = 30 * 60 * 1000;
 
-/* ========== Utils fecha/hora ========== */
+/* ===== Utils fecha/hora ===== */
 const pad2 = n => String(n).padStart(2,'0');
 const isoDate = d => `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`;
 function parseHM(hm=''){ const m=/^(\d{1,2}):(\d{2})$/.exec((hm||'').trim()); if(!m) return null; const hh=Math.min(23,Math.max(0,parseInt(m[1],10))); const mm=Math.min(59,Math.max(0,parseInt(m[2],10))); return hh*60+mm; }
 const toHM = mins => `${pad2(Math.floor(mins/60))}:${pad2(mins%60)}`;
 function addToHM(hm, minutes){ const base=parseHM(hm) ?? 0; const t=Math.max(0,Math.min(24*60-1, base+minutes)); return toHM(t); }
+const normName = s => (s||'').toString().trim().toUpperCase();
 
-/* ===== Query helpers ===== */
+/* ===== Query/helpers ===== */
 function getParam(name){ const qs=new URLSearchParams(location.search); const v=qs.get(name); return v===null?null:String(v); }
 function getBoolParam(name){ const v=getParam(name); if(v===null) return false; return ['1','true','on','yes'].includes(v.toLowerCase()); }
-
-/* ===== Fullscreen ===== */
 async function toggleFullscreen(){ try{ if(!document.fullscreenElement) await document.documentElement.requestFullscreen(); else await document.exitFullscreen(); }catch(_){} }
 
-/* ========== “Ahora” real/simulado ========== */
-function getQueryNow(){
-  const raw = getParam('now');
-  if(!raw) return null;
-  if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/.test(raw)) return raw.replace(' ','T');
-  return null;
-}
+/* ===== "Ahora" ===== */
+function getQueryNow(){ const raw=getParam('now'); if(!raw) return null; if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?$/.test(raw)) return raw.replace(' ','T'); return null; }
 let state = { forceNowIso: getQueryNow() || DEFAULT_FORCE_NOW_ISO || null };
-function nowDate(){
-  if(state.forceNowIso){
-    let v=state.forceNowIso;
-    if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v+='T12:00';
-    return new Date(v);
-  }
-  return new Date();
-}
+function nowDate(){ if(state.forceNowIso){ let v=state.forceNowIso; if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v+='T12:00'; return new Date(v); } return new Date(); }
 
-/* ========== Coordinador: texto ========== */
+/* ===== Coordinador ===== */
 function coordinadorTexto(g){
   const c = g.coordinador ?? g.coordinadorNombre ?? g.coordinadorAsignado ?? null;
   if(!c) return '—';
@@ -54,14 +42,14 @@ function coordinadorTexto(g){
   return [nombre + alias, fono].filter(Boolean).join(' · ');
 }
 
-/* ========== Datos ========== */
+/* ===== Datos ===== */
 async function leerGruposActivosPara(fechaISO){
   const snap = await getDocs(collection(db,'grupos'));
   const todos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
   return todos.filter(g => g.fechaInicio && g.fechaFin && g.fechaInicio <= fechaISO && fechaISO <= g.fechaFin);
 }
 
-/* ========== Cálculos del día ========== */
+/* ===== Cálculos del día ===== */
 function ordenarPorHora(arr){
   return (arr||[]).slice().sort((a,b)=>{
     const ai=parseHM(a?.horaInicio || '99:99') ?? 9999;
@@ -88,7 +76,7 @@ function analizarDia(arr, nowMin){
   return { prev, now, next, ordenadas: ord };
 }
 
-/* ========== DOM ========== */
+/* ===== DOM ===== */
 const cont = document.getElementById('contenedor');
 const filtroDestino = document.getElementById('filtroDestino');
 const simNowInput = document.getElementById('simNow');
@@ -99,12 +87,38 @@ const lastRefresh = document.getElementById('lastRefresh');
 const autoModeSel = document.getElementById('autoMode');
 const autoSpeed = document.getElementById('autoSpeed');
 const speedLabel = document.getElementById('speedLabel');
+const viewModeSel = document.getElementById('viewMode');
+const actFilter = document.getElementById('actFilter');
+const btnClearActs = document.getElementById('btnClearActs');
+const hiddenCount = document.getElementById('hiddenCount');
 const hud = document.getElementById('hud');
 
 function fmtFechaHumana(d){ return d.toLocaleString('es-CL',{dateStyle:'medium', timeStyle:'short'}); }
 function setLastRefresh(d){ if(lastRefresh) lastRefresh.textContent = `Actualizado: ${fmtFechaHumana(d)}`; updateHUD(); }
 
-/* ========== Render ========== */
+/* ===== Filtros de actividades ===== */
+const hiddenActs = new Set();               // nombres normalizados a MAYÚSCULAS
+function setHiddenFromSelect(){
+  hiddenActs.clear();
+  Array.from(actFilter.selectedOptions).forEach(o => hiddenActs.add(o.value));
+  hiddenCount.textContent = `${hiddenActs.size} ocultas`;
+}
+function buildActivityOptions(grupos, fechaISO){
+  const set = new Set();
+  for(const g of grupos){
+    const list = Array.isArray(g.itinerario?.[fechaISO]) ? g.itinerario[fechaISO] : [];
+    for(const a of list){ const n = normName(a?.actividad); if(n) set.add(n); }
+  }
+  const arr = [...set].sort((a,b)=>a.localeCompare(b));
+  actFilter.innerHTML = arr.map(n => `<option value="${n}" ${hiddenActs.has(n)?'selected':''}>${n}</option>`).join('');
+  hiddenCount.textContent = `${hiddenActs.size} ocultas`;
+}
+function filtrarActividades(lista){
+  if(!hiddenActs.size) return lista;
+  return (lista||[]).filter(a => !hiddenActs.has(normName(a?.actividad)));
+}
+
+/* ===== Render ===== */
 function buildDestinos(grupos){
   const set = new Set(); grupos.forEach(g=>{ if(g.destino) set.add(g.destino); });
   const list = ['__ALL__', ...[...set].sort((a,b)=>a.localeCompare(b))];
@@ -114,9 +128,9 @@ function buildDestinos(grupos){
 function render(grupos, dNow){
   const dISO = isoDate(dNow);
   const nowMin = dNow.getHours()*60 + dNow.getMinutes();
-
   const filtro = filtroDestino.value || '__ALL__';
   const porDestino = new Map();
+
   grupos.forEach(g=>{
     if(filtro!=='__ALL__' && g.destino!==filtro) return;
     const key = g.destino || '—';
@@ -131,6 +145,8 @@ function render(grupos, dNow){
     applyAutoMode();
     return;
   }
+
+  const viewMode = (viewModeSel?.value || 'TRIPTYCH');
 
   porDestino.forEach((lista, destino)=>{
     const blk = document.createElement('section');
@@ -148,60 +164,89 @@ function render(grupos, dNow){
     const grid = blk.querySelector('.grid');
 
     lista.forEach(g=>{
-      const hoy = Array.isArray(g.itinerario?.[dISO]) ? g.itinerario[dISO] : [];
+      const crudo = Array.isArray(g.itinerario?.[dISO]) ? g.itinerario[dISO] : [];
+      const hoy = filtrarActividades(crudo);
       const anal = analizarDia(hoy, nowMin);
-
-      const prevTxt   = anal.prev ? (anal.prev.actividad||'—').toString().toUpperCase() : '—';
-      const nowTxt    = anal.now  ? (anal.now.actividad ||'—').toString().toUpperCase() : '—';
-      const nextTxt   = anal.next ? (anal.next.actividad||'—').toString().toUpperCase() : '—';
-
-      const prevRange = anal.prev ? `${anal.prev.horaInicio||'--:--'} – ${obtenerFin(anal.prev)}` : '';
-      const nowRange  = anal.now  ? `${anal.now.horaInicio||'--:--'} – ${obtenerFin(anal.now)}`   : '';
-      const nextRange = anal.next ? `${anal.next.horaInicio||'--:--'} – ${obtenerFin(anal.next)}` : '';
 
       const card = document.createElement('article');
       card.className = 'card';
-      card.innerHTML = `
+
+      // Cabecera común
+      const headerHTML = `
         <div>
           <h3>${(g.nombreGrupo||'—')}</h3>
           <div class="sub">Programa: ${(g.programa||'—')} · N° ${g.numeroNegocio ?? g.id}</div>
           <div class="sub">Coordinador(a): ${coordinadorTexto(g)}</div>
         </div>
-
-        <div class="stage">
-          <div class="stage-hd">Antes</div>
-          <div class="stage-box">
-            <div class="title">${prevTxt}</div>
-            <div class="time">${prevRange || '—'}</div>
-          </div>
-        </div>
-
-        <div class="stage">
-          <div class="stage-hd">Ahora</div>
-          <div class="stage-box stage-now">
-            <div class="title">${nowTxt}</div>
-            <div class="time">${nowRange || '—'}</div>
-          </div>
-        </div>
-
-        <div class="stage">
-          <div class="stage-hd">Después</div>
-          <div class="stage-box">
-            <div class="title">${nextTxt}</div>
-            <div class="time">${nextRange || '—'}</div>
-          </div>
-        </div>
       `;
+
+      if(viewMode === 'TRIPTYCH'){
+        const prevTxt   = anal.prev ? normName(anal.prev.actividad) : '—';
+        const nowTxt    = anal.now  ? normName(anal.now.actividad)  : '—';
+        const nextTxt   = anal.next ? normName(anal.next.actividad) : '—';
+
+        const prevRange = anal.prev ? `${anal.prev.horaInicio||'--:--'} – ${obtenerFin(anal.prev)}` : '';
+        const nowRange  = anal.now  ? `${anal.now.horaInicio||'--:--'} – ${obtenerFin(anal.now)}`   : '';
+        const nextRange = anal.next ? `${anal.next.horaInicio||'--:--'} – ${obtenerFin(anal.next)}` : '';
+
+        card.innerHTML = `
+          ${headerHTML}
+          <div class="stage">
+            <div class="stage-hd">Antes</div>
+            <div class="stage-box">
+              <div class="title">${prevTxt}</div>
+              <div class="time">${prevRange || '—'}</div>
+            </div>
+          </div>
+
+          <div class="stage">
+            <div class="stage-hd">Ahora</div>
+            <div class="stage-box stage-now">
+              <div class="title">${nowTxt}</div>
+              <div class="time">${nowRange || '—'}</div>
+            </div>
+          </div>
+
+          <div class="stage">
+            <div class="stage-hd">Después</div>
+            <div class="stage-box">
+              <div class="title">${nextTxt}</div>
+              <div class="time">${nextRange || '—'}</div>
+            </div>
+          </div>
+        `;
+      } else { // FULL_DAY
+        const list = ordenarPorHora(hoy);
+        const items = list.map(a=>{
+          const ini = parseHM(a?.horaInicio || '00:00') ?? 0;
+          const fin = parseHM(obtenerFin(a)) ?? 0;
+          const cls = (ini<=nowMin && nowMin<fin) ? 'is-now' : (fin<=nowMin ? 'is-past' : '');
+          return `
+            <div class="act-item ${cls}">
+              <div class="name">${normName(a?.actividad)}</div>
+              <div class="time">${a?.horaInicio||'--:--'} – ${obtenerFin(a)}</div>
+            </div>
+          `;
+        }).join('') || `<div class="act-item"><div class="name">—</div><div class="time">—</div></div>`;
+
+        card.innerHTML = `
+          ${headerHTML}
+          <div class="day-list">
+            ${items}
+          </div>
+        `;
+      }
+
       grid.appendChild(card);
     });
 
     cont.appendChild(blk);
   });
 
-  applyAutoMode();
+  applyAutoMode();  // re-aplica movimiento tras cada render
 }
 
-/* ========== UI / eventos ========== */
+/* ===== UI / eventos ===== */
 function humanSpeedLabel(){ return `x${autoSpeed.value}`; }
 function secsForCarousel(){ const v=Number(autoSpeed.value||5); return Math.max(2, 22 - v*2); } // 20..2s
 function pxPerStepForScroll(){ const v=Number(autoSpeed.value||5); return Math.min(6, Math.max(1, Math.round(v*0.6))); }
@@ -221,8 +266,8 @@ function updateHUD(){
 }
 
 function initUI(){
-  // URL inicial para modo/velocidad
-  const urlMode  = (getParam('mode') || '').toUpperCase();   // SCROLL | CAROUSEL | __OFF__
+  // Modo/velocidad por URL (opcional)
+  const urlMode  = (getParam('mode') || '').toUpperCase();
   const urlSpeed = parseInt(getParam('speed') || '', 10);
   if(['SCROLL','CAROUSEL','__OFF__'].includes(urlMode)) autoModeSel.value = urlMode;
   if(urlSpeed>=1 && urlSpeed<=10){ autoSpeed.value=String(urlSpeed); if(speedLabel) speedLabel.textContent = `x${urlSpeed}`; }
@@ -230,29 +275,31 @@ function initUI(){
   // Simulación input
   if(state.forceNowIso){
     let v=state.forceNowIso; if(/^\d{4}-\d{2}-\d{2}$/.test(v)) v+='T12:00'; v=v.replace(/:\d{2}$/,'');
-    if(simNowInput) simNowInput.value = v;
+    simNowInput && (simNowInput.value = v);
   }
 
   simNowInput?.addEventListener('change', ()=>{ state.forceNowIso = simNowInput.value || null; cargarYRender(); });
   btnNowReal?.addEventListener('click', ()=>{ state.forceNowIso=null; simNowInput.value=''; cargarYRender(); });
   btnRefrescar?.addEventListener('click', ()=>cargarYRender());
   filtroDestino?.addEventListener('change', ()=>cargarYRender());
-
-  autoSpeed?.addEventListener('input', ()=>{ if(speedLabel) speedLabel.textContent=humanSpeedLabel(); applyAutoMode(); updateHUD(); });
+  viewModeSel?.addEventListener('change', ()=>render(lastGrupos, lastNow));
+  autoSpeed?.addEventListener('input', ()=>{ speedLabel && (speedLabel.textContent=humanSpeedLabel()); applyAutoMode(); updateHUD(); });
   autoModeSel?.addEventListener('change', ()=>{ applyAutoMode(); updateHUD(); });
 
-  // NUEVO: botón para ocultar/mostrar panel
-  btnToggleUI?.addEventListener('click', ()=> toggleMonitor());
+  // Filtros actividades
+  actFilter?.addEventListener('change', ()=>{ setHiddenFromSelect(); render(lastGrupos, lastNow); });
+  btnClearActs?.addEventListener('click', ()=>{ hiddenActs.clear(); buildActivityOptions(lastGrupos, isoDate(lastNow)); render(lastGrupos, lastNow); });
 
-  // HUD clickeable para mostrar/ocultar
+  // Ocultar/mostrar panel
+  btnToggleUI?.addEventListener('click', ()=> toggleMonitor());
   hud?.addEventListener('click', ()=> toggleMonitor());
 
-  // Pausa breve por interacción del usuario
+  // Pausa breve por interacción usuario
   ['wheel','mousemove','keydown','touchstart'].forEach(evt=>{
     window.addEventListener(evt, ()=>pauseAuto(6000), { passive:true });
   });
 
-  // Arrancar en monitor si ?monitor=1 o ?ui=off
+  // Iniciar en monitor si ?monitor=1 o ?ui=off
   const startMonitor = getBoolParam('monitor') || (getParam('ui')||'').toLowerCase()==='off';
   applyUIMonitorClass(startMonitor);
 
@@ -266,24 +313,29 @@ function initUI(){
   updateHUD();
 }
 
+/* ===== Carga/render ===== */
 let dataTimer=null;
+let lastGrupos=[], lastNow=new Date();
 async function cargarYRender(){
   const dNow = nowDate();
+  lastNow = dNow;
   setLastRefresh(new Date());
   const dISO = isoDate(dNow);
   const grupos = await leerGruposActivosPara(dISO);
+  lastGrupos = grupos;
 
   if(!filtroDestino.options || filtroDestino.options.length<=1) buildDestinos(grupos);
+  buildActivityOptions(grupos, dISO); // para multiselect
   render(grupos, dNow);
 }
 function startAutoRefresh(){ if(dataTimer) clearInterval(dataTimer); dataTimer = setInterval(()=>cargarYRender().catch(console.error), AUTO_REFRESH_MS); }
 
-/* ========== Modo monitor: carrusel / scroll ========== */
+/* ===== Monitor: CAROUSEL / SCROLL (loop robusto) ===== */
 let carouselTimer=null, scrollTimer=null, pausedUntil=0, currentDestinoIndex=0;
 const nowMs = ()=>Date.now();
 const pauseAuto = (ms=6000)=>{ pausedUntil = nowMs()+ms; };
 const isPaused = ()=> nowMs() < pausedUntil;
-const stopCarousel = ()=>{ if(carouselTimer){ clearInterval(carouselTimer); carouselTimer=null; } };
+const stopCarousel = ()=>{ if(carouselTimer){ clearTimeout(carouselTimer); carouselTimer=null; } };
 const stopScroll   = ()=>{ if(scrollTimer){ clearInterval(scrollTimer); scrollTimer=null; } };
 const allDestBlocks = ()=> Array.from(cont.querySelectorAll('.destino-bloque'));
 
@@ -293,30 +345,49 @@ function showOnlyDestino(idx){
   blocks.forEach((b,i)=>{
     if(i===currentDestinoIndex){
       b.classList.remove('is-hidden'); requestAnimationFrame(()=>b.classList.remove('fade-out'));
-      b.scrollIntoView({ behavior:'smooth', block:'start' });
+      b.scrollIntoView({ behavior:'instant', block:'start' });
     } else {
       b.classList.add('fade-out'); setTimeout(()=>b.classList.add('is-hidden'), 300);
     }
   });
 }
+
+function scheduleCarouselNext(){
+  // reprogramación con setTimeout para evitar drift y asegurar loop
+  if(isPaused()){ carouselTimer = setTimeout(scheduleCarouselNext, 250); return; }
+  showOnlyDestino(currentDestinoIndex + 1);
+  carouselTimer = setTimeout(scheduleCarouselNext, secsForCarousel()*1000);
+}
 function startCarousel(){
   stopScroll(); stopCarousel();
-  const blocks = allDestBlocks(); if(!blocks.length) return;
-  showOnlyDestino(currentDestinoIndex||0);
-  carouselTimer = setInterval(()=>{ if(!isPaused()) showOnlyDestino(currentDestinoIndex+1); }, secsForCarousel()*1000);
+  if(!allDestBlocks().length) return;
+  showOnlyDestino(currentDestinoIndex || 0);
+  scheduleCarouselNext();
 }
+
+/* Scroll con loop real al llegar abajo */
 function startScroll(){
   stopCarousel(); stopScroll();
   allDestBlocks().forEach(b=>b.classList.remove('is-hidden','fade-out'));
-  const stepPx = pxPerStepForScroll(); const stepMs = stepIntervalMs();
+  const stepPx = pxPerStepForScroll();
+  const stepMs = stepIntervalMs();
   scrollTimer = setInterval(()=>{
     if(isPaused()) return;
-    const bottom = Math.ceil(window.innerHeight + window.scrollY);
-    const full   = Math.ceil(document.body.scrollHeight);
-    if(bottom >= full - 2){ window.scrollTo({ top:0, behavior:'smooth' }); return; }
+    const doc = document.documentElement;
+    const body = document.body;
+    const viewH = window.innerHeight;
+    const fullH = Math.max(doc.scrollHeight, body.scrollHeight);
+    const maxY  = fullH - viewH;
+
+    if(window.scrollY >= maxY - 2){
+      // rebote instantáneo arriba para evitar quedarse pegado
+      window.scrollTo(0, 0);
+      return;
+    }
     window.scrollBy(0, stepPx);
   }, stepMs);
 }
+
 function applyAutoMode(){
   const mode = autoModeSel?.value || '__OFF__';
   if(mode==='CAROUSEL') startCarousel();
@@ -325,7 +396,7 @@ function applyAutoMode(){
   updateHUD();
 }
 
-/* ========== Boot ========== */
+/* ===== Boot ===== */
 initUI();
 cargarYRender()
   .then(()=>{ startAutoRefresh(); applyAutoMode(); })
