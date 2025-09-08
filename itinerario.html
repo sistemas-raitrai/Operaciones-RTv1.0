@@ -80,6 +80,12 @@
           ⚠️ Alertas (<span id="alertasBadge">0</span>)
         </button>
       </div>
+            <!-- NUEVO: botón Historial -->
+      <div class="column medium">
+        <label>&nbsp;</label>
+        <button type="button" id="btnHistorial" class="btn-add" style="background:#334155; color:white;">🕘 Historial</button>
+      </div>
+
       <div class="column medium">
         <label>&nbsp;</label>
         <button type="button" id="btnToggleEdit" class="btn-add" style="background-color: red; color: white;">🔓 Activar edición</button>
@@ -172,13 +178,34 @@
       <button id="alertas-close" type="button">✖</button>
     </div>
     <div class="modal-body">
-      <h4>Este grupo</h4>
+      <h4>Este grupo — No leídas</h4>
       <ul id="alertas-actual" class="alert-list"></ul>
+  
+      <h4 style="margin-top:.8rem;">Este grupo — Leídas</h4>
+      <ul id="alertas-actual-leidas" class="alert-list"></ul>
+  
       <hr/>
-      <h4>Otros grupos con revisión pendiente/rechazada</h4>
+      <h4>Otros grupos con revisión rechazada</h4>
       <ul id="alertas-otros" class="alert-list"></ul>
+  
+      <h4 style="margin-top:.8rem;">Otros grupos con revisión pendiente</h4>
+      <ul id="alertas-pendientes" class="alert-list"></ul>
     </div>
   </div>
+
+  <!-- NUEVO: Modal Historial -->
+  <div id="modal-historial" class="modal" style="display:none;">
+    <div class="modal-header">
+      <h3>Historial</h3>
+      <button id="historial-close" type="button">✖</button>
+    </div>
+    <div class="modal-body">
+      <input id="historial-filter" type="search" placeholder="Filtrar por acción/usuario/motivo/detalle…" />
+      <ul id="historial-list" class="hist-list"></ul>
+    </div>
+  </div>
+
+
 
   <!-- Recursos externos -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
