@@ -7,6 +7,25 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+  <!-- Estilos mínimos para nuevos elementos (se integran con tu CSS general) -->
+  <style>
+    .estado-revision { margin: 1rem 0; font-weight: 600; }
+    .estado-revision .badge { padding: .25rem .6rem; border-radius: 999px; }
+    .badge-ok { background: #16a34a; color: #fff; }
+    .badge-pendiente { background: #f59e0b; color: #fff; }
+    .badge-rechazado { background: #dc2626; color: #fff; }
+
+    .alert-list { list-style: none; padding: 0; margin: .5rem 0 0; }
+    .alert-item { display:flex; justify-content:space-between; align-items:center; gap:.5rem; padding:.5rem .6rem; border:1px solid #e5e7eb; border-radius:8px; background:#fff; margin-bottom:.4rem; }
+    .alert-item.visto { opacity:.6; }
+    .alert-item .actions button{ padding:.2rem .6rem; border-radius:6px; background:#e5e7eb; border:0; cursor:pointer; }
+    .rev-static { font-size: 1.1rem; }
+    .btn-revision { margin-left:.25rem; }
+    .modal .modal-header { display:flex; justify-content:space-between; align-items:center; }
+    .modal .modal-header h3 { margin:0; }
+    .modal .modal-header button { border:0; background:#eee; border-radius:8px; padding:.25rem .5rem; cursor:pointer; }
+    .modal { max-width: 800px; }
+  </style>
 </head>
 <body class="itinerario-page">
 
@@ -26,11 +45,19 @@
         <label for="grupo-select-num">N° Negocio</label>
         <select id="grupo-select-num"></select>
       </div>
-   ||</div>
-     <div class="row">
+    </div>
+
+    <div class="row">
       <div class="column medium">
         <label>&nbsp;</label>
         <button id="btnAbrirCalendario" class="btn-add" style="background-color: green; color: white;">📅 Ver Calendario</button>
+      </div>
+      <!-- NUEVO: Botón Alertas entre calendario y edición -->
+      <div class="column medium">
+        <label>&nbsp;</label>
+        <button id="btnAlertas" class="btn-add" style="background-color:#f59e0b; color:white;">
+          ⚠️ Alertas (<span id="alertasBadge">0</span>)
+        </button>
       </div>
       <div class="column medium">
         <label>&nbsp;</label>
@@ -51,7 +78,12 @@
       </div>
     </div>
 
-    <!-- Quick-Add y Carrusel -->
+    <!-- NUEVO: Banda Estado Revisión -->
+    <div id="estado-revision" class="estado-revision">
+      Estado revisión: <span id="estado-badge" class="badge badge-pendiente">PENDIENTE</span>
+    </div>
+
+    <!-- Quick-Add -->
     <section id="quick-add" class="quick-add">
       <h3>Editor de Itinerario</h3>
       <div class="column">
@@ -111,6 +143,21 @@
     <iframe id="iframe-calendario" width="100%" height="600" style="border:none;"></iframe>
   </div>
 
+  <!-- NUEVO: Modal Alertas -->
+  <div id="modal-alertas" class="modal" style="display:none;">
+    <div class="modal-header">
+      <h3>Alertas</h3>
+      <button id="alertas-close">✖</button>
+    </div>
+    <div class="modal-body">
+      <h4>Este grupo</h4>
+      <ul id="alertas-actual" class="alert-list"></ul>
+      <hr/>
+      <h4>Otros grupos con revisión pendiente/rechazada</h4>
+      <ul id="alertas-otros" class="alert-list"></ul>
+    </div>
+  </div>
+
   <!-- Recursos externos -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
@@ -121,7 +168,7 @@
       document.getElementById('encabezado').innerHTML = html;
       await import('./firebase-init.js');
       await import('./script.js');      // Header: usuario, reloj, botones
-      await import('./itinerario.js');  // Lógica de esta página
+      await import('./itinerario.js');  // Lógica de esta página (este archivo)
     })();
   </script>
 
