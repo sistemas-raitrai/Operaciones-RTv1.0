@@ -1,4 +1,13 @@
-// itinerario.js
+// itinerario.js — Editor de Itinerarios (RT v1.0)
+// ======================================================================
+// Cambios relevantes en esta versión:
+//  • Botón tri-estado por actividad (⭕/✅/❌) SOLO en edición (editMode).
+//  • Estado global del itinerario: OK / PENDIENTE / RECHAZADO.
+//  • Persistencia en grupo: grupos.{estadoRevisionItinerario}.
+//  • Botón "⚠️ Alertas (n)" + Panel de alertas (grupo actual y otros).
+//  • Historial para cambios de revisión; creación y cierre de alertas.
+//  • Se mantiene TODO lo funcional previo (render, plantillas, swap, etc.).
+// ======================================================================
 
 // —————————————————————————————————
 // 0) Importes de Firebase
@@ -7,7 +16,7 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, getDocs,
+  collection, query, where, orderBy, getDocs,
   doc, getDoc, updateDoc, addDoc, deleteDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -41,6 +50,15 @@ const btnGuardarTpl  = document.getElementById("btnGuardarTpl");
 const btnCargarTpl   = document.getElementById("btnCargarTpl");
 const selPlantillas  = document.getElementById("sel-plantillas");
 
+// —— NUEVO: Estado de revisión (banda)
+const estadoBox      = document.getElementById("estado-revision");
+const estadoBadge    = document.getElementById("estado-badge");
+
+// —— NUEVO: Botón Alertas y badge
+const btnAlertas     = document.getElementById("btnAlertas");
+const alertasBadge   = document.getElementById("alertasBadge");
+
+// —— Modal actividad
 const modalBg        = document.getElementById("modal-backdrop");
 const modal          = document.getElementById("modal");
 const formModal      = document.getElementById("modal-form");
@@ -54,13 +72,18 @@ const fldPax         = document.getElementById("m-pax");
 const fldNotas       = document.getElementById("m-notas");
 const btnCancel      = document.getElementById("modal-cancel");
 
+// —— NUEVO: Modal Alertas
+const modalAlertas       = document.getElementById("modal-alertas");
+const btnCloseAlertas    = document.getElementById("alertas-close");
+const listAlertasActual  = document.getElementById("alertas-actual");
+const listAlertasOtros   = document.getElementById("alertas-otros");
+
 let editData    = null;   // { fecha, idx, ...act }
 let choicesDias = null;   // Choices.js instance
 let choicesGrupoNum = null;  // Choices para selectNum (número de negocio)
 let choicesGrupoNom = null;  // Choices para selectName (nombre de grupo)
 let editMode     = false;  // indica si estamos en modo edición
 let swapOrigin   = null;   // punto de partida para intercambio
-
 
 // —————————————————————————————————
 // Función global para sumar numéricamente
@@ -94,7 +117,7 @@ async function initItinerario() {
     `<option value="${g.id}">${(g.nombreGrupo||'').toString().toUpperCase()}</option>`
   ).join('');
   
-  // 2.2.1) Inicializa Choices.js para autocompletar/búsqueda (solo una vez)
+  // 2.2.1) Inicializa Choices.js (solo una vez)
   if (!choicesGrupoNum) {
     choicesGrupoNum = new Choices(selectNum, {
       searchEnabled: true,
@@ -127,12 +150,17 @@ async function initItinerario() {
     renderItinerario();
   };
   
-  // 2.4) Quick-Add, Modal y Plantillas
-  qaAddBtn.onclick   = quickAddActivity;
-  btnCancel.onclick  = closeModal;
-  formModal.onsubmit = onSubmitModal;
+  // 2.4) Quick-Add, Modal, Plantillas, Alertas
+  qaAddBtn.onclick      = quickAddActivity;
+  btnCancel.onclick     = closeModal;
+  formModal.onsubmit    = onSubmitModal;
   btnGuardarTpl.onclick = guardarPlantilla;
   btnCargarTpl.onclick  = cargarPlantilla;
+
+  // —— NUEVO: botón Alertas
+  btnAlertas.onclick    = openAlertasPanel;
+  btnCloseAlertas.onclick = () => { modalAlertas.style.display = "none"; document.getElementById("modal-backdrop").style.display="none"; };
+
   await cargarListaPlantillas();
 
   // 2.5) Primera carga
@@ -151,7 +179,6 @@ btnToggleEdit.onclick = () => {
   renderItinerario();
 };
 
-
 // —————————————————————————————————
 // Autocomplete de actividades (para inputs)
 // —————————————————————————————————
@@ -159,7 +186,6 @@ async function obtenerActividadesPorDestino(destino) {
   if (!destino) return [];
   const colecServicios = "Servicios";
   const colecListado   = "Listado";
-  // el destino puede tener varios separados por “ Y ”
   const partes = destino.toString()
     .split(/\s+Y\s+/i)
     .map(s => s.trim().toUpperCase());
@@ -171,22 +197,16 @@ async function obtenerActividadesPorDestino(destino) {
       snap.docs.forEach(ds =>
         todas.push(((ds.data().nombre || ds.data().servicio || ds.id) || '').toString().toUpperCase())
       );
-    } catch (e) {
-      // si no existe esa sub-colección, ignoramos
-    }
+    } catch (e) { /* subcolección inexistente: ignorar */ }
   }
-  // sin duplicados y ordenado
   return [...new Set(todas)].sort();
 }
 
 async function prepararCampoActividad(inputId, destino) {
   const input = document.getElementById(inputId);
   const acts  = await obtenerActividadesPorDestino(destino);
-  // elimino el datalist anterior si existía
   const oldList = document.getElementById("lista-" + inputId);
   if (oldList) oldList.remove();
-
-  // creo uno nuevo
   const dl = document.createElement("datalist");
   dl.id = "lista-" + inputId;
   acts.forEach(a => {
@@ -198,7 +218,6 @@ async function prepararCampoActividad(inputId, destino) {
   input.setAttribute("list", "lista-" + inputId);
 }
 
-
 // ======================================================
 // Catálogo de servicios por destino (ROBUSTO con alias + normalización)
 // ======================================================
@@ -206,8 +225,8 @@ async function getServiciosMaps(destinoStr) {
   const partes = destinoStr
     ? destinoStr.toString().split(/\s+Y\s+/i).map(s => s.trim().toUpperCase())
     : [];
-  const byId = new Map();    // idDoc  -> { id, destino, nombre, nombreK, data }
-  const byName = new Map();  // K(NOMBRE/ALIAS/ID/servicio) -> pack
+  const byId = new Map();
+  const byName = new Map();
   const packs = [];
 
   for (const parte of partes) {
@@ -216,43 +235,28 @@ async function getServiciosMaps(destinoStr) {
       snap.forEach(ds => {
         const id   = ds.id;
         const data = ds.data() || {};
-        // Nombre visible: prioriza `nombre`, luego `servicio`, luego id
         const visible = ((data.nombre || data.servicio || id) || '').toString();
         const pack = { id, destino: parte, nombre: visible.toUpperCase(), nombreK: K(visible), data };
-
         byId.set(id, pack);
         packs.push(pack);
-
-        // Index principal por nombre visible
         byName.set(pack.nombreK, pack);
-        // También por id y por el campo "servicio" si existe
         byName.set(K(id), pack);
         if (data.servicio) byName.set(K(data.servicio), pack);
-
-        // Alias opcionales
         if (Array.isArray(data.aliases)) {
-          data.aliases.forEach(a => {
-            const key = K(a);
-            if (key) byName.set(key, pack);
-          });
+          data.aliases.forEach(a => { const key = K(a); if (key) byName.set(key, pack); });
         }
       });
-    } catch (e) {
-      // Si el destino no existe aún, lo ignoramos
-    }
+    } catch (e) { /* destino no existente: ignorar */ }
   }
   return { byId, byName, packs };
 }
 
 // ===================================================================
-// Sincroniza actividades del itinerario con la colección Servicios
-// - Devuelve { it: objetoItinerarioActualizado, changed: boolean }
-// - Si detecta diferencias, actualiza Firestore UNA sola vez.
+// Sincroniza actividades con Servicios (si aplica)
 // ===================================================================
 async function syncItinerarioServicios(grupoId, g, svcMaps) {
   const it = g.itinerario || {};
   const fechas = Object.keys(it).sort((a,b)=> new Date(a) - new Date(b));
-
   let hayCambios = false;
   const nuevo = {};
 
@@ -262,7 +266,7 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
       const res = { ...act };
       const keyName = K(res.actividad || '');
 
-      // 1) Si tiene servicioId y existe → tomar nombre/destino vigentes
+      // si tiene servicioId válido, refrescar nombre/destino
       if (res.servicioId && svcMaps.byId.has(res.servicioId)) {
         const sv = svcMaps.byId.get(res.servicioId);
         if (res.actividad !== sv.nombre || res.servicioNombre !== sv.nombre || res.servicioDestino !== sv.destino) {
@@ -271,19 +275,20 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
           res.servicioDestino = sv.destino;
           hayCambios = true;
         }
-      } else {
-        // 2) Resolver por nombre normalizado (incluye alias, id y campo "servicio")
-        if (svcMaps.byName.has(keyName)) {
-          const sv = svcMaps.byName.get(keyName);
-          if (res.servicioId !== sv.id || res.servicioNombre !== sv.nombre || res.servicioDestino !== sv.destino || res.actividad !== sv.nombre) {
-            res.servicioId = sv.id;
-            res.servicioNombre = sv.nombre;
-            res.servicioDestino = sv.destino;
-            res.actividad = sv.nombre; // alinear texto mostrado
-            hayCambios = true;
-          }
+      } else if (svcMaps.byName.has(keyName)) {
+        const sv = svcMaps.byName.get(keyName);
+        if (res.servicioId !== sv.id || res.servicioNombre !== sv.nombre || res.servicioDestino !== sv.destino || res.actividad !== sv.nombre) {
+          res.servicioId = sv.id;
+          res.servicioNombre = sv.nombre;
+          res.servicioDestino = sv.destino;
+          res.actividad = sv.nombre;
+          hayCambios = true;
         }
       }
+
+      // —— NUEVO: asegurar campo revision en memoria (no escribe todavía)
+      if (!res.revision) res.revision = 'pendiente';
+
       return res;
     });
 
@@ -296,6 +301,141 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
   return { it: hayCambios ? nuevo : it, changed: hayCambios };
 }
 
+// —————————————————————————————————
+// NUEVO — helpers Estado Revisión + Alertas
+// —————————————————————————————————
+
+// Calcula estado global del itinerario a partir de todas las actividades
+function computeEstadoFromItinerario(IT) {
+  let any = false, anyPend = false, anyX = false, allOK = true;
+  for (const f of Object.keys(IT||{})) {
+    for (const act of (IT[f]||[])) {
+      any = true;
+      const r = act.revision || 'pendiente';
+      if (r === 'rechazado') anyX = true;
+      if (r !== 'ok') allOK = false;
+      if (r === 'pendiente') anyPend = true;
+    }
+  }
+  if (!any) return 'PENDIENTE';            // sin actividades ⇒ pendiente
+  if (anyX) return 'RECHAZADO';
+  return allOK ? 'OK' : 'PENDIENTE';
+}
+
+// Setea la banda visual (no persiste)
+function setEstadoBadge(estado) {
+  estadoBadge.textContent = estado;
+  estadoBadge.classList.remove('badge-ok','badge-pendiente','badge-rechazado');
+  if (estado === 'OK') estadoBadge.classList.add('badge-ok');
+  else if (estado === 'RECHAZADO') estadoBadge.classList.add('badge-rechazado');
+  else estadoBadge.classList.add('badge-pendiente');
+}
+
+// Persiste estado en el doc de grupo si cambió y actualiza banda/alertas badge
+async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
+  const gSnap = await getDoc(doc(db,'grupos',grupoId));
+  const g = gSnap.data() || {};
+  const IT = ITopt || g.itinerario || {};
+  const nuevoEstado = computeEstadoFromItinerario(IT);
+  if (g.estadoRevisionItinerario !== nuevoEstado) {
+    await updateDoc(doc(db,'grupos',grupoId), { estadoRevisionItinerario: nuevoEstado });
+  }
+  setEstadoBadge(nuevoEstado);
+  await refreshAlertasBadge(grupoId);
+}
+
+// Cuenta alertas no vistas y refresca badge (n)
+async function refreshAlertasBadge(grupoId) {
+  try {
+    const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
+    const pendientes = qs.docs.filter(d => !((d.data()||{}).visto)).length;
+    alertasBadge.textContent = String(pendientes);
+  } catch (_) {
+    alertasBadge.textContent = "0";
+  }
+}
+
+// Abre panel alertas, lista del grupo y otros grupos
+async function openAlertasPanel() {
+  const grupoId = selectNum.value;
+  if (!grupoId) return alert("Selecciona un grupo");
+  // Mostrar modal
+  modalAlertas.style.display = "block";
+  document.getElementById("modal-backdrop").style.display = "block";
+
+  // 1) Alertas del grupo actual
+  listAlertasActual.innerHTML = "Cargando…";
+  try {
+    const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
+    const arr = qs.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a,b) => new Date(b.creadoEn || 0) - new Date(a.creadoEn || 0));
+    if (!arr.length) {
+      listAlertasActual.innerHTML = `<li class="empty">— Sin alertas —</li>`;
+    } else {
+      listAlertasActual.innerHTML = arr.map(a => `
+        <li class="alert-item ${a.visto ? 'visto':''}">
+          <div>
+            <strong>${a.actividad || '(actividad)'}</strong>
+            <small> · ${a.fecha || ''}</small>
+            ${a.motivo ? `<div class="motivo">Motivo: ${a.motivo}</div>`:''}
+          </div>
+          <div class="actions">
+            ${a.visto ? '' : `<button data-id="${a.id}" class="btn-ver-alerta">Marcar visto</button>`}
+          </div>
+        </li>
+      `).join('');
+      // bind marcar visto
+      listAlertasActual.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
+        btn.onclick = async () => {
+          const id = btn.getAttribute('data-id');
+          await updateDoc(doc(db,'grupos',grupoId,'alertas',id), { visto: true });
+          await refreshAlertasBadge(grupoId);
+          openAlertasPanel(); // recarga panel
+        };
+      });
+    }
+  } catch (e) {
+    listAlertasActual.innerHTML = `<li class="empty">Error al cargar alertas.</li>`;
+  }
+
+  // 2) Otros grupos con revisión pendiente (RECHAZADO) o alertas
+  listAlertasOtros.innerHTML = "Cargando…";
+  try {
+    const qsRech = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','RECHAZADO')));
+    const otros = qsRech.docs
+      .filter(d => d.id !== grupoId)
+      .map(d => ({ id: d.id, ...(d.data()||{}) }));
+    if (!otros.length) {
+      listAlertasOtros.innerHTML = `<li class="empty">— No hay otros grupos con revisión rechazada —</li>`;
+    } else {
+      listAlertasOtros.innerHTML = otros.map(g=>`
+        <li class="alert-item">
+          <div>
+            <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
+            <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
+          </div>
+          <div class="actions">
+            <button class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
+          </div>
+        </li>
+      `).join('');
+      listAlertasOtros.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
+        btn.onclick = (e) => {
+          const id = btn.getAttribute('data-id');
+          // Selecciona el grupo y renderiza
+          choicesGrupoNum.setChoiceByValue(id);
+          choicesGrupoNom.setChoiceByValue(id);
+          modalAlertas.style.display = "none";
+          document.getElementById("modal-backdrop").style.display = "none";
+          renderItinerario();
+        };
+      });
+    }
+  } catch (e) {
+    listAlertasOtros.innerHTML = `<li class="empty">Error al cargar otros grupos.</li>`;
+  }
+}
 
 // —————————————————————————————————
 // 3) renderItinerario(): crea grilla y pinta actividades (SINCRONIZADA)
@@ -324,40 +464,24 @@ async function renderItinerario() {
   // ====== traigo el catálogo y sincronizo ======
   const svcMaps = await getServiciosMaps(g.destino || '');
   const syncRes = await syncItinerarioServicios(grupoId, g, svcMaps);
-  const IT = syncRes.it; // itinerario ya sincronizado (y DB si hizo falta)
+  const IT = syncRes.it; // itinerario ya sincronizado
+
+  // —— NUEVO: refrescar estado y badge alertas
+  await updateEstadoRevisionAndBadge(grupoId, IT);
 
   // Fechas ordenadas
-  const fechas = Object.keys(IT)
-    .sort((a,b)=> new Date(a)-new Date(b));
+  const fechas = Object.keys(IT).sort((a,b)=> new Date(a)-new Date(b));
 
   // Choices.js multi-select
-  const opts = fechas.map((d,i)=>({
-    value: i, label: `Día ${i+1} – ${formatDateReadable(d)}`
-  }));
-  if (choicesDias) {
-    choicesDias.clearChoices();
-    choicesDias.setChoices(opts,'value','label',false);
-  } else {
-    choicesDias = new Choices(qaDia, {
-      removeItemButton: true,
-      placeholderValue: 'Selecciona día(s)',
-      choices: opts
-    });
-  }
+  const opts = fechas.map((d,i)=>({ value: i, label: `Día ${i+1} – ${formatDateReadable(d)}` }));
+  if (choicesDias) { choicesDias.clearChoices(); choicesDias.setChoices(opts,'value','label',false); }
+  else { choicesDias = new Choices(qaDia, { removeItemButton: true, placeholderValue: 'Selecciona día(s)', choices: opts }); }
 
   // Select para modal
-  fldFecha.innerHTML = fechas
-    .map((d,i)=>`<option value="${d}">Día ${i+1} – ${formatDateReadable(d)}</option>`)
-    .join('');
+  fldFecha.innerHTML = fechas.map((d,i)=>`<option value="${d}">Día ${i+1} – ${formatDateReadable(d)}</option>`).join('');
 
-  // Helper para crear un elemento con clase y texto
-  function createBtn(icon, cls) {
-    const b = document.createElement("span");
-    b.className = cls;
-    b.textContent = icon;
-    b.style.cursor = "pointer";
-    return b;
-  }
+  // Helper
+  function createBtn(icon, cls, title='') { const b = document.createElement("span"); b.className = cls; b.textContent = icon; b.title = title; b.style.cursor = "pointer"; return b; }
 
   // Pinto cada día
   fechas.forEach((fecha, idx) => {
@@ -365,9 +489,8 @@ async function renderItinerario() {
     sec.className     = "dia-seccion";
     sec.dataset.fecha = fecha;
     const [yyyy, mm, dd] = fecha.split('-').map(Number);
-    const d = new Date(yyyy, mm - 1, dd);  // constructor en zona local
-    if (d.getDay() === 0) 
-      sec.classList.add('domingo');
+    const d = new Date(yyyy, mm - 1, dd);
+    if (d.getDay() === 0) sec.classList.add('domingo');
 
     sec.innerHTML = `
       <h3>Día ${idx+1} – ${formatDateReadable(fecha)}</h3>
@@ -376,79 +499,63 @@ async function renderItinerario() {
     `;
 
     if (editMode) {
-      // 1) Añadimos iconos al <h3> para swap-dia y editar fecha
       const h3 = sec.querySelector("h3");
-      const btnSwapDay = createBtn("🔄", "btn-swap-day");
-      const btnEditDate = createBtn("✏️", "btn-edit-date");
+      const btnSwapDay  = createBtn("🔄", "btn-swap-day", "Intercambiar día");
+      const btnEditDate = createBtn("✏️", "btn-edit-date", "Editar fecha base");
       btnSwapDay.dataset.fecha = fecha;
       btnEditDate.dataset.fecha = fecha;
       h3.appendChild(btnSwapDay);
       h3.appendChild(btnEditDate);
-    
-      // 2) Handler intercambio de días
-      btnSwapDay.onclick = () => handleSwapClick("dia", fecha);
-      // 3) Handler edición de fecha
+      btnSwapDay.onclick  = () => handleSwapClick("dia", fecha);
       btnEditDate.onclick = () => handleDateEdit(fecha);
     }
-   
-    contItinerario.appendChild(sec);
 
-    sec.querySelector(".btn-add")
-       .onclick = ()=> openModal({ fecha }, false);
+    contItinerario.appendChild(sec);
+    sec.querySelector(".btn-add").onclick = ()=> openModal({ fecha }, false);
 
     const ul  = sec.querySelector(".activity-list");
-    // 1) Array original y auxiliar con su índice real
     const original = IT[fecha] || [];
-    const withIndex = original.map((act, idx) => ({ act, originalIdx: idx }));
-    
-    // 2) Array ordenado solo para mostrar, sin alterar el original
-    const sorted = withIndex.slice().sort((a, b) =>
-      ((a.act.horaInicio||'').localeCompare(b.act.horaInicio||''))
-    );
-    
-    // 👇 VALORES CENTRALIZADOS DESDE EL GRUPO
+    const withIndex = original.map((act, originalIdx) => ({ act, originalIdx }));
+
+    // Ordenar solo visualmente por hora
+    const sorted = withIndex.slice().sort((a, b) => ((a.act.horaInicio||'').localeCompare(b.act.horaInicio||'')));
+
+    // Pax centralizados del grupo
     const A = parseInt(g.adultos, 10) || 0;
     const E = parseInt(g.estudiantes, 10) || 0;
-    const totalGrupo = (() => {
-      const t = parseInt(g.cantidadgrupo, 10);
-      return Number.isFinite(t) ? t : (A + E);
-    })();
-    
+    const totalGrupo = (() => { const t = parseInt(g.cantidadgrupo, 10); return Number.isFinite(t) ? t : (A + E); })();
+
     if (!sorted.length) {
       ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
     } else {
       sorted.forEach(({ act, originalIdx }) => {
-        // Nombre visible (resuelto en vivo). Usa id si existe, si no, nombre normalizado
+        // Nombre visible
         let visibleName = act.actividad || '';
         if (act.servicioId && svcMaps.byId.has(act.servicioId)) {
           visibleName = svcMaps.byId.get(act.servicioId).nombre;
         } else {
-          const key = K(act.actividad || '');
-          if (svcMaps.byName.has(key)) {
-            visibleName = svcMaps.byName.get(key).nombre;
-          }
+          const key = K(act.actividad || ''); if (svcMaps.byName.has(key)) visibleName = svcMaps.byName.get(key).nombre;
         }
+
+        const revision = act.revision || 'pendiente';           // ⭕ por defecto
+        const iconRev  = revision === 'ok' ? '✅' : (revision === 'rechazado' ? '❌' : '⭕');
+        const titleRev = revision === 'ok' ? 'Revisado (OK)' : (revision === 'rechazado' ? 'Rechazado' : 'Pendiente');
 
         const li = document.createElement("li");
         li.className = "activity-card";
-    
         li.innerHTML = `
           <h4>${act.horaInicio || '--:--'} – ${act.horaFin || '--:--'}</h4>
           <p><strong>${visibleName}</strong></p>
           <p>👥 ${totalGrupo} pax (A:${A} E:${E})</p>
           <div class="actions">
-            <button class="btn-edit">✏️</button>
-            <button class="btn-del">🗑️</button>
+            ${editMode ? `<button class="btn-edit">✏️</button><button class="btn-del">🗑️</button>` : `<span class="rev-static" title="${titleRev}">${iconRev}</span>`}
           </div>
         `;
-    
-        // Editar usando originalIdx
-        li.querySelector(".btn-edit")
-          .onclick = () => openModal({ ...act, fecha, idx: originalIdx }, true);
-    
-        // Borrar usando originalIdx
-        li.querySelector(".btn-del")
-          .onclick = async () => {
+
+        // Editar
+        if (editMode) {
+          li.querySelector(".btn-edit").onclick = () => openModal({ ...act, fecha, idx: originalIdx }, true);
+          li.querySelector(".btn-del").onclick  = async () => {
             if (!confirm("¿Eliminar actividad?")) return;
             await addDoc(collection(db, 'historial'), {
               numeroNegocio: grupoId,
@@ -458,27 +565,33 @@ async function renderItinerario() {
               usuario:       auth.currentUser.email,
               timestamp:     new Date()
             });
-            original.splice(originalIdx, 1);
-            await updateDoc(doc(db, 'grupos', grupoId), {
-              [`itinerario.${fecha}`]: original
-            });
+            const arr = original.slice();
+            arr.splice(originalIdx, 1);
+            await updateDoc(doc(db, 'grupos', grupoId), { [`itinerario.${fecha}`]: arr });
+            await updateEstadoRevisionAndBadge(grupoId, { ...IT, [fecha]: arr });
             renderItinerario();
           };
-    
-        if (editMode) {
-          const btnSwapAct = createBtn("🔄", "btn-swap-act");
+
+          // —— NUEVO: botón tri-estado de revisión
+          const btnRev = createBtn(iconRev, "btn-revision", `Cambiar estado: ${titleRev}`);
+          li.querySelector(".actions").appendChild(btnRev);
+          btnRev.onclick = async () => {
+            await toggleRevisionEstado(grupoId, fecha, originalIdx, act, visibleName, IT);
+          };
+
+          // Swap de actividad
+          const btnSwapAct = createBtn("🔄", "btn-swap-act", "Intercambiar actividad");
           btnSwapAct.dataset.fecha = fecha;
           btnSwapAct.dataset.idx   = originalIdx;
           li.querySelector(".actions").appendChild(btnSwapAct);
           btnSwapAct.onclick = () => handleSwapClick("actividad", { fecha, idx: originalIdx });
         }
-    
+
         ul.appendChild(li);
       });
     }
-  });     // ← cierra fechas.forEach
-
-} 
+  }); // fechas.forEach
+}
 
 // —————————————————————————————————
 // 4) quickAddActivity(): añade en varios días (ENLAZANDO SERVICIO)
@@ -493,13 +606,11 @@ async function quickAddActivity() {
     return alert("Selecciona día(s) y escribe la actividad");
   }
 
-  // –– Parséo numérico de pax del grupo:
   const snapG   = await getDoc(doc(db,'grupos',grupoId));
   const g       = snapG.data()||{};
   const totalAdults   = parseInt(g.adultos, 10)     || 0;
   const totalStudents = parseInt(g.estudiantes, 10) || 0;
 
-  // Resolver servicio por destino
   const svcMaps = await getServiciosMaps(g.destino || '');
   const key = K(textUpper);
   const sv  = svcMaps.byName.get(key) || null;
@@ -514,15 +625,16 @@ async function quickAddActivity() {
     const item = {
       horaInicio,
       horaFin:    sumarUnaHora(horaInicio),
-      actividad:  sv ? sv.nombre : textUpper,   // nombre vigente si existe
-      pasajeros:  totalAdults + totalStudents,  // suma numérica
+      actividad:  sv ? sv.nombre : textUpper,
+      pasajeros:  totalAdults + totalStudents,
       adultos:    totalAdults,
       estudiantes:totalStudents,
       notas:      "",
-      // Enlace al servicio
       servicioId:       sv ? sv.id : null,
       servicioNombre:   sv ? sv.nombre : null,
-      servicioDestino:  sv ? sv.destino : null
+      servicioDestino:  sv ? sv.destino : null,
+      // —— NUEVO: revisión inicial
+      revision: 'pendiente'
     };
 
     await addDoc(collection(db,'historial'), {
@@ -535,11 +647,12 @@ async function quickAddActivity() {
     });
 
     arr.push(item);
-    await updateDoc(doc(db,'grupos',grupoId), {
-      [`itinerario.${f}`]: arr
-    });
+    await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${f}`]: arr });
   }
 
+  // Recalcular estado global
+  const newSnap = await getDoc(doc(db,'grupos',grupoId));
+  await updateEstadoRevisionAndBadge(grupoId, newSnap.data().itinerario || {});
   qaAct.value = "";
   renderItinerario();
 }
@@ -549,18 +662,13 @@ async function quickAddActivity() {
 // —————————————————————————————————
 async function openModal(data, isEdit) {
   editData = isEdit ? data : null;
-  document.getElementById("modal-title")
-          .textContent = isEdit ? "Editar actividad" : "Nueva actividad";
+  document.getElementById("modal-title").textContent = isEdit ? "Editar actividad" : "Nueva actividad";
 
   const snapG = await getDoc(doc(db,"grupos",selectNum.value));
   const g     = snapG.data()||{};
-  // —– Parséo numérico desde el GRUPO (no desde la actividad)
   const A = parseInt(g.adultos, 10) || 0;
   const E = parseInt(g.estudiantes, 10) || 0;
-  const T = (() => {
-    const t = parseInt(g.cantidadgrupo, 10);
-    return Number.isFinite(t) ? t : (A + E);
-  })();
+  const T = (() => { const t = parseInt(g.cantidadgrupo, 10); return Number.isFinite(t) ? t : (A + E); })();
   
   fldFecha.value    = data.fecha;
   fldHi.value       = data.horaInicio || "07:00";
@@ -568,16 +676,10 @@ async function openModal(data, isEdit) {
   fldAct.value      = data.actividad  || "";
   await prepararCampoActividad("m-actividad", g.destino);
   fldNotas.value    = data.notas      || "";
-  
-  // 👇 SIEMPRE precargar desde el GRUPO
   fldAdultos.value     = A;
   fldEstudiantes.value = E;
   fldPax.value         = T;
-  
-  // Cuando cambia la hora de inicio, ajusta fin
-  fldHi.onchange = () => {
-    fldHf.value = sumarUnaHora(fldHi.value);
-  };
+  fldHi.onchange = () => { fldHf.value = sumarUnaHora(fldHi.value); };
 
   modalBg.style.display = modal.style.display = "block";
 }
@@ -590,7 +692,7 @@ function closeModal() {
 }
 
 // —————————————————————————————————
-// 7) onSubmitModal(): guarda o actualiza y registra historial (ENLAZANDO SERVICIO)
+// 7) onSubmitModal(): guarda/actualiza + historial (ENLAZANDO SERVICIO)
 // —————————————————————————————————
 async function onSubmitModal(evt) {
   evt.preventDefault();
@@ -604,28 +706,22 @@ async function onSubmitModal(evt) {
   const g     = snapG.data()||{};
 
   const suma = a + e;
-  if (pax !== suma) {
-    return alert(`La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`);
-  }
-  if (a < 0 || e < 0 || pax < 0) {
-    return alert("Los valores no pueden ser negativos.");
-  }
+  if (pax !== suma) return alert(`La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`);
+  if (a < 0 || e < 0 || pax < 0) return alert("Los valores no pueden ser negativos.");
 
-  // Resolver servicio por destino, en base al texto del modal
   const svcMaps = await getServiciosMaps(g.destino || '');
   const typedUpper = (fldAct.value || '').trim().toUpperCase();
   const key = K(typedUpper);
   const sv = svcMaps.byName.get(key) || null;
 
-  const payload = {
+  const payloadBase = {
     horaInicio: fldHi.value,
     horaFin:    fldHf.value,
-    actividad:  sv ? sv.nombre : typedUpper,  // nombre vigente si existe
+    actividad:  sv ? sv.nombre : typedUpper,
     pasajeros:  pax,
     adultos:    a,
     estudiantes:e,
     notas:      (fldNotas.value || '').trim().toUpperCase(),
-    // Enlace al servicio
     servicioId:       sv ? sv.id : (editData?.servicioId || null),
     servicioNombre:   sv ? sv.nombre : (editData?.servicioNombre || null),
     servicioDestino:  sv ? sv.destino : (editData?.servicioDestino || null)
@@ -635,7 +731,7 @@ async function onSubmitModal(evt) {
 
   if (editData) {
     const antes   = arr.map(x=>x.actividad).join(' – ');
-    arr[editData.idx] = payload;
+    arr[editData.idx] = { ...payloadBase, revision: editData.revision || 'pendiente' }; // conserva revisión
     const despues = arr.map(x=>x.actividad).join(' – ');
     await addDoc(collection(db,'historial'), {
       numeroNegocio: grupoId,
@@ -646,24 +742,84 @@ async function onSubmitModal(evt) {
       timestamp:     new Date()
     });
   } else {
-    arr.push(payload);
+    arr.push({ ...payloadBase, revision: 'pendiente' });
     await addDoc(collection(db,'historial'), {
       numeroNegocio: grupoId,
       accion:        'CREAR ACTIVIDAD',
       anterior:      '',
-      nuevo:         payload.actividad,
+      nuevo:         payloadBase.actividad,
       usuario:       auth.currentUser.email,
       timestamp:     new Date()
     });
   }
 
   await updateDoc(doc(db,'grupos',grupoId), {
-    adultos: a,
-    estudiantes: e,
-    cantidadgrupo: pax,         // 👈 total centralizado
+    adultos: a, estudiantes: e, cantidadgrupo: pax,
     [`itinerario.${fecha}`]: arr
   });
+
+  await updateEstadoRevisionAndBadge(grupoId, { ...(g.itinerario||{}), [fecha]: arr });
   closeModal();
+  renderItinerario();
+}
+
+// —————————————————————————————————
+// NUEVO — Toggle tri-estado revisión (⭕→✅→❌→⭕)
+// Maneja historial + alertas + recalcula estado global
+// —————————————————————————————————
+async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITfull) {
+  const old = act.revision || 'pendiente';
+  const next = (old === 'pendiente') ? 'ok' : (old === 'ok' ? 'rechazado' : 'pendiente');
+
+  const gSnap = await getDoc(doc(db,'grupos',grupoId));
+  const g = gSnap.data() || {};
+  const arr = (g.itinerario?.[fecha]||[]).slice();
+  const updated = { ...arr[idx], revision: next };
+  arr[idx] = updated;
+
+  // Historial
+  await addDoc(collection(db,'historial'), {
+    numeroNegocio: grupoId,
+    accion:        'CAMBIAR REVISION ACTIVIDAD',
+    anterior:      old,
+    nuevo:         next,
+    detalle:       `${visibleName} (${fecha})`,
+    usuario:       auth.currentUser.email,
+    timestamp:     new Date()
+  });
+
+  // Persistir cambio
+  await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${fecha}`]: arr });
+
+  // Gestionar alertas:
+  //  - Si pasa a ❌ y antes no lo era → crear alerta (no vista)
+  //  - Si sale de ❌ → marcar alertas relacionadas como visto/resuelto
+  if (next === 'rechazado' && old !== 'rechazado') {
+    await addDoc(collection(db,'grupos',grupoId,'alertas'), {
+      fecha,
+      actividad: visibleName,
+      motivo: '',             // puedes enriquecer a futuro
+      creadoPor: auth.currentUser.email,
+      creadoEn: new Date(),
+      visto: false
+    });
+  } else if (old === 'rechazado' && next !== 'rechazado') {
+    // Marcar alertas coincidentes como vistas
+    try {
+      const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
+      const toClose = qs.docs.filter(d => {
+        const a = d.data()||{};
+        return (a.fecha===fecha && (a.actividad||'')===visibleName && !a.visto);
+      });
+      await Promise.all(toClose.map(d => updateDoc(doc(db,'grupos',grupoId,'alertas',d.id), { visto: true })));
+    } catch(_) {}
+  }
+
+  // Recalcular estado + badge alertas
+  const ITnext = { ...(ITfull||{}), [fecha]: arr };
+  await updateEstadoRevisionAndBadge(grupoId, ITnext);
+
+  // Re-pintar UI
   renderItinerario();
 }
 
@@ -731,7 +887,7 @@ async function guardarPlantilla() {
     nombre,
     creador:   auth.currentUser.email,
     createdAt: new Date(),
-    dias: actividadesPorDia  // objeto por día
+    dias: actividadesPorDia
   });
   alert("Plantilla guardada");
   await cargarListaPlantillas();
@@ -783,10 +939,14 @@ async function cargarPlantilla() {
     fechas.forEach((fecha, idx) => {
       const acts = Array.isArray(diasPlantilla[`dia${idx+1}`]) ? diasPlantilla[`dia${idx+1}`] : [];
       nuevoIt[fecha] = acts.map(act => ({
-        ...act,
+        horaInicio: act.horaInicio,
+        horaFin:    act.horaFin,
+        actividad:  act.actividad,
+        notas:      act.notas,
         pasajeros:   (parseInt(g.adultos,10)||0) + (parseInt(g.estudiantes,10)||0),
         adultos:     parseInt(g.adultos,10) || 0,
-        estudiantes: parseInt(g.estudiantes,10) || 0
+        estudiantes: parseInt(g.estudiantes,10) || 0,
+        revision:    'pendiente' // —— NUEVO
       }));
     });
   } else {
@@ -797,16 +957,21 @@ async function cargarPlantilla() {
       const extras = Array.isArray(diasPlantilla[`dia${idx+1}`]) ? diasPlantilla[`dia${idx+1}`] : [];
       nuevoIt[fecha] = (nuevoIt[fecha]||[]).concat(
         extras.map(act => ({
-          ...act,
+          horaInicio: act.horaInicio,
+          horaFin:    act.horaFin,
+          actividad:  act.actividad,
+          notas:      act.notas,
           pasajeros:   (parseInt(g.adultos,10)||0) + (parseInt(g.estudiantes,10)||0),
           adultos:     parseInt(g.adultos,10) || 0,
-          estudiantes: parseInt(g.estudiantes,10) || 0
+          estudiantes: parseInt(g.estudiantes,10) || 0,
+          revision:    'pendiente' // —— NUEVO
         }))
       );
     });
   }
 
   await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
+  await updateEstadoRevisionAndBadge(selectNum.value, nuevoIt);
   renderItinerario();
 }
 
@@ -815,12 +980,8 @@ async function cargarPlantilla() {
 // —————————————————————————————————
 document.getElementById("btnAbrirCalendario")
   .addEventListener("click", () => {
-    const grupoTxt = selectNum
-      .options[selectNum.selectedIndex]
-      .text;
-    if (!selectNum.value) {
-      return alert("Selecciona un grupo");
-    }
+    const grupoTxt = selectNum.options[selectNum.selectedIndex].text;
+    if (!selectNum.value) return alert("Selecciona un grupo");
     const iframe = document.getElementById("iframe-calendario");
     iframe.src = `calendario.html?busqueda=${encodeURIComponent(grupoTxt)}`;
     document.getElementById("modal-calendario").style.display   = "block";
@@ -837,7 +998,6 @@ window.cerrarCalendario = () => {
 // Swap (actividad o día)
 // —————————————————————————————————
 async function handleSwapClick(type, info) {
-  // 1) Si no hay origen, lo registramos y resaltamos
   if (!swapOrigin) {
     swapOrigin = { type, info };
     const fechaKey = (typeof info === 'string') ? info : info.fecha;
@@ -845,13 +1005,11 @@ async function handleSwapClick(type, info) {
     if (el) el.classList.add("swap-selected");
     return;
   }
-  // 2) Si el tipo no coincide, ignorar y resetear
   if (swapOrigin.type !== type) {
     alert("Debe intercambiar dos elementos del mismo tipo.");
     resetSwap();
     return;
   }
-  // 3) Ejecutar intercambio
   const grupoId = selectNum.value;
   const snapG   = await getDoc(doc(db,'grupos',grupoId));
   const it      = { ...(snapG.data().itinerario || {}) };
@@ -859,23 +1017,22 @@ async function handleSwapClick(type, info) {
   if (type === "dia") {
     const f1 = (typeof swapOrigin.info === 'string') ? swapOrigin.info : swapOrigin.info.fecha;
     const f2 = (typeof info === 'string') ? info : info.fecha;
-    [ it[f1], it[f2] ] = [ it[f2], it[f1] ];  // swap arrays
+    [ it[f1], it[f2] ] = [ it[f2], it[f1] ];
   } else {
-    // actividad ↔ actividad
     const { fecha: f1, idx: i1 } = swapOrigin.info;
     const { fecha: f2, idx: i2 } = info;
     [ it[f1][i1], it[f2][i2] ] = [ it[f2][i2], it[f1][i1] ];
   }
   
   await updateDoc(doc(db,'grupos',grupoId), { itinerario: it });
+  await updateEstadoRevisionAndBadge(grupoId, it);
   resetSwap();
   renderItinerario();
 }
 
 function resetSwap() {
   swapOrigin = null;
-  document.querySelectorAll(".swap-selected")
-    .forEach(el => el.classList.remove("swap-selected"));
+  document.querySelectorAll(".swap-selected").forEach(el => el.classList.remove("swap-selected"));
 }
 
 // —————————————————————————————————
@@ -886,16 +1043,11 @@ async function handleDateEdit(oldFecha) {
   if (!nueva1) return;
 
   const grupoId = selectNum.value;
-  if (!grupoId) {
-    alert("Selecciona primero un grupo.");
-    return;
-  }
+  if (!grupoId) { alert("Selecciona primero un grupo."); return; }
   const snapG = await getDoc(doc(db, 'grupos', grupoId));
   const g     = snapG.data();
 
-  const fechas = Object.keys(g.itinerario || {})
-    .sort((a, b) => new Date(a) - new Date(b));
-
+  const fechas = Object.keys(g.itinerario || {}).sort((a, b) => new Date(a) - new Date(b));
   const diasCount = fechas.length;
   const newRango  = [];
   const [yy, mm, dd] = nueva1.split("-").map(Number);
@@ -909,19 +1061,16 @@ async function handleDateEdit(oldFecha) {
   }
 
   const newIt = {};
-  fechas.forEach((fAnt, idx) => {
-    newIt[newRango[idx]] = g.itinerario[fAnt];
-  });
+  fechas.forEach((fAnt, idx) => { newIt[newRango[idx]] = g.itinerario[fAnt]; });
 
   await updateDoc(doc(db, 'grupos', grupoId), { itinerario: newIt });
+  await updateEstadoRevisionAndBadge(grupoId, newIt);
   renderItinerario();
 }
 
-
 // ===== MIGRACIÓN/UTILIDADES: sincronización y reparación masiva =====
 
-// 1) Sincronizar TODOS los itinerarios con Servicios (usa destino del grupo)
-//    Ejecuta en consola:  syncAllItinerariosConServicios(4)
+// 1) Sincronizar TODOS los itinerarios con Servicios
 window.syncAllItinerariosConServicios = async function(limit = 3){
   const qs = await getDocs(collection(db,'grupos'));
   const grupos = qs.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -933,34 +1082,23 @@ window.syncAllItinerariosConServicios = async function(limit = 3){
       const res = await syncItinerarioServicios(g.id, g, svcMaps);
       ok++; if (res.changed) changed++;
       console.log(`✓ ${g.id} (${g.nombreGrupo || g.numeroNegocio || ''}) ${res.changed ? '— actualizado' : ''}`);
-    } catch(e) {
-      fail++; console.error(`✗ ${g.id}`, e);
-    }
+    } catch(e) { fail++; console.error(`✗ ${g.id}`, e); }
   }
 
-  // Concurrencia simple (evita saturar Firestore)
   const queue = grupos.slice();
   const run = async () => { while(queue.length){ await worker(queue.shift()); } };
   const n = Math.max(1, Math.min(limit, 6));
   await Promise.all(Array.from({length:n}, run));
-
   console.log(`FIN — procesados:${ok}, actualizados:${changed}, errores:${fail}`);
 };
 
 // 2) Índice global de servicios para reparación masiva
-const KNOWN_DESTINOS_REPAIR = [
-  'BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'SUR DE CHILE Y BARILOCHE','NORTE DE CHILE'
-];
+const KNOWN_DESTINOS_REPAIR = ['BRASIL','BARILOCHE','SUR DE CHILE','SUR DE CHILE Y BARILOCHE','NORTE DE CHILE'];
 
 async function buildServiciosIndex(includeAll = true, destinosStr = '') {
-  const destinos = includeAll
-    ? KNOWN_DESTINOS_REPAIR
-    : (destinosStr ? destinosStr.split(/\s+Y\s+/i).map(s => s.trim().toUpperCase()) : []);
-
-  const byId   = new Map();
-  const byName = new Map();
-  const packs  = [];
-
+  const destinos = includeAll ? KNOWN_DESTINOS_REPAIR :
+    (destinosStr ? destinosStr.split(/\s+Y\s+/i).map(s => s.trim().toUpperCase()) : []);
+  const byId = new Map(), byName = new Map(), packs = [];
   for (const dest of destinos) {
     try {
       const snap = await getDocs(collection(db, 'Servicios', dest, 'Listado'));
@@ -969,56 +1107,40 @@ async function buildServiciosIndex(includeAll = true, destinosStr = '') {
         const data = ds.data() || {};
         const visible = ((data.nombre || data.servicio || id) || '').toString();
         const pack = { id, destino: dest, nombre: visible.toUpperCase(), nombreK: K(visible), data };
-
         byId.set(id, pack);
         byName.set(pack.nombreK, pack);
         byName.set(K(id), pack);
         if (data.servicio) byName.set(K(data.servicio), pack);
-
-        if (Array.isArray(data.aliases)) {
-          data.aliases.forEach(a => {
-            const key = K(a);
-            if (key) byName.set(key, pack);
-          });
-        }
+        if (Array.isArray(data.aliases)) data.aliases.forEach(a => { const key = K(a); if (key) byName.set(key, pack); });
         packs.push(pack);
       });
-    } catch (_) { /* destino inexistente: ignorar */ }
+    } catch (_) { /* destino inexistente */ }
   }
   return { byId, byName, packs };
 }
 
-// 3) Fuzzy simple (Jaccard por palabras) para casos sin alias
+// 3) Fuzzy simple (Jaccard por palabras)
 function fuzzyFindService(packs, rawName) {
   const tgt = K(rawName);
   const tset = new Set(tgt.split(' ').filter(w => w.length > 2));
   let best = null, bestScore = 0, second = 0;
-
   for (const p of packs) {
     const pset = new Set(p.nombreK.split(' ').filter(w => w.length > 2));
     const inter = [...tset].filter(x => pset.has(x)).length;
     if (!inter) continue;
     const union = new Set([...tset, ...pset]).size || 1;
     const score = inter / union;
-    if (score > bestScore) {
-      second = bestScore;
-      bestScore = score;
-      best = p;
-    } else if (score > second) {
-      second = score;
-    }
+    if (score > bestScore) { second = bestScore; bestScore = score; best = p; }
+    else if (score > second) { second = score; }
   }
-  if (best && (bestScore >= 0.8 || (bestScore >= 0.65 && (bestScore - second) >= 0.2))) {
-    return best;
-  }
+  if (best && (bestScore >= 0.8 || (bestScore >= 0.65 && (bestScore - second) >= 0.2))) return best;
   return null;
 }
 
-// 4) Diagnóstico: actividades que hoy no “enganchan” con Servicios
+// 4) Diagnóstico: actividades que no enganchan con Servicios
 window.diagnosticarServicios = async function() {
   const out = [];
   const snapG = await getDocs(collection(db, 'grupos'));
-
   const idx = await buildServiciosIndex(true);
 
   for (const d of snapG.docs) {
@@ -1031,13 +1153,7 @@ window.diagnosticarServicios = async function() {
         const hasId = !!act.servicioId && idx.byId.has(act.servicioId);
         const byNm  = idx.byName.get(nameK);
         if (!hasId && !byNm) {
-          out.push({
-            grupoId: g.id,
-            numeroNegocio: g.numeroNegocio || '',
-            nombreGrupo: g.nombreGrupo || '',
-            fecha: f, idx: i,
-            actividad: act.actividad || '',
-          });
+          out.push({ grupoId: g.id, numeroNegocio: g.numeroNegocio || '', nombreGrupo: g.nombreGrupo || '', fecha: f, idx: i, actividad: act.actividad || '' });
         }
       });
     }
@@ -1048,9 +1164,6 @@ window.diagnosticarServicios = async function() {
 };
 
 // 5) Reparación masiva (DRY RUN por defecto)
-//    Ejecuta:
-//      repararServiciosAntiguos()                   // simulación
-//      repararServiciosAntiguos({ dryRun:false })   // aplica cambios
 window.repararServiciosAntiguos = async function(opts = {}) {
   const dryRun    = (opts.dryRun   !== undefined) ? opts.dryRun   : true;
   const includeAll= (opts.includeAll !== undefined) ? opts.includeAll : true;
@@ -1076,52 +1189,35 @@ window.repararServiciosAntiguos = async function(opts = {}) {
         const out = { ...act };
         const nameK = K(out.actividad || '');
 
-        // Caso 1: ya tiene servicioId válido → refrescar
         if (out.servicioId && idx.byId.has(out.servicioId)) {
           const sv = idx.byId.get(out.servicioId);
-          const necesita =
-            out.actividad        !== sv.nombre ||
-            out.servicioNombre   !== sv.nombre ||
-            out.servicioDestino  !== sv.destino;
-          if (necesita) {
-            out.actividad        = sv.nombre;
-            out.servicioNombre   = sv.nombre;
-            out.servicioDestino  = sv.destino;
-            cambiosEnGrupo = true; actsMod++;
-          }
+          const necesita = out.actividad !== sv.nombre || out.servicioNombre !== sv.nombre || out.servicioDestino !== sv.destino;
+          if (necesita) { out.actividad = sv.nombre; out.servicioNombre = sv.nombre; out.servicioDestino = sv.destino; cambiosEnGrupo = true; actsMod++; }
+          if (!out.revision) out.revision = 'pendiente';
           return out;
         }
 
-        // Caso 2: buscar por nombre normalizado (incluye aliases/ids)
         const byName = idx.byName.get(nameK);
         if (byName) {
-          if (out.servicioId !== byName.id ||
-              out.servicioNombre !== byName.nombre ||
-              out.servicioDestino !== byName.destino ||
-              out.actividad !== byName.nombre) {
-            out.servicioId      = byName.id;
-            out.servicioNombre  = byName.nombre;
-            out.servicioDestino = byName.destino;
-            out.actividad       = byName.nombre;
+          if (out.servicioId !== byName.id || out.servicioNombre !== byName.nombre || out.servicioDestino !== byName.destino || out.actividad !== byName.nombre) {
+            out.servicioId = byName.id; out.servicioNombre = byName.nombre; out.servicioDestino = byName.destino; out.actividad = byName.nombre;
             cambiosEnGrupo = true; actsMod++;
           }
+          if (!out.revision) out.revision = 'pendiente';
           return out;
         }
 
-        // Caso 3: fuzzy (opcional)
         if (fuzzy) {
           const guess = fuzzyFindService(packs, out.actividad || '');
           if (guess) {
-            out.servicioId      = guess.id;
-            out.servicioNombre  = guess.nombre;
-            out.servicioDestino = guess.destino;
-            out.actividad       = guess.nombre;
+            out.servicioId = guess.id; out.servicioNombre = guess.nombre; out.servicioDestino = guess.destino; out.actividad = guess.nombre;
             cambiosEnGrupo = true; actsMod++; actsFuzzy++;
+            if (!out.revision) out.revision = 'pendiente';
             return out;
           }
         }
 
-        // Sin match → lo dejamos igual
+        if (!out.revision) out.revision = 'pendiente';
         actsNoMatch++;
         return out;
       });
@@ -1145,9 +1241,7 @@ window.repararServiciosAntiguos = async function(opts = {}) {
     }
 
     gruposProc++;
-    if (dryRun && cambiosEnGrupo) {
-      console.log(`(DRY) ${g.id} — actividades actualizadas (pendiente de escribir)`);
-    }
+    if (dryRun && cambiosEnGrupo) console.log(`(DRY) ${g.id} — actividades actualizadas (pendiente de escribir)`);
   }
 
   console.log(`FIN Reparación — grupos procesados: ${gruposProc}, grupos modificados: ${gruposMod}, acts modificadas: ${actsMod} (fuzzy:${actsFuzzy}), sin match: ${actsNoMatch}, dryRun: ${dryRun}`);
