@@ -1589,6 +1589,14 @@ function buildModalShell(natCode) {
         </thead>
         <tbody></tbody>
         <tfoot>
+          <!-- NUEVO: totales de PAX -->
+          <tr class="bold row-subtotal-pax">
+            <th colspan="5" class="right">TOTAL PAX</th>
+            <th id="modalPax" class="right">0</th>
+            <th id="modalPaxReal" class="right">0</th>
+            <th colspan="6"></th>
+          </tr>
+        
           <tr class="bold row-subtotal-reservado">
             <th colspan="11" class="right">SUBTOTAL PAGO RESERVADO (${natCode})</th>
             <th id="modalTotalNAT" class="right">$0</th>
@@ -1839,8 +1847,8 @@ async function openModalProveedor(slugProv, data) {
       <td title="${grupoTxt}">${grupoTxt}</td>
       <td title="${it.programa || ''}">${it.programa || ''}</td>
       <td title="${it.servicio || ''}">${it.servicio || ''}</td>
-      <td class="right" title="${it.pax || 0}">${fmt(it.pax || 0)}</td>
-      <td class="right" title="${it.paxReal || 0}">${fmt(it.paxReal || 0)}</td>
+      <td class="right cel-pax" title="${it.pax || 0}">${fmt(it.pax || 0)}</td>
+      <td class="right cel-paxreal" title="${it.paxReal || 0}">${fmt(it.paxReal || 0)}</td>
       <td>
         <div class="hizo-wrap">
           <button type="button" class="btn dark btn-hizo" aria-pressed="true">Sí</button>
@@ -2088,7 +2096,7 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
 }
 
 function calcSaldoDesdeTablas(cont){
-  // 1) Abonos (igual)
+  // 1) Total abonado (omite archivados y filas ocultas)
   let abonado = 0;
   $$('#tblAbonos tbody tr', cont).forEach(tr => {
     if (tr.style.display === 'none') return;
@@ -2096,8 +2104,9 @@ function calcSaldoDesdeTablas(cont){
     abonado += parseNumber(tr.cells[4].textContent);
   });
 
-  // 2) Detalle: filas normales por HIZO=Sí + agrupado POR DÍA
+  // 2) Detalle: sumas de reservado/real + NUEVO: PAX y PAX REAL
   let reservado = 0, real = 0;
+  let paxSum = 0, paxRealSum = 0;
   const diaAgg = new Map(); // key -> { anyOn:boolean, tarifa:number, owner:tr }
 
   $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
@@ -2105,11 +2114,19 @@ function calcSaldoDesdeTablas(cont){
     const hizo = (tr.getAttribute('data-hizo') === '1');
     const diaKey = tr.dataset.diaKey || '';
 
+    // NUEVO: acumular PAX solo si HIZO = Sí
+    if (hizo){
+      const p  = parseNumber(tr.querySelector('.cel-pax')?.textContent || '0');
+      const pr = parseNumber(tr.querySelector('.cel-paxreal')?.textContent || '0');
+      paxSum     += p;
+      paxRealSum += pr;
+    }
+
     if (diaKey) {
       const tarifa = Number(tr.querySelector('.cel-real')?.dataset?.diaTarifa || 0);
       const rec = diaAgg.get(diaKey) || { anyOn:false, tarifa:tarifa, owner:null };
-      rec.anyOn = rec.anyOn || hizo;                   // OR entre filas del mismo día
-      if (tr.dataset.diaOwner === '1') rec.owner = tr; // “fila dueña” del cargo
+      rec.anyOn = rec.anyOn || hizo;
+      if (tr.dataset.diaOwner === '1') rec.owner = tr;
       if (!rec.tarifa) rec.tarifa = tarifa;
       diaAgg.set(diaKey, rec);
     } else if (hizo) {
@@ -2118,7 +2135,7 @@ function calcSaldoDesdeTablas(cont){
     }
   });
 
-  // Consolidar cargos por día (1 vez por key si hubo uso)
+  // Consolidar cargos "por día" (1 vez por key si hubo uso)
   diaAgg.forEach(({anyOn, tarifa, owner}) => {
     if (!owner) return;
     const rCell = owner.querySelector('.cel-real');
@@ -2133,11 +2150,18 @@ function calcSaldoDesdeTablas(cont){
 
   const saldo = reservado - abonado;
 
-  // Actualiza pies y resumen
+  // 3) Pintar totales en los pies y resumen
   $('#abTotNAT', cont).textContent          = money(abonado);
   $('#modalTotalNAT', cont).textContent     = money(reservado);
   $('#modalTotalRealNAT', cont).textContent = money(real);
 
+  // NUEVO: totales de PAX
+  const cP  = $('#modalPax', cont);
+  const cPR = $('#modalPaxReal', cont);
+  if (cP)  cP.textContent  = fmt(paxSum);
+  if (cPR) cPR.textContent = fmt(paxRealSum);
+
+  // Resumen SALDO POR PAGAR
   $('#saldoTotNAT', cont).textContent = money(reservado);
   $('#saldoAboNAT', cont).textContent = money(abonado);
   const cN = $('#saldoNAT', cont);
@@ -2148,9 +2172,12 @@ function calcSaldoDesdeTablas(cont){
   const rT = $('#resTotNAT', cont), rA = $('#resAboNAT', cont), rS = $('#resSalNAT', cont);
   if (rT) rT.textContent = money(reservado);
   if (rA) rA.textContent = money(abonado);
-  if (rS){ rS.textContent = money(saldo); rS.classList.toggle('saldo-rojo', saldo > 0.0001); rS.classList.toggle('saldo-ok', saldo <= 0.0001); }
+  if (rS){
+    rS.textContent = money(saldo);
+    rS.classList.toggle('saldo-rojo', saldo > 0.0001);
+    rS.classList.toggle('saldo-ok',   saldo <= 0.0001);
+  }
 }
-
 
 // Submodal (crear/editar)
 function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
