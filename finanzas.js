@@ -752,6 +752,9 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     cols.push({ key:`A_${m}`, label:`${m} ABONO` });
     cols.push({ key:`S_${m}`, label:`${m} SALDO` });
   });
+  
+  // 👇 Necesario para el footer SUBTOTALES (3 columnas descriptivas antes de las monetarias)
+  const descCols = 3;
 
   thead.innerHTML = `
     <tr>
@@ -857,10 +860,10 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     for (const [slugProv, agg] of Object.entries(result.porProv)){
       const tr = tbody.querySelector(`tr[data-prov="${slugProv}"]`);
       if (!tr) continue;
-      let ci = 2; // primera columna monetaria
+      let ci = 3; // ✅ primera columna monetaria es el índice 3 (T)
       for (const m of visibleCurrencies){
-        const tdA = tr.children[ci+1];
-        const tdS = tr.children[ci+2];
+        const tdA = tr.children[ci+1]; // A
+        const tdS = tr.children[ci+2]; // S
         tdA.textContent = agg.A[m] ? fmt(agg.A[m]) : '—';
         tdA.dataset.raw = String(agg.A[m] || 0);
         tdS.textContent = agg.S[m] ? fmt(agg.S[m]) : '—';
@@ -1677,6 +1680,7 @@ function paintSaldoCells({ clp, usd, brl, ars }) {
   const neg = (v) => v && Math.abs(v) > 0.0001;
   const set = (id, val, isMoney=false) => {
     const cell = el(id);
+    if (!cell) return; // ✅ no rompe si no existe
     cell.textContent = isMoney ? money(val||0) : fmt(val||0);
     cell.classList.toggle('saldo-rojo', neg(val));
   };
