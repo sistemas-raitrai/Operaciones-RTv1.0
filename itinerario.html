@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
-  <!-- Estilos mínimos para nuevos elementos -->
+  <!-- Estilos mínimos para nuevos elementos (puedes moverlos a estilos.css) -->
   <style>
     .estado-revision { margin: 1rem 0; font-weight: 600; }
     .estado-revision .badge { padding: .25rem .6rem; border-radius: 999px; }
@@ -19,19 +19,22 @@
     .alert-item { display:flex; justify-content:space-between; align-items:center; gap:.5rem; padding:.5rem .6rem; border:1px solid #e5e7eb; border-radius:8px; background:#fff; margin-bottom:.4rem; }
     .alert-item.visto { opacity:.6; }
     .alert-item .actions button{ padding:.2rem .6rem; border-radius:6px; background:#e5e7eb; border:0; cursor:pointer; }
+
     .rev-static { font-size: 1.1rem; }
     .btn-revision { margin-left:.25rem; }
+
     .modal .modal-header { display:flex; justify-content:space-between; align-items:center; }
     .modal .modal-header h3 { margin:0; }
     .modal .modal-header button { border:0; background:#eee; border-radius:8px; padding:.25rem .5rem; cursor:pointer; }
-    .modal { max-width: 800px; } 
+    .modal { max-width: 800px; }
+
     .rechazo-motivo { color:#b91c1c; font-size:.9rem; margin:.25rem 0 0; line-height:1.3; }
   </style>
 </head>
 <body class="itinerario-page">
 
   <div id="encabezado"></div>
-  
+
   <main class="main">
     <!-- Selector de Grupo -->
     <div class="row">
@@ -79,11 +82,6 @@
       </div>
     </div>
 
-    <!-- Banda Estado Revisión -->
-    <div id="estado-revision" class="estado-revision">
-      Estado revisión: <span id="estado-badge" class="badge badge-pendiente">PENDIENTE</span>
-    </div>
-
     <!-- Quick-Add -->
     <section id="quick-add" class="quick-add">
       <h3>Editor de Itinerario</h3>
@@ -107,6 +105,12 @@
       </div>
     </section>
 
+    <!-- Banda Estado Revisión (ubicada debajo del editor y antes de las cards) -->
+    <div id="estado-revision" class="estado-revision">
+      Estado revisión: <span id="estado-badge" class="badge badge-pendiente">PENDIENTE</span>
+    </div>
+
+    <!-- Cards de Itinerario -->
     <div id="itinerario-container" class="grid"></div>
   </main>
 
@@ -148,7 +152,7 @@
   <div id="modal-alertas" class="modal" style="display:none;">
     <div class="modal-header">
       <h3>Alertas</h3>
-      <button id="alertas-close">✖</button>
+      <button id="alertas-close" type="button">✖</button>
     </div>
     <div class="modal-body">
       <h4>Este grupo</h4>
