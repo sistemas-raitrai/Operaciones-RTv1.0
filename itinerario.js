@@ -642,14 +642,22 @@ async function renderItinerario() {
 
     if (editMode) {
       const h3 = sec.querySelector("h3");
-      const btnSwapDay  = createBtn("🔄", "btn-swap-day", "Intercambiar día");
-      const btnEditDate = createBtn("✏️", "btn-edit-date", "Editar fecha base");
-      btnSwapDay.dataset.fecha = fecha;
-      btnEditDate.dataset.fecha = fecha;
+    
+      const btnSwapDay   = createBtn("🔄", "btn-swap-day", "Intercambiar día");
+      const btnEditDate  = createBtn("✏️", "btn-edit-date", "Editar fecha base");
+      const btnRejectDay = createBtn("❌", "btn-reject-day", "Rechazar DÍA completo");
+    
+      btnSwapDay.dataset.fecha   = fecha;
+      btnEditDate.dataset.fecha  = fecha;
+      btnRejectDay.dataset.fecha = fecha;
+    
       h3.appendChild(btnSwapDay);
       h3.appendChild(btnEditDate);
-      btnSwapDay.onclick  = (e) => { stopAll(e); handleSwapClick("dia", fecha); };
-      btnEditDate.onclick = (e) => { stopAll(e); handleDateEdit(fecha); };
+      h3.appendChild(btnRejectDay);
+    
+      btnSwapDay.onclick   = (e) => { stopAll(e); handleSwapClick("dia", fecha); };
+      btnEditDate.onclick  = (e) => { stopAll(e); handleDateEdit(fecha); };
+      btnRejectDay.onclick = (e) => { stopAll(e); handleRejectDay(fecha); };
     }
 
     contItinerario.appendChild(sec);
@@ -736,7 +744,8 @@ async function renderItinerario() {
           li.querySelector(".actions").appendChild(btnRev);
           btnRev.onclick = async (e) => {
             stopAll(e);
-            await toggleRevisionEstado(grupoId, fecha, originalIdx, act, visibleName, IT);
+            // Pasamos referencias UI para actualizar SOLO esta tarjeta, sin re-render global.
+            await toggleRevisionEstado(grupoId, fecha, originalIdx, act, visibleName, IT, { li, btn: btnRev });
           };
 
           // Swap de actividad
@@ -932,13 +941,17 @@ async function onSubmitModal(evt) {
 // NUEVO — Toggle tri-estado revisión (⭕→✅→❌→⭕)
 // con motivo obligatorio al pasar a ❌ y escritura en historial + alertas
 // —————————————————————————————————
-async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITfull) {
-  const old = act.revision || 'pendiente';
+// —————————————————————————————————
+// Toggle tri-estado revisión (⭕→✅→❌→⭕) SIN re-render global
+// Actualiza solo la tarjeta tocada; mantiene alertas e historial.
+// —————————————————————————————————
+async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITfull, ui = null) {
+  const old  = act.revision || 'pendiente';
   const next = (old === 'pendiente') ? 'ok' : (old === 'ok' ? 'rechazado' : 'pendiente');
 
   const gSnap = await getDoc(doc(db,'grupos',grupoId));
-  const g = gSnap.data() || {};
-  const arr = (g.itinerario?.[fecha]||[]).slice();
+  const g     = gSnap.data() || {};
+  const arr   = (g.itinerario?.[fecha]||[]).slice();
 
   // Si vamos a RECHAZADO, pedir motivo (obligatorio)
   let motivo = act.rechazoMotivo || '';
@@ -950,7 +963,7 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
 
   // Construir objetos antes/después
   const beforeObj = arr[idx] || {};
-  const updated = { ...beforeObj, revision: next };
+  const updated   = { ...beforeObj, revision: next };
   if (next === 'rechazado') updated.rechazoMotivo = motivo;
   else if (old === 'rechazado') updated.rechazoMotivo = ''; // limpiar motivo al salir de ❌
   arr[idx] = updated;
@@ -971,19 +984,18 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
   // Persistir cambio
   await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${fecha}`]: arr });
 
-  // Alertas:
+  // Alertas on/off
   if (next === 'rechazado' && old !== 'rechazado') {
     await addDoc(collection(db,'grupos',grupoId,'alertas'), {
       fecha,
       horaInicio: beforeObj?.horaInicio || act?.horaInicio || '',
       horaFin:    beforeObj?.horaFin    || act?.horaFin    || '',
       actividad:  visibleName,
-      motivo:     motivo,
+      motivo,
       creadoPor:  auth.currentUser.email,
       creadoEn:   new Date(),
       visto:      false
     });
-
   } else if (old === 'rechazado' && next !== 'rechazado') {
     // marcar alertas relacionadas como vistas
     try {
@@ -992,15 +1004,39 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
         const a = d.data()||{};
         return (a.fecha===fecha && (a.actividad||'')===visibleName && !a.visto);
       });
-      await Promise.all(toClose.map(d => updateDoc(doc(db,'grupos',grupoId,'alertas',d.id), { visto: true })));
+      await Promise.all(toClose.map(d => updateDoc(doc(db,'grupos',grupoId,'alertas',d.id), { visto: true, leidoPor: auth.currentUser.email, leidoEn: new Date() })));
     } catch(_) {}
   }
 
-  // Recalcular estado + badge
+  // Recalcular estado + badge (sin re-render de cards)
   const ITnext = { ...(ITfull||{}), [fecha]: arr };
   await updateEstadoRevisionAndBadge(grupoId, ITnext);
 
-  renderItinerario();
+  // ——— Actualización UI puntual (sin "parpadeo") ———
+  if (ui && ui.li && ui.btn) {
+    // icono + title del botón
+    ui.btn.textContent = (next === 'ok') ? '✅' : (next === 'rechazado' ? '❌' : '⭕');
+    ui.btn.title       = (next === 'ok') ? 'Revisado (OK)' : (next === 'rechazado' ? 'Rechazado' : 'Pendiente');
+
+    // motivo (crear/actualizar/eliminar)
+    const existing = ui.li.querySelector('.rechazo-motivo');
+    if (next === 'rechazado') {
+      if (existing) {
+        existing.textContent = `❌ Motivo: ${motivo}`;
+      } else {
+        const p = document.createElement('p');
+        p.className = 'rechazo-motivo';
+        p.textContent = `❌ Motivo: ${motivo}`;
+        const actions = ui.li.querySelector('.actions');
+        ui.li.insertBefore(p, actions || null);
+      }
+    } else if (existing) {
+      existing.remove();
+    }
+  } else {
+    // fallback (no UI pasada): refresco completo
+    renderItinerario();
+  }
 }
 
 // —————————————————————————————————
@@ -1303,6 +1339,74 @@ async function handleDateEdit(oldFecha) {
     detalle:  `Map: ${JSON.stringify(fechas.map((f,i)=>`${f}→${newRango[i]}`))}`
   });
   await updateEstadoRevisionAndBadge(grupoId, newIt);
+  renderItinerario();
+}
+
+// —————————————————————————————————
+// Rechazar DÍA completo (pone todas las actividades del día en ❌ con un solo motivo)
+// —————————————————————————————————
+async function handleRejectDay(fecha) {
+  const grupoId = selectNum.value;
+  if (!grupoId) return alert("Selecciona un grupo");
+  const motivo = (prompt("Motivo del rechazo del DÍA completo (obligatorio):", "") || "").trim();
+  if (!motivo) return;
+
+  const gSnap = await getDoc(doc(db,'grupos',grupoId));
+  const g     = gSnap.data() || {};
+  const arr   = (g.itinerario?.[fecha] || []).slice();
+
+  if (!arr.length) {
+    // Igual registramos el rechazo del día aunque esté vacío (alerta agregada de tipo día)
+    await addDoc(collection(db,'grupos',grupoId,'alertas'), {
+      fecha,
+      horaInicio: '',
+      horaFin:    '',
+      actividad:  '(DÍA COMPLETO)',
+      motivo,
+      creadoPor:  auth.currentUser.email,
+      creadoEn:   new Date(),
+      visto:      false
+    });
+    await logHist(grupoId, 'RECHAZAR DÍA COMPLETO', {
+      _group: g, fecha, anterior: '', nuevo: 'DÍA SIN ACTIVIDADES', motivo
+    });
+    await updateEstadoRevisionAndBadge(grupoId, g.itinerario || {});
+    renderItinerario();
+    return;
+  }
+
+  // Actualizamos todas las actividades del día a rechazado con el mismo motivo
+  const nuevoArr = arr.map(a => ({ ...a, revision: 'rechazado', rechazoMotivo: motivo }));
+
+  // Persistir cambios del día completo
+  await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${fecha}`]: nuevoArr });
+
+  // Crear 1 alerta por actividad impactada (incluye día y hora)
+  await Promise.all(
+    nuevoArr.map(a => addDoc(collection(db,'grupos',grupoId,'alertas'), {
+      fecha,
+      horaInicio: a.horaInicio || '',
+      horaFin:    a.horaFin    || '',
+      actividad:  a.actividad  || '',
+      motivo,
+      creadoPor:  auth.currentUser.email,
+      creadoEn:   new Date(),
+      visto:      false
+    }))
+  );
+
+  // Historial (evento único del día)
+  await logHist(grupoId, 'RECHAZAR DÍA COMPLETO', {
+    _group: g,
+    fecha,
+    anterior: `Actividades afectadas: ${arr.length}`,
+    nuevo:    `Todas en RECHAZADO`,
+    motivo
+  });
+
+  await updateEstadoRevisionAndBadge(grupoId, { ...(g.itinerario||{}), [fecha]: nuevoArr });
+
+  // Re-render SOLO por ser una acción masiva (aceptable el refresco)
   renderItinerario();
 }
 
