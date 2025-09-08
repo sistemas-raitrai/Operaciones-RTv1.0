@@ -87,6 +87,9 @@ const modalAlertas       = document.getElementById("modal-alertas");
 const btnCloseAlertas    = document.getElementById("alertas-close");
 const listAlertasActual  = document.getElementById("alertas-actual");
 const listAlertasOtros   = document.getElementById("alertas-otros");
+const listAlertasLeidas   = document.getElementById("alertas-actual-leidas");
+const listAlertasPend     = document.getElementById("alertas-pendientes");
+
 
 let editData    = null;    // { fecha, idx, ...act }
 let choicesDias = null;    // Choices.js instance
@@ -434,43 +437,71 @@ async function openAlertasPanel() {
   modalAlertas.style.display = "block";
   document.getElementById("modal-backdrop").style.display = "block";
 
-  // 1) Alertas del grupo
+  // 1) Alertas del grupo (separadas)
   if (listAlertasActual) listAlertasActual.innerHTML = "Cargando…";
+  if (listAlertasLeidas) listAlertasLeidas.innerHTML = "";
+  
   try {
     const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
     const arr = qs.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a,b) => new Date(b.creadoEn || 0) - new Date(a.creadoEn || 0));
-    if (!arr.length) {
-      if (listAlertasActual) listAlertasActual.innerHTML = `<li class="empty">— Sin alertas —</li>`;
-    } else {
-      if (listAlertasActual) {
-        listAlertasActual.innerHTML = arr.map(a => `
-          <li class="alert-item ${a.visto ? 'visto':''}">
+  
+    const noVistas = arr.filter(a => !a.visto);
+    const vistas   = arr.filter(a =>  a.visto);
+  
+    // No leídas
+    listAlertasActual.innerHTML = noVistas.length
+      ? noVistas.map(a => `
+          <li class="alert-item">
             <div>
               <strong>${a.actividad || '(actividad)'}</strong>
-              <small> · ${a.fecha || ''}</small>
+              <small> · ${a.fecha || ''} ${a.horaInicio ? `· ${a.horaInicio}${a.horaFin ? '–'+a.horaFin : ''}` : ''}</small>
               ${a.motivo ? `<div class="motivo">Motivo: ${a.motivo}</div>`:''}
+              ${a.creadoPor ? `<div class="meta" style="opacity:.7;">Rechazado por: ${a.creadoPor}</div>`:''}
             </div>
             <div class="actions">
-              ${a.visto ? '' : `<button type="button" data-id="${a.id}" class="btn-ver-alerta">Marcar visto</button>`}
+              <button type="button" data-id="${a.id}" class="btn-ver-alerta">Marcar visto</button>
             </div>
           </li>
-        `).join('');
-        listAlertasActual.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
-          btn.onclick = async (e) => {
-            stopAll(e);
-            const id = btn.getAttribute('data-id');
-            await updateDoc(doc(db,'grupos',grupoId,'alertas',id), { visto: true });
-            await refreshAlertasBadge(grupoId);
-            openAlertasPanel(); // recarga
-          };
+        `).join('')
+      : `<li class="alert-item"><div>— Sin alertas —</div></li>`;
+  
+    // Leídas
+    listAlertasLeidas.innerHTML = vistas.length
+      ? vistas.map(a => `
+          <li class="alert-item visto">
+            <div>
+              <strong>${a.actividad || '(actividad)'}</strong>
+              <small> · ${a.fecha || ''} ${a.horaInicio ? `· ${a.horaInicio}${a.horaFin ? '–'+a.horaFin : ''}` : ''}</small>
+              ${a.motivo ? `<div class="motivo">Motivo: ${a.motivo}</div>`:''}
+              ${a.creadoPor ? `<div class="meta" style="opacity:.7;">Rechazado por: ${a.creadoPor}</div>`:''}
+              ${(a.leidoPor || a.leidoEn) ? `<div class="meta" style="opacity:.7;">Leído por: ${a.leidoPor || '—'} · ${a.leidoEn ? new Date(a.leidoEn.seconds ? a.leidoEn.seconds*1000 : a.leidoEn).toLocaleString('es-CL') : ''}</div>` : ''}
+            </div>
+            <div class="actions"></div>
+          </li>
+        `).join('')
+      : `<li class="alert-item"><div>— No hay alertas leídas —</div></li>`;
+  
+    // Handler "Marcar visto" (guarda quién la leyó + cuándo)
+    listAlertasActual.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
+      btn.onclick = async (e) => {
+        stopAll(e);
+        const id = btn.getAttribute('data-id');
+        await updateDoc(doc(db,'grupos',grupoId,'alertas',id), {
+          visto: true,
+          leidoPor: auth.currentUser.email,
+          leidoEn: new Date()
         });
-      }
-    }
+        await refreshAlertasBadge(grupoId);
+        openAlertasPanel(); // recarga
+      };
+    });
   } catch (e) {
     if (listAlertasActual) listAlertasActual.innerHTML = `<li class="empty">Error al cargar alertas.</li>`;
+    if (listAlertasLeidas) listAlertasLeidas.innerHTML = ``;
   }
+
 
   // 2) Otros grupos con estado RECHAZADO
   if (listAlertasOtros) listAlertasOtros.innerHTML = "Cargando…";
@@ -510,6 +541,42 @@ async function openAlertasPanel() {
   } catch (e) {
     if (listAlertasOtros) listAlertasOtros.innerHTML = `<li class="empty">Error al cargar otros grupos.</li>`;
   }
+}
+
+// 3) Otros grupos con estado PENDIENTE
+if (listAlertasPend) listAlertasPend.innerHTML = "Cargando…";
+try {
+  const qsPend = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','PENDIENTE')));
+  const otrosP = qsPend.docs
+    .filter(d => d.id !== grupoId)
+    .map(d => ({ id: d.id, ...(d.data()||{}) }));
+  listAlertasPend.innerHTML = otrosP.length
+    ? otrosP.map(g=>`
+        <li class="alert-item">
+          <div>
+            <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
+            <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
+          </div>
+        </li>
+      `).join('')
+    : `<li class="alert-item"><div>— No hay otros grupos pendientes —</div></li>`;
+
+  listAlertasPend.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
+    btn.onclick = (e) => {
+      stopAll(e);
+      const id = btn.getAttribute('data-id');
+      choicesGrupoNum.setChoiceByValue(id);
+      choicesGrupoNom.setChoiceByValue(id);
+      modalAlertas.style.display = "none";
+      document.getElementById("modal-backdrop").style.display = "none";
+      renderItinerario();
+    };
+  });
+} catch (e) {
+  if (listAlertasPend) listAlertasPend.innerHTML = `<li class="empty">Error al cargar grupos pendientes.</li>`;
 }
 
 // —————————————————————————————————
@@ -908,12 +975,15 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
   if (next === 'rechazado' && old !== 'rechazado') {
     await addDoc(collection(db,'grupos',grupoId,'alertas'), {
       fecha,
-      actividad: visibleName,
-      motivo: motivo,
-      creadoPor: auth.currentUser.email,
-      creadoEn: new Date(),
-      visto: false
+      horaInicio: beforeObj?.horaInicio || act?.horaInicio || '',
+      horaFin:    beforeObj?.horaFin    || act?.horaFin    || '',
+      actividad:  visibleName,
+      motivo:     motivo,
+      creadoPor:  auth.currentUser.email,
+      creadoEn:   new Date(),
+      visto:      false
     });
+
   } else if (old === 'rechazado' && next !== 'rechazado') {
     // marcar alertas relacionadas como vistas
     try {
