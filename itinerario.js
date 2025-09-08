@@ -51,6 +51,16 @@ const btnGuardarTpl  = document.getElementById("btnGuardarTpl");
 const btnCargarTpl   = document.getElementById("btnCargarTpl");
 const selPlantillas  = document.getElementById("sel-plantillas");
 
+// —— Historial (modal + filtros)
+const btnHistorial        = document.getElementById("btnHistorial");
+const modalHistorial      = document.getElementById("modal-historial");
+const btnCloseHistorial   = document.getElementById("historial-close");
+const listHistorial       = document.getElementById("historial-list");
+const filtroHistorial     = document.getElementById("historial-filter");
+
+// cache en memoria para filtrar sin reconsultar
+let historialCache = [];
+
 // —— Estado revisión (banda)
 const estadoBadge    = document.getElementById("estado-badge");
 
@@ -198,6 +208,34 @@ async function initItinerario() {
       document.getElementById("modal-backdrop").style.display="none"; 
     };
   }
+
+  // Historial
+  if (btnHistorial) {
+    btnHistorial.onclick = (e) => { stopAll(e); openHistorialPanel(); };
+  }
+  if (btnCloseHistorial) {
+    btnCloseHistorial.onclick = (e) => {
+      stopAll(e);
+      if (modalHistorial) modalHistorial.style.display = "none";
+      if (modalBg)        modalBg.style.display = "none";
+    };
+  }
+  // filtro en vivo
+  if (filtroHistorial) {
+    filtroHistorial.oninput = () => {
+      const q = (filtroHistorial.value || '').trim().toLowerCase();
+      const data = !q ? historialCache : historialCache.filter(it => {
+        const campos = [
+          it.accion, it.usuario, it.motivo, it.detalle,
+          it.anterior, it.nuevo, it.path, it.nombreGrupo,
+          it.numeroNegocio
+        ].map(x => (x ?? '').toString().toLowerCase());
+        return campos.some(c => c.includes(q));
+      });
+      renderHistorialList(data);
+    };
+  }
+
 
   await cargarListaPlantillas();
 
@@ -1349,3 +1387,86 @@ window.repararServiciosAntiguos = async function(opts = {}) {
   console.log(`FIN Reparación — grupos procesados: ${gruposProc}, grupos modificados: ${gruposMod}, acts modificadas: ${actsMod} (fuzzy:${actsFuzzy}), sin match: ${actsNoMatch}, dryRun: ${dryRun}`);
   return { gruposProc, gruposMod, actsMod, actsFuzzy, actsNoMatch, dryRun };
 };
+
+/** =========================
+ *  HISTORIAL (UI + datos)
+ *  ========================= */
+
+/** Formatea timestamp Firestore/Date a 'dd/mm/yyyy HH:MM:ss' */
+function fmtTS(ts) {
+  try {
+    const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : new Date(ts));
+    if (!d || isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch { return ''; }
+}
+
+/** Renderiza la lista del historial */
+function renderHistorialList(arr) {
+  if (!listHistorial) return;
+  if (!arr?.length) {
+    listHistorial.innerHTML = `<li class="hist-item"><div class="meta">— Sin eventos —</div></li>`;
+    return;
+  }
+  listHistorial.innerHTML = arr.map(h => {
+    const ts = fmtTS(h.timestamp);
+    const anterior = (h.anterior ?? '').toString();
+    const nuevo    = (h.nuevo ?? '').toString();
+    const tieneDiff = anterior || nuevo;
+    const motivo   = (h.motivo ?? '').toString();
+    const detalle  = (h.detalle ?? '').toString();
+    const path     = (h.path ?? '').toString();
+
+    return `
+      <li class="hist-item">
+        <div class="line1">
+          <strong>${(h.accion || '').toString().toUpperCase()}</strong>
+          <span class="meta">· ${h.usuario || ''}</span>
+          <span class="meta">· ${ts}</span>
+        </div>
+        <div class="line2">
+          ${tieneDiff ? `<div><span class="meta">Cambio:</span> <code>${anterior || '—'}</code> → <code>${nuevo || '—'}</code></div>` : ''}
+          ${motivo ? `<div><span class="meta">Motivo:</span> ${motivo}</div>` : ''}
+          ${detalle ? `<div><span class="meta">Detalle:</span> ${detalle}</div>` : ''}
+          ${path ? `<div class="meta">Path: ${path}</div>` : ''}
+        </div>
+      </li>
+    `;
+  }).join('');
+}
+
+/** Abre el modal y consulta la colección 'historial' para el grupo actual */
+async function openHistorialPanel() {
+  const grupoId = selectNum?.value;
+  if (!grupoId) { alert("Selecciona un grupo"); return; }
+  if (!modalHistorial) return;
+
+  // Mostrar modal + backdrop
+  modalHistorial.style.display = "block";
+  if (modalBg) modalBg.style.display = "block";
+
+  // Estado de carga
+  if (listHistorial) listHistorial.innerHTML = `<li class="hist-item"><div class="meta">Cargando…</div></li>`;
+
+  try {
+    // Trae TODO el historial del grupo y ordena por timestamp desc en cliente
+    const qs = await getDocs(query(
+      collection(db, 'historial'),
+      where('grupoId','==', grupoId)
+    ));
+    historialCache = qs.docs.map(d => ({ id: d.id, ...(d.data()||{}) }))
+      .sort((a,b) => {
+        const ta = (a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0)).getTime();
+        const tb = (b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp || 0)).getTime();
+        return tb - ta;
+      });
+
+    // Render inicial y reset de filtro
+    if (filtroHistorial) filtroHistorial.value = '';
+    renderHistorialList(historialCache);
+  } catch (e) {
+    console.warn('Error cargando historial:', e);
+    if (listHistorial) listHistorial.innerHTML = `<li class="hist-item"><div class="meta">Error al cargar el historial.</div></li>`;
+  }
+}
