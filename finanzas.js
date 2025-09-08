@@ -2230,11 +2230,11 @@ async function boot() {
   });
 }
 
-// 11-bis) Export Excel de la pantalla principal (igual estilo que el modal)
+// Export Excel de la pantalla principal (sin Tipo de cambio)
 function exportMainToExcel(){
   const piezas = [];
 
-  // KPIs (fila compacta)
+  // KPIs
   piezas.push(`
     <h2>KPIs</h2>
     <table border="1">
@@ -2242,7 +2242,7 @@ function exportMainToExcel(){
         <th>Total CLP (convertido)</th>
         <th>Proveedores incluidos</th>
         <th>Destinos incluidos</th>
-        <th>Otros (texto)</th>
+        <th>Otros</th>
       </tr>
       <tr>
         <td>${el('kpiTotCLP').textContent}</td>
@@ -2257,18 +2257,19 @@ function exportMainToExcel(){
   // Totales por destino
   piezas.push(`<h2>Totales por destino</h2>${el('tblDestinos').outerHTML}<br/>`);
 
-  // Totales por proveedor (limpio la col. de acciones y flechas)
+  // Totales por proveedor (sin columna de acciones ni flechas)
   const provClon = el('tblProveedores').cloneNode(true);
   provClon.querySelectorAll('.col-act').forEach(n => n.remove());
   provClon.querySelectorAll('.sort-arrow').forEach(n => n.remove());
   piezas.push(`<h2>Totales por proveedor</h2>${provClon.outerHTML}<br/>`);
 
-  // (Opcional) Hoteles si está visible
+  // Hoteles si existe sección visible
   const secHot = el('secHoteles');
   if (secHot && secHot.style.display !== 'none') {
     piezas.push(`<h2>Totales por hotel</h2>${el('tblHoteles').outerHTML}<br/>`);
   }
 
+  // XLS “a la misma onda” del modal
   const html = `<!doctype html>
   <html xmlns:o="urn:schemas-microsoft-com:office:office"
         xmlns:x="urn:schemas-microsoft-com:office:excel"
@@ -2284,6 +2285,7 @@ function exportMainToExcel(){
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
 
 // -------------------------------
 // 12) Recalcular + export CSV
