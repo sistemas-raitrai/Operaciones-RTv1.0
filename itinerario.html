@@ -24,7 +24,8 @@
     .modal .modal-header { display:flex; justify-content:space-between; align-items:center; }
     .modal .modal-header h3 { margin:0; }
     .modal .modal-header button { border:0; background:#eee; border-radius:8px; padding:.25rem .5rem; cursor:pointer; }
-    .modal { max-width: 800px; }
+    .modal { max-width: 800px; } 
+    .rechazo-motivo { color:#b91c1c; font-size:.9rem; margin:.25rem 0 0; line-height:1.3; }
   </style>
 </head>
 <body class="itinerario-page">
@@ -50,31 +51,31 @@
     <div class="row">
       <div class="column medium">
         <label>&nbsp;</label>
-        <button id="btnAbrirCalendario" class="btn-add" style="background-color: green; color: white;">📅 Ver Calendario</button>
+        <button type="button" id="btnAbrirCalendario" class="btn-add" style="background-color: green; color: white;">📅 Ver Calendario</button>
       </div>
       <!-- Botón Alertas entre calendario y edición -->
       <div class="column medium">
         <label>&nbsp;</label>
-        <button id="btnAlertas" class="btn-add" style="background-color:#f59e0b; color:white;">
+        <button type="button" id="btnAlertas" class="btn-add" style="background-color:#f59e0b; color:white;">
           ⚠️ Alertas (<span id="alertasBadge">0</span>)
         </button>
       </div>
       <div class="column medium">
         <label>&nbsp;</label>
-        <button id="btnToggleEdit" class="btn-add" style="background-color: red; color: white;">🔓 Activar edición</button>
+        <button type="button" id="btnToggleEdit" class="btn-add" style="background-color: red; color: white;">🔓 Activar edición</button>
       </div>
     </div>
 
     <!-- Plantillas -->
     <div class="row" style="margin-top:1rem;">
       <div class="column short">
-        <button id="btnGuardarTpl" class="btn-add">💾 Guardar Itinerario</button>
+        <button type="button" id="btnGuardarTpl" class="btn-add">💾 Guardar Itinerario</button>
       </div>
       <div class="column short">
         <select id="sel-plantillas"></select>
       </div>
       <div class="column short">
-        <button id="btnCargarTpl" class="btn-add">📥 Cargar Itinerario</button>
+        <button type="button" id="btnCargarTpl" class="btn-add">📥 Cargar Itinerario</button>
       </div>
     </div>
 
@@ -101,7 +102,7 @@
         </div>
         <div class="column short">
           <label>&nbsp;</label>
-          <button id="qa-add" class="btn-add">Añadir</button>
+          <button type="button" id="qa-add" class="btn-add">Añadir</button>
         </div>
       </div>
     </section>
