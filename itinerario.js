@@ -96,8 +96,13 @@ function actualizarPax() {
 fldAdultos.addEventListener('input', actualizarPax);
 fldEstudiantes.addEventListener('input', actualizarPax);
 
+// Evita submits/bubbling accidentales
+function stopAll(e) {
+  if (e) { e.preventDefault?.(); e.stopPropagation?.(); }
+}
+
 // —————————————————————————————————
-// 1.1) Helper unificado para HISTORIAL
+/** Helper unificado para HISTORIAL **/
 // —————————————————————————————————
 async function logHist(grupoId, accion, extra = {}) {
   try {
@@ -118,7 +123,6 @@ async function logHist(grupoId, accion, extra = {}) {
     delete payload._group; // no persistir helper
     await addDoc(collection(db,'historial'), payload);
   } catch (e) {
-    // evitar que un error de historial rompa el flujo de UI
     console.warn('Historial no registrado:', e);
   }
 }
@@ -178,17 +182,22 @@ async function initItinerario() {
   };
   
   // 2.4) Quick-Add, Modal, Plantillas, Alertas
-  qaAddBtn.onclick      = quickAddActivity;
-  btnCancel.onclick     = closeModal;
-  formModal.onsubmit    = onSubmitModal;
-  btnGuardarTpl.onclick = guardarPlantilla;
-  btnCargarTpl.onclick  = cargarPlantilla;
+  qaAddBtn.onclick        = (e)=>{ stopAll(e); quickAddActivity(); };
+  btnCancel.onclick       = (e)=>{ stopAll(e); closeModal(); };
+  formModal.onsubmit      = onSubmitModal;
+  btnGuardarTpl.onclick   = (e)=>{ stopAll(e); guardarPlantilla(); };
+  btnCargarTpl.onclick    = (e)=>{ stopAll(e); cargarPlantilla(); };
 
-  btnAlertas.onclick      = openAlertasPanel;
-  btnCloseAlertas.onclick = () => { 
-    modalAlertas.style.display = "none"; 
-    document.getElementById("modal-backdrop").style.display="none"; 
-  };
+  if (btnAlertas) {
+    btnAlertas.onclick      = (e)=>{ stopAll(e); openAlertasPanel(); };
+  }
+  if (btnCloseAlertas) {
+    btnCloseAlertas.onclick = (e)=>{ 
+      stopAll(e);
+      modalAlertas.style.display = "none"; 
+      document.getElementById("modal-backdrop").style.display="none"; 
+    };
+  }
 
   await cargarListaPlantillas();
 
@@ -198,7 +207,8 @@ async function initItinerario() {
 
 // ————— Botón Activar/Desactivar edición —————
 const btnToggleEdit = document.getElementById("btnToggleEdit");
-btnToggleEdit.onclick = () => {
+btnToggleEdit.onclick = (e) => {
+  stopAll(e);
   editMode = !editMode;
   btnToggleEdit.textContent = editMode ? "🔒 Desactivar edición" : "🔓 Activar edición";
   document.getElementById("quick-add").style.display = editMode ? "none" : "";
@@ -280,7 +290,7 @@ async function getServiciosMaps(destinoStr) {
 }
 
 // ===================================================================
-// Sincroniza actividades con Servicios (si aplica) y asegura campo revision
+/** Sincroniza actividades con Servicios (si aplica) y asegura campo revision **/
 // ===================================================================
 async function syncItinerarioServicios(grupoId, g, svcMaps) {
   const it = g.itinerario || {};
@@ -343,6 +353,7 @@ function computeEstadoFromItinerario(IT) {
 }
 
 function setEstadoBadge(estado) {
+  if (!estadoBadge) return;
   estadoBadge.textContent = estado;
   estadoBadge.classList.remove('badge-ok','badge-pendiente','badge-rechazado');
   if (estado === 'OK') estadoBadge.classList.add('badge-ok');
@@ -351,6 +362,7 @@ function setEstadoBadge(estado) {
 }
 
 async function refreshAlertasBadge(grupoId) {
+  if (!alertasBadge) return;
   try {
     const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
     const pendientes = qs.docs.filter(d => !((d.data()||{}).visto)).length;
@@ -379,83 +391,91 @@ async function openAlertasPanel() {
   const grupoId = selectNum.value;
   if (!grupoId) return alert("Selecciona un grupo");
 
+  if (!modalAlertas) return; // por si no existe en el HTML actual
+
   modalAlertas.style.display = "block";
   document.getElementById("modal-backdrop").style.display = "block";
 
   // 1) Alertas del grupo
-  listAlertasActual.innerHTML = "Cargando…";
+  if (listAlertasActual) listAlertasActual.innerHTML = "Cargando…";
   try {
     const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
     const arr = qs.docs
       .map(d => ({ id: d.id, ...d.data() }))
       .sort((a,b) => new Date(b.creadoEn || 0) - new Date(a.creadoEn || 0));
     if (!arr.length) {
-      listAlertasActual.innerHTML = `<li class="empty">— Sin alertas —</li>`;
+      if (listAlertasActual) listAlertasActual.innerHTML = `<li class="empty">— Sin alertas —</li>`;
     } else {
-      listAlertasActual.innerHTML = arr.map(a => `
-        <li class="alert-item ${a.visto ? 'visto':''}">
-          <div>
-            <strong>${a.actividad || '(actividad)'}</strong>
-            <small> · ${a.fecha || ''}</small>
-            ${a.motivo ? `<div class="motivo">Motivo: ${a.motivo}</div>`:''}
-          </div>
-          <div class="actions">
-            ${a.visto ? '' : `<button data-id="${a.id}" class="btn-ver-alerta">Marcar visto</button>`}
-          </div>
-        </li>
-      `).join('');
-      listAlertasActual.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
-        btn.onclick = async () => {
-          const id = btn.getAttribute('data-id');
-          await updateDoc(doc(db,'grupos',grupoId,'alertas',id), { visto: true });
-          await refreshAlertasBadge(grupoId);
-          openAlertasPanel(); // recarga
-        };
-      });
+      if (listAlertasActual) {
+        listAlertasActual.innerHTML = arr.map(a => `
+          <li class="alert-item ${a.visto ? 'visto':''}">
+            <div>
+              <strong>${a.actividad || '(actividad)'}</strong>
+              <small> · ${a.fecha || ''}</small>
+              ${a.motivo ? `<div class="motivo">Motivo: ${a.motivo}</div>`:''}
+            </div>
+            <div class="actions">
+              ${a.visto ? '' : `<button type="button" data-id="${a.id}" class="btn-ver-alerta">Marcar visto</button>`}
+            </div>
+          </li>
+        `).join('');
+        listAlertasActual.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
+          btn.onclick = async (e) => {
+            stopAll(e);
+            const id = btn.getAttribute('data-id');
+            await updateDoc(doc(db,'grupos',grupoId,'alertas',id), { visto: true });
+            await refreshAlertasBadge(grupoId);
+            openAlertasPanel(); // recarga
+          };
+        });
+      }
     }
   } catch (e) {
-    listAlertasActual.innerHTML = `<li class="empty">Error al cargar alertas.</li>`;
+    if (listAlertasActual) listAlertasActual.innerHTML = `<li class="empty">Error al cargar alertas.</li>`;
   }
 
   // 2) Otros grupos con estado RECHAZADO
-  listAlertasOtros.innerHTML = "Cargando…";
+  if (listAlertasOtros) listAlertasOtros.innerHTML = "Cargando…";
   try {
     const qsRech = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','RECHAZADO')));
     const otros = qsRech.docs
       .filter(d => d.id !== grupoId)
       .map(d => ({ id: d.id, ...(d.data()||{}) }));
     if (!otros.length) {
-      listAlertasOtros.innerHTML = `<li class="empty">— No hay otros grupos con revisión rechazada —</li>`;
+      if (listAlertasOtros) listAlertasOtros.innerHTML = `<li class="empty">— No hay otros grupos con revisión rechazada —</li>`;
     } else {
-      listAlertasOtros.innerHTML = otros.map(g=>`
-        <li class="alert-item">
-          <div>
-            <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
-            <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
-          </div>
-          <div class="actions">
-            <button class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
-          </div>
-        </li>
-      `).join('');
-      listAlertasOtros.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
-        btn.onclick = () => {
-          const id = btn.getAttribute('data-id');
-          choicesGrupoNum.setChoiceByValue(id);
-          choicesGrupoNom.setChoiceByValue(id);
-          modalAlertas.style.display = "none";
-          document.getElementById("modal-backdrop").style.display = "none";
-          renderItinerario();
-        };
-      });
+      if (listAlertasOtros) {
+        listAlertasOtros.innerHTML = otros.map(g=>`
+          <li class="alert-item">
+            <div>
+              <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
+              <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
+            </div>
+          </li>
+        `).join('');
+        listAlertasOtros.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
+          btn.onclick = (e) => {
+            stopAll(e);
+            const id = btn.getAttribute('data-id');
+            choicesGrupoNum.setChoiceByValue(id);
+            choicesGrupoNom.setChoiceByValue(id);
+            modalAlertas.style.display = "none";
+            document.getElementById("modal-backdrop").style.display = "none";
+            renderItinerario();
+          };
+        });
+      }
     }
   } catch (e) {
-    listAlertasOtros.innerHTML = `<li class="empty">Error al cargar otros grupos.</li>`;
+    if (listAlertasOtros) listAlertasOtros.innerHTML = `<li class="empty">Error al cargar otros grupos.</li>`;
   }
 }
 
 // —————————————————————————————————
-// 3) renderItinerario(): dibuja grilla (sincronizado)
+/** 3) renderItinerario(): dibuja grilla (sincronizado) **/
 // —————————————————————————————————
 async function renderItinerario() {
   contItinerario.innerHTML = "";
@@ -512,7 +532,7 @@ async function renderItinerario() {
     sec.innerHTML = `
       <h3>Día ${idx+1} – ${formatDateReadable(fecha)}</h3>
       <ul class="activity-list"></ul>
-      <button class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
+      <button type="button" class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
 
     if (editMode) {
@@ -523,12 +543,12 @@ async function renderItinerario() {
       btnEditDate.dataset.fecha = fecha;
       h3.appendChild(btnSwapDay);
       h3.appendChild(btnEditDate);
-      btnSwapDay.onclick  = () => handleSwapClick("dia", fecha);
-      btnEditDate.onclick = () => handleDateEdit(fecha);
+      btnSwapDay.onclick  = (e) => { stopAll(e); handleSwapClick("dia", fecha); };
+      btnEditDate.onclick = (e) => { stopAll(e); handleDateEdit(fecha); };
     }
 
     contItinerario.appendChild(sec);
-    sec.querySelector(".btn-add").onclick = ()=> openModal({ fecha }, false);
+    sec.querySelector(".btn-add").onclick = (e)=> { stopAll(e); openModal({ fecha }, false); };
 
     const ul  = sec.querySelector(".activity-list");
     const original = IT[fecha] || [];
@@ -569,16 +589,23 @@ async function renderItinerario() {
           <p>👥 ${totalGrupo} pax (A:${A} E:${E})</p>
           ${motivoHTML}
           <div class="actions">
-            ${editMode ? `<button class="btn-edit">✏️</button><button class="btn-del">🗑️</button>` : `<span class="rev-static" title="${titleRev}">${iconRev}</span>`}
+            ${editMode
+              ? `<button type="button" class="btn-edit">✏️</button>
+                 <button type="button" class="btn-del">🗑️</button>`
+              : `<span class="rev-static" title="${titleRev}">${iconRev}</span>`}
           </div>
         `;
 
         if (editMode) {
           // Editar
-          li.querySelector(".btn-edit").onclick = () => openModal({ ...act, fecha, idx: originalIdx }, true);
+          li.querySelector(".btn-edit").onclick = (e) => {
+            stopAll(e);
+            openModal({ ...act, fecha, idx: originalIdx }, true);
+          };
 
           // Borrar
-          li.querySelector(".btn-del").onclick  = async () => {
+          li.querySelector(".btn-del").onclick  = async (e) => {
+            stopAll(e);
             if (!confirm("¿Eliminar actividad?")) return;
             const beforeObj = original[originalIdx];
             const arr = original.slice();
@@ -599,10 +626,11 @@ async function renderItinerario() {
             renderItinerario();
           };
 
-          // Botón tri-estado
+          // Botón tri-estado (⭕/✅/❌)
           const btnRev = createBtn(iconRev, "btn-revision", `Cambiar estado: ${titleRev}`);
           li.querySelector(".actions").appendChild(btnRev);
-          btnRev.onclick = async () => {
+          btnRev.onclick = async (e) => {
+            stopAll(e);
             await toggleRevisionEstado(grupoId, fecha, originalIdx, act, visibleName, IT);
           };
 
@@ -611,7 +639,10 @@ async function renderItinerario() {
           btnSwapAct.dataset.fecha = fecha;
           btnSwapAct.dataset.idx   = originalIdx;
           li.querySelector(".actions").appendChild(btnSwapAct);
-          btnSwapAct.onclick = () => handleSwapClick("actividad", { fecha, idx: originalIdx });
+          btnSwapAct.onclick = (e) => {
+            stopAll(e);
+            handleSwapClick("actividad", { fecha, idx: originalIdx });
+          };
         }
 
         ul.appendChild(li);
@@ -621,7 +652,7 @@ async function renderItinerario() {
 }
 
 // —————————————————————————————————
-// 4) quickAddActivity(): añade en varios días (enlazando servicio)
+/** 4) quickAddActivity(): añade en varios días (enlazando servicio) **/
 // —————————————————————————————————
 async function quickAddActivity() {
   const grupoId    = selectNum.value;
@@ -682,7 +713,7 @@ async function quickAddActivity() {
 }
 
 // —————————————————————————————————
-// 5) openModal(): precarga datos en el modal
+/** 5) openModal(): precarga datos en el modal **/
 // —————————————————————————————————
 async function openModal(data, isEdit) {
   editData = isEdit ? data : null;
@@ -709,14 +740,14 @@ async function openModal(data, isEdit) {
 }
 
 // —————————————————————————————————
-// 6) closeModal(): cierra el modal
+/** 6) closeModal(): cierra el modal **/
 // —————————————————————————————————
 function closeModal() {
   modalBg.style.display = modal.style.display = "none";
 }
 
 // —————————————————————————————————
-// 7) onSubmitModal(): guarda/actualiza + historial (enlazando servicio)
+/** 7) onSubmitModal(): guarda/actualiza + historial (enlazando servicio) **/
 // —————————————————————————————————
 async function onSubmitModal(evt) {
   evt.preventDefault();
@@ -1041,7 +1072,8 @@ async function cargarPlantilla() {
 // Calendario modal
 // —————————————————————————————————
 document.getElementById("btnAbrirCalendario")
-  .addEventListener("click", () => {
+  .addEventListener("click", (e) => {
+    stopAll(e);
     const grupoTxt = selectNum.options[selectNum.selectedIndex].text;
     if (!selectNum.value) return alert("Selecciona un grupo");
     const iframe = document.getElementById("iframe-calendario");
@@ -1057,7 +1089,7 @@ window.cerrarCalendario = () => {
 };
 
 // —————————————————————————————————
-// Swap (actividad o día) + historial
+/** Swap (actividad o día) + historial **/
 // —————————————————————————————————
 async function handleSwapClick(type, info) {
   // 1) Selección origen
@@ -1128,7 +1160,7 @@ function resetSwap() {
 }
 
 // —————————————————————————————————
-// Editar fecha base (recalcula el rango) + historial
+/** Editar fecha base (recalcula el rango) + historial **/
 // —————————————————————————————————
 async function handleDateEdit(oldFecha) {
   const nueva1 = prompt("Nueva fecha para este día (YYYY-MM-DD):", oldFecha);
