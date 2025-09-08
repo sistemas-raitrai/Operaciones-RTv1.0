@@ -2229,6 +2229,62 @@ async function boot() {
     }
   });
 }
+
+// 11-bis) Export Excel de la pantalla principal (igual estilo que el modal)
+function exportMainToExcel(){
+  const piezas = [];
+
+  // KPIs (fila compacta)
+  piezas.push(`
+    <h2>KPIs</h2>
+    <table border="1">
+      <tr>
+        <th>Total CLP (convertido)</th>
+        <th>Proveedores incluidos</th>
+        <th>Destinos incluidos</th>
+        <th>Otros (texto)</th>
+      </tr>
+      <tr>
+        <td>${el('kpiTotCLP').textContent}</td>
+        <td>${el('kpiProv').textContent}</td>
+        <td>${el('kpiDest').textContent}</td>
+        <td>${el('kpiOtrosMon').textContent}</td>
+      </tr>
+    </table>
+    <br/>
+  `);
+
+  // Totales por destino
+  piezas.push(`<h2>Totales por destino</h2>${el('tblDestinos').outerHTML}<br/>`);
+
+  // Totales por proveedor (limpio la col. de acciones y flechas)
+  const provClon = el('tblProveedores').cloneNode(true);
+  provClon.querySelectorAll('.col-act').forEach(n => n.remove());
+  provClon.querySelectorAll('.sort-arrow').forEach(n => n.remove());
+  piezas.push(`<h2>Totales por proveedor</h2>${provClon.outerHTML}<br/>`);
+
+  // (Opcional) Hoteles si está visible
+  const secHot = el('secHoteles');
+  if (secHot && secHot.style.display !== 'none') {
+    piezas.push(`<h2>Totales por hotel</h2>${el('tblHoteles').outerHTML}<br/>`);
+  }
+
+  const html = `<!doctype html>
+  <html xmlns:o="urn:schemas-microsoft-com:office:office"
+        xmlns:x="urn:schemas-microsoft-com:office:excel"
+        xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="UTF-8" /></head>
+    <body>${piezas.join('\n')}</body>
+  </html>`;
+
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `finanzas_principal_${new Date().toISOString().slice(0,10)}.xls`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 // -------------------------------
 // 12) Recalcular + export CSV
 // -------------------------------
@@ -2403,7 +2459,7 @@ function bindUI() {
   const tcARS = el('tcARS'); if (tcARS) tcARS.addEventListener('change', recalcular);
 
   el('btnRecalcular').addEventListener('click', recalcular);
-  el('btnExportCSV').addEventListener('click', exportCSV);
+  el('btnExportCSV').addEventListener('click', exportMainToExcel);
 
   // ⬇️ NUEVO: guardar TC persistente
   const btnGuardarTC = el('btnGuardarTC');
