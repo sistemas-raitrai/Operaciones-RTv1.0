@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
-  <!-- Estilos mínimos para nuevos elementos (se integran con tu CSS general) -->
+  <!-- Estilos mínimos para nuevos elementos -->
   <style>
     .estado-revision { margin: 1rem 0; font-weight: 600; }
     .estado-revision .badge { padding: .25rem .6rem; border-radius: 999px; }
@@ -38,7 +38,7 @@
         <h2>PROGRAMA:<span id="grupo-title">–</span></h2>
       </div>
       <div class="column medium">
-        <label for="grupo-select-name">Nombre Grupo</label>
+        <label for="grupo-select-name">Nombre de Grupo</label>
         <select id="grupo-select-name"></select>
       </div>
       <div class="column short">
@@ -52,7 +52,7 @@
         <label>&nbsp;</label>
         <button id="btnAbrirCalendario" class="btn-add" style="background-color: green; color: white;">📅 Ver Calendario</button>
       </div>
-      <!-- NUEVO: Botón Alertas entre calendario y edición -->
+      <!-- Botón Alertas entre calendario y edición -->
       <div class="column medium">
         <label>&nbsp;</label>
         <button id="btnAlertas" class="btn-add" style="background-color:#f59e0b; color:white;">
@@ -78,7 +78,7 @@
       </div>
     </div>
 
-    <!-- NUEVO: Banda Estado Revisión -->
+    <!-- Banda Estado Revisión -->
     <div id="estado-revision" class="estado-revision">
       Estado revisión: <span id="estado-badge" class="badge badge-pendiente">PENDIENTE</span>
     </div>
@@ -143,7 +143,7 @@
     <iframe id="iframe-calendario" width="100%" height="600" style="border:none;"></iframe>
   </div>
 
-  <!-- NUEVO: Modal Alertas -->
+  <!-- Modal Alertas -->
   <div id="modal-alertas" class="modal" style="display:none;">
     <div class="modal-header">
       <h3>Alertas</h3>
@@ -168,7 +168,7 @@
       document.getElementById('encabezado').innerHTML = html;
       await import('./firebase-init.js');
       await import('./script.js');      // Header: usuario, reloj, botones
-      await import('./itinerario.js');  // Lógica de esta página (este archivo)
+      await import('./itinerario.js');  // Lógica de esta página
     })();
   </script>
 
