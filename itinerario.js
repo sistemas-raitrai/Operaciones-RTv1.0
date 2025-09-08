@@ -1,12 +1,14 @@
 // itinerario.js — Editor de Itinerarios (RT v1.0)
 // ======================================================================
-// Cambios relevantes en esta versión:
+// Novedades en esta versión:
 //  • Botón tri-estado por actividad (⭕/✅/❌) SOLO en edición (editMode).
 //  • Estado global del itinerario: OK / PENDIENTE / RECHAZADO.
 //  • Persistencia en grupo: grupos.{estadoRevisionItinerario}.
 //  • Botón "⚠️ Alertas (n)" + Panel de alertas (grupo actual y otros).
-//  • Historial para cambios de revisión; creación y cierre de alertas.
-//  • Se mantiene TODO lo funcional previo (render, plantillas, swap, etc.).
+//  • Motivo obligatorio al pasar a ❌ (rechazado) → queda en actividad y alerta.
+//  • Historial DETALLADO para todas las acciones: crear, editar, borrar,
+//    cambiar revisión, swap día/actividad, editar fecha base, cargar plantilla.
+//  • Se mantiene TODO lo funcional previo.
 // ======================================================================
 
 // —————————————————————————————————
@@ -16,15 +18,14 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, query, where, orderBy, getDocs,
-  doc, getDoc, updateDoc, addDoc, deleteDoc
+  collection, query, where, getDocs,
+  doc, getDoc, updateDoc, addDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
 // —————————————————————————————————
-// 0.1) Utilidades de normalización (MEJORA CLAVE)
-//     → evita fallos por mayúsculas, tildes o dobles espacios
+// 0.1) Utilidades de normalización (evita fallos por mayúsculas/tildes)
 // —————————————————————————————————
 const K = s => (s ?? '')
   .toString()
@@ -50,11 +51,10 @@ const btnGuardarTpl  = document.getElementById("btnGuardarTpl");
 const btnCargarTpl   = document.getElementById("btnCargarTpl");
 const selPlantillas  = document.getElementById("sel-plantillas");
 
-// —— NUEVO: Estado de revisión (banda)
-const estadoBox      = document.getElementById("estado-revision");
+// —— Estado revisión (banda)
 const estadoBadge    = document.getElementById("estado-badge");
 
-// —— NUEVO: Botón Alertas y badge
+// —— Botón Alertas y badge
 const btnAlertas     = document.getElementById("btnAlertas");
 const alertasBadge   = document.getElementById("alertasBadge");
 
@@ -72,21 +72,21 @@ const fldPax         = document.getElementById("m-pax");
 const fldNotas       = document.getElementById("m-notas");
 const btnCancel      = document.getElementById("modal-cancel");
 
-// —— NUEVO: Modal Alertas
+// —— Modal Alertas
 const modalAlertas       = document.getElementById("modal-alertas");
 const btnCloseAlertas    = document.getElementById("alertas-close");
 const listAlertasActual  = document.getElementById("alertas-actual");
 const listAlertasOtros   = document.getElementById("alertas-otros");
 
-let editData    = null;   // { fecha, idx, ...act }
-let choicesDias = null;   // Choices.js instance
-let choicesGrupoNum = null;  // Choices para selectNum (número de negocio)
-let choicesGrupoNom = null;  // Choices para selectName (nombre de grupo)
-let editMode     = false;  // indica si estamos en modo edición
-let swapOrigin   = null;   // punto de partida para intercambio
+let editData    = null;    // { fecha, idx, ...act }
+let choicesDias = null;    // Choices.js instance
+let choicesGrupoNum = null;
+let choicesGrupoNom = null;
+let editMode    = false;
+let swapOrigin  = null;    // selección inicial para intercambio
 
 // —————————————————————————————————
-// Función global para sumar numéricamente
+// Helper: suma pax en el modal
 // —————————————————————————————————
 function actualizarPax() {
   const a = parseInt(fldAdultos.value, 10) || 0;
@@ -95,6 +95,33 @@ function actualizarPax() {
 }
 fldAdultos.addEventListener('input', actualizarPax);
 fldEstudiantes.addEventListener('input', actualizarPax);
+
+// —————————————————————————————————
+// 1.1) Helper unificado para HISTORIAL
+// —————————————————————————————————
+async function logHist(grupoId, accion, extra = {}) {
+  try {
+    let g = extra._group;
+    if (!g) {
+      const s = await getDoc(doc(db,'grupos',grupoId));
+      g = s.exists() ? s.data() : {};
+    }
+    const base = {
+      grupoId,
+      numeroNegocio: g.numeroNegocio || grupoId,
+      nombreGrupo: (g.nombreGrupo || '').toString(),
+      accion,
+      usuario: (auth.currentUser && auth.currentUser.email) || '',
+      timestamp: new Date()
+    };
+    const payload = { ...base, ...extra };
+    delete payload._group; // no persistir helper
+    await addDoc(collection(db,'historial'), payload);
+  } catch (e) {
+    // evitar que un error de historial rompa el flujo de UI
+    console.warn('Historial no registrado:', e);
+  }
+}
 
 // —————————————————————————————————
 // 2) Autenticación y arranque
@@ -117,7 +144,7 @@ async function initItinerario() {
     `<option value="${g.id}">${(g.nombreGrupo||'').toString().toUpperCase()}</option>`
   ).join('');
   
-  // 2.2.1) Inicializa Choices.js (solo una vez)
+  // 2.2.1) Inicializa Choices.js
   if (!choicesGrupoNum) {
     choicesGrupoNum = new Choices(selectNum, {
       searchEnabled: true,
@@ -140,7 +167,7 @@ async function initItinerario() {
     choicesGrupoNom.setChoices(grupos.map(g=>({value: g.id, label: (g.nombreGrupo||'').toString().toUpperCase()})), 'value', 'label', true);
   }
   
-  // 2.3) Sincronizo ambos Choices.js
+  // 2.3) Sincronizo ambos selects
   choicesGrupoNum.passedElement.element.onchange = () => {
     choicesGrupoNom.setChoiceByValue(selectNum.value);
     renderItinerario();
@@ -157,9 +184,11 @@ async function initItinerario() {
   btnGuardarTpl.onclick = guardarPlantilla;
   btnCargarTpl.onclick  = cargarPlantilla;
 
-  // —— NUEVO: botón Alertas
-  btnAlertas.onclick    = openAlertasPanel;
-  btnCloseAlertas.onclick = () => { modalAlertas.style.display = "none"; document.getElementById("modal-backdrop").style.display="none"; };
+  btnAlertas.onclick      = openAlertasPanel;
+  btnCloseAlertas.onclick = () => { 
+    modalAlertas.style.display = "none"; 
+    document.getElementById("modal-backdrop").style.display="none"; 
+  };
 
   await cargarListaPlantillas();
 
@@ -172,7 +201,6 @@ const btnToggleEdit = document.getElementById("btnToggleEdit");
 btnToggleEdit.onclick = () => {
   editMode = !editMode;
   btnToggleEdit.textContent = editMode ? "🔒 Desactivar edición" : "🔓 Activar edición";
-  // deshabilitamos Quick-Add y modal para evitar conflictos
   document.getElementById("quick-add").style.display = editMode ? "none" : "";
   btnGuardarTpl.disabled = editMode;
   btnCargarTpl.disabled  = editMode;
@@ -180,7 +208,7 @@ btnToggleEdit.onclick = () => {
 };
 
 // —————————————————————————————————
-// Autocomplete de actividades (para inputs)
+// Autocomplete de actividades
 // —————————————————————————————————
 async function obtenerActividadesPorDestino(destino) {
   if (!destino) return [];
@@ -197,7 +225,7 @@ async function obtenerActividadesPorDestino(destino) {
       snap.docs.forEach(ds =>
         todas.push(((ds.data().nombre || ds.data().servicio || ds.id) || '').toString().toUpperCase())
       );
-    } catch (e) { /* subcolección inexistente: ignorar */ }
+    } catch (_) { /* subcolección inexistente: ignorar */ }
   }
   return [...new Set(todas)].sort();
 }
@@ -219,7 +247,7 @@ async function prepararCampoActividad(inputId, destino) {
 }
 
 // ======================================================
-// Catálogo de servicios por destino (ROBUSTO con alias + normalización)
+// Catálogo de servicios por destino (con alias + normalización)
 // ======================================================
 async function getServiciosMaps(destinoStr) {
   const partes = destinoStr
@@ -246,13 +274,13 @@ async function getServiciosMaps(destinoStr) {
           data.aliases.forEach(a => { const key = K(a); if (key) byName.set(key, pack); });
         }
       });
-    } catch (e) { /* destino no existente: ignorar */ }
+    } catch (_) { /* destino no existente: ignorar */ }
   }
   return { byId, byName, packs };
 }
 
 // ===================================================================
-// Sincroniza actividades con Servicios (si aplica)
+// Sincroniza actividades con Servicios (si aplica) y asegura campo revision
 // ===================================================================
 async function syncItinerarioServicios(grupoId, g, svcMaps) {
   const it = g.itinerario || {};
@@ -266,7 +294,6 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
       const res = { ...act };
       const keyName = K(res.actividad || '');
 
-      // si tiene servicioId válido, refrescar nombre/destino
       if (res.servicioId && svcMaps.byId.has(res.servicioId)) {
         const sv = svcMaps.byId.get(res.servicioId);
         if (res.actividad !== sv.nombre || res.servicioNombre !== sv.nombre || res.servicioDestino !== sv.destino) {
@@ -285,13 +312,9 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
           hayCambios = true;
         }
       }
-
-      // —— NUEVO: asegurar campo revision en memoria (no escribe todavía)
-      if (!res.revision) res.revision = 'pendiente';
-
+      if (!res.revision) res.revision = 'pendiente'; // asegurar revisión
       return res;
     });
-
     nuevo[f] = nuevoArr;
   }
 
@@ -302,27 +325,23 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
 }
 
 // —————————————————————————————————
-// NUEVO — helpers Estado Revisión + Alertas
+// Estado Revisión + Alertas (helpers)
 // —————————————————————————————————
-
-// Calcula estado global del itinerario a partir de todas las actividades
 function computeEstadoFromItinerario(IT) {
-  let any = false, anyPend = false, anyX = false, allOK = true;
+  let any = false, anyX = false, allOK = true;
   for (const f of Object.keys(IT||{})) {
     for (const act of (IT[f]||[])) {
       any = true;
       const r = act.revision || 'pendiente';
       if (r === 'rechazado') anyX = true;
       if (r !== 'ok') allOK = false;
-      if (r === 'pendiente') anyPend = true;
     }
   }
-  if (!any) return 'PENDIENTE';            // sin actividades ⇒ pendiente
-  if (anyX) return 'RECHAZADO';
+  if (!any) return 'PENDIENTE';
+  if (anyX)  return 'RECHAZADO';
   return allOK ? 'OK' : 'PENDIENTE';
 }
 
-// Setea la banda visual (no persiste)
 function setEstadoBadge(estado) {
   estadoBadge.textContent = estado;
   estadoBadge.classList.remove('badge-ok','badge-pendiente','badge-rechazado');
@@ -331,7 +350,16 @@ function setEstadoBadge(estado) {
   else estadoBadge.classList.add('badge-pendiente');
 }
 
-// Persiste estado en el doc de grupo si cambió y actualiza banda/alertas badge
+async function refreshAlertasBadge(grupoId) {
+  try {
+    const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
+    const pendientes = qs.docs.filter(d => !((d.data()||{}).visto)).length;
+    alertasBadge.textContent = String(pendientes);
+  } catch (_) {
+    alertasBadge.textContent = "0";
+  }
+}
+
 async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
   const gSnap = await getDoc(doc(db,'grupos',grupoId));
   const g = gSnap.data() || {};
@@ -344,26 +372,17 @@ async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
   await refreshAlertasBadge(grupoId);
 }
 
-// Cuenta alertas no vistas y refresca badge (n)
-async function refreshAlertasBadge(grupoId) {
-  try {
-    const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
-    const pendientes = qs.docs.filter(d => !((d.data()||{}).visto)).length;
-    alertasBadge.textContent = String(pendientes);
-  } catch (_) {
-    alertasBadge.textContent = "0";
-  }
-}
-
-// Abre panel alertas, lista del grupo y otros grupos
+// —————————————————————————————————
+// Panel de Alertas
+// —————————————————————————————————
 async function openAlertasPanel() {
   const grupoId = selectNum.value;
   if (!grupoId) return alert("Selecciona un grupo");
-  // Mostrar modal
+
   modalAlertas.style.display = "block";
   document.getElementById("modal-backdrop").style.display = "block";
 
-  // 1) Alertas del grupo actual
+  // 1) Alertas del grupo
   listAlertasActual.innerHTML = "Cargando…";
   try {
     const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
@@ -385,13 +404,12 @@ async function openAlertasPanel() {
           </div>
         </li>
       `).join('');
-      // bind marcar visto
       listAlertasActual.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
         btn.onclick = async () => {
           const id = btn.getAttribute('data-id');
           await updateDoc(doc(db,'grupos',grupoId,'alertas',id), { visto: true });
           await refreshAlertasBadge(grupoId);
-          openAlertasPanel(); // recarga panel
+          openAlertasPanel(); // recarga
         };
       });
     }
@@ -399,7 +417,7 @@ async function openAlertasPanel() {
     listAlertasActual.innerHTML = `<li class="empty">Error al cargar alertas.</li>`;
   }
 
-  // 2) Otros grupos con revisión pendiente (RECHAZADO) o alertas
+  // 2) Otros grupos con estado RECHAZADO
   listAlertasOtros.innerHTML = "Cargando…";
   try {
     const qsRech = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','RECHAZADO')));
@@ -421,9 +439,8 @@ async function openAlertasPanel() {
         </li>
       `).join('');
       listAlertasOtros.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
-        btn.onclick = (e) => {
+        btn.onclick = () => {
           const id = btn.getAttribute('data-id');
-          // Selecciona el grupo y renderiza
           choicesGrupoNum.setChoiceByValue(id);
           choicesGrupoNom.setChoiceByValue(id);
           modalAlertas.style.display = "none";
@@ -438,7 +455,7 @@ async function openAlertasPanel() {
 }
 
 // —————————————————————————————————
-// 3) renderItinerario(): crea grilla y pinta actividades (SINCRONIZADA)
+// 3) renderItinerario(): dibuja grilla (sincronizado)
 // —————————————————————————————————
 async function renderItinerario() {
   contItinerario.innerHTML = "";
@@ -449,10 +466,10 @@ async function renderItinerario() {
   // Título
   titleGrupo.textContent = (g.programa||"–").toUpperCase();
 
-  // Preparo autocomplete
+  // Autocomplete
   await prepararCampoActividad("qa-actividad", g.destino);
 
-  // Inicializo itinerario si no existe
+  // Inicializar itinerario si no existe
   if (!g.itinerario) {
     const rango = getDateRange(g.fechaInicio, g.fechaFin);
     const init  = {};
@@ -461,29 +478,29 @@ async function renderItinerario() {
     g.itinerario = init;
   }
 
-  // ====== traigo el catálogo y sincronizo ======
+  // Sincronizar con Servicios
   const svcMaps = await getServiciosMaps(g.destino || '');
   const syncRes = await syncItinerarioServicios(grupoId, g, svcMaps);
-  const IT = syncRes.it; // itinerario ya sincronizado
+  const IT = syncRes.it;
 
-  // —— NUEVO: refrescar estado y badge alertas
+  // Estado + alertas badge
   await updateEstadoRevisionAndBadge(grupoId, IT);
 
   // Fechas ordenadas
   const fechas = Object.keys(IT).sort((a,b)=> new Date(a)-new Date(b));
 
-  // Choices.js multi-select
+  // Choices días
   const opts = fechas.map((d,i)=>({ value: i, label: `Día ${i+1} – ${formatDateReadable(d)}` }));
   if (choicesDias) { choicesDias.clearChoices(); choicesDias.setChoices(opts,'value','label',false); }
   else { choicesDias = new Choices(qaDia, { removeItemButton: true, placeholderValue: 'Selecciona día(s)', choices: opts }); }
 
-  // Select para modal
+  // Select fecha del modal
   fldFecha.innerHTML = fechas.map((d,i)=>`<option value="${d}">Día ${i+1} – ${formatDateReadable(d)}</option>`).join('');
 
-  // Helper
+  // Helper botón
   function createBtn(icon, cls, title='') { const b = document.createElement("span"); b.className = cls; b.textContent = icon; b.title = title; b.style.cursor = "pointer"; return b; }
 
-  // Pinto cada día
+  // Pintar días
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement("section");
     sec.className     = "dia-seccion";
@@ -517,10 +534,10 @@ async function renderItinerario() {
     const original = IT[fecha] || [];
     const withIndex = original.map((act, originalIdx) => ({ act, originalIdx }));
 
-    // Ordenar solo visualmente por hora
+    // Ordenar visualmente por hora
     const sorted = withIndex.slice().sort((a, b) => ((a.act.horaInicio||'').localeCompare(b.act.horaInicio||'')));
 
-    // Pax centralizados del grupo
+    // Pax centrales
     const A = parseInt(g.adultos, 10) || 0;
     const E = parseInt(g.estudiantes, 10) || 0;
     const totalGrupo = (() => { const t = parseInt(g.cantidadgrupo, 10); return Number.isFinite(t) ? t : (A + E); })();
@@ -537,7 +554,7 @@ async function renderItinerario() {
           const key = K(act.actividad || ''); if (svcMaps.byName.has(key)) visibleName = svcMaps.byName.get(key).nombre;
         }
 
-        const revision = act.revision || 'pendiente';           // ⭕ por defecto
+        const revision = act.revision || 'pendiente';
         const iconRev  = revision === 'ok' ? '✅' : (revision === 'rechazado' ? '❌' : '⭕');
         const titleRev = revision === 'ok' ? 'Revisado (OK)' : (revision === 'rechazado' ? 'Rechazado' : 'Pendiente');
 
@@ -552,27 +569,33 @@ async function renderItinerario() {
           </div>
         `;
 
-        // Editar
         if (editMode) {
+          // Editar
           li.querySelector(".btn-edit").onclick = () => openModal({ ...act, fecha, idx: originalIdx }, true);
+
+          // Borrar
           li.querySelector(".btn-del").onclick  = async () => {
             if (!confirm("¿Eliminar actividad?")) return;
-            await addDoc(collection(db, 'historial'), {
-              numeroNegocio: grupoId,
-              accion:        'BORRAR ACTIVIDAD',
-              anterior:      original.map(a => a.actividad).join(' – '),
-              nuevo:         '',
-              usuario:       auth.currentUser.email,
-              timestamp:     new Date()
-            });
+            const beforeObj = original[originalIdx];
             const arr = original.slice();
             arr.splice(originalIdx, 1);
+
+            await logHist(grupoId, 'BORRAR ACTIVIDAD', {
+              _group: g,
+              fecha, idx: originalIdx,
+              anterior: beforeObj?.actividad || '',
+              nuevo: '',
+              antesObj: beforeObj || null,
+              despuesObj: null,
+              path: `itinerario.${fecha}[${originalIdx}]`
+            });
+
             await updateDoc(doc(db, 'grupos', grupoId), { [`itinerario.${fecha}`]: arr });
             await updateEstadoRevisionAndBadge(grupoId, { ...IT, [fecha]: arr });
             renderItinerario();
           };
 
-          // —— NUEVO: botón tri-estado de revisión
+          // Botón tri-estado
           const btnRev = createBtn(iconRev, "btn-revision", `Cambiar estado: ${titleRev}`);
           li.querySelector(".actions").appendChild(btnRev);
           btnRev.onclick = async () => {
@@ -590,11 +613,11 @@ async function renderItinerario() {
         ul.appendChild(li);
       });
     }
-  }); // fechas.forEach
+  });
 }
 
 // —————————————————————————————————
-// 4) quickAddActivity(): añade en varios días (ENLAZANDO SERVICIO)
+// 4) quickAddActivity(): añade en varios días (enlazando servicio)
 // —————————————————————————————————
 async function quickAddActivity() {
   const grupoId    = selectNum.value;
@@ -602,9 +625,7 @@ async function quickAddActivity() {
   const horaInicio = qaHoraInicio.value;
   const textRaw    = qaAct.value.trim();
   const textUpper  = textRaw.toUpperCase();
-  if (!selIdx.length || !textUpper) {
-    return alert("Selecciona día(s) y escribe la actividad");
-  }
+  if (!selIdx.length || !textUpper) return alert("Selecciona día(s) y escribe la actividad");
 
   const snapG   = await getDoc(doc(db,'grupos',grupoId));
   const g       = snapG.data()||{};
@@ -615,8 +636,7 @@ async function quickAddActivity() {
   const key = K(textUpper);
   const sv  = svcMaps.byName.get(key) || null;
 
-  const fechas = Object.keys(g.itinerario)
-    .sort((a,b)=> new Date(a)-new Date(b));
+  const fechas = Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
 
   for (let idx of selIdx) {
     const f   = fechas[idx];
@@ -633,24 +653,24 @@ async function quickAddActivity() {
       servicioId:       sv ? sv.id : null,
       servicioNombre:   sv ? sv.nombre : null,
       servicioDestino:  sv ? sv.destino : null,
-      // —— NUEVO: revisión inicial
       revision: 'pendiente'
     };
 
-    await addDoc(collection(db,'historial'), {
-      numeroNegocio: grupoId,
-      accion:        'CREAR ACTIVIDAD',
-      anterior:      '',
-      nuevo:         item.actividad,
-      usuario:       auth.currentUser.email,
-      timestamp:     new Date()
+    const newIdx = arr.length;
+    await logHist(grupoId, 'CREAR ACTIVIDAD', {
+      _group: g,
+      fecha: f, idx: newIdx,
+      anterior: '',
+      nuevo: item.actividad,
+      antesObj: null,
+      despuesObj: item,
+      path: `itinerario.${f}[${newIdx}]`
     });
 
     arr.push(item);
     await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${f}`]: arr });
   }
 
-  // Recalcular estado global
   const newSnap = await getDoc(doc(db,'grupos',grupoId));
   await updateEstadoRevisionAndBadge(grupoId, newSnap.data().itinerario || {});
   qaAct.value = "";
@@ -692,7 +712,7 @@ function closeModal() {
 }
 
 // —————————————————————————————————
-// 7) onSubmitModal(): guarda/actualiza + historial (ENLAZANDO SERVICIO)
+// 7) onSubmitModal(): guarda/actualiza + historial (enlazando servicio)
 // —————————————————————————————————
 async function onSubmitModal(evt) {
   evt.preventDefault();
@@ -730,26 +750,31 @@ async function onSubmitModal(evt) {
   const arr = (g.itinerario?.[fecha]||[]).slice();
 
   if (editData) {
-    const antes   = arr.map(x=>x.actividad).join(' – ');
-    arr[editData.idx] = { ...payloadBase, revision: editData.revision || 'pendiente' }; // conserva revisión
-    const despues = arr.map(x=>x.actividad).join(' – ');
-    await addDoc(collection(db,'historial'), {
-      numeroNegocio: grupoId,
-      accion:        'MODIFICAR ACTIVIDAD',
-      anterior:      antes,
-      nuevo:         despues,
-      usuario:       auth.currentUser.email,
-      timestamp:     new Date()
+    const beforeObj = arr[editData.idx];
+    const afterObj  = { ...payloadBase, revision: editData.revision || 'pendiente', rechazoMotivo: (beforeObj?.rechazoMotivo || '') };
+    arr[editData.idx] = afterObj;
+
+    await logHist(grupoId, 'MODIFICAR ACTIVIDAD', {
+      _group: g,
+      fecha, idx: editData.idx,
+      anterior: beforeObj?.actividad || '',
+      nuevo: afterObj.actividad || '',
+      antesObj: beforeObj || null,
+      despuesObj: afterObj || null,
+      path: `itinerario.${fecha}[${editData.idx}]`
     });
   } else {
-    arr.push({ ...payloadBase, revision: 'pendiente' });
-    await addDoc(collection(db,'historial'), {
-      numeroNegocio: grupoId,
-      accion:        'CREAR ACTIVIDAD',
-      anterior:      '',
-      nuevo:         payloadBase.actividad,
-      usuario:       auth.currentUser.email,
-      timestamp:     new Date()
+    const newIdx = arr.length;
+    const afterObj = { ...payloadBase, revision: 'pendiente' };
+    arr.push(afterObj);
+    await logHist(grupoId, 'CREAR ACTIVIDAD', {
+      _group: g,
+      fecha, idx: newIdx,
+      anterior: '',
+      nuevo: afterObj.actividad || '',
+      antesObj: null,
+      despuesObj: afterObj,
+      path: `itinerario.${fecha}[${newIdx}]`
     });
   }
 
@@ -765,7 +790,7 @@ async function onSubmitModal(evt) {
 
 // —————————————————————————————————
 // NUEVO — Toggle tri-estado revisión (⭕→✅→❌→⭕)
-// Maneja historial + alertas + recalcula estado global
+// con motivo obligatorio al pasar a ❌ y escritura en historial + alertas
 // —————————————————————————————————
 async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITfull) {
   const old = act.revision || 'pendiente';
@@ -774,37 +799,50 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
   const gSnap = await getDoc(doc(db,'grupos',grupoId));
   const g = gSnap.data() || {};
   const arr = (g.itinerario?.[fecha]||[]).slice();
-  const updated = { ...arr[idx], revision: next };
+
+  // Si vamos a RECHAZADO, pedir motivo (obligatorio)
+  let motivo = act.rechazoMotivo || '';
+  if (next === 'rechazado') {
+    motivo = prompt("Motivo del rechazo (obligatorio):", motivo || '') || '';
+    motivo = motivo.trim();
+    if (!motivo) return; // cancelar cambio si no hay motivo
+  }
+
+  // Construir objetos antes/después
+  const beforeObj = arr[idx] || {};
+  const updated = { ...beforeObj, revision: next };
+  if (next === 'rechazado') updated.rechazoMotivo = motivo;
+  else if (old === 'rechazado') updated.rechazoMotivo = ''; // limpiar motivo al salir de ❌
   arr[idx] = updated;
 
   // Historial
-  await addDoc(collection(db,'historial'), {
-    numeroNegocio: grupoId,
-    accion:        'CAMBIAR REVISION ACTIVIDAD',
-    anterior:      old,
-    nuevo:         next,
-    detalle:       `${visibleName} (${fecha})`,
-    usuario:       auth.currentUser.email,
-    timestamp:     new Date()
+  await logHist(grupoId, 'CAMBIAR REVISION ACTIVIDAD', {
+    _group: g,
+    fecha, idx,
+    anterior: old,
+    nuevo: next,
+    motivo: updated.rechazoMotivo || '',
+    detalle: `${visibleName} (${fecha})`,
+    antesObj: beforeObj || null,
+    despuesObj: updated || null,
+    path: `itinerario.${fecha}[${idx}]`
   });
 
   // Persistir cambio
   await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${fecha}`]: arr });
 
-  // Gestionar alertas:
-  //  - Si pasa a ❌ y antes no lo era → crear alerta (no vista)
-  //  - Si sale de ❌ → marcar alertas relacionadas como visto/resuelto
+  // Alertas:
   if (next === 'rechazado' && old !== 'rechazado') {
     await addDoc(collection(db,'grupos',grupoId,'alertas'), {
       fecha,
       actividad: visibleName,
-      motivo: '',             // puedes enriquecer a futuro
+      motivo: motivo,
       creadoPor: auth.currentUser.email,
       creadoEn: new Date(),
       visto: false
     });
   } else if (old === 'rechazado' && next !== 'rechazado') {
-    // Marcar alertas coincidentes como vistas
+    // marcar alertas relacionadas como vistas
     try {
       const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
       const toClose = qs.docs.filter(d => {
@@ -815,16 +853,15 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
     } catch(_) {}
   }
 
-  // Recalcular estado + badge alertas
+  // Recalcular estado + badge
   const ITnext = { ...(ITfull||{}), [fecha]: arr };
   await updateEstadoRevisionAndBadge(grupoId, ITnext);
 
-  // Re-pintar UI
   renderItinerario();
 }
 
 // —————————————————————————————————
-// Utilidades de fecha y hora
+// Utilidades fecha/hora
 // —————————————————————————————————
 function getDateRange(startStr, endStr) {
   const out = [];
@@ -889,6 +926,13 @@ async function guardarPlantilla() {
     createdAt: new Date(),
     dias: actividadesPorDia
   });
+
+  await logHist(grupoId, 'GUARDAR PLANTILLA ITINERARIO', {
+    _group: g,
+    anterior: '',
+    nuevo: nombre
+  });
+
   alert("Plantilla guardada");
   await cargarListaPlantillas();
 }
@@ -919,7 +963,9 @@ async function cargarPlantilla() {
   if (!tplSnap.exists()) return alert("Plantilla no encontrada");
 
   const diasPlantilla = tplSnap.data().dias || {};
-  const g   = grpSnap.data() || {};
+  const nombreTpl     = tplSnap.data().nombre || tplId;
+  const grupoId       = selectNum.value;
+  const g             = grpSnap.data() || {};
 
   const fechas = Object.keys(g.itinerario || {})
     .sort((a,b)=> new Date(a)-new Date(b));
@@ -934,6 +980,9 @@ async function cargarPlantilla() {
     "[Cancelar] para AGREGAR las de la plantilla al itinerario actual."
   );
 
+  // Conteo anterior
+  const countBefore = Object.values(g.itinerario||{}).reduce((acc,arr)=>acc+(arr?.length||0),0);
+
   const nuevoIt = {};
   if (reemplazar) {
     fechas.forEach((fecha, idx) => {
@@ -946,7 +995,7 @@ async function cargarPlantilla() {
         pasajeros:   (parseInt(g.adultos,10)||0) + (parseInt(g.estudiantes,10)||0),
         adultos:     parseInt(g.adultos,10) || 0,
         estudiantes: parseInt(g.estudiantes,10) || 0,
-        revision:    'pendiente' // —— NUEVO
+        revision:    'pendiente'
       }));
     });
   } else {
@@ -964,14 +1013,23 @@ async function cargarPlantilla() {
           pasajeros:   (parseInt(g.adultos,10)||0) + (parseInt(g.estudiantes,10)||0),
           adultos:     parseInt(g.adultos,10) || 0,
           estudiantes: parseInt(g.estudiantes,10) || 0,
-          revision:    'pendiente' // —— NUEVO
+          revision:    'pendiente'
         }))
       );
     });
   }
 
-  await updateDoc(doc(db, 'grupos', selectNum.value), { itinerario: nuevoIt });
-  await updateEstadoRevisionAndBadge(selectNum.value, nuevoIt);
+  // Conteo nuevo
+  const countAfter = Object.values(nuevoIt||{}).reduce((acc,arr)=>acc+(arr?.length||0),0);
+
+  await updateDoc(doc(db, 'grupos', grupoId), { itinerario: nuevoIt });
+  await logHist(grupoId, `CARGAR PLANTILLA (${reemplazar ? 'REEMPLAZAR' : 'AGREGAR'})`, {
+    _group: g,
+    anterior: `Actividades: ${countBefore}`,
+    nuevo:    `Actividades: ${countAfter}`,
+    detalle:  `Plantilla: ${nombreTpl}`
+  });
+  await updateEstadoRevisionAndBadge(grupoId, nuevoIt);
   renderItinerario();
 }
 
@@ -995,9 +1053,10 @@ window.cerrarCalendario = () => {
 };
 
 // —————————————————————————————————
-// Swap (actividad o día)
+// Swap (actividad o día) + historial
 // —————————————————————————————————
 async function handleSwapClick(type, info) {
+  // 1) Selección origen
   if (!swapOrigin) {
     swapOrigin = { type, info };
     const fechaKey = (typeof info === 'string') ? info : info.fecha;
@@ -1005,26 +1064,55 @@ async function handleSwapClick(type, info) {
     if (el) el.classList.add("swap-selected");
     return;
   }
+  // 2) Debe coincidir el tipo
   if (swapOrigin.type !== type) {
     alert("Debe intercambiar dos elementos del mismo tipo.");
     resetSwap();
     return;
   }
+
   const grupoId = selectNum.value;
   const snapG   = await getDoc(doc(db,'grupos',grupoId));
-  const it      = { ...(snapG.data().itinerario || {}) };
+  const g       = snapG.data() || {};
+  const it      = { ...(g.itinerario || {}) };
   
   if (type === "dia") {
     const f1 = (typeof swapOrigin.info === 'string') ? swapOrigin.info : swapOrigin.info.fecha;
     const f2 = (typeof info === 'string') ? info : info.fecha;
+
+    const antes = { f1, f2, a1Count: (it[f1]||[]).length, a2Count: (it[f2]||[]).length };
     [ it[f1], it[f2] ] = [ it[f2], it[f1] ];
+
+    await updateDoc(doc(db,'grupos',grupoId), { itinerario: it });
+    await logHist(grupoId, 'SWAP DIA', {
+      _group: g,
+      anterior: `${f1} ↔ ${f2} (antes a1:${antes.a1Count} a2:${antes.a2Count})`,
+      nuevo:    `${f1} ↔ ${f2} (después a1:${(it[f1]||[]).length} a2:${(it[f2]||[]).length})`
+    });
   } else {
+    // actividad ↔ actividad
     const { fecha: f1, idx: i1 } = swapOrigin.info;
     const { fecha: f2, idx: i2 } = info;
+
+    const a1 = (it[f1]||[])[i1];
+    const a2 = (it[f2]||[])[i2];
+    const antesStr = `${a1?.actividad || ''} ↔ ${a2?.actividad || ''}`;
+
     [ it[f1][i1], it[f2][i2] ] = [ it[f2][i2], it[f1][i1] ];
+
+    const despuesStr = `${it[f1][i1]?.actividad || ''} ↔ ${it[f2][i2]?.actividad || ''}`;
+
+    await updateDoc(doc(db,'grupos',grupoId), { itinerario: it });
+    await logHist(grupoId, 'SWAP ACTIVIDAD', {
+      _group: g,
+      anterior: antesStr,
+      nuevo:    despuesStr,
+      detalle:  `A: ${f1}[${i1}] ↔ B: ${f2}[${i2}]`,
+      antesObj: { A: a1 || null, B: a2 || null },
+      despuesObj: { A: it[f1][i1] || null, B: it[f2][i2] || null }
+    });
   }
   
-  await updateDoc(doc(db,'grupos',grupoId), { itinerario: it });
   await updateEstadoRevisionAndBadge(grupoId, it);
   resetSwap();
   renderItinerario();
@@ -1036,7 +1124,7 @@ function resetSwap() {
 }
 
 // —————————————————————————————————
-// Editar fecha base (recalcula el rango consecutivo)
+// Editar fecha base (recalcula el rango) + historial
 // —————————————————————————————————
 async function handleDateEdit(oldFecha) {
   const nueva1 = prompt("Nueva fecha para este día (YYYY-MM-DD):", oldFecha);
@@ -1064,35 +1152,19 @@ async function handleDateEdit(oldFecha) {
   fechas.forEach((fAnt, idx) => { newIt[newRango[idx]] = g.itinerario[fAnt]; });
 
   await updateDoc(doc(db, 'grupos', grupoId), { itinerario: newIt });
+  await logHist(grupoId, 'EDITAR FECHA BASE', {
+    _group: g,
+    anterior: fechas[0],
+    nuevo:    newRango[0],
+    detalle:  `Map: ${JSON.stringify(fechas.map((f,i)=>`${f}→${newRango[i]}`))}`
+  });
   await updateEstadoRevisionAndBadge(grupoId, newIt);
   renderItinerario();
 }
 
-// ===== MIGRACIÓN/UTILIDADES: sincronización y reparación masiva =====
+// ===== MIGRACIÓN/UTILIDADES (se mantienen) =====
 
-// 1) Sincronizar TODOS los itinerarios con Servicios
-window.syncAllItinerariosConServicios = async function(limit = 3){
-  const qs = await getDocs(collection(db,'grupos'));
-  const grupos = qs.docs.map(d => ({ id: d.id, ...d.data() }));
-  let ok=0, changed=0, fail=0;
-
-  async function worker(g) {
-    try {
-      const svcMaps = await getServiciosMaps(g.destino || '');
-      const res = await syncItinerarioServicios(g.id, g, svcMaps);
-      ok++; if (res.changed) changed++;
-      console.log(`✓ ${g.id} (${g.nombreGrupo || g.numeroNegocio || ''}) ${res.changed ? '— actualizado' : ''}`);
-    } catch(e) { fail++; console.error(`✗ ${g.id}`, e); }
-  }
-
-  const queue = grupos.slice();
-  const run = async () => { while(queue.length){ await worker(queue.shift()); } };
-  const n = Math.max(1, Math.min(limit, 6));
-  await Promise.all(Array.from({length:n}, run));
-  console.log(`FIN — procesados:${ok}, actualizados:${changed}, errores:${fail}`);
-};
-
-// 2) Índice global de servicios para reparación masiva
+// Índices de reparación global (sin cambios de lógica principal)
 const KNOWN_DESTINOS_REPAIR = ['BRASIL','BARILOCHE','SUR DE CHILE','SUR DE CHILE Y BARILOCHE','NORTE DE CHILE'];
 
 async function buildServiciosIndex(includeAll = true, destinosStr = '') {
@@ -1119,7 +1191,6 @@ async function buildServiciosIndex(includeAll = true, destinosStr = '') {
   return { byId, byName, packs };
 }
 
-// 3) Fuzzy simple (Jaccard por palabras)
 function fuzzyFindService(packs, rawName) {
   const tgt = K(rawName);
   const tset = new Set(tgt.split(' ').filter(w => w.length > 2));
@@ -1137,7 +1208,6 @@ function fuzzyFindService(packs, rawName) {
   return null;
 }
 
-// 4) Diagnóstico: actividades que no enganchan con Servicios
 window.diagnosticarServicios = async function() {
   const out = [];
   const snapG = await getDocs(collection(db, 'grupos'));
@@ -1163,7 +1233,6 @@ window.diagnosticarServicios = async function() {
   return out;
 };
 
-// 5) Reparación masiva (DRY RUN por defecto)
 window.repararServiciosAntiguos = async function(opts = {}) {
   const dryRun    = (opts.dryRun   !== undefined) ? opts.dryRun   : true;
   const includeAll= (opts.includeAll !== undefined) ? opts.includeAll : true;
@@ -1228,13 +1297,10 @@ window.repararServiciosAntiguos = async function(opts = {}) {
     if (!dryRun && cambiosEnGrupo) {
       await updateDoc(doc(db,'grupos',g.id), { itinerario: nuevoIt });
       try {
-        await addDoc(collection(db,'historial'), {
-          numeroNegocio: g.id,
-          accion:        'REPARAR ITINERARIO SERVICIOS',
-          anterior:      '',
-          nuevo:         `Se actualizaron actividades automáticamente`,
-          usuario:       (auth.currentUser && auth.currentUser.email) || 'AUTO',
-          timestamp:     new Date()
+        await logHist(g.id, 'REPARAR ITINERARIO SERVICIOS', {
+          _group: g,
+          anterior: '',
+          nuevo: 'Se actualizaron actividades automáticamente'
         });
       } catch(_) {}
       gruposMod++;
