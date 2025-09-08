@@ -872,7 +872,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     const tfoot = tbl.querySelector('tfoot') || tbl.createTFoot();
     tfoot.innerHTML = `
       <tr class="bold">
-        <th colspan="2" class="right">SUBTOTALES</th>
+        <th colspan="${descCols}" class="right">SUBTOTALES</th>
         ${visibleCurrencies.map(m => {
           const mm = m.toLowerCase();
           return `
