@@ -29,6 +29,23 @@
     .modal { max-width: 800px; }
 
     .rechazo-motivo { color:#b91c1c; font-size:.9rem; margin:.25rem 0 0; line-height:1.3; }
+    /* Asegura layout de acciones */
+    .activity-card .actions{
+      display:flex;
+      align-items:center;
+      gap:.4rem;
+    }
+    
+    /* Orden deseado */
+    .activity-card .actions .btn-revision,
+    .activity-card .actions .rev-static { order: 1; }  /* ⭕/✅/❌ */
+    
+    .activity-card .actions .btn-swap-act { order: 2; }  /* 🔄 */
+    
+    .activity-card .actions .btn-del      { order: 3; }  /* 🗑️ */
+    
+    .activity-card .actions .btn-edit     { order: 4; }  /* ✏️ */
+
   </style>
 </head>
 <body class="itinerario-page">
