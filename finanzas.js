@@ -2230,11 +2230,34 @@ async function boot() {
   });
 }
 
-// Export Excel de la pantalla principal (sin Tipo de cambio)
+// Export Excel de la pantalla principal (CON Tipo de cambio)
 function exportMainToExcel(){
   const piezas = [];
 
-  // KPIs
+  // === Tipo de cambio (encabezado) ===
+  const tcInfo = (el('tcInfo')?.textContent || 'Tipo de cambio — unidades por 1 USD');
+  const vCLP = el('tcUSD')?.value ?? '';
+  const vBRL = el('tcBRL')?.value ?? '';
+  const vARS = el('tcARS')?.value ?? '';
+
+  piezas.push(`
+    <h2>${tcInfo}</h2>
+    <table border="1">
+      <tr>
+        <th>1 USD → CLP</th>
+        <th>1 USD → BRL</th>
+        <th>1 USD → ARS</th>
+      </tr>
+      <tr>
+        <td align="right">${vCLP || '—'}</td>
+        <td align="right">${vBRL || '—'}</td>
+        <td align="right">${vARS || '—'}</td>
+      </tr>
+    </table>
+    <br/>
+  `);
+
+  // === KPIs ===
   piezas.push(`
     <h2>KPIs</h2>
     <table border="1">
@@ -2254,22 +2277,22 @@ function exportMainToExcel(){
     <br/>
   `);
 
-  // Totales por destino
+  // === Totales por destino ===
   piezas.push(`<h2>Totales por destino</h2>${el('tblDestinos').outerHTML}<br/>`);
 
-  // Totales por proveedor (sin columna de acciones ni flechas)
+  // === Totales por proveedor (sin acciones ni flechas) ===
   const provClon = el('tblProveedores').cloneNode(true);
   provClon.querySelectorAll('.col-act').forEach(n => n.remove());
   provClon.querySelectorAll('.sort-arrow').forEach(n => n.remove());
   piezas.push(`<h2>Totales por proveedor</h2>${provClon.outerHTML}<br/>`);
 
-  // Hoteles si existe sección visible
+  // === Hoteles (si visible) ===
   const secHot = el('secHoteles');
   if (secHot && secHot.style.display !== 'none') {
     piezas.push(`<h2>Totales por hotel</h2>${el('tblHoteles').outerHTML}<br/>`);
   }
 
-  // XLS “a la misma onda” del modal
+  // === Descargar XLS (misma onda que el modal) ===
   const html = `<!doctype html>
   <html xmlns:o="urn:schemas-microsoft-com:office:office"
         xmlns:x="urn:schemas-microsoft-com:office:excel"
