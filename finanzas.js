@@ -2393,35 +2393,79 @@ function recalcular() {
   const fechaDesde = el('fechaDesde').value || null;
   const fechaHasta = el('fechaHasta').value || null;
 
-  const filtro = getDestinoFilter();
-  const inclAct = el('inclActividades').checked;
-  const inclHot = el('inclHoteles').checked;
+  const filtro = getDestinoFilter();                 // selector visual de destinos
+  const inclAct = el('inclActividades').checked;     // check Actividades
+  const inclHot = el('inclHoteles').checked;         // check Hoteles
 
-  // include fns
-  const includeExactFn = (d) => filtro.all || filtro.tokens.size===0 || filtro.tokens.has(d);
-  const includeTokenFn = (d) => filtro.all || filtro.tokens.size===0 ||
-                                 [...filtro.tokens].some(tok => norm(d).includes(norm(tok)));
+  // ==== IMPORTANTE: los datos (KPIs, totales, etc.) NO se recortan por destino.
+  // Solo se filtran por fechas/año/checkboxes.
+  const includeAnyFn = () => true;
 
-  // KPIs, Destinos y Hoteles: EXACTO
-  LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, includeExactFn, inclAct);
-  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, includeExactFn, inclHot);
+  // Line items y hoteles SIN filtrar por destino (sí por fechas/año)
+  LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, includeAnyFn, inclAct);
+  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, includeAnyFn, inclHot);
 
   logDiagnostico(LINE_ITEMS);
 
   // KPIs
   renderKPIs(LINE_ITEMS, LINE_HOTEL);
 
-  // Tabla Destinos (con conversiones)
+  // Totales por destino (con conversiones) — sin recorte por selector de destino
   const mapDest = agruparPorDestino([...LINE_ITEMS, ...LINE_HOTEL]);
   renderTablaDestinos(mapDest);
 
-  // Proveedores: TOKEN + moneda nativa + columnas visibles por destino
-  const itemsProv = construirLineItems(fechaDesde, fechaHasta, includeTokenFn, inclAct);
-  const mapProvNative = agruparPorProveedorMonedaNativa(itemsProv);
-  const visibles = monedasVisiblesFromFilter(filtro);
-  renderTablaProveedoresMonedaNativa(mapProvNative, visibles);
+  // ======== PROVEEDORES (tabla derecha)
+  // 1) Índice proveedor->destinos/actividades según "Servicios"
+  const idxServ = indexProveedoresPorServicios();
 
-  // Hoteles sección (EXACTO)
+  // 2) Items de proveedores sin recorte por destino
+  const itemsProvAll = construirLineItems(fechaDesde, fechaHasta, includeAnyFn, inclAct);
+
+  // 3) Agregación nativa por proveedor (totales completos)
+  const mapProvNativeAll = agruparPorProveedorMonedaNativa(itemsProvAll);
+
+  // 4) Función: ¿este proveedor debe verse según el selector de destino?
+  function provVisible(slug){
+    if (filtro.all || filtro.tokens.size === 0) return true;  // “Todos los destinos”
+    const e = idxServ.get(slug);
+    if (!e) return false;
+    for (const d of e.destinos) if (filtro.tokens.has(d)) return true;
+    return false;
+  }
+
+  // 5) Construir el mapa “visual” (solo proveedores visibles),
+  //    pero manteniendo sus TOTALES COMPLETOS (todas sus filas).
+  const mapProvVisual = new Map();
+  for (const [slug, data] of mapProvNativeAll.entries()){
+    if (!provVisible(slug)) continue;
+    const e = idxServ.get(slug);
+
+    // Destinos del proveedor según Servicios (para mostrar en columna)
+    const destServicios = e ? [...e.destinos].sort((a,b)=>a.localeCompare(b)) : [];
+
+    // Actividades visibles: solo de los destinos seleccionados (o todas si está en “Todos”)
+    const acts = [];
+    if (e){
+      const considerar = (filtro.all || filtro.tokens.size===0)
+        ? destServicios
+        : destServicios.filter(d => filtro.tokens.has(d));
+      const set = new Set();
+      considerar.forEach(d => (e.actsByDest.get(d) || new Set()).forEach(a => set.add(a)));
+      acts.push(...[...set].sort((a,b)=>a.localeCompare(b)));
+    }
+
+    data.destinosServicios   = destServicios;  // para columna “Destino(s)”
+    data.actividadesVisibles = acts;           // para columna “Actividades”
+    mapProvVisual.set(slug, data);
+  }
+
+  // Monedas visibles según los destinos elegidos (como antes)
+  const visibles = monedasVisiblesFromFilter(filtro);
+
+  // Render de la tabla de proveedores (solo filtra visualmente, no los totales)
+  renderTablaProveedoresMonedaNativa(mapProvVisual, visibles);
+
+  // ======== SECCIÓN HOTELES
   const secH = el('secHoteles');
   if (LINE_HOTEL.length) {
     secH.style.display = '';
