@@ -745,88 +745,95 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
   const tb = tbl.querySelector('tbody');
   tb.innerHTML = '';
 
-  // Encabezado dinámico (ahora con ACTIVIDADES)
+  // Encabezado dinámico por moneda (T/A/S)
   const cols = [];
   visibleCurrencies.forEach(m => {
     cols.push({ key:`T_${m}`, label:`${m} TOTAL` });
     cols.push({ key:`A_${m}`, label:`${m} ABONO` });
     cols.push({ key:`S_${m}`, label:`${m} SALDO` });
   });
+
   thead.innerHTML = `
     <tr>
       <th class="col-prov">Proveedor</th>
       <th class="col-dest">Destino(s)</th>
-      <th class="col-acts">Actividades</th>
       ${
         cols.map(c => {
-          const [kind, cur] = c.key.split('_');
+          const [kind, cur] = c.key.split('_');   // T|A|S + moneda
           const tipo = kind === 'T' ? 'total' : kind === 'A' ? 'abono' : 'saldo';
           const m = cur.toLowerCase();
           return `<th class="right col-${m} ${tipo}">${c.label}</th>`;
         }).join('')
       }
       <th class="right col-items"># ítems</th>
+      <th class="right col-pax">PAX</th>
       <th class="col-act"></th>
     </tr>`;
 
-  // Filas
+  // Filas (con PAX total por proveedor SIN duplicar grupos)
   const rows = [];
-  mapProv.forEach((v, key) => rows.push({
-    slug: key,
-    nombre: v.nombre,
-    // usamos los destinos "por servicios" si vienen (si no, caemos a los de items)
-    destinosTexto: (v.destinosServicios ? v.destinosServicios.join(', ') : [...v.destinos].join(', ')),
-    acts: Array.isArray(v.actividadesVisibles) ? v.actividadesVisibles : [],
-    totals: v.totals,
-    count: v.count,
-    items: v.items
-  }));
+  mapProv.forEach((v, key) => {
+    // PAX total por proveedor: sumar 1 vez por grupo (toma el mayor entre paxReal y pax)
+    const paxByGroup = new Map();
+    for (const it of (v.items || [])) {
+      const gId = it.grupoId || it.numeroNegocio || it.identificador;
+      const p   = Number(it.paxReal || it.pax || 0);
+      if (!gId) continue;
+      paxByGroup.set(gId, Math.max(paxByGroup.get(gId) || 0, p));
+    }
+    const paxTot = [...paxByGroup.values()].reduce((a,b)=>a+b,0);
+
+    rows.push({
+      slug: key,
+      nombre: v.nombre,
+      destinos: [...v.destinos].join(', '),
+      totals: v.totals,
+      count: v.count,
+      paxTot,
+      items: v.items
+    });
+  });
+
+  // Orden sugerido por volumen total (suma de todas las monedas nativas)
   rows.sort((a,b)=>{
     const sa = (a.totals.CLP||0)+(a.totals.USD||0)+(a.totals.BRL||0)+(a.totals.ARS||0);
     const sb = (b.totals.CLP||0)+(b.totals.USD||0)+(b.totals.BRL||0)+(b.totals.ARS||0);
     return sb - sa;
   });
 
-  // Subtotales (pie)
-  const subtotales = { T:{}, A:{}, S:{} };
-  visibleCurrencies.forEach(m => { subtotales.T[m]=0; subtotales.A[m]=0; subtotales.S[m]=0; });
-
+  // Pintar filas
   for (const r of rows){
     const tr = document.createElement('tr');
     tr.setAttribute('data-prov', r.slug);
 
     let moneyTds = '';
     for (const c of cols){
-      const [kind, cur] = c.key.split('_');
+      const [kind, cur] = c.key.split('_'); // T|A|S + moneda
       const tipo = kind === 'T' ? 'total' : kind === 'A' ? 'abono' : 'saldo';
       const m = cur.toLowerCase();
 
-      if (kind === 'T'){
+      if (kind === 'T'){ // TOTAL nativo
         const val = r.totals[cur] || 0;
         moneyTds += `<td class="right col-${m} ${tipo}" data-key="${c.key}" data-raw="${val||0}">
                        ${val ? fmt(val) : '—'}
                      </td>`;
-      } else {
+      } else {           // ABONO / SALDO (se completan luego)
         moneyTds += `<td class="right col-${m} ${tipo}" data-key="${c.key}" data-raw="0">—</td>`;
       }
     }
 
-    const actsHTML = r.acts.length
-      ? `<div class="acts-list">${r.acts.map(a=>`<div>${a}</div>`).join('')}</div>`
-      : '—';
-
     tr.innerHTML = `
       <td class="col-prov"  title="${r.nombre}">${r.nombre}</td>
-      <td class="col-dest"  title="${r.destinosTexto}">${r.destinosTexto}</td>
-      <td class="col-acts"  title="${r.acts.join(', ')}">${actsHTML}</td>
+      <td class="col-dest"  title="${r.destinos}">${r.destinos}</td>
       ${moneyTds}
       <td class="right col-items">${fmt(r.count)}</td>
+      <td class="right col-pax">${fmt(r.paxTot)}</td>
       <td class="right col-act"><button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button></td>
     `;
     tb.appendChild(tr);
   }
 
-  // botones detalle
+  // Botones detalle
   tb.querySelectorAll('button[data-prov]').forEach(btn => {
     btn.addEventListener('click', () => {
       const slugProv = btn.getAttribute('data-prov');
@@ -834,19 +841,18 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     });
   });
 
-  // sorters (saltando columna acciones)
-  const colTypes = ['text','text','text', ...cols.map(()=> 'num'), 'num', 'text'];
-  const actionIdx = 3 + cols.length + 1; // última (cambia porque agregamos ACTIVIDADES)
+  // Sorters (saltando la columna de acciones)
+  const colTypes = ['text','text', ...cols.map(()=> 'num'), 'num','num','text'];
+  const actionIdx = 2 + cols.length + 2; // (prov,dest) + (todas monetarias) + (#items,PAX) + (acciones)
   makeSortable(tbl, colTypes, { skipIdx:[actionIdx] });
 
-  // Completar ABONOS y SALDOS por moneda + pie
+  // Completar ABONOS y SALDOS por moneda + pie de subtotales
   completarAbonosEnTablaProveedoresMonedas(mapProv, visibleCurrencies).then(result => {
     const tbody = tbl.querySelector('tbody');
-
     for (const [slugProv, agg] of Object.entries(result.porProv)){
       const tr = tbody.querySelector(`tr[data-prov="${slugProv}"]`);
       if (!tr) continue;
-      let ci = 3; // primera columna monetaria (ahora hay 3 no monetarias)
+      let ci = 2; // primera columna monetaria
       for (const m of visibleCurrencies){
         const tdA = tr.children[ci+1];
         const tdS = tr.children[ci+2];
@@ -861,7 +867,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     const tfoot = tbl.querySelector('tfoot') || tbl.createTFoot();
     tfoot.innerHTML = `
       <tr class="bold">
-        <th colspan="3" class="right">SUBTOTALES</th>
+        <th colspan="2" class="right">SUBTOTALES</th>
         ${visibleCurrencies.map(m => {
           const mm = m.toLowerCase();
           return `
@@ -870,7 +876,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
             <th class="right col-${mm} saldo">${result.subtotales.S[m] ? fmt(result.subtotales.S[m]) : '—'}</th>
           `;
         }).join('')}
-        <th colspan="2"></th>
+        <th colspan="3"></th>
       </tr>`;
   });
 }
