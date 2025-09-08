@@ -757,6 +757,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     <tr>
       <th class="col-prov">Proveedor</th>
       <th class="col-dest">Destino(s)</th>
+      <th class="col-acts">Actividades</th>
       ${
         cols.map(c => {
           const [kind, cur] = c.key.split('_');   // T|A|S + moneda
@@ -787,6 +788,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
       slug: key,
       nombre: v.nombre,
       destinos: [...v.destinos].join(', '),
+      acts: (v.actividadesVisibles || []),
       totals: v.totals,
       count: v.count,
       paxTot,
@@ -825,6 +827,9 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     tr.innerHTML = `
       <td class="col-prov"  title="${r.nombre}">${r.nombre}</td>
       <td class="col-dest"  title="${r.destinos}">${r.destinos}</td>
+      <td class="col-acts"  title="${r.acts.join(', ')}">
+        <div class="acts-list">${r.acts.map(a => `<div>${a}</div>`).join('') || '—'}</div>
+      </td>
       ${moneyTds}
       <td class="right col-items">${fmt(r.count)}</td>
       <td class="right col-pax">${fmt(r.paxTot)}</td>
@@ -842,8 +847,8 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
   });
 
   // Sorters (saltando la columna de acciones)
-  const colTypes = ['text','text', ...cols.map(()=> 'num'), 'num','num','text'];
-  const actionIdx = 2 + cols.length + 2; // (prov,dest) + (todas monetarias) + (#items,PAX) + (acciones)
+  const colTypes = ['text','text', 'text', ...cols.map(()=> 'num'), 'num','num','text'];
+  const actionIdx = 3 + cols.length + 2; // (prov,dest) + (todas monetarias) + (#items,PAX) + (acciones)
   makeSortable(tbl, colTypes, { skipIdx:[actionIdx] });
 
   // Completar ABONOS y SALDOS por moneda + pie de subtotales
