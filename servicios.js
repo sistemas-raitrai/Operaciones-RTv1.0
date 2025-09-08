@@ -251,6 +251,7 @@ function createSection(destFijo){
 
   // Estructura de filas en memoria
   const rows = []; // { inputs:[], ref?, checkbox:HTMLInputElement }
+  const serviceChanges = [];  // ← acumulamos cambios para propagar a itinerarios
 
   // ——— carga de datos existentes para destinos fijos
   if(!isOtro){
@@ -395,7 +396,7 @@ function createSection(destFijo){
     applySearch(); // si hay filtro activo
   }
 
-  // Guardar fila -> Firestore
+  // Guardar fila -> Firestore (y detectar cambios para propagar)
   async function commit(r, idx){
     // 1) Leer datos de la fila
     const data = {};
@@ -407,75 +408,110 @@ function createSection(destFijo){
   
     // 2) Validaciones mínimas
     const destino = (destActivo && !isOtro) ? destActivo : data.destino;
-    if(!destino)            throw new Error(`F${idx}: Falta Destino`);
-    if(!data.servicio)      throw new Error(`F${idx}: Falta Servicio`);
-    if(!data.proveedor)     throw new Error(`F${idx}: Falta Proveedor`);
+    if(!destino)        throw new Error(`F${idx}: Falta Destino`);
+    if(!data.servicio)  throw new Error(`F${idx}: Falta Servicio`);
+    if(!data.proveedor) throw new Error(`F${idx}: Falta Proveedor`);
   
     // Asegura la "carpeta" de destino
     await setDoc(doc(db,'Servicios',destino), { _created: true }, { merge: true });
   
-    // 3) Determinar si es UPDATE simple o "rename/move"
-    const targetId  = data.servicio; // el nuevo ID deseado (por nombre de servicio)
-    const newRef    = doc(db, 'Servicios', destino, 'Listado', targetId);
+    // Doc objetivo
+    const targetId = data.servicio; // usamos el nombre como id de doc
+    const newRef   = doc(db, 'Servicios', destino, 'Listado', targetId);
+  
+    // Helpers para visibilidad
+    const newVisible = _visibleSvc(data, targetId);
   
     if (r.ref) {
-      // Tenemos doc original → revisar si cambió ID o destino
+      // Teníamos doc original
       const parts = r.ref.path.split('/'); // Servicios/{dest}/Listado/{id}
       const oldDest = parts[1];
       const oldId   = parts[3];
-  
       const destChanged = oldDest !== destino;
       const idChanged   = oldId !== targetId;
   
-      if (!destChanged && !idChanged) {
-        // ✅ Mismo doc → actualizar en sitio
-        await setDoc(r.ref, data, { merge: true });
-      } else {
-      // 🔁 Cambió ID y/o destino → crear nuevo y borrar el viejo, preservando historial/aliases
-      // Lee el doc viejo para capturar nombres/aliases previos
+      // Leemos el doc viejo (para comparar nombre visible y aliases previos)
       let oldData = null;
       try {
         const oldSnap = await getDoc(r.ref);
         if (oldSnap.exists()) oldData = oldSnap.data();
-      } catch (_) { /* ignora */ }
-      
-      // Construir set de aliases en MAYÚSCULAS
-      const aliasSet = new Set(
-        (oldData?.aliases || []).map(a => (a || '').toString().toUpperCase())
-      );
-      
-      // Visible anterior: nombre || servicio || oldId
-      const oldVisible = ((oldData?.nombre || oldData?.servicio || oldId) || '')
-        .toString().toUpperCase();
-      const oldIdUpper = (oldId || '').toString().toUpperCase();
-      if (oldVisible) aliasSet.add(oldVisible);
-      if (oldIdUpper) aliasSet.add(oldIdUpper);
-      
-      // Visible nuevo para no duplicarlo en aliases
-      const newVisible = ((data.nombre || data.servicio || targetId) || '')
-        .toString().toUpperCase();
-      aliasSet.delete(newVisible);
-      
-      // Mezcla de datos nuevos + historial
-      const merged = {
-        ...data,
-        aliases: Array.from(aliasSet),
-        prevIds: Array.from(new Set([...(oldData?.prevIds || []), oldId]))
-      };
-      
-      // Crea/actualiza el doc nuevo y luego borra el viejo
-      await setDoc(newRef, merged, { merge: true });
-      try { await deleteDoc(r.ref); } catch (_) { /* ignora */ }
-      
-      r.ref = newRef; // importante para futuras ediciones
+      } catch(_) {}
+      const oldVisible = _visibleSvc(oldData, oldId);
+  
+      if (!destChanged && !idChanged) {
+        // ✅ Mismo doc → actualizar en sitio
+        // Si cambió el "visible", guardamos alias viejo para no perder referencias antiguas
+        const willAddAlias = oldVisible && oldVisible !== newVisible;
+        const merged = willAddAlias
+          ? { ...data, aliases: Array.from(new Set([...(oldData?.aliases || []), oldVisible])) }
+          : data;
+  
+        await setDoc(r.ref, merged, { merge: true });
+  
+        if (willAddAlias) {
+          serviceChanges.push({
+            destino,
+            oldId: oldId,
+            newId: targetId,
+            oldVisible,
+            newVisible,
+            aliases: [oldVisible]
+          });
+        } else {
+          // Incluso si no cambió el visible, registrar cambio permite refrescar textos por si otros campos afectan
+          serviceChanges.push({
+            destino, oldId: targetId, newId: targetId,
+            oldVisible: newVisible, newVisible,
+            aliases: (oldData?.aliases || [])
+          });
+        }
+      } else {
+        // 🔁 Cambió ID y/o destino → crear nuevo y borrar el viejo, preservando historial/aliases
+        const aliasSet = new Set((oldData?.aliases || []).map(a => _U(a)));
+        const oldIdU   = _U(oldId);
+        const oldVisU  = _U(oldVisible);
+        if (oldIdU)   aliasSet.add(oldIdU);
+        if (oldVisU)  aliasSet.add(oldVisU);
+        aliasSet.delete(newVisible); // no dupliques el nuevo visible
+  
+        const merged = {
+          ...data,
+          aliases: Array.from(aliasSet),
+          prevIds: Array.from(new Set([...(oldData?.prevIds || []), oldId]))
+        };
+  
+        await setDoc(newRef, merged, { merge: true });
+        try { await deleteDoc(r.ref); } catch(_) {}
+  
+        // Registrar cambio para propagación
+        serviceChanges.push({
+          destino,
+          oldId,
+          newId: targetId,
+          oldVisible: oldVisible || oldId,
+          newVisible,
+          aliases: Array.from(aliasSet)
+        });
+  
+        r.ref = newRef; // importante para futuras ediciones
       }
     } else {
-      // Fila nueva (sin ref original)
-      await setDoc(newRef, data);
+      // Fila nueva
+      await setDoc(newRef, data, { merge: true });
       r.ref = newRef;
+  
+      // Registrar alta para sincronizar textos por servicioId
+      serviceChanges.push({
+        destino,
+        oldId: targetId,
+        newId: targetId,
+        oldVisible: newVisible,
+        newVisible,
+        aliases: []
+      });
     }
   }
-
+  
   async function saveAll(){
     const errs = [];
     for(let i=0;i<rows.length;i++){
@@ -483,9 +519,16 @@ function createSection(destFijo){
       catch(e){ errs.push(e.message) }
     }
     updateRowNumbers();
+  
+    // ⬇️ NUEVO: propagar si hay cambios
+    if (serviceChanges.length){
+      await propagarCambiosASItinerarios(serviceChanges, { ask: true });
+      serviceChanges.length = 0; // limpiar
+    }
+  
     alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Todos guardados');
   }
-
+  
   async function saveSelected(){
     const sel = rows.filter(r=>r.checkbox.checked);
     if(sel.length === 0){
@@ -499,6 +542,13 @@ function createSection(destFijo){
       catch(e){ errs.push(e.message) }
     }
     updateRowNumbers();
+  
+    // ⬇️ NUEVO: propagar si hay cambios
+    if (serviceChanges.length){
+      await propagarCambiosASItinerarios(serviceChanges, { ask: true });
+      serviceChanges.length = 0; // limpiar
+    }
+  
     alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Seleccionadas guardadas');
   }
 
@@ -591,6 +641,82 @@ async function exportAllSections(){
     });
     alert('No se pudo cargar XLSX. Se exportó un CSV por sección.');
   }
+}
+
+/* ======================================================
+   Reparación masiva: propagar cambios de Servicios → Itinerarios
+   ====================================================== */
+function _U(s){ return (s ?? '').toString().trim().toUpperCase(); }
+function _visibleSvc(data, id){ return _U(data?.nombre || data?.servicio || id); }
+
+/**
+ * Aplica a TODOS los grupos los cambios de servicios detectados.
+ * changes: [{ destino, oldId, newId, oldVisible, newVisible, aliases[] }]
+ */
+async function propagarCambiosASItinerarios(changes, { ask = true } = {}) {
+  if (!Array.isArray(changes) || changes.length === 0) return;
+
+  if (ask) {
+    const ok = confirm(
+      `Se detectaron ${changes.length} servicio(s) cambiado(s).\n` +
+      `¿Propagar los cambios a todos los itinerarios ahora?`
+    );
+    if (!ok) return;
+  }
+
+  const gSnap = await getDocs(collection(db, 'grupos'));
+  let gruposMod = 0, actsMod = 0;
+
+  for (const d of gSnap.docs) {
+    const g = d.data() || {};
+    const it = g.itinerario || {};
+    if (!it || Object.keys(it).length === 0) continue;
+
+    let touched = false;
+    const nuevo = {};
+    for (const f of Object.keys(it)) {
+      const arr = Array.isArray(it[f]) ? it[f] : [];
+      const out = arr.map(a0 => {
+        const A = { ...a0 };
+        const actName = _U(A.actividad);
+        const actId   = _U(A.servicioId);
+
+        for (const ch of changes) {
+          const newId   = _U(ch.newId);
+          const oldId   = _U(ch.oldId || '');
+          const newName = _U(ch.newVisible);
+          const oldName = _U(ch.oldVisible || '');
+          const aliases = (ch.aliases || []).map(_U);
+
+          const hitId  = actId && (actId === newId || (oldId && actId === oldId));
+          const hitTxt = !A.servicioId && (actName === oldName || aliases.includes(actName));
+
+          if (hitId || hitTxt) {
+            A.servicioId      = ch.newId;
+            A.servicioNombre  = ch.newVisible;
+            A.servicioDestino = ch.destino;
+            A.actividad       = ch.newVisible;   // reflejar nombre vigente
+            touched = true;
+            actsMod++;
+            break;
+          }
+        }
+        return A;
+      });
+      nuevo[f] = out;
+    }
+
+    if (touched) {
+      await updateDoc(doc(db, 'grupos', d.id), { itinerario: nuevo });
+      gruposMod++;
+    }
+  }
+
+  alert(
+    'Propagación completa.\n' +
+    `Grupos modificados: ${gruposMod}\n` +
+    `Actividades actualizadas: ${actsMod}`
+  );
 }
 
 /* =====================================================
