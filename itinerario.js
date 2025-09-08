@@ -556,6 +556,9 @@ async function renderItinerario() {
 
         const revision = act.revision || 'pendiente';
         const iconRev  = revision === 'ok' ? '✅' : (revision === 'rechazado' ? '❌' : '⭕');
+        const motivoHTML = (revision === 'rechazado' && (act.rechazoMotivo || '').trim())
+          ? `<p class="rechazo-motivo">❌ Motivo: ${(act.rechazoMotivo || '').trim()}</p>`
+          : '';
         const titleRev = revision === 'ok' ? 'Revisado (OK)' : (revision === 'rechazado' ? 'Rechazado' : 'Pendiente');
 
         const li = document.createElement("li");
@@ -564,6 +567,7 @@ async function renderItinerario() {
           <h4>${act.horaInicio || '--:--'} – ${act.horaFin || '--:--'}</h4>
           <p><strong>${visibleName}</strong></p>
           <p>👥 ${totalGrupo} pax (A:${A} E:${E})</p>
+          ${motivoHTML}
           <div class="actions">
             ${editMode ? `<button class="btn-edit">✏️</button><button class="btn-del">🗑️</button>` : `<span class="rev-static" title="${titleRev}">${iconRev}</span>`}
           </div>
