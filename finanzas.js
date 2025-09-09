@@ -769,7 +769,8 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
           return `<th class="right col-${m} ${tipo}">${c.label}</th>`;
         }).join('')
       }
-      <th class="right col-items"># ítems</th>
+      <th class="right col-items">Cargados</th>
+      <th class="right col-grupos">Grupos</th>
       <th class="right col-pax">PAX</th>
       <th class="col-act"></th>
     </tr>`;
@@ -786,7 +787,8 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
       paxByGroup.set(gId, Math.max(paxByGroup.get(gId) || 0, p));
     }
     const paxTot = [...paxByGroup.values()].reduce((a,b)=>a+b,0);
-
+    const gruposCount = paxByGroup.size;
+    
     rows.push({
       slug: key,
       nombre: v.nombre,
@@ -794,6 +796,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
       acts: (v.actividadesVisibles || []),
       totals: v.totals,
       count: v.count,
+      gruposCount,
       paxTot,
       items: v.items
     });
@@ -835,6 +838,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
       </td>
       ${moneyTds}
       <td class="right col-items">${fmt(r.count)}</td>
+      <td class="right col-grupos">${fmt(r.gruposCount)}</td>
       <td class="right col-pax">${fmt(r.paxTot)}</td>
       <td class="right col-act"><button class="btn secondary" data-prov="${r.slug}">VER DETALLE</button></td>
     `;
@@ -850,8 +854,8 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
   });
 
   // Sorters (saltando la columna de acciones)
-  const colTypes = ['text','text', 'text', ...cols.map(()=> 'num'), 'num','num','text'];
-  const actionIdx = 3 + cols.length + 2; // (prov,dest) + (todas monetarias) + (#items,PAX) + (acciones)
+  const colTypes = ['text','text','text', ...cols.map(()=> 'num'), 'num','num','num','text'];
+  const actionIdx = 3 + cols.length + 3; // (prov,dest,acts) + (monetarias) + (Cargados,Grupos,PAX) + (acciones)
   makeSortable(tbl, colTypes, { skipIdx:[actionIdx] });
 
   // Completar ABONOS y SALDOS por moneda + pie de subtotales
@@ -884,7 +888,7 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
             <th class="right col-${mm} saldo">${result.subtotales.S[m] ? fmt(result.subtotales.S[m]) : '—'}</th>
           `;
         }).join('')}
-        <th colspan="3"></th>
+        <th colspan="4"></th>
       </tr>`;
   });
 }
