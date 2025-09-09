@@ -392,6 +392,15 @@
       min-width: 340px;
       max-width: 560px;
     }
+
+    /* Asegura que se vean los dos botones en la última columna del SALDO */
+    #tblSaldo th:last-child,
+    #tblSaldo td:last-child{
+      overflow: visible !important;
+      white-space: nowrap !important;
+      text-overflow: clip !important;
+    }
+    #tblSaldo .btn + .btn{ margin-left:.35rem; }
   </style>
 
 </head>
