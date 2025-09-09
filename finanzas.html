@@ -143,6 +143,25 @@
     
     /* opcional: que el texto “Tipo de cambio…” también vaya debajo a todo lo ancho */
     #filtersRight .tc-info { grid-column: 1 / -1; }
+
+    /* La fila de TC ocupa todo el ancho del grid y baja un poquito */
+    #filtersRight .tc-row{
+      grid-column: 1 / -1;   /* ya la hace de izquierda a derecha */
+      margin-top: .6rem;     /* espacio con “Actividades/Hoteles” */
+      gap: 12px;             /* más aire entre CLP/BRL/ARS e inputs */
+    }
+    
+    /* El texto “Tipo de cambio…” también a todo lo ancho y con respiro */
+    #filtersRight .tc-info{
+      grid-column: 1 / -1;
+      margin-top: .35rem;
+    }
+    
+    /* Un poco más de separación general entre filas/columnas del panel derecho */
+    #filtersRight .controls{
+      row-gap: 14px;         /* antes 10px */
+      column-gap: 24px;      /* antes 16px */
+    }
         
     /* ====== RESPONSIVE ====== */
     @media (max-width: 1100px){
