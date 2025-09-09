@@ -712,6 +712,7 @@ async function renderItinerario() {
 
   // —— Hoteles por día para este grupo ——
   const hotelByDay = await buildHotelDayMapForGroup(grupoId);
+  const lastFecha = fechas[fechas.length - 1] || null;
 
   // Choices días
   const opts = fechas.map((d,i)=>({ value: i, label: `Día ${i+1} – ${formatDateReadable(d)}` }));
@@ -789,13 +790,12 @@ async function renderItinerario() {
       btnHardDay.onclick   = (e) => { stopAll(e); handleRejectDayHard(fecha); };
     }
 
-    // —— Caja HOTEL (bajo el título del día) ——
+    // —— Caja ALOJAMIENTO (bajo el título del día) ——
     {
-      const h3 = sec.querySelector("h3");
       const ulAnchor = sec.querySelector(".activity-list");
     
       const asigns = hotelByDay[fecha] || [];
-      // Priorizar confirmados; si no hay, usar pendientes/otros
+      // Prioriza confirmados; si no hay, muestra pendientes/otros
       const prefer = asigns.filter(a => (a.status || '').toLowerCase() === 'confirmado');
       const use    = prefer.length ? prefer : asigns;
     
@@ -806,14 +806,23 @@ async function renderItinerario() {
       }))];
     
       const box = document.createElement('div');
-      box.className = 'hotel-box';
+      box.className = 'hotel-box'; // puedes mantener el estilo existente
       box.innerHTML = `
-        <div><strong>HOTEL:</strong></div>
-        ${ names.length
+        <div><strong>ALOJAMIENTO:</strong></div>
+        ${
+          names.length
             ? names.map(n => `<div>– ${n}</div>`).join('')
-            : `<div>– (SIN ASIGNACIÓN)</div>` }
+            : (fecha === lastFecha
+                ? `<div>– ÚLTIMO DÍA DEL VIAJE</div>`
+                : `<div>– (SIN ASIGNACIÓN)</div>`
+              )
+        }
       `;
     
+      // Insertar inmediatamente debajo del título, antes de la lista
+      sec.insertBefore(box, ulAnchor);
+    }
+
       // Insertar inmediatamente debajo del título, antes de la lista
       sec.insertBefore(box, ulAnchor);
     }
