@@ -137,7 +137,13 @@
     
     /* micro-ajuste de la cajita del checkbox */
     #filtersRight input[type="checkbox"]{ transform: translateY(1px); }
+
+    /* que los TC usen las dos columnas del grid */
+    #filtersRight .tc-row { grid-column: 1 / -1; }
     
+    /* opcional: que el texto “Tipo de cambio…” también vaya debajo a todo lo ancho */
+    #filtersRight .tc-info { grid-column: 1 / -1; }
+        
     /* ====== RESPONSIVE ====== */
     @media (max-width: 1100px){
       #filtersWrap{ grid-template-columns: 1fr; }      /* apila las dos cajas */
