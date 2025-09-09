@@ -1692,7 +1692,7 @@ function ensurePopoverStyles(){
 }
 
 function showListPopover(target, title, items, opts={}) {
-  ensurePopoverStyles();
+  ensurePopoverStyles();   // usa la que ya existe
   hideListPopover();
 
   const searchable = !!opts.search;
@@ -1729,14 +1729,13 @@ function showListPopover(target, title, items, opts={}) {
     input.focus();
   }
 
-  // Cerrar al hacer click fuera
   setTimeout(() => {
     const h = (e) => {
       if (!div.contains(e.target)) { document.removeEventListener('mousedown', h); hideListPopover(); }
     };
     document.addEventListener('mousedown', h);
   }, 0);
-} // <— ESTA llave faltaba
+}
 
 // Cierra cualquier popover abierto
 function hideListPopover(){
@@ -1745,7 +1744,6 @@ function hideListPopover(){
 }
 
 // Enlaza celdas con data-pop-items a showListPopover()
-// Llama una sola vez por celda (evita listeners duplicados tras re-render).
 function bindPopTargets(root = document){
   const nodes = root.querySelectorAll('[data-pop-items]');
   nodes.forEach(n => {
