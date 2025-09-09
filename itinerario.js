@@ -97,6 +97,7 @@ let choicesGrupoNum = null;
 let choicesGrupoNom = null;
 let editMode    = false;
 let swapOrigin  = null;    // selección inicial para intercambio
+const hotelCache = new Map(); // hotelId -> { nombre, destino }
 
 // —————————————————————————————————
 // Helper: suma pax en el modal
@@ -624,6 +625,59 @@ try {
 // —————————————————————————————————
 /** 3) renderItinerario(): dibuja grilla (sincronizado) **/
 // —————————————————————————————————
+
+// —————————————————————————————————
+// HOTELS: asignaciones por día para el grupo
+// —————————————————————————————————
+
+// Genera lista de días ISO en el rango [ini, fin) (excluye checkOut)
+function isoDaysHalfOpen(checkInISO, checkOutISO) {
+  const out = [];
+  if (!checkInISO || !checkOutISO) return out;
+  const start = new Date(checkInISO + 'T00:00:00');
+  const end   = new Date(checkOutISO + 'T00:00:00');
+  for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
+    out.push(d.toISOString().slice(0,10));
+  }
+  return out;
+}
+
+// Carga nombres de hoteles faltantes al cache
+async function loadHotelsByIds(ids) {
+  const missing = [...ids].filter(id => id && !hotelCache.has(id));
+  if (!missing.length) return;
+  for (const hid of missing) {
+    try {
+      const snap = await getDoc(doc(db, 'hoteles', hid));
+      const data = snap.data() || {};
+      hotelCache.set(hid, { nombre: (data.nombre || '').toString(), destino: (data.destino || '').toString() });
+    } catch (_) {
+      hotelCache.set(hid, { nombre: '', destino: '' });
+    }
+  }
+}
+
+// Devuelve un mapa { 'YYYY-MM-DD': [ asignacionesDeEseDía ] } para el grupo
+async function buildHotelDayMapForGroup(grupoId) {
+  const qs = await getDocs(query(collection(db, 'hotelAssignments'), where('grupoId', '==', grupoId)));
+  const assigns = qs.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  // Pre-cargar nombres de hoteles usados por este grupo
+  const hotelIds = new Set(assigns.map(a => a.hotelId).filter(Boolean));
+  await loadHotelsByIds(hotelIds);
+
+  // Expandir a días
+  const dayMap = {};
+  for (const a of assigns) {
+    const days = isoDaysHalfOpen(a.checkIn, a.checkOut);
+    for (const iso of days) {
+      if (!dayMap[iso]) dayMap[iso] = [];
+      dayMap[iso].push(a);
+    }
+  }
+  return dayMap;
+}
+
 async function renderItinerario() {
   contItinerario.innerHTML = "";
   const grupoId = selectNum.value;
@@ -655,6 +709,9 @@ async function renderItinerario() {
 
   // Fechas ordenadas
   const fechas = Object.keys(IT).sort((a,b)=> new Date(a)-new Date(b));
+
+  // —— Hoteles por día para este grupo ——
+  const hotelByDay = await buildHotelDayMapForGroup(grupoId);
 
   // Choices días
   const opts = fechas.map((d,i)=>({ value: i, label: `Día ${i+1} – ${formatDateReadable(d)}` }));
@@ -732,6 +789,35 @@ async function renderItinerario() {
       btnHardDay.onclick   = (e) => { stopAll(e); handleRejectDayHard(fecha); };
     }
 
+    // —— Caja HOTEL (bajo el título del día) ——
+    {
+      const h3 = sec.querySelector("h3");
+      const ulAnchor = sec.querySelector(".activity-list");
+    
+      const asigns = hotelByDay[fecha] || [];
+      // Priorizar confirmados; si no hay, usar pendientes/otros
+      const prefer = asigns.filter(a => (a.status || '').toLowerCase() === 'confirmado');
+      const use    = prefer.length ? prefer : asigns;
+    
+      const names = [...new Set(use.map(a => {
+        const h  = hotelCache.get(a.hotelId) || {};
+        const nm = (h.nombre || '').toString().toUpperCase() || '(SIN NOMBRE)';
+        return (a.status && a.status.toLowerCase() !== 'confirmado') ? `${nm} (PENDIENTE)` : nm;
+      }))];
+    
+      const box = document.createElement('div');
+      box.className = 'hotel-box';
+      box.innerHTML = `
+        <div><strong>HOTEL:</strong></div>
+        ${ names.length
+            ? names.map(n => `<div>– ${n}</div>`).join('')
+            : `<div>– (SIN ASIGNACIÓN)</div>` }
+      `;
+    
+      // Insertar inmediatamente debajo del título, antes de la lista
+      sec.insertBefore(box, ulAnchor);
+    }
+    
     contItinerario.appendChild(sec);
     sec.querySelector(".btn-add").onclick = (e)=> { stopAll(e); openModal({ fecha }, false); };
 
