@@ -1672,8 +1672,26 @@ function ensurePopoverStyles(){
   document.head.appendChild(st);
 }
 
+// === POPUP/POPOVER simple para listas ===
+function ensurePopoverStyles(){
+  if (document.getElementById('pop-list-styles')) return;
+  const css = `
+    .pop-list{position:absolute;z-index:9999;background:#111;color:#fff;border-radius:8px;
+      padding:.6rem .8rem;max-width:480px;max-height:320px;overflow:auto;box-shadow:0 8px 18px rgba(0,0,0,.35);}
+    .pop-list h5{margin:.2rem 0 .4rem;font-weight:700;font-size:.95rem;}
+    .pop-list ol{margin:.4rem 0 0;padding-left:1.2rem;font-size:.9rem;}
+    .pop-list .muted{opacity:.85}
+    .pop-list a.close{position:sticky; top:0; float:right; color:#bbb; text-decoration:none; margin-left:.5rem;}
+    .pop-target{cursor:pointer;text-decoration:underline dotted;}
+    .pop-search{width:100%; box-sizing:border-box; margin:.25rem 0 .35rem; padding:.35rem .5rem;
+      border-radius:6px; border:1px solid #333; background:#0f0f0f; color:#fff;}
+    .pop-hint{font-size:.8rem; opacity:.8; margin-top:.15rem;}
+  `;
+  const st = document.createElement('style'); st.id='pop-list-styles'; st.textContent = css;
+  document.head.appendChild(st);
+}
+
 function showListPopover(target, title, items, opts={}) {
-  // opts.search = true para mostrar buscador
   ensurePopoverStyles();
   hideListPopover();
 
@@ -1711,12 +1729,16 @@ function showListPopover(target, title, items, opts={}) {
     input.focus();
   }
 
-  setTimeout(()=>{
-    const h = (e)=>{ if (!div.contains(e.target)) { document.removeEventListener('mousedown',h); hideListPopover(); } };
-    document.addEventListener('mousedown',h);
-  },0);
+  // Cerrar al hacer click fuera
+  setTimeout(() => {
+    const h = (e) => {
+      if (!div.contains(e.target)) { document.removeEventListener('mousedown', h); hideListPopover(); }
+    };
+    document.addEventListener('mousedown', h);
+  }, 0);
+} // <— ESTA llave faltaba
 
-  // Cierra cualquier popover abierto
+// Cierra cualquier popover abierto
 function hideListPopover(){
   const old = document.querySelector('.pop-list');
   if (old) old.remove();
@@ -1727,10 +1749,10 @@ function hideListPopover(){
 function bindPopTargets(root = document){
   const nodes = root.querySelectorAll('[data-pop-items]');
   nodes.forEach(n => {
-    if (n.__popBound) return;   // ya está enlazado
+    if (n.__popBound) return;
     n.__popBound = true;
 
-    n.classList.add('pop-target');           // subrayado punteado (estilo ya definido)
+    n.classList.add('pop-target');
     n.style.cursor = 'pointer';
     n.title = n.getAttribute('data-pop-title') || 'Ver detalle';
 
@@ -1742,7 +1764,7 @@ function bindPopTargets(root = document){
       catch { items = Array.isArray(raw) ? raw : [raw]; }
 
       const title = n.getAttribute('data-pop-title') || '';
-      const searchable = n.hasAttribute('data-pop-search'); // opcional: añadir data-pop-search si quieres buscador
+      const searchable = n.hasAttribute('data-pop-search');
       showListPopover(n, title, items, { search: searchable });
     });
   });
