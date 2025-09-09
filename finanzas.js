@@ -1822,6 +1822,8 @@ function buildModalShell(natCode) {
               <th>SERVICIO</th>
               <th>MODO(S)</th>
               <th class="right">TARIFA(S)</th>
+              <th class="right">PAX</th>        <!-- NUEVO -->
+              <th class="right">GRUPOS</th>     <!-- NUEVO -->
               <th class="right">TOTAL (${natCode})</th>
               <th class="right">ABONO (${natCode})</th>
               <th class="right">SALDO (${natCode})</th>
@@ -1831,7 +1833,7 @@ function buildModalShell(natCode) {
           <tbody></tbody>
           <tfoot>
             <tr class="bold">
-              <th class="right" colspan="3">TOTAL</th>
+              <th class="right" colspan="5">TOTAL</th>  <!-- cambiado de 3 a 5 -->
               <th id="saldoTotNAT" class="right">$0</th>
               <th id="saldoAboNAT" class="right">$0</th>
               <th id="saldoNAT"     class="right">$0</th>
