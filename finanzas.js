@@ -1384,7 +1384,7 @@ for (const r of resumen) {
   tbRes.appendChild(trTotal);
   
   // === Fila: PAX (grupos únicos) — números clicables (popover de grupos) ===
-  const trPax1 = document.createElement('tr');
+  /*const trPax1 = document.createElement('tr');
   trPax1.className = 'muted';
   trPax1.innerHTML = `
     <td>PAX (grupos únicos)</td>
@@ -1419,7 +1419,7 @@ for (const r of resumen) {
     </td>
     <td></td>
   `;
-  tbRes.appendChild(trRep);
+  tbRes.appendChild(trRep);*/
 
 
   
