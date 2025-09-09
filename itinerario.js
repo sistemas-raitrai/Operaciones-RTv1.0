@@ -795,7 +795,6 @@ async function renderItinerario() {
       const ulAnchor = sec.querySelector(".activity-list");
     
       const asigns = hotelByDay[fecha] || [];
-      // Prioriza confirmados; si no hay, muestra pendientes/otros
       const prefer = asigns.filter(a => (a.status || '').toLowerCase() === 'confirmado');
       const use    = prefer.length ? prefer : asigns;
     
@@ -806,7 +805,7 @@ async function renderItinerario() {
       }))];
     
       const box = document.createElement('div');
-      box.className = 'hotel-box'; // puedes mantener el estilo existente
+      box.className = 'hotel-box';
       box.innerHTML = `
         <div><strong>ALOJAMIENTO:</strong></div>
         ${
@@ -823,10 +822,6 @@ async function renderItinerario() {
       sec.insertBefore(box, ulAnchor);
     }
 
-      // Insertar inmediatamente debajo del título, antes de la lista
-      sec.insertBefore(box, ulAnchor);
-    }
-    
     contItinerario.appendChild(sec);
     sec.querySelector(".btn-add").onclick = (e)=> { stopAll(e); openModal({ fecha }, false); };
 
