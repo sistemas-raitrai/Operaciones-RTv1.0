@@ -1317,15 +1317,30 @@ const listaGruposUnicos = [...paxMaxPorGrupo.entries()]
 const paxUnicos  = [...paxMaxPorGrupo.values()].reduce((a,b)=>a+b,0);
 const cantGrupos = paxMaxPorGrupo.size;
 
-// Pax repetido por servicio: suma, por cada servicio, del pax de sus grupos únicos
-const paxRepetidoTotal = resumen.reduce((acc, r) => {
-  const seen = new Map(); // gid -> pax max dentro de este servicio
-  for (const it of (r.items || [])) {
-    const gid = it.grupoId; if (!gid) continue;
-    const p = Number(it.paxReal || it.pax || 0);
-    seen.set(gid, Math.max(seen.get(gid) || 0, p));
+// --- NUEVO: PAX que repiten (aparecen en ≥2 servicios) ---
+const serviciosPorGrupo = new Map();  // gid -> Set(servicios)
+for (const it of (data.items || [])) {
+  const gid = it.grupoId; if (!gid) continue;
+  const set = serviciosPorGrupo.get(gid) || new Set();
+  set.add(slug(it.servicio || ''));
+  serviciosPorGrupo.set(gid, set);
+}
+
+// Lista para popover y conteo de repetidores
+const paxRepetidoresLista = [];
+let paxRepetidores = 0;
+for (const [gid, set] of serviciosPorGrupo.entries()) {
+  if (set.size >= 2) {
+    const p = paxMaxPorGrupo.get(gid) || 0;
+    paxRepetidores += p;
+    paxRepetidoresLista.push(`${infoPorGrupo.get(gid)} — ${set.size} servicios`);
   }
-  return acc + [...seen.values()].reduce((a,b)=>a+b,0);
+}
+
+// (Opcional) “PAX extra por repetición” = sobreconteo por servicios
+const paxExtraPorRepeticion = [...serviciosPorGrupo.entries()].reduce((acc, [gid, set]) => {
+  const p = paxMaxPorGrupo.get(gid) || 0;
+  return acc + p * Math.max(0, set.size - 1);
 }, 0);
 
 // Para popovers desglosados por servicio
@@ -1386,29 +1401,25 @@ for (const r of resumen) {
   `;
   tbRes.appendChild(trPax1);
   
-  // === Fila: PAX (repetido por servicio) — N° = cantidad de servicios (p.ej. 2) ===
-  const itemsPaxRep = resumen.flatMap(r => {
-    const arr = gruposPorServicio[slug(r.servicio)] || [];
-    return [`${r.servicio}`, ...arr.map(g => `— ${g}`)];
-  });
-  
-  const trPax2 = document.createElement('tr');
-  trPax2.className = 'muted';
-  trPax2.innerHTML = `
-    <td>PAX (repetido por servicio)</td>
+  // === Fila: PAX que repiten (≥2 servicios) ===
+  const trRep = document.createElement('tr');
+  trRep.className = 'muted';
+  trRep.innerHTML = `
+    <td>PAX que repiten (≥2 servicios)</td>
     <td class="right" colspan="3"
-        data-pop-title="Grupos por servicio"
-        data-pop-items='${JSON.stringify(itemsPaxRep)}'>
-      ${fmt(paxRepetidoTotal)}
+        data-pop-title="PAX repetidores"
+        data-pop-items='${JSON.stringify(paxRepetidoresLista)}'>
+      ${fmt(paxRepetidores)}
     </td>
     <td class="right"
-        data-pop-title="Servicios"
-        data-pop-items='${JSON.stringify(serviciosNombres)}'>
+        data-pop-title="PAX extra por repetición (sobreconteo)"
+        data-pop-items='${JSON.stringify([`Extra: ${fmt(paxExtraPorRepeticion)}`])}'>
       ${fmt(cantServicios)}
     </td>
     <td></td>
   `;
-  tbRes.appendChild(trPax2);
+  tbRes.appendChild(trRep);
+
   
   // Activa los popovers en estas celdas
   bindPopTargets(cont);
