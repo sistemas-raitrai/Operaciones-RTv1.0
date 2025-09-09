@@ -1300,6 +1300,49 @@ async function poblarResumenYSaldo({ data, cont }) {
     abonoPorServicio[lote.servicioId] = (abonoPorServicio[lote.servicioId] || 0) + sum;
   }
 
+  // --- NUEVO: Listas y contadores para popovers y "TOTAL PAX" ---
+const infoPorGrupo = new Map();     // grupoId -> "COD — Nombre"
+const paxMaxPorGrupo = new Map();   // grupoId -> pax máximo (paxReal o pax)
+
+for (const it of (data.items || [])) {
+  const gid = it.grupoId; if (!gid) continue;
+  const cod = (it.numeroNegocio || it.grupoId || '') + (it.identificador ? `-${it.identificador}` : '');
+  if (!infoPorGrupo.has(gid)) infoPorGrupo.set(gid, `${cod} — ${it.nombreGrupo || ''}`);
+
+  const p = Number(it.paxReal || it.pax || 0);
+  paxMaxPorGrupo.set(gid, Math.max(paxMaxPorGrupo.get(gid) || 0, p));
+}
+const listaGruposUnicos = [...paxMaxPorGrupo.entries()]
+  .map(([gid, p]) => `${infoPorGrupo.get(gid)} (${p})`);
+const paxUnicos  = [...paxMaxPorGrupo.values()].reduce((a,b)=>a+b,0);
+const cantGrupos = paxMaxPorGrupo.size;
+
+// Pax repetido por servicio: suma, por cada servicio, del pax de sus grupos únicos
+const paxRepetidoTotal = resumen.reduce((acc, r) => {
+  const seen = new Map(); // gid -> pax max dentro de este servicio
+  for (const it of (r.items || [])) {
+    const gid = it.grupoId; if (!gid) continue;
+    const p = Number(it.paxReal || it.pax || 0);
+    seen.set(gid, Math.max(seen.get(gid) || 0, p));
+  }
+  return acc + [...seen.values()].reduce((a,b)=>a+b,0);
+}, 0);
+
+// Para popovers desglosados por servicio
+const cantServicios = resumen.length;
+const serviciosNombres = resumen.map(r => r.servicio);
+const gruposPorServicio = {};
+for (const r of resumen) {
+  const seen = new Map(); // gid -> pax max en este servicio
+  for (const it of (r.items || [])) {
+    const gid = it.grupoId; if (!gid) continue;
+    const p = Number(it.paxReal || it.pax || 0);
+    seen.set(gid, Math.max(seen.get(gid) || 0, p));
+  }
+  gruposPorServicio[slug(r.servicio)] =
+    [...seen.entries()].map(([gid,p]) => `${infoPorGrupo.get(gid)} (${p})`);
+}
+
   // 3) RESUMEN TOTAL (una sola fila + "VER TODOS")
   const tbRes = $('#tblProvResumen tbody', cont);
   tbRes.innerHTML = '';
@@ -1312,9 +1355,10 @@ async function poblarResumenYSaldo({ data, cont }) {
     TOT_S += sal;
     TOT_I += (r.count || 0);
   }
+  // === Fila TOTAL (ahora dice TOTAL PAX ####) ===
   const trTotal = document.createElement('tr');
   trTotal.innerHTML = `
-    <td class="bold">TOTAL</td>
+    <td class="bold">TOTAL PAX ${fmt(paxRepetidoTotal)}</td>
     <td id="resTotNAT" class="right bold">${money(TOT_T)}</td>
     <td id="resAboNAT" class="right abono-amount">${money(TOT_A)}</td>
     <td id="resSalNAT" class="right ${TOT_S>0?'saldo-rojo':'saldo-ok'}">${money(TOT_S)}</td>
@@ -1322,48 +1366,52 @@ async function poblarResumenYSaldo({ data, cont }) {
     <td class="right"><button id="btnVerTodos" class="btn secondary">VER TODOS</button></td>
   `;
   tbRes.appendChild(trTotal);
-
-  // === Filas extra de estadísticas (debajo de TOTAL) ===
-
-  // 1) PAX (grupos únicos)
-  const paxByGroupG = new Map();
-  for (const it of (data.items || [])) {
-    const gId = it.grupoId; if (!gId) continue;
-    const p = Number(it.paxReal || it.pax || 0);
-    paxByGroupG.set(gId, Math.max(paxByGroupG.get(gId) || 0, p));
-  }
-  const paxUnicos  = [...paxByGroupG.values()].reduce((a,b)=>a+b,0);
-  const cantGrupos = paxByGroupG.size;
   
+  // === Fila: PAX (grupos únicos) — números clicables (popover de grupos) ===
   const trPax1 = document.createElement('tr');
   trPax1.className = 'muted';
   trPax1.innerHTML = `
     <td>PAX (grupos únicos)</td>
-    <td class="right" colspan="3">${fmt(paxUnicos)}</td>
-    <td class="right">${fmt(cantGrupos)}</td>
+    <td class="right" colspan="3"
+        data-pop-title="Grupos (únicos)"
+        data-pop-items='${JSON.stringify(listaGruposUnicos)}'>
+      ${fmt(paxUnicos)}
+    </td>
+    <td class="right"
+        data-pop-title="Grupos (únicos)"
+        data-pop-items='${JSON.stringify(listaGruposUnicos)}'>
+      ${fmt(cantGrupos)}
+    </td>
     <td></td>
   `;
   tbRes.appendChild(trPax1);
   
-  // 2) PAX (repetido por servicio)
-  const paxRepetido = resumen.reduce((acc, r) => {
-    const m = new Map();
-    for (const it of (r.items || [])) {
-      const gId = it.grupoId; if (!gId) continue;
-      const p = Number(it.paxReal || it.pax || 0);
-      m.set(gId, Math.max(m.get(gId) || 0, p));
-    }
-    return acc + [...m.values()].reduce((a,b)=>a+b,0);
-  }, 0);
+  // === Fila: PAX (repetido por servicio) — N° = cantidad de servicios (p.ej. 2) ===
+  const itemsPaxRep = resumen.flatMap(r => {
+    const arr = gruposPorServicio[slug(r.servicio)] || [];
+    return [`${r.servicio}`, ...arr.map(g => `— ${g}`)];
+  });
   
   const trPax2 = document.createElement('tr');
   trPax2.className = 'muted';
   trPax2.innerHTML = `
     <td>PAX (repetido por servicio)</td>
-    <td class="right" colspan="4">${fmt(paxRepetido)}</td>
+    <td class="right" colspan="3"
+        data-pop-title="Grupos por servicio"
+        data-pop-items='${JSON.stringify(itemsPaxRep)}'>
+      ${fmt(paxRepetidoTotal)}
+    </td>
+    <td class="right"
+        data-pop-title="Servicios"
+        data-pop-items='${JSON.stringify(serviciosNombres)}'>
+      ${fmt(cantServicios)}
+    </td>
     <td></td>
   `;
-  tbRes.appendChild(trPax2); 
+  tbRes.appendChild(trPax2);
+  
+  // Activa los popovers en estas celdas
+  bindPopTargets(cont);
 
   // 4) SALDOS POR ACTIVIDAD/SERVICIO (con botón VER DETALLE)
   const tbSaldo = $('#tblSaldo tbody', cont);
@@ -1538,6 +1586,58 @@ async function pintarAbonosTodosProveedor({ data, cont }){
     ['text','text','date','text','num','text','text','text','text'],
     {skipIdx:[7]}
   );
+}
+
+// === POPUP/POPOVER simple para listas ===
+function ensurePopoverStyles(){
+  if (document.getElementById('pop-list-styles')) return;
+  const css = `
+    .pop-list{position:absolute; z-index:9999; background:#111; color:#fff; border-radius:8px;
+      padding:.6rem .8rem; max-width:420px; max-height:260px; overflow:auto; box-shadow:0 8px 18px rgba(0,0,0,.35);}
+    .pop-list h5{margin:.2rem 0 .4rem; font-weight:700; font-size:.9rem;}
+    .pop-list ol{margin:0; padding-left:1.2rem; font-size:.9rem;}
+    .pop-list .muted{opacity:.85}
+    .pop-list a.close{position:absolute; right:.35rem; top:.15rem; color:#bbb; text-decoration:none;}
+    .pop-target{ cursor:pointer; text-decoration:underline dotted; }
+  `;
+  const st = document.createElement('style'); st.id='pop-list-styles'; st.textContent = css;
+  document.head.appendChild(st);
+}
+function showListPopover(target, title, items){
+  ensurePopoverStyles();
+  hideListPopover();
+  const div = document.createElement('div'); div.className='pop-list';
+  const html = `
+    <a class="close" href="javascript:void(0)">✕</a>
+    <h5>${title || ''}</h5>
+    <ol>${(items||[]).map(s => `<li>${s}</li>`).join('')}</ol>
+  `;
+  div.innerHTML = html;
+  document.body.appendChild(div);
+  const r = target.getBoundingClientRect();
+  const top = window.scrollY + r.bottom + 6;
+  const left = Math.min(window.scrollX + r.left, window.scrollX + window.innerWidth - div.offsetWidth - 12);
+  div.style.top = `${top}px`; div.style.left = `${left}px`;
+  const close = ()=> hideListPopover();
+  div.querySelector('.close').onclick = close;
+  setTimeout(()=>{
+    const h = (e)=>{ if (!div.contains(e.target)) { document.removeEventListener('mousedown',h); close(); } };
+    document.addEventListener('mousedown',h);
+  },0);
+}
+function hideListPopover(){
+  document.querySelectorAll('.pop-list').forEach(n => n.remove());
+}
+function bindPopTargets(root){
+  (root || document).querySelectorAll('[data-pop-items]').forEach(el=>{
+    el.classList.add('pop-target');
+    el.addEventListener('click', ()=>{
+      const title = el.getAttribute('data-pop-title') || '';
+      let items = [];
+      try { items = JSON.parse(el.getAttribute('data-pop-items') || '[]'); } catch{}
+      showListPopover(el, title, items);
+    });
+  });
 }
 
 // -------------------------------
