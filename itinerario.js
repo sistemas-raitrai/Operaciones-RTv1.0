@@ -1670,6 +1670,51 @@ window.repararServiciosAntiguos = async function(opts = {}) {
   return { gruposProc, gruposMod, actsMod, actsFuzzy, actsNoMatch, dryRun };
 };
 
+// ===== UTILIDAD: Sincronizar TODOS los itinerarios con Servicios (concurrencia limitada) =====
+// Ejecuta en consola:  await syncAllItinerariosConServicios(4)
+window.syncAllItinerariosConServicios = async function(limit = 4) {
+  try {
+    const qs = await getDocs(collection(db, 'grupos'));
+    const grupos = qs.docs.map(d => ({ id: d.id, ...(d.data() || {}) }));
+
+    let ok = 0, changed = 0, fail = 0;
+
+    async function worker(g) {
+      try {
+        const svcMaps = await getServiciosMaps(g.destino || '');
+        const res = await syncItinerarioServicios(g.id, g, svcMaps); // { it, changed }
+        ok++; if (res.changed) changed++;
+
+        // Recalcular estado/badge con el itinerario resultante
+        try { await updateEstadoRevisionAndBadge(g.id, res.it); } catch(_) {}
+
+        console.log(`✓ ${g.id} — ${(g.nombreGrupo || g.numeroNegocio || '').toString()} ${res.changed ? '— actualizado' : ''}`);
+      } catch (e) {
+        fail++;
+        console.error(`✗ ${g.id}`, e);
+      }
+    }
+
+    // Concurrencia simple para no saturar Firestore
+    const queue = grupos.slice();
+    const n = Math.max(1, Math.min(limit, 6));
+    const runners = Array.from({ length: n }, async () => {
+      while (queue.length) {
+        const g = queue.shift();
+        await worker(g);
+      }
+    });
+
+    await Promise.all(runners);
+    console.log(`FIN — procesados:${ok}, actualizados:${changed}, errores:${fail}`);
+    return { procesados: ok, actualizados: changed, errores: fail };
+  } catch (e) {
+    console.error('Error en syncAllItinerariosConServicios:', e);
+    throw e;
+  }
+};
+
+
 /** =========================
  *  HISTORIAL (UI + datos)
  *  ========================= */
