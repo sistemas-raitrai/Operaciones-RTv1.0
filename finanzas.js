@@ -1413,13 +1413,14 @@ for (const r of resumen) {
       ${fmt(paxRepetidores)}
     </td>
     <td class="right"
-        data-pop-title="PAX extra por repetición (sobreconteo)"
-        data-pop-items='${JSON.stringify([`Extra: ${fmt(paxExtraPorRepeticion)}`])}'>
-      ${fmt(cantServicios)}
+        data-pop-title="PAX repetidores (n. de grupos)"
+        data-pop-items='${JSON.stringify(paxRepetidoresLista)}'>
+      ${fmt(paxRepetidoresLista.length)}   <!-- << aquí el fix -->
     </td>
     <td></td>
   `;
   tbRes.appendChild(trRep);
+
 
   
   // Activa los popovers en estas celdas
@@ -1554,7 +1555,7 @@ for (const r of resumen) {
       for (const g of universo) if (!hicieron.has(g.id)) lista.push(disp(g));
       if (!lista.length) lista.push('— No hay grupos en este rango —');
   
-      showListPopover(btn, 'NO ASISTEN', lista);
+      showListPopover(btn, 'NO ASISTEN', lista, { search:true });
     });
   });
 }
@@ -1656,53 +1657,66 @@ async function pintarAbonosTodosProveedor({ data, cont }){
 function ensurePopoverStyles(){
   if (document.getElementById('pop-list-styles')) return;
   const css = `
-    .pop-list{position:absolute; z-index:9999; background:#111; color:#fff; border-radius:8px;
-      padding:.6rem .8rem; max-width:420px; max-height:260px; overflow:auto; box-shadow:0 8px 18px rgba(0,0,0,.35);}
-    .pop-list h5{margin:.2rem 0 .4rem; font-weight:700; font-size:.9rem;}
-    .pop-list ol{margin:0; padding-left:1.2rem; font-size:.9rem;}
+    .pop-list{position:absolute;z-index:9999;background:#111;color:#fff;border-radius:8px;
+      padding:.6rem .8rem;max-width:480px;max-height:320px;overflow:auto;box-shadow:0 8px 18px rgba(0,0,0,.35);}
+    .pop-list h5{margin:.2rem 0 .4rem;font-weight:700;font-size:.95rem;}
+    .pop-list ol{margin:.4rem 0 0;padding-left:1.2rem;font-size:.9rem;}
     .pop-list .muted{opacity:.85}
-    .pop-list a.close{position:absolute; right:.35rem; top:.15rem; color:#bbb; text-decoration:none;}
-    .pop-target{ cursor:pointer; text-decoration:underline dotted; }
+    .pop-list a.close{position:sticky; top:0; float:right; color:#bbb; text-decoration:none; margin-left:.5rem;}
+    .pop-target{cursor:pointer;text-decoration:underline dotted;}
+    .pop-search{width:100%; box-sizing:border-box; margin:.25rem 0 .35rem; padding:.35rem .5rem;
+      border-radius:6px; border:1px solid #333; background:#0f0f0f; color:#fff;}
+    .pop-hint{font-size:.8rem; opacity:.8; margin-top:.15rem;}
   `;
   const st = document.createElement('style'); st.id='pop-list-styles'; st.textContent = css;
   document.head.appendChild(st);
 }
-function showListPopover(target, title, items){
+
+function showListPopover(target, title, items, opts={}) {
+  // opts.search = true para mostrar buscador
   ensurePopoverStyles();
   hideListPopover();
+
+  const searchable = !!opts.search;
   const div = document.createElement('div'); div.className='pop-list';
-  const html = `
+
+  const baseList = (items||[]).slice();
+  const renderList = (arr) =>
+    `<ol>${(arr||[]).map(s=>`<li>${s}</li>`).join('')}</ol>` +
+    (searchable ? `<div class="pop-hint muted">Si no aparece en esta lista, pertenece al detalle.</div>` : '');
+
+  div.innerHTML = `
     <a class="close" href="javascript:void(0)">✕</a>
     <h5>${title || ''}</h5>
-    <ol>${(items||[]).map(s => `<li>${s}</li>`).join('')}</ol>
+    ${ searchable ? `<input class="pop-search" type="search" placeholder="Buscar por número o nombre…">` : '' }
+    <div class="pop-body">${renderList(baseList)}</div>
   `;
-  div.innerHTML = html;
   document.body.appendChild(div);
+
   const r = target.getBoundingClientRect();
   const top = window.scrollY + r.bottom + 6;
   const left = Math.min(window.scrollX + r.left, window.scrollX + window.innerWidth - div.offsetWidth - 12);
   div.style.top = `${top}px`; div.style.left = `${left}px`;
-  const close = ()=> hideListPopover();
-  div.querySelector('.close').onclick = close;
+
+  div.querySelector('.close').onclick = () => hideListPopover();
+
+  if (searchable) {
+    const input = div.querySelector('.pop-search');
+    const body  = div.querySelector('.pop-body');
+    input.addEventListener('input', () => {
+      const q = (input.value || '').toLowerCase().trim();
+      const filtered = baseList.filter(s => s.toLowerCase().includes(q));
+      body.innerHTML = renderList(filtered);
+    });
+    input.focus();
+  }
+
   setTimeout(()=>{
-    const h = (e)=>{ if (!div.contains(e.target)) { document.removeEventListener('mousedown',h); close(); } };
+    const h = (e)=>{ if (!div.contains(e.target)) { document.removeEventListener('mousedown',h); hideListPopover(); } };
     document.addEventListener('mousedown',h);
   },0);
 }
-function hideListPopover(){
-  document.querySelectorAll('.pop-list').forEach(n => n.remove());
-}
-function bindPopTargets(root){
-  (root || document).querySelectorAll('[data-pop-items]').forEach(el=>{
-    el.classList.add('pop-target');
-    el.addEventListener('click', ()=>{
-      const title = el.getAttribute('data-pop-title') || '';
-      let items = [];
-      try { items = JSON.parse(el.getAttribute('data-pop-items') || '[]'); } catch{}
-      showListPopover(el, title, items);
-    });
-  });
-}
+
 
 // -------------------------------
 // 8) Modal — UI
