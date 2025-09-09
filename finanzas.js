@@ -1371,6 +1371,7 @@ for (const r of resumen) {
     TOT_I += (r.count || 0);
   }
   // === Fila TOTAL (ahora dice TOTAL PAX ####) ===
+  const paxRepetidoTotal = paxUnicos + paxExtraPorRepeticion;
   const trTotal = document.createElement('tr');
   trTotal.innerHTML = `
     <td class="bold">TOTAL PAX ${fmt(paxRepetidoTotal)}</td>
