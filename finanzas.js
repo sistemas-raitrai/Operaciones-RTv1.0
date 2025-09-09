@@ -1715,8 +1715,38 @@ function showListPopover(target, title, items, opts={}) {
     const h = (e)=>{ if (!div.contains(e.target)) { document.removeEventListener('mousedown',h); hideListPopover(); } };
     document.addEventListener('mousedown',h);
   },0);
+
+  // Cierra cualquier popover abierto
+function hideListPopover(){
+  const old = document.querySelector('.pop-list');
+  if (old) old.remove();
 }
 
+// Enlaza celdas con data-pop-items a showListPopover()
+// Llama una sola vez por celda (evita listeners duplicados tras re-render).
+function bindPopTargets(root = document){
+  const nodes = root.querySelectorAll('[data-pop-items]');
+  nodes.forEach(n => {
+    if (n.__popBound) return;   // ya está enlazado
+    n.__popBound = true;
+
+    n.classList.add('pop-target');           // subrayado punteado (estilo ya definido)
+    n.style.cursor = 'pointer';
+    n.title = n.getAttribute('data-pop-title') || 'Ver detalle';
+
+    n.addEventListener('click', (e) => {
+      e.stopPropagation();
+      let items = [];
+      const raw = n.getAttribute('data-pop-items') || '[]';
+      try { items = JSON.parse(raw); }
+      catch { items = Array.isArray(raw) ? raw : [raw]; }
+
+      const title = n.getAttribute('data-pop-title') || '';
+      const searchable = n.hasAttribute('data-pop-search'); // opcional: añadir data-pop-search si quieres buscador
+      showListPopover(n, title, items, { search: searchable });
+    });
+  });
+}
 
 // -------------------------------
 // 8) Modal — UI
