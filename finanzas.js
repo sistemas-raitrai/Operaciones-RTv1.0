@@ -1142,7 +1142,7 @@ function renderTablaHoteles(mapHoteles) {
 // -------------------------------
 function abonoEquivalentes(ab) { return convertirTodas(ab.moneda, Number(ab.monto || 0)); }
 function abonoEstadoLabel(ab) { return (ab.estado || 'ORIGINAL').toUpperCase(); }
-function abonoIncluido(ab) { return (ab.estado || 'ORIGINAL') !== 'ARCHIVADO'; }
+function abonoIncluido(ab) { return (ab.estado || 'ORIGINAL').toUpperCase() !== 'ARCHIVADO'; }
 function nowISODate(){ return new Date().toISOString().slice(0,10); }
 function currentTCSnapshot(){ return {
   USD: Number(el('tcUSD')?.value || 0) || null,
@@ -1440,6 +1440,7 @@ for (const r of resumen) {
       <td class="right ${sal>0?'saldo-rojo':'saldo-ok'}">${money(sal)}</td>
       <td class="right">
         <button class="btn secondary btn-saldo-detalle" data-svc="${slug(r.servicio)}">VER DETALLE</button>
+        <button class="btn btn-dark btn-no-asisten" data-svc="${slug(r.servicio)}" style="margin-left:.35rem;">NO ASISTEN</button>
       </td>
     `;
     tbSaldo.appendChild(tr);
@@ -1491,6 +1492,57 @@ for (const r of resumen) {
         });
       }
       calcSaldoDesdeTablas(cont);
+    });
+  });
+
+  // === Botón "NO ASISTEN": grupos que van al destino pero NO hacen este servicio ===
+  tbSaldo.querySelectorAll('.btn-no-asisten').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const svcSlug = btn.getAttribute('data-svc');
+  
+      // Destinos donde aparece este servicio en el DETALLE del proveedor
+      const destinosSet = new Set(
+        (data.items || [])
+          .filter(i => slug(i.servicio||'') === svcSlug)
+          .map(i => i.destinoGrupo)
+          .filter(Boolean)
+      );
+  
+      // Rango de fechas actual de la pantalla
+      const fDesde = el('fechaDesde')?.value || null;
+      const fHasta = el('fechaHasta')?.value || null;
+  
+      // Universo: todos los grupos que VAN a esos destinos en ese rango
+      const universo = GRUPOS.filter(g => {
+        const dest = g.destino || g.DESTINO || g.ciudad || '';
+        if (!destinosSet.has(dest)) return false;
+        const it = g.itinerario || {};
+        return Object.keys(it).some(d => within(d, fDesde, fHasta));
+      });
+  
+      // Display helper
+      const disp = (g) => {
+        const cod = [g.numeroNegocio || g.id, g.identificador].filter(Boolean).join('-');
+        const pax = paxDeGrupo(g);
+        return `${cod} — ${g.nombreGrupo || g.NOMBRE || ''} (${pax})`;
+      };
+  
+      // Grupos que SÍ hicieron el servicio (en el DETALLE con HIZO=Sí)
+      const hicieron = new Set();
+      $$('#tblDetalleProv tbody tr', cont).forEach(tr => {
+        if (tr.getAttribute('data-svc') !== svcSlug) return;
+        if (tr.getAttribute('data-hizo') === '1') {
+          const gid = tr.dataset.grupoId || '';
+          if (gid) hicieron.add(gid);
+        }
+      });
+  
+      // NO ASISTEN = universo - hicieron
+      const lista = [];
+      for (const g of universo) if (!hicieron.has(g.id)) lista.push(disp(g));
+      if (!lista.length) lista.push('— No hay grupos en este rango —');
+  
+      showListPopover(btn, 'NO ASISTEN', lista);
     });
   });
 }
@@ -1711,7 +1763,7 @@ function buildModalShell(natCode) {
           <thead>
             <tr>
               <th>SERVICIO</th>
-              th>MODO(S)</th>
+              <th>MODO(S)</th>
               <th class="right">TARIFA(S)</th>
               <th class="right">TOTAL (${natCode})</th>
               <th class="right">ABONO (${natCode})</th>
@@ -2009,6 +2061,7 @@ async function openModalProveedor(slugProv, data) {
     totalReal      += deberia;
   
     const tr = document.createElement('tr');
+    tr.dataset.grupoId = it.grupoId || '';
     if (it.pagoTipo === 'por_dia') {
       tr.dataset.diaKey   = it.diaKey || '';
       tr.dataset.diaOwner = it.diaOwner ? '1' : '0';
