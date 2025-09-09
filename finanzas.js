@@ -1672,25 +1672,6 @@ function ensurePopoverStyles(){
   document.head.appendChild(st);
 }
 
-// === POPUP/POPOVER simple para listas ===
-function ensurePopoverStyles(){
-  if (document.getElementById('pop-list-styles')) return;
-  const css = `
-    .pop-list{position:absolute;z-index:9999;background:#111;color:#fff;border-radius:8px;
-      padding:.6rem .8rem;max-width:480px;max-height:320px;overflow:auto;box-shadow:0 8px 18px rgba(0,0,0,.35);}
-    .pop-list h5{margin:.2rem 0 .4rem;font-weight:700;font-size:.95rem;}
-    .pop-list ol{margin:.4rem 0 0;padding-left:1.2rem;font-size:.9rem;}
-    .pop-list .muted{opacity:.85}
-    .pop-list a.close{position:sticky; top:0; float:right; color:#bbb; text-decoration:none; margin-left:.5rem;}
-    .pop-target{cursor:pointer;text-decoration:underline dotted;}
-    .pop-search{width:100%; box-sizing:border-box; margin:.25rem 0 .35rem; padding:.35rem .5rem;
-      border-radius:6px; border:1px solid #333; background:#0f0f0f; color:#fff;}
-    .pop-hint{font-size:.8rem; opacity:.8; margin-top:.15rem;}
-  `;
-  const st = document.createElement('style'); st.id='pop-list-styles'; st.textContent = css;
-  document.head.appendChild(st);
-}
-
 function showListPopover(target, title, items, opts={}) {
   ensurePopoverStyles();   // usa la que ya existe
   hideListPopover();
