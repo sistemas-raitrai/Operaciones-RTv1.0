@@ -1323,6 +1323,48 @@ async function poblarResumenYSaldo({ data, cont }) {
   `;
   tbRes.appendChild(trTotal);
 
+  // === Filas extra de estadísticas (debajo de TOTAL) ===
+
+  // 1) PAX (grupos únicos)
+  const paxByGroupG = new Map();
+  for (const it of (data.items || [])) {
+    const gId = it.grupoId; if (!gId) continue;
+    const p = Number(it.paxReal || it.pax || 0);
+    paxByGroupG.set(gId, Math.max(paxByGroupG.get(gId) || 0, p));
+  }
+  const paxUnicos  = [...paxByGroupG.values()].reduce((a,b)=>a+b,0);
+  const cantGrupos = paxByGroupG.size;
+  
+  const trPax1 = document.createElement('tr');
+  trPax1.className = 'muted';
+  trPax1.innerHTML = `
+    <td>PAX (grupos únicos)</td>
+    <td class="right" colspan="3">${fmt(paxUnicos)}</td>
+    <td class="right">${fmt(cantGrupos)}</td>
+    <td></td>
+  `;
+  tbRes.appendChild(trPax1);
+  
+  // 2) PAX (repetido por servicio)
+  const paxRepetido = resumen.reduce((acc, r) => {
+    const m = new Map();
+    for (const it of (r.items || [])) {
+      const gId = it.grupoId; if (!gId) continue;
+      const p = Number(it.paxReal || it.pax || 0);
+      m.set(gId, Math.max(m.get(gId) || 0, p));
+    }
+    return acc + [...m.values()].reduce((a,b)=>a+b,0);
+  }, 0);
+  
+  const trPax2 = document.createElement('tr');
+  trPax2.className = 'muted';
+  trPax2.innerHTML = `
+    <td>PAX (repetido por servicio)</td>
+    <td class="right" colspan="4">${fmt(paxRepetido)}</td>
+    <td></td>
+  `;
+  tbRes.appendChild(trPax2); 
+
   // 4) SALDOS POR ACTIVIDAD/SERVICIO (con botón VER DETALLE)
   const tbSaldo = $('#tblSaldo tbody', cont);
   tbSaldo.innerHTML = '';
@@ -1334,8 +1376,17 @@ async function poblarResumenYSaldo({ data, cont }) {
 
     const tr = document.createElement('tr');
     tr.setAttribute('data-svc', slug(r.servicio));
+    
+    // Dedup de modalidades y tarifas (separadas por coma)
+    const labelPago = (t) => t==='por_pax' ? 'POR PAX' : t==='por_grupo' ? 'POR GRUPO' : t==='por_dia' ? 'POR DÍA' : 'OTRO';
+    const modos = [...new Set((r.items || []).map(i => labelPago(i.pagoTipo)))].filter(Boolean).join(', ') || '—';
+    const tarifas = [...new Set((r.items || []).map(i => Number(i.tarifa || 0)).filter(v => !isNaN(v)))]
+      .map(v => fmt(v)).join(', ') || '—';
+    
     tr.innerHTML = `
       <td>${r.servicio}</td>
+      <td>${modos}</td>
+      <td class="right">${tarifas}</td>
       <td class="right">${money(r.total || 0)}</td>
       <td class="right abono-amount">${money(abo)}</td>
       <td class="right ${sal>0?'saldo-rojo':'saldo-ok'}">${money(sal)}</td>
@@ -1560,6 +1611,8 @@ function buildModalShell(natCode) {
           <thead>
             <tr>
               <th>SERVICIO</th>
+              th>MODO(S)</th>
+              <th class="right">TARIFA(S)</th>
               <th class="right">TOTAL (${natCode})</th>
               <th class="right">ABONO (${natCode})</th>
               <th class="right">SALDO (${natCode})</th>
@@ -1569,7 +1622,7 @@ function buildModalShell(natCode) {
           <tbody></tbody>
           <tfoot>
             <tr class="bold">
-              <th class="right">TOTAL</th>
+              <th class="right" colspan="3">TOTAL</th>
               <th id="saldoTotNAT" class="right">$0</th>
               <th id="saldoAboNAT" class="right">$0</th>
               <th id="saldoNAT"     class="right">$0</th>
@@ -1718,8 +1771,16 @@ async function openModalProveedor(slugProv, data) {
   const modal = el('modal');
   const dests = [...data.destinos];
   const gruposSet = new Set(data.items.map(i => i.grupoId));
-  const paxTotal = data.items.reduce((s,i)=> s + (Number(i.pax||0)), 0);
-
+  
+  // PAX por grupo (una sola vez por grupo; usa el mayor entre paxReal y pax)
+  const paxByGroup = new Map();
+  for (const it of data.items) {
+    const gId = it.grupoId; if (!gId) continue;
+    const p = Number(it.paxReal || it.pax || 0);
+    paxByGroup.set(gId, Math.max(paxByGroup.get(gId) || 0, p));
+  }
+  const paxTotal = [...paxByGroup.values()].reduce((a,b)=>a+b,0);
+  
   const { code:nat, mixed } = getMonedaProveedor(data.items);
   el('modalTitle').textContent = `DETALLE — ${(data?.nombre || slugProv).toUpperCase()}`;
   el('modalSub').textContent = `DESTINOS: ${dests.join(', ').toUpperCase()} • GRUPOS: ${gruposSet.size} • PAX: ${fmt(paxTotal)}${mixed ? ' • ⚠ proveedor con monedas mixtas' : ''}`;
