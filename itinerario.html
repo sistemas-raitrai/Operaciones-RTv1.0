@@ -59,6 +59,48 @@
     .hotel-box em,
     .hotel-box .pendiente { opacity: .9; font-style: italic; }
 
+    /* ===== Modal Alertas: scroll + contraste ===== */
+    #modal-alertas{ max-height:80vh; overflow:hidden; }
+    
+    /* Listas con scroll dentro del modal */
+    #alertas-actual,
+    #alertas-actual-leidas,
+    #alertas-otros,
+    #alertas-pendientes{
+      max-height:52vh;       /* ajusta a gusto */
+      overflow:auto;
+      padding-right:.5rem;   /* espacio para el scroll */
+    }
+    
+    /* Ítems y acciones dentro del modal */
+    #modal-alertas .alert-item{
+      display:flex; justify-content:space-between; gap:.75rem;
+      border:1px solid #e5e7eb; border-radius:10px;
+      padding:.5rem .7rem; background:#fff; margin-bottom:.5rem;
+    }
+    #modal-alertas .alert-item.visto{ opacity:.85; }
+    
+    /* Botón cerrar (X) con alto contraste */
+    #alertas-close{
+      background:transparent; border:0; font-weight:800; font-size:1.1rem;
+      color:#111827; cursor:pointer;
+    }
+    
+    /* Botones "Ir al itinerario" / "Marcar visto" con contraste */
+    #modal-alertas .alert-item .actions button,
+    #modal-alertas .btn-ir-grupo,
+    #modal-alertas .btn-ver-alerta{
+      background:#111827; color:#fff; border:0; border-radius:8px;
+      padding:.35rem .6rem; font-weight:600; cursor:pointer;
+    }
+    #modal-alertas .alert-item .actions button:hover,
+    #modal-alertas .btn-ir-grupo:hover,
+    #modal-alertas .btn-ver-alerta:hover{ filter:brightness(1.1); }
+    
+    /* (Opcional) ocultar el badge antiguo si ahora usamos el formato en el texto del botón */
+    #alertasBadge{ display:none; }
+
+
   </style>
 </head>
 <body class="itinerario-page">
