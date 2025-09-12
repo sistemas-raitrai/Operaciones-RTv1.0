@@ -597,6 +597,7 @@ async function openAlertasPanel() {
             choicesGrupoNom.setChoiceByValue(id);
             modalAlertas.style.display = "none";
             document.getElementById("modal-backdrop").style.display = "none";
+            document.body.classList.remove('modal-open');
             renderItinerario();
           };
         });
@@ -636,6 +637,7 @@ try {
       choicesGrupoNom.setChoiceByValue(id);
       modalAlertas.style.display = "none";
       document.getElementById("modal-backdrop").style.display = "none";
+      document.body.classList.remove('modal-open');
       renderItinerario();
     };
   });
