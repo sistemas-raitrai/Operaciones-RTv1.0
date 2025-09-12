@@ -237,7 +237,8 @@ async function initItinerario() {
     btnCloseAlertas.onclick = (e)=>{ 
       stopAll(e);
       modalAlertas.style.display = "none"; 
-      document.getElementById("modal-backdrop").style.display="none"; 
+      document.getElementById("modal-backdrop").style.display="none";
+      document.body.classList.remove('modal-open');
     };
   }
 
@@ -498,6 +499,7 @@ async function openAlertasPanel() {
 
   modalAlertas.style.display = "block";
   document.getElementById("modal-backdrop").style.display = "block";
+  document.body.classList.add('modal-open');
 
   // 1) Alertas del grupo (separadas)
   if (listAlertasActual) listAlertasActual.innerHTML = "Cargando…";
