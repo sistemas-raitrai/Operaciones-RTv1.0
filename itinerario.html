@@ -59,47 +59,71 @@
     .hotel-box em,
     .hotel-box .pendiente { opacity: .9; font-style: italic; }
 
-    /* ===== Modal Alertas: scroll + contraste ===== */
-    #modal-alertas{ max-height:80vh; overflow:hidden; }
+    /* ===== Modal Alertas: posición + scroll único + contraste ===== */
     
-    /* Listas con scroll dentro del modal */
+    /* Backdrop sobre toda la pantalla */
+    #modal-backdrop{
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.35);
+      z-index: 9998;
+    }
+    
+    /* Contenedor del modal (scroll único) */
+    #modal-alertas{
+      position: fixed;
+      left: 50%; top: 5vh; transform: translateX(-50%);
+      width: min(860px, 95vw);
+      max-height: 90vh;                 /* ← evita que se “corte” */
+      overflow: auto;                   /* ← scroll único del modal */
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.3);
+      padding: 12px 12px 18px;          /* ← fondo respira para que no tape el último item */
+      z-index: 9999;
+    }
+    
+    /* Quitamos scroll en las listas internas (evita doble scroll y cortes) */
     #alertas-actual,
     #alertas-actual-leidas,
     #alertas-otros,
     #alertas-pendientes{
-      max-height:52vh;       /* ajusta a gusto */
-      overflow:auto;
-      padding-right:.5rem;   /* espacio para el scroll */
+      max-height: none !important;
+      overflow: visible !important;
     }
     
-    /* Ítems y acciones dentro del modal */
+    /* Ítems y acciones */
     #modal-alertas .alert-item{
-      display:flex; justify-content:space-between; gap:.75rem;
-      border:1px solid #e5e7eb; border-radius:10px;
-      padding:.5rem .7rem; background:#fff; margin-bottom:.5rem;
+      display: flex; justify-content: space-between; gap: .75rem;
+      border: 1px solid #e5e7eb; border-radius: 10px;
+      padding: .5rem .7rem; background: #fff; margin-bottom: .5rem;
     }
-    #modal-alertas .alert-item.visto{ opacity:.85; }
+    #modal-alertas .alert-item.visto{ opacity: .9; }
     
     /* Botón cerrar (X) con alto contraste */
     #alertas-close{
-      background:transparent; border:0; font-weight:800; font-size:1.1rem;
-      color:#111827; cursor:pointer;
+      background: transparent; border: 0;
+      font-weight: 800; font-size: 1.2rem;
+      color: #111827; cursor: pointer;
     }
     
-    /* Botones "Ir al itinerario" / "Marcar visto" con contraste */
+    /* Botones de acción con alto contraste */
     #modal-alertas .alert-item .actions button,
     #modal-alertas .btn-ir-grupo,
     #modal-alertas .btn-ver-alerta{
-      background:#111827; color:#fff; border:0; border-radius:8px;
-      padding:.35rem .6rem; font-weight:600; cursor:pointer;
+      background: #111827; color: #fff;
+      border: 0; border-radius: 8px;
+      padding: .35rem .6rem; font-weight: 600; cursor: pointer;
     }
     #modal-alertas .alert-item .actions button:hover,
     #modal-alertas .btn-ir-grupo:hover,
-    #modal-alertas .btn-ver-alerta:hover{ filter:brightness(1.1); }
+    #modal-alertas .btn-ver-alerta:hover{
+      filter: brightness(1.1);
+    }
     
-    /* (Opcional) ocultar el badge antiguo si ahora usamos el formato en el texto del botón */
+    /* (Opcional) ocultar el badge antiguo si usas el texto "Alertas | X (Y)" */
     #alertasBadge{ display:none; }
 
+    body.modal-open{ overflow: hidden; }
 
   </style>
 </head>
