@@ -251,6 +251,7 @@ async function initItinerario() {
       stopAll(e);
       if (modalHistorial) modalHistorial.style.display = "none";
       if (modalBg)        modalBg.style.display = "none";
+      document.body.classList.remove('modal-open');  // <- importante
     };
   }
   // filtro en vivo
@@ -1907,12 +1908,11 @@ function renderHistorialList(arr) {
 /** Abre el modal y consulta la colección 'historial' para el grupo actual */
 async function openHistorialPanel() {
   const grupoId = selectNum?.value;
-  if (!grupoId) { alert("Selecciona un grupo"); return; }
-  if (!modalHistorial) return;
+  if (!grupoId || !modalHistorial) return;
 
-  // Mostrar modal + backdrop
   modalHistorial.style.display = "block";
   if (modalBg) modalBg.style.display = "block";
+  document.body.classList.add('modal-open');   // <- importante
 
   // Estado de carga
   if (listHistorial) listHistorial.innerHTML = `<li class="hist-item"><div class="meta">Cargando…</div></li>`;
