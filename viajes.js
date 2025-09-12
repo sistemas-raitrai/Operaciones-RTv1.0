@@ -1205,7 +1205,6 @@ async function loadHistorial(){
 }
 
 // ======= Exportar a Excel =======
-
 function exportToExcel(){
   // Hoja 1: Resumen de vuelos/trayectos
   const resumen = vuelos.map(v => {
@@ -1286,9 +1285,8 @@ function exportToExcel(){
         Coordinadores: '-',
         Total: x.cantidad,
         Estado: x.status,
-        Records: '',
         Cambiado_Por: x.changedBy || '',
-        Records: Array.isArray(x.records) ? x.records.join(' ') : ''
+        Records: Array.isArray(x.records) ? x.records.join(', ') : '' // ← única clave Records
       });
     });
   });
