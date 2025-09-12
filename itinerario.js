@@ -474,6 +474,19 @@ async function refreshAlertasCounts(grupoId) {
   return { totalRech, noVistasActual };
 }
 
+// Crea/actualiza una barrita de resumen dentro del modal
+function upsertResumenOK(count){
+  if (!modalAlertas) return;
+  let bar = modalAlertas.querySelector('.alertas-resumen');
+  if (!bar){
+    bar = document.createElement('div');
+    bar.className = 'alertas-resumen';
+    // La insertamos al inicio del contenido del modal (debajo del título)
+    modalAlertas.insertBefore(bar, modalAlertas.firstChild ? modalAlertas.firstChild.nextSibling : null);
+  }
+  bar.innerHTML = `<span class="pill pill-ok">Grupos OK: <b>${count}</b></span>`;
+}
+
 async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
   const gSnap = await getDoc(doc(db, 'grupos', grupoId));
   const g     = gSnap.data() || {};
@@ -499,6 +512,21 @@ async function openAlertasPanel() {
 
   modalAlertas.style.display = "block";
   document.getElementById("modal-backdrop").style.display = "block";
+  modalAlertas.style.display = "block";
+  document.getElementById("modal-backdrop").style.display = "block";
+  document.body.classList.add('modal-open'); // (si ya lo tienes, déjalo)
+  
+  /* ——— NUEVO: contar grupos en estado OK y mostrarlo ——— */
+  let okCount = 0;
+  try {
+    const qsOK = await getDocs(query(
+      collection(db,'grupos'),
+      where('estadoRevisionItinerario','==','OK')
+    ));
+    okCount = qsOK.size;
+  } catch(_) {}
+  upsertResumenOK(okCount);
+
   document.body.classList.add('modal-open');
 
   // 1) Alertas del grupo (separadas)
