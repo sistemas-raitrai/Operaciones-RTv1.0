@@ -34,7 +34,7 @@
 
     /* TRAMOS */
     #tramos-section { background:#f6f6ff; border-radius:6px; padding:0.5rem; margin:0.7rem 0; }
-    .tramo-row { display:flex; gap:0.3rem; align-items:center; margin-bottom:0.3rem; }
+    .tramo-row { display:flex; flex-wrap:wrap; gap:0.3rem; align-items:center; margin-bottom:0.3rem; }
     .tramo-row input, .tramo-row select { width:6.5em; font-size:0.96em; text-transform:uppercase; }
     .tramo-row .long { width:11em; }
     .tramo-row .tramo-remove { background:#ff4444; color:white; border:none; border-radius:3px; padding:2px 7px; cursor:pointer; }
@@ -48,50 +48,24 @@
     /* Contenedor flex para tener 3 columnas */
     .flights-container {
       display: flex;
-      gap: 1rem;              /* separación horizontal entre tablas */
+      gap: 1rem;
     }
-    
-    /* Cada bloque con borde, radio y overflow */
     .flights-list-wrapper {
-      flex: 1;                /* igual ancho */
-      border: 1px solid #ccc; /* borde gris claro */
+      flex: 1;
+      border: 1px solid #ccc;
       border-radius: 4px;
       overflow: hidden;
     }
-    
-    /* Tabla sin bordes colapsados, para poder separar filas */
-    .flights-list {
-      width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
-    }
-    
-    /* Encabezado con fondo */
-    .flights-list th {
-      background: #f5f5f5;
-      padding: .5em;
-      text-align: left;
-    }
-    
-    /* Celdas con padding consistente */
-    .flights-list td {
-      padding: .5em;
-    }
-    
-    /* Cada fila tiene su línea divisoria */
-    .flights-list tbody tr {
-      border-bottom: 1px solid #eee;
-    }
-    
-    /* Quitar la línea en la última fila */
-    .flights-list tbody tr:last-child {
-      border-bottom: none;
-    }
-    
-    /* Hover para enfatizar el item */
-    .flights-list tbody tr:hover {
-      background: #fafafa;
-    }
+    .flights-list { width: 100%; border-collapse: separate; border-spacing: 0; }
+    .flights-list th { background: #f5f5f5; padding: .5em; text-align: left; }
+    .flights-list td { padding: .5em; }
+    .flights-list tbody tr { border-bottom: 1px solid #eee; }
+    .flights-list tbody tr:last-child { border-bottom: none; }
+    .flights-list tbody tr:hover { background: #fafafa; }
+
+    /* Pequeñas ayudas visuales */
+    .fieldset { border:1px dashed #ddd; border-radius:6px; padding:.8rem; }
+    .fieldset legend, .hint { font-size:.85em; color:#666; }
   </style>
 </head>
 
@@ -101,7 +75,7 @@
 
   <!-- 2) Tu contenido principal -->
   <main class="main">
-      <div class="column long"><h2>PLANIFICACIÓN DE VIAJES:</h2></div>
+    <div class="column long"><h2>PLANIFICACIÓN DE VIAJES:</h2></div>
     <div class="row">
       <div class="column long">
         <input id="search-input" type="text" placeholder="🔎 Buscar vuelos y grupos…" style="margin-left:1em; margin-right:3em; padding:.3em;"/>
@@ -117,29 +91,23 @@
       </div>
     </div>
 
-    <!--
+    <!-- Listas resumen opcionales
     <div id="flights-list-container" style="display:flex; gap:1rem; margin-top:1rem;">
       <div class="flights-list-wrapper">
-        <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
-          <thead>
-            <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
-          </thead>
+        <table class="flights-list">
+          <thead><tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
       <div class="flights-list-wrapper">
-        <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
-          <thead>
-            <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
-          </thead>
+        <table class="flights-list">
+          <thead><tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr></thead>
           <tbody></tbody>
         </table>
       </div> 
       <div class="flights-list-wrapper">
-        <table class="flights-list" style="flex:1; border-collapse:collapse; width:100%">
-          <thead>
-            <tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr>
-          </thead>
+        <table class="flights-list">
+          <thead><tr><th>Aerolínea</th><th>Vuelo</th><th>Fecha</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>  
@@ -147,35 +115,43 @@
     -->
   
     <div id="vuelos-container"></div>
-    
   </main>
 
-  <!-- MODAL VUELO -->
+  <!-- MODAL VUELO / TRAYECTO -->
   <div id="modal-backdrop" class="modal-backdrop"></div>
-  <div id="modal-vuelo" class="modal" style="max-width:900px;">
-    <h3 id="modal-title">NUEVO VUELO</h3>
+  <div id="modal-vuelo" class="modal" style="max-width:980px;">
+    <h3 id="modal-title">NUEVO VUELO/TRAYECTO</h3>
     <form id="modal-form">
-  
+
+      <!-- FILA: Transporte + Aerolínea/Empresa + Nº -->
       <div class="row">
         <div class="column short">
-          <label>AEROLÍNEA</label>
+          <label>TRANSPORTE</label>
+          <select id="m-transporte">
+            <option value="aereo">AÉREO</option>
+            <option value="terrestre">TERRESTRE (BUS)</option>
+          </select>
+          <div class="hint">Selecciona AÉREO o BUS</div>
+        </div>
+        <div class="column short">
+          <label>AEROLÍNEA / EMPRESA</label>
           <input id="m-proveedor" list="lista-aero" />
           <datalist id="lista-aero"></datalist>
         </div>
         <div class="column short">
-          <label>N° VUELO</label>
+          <label>N° VUELO / SERVICIO</label>
           <input id="m-numero" />
         </div>
         <div class="column short">
-          <label>TIPO</label>
+          <label>TIPO (solo AÉREO)</label>
           <select id="m-tipoVuelo">
             <option value="charter">CHARTER</option>
             <option value="regular">REGULAR</option>
           </select>
         </div>
       </div>
-  
-      <!-- SIMPLE VUELO (si no es múltiples tramos) -->
+
+      <!-- SIMPLE (sin tramos) -->
       <div id="campos-vuelo-simple">
         <div class="row">
           <div class="column medium">
@@ -197,17 +173,58 @@
             <input type="date" id="m-fechaVuelta" />
           </div>
         </div>
+
+        <!-- HORARIOS TOP-LEVEL AÉREO -->
+        <fieldset class="fieldset" style="margin-top:.5rem;">
+          <legend>HORARIOS AÉREO (si aplica)</legend>
+          <div class="row">
+            <div class="column medium">
+              <label>Presentación (IDA)</label>
+              <input type="time" id="m-presentacionIdaHora" />
+            </div>
+            <div class="column medium">
+              <label>Vuelo (IDA)</label>
+              <input type="time" id="m-vueloIdaHora" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="column medium">
+              <label>Presentación (REGRESO)</label>
+              <input type="time" id="m-presentacionVueltaHora" />
+            </div>
+            <div class="column medium">
+              <label>Vuelo (REGRESO)</label>
+              <input type="time" id="m-vueloVueltaHora" />
+            </div>
+          </div>
+        </fieldset>
+
+        <!-- HORARIOS TOP-LEVEL TERRESTRE -->
+        <fieldset class="fieldset" style="margin-top:.5rem;">
+          <legend>HORARIOS BUS (si aplica)</legend>
+          <div class="row">
+            <div class="column medium">
+              <label>Salida Bus (IDA)</label>
+              <input type="time" id="m-idaHora" />
+            </div>
+            <div class="column medium">
+              <label>Regreso Bus</label>
+              <input type="time" id="m-vueltaHora" />
+            </div>
+          </div>
+        </fieldset>
       </div>
-  
+
       <!-- OPCIÓN MULTITRAMO SOLO PARA REGULAR -->
       <div id="multitramo-opcion" style="display:none; margin:0.8em 0;">
         <label style="display:flex; align-items:center; font-weight:bold; letter-spacing:1px;">
           <input type="checkbox" id="m-multitramo" style="margin-right:0.1em;" />
           USAR MÚLTIPLES TRAMOS
         </label>
+        <div class="hint">En REGULAR + MÚLTIPLES TRAMOS, cada tramo tendrá también 4 horarios (presentación/vuelo ida y regreso).</div>
       </div>
-  
-      <!-- SECCIÓN TRAMOS -->
+
+      <!-- SECCIÓN TRAMOS (los 4 inputs de hora por tramo los agrega el JS) -->
       <div id="tramos-section" style="display:none">
         <h4>MÚLTIPLES TRAMOS DEL VUELO</h4>
         <div id="tramos-list"></div>
@@ -229,6 +246,7 @@
         </div>
       </div>
 
+      <!-- GRUPOS -->
       <label>GRUPOS</label>
       <select id="m-grupos" multiple></select>
       <label>ESTADO POR DEFECTO</label>
@@ -236,7 +254,7 @@
         <option value="confirmado">✅ CONFIRMADO</option>
         <option value="pendiente">🕗 PENDIENTE</option>
       </select>
-  
+
       <button type="button" id="btnAddPaxExtra" style="background:green;color:white;margin:0.5em 0;">+ AGREGAR PAX EXTRA</button>
       <div class="actions">
         <button type="button" id="modal-cancel">CANCELAR</button>
@@ -244,7 +262,6 @@
       </div>
     </form>
   </div>
-
 
   <!-- MODAL AGREGAR PAX EXTRA -->
   <div id="paxextra-backdrop" class="modal-backdrop"></div>
@@ -268,7 +285,7 @@
   </div>
 
   <!-- MODAL EDITAR GRUPO -->
-<div id="group-backdrop" class="modal-backdrop"></div>
+  <div id="group-backdrop" class="modal-backdrop"></div>
   <div id="group-modal" class="modal">
     <h3>EDITAR GRUPO</h3>
     <form id="group-form">
@@ -307,7 +324,6 @@
     </form>
   </div>
 
-
   <!-- MODAL HISTORIAL -->
   <div id="hist-backdrop" class="modal-backdrop"></div>
   <div id="hist-modal" class="modal">
@@ -332,16 +348,52 @@
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- Carga encadenada y módulos -->
   <script type="module">
     (async () => {
-      // 1. Cargar el encabezado común (header)
+      // 1) Header
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-  
-      // 2. Importar los scripts necesarios (en orden)
+
+      // 2) Módulos base
       await import('./firebase-init.js');
-      await import('./script.js');    // Global: usuario, reloj, botones
-      await import('./viajes.js');    // Lógica propia de esta página
+      await import('./script.js');    // Global: usuario, reloj, etc.
+
+      // 3) Lógica principal de esta página
+      await import('./viajes.js');
+
+      // (Opcional) Pequeña ayuda visual: muestra/oculta fieldsets de horarios
+      // según selección de transporte. No es obligatorio para que funcione.
+      const transpSel = document.getElementById('m-transporte');
+      const fieldAer  = document.querySelector('fieldset .legend') ? null : null; // placeholder
+      const aeroBox   = document.querySelector('fieldset:nth-of-type(1)');
+      const busBox    = document.querySelector('fieldset:nth-of-type(2)');
+      const tipoSel   = document.getElementById('m-tipoVuelo');
+      const tramosSec = document.getElementById('tramos-section');
+      const multiOp   = document.getElementById('multitramo-opcion');
+      const simpleBox = document.getElementById('campos-vuelo-simple');
+
+      function toggleBoxes(){
+        const t = transpSel?.value || 'aereo';
+        if (t === 'aereo'){
+          if (aeroBox) aeroBox.style.display = '';
+          if (busBox)  busBox.style.display  = 'none';
+          if (tipoSel) tipoSel.disabled = false;
+          if (multiOp && tipoSel?.value === 'regular') multiOp.style.display = 'block';
+        } else {
+          if (aeroBox) aeroBox.style.display = 'none';
+          if (busBox)  busBox.style.display  = '';
+          if (tipoSel) tipoSel.disabled = true;
+          if (multiOp) multiOp.style.display = 'none';
+          if (tramosSec) tramosSec.style.display = 'none';
+          if (simpleBox) simpleBox.style.display = 'block';
+          const mult = document.getElementById('m-multitramo'); if (mult) mult.checked = false;
+        }
+      }
+      toggleBoxes();
+      if (transpSel) transpSel.addEventListener('change', toggleBoxes);
+      if (tipoSel) tipoSel.addEventListener('change', toggleBoxes);
     })();
   </script>
 
