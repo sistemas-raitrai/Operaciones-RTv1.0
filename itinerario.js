@@ -443,15 +443,34 @@ function setEstadoBadge(estado) {
   else estadoBadge.classList.add('badge-pendiente');
 }
 
-async function refreshAlertasBadge(grupoId) {
-  if (!alertasBadge) return;
+// Reemplazo total de refreshAlertasBadge(...)
+async function refreshAlertasCounts(grupoId) {
+  let noVistasActual = 0; // (Y) no leídas del grupo en foco
+  let totalRech = 0;      // (X) total de grupos con revisión RECHAZADA
+
+  // No leídas del grupo actual
   try {
     const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
-    const pendientes = qs.docs.filter(d => !((d.data()||{}).visto)).length;
-    alertasBadge.textContent = String(pendientes);
-  } catch (_) {
-    alertasBadge.textContent = "0";
-  }
+    noVistasActual = qs.docs.filter(d => !((d.data()||{}).visto)).length;
+  } catch(_) {}
+
+  // Total de grupos RECHAZADOS
+  try {
+    const qsRech = await getDocs(query(
+      collection(db,'grupos'),
+      where('estadoRevisionItinerario','==','RECHAZADO')
+    ));
+    totalRech = qsRech.size;
+  } catch(_) {}
+
+  // Actualiza el texto del botón: "⚠️ Alertas | X (Y)"
+  const label = `⚠️ Alertas | ${totalRech} (${noVistasActual})`;
+  if (btnAlertas) btnAlertas.textContent = label;
+
+  // Compatibilidad con el badge antiguo (si existe en el HTML)
+  if (alertasBadge) alertasBadge.textContent = String(noVistasActual);
+
+  return { totalRech, noVistasActual };
 }
 
 async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
@@ -465,7 +484,7 @@ async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
     await updateDoc(doc(db,'grupos',grupoId), { estadoRevisionItinerario: nuevoEstado });
   }
   setEstadoBadge(nuevoEstado);
-  await refreshAlertasBadge(grupoId);
+  await refreshAlertasCounts(grupoId);
 }
 
 // —————————————————————————————————
@@ -536,7 +555,7 @@ async function openAlertasPanel() {
           leidoPor: auth.currentUser.email,
           leidoEn: new Date()
         });
-        await refreshAlertasBadge(grupoId);
+        await refreshAlertasCounts(grupoId);
         openAlertasPanel(); // recarga
       };
     });
