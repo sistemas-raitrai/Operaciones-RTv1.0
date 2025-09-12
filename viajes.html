@@ -66,6 +66,12 @@
     /* Pequeñas ayudas visuales */
     .fieldset { border:1px dashed #ddd; border-radius:6px; padding:.8rem; }
     .fieldset legend, .hint { font-size:.85em; color:#666; }
+
+    .chip { display:inline-block; padding:.15em .45em; border-radius:14px; font-size:.78em; line-height:1.6; }
+    .chip-rec { background:#e8f0ff; border:1px solid #c7dbff; color:#0b3d91; cursor:pointer; }
+    .chip-rec:hover { filter:brightness(0.96); }
+    .records-line { margin-top:.15rem; overflow:auto; white-space:nowrap; }
+
   </style>
 </head>
 
@@ -270,19 +276,25 @@
     <form id="paxextra-form">
       <label>NOMBRE O REFERENCIA</label>
       <input id="paxextra-nombre" maxlength="40" placeholder="EJ: PREMIO RIFA, JUAN PÉREZ"/>
+  
       <label>CANTIDAD</label>
       <input id="paxextra-cantidad" type="number" min="1" value="1"/>
+  
       <label>ESTADO</label>
       <select id="paxextra-status">
         <option value="confirmado">✅ CONFIRMADO</option>
         <option value="pendiente">🕗 PENDIENTE</option>
       </select>
+  
+      <label>Nº RECORD(S)</label>
+      <input id="paxextra-records" placeholder="SEPARA CON COMA: ABC123, XYZ-9"/>
+  
       <div class="actions">
         <button type="button" id="paxextra-cancel">CANCELAR</button>
         <button type="submit">GUARDAR</button>
       </div>
     </form>
-  </div>
+  </div
 
   <!-- MODAL EDITAR GRUPO -->
   <div id="group-backdrop" class="modal-backdrop"></div>
