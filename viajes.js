@@ -749,6 +749,7 @@ window.toggleReservaEstado = async (vueloId) => {
 window.addReserva = async (vueloId, idxGrupo) => {
   const rec = prompt('Ingrese N° de reserva (record):');
   if (!rec) return;
+  const recNorm = toUpper(rec.trim());  
   const ref = doc(db,'vuelos', vueloId);
   const snap = await getDoc(ref);
   const data = snap.data() || {};
@@ -756,7 +757,7 @@ window.addReserva = async (vueloId, idxGrupo) => {
   const g = arr[idxGrupo];
   if (!g) return;
   const reservas = Array.isArray(g.reservas) ? g.reservas : [];
-  if (!reservas.includes(rec)) reservas.push(rec);
+  if (!reservas.includes(recNorm)) reservas.push(recNorm);
   arr[idxGrupo] = { ...g, reservas, changedBy: currentUserEmail };
   await updateDoc(ref, { grupos: arr, updatedAt: serverTimestamp() });
   await addDoc(collection(db,'historial'), {
