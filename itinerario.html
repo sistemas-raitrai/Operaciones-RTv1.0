@@ -139,6 +139,37 @@
       background:#e7f8ef; color:#166534; border-color:#9fe3be;
     }
 
+    /* Desactiva scroll de fondo cuando hay modal */
+    body.modal-open { overflow: hidden; }
+    
+    /* Backdrop SIEMPRE por debajo del modal */
+    #modal-backdrop{
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.35);
+      display: none;                /* se prende por JS */
+      z-index: 1000;                /* < modal */
+    }
+    
+    /* Estilo base para todos los modales */
+    .modal{
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%,-50%);
+      background: #fff;
+      width: min(920px, 92vw);
+      max-height: 85vh;             /* <- permite scroll interno */
+      overflow: auto;               /* <- scroll dentro del modal */
+      border-radius: 8px;
+      box-shadow: 0 10px 40px rgba(0,0,0,.3);
+      z-index: 1100;                /* > backdrop */
+    }
+    
+    /* (opcional) por si querés forzar cada modal */
+    #modal-historial{ z-index: 1100; }
+    #modal-alertas{   z-index: 1100; }
+
+
   </style>
 </head>
 <body class="itinerario-page">
