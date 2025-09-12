@@ -39,6 +39,16 @@ function toISO(x){
   return isNaN(d) ? '' : d.toISOString().slice(0,10);
 }
 
+// Convierte "ABC123, xyz-9  DEF" -> ["ABC123", "XYZ-9", "DEF"] (sin duplicados)
+function parseRecordsInput(x){
+  return Array.from(new Set(
+    String(x || '')
+      .split(/[,\s]+/)
+      .map(s => s.trim())
+      .filter(Boolean)
+  )).map(toUpper);
+}
+
 // Normaliza hora a 'HH:MM' 24h (si viene mal/empty -> '')
 function toHHMM(x){
   if (!x) return '';
@@ -205,6 +215,15 @@ function filterVuelos(rawQuery){
     card.style.display = match ? '' : 'none';
   });
 }
+
+// Permite filtrar rápidamente al hacer clic en una chip de RECORD
+window.filterByRecord = (rec) => {
+  const searchEl = document.getElementById('search-input');
+  if (searchEl){
+    searchEl.value = rec;
+    filterVuelos(rec.toLowerCase());
+  }
+};
 
 // Lista “resumen” opcional (si usas las 3 tablas)
 function renderFlightsList(){
@@ -608,6 +627,7 @@ function openPaxExtraModal(vueloId){
   document.getElementById('paxextra-nombre').value   = '';
   document.getElementById('paxextra-cantidad').value = 1;
   document.getElementById('paxextra-status').value   = 'pendiente';
+  document.getElementById('paxextra-records').value  = '';
   document.getElementById('paxextra-backdrop').style.display = 'block';
   document.getElementById('paxextra-modal').style.display    = 'block';
 }
@@ -623,6 +643,7 @@ window.editPaxExtra = (vueloId, idx) => {
     document.getElementById('paxextra-nombre').value   = pax.nombre || '';
     document.getElementById('paxextra-cantidad').value = pax.cantidad || 1;
     document.getElementById('paxextra-status').value   = pax.status || 'pendiente';
+    document.getElementById('paxextra-records').value  = (pax.records || []).join(', ');
     document.getElementById('paxextra-backdrop').style.display = 'block';
     document.getElementById('paxextra-modal').style.display    = 'block';
   });
@@ -638,13 +659,14 @@ async function onSubmitPaxExtra(evt){
   const nombre   = toUpper((document.getElementById('paxextra-nombre').value || '').trim());
   const cantidad = parseInt(document.getElementById('paxextra-cantidad').value, 10);
   const status   = document.getElementById('paxextra-status').value;
+  const records  = parseRecordsInput(document.getElementById('paxextra-records').value);
   if (!nombre || cantidad < 1) return alert('Completa todos los campos correctamente');
 
   const ref = doc(db,'vuelos', editingVueloId);
   const snap = await getDoc(ref);
   const data = snap.data() || {};
   let paxExtrasArr = data.paxExtras || [];
-  const pax = { nombre, cantidad, status, changedBy: currentUserEmail };
+  const pax = { nombre, cantidad, status, records, changedBy: currentUserEmail };
 
   if (paxExtraEditMode && paxExtraEditIdx !== null){
     const antes = paxExtrasArr[paxExtraEditIdx];
@@ -1000,12 +1022,19 @@ async function renderVuelos(){
         const val = parseInt(pax.cantidad || 0, 10);
         totX += val;
         if (pax.status === 'confirmado') confX += val;
+      
+        const recs = Array.isArray(pax.records) ? pax.records : [];
+        const chips = recs.length
+          ? `<div class="records-line">${recs.map(r => `<span class="chip chip-rec" onclick="window.filterByRecord('${r.replace(/'/g,"\\'")}')">${toUpper(r)}</span>`).join(' ')}</div>`
+          : '';
+      
         return `
           <div class="group-item" style="background:#ffebe7">
             <div class="num">–</div>
             <div class="name">
               <span class="group-name" style="cursor:pointer;text-decoration:underline;" onclick="window.editPaxExtra('${v.id}', ${idx})">${toUpper(pax.nombre||'')}</span>
               <span class="pax-inline">${val}</span>
+              ${chips}
             </div>
             <div class="status-cell">
               <span>${pax.status === 'confirmado' ? '✅ CONFIRMADO' : '🕗 PENDIENTE'}</span>
@@ -1257,7 +1286,8 @@ function exportToExcel(){
         Total: x.cantidad,
         Estado: x.status,
         Records: '',
-        Cambiado_Por: x.changedBy || ''
+        Cambiado_Por: x.changedBy || '',
+        Records: Array.isArray(x.records) ? x.records.join(' ') : ''
       });
     });
   });
