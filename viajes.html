@@ -72,6 +72,32 @@
     .chip-rec:hover { filter:brightness(0.96); }
     .records-line { margin-top:.15rem; overflow:auto; white-space:nowrap; }
 
+    /* Botones mini tipo ícono: transparentes */
+    .group-item .btn-small,
+    .records-line .btn-small,
+    .status-cell .btn-small,
+    .delete-cell .btn-small {
+      background: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      color: inherit;          /* usa el color de texto del contenedor */
+      padding: 0 .35em;        /* compacto */
+      line-height: 1.2;
+    }
+    
+    /* Hover sutil para que siga habiendo feedback */
+    .group-item .btn-small:hover,
+    .records-line .btn-small:hover,
+    .status-cell .btn-small:hover,
+    .delete-cell .btn-small:hover {
+      background: rgba(0,0,0,.06) !important;
+      border-radius: 4px;
+    }
+    
+    /* Si algún estilo global pone uppercase o tamaño raro, lo neutralizamos */
+    .group-item .btn-small { text-transform: none; font-size: 0.95em; }
+
+
   </style>
 </head>
 
