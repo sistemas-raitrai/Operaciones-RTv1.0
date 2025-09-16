@@ -931,3 +931,32 @@ th.swap-pending {
   border-radius: 4px;
   border: 1.5px solid #003366;
 }
+
+
+/* Bloquear scroll del fondo cuando hay modal */
+body.modal-open { overflow: hidden; }
+
+/* Backdrop común */
+#modal-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  display: none;
+  z-index: 1000;
+}
+
+/* Todos los modales por encima del backdrop */
+#modal, #modal-historial, #modal-alertas {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #fff;
+  width: min(920px, 92vw);
+  max-height: 85vh;
+  overflow: auto;              /* scroll interno del modal */
+  border-radius: 8px;
+  box-shadow: 0 10px 40px rgba(0,0,0,.3);
+  display: none;
+  z-index: 1100;               /* > backdrop */
+}
+
