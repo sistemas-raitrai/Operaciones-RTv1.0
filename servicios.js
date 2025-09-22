@@ -4,7 +4,7 @@ import { auth, db } from './firebase-init.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs, query, orderBy,
-  doc, deleteDoc, setDoc, getDoc
+  doc, deleteDoc, setDoc, getDoc, updateDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* ===========================
