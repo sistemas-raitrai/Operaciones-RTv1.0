@@ -43,6 +43,11 @@ const FILTER = { destino:'', programa:'', desde:'', hasta:'' };
 // Buscador de CONJUNTOS (tokens)
 const SEARCH = { tokens: [] };
 
+// Filtros/búsquedas adicionales
+const FILTER_SETS   = { day: '' };   // día exacto para asignados (SETS)
+const FILTER_LIBRES = { day: '' };   // día exacto para libres
+const SEARCH_LIBRES = { tokens: [] };// buscador para libres
+
 let swapMode  = false;
 let swapFirst = null;
 
@@ -302,6 +307,10 @@ const inpHasta   = $('#f-hasta');
 // Buscador de CONJUNTOS (ubícalo en la cabecera de “Viajes”)
 const inpBuscarSets = $('#buscar-sets');
 
+const inpDiaSets      = $('#f-dia-sets');
+const inpBuscarLibres = $('#buscar-libres');
+const inpDiaLibres    = $('#f-dia-libres');
+
 const wrapResumen= $('#resumen-wrap');
 const wrapStats  = $('#stats-viajes-wrap');
 
@@ -359,6 +368,24 @@ function populateFilterOptions(){
   selPrograma?.addEventListener('change', ()=>{ FILTER.programa= selPrograma.value; render(); });
   inpDesde?.addEventListener('change',    ()=>{ FILTER.desde   = inpDesde.value||''; render(); });
   inpHasta?.addEventListener('change',    ()=>{ FILTER.hasta   = inpHasta.value||''; render(); });
+
+   // — Asignados (SETS): día exacto
+   inpDiaSets?.addEventListener('change', ()=>{
+     FILTER_SETS.day = inpDiaSets.value || '';
+     renderSets(); // refrescar solo los SETS
+   });
+   
+   // — Libres: buscador (sin tildes gracias a norm())
+   inpBuscarLibres?.addEventListener('input', ()=>{
+     SEARCH_LIBRES.tokens = parseTokens(inpBuscarLibres.value);
+     renderLibres(); // refrescar libres
+   });
+   
+   // — Libres: día exacto
+   inpDiaLibres?.addEventListener('change', ()=>{
+     FILTER_LIBRES.day = inpDiaLibres.value || '';
+     renderLibres();
+   });
 
   inpBuscarSets?.addEventListener('input', ()=>{
     SEARCH.tokens = parseTokens(inpBuscarSets.value);
@@ -443,7 +470,13 @@ function firstStartISO(s){
   const viajes=(s.viajes||[]).map(id=>ID2GRUPO.get(id)).filter(Boolean).sort((a,b)=>cmpISO(a.fechaInicio,b.fechaInicio));
   return viajes[0]?.fechaInicio || null;
 }
-function norm(s){ return (s??'').toString().trim().toLowerCase(); }
+function norm(s){
+  return (s ?? '')
+    .toString()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'') // quita tildes/diacríticos
+    .trim()
+    .toLowerCase();
+}
 function parseTokens(s){ return (s||'').split(',').map(t=>norm(t)).filter(Boolean); }
 
 function gruposFiltrados(arr=GRUPOS){
@@ -459,9 +492,20 @@ function gruposFiltrados(arr=GRUPOS){
 // Conjuntos filtrados por SEARCH.tokens (AND entre tokens)
 function setsFiltrados(arr=SETS){
   const toks = SEARCH.tokens || [];
-  if (!toks.length) return arr;
+  const day  = FILTER_SETS.day || '';
 
-  return arr.filter(s=>{
+  // 1) Filtro por día (si hay valor)
+  const base = day
+    ? arr.filter(s=>{
+        const viajes = (s.viajes||[]).map(id=>ID2GRUPO.get(id)).filter(Boolean);
+        return viajes.some(v => v && v.fechaInicio === day);
+      })
+    : arr;
+
+  // 2) Filtro por texto (tokens AND)
+  if (!toks.length) return base;
+
+  return base.filter(s=>{
     const coordName = s.coordinadorId ? (COORDS.find(c=>c.id===s.coordinadorId)?.nombre||'') : '';
     const viajes = (s.viajes||[]).map(id=>ID2GRUPO.get(id)).filter(Boolean);
 
@@ -481,6 +525,32 @@ function setsFiltrados(arr=SETS){
       hay.push(norm(v.fechaInicio), norm(v.fechaFin));
     });
 
+    return toks.every(tok => hay.some(h => h && h.includes(tok)));
+  });
+}
+
+function filtrarLibresBusquedaYDia(arr){
+  const toks = SEARCH_LIBRES.tokens || [];
+  const day  = FILTER_LIBRES.day || '';
+
+  const base = day ? arr.filter(g => g.fechaInicio === day) : arr;
+
+  if (!toks.length) return base;
+
+  return base.filter(g=>{
+    const hay = [
+      norm(g.aliasGrupo),
+      norm(g.nombreGrupo),
+      norm('#'+(g.numeroNegocio||'')),
+      norm(g.identificador),
+      norm(g.programa),
+      norm(g.destino),
+      norm(g.id||''),
+      norm(fmtDMY(g.fechaInicio)),
+      norm(fmtDMY(g.fechaFin)),
+      norm(g.fechaInicio),
+      norm(g.fechaFin)
+    ];
     return toks.every(tok => hay.some(h => h && h.includes(tok)));
   });
 }
@@ -559,7 +629,10 @@ function renderLibres(){
   console.groupCollapsed('renderLibres');
   const usados=viajesUsadosSetIds();
   const libresAll=GRUPOS.filter(g=>!usados.has(g.id));
-  const libres=gruposFiltrados(libresAll);
+  // 1) Aplico catálogo (destino/programa/desde/hasta)
+  const pre = gruposFiltrados(libresAll);
+  // 2) Aplico búsqueda y día específico para LIBRES
+  const libres = filtrarLibresBusquedaYDia(pre);
   L('Libres:', libres.length, 'Usados en sets:', usados.size, 'Grupos totales:', GRUPOS.length);
   if (!elWrapLibres){ W('elWrapLibres no existe'); console.groupEnd(); return; }
   if (!libres.length){ elWrapLibres.innerHTML='<div class="empty">No hay viajes libres.</div>'; console.groupEnd(); return; }
