@@ -34,6 +34,8 @@ let COORDS = [];   // {id, nombre, rut, telefono, correo, destinos:string[], dis
 let GRUPOS = [];   // catálogo de viajes (grupos)
 let SETS   = [];   // asignaciones (conjuntos)
 let ID2GRUPO = new Map();
+// Horas de inicio por grupo (cargadas desde 'vuelos')
+let HORAS_INICIO = new Map(); // groupId -> { pres:'HH:MM'|null, inicio:'HH:MM'|null, fuente:'aereo|terrestre', vueloId:string|null }
 
 let DESTINOS = []; // catálogo (normalizado) desde GRUPOS
 
@@ -73,6 +75,13 @@ function gapDays(finA, iniB){ const A=new Date(finA+'T00:00:00'); const B=new Da
 
 // dd/mm/aaaa
 function fmtDMY(iso){ if(!iso) return ''; const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; }
+// ===== Helpers HH:MM =====
+function isHHMM(s){ return typeof s==='string' && /^\d{2}:\d{2}$/.test(s); }
+function hhmmToMin(s){ if(!isHHMM(s)) return null; const [h,m]=s.split(':').map(Number); return (h*60)+m; }
+function minHHMM(a,b){
+  if (!isHHMM(a)) return b||''; if (!isHHMM(b)) return a||'';
+  return (hhmmToMin(a) <= hhmmToMin(b)) ? a : b;
+}
 
 /* =========================================================
    Normalización de destinos (MAYÚSCULA)
@@ -197,6 +206,93 @@ async function loadGrupos(){
     throw err;
   }finally{
     console.timeEnd('loadGrupos');
+  }
+}
+
+async function loadHorasViajes(){
+  console.time('loadHorasViajes');
+  HORAS_INICIO.clear();
+  try{
+    // Cargamos TODOS los vuelos
+    const snap = await getDocs(collection(db,'vuelos')); // requiere import getDocs, collection (ya los tienes)
+    // Recorremos cada vuelo y sus grupos
+    snap.forEach(d=>{
+      const v = d.data() || {};
+      const vId = d.id;
+      const tipoTrans = (v.tipoTransporte || 'aereo').toLowerCase();
+
+      // Helper para postular horas a un grupo
+      const postularHoras = (groupId, fechaIda, pres, inicio)=>{
+        const g = ID2GRUPO.get(groupId);
+        if (!g) return;
+        const fechaGrupo = g.fechaInicio; // ya normalizada por loadGrupos
+        if (!fechaGrupo || !fechaIda || fechaGrupo !== fechaIda) return;
+
+        const curr = HORAS_INICIO.get(groupId) || { pres:null, inicio:null, fuente:null, vueloId:null };
+        const nuevo = {
+          pres  : pres   && isHHMM(pres)   ? (curr.pres   ? minHHMM(curr.pres, pres)   : pres)   : curr.pres,
+          inicio: inicio && isHHMM(inicio) ? (curr.inicio ? minHHMM(curr.inicio, inicio): inicio): curr.inicio,
+          fuente: tipoTrans,
+          vueloId: vId
+        };
+        HORAS_INICIO.set(groupId, nuevo);
+      };
+
+      // Caso AÉREO REGULAR MULTITRAMO: horas en tramos[]
+      const isAereo = tipoTrans === 'aereo';
+      const isRegMT = isAereo && v.tipoVuelo === 'regular' && Array.isArray(v.tramos) && v.tramos.length>0;
+
+      if (isRegMT){
+        (Array.isArray(v.grupos)?v.grupos:[]).forEach(gref=>{
+          const gid = gref?.id; if(!gid) return;
+          // para cada tramo con fechaIda
+          (v.tramos||[]).forEach(t=>{
+            const fIda = t?.fechaIda ? (new Date(t.fechaIda)).toISOString().slice(0,10) : '';
+            if (!fIda) return;
+            const pres = t.presentacionIdaHora || '';
+            const ini  = t.vueloIdaHora || '';
+            postularHoras(gid, fIda, pres, ini);
+          });
+        });
+        return; // procesa siguiente vuelo
+      }
+
+      // Caso AÉREO simple/charter: top-level fechaIda + horas
+      if (isAereo){
+        const fIda = v?.fechaIda ? (new Date(v.fechaIda)).toISOString().slice(0,10) : '';
+        const pres = v.presentacionIdaHora || '';
+        const ini  = v.vueloIdaHora || '';
+        (Array.isArray(v.grupos)?v.grupos:[]).forEach(gref=>{
+          const gid = gref?.id; if(!gid) return;
+          postularHoras(gid, fIda, pres, ini);
+        });
+        return;
+      }
+
+      // Caso TERRESTRE (bus): top-level fechaIda + idaHora
+      if (tipoTrans==='terrestre'){
+        const fIda = v?.fechaIda ? (new Date(v.fechaIda)).toISOString().slice(0,10) : '';
+        const hr   = v.idaHora || '';
+        (Array.isArray(v.grupos)?v.grupos:[]).forEach(gref=>{
+          const gid = gref?.id; if(!gid) return;
+          // en bus usamos la misma hora como presentación/inicio (si no definiste presentación aparte)
+          postularHoras(gid, fIda, hr, hr);
+        });
+        return;
+      }
+    });
+
+    // Opcional: volcar las horas al objeto GRUPOS
+    GRUPOS.forEach(g=>{
+      const h = HORAS_INICIO.get(g.id) || null;
+      if (h) g._horasInicio = h; // pres, inicio, fuente, vueloId
+    });
+
+    console.log('[RTV/coord] HORAS_INICIO map size =', HORAS_INICIO.size);
+  }catch(err){
+    E('loadHorasViajes error:', err);
+  }finally{
+    console.timeEnd('loadHorasViajes');
   }
 }
 
@@ -643,7 +739,12 @@ function renderLibres(){
         <button class="btn small" data-add="${g.id}">Agregar a viaje…</button>
       </div>
       <div class="bd">
-        <div class="muted">${fmtDMY(g.fechaInicio)} a ${fmtDMY(g.fechaFin)}</div>
+        <div class="muted">
+           ${fmtDMY(g.fechaInicio)} a ${fmtDMY(g.fechaFin)}
+           ${g._horasInicio && (g._horasInicio.pres || g._horasInicio.inicio)
+             ? ` · ${g._horasInicio.pres ? 'Pres ' + g._horasInicio.pres : ''}${(g._horasInicio.pres && g._horasInicio.inicio)?' · ':''}${g._horasInicio.inicio ? 'Salida ' + g._horasInicio.inicio : ''}`
+             : ''}
+         </div>
         <div class="muted">${g.identificador?`ID: ${escapeHtml(g.identificador)} · `:''}${g.programa?`Prog: ${escapeHtml(g.programa)} · `:''}${g.destino?`Dest: ${escapeHtml(g.destino)}`:''}</div>
       </div>
     </div>`).join('');
@@ -667,7 +768,16 @@ function renderSets(){
     const rows=viajes.map(v=>`
       <tr>
         <td style="width:36%"><input type="text" data-alias="${v.id}" value="${v.aliasGrupo||''}" title="${escapeHtml(v.nombreGrupo||'')}"></td>
-        <td style="width:24%">${fmtDMY(v.fechaInicio)} → ${fmtDMY(v.fechaFin)}</td>
+        <td style="width:24%">
+           ${fmtDMY(v.fechaInicio)} → ${fmtDMY(v.fechaFin)}
+           ${v._horasInicio && (v._horasInicio.pres || v._horasInicio.inicio)
+             ? `<div class="muted" style="margin-top:.2rem">
+                  ${v._horasInicio.pres ? 'Pres ' + v._horasInicio.pres : ''}
+                  ${(v._horasInicio.pres && v._horasInicio.inicio)?' · ':''}
+                  ${v._horasInicio.inicio ? 'Salida ' + v._horasInicio.inicio : ''}
+                </div>`
+             : ''}
+         </td>
         <td style="width:40%">
           <div class="muted">#${v.numeroNegocio}</div>
           ${v.identificador?`<div class="muted">ID: ${escapeHtml(v.identificador)}</div>`:''}
@@ -1460,6 +1570,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     console.log('[RTV/coord] GRUPOS cargados =', GRUPOS.length,
                 '| primeros ids =', GRUPOS.slice(0,5).map(g=>g.id));
 
+    // NUEVO: Cargar horas por grupo desde 'vuelos'
+    await loadHorasViajes();
+
     await loadSets();
     console.log('[RTV/coord] SETS construidos =', SETS.length);
 
@@ -1480,6 +1593,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     reloadAll: async ()=>{
       await loadCoordinadores();
       await loadGrupos();
+      await loadHorasViajes(); // ← NUEVO
       await loadSets();
       render();
       return { coords: COORDS.length, grupos: GRUPOS.length, sets: SETS.length };
