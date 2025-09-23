@@ -616,27 +616,53 @@ async function onSubmitVuelo(evt){
   let pay = {};
   const multitramo = multitramoChkEl && multitramoChkEl.checked;
 
+  // Validación: al menos una pierna real (algún tramo con fechaIda o fechaVuelta)
+  if (tipoTransporte === 'aereo' && tipoVuelo === 'regular' && multitramo){
+    const hasAnyLeg = editingTramos.some(t => toISO(t.fechaIda) || toISO(t.fechaVuelta));
+    if (!hasAnyLeg){
+      alert('Debes ingresar al menos una IDA o una VUELTA en los tramos.');
+      return;
+    }
+  }
+
   if (tipoTransporte === 'aereo' && tipoVuelo === 'regular' && multitramo){
     // AÉREO REGULAR MULTITRAMO (horas por tramo)
     pay = {
       tipoTransporte: 'aereo',
       tipoVuelo: 'regular',
-      tramos: editingTramos.map(t => ({
-        aerolinea: toUpper(t.aerolinea),
-        numero:    toUpper(t.numero),
-        origen:    toUpper(t.origen),
-        destino:   toUpper(t.destino),
-        fechaIda:  t.fechaIda,
-        fechaVuelta: t.fechaVuelta,
-        presentacionIdaHora:     toHHMM(t.presentacionIdaHora),
-        vueloIdaHora:            toHHMM(t.vueloIdaHora),
-        presentacionVueltaHora:  toHHMM(t.presentacionVueltaHora),
-        vueloVueltaHora:         toHHMM(t.vueloVueltaHora)
-      })),
+      tramos: editingTramos.map(t => {
+        const tipo = (t.tipoTramo || 'ida+vuelta').toLowerCase();
+        const base = {
+          aerolinea: toUpper(t.aerolinea),
+          numero:    toUpper(t.numero),
+          origen:    toUpper(t.origen),
+          destino:   toUpper(t.destino),
+          tipoTramo: tipo,
+          // siempre normalizamos con helpers
+          fechaIda:  toISO(t.fechaIda),
+          presentacionIdaHora: toHHMM(t.presentacionIdaHora),
+          vueloIdaHora:        toHHMM(t.vueloIdaHora),
+          fechaVuelta:  toISO(t.fechaVuelta),
+          presentacionVueltaHora: toHHMM(t.presentacionVueltaHora),
+          vueloVueltaHora:        toHHMM(t.vueloVueltaHora)
+        };
+        // limpia lado no usado
+        if (tipo === 'ida'){
+          base.fechaVuelta = '';
+          base.presentacionVueltaHora = '';
+          base.vueloVueltaHora = '';
+        } else if (tipo === 'vuelta'){
+          base.fechaIda = '';
+          base.presentacionIdaHora = '';
+          base.vueloIdaHora = '';
+        }
+        return base;
+      }),
       grupos: gruposArr,
       reservaFechaLimite,
       reservaEstado: reservaEstadoForm
     };
+
   } else if (tipoTransporte === 'aereo' && tipoVuelo === 'regular'){ // regular simple (sin tramos)
     pay = {
       tipoTransporte: 'aereo',
@@ -1065,22 +1091,33 @@ async function renderVuelos(){
     let cardBody = '';
 
     // ===== Bloque tramos (AÉREO REGULAR multitramo) =====
+    // ===== Bloque tramos (AÉREO REGULAR multitramo) =====
     if (isRegMT){
       cardBody += `<div class="tramos" style="margin-bottom:0.7em;">`;
       v.tramos.forEach((tramo, idxT) => {
-        const horasLine = `
-          <div style="font-size:.92em; color:#333; margin-top:.2em;">
-            <div><strong>IDA:</strong> ${fmtFechaLarga(tramo.fechaIda)} 
-              ${tramo.presentacionIdaHora ? ` · Presentación ${tramo.presentacionIdaHora}` : ''} 
-              ${tramo.vueloIdaHora ? ` · Vuelo ${tramo.vueloIdaHora}` : ''}</div>
-            <div><strong>REGRESO:</strong> ${fmtFechaLarga(tramo.fechaVuelta)} 
-              ${tramo.presentacionVueltaHora ? ` · Presentación ${tramo.presentacionVueltaHora}` : ''} 
-              ${tramo.vueloVueltaHora ? ` · Vuelo ${tramo.vueloVueltaHora}` : ''}</div>
-          </div>`;
+        const hasIda    = !!toISO(tramo.fechaIda);
+        const hasVuelta = !!toISO(tramo.fechaVuelta);
+    
+        const lineaIda = hasIda ? `
+          <div><strong>IDA:</strong> ${fmtFechaLarga(tramo.fechaIda)}
+            ${tramo.presentacionIdaHora ? ` · Presentación ${tramo.presentacionIdaHora}` : ''} 
+            ${tramo.vueloIdaHora ? ` · Vuelo ${tramo.vueloIdaHora}` : ''}</div>
+        ` : '';
+    
+        const lineaVta = hasVuelta ? `
+          <div><strong>REGRESO:</strong> ${fmtFechaLarga(tramo.fechaVuelta)}
+            ${tramo.presentacionVueltaHora ? ` · Presentación ${tramo.presentacionVueltaHora}` : ''} 
+            ${tramo.vueloVueltaHora ? ` · Vuelo ${tramo.vueloVueltaHora}` : ''}</div>
+        ` : '';
+    
+        const horasLine = (lineaIda || lineaVta)
+          ? `<div style="font-size:.92em; color:#333; margin-top:.2em;">${lineaIda}${lineaVta}</div>`
+          : '';
+    
         cardBody += `
           <div class="tramo" style="margin-bottom:0.6em;">
             <span style="font-weight:bold;font-size:1.05em;">${icono} ${toUpper(tramo.aerolinea)} ${toUpper(tramo.numero)}</span> 
-            <span style="font-size:.97em;">(REGULAR · TRAMO ${idxT+1})</span><br>
+            <span style="font-size:.97em;">(REGULAR · TRAMO ${idxT+1}${tramo.tipoTramo ? ' · ' + toUpper(tramo.tipoTramo) : ''})</span><br>
             <span style="color:#444;">${toUpper(tramo.origen)} → ${toUpper(tramo.destino)}</span>
             ${horasLine}
           </div>
@@ -1165,9 +1202,12 @@ async function renderVuelos(){
     // ===== Cabecera (título/fechas/origen-destino + horarios top-level cuando aplique) =====
     let fechaCard = '';
     if (isRegMT){
+      const idas    = v.tramos.map(t => toISO(t.fechaIda)).filter(Boolean).sort();
+      const vueltas = v.tramos.map(t => toISO(t.fechaVuelta)).filter(Boolean).sort();
+      const fechaIda    = idas.length ? fmtFechaLarga(idas[0]) : '';
+      const fechaVuelta = vueltas.length ? fmtFechaLarga(vueltas[vueltas.length - 1]) : '';
       const primerTramo = v.tramos[0];
-      const fechaIda    = fmtFechaLarga(primerTramo.fechaIda);
-      const fechaVuelta = fmtFechaLarga(primerTramo.fechaVuelta);
+
       fechaCard = `
         <div class="titulo-vuelo" style="margin-bottom:.5em;">
           <div style="font-size:1.1em; font-weight:bold;">
@@ -1331,9 +1371,24 @@ function exportToExcel(){
 
     let detallesTramos = '';
     if ((v.tipoTransporte || 'aereo') === 'aereo' && v.tipoVuelo === 'regular' && v.tramos && v.tramos.length){
-      detallesTramos = v.tramos.map((t,i) =>
-        `${i+1}) ${toUpper(t.aerolinea)} ${toUpper(t.numero)}: ${toUpper(t.origen)}→${toUpper(t.destino)} [IDA:${t.fechaIda}${t.vueloIdaHora ? ' ' + t.vueloIdaHora : ''} | PRES:${t.presentacionIdaHora || '-'}] [VUELTA:${t.fechaVuelta}${t.vueloVueltaHora ? ' ' + t.vueloVueltaHora : ''} | PRES:${t.presentacionVueltaHora || '-'}]`
-      ).join('\n');
+      detallesTramos = v.tramos.map((t,i) => {
+        const tipo = (t.tipoTramo || '').toLowerCase();
+        const p = [];
+    
+        if (tipo === 'ida' || tipo === 'ida+vuelta'){
+          if (toISO(t.fechaIda)){
+            p.push(`IDA:${t.fechaIda}${t.vueloIdaHora ? ' ' + t.vueloIdaHora : ''} | PRES:${t.presentacionIdaHora || '-'}`);
+          }
+        }
+        if (tipo === 'vuelta' || tipo === 'ida+vuelta'){
+          if (toISO(t.fechaVuelta)){
+            p.push(`REGRESO:${t.fechaVuelta}${t.vueloVueltaHora ? ' ' + t.vueloVueltaHora : ''} | PRES:${t.presentacionVueltaHora || '-'}`);
+          }
+        }
+    
+        const lado = p.join(' · ');
+        return `${i+1}) ${toUpper(t.aerolinea)} ${toUpper(t.numero)}: ${toUpper(t.origen)}→${toUpper(t.destino)} ${lado ? '['+lado+']' : ''}`;
+      }).join('\n');
     }
 
     const isAereo = (v.tipoTransporte || 'aereo') === 'aereo';
