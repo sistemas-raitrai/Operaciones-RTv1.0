@@ -609,9 +609,26 @@ async function onSubmitVuelo(evt){
   const tipoTransporte = f('m-transporte')?.value || 'aereo'; // NUEVO
 
   // Grupos seleccionados
+  // Grupos seleccionados (preserva records al editar)
   const sel = choiceGrupos.getValue(true);
   const defaultStatus = f('m-statusDefault')?.value || 'confirmado';
-  const gruposArr = sel.map(id => ({ id, status: defaultStatus, changedBy: currentUserEmail }));
+  
+  // Si es edición, traemos el doc previo para no perder reservas (records)
+  let prevDoc = null;
+  if (isEdit && editId){
+    const prevSnap = await getDoc(doc(db,'vuelos', editId));
+    prevDoc = prevSnap.exists() ? prevSnap.data() : null;
+  }
+  
+  const gruposArr = sel.map(id => {
+    const prevG = prevDoc?.grupos?.find(g => g.id === id);
+    return {
+      id,
+      status: prevG?.status ?? defaultStatus,
+      changedBy: currentUserEmail,
+      reservas: Array.isArray(prevG?.reservas) ? prevG.reservas : []
+    };
+});
 
   let pay = {};
   const multitramo = multitramoChkEl && multitramoChkEl.checked;
@@ -727,8 +744,7 @@ async function onSubmitVuelo(evt){
 
   if (isEdit){
     const ref = doc(db,'vuelos', editId);
-    const beforeSnap = await getDoc(ref);
-    const before = beforeSnap.data();
+    const before = prevDoc ?? (await getDoc(ref)).data();
 
     // Si cambió estado de reserva, deja rastro
     if ((before?.reservaEstado || 'pendiente') !== (pay.reservaEstado || 'pendiente')){
