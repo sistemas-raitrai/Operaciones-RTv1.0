@@ -439,12 +439,20 @@ function openModal(v=null){
       if (multitramoChkEl) multitramoChkEl.checked = true;
       if (camposSimpleEl)  camposSimpleEl.style.display = 'none';
       if (tramosSectionEl) tramosSectionEl.style.display = 'block';
-      // Añadir defaults de horas por tramo si no existen
+      
+      // Añadir defaults y tipoTramo por tramo
       editingTramos = v.tramos.map(t => ({
-        aerolinea: t.aerolinea || '', numero: t.numero || '', origen: t.origen || '', destino: t.destino || '',
-        fechaIda: t.fechaIda || '', fechaVuelta: t.fechaVuelta || '',
-        presentacionIdaHora: t.presentacionIdaHora || '', vueloIdaHora: t.vueloIdaHora || '',
-        presentacionVueltaHora: t.presentacionVueltaHora || '', vueloVueltaHora: t.vueloVueltaHora || ''
+        aerolinea: t.aerolinea || '',
+        numero: t.numero || '',
+        origen: t.origen || '',
+        destino: t.destino || '',
+        tipoTramo: (t.tipoTramo || '').toLowerCase() || (t.fechaIda && t.fechaVuelta ? 'ida+vuelta' : (t.fechaIda ? 'ida' : (t.fechaVuelta ? 'vuelta' : 'ida+vuelta'))),
+        fechaIda: t.fechaIda || '',
+        presentacionIdaHora: t.presentacionIdaHora || '',
+        vueloIdaHora: t.vueloIdaHora || '',
+        fechaVuelta: t.fechaVuelta || '',
+        presentacionVueltaHora: t.presentacionVueltaHora || '',
+        vueloVueltaHora: t.vueloVueltaHora || ''
       }));
       renderTramosList();
     } else {
