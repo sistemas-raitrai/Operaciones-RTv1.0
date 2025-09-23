@@ -71,32 +71,73 @@ function buildGrupoIds(gruposArr){
 
 // Normaliza payload de vuelo (fechas/horas en top-level y en tramos)
 function normalizeVueloPayload(pay){
-  // Fallback retrocompatible
+  // Transporte por defecto
   pay.tipoTransporte = pay.tipoTransporte || 'aereo';
 
-  // ===== Normalización por tramos si existen =====
+  // ===== Normalización por tramos (regular multitramo) =====
   if (Array.isArray(pay.tramos)){
-    pay.tramos = pay.tramos.map(t => ({
-      ...t,
-      fechaIda:    toISO(t.fechaIda),
-      fechaVuelta: toISO(t.fechaVuelta),
-      // Horas por tramo (sólo aéreo regular multitramo)
-      presentacionIdaHora:     toHHMM(t.presentacionIdaHora),
-      vueloIdaHora:            toHHMM(t.vueloIdaHora),
-      presentacionVueltaHora:  toHHMM(t.presentacionVueltaHora),
-      vueloVueltaHora:         toHHMM(t.vueloVueltaHora),
-    }));
+    pay.tramos = pay.tramos.map(t => {
+      const nt = {
+        ...t,
+        // normaliza strings
+        aerolinea: toUpper(t.aerolinea || ''),
+        numero:    toUpper(t.numero || ''),
+        origen:    toUpper(t.origen || ''),
+        destino:   toUpper(t.destino || ''),
+        // normaliza fechas
+        fechaIda:    toISO(t.fechaIda),
+        fechaVuelta: toISO(t.fechaVuelta),
+        // normaliza horas
+        presentacionIdaHora:     toHHMM(t.presentacionIdaHora),
+        vueloIdaHora:            toHHMM(t.vueloIdaHora),
+        presentacionVueltaHora:  toHHMM(t.presentacionVueltaHora),
+        vueloVueltaHora:         toHHMM(t.vueloVueltaHora),
+      };
+
+      // Deriva tipoTramo si no viene
+      let tipoTramo = (t.tipoTramo || '').toLowerCase();
+      if (!tipoTramo){
+        const hasIda    = !!nt.fechaIda;
+        const hasVuelta = !!nt.fechaVuelta;
+        if (hasIda && hasVuelta) tipoTramo = 'ida+vuelta';
+        else if (hasIda)         tipoTramo = 'ida';
+        else if (hasVuelta)      tipoTramo = 'vuelta';
+        else                     tipoTramo = 'ida+vuelta'; // fallback
+      }
+      nt.tipoTramo = tipoTramo;
+
+      // Si el tipo indica solo un lado, limpia el otro lado
+      if (nt.tipoTramo === 'ida'){
+        nt.fechaVuelta = '';
+        nt.presentacionVueltaHora = '';
+        nt.vueloVueltaHora = '';
+      } else if (nt.tipoTramo === 'vuelta'){
+        nt.fechaIda = '';
+        nt.presentacionIdaHora = '';
+        nt.vueloIdaHora = '';
+      }
+      return nt;
+    });
   }
 
-  // ===== Top-level fechas =====
+  // ===== Top-level fechas/origen/destino =====
   if (pay.tipoTransporte === 'aereo' && pay.tipoVuelo === 'regular' && pay.tramos && pay.tramos.length){
-    // Para regular con tramos: extremos
-    const idas = pay.tramos.map(t => toISO(t.fechaIda)).filter(Boolean).sort();
+    const idas    = pay.tramos.map(t => toISO(t.fechaIda)).filter(Boolean).sort();
     const vueltas = pay.tramos.map(t => toISO(t.fechaVuelta)).filter(Boolean).sort();
+
     pay.fechaIda    = idas[0] || toISO(pay.fechaIda);
     pay.fechaVuelta = vueltas.length ? vueltas[vueltas.length - 1] : toISO(pay.fechaVuelta);
-    pay.origen  = pay.origen  || pay.tramos[0]?.origen  || '';
-    pay.destino = pay.destino || pay.tramos[pay.tramos.length - 1]?.destino || '';
+
+    // Origen: del primer tramo con IDA; si no hay, del primer tramo
+    const tPrimIda = pay.tramos.find(t => t.fechaIda);
+    const tPrim    = pay.tramos[0];
+    // Destino: del último tramo con VUELTA; si no hay, del último tramo con IDA; si no, del último tramo
+    const tUltVta  = [...pay.tramos].reverse().find(t => t.fechaVuelta);
+    const tUltIda  = [...pay.tramos].reverse().find(t => t.fechaIda);
+    const tUlt     = pay.tramos[pay.tramos.length - 1];
+
+    pay.origen  = pay.origen  || (tPrimIda?.origen || tPrim?.origen || '');
+    pay.destino = pay.destino || (tUltVta?.destino || tUltIda?.destino || tUlt?.destino || '');
   } else {
     // Charter / Regular simple / Terrestre
     pay.fechaIda    = toISO(pay.fechaIda);
@@ -105,28 +146,26 @@ function normalizeVueloPayload(pay){
 
   // ===== Top-level horas según transporte/tipo =====
   if (pay.tipoTransporte === 'aereo'){
-    // Charter o Regular simple: 4 horarios top-level
     pay.presentacionIdaHora     = toHHMM(pay.presentacionIdaHora);
     pay.vueloIdaHora            = toHHMM(pay.vueloIdaHora);
     pay.presentacionVueltaHora  = toHHMM(pay.presentacionVueltaHora);
     pay.vueloVueltaHora         = toHHMM(pay.vueloVueltaHora);
-    // (Para regular con tramos, las horas van por tramo; estos top-level pueden quedar vacíos sin problema)
   } else if (pay.tipoTransporte === 'terrestre'){
-    // Bus: 2 horarios top-level
     pay.idaHora    = toHHMM(pay.idaHora);
     pay.vueltaHora = toHHMM(pay.vueltaHora);
   }
 
-  // ===== Grupos: asegurar array y reservas como array =====
+  // ===== Grupos =====
   pay.grupos = Array.isArray(pay.grupos) ? pay.grupos.map(g => ({
     id: g.id,
     status: g.status || 'confirmado',
     changedBy: g.changedBy || '',
-    reservas: Array.isArray(g.reservas) ? g.reservas.filter(Boolean) : [] // nuevo campo opcional
+    reservas: Array.isArray(g.reservas) ? g.reservas.filter(Boolean) : []
   })) : [];
 
   return pay;
 }
+
 
 // ======= Helpers de UI/formatos =======
 
@@ -436,51 +475,116 @@ function closeModal(){
 }
 
 // ======= Tramos (UI dinámico) =======
-
 function renderTramosList(){
   const cont = document.getElementById('tramos-list');
-  if (!cont) return; // si no hay contenedor, no rompemos
+  if (!cont) return;
   cont.innerHTML = '';
+
   editingTramos.forEach((t,i) => {
+    const tipo = (t.tipoTramo || 'ida+vuelta').toLowerCase();
+
     const row = document.createElement('div');
-    row.className = 'tramo-row';
+    row.className = 'tramo-block';
     row.innerHTML = `
-      <input class="long" type="text"  value="${toUpper(t.aerolinea||'')}" placeholder="AEROLÍNEA" data-t="aerolinea" data-i="${i}"/>
-      <input type="text"              value="${toUpper(t.numero||'')}"    placeholder="N°"        data-t="numero" data-i="${i}"/>
-      <input class="long" type="text"  value="${toUpper(t.origen||'')}"    placeholder="ORIGEN"    data-t="origen" data-i="${i}"/>
-      <input class="long" type="text"  value="${toUpper(t.destino||'')}"   placeholder="DESTINO"   data-t="destino" data-i="${i}"/>
-      <input type="date"              value="${t.fechaIda||''}"            placeholder="FECHA IDA" data-t="fechaIda" data-i="${i}"/>
-      <input type="date"              value="${t.fechaVuelta||''}"         placeholder="FECHA VUELTA" data-t="fechaVuelta" data-i="${i}"/>
-      <!-- NUEVO: Horarios por tramo -->
-      <input type="time"              value="${t.presentacionIdaHora||''}"     title="Presentación IDA" data-t="presentacionIdaHora" data-i="${i}"/>
-      <input type="time"              value="${t.vueloIdaHora||''}"            title="Vuelo IDA"        data-t="vueloIdaHora" data-i="${i}"/>
-      <input type="time"              value="${t.presentacionVueltaHora||''}"  title="Presentación REGRESO" data-t="presentacionVueltaHora" data-i="${i}"/>
-      <input type="time"              value="${t.vueloVueltaHora||''}"         title="Vuelo REGRESO"    data-t="vueloVueltaHora" data-i="${i}"/>
-      <button type="button" class="tramo-remove" onclick="removeTramo(${i})">X</button>
+      <div class="tramo-head">
+        <input class="long" type="text"  value="${toUpper(t.aerolinea||'')}" placeholder="AEROLÍNEA" data-t="aerolinea" data-i="${i}"/>
+        <input type="text"              value="${toUpper(t.numero||'')}"    placeholder="N°"        data-t="numero" data-i="${i}"/>
+        <input class="long" type="text"  value="${toUpper(t.origen||'')}"    placeholder="ORIGEN"    data-t="origen" data-i="${i}"/>
+        <input class="long" type="text"  value="${toUpper(t.destino||'')}"   placeholder="DESTINO"   data-t="destino" data-i="${i}"/>
+        <button type="button" class="tramo-remove" onclick="removeTramo(${i})">X</button>
+      </div>
+
+      <div class="tramo-type">
+        <label><input type="radio" name="tipoTramo_${i}" value="ida" ${tipo==='ida'?'checked':''}/> Solo IDA</label>
+        <label><input type="radio" name="tipoTramo_${i}" value="vuelta" ${tipo==='vuelta'?'checked':''}/> Solo REGRESO</label>
+        <label><input type="radio" name="tipoTramo_${i}" value="ida+vuelta" ${tipo==='ida+vuelta'?'checked':''}/> IDA + REGRESO</label>
+      </div>
+
+      <div class="tramo-body">
+        <div class="tramo-line tramo-ida">
+          <span class="tag">IDA</span>
+          <input type="date" value="${t.fechaIda||''}" data-t="fechaIda" data-i="${i}"/>
+          <input type="time" value="${t.presentacionIdaHora||''}" title="Presentación IDA" data-t="presentacionIdaHora" data-i="${i}"/>
+          <input type="time" value="${t.vueloIdaHora||''}"        title="Vuelo IDA"        data-t="vueloIdaHora"        data-i="${i}"/>
+        </div>
+        <div class="tramo-line tramo-vuelta">
+          <span class="tag">REGRESO</span>
+          <input type="date" value="${t.fechaVuelta||''}" data-t="fechaVuelta" data-i="${i}"/>
+          <input type="time" value="${t.presentacionVueltaHora||''}" title="Presentación REGRESO" data-t="presentacionVueltaHora" data-i="${i}"/>
+          <input type="time" value="${t.vueloVueltaHora||''}"        title="Vuelo REGRESO"       data-t="vueloVueltaHora"        data-i="${i}"/>
+        </div>
+      </div>
     `;
-    row.querySelectorAll('input').forEach(inp => {
-      inp.onchange = function(){
-        const key = inp.dataset.t;
+
+    // Bind inputs texto/fechas/horas
+    row.querySelectorAll('input[type="text"], input[type="date"], input[type="time"]').forEach(inp => {
+      const key = inp.dataset.t;
+      const idx = +inp.dataset.i;
+      if (!key) return;
+      inp.onchange = () => {
         if (key === 'fechaIda' || key === 'fechaVuelta') {
-          editingTramos[i][key] = toISO(inp.value);
+          editingTramos[idx][key] = toISO(inp.value);
         } else if (key.endsWith('Hora')) {
-          editingTramos[i][key] = toHHMM(inp.value);
+          editingTramos[idx][key] = toHHMM(inp.value);
         } else {
-          editingTramos[i][key] = toUpper(inp.value);
+          editingTramos[idx][key] = toUpper(inp.value);
         }
       };
     });
+
+    // Bind radios tipoTramo
+    row.querySelectorAll(`input[name="tipoTramo_${i}"]`).forEach(r => {
+      r.onchange = () => {
+        editingTramos[i].tipoTramo = r.value;
+        // Oculta/limpia el lado no usado
+        const idaRow    = row.querySelector('.tramo-ida');
+        const vueltaRow = row.querySelector('.tramo-vuelta');
+
+        if (r.value === 'ida'){
+          vueltaRow.style.display = 'none';
+          // limpia vuelta
+          editingTramos[i].fechaVuelta = '';
+          editingTramos[i].presentacionVueltaHora = '';
+          editingTramos[i].vueloVueltaHora = '';
+          vueltaRow.querySelectorAll('input').forEach(x => x.value = '');
+          idaRow.style.display = '';
+        } else if (r.value === 'vuelta'){
+          idaRow.style.display = 'none';
+          // limpia ida
+          editingTramos[i].fechaIda = '';
+          editingTramos[i].presentacionIdaHora = '';
+          editingTramos[i].vueloIdaHora = '';
+          idaRow.querySelectorAll('input').forEach(x => x.value = '');
+          vueltaRow.style.display = '';
+        } else {
+          idaRow.style.display = '';
+          vueltaRow.style.display = '';
+        }
+      };
+    });
+
+    // Aplica visibilidad inicial según tipo
+    const idaRow    = row.querySelector('.tramo-ida');
+    const vueltaRow = row.querySelector('.tramo-vuelta');
+    if (tipo === 'ida'){ vueltaRow.style.display = 'none'; }
+    else if (tipo === 'vuelta'){ idaRow.style.display = 'none'; }
+    else { idaRow.style.display = ''; vueltaRow.style.display = ''; }
+
     cont.appendChild(row);
   });
 }
+
 window.removeTramo = (idx) => {
   editingTramos.splice(idx,1);
   renderTramosList();
 };
+
 function addTramoRow(){
   editingTramos.push({
-    aerolinea:'', numero:'', origen:'', destino:'', fechaIda:'', fechaVuelta:'',
-    presentacionIdaHora:'', vueloIdaHora:'', presentacionVueltaHora:'', vueloVueltaHora:''
+    aerolinea:'', numero:'', origen:'', destino:'',
+    tipoTramo:'ida+vuelta',
+    fechaIda:'', presentacionIdaHora:'', vueloIdaHora:'',
+    fechaVuelta:'', presentacionVueltaHora:'', vueloVueltaHora:''
   });
   renderTramosList();
 }
