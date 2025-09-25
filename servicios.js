@@ -16,7 +16,7 @@ const opciones = {
   formaPago:    ['EFECTIVO','CTA CORRIENTE','OTRO'],
   tipoCobro:    ['POR PERSONA','POR GRUPO', 'POR DIA', 'OTRO'],
   moneda:       ['PESO CHILENO','PESO ARGENTINO','REAL','USD','OTRO'],
-  voucher:      ['FISICO','ELECTRONICO','NO APLICA'] // para la columna Voucher
+  voucher:      ['FISICO','ELECTRONICO','CORREO','NO APLICA'] // para la columna Voucher
 };
 
 // Orden y nombres de campos (mismo orden visual y de guardado)
