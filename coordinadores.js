@@ -855,7 +855,7 @@ function renderSets(){
             <button class="btn small" data-addv="${idx}">Agregar viaje</button>
             <button class="btn small" data-sugerirc="${idx}">Sugerir coord</button>
             <button class="btn small ${s.confirmado?'secondary':''}" data-confirm="${idx}">${s.confirmado?'Desconfirmar':'Confirmar'}</button>
-            <button class="btn small" data-saveone="${idx}">💾 Guardar este grupo</button>
+            <button class="btn small" data-saveone="${idx}">💾 Guardar</button>
             <button class="btn small" data-delset="${idx}">Eliminar</button>
           </div>
         </div>
