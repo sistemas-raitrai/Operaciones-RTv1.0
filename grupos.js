@@ -500,7 +500,7 @@ async function cargarYMostrarTabla() {
   valores.forEach(item => {
     const $tr = $('<tr>');
   
-    // Solo las celdas originales 0..23 (según camposFire)
+    // construimos las 24 celdas originales (0..23)
     for (let idx = 0; idx < camposFire.length; idx++) {
       const campo = camposFire[idx];
       const celda = item.fila[idx];
@@ -514,24 +514,27 @@ async function cargarYMostrarTabla() {
         $td.attr('data-tipo', 'number');
       }
       $tr.append($td);
-    }
   
-    // NUEVO: celda Coordinadores (índice 24). No editable, no mapea a Firestore
-    const coordText = ((item.fila[24] ?? '').toString().trim()) || '';
-    const $tdCoord = $('<td>')
-      .text(coordText)
-      .attr('data-doc-id', item.id)
-      .attr('data-fixed', '1')   // bandera: no editable
-      .attr('data-campo', '')    // no mapea a Firestore
-      .attr('data-original', coordText);
-    $tr.append($tdCoord);
+      // 👉 insertar Coordinadores inmediatamente DESPUÉS de Vendedor(a) (idx === 4)
+      if (idx === 4) {
+        const coordText = ((item.fila[24] ?? '').toString().trim()) || '';
+        const $tdCoord = $('<td>')
+          .text(coordText)
+          .attr('data-doc-id', item.id)
+          .attr('data-fixed', '1')   // no editable
+          .attr('data-campo', '')    // no mapea a Firestore
+          .attr('data-original', coordText);
+        $tr.append($tdCoord);
+      }
+    }
   
     $tb.append($tr);
   });
   
-  // Añade encabezado "Coordinadores" solo si aún no existe
-  if ($('#tablaGrupos thead th').length === camposFire.length) {
-    $('#tablaGrupos thead tr').append('<th>Coordinadores</th>');
+  // Encabezado "Coordinadores" insertado en la misma posición (después del 5º th)
+  const $theadRow = $('#tablaGrupos thead tr');
+  if ($theadRow.find('th').length === camposFire.length) {
+    $('<th>Coordinadores</th>').insertAfter($theadRow.find('th').eq(4));
   }
 
   // 4) Iniciar DataTable principal
@@ -548,7 +551,7 @@ async function cargarYMostrarTabla() {
     ],
     pageLength: -1,
     lengthChange: false,
-    order: [[9,'desc'],[10,'desc'],[11,'desc'],[1,'desc']],
+    order: [[10,'desc'],[11,'desc'],[12,'desc'],[1,'desc']],
     scrollX: true,
     autoWidth: false,
     fixedHeader: {
@@ -556,37 +559,35 @@ async function cargarYMostrarTabla() {
       headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
     },
     columnDefs: [
-      { targets: [8,9,14,15,17,19,22,23], visible: false },
-      { targets: 0, width: '20px' },
-      { targets: 1, width: '20px' },
-      { targets: 2, width: '100px' },
-      { targets: 3, width: '20px' },
-      { targets: 4, width: '50px' },
-      { targets: 5, width: '20px' },
-      { targets: 6, width: '20px' },
-      { targets: 7, width: '20px' },
-      { targets: 8, width: '70px' },
-      { targets: 9, width: '20px' },
-      { targets: 10, width: '70px' },
-      { targets: 11, width: '70px' },
-      { targets: 12, width: '40px' },
-      { targets: 13, width: '40px' },
-      { targets: 14, width: '30px' },
-      { targets: 15, width: '80px' },
-      { targets: 16, width: '50px' },
-      { targets: 17, width: '80px' },
-      { targets: 18, width: '50px' },
-      { targets: 19, width: '50px' },
-      { targets: 20, width: '80px' },
-      { targets: 21, width: '100px' },
-      { targets: 22, width: '50px' },
-      { targets: 23, width: '50px' },
-      
-      // 👇 NUEVO: Coordinadores
-      { targets: 24, width: '140px' },
+      { targets: [9,10,15,16,18,20,23,24], visible: false }, // antes [8,9,14,15,17,19,22,23]
+      { targets: 0,  width: '20px'  },
+      { targets: 1,  width: '20px'  },
+      { targets: 2,  width: '100px' },
+      { targets: 3,  width: '20px'  },
+      { targets: 4,  width: '50px'  },
+      { targets: 5,  width: '140px' }, // 👈 NUEVO: Coordinadores
+      { targets: 6,  width: '20px'  }, // Pax (antes 5)
+      { targets: 7,  width: '20px'  }, // Adultos (antes 6)
+      { targets: 8,  width: '20px'  }, // Estudiantes (antes 7)
+      { targets: 9,  width: '70px'  },
+      { targets: 10, width: '20px'  },
+      { targets: 11, width: '70px'  },
+      { targets: 12, width: '70px'  },
+      { targets: 13, width: '40px'  },
+      { targets: 14, width: '40px'  },
+      { targets: 15, width: '30px'  },
+      { targets: 16, width: '80px'  },
+      { targets: 17, width: '50px'  },
+      { targets: 18, width: '80px'  },
+      { targets: 19, width: '50px'  },
+      { targets: 20, width: '50px'  },
+      { targets: 21, width: '80px'  },
+      { targets: 22, width: '100px' },
+      { targets: 23, width: '50px'  },
+      { targets: 24, width: '50px'  },
       
       // Fuerza orden numérico y alinea a la derecha Pax / Adultos / Estudiantes
-      { targets: [5,6,7], type: 'num', className: 'dt-body-right' }
+      { targets: [6,7,8], type: 'num', className: 'dt-body-right' }
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
@@ -596,7 +597,7 @@ async function cargarYMostrarTabla() {
 
   // 2) Filtro por Destino
   $('#filtroDestino').on('change', function(){
-    tabla.column(10).search(this.value).draw();
+    tabla.column(11).search(this.value).draw();
   });
 
   // 3) Filtro por Año
@@ -956,11 +957,10 @@ function exportarGrupos() {
 
   // Encabezados igual a las columnas definidas en el HTML (ordenado)
   const headers = [
-    "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Pax","Adultos","Estudiantes",
-    "Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
+    "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Coordinadores",
+    "Pax","Adultos","Estudiantes","Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
     "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
-    "Observaciones","Creado Por","Fecha Creación",
-    "Coordinadores" //
+    "Observaciones","Creado Por","Fecha Creación"
   ];
 
   // Prepara un array de objetos (clave=header, valor=celda)
