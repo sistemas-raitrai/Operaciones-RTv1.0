@@ -493,6 +493,8 @@ async function cargarYMostrarTabla() {
   const $tb = $('#tablaGrupos tbody').empty();
   valores.forEach(item => {
     const $tr = $('<tr>');
+  
+    // celdas originales 0..23 (camposFire)
     item.fila.forEach((celda, idx) => {
       const campo = camposFire[idx];
       const $td = $('<td>')
@@ -501,19 +503,20 @@ async function cargarYMostrarTabla() {
         .attr('data-campo', campo)
         .attr('data-original', celda);
   
+      // marca numéricos para validación posterior
       if (NUMERIC_FIELDS.has(campo)) {
         $td.attr('data-tipo', 'number');
       }
       $tr.append($td);
     });
   
-    // 👇 NUEVO: celda Coordinadores
+    // 👇 NUEVO: celda Coordinadores (índice 24). No editable, no mapea a Firestore
     const coordText = ((item.fila[24] ?? '').toString().trim()) || '';
     const $tdCoord = $('<td>')
       .text(coordText)
       .attr('data-doc-id', item.id)
-      .attr('data-fixed', '1')
-      .attr('data-campo', '')
+      .attr('data-fixed', '1')   // bandera: no editable
+      .attr('data-campo', '')    // no mapea a Firestore
       .attr('data-original', coordText);
     $tr.append($tdCoord);
   
@@ -576,10 +579,6 @@ async function cargarYMostrarTabla() {
       // 👇 NUEVO: Coordinadores
       { targets: 24, width: '140px' },
       
-      // Fuerza orden numérico y alinea a la derecha Pax / Adultos / Estudiantes
-      { targets: [5,6,7], type: 'num', className: 'dt-body-right' }
-
-
       // Fuerza orden numérico y alinea a la derecha Pax / Adultos / Estudiantes
       { targets: [5,6,7], type: 'num', className: 'dt-body-right' }
     ]
