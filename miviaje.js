@@ -1,388 +1,162 @@
 // miviaje.js — visor SOLO LECTURA (sin autenticación)
-// - Lee un grupo por ?id=<docId> (único) o por ?numeroNegocio=
-// - Soporta números compuestos (1475 / 1411, 1475-1411, 1475,1411, 1475 y 1411)
-// - Si hay varios matches, muestra un selector con links ?id=
-// - Botones: Copiar enlace, Imprimir (con formato textual limpio para PDF)
-// - Flag &notas=0 para ocultar notas en pantalla/impresión
+// Lee un grupo por ?id=<docId> o ?numeroNegocio= (incluye “1475/1411”, “1475-1411”, “1475 y 1411”).
+// Si hay varios matches, muestra selector con links ?id=.
+// Botones: Copiar enlace / Imprimir. &notas=0 para ocultar notas.
+// FICHA DEL GRUPO: ✈️ Vuelos · 🏨 Hoteles · 👥 Contactos · 🛡️ Seguro · 🚌 Terrestre.
 
 import { app, db } from './firebase-core.js';
 import {
   collection, doc, getDoc, getDocs, query, where, limit
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Lectura de parámetros:
-   - /miviaje/<numero> como segmento
-   - ?numeroNegocio= y ?id= (insensible a mayúsculas)
-────────────────────────────────────────────────────────────────────────── */
+/* ───────── URL & helpers ───────── */
 function getParamsFromURL() {
   const parts = location.pathname.split('/').filter(Boolean);
   const i = parts.findIndex(p => p.toLowerCase().includes('miviaje'));
   const seg = (i >= 0 && parts[i + 1]) ? decodeURIComponent(parts[i + 1]) : null;
-
   const qs = new URLSearchParams(location.search);
-
-  // numeroNegocio
   const numeroKey = [...qs.keys()].find(k => k.toLowerCase() === 'numeronegocio');
-  const numero = (seg || (numeroKey ? qs.get(numeroKey) : '') || '').trim();
-
-  // id
+  const numeroNegocio = (seg || (numeroKey ? qs.get(numeroKey) : '') || '').trim();
   const idKey = [...qs.keys()].find(k => k.toLowerCase() === 'id');
-  const id = idKey ? qs.get(idKey).trim() : '';
-
-  return { numeroNegocio: numero, id };
+  const id = idKey ? (qs.get(idKey) || '').trim() : '';
+  const hideNotes = qs.get('notas') === '0';
+  return { numeroNegocio, id, hideNotes };
 }
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Tokenizador de números compuestos:
-   "1475 / 1411", "1475-1411", "1475, 1411", "1475 y 1411"
-────────────────────────────────────────────────────────────────────────── */
-function splitNumeroCompuesto(value) {
-  if (!value) return [];
-  // separadores: / , -  o la palabra " y " (con espacios alrededor)
-  return value
-    .split(/(?:\s*[\/,-]\s*|\s+y\s+)/i)
-    .map(s => s.trim())
-    .filter(Boolean);
+function splitNumeroCompuesto(v) {
+  if (!v) return [];
+  return String(v).split(/(?:\s*[\/,\-]\s*|\s+y\s+)/i).map(s => s.trim()).filter(Boolean);
 }
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Variantes compuestas con/sin espacios y distintos separadores:
-   "1417/1419", "1417 / 1419", "1417-1419", "1417, 1419", etc.
-────────────────────────────────────────────────────────────────────────── */
-function buildCompositeVariants(value) {
-  const partes = splitNumeroCompuesto(value);
-  if (partes.length < 2) return [];
-  const seps = ['/', '-', ','];
-  const variants = new Set();
-
-  for (const sep of seps) {
-    variants.add(partes.join(sep));           // sin espacios
-    variants.add(partes.join(` ${sep} `));    // espacios ambos lados
-    variants.add(partes.join(` ${sep}`));     // espacio izq
-    variants.add(partes.join(`${sep} `));     // espacio der
-  }
-  return [...variants];
+function buildCompositeVariants(v) {
+  const p = splitNumeroCompuesto(v); if (p.length < 2) return [];
+  const seps = ['/', '-', ',']; const out = new Set();
+  for (const s of seps){ out.add(p.join(s)); out.add(p.join(` ${s} `)); out.add(p.join(` ${s}`)); out.add(p.join(`${s} `)); }
+  return [...out];
 }
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Búsquedas
-────────────────────────────────────────────────────────────────────────── */
 async function fetchGrupoById(id) {
   if (!id) return null;
-  const s = await getDoc(doc(db, 'grupos', id));
-  return s.exists() ? { id: s.id, ...s.data() } : null;
+  const s = await getDoc(doc(db,'grupos',id));
+  return s.exists()? { id:s.id, ...s.data() } : null;
 }
-
-// Busca coincidencias por numeroNegocio (maneja compuestos y variantes)
 async function buscarGruposPorNumero(numeroNegocio) {
   if (!numeroNegocio) return [];
+  const vistos = new Map(); const push = snap => snap.forEach(d => vistos.set(d.id,{id:d.id,...d.data()}));
 
-  const vistos = new Map();          // id -> doc (dedup)
-  const push = snap => snap.forEach(d => vistos.set(d.id, { id: d.id, ...d.data() }));
-
-  // 0) Igualdad exacta al string recibido
-  let snap = await getDocs(query(
-    collection(db, 'grupos'),
-    where('numeroNegocio', '==', numeroNegocio),
-    limit(10)
-  ));
+  let snap = await getDocs(query(collection(db,'grupos'), where('numeroNegocio','==',numeroNegocio), limit(10)));
   push(snap);
-
-  // 0.b) Variantes compuestas
-  const variantes = buildCompositeVariants(numeroNegocio);
-  for (const v of variantes) {
-    const s = await getDocs(query(
-      collection(db, 'grupos'),
-      where('numeroNegocio', '==', v),
-      limit(10)
-    ));
+  for (const v of buildCompositeVariants(numeroNegocio)) {
+    const s = await getDocs(query(collection(db,'grupos'), where('numeroNegocio','==',v), limit(10)));
     push(s);
   }
-
-  // 1) Igualdad como número (si aplica)
   const asNum = Number(numeroNegocio);
   if (!Number.isNaN(asNum)) {
-    snap = await getDocs(query(
-      collection(db, 'grupos'),
-      where('numeroNegocio', '==', asNum),
-      limit(10)
-    ));
+    snap = await getDocs(query(collection(db,'grupos'), where('numeroNegocio','==',asNum), limit(10)));
     push(snap);
   }
-
-  // 2) Cada parte del compuesto (string y number)
-  const partes = splitNumeroCompuesto(numeroNegocio);
-  for (const p of partes) {
-    const s1 = await getDocs(query(
-      collection(db, 'grupos'),
-      where('numeroNegocio', '==', p),
-      limit(10)
-    ));
+  for (const p of splitNumeroCompuesto(numeroNegocio)) {
+    const s1 = await getDocs(query(collection(db,'grupos'), where('numeroNegocio','==',p), limit(10)));
     push(s1);
-
     const pn = Number(p);
     if (!Number.isNaN(pn)) {
-      const s2 = await getDocs(query(
-        collection(db, 'grupos'),
-        where('numeroNegocio', '==', pn),
-        limit(10)
-      ));
+      const s2 = await getDocs(query(collection(db,'grupos'), where('numeroNegocio','==',pn), limit(10)));
       push(s2);
     }
   }
-
   return [...vistos.values()];
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Selector cuando hay múltiples coincidencias
-────────────────────────────────────────────────────────────────────────── */
-function renderSelector(lista, cont) {
-  const hideNotes = new URLSearchParams(location.search).get('notas') === '0';
-  cont.innerHTML = `
-    <div style="padding:1rem;">
-      <h3>Selecciona tu grupo (${lista.length} encontrados):</h3>
-      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:8px;">
-        ${lista.map(g => `
-          <a class="activity-card" style="display:block;padding:12px;text-decoration:none;border:1px solid #ddd;border-radius:12px"
-             href="?id=${encodeURIComponent(g.id)}${hideNotes ? '&notas=0' : ''}">
-            <div style="font-weight:700;margin-bottom:4px;">${(g.nombreGrupo || '—')}</div>
-            <div>Programa: ${(g.programa || '—')}</div>
-            <div>N° Negocio: ${(g.numeroNegocio ?? g.id)}</div>
-            <div>Fechas: ${(g.fechaInicio || '—')} — ${(g.fechaFin || '—')}</div>
-          </a>
-        `).join('')}
-      </div>
-    </div>
-  `;
-}
+/* ───────── util ───────── */
+function safe(v, fb='—'){ return (v===0||v)?v:fb; }
+function normTime(t){ if(!t) return ''; const m=String(t).match(/(\d{1,2})[:hH\.](\d{2})/); if(!m) return ''; const h=String(Math.max(0,Math.min(23,parseInt(m[1],10)))).padStart(2,'0'); const mi=String(Math.max(0,Math.min(59,parseInt(m[2],10)))).padStart(2,'0'); return `${h}:${mi}`; }
+function formatDateRange(ini,fin){ if(!ini||!fin) return '—'; try{ const [iy,im,id]=String(ini).split('-').map(Number); const [fy,fm,fd]=String(fin).split('-').map(Number); const di=new Date(iy,im-1,id); const df=new Date(fy,fm-1,fd); const fmt=d=>d.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}); return `${fmt(di)} — ${fmt(df)}`; }catch{ return '—'; } }
+function formatDateReadable(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-').map(Number); const dt=new Date(y,m-1,d); const wd=dt.toLocaleDateString('es-CL',{weekday:'long'}); const name=wd.charAt(0).toUpperCase()+wd.slice(1); return `${name} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`; }
+function getDateRange(s,e){ const out=[]; if(!s||!e) return out; const [sy,sm,sd]=s.split('-').map(Number), [ey,em,ed]=e.split('-').map(Number); const a=new Date(sy,sm-1,sd), b=new Date(ey,em-1,ed); for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);} return out; }
 
-/* ──────────────────────────────────────────────────────────────────────────
-   Helpers de formato
-────────────────────────────────────────────────────────────────────────── */
-function formatDateRange(ini, fin) {
-  if (!ini || !fin) return '—';
-  try {
-    const [iy, im, id] = ini.split('-').map(Number);
-    const [fy, fm, fd] = fin.split('-').map(Number);
-    const di = new Date(iy, im - 1, id);
-    const df = new Date(fy, fm - 1, fd);
-    const fmt = d => d.toLocaleDateString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    return `${fmt(di)} — ${fmt(df)}`;
-  } catch { return '—'; }
-}
-
-function formatDateReadable(isoStr) {
-  const [yyyy, mm, dd] = isoStr.split('-').map(Number);
-  const d = new Date(yyyy, mm - 1, dd);
-  const wd = d.toLocaleDateString('es-CL', { weekday: 'long' });
-  const name = wd.charAt(0).toUpperCase() + wd.slice(1);
-  const ddp = String(dd).padStart(2, '0');
-  const mmp = String(mm).padStart(2, '0');
-  return `${name} ${ddp}/${mmp}`;
-}
-
-function getDateRange(startStr, endStr) {
-  const out = [];
-  if (!startStr || !endStr) return out;
-  const [sy, sm, sd] = startStr.split('-').map(Number);
-  const [ey, em, ed] = endStr.split('-').map(Number);
-  const start = new Date(sy, sm - 1, sd);
-  const end = new Date(ey, em - 1, ed);
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    out.push(`${yyyy}-${mm}-${dd}`);
+/* ───────── normalizadores ───────── */
+// ✈️
+function normalizeVuelos(g){
+  const res=[]; const push=v=>{ if(!v) return; res.push({
+    fecha: v.fecha||v.fechaVuelo||v.fechaSalida||v.dia||'',
+    numeroVuelo: v.numeroVuelo||v.numVuelo||v.vuelo||v.numero||v.flightNumber||'',
+    aerolinea: v.aerolinea||v.linea||v.airline||'',
+    desde: v.desde||v.origen||v.from||'',
+    hasta: v.hasta||v.destino||v.to||'',
+    horaSalida: normTime(v.horaSalida||v.salida||v.hora||v.horaDespegue||''),
+    horaArribo: normTime(v.horaArribo||v.llegada||v.horaLlegada||v.arribo||'')
+  });};
+  const vx=g?.vuelos;
+  if(Array.isArray(vx)) vx.forEach(push);
+  else if(vx&&typeof vx==='object') Object.values(vx).forEach(push);
+  else{
+    const ida={ fecha:g.fechaSalida||g.fechaIda, numero:g.vueloSalida||g.vueloIda||g.nroVueloIda,
+      aerolinea:g.aerolinea||g.lineaAerea, desde:g.origenSalida||g.origenIda||g.origen, hasta:g.destinoSalida||g.destinoIda||g.destino,
+      horaSalida:g.horaSalidaIda||g.horaSalida, horaLlegada:g.horaLlegadaIda||g.horaArriboIda };
+    const vuelta={ fecha:g.fechaRegreso||g.fechaVuelta, numero:g.vueloRegreso||g.vueloVuelta||g.nroVueloVuelta,
+      aerolinea:g.aerolineaVuelta||g.aerolinea||g.lineaAerea, desde:g.origenRegreso||g.origenVuelta||g.destino, hasta:g.destinoRegreso||g.destinoVuelta||g.origen,
+      horaSalida:g.horaSalidaVuelta||g.horaSalidaRegreso, horaLlegada:g.horaLlegadaVuelta||g.horaArriboVuelta };
+    if(ida.fecha||ida.numero||ida.desde||ida.hasta) push(ida);
+    if(vuelta.fecha||vuelta.numero||vuelta.desde||vuelta.hasta) push(vuelta);
   }
+  return res.filter(v=>v.fecha||v.numeroVuelo||v.aerolinea||v.desde||v.hasta||v.horaSalida||v.horaArribo);
+}
+// 🏨
+function normalizeHoteles(g){
+  const res=[]; const push=h=>{ if(!h) return; res.push({
+    nombre: h.nombre||h.hotel||h.name||'',
+    ciudad: h.ciudad||h.localidad||h.ubicacion||'',
+    checkIn: h.checkIn||h.in||h.fechaIn||h.ingreso||h.entrada||'',
+    checkOut: h.checkOut||h.out||h.fechaOut||h.salida||'',
+    telefono: h.telefono||h.fono||h.tel||'',
+    web: h.web||h.url||h.website||'',
+    notas: h.notas||''
+  });};
+  const H=g?.hoteles||g?.hotel||g?.hoteleria||g?.alojamiento;
+  if(Array.isArray(H)) H.forEach(push); else if(H&&typeof H==='object') push(H);
+  if(g?.hotel1||g?.hotel_1) push(g.hotel1||g.hotel_1);
+  if(g?.hotel2||g?.hotel_2) push(g.hotel2||g.hotel_2);
+  return res.filter(h=>h.nombre||h.ciudad||h.checkIn||h.checkOut||h.telefono||h.web);
+}
+// 👥 Contactos
+function normalizeContactos(g){
+  const out=[];
+  const push=(etiqueta,persona,telefono,email,extra='')=>{
+    if(!(persona||telefono||email||extra)) return;
+    out.push({ etiqueta: etiqueta||'CONTACTO', persona: safe(persona,''), telefono: safe(telefono,''), email: safe(email,''), extra: safe(extra,'') });
+  };
+  const coordNom = g.coordinadorNombre||g.coordinador||g.coordinador_name||g.nombreCoordinador;
+  const coordTel = g.coordinadorTelefono||g.telefonoCoordinador||g.coordTelefono||g.coordCelular;
+  const coordMail= g.coordinadorEmail||g.coordEmail||g.emailCoordinador||g.coordinador_correo;
+  push('COORDINADOR(A)', coordNom, coordTel, coordMail);
+
+  const opsTel = g.operacionesTelefono||g.telefonoOperaciones||g.opsTelefono||g.contactoOperaciones;
+  const opsMail= g.operacionesEmail||g.emailOperaciones||g.opsEmail||'operaciones@raitrai.cl';
+  push('OPERACIONES RT', 'OPERACIONES', opsTel, opsMail);
+
+  const emer= g.emergenciaNombre||g.contactoEmergencia||'EMERGENCIA';
+  const emerTel= g.emergenciaTelefono||g.telefonoEmergencia||g.emergencyPhone||g.fonoEmergencia;
+  const emerMail= g.emergenciaEmail||g.emailEmergencia||'';
+  push('EMERGENCIA', emer, emerTel, emerMail);
+
+  const provNom = g.proveedor||g.proveedorPrincipal||g.operador||g.agenciaLocal;
+  const provTel = g.proveedorTelefono||g.telefonoProveedor;
+  const provMail= g.proveedorEmail||g.correoProveedor||g.emailProveedor;
+  push('PROVEEDOR', provNom, provTel, provMail);
+
   return out;
 }
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Texto de impresión (formato solicitado)
-────────────────────────────────────────────────────────────────────────── */
-function buildPrintText(grupo, fechasOrdenadas) {
-  let out = '';
-
-  fechasOrdenadas.forEach((fecha, idx) => {
-    // Título del día
-    out += `Día ${idx + 1} – ${formatDateReadable(fecha)}\n`;
-
-    // Actividades ordenadas
-    const arr = (grupo.itinerario?.[fecha] || []).slice()
-      .sort((a, b) => (a?.horaInicio || '99:99').localeCompare(b?.horaInicio || '99:99'));
-
-    if (!arr.length) {
-      out += '— Sin actividades —\n\n';
-      return;
-    }
-
-    arr.forEach(act => {
-      const hi = act.horaInicio || '--:--';
-      const hf = act.horaFin ? ` – ${act.horaFin}` : '';
-      const name = (act.actividad || '').toString().toUpperCase();
-
-      const a = parseInt(act.adultos, 10) || 0;
-      const e = parseInt(act.estudiantes, 10) || 0;
-      const pax = (a + e) || act.pasajeros || 0;
-
-      // 👇 En impresión ya NO mostramos (A: / E:). Solo total pax.
-      out += `${hi}${hf}  ${name} 👥 ${pax} pax\n\n`;
-    });
-
-    out += '\n';
-  });
-
-  return out.trimEnd();
+// 🛡️ Seguro
+function normalizeSeguro(g){
+  const aseg = g.seguro||g.aseguradora||g.companiaSeguro||g.seguroCompania;
+  const pol  = g.poliza||g.numeroPoliza||g.polizaNumero||g.nroPoliza;
+  const tel  = g.telefonoSeguro||g.seguroTelefono||g.asistenciaTelefono||g.assistancePhone;
+  const vigI = g.seguroInicio||g.vigenciaInicio||g.seguroVigenciaInicio;
+  const vigF = g.seguroFin||g.vigenciaFin||g.seguroVigenciaFin;
+  if(!(aseg||pol||tel||vigI||vigF)) return null;
+  return { aseguradora:safe(aseg,''), poliza:safe(pol,''), telefono:safe(tel,''), desde:safe(vigI,''), hasta:safe(vigF,'') };
 }
-
-
-/* ──────────────────────────────────────────────────────────────────────────
-   Render principal
-────────────────────────────────────────────────────────────────────────── */
-async function main() {
-  const { numeroNegocio, id } = getParamsFromURL();
-
-  const titleEl   = document.getElementById('grupo-title');
-  const nombreEl  = document.getElementById('grupo-nombre');
-  const numEl     = document.getElementById('grupo-numero');
-  const destinoEl = document.getElementById('grupo-destino');
-  const fechasEl  = document.getElementById('grupo-fechas');
-  const resumenPax= document.getElementById('resumen-pax');
-  const cont      = document.getElementById('itinerario-container');
-  const printEl   = document.getElementById('print-block');
-
-  // Flags + botones
-  const hideNotes = new URLSearchParams(location.search).get('notas') === '0';
-  const btnPrint  = document.getElementById('btnPrint');
-  const btnShare  = document.getElementById('btnShare');
-
-  btnPrint?.addEventListener('click', () => window.print());
-
-  if (!numeroNegocio && !id) {
-    cont.innerHTML = `<p style="padding:1rem;">Falta <code>numeroNegocio</code> o <code>id</code> en la URL.</p>`;
-    return;
-  }
-
-  // 1) Preferir id (único)
-  let g = await fetchGrupoById(id);
-
-  // 2) Buscar por número si no había id o no se encontró
-  if (!g) {
-    const lista = await buscarGruposPorNumero(numeroNegocio);
-
-    if (lista.length === 0) {
-      cont.innerHTML = `<p style="padding:1rem;">No se encontró el grupo ${numeroNegocio}.</p>`;
-      return;
-    }
-    if (lista.length > 1) {
-      renderSelector(lista, cont);
-
-      // Enlace para compartir manteniendo el número original
-      const shareUrl = `${location.origin}${location.pathname}?numeroNegocio=${encodeURIComponent(numeroNegocio)}${hideNotes ? '&notas=0' : ''}`;
-      btnShare?.addEventListener('click', async () => {
-        await navigator.clipboard.writeText(shareUrl);
-        alert('Enlace copiado');
-      });
-      return; // se corta aquí (el usuario elige)
-    }
-    g = lista[0];
-  }
-
-  // Enlace para compartir (preferir id)
-  const idLink   = g?.id ? `?id=${encodeURIComponent(g.id)}` 
-                         : `?numeroNegocio=${encodeURIComponent(numeroNegocio || '')}`;
-  const shareUrl = `${location.origin}${location.pathname}${idLink}${hideNotes ? '&notas=0' : ''}`;
-  btnShare?.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(shareUrl);
-      alert('Enlace copiado');
-    } catch {
-      const i = document.createElement('input');
-      i.value = shareUrl;
-      document.body.appendChild(i);
-      i.select(); document.execCommand('copy'); i.remove();
-      alert('Enlace copiado');
-    }
-  });
-
-  // Cabecera del grupo
-  titleEl.textContent   = ` ${(g.programa || '—').toUpperCase()}`;
-  nombreEl.textContent  = g.nombreGrupo || '—';
-  numEl.textContent     = g.numeroNegocio ?? g.id ?? '—';
-  destinoEl.textContent = g.destino || '—';
-  fechasEl.textContent  = formatDateRange(g.fechaInicio, g.fechaFin);
-
-  const totalA = parseInt(g.adultos, 10) || 0;
-  const totalE = parseInt(g.estudiantes, 10) || 0;
-  resumenPax.textContent = `👥 Total pax: ${totalA + totalE} (A:${totalA} · E:${totalE})`;
-
-  // Armar listado de fechas
-  let fechas = [];
-  if (g.itinerario && typeof g.itinerario === 'object') {
-    fechas = Object.keys(g.itinerario).sort((a, b) => new Date(a) - new Date(b));
-  } else if (g.fechaInicio && g.fechaFin) {
-    fechas = getDateRange(g.fechaInicio, g.fechaFin);
-  }
-
-  if (!fechas.length) {
-    cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
-    if (printEl) printEl.textContent = '';
-    return;
-  }
-
-  // Render visual (tarjetas)
-  cont.innerHTML = '';
-  fechas.forEach((fecha, idx) => {
-    const sec = document.createElement('section');
-    sec.className = 'dia-seccion';
-    sec.dataset.fecha = fecha;
-
-    sec.innerHTML = `
-      <h3 class="dia-titulo"><span class="dia-label">Día ${idx + 1}</span> – <span class="dia-fecha">${formatDateReadable(fecha)}</span></h3>
-      <ul class="activity-list"></ul>
-    `;
-
-    const ul = sec.querySelector('.activity-list');
-    const arr = (g.itinerario?.[fecha] || []).slice();
-
-    // Orden por hora de inicio (los vacíos al final)
-    arr.sort((a, b) => (a?.horaInicio || '99:99').localeCompare(b?.horaInicio || '99:99'));
-
-    if (!arr.length) {
-      ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
-    } else {
-      arr.forEach(act => {
-        const paxCalc = (parseInt(act.adultos, 10) || 0) + (parseInt(act.estudiantes, 10) || 0);
-        const li = document.createElement('li');
-        li.className = 'activity-card';
-
-        const notesHtml = (!hideNotes && act.notas)
-          ? `<p style="opacity:.85;">📝 ${act.notas}</p>`
-          : '';
-
-        li.innerHTML = `
-          <p><strong>${(act.actividad || '').toString().toUpperCase()}</strong></p>
-          ${notesHtml}
-        `;
-        ul.appendChild(li);
-      });
-    }
-
-    cont.appendChild(sec);
-  });
-
-  // Texto de impresión
-  if (printEl) {
-    printEl.textContent = buildPrintText(g, fechas);
-  }
-}
-
-main().catch(err => {
-  console.error('Firestore error:', err?.code || err?.message, err);
-  document.getElementById('itinerario-container').innerHTML =
-    `<p style="padding:1rem;color:#b00;">Error cargando el itinerario.</p>`;
-  const printEl = document.getElementById('print-block');
-  if (printEl) printEl.textContent = '';
-});
+// 🚌 Terrestre
+function normalizeTerrestre(g){
+  const emp = g.empresaBus||g.busEmpresa||g.transportista||g.terrestreEmpresa;
+  const sal = g.busSalida||g.idaHora||g.horaBusSalida||g.terrestreSalida;
+  const reg = g.busRegreso||g.vueltaHora||g.horaBusRegreso||g.terrestreRegreso;
+  const cond= g.conductor||g.conductorNombre||g.chofer||g.driver;
+  const pat = g.patente||g.busPatente||
