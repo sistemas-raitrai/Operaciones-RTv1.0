@@ -38,6 +38,11 @@ let ID2GRUPO = new Map();
 let HORAS_INICIO = new Map(); // groupId -> { pres:'HH:MM'|null, inicio:'HH:MM'|null, fuente:'aereo|terrestre', vueloId:string|null }
 
 let DESTINOS = []; // catálogo (normalizado) desde GRUPOS
+// ===== Snapshot para diffs en guardado =====
+const PREV = {
+  grupos: new Map(),   // id -> { aliasGrupo, conjuntoId, coordinadorId, coordinador }
+  sets:   new Map(),   // `${ownerCoordId}/${conjuntoId}` -> { viajes:[ids], confirmado:true, owner }
+};
 
 // Filtros de catálogo (resumen/libres)
 const FILTER = { destino:'', programa:'', desde:'', hasta:'' };
@@ -377,6 +382,30 @@ async function loadSets(){
 
     L('D) SETS finales:', SETS.length, 'Tot viajes:',
       SETS.reduce((n,s)=>n+(s.viajes?.length||0),0));
+     // --- Construye snapshot PREV (para guardado por diffs) ---
+      PREV.grupos.clear();
+      GRUPOS.forEach(g=>{
+        PREV.grupos.set(g.id, {
+          aliasGrupo   : g.aliasGrupo || null,
+          conjuntoId   : g.conjuntoId || null,
+          coordinadorId: g.coordinadorId || null,
+          coordinador  : g.coordinador || null,
+        });
+      });
+      
+      PREV.sets.clear();
+      SETS.forEach(s=>{
+        const owner = s._ownerCoordId || s.coordinadorId || null;
+        const sid   = s.id || null;
+        if (owner && sid) {
+          PREV.sets.set(`${owner}/${sid}`, {
+            viajes    : (s.viajes||[]).slice(),
+            confirmado: !!s.confirmado,
+            owner
+          });
+        }
+      });
+
   }catch(err){
     E('loadSets error:', err);
     throw err;
@@ -826,6 +855,7 @@ function renderSets(){
             <button class="btn small" data-addv="${idx}">Agregar viaje</button>
             <button class="btn small" data-sugerirc="${idx}">Sugerir coord</button>
             <button class="btn small ${s.confirmado?'secondary':''}" data-confirm="${idx}">${s.confirmado?'Desconfirmar':'Confirmar'}</button>
+            <button class="btn small" data-saveone="${idx}">💾 Guardar este grupo</button>
             <button class="btn small" data-delset="${idx}">Eliminar</button>
           </div>
         </div>
@@ -868,6 +898,11 @@ function renderSets(){
   elWrapSets.querySelectorAll('button[data-swap]').forEach(btn=>{
     btn.onclick=()=>{ const setIdx=+btn.dataset.set; const gid=btn.dataset.swap; handleSwapClick(setIdx,gid,btn); };
   });
+
+  elWrapSets.querySelectorAll('button[data-saveone]').forEach(btn=>{
+    btn.onclick = () => guardarSet(+btn.dataset.saveone);
+  });
+
 
   document.body.addEventListener('click', e=>{
     if (!e.target.closest('button[data-swap]')){
@@ -1416,17 +1451,22 @@ function limpiarAlias(nombreCompleto){
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
+function sameArr(a = [], b = []) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 /* =========================================================
    Guardar CAMBIOS (persiste SOLO confirmados)
    ========================================================= */
 async function guardarTodo(){
-  console.time('guardarTodo[BATCH]');
+  console.time('guardarTodo[DIFF]');
   try{
     const nowTS = serverTimestamp();
+    const ops = [];
 
-    // —————————————————————————————————
-    // 0) Helper para comitear en chunks
-    // —————————————————————————————————
+    // Helper commit en chunks
     const commitOpsInChunks = async (ops, chunkSize = 450) => {
       for (let i = 0; i < ops.length; i += chunkSize) {
         const batch = writeBatch(db);
@@ -1436,109 +1476,234 @@ async function guardarTodo(){
       }
     };
 
-    const ops = [];
-    const usadosConfirmados = new Set();
-
-    // —————————————————————————————————
-    // 1) Alias de grupos (masivo)
-    //    (rápido: batcheado; si quieres, aquí puedes
-    //     filtrar y solo actualizar los que tengan alias distinto)
-    // —————————————————————————————————
+    // 1) Alias de grupos: solo si cambió
     for (const g of GRUPOS){
-      const gref = doc(db, 'grupos', g.id);
-      ops.push(batch => batch.update(gref, { aliasGrupo: g.aliasGrupo || null }));
+      const prev = PREV.grupos.get(g.id) || {};
+      const nowAlias = g.aliasGrupo || null;
+      if ((prev.aliasGrupo || null) !== nowAlias){
+        const gref = doc(db, 'grupos', g.id);
+        ops.push(b => b.update(gref, { aliasGrupo: nowAlias }));
+      }
     }
 
-    // —————————————————————————————————
-    // 2) SETS (confirmados → persiste conjunto + marca grupos)
-    //            (no confirmados → limpia grupos + borra conjunto si existe)
-    // —————————————————————————————————
+    // 2) SETS confirmados: crear/mover/borrar según diff
+    const nowKeys = new Set();
+    const touchedGroupIds = new Set();
+
     for (const s of SETS){
-      const estaConfirmado = !!s.confirmado && !!s.coordinadorId;
+      const isOk = !!s.confirmado && !!s.coordinadorId;
 
-      if (estaConfirmado){
-        // Si cambia el owner del conjunto, borrar el doc viejo
+      if (isOk){
+        // ¿cambió de owner? borra doc viejo y fuerza id nuevo
         if (s.id && s._ownerCoordId && s._ownerCoordId !== s.coordinadorId){
-          const oldRef = doc(db, 'coordinadores', s._ownerCoordId, 'conjuntos', s.id);
-          ops.push(batch => batch.delete(oldRef));
-          s.id = null; // forzamos recreación bajo el owner nuevo
+          ops.push(b=> b.delete(doc(db,'coordinadores', s._ownerCoordId, 'conjuntos', s.id)));
+          s.id = null;
         }
-
-        // Prepara (o crea) id del conjunto bajo el owner actual
         if (!s.id){
-          // Creamos un docRef con id autogenerado SIN escribir aún
-          s.id = doc(collection(db, 'coordinadores', s.coordinadorId, 'conjuntos')).id;
+          s.id = doc(collection(db,'coordinadores', s.coordinadorId, 'conjuntos')).id;
         }
         s._ownerCoordId = s.coordinadorId;
 
-        const conjRef = doc(db, 'coordinadores', s.coordinadorId, 'conjuntos', s.id);
-        const payload = {
-          viajes: (s.viajes||[]).slice(),
-          confirmado: true,
-          meta: { actualizadoEn: nowTS, ...(s._isNew ? { creadoEn: nowTS } : {}) }
-        };
-        ops.push(batch => batch.set(conjRef, payload, { merge: true }));
+        const key = `${s._ownerCoordId}/${s.id}`;
+        nowKeys.add(key);
+
+        const prev = PREV.sets.get(key);
+        const viajes = (s.viajes||[]).slice();
+        const conjRef = doc(db,'coordinadores', s._ownerCoordId, 'conjuntos', s.id);
+
+        if (!prev || !sameArr(prev.viajes, viajes) || !prev.confirmado){
+          ops.push(b=> b.set(conjRef, {
+            viajes, confirmado:true,
+            meta: { actualizadoEn: nowTS, ...(s._isNew ? { creadoEn: nowTS } : {}) }
+          }, { merge:true }));
+        }
 
         const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
-
-        // Marcar cada grupo asignado en el conjunto confirmado
-        for (const gid of (s.viajes||[])){
-          const gref = doc(db, 'grupos', gid);
-          ops.push(batch => batch.update(gref, {
-            conjuntoId: s.id,
-            coordinador: coordNombre,
-            coordinadorId: s.coordinadorId
-          }));
-          usadosConfirmados.add(gid);
+        for (const gid of viajes){
+          const prevG = PREV.grupos.get(gid) || {};
+          if (prevG.conjuntoId !== s.id || prevG.coordinadorId !== s.coordinadorId || prevG.coordinador !== coordNombre){
+            ops.push(b=> b.update(doc(db,'grupos', gid), {
+              conjuntoId: s.id,
+              coordinador: coordNombre,
+              coordinadorId: s.coordinadorId
+            }));
+          }
+          touchedGroupIds.add(gid);
         }
 
         delete s._isNew;
       } else {
-        // Limpia campos en los grupos “del set no confirmado”
-        for (const gid of (s.viajes||[])){
-          const gref = doc(db, 'grupos', gid);
-          ops.push(batch => batch.update(gref, {
-            conjuntoId: null,
-            coordinador: null,
-            coordinadorId: null
-          }));
+        // No confirmado: si existía antes, bórralo y limpia sus grupos actuales (si estaban marcados)
+        const potentialOwner = s._ownerCoordId || s.coordinadorId || null;
+        if (s.id && potentialOwner){
+          const key = `${potentialOwner}/${s.id}`;
+          if (PREV.sets.has(key)){
+            ops.push(b=> b.delete(doc(db,'coordinadores', potentialOwner, 'conjuntos', s.id)));
+          }
         }
-        // Si el conjunto existía en algún owner, bórralo
-        const owner = s._ownerCoordId || s.coordinadorId;
-        if (s.id && owner){
-          const conjRef = doc(db, 'coordinadores', owner, 'conjuntos', s.id);
-          ops.push(batch => batch.delete(conjRef));
+        for (const gid of (s.viajes||[])){
+          const prevG = PREV.grupos.get(gid) || {};
+          if (prevG.conjuntoId){
+            ops.push(b=> b.update(doc(db,'grupos', gid), {
+              conjuntoId: null, coordinador: null, coordinadorId: null
+            }));
+          }
+          touchedGroupIds.add(gid);
         }
       }
     }
 
-    // —————————————————————————————————
-    // 3) “Limpieza final” para grupos que NO quedaron en confirmados
-    //    (si ya estaban limpios, no pasa nada; write idempotente)
-    // —————————————————————————————————
-    for (const g of GRUPOS){
-      if (!usadosConfirmados.has(g.id)){
-        const gref = doc(db, 'grupos', g.id);
-        ops.push(batch => batch.update(gref, {
-          conjuntoId: null,
-          coordinador: null,
-          coordinadorId: null
+    // 3) Borra conjuntos que existían y ahora no; y limpia grupos que estaban asignados antes pero ya no
+    for (const [key, prevSet] of PREV.sets.entries()){
+      if (!nowKeys.has(key)){
+        ops.push(b=> b.delete(doc(db,'coordinadores', prevSet.owner, 'conjuntos', key.split('/')[1])));
+      }
+    }
+
+    for (const [gid, prevG] of PREV.grupos.entries()){
+      if (prevG.conjuntoId && !touchedGroupIds.has(gid)){
+        ops.push(b=> b.update(doc(db,'grupos', gid), {
+          conjuntoId: null, coordinador: null, coordinadorId: null
         }));
       }
     }
 
-    // —————————————————————————————————
-    // 4) Ejecutar TODO en batches
-    // —————————————————————————————————
-    L('guardarTodo[BATCH] operaciones totales =', ops.length);
+    L('guardarTodo[DIFF] ops =', ops.length);
     await commitOpsInChunks(ops, 450);
 
-    L('guardarTodo[BATCH] OK');
+    // 4) Refresca snapshot PREV desde el estado actual en memoria
+    PREV.grupos.clear();
+    GRUPOS.forEach(g=>{
+      PREV.grupos.set(g.id, {
+        aliasGrupo   : g.aliasGrupo || null,
+        conjuntoId   : g.conjuntoId || null,
+        coordinadorId: g.coordinadorId || null,
+        coordinador  : g.coordinador || null,
+      });
+    });
+    PREV.sets.clear();
+    SETS.forEach(s=>{
+      const owner = s._ownerCoordId || s.coordinadorId || null;
+      if (owner && s.id){
+        PREV.sets.set(`${owner}/${s.id}`, {
+          viajes:(s.viajes||[]).slice(), confirmado:!!s.confirmado, owner
+        });
+      }
+    });
+
+    L('guardarTodo[DIFF] OK');
   }catch(err){
-    E('guardarTodo[BATCH] error:', err);
+    E('guardarTodo[DIFF] error:', err);
     throw err;
   }finally{
-    console.timeEnd('guardarTodo[BATCH]');
+    console.timeEnd('guardarTodo[DIFF]');
+  }
+}
+
+async function guardarSet(i){
+  const s = SETS[i];
+  if (!s) return;
+  console.time(`guardarSet[${i}]`);
+  try{
+    const nowTS = serverTimestamp();
+    const ops = [];
+    const commit = async (ops)=> {
+      const batch = writeBatch(db);
+      ops.forEach(fn=>fn(batch));
+      await batch.commit();
+    };
+
+    // Alias: solo de los grupos del set
+    const viajes = (s.viajes||[]).slice();
+    const gruposSet = viajes.map(id=>ID2GRUPO.get(id)).filter(Boolean);
+    for (const g of gruposSet){
+      const prev = PREV.grupos.get(g.id) || {};
+      if ((prev.aliasGrupo||null) !== (g.aliasGrupo||null)){
+        ops.push(b=> b.update(doc(db,'grupos', g.id), { aliasGrupo: g.aliasGrupo || null }));
+      }
+    }
+
+    if (s.confirmado && s.coordinadorId){
+      // mover/borrar por cambio de owner
+      if (s.id && s._ownerCoordId && s._ownerCoordId !== s.coordinadorId){
+        ops.push(b=> b.delete(doc(db,'coordinadores', s._ownerCoordId, 'conjuntos', s.id)));
+        s.id = null;
+      }
+      if (!s.id){
+        s.id = doc(collection(db,'coordinadores', s.coordinadorId, 'conjuntos')).id;
+      }
+      s._ownerCoordId = s.coordinadorId;
+
+      const conjRef = doc(db,'coordinadores', s._ownerCoordId, 'conjuntos', s.id);
+      const keyNow  = `${s._ownerCoordId}/${s.id}`;
+      const prevSet = PREV.sets.get(keyNow);
+
+      if (!prevSet || !sameArr(prevSet.viajes, viajes) || !prevSet.confirmado){
+        ops.push(b=> b.set(conjRef, { viajes, confirmado:true, meta:{ actualizadoEn:nowTS } }, { merge:true }));
+      }
+
+      const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
+      for (const gid of viajes){
+        const prevG = PREV.grupos.get(gid)||{};
+        if (prevG.conjuntoId !== s.id || prevG.coordinadorId !== s.coordinadorId || prevG.coordinador !== coordNombre){
+          ops.push(b=> b.update(doc(db,'grupos', gid), {
+            conjuntoId: s.id, coordinador: coordNombre, coordinadorId: s.coordinadorId
+          }));
+        }
+      }
+
+      // Limpia grupos que antes estaban en este mismo set y salieron
+      if (prevSet){
+        for (const gid of prevSet.viajes){
+          if (!viajes.includes(gid)){
+            ops.push(b=> b.update(doc(db,'grupos', gid), {
+              conjuntoId:null, coordinador:null, coordinadorId:null
+            }));
+          }
+        }
+      }
+    } else {
+      // No confirmado: borra doc (si existía) y limpia sus grupos actuales si estaban marcados
+      const owner = s._ownerCoordId || s.coordinadorId || null;
+      if (s.id && owner){
+        const key = `${owner}/${s.id}`;
+        if (PREV.sets.has(key)){
+          ops.push(b=> b.delete(doc(db,'coordinadores', owner, 'conjuntos', s.id)));
+        }
+      }
+      for (const gid of viajes){
+        const prevG = PREV.grupos.get(gid)||{};
+        if (prevG.conjuntoId){
+          ops.push(b=> b.update(doc(db,'grupos', gid), {
+            conjuntoId:null, coordinador:null, coordinadorId:null
+          }));
+        }
+      }
+    }
+
+    await commit(ops);
+
+    // Refresca solo lo tocado en PREV
+    gruposSet.forEach(g=>{
+      const prev = PREV.grupos.get(g.id) || {};
+      PREV.grupos.set(g.id, {
+        aliasGrupo: g.aliasGrupo || null,
+        // si se confirmó, queda marcado; si se desconfirmó y este set era el dueño previo, limpia
+        conjuntoId: (s.confirmado && s.coordinadorId) ? s.id : (prev.conjuntoId === s.id ? null : prev.conjuntoId),
+        coordinadorId: (s.confirmado && s.coordinadorId) ? s.coordinadorId : (prev.conjuntoId === s.id ? null : prev.coordinadorId),
+        coordinador: (s.confirmado && s.coordinadorId) ? (COORDS.find(c=>c.id===s.coordinadorId)?.nombre||null) : (prev.conjuntoId === s.id ? null : prev.coordinador),
+      });
+    });
+    if (s._ownerCoordId && s.id){
+      PREV.sets.set(`${s._ownerCoordId}/${s.id}`, { viajes: (s.viajes||[]).slice(), confirmado: !!s.confirmado, owner: s._ownerCoordId });
+    }
+
+    console.log(`guardarSet[${i}] OK · ops=${ops.length}`);
+  }catch(e){
+    E(`guardarSet[${i}] error:`, e);
+    alert('Error al guardar este grupo. Revisa la consola.');
+  }finally{
+    console.timeEnd(`guardarSet[${i}]`);
   }
 }
 
