@@ -1,4 +1,4 @@
-// viajes.js — Planificación de Viajes (aéreos/terrestres) RT
+// viajes.js — Planificación de Viajes (aéreos/terrestres) RT + TRANSFERS
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
@@ -12,7 +12,7 @@ import {
 // ======= Estado global =======
 const auth = getAuth(app);
 let grupos = [];               // cache de grupos (para pintar pax/labels)
-let vuelos = [];               // cache de vuelos renderizados
+let vuelos = [];               // cache de docs (aéreo/terrestre)
 let isEdit = false;            // flag modal vuelo
 let editId = null;             // id del vuelo en edición
 let choiceGrupos;              // Choices.js del selector múltiple de grupos
@@ -22,6 +22,10 @@ let editingTramos = [];        // tramos en el modal (REGULAR)
 let paxExtraEditMode = false;  // edición de pax extra
 let paxExtraEditIdx = null;    // índice de pax extra en edición
 let editingVueloId = null;     // id del vuelo actual para el modal de pax extra
+
+// Índices para transfers (se llenan en renderVuelos)
+let transfersByGroup = new Map();              // groupId -> [transferDocs]
+let transfersByGroupAndVuelo = new Map();      // `${groupId}__${vueloId}` -> [transferDocs]
 
 // Referencias a elementos del modal vuelo
 let transporteEl, tipoVueloEl, multitramoChkEl, camposSimpleEl, multitramoOpEl, tramosSectionEl;
@@ -54,7 +58,7 @@ function toHHMM(x){
   if (!x) return '';
   let s = String(x).trim();
   const m = s.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return ''; // formato no válido → vacío para no romper
+  if (!m) return '';
   let hh = Math.max(0, Math.min(23, parseInt(m[1],10)));
   let mm = Math.max(0, Math.min(59, parseInt(m[2],10)));
   return `${pad2(hh)}:${pad2(mm)}`;
@@ -69,7 +73,14 @@ function buildGrupoIds(gruposArr){
   )).sort();
 }
 
-// Normaliza payload de vuelo (fechas/horas en top-level y en tramos)
+// Helper nombres de grupo (para pintar/filtrar)
+function groupDisplay(gId){
+  const g = grupos.find(x => x.id === gId);
+  if (!g) return gId;
+  return `${toUpper(g.numeroNegocio)} - ${toUpper(g.identificador)} – ${toUpper(g.nombreGrupo)}`;
+}
+
+// Normaliza payload de doc (aéreo/terrestre)
 function normalizeVueloPayload(pay){
   // Transporte por defecto
   pay.tipoTransporte = pay.tipoTransporte || 'aereo';
@@ -79,22 +90,17 @@ function normalizeVueloPayload(pay){
     pay.tramos = pay.tramos.map(t => {
       const nt = {
         ...t,
-        // normaliza strings
         aerolinea: toUpper(t.aerolinea || ''),
         numero:    toUpper(t.numero || ''),
         origen:    toUpper(t.origen || ''),
         destino:   toUpper(t.destino || ''),
-        // normaliza fechas
         fechaIda:    toISO(t.fechaIda),
         fechaVuelta: toISO(t.fechaVuelta),
-        // normaliza horas
         presentacionIdaHora:     toHHMM(t.presentacionIdaHora),
         vueloIdaHora:            toHHMM(t.vueloIdaHora),
         presentacionVueltaHora:  toHHMM(t.presentacionVueltaHora),
         vueloVueltaHora:         toHHMM(t.vueloVueltaHora),
       };
-
-      // Deriva tipoTramo si no viene
       let tipoTramo = (t.tipoTramo || '').toLowerCase();
       if (!tipoTramo){
         const hasIda    = !!nt.fechaIda;
@@ -102,11 +108,9 @@ function normalizeVueloPayload(pay){
         if (hasIda && hasVuelta) tipoTramo = 'ida+vuelta';
         else if (hasIda)         tipoTramo = 'ida';
         else if (hasVuelta)      tipoTramo = 'vuelta';
-        else                     tipoTramo = 'ida+vuelta'; // fallback
+        else                     tipoTramo = 'ida+vuelta';
       }
       nt.tipoTramo = tipoTramo;
-
-      // Si el tipo indica solo un lado, limpia el otro lado
       if (nt.tipoTramo === 'ida'){
         nt.fechaVuelta = '';
         nt.presentacionVueltaHora = '';
@@ -124,22 +128,16 @@ function normalizeVueloPayload(pay){
   if (pay.tipoTransporte === 'aereo' && pay.tipoVuelo === 'regular' && pay.tramos && pay.tramos.length){
     const idas    = pay.tramos.map(t => toISO(t.fechaIda)).filter(Boolean).sort();
     const vueltas = pay.tramos.map(t => toISO(t.fechaVuelta)).filter(Boolean).sort();
-
     pay.fechaIda    = idas[0] || toISO(pay.fechaIda);
     pay.fechaVuelta = vueltas.length ? vueltas[vueltas.length - 1] : toISO(pay.fechaVuelta);
-
-    // Origen: del primer tramo con IDA; si no hay, del primer tramo
     const tPrimIda = pay.tramos.find(t => t.fechaIda);
     const tPrim    = pay.tramos[0];
-    // Destino: del último tramo con VUELTA; si no hay, del último tramo con IDA; si no, del último tramo
     const tUltVta  = [...pay.tramos].reverse().find(t => t.fechaVuelta);
     const tUltIda  = [...pay.tramos].reverse().find(t => t.fechaIda);
     const tUlt     = pay.tramos[pay.tramos.length - 1];
-
     pay.origen  = pay.origen  || (tPrimIda?.origen || tPrim?.origen || '');
     pay.destino = pay.destino || (tUltVta?.destino || tUltIda?.destino || tUlt?.destino || '');
   } else {
-    // Charter / Regular simple / Terrestre
     pay.fechaIda    = toISO(pay.fechaIda);
     pay.fechaVuelta = toISO(pay.fechaVuelta);
   }
@@ -155,7 +153,7 @@ function normalizeVueloPayload(pay){
     pay.vueltaHora = toHHMM(pay.vueltaHora);
   }
 
-  // ===== Grupos =====
+  // ===== Grupos (para docs que los tengan en-línea, p.ej. aéreos) =====
   pay.grupos = Array.isArray(pay.grupos) ? pay.grupos.map(g => ({
     id: g.id,
     status: g.status || 'confirmado',
@@ -163,9 +161,25 @@ function normalizeVueloPayload(pay){
     reservas: Array.isArray(g.reservas) ? g.reservas.filter(Boolean) : []
   })) : [];
 
+  // ===== Flags transfer (solo para terrestres, pero no estorban)
+  pay.isTransfer = !!pay.isTransfer;
+  if (pay.isTransfer){
+    const leg = (pay.transferLeg || '').toLowerCase();
+    pay.transferLeg = ['ida','vuelta','ida+vuelta'].includes(leg) ? leg : 'ida';
+    // Evitar doble contabilización en totales del aéreo
+    pay.excludeFromTotals = true;
+  } else {
+    // por defecto no excluir
+    pay.excludeFromTotals = !!pay.excludeFromTotals;
+  }
+
+  // Vínculos
+  if (Array.isArray(pay.grupoIds)){
+    pay.grupoIds = pay.grupoIds.filter(Boolean).map(String).sort();
+  }
+
   return pay;
 }
-
 
 // ======= Helpers de UI/formatos =======
 
@@ -197,7 +211,6 @@ function daysUntil(iso){
 function reservaChipMeta(v){
   const estado = (v.reservaEstado || 'pendiente').toLowerCase();
   if (estado === 'enviada') return { texto:'📨 RESERVA ENVIADA', claseExtra:'chip-verde' };
-
   const dd = daysUntil(v.reservaFechaLimite);
   if (dd === null) return { texto:'⏳ RESERVA PENDIENTE', claseExtra:'chip-gris' };
   if (dd < 0)      return { texto:'⏳ RESERVA PENDIENTE', claseExtra:'chip-rojo' };
@@ -338,7 +351,7 @@ function initModal(){
   if (tramosSectionEl) tramosSectionEl.style.display = 'none';
   if (multitramoChkEl) multitramoChkEl.checked = false;
 
-  // Cambio de transporte (oculta/mostrar secciones si las tienes en el HTML)
+  // Cambio de transporte
   if (transporteEl){
     transporteEl.onchange = function(){
       const t = transporteEl.value || 'aereo';
@@ -411,22 +424,18 @@ function openModal(v=null){
       if (el) el.value = v?.[k] || '';
     });
 
-  // Horarios top-level AÉREO simple
   const f = (id) => document.getElementById(id);
   if (f('m-presentacionIdaHora'))    f('m-presentacionIdaHora').value    = v?.presentacionIdaHora || '';
   if (f('m-vueloIdaHora'))           f('m-vueloIdaHora').value           = v?.vueloIdaHora || '';
   if (f('m-presentacionVueltaHora')) f('m-presentacionVueltaHora').value = v?.presentacionVueltaHora || '';
   if (f('m-vueloVueltaHora'))        f('m-vueloVueltaHora').value        = v?.vueloVueltaHora || '';
 
-  // Horarios top-level TERRESTRE
   if (f('m-idaHora'))    f('m-idaHora').value    = v?.idaHora || '';
   if (f('m-vueltaHora')) f('m-vueltaHora').value = v?.vueltaHora || '';
 
-  // Reserva
   if (f('m-reservaFechaLimite')) f('m-reservaFechaLimite').value = v?.reservaFechaLimite || '';
   if (f('m-reservaEstado'))      f('m-reservaEstado').value      = v?.reservaEstado || 'pendiente';
 
-  // Tipo / multitramo
   if (tipoVueloEl) tipoVueloEl.value = v?.tipoVuelo || 'charter';
   if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
   if (multitramoOpEl)  multitramoOpEl.style.display = (v?.tipoVuelo === 'regular') ? 'block' : 'none';
@@ -439,8 +448,6 @@ function openModal(v=null){
       if (multitramoChkEl) multitramoChkEl.checked = true;
       if (camposSimpleEl)  camposSimpleEl.style.display = 'none';
       if (tramosSectionEl) tramosSectionEl.style.display = 'block';
-      
-      // Añadir defaults y tipoTramo por tramo
       editingTramos = v.tramos.map(t => ({
         aerolinea: t.aerolinea || '',
         numero: t.numero || '',
@@ -490,7 +497,6 @@ function renderTramosList(){
 
   editingTramos.forEach((t,i) => {
     const tipo = (t.tipoTramo || 'ida+vuelta').toLowerCase();
-
     const row = document.createElement('div');
     row.className = 'tramo-block';
     row.innerHTML = `
@@ -501,13 +507,11 @@ function renderTramosList(){
         <input class="long" type="text"  value="${toUpper(t.destino||'')}"   placeholder="DESTINO"   data-t="destino" data-i="${i}"/>
         <button type="button" class="tramo-remove" onclick="removeTramo(${i})">X</button>
       </div>
-
       <div class="tramo-type">
         <label><input type="radio" name="tipoTramo_${i}" value="ida" ${tipo==='ida'?'checked':''}/> Solo IDA</label>
         <label><input type="radio" name="tipoTramo_${i}" value="vuelta" ${tipo==='vuelta'?'checked':''}/> Solo REGRESO</label>
         <label><input type="radio" name="tipoTramo_${i}" value="ida+vuelta" ${tipo==='ida+vuelta'?'checked':''}/> IDA + REGRESO</label>
       </div>
-
       <div class="tramo-body">
         <div class="tramo-line tramo-ida">
           <span class="tag">IDA</span>
@@ -524,7 +528,6 @@ function renderTramosList(){
       </div>
     `;
 
-    // Bind inputs texto/fechas/horas
     row.querySelectorAll('input[type="text"], input[type="date"], input[type="time"]').forEach(inp => {
       const key = inp.dataset.t;
       const idx = +inp.dataset.i;
@@ -540,17 +543,13 @@ function renderTramosList(){
       };
     });
 
-    // Bind radios tipoTramo
     row.querySelectorAll(`input[name="tipoTramo_${i}"]`).forEach(r => {
       r.onchange = () => {
         editingTramos[i].tipoTramo = r.value;
-        // Oculta/limpia el lado no usado
         const idaRow    = row.querySelector('.tramo-ida');
         const vueltaRow = row.querySelector('.tramo-vuelta');
-
         if (r.value === 'ida'){
           vueltaRow.style.display = 'none';
-          // limpia vuelta
           editingTramos[i].fechaVuelta = '';
           editingTramos[i].presentacionVueltaHora = '';
           editingTramos[i].vueloVueltaHora = '';
@@ -558,7 +557,6 @@ function renderTramosList(){
           idaRow.style.display = '';
         } else if (r.value === 'vuelta'){
           idaRow.style.display = 'none';
-          // limpia ida
           editingTramos[i].fechaIda = '';
           editingTramos[i].presentacionIdaHora = '';
           editingTramos[i].vueloIdaHora = '';
@@ -571,7 +569,6 @@ function renderTramosList(){
       };
     });
 
-    // Aplica visibilidad inicial según tipo
     const idaRow    = row.querySelector('.tramo-ida');
     const vueltaRow = row.querySelector('.tramo-vuelta');
     if (tipo === 'ida'){ vueltaRow.style.display = 'none'; }
@@ -597,29 +594,26 @@ function addTramoRow(){
   renderTramosList();
 }
 
-// ======= Guardar / Editar vuelo =======
+// ======= Guardar / Editar doc (vuelo/trayecto) =======
 
 async function onSubmitVuelo(evt){
   evt.preventDefault();
-
   const f = (id) => document.getElementById(id);
   const reservaFechaLimite = f('m-reservaFechaLimite')?.value || null;
   const reservaEstadoForm  = (f('m-reservaEstado')?.value) || 'pendiente';
   const tipoVuelo = f('m-tipoVuelo')?.value || 'charter';
-  const tipoTransporte = f('m-transporte')?.value || 'aereo'; // NUEVO
+  const tipoTransporte = f('m-transporte')?.value || 'aereo';
 
-  // Grupos seleccionados
   // Grupos seleccionados (preserva records al editar)
   const sel = choiceGrupos.getValue(true);
   const defaultStatus = f('m-statusDefault')?.value || 'confirmado';
-  
-  // Si es edición, traemos el doc previo para no perder reservas (records)
+
   let prevDoc = null;
   if (isEdit && editId){
     const prevSnap = await getDoc(doc(db,'vuelos', editId));
     prevDoc = prevSnap.exists() ? prevSnap.data() : null;
   }
-  
+
   const gruposArr = sel.map(id => {
     const prevG = prevDoc?.grupos?.find(g => g.id === id);
     return {
@@ -628,12 +622,12 @@ async function onSubmitVuelo(evt){
       changedBy: currentUserEmail,
       reservas: Array.isArray(prevG?.reservas) ? prevG.reservas : []
     };
-});
+  });
 
   let pay = {};
   const multitramo = multitramoChkEl && multitramoChkEl.checked;
 
-  // Validación: al menos una pierna real (algún tramo con fechaIda o fechaVuelta)
+  // Validación: al menos una pierna real (tramos) en aéreo regular multi
   if (tipoTransporte === 'aereo' && tipoVuelo === 'regular' && multitramo){
     const hasAnyLeg = editingTramos.some(t => toISO(t.fechaIda) || toISO(t.fechaVuelta));
     if (!hasAnyLeg){
@@ -643,7 +637,6 @@ async function onSubmitVuelo(evt){
   }
 
   if (tipoTransporte === 'aereo' && tipoVuelo === 'regular' && multitramo){
-    // AÉREO REGULAR MULTITRAMO (horas por tramo)
     pay = {
       tipoTransporte: 'aereo',
       tipoVuelo: 'regular',
@@ -655,7 +648,6 @@ async function onSubmitVuelo(evt){
           origen:    toUpper(t.origen),
           destino:   toUpper(t.destino),
           tipoTramo: tipo,
-          // siempre normalizamos con helpers
           fechaIda:  toISO(t.fechaIda),
           presentacionIdaHora: toHHMM(t.presentacionIdaHora),
           vueloIdaHora:        toHHMM(t.vueloIdaHora),
@@ -663,7 +655,6 @@ async function onSubmitVuelo(evt){
           presentacionVueltaHora: toHHMM(t.presentacionVueltaHora),
           vueloVueltaHora:        toHHMM(t.vueloVueltaHora)
         };
-        // limpia lado no usado
         if (tipo === 'ida'){
           base.fechaVuelta = '';
           base.presentacionVueltaHora = '';
@@ -679,8 +670,7 @@ async function onSubmitVuelo(evt){
       reservaFechaLimite,
       reservaEstado: reservaEstadoForm
     };
-
-  } else if (tipoTransporte === 'aereo' && tipoVuelo === 'regular'){ // regular simple (sin tramos)
+  } else if (tipoTransporte === 'aereo' && tipoVuelo === 'regular'){ // regular simple
     pay = {
       tipoTransporte: 'aereo',
       tipoVuelo: 'regular',
@@ -691,7 +681,6 @@ async function onSubmitVuelo(evt){
       destino:   toUpper(f('m-destino')?.value?.trim() || ''),
       fechaIda:  f('m-fechaIda')?.value || '',
       fechaVuelta: f('m-fechaVuelta')?.value || '',
-      // Horarios top-level
       presentacionIdaHora:     toHHMM(f('m-presentacionIdaHora')?.value || ''),
       vueloIdaHora:            toHHMM(f('m-vueloIdaHora')?.value || ''),
       presentacionVueltaHora:  toHHMM(f('m-presentacionVueltaHora')?.value || ''),
@@ -710,7 +699,6 @@ async function onSubmitVuelo(evt){
       destino:   toUpper(f('m-destino')?.value?.trim() || ''),
       fechaIda:  f('m-fechaIda')?.value || '',
       fechaVuelta: f('m-fechaVuelta')?.value || '',
-      // Horarios top-level
       presentacionIdaHora:     toHHMM(f('m-presentacionIdaHora')?.value || ''),
       vueloIdaHora:            toHHMM(f('m-vueloIdaHora')?.value || ''),
       presentacionVueltaHora:  toHHMM(f('m-presentacionVueltaHora')?.value || ''),
@@ -720,11 +708,11 @@ async function onSubmitVuelo(evt){
       reservaEstado: reservaEstadoForm
     };
   } else {
-    // TERRESTRE (bus)
+    // TERRESTRE (bus) normal (no transfer)
     pay = {
       tipoTransporte: 'terrestre',
-      proveedor: toUpper(f('m-proveedor')?.value?.trim() || ''), // empresa de bus
-      numero:    toUpper(f('m-numero')?.value?.trim() || ''),    // opcional: código servicio
+      proveedor: toUpper(f('m-proveedor')?.value?.trim() || ''),
+      numero:    toUpper(f('m-numero')?.value?.trim() || ''),
       origen:    toUpper(f('m-origen')?.value?.trim() || ''),
       destino:   toUpper(f('m-destino')?.value?.trim() || ''),
       fechaIda:  f('m-fechaIda')?.value || '',
@@ -733,11 +721,13 @@ async function onSubmitVuelo(evt){
       vueltaHora: toHHMM(f('m-vueltaHora')?.value || ''),
       grupos: gruposArr,
       reservaFechaLimite,
-      reservaEstado: reservaEstadoForm
+      reservaEstado: reservaEstadoForm,
+      isTransfer: false,
+      excludeFromTotals: false
     };
   }
 
-  // Normaliza + agrega claves mínimas para el portal
+  // Normaliza + agrega claves mínimas
   pay = normalizeVueloPayload(pay);
   pay.grupoIds  = buildGrupoIds(pay.grupos);
   pay.updatedAt = serverTimestamp();
@@ -745,13 +735,10 @@ async function onSubmitVuelo(evt){
   if (isEdit){
     const ref = doc(db,'vuelos', editId);
     const before = prevDoc ?? (await getDoc(ref)).data();
-
-    // Si cambió estado de reserva, deja rastro
     if ((before?.reservaEstado || 'pendiente') !== (pay.reservaEstado || 'pendiente')){
       pay.reservaChangedBy = currentUserEmail;
       pay.reservaTs = serverTimestamp();
     }
-
     await updateDoc(ref, pay);
     await addDoc(collection(db,'historial'), {
       tipo:'vuelo-edit', vueloId:editId,
@@ -903,7 +890,7 @@ window.toggleReservaEstado = async (vueloId) => {
 window.addReserva = async (vueloId, idxGrupo) => {
   const rec = prompt('Ingrese N° de reserva (record):');
   if (!rec) return;
-  const recNorm = toUpper(rec.trim());  
+  const recNorm = toUpper(rec.trim());
   const ref = doc(db,'vuelos', vueloId);
   const snap = await getDoc(ref);
   const data = snap.data() || {};
@@ -959,7 +946,6 @@ window.openGroupModal = (grupoId) => {
   document.getElementById('group-backdrop').style.display = 'block';
   document.getElementById('group-modal').style.display    = 'block';
 
-  // Sincronización entre campos
   ['g-adultos','g-estudiantes'].forEach(id => {
     document.getElementById(id).oninput = () => ajustarPAXdesdeAdultosEstudiantes();
   });
@@ -1032,7 +1018,6 @@ window.removeGroup = async (vId, idx) => {
   const antes = arr[idx];
   arr.splice(idx,1);
 
-  // Recalcula grupoIds y marca updatedAt
   const grupoIds = buildGrupoIds(arr);
   await updateDoc(ref, { grupos: arr, grupoIds, updatedAt: serverTimestamp() });
 
@@ -1059,20 +1044,166 @@ window.toggleStatus = async (vId, idx) => {
   renderVuelos();
 };
 
-// ======= Eliminar vuelo =======
+// ======= TRANSFERS: creación / vínculo / desvínculo / util =======
+
+// Wizard mínimo (prompt) para crear un TRANSFER desde una fila de grupo
+window.createTransferForGroup = async (vueloId, grupoId) => {
+  try{
+    const vuelo = vuelos.find(v => v.id === vueloId);
+    if (!vuelo) return alert('Vuelo no encontrado');
+    const g = grupos.find(x => x.id === grupoId);
+    if (!g) return alert('Grupo no encontrado');
+
+    // Sugerencias desde vuelo
+    const legDefault = (vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora) ? 'ida+vuelta' : 'ida';
+    const transferLeg = (prompt(`Leg del transfer (ida|vuelta|ida+vuelta). Sugerido: ${legDefault}`, legDefault) || '').toLowerCase();
+    if (!['ida','vuelta','ida+vuelta'].includes(transferLeg)) return alert('Leg inválido');
+
+    const proveedor = toUpper(prompt('Proveedor (empresa de bus):', '') || '');
+    if (!proveedor) return alert('Proveedor requerido');
+
+    const numero = toUpper(prompt('Código/servicio (opcional):', '') || '');
+
+    const origen = toUpper(prompt('Origen (ej: COLEGIO X / SCL T1):', vuelo.origen || '') || '');
+    const destino = toUpper(prompt('Destino (ej: SCL T1 / COLEGIO X):', vuelo.destino || '') || '');
+    if (!origen || !destino) return alert('Origen y Destino son requeridos');
+
+    let fechaIda = '', idaHora = '', fechaVuelta = '', vueltaHora = '';
+    if (transferLeg === 'ida' || transferLeg === 'ida+vuelta'){
+      fechaIda = toISO(prompt('Fecha IDA (YYYY-MM-DD):', vuelo.fechaIda || '') || '');
+      idaHora  = toHHMM(prompt('Hora IDA (HH:MM) (sugerencia: presentación o vuelo):', vuelo.presentacionIdaHora || vuelo.vueloIdaHora || '') || '');
+    }
+    if (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta'){
+      fechaVuelta = toISO(prompt('Fecha REGRESO (YYYY-MM-DD):', vuelo.fechaVuelta || '') || '');
+      vueltaHora  = toHHMM(prompt('Hora REGRESO (HH:MM) (sugerencia: presentación regreso o vuelo):', vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || '') || '');
+    }
+
+    // Opcionales
+    const capacidadMaxStr = prompt('Capacidad máxima (opcional, numérico):', '');
+    const capacidadMax = capacidadMaxStr ? Math.max(parseInt(capacidadMaxStr,10) || 0,0) : null;
+    const categoriaTarifa = toUpper(prompt('Categoría Tarifa (ej: TRANSFER-AEROPUERTO, INTERURBANO) (opcional):','TRANSFER-AEROPUERTO') || '');
+
+    let pay = normalizeVueloPayload({
+      tipoTransporte: 'terrestre',
+      proveedor, numero, origen, destino,
+      fechaIda, fechaVuelta, idaHora, vueltaHora,
+      isTransfer: true,
+      transferLeg,
+      relatedVueloId: vueloId,
+      grupoIds: [grupoId],
+      excludeFromTotals: true,
+      capacidadMax: capacidadMax ?? null,
+      categoriaTarifa: categoriaTarifa || null,
+      // Para UI/búsqueda
+      // (sin grupos inline: los transfers viven con grupoIds, no con objetos grupo completos)
+    });
+
+    pay.createdAt = serverTimestamp();
+    pay.updatedAt = serverTimestamp();
+
+    const ref = await addDoc(collection(db,'vuelos'), pay);
+    await addDoc(collection(db,'historial'), {
+      tipo:'transfer-new', vueloId: ref.id,
+      antes: null, despues: pay, usuario: currentUserEmail, ts: serverTimestamp()
+    });
+
+    alert('Transfer creado y vinculado al grupo ✅');
+    renderVuelos();
+  } catch(e){
+    console.error(e);
+    alert('No se pudo crear el transfer.');
+  }
+};
+
+// Desvincular grupo de un transfer (sin borrar el doc, a menos que quede vacío)
+window.unlinkTransferFromGroup = async (transferId, grupoId) => {
+  const ref = doc(db,'vuelos', transferId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return alert('Transfer no encontrado');
+  const t = snap.data();
+
+  const arr = Array.isArray(t.grupoIds) ? [...t.grupoIds] : [];
+  const idx = arr.indexOf(grupoId);
+  if (idx === -1) return;
+  arr.splice(idx,1);
+
+  const updates = {
+    grupoIds: arr,
+    updatedAt: serverTimestamp()
+  };
+
+  // Si queda sin grupos, preguntar si eliminar
+  if (arr.length === 0){
+    const del = confirm('Este transfer quedará sin grupos. ¿Eliminar documento?');
+    if (del){
+      await deleteDoc(ref);
+      await addDoc(collection(db,'historial'), {
+        tipo:'transfer-del', vueloId: transferId,
+        antes: t, despues: null, usuario: currentUserEmail, ts: serverTimestamp()
+      });
+      renderVuelos();
+      return;
+    }
+  }
+
+  await updateDoc(ref, updates);
+  await addDoc(collection(db,'historial'), {
+    tipo:'transfer-link-del', vueloId: transferId,
+    antes: { grupoId }, despues: { grupoIds: arr },
+    usuario: currentUserEmail, ts: serverTimestamp()
+  });
+  renderVuelos();
+};
+
+// ======= Eliminar doc =======
 
 async function deleteVuelo(id){
   if (!confirm('¿Eliminar vuelo/trayecto completo?')) return;
   const before = (await getDoc(doc(db,'vuelos', id))).data();
   await deleteDoc(doc(db,'vuelos', id));
   await addDoc(collection(db,'historial'), {
-    tipo:'vuelo-del', vueloId: id, antes: before, despues: null,
+    tipo: before?.isTransfer ? 'transfer-del' : 'vuelo-del',
+    vueloId: id, antes: before, despues: null,
     usuario: currentUserEmail, ts: serverTimestamp()
   });
   renderVuelos();
 }
 
 // ======= Render principal de cards =======
+
+function buildTransfersIndexes(){
+  transfersByGroup.clear();
+  transfersByGroupAndVuelo.clear();
+  const transfers = vuelos.filter(v => (v.tipoTransporte || 'aereo') === 'terrestre' && v.isTransfer);
+  for (const t of transfers){
+    const gids = Array.isArray(t.grupoIds) ? t.grupoIds : [];
+    for (const gId of gids){
+      // index por grupo
+      if (!transfersByGroup.has(gId)) transfersByGroup.set(gId, []);
+      transfersByGroup.get(gId).push(t);
+      // index por grupo + vuelo asociado (si tiene)
+      if (t.relatedVueloId){
+        const key = `${gId}__${t.relatedVueloId}`;
+        if (!transfersByGroupAndVuelo.has(key)) transfersByGroupAndVuelo.set(key, []);
+        transfersByGroupAndVuelo.get(key).push(t);
+      }
+    }
+  }
+}
+
+function transferBadgeHTML(){
+  return `<span class="chip" style="background:#ffe7b8;border:1px solid #d6a106;color:#663c00;padding:.05em .45em;border-radius:8px;margin-left:.35em;">🚌 TRANSFER</span>`;
+}
+
+function transferDetailLine(t){
+  const legTxt = t.transferLeg ? toUpper(t.transferLeg) : '';
+  const idaTxt = t.fechaIda ? `${fmtFechaLarga(t.fechaIda)} ${t.idaHora || ''}` : '';
+  const vtaTxt = t.fechaVuelta ? `${fmtFechaLarga(t.fechaVuelta)} ${t.vueltaHora || ''}` : '';
+  const lados = [idaTxt, vtaTxt].filter(Boolean).join(' / ');
+  const prov = toUpper(t.proveedor || '');
+  const num  = toUpper(t.numero || '');
+  return `${prov}${num ? ' '+num : ''} · ${toUpper(t.origen||'')} → ${toUpper(t.destino||'')} · ${lados} ${legTxt ? ' · '+legTxt : ''}`;
+}
 
 async function renderVuelos(){
   const cont = document.getElementById('vuelos-container');
@@ -1091,6 +1222,9 @@ async function renderVuelos(){
     return tsa - tsb;
   });
 
+  // Construye índices de transfers
+  buildTransfersIndexes();
+
   for (const v of vuelos){
     const tipoTrans = v.tipoTransporte || 'aereo';
     const isAereo   = tipoTrans === 'aereo';
@@ -1107,29 +1241,28 @@ async function renderVuelos(){
     let cardBody = '';
 
     // ===== Bloque tramos (AÉREO REGULAR multitramo) =====
-    // ===== Bloque tramos (AÉREO REGULAR multitramo) =====
     if (isRegMT){
       cardBody += `<div class="tramos" style="margin-bottom:0.7em;">`;
       v.tramos.forEach((tramo, idxT) => {
         const hasIda    = !!toISO(tramo.fechaIda);
         const hasVuelta = !!toISO(tramo.fechaVuelta);
-    
+
         const lineaIda = hasIda ? `
           <div><strong>IDA:</strong> ${fmtFechaLarga(tramo.fechaIda)}
             ${tramo.presentacionIdaHora ? ` · Presentación ${tramo.presentacionIdaHora}` : ''} 
             ${tramo.vueloIdaHora ? ` · Vuelo ${tramo.vueloIdaHora}` : ''}</div>
         ` : '';
-    
+
         const lineaVta = hasVuelta ? `
           <div><strong>REGRESO:</strong> ${fmtFechaLarga(tramo.fechaVuelta)}
             ${tramo.presentacionVueltaHora ? ` · Presentación ${tramo.presentacionVueltaHora}` : ''} 
             ${tramo.vueloVueltaHora ? ` · Vuelo ${tramo.vueloVueltaHora}` : ''}</div>
         ` : '';
-    
+
         const horasLine = (lineaIda || lineaVta)
           ? `<div style="font-size:.92em; color:#333; margin-top:.2em;">${lineaIda}${lineaVta}</div>`
           : '';
-    
+
         cardBody += `
           <div class="tramo" style="margin-bottom:0.6em;">
             <span style="font-weight:bold;font-size:1.05em;">${icono} ${toUpper(tramo.aerolinea)} ${toUpper(tramo.numero)}</span> 
@@ -1142,7 +1275,7 @@ async function renderVuelos(){
       cardBody += `</div>`;
     }
 
-    // ===== Filas por grupo (con chips de RECORDS) =====
+    // ===== Filas por grupo (con chips de RECORDS) + TRANSFER badge/detalle =====
     const filas = (v.grupos || []).map((gObj, idx) => {
       const g = grupos.find(x => x.id === gObj.id) || {};
       const a = parseInt(g.adultos     || 0, 10);
@@ -1158,16 +1291,40 @@ async function renderVuelos(){
            ${toUpper(r)} <a href="javascript:void(0)" title="Quitar" onclick="removeReserva('${v.id}', ${idx}, ${ri})" style="text-decoration:none;margin-left:.25em;">✖</a>
          </span>`
       ).join('');
+
+      // Transfers vinculados a este grupo y a este vuelo:
+      const key = `${gObj.id}__${v.id}`;
+      const transfers = transfersByGroupAndVuelo.get(key) || [];
+      const hasTransfers = transfers.length > 0;
+
+      const transferBadge = hasTransfers ? transferBadgeHTML() : '';
+      const transferLines = hasTransfers ? `
+        <div class="transfer-lines" style="margin-top:.35em;">
+          ${transfers.map(t => `
+            <div style="font-size:.92em;color:#333;display:flex;gap:.4em;align-items:center;">
+              <span>🚌 ${transferDetailLine(t)}</span>
+              <button class="btn-small" onclick="focusCard('${t.id}', '${toUpper(t.numero||'')}','${t.fechaIda||t.fechaVuelta||''}')">👁️</button>
+              <button class="btn-small" onclick="unlinkTransferFromGroup('${t.id}', '${gObj.id}')">🚫</button>
+            </div>
+          `).join('')}
+        </div>
+      ` : '';
+
       return `
         <div class="group-item">
           <div class="num">${toUpper(g.numeroNegocio)} - ${toUpper(g.identificador)}</div>
           <div class="name">
             <span class="group-name" onclick="openGroupModal('${g.id}')">${toUpper(g.nombreGrupo || '')}</span>
+            ${transferBadge}
             <span class="pax-inline">${totalRow} (A:${a} E:${e} C:${c})</span>
             <div class="records-line" style="margin-top:.15em;">
               <strong>Record(s):</strong> ${chips || '—'}
               <button class="btn-small" style="margin-left:.4em" onclick="addReserva('${v.id}', ${idx})">➕</button>
+              <button class="btn-small" style="margin-left:.4em;background:#ffc107;border:1px solid #d39e00" 
+                title="Agregar traslado terrestre (TRANSFER) a este grupo" 
+                onclick="createTransferForGroup('${v.id}', '${gObj.id}')">🚌➕</button>
             </div>
+            ${transferLines}
           </div>
           <div class="status-cell">
             <span>${gObj.status === 'confirmado' ? '✅ CONFIRMADO' : '🕗 PENDIENTE'}</span>
@@ -1188,12 +1345,12 @@ async function renderVuelos(){
         const val = parseInt(pax.cantidad || 0, 10);
         totX += val;
         if (pax.status === 'confirmado') confX += val;
-      
+
         const recs = Array.isArray(pax.records) ? pax.records : [];
         const chips = recs.length
           ? `<div class="records-line">${recs.map(r => `<span class="chip chip-rec" onclick="window.filterByRecord('${r.replace(/'/g,"\\'")}')">${toUpper(r)}</span>`).join(' ')}</div>`
           : '';
-      
+
         return `
           <div class="group-item" style="background:#ffebe7">
             <div class="num">–</div>
@@ -1215,7 +1372,7 @@ async function renderVuelos(){
       }).join('');
     }
 
-    // ===== Cabecera (título/fechas/origen-destino + horarios top-level cuando aplique) =====
+    // ===== Cabecera (título/fechas/origen-destino + horarios top-level) =====
     let fechaCard = '';
     if (isRegMT){
       const idas    = v.tramos.map(t => toISO(t.fechaIda)).filter(Boolean).sort();
@@ -1243,7 +1400,11 @@ async function renderVuelos(){
     } else {
       const fechaIda    = fmtFechaLarga(v.fechaIda);
       const fechaVuelta = fmtFechaLarga(v.fechaVuelta);
-      // Línea de horarios top-level (según transporte)
+
+      // Etiqueta “TRANSFER” visible en cabecera de card terrestre que es transfer
+      const transferHeader = (!isAereo && v.isTransfer) ? ` ${transferBadgeHTML()}` : '';
+
+      // Línea de horarios top-level
       let horariosTL = '';
       if (isAereo){
         const l1 = (v.presentacionIdaHora || v.vueloIdaHora) ?
@@ -1252,7 +1413,6 @@ async function renderVuelos(){
           `<div><strong>REGRESO:</strong> ${v.presentacionVueltaHora ? 'Presentación ' + v.presentacionVueltaHora : ''}${v.vueloVueltaHora ? (v.presentacionVueltaHora ? ' · ' : '') + 'Vuelo ' + v.vueloVueltaHora : ''}</div>` : '';
         horariosTL = (l1 || l2) ? `<div style="font-size:.92em; color:#333; margin-top:.2em;">${l1}${l2}</div>` : '';
       } else {
-        // terrestre
         const lbus = (v.idaHora || v.vueltaHora) ?
           `<div style="font-size:.92em; color:#333; margin-top:.2em;">
             <div><strong>Salida Bus (ida):</strong> ${v.idaHora || '—'}</div>
@@ -1265,7 +1425,7 @@ async function renderVuelos(){
         <div class="titulo-vuelo" style="margin-bottom:.5em;">
           <div style="font-size:1.1em; font-weight:bold;">
             <span style="margin-right:.4em;">${icono}</span>
-            ${toUpper(v.proveedor || '')} ${toUpper(v.numero || '')} (${isAereo ? toUpper(v.tipoVuelo || 'AÉREO') : 'TERRESTRE'})
+            ${toUpper(v.proveedor || '')} ${toUpper(v.numero || '')} (${isAereo ? toUpper(v.tipoVuelo || 'AÉREO') : 'TERRESTRE'})${transferHeader}
           </div>
           <div style="font-weight:bold; margin:.15em 0 .6em 0; font-size:.98em;">
             <span style="color:red">${fechaIda}</span>${fechaVuelta ? ' / <span style="color:red">' + fechaVuelta + '</span>' : ''}
@@ -1280,10 +1440,10 @@ async function renderVuelos(){
       `;
     }
 
-    const totalPax  = totA + totE + totC + totX;
-    const totalConf = confA + confE + confC + confX;
+    const exclude = !!v.excludeFromTotals;
+    const totalPax  = (exclude ? 0 : (totA + totE + totC)) + totX;
+    const totalConf = (exclude ? 0 : (confA + confE + confC)) + confX;
 
-    // Línea de reserva + chip
     const reservaFechaTxt = v.reservaFechaLimite ? fmtFechaLarga(v.reservaFechaLimite) : '—';
     const chip = reservaChipMeta(v);
     const changedByTxt = v.reservaChangedBy ? ` <span class="by-email">${toUpper(v.reservaChangedBy)}</span>` : '';
@@ -1295,6 +1455,9 @@ async function renderVuelos(){
       </div>
     `;
 
+    // Inyecta palabra "TRANSFER" en el textContent de la card para que el buscador lo encuentre
+    const transferSearchTag = (!isAereo && v.isTransfer) ? `<span style="display:none">TRANSFER</span>` : '';
+
     const card = document.createElement('div');
     card.className = 'flight-card';
     card.dataset.vueloId = v.id;
@@ -1302,16 +1465,17 @@ async function renderVuelos(){
     card.dataset.flight  = flightNum;
     card.dataset.date    = date;
     card.innerHTML = `
+      ${transferSearchTag}
       <h4>${fechaCard}</h4>
       ${cardBody}
       <div>${filas || '<p>— SIN GRUPOS —</p>'}</div>
       ${filasExtras}
-      <p><strong>TOTAL PAX:</strong> ${totalPax} (A:${totA} E:${totE} C:${totC} X:${totX}) – CONFIRMADOS: ${totalConf}</p>
+      <p><strong>TOTAL PAX:</strong> ${totalPax} (A:${exclude?0:totA} E:${exclude?0:totE} C:${exclude?0:totC} X:${totX}) – CONFIRMADOS: ${totalConf}</p>
       ${lineaReservaHTML}
       <div class="actions">
         <button class="btn-add btn-edit">✏️ EDITAR</button>
         <button class="btn-add btn-del">🗑️ ELIMINAR</button>
-        <button class="btn-add btn-pax" style="background:green;color:white;" onclick="openPaxExtraModal('${v.id}')">+ AGREGAR PAX</button>
+        ${isAereo ? `<button class="btn-add btn-pax" style="background:green;color:white;" onclick="openPaxExtraModal('${v.id}')">+ AGREGAR PAX</button>` : ''}
       </div>
     `;
     card.querySelector('.btn-edit').onclick = () => openModal(v);
@@ -1322,6 +1486,17 @@ async function renderVuelos(){
 
   renderFlightsList();
 }
+
+// Foco en una card por id / n° / fecha (para botones de "👁️" en transfers)
+window.focusCard = (docId, numero, fecha) => {
+  const selector = `.flight-card[data-vuelo-id="${docId}"], .flight-card[data-flight="${numero}"][data-date="${fecha}"]`;
+  const target = document.querySelector(selector);
+  if (target){
+    target.scrollIntoView({ behavior:'smooth', block:'start' });
+    target.classList.add('highlight');
+    setTimeout(() => target.classList.remove('highlight'), 1500);
+  }
+};
 
 // ======= Historial (modal) =======
 
@@ -1365,7 +1540,6 @@ async function loadHistorial(){
   }
 
   if (dtHist) dtHist.destroy();
-  // DataTable (es-ES)
   dtHist = $('#hist-table').DataTable({
     language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
     order: [[0,'desc']]
@@ -1374,23 +1548,27 @@ async function loadHistorial(){
 
 // ======= Exportar a Excel =======
 function exportToExcel(){
-  // Hoja 1: Resumen de vuelos/trayectos
+  // Hoja 1: Resumen de viajes/trayectos (sin duplicar PAX por transfers)
   const resumen = vuelos.map(v => {
+    const isAereo = (v.tipoTransporte || 'aereo') === 'aereo';
+    const exclude = !!v.excludeFromTotals;
+
     let totA=0, totE=0, totC=0, totX=0;
-    (v.grupos || []).forEach(gObj => {
-      const g = grupos.find(x => x.id === gObj.id) || {};
-      totA += parseInt(g.adultos || 0, 10);
-      totE += parseInt(g.estudiantes || 0, 10);
-      totC += parseInt(g.coordinadores || 0, 10);
-    });
+    if (!exclude){
+      (v.grupos || []).forEach(gObj => {
+        const g = grupos.find(x => x.id === gObj.id) || {};
+        totA += parseInt(g.adultos || 0, 10);
+        totE += parseInt(g.estudiantes || 0, 10);
+        totC += parseInt(g.coordinadores || 0, 10);
+      });
+    }
     (v.paxExtras || []).forEach(x => { totX += parseInt(x.cantidad || 0, 10); });
 
     let detallesTramos = '';
-    if ((v.tipoTransporte || 'aereo') === 'aereo' && v.tipoVuelo === 'regular' && v.tramos && v.tramos.length){
+    if (isAereo && v.tipoVuelo === 'regular' && v.tramos && v.tramos.length){
       detallesTramos = v.tramos.map((t,i) => {
         const tipo = (t.tipoTramo || '').toLowerCase();
         const p = [];
-    
         if (tipo === 'ida' || tipo === 'ida+vuelta'){
           if (toISO(t.fechaIda)){
             p.push(`IDA:${t.fechaIda}${t.vueloIdaHora ? ' ' + t.vueloIdaHora : ''} | PRES:${t.presentacionIdaHora || '-'}`);
@@ -1401,16 +1579,14 @@ function exportToExcel(){
             p.push(`REGRESO:${t.fechaVuelta}${t.vueloVueltaHora ? ' ' + t.vueloVueltaHora : ''} | PRES:${t.presentacionVueltaHora || '-'}`);
           }
         }
-    
         const lado = p.join(' · ');
         return `${i+1}) ${toUpper(t.aerolinea)} ${toUpper(t.numero)}: ${toUpper(t.origen)}→${toUpper(t.destino)} ${lado ? '['+lado+']' : ''}`;
       }).join('\n');
     }
 
-    const isAereo = (v.tipoTransporte || 'aereo') === 'aereo';
-
     return {
       Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
+      Es_Transfer: v.isTransfer ? 'Sí' : 'No',
       Aerolínea_Empresa: v.proveedor || (v.tramos?.[0]?.aerolinea || ''),
       Numero:     v.numero    || (v.tramos?.[0]?.numero    || ''),
       TipoVuelo:  isAereo ? (v.tipoVuelo || '') : '',
@@ -1418,13 +1594,14 @@ function exportToExcel(){
       Destino:    v.destino   || (v.tramos?.[0]?.destino   || ''),
       Fecha_Ida:  v.fechaIda  || (v.tramos?.[0]?.fechaIda  || ''),
       Fecha_Vuelta: v.fechaVuelta || (v.tramos?.[0]?.fechaVuelta || ''),
-      // Horarios top-level (aéreo simple / terrestre)
       Presentacion_Ida:    isAereo ? (v.presentacionIdaHora || '') : '',
       Vuelo_Ida:           isAereo ? (v.vueloIdaHora || '') : '',
       Presentacion_Vuelta: isAereo ? (v.presentacionVueltaHora || '') : '',
       Vuelo_Vuelta:        isAereo ? (v.vueloVueltaHora || '') : '',
       Hora_Ida_Bus:        isAereo ? '' : (v.idaHora || ''),
       Hora_Vuelta_Bus:     isAereo ? '' : (v.vueltaHora || ''),
+      Transfer_Leg:        v.isTransfer ? (v.transferLeg || '') : '',
+      Related_Vuelo:       v.isTransfer ? (v.relatedVueloId || '') : '',
       Tramos:    detallesTramos,
       Total_Adultos:       totA,
       Total_Estudiantes:   totE,
@@ -1434,13 +1611,18 @@ function exportToExcel(){
     };
   });
 
-  // Hoja 2: Detalle por grupo (incluye records)
+  // Hoja 2: Detalle por grupo (incluye transfers)
   const detalle = [];
   vuelos.forEach(v => {
+    const isTransfer = !!v.isTransfer;
+    const gids = Array.isArray(v.grupoIds) ? v.grupoIds : (v.grupos || []).map(x => x.id);
+
+    // Detalle de grupos inline (aéreos) — respeta excludeFromTotals solo en totales, no en detalle
     (v.grupos || []).forEach(gObj => {
       const g = grupos.find(x => x.id === gObj.id) || {};
       detalle.push({
         Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
+        Es_Transfer: isTransfer ? 'Sí' : 'No',
         Fecha_Ida: v.fechaIda,
         Numero: v.numero || (v.tramos?.[0]?.numero || ''),
         Grupo_Numero: g.numeroNegocio,
@@ -1452,12 +1634,35 @@ function exportToExcel(){
         Total: (g.adultos||0) + (g.estudiantes||0) + (g.coordinadores||0),
         Estado: gObj.status,
         Records: (Array.isArray(gObj.reservas) ? gObj.reservas.join(', ') : ''),
-        Cambiado_Por: gObj.changedBy || ''
+        Cambiado_Por: gObj.changedBy || '',
+        Related_Vuelo: isTransfer ? (v.relatedVueloId || '') : ''
       });
     });
+
+    // Detalle de grupoIds (transfers)
+    if (isTransfer && gids.length){
+      gids.forEach(gId => {
+        const g = grupos.find(x => x.id === gId);
+        detalle.push({
+          Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
+          Es_Transfer: 'Sí',
+          Fecha_Ida: v.fechaIda,
+          Numero: v.numero || '',
+          Grupo_Numero: g?.numeroNegocio || gId,
+          Grupo_Identificador: g?.identificador || '',
+          Grupo_Nombre: g?.nombreGrupo || '',
+          Adultos: '-', Estudiantes: '-', Coordinadores: '-',
+          Total: '-', Estado: '-', Records: '',
+          Cambiado_Por: '',
+          Related_Vuelo: v.relatedVueloId || ''
+        });
+      });
+    }
+
     (v.paxExtras || []).forEach(x => {
       detalle.push({
         Transporte: (v.tipoTransporte || 'aereo').toUpperCase(),
+        Es_Transfer: isTransfer ? 'Sí' : 'No',
         Fecha_Ida: v.fechaIda,
         Numero: v.numero || (v.tramos?.[0]?.numero || ''),
         Grupo_Numero: '-',
@@ -1469,7 +1674,8 @@ function exportToExcel(){
         Total: x.cantidad,
         Estado: x.status,
         Cambiado_Por: x.changedBy || '',
-        Records: Array.isArray(x.records) ? x.records.join(', ') : '' // ← única clave Records
+        Records: Array.isArray(x.records) ? x.records.join(', ') : '',
+        Related_Vuelo: isTransfer ? (v.relatedVueloId || '') : ''
       });
     });
   });
