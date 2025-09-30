@@ -501,6 +501,9 @@ async function cargarYMostrarTabla() {
       }catch(e){ /* silencioso */ }
 
       // --- Coordinadores → NUEVA COLUMNA (col 24, no editable)
+      // --- Coordinadores → NUEVA COLUMNA (col 24, no editable)
+    // (no haces nada extra aquí por ahora)
+  }); // ← cierre de sliceGps.map(async (g, k) => { ... })
     // Espera que terminen todas las tareas de este bloque
     await Promise.allSettled(jobs);
   } // ← cierre del for (i += BATCH)
