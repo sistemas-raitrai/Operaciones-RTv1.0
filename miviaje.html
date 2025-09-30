@@ -5,39 +5,49 @@
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
   <title>Mi Viaje | RT</title>
 
-  <!-- Tus estilos globales (no los toco) -->
+  <!-- Tus estilos globales -->
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-  <!-- Estilos específicos para impresión -->
+  <!-- Estilos base mínimos usados por miviaje.js -->
   <style>
-    /* ===== Pantalla (base) ===== */
+    /* Base de layout */
+    .grid{ display:grid; gap:12px; }
+    .card{ border:1px solid #e5e7eb; border-radius:12px; padding:12px; background:#fff; }
+    .activity-card{ border:1px solid #e5e7eb; border-radius:12px; padding:12px; background:#fff; }
+    .dia-seccion{ margin:12px 0; }
+    .dia-titulo{ color:#1D4ED8; font-weight:700; }
+
+    .row{ display:grid; grid-template-columns:1fr auto; gap:12px; align-items:end; }
+    .column{ display:block; }
+    .btn-add{ margin-left:8px; }
+    .readonly-field{ opacity:.9; }
+
+    .table-wrapper{ overflow:auto; }
+    table{ width:100%; border-collapse:collapse; }
+    th,td{ padding:6px 4px; border-bottom:1px solid #eee; text-align:left; }
+
+    /* Bloque textual opcional (si quisieras imprimir texto plano) */
     .print-only{
       display:none;
       white-space:pre-wrap;
       font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
     }
-  
-    /* Día/fecha en azul (también aplica en print) */
-    .dia-titulo{ color:#1D4ED8; font-weight:700; }
-  
-    /* Logo solo para impresión */
+
+    /* En pantalla, oculta el logo de impresión */
     @media screen{ #print-logo{ display:none; } }
-  
+
     /* ===== Impresión ===== */
     @media print{
-      /* Márgenes */
       @page{ margin:14mm 12mm; }
-  
-      /* Mantener colores */
       *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  
-      /* Ocultar header "Mi Viaje" y botones */
+
       header, .btn-add{ display:none !important; }
-  
-      /* NO usar el bloque textual; imprimimos el layout visual simplificado */
+
+      /* Por defecto imprimimos el layout visual (tablas/tarjetas).
+         Si prefieres el texto, cambia estas dos líneas: */
       .print-only, #print-block{ display:none !important; }
-  
+
       /* Logo fijo arriba-derecha */
       #print-logo{
         display:block;
@@ -45,8 +55,8 @@
         top:12px; right:12px;
         width:120px;
       }
-  
-      /* LISTA VERTICAL (sin grillas ni tarjetas) */
+
+      /* Simplificar listados para evitar cortes raros */
       .grid,
       #itinerario-container,
       .activity-list{
@@ -54,82 +64,40 @@
         gap:0 !important;
         width:100% !important;
       }
-  
-      /* Quitar fondos, bordes, sombras, radios, etc. */
-      .dia-seccion,
-      .activity-card{
-        background:none !important;
-        border:0 !important;
-        box-shadow:none !important;
-        border-radius:0 !important;
-        padding:0 !important;
-        margin:0 !important;
-      }
-  
-      /* Evitar scroll/cortes internos */
-      *, *::before, *::after{ overflow:visible !important; }
-      #itinerario-container,
-      .activity-list{
-        max-height:none !important;
-        height:auto !important;
-        overflow:visible !important;
-      }
-  
-      /* Título del día (azul) y espaciado */
+
       .dia-seccion{ break-inside:avoid; page-break-inside:avoid; margin:12px 0 10px 0 !important; }
       .dia-seccion h3{
         color:#1D4ED8 !important;
-        background:none !important;
-        border:0 !important;
         margin:12px 0 6px 0 !important;
         padding:0 !important;
         font-size:12pt !important;
         text-align:left !important;
+        background:none !important;
+        border:0 !important;
       }
-  
-      /* Actividades: solo texto, sin guiones ni cajas */
+
       .activity-card p{
         margin:0 0 4px 0 !important;
         font-size:11pt !important;
         font-weight:600;
       }
-  
+
       body{ background:#fff; color:#000; font-size:11pt; }
       h1,h2,h3{ margin:0 0 6px 0; }
-      #itinerario-container{ margin-top:10px !important; }
-      /* ——— Apilar encabezados en impresión ——— */
-      .row{ 
-        display:block !important;         /* deja de ser grid/flex */
-        margin:0 0 8px 0 !important;
+
+      /* Apilar bloques del encabezado */
+      .row{ display:block !important; margin:0 0 8px 0 !important; }
+      .row .column, .row .long, .row .medium, .row .short{
+        display:block !important; width:100% !important; margin:0 0 4px 0 !important;
       }
-      .row .column,
-      .row .long,
-      .row .medium,
-      .row .short{
-        display:block !important;         /* cada bloque a 100% */
-        width:100% !important;
-        margin:0 0 4px 0 !important;
-      }
-      .row h2{ margin:0 0 4px 0 !important; }
-      
-      /* GRUPO (que está fuera de .row) y los secundarios también en columna */
-      main .column{
-        display:block !important;
-        width:100% !important;
-        margin:0 0 4px 0 !important;
-      }
-      
-      /* Un respiro antes del listado de días */
       #itinerario-container{ margin-top:14px !important; }
     }
   </style>
-
-
-<img id="print-logo" src="Logo Raitrai.png" alt="RaiTrai" />
-  
 </head>
 
 <body class="itinerario-page">
+  <!-- Logo usado solo en impresión -->
+  <img id="print-logo" src="Logo Raitrai.png" alt="RaiTrai" />
 
   <!-- Encabezado liviano SIN autenticación -->
   <header class="header" style="display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;border-bottom:1px solid #ddd;background:#fff;">
@@ -144,22 +112,23 @@
     <button id="btnPrint" class="btn-add" title="Imprimir / Guardar en PDF">🖨️ Imprimir</button>
   </header>
 
-  <main class="main">
+  <main class="main" style="padding:12px;">
     <!-- Cabecera de grupo (sólo lectura) -->
     <div class="row">
       <div class="column long">
-        <h2>PROGRAMA:<span id="grupo-title">–</span></h2>
+        <h2>PROGRAMA: <span id="grupo-title">–</span></h2>
       </div>
       <div class="column medium">
         <h2>FECHAS: <span id="grupo-fechas" class="readonly-field">—</span></h2>
       </div>
     </div>
+
     <div class="column medium">
-        <h2>GRUPO: <span id="grupo-nombre">—</span></h2>
+      <h2>GRUPO: <span id="grupo-nombre">—</span></h2>
     </div>
 
     <!-- Info secundaria -->
-    <div> 
+    <div class="row" style="grid-template-columns:2fr 1fr;">
       <div class="column medium">
         <label>Destino</label>
         <div id="grupo-destino" class="readonly-field">—</div>
@@ -170,14 +139,25 @@
       </div>
     </div>
 
+    <!-- (Opcional) placeholder de Ficha del grupo para evitar reflujo.
+         miviaje.js lo completa con Vuelos y Hoteles. -->
+    <section id="grupo-ficha" style="margin:12px 0;">
+      <h3 style="margin: 12px 0 6px;">Ficha del grupo</h3>
+      <div id="ficha-inner" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;"></div>
+    </section>
+
     <!-- Contenedor visual (tarjetas) -->
     <div id="itinerario-container" class="grid"></div>
 
-    <!-- Contenedor textual SÓLO para impresión -->
+    <!-- Contenedor textual SÓLO para impresión (si quisieras usarlo) -->
     <pre id="print-block" class="print-only"></pre>
   </main>
 
-  <!-- Sólo cargamos el visor público (sin auth) -->
+  <noscript>
+    <p style="padding:1rem;color:#b00;">Esta página requiere JavaScript para cargar tu viaje.</p>
+  </noscript>
+
+  <!-- Visor público (sin auth); lee Firestore y rellena todo -->
   <script type="module">
     import './miviaje.js';
   </script>
