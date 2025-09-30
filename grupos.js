@@ -636,9 +636,52 @@ async function cargarYMostrarTabla() {
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
+
+  // ——— BÚSQUEDA ESPECIAL: "<texto>,..."  para incluir coordinadores en blanco ———
+  const BUSQ_ESPECIAL = { activo:false, termino:'' };
+  
+  // Filtro personalizado de DataTables (se evalúa SOLO cuando BUSQ_ESPECIAL.activo)
+  $.fn.dataTable.ext.search.push(function (settings, rowData) {
+    if (settings.nTable.id !== 'tablaGrupos') return true;
+    if (!BUSQ_ESPECIAL.activo) return true;
+  
+    const colCoord = 5;                                 // índice de columna "Coordinadores"
+    const coordTxt = (rowData[colCoord] || '').trim();  // texto en Coordinadores
+    const term     = BUSQ_ESPECIAL.termino.toLowerCase();
+  
+    // Si NO hay término (p. ej. escribiste solo ",") => mostrar SOLO los vacíos
+    if (!term) return coordTxt === '';
+  
+    // Hay término: incluir fila si:
+    //   (a) coincide el término en CUALQUIER columna,  OR
+    //   (b) la columna Coordinadores está vacía
+    const rowText = rowData.join(' ').toLowerCase();
+    const coincide = rowText.indexOf(term) !== -1;
+    return coincide || coordTxt === '';
+  });
+
   
   // Filtros con los nuevos índices
-  $('#buscador').on('input', function(){ tabla.search(this.value).draw(); });
+  $('#buscador').on('input', function () {
+  const raw = String(this.value || '');
+  const tieneComa = raw.includes(',');
+
+  if (tieneComa) {
+    // Modo especial: término = lo que va antes de la primera coma
+    const termino = raw.split(',')[0].trim();
+    BUSQ_ESPECIAL.activo  = true;
+    BUSQ_ESPECIAL.termino = termino;
+
+    // Desactivamos la búsqueda global de DT y usamos SOLO nuestro filtro
+    tabla.search('');
+  } else {
+    // Modo normal: sin “OR con blancos”
+    BUSQ_ESPECIAL.activo  = false;
+    BUSQ_ESPECIAL.termino = '';
+    tabla.search(raw);   // búsqueda global normal de DataTables
+  }
+  tabla.draw();
+});
   $('#filtroDestino').on('change', function(){ tabla.column(11).search(this.value).draw(); }); // Destino
   $('#filtroAno').on('change',     function(){ tabla.column(3).search(this.value).draw();  }); // Año
 
