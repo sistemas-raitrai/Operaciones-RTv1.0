@@ -10,7 +10,7 @@
 import { app, db } from './firebase-init.js';
 import {
   collection, collectionGroup, getDocs, addDoc, doc, updateDoc, setDoc, deleteDoc,
-  query, where, getDoc, serverTimestamp
+  query, where, getDoc, serverTimestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* ===================== LOGGING ===================== */
@@ -1420,83 +1420,125 @@ function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':
    Guardar CAMBIOS (persiste SOLO confirmados)
    ========================================================= */
 async function guardarTodo(){
-  console.time('guardarTodo');
+  console.time('guardarTodo[BATCH]');
   try{
-    for (const g of GRUPOS){
-      await updateDoc(doc(db,'grupos', g.id), { aliasGrupo: g.aliasGrupo || null });
-    }
+    const nowTS = serverTimestamp();
 
+    // —————————————————————————————————
+    // 0) Helper para comitear en chunks
+    // —————————————————————————————————
+    const commitOpsInChunks = async (ops, chunkSize = 450) => {
+      for (let i = 0; i < ops.length; i += chunkSize) {
+        const batch = writeBatch(db);
+        const slice = ops.slice(i, i + chunkSize);
+        slice.forEach(fn => fn(batch));
+        await batch.commit();
+      }
+    };
+
+    const ops = [];
     const usadosConfirmados = new Set();
 
+    // —————————————————————————————————
+    // 1) Alias de grupos (masivo)
+    //    (rápido: batcheado; si quieres, aquí puedes
+    //     filtrar y solo actualizar los que tengan alias distinto)
+    // —————————————————————————————————
+    for (const g of GRUPOS){
+      const gref = doc(db, 'grupos', g.id);
+      ops.push(batch => batch.update(gref, { aliasGrupo: g.aliasGrupo || null }));
+    }
+
+    // —————————————————————————————————
+    // 2) SETS (confirmados → persiste conjunto + marca grupos)
+    //            (no confirmados → limpia grupos + borra conjunto si existe)
+    // —————————————————————————————————
     for (const s of SETS){
       const estaConfirmado = !!s.confirmado && !!s.coordinadorId;
-      if (estaConfirmado){
-        const payload = {
-          viajes: s.viajes.slice(),
-          confirmado: true,
-          meta: { actualizadoEn: serverTimestamp() }
-        };
 
+      if (estaConfirmado){
+        // Si cambia el owner del conjunto, borrar el doc viejo
         if (s.id && s._ownerCoordId && s._ownerCoordId !== s.coordinadorId){
-          try { await deleteDoc(doc(db, 'coordinadores', s._ownerCoordId, 'conjuntos', s.id)); } catch (_) { W('No se pudo borrar conjunto del dueño anterior', s._ownerCoordId, s.id); }
-          s.id = null;
+          const oldRef = doc(db, 'coordinadores', s._ownerCoordId, 'conjuntos', s.id);
+          ops.push(batch => batch.delete(oldRef));
+          s.id = null; // forzamos recreación bajo el owner nuevo
         }
 
-        let ref;
-        if (s.id){
-          ref = doc(db, 'coordinadores', s.coordinadorId, 'conjuntos', s.id);
-          await setDoc(ref, payload, { merge:true });
-        } else {
-          ref = await addDoc(collection(db, 'coordinadores', s.coordinadorId, 'conjuntos'), {
-            ...payload,
-            meta: { creadoEn: serverTimestamp(), actualizadoEn: serverTimestamp() }
-          });
-          s.id = ref.id;
+        // Prepara (o crea) id del conjunto bajo el owner actual
+        if (!s.id){
+          // Creamos un docRef con id autogenerado SIN escribir aún
+          s.id = doc(collection(db, 'coordinadores', s.coordinadorId, 'conjuntos')).id;
         }
         s._ownerCoordId = s.coordinadorId;
 
+        const conjRef = doc(db, 'coordinadores', s.coordinadorId, 'conjuntos', s.id);
+        const payload = {
+          viajes: (s.viajes||[]).slice(),
+          confirmado: true,
+          meta: { actualizadoEn: nowTS, ...(s._isNew ? { creadoEn: nowTS } : {}) }
+        };
+        ops.push(batch => batch.set(conjRef, payload, { merge: true }));
+
         const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
 
-        for (const gid of s.viajes){
-          await updateDoc(doc(db,'grupos', gid), {
+        // Marcar cada grupo asignado en el conjunto confirmado
+        for (const gid of (s.viajes||[])){
+          const gref = doc(db, 'grupos', gid);
+          ops.push(batch => batch.update(gref, {
             conjuntoId: s.id,
             coordinador: coordNombre,
-            coordinadorId: s.coordinadorId || null
-          });
+            coordinadorId: s.coordinadorId
+          }));
           usadosConfirmados.add(gid);
         }
 
         delete s._isNew;
       } else {
+        // Limpia campos en los grupos “del set no confirmado”
         for (const gid of (s.viajes||[])){
-          await updateDoc(doc(db,'grupos', gid), {
+          const gref = doc(db, 'grupos', gid);
+          ops.push(batch => batch.update(gref, {
             conjuntoId: null,
             coordinador: null,
             coordinadorId: null
-          });
+          }));
         }
+        // Si el conjunto existía en algún owner, bórralo
         const owner = s._ownerCoordId || s.coordinadorId;
         if (s.id && owner){
-          try { await deleteDoc(doc(db, 'coordinadores', owner, 'conjuntos', s.id)); } catch(_){ W('No se pudo borrar conjunto no confirmado', s.id, 'owner', owner); }
+          const conjRef = doc(db, 'coordinadores', owner, 'conjuntos', s.id);
+          ops.push(batch => batch.delete(conjRef));
         }
       }
     }
 
+    // —————————————————————————————————
+    // 3) “Limpieza final” para grupos que NO quedaron en confirmados
+    //    (si ya estaban limpios, no pasa nada; write idempotente)
+    // —————————————————————————————————
     for (const g of GRUPOS){
       if (!usadosConfirmados.has(g.id)){
-        await updateDoc(doc(db,'grupos', g.id), {
+        const gref = doc(db, 'grupos', g.id);
+        ops.push(batch => batch.update(gref, {
           conjuntoId: null,
           coordinador: null,
           coordinadorId: null
-        });
+        }));
       }
     }
-    L('guardarTodo OK');
+
+    // —————————————————————————————————
+    // 4) Ejecutar TODO en batches
+    // —————————————————————————————————
+    L('guardarTodo[BATCH] operaciones totales =', ops.length);
+    await commitOpsInChunks(ops, 450);
+
+    L('guardarTodo[BATCH] OK');
   }catch(err){
-    E('guardarTodo error:', err);
+    E('guardarTodo[BATCH] error:', err);
     throw err;
   }finally{
-    console.timeEnd('guardarTodo');
+    console.timeEnd('guardarTodo[BATCH]');
   }
 }
 
