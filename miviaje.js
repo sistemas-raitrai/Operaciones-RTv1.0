@@ -1,8 +1,8 @@
-// miviaje.js — visor SOLO LECTURA (sin autenticación)
-// Lee un grupo por ?id=<docId> o ?numeroNegocio= (incluye “1475/1411”, “1475-1411”, “1475 y 1411”).
+// miviaje.js — Visor SOLO LECTURA (sin auth) con “Hoja” estilo documento
+// Lee ?id=<docId> o ?numeroNegocio= (incluye “1475/1411”, “1475-1411”, “1475 y 1411”).
 // Si hay varios matches, muestra selector con links ?id=.
-// Botones: Copiar enlace / Imprimir. &notas=0 para ocultar notas.
-// FICHA DEL GRUPO: ✈️ Vuelos · 🏨 Hoteles · 👥 Contactos · 🛡️ Seguro · 🚌 Terrestre.
+// Botones: Copiar enlace / Imprimir. &notas=0 para ocultar notas en actividades.
+// Incluye Hoja Resumen como en la imagen: (1) Confirmación salida (2) Vuelos (3) Hotelería (4) Documentos (5) Equipaje (6) Recomendaciones.
 
 import { app, db } from './firebase-core.js';
 import {
@@ -65,14 +65,30 @@ async function buscarGruposPorNumero(numeroNegocio) {
 }
 
 /* ───────── util ───────── */
-function safe(v, fb='—'){ return (v===0||v)?v:fb; }
-function normTime(t){ if(!t) return ''; const m=String(t).match(/(\d{1,2})[:hH\.](\d{2})/); if(!m) return ''; const h=String(Math.max(0,Math.min(23,parseInt(m[1],10)))).padStart(2,'0'); const mi=String(Math.max(0,Math.min(59,parseInt(m[2],10)))).padStart(2,'0'); return `${h}:${mi}`; }
-function formatDateRange(ini,fin){ if(!ini||!fin) return '—'; try{ const [iy,im,id]=String(ini).split('-').map(Number); const [fy,fm,fd]=String(fin).split('-').map(Number); const di=new Date(iy,im-1,id); const df=new Date(fy,fm-1,fd); const fmt=d=>d.toLocaleDateString('es-CL',{day:'2-digit',month:'2-digit',year:'numeric'}); return `${fmt(di)} — ${fmt(df)}`; }catch{ return '—'; } }
+const safe = (v, fb='—') => (v===0||v)?v:fb;
+function normTime(t){
+  if(!t) return ''; const s=String(t).trim();
+  if(/^\d{1,2}$/.test(s)) return s.padStart(2,'0')+':00';
+  const m=s.match(/(\d{1,2})[:hH\.](\d{2})/); if(!m) return '';
+  const h=String(Math.max(0,Math.min(23,parseInt(m[1],10)))).padStart(2,'0');
+  const mi=String(Math.max(0,Math.min(59,parseInt(m[2],10)))).padStart(2,'0');
+  return `${h}:${mi}`;
+}
+function formatShortDate(iso){ // 25 de septiembre 2025
+  if(!iso) return '—';
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  const mes = dt.toLocaleDateString('es-CL',{month:'long'});
+  return `${d} de ${mes} ${y}`;
+}
+function formatDateRange(ini,fin){ if(!ini||!fin) return '—'; try{
+  return `${formatShortDate(ini)} — ${formatShortDate(fin)}`;
+} catch { return '—'; } }
 function formatDateReadable(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-').map(Number); const dt=new Date(y,m-1,d); const wd=dt.toLocaleDateString('es-CL',{weekday:'long'}); const name=wd.charAt(0).toUpperCase()+wd.slice(1); return `${name} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`; }
 function getDateRange(s,e){ const out=[]; if(!s||!e) return out; const [sy,sm,sd]=s.split('-').map(Number), [ey,em,ed]=e.split('-').map(Number); const a=new Date(sy,sm-1,sd), b=new Date(ey,em-1,ed); for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);} return out; }
 
-/* ───────── normalizadores ───────── */
-// ✈️
+/* ───────── normalizadores de datos (vuelos / hoteles, etc.) ───────── */
+// ✈️ Vuelos
 function normalizeVuelos(g){
   const res=[]; const push=v=>{ if(!v) return; res.push({
     fecha: v.fecha||v.fechaVuelo||v.fechaSalida||v.dia||'',
@@ -96,9 +112,12 @@ function normalizeVuelos(g){
     if(ida.fecha||ida.numero||ida.desde||ida.hasta) push(ida);
     if(vuelta.fecha||vuelta.numero||vuelta.desde||vuelta.hasta) push(vuelta);
   }
+  // ordenar por fecha + hora
+  res.sort((a,b)=> new Date(a.fecha||'2100-01-01') - new Date(b.fecha||'2100-01-01')
+    || (a.horaSalida||'99:99').localeCompare(b.horaSalida||'99:99'));
   return res.filter(v=>v.fecha||v.numeroVuelo||v.aerolinea||v.desde||v.hasta||v.horaSalida||v.horaArribo);
 }
-// 🏨
+// 🏨 Hoteles
 function normalizeHoteles(g){
   const res=[]; const push=h=>{ if(!h) return; res.push({
     nombre: h.nombre||h.hotel||h.name||'',
@@ -107,66 +126,16 @@ function normalizeHoteles(g){
     checkOut: h.checkOut||h.out||h.fechaOut||h.salida||'',
     telefono: h.telefono||h.fono||h.tel||'',
     web: h.web||h.url||h.website||'',
-    notas: h.notas||''
   });};
   const H=g?.hoteles||g?.hotel||g?.hoteleria||g?.alojamiento;
   if(Array.isArray(H)) H.forEach(push); else if(H&&typeof H==='object') push(H);
   if(g?.hotel1||g?.hotel_1) push(g.hotel1||g.hotel_1);
   if(g?.hotel2||g?.hotel_2) push(g.hotel2||g.hotel_2);
+  // agrupar por ciudad para el layout estilo imagen
   return res.filter(h=>h.nombre||h.ciudad||h.checkIn||h.checkOut||h.telefono||h.web);
 }
-// 👥 Contactos
-function normalizeContactos(g){
-  const out=[];
-  const push=(etiqueta,persona,telefono,email,extra='')=>{
-    if(!(persona||telefono||email||extra)) return;
-    out.push({ etiqueta: etiqueta||'CONTACTO', persona: safe(persona,''), telefono: safe(telefono,''), email: safe(email,''), extra: safe(extra,'') });
-  };
-  const coordNom = g.coordinadorNombre||g.coordinador||g.coordinador_name||g.nombreCoordinador;
-  const coordTel = g.coordinadorTelefono||g.telefonoCoordinador||g.coordTelefono||g.coordCelular;
-  const coordMail= g.coordinadorEmail||g.coordEmail||g.emailCoordinador||g.coordinador_correo;
-  push('COORDINADOR(A)', coordNom, coordTel, coordMail);
 
-  const opsTel = g.operacionesTelefono||g.telefonoOperaciones||g.opsTelefono||g.contactoOperaciones;
-  const opsMail= g.operacionesEmail||g.emailOperaciones||g.opsEmail||'operaciones@raitrai.cl';
-  push('OPERACIONES RT', 'OPERACIONES', opsTel, opsMail);
-
-  const emer= g.emergenciaNombre||g.contactoEmergencia||'EMERGENCIA';
-  const emerTel= g.emergenciaTelefono||g.telefonoEmergencia||g.emergencyPhone||g.fonoEmergencia;
-  const emerMail= g.emergenciaEmail||g.emailEmergencia||'';
-  push('EMERGENCIA', emer, emerTel, emerMail);
-
-  const provNom = g.proveedor||g.proveedorPrincipal||g.operador||g.agenciaLocal;
-  const provTel = g.proveedorTelefono||g.telefonoProveedor;
-  const provMail= g.proveedorEmail||g.correoProveedor||g.emailProveedor;
-  push('PROVEEDOR', provNom, provTel, provMail);
-
-  return out;
-}
-// 🛡️ Seguro
-function normalizeSeguro(g){
-  const aseg = g.seguro||g.aseguradora||g.companiaSeguro||g.seguroCompania;
-  const pol  = g.poliza||g.numeroPoliza||g.polizaNumero||g.nroPoliza;
-  const tel  = g.telefonoSeguro||g.seguroTelefono||g.asistenciaTelefono||g.assistancePhone;
-  const vigI = g.seguroInicio||g.vigenciaInicio||g.seguroVigenciaInicio;
-  const vigF = g.seguroFin||g.vigenciaFin||g.seguroVigenciaFin;
-  if(!(aseg||pol||tel||vigI||vigF)) return null;
-  return { aseguradora:safe(aseg,''), poliza:safe(pol,''), telefono:safe(tel,''), desde:safe(vigI,''), hasta:safe(vigF,'') };
-}
-// 🚌 Terrestre
-function normalizeTerrestre(g){
-  const emp = g.empresaBus||g.busEmpresa||g.transportista||g.terrestreEmpresa;
-  const sal = g.busSalida||g.idaHora||g.horaBusSalida||g.terrestreSalida;
-  const reg = g.busRegreso||g.vueltaHora||g.horaBusRegreso||g.terrestreRegreso;
-  const cond= g.conductor||g.conductorNombre||g.chofer||g.driver;
-  const pat = g.patente||g.busPatente||g.placa||g.matricula;
-  if(!(emp||sal||reg||cond||pat)) return null;
-  return { empresa:safe(emp,''), salida:safe(normTime(sal)||sal,''), regreso:safe(normTime(reg)||reg,''), conductor:safe(cond,''), patente:safe(pat,'') };
-}
-// Itinerario día
-function normalizeItinerarioDay(x){ if(Array.isArray(x)) return x.slice(); if(x&&typeof x==='object') return Object.values(x).filter(o=>o&&typeof o==='object'); return []; }
-
-/* ───────── UI ───────── */
+/* ───────── UI (selector en caso de varias coincidencias) ───────── */
 function renderSelector(lista, cont, hideNotes){
   cont.innerHTML = `
     <div style="padding:1rem;">
@@ -184,83 +153,145 @@ function renderSelector(lista, cont, hideNotes){
       </div>
     </div>`;
 }
-function ensureFichaContainer(){
-  let s=document.getElementById('grupo-ficha');
-  if(!s){
-    s=document.createElement('section'); s.id='grupo-ficha'; s.style.margin='12px 0';
-    s.innerHTML=`<h3 style="margin:12px 0 6px;">Ficha del grupo</h3><div id="ficha-inner" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;"></div>`;
-    const cont=document.getElementById('itinerario-container'); cont?.parentNode?.insertBefore(s, cont);
+
+/* ───────── Hoja estilo imagen ───────── */
+function renderHojaResumen(grupo){
+  // contenedor: insertamos antes del itinerario
+  let hoja = document.getElementById('hoja-resumen');
+  if(!hoja){
+    hoja = document.createElement('section');
+    hoja.id = 'hoja-resumen';
+    hoja.style.cssText = 'background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:14px;margin:12px 0;';
+    const cont = document.getElementById('itinerario-container');
+    cont?.parentNode?.insertBefore(hoja, cont);
   }
-  return s.querySelector('#ficha-inner');
-}
-function renderVuelosCard(g){
-  const vuelos=normalizeVuelos(g); if(!vuelos.length) return '';
-  const rows=vuelos.map(v=>`
+
+  // Título como en la imagen
+  const colegio = grupo.colegio || grupo.cliente || '';
+  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
+  const titulo  = (colegio || curso)
+    ? `Viaje de Estudios ${colegio ? colegio : ''} ${curso ? curso : ''}`.trim()
+    : `Viaje de Estudios ${grupo.programa||''}`.trim();
+
+  const fechaViaje = grupo.fechaInicio
+    ? formatShortDate(grupo.fechaInicio)
+    : (grupo.fecha || '');
+
+  // (1) Confirmación de salida: texto parametrizable o default
+  const presentHora   = normTime(grupo.presentacionHora||grupo.horaPresentacion||'03:00');
+  const presentLugar  = grupo.presentacionLugar || 'En las puertas del Colegio';
+  const aeropuerto    = grupo.presentacionAeropuerto || 'A. Merino Benítez, Terminal 1';
+  const presentacion  = `${presentLugar} a las ${presentHora} hrs. A.M para salir con destino al aeropuerto ${aeropuerto}.`;
+
+  // (2) Vuelos
+  const vuelos = normalizeVuelos(grupo);
+  const vuelosRows = vuelos.map(v=>`
     <tr>
-      <td>${safe(v.fecha)}</td><td>${safe(v.numeroVuelo)}</td><td>${safe(v.aerolinea)}</td>
-      <td>${safe(v.desde)} → ${safe(v.hasta)}</td><td>${safe(v.horaSalida)}</td><td>${safe(v.horaArribo)}</td>
+      <td style="padding:6px 8px;border:1px solid #d1d5db;">
+        ${v.fecha ? formatShortDate(v.fecha) : '—'}
+        ${v.aerolinea ? `<div style="font-size:.85em;color:#374151;">vía ${v.aerolinea}</div>`:''}
+      </td>
+      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(v.numeroVuelo)}</td>
+      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(v.desde)}</td>
+      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(v.horaSalida)}</td>
+      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(v.hasta)}</td>
+      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(v.horaArribo)}</td>
     </tr>`).join('');
-  return `<div class="card"><div style="font-weight:700;margin-bottom:6px;">✈️ Vuelos</div>
-    <div class="table-wrapper"><table><thead><tr><th>Fecha</th><th>N° Vuelo</th><th>Aerolínea</th><th>Ruta</th><th>Salida</th><th>Arribo</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
-}
-function renderHotelesCard(g){
-  const hoteles=normalizeHoteles(g); if(!hoteles.length) return '';
-  return `<div class="card"><div style="font-weight:700;margin-bottom:6px;">🏨 Hoteles</div>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;">
-      ${hoteles.map(h=>`
-        <div style="border:1px dashed #e5e7eb;border-radius:10px;padding:10px;">
-          <div style="font-weight:600;">${safe(h.nombre)}</div>
-          <div>${safe(h.ciudad)}</div>
-          <div>In: ${safe(h.checkIn)} · Out: ${safe(h.checkOut)}</div>
-          ${h.telefono?`<div>Tel: <a href="tel:${h.telefono}">${h.telefono}</a></div>`:''}
-          ${h.web?`<div>Web: <a href="${h.web}" target="_blank" rel="noopener">${h.web}</a></div>`:''}
-          ${h.notas?`<div style="opacity:.85;">📝 ${h.notas}</div>`:''}
-        </div>`).join('')}
-    </div></div>`;
-}
-function renderContactosCard(g){
-  const C=normalizeContactos(g); if(!C.length) return '';
-  const rows=C.map(c=>`
-    <tr>
-      <td>${safe(c.etiqueta)}</td>
-      <td>${safe(c.persona)}</td>
-      <td>${c.telefono?`<a href="tel:${c.telefono}">${c.telefono}</a>`:'—'}</td>
-      <td>${c.email?`<a href="mailto:${c.email}">${c.email}</a>`:'—'}</td>
-    </tr>`).join('');
-  return `<div class="card"><div style="font-weight:700;margin-bottom:6px;">👥 Contactos</div>
-    <div class="table-wrapper"><table><thead><tr><th>Tipo</th><th>Nombre</th><th>Teléfono</th><th>Correo</th></tr></thead><tbody>${rows}</tbody></table></div></div>`;
-}
-function renderSeguroCard(g){
-  const S=normalizeSeguro(g); if(!S) return '';
-  return `<div class="card"><div style="font-weight:700;margin-bottom:6px;">🛡️ Seguro</div>
-    <div class="table-wrapper"><table><tbody>
-      <tr><th style="width:140px;">Aseguradora</th><td>${safe(S.aseguradora)}</td></tr>
-      <tr><th>N° Póliza</th><td>${safe(S.poliza)}</td></tr>
-      <tr><th>Vigencia</th><td>${safe(S.desde)} ${S.hasta?'— '+S.hasta:''}</td></tr>
-      <tr><th>Asistencia 24/7</th><td>${S.telefono?`<a href="tel:${S.telefono}">${S.telefono}</a>`:'—'}</td></tr>
-    </tbody></table></div></div>`;
-}
-function renderTerrestreCard(g){
-  const T=normalizeTerrestre(g); if(!T) return '';
-  return `<div class="card"><div style="font-weight:700;margin-bottom:6px;">🚌 Transporte terrestre</div>
-    <div class="table-wrapper"><table><tbody>
-      <tr><th style="width:140px;">Empresa</th><td>${safe(T.empresa)}</td></tr>
-      <tr><th>Salida</th><td>${safe(T.salida)}</td></tr>
-      <tr><th>Regreso</th><td>${safe(T.regreso)}</td></tr>
-      <tr><th>Conductor</th><td>${safe(T.conductor)}</td></tr>
-      <tr><th>Patente</th><td>${safe(T.patente)}</td></tr>
-    </tbody></table></div></div>`;
-}
-function renderFichaGrupo(g){
-  const inner=ensureFichaContainer();
-  const blocks=[ renderVuelosCard(g), renderHotelesCard(g), renderContactosCard(g), renderSeguroCard(g), renderTerrestreCard(g) ].filter(Boolean);
-  const sec=document.getElementById('grupo-ficha');
-  if(!blocks.length){ if(sec) sec.style.display='none'; return; }
-  if(sec) sec.style.display='';
-  inner.innerHTML = blocks.join('');
+
+  // (3) Hotelería confirmada: bloques por ciudad
+  const hoteles = normalizeHoteles(grupo);
+  const hotelesHtml = hoteles.map(h => `
+    <div style="display:flex;gap:16px;align-items:flex-start;">
+      <div style="width:120px;font-weight:700;">${safe(h.ciudad,'—')}</div>
+      <div>
+        <div style="font-weight:700;">${safe(h.nombre)}</div>
+        <div>In : ${safe(h.checkIn)} </div>
+        <div>Out: ${safe(h.checkOut)}</div>
+        ${h.telefono?`<div>Fono: <a href="tel:${h.telefono}">${h.telefono}</a></div>`:''}
+        ${h.web?`<div>Web: <a href="${h.web}" target="_blank" rel="noopener">${h.web}</a></div>`:''}
+      </div>
+    </div>
+  `).join('<hr style="border:none;border-top:1px dashed #e5e7eb;margin:6px 0;">');
+
+  // (4)(5)(6) Textos (se pueden sobreescribir desde la BD si quieres)
+  const docsText = grupo.textos?.documentos || 'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).';
+  const equipajeText1 = grupo.textos?.equipaje1 || 'Equipaje en bodega 01 Maleta (peso máximo 23 kg.) el cual debe tener como medidas máximo 158 cm lineales (largo, ancho, alto), más un bolso de mano. (peso máximo 5 Kg.)';
+  const equipajeText2 = grupo.textos?.equipaje2 || 'Está prohibido transportar líquidos, elementos corto-punzantes o de aseo en el bolso de mano.';
+  const recs = grupo.textos?.recomendaciones || [
+    'Llevar ropa y calzado, cómodo, adecuado a Clima del Destino. Llevar protector solar',
+    'Llevar una botella reutilizable para el consumo de agua',
+    'Llevar Saco de Dormir',
+    'Llevar toalla, Shampoo y Jabón (Huilo Huilo NO INCLUYE TOALLAS NI AMENIDADES)',
+    'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
+    'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
+    'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros.'
+  ];
+
+  hoja.innerHTML = `
+    <div style="text-align:center;margin-bottom:10px;">
+      <div style="font-size:20px;font-weight:800;">${titulo}</div>
+      <div style="font-size:14px;margin-top:2px;">Fecha Viaje: ${fechaViaje}</div>
+    </div>
+
+    <ol style="padding-left:18px;margin:0;">
+      <li style="margin-bottom:10px;">
+        <div style="font-weight:700;">CONFIRMACIÓN DE HORARIO DE SALIDA</div>
+        <div>Presentación: ${presentacion}</div>
+      </li>
+
+      <li style="margin-bottom:10px;">
+        <div style="font-weight:700;">INFORMACIÓN DE VUELOS CONFIRMADOS</div>
+        ${vuelos.length?`
+        <div style="overflow:auto;margin-top:6px;">
+          <table style="border-collapse:collapse;min-width:560px;">
+            <thead>
+              <tr>
+                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
+                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">N° de Vuelo</th>
+                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Desde</th>
+                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Horario Salida</th>
+                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hasta</th>
+                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Horario de Arribo</th>
+              </tr>
+            </thead>
+            <tbody>${vuelosRows}</tbody>
+          </table>
+        </div>` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`}
+      </li>
+
+      <li style="margin-bottom:10px;">
+        <div style="font-weight:700;">HOTELERÍA CONFIRMADA</div>
+        ${hoteles.length? `<div style="margin-top:6px;display:grid;gap:8px;">${hotelesHtml}</div>` : `<div style="opacity:.7;">— Sin hotelería cargada —</div>`}
+      </li>
+
+      <li style="margin-bottom:10px;">
+        <div style="font-weight:700;">DOCUMENTOS PARA EL VIAJE</div>
+        <ul style="margin:4px 0 0 18px;list-style:disc;">
+          <li>${docsText}</li>
+        </ul>
+      </li>
+
+      <li style="margin-bottom:10px;">
+        <div style="font-weight:700;">EQUIPAJE</div>
+        <ul style="margin:4px 0 0 18px;list-style:disc;">
+          <li>${equipajeText1}</li>
+          <li>${equipajeText2}</li>
+        </ul>
+      </li>
+
+      <li style="margin-bottom:6px;">
+        <div style="font-weight:700;">RECOMENDACIONES GENERALES</div>
+        <ul style="margin:4px 0 0 18px;list-style:disc;">
+          ${Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`}
+        </ul>
+      </li>
+    </ol>
+
+    <div style="text-align:center;font-weight:800;margin-top:12px;">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
+  `;
 }
 
-/* ───────── impresión (texto plano opcional) ───────── */
+/* ───────── impresión (texto plano opcional para PDF simple) ───────── */
 function buildPrintText(grupo, fechas){
   let out='';
   out += `PROGRAMA: ${(grupo.programa||'—').toString().toUpperCase()}\n`;
@@ -268,21 +299,13 @@ function buildPrintText(grupo, fechas){
   out += `N° NEGOCIO: ${grupo.numeroNegocio??grupo.id??'—'}\n`;
   out += `DESTINO: ${grupo.destino||'—'}\n`;
   out += `FECHAS: ${formatDateRange(grupo.fechaInicio, grupo.fechaFin)}\n\n`;
-
   const V=normalizeVuelos(grupo);
   if(V.length){ out+='VUELOS\n'; V.forEach(v=>{ const h=[safe(v.horaSalida,''),safe(v.horaArribo,'')].filter(Boolean).join('–'); out+=`• ${safe(v.fecha)}  ${safe(v.numeroVuelo)}  ${safe(v.aerolinea)}  ${safe(v.desde)}→${safe(v.hasta)}  ${h}\n`;}); out+='\n'; }
   const H=normalizeHoteles(grupo);
   if(H.length){ out+='HOTELES\n'; H.forEach(h=>{ out+=`• ${safe(h.nombre)} (${safe(h.ciudad)})  In:${safe(h.checkIn)}  Out:${safe(h.checkOut)}\n`;}); out+='\n'; }
-  const C=normalizeContactos(grupo);
-  if(C.length){ out+='CONTACTOS\n'; C.forEach(c=>{ out+=`• ${safe(c.etiqueta)} — ${safe(c.persona)} — ${safe(c.telefono)} — ${safe(c.email)}\n`;}); out+='\n'; }
-  const S=normalizeSeguro(grupo);
-  if(S){ out+='SEGURO\n'; out+=`• ${safe(S.aseguradora)}  Póliza:${safe(S.poliza)}  Vigencia:${safe(S.desde)} ${S.hasta?('— '+S.hasta):''}  Asistencia:${safe(S.telefono)}\n\n`; }
-  const T=normalizeTerrestre(grupo);
-  if(T){ out+='TRANSPORTE TERRESTRE\n'; out+=`• ${safe(T.empresa)}  Salida:${safe(T.salida)}  Regreso:${safe(T.regreso)}  Conductor:${safe(T.conductor)}  Patente:${safe(T.patente)}\n\n`; }
-
   fechas.forEach((f,i)=>{
     out+=`Día ${i+1} – ${formatDateReadable(f)}\n`;
-    const arr=normalizeItinerarioDay(grupo.itinerario?.[f]).sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
+    const arr = (grupo.itinerario?.[f] && Array.isArray(grupo.itinerario[f]) ? grupo.itinerario[f] : (grupo.itinerario?.[f] ? Object.values(grupo.itinerario[f]) : [])).sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
     if(!arr.length){ out+='— Sin actividades —\n\n'; return; }
     arr.forEach(act=>{
       const hi=normTime(act.horaInicio)||'--:--', hf=normTime(act.horaFin), rango=hf?` – ${hf}`:'';
@@ -332,19 +355,19 @@ async function main(){
   const shareUrl=`${location.origin}${location.pathname}${idLink}${hideNotes?'&notas=0':''}`;
   btnShare?.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); }catch{ const i=document.createElement('input'); i.value=shareUrl; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); alert('Enlace copiado'); }});
 
+  // Cabecera estándar de tu página
   titleEl && (titleEl.textContent=` ${(g.programa||'—').toString().toUpperCase()}`);
   nombreEl && (nombreEl.textContent=g.nombreGrupo||'—');
   numEl && (numEl.textContent=g.numeroNegocio??g.id??'—');
   destinoEl && (destinoEl.textContent=g.destino||'—');
   fechasEl && (fechasEl.textContent=formatDateRange(g.fechaInicio,g.fechaFin));
-
   const A=parseInt(g.adultos,10)||0, E=parseInt(g.estudiantes,10)||0;
   if(resumenPax){ const total=(A+E)||g.pax||g.cantidadgrupo||''; resumenPax.textContent = total ? `👥 Total pax: ${total}${(A||E)?` (A:${A} · E:${E})`:''}` : ''; }
 
-  // FICHA
-  renderFichaGrupo(g);
+  // NUEVO: Hoja estilo documento (como en la imagen)
+  renderHojaResumen(g);
 
-  // Fechas e Itinerario
+  // Itinerario (se mantiene igual)
   let fechas=[];
   if(g.itinerario && typeof g.itinerario==='object') fechas=Object.keys(g.itinerario).sort((a,b)=>new Date(a)-new Date(b));
   else if(g.fechaInicio && g.fechaFin) fechas=getDateRange(g.fechaInicio,g.fechaFin);
@@ -358,7 +381,11 @@ async function main(){
       const sec=document.createElement('section'); sec.className='dia-seccion'; sec.dataset.fecha=fecha;
       sec.innerHTML=`<h3 class="dia-titulo"><span class="dia-label">Día ${idx+1}</span> – <span class="dia-fecha">${formatDateReadable(fecha)}</span></h3><ul class="activity-list"></ul>`;
       const ul=sec.querySelector('.activity-list');
-      const arr=normalizeItinerarioDay(g.itinerario?.[fecha]).sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
+
+      const src = g.itinerario?.[fecha];
+      const arr = (Array.isArray(src) ? src : (src && typeof src==='object' ? Object.values(src) : []))
+        .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
+
       if(!arr.length){ ul.innerHTML='<li class="empty">— Sin actividades —</li>'; }
       else{
         arr.forEach(act=>{
