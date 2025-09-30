@@ -377,7 +377,7 @@ async function cargarYMostrarTabla() {
   const valores = snap.docs.map(docSnap => {
     const d = docSnap.data();
   
-    // Resolver coordinador visible: primero el del doc, si no, el del conjunto
+    // Resolver coordinador visible: primero el que venga en el doc, si no, desde conjuntos
     const coordIdDoc         = d.coordinadorId || null;
     const coordIdViaConjunto = coordIdByGrupo.get(docSnap.id) || null;
     const coordId            = coordIdDoc || coordIdViaConjunto || null;
@@ -389,11 +389,12 @@ async function cargarYMostrarTabla() {
       (coordInfo?.correo || '').trim() || '';
   
     return {
-      id:  docSnap.id,
-      fila: camposFire.map(c => d[c] || ''), // ← IMPORTANTE: la coma que faltaba
-      coordTexto
+      id:   docSnap.id,
+      fila: camposFire.map(c => d[c] || ''),  // ← OJO: esta coma faltaba
+      coordTexto                               // ← NUEVO
     };
   });
+
 
 
   // 2.b) Normalizar datos crudos → GRUPOS_RAW (para Totales)
@@ -540,14 +541,14 @@ async function cargarYMostrarTabla() {
       $tr.append($td);
     }
   
-    // 👉 NUEVA COLUMNA 5: COORDINADORES (no editable, a la derecha de Vendedor[a])
+    // 👉 COLUMNA 5: COORDINADORES (no editable)
     const coordText = (item.coordTexto || '').toString().toUpperCase();
     $tr.append(
       $('<td>')
         .text(coordText)
         .attr('data-doc-id', item.id)
-        .attr('data-fixed','1')   // no editable
-        .attr('data-campo','')    // no mapea a Firestore
+        .attr('data-fixed','1')
+        .attr('data-campo','')
         .attr('data-original', coordText)
     );
   
@@ -567,11 +568,12 @@ async function cargarYMostrarTabla() {
     $tb.append($tr);
   });
   
-  // Encabezado "Coordinadores" insertado en la misma posición (después del 5º th)
+  // Encabezado "Coordinadores" (tras el 5º th)
   const $theadRow = $('#tablaGrupos thead tr');
   if ($theadRow.find('th').length === camposFire.length) {
     $('<th>Coordinadores</th>').insertAfter($theadRow.find('th').eq(4));
   }
+
 
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
