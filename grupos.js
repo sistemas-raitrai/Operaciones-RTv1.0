@@ -456,18 +456,21 @@ async function cargarYMostrarTabla() {
         }
       }catch(e){ /* silencioso */ }
 
-      // --- Coordinadores → inyectar en Observaciones (col 21)
+      // --- Coordinadores → NUEVA COLUMNA (col 24, no editable)
       try{
         const emails = _emailsOf(gruposParaLookup[idx]);
         if (emails.length){
-          const obs = fila[21] ? String(fila[21])+' | ' : '';
-          fila[21] = `${obs}COORDS: ${emails.map(e=>e.toUpperCase()).join(' · ')}`;
+          const coordStr = emails.map(e => e.toUpperCase()).join(' · ');
+          // asegura posición 24 en la fila
+          fila[24] = coordStr;
+          // opcional: guardar en RAW si luego quieres agrupar por coordinadores
+          const graw = GRUPOS_RAW[idx]; 
+          if (graw) graw.coordinadores = coordStr;
+        } else {
+          // que exista la posición aunque esté vacía
+          fila[24] = '';
         }
-      }catch(e){ /* silencioso */ }
-    });
-
-    await Promise.allSettled(jobs);
-  }
+      }catch(e){ fila[24] = ''; }
 
   // Para filtros rápido (Destino/Año)
   const destinosUnicos = new Set();
@@ -497,15 +500,30 @@ async function cargarYMostrarTabla() {
         .attr('data-doc-id', item.id)
         .attr('data-campo', campo)
         .attr('data-original', celda);
-
-      // marca numéricos para validación posterior
+  
       if (NUMERIC_FIELDS.has(campo)) {
         $td.attr('data-tipo', 'number');
       }
       $tr.append($td);
     });
+  
+    // 👇 NUEVO: celda Coordinadores
+    const coordText = ((item.fila[24] ?? '').toString().trim()) || '';
+    const $tdCoord = $('<td>')
+      .text(coordText)
+      .attr('data-doc-id', item.id)
+      .attr('data-fixed', '1')
+      .attr('data-campo', '')
+      .attr('data-original', coordText);
+    $tr.append($tdCoord);
+  
     $tb.append($tr);
   });
+
+  // Añade encabezado "Coordinadores" solo si aún no existe
+  if ($('#tablaGrupos thead th').length === camposFire.length) {
+    $('#tablaGrupos thead tr').append('<th>Coordinadores</th>');
+  }
 
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
@@ -554,6 +572,13 @@ async function cargarYMostrarTabla() {
       { targets: 21, width: '100px' },
       { targets: 22, width: '50px' },
       { targets: 23, width: '50px' },
+      
+      // 👇 NUEVO: Coordinadores
+      { targets: 24, width: '140px' },
+      
+      // Fuerza orden numérico y alinea a la derecha Pax / Adultos / Estudiantes
+      { targets: [5,6,7], type: 'num', className: 'dt-body-right' }
+
 
       // Fuerza orden numérico y alinea a la derecha Pax / Adultos / Estudiantes
       { targets: [5,6,7], type: 'num', className: 'dt-body-right' }
@@ -649,8 +674,12 @@ async function cargarYMostrarTabla() {
     $('#btn-toggle-edit').text(editMode?'🔒 Desactivar Edición':'🔓 Activar Edición');
     $('#tablaGrupos tbody tr').each((_,tr)=>{
       $(tr).find('td').each((i,td)=>{
-        if (i>1) $(td).attr('contenteditable', editMode);
-        else $(td).removeAttr('contenteditable');
+        const $td = $(td);
+        if (i > 1 && !$td.attr('data-fixed')) {
+          $td.attr('contenteditable', editMode);
+        } else {
+          $td.removeAttr('contenteditable');
+        }
       });
     });
     await addDoc(collection(db,'historial'),{
@@ -925,7 +954,8 @@ function exportarGrupos() {
     "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Pax","Adultos","Estudiantes",
     "Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
     "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
-    "Observaciones","Creado Por","Fecha Creación"
+    "Observaciones","Creado Por","Fecha Creación",
+    "Coordinadores" //
   ];
 
   // Prepara un array de objetos (clave=header, valor=celda)
