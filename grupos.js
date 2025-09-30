@@ -500,23 +500,23 @@ async function cargarYMostrarTabla() {
   valores.forEach(item => {
     const $tr = $('<tr>');
   
-    // celdas originales 0..23 (camposFire)
-    item.fila.forEach((celda, idx) => {
+    // Solo las celdas originales 0..23 (según camposFire)
+    for (let idx = 0; idx < camposFire.length; idx++) {
       const campo = camposFire[idx];
+      const celda = item.fila[idx];
       const $td = $('<td>')
         .text(formatearCelda(celda, campo))
         .attr('data-doc-id', item.id)
         .attr('data-campo', campo)
         .attr('data-original', celda);
   
-      // marca numéricos para validación posterior
       if (NUMERIC_FIELDS.has(campo)) {
         $td.attr('data-tipo', 'number');
       }
       $tr.append($td);
-    });
+    }
   
-    // 👇 NUEVO: celda Coordinadores (índice 24). No editable, no mapea a Firestore
+    // NUEVO: celda Coordinadores (índice 24). No editable, no mapea a Firestore
     const coordText = ((item.fila[24] ?? '').toString().trim()) || '';
     const $tdCoord = $('<td>')
       .text(coordText)
@@ -528,7 +528,7 @@ async function cargarYMostrarTabla() {
   
     $tb.append($tr);
   });
-
+  
   // Añade encabezado "Coordinadores" solo si aún no existe
   if ($('#tablaGrupos thead th').length === camposFire.length) {
     $('#tablaGrupos thead tr').append('<th>Coordinadores</th>');
