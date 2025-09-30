@@ -471,6 +471,12 @@ async function cargarYMostrarTabla() {
           fila[24] = '';
         }
       }catch(e){ fila[24] = ''; }
+    }); // ← cierre de sliceGps.map(async ...)
+
+    // Espera que terminen todas las tareas de este bloque
+    await Promise.allSettled(jobs);
+  } // ← cierre del for (i += BATCH)
+
 
   // Para filtros rápido (Destino/Año)
   const destinosUnicos = new Set();
