@@ -2,7 +2,7 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, getDocs, query, orderBy,
+  collection, getDocs, query, orderBy, where,
   doc, updateDoc, addDoc, Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -99,6 +99,246 @@ function toInputDate(d) {
   return `${y}-${m}-${day}`;
 }
 
+// ================== ENRIQUECIMIENTO: HELPERS REUTILIZABLES ===================
+const _norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+  .toLowerCase().replace(/[^a-z0-9]+/g,'');
+const _arrify = v => Array.isArray(v) ? v : (v && typeof v==='object' ? Object.values(v) : (v?[v]:[]));
+
+function _toISO(x){
+  if (!x) return '';
+  if (typeof x === 'string') {
+    const t = x.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;          // YYYY-MM-DD
+    if (/^\d{2}-\d{2}-\d{4}$/.test(t)) {                   // DD-MM-YYYY
+      const [dd,mm,yy] = t.split('-');
+      return `${yy}-${mm}-${dd}`;
+    }
+    const d = new Date(t);
+    return isNaN(d) ? '' : d.toISOString().slice(0,10);
+  }
+  if (x instanceof Date) return x.toISOString().slice(0,10);
+  if (x?.toDate) return x.toDate().toISOString().slice(0,10);
+  if (x?.seconds != null) return new Date(x.seconds*1000).toISOString().slice(0,10);
+  return '';
+}
+const _dmy = (iso) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso||''); 
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+};
+const _timeVal = (t) => {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(t||'').trim());
+  if (!m) return 1e9;
+  const h = Math.max(0, Math.min(23, parseInt(m[1],10)));
+  const mi= Math.max(0, Math.min(59, parseInt(m[2],10)));
+  return h*60+mi;
+};
+
+// Emails/nombres probables de coordinadores desde el doc grupo
+function _emailsOf(g){
+  const out = new Set();
+  const push = (e)=>{ if(e) out.add(String(e).toLowerCase()); };
+  push(g?.coordinadorEmail); 
+  push(g?.coordinador?.email);
+  _arrify(g?.coordinadoresEmails).forEach(push);
+  if (g?.coordinadoresEmailsObj) Object.keys(g.coordinadoresEmailsObj).forEach(push);
+  _arrify(g?.coordinadores).forEach(x=>{
+    if (x?.email) push(x.email);
+    else if (typeof x === 'string' && x.includes('@')) push(x);
+  });
+  return [...out];
+}
+
+// =============== ÍNDICE DE HOTELES (caché) ===============
+const _hotelesCache = { loaded:false, byId:new Map(), bySlug:new Map(), all:[] };
+
+async function _ensureHotelesIndex(db){
+  if (_hotelesCache.loaded) return _hotelesCache;
+  const snap = await getDocs(collection(db,'hoteles'));
+  snap.forEach(d=>{
+    const x = d.data() || {};
+    const docu = { id:d.id, ...x };
+    const s = _norm(x.slug || x.nombre || d.id);
+    _hotelesCache.byId.set(String(d.id), docu);
+    if (s) _hotelesCache.bySlug.set(s, docu);
+    _hotelesCache.all.push(docu);
+  });
+  _hotelesCache.loaded = true;
+  return _hotelesCache;
+}
+
+// =============== HOTELES POR GRUPO (multi-esquema) ===============
+const _cacheHotelesByGroup = new Map();
+async function _loadHotelesInfo(db, g){
+  const groupDocId = String(g.id || '').trim();
+  const groupNum   = String(g.numeroNegocio || '').trim();
+  const cacheKey   = `hoteles:${groupDocId || groupNum}`;
+  if (_cacheHotelesByGroup.has(cacheKey)) return _cacheHotelesByGroup.get(cacheKey);
+
+  let cand = [];
+  // esquemas frecuentes
+  if (groupDocId){
+    try{
+      const q1 = query(collection(db,'hotelAssignments'), where('grupoId','==', groupDocId));
+      const s1 = await getDocs(q1); s1.forEach(d=> cand.push({ id:d.id, ...(d.data()||{}) }));
+    }catch{}
+    if (!cand.length){
+      try{
+        const q2 = query(collection(db,'hotelAssignments'), where('grupoDocId','==', groupDocId));
+        const s2 = await getDocs(q2); s2.forEach(d=> cand.push({ id:d.id, ...(d.data()||{}) }));
+      }catch{}
+    }
+  }
+  if (!cand.length && groupNum){
+    try{
+      const q3 = query(collection(db,'hotelAssignments'), where('grupoNumero','==', groupNum));
+      const s3 = await getDocs(q3); s3.forEach(d=> cand.push({ id:d.id, ...(d.data()||{}) }));
+    }catch{}
+  }
+  if (!cand.length){ _cacheHotelesByGroup.set(cacheKey, []); return []; }
+
+  // resolver doc hotel
+  const { byId, bySlug, all } = await _ensureHotelesIndex(db);
+  function pickHotelDoc(asig){
+    const tryIds = [];
+    if (asig?.hotelId) tryIds.push(String(asig.hotelId));
+    if (asig?.hotelDocId) tryIds.push(String(asig.hotelDocId));
+    if (asig?.hotel?.id) tryIds.push(String(asig.hotel.id));
+    if (asig?.hotelRef?.id) tryIds.push(String(asig.hotelRef.id));
+    const m = (asig?.hotelPath||'').match(/hoteles\/([^/]+)/i);
+    if (m) tryIds.push(m[1]);
+    for (const id of tryIds){ if (byId.has(id)) return byId.get(id); }
+
+    const s = _norm(asig?.nombre || asig?.hotelNombre || '');
+    const dest = _norm(g.destino || '');
+    if (s){
+      if (bySlug.has(s)) return bySlug.get(s);
+      const cand = [];
+      for (const [slugName, docu] of bySlug){ if (slugName.includes(s) || s.includes(slugName)) cand.push(docu); }
+      if (cand.length === 1) return cand[0];
+      return cand.find(d => _norm(d.destino||d.ciudad||'') === dest) || cand[0] || null;
+    }
+    // fallback por destino
+    const sameDest = all.filter(h => _norm(h.destino||h.ciudad||'') === dest);
+    return sameDest[0] || null;
+  }
+
+  cand.sort((a,b)=> (_toISO(a.checkIn)||'').localeCompare(_toISO(b.checkIn)||''));
+  const out = cand.map(a=>{
+    const H = pickHotelDoc(a);
+    return {
+      ...a,
+      hotel: H,
+      hotelNombre: a?.hotelNombre || a?.nombre || H?.nombre || '',
+      checkIn: _toISO(a.checkIn),
+      checkOut: _toISO(a.checkOut)
+    };
+  });
+
+  _cacheHotelesByGroup.set(cacheKey, out);
+  return out;
+}
+
+// =============== VUELOS POR GRUPO (multi-esquema) ===============
+const _cacheVuelosByGroup = new Map();
+function _normalizeVuelo(v){
+  const get = (...keys)=>{ for (const k of keys){
+    const val = k.split('.').reduce((acc,p)=> (acc && acc[p]!==undefined) ? acc[p] : undefined, v);
+    if (val!==undefined && val!==null && val!=='') return val;
+  } return ''; };
+
+  const tipoTransporte = (String(get('tipoTransporte')) || 'aereo').toLowerCase() || 'aereo';
+  const tipoVuelo      = (tipoTransporte==='aereo')
+    ? (String(get('tipoVuelo') || 'charter').toLowerCase())
+    : '';
+
+  const numero    = get('numero','nro','numVuelo','vuelo','flightNumber','codigo','code');
+  const proveedor = get('proveedor','empresa','aerolinea','compania');
+
+  const origen    = get('origen','salida.origen','salida.iata','origenIATA','origenSigla','origenCiudad');
+  const destino   = get('destino','llegada.destino','llegada.iata','destinoIATA','destinoSigla','destinoCiudad');
+  const fechaIda  = get('fechaIda','ida','salida.fecha','fechaSalida','fecha_ida','fecha');
+  const fechaVta  = get('fechaVuelta','vuelta','regreso.fecha','fechaRegreso','fecha_vuelta');
+
+  const presentacionIdaHora    = get('presentacionIdaHora');
+  const vueloIdaHora           = get('vueloIdaHora');
+  const presentacionVueltaHora = get('presentacionVueltaHora');
+  const vueloVueltaHora        = get('vueloVueltaHora');
+
+  const idaHora    = get('idaHora');
+  const vueltaHora = get('vueltaHora');
+
+  const tr = Array.isArray(v.tramos) ? v.tramos : [];
+  const tramos = tr.map(t=>({
+    aerolinea: String(t.aerolinea||'').toUpperCase(),
+    numero:    String(t.numero||'').toUpperCase(),
+    origen:    String(t.origen||'').toUpperCase(),
+    destino:   String(t.destino||'').toUpperCase(),
+    fechaIda:  t.fechaIda || '',
+    fechaVuelta: t.fechaVuelta || '',
+    presentacionIdaHora:    t.presentacionIdaHora || '',
+    vueloIdaHora:           t.vueloIdaHora || '',
+    presentacionVueltaHora: t.presentacionVueltaHora || '',
+    vueloVueltaHora:        t.vueloVueltaHora || ''
+  }));
+
+  return {
+    numero, proveedor,
+    tipoTransporte, tipoVuelo,
+    origen, destino, fechaIda, fechaVta,
+    presentacionIdaHora, vueloIdaHora, presentacionVueltaHora, vueloVueltaHora,
+    idaHora, vueltaHora,
+    tramos
+  };
+}
+
+async function _loadVuelosInfo(db, g){
+  const docId = String(g.id || '').trim();
+  const num   = String(g.numeroNegocio || '').trim();
+  const cacheKey = `vuelos:${docId || num}`;
+  if (_cacheVuelosByGroup.has(cacheKey)) return _cacheVuelosByGroup.get(cacheKey);
+
+  const found = [];
+  // a) grupoIds array-contains docId / numero
+  if (docId){ try{
+    const q1 = query(collection(db,'vuelos'), where('grupoIds','array-contains', docId));
+    const s1 = await getDocs(q1); s1.forEach(d=> found.push({ id:d.id, ...(d.data()||{}) }));
+  }catch{} }
+  if (!found.length && num){ try{
+    const q2 = query(collection(db,'vuelos'), where('grupoIds','array-contains', num));
+    const s2 = await getDocs(q2); s2.forEach(d=> found.push({ id:d.id, ...(d.data()||{}) }));
+  }catch{} }
+
+  // b) barrido general (por si no están indexados)
+  if (!found.length){
+    const sAll = await getDocs(collection(db,'vuelos'));
+    sAll.forEach(d=>{
+      const v = d.data()||{};
+      let match = false;
+      if (Array.isArray(v.grupos)) {
+        match = v.grupos.some(x=>{
+          if (typeof x === 'string') return (docId && x===docId) || (num && x===num);
+          if (x && typeof x==='object'){
+            const xid  = String(x.id || x.grupoId || '').trim();
+            const xnum = String(x.numeroNegocio || x.numNegocio || '').trim();
+            return (docId && xid===docId) || (num && xnum===num);
+          }
+          return false;
+        });
+      }
+      if (!match){
+        const rootId  = String(v.grupoId || '').trim();
+        const rootNum = String(v.grupoNumero || v.numeroNegocio || '').trim();
+        match = (docId && rootId===docId) || (num && rootNum===num);
+      }
+      if (match) found.push({ id:d.id, ...v });
+    });
+  }
+
+  const out = found.map(_normalizeVuelo);
+  _cacheVuelosByGroup.set(cacheKey, out);
+  return out;
+}
+
 async function cargarYMostrarTabla() {
   // 1) Leer coleccion "grupos"
   const snap = await getDocs(collection(db,'grupos'));
@@ -136,6 +376,98 @@ async function cargarYMostrarTabla() {
       transporte: d.transporte ?? ''
     };
   });
+
+    // ============ ENRIQUECIMIENTO: HOTELES + VUELOS + COORDINADORES ============
+  // Construimos un espejo mínimo del grupo para los loaders
+  const gruposParaLookup = snap.docs.map(s => {
+    const d = s.data() || {};
+    return {
+      id: s.id,
+      numeroNegocio: String(d.numeroNegocio ?? d.numNegocio ?? d.idNegocio ?? s.id),
+      destino: d.destino ?? '',
+      fechaInicio: _toISO(d.fechaInicio),
+      fechaFin:    _toISO(d.fechaFin),
+      // campos crudos por si hay estructuras legacy
+      coordinadorEmail: d.coordinadorEmail,
+      coordinador: d.coordinador,
+      coordinadoresEmails: d.coordinadoresEmails,
+      coordinadoresEmailsObj: d.coordinadoresEmailsObj,
+      coordinadores: d.coordinadores
+    };
+  });
+
+  // Procesa en tandas para no saturar
+  const BATCH = 15;
+  for (let i=0; i<valores.length; i+=BATCH){
+    const sliceVals = valores.slice(i, i+BATCH);
+    const sliceGps  = gruposParaLookup.slice(i, i+BATCH);
+
+    const jobs = sliceGps.map(async (g, k) => {
+      const idx = i + k;
+      const fila = sliceVals[k].fila;
+
+      // --- Hoteles
+      try{
+        const hoteles = await _loadHotelesInfo(db, g);
+        if (hoteles && hoteles.length){
+          const txt = hoteles.map(h => {
+            const name = String(h.hotelNombre||'').toUpperCase();
+            const ci = _dmy(_toISO(h.checkIn));
+            const co = _dmy(_toISO(h.checkOut));
+            return `${name}${ci||co ? ` (${ci} → ${co})` : ''}`;
+          }).join(' · ');
+          fila[16] = txt || fila[16]; // Columna "hoteles"
+          // Mantener también en GRUPOS_RAW para Totales por "Hoteles"
+          const graw = GRUPOS_RAW[idx]; if (graw) graw.hoteles = txt;
+        }
+      }catch(e){ /* silencioso */ }
+
+      // --- Vuelos / Transporte
+      try{
+        const vuelos = await _loadVuelosInfo(db, g);
+        if (vuelos && vuelos.length){
+          // sumario simple: si hay aéreos, tomar primero; si no, bus
+          const v0 = vuelos[0]; // o mezcla si quieres
+          const isAereo = (v0.tipoTransporte || 'aereo') === 'aereo';
+          if (isAereo){
+            const tipo = (v0.tipoVuelo||'').toUpperCase(); // CHARTER/REGULAR
+            const nro  = (v0.numero||'').toString().toUpperCase();
+            const ida  = _dmy(_toISO(v0.fechaIda));
+            const vta  = _dmy(_toISO(v0.fechaVta));
+            const lIda = (v0.presentacionIdaHora || v0.vueloIdaHora)
+              ? ` · IDA: ${v0.presentacionIdaHora?('PRES '+v0.presentacionIdaHora):''}${v0.vueloIdaHora?(v0.presentacionIdaHora?' · ':'')+'VUELO '+v0.vueloIdaHora:''}`
+              : '';
+            const lVta = (v0.presentacionVueltaHora || v0.vueloVueltaHora)
+              ? ` · VUELTA: ${v0.presentacionVueltaHora?('PRES '+v0.presentacionVueltaHora):''}${v0.vueloVueltaHora?(v0.presentacionVueltaHora?' · ':'')+'VUELO '+v0.vueloVueltaHora:''}`
+              : '';
+            fila[18] = `AÉREO${tipo?(' · '+tipo):''}${nro?(' · '+nro):''} · ${ida||'—'} → ${vta||'—'}${lIda}${lVta}`.trim();
+            fila[19] = Array.isArray(v0.tramos) && v0.tramos.length
+              ? `${v0.tramos.length} TRAMO(S)`
+              : (fila[19] || '');
+          } else {
+            // BUS
+            const idaH = v0.idaHora || '';
+            const vtaH = v0.vueltaHora || '';
+            fila[18] = `TERRESTRE (BUS)${idaH||vtaH?` · SALIDA: ${idaH||'—'} · REGRESO: ${vtaH||'—'}`:''}`;
+            fila[19] = fila[19] || ''; // puedes usarlo para #buses si lo deseas
+          }
+          // Mantener para Totales por "Transporte"
+          const graw = GRUPOS_RAW[idx]; if (graw) graw.transporte = fila[18];
+        }
+      }catch(e){ /* silencioso */ }
+
+      // --- Coordinadores → inyectar en Observaciones (col 21)
+      try{
+        const emails = _emailsOf(gruposParaLookup[idx]);
+        if (emails.length){
+          const obs = fila[21] ? String(fila[21])+' | ' : '';
+          fila[21] = `${obs}COORDS: ${emails.map(e=>e.toUpperCase()).join(' · ')}`;
+        }
+      }catch(e){ /* silencioso */ }
+    });
+
+    await Promise.allSettled(jobs);
+  }
 
   // Para filtros rápido (Destino/Año)
   const destinosUnicos = new Set();
