@@ -2,7 +2,7 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, getDocs, query, orderBy, where,
+  collection, collectionGroup, getDocs, query, orderBy, where,
   doc, updateDoc, addDoc, Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -339,19 +339,62 @@ async function _loadVuelosInfo(db, g){
   return out;
 }
 
+// ------------ ÍNDICES RÁPIDOS PARA COORDINADORES ------------
+async function _buildCoordIndexes() {
+  // 1) coordinadorId -> { nombre, correo }
+  const coordById = new Map();
+  try {
+    const snapC = await getDocs(collection(db, 'coordinadores'));
+    snapC.forEach(d => {
+      const x = d.data() || {};
+      coordById.set(d.id, { nombre: (x.nombre || '').trim(), correo: (x.correo || '').trim().toLowerCase() });
+    });
+  } catch(e) { console.warn('No pude leer coordinadores:', e); }
+
+  // 2) grupoId -> coordinadorId (desde collectionGroup('conjuntos'))
+  const coordIdByGrupo = new Map();
+  try {
+    const snapSets = await getDocs(collectionGroup(db, 'conjuntos'));
+    snapSets.forEach(s => {
+      const coordId = s.ref.parent.parent.id; // id del coordinador dueño del conjunto
+      const x = s.data() || {};
+      (x.viajes || []).forEach(gid => coordIdByGrupo.set(String(gid), coordId));
+    });
+  } catch(e) { console.warn('No pude leer conjuntos:', e); }
+
+  return { coordById, coordIdByGrupo };
+}
+
 async function cargarYMostrarTabla() {
   // 1) Leer coleccion "grupos"
   const snap = await getDocs(collection(db,'grupos'));
   if (snap.empty) return console.warn('No hay grupos');
 
-  // 2) Mapear docs → {id,fila:[]} PARA LA TABLA
+  // Índices de coordinadores (1 sola vez)
+  const { coordById, coordIdByGrupo } = await _buildCoordIndexes();
+
+  // 2) Mapear docs → {id,fila:[], coordTexto} PARA LA TABLA
   const valores = snap.docs.map(docSnap => {
     const d = docSnap.data();
+  
+    // Resolver coordinador visible: primero el del doc, si no, el del conjunto
+    const coordIdDoc         = d.coordinadorId || null;
+    const coordIdViaConjunto = coordIdByGrupo.get(docSnap.id) || null;
+    const coordId            = coordIdDoc || coordIdViaConjunto || null;
+    const coordInfo          = coordId ? coordById.get(coordId) : null;
+  
+    const coordTexto =
+      (coordInfo?.nombre || '').trim() ||
+      (d.coordinador || '').toString().trim() ||
+      (coordInfo?.correo || '').trim() || '';
+  
     return {
       id:  docSnap.id,
-      fila: camposFire.map(c => d[c] || '')
+      fila: camposFire.map(c => d[c] || ''), // ← IMPORTANTE: la coma que faltaba
+      coordTexto
     };
   });
+
 
   // 2.b) Normalizar datos crudos → GRUPOS_RAW (para Totales)
   GRUPOS_RAW = snap.docs.map(s => {
@@ -457,22 +500,6 @@ async function cargarYMostrarTabla() {
       }catch(e){ /* silencioso */ }
 
       // --- Coordinadores → NUEVA COLUMNA (col 24, no editable)
-      try{
-        const emails = _emailsOf(gruposParaLookup[idx]);
-        if (emails.length){
-          const coordStr = emails.map(e => e.toUpperCase()).join(' · ');
-          // asegura posición 24 en la fila
-          fila[24] = coordStr;
-          // opcional: guardar en RAW si luego quieres agrupar por coordinadores
-          const graw = GRUPOS_RAW[idx]; 
-          if (graw) graw.coordinadores = coordStr;
-        } else {
-          // que exista la posición aunque esté vacía
-          fila[24] = '';
-        }
-      }catch(e){ fila[24] = ''; }
-    }); // ← cierre de sliceGps.map(async ...)
-
     // Espera que terminen todas las tareas de este bloque
     await Promise.allSettled(jobs);
   } // ← cierre del for (i += BATCH)
@@ -500,8 +527,8 @@ async function cargarYMostrarTabla() {
   valores.forEach(item => {
     const $tr = $('<tr>');
   
-    // construimos las 24 celdas originales (0..23)
-    for (let idx = 0; idx < camposFire.length; idx++) {
+    // columnas 0..4 (hasta Vendedor[a])
+    for (let idx = 0; idx <= 4; idx++) {
       const campo = camposFire[idx];
       const celda = item.fila[idx];
       const $td = $('<td>')
@@ -509,23 +536,32 @@ async function cargarYMostrarTabla() {
         .attr('data-doc-id', item.id)
         .attr('data-campo', campo)
         .attr('data-original', celda);
-  
-      if (NUMERIC_FIELDS.has(campo)) {
-        $td.attr('data-tipo', 'number');
-      }
+      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo','number');
       $tr.append($td);
+    }
   
-      // 👉 insertar Coordinadores inmediatamente DESPUÉS de Vendedor(a) (idx === 4)
-      if (idx === 4) {
-        const coordText = ((item.fila[24] ?? '').toString().trim()) || '';
-        const $tdCoord = $('<td>')
-          .text(coordText)
-          .attr('data-doc-id', item.id)
-          .attr('data-fixed', '1')   // no editable
-          .attr('data-campo', '')    // no mapea a Firestore
-          .attr('data-original', coordText);
-        $tr.append($tdCoord);
-      }
+    // 👉 NUEVA COLUMNA 5: COORDINADORES (no editable, a la derecha de Vendedor[a])
+    const coordText = (item.coordTexto || '').toString().toUpperCase();
+    $tr.append(
+      $('<td>')
+        .text(coordText)
+        .attr('data-doc-id', item.id)
+        .attr('data-fixed','1')   // no editable
+        .attr('data-campo','')    // no mapea a Firestore
+        .attr('data-original', coordText)
+    );
+  
+    // resto de columnas 5..23 (corren a 6..24)
+    for (let idx = 5; idx < camposFire.length; idx++) {
+      const campo = camposFire[idx];
+      const celda = item.fila[idx];
+      const $td = $('<td>')
+        .text(formatearCelda(celda, campo))
+        .attr('data-doc-id', item.id)
+        .attr('data-campo', campo)
+        .attr('data-original', celda);
+      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo','number');
+      $tr.append($td);
     }
   
     $tb.append($tr);
@@ -551,7 +587,9 @@ async function cargarYMostrarTabla() {
     ],
     pageLength: -1,
     lengthChange: false,
-    order: [[10,'desc'],[11,'desc'],[12,'desc'],[1,'desc']],
+    // Ojo: con la nueva columna, los índices cambian.
+    // Orden sugerido: Destino (11), Programa (12), Fecha Inicio (13), Identificador (1)
+    order: [[11,'desc'],[12,'desc'],[13,'desc'],[1,'desc']],
     scrollX: true,
     autoWidth: false,
     fixedHeader: {
@@ -559,51 +597,46 @@ async function cargarYMostrarTabla() {
       headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
     },
     columnDefs: [
-      { targets: [9,10,15,16,18,20,23,24], visible: false }, // antes [8,9,14,15,17,19,22,23]
-      { targets: 0,  width: '20px'  },
-      { targets: 1,  width: '20px'  },
-      { targets: 2,  width: '100px' },
-      { targets: 3,  width: '20px'  },
-      { targets: 4,  width: '50px'  },
-      { targets: 5,  width: '140px' }, // 👈 NUEVO: Coordinadores
-      { targets: 6,  width: '20px'  }, // Pax (antes 5)
-      { targets: 7,  width: '20px'  }, // Adultos (antes 6)
-      { targets: 8,  width: '20px'  }, // Estudiantes (antes 7)
-      { targets: 9,  width: '70px'  },
-      { targets: 10, width: '20px'  },
-      { targets: 11, width: '70px'  },
-      { targets: 12, width: '70px'  },
-      { targets: 13, width: '40px'  },
-      { targets: 14, width: '40px'  },
-      { targets: 15, width: '30px'  },
-      { targets: 16, width: '80px'  },
-      { targets: 17, width: '50px'  },
-      { targets: 18, width: '80px'  },
-      { targets: 19, width: '50px'  },
-      { targets: 20, width: '50px'  },
-      { targets: 21, width: '80px'  },
-      { targets: 22, width: '100px' },
-      { targets: 23, width: '50px'  },
-      { targets: 24, width: '50px'  },
-      
-      // Fuerza orden numérico y alinea a la derecha Pax / Adultos / Estudiantes
+      // Ajusta visibilidad por defecto (revisa que coincida con lo que quieres ocultar de inicio)
+      { targets: [9,10,15,16,18,20,23,24], visible: false },
+  
+      { targets: 0,  width: '20px'  },  // N° Negocio
+      { targets: 1,  width: '20px'  },  // Identificador
+      { targets: 2,  width: '100px' },  // Nombre de Grupo
+      { targets: 3,  width: '20px'  },  // Año
+      { targets: 4,  width: '50px'  },  // Vendedor(a)
+      { targets: 5,  width: '140px' },  // 👈 Coordinadores
+      { targets: 6,  width: '20px'  },  // Pax
+      { targets: 7,  width: '20px'  },  // Adultos
+      { targets: 8,  width: '20px'  },  // Estudiantes
+      { targets: 9,  width: '70px'  },  // Colegio
+      { targets: 10, width: '20px'  },  // Curso
+      { targets: 11, width: '70px'  },  // Destino
+      { targets: 12, width: '70px'  },  // Programa
+      { targets: 13, width: '40px'  },  // Fecha Inicio
+      { targets: 14, width: '40px'  },  // Fecha Fin
+      { targets: 15, width: '30px'  },  // Seguro Médico
+      { targets: 16, width: '80px'  },  // Autoriz.
+      { targets: 17, width: '50px'  },  // Hoteles
+      { targets: 18, width: '80px'  },  // Ciudades
+      { targets: 19, width: '50px'  },  // Transporte
+      { targets: 20, width: '50px'  },  // Tramos
+      { targets: 21, width: '80px'  },  // Indicaciones de la Fecha
+      { targets: 22, width: '100px' },  // Observaciones
+      { targets: 23, width: '50px'  },  // Creado Por
+      { targets: 24, width: '50px'  },  // Fecha Creación
+  
+      // Alineación y tipo numérico
       { targets: [6,7,8], type: 'num', className: 'dt-body-right' }
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
-
-  // 1) Buscador
+  
+  // Filtros con los nuevos índices
   $('#buscador').on('input', function(){ tabla.search(this.value).draw(); });
+  $('#filtroDestino').on('change', function(){ tabla.column(11).search(this.value).draw(); }); // Destino
+  $('#filtroAno').on('change',     function(){ tabla.column(3).search(this.value).draw();  }); // Año
 
-  // 2) Filtro por Destino
-  $('#filtroDestino').on('change', function(){
-    tabla.column(11).search(this.value).draw();
-  });
-
-  // 3) Filtro por Año
-  $('#filtroAno').on('change', function(){
-    tabla.column(3).search(this.value).draw();
-  });
 
   // 5) Edición inline en blur (numéricos -> número real en Firestore)
   $('#tablaGrupos tbody')
