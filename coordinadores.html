@@ -73,6 +73,43 @@
   .toolbar input[type="search"], .toolbar input[type="text"]{ min-width:240px; }
   .toolbar input[type="date"]{ min-width:160px; }
 
+  /* Altura de offset si tienes un header fijo arriba */
+  :root{
+    --sticky-top: 72px; /* ajusta según tu encabezado; prueba 12px si no es fijo */
+  }
+  
+  /* Mantén los hijos alineados al inicio para que sticky funcione bien */
+  .grid{
+    align-items: start;
+  }
+  
+  /* Haz sticky el panel izquierdo completo (Viajes Libres) */
+  .grid > .panel:first-child{
+    position: sticky;
+    top: var(--sticky-top);
+    z-index: 1;           /* que no quede tapado por sombras del otro panel */
+  }
+  
+  /* La lista interna no debe exceder la ventana */
+  .grid > .panel:first-child .list{
+    max-height: calc(100vh - var(--sticky-top) - 24px);
+    overflow: auto;       /* scroll interno si la lista crece */
+  }
+  
+  /* Responsive: en pantallas chicas apila y desactiva sticky */
+  @media (max-width: 900px){
+    .grid{
+      grid-template-columns: 1fr !important;
+    }
+    .grid > .panel:first-child{
+      position: static;
+      top: auto;
+    }
+    .grid > .panel:first-child .list{
+      max-height: none;
+      overflow: visible;
+    }
+  }
   </style>
 </head>
 <body>
