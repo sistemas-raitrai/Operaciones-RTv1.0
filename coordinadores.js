@@ -70,6 +70,14 @@ const nextEstado = (v) => {
 const estadoIcon  = (v) => ({pendiente:'⏳', aprobado:'✅', rechazado:'⛔'})[normalizeEstado(v)];
 const estadoLabel = (v) => ({pendiente:'Pendiente', aprobado:'Aprobado', rechazado:'Rechazado'})[normalizeEstado(v)];
 
+function estadoBgStyle(est){
+  const v = normalizeEstado(est);
+  // verde suave (aprobado), amarillo suave (pendiente), rojo suave (rechazado)
+  if (v === 'aprobado')  return 'background-color: rgba(16,185,129,.18)';   // green-500 @ ~18%
+  if (v === 'rechazado') return 'background-color: rgba(239,68,68,.18)';    // red-500  @ ~18%
+  return 'background-color: rgba(234,179,8,.22)';                           // amber-400 @ ~22% (pendiente)
+}
+
 function estadoClass(v){
   switch (normalizeEstado(v)) {
     case 'aprobado':  return 'estado-ok';
@@ -899,7 +907,7 @@ function renderSets(){
             ${s.confirmado?'<span class="pill">Confirmado</span>':''}
           </div>
           <div class="row">
-            <select data-coord="${idx}" title="Coordinador del viaje">${opts}</select>
+            <select data-coord="${idx}" title="Coordinador del viaje" style="${estadoBgStyle(s.estadoCoord)}">${opts}</select>
             <button class="btn small" data-addv="${idx}">Agregar viaje</button>
             <button class="btn small" data-sugerirc="${idx}">Sugerir coord</button>
             <button class="btn small ${s.confirmado?'secondary':''}" data-confirm="${idx}">${s.confirmado?'Desconfirmar':'Confirmar'}</button>
