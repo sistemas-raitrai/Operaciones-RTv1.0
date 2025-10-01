@@ -15,9 +15,28 @@ const state = {
   caches: { grupos: new Map(), coords: [] },
 };
 
-const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-const money = n => (isFinite(+n) ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}) : '—');
-const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
+const norm = (s='') =>
+  s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+
+const coalesce = (...xs) =>
+  xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
+
+function parseMontoCLP(any) {
+  if (any == null) return 0;
+  if (typeof any === 'number' && isFinite(any)) return Math.trunc(any);
+  const s = String(any).trim();
+  if (!s) return 0;
+  // Soporta "12.500", "12,500", "12.500,00", "$ 12.500", "-1.200"
+  const onlyDigits = s.replace(/[^\d-]/g, '');
+  const n = parseInt(onlyDigits, 10);
+  return isFinite(n) ? n : 0;
+}
+
+const money = n =>
+  (isFinite(+n)
+    ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0})
+    : '—');
+
 
 // ---- RUTAS POSIBLES ----
 const DIRECT_SUBS = ['gastos','abonos','movs','movimientos'];          // grupos/{gid}/...
@@ -45,29 +64,49 @@ function deriveEstado(x) {
 }
 
 function toItem(grupoId, gDoc, x, hintedTipo='') {
-  const brutoMonto = coalesce(x.monto, x.importe, x.valor, x.total, 0);
-  const monto = Number(brutoMonto) || 0;
+  // === MONTO: acepta más alias/formatos ===
+  const brutoMonto = coalesce(
+    x.monto, x.montoCLP, x.monto_clp, x.neto, x.netoCLP, x.importe,
+    x.valor, x.total, x.totalCLP, x.monto_str, 0
+  );
+  const monto = parseMontoCLP(brutoMonto);
 
-  let tipo = (x.tipo || x.type || hintedTipo || '').toString().toLowerCase();
+  // === TIPO: usa hint / campo / inferencia por signo ===
+  let tipo = (x.tipo || x.type || hintedTipo || '').toString().toLowerCase().trim();
   if (!tipo) tipo = (monto < 0 ? 'abono' : 'gasto');
+  if (tipo !== 'abono' && tipo !== 'gasto' && monto !== 0) {
+    tipo = (monto < 0 ? 'abono' : 'gasto');
+  }
 
-  const rev1  = (x.revision1?.estado || x.rev1?.estado || x.rev1 || '').toString().toLowerCase();
-  const rev2  = (x.revision2?.estado || x.rev2?.estado || x.rev2 || '').toString().toLowerCase();
-  const pago  = (x.pago?.estado || x.pago || '').toString().toLowerCase();
+  // === REVISIONES / PAGO ===
+  const rev1 = (x.revision1?.estado || x.rev1?.estado || x.rev1 || '').toString().toLowerCase();
+  const rev2 = (x.revision2?.estado || x.rev2?.estado || x.rev2 || '').toString().toLowerCase();
+  const pago = (x.pago?.estado || x.pago || '').toString().toLowerCase();
 
-  const coord = (x.coordinadorEmail || x.coordinador || gDoc?.coordinadorEmail || gDoc?.coordinador?.email || '').toString().toLowerCase();
-  const nombreGrupo   = coalesce(gDoc?.nombreGrupo, gDoc?.aliasGrupo, '');
-  const numeroNegocio = coalesce(gDoc?.numeroNegocio, gDoc?.numNegocio, gDoc?.idNegocio, grupoId);
+  // === COORDINADOR: cascada amplia de alias (item → grupo) ===
+  const coord = coalesce(
+    x.coordinadorEmail, x.coordinador, x.coord, x.responsable, x.asignadoA,
+    x.owner, x.usuario, x.user, x.email,
+    gDoc?.coordinadorEmail, gDoc?.coordinador?.email, gDoc?.coord, gDoc?.responsable
+  ).toString().toLowerCase();
+
+  // === GRUPO: nombre y número con alias adicionales ===
+  const nombreGrupo = coalesce(
+    gDoc?.nombreGrupo, gDoc?.aliasGrupo, gDoc?.nombre, gDoc?.grupo, gDoc?.displayName, ''
+  );
+  const numeroNegocio = coalesce(
+    gDoc?.numeroNegocio, gDoc?.numNegocio, gDoc?.idNegocio, gDoc?.numero, gDoc?.nro, grupoId
+  );
 
   return {
     id: x.id || x._id || '',
     grupoId,
     nombreGrupo,
     numeroNegocio,
-    coordinador: coord,
+    coordinador: coord,   // <- ya normalizado a minúsculas
     tipo, monto,
     rev1, rev2,
-    estado: deriveEstado({ estado:x.estado, rev1, rev2 }),
+    estado: deriveEstado({ estado: x.estado, rev1, rev2 }),
     pago,
     __from: x.__from || ''
   };
@@ -300,7 +339,11 @@ function renderTable() {
         <span class="small">${(x.numeroNegocio ? x.numeroNegocio + ' · ' : '')}${(x.nombreGrupo || '')}</span>`;
 
       const tdCoord = document.createElement('td');
-      tdCoord.textContent = (x.coordinador || '').toLowerCase();
+      const coordTxt = (x.coordinador && x.coordinador.trim())
+        ? x.coordinador.toLowerCase()
+        : '—';
+      tdCoord.innerHTML = `<span class="${coordTxt==='—' ? 'muted' : ''}">${coordTxt}</span>`;
+
 
       const tdMonto = document.createElement('td');
       tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
