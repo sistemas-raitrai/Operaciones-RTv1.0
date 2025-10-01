@@ -70,6 +70,14 @@ const nextEstado = (v) => {
 const estadoIcon  = (v) => ({pendiente:'⏳', aprobado:'✅', rechazado:'⛔'})[normalizeEstado(v)];
 const estadoLabel = (v) => ({pendiente:'Pendiente', aprobado:'Aprobado', rechazado:'Rechazado'})[normalizeEstado(v)];
 
+function estadoClass(v){
+  switch (normalizeEstado(v)) {
+    case 'aprobado':  return 'estado-ok';
+    case 'rechazado': return 'estado-bad';
+    default:          return 'estado-pend';
+  }
+}
+
 let swapMode  = false;
 let swapFirst = null;
 
@@ -826,34 +834,42 @@ function renderSets(){
     const viajes=s.viajes.map(id=>ID2GRUPO.get(id)).filter(Boolean);
     const setDestinos = [...new Set(viajes.map(v=>normDest(v.destino)).filter(Boolean))];
 
-    const rows=viajes.map(v=>`
-      <tr>
-        <td style="width:36%"><input type="text" data-alias="${v.id}" value="${v.aliasGrupo||''}" title="${escapeHtml(v.nombreGrupo||'')}"></td>
-        <td style="width:24%">
-           ${fmtDMY(v.fechaInicio)} → ${fmtDMY(v.fechaFin)}
-           ${v._horasInicio && (v._horasInicio.pres || v._horasInicio.inicio)
-             ? `<div class="muted" style="margin-top:.2rem">
-                  ${v._horasInicio.pres ? 'Pres ' + v._horasInicio.pres : ''}
-                  ${(v._horasInicio.pres && v._horasInicio.inicio)?' · ':''}
-                  ${v._horasInicio.inicio ? 'Salida ' + v._horasInicio.inicio : ''}
-                </div>`
-             : ''}
-         </td>
-        <td style="width:40%">
-          <div class="muted">#${v.numeroNegocio}</div>
-          ${v.identificador?`<div class="muted">ID: ${escapeHtml(v.identificador)}</div>`:''}
-          ${v.programa?`<div class="muted">Programa: ${escapeHtml(v.programa)}</div>`:''}
-          ${v.destino?`<div class="muted">Destino: ${escapeHtml(v.destino)}</div>`:''}
-        </td>
-      </tr>
-      <tr><td colspan="3">
-        <div class="row">
-          <button class="btn small" data-swap="${v.id}" data-set="${idx}">Swap</button>
-          <button class="btn small" data-move="${v.id}" data-set="${idx}">Mover…</button>
-          <button class="btn small" data-del="${v.id}" data-set="${idx}">Quitar</button>
-        </div>
-      </td></tr>
-    `).join('');
+      const rows = viajes.map(v => `
+            <tr>
+              <td style="width:36%">
+                <input
+                  type="text"
+                  class="${estadoClass(s.estadoCoord)}"
+                  data-alias="${v.id}"
+                  value="${v.aliasGrupo||''}"
+                  title="${escapeHtml(v.nombreGrupo||'')}"
+                >
+              </td>
+              <td style="width:24%">
+                 ${fmtDMY(v.fechaInicio)} → ${fmtDMY(v.fechaFin)}
+                 ${v._horasInicio && (v._horasInicio.pres || v._horasInicio.inicio)
+                   ? `<div class="muted" style="margin-top:.2rem">
+                        ${v._horasInicio.pres ? 'Pres ' + v._horasInicio.pres : ''}
+                        ${(v._horasInicio.pres && v._horasInicio.inicio)?' · ':''}
+                        ${v._horasInicio.inicio ? 'Salida ' + v._horasInicio.inicio : ''}
+                      </div>`
+                   : ''}
+               </td>
+              <td style="width:40%">
+                <div class="muted">#${v.numeroNegocio}</div>
+                ${v.identificador?`<div class="muted">ID: ${escapeHtml(v.identificador)}</div>`:''}
+                ${v.programa?`<div class="muted">Programa: ${escapeHtml(v.programa)}</div>`:''}
+                ${v.destino?`<div class="muted">Destino: ${escapeHtml(v.destino)}</div>`:''}
+              </td>
+            </tr>
+            <tr><td colspan="3">
+              <div class="row">
+                <button class="btn small" data-swap="${v.id}" data-set="${idx}">Swap</button>
+                <button class="btn small" data-move="${v.id}" data-set="${idx}">Mover…</button>
+                <button class="btn small" data-del="${v.id}" data-set="${idx}">Quitar</button>
+              </div>
+            </td></tr>
+          `).join('');
 
     const blocked = getBlockedCoordIds(idx);
     const opts=['<option value="">(Seleccionar)</option>'].concat(
