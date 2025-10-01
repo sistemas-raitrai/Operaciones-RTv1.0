@@ -1119,6 +1119,7 @@ function seleccionarConjuntoDestino(grupoId){
   const idx=(+n)-1; if (idx<0||idx>=SETS.length){ alert('Número inválido'); return; }
   if (SETS.some(s=>s.viajes.includes(grupoId))) SETS.forEach(s=> s.viajes=s.viajes.filter(id=>id!==grupoId));
   SETS[idx].viajes.push(grupoId);
+  SETS[idx].estadoCoord = 'pendiente';
   refreshSets();
 }
 function moverViajeAotroConjunto(grupoId, desdeIdx){
@@ -1127,6 +1128,8 @@ function moverViajeAotroConjunto(grupoId, desdeIdx){
   const to=(+n)-1; if(to===desdeIdx||to<0||to>=SETS.length){ alert('Número inválido'); return; }
   SETS[desdeIdx].viajes = SETS[desdeIdx].viajes.filter(id=>id!==grupoId);
   SETS[to].viajes.push(grupoId);
+  SETS[desdeIdx].estadoCoord = 'pendiente';
+  SETS[to].estadoCoord = 'pendiente';
   refreshSets();
 }
 function agregarViajeAConjunto(setIdx){
@@ -1138,6 +1141,7 @@ function agregarViajeAConjunto(setIdx){
   const n=prompt(`Selecciona # de viaje a agregar (filtrado):\n${listado}`); if(!n) return;
   const i=(+n)-1; if(i<0||i>=libres.length) return;
   SETS[setIdx].viajes.push(libres[i].id);
+  SETS[setIdx].estadoCoord = 'pendiente';
   refreshSets();
 }
 function handleSwapClick(setIdx, grupoId, btn){
@@ -1150,6 +1154,8 @@ function swapBetweenSets(a,b){
   SETS[b.setIdx].viajes=SETS[b.setIdx].viajes.filter(id=>id!==b.grupoId);
   SETS[a.setIdx].viajes.push(b.grupoId);
   SETS[b.setIdx].viajes.push(a.grupoId);
+  SETS[a.setIdx].estadoCoord = 'pendiente';
+  SETS[b.setIdx].estadoCoord = 'pendiente';
   refreshSets();
 }
 
