@@ -8,7 +8,6 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <style>
-    /* Estilos mínimos específicos de la página (apoya a estilos.css) */
     .page { padding: 1rem 1.2rem; }
     .toolbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:.8rem 0 1rem; }
     .toolbar .tag { font-size:.85rem; opacity:.8; }
@@ -23,7 +22,7 @@
     table.finanzas th, table.finanzas td { padding:.55rem .6rem; border-bottom:1px solid #f1f1f1; vertical-align:middle; font-size:.92rem; }
     table.finanzas thead th { background:#fafafa; text-align:left; font-weight:600; }
     table.finanzas td .small { font-size:.78rem; opacity:.8; display:block; }
-    table.finanzas td .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    table.finanzas td .mono { font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
     .badge { padding:.12rem .5rem; border-radius:999px; font-size:.78rem; border:1px solid #ddd; display:inline-block; }
     .badge.aprobado   { border-color:#12a150; }
     .badge.rechazado  { border-color:#d93025; }
@@ -31,33 +30,21 @@
     .actions { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
     .actions button { padding:.35rem .6rem; border:1px solid #ddd; background:#fff; border-radius:8px; cursor:pointer; }
     .actions button.pay { border-color:#12a150; }
-    .is-readonly { opacity:.6; pointer-events:none; }
-    .rev-grid { display:grid; grid-template-columns: 120px 200px 1fr auto; gap:.3rem; align-items:center; }
-    .rev-grid select, .rev-grid input { padding:.35rem .45rem; border:1px solid #ddd; border-radius:8px; }
-    .rev-grid .go { padding:.35rem .6rem; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; }
     .hint { font-size:.8rem; opacity:.75; margin-top:.35rem; }
     .muted { opacity:.65; }
 
-    /* Modo portal → lectura */
     #finanzasRoot[data-mode="portal"] .only-admin { display:none !important; }
-    #finanzasRoot[data-mode="portal"] .rev-grid select,
-    #finanzasRoot[data-mode="portal"] .rev-grid input,
-    #finanzasRoot[data-mode="portal"] .rev-grid .go,
-    #finanzasRoot[data-mode="portal"] .actions button { opacity:.6; pointer-events:none; }
 
-    /* Responsive simple */
     @media (max-width: 900px) {
-      .rev-grid { grid-template-columns: 1fr 1fr 1fr auto; }
-      table.finanzas td:nth-child(2), table.finanzas th:nth-child(2) { display:none; } /* oculta 'Grupo (ID)' si hace falta */
+      table.finanzas td:nth-child(2), table.finanzas th:nth-child(2) { display:none; }
     }
   </style>
 </head>
 <body>
 
-  <!-- ✅ Encabezado compartido -->
+  <!-- Encabezado compartido -->
   <div id="encabezado"></div>
 
-  <!-- ✅ Contenido -->
   <div id="finanzasRoot" class="page" data-mode="sistema">
     <h2 style="margin:.4rem 0 0;">Revisión financiera</h2>
     <div class="hint">Movimientos por grupo y/o coordinador. Cada ítem requiere <b>dos revisiones</b>. Solo los <b>aprobados</b> pasan a pagables.</div>
@@ -77,8 +64,14 @@
         <option value="gasto">Solo Gastos</option>
         <option value="abono">Solo Abonos</option>
       </select>
-      <input id="filtroCoord" type="email" placeholder="coordinador@..." />
-      <input id="filtroGrupo" type="text" placeholder="ID o nombre de grupo" />
+
+      <!-- Autocompletados -->
+      <input id="filtroCoord" type="email" placeholder="coordinador@..." list="dl-coords" />
+      <datalist id="dl-coords"></datalist>
+
+      <input id="filtroGrupo" type="text" placeholder="ID o nombre de grupo" list="dl-grupos" />
+      <datalist id="dl-grupos"></datalist>
+
       <button id="btnAplicar" class="primary">Aplicar filtros</button>
       <button id="btnRecargar">Recargar</button>
       <span class="tag" id="resumen"></span>
@@ -107,22 +100,18 @@
     </div>
   </div>
 
-  <!-- 1️⃣ Inyección de encabezado + orden de imports igual al index -->
+  <!-- Orden: encabezado → firebase → script -->
   <script type="module">
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
 
       await import('./firebase-init.js'); // inicializa firebase
-      await import('./script.js');        // setea reloj/usuario del encabezado
-
-      // carga la lógica de esta página
-      await import('./finanzas-revision.js');
+      await import('./script.js');        // reloj/usuario encabezado
+      await import('./finanzas-revision.js'); // lógica de esta página
       console.log('✅ finanzas-revision.js cargado (tras encabezado y firebase)');
     })();
   </script>
-
-  <!-- 2️⃣ (Opcional) carga diferida como en index -->
   <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
