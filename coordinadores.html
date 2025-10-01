@@ -109,20 +109,21 @@
       max-height: none;
       overflow: visible;
     }
-  }
-
-  .token-wrap{
-  display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem;
-  }
-  .token{
-    display:inline-flex; align-items:center; gap:.35rem;
-    padding:.15rem .5rem; border-radius:999px;
-    background:#e8eef6; color:#1f64b2; font-weight:600; font-size:.9rem;
-  }
-  .token .x{
-    cursor:pointer; font-weight:700; opacity:.8;
-  }
-  .token .x:hover{ opacity:1; }
+    
+    }
+  
+    .token-wrap{
+    display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem;
+    }
+    .token{
+      display:inline-flex; align-items:center; gap:.35rem;
+      padding:.15rem .5rem; border-radius:999px;
+      background:#e8eef6; color:#1f64b2; font-weight:600; font-size:.9rem;
+    }
+    .token .x{
+      cursor:pointer; font-weight:700; opacity:.8;
+    }
+    .token .x:hover{ opacity:1; }
 
     /* === Modal "Gestionar coordinadores" — ANCHO === */
     #modal-coords{
@@ -137,6 +138,22 @@
     #modal-coords .modal-body{
       overflow: auto;       /* por si el contenido se pasa en pantallas pequeñas */
       max-height: 82vh;     /* evita que se salga verticalmente */
+    }
+
+    /* Colorear el input del alias según estado del set */
+    #conjuntos-wrap input[data-alias].estado-ok {
+      background: rgba(0, 180, 0, 0.15);
+      border-color: rgba(0, 180, 0, 0.35);
+    }
+    
+    #conjuntos-wrap input[data-alias].estado-pend {
+      background: rgba(255, 200, 0, 0.18);
+      border-color: rgba(255, 200, 0, 0.45);
+    }
+    
+    #conjuntos-wrap input[data-alias].estado-bad {
+      background: rgba(220, 0, 0, 0.15);
+      border-color: rgba(220, 0, 0, 0.35);
     }
 
    </style>
