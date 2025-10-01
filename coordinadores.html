@@ -124,6 +124,21 @@
   }
   .token .x:hover{ opacity:1; }
 
+    /* === Modal "Gestionar coordinadores" — ANCHO === */
+    #modal-coords{
+      /* ajustá SOLO estos dos valores si querés aún más ancho */
+      width: 96vw;          /* ocupa casi todo el ancho de la ventana */
+      max-width: 1400px;    /* límite duro del modal */
+    
+      /* típicos estilos de modal; dejalos si ya los tenés */
+      box-sizing: border-box;
+    }
+    
+    #modal-coords .modal-body{
+      overflow: auto;       /* por si el contenido se pasa en pantallas pequeñas */
+      max-height: 82vh;     /* evita que se salga verticalmente */
+    }
+
   </style>
 </head>
 <body>
