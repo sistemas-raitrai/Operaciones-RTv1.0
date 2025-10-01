@@ -19,9 +19,20 @@ const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,
 const money = n => (isFinite(+n) ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}) : '—');
 const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
-const DIRECT_SUBS = ['gastos','abonos','movs','movimientos'];          // dentro de grupos/{gid}/...
-const FIN_SUBS    = ['gastos','abonos','movs','movimientos'];          // dentro de grupos/{gid}/finanzas/{doc}/...
-const ROOT_CANDS  = ['gastos','abonos','movs','movimientos'];          // colecciones raíz (si existen)
+// ---- RUTAS POSIBLES ----
+const DIRECT_SUBS = ['gastos','abonos','movs','movimientos'];          // grupos/{gid}/...
+const FIN_SUBS    = ['gastos','abonos','movs','movimientos'];          // grupos/{gid}/finanzas/{doc}/...
+const ROOT_CANDS  = ['gastos','abonos','movs','movimientos'];          // colecciones raíz
+
+// 👇 NUEVO: subcolecciones reales que mostró tu consola
+const ALT_FIN_SUBS = ['finanzas_abonos','finanzas_gastos','finanzas_movs','finanzas_movimientos'];
+
+function inferTipoFromPath(pathLike=''){
+  const s = String(pathLike).toLowerCase();
+  if (s.includes('abono')) return 'abono';
+  if (s.includes('gasto')) return 'gasto';
+  return '';
+}
 
 function deriveEstado(x) {
   const s = (x.estado || '').toString().toLowerCase();
@@ -105,65 +116,90 @@ async function preloadCatalogs() {
 // ---------- colecta por grupo ----------
 async function collectFromGroup(grupoId) {
   const gDoc = state.caches.grupos.get(grupoId) || {};
-  let countBefore = state.rawItems.length;
+  const before = state.rawItems.length;
 
-  // 1) Directo dentro del grupo: grupos/{gid}/(gastos|abonos|movs|movimientos)
+  // 1) Directo: grupos/{gid}/(gastos|abonos|movs|movimientos)
   for (const sub of DIRECT_SUBS) {
     try {
       const ds = await getDocs(collection(db, 'grupos', grupoId, sub));
       ds.forEach(d => {
         const x = d.data() || {};
-        state.rawItems.push(toItem(grupoId, gDoc, { id:d.id, ...x, __from:`groupSub:${sub}` }, sub));
+        state.rawItems.push(
+          toItem(grupoId, gDoc, { id:d.id, ...x, __from:`groupSub:${sub}` }, sub)
+        );
       });
     } catch(_) {}
   }
 
-  // 2) Estructura finanzas: grupos/{gid}/finanzas/{doc}/...
+  // 1.b) 👈 NUEVO: grupos/{gid}/(finanzas_abonos|finanzas_gastos|...)
+  for (const sub of ALT_FIN_SUBS) {
+    try {
+      const ds = await getDocs(collection(db, 'grupos', grupoId, sub));
+      ds.forEach(d => {
+        const x = d.data() || {};
+        state.rawItems.push(
+          toItem(
+            grupoId,
+            gDoc,
+            { id:d.id, ...x, __from:`groupSub:${sub}` },
+            inferTipoFromPath(sub) // fuerza tipo según nombre de subcolección
+          )
+        );
+      });
+    } catch(_) {}
+  }
+
+  // 2) Estructura finanzas: grupos/{gid}/finanzas/{doc}/(sub)
   try {
     const fs = await getDocs(collection(db, 'grupos', grupoId, 'finanzas'));
     for (const f of fs.docs) {
       if (f.id.toLowerCase() === 'summary') continue;
       const fin = f.data() || {};
 
-      // arrays dentro del doc
+      // arrays dentro del doc: items/movs/movimientos/gastos/abonos
       for (const key of ['items','movs','movimientos','gastos','abonos']) {
         const arr = fin?.[key];
         if (Array.isArray(arr)) {
           arr.forEach((x, i) => {
             if (!x || typeof x !== 'object') return;
-            state.rawItems.push(toItem(grupoId, gDoc, { ...x, id:`${f.id}#${key}[${i}]`, __from:`docArray:${key}` }, key));
+            state.rawItems.push(
+              toItem(grupoId, gDoc, { ...x, id:`${f.id}#${key}[${i}]`, __from:`docArray:${key}` }, key)
+            );
           });
         }
       }
-      // subcolecciones
+
+      // subcolecciones bajo finanzas/{doc}
       for (const sub of FIN_SUBS) {
         try {
           const ds = await getDocs(collection(db, 'grupos', grupoId, 'finanzas', f.id, sub));
           ds.forEach(d => {
             const x = d.data() || {};
-            state.rawItems.push(toItem(grupoId, gDoc, { id:d.id, ...x, __from:`finSub:${sub}` }, sub));
+            state.rawItems.push(
+              toItem(grupoId, gDoc, { id:d.id, ...x, __from:`finSub:${sub}` }, sub)
+            );
           });
         } catch(_) {}
       }
     }
   } catch(_) {}
 
-  // 3) Colecciones raíz (si existen) con grupoId == {gid}
+  // 3) Colecciones raíz (si las hubiera) filtradas por grupoId
   for (const root of ROOT_CANDS) {
     try {
       const qs = await getDocs(query(collection(db, root), where('grupoId','==', grupoId), limit(200)));
       qs.forEach(d => {
         const x = d.data() || {};
-        state.rawItems.push(toItem(grupoId, gDoc, { id:d.id, ...x, __from:`root:${root}` }, root));
+        state.rawItems.push(
+          toItem(grupoId, gDoc, { id:d.id, ...x, __from:`root:${root}` }, root)
+        );
       });
     } catch(_) {}
   }
 
-  // 4) Último recurso: collectionGroup('finanzas') ya no es requisito, pero si existe, lo miramos 1 sola vez fuera.
-
-  const added = state.rawItems.length - countBefore;
-  return added;
+  return state.rawItems.length - before;
 }
+
 
 // ---------- carga principal ----------
 async function fetchFinance(initial=false) {
