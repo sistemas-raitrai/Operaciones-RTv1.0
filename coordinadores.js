@@ -1899,7 +1899,7 @@ function handleExcel(evt){
 /* =========================================================
    Boot
    ========================================================= */
-window.addEventListener('DOMContentLoaded', async ()=>{
+async function __bootCoordinadores(){
   console.groupCollapsed('BOOT');
   try{
     console.time('BOOT');
@@ -1940,7 +1940,16 @@ window.addEventListener('DOMContentLoaded', async ()=>{
       return { coords: COORDS.length, grupos: GRUPOS.length, sets: SETS.length };
     }
   };
-});
+}
+
+// 🔁 Ejecuta el boot siempre (con o sin DOMContentLoaded)
+if (document.readyState === 'loading'){
+  window.addEventListener('DOMContentLoaded', __bootCoordinadores, { once:true });
+} else {
+  // El DOM ya está listo: corre inmediatamente
+  __bootCoordinadores();
+}
+
 
 /* =========================================================
    Probe directo a Firestore para "grupos"
