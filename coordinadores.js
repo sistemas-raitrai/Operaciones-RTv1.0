@@ -964,9 +964,15 @@ function renderSets(){
     btn.onclick=()=>{ const setIdx=+btn.dataset.set; const gid=btn.dataset.swap; handleSwapClick(setIdx,gid,btn); };
   });
 
-  elWrapSets.querySelectorAll('button[data-saveone]').forEach(btn=>{
-    btn.onclick = () => guardarSet(+btn.dataset.saveone);
-  });
+   elWrapSets.querySelectorAll('button[data-saveone]').forEach(btn=>{
+     btn.onclick = () => withBusy(
+       btn,
+       'Guardando…',
+       () => guardarSet(+btn.dataset.saveone),
+       '💾 Guardar',
+       '✅ Guardado'
+     );
+   });
 
    // Triestado: rotar Pendiente → Aprobado → Rechazado
    elWrapSets.querySelectorAll('button[data-estado]').forEach(btn=>{
