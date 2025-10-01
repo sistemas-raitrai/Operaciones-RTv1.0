@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Revisión financiera — Sistema de Operaciones RTv1</title>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+  <style>
+    /* Estilos mínimos específicos de la página (apoya a estilos.css) */
+    .page { padding: 1rem 1.2rem; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:.8rem 0 1rem; }
+    .toolbar .tag { font-size:.85rem; opacity:.8; }
+    .toolbar input, .toolbar select { padding:.4rem .5rem; border:1px solid #ddd; border-radius:8px; }
+    .toolbar button { padding:.45rem .8rem; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer; }
+    .toolbar button.primary { border-color:#0b57d0; }
+    .state-tabs { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
+    .state-tabs button { padding:.35rem .7rem; border:1px solid #ddd; border-radius:999px; background:#fff; cursor:pointer; font-size:.9rem; }
+    .state-tabs button.active { border-color:#0b57d0; }
+
+    table.finanzas { width:100%; border-collapse:collapse; background:#fff; border:1px solid #eee; border-radius:10px; overflow:hidden; }
+    table.finanzas th, table.finanzas td { padding:.55rem .6rem; border-bottom:1px solid #f1f1f1; vertical-align:middle; font-size:.92rem; }
+    table.finanzas thead th { background:#fafafa; text-align:left; font-weight:600; }
+    table.finanzas td .small { font-size:.78rem; opacity:.8; display:block; }
+    table.finanzas td .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .badge { padding:.12rem .5rem; border-radius:999px; font-size:.78rem; border:1px solid #ddd; display:inline-block; }
+    .badge.aprobado   { border-color:#12a150; }
+    .badge.rechazado  { border-color:#d93025; }
+    .badge.pendiente  { border-color:#999; }
+    .actions { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
+    .actions button { padding:.35rem .6rem; border:1px solid #ddd; background:#fff; border-radius:8px; cursor:pointer; }
+    .actions button.pay { border-color:#12a150; }
+    .is-readonly { opacity:.6; pointer-events:none; }
+    .rev-grid { display:grid; grid-template-columns: 120px 200px 1fr auto; gap:.3rem; align-items:center; }
+    .rev-grid select, .rev-grid input { padding:.35rem .45rem; border:1px solid #ddd; border-radius:8px; }
+    .rev-grid .go { padding:.35rem .6rem; border:1px solid #ddd; border-radius:8px; background:#fff; cursor:pointer; }
+    .hint { font-size:.8rem; opacity:.75; margin-top:.35rem; }
+    .muted { opacity:.65; }
+
+    /* Modo portal → lectura */
+    #finanzasRoot[data-mode="portal"] .only-admin { display:none !important; }
+    #finanzasRoot[data-mode="portal"] .rev-grid select,
+    #finanzasRoot[data-mode="portal"] .rev-grid input,
+    #finanzasRoot[data-mode="portal"] .rev-grid .go,
+    #finanzasRoot[data-mode="portal"] .actions button { opacity:.6; pointer-events:none; }
+
+    /* Responsive simple */
+    @media (max-width: 900px) {
+      .rev-grid { grid-template-columns: 1fr 1fr 1fr auto; }
+      table.finanzas td:nth-child(2), table.finanzas th:nth-child(2) { display:none; } /* oculta 'Grupo (ID)' si hace falta */
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ✅ Encabezado compartido -->
+  <div id="encabezado"></div>
+
+  <!-- ✅ Contenido -->
+  <div id="finanzasRoot" class="page" data-mode="sistema">
+    <h2 style="margin:.4rem 0 0;">Revisión financiera</h2>
+    <div class="hint">Movimientos por grupo y/o coordinador. Cada ítem requiere <b>dos revisiones</b>. Solo los <b>aprobados</b> pasan a pagables.</div>
+
+    <!-- Filtros -->
+    <div class="toolbar">
+      <div class="state-tabs" id="stateTabs">
+        <button data-estado="" class="active">Todos</button>
+        <button data-estado="pendiente">Pendientes</button>
+        <button data-estado="aprobado">Aprobados</button>
+        <button data-estado="rechazado">Rechazados</button>
+        <button data-estado="pagables">Pagables</button>
+      </div>
+      <span class="tag">|</span>
+      <select id="filtroTipo">
+        <option value="">Gasto + Abono</option>
+        <option value="gasto">Solo Gastos</option>
+        <option value="abono">Solo Abonos</option>
+      </select>
+      <input id="filtroCoord" type="email" placeholder="coordinador@..." />
+      <input id="filtroGrupo" type="text" placeholder="ID o nombre de grupo" />
+      <button id="btnAplicar" class="primary">Aplicar filtros</button>
+      <button id="btnRecargar">Recargar</button>
+      <span class="tag" id="resumen"></span>
+    </div>
+
+    <!-- Tabla -->
+    <table class="finanzas" id="tblFinanzas">
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Grupo (ID)</th>
+          <th>Coordinador</th>
+          <th>Monto</th>
+          <th>Rev. 1</th>
+          <th>Rev. 2</th>
+          <th>Estado</th>
+          <th>Pago</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+
+    <div class="toolbar">
+      <button id="btnMas">Cargar más</button>
+      <span class="hint muted" id="pagInfo"></span>
+    </div>
+  </div>
+
+  <!-- 1️⃣ Inyección de encabezado + orden de imports igual al index -->
+  <script type="module">
+    (async () => {
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+
+      await import('./firebase-init.js'); // inicializa firebase
+      await import('./script.js');        // setea reloj/usuario del encabezado
+
+      // carga la lógica de esta página
+      await import('./finanzas-revision.js');
+      console.log('✅ finanzas-revision.js cargado (tras encabezado y firebase)');
+    })();
+  </script>
+
+  <!-- 2️⃣ (Opcional) carga diferida como en index -->
+  <script type="module" src="firebase-init.js" defer></script>
+</body>
+</html>
