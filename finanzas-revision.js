@@ -1,415 +1,367 @@
-/* =========================================================
-   Revisión financiera (colección real: grupos/{gid}/finanzas)
-   ---------------------------------------------------------
-   - Detecta y usa collectionGroup('finanzas')
-   - Busca movimientos en subcolecciones: 'movs' | 'movimientos'
-   - Fallback: items planos en el doc 'finanzas' (si existiera)
-   - Dos revisiones, estado y flag pagable.
-   - Filtros básicos + paginación.
-========================================================= */
+/* Revisión financiera (robusta multiesquema)
+   Lee movimientos en: grupos/{gid}/finanzas/*
+   - Subcolecciones: movs | movimientos
+   - Arrays: items | movs | movimientos dentro del doc
+   Ignora: finanzas/summary (se usa solo para cierre)
+*/
 
 import { app, db } from './firebase-init.js';
 import {
-  getAuth, onAuthStateChanged
+  getAuth, onAuthStateChanged, signOut
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 import {
-  collection, collectionGroup, doc, getDoc, getDocs, updateDoc,
-  query, where, orderBy, limit, startAfter, serverTimestamp
+  collection, collectionGroup, doc, getDoc, getDocs, query,
+  where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-/* ---------------------- Hooks DOM (ajusta IDs si difieren) ---------------------- */
-const $selTipo   = document.getElementById('sel-tipo')        // <select> {all,gasto,abono}
-                  || document.querySelector('select[data-role="tipo"]');
-const $iCoord    = document.getElementById('coord-input')     // <input> coordinador@...
-                  || document.querySelector('input[data-role="coord"]');
-const $iGrupo    = document.getElementById('grupo-input')     // <input> id o nombre de grupo
-                  || document.querySelector('input[data-role="grupo"]');
-const $selEstado = document.getElementById('sel-estado')      // <select> {all,pendiente,aprobado,rechazado,pagables}
-                  || document.querySelector('select[data-role="estado"]');
-
-const $btnAplicar= document.getElementById('btn-aplicar')     // Botón aplicar filtros
-                  || document.querySelector('[data-role="aplicar"]');
-const $btnMas    = document.getElementById('btn-mas')         // Cargar más
-                  || document.querySelector('[data-role="mas"]');
-
-const $tbody     = document.querySelector('#tabla-movs tbody')// cuerpo de la tabla
-                  || document.querySelector('table tbody');
-
-const $metaInfo  = document.getElementById('meta-info')       // cajita “Mostrando N…”
-                  || document.querySelector('[data-role="meta"]');
-
-/* ---------------------- Estado de la página ---------------------- */
 const auth = getAuth(app);
-const PAGE  = 60;                     // tamaño de página
-let lastCursor = null;                // para paginación de finanzas (collectionGroup)
-let CACHE_GROUPS = new Map();         // gid -> meta grupo (numeroNegocio, nombre, destino, coordinadores[])
-let LIST = [];                        // movimientos a mostrar
 
-/* ---------------------- Utilidades pequeñas ---------------------- */
-const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-  .toLowerCase().trim();
+// ——— Estado local ———
+const state = {
+  paging: { pageSize: 50, lastDoc: null, loading: false, reachedEnd: false },
+  rawItems: [], // items crudos normalizados
+  filtros: { estado:'', tipo:'', coord:'', grupo:'' },
+  caches: { grupos: new Map(), coords: [] },
+};
 
-function money(n){ const x = Number(n||0); return x.toLocaleString('es-CL'); }
-function dt(d){ try{ return (d?.toDate?.() || (d?.seconds? new Date(d.seconds*1000) : new Date(d))).toLocaleDateString('es-CL'); }catch{ return ''; } }
+// ——— Helpers ———
+const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const money = (n) => {
+  const v = Number(n || 0);
+  return isFinite(v) ? v.toLocaleString('es-CL', { style:'currency', currency:'CLP', maximumFractionDigits:0 }) : '—';
+};
+const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
-/* -------------------------------------------------------------
-   1) Carga índice de grupos (on-demand por cada finanzas doc)
-   ------------------------------------------------------------- */
-async function getGrupoMeta(gid){
-  if (CACHE_GROUPS.has(gid)) return CACHE_GROUPS.get(gid);
-  try{
-    const s = await getDoc(doc(db,'grupos', gid));
-    if (!s.exists()) { CACHE_GROUPS.set(gid, null); return null; }
-    const g = s.data()||{};
-    // coordinadores: reúne posibles fuentes
-    const coords = new Set();
-    const push = e => { if (e) coords.add(String(e).toLowerCase()); };
-    push(g?.coordinadorEmail);
-    if (g?.coordinador?.email) push(g.coordinador.email);
-    (Array.isArray(g?.coordinadoresEmails)?g.coordinadoresEmails:[]).forEach(push);
-    if (g?.coordinadoresEmailsObj) Object.keys(g.coordinadoresEmailsObj).forEach(push);
-    (Array.isArray(g?.coordinadores)?g.coordinadores:[]).forEach(x=>{
-      if (x?.email) push(x.email); else if (typeof x==='string' && x.includes('@')) push(x);
-    });
-
-    const meta = {
-      id: s.id,
-      numeroNegocio: String(g.numeroNegocio || g.numNegocio || g.idNegocio || s.id || ''),
-      nombreGrupo: (g.nombreGrupo || g.aliasGrupo || '').toString(),
-      destino: (g.destino || '').toString(),
-      coordinadores: [...coords]
-    };
-    CACHE_GROUPS.set(gid, meta);
-    return meta;
-  }catch(e){ console.warn('getGrupoMeta', gid, e); CACHE_GROUPS.set(gid, null); return null; }
+// Derivar estado a partir de dos revisiones si no hay estado explícito
+function deriveEstado(x) {
+  const s = (x.estado || '').toString().toLowerCase();
+  if (s) return s;
+  const r1 = (x.rev1 || '').toString().toLowerCase();
+  const r2 = (x.rev2 || '').toString().toLowerCase();
+  if (r1 === 'rechazado' || r2 === 'rechazado') return 'rechazado';
+  if (r1 === 'aprobado'  && r2 === 'aprobado')  return 'aprobado';
+  return 'pendiente';
 }
 
-/* -------------------------------------------------------------
-   2) Leer movimientos desde un doc "finanzas" concreto
-      Ruta base: grupos/{gid}/finanzas
-      - subcolección principal: movs
-      - backward-compat: movimientos
-      - fallback "plano": campos/array en el propio doc (si existiera)
-   ------------------------------------------------------------- */
-async function loadMovsFromFinanzasDoc(finRef){
-  const gid = finRef.parent.parent.id;
+function toItem(grupoId, gDoc, x) {
+  // Normalización tolerante
+  const tipo = (x.tipo || x.type || '').toString().toLowerCase() || (Number(x.monto || x.importe || x.valor || 0) >= 0 ? 'gasto' : 'abono');
+  const monto = Number(coalesce(x.monto, x.importe, x.valor, 0));
+  const rev1  = (x.revision1?.estado || x.rev1?.estado || x.rev1 || '').toString().toLowerCase();
+  const rev2  = (x.revision2?.estado || x.rev2?.estado || x.rev2 || '').toString().toLowerCase();
+  const pago  = (x.pago?.estado || x.pago || '').toString().toLowerCase();
+  const coord = (x.coordinadorEmail || x.coordinador || gDoc?.coordinadorEmail || gDoc?.coordinador?.email || '').toString().toLowerCase();
 
-  // 2.a) subcolección MOVS (preferida)
-  const out = [];
+  const nombreGrupo = coalesce(gDoc?.nombreGrupo, gDoc?.aliasGrupo, '');
+  const numeroNegocio = coalesce(gDoc?.numeroNegocio, gDoc?.numNegocio, gDoc?.idNegocio, grupoId);
 
-  async function pull(pathName){
-    try{
-      const coll = collection(finRef, pathName);
-      const snap = await getDocs(coll);
-      snap.forEach(d=>{
-        const x = d.data()||{};
-        out.push({
-          _id: d.id,
-          gid,
-          finPath: `${finRef.path}/${pathName}/${d.id}`,
-          tipo: (x.tipo || x.kind || '').toString().toUpperCase(), // GASTO|ABONO
-          coordinador: (x.coordinador || x.coordinadorEmail || '').toString().toLowerCase(),
-          concepto: (x.concepto || x.detalle || x.descripcion || '').toString(),
-          monto: Number(x.monto || x.importe || x.valor || 0),
-          fecha: x.fecha || x.createdAt || x.ts || null,
-          rev1: x.rev1 || { ok:false, by:'', at:null },
-          rev2: x.rev2 || { ok:false, by:'', at:null },
-          estado: (x.estado || '').toString().toUpperCase(), // PENDIENTE|APROBADO|RECHAZADO
-          pagable: !!x.pagable
-        });
+  return {
+    id: x.id || x._id || '',
+    grupoId,
+    nombreGrupo,
+    numeroNegocio,
+    coordinador: coord,
+    tipo,
+    monto,
+    rev1,
+    rev2,
+    estado: deriveEstado({ estado:x.estado, rev1, rev2 }),
+    pago,
+  };
+}
+
+// ——— Carga catálogos para autocompletado ———
+async function preloadCatalogs() {
+  try {
+    // Grupos
+    const dlG = document.getElementById('dl-grupos');
+    if (dlG) {
+      dlG.innerHTML = '';
+      const snap = await getDocs(collection(db, 'grupos'));
+      snap.forEach(d => {
+        const x = d.data() || {};
+        state.caches.grupos.set(d.id, x);
+        const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, d.id);
+        const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, d.id);
+        const opt = document.createElement('option');
+        opt.value = `${d.id}`;
+        opt.label = `${numero} — ${nombre}`;
+        dlG.appendChild(opt);
       });
-    }catch(_){ /* si no existe, seguimos */ }
-  }
-
-  await pull('movs');         // principal
-  if (!out.length) await pull('movimientos'); // legacy
-
-  // 2.b) fallback “plano en doc finanzas” (poco común, pero por si acaso)
-  if (!out.length){
-    try{
-      const snap = await getDoc(finRef);
-      if (snap.exists()){
-        const x = snap.data()||{};
-        const arr = Array.isArray(x.items) ? x.items :
-                    Array.isArray(x.movs)  ? x.movs  :
-                    Array.isArray(x.movimientos) ? x.movimientos : [];
-        arr.forEach((m, i)=>{
-          out.push({
-            _id: `flat_${i}`,
-            gid,
-            finPath: `${finRef.path}#flat#${i}`,
-            tipo: (m.tipo || '').toString().toUpperCase(),
-            coordinador: (m.coordinador || '').toString().toLowerCase(),
-            concepto: (m.concepto || m.descripcion || '').toString(),
-            monto: Number(m.monto || 0),
-            fecha: m.fecha || null,
-            rev1: m.rev1 || { ok:false, by:'', at:null },
-            rev2: m.rev2 || { ok:false, by:'', at:null },
-            estado: (m.estado || '').toString().toUpperCase(),
-            pagable: !!m.pagable
-          });
-        });
-      }
-    }catch(_){}
-  }
-
-  return out;
-}
-
-/* -------------------------------------------------------------
-   3) Primera página desde collectionGroup('finanzas')
-   ------------------------------------------------------------- */
-async function fetchFirstPage(){
-  LIST = [];
-  lastCursor = null;
-
-  // verifica que EXISTEN docs finanzas
-  const probe = await getDocs(query(collectionGroup(db,'finanzas'), limit(1)));
-  if (probe.empty) throw new Error('No se encontró colección de finanzas con datos.');
-
-  await fetchMore(); // carga la primera tanda
-}
-
-async function fetchMore(){
-  // Traemos páginas de *docs finanzas*; por cada doc, pedimos sus movimientos.
-  let qBase = query(collectionGroup(db,'finanzas'), orderBy('__name__'), limit(20));
-  if (lastCursor) qBase = query(collectionGroup(db,'finanzas'), orderBy('__name__'), startAfter(lastCursor), limit(20));
-
-  const snap = await getDocs(qBase);
-  if (snap.empty) return;
-
-  const jobs = [];
-  snap.forEach(finDoc => {
-    jobs.push(loadMovsFromFinanzasDoc(finDoc.ref));
-  });
-
-  // Movimientos por doc finanzas
-  const chunks = await Promise.all(jobs);
-  const flat = chunks.flat();
-
-  // Adjunta meta grupo (ligado por gid)
-  const metaJobs = new Map();
-  for (const m of flat){
-    if (!metaJobs.has(m.gid)) metaJobs.set(m.gid, getGrupoMeta(m.gid));
-  }
-  const metas = await Promise.all([...metaJobs.values()]);
-  // metas ya se cachean dentro de getGrupoMeta
-
-  // Enriquecer cada mov con meta de grupo
-  flat.forEach(m => {
-    const meta = CACHE_GROUPS.get(m.gid) || {};
-    m.numeroNegocio = meta.numeroNegocio || '';
-    m.nombreGrupo   = meta.nombreGrupo   || '';
-    m.destino       = meta.destino       || '';
-    m.coordinadores = meta.coordinadores || [];
-  });
-
-  LIST.push(...flat);
-
-  // cursor para siguiente página
-  lastCursor = snap.docs[snap.docs.length-1];
-  renderTable(); // re-pinta
-}
-
-/* -------------------------------------------------------------
-   4) Filtros + Render
-   ------------------------------------------------------------- */
-function passFilters(m){
-  // tipo
-  const t = ($selTipo?.value || 'all').toLowerCase();
-  if (t !== 'all'){
-    if (t === 'gasto'  && m.tipo !== 'GASTO') return false;
-    if (t === 'abono'  && m.tipo !== 'ABONO') return false;
-  }
-  // coordinador (texto libre: filtra por inclusión en lista de correos del grupo o campo m.coordinador)
-  const qCoord = norm($iCoord?.value || '');
-  if (qCoord){
-    const pool = [m.coordinador, ...(m.coordinadores||[])].map(norm).join(' ');
-    if (!pool.includes(qCoord)) return false;
-  }
-  // grupo: busca en id, número y nombre
-  const qG = norm($iGrupo?.value || '');
-  if (qG){
-    const pool = norm([m.gid, m.numeroNegocio, m.nombreGrupo].join(' '));
-    if (!pool.includes(qG)) return false;
-  }
-  // estado
-  const e = ($selEstado?.value || 'all').toLowerCase();
-  if (e !== 'all'){
-    if (e === 'pagables'){
-      const ok = (m.rev1?.ok === true && m.rev2?.ok === true && m.estado === 'APROBADO');
-      if (!ok) return false;
-    } else if (e === 'pendiente' || e === 'aprobado' || e === 'rechazado'){
-      if ((m.estado || '').toLowerCase() !== e) return false;
     }
-  }
-  return true;
-}
 
-function renderTable(){
-  if (!$tbody) return;
-  $tbody.innerHTML = '';
-
-  const rows = LIST.filter(passFilters);
-  rows.sort((a,b)=>{
-    // Primero por estado (pendientes arriba), luego por fecha desc, luego por monto desc
-    const rank = s => (s==='PENDIENTE'?0 : s==='RECHAZADO'?2 : 1);
-    const r = rank(a.estado) - rank(b.estado);
-    if (r !== 0) return r;
-    const ta = (a.fecha?.seconds ? a.fecha.seconds : (a.fecha ? +new Date(a.fecha) : 0));
-    const tb = (b.fecha?.seconds ? b.fecha.seconds : (b.fecha ? +new Date(b.fecha) : 0));
-    if (tb !== ta) return tb - ta;
-    return (b.monto||0) - (a.monto||0);
-  });
-
-  for (const m of rows){
-    const tr = document.createElement('tr');
-
-    const pagable = (m.rev1?.ok && m.rev2?.ok && m.estado === 'APROBADO');
-
-    tr.innerHTML = `
-      <td>${m.tipo || ''}</td>
-      <td>${m.numeroNegocio || ''}</td>
-      <td>${m.nombreGrupo || ''}</td>
-      <td>${m.destino || ''}</td>
-      <td>${m.concepto || ''}</td>
-      <td class="num">$ ${money(m.monto)}</td>
-      <td>${dt(m.fecha) || ''}</td>
-      <td>${m.coordinador || ''}</td>
-
-      <td>
-        <label class="rev">
-          <input type="checkbox" data-rev="1" ${m.rev1?.ok?'checked':''}>
-          <span>${m.rev1?.by ? m.rev1.by : 'Rev. 1'}</span>
-        </label>
-      </td>
-      <td>
-        <label class="rev">
-          <input type="checkbox" data-rev="2" ${m.rev2?.ok?'checked':''}>
-          <span>${m.rev2?.by ? m.rev2.by : 'Rev. 2'}</span>
-        </label>
-      </td>
-
-      <td>
-        <select data-estado>
-          <option value="PENDIENTE" ${m.estado==='PENDIENTE'?'selected':''}>PENDIENTE</option>
-          <option value="APROBADO"  ${m.estado==='APROBADO'?'selected':''}>APROBADO</option>
-          <option value="RECHAZADO" ${m.estado==='RECHAZADO'?'selected':''}>RECHAZADO</option>
-        </select>
-      </td>
-
-      <td class="${pagable?'ok':''}">${pagable ? 'PAGABLE' : ''}</td>
-    `;
-
-    // Handlers de las 3 cosas editables
-    tr.querySelector('input[data-rev="1"]').addEventListener('change', () => saveRev(m, 1, tr));
-    tr.querySelector('input[data-rev="2"]').addEventListener('change', () => saveRev(m, 2, tr));
-    tr.querySelector('select[data-estado"]').addEventListener('change', (ev) => saveEstado(m, ev.target.value, tr));
-
-    $tbody.appendChild(tr);
-  }
-
-  if ($metaInfo){
-    $metaInfo.textContent = `Mostrando ${rows.length} movimientos (de ${LIST.length} cargados).`;
+    // Coordinadores
+    const dlC = document.getElementById('dl-coords');
+    if (dlC) {
+      dlC.innerHTML = '';
+      const snap = await getDocs(collection(db, 'coordinadores'));
+      const seen = new Set();
+      snap.forEach(d => {
+        const x = d.data() || {};
+        const email = (coalesce(x.email, x.correo, x.mail, '')).toLowerCase();
+        const nombre = coalesce(x.nombre, x.Nombre, x.coordinador, '');
+        if (!email || seen.has(email)) return;
+        seen.add(email);
+        const opt = document.createElement('option');
+        opt.value = email;
+        opt.label = `${nombre ? (nombre.toUpperCase() + ' — ') : ''}${email}`;
+        dlC.appendChild(opt);
+        state.caches.coords.push(email);
+      });
+    }
+  } catch (e) {
+    console.warn('preloadCatalogs()', e);
   }
 }
 
-/* -------------------------------------------------------------
-   5) Guardados (rev1, rev2, estado)
-   ------------------------------------------------------------- */
-async function saveRev(m, which, tr){
-  try{
-    const chk = tr.querySelector(`input[data-rev="${which}"]`);
-    const ok  = !!chk.checked;
-    const payload = {};
-    payload[`rev${which}`] = { ok, by: auth.currentUser?.email || '', at: serverTimestamp() };
+// ——— Lectura robusta de movimientos ———
+async function fetchFinancePage(initial=false) {
+  if (state.paging.loading || state.paging.reachedEnd) return;
+  state.paging.loading = true;
 
-    await updateDoc(docFromFinPath(m.finPath), payload);
+  try {
+    const baseQ = collectionGroup(db, 'finanzas');
+    // Traemos en orden por __name__ (sin índice complejo) y paginamos por lotes de contenedores
+    let qFs = query(baseQ, limit(50));
+    if (!initial && state.paging.lastDoc) {
+      qFs = query(baseQ, startAfter(state.paging.lastDoc), limit(50));
+    }
+    const snap = await getDocs(qFs);
+    if (!snap.size) {
+      state.paging.reachedEnd = true;
+      renderTable();
+      return;
+    }
 
-    // espejo en memoria
-    m[`rev${which}`] = { ok, by: auth.currentUser?.email || '', at: new Date() };
+    // Para cada doc de finanzas (excepto summary) buscamos subcolecciones y arrays
+    for (const d of snap.docs) {
+      state.paging.lastDoc = d; // cursor
+      const fid = d.id;
+      const parent = d.ref.parent;         // /grupos/{gid}/finanzas
+      const grupoRef = parent.parent;      // /grupos/{gid}
+      const grupoId = grupoRef.id;
 
-    // recalcula Pagable inmediato
-    const pagable = (m.rev1?.ok && m.rev2?.ok && m.estado === 'APROBADO');
-    tr.querySelector('td:last-child').textContent = pagable ? 'PAGABLE' : '';
-    tr.querySelector('td:last-child').className   = pagable ? 'ok' : '';
-  }catch(e){
-    console.error('saveRev', e);
-    alert('No se pudo actualizar la revisión.');
-    // revertir UI
-    tr.querySelector(`input[data-rev="${which}"]`).checked = !tr.querySelector(`input[data-rev="${which}"]`).checked;
-  }
-}
+      // cache de grupo
+      let gDoc = state.caches.grupos.get(grupoId);
+      if (!gDoc) {
+        const g = await getDoc(grupoRef).catch(()=>null);
+        gDoc = g?.exists() ? g.data() : {};
+        state.caches.grupos.set(grupoId, gDoc);
+      }
 
-async function saveEstado(m, nuevo, tr){
-  try{
-    await updateDoc(docFromFinPath(m.finPath), { estado:nuevo });
-    m.estado = nuevo;
-    const pagable = (m.rev1?.ok && m.rev2?.ok && m.estado === 'APROBADO');
-    tr.querySelector('td:last-child').textContent = pagable ? 'PAGABLE' : '';
-    tr.querySelector('td:last-child').className   = pagable ? 'ok' : '';
-  }catch(e){
-    console.error('saveEstado', e);
-    alert('No se pudo actualizar el estado.');
-    // UI ya cambió; recarga fila
+      // omitir summary explícitamente
+      if (fid.toLowerCase() === 'summary') {
+        // (si necesitas, podrías leer flags de cierre aquí)
+        continue;
+      }
+
+      const fin = d.data() || {};
+
+      // 1) Arrays dentro del doc
+      const arraysInDoc = []
+        .concat(Array.isArray(fin.items) ? fin.items : [])
+        .concat(Array.isArray(fin.movs) ? fin.movs : [])
+        .concat(Array.isArray(fin.movimientos) ? fin.movimientos : []);
+
+      arraysInDoc.forEach((x, i) => {
+        if (x && typeof x === 'object') state.rawItems.push(toItem(grupoId, gDoc, { ...x, id: `${fid}#${i}` }));
+      });
+
+      // 2) Subcolecciones: movs / movimientos
+      for (const sub of ['movs', 'movimientos']) {
+        try {
+          const sc = collection(db, 'grupos', grupoId, 'finanzas', fid, sub);
+          const ds = await getDocs(sc);
+          ds.forEach(s => {
+            const x = s.data() || {};
+            state.rawItems.push(toItem(grupoId, gDoc, { id:s.id, ...x }));
+          });
+        } catch (_) { /* ignore */ }
+      }
+    }
+
     renderTable();
+  } catch (e) {
+    console.error('fetchFinancePage()', e);
+    renderTable(); // al menos refresca vacía con resumen
+  } finally {
+    state.paging.loading = false;
   }
 }
 
-/* -------------------------------------------------------------
-   6) Helpers de path → DocumentReference
-   ------------------------------------------------------------- */
-function docFromFinPath(path){
-  // ejemplos:
-  //   grupos/{gid}/finanzas/movs/{mid}
-  //   grupos/{gid}/finanzas/movimientos/{mid}
-  //   grupos/{gid}/finanzas#flat#i   (no editable)
-  const p = String(path||'');
-  if (p.includes('#flat#')) throw new Error('Este movimiento es “plano” y no editable.');
-  // reconstruye ref a partir de la ruta
-  const seg = p.split('/').filter(Boolean);
-  // seg: ['grupos', gid, 'finanzas', 'movs', mid]
-  return doc(db, ...seg);
+// ——— Filtros y render ———
+function applyFilters(items) {
+  const f = state.filtros;
+  const byEstado = f.estado;
+  const byTipo   = f.tipo;
+  const byCoord  = norm(f.coord);
+  const byGrupo  = norm(f.grupo);
+
+  return items.filter(x => {
+    if (byTipo && x.tipo !== byTipo) return false;
+
+    const e = x.estado;
+    if (byEstado === 'pagables') {
+      const pagable = (e === 'aprobado') && (x.pago !== 'pagado');
+      if (!pagable) return false;
+    } else if (byEstado && e !== byEstado) {
+      return false;
+    }
+
+    if (byCoord && !norm(x.coordinador).includes(byCoord)) return false;
+
+    if (byGrupo) {
+      const blob = norm([x.grupoId, x.nombreGrupo, x.numeroNegocio].join(' '));
+      if (!blob.includes(byGrupo)) return false;
+    }
+
+    return true;
+  });
 }
 
-/* -------------------------------------------------------------
-   7) Arranque + UI
-   ------------------------------------------------------------- */
-function wireUI(){
-  $btnAplicar && $btnAplicar.addEventListener('click', () => renderTable());
-  [$selTipo, $iCoord, $iGrupo, $selEstado].forEach(n=>{
-    n && n.addEventListener('change', () => renderTable());
-    n && n.addEventListener('input',  () => renderTable());
-  });
-  $btnMas && $btnMas.addEventListener('click', async () => {
-    await fetchMore();
-  });
-}
+function renderTable() {
+  const tbody = document.querySelector('#tblFinanzas tbody');
+  const resumen = document.getElementById('resumen');
+  const pagInfo = document.getElementById('pagInfo');
 
-onAuthStateChanged(auth, async (user) => {
-  if (!user){ location.href = 'login.html'; return; }
-  try{
-    wireUI();
-    await fetchFirstPage();   // ← clave: usa collectionGroup('finanzas')
-  }catch(e){
-    console.error('Error cargando revisión financiera:', e);
-    alert('Error: ' + (e?.message || e));
+  const filtered = applyFilters(state.rawItems);
+
+  tbody.innerHTML = '';
+  if (!filtered.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 8;
+    td.innerHTML = '<div class="muted">Sin movimientos para este criterio.</div>';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  } else {
+    const frag = document.createDocumentFragment();
+    filtered.forEach(x => {
+      const tr = document.createElement('tr');
+
+      const tdTipo = document.createElement('td');
+      tdTipo.textContent = (x.tipo || '—').toUpperCase();
+
+      const tdGrupo = document.createElement('td');
+      tdGrupo.innerHTML = `
+        <div class="mono">${x.grupoId}</div>
+        <span class="small">${(x.numeroNegocio ? x.numeroNegocio + ' · ' : '')}${(x.nombreGrupo || '')}</span>`;
+
+      const tdCoord = document.createElement('td');
+      tdCoord.textContent = (x.coordinador || '').toLowerCase();
+
+      const tdMonto = document.createElement('td');
+      tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
+
+      const tdR1 = document.createElement('td');
+      tdR1.innerHTML = `<span class="badge ${x.rev1 || 'pendiente'}">${(x.rev1 || 'pendiente').toUpperCase()}</span>`;
+
+      const tdR2 = document.createElement('td');
+      tdR2.innerHTML = `<span class="badge ${x.rev2 || 'pendiente'}">${(x.rev2 || 'pendiente').toUpperCase()}</span>`;
+
+      const tdEstado = document.createElement('td');
+      tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
+
+      const tdPago = document.createElement('td');
+      tdPago.textContent = (x.pago || '—').toUpperCase();
+
+      tr.appendChild(tdTipo);
+      tr.appendChild(tdGrupo);
+      tr.appendChild(tdCoord);
+      tr.appendChild(tdMonto);
+      tr.appendChild(tdR1);
+      tr.appendChild(tdR2);
+      tr.appendChild(tdEstado);
+      tr.appendChild(tdPago);
+
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
   }
-});
 
-/* -------------------------------------------------------------
-   8) Debug helpers (consola)
-   ------------------------------------------------------------- */
+  resumen.textContent = `Mostrando ${filtered.length} / cargados ${state.rawItems.length}`;
+  pagInfo.textContent = state.paging.reachedEnd
+    ? 'Sin más páginas.'
+    : (state.paging.loading ? 'Cargando…' : 'Listo.');
+}
+
+// ——— UI ———
+function wireUI() {
+  // Tabs estado
+  const tabs = document.getElementById('stateTabs');
+  tabs.addEventListener('click', (ev) => {
+    const btn = ev.target.closest('button[data-estado]');
+    if (!btn) return;
+    tabs.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filtros.estado = btn.getAttribute('data-estado') || '';
+    renderTable();
+  });
+
+  // Tipo, coord, grupo
+  document.getElementById('filtroTipo').onchange = (e) => { state.filtros.tipo = e.target.value || ''; renderTable(); };
+  document.getElementById('filtroCoord').oninput = (e) => { state.filtros.coord = e.target.value || ''; };
+  document.getElementById('filtroGrupo').oninput = (e) => { state.filtros.grupo = e.target.value || ''; };
+
+  document.getElementById('btnAplicar').onclick = () => renderTable();
+
+  document.getElementById('btnRecargar').onclick = async () => {
+    state.paging = { pageSize: 50, lastDoc: null, loading: false, reachedEnd: false };
+    state.rawItems = [];
+    await fetchFinancePage(true);
+  };
+
+  document.getElementById('btnMas').onclick = async () => {
+    await fetchFinancePage(false);
+  };
+}
+
+// ——— Consola de diagnóstico ———
 window.__finz = {
-  list: () => LIST,
-  groupsCache: () => CACHE_GROUPS,
-  probeRoot: async (name) => {
-    const s = await getDocs(query(collection(db, name), limit(1)));
-    return { name, ok: !s.empty };
+  async probeSub(kind) {
+    try {
+      if (kind === 'finanzas') {
+        const snap = await getDocs(query(collectionGroup(db, 'finanzas'), limit(1)));
+        return { ok: snap.size > 0, size: snap.size };
+      }
+      if (kind === 'movs' || kind === 'movimientos') {
+        // muestreo: toma 3 contenedores y verifica subcolección
+        const cs = await getDocs(query(collectionGroup(db, 'finanzas'), limit(3)));
+        for (const d of cs.docs) {
+          const gid = d.ref.parent.parent.id;
+          const col = collection(db, 'grupos', gid, 'finanzas', d.id, kind);
+          const ss = await getDocs(query(col, limit(1)));
+          if (ss.size) return { ok:true, where:`grupos/${gid}/finanzas/${d.id}/${kind}` };
+        }
+        return { ok:false };
+      }
+      return { ok:false, error:'kind desconocido' };
+    } catch (e) {
+      return { ok:false, error: e?.message || String(e) };
+    }
   },
-  probeSub: async (name) => {
-    const s = await getDocs(query(collectionGroup(db, name), limit(1)));
-    return { name, ok: !s.empty };
+  list() {
+    return {
+      loaded: state.rawItems.length,
+      sample: state.rawItems.slice(0, 5)
+    };
   }
 };
+
+// ——— Arranque ———
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location = 'login.html';
+    return;
+  }
+  try {
+    document.querySelector('#btn-logout')?.addEventListener('click', () =>
+      signOut(auth).then(() => location = 'login.html')
+    );
+  } catch (_) {}
+
+  wireUI();
+  await preloadCatalogs();
+  await fetchFinancePage(true);
+});
