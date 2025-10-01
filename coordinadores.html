@@ -139,6 +139,55 @@
       max-height: 82vh;     /* evita que se salga verticalmente */
     }
 
+    /* === Ajuste de anchos en la tabla del modal (NOMBRE x2, CORREO x1.5) === */
+    #tabla-coords{
+      width: 100%;
+      table-layout: fixed;
+    }
+    
+    /* Columna # (índice) */
+    #tabla-coords thead th:nth-child(1),
+    #tabla-coords tbody td:nth-child(1){
+      width: 48px;
+    }
+    
+    /* 2) NOMBRE ≈ 48% (doble aprox de lo que tenías) */
+    #tabla-coords thead th:nth-child(2),
+    #tabla-coords tbody td:nth-child(2){
+      width: 48%;
+    }
+    
+    /* 3) RUT ≈ 8% */
+    #tabla-coords thead th:nth-child(3),
+    #tabla-coords tbody td:nth-child(3){
+      width: 8%;
+    }
+    
+    /* 4) FECHA NAC. ≈ 8% */
+    #tabla-coords thead th:nth-child(4),
+    #tabla-coords tbody td:nth-child(4){
+      width: 8%;
+    }
+    
+    /* 5) TELÉFONO ≈ 10% */
+    #tabla-coords thead th:nth-child(5),
+    #tabla-coords tbody td:nth-child(5){
+      width: 10%;
+    }
+    
+    /* 6) CORREO ≈ 26%  (≈50% más que ~17% típico) */
+    #tabla-coords thead th:nth-child(6),
+    #tabla-coords tbody td:nth-child(6){
+      width: 26%;
+    }
+    
+    /* Inputs al 100% del ancho de su celda */
+    #tabla-coords input[type="text"]{
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+
   </style>
 </head>
 <body>
