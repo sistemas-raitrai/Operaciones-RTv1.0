@@ -1694,30 +1694,32 @@ async function guardarSet(i){
       const keyNow  = `${s._ownerCoordId}/${s.id}`;
       const prevSet = PREV.sets.get(keyNow);
 
-      if (!prevSet || !sameArr(prevSet.viajes, viajes) || !prevSet.confirmado){
-        const est = normalizeEstado(s.estadoCoord);
-         ops.push(b=> b.set(conjRef, {
-           viajes,
-           confirmado: true,
-           estadoCoord: est,
-           meta:{ actualizadoEn:nowTS }
-         }, { merge:true }));
+      const est = normalizeEstado(s.estadoCoord);
+      if (!prevSet || !sameArr(prevSet.viajes, viajes) || !prevSet.confirmado || prevSet.estadoCoord !== est){
+        ops.push(b=> b.set(conjRef, {
+          viajes,
+          confirmado: true,
+          estadoCoord: est,
+          meta:{ actualizadoEn:nowTS }
+        }, { merge:true }));
       }
 
       const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
-      
+
+      // ✅ ACTUALIZAR CADA GRUPO DEL SET
+      for (const gid of viajes){
         const prevG = PREV.grupos.get(gid)||{};
-        if (prevG.conjuntoId !== s.id || prevG.coordinadorId !== s.coordinadorId || prevG.coordinador !== coordNombre){
-            ops.push(b=> b.update(doc(db,'grupos', gid), {
-              conjuntoId: s.id,
-              coordinador: coordNombre,
-              coordinadorId: s.coordinadorId,
-              coordEstado: est
-            }));
+        if (prevG.conjuntoId !== s.id || prevG.coordinadorId !== s.coordinadorId || prevG.coordinador !== coordNombre || prevG.coordEstado !== est){
+          ops.push(b=> b.update(doc(db,'grupos', gid), {
+            conjuntoId: s.id,
+            coordinador: coordNombre,
+            coordinadorId: s.coordinadorId,
+            coordEstado: est
+          }));
         }
       }
 
-      // Limpia grupos que antes estaban en este mismo set y salieron
+      // Limpiar grupos que antes estaban en este mismo set y salieron
       if (prevSet){
         for (const gid of prevSet.viajes){
           if (!viajes.includes(gid)){
@@ -1736,14 +1738,14 @@ async function guardarSet(i){
           ops.push(b=> b.delete(doc(db,'coordinadores', owner, 'conjuntos', s.id)));
         }
       }
-         for (const gid of viajes){
-           const prevG = PREV.grupos.get(gid)||{};
-           if (prevG.conjuntoId){
-             ops.push(b=> b.update(doc(db,'grupos', gid), {
-               conjuntoId:null, coordinador:null, coordinadorId:null, coordEstado:null
-             }));
-           }
-         }
+      for (const gid of viajes){
+        const prevG = PREV.grupos.get(gid)||{};
+        if (prevG.conjuntoId){
+          ops.push(b=> b.update(doc(db,'grupos', gid), {
+            conjuntoId:null, coordinador:null, coordinadorId:null, coordEstado:null
+          }));
+        }
+      }
     }
 
     await commit(ops);
@@ -1753,10 +1755,10 @@ async function guardarSet(i){
       const prev = PREV.grupos.get(g.id) || {};
       PREV.grupos.set(g.id, {
         aliasGrupo: g.aliasGrupo || null,
-        // si se confirmó, queda marcado; si se desconfirmó y este set era el dueño previo, limpia
         conjuntoId: (s.confirmado && s.coordinadorId) ? s.id : (prev.conjuntoId === s.id ? null : prev.conjuntoId),
         coordinadorId: (s.confirmado && s.coordinadorId) ? s.coordinadorId : (prev.conjuntoId === s.id ? null : prev.coordinadorId),
         coordinador: (s.confirmado && s.coordinadorId) ? (COORDS.find(c=>c.id===s.coordinadorId)?.nombre||null) : (prev.conjuntoId === s.id ? null : prev.coordinador),
+        coordEstado: (s.confirmado && s.coordinadorId) ? normalizeEstado(s.estadoCoord) : (prev.conjuntoId === s.id ? null : prev.coordEstado),
       });
     });
     if (s._ownerCoordId && s.id){
