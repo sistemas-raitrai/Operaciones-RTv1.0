@@ -55,6 +55,21 @@ const FILTER_SETS   = { day: '' };   // día exacto para asignados (SETS)
 const FILTER_LIBRES = { day: '' };   // día exacto para libres
 const SEARCH_LIBRES = { tokens: [] };// buscador para libres
 
+/* =========================================================
+   Triestado aceptación del coordinador (SET-level)
+   ========================================================= */
+const ESTADO_VALUES = ['pendiente','aprobado','rechazado'];
+const normalizeEstado = (v) => {
+  const x = (v||'').toString().toLowerCase();
+  return ESTADO_VALUES.includes(x) ? x : 'pendiente';
+};
+const nextEstado = (v) => {
+  const i = ESTADO_VALUES.indexOf(normalizeEstado(v));
+  return ESTADO_VALUES[(i+1) % ESTADO_VALUES.length];
+};
+const estadoIcon  = (v) => ({pendiente:'⏳', aprobado:'✅', rechazado:'⛔'})[normalizeEstado(v)];
+const estadoLabel = (v) => ({pendiente:'Pendiente', aprobado:'Aprobado', rechazado:'Rechazado'})[normalizeEstado(v)];
+
 let swapMode  = false;
 let swapFirst = null;
 
@@ -327,9 +342,11 @@ async function loadSets(){
         viajes: viajes.slice(),
         coordinadorId,
         confirmado: !!x.confirmado,
+        estadoCoord: normalizeEstado(x.estadoCoord || 'pendiente'),
         alertas: [],
         _ownerCoordId: coordinadorId
       });
+
     });
     L('A) conjuntos mapeados:', mapByConj.size);
     console.groupEnd();
@@ -347,10 +364,15 @@ async function loadSets(){
           const hit = COORDS.find(c => (c.nombre||'').trim().toLowerCase() === wanted);
           if (hit) coordId = hit.id;
         }
-        mapByConj.set(k, {
-          id: k, viajes: [], coordinadorId: coordId, confirmado: true, alertas: [],
-          _ownerCoordId: coordId || null
-        });
+         mapByConj.set(k, {
+           id: k,
+           viajes: [],
+           coordinadorId: coordId,
+           confirmado: true,
+           estadoCoord: 'pendiente', // default al reconstruir
+           alertas: [],
+           _ownerCoordId: coordId || null
+         });
         adds++;
       }
       const S = mapByConj.get(k);
@@ -398,11 +420,12 @@ async function loadSets(){
         const owner = s._ownerCoordId || s.coordinadorId || null;
         const sid   = s.id || null;
         if (owner && sid) {
-          PREV.sets.set(`${owner}/${sid}`, {
-            viajes    : (s.viajes||[]).slice(),
-            confirmado: !!s.confirmado,
-            owner
-          });
+            PREV.sets.set(`${owner}/${sid}`, {
+              viajes    : (s.viajes||[]).slice(),
+              confirmado: !!s.confirmado,
+              estadoCoord: normalizeEstado(s.estadoCoord || 'pendiente'),
+              owner
+            });
         }
       });
 
@@ -855,8 +878,14 @@ function renderSets(){
             <button class="btn small" data-addv="${idx}">Agregar viaje</button>
             <button class="btn small" data-sugerirc="${idx}">Sugerir coord</button>
             <button class="btn small ${s.confirmado?'secondary':''}" data-confirm="${idx}">${s.confirmado?'Desconfirmar':'Confirmar'}</button>
+            
+            <button class="btn small" data-estado="${idx}" title="Estado: ${estadoLabel(s.estadoCoord||'pendiente')}">
+              ${estadoIcon(s.estadoCoord||'pendiente')} ${estadoLabel(s.estadoCoord||'pendiente')}
+            </button>
+            
             <button class="btn small" data-saveone="${idx}">💾 Guardar</button>
             <button class="btn small" data-delset="${idx}">Eliminar</button>
+
           </div>
         </div>
         <div class="bd">
@@ -874,7 +903,12 @@ function renderSets(){
     inp.onchange=()=>{ const g=ID2GRUPO.get(inp.dataset.alias); if(g){ g.aliasGrupo=inp.value; } };
   });
   elWrapSets.querySelectorAll('button[data-del]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.set;   SETS[i].viajes = SETS[i].viajes.filter(id => id !== btn.dataset.del); refreshSets(); };
+    btn.onclick=()=>{ 
+     const i=+btn.dataset.set;   
+     SETS[i].viajes = SETS[i].viajes.filter(id => id !== btn.dataset.del); 
+     SETS[i].estadoCoord='pendiente';
+     refreshSets(); 
+   };
   });
   elWrapSets.querySelectorAll('button[data-move]').forEach(btn=>{
     btn.onclick=()=>{ const i=+btn.dataset.set; moverViajeAotroConjunto(btn.dataset.move,i); };
@@ -889,10 +923,16 @@ function renderSets(){
     btn.onclick=()=>sugerirCoordinador(+btn.dataset.sugerirc);
   });
   elWrapSets.querySelectorAll('button[data-confirm]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.confirm; SETS[i].confirmado=!SETS[i].confirmado; refreshSets(); };
+    btn.onclick=()=>{ 
+     const i=+btn.dataset.confirm; 
+     const newVal = !SETS[i].confirmado; 
+     SETS[i].confirmado = newVal; 
+     if (!newVal) SETS[i].estadoCoord = 'pendiente';
+     refreshSets(); 
+   };
   });
   elWrapSets.querySelectorAll('select[data-coord]').forEach(sel=>{
-    sel.onchange=()=>{ const i=+sel.dataset.coord; SETS[i].coordinadorId = sel.value||null; refreshSets(); };
+    sel.onchange=()=>{ const i=+sel.dataset.coord; SETS[i].coordinadorId = sel.value||null; SETS[i].estadoCoord='pendiente'; refreshSets(); };
   });
 
   elWrapSets.querySelectorAll('button[data-swap]').forEach(btn=>{
@@ -903,6 +943,15 @@ function renderSets(){
     btn.onclick = () => guardarSet(+btn.dataset.saveone);
   });
 
+   // Triestado: rotar Pendiente → Aprobado → Rechazado
+   elWrapSets.querySelectorAll('button[data-estado]').forEach(btn=>{
+     btn.onclick = () => {
+       const i = +btn.dataset.estado;
+       const s = SETS[i];
+       s.estadoCoord = nextEstado(s.estadoCoord);
+       refreshSets();
+     };
+   });
 
   document.body.addEventListener('click', e=>{
     if (!e.target.closest('button[data-swap]')){
@@ -1511,12 +1560,15 @@ async function guardarTodo(){
         const viajes = (s.viajes||[]).slice();
         const conjRef = doc(db,'coordinadores', s._ownerCoordId, 'conjuntos', s.id);
 
-        if (!prev || !sameArr(prev.viajes, viajes) || !prev.confirmado){
-          ops.push(b=> b.set(conjRef, {
-            viajes, confirmado:true,
-            meta: { actualizadoEn: nowTS, ...(s._isNew ? { creadoEn: nowTS } : {}) }
-          }, { merge:true }));
-        }
+         const est = normalizeEstado(s.estadoCoord);
+         if (!prev || !sameArr(prev.viajes, viajes) || !prev.confirmado || prev.estadoCoord !== est){
+           ops.push(b=> b.set(conjRef, {
+             viajes,
+             confirmado: true,
+             estadoCoord: est,
+             meta: { actualizadoEn: nowTS, ...(s._isNew ? { creadoEn: nowTS } : {}) }
+           }, { merge:true }));
+         }
 
         const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
         for (const gid of viajes){
@@ -1525,7 +1577,8 @@ async function guardarTodo(){
             ops.push(b=> b.update(doc(db,'grupos', gid), {
               conjuntoId: s.id,
               coordinador: coordNombre,
-              coordinadorId: s.coordinadorId
+              coordinadorId: s.coordinadorId,
+              coordEstado: est
             }));
           }
           touchedGroupIds.add(gid);
@@ -1545,7 +1598,7 @@ async function guardarTodo(){
           const prevG = PREV.grupos.get(gid) || {};
           if (prevG.conjuntoId){
             ops.push(b=> b.update(doc(db,'grupos', gid), {
-              conjuntoId: null, coordinador: null, coordinadorId: null
+              conjuntoId: null, coordinador: null, coordinadorId: null, coordEstado: null
             }));
           }
           touchedGroupIds.add(gid);
@@ -1563,7 +1616,7 @@ async function guardarTodo(){
     for (const [gid, prevG] of PREV.grupos.entries()){
       if (prevG.conjuntoId && !touchedGroupIds.has(gid)){
         ops.push(b=> b.update(doc(db,'grupos', gid), {
-          conjuntoId: null, coordinador: null, coordinadorId: null
+          conjuntoId: null, coordinador: null, coordinadorId: null, coordEstado: null
         }));
       }
     }
@@ -1585,9 +1638,12 @@ async function guardarTodo(){
     SETS.forEach(s=>{
       const owner = s._ownerCoordId || s.coordinadorId || null;
       if (owner && s.id){
-        PREV.sets.set(`${owner}/${s.id}`, {
-          viajes:(s.viajes||[]).slice(), confirmado:!!s.confirmado, owner
-        });
+         PREV.sets.set(`${owner}/${s.id}`, {
+           viajes:(s.viajes||[]).slice(),
+           confirmado:!!s.confirmado,
+           estadoCoord: normalizeEstado(s.estadoCoord),
+           owner
+         });
       }
     });
 
@@ -1639,16 +1695,25 @@ async function guardarSet(i){
       const prevSet = PREV.sets.get(keyNow);
 
       if (!prevSet || !sameArr(prevSet.viajes, viajes) || !prevSet.confirmado){
-        ops.push(b=> b.set(conjRef, { viajes, confirmado:true, meta:{ actualizadoEn:nowTS } }, { merge:true }));
+        const est = normalizeEstado(s.estadoCoord);
+         ops.push(b=> b.set(conjRef, {
+           viajes,
+           confirmado: true,
+           estadoCoord: est,
+           meta:{ actualizadoEn:nowTS }
+         }, { merge:true }));
       }
 
       const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
-      for (const gid of viajes){
+      
         const prevG = PREV.grupos.get(gid)||{};
         if (prevG.conjuntoId !== s.id || prevG.coordinadorId !== s.coordinadorId || prevG.coordinador !== coordNombre){
-          ops.push(b=> b.update(doc(db,'grupos', gid), {
-            conjuntoId: s.id, coordinador: coordNombre, coordinadorId: s.coordinadorId
-          }));
+            ops.push(b=> b.update(doc(db,'grupos', gid), {
+              conjuntoId: s.id,
+              coordinador: coordNombre,
+              coordinadorId: s.coordinadorId,
+              coordEstado: est
+            }));
         }
       }
 
@@ -1657,7 +1722,7 @@ async function guardarSet(i){
         for (const gid of prevSet.viajes){
           if (!viajes.includes(gid)){
             ops.push(b=> b.update(doc(db,'grupos', gid), {
-              conjuntoId:null, coordinador:null, coordinadorId:null
+              conjuntoId:null, coordinador:null, coordinadorId:null, coordEstado:null
             }));
           }
         }
@@ -1671,14 +1736,14 @@ async function guardarSet(i){
           ops.push(b=> b.delete(doc(db,'coordinadores', owner, 'conjuntos', s.id)));
         }
       }
-      for (const gid of viajes){
-        const prevG = PREV.grupos.get(gid)||{};
-        if (prevG.conjuntoId){
-          ops.push(b=> b.update(doc(db,'grupos', gid), {
-            conjuntoId:null, coordinador:null, coordinadorId:null
-          }));
-        }
-      }
+         for (const gid of viajes){
+           const prevG = PREV.grupos.get(gid)||{};
+           if (prevG.conjuntoId){
+             ops.push(b=> b.update(doc(db,'grupos', gid), {
+               conjuntoId:null, coordinador:null, coordinadorId:null, coordEstado:null
+             }));
+           }
+         }
     }
 
     await commit(ops);
@@ -1695,7 +1760,12 @@ async function guardarSet(i){
       });
     });
     if (s._ownerCoordId && s.id){
-      PREV.sets.set(`${s._ownerCoordId}/${s.id}`, { viajes: (s.viajes||[]).slice(), confirmado: !!s.confirmado, owner: s._ownerCoordId });
+      PREV.sets.set(`${s._ownerCoordId}/${s.id}`, {
+        viajes: (s.viajes||[]).slice(),
+        confirmado: !!s.confirmado,
+        estadoCoord: normalizeEstado(s.estadoCoord),
+        owner: s._ownerCoordId
+      });
     }
 
     console.log(`guardarSet[${i}] OK · ops=${ops.length}`);
