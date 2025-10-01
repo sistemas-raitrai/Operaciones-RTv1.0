@@ -143,6 +143,8 @@ async function loadCoordinadores(){
         id:d.id,
         nombre:(x.nombre||'').trim(),
         rut:(x.rut||'').trim(),
+        // ← NUEVO
+        fechaNacimiento: asISO(x.fechaNacimiento) || null,
         telefono:(x.telefono||'').trim(),
         correo:(x.correo||'').trim().toLowerCase(),
         destinos: cleanDestinos(x.destinos || x.destinosAptos || []),
@@ -494,7 +496,14 @@ btnCloseModal?.addEventListener('click', closeModal);
 btnCerrar?.addEventListener('click', closeModal);
 btnGuardarCoords?.addEventListener('click', ()=>withBusy(btnGuardarCoords, 'Guardando…', saveCoordsModal, 'Guardar coordinadores', '✅ Guardado'));
 btnAddCoord?.addEventListener('click', ()=>{
-  COORDS.unshift({nombre:'', rut:'', telefono:'', correo:'', destinos:[], disponibilidad:[], _isNew:true});
+  COORDS.unshift({
+    nombre:'', rut:'',
+    // ← NUEVO
+    fechaNacimiento: null,
+    telefono:'', correo:'',
+    destinos:[], disponibilidad:[],
+    _isNew:true
+  });
   renderCoordsTable(); setTimeout(initPickers,10);
 });
 btnAddLote?.addEventListener('click', ()=> inputExcel.click());
@@ -1202,16 +1211,18 @@ async function saveOneCoord(i){
   const nombre=(c.nombre||'').trim();
   if (!nombre){ alert('Debe indicar nombre.'); return; }
 
-  const base = {
-    nombre,
-    rut:(c.rut||'').replace(/\s+/g,'').toUpperCase(),
-    telefono:(c.telefono||'').trim(),
-    correo:(c.correo||'').trim().toLowerCase(),
-    destinos: cleanDestinos(c.destinos),
-    disponibilidad: cleanRanges(c.disponibilidad),
-    activo:(c.activo!==false),
-    notas:(c.notas||'').trim(),
-  };
+   const base = {
+     nombre,
+     rut:(c.rut||'').replace(/\s+/g,'').toUpperCase(),
+     // ← NUEVO
+     fechaNacimiento: asISO(c.fechaNacimiento) || null,
+     telefono:(c.telefono||'').trim(),
+     correo:(c.correo||'').trim().toLowerCase(),
+     destinos: cleanDestinos(c.destinos),
+     disponibilidad: cleanRanges(c.disponibilidad),
+     activo:(c.activo!==false),
+     notas:(c.notas||'').trim(),
+   };
 
   let id = c.id || await findCoordId({ rut: base.rut, nombre: base.nombre });
   let isNew = false;
@@ -1391,12 +1402,23 @@ function renderCoordsTable(){
 
     tbodyCoords.insertAdjacentHTML('beforeend',`
       <tr>
-        <td style="text-align:center">${visibleIdx+1}</td>
-        <td><input type="text" data-f="nombre"   data-i="${i}" value="${c.nombre||''}"   placeholder="Nombre"></td>
-        <td><input type="text" data-f="rut"      data-i="${i}" value="${c.rut||''}"      placeholder="RUT"></td>
-        <td><input type="text" data-f="telefono" data-i="${i}" value="${c.telefono||''}" placeholder="Teléfono"></td>
-        <td><input type="text" data-f="correo"   data-i="${i}" value="${c.correo||''}"   placeholder="Correo"></td>
-
+         <td style="text-align:center">${visibleIdx+1}</td>
+         <td><input type="text" data-f="nombre"   data-i="${i}" value="${c.nombre||''}"   placeholder="Nombre"></td>
+         <td><input type="text" data-f="rut"      data-i="${i}" value="${c.rut||''}"      placeholder="RUT"></td>
+         
+         <!-- ← NUEVO: FECHA NACIMIENTO (después del RUT) -->
+         <td>
+           <input
+             type="text"
+             class="picker-birth"
+             data-i="${i}"
+             value="${c.fechaNacimiento ? fmtDMY(c.fechaNacimiento) : ''}"
+             placeholder="dd/mm/aaaa"
+             readonly>
+         </td>
+         
+         <td><input type="text" data-f="telefono" data-i="${i}" value="${c.telefono||''}" placeholder="Teléfono"></td>
+         <td><input type="text" data-f="correo"   data-i="${i}" value="${c.correo||''}"   placeholder="Correo"></td>
         <td>
           <select multiple size="3" class="sel-dest" data-i="${i}" style="min-width:180px">
             ${optsDest}
@@ -1477,23 +1499,22 @@ function initPickers(){
   if (window.flatpickr && window.flatpickr.l10ns && window.flatpickr.l10ns.es){
     flatpickr.localize(flatpickr.l10ns.es);
   }
-  tbodyCoords?.querySelectorAll('.picker-range')?.forEach(inp=>{
-    if (inp._flatpickr) inp._flatpickr.destroy();
-    flatpickr(inp, {
-      mode:'range',
-      dateFormat:'d/m/Y',
-      allowInput:true,
-      onClose:(dates)=>{
-        if (dates.length===2){
-          const inicio = toISO(dates[0]);
-          const fin    = toISO(dates[1]);
-          const i=+inp.dataset.cid, j=+inp.dataset.ridx;
-          COORDS[i].disponibilidad[j]={inicio, fin};
-          inp.value = `${fmtDMY(inicio)} a ${fmtDMY(fin)}`;
-        }
-      }
-    });
-  });
+   // ← NUEVO: datepicker para fecha de nacimiento
+   tbodyCoords?.querySelectorAll('.picker-birth')?.forEach(inp=>{
+     if (inp._flatpickr) inp._flatpickr.destroy();
+     flatpickr(inp, {
+       dateFormat:'d/m/Y',
+       allowInput:true,
+       onClose:(dates)=>{
+         const i = +inp.dataset.i;
+         if (dates.length===1){
+           const iso = toISO(dates[0]);      // "YYYY-MM-DD"
+           COORDS[i].fechaNacimiento = iso;
+           inp.value = fmtDMY(iso);          // "dd/mm/aaaa"
+         }
+       }
+     });
+   });
 }
 
 /* =========================================================
@@ -1820,7 +1841,12 @@ function handleExcel(evt){
             c.destinos = cleanDestinos([...(c.destinos||[]), ...destinosXLS]);
           }
         } else {
-          c = { nombre, rut, telefono, correo, destinos:destinosXLS, disponibilidad:[], _isNew:true };
+          c = {
+           nombre, rut, telefono, correo,
+           // ← NUEVO: intenta parsear columna "Fecha Nacimiento"
+           fechaNacimiento: asISO(r['Fecha Nacimiento'] || r['Fecha_nacimiento'] || r['fechaNacimiento']) || null,
+           destinos:destinosXLS, disponibilidad:[], _isNew:true
+         };
           COORDS.unshift(c);
           byName.set(nombre.toUpperCase(), c);
           if (rut) byRut.set(rut, c);
