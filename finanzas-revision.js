@@ -1,15 +1,13 @@
-/* Revisión financiera (robusta multiesquema)
-   Lee movimientos en: grupos/{gid}/finanzas/*
-   - Subcolecciones: movs | movimientos
-   - Arrays: items | movs | movimientos dentro del doc
-   Ignora: finanzas/summary (se usa solo para cierre)
+/* Revisión financiera (robusta)
+   Lee movimientos de gastos/abonos en múltiples esquemas:
+   - grupos/{gid}/finanzas/{doc}/(movs|movimientos|gastos|abonos)/*
+   - grupos/{gid}/finanzas/{doc} con arrays (items|movs|movimientos|gastos|abonos)
+   - Fallback: collectionGroup('gastos') y collectionGroup('abonos')
+   Ignora finanzas/summary (cierre).
 */
 
 import { app, db } from './firebase-init.js';
-import {
-  getAuth, onAuthStateChanged, signOut
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, collectionGroup, doc, getDoc, getDocs, query,
   where, orderBy, limit, startAfter
@@ -17,23 +15,20 @@ import {
 
 const auth = getAuth(app);
 
-// ——— Estado local ———
+// ------------------------- Estado -------------------------
 const state = {
-  paging: { pageSize: 50, lastDoc: null, loading: false, reachedEnd: false },
-  rawItems: [], // items crudos normalizados
+  paging: { lastDoc: null, loading: false, reachedEnd: false },
+  rawItems: [],
   filtros: { estado:'', tipo:'', coord:'', grupo:'' },
   caches: { grupos: new Map(), coords: [] },
 };
 
-// ——— Helpers ———
+// ------------------------- Utils --------------------------
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-const money = (n) => {
-  const v = Number(n || 0);
-  return isFinite(v) ? v.toLocaleString('es-CL', { style:'currency', currency:'CLP', maximumFractionDigits:0 }) : '—';
-};
+const money = n => (isFinite(+n) ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}) : '—');
 const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
-// Derivar estado a partir de dos revisiones si no hay estado explícito
+// Deriva estado desde revisiones si no hay campo explícito
 function deriveEstado(x) {
   const s = (x.estado || '').toString().toLowerCase();
   if (s) return s;
@@ -44,16 +39,21 @@ function deriveEstado(x) {
   return 'pendiente';
 }
 
-function toItem(grupoId, gDoc, x) {
-  // Normalización tolerante
-  const tipo = (x.tipo || x.type || '').toString().toLowerCase() || (Number(x.monto || x.importe || x.valor || 0) >= 0 ? 'gasto' : 'abono');
-  const monto = Number(coalesce(x.monto, x.importe, x.valor, 0));
+function toItem(grupoId, gDoc, x, hintedTipo='') {
+  const brutoMonto = coalesce(x.monto, x.importe, x.valor, x.total, 0);
+  const monto = Number(brutoMonto) || 0;
+
+  // Si viene “abono” con monto positivo, lo mantenemos como abono.
+  // Si no hay tipo, asumimos: monto >= 0 → gasto; monto < 0 → abono.
+  let tipo = (x.tipo || x.type || hintedTipo || '').toString().toLowerCase();
+  if (!tipo) tipo = (monto < 0 ? 'abono' : 'gasto');
+
   const rev1  = (x.revision1?.estado || x.rev1?.estado || x.rev1 || '').toString().toLowerCase();
   const rev2  = (x.revision2?.estado || x.rev2?.estado || x.rev2 || '').toString().toLowerCase();
   const pago  = (x.pago?.estado || x.pago || '').toString().toLowerCase();
-  const coord = (x.coordinadorEmail || x.coordinador || gDoc?.coordinadorEmail || gDoc?.coordinador?.email || '').toString().toLowerCase();
 
-  const nombreGrupo = coalesce(gDoc?.nombreGrupo, gDoc?.aliasGrupo, '');
+  const coord = (x.coordinadorEmail || x.coordinador || gDoc?.coordinadorEmail || gDoc?.coordinador?.email || '').toString().toLowerCase();
+  const nombreGrupo   = coalesce(gDoc?.nombreGrupo, gDoc?.aliasGrupo, '');
   const numeroNegocio = coalesce(gDoc?.numeroNegocio, gDoc?.numNegocio, gDoc?.idNegocio, grupoId);
 
   return {
@@ -62,16 +62,15 @@ function toItem(grupoId, gDoc, x) {
     nombreGrupo,
     numeroNegocio,
     coordinador: coord,
-    tipo,
-    monto,
-    rev1,
-    rev2,
+    tipo, monto,
+    rev1, rev2,
     estado: deriveEstado({ estado:x.estado, rev1, rev2 }),
     pago,
+    __from: x.__from || ''  // pista de origen para debug
   };
 }
 
-// ——— Carga catálogos para autocompletado ———
+// --------------------- Autocompletados --------------------
 async function preloadCatalogs() {
   try {
     // Grupos
@@ -85,12 +84,11 @@ async function preloadCatalogs() {
         const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, d.id);
         const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, d.id);
         const opt = document.createElement('option');
-        opt.value = `${d.id}`;
+        opt.value = d.id;
         opt.label = `${numero} — ${nombre}`;
         dlG.appendChild(opt);
       });
     }
-
     // Coordinadores
     const dlC = document.getElementById('dl-coords');
     if (dlC) {
@@ -115,28 +113,26 @@ async function preloadCatalogs() {
   }
 }
 
-// ——— Lectura robusta de movimientos ———
+// ------------------ Carga de Finanzas ---------------------
 async function fetchFinancePage(initial=false) {
   if (state.paging.loading || state.paging.reachedEnd) return;
   state.paging.loading = true;
 
   try {
-    const baseQ = collectionGroup(db, 'finanzas');
-    // Traemos en orden por __name__ (sin índice complejo) y paginamos por lotes de contenedores
-    let qFs = query(baseQ, limit(50));
-    if (!initial && state.paging.lastDoc) {
-      qFs = query(baseQ, startAfter(state.paging.lastDoc), limit(50));
-    }
+    // Trae “contenedores” de finanzas por grupos
+    let qFs = query(collectionGroup(db, 'finanzas'), limit(40));
+    if (!initial && state.paging.lastDoc) qFs = query(collectionGroup(db, 'finanzas'), startAfter(state.paging.lastDoc), limit(40));
+
     const snap = await getDocs(qFs);
     if (!snap.size) {
       state.paging.reachedEnd = true;
-      renderTable();
-      return;
+      // Fallback extremo: si no llegó nada aún, intenta CG gastos/abonos sueltos
+      if (!state.rawItems.length) await fallbackScanGastosAbonosCG();
+      renderTable(); return;
     }
 
-    // Para cada doc de finanzas (excepto summary) buscamos subcolecciones y arrays
     for (const d of snap.docs) {
-      state.paging.lastDoc = d; // cursor
+      state.paging.lastDoc = d;
       const fid = d.id;
       const parent = d.ref.parent;         // /grupos/{gid}/finanzas
       const grupoRef = parent.parent;      // /grupos/{gid}
@@ -150,47 +146,79 @@ async function fetchFinancePage(initial=false) {
         state.caches.grupos.set(grupoId, gDoc);
       }
 
-      // omitir summary explícitamente
-      if (fid.toLowerCase() === 'summary') {
-        // (si necesitas, podrías leer flags de cierre aquí)
-        continue;
-      }
+      // omite summary
+      if (fid.toLowerCase() === 'summary') continue;
 
       const fin = d.data() || {};
 
-      // 1) Arrays dentro del doc
-      const arraysInDoc = []
-        .concat(Array.isArray(fin.items) ? fin.items : [])
-        .concat(Array.isArray(fin.movs) ? fin.movs : [])
-        .concat(Array.isArray(fin.movimientos) ? fin.movimientos : []);
+      // ARRAYS DENTRO DEL DOC
+      const arrNames = ['items', 'movs', 'movimientos', 'gastos', 'abonos'];
+      for (const key of arrNames) {
+        const arr = fin?.[key];
+        if (Array.isArray(arr)) {
+          arr.forEach((x, i) => {
+            if (!x || typeof x !== 'object') return;
+            state.rawItems.push(toItem(grupoId, gDoc, { ...x, id: `${fid}#${key}[${i}]`, __from:`docArray:${key}` }, key));
+          });
+        }
+      }
 
-      arraysInDoc.forEach((x, i) => {
-        if (x && typeof x === 'object') state.rawItems.push(toItem(grupoId, gDoc, { ...x, id: `${fid}#${i}` }));
-      });
-
-      // 2) Subcolecciones: movs / movimientos
-      for (const sub of ['movs', 'movimientos']) {
+      // SUBCOLECCIONES
+      for (const sub of ['movs', 'movimientos', 'gastos', 'abonos']) {
         try {
           const sc = collection(db, 'grupos', grupoId, 'finanzas', fid, sub);
           const ds = await getDocs(sc);
           ds.forEach(s => {
             const x = s.data() || {};
-            state.rawItems.push(toItem(grupoId, gDoc, { id:s.id, ...x }));
+            state.rawItems.push(toItem(grupoId, gDoc, { id:s.id, ...x, __from:`subcol:${sub}` }, sub));
           });
         } catch (_) { /* ignore */ }
       }
     }
 
+    // Si igualmente no encontramos nada, intenta fallback con collectionGroup('gastos'/'abonos')
+    if (!state.rawItems.length) await fallbackScanGastosAbonosCG();
+
     renderTable();
   } catch (e) {
     console.error('fetchFinancePage()', e);
-    renderTable(); // al menos refresca vacía con resumen
+    // intenta fallback si todo falló
+    if (!state.rawItems.length) await fallbackScanGastosAbonosCG();
+    renderTable();
   } finally {
     state.paging.loading = false;
   }
 }
 
-// ——— Filtros y render ———
+// Fallback: busca subcolecciones globales “gastos” y “abonos”
+async function fallbackScanGastosAbonosCG() {
+  try {
+    console.warn('[FINZ] Fallback: collectionGroup(gastos|abonos)');
+    for (const sub of ['gastos', 'abonos']) {
+      const cg = await getDocs(query(collectionGroup(db, sub), limit(100)));
+      cg.forEach(d => {
+        // path esperado: grupos/{gid}/finanzas/{doc}/{sub}/{id}
+        try {
+          const subcol = d.ref.parent;              // …/{sub}
+          const finDoc = subcol.parent;             // …/finanzas/{doc}
+          const finCol = finDoc.parent;             // …/finanzas
+          const grpDoc = finCol.parent;             // grupos/{gid}
+          const grupoId = grpDoc.id;
+
+          const gDoc = state.caches.grupos.get(grupoId);
+          const x = d.data() || {};
+          state.rawItems.push(toItem(grupoId, gDoc || {}, { id:d.id, ...x, __from:`CG:${sub}` }, sub));
+        } catch(e) {
+          // Si no tiene esa estructura, lo ignoramos
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('fallbackScanGastosAbonosCG()', e);
+  }
+}
+
+// -------------------- Filtrar & Render --------------------
 function applyFilters(items) {
   const f = state.filtros;
   const byEstado = f.estado;
@@ -201,11 +229,10 @@ function applyFilters(items) {
   return items.filter(x => {
     if (byTipo && x.tipo !== byTipo) return false;
 
-    const e = x.estado;
     if (byEstado === 'pagables') {
-      const pagable = (e === 'aprobado') && (x.pago !== 'pagado');
+      const pagable = (x.estado === 'aprobado') && (x.pago !== 'pagado');
       if (!pagable) return false;
-    } else if (byEstado && e !== byEstado) {
+    } else if (byEstado && x.estado !== byEstado) {
       return false;
     }
 
@@ -215,7 +242,6 @@ function applyFilters(items) {
       const blob = norm([x.grupoId, x.nombreGrupo, x.numeroNegocio].join(' '));
       if (!blob.includes(byGrupo)) return false;
     }
-
     return true;
   });
 }
@@ -266,15 +292,7 @@ function renderTable() {
       const tdPago = document.createElement('td');
       tdPago.textContent = (x.pago || '—').toUpperCase();
 
-      tr.appendChild(tdTipo);
-      tr.appendChild(tdGrupo);
-      tr.appendChild(tdCoord);
-      tr.appendChild(tdMonto);
-      tr.appendChild(tdR1);
-      tr.appendChild(tdR2);
-      tr.appendChild(tdEstado);
-      tr.appendChild(tdPago);
-
+      tr.append(tdTipo, tdGrupo, tdCoord, tdMonto, tdR1, tdR2, tdEstado, tdPago);
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -286,7 +304,7 @@ function renderTable() {
     : (state.paging.loading ? 'Cargando…' : 'Listo.');
 }
 
-// ——— UI ———
+// --------------------------- UI ---------------------------
 function wireUI() {
   // Tabs estado
   const tabs = document.getElementById('stateTabs');
@@ -299,7 +317,6 @@ function wireUI() {
     renderTable();
   });
 
-  // Tipo, coord, grupo
   document.getElementById('filtroTipo').onchange = (e) => { state.filtros.tipo = e.target.value || ''; renderTable(); };
   document.getElementById('filtroCoord').oninput = (e) => { state.filtros.coord = e.target.value || ''; };
   document.getElementById('filtroGrupo').oninput = (e) => { state.filtros.grupo = e.target.value || ''; };
@@ -307,7 +324,7 @@ function wireUI() {
   document.getElementById('btnAplicar').onclick = () => renderTable();
 
   document.getElementById('btnRecargar').onclick = async () => {
-    state.paging = { pageSize: 50, lastDoc: null, loading: false, reachedEnd: false };
+    state.paging = { lastDoc: null, loading: false, reachedEnd: false };
     state.rawItems = [];
     await fetchFinancePage(true);
   };
@@ -317,7 +334,7 @@ function wireUI() {
   };
 }
 
-// ——— Consola de diagnóstico ———
+// -------------------- Consola debug -----------------------
 window.__finz = {
   async probeSub(kind) {
     try {
@@ -325,8 +342,7 @@ window.__finz = {
         const snap = await getDocs(query(collectionGroup(db, 'finanzas'), limit(1)));
         return { ok: snap.size > 0, size: snap.size };
       }
-      if (kind === 'movs' || kind === 'movimientos') {
-        // muestreo: toma 3 contenedores y verifica subcolección
+      if (['movs','movimientos','gastos','abonos'].includes(kind)) {
         const cs = await getDocs(query(collectionGroup(db, 'finanzas'), limit(3)));
         for (const d of cs.docs) {
           const gid = d.ref.parent.parent.id;
@@ -344,17 +360,14 @@ window.__finz = {
   list() {
     return {
       loaded: state.rawItems.length,
-      sample: state.rawItems.slice(0, 5)
+      sample: state.rawItems.slice(0, 10)
     };
   }
 };
 
-// ——— Arranque ———
+// ------------------------- Arranque -----------------------
 onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    location = 'login.html';
-    return;
-  }
+  if (!user) { location = 'login.html'; return; }
   try {
     document.querySelector('#btn-logout')?.addEventListener('click', () =>
       signOut(auth).then(() => location = 'login.html')
@@ -364,4 +377,11 @@ onAuthStateChanged(auth, async (user) => {
   wireUI();
   await preloadCatalogs();
   await fetchFinancePage(true);
+
+  // pista en consola
+  console.log('%c[FINZ] Cargados:', 'color:#0a0', state.rawItems.length);
+  if (!state.rawItems.length) {
+    console.warn('[FINZ] No se encontraron movimientos. Usa:', 
+      "await __finz.probeSub('gastos') / 'abonos' / 'movs' / 'movimientos'");
+  }
 });
