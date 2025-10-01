@@ -1,11 +1,4 @@
-/* Revisión financiera (robusta)
-   Lee movimientos de gastos/abonos en múltiples esquemas:
-   - grupos/{gid}/finanzas/{doc}/(movs|movimientos|gastos|abonos)/*
-   - grupos/{gid}/finanzas/{doc} con arrays (items|movs|movimientos|gastos|abonos)
-   - Fallback: collectionGroup('gastos') y collectionGroup('abonos')
-   Ignora finanzas/summary (cierre).
-*/
-
+/* Revisión financiera – escaneo extendido */
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
@@ -15,7 +8,6 @@ import {
 
 const auth = getAuth(app);
 
-// ------------------------- Estado -------------------------
 const state = {
   paging: { lastDoc: null, loading: false, reachedEnd: false },
   rawItems: [],
@@ -23,12 +15,14 @@ const state = {
   caches: { grupos: new Map(), coords: [] },
 };
 
-// ------------------------- Utils --------------------------
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const money = n => (isFinite(+n) ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}) : '—');
 const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
-// Deriva estado desde revisiones si no hay campo explícito
+const DIRECT_SUBS = ['gastos','abonos','movs','movimientos'];          // dentro de grupos/{gid}/...
+const FIN_SUBS    = ['gastos','abonos','movs','movimientos'];          // dentro de grupos/{gid}/finanzas/{doc}/...
+const ROOT_CANDS  = ['gastos','abonos','movs','movimientos'];          // colecciones raíz (si existen)
+
 function deriveEstado(x) {
   const s = (x.estado || '').toString().toLowerCase();
   if (s) return s;
@@ -43,8 +37,6 @@ function toItem(grupoId, gDoc, x, hintedTipo='') {
   const brutoMonto = coalesce(x.monto, x.importe, x.valor, x.total, 0);
   const monto = Number(brutoMonto) || 0;
 
-  // Si viene “abono” con monto positivo, lo mantenemos como abono.
-  // Si no hay tipo, asumimos: monto >= 0 → gasto; monto < 0 → abono.
   let tipo = (x.tipo || x.type || hintedTipo || '').toString().toLowerCase();
   if (!tipo) tipo = (monto < 0 ? 'abono' : 'gasto');
 
@@ -66,41 +58,38 @@ function toItem(grupoId, gDoc, x, hintedTipo='') {
     rev1, rev2,
     estado: deriveEstado({ estado:x.estado, rev1, rev2 }),
     pago,
-    __from: x.__from || ''  // pista de origen para debug
+    __from: x.__from || ''
   };
 }
 
-// --------------------- Autocompletados --------------------
+// ---------- catálogos mínimos ----------
 async function preloadCatalogs() {
   try {
-    // Grupos
+    const snap = await getDocs(collection(db, 'grupos'));
+    snap.forEach(d => state.caches.grupos.set(d.id, d.data() || {}));
     const dlG = document.getElementById('dl-grupos');
     if (dlG) {
       dlG.innerHTML = '';
-      const snap = await getDocs(collection(db, 'grupos'));
-      snap.forEach(d => {
-        const x = d.data() || {};
-        state.caches.grupos.set(d.id, x);
-        const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, d.id);
-        const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, d.id);
+      state.caches.grupos.forEach((x, id) => {
+        const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, id);
+        const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, id);
         const opt = document.createElement('option');
-        opt.value = d.id;
+        opt.value = id;
         opt.label = `${numero} — ${nombre}`;
         dlG.appendChild(opt);
       });
     }
-    // Coordinadores
     const dlC = document.getElementById('dl-coords');
     if (dlC) {
       dlC.innerHTML = '';
-      const snap = await getDocs(collection(db, 'coordinadores'));
+      const cs = await getDocs(collection(db, 'coordinadores'));
       const seen = new Set();
-      snap.forEach(d => {
+      cs.forEach(d => {
         const x = d.data() || {};
         const email = (coalesce(x.email, x.correo, x.mail, '')).toLowerCase();
-        const nombre = coalesce(x.nombre, x.Nombre, x.coordinador, '');
         if (!email || seen.has(email)) return;
         seen.add(email);
+        const nombre = coalesce(x.nombre, x.Nombre, x.coordinador, '');
         const opt = document.createElement('option');
         opt.value = email;
         opt.label = `${nombre ? (nombre.toUpperCase() + ' — ') : ''}${email}`;
@@ -113,112 +102,114 @@ async function preloadCatalogs() {
   }
 }
 
-// ------------------ Carga de Finanzas ---------------------
-async function fetchFinancePage(initial=false) {
-  if (state.paging.loading || state.paging.reachedEnd) return;
-  state.paging.loading = true;
+// ---------- colecta por grupo ----------
+async function collectFromGroup(grupoId) {
+  const gDoc = state.caches.grupos.get(grupoId) || {};
+  let countBefore = state.rawItems.length;
 
+  // 1) Directo dentro del grupo: grupos/{gid}/(gastos|abonos|movs|movimientos)
+  for (const sub of DIRECT_SUBS) {
+    try {
+      const ds = await getDocs(collection(db, 'grupos', grupoId, sub));
+      ds.forEach(d => {
+        const x = d.data() || {};
+        state.rawItems.push(toItem(grupoId, gDoc, { id:d.id, ...x, __from:`groupSub:${sub}` }, sub));
+      });
+    } catch(_) {}
+  }
+
+  // 2) Estructura finanzas: grupos/{gid}/finanzas/{doc}/...
   try {
-    // Trae “contenedores” de finanzas por grupos
-    let qFs = query(collectionGroup(db, 'finanzas'), limit(40));
-    if (!initial && state.paging.lastDoc) qFs = query(collectionGroup(db, 'finanzas'), startAfter(state.paging.lastDoc), limit(40));
+    const fs = await getDocs(collection(db, 'grupos', grupoId, 'finanzas'));
+    for (const f of fs.docs) {
+      if (f.id.toLowerCase() === 'summary') continue;
+      const fin = f.data() || {};
 
-    const snap = await getDocs(qFs);
-    if (!snap.size) {
-      state.paging.reachedEnd = true;
-      // Fallback extremo: si no llegó nada aún, intenta CG gastos/abonos sueltos
-      if (!state.rawItems.length) await fallbackScanGastosAbonosCG();
-      renderTable(); return;
-    }
-
-    for (const d of snap.docs) {
-      state.paging.lastDoc = d;
-      const fid = d.id;
-      const parent = d.ref.parent;         // /grupos/{gid}/finanzas
-      const grupoRef = parent.parent;      // /grupos/{gid}
-      const grupoId = grupoRef.id;
-
-      // cache de grupo
-      let gDoc = state.caches.grupos.get(grupoId);
-      if (!gDoc) {
-        const g = await getDoc(grupoRef).catch(()=>null);
-        gDoc = g?.exists() ? g.data() : {};
-        state.caches.grupos.set(grupoId, gDoc);
-      }
-
-      // omite summary
-      if (fid.toLowerCase() === 'summary') continue;
-
-      const fin = d.data() || {};
-
-      // ARRAYS DENTRO DEL DOC
-      const arrNames = ['items', 'movs', 'movimientos', 'gastos', 'abonos'];
-      for (const key of arrNames) {
+      // arrays dentro del doc
+      for (const key of ['items','movs','movimientos','gastos','abonos']) {
         const arr = fin?.[key];
         if (Array.isArray(arr)) {
           arr.forEach((x, i) => {
             if (!x || typeof x !== 'object') return;
-            state.rawItems.push(toItem(grupoId, gDoc, { ...x, id: `${fid}#${key}[${i}]`, __from:`docArray:${key}` }, key));
+            state.rawItems.push(toItem(grupoId, gDoc, { ...x, id:`${f.id}#${key}[${i}]`, __from:`docArray:${key}` }, key));
           });
         }
       }
-
-      // SUBCOLECCIONES
-      for (const sub of ['movs', 'movimientos', 'gastos', 'abonos']) {
+      // subcolecciones
+      for (const sub of FIN_SUBS) {
         try {
-          const sc = collection(db, 'grupos', grupoId, 'finanzas', fid, sub);
-          const ds = await getDocs(sc);
-          ds.forEach(s => {
-            const x = s.data() || {};
-            state.rawItems.push(toItem(grupoId, gDoc, { id:s.id, ...x, __from:`subcol:${sub}` }, sub));
+          const ds = await getDocs(collection(db, 'grupos', grupoId, 'finanzas', f.id, sub));
+          ds.forEach(d => {
+            const x = d.data() || {};
+            state.rawItems.push(toItem(grupoId, gDoc, { id:d.id, ...x, __from:`finSub:${sub}` }, sub));
           });
-        } catch (_) { /* ignore */ }
+        } catch(_) {}
+      }
+    }
+  } catch(_) {}
+
+  // 3) Colecciones raíz (si existen) con grupoId == {gid}
+  for (const root of ROOT_CANDS) {
+    try {
+      const qs = await getDocs(query(collection(db, root), where('grupoId','==', grupoId), limit(200)));
+      qs.forEach(d => {
+        const x = d.data() || {};
+        state.rawItems.push(toItem(grupoId, gDoc, { id:d.id, ...x, __from:`root:${root}` }, root));
+      });
+    } catch(_) {}
+  }
+
+  // 4) Último recurso: collectionGroup('finanzas') ya no es requisito, pero si existe, lo miramos 1 sola vez fuera.
+
+  const added = state.rawItems.length - countBefore;
+  return added;
+}
+
+// ---------- carga principal ----------
+async function fetchFinance(initial=false) {
+  if (state.paging.loading) return;
+  state.paging.loading = true;
+  try {
+    // Si el usuario escribió un grupo específico, priorízalo
+    const qg = (state.filtros.grupo || '').trim();
+    const onlyThisGroupId = state.caches.grupos.has(qg) ? qg : null;
+
+    if (onlyThisGroupId) {
+      await collectFromGroup(onlyThisGroupId);
+    } else {
+      // Recorre TODOS los grupos (con límite prudente)
+      const gs = await getDocs(query(collection(db,'grupos'), limit(300)));
+      for (const d of gs.docs) {
+        await collectFromGroup(d.id);
       }
     }
 
-    // Si igualmente no encontramos nada, intenta fallback con collectionGroup('gastos'/'abonos')
-    if (!state.rawItems.length) await fallbackScanGastosAbonosCG();
+    // Extra: si aún no hay nada, prueba una pasada rápida por collectionGroup('finanzas') y sus subcols
+    if (!state.rawItems.length) {
+      try {
+        const snap = await getDocs(query(collectionGroup(db,'finanzas'), limit(30)));
+        for (const f of snap.docs) {
+          if (f.id.toLowerCase() === 'summary') continue;
+          const gid = f.ref.parent.parent.id;
+          // subcolecciones típicas
+          for (const sub of FIN_SUBS) {
+            const ds = await getDocs(collection(db,'grupos',gid,'finanzas',f.id,sub));
+            ds.forEach(d => state.rawItems.push(
+              toItem(gid, state.caches.grupos.get(gid)||{}, { id:d.id, ...(d.data()||{}), __from:`CGfin:${sub}` }, sub)
+            ));
+          }
+        }
+      } catch(_) {}
+    }
 
-    renderTable();
-  } catch (e) {
-    console.error('fetchFinancePage()', e);
-    // intenta fallback si todo falló
-    if (!state.rawItems.length) await fallbackScanGastosAbonosCG();
     renderTable();
   } finally {
     state.paging.loading = false;
+    console.log('%c[FINZ] total items:', 'color:#0a0', state.rawItems.length);
   }
 }
 
-// Fallback: busca subcolecciones globales “gastos” y “abonos”
-async function fallbackScanGastosAbonosCG() {
-  try {
-    console.warn('[FINZ] Fallback: collectionGroup(gastos|abonos)');
-    for (const sub of ['gastos', 'abonos']) {
-      const cg = await getDocs(query(collectionGroup(db, sub), limit(100)));
-      cg.forEach(d => {
-        // path esperado: grupos/{gid}/finanzas/{doc}/{sub}/{id}
-        try {
-          const subcol = d.ref.parent;              // …/{sub}
-          const finDoc = subcol.parent;             // …/finanzas/{doc}
-          const finCol = finDoc.parent;             // …/finanzas
-          const grpDoc = finCol.parent;             // grupos/{gid}
-          const grupoId = grpDoc.id;
-
-          const gDoc = state.caches.grupos.get(grupoId);
-          const x = d.data() || {};
-          state.rawItems.push(toItem(grupoId, gDoc || {}, { id:d.id, ...x, __from:`CG:${sub}` }, sub));
-        } catch(e) {
-          // Si no tiene esa estructura, lo ignoramos
-        }
-      });
-    }
-  } catch (e) {
-    console.warn('fallbackScanGastosAbonosCG()', e);
-  }
-}
-
-// -------------------- Filtrar & Render --------------------
+// ---------- filtros + render ----------
 function applyFilters(items) {
   const f = state.filtros;
   const byEstado = f.estado;
@@ -228,14 +219,12 @@ function applyFilters(items) {
 
   return items.filter(x => {
     if (byTipo && x.tipo !== byTipo) return false;
-
     if (byEstado === 'pagables') {
       const pagable = (x.estado === 'aprobado') && (x.pago !== 'pagado');
       if (!pagable) return false;
     } else if (byEstado && x.estado !== byEstado) {
       return false;
     }
-
     if (byCoord && !norm(x.coordinador).includes(byCoord)) return false;
 
     if (byGrupo) {
@@ -299,14 +288,11 @@ function renderTable() {
   }
 
   resumen.textContent = `Mostrando ${filtered.length} / cargados ${state.rawItems.length}`;
-  pagInfo.textContent = state.paging.reachedEnd
-    ? 'Sin más páginas.'
-    : (state.paging.loading ? 'Cargando…' : 'Listo.');
+  pagInfo.textContent = state.paging.loading ? 'Cargando…' : 'Listo.';
 }
 
-// --------------------------- UI ---------------------------
+// ---------- UI ----------
 function wireUI() {
-  // Tabs estado
   const tabs = document.getElementById('stateTabs');
   tabs.addEventListener('click', (ev) => {
     const btn = ev.target.closest('button[data-estado]');
@@ -324,48 +310,52 @@ function wireUI() {
   document.getElementById('btnAplicar').onclick = () => renderTable();
 
   document.getElementById('btnRecargar').onclick = async () => {
-    state.paging = { lastDoc: null, loading: false, reachedEnd: false };
     state.rawItems = [];
-    await fetchFinancePage(true);
+    await fetchFinance();
   };
 
   document.getElementById('btnMas').onclick = async () => {
-    await fetchFinancePage(false);
+    // en esta versión la carga es “todo de una”, así que solo re-render
+    renderTable();
   };
 }
 
-// -------------------- Consola debug -----------------------
+// ---------- helpers debug en consola ----------
 window.__finz = {
-  async probeSub(kind) {
-    try {
-      if (kind === 'finanzas') {
-        const snap = await getDocs(query(collectionGroup(db, 'finanzas'), limit(1)));
-        return { ok: snap.size > 0, size: snap.size };
+  async scan() {
+    const out = [];
+    const gs = await getDocs(collection(db,'grupos'));
+    for (const d of gs.docs) {
+      const gid = d.id;
+      // directos
+      for (const sub of DIRECT_SUBS) {
+        const ds = await getDocs(query(collection(db,'grupos',gid,sub), limit(1)));
+        if (ds.size) out.push({ where:`grupos/${gid}/${sub}`, count:ds.size });
       }
-      if (['movs','movimientos','gastos','abonos'].includes(kind)) {
-        const cs = await getDocs(query(collectionGroup(db, 'finanzas'), limit(3)));
-        for (const d of cs.docs) {
-          const gid = d.ref.parent.parent.id;
-          const col = collection(db, 'grupos', gid, 'finanzas', d.id, kind);
-          const ss = await getDocs(query(col, limit(1)));
-          if (ss.size) return { ok:true, where:`grupos/${gid}/finanzas/${d.id}/${kind}` };
+      // finanzas
+      const fs = await getDocs(collection(db,'grupos',gid,'finanzas'));
+      for (const f of fs.docs) {
+        if (f.id.toLowerCase()==='summary') continue;
+        for (const sub of FIN_SUBS) {
+          const ds = await getDocs(query(collection(db,'grupos',gid,'finanzas',f.id,sub), limit(1)));
+          if (ds.size) out.push({ where:`grupos/${gid}/finanzas/${f.id}/${sub}`, count:ds.size });
         }
-        return { ok:false };
       }
-      return { ok:false, error:'kind desconocido' };
-    } catch (e) {
-      return { ok:false, error: e?.message || String(e) };
     }
+    // raíz
+    for (const root of ROOT_CANDS) {
+      try {
+        const ds = await getDocs(query(collection(db,root), limit(1)));
+        if (ds.size) out.push({ where:`/${root} (root)`, note:'existe' });
+      } catch(_) {}
+    }
+    console.table(out);
+    return out;
   },
-  list() {
-    return {
-      loaded: state.rawItems.length,
-      sample: state.rawItems.slice(0, 10)
-    };
-  }
+  list() { return { loaded: state.rawItems.length, sample: state.rawItems.slice(0, 10) }; }
 };
 
-// ------------------------- Arranque -----------------------
+// ---------- arranque ----------
 onAuthStateChanged(auth, async (user) => {
   if (!user) { location = 'login.html'; return; }
   try {
@@ -376,12 +366,9 @@ onAuthStateChanged(auth, async (user) => {
 
   wireUI();
   await preloadCatalogs();
-  await fetchFinancePage(true);
+  await fetchFinance();
 
-  // pista en consola
-  console.log('%c[FINZ] Cargados:', 'color:#0a0', state.rawItems.length);
   if (!state.rawItems.length) {
-    console.warn('[FINZ] No se encontraron movimientos. Usa:', 
-      "await __finz.probeSub('gastos') / 'abonos' / 'movs' / 'movimientos'");
+    console.warn('[FINZ] No salió nada. Ejecuta en consola:', '__finz.scan()');
   }
 });
