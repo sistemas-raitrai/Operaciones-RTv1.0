@@ -56,9 +56,13 @@ function toItem(grupoId, gInfo, x, hintedTipo) {
   const rev2  = (x.revision2?.estado || x.rev2?.estado || x.rev2 || '').toString().toLowerCase();
   const pago  = (x.pago?.estado || x.pago || '').toString().toLowerCase();
 
+  // Preferir SIEMPRE el coordinador del grupo (gInfo.coordEmail);
+  // si no existe, usar posibles alias del documento
   const coord = coalesce(
-    x.coordinador, x.coordinadorEmail, x.coord, x.responsable,
-    gInfo?.coordEmail, ''
+    gInfo?.coordEmail,                  // ← prioridad: coordinador del grupo
+    x.coordinadorEmail, x.coordinador,  // alias frecuentes en el doc
+    x.coord, x.responsable, x.owner, x.usuario, x.user,
+    ''
   ).toString().toLowerCase();
 
   return {
@@ -90,7 +94,15 @@ async function preloadCatalogs() {
     state.caches.grupos.set(d.id, x);
     const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, d.id);
     const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, d.id);
-    const coordEmail = coalesce(x.coordinadorEmail, x.coordinador?.email, x.coord, '');
+    const coordEmail = coalesce(
+      x.coordinadorEmail,         // email directo
+      x.coordinador?.email,       // email dentro de objeto
+      x.coordinador,              // a veces guardan el slug/string del coord
+      x.coord,                    // otros alias comunes
+      x.responsable,
+      x.owner,
+      ''
+    );
 
     state.caches.groupById.set(d.id, { numero, nombre, coordEmail });
 
@@ -134,6 +146,17 @@ async function loadGastosCG() {
     const coordId = docSnap.ref.parent.parent?.id || ''; // coordinador del path
     const grupoId = coalesce(x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, '');
     if (!grupoId) return;
+
+    // Si el grupo no tiene coordinador en el catálogo, aprenderlo desde el gasto
+    const gInfo0 = state.caches.groupById.get(grupoId);
+    if (gInfo0 && !gInfo0.coordEmail && coordId) {
+      gInfo0.coordEmail = coordId;
+      // también actualizamos el índice inverso groupsByCoord para los filtros vinculados
+      if (!state.caches.groupsByCoord.has(coordId)) {
+        state.caches.groupsByCoord.set(coordId, new Set());
+      }
+      state.caches.groupsByCoord.get(coordId).add(grupoId);
+    }
 
     const gInfo = state.caches.groupById.get(grupoId) || { numero: grupoId, nombre: '', coordEmail: coordId };
     const enriched = { id: docSnap.id, ...x, coordinador: coordId, __from: 'cg:gastos' };
