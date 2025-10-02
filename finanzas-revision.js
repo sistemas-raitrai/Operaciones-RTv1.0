@@ -3,7 +3,7 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, collectionGroup, getDocs, query, where, limit,
-  doc, updateDoc
+  doc, updateDoc, getDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -268,46 +268,46 @@ function getMovRef(item) {
 // === REEMPLAZAR updateRevision COMPLETA ===
 async function updateRevision(item, which /*1|2*/, nuevoEstado /* 'pendiente' | 'aprobado' | 'rechazado' */) {
   const user = (auth.currentUser?.email || '').toLowerCase();
-  const ref = getMovRef(item); // gastos: coordinadores/{coord}/gastos/{id} | abonos: grupos/{gid}/finanzas_abonos/{id}
+  const ref = getMovRef(item);                         // gasto o abono → doc(...)
   const revKey = which === 1 ? 'revision1' : 'revision2';
 
-  try {
-    // Log de la ruta para que veas exactamente dónde se escribe
-    console.log('[FINZ] updateRevision →', {
-      tipo: item.tipo,
-      path: ref.path,
-      revKey,
-      nuevoEstado,
-      user
-    });
+  console.log('[FINZ] updateRevision →', {
+    tipo: item.tipo, path: ref.path, revKey, nuevoEstado, user
+  });
 
+  try {
+    // 1) escribe
     await updateDoc(ref, {
       [`${revKey}.estado`]: nuevoEstado,
       [`${revKey}.user`]: user,
       [`${revKey}.at`]: Date.now()
     });
 
-    // Leer de vuelta para confirmar lo que quedó en la BD
+    // 2) lee lo que quedó en la base (sanity check)
     const snap = await getDoc(ref);
-    const data = snap.data() || {};
-    console.log('[FINZ] after write →', ref.path, {
-      revision1: data.revision1 || null,
-      revision2: data.revision2 || null
-    });
+    if (!snap.exists()) throw new Error('El documento no existe después del update');
 
-    // Reflejar localmente (re-render inmediato)
+    const data = snap.data() || {};
+    const r1 = data.revision1?.estado || '';
+    const r2 = data.revision2?.estado || '';
+    const r1By = data.revision1?.user || '';
+    const r2By = data.revision2?.user || '';
+
+    // 3) refresca el item local con lo que realmente quedó en Firestore
     if (which === 1) {
-      item.rev1 = nuevoEstado;
-      item.rev1By = user;
+      item.rev1 = r1 || nuevoEstado;
+      item.rev1By = r1By || user;
     } else {
-      item.rev2 = nuevoEstado;
-      item.rev2By = user;
+      item.rev2 = r2 || nuevoEstado;
+      item.rev2By = r2By || user;
     }
     item.estado = deriveEstado({ rev1: item.rev1, rev2: item.rev2 });
-  } catch (err) {
-    console.error('[FINZ] updateRevision ERROR', err);
+
+    return true; // éxito
+  } catch (e) {
+    console.error('[FINZ] updateRevision ERROR', e);
     alert('No se pudo guardar la revisión. Revisa la consola para más detalles.');
-    throw err; // para que el caller revierta UI si es necesario
+    return false; // falló
   }
 }
 
