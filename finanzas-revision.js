@@ -346,14 +346,18 @@ function renderTable() {
       // util: crea celda de revisión tri-estado
       function makeRevCell(item, which) {
         const td = document.createElement('td');
+        
+        // contenedor para alinear icono + correo en una sola línea
+        const wrap = document.createElement('div');
+        wrap.className = 'rev-cell';
+        
         const btn = document.createElement('button');
         btn.className = 'revbtn';
         btn.type = 'button';
-      
+        
         const who = document.createElement('span');
-        who.className = 'small';
-        who.style.marginLeft = '.4rem';
-      
+        who.className = 'small'; // el CSS de .rev-cell .small la pone inline
+
         function applyUI() {
           const cur = (which === 1 ? item.rev1 : item.rev2) || 'pendiente';
           // símbolo y color por estado
@@ -383,7 +387,8 @@ function renderTable() {
           }
         });
       
-        td.append(btn, who);
+        wrap.append(btn, who);
+        td.appendChild(wrap);
         applyUI();
         return td;
       }
