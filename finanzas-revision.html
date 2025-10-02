@@ -76,6 +76,22 @@
       transform: scale(1.1);
       vertical-align: middle;
     }
+    .revbtn {
+    min-width: 1.8rem;
+    height: 1.6rem;
+    line-height: 1.6rem;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    background: #fff;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: .95rem;
+    padding: 0 .35rem;
+  }
+  .revbtn[data-state="aprobado"]  { border-color:#12a150; color:#0a7b3d; }
+  .revbtn[data-state="rechazado"] { border-color:#d93025; color:#b31206; }
+  .revbtn[data-state="pendiente"] { border-color:#bbb;    color:#555; }
+
   </style>
 </head>
 <body>
