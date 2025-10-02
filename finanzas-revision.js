@@ -2,7 +2,8 @@
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, getDocs, query, where, limit
+  collection, collectionGroup, getDocs, query, where, limit,
+  doc, updateDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -69,6 +70,13 @@ function toItem(grupoId, gInfo, x, hintedTipo) {
   const from = (x.__from || '').toString();
   const asunto = coalesce(
     x.asunto, x.detalle, x.descripcion, x.concepto, x.motivo, ''
+  // quién revisó (si ya viene del doc)
+  const rev1By = coalesce(x.revision1?.user, x.rev1By, '');
+  const rev2By = coalesce(x.revision2?.user, x.rev2By, '');
+  
+  // coordPath: ID del coordinador que define el path del gasto
+  // (lo seteamos en loadGastosCG; en abonos queda vacío)
+  const coordPath = x.coordPath || '';
   );
 
   return {
@@ -81,6 +89,8 @@ function toItem(grupoId, gInfo, x, hintedTipo) {
     rev1, rev2,
     estado: deriveEstado({ estado:x.estado, rev1, rev2 }),
     pago,
+    rev1By, rev2By,
+    coordPath,
     __from: x.__from || ''
   };
 }
@@ -165,8 +175,16 @@ async function loadGastosCG() {
     }
 
     const gInfo = state.caches.groupById.get(grupoId) || { numero: grupoId, nombre: '', coordEmail: coordId };
-    const enriched = { id: docSnap.id, ...x, coordinador: coordId, __from: 'cg:gastos' };
-    state.rawItems.push(toItem(grupoId, { ...gInfo, coordEmail: gInfo.coordEmail || coordId }, enriched, 'gasto'));
+    const enriched = {
+      id: docSnap.id,
+      ...x,
+      coordinador: coordId,   // quien gastó (del path)
+      coordPath: coordId,     // ← para poder escribir en coordinadores/{coord}/gastos/{id}
+      __from: 'cg:gastos'
+    };
+    state.rawItems.push(
+      toItem(grupoId, { ...gInfo, coordEmail: gInfo.coordEmail || coordId }, enriched, 'gasto')
+    );
   });
 }
 
@@ -237,6 +255,39 @@ function calcTotals(list) {
   return { gastos, abonos, neto, hasBoth };
 }
 
+function getMovRef(item) {
+  if (item.tipo === 'gasto') {
+    const coord = item.coordPath || item.coordinador; // coord del path
+    return doc(db, 'coordinadores', coord, 'gastos', item.id);
+  }
+  // abono
+  return doc(db, 'grupos', item.grupoId, 'finanzas_abonos', item.id);
+}
+
+async function updateRevision(item, which /*1|2*/, isChecked) {
+  const user = (auth.currentUser?.email || '').toLowerCase();
+  const ref = getMovRef(item);
+  const revKey = which === 1 ? 'revision1' : 'revision2';
+  const newEstado = isChecked ? 'aprobado' : 'pendiente';
+
+  // Persistir en Firestore
+  await updateDoc(ref, {
+    [`${revKey}.estado`]: newEstado,
+    [`${revKey}.user`]: user,
+    [`${revKey}.at`]: Date.now()
+  });
+
+  // Reflejar localmente (para re-render inmediato)
+  if (which === 1) {
+    item.rev1 = newEstado;
+    item.rev1By = user;
+  } else {
+    item.rev2 = newEstado;
+    item.rev2By = user;
+  }
+  item.estado = deriveEstado({ rev1: item.rev1, rev2: item.rev2 }); // recalcular
+}
+
 /* ===== Render ===== */
 function renderTable() {
   const tbody = document.querySelector('#tblFinanzas tbody');
@@ -260,7 +311,7 @@ function renderTable() {
   if (!filtered.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 9;
+    td.colSpan = 8;
     td.innerHTML = '<div class="muted">Sin movimientos para este criterio.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -287,19 +338,60 @@ function renderTable() {
       const tdMonto = document.createElement('td');
       tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
 
+      // REV 1: checkbox + correo
       const tdR1 = document.createElement('td');
-      tdR1.innerHTML = `<span class="badge ${x.rev1 || 'pendiente'}">${(x.rev1 || 'pendiente').toUpperCase()}</span>`;
-
+      {
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = (x.rev1 === 'aprobado');
+        chk.title = 'Revisión 1';
+        const who = document.createElement('span');
+        who.className = 'small';
+        who.style.marginLeft = '.4rem';
+        who.textContent = x.rev1By ? x.rev1By.toUpperCase() : '';
+        chk.addEventListener('change', async () => {
+          try {
+            await updateRevision(x, 1, chk.checked);
+            who.textContent = x.rev1By ? x.rev1By.toUpperCase() : '';
+            tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
+          } catch (e) {
+            console.warn('rev1 update failed', e);
+            chk.checked = (x.rev1 === 'aprobado'); // revertir
+          }
+        });
+        tdR1.append(chk, who);
+      }
+      
+      // REV 2: checkbox + correo
       const tdR2 = document.createElement('td');
-      tdR2.innerHTML = `<span class="badge ${x.rev2 || 'pendiente'}">${(x.rev2 || 'pendiente').toUpperCase()}</span>`;
-
+      {
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = (x.rev2 === 'aprobado');
+        chk.title = 'Revisión 2';
+        const who = document.createElement('span');
+        who.className = 'small';
+        who.style.marginLeft = '.4rem';
+        who.textContent = x.rev2By ? x.rev2By.toUpperCase() : '';
+        chk.addEventListener('change', async () => {
+          try {
+            await updateRevision(x, 2, chk.checked);
+            who.textContent = x.rev2By ? x.rev2By.toUpperCase() : '';
+            tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
+          } catch (e) {
+            console.warn('rev2 update failed', e);
+            chk.checked = (x.rev2 === 'aprobado'); // revertir
+          }
+        });
+        tdR2.append(chk, who);
+      }
+      
+      // ESTADO (derivado)
       const tdEstado = document.createElement('td');
       tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
-
-      const tdPago = document.createElement('td');
-      tdPago.textContent = (x.pago || '—').toUpperCase();
-
-      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdR1, tdR2, tdEstado, tdPago);
+      
+      // Append final (sin "Pago")
+      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdR1, tdR2, tdEstado);
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
