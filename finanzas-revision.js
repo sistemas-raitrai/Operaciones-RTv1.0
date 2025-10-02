@@ -70,6 +70,8 @@ function toItem(grupoId, gInfo, x, hintedTipo) {
   const from = (x.__from || '').toString();
   const asunto = coalesce(
     x.asunto, x.detalle, x.descripcion, x.concepto, x.motivo, ''
+  );
+  
   // quién revisó (si ya viene del doc)
   const rev1By = coalesce(x.revision1?.user, x.rev1By, '');
   const rev2By = coalesce(x.revision2?.user, x.rev2By, '');
@@ -77,7 +79,6 @@ function toItem(grupoId, gInfo, x, hintedTipo) {
   // coordPath: ID del coordinador que define el path del gasto
   // (lo seteamos en loadGastosCG; en abonos queda vacío)
   const coordPath = x.coordPath || '';
-  );
 
   return {
     id: x.id || x._id || '',
