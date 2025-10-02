@@ -22,6 +22,9 @@
     table.finanzas th, table.finanzas td { padding:.55rem .6rem; border-bottom:1px solid #f1f1f1; vertical-align:middle; font-size:.92rem; }
     table.finanzas thead th { background:#fafafa; text-align:left; font-weight:600; }
     table.finanzas td .small { font-size:.78rem; opacity:.8; display:block; }
+    /* En las celdas de revisión, mostrar icono + correo en la misma línea */
+    .rev-cell { display:flex; align-items:center; gap:.4rem; }
+    .rev-cell .small { display:inline-block; margin-left:.1rem; }
     table.finanzas td .mono { font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
     .badge { padding:.12rem .5rem; border-radius:999px; font-size:.78rem; border:1px solid #ddd; display:inline-block; }
     .badge.aprobado   { border-color:#12a150; }
