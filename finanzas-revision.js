@@ -473,19 +473,22 @@ function wireUI() {
     refreshGroupDatalist(exactKey || '');
   };
 
-  // Grupo: al escribir/seleccionar, autocompleta coordinador
+  // Coordinador: al escribir, limitamos el datalist de grupos; al aplicar, filtramos
+  const inputCoord = document.getElementById('filtroCoord');
+  inputCoord.oninput = (e) => {
+    const val = (e.target.value || '').toLowerCase().trim();
+    state.filtros.coord = val;
+    // buscar clave exacta para limitar datalist
+    const exactKey = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === norm(val));
+    // si hay coordinador → limitar; si está vacío → mostrar todos
+    refreshGroupDatalist(exactKey || '');
+  };
+  
+  // Grupo: al escribir/seleccionar, SOLO ajusta el filtro de grupo (no autocompleta coord)
   const inputGrupo = document.getElementById('filtroGrupo');
   inputGrupo.oninput = (e) => {
-    const gid = resolveGroupId(e.target.value || '');
     state.filtros.grupo = e.target.value || '';
-    if (gid) {
-      const info = state.caches.groupById.get(gid);
-      if (info?.coordEmail) {
-        inputCoord.value = info.coordEmail;
-        state.filtros.coord = info.coordEmail.toLowerCase();
-        refreshGroupDatalist(info.coordEmail);
-      }
-    }
+    // NO tocar el coordinador ni el datalist aquí
   };
 
   document.getElementById('btnAplicar').onclick = () => renderTable();
