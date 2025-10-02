@@ -245,11 +245,22 @@ function renderTable() {
 
   const filtered = applyFilters(state.rawItems);
 
+  // Totales del conjunto filtrado
+  const totals = calcTotals(filtered);
+  const totalesEl = document.getElementById('totales');
+  if (totalesEl) {
+    const parts = [];
+    parts.push(`Gastos: ${money(totals.gastos)}`);
+    parts.push(`Abonos: ${money(totals.abonos)}`);
+    if (totals.hasBoth) parts.push(`Saldo: ${money(totals.neto)}`); // solo si hay ambos
+    totalesEl.textContent = parts.join(' · ');
+  }
+
   tbody.innerHTML = '';
   if (!filtered.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 8;
+    td.colSpan = 9;
     td.innerHTML = '<div class="muted">Sin movimientos para este criterio.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
