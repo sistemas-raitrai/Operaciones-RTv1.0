@@ -98,6 +98,19 @@
     #conjuntos-wrap input[data-alias].estado-bad,
     #conjuntos-wrap select[data-coord].estado-bad { background: rgba(220,0,0,.15); border-color: rgba(220,0,0,.35); }
 
+    /* Paneles colapsables */
+    .panel.collapsible > .hd{
+      cursor: pointer;
+      user-select: none;
+      display:flex; align-items:center; justify-content:space-between;
+    }
+    .panel.collapsible .chev{
+      display:inline-block; transition: transform .2s ease;
+      font-weight:700; opacity:.7;
+    }
+    .panel.collapsible[data-collapsed="true"] .bd{ display:none; }
+    .panel.collapsible[data-collapsed="true"] .chev{ transform: rotate(-90deg); }
+
     /* Responsive: apilar columnas y desactivar sticky */
     @media (max-width: 900px){
       .grid{
@@ -119,8 +132,11 @@
     <h2><b>Asignación de Coordinadores a Grupo de Viajes</b></h2>
 
     <!-- Resumen / filtros -->
-    <div class="panel" style="margin:.8rem 0;">
-      <div class="hd">📊 Resumen Y Filtros</div>
+    <div id="panel-resumen" class="panel collapsible" data-collapsed="true" style="margin:.8rem 0;">
+      <div class="hd" role="button" aria-expanded="false">
+        <span>📊 Resumen y Filtros</span>
+        <span class="chev">❯</span>
+      </div>
       <div class="bd">
         <div class="row" style="gap:.5rem; flex-wrap:wrap; align-items:center;">
           <select id="f-destino"><option>Todos los destinos</option></select>
@@ -134,12 +150,16 @@
     </div>
 
     <!-- Estadísticas -->
-    <div class="panel" id="panel-stats-viajes" style="margin:.8rem 0;">
-      <div class="hd">📈 Estadísticas De Viajes</div>
-      <div class="bd" id="stats-viajes-wrap"><div class="empty">AÚN NO HAY DATOS.</div></div>
+    <div id="panel-stats-viajes" class="panel collapsible" data-collapsed="true" style="margin:.8rem 0;">
+      <div class="hd" role="button" aria-expanded="false">
+        <span>📈 Estadísticas de Viajes</span>
+        <span class="chev">❯</span>
+      </div>
+      <div class="bd" id="stats-viajes-wrap">
+        <div class="empty">AÚN NO HAY DATOS.</div>
+      </div>
     </div>
 
-    <!-- Acciones (después de estadísticas) -->
     <!-- Acciones (después de estadísticas) -->
     <div class="row" style="gap:.5rem; margin-bottom:1rem;">
       <button class="btn" id="btn-modal-coords">Gestionar coordinadores</button>
@@ -153,7 +173,7 @@
     <div class="grid">
       <!-- IZQUIERDA: VIAJES LIBRES -->
       <div class="panel panel-libres">
-        <div class="hd">🧳 Viajes Libres</div>
+        <div class="hd" role="button" aria-expanded="false">🧳 Viajes Libres</div>
         <div id="toolbar-libres" class="toolbar">
           <input id="buscar-libres" type="search" placeholder="Buscar viajes no asignados…" />
           <input id="f-dia-libres" type="date" title="Filtrar por fecha de inicio (libres)" />
@@ -165,7 +185,7 @@
     
       <!-- DERECHA: VIAJES (asignados) -->
       <div class="panel panel-sets">
-        <div class="hd">🗂️ Viajes</div>
+        <div class="hd" role="button" aria-expanded="false">🗂️ Viajes</div>
         <div class="bd">
           <div class="row" style="margin-bottom:.6rem; width:100%;">
             <input
@@ -189,7 +209,7 @@
   <!-- Modal coordinadores -->
   <div id="mb" class="modal-backdrop"></div>
   <div id="modal-coords" class="modal" role="dialog" aria-modal="true" aria-label="Gestionar coordinadores">
-    <div class="hd">
+    <div class="hd" role="button" aria-expanded="false">
       <div>Gestionar Coordinadores</div>
       <div class="x" id="close-modal">×</div>
     </div>
@@ -233,35 +253,55 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/es.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <!-- 1) Carga e inyecta el encabezado igual que index -->
+  <script type="module">
+    (async () => {
+      try {
+        // 1) Inyectar encabezado común
+        const html = await (await fetch('encabezado.html')).text();
+        document.getElementById('encabezado').innerHTML = html;
+  
+        // 2) Cargar Firebase primero (sin depender del DOM)
+        const init = await import('./firebase-init.js');
+  
+        // 3) Cargar script base del sistema (usa elementos del header: reloj, username, etc.)
+        await import('./script.js');
+  
+        // 4) Cargar el módulo de esta página (coordinadores)
+        await import('./coordinadores.js');
+  
+        // (Opcional) Diagnóstico, usando la misma instancia que ya cargaste:
+        const { getFirestore, collection, getDocs } =
+          await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js');
+        const snap = await getDocs(collection(init.db, 'grupos'));
+        console.log('[coordinadores.html] grupos size =', snap.size);
+        console.log('✅ coordinadores.js cargado tras inyectar encabezado y firebase');
+      } catch (err) {
+        console.error('❌ Error cargando encabezado/scripts:', err);
+      }
+    })();
+  </script>
 
-<!-- 1) Carga e inyecta el encabezado igual que index -->
-<script type="module">
-  (async () => {
-    try {
-      // 1) Inyectar encabezado común
-      const html = await (await fetch('encabezado.html')).text();
-      document.getElementById('encabezado').innerHTML = html;
-
-      // 2) Cargar Firebase primero (sin depender del DOM)
-      const init = await import('./firebase-init.js');
-
-      // 3) Cargar script base del sistema (usa elementos del header: reloj, username, etc.)
-      await import('./script.js');
-
-      // 4) Cargar el módulo de esta página (coordinadores)
-      await import('./coordinadores.js');
-
-      // (Opcional) Diagnóstico, usando la misma instancia que ya cargaste:
-      const { getFirestore, collection, getDocs } =
-        await import('https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js');
-      const snap = await getDocs(collection(init.db, 'grupos'));
-      console.log('[coordinadores.html] grupos size =', snap.size);
-      console.log('✅ coordinadores.js cargado tras inyectar encabezado y firebase');
-    } catch (err) {
-      console.error('❌ Error cargando encabezado/scripts:', err);
-    }
-  })();
-</script>
+  <script>
+    // Acordeón básico + persistencia en localStorage por panel.id
+    (function(){
+      document.querySelectorAll('.panel.collapsible').forEach(p => {
+        const key = 'collapse:' + (p.id || Math.random().toString(36).slice(2));
+        // Estado inicial: respetar data-collapsed o lo guardado
+        const saved = localStorage.getItem(key);
+        if (saved === 'true' || saved === 'false') p.dataset.collapsed = saved;
+  
+        p.querySelector('.hd')?.addEventListener('click', () => {
+          const now = p.dataset.collapsed === 'true' ? 'false' : 'true';
+          p.dataset.collapsed = now;
+          localStorage.setItem(key, now);
+          p.querySelector('.hd')?.setAttribute('aria-expanded', now === 'false' ? 'true' : 'false');
+        });
+      });
+    })();
+  </script>
+ 
 
 </body>
 </html>
