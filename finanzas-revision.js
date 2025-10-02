@@ -226,6 +226,17 @@ function applyFilters(items) {
   });
 }
 
+function calcTotals(list) {
+  let gastos = 0, abonos = 0;
+  for (const x of list) {
+    if (x?.tipo === 'gasto') gastos += Number(x.monto) || 0;
+    else if (x?.tipo === 'abono') abonos += Number(x.monto) || 0;
+  }
+  const neto = abonos - gastos;
+  const hasBoth = (gastos > 0 && abonos > 0);
+  return { gastos, abonos, neto, hasBoth };
+}
+
 /* ===== Render ===== */
 function renderTable() {
   const tbody = document.querySelector('#tblFinanzas tbody');
@@ -259,6 +270,9 @@ function renderTable() {
       const coordTxt = (x.coordinador && x.coordinador.trim()) ? x.coordinador.toLowerCase() : '—';
       tdCoord.innerHTML = `<span class="${coordTxt==='—' ? 'muted' : ''}">${coordTxt}</span>`;
 
+      const tdAsunto = document.createElement('td');
+      tdAsunto.textContent = (x.asunto && String(x.asunto).trim()) ? String(x.asunto) : '—';
+
       const tdMonto = document.createElement('td');
       tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
 
@@ -274,7 +288,7 @@ function renderTable() {
       const tdPago = document.createElement('td');
       tdPago.textContent = (x.pago || '—').toUpperCase();
 
-      tr.append(tdTipo, tdGrupo, tdCoord, tdMonto, tdR1, tdR2, tdEstado, tdPago);
+      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdR1, tdR2, tdEstado, tdPago);
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
