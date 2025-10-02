@@ -55,6 +55,22 @@
     
     .badge { color:#111; }  /* el texto de badges también */
 
+    /* === FORZAR MAYÚSCULAS EN LA TABLA === */
+    table.finanzas th,
+    table.finanzas td {
+      text-transform: uppercase;
+    }
+    
+    /* No transformar números/monedas ni campos monoespaciados */
+    table.finanzas td .mono,
+    table.finanzas th .mono {
+      text-transform: none;
+    }
+    
+    /* Totales/Resumen también en mayúsculas */
+    #resumen, #totales {
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
