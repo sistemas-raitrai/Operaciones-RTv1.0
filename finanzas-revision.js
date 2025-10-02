@@ -472,18 +472,7 @@ function wireUI() {
     const exactKey = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === norm(val));
     refreshGroupDatalist(exactKey || '');
   };
-
-  // Coordinador: al escribir, limitamos el datalist de grupos; al aplicar, filtramos
-  const inputCoord = document.getElementById('filtroCoord');
-  inputCoord.oninput = (e) => {
-    const val = (e.target.value || '').toLowerCase().trim();
-    state.filtros.coord = val;
-    // buscar clave exacta para limitar datalist
-    const exactKey = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === norm(val));
-    // si hay coordinador → limitar; si está vacío → mostrar todos
-    refreshGroupDatalist(exactKey || '');
-  };
-  
+ 
   // Grupo: al escribir/seleccionar, SOLO ajusta el filtro de grupo (no autocompleta coord)
   const inputGrupo = document.getElementById('filtroGrupo');
   inputGrupo.oninput = (e) => {
