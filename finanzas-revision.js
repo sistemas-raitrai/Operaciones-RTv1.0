@@ -350,8 +350,6 @@ function renderTable() {
   const base = dedupeItems(state.rawItems);
   const filtered = applyFilters(base);
 
-  const filtered = applyFilters(state.rawItems);
-
   tbody.innerHTML = '';
   if (!filtered.length) {
     const tr = document.createElement('tr');
