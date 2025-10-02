@@ -12,7 +12,21 @@
   <style>
     .page { padding: 1rem 1.2rem; }
     h2 { margin: .6rem 0 1rem; }
-    .grid { display:grid; grid-template-columns: 340px 1fr; gap:1rem; align-items:start; }
+    .grid{
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+      gap: 1rem;
+      align-items: start;
+    }
+
+    /* Asegura ancho completo en VIAJES */
+    #conjuntos-wrap,
+    #conjuntos-wrap .card,
+    #conjuntos-wrap table{
+      width: 100%;
+      max-width: none;
+    }
+
 
     .panel { border:1px solid #ddd; border-radius:10px; background:#fff; }
     .panel > .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; font-weight:600; }
@@ -230,15 +244,14 @@
         <div class="hd">🗂️ Viajes</div>
         <div class="bd">
           <!-- 🔎 Buscador de conjuntos -->
-          <div class="row" style="margin-bottom:.6rem;">
+          <div class="row" style="margin-bottom:.6rem; width:100%;">
             <input
               id="buscar-sets"
               type="text"
-              style="width:100%; max-width:520px"
+              style="flex:1"
               placeholder="Buscar en VIAJES… (coordinador, alias, #negocio, id, destino, programa, fecha) — separa con comas"
             />
             <input id="f-dia-sets" type="date" title="Filtrar por fecha de inicio (asignados)" />
-
           </div>
     
           <!-- Contenedor de los conjuntos -->
