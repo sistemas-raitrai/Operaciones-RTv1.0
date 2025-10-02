@@ -265,25 +265,50 @@ function getMovRef(item) {
   return doc(db, 'grupos', item.grupoId, 'finanzas_abonos', item.id);
 }
 
+// === REEMPLAZAR updateRevision COMPLETA ===
 async function updateRevision(item, which /*1|2*/, nuevoEstado /* 'pendiente' | 'aprobado' | 'rechazado' */) {
   const user = (auth.currentUser?.email || '').toLowerCase();
-  const ref = getMovRef(item);
+  const ref = getMovRef(item); // gastos: coordinadores/{coord}/gastos/{id} | abonos: grupos/{gid}/finanzas_abonos/{id}
   const revKey = which === 1 ? 'revision1' : 'revision2';
 
-  await updateDoc(ref, {
-    [`${revKey}.estado`]: nuevoEstado,
-    [`${revKey}.user`]: user,
-    [`${revKey}.at`]: Date.now()
-  });
+  try {
+    // Log de la ruta para que veas exactamente dónde se escribe
+    console.log('[FINZ] updateRevision →', {
+      tipo: item.tipo,
+      path: ref.path,
+      revKey,
+      nuevoEstado,
+      user
+    });
 
-  if (which === 1) {
-    item.rev1 = nuevoEstado;
-    item.rev1By = user;
-  } else {
-    item.rev2 = nuevoEstado;
-    item.rev2By = user;
+    await updateDoc(ref, {
+      [`${revKey}.estado`]: nuevoEstado,
+      [`${revKey}.user`]: user,
+      [`${revKey}.at`]: Date.now()
+    });
+
+    // Leer de vuelta para confirmar lo que quedó en la BD
+    const snap = await getDoc(ref);
+    const data = snap.data() || {};
+    console.log('[FINZ] after write →', ref.path, {
+      revision1: data.revision1 || null,
+      revision2: data.revision2 || null
+    });
+
+    // Reflejar localmente (re-render inmediato)
+    if (which === 1) {
+      item.rev1 = nuevoEstado;
+      item.rev1By = user;
+    } else {
+      item.rev2 = nuevoEstado;
+      item.rev2By = user;
+    }
+    item.estado = deriveEstado({ rev1: item.rev1, rev2: item.rev2 });
+  } catch (err) {
+    console.error('[FINZ] updateRevision ERROR', err);
+    alert('No se pudo guardar la revisión. Revisa la consola para más detalles.');
+    throw err; // para que el caller revierta UI si es necesario
   }
-  item.estado = deriveEstado({ rev1: item.rev1, rev2: item.rev2 });
 }
 
 function nextEstado(cur) {
