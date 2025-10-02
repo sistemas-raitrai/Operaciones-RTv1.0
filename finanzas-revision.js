@@ -265,28 +265,32 @@ function getMovRef(item) {
   return doc(db, 'grupos', item.grupoId, 'finanzas_abonos', item.id);
 }
 
-async function updateRevision(item, which /*1|2*/, isChecked) {
+async function updateRevision(item, which /*1|2*/, nuevoEstado /* 'pendiente' | 'aprobado' | 'rechazado' */) {
   const user = (auth.currentUser?.email || '').toLowerCase();
   const ref = getMovRef(item);
   const revKey = which === 1 ? 'revision1' : 'revision2';
-  const newEstado = isChecked ? 'aprobado' : 'pendiente';
 
-  // Persistir en Firestore
   await updateDoc(ref, {
-    [`${revKey}.estado`]: newEstado,
+    [`${revKey}.estado`]: nuevoEstado,
     [`${revKey}.user`]: user,
     [`${revKey}.at`]: Date.now()
   });
 
-  // Reflejar localmente (para re-render inmediato)
   if (which === 1) {
-    item.rev1 = newEstado;
+    item.rev1 = nuevoEstado;
     item.rev1By = user;
   } else {
-    item.rev2 = newEstado;
+    item.rev2 = nuevoEstado;
     item.rev2By = user;
   }
-  item.estado = deriveEstado({ rev1: item.rev1, rev2: item.rev2 }); // recalcular
+  item.estado = deriveEstado({ rev1: item.rev1, rev2: item.rev2 });
+}
+
+function nextEstado(cur) {
+  const c = (cur || 'pendiente').toLowerCase();
+  if (c === 'pendiente') return 'aprobado';
+  if (c === 'aprobado')  return 'rechazado';
+  return 'pendiente';
 }
 
 /* ===== Render ===== */
@@ -339,54 +343,51 @@ function renderTable() {
       const tdMonto = document.createElement('td');
       tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
 
-      // REV 1: checkbox + correo
-      const tdR1 = document.createElement('td');
-      {
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = (x.rev1 === 'aprobado');
-        chk.title = 'Revisión 1';
+      // util: crea celda de revisión tri-estado
+      function makeRevCell(item, which) {
+        const td = document.createElement('td');
+        const btn = document.createElement('button');
+        btn.className = 'revbtn';
+        btn.type = 'button';
+      
         const who = document.createElement('span');
         who.className = 'small';
         who.style.marginLeft = '.4rem';
-        who.textContent = x.rev1By ? x.rev1By.toUpperCase() : '';
-        chk.addEventListener('change', async () => {
+      
+        function applyUI() {
+          const cur = (which === 1 ? item.rev1 : item.rev2) || 'pendiente';
+          // símbolo y color por estado
+          if (cur === 'aprobado') {
+            btn.textContent = '✓';
+            btn.dataset.state = 'aprobado';
+          } else if (cur === 'rechazado') {
+            btn.textContent = '✗';
+            btn.dataset.state = 'rechazado';
+          } else {
+            btn.textContent = '—';
+            btn.dataset.state = 'pendiente';
+          }
+          const by = which === 1 ? item.rev1By : item.rev2By;
+          who.textContent = by ? by.toUpperCase() : '';
+        }
+      
+        btn.addEventListener('click', async () => {
+          const cur = (which === 1 ? item.rev1 : item.rev2) || 'pendiente';
+          const nuevo = nextEstado(cur);
           try {
-            await updateRevision(x, 1, chk.checked);
-            who.textContent = x.rev1By ? x.rev1By.toUpperCase() : '';
-            tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
+            await updateRevision(item, which, nuevo);
+            applyUI();
+            tdEstado.innerHTML = `<span class="badge ${item.estado}">${item.estado.toUpperCase()}</span>`;
           } catch (e) {
-            console.warn('rev1 update failed', e);
-            chk.checked = (x.rev1 === 'aprobado'); // revertir
+            console.warn('updateRevision failed', e);
           }
         });
-        tdR1.append(chk, who);
-      }
       
-      // REV 2: checkbox + correo
-      const tdR2 = document.createElement('td');
-      {
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = (x.rev2 === 'aprobado');
-        chk.title = 'Revisión 2';
-        const who = document.createElement('span');
-        who.className = 'small';
-        who.style.marginLeft = '.4rem';
-        who.textContent = x.rev2By ? x.rev2By.toUpperCase() : '';
-        chk.addEventListener('change', async () => {
-          try {
-            await updateRevision(x, 2, chk.checked);
-            who.textContent = x.rev2By ? x.rev2By.toUpperCase() : '';
-            tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
-          } catch (e) {
-            console.warn('rev2 update failed', e);
-            chk.checked = (x.rev2 === 'aprobado'); // revertir
-          }
-        });
-        tdR2.append(chk, who);
+        td.append(btn, who);
+        applyUI();
+        return td;
       }
-      
+
       // ESTADO (derivado)
       const tdEstado = document.createElement('td');
       tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
