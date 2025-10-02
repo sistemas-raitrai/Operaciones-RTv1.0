@@ -1,48 +1,37 @@
-/* Revisión financiera – escaneo extendido */
+/* Revisión financiera — carga rápida (collectionGroup) */
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, doc, getDoc, getDocs, query,
-  where, orderBy, limit, startAfter
+  collection, collectionGroup, getDocs, query, where, limit
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
 const state = {
-  paging: { lastDoc: null, loading: false, reachedEnd: false },
+  paging: { loading: false },
   rawItems: [],
   filtros: { estado:'', tipo:'', coord:'', grupo:'' },
-  caches: { grupos: new Map(), coords: [] },
+  caches: {
+    grupos: new Map(),          // gid -> doc
+    coords: [],                 // emails/nombres para datalist
+    groupById: new Map(),       // gid -> {numero,nombre,coordEmail}
+    groupsByCoord: new Map(),   // coordEmail/name -> Set(gid)
+  },
 };
 
+/* ===== Utilidades ===== */
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
-const money = n => (isFinite(+n) ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0}) : '—');
 const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
-
-// ---- RUTAS POSIBLES ----
-const DIRECT_SUBS = ['gastos','abonos','movs','movimientos'];          // grupos/{gid}/...
-const FIN_SUBS    = ['gastos','abonos','movs','movimientos'];          // grupos/{gid}/finanzas/{doc}/...
-const ROOT_CANDS  = ['gastos','abonos','movs','movimientos'];          // colecciones raíz
-
-// 👇 NUEVO: subcolecciones reales que mostró tu consola
-const ALT_FIN_SUBS = ['finanzas_abonos','finanzas_gastos','finanzas_movs','finanzas_movimientos'];
-
-// Movs bajo coordinadores/{coord}/gastos
-const COORD_SUBS = ['gastos']; // si más adelante guardas 'abonos' aquí, agrégalo
-
-// campo de grupo que puede venir en el doc de coordinadores/gastos
-function pickGrupoIdFromMov(x) {
-  return coalesce(
-    x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, ''
-  );
+function parseMontoCLP(any) {
+  if (any == null) return 0;
+  if (typeof any === 'number' && isFinite(any)) return Math.trunc(any);
+  const onlyDigits = String(any).replace(/[^\d-]/g,'');
+  const n = parseInt(onlyDigits, 10);
+  return isFinite(n) ? n : 0;
 }
-
-function inferTipoFromPath(pathLike=''){
-  const s = String(pathLike).toLowerCase();
-  if (s.includes('abono')) return 'abono';
-  if (s.includes('gasto')) return 'gasto';
-  return '';
-}
+const money = n => (isFinite(+n)
+  ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0})
+  : '—');
 
 function deriveEstado(x) {
   const s = (x.estado || '').toString().toLowerCase();
@@ -54,26 +43,29 @@ function deriveEstado(x) {
   return 'pendiente';
 }
 
-function toItem(grupoId, gDoc, x, hintedTipo='') {
-  const brutoMonto = coalesce(x.monto, x.importe, x.valor, x.total, 0);
-  const monto = Number(brutoMonto) || 0;
+/* ===== Normalizador ===== */
+function toItem(grupoId, gInfo, x, hintedTipo) {
+  const brutoMonto = coalesce(x.monto, x.montoCLP, x.neto, x.importe, x.valor, x.total, x.totalCLP, x.monto_str, 0);
+  const monto = parseMontoCLP(brutoMonto);
 
-  let tipo = (x.tipo || x.type || hintedTipo || '').toString().toLowerCase();
+  let tipo = (x.tipo || x.type || hintedTipo || '').toString().toLowerCase().trim();
   if (!tipo) tipo = (monto < 0 ? 'abono' : 'gasto');
+  if (tipo !== 'abono' && tipo !== 'gasto' && monto !== 0) tipo = (monto < 0 ? 'abono' : 'gasto');
 
   const rev1  = (x.revision1?.estado || x.rev1?.estado || x.rev1 || '').toString().toLowerCase();
   const rev2  = (x.revision2?.estado || x.rev2?.estado || x.rev2 || '').toString().toLowerCase();
   const pago  = (x.pago?.estado || x.pago || '').toString().toLowerCase();
 
-  const coord = (x.coordinadorEmail || x.coordinador || gDoc?.coordinadorEmail || gDoc?.coordinador?.email || '').toString().toLowerCase();
-  const nombreGrupo   = coalesce(gDoc?.nombreGrupo, gDoc?.aliasGrupo, '');
-  const numeroNegocio = coalesce(gDoc?.numeroNegocio, gDoc?.numNegocio, gDoc?.idNegocio, grupoId);
+  const coord = coalesce(
+    x.coordinador, x.coordinadorEmail, x.coord, x.responsable,
+    gInfo?.coordEmail, ''
+  ).toString().toLowerCase();
 
   return {
     id: x.id || x._id || '',
     grupoId,
-    nombreGrupo,
-    numeroNegocio,
+    nombreGrupo: gInfo?.nombre || '',
+    numeroNegocio: gInfo?.numero || grupoId,
     coordinador: coord,
     tipo, monto,
     rev1, rev2,
@@ -83,230 +75,88 @@ function toItem(grupoId, gDoc, x, hintedTipo='') {
   };
 }
 
-// ---------- catálogos mínimos ----------
+/* ===== Catálogos + índices ===== */
 async function preloadCatalogs() {
-  try {
-    const snap = await getDocs(collection(db, 'grupos'));
-    snap.forEach(d => state.caches.grupos.set(d.id, d.data() || {}));
-    const dlG = document.getElementById('dl-grupos');
-    if (dlG) {
-      dlG.innerHTML = '';
-      state.caches.grupos.forEach((x, id) => {
-        const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, id);
-        const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, id);
-        const opt = document.createElement('option');
-        opt.value = id;
-        opt.label = `${numero} — ${nombre}`;
-        dlG.appendChild(opt);
-      });
+  // Grupos
+  const gs = await getDocs(collection(db, 'grupos'));
+  const dlG = document.getElementById('dl-grupos');
+  const dlC = document.getElementById('dl-coords');
+  state.caches.groupsByCoord.clear();
+  state.caches.groupById.clear();
+  state.caches.coords.length = 0;
+
+  gs.forEach(d => {
+    const x = d.data() || {};
+    state.caches.grupos.set(d.id, x);
+    const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, d.id);
+    const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, d.id);
+    const coordEmail = coalesce(x.coordinadorEmail, x.coordinador?.email, x.coord, '');
+
+    state.caches.groupById.set(d.id, { numero, nombre, coordEmail });
+
+    if (coordEmail) {
+      if (!state.caches.groupsByCoord.has(coordEmail)) state.caches.groupsByCoord.set(coordEmail, new Set());
+      state.caches.groupsByCoord.get(coordEmail).add(d.id);
+      if (!state.caches.coords.includes(coordEmail)) state.caches.coords.push(coordEmail);
     }
-    const dlC = document.getElementById('dl-coords');
-    if (dlC) {
-      dlC.innerHTML = '';
-      const cs = await getDocs(collection(db, 'coordinadores'));
-      const seen = new Set();
-      cs.forEach(d => {
-        const x = d.data() || {};
-        const email = (coalesce(x.email, x.correo, x.mail, '')).toLowerCase();
-        if (!email || seen.has(email)) return;
-        seen.add(email);
-        const nombre = coalesce(x.nombre, x.Nombre, x.coordinador, '');
-        const opt = document.createElement('option');
-        opt.value = email;
-        opt.label = `${nombre ? (nombre.toUpperCase() + ' — ') : ''}${email}`;
-        dlC.appendChild(opt);
-        state.caches.coords.push(email);
-      });
+  });
+
+  // Datalist grupos (todos al inicio)
+  if (dlG) {
+    dlG.innerHTML = '';
+    for (const [gid, info] of state.caches.groupById.entries()) {
+      const opt = document.createElement('option');
+      opt.value = gid;
+      opt.label = `${info.numero} — ${info.nombre}`;
+      dlG.appendChild(opt);
     }
-  } catch (e) {
-    console.warn('preloadCatalogs()', e);
+  }
+  // Datalist coordinadores
+  if (dlC) {
+    dlC.innerHTML = '';
+    for (const email of state.caches.coords) {
+      const opt = document.createElement('option');
+      opt.value = email;
+      opt.label = email;
+      dlC.appendChild(opt);
+    }
   }
 }
 
-// ---------- colecta por grupo ----------
-async function collectFromGroup(grupoId) {
-  const gDoc = state.caches.grupos.get(grupoId) || {};
-  const before = state.rawItems.length;
+/* ===== Carga rápida con collectionGroup ===== */
 
-  // 1) Directo: grupos/{gid}/(gastos|abonos|movs|movimientos)
-  for (const sub of DIRECT_SUBS) {
-    try {
-      const ds = await getDocs(collection(db, 'grupos', grupoId, sub));
-      ds.forEach(d => {
-        const x = d.data() || {};
-        state.rawItems.push(
-          toItem(grupoId, gDoc, { id:d.id, ...x, __from:`groupSub:${sub}` }, sub)
-        );
-      });
-    } catch(_) {}
-  }
+// Gastos: coordinadores/{coord}/gastos/*
+async function loadGastosCG() {
+  const qy = query(collectionGroup(db, 'gastos'), limit(2000)); // ajusta si necesitas más
+  const snap = await getDocs(qy);
+  snap.forEach(docSnap => {
+    const x = docSnap.data() || {};
+    const coordId = docSnap.ref.parent.parent?.id || ''; // coordinador del path
+    const grupoId = coalesce(x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, '');
+    if (!grupoId) return;
 
-  // 1.b) 👈 NUEVO: grupos/{gid}/(finanzas_abonos|finanzas_gastos|...)
-  for (const sub of ALT_FIN_SUBS) {
-    try {
-      const ds = await getDocs(collection(db, 'grupos', grupoId, sub));
-      ds.forEach(d => {
-        const x = d.data() || {};
-        state.rawItems.push(
-          toItem(
-            grupoId,
-            gDoc,
-            { id:d.id, ...x, __from:`groupSub:${sub}` },
-            inferTipoFromPath(sub) // fuerza tipo según nombre de subcolección
-          )
-        );
-      });
-    } catch(_) {}
-  }
-
-  // 2) Estructura finanzas: grupos/{gid}/finanzas/{doc}/(sub)
-  try {
-    const fs = await getDocs(collection(db, 'grupos', grupoId, 'finanzas'));
-    for (const f of fs.docs) {
-      if (f.id.toLowerCase() === 'summary') continue;
-      const fin = f.data() || {};
-
-      // arrays dentro del doc: items/movs/movimientos/gastos/abonos
-      for (const key of ['items','movs','movimientos','gastos','abonos']) {
-        const arr = fin?.[key];
-        if (Array.isArray(arr)) {
-          arr.forEach((x, i) => {
-            if (!x || typeof x !== 'object') return;
-            state.rawItems.push(
-              toItem(grupoId, gDoc, { ...x, id:`${f.id}#${key}[${i}]`, __from:`docArray:${key}` }, key)
-            );
-          });
-        }
-      }
-
-      // subcolecciones bajo finanzas/{doc}
-      for (const sub of FIN_SUBS) {
-        try {
-          const ds = await getDocs(collection(db, 'grupos', grupoId, 'finanzas', f.id, sub));
-          ds.forEach(d => {
-            const x = d.data() || {};
-            state.rawItems.push(
-              toItem(grupoId, gDoc, { id:d.id, ...x, __from:`finSub:${sub}` }, sub)
-            );
-          });
-        } catch(_) {}
-      }
-    }
-  } catch(_) {}
-
-  // 3) Colecciones raíz (si las hubiera) filtradas por grupoId
-  for (const root of ROOT_CANDS) {
-    try {
-      const qs = await getDocs(query(collection(db, root), where('grupoId','==', grupoId), limit(200)));
-      qs.forEach(d => {
-        const x = d.data() || {};
-        state.rawItems.push(
-          toItem(grupoId, gDoc, { id:d.id, ...x, __from:`root:${root}` }, root)
-        );
-      });
-    } catch(_) {}
-  }
-
-  return state.rawItems.length - before;
+    const gInfo = state.caches.groupById.get(grupoId) || { numero: grupoId, nombre: '', coordEmail: coordId };
+    const enriched = { id: docSnap.id, ...x, coordinador: coordId, __from: 'cg:gastos' };
+    state.rawItems.push(toItem(grupoId, { ...gInfo, coordEmail: gInfo.coordEmail || coordId }, enriched, 'gasto'));
+  });
 }
 
-// ---------- colecta por coordinador ----------
-async function collectFromCoordinadores() {
-  const before = state.rawItems.length;
+// Abonos: grupos/{gid}/finanzas_abonos/*
+async function loadAbonosCG() {
+  const qy = query(collectionGroup(db, 'finanzas_abonos'), limit(2000));
+  const snap = await getDocs(qy);
+  snap.forEach(docSnap => {
+    const x = docSnap.data() || {};
+    const gid = docSnap.ref.parent.parent?.id || ''; // grupo del path
+    if (!gid) return;
 
-  // Si hay filtro por coordinador, úsalo para reducir lecturas
-  const filterCoord = norm(state.filtros.coord || '');
-
-  try {
-    const cs = await getDocs(collection(db, 'coordinadores'));
-    for (const c of cs.docs) {
-      const coordId = (c.id || '').toString();         // suele ser el nombre
-      const coordNorm = norm(coordId);
-
-      if (filterCoord && !coordNorm.includes(filterCoord)) {
-        // si filtraste por coord y este no coincide, sáltalo
-        continue;
-      }
-
-      for (const sub of COORD_SUBS) {
-        try {
-          const path = collection(db, 'coordinadores', coordId, sub);
-          const ds = await getDocs(path);
-          ds.forEach(d => {
-            const x = d.data() || {};
-
-            // grupoId viene dentro del doc de gasto de coord
-            const grupoId = pickGrupoIdFromMov(x);
-            if (!grupoId) return; // sin grupo no podemos cruzar
-
-            const gDoc = state.caches.grupos.get(grupoId) || {};
-            // enriquecemos el item con la info de coordinador tomada del path
-            const enriched = { id: d.id, ...x, coordinador: coordId, __from: `coord:${sub}` };
-
-            state.rawItems.push(
-              toItem(grupoId, gDoc, enriched, inferTipoFromPath(sub) || 'gasto')
-            );
-          });
-        } catch (e) {
-          console.warn('[FINZ] COORD_SUBS', coordId, sub, e);
-        }
-      }
-    }
-  } catch (e) {
-    console.warn('[FINZ] coordinadores (root)', e);
-  }
-
-  return state.rawItems.length - before;
+    const gInfo = state.caches.groupById.get(gid) || { numero: gid, nombre: '', coordEmail: '' };
+    const enriched = { id: docSnap.id, ...x, __from: 'cg:finanzas_abonos' };
+    state.rawItems.push(toItem(gid, gInfo, enriched, 'abono'));
+  });
 }
 
-// ---------- carga principal ----------
-async function fetchFinance(initial=false) {
-  if (state.paging.loading) return;
-  state.paging.loading = true;
-  try {
-    // Si el usuario escribió un grupo específico, priorízalo
-    const qg = (state.filtros.grupo || '').trim();
-    const onlyThisGroupId = state.caches.grupos.has(qg) ? qg : null;
-
-    if (onlyThisGroupId) {
-      await collectFromGroup(onlyThisGroupId);
-    } else {
-      // Recorre TODOS los grupos (con límite prudente)
-      const gs = await getDocs(query(collection(db,'grupos'), limit(300)));
-      for (const d of gs.docs) {
-        await collectFromGroup(d.id);
-      }
-    }
-
-    // Extra: si aún no hay nada, prueba una pasada rápida por collectionGroup('finanzas') y sus subcols
-    if (!state.rawItems.length) {
-      try {
-        const snap = await getDocs(query(collectionGroup(db,'finanzas'), limit(30)));
-        for (const f of snap.docs) {
-          if (f.id.toLowerCase() === 'summary') continue;
-          const gid = f.ref.parent.parent.id;
-          // subcolecciones típicas
-          for (const sub of FIN_SUBS) {
-            const ds = await getDocs(collection(db,'grupos',gid,'finanzas',f.id,sub));
-            ds.forEach(d => state.rawItems.push(
-              toItem(gid, state.caches.grupos.get(gid)||{}, { id:d.id, ...(d.data()||{}), __from:`CGfin:${sub}` }, sub)
-            ));
-          }
-        }
-      } catch(_) {}
-    }
-    
-    // …tras colectar por grupos y/o fallback collectionGroup…
-    await collectFromCoordinadores();
-    
-    renderTable();
-  } finally {
-    state.paging.loading = false;
-    console.log('%c[FINZ] total items:', 'color:#0a0', state.rawItems.length);
-  }
-}
-
-// ---------- filtros + render ----------
+/* ===== Filtros ===== */
 function applyFilters(items) {
   const f = state.filtros;
   const byEstado = f.estado;
@@ -314,15 +164,30 @@ function applyFilters(items) {
   const byCoord  = norm(f.coord);
   const byGrupo  = norm(f.grupo);
 
+  // Si hay coordinador, limitamos grupos válidos
+  let allowedGroups = null;
+  if (byCoord) {
+    // matches por includes (permite nombre o email)
+    // tomamos clave exacta si existe
+    const exactCoord = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === byCoord);
+    const key = exactCoord ?? byCoord;
+    const set = state.caches.groupsByCoord.get(key);
+    if (set) allowedGroups = new Set(set);
+  }
+
   return items.filter(x => {
     if (byTipo && x.tipo !== byTipo) return false;
+
     if (byEstado === 'pagables') {
       const pagable = (x.estado === 'aprobado') && (x.pago !== 'pagado');
       if (!pagable) return false;
     } else if (byEstado && x.estado !== byEstado) {
       return false;
     }
+
     if (byCoord && !norm(x.coordinador).includes(byCoord)) return false;
+
+    if (allowedGroups && !allowedGroups.has(x.grupoId)) return false;
 
     if (byGrupo) {
       const blob = norm([x.grupoId, x.nombreGrupo, x.numeroNegocio].join(' '));
@@ -332,23 +197,13 @@ function applyFilters(items) {
   });
 }
 
-function dedupeItems(items) {
-  const seen = new Map();
-  for (const i of items) {
-    // clave razonable: grupo + id (si hay) + tipo + monto
-    const key = [i.grupoId || '', i.id || '', i.tipo || '', i.monto ?? ''].join('|');
-    if (!seen.has(key)) seen.set(key, i);
-  }
-  return [...seen.values()];
-}
-
+/* ===== Render ===== */
 function renderTable() {
   const tbody = document.querySelector('#tblFinanzas tbody');
   const resumen = document.getElementById('resumen');
   const pagInfo = document.getElementById('pagInfo');
 
-  const base = dedupeItems(state.rawItems);
-  const filtered = applyFilters(base);
+  const filtered = applyFilters(state.rawItems);
 
   tbody.innerHTML = '';
   if (!filtered.length) {
@@ -372,11 +227,8 @@ function renderTable() {
         <span class="small">${(x.numeroNegocio ? x.numeroNegocio + ' · ' : '')}${(x.nombreGrupo || '')}</span>`;
 
       const tdCoord = document.createElement('td');
-      const coordTxt = (x.coordinador && x.coordinador.trim())
-        ? x.coordinador.toLowerCase()
-        : '—';
+      const coordTxt = (x.coordinador && x.coordinador.trim()) ? x.coordinador.toLowerCase() : '—';
       tdCoord.innerHTML = `<span class="${coordTxt==='—' ? 'muted' : ''}">${coordTxt}</span>`;
-
 
       const tdMonto = document.createElement('td');
       tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
@@ -399,11 +251,43 @@ function renderTable() {
     tbody.appendChild(frag);
   }
 
-  resumen.textContent = `Mostrando ${filtered.length} / cargados ${state.rawItems.length}`;
+  resumen.textContent = `Mostrando ${filtered.length} / total ${state.rawItems.length}`;
   pagInfo.textContent = state.paging.loading ? 'Cargando…' : 'Listo.';
 }
 
-// ---------- UI ----------
+/* ===== Sincronía de filtros coord ↔ grupo ===== */
+function refreshGroupDatalist(limitToCoord='') {
+  const dlG = document.getElementById('dl-grupos');
+  if (!dlG) return;
+  dlG.innerHTML = '';
+
+  let ids = [...state.caches.groupById.keys()];
+  if (limitToCoord) {
+    const set = state.caches.groupsByCoord.get(limitToCoord);
+    if (set) ids = [...set];
+    else ids = []; // sin grupos para ese coord
+  }
+  for (const gid of ids) {
+    const info = state.caches.groupById.get(gid);
+    const opt = document.createElement('option');
+    opt.value = gid;
+    opt.label = `${info.numero} — ${info.nombre}`;
+    dlG.appendChild(opt);
+  }
+}
+
+function resolveGroupId(text='') {
+  const t = norm(text);
+  if (!t) return '';
+  if (state.caches.groupById.has(text)) return text; // id exacto
+  for (const [gid, info] of state.caches.groupById.entries()) {
+    const blob = norm([gid, info.numero, info.nombre].join(' '));
+    if (blob.includes(t)) return gid;
+  }
+  return '';
+}
+
+/* ===== UI ===== */
 function wireUI() {
   const tabs = document.getElementById('stateTabs');
   tabs.addEventListener('click', (ev) => {
@@ -415,59 +299,79 @@ function wireUI() {
     renderTable();
   });
 
-  document.getElementById('filtroTipo').onchange = (e) => { state.filtros.tipo = e.target.value || ''; renderTable(); };
-  document.getElementById('filtroCoord').oninput = (e) => { state.filtros.coord = e.target.value || ''; };
-  document.getElementById('filtroGrupo').oninput = (e) => { state.filtros.grupo = e.target.value || ''; };
-
-  document.getElementById('btnAplicar').onclick = () => renderTable();
-
-  document.getElementById('btnRecargar').onclick = async () => {
-    state.rawItems = [];
-    await fetchFinance();
-  };
-
-  document.getElementById('btnMas').onclick = async () => {
-    // en esta versión la carga es “todo de una”, así que solo re-render
+  // Tipo
+  document.getElementById('filtroTipo').onchange = (e) => {
+    state.filtros.tipo = e.target.value || '';
     renderTable();
   };
+
+  // Coordinador: al escribir, limitamos grupos; al aplicar, filtramos
+  const inputCoord = document.getElementById('filtroCoord');
+  inputCoord.oninput = (e) => {
+    const val = (e.target.value || '').toLowerCase().trim();
+    state.filtros.coord = val;
+    // buscar clave exacta para limitar datalist
+    const exactKey = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === norm(val));
+    refreshGroupDatalist(exactKey || '');
+  };
+
+  // Grupo: al escribir/seleccionar, autocompleta coordinador
+  const inputGrupo = document.getElementById('filtroGrupo');
+  inputGrupo.oninput = (e) => {
+    const gid = resolveGroupId(e.target.value || '');
+    state.filtros.grupo = e.target.value || '';
+    if (gid) {
+      const info = state.caches.groupById.get(gid);
+      if (info?.coordEmail) {
+        inputCoord.value = info.coordEmail;
+        state.filtros.coord = info.coordEmail.toLowerCase();
+        refreshGroupDatalist(info.coordEmail);
+      }
+    }
+  };
+
+  document.getElementById('btnAplicar').onclick = () => renderTable();
+  document.getElementById('btnRecargar').onclick = async () => {
+    state.rawItems = [];
+    state.paging.loading = true;
+    renderTable();
+    await fetchFinance(); // recarga completa
+  };
+  document.getElementById('btnMas').onclick = () => renderTable(); // sin paginación por ahora
 }
 
-// ---------- helpers debug en consola ----------
+/* ===== Carga principal ===== */
+async function fetchFinance() {
+  if (state.paging.loading) return;
+  state.paging.loading = true;
+  renderTable();
+
+  try {
+    await preloadCatalogs();
+
+    // Carga en paralelo
+    await Promise.all([
+      (async ()=>{ await loadGastosCG(); renderTable(); })(),
+      (async ()=>{ await loadAbonosCG(); renderTable(); })(),
+    ]);
+
+    renderTable();
+  } catch (e) {
+    console.warn('[FINZ] fetchFinance()', e);
+  } finally {
+    state.paging.loading = false;
+    renderTable();
+    console.log('%c[FINZ] total items:', 'color:#0a0', state.rawItems.length);
+  }
+}
+
+/* ===== Debug helpers ===== */
 window.__finz = {
-  async scan() {
-    const out = [];
-    const gs = await getDocs(collection(db,'grupos'));
-    for (const d of gs.docs) {
-      const gid = d.id;
-      // directos
-      for (const sub of DIRECT_SUBS) {
-        const ds = await getDocs(query(collection(db,'grupos',gid,sub), limit(1)));
-        if (ds.size) out.push({ where:`grupos/${gid}/${sub}`, count:ds.size });
-      }
-      // finanzas
-      const fs = await getDocs(collection(db,'grupos',gid,'finanzas'));
-      for (const f of fs.docs) {
-        if (f.id.toLowerCase()==='summary') continue;
-        for (const sub of FIN_SUBS) {
-          const ds = await getDocs(query(collection(db,'grupos',gid,'finanzas',f.id,sub), limit(1)));
-          if (ds.size) out.push({ where:`grupos/${gid}/finanzas/${f.id}/${sub}`, count:ds.size });
-        }
-      }
-    }
-    // raíz
-    for (const root of ROOT_CANDS) {
-      try {
-        const ds = await getDocs(query(collection(db,root), limit(1)));
-        if (ds.size) out.push({ where:`/${root} (root)`, note:'existe' });
-      } catch(_) {}
-    }
-    console.table(out);
-    return out;
-  },
-  list() { return { loaded: state.rawItems.length, sample: state.rawItems.slice(0, 10) }; }
+  list() { return { loaded: state.rawItems.length, sample: state.rawItems.slice(0, 10) }; },
+  state: state,
 };
 
-// ---------- arranque ----------
+/* ===== Arranque ===== */
 onAuthStateChanged(auth, async (user) => {
   if (!user) { location = 'login.html'; return; }
   try {
@@ -477,10 +381,5 @@ onAuthStateChanged(auth, async (user) => {
   } catch (_) {}
 
   wireUI();
-  await preloadCatalogs();
   await fetchFinance();
-
-  if (!state.rawItems.length) {
-    console.warn('[FINZ] No salió nada. Ejecuta en consola:', '__finz.scan()');
-  }
 });
