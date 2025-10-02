@@ -391,6 +391,11 @@ function renderTable() {
       // ESTADO (derivado)
       const tdEstado = document.createElement('td');
       tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
+
+      // ← crea las celdas tri-estado para las revisiones
+      const tdR1 = makeRevCell(x, 1);
+      const tdR2 = makeRevCell(x, 2);
+
       
       // Append final (sin "Pago")
       tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdR1, tdR2, tdEstado);
