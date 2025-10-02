@@ -65,13 +65,19 @@ function toItem(grupoId, gInfo, x, hintedTipo) {
     ''
   ).toString().toLowerCase();
 
+  // fuente y asunto (usa alias comunes)
+  const from = (x.__from || '').toString();
+  const asunto = coalesce(
+    x.asunto, x.detalle, x.descripcion, x.concepto, x.motivo, ''
+  );
+
   return {
     id: x.id || x._id || '',
     grupoId,
     nombreGrupo: gInfo?.nombre || '',
     numeroNegocio: gInfo?.numero || grupoId,
     coordinador: coord,
-    tipo, monto,
+    tipo, asunto, monto,
     rev1, rev2,
     estado: deriveEstado({ estado:x.estado, rev1, rev2 }),
     pago,
