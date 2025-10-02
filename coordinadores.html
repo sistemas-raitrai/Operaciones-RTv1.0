@@ -2,9 +2,10 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
-  <title>Asignación de Coordinadores a Viajes</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sistema de Operaciones RTv1 — Asignación de Coordinadores</title>
 
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -12,26 +13,23 @@
   <style>
     .page { padding: 1rem 1.2rem; }
     h2 { margin: .6rem 0 1rem; }
+
+    /* Layout 2 columnas: izq fija 360px, der ocupa todo lo demás */
     .grid{
       display: grid;
-      grid-template-columns: 340px minmax(0, 1fr);
+      grid-template-columns: 360px minmax(0, 1fr);
+      grid-template-areas: "libres sets";
       gap: 1rem;
       align-items: start;
     }
-
-    /* Asegura ancho completo en VIAJES */
-    #conjuntos-wrap,
-    #conjuntos-wrap .card,
-    #conjuntos-wrap table{
-      width: 100%;
-      max-width: none;
-    }
-
+    .panel-libres{ grid-area: libres; position: sticky; top: var(--sticky-top,72px); z-index: 2; }
+    .panel-sets{  grid-area: sets;  min-width: 0; }
 
     .panel { border:1px solid #ddd; border-radius:10px; background:#fff; }
     .panel > .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; font-weight:600; }
     .panel > .bd { padding:.6rem .8rem; }
-    .list { max-height:58vh; overflow:auto; }
+
+    .list{ max-height: calc(100vh - var(--sticky-top,72px) - 24px); overflow:auto; }
 
     .card { border:1px solid #ddd; border-radius:12px; background:#fff; margin:.6rem 0; display:block; width:100%; }
     .card .hd { padding:.6rem .8rem; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
@@ -67,9 +65,7 @@
       position:fixed; left:50%; transform:translateX(-50%);
       top:4vh; width:min(1500px,96vw);
       background:#fff; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.2);
-      display:none;                   /* oculto por defecto */
-      max-height:88vh;                /* cuerpo con scroll, footer visible */
-      flex-direction:column;
+      display:none; max-height:88vh; flex-direction:column;
     }
     .modal .hd { padding:.8rem 1rem; border-bottom:1px solid #eee; font-weight:700; display:flex; justify-content:space-between; align-items:center; }
     .modal .bd { padding:1rem; overflow:auto; }
@@ -77,117 +73,45 @@
     .x { cursor:pointer; font-size:1.4rem; line-height:1; }
     .picker-range { width:220px; }
 
-    .toolbar{
-    display:flex;
-    gap:.5rem;
-    align-items:center;
-    flex-wrap:wrap;
-    margin:.5rem 0;
-  }
-  .toolbar input[type="search"], .toolbar input[type="text"]{ min-width:240px; }
-  .toolbar input[type="date"]{ min-width:160px; }
+    .toolbar{ display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin:.5rem 0; }
+    .toolbar input[type="search"], .toolbar input[type="text"]{ min-width:240px; }
+    .toolbar input[type="date"]{ min-width:160px; }
 
-  /* Altura de offset si tienes un header fijo arriba */
-  :root{
-    --sticky-top: 72px; /* ajusta según tu encabezado; prueba 12px si no es fijo */
-  }
-  
-  /* Mantén los hijos alineados al inicio para que sticky funcione bien */
-  .grid{
-    align-items: start;
-  }
-  
-  /* Haz sticky el panel izquierdo completo (Viajes Libres) */
-  .grid > .panel:first-child{
-    position: sticky;
-    top: var(--sticky-top);
-    z-index: 1;           /* que no quede tapado por sombras del otro panel */
-  }
-  
-  /* La lista interna no debe exceder la ventana */
-  .grid > .panel:first-child .list{
-    max-height: calc(100vh - var(--sticky-top) - 24px);
-    overflow: auto;       /* scroll interno si la lista crece */
-  }
-  
-  /* Responsive: en pantallas chicas apila y desactiva sticky */
-  @media (max-width: 900px){
-    .grid{
-      grid-template-columns: 1fr !important;
-    }
-    .grid > .panel:first-child{
-      position: static;
-      top: auto;
-    }
-    .grid > .panel:first-child .list{
-      max-height: none;
-      overflow: visible;
-    }
-    
-    }
-  
-    .token-wrap{
-    display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem;
-    }
-    .token{
-      display:inline-flex; align-items:center; gap:.35rem;
-      padding:.15rem .5rem; border-radius:999px;
-      background:#e8eef6; color:#1f64b2; font-weight:600; font-size:.9rem;
-    }
-    .token .x{
-      cursor:pointer; font-weight:700; opacity:.8;
-    }
+    :root{ --sticky-top: 72px; }
+
+    /* Asegurar que VIAJES use 100% del ancho */
+    #conjuntos-wrap,
+    #conjuntos-wrap .card,
+    #conjuntos-wrap table{ width:100%; max-width:none; }
+
+    /* Tokens */
+    .token-wrap{ display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.4rem; }
+    .token{ display:inline-flex; align-items:center; gap:.35rem; padding:.15rem .5rem; border-radius:999px; background:#e8eef6; color:#1f64b2; font-weight:600; font-size:.9rem; }
+    .token .x{ cursor:pointer; font-weight:700; opacity:.8; }
     .token .x:hover{ opacity:1; }
 
-    /* === Modal "Gestionar coordinadores" — ANCHO === */
-    #modal-coords{
-      /* ajustá SOLO estos dos valores si querés aún más ancho */
-      width: 96vw;          /* ocupa casi todo el ancho de la ventana */
-      max-width: 2000px;    /* límite duro del modal */
-    
-      /* típicos estilos de modal; dejalos si ya los tenés */
-      box-sizing: border-box;
-    }
-    
-    #modal-coords .modal-body{
-      overflow: auto;       /* por si el contenido se pasa en pantallas pequeñas */
-      max-height: 82vh;     /* evita que se salga verticalmente */
-    }
+    /* Colores estados (alias y select coord) */
+    #conjuntos-wrap input[data-alias].estado-ok,
+    #conjuntos-wrap select[data-coord].estado-ok { background: rgba(0,180,0,.15); border-color: rgba(0,180,0,.35); }
+    #conjuntos-wrap input[data-alias].estado-pend,
+    #conjuntos-wrap select[data-coord].estado-pend{ background: rgba(255,200,0,.18); border-color: rgba(255,200,0,.45); }
+    #conjuntos-wrap input[data-alias].estado-bad,
+    #conjuntos-wrap select[data-coord].estado-bad { background: rgba(220,0,0,.15); border-color: rgba(220,0,0,.35); }
 
-    /* Colorear el input del alias según estado del set */
-    #conjuntos-wrap input[data-alias].estado-ok {
-      background: rgba(0, 180, 0, 0.15);
-      border-color: rgba(0, 180, 0, 0.35);
+    /* Responsive: apilar columnas y desactivar sticky */
+    @media (max-width: 900px){
+      .grid{
+        grid-template-columns: 1fr !important;
+        grid-template-areas:
+          "libres"
+          "sets";
+      }
+      .panel-libres{ position: static; top:auto; }
+      .panel-libres .list{ max-height:none; overflow:visible; }
     }
-    
-    #conjuntos-wrap input[data-alias].estado-pend {
-      background: rgba(255, 200, 0, 0.18);
-      border-color: rgba(255, 200, 0, 0.45);
-    }
-    
-    #conjuntos-wrap input[data-alias].estado-bad {
-      background: rgba(220, 0, 0, 0.15);
-      border-color: rgba(220, 0, 0, 0.35);
-    }
-    /* Modal de coordinadores: siempre oculto por defecto */
-    #mb,
-    #modal-coords{
-      display: none !important;
-    }
-
-   </style>
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sistema de Operaciones RTv1 — Asignación de Coordinadores</title>
-
-  <!-- Igual que index -->
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
-
-  <link rel="stylesheet" href="estilos.css" />
-  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  </style>
 </head>
+
 <body>
   <div id="encabezado"></div>
 
@@ -226,10 +150,9 @@
     </div>
 
     <!-- Toolbar de LIBRES -->
-
-
     <div class="grid">
-      <div class="panel">
+      <!-- IZQUIERDA: VIAJES LIBRES -->
+      <div class="panel panel-libres">
         <div class="hd">🧳 Viajes Libres</div>
         <div id="toolbar-libres" class="toolbar">
           <input id="buscar-libres" type="search" placeholder="Buscar viajes no asignados…" />
@@ -240,10 +163,10 @@
         </div>
       </div>
     
-      <div class="panel">
+      <!-- DERECHA: VIAJES (asignados) -->
+      <div class="panel panel-sets">
         <div class="hd">🗂️ Viajes</div>
         <div class="bd">
-          <!-- 🔎 Buscador de conjuntos -->
           <div class="row" style="margin-bottom:.6rem; width:100%;">
             <input
               id="buscar-sets"
@@ -254,7 +177,6 @@
             <input id="f-dia-sets" type="date" title="Filtrar por fecha de inicio (asignados)" />
           </div>
     
-          <!-- Contenedor de los conjuntos -->
           <div id="conjuntos-wrap">
             <div class="empty">
               Aún no hay grupos de viajes. Usa “Sugerir grupos de viajes (auto)” o “Nuevo grupo de viajes”.
