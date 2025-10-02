@@ -27,6 +27,16 @@ const ROOT_CANDS  = ['gastos','abonos','movs','movimientos'];          // colecc
 // 👇 NUEVO: subcolecciones reales que mostró tu consola
 const ALT_FIN_SUBS = ['finanzas_abonos','finanzas_gastos','finanzas_movs','finanzas_movimientos'];
 
+// Movs bajo coordinadores/{coord}/gastos
+const COORD_SUBS = ['gastos']; // si más adelante guardas 'abonos' aquí, agrégalo
+
+// campo de grupo que puede venir en el doc de coordinadores/gastos
+function pickGrupoIdFromMov(x) {
+  return coalesce(
+    x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, ''
+  );
+}
+
 function inferTipoFromPath(pathLike=''){
   const s = String(pathLike).toLowerCase();
   if (s.includes('abono')) return 'abono';
@@ -200,6 +210,54 @@ async function collectFromGroup(grupoId) {
   return state.rawItems.length - before;
 }
 
+// ---------- colecta por coordinador ----------
+async function collectFromCoordinadores() {
+  const before = state.rawItems.length;
+
+  // Si hay filtro por coordinador, úsalo para reducir lecturas
+  const filterCoord = norm(state.filtros.coord || '');
+
+  try {
+    const cs = await getDocs(collection(db, 'coordinadores'));
+    for (const c of cs.docs) {
+      const coordId = (c.id || '').toString();         // suele ser el nombre
+      const coordNorm = norm(coordId);
+
+      if (filterCoord && !coordNorm.includes(filterCoord)) {
+        // si filtraste por coord y este no coincide, sáltalo
+        continue;
+      }
+
+      for (const sub of COORD_SUBS) {
+        try {
+          const path = collection(db, 'coordinadores', coordId, sub);
+          const ds = await getDocs(path);
+          ds.forEach(d => {
+            const x = d.data() || {};
+
+            // grupoId viene dentro del doc de gasto de coord
+            const grupoId = pickGrupoIdFromMov(x);
+            if (!grupoId) return; // sin grupo no podemos cruzar
+
+            const gDoc = state.caches.grupos.get(grupoId) || {};
+            // enriquecemos el item con la info de coordinador tomada del path
+            const enriched = { id: d.id, ...x, coordinador: coordId, __from: `coord:${sub}` };
+
+            state.rawItems.push(
+              toItem(grupoId, gDoc, enriched, inferTipoFromPath(sub) || 'gasto')
+            );
+          });
+        } catch (e) {
+          console.warn('[FINZ] COORD_SUBS', coordId, sub, e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[FINZ] coordinadores (root)', e);
+  }
+
+  return state.rawItems.length - before;
+}
 
 // ---------- carga principal ----------
 async function fetchFinance(initial=false) {
@@ -237,7 +295,10 @@ async function fetchFinance(initial=false) {
         }
       } catch(_) {}
     }
-
+    
+    // …tras colectar por grupos y/o fallback collectionGroup…
+    await collectFromCoordinadores();
+    
     renderTable();
   } finally {
     state.paging.loading = false;
@@ -271,10 +332,23 @@ function applyFilters(items) {
   });
 }
 
+function dedupeItems(items) {
+  const seen = new Map();
+  for (const i of items) {
+    // clave razonable: grupo + id (si hay) + tipo + monto
+    const key = [i.grupoId || '', i.id || '', i.tipo || '', i.monto ?? ''].join('|');
+    if (!seen.has(key)) seen.set(key, i);
+  }
+  return [...seen.values()];
+}
+
 function renderTable() {
   const tbody = document.querySelector('#tblFinanzas tbody');
   const resumen = document.getElementById('resumen');
   const pagInfo = document.getElementById('pagInfo');
+
+  const base = dedupeItems(state.rawItems);
+  const filtered = applyFilters(base);
 
   const filtered = applyFilters(state.rawItems);
 
@@ -300,7 +374,11 @@ function renderTable() {
         <span class="small">${(x.numeroNegocio ? x.numeroNegocio + ' · ' : '')}${(x.nombreGrupo || '')}</span>`;
 
       const tdCoord = document.createElement('td');
-      tdCoord.textContent = (x.coordinador || '').toLowerCase();
+      const coordTxt = (x.coordinador && x.coordinador.trim())
+        ? x.coordinador.toLowerCase()
+        : '—';
+      tdCoord.innerHTML = `<span class="${coordTxt==='—' ? 'muted' : ''}">${coordTxt}</span>`;
+
 
       const tdMonto = document.createElement('td');
       tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
