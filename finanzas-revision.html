@@ -64,10 +64,234 @@
 
     /* Cierres */
     #cierres { margin-top:1rem; display:grid; gap:.8rem; }
-    .card { border:1px solid #eee; border-radius:12px; padding:.8rem; background:#fff; width: 100%}
+    .card { 
+      border:1px solid #e5e7eb; 
+      border-radius:16px; 
+      padding:1.5rem; 
+      background:#fff; 
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .card h3 { 
+      font-size:1.5rem; 
+      margin-bottom:1rem; 
+      color:#1f2937; 
+      border-bottom:2px solid #e5e7eb; 
+      padding-bottom:0.75rem; 
+    }
     .row { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
-    .totals { font-weight:700; }
-    .tagline { font-size:.85rem; opacity:.75; }
+    .totals { font-weight:700; font-size:1.25rem; }
+    .tagline { font-size:.9rem; opacity:.75; margin-bottom:1rem; }
+    
+    /* Estilos para items de pago */
+    .pago-item {
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      padding:1rem;
+      background:#fafafa;
+      transition: all 0.2s;
+    }
+    .pago-item:hover {
+      background:#f9fafb;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    .pago-header {
+      display:flex;
+      align-items:center;
+      gap:0.75rem;
+      margin-bottom:0.5rem;
+    }
+    .pago-codigo {
+      font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+      font-size:0.9rem;
+      color:#374151;
+      font-weight:600;
+    }
+    .pago-concepto {
+      color:#6b7280;
+      font-size:0.9rem;
+    }
+    .pago-monto {
+      font-size:1.1rem;
+      font-weight:700;
+      color:#059669;
+      margin-left:auto;
+    }
+
+    /* Resumen Financiero */
+    .resumen-financiero {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+    }
+    
+    .stat-card.highlight {
+      background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+      border-color: #0ea5e9;
+    }
+    
+    .stat-label {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 700;
+      font-family: ui-monospace, monospace;
+    }
+    
+    .stat-value.gastos { color: #dc2626; }
+    .stat-value.abonos { color: #059669; }
+    .stat-value.saldo { color: #0284c7; font-size: 1.75rem; }
+    
+    /* Secciones de Formulario */
+    .seccion-form {
+      background: #fafafa;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+    
+    .seccion-form h4 {
+      margin: 0 0 1rem;
+      color: #1f2937;
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .hint-inline {
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: #6b7280;
+      font-style: italic;
+    }
+    
+    /* Grid de Formulario */
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    .form-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    
+    .form-item.full-width {
+      grid-column: 1 / -1;
+    }
+    
+    .form-item.resultado {
+      background: #fff;
+      border: 2px solid #0ea5e9;
+      border-radius: 8px;
+      padding: 0.75rem;
+    }
+    
+    .form-item label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #374151;
+      text-transform: uppercase;
+    }
+    
+    .input-field {
+      padding: 0.6rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: ui-monospace, monospace;
+      transition: all 0.2s;
+    }
+    
+    .input-field:focus {
+      outline: none;
+      border-color: #0ea5e9;
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+    }
+    
+    .valor-calculado {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #0284c7;
+      font-family: ui-monospace, monospace;
+      text-align: center;
+      padding: 0.25rem 0;
+    }
+    
+    .link-doc {
+      color: #0ea5e9;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 0.5rem 0;
+      display: inline-block;
+    }
+    
+    .link-doc:hover {
+      text-decoration: underline;
+    }
+    
+    .btn-accion {
+      padding: 0.75rem 1.5rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+    
+    .btn-accion:hover {
+      background: #f9fafb;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .btn-accion.primary {
+      background: #0ea5e9;
+      color: white;
+      border-color: #0ea5e9;
+    }
+    
+    .btn-accion.primary:hover {
+      background: #0284c7;
+      border-color: #0284c7;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .resumen-financiero {
+        grid-template-columns: 1fr;
+      }
+      
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .form-item.full-width {
+        grid-column: 1;
+      }
+    }
 
     /* Modal simple */
     #modalBack { position:fixed; inset:0; background:rgba(0,0,0,.25); display:none; align-items:center; justify-content:center; z-index:1000; }
@@ -141,57 +365,99 @@
       <tbody></tbody>
     </table>
 
-    <div class="toolbar">
-      <button id="btnMas">Cargar más</button>
-      <button id="btnImprimirCierre">Imprimir Cierre</button>
-      <span class="hint muted" id="pagInfo"></span>
-    </div>
-
-    <!-- Cierres Financieros -->
-    <div id="cierres">
-      <div id="cierrePagos" class="card" style="display:none">
-        <h3>CIERRE DE PAGOS</h3>
-        <div class="tagline">Selecciona los <b>pagos aprobados</b> para transferir al coordinador y marca la transferencia realizada.</div>
-        <div id="cierrePagosList" class="row" style="margin-top:.4rem; flex-direction:column; gap:.35rem"></div>
-        <div class="row" style="justify-content:space-between">
-          <div class="totals" id="cierrePagosTotals">TOTAL: —</div>
-          <div class="row">
-            <button id="btnMarcarTransferencia" class="primary">Marcar transferencia realizada</button>
-          </div>
-        </div>
+      <div class="toolbar">
+        <button id="btnMas">Cargar más</button>
+        <button id="btnImprimirCierre">Imprimir Cierre</button>
+        <span class="hint muted" id="pagInfo"></span>
       </div>
 
+      <!-- Cierres Financieros -->
+      <div id="cierrePagos" class="card" style="display:none">
+        <h3>CIERRE DE PAGOS</h3>
+        <p class="tagline">Selecciona los pagos aprobados para transferir al coordinador y marca la transferencia realizada</p>
+        
+        <div id="cierrePagosList" style="display:grid; gap:1rem; margin-bottom:1.5rem;"></div>
+        
+        <div class="row" style="justify-content:space-between; padding:1.25rem; background:#f9fafb; border-radius:12px; border:2px solid #e5e7eb;">
+          <div class="totals" id="cierrePagosTotals">TOTAL: —</div>
+          <button id="btnMarcarTransferencia" class="primary" style="padding:.875rem 2rem; border-radius:8px; font-size:1rem;">
+            Marcar transferencia realizada
+          </button>
+        </div>
+      </div>
+  
       <div id="cierreGastos" class="card" style="display:none">
         <h3>CIERRE DE GASTOS</h3>
-        <div class="row" style="gap:1rem">
-          <div><b>Gastos aprobados:</b> <span id="sumGastosAprobados">—</span></div>
-          <div><b>Abonos aprobados:</b> <span id="sumAbonosAprobados">—</span></div>
-          <div class="totals"><b>Saldo (Abonos – Gastos):</b> <span id="saldoAG">—</span></div>
+        
+        <!-- Resumen Financiero -->
+        <div class="resumen-financiero">
+          <div class="stat-card">
+            <div class="stat-label">Gastos aprobados</div>
+            <div class="stat-value gastos" id="sumGastosAprobados">—</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Abonos aprobados</div>
+            <div class="stat-value abonos" id="sumAbonosAprobados">—</div>
+          </div>
+          <div class="stat-card highlight">
+            <div class="stat-label">Saldo (Abonos – Gastos)</div>
+            <div class="stat-value saldo" id="saldoAG">—</div>
+          </div>
         </div>
-
-        <div style="margin-top:.6rem">
-          <h4>Boleta y Pago de Días</h4>
-          <div class="row">
-            <div>Boleta: <a id="boletaUrl" href="#" target="_blank" rel="noopener">—</a></div>
-            <div>Días trabajados: <input id="diasTrab" type="number" min="0" step="1" value="0" style="width:6rem"/></div>
-            <div>Valor día: <input id="valorDia" type="number" min="0" step="1000" value="70000" style="width:8rem"/></div>
-            <div>Retención SII: 
-              <select id="retencionSII">
+      
+        <!-- Boleta y Pago de Días -->
+        <div class="seccion-form">
+          <h4>📄 Boleta y Pago de Días</h4>
+          
+          <div class="form-grid">
+            <div class="form-item full-width">
+              <label>Boleta</label>
+              <a id="boletaUrl" href="#" target="_blank" rel="noopener" class="link-doc">Ver documento</a>
+            </div>
+            
+            <div class="form-item">
+              <label for="diasTrab">Días trabajados</label>
+              <input id="diasTrab" type="number" min="0" step="1" value="0" class="input-field"/>
+            </div>
+            
+            <div class="form-item">
+              <label for="valorDia">Valor día</label>
+              <input id="valorDia" type="number" min="0" step="1000" value="70000" class="input-field"/>
+            </div>
+            
+            <div class="form-item">
+              <label for="retencionSII">Retención SII</label>
+              <select id="retencionSII" class="input-field">
                 <option value="0.13">13%</option>
                 <option value="0.14" selected>14%</option>
               </select>
             </div>
-            <div><b>Pago neto guía:</b> <span id="pagoNetoGuia">—</span></div>
-            <button id="btnMarcarPagoGuia" class="primary">Marcar pago de días</button>
+            
+            <div class="form-item resultado">
+              <label>Pago neto guía</label>
+              <div class="valor-calculado" id="pagoNetoGuia">—</div>
+            </div>
           </div>
+          
+          <button id="btnMarcarPagoGuia" class="btn-accion primary">
+            Marcar pago de días
+          </button>
         </div>
-
-        <div style="margin-top:.6rem">
-          <h4>Transferencia de regreso (si saldo &gt; 0)</h4>
-          <div class="row">
-            <div>Comprobante: <a id="comprobanteUrl" href="#" target="_blank" rel="noopener">—</a></div>
-            <button id="btnVerificarTransferencia">Marcar verificada</button>
+      
+        <!-- Transferencia de Regreso -->
+        <div class="seccion-form">
+          <h4>💸 Transferencia de regreso <span class="hint-inline">(si saldo > 0)</span></h4>
+          
+          <div class="form-grid">
+            <div class="form-item">
+              <label>Comprobante</label>
+              <a id="comprobanteUrl" href="#" target="_blank" rel="noopener" class="link-doc">Ver comprobante</a>
+            </div>
           </div>
+          
+          <button id="btnVerificarTransferencia" class="btn-accion">
+            Marcar verificada
+          </button>
         </div>
       </div>
     </div>
