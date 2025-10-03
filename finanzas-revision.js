@@ -20,6 +20,46 @@ const state = {
   },
 };
 
+/* ===== Ordenamiento ===== */
+const sortState = { key: '', dir: 'asc' }; // dir: 'asc' | 'desc'
+
+function getSortValue(item, key) {
+  switch (key) {
+    case 'tipo':    return item.tipo || '';
+    case 'grupo':   return item.grupoId || '';
+    case 'coord':   return item.coordinador || '';
+    case 'asunto':  return item.asunto || '';
+    case 'monto':   return Number(item.monto) || 0;
+    case 'rev1':    return item.rev1 || '';
+    case 'rev2':    return item.rev2 || '';
+    case 'estado':  return item.estado || '';
+    default:        return '';
+  }
+}
+
+function sortItems(list) {
+  if (!sortState.key) return list.slice();
+  const dir = sortState.dir === 'asc' ? 1 : -1;
+  return list.slice().sort((a, b) => {
+    const va = getSortValue(a, sortState.key);
+    const vb = getSortValue(b, sortState.key);
+    if (typeof va === 'number' && typeof vb === 'number') {
+      return (va - vb) * dir;
+    }
+    return String(va).localeCompare(String(vb), 'es', { numeric: true, sensitivity: 'base' }) * dir;
+  });
+}
+
+function applySortHeaderUI() {
+  const ths = document.querySelectorAll('#tblFinanzas thead th.sortable');
+  ths.forEach(th => {
+    th.classList.remove('asc', 'desc');
+    if (th.dataset.sortKey === sortState.key) {
+      th.classList.add(sortState.dir);
+    }
+  });
+}
+
 /* ===== Utilidades ===== */
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
@@ -324,30 +364,31 @@ function renderTable() {
   const resumen = document.getElementById('resumen');
   const pagInfo = document.getElementById('pagInfo');
 
-  const filtered = applyFilters(state.rawItems);
-
-  // Totales del conjunto filtrado
-  const totals = calcTotals(filtered);
-  const totalesEl = document.getElementById('totales');
-  if (totalesEl) {
-    const parts = [];
-    parts.push(`Gastos: ${money(totals.gastos)}`);
-    parts.push(`Abonos: ${money(totals.abonos)}`);
-    if (totals.hasBoth) parts.push(`Saldo: ${money(totals.neto)}`); // solo si hay ambos
-    totalesEl.textContent = parts.join(' · ');
-  }
-
-  tbody.innerHTML = '';
-  if (!filtered.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 8;
-    td.innerHTML = '<div class="muted">Sin movimientos para este criterio.</div>';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  } else {
-    const frag = document.createDocumentFragment();
-    filtered.forEach(x => {
+    const filtered = applyFilters(state.rawItems);
+    const data = sortItems(filtered);   // ← ordenamos acá
+  
+    // Totales del conjunto filtrado (se calculan sobre "data")
+    const totals = calcTotals(data);
+    const totalesEl = document.getElementById('totales');
+    if (totalesEl) {
+      const parts = [];
+      parts.push(`Gastos: ${money(totals.gastos)}`);
+      parts.push(`Abonos: ${money(totales.abonos)}`);
+      if (totals.hasBoth) parts.push(`Saldo: ${money(totals.neto)}`);
+      totalesEl.textContent = parts.join(' · ');
+    }
+  
+    tbody.innerHTML = '';
+    if (!data.length) {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = 8;
+      td.innerHTML = '<div class="muted">Sin movimientos para este criterio.</div>';
+      tr.appendChild(td);
+      tbody.appendChild(tr);
+    } else {
+      const frag = document.createDocumentFragment();
+      data.forEach(x => {
       const tr = document.createElement('tr');
 
       const tdTipo = document.createElement('td');
@@ -434,9 +475,12 @@ function renderTable() {
     tbody.appendChild(frag);
   }
 
-  resumen.textContent = `Mostrando ${filtered.length} / total ${state.rawItems.length}`;
+  resumen.textContent = `Mostrando ${data.length} / total ${state.rawItems.length}`;
   pagInfo.textContent = state.paging.loading ? 'Cargando…' : 'Listo.';
+
+  applySortHeaderUI();  // ← actualiza flechas en el thead
 }
+
 
 /* ===== Sincronía de filtros coord ↔ grupo ===== */
 function refreshGroupDatalist(limitToCoord='') {
@@ -513,6 +557,22 @@ function wireUI() {
     await fetchFinance(); // recarga completa
   };
   document.getElementById('btnMas').onclick = () => renderTable(); // sin paginación por ahora
+
+    // Click en encabezados para ordenar
+  const head = document.querySelector('#tblFinanzas thead');
+  head?.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      if (!key) return;
+      if (sortState.key === key) {
+        sortState.dir = (sortState.dir === 'asc' ? 'desc' : 'asc');
+      } else {
+        sortState.key = key;
+        sortState.dir = 'asc';
+      }
+      renderTable();
+    });
+  });
 }
 
 /* ===== Carga principal ===== */
