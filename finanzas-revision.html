@@ -125,7 +125,27 @@
     }
   }
 
-
+  /* === Sortable headers === */
+  table.finanzas th.sortable {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    padding-right: 1.2rem; /* espacio para la flecha */
+  }
+  
+  table.finanzas th.sortable::after {
+    content: "↕";
+    position: absolute;
+    right: .4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    opacity: .45;
+    font-size: .85rem;
+  }
+  
+  table.finanzas th.sortable.asc::after  { content: "▲"; opacity: .85; }
+  table.finanzas th.sortable.desc::after { content: "▼"; opacity: .85; }
+  
   </style>
 </head>
 <body>
@@ -168,14 +188,14 @@
     <table class="finanzas" id="tblFinanzas">
       <thead>
         <tr>
-          <th>Tipo</th>
-          <th>Grupo (ID)</th>
-          <th>Coordinador</th>
-          <th>Asunto</th>
-          <th>Monto</th>
-          <th>Rev. 1</th>
-          <th>Rev. 2</th>
-          <th>Estado</th>
+          <th class="sortable" data-sort-key="tipo">Tipo</th>
+          <th class="sortable" data-sort-key="grupo">Grupo (ID)</th>
+          <th class="sortable" data-sort-key="coord">Coordinador</th>
+          <th class="sortable" data-sort-key="asunto">Asunto</th>
+          <th class="sortable" data-sort-key="monto">Monto</th>
+          <th class="sortable" data-sort-key="rev1">Rev. 1</th>
+          <th class="sortable" data-sort-key="rev2">Rev. 2</th>
+          <th class="sortable" data-sort-key="estado">Estado</th>
         </tr>
       </thead>
       <tbody></tbody>
