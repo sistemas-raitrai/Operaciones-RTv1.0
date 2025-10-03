@@ -1,4 +1,10 @@
-/* Revisión financiera — carga rápida (collectionGroup) */
+/* Revisión financiera — Rendición por Coord/Grupo con revisiones cruzadas
+   - Carga en blanco: solo trae datos al elegir Coord o Grupo + Tipo y tocar "Aplicar"
+   - Columnas: TIPO, GRUPO, COORDINADOR, ASUNTO, MONTO, MONEDA, REV.1, REV.2, REV.PAGO, ESTADO
+   - Comentarios en rechazos y "!" para verlos
+   - Rev.1/Rev.2/Rev.Pago exigen usuarios distintos (revisión cruzada)
+*/
+
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
@@ -11,29 +17,32 @@ const auth = getAuth(app);
 const state = {
   paging: { loading: false },
   rawItems: [],
-  filtros: { estado:'', tipo:'', coord:'', grupo:'' },
+  filtros: { estado:'', tipo:'', coord:'', grupo:'' }, // tipo: '', 'gasto', 'abono', 'all'
+  loadedFor: { key:'' }, // para evitar recargas iguales
   caches: {
     grupos: new Map(),          // gid -> doc
-    coords: [],                 // emails/nombres para datalist
+    coords: [],                 // emails para datalist
     groupById: new Map(),       // gid -> {numero,nombre,coordEmail}
-    groupsByCoord: new Map(),   // coordEmail/name -> Set(gid)
+    groupsByCoord: new Map(),   // coordEmail -> Set(gid)
   },
 };
 
-/* ===== Ordenamiento ===== */
+/* ===== Ordenamiento (con flechas en THs con data-sort-key) ===== */
 const sortState = { key: '', dir: 'asc' }; // dir: 'asc' | 'desc'
 
 function getSortValue(item, key) {
   switch (key) {
-    case 'tipo':    return item.tipo || '';
-    case 'grupo':   return item.grupoId || '';
-    case 'coord':   return item.coordinador || '';
-    case 'asunto':  return item.asunto || '';
-    case 'monto':   return Number(item.monto) || 0;
-    case 'rev1':    return item.rev1 || '';
-    case 'rev2':    return item.rev2 || '';
-    case 'estado':  return item.estado || '';
-    default:        return '';
+    case 'tipo':     return item.tipo || '';
+    case 'grupo':    return item.grupoId || '';
+    case 'coord':    return item.coordinador || '';
+    case 'asunto':   return item.asunto || '';
+    case 'monto':    return Number(item.monto) || 0;
+    case 'moneda':   return item.moneda || '';
+    case 'rev1':     return item.rev1 || '';
+    case 'rev2':     return item.rev2 || '';
+    case 'revpago':  return item.revPago || '';
+    case 'estado':   return item.estado || '';
+    default:         return '';
   }
 }
 
@@ -51,30 +60,30 @@ function sortItems(list) {
 }
 
 function applySortHeaderUI() {
-  const ths = document.querySelectorAll('#tblFinanzas thead th.sortable');
-  ths.forEach(th => {
+  document.querySelectorAll('#tblFinanzas thead th.sortable').forEach(th => {
     th.classList.remove('asc', 'desc');
-    if (th.dataset.sortKey === sortState.key) {
-      th.classList.add(sortState.dir);
-    }
+    if (th.dataset.sortKey === sortState.key) th.classList.add(sortState.dir);
   });
 }
 
-/* ===== Utilidades ===== */
+/* ===== Utils ===== */
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
-function parseMontoCLP(any) {
+function parseMonto(any) {
   if (any == null) return 0;
-  if (typeof any === 'number' && isFinite(any)) return Math.trunc(any);
-  const onlyDigits = String(any).replace(/[^\d-]/g,'');
-  const n = parseInt(onlyDigits, 10);
+  if (typeof any === 'number' && isFinite(any)) return +any;
+  const onlyNum = String(any).replace(/[^\d.-]/g,'');
+  const n = parseFloat(onlyNum);
   return isFinite(n) ? n : 0;
 }
-const money = n => (isFinite(+n)
+const moneyCL = n => (isFinite(+n)
   ? (+n).toLocaleString('es-CL',{style:'currency',currency:'CLP',maximumFractionDigits:0})
   : '—');
 
 function deriveEstado(x) {
+  // si revPago aprobado => "cerrada"
+  const rp = (x.revPago || '').toString().toLowerCase();
+  if (rp === 'aprobado') return 'cerrada';
   const s = (x.estado || '').toString().toLowerCase();
   if (s) return s;
   const r1 = (x.rev1 || '').toString().toLowerCase();
@@ -84,61 +93,63 @@ function deriveEstado(x) {
   return 'pendiente';
 }
 
-/* ===== Normalizador ===== */
+/* ===== Normalizador de docs a fila ===== */
 function toItem(grupoId, gInfo, x, hintedTipo) {
   const brutoMonto = coalesce(x.monto, x.montoCLP, x.neto, x.importe, x.valor, x.total, x.totalCLP, x.monto_str, 0);
-  const monto = parseMontoCLP(brutoMonto);
+  const monto = parseMonto(brutoMonto);
 
   let tipo = (x.tipo || x.type || hintedTipo || '').toString().toLowerCase().trim();
   if (!tipo) tipo = (monto < 0 ? 'abono' : 'gasto');
   if (tipo !== 'abono' && tipo !== 'gasto' && monto !== 0) tipo = (monto < 0 ? 'abono' : 'gasto');
 
-  const rev1  = (x.revision1?.estado || x.rev1?.estado || x.rev1 || '').toString().toLowerCase();
-  const rev2  = (x.revision2?.estado || x.rev2?.estado || x.rev2 || '').toString().toLowerCase();
-  const pago  = (x.pago?.estado || x.pago || '').toString().toLowerCase();
+  const moneda = (x.moneda || x.currency || 'CLP').toString().toUpperCase();
 
-  // Preferir SIEMPRE el coordinador del grupo (gInfo.coordEmail);
-  // si no existe, usar posibles alias del documento
+  const rev1Obj   = x.revision1 || x.rev1 || {};
+  const rev2Obj   = x.revision2 || x.rev2 || {};
+  const pagoObj   = x.revPago || x.pago || x.revisionPago || {};
+
+  const rev1  = (rev1Obj.estado || '').toString().toLowerCase();
+  const rev2  = (rev2Obj.estado || '').toString().toLowerCase();
+  const revPago = (pagoObj.estado || '').toString().toLowerCase();
+
+  const rev1By   = (rev1Obj.user || x.rev1By || '') || '';
+  const rev2By   = (rev2Obj.user || x.rev2By || '') || '';
+  const revPagoBy= (pagoObj.user || x.revPagoBy || x.pagoBy || '') || '';
+
+  const r1Comment = (rev1Obj.comentario || '') || '';
+  const r2Comment = (rev2Obj.comentario || '') || '';
+  const rpComment = (pagoObj.comentario || '') || '';
+
+  // Coordinador preferente del grupo
   const coord = coalesce(
-    gInfo?.coordEmail,                  // ← prioridad: coordinador del grupo
-    x.coordinadorEmail, x.coordinador,  // alias frecuentes en el doc
-    x.coord, x.responsable, x.owner, x.usuario, x.user,
-    ''
+    gInfo?.coordEmail,
+    x.coordinadorEmail, x.coordinador, x.coord, x.responsable, x.owner, x.usuario, x.user, ''
   ).toString().toLowerCase();
 
-  // fuente y asunto (usa alias comunes)
-  const from = (x.__from || '').toString();
-  const asunto = coalesce(
-    x.asunto, x.detalle, x.descripcion, x.concepto, x.motivo, ''
-  );
-  
-  // quién revisó (si ya viene del doc)
-  const rev1By = coalesce(x.revision1?.user, x.rev1By, '');
-  const rev2By = coalesce(x.revision2?.user, x.rev2By, '');
-  
-  // coordPath: ID del coordinador que define el path del gasto
-  // (lo seteamos en loadGastosCG; en abonos queda vacío)
+  const asunto = coalesce(x.asunto, x.detalle, x.descripcion, x.concepto, x.motivo, '');
+
   const coordPath = x.coordPath || '';
 
-  return {
+  const item = {
     id: x.id || x._id || '',
     grupoId,
     nombreGrupo: gInfo?.nombre || '',
     numeroNegocio: gInfo?.numero || grupoId,
     coordinador: coord,
-    tipo, asunto, monto,
-    rev1, rev2,
-    estado: deriveEstado({ estado:x.estado, rev1, rev2 }),
-    pago,
-    rev1By, rev2By,
+    tipo, asunto, monto, moneda,
+    rev1, rev2, revPago,
+    rev1By, rev2By, revPagoBy,
+    r1Comment, r2Comment, rpComment,
+    estado: 'pendiente',
     coordPath,
     __from: x.__from || ''
   };
+  item.estado = deriveEstado(item);
+  return item;
 }
 
-/* ===== Catálogos + índices ===== */
+/* ===== Catálogos + índices (para datalists y filtros) ===== */
 async function preloadCatalogs() {
-  // Grupos
   const gs = await getDocs(collection(db, 'grupos'));
   const dlG = document.getElementById('dl-grupos');
   const dlC = document.getElementById('dl-coords');
@@ -152,17 +163,15 @@ async function preloadCatalogs() {
     const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, d.id);
     const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, d.id);
     const coordEmail = coalesce(
-      x.coordinadorEmail,         // email directo
-      x.coordinador?.email,       // email dentro de objeto
-      x.coordinador,              // a veces guardan el slug/string del coord
-      x.coord,                    // otros alias comunes
+      x.coordinadorEmail,
+      x.coordinador?.email,
+      x.coordinador,
+      x.coord,
       x.responsable,
       x.owner,
       ''
     );
-
     state.caches.groupById.set(d.id, { numero, nombre, coordEmail });
-
     if (coordEmail) {
       if (!state.caches.groupsByCoord.has(coordEmail)) state.caches.groupsByCoord.set(coordEmail, new Set());
       state.caches.groupsByCoord.get(coordEmail).add(d.id);
@@ -170,7 +179,6 @@ async function preloadCatalogs() {
     }
   });
 
-  // Datalist grupos (todos al inicio)
   if (dlG) {
     dlG.innerHTML = '';
     for (const [gid, info] of state.caches.groupById.entries()) {
@@ -180,7 +188,6 @@ async function preloadCatalogs() {
       dlG.appendChild(opt);
     }
   }
-  // Datalist coordinadores
   if (dlC) {
     dlC.innerHTML = '';
     for (const email of state.caches.coords) {
@@ -192,71 +199,79 @@ async function preloadCatalogs() {
   }
 }
 
-/* ===== Carga rápida con collectionGroup ===== */
-
-// Gastos: coordinadores/{coord}/gastos/*
-async function loadGastosCG() {
-  const qy = query(collectionGroup(db, 'gastos'), limit(2000)); // ajusta si necesitas más
-  const snap = await getDocs(qy);
-  snap.forEach(docSnap => {
-    const x = docSnap.data() || {};
-    const coordId = docSnap.ref.parent.parent?.id || ''; // coordinador del path
-    const grupoId = coalesce(x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, '');
-    if (!grupoId) return;
-
-    // Si el grupo no tiene coordinador en el catálogo, aprenderlo desde el gasto
+/* ===== CARGA SELECTIVA (solo con filtros) ===== */
+// Gastos: por grupo con collectionGroup+where; por coord con subcolección directa
+async function loadGastosForFilter({ coordEmail='', grupoId='' }) {
+  const pushGasto = (grupoId, coordId, d) => {
+    const x = d.data() || {};
     const gInfo0 = state.caches.groupById.get(grupoId);
-    if (gInfo0 && !gInfo0.coordEmail && coordId) {
-      gInfo0.coordEmail = coordId;
-      // también actualizamos el índice inverso groupsByCoord para los filtros vinculados
-      if (!state.caches.groupsByCoord.has(coordId)) {
-        state.caches.groupsByCoord.set(coordId, new Set());
-      }
-      state.caches.groupsByCoord.get(coordId).add(grupoId);
-    }
+    const gInfo = gInfo0 || { numero: grupoId, nombre: '', coordEmail: coordId };
+    const enriched = { id: d.id, ...x, coordinador: coordId, coordPath: coordId, __from: 'cg:gastos' };
+    state.rawItems.push(toItem(grupoId, { ...gInfo, coordEmail: gInfo.coordEmail || coordId }, enriched, 'gasto'));
+  };
 
-    const gInfo = state.caches.groupById.get(grupoId) || { numero: grupoId, nombre: '', coordEmail: coordId };
-    const enriched = {
-      id: docSnap.id,
-      ...x,
-      coordinador: coordId,   // quien gastó (del path)
-      coordPath: coordId,     // ← para poder escribir en coordinadores/{coord}/gastos/{id}
-      __from: 'cg:gastos'
-    };
-    state.rawItems.push(
-      toItem(grupoId, { ...gInfo, coordEmail: gInfo.coordEmail || coordId }, enriched, 'gasto')
-    );
-  });
+  // Si hay grupo definido: usar collectionGroup con where('grupoId'=='gid')
+  if (grupoId) {
+    const qy = query(collectionGroup(db, 'gastos'), where('grupoId','==', grupoId), limit(2000));
+    const snap = await getDocs(qy);
+    snap.forEach(s => {
+      const coordId = s.ref.parent.parent?.id || ''; // id de coord en path
+      pushGasto(grupoId, coordId, s);
+    });
+    return;
+  }
+
+  // Si no hay grupo pero sí coordinador: leer subcolección directa
+  if (coordEmail) {
+    const col = collection(db, 'coordinadores', coordEmail, 'gastos');
+    const snap = await getDocs(col);
+    snap.forEach(s => {
+      const x = s.data() || {};
+      const gid = coalesce(x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, '');
+      if (!gid) return;
+      pushGasto(gid, coordEmail, s);
+    });
+  }
 }
 
-// Abonos: grupos/{gid}/finanzas_abonos/*
-async function loadAbonosCG() {
-  const qy = query(collectionGroup(db, 'finanzas_abonos'), limit(2000));
-  const snap = await getDocs(qy);
-  snap.forEach(docSnap => {
-    const x = docSnap.data() || {};
-    const gid = docSnap.ref.parent.parent?.id || ''; // grupo del path
-    if (!gid) return;
-
+// Abonos/Pagos: por grupo (subcolección directa); por coord (recorrer grupos del coord)
+async function loadAbonosForFilter({ coordEmail='', grupoId='' }) {
+  const pushAbono = (gid, d) => {
+    const x = d.data() || {};
     const gInfo = state.caches.groupById.get(gid) || { numero: gid, nombre: '', coordEmail: '' };
-    const enriched = { id: docSnap.id, ...x, __from: 'cg:finanzas_abonos' };
+    const enriched = { id: d.id, ...x, __from: 'cg:finanzas_abonos' };
     state.rawItems.push(toItem(gid, gInfo, enriched, 'abono'));
-  });
+  };
+
+  if (grupoId) {
+    const col = collection(db, 'grupos', grupoId, 'finanzas_abonos');
+    const snap = await getDocs(col);
+    snap.forEach(s => pushAbono(grupoId, s));
+    return;
+  }
+
+  if (coordEmail) {
+    const set = state.caches.groupsByCoord.get(coordEmail);
+    const gids = set ? [...set] : [];
+    for (const gid of gids) {
+      const col = collection(db, 'grupos', gid, 'finanzas_abonos');
+      const snap = await getDocs(col);
+      snap.forEach(s => pushAbono(gid, s));
+    }
+  }
 }
 
-/* ===== Filtros ===== */
+/* ===== Filtros en memoria ===== */
 function applyFilters(items) {
   const f = state.filtros;
   const byEstado = f.estado;
-  const byTipo   = f.tipo;
+  const byTipo   = f.tipo;               // 'gasto', 'abono', 'all' o ''
   const byCoord  = norm(f.coord);
   const byGrupo  = norm(f.grupo);
 
-  // Si hay coordinador, limitamos grupos válidos
+  // limitar grupos si hay coord
   let allowedGroups = null;
   if (byCoord) {
-    // matches por includes (permite nombre o email)
-    // tomamos clave exacta si existe
     const exactCoord = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === byCoord);
     const key = exactCoord ?? byCoord;
     const set = state.caches.groupsByCoord.get(key);
@@ -264,12 +279,12 @@ function applyFilters(items) {
   }
 
   return items.filter(x => {
-    if (byTipo && x.tipo !== byTipo) return false;
+    if (byTipo && byTipo !== 'all' && x.tipo !== byTipo) return false;
 
     if (byEstado === 'pagables') {
-      const pagable = (x.estado === 'aprobado') && (x.pago !== 'pagado');
+      const pagable = (x.estado === 'aprobado') && (x.revPago !== 'aprobado');
       if (!pagable) return false;
-    } else if (byEstado && x.estado !== byEstado) {
+    } else if (byEstado && byEstado !== 'all' && x.estado !== byEstado) {
       return false;
     }
 
@@ -292,63 +307,49 @@ function calcTotals(list) {
     else if (x?.tipo === 'abono') abonos += Number(x.monto) || 0;
   }
   const neto = abonos - gastos;
-  const hasBoth = (gastos > 0 && abonos > 0);
+  const hasBoth = (gastos !== 0 && abonos !== 0);
   return { gastos, abonos, neto, hasBoth };
 }
 
 function getMovRef(item) {
   if (item.tipo === 'gasto') {
-    const coord = item.coordPath || item.coordinador; // coord del path
+    const coord = item.coordPath || item.coordinador;
     return doc(db, 'coordinadores', coord, 'gastos', item.id);
   }
-  // abono
   return doc(db, 'grupos', item.grupoId, 'finanzas_abonos', item.id);
 }
 
-// === REEMPLAZAR updateRevision COMPLETA ===
-async function updateRevision(item, which /*1|2*/, nuevoEstado /* 'pendiente' | 'aprobado' | 'rechazado' */) {
-  const user = (auth.currentUser?.email || '').toLowerCase();
-  const ref = getMovRef(item);                         // gasto o abono → doc(...)
-  const revKey = which === 1 ? 'revision1' : 'revision2';
+/* ===== Reglas de revisión cruzada + comentarios ===== */
+function enforceCrossReview(which, item, userEmail, nuevoEstado) {
+  const u = userEmail.toLowerCase();
 
-  console.log('[FINZ] updateRevision →', {
-    tipo: item.tipo, path: ref.path, revKey, nuevoEstado, user
-  });
+  // si es acción "pendiente" no exigimos cruces
+  if (nuevoEstado === 'pendiente') return { ok:true };
 
-  try {
-    // 1) escribe
-    await updateDoc(ref, {
-      [`${revKey}.estado`]: nuevoEstado,
-      [`${revKey}.user`]: user,
-      [`${revKey}.at`]: Date.now()
-    });
-
-    // 2) lee lo que quedó en la base (sanity check)
-    const snap = await getDoc(ref);
-    if (!snap.exists()) throw new Error('El documento no existe después del update');
-
-    const data = snap.data() || {};
-    const r1 = data.revision1?.estado || '';
-    const r2 = data.revision2?.estado || '';
-    const r1By = data.revision1?.user || '';
-    const r2By = data.revision2?.user || '';
-
-    // 3) refresca el item local con lo que realmente quedó en Firestore
-    if (which === 1) {
-      item.rev1 = r1 || nuevoEstado;
-      item.rev1By = r1By || user;
-    } else {
-      item.rev2 = r2 || nuevoEstado;
-      item.rev2By = r2By || user;
+  // Para aprobar/rechazar, no puede ser el mismo que el otro
+  if (which === 'revision1') {
+    if (item.rev2By && item.rev2By.toLowerCase() === u) {
+      return { ok:false, msg:'REV.2 ya fue hecho por este usuario. Debe ser distinto.' };
     }
-    item.estado = deriveEstado({ rev1: item.rev1, rev2: item.rev2 });
-
-    return true; // éxito
-  } catch (e) {
-    console.error('[FINZ] updateRevision ERROR', e);
-    alert('No se pudo guardar la revisión. Revisa la consola para más detalles.');
-    return false; // falló
+    if (item.revPagoBy && item.revPagoBy.toLowerCase() === u) {
+      return { ok:false, msg:'REV. PAGO ya fue hecho por este usuario. Debe ser distinto.' };
+    }
+  } else if (which === 'revision2') {
+    if (item.rev1By && item.rev1By.toLowerCase() === u) {
+      return { ok:false, msg:'REV.1 ya fue hecho por este usuario. Debe ser distinto.' };
+    }
+    if (item.revPagoBy && item.revPagoBy.toLowerCase() === u) {
+      return { ok:false, msg:'REV. PAGO ya fue hecho por este usuario. Debe ser distinto.' };
+    }
+  } else if (which === 'revPago') {
+    if (item.rev1By && item.rev1By.toLowerCase() === u) {
+      return { ok:false, msg:'REV.1 ya fue hecho por este usuario. Debe ser distinto.' };
+    }
+    if (item.rev2By && item.rev2By.toLowerCase() === u) {
+      return { ok:false, msg:'REV.2 ya fue hecho por este usuario. Debe ser distinto.' };
+    }
   }
+  return { ok:true };
 }
 
 function nextEstado(cur) {
@@ -358,37 +359,95 @@ function nextEstado(cur) {
   return 'pendiente';
 }
 
+// Guardar revisión (rev1, rev2 o revPago) con comentario opcional en RECHAZADO
+async function updateRevision(item, which /* 'revision1'|'revision2'|'revPago' */, nuevoEstado) {
+  const user = (auth.currentUser?.email || '').toLowerCase();
+  const ref = getMovRef(item);
+
+  // Revisión cruzada (usuarios distintos)
+  const chk = enforceCrossReview(which, item, user, nuevoEstado);
+  if (!chk.ok) { alert(chk.msg); return false; }
+
+  // Comentario si rechazo
+  let comentario = '';
+  if (nuevoEstado === 'rechazado') {
+    comentario = prompt('Motivo del rechazo (se mostrará con el icono "!"):', '') || '';
+    if (!comentario.trim()) {
+      alert('Debes ingresar un comentario para rechazar.');
+      return false;
+    }
+  }
+
+  try {
+    const payload = {};
+    payload[`${which}.estado`] = nuevoEstado;
+    payload[`${which}.user`] = user;
+    payload[`${which}.at`] = Date.now();
+    if (nuevoEstado === 'rechazado') payload[`${which}.comentario`] = comentario;
+
+    await updateDoc(ref, payload);
+
+    // Leer back (sanity)
+    const snap = await getDoc(ref);
+    const data = snap.data() || {};
+
+    const r1 = data.revision1 || {};
+    const r2 = data.revision2 || {};
+    const rp = data.revPago || data.pago || data.revisionPago || {};
+
+    item.rev1 = (r1.estado || '').toLowerCase();
+    item.rev2 = (r2.estado || '').toLowerCase();
+    item.revPago = (rp.estado || '').toLowerCase();
+
+    item.rev1By = (r1.user || '') || '';
+    item.rev2By = (r2.user || '') || '';
+    item.revPagoBy = (rp.user || '') || '';
+
+    item.r1Comment = (r1.comentario || '') || '';
+    item.r2Comment = (r2.comentario || '') || '';
+    item.rpComment = (rp.comentario || '') || '';
+
+    item.estado = deriveEstado(item);
+    return true;
+  } catch (e) {
+    console.error('[FINZ] updateRevision ERROR', e);
+    alert('No se pudo guardar la revisión.');
+    return false;
+  }
+}
+
 /* ===== Render ===== */
 function renderTable() {
   const tbody = document.querySelector('#tblFinanzas tbody');
   const resumen = document.getElementById('resumen');
   const pagInfo = document.getElementById('pagInfo');
+  const totalesEl = document.getElementById('totales');
 
-    const filtered = applyFilters(state.rawItems);
-    const data = sortItems(filtered);   // ← ordenamos acá
-  
-    // Totales del conjunto filtrado (se calculan sobre "data")
-    const totals = calcTotals(data);
-    const totalesEl = document.getElementById('totales');
-    if (totalesEl) {
-      const parts = [];
-      parts.push(`Gastos: ${money(totals.gastos)}`);
-      parts.push(`Abonos: ${money(totales.abonos)}`);
-      if (totals.hasBoth) parts.push(`Saldo: ${money(totals.neto)}`);
-      totalesEl.textContent = parts.join(' · ');
-    }
-  
-    tbody.innerHTML = '';
-    if (!data.length) {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td');
-      td.colSpan = 8;
-      td.innerHTML = '<div class="muted">Sin movimientos para este criterio.</div>';
-      tr.appendChild(td);
-      tbody.appendChild(tr);
-    } else {
-      const frag = document.createDocumentFragment();
-      data.forEach(x => {
+  const filtered = applyFilters(state.rawItems);
+  const data = sortItems(filtered);
+
+  // Totales
+  const totals = calcTotals(data);
+  if (totalesEl) {
+    const parts = [];
+    parts.push(`GASTOS: ${moneyCL(totals.gastos)}`);
+    parts.push(`ABONOS: ${moneyCL(totals.abonos)}`);
+    if (totals.hasBoth) parts.push(`SALDO: ${moneyCL(totals.neto)}`);
+    totalesEl.textContent = parts.join(' · ');
+  }
+
+  tbody.innerHTML = '';
+  if (!data.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 10;
+    td.innerHTML = '<div class="muted">SIN MOVIMIENTOS PARA ESTE CRITERIO.</div>';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  } else {
+    const frag = document.createDocumentFragment();
+
+    data.forEach(x => {
       const tr = document.createElement('tr');
 
       const tdTipo = document.createElement('td');
@@ -400,89 +459,111 @@ function renderTable() {
         <span class="small">${(x.numeroNegocio ? x.numeroNegocio + ' · ' : '')}${(x.nombreGrupo || '')}</span>`;
 
       const tdCoord = document.createElement('td');
-      const coordTxt = (x.coordinador && x.coordinador.trim()) ? x.coordinador.toLowerCase() : '—';
-      tdCoord.innerHTML = `<span class="${coordTxt==='—' ? 'muted' : ''}">${coordTxt}</span>`;
+      tdCoord.innerHTML = `<span>${(x.coordinador || '—').toLowerCase()}</span>`;
 
       const tdAsunto = document.createElement('td');
       tdAsunto.textContent = (x.asunto && String(x.asunto).trim()) ? String(x.asunto) : '—';
 
       const tdMonto = document.createElement('td');
-      tdMonto.innerHTML = `<span class="mono">${money(x.monto)}</span>`;
+      tdMonto.innerHTML = `<span class="mono">${moneyCL(x.monto)}</span>`;
 
-      // util: crea celda de revisión tri-estado
-      function makeRevCell(item, which) {
+      const tdMoneda = document.createElement('td');
+      tdMoneda.textContent = (x.moneda || '—').toUpperCase();
+
+      // celda revisión genérica
+      function makeRevCell(item, which /* 'revision1'|'revision2'|'revPago' */) {
         const td = document.createElement('td');
-        
-        // contenedor para alinear icono + correo en una sola línea
         const wrap = document.createElement('div');
         wrap.className = 'rev-cell';
-        
+
         const btn = document.createElement('button');
         btn.className = 'revbtn';
         btn.type = 'button';
-        
+
         const who = document.createElement('span');
-        who.className = 'small'; // el CSS de .rev-cell .small la pone inline
+        who.className = 'small';
+
+        const bang = document.createElement('span'); // icono !
+        bang.textContent = ' ! ';
+        bang.style.cssText = 'font-weight:900;cursor:pointer;display:none';
+
+        function curEstado() {
+          if (which === 'revision1') return item.rev1 || 'pendiente';
+          if (which === 'revision2') return item.rev2 || 'pendiente';
+          return item.revPago || 'pendiente';
+        }
+        function curUser() {
+          if (which === 'revision1') return item.rev1By || '';
+          if (which === 'revision2') return item.rev2By || '';
+          return item.revPagoBy || '';
+        }
+        function curComment() {
+          if (which === 'revision1') return item.r1Comment || '';
+          if (which === 'revision2') return item.r2Comment || '';
+          return item.rpComment || '';
+        }
 
         function applyUI() {
-          const cur = (which === 1 ? item.rev1 : item.rev2) || 'pendiente';
-          // símbolo y color por estado
-          if (cur === 'aprobado') {
+          const est = curEstado();
+          if (est === 'aprobado') {
             btn.textContent = '✓';
             btn.dataset.state = 'aprobado';
-          } else if (cur === 'rechazado') {
+          } else if (est === 'rechazado') {
             btn.textContent = '✗';
             btn.dataset.state = 'rechazado';
           } else {
             btn.textContent = '—';
             btn.dataset.state = 'pendiente';
           }
-          const by = which === 1 ? item.rev1By : item.rev2By;
+          const by = curUser();
           who.textContent = by ? by.toUpperCase() : '';
+          const c = curComment();
+          bang.style.display = (est === 'rechazado' && c) ? 'inline-block' : 'none';
         }
-      
+
         btn.addEventListener('click', async () => {
-          const cur = (which === 1 ? item.rev1 : item.rev2) || 'pendiente';
-          const nuevo = nextEstado(cur);
-          try {
-            await updateRevision(item, which, nuevo);
+          const actual = curEstado();
+          const nuevo = nextEstado(actual);
+          const ok = await updateRevision(item, which, nuevo);
+          if (ok) {
             applyUI();
             tdEstado.innerHTML = `<span class="badge ${item.estado}">${item.estado.toUpperCase()}</span>`;
-          } catch (e) {
-            console.warn('updateRevision failed', e);
           }
         });
-      
-        wrap.append(btn, who);
+
+        bang.addEventListener('click', () => {
+          const c = curComment();
+          alert(c ? c.toString().toUpperCase() : 'SIN COMENTARIO.');
+        });
+
+        wrap.append(btn, who, bang);
         td.appendChild(wrap);
         applyUI();
         return td;
       }
 
-      // ESTADO (derivado)
+      const tdR1 = makeRevCell(x, 'revision1');
+      const tdR2 = makeRevCell(x, 'revision2');
+      const tdRP = makeRevCell(x, 'revPago'); // para ambos tipos
+
       const tdEstado = document.createElement('td');
       tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
 
-      // ← crea las celdas tri-estado para las revisiones
-      const tdR1 = makeRevCell(x, 1);
-      const tdR2 = makeRevCell(x, 2);
-
-      
-      // Append final (sin "Pago")
-      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdR1, tdR2, tdEstado);
+      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdMoneda, tdR1, tdR2, tdRP, tdEstado);
       frag.appendChild(tr);
     });
+
     tbody.appendChild(frag);
   }
 
-  resumen.textContent = `Mostrando ${data.length} / total ${state.rawItems.length}`;
-  pagInfo.textContent = state.paging.loading ? 'Cargando…' : 'Listo.';
+  const totalLoaded = state.rawItems.length;
+  resumen.textContent = `MOSTRANDO ${data.length} / TOTAL ${totalLoaded}`;
+  pagInfo.textContent = state.paging.loading ? 'CARGANDO…' : 'LISTO.';
 
-  applySortHeaderUI();  // ← actualiza flechas en el thead
+  applySortHeaderUI();
 }
 
-
-/* ===== Sincronía de filtros coord ↔ grupo ===== */
+/* ===== Sincronía de datalist grupo ↔ coord ===== */
 function refreshGroupDatalist(limitToCoord='') {
   const dlG = document.getElementById('dl-grupos');
   if (!dlG) return;
@@ -491,8 +572,7 @@ function refreshGroupDatalist(limitToCoord='') {
   let ids = [...state.caches.groupById.keys()];
   if (limitToCoord) {
     const set = state.caches.groupsByCoord.get(limitToCoord);
-    if (set) ids = [...set];
-    else ids = []; // sin grupos para ese coord
+    ids = set ? [...set] : [];
   }
   for (const gid of ids) {
     const info = state.caches.groupById.get(gid);
@@ -501,17 +581,6 @@ function refreshGroupDatalist(limitToCoord='') {
     opt.label = `${info.numero} — ${info.nombre}`;
     dlG.appendChild(opt);
   }
-}
-
-function resolveGroupId(text='') {
-  const t = norm(text);
-  if (!t) return '';
-  if (state.caches.groupById.has(text)) return text; // id exacto
-  for (const [gid, info] of state.caches.groupById.entries()) {
-    const blob = norm([gid, info.numero, info.nombre].join(' '));
-    if (blob.includes(t)) return gid;
-  }
-  return '';
 }
 
 /* ===== UI ===== */
@@ -526,87 +595,102 @@ function wireUI() {
     renderTable();
   });
 
-  // Tipo
+  // Tipo (obligatorio para cargar)
   document.getElementById('filtroTipo').onchange = (e) => {
-    state.filtros.tipo = e.target.value || '';
+    const v = (e.target.value || '').toLowerCase();
+    state.filtros.tipo = (v === 'pagos') ? 'abono' : (v === 'gastos' ? 'gasto' : (v === '' ? '' : (v === 'todos' ? 'all' : v)));
     renderTable();
   };
 
-  // Coordinador: al escribir, limitamos grupos; al aplicar, filtramos
+  // Coordinador: limita datalist de grupos
   const inputCoord = document.getElementById('filtroCoord');
   inputCoord.oninput = (e) => {
     const val = (e.target.value || '').toLowerCase().trim();
     state.filtros.coord = val;
-    // buscar clave exacta para limitar datalist
     const exactKey = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === norm(val));
     refreshGroupDatalist(exactKey || '');
   };
- 
-  // Grupo: al escribir/seleccionar, SOLO ajusta el filtro de grupo (no autocompleta coord)
+
+  // Grupo
   const inputGrupo = document.getElementById('filtroGrupo');
   inputGrupo.oninput = (e) => {
     state.filtros.grupo = e.target.value || '';
-    // NO tocar el coordinador ni el datalist aquí
   };
 
-  document.getElementById('btnAplicar').onclick = () => renderTable();
-  document.getElementById('btnRecargar').onclick = async () => {
+  // Aplicar: CARGA SELECTIVA
+  document.getElementById('btnAplicar').onclick = async () => {
+    const tipo = state.filtros.tipo;     // 'gasto'|'abono'|'all'
+    const coord = (state.filtros.coord || '').trim();
+    const grupo = (state.filtros.grupo || '').trim();
+
+    if (!tipo) { alert('ELIGE TIPO: GASTOS, PAGOS O TODOS.'); return; }
+    if (!coord && !grupo) { alert('DEBES ELEGIR COORDINADOR O GRUPO.'); return; }
+
+    const key = `${tipo}|${coord}|${grupo}`;
+    if (state.loadedFor.key === key) { renderTable(); return; }
+
     state.rawItems = [];
     state.paging.loading = true;
     renderTable();
-    await fetchFinance(); // recarga completa
-  };
-  document.getElementById('btnMas').onclick = () => renderTable(); // sin paginación por ahora
 
-    // Click en encabezados para ordenar
+    try {
+      // Normalizamos: coord exacto si existe
+      let coordExact = '';
+      if (coord) {
+        coordExact = [...state.caches.groupsByCoord.keys()].find(k => norm(k) === norm(coord)) || coord;
+      }
+      // Cargas según tipo
+      if (tipo === 'gasto' || tipo === 'all') {
+        await loadGastosForFilter({ coordEmail: coordExact, grupoId: grupo });
+      }
+      if (tipo === 'abono' || tipo === 'all') {
+        await loadAbonosForFilter({ coordEmail: coordExact, grupoId: grupo });
+      }
+
+      state.loadedFor.key = key;
+    } catch (e) {
+      console.warn('[FINZ] aplicar filtros', e);
+    } finally {
+      state.paging.loading = false;
+      renderTable();
+    }
+  };
+
+  // Recargar catálogos (no datos)
+  document.getElementById('btnRecargar').onclick = async () => {
+    state.loadedFor.key = '';
+    await preloadCatalogs();
+    refreshGroupDatalist('');
+    renderTable();
+  };
+
+  // “Cargar más” (sin paginación en esta versión)
+  document.getElementById('btnMas').onclick = () => renderTable();
+
+  // Encabezados para ordenar
   const head = document.querySelector('#tblFinanzas thead');
-  head?.querySelectorAll('th.sortable').forEach(th => {
+  head?.querySelectorAll('th[data-sort-key]').forEach(th => {
+    th.classList.add('sortable');
     th.addEventListener('click', () => {
       const key = th.dataset.sortKey;
       if (!key) return;
-      if (sortState.key === key) {
-        sortState.dir = (sortState.dir === 'asc' ? 'desc' : 'asc');
-      } else {
-        sortState.key = key;
-        sortState.dir = 'asc';
-      }
+      if (sortState.key === key) sortState.dir = (sortState.dir === 'asc' ? 'desc' : 'asc');
+      else { sortState.key = key; sortState.dir = 'asc'; }
       renderTable();
     });
   });
 }
 
-/* ===== Carga principal ===== */
-async function fetchFinance() {
-  if (state.paging.loading) return;
-  state.paging.loading = true;
-  renderTable();
-
+/* ===== Arranque ===== */
+async function boot() {
   try {
-    await preloadCatalogs();
-
-    // Carga en paralelo
-    await Promise.all([
-      (async ()=>{ await loadGastosCG(); renderTable(); })(),
-      (async ()=>{ await loadAbonosCG(); renderTable(); })(),
-    ]);
-
-    renderTable();
+    await preloadCatalogs(); // Solo catálogos (coordinadores/grupos)
+    renderTable();           // Arranca en blanco
   } catch (e) {
-    console.warn('[FINZ] fetchFinance()', e);
-  } finally {
-    state.paging.loading = false;
-    renderTable();
-    console.log('%c[FINZ] total items:', 'color:#0a0', state.rawItems.length);
+    console.error('BOOT catalogs', e);
   }
 }
 
-/* ===== Debug helpers ===== */
-window.__finz = {
-  list() { return { loaded: state.rawItems.length, sample: state.rawItems.slice(0, 10) }; },
-  state: state,
-};
-
-/* ===== Arranque ===== */
 onAuthStateChanged(auth, async (user) => {
   if (!user) { location = 'login.html'; return; }
   try {
@@ -614,7 +698,12 @@ onAuthStateChanged(auth, async (user) => {
       signOut(auth).then(() => location = 'login.html')
     );
   } catch (_) {}
-
   wireUI();
-  await fetchFinance();
+  await boot(); // NO cargamos movimientos hasta “Aplicar”
 });
+
+/* ===== Debug ===== */
+window.__finz = {
+  state,
+  list(){ return state.rawItems.slice(0,20); }
+};
