@@ -95,20 +95,36 @@
   .revbtn[data-state="rechazado"] { border-color:#d93025; color:#b31206; }
   .revbtn[data-state="pendiente"] { border-color:#bbb;    color:#555; }
 
-  /* === Alinear los 3 filtros a la derecha === */
-  /* Empuja #filtroTipo hacia la derecha; los inputs que vienen después
-     (coordinador y grupo) se alinean a continuación */
+  /* === Alinear a la derecha y dar tamaño fijo a los 3 filtros === */
+  .toolbar #filtroTipo,
+  .toolbar #filtroCoord,
+  .toolbar #filtroGrupo {
+    /* tamaños agradables en desktop, sin romper el layout */
+    width: clamp(200px, 24vw, 330px);
+    min-width: 200px;
+    flex: 0 0 auto;
+  }
+  
+  /* Empuja el grupo de filtros hacia la derecha:
+     al aplicar a #filtroTipo, arrastra también a los otros dos
+     que vienen después en el mismo flex row */
   .toolbar #filtroTipo {
     margin-left: auto;
   }
   
-  /* Mantén buen comportamiento en pantallas pequeñas:
-     si hay wrap, que no “obligue” a separarse raro */
+  /* Móvil: que se apilen full width y no queden apretados */
   @media (max-width: 900px) {
+    .toolbar #filtroTipo,
+    .toolbar #filtroCoord,
+    .toolbar #filtroGrupo {
+      width: 100%;
+      min-width: 0;
+    }
     .toolbar #filtroTipo {
       margin-left: 0;
     }
   }
+
 
   </style>
 </head>
