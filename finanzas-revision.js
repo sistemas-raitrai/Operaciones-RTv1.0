@@ -7,6 +7,10 @@ import {
 
 const auth = getAuth(app);
 
+/* ===== MODO PRUEBA (permitir mismo usuario en REV1/REV2/REV PAGO) ===== */
+const TEST_SINGLE_USER_MODE = true; 
+// Cambia a false para volver a exigir usuarios distintos.
+
 /* ====================== STATE ====================== */
 const state = {
   user: null,
@@ -234,15 +238,17 @@ async function saveRevision(it, which, nuevoEstado, comentario='') {
   const me  = (auth.currentUser?.email || '').toLowerCase();
   const ref = getDocRefForItem(it);
 
-  // Reglas: los tres revisores deben ser usuarios distintos
-  if (which === 'rev1' && it.rev2By && it.rev2By === me) {
-    alert('REV.1 debe ser distinta de REV.2'); return false;
-  }
-  if (which === 'rev2' && it.rev1By && it.rev1By === me) {
-    alert('REV.2 debe ser distinta de REV.1'); return false;
-  }
-  if (which === 'revPago' && (me === it.rev1By || me === it.rev2By)) {
-    alert('REV. PAGO debe ser distinta de REV.1 y REV.2'); return false;
+  // ===== Regla de usuarios distintos (se desactiva en modo prueba) =====
+  if (!TEST_SINGLE_USER_MODE) {
+    if (which === 'rev1' && it.rev2By && it.rev2By === me) {
+      alert('REV.1 debe ser distinta de REV.2'); return false;
+    }
+    if (which === 'rev2' && it.rev1By && it.rev1By === me) {
+      alert('REV.2 debe ser distinta de REV.1'); return false;
+    }
+    if (which === 'revPago' && (me === it.rev1By || me === it.rev2By)) {
+      alert('REV. PAGO debe ser distinta de REV.1 y REV.2'); return false;
+    }
   }
 
   const path = (k) => (k === 'rev1' ? 'revision1' : (k === 'rev2' ? 'revision2' : 'pago'));
