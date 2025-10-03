@@ -2,7 +2,7 @@
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, getDocs, query, where, doc, getDoc, updateDoc, setDoc
+  collection, collectionGroup, getDocs, query, where, doc, getDoc, updateDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -111,14 +111,14 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
   const tipo0 = (raw.tipo || raw.type || hintedTipo || '').toString().toLowerCase();
   const tipo = (tipo0 === 'abono' || tipo0 === 'pago') ? 'abono' : 'gasto';
 
-  const brutoMonto = coalesce(raw.monto, raw.montoCLP, raw.neto, raw.importe, raw.valor, raw.total, raw.totalCLP, raw.monto_str, 0);
+  const brutoMonto = coalesce(
+    raw.monto, raw.montoCLP, raw.neto, raw.importe, raw.valor, raw.total, raw.totalCLP, raw.monto_str, 0
+  );
   const monto = parseMonto(brutoMonto);
   const moneda = (raw.moneda || raw.currency || 'CLP').toString().toUpperCase();
 
   const rev1  = (raw.revision1?.estado || raw.rev1?.estado || raw.rev1 || '').toString().toLowerCase() || 'pendiente';
   const rev2  = (raw.revision2?.estado || raw.rev2?.estado || raw.rev2 || '').toString().toLowerCase() || 'pendiente';
-
-  // REV PAGO solo para abonos
   const revPago = tipo==='abono'
     ? (raw.pago?.estado || raw.revPago || '').toString().toLowerCase() || 'pendiente'
     : '';
@@ -128,7 +128,11 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
   const pagoBy = coalesce(raw.pago?.user, raw.revPagoBy, '').toLowerCase();
 
   const asunto = coalesce(raw.asunto, raw.detalle, raw.descripcion, raw.concepto, raw.motivo, '');
-  const coordEmail = coalesce(gInfo?.coordEmail, raw.coordinadorEmail, raw.coordinador, '').toLowerCase();
+  // Si viene desde CG:gastos, raw.__coordPath trae el coordId real del path
+  const coordFromPath = (raw.__coordPath || '').toLowerCase();
+  const coordEmailCat = (gInfo?.coordEmail || '').toLowerCase();
+  const coordRaw = coalesce(raw.coordinadorEmail, raw.coordinador, '').toLowerCase();
+  const coord = coordFromPath || coordEmailCat || coordRaw;
 
   return {
     id: raw.id || raw._id || '',
@@ -137,7 +141,7 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
     grupoId,
     nombreGrupo: gInfo?.nombre || '',
     numeroNegocio: gInfo?.numero || grupoId,
-    coordinador: coordEmail || '',
+    coordinador: coord || '',
     asunto,
     monto,
     moneda,
@@ -152,38 +156,51 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
 }
 
 /* ====================== LECTURA DE DATOS ====================== */
-/* ====================== LECTURA DE DATOS ====================== */
-// GASTOS → coordinadores/{coordEmail}/gastos/{movId}
-async function fetchGastosByCoord(coordEmail, grupoId='') {
+// GASTOS: coordinadores/{coordId}/gastos/*  (usamos collectionGroup → derivamos coordId del path)
+async function fetchGastosCGFiltered({ coordHint='', grupoId='' } = {}) {
   const out = [];
-  if (!coordEmail) return out;
   try {
-    const ref = collection(db, 'coordinadores', coordEmail, 'gastos'); // ← AQUÍ se usa la ruta de GASTOS
-    const snap = await getDocs(ref);
-    snap.forEach(d => {
-      const x = { id: d.id, ...d.data(), __from: 'gasto' };
+    // Cargamos TODOS los gastos (rápidos) y filtramos localmente por coord/grupo
+    // Si quieres limitar, puedes usar where('grupoId','==',grupoId) cuando grupoId no venga vacío.
+    const base = collectionGroup(db, 'gastos');
+    const qy = grupoId ? query(base, where('grupoId', '==', grupoId)) : base;
+    const snap = await getDocs(qy);
+
+    snap.forEach(docSnap => {
+      const x = docSnap.data() || {};
       const gid = coalesce(x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, '');
       if (!gid) return;
-      if (grupoId && gid !== grupoId) return; // si filtras por grupo específico
-      const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre: '', coordEmail };
-      out.push(toItem(gid, gInfo, x, 'gasto'));
+
+      // coordId real del path: coordinadores/{coordId}/gastos/{id}
+      const coordId = (docSnap.ref.parent.parent?.id || '').toLowerCase();
+
+      // Filtrado local por coord si llega hint (tolerante: incluye)
+      if (coordHint) {
+        const h = coordHint.toLowerCase();
+        const blob = [coordId, (x.coordinadorEmail||''), (x.coordinador||'')].join(' ').toLowerCase();
+        if (!blob.includes(h)) return;
+      }
+
+      const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre:'', coordEmail:'' };
+      const enriched = { id: docSnap.id, ...x, __from:'cg:gastos', __coordPath: coordId };
+      out.push(toItem(gid, gInfo, enriched, 'gasto'));
     });
   } catch (e) {
-    console.warn('fetchGastosByCoord', e);
+    console.warn('fetchGastosCGFiltered', e);
   }
   return out;
 }
 
-// ABONOS (PAGOS) → grupos/{gid}/finanzas_abonos/{movId}
+// ABONOS (PAGOS): grupos/{gid}/finanzas_abonos/*
 async function fetchAbonosByGroup(gid) {
   const out = [];
   if (!gid) return out;
   try {
-    const ref = collection(db, 'grupos', gid, 'finanzas_abonos'); // ← AQUÍ se usa la ruta de ABONOS/PAGOS
+    const ref = collection(db, 'grupos', gid, 'finanzas_abonos');
     const snap = await getDocs(ref);
-    const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre: '', coordEmail: '' };
+    const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre:'', coordEmail:'' };
     snap.forEach(d => {
-      const x = { id: d.id, ...d.data(), __from: 'abono' };
+      const x = { id: d.id, ...d.data(), __from:'abono' };
       out.push(toItem(gid, gInfo, x, 'abono'));
     });
   } catch (e) {
@@ -192,30 +209,26 @@ async function fetchAbonosByGroup(gid) {
   return out;
 }
 
-/* Carga principal según filtros (usa las 2 funciones de arriba) */
+/* Carga principal según filtros */
 async function loadDataForFilters() {
   state.items = [];
-  const tipo  = state.filtros.tipo;   // '', 'gasto', 'abono'
-  const coord = state.filtros.coord;  // email exacto (si lo elegiste del datalist)
-  const gid   = state.filtros.grupo;  // id exacto (si lo elegiste del datalist)
+  const tipo  = state.filtros.tipo;    // '', 'gasto', 'abono'
+  const coord = (state.filtros.coord || '').toLowerCase(); // puede ser email, nombre o coordId
+  const gid   = state.filtros.grupo || '';
 
+  // Si no eliges ni coord ni grupo, no cargamos (igual que antes)
   if (!coord && !gid) return [];
-
-  // Si hay grupo, tratamos de inferir su coordinador desde el catálogo
-  const gInfo = gid ? state.caches.grupos.get(gid) : null;
-  const coordFromGroup = gInfo?.coordEmail || '';
 
   const tasks = [];
 
-  // GASTOS por coordinador (y opcionalmente filtrar por grupo)
+  // GASTOS desde CG (filtrado local por coord y opcionalmente por grupo)
   if (!tipo || tipo === 'gasto') {
-    const forCoord = coord || coordFromGroup || '';
-    if (forCoord) tasks.push(fetchGastosByCoord(forCoord, gid || ''));
+    tasks.push(fetchGastosCGFiltered({ coordHint: coord, grupoId: gid }));
   }
 
-  // ABONOS por grupo
-  if (!tipo || tipo === 'abono') {
-    if (gid) tasks.push(fetchAbonosByGroup(gid));
+  // ABONOS por grupo si hay gid
+  if ((!tipo || tipo === 'abono') && gid) {
+    tasks.push(fetchAbonosByGroup(gid));
   }
 
   const batches = await Promise.all(tasks);
