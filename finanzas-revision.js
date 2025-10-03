@@ -148,105 +148,105 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
 }
 
 /* ====================== LECTURA DE DATOS ====================== */
-// Gastos: coordinadores/{coordEmail}/gastos/*
+/* ====================== LECTURA DE DATOS ====================== */
+// GASTOS → coordinadores/{coordEmail}/gastos/{movId}
 async function fetchGastosByCoord(coordEmail, grupoId='') {
   const out = [];
   if (!coordEmail) return out;
-  try{
-    const ref = collection(db,'coordinadores', coordEmail, 'gastos');
-    let qy = query(ref);
-    const snap = await getDocs(qy);
-    snap.forEach(d=>{
-      const x = { id:d.id, ...d.data(), __from:'gasto' };
+  try {
+    const ref = collection(db, 'coordinadores', coordEmail, 'gastos'); // ← AQUÍ se usa la ruta de GASTOS
+    const snap = await getDocs(ref);
+    snap.forEach(d => {
+      const x = { id: d.id, ...d.data(), __from: 'gasto' };
       const gid = coalesce(x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, '');
       if (!gid) return;
-      if (grupoId && gid !== grupoId) return;
-      const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre:'', coordEmail };
+      if (grupoId && gid !== grupoId) return; // si filtras por grupo específico
+      const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre: '', coordEmail };
       out.push(toItem(gid, gInfo, x, 'gasto'));
     });
-  }catch(e){ console.warn('fetchGastosByCoord', e); }
+  } catch (e) {
+    console.warn('fetchGastosByCoord', e);
+  }
   return out;
 }
 
-// Abonos: grupos/{gid}/finanzas_abonos/*
+// ABONOS (PAGOS) → grupos/{gid}/finanzas_abonos/{movId}
 async function fetchAbonosByGroup(gid) {
   const out = [];
   if (!gid) return out;
-  try{
-    const ref = collection(db,'grupos', gid, 'finanzas_abonos');
+  try {
+    const ref = collection(db, 'grupos', gid, 'finanzas_abonos'); // ← AQUÍ se usa la ruta de ABONOS/PAGOS
     const snap = await getDocs(ref);
-    const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre:'', coordEmail:'' };
-    snap.forEach(d=>{
-      const x = { id:d.id, ...d.data(), __from:'abono' };
+    const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre: '', coordEmail: '' };
+    snap.forEach(d => {
+      const x = { id: d.id, ...d.data(), __from: 'abono' };
       out.push(toItem(gid, gInfo, x, 'abono'));
     });
-  }catch(e){ console.warn('fetchAbonosByGroup', e); }
+  } catch (e) {
+    console.warn('fetchAbonosByGroup', e);
+  }
   return out;
 }
 
-/* Carga principal según filtros */
+/* Carga principal según filtros (usa las 2 funciones de arriba) */
 async function loadDataForFilters() {
   state.items = [];
-  const tipo = state.filtros.tipo;                  // '', 'gasto', 'abono'
-  const coord = state.filtros.coord;                // email exacto (si seleccionado del datalist)
-  const gid = state.filtros.grupo;                  // id exacto (si seleccionado del datalist)
+  const tipo  = state.filtros.tipo;   // '', 'gasto', 'abono'
+  const coord = state.filtros.coord;  // email exacto (si lo elegiste del datalist)
+  const gid   = state.filtros.grupo;  // id exacto (si lo elegiste del datalist)
 
-  if (!coord && !gid) return []; // arranca vacío
+  if (!coord && !gid) return [];
 
-  // Si hay grupo elegido, podemos extraer su coord por catálogo
+  // Si hay grupo, tratamos de inferir su coordinador desde el catálogo
   const gInfo = gid ? state.caches.grupos.get(gid) : null;
   const coordFromGroup = gInfo?.coordEmail || '';
 
-  // Estrategia:
-  // - Si eliges COORD: traigo gastos por coord; si además hay grupo, filtro dentro.
-  // - Si eliges GRUPO: traigo abonos por grupo; si además conozco coord, puedo traer gastos del coord de ese grupo.
-  // - Si eliges AMBOS: hago ambas.
   const tasks = [];
 
-  // GASTOS
+  // GASTOS por coordinador (y opcionalmente filtrar por grupo)
   if (!tipo || tipo === 'gasto') {
     const forCoord = coord || coordFromGroup || '';
     if (forCoord) tasks.push(fetchGastosByCoord(forCoord, gid || ''));
   }
 
-  // ABONOS
+  // ABONOS por grupo
   if (!tipo || tipo === 'abono') {
-    const forGroup = gid || '';
-    if (forGroup) tasks.push(fetchAbonosByGroup(forGroup));
+    if (gid) tasks.push(fetchAbonosByGroup(gid));
   }
 
   const batches = await Promise.all(tasks);
   state.items = batches.flat();
-
   return state.items;
 }
 
 /* ====================== ESCRITURA: REVISIONES ====================== */
+// Devuelve el doc correcto para una fila (gasto o abono)
 function getDocRefForItem(it) {
   return (it.tipo === 'gasto')
-    ? doc(db,'coordinadores', it.coordinador, 'gastos', it.id)
-    : doc(db,'grupos', it.grupoId, 'finanzas_abonos', it.id);
+    ? doc(db, 'coordinadores', it.coordinador, 'gastos', it.id)          // GASTOS
+    : doc(db, 'grupos', it.grupoId, 'finanzas_abonos', it.id);           // ABONOS/PAGOS
 }
 
+// which: 'rev1' | 'rev2' | 'revPago'
+// nuevoEstado: 'pendiente' | 'aprobado' | 'rechazado' | ('pagado' solo para revPago)
+// comentario: texto obligatorio cuando se rechaza
 async function saveRevision(it, which, nuevoEstado, comentario='') {
-  const me = (auth.currentUser?.email || '').toLowerCase();
+  const me  = (auth.currentUser?.email || '').toLowerCase();
   const ref = getDocRefForItem(it);
 
-  // regla: usuarios distintos
+  // Reglas: los tres revisores deben ser usuarios distintos
   if (which === 'rev1' && it.rev2By && it.rev2By === me) {
-    alert('REV.1 debe ser distinta de REV.2');
-    return false;
+    alert('REV.1 debe ser distinta de REV.2'); return false;
   }
   if (which === 'rev2' && it.rev1By && it.rev1By === me) {
-    alert('REV.2 debe ser distinta de REV.1');
-    return false;
+    alert('REV.2 debe ser distinta de REV.1'); return false;
   }
   if (which === 'revPago' && (me === it.rev1By || me === it.rev2By)) {
-    alert('REV. PAGO debe ser distinta de REV.1 y REV.2');
-    return false;
+    alert('REV. PAGO debe ser distinta de REV.1 y REV.2'); return false;
   }
 
-  const path = (k) => (k==='rev1' ? 'revision1' : (k==='rev2' ? 'revision2' : 'pago'));
+  const path = (k) => (k === 'rev1' ? 'revision1' : (k === 'rev2' ? 'revision2' : 'pago'));
+
   const payload = {
     [`${path(which)}.estado`]: nuevoEstado,
     [`${path(which)}.user`]: me,
@@ -255,19 +255,24 @@ async function saveRevision(it, which, nuevoEstado, comentario='') {
   if (nuevoEstado === 'rechazado' && comentario) {
     payload[`${path(which)}.comentario`] = comentario;
   }
+  // Cerrar automáticamente si se marca pago como "pagado"
   if (which === 'revPago' && nuevoEstado === 'pagado') {
-    payload['cerrada'] = true; // marcar cerrada al pagar
+    payload['cerrada'] = true;
   }
 
-  try{
+  try {
     await updateDoc(ref, payload);
-    // refrescar local
-    if (which==='rev1') { it.rev1 = nuevoEstado; it.rev1By = me; if (comentario) it.comentario1 = comentario; }
-    if (which==='rev2') { it.rev2 = nuevoEstado; it.rev2By = me; if (comentario) it.comentario2 = comentario; }
-    if (which==='revPago') { it.revPago = nuevoEstado; it.pagoBy = me; if (comentario) it.comentarioPago = comentario; if (nuevoEstado==='pagado') it.cerrada = true; }
+
+    // Refrescar local
+    if (which === 'rev1') { it.rev1 = nuevoEstado; it.rev1By = me; if (comentario) it.comentario1 = comentario; }
+    if (which === 'rev2') { it.rev2 = nuevoEstado; it.rev2By = me; if (comentario) it.comentario2 = comentario; }
+    if (which === 'revPago') {
+      it.revPago = nuevoEstado; it.pagoBy = me; if (comentario) it.comentarioPago = comentario;
+      if (nuevoEstado === 'pagado') it.cerrada = true;
+    }
     it.estado = deriveEstado(it);
     return true;
-  }catch(e){
+  } catch (e) {
     console.error('saveRevision', e);
     alert('No se pudo guardar la revisión.');
     return false;
@@ -553,21 +558,33 @@ function promptComentario(title='COMENTARIO'){
 document.getElementById('btnMarcarTransferencia').onclick = async () => {
   const gid = state.filtros.grupo || '';
   if (!gid) { alert('Selecciona un grupo.'); return; }
-  const elig = state.items.filter(x => x.tipo==='abono' && x.grupoId===gid && state.cierre.pagosSeleccionados.has(x.id));
-  if (!elig.length){ alert('Selecciona pagos.'); return; }
+
+  // abonos seleccionados y aprobados (pendientes de pagar)
+  const elig = state.items.filter(x =>
+    x.tipo==='abono' && x.grupoId===gid && state.cierre.pagosSeleccionados.has(x.id)
+  );
+  if (!elig.length) { alert('Selecciona pagos.'); return; }
 
   const me = (auth.currentUser?.email || '').toLowerCase();
-  for (const p of elig){
-    try{
+  for (const p of elig) {
+    try {
       const ref = getDocRefForItem(p);
-      await updateDoc(ref, { 'pago.estado':'pagado', 'pago.user':me, 'pago.at':Date.now(), 'cerrada':true });
-      p.revPago='pagado'; p.pagoBy=me; p.cerrada=true; p.estado=deriveEstado(p);
-    }catch(e){ console.warn('marcar pago', p.id, e); }
+      await updateDoc(ref, {
+        'pago.estado': 'pagado',
+        'pago.user': me,
+        'pago.at': Date.now(),
+        'cerrada': true
+      });
+      p.revPago = 'pagado'; p.pagoBy = me; p.cerrada = true; p.estado = deriveEstado(p);
+    } catch (e) {
+      console.warn('marcar pago', p.id, e);
+    }
   }
   state.cierre.pagosSeleccionados.clear();
   renderTable();
   alert('Transferencia marcada como realizada.');
 };
+
 
 function calcPagoNetoGuia(){
   const dias = Number(document.getElementById('diasTrab').value || 0);
