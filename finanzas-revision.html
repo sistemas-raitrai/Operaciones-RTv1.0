@@ -4,144 +4,120 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Revisión financiera — Sistema de Operaciones RTv1</title>
-
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
-
   <style>
-    :root{
-      --bdr:#e7e7e7;
-      --bdr-strong:#ddd;
-      --bg:#fff;
-      --bg-soft:#fafafa;
-      --txt:#111;
-      --muted:.65;
-      --ok:#12a150;
-      --ok-ink:#0a7b3d;
-      --no:#d93025;
-      --no-ink:#b31206;
-      --pend:#999;
-    }
-
     .page { padding: 1rem 1.2rem; }
-    .muted { opacity: var(--muted); }
-    .hint  { font-size:.8rem; opacity:.75; margin-top:.35rem; }
-    .mono  { font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
-    .small { font-size:.78rem; opacity:.85; }
-
-    /* ===== Toolbar & tabs ===== */
     .toolbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; margin:.8rem 0 1rem; }
     .toolbar .tag { font-size:.85rem; opacity:.8; }
-    .toolbar input, .toolbar select {
-      padding:.45rem .55rem; border:1px solid var(--bdr-strong); border-radius:10px; background:#fff;
-      color:var(--txt);
-    }
-    .toolbar button { padding:.5rem .9rem; border:1px solid var(--bdr-strong); border-radius:10px; background:#fff; cursor:pointer; color:var(--txt); font-weight:600; }
+    .toolbar input, .toolbar select { padding:.4rem .5rem; border:1px solid #ddd; border-radius:8px; }
+    .toolbar button { padding:.45rem .8rem; border:1px solid #ddd; border-radius:10px; background:#fff; cursor:pointer; font-weight:600; color:#111; }
     .toolbar button.primary { border-color:#0b57d0; }
-
     .state-tabs { display:flex; gap:.4rem; align-items:center; flex-wrap:wrap; }
-    .state-tabs button {
-      padding:.35rem .7rem; border:1px solid var(--bdr-strong); border-radius:999px;
-      background:#fff; cursor:pointer; font-size:.9rem; color:var(--txt); font-weight:600; letter-spacing:.01em;
-    }
+    .state-tabs button { padding:.35rem .7rem; border:1px solid #ddd; border-radius:999px; background:#fff; cursor:pointer; font-size:.9rem; font-weight:600; color:#111; }
     .state-tabs button.active { border-color:#0b57d0; }
 
-    /* Filtros a la derecha en desktop */
+    table.finanzas { width:100%; border-collapse:collapse; background:#fff; border:1px solid #eee; border-radius:10px; overflow:hidden; }
+    table.finanzas th, table.finanzas td { padding:.55rem .6rem; border-bottom:1px solid #f1f1f1; vertical-align:middle; font-size:.92rem; text-transform:uppercase; }
+    table.finanzas thead th { background:#fafafa; text-align:left; font-weight:700; }
+    table.finanzas td .small { font-size:.78rem; opacity:.8; display:block; }
+    .rev-cell { display:flex; align-items:center; gap:.35rem; }
+    .rev-cell .small { display:inline-block; margin-left:.1rem; }
+    table.finanzas td .mono, table.finanzas th .mono { font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; text-transform:none; }
+    .badge { padding:.12rem .5rem; border-radius:999px; font-size:.78rem; border:1px solid #ddd; display:inline-block; color:#111; }
+    .badge.aprobado   { border-color:#12a150; }
+    .badge.rechazado  { border-color:#d93025; }
+    .badge.pendiente  { border-color:#999; }
+    .badge.cerrada    { border-color:#12a150; background:#eafff2; }
+    .hint { font-size:.8rem; opacity:.75; margin-top:.35rem; }
+    .muted { opacity:.65; }
+
+    @media (max-width: 900px) {
+      table.finanzas td:nth-child(2), table.finanzas th:nth-child(2) { display:none; }
+    }
+
+    .revbtn {
+      min-width:1.8rem; height:1.6rem; line-height:1.6rem;
+      border-radius:6px; border:1px solid #ddd; background:#fff; cursor:pointer;
+      font-weight:700; font-size:.95rem; padding:0 .35rem;
+    }
+    .revbtn[data-state="aprobado"]  { border-color:#12a150; color:#0a7b3d; }
+    .revbtn[data-state="rechazado"] { border-color:#d93025; color:#b31206; }
+    .revbtn[data-state="pendiente"] { border-color:#bbb;    color:#555; }
+
+    /* Sortable headers */
+    table.finanzas th.sortable { cursor:pointer; user-select:none; position:relative; padding-right:1.2rem; }
+    table.finanzas th.sortable::after { content:"↕"; position:absolute; right:.4rem; top:50%; transform:translateY(-50%); opacity:.45; font-size:.85rem; }
+    table.finanzas th.sortable.asc::after  { content:"▲"; opacity:.85; }
+    table.finanzas th.sortable.desc::after { content:"▼"; opacity:.85; }
+
+    /* Filtros alineados a la derecha y ancho cómodo */
     .toolbar #filtroTipo, .toolbar #filtroCoord, .toolbar #filtroGrupo {
       width: clamp(200px, 24vw, 330px); min-width:200px; flex:0 0 auto;
     }
     .toolbar #filtroTipo { margin-left:auto; }
-
     @media (max-width: 900px) {
       .toolbar #filtroTipo, .toolbar #filtroCoord, .toolbar #filtroGrupo { width:100%; min-width:0; }
       .toolbar #filtroTipo { margin-left:0; }
     }
 
-    /* ===== Tabla ===== */
-    table.finanzas { width:100%; border-collapse:collapse; background:var(--bg); border:1px solid var(--bdr); border-radius:10px; overflow:hidden; }
-    table.finanzas th, table.finanzas td { padding:.6rem .65rem; border-bottom:1px solid #f1f1f1; vertical-align:middle; font-size:.92rem; }
-    table.finanzas thead th { background:var(--bg-soft); text-align:left; font-weight:700; }
-    table.finanzas td .small { display:block; }
-    /* mayúsculas generales */
-    table.finanzas th, table.finanzas td { text-transform:uppercase; }
-    /* pero no fuerces monoespaciado/monedas */
-    table.finanzas td .mono, table.finanzas th .mono { text-transform:none; }
+    /* Cierres */
+    #cierres { margin-top:1rem; display:grid; gap:.8rem; }
+    .card { border:1px solid #eee; border-radius:12px; padding:.8rem; background:#fff; }
+    .row { display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+    .totals { font-weight:700; }
+    .tagline { font-size:.85rem; opacity:.75; }
 
-    /* Ocultar col. “Grupo (ID)” en pantallas chicas */
-    @media (max-width: 900px) {
-      table.finanzas td:nth-child(2), table.finanzas th:nth-child(2) { display:none; }
+    /* Modal simple */
+    #modalBack { position:fixed; inset:0; background:rgba(0,0,0,.25); display:none; align-items:center; justify-content:center; z-index:1000; }
+    #modalCard { background:#fff; border-radius:12px; width:min(720px, 92vw); padding:1rem; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+    #modalCard h3 { margin:.2rem 0 .6rem; }
+    #modalCard textarea { width:100%; min-height:120px; }
+    .icon-btn { border:0; background:transparent; cursor:pointer; line-height:1; }
+    .icon-btn.warn { color:#d93025; font-weight:900; }
+
+    /* Hoja para imprimir el cierre */
+    @media print {
+      #modalBack, .toolbar, .state-tabs, #encabezado { display:none !important; }
+      #printSheet { display:block; }
+      @page { size:A4; margin:18mm; }
     }
-
-    /* Badges */
-    .badge { padding:.12rem .5rem; border-radius:999px; font-size:.78rem; border:1px solid var(--bdr-strong); display:inline-block; color:var(--txt); }
-    .badge.aprobado { border-color:var(--ok); }
-    .badge.rechazado{ border-color:var(--no); }
-    .badge.pendiente{ border-color:var(--pend); }
-    .badge.cerrada  { border-color:#444; }
-
-    /* Botón tri-estado de revisión */
-    .rev-cell { display:flex; align-items:center; gap:.4rem; }
-    .revbtn {
-      min-width:1.9rem; height:1.7rem; line-height:1.7rem; border-radius:6px;
-      border:1px solid var(--bdr-strong); background:#fff; cursor:pointer;
-      font-weight:700; font-size:.95rem; padding:0 .35rem;
-    }
-    .revbtn[data-state="aprobado"]  { border-color:var(--ok); color:var(--ok-ink); }
-    .revbtn[data-state="rechazado"] { border-color:var(--no); color:var(--no-ink); }
-    .revbtn[data-state="pendiente"] { border-color:#bbb; color:#555; }
-
-    /* Encabezados ordenables */
-    table.finanzas th.sortable { cursor:pointer; user-select:none; position:relative; padding-right:1.2rem; }
-    table.finanzas th.sortable::after {
-      content:"↕"; position:absolute; right:.4rem; top:50%; transform:translateY(-50%); opacity:.45; font-size:.85rem;
-    }
-    table.finanzas th.sortable.asc::after  { content:"▲"; opacity:.85; }
-    table.finanzas th.sortable.desc::after { content:"▼"; opacity:.85; }
-
-    /* Resumen y totales en mayúsculas */
-    #resumen, #totales { text-transform:uppercase; }
+    #printSheet { display:none; white-space:pre-wrap; font-family:Calibri, Arial, sans-serif; }
   </style>
 </head>
 <body>
-
-  <!-- Encabezado compartido -->
   <div id="encabezado"></div>
 
   <div id="finanzasRoot" class="page" data-mode="sistema">
     <h2 style="margin:.4rem 0 0;">REVISIÓN FINANCIERA</h2>
 
     <!-- Filtros -->
-    <div class="toolbar" role="region" aria-label="Filtros de revisión financiera">
-      <div class="state-tabs" id="stateTabs" role="tablist" aria-label="Estados">
-        <button data-estado="" class="active" role="tab" aria-selected="true">TODOS</button>
-        <button data-estado="pendiente" role="tab">PENDIENTES</button>
-        <button data-estado="aprobado" role="tab">APROBADOS</button>
-        <button data-estado="rechazado" role="tab">RECHAZADOS</button>
-        <button data-estado="pagables" role="tab" title="Aprobados sin Rev. Pago">PAGABLES</button>
-        <button data-estado="cerrada" role="tab">CERRADAS</button>
+    <div class="toolbar">
+      <div class="state-tabs" id="stateTabs">
+        <button data-estado="" class="active">TODOS</button>
+        <button data-estado="pendiente">PENDIENTES</button>
+        <button data-estado="aprobado">APROBADOS</button>
+        <button data-estado="rechazado">RECHAZADOS</button>
+        <button data-estado="pagables">PAGABLES</button>
+        <button data-estado="cerrada">CERRADAS</button>
       </div>
+      <span class="tag">|</span>
 
-      <span class="tag" aria-hidden="true">|</span>
-
-      <!-- Tipo: mapea con el JS (gastos->gasto, pagos->abono, todos->all) -->
-      <select id="filtroTipo" aria-label="Tipo de movimiento">
-        <option value="">SELECCIONA TIPO…</option>
-        <option value="gastos">GASTOS</option>
-        <option value="pagos">PAGOS</option>
-        <option value="todos">TODOS</option>
+      <select id="filtroTipo">
+        <option value="gasto">GASTOS</option>
+        <option value="abono">PAGOS</option>
+        <option value="">TODOS</option>
       </select>
 
-      <!-- Autocompletados (coinciden con IDs que usa el JS) -->
-      <input id="filtroCoord" type="email" placeholder="SELECCIONA COORDINADOR(A)" list="dl-coords" aria-label="Coordinador(a)" />
+      <input id="filtroCoord" type="email" placeholder="SELECCIONA COORDINADOR(A)" list="dl-coords" />
       <datalist id="dl-coords"></datalist>
 
-      <input id="filtroGrupo" type="text" placeholder="SELECCIONA GRUPO" list="dl-grupos" aria-label="Grupo" />
+      <input id="filtroGrupo" type="text" placeholder="SELECCIONA GRUPO" list="dl-grupos" />
       <datalist id="dl-grupos"></datalist>
 
-      <button id="btnAplicar" class="primary" title="Cargar movimientos con los filtros">APLICAR FILTROS</button>
-      <button id="btnRecargar" title="Recargar catálogos (coordinadores/grupos)">RECARGAR</button>
-
+      <button id="btnAplicar" class="primary">APLICAR FILTROS</button>
+      <button id="btnRecargar">RECARGAR</button>
       <span class="tag" id="resumen"></span>
       <span class="tag" id="totales"></span>
     </div>
@@ -150,16 +126,16 @@
     <table class="finanzas" id="tblFinanzas">
       <thead>
         <tr>
-          <th class="sortable" data-sort-key="tipo">Tipo</th>
-          <th class="sortable" data-sort-key="grupo">Grupo (ID)</th>
-          <th class="sortable" data-sort-key="coord">Coordinador</th>
-          <th class="sortable" data-sort-key="asunto">Asunto</th>
-          <th class="sortable" data-sort-key="monto">Monto</th>
-          <th class="sortable" data-sort-key="moneda">Moneda</th>
-          <th class="sortable" data-sort-key="rev1">Rev. 1</th>
-          <th class="sortable" data-sort-key="rev2">Rev. 2</th>
-          <th class="sortable" data-sort-key="revpago">Rev. Pago</th>
-          <th class="sortable" data-sort-key="estado">Estado</th>
+          <th class="sortable" data-sort-key="tipo">TIPO</th>
+          <th class="sortable" data-sort-key="grupo">GRUPO (ID)</th>
+          <th class="sortable" data-sort-key="coord">COORDINADOR</th>
+          <th class="sortable" data-sort-key="asunto">ASUNTO</th>
+          <th class="sortable" data-sort-key="monto">MONTO</th>
+          <th class="sortable" data-sort-key="moneda">MONEDA</th>
+          <th class="sortable" data-sort-key="rev1">REV. 1</th>
+          <th class="sortable" data-sort-key="rev2">REV. 2</th>
+          <th class="sortable" data-sort-key="revpago">REV. PAGO</th>
+          <th class="sortable" data-sort-key="estado">ESTADO</th>
         </tr>
       </thead>
       <tbody></tbody>
@@ -167,25 +143,91 @@
 
     <div class="toolbar">
       <button id="btnMas">Cargar más</button>
+      <button id="btnImprimirCierre">Imprimir Cierre</button>
       <span class="hint muted" id="pagInfo"></span>
+    </div>
+
+    <!-- Cierres Financieros -->
+    <div id="cierres">
+      <div id="cierrePagos" class="card" style="display:none">
+        <h3>CIERRE DE PAGOS</h3>
+        <div class="tagline">Selecciona los <b>pagos aprobados</b> para transferir al coordinador y marca la transferencia realizada.</div>
+        <div id="cierrePagosList" class="row" style="margin-top:.4rem; flex-direction:column; gap:.35rem"></div>
+        <div class="row" style="justify-content:space-between">
+          <div class="totals" id="cierrePagosTotals">TOTAL: —</div>
+          <div class="row">
+            <button id="btnMarcarTransferencia" class="primary">Marcar transferencia realizada</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="cierreGastos" class="card" style="display:none">
+        <h3>CIERRE DE GASTOS</h3>
+        <div class="row" style="gap:1rem">
+          <div><b>Gastos aprobados:</b> <span id="sumGastosAprobados">—</span></div>
+          <div><b>Abonos aprobados:</b> <span id="sumAbonosAprobados">—</span></div>
+          <div class="totals"><b>Saldo (Abonos – Gastos):</b> <span id="saldoAG">—</span></div>
+        </div>
+
+        <div style="margin-top:.6rem">
+          <h4>Boleta y Pago de Días</h4>
+          <div class="row">
+            <div>Boleta: <a id="boletaUrl" href="#" target="_blank" rel="noopener">—</a></div>
+            <div>Días trabajados: <input id="diasTrab" type="number" min="0" step="1" value="0" style="width:6rem"/></div>
+            <div>Valor día: <input id="valorDia" type="number" min="0" step="1000" value="70000" style="width:8rem"/></div>
+            <div>Retención SII: 
+              <select id="retencionSII">
+                <option value="0.13">13%</option>
+                <option value="0.14" selected>14%</option>
+              </select>
+            </div>
+            <div><b>Pago neto guía:</b> <span id="pagoNetoGuia">—</span></div>
+            <button id="btnMarcarPagoGuia" class="primary">Marcar pago de días</button>
+          </div>
+        </div>
+
+        <div style="margin-top:.6rem">
+          <h4>Transferencia de regreso (si saldo &gt; 0)</h4>
+          <div class="row">
+            <div>Comprobante: <a id="comprobanteUrl" href="#" target="_blank" rel="noopener">—</a></div>
+            <button id="btnVerificarTransferencia">Marcar verificada</button>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <!-- Carga ordenada: encabezado → firebase → scripts -->
+  <!-- Modal comentario rechazo -->
+  <div id="modalBack">
+    <div id="modalCard">
+      <h3 id="modalTitle">COMENTARIO</h3>
+      <div id="modalBody">
+        <textarea id="modalText" placeholder="Escribe el motivo del rechazo…"></textarea>
+      </div>
+      <div class="row" style="justify-content:flex-end; margin-top:.6rem">
+        <button id="modalCancel">Cancelar</button>
+        <button id="modalOk" class="primary">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hoja de impresión -->
+  <div id="printSheet"></div>
+
+  <!-- Carga encabezado + firebase + script -->
   <script type="module">
     (async () => {
-      // Inserta encabezado
       try {
-        const html = await (await fetch('encabezado.html')).text();
-        document.getElementById('encabezado').innerHTML = html;
-      } catch { /* opcional */ }
+        const html = await (await fetch('encabezado.html')).text().catch(()=> '');
+        document.getElementById('encabezado').innerHTML = html || '';
+      } catch(_) {}
 
-      // Inicializa Firebase y lógica de la página
-      await import('./firebase-init.js');      // exporta app/db
-      await import('./script.js');             // utilidades del encabezado (usuario, reloj, etc.)
-      await import('./finanzas-revision.js');  // lógica principal de revisión
-      console.log('✅ finanzas-revision.js cargado');
+      await import('./firebase-init.js'); // inicializa firebase
+      await import('./script.js');        // reloj/usuario encabezado (si lo usas)
+      await import('./finanzas-revision.js'); // lógica de esta página
+      console.log('✅ finanzas-revision.js cargado (tras encabezado y firebase)');
     })();
   </script>
+  <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
