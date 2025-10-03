@@ -156,33 +156,61 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
 }
 
 /* ====================== LECTURA DE DATOS ====================== */
-// GASTOS: coordinadores/{coordId}/gastos/*  (usamos collectionGroup → derivamos coordId del path)
-async function fetchGastosCGFiltered({ coordHint='', grupoId='' } = {}) {
+// === REEMPLAZO COMPLETO ===
+// Lee TODOS los gastos desde collectionGroup('gastos') y filtra localmente
+// por coordinador y/o grupo. Sin 'where' → no requiere índice.
+async function fetchGastosCGFiltered({ coordHint = '', grupoId = '' } = {}) {
   const out = [];
   try {
-    // Cargamos TODOS los gastos (rápidos) y filtramos localmente por coord/grupo
-    // Si quieres limitar, puedes usar where('grupoId','==',grupoId) cuando grupoId no venga vacío.
-    const base = collectionGroup(db, 'gastos');
-    const qy = grupoId ? query(base, where('grupoId', '==', grupoId)) : base;
-    const snap = await getDocs(qy);
+    // normalización tolerante para coord: quita acentos, minúsculas, une espacios/guiones
+    const normCoord = (s='') =>
+      s.toString()
+       .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+       .toLowerCase()
+       .replace(/[\s_]+/g, '-')        // "elias lagos" -> "elias-lagos"
+       .trim();
 
+    const hint = normCoord(coordHint);
+
+    const snap = await getDocs(collectionGroup(db, 'gastos'));
     snap.forEach(docSnap => {
       const x = docSnap.data() || {};
-      const gid = coalesce(x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo, '');
-      if (!gid) return;
 
-      // coordId real del path: coordinadores/{coordId}/gastos/{id}
-      const coordId = (docSnap.ref.parent.parent?.id || '').toLowerCase();
+      // 1) Derivar GID de varias formas (incluye numeroNegocio + identificador)
+      const gid =
+        coalesce(
+          x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo,
+          (x.numeroNegocio && x.identificador) ? `${x.numeroNegocio}-${x.identificador}` : ''
+        );
+      if (!gid) return;                         // sin grupo no mostramos
 
-      // Filtrado local por coord si llega hint (tolerante: incluye)
-      if (coordHint) {
-        const h = coordHint.toLowerCase();
-        const blob = [coordId, (x.coordinadorEmail||''), (x.coordinador||'')].join(' ').toLowerCase();
-        if (!blob.includes(h)) return;
+      // 2) Coord real del path: coordinadores/{coordId}/gastos/{id}
+      const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
+
+      // 3) Filtrado por coordinador (si el usuario escribió algo)
+      if (hint) {
+        const blob = [
+          normCoord(coordFromPath),
+          normCoord(x.coordinadorEmail || ''),
+          normCoord(x.coordinador || '')
+        ].join(' ');
+        if (!blob.includes(hint)) return;       // no coincide → fuera
       }
 
-      const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre:'', coordEmail:'' };
-      const enriched = { id: docSnap.id, ...x, __from:'cg:gastos', __coordPath: coordId };
+      // 4) Filtrado por grupo (si se pidió)
+      if (grupoId && gid !== grupoId) return;
+
+      // 5) Info de catálogo del grupo
+      const gInfo = state.caches.grupos.get(gid) ||
+                    { numero: gid, nombre: '', coordEmail: coordFromPath };
+
+      // 6) Empaquetar y normalizar
+      const enriched = {
+        id: docSnap.id,
+        ...x,
+        __from: 'cg:gastos',
+        __coordPath: coordFromPath,            // ← nos permite escribir luego
+      };
       out.push(toItem(gid, gInfo, enriched, 'gasto'));
     });
   } catch (e) {
