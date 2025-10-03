@@ -95,6 +95,21 @@
   .revbtn[data-state="rechazado"] { border-color:#d93025; color:#b31206; }
   .revbtn[data-state="pendiente"] { border-color:#bbb;    color:#555; }
 
+  /* === Alinear los 3 filtros a la derecha === */
+  /* Empuja #filtroTipo hacia la derecha; los inputs que vienen después
+     (coordinador y grupo) se alinean a continuación */
+  .toolbar #filtroTipo {
+    margin-left: auto;
+  }
+  
+  /* Mantén buen comportamiento en pantallas pequeñas:
+     si hay wrap, que no “obligue” a separarse raro */
+  @media (max-width: 900px) {
+    .toolbar #filtroTipo {
+      margin-left: 0;
+    }
+  }
+
   </style>
 </head>
 <body>
@@ -103,29 +118,28 @@
   <div id="encabezado"></div>
 
   <div id="finanzasRoot" class="page" data-mode="sistema">
-    <h2 style="margin:.4rem 0 0;">Revisión financiera</h2>
+    <h2 style="margin:.4rem 0 0;">REVISIÓN FINANCIERA</h2>
 
     <!-- Filtros -->
     <div class="toolbar">
       <div class="state-tabs" id="stateTabs">
-        <button data-estado="" class="active">Todos</button>
-        <button data-estado="pendiente">Pendientes</button>
-        <button data-estado="aprobado">Aprobados</button>
-        <button data-estado="rechazado">Rechazados</button>
-        <button data-estado="pagables">Pagables</button>
+        <button data-estado="" class="active">TODOS</button>
+        <button data-estado="pendiente">PENDIENTES</button>
+        <button data-estado="aprobado">APROBADOS</button>
+        <button data-estado="rechazado">RECHAZADOS</button>
       </div>
       <span class="tag">|</span>
       <select id="filtroTipo">
-        <option value="">Gasto + Abono</option>
-        <option value="gasto">Solo Gastos</option>
-        <option value="abono">Solo Abonos</option>
+        <option value="">TODOS</option>
+        <option value="gasto">GASTOS</option>
+        <option value="abono">PAGOS</option>
       </select>
 
       <!-- Autocompletados -->
-      <input id="filtroCoord" type="email" placeholder="coordinador@..." list="dl-coords" />
+      <input id="filtroCoord" type="email" placeholder="SELECCIONA CORDINADOR(A)" list="dl-coords" />
       <datalist id="dl-coords"></datalist>
 
-      <input id="filtroGrupo" type="text" placeholder="ID o nombre de grupo" list="dl-grupos" />
+      <input id="filtroGrupo" type="text" placeholder="SELECCIONA GRUPO" list="dl-grupos" />
       <datalist id="dl-grupos"></datalist>
 
       <button id="btnAplicar" class="primary">Aplicar filtros</button>
