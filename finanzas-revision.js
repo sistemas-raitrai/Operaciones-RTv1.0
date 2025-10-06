@@ -5,6 +5,9 @@ import {
   collection, collectionGroup, getDocs, query, where, doc, getDoc, updateDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
+const storage = getStorage(app);
+
 const auth = getAuth(app);
 
 /* ===== MODO PRUEBA (permitir mismo usuario en REV1/REV2/REV PAGO) ===== */
@@ -695,31 +698,79 @@ document.getElementById('btnMarcarTransferencia').onclick = async () => {
   const gid = state.filtros.grupo || '';
   if (!gid) { alert('Selecciona un grupo.'); return; }
 
-  // abonos seleccionados y aprobados (pendientes de pagar)
   const elig = state.items.filter(x =>
     x.tipo==='abono' && x.grupoId===gid && state.cierre.pagosSeleccionados.has(x.id)
   );
   if (!elig.length) { alert('Selecciona pagos.'); return; }
 
+  // Verificación de suma:
+  const sumaCLP = elig
+    .filter(z => (z.moneda || 'CLP').toUpperCase() === 'CLP')
+    .reduce((s,z)=> s + (Number(z.monto)||0), 0);
+
+  const userMonto = parseMonto(document.getElementById('montoTransferido').value || 0);
+  if (!userMonto) {
+    alert('Ingresa el MONTO TRANSFERIDO (CLP).');
+    return;
+  }
+  if (sumaCLP !== userMonto) {
+    const cont = confirm(`ATENCIÓN: la suma de abonos seleccionados (${sumaCLP.toLocaleString('es-CL')}) es distinta al monto ingresado (${userMonto.toLocaleString('es-CL')}). ¿Continuar de todas formas?`);
+    if (!cont) return;
+  }
+
+  // Subir comprobante (opcional pero recomendado)
+  let compUrl = '';
+  const fileEl = document.getElementById('fileComprobante');
+  const f = fileEl?.files?.[0];
+  if (f) {
+    try{
+      const nameSafe = f.name.replace(/[^\w.\-]+/g,'_');
+      const r = sRef(storage, `grupos/${gid}/finanzas/transferencias/${Date.now()}_${nameSafe}`);
+      const up = await uploadBytes(r, f);
+      compUrl = await getDownloadURL(up.ref);
+    }catch(e){
+      console.warn('upload comprobante', e);
+      alert('No se pudo subir el comprobante. Puedes intentar de nuevo o continuar sin archivo.');
+    }
+  }
+
   const me = (auth.currentUser?.email || '').toLowerCase();
-  for (const p of elig) {
-    try {
+
+  try {
+    // 1) Registrar la transferencia "lote" (para trazabilidad)
+    const transfRef = doc(db, 'grupos', gid, 'finanzas', `transfer_${Date.now()}`);
+    await setDoc(transfRef, {
+      tipo: 'abonos',
+      abonos: elig.map(p => p.id),
+      montoCLP: userMonto,
+      comprobanteUrl: compUrl || '',
+      nota: (document.getElementById('notaTransferencia').value || '').trim(),
+      by: me,
+      at: Date.now()
+    });
+
+    // 2) Marcar cada abono como pagado + cerrar
+    for (const p of elig) {
       const ref = getDocRefForItem(p);
       await updateDoc(ref, {
         'pago.estado': 'pagado',
         'pago.user': me,
         'pago.at': Date.now(),
+        'pago.comprobanteUrl': compUrl || '',
         'cerrada': true
       });
       p.revPago = 'pagado'; p.pagoBy = me; p.cerrada = true; p.estado = deriveEstado(p);
-    } catch (e) {
-      console.warn('marcar pago', p.id, e);
     }
+
+    state.cierre.pagosSeleccionados.clear();
+    renderTable();
+    alert('Transferencia registrada y abonos cerrados.');
+  } catch (e) {
+    console.error('transferencia abonos', e);
+    alert('No se pudo registrar la transferencia.');
   }
-  state.cierre.pagosSeleccionados.clear();
-  renderTable();
-  alert('Transferencia marcada como realizada.');
 };
+
 
 
 function calcPagoNetoGuia(){
