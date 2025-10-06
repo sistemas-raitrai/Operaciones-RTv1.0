@@ -340,6 +340,14 @@ async function saveRevision(it, which, nuevoEstado, comentario='') {
   try {
     await updateDoc(ref, payload);
 
+        // Aviso al revisor 1 si Rev2 rechaza
+    if (which === 'rev2' && nuevoEstado === 'rechazado' && it.rev1By) {
+      await updateDoc(ref, {
+        'revision1.notify': 'rechazado',
+        'revision1.notifyAt': Date.now()
+      });
+    }
+
     // Refrescar local
     if (which === 'rev1') { it.rev1 = nuevoEstado; it.rev1By = me; if (comentario) it.comentario1 = comentario; }
     if (which === 'rev2') { it.rev2 = nuevoEstado; it.rev2By = me; if (comentario) it.comentario2 = comentario; }
@@ -383,6 +391,7 @@ function sortItems(arr){
       case 'coord': return it.coordinador;
       case 'asunto': return it.asunto || '';
       case 'monto': return Number(it.monto) || 0;
+      case 'montoAprobado': return Number(it.montoAprobado) || Number(it.monto) || 0;
       case 'moneda': return it.moneda || 'CLP';
       case 'rev1': return it.rev1 || '';
       case 'rev2': return it.rev2 || '';
@@ -453,6 +462,34 @@ function renderTable(){
       const tdCoord= document.createElement('td'); tdCoord.innerHTML=`<span>${x.coordinador||'—'}</span>`;
       const tdAsunto=document.createElement('td'); tdAsunto.textContent=x.asunto || '—';
       const tdMonto =document.createElement('td'); tdMonto.innerHTML=`<span class="mono">${moneyBy(x.monto, x.moneda||'CLP')}</span>`;
+            // Monto Aprobado (solo aplica a gastos, editable)
+      const tdMontoAprob = document.createElement('td');
+      if (x.tipo === 'gasto') {
+        const wrap = document.createElement('div');
+        const inp = document.createElement('input');
+        inp.type = 'number';
+        inp.step = '1';
+        inp.min = '0';
+        inp.className = 'mono';
+        inp.value = isFinite(+x.montoAprobado) ? +x.montoAprobado : +x.monto;
+        const ok = document.createElement('button'); ok.textContent = '💾'; ok.title='Guardar monto aprobado';
+        wrap.append(inp, ok);
+        tdMontoAprob.appendChild(wrap);
+
+        ok.onclick = async () => {
+          const val = parseMonto(inp.value);
+          const saved = await saveMontoAprobado(x, val);
+          if (saved){
+            // refresca totales y estado visual
+            tdMontoAprob.classList.add('saved');
+            setTimeout(()=>tdMontoAprob.classList.remove('saved'), 800);
+            renderCierres();
+          }
+        };
+      } else {
+        tdMontoAprob.innerHTML = '<span class="muted">—</span>';
+      }
+
       const tdMon  =document.createElement('td'); tdMon.textContent=(x.moneda||'CLP');
 
       // helper botón + correo + comentario
@@ -524,7 +561,7 @@ function renderTable(){
       const tdEstado=document.createElement('td');
       tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
 
-      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdMon, tdR1, tdR2, tdRP, tdEstado);
+      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdMontoAprob, tdMon, tdR1, tdR2, tdRP, tdEstado);
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -600,9 +637,16 @@ function renderCierres(){
   // GASTOS
   const boxG = document.getElementById('cierreGastos');
   if (showGastos){
-    const gastosAprob = state.items.filter(x => x.tipo==='gasto' && x.grupoId===gid && x.rev1==='aprobado' && x.rev2==='aprobado');
-    const abonosAprob = state.items.filter(x => x.tipo==='abono' && x.grupoId===gid && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago==='pagado');
-    const sumG = gastosAprob.reduce((s,x)=> s + x.monto, 0);
+    // Gasto aprobado: (Rev1=aprobado & Rev2=aprobado) OR (Rev1=rechazado & Rev2=aprobado)
+    const gastosAprob = state.items.filter(x =>
+      x.tipo==='gasto' && x.grupoId===gid &&
+      ((x.rev1==='aprobado' && x.rev2==='aprobado') || (x.rev1==='rechazado' && x.rev2==='aprobado'))
+    );
+    const abonosAprob = state.items.filter(x =>
+      x.tipo==='abono' && x.grupoId===gid && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago==='pagado'
+    );
+    const sumG = gastosAprob.reduce((s,x)=> s + montoGastoEfectivo(x), 0);
+
     const sumA = abonosAprob.reduce((s,x)=> s + x.monto, 0);
     const saldo = sumA - sumG;
     document.getElementById('sumGastosAprobados').textContent = moneyCLP(sumG);
