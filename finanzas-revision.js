@@ -81,6 +81,37 @@ function montoGastoEfectivo(it){
   return (ok && isFinite(+it.montoAprobado)) ? +it.montoAprobado : +it.monto;
 }
 
+// ====== FECHAS: parsear lo que venga (Timestamp, número, string) ======
+function _toMs(v){
+  if (v == null) return 0;
+  if (typeof v === 'number') return v > 1e12 ? v : v * 1000; // s → ms
+  if (typeof v === 'string') {
+    const t = Date.parse(v); return isFinite(t) ? t : 0;
+  }
+  if (typeof v === 'object') {
+    if ('seconds' in v) return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1e6);
+    const t = Date.parse(v); return isFinite(t) ? t : 0;
+  }
+  return 0;
+}
+function pickFechaMs(raw){
+  const cands = [
+    raw.fecha, raw.fechaPago, raw.fechaAbono,
+    raw.createdAt, raw.created, raw.ts, raw.at, raw.timestamp, raw.time,
+    raw.revision1?.at, raw.pago?.at
+  ];
+  for (const c of cands){ const ms = _toMs(c); if (ms) return ms; }
+  return 0;
+}
+function fmtDDMMYYYY(ms){
+  if (!ms) return '';
+  const d = new Date(ms);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
+}
+
 /* ====================== CATALOGOS ====================== */
 async function preloadCatalogs() {
   state.caches.grupos.clear();
@@ -166,6 +197,10 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
   const coordRaw = coalesce(raw.coordinadorEmail, raw.coordinador, '').toLowerCase();
   const coord = coordFromPath || coordEmailCat || coordRaw;
 
+  const fechaMs  = pickFechaMs(raw);
+  const fechaTxt = fechaMs ? fmtDDMMYYYY(fechaMs) : '';
+
+
   return {
     id: raw.id || raw._id || '',
     __from: raw.__from || '',
@@ -180,6 +215,8 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
     montoAprobado, 
     rev1, rev2, revPago,
     rev1By, rev2By, pagoBy,
+    fechaMs,
+    fechaTxt,
     comentario1: raw.revision1?.comentario || '',
     comentario2: raw.revision2?.comentario || '',
     comentarioPago: raw.pago?.comentario || '',
@@ -619,7 +656,9 @@ function renderCierres(){
   const listP= document.getElementById('cierrePagosList');
   const totP = document.getElementById('cierrePagosTotals');
   if (showPagos){
-    const pagos = applyFiltersLocal(state.items).filter(x => x.tipo==='abono' && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago!=='pagado');
+    let pagos = applyFiltersLocal(state.items).filter(x => x.tipo==='abono' && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago!=='pagado');
+    pagos.sort((a,b) => (b.fechaMs||0) - (a.fechaMs||0)); // más recientes arriba
+
     boxP.style.display = '';
     listP.innerHTML = '';
     if (!pagos.length) {
@@ -630,9 +669,10 @@ function renderCierres(){
         const id = `selp_${p.id}`;
         const row = document.createElement('label');
         row.className='row';
+        const etiqueta = p.fechaTxt || p.id;
         row.innerHTML = `
           <input type="checkbox" id="${id}" ${state.cierre.pagosSeleccionados.has(p.id)?'checked':''}/>
-          <span class="mono">${p.id}</span> · ${p.asunto||'—'} · ${p.moneda||'CLP'} ${p.monto.toLocaleString('es-CL')}
+          <span class="mono" title="${p.id}">${etiqueta}</span> · ${p.asunto||'—'} · ${p.moneda||'CLP'} ${(p.monto||0).toLocaleString('es-CL')}
         `;
         listP.appendChild(row);
         row.querySelector('input').onchange = (e) => {
