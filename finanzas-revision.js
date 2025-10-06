@@ -1,13 +1,15 @@
-/* Revisión financiera v3 — Abonos y Gastos con montos aprobados + comprobantes */
+/* Revisión financiera v2 — carga bajo demanda + cierres + comentarios rechazo */
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, getDocs, query, doc, getDoc, updateDoc, setDoc
+  collection, collectionGroup, getDocs, query, where, doc, getDoc, updateDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
-import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
 
 const auth = getAuth(app);
-const storage = getStorage(app);
+
+/* ===== MODO PRUEBA (permitir mismo usuario en REV1/REV2/REV PAGO) ===== */
+const TEST_SINGLE_USER_MODE = true; 
+// Cambia a false para volver a exigir usuarios distintos.
 
 /* ====================== STATE ====================== */
 const state = {
@@ -15,14 +17,14 @@ const state = {
   filtros: { estado:'', tipo:'', coord:'', grupo:'' },
   sort: { key:'', dir:'asc' },
   caches: {
-    grupos: new Map(),
-    coords: [],
-    groupsByCoord: new Map(),
+    grupos: new Map(),          // gid -> {numero,nombre,coordEmail, urls...}
+    coords: [],                 // emails/nombres para datalist
+    groupsByCoord: new Map(),   // coordEmail -> Set(gid)
   },
-  items: [],
+  items: [],        // filas normalizadas
   cierre: {
-    pagosSeleccionados: new Set(),
-    comprobanteFile: null,
+    pagosSeleccionados: new Set(),   // ids de abonos para marcar transferencia
+    grupoActual: null,
   }
 };
 
@@ -40,25 +42,16 @@ const moneyBy = (n, curr='CLP') => (isFinite(+n) ? (+n).toLocaleString('es-CL',{
 
 function deriveEstado(x) {
   const s = (x.estado || '').toString().toLowerCase();
-  if (s === 'cerrada' || x.cerrada) return 'cerrada';
-  
+  if (s === 'cerrada') return 'cerrada';
   const r1 = (x.rev1 || '').toString().toLowerCase();
   const r2 = (x.rev2 || '').toString().toLowerCase();
   const rp = (x.revPago || '').toString().toLowerCase();
-  
-  if (rp === 'rechazado') return 'rechazado';
-  
+  if (r1 === 'rechazado' || r2 === 'rechazado' || rp === 'rechazado') return 'rechazado';
   if (x.tipo === 'abono') {
+    // para pagos, si quedó pagado => cerrada
     if (rp === 'pagado') return 'cerrada';
-    if (r1 === 'aprobado' && r2 === 'aprobado') return 'aprobado';
-    if (r1 === 'rechazado' || r2 === 'rechazado') return 'rechazado';
-  } else {
-    // GASTOS: aprobado si ambos aprueban O si rev1 rechaza pero ajusta monto + rev2 aprueba
-    if (r1 === 'aprobado' && r2 === 'aprobado') return 'aprobado';
-    if (r1 === 'rechazado' && r2 === 'aprobado' && x.montoAprobado !== x.monto) return 'aprobado';
-    if (r1 === 'rechazado' || r2 === 'rechazado') return 'rechazado';
   }
-  
+  if (r1 === 'aprobado' && r2 === 'aprobado') return 'aprobado';
   return 'pendiente';
 }
 
@@ -122,7 +115,6 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
     raw.monto, raw.montoCLP, raw.neto, raw.importe, raw.valor, raw.total, raw.totalCLP, raw.monto_str, 0
   );
   const monto = parseMonto(brutoMonto);
-  const montoAprobado = parseMonto(raw.montoAprobado ?? monto);
   const moneda = (raw.moneda || raw.currency || 'CLP').toString().toUpperCase();
 
   const rev1  = (raw.revision1?.estado || raw.rev1?.estado || raw.rev1 || '').toString().toLowerCase() || 'pendiente';
@@ -136,6 +128,7 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
   const pagoBy = coalesce(raw.pago?.user, raw.revPagoBy, '').toLowerCase();
 
   const asunto = coalesce(raw.asunto, raw.detalle, raw.descripcion, raw.concepto, raw.motivo, '');
+  // Si viene desde CG:gastos, raw.__coordPath trae el coordId real del path
   const coordFromPath = (raw.__coordPath || '').toLowerCase();
   const coordEmailCat = (gInfo?.coordEmail || '').toLowerCase();
   const coordRaw = coalesce(raw.coordinadorEmail, raw.coordinador, '').toLowerCase();
@@ -151,62 +144,72 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
     coordinador: coord || '',
     asunto,
     monto,
-    montoAprobado,
     moneda,
     rev1, rev2, revPago,
     rev1By, rev2By, pagoBy,
     comentario1: raw.revision1?.comentario || '',
     comentario2: raw.revision2?.comentario || '',
     comentarioPago: raw.pago?.comentario || '',
-    comprobanteUrl: raw.pago?.comprobanteUrl || '',
     cerrada: !!raw.cerrada,
-    estado: deriveEstado({ tipo, rev1, rev2, revPago, estado: raw.estado, cerrada: raw.cerrada, monto, montoAprobado }),
+    estado: deriveEstado({ tipo, rev1, rev2, revPago, estado: raw.estado, cerrada: raw.cerrada }),
   };
 }
 
 /* ====================== LECTURA DE DATOS ====================== */
+// === REEMPLAZO COMPLETO ===
+// Lee TODOS los gastos desde collectionGroup('gastos') y filtra localmente
+// por coordinador y/o grupo. Sin 'where' → no requiere índice.
 async function fetchGastosCGFiltered({ coordHint = '', grupoId = '' } = {}) {
   const out = [];
   try {
+    // normalización tolerante para coord: quita acentos, minúsculas, une espacios/guiones
     const normCoord = (s='') =>
       s.toString()
        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
        .toLowerCase()
-       .replace(/[\s_]+/g, '-')
+       .replace(/[\s_]+/g, '-')        // "elias lagos" -> "elias-lagos"
        .trim();
 
     const hint = normCoord(coordHint);
+
     const snap = await getDocs(collectionGroup(db, 'gastos'));
-    
     snap.forEach(docSnap => {
       const x = docSnap.data() || {};
-      const gid = coalesce(
-        x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo,
-        (x.numeroNegocio && x.identificador) ? `${x.numeroNegocio}-${x.identificador}` : ''
-      );
-      if (!gid) return;
 
+      // 1) Derivar GID de varias formas (incluye numeroNegocio + identificador)
+      const gid =
+        coalesce(
+          x.grupoId, x.grupo_id, x.gid, x.idGrupo, x.grupo, x.id_grupo,
+          (x.numeroNegocio && x.identificador) ? `${x.numeroNegocio}-${x.identificador}` : ''
+        );
+      if (!gid) return;                         // sin grupo no mostramos
+
+      // 2) Coord real del path: coordinadores/{coordId}/gastos/{id}
       const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
 
+      // 3) Filtrado por coordinador (si el usuario escribió algo)
       if (hint) {
         const blob = [
           normCoord(coordFromPath),
           normCoord(x.coordinadorEmail || ''),
           normCoord(x.coordinador || '')
         ].join(' ');
-        if (!blob.includes(hint)) return;
+        if (!blob.includes(hint)) return;       // no coincide → fuera
       }
 
+      // 4) Filtrado por grupo (si se pidió)
       if (grupoId && gid !== grupoId) return;
 
+      // 5) Info de catálogo del grupo
       const gInfo = state.caches.grupos.get(gid) ||
                     { numero: gid, nombre: '', coordEmail: coordFromPath };
 
+      // 6) Empaquetar y normalizar
       const enriched = {
         id: docSnap.id,
         ...x,
         __from: 'cg:gastos',
-        __coordPath: coordFromPath,
+        __coordPath: coordFromPath,            // ← nos permite escribir luego
       };
       out.push(toItem(gid, gInfo, enriched, 'gasto'));
     });
@@ -216,6 +219,7 @@ async function fetchGastosCGFiltered({ coordHint = '', grupoId = '' } = {}) {
   return out;
 }
 
+// ABONOS (PAGOS): grupos/{gid}/finanzas_abonos/*
 async function fetchAbonosByGroup(gid) {
   const out = [];
   if (!gid) return out;
@@ -233,20 +237,24 @@ async function fetchAbonosByGroup(gid) {
   return out;
 }
 
+/* Carga principal según filtros */
 async function loadDataForFilters() {
   state.items = [];
-  const tipo  = state.filtros.tipo;
-  const coord = (state.filtros.coord || '').toLowerCase();
+  const tipo  = state.filtros.tipo;    // '', 'gasto', 'abono'
+  const coord = (state.filtros.coord || '').toLowerCase(); // puede ser email, nombre o coordId
   const gid   = state.filtros.grupo || '';
 
+  // Si no eliges ni coord ni grupo, no cargamos (igual que antes)
   if (!coord && !gid) return [];
 
   const tasks = [];
 
+  // GASTOS desde CG (filtrado local por coord y opcionalmente por grupo)
   if (!tipo || tipo === 'gasto') {
     tasks.push(fetchGastosCGFiltered({ coordHint: coord, grupoId: gid }));
   }
 
+  // ABONOS por grupo si hay gid
   if ((!tipo || tipo === 'abono') && gid) {
     tasks.push(fetchAbonosByGroup(gid));
   }
@@ -257,28 +265,31 @@ async function loadDataForFilters() {
 }
 
 /* ====================== ESCRITURA: REVISIONES ====================== */
+// Devuelve el doc correcto para una fila (gasto o abono)
 function getDocRefForItem(it) {
   return (it.tipo === 'gasto')
-    ? doc(db, 'coordinadores', it.coordinador, 'gastos', it.id)
-    : doc(db, 'grupos', it.grupoId, 'finanzas_abonos', it.id);
+    ? doc(db, 'coordinadores', it.coordinador, 'gastos', it.id)          // GASTOS
+    : doc(db, 'grupos', it.grupoId, 'finanzas_abonos', it.id);           // ABONOS/PAGOS
 }
 
-async function saveRevision(it, which, nuevoEstado, comentario='', montoAjustado=null) {
+// which: 'rev1' | 'rev2' | 'revPago'
+// nuevoEstado: 'pendiente' | 'aprobado' | 'rechazado' | ('pagado' solo para revPago)
+// comentario: texto obligatorio cuando se rechaza
+async function saveRevision(it, which, nuevoEstado, comentario='') {
   const me  = (auth.currentUser?.email || '').toLowerCase();
   const ref = getDocRefForItem(it);
 
-  // Validar usuarios distintos
-  if (which === 'rev1' && it.rev2By && it.rev2By === me) {
-    alert('REV.1 debe ser realizada por un usuario distinto a REV.2');
-    return false;
-  }
-  if (which === 'rev2' && it.rev1By && it.rev1By === me) {
-    alert('REV.2 debe ser realizada por un usuario distinto a REV.1');
-    return false;
-  }
-  if (which === 'revPago' && (me === it.rev1By || me === it.rev2By)) {
-    alert('REV. PAGO debe ser realizada por un usuario distinto a REV.1 y REV.2');
-    return false;
+  // ===== Regla de usuarios distintos (se desactiva en modo prueba) =====
+  if (!TEST_SINGLE_USER_MODE) {
+    if (which === 'rev1' && it.rev2By && it.rev2By === me) {
+      alert('REV.1 debe ser distinta de REV.2'); return false;
+    }
+    if (which === 'rev2' && it.rev1By && it.rev1By === me) {
+      alert('REV.2 debe ser distinta de REV.1'); return false;
+    }
+    if (which === 'revPago' && (me === it.rev1By || me === it.rev2By)) {
+      alert('REV. PAGO debe ser distinta de REV.1 y REV.2'); return false;
+    }
   }
 
   const path = (k) => (k === 'rev1' ? 'revision1' : (k === 'rev2' ? 'revision2' : 'pago'));
@@ -288,17 +299,10 @@ async function saveRevision(it, which, nuevoEstado, comentario='', montoAjustado
     [`${path(which)}.user`]: me,
     [`${path(which)}.at`]: Date.now(),
   };
-  
   if (nuevoEstado === 'rechazado' && comentario) {
     payload[`${path(which)}.comentario`] = comentario;
   }
-  
-  // GASTOS: si REV1 rechaza con ajuste de monto
-  if (it.tipo === 'gasto' && which === 'rev1' && nuevoEstado === 'rechazado' && montoAjustado !== null) {
-    payload['montoAprobado'] = montoAjustado;
-  }
-  
-  // ABONOS: cerrar si marca pago como pagado
+  // Cerrar automáticamente si se marca pago como "pagado"
   if (which === 'revPago' && nuevoEstado === 'pagado') {
     payload['cerrada'] = true;
   }
@@ -306,22 +310,11 @@ async function saveRevision(it, which, nuevoEstado, comentario='', montoAjustado
   try {
     await updateDoc(ref, payload);
 
-    // Actualizar local
-    if (which === 'rev1') {
-      it.rev1 = nuevoEstado;
-      it.rev1By = me;
-      if (comentario) it.comentario1 = comentario;
-      if (montoAjustado !== null) it.montoAprobado = montoAjustado;
-    }
-    if (which === 'rev2') {
-      it.rev2 = nuevoEstado;
-      it.rev2By = me;
-      if (comentario) it.comentario2 = comentario;
-    }
+    // Refrescar local
+    if (which === 'rev1') { it.rev1 = nuevoEstado; it.rev1By = me; if (comentario) it.comentario1 = comentario; }
+    if (which === 'rev2') { it.rev2 = nuevoEstado; it.rev2By = me; if (comentario) it.comentario2 = comentario; }
     if (which === 'revPago') {
-      it.revPago = nuevoEstado;
-      it.pagoBy = me;
-      if (comentario) it.comentarioPago = comentario;
+      it.revPago = nuevoEstado; it.pagoBy = me; if (comentario) it.comentarioPago = comentario;
       if (nuevoEstado === 'pagado') it.cerrada = true;
     }
     it.estado = deriveEstado(it);
@@ -345,7 +338,6 @@ function sortItems(arr){
       case 'coord': return it.coordinador;
       case 'asunto': return it.asunto || '';
       case 'monto': return Number(it.monto) || 0;
-      case 'montoAprobado': return Number(it.montoAprobado) || 0;
       case 'moneda': return it.moneda || 'CLP';
       case 'rev1': return it.rev1 || '';
       case 'rev2': return it.rev2 || '';
@@ -365,8 +357,10 @@ function applyFiltersLocal(arr){
   const f = state.filtros;
   let out = arr;
 
+  // tipo
   if (f.tipo) out = out.filter(x => x.tipo === f.tipo);
 
+  // estado
   if (f.estado === 'pagables') {
     out = out.filter(x => x.tipo==='abono' && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago!=='pagado');
   } else if (f.estado === 'cerrada') {
@@ -375,6 +369,7 @@ function applyFiltersLocal(arr){
     out = out.filter(x => x.estado === f.estado);
   }
 
+  // coord y grupo (si se escribieron a mano, tolerante)
   if (f.coord) out = out.filter(x => norm(x.coordinador).includes(norm(f.coord)));
   if (f.grupo) out = out.filter(x => norm([x.grupoId,x.nombreGrupo,x.numeroNegocio].join(' ')).includes(norm(f.grupo)));
 
@@ -390,90 +385,52 @@ function renderTable(){
   const filtered = applyFiltersLocal(state.items);
   const data = sortItems(filtered);
 
-  // Totales usando montoAprobado para gastos
+  // Totales
   let sumG = 0, sumA = 0;
-  data.forEach(x => {
-    if (x.tipo==='gasto') sumG += x.montoAprobado;
-    else sumA += x.monto;
-  });
+  data.forEach(x => { if (x.tipo==='gasto') sumG += x.monto; else sumA += x.monto; });
   const saldo = sumA - sumG;
   totalesEl.textContent = `GASTOS: ${moneyCLP(sumG)} · ABONOS: ${moneyCLP(sumA)} · SALDO: ${moneyCLP(saldo)}`;
 
+  // cuerpo
   tbody.innerHTML = '';
   if (!data.length){
     const tr=document.createElement('tr');
     const td=document.createElement('td');
-    td.colSpan=11;
-    td.innerHTML='<div class="muted">SIN MOVIMIENTOS PARA ESTE CRITERIO.</div>';
-    tr.appendChild(td);
-    tbody.appendChild(tr);
+    td.colSpan=10; td.innerHTML='<div class="muted">SIN MOVIMIENTOS PARA ESTE CRITERIO.</div>';
+    tr.appendChild(td); tbody.appendChild(tr);
   } else {
     const frag=document.createDocumentFragment();
     data.forEach(x=>{
       const tr=document.createElement('tr');
 
-      const tdTipo = document.createElement('td');
-      tdTipo.textContent=(x.tipo||'—').toUpperCase();
-      
-      const tdGrupo= document.createElement('td');
-      tdGrupo.innerHTML=`<div class="mono">${x.grupoId}</div><span class="small">${(x.numeroNegocio||'')}${x.nombreGrupo?' · '+x.nombreGrupo:''}</span>`;
-      
-      const tdCoord= document.createElement('td');
-      tdCoord.innerHTML=`<span>${x.coordinador||'—'}</span>`;
-      
-      const tdAsunto=document.createElement('td');
-      tdAsunto.textContent=x.asunto || '—';
-      
-      const tdMonto =document.createElement('td');
-      tdMonto.innerHTML=`<span class="mono">${moneyBy(x.monto, x.moneda||'CLP')}</span>`;
-      
-      // Nueva columna: Monto Aprobado (solo para gastos)
-      const tdMontoAprob = document.createElement('td');
-      if (x.tipo === 'gasto') {
-        const diff = x.montoAprobado !== x.monto;
-        tdMontoAprob.innerHTML = `<span class="mono ${diff?'text-warning':''}">${moneyBy(x.montoAprobado, x.moneda||'CLP')}</span>`;
-        if (diff) tdMontoAprob.title = 'Monto ajustado';
-      } else {
-        tdMontoAprob.innerHTML = '<span class="muted">—</span>';
-      }
-      
-      const tdMon  =document.createElement('td');
-      tdMon.textContent=(x.moneda||'CLP');
+      const tdTipo = document.createElement('td'); tdTipo.textContent=(x.tipo||'—').toUpperCase();
+      const tdGrupo= document.createElement('td'); tdGrupo.innerHTML=`<div class="mono">${x.grupoId}</div><span class="small">${(x.numeroNegocio||'')}${x.nombreGrupo?' · '+x.nombreGrupo:''}</span>`;
+      const tdCoord= document.createElement('td'); tdCoord.innerHTML=`<span>${x.coordinador||'—'}</span>`;
+      const tdAsunto=document.createElement('td'); tdAsunto.textContent=x.asunto || '—';
+      const tdMonto =document.createElement('td'); tdMonto.innerHTML=`<span class="mono">${moneyBy(x.monto, x.moneda||'CLP')}</span>`;
+      const tdMon  =document.createElement('td'); tdMon.textContent=(x.moneda||'CLP');
 
+      // helper botón + correo + comentario
       const makeRev = (which, estado, by, comentario) => {
         const td = document.createElement('td');
-        if (which==='revPago' && x.tipo!=='abono') {
-          td.innerHTML='<span class="muted">—</span>';
-          return td;
-        }
+        // REV PAGO no aplica a gastos → celda gris
+        if (which==='revPago' && x.tipo!=='abono') { td.innerHTML='<span class="muted">—</span>'; return td; }
 
-        const wrap=document.createElement('div');
-        wrap.className='rev-cell';
-        const btn=document.createElement('button');
-        btn.className='revbtn';
-        btn.type='button';
-        const who=document.createElement('span');
-        who.className='small';
+        const wrap=document.createElement('div'); wrap.className='rev-cell';
+        const btn=document.createElement('button'); btn.className='revbtn'; btn.type='button';
+        const who=document.createElement('span'); who.className='small';
 
         const apply = () => {
           const cur = (which==='rev1'? x.rev1 : which==='rev2'? x.rev2 : x.revPago) || 'pendiente';
-          if (which==='revPago' && cur==='pagado') {
-            btn.textContent='✓';
-            btn.dataset.state='aprobado';
-          } else if (cur==='aprobado') {
-            btn.textContent='✓';
-            btn.dataset.state='aprobado';
-          } else if (cur==='rechazado') {
-            btn.textContent='✗';
-            btn.dataset.state='rechazado';
-          } else {
-            btn.textContent='—';
-            btn.dataset.state='pendiente';
-          }
+          if (which==='revPago' && cur==='pagado') { btn.textContent='✓'; btn.dataset.state='aprobado'; }
+          else if (cur==='aprobado') { btn.textContent='✓'; btn.dataset.state='aprobado'; }
+          else if (cur==='rechazado') { btn.textContent='✗'; btn.dataset.state='rechazado'; }
+          else { btn.textContent='—'; btn.dataset.state='pendiente'; }
           who.textContent = (which==='rev1'? x.rev1By : which==='rev2'? x.rev2By : x.pagoBy) || '';
         };
         apply();
 
+        // icono comentario (si rechazo)
         const icon = document.createElement('button');
         icon.className='icon-btn warn';
         icon.title='Ver comentario';
@@ -488,35 +445,24 @@ function renderTable(){
         btn.onclick = async () => {
           const cur = (which==='rev1'? x.rev1 : which==='rev2'? x.rev2 : x.revPago) || 'pendiente';
           let next = 'pendiente';
-          
           if (cur==='pendiente') next='aprobado';
-          else if (cur==='aprobado') next='rechazado';
+          else if (cur==='aprobado') next = (which==='revPago' ? 'rechazado' : 'rechazado');
           else if (cur==='rechazado') next='pendiente';
-          
+          // Para REV.PAGO usamos 'pagado' como "aprobado final"
           if (which==='revPago' && next==='aprobado') next='pagado';
 
           let comentario = '';
-          let montoAjustado = null;
-          
-          // GASTOS + REV1 + RECHAZO: permitir ajustar monto
-          if (x.tipo === 'gasto' && which === 'rev1' && next === 'rechazado') {
-            const respuesta = await promptAjusteMonto(x.monto, x.moneda);
-            if (respuesta === null) return;
-            comentario = respuesta.comentario;
-            montoAjustado = respuesta.monto;
-          } else if (next==='rechazado') {
+          if (next==='rechazado') {
             comentario = await promptComentario(`MOTIVO DEL RECHAZO — ${which.toUpperCase()}`);
-            if (comentario === null) return;
+            if (comentario === null) return; // canceló
           }
 
-          const ok = await saveRevision(x, which, next, comentario, montoAjustado);
+          const ok = await saveRevision(x, which, next, comentario);
           if (ok) {
             apply();
             icon.style.display = (next==='rechazado' ? '' : 'none');
             tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
-            if (montoAjustado !== null) {
-              tdMontoAprob.innerHTML = `<span class="mono text-warning">${moneyBy(x.montoAprobado, x.moneda)}</span>`;
-            }
+            // refrescar cierres si cambia revPago
             renderCierres();
           }
         };
@@ -533,7 +479,7 @@ function renderTable(){
       const tdEstado=document.createElement('td');
       tdEstado.innerHTML = `<span class="badge ${x.estado}">${x.estado.toUpperCase()}</span>`;
 
-      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdMontoAprob, tdMon, tdR1, tdR2, tdRP, tdEstado);
+      tr.append(tdTipo, tdGrupo, tdCoord, tdAsunto, tdMonto, tdMon, tdR1, tdR2, tdRP, tdEstado);
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -557,8 +503,7 @@ function groupByMonedaTotal(rows){
   const map = new Map();
   rows.forEach(r=>{
     const k = r.moneda || 'CLP';
-    const val = r.tipo === 'gasto' ? r.montoAprobado : r.monto;
-    map.set(k, (map.get(k)||0) + Number(val||0));
+    map.set(k, (map.get(k)||0) + Number(r.monto||0));
   });
   return [...map.entries()].map(([mon, tot]) => `${mon} ${tot.toLocaleString('es-CL')}`).join(' · ');
 }
@@ -566,49 +511,40 @@ function groupByMonedaTotal(rows){
 function renderCierres(){
   const tipo = state.filtros.tipo;
   const gid = state.filtros.grupo || '';
+  const coord = state.filtros.coord || (gid ? state.caches.grupos.get(gid)?.coordEmail : '');
 
+  // Mostrar cierres sólo si hay contexto (grupo o coord) + tipo elegido
   const showPagos = (!tipo || tipo==='abono') && gid;
   const showGastos = (!tipo || tipo==='gasto' || tipo==='') && gid;
 
-  // CIERRE DE PAGOS
+  // PAGOS
   const boxP = document.getElementById('cierrePagos');
   const listP= document.getElementById('cierrePagosList');
   const totP = document.getElementById('cierrePagosTotals');
-  
   if (showPagos){
-    const pagos = applyFiltersLocal(state.items).filter(x =>
-      x.tipo==='abono' && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago!=='pagado'
-    );
+    const pagos = applyFiltersLocal(state.items).filter(x => x.tipo==='abono' && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago!=='pagado');
     boxP.style.display = '';
     listP.innerHTML = '';
-    
     if (!pagos.length) {
       listP.innerHTML = '<div class="muted">No hay pagos aprobados pendientes de transferencia.</div>';
       totP.textContent = 'TOTAL: —';
     } else {
       pagos.forEach(p=>{
-        const item = document.createElement('div');
-        item.className = 'pago-item';
-        item.innerHTML = `
-          <div class="pago-header">
-            <input type="checkbox" data-id="${p.id}" style="width:20px; height:20px; cursor:pointer; accent-color:#2563eb;" ${state.cierre.pagosSeleccionados.has(p.id)?'checked':''}>
-            <span class="pago-codigo">${p.id}</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; padding-left:2rem;">
-            <span class="pago-concepto">${p.asunto||'—'}</span>
-            <span class="pago-monto">${moneyBy(p.monto, p.moneda)}</span>
-          </div>
+        const id = `selp_${p.id}`;
+        const row = document.createElement('label');
+        row.className='row';
+        row.innerHTML = `
+          <input type="checkbox" id="${id}" ${state.cierre.pagosSeleccionados.has(p.id)?'checked':''}/>
+          <span class="mono">${p.id}</span> · ${p.asunto||'—'} · ${p.moneda||'CLP'} ${p.monto.toLocaleString('es-CL')}
         `;
-        listP.appendChild(item);
-        
-        item.querySelector('input').onchange = (e) => {
+        listP.appendChild(row);
+        row.querySelector('input').onchange = (e) => {
           if (e.target.checked) state.cierre.pagosSeleccionados.add(p.id);
           else state.cierre.pagosSeleccionados.delete(p.id);
           const elig = pagos.filter(z => state.cierre.pagosSeleccionados.has(z.id));
           totP.textContent = 'TOTAL: ' + (elig.length ? groupByMonedaTotal(elig) : '—');
         };
       });
-      
       const elig = pagos.filter(z => state.cierre.pagosSeleccionados.has(z.id));
       totP.textContent = 'TOTAL: ' + (elig.length ? groupByMonedaTotal(elig) : '—');
     }
@@ -616,7 +552,246 @@ function renderCierres(){
     boxP.style.display = 'none';
   }
 
-  // CIERRE DE GASTOS
+  // GASTOS
   const boxG = document.getElementById('cierreGastos');
   if (showGastos){
-    const gastosAprob = state.items.filter(x =>
+    const gastosAprob = state.items.filter(x => x.tipo==='gasto' && x.grupoId===gid && x.rev1==='aprobado' && x.rev2==='aprobado');
+    const abonosAprob = state.items.filter(x => x.tipo==='abono' && x.grupoId===gid && x.rev1==='aprobado' && x.rev2==='aprobado' && x.revPago==='pagado');
+    const sumG = gastosAprob.reduce((s,x)=> s + x.monto, 0);
+    const sumA = abonosAprob.reduce((s,x)=> s + x.monto, 0);
+    const saldo = sumA - sumG;
+    document.getElementById('sumGastosAprobados').textContent = moneyCLP(sumG);
+    document.getElementById('sumAbonosAprobados').textContent = moneyCLP(sumA);
+    document.getElementById('saldoAG').textContent = moneyCLP(saldo);
+
+    // URLs desde catálogo
+    const gInfo = state.caches.grupos.get(gid) || {};
+    const boletaUrl = gInfo?.urls?.boleta || '';
+    const compUrl   = gInfo?.urls?.comprobante || '';
+    const dias = Number(gInfo?.metas?.diasTrabajados || 0);
+    document.getElementById('boletaUrl').textContent = boletaUrl ? 'VER' : '—';
+    document.getElementById('boletaUrl').href = boletaUrl || '#';
+    document.getElementById('comprobanteUrl').textContent = compUrl ? 'VER' : '—';
+    document.getElementById('comprobanteUrl').href = compUrl || '#';
+    document.getElementById('diasTrab').value = dias || 0;
+
+    calcPagoNetoGuia();
+    boxG.style.display = '';
+  } else {
+    boxG.style.display = 'none';
+  }
+}
+
+/* ====================== MODAL COMENTARIO ====================== */
+function promptComentario(title='COMENTARIO'){
+  const back = document.getElementById('modalBack');
+  const ttl  = document.getElementById('modalTitle');
+  const txt  = document.getElementById('modalText');
+  const btnOk= document.getElementById('modalOk');
+  const btnC = document.getElementById('modalCancel');
+
+  ttl.textContent = title.toUpperCase();
+  txt.value = '';
+  back.style.display='flex';
+
+  return new Promise(resolve => {
+    const close = (v)=>{ back.style.display='none'; btnOk.onclick=null; btnC.onclick=null; resolve(v); };
+    btnOk.onclick = () => close(txt.value.trim() || '');
+    btnC.onclick  = () => close(null);
+  });
+}
+
+/* ====================== ACCIONES CIERRE ====================== */
+document.getElementById('btnMarcarTransferencia').onclick = async () => {
+  const gid = state.filtros.grupo || '';
+  if (!gid) { alert('Selecciona un grupo.'); return; }
+
+  // abonos seleccionados y aprobados (pendientes de pagar)
+  const elig = state.items.filter(x =>
+    x.tipo==='abono' && x.grupoId===gid && state.cierre.pagosSeleccionados.has(x.id)
+  );
+  if (!elig.length) { alert('Selecciona pagos.'); return; }
+
+  const me = (auth.currentUser?.email || '').toLowerCase();
+  for (const p of elig) {
+    try {
+      const ref = getDocRefForItem(p);
+      await updateDoc(ref, {
+        'pago.estado': 'pagado',
+        'pago.user': me,
+        'pago.at': Date.now(),
+        'cerrada': true
+      });
+      p.revPago = 'pagado'; p.pagoBy = me; p.cerrada = true; p.estado = deriveEstado(p);
+    } catch (e) {
+      console.warn('marcar pago', p.id, e);
+    }
+  }
+  state.cierre.pagosSeleccionados.clear();
+  renderTable();
+  alert('Transferencia marcada como realizada.');
+};
+
+
+function calcPagoNetoGuia(){
+  const dias = Number(document.getElementById('diasTrab').value || 0);
+  const valor= Number(document.getElementById('valorDia').value || 70000);
+  const ret = Number(document.getElementById('retencionSII').value || 0.14);
+  const bruto = dias * valor;
+  const neto  = Math.round(bruto * (1 - ret));
+  document.getElementById('pagoNetoGuia').textContent = moneyCLP(neto);
+  return { bruto, neto, dias, valor, ret };
+}
+
+document.getElementById('diasTrab').oninput = calcPagoNetoGuia;
+document.getElementById('valorDia').oninput = calcPagoNetoGuia;
+document.getElementById('retencionSII').onchange = calcPagoNetoGuia;
+
+document.getElementById('btnMarcarPagoGuia').onclick = async () => {
+  const gid = state.filtros.grupo || '';
+  if (!gid) { alert('Selecciona un grupo.'); return; }
+  const { bruto, neto, dias, valor, ret } = calcPagoNetoGuia();
+  try{
+    // guardamos resumen simple en grupos/{gid}/finanzas/summary
+    const ref = doc(db,'grupos', gid, 'finanzas', 'summary');
+    await setDoc(ref, {
+      pagoDias:{ dias, valor, retencion:ret, bruto, neto, by:(auth.currentUser?.email||'').toLowerCase(), at:Date.now() },
+    }, { merge:true });
+    alert('Pago de días registrado.');
+  }catch(e){ console.warn('pago dias', e); alert('No se pudo registrar el pago.'); }
+};
+
+document.getElementById('btnVerificarTransferencia').onclick = async () => {
+  const gid = state.filtros.grupo || '';
+  if (!gid) { alert('Selecciona un grupo.'); return; }
+  try{
+    const ref = doc(db,'grupos', gid, 'finanzas', 'summary');
+    await setDoc(ref, { transferenciaVerificada:{ ok:true, by:(auth.currentUser?.email||'').toLowerCase(), at:Date.now() } }, { merge:true });
+    alert('Transferencia de regreso verificada.');
+  }catch(e){ console.warn('verificar transf', e); alert('No se pudo marcar verificada.'); }
+};
+
+/* ====================== IMPRESIÓN CIERRE ====================== */
+document.getElementById('btnImprimirCierre').onclick = () => {
+  const gid = state.filtros.grupo || '';
+  if (!gid) { alert('Selecciona un grupo.'); return; }
+  const g = state.caches.grupos.get(gid) || { numero:gid, nombre:'' };
+
+  const rows = applyFiltersLocal(state.items).filter(x=> x.grupoId===gid);
+  const gastos = rows.filter(x=> x.tipo==='gasto');
+  const abonos = rows.filter(x=> x.tipo==='abono');
+
+  const p = [];
+  p.push(`RENDICIÓN FINANCIERA — ${g.nombre?.toUpperCase()} (N° ${g.numero})\n`);
+  p.push(`COORDINADOR: ${(g.coordEmail||'').toUpperCase()}\n`);
+  p.push(`\n— PAGOS (ABONOS) —`);
+  if (!abonos.length) p.push('  (sin registros)');
+  else abonos.forEach(a=> p.push(`  • ${a.asunto||'—'}  ${a.moneda||'CLP'} ${a.monto.toLocaleString('es-CL')}  [R1:${a.rev1} R2:${a.rev2} PAGO:${a.revPago||'—'}]`));
+
+  p.push(`\n— GASTOS —`);
+  if (!gastos.length) p.push('  (sin registros)');
+  else gastos.forEach(gx=> p.push(`  • ${gx.asunto||'—'}  ${gx.moneda||'CLP'} ${gx.monto.toLocaleString('es-CL')}  [R1:${gx.rev1} R2:${gx.rev2}]`));
+
+  const sumG = gastos.reduce((s,x)=> s+x.monto,0);
+  const sumA = abonos.reduce((s,x)=> s+x.monto,0);
+  p.push(`\nTOTALES → GASTOS: ${moneyCLP(sumG)} · ABONOS: ${moneyCLP(sumA)} · SALDO: ${moneyCLP(sumA - sumG)}`);
+
+  document.getElementById('printSheet').textContent = p.join('\n');
+  window.print();
+};
+
+/* ====================== UI / WIRING ====================== */
+function wireUI(){
+  // pestañas estado
+  const tabs = document.getElementById('stateTabs');
+  tabs.addEventListener('click', ev=>{
+    const btn = ev.target.closest('button[data-estado]');
+    if (!btn) return;
+    tabs.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    state.filtros.estado = btn.getAttribute('data-estado') || '';
+    renderTable();
+  });
+
+  // tipo
+  document.getElementById('filtroTipo').onchange = async (e)=>{
+    state.filtros.tipo = e.target.value || '';
+    // no recargamos de Firestore si ya tenemos; sólo render
+    renderTable();
+  };
+
+  // coord: limita datalist de grupos
+  const inputCoord = document.getElementById('filtroCoord');
+  inputCoord.oninput = (e)=>{
+    const val = (e.target.value||'').toLowerCase().trim();
+    state.filtros.coord = val;
+    // limitar grupos visibles en datalist si el coord existe en índice
+    const dlG = document.getElementById('dl-grupos');
+    dlG.innerHTML = '';
+    if (state.caches.groupsByCoord.has(val)) {
+      for (const gid of state.caches.groupsByCoord.get(val)) {
+        const info = state.caches.grupos.get(gid);
+        const opt = document.createElement('option');
+        opt.value = gid; opt.label = `${info.numero} — ${info.nombre}`;
+        dlG.appendChild(opt);
+      }
+    } else {
+      // sin filtro (muestra todos)
+      for (const [gid,info] of state.caches.grupos.entries()){
+        const opt = document.createElement('option');
+        opt.value = gid; opt.label = `${info.numero} — ${info.nombre}`;
+        dlG.appendChild(opt);
+      }
+    }
+  };
+
+  // grupo
+  document.getElementById('filtroGrupo').oninput = (e)=>{
+    state.filtros.grupo = e.target.value || '';
+  };
+
+  // aplicar = cargar desde Firestore (si hay coord o grupo)
+  document.getElementById('btnAplicar').onclick = async ()=>{
+    try{
+      document.getElementById('pagInfo').textContent = 'Cargando…';
+      if (!state.filtros.coord && !state.filtros.grupo) {
+        state.items = []; renderTable(); return;
+      }
+      await loadDataForFilters();
+      renderTable();
+    }catch(e){
+      console.error('[FINZ] aplicar filtros', e);
+      alert('No se pudo cargar. Revisa la consola.');
+    }
+  };
+
+  document.getElementById('btnRecargar').onclick = async ()=>{
+    await preloadCatalogs();
+    state.items = []; renderTable();
+  };
+
+  // sort headers
+  document.querySelectorAll('#tblFinanzas thead th.sortable').forEach(th=>{
+    th.addEventListener('click', ()=>{
+      const key = th.dataset.sortKey;
+      if (!key) return;
+      if (state.sort.key === key) state.sort.dir = (state.sort.dir==='asc'?'desc':'asc');
+      else { state.sort.key = key; state.sort.dir = 'asc'; }
+      renderTable();
+    });
+  });
+
+  // “Cargar más” (no paginamos; sólo re-render)
+  document.getElementById('btnMas').onclick = () => renderTable();
+}
+
+/* ====================== ARRANQUE ====================== */
+onAuthStateChanged(auth, async (user) => {
+  if (!user){ location.href='login.html'; return; }
+  state.user = user;
+  try { document.querySelector('#btn-logout')?.addEventListener('click', () => signOut(auth).then(()=>location='login.html')); } catch(_){}
+
+  await preloadCatalogs();      // sólo catálogos (no datos)
+  wireUI();
+  renderTable();                // arranca vacío hasta que apliques filtros
+});
