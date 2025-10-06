@@ -43,16 +43,39 @@ const moneyBy = (n, curr='CLP') => (isFinite(+n) ? (+n).toLocaleString('es-CL',{
 function deriveEstado(x) {
   const s = (x.estado || '').toString().toLowerCase();
   if (s === 'cerrada') return 'cerrada';
-  const r1 = (x.rev1 || '').toString().toLowerCase();
-  const r2 = (x.rev2 || '').toString().toLowerCase();
-  const rp = (x.revPago || '').toString().toLowerCase();
-  if (r1 === 'rechazado' || r2 === 'rechazado' || rp === 'rechazado') return 'rechazado';
-  if (x.tipo === 'abono') {
-    // para pagos, si quedó pagado => cerrada
+
+  const tipo = (x.tipo || '').toLowerCase();
+  const r1 = (x.rev1 || '').toLowerCase();
+  const r2 = (x.rev2 || '').toLowerCase();
+  const rp = (x.revPago || '').toLowerCase();
+
+  // Reglas de rechazo general
+  if (r1 === 'rechazado' && r2 !== 'aprobado') return 'rechazado';
+  if (r2 === 'rechazado') return 'rechazado';
+  if (rp === 'rechazado') return 'rechazado';
+
+  if (tipo === 'abono') {
+    // para abonos, si quedó pagado => cerrada
     if (rp === 'pagado') return 'cerrada';
+    if (r1 === 'aprobado' && r2 === 'aprobado') return 'aprobado';
+    return 'pendiente';
   }
-  if (r1 === 'aprobado' && r2 === 'aprobado') return 'aprobado';
+
+  // GASTO: caso especial → Rev1 rechazado + Rev2 aprobado == Aprobado (monto ajustado)
+  if (tipo === 'gasto') {
+    if ((r1 === 'aprobado' && r2 === 'aprobado') || (r1 === 'rechazado' && r2 === 'aprobado')) {
+      return 'aprobado';
+    }
+    return 'pendiente';
+  }
+
   return 'pendiente';
+}
+
+function montoGastoEfectivo(it){
+  // si el gasto está aprobado (o Rev1=rechazado & Rev2=aprobado), usar montoAprobado
+  const ok = deriveEstado(it) === 'aprobado';
+  return (ok && isFinite(+it.montoAprobado)) ? +it.montoAprobado : +it.monto;
 }
 
 /* ====================== CATALOGOS ====================== */
@@ -117,6 +140,12 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
   const monto = parseMonto(brutoMonto);
   const moneda = (raw.moneda || raw.currency || 'CLP').toString().toUpperCase();
 
+    // ⬇️ pegar justo después de const monto... / const moneda...
+  const montoAprobadoRaw = coalesce(
+    raw.montoAprobado, raw.aprobado, raw.monto_aprobado, null
+  );
+  const montoAprobado = (montoAprobadoRaw == null) ? monto : parseMonto(montoAprobadoRaw);
+
   const rev1  = (raw.revision1?.estado || raw.rev1?.estado || raw.rev1 || '').toString().toLowerCase() || 'pendiente';
   const rev2  = (raw.revision2?.estado || raw.rev2?.estado || raw.rev2 || '').toString().toLowerCase() || 'pendiente';
   const revPago = tipo==='abono'
@@ -145,6 +174,7 @@ function toItem(grupoId, gInfo, raw, hintedTipo) {
     asunto,
     monto,
     moneda,
+    montoAprobado, 
     rev1, rev2, revPago,
     rev1By, rev2By, pagoBy,
     comentario1: raw.revision1?.comentario || '',
@@ -322,6 +352,21 @@ async function saveRevision(it, which, nuevoEstado, comentario='') {
   } catch (e) {
     console.error('saveRevision', e);
     alert('No se pudo guardar la revisión.');
+    return false;
+  }
+}
+
+async function saveMontoAprobado(it, nuevoMonto){
+  if (it.tipo !== 'gasto') return false;
+  const ref = doc(db, 'coordinadores', it.coordinador, 'gastos', it.id);
+  const val = parseMonto(nuevoMonto);
+  try{
+    await updateDoc(ref, { montoAprobado: val });
+    it.montoAprobado = val;
+    return true;
+  }catch(e){
+    console.error('saveMontoAprobado', e);
+    alert('No se pudo guardar el MONTO APROBADO.');
     return false;
   }
 }
