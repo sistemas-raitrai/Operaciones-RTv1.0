@@ -465,30 +465,42 @@ function renderTable(){
       const tdCoord= document.createElement('td'); tdCoord.innerHTML=`<span>${x.coordinador||'—'}</span>`;
       const tdAsunto=document.createElement('td'); tdAsunto.textContent=x.asunto || '—';
       const tdMonto =document.createElement('td'); tdMonto.innerHTML=`<span class="mono">${moneyBy(x.monto, x.moneda||'CLP')}</span>`;
-            // Monto Aprobado (solo aplica a gastos, editable)
+      // Monto Aprobado (solo aplica a gastos, editable) — REEMPLAZO
       const tdMontoAprob = document.createElement('td');
       if (x.tipo === 'gasto') {
         const wrap = document.createElement('div');
+        wrap.className = 'monto-aprob-wrap rev-cell';
+      
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'revbtn ghost'; // mismo look que REV1/REV2 (fondo transparente)
+        btn.title = 'Guardar monto aprobado';
+        btn.textContent = '💾';
+      
         const inp = document.createElement('input');
         inp.type = 'number';
         inp.step = '1';
         inp.min = '0';
-        inp.className = 'mono';
+        inp.inputMode = 'numeric';
+        inp.className = 'mono monto-aprob-input';
         inp.value = isFinite(+x.montoAprobado) ? +x.montoAprobado : +x.monto;
-        const ok = document.createElement('button'); ok.textContent = '💾'; ok.title='Guardar monto aprobado';
-        wrap.append(inp, ok);
-        tdMontoAprob.appendChild(wrap);
-
-        ok.onclick = async () => {
+      
+        const doSave = async () => {
           const val = parseMonto(inp.value);
           const saved = await saveMontoAprobado(x, val);
-          if (saved){
-            // refresca totales y estado visual
-            tdMontoAprob.classList.add('saved');
-            setTimeout(()=>tdMontoAprob.classList.remove('saved'), 800);
+          if (saved) {
+            wrap.classList.add('saved');
+            setTimeout(() => wrap.classList.remove('saved'), 800);
             renderCierres();
           }
         };
+      
+        btn.onclick = doSave;
+        inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); });
+      
+        // Orden: botón a la izquierda, input a la derecha
+        wrap.append(btn, inp);
+        tdMontoAprob.appendChild(wrap);
       } else {
         tdMontoAprob.innerHTML = '<span class="muted">—</span>';
       }
