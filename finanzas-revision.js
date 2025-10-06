@@ -806,8 +806,16 @@ document.getElementById('btnVerificarTransferencia').onclick = async () => {
   if (!gid) { alert('Selecciona un grupo.'); return; }
   try{
     const ref = doc(db,'grupos', gid, 'finanzas', 'summary');
-    await setDoc(ref, { transferenciaVerificada:{ ok:true, by:(auth.currentUser?.email||'').toLowerCase(), at:Date.now() } }, { merge:true });
-    alert('Transferencia de regreso verificada.');
+    const saldoDevueltoOk = !!document.getElementById('saldoDevueltoOk')?.checked;
+    await setDoc(ref, {
+      transferenciaVerificada:{
+        ok:true,
+        saldoDevueltoOk,
+        by:(auth.currentUser?.email||'').toLowerCase(),
+        at:Date.now()
+      }
+    }, { merge:true });
+    alert('Verificación registrada.');
   }catch(e){ console.warn('verificar transf', e); alert('No se pudo marcar verificada.'); }
 };
 
