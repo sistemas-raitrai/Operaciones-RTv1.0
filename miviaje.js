@@ -309,6 +309,69 @@ function extractPresentacion(grupo, vuelosNorm){
   return { lugar, aeropuerto, hora };
 }
 
+// === Textos DOCUMENTOS / EQUIPAJE / RECOMENDACIONES según programa ===
+function getDERTextos(programa, overrides = {}) {
+  const P = (programa || '').toUpperCase();
+
+  // Base equipaje (común a todos)
+  const equipajeText1 =
+    overrides.equipaje1 ||
+    'Equipaje en bodega 01 Maleta (peso máximo 23 kg.) el cual debe tener como medidas máximo 158 cm lineales (largo, ancho, alto), más un bolso de mano. (peso máximo 5 Kg.)';
+  const equipajeText2 =
+    overrides.equipaje2 ||
+    'Está prohibido transportar líquidos, elementos corto-punzantes o de aseo en el bolso de mano.';
+
+  // Variante BARILOCHE / BRASIL
+  if (P.includes('BARILOCHE') || P.includes('BRASIL')) {
+    const docsText =
+      overrides.documentos ||
+      'a. NACIONALES: 1) Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje). 2) Verificar que la autorización notarial esté con los datos correctos de Nombres / Rut, la cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país (según detalle de normativa entregada con anticipación a los encargados del grupo). b. EXTRANJEROS: 1) Verificar que Cédula de Identidad Chilena y Pasaporte de origen, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje). 2) Verificar con consulado de país de destino detalle de requerimientos para el ingreso y salida del país para menores no acompañados desde Chile. Es de absoluta responsabilidad de los tutores del menor encargarse de la correcta documentación para el viaje.';
+    const recs =
+      overrides.recomendaciones || [
+        'Llevar ropa y calzado, cómodo, adecuado a Clima del Destino. Llevar protector solar',
+        'Llevar una botella reutilizable para el consumo de agua',
+        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
+        'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
+        'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros o documento que corresponda.'
+      ];
+    return { docsText, equipajeText1, equipajeText2, recs };
+  }
+
+  // Variante HUILO HUILO
+  if (P.includes('HUILO HUILO')) {
+    const docsText =
+      overrides.documentos ||
+      'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).';
+    const recs =
+      overrides.recomendaciones || [
+        'Llevar ropa y calzado, cómodo, adecuado a Clima del Destino. Llevar protector solar',
+        'Llevar una botella reutilizable para el consumo de agua',
+        'Llevar Saco de Dormir',
+        'Llevar toalla, Shampoo y Jabón (Huilo Huilo NO INCLUYE TOALLAS NI AMENIDADES)',
+        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
+        'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
+        'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros.'
+      ];
+    return { docsText, equipajeText1, equipajeText2, recs };
+  }
+
+  // Variante SUR / NORTE (y Fallback)
+  if (P.includes('SUR DE CHILE') || P.includes('NORTE DE CHILE') || true) {
+    const docsText =
+      overrides.documentos ||
+      'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).';
+    const recs =
+      overrides.recomendaciones || [
+        'Llevar ropa y calzado, cómodo, adecuado a Clima del Destino. Llevar protector solar',
+        'Llevar una botella reutilizable para el consumo de agua',
+        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
+        'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
+        'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros.'
+      ];
+    return { docsText, equipajeText1, equipajeText2, recs };
+  }
+}
+
 function renderHojaResumen(grupo, vuelosNorm, hoteles){
   let hoja = document.getElementById('hoja-resumen');
   if(!hoja){
@@ -374,18 +437,10 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   }).join('<hr style="border:none;border-top:1px dashed #e5e7eb;margin:6px 0;">');
 
   // Textos por defecto (pueden venir desde grupo.textos)
-  const docsText = grupo.textos?.documentos || 'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).';
-  const equipajeText1 = grupo.textos?.equipaje1 || 'Equipaje en bodega 01 Maleta (peso máximo 23 kg.) el cual debe tener como medidas máximo 158 cm lineales (largo, ancho, alto), más un bolso de mano. (peso máximo 5 Kg.)';
-  const equipajeText2 = grupo.textos?.equipaje2 || 'Está prohibido transportar líquidos, elementos corto-punzantes o de aseo en el bolso de mano.';
-  const recs = grupo.textos?.recomendaciones || [
-    'Llevar ropa y calzado, cómodo, adecuado a Clima del Destino. Llevar protector solar',
-    'Llevar una botella reutilizable para el consumo de agua',
-    'Llevar Saco de Dormir',
-    'Llevar toalla, Shampoo y Jabón (Huilo Huilo NO INCLUYE TOALLAS NI AMENIDADES)',
-    'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
-    'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
-    'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros.'
-  ];
+  // Textos por PROGRAMA (con override si vienen en grupo.textos)
+  const { docsText, equipajeText1, equipajeText2, recs } =
+    getDERTextos(grupo.programa, grupo.textos || {});
+
 
   hoja.innerHTML = `
     <div style="text-align:center;margin-bottom:10px;">
@@ -482,8 +537,9 @@ function buildPrintText(grupo, fechas){
 /* ──────────────────────────────────────────────────────────────────────────
    Render del itinerario visual (tarjetas)
 ────────────────────────────────────────────────────────────────────────── */
-function renderItin(grupo, fechas, hideNotes){
-  const cont = document.getElementById('itinerario-container');
+function renderItin(grupo, fechas, hideNotes, targetEl){
+  const cont = targetEl || document.getElementById('itinerario-container');
+  cont.classList.add('grid'); // asegura el layout
   cont.innerHTML='';
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement('section');
@@ -577,14 +633,21 @@ async function main(){
   renderHojaResumen(g, vuelosNorm, hoteles);
 
   // Itinerario visual
-  if (!fechas.length){
+  if (!fechas.length) {
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
     if (printEl) printEl.textContent = buildPrintText(g, []);
   } else {
-    renderItin(g, fechas, hideNotes);
+    // Si existe el slot dentro de la hoja, dibuja ahí; si no, usa el contenedor de siempre.
+    const slot = document.getElementById('itin-slot');
+    if (slot) {
+      renderItin(g, fechas, hideNotes, slot);
+      // deja vacío el contenedor externo para no duplicar
+      document.getElementById('itinerario-container').innerHTML = '';
+    } else {
+      renderItin(g, fechas, hideNotes);
+    }
     if (printEl) printEl.textContent = buildPrintText(g, fechas);
   }
-}
 
 main().catch(err=>{
   console.error('Firestore error:', err?.code || err?.message, err);
