@@ -221,5 +221,43 @@
   <script type="module">
     import './miviaje.js';
   </script>
+  <script>
+(function(){
+  const cont = document.getElementById('itinerario-container');
+  if (!cont) return;
+
+  function embutirItinerario(){
+    // 1) Encontrar la frase "TURISMO RAITRAI LES DESEA..."
+    const deseo = Array.from(cont.querySelectorAll('*'))
+      .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
+    if (!deseo) return;
+
+    // 2) La "caja" (card) donde está la frase
+    const caja = deseo.closest('.card') || deseo.parentElement;
+    if (!caja || caja.dataset.itinEmbutido === '1') return; // ya hecho
+
+    // 3) Crear un grid contenedor para los días y ponerlo ANTES de la frase
+    const grid = document.createElement('div');
+    grid.className = 'dias-embebidas';
+    caja.insertBefore(grid, deseo);
+
+    // 4) Mover **solo** las secciones de día dentro de la caja
+    const dias = Array.from(cont.querySelectorAll('.dia-seccion'));
+    if (!dias.length) return;
+
+    dias.forEach(d => grid.appendChild(d));
+
+    // Marcar para no repetir
+    caja.dataset.itinEmbutido = '1';
+    obs.disconnect();
+  }
+
+  // Esperar a que miviaje.js pinte todo
+  const obs = new MutationObserver(embutirItinerario);
+  obs.observe(cont, { childList: true, subtree: true });
+  window.addEventListener('load', embutirItinerario);
+})();
+</script>
+
 </body>
 </html>
