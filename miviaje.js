@@ -542,7 +542,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         </ul>
       </li>
 
-      <!-- 7. ITINERARIO DE VIAJE -->
+      <!-- ITINERARIO DE VIAJE -->
       <li style="margin-bottom:6px;">
         <div style="font-weight:700;">7. ITINERARIO DE VIAJE</div>
         <div id="itin-slot" class="itin-row" style="margin-top:6px;"></div>
