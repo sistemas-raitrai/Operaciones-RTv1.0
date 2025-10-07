@@ -149,6 +149,18 @@
       @media print{
         .dias-embebidas{ grid-template-columns: repeat(3, 1fr); }
       }
+      /* Espacio entre títulos numerados tipo "1. ..." */
+      .seccion-num{
+        display:block;
+        margin:14px 0 8px;   /* ← separa cada bloque */
+        font-weight:700;
+        line-height:1.25;
+      }
+      
+      /* (Si tus números están en una <ol>) */
+      #itinerario-container .card ol > li{
+        margin:10px 0 12px;
+      }
     }
   </style>
 </head>
@@ -258,6 +270,31 @@
   window.addEventListener('load', embutirItinerario);
 })();
 </script>
+<script>
+(function () {
+  const cont = document.getElementById('itinerario-container');
+  if (!cont) return;
+
+  const RE = /^\s*\d+\.\s/; // “n. ” al inicio
+
+  function marcarNumerados(){
+    // Recorre todas las cards y marca hijos directos que empiecen con "n. "
+    cont.querySelectorAll('.card').forEach(card => {
+      Array.from(card.children).forEach(el => {
+        if (/^(P|DIV|H\d)$/i.test(el.tagName) && RE.test((el.textContent||'').trim())){
+          el.classList.add('seccion-num');
+        }
+      });
+    });
+  }
+
+  // Correr cuando miviaje.js termina de pintar
+  const obs = new MutationObserver(marcarNumerados);
+  obs.observe(cont, { childList:true, subtree:true });
+  window.addEventListener('load', marcarNumerados);
+})();
+</script>
+
 
 </body>
 </html>
