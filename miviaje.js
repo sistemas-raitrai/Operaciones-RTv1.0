@@ -322,14 +322,25 @@ function getDERTextos(programa, overrides = {}) {
     overrides.equipaje2 ||
     'Está prohibido transportar líquidos, elementos corto-punzantes o de aseo en el bolso de mano.';
 
-  // ====== BARILOCHE / BRASIL ======
-  // Coincide aunque haya signos o espacios raros: "…bariloche", "BRASIL!", etc.
+    // ====== BARILOCHE / BRASIL ======
   if (/(^|[\W])(bariloche|brasil)(?=$|[\W])/.test(P)) {
     const docsText =
       overrides.documentos ||
       [
-        'a. NACIONALES: 1) Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje). 2) Verificar que la autorización notarial esté con los datos correctos de Nombres / Rut, la cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país (según detalle de normativa entregada con anticipación a los encargados del grupo).',
-        'b. EXTRANJEROS: 1) Verificar que Cédula de Identidad Chilena y Pasaporte de origen, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje). 2) Verificar con consulado de país de destino detalle de requerimientos para el ingreso y salida del país para menores no acompañados desde Chile. Es de absoluta responsabilidad de los tutores del menor encargarse de la correcta documentación para el viaje.'
+        {
+          title: 'NACIONALES',
+          items: [
+            'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).',
+            'Verificar que la autorización notarial esté con los datos correctos de Nombres / Rut, la cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país (según detalle de normativa entregada con anticipación a los encargados del grupo).'
+          ]
+        },
+        {
+          title: 'EXTRANJEROS',
+          items: [
+            'Verificar que Cédula de Identidad Chilena y Pasaporte de origen, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).',
+            'Verificar con consulado de país de destino detalle de requerimientos para el ingreso y salida del país para menores no acompañados desde Chile. Es de absoluta responsabilidad de los tutores del menor encargarse de la correcta documentación para el viaje.'
+          ]
+        }
       ];
     const recs =
       overrides.recomendaciones || [
@@ -341,6 +352,7 @@ function getDERTextos(programa, overrides = {}) {
       ];
     return { docsText, equipajeText1, equipajeText2, recs };
   }
+
 
   // ====== HUILO HUILO ======
   // Tolera "huilo-huilo", "huilo  huilo", etc.
@@ -376,6 +388,25 @@ function getDERTextos(programa, overrides = {}) {
       ];
     return { docsText, equipajeText1, equipajeText2, recs };
   }
+}
+
+function renderDocsList(docsText) {
+  if (Array.isArray(docsText)) {
+    // ¿Array de secciones {title, items[]}?
+    if (docsText.length && typeof docsText[0] === 'object' && Array.isArray(docsText[0].items)) {
+      return docsText.map(sec => `
+        <li>
+          <div><strong>${sec.title}:</strong></div>
+          <ul style="margin:4px 0 0 18px;list-style:disc;">
+            ${sec.items.map(it => `<li>${it}</li>`).join('')}
+          </ul>
+        </li>`).join('');
+    }
+    // Si es array de strings, cada uno es un bullet simple
+    return docsText.map(t => `<li>${t}</li>`).join('');
+  }
+  // String plano
+  return `<li>${docsText}</li>`;
 }
 
 function renderHojaResumen(grupo, vuelosNorm, hoteles){
@@ -491,11 +522,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       <li style="margin-bottom:10px;">
         <div style="font-weight:700;">DOCUMENTOS PARA EL VIAJE</div>
         <ul style="margin:4px 0 0 18px;list-style:disc;">
-          ${
-            Array.isArray(docsText)
-              ? docsText.map(t => `<li>${t}</li>`).join('')
-              : `<li>${docsText}</li>`
-          }
+          ${renderDocsList(docsText)}
         </ul>
       </li>
 
