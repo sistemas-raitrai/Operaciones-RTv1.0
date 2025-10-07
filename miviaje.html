@@ -9,9 +9,8 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-  <!-- Estilos base mínimos usados por miviaje.js -->
   <style>
-    /* Base de layout */
+    /* ========= Base de layout ========= */
     .grid{ display:grid; gap:12px; }
     .card{ border:1px solid #e5e7eb; border-radius:12px; padding:12px; background:#fff; }
     .activity-card{ border:1px solid #e5e7eb; border-radius:12px; padding:12px; background:#fff; }
@@ -27,7 +26,7 @@
     table{ width:100%; border-collapse:collapse; }
     th,td{ padding:6px 4px; border-bottom:1px solid #eee; text-align:left; }
 
-    /* Bloque textual opcional (si quisieras imprimir texto plano) */
+    /* Texto plano opcional (si quisieras imprimir texto en bloque) */
     .print-only{
       display:none;
       white-space:pre-wrap;
@@ -37,15 +36,68 @@
     /* En pantalla, oculta el logo de impresión */
     @media screen{ #print-logo{ display:none; } }
 
-    /* ===== Impresión ===== */
+    /* ========= Itinerario embebido y ADAPTABLE (PANTALLA) ========= */
+    /* El contenedor que creo por JS antes de la frase “TURISMO RAITRAI...” */
+    .dias-embebidas{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      align-items: start;
+      margin: 12px 0;
+    }
+    /* Asegurar que las columnas-día no hereden min-width del layout previo */
+    .dias-embebidas .dia-seccion{
+      margin: 0;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      flex: 1 1 auto !important; /* por si venían de un flex horizontal */
+    }
+    /* Estética del título del día dentro de la caja */
+    .dias-embebidas .dia-titulo{
+      background: #eef2ff;
+      border-radius: 8px;
+      padding: 6px 8px;
+      margin-bottom: 8px;
+      font-weight: 700;
+    }
+
+    /* Ocultar cualquier “scrollbar/slider” horizontal heredado del layout viejo */
+    #itinerario-container{
+      overflow: visible !important;
+    }
+    #itinerario-container input[type="range"],
+    #itinerario-container .scrollbar,
+    #itinerario-container .x-scroll,
+    #itinerario-container [data-scrollbar]{
+      display: none !important;
+    }
+
+    /* Espacio entre títulos numerados tipo "1. ..." (pantalla y print) */
+    .seccion-num{
+      display:block;
+      margin:22px 0 18px;   /* ← separa cada bloque */
+      font-weight:700;
+      line-height:1.25;
+    }
+    /* Si tus números están en una <ol> */
+    #itinerario-container .card ol > li + li{
+      margin-top:16px;
+    }
+
+    /* Responsive fino para pantallas angostas */
+    @media (max-width: 840px){
+      .dias-embebidas{
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      }
+    }
+
+    /* ========= IMPRESIÓN ========= */
     @media print{
       @page{ margin:14mm 12mm; }
       *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
 
       header, .btn-add{ display:none !important; }
-
-      /* Por defecto imprimimos el layout visual (tablas/tarjetas).
-         Si prefieres el texto, cambia estas dos líneas: */
       .print-only, #print-block{ display:none !important; }
 
       /* Logo fijo arriba-derecha */
@@ -92,74 +144,14 @@
       }
       #itinerario-container{ margin-top:14px !important; }
 
-      /* ==== Helpers de visibilidad ==== */
-      /* Ocultar SOLO en pantalla; en impresión se muestran */
+      /* Helpers de visibilidad */
       .u-hide-screen { display: none !important; }
       @media print { .u-hide-screen { display: block !important; } }
-      
-      /* Ocultar SIEMPRE (también al imprimir) */
       .u-hide-all { display: none !important; }
 
-      /* Itinerario horizontal dentro de la hoja-resumen */
-      #itin-slot{
-        display:flex;
-        gap:12px;
-        overflow:auto;
-        align-items:stretch;
-        padding:4px 0;
-      }
-      #itin-slot .dia-seccion{
-        min-width:320px;   /* ancho de cada “día” */
-        max-width:360px;
-        flex:0 0 auto;
-      }
-      
-      /* En pantallas chicas */
-      @media (max-width: 840px){
-        #itin-slot .dia-seccion{ min-width:280px; }
-      }
-      
-      /* En impresión, apilar (vertical) */
-      @media print{
-        #itin-slot{ display:block !important; overflow:visible !important; }
-        #itin-slot .dia-seccion{ min-width:auto; max-width:none; }
-      }
-      /* Itinerario embebido y adaptable dentro de la caja */
+      /* Para imprimir, fuerza 3 columnas si cabe la hoja */
       .dias-embebidas{
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        gap: 12px;
-        align-items: start;
-        margin: 12px 0;
-      }
-      
-      /* Limpia márgenes de las columnas-día dentro del grid */
-      .dias-embebidas .dia-seccion{ margin: 0; }
-      
-      /* (Opcional) un poquito de estética a los títulos dentro de la caja */
-      .dias-embebidas .dia-titulo{
-        background: #eef2ff;
-        border-radius: 8px;
-        padding: 6px 8px;
-        margin-bottom: 8px;
-        font-weight: 700;
-      }
-      
-      /* En impresión puedes forzar 3 columnas (opcional) */
-      @media print{
-        .dias-embebidas{ grid-template-columns: repeat(3, 1fr); }
-      }
-      /* Espacio entre títulos numerados tipo "1. ..." */
-      .seccion-num{
-        display:block;
-        margin:22px 0 18px;   /* ← separa cada bloque */
-        font-weight:700;
-        line-height:1.25;
-      }
-      
-      /* (Si tus números están en una <ol>) */
-      #itinerario-container .card ol > li{
-        margin:16px 0 20px;
+        grid-template-columns: repeat(3, 1fr) !important;
       }
     }
   </style>
@@ -217,7 +209,6 @@
       </section>
     </div>
 
-
     <!-- Contenedor visual (tarjetas) -->
     <div id="itinerario-container" class="grid"></div>
 
@@ -233,68 +224,70 @@
   <script type="module">
     import './miviaje.js';
   </script>
+
+  <!-- Embebe los “días” dentro de la caja ANTES de la frase “TURISMO RAITRAI...” -->
   <script>
-(function(){
-  const cont = document.getElementById('itinerario-container');
-  if (!cont) return;
+    (function(){
+      const cont = document.getElementById('itinerario-container');
+      if (!cont) return;
 
-  function embutirItinerario(){
-    // 1) Encontrar la frase "TURISMO RAITRAI LES DESEA..."
-    const deseo = Array.from(cont.querySelectorAll('*'))
-      .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
-    if (!deseo) return;
+      function embutirItinerario(){
+        // 1) Encontrar la frase "TURISMO RAITRAI LES DESEA..."
+        const deseo = Array.from(cont.querySelectorAll('*'))
+          .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
+        if (!deseo) return;
 
-    // 2) La "caja" (card) donde está la frase
-    const caja = deseo.closest('.card') || deseo.parentElement;
-    if (!caja || caja.dataset.itinEmbutido === '1') return; // ya hecho
+        // 2) La "caja" (card) donde está la frase
+        const caja = deseo.closest('.card') || deseo.parentElement;
+        if (!caja || caja.dataset.itinEmbutido === '1') return; // ya hecho
 
-    // 3) Crear un grid contenedor para los días y ponerlo ANTES de la frase
-    const grid = document.createElement('div');
-    grid.className = 'dias-embebidas';
-    caja.insertBefore(grid, deseo);
+        // 3) Crear un grid contenedor para los días y ponerlo ANTES de la frase
+        const grid = document.createElement('div');
+        grid.className = 'dias-embebidas';
+        caja.insertBefore(grid, deseo);
 
-    // 4) Mover **solo** las secciones de día dentro de la caja
-    const dias = Array.from(cont.querySelectorAll('.dia-seccion'));
-    if (!dias.length) return;
+        // 4) Mover **solo** las secciones de día dentro de la caja
+        const dias = Array.from(cont.querySelectorAll('.dia-seccion'));
+        if (!dias.length) return;
 
-    dias.forEach(d => grid.appendChild(d));
+        dias.forEach(d => grid.appendChild(d));
 
-    // Marcar para no repetir
-    caja.dataset.itinEmbutido = '1';
-    obs.disconnect();
-  }
+        // Marcar para no repetir
+        caja.dataset.itinEmbutido = '1';
+        obs.disconnect();
+      }
 
-  // Esperar a que miviaje.js pinte todo
-  const obs = new MutationObserver(embutirItinerario);
-  obs.observe(cont, { childList: true, subtree: true });
-  window.addEventListener('load', embutirItinerario);
-})();
-</script>
-<script>
-(function () {
-  const cont = document.getElementById('itinerario-container');
-  if (!cont) return;
+      // Esperar a que miviaje.js pinte todo
+      const obs = new MutationObserver(embutirItinerario);
+      obs.observe(cont, { childList: true, subtree: true });
+      window.addEventListener('load', embutirItinerario);
+    })();
+  </script>
 
-  const RE = /^\s*\d+\.\s/; // “n. ” al inicio
+  <!-- Marca “1. …” como secciones espaciadas -->
+  <script>
+    (function () {
+      const cont = document.getElementById('itinerario-container');
+      if (!cont) return;
 
-  function marcarNumerados(){
-    // Recorre todas las cards y marca hijos directos que empiecen con "n. "
-    cont.querySelectorAll('.card').forEach(card => {
-      Array.from(card.children).forEach(el => {
-        if (/^(P|DIV|H\d)$/i.test(el.tagName) && RE.test((el.textContent||'').trim())){
-          el.classList.add('seccion-num');
-        }
-      });
-    });
-  }
+      const RE = /^\s*\d+\.\s/; // “n. ” al inicio
 
-  // Correr cuando miviaje.js termina de pintar
-  const obs = new MutationObserver(marcarNumerados);
-  obs.observe(cont, { childList:true, subtree:true });
-  window.addEventListener('load', marcarNumerados);
-})();
-</script>
+      function marcarNumerados(){
+        // Recorre todas las cards y marca hijos directos que empiecen con "n. "
+        cont.querySelectorAll('.card').forEach(card => {
+          Array.from(card.children).forEach(el => {
+            if (/^(P|DIV|H\d)$/i.test(el.tagName) && RE.test((el.textContent||'').trim())){
+              el.classList.add('seccion-num');
+            }
+          });
+        });
+      }
 
-
+      // Correr cuando miviaje.js termina de pintar
+      const obs = new MutationObserver(marcarNumerados);
+      obs.observe(cont, { childList:true, subtree:true });
+      window.addEventListener('load', marcarNumerados);
+    })();
+  </script>
 </body>
 </html>
