@@ -311,7 +311,8 @@ function extractPresentacion(grupo, vuelosNorm){
 
 // === Textos DOCUMENTOS / EQUIPAJE / RECOMENDACIONES según programa ===
 function getDERTextos(programa, overrides = {}) {
-  const P = (programa || '').toUpperCase();
+  // Normaliza: sin tildes, minúsculas
+  const P = norm(programa || '');
 
   // Base equipaje (común a todos)
   const equipajeText1 =
@@ -321,8 +322,9 @@ function getDERTextos(programa, overrides = {}) {
     overrides.equipaje2 ||
     'Está prohibido transportar líquidos, elementos corto-punzantes o de aseo en el bolso de mano.';
 
-  // Variante BARILOCHE / BRASIL
-  if (P.includes('BARILOCHE') || P.includes('BRASIL')) {
+  // ====== BARILOCHE / BRASIL ======
+  // Coincide aunque haya signos o espacios raros: "…bariloche", "BRASIL!", etc.
+  if (/(^|[\W])(bariloche|brasil)(?=$|[\W])/.test(P)) {
     const docsText =
       overrides.documentos ||
       'a. NACIONALES: 1) Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje). 2) Verificar que la autorización notarial esté con los datos correctos de Nombres / Rut, la cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país (según detalle de normativa entregada con anticipación a los encargados del grupo). b. EXTRANJEROS: 1) Verificar que Cédula de Identidad Chilena y Pasaporte de origen, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje). 2) Verificar con consulado de país de destino detalle de requerimientos para el ingreso y salida del país para menores no acompañados desde Chile. Es de absoluta responsabilidad de los tutores del menor encargarse de la correcta documentación para el viaje.';
@@ -337,8 +339,9 @@ function getDERTextos(programa, overrides = {}) {
     return { docsText, equipajeText1, equipajeText2, recs };
   }
 
-  // Variante HUILO HUILO
-  if (P.includes('HUILO HUILO')) {
+  // ====== HUILO HUILO ======
+  // Tolera "huilo-huilo", "huilo  huilo", etc.
+  if (/huilo\W*huilo/.test(P)) {
     const docsText =
       overrides.documentos ||
       'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).';
@@ -355,8 +358,8 @@ function getDERTextos(programa, overrides = {}) {
     return { docsText, equipajeText1, equipajeText2, recs };
   }
 
-  // Variante SUR / NORTE (y Fallback)
-  if (P.includes('SUR DE CHILE') || P.includes('NORTE DE CHILE') || true) {
+  // ====== SUR / NORTE DE CHILE (y fallback) ======
+  if (/(sur\W*de\W*chile|norte\W*de\W*chile)/.test(P) || true) {
     const docsText =
       overrides.documentos ||
       'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).';
