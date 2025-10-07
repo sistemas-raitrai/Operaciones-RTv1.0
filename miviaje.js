@@ -491,9 +491,14 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       <li style="margin-bottom:10px;">
         <div style="font-weight:700;">DOCUMENTOS PARA EL VIAJE</div>
         <ul style="margin:4px 0 0 18px;list-style:disc;">
-          <li>${docsText}</li>
+          ${
+            Array.isArray(docsText)
+              ? docsText.map(t => `<li>${t}</li>`).join('')
+              : `<li>${docsText}</li>`
+          }
         </ul>
       </li>
+
 
       <li style="margin-bottom:10px;">
         <div style="font-weight:700;">EQUIPAJE</div>
