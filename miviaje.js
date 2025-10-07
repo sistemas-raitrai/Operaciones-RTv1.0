@@ -444,7 +444,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(grupo.programa, grupo.textos || {});
 
-  console.debug('Programa normalizado:', P);
+  console.debug('Programa normalizado:', norm(`${grupo.programa || ''} ${grupo.destino || ''}`));
 
 
   hoja.innerHTML = `
