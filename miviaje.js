@@ -442,7 +442,8 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   // Textos por defecto (pueden venir desde grupo.textos)
   // Textos por PROGRAMA (con override si vienen en grupo.textos)
   const { docsText, equipajeText1, equipajeText2, recs } =
-    getDERTextos(grupo.programa, grupo.textos || {});
+    getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+
 
   console.debug('Programa normalizado:', norm(`${grupo.programa || ''} ${grupo.destino || ''}`));
 
