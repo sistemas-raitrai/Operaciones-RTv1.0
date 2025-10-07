@@ -92,6 +92,19 @@
       }
     }
 
+    /* Desactivar carrusel heredado de miviaje.js */
+    #itinerario-container { overflow: visible !important; }
+    #itinerario-container .x-scroll,
+    #itinerario-container .scrollbar,
+    #itinerario-container [role="scrollbar"],
+    #itinerario-container input[type="range"],
+    #itinerario-container .range,
+    #itinerario-container .slider,
+    #itinerario-container .scroll-track,
+    #itinerario-container .scroll-thumb {
+      display: none !important;
+    }
+
     /* ========= IMPRESIÓN ========= */
     @media print{
       @page{ margin:14mm 12mm; }
@@ -289,5 +302,51 @@
       window.addEventListener('load', marcarNumerados);
     })();
   </script>
+  <script>
+(function(){
+  const cont = document.getElementById('itinerario-container');
+  if (!cont) return;
+
+  function desactivarCarrusel(){
+    // Quita controles de scroll/slider que haya dejado miviaje.js
+    cont.querySelectorAll(
+      'input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb'
+    ).forEach(el => el.remove());
+
+    // Neutraliza wrappers con overflow horizontal
+    cont.querySelectorAll('[style*="overflow-x"], .overflow-x, .overflow-auto, .x-overflow')
+      .forEach(el => {
+        el.style.overflow = 'visible';
+        el.style.overflowX = 'visible';
+      });
+  }
+
+  function embutirItinerario(){
+    const deseo = Array.from(cont.querySelectorAll('*'))
+      .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
+    if (!deseo) return;
+
+    const caja = deseo.closest('.card') || deseo.parentElement;
+    if (!caja || caja.dataset.itinEmbutido === '1') return;
+
+    const grid = document.createElement('div');
+    grid.className = 'dias-embebidas';
+    caja.insertBefore(grid, deseo);
+
+    const dias = Array.from(cont.querySelectorAll('.dia-seccion'));
+    dias.forEach(d => grid.appendChild(d));
+
+    caja.dataset.itinEmbutido = '1';
+
+    desactivarCarrusel();  // <-- IMPORTANTE
+    obs.disconnect();
+  }
+
+  const obs = new MutationObserver(embutirItinerario);
+  obs.observe(cont, { childList: true, subtree: true });
+  window.addEventListener('load', () => { embutirItinerario(); desactivarCarrusel(); });
+})();
+</script>
+
 </body>
 </html>
