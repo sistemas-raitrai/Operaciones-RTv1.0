@@ -124,6 +124,31 @@
         #itin-slot{ display:block !important; overflow:visible !important; }
         #itin-slot .dia-seccion{ min-width:auto; max-width:none; }
       }
+      /* Itinerario embebido y adaptable dentro de la caja */
+      .dias-embebidas{
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+        align-items: start;
+        margin: 12px 0;
+      }
+      
+      /* Limpia márgenes de las columnas-día dentro del grid */
+      .dias-embebidas .dia-seccion{ margin: 0; }
+      
+      /* (Opcional) un poquito de estética a los títulos dentro de la caja */
+      .dias-embebidas .dia-titulo{
+        background: #eef2ff;
+        border-radius: 8px;
+        padding: 6px 8px;
+        margin-bottom: 8px;
+        font-weight: 700;
+      }
+      
+      /* En impresión puedes forzar 3 columnas (opcional) */
+      @media print{
+        .dias-embebidas{ grid-template-columns: repeat(3, 1fr); }
+      }
     }
   </style>
 </head>
