@@ -541,13 +541,17 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
           ${Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`}
         </ul>
       </li>
-    </ol>
 
-    <!-- AQUI VA EL ITINERARIO EMBEBIDO -->
-    <div id="itin-slot" style="margin-top:12px;"></div>
+      <!-- 7. ITINERARIO DE VIAJE -->
+      <li style="margin-bottom:6px;">
+        <div style="font-weight:700;">7. ITINERARIO DE VIAJE</div>
+        <div id="itin-slot" class="itin-row" style="margin-top:6px;"></div>
+      </li>
+    </ol>
 
     <div style="text-align:center;font-weight:800;margin-top:12px;">
       ¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!
+    </div>MO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!
     </div>
   `;
 }
@@ -585,16 +589,40 @@ function buildPrintText(grupo, fechas){
 ────────────────────────────────────────────────────────────────────────── */
 function renderItin(grupo, fechas, hideNotes, targetEl){
   const cont = targetEl || document.getElementById('itinerario-container');
-  cont.classList.add('grid'); // asegura el layout
-  cont.innerHTML='';
+  cont.innerHTML = '';
+
+  // Layout según destino
+  if (cont.id === 'itin-slot') {
+    // Horizontal (en la hoja)
+    cont.classList.remove('grid');
+    cont.style.display = 'flex';
+    cont.style.gap = '12px';
+    cont.style.overflowX = 'auto';
+  } else {
+    // El contenedor externo sigue siendo grid
+    cont.classList.add('grid');
+    cont.style.removeProperty('display');
+    cont.style.removeProperty('gap');
+    cont.style.removeProperty('overflow');
+  }
+
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement('section');
-    sec.className = 'dia-seccion'; sec.dataset.fecha = fecha;
+    sec.className = 'dia-seccion';
+    if (cont.id === 'itin-slot') {
+      // Asegura ancho tipo “card” al ir en fila
+      sec.style.minWidth = '320px';
+      sec.style.maxWidth = '360px';
+      sec.style.flex = '0 0 auto';
+    }
+
+    sec.dataset.fecha = fecha;
     sec.innerHTML = `<h3 class="dia-titulo"><span class="dia-label">Día ${idx+1}</span> – <span class="dia-fecha">${formatDateReadable(fecha)}</span></h3><ul class="activity-list"></ul>`;
     const ul = sec.querySelector('.activity-list');
     const src = grupo.itinerario?.[fecha];
     const arr = (Array.isArray(src)?src:(src && typeof src==='object'?Object.values(src):[]))
       .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
+
     if (!arr.length) {
       ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
     } else {
