@@ -502,7 +502,12 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       </li>
     </ol>
 
-    <div style="text-align:center;font-weight:800;margin-top:12px;">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
+    <!-- AQUI VA EL ITINERARIO EMBEBIDO -->
+    <div id="itin-slot" style="margin-top:12px;"></div>
+
+    <div style="text-align:center;font-weight:800;margin-top:12px;">
+      ¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!
+    </div>
   `;
 }
 
