@@ -99,6 +99,31 @@
       
       /* Ocultar SIEMPRE (también al imprimir) */
       .u-hide-all { display: none !important; }
+
+      /* Itinerario horizontal dentro de la hoja-resumen */
+      #itin-slot{
+        display:flex;
+        gap:12px;
+        overflow:auto;
+        align-items:stretch;
+        padding:4px 0;
+      }
+      #itin-slot .dia-seccion{
+        min-width:320px;   /* ancho de cada “día” */
+        max-width:360px;
+        flex:0 0 auto;
+      }
+      
+      /* En pantallas chicas */
+      @media (max-width: 840px){
+        #itin-slot .dia-seccion{ min-width:280px; }
+      }
+      
+      /* En impresión, apilar (vertical) */
+      @media print{
+        #itin-slot{ display:block !important; overflow:visible !important; }
+        #itin-slot .dia-seccion{ min-width:auto; max-width:none; }
+      }
     }
   </style>
 </head>
