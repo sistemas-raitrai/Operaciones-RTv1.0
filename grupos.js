@@ -407,7 +407,7 @@ async function cargarYMostrarTabla() {
       id:   docSnap.id,
       fila: camposFire.map(c => d[c] || ''),
       coordTexto,
-      estadoCoord: (d.coordEstado || 'pendiente')
+      estadoCoord: d.coordEstado || estadoByGrupo.get(docSnap.id) || 'pendiente'
     };
   });
 
