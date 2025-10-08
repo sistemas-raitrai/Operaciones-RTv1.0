@@ -361,16 +361,23 @@ async function _buildCoordIndexes() {
 
   // 2) grupoId -> coordinadorId (desde collectionGroup('conjuntos'))
   const coordIdByGrupo = new Map();
+  const estadoByGrupo  = new Map();
+  
   try {
     const snapSets = await getDocs(collectionGroup(db, 'conjuntos'));
     snapSets.forEach(s => {
-      const coordId = s.ref.parent.parent.id; // id del coordinador dueño del conjunto
+      const coordId = s.ref.parent.parent.id;
       const x = s.data() || {};
-      (x.viajes || []).forEach(gid => coordIdByGrupo.set(String(gid), coordId));
+      const est = String(x.estadoCoord || 'pendiente').toLowerCase();
+      (x.viajes || []).forEach(gid => {
+        const k = String(gid);
+        coordIdByGrupo.set(k, coordId);
+        estadoByGrupo.set(k, est);      // ← NUEVO
+      });
     });
   } catch(e) { console.warn('No pude leer conjuntos:', e); }
 
-  return { coordById, coordIdByGrupo };
+  return { coordById, coordIdByGrupo, estadoByGrupo }; // ← NUEVO
 }
 
 async function cargarYMostrarTabla() {
@@ -379,7 +386,7 @@ async function cargarYMostrarTabla() {
   if (snap.empty) return console.warn('No hay grupos');
 
   // Índices de coordinadores (1 sola vez)
-  const { coordById, coordIdByGrupo } = await _buildCoordIndexes();
+  const { coordById, coordIdByGrupo, estadoByGrupo } = await _buildCoordIndexes();
 
   // 2) Mapear docs → {id,fila:[], coordTexto} PARA LA TABLA
   const valores = snap.docs.map(docSnap => {
