@@ -1629,15 +1629,21 @@ async function guardarTodo(){
 
         const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
         for (const gid of viajes){
-          const prevG = PREV.grupos.get(gid) || {};
-          if (prevG.conjuntoId !== s.id || prevG.coordinadorId !== s.coordinadorId || prevG.coordinador !== coordNombre){
-            ops.push(b=> b.update(doc(db,'grupos', gid), {
-              conjuntoId: s.id,
-              coordinador: coordNombre,
-              coordinadorId: s.coordinadorId,
-              coordEstado: est
-            }));
-          }
+         const prevG = PREV.grupos.get(gid) || {};
+         if (
+           prevG.conjuntoId !== s.id ||
+           prevG.coordinadorId !== s.coordinadorId ||
+           prevG.coordinador !== coordNombre ||
+           prevG.coordEstado !== est            // ← ¡clave!
+         ){
+           ops.push(b=> b.update(doc(db,'grupos', gid), {
+             conjuntoId: s.id,
+             coordinador: coordNombre,
+             coordinadorId: s.coordinadorId,
+             coordEstado: est
+           }));
+         }
+
           touchedGroupIds.add(gid);
         }
 
