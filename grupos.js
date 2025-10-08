@@ -3,7 +3,7 @@ import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, collectionGroup, getDocs, query, orderBy, where,
-  doc, updateDoc, addDoc, Timestamp
+  doc, updateDoc, addDoc, Timestamp, writeBatch   // ← agrega writeBatch aquí
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
