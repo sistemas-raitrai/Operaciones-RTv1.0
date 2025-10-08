@@ -399,7 +399,7 @@ async function cargarYMostrarTabla() {
     return {
       id:   docSnap.id,
       fila: camposFire.map(c => d[c] || ''),
-      coordTexto
+      coordTexto,
       estadoCoord: (d.coordEstado || 'pendiente')
     };
   });
