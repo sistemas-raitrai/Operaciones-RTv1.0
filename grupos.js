@@ -133,6 +133,14 @@ const _timeVal = (t) => {
   return h*60+mi;
 };
 
+// === Color de fondo por estado del coordinador ===
+function _bgEstado(est){
+  const v = String(est||'').toLowerCase();
+  if (v === 'aprobado')  return 'background-color: rgba(16,185,129,.18)'; // verde suave
+  if (v === 'rechazado') return 'background-color: rgba(239,68,68,.18)';  // rojo suave
+  return 'background-color: rgba(234,179,8,.22)';                         // amarillo (pendiente / default)
+}
+
 // Emails/nombres probables de coordinadores desde el doc grupo
 function _emailsOf(g){
   const out = new Set();
@@ -390,8 +398,9 @@ async function cargarYMostrarTabla() {
   
     return {
       id:   docSnap.id,
-      fila: camposFire.map(c => d[c] || ''),  // ← OJO: esta coma faltaba
-      coordTexto                               // ← NUEVO
+      fila: camposFire.map(c => d[c] || ''),
+      coordTexto
+      estadoCoord: (d.coordEstado || 'pendiente')
     };
   });
 
@@ -543,17 +552,19 @@ async function cargarYMostrarTabla() {
       if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo','number');
       $tr.append($td);
     }
-  
-    // 👉 COLUMNA 5: COORDINADORES (no editable)
+
+    // 👉 COLUMNA 5: COORDINADORES (no editable) + color por estado
     const coordText = (item.coordTexto || '').toString().toUpperCase();
-    $tr.append(
-      $('<td>')
-        .text(coordText)
-        .attr('data-doc-id', item.id)
-        .attr('data-fixed','1')
-        .attr('data-campo','')
-        .attr('data-original', coordText)
-    );
+    const est = (item.estadoCoord || 'pendiente');
+    const $tdCoord = $('<td>')
+      .text(coordText)
+      .attr('data-doc-id', item.id)
+      .attr('data-fixed', '1')
+      .attr('data-campo', '')
+      .attr('data-original', coordText)
+      .attr('title', 'Estado: ' + est.toUpperCase())
+      .attr('style', _bgEstado(est)); // ← color verde/amarillo/rojo
+    $tr.append($tdCoord);
   
     // resto de columnas 5..23 (corren a 6..24)
     for (let idx = 5; idx < camposFire.length; idx++) {
