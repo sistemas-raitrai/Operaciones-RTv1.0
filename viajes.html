@@ -183,13 +183,6 @@
           <label>N° VUELO / SERVICIO</label>
           <input id="m-numero" />
         </div>
-        <div class="row" style="display:flex;align-items:center;gap:.6rem;margin:.4rem 0;">
-          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
-            <input type="checkbox" id="m-publicar"/>
-            <span id="m-publicar-text" style="font-weight:600;">PRIVADA</span>
-          </label>
-          <small style="color:#666">Define si los horarios se publican para todo el sistema.</small>
-        </div>
         <div class="column short">
           <label>TIPO (solo AÉREO)</label>
           <select id="m-tipoVuelo">
@@ -270,6 +263,14 @@
           USAR MÚLTIPLES TRAMOS
         </label>
         <div class="hint">En REGULAR + MÚLTIPLES TRAMOS, cada tramo tendrá también 4 horarios (presentación/vuelo ida y regreso).</div>
+      </div>
+
+      <div class="row" style="display:flex;align-items:center;gap:.6rem;margin:.4rem 0;">
+          <label style="display:flex;align-items:center;gap:.5rem;cursor:pointer;">
+            <input type="checkbox" id="m-publicar"/>
+            <span id="m-publicar-text" style="font-weight:600;">PRIVADA</span>
+          </label>
+          <small style="color:#666">Define si los horarios se publican para todo el sistema.</small>
       </div>
 
       <!-- SECCIÓN TRAMOS (los 4 inputs de hora por tramo los agrega el JS) -->
