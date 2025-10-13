@@ -5,11 +5,13 @@ import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs, doc, getDoc,
-  addDoc, updateDoc, deleteDoc,
+  addDoc, updateDoc, deleteDoc, setDoc,
   serverTimestamp, query, orderBy
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 // ======= Estado global =======
+const COLLECTION_HORARIOS_DRAFT    = 'horarios_draft';
+const COLLECTION_HORARIOS_PUBLICOS = 'horarios_publicos';
 const auth = getAuth(app);
 let grupos = [];               // cache de grupos (para pintar pax/labels)
 let vuelos = [];               // cache de docs (aéreo/terrestre)
@@ -333,6 +335,18 @@ function initModal(){
   multitramoOpEl  = document.getElementById('multitramo-opcion');
   tramosSectionEl = document.getElementById('tramos-section');
 
+    // === PUBLICACIÓN (checkbox) ===
+  const publicarChk  = document.getElementById('m-publicar');
+  const publicarText = document.getElementById('m-publicar-text');
+  const refreshPublicarLabel = () => {
+    if (!publicarChk || !publicarText) return;
+    publicarText.textContent = publicarChk.checked ? 'PUBLICA' : 'PRIVADA';
+  };
+  if (publicarChk){
+    publicarChk.onchange = refreshPublicarLabel;
+    refreshPublicarLabel();
+  }
+
   // Choices.js (grupos)
   choiceGrupos = new Choices(document.getElementById('m-grupos'), { removeItemButton:true });
   choiceGrupos.setChoices(
@@ -417,6 +431,14 @@ function openModal(v=null){
   // Transporte + Tipo
   const mTrans = document.getElementById('m-transporte');
   if (mTrans) mTrans.value = v?.tipoTransporte || 'aereo';
+
+    // Inicializar checkbox PUBLICA/PRIVADA según el doc
+  const publicarChk  = document.getElementById('m-publicar');
+  const publicarText = document.getElementById('m-publicar-text');
+  if (publicarChk){
+    publicarChk.checked = !!(v?.publicar);
+    if (publicarText) publicarText.textContent = publicarChk.checked ? 'PUBLICA' : 'PRIVADA';
+  }
 
   ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']
     .forEach(k => {
@@ -603,6 +625,7 @@ async function onSubmitVuelo(evt){
   const reservaEstadoForm  = (f('m-reservaEstado')?.value) || 'pendiente';
   const tipoVuelo = f('m-tipoVuelo')?.value || 'charter';
   const tipoTransporte = f('m-transporte')?.value || 'aereo';
+  const publicar = !!document.getElementById('m-publicar')?.checked;
 
   // Grupos seleccionados (preserva records al editar)
   const sel = choiceGrupos.getValue(true);
@@ -729,6 +752,11 @@ async function onSubmitVuelo(evt){
 
   // Normaliza + agrega claves mínimas
   pay = normalizeVueloPayload(pay);
+  // Marcas de publicación en el doc de 'vuelos'
+  pay.publicar      = publicar;
+  pay.publishScope  = publicar ? 'PUBLICA' : 'PRIVADA';
+  pay.publicUpdatedBy = currentUserEmail;
+
   pay.grupoIds  = buildGrupoIds(pay.grupos);
   pay.updatedAt = serverTimestamp();
 
@@ -745,6 +773,9 @@ async function onSubmitVuelo(evt){
       antes: before, despues: pay,
       usuario: currentUserEmail, ts: serverTimestamp()
     });
+    // ⇢ Mantener espejo de horarios (draft + público opcional)
+    await upsertHorarios(pay, editId, publicar, !!before?.publicar);
+
   } else {
     pay.createdAt = serverTimestamp();
     const ref = await addDoc(collection(db,'vuelos'), pay);
@@ -753,6 +784,8 @@ async function onSubmitVuelo(evt){
       antes: null, despues: pay,
       usuario: currentUserEmail, ts: serverTimestamp()
     });
+    // ⇢ Mantener espejo de horarios (draft + público opcional)
+    await upsertHorarios(pay, ref.id, publicar, false);
   }
 
   closeModal();
@@ -1160,7 +1193,13 @@ window.unlinkTransferFromGroup = async (transferId, grupoId) => {
 async function deleteVuelo(id){
   if (!confirm('¿Eliminar vuelo/trayecto completo?')) return;
   const before = (await getDoc(doc(db,'vuelos', id))).data();
+
   await deleteDoc(doc(db,'vuelos', id));
+
+  // Limpieza de espejos
+  try { await deleteDoc(doc(db, COLLECTION_HORARIOS_DRAFT, id)); } catch(_) {}
+  try { await deleteDoc(doc(db, COLLECTION_HORARIOS_PUBLICOS, id)); } catch(_) {}
+
   await addDoc(collection(db,'historial'), {
     tipo: before?.isTransfer ? 'transfer-del' : 'vuelo-del',
     vueloId: id, antes: before, despues: null,
@@ -1544,6 +1583,78 @@ async function loadHistorial(){
     language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
     order: [[0,'desc']]
   });
+}
+
+async function upsertHorarios(v, vueloId, publicar, prevPublicar){
+  // Construye un doc “seguro” para publicar: sólo horarios y metadatos mínimos
+  const isAereo = (v.tipoTransporte || 'aereo') === 'aereo';
+
+  const toSafeUpper = (s) => toUpper(String(s || '').trim());
+  const firstTramo  = Array.isArray(v.tramos) && v.tramos.length ? v.tramos[0] : null;
+  const lastTramo   = Array.isArray(v.tramos) && v.tramos.length ? v.tramos[v.tramos.length - 1] : null;
+
+  const base = {
+    tipoTransporte: v.tipoTransporte || 'aereo',
+    proveedor: toSafeUpper(v.proveedor || (firstTramo?.aerolinea || '')),
+    numero:    toSafeUpper(v.numero    || (firstTramo?.numero    || '')),
+    origen:    toSafeUpper(v.origen    || (firstTramo?.origen    || '')),
+    destino:   toSafeUpper(v.destino   || (firstTramo?.destino   || '')),
+    fechaIda:     toISO(v.fechaIda     || (firstTramo?.fechaIda    || '')),
+    fechaVuelta:  toISO(v.fechaVuelta  || (lastTramo?.fechaVuelta  || '')),
+    updatedAt: serverTimestamp(),
+    updatedBy: currentUserEmail,
+    sourceVueloId: vueloId
+  };
+
+  if (isAereo){
+    base.tipoVuelo = v.tipoVuelo || '';
+    base.presentacionIdaHora     = toHHMM(v.presentacionIdaHora || '');
+    base.vueloIdaHora            = toHHMM(v.vueloIdaHora || '');
+    base.presentacionVueltaHora  = toHHMM(v.presentacionVueltaHora || '');
+    base.vueloVueltaHora         = toHHMM(v.vueloVueltaHora || '');
+
+    if (Array.isArray(v.tramos) && v.tramos.length){
+      base.tramos = v.tramos.map(t => ({
+        aerolinea: toSafeUpper(t.aerolinea),
+        numero:    toSafeUpper(t.numero),
+        origen:    toSafeUpper(t.origen),
+        destino:   toSafeUpper(t.destino),
+        tipoTramo: (t.tipoTramo || '').toLowerCase(),
+        fechaIda:  toISO(t.fechaIda || ''),
+        presentacionIdaHora: toHHMM(t.presentacionIdaHora || ''),
+        vueloIdaHora:        toHHMM(t.vueloIdaHora || ''),
+        fechaVuelta:         toISO(t.fechaVuelta || ''),
+        presentacionVueltaHora: toHHMM(t.presentacionVueltaHora || ''),
+        vueloVueltaHora:        toHHMM(t.vueloVueltaHora || '')
+      }));
+    }
+  } else {
+    base.idaHora    = toHHMM(v.idaHora || '');
+    base.vueltaHora = toHHMM(v.vueltaHora || '');
+  }
+
+  base.publicar     = !!publicar;
+  base.publishScope = publicar ? 'PUBLICA' : 'PRIVADA';
+
+  // Siempre mantenemos el draft
+  await setDoc(doc(db, COLLECTION_HORARIOS_DRAFT, vueloId), base, { merge: true });
+
+  // Y publicamos / despublicamos según corresponda
+  if (publicar){
+    await setDoc(doc(db, COLLECTION_HORARIOS_PUBLICOS, vueloId), base, { merge: true });
+    await addDoc(collection(db,'historial'), {
+      tipo:'horario-publicar', vueloId, despues: base,
+      usuario: currentUserEmail, ts: serverTimestamp()
+    });
+  } else if (prevPublicar){
+    try {
+      await deleteDoc(doc(db, COLLECTION_HORARIOS_PUBLICOS, vueloId));
+      await addDoc(collection(db,'historial'), {
+        tipo:'horario-despublicar', vueloId,
+        usuario: currentUserEmail, ts: serverTimestamp()
+      });
+    } catch(_) {}
+  }
 }
 
 // ======= Exportar a Excel =======
