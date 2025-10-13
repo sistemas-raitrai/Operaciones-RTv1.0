@@ -337,8 +337,7 @@ function initModal(){
 
     // === PUBLICACIÓN (checkbox) ===
   const publicarChk  = document.getElementById('m-publicar');
-  const publicarText = document.getElementById('m-publicar-text');
-  const refreshPublicarLabel = () => {
+    const refreshPublicarLabel = () => {
     if (!publicarChk || !publicarText) return;
     publicarText.textContent = publicarChk.checked ? 'PUBLICA' : 'PRIVADA';
   };
@@ -434,7 +433,6 @@ function openModal(v=null){
 
     // Inicializar checkbox PUBLICA/PRIVADA según el doc
   const publicarChk  = document.getElementById('m-publicar');
-  const publicarText = document.getElementById('m-publicar-text');
   if (publicarChk){
     publicarChk.checked = !!(v?.publicar);
     if (publicarText) publicarText.textContent = publicarChk.checked ? 'PUBLICA' : 'PRIVADA';
