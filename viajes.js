@@ -335,16 +335,9 @@ function initModal(){
   multitramoOpEl  = document.getElementById('multitramo-opcion');
   tramosSectionEl = document.getElementById('tramos-section');
 
-    // === PUBLICACIÓN (checkbox) ===
-  const publicarChk  = document.getElementById('m-publicar');
-    const refreshPublicarLabel = () => {
-    if (!publicarChk || !publicarText) return;
-    publicarText.textContent = publicarChk.checked ? 'PUBLICA' : 'PRIVADA';
-  };
-  if (publicarChk){
-    publicarChk.onchange = refreshPublicarLabel;
-    refreshPublicarLabel();
-  }
+  // === PUBLICACIÓN (checkbox) ===
+  const publicarChk = document.getElementById('m-publicar');
+  // No hay texto dinámico; nada más que hacer aquí.
 
   // Choices.js (grupos)
   choiceGrupos = new Choices(document.getElementById('m-grupos'), { removeItemButton:true });
@@ -431,11 +424,9 @@ function openModal(v=null){
   const mTrans = document.getElementById('m-transporte');
   if (mTrans) mTrans.value = v?.tipoTransporte || 'aereo';
 
-    // Inicializar checkbox PUBLICA/PRIVADA según el doc
-  const publicarChk  = document.getElementById('m-publicar');
+  const publicarChk = document.getElementById('m-publicar');
   if (publicarChk){
     publicarChk.checked = !!(v?.publicar);
-    if (publicarText) publicarText.textContent = publicarChk.checked ? 'PUBLICA' : 'PRIVADA';
   }
 
   ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']
