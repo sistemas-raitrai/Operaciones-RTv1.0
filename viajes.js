@@ -262,15 +262,15 @@ async function init(){
   initModal();
   await renderVuelos();
 
-  // Modales de grupo e historial
-  document.getElementById('group-cancel').onclick = closeGroupModal;
-  document.getElementById('group-form').onsubmit  = onSubmitGroup;
-
-  document.getElementById('btnHistorial').onclick = showHistorialModal;
-  document.getElementById('hist-close').onclick   = closeHistorialModal;
-  document.getElementById('hist-refresh').onclick = loadHistorial;
-  document.getElementById('hist-start').onchange  = loadHistorial;
-  document.getElementById('hist-end').onchange    = loadHistorial;
+  // Modales de grupo e historial (con guardas)
+  document.getElementById('group-cancel')?.addEventListener('click', closeGroupModal);
+  document.getElementById('group-form')?.addEventListener('submit', onSubmitGroup);
+  
+  document.getElementById('btnHistorial')?.addEventListener('click', showHistorialModal);
+  document.getElementById('hist-close')?.addEventListener('click', closeHistorialModal);
+  document.getElementById('hist-refresh')?.addEventListener('click', loadHistorial);
+  document.getElementById('hist-start')?.addEventListener('change', loadHistorial);
+  document.getElementById('hist-end')?.addEventListener('change', loadHistorial);
 }
 
 async function loadGrupos(){
@@ -281,11 +281,13 @@ async function loadGrupos(){
 // ======= UI principal =======
 
 function bindUI(){
-  document.getElementById('btnAddVuelo').onclick    = () => openModal();
-  document.getElementById('btnExportExcel').onclick = exportToExcel;
+  document.getElementById('btnAddVuelo')?.addEventListener('click', () => openModal());
+  document.getElementById('btnExportExcel')?.addEventListener('click', exportToExcel);
 
   const searchEl = document.getElementById('search-input');
-  searchEl.oninput = () => filterVuelos(searchEl.value.trim().toLowerCase());
+  if (searchEl) {
+    searchEl.addEventListener('input', () => filterVuelos(searchEl.value.trim().toLowerCase()));
+  }
 }
 
 // Filtro simple (muestra/oculta cards por términos separados por coma)
@@ -402,72 +404,68 @@ function openModal(v=null){
   isEdit = !!v;
   editId = v?.id || null;
   editingVueloId = v?.id || null;
-  document.getElementById('modal-title').textContent = v ? 'EDITAR VUELO/TRAYECTO' : 'NUEVO VUELO/TRAYECTO';
-
-  // Transporte + Tipo
-  const mTrans = document.getElementById('m-transporte');
-  if (mTrans) mTrans.value = v?.tipoTransporte || 'aereo';
-
-  const publicarChk = document.getElementById('m-publicar');
-  if (publicarChk){
-    publicarChk.checked = !!(v?.publicar);
-  }
-
-  ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta']
-    .forEach(k => {
-      const el = document.getElementById(`m-${k}`);
-      if (el) el.value = v?.[k] || '';
-    });
 
   const f = (id) => document.getElementById(id);
-  if (f('m-presentacionIdaHora'))    f('m-presentacionIdaHora').value    = v?.presentacionIdaHora || '';
-  if (f('m-vueloIdaHora'))           f('m-vueloIdaHora').value           = v?.vueloIdaHora || '';
-  if (f('m-presentacionVueltaHora')) f('m-presentacionVueltaHora').value = v?.presentacionVueltaHora || '';
-  if (f('m-vueloVueltaHora'))        f('m-vueloVueltaHora').value        = v?.vueloVueltaHora || '';
 
-  if (f('m-idaHora'))    f('m-idaHora').value    = v?.idaHora || '';
-  if (f('m-vueltaHora')) f('m-vueltaHora').value = v?.vueltaHora || '';
+  // Título
+  f('modal-title').textContent = v ? 'EDITAR VUELO/TRAYECTO' : 'NUEVO VUELO/TRAYECTO';
 
-  if (f('m-reservaFechaLimite')) f('m-reservaFechaLimite').value = v?.reservaFechaLimite || '';
-  if (f('m-reservaEstado'))      f('m-reservaEstado').value      = v?.reservaEstado || 'pendiente';
+  // Transporte + Publicación
+  const mTrans = f('m-transporte');
+  if (mTrans) mTrans.value = v?.tipoTransporte || 'aereo';
 
+  const publicarChk = f('m-publicar');
+  if (publicarChk) publicarChk.checked = !!(v?.publicar);
+
+  // Campos base
+  ['proveedor','numero','tipoVuelo','origen','destino','fechaIda','fechaVuelta'].forEach(k => {
+    const el = f(`m-${k}`);
+    if (el) el.value = v?.[k] || '';
+  });
+
+  // Horarios AÉREO
+  const setVal = (id, val) => { if (f(id)) f(id).value = val || ''; };
+  setVal('m-presentacionIdaHora',    v?.presentacionIdaHora);
+  setVal('m-vueloIdaHora',           v?.vueloIdaHora);
+  setVal('m-presentacionVueltaHora', v?.presentacionVueltaHora);
+  setVal('m-vueloVueltaHora',        v?.vueloVueltaHora);
+
+  // Horarios TERRESTRE
+  setVal('m-idaHora',    v?.idaHora);
+  setVal('m-vueltaHora', v?.vueltaHora);
+
+  // Reserva
+  setVal('m-reservaFechaLimite', v?.reservaFechaLimite);
+  setVal('m-reservaEstado',      v?.reservaEstado || 'pendiente');
+
+  // Select tipo vuelo (cacheado en initModal)
   if (tipoVueloEl) tipoVueloEl.value = v?.tipoVuelo || 'charter';
-  if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
-  if (multitramoOpEl)  multitramoOpEl.style.display = (v?.tipoVuelo === 'regular') ? 'block' : 'none';
-  if (tramosSectionEl) tramosSectionEl.style.display = 'none';
-  if (multitramoChkEl) multitramoChkEl.checked = false;
 
-  if (v && v.tipoTransporte !== 'terrestre' && v.tipoVuelo === 'regular'){
-    if (multitramoOpEl) multitramoOpEl.style.display = 'block';
-    if (v.tramos && v.tramos.length){
-      if (multitramoChkEl) multitramoChkEl.checked = true;
-      if (camposSimpleEl)  camposSimpleEl.style.display = 'none';
-      if (tramosSectionEl) tramosSectionEl.style.display = 'block';
-      editingTramos = v.tramos.map(t => ({
-        aerolinea: t.aerolinea || '',
-        numero: t.numero || '',
-        origen: t.origen || '',
-        destino: t.destino || '',
-        tipoTramo: (t.tipoTramo || '').toLowerCase() || (t.fechaIda && t.fechaVuelta ? 'ida+vuelta' : (t.fechaIda ? 'ida' : (t.fechaVuelta ? 'vuelta' : 'ida+vuelta'))),
-        fechaIda: t.fechaIda || '',
-        presentacionIdaHora: t.presentacionIdaHora || '',
-        vueloIdaHora: t.vueloIdaHora || '',
-        fechaVuelta: t.fechaVuelta || '',
-        presentacionVueltaHora: t.presentacionVueltaHora || '',
-        vueloVueltaHora: t.vueloVueltaHora || ''
-      }));
-      renderTramosList();
-    } else {
-      if (multitramoChkEl) multitramoChkEl.checked = false;
-      if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
-      if (tramosSectionEl) tramosSectionEl.style.display = 'none';
-      editingTramos = [];
-      renderTramosList();
-    }
+  // MULTITRAMO: si corresponde, marcar checkbox y cargar tramos
+  const isAereo = (v?.tipoTransporte || 'aereo') === 'aereo';
+  const isRegular = (v?.tipoVuelo || 'charter') === 'regular';
+  const hasTramos = Array.isArray(v?.tramos) && v.tramos.length > 0;
+
+  if (isAereo && isRegular && hasTramos){
+    if (multitramoChkEl) multitramoChkEl.checked = true;
+    editingTramos = v.tramos.map(t => ({
+      aerolinea: toUpper(t.aerolinea || ''),
+      numero:    toUpper(t.numero || ''),
+      origen:    toUpper(t.origen || ''),
+      destino:   toUpper(t.destino || ''),
+      tipoTramo: (t.tipoTramo || '').toLowerCase() || (t.fechaIda && t.fechaVuelta ? 'ida+vuelta' : (t.fechaIda ? 'ida' : (t.fechaVuelta ? 'vuelta' : 'ida+vuelta'))),
+      fechaIda:  toISO(t.fechaIda),
+      presentacionIdaHora:    toHHMM(t.presentacionIdaHora),
+      vueloIdaHora:           toHHMM(t.vueloIdaHora),
+      fechaVuelta:            toISO(t.fechaVuelta),
+      presentacionVueltaHora: toHHMM(t.presentacionVueltaHora),
+      vueloVueltaHora:        toHHMM(t.vueloVueltaHora)
+    }));
   } else {
+    if (multitramoChkEl) multitramoChkEl.checked = false;
     editingTramos = [];
-    renderTramosList();
   }
+  renderTramosList();
 
   // Grupos y estado por defecto
   choiceGrupos.removeActiveItems();
@@ -475,8 +473,11 @@ function openModal(v=null){
   if (f('m-statusDefault')) f('m-statusDefault').value = v?.grupos?.[0]?.status || 'confirmado';
 
   // Mostrar modal
-  document.getElementById('modal-backdrop').style.display = 'block';
-  document.getElementById('modal-vuelo').style.display    = 'block';
+  f('modal-backdrop').style.display = 'block';
+  f('modal-vuelo').style.display    = 'block';
+
+  // 👇 Un único refresh que decide: habilitar tipo, mostrar/ocultar multitramos y secciones
+  refreshUI();
 }
 
 function closeModal(){
@@ -1229,9 +1230,9 @@ async function renderVuelos(){
     const fa = toISO(a.fechaIda) || '9999-12-31';
     const fb = toISO(b.fechaIda) || '9999-12-31';
     if (fa !== fb) return fa.localeCompare(fb);
-    const tsa = a.ts?.seconds || 0;
-    const tsb = b.ts?.seconds || 0;
-    return tsa - tsb;
+    const sa = a.updatedAt?.seconds || a.createdAt?.seconds || 0;
+    const sb = b.updatedAt?.seconds || b.createdAt?.seconds || 0;
+    return sa - sb;
   });
 
   // Construye índices de transfers
