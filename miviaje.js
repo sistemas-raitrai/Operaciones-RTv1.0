@@ -599,8 +599,6 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
       <li style="margin-bottom:10px;">
         <div style="font-weight:700;">INFORMACIÓN DE VUELOS CONFIRMADOS</div>
-        ${vuelosNorm.length?`
-        <div style="font-weight:700;">INFORMACIÓN DE VUELOS CONFIRMADOS</div>
         ${vuelosHTML}
       </li>
 
@@ -641,8 +639,9 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
     <div style="text-align:center;font-weight:800;margin-top:12px;">
       ¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!
+   </div>
     </div>
-    </div>
+  `;
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
