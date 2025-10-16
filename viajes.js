@@ -29,8 +29,36 @@ let editingVueloId = null;     // id del vuelo actual para el modal de pax extra
 let transfersByGroup = new Map();              // groupId -> [transferDocs]
 let transfersByGroupAndVuelo = new Map();      // `${groupId}__${vueloId}` -> [transferDocs]
 
-// Referencias a elementos del modal vuelo
+// referencias
 let transporteEl, tipoVueloEl, multitramoChkEl, camposSimpleEl, multitramoOpEl, tramosSectionEl;
+let publicarOpEl; // cache del bloque PUBLICAR
+
+function refreshUI(){
+  const t    = transporteEl?.value || 'aereo';
+  const tipo = tipoVueloEl?.value  || 'charter';
+  const usarMulti = (t === 'aereo' && tipo === 'regular' && !!multitramoChkEl?.checked);
+
+  // 0) PUBLICAR: SIEMPRE visible
+  (publicarOpEl ||= document.getElementById('publicacion-opcion'));
+  if (publicarOpEl) publicarOpEl.style.display = '';
+
+  // 1) Habilitar/Deshabilitar selector de tipo
+  if (tipoVueloEl) tipoVueloEl.disabled = (t !== 'aereo');
+
+  // 2) Mostrar opción Multitramos solo si AÉREO REGULAR
+  if (multitramoOpEl) {
+    multitramoOpEl.style.display = (t === 'aereo' && tipo === 'regular') ? '' : 'none';
+  }
+
+  // 3) Si NO es AÉREO o NO es REGULAR, apaga el check de multitramos
+  if ((t !== 'aereo' || tipo !== 'regular') && multitramoChkEl) {
+    multitramoChkEl.checked = false;
+  }
+
+  // 4) Conmutar “simple” vs “tramos”
+  if (camposSimpleEl)  camposSimpleEl.style.display  = usarMulti ? 'none'  : 'block';
+  if (tramosSectionEl) tramosSectionEl.style.display = usarMulti ? 'block' : 'none';
+}
 
 // ======= Helpers de normalización =======
 
@@ -327,19 +355,15 @@ function initModal(){
   document.getElementById('modal-cancel').onclick = closeModal;
   document.getElementById('modal-form').onsubmit  = onSubmitVuelo;
 
-  // Captura de referencias (opcionales para no romper si no existen aún en el HTML)
-  transporteEl    = document.getElementById('m-transporte'); // nuevo (aereo/terrestre)
-  tipoVueloEl     = document.getElementById('m-tipoVuelo');
-  multitramoChkEl = document.getElementById('m-multitramo');
+  // Referencias del modal
+  transporteEl    = document.getElementById('m-transporte');   // aereo | terrestre
+  tipoVueloEl     = document.getElementById('m-tipoVuelo');    // charter | regular
+  multitramoChkEl = document.getElementById('m-multitramo');   // checkbox
   camposSimpleEl  = document.getElementById('campos-vuelo-simple');
   multitramoOpEl  = document.getElementById('multitramo-opcion');
   tramosSectionEl = document.getElementById('tramos-section');
 
-  // === PUBLICACIÓN (checkbox) ===
-  const publicarChk = document.getElementById('m-publicar');
-  // No hay texto dinámico; nada más que hacer aquí.
-
-  // Choices.js (grupos)
+  // Choices.js (GRUPOS)
   choiceGrupos = new Choices(document.getElementById('m-grupos'), { removeItemButton:true });
   choiceGrupos.setChoices(
     grupos.map(g => ({
@@ -349,69 +373,29 @@ function initModal(){
     'value','label', false
   );
 
+  // Listeners → delega comportamiento a refreshUI()
+  if (transporteEl)    transporteEl.addEventListener('change', refreshUI);
+  if (tipoVueloEl)     tipoVueloEl.addEventListener('change', refreshUI);
+  if (multitramoChkEl) multitramoChkEl.addEventListener('change', refreshUI);
+
   // Estado inicial del modal
-  if (transporteEl) transporteEl.value = 'aereo';
-  if (tipoVueloEl)  tipoVueloEl.value  = 'charter';
-  if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
-  if (multitramoOpEl)  multitramoOpEl.style.display = 'none';
-  if (tramosSectionEl) tramosSectionEl.style.display = 'none';
+  if (transporteEl)    transporteEl.value = 'aereo';
+  if (tipoVueloEl)     tipoVueloEl.value  = 'charter';
   if (multitramoChkEl) multitramoChkEl.checked = false;
 
-  // Cambio de transporte
-  if (transporteEl){
-    transporteEl.onchange = function(){
-      const t = transporteEl.value || 'aereo';
-      if (t === 'aereo'){
-        if (tipoVueloEl)  tipoVueloEl.disabled = false;
-        if (multitramoOpEl)  multitramoOpEl.style.display = (tipoVueloEl?.value === 'regular') ? 'block' : 'none';
-      } else { // terrestre
-        if (tipoVueloEl)  tipoVueloEl.disabled = true;
-        if (multitramoOpEl)  multitramoOpEl.style.display = 'none';
-        if (tramosSectionEl) tramosSectionEl.style.display = 'none';
-        if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
-        if (multitramoChkEl) multitramoChkEl.checked = false;
-      }
-    };
-  }
+  // Pinta visibilidad inicial (simple vs tramos, etc.)
+  refreshUI();
 
-  // Cambio tipo de vuelo
-  if (tipoVueloEl){
-    tipoVueloEl.onchange = function(){
-      const tipo = tipoVueloEl.value;
-      if (tipo === 'charter'){
-        if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
-        if (multitramoOpEl)  multitramoOpEl.style.display = 'none';
-        if (tramosSectionEl) tramosSectionEl.style.display = 'none';
-        if (multitramoChkEl) multitramoChkEl.checked = false;
-      } else if (tipo === 'regular'){
-        if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
-        if (multitramoOpEl)  multitramoOpEl.style.display = 'block';
-        if (tramosSectionEl) tramosSectionEl.style.display = 'none';
-        if (multitramoChkEl) multitramoChkEl.checked = false;
-      }
-    };
-  }
-
-  // Checkbox multitramo
-  if (multitramoChkEl) multitramoChkEl.onchange = function(){
-    if (multitramoChkEl.checked){
-      if (camposSimpleEl)  camposSimpleEl.style.display = 'none';
-      if (tramosSectionEl) tramosSectionEl.style.display = 'block';
-    } else {
-      if (tramosSectionEl) tramosSectionEl.style.display = 'none';
-      if (camposSimpleEl)  camposSimpleEl.style.display = 'block';
-    }
-  };
-
+  // Botón agregar tramo (en modo multitramos)
   const addTramoBtn = document.getElementById('btnAddTramo');
   if (addTramoBtn) addTramoBtn.onclick = addTramoRow;
 
+  // PAX extra
   const addPaxBtn = document.getElementById('btnAddPaxExtra');
   if (addPaxBtn) addPaxBtn.onclick = () => openPaxExtraModal(editingVueloId);
 
-  // Modal Pax Extra
   document.getElementById('paxextra-cancel').onclick = closePaxExtraModal;
-  document.getElementById('paxextra-form').onsubmit = onSubmitPaxExtra;
+  document.getElementById('paxextra-form').onsubmit  = onSubmitPaxExtra;
 }
 
 function openModal(v=null){
