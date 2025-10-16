@@ -642,7 +642,6 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     <div style="text-align:center;font-weight:800;margin-top:12px;">
       ¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!
     </div>
-    </div>
   `;
 }
 
