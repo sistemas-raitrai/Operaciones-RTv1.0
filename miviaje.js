@@ -600,21 +600,8 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       <li style="margin-bottom:10px;">
         <div style="font-weight:700;">INFORMACIÓN DE VUELOS CONFIRMADOS</div>
         ${vuelosNorm.length?`
-        <div style="overflow:auto;margin-top:6px;">
-          <table style="border-collapse:collapse;min-width:560px;">
-            <thead>
-              <tr>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">N° de Vuelo</th>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Desde</th>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Horario Salida</th>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hasta</th>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Horario de Arribo</th>
-              </tr>
-            </thead>
-            <tbody>${vuelosRows}</tbody>
-          </table>
-        </div>` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`}
+        <div style="font-weight:700;">INFORMACIÓN DE VUELOS CONFIRMADOS</div>
+        ${vuelosHTML}
       </li>
 
       <li style="margin-bottom:10px;">
