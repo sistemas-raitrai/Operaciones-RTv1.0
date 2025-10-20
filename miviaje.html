@@ -57,19 +57,16 @@
     }
 
     /* Quitar carrusel/scroll horizontal heredado */
-    #itinerario-container{ overflow:visible !important; }
-    #itinerario-container input[type="range"],
-    #itinerario-container .scrollbar,
-    #itinerario-container .x-scroll,
-    #itinerario-container [role="scrollbar"],
-    #itinerario-container .range,
-    #itinerario-container .slider,
-    #itinerario-container .scroll-track,
-    #itinerario-container .scroll-thumb{
-      display:none !important;
-    }
-    /* Si algún wrapper quedó con overflow-x */
-    #itinerario-container *[style*="overflow-x"]{ overflow:visible !important; overflow-x:visible !important; }
+    #mi-itin, #itin-slot { overflow:visible !important; }
+    #mi-itin input[type="range"],
+    #mi-itin .scrollbar,
+    #mi-itin .x-scroll,
+    #mi-itin [role="scrollbar"],
+    #mi-itin .range,
+    #mi-itin .slider,
+    #mi-itin .scroll-track,
+    #mi-itin .scroll-thumb { display:none !important; }
+    #mi-itin *[style*="overflow-x"]{ overflow:visible !important; overflow-x:visible !important; }
 
     /* Espaciado para títulos numerados “1. …” */
     .seccion-num{ display:block; margin:22px 0 18px; font-weight:700; line-height:1.25; }
@@ -91,7 +88,7 @@
         display:block; position:fixed; top:12px; right:12px; width:120px;
       }
 
-      .grid, #itinerario-container, .activity-list{ display:block !important; gap:0 !important; width:100% !important; }
+      .grid, #mi-itin, .activity-list{ display:block !important; gap:0 !important; width:100% !important; }
 
       .dia-seccion{ break-inside:avoid; page-break-inside:avoid; margin:12px 0 10px 0 !important; }
       .dia-seccion h3{
@@ -159,7 +156,7 @@
   <!-- Embebido y distribución 4/4, 4/3, 3/3, 3/2 -->
   <script>
   (function(){
-    const cont = document.getElementById('itinerario-container');
+    const cont = document.getElementById('itin-slot') || document.getElementById('mi-itin');
     if (!cont) return;
 
     // Quita controles de carrusel
