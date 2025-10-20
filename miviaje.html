@@ -251,19 +251,5 @@
     });
   })();
   </script>
-  <script>
-    window.__itinDebug = function () {
-      const c = document.getElementById('itin-slot') || document.getElementById('mi-itin');
-      if (!c) { console.log('[itin dbg] sin contenedor'); return; }
-      const cols = getComputedStyle(c).gridTemplateColumns.split(' ').length;
-      console.log('[itin dbg]', {
-        contW: c.clientWidth,
-        scrollW: c.scrollWidth,
-        cols,
-        dias: c.querySelectorAll('.dia-seccion').length,
-        hasSplit: !!document.querySelector('.dias-embebidas')
-      });
-    };
-  </script>
 </body>
 </html>
