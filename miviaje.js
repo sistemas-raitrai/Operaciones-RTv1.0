@@ -716,6 +716,52 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
   });
 }
 
+function embedItinIntoResumen(){
+  const caja = document.getElementById('hoja-resumen');
+  const slot = document.getElementById('itin-slot') || document.getElementById('mi-itin');
+  if (!caja || !slot) return;
+
+  // toma los días ya renderizados
+  const dias = Array.from(slot.querySelectorAll('.dia-seccion'));
+  if (!dias.length) return;
+
+  // limpia controles de carrusel y overflow
+  slot.querySelectorAll('input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb')
+      .forEach(el => el.remove());
+  slot.style.overflow = 'visible';
+  slot.style.overflowX = 'visible';
+
+  // contenedor embebido
+  caja.querySelector('.dias-embebidas')?.remove();
+  const wrap = document.createElement('div'); wrap.className = 'dias-embebidas';
+  const filaTop = document.createElement('div'); filaTop.className = 'fila fila-top';
+  const filaBottom = document.createElement('div'); filaBottom.className = 'fila fila-bottom';
+  wrap.appendChild(filaTop); wrap.appendChild(filaBottom);
+
+  // distribución 4/?, 3/?, etc.
+  const n = dias.length;
+  let topCount = n >= 8 ? 4 : (n === 7 ? 4 : (n === 6 ? 3 : (n === 5 ? 3 : n)));
+  const bottomCount = Math.max(0, n - topCount);
+
+  filaTop.style.display = filaBottom.style.display = 'grid';
+  filaTop.style.gap = filaBottom.style.gap = '12px';
+  filaTop.style.gridTemplateColumns    = `repeat(${Math.max(1, topCount)}, minmax(220px, 1fr))`;
+  filaBottom.style.gridTemplateColumns = `repeat(${Math.max(1, bottomCount)}, minmax(220px, 1fr))`;
+  if (!bottomCount) filaBottom.style.display = 'none';
+
+  dias.forEach((d,i)=> (i < topCount ? filaTop : filaBottom).appendChild(d));
+
+  // coloca antes del texto “¡¡ TURISMO RAITRAI… !!” si existe; si no, al final
+  const ancla = Array.from(caja.querySelectorAll('*'))
+    .find(n => /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent||''));
+  if (ancla?.parentElement) ancla.parentElement.insertBefore(wrap, ancla);
+  else caja.appendChild(wrap);
+
+  // vacía el slot para que no quede el carrusel original
+  slot.innerHTML = '';
+}
+
+
 /* ──────────────────────────────────────────────────────────────────────────
    MAIN
 ────────────────────────────────────────────────────────────────────────── */
@@ -791,13 +837,12 @@ async function main(){
     if (printEl) printEl.textContent = buildPrintText(g, []);
   } else {
     // Si existe el slot dentro de la hoja, dibuja ahí; si no, usa el contenedor de siempre.
-    const slot = document.getElementById('itin-slot');
-    if (slot) {
+     if (slot) {
       renderItin(g, fechas, hideNotes, slot);
-      // deja vacío el contenedor externo para no duplicar
-      document.getElementById('mi-itin').innerHTML = '';
+      embedItinIntoResumen();              // ← AQUÍ
     } else {
       renderItin(g, fechas, hideNotes);
+      embedItinIntoResumen();              // ← y aquí por si usó #mi-itin
     }
     if (printEl) printEl.textContent = buildPrintText(g, fechas);
   }
