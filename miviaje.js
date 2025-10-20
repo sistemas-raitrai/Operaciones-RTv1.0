@@ -803,8 +803,8 @@ async function main(){
 }
 main().catch(err=>{
    console.error('Firestore error:', err?.code || err?.message, err);
-   document.getElementById('itinerario-container').innerHTML =
-     `<p style="padding:1rem;color:#b00;">Error cargando el itinerario.</p>`;
+  (document.getElementById('mi-itin') || document.getElementById('itin-slot'))?.innerHTML =
+    '<p style="padding:1rem;color:#b00;">Error cargando el itinerario.</p>';
    const printEl = document.getElementById('print-block');
    if (printEl) printEl.textContent = '';
 });
