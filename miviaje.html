@@ -157,7 +157,17 @@
   <script>
   (function(){
     const cont = document.getElementById('itin-slot') || document.getElementById('mi-itin');
-    if (!cont) return;
+    
+    // Buscar la frase en toda la hoja (no sólo dentro de cont)
+    const scope = document.getElementById('hoja-resumen') || document;
+    function encontrarFrase() {
+      return Array.from(scope.querySelectorAll('*'))
+        .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
+    }
+    
+    function embutirYDistribuir(){
+      const deseo = encontrarFrase();
+      if (!deseo) return;
 
     // Quita controles de carrusel
     function desactivarCarrusel(){
@@ -207,8 +217,8 @@
       const [topCount, bottomCount] = distribucion(dias.length);
 
       // Set columnas exactas por fila
-      if (topCount)   filaTop.style.gridTemplateColumns    = `repeat(${topCount}, minmax(260px, 1fr))`;
-      if (bottomCount)filaBottom.style.gridTemplateColumns = `repeat(${bottomCount}, minmax(260px, 1fr))`;
+      if (topCount)   filaTop.style.gridTemplateColumns    = `repeat(${topCount}, minmax(220px, 1fr))`;
+      if (bottomCount)filaBottom.style.gridTemplateColumns = `repeat(${bottomCount}, minmax(220px, 1fr))`;
 
       dias.forEach((d, idx) => {
         if (idx < topCount) filaTop.appendChild(d);
