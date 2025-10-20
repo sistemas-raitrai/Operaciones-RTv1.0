@@ -810,18 +810,4 @@ main().catch(err=>{
    if (printEl) printEl.textContent = '';
 });
 
-// Debug helper visible en consola aunque el archivo sea módulo
-window.__itinDebug = function () {
-  const c = document.getElementById('itin-slot') || document.getElementById('mi-itin');
-  if (!c) { console.log('[itin dbg] sin contenedor'); return; }
-  const cols = getComputedStyle(c).gridTemplateColumns.split(' ').length;
-  console.log('[itin dbg]', {
-    contW: c.clientWidth,
-    scrollW: c.scrollWidth,
-    cols,
-    dias: c.querySelectorAll('.dia-seccion').length,
-    hasSplit: !!document.querySelector('.dias-embebidas')
-  });
-};
-
 
