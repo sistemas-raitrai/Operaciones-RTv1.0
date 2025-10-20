@@ -156,98 +156,91 @@
   <!-- Embebido y distribución 4/4, 4/3, 3/3, 3/2 -->
   <script>
   (function(){
-    const cont = document.getElementById('itin-slot') || document.getElementById('mi-itin');
-    
-    // Buscar la frase en toda la hoja (no sólo dentro de cont)
-    const scope = document.getElementById('hoja-resumen') || document;
-    function encontrarFrase() {
-      return Array.from(scope.querySelectorAll('*'))
-        .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
+    const q = (id)=>document.getElementById(id);
+    const scope = ()=> q('hoja-resumen') || document;
+    const cont  = () => q('itin-slot') || q('mi-itin');
+  
+    function desactivarCarrusel(c){
+      if(!c) return;
+      c.style.overflow = 'visible';
+      c.style.overflowX = 'visible';
+      c.querySelectorAll('input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb')
+        .forEach(el => el.remove());
     }
-    
-    function embutirYDistribuir(){
-      const deseo = encontrarFrase();
-      if (!deseo) return;
-
-    // Quita controles de carrusel
-    function desactivarCarrusel(){
-      cont.querySelectorAll(
-        'input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb'
-      ).forEach(el => el.remove());
-      cont.querySelectorAll('[style*="overflow-x"], .overflow-x, .overflow-auto, .x-overflow')
-        .forEach(el => { el.style.overflow='visible'; el.style.overflowX='visible'; });
-    }
-
-    // Reglas de distribución
+  
     function distribucion(n){
-      if (n >= 8) return [4, n-4]; // 8 -> 4/4 (máx 8)
+      if (n >= 8) return [4, n-4];
       if (n === 7) return [4, 3];
       if (n === 6) return [3, 3];
       if (n === 5) return [3, 2];
-      return [n, 0]; // 1..4 todo arriba
+      return [n, 0];
     }
-
+  
     function embutirYDistribuir(){
-      // Encontrar la frase “TURISMO RAITRAI LES DESEA…”
-      const deseo = Array.from(cont.querySelectorAll('*'))
+      const deseo = Array.from(scope().querySelectorAll('*'))
         .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
-      if (!deseo) return;
-
-      const caja = deseo.closest('.card') || deseo.parentElement;
+      const c = cont();
+      if (!deseo || !c) return;
+      const caja = deseo.closest('#hoja-resumen') || deseo.parentElement;
       if (!caja || caja.dataset.itinSplit === '1') return;
-
-      // Crear contenedor y dos filas
-      const wrap = document.createElement('div');
-      wrap.className = 'dias-embebidas';
-
-      const filaTop = document.createElement('div');
-      filaTop.className = 'fila fila-top';
-      const filaBottom = document.createElement('div');
-      filaBottom.className = 'fila fila-bottom';
-
-      // Insertar antes de la frase
-      wrap.appendChild(filaTop);
-      wrap.appendChild(filaBottom);
-      caja.insertBefore(wrap, deseo);
-
-      // Tomar días y repartir
-      const dias = Array.from(cont.querySelectorAll('.dia-seccion'));
+  
+      const dias = Array.from(c.querySelectorAll('.dia-seccion'));
       if (!dias.length) return;
-
+  
+      const wrap = document.createElement('div'); wrap.className = 'dias-embebidas';
+      const filaTop = document.createElement('div'); filaTop.className = 'fila fila-top';
+      const filaBottom = document.createElement('div'); filaBottom.className = 'fila fila-bottom';
+      wrap.appendChild(filaTop); wrap.appendChild(filaBottom);
+      caja.insertBefore(wrap, deseo);
+  
       const [topCount, bottomCount] = distribucion(dias.length);
-
-      // Set columnas exactas por fila
-      if (topCount)   filaTop.style.gridTemplateColumns    = `repeat(${topCount}, minmax(220px, 1fr))`;
-      if (bottomCount)filaBottom.style.gridTemplateColumns = `repeat(${bottomCount}, minmax(220px, 1fr))`;
-
-      dias.forEach((d, idx) => {
-        if (idx < topCount) filaTop.appendChild(d);
-        else filaBottom.appendChild(d);
-      });
-
-      // Oculta fila de abajo si no se usa
+      filaTop.style.gridTemplateColumns    = `repeat(${topCount||1}, minmax(220px, 1fr))`;
+      filaBottom.style.gridTemplateColumns = `repeat(${bottomCount||1}, minmax(220px, 1fr))`;
+  
+      dias.forEach((d,i)=> i<topCount ? filaTop.appendChild(d) : filaBottom.appendChild(d));
       if (!bottomCount) filaBottom.style.display = 'none';
-
+  
       caja.dataset.itinSplit = '1';
-      desactivarCarrusel();
-      obs.disconnect();
+      desactivarCarrusel(c);
+  
+      // Log de diagnóstico
+      console.log('[itin] split OK', {
+        dias: dias.length,
+        top: topCount, bottom: bottomCount,
+        contW: c.clientWidth, scrollW: c.scrollWidth
+      });
     }
-
-    // Marca “1. …” como secciones numeradas
+  
     function marcarNumerados(){
+      const c = cont(); if(!c) return;
       const RE = /^\s*\d+\.\s/;
-      cont.querySelectorAll('.card').forEach(card => {
-        Array.from(card.children).forEach(el => {
+      c.querySelectorAll('.card').forEach(card=>{
+        Array.from(card.children).forEach(el=>{
           if (/^(P|DIV|H\d)$/i.test(el.tagName) && RE.test((el.textContent||'').trim())){
             el.classList.add('seccion-num');
           }
         });
       });
     }
-
-    const obs = new MutationObserver(() => { embutirYDistribuir(); marcarNumerados(); });
-    obs.observe(cont, { childList:true, subtree:true });
-    window.addEventListener('load', () => { embutirYDistribuir(); marcarNumerados(); desactivarCarrusel(); });
+  
+    // Observer en BODY (porque #itin-slot se crea después)
+    const obs = new MutationObserver(()=>{ embutirYDistribuir(); marcarNumerados(); });
+    obs.observe(document.body, { childList:true, subtree:true });
+  
+    window.addEventListener('load', ()=>{
+      embutirYDistribuir();
+      marcarNumerados();
+      desactivarCarrusel(cont());
+      // Helper para que puedas loguear cuando quieras
+      window.__itinDebug = () => {
+        const c = cont();
+        console.log('[itin dbg]', {
+          hasSplit: !!document.querySelector('.dias-embebidas'),
+          contW: c?.clientWidth, scrollW: c?.scrollWidth,
+          cols: c ? getComputedStyle(c).gridTemplateColumns.split(' ').length : 0
+        });
+      };
+    });
   })();
   </script>
 </body>
