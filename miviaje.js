@@ -721,11 +721,10 @@ function embedItinIntoResumen(){
   const slot = document.getElementById('itin-slot') || document.getElementById('mi-itin');
   if (!caja || !slot) return;
 
-  // toma los días ya renderizados
   const dias = Array.from(slot.querySelectorAll('.dia-seccion'));
   if (!dias.length) return;
 
-  // limpia controles de carrusel y overflow
+  // 🔧 desactivar carrusel/slider heredado
   slot.querySelectorAll('input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb')
       .forEach(el => el.remove());
   slot.style.overflow = 'visible';
@@ -738,29 +737,27 @@ function embedItinIntoResumen(){
   const filaBottom = document.createElement('div'); filaBottom.className = 'fila fila-bottom';
   wrap.appendChild(filaTop); wrap.appendChild(filaBottom);
 
-  // distribución 4/?, 3/?, etc.
+  // 📐 Distribución: SIEMPRE 4 arriba, resto abajo
   const n = dias.length;
-  let topCount = n >= 8 ? 4 : (n === 7 ? 4 : (n === 6 ? 3 : (n === 5 ? 3 : n)));
+  const topCount = Math.min(4, n);
   const bottomCount = Math.max(0, n - topCount);
 
   filaTop.style.display = filaBottom.style.display = 'grid';
   filaTop.style.gap = filaBottom.style.gap = '12px';
-  filaTop.style.gridTemplateColumns    = `repeat(${Math.max(1, topCount)}, minmax(220px, 1fr))`;
+  filaTop.style.gridTemplateColumns    = `repeat(${topCount}, minmax(220px, 1fr))`;
   filaBottom.style.gridTemplateColumns = `repeat(${Math.max(1, bottomCount)}, minmax(220px, 1fr))`;
   if (!bottomCount) filaBottom.style.display = 'none';
 
-  dias.forEach((d,i)=> (i < topCount ? filaTop : filaBottom).appendChild(d));
+  dias.forEach((d, i) => (i < topCount ? filaTop : filaBottom).appendChild(d));
 
-  // coloca antes del texto “¡¡ TURISMO RAITRAI… !!” si existe; si no, al final
+  // Insertar antes del “¡¡ TURISMO RAITRAI … !!”
   const ancla = Array.from(caja.querySelectorAll('*'))
-    .find(n => /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent||''));
-  if (ancla?.parentElement) ancla.parentElement.insertBefore(wrap, ancla);
-  else caja.appendChild(wrap);
+    .find(n => /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
+  (ancla?.parentElement || caja).insertBefore(wrap, ancla || null);
 
-  // vacía el slot para que no quede el carrusel original
+  // Vacía el slot original
   slot.innerHTML = '';
 }
-
 
 /* ──────────────────────────────────────────────────────────────────────────
    MAIN
@@ -836,16 +833,13 @@ async function main(){
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
     if (printEl) printEl.textContent = buildPrintText(g, []);
   } else {
-    // 👇 OJO: aquí faltaba declarar slot
-    const slotEl = document.getElementById('itin-slot');
-  
-    if (slotEl) {
-      renderItin(g, fechas, hideNotes, slotEl);
-      embedItinIntoResumen();
+    const slot = document.getElementById('itin-slot'); // 👈 antes no existía
+    if (slot) {
+      renderItin(g, fechas, hideNotes, slot);
     } else {
       renderItin(g, fechas, hideNotes);
-      embedItinIntoResumen();
     }
+    embedItinIntoResumen(); // 👈 embebe y quita carrusel SIEMPRE
     if (printEl) printEl.textContent = buildPrintText(g, fechas);
   }
 }
