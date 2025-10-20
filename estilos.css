@@ -960,3 +960,17 @@ body.modal-open { overflow: hidden; }
   z-index: 1100;               /* > backdrop */
 }
 
+#hoja-resumen input[type="range"],
+#hoja-resumen [role="scrollbar"],
+#hoja-resumen .scrollbar,
+#hoja-resumen .x-scroll,
+#hoja-resumen .range,
+#hoja-resumen .slider,
+#hoja-resumen .scroll-track,
+#hoja-resumen .scroll-thumb { display:none !important; }
+
+#hoja-resumen, #hoja-resumen *[style*="overflow-x"] {
+  overflow: visible !important;
+  overflow-x: visible !important;
+}
+
