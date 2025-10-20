@@ -836,13 +836,15 @@ async function main(){
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
     if (printEl) printEl.textContent = buildPrintText(g, []);
   } else {
-    // Si existe el slot dentro de la hoja, dibuja ahí; si no, usa el contenedor de siempre.
-     if (slot) {
-      renderItin(g, fechas, hideNotes, slot);
-      embedItinIntoResumen();              // ← AQUÍ
+    // 👇 OJO: aquí faltaba declarar slot
+    const slotEl = document.getElementById('itin-slot');
+  
+    if (slotEl) {
+      renderItin(g, fechas, hideNotes, slotEl);
+      embedItinIntoResumen();
     } else {
       renderItin(g, fechas, hideNotes);
-      embedItinIntoResumen();              // ← y aquí por si usó #mi-itin
+      embedItinIntoResumen();
     }
     if (printEl) printEl.textContent = buildPrintText(g, fechas);
   }
