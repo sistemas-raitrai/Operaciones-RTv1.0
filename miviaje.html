@@ -64,6 +64,8 @@
       font-weight:700;
     }
 
+    main input[type="range"] { display: none !important; }
+
     /* Quitar carrusel/scroll horizontal heredado */
     #mi-itin, #itin-slot { overflow:visible !important; }
     #mi-itin input[type="range"],
@@ -175,15 +177,12 @@
       c.querySelectorAll('input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb')
         .forEach(el => el.remove());
     }
-  
+
     function distribucion(n){
-      if (n >= 8) return [4, n-4];
-      if (n === 7) return [4, 3];
-      if (n === 6) return [3, 3];
-      if (n === 5) return [3, 2];
-      return [n, 0];
+      const top = Math.min(4, n);
+      return [top, n - top];
     }
-  
+      
     function embutirYDistribuir(){
       const deseo = Array.from(scope().querySelectorAll('*'))
         .find(n => n && /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
