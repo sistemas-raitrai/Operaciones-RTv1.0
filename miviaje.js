@@ -890,12 +890,16 @@ async function main(){
     if (printEl) printEl.textContent = buildPrintText(g, fechas);
   }
 }
-main().catch(err=>{
-   console.error('Firestore error:', err?.code || err?.message, err);
-  (document.getElementById('mi-itin') || document.getElementById('itin-slot'))?.innerHTML =
-    '<p style="padding:1rem;color:#b00;">Error cargando el itinerario.</p>';
-   const printEl = document.getElementById('print-block');
-   if (printEl) printEl.textContent = '';
+main().catch(err => {
+  console.error('Firestore error:', err?.code || err?.message, err);
+
+  const el = document.getElementById('mi-itin') || document.getElementById('itin-slot');
+  if (el) {
+    el.innerHTML = '<p style="padding:1rem;color:#b00;">Error cargando el itinerario.</p>';
+  }
+
+  const printEl = document.getElementById('print-block');
+  if (printEl) printEl.textContent = '';
 });
 
 // Debug helper visible en consola aunque el archivo sea módulo
