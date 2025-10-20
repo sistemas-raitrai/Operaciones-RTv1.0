@@ -480,7 +480,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     hoja = document.createElement('section');
     hoja.id = 'hoja-resumen';
     hoja.style.cssText='background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:14px;margin:12px 0;';
-    const cont = document.getElementById('itin-slot') || document.getElementById('itinerario-container');
+    const cont = document.getElementById('itin-slot') || document.getElementById('mi-itin');
     cont?.parentNode?.insertBefore(hoja, cont);
   }
 
@@ -673,11 +673,11 @@ function buildPrintText(grupo, fechas){
    Render del itinerario visual (tarjetas)
 ────────────────────────────────────────────────────────────────────────── */
 function renderItin(grupo, fechas, hideNotes, targetEl){
-  const cont = targetEl || document.getElementById('itinerario-container');
+  const cont = targetEl || document.getElementById('mi-itin');
   cont.innerHTML = '';
 
   // matar estilos heredados del carrusel
-  cont.classList.remove('itin-row', 'grid');
+  
   cont.style.display = 'grid';
   cont.style.gridTemplateColumns = 'repeat(4, minmax(260px, 1fr))'; // 4 por fila
   cont.style.gap = '12px';
@@ -727,7 +727,7 @@ async function main(){
   const destinoEl = document.getElementById('grupo-destino');
   const fechasEl  = document.getElementById('grupo-fechas');
   const resumenPax= document.getElementById('resumen-pax');
-  const cont      = document.getElementById('itinerario-container');
+  const cont      = document.getElementById('mi-itin');
   const printEl   = document.getElementById('print-block');
   const btnPrint  = document.getElementById('btnPrint');
   const btnShare  = document.getElementById('btnShare');
@@ -794,7 +794,7 @@ async function main(){
     if (slot) {
       renderItin(g, fechas, hideNotes, slot);
       // deja vacío el contenedor externo para no duplicar
-      document.getElementById('itinerario-container').innerHTML = '';
+      document.getElementById('mi-itin').innerHTML = '';
     } else {
       renderItin(g, fechas, hideNotes);
     }
