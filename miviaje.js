@@ -679,7 +679,7 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
   // matar estilos heredados del carrusel
   
   cont.style.display = 'grid';
-  cont.style.gridTemplateColumns = 'repeat(4, minmax(260px, 1fr))'; // 4 por fila
+  cont.style.gridTemplateColumns = 'repeat(4, minmax(220px, 1fr))';
   cont.style.gap = '12px';
   cont.style.overflow = 'visible';
   cont.style.overflowX = 'visible';
