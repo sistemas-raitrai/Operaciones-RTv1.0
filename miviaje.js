@@ -880,7 +880,6 @@ async function main(){
   renderHojaResumen(g, vuelosNorm, hoteles);
 
   // Itinerario visual
-  // Itinerario visual
   if (!fechas.length) {
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
     if (printEl) printEl.textContent = buildPrintText(g, []);
