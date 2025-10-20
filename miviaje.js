@@ -480,7 +480,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     hoja = document.createElement('section');
     hoja.id = 'hoja-resumen';
     hoja.style.cssText='background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:14px;margin:12px 0;';
-    const cont = document.getElementById('itinerario-container');
+    const cont = document.getElementById('itin-slot') || document.getElementById('itinerario-container');
     cont?.parentNode?.insertBefore(hoja, cont);
   }
 
@@ -631,7 +631,7 @@ const vuelosHTML = (hasAereos) ? `
       <!-- ITINERARIO DE VIAJE -->
       <li style="margin-bottom:6px;">
         <div style="font-weight:700;">ITINERARIO DE VIAJE</div>
-        <div id="itin-slot" class="itin-row" style="margin-top:6px;"></div>
+        <div id="itin-slot" style="margin-top:6px;"></div>
       </li>
     </ol>
 
@@ -676,21 +676,23 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
   const cont = targetEl || document.getElementById('itinerario-container');
   cont.innerHTML = '';
 
-  // ▶ Grid de 4 columnas, sin scroll horizontal
+  // matar estilos heredados del carrusel
+  cont.classList.remove('itin-row', 'grid');
   cont.style.display = 'grid';
   cont.style.gridTemplateColumns = 'repeat(4, minmax(260px, 1fr))'; // 4 por fila
   cont.style.gap = '12px';
-  cont.style.overflow = 'visible';           // quita scroll
-  cont.style.removeProperty('overflowX');    // por si quedó de antes
-  cont.classList.remove('grid');             // evita estilos previos de clase "grid"
+  cont.style.overflow = 'visible';
+  cont.style.overflowX = 'visible';
+  // por si quedó algún control de scroll en el DOM
+  cont.querySelectorAll('input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb')
+      .forEach(el => el.remove());
 
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement('section');
     sec.className = 'dia-seccion';
-    // Importante: quepa dentro de la celda del grid
     sec.style.minWidth = '0';
     sec.style.maxWidth = 'unset';
-    sec.style.flex = 'unset'; // por si quedó algo de estilos anteriores
+    sec.style.flex = 'unset';
 
     sec.dataset.fecha = fecha;
     sec.innerHTML = `<h3 class="dia-titulo"><span class="dia-label">Día ${idx+1}</span> – <span class="dia-fecha">${formatDateReadable(fecha)}</span></h3><ul class="activity-list"></ul>`;
