@@ -41,6 +41,14 @@
     }
     .dias-embebidas .fila:last-child{ margin-bottom:0; }
 
+    /* Fallback por si el JS no alcanzó: evita overflow en slot/contenedor */
+    #mi-itin, #itin-slot {
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+      gap:12px;
+      overflow:visible !important;
+    }
+
     .dias-embebidas .dia-seccion{
       margin:0;
       width:auto !important;
