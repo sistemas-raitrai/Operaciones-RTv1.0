@@ -676,30 +676,21 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
   const cont = targetEl || document.getElementById('itinerario-container');
   cont.innerHTML = '';
 
-  // Layout según destino
-  if (cont.id === 'itin-slot') {
-    // Horizontal (en la hoja)
-    cont.classList.remove('grid');
-    cont.style.display = 'flex';
-    cont.style.gap = '12px';
-    cont.style.overflowX = 'auto';
-  } else {
-    // El contenedor externo sigue siendo grid
-    cont.classList.add('grid');
-    cont.style.removeProperty('display');
-    cont.style.removeProperty('gap');
-    cont.style.removeProperty('overflow');
-  }
+  // ▶ Grid de 4 columnas, sin scroll horizontal
+  cont.style.display = 'grid';
+  cont.style.gridTemplateColumns = 'repeat(4, minmax(260px, 1fr))'; // 4 por fila
+  cont.style.gap = '12px';
+  cont.style.overflow = 'visible';           // quita scroll
+  cont.style.removeProperty('overflowX');    // por si quedó de antes
+  cont.classList.remove('grid');             // evita estilos previos de clase "grid"
 
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement('section');
     sec.className = 'dia-seccion';
-    if (cont.id === 'itin-slot') {
-      // Asegura ancho tipo “card” al ir en fila
-      sec.style.minWidth = '320px';
-      sec.style.maxWidth = '360px';
-      sec.style.flex = '0 0 auto';
-    }
+    // Importante: quepa dentro de la celda del grid
+    sec.style.minWidth = '0';
+    sec.style.maxWidth = 'unset';
+    sec.style.flex = 'unset'; // por si quedó algo de estilos anteriores
 
     sec.dataset.fecha = fecha;
     sec.innerHTML = `<h3 class="dia-titulo"><span class="dia-label">Día ${idx+1}</span> – <span class="dia-fecha">${formatDateReadable(fecha)}</span></h3><ul class="activity-list"></ul>`;
