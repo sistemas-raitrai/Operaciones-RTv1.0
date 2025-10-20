@@ -673,31 +673,26 @@ function buildPrintText(grupo, fechas){
    Render del itinerario visual (tarjetas)
 ────────────────────────────────────────────────────────────────────────── */
 function renderItin(grupo, fechas, hideNotes, targetEl){
-  const cont = targetEl || document.getElementById('mi-itin');
-  cont.innerHTML = '';
-
-  // matar estilos heredados del carrusel
-  
-  cont.style.display = 'grid';
-  cont.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
-  cont.style.gridAutoFlow = 'row dense';
-  cont.style.gap = '12px';
-  cont.style.overflow = 'visible';
-  cont.style.overflowX = 'visible';
-  // por si quedó algún control de scroll en el DOM
-  cont.querySelectorAll('input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb')
-      .forEach(el => el.remove());
-
+  // 1) Construimos todas las tarjetas de día en memoria
+  const diasSecs = [];
   fechas.forEach((fecha, idx) => {
     const sec = document.createElement('section');
     sec.className = 'dia-seccion';
     sec.style.minWidth = '0';
     sec.style.maxWidth = 'unset';
     sec.style.flex = 'unset';
-
     sec.dataset.fecha = fecha;
-    sec.innerHTML = `<h3 class="dia-titulo"><span class="dia-label">Día ${idx+1}</span> – <span class="dia-fecha">${formatDateReadable(fecha)}</span></h3><ul class="activity-list"></ul>`;
-    const ul = sec.querySelector('.activity-list');
+
+    const ulId = `acts-${idx}`;
+    sec.innerHTML = `
+      <h3 class="dia-titulo">
+        <span class="dia-label">Día ${idx+1}</span> – 
+        <span class="dia-fecha">${formatDateReadable(fecha)}</span>
+      </h3>
+      <ul id="${ulId}" class="activity-list"></ul>
+    `;
+
+    const ul = sec.querySelector('#'+ulId);
     const src = grupo.itinerario?.[fecha];
     const arr = (Array.isArray(src)?src:(src && typeof src==='object'?Object.values(src):[]))
       .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
@@ -706,15 +701,71 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
       ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
     } else {
       arr.forEach(act=>{
-        const li=document.createElement('li'); li.className='activity-card';
+        const li=document.createElement('li');
+        li.className='activity-card';
         const notesHtml = (!hideNotes && act.notas) ? `<p style="opacity:.85;">📝 ${act.notas}</p>` : '';
         li.innerHTML = `<p><strong>${(act.actividad||'').toString().toUpperCase()}</strong></p>${notesHtml}`;
         ul.appendChild(li);
       });
     }
-    cont.appendChild(sec);
+    diasSecs.push(sec);
   });
+
+  // 2) Preparamos el contenedor 2 filas (4 arriba + resto abajo)
+  const wrap = document.createElement('div'); 
+  wrap.className = 'dias-embebidas';
+
+  const filaTop = document.createElement('div'); 
+  filaTop.className = 'fila fila-top';
+
+  const filaBottom = document.createElement('div'); 
+  filaBottom.className = 'fila fila-bottom';
+
+  wrap.appendChild(filaTop); 
+  wrap.appendChild(filaBottom);
+
+  const n = diasSecs.length;
+  const topCount = Math.min(4, n);
+  const bottomCount = Math.max(0, n - topCount);
+
+  filaTop.style.display = filaBottom.style.display = 'grid';
+  filaTop.style.gap = filaBottom.style.gap = '12px';
+  filaTop.style.gridTemplateColumns    = `repeat(${Math.max(1, topCount)}, minmax(220px, 1fr))`;
+  filaBottom.style.gridTemplateColumns = `repeat(${Math.max(1, bottomCount)}, minmax(220px, 1fr))`;
+  if (!bottomCount) filaBottom.style.display = 'none';
+
+  diasSecs.forEach((sec, i)=> (i < topCount ? filaTop : filaBottom).appendChild(sec));
+
+  // 3) Insertamos ANTES de “¡¡ TURISMO RAITRAI… !!” si existe, o reemplazamos el slot
+  const caja = document.getElementById('hoja-resumen');
+  let ancla = null;
+  if (caja){
+    ancla = Array.from(caja.querySelectorAll('*'))
+      .find(n => /TURISMO\s+RAITRAI\s+LES\s+DESEA/i.test(n.textContent || ''));
+  }
+
+  // limpio cualquier carrusel/overflow previo del target
+  const cont = targetEl || document.getElementById('mi-itin');
+  if (cont){
+    cont.innerHTML = '';
+    cont.style.overflow = 'visible';
+    cont.style.overflowX = 'visible';
+    cont.querySelectorAll('input[type="range"], [role="scrollbar"], .scrollbar, .x-scroll, .slider, .scroll-track, .scroll-thumb')
+        .forEach(el => el.remove());
+  }
+
+  if (caja && ancla && ancla.parentElement){
+    ancla.parentElement.insertBefore(wrap, ancla);
+    // si había #itin-slot, lo quitamos para que no duplique
+    if (targetEl) targetEl.remove();
+  } else if (cont) {
+    cont.appendChild(wrap); // fallback: lo mostramos en #mi-itin
+  } else {
+    // última red: lo metemos al body
+    document.body.appendChild(wrap);
+  }
 }
+
 
 function embedItinIntoResumen(){
   const caja = document.getElementById('hoja-resumen');
@@ -829,17 +880,13 @@ async function main(){
   renderHojaResumen(g, vuelosNorm, hoteles);
 
   // Itinerario visual
+  // Itinerario visual
   if (!fechas.length) {
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
     if (printEl) printEl.textContent = buildPrintText(g, []);
   } else {
-    const slot = document.getElementById('itin-slot'); // 👈 antes no existía
-    if (slot) {
-      renderItin(g, fechas, hideNotes, slot);
-    } else {
-      renderItin(g, fechas, hideNotes);
-    }
-    embedItinIntoResumen(); // 👈 embebe y quita carrusel SIEMPRE
+    const slot = document.getElementById('itin-slot');
+    renderItin(g, fechas, hideNotes, slot || cont); // 👈 renderiza y ya parte 4 + resto
     if (printEl) printEl.textContent = buildPrintText(g, fechas);
   }
 }
