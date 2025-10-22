@@ -725,7 +725,7 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
   wrap.appendChild(filaBottom);
 
   const n = diasSecs.length;
-  const topCount = Math.min(3, n);
+  const topCount = Math.min(4, n);
   const bottomCount = Math.max(0, n - topCount);
 
   filaTop.style.display = filaBottom.style.display = 'grid';
@@ -790,7 +790,7 @@ function embedItinIntoResumen(){
 
   // 📐 Distribución: SIEMPRE 4 arriba, resto abajo
   const n = dias.length;
-  const topCount = Math.min(3, n);
+  const topCount = Math.min(4, n);
   const bottomCount = Math.max(0, n - topCount);
 
   filaTop.style.display = filaBottom.style.display = 'grid';
