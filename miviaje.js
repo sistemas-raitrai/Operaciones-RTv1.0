@@ -857,11 +857,12 @@ async function main(){
   btnShare?.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); }catch{ const i=document.createElement('input'); i.value=shareUrl; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); alert('Enlace copiado'); } });
 
   // Cabecera
-  titleEl.textContent   = ` ${(g.programa || '—').toString().toUpperCase()}`;
+  titleEl.textContent   = ' ' + (g.programa || '—').toString().toUpperCase(); // ← sin template literal
   nombreEl.textContent  = g.nombreGrupo || '—';
   numEl.textContent     = g.numeroNegocio ?? g.id ?? '—';
   destinoEl.textContent = g.destino || '—';
   fechasEl.textContent  = formatDateRange(g.fechaInicio, g.fechaFin);
+
   const totalA = parseInt(g.adultos,10)||0, totalE=parseInt(g.estudiantes,10)||0;
   const total = (totalA + totalE) || g.pax || g.cantidadgrupo || '';
   resumenPax.textContent = total ? `👥 Total pax: ${total}${(totalA||totalE)?` (A:${totalA} · E:${totalE})`:''}` : '';
