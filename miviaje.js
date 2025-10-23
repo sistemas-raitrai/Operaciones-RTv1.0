@@ -1035,67 +1035,75 @@ function embedItinIntoResumen(){
 function injectPrintStyles(){
   if (document.getElementById('print-tweaks')) return;
   const css = `
-    /* En pantalla no se ve el bloque de impresión */
-    #print-block { display: none; }
-
     @media print {
-      @page { size: A4; margin: 12mm 12mm; }
+      @page { size: A4; margin: 10mm 12mm; }
       html, body { background:#fff !important; }
 
-      /* (Opcional) reservar margen para logo fijo */
-      body { margin-right: 28mm !important; }
+      /* Logo fijo (NO reservamos margen en todo el body) */
       #logo-raitrai{
         position: fixed !important;
         right: 8mm !important;
         top: 8mm !important;
-        width: 26mm !important;
+        width: 22mm !important;
         height: auto !important;
         z-index: 0 !important;
         opacity: .95;
         pointer-events: none;
       }
 
-      /* Ocultar la hoja visual y mostrar solo el documento en texto */
-      #hoja-resumen { display: none !important; }
-      .dias-embebidas, #mi-itin, #itin-slot { display: none !important; }
-
-      /* Documento de impresión en texto */
-      #print-block {
-        display: block !important;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-        font-size: 12.25pt;
-        line-height: 1.38;
-        color: #111827;
+      /* Documento compacto y consistente */
+      .print-doc{
+        font-family: "Segoe UI", Roboto, Arial, sans-serif;
+        font-size: 11.5pt;
+        line-height: 1.28;
+        color:#111827;
       }
-      #print-block .doc-title{
-        font-weight: 800; font-size: 18pt; text-align: left;
-        margin: 0 0 4pt 0;
+      .print-doc .doc-title{
+        font-size: 14.5pt;
+        font-weight: 800;
+        margin: 0 0 2mm 0;
+        padding-right: 26mm; /* solo encabezado, no todo el body */
       }
-      #print-block .doc-sub{
-        font-size: 11.5pt; color:#374151; margin: 0 0 10pt 0;
-      }
-      #print-block .sec{
-        margin: 10pt 0 10pt 0;
-        break-inside: avoid; page-break-inside: avoid;
-      }
-      #print-block .sec-title{
-        font-weight: 700; margin: 0 0 4pt 0;
-      }
-      #print-block .note{
-        color:#6b7280; font-size: 10.75pt; margin: 2pt 0 6pt 0;
-      }
-      #print-block ul{ margin: 4pt 0 6pt 18pt; padding: 0; }
-      #print-block li{ margin: 2pt 0; }
-
-      /* Evitar cortes feos dentro de ítems largos */
-      #print-block .flights li,
-      #print-block .hoteles li,
-      #print-block .itinerario li{
-        break-inside: avoid; page-break-inside: avoid;
+      .print-doc .doc-sub{
+        font-size: 10.5pt;
+        color:#4b5563;
+        margin: 0 0 4mm 0;
+        padding-right: 26mm;
       }
 
-      #print-block .day-head{ font-weight: 700; text-transform: uppercase; }
-      #print-block .closing{ text-align:center; font-weight:800; margin-top: 12pt; }
+      .print-doc .sec{ margin: 4mm 0 0 0; page-break-inside: avoid; }
+      .print-doc .sec-title{ font-weight: 700; margin: 0 0 1.5mm 0; font-size: 12pt; }
+      .print-doc .note{ color:#6b7280; margin: 0 0 2mm 0; }
+
+      .print-doc ul{ margin: 0 0 2mm 5mm; padding: 0; }
+      .print-doc ul ul{ margin: 1mm 0 0 5mm; }
+      .print-doc li{ margin: .6mm 0; }
+
+      /* Vuelos/Hotelería algo más apretado */
+      .print-doc .flights li,
+      .print-doc .hoteles li{ margin: .8mm 0; }
+
+      /* "Documentos": el título de cada bloque sin viñeta */
+      .print-doc ul.docs > li{ list-style: none; margin-left: 0; }
+      .print-doc ul.docs > li > div{ font-weight: 700; margin: .5mm 0; }
+      .print-doc ul.docs > li > ul{ margin-left: 5mm; }
+
+      /* Itinerario compacto */
+      .print-doc .itinerario{ margin: 0 0 1mm 5mm; }
+      .print-doc .it-day{ margin: 1.5mm 0; }
+      .print-doc .it-day .day-head{ font-weight: 700; margin: 0 0 .5mm 0; }
+
+      /* Despedida: no dejarla sola en otra página */
+      .print-doc .closing{
+        text-align:center;
+        font-weight:800;
+        margin-top: 3mm;
+        page-break-before: avoid;
+        page-break-inside: avoid;
+      }
+
+      /* Reset márgenes extra de párrafos genéricos */
+      .print-doc p{ margin: 0; }
     }
   `;
   const s = document.createElement('style');
@@ -1204,7 +1212,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
       <div class="sec">
         <div class="sec-title">4. DOCUMENTOS PARA EL VIAJE</div>
-        <ul>${documentosHTML}</ul>
+        <ul class="docs">${documentosHTML}</ul>
       </div>
 
       <div class="sec">
