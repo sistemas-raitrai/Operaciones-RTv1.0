@@ -687,28 +687,72 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
    Impresión (texto plano) – mismo formato que ya ocupabas
 ────────────────────────────────────────────────────────────────────────── */
 function buildPrintText(grupo, fechas){
-  let out='';
-  out += `PROGRAMA: ${(grupo.programa||'—').toString().toUpperCase()}\n`;
-  out += `GRUPO: ${grupo.nombreGrupo||'—'}\n`;
-  out += `N° NEGOCIO: ${grupo.numeroNegocio??grupo.id??'—'}\n`;
-  out += `DESTINO: ${grupo.destino||'—'}\n`;
-  out += `FECHAS: ${formatDateRange(grupo.fechaInicio, grupo.fechaFin)}\n\n`;
+  const header = [];
+  header.push(`PROGRAMA: ${(grupo.programa||'—').toString().toUpperCase()}`);
+  header.push(`GRUPO: ${grupo.nombreGrupo||'—'}`);
+  header.push(`N° NEGOCIO: ${grupo.numeroNegocio??grupo.id??'—'}`);
+  header.push(`DESTINO: ${grupo.destino||'—'}`);
+  header.push(`FECHAS: ${formatDateRange(grupo.fechaInicio, grupo.fechaFin)}`);
+  header.push(''); // línea en blanco
 
-  fechas.forEach((f,i)=>{
-    out+=`Día ${i+1} – ${formatDateReadable(f)}\n`;
+  const lines = [];
+
+  fechas.forEach((f, i) => {
     const src = grupo.itinerario?.[f];
-    const arr = (Array.isArray(src)?src:(src && typeof src==='object'?Object.values(src):[]))
+    const arr = (Array.isArray(src) ? src
+               : (src && typeof src==='object' ? Object.values(src) : []))
       .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
-    if(!arr.length){ out+='— Sin actividades —\n\n'; return; }
-    arr.forEach(act=>{
-      const hi=normTime(act.horaInicio)||'--:--', hf=normTime(act.horaFin), rango=hf?` – ${hf}`:'';
-      const name=(act.actividad||'').toString().toUpperCase();
-      const a=parseInt(act.adultos,10)||0, e=parseInt(act.estudiantes,10)||0, pax=(a+e)||act.pasajeros||0;
-      out+=`${hi}${rango}  ${name}${pax?` 👥 ${pax} pax`:''}\n\n`;
-    });
-    out+='\n';
+
+    const actividades = arr
+      .map(a => (a?.actividad || '').toString().trim().toUpperCase())
+      .filter(Boolean);
+
+    const linea = `Día ${i+1} – ${formatDateReadable(f)}: ${actividades.length ? actividades.join(' - ') : '—'}`;
+    lines.push(linea);
   });
-  return out.trimEnd();
+
+  return [...header, ...lines].join('\n');
+}
+
+function injectPrintStyles(){
+  if (document.getElementById('print-tweaks')) return;
+  const css = `
+    /* En pantalla el bloque de texto no molesta */
+    #print-block { display: none; }
+
+    @media print {
+      /* Tamaño/ márgenes de la hoja (ajústalo si quieres) */
+      @page { size: A4; margin: 10mm 8mm; }
+
+      html, body { background:#fff !important; }
+
+      /* Quita la "caja" del resumen */
+      #hoja-resumen{
+        border: none !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+      }
+
+      /* Tablas a todo el ancho */
+      #hoja-resumen table { width: 100% !important; }
+
+      /* Ocultar el itinerario visual y mostrar el bloque de texto */
+      .dias-embebidas, #mi-itin, #itin-slot { display: none !important; }
+      #print-block {
+        display: block !important;
+        white-space: pre-wrap;
+        font-size: 12.5pt;
+        line-height: 1.35;
+        margin-top: 8px;
+      }
+    }
+  `;
+  const s = document.createElement('style');
+  s.id = 'print-tweaks';
+  s.textContent = css;
+  document.head.appendChild(s);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -869,6 +913,7 @@ async function main(){
   const btnPrint  = document.getElementById('btnPrint');
   const btnShare  = document.getElementById('btnShare');
 
+  injectPrintStyles(); 
   btnPrint?.addEventListener('click', ()=> window.print());
 
   if(!numeroNegocio && !id){
