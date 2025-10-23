@@ -1032,85 +1032,87 @@ function embedItinIntoResumen(){
   slot.innerHTML = '';
 }
 
+/* ---------- PRINT CSS v2: documento limpio A4, sin bordes, tablas 100% y logo seguro ---------- */
 function injectPrintStyles(){
   if (document.getElementById('print-tweaks')) return;
+
   const css = `
+    /* En pantalla: oculto el bloque de impresión */
+    #print-block { display: none; }
+
     @media print {
       @page { size: A4; margin: 10mm 12mm; }
-      html, body { background:#fff !important; }
 
-      /* Logo fijo (NO reservamos margen en todo el body) */
+      /* Respiro a la derecha para el logo fijo */
+      body { background:#fff !important; margin-right: 32mm !important; }
+
+      /* Logo fijo arriba derecha si existe en la página */
       #logo-raitrai{
         position: fixed !important;
         right: 8mm !important;
         top: 8mm !important;
-        width: 22mm !important;
+        width: 24mm !important;
         height: auto !important;
-        z-index: 0 !important;
+        z-index: 0 !important;           /* detrás del contenido */
         opacity: .95;
         pointer-events: none;
       }
 
-      /* Documento compacto y consistente */
+      /* Mostrar SOLO el documento de impresión y esconder lo visual */
+      #print-block { display: block !important; }
+      #mi-itin, .dias-embebidas, #itin-slot { display: none !important; }
+
+      /* Quitar “caja” y sombras de la hoja resumen en impresión */
+      #hoja-resumen{
+        border: none !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+      }
+
+      /* La tabla de vuelos NO debe cortarse en impresión */
+      #hoja-resumen table, #print-block table{
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed !important;
+        border-collapse: collapse !important;
+      }
+      #hoja-resumen th, #hoja-resumen td, #print-block th, #print-block td{
+        padding: 4pt 6pt !important;
+        word-break: break-word !important;
+        white-space: normal !important;
+        font-size: 10.5pt !important;
+      }
+      /* Los wrappers que tenían overflow:auto (hacían recortes) */
+      #hoja-resumen div{ overflow: visible !important; }
+
+      /* Tipografía y espaciados del “documento” */
       .print-doc{
-        font-family: "Segoe UI", Roboto, Arial, sans-serif;
-        font-size: 11.5pt;
-        line-height: 1.28;
-        color:#111827;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+        font-size: 11pt; color:#111827;
       }
-      .print-doc .doc-title{
-        font-size: 14.5pt;
-        font-weight: 800;
-        margin: 0 0 2mm 0;
-        padding-right: 26mm; /* solo encabezado, no todo el body */
-      }
-      .print-doc .doc-sub{
-        font-size: 10.5pt;
-        color:#4b5563;
-        margin: 0 0 4mm 0;
-        padding-right: 26mm;
-      }
+      .print-doc .doc-title{ font-weight:800; font-size:14pt; margin:0 0 2mm 0; }
+      .print-doc .doc-sub{ color:#6b7280; margin:0 0 4mm 0; }
+      .print-doc .sec{ margin:0 0 5mm 0; }
+      .print-doc .sec-title{ font-weight:700; margin:0 0 1.5mm 0; }
+      .print-doc .note{ color:#6b7280; margin:1mm 0 2mm 0; }
+      .print-doc ul{ margin:1mm 0 0 5mm; padding:0; }
+      .print-doc .itinerario{ list-style: disc; }
+      .print-doc .closing{ text-align:center; font-weight:800; margin-top:8mm; }
 
-      .print-doc .sec{ margin: 4mm 0 0 0; page-break-inside: avoid; }
-      .print-doc .sec-title{ font-weight: 700; margin: 0 0 1.5mm 0; font-size: 12pt; }
-      .print-doc .note{ color:#6b7280; margin: 0 0 2mm 0; }
-
-      .print-doc ul{ margin: 0 0 2mm 5mm; padding: 0; }
-      .print-doc ul ul{ margin: 1mm 0 0 5mm; }
-      .print-doc li{ margin: .6mm 0; }
-
-      /* Vuelos/Hotelería algo más apretado */
-      .print-doc .flights li,
-      .print-doc .hoteles li{ margin: .8mm 0; }
-
-      /* "Documentos": el título de cada bloque sin viñeta */
-      .print-doc ul.docs > li{ list-style: none; margin-left: 0; }
-      .print-doc ul.docs > li > div{ font-weight: 700; margin: .5mm 0; }
-      .print-doc ul.docs > li > ul{ margin-left: 5mm; }
-
-      /* Itinerario compacto */
-      .print-doc .itinerario{ margin: 0 0 1mm 5mm; }
-      .print-doc .it-day{ margin: 1.5mm 0; }
-      .print-doc .it-day .day-head{ font-weight: 700; margin: 0 0 .5mm 0; }
-
-      /* Despedida: no dejarla sola en otra página */
-      .print-doc .closing{
-        text-align:center;
-        font-weight:800;
-        margin-top: 3mm;
-        page-break-before: avoid;
-        page-break-inside: avoid;
-      }
-
-      /* Reset márgenes extra de párrafos genéricos */
-      .print-doc p{ margin: 0; }
+      /* Oculta barras, botones u otros adornos de la UI si existieran */
+      header, nav, footer, .toolbar, .actions, .buttons { display:none !important; }
     }
   `;
+
   const s = document.createElement('style');
   s.id = 'print-tweaks';
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────────
    Estilos de IMPRESIÓN (logo fijo, sin “caja”, tablas full width, etc.)
