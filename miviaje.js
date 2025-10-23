@@ -239,60 +239,84 @@ async function loadVuelosInfo(g){
     });
   };
 
-  // helper: consulta por TODAS las variantes del numeroNegocio
-  const pushByGroupNum = async (coll, field = 'grupoNumero') => {
-    if (!groupNum) return;
-    const variants = new Set([
-      groupNum,
-      ...buildCompositeVariants(groupNum),
-      ...splitNumeroCompuesto(groupNum)
-    ]);
-    for (const v of variants) {
-      try { pushSnap(await getDocs(query(collection(db, coll), where(field, '==', v)))); } catch (_) {}
+  const runQs = async (qs) => {
+    const snaps = await Promise.all(qs.map(q => {
+      if (!q) return Promise.resolve(null);
+      // q puede ser un Query o una CollectionReference
+      return getDocs(q).catch(() => null);
+    }));
+    snaps.forEach(pushSnap);
+  };
+
+  const coll = (name) => collection(db, name);
+
+  // ===== FASE 1: más probable (rápida) =====
+  await runQs([
+    groupDocId ? query(coll('vuelos'), where('grupoId','==',groupDocId)) : null,
+    groupDocId ? query(coll('vuelos'), where('grupoDocId','==',groupDocId)) : null,
+    groupDocId ? collection(db, 'grupos', groupDocId, 'vuelos') : null
+  ]);
+
+  // Si ya hay algo, no seguimos fanout
+  if (vistos.size === 0 && groupNum) {
+    // Variantes del número (incluye partes y número como Number)
+    const variants = new Set([groupNum, ...buildCompositeVariants(groupNum), ...splitNumeroCompuesto(groupNum)]);
+    const qs = [];
+    variants.forEach(v => {
+      qs.push(query(coll('vuelos'), where('grupoNumero','==',v)));
       const n = Number(v);
-      if (!Number.isNaN(n)) {
-        try { pushSnap(await getDocs(query(collection(db, coll), where(field, '==', n)))); } catch (_) {}
-      }
+      if (!Number.isNaN(n)) qs.push(query(coll('vuelos'), where('grupoNumero','==',n)));
+    });
+    await runQs(qs);
+  }
+
+  // ===== FASE 2: asignaciones alternativas =====
+  if (vistos.size === 0) {
+    await runQs([
+      groupDocId ? query(coll('flightAssignments'), where('grupoId','==',groupDocId)) : null,
+      groupDocId ? query(coll('vuelosAssignments'), where('grupoId','==',groupDocId)) : null
+    ]);
+
+    if (vistos.size === 0 && groupNum) {
+      const variants = new Set([groupNum, ...buildCompositeVariants(groupNum), ...splitNumeroCompuesto(groupNum)]);
+      const qs = [];
+      ['flightAssignments', 'vuelosAssignments'].forEach(cn => {
+        variants.forEach(v => {
+          qs.push(query(coll(cn), where('grupoNumero','==',v)));
+          const n = Number(v);
+          if (!Number.isNaN(n)) qs.push(query(coll(cn), where('grupoNumero','==',n)));
+        });
+      });
+      await runQs(qs);
     }
-  };
+  }
 
-  // 1) Colección "vuelos" (por id y por número en todas sus variantes)
-  try { if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoId','==',groupDocId)))); } catch (_){}
-  try { if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoDocId','==',groupDocId)))); } catch (_){}
-  await pushByGroupNum('vuelos', 'grupoNumero');
+  // ===== FASE 3: traslados terrestres (fallback) =====
+  if (vistos.size === 0) {
+    await runQs([
+      groupDocId ? query(coll('transportes'), where('grupoId','==',groupDocId)) : null,
+      groupDocId ? query(coll('transfers'),    where('grupoId','==',groupDocId)) : null,
+      groupDocId ? query(coll('buses'),        where('grupoId','==',groupDocId)) : null,
+      groupDocId ? collection(db,'grupos', groupDocId, 'transportes') : null,
+      groupDocId ? collection(db,'grupos', groupDocId, 'transfers')   : null,
+      groupDocId ? collection(db,'grupos', groupDocId, 'buses')       : null
+    ]);
 
-  // 2) Subcolección por grupo
-  try { if (groupDocId) pushSnap(await getDocs(collection(db,'grupos', groupDocId, 'vuelos'))); } catch (_){}
+    if (vistos.size === 0 && groupNum) {
+      const variants = new Set([groupNum, ...buildCompositeVariants(groupNum), ...splitNumeroCompuesto(groupNum)]);
+      const qs = [];
+      ['transportes','transfers','buses'].forEach(cn => {
+        variants.forEach(v => {
+          qs.push(query(coll(cn), where('grupoNumero','==',v)));
+          const n = Number(v);
+          if (!Number.isNaN(n)) qs.push(query(coll(cn), where('grupoNumero','==',n)));
+        });
+      });
+      await runQs(qs);
+    }
+  }
 
-  // 3) Asignaciones alternativas (también con variantes)
-  const tryAssign = async (coll) => {
-    try { if (groupDocId) pushSnap(await getDocs(query(collection(db,coll), where('grupoId','==',groupDocId)))); } catch (_){}
-    await pushByGroupNum(coll, 'grupoNumero');
-  };
-  await tryAssign('flightAssignments');
-  await tryAssign('vuelosAssignments');
-
-  // 4) Traslados terrestres (COLEGIO ↔ AEROPUERTO) como fallback
-  const pullTerrestres = async (coll) => {
-    try{
-      if (groupDocId){
-        const s1 = await getDocs(query(collection(db,coll), where('grupoId','==',groupDocId)));
-        s1.forEach(d => { const x=d.data()||{}; vistos.set(d.id,{ id:d.id, tipoTransporte:(x.tipoTransporte||'terrestre'), ...x }); });
-      }
-    }catch(_){}
-    await pushByGroupNum(coll, 'grupoNumero');
-    try{
-      if (groupDocId){
-        const s3 = await getDocs(collection(db,'grupos', groupDocId, coll));
-        s3.forEach(d => { const x=d.data()||{}; vistos.set(d.id,{ id:d.id, tipoTransporte:(x.tipoTransporte||'terrestre'), ...x }); });
-      }
-    }catch(_){}
-  };
-  await pullTerrestres('transportes');
-  await pullTerrestres('transfers');
-  await pullTerrestres('buses');
-
-  // Orden final
+  // Orden final (mismo criterio)
   const out = [...vistos.values()].sort((a,b)=>{
     const aF = toISO(a.fechaIda || a.fechaVuelta || a.fecha || '');
     const bF = toISO(b.fechaIda || b.fechaVuelta || b.fecha || '');
@@ -313,7 +337,7 @@ function normalizeVuelo(v){
   const numero    = String(get('numero','nro','numVuelo','vuelo','flightNumber','codigo','code')||'').toUpperCase();
   const proveedor = String(get('proveedor','empresa','aerolinea','compania')||'').toUpperCase();
 
-  const tipoTransporte = (String(get('tipoTransporte')||'aereo').toLowerCase());
+  const tipoTransporte = norm(String(get('tipoTransporte') || 'aereo')); // 'AÉREO' -> 'aereo'
   const tipoVuelo = (tipoTransporte==='aereo') ? (String(get('tipoVuelo')||'charter').toLowerCase()) : '';
 
   const presentacionIdaHora    = normTime(get('presentacionIdaHora'));
@@ -370,7 +394,7 @@ function normalizeVuelo(v){
 function particionarVuelos(vuelosNorm) {
   const aereos = [];
   const terrestres = [];
-  const esTerrestre = (v) => (String(v.tipoTransporte || '').toLowerCase() !== 'aereo');
+  const esTerrestre = (v) => norm(v.tipoTransporte || '') !== 'aereo';
 
   const legFrom = (v, t = {}) => {
     const aerolinea = String(t.aerolinea || v.proveedor || '').toUpperCase();
