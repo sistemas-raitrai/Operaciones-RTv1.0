@@ -177,20 +177,39 @@ async function loadHotelesInfo(g){
     return cands2[0] || null;
   };
 
-  const out = cand.map(a=>{
+  // Mapear y normalizar
+  const mapped = cand.map((a, idx)=>{
     const H = pickHotelDoc(a);
     const ci = toISO(a.checkIn), co = toISO(a.checkOut);
     let noches = a.noches;
     if (noches==null && ci && co){
       noches = Math.max(0, (new Date(co)-new Date(ci))/86400000);
     }
+    const ts = (a.updatedAt?.seconds || a.createdAt?.seconds || 0);
     return {
       ...a,
+      __ord: idx, // fallback de desempate
+      __ts: ts,
       hotel:H,
       hotelNombre:a?.hotelNombre || a?.nombre || H?.nombre || '',
       checkIn:ci, checkOut:co, noches
     };
   });
+
+  // DEDUPE por (checkIn, checkOut): quedarse con el "último" guardado
+  const byRange = new Map();
+  for (const h of mapped){
+    const k = `${h.checkIn||''}__${h.checkOut||''}`;
+    const prev = byRange.get(k);
+    if (!prev) byRange.set(k, h);
+    else {
+      const takeThis = (h.__ts > prev.__ts) || (h.__ts === prev.__ts && h.__ord > prev.__ord);
+      if (takeThis) byRange.set(k, h);
+    }
+  }
+
+  // Resultado ordenado por checkIn asc
+  const out = [...byRange.values()].sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||''));
 
   cache.hotelesByGroup.set(key,out);
   return out;
@@ -199,20 +218,29 @@ async function loadHotelesInfo(g){
 /* ───────────────── FLIGHTS (igual lógica que portal) ──────────────── */
 function normalizeVuelo(v){
   const get=(...keys)=>{ for(const k of keys){ const val=k.split('.').reduce((acc,part)=> (acc && acc[part]!==undefined)? acc[part] : undefined, v); if(val!==undefined && val!==null && val!=='') return val; } return ''; };
-  const numero    = get('numero','nro','numVuelo','vuelo','flightNumber','codigo','code');
-  const proveedor = get('proveedor','empresa','aerolinea','compania');
-  const tipoTransporte = (String(get('tipoTransporte')) || 'aereo').toLowerCase() || 'aereo';
+
+  const numero    = String(get('numero','nro','numVuelo','vuelo','flightNumber','codigo','code')||'').toUpperCase();
+  const proveedor = String(get('proveedor','empresa','aerolinea','compania')||'').toUpperCase();
+
+  const tipoTransporte = (String(get('tipoTransporte')||'aereo').toLowerCase());
   const tipoVuelo = (tipoTransporte==='aereo') ? (String(get('tipoVuelo')||'charter').toLowerCase()) : '';
+
   const presentacionIdaHora    = normTime(get('presentacionIdaHora'));
   const vueloIdaHora           = normTime(get('vueloIdaHora'));
   const presentacionVueltaHora = normTime(get('presentacionVueltaHora'));
   const vueloVueltaHora        = normTime(get('vueloVueltaHora'));
-  const idaHora    = normTime(get('idaHora'));
-  const vueltaHora = normTime(get('vueltaHora'));
-  const origen      = get('origen','desde','from','salida.origen','salida.iata','origenIATA','origenSigla','origenCiudad');
-  const destino     = get('destino','hasta','to','llegada.destino','llegada.iata','destinoIATA','destinoSigla','destinoCiudad');
+
+  const idaHora    = normTime(get('idaHora'));     // terrestre
+  const vueltaHora = normTime(get('vueltaHora'));  // terrestre
+
+  const origen      = String(get('origen','desde','from','salida.origen','salida.iata','origenIATA','origenSigla','origenCiudad')||'').toUpperCase();
+  const destino     = String(get('destino','hasta','to','llegada.destino','llegada.iata','destinoIATA','destinoSigla','destinoCiudad')||'').toUpperCase();
+
   const fechaIda    = toISO(get('fechaIda','ida','salida.fecha','fechaSalida','fecha_ida','fecha'));
   const fechaVuelta = toISO(get('fechaVuelta','vuelta','regreso.fecha','fechaRegreso','fecha_vuelta'));
+
+  const isTransfer  = !!get('isTransfer');
+  const transferLeg = String(get('transferLeg')||'').toLowerCase(); // ida|vuelta|ida+vuelta
 
   const tr = Array.isArray(v.tramos) ? v.tramos : [];
   const tramos = tr.map(t=>({
@@ -226,13 +254,16 @@ function normalizeVuelo(v){
     vueloIdaHora:           normTime(t.vueloIdaHora||''),
     presentacionVueltaHora: normTime(t.presentacionVueltaHora||''),
     vueloVueltaHora:        normTime(t.vueloVueltaHora||''),
+    tipoTramo: (String(t.tipoTramo||'').toLowerCase())
   }));
 
   return {
     numero, proveedor, tipoTransporte, tipoVuelo,
     origen, destino, fechaIda, fechaVuelta,
     presentacionIdaHora, vueloIdaHora, presentacionVueltaHora, vueloVueltaHora,
-    idaHora, vueltaHora, tramos
+    idaHora, vueltaHora,
+    isTransfer, transferLeg,
+    tramos
   };
 }
 
@@ -246,24 +277,30 @@ function particionarVuelos(vuelosNorm) {
   const legFrom = (v, t = {}) => {
     const aerolinea = String(t.aerolinea || v.proveedor || '').toUpperCase();
     const numero    = String(t.numero    || v.numero    || '').toUpperCase();
-    const desde     = String(t.origen    || v.origen    || '').toUpperCase();
-    const hasta     = String(t.destino   || v.destino   || '').toUpperCase();
+    const origen    = String(t.origen    || v.origen    || '').toUpperCase();
+    const destino   = String(t.destino   || v.destino   || '').toUpperCase();
 
     const fechaIda       = toISO(t.fechaIda       || v.fechaIda       || '');
     const fechaVuelta    = toISO(t.fechaVuelta    || v.fechaVuelta    || '');
-    const presentacionIda    = normTime(t.presentacionIdaHora    || v.presentacionIdaHora    || '');
-    const presentacionVuelta = normTime(t.presentacionVueltaHora || v.presentacionVueltaHora || '');
-    const salidaIda          = normTime(t.vueloIdaHora           || v.vueloIdaHora           || '');
-    const salidaVuelta       = normTime(t.vueloVueltaHora        || v.vueloVueltaHora        || '');
+    const presentacionIda    = normTime(
+      t.presentacionIdaHora || v.presentacionIdaHora || (esTerrestre(v) ? v.idaHora : '')
+    );
+    const presentacionVuelta = normTime(
+      t.presentacionVueltaHora || v.presentacionVueltaHora || (esTerrestre(v) ? v.vueltaHora : '')
+    );
+    const salidaIda      = normTime(t.vueloIdaHora    || v.vueloIdaHora    || '');
+    const salidaVuelta   = normTime(t.vueloVueltaHora || v.vueloVueltaHora || '');
 
     const fecha = toISO(fechaIda || fechaVuelta || '');
 
     return {
       fecha, fechaIda, fechaVuelta,
-      aerolinea, numero, desde, hasta,
+      aerolinea, numero, origen, destino,
       presentacionIda, presentacionVuelta,
       salidaIda, salidaVuelta,
-      tipoTransporte: v.tipoTransporte || 'aereo'
+      tipoTransporte: v.tipoTransporte || 'aereo',
+      isTransfer: !!v.isTransfer,
+      transferLeg: String(v.transferLeg||'').toLowerCase()
     };
   };
 
@@ -279,16 +316,13 @@ function particionarVuelos(vuelosNorm) {
 
   aereos.sort((x, y) => (x.fecha || '').localeCompare(y.fecha || ''));
 
-  const fechasA = aereos.map(l => l.fecha).filter(Boolean).sort();
-  const idaDate = fechasA[0] || '';
-  const vueltaDate = fechasA[fechasA.length - 1] || '';
-
-  const idaLegs    = idaDate    ? aereos.filter(l => (l.fechaIda || l.fecha)    === idaDate)    : [];
-  const vueltaLegs = vueltaDate ? aereos.filter(l => (l.fechaVuelta || l.fecha) === vueltaDate) : [];
+  // Agrupación por lado para AÉREOS
+  const idaLegs    = aereos.filter(l => l.fechaIda);
+  const vueltaLegs = aereos.filter(l => l.fechaVuelta);
 
   const U = s => String(s||'').toUpperCase();
-  const hasColegioToAeropuerto = terrestres.some(t => U(t.desde).includes('COLEGIO') && U(t.hasta).includes('AEROPUERTO'));
-  const hasAeropuertoToColegio = terrestres.some(t => U(t.desde).includes('AEROPUERTO') && U(t.hasta).includes('COLEGIO'));
+  const hasColegioToAeropuerto = terrestres.some(t => U(t.origen).includes('COLEGIO') && U(t.destino).includes('AEROPUERTO'));
+  const hasAeropuertoToColegio = terrestres.some(t => U(t.origen).includes('AEROPUERTO') && U(t.destino).includes('COLEGIO'));
 
   return { idaLegs, vueltaLegs, terrestres, hasColegioToAeropuerto, hasAeropuertoToColegio };
 }
@@ -352,23 +386,31 @@ function renderSelector(lista, cont, hideNotes){
    Hoja estilo “foto” (usa datos reales del portal)
 ────────────────────────────────────────────────────────────────────────── */
 function extractPresentacion(grupo, vuelosNorm){
-  const { idaLegs, hasColegioToAeropuerto } = particionarVuelos(vuelosNorm);
+  const { idaLegs, terrestres, hasColegioToAeropuerto } = particionarVuelos(vuelosNorm);
 
+  // 1) Lugar/aeropuerto
   let lugar = grupo.presentacionLugar || '';
-  let hora  = normTime(grupo.presentacionHora || grupo.horaPresentacion || '');
+  let aeropuerto = grupo.presentacionAeropuerto || (idaLegs[0] ? idaLegs[0].origen : '');
 
-  const primeraIda = idaLegs[0];
-  let aeropuerto = grupo.presentacionAeropuerto || (primeraIda ? primeraIda.desde : '');
+  // 2) Hora: preferir TRANSFER COLEGIO → AEROPUERTO
+  const U = s => String(s||'').toUpperCase();
+  const transferIda = terrestres.find(t => U(t.origen).includes('COLEGIO') && U(t.destino).includes('AEROPUERTO'));
+  let hora = '';
+  if (transferIda) {
+    hora = transferIda.presentacionIda || transferIda.salidaIda || '';
+  }
+  if (!hora) {
+    hora = normTime(grupo.presentacionHora || grupo.horaPresentacion || '');
+  }
+  if (!hora && idaLegs[0]) {
+    hora = idaLegs[0].presentacionIda || idaLegs[0].salidaIda || '';
+  }
 
+  // 3) Lugar por defecto
   if (!lugar) {
     lugar = hasColegioToAeropuerto
       ? 'En las puertas del Colegio'
-      : (primeraIda ? 'En el aeropuerto' : 'Punto de encuentro');
-  }
-
-  // Si no hay hora explícita en el grupo, usa la HORA DE PRESENTACIÓN de la IDA (no la salida del vuelo)
-  if (!hora && primeraIda) {
-    hora = primeraIda.presentacionIda || primeraIda.salidaIda || '';
+      : (idaLegs[0] ? 'En el aeropuerto' : 'Punto de encuentro');
   }
 
   return { lugar, aeropuerto, hora };
@@ -491,71 +533,77 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     : `Viaje de Estudios ${grupo.programa||''}`.trim();
   const fechaViaje = grupo.fechaInicio ? formatShortDate(grupo.fechaInicio) : (grupo.fecha || '');
 
-  // Presentación (con fallback a horarios del vuelo)
-  const pres = extractPresentacion(grupo, vuelosNorm);
-  const presLine = `${pres.lugar}${pres.hora ? ` a las ${pres.hora} hrs.` : ''} ${pres.aeropuerto ? `para salir con destino al aeropuerto ${pres.aeropuerto}.` : ''}`;
+  // Presentación (usa TRANSFER si existe)
+  const P = extractPresentacion(grupo, vuelosNorm);
+  const presLine = `Presentación: ${P.lugar}${P.hora ? ` a las ${P.hora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino al aeropuerto ${String(P.aeropuerto||'').toUpperCase()}.` : ''}`;
 
-  // Tabla de vuelos (IDA/VUELTA + TRAMO TERRESTRE) — muestra TODOS los tramos
+  // Partición vuelos (y flags de transfers)
   const { idaLegs, vueltaLegs, hasColegioToAeropuerto, hasAeropuertoToColegio } = particionarVuelos(vuelosNorm);
-  
+
+  // Leyenda de transfer (se muestra en el PUNTO 1)
+  const legendBits = [];
+  if (hasColegioToAeropuerto) legendBits.push('Este grupo contempla traslado COLEGIO → AEROPUERTO.');
+  if (hasAeropuertoToColegio) legendBits.push('Este grupo contempla traslado AEROPUERTO → COLEGIO.');
+  const legendInline = legendBits.length ? ` – ${legendBits.join(' ')}` : '';
+
+  // Helper Nº de vuelo cuando viene "AA 123 // BB 456"
+  const chooseNum = (raw, modo) => {
+    const s = String(raw||'').toUpperCase();
+    if (!s.includes('//')) return s;
+    const parts = s.split('//').map(x=>x.trim());
+    return (modo === 'ida') ? (parts[0]||'') : (parts[parts.length-1]||'');
+  };
+
+  // Filas (toman TODOS los tramos en multi)
   const makeRows = (legs, modo) => legs.map(r => {
-  const fecha = (modo === 'ida') ? (r.fechaIda || r.fecha) : (r.fechaVuelta || r.fecha);
-  const presentacion = (modo === 'ida') ? r.presentacionIda : r.presentacionVuelta;
-  const salida       = (modo === 'ida') ? r.salidaIda       : r.salidaVuelta;
+    const fecha = (modo === 'ida') ? (r.fechaIda || r.fecha) : (r.fechaVuelta || r.fecha);
+    const presentacion = (modo === 'ida') ? r.presentacionIda : r.presentacionVuelta;
+    const salida       = (modo === 'ida') ? r.salidaIda       : r.salidaVuelta;
 
-  return `
-    <tr>
-      <td style="padding:6px 8px;border:1px solid #d1d5db;">
-        ${fecha ? formatShortDate(fecha) : '—'}
-        ${r.aerolinea ? `<div style="font-size:.85em;color:#374151;">vía ${r.aerolinea}</div>` : ''}
-      </td>
-      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(r.numero)}</td>
-      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(r.desde)}</td>
-      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
-      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
-      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(r.hasta)}</td>
-    </tr>`;
-}).join('');
+    const nro = chooseNum(r.numero, modo);
+    const via = r.aerolinea ? `VÍA ${String(r.aerolinea||'').toUpperCase()}` : '';
 
-const leyendas = [];
-if (hasColegioToAeropuerto) leyendas.push('Este grupo contempla traslado COLEGIO → AEROPUERTO.');
-if (hasAeropuertoToColegio) leyendas.push('Este grupo contempla traslado AEROPUERTO → COLEGIO.');
-const terrestreNote = leyendas.length ? `<div style="margin-top:6px;font-size:.9em;opacity:.8;">${leyendas.join(' ')}</div>` : '';
+    return `
+      <tr>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha) : '—'}${via ? `<div style="font-size:.85em;color:#374151;">${via}</div>` : ''}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(nro)}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(String(r.origen||'').toUpperCase())}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(String(r.destino||'').toUpperCase())}</td>
+      </tr>`;
+  }).join('');
 
-const hasAereos = idaLegs.length || vueltaLegs.length;
-const vuelosHTML = (hasAereos) ? `
-  <div style="overflow:auto;margin-top:6px;">
-    <table style="border-collapse:collapse;min-width:560px;">
-      <thead>
-        <tr>
-          <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
-          <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">N° de Vuelo</th>
-          <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Desde</th>
-          <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Presentación</th>
-          <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de Salida</th>
-          <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hasta</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${ idaLegs.length ? `
-          <tr><td colspan="6" style="padding:6px 8px;border:1px solid #d1d5db;background:#fafafa;font-weight:700;">IDA (aéreo)</td></tr>
-          ${makeRows(idaLegs, 'ida')}
-        ` : ''}
+  const hasAereos = idaLegs.length || vueltaLegs.length;
+  const vuelosHTML = (hasAereos) ? `
+    <div style="overflow:auto;margin-top:6px;">
+      <table style="border-collapse:collapse;min-width:560px;">
+        <thead>
+          <tr>
+            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
+            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">N° de vuelo</th>
+            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Origen</th>
+            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Presentación</th>
+            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de salida</th>
+            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${ idaLegs.length ? `
+            <tr><td colspan="6" style="padding:6px 8px;border:1px solid #d1d5db;background:#fafafa;font-weight:700;">IDA (aéreo)</td></tr>
+            ${makeRows(idaLegs, 'ida')}
+          ` : ''}
 
-        ${ vueltaLegs.length ? `
-          <tr><td colspan="6" style="padding:6px 8px;border:1px solid #d1d5db;background:#fafafa;font-weight:700;">VUELTA (aéreo)</td></tr>
-          ${makeRows(vueltaLegs, 'vuelta')}
-        ` : ''}
-      </tbody>
-    </table>
-    ${terrestreNote}
-  </div>
-` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`;
+          ${ vueltaLegs.length ? `
+            <tr><td colspan="6" style="padding:6px 8px;border:1px solid #d1d5db;background:#fafafa;font-weight:700;">VUELTA (aéreo)</td></tr>
+            ${makeRows(vueltaLegs, 'vuelta')}
+          ` : ''}
+        </tbody>
+      </table>
+    </div>
+  ` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`;
 
-
-
-
-  // Hotelería (incluye DIRECCIÓN)
+  // Hotelería con dirección + DEDUPE por (checkIn, checkOut) último guardado
   const hotelesHtml = (hoteles||[]).map(h=>{
     const H = h.hotel || {};
     const ciudad = (H.ciudad || H.destino || h.ciudad || '').toString().toUpperCase();
@@ -564,7 +612,7 @@ const vuelosHTML = (hasAereos) ? `
       <div style="display:flex;gap:16px;align-items:flex-start;">
         <div style="width:120px;font-weight:700;">${safe(ciudad,'—')}</div>
         <div>
-          <div style="font-weight:700;">${safe(h.hotelNombre || H.nombre || '')}</div>
+          <div style="font-weight:700;">${safe((h.hotelNombre || H.nombre || '').toString().toUpperCase())}</div>
           <div>In : ${safe(h.checkIn)}</div>
           <div>Out: ${safe(h.checkOut)}</div>
           ${dir ? `<div>Dirección: ${dir}</div>` : ''}
@@ -574,14 +622,9 @@ const vuelosHTML = (hasAereos) ? `
       </div>`;
   }).join('<hr style="border:none;border-top:1px dashed #e5e7eb;margin:6px 0;">');
 
-  // Textos por defecto (pueden venir desde grupo.textos)
-  // Textos por PROGRAMA (con override si vienen en grupo.textos)
+  // Textos por programa (mantiene tu lógica)
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
-
-
-  console.debug('Programa normalizado:', norm(`${grupo.programa || ''} ${grupo.destino || ''}`));
-
 
   hoja.innerHTML = `
     <div style="text-align:center;margin-bottom:10px;">
@@ -591,8 +634,8 @@ const vuelosHTML = (hasAereos) ? `
 
     <ol style="padding-left:18px;margin:0;">
       <li style="margin-bottom:10px;">
-        <div style="font-weight:700;">CONFIRMACIÓN DE HORARIO DE SALIDA</div>
-        <div>Presentación: ${presLine}</div>
+        <div style="font-weight:700;">CONFIRMACIÓN DE HORARIO DE SALIDA${legendInline}</div>
+        <div>${presLine}</div>
       </li>
 
       <li style="margin-bottom:10px;">
@@ -611,7 +654,6 @@ const vuelosHTML = (hasAereos) ? `
           ${renderDocsList(docsText)}
         </ul>
       </li>
-
 
       <li style="margin-bottom:10px;">
         <div style="font-weight:700;">EQUIPAJE</div>
@@ -637,7 +679,7 @@ const vuelosHTML = (hasAereos) ? `
 
     <div style="text-align:center;font-weight:800;margin-top:12px;">
       ¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!
-   </div>
+    </div>
   `;
 }
 
