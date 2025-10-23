@@ -1034,91 +1034,81 @@ function embedItinIntoResumen(){
 
 /* ---------- PRINT CSS v2: documento limpio A4, sin bordes, tablas 100% y logo seguro ---------- */
 function injectPrintStyles(){
-  if (document.getElementById('print-tweaks')) return;
+  const ID = 'print-tweaks';
+  if (document.getElementById(ID)) return;
 
   const css = `
-    /* En pantalla: oculto el bloque de impresión */
+    /* Ocultar el doc de impresión en pantalla */
     #print-block { display: none; }
 
     @media print {
-      @page { size: A4; margin: 10mm 12mm; }
+      @page { size: A4; margin: 10mm 10mm 12mm 10mm; }
+      html, body {
+        background: #fff !important;
+        color: #111 !important;
+        font: 11.5pt/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      }
 
-      /* Respiro a la derecha para el logo fijo */
-      body { background:#fff !important; margin-right: 32mm !important; }
+      /* 👇 MUY IMPORTANTE: oculta TODO el layout de pantalla */
+      #hoja-resumen,
+      #mi-itin,
+      #itin-slot,
+      .dias-embebidas,
+      header, nav, footer { display: none !important; }
 
-      /* Logo fijo arriba derecha si existe en la página */
+      /* Mostrar SOLO el documento de impresión */
+      #print-block { display: block !important; }
+
+      /* Logo fijo arriba-derecha, tamaño contenido y sin "comerse" el texto */
       #logo-raitrai{
         position: fixed !important;
-        right: 8mm !important;
+        right: 10mm !important;
         top: 8mm !important;
-        width: 24mm !important;
+        width: 22mm !important;
         height: auto !important;
-        z-index: 0 !important;           /* detrás del contenido */
+        z-index: 1 !important;
         opacity: .95;
         pointer-events: none;
       }
 
-      /* Mostrar SOLO el documento de impresión y esconder lo visual */
-      #print-block { display: block !important; }
-      #mi-itin, .dias-embebidas, #itin-slot { display: none !important; }
+      /* Reservar un poco de margen a la derecha solo para el texto del doc impreso */
+      #print-block .print-doc { margin-right: 26mm; }
 
-      /* Quitar “caja” y sombras de la hoja resumen en impresión */
-      #hoja-resumen{
-        border: none !important;
-        border-radius: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        box-shadow: none !important;
-        background: transparent !important;
-      }
+      /* Tipografía y espaciado compacto y consistente */
+      #print-block .doc-title { font-weight: 800; font-size: 16pt; margin: 0 0 2mm 0; }
+      #print-block .doc-sub   { font-size: 10.5pt; color:#374151; margin: 0 0 4mm 0; }
 
-      /* La tabla de vuelos NO debe cortarse en impresión */
-      #hoja-resumen table, #print-block table{
-        width: 100% !important;
-        min-width: 0 !important;
-        table-layout: fixed !important;
-        border-collapse: collapse !important;
-      }
-      #hoja-resumen th, #hoja-resumen td, #print-block th, #print-block td{
-        padding: 4pt 6pt !important;
-        word-break: break-word !important;
-        white-space: normal !important;
-        font-size: 10.5pt !important;
-      }
-      /* Los wrappers que tenían overflow:auto (hacían recortes) */
-      #hoja-resumen div{ overflow: visible !important; }
+      #print-block .sec { margin: 4mm 0 3mm; page-break-inside: avoid; }
+      #print-block .sec-title { font-weight: 700; font-size: 11.5pt; margin: 0 0 2mm 0; }
+      #print-block .note { color:#6b7280; margin: 1mm 0 2mm; }
 
-      /* Tipografía y espaciados del “documento” */
-      .print-doc{
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-        font-size: 11pt; color:#111827;
-      }
-      .print-doc .doc-title{ font-weight:800; font-size:14pt; margin:0 0 2mm 0; }
-      .print-doc .doc-sub{ color:#6b7280; margin:0 0 4mm 0; }
-      .print-doc .sec{ margin:0 0 5mm 0; }
-      .print-doc .sec-title{ font-weight:700; margin:0 0 1.5mm 0; }
-      .print-doc .note{ color:#6b7280; margin:1mm 0 2mm 0; }
-      .print-doc ul{ margin:1mm 0 0 5mm; padding:0; }
-      .print-doc .itinerario{ list-style: disc; }
-      .print-doc .closing{ text-align:center; font-weight:800; margin-top:8mm; }
+      #print-block ul { margin: 1.5mm 0 1.5mm 5mm; padding: 0; }
+      #print-block li { margin: 0.8mm 0; }
 
-      /* Oculta barras, botones u otros adornos de la UI si existieran */
-      header, nav, footer, .toolbar, .actions, .buttons { display:none !important; }
+      /* Bloques de vuelos apilados (sin tablas) */
+      .flight-block { margin: 2mm 0 3mm; page-break-inside: avoid; }
+      .flight-block .fb-title  { font-weight: 700; margin-bottom: 0.8mm; }
+      .flight-block .fb-field  { margin: 0.2mm 0; }
+      .flight-block .fb-label  { font-weight: 700; }
+
+      /* Itinerario compacto */
+      .itinerario .it-day { margin: 1.5mm 0; page-break-inside: avoid; }
+      .itinerario .day-head { font-weight: 700; margin-bottom: 0.5mm; }
+
+      /* Cierre centrado, SOLO al final */
+      .print-doc .closing { text-align: center; font-weight: 800; margin-top: 4mm; }
     }
   `;
-
   const s = document.createElement('style');
-  s.id = 'print-tweaks';
+  s.id = ID;
   s.textContent = css;
   document.head.appendChild(s);
 }
-
 
 /* ──────────────────────────────────────────────────────────────────────────
    Estilos de IMPRESIÓN (logo fijo, sin “caja”, tablas full width, etc.)
 ────────────────────────────────────────────────────────────────────────── */
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
-  // Helpers
   const P = extractPresentacion(grupo, vuelosNorm);
   const { idaLegs, vueltaLegs, hasColegioToAeropuerto, hasAeropuertoToColegio } = particionarVuelos(vuelosNorm);
 
@@ -1128,42 +1118,56 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     const p = s.split('//').map(x=>x.trim());
     return (modo === 'ida') ? (p[0]||'') : (p[p.length-1]||'');
   };
-  const flightLine = (l, modo) => {
-    const f = (modo==='ida') ? (l.fechaIda||l.fecha) : (l.fechaVuelta||l.fecha);
-    const pres = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
-    const sal  = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
-    const arr  = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
-    const nro  = chooseNum(l.numero, modo);
-    const via  = l.aerolinea ? ` — Vía ${String(l.aerolinea||'').toUpperCase()}` : '';
-    const nrom = nro ? ` · Vuelo ${nro}` : '';
-    return `<li><strong>${modo === 'ida' ? 'IDA' : 'VUELTA'}</strong> — ${formatShortDate(f)}: ${String(l.origen||'').toUpperCase()} → ${String(l.destino||'').toUpperCase()} — Presentación ${pres||'—'} — Sale ${sal||'—'}${arr?` — Arribo ${arr}`:''}${via}${nrom}</li>`;
+  const withHrs = t => t ? `${t} HRS` : '—';
+  const U = s => String(s||'').toUpperCase();
+
+  const flightBlock = (l, modo) => {
+    const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
+    const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
+    const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
+    const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
+    const nro   = chooseNum(l.numero, modo);
+    const via   = l.aerolinea ? ` VÍA ${U(l.aerolinea)}` : '';
+    const head  = `${modo==='ida' ? 'IDA' : 'VUELTA'}: VUELO ${nro}${via}`;
+
+    return `
+      <div class="flight-block">
+        <div class="fb-title">${head}</div>
+        <div class="fb-field"><span class="fb-label">FECHA:</span> ${formatShortDate(fecha)}</div>
+        <div class="fb-field"><span class="fb-label">ORIGEN:</span> ${U(l.origen)}</div>
+        <div class="fb-field"><span class="fb-label">PRESENTACIÓN:</span> ${withHrs(pres)}</div>
+        <div class="fb-field"><span class="fb-label">HORA DE SALIDA:</span> ${withHrs(sal)}</div>
+        <div class="fb-field"><span class="fb-label">DESTINO:</span> ${U(l.destino)}</div>
+        <div class="fb-field"><span class="fb-label">HORA DE ARRIBO:</span> ${withHrs(arr)}</div>
+      </div>`;
   };
 
   const vuelosHTML = (() => {
-    const lines = [];
-    idaLegs.forEach(l => lines.push(flightLine(l,'ida')));
-    vueltaLegs.forEach(l => lines.push(flightLine(l,'vuelta')));
-    return lines.length ? `<ul class="flights">${lines.join('')}</ul>` : `<div class="note">— Sin información de vuelos —</div>`;
+    const blocks = [];
+    idaLegs.forEach(l => blocks.push(flightBlock(l,'ida')));
+    vueltaLegs.forEach(l => blocks.push(flightBlock(l,'vuelta')));
+    return blocks.length
+      ? blocks.join('')
+      : `<div class="note">— Sin información de vuelos —</div>`;
   })();
 
   const hotelesHTML = (() => {
     if (!hoteles || !hoteles.length) return `<div class="note">— Sin hotelería cargada —</div>`;
     const items = hoteles.map(h=>{
       const H = h.hotel || {};
-      const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
-      const ciudad = (H.ciudad || H.destino || h.ciudad || '').toString().toUpperCase();
+      const pais   = U(H.pais || H.país || h.pais || h.país || '');
+      const ciudad = U(H.ciudad || H.destino || h.ciudad || '');
       const dir    = (H.direccion || h.direccion || '').toString();
       const web    = H.web ? ` — Web: ${H.web}` : '';
       const tel    = H.contactoTelefono ? ` — Fono: ${H.contactoTelefono}` : '';
-      return `<li><strong>${(h.hotelNombre || H.nombre || '—').toString().toUpperCase()}</strong> (${[pais,ciudad].filter(Boolean).join(' – ')}) — In: ${safe(h.checkIn)} — Out: ${safe(h.checkOut)}${dir?` — Dirección: ${dir}`:''}${tel}${web}</li>`;
+      return `<li><strong>${U(h.hotelNombre || H.nombre || '—')}</strong> (${[pais,ciudad].filter(Boolean).join(' – ')}) — In: ${safe(h.checkIn)} — Out: ${safe(h.checkOut)}${dir?` — Dirección: ${dir}`:''}${tel}${web}</li>`;
     });
     return `<ul class="hoteles">${items.join('')}</ul>`;
   })();
 
-  const documentosHTML = renderDocsList(
-    (getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {}).docsText)
-  );
-  const { equipajeText1, equipajeText2, recs } = getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+  const { docsText, equipajeText1, equipajeText2, recs } =
+    getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+  const documentosHTML = renderDocsList(docsText);
   const recomendacionesHTML = Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`;
 
   const itinHTML = (() => {
@@ -1181,7 +1185,6 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     return `<ul class="itinerario">${days.join('')}</ul>`;
   })();
 
-  // Leyendas de transfer para el punto 1
   const legendBits = [];
   if (hasColegioToAeropuerto) legendBits.push('Este grupo contempla traslado COLEGIO → AEROPUERTO.');
   if (hasAeropuertoToColegio) legendBits.push('Este grupo contempla traslado AEROPUERTO → COLEGIO.');
@@ -1198,7 +1201,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="sec">
         <div class="sec-title">1. CONFIRMACIÓN DE HORARIO DE SALIDA</div>
         ${legend}
-        <div>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino al aeropuerto ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</div>
+        <div>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino al aeropuerto ${U(P.aeropuerto)}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</div>
       </div>
 
       <div class="sec">
@@ -1214,7 +1217,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
       <div class="sec">
         <div class="sec-title">4. DOCUMENTOS PARA EL VIAJE</div>
-        <ul class="docs">${documentosHTML}</ul>
+        <ul>${documentosHTML}</ul>
       </div>
 
       <div class="sec">
@@ -1254,7 +1257,7 @@ async function main(){
   const resumenPax= document.getElementById('resumen-pax');
   const cont      = document.getElementById('mi-itin');
   const printEl   = document.getElementById('print-block');
-  const btnPrint  = document.getElementById('btnPrint');
+  const printEl = document.getElementById('print-block');
   const btnShare  = document.getElementById('btnShare');
 
   injectPrintStyles(); 
@@ -1312,15 +1315,17 @@ async function main(){
   renderHojaResumen(g, vuelosNorm, hoteles);
 
   // Itinerario visual
-  if (!fechas.length) {
-    cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
-    // ✅ Ahora usamos el HTML de impresión nuevo (vacío)
-    if (printEl) printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, []);
-  } else {
-    const slot = document.getElementById('itin-slot');
-    renderItin(g, fechas, hideNotes, slot || cont); // 👈 renderiza y ya parte 4 + resto
-    if (printEl) printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas);
-  }
+ if (!fechas.length) {
+   cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
+ } else {
+   const slot = document.getElementById('itin-slot');
+   renderItin(g, fechas, hideNotes, slot || cont);
+ }
+
+ // Genera el documento de IMPRESIÓN (una vez)
+ if (printEl) {
+   printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas || []);
+ }
 }
 main().catch(err => {
   console.error('Firestore error:', err?.code || err?.message, err);
