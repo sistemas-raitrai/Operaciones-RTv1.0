@@ -1032,6 +1032,78 @@ function embedItinIntoResumen(){
   slot.innerHTML = '';
 }
 
+function injectPrintStyles(){
+  if (document.getElementById('print-tweaks')) return;
+  const css = `
+    /* En pantalla no se ve el bloque de impresión */
+    #print-block { display: none; }
+
+    @media print {
+      @page { size: A4; margin: 12mm 12mm; }
+      html, body { background:#fff !important; }
+
+      /* (Opcional) reservar margen para logo fijo */
+      body { margin-right: 28mm !important; }
+      #logo-raitrai{
+        position: fixed !important;
+        right: 8mm !important;
+        top: 8mm !important;
+        width: 26mm !important;
+        height: auto !important;
+        z-index: 0 !important;
+        opacity: .95;
+        pointer-events: none;
+      }
+
+      /* Ocultar la hoja visual y mostrar solo el documento en texto */
+      #hoja-resumen { display: none !important; }
+      .dias-embebidas, #mi-itin, #itin-slot { display: none !important; }
+
+      /* Documento de impresión en texto */
+      #print-block {
+        display: block !important;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        font-size: 12.25pt;
+        line-height: 1.38;
+        color: #111827;
+      }
+      #print-block .doc-title{
+        font-weight: 800; font-size: 18pt; text-align: left;
+        margin: 0 0 4pt 0;
+      }
+      #print-block .doc-sub{
+        font-size: 11.5pt; color:#374151; margin: 0 0 10pt 0;
+      }
+      #print-block .sec{
+        margin: 10pt 0 10pt 0;
+        break-inside: avoid; page-break-inside: avoid;
+      }
+      #print-block .sec-title{
+        font-weight: 700; margin: 0 0 4pt 0;
+      }
+      #print-block .note{
+        color:#6b7280; font-size: 10.75pt; margin: 2pt 0 6pt 0;
+      }
+      #print-block ul{ margin: 4pt 0 6pt 18pt; padding: 0; }
+      #print-block li{ margin: 2pt 0; }
+
+      /* Evitar cortes feos dentro de ítems largos */
+      #print-block .flights li,
+      #print-block .hoteles li,
+      #print-block .itinerario li{
+        break-inside: avoid; page-break-inside: avoid;
+      }
+
+      #print-block .day-head{ font-weight: 700; text-transform: uppercase; }
+      #print-block .closing{ text-align:center; font-weight:800; margin-top: 12pt; }
+    }
+  `;
+  const s = document.createElement('style');
+  s.id = 'print-tweaks';
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    Estilos de IMPRESIÓN (logo fijo, sin “caja”, tablas full width, etc.)
 ────────────────────────────────────────────────────────────────────────── */
