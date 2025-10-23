@@ -72,6 +72,11 @@ function formatShortDate(iso){ // 25 de septiembre 2025
   return `${d} de ${mes} ${y}`;
 }
 function formatDateReadable(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-').map(Number); const dt=new Date(y,m-1,d); const wd=dt.toLocaleDateString('es-CL',{weekday:'long'}); const name=wd.charAt(0).toUpperCase()+wd.slice(1); return `${name} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`; }
+function formatDM(iso){ // 06/12
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-').map(Number);
+  return `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
+}
 function formatDateRange(ini,fin){ if(!ini||!fin) return '—'; return `${formatShortDate(toISO(ini))} — ${formatShortDate(toISO(fin))}`; }
 function getDateRange(s,e){ const out=[]; const A=toISO(s), B=toISO(e); if(!A||!B) return out; const a=new Date(A), b=new Date(B); for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);} return out; }
 
@@ -1030,83 +1035,127 @@ function embedItinIntoResumen(){
 /* ──────────────────────────────────────────────────────────────────────────
    Estilos de IMPRESIÓN (logo fijo, sin “caja”, tablas full width, etc.)
 ────────────────────────────────────────────────────────────────────────── */
-function injectPrintStyles(){
-  if (document.getElementById('print-tweaks')) return;
-  const css = `
-    /* En pantalla: oculto el bloque de impresión */
-    #print-block { display: none; }
+function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
+  // Helpers
+  const P = extractPresentacion(grupo, vuelosNorm);
+  const { idaLegs, vueltaLegs, hasColegioToAeropuerto, hasAeropuertoToColegio } = particionarVuelos(vuelosNorm);
 
-    @media print {
-      /* Márgenes del papel (A4). Si quieres aún menos, baja a 8mm o 6mm. */
-      @page { size: A4; margin: 10mm 10mm; }
+  const chooseNum = (raw, modo) => {
+    const s = String(raw||'').toUpperCase();
+    if (!s.includes('//')) return s;
+    const p = s.split('//').map(x=>x.trim());
+    return (modo === 'ida') ? (p[0]||'') : (p[p.length-1]||'');
+  };
+  const flightLine = (l, modo) => {
+    const f = (modo==='ida') ? (l.fechaIda||l.fecha) : (l.fechaVuelta||l.fecha);
+    const pres = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
+    const sal  = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
+    const arr  = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
+    const nro  = chooseNum(l.numero, modo);
+    const via  = l.aerolinea ? ` — Vía ${String(l.aerolinea||'').toUpperCase()}` : '';
+    const nrom = nro ? ` · Vuelo ${nro}` : '';
+    return `<li><strong>${modo === 'ida' ? 'IDA' : 'VUELTA'}</strong> — ${formatShortDate(f)}: ${String(l.origen||'').toUpperCase()} → ${String(l.destino||'').toUpperCase()} — Presentación ${pres||'—'} — Sale ${sal||'—'}${arr?` — Arribo ${arr}`:''}${via}${nrom}</li>`;
+  };
 
-      html, body { background:#fff !important; }
-      /* Reservo espacio a la derecha para que el texto NO quede bajo el logo */
-      body { margin-right: 28mm !important; }
+  const vuelosHTML = (() => {
+    const lines = [];
+    idaLegs.forEach(l => lines.push(flightLine(l,'ida')));
+    vueltaLegs.forEach(l => lines.push(flightLine(l,'vuelta')));
+    return lines.length ? `<ul class="flights">${lines.join('')}</ul>` : `<div class="note">— Sin información de vuelos —</div>`;
+  })();
 
-      /* Logo fijo arriba-derecha: agrega id="logo-raitrai" al <img> del logo */
-      #logo-raitrai{
-        position: fixed !important;
-        right: 8mm !important;
-        top: 8mm !important;
-        width: 26mm !important;
-        height: auto !important;
-        z-index: 0 !important;   /* detrás del contenido */
-        opacity: .95;
-        pointer-events: none;
-      }
+  const hotelesHTML = (() => {
+    if (!hoteles || !hoteles.length) return `<div class="note">— Sin hotelería cargada —</div>`;
+    const items = hoteles.map(h=>{
+      const H = h.hotel || {};
+      const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
+      const ciudad = (H.ciudad || H.destino || h.ciudad || '').toString().toUpperCase();
+      const dir    = (H.direccion || h.direccion || '').toString();
+      const web    = H.web ? ` — Web: ${H.web}` : '';
+      const tel    = H.contactoTelefono ? ` — Fono: ${H.contactoTelefono}` : '';
+      return `<li><strong>${(h.hotelNombre || H.nombre || '—').toString().toUpperCase()}</strong> (${[pais,ciudad].filter(Boolean).join(' – ')}) — In: ${safe(h.checkIn)} — Out: ${safe(h.checkOut)}${dir?` — Dirección: ${dir}`:''}${tel}${web}</li>`;
+    });
+    return `<ul class="hoteles">${items.join('')}</ul>`;
+  })();
 
-      /* Quitar la “caja” alrededor de la hoja resumen */
-      #hoja-resumen{
-        border: none !important;
-        border-radius: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        box-shadow: none !important;
-        background: transparent !important;
-      }
+  const documentosHTML = renderDocsList(
+    (getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {}).docsText)
+  );
+  const { equipajeText1, equipajeText2, recs } = getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+  const recomendacionesHTML = Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`;
 
-      /* Tablas a todo el ancho y simplificadas */
-      #hoja-resumen table { width: 100% !important; }
-      #hoja-resumen th,
-      #hoja-resumen td { font-size: 11pt !important; }
+  const itinHTML = (() => {
+    if (!fechas.length) return '<div class="note">— Sin actividades —</div>';
+    const days = fechas.map((f, i) => {
+      const src = grupo.itinerario?.[f];
+      const arr = (Array.isArray(src) ? src
+                  : (src && typeof src==='object' ? Object.values(src) : []))
+                  .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
+      const acts = arr.map(a => (a?.actividad || '').toString().trim().toUpperCase()).filter(Boolean);
+      const head = `DÍA ${i+1} - ${formatDateReadable(f).toUpperCase()}:`;
+      const body = acts.length ? acts.join(' — ') : '—';
+      return `<li class="it-day"><div class="day-head"><strong>${head}</strong></div><div>${body}</div></li>`;
+    });
+    return `<ul class="itinerario">${days.join('')}</ul>`;
+  })();
 
-      /* Oculto el itinerario “visual” y muestro el bloque especial de impresión */
-      .dias-embebidas, #mi-itin, #itin-slot { display: none !important; }
-      #print-block {
-        display: block !important;
-        margin-top: 8px;
-        font-size: 12.5pt;
-        line-height: 1.35;
-      }
+  // Leyendas de transfer para el punto 1
+  const legendBits = [];
+  if (hasColegioToAeropuerto) legendBits.push('Este grupo contempla traslado COLEGIO → AEROPUERTO.');
+  if (hasAeropuertoToColegio) legendBits.push('Este grupo contempla traslado AEROPUERTO → COLEGIO.');
+  const legend = legendBits.length ? `<div class="note">${legendBits.join(' ')}</div>` : '';
 
-      /* Lista del ITINERARIO impreso (con viñetas y separadores “—” en negrita) */
-      .print-itin{
-        list-style: disc;
-        margin: 4px 0 10px 18px;
-        padding: 0;
-      }
-      .print-itin .print-dia{ margin-bottom: 8px; }
-      .print-itin .print-dia-head{ font-weight: 700; }
-      .print-itin .print-dia-body{ margin-top: 2px; }
-      .print-itin .sep{ font-weight: 700; }
+  const titulo  = `Viaje de Estudios ${(grupo.colegio || grupo.cliente || '')} ${(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '')}`.trim();
+  const fechaViaje = grupo.fechaInicio ? formatShortDate(grupo.fechaInicio) : (grupo.fecha || '');
 
-      .print-despedida{
-        text-align: center;
-        font-weight: 800;
-        margin-top: 12px;
-      }
+  return `
+    <div class="print-doc">
+      <div class="doc-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
+      <div class="doc-sub">Fecha Viaje: ${fechaViaje}</div>
 
-      /* Punto 1: más aire y leyenda gris */
-      #hoja-resumen .punto1 .legend{ color:#6b7280 !important; }
-      #hoja-resumen .punto1 .presentacion{ margin-top: .25rem !important; }
-      #hoja-resumen ol>li{ margin-bottom: 12px !important; }
-    }
+      <div class="sec">
+        <div class="sec-title">1. CONFIRMACIÓN DE HORARIO DE SALIDA</div>
+        ${legend}
+        <div>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino al aeropuerto ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">2. INFORMACIÓN DE VUELOS CONFIRMADOS</div>
+        <div class="note">Los horarios de los vuelos podrían ser modificados por la Línea Aérea contratada sin previo aviso.</div>
+        ${vuelosHTML}
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">3. HOTELERÍA CONFIRMADA</div>
+        ${hotelesHTML}
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">4. DOCUMENTOS PARA EL VIAJE</div>
+        <ul>${documentosHTML}</ul>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">5. EQUIPAJE</div>
+        <ul>
+          <li>${equipajeText1}</li>
+          <li>${equipajeText2}</li>
+        </ul>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">6. RECOMENDACIONES GENERALES</div>
+        <ul>${recomendacionesHTML}</ul>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">7. ITINERARIO DE VIAJE</div>
+        ${itinHTML}
+      </div>
+
+      <div class="closing">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
+    </div>
   `;
-  const s = document.createElement('style');
-  s.id = 'print-tweaks';
-  s.textContent = css;
-  document.head.appendChild(s);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -1184,11 +1233,11 @@ async function main(){
   if (!fechas.length) {
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
     // ✅ Ahora usamos el HTML de impresión nuevo (vacío)
-    if (printEl) printEl.innerHTML = buildPrintHtml(g, []);
+    if (printEl) printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, []);
   } else {
     const slot = document.getElementById('itin-slot');
     renderItin(g, fechas, hideNotes, slot || cont); // 👈 renderiza y ya parte 4 + resto
-    if (printEl) printEl.innerHTML = buildPrintHtml(g, fechas);
+    if (printEl) printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas);
   }
 }
 main().catch(err => {
