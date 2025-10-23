@@ -107,7 +107,7 @@ async function buscarGruposPorNumero(numeroNegocio) {
 const cache = {
   hotelesIndex: null,              // { loaded, byId:Map, bySlug:Map, all:[] }
   hotelesByGroup: new Map(),       // key → [assignments…]
-  vuelosByGroup: new Map()         // key → [docs…]
+  ByGroup: new Map()         // key → [docs…]
 };
 
 /* ───────────────── HOTELS (igual lógica que portal) ──────────────────── */
@@ -212,6 +212,91 @@ async function loadHotelesInfo(g){
   const out = [...byRange.values()].sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||''));
 
   cache.hotelesByGroup.set(key,out);
+  return out;
+}
+
+/* ───────────────── VUELOS (mismas reglas que el portal) ────────────────── */
+async function loadVuelosInfo(g){
+  const groupDocId = String(g.id || '').trim();
+  const groupNum   = String(g.numeroNegocio || '').trim();
+  const key = `vuelos:${groupDocId || groupNum}`;
+  if (cache.vuelosByGroup.has(key)) return cache.vuelosByGroup.get(key);
+
+  const vistos = new Map();
+  const pushSnap = (snap) => {
+    if (!snap) return;
+    snap.forEach(d => {
+      const data = d.data() || {};
+      const nuevo = { id: d.id, ...data };
+      const prev  = vistos.get(d.id);
+      if (!prev) { vistos.set(d.id, nuevo); return; }
+      const tNew = (data.updatedAt?.seconds || data.createdAt?.seconds || 0);
+      const tOld = (prev.updatedAt?.seconds || prev.createdAt?.seconds || 0);
+      if (tNew >= tOld) vistos.set(d.id, nuevo);
+    });
+  };
+
+  // 1) Colección "vuelos" (id, docId, número)
+  try{ if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoId','==',groupDocId)))); }catch(_){}
+  try{ if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoDocId','==',groupDocId)))); }catch(_){}
+  try{ if (groupNum)   pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoNumero','==',groupNum)))); }catch(_){}
+
+  // 2) Subcolección por grupo: grupos/{id}/vuelos
+  try{ if (groupDocId) pushSnap(await getDocs(collection(db,'grupos', groupDocId, 'vuelos'))); }catch(_){}
+
+  // 3) Asignaciones alternativas que pueda usar tu portal
+  const tryAssign = async (coll) => {
+    try{ if (groupDocId) pushSnap(await getDocs(query(collection(db,coll), where('grupoId','==',groupDocId)))); }catch(_){}
+    try{ if (groupNum)   pushSnap(await getDocs(query(collection(db,coll), where('grupoNumero','==',groupNum)))); }catch(_){}
+  };
+  await tryAssign('flightAssignments');
+  await tryAssign('vuelosAssignments');
+
+  // 4) Fallback: transportes/traslados terrestres (COLEGIO ↔ AEROPUERTO)
+  const pullTerrestres = async (coll) => {
+    try{
+      if (groupDocId){
+        const s1 = await getDocs(query(collection(db,coll), where('grupoId','==',groupDocId)));
+        s1.forEach(d => {
+          const x = d.data() || {};
+          vistos.set(d.id, { id:d.id, tipoTransporte: (x.tipoTransporte||'terrestre'), ...x });
+        });
+      }
+    }catch(_){}
+    try{
+      if (groupNum){
+        const s2 = await getDocs(query(collection(db,coll), where('grupoNumero','==',groupNum)));
+        s2.forEach(d => {
+          const x = d.data() || {};
+          vistos.set(d.id, { id:d.id, tipoTransporte: (x.tipoTransporte||'terrestre'), ...x });
+        });
+      }
+    }catch(_){}
+    try{
+      if (groupDocId){
+        const s3 = await getDocs(collection(db,'grupos', groupDocId, coll));
+        s3.forEach(d => {
+          const x = d.data() || {};
+          vistos.set(d.id, { id:d.id, tipoTransporte: (x.tipoTransporte||'terrestre'), ...x });
+        });
+      }
+    }catch(_){}
+  };
+  await pullTerrestres('transportes');
+  await pullTerrestres('transfers');
+  await pullTerrestres('buses');
+
+  // Resultado ordenado por fecha (ida/vuelta) y luego por timestamp
+  const out = [...vistos.values()].sort((a,b)=>{
+    const aF = toISO(a.fechaIda || a.fechaVuelta || a.fecha || '');
+    const bF = toISO(b.fechaIda || b.fechaVuelta || b.fecha || '');
+    if (aF !== bF) return aF.localeCompare(bF);
+    const at = (a.updatedAt?.seconds || a.createdAt?.seconds || 0);
+    const bt = (b.updatedAt?.seconds || b.createdAt?.seconds || 0);
+    return at - bt;
+  });
+
+  cache.vuelosByGroup.set(key, out);
   return out;
 }
 
