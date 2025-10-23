@@ -1257,7 +1257,7 @@ async function main(){
   const resumenPax= document.getElementById('resumen-pax');
   const cont      = document.getElementById('mi-itin');
   const printEl   = document.getElementById('print-block');
-  const printEl = document.getElementById('print-block');
+  const printEl = document.getElementById('btnPrint');
   const btnShare  = document.getElementById('btnShare');
 
   injectPrintStyles(); 
