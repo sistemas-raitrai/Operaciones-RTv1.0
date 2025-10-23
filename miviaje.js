@@ -230,7 +230,11 @@ function normalizeVuelo(v){
   const presentacionVueltaHora = normTime(get('presentacionVueltaHora'));
   const vueloVueltaHora        = normTime(get('vueloVueltaHora'));
 
-  const idaHora    = normTime(get('idaHora'));     // terrestre
+  // ⬇️ NUEVO: posibles nombres de llegada/arribo (ida/vuelta)
+  const llegadaIdaHora    = normTime(get('llegadaIdaHora','arriboIdaHora','horaArriboIda','arriboHoraIda'));
+  const llegadaVueltaHora = normTime(get('llegadaVueltaHora','arriboVueltaHora','horaArriboVuelta','arriboHoraVuelta'));
+
+  const idaHora    = normTime(get('idaHora'));     // terrestre (transfer/bus)
   const vueltaHora = normTime(get('vueltaHora'));  // terrestre
 
   const origen      = String(get('origen','desde','from','salida.origen','salida.iata','origenIATA','origenSigla','origenCiudad')||'').toUpperCase();
@@ -254,6 +258,9 @@ function normalizeVuelo(v){
     vueloIdaHora:           normTime(t.vueloIdaHora||''),
     presentacionVueltaHora: normTime(t.presentacionVueltaHora||''),
     vueloVueltaHora:        normTime(t.vueloVueltaHora||''),
+    // ⬇️ NUEVO: llegada por tramo
+    llegadaIdaHora:         normTime(t.llegadaIdaHora||t.arriboIdaHora||''),
+    llegadaVueltaHora:      normTime(t.llegadaVueltaHora||t.arriboVueltaHora||''),
     tipoTramo: (String(t.tipoTramo||'').toLowerCase())
   }));
 
@@ -261,6 +268,7 @@ function normalizeVuelo(v){
     numero, proveedor, tipoTransporte, tipoVuelo,
     origen, destino, fechaIda, fechaVuelta,
     presentacionIdaHora, vueloIdaHora, presentacionVueltaHora, vueloVueltaHora,
+    llegadaIdaHora, llegadaVueltaHora,
     idaHora, vueltaHora,
     isTransfer, transferLeg,
     tramos
@@ -271,7 +279,6 @@ function normalizeVuelo(v){
 function particionarVuelos(vuelosNorm) {
   const aereos = [];
   const terrestres = [];
-
   const esTerrestre = (v) => (String(v.tipoTransporte || '').toLowerCase() !== 'aereo');
 
   const legFrom = (v, t = {}) => {
@@ -282,14 +289,12 @@ function particionarVuelos(vuelosNorm) {
 
     const fechaIda       = toISO(t.fechaIda       || v.fechaIda       || '');
     const fechaVuelta    = toISO(t.fechaVuelta    || v.fechaVuelta    || '');
-    const presentacionIda    = normTime(
-      t.presentacionIdaHora || v.presentacionIdaHora || (esTerrestre(v) ? v.idaHora : '')
-    );
-    const presentacionVuelta = normTime(
-      t.presentacionVueltaHora || v.presentacionVueltaHora || (esTerrestre(v) ? v.vueltaHora : '')
-    );
-    const salidaIda      = normTime(t.vueloIdaHora    || v.vueloIdaHora    || '');
-    const salidaVuelta   = normTime(t.vueloVueltaHora || v.vueloVueltaHora || '');
+    const presentacionIda    = normTime(t.presentacionIdaHora    || v.presentacionIdaHora    || (esTerrestre(v) ? v.idaHora    : ''));
+    const presentacionVuelta = normTime(t.presentacionVueltaHora || v.presentacionVueltaHora || (esTerrestre(v) ? v.vueltaHora : ''));
+    const salidaIda      = normTime(t.vueloIdaHora    || v.vueloIdaHora    || (esTerrestre(v) ? v.idaHora    : ''));
+    const salidaVuelta   = normTime(t.vueloVueltaHora || v.vueloVueltaHora || (esTerrestre(v) ? v.vueltaHora : ''));
+    const arriboIda      = normTime(t.llegadaIdaHora    || v.llegadaIdaHora    || '');
+    const arriboVuelta   = normTime(t.llegadaVueltaHora || v.llegadaVueltaHora || '');
 
     const fecha = toISO(fechaIda || fechaVuelta || '');
 
@@ -298,6 +303,7 @@ function particionarVuelos(vuelosNorm) {
       aerolinea, numero, origen, destino,
       presentacionIda, presentacionVuelta,
       salidaIda, salidaVuelta,
+      arriboIda, arriboVuelta,
       tipoTransporte: v.tipoTransporte || 'aereo',
       isTransfer: !!v.isTransfer,
       transferLeg: String(v.transferLeg||'').toLowerCase()
@@ -316,7 +322,7 @@ function particionarVuelos(vuelosNorm) {
 
   aereos.sort((x, y) => (x.fecha || '').localeCompare(y.fecha || ''));
 
-  // Agrupación por lado para AÉREOS
+  // Todos los tramos (no se colapsan)
   const idaLegs    = aereos.filter(l => l.fechaIda);
   const vueltaLegs = aereos.filter(l => l.fechaVuelta);
 
@@ -324,41 +330,10 @@ function particionarVuelos(vuelosNorm) {
   const hasColegioToAeropuerto = terrestres.some(t => U(t.origen).includes('COLEGIO') && U(t.destino).includes('AEROPUERTO'));
   const hasAeropuertoToColegio = terrestres.some(t => U(t.origen).includes('AEROPUERTO') && U(t.destino).includes('COLEGIO'));
 
-  return { idaLegs, vueltaLegs, terrestres, hasColegioToAeropuerto, hasAeropuertoToColegio };
-}
+  // ⬇️ transfer COLEGIO → AEROPUERTO (para punto 1: presentación y salida del bus)
+  const transferIda = terrestres.find(t => U(t.origen).includes('COLEGIO') && U(t.destino).includes('AEROPUERTO')) || null;
 
-async function loadVuelosInfo(g){
-  const docId=String(g.id||'').trim(); const num=String(g.numeroNegocio||'').trim();
-  const key=`vuelos:${docId||num}`; if(cache.vuelosByGroup.has(key)) return cache.vuelosByGroup.get(key);
-  let found=[];
-  try{ if(docId){ const qs1=await getDocs(query(collection(db,'vuelos'), where('grupoIds','array-contains',docId))); qs1.forEach(d=>found.push({id:d.id,...(d.data()||{})})); } }catch(_){}
-  try{ if(!found.length && num){ const qs2=await getDocs(query(collection(db,'vuelos'), where('grupoIds','array-contains',num))); qs2.forEach(d=>found.push({id:d.id,...(d.data()||{})})); } }catch(_){}
-  if(!found.length){
-    // Fallback general (evita paginar infinito: trae primeras 200 por fecha desc)
-    let last=null, loops=0; const base=collection(db,'vuelos');
-    while(loops++<4){ const q = last ? query(base, orderBy('fechaIda','desc'), startAfter(last), limit(50)) : query(base, orderBy('fechaIda','desc'), limit(50));
-      const snap=await getDocs(q); if(!snap.size) break; snap.forEach(d=>{
-        const v=d.data()||{}; let match=false;
-        if(Array.isArray(v.grupos)){
-          match = v.grupos.some(x=>{
-            if(typeof x==='string') return (docId && x===docId)||(num && x===num);
-            if(x && typeof x==='object'){ const xid=String(x.id||x.grupoId||'').trim(); const xnum=String(x.numeroNegocio||x.numNegocio||'').trim(); return (docId && xid===docId)||(num && xnum===num); }
-            return false;
-          });
-        }
-        if(!match){
-          const rootId=String(v.grupoId||'').trim();
-          const rootNum=String(v.grupoNumero||v.numeroNegocio||'').trim();
-          match = (docId && rootId===docId) || (num && rootNum===num);
-        }
-        if(match) found.push({id:d.id,...v});
-      });
-      last=snap.docs[snap.docs.length-1];
-    }
-  }
-  found.sort((a,b)=>(toISO(a.fechaIda)||'').localeCompare(toISO(b.fechaIda)||''));
-  cache.vuelosByGroup.set(key,found);
-  return found;
+  return { idaLegs, vueltaLegs, terrestres, hasColegioToAeropuerto, hasAeropuertoToColegio, transferIda };
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -386,34 +361,32 @@ function renderSelector(lista, cont, hideNotes){
    Hoja estilo “foto” (usa datos reales del portal)
 ────────────────────────────────────────────────────────────────────────── */
 function extractPresentacion(grupo, vuelosNorm){
-  const { idaLegs, terrestres, hasColegioToAeropuerto } = particionarVuelos(vuelosNorm);
+  const { idaLegs, hasColegioToAeropuerto, transferIda } = particionarVuelos(vuelosNorm);
 
-  // 1) Lugar/aeropuerto
   let lugar = grupo.presentacionLugar || '';
-  let aeropuerto = grupo.presentacionAeropuerto || (idaLegs[0] ? idaLegs[0].origen : '');
+  const primeraIda = idaLegs[0];
+  let aeropuerto = grupo.presentacionAeropuerto || (primeraIda ? primeraIda.origen : '');
 
-  // 2) Hora: preferir TRANSFER COLEGIO → AEROPUERTO
-  const U = s => String(s||'').toUpperCase();
-  const transferIda = terrestres.find(t => U(t.origen).includes('COLEGIO') && U(t.destino).includes('AEROPUERTO'));
-  let hora = '';
-  if (transferIda) {
-    hora = transferIda.presentacionIda || transferIda.salidaIda || '';
-  }
-  if (!hora) {
-    hora = normTime(grupo.presentacionHora || grupo.horaPresentacion || '');
-  }
-  if (!hora && idaLegs[0]) {
-    hora = idaLegs[0].presentacionIda || idaLegs[0].salidaIda || '';
-  }
+  // Horarios a usar:
+  // 1) Si hay TRANSFER COLEGIO → AEROPUERTO: usar su presentación y su salida (bus)
+  // 2) Si no, presentar del vuelo de ida; salida del vuelo de ida
+  let presHora = '';
+  let salidaHora = '';
 
-  // 3) Lugar por defecto
+  if (transferIda){
+    presHora   = transferIda.presentacionIda || transferIda.salidaIda || '';
+    salidaHora = transferIda.salidaIda       || '';
+  }
+  if (!presHora)   presHora   = normTime(grupo.presentacionHora || grupo.horaPresentacion || '');
+  if (!presHora && primeraIda) presHora = primeraIda.presentacionIda || primeraIda.salidaIda || '';
+  if (!salidaHora && primeraIda) salidaHora = primeraIda.salidaIda || '';
+
   if (!lugar) {
-    lugar = hasColegioToAeropuerto
-      ? 'En las puertas del Colegio'
-      : (idaLegs[0] ? 'En el aeropuerto' : 'Punto de encuentro');
+    lugar = hasColegioToAeropuerto ? 'En las puertas del Colegio'
+                                   : (primeraIda ? 'En el aeropuerto' : 'Punto de encuentro');
   }
 
-  return { lugar, aeropuerto, hora };
+  return { lugar, aeropuerto, presHora, salidaHora };
 }
 
 // === Textos DOCUMENTOS / EQUIPAJE / RECOMENDACIONES según programa ===
@@ -533,20 +506,15 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     : `Viaje de Estudios ${grupo.programa||''}`.trim();
   const fechaViaje = grupo.fechaInicio ? formatShortDate(grupo.fechaInicio) : (grupo.fecha || '');
 
-  // Presentación (usa TRANSFER si existe)
   const P = extractPresentacion(grupo, vuelosNorm);
-  const presLine = `Presentación: ${P.lugar}${P.hora ? ` a las ${P.hora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino al aeropuerto ${String(P.aeropuerto||'').toUpperCase()}.` : ''}`;
-
-  // Partición vuelos (y flags de transfers)
   const { idaLegs, vueltaLegs, hasColegioToAeropuerto, hasAeropuertoToColegio } = particionarVuelos(vuelosNorm);
 
-  // Leyenda de transfer (se muestra en el PUNTO 1)
   const legendBits = [];
   if (hasColegioToAeropuerto) legendBits.push('Este grupo contempla traslado COLEGIO → AEROPUERTO.');
   if (hasAeropuertoToColegio) legendBits.push('Este grupo contempla traslado AEROPUERTO → COLEGIO.');
-  const legendInline = legendBits.length ? ` – ${legendBits.join(' ')}` : '';
+  const legendInline = legendBits.join(' ');
 
-  // Helper Nº de vuelo cuando viene "AA 123 // BB 456"
+  // Helper Nº cuando viene "AA // BB"
   const chooseNum = (raw, modo) => {
     const s = String(raw||'').toUpperCase();
     if (!s.includes('//')) return s;
@@ -554,67 +522,91 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     return (modo === 'ida') ? (parts[0]||'') : (parts[parts.length-1]||'');
   };
 
-  // Filas (toman TODOS los tramos en multi)
+  // Encabezado “IDA: VUELO X VÍA SKY”
+  const idaHeader = (() => {
+    const first = idaLegs[0];
+    if (!first) return '';
+    return `IDA: VUELO ${chooseNum(first.numero,'ida')} VÍA ${first.aerolinea||''}`.trim();
+  })();
+  const vtaHeader = (() => {
+    const first = vueltaLegs[0];
+    if (!first) return '';
+    return `VUELTA: VUELO ${chooseNum(first.numero,'vuelta')} VÍA ${first.aerolinea||''}`.trim();
+  })();
+
+  // Filas: sin N° de vuelo, con "Hora de arribo" al final
   const makeRows = (legs, modo) => legs.map(r => {
     const fecha = (modo === 'ida') ? (r.fechaIda || r.fecha) : (r.fechaVuelta || r.fecha);
     const presentacion = (modo === 'ida') ? r.presentacionIda : r.presentacionVuelta;
     const salida       = (modo === 'ida') ? r.salidaIda       : r.salidaVuelta;
+    const arribo       = (modo === 'ida') ? r.arriboIda       : r.arriboVuelta;
 
-    const nro = chooseNum(r.numero, modo);
-    const via = r.aerolinea ? `VÍA ${String(r.aerolinea||'').toUpperCase()}` : '';
+    const via = r.aerolinea ? `<div style="font-size:.85em;color:#374151;">VÍA ${String(r.aerolinea||'').toUpperCase()}</div>` : '';
 
     return `
       <tr>
-        <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha) : '—'}${via ? `<div style="font-size:.85em;color:#374151;">${via}</div>` : ''}</td>
-        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(nro)}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha) : '—'}${via}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(String(r.origen||'').toUpperCase())}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(String(r.destino||'').toUpperCase())}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arribo)}</td>
       </tr>`;
   }).join('');
 
   const hasAereos = idaLegs.length || vueltaLegs.length;
   const vuelosHTML = (hasAereos) ? `
-    <div style="overflow:auto;margin-top:6px;">
-      <table style="border-collapse:collapse;min-width:560px;">
-        <thead>
-          <tr>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">N° de vuelo</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Origen</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Presentación</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de salida</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${ idaLegs.length ? `
-            <tr><td colspan="6" style="padding:6px 8px;border:1px solid #d1d5db;background:#fafafa;font-weight:700;">IDA (aéreo)</td></tr>
-            ${makeRows(idaLegs, 'ida')}
-          ` : ''}
+    ${ idaHeader ? `<div class="subsec" style="font-weight:700;margin:.35rem 0 .25rem 0;">${idaHeader}</div>` : '' }
+    ${ idaLegs.length ? `
+      <div style="overflow:auto;margin-top:2px;">
+        <table style="border-collapse:collapse;min-width:560px;">
+          <thead>
+            <tr>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Origen</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Presentación</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de salida</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de arribo</th>
+            </tr>
+          </thead>
+          <tbody>${makeRows(idaLegs, 'ida')}</tbody>
+        </table>
+      </div>` : '' }
 
-          ${ vueltaLegs.length ? `
-            <tr><td colspan="6" style="padding:6px 8px;border:1px solid #d1d5db;background:#fafafa;font-weight:700;">VUELTA (aéreo)</td></tr>
-            ${makeRows(vueltaLegs, 'vuelta')}
-          ` : ''}
-        </tbody>
-      </table>
-    </div>
+    ${ vtaHeader ? `<div class="subsec" style="font-weight:700;margin:.6rem 0 .25rem 0;">${vtaHeader}</div>` : '' }
+    ${ vueltaLegs.length ? `
+      <div style="overflow:auto;margin-top:2px;">
+        <table style="border-collapse:collapse;min-width:560px;">
+          <thead>
+            <tr>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Origen</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Presentación</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de salida</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de arribo</th>
+            </tr>
+          </thead>
+          <tbody>${makeRows(vueltaLegs, 'vuelta')}</tbody>
+        </table>
+      </div>` : '' }
   ` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`;
 
-  // Hotelería con dirección + DEDUPE por (checkIn, checkOut) último guardado
+  // Hotelería (alineación simple con subetiqueta)
   const hotelesHtml = (hoteles||[]).map(h=>{
     const H = h.hotel || {};
+    const pais = (H.pais || H.país || h.pais || h.país || 'BRASIL').toString().toUpperCase();
     const ciudad = (H.ciudad || H.destino || h.ciudad || '').toString().toUpperCase();
     const dir    = (H.direccion || h.direccion || '').toString();
     return `
-      <div style="display:flex;gap:16px;align-items:flex-start;">
-        <div style="width:120px;font-weight:700;">${safe(ciudad,'—')}</div>
-        <div>
+      <div class="hotel-item" style="display:flex;gap:14px;align-items:flex-start;">
+        <div class="hotel-left" style="min-width:90px;font-weight:700;">${safe(pais,'—')}</div>
+        <div class="hotel-body">
           <div style="font-weight:700;">${safe((h.hotelNombre || H.nombre || '').toString().toUpperCase())}</div>
           <div>In : ${safe(h.checkIn)}</div>
           <div>Out: ${safe(h.checkOut)}</div>
+          ${ciudad ? `<div>Ciudad: ${ciudad}</div>` : ''}
           ${dir ? `<div>Dirección: ${dir}</div>` : ''}
           ${H.contactoTelefono?`<div>Fono: <a href="tel:${H.contactoTelefono}">${H.contactoTelefono}</a></div>`:''}
           ${H.web?`<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>`:''}
@@ -622,7 +614,6 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       </div>`;
   }).join('<hr style="border:none;border-top:1px dashed #e5e7eb;margin:6px 0;">');
 
-  // Textos por programa (mantiene tu lógica)
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
 
@@ -633,29 +624,33 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     </div>
 
     <ol style="padding-left:18px;margin:0;">
-      <li style="margin-bottom:10px;">
-        <div style="font-weight:700;">CONFIRMACIÓN DE HORARIO DE SALIDA${legendInline}</div>
-        <div>${presLine}</div>
+      <li class="punto1" style="margin-bottom:12px;">
+        <div style="font-weight:700;">CONFIRMACIÓN DE HORARIO DE SALIDA</div>
+        ${legendInline ? `<div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${legendInline}</div>` : ''}
+        <div class="presentacion" style="line-height:1.35;">
+          Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino al aeropuerto ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
+        </div>
       </li>
 
-      <li style="margin-bottom:10px;">
+      <li style="margin-bottom:12px;">
         <div style="font-weight:700;">INFORMACIÓN DE VUELOS CONFIRMADOS</div>
+        <div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">Los horarios de los vuelos podrían ser modificados por la Línea Aérea contratada sin previo aviso</div>
         ${vuelosHTML}
       </li>
 
-      <li style="margin-bottom:10px;">
+      <li style="margin-bottom:12px;">
         <div style="font-weight:700;">HOTELERÍA CONFIRMADA</div>
         ${hoteles && hoteles.length ? `<div style="margin-top:6px;display:grid;gap:8px;">${hotelesHtml}</div>` : `<div style="opacity:.7;">— Sin hotelería cargada —</div>`}
       </li>
 
-      <li style="margin-bottom:10px;">
+      <li style="margin-bottom:12px;">
         <div style="font-weight:700;">DOCUMENTOS PARA EL VIAJE</div>
         <ul style="margin:4px 0 0 18px;list-style:disc;">
           ${renderDocsList(docsText)}
         </ul>
       </li>
 
-      <li style="margin-bottom:10px;">
+      <li style="margin-bottom:12px;">
         <div style="font-weight:700;">EQUIPAJE</div>
         <ul style="margin:4px 0 0 18px;list-style:disc;">
           <li>${equipajeText1}</li>
@@ -670,7 +665,6 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         </ul>
       </li>
 
-      <!-- ITINERARIO DE VIAJE -->
       <li style="margin-bottom:6px;">
         <div style="font-weight:700;">ITINERARIO DE VIAJE</div>
         <div id="itin-slot" style="margin-top:6px;"></div>
@@ -686,18 +680,8 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 /* ──────────────────────────────────────────────────────────────────────────
    Impresión (texto plano) – mismo formato que ya ocupabas
 ────────────────────────────────────────────────────────────────────────── */
-function buildPrintText(grupo, fechas){
-  const header = [];
-  header.push(`PROGRAMA: ${(grupo.programa||'—').toString().toUpperCase()}`);
-  header.push(`GRUPO: ${grupo.nombreGrupo||'—'}`);
-  header.push(`N° NEGOCIO: ${grupo.numeroNegocio??grupo.id??'—'}`);
-  header.push(`DESTINO: ${grupo.destino||'—'}`);
-  header.push(`FECHAS: ${formatDateRange(grupo.fechaInicio, grupo.fechaFin)}`);
-  header.push(''); // línea en blanco
-
-  const lines = [];
-
-  fechas.forEach((f, i) => {
+function buildPrintHtml(grupo, fechas){
+  const liDays = fechas.map((f, i) => {
     const src = grupo.itinerario?.[f];
     const arr = (Array.isArray(src) ? src
                : (src && typeof src==='object' ? Object.values(src) : []))
@@ -707,52 +691,27 @@ function buildPrintText(grupo, fechas){
       .map(a => (a?.actividad || '').toString().trim().toUpperCase())
       .filter(Boolean);
 
-    const linea = `Día ${i+1} – ${formatDateReadable(f)}: ${actividades.length ? actividades.join(' - ') : '—'}`;
-    lines.push(linea);
-  });
+    // Cabecera de día en NEGRITA y MAYÚSCULAS
+    const head = `DÍA ${i+1} - ${formatDateReadable(f).toUpperCase()}:`;
 
-  return [...header, ...lines].join('\n');
-}
+    // Actividades separadas por " — " en negrita
+    const body = actividades.length
+      ? actividades.map((t,idx)=> `${idx?'<span class="sep"> — </span>':''}${t}`).join('')
+      : '—';
 
-function injectPrintStyles(){
-  if (document.getElementById('print-tweaks')) return;
-  const css = `
-    /* En pantalla el bloque de texto no molesta */
-    #print-block { display: none; }
+    return `
+      <li class="print-dia">
+        <div class="print-dia-head"><strong>${head}</strong></div>
+        <div class="print-dia-body">${body}</div>
+      </li>`;
+  }).join('');
 
-    @media print {
-      /* Tamaño/ márgenes de la hoja (ajústalo si quieres) */
-      @page { size: A4; margin: 10mm 8mm; }
-
-      html, body { background:#fff !important; }
-
-      /* Quita la "caja" del resumen */
-      #hoja-resumen{
-        border: none !important;
-        border-radius: 0 !important;
-        padding: 0 !important;
-        margin: 0 !important;
-        box-shadow: none !important;
-      }
-
-      /* Tablas a todo el ancho */
-      #hoja-resumen table { width: 100% !important; }
-
-      /* Ocultar el itinerario visual y mostrar el bloque de texto */
-      .dias-embebidas, #mi-itin, #itin-slot { display: none !important; }
-      #print-block {
-        display: block !important;
-        white-space: pre-wrap;
-        font-size: 12.5pt;
-        line-height: 1.35;
-        margin-top: 8px;
-      }
-    }
+  return `
+    <ul class="print-itin">
+      ${liDays}
+    </ul>
+    <div class="print-despedida">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
   `;
-  const s = document.createElement('style');
-  s.id = 'print-tweaks';
-  s.textContent = css;
-  document.head.appendChild(s);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -852,7 +811,6 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
   }
 }
 
-
 function embedItinIntoResumen(){
   const caja = document.getElementById('hoja-resumen');
   const slot = document.getElementById('itin-slot') || document.getElementById('mi-itin');
@@ -894,6 +852,88 @@ function embedItinIntoResumen(){
 
   // Vacía el slot original
   slot.innerHTML = '';
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Estilos de IMPRESIÓN (logo fijo, sin “caja”, tablas full width, etc.)
+────────────────────────────────────────────────────────────────────────── */
+function injectPrintStyles(){
+  if (document.getElementById('print-tweaks')) return;
+  const css = `
+    /* En pantalla: oculto el bloque de impresión */
+    #print-block { display: none; }
+
+    @media print {
+      /* Márgenes del papel (A4). Si quieres aún menos, baja a 8mm o 6mm. */
+      @page { size: A4; margin: 10mm 10mm; }
+
+      html, body { background:#fff !important; }
+      /* Reservo espacio a la derecha para que el texto NO quede bajo el logo */
+      body { margin-right: 28mm !important; }
+
+      /* Logo fijo arriba-derecha: agrega id="logo-raitrai" al <img> del logo */
+      #logo-raitrai{
+        position: fixed !important;
+        right: 8mm !important;
+        top: 8mm !important;
+        width: 26mm !important;
+        height: auto !important;
+        z-index: 0 !important;   /* detrás del contenido */
+        opacity: .95;
+        pointer-events: none;
+      }
+
+      /* Quitar la “caja” alrededor de la hoja resumen */
+      #hoja-resumen{
+        border: none !important;
+        border-radius: 0 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        box-shadow: none !important;
+        background: transparent !important;
+      }
+
+      /* Tablas a todo el ancho y simplificadas */
+      #hoja-resumen table { width: 100% !important; }
+      #hoja-resumen th,
+      #hoja-resumen td { font-size: 11pt !important; }
+
+      /* Oculto el itinerario “visual” y muestro el bloque especial de impresión */
+      .dias-embebidas, #mi-itin, #itin-slot { display: none !important; }
+      #print-block {
+        display: block !important;
+        margin-top: 8px;
+        font-size: 12.5pt;
+        line-height: 1.35;
+      }
+
+      /* Lista del ITINERARIO impreso (con viñetas y separadores “—” en negrita) */
+      .print-itin{
+        list-style: disc;
+        margin: 4px 0 10px 18px;
+        padding: 0;
+      }
+      .print-itin .print-dia{ margin-bottom: 8px; }
+      .print-itin .print-dia-head{ font-weight: 700; }
+      .print-itin .print-dia-body{ margin-top: 2px; }
+      .print-itin .sep{ font-weight: 700; }
+
+      .print-despedida{
+        text-align: center;
+        font-weight: 800;
+        margin-top: 12px;
+      }
+
+      /* Punto 1: más aire y leyenda gris */
+      #hoja-resumen .punto1 .legend{ color:#6b7280 !important; }
+      #hoja-resumen .punto1 .presentacion{ margin-top: .25rem !important; }
+      #hoja-resumen ol>li{ margin-bottom: 12px !important; }
+    }
+  `;
+  const s = document.createElement('style');
+  s.id = 'print-tweaks';
+  s.textContent = css;
+  document.head.appendChild(s);
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -970,11 +1010,12 @@ async function main(){
   // Itinerario visual
   if (!fechas.length) {
     cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
-    if (printEl) printEl.textContent = buildPrintText(g, []);
+    // ✅ Ahora usamos el HTML de impresión nuevo (vacío)
+    if (printEl) printEl.innerHTML = buildPrintHtml(g, []);
   } else {
     const slot = document.getElementById('itin-slot');
     renderItin(g, fechas, hideNotes, slot || cont); // 👈 renderiza y ya parte 4 + resto
-    if (printEl) printEl.textContent = buildPrintText(g, fechas);
+    if (printEl) printEl.innerHTML = buildPrintHtml(g, fechas);
   }
 }
 main().catch(err => {
