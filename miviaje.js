@@ -238,28 +238,35 @@ async function loadVuelosInfo(g){
       if (tNew >= tOld) vistos.set(d.id, nuevo);
     });
   };
-
   const runQs = async (qs) => {
     const snaps = await Promise.all(qs.map(q => {
       if (!q) return Promise.resolve(null);
-      // q puede ser un Query o una CollectionReference
       return getDocs(q).catch(() => null);
     }));
     snaps.forEach(pushSnap);
   };
-
   const coll = (name) => collection(db, name);
 
-  // ===== FASE 1: más probable (rápida) =====
+  /* ───────────── FASE 0: documentos antiguos (grupoIds) ───────────── */
+  const numAsNumber = Number(groupNum);
   await runQs([
-    groupDocId ? query(coll('vuelos'), where('grupoId','==',groupDocId)) : null,
-    groupDocId ? query(coll('vuelos'), where('grupoDocId','==',groupDocId)) : null,
-    groupDocId ? collection(db, 'grupos', groupDocId, 'vuelos') : null
+    groupDocId ? query(coll('vuelos'), where('grupoIds','array-contains', groupDocId)) : null,
+    groupNum   ? query(coll('vuelos'), where('grupoIds','array-contains', groupNum))   : null,
+    (groupNum && !Number.isNaN(numAsNumber))
+      ? query(coll('vuelos'), where('grupoIds','array-contains', numAsNumber)) : null
   ]);
 
-  // Si ya hay algo, no seguimos fanout
+  /* ───────────── FASE 1: más probable (rápida) ───────────── */
+  if (vistos.size === 0) {
+    await runQs([
+      groupDocId ? query(coll('vuelos'), where('grupoId','==',groupDocId))   : null,
+      groupDocId ? query(coll('vuelos'), where('grupoDocId','==',groupDocId)): null,
+      groupDocId ? collection(db, 'grupos', groupDocId, 'vuelos')            : null
+    ]);
+  }
+
+  /* variantes por número */
   if (vistos.size === 0 && groupNum) {
-    // Variantes del número (incluye partes y número como Number)
     const variants = new Set([groupNum, ...buildCompositeVariants(groupNum), ...splitNumeroCompuesto(groupNum)]);
     const qs = [];
     variants.forEach(v => {
@@ -270,17 +277,17 @@ async function loadVuelosInfo(g){
     await runQs(qs);
   }
 
-  // ===== FASE 2: asignaciones alternativas =====
+  /* ───────────── FASE 2: asignaciones alternativas ───────────── */
   if (vistos.size === 0) {
     await runQs([
-      groupDocId ? query(coll('flightAssignments'), where('grupoId','==',groupDocId)) : null,
-      groupDocId ? query(coll('vuelosAssignments'), where('grupoId','==',groupDocId)) : null
+      groupDocId ? query(coll('flightAssignments'), where('grupoId','==',groupDocId))  : null,
+      groupDocId ? query(coll('vuelosAssignments'), where('grupoId','==',groupDocId))  : null
     ]);
 
     if (vistos.size === 0 && groupNum) {
       const variants = new Set([groupNum, ...buildCompositeVariants(groupNum), ...splitNumeroCompuesto(groupNum)]);
       const qs = [];
-      ['flightAssignments', 'vuelosAssignments'].forEach(cn => {
+      ['flightAssignments','vuelosAssignments'].forEach(cn => {
         variants.forEach(v => {
           qs.push(query(coll(cn), where('grupoNumero','==',v)));
           const n = Number(v);
@@ -291,7 +298,7 @@ async function loadVuelosInfo(g){
     }
   }
 
-  // ===== FASE 3: traslados terrestres (fallback) =====
+  /* ───────────── FASE 3: traslados terrestres (fallback) ───────────── */
   if (vistos.size === 0) {
     await runQs([
       groupDocId ? query(coll('transportes'), where('grupoId','==',groupDocId)) : null,
@@ -316,7 +323,58 @@ async function loadVuelosInfo(g){
     }
   }
 
-  // Orden final (mismo criterio)
+  /* ───────────── FASE FINAL: escaneo acotado si no hay nada ───────────── */
+  if (vistos.size === 0) {
+    const matchesGroup = (v) => {
+      // arreglo "grupos" (puede venir string u objeto)
+      if (Array.isArray(v.grupos)) {
+        const ok = v.grupos.some(x => {
+          if (typeof x === 'string')
+            return (groupDocId && x === groupDocId) || (groupNum && x === groupNum);
+          if (x && typeof x === 'object') {
+            const xid  = String(x.id || x.grupoId || '').trim();
+            const xnum = String(x.numeroNegocio || x.numNegocio || '').trim();
+            return (groupDocId && xid === groupDocId) || (groupNum && xnum === groupNum);
+          }
+          return false;
+        });
+        if (ok) return true;
+      }
+      // arreglo "grupoIds" con tipos mixtos
+      if (Array.isArray(v.grupoIds)) {
+        if (v.grupoIds.some(x => (groupDocId && x === groupDocId))) return true;
+        if (groupNum) {
+          if (v.grupoIds.some(x => x === groupNum)) return true;
+          if (!Number.isNaN(numAsNumber) && v.grupoIds.some(x => x === numAsNumber)) return true;
+        }
+      }
+      // campos raíz frecuentes
+      const rootId  = String(v.grupoId || v.grupoDocId || '').trim();
+      const rootNum = String(v.grupoNumero || v.numeroNegocio || '').trim();
+      if (groupDocId && rootId === groupDocId) return true;
+      if (groupNum && rootNum === groupNum) return true;
+      return false;
+    };
+
+    let last = null, loops = 0;
+    while (loops++ < 4) { // 4 * 50 = 200 docs máx.
+      const q = last
+        ? query(coll('vuelos'), orderBy('fechaIda','desc'), startAfter(last), limit(50))
+        : query(coll('vuelos'), orderBy('fechaIda','desc'), limit(50));
+      const snap = await getDocs(q).catch(()=>null);
+      if (!snap || !snap.size) break;
+
+      snap.forEach(d => {
+        const v = d.data() || {};
+        if (matchesGroup(v)) vistos.set(d.id, { id:d.id, ...v });
+      });
+
+      last = snap.docs[snap.docs.length - 1];
+      if (vistos.size) break; // en cuanto encontremos algo, cortamos
+    }
+  }
+
+  // Orden final
   const out = [...vistos.values()].sort((a,b)=>{
     const aF = toISO(a.fechaIda || a.fechaVuelta || a.fecha || '');
     const bF = toISO(b.fechaIda || b.fechaVuelta || b.fecha || '');
