@@ -1249,19 +1249,21 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 async function main(){
   const { numeroNegocio, id, hideNotes } = getParamsFromURL();
 
-  const titleEl   = document.getElementById('grupo-title');
-  const nombreEl  = document.getElementById('grupo-nombre');
-  const numEl     = document.getElementById('grupo-numero');
-  const destinoEl = document.getElementById('grupo-destino');
-  const fechasEl  = document.getElementById('grupo-fechas');
-  const resumenPax= document.getElementById('resumen-pax');
-  const cont      = document.getElementById('mi-itin');
-  const printEl   = document.getElementById('print-block');
-  const printEl = document.getElementById('btnPrint');
-  const btnShare  = document.getElementById('btnShare');
+  // ——— DOM refs y botón imprimir (REEMPLAZA TODO ESTE BLOQUE) ———
+  const titleEl    = document.getElementById('grupo-title');
+  const nombreEl   = document.getElementById('grupo-nombre');
+  const numEl      = document.getElementById('grupo-numero');
+  const destinoEl  = document.getElementById('grupo-destino');
+  const fechasEl   = document.getElementById('grupo-fechas');
+  const resumenPax = document.getElementById('resumen-pax');
+  const cont       = document.getElementById('mi-itin');
+  const printEl    = document.getElementById('print-block'); // ← solo una vez
+  const btnPrint   = document.getElementById('btnPrint');    // ← declarado
+  const btnShare   = document.getElementById('btnShare');
 
-  injectPrintStyles(); 
-  btnPrint?.addEventListener('click', ()=> window.print());
+  // Estilos de impresión + acción del botón
+  injectPrintStyles();
+  if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
   if(!numeroNegocio && !id){
     cont.innerHTML = `<p style="padding:1rem;">Falta <code>numeroNegocio</code> o <code>id</code> en la URL.</p>`;
