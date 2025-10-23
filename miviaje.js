@@ -218,13 +218,11 @@ async function loadHotelesInfo(g){
 
 /* ───────────────── VUELOS (mismas reglas que el portal) ────────────────── */
 async function loadVuelosInfo(g){
-  // defensa por si cache vino sin la propiedad
   if (!cache.vuelosByGroup) cache.vuelosByGroup = new Map();
 
   const groupDocId = String(g.id || '').trim();
   const groupNum   = String(g.numeroNegocio || '').trim();
   const key = `vuelos:${groupDocId || groupNum}`;
-
   if (cache.vuelosByGroup.has(key)) return cache.vuelosByGroup.get(key);
 
   const vistos = new Map();
@@ -241,23 +239,40 @@ async function loadVuelosInfo(g){
     });
   };
 
-  // 1) Colección "vuelos"
-  try{ if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoId','==',groupDocId)))); }catch(_){}
-  try{ if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoDocId','==',groupDocId)))); }catch(_){}
-  try{ if (groupNum)   pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoNumero','==',groupNum)))); }catch(_){}
+  // helper: consulta por TODAS las variantes del numeroNegocio
+  const pushByGroupNum = async (coll, field = 'grupoNumero') => {
+    if (!groupNum) return;
+    const variants = new Set([
+      groupNum,
+      ...buildCompositeVariants(groupNum),
+      ...splitNumeroCompuesto(groupNum)
+    ]);
+    for (const v of variants) {
+      try { pushSnap(await getDocs(query(collection(db, coll), where(field, '==', v)))); } catch (_) {}
+      const n = Number(v);
+      if (!Number.isNaN(n)) {
+        try { pushSnap(await getDocs(query(collection(db, coll), where(field, '==', n)))); } catch (_) {}
+      }
+    }
+  };
+
+  // 1) Colección "vuelos" (por id y por número en todas sus variantes)
+  try { if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoId','==',groupDocId)))); } catch (_){}
+  try { if (groupDocId) pushSnap(await getDocs(query(collection(db,'vuelos'), where('grupoDocId','==',groupDocId)))); } catch (_){}
+  await pushByGroupNum('vuelos', 'grupoNumero');
 
   // 2) Subcolección por grupo
-  try{ if (groupDocId) pushSnap(await getDocs(collection(db,'grupos', groupDocId, 'vuelos'))); }catch(_){}
+  try { if (groupDocId) pushSnap(await getDocs(collection(db,'grupos', groupDocId, 'vuelos'))); } catch (_){}
 
-  // 3) Asignaciones alternativas
+  // 3) Asignaciones alternativas (también con variantes)
   const tryAssign = async (coll) => {
-    try{ if (groupDocId) pushSnap(await getDocs(query(collection(db,coll), where('grupoId','==',groupDocId)))); }catch(_){}
-    try{ if (groupNum)   pushSnap(await getDocs(query(collection(db,coll), where('grupoNumero','==',groupNum)))); }catch(_){}
+    try { if (groupDocId) pushSnap(await getDocs(query(collection(db,coll), where('grupoId','==',groupDocId)))); } catch (_){}
+    await pushByGroupNum(coll, 'grupoNumero');
   };
   await tryAssign('flightAssignments');
   await tryAssign('vuelosAssignments');
 
-  // 4) Traslados terrestres (fallback)
+  // 4) Traslados terrestres (COLEGIO ↔ AEROPUERTO) como fallback
   const pullTerrestres = async (coll) => {
     try{
       if (groupDocId){
@@ -265,12 +280,7 @@ async function loadVuelosInfo(g){
         s1.forEach(d => { const x=d.data()||{}; vistos.set(d.id,{ id:d.id, tipoTransporte:(x.tipoTransporte||'terrestre'), ...x }); });
       }
     }catch(_){}
-    try{
-      if (groupNum){
-        const s2 = await getDocs(query(collection(db,coll), where('grupoNumero','==',groupNum)));
-        s2.forEach(d => { const x=d.data()||{}; vistos.set(d.id,{ id:d.id, tipoTransporte:(x.tipoTransporte||'terrestre'), ...x }); });
-      }
-    }catch(_){}
+    await pushByGroupNum(coll, 'grupoNumero');
     try{
       if (groupDocId){
         const s3 = await getDocs(collection(db,'grupos', groupDocId, coll));
