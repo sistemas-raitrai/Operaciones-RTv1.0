@@ -107,8 +107,9 @@ async function buscarGruposPorNumero(numeroNegocio) {
 const cache = {
   hotelesIndex: null,              // { loaded, byId:Map, bySlug:Map, all:[] }
   hotelesByGroup: new Map(),       // key → [assignments…]
-  ByGroup: new Map()         // key → [docs…]
+  vuelosByGroup: new Map()         // key → [docs…]
 };
+
 
 /* ───────────────── HOTELS (igual lógica que portal) ──────────────────── */
 async function ensureHotelesIndex(){
@@ -220,6 +221,8 @@ async function loadVuelosInfo(g){
   const groupDocId = String(g.id || '').trim();
   const groupNum   = String(g.numeroNegocio || '').trim();
   const key = `vuelos:${groupDocId || groupNum}`;
+  if (!cache.vuelosByGroup) cache.vuelosByGroup = new Map();
+  const groupDocId = String(g.id || '').trim();
   if (cache.vuelosByGroup.has(key)) return cache.vuelosByGroup.get(key);
 
   const vistos = new Map();
