@@ -90,6 +90,33 @@ const listAlertasOtros   = document.getElementById("alertas-otros");
 const listAlertasLeidas   = document.getElementById("alertas-actual-leidas");
 const listAlertasPend     = document.getElementById("alertas-pendientes");
 
+/* [ADD] Refs Modal Estadísticas */
+const modalStats   = document.getElementById("modal-estadisticas");
+const bgStats      = document.getElementById("modal-backdrop-stats");
+const btnStats     = document.getElementById("btnEstadisticas");
+const btnStatsClose= document.getElementById("stats-close");
+const selAno       = document.getElementById("fAno");
+const selDestino   = document.getElementById("fDestino");
+const selPrograma  = document.getElementById("fPrograma");
+const inpDiaDesde  = document.getElementById("fDiaDesde");
+const inpDiaHasta  = document.getElementById("fDiaHasta");
+const selBaseGrupo = document.getElementById("fBaseGrupo");
+const chkPares     = document.getElementById("fPares");
+const rngWOrden    = document.getElementById("wOrden");
+const rngWSet      = document.getElementById("wSet");
+const rngWMeta     = document.getElementById("wMeta");
+const btnRunStats  = document.getElementById("btnRunStats");
+const btnExportCSV = document.getElementById("btnExportCSV");
+const kpisDiv      = document.getElementById("stats-kpis");
+const resultsDiv   = document.getElementById("stats-results");
+const detailDiv    = document.getElementById("stats-detail");
+
+/* [ADD] Cache para estadísticas */
+let STATS_GROUPS_CACHE = null;  // [{id, ...data}]
+let STATS_SIGS_CACHE   = new Map(); // grupoId -> firma calculada
+let STATS_LAST_ROWS    = [];    // última tabla para export CSV
+
+
 
 let editData    = null;    // { fecha, idx, ...act }
 let choicesDias = null;    // Choices.js instance
@@ -270,6 +297,39 @@ async function initItinerario() {
     };
   }
 
+    // filtro en vivo
+  if (filtroHistorial) {
+    filtroHistorial.oninput = () => {
+      const q = (filtroHistorial.value || '').trim().toLowerCase();
+      const data = !q ? historialCache : historialCache.filter(it => {
+        const campos = [
+          it.accion, it.usuario, it.motivo, it.detalle,
+          it.anterior, it.nuevo, it.path, it.nombreGrupo,
+          it.numeroNegocio
+        ].map(x => (x ?? '').toString().toLowerCase());
+        return campos.some(c => c.includes(q));
+      });
+      renderHistorialList(data);
+    };
+  }
+
+  // ⬇️⬇️⬇️ PONER AQUÍ EL PUNTO 4 (listeners del modal de estadísticas) ⬇️⬇️⬇️
+  if (btnStats) {
+    btnStats.onclick = (e)=>{ stopAll(e); openStatsModal(); };
+  }
+  if (btnStatsClose) {
+    btnStatsClose.onclick = (e)=>{ stopAll(e); closeStatsModal(); };
+  }
+  if (bgStats) {
+    bgStats.onclick = (e)=>{ stopAll(e); closeStatsModal(); };
+  }
+  if (btnRunStats) {
+    btnRunStats.onclick = async (e)=>{ stopAll(e); await runStats(); };
+  }
+  if (btnExportCSV) {
+    btnExportCSV.onclick = (e)=>{ stopAll(e); exportStatsCSV(); };
+  }
+  // ⬆️⬆️⬆️ FIN PUNTO 4 ⬆️⬆️⬆️
 
   await cargarListaPlantillas();
 
@@ -1938,3 +1998,438 @@ async function openHistorialPanel() {
     if (listHistorial) listHistorial.innerHTML = `<li class="hist-item"><div class="meta">Error al cargar el historial.</div></li>`;
   }
 }
+
+/* ===========================================================
+   ESTADÍSTICAS DE ITINERARIOS — v1
+   - Cálculo de similitud por orden (LCS), set (Jaccard) y meta.
+   - Filtros por Año, Destino, Programa, rango de días.
+   - Modos: uno vs muchos (base) y pares (top).
+   =========================================================== */
+
+/* Helpers UI modal */
+function openStatsModal(){
+  if (!modalStats) return;
+  modalStats.style.display = "block";
+  if (bgStats) bgStats.style.display = "block";
+  document.body.classList.add("modal-open");
+  hydrateStatsFilters().catch(console.warn);
+}
+function closeStatsModal(){
+  if (!modalStats) return;
+  modalStats.style.display = "none";
+  if (bgStats) bgStats.style.display = "none";
+  document.body.classList.remove("modal-open");
+}
+
+/* --- Lectura de grupos y armado de opciones --- */
+async function getAllGroupsForStats(){
+  if (STATS_GROUPS_CACHE) return STATS_GROUPS_CACHE;
+  const qs = await getDocs(collection(db,'grupos'));
+  STATS_GROUPS_CACHE = qs.docs.map(d => ({ id:d.id, ...(d.data()||{}) }));
+  return STATS_GROUPS_CACHE;
+}
+
+function uniqueSorted(arr){
+  return [...new Set(arr.filter(Boolean).map(x=>x.toString()))].sort((a,b)=> (a>b?1:-1));
+}
+
+async function hydrateStatsFilters(){
+  const grupos = await getAllGroupsForStats();
+
+  // Opciones Año/Destino/Programa
+  const anos     = uniqueSorted(grupos.map(g=>g.anoViaje));
+  const destinos = uniqueSorted(grupos.map(g=> (g.destino||'').toString().toUpperCase()));
+  const programas= uniqueSorted(grupos.map(g=> (g.programa||'').toString().toUpperCase()));
+
+  selAno.innerHTML = `<option value="">(todos)</option>` + anos.map(a=>`<option>${a}</option>`).join('');
+  selDestino.innerHTML = `<option value="">(todos)</option>` + destinos.map(d=>`<option>${d}</option>`).join('');
+  selPrograma.innerHTML = `<option value="">(todos)</option>` + programas.map(p=>`<option>${p}</option>`).join('');
+
+  // Base (solo dentro del filtro actual básico: por ahora, todos)
+  selBaseGrupo.innerHTML = `<option value="">(ninguno)</option>` +
+    grupos.map(g=>`<option value="${g.id}">#${g.numeroNegocio||g.id} — ${(g.nombreGrupo||'').toString().toUpperCase()}</option>`).join('');
+
+  // Ajuste rango de días por defecto
+  const maxDias = Math.max(...grupos.map(g=> Object.keys(g.itinerario||{}).length || 0), 8);
+  inpDiaHasta.value = Math.max(1, maxDias);
+}
+
+/* --------- Firma de un grupo (secuencias por día + meta) --------- */
+function seqFromDayActivities(arr){
+  // token preferente: servicioId; fallback a K(actividad)
+  const ordered = (arr||[]).slice().sort((a,b)=> (a.horaInicio||'').localeCompare(b.horaInicio||''));
+  return ordered.map(a => (a.servicioId || K(a.actividad||'')));
+}
+
+async function getFlightsSetForGroup(grupoId){
+  // Opcional: estructura de vuelos puede variar; intentar 'vuelos' o 'horarios_publicos'
+  const set = new Set();
+  try {
+    let qs = await getDocs(query(collection(db,'vuelos'), where('grupoId','==',grupoId)));
+    if (!qs.empty) {
+      qs.forEach(d => {
+        const v = d.data()||{};
+        const aer = (v.aerolinea || v.airline || '').toString().toUpperCase();
+        if (aer) set.add(aer);
+      });
+      return set;
+    }
+  } catch(_) {}
+  try {
+    let qs = await getDocs(query(collection(db,'horarios_publicos'), where('grupoId','==',grupoId)));
+    qs.forEach(d=>{
+      const v = d.data()||{};
+      const aer = (v.aerolinea || v.airline || '').toString().toUpperCase();
+      if (aer) set.add(aer);
+    });
+  } catch(_) {}
+  return set;
+}
+
+async function buildSignature(grupo){
+  // Cache
+  if (STATS_SIGS_CACHE.has(grupo.id)) return STATS_SIGS_CACHE.get(grupo.id);
+
+  const it = grupo.itinerario || {};
+  const fechas = Object.keys(it).sort((a,b)=> new Date(a)-new Date(b));
+  const diasSeq = fechas.map(f => seqFromDayActivities(it[f]));
+
+  // Set global de servicios
+  const setGlobal = new Set();
+  diasSeq.forEach(seq => seq.forEach(tok => setGlobal.add(tok)));
+
+  // Hoteles (por viaje completo)
+  const dayMap = await buildHotelDayMapForGroup(grupo.id);
+  const hotelesSet = new Set();
+  for (const iso of Object.keys(dayMap)){
+    for (const a of (dayMap[iso]||[])){
+      // Nombre (en cache) ya cargado por buildHotelDayMapForGroup
+      const h = hotelCache.get(a.hotelId) || {};
+      const nm = (h.nombre || '').toString().toUpperCase();
+      if (nm) hotelesSet.add(nm);
+    }
+  }
+
+  // Vuelos (aerolíneas)
+  const vuelosSet = await getFlightsSetForGroup(grupo.id);
+
+  const firma = {
+    id: grupo.id,
+    numeroNegocio: grupo.numeroNegocio || grupo.id,
+    nombreGrupo: (grupo.nombreGrupo||'').toString(),
+    destino: (grupo.destino||'').toString().toUpperCase(),
+    programa: (grupo.programa||'').toString().toUpperCase(),
+    coordinador: (grupo.coordinador || grupo.coordinadorNombre || grupo.asignadoCoordinador || '').toString().toUpperCase(),
+    diasSeq,                           // Array<Array<token>>
+    setGlobal,                         // Set<token>
+    meta: { hotelesSet, vuelosSet }    // Set<string>, Set<string>
+  };
+
+  STATS_SIGS_CACHE.set(grupo.id, firma);
+  return firma;
+}
+
+/* ------------- Métricas de similitud ------------- */
+function jaccard(setA, setB){
+  const a = setA || new Set();
+  const b = setB || new Set();
+  if (!a.size && !b.size) return 1;
+  let inter = 0;
+  a.forEach(x => { if (b.has(x)) inter++; });
+  const union = a.size + b.size - inter;
+  return union ? (inter/union) : 0;
+}
+
+function lcsLen(a, b){
+  const n=a.length, m=b.length;
+  if (!n && !m) return 1; // ambos vacíos = máximo parecido
+  const dp = Array(n+1).fill(null).map(()=>Array(m+1).fill(0));
+  for (let i=1;i<=n;i++){
+    for (let j=1;j<=m;j++){
+      dp[i][j] = (a[i-1]===b[j-1]) ? dp[i-1][j-1]+1 : Math.max(dp[i-1][j], dp[i][j-1]);
+    }
+  }
+  const denom = Math.max(1, Math.max(n,m));
+  return dp[n][m] / denom;
+}
+
+function avg(nums){
+  if (!nums.length) return 0;
+  return nums.reduce((s,x)=>s+x,0)/nums.length;
+}
+
+function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+
+function normalizeWeights(wOrden, wSet, wMeta){
+  const s = Math.max(1, wOrden + wSet + wMeta);
+  return { wO: wOrden/s, wS: wSet/s, wM: wMeta/s };
+}
+
+/* Cálculo entre dos firmas */
+function computePairSimilarity(sigA, sigB, params){
+  const d1 = Math.max(1, parseInt(params.diaDesde||1,10));
+  const d2 = Math.max(d1, parseInt(params.diaHasta||999,10));
+
+  const maxIdx = Math.max(sigA.diasSeq.length, sigB.diasSeq.length);
+  const from = Math.max(1, Math.min(d1, maxIdx));
+  const to   = Math.max(from, Math.min(d2, maxIdx));
+
+  const orderScores = [];
+  const setScores   = [];
+
+  for (let day=from; day<=to; day++){
+    const i = day-1;
+    const sa = sigA.diasSeq[i] || [];
+    const sb = sigB.diasSeq[i] || [];
+    orderScores.push(lcsLen(sa, sb));
+    setScores.push(jaccard(new Set(sa), new Set(sb)));
+  }
+
+  const orderAvg = avg(orderScores);
+  const setAvg   = avg(setScores);
+
+  // Meta: destino/programa/coordinador + Jaccard de vuelos/hoteles si existen
+  const metaPieces = [];
+  if (sigA.destino && sigB.destino)   metaPieces.push(sigA.destino===sigB.destino ? 1:0);
+  if (sigA.programa && sigB.programa) metaPieces.push(sigA.programa===sigB.programa ? 1:0);
+  if (sigA.coordinador && sigB.coordinador) metaPieces.push(sigA.coordinador===sigB.coordinador ? 1:0);
+  if (sigA.meta && sigB.meta){
+    const hJ = jaccard(sigA.meta.hotelesSet, sigB.meta.hotelesSet);
+    const vJ = jaccard(sigA.meta.vuelosSet, sigB.meta.vuelosSet);
+    if (!Number.isNaN(hJ)) metaPieces.push(hJ);
+    if (!Number.isNaN(vJ)) metaPieces.push(vJ);
+  }
+  const metaAvg = metaPieces.length ? avg(metaPieces) : 0;
+
+  const { wO, wS, wM } = normalizeWeights(params.wOrden, params.wSet, params.wMeta);
+  const finalScore = clamp01(wO*orderAvg + wS*setAvg + wM*metaAvg);
+
+  return {
+    pair: [sigA, sigB],
+    days: { from, to },
+    orderAvg, setAvg, metaAvg,
+    finalScore,
+    perDay: orderScores.map((o,i)=>({ day: from+i, order:o, set:setScores[i] }))
+  };
+}
+
+/* Filtro de grupos */
+function filterGroupsForStats(grupos, f){
+  return grupos.filter(g=>{
+    if (f.ano && String(g.anoViaje||'') !== String(f.ano)) return false;
+    if (f.dest && (g.destino||'').toString().toUpperCase() !== f.dest) return false;
+    if (f.prog && (g.programa||'').toString().toUpperCase() !== f.prog) return false;
+    return true;
+  });
+}
+
+/* Render UI */
+function renderKPIs(info){
+  const pills = [
+    `Grupos: ${info.count}`,
+    `Días: ${info.from}–${info.to}`,
+    `Pesos → Orden:${Math.round(info.wO*100)}% Set:${Math.round(info.wS*100)}% Meta:${Math.round(info.wM*100)}%`
+  ];
+  kpisDiv.innerHTML = pills.map(t=>`<span class="pill">${t}</span>`).join('');
+}
+
+function renderResultsTable(rows, mode){
+  STATS_LAST_ROWS = rows || [];
+  btnExportCSV.disabled = !rows?.length;
+
+  if (!rows?.length){
+    resultsDiv.innerHTML = `<p>— Sin resultados —</p>`;
+    detailDiv.innerHTML = '';
+    return;
+  }
+
+  const thPair = (mode==='pares') ? 'Grupo A ↔ Grupo B' : 'Base ↔ Grupo';
+  resultsDiv.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>${thPair}</th>
+          <th>Score</th>
+          <th>Orden</th>
+          <th>Set</th>
+          <th>Meta</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r,i)=>`
+          <tr>
+            <td>${i+1}</td>
+            <td>
+              <span class="badge">#${r.a.numeroNegocio}</span> ${(r.a.nombreGrupo||'').toUpperCase()} 
+              &nbsp;↔&nbsp; 
+              <span class="badge">#${r.b.numeroNegocio}</span> ${(r.b.nombreGrupo||'').toUpperCase()}
+            </td>
+            <td class="score">${(r.final*100).toFixed(1)}%</td>
+            <td>${(r.order*100).toFixed(0)}%</td>
+            <td>${(r.set*100).toFixed(0)}%</td>
+            <td>${(r.meta*100).toFixed(0)}%</td>
+            <td><button data-i="${i}" class="btnVerDetalle">Ver</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  resultsDiv.querySelectorAll('.btnVerDetalle').forEach(btn=>{
+    btn.onclick = (e)=>{
+      const i = parseInt(btn.getAttribute('data-i'),10);
+      showPairDetail(rows[i]);
+    };
+  });
+
+  // Render del primer detalle por conveniencia
+  showPairDetail(rows[0]);
+}
+
+function showPairDetail(row){
+  if (!row){
+    detailDiv.innerHTML = '';
+    return;
+  }
+  const a = row.a, b=row.b;
+  const pd = row.perDay || [];
+  const daysHtml = pd.map(x=>{
+    const seqA = (a.sig.diasSeq[x.day-1] || []).join(' · ') || '(sin actividades)';
+    const seqB = (b.sig.diasSeq[x.day-1] || []).join(' · ') || '(sin actividades)';
+    return `
+      <div class="day">
+        <div><strong>Día ${x.day}</strong> — Orden: ${(x.order*100).toFixed(0)}% · Set: ${(x.set*100).toFixed(0)}%</div>
+        <div><span class="badge">A</span> <code>${seqA}</code></div>
+        <div><span class="badge">B</span> <code>${seqB}</code></div>
+      </div>
+    `;
+  }).join('');
+  detailDiv.innerHTML = `
+    <h4>Detalle</h4>
+    <p><b>#${a.numeroNegocio}</b> ${(a.nombreGrupo||'').toUpperCase()} ↔ 
+       <b>#${b.numeroNegocio}</b> ${(b.nombreGrupo||'').toUpperCase()}</p>
+    <p>Score ${(row.final*100).toFixed(1)}% 
+       — Orden ${(row.order*100).toFixed(0)}% 
+       — Set ${(row.set*100).toFixed(0)}% 
+       — Meta ${(row.meta*100).toFixed(0)}%</p>
+    ${daysHtml}
+  `;
+}
+
+/* Export CSV */
+function exportStatsCSV(){
+  if (!STATS_LAST_ROWS?.length) return;
+  const headers = ['rank','A_numero','A_nombre','B_numero','B_nombre','score','orden','set','meta','dias_from','dias_to'];
+  const lines = [headers.join(',')];
+  STATS_LAST_ROWS.forEach((r,i)=>{
+    lines.push([
+      i+1,
+      r.a.numeroNegocio, `"${(r.a.nombreGrupo||'').replace(/"/g,'""')}"`,
+      r.b.numeroNegocio, `"${(r.b.nombreGrupo||'').replace(/"/g,'""')}"`,
+      (r.final*100).toFixed(1),
+      (r.order*100).toFixed(0),
+      (r.set*100).toFixed(0),
+      (r.meta*100).toFixed(0),
+      r.days.from, r.days.to
+    ].join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'estadisticas_itinerarios.csv';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* Run */
+async function runStats(){
+  resultsDiv.innerHTML = 'Calculando…';
+  detailDiv.innerHTML = '';
+  kpisDiv.innerHTML = '';
+
+  const gruposAll = await getAllGroupsForStats();
+  const f = {
+    ano: (selAno?.value||'').trim(),
+    dest: (selDestino?.value||'').trim().toUpperCase(),
+    prog: (selPrograma?.value||'').trim().toUpperCase()
+  };
+  const candidatos = filterGroupsForStats(gruposAll, f);
+  if (!candidatos.length){
+    resultsDiv.innerHTML = '— No hay grupos que cumplan los filtros —';
+    return;
+  }
+
+  const diaDesde = Math.max(1, parseInt(inpDiaDesde.value||1,10));
+  const diaHasta = Math.max(diaDesde, parseInt(inpDiaHasta.value||999,10));
+
+  const wOrden = Math.max(0, parseInt(rngWOrden.value||60,10));
+  const wSet   = Math.max(0, parseInt(rngWSet.value||30,10));
+  const wMeta  = Math.max(0, parseInt(rngWMeta.value||10,10));
+  const weights = { wOrden, wSet, wMeta };
+  const normW = normalizeWeights(wOrden,wSet,wMeta);
+
+  renderKPIs({ count: candidatos.length, from: diaDesde, to: diaHasta, ...normW });
+
+  // Construye firmas
+  const sigs = [];
+  for (const g of candidatos){
+    sigs.push(await buildSignature(g));
+  }
+
+  const baseId = (selBaseGrupo?.value||'').trim();
+  let rows = [];
+
+  if (baseId){
+    const base = sigs.find(s => s.id===baseId);
+    if (!base){
+      resultsDiv.innerHTML = '— El grupo base no está dentro del filtro actual —';
+      return;
+    }
+    const others = sigs.filter(s => s.id!==baseId);
+    for (const other of others){
+      const res = computePairSimilarity(base, other, { diaDesde, diaHasta, ...weights });
+      rows.push({
+        a:{ numeroNegocio: base.numeroNegocio, nombreGrupo: base.nombreGrupo, sig: base },
+        b:{ numeroNegocio: other.numeroNegocio, nombreGrupo: other.nombreGrupo, sig: other },
+        order: res.orderAvg, set: res.setAvg, meta: res.metaAvg, final: res.finalScore, days: res.days, perDay: res.perDay
+      });
+    }
+    rows.sort((x,y)=> y.final - x.final);
+    rows = rows.slice(0, 50);
+    renderResultsTable(rows, 'base');
+    return;
+  }
+
+  // Pares (si está marcado)
+  if (chkPares?.checked){
+    const MAX = 150; // seguridad
+    if (sigs.length > MAX){
+      resultsDiv.innerHTML = `Demasiados grupos (${sigs.length}). Reduce filtros o desmarca "pares". (Límite ${MAX})`;
+      return;
+    }
+    for (let i=0;i<sigs.length;i++){
+      for (let j=i+1;j<sigs.length;j++){
+        const A = sigs[i], B=sigs[j];
+        const res = computePairSimilarity(A, B, { diaDesde, diaHasta, ...weights });
+        rows.push({
+          a:{ numeroNegocio: A.numeroNegocio, nombreGrupo: A.nombreGrupo, sig:A },
+          b:{ numeroNegocio: B.numeroNegocio, nombreGrupo: B.nombreGrupo, sig:B },
+          order: res.orderAvg, set: res.setAvg, meta: res.metaAvg, final: res.finalScore, days: res.days, perDay: res.perDay
+        });
+      }
+    }
+    rows.sort((x,y)=> y.final - x.final);
+    rows = rows.slice(0, 50);
+    renderResultsTable(rows, 'pares');
+    return;
+  }
+
+  // Si no hay base ni pares, muestra un mensaje
+  resultsDiv.innerHTML = 'Selecciona un "Base (uno vs muchos)" o activa "pares".';
+}
+
