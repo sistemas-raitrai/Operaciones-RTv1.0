@@ -1198,13 +1198,10 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       : `<div class="note">— Sin información de vuelos —</div>`;
   })();
 
-  // Hotelería (viñeta + 2 columnas: CIUDAD | HOTEL y detalles)
+  // —— Hotelería (PANTALLA): viñeta + 2 columnas —— //
   injectScreenHotelStyles();
 
-  const dmy = (s) => {
-    const iso = toISO(s); if (!iso) return '—';
-    const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`;
-  };
+  const dmy = (s) => { const iso = toISO(s); if (!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`; };
 
   const hotelesHtml = `
     <ul class="hoteles-list">
@@ -1212,7 +1209,6 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
           const H = h.hotel || {};
           const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
           const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
-          const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
           const dir    = (H.direccion || h.direccion || '').toString();
           const tel1   = (H.contactoTelefono || '').toString().trim();
           const tel2   = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
@@ -1226,7 +1222,6 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
                   <div><strong>${hotel}</strong></div>
                   <div>In : ${dmy(h.checkIn)}</div>
                   <div>Out: ${dmy(h.checkOut)}</div>
-                  ${pais ? `<div>Destino: ${pais}</div>` : ``}
                   ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
                   ${tels ? `<div>Fono: ${tels}</div>`     : ``}
                   ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
@@ -1236,6 +1231,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         }).join('') }
     </ul>
   `;
+
 
 
 
