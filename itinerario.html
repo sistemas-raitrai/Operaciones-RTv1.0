@@ -169,6 +169,21 @@
     #modal-historial{ z-index: 1100; }
     #modal-alertas{   z-index: 1100; }
 
+    /* [ADD] Modal estadísticas */
+    .stats-modal { width: min(1100px, 96vw); max-height: 90vh; overflow:auto; }
+    .stats-filtros .grid-3 { display:grid; grid-template-columns: repeat(3,1fr); gap:12px; margin: 10px 0; }
+    .stats-filtros .row { display:flex; gap:12px; align-items:center; margin: 8px 0; }
+    .stats-kpis { margin: 10px 0; display:flex; flex-wrap:wrap; gap:8px; }
+    .stats-kpis .pill { border:1px solid #e5e7eb; border-radius:999px; padding:6px 10px; font-size:.9rem; }
+    .stats-results table { width:100%; border-collapse: collapse; }
+    .stats-results th, .stats-results td { border-bottom:1px solid #eee; padding:8px; text-align:left; }
+    .stats-results .badge { font-size:.8rem; padding:2px 6px; border-radius:6px; border:1px solid #ddd; }
+    .stats-results .score { font-weight:600; }
+    .stats-detail { margin-top:16px; }
+    .stats-detail .day { border:1px solid #eee; border-radius:10px; padding:10px; margin:10px 0; }
+    .stats-detail code { background:#f7f7f7; padding:2px 6px; border-radius:6px; }
+    .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,.35); }
+    .modal .close { font-size: 22px; line-height: 1; border:none; background:transparent; cursor:pointer; }
 
   </style>
 </head>
@@ -332,8 +347,71 @@
       <ul id="historial-list" class="hist-list"></ul>
     </div>
   </div>
-
-
+  <!-- [ADD] Modal Estadísticas -->
+  <div id="modal-estadisticas" class="modal" style="display:none;">
+    <div class="modal-content stats-modal">
+      <div class="modal-header">
+        <h3>Estadísticas de Itinerarios</h3>
+        <button id="stats-close" class="close">&times;</button>
+      </div>
+  
+      <div class="stats-filtros">
+        <div class="grid-3">
+          <label>Año
+            <select id="fAno"><option value="">(todos)</option></select>
+          </label>
+          <label>Destino
+            <select id="fDestino"><option value="">(todos)</option></select>
+          </label>
+          <label>Programa
+            <select id="fPrograma"><option value="">(todos)</option></select>
+          </label>
+        </div>
+  
+        <div class="grid-3">
+          <label>Día desde
+            <input id="fDiaDesde" type="number" min="1" value="1">
+          </label>
+          <label>Día hasta
+            <input id="fDiaHasta" type="number" min="1" value="8">
+          </label>
+          <label>Base (uno vs muchos)
+            <select id="fBaseGrupo"><option value="">(ninguno)</option></select>
+          </label>
+        </div>
+  
+        <div class="grid-3">
+          <label>Peso Orden (%)
+            <input id="wOrden" type="range" min="0" max="100" value="60">
+          </label>
+          <label>Peso Set (%)
+            <input id="wSet" type="range" min="0" max="100" value="30">
+          </label>
+          <label>Peso Meta (%)
+            <input id="wMeta" type="range" min="0" max="100" value="10">
+          </label>
+        </div>
+  
+        <div class="row">
+          <label><input id="fPares" type="checkbox"> Calcular pares dentro del filtro (top resultados)</label>
+        </div>
+  
+        <div class="row">
+          <button id="btnRunStats" type="button">Calcular</button>
+          <button id="btnExportCSV" type="button" disabled>Exportar CSV</button>
+        </div>
+      </div>
+  
+      <div class="stats-kpis" id="stats-kpis"></div>
+  
+      <div class="stats-results" id="stats-results"></div>
+  
+      <div class="stats-detail" id="stats-detail"></div>
+    </div>
+  </div>
+  
+  <!-- [ADD] Backdrop (si no usas el existente) -->
+  <div id="modal-backdrop-stats" class="modal-backdrop" style="display:none;"></div>
 
   <!-- Recursos externos -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
