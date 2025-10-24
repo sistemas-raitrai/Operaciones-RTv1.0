@@ -101,7 +101,7 @@
     .tramo-head{display:grid;grid-template-columns:1fr 140px 1fr 1fr 36px;gap:.4rem;align-items:center}
     .tramo-type{display:flex;gap:1rem;margin:.5rem 0 .3rem}
     .tramo-body{display:flex;flex-direction:column;gap:.35rem}
-    .tramo-line{display:grid;grid-template-columns:auto 160px 140px 140px;gap:.4rem;align-items:center}
+    .tramo-line{display:grid;grid-template-columns:auto 160px 140px 140px 140px;gap:.4rem;align-items:center}
     .tramo-line .tag{font-weight:700;font-size:.85rem;background:#eef;border:1px solid #cfe;padding:.15rem .5rem;border-radius:8px}
     .tramo-remove{background:#eee;border:1px solid #ccc;border-radius:8px;cursor:pointer}
 
@@ -116,7 +116,7 @@
 
   <!-- 2) Tu contenido principal -->
   <main class="main">
-    <div class="column long"><h2>PLANIFICACIÓN DE VIAJES</h2></div>
+    <div class="column long"><h2>PLANIFICACIÓN DE VIAJES RAITRAI</h2></div>
     <div class="row">
       <div class="column long">
         <input id="search-input" type="text" placeholder="🔎 Buscar vuelos y grupos…" style="margin-left:1em; margin-right:3em; padding:.3em;"/>
@@ -215,16 +215,6 @@
           </div>
         </div>
 
-        <!-- ENCUENTRO EN AEROPUERTO (solo AÉREO) -->
-        <div id="encuentro-aeropuerto-row" class="row">
-          <div class="column long">
-            <label>ENCUENTRO EN AEROPUERTO</label>
-            <input id="m-encuentroAeropuerto" placeholder="EJ: SCL T2 · PUERTA 14 · 3er PISO" />
-            <div class="hint">Ej: TERMINAL, PUERTA, PISO, PUNTO DE ENCUENTRO</div>
-          </div>
-        </div>
-
-
         <!-- HORARIOS TOP-LEVEL AÉREO -->
         <fieldset class="fieldset" style="margin-top:.5rem;">
           <legend>HORARIOS AÉREO (si aplica)</legend>
@@ -292,6 +282,16 @@
           <span>PUBLICAR HORARIOS</span>
         </label>
       </div>
+
+      <!-- ENCUENTRO EN AEROPUERTO (aplica a AÉREO: simple o multitramos) -->
+      <div id="encuentro-aeropuerto-row" class="row" style="margin:.4rem 0;">
+        <div class="column long">
+          <label>ENCUENTRO EN AEROPUERTO</label>
+          <input id="m-encuentroAeropuerto" placeholder="EJ: SCL T2 · PUERTA 14 · 3er PISO" />
+          <div class="hint">Ej: TERMINAL, PUERTA, PISO, PUNTO DE ENCUENTRO</div>
+        </div>
+      </div>
+
 
       <!-- SECCIÓN TRAMOS (los 4 inputs de hora por tramo los agrega el JS) -->
       <div id="tramos-section" style="display:none">
