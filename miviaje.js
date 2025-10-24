@@ -717,7 +717,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
     return `
       <tr>
-        <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha) : '—'}${via}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha)</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(String(r.origen||'').toUpperCase())}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
