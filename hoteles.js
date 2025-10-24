@@ -172,8 +172,8 @@ function openHotelModal(h){
   document.getElementById('modal-title').textContent =
     isEditHotel?'EDITAR HOTEL':'NUEVO HOTEL';
 
-  ['m-nombre','m-direccion','m-fechaInicio','m-fechaFin','m-singles','m-dobles','m-triples','m-cuadruples']
-    .forEach(id=> document.getElementById(id).value = h?.[id.slice(2)] ?? '');
+  ['m-nombre','m-ciudad','m-direccion','m-fechaInicio','m-fechaFin','m-singles','m-dobles','m-triples','m-cuadruples']
+  .forEach(id=> document.getElementById(id).value = h?.[id.slice(2)] ?? '');
   choiceDestino.setChoiceByValue([h?.destino]||[]);
   document.getElementById('m-contactoNombre').value   = h?.contactoNombre   ?? '';
   document.getElementById('m-contactoCorreo').value   = h?.contactoCorreo   ?? '';
@@ -192,6 +192,7 @@ async function onSubmitHotel(e){
     nombre:   document.getElementById('m-nombre').value.trim(),
     destino:  document.getElementById('m-destino').value,
     direccion:document.getElementById('m-direccion').value.trim(),
+    ciudad:   document.getElementById('m-ciudad').value.trim(),   // ← NUEVO
     contactoNombre:  document.getElementById('m-contactoNombre').value.trim(),
     contactoCorreo:  document.getElementById('m-contactoCorreo').value.trim(),
     contactoTelefono:document.getElementById('m-contactoTelefono').value.trim(),
@@ -253,6 +254,7 @@ async function renderHoteles() {
     let html = `
       <h3>${toUpper(h.nombre)}</h3>
       <div class="subtitulo">DESTINO: ${toUpper(h.destino||'')}</div>
+      <div class="subtitulo">CIUDAD: ${toUpper(h.ciudad||'')}</div>
       <div class="subsubtitulo">
         DISPONIBILIDAD: ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
       </div>
@@ -908,6 +910,7 @@ function exportToExcel() {
     return {
       Hotel: h.nombre,
       Destino: h.destino,
+      Ciudad: h.ciudad,  
       'Dispon. desde': h.fechaInicio,
       'Dispon. hasta': h.fechaFin,
       'Asign. desde': asignDesde,
@@ -945,6 +948,7 @@ function exportToExcel() {
       detalle.push({
         Hotel: h.nombre,
         Destino: h.destino,
+        Ciudad: h.ciudad,  
         Grupo: g.numeroNegocio,
         NombreGrupo: g.nombreGrupo,
         Identificador: g.identificador,
