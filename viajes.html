@@ -215,9 +215,20 @@
           </div>
         </div>
 
+        <!-- ENCUENTRO EN AEROPUERTO (solo AÉREO) -->
+        <div id="encuentro-aeropuerto-row" class="row">
+          <div class="column long">
+            <label>ENCUENTRO EN AEROPUERTO</label>
+            <input id="m-encuentroAeropuerto" placeholder="EJ: SCL T2 · PUERTA 14 · 3er PISO" />
+            <div class="hint">Ej: TERMINAL, PUERTA, PISO, PUNTO DE ENCUENTRO</div>
+          </div>
+        </div>
+
+
         <!-- HORARIOS TOP-LEVEL AÉREO -->
         <fieldset class="fieldset" style="margin-top:.5rem;">
           <legend>HORARIOS AÉREO (si aplica)</legend>
+        
           <div class="row">
             <div class="column medium">
               <label>Presentación (IDA)</label>
@@ -227,7 +238,12 @@
               <label>Vuelo (IDA)</label>
               <input type="time" id="m-vueloIdaHora" />
             </div>
+            <div class="column medium">
+              <label>Arribo (IDA)</label>
+              <input type="time" id="m-arriboIdaHora" />
+            </div>
           </div>
+        
           <div class="row">
             <div class="column medium">
               <label>Presentación (REGRESO)</label>
@@ -237,8 +253,13 @@
               <label>Vuelo (REGRESO)</label>
               <input type="time" id="m-vueloVueltaHora" />
             </div>
+            <div class="column medium">
+              <label>Arribo (REGRESO)</label>
+              <input type="time" id="m-arriboVueltaHora" />
+            </div>
           </div>
         </fieldset>
+
 
         <!-- HORARIOS TOP-LEVEL TERRESTRE -->
         <fieldset class="fieldset" style="margin-top:.5rem;">
