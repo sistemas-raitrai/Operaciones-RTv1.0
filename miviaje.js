@@ -1103,6 +1103,23 @@ function injectPrintStyles(){
 
       /* Cierre centrado, SOLO al final */
       .print-doc .closing { text-align: center; font-weight: 800; margin-top: 4mm; }
+
+            /* —— Hotelería con viñeta + dos columnas (CIUDAD | INFO) —— */
+      #print-block .hoteles-list{
+        list-style: disc;
+        margin: 0 0 0 5mm;   /* igual al resto de listas */
+        padding: 0;
+      }
+      #print-block .hoteles-list > li.hotel-item{
+        margin: 1.5mm 0 2mm;
+      }
+      #print-block .hoteles-list .hotel-grid{
+        display: grid;
+        grid-template-columns: 60mm 1fr; /* ancho fijo para alinear ciudades */
+        column-gap: 6mm;
+      }
+      #print-block .hoteles-list .hotel-left{ font-weight: 800; }
+      #print-block .hoteles-list .hotel-right > div{ margin: 0.3mm 0; }
     }
   `;
   const s = document.createElement('style');
@@ -1110,6 +1127,36 @@ function injectPrintStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
+
+// ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
+function injectScreenHotelStyles(){
+  if (document.getElementById('screen-hotel-styles')) return;
+  const css = `
+    .hoteles-list{
+      list-style: disc;
+      margin: 4px 0 0 18px;   /* mismo margen que el resto de listas */
+      padding: 0;
+    }
+    .hoteles-list > li.hotel-item{ margin: 6px 0 8px; }
+    .hoteles-list .hotel-grid{
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) 3fr; /* CIUDAD | INFO */
+      column-gap: 16px;
+    }
+    .hoteles-list .hotel-left{ font-weight: 800; }
+    .hoteles-list .hotel-right > div{ margin: 2px 0; }
+
+    /* Responsive: apila en móviles */
+    @media (max-width: 640px){
+      .hoteles-list .hotel-grid{ grid-template-columns: 1fr; }
+    }
+  `;
+  const s = document.createElement('style');
+  s.id = 'screen-hotel-styles';
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+
 
 /* ──────────────────────────────────────────────────────────────────────────
    Estilos de IMPRESIÓN (logo fijo, sin “caja”, tablas full width, etc.)
@@ -1157,45 +1204,47 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       : `<div class="note">— Sin información de vuelos —</div>`;
   })();
 
-  const hotelesHTML = (() => {
-    if (!hoteles || !hoteles.length) return `<div class="note">— Sin hotelería cargada —</div>`;
+  // Hotelería (viñeta + 2 columnas: CIUDAD | HOTEL y detalles)
+  injectScreenHotelStyles();
 
-    // dd-mm-aaaa desde ISO o timestamp Firestore
-    const dmy = (s) => {
-      const iso = toISO(s);
-      if (!iso) return '—';
-      const [y,m,d] = iso.split('-');
-      return `${d}-${m}-${y}`;
-    };
+  // dd-mm-aaaa desde ISO o timestamp
+  const dmy = (s) => {
+    const iso = toISO(s);
+    if (!iso) return '—';
+    const [y,m,d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  };
 
-    const items = hoteles.map(h=>{
-      const H = h.hotel || {};
-      const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
-      const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
-      const dir    = (H.direccion || h.direccion || '').toString();
+  const hotelesHtml = `
+    <ul class="hoteles-list">
+      ${ (hoteles||[]).map(h=>{
+          const H = h.hotel || {};
+          const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
+          const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
+          const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
+          const dir    = (H.direccion || h.direccion || '').toString();
+          const tel1   = (H.contactoTelefono || '').toString().trim();
+          const tel2   = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
+          const tels   = [tel1, tel2].filter(Boolean).join(' ');
 
-      // Teléfonos disponibles
-      const tel1 = (H.contactoTelefono || '').toString().trim();
-      const tel2 = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
-      const tels = [tel1, tel2].filter(Boolean).join(' ');
-
-      return `
-        <li class="hotel-item">
-          <div class="hotel-grid">
-            <div class="hotel-left"><strong>${ciudad || '—'}</strong></div>
-            <div class="hotel-right">
-              <div><strong>${hotel}</strong></div>
-              <div>In : ${dmy(h.checkIn)}</div>
-              <div>Out: ${dmy(h.checkOut)}</div>
-              ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
-              ${tels ? `<div>Fono: ${tels}</div>`     : ``}
-            </div>
-          </div>
-        </li>`;
-    }).join('');
-
-    return `<ul class="hoteles-list">${items}</ul>`;
-  })();
+          return `
+            <li class="hotel-item">
+              <div class="hotel-grid">
+                <div class="hotel-left"><strong>${ciudad || '—'}</strong></div>
+                <div class="hotel-right">
+                  <div><strong>${hotel}</strong></div>
+                  <div>In : ${dmy(h.checkIn)}</div>
+                  <div>Out: ${dmy(h.checkOut)}</div>
+                  ${pais ? `<div>Destino: ${pais}</div>` : ``}
+                  ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
+                  ${tels ? `<div>Fono: ${tels}</div>`     : ``}
+                  ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
+                </div>
+              </div>
+            </li>`;
+        }).join('') }
+    </ul>
+  `;
 
 
 
