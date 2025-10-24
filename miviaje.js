@@ -1,10 +1,4 @@
-// miviaje.js — Visor público SOLO LECTURA (sin auth)
-// - Busca grupo por ?id=<docId> o ?numeroNegocio= (acepta compuestos: 1475/1411, 1475-1411, "1475 y 1411"...)
-// - Si hay varios, muestra selector con links ?id=
-// - Botones: Copiar enlace / Imprimir. Flag &notas=0 oculta notas de actividades.
-// - Hoja Resumen tipo documento (como la foto): Presentación, Vuelos (vía {aerolínea}),
-//   Hotelería (con DIRECCIÓN), Documentos, Equipaje y Recomendaciones.
-// - Vuelos y Hoteles se leen con los MISMO esquemas/colecciones que el portal de coordinadores.
+// miviaje.js 
 
 import { app, db } from './firebase-core.js';
 import {
