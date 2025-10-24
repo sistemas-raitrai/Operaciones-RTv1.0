@@ -58,7 +58,12 @@ function refreshUI(){
   // 4) Conmutar “simple” vs “tramos”
   if (camposSimpleEl)  camposSimpleEl.style.display  = usarMulti ? 'none'  : 'block';
   if (tramosSectionEl) tramosSectionEl.style.display = usarMulti ? 'block' : 'none';
+
+  // 5) NUEVO: mostrar/ocultar el campo de encuentro
+  const encRow = document.getElementById('encuentro-aeropuerto-row');
+  if (encRow) encRow.style.display = (t === 'aereo') ? '' : 'none';
 }
+
 
 // ======= Helpers de normalización =======
 
@@ -112,8 +117,8 @@ function groupDisplay(gId){
 
 // Normaliza payload de doc (aéreo/terrestre)
 function normalizeVueloPayload(pay){
-  // Transporte por defecto
   pay.tipoTransporte = pay.tipoTransporte || 'aereo';
+  pay.encuentroAeropuerto = toUpper(pay.encuentroAeropuerto || '');
 
   // ===== Normalización por tramos (regular multitramo) =====
   if (Array.isArray(pay.tramos)){
@@ -128,8 +133,10 @@ function normalizeVueloPayload(pay){
         fechaVuelta: toISO(t.fechaVuelta),
         presentacionIdaHora:     toHHMM(t.presentacionIdaHora),
         vueloIdaHora:            toHHMM(t.vueloIdaHora),
+        arriboIdaHora:           toHHMM(t.arriboIdaHora),        // NUEVO
         presentacionVueltaHora:  toHHMM(t.presentacionVueltaHora),
         vueloVueltaHora:         toHHMM(t.vueloVueltaHora),
+        arriboVueltaHora:        toHHMM(t.arriboVueltaHora)      // NUEVO
       };
       let tipoTramo = (t.tipoTramo || '').toLowerCase();
       if (!tipoTramo){
@@ -145,10 +152,12 @@ function normalizeVueloPayload(pay){
         nt.fechaVuelta = '';
         nt.presentacionVueltaHora = '';
         nt.vueloVueltaHora = '';
+        nt.arriboVueltaHora = '';
       } else if (nt.tipoTramo === 'vuelta'){
         nt.fechaIda = '';
         nt.presentacionIdaHora = '';
         nt.vueloIdaHora = '';
+        nt.arriboIdaHora = '';
       }
       return nt;
     });
@@ -161,9 +170,9 @@ function normalizeVueloPayload(pay){
     pay.fechaIda    = idas[0] || toISO(pay.fechaIda);
     pay.fechaVuelta = vueltas.length ? vueltas[vueltas.length - 1] : toISO(pay.fechaVuelta);
     const tPrimIda = pay.tramos.find(t => t.fechaIda);
-    const tPrim    = pay.tramos[0];
     const tUltVta  = [...pay.tramos].reverse().find(t => t.fechaVuelta);
     const tUltIda  = [...pay.tramos].reverse().find(t => t.fechaIda);
+    const tPrim    = pay.tramos[0];
     const tUlt     = pay.tramos[pay.tramos.length - 1];
     pay.origen  = pay.origen  || (tPrimIda?.origen || tPrim?.origen || '');
     pay.destino = pay.destino || (tUltVta?.destino || tUltIda?.destino || tUlt?.destino || '');
@@ -172,18 +181,20 @@ function normalizeVueloPayload(pay){
     pay.fechaVuelta = toISO(pay.fechaVuelta);
   }
 
-  // ===== Top-level horas según transporte/tipo =====
+  // ===== Top-level horas (incluye ARRIBO) =====
   if (pay.tipoTransporte === 'aereo'){
     pay.presentacionIdaHora     = toHHMM(pay.presentacionIdaHora);
     pay.vueloIdaHora            = toHHMM(pay.vueloIdaHora);
+    pay.arriboIdaHora           = toHHMM(pay.arriboIdaHora);          // NUEVO
     pay.presentacionVueltaHora  = toHHMM(pay.presentacionVueltaHora);
     pay.vueloVueltaHora         = toHHMM(pay.vueloVueltaHora);
+    pay.arriboVueltaHora        = toHHMM(pay.arriboVueltaHora);       // NUEVO
   } else if (pay.tipoTransporte === 'terrestre'){
     pay.idaHora    = toHHMM(pay.idaHora);
     pay.vueltaHora = toHHMM(pay.vueltaHora);
   }
 
-  // ===== Grupos (para docs que los tengan en-línea, p.ej. aéreos) =====
+  // ===== Grupos =====
   pay.grupos = Array.isArray(pay.grupos) ? pay.grupos.map(g => ({
     id: g.id,
     status: g.status || 'confirmado',
@@ -191,19 +202,16 @@ function normalizeVueloPayload(pay){
     reservas: Array.isArray(g.reservas) ? g.reservas.filter(Boolean) : []
   })) : [];
 
-  // ===== Flags transfer (solo para terrestres, pero no estorban)
+  // ===== Flags transfer =====
   pay.isTransfer = !!pay.isTransfer;
   if (pay.isTransfer){
     const leg = (pay.transferLeg || '').toLowerCase();
     pay.transferLeg = ['ida','vuelta','ida+vuelta'].includes(leg) ? leg : 'ida';
-    // Evitar doble contabilización en totales del aéreo
     pay.excludeFromTotals = true;
   } else {
-    // por defecto no excluir
     pay.excludeFromTotals = !!pay.excludeFromTotals;
   }
 
-  // Vínculos
   if (Array.isArray(pay.grupoIds)){
     pay.grupoIds = pay.grupoIds.filter(Boolean).map(String).sort();
   }
@@ -385,6 +393,10 @@ function initModal(){
   if (tipoVueloEl)     tipoVueloEl.value  = 'charter';
   if (multitramoChkEl) multitramoChkEl.checked = false;
 
+  // NUEVO: limpiar encuentro aeropuerto
+  const encEl = document.getElementById('m-encuentroAeropuerto');
+  if (encEl) encEl.value = '';
+
   // Pinta visibilidad inicial (simple vs tramos, etc.)
   refreshUI();
 
@@ -423,12 +435,20 @@ function openModal(v=null){
     if (el) el.value = v?.[k] || '';
   });
 
+  // NUEVO: Lugar de encuentro en aeropuerto
+  const encEl2 = document.getElementById('m-encuentroAeropuerto');
+  if (encEl2) encEl2.value = v?.encuentroAeropuerto || '';
+
   // Horarios AÉREO
   const setVal = (id, val) => { if (f(id)) f(id).value = val || ''; };
   setVal('m-presentacionIdaHora',    v?.presentacionIdaHora);
   setVal('m-vueloIdaHora',           v?.vueloIdaHora);
   setVal('m-presentacionVueltaHora', v?.presentacionVueltaHora);
   setVal('m-vueloVueltaHora',        v?.vueloVueltaHora);
+
+  // NUEVO: horas de ARRIBO (simple/charter)
+  setVal('m-arriboIdaHora',      v?.arriboIdaHora);
+  setVal('m-arriboVueltaHora',   v?.arriboVueltaHora);
 
   // Horarios TERRESTRE
   setVal('m-idaHora',    v?.idaHora);
@@ -457,9 +477,11 @@ function openModal(v=null){
       fechaIda:  toISO(t.fechaIda),
       presentacionIdaHora:    toHHMM(t.presentacionIdaHora),
       vueloIdaHora:           toHHMM(t.vueloIdaHora),
+      arriboIdaHora:          toHHMM(t.arriboIdaHora),      // NUEVO
       fechaVuelta:            toISO(t.fechaVuelta),
       presentacionVueltaHora: toHHMM(t.presentacionVueltaHora),
-      vueloVueltaHora:        toHHMM(t.vueloVueltaHora)
+      vueloVueltaHora:        toHHMM(t.vueloVueltaHora),
+      arriboVueltaHora:       toHHMM(t.arriboVueltaHora)    // NUEVO
     }));
   } else {
     if (multitramoChkEl) multitramoChkEl.checked = false;
@@ -513,13 +535,15 @@ function renderTramosList(){
           <span class="tag">IDA</span>
           <input type="date" value="${t.fechaIda||''}" data-t="fechaIda" data-i="${i}"/>
           <input type="time" value="${t.presentacionIdaHora||''}" title="Presentación IDA" data-t="presentacionIdaHora" data-i="${i}"/>
-          <input type="time" value="${t.vueloIdaHora||''}"        title="Vuelo IDA"        data-t="vueloIdaHora"        data-i="${i}"/>
+          <input type="time" value="${t.vueloIdaHora||''}"        title="Vuelo IDA (despegue)" data-t="vueloIdaHora" data-i="${i}"/>
+          <input type="time" value="${t.arriboIdaHora||''}"       title="Arribo IDA (aterriza)" data-t="arriboIdaHora" data-i="${i}"/>
         </div>
         <div class="tramo-line tramo-vuelta">
           <span class="tag">REGRESO</span>
           <input type="date" value="${t.fechaVuelta||''}" data-t="fechaVuelta" data-i="${i}"/>
           <input type="time" value="${t.presentacionVueltaHora||''}" title="Presentación REGRESO" data-t="presentacionVueltaHora" data-i="${i}"/>
-          <input type="time" value="${t.vueloVueltaHora||''}"        title="Vuelo REGRESO"       data-t="vueloVueltaHora"        data-i="${i}"/>
+          <input type="time" value="${t.vueloVueltaHora||''}"        title="Vuelo REGRESO (despegue)" data-t="vueloVueltaHora" data-i="${i}"/>
+          <input type="time" value="${t.arriboVueltaHora||''}"       title="Arribo REGRESO (aterriza)" data-t="arriboVueltaHora" data-i="${i}"/>
         </div>
       </div>
     `;
@@ -584,8 +608,8 @@ function addTramoRow(){
   editingTramos.push({
     aerolinea:'', numero:'', origen:'', destino:'',
     tipoTramo:'ida+vuelta',
-    fechaIda:'', presentacionIdaHora:'', vueloIdaHora:'',
-    fechaVuelta:'', presentacionVueltaHora:'', vueloVueltaHora:''
+    fechaIda:'', presentacionIdaHora:'', vueloIdaHora:'',   arriboIdaHora:'',    // NUEVO
+    fechaVuelta:'', presentacionVueltaHora:'', vueloVueltaHora:'', arriboVueltaHora:'' // NUEVO
   });
   renderTramosList();
 }
@@ -600,6 +624,9 @@ async function onSubmitVuelo(evt){
   const tipoVuelo = f('m-tipoVuelo')?.value || 'charter';
   const tipoTransporte = f('m-transporte')?.value || 'aereo';
   const publicar = !!document.getElementById('m-publicar')?.checked;
+  // NUEVO: encuentro aeropuerto
+  const encuentroAeropuerto = toUpper(document.getElementById('m-encuentroAeropuerto')?.value?.trim() || '');
+
 
   // Grupos seleccionados (preserva records al editar)
   const sel = choiceGrupos.getValue(true);
@@ -648,25 +675,22 @@ async function onSubmitVuelo(evt){
           fechaIda:  toISO(t.fechaIda),
           presentacionIdaHora: toHHMM(t.presentacionIdaHora),
           vueloIdaHora:        toHHMM(t.vueloIdaHora),
+          arriboIdaHora:       toHHMM(t.arriboIdaHora),          // NUEVO
           fechaVuelta:  toISO(t.fechaVuelta),
           presentacionVueltaHora: toHHMM(t.presentacionVueltaHora),
-          vueloVueltaHora:        toHHMM(t.vueloVueltaHora)
+          vueloVueltaHora:        toHHMM(t.vueloVueltaHora),
+          arriboVueltaHora:       toHHMM(t.arriboVueltaHora)     // NUEVO
         };
-        if (tipo === 'ida'){
-          base.fechaVuelta = '';
-          base.presentacionVueltaHora = '';
-          base.vueloVueltaHora = '';
-        } else if (tipo === 'vuelta'){
-          base.fechaIda = '';
-          base.presentacionIdaHora = '';
-          base.vueloIdaHora = '';
-        }
+        if (tipo === 'ida'){ base.fechaVuelta=''; base.presentacionVueltaHora=''; base.vueloVueltaHora=''; base.arriboVueltaHora=''; }
+        if (tipo === 'vuelta'){ base.fechaIda=''; base.presentacionIdaHora=''; base.vueloIdaHora=''; base.arriboIdaHora=''; }
         return base;
       }),
       grupos: gruposArr,
       reservaFechaLimite,
-      reservaEstado: reservaEstadoForm
+      reservaEstado: reservaEstadoForm,
+      encuentroAeropuerto                                              // NUEVO
     };
+
   } else if (tipoTransporte === 'aereo' && tipoVuelo === 'regular'){ // regular simple
     pay = {
       tipoTransporte: 'aereo',
@@ -680,12 +704,16 @@ async function onSubmitVuelo(evt){
       fechaVuelta: f('m-fechaVuelta')?.value || '',
       presentacionIdaHora:     toHHMM(f('m-presentacionIdaHora')?.value || ''),
       vueloIdaHora:            toHHMM(f('m-vueloIdaHora')?.value || ''),
+      arriboIdaHora:           toHHMM(f('m-arriboIdaHora')?.value || ''),        // NUEVO
       presentacionVueltaHora:  toHHMM(f('m-presentacionVueltaHora')?.value || ''),
       vueloVueltaHora:         toHHMM(f('m-vueloVueltaHora')?.value || ''),
+      arriboVueltaHora:        toHHMM(f('m-arriboVueltaHora')?.value || ''),     // NUEVO
       grupos: gruposArr,
       reservaFechaLimite,
-      reservaEstado: reservaEstadoForm
+      reservaEstado: reservaEstadoForm,
+      encuentroAeropuerto                                                  // NUEVO
     };
+
   } else if (tipoTransporte === 'aereo') { // CHARTER
     pay = {
       tipoTransporte: 'aereo',
@@ -698,12 +726,16 @@ async function onSubmitVuelo(evt){
       fechaVuelta: f('m-fechaVuelta')?.value || '',
       presentacionIdaHora:     toHHMM(f('m-presentacionIdaHora')?.value || ''),
       vueloIdaHora:            toHHMM(f('m-vueloIdaHora')?.value || ''),
+      arriboIdaHora:           toHHMM(f('m-arriboIdaHora')?.value || ''),        // NUEVO
       presentacionVueltaHora:  toHHMM(f('m-presentacionVueltaHora')?.value || ''),
       vueloVueltaHora:         toHHMM(f('m-vueloVueltaHora')?.value || ''),
+      arriboVueltaHora:        toHHMM(f('m-arriboVueltaHora')?.value || ''),     // NUEVO
       grupos: gruposArr,
       reservaFechaLimite,
-      reservaEstado: reservaEstadoForm
+      reservaEstado: reservaEstadoForm,
+      encuentroAeropuerto                                                  // NUEVO
     };
+
   } else {
     // TERRESTRE (bus) normal (no transfer)
     pay = {
@@ -1263,13 +1295,16 @@ async function renderVuelos(){
         const lineaIda = hasIda ? `
           <div><strong>IDA:</strong> ${fmtFechaLarga(tramo.fechaIda)}
             ${tramo.presentacionIdaHora ? ` · Presentación ${tramo.presentacionIdaHora}` : ''} 
-            ${tramo.vueloIdaHora ? ` · Vuelo ${tramo.vueloIdaHora}` : ''}</div>
+            ${tramo.vueloIdaHora ? ` · Vuelo ${tramo.vueloIdaHora}` : ''} 
+            ${tramo.arriboIdaHora ? ` · Arribo ${tramo.arriboIdaHora}` : ''}
+          </div>
         ` : '';
-
         const lineaVta = hasVuelta ? `
           <div><strong>REGRESO:</strong> ${fmtFechaLarga(tramo.fechaVuelta)}
             ${tramo.presentacionVueltaHora ? ` · Presentación ${tramo.presentacionVueltaHora}` : ''} 
-            ${tramo.vueloVueltaHora ? ` · Vuelo ${tramo.vueloVueltaHora}` : ''}</div>
+            ${tramo.vueloVueltaHora ? ` · Vuelo ${tramo.vueloVueltaHora}` : ''} 
+            ${tramo.arriboVueltaHora ? ` · Arribo ${tramo.arriboVueltaHora}` : ''}
+          </div>
         ` : '';
 
         const horasLine = (lineaIda || lineaVta)
@@ -1408,8 +1443,11 @@ async function renderVuelos(){
             &nbsp;&nbsp;
             <span>Destino: ${toUpper(primerTramo.destino || v.destino || '')}</span>
           </div>
+      
+          ${(v.encuentroAeropuerto ? `<div style="font-size:.97em; color:#444; margin-top:.2em;"><strong>Encuentro:</strong> ${toUpper(v.encuentroAeropuerto)}</div>` : '')}
         </div>
       `;
+
     } else {
       const fechaIda    = fmtFechaLarga(v.fechaIda);
       const fechaVuelta = fmtFechaLarga(v.fechaVuelta);
@@ -1420,10 +1458,23 @@ async function renderVuelos(){
       // Línea de horarios top-level
       let horariosTL = '';
       if (isAereo){
-        const l1 = (v.presentacionIdaHora || v.vueloIdaHora) ?
-          `<div><strong>IDA:</strong> ${v.presentacionIdaHora ? 'Presentación ' + v.presentacionIdaHora : ''}${v.vueloIdaHora ? (v.presentacionIdaHora ? ' · ' : '') + 'Vuelo ' + v.vueloIdaHora : ''}</div>` : '';
-        const l2 = (v.presentacionVueltaHora || v.vueloVueltaHora) ?
-          `<div><strong>REGRESO:</strong> ${v.presentacionVueltaHora ? 'Presentación ' + v.presentacionVueltaHora : ''}${v.vueloVueltaHora ? (v.presentacionVueltaHora ? ' · ' : '') + 'Vuelo ' + v.vueloVueltaHora : ''}</div>` : '';
+        const l1 = (v.presentacionIdaHora || v.vueloIdaHora || v.arriboIdaHora) ?
+        `<div><strong>IDA:</strong> ${
+          v.presentacionIdaHora ? 'Presentación ' + v.presentacionIdaHora : ''
+        }${
+          v.vueloIdaHora ? (v.presentacionIdaHora ? ' · ' : '') + 'Vuelo ' + v.vueloIdaHora : ''
+        }${
+          v.arriboIdaHora ? ((v.presentacionIdaHora || v.vueloIdaHora) ? ' · ' : '') + 'Arribo ' + v.arriboIdaHora : ''
+        }</div>` : '';
+      
+      const l2 = (v.presentacionVueltaHora || v.vueloVueltaHora || v.arriboVueltaHora) ?
+        `<div><strong>REGRESO:</strong> ${
+          v.presentacionVueltaHora ? 'Presentación ' + v.presentacionVueltaHora : ''
+        }${
+          v.vueloVueltaHora ? (v.presentacionVueltaHora ? ' · ' : '') + 'Vuelo ' + v.vueloVueltaHora : ''
+        }${
+          v.arriboVueltaHora ? ((v.presentacionVueltaHora || v.vueloVueltaHora) ? ' · ' : '') + 'Arribo ' + v.arriboVueltaHora : ''
+        }</div>` : '';
         horariosTL = (l1 || l2) ? `<div style="font-size:.92em; color:#333; margin-top:.2em;">${l1}${l2}</div>` : '';
       } else {
         const lbus = (v.idaHora || v.vueltaHora) ?
@@ -1448,6 +1499,9 @@ async function renderVuelos(){
             &nbsp;&nbsp;
             <span>Destino: ${toUpper(v.destino || '')}</span>
           </div>
+      
+          ${(v.encuentroAeropuerto ? `<div style="font-size:.92em; color:#333; margin-top:.25em;"><strong>Encuentro:</strong> ${toUpper(v.encuentroAeropuerto)}</div>` : '')}
+      
           ${horariosTL}
         </div>
       `;
@@ -1584,9 +1638,11 @@ async function upsertHorarios(v, vueloId, publicar, prevPublicar){
     base.tipoVuelo = v.tipoVuelo || '';
     base.presentacionIdaHora     = toHHMM(v.presentacionIdaHora || '');
     base.vueloIdaHora            = toHHMM(v.vueloIdaHora || '');
+    base.arriboIdaHora           = toHHMM(v.arriboIdaHora || '');         // NUEVO
     base.presentacionVueltaHora  = toHHMM(v.presentacionVueltaHora || '');
     base.vueloVueltaHora         = toHHMM(v.vueloVueltaHora || '');
-
+    base.arriboVueltaHora        = toHHMM(v.arriboVueltaHora || '');      // NUEVO
+  
     if (Array.isArray(v.tramos) && v.tramos.length){
       base.tramos = v.tramos.map(t => ({
         aerolinea: toSafeUpper(t.aerolinea),
@@ -1597,9 +1653,11 @@ async function upsertHorarios(v, vueloId, publicar, prevPublicar){
         fechaIda:  toISO(t.fechaIda || ''),
         presentacionIdaHora: toHHMM(t.presentacionIdaHora || ''),
         vueloIdaHora:        toHHMM(t.vueloIdaHora || ''),
+        arriboIdaHora:       toHHMM(t.arriboIdaHora || ''),          // NUEVO
         fechaVuelta:         toISO(t.fechaVuelta || ''),
         presentacionVueltaHora: toHHMM(t.presentacionVueltaHora || ''),
-        vueloVueltaHora:        toHHMM(t.vueloVueltaHora || '')
+        vueloVueltaHora:        toHHMM(t.vueloVueltaHora || ''),
+        arriboVueltaHora:       toHHMM(t.arriboVueltaHora || '')     // NUEVO
       }));
     }
   } else {
@@ -1656,12 +1714,12 @@ function exportToExcel(){
         const p = [];
         if (tipo === 'ida' || tipo === 'ida+vuelta'){
           if (toISO(t.fechaIda)){
-            p.push(`IDA:${t.fechaIda}${t.vueloIdaHora ? ' ' + t.vueloIdaHora : ''} | PRES:${t.presentacionIdaHora || '-'}`);
+            p.push(`IDA:${t.fechaIda}${t.vueloIdaHora ? ' ' + t.vueloIdaHora : ''}${t.arriboIdaHora ? ' → ARR:' + t.arriboIdaHora : ''} | PRES:${t.presentacionIdaHora || '-'}`);
           }
         }
         if (tipo === 'vuelta' || tipo === 'ida+vuelta'){
           if (toISO(t.fechaVuelta)){
-            p.push(`REGRESO:${t.fechaVuelta}${t.vueloVueltaHora ? ' ' + t.vueloVueltaHora : ''} | PRES:${t.presentacionVueltaHora || '-'}`);
+            p.push(`REGRESO:${t.fechaVuelta}${t.vueloVueltaHora ? ' ' + t.vueloVueltaHora : ''}${t.arriboVueltaHora ? ' → ARR:' + t.arriboVueltaHora : ''} | PRES:${t.presentacionVueltaHora || '-'}`);
           }
         }
         const lado = p.join(' · ');
