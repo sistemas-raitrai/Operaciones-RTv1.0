@@ -1235,7 +1235,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
           return `
             <li class="hotel-item">
               <div class="hotel-grid">
-                <div class="hotel-left"><strong>${ciudad || '—'}</strong></div>
+                <div class="hotel-left"><strong>${ciudad || '—'}</div>
                 <div class="hotel-right">
                   <div><strong>${hotel}</strong></div>
                   <div>In : ${dmy(h.checkIn)}</div>
