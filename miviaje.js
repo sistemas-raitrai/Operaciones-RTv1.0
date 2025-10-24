@@ -771,12 +771,14 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       </div>` : '' }
   ` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`;
 
-  // Hotelería (alineación simple con subetiqueta)
+   // Hotelería (alineación simple con subetiqueta)
   const hotelesHtml = (hoteles||[]).map(h=>{
     const H = h.hotel || {};
-    const pais = (H.pais || H.país || h.pais || h.país || 'BRASIL').toString().toUpperCase();
-    const ciudad = (H.ciudad || H.destino || h.ciudad || '').toString().toUpperCase();
+    const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
+    // 👇 Preferimos CIUDAD del doc de hotel; solo si no existe, caemos a h.ciudad
+    const ciudad = (H.ciudad || h.ciudad || '').toString().toUpperCase();
     const dir    = (H.direccion || h.direccion || '').toString();
+
     return `
       <div class="hotel-item" style="display:flex;gap:14px;align-items:flex-start;">
         <div class="hotel-left" style="min-width:90px;font-weight:700;">${safe(pais,'—')}</div>
@@ -784,13 +786,14 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
           <div style="font-weight:700;">${safe((h.hotelNombre || H.nombre || '').toString().toUpperCase())}</div>
           <div>In : ${safe(h.checkIn)}</div>
           <div>Out: ${safe(h.checkOut)}</div>
-          ${ciudad ? `<div>Ciudad: ${ciudad}</div>` : ''}
+          ${ciudad ? `<div>Ciudad: ${ciudad}</div>` : ''}         <!-- 👈 CIUDAD -->
           ${dir ? `<div>Dirección: ${dir}</div>` : ''}
           ${H.contactoTelefono?`<div>Fono: <a href="tel:${H.contactoTelefono}">${H.contactoTelefono}</a></div>`:''}
           ${H.web?`<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>`:''}
         </div>
       </div>`;
   }).join('<hr style="border:none;border-top:1px dashed #e5e7eb;margin:6px 0;">');
+
 
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
@@ -1155,15 +1158,17 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     if (!hoteles || !hoteles.length) return `<div class="note">— Sin hotelería cargada —</div>`;
     const items = hoteles.map(h=>{
       const H = h.hotel || {};
-      const pais   = U(H.pais || H.país || h.pais || h.país || '');
-      const ciudad = U(H.ciudad || H.destino || h.ciudad || '');
+      const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
+      // 👇 Prioriza /hoteles/{hotelId}/ciudad
+      const ciudad = (H.ciudad || h.ciudad || '').toString().toUpperCase();
       const dir    = (H.direccion || h.direccion || '').toString();
       const web    = H.web ? ` — Web: ${H.web}` : '';
       const tel    = H.contactoTelefono ? ` — Fono: ${H.contactoTelefono}` : '';
-      return `<li><strong>${U(h.hotelNombre || H.nombre || '—')}</strong> (${[pais,ciudad].filter(Boolean).join(' – ')}) — In: ${safe(h.checkIn)} — Out: ${safe(h.checkOut)}${dir?` — Dirección: ${dir}`:''}${tel}${web}</li>`;
+      return `<li><strong>${(h.hotelNombre || H.nombre || '—').toString().toUpperCase()}</strong> (${[pais,ciudad].filter(Boolean).join(' – ')}) — In: ${safe(h.checkIn)} — Out: ${safe(h.checkOut)}${dir?` — Dirección: ${dir}`:''}${tel}${web}</li>`;
     });
     return `<ul class="hoteles">${items.join('')}</ul>`;
   })();
+
 
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
