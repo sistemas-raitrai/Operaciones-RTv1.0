@@ -1130,7 +1130,7 @@ function injectPrintStyles(){
         grid-template-columns: 60mm 1fr; /* ancho fijo para alinear ciudades */
         column-gap: 6mm;
       }
-      #print-block .hoteles-list .hotel-left{ font-weight: 800; }
+      #print-block .hoteles-list .hotel-left{ font-weight: 400; }
       #print-block .hoteles-list .hotel-right > div{ margin: 0.3mm 0; }
     }
   `;
@@ -1152,10 +1152,10 @@ function injectScreenHotelStyles(){
     .hoteles-list > li.hotel-item{ margin: 6px 0 8px; }
     .hoteles-list .hotel-grid{
       display: grid;
-      grid-template-columns: minmax(220px, 1fr) 3fr; /* CIUDAD | INFO */
+      grid-template-columns: 220px 1fr; /* ancho fijo: alinea con “NACIONALES” */
       column-gap: 16px;
     }
-    .hoteles-list .hotel-left{ font-weight: 800; }
+    .hoteles-list .hotel-left{ font-weight: 400; } /* sin negrita */
     .hoteles-list .hotel-right > div{ margin: 2px 0; }
 
     /* Responsive: apila en móviles */
