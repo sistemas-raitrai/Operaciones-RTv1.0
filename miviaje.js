@@ -1160,30 +1160,41 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const hotelesHTML = (() => {
     if (!hoteles || !hoteles.length) return `<div class="note">— Sin hotelería cargada —</div>`;
 
-    const blocks = hoteles.map(h=>{
+    // dd-mm-aaaa desde ISO o timestamp Firestore
+    const dmy = (s) => {
+      const iso = toISO(s);
+      if (!iso) return '—';
+      const [y,m,d] = iso.split('-');
+      return `${d}-${m}-${y}`;
+    };
+
+    const items = hoteles.map(h=>{
       const H = h.hotel || {};
-      const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
-      const ciudad = (H.ciudad || h.ciudad || '').toString().toUpperCase();
+      const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
+      const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
       const dir    = (H.direccion || h.direccion || '').toString();
 
+      // Teléfonos disponibles
       const tel1 = (H.contactoTelefono || '').toString().trim();
       const tel2 = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
       const tels = [tel1, tel2].filter(Boolean).join(' ');
 
       return `
-        <div class="hotel-block" style="margin:1.5mm 0;">
-          ${ciudad ? `<div><strong>${ciudad}</strong></div>` : ``}
-          <div><strong>${(h.hotelNombre || H.nombre || '—').toString().toUpperCase()}</strong></div>
-          <div>In : ${safe(h.checkIn)}</div>
-          <div>Out: ${safe(h.checkOut)}</div>
-          ${pais ? `<div>Destino: ${pais}</div>` : ``}
-          ${dir ? `<div>Dirección: ${dir}</div>` : ``}
-          ${tels ? `<div>Fono: ${tels}</div>` : ``}
-          ${H.web ? `<div>Web: ${H.web}</div>` : ``}
-        </div>`;
-    });
+        <li class="hotel-item">
+          <div class="hotel-grid">
+            <div class="hotel-left"><strong>${ciudad || '—'}</strong></div>
+            <div class="hotel-right">
+              <div><strong>${hotel}</strong></div>
+              <div>In : ${dmy(h.checkIn)}</div>
+              <div>Out: ${dmy(h.checkOut)}</div>
+              ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
+              ${tels ? `<div>Fono: ${tels}</div>`     : ``}
+            </div>
+          </div>
+        </li>`;
+    }).join('');
 
-    return blocks.join('');
+    return `<ul class="hoteles-list">${items}</ul>`;
   })();
 
 
