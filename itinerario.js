@@ -110,12 +110,13 @@ const btnExportCSV = document.getElementById("btnExportCSV");
 const kpisDiv      = document.getElementById("stats-kpis");
 const resultsDiv   = document.getElementById("stats-results");
 const detailDiv    = document.getElementById("stats-detail");
+const inpUmbral   = document.getElementById("fUmbral"); // ← NUEVO (0..1, ej: 0.70)
 
 /* [ADD] Cache para estadísticas */
 let STATS_GROUPS_CACHE = null;  // [{id, ...data}]
 let STATS_SIGS_CACHE   = new Map(); // grupoId -> firma calculada
 let STATS_LAST_ROWS    = [];    // última tabla para export CSV
-
+let STATS_LAST_CONSENSUS = null; // ← NUEVO: última plantilla-consenso para exportar
 
 
 let editData    = null;    // { fecha, idx, ...act }
@@ -2052,6 +2053,8 @@ async function hydrateStatsFilters(){
   // Ajuste rango de días por defecto
   const maxDias = Math.max(...grupos.map(g=> Object.keys(g.itinerario||{}).length || 0), 8);
   inpDiaHasta.value = Math.max(1, maxDias);
+  // [CONSENSO-ADD] umbral por defecto si está vacío
+  if (inpUmbral && !String(inpUmbral.value).trim()) inpUmbral.value = 0.70;
 }
 
 /* --------- Firma de un grupo (secuencias por día + meta) --------- */
@@ -2086,15 +2089,28 @@ async function getFlightsSetForGroup(grupoId){
   return set;
 }
 
+// ===================
+// [CONSENSO-REPLACE] buildSignature(grupo)
+// ===================
 async function buildSignature(grupo){
   // Cache
   if (STATS_SIGS_CACHE.has(grupo.id)) return STATS_SIGS_CACHE.get(grupo.id);
 
   const it = grupo.itinerario || {};
   const fechas = Object.keys(it).sort((a,b)=> new Date(a)-new Date(b));
-  const diasSeq = fechas.map(f => seqFromDayActivities(it[f]));
 
-  // Set global de servicios
+  // Secuencias por día (tokens) y sus etiquetas visibles (labels)
+  const diasSeq  = [];
+  const diasLbls = [];
+  for (const f of fechas){
+    const arr  = (it[f]||[]).slice().sort((a,b)=> (a.horaInicio||'').localeCompare(b.horaInicio||''));
+    const seq  = arr.map(a => (a.servicioId || K(a.actividad||'')));
+    const lbls = arr.map(a => ((a.servicioNombre || a.actividad || '').toString().toUpperCase()));
+    diasSeq.push(seq);
+    diasLbls.push(lbls);
+  }
+
+  // Set global de servicios (tokens)
   const setGlobal = new Set();
   diasSeq.forEach(seq => seq.forEach(tok => setGlobal.add(tok)));
 
@@ -2103,8 +2119,7 @@ async function buildSignature(grupo){
   const hotelesSet = new Set();
   for (const iso of Object.keys(dayMap)){
     for (const a of (dayMap[iso]||[])){
-      // Nombre (en cache) ya cargado por buildHotelDayMapForGroup
-      const h = hotelCache.get(a.hotelId) || {};
+      const h  = hotelCache.get(a.hotelId) || {};
       const nm = (h.nombre || '').toString().toUpperCase();
       if (nm) hotelesSet.add(nm);
     }
@@ -2121,6 +2136,7 @@ async function buildSignature(grupo){
     programa: (grupo.programa||'').toString().toUpperCase(),
     coordinador: (grupo.coordinador || grupo.coordinadorNombre || grupo.asignadoCoordinador || '').toString().toUpperCase(),
     diasSeq,                           // Array<Array<token>>
+    diasLbls,                          // Array<Array<label>>
     setGlobal,                         // Set<token>
     meta: { hotelesSet, vuelosSet }    // Set<string>, Set<string>
   };
@@ -2213,6 +2229,115 @@ function computePairSimilarity(sigA, sigB, params){
   };
 }
 
+// ===========================================================
+// [CONSENSO-ADD] CONSENSO / MODO "ITINERARIO QUE MÁS SE REPITE"
+// ===========================================================
+
+/** Construye corpus de etiquetas por token (serviceId o K(actividad)) */
+function buildTokenLabelCorpus(sigs){
+  const map = new Map(); // token -> Map<label, count>
+  for (const sig of sigs){
+    const L = sig.diasLbls || [];
+    const S = sig.diasSeq  || [];
+    for (let i=0;i<Math.max(L.length, S.length);i++){
+      const labels = L[i] || [];
+      const tokens = S[i] || [];
+      const n = Math.min(tokens.length, labels.length);
+      for (let j=0;j<n;j++){
+        const tok = tokens[j];
+        const lab = (labels[j] || String(tok)).toString().toUpperCase();
+        if (!map.has(tok)) map.set(tok, new Map());
+        const mm = map.get(tok);
+        mm.set(lab, (mm.get(lab)||0)+1);
+      }
+    }
+  }
+  function best(token){
+    const mm = map.get(token);
+    if (!mm) return String(token);
+    let bestL = '', bestC = -1;
+    mm.forEach((c,lab)=>{ if (c>bestC){ bestC=c; bestL=lab; } });
+    return bestL || String(token);
+  }
+  return { map, best };
+}
+
+/** Encuentra el medoide: la firma con menor suma de distancias (1-sim) */
+function findMedoidSig(sigs, params){
+  if (!sigs.length) return { index:-1, sig:null, avgSim:0 };
+  let bestIdx = 0, bestSum = Infinity, bestAvg = 0;
+  for (let i=0;i<sigs.length;i++){
+    let sum = 0;
+    for (let j=0;j<sigs.length;j++){
+      if (i===j) continue;
+      const r = computePairSimilarity(sigs[i], sigs[j], params);
+      sum += (1 - r.finalScore);
+    }
+    if (sum < bestSum){
+      bestSum = sum;
+      bestIdx = i;
+      bestAvg = 1 - (sum / Math.max(1, sigs.length-1));
+    }
+  }
+  return { index: bestIdx, sig: sigs[bestIdx], avgSim: bestAvg };
+}
+
+/**
+ * Consenso por día, basado en el medoide:
+ * Para cada token del día D en el medoide, soporte = (#grupos con ese token en D)/N.
+ * Mantiene tokens con soporte >= umbral (0..1). Orden del medoide.
+ */
+function buildConsensusFromMedoid(medoidSig, sigs, params, umbral, labeler){
+  const N = sigs.length;
+  const from = Math.max(1, parseInt(params.diaDesde||1,10));
+  const to   = Math.max(from, parseInt(params.diaHasta||999,10));
+
+  const days = [];
+  for (let day=from; day<=to; day++){
+    const i = day-1;
+    const baseSeq = medoidSig.diasSeq[i] || [];
+    const baseOrder = baseSeq.slice();
+    const baseSet = new Set(baseSeq);
+
+    // Conteo de soporte por token del medoide
+    const supportMap = new Map(); // token -> count
+    baseSet.forEach(tok => supportMap.set(tok, 0));
+    for (const s of sigs){
+      const sSet = new Set((s.diasSeq[i] || []));
+      supportMap.forEach((cnt, tok)=>{
+        if (sSet.has(tok)) supportMap.set(tok, cnt+1);
+      });
+    }
+
+    // Filtrar por umbral y etiquetar con la mejor etiqueta
+    const chosen = [];
+    const supportArr = [];
+    const labelArr = [];
+    baseOrder.forEach(tok=>{
+      const cnt = supportMap.get(tok)||0;
+      const frac = cnt / N;
+      if (frac >= umbral){
+        chosen.push(tok);
+        supportArr.push(frac);
+        labelArr.push(labeler.best(tok));
+      }
+    });
+
+    days.push({
+      day,
+      tokens: chosen,
+      labels: labelArr,
+      support: supportArr   // fracciones 0..1 por cada token en 'labels'
+    });
+  }
+
+  // Cobertura global: promedio del soporte medio por día
+  const dayMeans = days.map(d => d.support.length ? d.support.reduce((a,x)=>a+x,0)/d.support.length : 0);
+  const coverage = dayMeans.length ? dayMeans.reduce((a,x)=>a+x,0)/dayMeans.length : 0;
+
+  return { days, coverage, N, from, to, umbral };
+}
+
 /* Filtro de grupos */
 function filterGroupsForStats(grupos, f){
   return grupos.filter(g=>{
@@ -2234,6 +2359,7 @@ function renderKPIs(info){
 }
 
 function renderResultsTable(rows, mode){
+  STATS_LAST_CONSENSUS = null; // ← limpia consenso previo si se muestran pares/base
   STATS_LAST_ROWS = rows || [];
   btnExportCSV.disabled = !rows?.length;
 
@@ -2318,32 +2444,75 @@ function showPairDetail(row){
   `;
 }
 
-/* Export CSV */
+/* Export CSV — ranking (base/pares) y, si existe, también PLANTILLA-CONSENSO */
 function exportStatsCSV(){
-  if (!STATS_LAST_ROWS?.length) return;
-  const headers = ['rank','A_numero','A_nombre','B_numero','B_nombre','score','orden','set','meta','dias_from','dias_to'];
-  const lines = [headers.join(',')];
-  STATS_LAST_ROWS.forEach((r,i)=>{
-    lines.push([
-      i+1,
-      r.a.numeroNegocio, `"${(r.a.nombreGrupo||'').replace(/"/g,'""')}"`,
-      r.b.numeroNegocio, `"${(r.b.nombreGrupo||'').replace(/"/g,'""')}"`,
-      (r.final*100).toFixed(1),
-      (r.order*100).toFixed(0),
-      (r.set*100).toFixed(0),
-      (r.meta*100).toFixed(0),
-      r.days.from, r.days.to
-    ].join(','));
-  });
-  const blob = new Blob([lines.join('\n')], { type:'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'estadisticas_itinerarios.csv';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  const haveRanking = STATS_LAST_ROWS && STATS_LAST_ROWS.length;
+  const haveCons    = !!STATS_LAST_CONSENSUS;
+
+  if (!haveRanking && !haveCons){
+    alert('— No hay datos para exportar —');
+    return;
+  }
+
+  // Helper para descargar
+  function downloadCSV(text, filename){
+    const blob = new Blob([text], { type:'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // 1) Export CONSENSO (si existe): un archivo con los días/actividades + metadatos
+  if (haveCons){
+    const C = STATS_LAST_CONSENSUS;
+    const linesC = [];
+    linesC.push('tipo,valor');
+    linesC.push(`medoide_numero,${C.head.medoidNum}`);
+    linesC.push(`medoide_nombre,"${(C.head.medoidNombre||'').replace(/"/g,'""')}"`);
+    linesC.push(`grupos_analizados,${C.head.N}`);
+    linesC.push(`umbral,${Math.round(C.head.umbral*100)}%`);
+    linesC.push(`cobertura_promedio,${Math.round(C.head.coverage*100)}%`);
+    linesC.push(`rango_dias,${C.head.from}-${C.head.to}`);
+    linesC.push('');
+    linesC.push('dia,orden,label,soporte_pct');
+
+    (C.days||[]).forEach(d=>{
+      if (!d.labels?.length){
+        linesC.push(`${d.day},,,""`);
+      } else {
+        d.labels.forEach((lab,idx)=>{
+          const pct = (d.support[idx]*100).toFixed(0);
+          linesC.push(`${d.day},${idx+1},"${(lab||'').replace(/"/g,'""')}",${pct}%`);
+        });
+      }
+    });
+
+    downloadCSV(linesC.join('\n'), 'consenso_itinerarios.csv');
+  }
+
+  // 2) Export RANKING (si existe): como antes
+  if (haveRanking){
+    const headers = ['rank','A_numero','A_nombre','B_numero','B_nombre','score','orden','set','meta','dias_from','dias_to'];
+    const lines = [headers.join(',')];
+    STATS_LAST_ROWS.forEach((r,i)=>{
+      lines.push([
+        i+1,
+        r.a.numeroNegocio, `"${(r.a.nombreGrupo||'').replace(/"/g,'""')}"`,
+        r.b.numeroNegocio, `"${(r.b.nombreGrupo||'').replace(/"/g,'""')}"`,
+        (r.final*100).toFixed(1),
+        (r.order*100).toFixed(0),
+        (r.set*100).toFixed(0),
+        (r.meta*100).toFixed(0),
+        r.days.from, r.days.to
+      ].join(','));
+    });
+    downloadCSV(lines.join('\n'), 'estadisticas_itinerarios.csv');
+  }
 }
 
 /* Run */
@@ -2429,7 +2598,99 @@ async function runStats(){
     return;
   }
 
-  // Si no hay base ni pares, muestra un mensaje
-  resultsDiv.innerHTML = 'Selecciona un "Base (uno vs muchos)" o activa "pares".';
-}
+  // ===================
+  // [CONSENSO-REPLACE] Modo CONSENSO (itinerario que más se repite)
+  // ===================
+  
+  // Si no hay base ni pares: calculamos el medoide y el consenso
+  const umbral = Math.max(0, Math.min(1, parseFloat(String(inpUmbral?.value||'0.70')) || 0.70));
+  
+  // 1) Etiquetador: corpus para mostrar nombres legibles por token
+  const labelCorpus = buildTokenLabelCorpus(sigs);
+  
+  // 2) Medoide en el rango y con los pesos
+  const med = findMedoidSig(sigs, { diaDesde, diaHasta, ...weights });
+  
+  // 3) Plantilla-consenso (actividades que están en ≥ umbral de grupos por día)
+  const consenso = buildConsensusFromMedoid(med.sig, sigs, { diaDesde, diaHasta, ...weights }, umbral, labelCorpus);
+  
+  // 4) Render cabecera + plantilla por día
+  const baseInfo = {
+    numero: med.sig?.numeroNegocio || '—',
+    nombre: (med.sig?.nombreGrupo || '').toString().toUpperCase()
+  };
+  
+  const headHtml = `
+    <div class="consensus-box">
+      <h3>Itinerario más representativo (Medoide)</h3>
+      <p><b>#${baseInfo.numero}</b> ${baseInfo.nombre}</p>
+      <p>Cobertura promedio ≥ ${Math.round(consenso.umbral*100)}%: <b>${Math.round(consenso.coverage*100)}%</b> 
+         · Grupos analizados: <b>${consenso.N}</b> · Días: <b>${consenso.from}–${consenso.to}</b></p>
+    </div>
+  `;
+  
+  const daysHtml = consenso.days.map(d=>{
+    if (!d.labels.length){
+      return `<div class="day"><strong>Día ${d.day}:</strong> <em>(sin consenso suficiente)</em></div>`;
+    }
+    const line = d.labels.map((lab,i)=> `${lab} <span class="meta">(${Math.round(d.support[i]*100)}%)</span>`).join(' · ');
+    return `<div class="day"><strong>Día ${d.day}:</strong> ${line}</div>`;
+  }).join('');
+  
+  resultsDiv.innerHTML = headHtml + daysHtml;
+  
+  // 5) Ranking de grupos más parecidos al medoide (y cuántos superan el umbral)
+  const rows = [];
+  for (const other of sigs){
+    if (other.id === med.sig.id) continue;
+    const r = computePairSimilarity(med.sig, other, { diaDesde, diaHasta, ...weights });
+    rows.push({
+      a:{ numeroNegocio: med.sig.numeroNegocio, nombreGrupo: med.sig.nombreGrupo, sig: med.sig },
+      b:{ numeroNegocio: other.numeroNegocio,   nombreGrupo: other.nombreGrupo,   sig: other   },
+      order: r.orderAvg, set: r.setAvg, meta: r.metaAvg, final: r.finalScore, days: r.days, perDay: r.perDay
+    });
+  }
+  rows.sort((x,y)=> y.final - x.final);
+  
+  // 6) Estado para exportación
+  STATS_LAST_ROWS = rows.slice(0, 50);  // ranking (para CSV)
+  STATS_LAST_CONSENSUS = {
+    head: {
+      medoidNum: baseInfo.numero,
+      medoidNombre: baseInfo.nombre,
+      N: consenso.N,
+      umbral: consenso.umbral,
+      coverage: consenso.coverage,
+      from: consenso.from,
+      to: consenso.to
+    },
+    days: consenso.days  // [{ day, labels[], support[] }]
+  };
+  if (btnExportCSV) btnExportCSV.disabled = false;
+  
+  // 7) Render detalle compacto
+  const sobreUmbral = rows.filter(r => r.final >= umbral);
+  const listaSobre = sobreUmbral.map(r => `#${r.b.numeroNegocio} ${(r.b.nombreGrupo||'').toUpperCase()} — ${(r.final*100).toFixed(0)}%`).join('<br>');
+  
+  detailDiv.innerHTML = `
+    <h4>Más parecidos al medoide</h4>
+    <p><small>Grupos con similitud ≥ ${Math.round(umbral*100)}%: <b>${sobreUmbral.length}</b></small></p>
+    ${sobreUmbral.length ? `<div class="box">${listaSobre}</div>` : ``}
+    <table>
+      <thead><tr><th>#</th><th>Grupo</th><th>Score</th><th>Orden</th><th>Set</th><th>Meta</th></tr></thead>
+      <tbody>
+        ${rows.slice(0, 10).map((r,i)=>`
+          <tr>
+            <td>${i+1}</td>
+            <td><span class="badge">#${r.b.numeroNegocio}</span> ${(r.b.nombreGrupo||'').toUpperCase()}</td>
+            <td class="score">${(r.final*100).toFixed(1)}%</td>
+            <td>${(r.order*100).toFixed(0)}%</td>
+            <td>${(r.set*100).toFixed(0)}%</td>
+            <td>${(r.meta*100).toFixed(0)}%</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+  }
 
