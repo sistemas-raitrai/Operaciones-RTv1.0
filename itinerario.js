@@ -298,22 +298,6 @@ async function initItinerario() {
     };
   }
 
-    // filtro en vivo
-  if (filtroHistorial) {
-    filtroHistorial.oninput = () => {
-      const q = (filtroHistorial.value || '').trim().toLowerCase();
-      const data = !q ? historialCache : historialCache.filter(it => {
-        const campos = [
-          it.accion, it.usuario, it.motivo, it.detalle,
-          it.anterior, it.nuevo, it.path, it.nombreGrupo,
-          it.numeroNegocio
-        ].map(x => (x ?? '').toString().toLowerCase());
-        return campos.some(c => c.includes(q));
-      });
-      renderHistorialList(data);
-    };
-  }
-
   // ⬇️⬇️⬇️ PONER AQUÍ EL PUNTO 4 (listeners del modal de estadísticas) ⬇️⬇️⬇️
   if (btnStats) {
     btnStats.onclick = (e)=>{ stopAll(e); openStatsModal(); };
@@ -2640,7 +2624,7 @@ async function runStats(){
   resultsDiv.innerHTML = headHtml + daysHtml;
   
   // 5) Ranking de grupos más parecidos al medoide (y cuántos superan el umbral)
-  const rows = [];
+  rows.length = 0; // reutiliza la 'rows' ya declarada arriba en runStats()
   for (const other of sigs){
     if (other.id === med.sig.id) continue;
     const r = computePairSimilarity(med.sig, other, { diaDesde, diaHasta, ...weights });
