@@ -408,6 +408,7 @@ function normalizeVuelo(v){
 
   const idaHora    = normTime(get('idaHora'));     // terrestre (transfer/bus)
   const vueltaHora = normTime(get('vueltaHora'));  // terrestre
+  const encuentroAeropuerto = String(get('encuentroAeropuerto') || '').toUpperCase();
 
   const origen      = String(get('origen','desde','from','salida.origen','salida.iata','origenIATA','origenSigla','origenCiudad')||'').toUpperCase();
   const destino     = String(get('destino','hasta','to','llegada.destino','llegada.iata','destinoIATA','destinoSigla','destinoCiudad')||'').toUpperCase();
@@ -443,7 +444,8 @@ function normalizeVuelo(v){
     llegadaIdaHora, llegadaVueltaHora,
     idaHora, vueltaHora,
     isTransfer, transferLeg,
-    tramos
+    tramos,
+    encuentroAeropuerto 
   };
 }
 
@@ -465,8 +467,11 @@ function particionarVuelos(vuelosNorm) {
     const presentacionVuelta = normTime(t.presentacionVueltaHora || v.presentacionVueltaHora || (esTerrestre(v) ? v.vueltaHora : ''));
     const salidaIda      = normTime(t.vueloIdaHora    || v.vueloIdaHora    || (esTerrestre(v) ? v.idaHora    : ''));
     const salidaVuelta   = normTime(t.vueloVueltaHora || v.vueloVueltaHora || (esTerrestre(v) ? v.vueltaHora : ''));
-    const arriboIda      = normTime(t.llegadaIdaHora    || v.llegadaIdaHora    || '');
-    const arriboVuelta   = normTime(t.llegadaVueltaHora || v.llegadaVueltaHora || '');
+
+    const arriboIda    = normTime(t.llegadaIdaHora    || t.arriboIdaHora    || v.llegadaIdaHora    || v.arriboIdaHora    || '');
+    const arriboVuelta = normTime(t.llegadaVueltaHora || t.arriboVueltaHora || v.llegadaVueltaHora || v.arriboVueltaHora || '');
+   
+
 
     const fecha = toISO(fechaIda || fechaVuelta || '');
 
@@ -558,7 +563,11 @@ function extractPresentacion(grupo, vuelosNorm){
                                    : (primeraIda ? 'En el aeropuerto' : 'Punto de encuentro');
   }
 
-  return { lugar, aeropuerto, presHora, salidaHora };
+  const encuentro = (vuelosNorm || [])
+    .find(x => norm(x.tipoTransporte || '') === 'aereo' && x.encuentroAeropuerto)
+    ?.encuentroAeropuerto || '';
+
+  return { lugar, aeropuerto, presHora, salidaHora, encuentro };
 }
 
 // === Textos DOCUMENTOS / EQUIPAJE / RECOMENDACIONES según programa ===
@@ -712,12 +721,10 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     const presentacion = (modo === 'ida') ? r.presentacionIda : r.presentacionVuelta;
     const salida       = (modo === 'ida') ? r.salidaIda       : r.salidaVuelta;
     const arribo       = (modo === 'ida') ? r.arriboIda       : r.arriboVuelta;
-
-    const via = r.aerolinea ? `<div style="font-size:.85em;color:#374151;">VÍA ${String(r.aerolinea||'').toUpperCase()}</div>` : '';
-
+  
     return `
       <tr>
-        <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha) : '—'}${via}</td>
+        <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha) : '—'}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(String(r.origen||'').toUpperCase())}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
@@ -823,6 +830,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         ${legendInline ? `<div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${legendInline}</div>` : ''}
         <div class="presentacion" style="line-height:1.35;">
           Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino al aeropuerto ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
+          ${P.encuentro ? `<br><strong>Lugar de Encuentro:</strong> ${P.encuentro}.` : ''}
         </div>
       </li>
 
@@ -1315,6 +1323,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         <div class="sec-title">1. CONFIRMACIÓN DE HORARIO DE SALIDA</div>
         ${legend}
         <div>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino al aeropuerto ${U(P.aeropuerto)}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</div>
+        ${P.encuentro ? `<div><strong>Lugar de Encuentro:</strong> ${P.encuentro}.</div>` : ''}
       </div>
 
       <div class="sec">
