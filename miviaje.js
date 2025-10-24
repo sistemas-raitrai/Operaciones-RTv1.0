@@ -765,30 +765,46 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       </div>` : '' }
   ` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`;
 
-  // Hotelería (formato: CIUDAD, Hotel, In/Out, Destino, Dirección, Fono, Web)
-  const hotelesHtml = (hoteles||[]).map(h=>{
-    const H = h.hotel || {};
-    const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
-    const ciudad = (H.ciudad || h.ciudad || '').toString().toUpperCase();
-    const dir    = (H.direccion || h.direccion || '').toString();
+  // —— Hotelería (PANTALLA): viñeta + 2 columnas —— //
+  injectScreenHotelStyles();
 
-    // Teléfonos (toma lo que exista)
-    const tel1 = (H.contactoTelefono || '').toString().trim();
-    const tel2 = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
-    const tels = [tel1, tel2].filter(Boolean).join(' ');
+  // dd-mm-aaaa desde ISO/timestamp
+  const dmy = (s) => {
+    const iso = toISO(s);
+    if (!iso) return '—';
+    const [y,m,d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  };
 
-    return `
-      <div class="hotel-item" style="margin:6px 0;">
-        ${ciudad ? `<div style="font-weight:800;">${ciudad}</div>` : ``}
-        <div style="font-weight:700;">${safe((h.hotelNombre || H.nombre || '').toString().toUpperCase())}</div>
-        <div>In : ${safe(h.checkIn)}</div>
-        <div>Out: ${safe(h.checkOut)}</div>
-        ${pais ? `<div>Destino: ${pais}</div>` : ``}
-        ${dir ? `<div>Dirección: ${dir}</div>` : ``}
-        ${tels ? `<div>Fono: ${tels}</div>` : ``}
-        ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
-      </div>`;
-  }).join('<hr style="border:none;border-top:1px dashed #e5e7eb;margin:6px 0;">');
+  const hotelesHtml = `
+    <ul class="hoteles-list">
+      ${ (hoteles||[]).map(h=>{
+          const H = h.hotel || {};
+          const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
+          const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
+          const dir    = (H.direccion || h.direccion || '').toString();
+          const tel1   = (H.contactoTelefono || '').toString().trim();
+          const tel2   = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
+          const tels   = [tel1, tel2].filter(Boolean).join(' ');
+
+          return `
+            <li class="hotel-item">
+              <div class="hotel-grid">
+                <div class="hotel-left"><strong>${ciudad || '—'}</strong></div>
+                <div class="hotel-right">
+                  <div><strong>${hotel}</strong></div>
+                  <div>In : ${dmy(h.checkIn)}</div>
+                  <div>Out: ${dmy(h.checkOut)}</div>
+                  ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
+                  ${tels ? `<div>Fono: ${tels}</div>`     : ``}
+                  ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
+                </div>
+              </div>
+            </li>`;
+        }).join('') }
+    </ul>
+  `;
+
 
 
 
