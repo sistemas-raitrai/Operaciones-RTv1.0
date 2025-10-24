@@ -824,7 +824,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
       <li style="margin-bottom:12px;">
         <div style="font-weight:700;">HOTELERÍA CONFIRMADA</div>
-        ${hoteles && hoteles.length ? `<div style="margin-top:6px;display:grid;gap:8px;">${hotelesHtml}</div>` : `<div style="opacity:.7;">— Sin hotelería cargada —</div>`}
+        ${hoteles && hoteles.length ? `<div style="margin-top:6px;">${hotelesHtml}</div>` : `<div style="opacity:.7;">— Sin hotelería cargada —</div>`}
       </li>
 
       <li style="margin-bottom:12px;">
@@ -1207,12 +1207,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   // Hotelería (viñeta + 2 columnas: CIUDAD | HOTEL y detalles)
   injectScreenHotelStyles();
 
-  // dd-mm-aaaa desde ISO o timestamp
   const dmy = (s) => {
-    const iso = toISO(s);
-    if (!iso) return '—';
-    const [y,m,d] = iso.split('-');
-    return `${d}-${m}-${y}`;
+    const iso = toISO(s); if (!iso) return '—';
+    const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`;
   };
 
   const hotelesHtml = `
@@ -1295,7 +1292,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
       <div class="sec">
         <div class="sec-title">3. HOTELERÍA CONFIRMADA</div>
-        ${hotelesHTML}
+        ${hotelesHtml}
       </div>
 
       <div class="sec">
