@@ -1127,7 +1127,7 @@ function injectPrintStyles(){
       }
       #print-block .hoteles-list .hotel-grid{
         display: grid;
-        grid-template-columns: 60mm 1fr; /* ancho fijo para alinear ciudades */
+        grid-template-columns: var(--hotel-left-col, 60mm) 1fr; /* ← usa la misma variable también al imprimir */
         column-gap: 6mm;
       }
       #print-block .hoteles-list .hotel-left{ font-weight: 400; }
@@ -1152,7 +1152,7 @@ function injectScreenHotelStyles(){
     .hoteles-list > li.hotel-item{ margin: 6px 0 8px; }
     .hoteles-list .hotel-grid{
       display: grid;
-      grid-template-columns: 220px 1fr; /* ancho fijo: alinea con “NACIONALES” */
+      grid-template-columns: var(--hotel-left-col, 240px) 1fr; /* ← columna ciudad auto-ajustada */
       column-gap: 16px;
     }
     .hoteles-list .hotel-left{ font-weight: 400; } /* sin negrita */
@@ -1168,6 +1168,31 @@ function injectScreenHotelStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
+
+function syncHotelColumnToDocs(){
+  // pantalla
+  const hoja = document.getElementById('hoja-resumen');
+  const hotelesUL = hoja?.querySelector('li:nth-of-type(3) .hoteles-list');
+  const refNacionales = hoja?.querySelector('li:nth-of-type(4) ul > li:first-child > div > strong'); // "NACIONALES:"
+  if (hotelesUL && refNacionales) {
+    const leftRef = refNacionales.getBoundingClientRect().left;    // donde parte "NACIONALES:"
+    const leftUL  = hotelesUL.getBoundingClientRect().left;        // donde parte el contenido del UL de hotel
+    const colPx   = Math.max(120, Math.round(leftRef - leftUL));   // ancho de columna IZQ para ciudad
+    hotelesUL.style.setProperty('--hotel-left-col', colPx + 'px');
+  }
+
+  // impresión (#print-block)
+  const printBlock = document.getElementById('print-block');
+  const hotelesULPrint = printBlock?.querySelector('.hoteles-list');
+  const refNacPrint = printBlock?.querySelector('.sec:nth-of-type(4) ul > li:first-child > div > strong');
+  if (hotelesULPrint && refNacPrint) {
+    const leftRefP = refNacPrint.getBoundingClientRect().left;
+    const leftULP  = hotelesULPrint.getBoundingClientRect().left;
+    const colPxP   = Math.max(120, Math.round(leftRefP - leftULP));
+    hotelesULPrint.style.setProperty('--hotel-left-col', colPxP + 'px');
+  }
+}
+
 
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -1416,6 +1441,8 @@ async function main(){
  if (printEl) {
    printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas || []);
  }
+syncHotelColumnToDocs();
+window.addEventListener('resize', syncHotelColumnToDocs);
 }
 main().catch(err => {
   console.error('Firestore error:', err?.code || err?.message, err);
