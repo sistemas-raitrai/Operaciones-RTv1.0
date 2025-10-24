@@ -455,26 +455,33 @@ function particionarVuelos(vuelosNorm) {
   const terrestres = [];
   const esTerrestre = (v) => norm(v.tipoTransporte || '') !== 'aereo';
 
+   // === Helper dentro de particionarVuelos ===
   const legFrom = (v, t = {}) => {
     const aerolinea = String(t.aerolinea || v.proveedor || '').toUpperCase();
     const numero    = String(t.numero    || v.numero    || '').toUpperCase();
     const origen    = String(t.origen    || v.origen    || '').toUpperCase();
     const destino   = String(t.destino   || v.destino   || '').toUpperCase();
-
-    const fechaIda       = toISO(t.fechaIda       || v.fechaIda       || '');
-    const fechaVuelta    = toISO(t.fechaVuelta    || v.fechaVuelta    || '');
+  
+    const fechaIda    = toISO(t.fechaIda    || v.fechaIda    || '');
+    const fechaVuelta = toISO(t.fechaVuelta || v.fechaVuelta || '');
+  
     const presentacionIda    = normTime(t.presentacionIdaHora    || v.presentacionIdaHora    || (esTerrestre(v) ? v.idaHora    : ''));
     const presentacionVuelta = normTime(t.presentacionVueltaHora || v.presentacionVueltaHora || (esTerrestre(v) ? v.vueltaHora : ''));
-    const salidaIda      = normTime(t.vueloIdaHora    || v.vueloIdaHora    || (esTerrestre(v) ? v.idaHora    : ''));
-    const salidaVuelta   = normTime(t.vueloVueltaHora || v.vueloVueltaHora || (esTerrestre(v) ? v.vueltaHora : ''));
-
-    const arriboIda    = normTime(t.llegadaIdaHora    || t.arriboIdaHora    || v.llegadaIdaHora    || v.arriboIdaHora    || '');
-    const arriboVuelta = normTime(t.llegadaVueltaHora || t.arriboVueltaHora || v.llegadaVueltaHora || v.arriboVueltaHora || '');
-   
-
-
+    const salidaIda          = normTime(t.vueloIdaHora           || v.vueloIdaHora           || (esTerrestre(v) ? v.idaHora    : ''));
+    const salidaVuelta       = normTime(t.vueloVueltaHora        || v.vueloVueltaHora        || (esTerrestre(v) ? v.vueltaHora : ''));
+  
+    // 👇 Ahora contempla explícitamente arriboIdaHora / arriboVueltaHora (y alias)
+    const arriboIda = normTime(
+      t.arriboIdaHora      || t.llegadaIdaHora      || t.arriboHoraIda      ||
+      v.arriboIdaHora      || v.llegadaIdaHora      || v.arriboHoraIda      || v.horaArriboIda || ''
+    );
+    const arriboVuelta = normTime(
+      t.arriboVueltaHora   || t.llegadaVueltaHora   || t.arriboHoraVuelta   ||
+      v.arriboVueltaHora   || v.llegadaVueltaHora   || v.arriboHoraVuelta   || v.horaArriboVuelta || ''
+    );
+  
     const fecha = toISO(fechaIda || fechaVuelta || '');
-
+  
     return {
       fecha, fechaIda, fechaVuelta,
       aerolinea, numero, origen, destino,
@@ -486,6 +493,7 @@ function particionarVuelos(vuelosNorm) {
       transferLeg: String(v.transferLeg||'').toLowerCase()
     };
   };
+
 
   for (const v of (vuelosNorm || [])) {
     if (esTerrestre(v)) {
@@ -732,6 +740,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arribo)}</td>
       </tr>`;
   }).join('');
+
 
   const hasAereos = idaLegs.length || vueltaLegs.length;
   const vuelosHTML = (hasAereos) ? `
