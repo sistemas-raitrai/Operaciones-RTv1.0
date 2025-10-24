@@ -834,7 +834,9 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
       <li style="margin-bottom:12px;">
         <div style="font-weight:700;">HOTELERÍA CONFIRMADA</div>
-        ${hoteles && hoteles.length ? `<div style="margin-top:6px;">${hotelesHtml}</div>` : `<div style="opacity:.7;">— Sin hotelería cargada —</div>`}
+        ${hoteles && hoteles.length
+          ? `<div style="margin-top:6px;">${hotelesHtml}</div>`
+          : `<div style="opacity:.7;">— Sin hotelería cargada —</div>`}
       </li>
 
       <li style="margin-bottom:12px;">
