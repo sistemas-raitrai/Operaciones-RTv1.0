@@ -771,28 +771,31 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       </div>` : '' }
   ` : `<div style="opacity:.7;">— Sin información de vuelos —</div>`;
 
-   // Hotelería (alineación simple con subetiqueta)
+  // Hotelería (formato: CIUDAD, Hotel, In/Out, Destino, Dirección, Fono, Web)
   const hotelesHtml = (hoteles||[]).map(h=>{
     const H = h.hotel || {};
     const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
-    // 👇 Preferimos CIUDAD del doc de hotel; solo si no existe, caemos a h.ciudad
     const ciudad = (H.ciudad || h.ciudad || '').toString().toUpperCase();
     const dir    = (H.direccion || h.direccion || '').toString();
 
+    // Teléfonos (toma lo que exista)
+    const tel1 = (H.contactoTelefono || '').toString().trim();
+    const tel2 = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
+    const tels = [tel1, tel2].filter(Boolean).join(' ');
+
     return `
-      <div class="hotel-item" style="display:flex;gap:14px;align-items:flex-start;">
-        <div class="hotel-left" style="min-width:90px;font-weight:700;">${safe(pais,'—')}</div>
-        <div class="hotel-body">
-          <div style="font-weight:700;">${safe((h.hotelNombre || H.nombre || '').toString().toUpperCase())}</div>
-          <div>In : ${safe(h.checkIn)}</div>
-          <div>Out: ${safe(h.checkOut)}</div>
-          ${ciudad ? `<div>Ciudad: ${ciudad}</div>` : ''}         <!-- 👈 CIUDAD -->
-          ${dir ? `<div>Dirección: ${dir}</div>` : ''}
-          ${H.contactoTelefono?`<div>Fono: <a href="tel:${H.contactoTelefono}">${H.contactoTelefono}</a></div>`:''}
-          ${H.web?`<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>`:''}
-        </div>
+      <div class="hotel-item" style="margin:6px 0;">
+        ${ciudad ? `<div style="font-weight:800;">${ciudad}</div>` : ``}
+        <div style="font-weight:700;">${safe((h.hotelNombre || H.nombre || '').toString().toUpperCase())}</div>
+        <div>In : ${safe(h.checkIn)}</div>
+        <div>Out: ${safe(h.checkOut)}</div>
+        ${pais ? `<div>Destino: ${pais}</div>` : ``}
+        ${dir ? `<div>Dirección: ${dir}</div>` : ``}
+        ${tels ? `<div>Fono: ${tels}</div>` : ``}
+        ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
       </div>`;
   }).join('<hr style="border:none;border-top:1px dashed #e5e7eb;margin:6px 0;">');
+
 
 
   const { docsText, equipajeText1, equipajeText2, recs } =
@@ -1156,18 +1159,33 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
   const hotelesHTML = (() => {
     if (!hoteles || !hoteles.length) return `<div class="note">— Sin hotelería cargada —</div>`;
-    const items = hoteles.map(h=>{
+
+    const blocks = hoteles.map(h=>{
       const H = h.hotel || {};
       const pais   = (H.pais || H.país || h.pais || h.país || '').toString().toUpperCase();
-      // 👇 Prioriza /hoteles/{hotelId}/ciudad
       const ciudad = (H.ciudad || h.ciudad || '').toString().toUpperCase();
       const dir    = (H.direccion || h.direccion || '').toString();
-      const web    = H.web ? ` — Web: ${H.web}` : '';
-      const tel    = H.contactoTelefono ? ` — Fono: ${H.contactoTelefono}` : '';
-      return `<li><strong>${(h.hotelNombre || H.nombre || '—').toString().toUpperCase()}</strong> (${[pais,ciudad].filter(Boolean).join(' – ')}) — In: ${safe(h.checkIn)} — Out: ${safe(h.checkOut)}${dir?` — Dirección: ${dir}`:''}${tel}${web}</li>`;
+
+      const tel1 = (H.contactoTelefono || '').toString().trim();
+      const tel2 = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
+      const tels = [tel1, tel2].filter(Boolean).join(' ');
+
+      return `
+        <div class="hotel-block" style="margin:1.5mm 0;">
+          ${ciudad ? `<div><strong>${ciudad}</strong></div>` : ``}
+          <div><strong>${(h.hotelNombre || H.nombre || '—').toString().toUpperCase()}</strong></div>
+          <div>In : ${safe(h.checkIn)}</div>
+          <div>Out: ${safe(h.checkOut)}</div>
+          ${pais ? `<div>Destino: ${pais}</div>` : ``}
+          ${dir ? `<div>Dirección: ${dir}</div>` : ``}
+          ${tels ? `<div>Fono: ${tels}</div>` : ``}
+          ${H.web ? `<div>Web: ${H.web}</div>` : ``}
+        </div>`;
     });
-    return `<ul class="hoteles">${items.join('')}</ul>`;
+
+    return blocks.join('');
   })();
+
 
 
   const { docsText, equipajeText1, equipajeText2, recs } =
