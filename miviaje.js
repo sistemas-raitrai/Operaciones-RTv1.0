@@ -829,7 +829,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <div style="font-weight:700;">CONFIRMACIÓN DE HORARIO DE SALIDA</div>
         ${legendInline ? `<div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${legendInline}</div>` : ''}
         <div class="presentacion" style="line-height:1.35;">
-          Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino al aeropuerto ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
+          Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino a ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
           ${P.encuentro ? `<br><strong>Lugar de Encuentro:</strong> ${P.encuentro}.` : ''}
         </div>
       </li>
