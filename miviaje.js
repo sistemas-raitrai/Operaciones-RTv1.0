@@ -1310,7 +1310,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   return `
     <div class="print-doc">
       <div class="doc-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
-      <div class="doc-sub">Fecha Viaje: ${fechaViaje}</div>
+      <div class="sec-title">Fecha Viaje: ${fechaViaje}</div>
 
       <!-- 1 -->
       <div class="sec">
@@ -1358,6 +1358,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <!-- 7: siempre página nueva -->
       <div class="sec itinerario-sec">
         <div class="sec-title">7. ITINERARIO DE VIAJE</div>
+        <div class="note">El orden de los días presentado en este itinerario puede ser modificado por razones de coordinacipon o reservas.</div>
         ${itinHTML}
       </div>
 
