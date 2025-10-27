@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1.0" />
-  <title>Mi Viaje RT | 2025</title>
+  <title>Mi Viaje | 2025</title>
 
   <!-- Estilos globales propios (si los tienes) -->
   <link rel="stylesheet" href="estilos.css" />
@@ -88,56 +88,27 @@
     }
 
     /* ====== IMPRESIÓN ====== */
+  
     @media print{
-      @page{ margin:14mm 12mm; }
+      @page{ size:A4; margin:14mm 12mm; }
       *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-      header, .btn-add{ display:none !important; }
-      .print-only{ display:none !important; } /* no ocultes #print-block al imprimir */
-      
-
-      #print-logo{
-        display:block; position:fixed; top:12px; right:12px; width:120px;
+    
+      /* mostrar sólo el documento de impresión */
+      #print-block{
+        display:block !important;
+        white-space:normal !important;
+        margin:0 !important;
       }
-
-      .grid, #mi-itin, .activity-list{ display:block !important; gap:0 !important; width:100% !important; }
-
-      .dia-seccion{ break-inside:avoid; page-break-inside:avoid; margin:12px 0 10px 0 !important; }
-      .dia-seccion h3{
-        color:#1D4ED8 !important; margin:12px 0 6px 0 !important; padding:0 !important;
-        font-size:12pt !important; text-align:left !important; background:none !important; border:0 !important;
+      #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas, header, .btn-add{
+        display:none !important;
       }
-      .activity-card p{ margin:0 0 4px 0 !important; font-size:11pt !important; font-weight:600; }
-
-      body{ background:#fff; color:#000; font-size:11pt; }
-      h1,h2,h3{ margin:0 0 6px 0; }
-
-      .row{ display:block !important; margin:0 0 8px 0 !important; }
-      .row .column, .row .long, .row .medium, .row .short{ display:block !important; width:100% !important; margin:0 0 4px 0 !important; }
-      #itinerario-container{ margin-top:14px !important; }
-
-      .u-hide-screen{ display:none !important; }
-      @media print{ .u-hide-screen{ display:block !important; } }
-      .u-hide-all{ display:none !important; }
-
-      /* Al imprimir, 3 columnas por fila si cabe */
-      .dias-embebidas .fila{ grid-template-columns: repeat(3, 1fr) !important; }
+    
+      /* logo fijo */
+      #print-logo{ display:block; position:fixed; top:12px; right:12px; width:120px; }
+    
+      /* (opcional) estilos de tablas y cortes */
+      .itinerario-sec{ break-before:page; page-break-before:always; }
     }
-
-    @media print{
-    /* 1) Mostrar SÍ o SÍ el documento de impresión */
-    #print-block{
-      display:block !important;
-      white-space: normal !important;   /* ← clave */
-      margin:0 !important;
-    }
-      
-  
-    /* 2) Ocultar el layout de pantalla */
-    #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas{ display:none !important; }
-  
-    /* 3) Punto 7 (itinerario) siempre inicia en nueva página */
-    .itinerario-sec{ break-before: page; page-break-before: always; }
-  }
 
 
   </style>
