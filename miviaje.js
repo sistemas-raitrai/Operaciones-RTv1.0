@@ -1075,8 +1075,8 @@ function injectPrintStyles(){
   const css = `
     #print-block{ display:none; }
 
-    /* Margen reservado para que el logo viva fuera del texto */
-    @page{ size:A4; margin:32mm 28mm 12mm 12mm; }
+    /* Top grande para que todas las páginas partan igual que la 1 */
+    @page{ size:A4; margin:32mm 12mm 12mm 12mm; }
 
     @media print{
       html,body{
@@ -1085,11 +1085,20 @@ function injectPrintStyles(){
         font:10pt/1.18 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
       }
 
-      /* Mostrar solo el documento imprimible */
+      /* Sólo el documento imprimible */
       #hoja-resumen,#mi-itin,#itin-slot,.dias-embebidas,header,nav,footer{ display:none !important; }
-      #print-block{ display:block !important; position:relative; z-index:1; white-space:normal !important; }
 
-      /* LOGO fijo en el margen superior derecho (fuera del texto) */
+      /* 🔒 Reserva carril derecho para el logo (evita que el texto lo invada) */
+      #print-block{ 
+        display:block !important; 
+        position:relative; 
+        z-index:1; 
+        white-space:normal !important;
+        padding-right:34mm !important;   /* << clave */
+      }
+      #print-block .print-doc{ margin-right:0 !important; } /* por si dejaste algún margen viejo */
+
+      /* Logo fijo arriba-derecha, fuera del texto */
       #print-logo{
         position:fixed !important;
         top:7mm !important;
@@ -1099,19 +1108,14 @@ function injectPrintStyles(){
         opacity:.95; pointer-events:none; z-index:2 !important;
       }
 
-      /* No dejes espacio extra a la derecha dentro del contenido */
-      #print-block .print-doc{ margin-right:0 !important; }
-
-      /* Titulares y subtítulo */
+      /* Títulos / espaciado */
       #print-block .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 6mm 0; }
       #print-block .doc-sub{ font-size:10pt; color:#374151; line-height:1.18; margin:0 0 4mm 0; }
 
-      /* Separaciones entre secciones */
       #print-block .sec{ break-inside:avoid; page-break-inside:avoid; margin:0 0 5mm 0; }
       #print-block .sec + .sec{ margin-top:5mm; }
       #print-block .sec-title{ font-weight:700; font-size:10.5pt; margin:0 0 2.5mm 0; }
 
-      /* Bloques de vuelos compactos */
       .flight-block{ margin:0 0 4mm 0; }
       .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
       .flight-lines{ list-style:none; margin:0 0 2.2mm 0; padding:0; }
@@ -1121,13 +1125,11 @@ function injectPrintStyles(){
       .sec .note + .flight-block{ margin-top:4mm; }
       .flight-block + .flight-block{ margin-top:4mm; }
 
-      /* Hotelería */
       #print-block .hoteles-list{ list-style:none; margin:.8mm 0 0 0; padding:0; }
       #print-block .hotel-item{ margin:.6mm 0 .8mm; }
       #print-block .hotel-grid{ display:grid; grid-template-columns:var(--hotel-left-col,48mm) 1fr; column-gap:5mm; }
       #print-block .hotel-right > div{ margin:.15mm 0; }
 
-      /* Itinerario sin salto forzado */
       .itinerario-sec{ break-before:auto; page-break-before:auto; }
       .itinerario-sec .sec-title{ margin-bottom:4mm; }
       .itinerario .it-day{ margin:0 0 3.5mm 0; }
@@ -1135,11 +1137,8 @@ function injectPrintStyles(){
     }
   `;
   const s = document.createElement('style');
-  s.id = ID;
-  s.textContent = css;
-  document.head.appendChild(s);
+  s.id = ID; s.textContent = css; document.head.appendChild(s);
 }
-
 
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
 function injectScreenHotelStyles(){
