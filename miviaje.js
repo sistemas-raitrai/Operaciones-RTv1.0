@@ -1073,93 +1073,145 @@ function injectPrintStyles(){
   if (document.getElementById(ID)) return;
 
   const css = `
-    /* Ocultar el layout de pantalla al imprimir */
-    #print-block { display: none; }
-
-    @media print{
-      @page{ margin:14mm 12mm; }
-      *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-      header, .btn-add{ display:none !important; }
-    
-      /* Mostrar el documento de impresión y compactar interlínea */
-      #print-block{ display:block !important; }
-      html, body, #print-block, #print-block * { line-height: 1.28 !important; }
-    
-      /* Neutralizar paddings globales que agregan “aire” arriba */
-      body{ padding:0 !important; padding-top:0 !important; background:#fff !important; }
-    }
-
-
-      /* Oculta todo lo de pantalla */
-      #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas,
-      header, nav, footer { display:none !important; }
-
-      /* Muestra solo el bloque de impresión */
-      #print-block { display:block !important; }
-
-      /* Logo fijo arriba-derecha */
-      #logo-raitrai{
-        position: fixed !important;
-        right: 9mm !important;
-        top: 7mm !important;
-        width: 22mm !important;
-        height: auto !important;
-        z-index: 1 !important;
-        opacity:.95;
-        pointer-events:none;
+      /* Ocultar el layout de pantalla al imprimir */
+      #print-block { display: none; }
+      @media print {
+        @page { size: A4; margin: 8mm 9mm 10mm 9mm; }
+        html, body {
+          background:#fff !important;
+          color:#111 !important;
+          font: 10.5pt/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        }
+        /* Oculta todo lo de pantalla */
+        #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas,
+        header, nav, footer { display:none !important; }
+        /* Muestra solo el bloque de impresión */
+        #print-block { display:block !important; }
+        /* Logo fijo arriba-derecha */
+        #logo-raitrai{
+          position: fixed !important;
+          right: 9mm !important;
+          top: 7mm !important;
+          width: 22mm !important;
+          height: auto !important;
+          z-index: 1 !important;
+          opacity:.95;
+          pointer-events:none;
+        }
+        /* Texto corre a la izquierda del logo */
+        #print-block .print-doc { margin-right: 26mm; }
+        
+        /* ===== TÍTULOS Y BLOQUES COMPACTOS ===== */
+        #print-block .doc-title { 
+          font-weight:800; 
+          font-size:15pt; 
+          margin:0 0 1mm 0;
+          line-height:1.1;
+        }
+        #print-block .doc-sub { 
+          font-size:9.5pt; 
+          color:#374151; 
+          margin:0 0 2mm 0;
+          line-height:1.2;
+        }
+        #print-block .sec { 
+          margin: 2mm 0 1.5mm; 
+          page-break-inside: avoid; 
+        }
+        #print-block .sec-title { 
+          font-weight:700; 
+          font-size:10.5pt; 
+          margin:0 0 1mm 0;
+          line-height:1.2;
+        }
+        #print-block .note { 
+          color:#6b7280; 
+          margin: 0.5mm 0 1mm;
+          line-height:1.2;
+        }
+        
+        /* ===== TABLAS COMPACTAS PARA VUELOS ===== */
+        .flights-header { 
+          font-weight:700; 
+          margin: 0.8mm 0 0.8mm;
+          line-height:1.2;
+        }
+        .flights-table {
+          width:100%; 
+          border-collapse:collapse; 
+          table-layout:fixed;
+          margin: 1mm 0;
+        }
+        .flights-table th, .flights-table td {
+          border: 0.2mm solid #d1d5db;
+          padding: 1.2mm 2mm;
+          vertical-align: top;
+          line-height:1.15;
+          font-size:10pt;
+        }
+        .flights-table thead th {
+          background:#f3f4f6;
+          text-align:left;
+          font-size:10pt;
+        }
+        
+        /* ===== LISTAS COMPACTAS ===== */
+        #print-block ul { 
+          margin: 0.8mm 0 1mm 5mm; 
+          padding:0;
+          line-height:1.25;
+        }
+        #print-block li { 
+          margin: 0.4mm 0;
+          line-height:1.25;
+        }
+        
+        /* ===== HOTELERÍA COMPACTA ===== */
+        #print-block .hoteles-list{
+          list-style: disc;
+          margin: 0.8mm 0 0 5mm;
+          padding: 0;
+        }
+        #print-block .hoteles-list > li.hotel-item{ 
+          margin: 0.8mm 0 1.2mm;
+          line-height:1.2;
+        }
+        #print-block .hoteles-list .hotel-grid{
+          display:grid;
+          grid-template-columns: var(--hotel-left-col, 60mm) 1fr;
+          column-gap: 6mm;
+        }
+        #print-block .hoteles-list .hotel-right > div{ 
+          margin: 0.15mm 0;
+          line-height:1.2;
+        }
+        
+        /* ===== ITINERARIO COMPACTO ===== */
+        .itinerario .it-day { 
+          margin: 0.8mm 0; 
+          page-break-inside: avoid;
+          line-height:1.2;
+        }
+        .itinerario .day-head { 
+          font-weight:700; 
+          margin-bottom:0.3mm;
+          line-height:1.2;
+        }
+        
+        /* ===== PÁRRAFOS GENERALES ===== */
+        #print-block p {
+          margin: 0.5mm 0;
+          line-height:1.25;
+        }
+        
+        /* ===== CIERRE CENTRADO ===== */
+        .print-doc .closing { 
+          text-align:center; 
+          font-weight:800; 
+          margin-top: 2.5mm;
+          line-height:1.2;
+        }
       }
-
-      /* Texto corre a la izquierda del logo */
-      #print-block .print-doc { margin-right: 26mm; }
-
-      /* Títulos y bloques con espaciado compacto */
-      #print-block .doc-title { font-weight:800; font-size:15.5pt; margin:0 0 2mm 0; }
-      #print-block .doc-sub   { font-size:10pt; color:#374151; margin:0 0 3mm 0; }
-
-      #print-block .sec { margin: 3mm 0 2.5mm; page-break-inside: avoid; }
-      #print-block .sec-title { font-weight:700; font-size:11pt; margin:0 0 1.8mm 0; }
-      #print-block .note { color:#6b7280; margin: 1mm 0 2mm; }
-
-      /* ======= TABLAS COMPACTAS PARA VUELOS ======= */
-      .flights-header { font-weight:700; margin: 1mm 0 1.2mm; }
-      .flights-table {
-        width:100%; border-collapse:collapse; table-layout:fixed;
-      }
-      .flights-table th, .flights-table td {
-        border: 0.2mm solid #d1d5db;
-        padding: 1.8mm 2.6mm;
-        vertical-align: top;
-      }
-      .flights-table thead th {
-        background:#f3f4f6;
-        text-align:left;
-      }
-
-      /* Listas compactas (documentos, recomendaciones, etc.) */
-      #print-block ul { margin: 1.2mm 0 1.2mm 5mm; padding:0; }
-      #print-block li { margin: 0.7mm 0; }
-
-      /* Itinerario compacto */
-      .itinerario .it-day { margin: 1.2mm 0; page-break-inside: avoid; }
-      .itinerario .day-head { font-weight:700; margin-bottom:0.5mm; }
-
-      /* Cierre centrado */
-      .print-doc .closing { text-align:center; font-weight:800; margin-top: 3mm; }
-
-      /* ===== Hotelería con viñeta + 2 columnas (misma lógica en pantalla) ===== */
-      #print-block .hoteles-list{
-        list-style: disc;
-        margin: 0 0 0 5mm;
-        padding: 0;
-      }
-      #print-block .hoteles-list > li.hotel-item{ margin: 1.2mm 0 1.8mm; }
-      #print-block .hoteles-list .hotel-grid{
-        display:grid;
-        grid-template-columns: var(--hotel-left-col, 60mm) 1fr;
-        column-gap: 6mm;
-      }
-      #print-block .hoteles-list .hotel-right > div{ margin: 0.25mm 0; }
-    }
   `;
   const s = document.createElement('style');
   s.id = ID;
