@@ -121,6 +121,12 @@
       /* Al imprimir, 3 columnas por fila si cabe */
       .dias-embebidas .fila{ grid-template-columns: repeat(3, 1fr) !important; }
     }
+
+    /* ===== Mi Viaje: ajustes de espaciado ===== */
+    body.itinerario-page { padding: 0 !important; }           /* en pantalla de Mi Viaje */
+    @media print{
+      body { padding: 0 !important; padding-top: 0 !important; } /* en impresión de cualquier página */
+    }
   </style>
 </head>
 
@@ -155,7 +161,7 @@
 
     <!-- Aquí miviaje.js pinta todo -->
     <div id="mi-itin"></div>
-    <pre id="print-block" class="print-only"></pre>
+    <div id="print-block"></div>
   </main>
 
   <noscript><p style="padding:1rem;color:#b00;">Esta página requiere JavaScript para cargar tu viaje.</p></noscript>
