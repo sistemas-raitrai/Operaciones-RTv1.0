@@ -1075,15 +1075,17 @@ function injectPrintStyles(){
   const css = `
     #print-block { display:none; }
   
+    @page {
+      /* top ≈ 32mm (7mm del top del logo + ~22mm alto + aire) */
+      margin: 32mm 10mm 12mm 12mm;
+      size: A4;
+    }
+    
     @media print {
-      /* ⬇️ Márgenes: 2+ con más top para despejar el logo; la 1ª se mantiene más compacta */
-      @page { size: A4; margin: 22mm 10mm 10mm 10mm; }     /* ← antes 10mm */
-      @page :first { margin: 8mm 10mm 10mm 10mm; }
-  
       html, body{
         background:#fff !important;
         color:#111 !important;
-        font: 10pt/1.18 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        font: 10pt/1.18 -apple-system, BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
       }
   
       /* Mostrar sólo el documento de impresión */
