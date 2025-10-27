@@ -821,9 +821,6 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     </ul>
   `;
 
-
-
-
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
 
