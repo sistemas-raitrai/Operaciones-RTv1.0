@@ -1316,7 +1316,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="sec">
         <div class="sec-title">1. CONFIRMACIÓN DE HORARIO DE SALIDA</div>
         ${legend}
-        <p>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino al aeropuerto ${U(P.aeropuerto)}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</p>
+        <p>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino a ${U(P.aeropuerto)}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</p>
         ${P.encuentro ? `<p><strong>Lugar de Encuentro:</strong> ${P.encuentro}.</p>` : ''}
       </div>
 
@@ -1358,7 +1358,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <!-- 7: siempre página nueva -->
       <div class="sec itinerario-sec">
         <div class="sec-title">7. ITINERARIO DE VIAJE</div>
-        <div class="note">El orden de los días presentado en este itinerario puede ser modificado por razones de coordinacipon o reservas.</div>
+        <div class="note">El orden de las activivades presentado a continuación podría ser modificado por razones de coordinación o reservas.</div>
         ${itinHTML}
       </div>
 
