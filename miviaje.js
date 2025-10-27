@@ -1260,35 +1260,6 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     return `<div class="flight-block"><div class="flights-header">${header}</div><div class="flight-legs">${legsHtml}</div></div>`;
   };
 
-    const rows = legs.map(l=>{
-      const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
-      const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
-      const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
-      const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
-      return `
-        <tr>
-          <td>${formatShortDate(fecha)}</td>
-          <td>${U(l.origen)}</td>
-          <td>${withHrs(pres)}</td>
-          <td>${withHrs(sal)}</td>
-          <td>${U(l.destino)}</td>
-          <td>${withHrs(arr)}</td>
-        </tr>`;
-    }).join('');
-
-    return `
-      <div class="flights-header">${header}</div>
-      <table class="flights-table">
-        <thead>
-          <tr>
-            <th>Fecha</th><th>Origen</th><th>Presentación</th>
-            <th>Hora de salida</th><th>Destino</th><th>Hora de arribo</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-  };
-
   /* ===== hotelería ===== */
   const dmy = (s) => { const iso = toISO(s); if (!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`; };
   const hotelesHtml = `
