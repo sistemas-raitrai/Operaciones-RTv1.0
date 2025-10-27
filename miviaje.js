@@ -1073,82 +1073,86 @@ function injectPrintStyles(){
   if (document.getElementById(ID)) return;
 
   const css = `
-    /* Ocultar el doc de impresión en pantalla */
+    /* Ocultar el layout de pantalla al imprimir */
     #print-block { display: none; }
 
     @media print {
-      @page { size: A4; margin: 10mm 10mm 12mm 10mm; }
+      @page { size: A4; margin: 8mm 9mm 10mm 9mm; }
       html, body {
-        background: #fff !important;
-        color: #111 !important;
-        font: 11.5pt/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        background:#fff !important;
+        color:#111 !important;
+        font: 10.8pt/1.28 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       }
 
-      /* 👇 MUY IMPORTANTE: oculta TODO el layout de pantalla */
-      #hoja-resumen,
-      #mi-itin,
-      #itin-slot,
-      .dias-embebidas,
-      header, nav, footer { display: none !important; }
+      /* Oculta todo lo de pantalla */
+      #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas,
+      header, nav, footer { display:none !important; }
 
-      /* Mostrar SOLO el documento de impresión */
-      #print-block { display: block !important; }
+      /* Muestra solo el bloque de impresión */
+      #print-block { display:block !important; }
 
-      /* Logo fijo arriba-derecha, tamaño contenido y sin "comerse" el texto */
+      /* Logo fijo arriba-derecha */
       #logo-raitrai{
         position: fixed !important;
-        right: 10mm !important;
-        top: 8mm !important;
+        right: 9mm !important;
+        top: 7mm !important;
         width: 22mm !important;
         height: auto !important;
         z-index: 1 !important;
-        opacity: .95;
-        pointer-events: none;
+        opacity:.95;
+        pointer-events:none;
       }
 
-      /* Reservar un poco de margen a la derecha solo para el texto del doc impreso */
+      /* Texto corre a la izquierda del logo */
       #print-block .print-doc { margin-right: 26mm; }
 
-      /* Tipografía y espaciado compacto y consistente */
-      #print-block .doc-title { font-weight: 800; font-size: 16pt; margin: 0 0 2mm 0; }
-      #print-block .doc-sub   { font-size: 10.5pt; color:#374151; margin: 0 0 4mm 0; }
+      /* Títulos y bloques con espaciado compacto */
+      #print-block .doc-title { font-weight:800; font-size:15.5pt; margin:0 0 2mm 0; }
+      #print-block .doc-sub   { font-size:10pt; color:#374151; margin:0 0 3mm 0; }
 
-      #print-block .sec { margin: 4mm 0 3mm; page-break-inside: avoid; }
-      #print-block .sec-title { font-weight: 700; font-size: 11.5pt; margin: 0 0 2mm 0; }
+      #print-block .sec { margin: 3mm 0 2.5mm; page-break-inside: avoid; }
+      #print-block .sec-title { font-weight:700; font-size:11pt; margin:0 0 1.8mm 0; }
       #print-block .note { color:#6b7280; margin: 1mm 0 2mm; }
 
-      #print-block ul { margin: 1.5mm 0 1.5mm 5mm; padding: 0; }
-      #print-block li { margin: 0.8mm 0; }
+      /* ======= TABLAS COMPACTAS PARA VUELOS ======= */
+      .flights-header { font-weight:700; margin: 1mm 0 1.2mm; }
+      .flights-table {
+        width:100%; border-collapse:collapse; table-layout:fixed;
+      }
+      .flights-table th, .flights-table td {
+        border: 0.2mm solid #d1d5db;
+        padding: 1.8mm 2.6mm;
+        vertical-align: top;
+      }
+      .flights-table thead th {
+        background:#f3f4f6;
+        text-align:left;
+      }
 
-      /* Bloques de vuelos apilados (sin tablas) */
-      .flight-block { margin: 2mm 0 3mm; page-break-inside: avoid; }
-      .flight-block .fb-title  { font-weight: 700; margin-bottom: 0.8mm; }
-      .flight-block .fb-field  { margin: 0.2mm 0; }
-      .flight-block .fb-label  { font-weight: 700; }
+      /* Listas compactas (documentos, recomendaciones, etc.) */
+      #print-block ul { margin: 1.2mm 0 1.2mm 5mm; padding:0; }
+      #print-block li { margin: 0.7mm 0; }
 
       /* Itinerario compacto */
-      .itinerario .it-day { margin: 1.5mm 0; page-break-inside: avoid; }
-      .itinerario .day-head { font-weight: 700; margin-bottom: 0.5mm; }
+      .itinerario .it-day { margin: 1.2mm 0; page-break-inside: avoid; }
+      .itinerario .day-head { font-weight:700; margin-bottom:0.5mm; }
 
-      /* Cierre centrado, SOLO al final */
-      .print-doc .closing { text-align: center; font-weight: 800; margin-top: 4mm; }
+      /* Cierre centrado */
+      .print-doc .closing { text-align:center; font-weight:800; margin-top: 3mm; }
 
-            /* —— Hotelería con viñeta + dos columnas (CIUDAD | INFO) —— */
+      /* ===== Hotelería con viñeta + 2 columnas (misma lógica en pantalla) ===== */
       #print-block .hoteles-list{
         list-style: disc;
-        margin: 0 0 0 5mm;   /* igual al resto de listas */
+        margin: 0 0 0 5mm;
         padding: 0;
       }
-      #print-block .hoteles-list > li.hotel-item{
-        margin: 1.5mm 0 2mm;
-      }
+      #print-block .hoteles-list > li.hotel-item{ margin: 1.2mm 0 1.8mm; }
       #print-block .hoteles-list .hotel-grid{
-        display: grid;
-        grid-template-columns: var(--hotel-left-col, 60mm) 1fr; /* ← usa la misma variable también al imprimir */
+        display:grid;
+        grid-template-columns: var(--hotel-left-col, 60mm) 1fr;
         column-gap: 6mm;
       }
-      #print-block .hoteles-list .hotel-left{ font-weight: 400; }
-      #print-block .hoteles-list .hotel-right > div{ margin: 0.3mm 0; }
+      #print-block .hoteles-list .hotel-right > div{ margin: 0.25mm 0; }
     }
   `;
   const s = document.createElement('style');
@@ -1156,6 +1160,7 @@ function injectPrintStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
 function injectScreenHotelStyles(){
@@ -1228,72 +1233,77 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const withHrs = t => t ? `${t} HRS` : '—';
   const U = s => String(s||'').toUpperCase();
 
-  const flightBlock = (l, modo) => {
-    const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
-    const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
-    const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
-    const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
-    const nro   = chooseNum(l.numero, modo);
-    const via   = l.aerolinea ? ` VÍA ${U(l.aerolinea)}` : '';
-    const head  = `${modo==='ida' ? 'IDA' : 'VUELTA'}: VUELO ${nro}${via}`;
+  // —— Tabla de vuelos compacta (reutilizable para ida/vuelta)
+  const flightsTable = (legs, modo) => {
+    if (!legs || !legs.length) return '';
+    const header = (() => {
+      const f = legs[0];
+      const nro = chooseNum(f.numero, modo);
+      const via = f.aerolinea ? ` VÍA ${U(f.aerolinea)}` : '';
+      return `${modo==='ida' ? 'IDA' : 'VUELTA'}: VUELO ${nro}${via}`;
+    })();
+
+    const rows = legs.map(l=>{
+      const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
+      const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
+      const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
+      const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
+      return `
+        <tr>
+          <td>${formatShortDate(fecha)}</td>
+          <td>${U(l.origen)}</td>
+          <td>${withHrs(pres)}</td>
+          <td>${withHrs(sal)}</td>
+          <td>${U(l.destino)}</td>
+          <td>${withHrs(arr)}</td>
+        </tr>`;
+    }).join('');
 
     return `
-      <div class="flight-block">
-        <div class="fb-title">${head}</div>
-        <div class="fb-field"><span class="fb-label">FECHA:</span> ${formatShortDate(fecha)}</div>
-        <div class="fb-field"><span class="fb-label">ORIGEN:</span> ${U(l.origen)}</div>
-        <div class="fb-field"><span class="fb-label">PRESENTACIÓN:</span> ${withHrs(pres)}</div>
-        <div class="fb-field"><span class="fb-label">HORA DE SALIDA:</span> ${withHrs(sal)}</div>
-        <div class="fb-field"><span class="fb-label">DESTINO:</span> ${U(l.destino)}</div>
-        <div class="fb-field"><span class="fb-label">HORA DE ARRIBO:</span> ${withHrs(arr)}</div>
-      </div>`;
+      <div class="flights-header">${header}</div>
+      <table class="flights-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Origen</th>
+            <th>Presentación</th>
+            <th>Hora de salida</th>
+            <th>Destino</th>
+            <th>Hora de arribo</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
   };
 
-  const vuelosHTML = (() => {
-    const blocks = [];
-    idaLegs.forEach(l => blocks.push(flightBlock(l,'ida')));
-    vueltaLegs.forEach(l => blocks.push(flightBlock(l,'vuelta')));
-    return blocks.length
-      ? blocks.join('')
-      : `<div class="note">— Sin información de vuelos —</div>`;
-  })();
-
-  // —— Hotelería (PANTALLA): viñeta + 2 columnas —— //
-  injectScreenHotelStyles();
-
+  // —— Hotelería (misma estructura que pantalla, lista compacta) —— //
   const dmy = (s) => { const iso = toISO(s); if (!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`; };
-
   const hotelesHtml = `
     <ul class="hoteles-list">
-      ${ (hoteles||[]).map(h=>{
-          const H = h.hotel || {};
-          const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
-          const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
-          const dir    = (H.direccion || h.direccion || '').toString();
-          const tel1   = (H.contactoTelefono || '').toString().trim();
-          const tel2   = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
-          const tels   = [tel1, tel2].filter(Boolean).join(' ');
-
-          return `
-            <li class="hotel-item">
-              <div class="hotel-grid">
-                <div class="hotel-left">${ciudad || '—'}</div>
-                <div class="hotel-right">
-                  <div><strong>${hotel}</strong></div>
-                  <div>In : ${dmy(h.checkIn)}</div>
-                  <div>Out: ${dmy(h.checkOut)}</div>
-                  ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
-                  ${tels ? `<div>Fono: ${tels}</div>`     : ``}
-                  ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
-                </div>
+      ${(hoteles||[]).map(h=>{
+        const H = h.hotel || {};
+        const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
+        const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
+        const dir    = (H.direccion || h.direccion || '').toString();
+        const tel1   = (H.contactoTelefono || '').toString().trim();
+        const tel2   = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
+        const tels   = [tel1, tel2].filter(Boolean).join(' ');
+        return `
+          <li class="hotel-item">
+            <div class="hotel-grid">
+              <div class="hotel-left">${ciudad || '—'}</div>
+              <div class="hotel-right">
+                <div><strong>${hotel}</strong></div>
+                <div>In : ${dmy(h.checkIn)}</div>
+                <div>Out: ${dmy(h.checkOut)}</div>
+                ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
+                ${tels ? `<div>Fono: ${tels}</div>`     : ``}
+                ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
               </div>
-            </li>`;
-        }).join('') }
-    </ul>
-  `;
-
-
-
+            </div>
+          </li>`;
+      }).join('')}
+    </ul>`;
 
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
@@ -1301,7 +1311,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const recomendacionesHTML = Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`;
 
   const itinHTML = (() => {
-    if (!fechas.length) return '<div class="note">— Sin actividades —</div>';
+    if (!fechas || !fechas.length) return '<div class="note">— Sin actividades —</div>';
     const days = fechas.map((f, i) => {
       const src = grupo.itinerario?.[f];
       const arr = (Array.isArray(src) ? src
@@ -1338,7 +1348,8 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="sec">
         <div class="sec-title">2. INFORMACIÓN DE VUELOS CONFIRMADOS</div>
         <div class="note">Los horarios de los vuelos podrían ser modificados por la Línea Aérea contratada sin previo aviso.</div>
-        ${vuelosHTML}
+        ${flightsTable(idaLegs, 'ida') || ''}
+        ${flightsTable(vueltaLegs, 'vuelta') || (!idaLegs.length ? `<div class="note">— Sin información de vuelos —</div>` : '')}
       </div>
 
       <div class="sec">
