@@ -93,6 +93,7 @@
       *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
       header, .btn-add{ display:none !important; }
       .print-only{ display:none !important; } /* no ocultes #print-block al imprimir */
+      
 
       #print-logo{
         display:block; position:fixed; top:12px; right:12px; width:120px;
@@ -124,7 +125,12 @@
 
     @media print{
     /* 1) Mostrar SÍ o SÍ el documento de impresión */
-    #print-block{ display:block !important; }
+    #print-block{
+      display:block !important;
+      white-space: normal !important;   /* ← clave */
+      margin:0 !important;
+    }
+      
   
     /* 2) Ocultar el layout de pantalla */
     #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas{ display:none !important; }
