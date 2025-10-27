@@ -1073,7 +1073,6 @@ function injectPrintStyles(){
   if (document.getElementById(ID)) return;
 
   const css = `
-    /* Por defecto oculto; sólo se muestra en print */
     #print-block { display:none; }
 
     @media print {
@@ -1082,16 +1081,14 @@ function injectPrintStyles(){
       html, body{
         background:#fff !important;
         color:#111 !important;
-        /* tipografía y interlínea COMPACTA */
         font: 10pt/1.18 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       }
 
-      /* Oculta el layout de pantalla y deja sólo el documento de impresión */
-      #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas,
-      header, nav, footer { display:none !important; }
-      #print-block { display:block !important; }
+      /* Mostrar sólo el documento de impresión */
+      #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas, header, nav, footer { display:none !important; }
+      #print-block { display:block !important; white-space:normal !important; }
 
-      /* Si usas el logo del layout, mantenlo fijo */
+      /* Logo fijo */
       #print-logo{
         position: fixed !important;
         right: 9mm !important;
@@ -1102,85 +1099,50 @@ function injectPrintStyles(){
         opacity:.95;
         pointer-events:none;
       }
-      /* Texto corre a la izquierda del logo */
       #print-block .print-doc { margin-right: 26mm; }
 
-      /* ===== Titular y subtítulo ===== */
+      /* Título y subtítulo con más espacio */
       #print-block .doc-title{
-        font-weight:800;
-        font-size:17pt;           /* más grande, como pediste */
-        margin:0 0 2mm 0;
-        line-height:1.12;
-        text-transform:none;
+        font-weight:800; font-size:17pt; line-height:1.12;
+        margin:0 0 6mm 0;                 /* ↑ espacio antes del punto 1 */
       }
       #print-block .doc-sub{
-        font-size:10pt;
-        color:#374151;
-        margin:0 0 2mm 0;
-        line-height:1.18;
+        font-size:10pt; color:#374151; line-height:1.18;
+        margin:0 0 4mm 0;                 /* ↑ espacio extra */
       }
 
-      /* ===== Bloques/secciones compactos ===== */
+      /* Separación entre puntos */
       #print-block .sec{
-        margin: 1.6mm 0 1.2mm;
-        break-inside: avoid;            /* evita cortes dentro de cada punto */
+        break-inside: avoid;
         page-break-inside: avoid;
+        margin: 0 0 5mm 0;                /* espacio inferior del punto */
       }
-      #print-block .sec-title{
-        font-weight:700;
-        font-size:10.5pt;
-        margin:0 0 0.8mm 0;
-        line-height:1.18;
-      }
-      #print-block .note{
-        color:#6b7280;
-        margin:0.6mm 0 1mm;
-        line-height:1.18;
-      }
+      #print-block .sec + .sec{ margin-top: 5mm; }  /* espacio superior siguiente punto */
+      #print-block .sec-title{ font-weight:700; font-size:10.5pt; margin:0 0 2.5mm 0; }
 
-      /* ===== Tablas de vuelos ===== */
-      .flights-header{ font-weight:700; margin:0.6mm 0 0.6mm; line-height:1.18; }
-      .flights-table{
-        width:100%;
-        border-collapse:collapse;
-        table-layout:fixed;
-        margin:0.6mm 0;
+      /* Formato "sin tabla" del punto 2 (vuelos) */
+      .flight-block{ margin: 0 0 4mm 0; }
+      .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
+      .flight-legs{ }
+      .flight-lines{
+        list-style:none; margin: 0 0 2.2mm 0; padding:0;
       }
-      .flights-table th, .flights-table td{
-        border:0.2mm solid #d1d5db;
-        padding:1mm 1.6mm;
-        vertical-align:top;
-        line-height:1.12;
-        font-size:9.6pt;
-      }
-      .flights-table thead th{ background:#f3f4f6; text-align:left; }
+      .flight-lines li{ margin:0.4mm 0; line-height:1.18; }
+      .flight-lines .lbl{ font-weight:700; }
 
-      /* ===== Listas compactas (docs, equipaje, recos) ===== */
-      #print-block ul{ margin:0.8mm 0 1mm 5mm; padding:0; line-height:1.18; }
-      #print-block li{ margin:0.3mm 0; line-height:1.18; }
-
-      /* ===== Hotelería (2 columnas) ===== */
+      /* Hotelería (dos columnas) */
       #print-block .hoteles-list{ list-style:none; margin:0.8mm 0 0 0; padding:0; }
       #print-block .hotel-item{ margin:0.6mm 0 0.8mm; }
       #print-block .hotel-grid{
-        display:grid;
-        grid-template-columns: var(--hotel-left-col, 48mm) 1fr;
-        column-gap:5mm;
+        display:grid; grid-template-columns: var(--hotel-left-col, 48mm) 1fr; column-gap:5mm;
       }
-      #print-block .hotel-left{ font-weight:700; text-transform:uppercase; }
-      #print-block .hotel-right > div{ margin:0.15mm 0; line-height:1.18; }
+      #print-block .hotel-right > div{ margin:0.15mm 0; }
 
-      /* ===== Itinerario (punto 7) en página nueva siempre ===== */
-      .itinerario-sec{
-        break-before: page;
-        page-break-before: always;
-      }
-
-      /* Párrafos en general */
-      #print-block p{ margin:0.5mm 0; line-height:1.18; }
-
-      /* Cierre */
-      .print-doc .closing{ text-align:center; font-weight:800; margin-top:2mm; line-height:1.18; }
+      /* Punto 7: espacios */
+      .itinerario-sec{ break-before: page; page-break-before: always; }
+      .itinerario-sec .sec-title{ margin-bottom: 4mm; }   /* espacio antes de Día 1 */
+      .itinerario .it-day{ margin: 0 0 3.5mm 0; }         /* espacio entre días */
+      .closing{ text-align:center; font-weight:800; margin-top: 8mm; } /* doble espacio final */
     }
   `;
   const s = document.createElement('style');
@@ -1188,8 +1150,6 @@ function injectPrintStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
-
-
 
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
 function injectScreenHotelStyles(){
@@ -1263,14 +1223,42 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const U = s => String(s||'').toUpperCase();
 
   /* ===== tabla de vuelos compacta ===== */
-  const flightsTable = (legs, modo) => {
+  const flightsBlock = (legs, modo) => {
     if (!legs || !legs.length) return '';
+    const U = s => String(s||'').toUpperCase();
+    const withHrs = t => t ? `${t} HRS` : '—';
+  
     const header = (() => {
       const f = legs[0];
-      const nro = chooseNum(f.numero, modo);
+      const chooseNum = (raw) => {
+        const s = String(raw||'').toUpperCase();
+        if (!s.includes('//')) return s;
+        const p = s.split('//').map(x=>x.trim());
+        return (modo === 'ida') ? (p[0]||'') : (p[p.length-1]||'');
+      };
+      const nro = chooseNum(f.numero);
       const via = f.aerolinea ? ` VÍA ${U(f.aerolinea)}` : '';
       return `${modo==='ida' ? 'IDA' : 'VUELTA'}: VUELO ${nro}${via}`;
     })();
+  
+    const legsHtml = legs.map(l=>{
+      const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
+      const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
+      const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
+      const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
+      return `
+        <ul class="flight-lines">
+          <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
+          <li><span class="lbl">Origen:</span> ${U(l.origen)}</li>
+          <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
+          <li><span class="lbl">Hora de salida:</span> ${withHrs(sal)}</li>
+          <li><span class="lbl">Destino:</span> ${U(l.destino)}</li>
+          <li><span class="lbl">Hora de arribo:</span> ${withHrs(arr)}</li>
+        </ul>`;
+    }).join('');
+  
+    return `<div class="flight-block"><div class="flights-header">${header}</div><div class="flight-legs">${legsHtml}</div></div>`;
+  };
 
     const rows = legs.map(l=>{
       const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
@@ -1376,8 +1364,8 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="sec">
         <div class="sec-title">2. INFORMACIÓN DE VUELOS CONFIRMADOS</div>
         <div class="note">Los horarios de los vuelos podrían ser modificados por la Línea Aérea contratada sin previo aviso.</div>
-        ${flightsTable(idaLegs, 'ida') || ''}
-        ${flightsTable(vueltaLegs, 'vuelta') || (!idaLegs.length ? `<div class="note">— Sin información de vuelos —</div>` : '')}
+        ${flightsBlock(idaLegs, 'ida') || ''}
+        ${flightsBlock(vueltaLegs, 'vuelta') || (!idaLegs.length ? `<div class="note">— Sin información de vuelos —</div>` : '')}
       </div>
 
       <!-- 3 -->
