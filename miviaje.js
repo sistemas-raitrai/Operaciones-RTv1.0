@@ -1107,8 +1107,8 @@ function injectPrintStyles(){
       #print-block .print-doc { margin-right: 26mm; }
 
       /* Títulos y bloques con espaciado compacto */
-      #print-block .doc-title { font-weight:800; font-size:15.5pt; margin:0 0 2mm 0; }
-      #print-block .doc-sub   { font-size:10pt; color:#374151; margin:0 0 3mm 0; }
+      #print-block .doc-title { font-weight:800; font-size:15.5pt; margin:0 0 0.2mm 0; }
+      #print-block .doc-sub   { font-size:10pt; color:#374151; margin:0 0 0.3mm 0; }
 
       #print-block .sec { margin: 3mm 0 2.5mm; page-break-inside: avoid; }
       #print-block .sec-title { font-weight:700; font-size:11pt; margin:0 0 1.8mm 0; }
