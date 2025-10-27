@@ -1077,7 +1077,7 @@ function injectPrintStyles(){
   
     @page {
       /* top ≈ 32mm (7mm del top del logo + ~22mm alto + aire) */
-      margin: 32mm 10mm 12mm 12mm;
+      margin: 32mm 28mm 12mm 12mm;
       size: A4;
     }
     
@@ -1095,13 +1095,13 @@ function injectPrintStyles(){
       /* Logo fijo */
       #print-logo{
         position: fixed !important;
-        right: 9mm !important;
-        top: auto !important;
+        top: 7mm !important;
+        right: 6mm !important;     /* dentro del margen derecho reservado */
         width: 22mm !important;
         height: auto !important;
-        opacity:.9;
-        pointer-events:none;
-        z-index: 2 !important;            /* ← debajo */
+        opacity: .9;
+        pointer-events: none;
+        z-index: 2 !important;     /* puede ser 1 ó 2; ya no habrá solapes */
       }
     
       /* Asegura que el documento quede por encima del logo */
