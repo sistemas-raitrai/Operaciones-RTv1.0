@@ -1073,151 +1073,122 @@ function injectPrintStyles(){
   if (document.getElementById(ID)) return;
 
   const css = `
-      /* Ocultar el layout de pantalla al imprimir */
-      #print-block { display: none; }
-      @media print {
-        @page { size: A4; margin: 8mm 9mm 10mm 9mm; }
-        html, body {
-          background:#fff !important;
-          color:#111 !important;
-          font: 10.5pt/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-        }
-        /* Oculta todo lo de pantalla */
-        #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas,
-        header, nav, footer { display:none !important; }
-        /* Muestra solo el bloque de impresión */
-        #print-block { display:block !important; }
-        /* Logo fijo arriba-derecha */
-        #logo-raitrai{
-          position: fixed !important;
-          right: 9mm !important;
-          top: 7mm !important;
-          width: 22mm !important;
-          height: auto !important;
-          z-index: 1 !important;
-          opacity:.95;
-          pointer-events:none;
-        }
-        /* Texto corre a la izquierda del logo */
-        #print-block .print-doc { margin-right: 26mm; }
-        
-        /* ===== TÍTULOS Y BLOQUES COMPACTOS ===== */
-        #print-block .doc-title { 
-          font-weight:800; 
-          font-size:15pt; 
-          margin:0 0 1mm 0;
-          line-height:1.1;
-        }
-        #print-block .doc-sub { 
-          font-size:9.5pt; 
-          color:#374151; 
-          margin:0 0 2mm 0;
-          line-height:1.2;
-        }
-        #print-block .sec { 
-          margin: 2mm 0 1.5mm; 
-          page-break-inside: avoid; 
-        }
-        #print-block .sec-title { 
-          font-weight:700; 
-          font-size:10.5pt; 
-          margin:0 0 1mm 0;
-          line-height:1.2;
-        }
-        #print-block .note { 
-          color:#6b7280; 
-          margin: 0.5mm 0 1mm;
-          line-height:1.2;
-        }
-        
-        /* ===== TABLAS COMPACTAS PARA VUELOS ===== */
-        .flights-header { 
-          font-weight:700; 
-          margin: 0.8mm 0 0.8mm;
-          line-height:1.2;
-        }
-        .flights-table {
-          width:100%; 
-          border-collapse:collapse; 
-          table-layout:fixed;
-          margin: 1mm 0;
-        }
-        .flights-table th, .flights-table td {
-          border: 0.2mm solid #d1d5db;
-          padding: 1.2mm 2mm;
-          vertical-align: top;
-          line-height:1.15;
-          font-size:10pt;
-        }
-        .flights-table thead th {
-          background:#f3f4f6;
-          text-align:left;
-          font-size:10pt;
-        }
-        
-        /* ===== LISTAS COMPACTAS ===== */
-        #print-block ul { 
-          margin: 0.8mm 0 1mm 5mm; 
-          padding:0;
-          line-height:1.25;
-        }
-        #print-block li { 
-          margin: 0.4mm 0;
-          line-height:1.25;
-        }
-        
-        /* ===== HOTELERÍA COMPACTA ===== */
-        #print-block .hoteles-list{
-          list-style: disc;
-          margin: 0.8mm 0 0 5mm;
-          padding: 0;
-        }
-        #print-block .hoteles-list > li.hotel-item{ 
-          margin: 0.8mm 0 1.2mm;
-          line-height:1.2;
-        }
-        #print-block .hoteles-list .hotel-grid{
-          display:grid;
-          grid-template-columns: var(--hotel-left-col, 60mm) 1fr;
-          column-gap: 6mm;
-        }
-        #print-block .hoteles-list .hotel-right > div{ 
-          margin: 0.15mm 0;
-          line-height:1.2;
-        }
-        
-        /* ===== ITINERARIO COMPACTO ===== */
-        .itinerario .it-day { 
-          margin: 0.8mm 0; 
-          page-break-inside: avoid;
-          line-height:1.2;
-        }
-        .itinerario .day-head { 
-          font-weight:700; 
-          margin-bottom:0.3mm;
-          line-height:1.2;
-        }
-        
-        /* ===== PÁRRAFOS GENERALES ===== */
-        #print-block p {
-          margin: 0.5mm 0;
-          line-height:1.25;
-        }
-        
-        /* ===== CIERRE CENTRADO ===== */
-        .print-doc .closing { 
-          text-align:center; 
-          font-weight:800; 
-          margin-top: 2.5mm;
-          line-height:1.2;
-        }
+    /* Por defecto oculto; sólo se muestra en print */
+    #print-block { display:none; }
+
+    @media print {
+      @page { size: A4; margin: 8mm 10mm; }
+
+      html, body{
+        background:#fff !important;
+        color:#111 !important;
+        /* tipografía y interlínea COMPACTA */
+        font: 10pt/1.18 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       }
+
+      /* Oculta el layout de pantalla y deja sólo el documento de impresión */
+      #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas,
+      header, nav, footer { display:none !important; }
+      #print-block { display:block !important; }
+
+      /* Si usas el logo del layout, mantenlo fijo */
+      #print-logo{
+        position: fixed !important;
+        right: 9mm !important;
+        top: 7mm !important;
+        width: 22mm !important;
+        height: auto !important;
+        z-index: 1 !important;
+        opacity:.95;
+        pointer-events:none;
+      }
+      /* Texto corre a la izquierda del logo */
+      #print-block .print-doc { margin-right: 26mm; }
+
+      /* ===== Titular y subtítulo ===== */
+      #print-block .doc-title{
+        font-weight:800;
+        font-size:17pt;           /* más grande, como pediste */
+        margin:0 0 2mm 0;
+        line-height:1.12;
+        text-transform:none;
+      }
+      #print-block .doc-sub{
+        font-size:10pt;
+        color:#374151;
+        margin:0 0 2mm 0;
+        line-height:1.18;
+      }
+
+      /* ===== Bloques/secciones compactos ===== */
+      #print-block .sec{
+        margin: 1.6mm 0 1.2mm;
+        break-inside: avoid;            /* evita cortes dentro de cada punto */
+        page-break-inside: avoid;
+      }
+      #print-block .sec-title{
+        font-weight:700;
+        font-size:10.5pt;
+        margin:0 0 0.8mm 0;
+        line-height:1.18;
+      }
+      #print-block .note{
+        color:#6b7280;
+        margin:0.6mm 0 1mm;
+        line-height:1.18;
+      }
+
+      /* ===== Tablas de vuelos ===== */
+      .flights-header{ font-weight:700; margin:0.6mm 0 0.6mm; line-height:1.18; }
+      .flights-table{
+        width:100%;
+        border-collapse:collapse;
+        table-layout:fixed;
+        margin:0.6mm 0;
+      }
+      .flights-table th, .flights-table td{
+        border:0.2mm solid #d1d5db;
+        padding:1mm 1.6mm;
+        vertical-align:top;
+        line-height:1.12;
+        font-size:9.6pt;
+      }
+      .flights-table thead th{ background:#f3f4f6; text-align:left; }
+
+      /* ===== Listas compactas (docs, equipaje, recos) ===== */
+      #print-block ul{ margin:0.8mm 0 1mm 5mm; padding:0; line-height:1.18; }
+      #print-block li{ margin:0.3mm 0; line-height:1.18; }
+
+      /* ===== Hotelería (2 columnas) ===== */
+      #print-block .hoteles-list{ list-style:none; margin:0.8mm 0 0 0; padding:0; }
+      #print-block .hotel-item{ margin:0.6mm 0 0.8mm; }
+      #print-block .hotel-grid{
+        display:grid;
+        grid-template-columns: var(--hotel-left-col, 48mm) 1fr;
+        column-gap:5mm;
+      }
+      #print-block .hotel-left{ font-weight:700; text-transform:uppercase; }
+      #print-block .hotel-right > div{ margin:0.15mm 0; line-height:1.18; }
+
+      /* ===== Itinerario (punto 7) en página nueva siempre ===== */
+      .itinerario-sec{
+        break-before: page;
+        page-break-before: always;
+      }
+
+      /* Párrafos en general */
+      #print-block p{ margin:0.5mm 0; line-height:1.18; }
+
+      /* Cierre */
+      .print-doc .closing{ text-align:center; font-weight:800; margin-top:2mm; line-height:1.18; }
+    }
   `;
   const s = document.createElement('style');
   s.id = ID;
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
@@ -1291,7 +1262,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const withHrs = t => t ? `${t} HRS` : '—';
   const U = s => String(s||'').toUpperCase();
 
-  // —— Tabla de vuelos compacta (reutilizable para ida/vuelta)
+  /* ===== tabla de vuelos compacta ===== */
   const flightsTable = (legs, modo) => {
     if (!legs || !legs.length) return '';
     const header = (() => {
@@ -1322,19 +1293,15 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <table class="flights-table">
         <thead>
           <tr>
-            <th>Fecha</th>
-            <th>Origen</th>
-            <th>Presentación</th>
-            <th>Hora de salida</th>
-            <th>Destino</th>
-            <th>Hora de arribo</th>
+            <th>Fecha</th><th>Origen</th><th>Presentación</th>
+            <th>Hora de salida</th><th>Destino</th><th>Hora de arribo</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>`;
   };
 
-  // —— Hotelería (misma estructura que pantalla, lista compacta) —— //
+  /* ===== hotelería ===== */
   const dmy = (s) => { const iso = toISO(s); if (!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`; };
   const hotelesHtml = `
     <ul class="hoteles-list">
@@ -1349,7 +1316,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         return `
           <li class="hotel-item">
             <div class="hotel-grid">
-              <div class="hotel-left">${ciudad || '—'}</div>
+              <div class="hotel-left">${ciudad ? ciudad + ':' : '—'}</div>
               <div class="hotel-right">
                 <div><strong>${hotel}</strong></div>
                 <div>In : ${dmy(h.checkIn)}</div>
@@ -1368,6 +1335,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const documentosHTML = renderDocsList(docsText);
   const recomendacionesHTML = Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`;
 
+  /* ===== itinerario (punto 7, igual que antes) ===== */
   const itinHTML = (() => {
     if (!fechas || !fechas.length) return '<div class="note">— Sin actividades —</div>';
     const days = fechas.map((f, i) => {
@@ -1396,13 +1364,15 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="doc-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
       <div class="doc-sub">Fecha Viaje: ${fechaViaje}</div>
 
+      <!-- 1 -->
       <div class="sec">
         <div class="sec-title">1. CONFIRMACIÓN DE HORARIO DE SALIDA</div>
         ${legend}
-        <div>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino al aeropuerto ${U(P.aeropuerto)}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</div>
-        ${P.encuentro ? `<div><strong>Lugar de Encuentro:</strong> ${P.encuentro}.</div>` : ''}
+        <p>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` para salir con destino al aeropuerto ${U(P.aeropuerto)}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.</p>
+        ${P.encuentro ? `<p><strong>Lugar de Encuentro:</strong> ${P.encuentro}.</p>` : ''}
       </div>
 
+      <!-- 2 -->
       <div class="sec">
         <div class="sec-title">2. INFORMACIÓN DE VUELOS CONFIRMADOS</div>
         <div class="note">Los horarios de los vuelos podrían ser modificados por la Línea Aérea contratada sin previo aviso.</div>
@@ -1410,16 +1380,19 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         ${flightsTable(vueltaLegs, 'vuelta') || (!idaLegs.length ? `<div class="note">— Sin información de vuelos —</div>` : '')}
       </div>
 
+      <!-- 3 -->
       <div class="sec">
         <div class="sec-title">3. HOTELERÍA CONFIRMADA</div>
         ${hotelesHtml}
       </div>
 
+      <!-- 4 -->
       <div class="sec">
         <div class="sec-title">4. DOCUMENTOS PARA EL VIAJE</div>
         <ul>${documentosHTML}</ul>
       </div>
 
+      <!-- 5 -->
       <div class="sec">
         <div class="sec-title">5. EQUIPAJE</div>
         <ul>
@@ -1428,12 +1401,14 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         </ul>
       </div>
 
+      <!-- 6 -->
       <div class="sec">
         <div class="sec-title">6. RECOMENDACIONES GENERALES</div>
         <ul>${recomendacionesHTML}</ul>
       </div>
 
-      <div class="sec">
+      <!-- 7: siempre página nueva -->
+      <div class="sec itinerario-sec">
         <div class="sec-title">7. ITINERARIO DE VIAJE</div>
         ${itinHTML}
       </div>
@@ -1442,6 +1417,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     </div>
   `;
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────────
    MAIN
