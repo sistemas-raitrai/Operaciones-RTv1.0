@@ -109,27 +109,6 @@
       /* (opcional) estilos de tablas y cortes */
       .itinerario-sec{ break-before:page; page-break-before:always; }
     }
-    @page{               /* todas las páginas */
-      size: A4;
-      margin: 22mm 10mm 10mm 10mm;   /* ↑ top más alto para despejar el logo */
-    }
-    @page :first{        /* primera página: conservamos el margen que ya te gustaba */
-      margin: 8mm 10mm 10mm 10mm;
-    }
-    
-    /* logo fijo (igual que antes) */
-    #print-logo{
-      position: fixed !important;
-      right: 9mm !important;
-      top: 7mm !important;
-      width: 22mm !important;
-      height: auto !important;
-      z-index: 1 !important;
-      opacity:.95;
-      pointer-events:none;
-    }
-
-
 
   </style>
 </head>
