@@ -1076,13 +1076,19 @@ function injectPrintStyles(){
     /* Ocultar el layout de pantalla al imprimir */
     #print-block { display: none; }
 
-    @media print {
-      @page { size: A4; margin: 8mm 9mm 10mm 9mm; }
-      html, body {
-        background:#fff !important;
-        color:#111 !important;
-        font: 10.8pt/1.28 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-      }
+    @media print{
+      @page{ margin:14mm 12mm; }
+      *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      header, .btn-add{ display:none !important; }
+    
+      /* Mostrar el documento de impresión y compactar interlínea */
+      #print-block{ display:block !important; }
+      html, body, #print-block, #print-block * { line-height: 1.28 !important; }
+    
+      /* Neutralizar paddings globales que agregan “aire” arriba */
+      body{ padding:0 !important; padding-top:0 !important; background:#fff !important; }
+    }
+
 
       /* Oculta todo lo de pantalla */
       #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas,
@@ -1107,8 +1113,8 @@ function injectPrintStyles(){
       #print-block .print-doc { margin-right: 26mm; }
 
       /* Títulos y bloques con espaciado compacto */
-      #print-block .doc-title { font-weight:800; font-size:15.5pt; margin:0 0 0.2mm 0; }
-      #print-block .doc-sub   { font-size:10pt; color:#374151; margin:0 0 0.3mm 0; }
+      #print-block .doc-title { font-weight:800; font-size:15.5pt; margin:0 0 2mm 0; }
+      #print-block .doc-sub   { font-size:10pt; color:#374151; margin:0 0 3mm 0; }
 
       #print-block .sec { margin: 3mm 0 2.5mm; page-break-inside: avoid; }
       #print-block .sec-title { font-weight:700; font-size:11pt; margin:0 0 1.8mm 0; }
