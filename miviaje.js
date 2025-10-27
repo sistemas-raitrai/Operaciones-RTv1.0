@@ -1101,7 +1101,7 @@ function injectPrintStyles(){
         height: auto !important;
         opacity:.9;
         pointer-events:none;
-        z-index: 0 !important;            /* ← debajo */
+        z-index: 2 !important;            /* ← debajo */
       }
     
       /* Asegura que el documento quede por encima del logo */
