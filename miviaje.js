@@ -1076,7 +1076,7 @@ function injectPrintStyles(){
     #print-block{ display:none; }
 
     /* Margen reservado para que el logo viva fuera del texto */
-    @page{ size:A4; margin:12mm 28mm 12mm 12mm; }
+    @page{ size:A4; margin:32mm 28mm 12mm 12mm; }
 
     @media print{
       html,body{
