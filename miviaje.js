@@ -1096,7 +1096,7 @@ function injectPrintStyles(){
       #print-logo{
         position: fixed !important;
         right: 9mm !important;
-        top: 7mm !important;
+        top: 0mm !important;
         width: 22mm !important;
         height: auto !important;
         opacity:.9;
