@@ -1094,7 +1094,7 @@ function injectPrintStyles(){
         position:relative; 
         z-index:1; 
         white-space:normal !important;
-        padding-right:14mm !important;   /* << clave */
+        padding-right:34mm !important;   /* << clave */
       }
       #print-block .print-doc{ margin-right:0 !important; } /* por si dejaste algún margen viejo */
 
@@ -1102,7 +1102,7 @@ function injectPrintStyles(){
       #print-logo{
         position:fixed !important;
         top:0mm !important;
-        right:6mm !important;
+        right:0mm !important;
         width:22mm !important;
         height:auto !important;
         opacity:.95; pointer-events:none; z-index:2 !important;
