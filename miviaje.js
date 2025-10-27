@@ -1101,7 +1101,7 @@ function injectPrintStyles(){
       /* Logo fijo arriba-derecha, fuera del texto */
       #print-logo{
         position:fixed !important;
-        top:7mm !important;
+        top:0mm !important;
         right:6mm !important;
         width:22mm !important;
         height:auto !important;
