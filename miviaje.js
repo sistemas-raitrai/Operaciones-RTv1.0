@@ -1136,10 +1136,15 @@ function injectPrintStyles(){
       #print-block .hotel-grid{
         display:grid; grid-template-columns: var(--hotel-left-col, 48mm) 1fr; column-gap:5mm;
       }
+
+      /* Dejar un espacio entre la nota y el bloque de vuelos */
+      .sec .note + .flight-block{ margin-top: 4mm; }
+      
+      /* Y también un espacio entre el bloque de IDA y el de VUELTA */
+      .flight-block + .flight-block{ margin-top: 4mm; }
+
       #print-block .hotel-right > div{ margin:0.15mm 0; }
 
-      /* Punto 7: espacios */
-      .itinerario-sec{ break-before: page; page-break-before: always; }
       .itinerario-sec .sec-title{ margin-bottom: 4mm; }   /* espacio antes de Día 1 */
       .itinerario .it-day{ margin: 0 0 3.5mm 0; }         /* espacio entre días */
       .closing{ text-align:center; font-weight:800; margin-top: 8mm; } /* doble espacio final */
