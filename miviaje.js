@@ -1094,7 +1094,7 @@ function injectPrintStyles(){
         position:relative; 
         z-index:1; 
         white-space:normal !important;
-        padding-right:34mm !important;   /* << clave */
+        padding-right:14mm !important;   /* << clave */
       }
       #print-block .print-doc{ margin-right:0 !important; } /* por si dejaste algún margen viejo */
 
