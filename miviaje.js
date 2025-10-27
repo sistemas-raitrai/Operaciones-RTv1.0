@@ -1099,11 +1099,14 @@ function injectPrintStyles(){
         top: 7mm !important;
         width: 22mm !important;
         height: auto !important;
-        z-index: 1 !important;
-        opacity:.95;
+        opacity:.9;
         pointer-events:none;
+        z-index: 0 !important;            /* ← debajo */
       }
-      #print-block .print-doc { margin-right: 26mm; }
+    
+      /* Asegura que el documento quede por encima del logo */
+      #print-block{ position: relative; z-index: 1; }
+    }
   
       /* Título y subtítulo con más espacio */
       #print-block .doc-title{
