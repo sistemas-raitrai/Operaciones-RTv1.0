@@ -122,6 +122,18 @@
       .dias-embebidas .fila{ grid-template-columns: repeat(3, 1fr) !important; }
     }
 
+    @media print{
+    /* 1) Mostrar SÍ o SÍ el documento de impresión */
+    #print-block{ display:block !important; }
+  
+    /* 2) Ocultar el layout de pantalla */
+    #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas{ display:none !important; }
+  
+    /* 3) Punto 7 (itinerario) siempre inicia en nueva página */
+    .itinerario-sec{ break-before: page; page-break-before: always; }
+  }
+
+
   </style>
 </head>
 
@@ -156,12 +168,12 @@
 
     <!-- Aquí miviaje.js pinta todo -->
     <div id="mi-itin"></div>
-    <pre id="print-block" class="print-only"></pre>
+    <div id="print-block" class="print-only"></div>
   </main>
 
   <noscript><p style="padding:1rem;color:#b00;">Esta página requiere JavaScript para cargar tu viaje.</p></noscript>
 
   <!-- Carga datos del viaje -->
-  <script type="module" src="/miviaje.js?v=3"></script>
+  <script type="module" src="/miviaje.js?v=4"></script>
 </body>
 </html>
