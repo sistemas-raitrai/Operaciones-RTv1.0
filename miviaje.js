@@ -1074,20 +1074,22 @@ function injectPrintStyles(){
 
   const css = `
     #print-block { display:none; }
-
+  
     @media print {
-      @page { size: A4; margin: 10mm 10mm 10mm 10mm; }
-
+      /* ⬇️ Márgenes: 2+ con más top para despejar el logo; la 1ª se mantiene más compacta */
+      @page { size: A4; margin: 22mm 10mm 10mm 10mm; }     /* ← antes 10mm */
+      @page :first { margin: 8mm 10mm 10mm 10mm; }
+  
       html, body{
         background:#fff !important;
         color:#111 !important;
         font: 10pt/1.18 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
       }
-
+  
       /* Mostrar sólo el documento de impresión */
       #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas, header, nav, footer { display:none !important; }
       #print-block { display:block !important; white-space:normal !important; }
-
+  
       /* Logo fijo */
       #print-logo{
         position: fixed !important;
@@ -1100,26 +1102,26 @@ function injectPrintStyles(){
         pointer-events:none;
       }
       #print-block .print-doc { margin-right: 26mm; }
-
+  
       /* Título y subtítulo con más espacio */
       #print-block .doc-title{
         font-weight:800; font-size:17pt; line-height:1.12;
-        margin:0 0 6mm 0;                 /* ↑ espacio antes del punto 1 */
+        margin:0 0 6mm 0;
       }
       #print-block .doc-sub{
         font-size:10pt; color:#374151; line-height:1.18;
-        margin:0 0 4mm 0;                 /* ↑ espacio extra */
+        margin:0 0 4mm 0;
       }
-
+  
       /* Separación entre puntos */
       #print-block .sec{
         break-inside: avoid;
         page-break-inside: avoid;
-        margin: 0 0 5mm 0;                /* espacio inferior del punto */
+        margin: 0 0 5mm 0;
       }
-      #print-block .sec + .sec{ margin-top: 5mm; }  /* espacio superior siguiente punto */
+      #print-block .sec + .sec{ margin-top: 5mm; }
       #print-block .sec-title{ font-weight:700; font-size:10.5pt; margin:0 0 2.5mm 0; }
-
+  
       /* Formato "sin tabla" del punto 2 (vuelos) */
       .flight-block{ margin: 0 0 4mm 0; }
       .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
@@ -1129,27 +1131,29 @@ function injectPrintStyles(){
       }
       .flight-lines li{ margin:0.4mm 0; line-height:1.18; }
       .flight-lines .lbl{ font-weight:700; }
-
+  
+      /* ⬇️ Espacio entre el aviso y “IDA: …” */
+      .sec .note{ margin-bottom: 3mm; }
+      .sec .note + .flight-block{ margin-top: 4mm; }
+      /* Espacio entre bloque IDA y VUELTA */
+      .flight-block + .flight-block{ margin-top: 4mm; }
+  
       /* Hotelería (dos columnas) */
       #print-block .hoteles-list{ list-style:none; margin:0.8mm 0 0 0; padding:0; }
       #print-block .hotel-item{ margin:0.6mm 0 0.8mm; }
       #print-block .hotel-grid{
         display:grid; grid-template-columns: var(--hotel-left-col, 48mm) 1fr; column-gap:5mm;
       }
-
-      /* Dejar un espacio entre la nota y el bloque de vuelos */
-      .sec .note + .flight-block{ margin-top: 4mm; }
-      
-      /* Y también un espacio entre el bloque de IDA y el de VUELTA */
-      .flight-block + .flight-block{ margin-top: 4mm; }
-
       #print-block .hotel-right > div{ margin:0.15mm 0; }
-
+  
+      /* ⬇️ Punto 7 SIN salto de página */
+      .itinerario-sec{ break-before:auto; page-break-before:auto; }
       .itinerario-sec .sec-title{ margin-bottom: 4mm; }   /* espacio antes de Día 1 */
       .itinerario .it-day{ margin: 0 0 3.5mm 0; }         /* espacio entre días */
       .closing{ text-align:center; font-weight:800; margin-top: 8mm; } /* doble espacio final */
     }
   `;
+
   const s = document.createElement('style');
   s.id = ID;
   s.textContent = css;
