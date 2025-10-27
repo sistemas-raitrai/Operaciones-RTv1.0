@@ -1073,97 +1073,73 @@ function injectPrintStyles(){
   if (document.getElementById(ID)) return;
 
   const css = `
-    #print-block { display:none; }
-  
-    @page {
-      /* top ≈ 32mm (7mm del top del logo + ~22mm alto + aire) */
-      margin: 32mm 28mm 12mm 12mm;
-      size: A4;
-    }
-    
-    @media print {
-      html, body{
+    #print-block{ display:none; }
+
+    /* Margen reservado para que el logo viva fuera del texto */
+    @page{ size:A4; margin:32mm 28mm 12mm 12mm; }
+
+    @media print{
+      html,body{
         background:#fff !important;
         color:#111 !important;
-        font: 10pt/1.18 -apple-system, BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+        font:10pt/1.18 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
       }
-  
-      /* Mostrar sólo el documento de impresión */
-      #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas, header, nav, footer { display:none !important; }
-      #print-block { display:block !important; white-space:normal !important; }
-  
-      /* Logo fijo */
+
+      /* Mostrar solo el documento imprimible */
+      #hoja-resumen,#mi-itin,#itin-slot,.dias-embebidas,header,nav,footer{ display:none !important; }
+      #print-block{ display:block !important; position:relative; z-index:1; white-space:normal !important; }
+
+      /* LOGO fijo en el margen superior derecho (fuera del texto) */
       #print-logo{
-        position: fixed !important;
-        top: 7mm !important;
-        right: 6mm !important;     /* dentro del margen derecho reservado */
-        width: 22mm !important;
-        height: auto !important;
-        opacity: .9;
-        pointer-events: none;
-        z-index: 2 !important;     /* puede ser 1 ó 2; ya no habrá solapes */
+        position:fixed !important;
+        top:7mm !important;
+        right:6mm !important;
+        width:22mm !important;
+        height:auto !important;
+        opacity:.95; pointer-events:none; z-index:2 !important;
       }
-    
-      /* Asegura que el documento quede por encima del logo */
-      #print-block{ position: relative; z-index: 1; }
-    }
-  
-      /* Título y subtítulo con más espacio */
-      #print-block .doc-title{
-        font-weight:800; font-size:17pt; line-height:1.12;
-        margin:0 0 6mm 0;
-      }
-      #print-block .doc-sub{
-        font-size:10pt; color:#374151; line-height:1.18;
-        margin:0 0 4mm 0;
-      }
-  
-      /* Separación entre puntos */
-      #print-block .sec{
-        break-inside: avoid;
-        page-break-inside: avoid;
-        margin: 0 0 5mm 0;
-      }
-      #print-block .sec + .sec{ margin-top: 5mm; }
+
+      /* No dejes espacio extra a la derecha dentro del contenido */
+      #print-block .print-doc{ margin-right:0 !important; }
+
+      /* Titulares y subtítulo */
+      #print-block .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 6mm 0; }
+      #print-block .doc-sub{ font-size:10pt; color:#374151; line-height:1.18; margin:0 0 4mm 0; }
+
+      /* Separaciones entre secciones */
+      #print-block .sec{ break-inside:avoid; page-break-inside:avoid; margin:0 0 5mm 0; }
+      #print-block .sec + .sec{ margin-top:5mm; }
       #print-block .sec-title{ font-weight:700; font-size:10.5pt; margin:0 0 2.5mm 0; }
-  
-      /* Formato "sin tabla" del punto 2 (vuelos) */
-      .flight-block{ margin: 0 0 4mm 0; }
+
+      /* Bloques de vuelos compactos */
+      .flight-block{ margin:0 0 4mm 0; }
       .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
-      .flight-legs{ }
-      .flight-lines{
-        list-style:none; margin: 0 0 2.2mm 0; padding:0;
-      }
-      .flight-lines li{ margin:0.4mm 0; line-height:1.18; }
+      .flight-lines{ list-style:none; margin:0 0 2.2mm 0; padding:0; }
+      .flight-lines li{ margin:.4mm 0; line-height:1.18; }
       .flight-lines .lbl{ font-weight:700; }
-  
-      /* ⬇️ Espacio entre el aviso y “IDA: …” */
-      .sec .note{ margin-bottom: 3mm; }
-      .sec .note + .flight-block{ margin-top: 4mm; }
-      /* Espacio entre bloque IDA y VUELTA */
-      .flight-block + .flight-block{ margin-top: 4mm; }
-  
-      /* Hotelería (dos columnas) */
-      #print-block .hoteles-list{ list-style:none; margin:0.8mm 0 0 0; padding:0; }
-      #print-block .hotel-item{ margin:0.6mm 0 0.8mm; }
-      #print-block .hotel-grid{
-        display:grid; grid-template-columns: var(--hotel-left-col, 48mm) 1fr; column-gap:5mm;
-      }
-      #print-block .hotel-right > div{ margin:0.15mm 0; }
-  
-      /* ⬇️ Punto 7 SIN salto de página */
+      .sec .note{ margin-bottom:3mm; }
+      .sec .note + .flight-block{ margin-top:4mm; }
+      .flight-block + .flight-block{ margin-top:4mm; }
+
+      /* Hotelería */
+      #print-block .hoteles-list{ list-style:none; margin:.8mm 0 0 0; padding:0; }
+      #print-block .hotel-item{ margin:.6mm 0 .8mm; }
+      #print-block .hotel-grid{ display:grid; grid-template-columns:var(--hotel-left-col,48mm) 1fr; column-gap:5mm; }
+      #print-block .hotel-right > div{ margin:.15mm 0; }
+
+      /* Itinerario sin salto forzado */
       .itinerario-sec{ break-before:auto; page-break-before:auto; }
-      .itinerario-sec .sec-title{ margin-bottom: 4mm; }   /* espacio antes de Día 1 */
-      .itinerario .it-day{ margin: 0 0 3.5mm 0; }         /* espacio entre días */
-      .closing{ text-align:center; font-weight:800; margin-top: 8mm; } /* doble espacio final */
+      .itinerario-sec .sec-title{ margin-bottom:4mm; }
+      .itinerario .it-day{ margin:0 0 3.5mm 0; }
+      .closing{ text-align:center; font-weight:800; margin-top:8mm; }
     }
   `;
-
   const s = document.createElement('style');
   s.id = ID;
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
 function injectScreenHotelStyles(){
