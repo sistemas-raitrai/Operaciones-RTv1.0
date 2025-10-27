@@ -1076,7 +1076,7 @@ function injectPrintStyles(){
     #print-block { display:none; }
 
     @media print {
-      @page { size: A4; margin: 8mm 10mm; }
+      @page { size: A4; margin: 22mm 10mm 10mm 10mm; }
 
       html, body{
         background:#fff !important;
