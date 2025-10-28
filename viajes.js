@@ -1302,7 +1302,7 @@ async function deleteVuelo(id){
 function buildTransfersIndexes(){
   transfersByGroup.clear();
   transfersByGroupAndVuelo.clear();
-  const transfers = vuelos.filter(v => (v.tipoTransporte || 'aereo') === 'terrestre' && v.isTransfer);
+  const transfers = vuelos.filter(v => v.isTransfer);
   for (const t of transfers){
     const gids = Array.isArray(t.grupoIds) ? t.grupoIds : [];
     for (const gId of gids){
@@ -1471,7 +1471,7 @@ async function renderVuelos(){
           <div class="num">${toUpper(g.numeroNegocio)} - ${toUpper(g.identificador)}</div>
           <div class="name">
             <span class="group-name" onclick="openGroupModal('${g.id}')">${toUpper(g.nombreGrupo || '')}</span>
-            ${transferBadge}
+            ${transferBadges}
             <span class="pax-inline">${totalRow} (A:${a} E:${e} C:${c})</span>
             <div class="records-line" style="margin-top:.15em;">
               <strong>Record(s):</strong> ${chips || '—'}
