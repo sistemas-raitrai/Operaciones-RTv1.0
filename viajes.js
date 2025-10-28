@@ -1173,101 +1173,325 @@ window.toggleStatus = async (vId, idx) => {
   renderVuelos();
 };
 
-// ======= TRANSFERS: creación / vínculo / desvínculo / util =======
-
-// Wizard mínimo (prompt) para crear un TRANSFER desde una fila de grupo
-// Wizard universal: crea TRANSFER (terrestre) o TRASLADO (aéreo) con isTransfer:true
-window.createTransferForGroup = async (vueloId, grupoId) => {
-  try{
-    const vuelo = vuelos.find(v => v.id === vueloId);
-    if (!vuelo) return alert('Vuelo base no encontrado');
-    const g = grupos.find(x => x.id === grupoId);
-    if (!g) return alert('Grupo no encontrado');
-
-    // Tipo de traslado
-    const tipoRaw = (prompt('Tipo de traslado (AEREO / TERRESTRE):', 'TERRESTRE') || '').trim().toLowerCase();
-    const tipoTransporte = (tipoRaw === 'aereo' || tipoRaw === 'aéreo') ? 'aereo' : 'terrestre';
-
-    // Pierna (ida/vuelta/ida+vuelta)
-    const legDefault = (vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || vuelo.fechaVuelta) ? 'ida+vuelta' : 'ida';
-    const transferLeg = (prompt(`TRAMOS (ida / vuelta / ida+vuelta):`, legDefault) || '').toLowerCase();
-    if (!['ida','vuelta','ida+vuelta'].includes(transferLeg)) return alert('Tramo inválido');
-
-    // Comunes
-    const proveedor = toUpper(prompt(tipoTransporte === 'aereo' ? 'Aerolínea:' : 'Proveedor:', '') || '');
-    if (!proveedor) return alert('Proveedor/Aerolínea requerido');
-    const numero = toUpper(prompt('Número (vuelo o interno):', '') || '');
-
-    // Origen / destino (sugeridos desde el vuelo base)
-    const origen  = toUpper(prompt('Origen:',  vuelo.origen  || '') || '');
-    const destino = toUpper(prompt('Destino:', vuelo.destino || '') || '');
-    if (!origen || !destino) return alert('Origen y destino son requeridos');
-
-    // Fechas/horas según tipo
-    let payload = {
-      isTransfer: true,
-      transferLeg,
-      relatedVueloId: vueloId,
-      grupoIds: [grupoId],
-      excludeFromTotals: true,
-      proveedor, numero, origen, destino,
-      tipoTransporte
-    };
-
-    if (tipoTransporte === 'aereo'){
-      // TRASLADO AÉREO (charter simple por defecto)
-      const fechaIda    = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toISO(prompt('Fecha IDA (YYYY-MM-DD):',   vuelo.fechaIda || '') || '') : '';
-      const preIda      = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Presentación IDA (HH:MM):', vuelo.presentacionIdaHora || vuelo.vueloIdaHora || '') || '') : '';
-      const vueloIda    = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Vuelo IDA (HH:MM):',        vuelo.vueloIdaHora || '') || '') : '';
-      const arriboIda   = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Arribo IDA (HH:MM):',       vuelo.arriboIdaHora || '') || '') : '';
-
-      const fechaVuelta = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toISO(prompt('Fecha REGRESO (YYYY-MM-DD):', vuelo.fechaVuelta || '') || '') : '';
-      const preVta      = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Presentación REGRESO (HH:MM):', vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || '') || '') : '';
-      const vueloVta    = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Vuelo REGRESO (HH:MM):',        vuelo.vueloVueltaHora || '') || '') : '';
-      const arriboVta   = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Arribo REGRESO (HH:MM):',       vuelo.arriboVueltaHora || '') || '') : '';
-
-      payload = normalizeVueloPayload({
-        ...payload,
-        tipoVuelo: 'charter',
-        fechaIda, fechaVuelta,
-        presentacionIdaHora:    preIda,
-        vueloIdaHora:           vueloIda,
-        arriboIdaHora:          arriboIda,
-        presentacionVueltaHora: preVta,
-        vueloVueltaHora:        vueloVta,
-        arriboVueltaHora:       arriboVta
-      });
-    } else {
-      // TRANSFER TERRESTRE
-      const fechaIda    = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toISO(prompt('Fecha IDA (YYYY-MM-DD):',   vuelo.fechaIda || '') || '') : '';
-      const idaHora     = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Hora IDA (HH:MM):',        '') || '') : '';
-      const fechaVuelta = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toISO(prompt('Fecha REGRESO (YYYY-MM-DD):', vuelo.fechaVuelta || '') || '') : '';
-      const vueltaHora  = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Hora REGRESO (HH:MM):',      '') || '') : '';
-
-      payload = normalizeVueloPayload({
-        ...payload,
-        fechaIda, fechaVuelta, idaHora, vueltaHora
-      });
-    }
-
-    payload.createdAt = serverTimestamp();
-    payload.updatedAt = serverTimestamp();
-
-    const ref = await addDoc(collection(db,'vuelos'), payload);
-    await addDoc(collection(db,'historial'), {
-      tipo: 'transfer-new',
-      vueloId: ref.id, antes: null, despues: payload,
-      usuario: currentUserEmail, ts: serverTimestamp()
-    });
-
-    alert('Traslado/Transfer creado ✅');
-    renderVuelos();
-  } catch(e){
-    console.error(e);
-    alert('No se pudo crear el traslado/transfer.');
-  }
+// Crear TRANSFER desde la fila de un grupo → abre el modal simplificado
+window.createTransferForGroup = (vueloId, grupoId) => {
+  openTransferModal({ baseVueloId: vueloId, grupoId });
 };
 
+/* ==========================
+   MODAL TRANSFER (simple)
+   ========================== */
+
+let transferCtx = { baseVuelo: null, grupoId: null, transferId: null };
+let transferHandlersBound = false;
+
+function isoToday(){
+  const d = new Date(); const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+
+function setMin(el, iso){ if (el) el.min = iso || isoToday(); }
+
+function readLeg(){
+  return (document.querySelector('input[name="t-leg"]:checked')?.value || 'ida').toLowerCase();
+}
+
+function toggleTransferFields(){
+  const transp = (document.getElementById('t-transporte').value || 'terrestre').toLowerCase();
+  const leg = readLeg();
+
+  // Secciones por transporte
+  document.getElementById('t-aereo-fields').style.display     = (transp === 'aereo') ? 'block' : 'none';
+  document.getElementById('t-terrestre-fields').style.display  = (transp === 'terrestre') ? 'block' : 'none';
+
+  // Mostrar/ocultar filas según pierna
+  const showIda    = (leg === 'ida' || leg === 'ida+vuelta');
+  const showVuelta = (leg === 'vuelta' || leg === 'ida+vuelta');
+
+  // Aéreo
+  const aIda    = document.getElementById('t-ida-row');
+  const aVuelta = document.getElementById('t-vuelta-row');
+  if (aIda)    aIda.style.display    = showIda    ? '' : 'none';
+  if (aVuelta) aVuelta.style.display = showVuelta ? '' : 'none';
+  if (!showIda){
+    ['t-fechaIda','t-preIda','t-vueloIda','t-arriboIda'].forEach(id => { const el = document.getElementById(id); if (el) el.value=''; });
+  }
+  if (!showVuelta){
+    ['t-fechaVuelta','t-preVta','t-vueloVta','t-arriboVta'].forEach(id => { const el = document.getElementById(id); if (el) el.value=''; });
+  }
+
+  // Terrestre
+  const tIda    = document.getElementById('t-ida-row-ter');
+  const tVuelta = document.getElementById('t-vuelta-row-ter');
+  if (tIda)    tIda.style.display    = showIda    ? '' : 'none';
+  if (tVuelta) tVuelta.style.display = showVuelta ? '' : 'none';
+  if (!showIda){
+    ['t-fechaIda-ter','t-idaHora'].forEach(id => { const el = document.getElementById(id); if (el) el.value=''; });
+  }
+  if (!showVuelta){
+    ['t-fechaVuelta-ter','t-vueltaHora'].forEach(id => { const el = document.getElementById(id); if (el) el.value=''; });
+  }
+}
+
+function maybeSwapOrigenDestinoOnVuelta(prevLeg){
+  const leg = readLeg();
+  if (prevLeg !== 'vuelta' && leg === 'vuelta'){
+    const o = document.getElementById('t-origen');
+    const d = document.getElementById('t-destino');
+    if (o && d && o.value && d.value){
+      const tmp = o.value; o.value = d.value; d.value = tmp;
+    }
+  }
+}
+
+function setTransferDateMins(){
+  // Por defecto: hoy
+  let minIda = isoToday(), minVta = isoToday();
+
+  // Si viene desde un vuelo base, usa sus fechas como mínimo cuando existan
+  const v = transferCtx.baseVuelo;
+  if (v){
+    if (v.fechaIda)    minIda = v.fechaIda;
+    if (v.fechaVuelta) minVta = v.fechaVuelta;
+  }
+
+  // Aplica a todos los inputs de fecha si existen
+  ['t-fechaIda','t-fechaVuelta','t-fechaIda-ter','t-fechaVuelta-ter'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isIda = id.includes('Ida');
+    setMin(el, isIda ? minIda : minVta);
+  });
+}
+
+function resetTransferForm(){
+  document.getElementById('transfer-form').reset();
+
+  document.getElementById('t-transporte').value = 'terrestre';
+  const idaRadio = document.querySelector('input[name="t-leg"][value="ida"]');
+  if (idaRadio) idaRadio.checked = true;
+
+  // Limpia ocultos
+  document.getElementById('t-relatedVueloId').value = '';
+  document.getElementById('t-grupoId').value = '';
+
+  // Min fechas
+  setTransferDateMins();
+
+  // Estado visual inicial
+  toggleTransferFields();
+}
+
+async function fillFromBaseVuelo(baseVueloId){
+  try{
+    const snap = await getDoc(doc(db,'vuelos', baseVueloId));
+    if (!snap.exists()) return;
+    const v = snap.data();
+    transferCtx.baseVuelo = v;
+    document.getElementById('t-relatedVueloId').value = baseVueloId;
+
+    // Autocompletar sugerencias básicas
+    const provEl = document.getElementById('t-proveedor');
+    const numEl  = document.getElementById('t-numero');
+    const oEl    = document.getElementById('t-origen');
+    const dEl    = document.getElementById('t-destino');
+
+    provEl.value = toUpper(v.proveedor || v.tramos?.[0]?.aerolinea || provEl.value || '');
+    numEl.value  = toUpper(v.numero || v.tramos?.[0]?.numero || numEl.value || '');
+    oEl.value    = toUpper(v.origen || v.tramos?.[0]?.origen || oEl.value || '');
+    dEl.value    = toUpper(v.destino || v.tramos?.[0]?.destino || dEl.value || '');
+
+    setTransferDateMins();
+  }catch(e){ console.error(e); }
+}
+
+async function fillForEdit(transferId){
+  const snap = await getDoc(doc(db,'vuelos', transferId));
+  if (!snap.exists()) return alert('Traslado/transfer no encontrado');
+  const t = snap.data();
+
+  transferCtx.transferId = transferId;
+
+  // Título
+  document.getElementById('transfer-title').textContent = 'Editar Transfer / Traslado';
+
+  // Contexto
+  document.getElementById('t-relatedVueloId').value = t.relatedVueloId || '';
+  document.getElementById('t-grupoId').value = (Array.isArray(t.grupoIds) && t.grupoIds[0]) ? t.grupoIds[0] : '';
+
+  // Tipo
+  document.getElementById('t-transporte').value = (t.tipoTransporte || 'terrestre');
+  const leg = (t.transferLeg || 'ida').toLowerCase();
+  const legEl = document.querySelector(`input[name="t-leg"][value="${leg}"]`);
+  if (legEl) legEl.checked = true;
+
+  // Base
+  document.getElementById('t-proveedor').value = toUpper(t.proveedor || '');
+  document.getElementById('t-numero').value    = toUpper(t.numero || '');
+  document.getElementById('t-origen').value    = toUpper(t.origen || '');
+  document.getElementById('t-destino').value   = toUpper(t.destino || '');
+
+  // Fechas/hours
+  document.getElementById('t-fechaIda').value       = t.fechaIda || '';
+  document.getElementById('t-preIda').value         = t.presentacionIdaHora || '';
+  document.getElementById('t-vueloIda').value       = t.vueloIdaHora || '';
+  document.getElementById('t-arriboIda').value      = t.arriboIdaHora || '';
+  document.getElementById('t-fechaVuelta').value    = t.fechaVuelta || '';
+  document.getElementById('t-preVta').value         = t.presentacionVueltaHora || '';
+  document.getElementById('t-vueloVta').value       = t.vueloVueltaHora || '';
+  document.getElementById('t-arriboVta').value      = t.arriboVueltaHora || '';
+  document.getElementById('t-fechaIda-ter').value   = t.fechaIda || '';
+  document.getElementById('t-idaHora').value        = t.idaHora || '';
+  document.getElementById('t-fechaVuelta-ter').value= t.fechaVuelta || '';
+  document.getElementById('t-vueltaHora').value     = t.vueltaHora || '';
+
+  setTransferDateMins();
+  toggleTransferFields();
+}
+
+function collectTransferPayload(){
+  const transp = document.getElementById('t-transporte').value || 'terrestre';
+  const leg    = readLeg(); // ida | vuelta | ida+vuelta
+
+  const proveedor = toUpper((document.getElementById('t-proveedor').value || '').trim());
+  const numero    = toUpper((document.getElementById('t-numero').value || '').trim());
+  const origen    = toUpper((document.getElementById('t-origen').value || '').trim());
+  const destino   = toUpper((document.getElementById('t-destino').value || '').trim());
+
+  let payload = {
+    isTransfer: true,
+    excludeFromTotals: true,
+    transferLeg: leg,
+    tipoTransporte: transp,
+    proveedor, numero, origen, destino,
+    grupoIds: [],
+    relatedVueloId: (document.getElementById('t-relatedVueloId').value || ''),
+  };
+
+  const gid = (document.getElementById('t-grupoId').value || '').trim();
+  if (gid) payload.grupoIds = [gid];
+
+  if (transp === 'aereo'){
+    payload = {
+      ...payload,
+      tipoVuelo: 'charter', // transfer aéreo simple
+      fechaIda:              (leg !== 'vuelta')       ? (document.getElementById('t-fechaIda').value || '') : '',
+      presentacionIdaHora:   (leg !== 'vuelta')       ? toHHMM(document.getElementById('t-preIda').value || '') : '',
+      vueloIdaHora:          (leg !== 'vuelta')       ? toHHMM(document.getElementById('t-vueloIda').value || '') : '',
+      arriboIdaHora:         (leg !== 'vuelta')       ? toHHMM(document.getElementById('t-arriboIda').value || '') : '',
+      fechaVuelta:           (leg !== 'ida')          ? (document.getElementById('t-fechaVuelta').value || '') : '',
+      presentacionVueltaHora:(leg !== 'ida')          ? toHHMM(document.getElementById('t-preVta').value || '') : '',
+      vueloVueltaHora:       (leg !== 'ida')          ? toHHMM(document.getElementById('t-vueloVta').value || '') : '',
+      arriboVueltaHora:      (leg !== 'ida')          ? toHHMM(document.getElementById('t-arriboVta').value || '') : ''
+    };
+  } else {
+    payload = {
+      ...payload,
+      fechaIda:    (leg !== 'vuelta') ? (document.getElementById('t-fechaIda-ter').value || '') : '',
+      idaHora:     (leg !== 'vuelta') ? toHHMM(document.getElementById('t-idaHora').value || '') : '',
+      fechaVuelta: (leg !== 'ida')    ? (document.getElementById('t-fechaVuelta-ter').value || '') : '',
+      vueltaHora:  (leg !== 'ida')    ? toHHMM(document.getElementById('t-vueltaHora').value || '') : ''
+    };
+  }
+
+  return normalizeVueloPayload(payload);
+}
+
+async function onSubmitTransfer(ev){
+  ev.preventDefault();
+
+  // Validaciones mínimas
+  const proveedor = (document.getElementById('t-proveedor').value || '').trim();
+  const origen    = (document.getElementById('t-origen').value || '').trim();
+  const destino   = (document.getElementById('t-destino').value || '').trim();
+  const leg       = readLeg();
+  const transp    = (document.getElementById('t-transporte').value || 'terrestre');
+
+  if (!proveedor || !origen || !destino){
+    alert('Completa Proveedor/Aerolínea, Origen y Destino.');
+    return;
+  }
+  if (leg === 'ida' && !((transp==='aereo' ? document.getElementById('t-fechaIda') : document.getElementById('t-fechaIda-ter')).value)){
+    alert('Debes ingresar la fecha de IDA.');
+    return;
+  }
+  if (leg === 'vuelta' && !((transp==='aereo' ? document.getElementById('t-fechaVuelta') : document.getElementById('t-fechaVuelta-ter')).value)){
+    alert('Debes ingresar la fecha de REGRESO.');
+    return;
+  }
+
+  const payload = collectTransferPayload();
+  payload.updatedAt = serverTimestamp();
+
+  if (transferCtx.transferId){
+    const ref = doc(db,'vuelos', transferCtx.transferId);
+    const before = (await getDoc(ref)).data();
+    await updateDoc(ref, payload);
+    await addDoc(collection(db,'historial'), {
+      tipo:'transfer-edit', vueloId: transferCtx.transferId,
+      antes: before, despues: payload, usuario: currentUserEmail, ts: serverTimestamp()
+    });
+  } else {
+    payload.createdAt = serverTimestamp();
+    const ref = await addDoc(collection(db,'vuelos'), payload);
+    await addDoc(collection(db,'historial'), {
+      tipo:'transfer-new', vueloId: ref.id,
+      antes: null, despues: payload, usuario: currentUserEmail, ts: serverTimestamp()
+    });
+  }
+
+  closeTransferModal();
+  renderVuelos();
+}
+
+function bindTransferHandlersOnce(){
+  if (transferHandlersBound) return;
+  transferHandlersBound = true;
+
+  document.getElementById('transfer-form').addEventListener('submit', onSubmitTransfer);
+  document.getElementById('t-cancel').addEventListener('click', closeTransferModal);
+  document.getElementById('t-cancel2').addEventListener('click', closeTransferModal);
+
+  document.getElementById('t-transporte').addEventListener('change', toggleTransferFields);
+
+  // Cambio de pierna (y swap origen/destino cuando pasamos a VUELTA)
+  let lastLeg = readLeg();
+  document.querySelectorAll('input[name="t-leg"]').forEach(r => {
+    r.addEventListener('change', () => {
+      maybeSwapOrigenDestinoOnVuelta(lastLeg);
+      lastLeg = readLeg();
+      toggleTransferFields();
+    });
+  });
+}
+
+async function openTransferModal({ baseVueloId=null, grupoId=null, transferId=null } = {}){
+  transferCtx = { baseVuelo: null, grupoId, transferId };
+
+  // Título
+  document.getElementById('transfer-title').textContent = transferId ? 'Editar Transfer / Traslado' : 'Nuevo Transfer / Traslado';
+
+  // Reset
+  resetTransferForm();
+  bindTransferHandlersOnce();
+
+  // Setea contexto visible
+  document.getElementById('t-grupoId').value = grupoId || '';
+
+  // Si viene de vuelo base → prellenar
+  if (baseVueloId) await fillFromBaseVuelo(baseVueloId);
+  // Si es edición → cargar datos
+  if (transferId)  await fillForEdit(transferId);
+
+  // Mostrar modal
+  document.getElementById('transfer-backdrop').style.display = 'block';
+  document.getElementById('modal-transfer').style.display    = 'block';
+}
+
+function closeTransferModal(){
+  document.getElementById('transfer-backdrop').style.display = 'none';
+  document.getElementById('modal-transfer').style.display    = 'none';
+}
 
 // Desvincular grupo de un transfer (sin borrar el doc, a menos que quede vacío)
 window.unlinkTransferFromGroup = async (transferId, grupoId) => {
@@ -1692,16 +1916,7 @@ async function renderVuelos(){
     card.querySelectorAll('[data-edit-transfer-id]').forEach(btn => {
       btn.addEventListener('click', async (ev) => {
         const id = ev.currentTarget.getAttribute('data-edit-transfer-id');
-        try {
-          const snap = await getDoc(doc(db, 'vuelos', id));
-          if (!snap.exists()) { alert('Traslado/transfer no encontrado'); return; }
-          const data = snap.data() || {};
-          // Abrimos el mismo modal, pero marcando flag de transfer
-          openModal({ id, ...data, isTransfer: true });
-        } catch (e) {
-          console.error(e);
-          alert('No se pudo abrir el traslado/transfer.');
-        }
+        openTransferModal({ transferId: id });
       });
     });
 
