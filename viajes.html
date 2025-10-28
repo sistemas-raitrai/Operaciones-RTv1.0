@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Planificación de Viajes RT</title>
+  <title>Planificación de Viajes | RT</title>
 
   <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css"/>
@@ -335,38 +335,47 @@
   <!-- ===== MODAL TRANSFER / TRASLADO (simple y sin publicar) ===== -->
   <div id="transfer-backdrop" class="modal-backdrop" style="display:none;"></div>
   <div id="modal-transfer" class="modal" style="display:none; max-width:720px;">
-    <div class="modal-header">
+    <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;gap:.75rem;">
       <h3 id="transfer-title">Nuevo Transfer / Traslado</h3>
-      <button type="button" id="t-cancel" class="btn-small">✖</button>
+      <button type="button" id="t-cancel" class="btn-small" title="Cerrar">✖</button>
     </div>
   
     <form id="transfer-form" class="modal-body">
+      <!-- Contexto (oculto) -->
+      <input type="hidden" id="t-relatedVueloId" />
+      <input type="hidden" id="t-grupoId" />
+  
       <!-- Tipo y Pierna -->
-      <div class="row">
-        <label>Transporte</label>
-        <select id="t-transporte">
-          <option value="terrestre">TERRESTRE</option>
-          <option value="aereo">AÉREO</option>
-        </select>
-      </div>
-      <div class="row">
-        <label>Tramo</label>
-        <div style="display:flex;gap:1rem;align-items:center;">
-          <label><input type="radio" name="t-leg" value="ida" checked> IDA</label>
-          <label><input type="radio" name="t-leg" value="vuelta"> VUELTA</label>
-          <label><input type="radio" name="t-leg" value="ida+vuelta"> IDA + VUELTA</label>
+      <div class="row" style="align-items:center; gap:1rem;">
+        <div>
+          <label>Transporte</label>
+          <select id="t-transporte">
+            <option value="terrestre">TERRESTRE</option>
+            <option value="aereo">AÉREO</option>
+          </select>
+        </div>
+        <div>
+          <label>Pierna</label>
+          <div style="display:flex;gap:1rem;align-items:center;">
+            <label><input type="radio" name="t-leg" value="ida" checked> IDA</label>
+            <label><input type="radio" name="t-leg" value="vuelta"> VUELTA</label>
+            <label><input type="radio" name="t-leg" value="ida+vuelta"> IDA + VUELTA</label>
+          </div>
         </div>
       </div>
   
       <!-- Datos base -->
       <div class="row">
-        <label>Proveedor / Aerolínea</label>
-        <input id="t-proveedor" type="text" placeholder="EMPRESA / AEROLÍNEA" required>
+        <div class="column long">
+          <label>Proveedor / Aerolínea</label>
+          <input id="t-proveedor" type="text" placeholder="EMPRESA / AEROLÍNEA" required>
+        </div>
+        <div class="column short">
+          <label>Número</label>
+          <input id="t-numero" type="text" placeholder="N°">
+        </div>
       </div>
-      <div class="row">
-        <label>Número (vuelo o interno)</label>
-        <input id="t-numero" type="text" placeholder="N°">
-      </div>
+  
       <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
         <div>
           <label>Origen</label>
