@@ -33,6 +33,8 @@ let transfersByGroupAndVuelo = new Map();      // `${groupId}__${vueloId}` -> [t
 let transporteEl, tipoVueloEl, multitramoChkEl, camposSimpleEl, multitramoOpEl, tramosSectionEl;
 let publicarOpEl; // cache del bloque PUBLICAR
 
+let isEditingTransfer = false;
+
 // ====== ICONOS (AGREGADO) ======
 const ICONS = {
   flight: '✈️',
@@ -456,7 +458,18 @@ function openModal(v=null){
   const f = (id) => document.getElementById(id);
 
   // Título
-  f('modal-title').textContent = v ? 'EDITAR VUELO/TRAYECTO' : 'NUEVO VUELO/TRAYECTO';
+  isEditingTransfer = !!(v && v.isTransfer);
+  f('modal-title').textContent = v
+    ? (isEditingTransfer ? 'EDITAR TRANSFER / TRASLADO' : 'EDITAR VUELO/TRAYECTO')
+    : 'NUEVO VUELO/TRAYECTO';
+
+  // ——— PUNTO 8: Badge visual cuando es TRANSFER ———
+  if (isEditingTransfer) {
+    const tEl = f('modal-title');
+    if (tEl) {
+      tEl.innerHTML = `${tEl.textContent} <span style="font-size:.8em;color:#b45309;background:#ffedd5;border:1px solid #f59e0b;border-radius:6px;padding:2px 6px;margin-left:6px;">TRANSFER</span>`;
+    }
+  }
 
   // Transporte + Publicación
   const mTrans = f('m-transporte');
@@ -527,8 +540,11 @@ function openModal(v=null){
 
   // Grupos y estado por defecto
   choiceGrupos.removeActiveItems();
-  if (v?.grupos) choiceGrupos.setChoiceByValue(v.grupos.map(g => g.id));
+  const selectedIds = Array.isArray(v?.grupos) ? v.grupos.map(g => g.id)
+                    : (Array.isArray(v?.grupoIds) ? v.grupoIds : []);
+  if (selectedIds.length) choiceGrupos.setChoiceByValue(selectedIds);
   if (f('m-statusDefault')) f('m-statusDefault').value = v?.grupos?.[0]?.status || 'confirmado';
+
 
   // Mostrar modal
   f('modal-backdrop').style.display = 'block';
@@ -678,7 +694,9 @@ async function onSubmitVuelo(evt){
     prevDoc = prevSnap.exists() ? prevSnap.data() : null;
   }
 
-  const gruposArr = sel.map(id => {
+  const editingTransfer = isEdit && (isEditingTransfer || !!prevDoc?.isTransfer);
+  
+  let gruposArr = sel.map(id => {
     const prevG = prevDoc?.grupos?.find(g => g.id === id);
     return {
       id,
@@ -687,6 +705,9 @@ async function onSubmitVuelo(evt){
       reservas: Array.isArray(prevG?.reservas) ? prevG.reservas : []
     };
   });
+
+  // Los TRANSFERS no usan subobjeto 'grupos' (usan 'grupoIds')
+  if (editingTransfer) gruposArr = [];
 
   let pay = {};
   const multitramo = multitramoChkEl && multitramoChkEl.checked;
@@ -796,14 +817,25 @@ async function onSubmitVuelo(evt){
     };
   }
 
+  // ——— PUNTO 6: refuerzo de flags/campos si estamos editando un TRANSFER ———
+  if (editingTransfer) {
+    pay.isTransfer = true;
+    pay.transferLeg = prevDoc?.transferLeg || pay.transferLeg || 'ida';
+    pay.relatedVueloId = prevDoc?.relatedVueloId || pay.relatedVueloId || '';
+    pay.excludeFromTotals = true;
+  }
+
   // Normaliza + agrega claves mínimas
   pay = normalizeVueloPayload(pay);
   // Marcas de publicación en el doc de 'vuelos'
   pay.publicar        = publicar;
   pay.publishScope    = publicar ? 'PUBLICA' : 'PRIVADA';
   pay.publicUpdatedBy = currentUserEmail;
-  pay.grupoIds        = buildGrupoIds(pay.grupos);
   pay.updatedAt       = serverTimestamp();
+  
+  // Grupos: en TRANSFER usamos directamente el selector (sel)
+  pay.grupoIds = editingTransfer ? sel : buildGrupoIds(pay.grupos);
+
 
   // ⬇️ AQUÍ VA EL ÚNICO if/else (sin duplicados) ⬇️
   if (isEdit){
@@ -1663,7 +1695,9 @@ async function renderVuelos(){
         try {
           const snap = await getDoc(doc(db, 'vuelos', id));
           if (!snap.exists()) { alert('Traslado/transfer no encontrado'); return; }
-          openModal({ id, ...snap.data() });
+          const data = snap.data() || {};
+          // Abrimos el mismo modal, pero marcando flag de transfer
+          openModal({ id, ...data, isTransfer: true });
         } catch (e) {
           console.error(e);
           alert('No se pudo abrir el traslado/transfer.');
