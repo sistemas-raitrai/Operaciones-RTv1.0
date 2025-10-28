@@ -332,6 +332,137 @@
     </form>
   </div>
 
+  <!-- ===== MODAL TRANSFER / TRASLADO (simple y sin publicar) ===== -->
+  <div id="transfer-backdrop" class="modal-backdrop" style="display:none;"></div>
+  <div id="modal-transfer" class="modal" style="display:none; max-width:720px;">
+    <div class="modal-header">
+      <h3 id="transfer-title">Nuevo Transfer / Traslado</h3>
+      <button type="button" id="t-cancel" class="btn-small">✖</button>
+    </div>
+  
+    <form id="transfer-form" class="modal-body">
+      <!-- Tipo y Pierna -->
+      <div class="row">
+        <label>Transporte</label>
+        <select id="t-transporte">
+          <option value="terrestre">TERRESTRE</option>
+          <option value="aereo">AÉREO</option>
+        </select>
+      </div>
+      <div class="row">
+        <label>Tramo</label>
+        <div style="display:flex;gap:1rem;align-items:center;">
+          <label><input type="radio" name="t-leg" value="ida" checked> IDA</label>
+          <label><input type="radio" name="t-leg" value="vuelta"> VUELTA</label>
+          <label><input type="radio" name="t-leg" value="ida+vuelta"> IDA + VUELTA</label>
+        </div>
+      </div>
+  
+      <!-- Datos base -->
+      <div class="row">
+        <label>Proveedor / Aerolínea</label>
+        <input id="t-proveedor" type="text" placeholder="EMPRESA / AEROLÍNEA" required>
+      </div>
+      <div class="row">
+        <label>Número (vuelo o interno)</label>
+        <input id="t-numero" type="text" placeholder="N°">
+      </div>
+      <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <label>Origen</label>
+          <input id="t-origen" type="text" placeholder="ORIGEN" required>
+        </div>
+        <div>
+          <label>Destino</label>
+          <input id="t-destino" type="text" placeholder="DESTINO" required>
+        </div>
+      </div>
+  
+      <!-- Campos AÉREO -->
+      <div id="t-aereo-fields" style="display:none;margin-top:.5rem;">
+        <div id="t-ida-row" class="row" style="border:1px solid #eee;padding:.5rem;border-radius:8px;margin:.5rem 0;">
+          <strong>IDA</strong>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:.4rem;">
+            <div>
+              <label>Fecha IDA</label>
+              <input id="t-fechaIda" type="date">
+            </div>
+            <div>
+              <label>Presentación</label>
+              <input id="t-preIda" type="time">
+            </div>
+            <div>
+              <label>Vuelo</label>
+              <input id="t-vueloIda" type="time">
+            </div>
+            <div>
+              <label>Arribo</label>
+              <input id="t-arriboIda" type="time">
+            </div>
+          </div>
+        </div>
+  
+        <div id="t-vuelta-row" class="row" style="border:1px solid #eee;padding:.5rem;border-radius:8px;margin:.5rem 0;">
+          <strong>REGRESO</strong>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-top:.4rem;">
+            <div>
+              <label>Fecha REGRESO</label>
+              <input id="t-fechaVuelta" type="date">
+            </div>
+            <div>
+              <label>Presentación</label>
+              <input id="t-preVta" type="time">
+            </div>
+            <div>
+              <label>Vuelo</label>
+              <input id="t-vueloVta" type="time">
+            </div>
+            <div>
+              <label>Arribo</label>
+              <input id="t-arriboVta" type="time">
+            </div>
+          </div>
+        </div>
+      </div>
+  
+      <!-- Campos TERRESTRE -->
+      <div id="t-terrestre-fields" style="display:block;margin-top:.5rem;">
+        <div id="t-ida-row-ter" class="row" style="border:1px solid #eee;padding:.5rem;border-radius:8px;margin:.5rem 0;">
+          <strong>IDA</strong>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:.4rem;">
+            <div>
+              <label>Fecha IDA</label>
+              <input id="t-fechaIda-ter" type="date">
+            </div>
+            <div>
+              <label>Hora IDA</label>
+              <input id="t-idaHora" type="time">
+            </div>
+          </div>
+        </div>
+  
+        <div id="t-vuelta-row-ter" class="row" style="border:1px solid #eee;padding:.5rem;border-radius:8px;margin:.5rem 0;">
+          <strong>REGRESO</strong>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:.4rem;">
+            <div>
+              <label>Fecha REGRESO</label>
+              <input id="t-fechaVuelta-ter" type="date">
+            </div>
+            <div>
+              <label>Hora REGRESO</label>
+              <input id="t-vueltaHora" type="time">
+            </div>
+          </div>
+        </div>
+      </div>
+  
+      <div class="modal-footer" style="display:flex;gap:.5rem;justify-content:flex-end;">
+        <button type="button" id="t-cancel2" class="btn-small">Cancelar</button>
+        <button type="submit" class="btn-add">Guardar</button>
+      </div>
+    </form>
+  </div>
+
   <!-- MODAL AGREGAR PAX EXTRA -->
   <div id="paxextra-backdrop" class="modal-backdrop"></div>
   <div id="paxextra-modal" class="modal">
