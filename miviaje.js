@@ -521,6 +521,34 @@ function particionarVuelos(vuelosNorm) {
   return { idaLegs, vueltaLegs, terrestres, hasColegioToAeropuerto, hasAeropuertoToColegio, transferIda };
 }
 
+// === FECHA DE INICIO DEL VIAJE (una sola) ===
+// Prioridad: transfer COLEGIO→AEROPUERTO (ida) → primer vuelo de ida → primer terrestre.
+function computeFechaInicioViaje(vuelosNorm){
+  if (!Array.isArray(vuelosNorm) || !vuelosNorm.length) return '';
+  const { idaLegs, terrestres, transferIda } = particionarVuelos(vuelosNorm);
+
+  // 1) Transfer COLEGIO → AEROPUERTO (si existe)
+  if (transferIda && (transferIda.fechaIda || transferIda.fecha)) {
+    return toISO(transferIda.fechaIda || transferIda.fecha);
+  }
+
+  // 2) Primer vuelo de ida (legs ya vienen ordenados por fecha en particionarVuelos)
+  if (idaLegs && idaLegs.length) {
+    return toISO(idaLegs[0].fechaIda || idaLegs[0].fecha);
+  }
+
+  // 3) Terrestre simple (sin vuelos)
+  if (terrestres && terrestres.length) {
+    const cand = [...terrestres]
+      .map(t => toISO(t.fechaIda || t.fecha || ''))
+      .filter(Boolean)
+      .sort();
+    if (cand.length) return cand[0];
+  }
+
+  return '';
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    UI: selector si hay múltiples grupos
 ────────────────────────────────────────────────────────────────────────── */
@@ -825,15 +853,15 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
 
   hoja.innerHTML = `
-    <div style="text-align:center;margin-bottom:10px;">
-      <div style="font-size:20px;font-weight:800;">${titulo}</div>
-      <div style="font-size:14px;margin-top:2px;">Fecha Viaje: ${fechaViaje}</div>
-    </div>
+      <div style="text-align:center;margin-bottom:10px;">
+        <div style="font-size:20px;font-weight:800;">${titulo}</div>
+      </div>
 
     <ol style="padding-left:18px;margin:0;">
       <li class="punto1" style="margin-bottom:12px;">
         <div style="font-weight:700;">INFORMACIÓN GENERAL</div>
         ${legendInline ? `<div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${legendInline}</div>` : ''}
+        ${fechaInicioViajeISO ? `<div><strong>Fecha de inicio del viaje:</strong> ${fechaInicioViajeTxt}</div>` : ''}
         <div class="presentacion" style="line-height:1.35;">
           Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino a ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
           ${P.encuentro ? `<br><strong>Lugar de Encuentro:</strong> ${P.encuentro}.` : ''}
@@ -1198,6 +1226,8 @@ function syncHotelColumnToDocs(){
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const P = extractPresentacion(grupo, vuelosNorm);
   const { idaLegs, vueltaLegs, hasColegioToAeropuerto, hasAeropuertoToColegio } = particionarVuelos(vuelosNorm);
+  const fechaInicioViajeISO = computeFechaInicioViaje(vuelosNorm);
+  const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
 
   const chooseNum = (raw, modo) => {
     const s = String(raw||'').toUpperCase();
@@ -1277,6 +1307,8 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+  const fechaInicioViajeISO = computeFechaInicioViaje(vuelosNorm);
+  const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
   const documentosHTML = renderDocsList(docsText);
   const recomendacionesHTML = Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`;
 
@@ -1307,7 +1339,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   return `
     <div class="print-doc">
       <div class="doc-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
-      <div class="sec-title">Fecha Viaje: ${fechaViaje}</div>
+      <div class="sec-title">Fecha de inicio del viaje: ${fechaInicioViajeTxt}</div>
 
       <!-- 1 -->
       <div class="sec">
