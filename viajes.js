@@ -595,21 +595,27 @@ function renderTramosList(){
         editingTramos[i].tipoTramo = r.value;
         const idaRow    = row.querySelector('.tramo-ida');
         const vueltaRow = row.querySelector('.tramo-vuelta');
+    
         if (r.value === 'ida'){
+          // Oculta REGRESO y limpia TODOS sus campos (incluye ARRIBO)
           vueltaRow.style.display = 'none';
-          editingTramos[i].fechaVuelta = '';
-          editingTramos[i].presentacionVueltaHora = '';
-          editingTramos[i].vueloVueltaHora = '';
+          editingTramos[i].fechaVuelta              = '';
+          editingTramos[i].presentacionVueltaHora   = '';
+          editingTramos[i].vueloVueltaHora          = '';
+          editingTramos[i].arriboVueltaHora         = '';   // <— faltaba
           vueltaRow.querySelectorAll('input').forEach(x => x.value = '');
           idaRow.style.display = '';
         } else if (r.value === 'vuelta'){
+          // Oculta IDA y limpia TODOS sus campos (incluye ARRIBO)
           idaRow.style.display = 'none';
-          editingTramos[i].fechaIda = '';
-          editingTramos[i].presentacionIdaHora = '';
-          editingTramos[i].vueloIdaHora = '';
+          editingTramos[i].fechaIda                 = '';
+          editingTramos[i].presentacionIdaHora      = '';
+          editingTramos[i].vueloIdaHora             = '';
+          editingTramos[i].arriboIdaHora            = '';   // <— faltaba
           idaRow.querySelectorAll('input').forEach(x => x.value = '');
           vueltaRow.style.display = '';
         } else {
+          // IDA + REGRESO visibles
           idaRow.style.display = '';
           vueltaRow.style.display = '';
         }
