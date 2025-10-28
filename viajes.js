@@ -33,6 +33,15 @@ let transfersByGroupAndVuelo = new Map();      // `${groupId}__${vueloId}` -> [t
 let transporteEl, tipoVueloEl, multitramoChkEl, camposSimpleEl, multitramoOpEl, tramosSectionEl;
 let publicarOpEl; // cache del bloque PUBLICAR
 
+// ====== ICONOS (AGREGADO) ======
+const ICONS = {
+  flight: '✈️',
+  bus: '🚌',
+  eye: '👁️',
+  edit: '✏️',
+  del: '🗑️'
+};
+
 function refreshUI(){
   const t    = transporteEl?.value || 'aereo';
   const tipo = tipoVueloEl?.value  || 'charter';
@@ -1135,73 +1144,98 @@ window.toggleStatus = async (vId, idx) => {
 // ======= TRANSFERS: creación / vínculo / desvínculo / util =======
 
 // Wizard mínimo (prompt) para crear un TRANSFER desde una fila de grupo
+// Wizard universal: crea TRANSFER (terrestre) o TRASLADO (aéreo) con isTransfer:true
 window.createTransferForGroup = async (vueloId, grupoId) => {
   try{
     const vuelo = vuelos.find(v => v.id === vueloId);
-    if (!vuelo) return alert('Vuelo no encontrado');
+    if (!vuelo) return alert('Vuelo base no encontrado');
     const g = grupos.find(x => x.id === grupoId);
     if (!g) return alert('Grupo no encontrado');
 
-    // Sugerencias desde vuelo
-    const legDefault = (vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora) ? 'ida+vuelta' : 'ida';
-    const transferLeg = (prompt(`TRAMOS: ${legDefault}`, legDefault) || '').toLowerCase();
-    if (!['ida','vuelta','ida+vuelta'].includes(transferLeg)) return alert('Leg inválido');
+    // Tipo de traslado
+    const tipoRaw = (prompt('Tipo de traslado (AEREO / TERRESTRE):', 'TERRESTRE') || '').trim().toLowerCase();
+    const tipoTransporte = (tipoRaw === 'aereo' || tipoRaw === 'aéreo') ? 'aereo' : 'terrestre';
 
-    const proveedor = toUpper(prompt('Proveedor (EMPRESA):', '') || '');
-    if (!proveedor) return alert('Proveedor requerido');
+    // Pierna (ida/vuelta/ida+vuelta)
+    const legDefault = (vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || vuelo.fechaVuelta) ? 'ida+vuelta' : 'ida';
+    const transferLeg = (prompt(`TRAMOS (ida / vuelta / ida+vuelta):`, legDefault) || '').toLowerCase();
+    if (!['ida','vuelta','ida+vuelta'].includes(transferLeg)) return alert('Tramo inválido');
 
-    const numero = toUpper(prompt('N° DE VUELO (SI APLICA):', '') || '');
+    // Comunes
+    const proveedor = toUpper(prompt(tipoTransporte === 'aereo' ? 'Aerolínea:' : 'Proveedor:', '') || '');
+    if (!proveedor) return alert('Proveedor/Aerolínea requerido');
+    const numero = toUpper(prompt('Número (vuelo o interno):', '') || '');
 
-    const origen = toUpper(prompt('Origen (ej: COLEGIO / PUERTO MONTT):', vuelo.origen || '') || '');
-    const destino = toUpper(prompt('Destino (ej: AEROPUERTO SANTIAGO / SANTIAGO):', vuelo.destino || '') || '');
-    if (!origen || !destino) return alert('Origen y Destino son requeridos');
+    // Origen / destino (sugeridos desde el vuelo base)
+    const origen  = toUpper(prompt('Origen:',  vuelo.origen  || '') || '');
+    const destino = toUpper(prompt('Destino:', vuelo.destino || '') || '');
+    if (!origen || !destino) return alert('Origen y destino son requeridos');
 
-    let fechaIda = '', idaHora = '', fechaVuelta = '', vueltaHora = '';
-    if (transferLeg === 'ida' || transferLeg === 'ida+vuelta'){
-      fechaIda = toISO(prompt('Fecha IDA (YYYY-MM-DD):', vuelo.fechaIda || '') || '');
-      idaHora  = toHHMM(prompt('Hora IDA (HH:MM) (HORARIO PRESENTACIÓN):', vuelo.presentacionIdaHora || vuelo.vueloIdaHora || '') || '');
-    }
-    if (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta'){
-      fechaVuelta = toISO(prompt('Fecha REGRESO (YYYY-MM-DD):', vuelo.fechaVuelta || '') || '');
-      vueltaHora  = toHHMM(prompt('Hora REGRESO (HH:MM) (HORARIO PRESENTACIÓN):', vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || '') || '');
-    }
-
-    // Opcionales
-    const capacidadMaxStr = prompt('Capacidad máxima (opcional, numérico):', '');
-    const capacidadMax = capacidadMaxStr ? Math.max(parseInt(capacidadMaxStr,10) || 0,0) : null;
-    const categoriaTarifa = toUpper(prompt('CATEGORÍA (ej: TRANSFER-AEROPUERTO, TRASLADO-AEROPUERTO):','TRANSFER-AEROPUERTO') || '');
-
-    let pay = normalizeVueloPayload({
-      tipoTransporte: 'terrestre',
-      proveedor, numero, origen, destino,
-      fechaIda, fechaVuelta, idaHora, vueltaHora,
+    // Fechas/horas según tipo
+    let payload = {
       isTransfer: true,
       transferLeg,
       relatedVueloId: vueloId,
       grupoIds: [grupoId],
       excludeFromTotals: true,
-      capacidadMax: capacidadMax ?? null,
-      categoriaTarifa: categoriaTarifa || null,
-      // Para UI/búsqueda
-      // (sin grupos inline: los transfers viven con grupoIds, no con objetos grupo completos)
-    });
+      proveedor, numero, origen, destino,
+      tipoTransporte
+    };
 
-    pay.createdAt = serverTimestamp();
-    pay.updatedAt = serverTimestamp();
+    if (tipoTransporte === 'aereo'){
+      // TRASLADO AÉREO (charter simple por defecto)
+      const fechaIda    = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toISO(prompt('Fecha IDA (YYYY-MM-DD):',   vuelo.fechaIda || '') || '') : '';
+      const preIda      = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Presentación IDA (HH:MM):', vuelo.presentacionIdaHora || vuelo.vueloIdaHora || '') || '') : '';
+      const vueloIda    = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Vuelo IDA (HH:MM):',        vuelo.vueloIdaHora || '') || '') : '';
+      const arriboIda   = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Arribo IDA (HH:MM):',       vuelo.arriboIdaHora || '') || '') : '';
 
-    const ref = await addDoc(collection(db,'vuelos'), pay);
+      const fechaVuelta = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toISO(prompt('Fecha REGRESO (YYYY-MM-DD):', vuelo.fechaVuelta || '') || '') : '';
+      const preVta      = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Presentación REGRESO (HH:MM):', vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || '') || '') : '';
+      const vueloVta    = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Vuelo REGRESO (HH:MM):',        vuelo.vueloVueltaHora || '') || '') : '';
+      const arriboVta   = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Arribo REGRESO (HH:MM):',       vuelo.arriboVueltaHora || '') || '') : '';
+
+      payload = normalizeVueloPayload({
+        ...payload,
+        tipoVuelo: 'charter',
+        fechaIda, fechaVuelta,
+        presentacionIdaHora:    preIda,
+        vueloIdaHora:           vueloIda,
+        arriboIdaHora:          arriboIda,
+        presentacionVueltaHora: preVta,
+        vueloVueltaHora:        vueloVta,
+        arriboVueltaHora:       arriboVta
+      });
+    } else {
+      // TRANSFER TERRESTRE
+      const fechaIda    = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toISO(prompt('Fecha IDA (YYYY-MM-DD):',   vuelo.fechaIda || '') || '') : '';
+      const idaHora     = (transferLeg === 'ida' || transferLeg === 'ida+vuelta')    ? toHHMM(prompt('Hora IDA (HH:MM):',        '') || '') : '';
+      const fechaVuelta = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toISO(prompt('Fecha REGRESO (YYYY-MM-DD):', vuelo.fechaVuelta || '') || '') : '';
+      const vueltaHora  = (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta') ? toHHMM(prompt('Hora REGRESO (HH:MM):',      '') || '') : '';
+
+      payload = normalizeVueloPayload({
+        ...payload,
+        fechaIda, fechaVuelta, idaHora, vueltaHora
+      });
+    }
+
+    payload.createdAt = serverTimestamp();
+    payload.updatedAt = serverTimestamp();
+
+    const ref = await addDoc(collection(db,'vuelos'), payload);
     await addDoc(collection(db,'historial'), {
-      tipo:'transfer-new', vueloId: ref.id,
-      antes: null, despues: pay, usuario: currentUserEmail, ts: serverTimestamp()
+      tipo: 'transfer-new',
+      vueloId: ref.id, antes: null, despues: payload,
+      usuario: currentUserEmail, ts: serverTimestamp()
     });
 
-    alert('TRASLADO / TRASNFER CREADO ✅');
+    alert('Traslado/Transfer creado ✅');
     renderVuelos();
   } catch(e){
     console.error(e);
-    alert('NO SE HA PODIDO CREAR.');
+    alert('No se pudo crear el traslado/transfer.');
   }
 };
+
 
 // Desvincular grupo de un transfer (sin borrar el doc, a menos que quede vacío)
 window.unlinkTransferFromGroup = async (transferId, grupoId) => {
@@ -1285,9 +1319,21 @@ function buildTransfersIndexes(){
   }
 }
 
-function transferBadgeHTML(){
-  return `<span class="chip" style="background:#ffe7b8;border:1px solid #d6a106;color:#663c00;padding:.05em .45em;border-radius:8px;margin-left:.35em;">🚌 TRANSFER</span>`;
+// Muestra chip según tipo de transporte del transfer
+function transferBadgeHTML(kindOrTransfer){
+  const kind = typeof kindOrTransfer === 'string'
+    ? kindOrTransfer
+    : ((kindOrTransfer?.tipoTransporte || 'terrestre'));
+  if (kind === 'aereo'){
+    return `<span class="chip" style="background:#e8f0ff;border:1px solid #6993ff;color:#053e9a;padding:.05em .45em;border-radius:8px;margin-left:.35em;">
+      ${ICONS.flight} TRASLADO
+    </span>`;
+  }
+  return `<span class="chip" style="background:#ffe7b8;border:1px solid #d6a106;color:#663c00;padding:.05em .45em;border-radius:8px;margin-left:.35em;">
+    ${ICONS.bus} TRANSFER
+  </span>`;
 }
+
 
 function transferDetailLine(t){
   const legTxt = t.transferLeg ? toUpper(t.transferLeg) : '';
@@ -1393,19 +1439,32 @@ async function renderVuelos(){
       const key = `${gObj.id}__${v.id}`;
       const transfers = transfersByGroupAndVuelo.get(key) || [];
       const hasTransfers = transfers.length > 0;
-
-      const transferBadge = hasTransfers ? transferBadgeHTML() : '';
+      
+      // Si hay mezclas, muestra ambos chips (TRANSFER terrestre y TRASLADO aéreo)
+      const kinds = [...new Set(transfers.map(t => (t.tipoTransporte || 'terrestre')))];
+      const transferBadges = hasTransfers ? kinds.map(k => transferBadgeHTML(k)).join(' ') : '';
+      
       const transferLines = hasTransfers ? `
         <div class="transfer-lines" style="margin-top:.35em;">
-          ${transfers.map(t => `
-            <div style="font-size:.92em;color:#333;display:flex;gap:.4em;align-items:center;">
-              <span>🚌 ${transferDetailLine(t)}</span>
-              <button class="btn-small" onclick="focusCard('${t.id}', '${toUpper(t.numero||'')}','${t.fechaIda||t.fechaVuelta||''}')">👁️</button>
-              <button class="btn-small" onclick="unlinkTransferFromGroup('${t.id}', '${gObj.id}')">🚫</button>
-            </div>
-          `).join('')}
+          ${transfers.map(t => {
+            const isAir = (t.tipoTransporte || 'terrestre') === 'aereo';
+            const icon  = isAir ? ICONS.flight : ICONS.bus;
+            return `
+              <div style="font-size:.92em;color:#333;display:flex;gap:.4em;align-items:center;">
+                <span>${icon} ${transferDetailLine(t)}</span>
+                <button class="btn-small" title="Editar traslado/transfer"
+                        onclick="openModal(${JSON.stringify({id:t.id})} && (function(x){return Object.assign({},t,{id:'${t.id}'})})() )">
+                  ${ICONS.edit}
+                </button>
+                <button class="btn-small" title="Eliminar traslado/transfer" onclick="deleteVuelo('${t.id}')">
+                  ${ICONS.del}
+                </button>
+              </div>
+            `;
+          }).join('')}
         </div>
       ` : '';
+
 
       return `
         <div class="group-item">
@@ -1572,7 +1631,9 @@ async function renderVuelos(){
     `;
 
     // Inyecta palabra "TRANSFER" en el textContent de la card para que el buscador lo encuentre
-    const transferSearchTag = (!isAereo && v.isTransfer) ? `<span style="display:none">TRANSFER</span>` : '';
+    const transferSearchTag = v.isTransfer
+      ? `<span style="display:none">${isAereo ? 'TRASLADO' : 'TRANSFER'}</span>`
+      : '';
 
     const card = document.createElement('div');
     card.className = 'flight-card';
