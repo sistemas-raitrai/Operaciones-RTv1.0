@@ -1452,8 +1452,7 @@ async function renderVuelos(){
             return `
               <div style="font-size:.92em;color:#333;display:flex;gap:.4em;align-items:center;">
                 <span>${icon} ${transferDetailLine(t)}</span>
-                <button class="btn-small" title="Editar traslado/transfer"
-                        onclick="openModal(${JSON.stringify({id:t.id})} && (function(x){return Object.assign({},t,{id:'${t.id}'})})() )">
+                <button class="btn-small" title="Editar traslado/transfer" data-edit-transfer-id="${t.id}">
                   ${ICONS.edit}
                 </button>
                 <button class="btn-small" title="Eliminar traslado/transfer" onclick="deleteVuelo('${t.id}')">
@@ -1464,7 +1463,6 @@ async function renderVuelos(){
           }).join('')}
         </div>
       ` : '';
-
 
       return `
         <div class="group-item">
@@ -1657,6 +1655,21 @@ async function renderVuelos(){
     `;
     card.querySelector('.btn-edit').onclick = () => openModal(v);
     card.querySelector('.btn-del' ).onclick = () => deleteVuelo(v.id);
+
+    // Editar TRASLADO/TRANSFER (botones generados dentro de transferLines)
+    card.querySelectorAll('[data-edit-transfer-id]').forEach(btn => {
+      btn.addEventListener('click', async (ev) => {
+        const id = ev.currentTarget.getAttribute('data-edit-transfer-id');
+        try {
+          const snap = await getDoc(doc(db, 'vuelos', id));
+          if (!snap.exists()) { alert('Traslado/transfer no encontrado'); return; }
+          openModal({ id, ...snap.data() });
+        } catch (e) {
+          console.error(e);
+          alert('No se pudo abrir el traslado/transfer.');
+        }
+      });
+    });
 
     cont.appendChild(card);
   }
