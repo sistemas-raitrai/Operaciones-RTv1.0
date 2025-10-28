@@ -1147,29 +1147,29 @@ window.createTransferForGroup = async (vueloId, grupoId) => {
     const transferLeg = (prompt(`Leg del transfer (ida|vuelta|ida+vuelta). Sugerido: ${legDefault}`, legDefault) || '').toLowerCase();
     if (!['ida','vuelta','ida+vuelta'].includes(transferLeg)) return alert('Leg inválido');
 
-    const proveedor = toUpper(prompt('Proveedor (empresa de bus):', '') || '');
+    const proveedor = toUpper(prompt('Proveedor (EMPRESA):', '') || '');
     if (!proveedor) return alert('Proveedor requerido');
 
-    const numero = toUpper(prompt('Código/servicio (opcional):', '') || '');
+    const numero = toUpper(prompt('N° DE VUELO (SI APLICA):', '') || '');
 
-    const origen = toUpper(prompt('Origen (ej: COLEGIO X / SCL T1):', vuelo.origen || '') || '');
-    const destino = toUpper(prompt('Destino (ej: SCL T1 / COLEGIO X):', vuelo.destino || '') || '');
+    const origen = toUpper(prompt('Origen (ej: COLEGIO / PUERTO MONTT):', vuelo.origen || '') || '');
+    const destino = toUpper(prompt('Destino (ej: AEROPUERTO SANTIAGO / SANTIAGO):', vuelo.destino || '') || '');
     if (!origen || !destino) return alert('Origen y Destino son requeridos');
 
     let fechaIda = '', idaHora = '', fechaVuelta = '', vueltaHora = '';
     if (transferLeg === 'ida' || transferLeg === 'ida+vuelta'){
       fechaIda = toISO(prompt('Fecha IDA (YYYY-MM-DD):', vuelo.fechaIda || '') || '');
-      idaHora  = toHHMM(prompt('Hora IDA (HH:MM) (sugerencia: presentación o vuelo):', vuelo.presentacionIdaHora || vuelo.vueloIdaHora || '') || '');
+      idaHora  = toHHMM(prompt('Hora IDA (HH:MM) (HORARIO PRESENTACIÓN):', vuelo.presentacionIdaHora || vuelo.vueloIdaHora || '') || '');
     }
     if (transferLeg === 'vuelta' || transferLeg === 'ida+vuelta'){
       fechaVuelta = toISO(prompt('Fecha REGRESO (YYYY-MM-DD):', vuelo.fechaVuelta || '') || '');
-      vueltaHora  = toHHMM(prompt('Hora REGRESO (HH:MM) (sugerencia: presentación regreso o vuelo):', vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || '') || '');
+      vueltaHora  = toHHMM(prompt('Hora REGRESO (HH:MM) (HORARIO PRESENTACIÓN):', vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora || '') || '');
     }
 
     // Opcionales
     const capacidadMaxStr = prompt('Capacidad máxima (opcional, numérico):', '');
     const capacidadMax = capacidadMaxStr ? Math.max(parseInt(capacidadMaxStr,10) || 0,0) : null;
-    const categoriaTarifa = toUpper(prompt('Categoría Tarifa (ej: TRANSFER-AEROPUERTO, INTERURBANO) (opcional):','TRANSFER-AEROPUERTO') || '');
+    const categoriaTarifa = toUpper(prompt('CATEGORÍA (ej: TRANSFER-AEROPUERTO, TRASLADO-AEROPUERTO):','TRANSFER-AEROPUERTO') || '');
 
     let pay = normalizeVueloPayload({
       tipoTransporte: 'terrestre',
@@ -1195,11 +1195,11 @@ window.createTransferForGroup = async (vueloId, grupoId) => {
       antes: null, despues: pay, usuario: currentUserEmail, ts: serverTimestamp()
     });
 
-    alert('Transfer creado y vinculado al grupo ✅');
+    alert('TRASLADO / TRASNFER CREADO ✅');
     renderVuelos();
   } catch(e){
     console.error(e);
-    alert('No se pudo crear el transfer.');
+    alert('NO SE HA PODIDO CREAR.');
   }
 };
 
