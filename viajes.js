@@ -1144,7 +1144,7 @@ window.createTransferForGroup = async (vueloId, grupoId) => {
 
     // Sugerencias desde vuelo
     const legDefault = (vuelo.presentacionVueltaHora || vuelo.vueloVueltaHora) ? 'ida+vuelta' : 'ida';
-    const transferLeg = (prompt(`Leg del transfer (ida|vuelta|ida+vuelta). Sugerido: ${legDefault}`, legDefault) || '').toLowerCase();
+    const transferLeg = (prompt(`TRAMOS: ${legDefault}`, legDefault) || '').toLowerCase();
     if (!['ida','vuelta','ida+vuelta'].includes(transferLeg)) return alert('Leg inválido');
 
     const proveedor = toUpper(prompt('Proveedor (EMPRESA):', '') || '');
