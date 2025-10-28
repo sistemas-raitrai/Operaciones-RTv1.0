@@ -851,6 +851,8 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+  const fechaInicioViajeISO = computeFechaInicioViaje(vuelosNorm);
+  const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
 
   hoja.innerHTML = `
       <div style="text-align:center;margin-bottom:10px;">
@@ -1307,10 +1309,12 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
-  const fechaInicioViajeISO = computeFechaInicioViaje(vuelosNorm);
-  const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
+  
   const documentosHTML = renderDocsList(docsText);
-  const recomendacionesHTML = Array.isArray(recs) ? recs.map(r=>`<li>${r}</li>`).join('') : `<li>${recs}</li>`;
+  const recomendacionesHTML = Array.isArray(recs)
+    ? recs.map(r => `<li>${r}</li>`).join('')
+    : `<li>${recs}</li>`;
+
 
   /* ===== itinerario (punto 7, igual que antes) ===== */
   const itinHTML = (() => {
