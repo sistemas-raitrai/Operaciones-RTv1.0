@@ -643,6 +643,7 @@ function addTramoRow(){
 
 // ======= Guardar / Editar doc (vuelo/trayecto) =======
 
+// ======= Guardar / Editar doc (vuelo/trayecto) =======
 async function onSubmitVuelo(evt){
   evt.preventDefault();
   const f = (id) => document.getElementById(id);
@@ -653,7 +654,6 @@ async function onSubmitVuelo(evt){
   const publicar = !!document.getElementById('m-publicar')?.checked;
   // NUEVO: encuentro aeropuerto
   const encuentroAeropuerto = toUpper(document.getElementById('m-encuentroAeropuerto')?.value?.trim() || '');
-
 
   // Grupos seleccionados (preserva records al editar)
   const sel = choiceGrupos.getValue(true);
@@ -702,11 +702,11 @@ async function onSubmitVuelo(evt){
           fechaIda:  toISO(t.fechaIda),
           presentacionIdaHora: toHHMM(t.presentacionIdaHora),
           vueloIdaHora:        toHHMM(t.vueloIdaHora),
-          arriboIdaHora:       toHHMM(t.arriboIdaHora),          // NUEVO
-          fechaVuelta:  toISO(t.fechaVuelta),
+          arriboIdaHora:       toHHMM(t.arriboIdaHora),
+          fechaVuelta:         toISO(t.fechaVuelta),
           presentacionVueltaHora: toHHMM(t.presentacionVueltaHora),
           vueloVueltaHora:        toHHMM(t.vueloVueltaHora),
-          arriboVueltaHora:       toHHMM(t.arriboVueltaHora)     // NUEVO
+          arriboVueltaHora:       toHHMM(t.arriboVueltaHora)
         };
         if (tipo === 'ida'){ base.fechaVuelta=''; base.presentacionVueltaHora=''; base.vueloVueltaHora=''; base.arriboVueltaHora=''; }
         if (tipo === 'vuelta'){ base.fechaIda=''; base.presentacionIdaHora=''; base.vueloIdaHora=''; base.arriboIdaHora=''; }
@@ -715,7 +715,7 @@ async function onSubmitVuelo(evt){
       grupos: gruposArr,
       reservaFechaLimite,
       reservaEstado: reservaEstadoForm,
-      encuentroAeropuerto                                              // NUEVO
+      encuentroAeropuerto
     };
 
   } else if (tipoTransporte === 'aereo' && tipoVuelo === 'regular'){ // regular simple
@@ -731,14 +731,14 @@ async function onSubmitVuelo(evt){
       fechaVuelta: f('m-fechaVuelta')?.value || '',
       presentacionIdaHora:     toHHMM(f('m-presentacionIdaHora')?.value || ''),
       vueloIdaHora:            toHHMM(f('m-vueloIdaHora')?.value || ''),
-      arriboIdaHora:           toHHMM(f('m-arriboIdaHora')?.value || ''),        // NUEVO
+      arriboIdaHora:           toHHMM(f('m-arriboIdaHora')?.value || ''),
       presentacionVueltaHora:  toHHMM(f('m-presentacionVueltaHora')?.value || ''),
       vueloVueltaHora:         toHHMM(f('m-vueloVueltaHora')?.value || ''),
-      arriboVueltaHora:        toHHMM(f('m-arriboVueltaHora')?.value || ''),     // NUEVO
+      arriboVueltaHora:        toHHMM(f('m-arriboVueltaHora')?.value || ''),
       grupos: gruposArr,
       reservaFechaLimite,
       reservaEstado: reservaEstadoForm,
-      encuentroAeropuerto                                                  // NUEVO
+      encuentroAeropuerto
     };
 
   } else if (tipoTransporte === 'aereo') { // CHARTER
@@ -753,14 +753,14 @@ async function onSubmitVuelo(evt){
       fechaVuelta: f('m-fechaVuelta')?.value || '',
       presentacionIdaHora:     toHHMM(f('m-presentacionIdaHora')?.value || ''),
       vueloIdaHora:            toHHMM(f('m-vueloIdaHora')?.value || ''),
-      arriboIdaHora:           toHHMM(f('m-arriboIdaHora')?.value || ''),        // NUEVO
+      arriboIdaHora:           toHHMM(f('m-arriboIdaHora')?.value || ''),
       presentacionVueltaHora:  toHHMM(f('m-presentacionVueltaHora')?.value || ''),
       vueloVueltaHora:         toHHMM(f('m-vueloVueltaHora')?.value || ''),
-      arriboVueltaHora:        toHHMM(f('m-arriboVueltaHora')?.value || ''),     // NUEVO
+      arriboVueltaHora:        toHHMM(f('m-arriboVueltaHora')?.value || ''),
       grupos: gruposArr,
       reservaFechaLimite,
       reservaEstado: reservaEstadoForm,
-      encuentroAeropuerto                                                  // NUEVO
+      encuentroAeropuerto
     };
 
   } else {
@@ -786,74 +786,57 @@ async function onSubmitVuelo(evt){
   // Normaliza + agrega claves mínimas
   pay = normalizeVueloPayload(pay);
   // Marcas de publicación en el doc de 'vuelos'
-  pay.publicar      = publicar;
-  pay.publishScope  = publicar ? 'PUBLICA' : 'PRIVADA';
+  pay.publicar        = publicar;
+  pay.publishScope    = publicar ? 'PUBLICA' : 'PRIVADA';
   pay.publicUpdatedBy = currentUserEmail;
+  pay.grupoIds        = buildGrupoIds(pay.grupos);
+  pay.updatedAt       = serverTimestamp();
 
-  pay.grupoIds  = buildGrupoIds(pay.grupos);
-  pay.updatedAt = serverTimestamp();
-
+  // ⬇️ AQUÍ VA EL ÚNICO if/else (sin duplicados) ⬇️
   if (isEdit){
-  const ref = doc(db,'vuelos', editId);
-  const before = prevDoc ?? (await getDoc(ref)).data();
+    const ref = doc(db,'vuelos', editId);
+    const before = prevDoc ?? (await getDoc(ref)).data();
 
-  // ⇢ Separar payload con horarios (payOriginal) vs sin horarios (paySansHorarios)
-  const { payOriginal, paySansHorarios } = splitHorarios(pay);
+    // ⇢ Separar payload con horarios (payOriginal) vs sin horarios (paySansHorarios)
+    const { payOriginal, paySansHorarios } = splitHorarios(pay);
 
-  // Marcas de cambio de estado de reserva (se preserva igual)
-  if ((before?.reservaEstado || 'pendiente') !== (pay.reservaEstado || 'pendiente')){
-    paySansHorarios.reservaChangedBy = currentUserEmail;
-    paySansHorarios.reservaTs = serverTimestamp();
-  }
+    // Marcas de cambio de estado de reserva
+    if ((before?.reservaEstado || 'pendiente') !== (pay.reservaEstado || 'pendiente')){
+      paySansHorarios.reservaChangedBy = currentUserEmail;
+      paySansHorarios.reservaTs = serverTimestamp();
+    }
 
-  // Si PUBLICAR: guardamos el doc con horarios
-  // Si NO PUBLICAR: guardamos sin los campos de horario (y sin tramos) → no se “tocan”
-  const toSave = publicar ? payOriginal : paySansHorarios;
+    // Si PUBLICAR: guardamos el doc con horarios
+    // Si NO PUBLICAR: guardamos sin los campos de horario (y sin tramos)
+    const toSave = publicar ? payOriginal : paySansHorarios;
 
-  await updateDoc(ref, toSave);
+    await updateDoc(ref, toSave);
 
-  await addDoc(collection(db,'historial'), {
-    tipo:'vuelo-edit', vueloId: editId,
-    antes: before, despues: toSave,
-    usuario: currentUserEmail, ts: serverTimestamp()
-  });
-
-  // Mantener espejos de horarios:
-  //   - Siempre actualiza el DRAFT con los horarios actuales (se publiquen o no)
-  //   - Si PUBLICAR true → también escribe/actualiza en horarios_publicos
-  await upsertHorarios(payOriginal, editId, publicar, !!before?.publicar);
-
-} else {
-  // ⇢ Nuevo documento
-  const { payOriginal, paySansHorarios } = splitHorarios(pay);
-
-  // Si PUBLICAR: creamos el doc con horarios
-  // Si NO PUBLICAR: creamos el doc sin horarios → los horarios quedan sólo en el borrador
-  const toCreate = publicar ? payOriginal : paySansHorarios;
-
-  toCreate.createdAt = serverTimestamp();
-  const ref = await addDoc(collection(db,'vuelos'), toCreate);
-
-  await addDoc(collection(db,'historial'), {
-    tipo:'vuelo-new', vueloId: ref.id,
-    antes: null, despues: toCreate,
-    usuario: currentUserEmail, ts: serverTimestamp()
-  });
-
-  // Espejos de horarios: siempre DRAFT; si PUBLICAR, también PUBLICO
-  await upsertHorarios(payOriginal, ref.id, publicar, false);
-}
-
-  } else {
-    pay.createdAt = serverTimestamp();
-    const ref = await addDoc(collection(db,'vuelos'), pay);
     await addDoc(collection(db,'historial'), {
-      tipo:'vuelo-new', vueloId: ref.id,
-      antes: null, despues: pay,
+      tipo:'vuelo-edit', vueloId: editId,
+      antes: before, despues: toSave,
       usuario: currentUserEmail, ts: serverTimestamp()
     });
-    // ⇢ Mantener espejo de horarios (draft + público opcional)
-    await upsertHorarios(pay, ref.id, publicar, false);
+
+    // Espejos de horarios
+    await upsertHorarios(payOriginal, editId, publicar, !!before?.publicar);
+
+  } else {
+    // ⇢ Nuevo documento
+    const { payOriginal, paySansHorarios } = splitHorarios(pay);
+    const toCreate = publicar ? payOriginal : paySansHorarios;
+
+    toCreate.createdAt = serverTimestamp();
+    const ref = await addDoc(collection(db,'vuelos'), toCreate);
+
+    await addDoc(collection(db,'historial'), {
+      tipo:'vuelo-new', vueloId: ref.id,
+      antes: null, despues: toCreate,
+      usuario: currentUserEmail, ts: serverTimestamp()
+    });
+
+    // Espejos de horarios: siempre DRAFT; si PUBLICAR, también PUBLICO
+    await upsertHorarios(payOriginal, ref.id, publicar, false);
   }
 
   closeModal();
