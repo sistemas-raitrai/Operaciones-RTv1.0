@@ -1478,7 +1478,7 @@ async function renderVuelos(){
               <button class="btn-small" style="margin-left:.4em" onclick="addReserva('${v.id}', ${idx})">➕</button>
               <button class="btn-small" style="margin-left:.4em;background:#ffc107;border:1px solid #d39e00" 
                 title="Agregar traslado terrestre (TRANSFER) a este grupo" 
-                onclick="createTransferForGroup('${v.id}', '${gObj.id}')">🚌➕</button>
+                onclick="createTransferForGroup('${v.id}', '${gObj.id}')">✈️/🚌➕</button>
             </div>
             ${transferLines}
           </div>
