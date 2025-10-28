@@ -642,8 +642,6 @@ function addTramoRow(){
 }
 
 // ======= Guardar / Editar doc (vuelo/trayecto) =======
-
-// ======= Guardar / Editar doc (vuelo/trayecto) =======
 async function onSubmitVuelo(evt){
   evt.preventDefault();
   const f = (id) => document.getElementById(id);
