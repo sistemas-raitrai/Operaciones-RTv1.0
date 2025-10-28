@@ -219,6 +219,33 @@ function normalizeVueloPayload(pay){
   return pay;
 }
 
+// === Helper: separar horarios para no tocarlos al guardar sin publicar ===
+function splitHorarios(v){
+  // Clon superficial del payload completo (con horarios)
+  const payOriginal = { ...v };
+
+  // Clon para guardar SIN tocar horarios del doc (cuando no se publica)
+  const paySansHorarios = { ...v };
+
+  // 6 horarios top-level de AÉREO
+  const horarioKeysTop = [
+    'presentacionIdaHora','vueloIdaHora','arriboIdaHora',
+    'presentacionVueltaHora','vueloVueltaHora','arriboVueltaHora'
+  ];
+
+  // Si es aéreo, removemos del "sans" esos 6 campos para no pisarlos
+  if ((v.tipoTransporte || 'aereo') === 'aereo'){
+    horarioKeysTop.forEach(k => { delete paySansHorarios[k]; });
+  }
+
+  // Si es AÉREO REGULAR con TRAMOS: no actualizamos el array "tramos" cuando NO publicas
+  if ((v.tipoTransporte || 'aereo') === 'aereo' && v.tipoVuelo === 'regular' && Array.isArray(v.tramos) && v.tramos.length){
+    delete paySansHorarios.tramos;
+  }
+
+  return { payOriginal, paySansHorarios };
+}
+
 // ======= Helpers de UI/formatos =======
 
 function fmtFecha(iso){
@@ -767,20 +794,55 @@ async function onSubmitVuelo(evt){
   pay.updatedAt = serverTimestamp();
 
   if (isEdit){
-    const ref = doc(db,'vuelos', editId);
-    const before = prevDoc ?? (await getDoc(ref)).data();
-    if ((before?.reservaEstado || 'pendiente') !== (pay.reservaEstado || 'pendiente')){
-      pay.reservaChangedBy = currentUserEmail;
-      pay.reservaTs = serverTimestamp();
-    }
-    await updateDoc(ref, pay);
-    await addDoc(collection(db,'historial'), {
-      tipo:'vuelo-edit', vueloId:editId,
-      antes: before, despues: pay,
-      usuario: currentUserEmail, ts: serverTimestamp()
-    });
-    // ⇢ Mantener espejo de horarios (draft + público opcional)
-    await upsertHorarios(pay, editId, publicar, !!before?.publicar);
+  const ref = doc(db,'vuelos', editId);
+  const before = prevDoc ?? (await getDoc(ref)).data();
+
+  // ⇢ Separar payload con horarios (payOriginal) vs sin horarios (paySansHorarios)
+  const { payOriginal, paySansHorarios } = splitHorarios(pay);
+
+  // Marcas de cambio de estado de reserva (se preserva igual)
+  if ((before?.reservaEstado || 'pendiente') !== (pay.reservaEstado || 'pendiente')){
+    paySansHorarios.reservaChangedBy = currentUserEmail;
+    paySansHorarios.reservaTs = serverTimestamp();
+  }
+
+  // Si PUBLICAR: guardamos el doc con horarios
+  // Si NO PUBLICAR: guardamos sin los campos de horario (y sin tramos) → no se “tocan”
+  const toSave = publicar ? payOriginal : paySansHorarios;
+
+  await updateDoc(ref, toSave);
+
+  await addDoc(collection(db,'historial'), {
+    tipo:'vuelo-edit', vueloId: editId,
+    antes: before, despues: toSave,
+    usuario: currentUserEmail, ts: serverTimestamp()
+  });
+
+  // Mantener espejos de horarios:
+  //   - Siempre actualiza el DRAFT con los horarios actuales (se publiquen o no)
+  //   - Si PUBLICAR true → también escribe/actualiza en horarios_publicos
+  await upsertHorarios(payOriginal, editId, publicar, !!before?.publicar);
+
+} else {
+  // ⇢ Nuevo documento
+  const { payOriginal, paySansHorarios } = splitHorarios(pay);
+
+  // Si PUBLICAR: creamos el doc con horarios
+  // Si NO PUBLICAR: creamos el doc sin horarios → los horarios quedan sólo en el borrador
+  const toCreate = publicar ? payOriginal : paySansHorarios;
+
+  toCreate.createdAt = serverTimestamp();
+  const ref = await addDoc(collection(db,'vuelos'), toCreate);
+
+  await addDoc(collection(db,'historial'), {
+    tipo:'vuelo-new', vueloId: ref.id,
+    antes: null, despues: toCreate,
+    usuario: currentUserEmail, ts: serverTimestamp()
+  });
+
+  // Espejos de horarios: siempre DRAFT; si PUBLICAR, también PUBLICO
+  await upsertHorarios(payOriginal, ref.id, publicar, false);
+}
 
   } else {
     pay.createdAt = serverTimestamp();
