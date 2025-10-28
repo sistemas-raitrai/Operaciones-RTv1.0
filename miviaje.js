@@ -832,7 +832,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
     <ol style="padding-left:18px;margin:0;">
       <li class="punto1" style="margin-bottom:12px;">
-        <div style="font-weight:700;">CONFIRMACIÓN DE HORARIO DE SALIDA</div>
+        <div style="font-weight:700;">INFORMACIÓN GENERAL</div>
         ${legendInline ? `<div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${legendInline}</div>` : ''}
         <div class="presentacion" style="line-height:1.35;">
           Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino a ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
@@ -841,7 +841,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
       </li>
 
       <li style="margin-bottom:12px;">
-        <div style="font-weight:700;">INFORMACIÓN DE VUELOS CONFIRMADOS</div>
+        <div style="font-weight:700;">INFORMACIÓN DEL PLAN DE VIAJE</div>
         <div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">Los horarios de los vuelos podrían ser modificados por la Línea Aérea contratada sin previo aviso</div>
         ${vuelosHTML}
       </li>
