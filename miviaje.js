@@ -693,7 +693,7 @@ function getDERTextos(programa, overrides = {}) {
   // Base equipaje (común a todos)
   const equipajeText1 =
     overrides.equipaje1 ||
-    'Equipaje en bodega 01 Maleta (peso máximo 23 kg.) el cual debe tener como medidas máximo 158 cm lineales (largo, ancho, alto), más un bolso de mano. (peso máximo 5 Kg.)';
+    'Equipaje en bodega 01 Maleta (peso máximo 23 kg.) el cual debe tener como medidas máximo 158 cm lineales (largo, ancho, alto), más un bolso de mano (peso máximo 5 Kg.). Equipaje adicional será cobrado por la empresa de transporte respectiva.';
   const equipajeText2 =
     overrides.equipaje2 ||
     'Está prohibido transportar líquidos, elementos corto-punzantes o de aseo en el bolso de mano.';
@@ -707,14 +707,14 @@ function getDERTextos(programa, overrides = {}) {
           title: 'NACIONALES',
           items: [
             'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).',
-            'Verificar que la autorización notarial esté con los datos correctos de Nombres / Rut, la cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país (según detalle de normativa entregada con anticipación a los encargados del grupo).'
+            'Verificar que la autorización notarial de quienes tengan la patria potestad del menor esté con los datos correctos de Nombres / Rut, la cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país (según detalle de normativa entregada con anticipación a los encargados del grupo).'
           ]
         },
         {
           title: 'EXTRANJEROS',
           items: [
             'Verificar que Cédula de Identidad Chilena y Pasaporte de origen, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).',
-            'Verificar con consulado de país de destino detalle de requerimientos para el ingreso y salida del país para menores no acompañados desde Chile. Es de absoluta responsabilidad de los tutores del menor encargarse de la correcta documentación para el viaje.'
+            'Verificar con consulado del país de destino los requerimientos para el ingreso y salida de acuerdo a la nacionalidad del menor. Es de absoluta responsabilidad de los tutores del menor encargarse de la correcta documentación para el viaje.'
           ]
         }
       ];
