@@ -18,6 +18,59 @@ let grupos = [];               // documentos de 'grupos'
 let fechasOrdenadas = [];      // ['YYYY-MM-DD', ...] con pax > 0
 let proveedores = {};          // mapa proveedor -> {contacto, correo}
 
+// ===== [NUEVO] Índice de vuelos por grupo (root collection 'vuelos') =====
+let IDX_VUELOS_POR_GRUPO = new Map();
+
+/** Crea una etiqueta legible del vuelo */
+function makeVueloLabel(v) {
+  const num = (v.numero || '').toString().trim();              // ej: "LA 269 // LA 60"
+  const ori = (v.origen || '').toString().trim();              // ej: "SANTIAGO SCL"
+  const des = (v.destino || '').toString().trim();             // ej: "CAMBORIÚ"
+  const tramo = (ori && des) ? ` (${ori}→${des})` : '';
+  return num ? `${num}${tramo}` : (tramo || '—');
+}
+
+/** Lee todos los vuelos y arma un Map: grupoId -> [ {label, v, idDoc} ] */
+async function buildIndexVuelosPorGrupo() {
+  IDX_VUELOS_POR_GRUPO.clear();
+  const snap = await getDocs(collection(db, 'vuelos'));
+  snap.forEach(ds => {
+    const v = ds.data() || {};
+    const { grupos = [], isTransfer } = v;
+    if (isTransfer) return;                // solo mostramos VUELOS (no transfers)
+    const label = makeVueloLabel(v);
+
+    (Array.isArray(grupos) ? grupos : []).forEach(g => {
+      const key = String(g?.id || '').trim(); // ej: "1412-101" (coincide con N° Negocio de la tabla)
+      if (!key) return;
+      const list = IDX_VUELOS_POR_GRUPO.get(key) || [];
+      list.push({ idDoc: ds.id, label, v });
+      IDX_VUELOS_POR_GRUPO.set(key, list);
+    });
+  });
+}
+
+/** Devuelve un string de vuelo(s) para el grupo; si hay más de uno, concatena. */
+function getVuelosLabelForGrupo(grupoKey, fechaISO) {
+  const list = IDX_VUELOS_POR_GRUPO.get(String(grupoKey).trim()) || [];
+  if (!list.length) return '—';
+
+  // Si tienes fechas por tramo, intenta matchear con el día del modal:
+  const sameDay = (d) => {
+    if (!d) return false;
+    const iso = new Date(d).toISOString().slice(0,10);
+    return iso === fechaISO;
+  };
+  const prefer = list.find(({ v }) =>
+    sameDay(v.idaFecha) || sameDay(v.vueltaFecha) || sameDay(v.fecha)
+  );
+  if (prefer) return prefer.label;
+
+  // Si no hay matcheo por fecha, devolvemos todos los labels unidos:
+  return list.map(x => x.label).join(' • ');
+}
+
+
 // ———————————————————————————————
 // 3️⃣ Referencias DOM
 // ———————————————————————————————
@@ -41,6 +94,8 @@ async function init() {
   // 5.1 Grupos
   const gruposSnap = await getDocs(collection(db, 'grupos'));
   grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  await buildIndexVuelosPorGrupo();
 
   // 5.2 Servicios (Servicios/{destino}/Listado)
   const servicios = [];
@@ -229,13 +284,16 @@ async function init() {
   // (Opcional) Botón "Actualizar" del modal detalle: reajusta columnas si ya existe
   const btnAct = document.getElementById('btnActualizarModal');
   if (btnAct) {
-    btnAct.onclick = () => {
-      if ($.fn.DataTable.isDataTable('#tablaModal')) {
+    btnAct.addEventListener('click', async () => {
+      await buildIndexVuelosPorGrupo();
+      const S = window.__ULTIMO_DETALLE_MODAL__;
+      if (S) {
+        mostrarListaDeGrupos(S.ids, S.titulo, S.dataset); // repinta y vuelve a calcular la columna "Vuelo"
+      } else if ($.fn.DataTable.isDataTable('#tablaModal')) {
         $('#tablaModal').DataTable().columns.adjust().draw(false);
       }
-    };
+    });
   }
-}
 
 // —————————————————————————————————————————————
 // 6️⃣ Reserva (abrir/guardar/enviar)
@@ -668,6 +726,9 @@ function recalcularCombinaciones(ctx) {
 
 // ———  Modal “Ver grupos” reutilizable desde Estadísticas
 function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
+  // guardamos el último estado para el botón "Actualizar"
+  window.__ULTIMO_DETALLE_MODAL__ = { ids, titulo, dataset };
+
   const lista = grupos.filter(g => ids.includes(g.id));
   const ctx = window.__ctxStats || { fechasVisibles: [], actividadesSet: new Set() };
 
@@ -703,7 +764,6 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
             .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
         }, 0);
       } else {
-        // mismo día: suma SOLO en días que cumplen la condición
         let total = 0;
         for (const f of ctx.fechasVisibles) {
           const acts = g.itinerario?.[f] || [];
@@ -731,12 +791,17 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
   document.querySelector('#modalDetalle h3').textContent =
     `${titulo} — Total grupos: ${lista.length} — Total PAX: ${totalPaxSeleccion}`;
 
-  // Filas para DataTables (no manipulamos el DOM del tbody a mano)
+  // Filas para DataTables (agregamos "Vuelo" SOLO si el contexto es por fecha)
   const dataRows = (!lista.length)
     ? []
     : lista.map(g => {
         const pax = paxSegunContexto(g);
-        return [g.id, g.nombreGrupo || '', pax, g.programa || ''];
+        const base = [g.id, g.nombreGrupo || '', pax, g.programa || ''];
+        if ((dataset.context || '') === 'fecha') {
+          const vuelo = getVuelosLabelForGrupo(g.id, dataset.fecha); // ← usa el índice
+          base.push(vuelo); // 5ª columna
+        }
+        return base;
       });
 
   renderTablaModal(dataRows);  // DataTables pinta y permite ordenar
@@ -744,6 +809,7 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
   modalDet.style.zIndex = '11000';
   modalDet.style.display = 'block';
 }
+
 
 // —————————————————————————————————————————————
 // 9️⃣ Excel del modal de estadísticas (3 hojas)
@@ -802,33 +868,53 @@ function exportarEstadisticasExcel() {
 // —————————————————————————————————————————————
 function renderTablaModal(dataRows) {
   const sel = '#tablaModal';
+  const colCount = dataRows[0]?.length || 4;
+
+  const baseCols = [
+    { data: 0, title: 'N° Negocio' },
+    { data: 1, title: 'Nombre Grupo' },
+    { data: 2, title: 'PAX' },
+    { data: 3, title: 'Programa' }
+  ];
+  const columns = (colCount === 5)
+    ? [...baseCols, { data: 4, title: 'Vuelo' }]
+    : baseCols;
 
   if ($.fn.DataTable.isDataTable(sel)) {
     const dt = $(sel).DataTable();
-    dt.clear();
-    dt.rows.add(dataRows);
-    dt.draw();
+    const currentCols = dt.columns().count();
+    if (currentCols !== colCount) {
+      dt.destroy();
+      $(sel).empty(); // limpia thead/tbody para que DataTables reconstruya los headers
+      $(sel).DataTable({
+        data: dataRows,
+        columns,
+        paging: false,
+        searching: false,
+        info: false,
+        order: [],
+        columnDefs: [
+          { targets: 2, type: 'num' }
+        ],
+        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' }
+      });
+    } else {
+      dt.clear();
+      dt.rows.add(dataRows);
+      dt.draw();
+    }
   } else {
     $(sel).DataTable({
       data: dataRows,
-      columns: [
-        { data: 0, title: 'N° Negocio' },
-        { data: 1, title: 'Nombre Grupo' },
-        { data: 2, title: 'PAX' },
-        { data: 3, title: 'Programa' }
-      ],
+      columns,
       paging: false,
       searching: false,
       info: false,
-      order: [], // sin orden inicial
+      order: [],
       columnDefs: [
-        { targets: 2, type: 'num' } // PAX como numérico
-        // Si N° Negocio es numérico puro, puedes añadir:
-        // { targets: 0, type: 'num' }
+        { targets: 2, type: 'num' }
       ],
-      language: {
-        url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
-      }
+      language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' }
     });
   }
 }
