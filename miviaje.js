@@ -1677,9 +1677,8 @@ function injectPrintStyles(){
       }
 
       /* 20% menos de tamaño de letra en tablas de secciones 1 y 2 */
-      #print-block .sec:nth-of-type(1) table.print-table,
-      #print-block .sec:nth-of-type(2) table.print-table{
-        font-size: 0.8em;        /* 20% menos */
+     #print-block table.print-table{
+        font-size: 0.8em;
       }
       #print-block .sec:nth-of-type(1) .print-table th,
       #print-block .sec:nth-of-type(2) .print-table th,
