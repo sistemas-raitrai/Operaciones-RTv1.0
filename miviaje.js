@@ -1327,7 +1327,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${legendInline}</div>
         ${fechaInicioViajeISO ? `<div><strong>Fecha de inicio del viaje:</strong> ${fechaInicioViajeTxt}</div>` : ''}
         <div class="presentacion" style="line-height:1.35;">
-          Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` en ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? `; salida a las ${P.salidaHora} hrs.` : ''}.
+          Presentación: ${P.lugar || '—'}
         </div>
         ${transfersHTML}
       </li>
@@ -1875,7 +1875,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
           ${hasColegioToAeropuerto ? 'El grupo contempla traslado COLEGIO → AEROPUERTO. ' : ''}
           ${hasAeropuertoToColegio ? 'Y traslado AEROPUERTO → COLEGIO.' : ''}
         </div>
-        <p>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} HRS` : ''}${P.aeropuerto ? ` EN ${U(P.aeropuerto)}` : ''}${P.salidaHora ? `; SALIDA A LAS ${P.salidaHora} HRS` : ''}.</p>
+        <p>Presentación: ${P.lugar || '—'}</p>
         ${transfersBlock}
       </div>
 
