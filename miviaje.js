@@ -941,7 +941,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         ${puntoEncuentroTexto ? `<div style="margin:2px 0 8px 0;"><strong>Punto de encuentro con el guía:</strong> ${puntoEncuentroTexto}</div>` : ''}
 
         ${ idaHeaderAereo ? `<div class="subsec" style="font-weight:700;margin:.35rem 0 .25rem 0;">${idaHeaderAereo}</div>` : '' }
-        ${ idaLegs.length ? `
+        ${ idaLegsPlan.length ? `
           <div style="overflow:auto;margin-top:2px;">
             <table style="border-collapse:collapse;min-width:560px;">
               <thead>
@@ -954,12 +954,12 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
                   <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de arribo</th>
                 </tr>
               </thead>
-              <tbody>${makeRows(idaLegs, 'ida')}</tbody>
+              <tbody>${makeRows(idaLegsPlan, 'ida')}</tbody>
             </table>
           </div>` : '' }
 
         ${ vtaHeaderAereo ? `<div class="subsec" style="font-weight:700;margin:.6rem 0 .25rem 0;">${vtaHeaderAereo}</div>` : '' }
-        ${ vueltaLegs.length ? `
+        ${ vueltaLegsPlan.length ? `
           <div style="overflow:auto;margin-top:2px;">
             <table style="border-collapse:collapse;min-width:560px;">
               <thead>
@@ -972,7 +972,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
                   <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de arribo</th>
                 </tr>
               </thead>
-              <tbody>${makeRows(vueltaLegs, 'vuelta')}</tbody>
+              <tbody>${makeRows(vueltaLegsPlan, 'vuelta')}</tbody>
             </table>
           </div>` : '' }
       `;
