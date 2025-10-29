@@ -25,37 +25,38 @@ function injectPageLightStyles(){
   const css = `
     :root { color-scheme: light; }
     html, body { background:#f7f7f8 !important; color:#111 !important; }
-
-    /* Asegura que todo lo de esta página tome el layout propio */
     body.confirmaciones-page * { color-scheme: light; }
 
-    /* ===== Ancho completo (sobre-escribe el max-width global de .main) ===== */
-    body.confirmaciones-page .main{
+    /* === ancho completo (por si el CSS global prevalece) === */
+    body.confirmaciones-page main.main.fullwidth,
+    body.confirmaciones-page .main.fullwidth{
       max-width: none !important;
       width: 100% !important;
-      margin: 18px auto 40px !important;
-      padding-left: 16px !important;
-      padding-right: 16px !important;
+      margin: 12px 0 40px !important;
+      padding-left: 12px !important;
+      padding-right: 12px !important;
+      display: block !important;
     }
-
-    /* El wrapper local y sus cards al 100% del ancho disponible */
-    body.confirmaciones-page #cf{ width:100% !important; }
-    body.confirmaciones-page #cf .card{
-      width:100% !important;
-      box-sizing:border-box;
+    body.confirmaciones-page .main.fullwidth > .card{
+      width: 100% !important;
+      max-width: none !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      display: block !important;
+      box-sizing: border-box;
     }
-
-    /* La tabla debe ocupar todo el ancho */
-    body.confirmaciones-page #cf table{ width:100% !important; }
-
-    /* En escritorio, fuerza 6 columnas reales para los filtros */
+    body.confirmaciones-page .main.fullwidth table{
+      width: 100% !important;
+    }
+    body.confirmaciones-page .main.fullwidth .filters .row{
+      display: grid !important;
+      gap: 12px !important;
+      grid-template-columns: 1fr !important;
+    }
     @media (min-width: 1000px){
-      body.confirmaciones-page #cf .filters{
+      body.confirmaciones-page .main.fullwidth .filters .row{
         grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
       }
-      /* spans respetados */
-      body.confirmaciones-page #cf .filters .col-2{ grid-column: span 2; }
-      body.confirmaciones-page #cf .filters .col-6{ grid-column: span 6; }
     }
   `;
   const s = document.createElement('style');
@@ -63,6 +64,7 @@ function injectPageLightStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 injectPageLightStyles();
 
 
