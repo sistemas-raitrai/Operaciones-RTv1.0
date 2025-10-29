@@ -389,13 +389,7 @@ async function loadVuelosInfo(g){
 
 /* ───────────────── FLIGHTS (igual lógica que portal) ──────────────── */
 function normalizeVuelo(v){
-  const get=(...keys)=>{
-    for(const k of keys){
-      const val=k.split('.').reduce((acc,part)=> (acc && acc[part]!==undefined)? acc[part] : undefined, v);
-      if(val!==undefined && val!==null && val!=='') return val;
-    }
-    return '';
-  };
+  const get=(...keys)=>{ for(const k of keys){ const val=k.split('.').reduce((acc,part)=> (acc && acc[part]!==undefined)? acc[part] : undefined, v); if(val!==undefined && val!==null && val!=='') return val; } return ''; };
 
   const numero    = String(get('numero','nro','numVuelo','vuelo','flightNumber','codigo','code')||'').toUpperCase();
   const proveedor = String(get('proveedor','empresa','aerolinea','compania')||'').toUpperCase();
@@ -408,15 +402,12 @@ function normalizeVuelo(v){
   const presentacionVueltaHora = normTime(get('presentacionVueltaHora'));
   const vueloVueltaHora        = normTime(get('vueloVueltaHora'));
 
-  // llegada/arribo
+  // ⬇️ NUEVO: posibles nombres de llegada/arribo (ida/vuelta)
   const llegadaIdaHora    = normTime(get('llegadaIdaHora','arriboIdaHora','horaArriboIda','arriboHoraIda'));
   const llegadaVueltaHora = normTime(get('llegadaVueltaHora','arriboVueltaHora','horaArriboVuelta','arriboHoraVuelta'));
 
-  // terrestre
-  const idaHora    = normTime(get('idaHora'));
-  const vueltaHora = normTime(get('vueltaHora'));
-
-  // NUEVO: texto de encuentro en aeropuerto
+  const idaHora    = normTime(get('idaHora'));     // terrestre (transfer/bus)
+  const vueltaHora = normTime(get('vueltaHora'));  // terrestre
   const encuentroAeropuerto = String(get('encuentroAeropuerto') || '').toUpperCase();
 
   const origen      = String(get('origen','desde','from','salida.origen','salida.iata','origenIATA','origenSigla','origenCiudad')||'').toUpperCase();
@@ -440,6 +431,7 @@ function normalizeVuelo(v){
     vueloIdaHora:           normTime(t.vueloIdaHora||''),
     presentacionVueltaHora: normTime(t.presentacionVueltaHora||''),
     vueloVueltaHora:        normTime(t.vueloVueltaHora||''),
+    // ⬇️ NUEVO: llegada por tramo
     llegadaIdaHora:         normTime(t.llegadaIdaHora||t.arriboIdaHora||''),
     llegadaVueltaHora:      normTime(t.llegadaVueltaHora||t.arriboVueltaHora||''),
     tipoTramo: (String(t.tipoTramo||'').toLowerCase())
@@ -453,7 +445,7 @@ function normalizeVuelo(v){
     idaHora, vueltaHora,
     isTransfer, transferLeg,
     tramos,
-    encuentroAeropuerto
+    encuentroAeropuerto 
   };
 }
 
@@ -496,7 +488,7 @@ function particionarVuelos(vuelosNorm) {
       salidaIda, salidaVuelta,
       arriboIda, arriboVuelta,
       tipoTransporte: v.tipoTransporte || 'aereo',
-      isTransfer: !!v.isTransfer || /transfer|traslado/i.test(String(v.transferLeg||'') + ' + ' + String(v.tipoVuelo||'')),
+      isTransfer: !!v.isTransfer || /transfer|traslado/i.test(String(v.transferLeg||'') + ' ' + String(v.tipoVuelo||'')),
       transferLeg: String(v.transferLeg||'').toLowerCase()
     };
   };
@@ -511,7 +503,10 @@ function particionarVuelos(vuelosNorm) {
     }
   }
 
+  // Orden cronológico básico
   aereos.sort((x, y) => (x.fecha || '').localeCompare(y.fecha || ''));
+
+  // Legs aéreos tal cual (NO colapsamos)
   const idaLegs    = aereos.filter(l => l.fechaIda);
   const vueltaLegs = aereos.filter(l => l.fechaVuelta);
 
@@ -522,12 +517,15 @@ function particionarVuelos(vuelosNorm) {
   const hasColegioToAeropuerto = terrestres.some(isColegioToAero);
   const hasAeropuertoToColegio = terrestres.some(isAeroToColegio);
 
+  // TRANSFER TERRESTRE por modo
   const transferTerrestreIda    = terrestres.filter(isColegioToAero).map(t => ({ ...t, __modo:'ida', __tipo:'terrestre' }));
   const transferTerrestreVuelta = terrestres.filter(isAeroToColegio).map(t => ({ ...t, __modo:'vuelta', __tipo:'terrestre' }));
 
+  // TRANSFER AÉREO ("traslado aéreo"): aquellos aéreos marcados isTransfer
   const transferAereoIda    = idaLegs.filter(l => l.isTransfer).map(l => ({ ...l, __modo:'ida', __tipo:'aereo' }));
   const transferAereoVuelta = vueltaLegs.filter(l => l.isTransfer).map(l => ({ ...l, __modo:'vuelta', __tipo:'aereo' }));
 
+  // Transfer especial “primero” para cálculo de presentación en Punto 1
   const transferIda   = transferTerrestreIda[0]   || transferAereoIda[0]   || null;
   const transferVuelta= transferTerrestreVuelta[0]|| transferAereoVuelta[0]|| null;
 
@@ -673,7 +671,7 @@ function extractPresentacion(grupo, vuelosNorm){
   if (!presHora && primeraIda) presHora = primeraIda.presentacionIda || primeraIda.salidaIda || '';
   if (!salidaHora && primeraIda) salidaHora = primeraIda.salidaIda || '';
 
-  // SOLO VUELTA (sin ida)
+  // Caso “SOLO VUELTA” (no hubo ida): tomar desde transferVuelta
   if (!presHora && transferVuelta){
     presHora   = transferVuelta.presentacionVuelta || transferVuelta.salidaVuelta || '';
     salidaHora = transferVuelta.salidaVuelta || '';
@@ -806,30 +804,10 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
   const P = extractPresentacion(grupo, vuelosNorm);
   const {
-    idaLegs, vueltaLegs, terrestres,
+    idaLegs, vueltaLegs,
     hasColegioToAeropuerto, hasAeropuertoToColegio,
-    transferTerrestreIda, transferTerrestreVuelta,
-    transferAereoIda, transferAereoVuelta
+    transferTerrestreIda, transferTerrestreVuelta
   } = particionarVuelos(vuelosNorm);
-  
-  // vuelos principales (solo aéreos NO transfer)
-  const principalIda    = idaLegs.filter(l => !l.isTransfer);
-  const principalVuelta = vueltaLegs.filter(l => !l.isTransfer);
-  
-  // plan terrestre (excluye colegio↔aeropuerto)
-  const U = s => String(s||'').toUpperCase();
-  const isColegioToAero = t => U(t.origen).includes('COLEGIO') && U(t.destino).includes('AEROPUERTO');
-  const isAeroToColegio = t => U(t.origen).includes('AEROPUERTO') && U(t.destino).includes('COLEGIO');
-  const planTerrestre   = (terrestres||[]).filter(t => !isColegioToAero(t) && !isAeroToColegio(t));
-  
-  // línea “Lugar de encuentro …” para Punto 2
-  const encuentroLabel = (principalIda.length || principalVuelta.length)
-    ? 'Lugar de encuentro (aeropuerto)'
-    : 'Lugar de encuentro (salida terrestre)';
-  const encuentroValor = (principalIda[0]?.origen) || (principalVuelta[0]?.origen) ||
-                         (planTerrestre[0]?.origen) || P.aeropuerto || '';
-  const encuentroHTML  = `<div style="margin:.2rem 0 .6rem 0;"><strong>${encuentroLabel}:</strong> ${encuentroValor || '—'}.</div>`;
-
 
 
   const legendBits = [];
@@ -847,16 +825,15 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
   // Encabezado “IDA: VUELO X VÍA SKY”
   const idaHeader = (() => {
-    const first = principalIda[0];
+    const first = idaLegs[0];
     if (!first) return '';
     return `IDA: VUELO ${chooseNum(first.numero,'ida')} VÍA ${first.aerolinea||''}`.trim();
   })();
   const vtaHeader = (() => {
-    const first = principalVuelta[0];
+    const first = vueltaLegs[0];
     if (!first) return '';
     return `VUELTA: VUELO ${chooseNum(first.numero,'vuelta')} VÍA ${first.aerolinea||''}`.trim();
   })();
-
 
   // Filas: sin N° de vuelo, con "Hora de arribo" al final
   const makeRows = (legs, modo) => legs.map(r => {
@@ -990,6 +967,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         ${fechaInicioViajeISO ? `<div><strong>Fecha de inicio del viaje:</strong> ${fechaInicioViajeTxt}</div>` : ''}
         <div class="presentacion" style="line-height:1.35;">
           Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino a ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
+          ${P.encuentro ? `<br><strong>Lugar de Encuentro:</strong> ${P.encuentro}.` : ''}
         </div>
       </li>
 
@@ -1225,6 +1203,7 @@ function injectPrintStyles(){
   const css = `
     #print-block{ display:none; }
 
+    /* Top grande para que todas las páginas partan igual que la 1 */
     @page{ size:A4; margin:32mm 12mm 12mm 12mm; }
 
     @media print{
@@ -1234,18 +1213,20 @@ function injectPrintStyles(){
         font:10pt/1.18 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
       }
 
+      /* Sólo el documento imprimible */
       #hoja-resumen,#mi-itin,#itin-slot,.dias-embebidas,header,nav,footer{ display:none !important; }
 
-      /* carril a la derecha para que el texto no choque con el logo */
+      /* 🔒 Reserva carril derecho para el logo (evita que el texto lo invada) */
       #print-block{ 
         display:block !important; 
         position:relative; 
         z-index:1; 
         white-space:normal !important;
-        padding-right:34mm !important;
+        padding-right:34mm !important;   /* << clave */
       }
-      #print-block .print-doc{ margin-right:0 !important; }
+      #print-block .print-doc{ margin-right:0 !important; } /* por si dejaste algún margen viejo */
 
+      /* Logo fijo arriba-derecha, fuera del texto */
       #print-logo{
         position:fixed !important;
         top:0mm !important;
@@ -1255,6 +1236,7 @@ function injectPrintStyles(){
         opacity:.95; pointer-events:none; z-index:2 !important;
       }
 
+      /* Títulos / espaciado */
       #print-block .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 6mm 0; }
       #print-block .doc-sub{ font-size:10pt; color:#374151; line-height:1.18; margin:0 0 4mm 0; }
 
@@ -1285,7 +1267,6 @@ function injectPrintStyles(){
   const s = document.createElement('style');
   s.id = ID; s.textContent = css; document.head.appendChild(s);
 }
-
 
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
 function injectScreenHotelStyles(){
@@ -1563,6 +1544,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 async function main(){
   const { numeroNegocio, id, hideNotes } = getParamsFromURL();
 
+  // ——— DOM refs y botón imprimir (REEMPLAZA TODO ESTE BLOQUE) ———
   const titleEl    = document.getElementById('grupo-title');
   const nombreEl   = document.getElementById('grupo-nombre');
   const numEl      = document.getElementById('grupo-numero');
@@ -1570,10 +1552,11 @@ async function main(){
   const fechasEl   = document.getElementById('grupo-fechas');
   const resumenPax = document.getElementById('resumen-pax');
   const cont       = document.getElementById('mi-itin');
-  const printEl    = document.getElementById('print-block');
-  const btnPrint   = document.getElementById('btnPrint');
+  const printEl    = document.getElementById('print-block'); // ← solo una vez
+  const btnPrint   = document.getElementById('btnPrint');    // ← declarado
   const btnShare   = document.getElementById('btnShare');
 
+  // Estilos de impresión + acción del botón
   injectPrintStyles();
   if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
@@ -1583,7 +1566,10 @@ async function main(){
     return;
   }
 
+  // 1) Preferir ID único
   let g = await fetchGrupoById(id);
+
+  // 2) Si no, buscar por número (con compuestos)
   if(!g){
     const lista = await buscarGruposPorNumero(numeroNegocio);
     if (!lista.length){ cont.innerHTML = `<p style="padding:1rem;">No se encontró el grupo ${numeroNegocio}.</p>`; if(printEl) printEl.textContent=''; return; }
@@ -1601,7 +1587,8 @@ async function main(){
   const shareUrl = `${location.origin}${location.pathname}${idLink}${hideNotes?'&notas=0':''}`;
   btnShare?.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); }catch{ const i=document.createElement('input'); i.value=shareUrl; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); alert('Enlace copiado'); } });
 
-  titleEl.textContent   = ' ' + (g.programa || '—').toString().toUpperCase();
+  // Cabecera
+  titleEl.textContent   = ' ' + (g.programa || '—').toString().toUpperCase(); // ← sin template literal
   nombreEl.textContent  = g.nombreGrupo || '—';
   numEl.textContent     = g.numeroNegocio ?? g.id ?? '—';
   destinoEl.textContent = g.destino || '—';
@@ -1611,29 +1598,45 @@ async function main(){
   const total = (totalA + totalE) || g.pax || g.cantidadgrupo || '';
   resumenPax.textContent = total ? `👥 Total pax: ${total}${(totalA||totalE)?` (A:${totalA} · E:${totalE})`:''}` : '';
 
+  // Fechas del itinerario
   let fechas=[];
   if (g.itinerario && typeof g.itinerario==='object') fechas = Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
   else if (g.fechaInicio && g.fechaFin) fechas = getDateRange(g.fechaInicio, g.fechaFin);
 
+  // === NUEVO: Traer VUELOS y HOTELES con las mismas reglas del portal ===
   const vuelosDocs = await loadVuelosInfo(g);
   const vuelosNorm = vuelosDocs.map(normalizeVuelo);
-  const hoteles    = await loadHotelesInfo(g);
+  const hoteles    = await loadHotelesInfo(g); // incluye dirección, web, fono, check in/out
 
+  // Hoja tipo documento (como la foto)
   renderHojaResumen(g, vuelosNorm, hoteles);
 
-  if (!fechas.length) {
-    cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
-  } else {
-    const slot = document.getElementById('itin-slot');
-    renderItin(g, fechas, hideNotes, slot || cont);
+  // Itinerario visual
+ if (!fechas.length) {
+   cont.innerHTML = `<p style="padding:1rem;">No hay itinerario disponible.</p>`;
+ } else {
+   const slot = document.getElementById('itin-slot');
+   renderItin(g, fechas, hideNotes, slot || cont);
+ }
+
+ // Genera el documento de IMPRESIÓN (una vez)
+ if (printEl) {
+   printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas || []);
+ }
+syncHotelColumnToDocs();
+window.addEventListener('resize', syncHotelColumnToDocs);
+}
+main().catch(err => {
+  console.error('Firestore error:', err?.code || err?.message, err);
+
+  const el = document.getElementById('mi-itin') || document.getElementById('itin-slot');
+  if (el) {
+    el.innerHTML = '<p style="padding:1rem;color:#b00;">Error cargando el itinerario.</p>';
   }
 
-  if (printEl) {
-    printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas || []);
-  }
-  syncHotelColumnToDocs();
-  window.addEventListener('resize', syncHotelColumnToDocs);
-}
+  const printEl = document.getElementById('print-block');
+  if (printEl) printEl.textContent = '';
+});
 
 // Debug helper visible en consola aunque el archivo sea módulo
 window.__itinDebug = function () {
