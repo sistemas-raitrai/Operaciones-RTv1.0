@@ -420,18 +420,20 @@ function injectPdfStyles(){
   .print-doc{
     background:#ffffff !important;
     color:#111 !important;
-    width:794px !important;       /* ≈ 210mm @96dpi */
+    width:210mm !important;          /* A4 exacto */
+    min-height:297mm;                 /* llena la primera página */
     box-sizing:border-box;
-    padding:12mm 12mm 12mm 12mm;  /* similar a margin PDF */
+    padding:8mm 10mm 10mm 10mm;       /* márgenes reales (pequeños) */
+    margin:0 !important;
     font:11pt/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   }
-  .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 6mm 0; text-align:center; }
-  .sec{ margin:0 0 5mm 0; }
-  .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2.5mm 0; }
+  .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 5mm 0; text-align:center; }
+  .sec{ margin:0 0 4.5mm 0; break-inside:avoid; page-break-inside:avoid; }
+  .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2mm 0; }
   .note{ color:#374151; font-size:10pt; }
   .flight-block{ margin:0 0 4mm 0; }
   .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
-  .flight-lines{ list-style:none; margin:0 0 2.2mm 0; padding:0; }
+  .flight-lines{ list-style:none; margin:0 0 2mm 0; padding:0; }
   .flight-lines li{ margin:.6mm 0; line-height:1.22; }
   .flight-lines .lbl{ font-weight:700; }
   .hoteles-list{ list-style:none; margin:.8mm 0 0 0; padding:0; }
@@ -439,14 +441,15 @@ function injectPdfStyles(){
   .hotel-grid{ display:grid; grid-template-columns:48mm 1fr; column-gap:5mm; }
   .hotel-right > div{ margin:.15mm 0; }
   .itinerario{ list-style:none; margin:0; padding:0; }
-  .itinerario .it-day{ margin:0 0 3.5mm 0; }
-  .closing{ text-align:center; font-weight:800; margin-top:8mm; }
+  .it-day{ margin:0 0 3mm 0; }
+  .closing{ text-align:center; font-weight:800; margin-top:7mm; }
   `;
   const s=document.createElement('style');
   s.id='pdf-styles';
   s.textContent=css;
   document.head.appendChild(s);
 }
+
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
@@ -806,18 +809,21 @@ async function descargarUno(grupoId){
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
 
   const opt = {
-    margin:       0, // ya dimos padding en .print-doc
+    margin: 0,                               // márgenes del PDF (0: usamos el padding CSS)
     filename,
-    image:        { type: 'jpeg', quality: 0.96 },
-    html2canvas:  {
+    pagebreak: { mode: ['css','legacy'] },   // respeta cortes si los usas
+    image: { type: 'jpeg', quality: 0.96 },
+    html2canvas: {
       scale: 2,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
-      windowWidth: 794
+      // ancho de ventana ≈ 210mm @96dpi (para evitar “encogimientos”)
+      windowWidth: Math.round(210 * 96 / 25.4)
     },
-    jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
+
 
   await html2pdf().set(opt).from(target).save();
   work.innerHTML = '';
