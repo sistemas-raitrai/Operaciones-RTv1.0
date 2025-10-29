@@ -938,7 +938,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     if (hayAereos) {
       return `
         <div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${planLegend}</div>
-        ${puntoEncuentroTexto ? `<div style="margin:2px 0 8px 0;"><strong>Punto de encuentro con el guía:</strong> ${puntoEncuentroTexto}</div>` : ''}
+        ${puntoEncuentroTexto ? `<div style="margin:2px 0 8px 0;"><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}</div>` : ''}
 
         ${ idaHeaderAereo ? `<div class="subsec" style="font-weight:700;margin:.35rem 0 .25rem 0;">${idaHeaderAereo}</div>` : '' }
         ${ idaLegsPlan.length ? `
@@ -982,7 +982,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     if (hayBusesPlan) {
       return `
         <div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${planLegend}</div>
-        ${puntoEncuentroTexto ? `<div style="margin:2px 0 8px 0;"><strong>Punto de encuentro con coordinador(a) de Raitrai:</strong> ${puntoEncuentroTexto}</div>` : ''}
+        ${puntoEncuentroTexto ? `<div style="margin:2px 0 8px 0;"><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}</div>` : ''}
 
         <div class="subsec" style="font-weight:700;margin:.35rem 0 .25rem 0;">IDA</div>
         <div style="overflow:auto;margin-top:2px;">
@@ -1023,7 +1023,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     // Sin nada
     return `
       <div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${planLegend}</div>
-      ${puntoEncuentroTexto ? `<div style="margin:2px 0 8px 0;"><strong>Punto de encuentro con coordinador(a) de Raitrai:</strong> ${puntoEncuentroTexto}</div>` : ''}
+      ${puntoEncuentroTexto ? `<div style="margin:2px 0 8px 0;"><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}</div>` : ''}
       <div style="opacity:.7;">— Sin información del plan —</div>
     `;
   })();
@@ -1661,7 +1661,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="sec">
         <div class="sec-title">2. INFORMACIÓN DEL PLAN DE VIAJE</div>
         <div class="note">${planLegend}</div>
-        ${puntoEncuentroTexto ? `<p><strong>Punto de encuentro con el guía:</strong> ${puntoEncuentroTexto}.</p>` : ''}
+        ${puntoEncuentroTexto ? `<p><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}.</p>` : ''}
         ${flightsBlock(idaLegsPlan, 'ida') || ''}
         ${flightsBlock(vueltaLegsPlan, 'vuelta') || ''}
         ${(!idaLegsPlan.length && !vueltaLegsPlan.length) ? (busesBlock(terrestresPlanIda, 'ida') + busesBlock(terrestresPlanVuelta, 'vuelta')) : ''}
