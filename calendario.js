@@ -34,6 +34,88 @@ function compararActividades(a = {}, b = {}) {
   return af - bf;
 }
 
+// ======================================================
+// Helpers de "Vuelos" (AGREGAR)
+//  - Extrae ids de grupo desde varios posibles esquemas.
+//  - Arma un resumen compacto del vuelo/trayecto.
+//  - Carga horarios publicados y, si no hay, usa draft como fallback.
+// ======================================================
+function _safe(v){ return (v ?? '').toString().trim(); }
+function _bon(fechaISO){
+  return (fechaISO && /^\d{4}-\d{2}-\d{2}$/.test(fechaISO))
+    ? formatearFechaBonita(fechaISO) : (fechaISO || '');
+}
+function _extractGroupIds(d={}){
+  if (Array.isArray(d.grupos))         return d.grupos.map(String);
+  if (Array.isArray(d.groups))         return d.groups.map(String);
+  if (Array.isArray(d.gruposIds))      return d.gruposIds.map(String);
+  if (d.statusPorGrupo && typeof d.statusPorGrupo === 'object')
+    return Object.keys(d.statusPorGrupo);
+  if (d.asignaciones && typeof d.asignaciones === 'object')
+    return Object.keys(d.asignaciones);
+  if (d.gruposMap && typeof d.gruposMap === 'object')
+    return Object.keys(d.gruposMap);
+  return [];
+}
+function _resumenHorario(d={}){
+  const transporte = (_safe(d.transporte) || _safe(d.tipoTransporte) || 'aereo').toUpperCase();
+  const etiqueta = (transporte === 'TERRESTRE') ? 'BUS' : 'AÉREO';
+  const prov  = _safe(d.proveedor);
+  const num   = _safe(d.numero);
+
+  // top-level más usados por tu modal
+  let ori = _safe(d.origen);
+  let des = _safe(d.destino);
+  const fIda = d.fechaIda || d.fecha_ida || d.idaFecha || d.fechaIdaTer || d['ida.fecha'] || '';
+  const fVta = d.fechaVuelta || d.fecha_vuelta || d.vueltaFecha || d.fechaVueltaTer || d['vuelta.fecha'] || '';
+
+  // horas (aéreo o bus)
+  const idaHora = d.vueloIdaHora || d.horaIda || d.idaHora || '';
+  const vtaHora = d.vueloVueltaHora || d.horaVuelta || d.vueltaHora || '';
+
+  // Si hay tramos, intenta tomar el primero y el último para compactar
+  if (Array.isArray(d.tramos) && d.tramos.length){
+    const first = d.tramos[0] || {};
+    const last  = d.tramos[d.tramos.length - 1] || {};
+    ori = _safe(first.origen) || ori;
+    des = _safe(last.destino) || des;
+  }
+
+  const ida = [ (ori && des) ? `${ori}→${des}` : '', _bon(fIda), _safe(idaHora) ].filter(Boolean).join(' ');
+  const vta = [ (des && ori) ? `${des}→${ori}` : '', _bon(fVta), _safe(vtaHora) ].filter(Boolean).join(' ');
+
+  const head = `${etiqueta} ${prov ? prov + ' ' : ''}${num}`.trim();
+  return [ head, ida ? `IDA: ${ida}` : '', vta ? `REG: ${vta}` : '' ]
+    .filter(Boolean).join(' · ');
+}
+
+async function cargarHorariosIndex(){
+  const index = new Map();
+
+  async function acum(nombreCol){
+    try{
+      const snap = await getDocs(collection(db, nombreCol));
+      snap.forEach(ds => {
+        const d = ds.data() || {};
+        const ids = _extractGroupIds(d);
+        if (!ids.length) return;
+        const resumen = _resumenHorario(d);
+        ids.forEach(gid => {
+          if (!index.has(gid)) index.set(gid, []);
+          index.get(gid).push(resumen);
+        });
+      });
+    }catch(err){
+      console.warn('No se pudo leer', nombreCol, err);
+    }
+  }
+
+  await acum('horarios_publicos');       // preferente: lo publicado
+  if (index.size === 0) await acum('horarios_draft'); // fallback: borradores
+
+  return index; // Map<groupId, string[]>
+}
+
 // Extrae parámetro de URL (si lo quieres usar luego)
 function getParametroURL(nombre) {
   const params = new URLSearchParams(window.location.search);
@@ -62,6 +144,7 @@ async function generarTablaCalendario(userEmail) {
   const fechasUnicas = new Set();
   const destinosSet = new Set();
   const aniosSet = new Set();
+  const indexHorarios = await cargarHorariosIndex(); // Map<groupId, string[]>
 
   snapshot.forEach(docSnap => {
     const d = docSnap.data();
@@ -110,13 +193,14 @@ async function generarTablaCalendario(userEmail) {
     $('#filtroAno').append(`<option value="${a}">${a}</option>`)
   );
 
-  // Cabecera de la tabla
+  // Cabecera de la tabla (REEMPLAZO)
   const $trhead = $('#encabezadoCalendario').empty();
   $trhead.append(`
     <th>N° Negocio</th>
     <th>Grupo</th>
     <th>Destino</th>
     <th>Programa</th>
+    <th>Vuelos</th>   <!-- NUEVA COLUMNA -->
     <th>Pax</th>
     <th>Año</th>      <!-- columna oculta para filtro de año -->
   `);
@@ -128,20 +212,26 @@ async function generarTablaCalendario(userEmail) {
     $trhead.append(`<th class="${clase}">${formatearFechaBonita(f)}</th>`);
   });
 
+
   // 3) Construir cuerpo de la tabla
   const $tbody = $('#cuerpoCalendario').empty();
   grupos.forEach(g => {
     const $tr = $('<tr>');
+    // Siete primeras celdas fijas (la 7ª es el Año y va oculta en DataTables) (REEMPLAZO)
     const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
-    // Seis primeras celdas fijas (la 6ª es el Año y va oculta en DataTables)
+    const vuelosTxt  = (indexHorarios.get(g.id) || []).join("\n");
+    
     $tr.append(
       $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
       $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
       $('<td>').text(g.destino).attr('data-doc-id', g.id),
       $('<td>').text(g.programa).attr('data-doc-id', g.id),
+      // NUEVO: columna Vuelos
+      $('<td>').text(vuelosTxt).attr('data-doc-id', g.id),
       $('<td>').text(resumenPax).attr('data-doc-id', g.id),
       $('<td>').text(g.anoViaje).attr('data-doc-id', g.id) // Año (oculto)
     );
+
 
     // Una celda por cada fecha (ordenando actividades por hora al mostrar)
     fechasOrdenadas.forEach(f => {
@@ -191,7 +281,7 @@ async function generarTablaCalendario(userEmail) {
     }],
     // Ocultamos la columna "Año" (index 5) pero la dejamos searchable
     columnDefs: [
-      { targets: [5], visible: false, searchable: true }
+      { targets: [6], visible: false, searchable: true }
     ],
     language: {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
@@ -210,7 +300,7 @@ async function generarTablaCalendario(userEmail) {
   // 7) Aplicar filtro año sobre la columna oculta 5 (NUEVO: ahora sí funciona)
   $('#filtroAno').on('change', function () {
     const val = this.value;
-    tabla.column(5).search(val ? '^'+val+'$' : '', true, false).draw();
+    tabla.column(6).search(val ? '^'+val+'$' : '', true, false).draw();
   });
 
   // 8) Toggle modo edición (activa contenteditable en todas las celdas del body)
