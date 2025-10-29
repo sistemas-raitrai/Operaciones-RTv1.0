@@ -1921,7 +1921,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <!-- 7. ITINERARIO -->
       <div class="sec itinerario-sec">
         <div class="sec-title">7. ITINERARIO DE VIAJE</div>
-        <div class="note">El orden de las actividades podría ser modificado por razones de coordinación.</div>
+        <div class="note">El orden de las actividades podría ser modificado por razones de coordinación o fuerza mayor.</div>
         ${itinHTML}
       </div>
 
