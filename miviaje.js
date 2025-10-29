@@ -77,6 +77,19 @@ function formatShortDate(iso){ // 25 de septiembre 2025
   const dt=new Date(y,m-1,d); const mes=dt.toLocaleDateString('es-CL',{month:'long'});
   return `${d} de ${mes} ${y}`;
 }
+
+// Mes abreviado a 3 letras para IMPRESIÓN
+function formatShortDate3(iso){
+  if(!iso) return '—';
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  // Nombre de mes en es-CL (p.ej. "septiembre") → "Sep"
+  const mesLargo = dt.toLocaleDateString('es-CL', { month:'long' });
+  const abbr = (mesLargo || '').slice(0,3);
+  const mes3 = abbr.charAt(0).toUpperCase() + abbr.slice(1).toLowerCase();
+  return `${d} de ${mes3} ${y}`;
+}
+
 function formatDateReadable(iso){ if(!iso) return '—'; const [y,m,d]=iso.split('-').map(Number); const dt=new Date(y,m-1,d); const wd=dt.toLocaleDateString('es-CL',{weekday:'long'}); const name=wd.charAt(0).toUpperCase()+wd.slice(1); return `${name} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`; }
 function formatDM(iso){ // 06/12
   if(!iso) return '';
@@ -698,16 +711,12 @@ function renderTransferTable(arr){
 // Celdas comunes
 const td = (v)=> `<td>${v ?? '—'}</td>`;
 
-// Tabla de PLAN (aéreo o terrestre) para impresión
+// Tabla de PLAN (aéreo o terrestre) para impresión — con mes 3 letras
 function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
   if (!legs.length) return '';
-  // Título
   const tituloModo = (modo === 'ida') ? 'IDA' : 'VUELTA / REGRESO';
-
-  // Para aéreos mostramos Nº vuelo y Arribo; para buses no.
   const isAereo = (tipo === 'aereo');
 
-  // Header “IDA: VUELO XXX VÍA YYY (CHARTER/REGULAR)”
   let header = '';
   if (isAereo && legs[0]){
     const f = legs[0];
@@ -719,7 +728,6 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
     header = tituloModo;
   }
 
-  // Filas
   const rows = legs.map(l=>{
     const fecha  = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
     const pres   = (modo==='ida') ? l.presentacionIda       : l.presentacionVuelta;
@@ -728,7 +736,7 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
     const { origen, destino } = maybeSwapOD(l.origen, l.destino, modo);
     return `
       <tr>
-        ${td(fecha ? formatShortDate(fecha) : '—')}
+        ${td(fecha ? formatShortDate3(fecha) : '—')}
         ${td(origen || '—')}
         ${td(pres   || '—')}
         ${td(salida || '—')}
@@ -737,7 +745,6 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
       </tr>`;
   }).join('');
 
-  // Head
   const headAereo = `
     <tr>
       <th>Fecha</th>
@@ -769,7 +776,7 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
     </div>`;
 }
 
-// Tabla de TRANSFERS (punto 1) para impresión
+// Tabla de TRANSFERS para IMPRESIÓN — con mes 3 letras y salida(terrestre)=presentación+30
 function printTableTransfers(arr = []){
   if (!arr.length) return '';
 
@@ -777,7 +784,6 @@ function printTableTransfers(arr = []){
   const terrestres = arr.filter(x => !isAereo(x));
   const aereos     = arr.filter(isAereo);
 
-  // TERRESTRE: 5 columnas, salida = presentación + 30 (si hay presentación)
   const rowsTer = terrestres.map(x=>{
     const modo = (x.__modo === 'vuelta') ? 'vuelta' : 'ida';
     const fecha = (modo==='ida') ? (x.fechaIda || x.fecha) : (x.fechaVuelta || x.fecha);
@@ -787,7 +793,7 @@ function printTableTransfers(arr = []){
     const { origen, destino } = maybeSwapOD(x.origen, x.destino, modo);
     return `
       <tr>
-        ${td(fecha ? formatShortDate(fecha) : '—')}
+        ${td(fecha ? formatShortDate3(fecha) : '—')}
         ${td(origen || '—')}
         ${td(pres   || '—')}
         ${td(salida || '—')}
@@ -812,7 +818,6 @@ function printTableTransfers(arr = []){
       </table>
     </div>` : '';
 
-  // AÉREO: 6 columnas (sí muestra Nº vuelo y Arribo)
   const rowsAer = aereos.map(x=>{
     const modo = (x.__modo === 'vuelta') ? 'vuelta' : 'ida';
     const fecha = (modo==='ida') ? (x.fechaIda || x.fecha) : (x.fechaVuelta || x.fecha);
@@ -823,7 +828,7 @@ function printTableTransfers(arr = []){
     const { origen, destino } = maybeSwapOD(x.origen, x.destino, modo);
     return `
       <tr>
-        ${td(fecha ? formatShortDate(fecha) : '—')}
+        ${td(fecha ? formatShortDate3(fecha) : '—')}
         ${td(nro || '—')}
         ${td(origen || '—')}
         ${td(pres   || '—')}
@@ -1607,7 +1612,7 @@ function injectPrintStyles(){
       #print-block .doc-sub{ font-size:10pt; color:#374151; line-height:1.18; margin:0 0 4mm 0; }
 
       #print-block .sec{ break-inside:avoid; page-break-inside:avoid; margin:0 0 5mm 0; }
-      #print-block .sec + .sec{ margin-top:5mm; }
+      #print-block .sec + .sec{ margin-top:15mm; }
       #print-block .sec-title{ font-weight:700; font-size:10.5pt; margin:0 0 2.5mm 0; }
 
       .flight-block{ margin:0 0 4mm 0; }
@@ -1669,6 +1674,19 @@ function injectPrintStyles(){
         background:#f3f4f6;
         text-align:left;
         font-weight:600;
+      }
+
+      /* 20% menos de tamaño de letra en tablas de secciones 1 y 2 */
+      #print-block .sec:nth-of-type(1) table.print-table,
+      #print-block .sec:nth-of-type(2) table.print-table{
+        font-size: 0.8em;        /* 20% menos */
+      }
+      #print-block .sec:nth-of-type(1) .print-table th,
+      #print-block .sec:nth-of-type(2) .print-table th,
+      #print-block .sec:nth-of-type(1) .print-table td,
+      #print-block .sec:nth-of-type(2) .print-table td{
+        padding: 1.6mm 2.2mm;    /* sutil ajuste acorde al tamaño menor */
+        line-height: 1.12;
       }
     }
   `;
