@@ -88,16 +88,6 @@ function makeVueloLabel(v) {
   return _join([ head + tramo, ida, vta ], '  ||  ');
 }
 
-
-/** Crea una etiqueta legible del vuelo */
-function makeVueloLabel(v) {
-  const num = (v.numero || '').toString().trim();              // ej: "LA 269 // LA 60"
-  const ori = (v.origen || '').toString().trim();              // ej: "SANTIAGO SCL"
-  const des = (v.destino || '').toString().trim();             // ej: "CAMBORIÚ"
-  const tramo = (ori && des) ? ` (${ori}→${des})` : '';
-  return num ? `${num}${tramo}` : (tramo || '—');
-}
-
 /** Lee todos los vuelos y arma un Map: grupoId -> [ {label, v, idDoc} ] */
 // === REEMPLAZO ===
 async function buildIndexVuelosPorGrupo() {
