@@ -7,6 +7,10 @@ import {
   collection, getDocs, doc, getDoc, query, where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+// Fuerzo una clase de página para poder sobreescribir estilos globales
+document.body.classList.add('confirmaciones-page');
+
+
 /* ──────────────────────────────────────────────────────────────────────
    Utilidades básicas
 ────────────────────────────────────────────────────────────────────── */
@@ -15,14 +19,44 @@ const TZ = 'America/Santiago';
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const safe = (v, fb='—') => (v===0||v)?v:fb;
 
-/* === UI CLARA / FORZAR MODO CLARO EN ESTA PÁGINA ======================= */
+/* === UI CLARA + LAYOUT DE ANCHO COMPLETO PARA ESTA PÁGINA ============ */
 function injectPageLightStyles(){
   if (document.getElementById('light-ui-overrides')) return;
   const css = `
     :root { color-scheme: light; }
     html, body { background:#f7f7f8 !important; color:#111 !important; }
-    /* Si algún tema global pone body oscuro, lo neutralizamos: */
+
+    /* Asegura que todo lo de esta página tome el layout propio */
     body.confirmaciones-page * { color-scheme: light; }
+
+    /* ===== Ancho completo (sobre-escribe el max-width global de .main) ===== */
+    body.confirmaciones-page .main{
+      max-width: none !important;
+      width: 100% !important;
+      margin: 18px auto 40px !important;
+      padding-left: 16px !important;
+      padding-right: 16px !important;
+    }
+
+    /* El wrapper local y sus cards al 100% del ancho disponible */
+    body.confirmaciones-page #cf{ width:100% !important; }
+    body.confirmaciones-page #cf .card{
+      width:100% !important;
+      box-sizing:border-box;
+    }
+
+    /* La tabla debe ocupar todo el ancho */
+    body.confirmaciones-page #cf table{ width:100% !important; }
+
+    /* En escritorio, fuerza 6 columnas reales para los filtros */
+    @media (min-width: 1000px){
+      body.confirmaciones-page #cf .filters{
+        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+      }
+      /* spans respetados */
+      body.confirmaciones-page #cf .filters .col-2{ grid-column: span 2; }
+      body.confirmaciones-page #cf .filters .col-6{ grid-column: span 6; }
+    }
   `;
   const s = document.createElement('style');
   s.id = 'light-ui-overrides';
@@ -30,7 +64,7 @@ function injectPageLightStyles(){
   document.head.appendChild(s);
 }
 injectPageLightStyles();
-/* ====================================================================== */
+
 
 
 function toISO(x){
