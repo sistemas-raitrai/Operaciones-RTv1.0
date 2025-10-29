@@ -1602,7 +1602,7 @@ function injectPrintStyles(){
         position:fixed !important;
         top:0mm !important;
         right:0mm !important;
-        width:30m !important;
+        width:23m !important;
         height:auto !important;
         opacity:.95; pointer-events:none; z-index:2 !important;
       }
