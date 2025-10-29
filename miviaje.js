@@ -651,7 +651,7 @@ function renderTransferTable(arr){
 
     return `
       <div style="overflow:auto;margin-top:6px;">
-        <div style="font-weight:600;margin:0 0 4px 0;">Traslados terrestres</div>
+        <div style="font-weight:600;margin:0 0 4px 0;">Terrestres</div>
         <table style="border-collapse:collapse;min-width:560px;">
           <thead>
             <tr>
@@ -672,7 +672,7 @@ function renderTransferTable(arr){
     const rows = aereos.map(x => rowHTML(x, x.__modo)).join('');
     return `
       <div style="overflow:auto;margin-top:${terrestres.length ? '10px' : '6px'};">
-        <div style="font-weight:600;margin:0 0 4px 0;">Traslados aéreos</div>
+        <div style="font-weight:600;margin:0 0 4px 0;">Aéreos</div>
         <table style="border-collapse:collapse;min-width:680px;">
           <thead>
             <tr>
@@ -714,7 +714,7 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
     const nro = chooseFlightNumber(f.numero, modo);
     const via = f.aerolinea ? ` VÍA ${String(f.aerolinea).toUpperCase()}` : '';
     const tipoVuelo = f.tipoVuelo ? ` (${String(f.tipoVuelo).toUpperCase()})` : '';
-    header = `${tituloModo}: VUELO ${nro}${via}${tipoVuelo}`.trim();
+    header = `${tituloModo}: VUELO ${nro}${via}`.trim();
   } else {
     header = tituloModo;
   }
@@ -797,7 +797,7 @@ function printTableTransfers(arr = []){
 
   const tableTer = terrestres.length ? `
     <div class="table-wrap">
-      <div class="table-title">Traslados terrestres</div>
+      <div class="table-title">Terrestres</div>
       <table class="print-table">
         <thead class="thead-muted">
           <tr>
@@ -835,7 +835,7 @@ function printTableTransfers(arr = []){
 
   const tableAer = aereos.length ? `
     <div class="table-wrap">
-      <div class="table-title">Traslados aéreos</div>
+      <div class="table-title">Aéreos</div>
       <table class="print-table">
         <thead class="thead-muted">
           <tr>
@@ -1135,12 +1135,12 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   const idaHeaderAereo = (() => {
     const f = idaLegsPlan[0]; if (!f) return '';
     const tipo = f.tipoVuelo ? ` (${String(f.tipoVuelo).toUpperCase()})` : '';
-    return `IDA: VUELO ${chooseNum(f.numero,'ida')} VÍA ${f.aerolinea||''}${tipo}`.trim();
+    return `IDA: VUELO ${chooseNum(f.numero,'ida')} VÍA ${f.aerolinea||''}`.trim();
   })();
   const vtaHeaderAereo = (() => {
     const f = vueltaLegsPlan[0]; if (!f) return '';
     const tipo = f.tipoVuelo ? ` (${String(f.tipoVuelo).toUpperCase()})` : '';
-    return `VUELTA: VUELO ${chooseNum(f.numero,'vuelta')} VÍA ${f.aerolinea||''}${tipo}`.trim();
+    return `VUELTA: VUELO ${chooseNum(f.numero,'vuelta')} VÍA ${f.aerolinea||''}`.trim();
   })();
 
   // Punto de encuentro (SOLO en Plan de viaje)
@@ -1167,7 +1167,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     ];
     if (!arr.length) return '';
     return `
-      <div style="font-weight:700;margin:.8rem 0 .25rem 0;">PLAN DE TRASLADOS</div>
+      <div style="font-weight:700;margin:.8rem 0 .25rem 0;">TRASLADOS</div>
       ${renderTransferTable(arr)}
     `;
   })();
@@ -1797,7 +1797,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     if (!arr.length) return '';
     return `
       <div class="flight-block">
-        <div class="flights-header">PLAN DE TRASLADOS</div>
+        <div class="flights-header">TRASLADOS</div>
         ${printTableTransfers(arr)}
       </div>`;
   })();
