@@ -90,7 +90,9 @@
     /* ====== IMPRESIÓN ====== */
   
     @media print{
-      @page{ size:A4; margin:22mm 14mm; }
+      /* El JS (injectPrintStyles) define @page, logo fijo y estilos de documento.
+         Aquí SOLO ocultamos pantalla y mostramos el contenedor imprimible. */
+    
       *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }
     
       /* mostrar sólo el documento de impresión */
@@ -99,16 +101,13 @@
         white-space:normal !important;
         margin:0 !important;
       }
+    
+      /* ocultar UI de pantalla */
       #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas, header, .btn-add{
         display:none !important;
       }
-    
-      /* logo fijo */
-      #print-logo{ display:block; position:fixed; top:12px; right:12px; width:120px; }
-    
-      /* (opcional) estilos de tablas y cortes */
-      .itinerario-sec{ break-before:page; page-break-before:always; }
     }
+
 
   </style>
 </head>
@@ -142,11 +141,11 @@
         <div id="ficha-inner" class="grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;"></div>
       </section>
     </div>
-
+  
     <!-- Aquí miviaje.js pinta todo -->
     <div id="mi-itin"></div>
-    <div id="print-block" class="print-only"></div>
   </main>
+
 
   <noscript><p style="padding:1rem;color:#b00;">Esta página requiere JavaScript para cargar tu viaje.</p></noscript>
 
