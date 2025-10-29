@@ -3,158 +3,121 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Confirmaciones | RT</title>
+  <title>Confirmaciones | RT v1.0</title>
+
+  <!-- Paleta y layout del sistema -->
+  <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-  <!-- Estilos mínimos coherentes con tu sistema -->
+  <!-- Ajustes mínimos locales (no tocan tu paleta) -->
   <style>
-    :root{ color-scheme: light; }
-    html, body{ background:#f7f7f8 !important; color:#111 !important; } /* sin font -> respeta estilos.css */
-  
-    /* ===== Layout base (no toca tu fuente) ===== */
-    .main { max-width: 1200px; margin: 18px auto 40px; padding: 0 16px; }
-    /* quitamos el upper global; lo aplicamos selectivo abajo */
-    .page { padding: 1rem 1.2rem; }
-  
-    h2 { margin:.6rem 0 1rem; }
-  
-    /* ===== Card SOLO dentro de #cf para no chocar con “universal” ===== */
-    #cf .card{
-      border:1px solid #ddd; border-radius:12px; background:#fff;
-      box-shadow:0 2px 4px rgba(0,0,0,.06);
-      padding:.6rem .8rem;
-    }
-  
-    /* ===== Filtros (grid responsivo) ===== */
-    #cf .filters{
-      display:grid; gap:12px;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      align-items:start;
-    }
-    #cf .filters .col-2{ grid-column: span 2; }
-    #cf .filters .col-6{ grid-column: span 6; }
-  
-    /* Etiquetas y títulos en MAYÚSCULA; inputs no */
-    #cf .filters label,
-    #cf th,
-    #cf .toolbar button { text-transform: uppercase; }
-  
-    /* Controles coherentes con el sistema */
-    #cf input[type="text"],
-    #cf input[type="date"],
-    #cf select{
-      width:100%; box-sizing:border-box;
-      border:1px solid #d1d5db; border-radius:8px;
-      padding:8px 10px; background:#fff; font:inherit !important;
-    }
-    #cf input:focus, #cf select:focus{
-      outline:none; border-color:#93c5fd; box-shadow:0 0 0 3px rgba(147,197,253,.35);
-    }
-  
-    /* ===== Toolbar / Botones ===== */
-    #cf .toolbar{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
-    #cf .toolbar .progress{ margin-left:auto; color:#6b7280; font-size:.9rem; }
-  
-    #cf button.primary{
-      background:#0ea5e9; border:1px solid #0284c7; color:#fff;
-      border-radius:8px; padding:.45em .8em; cursor:pointer;
-    }
-    #cf button.primary:hover{ filter:brightness(.95); }
-  
-    #cf button.ghost{
-      background:#e8eef6; color:#1f64b2; border:1px solid #cfe0f9;
-      border-radius:8px; padding:.45em .8em; cursor:pointer;
-    }
-  
-    /* ===== Tabla ===== */
-    #cf table{ width:100%; border-collapse:collapse; }
-    #cf th, #cf td{ border:1px solid #eee; padding:.5rem .6rem; text-align:left; vertical-align:top; }
-    #cf th{ background:#f8fafc; font-weight:600; }
-    #cf th.right, #cf td.right{ text-align:right; }
-  
-    /* Pistas / ayudas */
-    #cf .hint{ color:#6b7280; font-size:.9rem; }
-  
-    /* Responsive */
-    @media (max-width: 900px){
-      #cf .filters{ grid-template-columns: 1fr 1fr; }
-      #cf .filters .col-2{ grid-column: span 2; }
-      #cf .filters .col-6{ grid-column: span 2; }
-    }
+    /* Página clara y consistente */
+    :root { color-scheme: light; }
+    html, body { background:#f7f7f8 !important; color:#111 !important; }
+    body.confirmaciones-page .card { background:#fff; }
+
+    /* Grid de filtros usando tus columnas */
+    .filters .row { display:flex; flex-wrap:wrap; gap:12px; }
+    .filters .column { display:flex; flex-direction:column; gap:6px; }
+    .filters .column.short   { width: 160px; }
+    .filters .column.medium  { width: 260px; }
+    .filters .column.long    { flex:1; min-width:260px; }
+
+    /* Botonera */
+    .toolbar { display:flex; gap:8px; align-items:center; }
+    .toolbar .spacer { flex:1; }
+    .progress { color:#6b7280; font-size:.9rem; }
+
+    /* Tabla coherente con el sistema */
+    table { width:100%; border-collapse: collapse; }
+    thead th { background:#f8fafc; text-transform:uppercase; }
+    th, td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
+    td.right, th.right { text-align:right; }
+
+    /* Badge fecha */
+    .badge { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #e5e7eb; font-size:.85rem; }
   </style>
 
-
-
-  <!-- html2pdf bundle (html2canvas + jsPDF) -->
+  <!-- html2pdf bundle -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-  <!-- Tu JS de página -->
+  <!-- Lógica de la página -->
   <script type="module" src="./confirmaciones.js"></script>
 </head>
-<body>
-  <header>
-    <div class="title">✅ Confirmaciones (PDFs)</div>
-    <div class="spacer"></div>
-    <a class="ico" href="https://sistemas-raitrai.github.io/Operaciones-RTv1.0" title="Inicio">🏠</a>
-    <button class="ico" id="btnReload" title="Actualizar">🔄</button>
-    <button class="ico" id="btnBack" title="Volver atrás">⬅️</button>
-    <button class="ico" id="btnLogout" title="Cerrar sesión">⏏️</button>
-  </header>
+<body class="confirmaciones-page">
 
-  <div id="cf" class="page"><main class="main">
+  <!-- Encabezado unificado del sistema -->
+  <div id="encabezado"></div>
+  <script type="module">
+    (async () => {
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+      await import('./firebase-init.js'); // mismo flujo que itinerarios
+      await import('./script.js');        // header: usuario, reloj, botones nav
+    })();
+  </script>
+
+  <main class="main">
+    <!-- Filtros -->
     <section class="card">
+      <h2>✅ CONFIRMACIONES (PDFs)</h2>
       <form id="filtros" class="filters">
-        <div>
-          <label for="fNombre">Nombre/Alias del grupo</label>
-          <input id="fNombre" type="text" placeholder="Ej: Compañía de María 3B"/>
-        </div>
-        <div>
-          <label for="fCodigo">Código / N° de negocio</label>
-          <input id="fCodigo" type="text" placeholder="Ej: 1512"/>
-        </div>
-        <div>
-          <label for="fCoordinador">Coordinador(a)</label>
-          <input id="fCoordinador" type="text" placeholder="Ej: Elías Lagos"/>
-        </div>
-        <div>
-          <label for="fAno">Año de viaje</label>
-          <select id="fAno"></select>
-        </div>
-        <div>
-          <label for="fDestino">Destino</label>
-          <select id="fDestino"></select>
-        </div>
-        <div>
-          <label for="fPrograma">Programa</label>
-          <select id="fPrograma"></select>
-        </div>
-
-        <div class="col-2">
-          <label for="fHotel">Hotel</label>
-          <select id="fHotel"></select>
-        </div>
-        <div class="col-2">
-          <label for="fInicioDia">Día de inicio del viaje (primer vuelo de ida)</label>
-          <input id="fInicioDia" type="date"/>
-        </div>
-        <div class="col-2">
-          <label class="sr-only">Acciones</label>
-          <div class="toolbar">
-            <button type="button" class="primary" id="btnBuscar">Buscar</button>
-            <button type="button" class="ghost" id="btnLimpiar">Limpiar</button>
+        <div class="row">
+          <div class="column long">
+            <label for="fNombre">Nombre/Alias del grupo</label>
+            <input id="fNombre" type="text" placeholder="Ej: Compañía de María 3B"/>
+          </div>
+          <div class="column short">
+            <label for="fCodigo">Código / N° negocio</label>
+            <input id="fCodigo" type="text" placeholder="Ej: 1512"/>
+          </div>
+          <div class="column medium">
+            <label for="fCoordinador">Coordinador(a)</label>
+            <input id="fCoordinador" type="text" placeholder="Ej: Elías Lagos"/>
+          </div>
+          <div class="column medium">
+            <label for="fAno">Año de viaje</label>
+            <select id="fAno"></select>
+          </div>
+          <div class="column medium">
+            <label for="fDestino">Destino</label>
+            <select id="fDestino"></select>
+          </div>
+          <div class="column medium">
+            <label for="fPrograma">Programa</label>
+            <select id="fPrograma"></select>
+          </div>
+          <div class="column medium">
+            <label for="fHotel">Hotel</label>
+            <select id="fHotel"></select>
+          </div>
+          <div class="column medium">
+            <label for="fInicioDia">Inicio del viaje (primer vuelo de ida)</label>
+            <input id="fInicioDia" type="date"/>
           </div>
         </div>
 
-        <div class="col-6 hint">
-          Tip: el filtro por “día de inicio” usa exclusivamente la fecha del <strong>primer vuelo de ida</strong>. Si el grupo no tiene vuelos de ida, no se incluirá en ese filtro.
+        <div class="row" style="margin-top:6px;">
+          <div class="column long">
+            <button type="button" class="btn-add" id="btnBuscar">🔎 Buscar</button>
+            <button type="button" class="btn-add secondary" id="btnLimpiar">Limpiar</button>
+          </div>
+          <div class="column long">
+            <div class="hint">
+              Tip: el filtro por “día de inicio” usa exclusivamente la fecha del <strong>primer vuelo de ida</strong>.
+              Si el grupo no tiene vuelos de ida, no se incluirá.
+            </div>
+          </div>
         </div>
       </form>
     </section>
 
+    <!-- Resultados -->
     <section class="card" style="margin-top:12px;">
-      <div class="toolbar" style="margin-bottom:6px;">
-        <button type="button" id="btnDescAll" title="Descargar todos los resultados">⬇️ Descargar todos</button>
-        <button type="button" id="btnDescSel" title="Descargar los seleccionados">⬇️ Descargar seleccionados</button>
+      <div class="toolbar" style="margin-bottom:8px;">
+        <button type="button" id="btnDescAll" class="btn-add">⬇️ Descargar todos</button>
+        <button type="button" id="btnDescSel" class="btn-add">⬇️ Descargar seleccionados</button>
+        <div class="spacer"></div>
         <div class="progress" id="progressTxt"></div>
       </div>
 
@@ -171,22 +134,15 @@
             <th class="right">Acciones</th>
           </tr>
         </thead>
-        <tbody id="tbody">
-          <!-- filas -->
-        </tbody>
+        <tbody id="tbody"><!-- filas --></tbody>
       </table>
+
       <div class="hint" id="countHint" style="margin-top:6px;">—</div>
     </section>
-  </main></div>
+  </main>
 
-  <!-- contenedor temporal invisible para render a PDF -->
+  <!-- Contenedor temporal invisible para render a PDF -->
   <div id="pdf-work" style="position:absolute; left:-9999px; top:-9999px; width:794px; background:#ffffff;"></div>
 
-  <script>
-    // Botones nav simples
-    document.getElementById('btnReload')?.addEventListener('click',()=>location.reload());
-    document.getElementById('btnBack')?.addEventListener('click',()=>history.back());
-    // btnLogout: deja el hook, tu lógica real va en confirmaciones.js si usas Auth
-  </script>
 </body>
 </html>
