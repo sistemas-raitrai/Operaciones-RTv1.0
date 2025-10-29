@@ -1528,16 +1528,41 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       ...(transferAereoIda || []),
       ...(transferAereoVuelta || [])
     ];
-    ...
+    if (!arr.length) return '';
+  
+    const items = arr.map(x=>{
+      const modo = (x.__modo === 'ida') ? 'IDA' : 'VUELTA';
+      const fecha = (x.__modo === 'ida') ? (x.fechaIda || x.fecha) : (x.fechaVuelta || x.fecha);
+      const pres  = (x.__modo === 'ida') ? x.presentacionIda       : x.presentacionVuelta;
+      const sal   = (x.__modo === 'ida') ? x.salidaIda             : x.salidaVuelta;
+      const arrb  = (x.__modo === 'ida') ? x.arriboIda             : x.arriboVuelta;
+      return `
+        <ul class="flight-lines">
+          <li><span class="lbl">Modo:</span> ${modo}</li>
+          <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
+          <li><span class="lbl">Origen:</span> ${U(x.origen)}</li>
+          <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
+          <li><span class="lbl">Hora de salida:</span> ${withHrs(sal)}</li>
+          <li><span class="lbl">Destino:</span> ${U(x.destino)}</li>
+          <li><span class="lbl">Hora de arribo:</span> ${withHrs(arrb)}</li>
+        </ul>`;
+    }).join('');
+  
+    return `<div class="flight-block">
+      <div class="flights-header">PLAN DE TRASLADOS</div>
+      <div class="flight-legs">${items}</div>
+    </div>`;
   })();
+
 
 
   // Punto de encuentro (SOLO en sección 2)
   const puntoEncuentroTexto = (() => {
-    if (idaLegs.length) return P.encuentro || (idaLegs[0]?.origen ? `Encuentro en Aeropuerto ${idaLegs[0].origen}` : '');
+    if (idaLegsPlan.length) return P.encuentro || (idaLegsPlan[0]?.origen ? `Encuentro en Aeropuerto ${idaLegsPlan[0].origen}` : '');
     if (terrestresPlanIda.length) return `Encuentro en ${terrestresPlanIda[0]?.origen || ''}`;
     return '';
   })();
+
 
   // Hotelería
   const dmy = (s) => { const iso = toISO(s); if (!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`; };
