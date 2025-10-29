@@ -16,12 +16,61 @@
     html, body { background:#f7f7f8 !important; color:#111 !important; }
     body.confirmaciones-page .card { background:#fff; }
 
-    /* Grid de filtros usando tus columnas */
-    .filters .row { display:flex; flex-wrap:wrap; gap:12px; }
-    .filters .column { display:flex; flex-direction:column; gap:6px; }
-    .filters .column.short   { width: 160px; }
-    .filters .column.medium  { width: 260px; }
-    .filters .column.long    { flex:1; min-width:260px; }
+    /* ===== Filtros en grilla de 12 columnas ===== */
+    .filters-grid{
+      display: grid;
+      gap: 12px 16px;                         /* filas / columnas */
+      grid-template-columns: repeat(12, minmax(0,1fr));
+      align-items: end;                       /* alinear controles por la base */
+    }
+    
+    .filters-grid .col{
+      display:flex; flex-direction:column; gap:6px;
+    }
+    
+    /* Spans */
+    .filters-grid .span-1{ grid-column: span 1; }
+    .filters-grid .span-2{ grid-column: span 2; }
+    .filters-grid .span-3{ grid-column: span 3; }
+    .filters-grid .span-4{ grid-column: span 4; }
+    .filters-grid .span-5{ grid-column: span 5; }
+    .filters-grid .span-6{ grid-column: span 6; }
+    .filters-grid .span-7{ grid-column: span 7; }
+    .filters-grid .span-8{ grid-column: span 8; }
+    .filters-grid .span-9{ grid-column: span 9; }
+    .filters-grid .span-10{ grid-column: span 10; }
+    .filters-grid .span-11{ grid-column: span 11; }
+    .filters-grid .span-12{ grid-column: span 12; }
+    
+    .filters-grid .align-end{ align-items:flex-end; }
+    
+    /* Inputs 100% y labels consistentes */
+    .filters-grid label{ font-weight:600; font-size:.95rem; }
+    .filters-grid input,
+    .filters-grid select{
+      width:100%;
+      padding:8px 10px;
+      border:1px solid #d1d5db; border-radius:8px;
+      box-sizing:border-box;
+    }
+    
+    /* Botonera al extremo derecho */
+    .toolbar{ display:flex; gap:8px; justify-content:flex-end; width:100%; }
+    
+    /* Responsive: en < 1000px, una sola columna */
+    @media (max-width: 999px){
+      .filters-grid{ grid-template-columns: 1fr; }
+      .filters-grid .align-end{ align-items:stretch; }
+      .toolbar{ justify-content:stretch; }
+    }
+
+    body.confirmaciones-page main.main.fullwidth{
+      max-width:none !important;
+      width:100% !important;
+      margin:12px 0 40px !important;
+      padding:0 12px !important;
+    }
+    body.confirmaciones-page .main.fullwidth > .card{ width:100% !important; }
 
     /* Botonera */
     .toolbar { display:flex; gap:8px; align-items:center; }
@@ -100,51 +149,58 @@
     <!-- Filtros -->
     <section class="card">
       <h2>✅ CONFIRMACIONES (PDFs)</h2>
-      <form id="filtros" class="filters">
-        <div class="row">
-          <div class="column long">
-            <label for="fNombre">Nombre/Alias del grupo</label>
-            <input id="fNombre" type="text" placeholder="Ej: Weston 3B"/>
-          </div>
-          <div class="column short">
-            <label for="fCodigo">Código / N° negocio</label>
-            <input id="fCodigo" type="text" placeholder="Ej: 1512"/>
-          </div>
-          <div class="column medium">
-            <label for="fCoordinador">Coordinador(a)</label>
-            <input id="fCoordinador" type="text" placeholder="Ej: Elías Lagos"/>
-          </div>
-          <div class="column medium">
-            <label for="fAno">Año de viaje</label>
-            <select id="fAno"></select>
-          </div>
-          <div class="column medium">
-            <label for="fDestino">Destino</label>
-            <select id="fDestino"></select>
-          </div>
-          <div class="column medium">
-            <label for="fPrograma">Programa</label>
-            <select id="fPrograma"></select>
-          </div>
-          <div class="column medium">
-            <label for="fHotel">Hotel</label>
-            <select id="fHotel"></select>
-          </div>
-          <div class="column medium">
-            <label for="fInicioDia">Inicio del viaje (primer vuelo de ida)</label>
-            <input id="fInicioDia" type="date"/>
-          </div>
-        </div>
 
-        <div class="row" style="margin-top:6px;">
-          <div class="column long">
+      <form id="filtros" class="filters-grid">
+        <!-- Fila 1 (12 col): 4 + 2 + 3 + 1 + 1 + 1 -->
+        <div class="col span-4">
+          <label for="fNombre">Nombre/Alias del grupo</label>
+          <input id="fNombre" type="text" placeholder="Ej: Weston 3B"/>
+        </div>
+      
+        <div class="col span-2">
+          <label for="fCodigo">Código / N° negocio</label>
+          <input id="fCodigo" type="text" placeholder="Ej: 1512"/>
+        </div>
+      
+        <div class="col span-3">
+          <label for="fCoordinador">Coordinador(a)</label>
+          <input id="fCoordinador" type="text" placeholder="Ej: Elías Lagos"/>
+        </div>
+      
+        <div class="col span-1">
+          <label for="fAno">Año de viaje</label>
+          <select id="fAno"></select>
+        </div>
+      
+        <div class="col span-1">
+          <label for="fDestino">Destino</label>
+          <select id="fDestino"></select>
+        </div>
+      
+        <div class="col span-1">
+          <label for="fPrograma">Programa</label>
+          <select id="fPrograma"></select>
+        </div>
+      
+        <!-- Fila 2 (12 col): 3 + 2 + 7 (botones alineados a la derecha) -->
+        <div class="col span-3">
+          <label for="fHotel">Hotel</label>
+          <select id="fHotel"></select>
+        </div>
+      
+        <div class="col span-2">
+          <label for="fInicioDia">Inicio del viaje (primer vuelo de ida)</label>
+          <input id="fInicioDia" type="date"/>
+        </div>
+      
+        <div class="col span-7 align-end">
+          <div class="toolbar">
             <button type="button" class="btn-add" id="btnBuscar">🔎 Buscar</button>
             <button type="button" class="btn-add secondary" id="btnLimpiar">Limpiar</button>
           </div>
-          <div class="column long">
-          </div>
         </div>
       </form>
+
     </section>
 
     <!-- Resultados -->
