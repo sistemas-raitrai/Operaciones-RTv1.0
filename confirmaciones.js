@@ -417,7 +417,14 @@ function renderDocsList(docsText) {
 function injectPdfStyles(){
   if (document.getElementById('pdf-styles')) return;
   const css = `
-  .print-doc{ color:#111; font:11pt/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif; }
+  .print-doc{
+    background:#ffffff !important;
+    color:#111 !important;
+    width:794px !important;       /* ≈ 210mm @96dpi */
+    box-sizing:border-box;
+    padding:12mm 12mm 12mm 12mm;  /* similar a margin PDF */
+    font:11pt/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  }
   .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 6mm 0; text-align:center; }
   .sec{ margin:0 0 5mm 0; }
   .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2.5mm 0; }
@@ -435,7 +442,10 @@ function injectPdfStyles(){
   .itinerario .it-day{ margin:0 0 3.5mm 0; }
   .closing{ text-align:center; font-weight:800; margin-top:8mm; }
   `;
-  const s=document.createElement('style'); s.id='pdf-styles'; s.textContent=css; document.head.appendChild(s);
+  const s=document.createElement('style');
+  s.id='pdf-styles';
+  s.textContent=css;
+  document.head.appendChild(s);
 }
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
@@ -781,21 +791,35 @@ async function descargarUno(grupoId){
 
   const html = buildPrintDoc(g, vuelosNorm, hoteles, fechas);
   const work = document.getElementById('pdf-work');
+  if (!work) throw new Error('#pdf-work no encontrado');
   work.innerHTML = html;
+
+  const target = work.querySelector('.print-doc');
+  if (!target) throw new Error('print-doc no renderizado');
+
+  // Espera a fuentes y al siguiente frame para asegurar layout pintado
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   const fechaDescarga = formatDMYDownload(new Date());
   const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
 
   const opt = {
-    margin:       10,                 // mm
+    margin:       0, // ya dimos padding en .print-doc
     filename,
     image:        { type: 'jpeg', quality: 0.96 },
-    html2canvas:  { scale: 2, useCORS: true, allowTaint: true },
+    html2canvas:  {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      windowWidth: 794
+    },
     jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
 
-  await html2pdf().set(opt).from(work).save();
+  await html2pdf().set(opt).from(target).save();
   work.innerHTML = '';
 }
 
