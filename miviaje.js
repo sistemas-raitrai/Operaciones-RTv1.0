@@ -853,8 +853,8 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
   // Leyendas
   const legendBits = [];
-  if (hasColegioToAeropuerto) legendBits.push('Este grupo contempla traslado COLEGIO → AEROPUERTO.');
-  if (hasAeropuertoToColegio) legendBits.push('Este grupo contempla traslado AEROPUERTO → COLEGIO.');
+  if (hasColegioToAeropuerto) legendBits.push('El grupo contempla traslado COLEGIO → AEROPUERTO.');
+  if (hasAeropuertoToColegio) legendBits.push('El grupo contempla traslado AEROPUERTO → COLEGIO.');
   const legendInline = legendBits.join(' ');
 
   // Helpers
@@ -1650,8 +1650,8 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="sec">
         <div class="sec-title">1. INFORMACIÓN GENERAL</div>
         <div class="note">
-          ${hasColegioToAeropuerto ? 'Este grupo contempla traslado COLEGIO → AEROPUERTO. ' : ''}
-          ${hasAeropuertoToColegio ? 'Este grupo contempla traslado AEROPUERTO → COLEGIO.' : ''}
+          ${hasColegioToAeropuerto ? 'El grupo contempla traslado COLEGIO → AEROPUERTO. ' : ''}
+          ${hasAeropuertoToColegio ? 'El grupo contempla traslado AEROPUERTO → COLEGIO.' : ''}
         </div>
         <p>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} HRS` : ''}${P.aeropuerto ? ` EN EL AEROPUERTO ${U(P.aeropuerto)}` : ''}${P.salidaHora ? `; SALIDA A LAS ${P.salidaHora} HRS` : ''}.</p>
         ${transfersBlock}
