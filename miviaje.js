@@ -524,9 +524,23 @@ function particionarVuelos(vuelosNorm) {
   const isColegioToAero = (t) => U(t.origen).includes('COLEGIO')   && U(t.destino).includes('AEROPUERTO');
   const isAeroToColegio = (t) => U(t.origen).includes('AEROPUERTO') && U(t.destino).includes('COLEGIO');
 
-  // TRANSFERS TERRESTRES (por bandera o por patrón típico)
-  const transferTerrestreIda    = terrestres.filter(t => t.isTransfer || isColegioToAero(t)).map(t => ({ ...t, __modo:'ida', __tipo:'terrestre' }));
-  const transferTerrestreVuelta = terrestres.filter(t => t.isTransfer || isAeroToColegio(t)).map(t => ({ ...t, __modo:'vuelta', __tipo:'terrestre' }));
+  // TRANSFERS TERRESTRES (respetar transferLeg si viene)
+  const hasLeg = (t, leg) => (t.transferLeg === leg || t.transferLeg === 'ida+vuelta');
+
+  const transferTerrestreIda = terrestres
+    .filter(t => {
+      if (t.isTransfer) return hasLeg(t, 'ida');
+      return isColegioToAero(t);
+    })
+    .map(t => ({ ...t, __modo:'ida', __tipo:'terrestre' }));
+
+  const transferTerrestreVuelta = terrestres
+    .filter(t => {
+      if (t.isTransfer) return hasLeg(t, 'vuelta');
+      return isAeroToColegio(t);
+    })
+    .map(t => ({ ...t, __modo:'vuelta', __tipo:'terrestre' }));
+
 
   // TRANSFER AÉREO ("traslado aéreo" guardado como isTransfer=true)
   const transferAereoIda    = idaLegsAll.filter(l => l.isTransfer).map(l => ({ ...l, __modo:'ida', __tipo:'aereo' }));
@@ -568,14 +582,21 @@ function maybeSwapOD(origen, destino, modo){
   return { origen: String(origen||'').toUpperCase(), destino: String(destino||'').toUpperCase() };
 }
 
+function chooseFlightNumber(raw, modo){
+  const s = String(raw||'').toUpperCase();
+  if (!s.includes('//')) return s;
+  const parts = s.split('//').map(x=>x.trim()).filter(Boolean);
+  return (modo === 'ida') ? (parts[0]||'') : (parts[parts.length-1]||'');
+}
+
 // Filas genéricas para cualquier "leg"
 function rowHTML(leg, modo){
-  const fecha       = (modo==='ida') ? (leg.fechaIda || leg.fecha) : (leg.fechaVuelta || leg.fecha);
-  const presentacion= (modo==='ida') ? leg.presentacionIda : leg.presentacionVuelta;
-  const salida      = (modo==='ida') ? leg.salidaIda       : leg.salidaVuelta;
-  const arribo      = (modo==='ida') ? leg.arriboIda       : leg.arriboVuelta;
+  const fecha        = (modo==='ida') ? (leg.fechaIda || leg.fecha) : (leg.fechaVuelta || leg.fecha);
+  const presentacion = (modo==='ida') ? leg.presentacionIda         : leg.presentacionVuelta;
+  const salida       = (modo==='ida') ? leg.salidaIda               : leg.salidaVuelta;
+  const arribo       = (modo==='ida') ? leg.arriboIda               : leg.arriboVuelta;
   const { origen, destino } = maybeSwapOD(leg.origen, leg.destino, modo);
-  const nro = (leg.numero || '').toUpperCase();
+  const nro = chooseFlightNumber(leg.numero, modo);
 
   return `
     <tr>
@@ -863,10 +884,10 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     : { origen:String(origen||'').toUpperCase(), destino:String(destino||'').toUpperCase() };
 
   const makeRows = (legs, modo) => legs.map(r => {
-    const fecha        = (modo === 'ida') ? (r.fechaIda || r.fecha)      : (r.fechaVuelta || r.fecha);
-    const presentacion = (modo === 'ida') ? r.presentacionIda            : r.presentacionVuelta;
-    const salida       = (modo === 'ida') ? r.salidaIda                  : r.salidaVuelta;
-    const arribo       = (modo === 'ida') ? r.arriboIda                  : r.arriboVuelta;
+    const fecha        = (modo === 'ida') ? (r.fechaIda || r.fecha) : (r.fechaVuelta || r.fecha);
+    const presentacion = (modo === 'ida') ? r.presentacionIda       : r.presentacionVuelta;
+    const salida       = (modo === 'ida') ? r.salidaIda             : r.salidaVuelta;
+    const arribo       = (modo === 'ida') ? r.arriboIda             : r.arriboVuelta;
     const { origen, destino } = maybeSwapOD(r.origen, r.destino, modo);
     return `
       <tr>
@@ -878,6 +899,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arribo)}</td>
       </tr>`;
   }).join('');
+
 
   // Encabezados para aéreos (si aplica)
   const chooseNum = (raw, modo) => {
@@ -1798,6 +1820,7 @@ if (printEl) {
 }
 syncHotelColumnToDocs();
 window.addEventListener('resize', syncHotelColumnToDocs);
+window.addEventListener('beforeprint', syncHotelColumnToDocs);
 }
 main().catch(err => {
   console.error('Firestore error:', err?.code || err?.message, err);
