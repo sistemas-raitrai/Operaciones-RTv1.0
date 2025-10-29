@@ -1884,11 +1884,11 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   return `
     <div class="print-doc">
       <div class="doc-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
-      <div class="sec-title">Fecha de inicio del viaje: ${fechaInicioViajeTxt}</div>
 
       <!-- 1. INFORMACIÓN GENERAL -->
       <div class="sec">
         <div class="sec-title">1. INFORMACIÓN GENERAL</div>
+        <div class="sec-title">Fecha de inicio del viaje: ${fechaInicioViajeTxt}</div>
         <div class="note">
           ${hasColegioToAeropuerto ? 'El grupo contempla traslado COLEGIO → AEROPUERTO. ' : ''}
           ${hasAeropuertoToColegio ? 'Y traslado AEROPUERTO → COLEGIO.' : ''}
