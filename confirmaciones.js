@@ -15,6 +15,24 @@ const TZ = 'America/Santiago';
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const safe = (v, fb='—') => (v===0||v)?v:fb;
 
+/* === UI CLARA / FORZAR MODO CLARO EN ESTA PÁGINA ======================= */
+function injectPageLightStyles(){
+  if (document.getElementById('light-ui-overrides')) return;
+  const css = `
+    :root { color-scheme: light; }
+    html, body { background:#f7f7f8 !important; color:#111 !important; }
+    /* Si algún tema global pone body oscuro, lo neutralizamos: */
+    body.confirmaciones-page * { color-scheme: light; }
+  `;
+  const s = document.createElement('style');
+  s.id = 'light-ui-overrides';
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+injectPageLightStyles();
+/* ====================================================================== */
+
+
 function toISO(x){
   if (!x) return '';
   if (typeof x === 'string'){
