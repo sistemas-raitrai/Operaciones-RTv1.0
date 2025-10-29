@@ -651,7 +651,7 @@ function renderTransferTable(arr){
 
     return `
       <div style="overflow:auto;margin-top:6px;">
-        <div style="font-weight:600;margin:0 0 4px 0;">Terrestres</div>
+        <div style="font-weight:600;margin:0 0 4px 0;">Terrestres:</div>
         <table style="border-collapse:collapse;min-width:560px;">
           <thead>
             <tr>
@@ -672,7 +672,7 @@ function renderTransferTable(arr){
     const rows = aereos.map(x => rowHTML(x, x.__modo)).join('');
     return `
       <div style="overflow:auto;margin-top:${terrestres.length ? '10px' : '6px'};">
-        <div style="font-weight:600;margin:0 0 4px 0;">Aéreos</div>
+        <div style="font-weight:600;margin:0 0 4px 0;">Aéreos:</div>
         <table style="border-collapse:collapse;min-width:680px;">
           <thead>
             <tr>
@@ -797,7 +797,7 @@ function printTableTransfers(arr = []){
 
   const tableTer = terrestres.length ? `
     <div class="table-wrap">
-      <div class="table-title">Terrestres</div>
+      <div class="table-title">Terrestres:</div>
       <table class="print-table">
         <thead class="thead-muted">
           <tr>
@@ -835,7 +835,7 @@ function printTableTransfers(arr = []){
 
   const tableAer = aereos.length ? `
     <div class="table-wrap">
-      <div class="table-title">Aéreos</div>
+      <div class="table-title">Aéreos:</div>
       <table class="print-table">
         <thead class="thead-muted">
           <tr>
