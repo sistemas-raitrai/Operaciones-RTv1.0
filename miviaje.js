@@ -60,6 +60,18 @@ function normTime(t){
   const mi=String(Math.max(0,Math.min(59,parseInt(m[2],10)))).padStart(2,'0');
   return `${h}:${mi}`;
 }
+// Suma minutos a un "HH:MM" (devuelve "HH:MM")
+function addMinutesHM(hm, mins = 0){
+  const t = normTime(hm);
+  if (!t) return '';
+  const [h, m] = t.split(':').map(Number);
+  const d = new Date(2000,0,1,h,m);
+  d.setMinutes(d.getMinutes() + mins);
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  return `${hh}:${mm}`;
+}
+
 function formatShortDate(iso){ // 25 de septiembre 2025
   if(!iso) return '—'; const [y,m,d]=iso.split('-').map(Number);
   const dt=new Date(y,m-1,d); const mes=dt.toLocaleDateString('es-CL',{month:'long'});
@@ -611,26 +623,74 @@ function rowHTML(leg, modo){
 }
 
 // Tabla de TRANSFERS (terrestre o “traslado aéreo”)
+// Tabla de TRANSFERS (separa terrestre vs aéreo)
 function renderTransferTable(arr){
   if (!arr || !arr.length) return '';
-  const rows = arr.map(x => rowHTML(x, x.__modo)).join('');
-  return `
-    <div style="overflow:auto;margin-top:6px;">
-      <table style="border-collapse:collapse;min-width:680px;">
-        <thead>
-          <tr>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">N° vuelo</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Origen</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora presentación</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora salida</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
-            <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora arribo</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
+
+  const isAereo = x => (x.__tipo === 'aereo') || (norm(x.tipoTransporte||'') === 'aereo');
+  const terrestres = arr.filter(x => !isAereo(x));
+  const aereos     = arr.filter(isAereo);
+
+  // TERRESTRES: 5 columnas y salida = presentación + 30
+  const htmlTerrestres = terrestres.length ? (() => {
+    const rows = terrestres.map(x=>{
+      const modo  = x.__modo === 'vuelta' ? 'vuelta' : 'ida';
+      const fecha = (modo==='ida') ? (x.fechaIda || x.fecha) : (x.fechaVuelta || x.fecha);
+      const pres  = (modo==='ida') ? x.presentacionIda       : x.presentacionVuelta;
+      const sal   = addMinutesHM(pres, 30) || ((modo==='ida') ? x.salidaIda : x.salidaVuelta);
+      const { origen, destino } = maybeSwapOD(x.origen, x.destino, modo);
+      return `
+        <tr>
+          <td style="padding:6px 8px;border:1px solid #d1d5db;">${fecha ? formatShortDate(fecha) : '—'}</td>
+          <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(origen)}</td>
+          <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(pres)}</td>
+          <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(sal)}</td>
+          <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(destino)}</td>
+        </tr>`;
+    }).join('');
+
+    return `
+      <div style="overflow:auto;margin-top:6px;">
+        <div style="font-weight:600;margin:0 0 4px 0;">Traslados terrestres</div>
+        <table style="border-collapse:collapse;min-width:560px;">
+          <thead>
+            <tr>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Origen</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora presentación</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora salida</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  })() : '';
+
+  // AÉREOS: tabla completa (usa tu rowHTML actual)
+  const htmlAereos = aereos.length ? (() => {
+    const rows = aereos.map(x => rowHTML(x, x.__modo)).join('');
+    return `
+      <div style="overflow:auto;margin-top:${terrestres.length ? '10px' : '6px'};">
+        <div style="font-weight:600;margin:0 0 4px 0;">Traslados aéreos</div>
+        <table style="border-collapse:collapse;min-width:680px;">
+          <thead>
+            <tr>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">N° vuelo</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Origen</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora presentación</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora salida</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
+              <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora arribo</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  })() : '';
+
+  return `${htmlTerrestres}${htmlAereos}`;
 }
 
 // === FECHA DE INICIO DEL VIAJE (una sola) ===
@@ -691,7 +751,7 @@ function renderSelector(lista, cont, hideNotes){
 ────────────────────────────────────────────────────────────────────────── */
 function extractPresentacion(grupo, vuelosNorm){
   const {
-    idaLegs, // crudos (fallback)
+    idaLegs,
     transferTerrestreIda, transferTerrestreVuelta,
     transferAereoIda,     transferAereoVuelta,
     hasColegioToAeropuerto
@@ -704,43 +764,49 @@ function extractPresentacion(grupo, vuelosNorm){
   const firstTransIda    = T_IDA[0]    || null;
   const firstTransVuelta = T_VUELTA[0] || null;
 
-  // Lugar por defecto según exista transfer COLEGIO→AEROPUERTO
   let lugar = (grupo.presentacionLugar || '').trim();
   if (!lugar) {
     lugar = hasColegioToAeropuerto ? 'En las puertas del Colegio'
                                    : (primeraIda ? 'En el aeropuerto' : 'Punto de encuentro');
   }
 
-  // Aeropuerto (texto) si aplica: origen del primer aéreo ida o, si no hay, del transfer de vuelta
   let aeropuerto = grupo.presentacionAeropuerto || (primeraIda ? primeraIda.origen : '') || (firstTransVuelta ? firstTransVuelta.origen : '');
 
-  // Horas
   let presHora   = '';
   let salidaHora = '';
 
-  // Prioridad 1: transfer ida
+  // 1) Si hay TRANSFER de IDA, usarlo
   if (firstTransIda){
-    presHora   = firstTransIda.presentacionIda || firstTransIda.salidaIda || '';
-    salidaHora = firstTransIda.salidaIda || '';
+    presHora = firstTransIda.presentacionIda || firstTransIda.salidaIda || '';
+    if (firstTransIda.__tipo === 'terrestre'){
+      salidaHora = addMinutesHM(presHora, 30) || firstTransIda.salidaIda || '';
+    } else {
+      salidaHora = firstTransIda.salidaIda || '';
+    }
   }
-  // Prioridad 2: primer vuelo de ida
+
+  // 2) Si no hubo transfer ida, usar primer vuelo de ida
   if (!presHora && primeraIda) presHora = primeraIda.presentacionIda || primeraIda.salidaIda || '';
   if (!salidaHora && primeraIda) salidaHora = primeraIda.salidaIda || '';
 
-  // Caso solo-vuelta (no hubo ida)
+  // 3) Caso sólo-vuelta
   if (!presHora && firstTransVuelta){
     presHora   = firstTransVuelta.presentacionVuelta || firstTransVuelta.salidaVuelta || '';
-    salidaHora = firstTransVuelta.salidaVuelta || '';
+    if (firstTransVuelta.__tipo === 'terrestre'){
+      salidaHora = addMinutesHM(presHora, 30) || firstTransVuelta.salidaVuelta || '';
+    } else {
+      salidaHora = firstTransVuelta.salidaVuelta || '';
+    }
     aeropuerto = firstTransVuelta.origen || aeropuerto;
     if (!lugar) lugar = 'En el aeropuerto';
   }
 
-  // Campo libre “encuentroAeropuerto” en documentos aéreos (si viene cargado)
   const encuentro = (vuelosNorm || [])
     .find(x => norm(x.tipoTransporte || '') === 'aereo' && x.encuentroAeropuerto)?.encuentroAeropuerto || '';
 
   return { lugar, aeropuerto, presHora, salidaHora, encuentro };
 }
+
 
 // === Textos DOCUMENTOS / EQUIPAJE / RECOMENDACIONES según programa ===
 function getDERTextos(programa, overrides = {}) {
@@ -1578,20 +1644,38 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     if (!arr.length) return '';
   
     const items = arr.map(x=>{
-      const modo = (x.__modo === 'ida') ? 'IDA' : 'VUELTA';
+      const modo  = (x.__modo === 'ida') ? 'IDA' : 'VUELTA';
       const fecha = (x.__modo === 'ida') ? (x.fechaIda || x.fecha) : (x.fechaVuelta || x.fecha);
       const pres  = (x.__modo === 'ida') ? x.presentacionIda       : x.presentacionVuelta;
-      const sal   = (x.__modo === 'ida') ? x.salidaIda             : x.salidaVuelta;
-      const arrb  = (x.__modo === 'ida') ? x.arriboIda             : x.arriboVuelta;
+      const baseSalida = (x.__modo === 'ida') ? x.salidaIda         : x.salidaVuelta;
+      const salida = (x.__tipo === 'terrestre') ? (addMinutesHM(pres,30) || baseSalida) : baseSalida;
+  
+      const U = s => String(s||'').toUpperCase();
+  
+      // Para terrestres: sin "Hora de arribo"
+      if (x.__tipo === 'terrestre'){
+        return `
+          <ul class="flight-lines">
+            <li><span class="lbl">Modo:</span> ${modo}</li>
+            <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
+            <li><span class="lbl">Origen:</span> ${U(x.origen)}</li>
+            <li><span class="lbl">Presentación:</span> ${pres ? pres + ' HRS' : '—'}</li>
+            <li><span class="lbl">Hora de salida:</span> ${salida ? salida + ' HRS' : '—'}</li>
+            <li><span class="lbl">Destino:</span> ${U(x.destino)}</li>
+          </ul>`;
+      }
+  
+      // Aéreos: mantiene "Hora de arribo"
+      const arribo = (x.__modo === 'ida') ? x.arriboIda : x.arriboVuelta;
       return `
         <ul class="flight-lines">
           <li><span class="lbl">Modo:</span> ${modo}</li>
           <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
           <li><span class="lbl">Origen:</span> ${U(x.origen)}</li>
-          <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
-          <li><span class="lbl">Hora de salida:</span> ${withHrs(sal)}</li>
+          <li><span class="lbl">Presentación:</span> ${pres ? pres + ' HRS' : '—'}</li>
+          <li><span class="lbl">Hora de salida:</span> ${salida ? salida + ' HRS' : '—'}</li>
           <li><span class="lbl">Destino:</span> ${U(x.destino)}</li>
-          <li><span class="lbl">Hora de arribo:</span> ${withHrs(arrb)}</li>
+          <li><span class="lbl">Hora de arribo:</span> ${arribo ? arribo + ' HRS' : '—'}</li>
         </ul>`;
     }).join('');
   
@@ -1600,6 +1684,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="flight-legs">${items}</div>
     </div>`;
   })();
+
 
 
 
