@@ -2,7 +2,7 @@
 // Página de lotes PDF para confirmaciones (filtrado + exportación)
 // NOTA: Requiere tu './firebase-core.js' (exporta { app, db })
 
-import { app, db } from './firebase-core.js';
+import { app, db } from './firebase-init.js';
 import {
   collection, getDocs, doc, getDoc, query, where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
@@ -765,7 +765,7 @@ function renderTabla(rows){
       <td>${g.programa ?? '—'}</td>
       <td><span class="badge">${inicioTxt}</span></td>
       <td class="right">
-        <button class="ghost btn-one">PDF</button>
+        <button class="btn-add btn-one">PDF</button>
       </td>
     `;
     tb.appendChild(tr);
@@ -905,11 +905,6 @@ async function init(){
 
   document.getElementById('btnDescSel').addEventListener('click', descargarSeleccionados);
   document.getElementById('btnDescAll').addEventListener('click', descargarTodos);
-
-  // Hook opcional logout (si usas Firebase Auth)
-  document.getElementById('btnLogout')?.addEventListener('click', ()=>{
-    alert('Implementa aquí tu cierre de sesión (Firebase Auth).');
-  });
 }
 
 init().catch(e=>{
