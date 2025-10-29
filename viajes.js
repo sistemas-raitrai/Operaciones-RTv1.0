@@ -356,10 +356,10 @@ window.filterByRecord = (rec) => {
 };
 
 // Lista “resumen” opcional (si usas las 3 tablas)
-function renderFlightsList(){
+function renderFlightsList(arr = vuelos){
   const tables = document.querySelectorAll('.flights-list');
   if (!tables.length) return;
-  const perColumn = Math.ceil(vuelos.length / tables.length);
+  const perColumn = Math.ceil(arr.length / tables.length);
   const searchEl = document.getElementById('search-input');
 
   tables.forEach((table, colIdx) => {
@@ -367,7 +367,7 @@ function renderFlightsList(){
     tbody.innerHTML = '';
     const start = colIdx * perColumn;
     const end   = start + perColumn;
-    const chunk = vuelos.slice(start, end);
+    const chunk = arr.slice(start, end);
 
     chunk.forEach(v => {
       const airline   = v.proveedor || v.tramos?.[0]?.aerolinea || '–';
@@ -1621,7 +1621,9 @@ async function renderVuelos(){
   // Construye índices de transfers
   buildTransfersIndexes();
 
-  for (const v of vuelos){
+  const docsToRender = vuelos.filter(v => !v.isTransfer);
+
+  for (const v of docsToRender){
     const tipoTrans = v.tipoTransporte || 'aereo';
     const isAereo   = tipoTrans === 'aereo';
     const isRegMT   = isAereo && v.tipoVuelo === 'regular' && Array.isArray(v.tramos) && v.tramos.length > 0;
@@ -1923,7 +1925,7 @@ async function renderVuelos(){
     cont.appendChild(card);
   }
 
-  renderFlightsList();
+  renderFlightsList(docsToRender);
 }
 
 // Foco en una card por id / n° / fecha (para botones de "👁️" en transfers)
