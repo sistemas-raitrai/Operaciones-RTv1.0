@@ -3,170 +3,93 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Confirmaciones | Rai Trai</title>
+  <title>Confirmaciones | RT</title>
+
+  <!-- Estilos globales -->
+  <link rel="stylesheet" href="estilos.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css"/>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"/>
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-  <!-- Estilos mínimos coherentes con tu sistema -->
   <style>
-    :root{
-      --bg:#0b0c10;
-      --card:#111218;
-      --muted:#9aa0a6;
-      --text:#e5e7eb;
-      --brand:#00E0FF;
-      --accent:#22d3ee;
-      --border:#21222b;
+    :root { color-scheme: light; }               /* fuerza modo claro */
+    html, body {
+      background:#f7f7f8 !important;             /* fondo claro como en tu ejemplo */
+      color:#111 !important;
+      font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     }
-    html,body{margin:0;padding:0;background:#0b0c10;color:var(--text);font:14px/1.35 Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;}
-    a{color:var(--accent);text-decoration:none}
-    header{
-      position:sticky; top:0; z-index:10;
-      display:flex; align-items:center; gap:10px;
-      padding:12px 16px; background:linear-gradient(180deg,#0b0c10 0%, #0b0c10ee 70%, #0b0c1000 100%);
-      border-bottom:1px solid var(--border);
-      backdrop-filter: blur(6px);
-    }
-    header .title{font-weight:800; letter-spacing:.2px}
-    header .spacer{flex:1}
-    header .ico{font-size:18px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:#0f1016; cursor:pointer}
-    header .ico:hover{border-color:#2a2c39}
-    main{max-width:1100px; margin:18px auto; padding:0 14px;}
+    .main { max-width: 1200px; margin: 18px auto 40px; padding: 0 16px; }
 
-    .card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px;}
-    .filters{display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; align-items:end}
-    .filters .col-2{grid-column: span 2}
-    .filters .col-3{grid-column: span 3}
-    .filters .col-6{grid-column: span 6}
-    label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px}
-    input[type="text"], input[type="date"], select{
-      width:100%; box-sizing:border-box; padding:9px 10px; border-radius:10px;
-      background:#0f1118; border:1px solid #1c1f2a; color:var(--text);
-      outline:none;
-    }
-    button{
-      padding:10px 12px; border-radius:10px; border:1px solid #1c1f2a; background:#141726;
-      color:#e5e7eb; cursor:pointer; font-weight:600;
-    }
-    button.primary{ background: linear-gradient(180deg,#00E0FF,#00b8d6); border-color:#00b8d6; color:#001018}
-    button.ghost{ background:#0f1118; }
-    button:disabled{opacity:.6; cursor:default}
+    /* Tarjetas y cajas “claras” */
+    .card { border:1px solid #e5e7eb; border-radius:12px; background:#fff; box-shadow:0 2px 4px rgba(0,0,0,.06); }
+    .toolbar { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; padding:12px; }
+    .toolbar input, .toolbar select, .toolbar button { height:34px; }
+    .toolbar .grow { flex:1; }
 
-    .toolbar{display:flex; gap:8px; align-items:center; margin-top:10px}
-    .hint{color:var(--muted); font-size:12px}
+    /* Inputs y selects */
+    .ctrl { border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; background:#fff; }
+    .ctrl:focus { outline:none; border-color:#93c5fd; box-shadow:0 0 0 3px rgba(147,197,253,.35); }
 
-    table{width:100%; border-collapse:collapse; margin-top:8px; font-size:13px}
-    th, td{border-bottom:1px solid #1f2230; padding:8px 8px; text-align:left; vertical-align:top}
-    th{color:#aeb3bd; font-weight:700}
-    tbody tr:hover{background:#10121c}
-    .badge{display:inline-block; padding:2px 6px; font-size:11px; border:1px solid #263042; border-radius:999px; color:#cbd5e1; background:#0f131d}
-    .right{ text-align:right; }
+    /* Lista de grupos (cards) */
+    #grillaGrupos { display:grid; grid-template-columns: repeat( auto-fill, minmax(320px,1fr) ); gap:12px; margin-top:12px; }
+    .g-card { padding:12px; display:flex; flex-direction:column; gap:8px; }
+    .g-title { font-weight:700; font-size:1.05rem; }
+    .g-line { font-size:.94rem; color:#374151; display:flex; gap:.35rem; align-items:center; }
+    .g-pill { display:inline-block; padding:.1em .5em; border-radius:999px; background:#eef2ff; border:1px solid #dbeafe; font-size:.8rem; color:#1e40af; }
+    .g-actions { display:flex; gap:.5rem; justify-content:flex-end; }
+    .btn { border:1px solid #d1d5db; background:#fff; border-radius:8px; padding:.45em .8em; cursor:pointer; }
+    .btn:hover { background:#f3f4f6; }
+    .btn-primary { background:#0ea5e9; border-color:#0284c7; color:#fff; }
+    .btn-primary:hover { filter:brightness(.95); }
 
-    .progress{margin-left:auto; font-size:12px; color:#9aa0a6}
-    .sr-only{position:absolute; left:-9999px}
+    /* Panel superior “filtros” con el mismo tono que tu ejemplo */
+    .panel { padding:10px; }
+
+    /* Pequeño aviso/nota */
+    .note { font-size:.9rem; color:#6b7280; margin-top:.25rem; }
   </style>
-
-  <!-- html2pdf bundle (html2canvas + jsPDF) -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
-  <!-- Tu JS de página -->
-  <script type="module" src="./confirmaciones.js"></script>
 </head>
-<body>
-  <header>
-    <div class="title">✅ Confirmaciones (PDFs)</div>
-    <div class="spacer"></div>
-    <a class="ico" href="https://sistemas-raitrai.github.io/Operaciones-RTv1.0" title="Inicio">🏠</a>
-    <button class="ico" id="btnReload" title="Actualizar">🔄</button>
-    <button class="ico" id="btnBack" title="Volver atrás">⬅️</button>
-    <button class="ico" id="btnLogout" title="Cerrar sesión">⏏️</button>
-  </header>
 
-  <main>
-    <section class="card">
-      <form id="filtros" class="filters">
-        <div>
-          <label for="fNombre">Nombre/Alias del grupo</label>
-          <input id="fNombre" type="text" placeholder="Ej: Compañía de María 3B"/>
-        </div>
-        <div>
-          <label for="fCodigo">Código / N° de negocio</label>
-          <input id="fCodigo" type="text" placeholder="Ej: 1512"/>
-        </div>
-        <div>
-          <label for="fCoordinador">Coordinador(a)</label>
-          <input id="fCoordinador" type="text" placeholder="Ej: Elías Lagos"/>
-        </div>
-        <div>
-          <label for="fAno">Año de viaje</label>
-          <select id="fAno"></select>
-        </div>
-        <div>
-          <label for="fDestino">Destino</label>
-          <select id="fDestino"></select>
-        </div>
-        <div>
-          <label for="fPrograma">Programa</label>
-          <select id="fPrograma"></select>
-        </div>
+<body class="confirmaciones-page">
+  <!-- 1) Encabezado común -->
+  <div id="encabezado"></div>
 
-        <div class="col-2">
-          <label for="fHotel">Hotel</label>
-          <select id="fHotel"></select>
-        </div>
-        <div class="col-2">
-          <label for="fInicioDia">Día de inicio del viaje (primer vuelo de ida)</label>
-          <input id="fInicioDia" type="date"/>
-        </div>
-        <div class="col-2">
-          <label class="sr-only">Acciones</label>
-          <div class="toolbar">
-            <button type="button" class="primary" id="btnBuscar">Buscar</button>
-            <button type="button" class="ghost" id="btnLimpiar">Limpiar</button>
-          </div>
-        </div>
+  <!-- 2) Contenido principal -->
+  <main class="main">
+    <h2 style="margin:4px 0 12px">CONFIRMACIONES</h2>
 
-        <div class="col-6 hint">
-          Tip: el filtro por “día de inicio” usa exclusivamente la fecha del <strong>primer vuelo de ida</strong>. Si el grupo no tiene vuelos de ida, no se incluirá en ese filtro.
-        </div>
-      </form>
-    </section>
+    <!-- Toolbar / Filtros -->
+    <section class="card panel">
+      <div class="toolbar">
+        <input id="buscar" class="ctrl grow" type="text" placeholder="🔎 Buscar por nombre o número de negocio…"/>
 
-    <section class="card" style="margin-top:12px;">
-      <div class="toolbar" style="margin-bottom:6px;">
-        <button type="button" id="btnDescAll" title="Descargar todos los resultados">⬇️ Descargar todos</button>
-        <button type="button" id="btnDescSel" title="Descargar los seleccionados">⬇️ Descargar seleccionados</button>
-        <div class="progress" id="progressTxt"></div>
+        <select id="filtroDestino" class="ctrl" title="Destino"></select>
+        <select id="filtroPrograma" class="ctrl" title="Programa"></select>
+        <select id="filtroHotel" class="ctrl" title="Hotel"></select>
+
+        <button id="btnDescargarSeleccion" class="btn btn-primary">⬇️ Descargar selección</button>
       </div>
-
-      <table id="tabla">
-        <thead>
-          <tr>
-            <th><input type="checkbox" id="chkAll"/></th>
-            <th>Alias</th>
-            <th>Grupo</th>
-            <th>Código</th>
-            <th>Destino</th>
-            <th>Programa</th>
-            <th>Inicio (ida)</th>
-            <th class="right">Acciones</th>
-          </tr>
-        </thead>
-        <tbody id="tbody">
-          <!-- filas -->
-        </tbody>
-      </table>
-      <div class="hint" id="countHint" style="margin-top:6px;">—</div>
+      <div class="note">Orden por <strong>día de inicio de viaje</strong>; si falta, se usa el <strong>primer vuelo de ida</strong>.</div>
     </section>
+
+    <!-- Grid de grupos -->
+    <section id="grillaGrupos"></section>
   </main>
 
-  <!-- contenedor temporal invisible para render a PDF -->
-  <div id="pdf-work" style="position:absolute; left:-9999px; top:-9999px; width:794px; background:#ffffff;"></div>
+  <!-- Dependencias -->
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
-  <script>
-    // Botones nav simples
-    document.getElementById('btnReload')?.addEventListener('click',()=>location.reload());
-    document.getElementById('btnBack')?.addEventListener('click',()=>history.back());
-    // btnLogout: deja el hook, tu lógica real va en confirmaciones.js si usas Auth
+  <!-- Carga encabezado + lógica de la página -->
+  <script type="module">
+    // Inserta encabezado común
+    try {
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+    } catch(e){ console.warn('No se pudo cargar encabezado:', e); }
+
+    // Lógica principal
+    await import('./confirmaciones.js');
   </script>
 </body>
 </html>
