@@ -1688,6 +1688,18 @@ function injectPrintStyles(){
         padding: 1.6mm 2.2mm;    /* sutil ajuste acorde al tamaño menor */
         line-height: 1.12;
       }
+      
+      /* Espaciado entre NACIONALES y EXTRANJEROS (solo impresión) */
+      #print-block ul.doc-list{ margin-top: 1.6mm; }
+      #print-block ul.doc-list > li{ margin: 0; }
+      #print-block ul.doc-list > li + li{ margin-top: 4mm; } /* ← espacio entre secciones */
+
+      /* (Opcional) un pequeño aire bajo el título de cada bloque */
+      #print-block ul.doc-list > li > div strong{
+        display:inline-block;
+        margin-bottom: 1mm;
+      }
+
     }
   `;
   const s = document.createElement('style');
@@ -1918,7 +1930,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <!-- 4. DOCUMENTOS -->
       <div class="sec">
         <div class="sec-title">4. DOCUMENTOS PARA EL VIAJE</div>
-        <ul>${documentosHTML}</ul>
+        <ul class="doc-list">
+          ${documentosHTML}
+        </ul>
       </div>
 
       <!-- 5. EQUIPAJE -->
