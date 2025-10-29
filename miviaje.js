@@ -1088,8 +1088,8 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   const colegio = grupo.colegio || grupo.cliente || '';
   const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
   const titulo  = (colegio || curso)
-    ? `Viaje de Estudios ${colegio ? colegio : ''} ${curso ? curso : ''}`.trim()
-    : `Viaje de Estudios ${grupo.programa||''}`.trim();
+    ? `Viaje de Estudios: COLEGIO ${colegio ? colegio : ''} ${curso ? curso : ''}`.trim()
+    : `Viaje de Estudios: COLEGIO ${grupo.programa||''}`.trim();
 
   const P = extractPresentacion(grupo, vuelosNorm);
 
@@ -1890,7 +1890,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     return `<ul class="itinerario">${days.join('')}</ul>`;
   })();
 
-  const titulo  = `Viaje de Estudios ${(grupo.colegio || grupo.cliente || '')} ${(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '')}`.trim();
+  const titulo  = `Viaje de Estudios: COLEGIO ${(grupo.colegio || grupo.cliente || '')} ${(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '')}`.trim();
 
   return `
     <div class="print-doc">
