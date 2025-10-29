@@ -21,6 +21,74 @@ let proveedores = {};          // mapa proveedor -> {contacto, correo}
 // ===== [NUEVO] Índice de vuelos por grupo (root collection 'vuelos') =====
 let IDX_VUELOS_POR_GRUPO = new Map();
 
+// Helpers para leer campos con múltiples nombres posibles
+const _val = (o, k) => (o && o[k] != null && String(o[k]).trim() !== '') ? String(o[k]).trim() : '';
+function _pick(o, ...cands) {
+  for (const c of cands) {
+    if (typeof c === 'string') {
+      const v = _val(o, c); if (v) return v;
+    } else if (c instanceof RegExp) {
+      const k = Object.keys(o || {}).find(kk => c.test(kk));
+      if (k) { const v = _val(o, k); if (v) return v; }
+    }
+  }
+  return '';
+}
+const _join = (arr, sep=' · ') => arr.filter(Boolean).join(sep);
+
+// === REEMPLAZO ===
+function makeVueloLabel(v) {
+  // Identidad del vuelo
+  const aerolinea = _pick(v, 'aerolinea', 'proveedor');
+  const tipo      = _pick(v, 'tipo', 'tipoVuelo') || (v.isTransfer ? 'TRANSFER' : 'AÉREO');
+
+  // Número(s)
+  const numero    = _pick(v, 'numero');
+  const numIda    = _pick(v, 'numeroIda', /num.*ida/i);
+  const numVta    = _pick(v, 'numeroVuelta', /num.*vuel/i);
+  const numeroMix = numero || _join([numIda, numVta], ' // ');
+
+  // Tramo
+  const origen    = _pick(v, 'origen', 'origenIda', /origen.*/i, /desde/i);
+  const destino   = _pick(v, 'destino', 'destinoIda', /destino.*/i, /hasta/i);
+  const tramo     = (origen || destino) ? ` (${origen || '¿?'}→${destino || '¿?'})` : '';
+
+  // Fechas (para matching por día)
+  const fechaIda      = _pick(v, 'fechaIda', /fecha.*ida/i, 'idaFecha');
+  const fechaVuelta   = _pick(v, 'fechaVuelta', /fecha.*vuel/i, 'vueltaFecha');
+
+  // Horarios IDA
+  const presIda   = _pick(v, 'presentacionIdaHora', /presentaci.*ida/i);
+  const salIda    = _pick(v, 'salidaIdaHora', /salida.*ida/i, /despegue.*ida/i);
+  const arrIda    = _pick(v, 'arriboIdaHora', /arrib.*ida/i, /llegad.*ida/i);
+
+  // Horarios VUELTA
+  const presVta   = _pick(v, 'presentacionVueltaHora', /presentaci.*vuel/i);
+  const salVta    = _pick(v, 'salidaVueltaHora', /salida.*vuel/i, /despegue.*vuel/i);
+  const arrVta    = _pick(v, 'arriboVueltaHora', /arrib.*vuel/i, /llegad.*vuel/i);
+
+  // Cabecera y detalle compactos (una sola línea para la celda)
+  const head = _join([numeroMix, aerolinea, tipo]);
+  const ida  = _join([
+    'Ida:',
+    presIda ? `Pres ${presIda}` : '',
+    salIda  ? `Sal ${salIda}`   : '',
+    arrIda  ? `Arr ${arrIda}`   : '',
+    fechaIda
+  ], ' | ');
+  const vta  = _join([
+    'Vuelta:',
+    presVta ? `Pres ${presVta}` : '',
+    salVta  ? `Sal ${salVta}`   : '',
+    arrVta  ? `Arr ${arrVta}`   : '',
+    fechaVuelta
+  ], ' | ');
+
+  // Resultado final
+  return _join([ head + tramo, ida, vta ], '  ||  ');
+}
+
+
 /** Crea una etiqueta legible del vuelo */
 function makeVueloLabel(v) {
   const num = (v.numero || '').toString().trim();              // ej: "LA 269 // LA 60"
@@ -31,17 +99,27 @@ function makeVueloLabel(v) {
 }
 
 /** Lee todos los vuelos y arma un Map: grupoId -> [ {label, v, idDoc} ] */
+// === REEMPLAZO ===
 async function buildIndexVuelosPorGrupo() {
   IDX_VUELOS_POR_GRUPO.clear();
+
   const snap = await getDocs(collection(db, 'vuelos'));
   snap.forEach(ds => {
     const v = ds.data() || {};
-    const { grupos = [], isTransfer } = v;
-    if (isTransfer) return;                // solo mostramos VUELOS (no transfers)
+    if (v.isTransfer) return; // no mezclar transfers en esta columna
+
     const label = makeVueloLabel(v);
 
-    (Array.isArray(grupos) ? grupos : []).forEach(g => {
-      const key = String(g?.id || '').trim(); // ej: "1412-101" (coincide con N° Negocio de la tabla)
+    // A) grupoIds: ["1412-101", ...]
+    const a1 = Array.isArray(v.grupoIds) ? v.grupoIds : [];
+
+    // B) grupos: [{id:"1412-101"}, ...]
+    const a2 = Array.isArray(v.grupos) ? v.grupos.map(x => x && x.id).filter(Boolean) : [];
+
+    const todos = [...new Set([...a1, ...a2])]; // únicos
+
+    todos.forEach(keyRaw => {
+      const key = String(keyRaw || '').trim();
       if (!key) return;
       const list = IDX_VUELOS_POR_GRUPO.get(key) || [];
       list.push({ idDoc: ds.id, label, v });
@@ -50,23 +128,29 @@ async function buildIndexVuelosPorGrupo() {
   });
 }
 
-/** Devuelve un string de vuelo(s) para el grupo; si hay más de uno, concatena. */
+
+// === REEMPLAZO ===
 function getVuelosLabelForGrupo(grupoKey, fechaISO) {
   const list = IDX_VUELOS_POR_GRUPO.get(String(grupoKey).trim()) || [];
   if (!list.length) return '—';
 
-  // Si tienes fechas por tramo, intenta matchear con el día del modal:
   const sameDay = (d) => {
     if (!d) return false;
+    // d puede venir como "YYYY-MM-DD" o Date/string
     const iso = new Date(d).toISOString().slice(0,10);
     return iso === fechaISO;
   };
+
+  // prioriza el que calza con la fecha del modal
   const prefer = list.find(({ v }) =>
-    sameDay(v.idaFecha) || sameDay(v.vueltaFecha) || sameDay(v.fecha)
+    sameDay(_pick(v, 'fechaIda', /fecha.*ida/i, 'idaFecha')) ||
+    sameDay(_pick(v, 'fechaVuelta', /fecha.*vuel/i, 'vueltaFecha')) ||
+    sameDay(_pick(v, 'fecha', /date/i))
   );
+
   if (prefer) return prefer.label;
 
-  // Si no hay matcheo por fecha, devolvemos todos los labels unidos:
+  // si hay varios, concatenamos
   return list.map(x => x.label).join(' • ');
 }
 
