@@ -1106,12 +1106,8 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   if (hasAeropuertoToColegio) legendBits.push('Y traslado AEROPUERTO → COLEGIO.');
   const legendInline = legendBits.join(' ');
 
-  // Helpers
-  const maybeSwapOD = (origen, destino, modo) => (modo === 'vuelta')
-    ? { origen:String(destino||'').toUpperCase(), destino:String(origen||'').toUpperCase() }
-    : { origen:String(origen||'').toUpperCase(), destino:String(destino||'').toUpperCase() };
-
-  const makeRows = (legs, modo) => legs.map(r => {
+  // Filas (aéreo o bus). Si isAereo=false, oculta "arribo".
+  const makeRows = (legs, modo, isAereo = true) => legs.map(r => {
     const fecha        = (modo === 'ida') ? (r.fechaIda || r.fecha) : (r.fechaVuelta || r.fecha);
     const presentacion = (modo === 'ida') ? r.presentacionIda       : r.presentacionVuelta;
     const salida       = (modo === 'ida') ? r.salidaIda             : r.salidaVuelta;
@@ -1124,10 +1120,9 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(destino)}</td>
-        <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arribo)}</td>
+        ${isAereo ? `<td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arribo)}</td>` : ``}
       </tr>`;
   }).join('');
-
 
   // Encabezados para aéreos (si aplica)
   const chooseNum = (raw, modo) => {
@@ -1237,6 +1232,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <div class="subsec" style="font-weight:700;margin:.35rem 0 .25rem 0;">IDA</div>
         <div style="overflow:auto;margin-top:2px;">
           <table style="border-collapse:collapse;min-width:560px;">
+    
             <thead>
               <tr>
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
@@ -1244,16 +1240,17 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Presentación</th>
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de salida</th>
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de arribo</th>
               </tr>
             </thead>
-            <tbody>${makeRows(terrestresPlanIda, 'ida')}</tbody>
+            <tbody>${makeRows(terrestresPlanIda, 'ida', /* isAereo= */ false)}</tbody>
+
           </table>
         </div>
 
         <div class="subsec" style="font-weight:700;margin:.6rem 0 .25rem 0;">VUELTA</div>
         <div style="overflow:auto;margin-top:2px;">
           <table style="border-collapse:collapse;min-width:560px;">
+
             <thead>
               <tr>
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Fecha</th>
@@ -1261,10 +1258,10 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Presentación</th>
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de salida</th>
                 <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Destino</th>
-                <th style="padding:6px 8px;border:1px solid #d1d5db;background:#f3f4f6;text-align:left;">Hora de arribo</th>
               </tr>
             </thead>
-            <tbody>${makeRows(terrestresPlanVuelta, 'vuelta')}</tbody>
+            <tbody>${makeRows(terrestresPlanVuelta, 'vuelta', /* isAereo= */ false)}</tbody>
+
           </table>
         </div>
       `;
