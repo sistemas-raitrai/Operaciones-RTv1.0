@@ -1575,7 +1575,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const withHrs = t => t ? `${t} HRS` : '—';
   const U = s => String(s||'').toUpperCase();
 
-  // Encabezado por bloque (aéreo)
+  // AÉREO (impresión) con swap origen/destino en VUELTA/REGRESO
   const flightsBlock = (legs, modo) => {
     if (!legs || !legs.length) return '';
     const header = (() => {
@@ -1587,51 +1587,60 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         return (modo === 'ida') ? (p[0]||'') : (p[p.length-1]||'');
       };
       const nro = chooseNum(f.numero);
-      const via = f.aerolinea ? ` VÍA ${U(f.aerolinea)}` : '';
-      return `${modo==='ida' ? 'IDA' : 'VUELTA'}: VUELO ${nro}${via}`;
+      const via = f.aerolinea ? ` VÍA ${String(f.aerolinea).toUpperCase()}` : '';
+      const tituloModo = (modo === 'ida') ? 'IDA' : 'VUELTA / REGRESO';
+      return `${tituloModo}: VUELO ${nro}${via}`;
     })();
-
+  
     const legsHtml = legs.map(l=>{
       const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
-      const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
-      const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
-      const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
+      const pres  = (modo==='ida') ? l.presentacionIda       : l.presentacionVuelta;
+      const sal   = (modo==='ida') ? l.salidaIda             : l.salidaVuelta;
+      const arr   = (modo==='ida') ? l.arriboIda             : l.arriboVuelta;
+      const { origen, destino } = maybeSwapOD(l.origen, l.destino, modo);
+      const U = s => String(s||'').toUpperCase();
+      const withHrs = t => t ? `${t} HRS` : '—';
       return `
         <ul class="flight-lines">
           <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
-          <li><span class="lbl">Origen:</span> ${U(l.origen)}</li>
+          <li><span class="lbl">Origen:</span> ${U(origen)}</li>
           <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
           <li><span class="lbl">Hora de salida:</span> ${withHrs(sal)}</li>
-          <li><span class="lbl">Destino:</span> ${U(l.destino)}</li>
+          <li><span class="lbl">Destino:</span> ${U(destino)}</li>
           <li><span class="lbl">Hora de arribo:</span> ${withHrs(arr)}</li>
         </ul>`;
     }).join('');
-
+  
     return `<div class="flight-block"><div class="flights-header">${header}</div><div class="flight-legs">${legsHtml}</div></div>`;
   };
 
-  // Terrestre de PLAN (sin transfers)
+  // TERRESTRE (impresión) con swap origen/destino en VUELTA/REGRESO
   const busesBlock = (legs, modo) => {
     if (!legs || !legs.length) return '';
-    const header = (modo==='ida') ? 'IDA' : 'VUELTA';
+    const header = (modo==='ida') ? 'IDA' : 'VUELTA / REGRESO';
+    const U = s => String(s||'').toUpperCase();
+    const withHrs = t => t ? `${t} HRS` : '—';
+  
     const items = legs.map(l=>{
       const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
       const pres  = (modo==='ida') ? l.presentacionIda       : l.presentacionVuelta;
       const sal   = (modo==='ida') ? l.salidaIda             : l.salidaVuelta;
       const arr   = (modo==='ida') ? l.arriboIda             : l.arriboVuelta;
+      const { origen, destino } = maybeSwapOD(l.origen, l.destino, modo);
       return `
         <ul class="flight-lines">
           <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
-          <li><span class="lbl">Origen:</span> ${U(l.origen)}</li>
+          <li><span class="lbl">Origen:</span> ${U(origen)}</li>
           <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
           <li><span class="lbl">Hora de salida:</span> ${withHrs(sal)}</li>
-          <li><span class="lbl">Destino:</span> ${U(l.destino)}</li>
+          <li><span class="lbl">Destino:</span> ${U(destino)}</li>
           <li><span class="lbl">Hora de arribo:</span> ${withHrs(arr)}</li>
         </ul>`;
     }).join('');
-
+  
     return `<div class="flight-block"><div class="flights-header">${header}</div><div class="flight-legs">${items}</div></div>`;
   };
+
 
   // TRANSFERS (solo para sección 1)
   const transfersBlock = (() => {
@@ -1643,39 +1652,44 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     ];
     if (!arr.length) return '';
   
+    const U = s => String(s||'').toUpperCase();
+    const withHrs = t => t ? `${t} HRS` : '—';
+  
     const items = arr.map(x=>{
-      const modo  = (x.__modo === 'ida') ? 'IDA' : 'VUELTA';
-      const fecha = (x.__modo === 'ida') ? (x.fechaIda || x.fecha) : (x.fechaVuelta || x.fecha);
-      const pres  = (x.__modo === 'ida') ? x.presentacionIda       : x.presentacionVuelta;
-      const baseSalida = (x.__modo === 'ida') ? x.salidaIda         : x.salidaVuelta;
+      const modo  = (x.__modo === 'ida') ? 'ida' : 'vuelta';
+      const modoLabel = (modo === 'ida') ? 'IDA' : 'VUELTA / REGRESO';
+      const fecha = (modo==='ida') ? (x.fechaIda || x.fecha) : (x.fechaVuelta || x.fecha);
+      const pres  = (modo==='ida') ? x.presentacionIda       : x.presentacionVuelta;
+      // terrestres: salida = presentación + 30 (si hay presentación)
+      const baseSalida = (modo==='ida') ? x.salidaIda : x.salidaVuelta;
       const salida = (x.__tipo === 'terrestre') ? (addMinutesHM(pres,30) || baseSalida) : baseSalida;
   
-      const U = s => String(s||'').toUpperCase();
+      const { origen, destino } = maybeSwapOD(x.origen, x.destino, modo);
   
-      // Para terrestres: sin "Hora de arribo"
+      // Terrestres: sin "Hora de arribo"
       if (x.__tipo === 'terrestre'){
         return `
           <ul class="flight-lines">
-            <li><span class="lbl">Modo:</span> ${modo}</li>
+            <li><span class="lbl">Modo:</span> ${modoLabel}</li>
             <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
-            <li><span class="lbl">Origen:</span> ${U(x.origen)}</li>
-            <li><span class="lbl">Presentación:</span> ${pres ? pres + ' HRS' : '—'}</li>
-            <li><span class="lbl">Hora de salida:</span> ${salida ? salida + ' HRS' : '—'}</li>
-            <li><span class="lbl">Destino:</span> ${U(x.destino)}</li>
+            <li><span class="lbl">Origen:</span> ${U(origen)}</li>
+            <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
+            <li><span class="lbl">Hora de salida:</span> ${withHrs(salida)}</li>
+            <li><span class="lbl">Destino:</span> ${U(destino)}</li>
           </ul>`;
       }
   
       // Aéreos: mantiene "Hora de arribo"
-      const arribo = (x.__modo === 'ida') ? x.arriboIda : x.arriboVuelta;
+      const arribo = (modo==='ida') ? x.arriboIda : x.arriboVuelta;
       return `
         <ul class="flight-lines">
-          <li><span class="lbl">Modo:</span> ${modo}</li>
+          <li><span class="lbl">Modo:</span> ${modoLabel}</li>
           <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
-          <li><span class="lbl">Origen:</span> ${U(x.origen)}</li>
-          <li><span class="lbl">Presentación:</span> ${pres ? pres + ' HRS' : '—'}</li>
-          <li><span class="lbl">Hora de salida:</span> ${salida ? salida + ' HRS' : '—'}</li>
-          <li><span class="lbl">Destino:</span> ${U(x.destino)}</li>
-          <li><span class="lbl">Hora de arribo:</span> ${arribo ? arribo + ' HRS' : '—'}</li>
+          <li><span class="lbl">Origen:</span> ${U(origen)}</li>
+          <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
+          <li><span class="lbl">Hora de salida:</span> ${withHrs(salida)}</li>
+          <li><span class="lbl">Destino:</span> ${U(destino)}</li>
+          <li><span class="lbl">Hora de arribo:</span> ${withHrs(arribo)}</li>
         </ul>`;
     }).join('');
   
@@ -1684,9 +1698,6 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="flight-legs">${items}</div>
     </div>`;
   })();
-
-
-
 
   // Punto de encuentro (SOLO en sección 2)
   const puntoEncuentroTexto = (() => {
