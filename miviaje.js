@@ -450,9 +450,8 @@ function normalizeVuelo(v){
 }
 
 // === Helper: particiona vuelos en IDA/VUELTA (aéreos) y TERRESTRES
-// === Helper: particiona vuelos en IDA/VUELTA (aéreos) y TERRESTRES
-//     + clasifica TRANSFERS terrestres y "traslado aéreo"
-//     + expone listas "terrestresPlanIda/Vuelta" (sin transfers) para Plan de Viaje
+//     + clasifica TRANSFERS (terrestre y "aéreo/traslado")
+//     + expone listas "idaLegsPlan/vueltaLegsPlan" (aéreos SIN transfers) para Plan de Viaje
 function particionarVuelos(vuelosNorm) {
   const aereos = [];
   const terrestres = [];
@@ -483,6 +482,12 @@ function particionarVuelos(vuelosNorm) {
 
     const fecha = toISO(fechaIda || fechaVuelta || '');
 
+    // ← incluimos tipoVuelo en el leg para rotular “CHARTER/REGULAR”
+    const tipoVuelo = esTerrestre(v) ? '' : String(v.tipoVuelo || '').toLowerCase();
+
+    // Transfer: respetar bandera explícita y, de apoyo, transferLeg
+    const isTransfer = !!v.isTransfer || /^(ida|vuelta|ida\+vuelta)$/.test(String(v.transferLeg||'').toLowerCase());
+
     return {
       fecha, fechaIda, fechaVuelta,
       aerolinea, numero, origen, destino,
@@ -490,7 +495,8 @@ function particionarVuelos(vuelosNorm) {
       salidaIda, salidaVuelta,
       arriboIda, arriboVuelta,
       tipoTransporte: v.tipoTransporte || 'aereo',
-      isTransfer: !!v.isTransfer || /transfer|traslado/i.test(String(v.transferLeg||'') + ' ' + String(v.tipoVuelo||'')),
+      tipoVuelo, // ← importante
+      isTransfer,
       transferLeg: String(v.transferLeg||'').toLowerCase()
     };
   };
@@ -509,49 +515,49 @@ function particionarVuelos(vuelosNorm) {
   // Orden cronológico básico en aéreos
   aereos.sort((x, y) => (x.fecha || '').localeCompare(y.fecha || ''));
 
-  // Legs aéreos (no colapsamos)
-  const idaLegs    = aereos.filter(l => l.fechaIda);
-  const vueltaLegs = aereos.filter(l => l.fechaVuelta);
+  // Legs aéreos
+  const idaLegsAll    = aereos.filter(l => l.fechaIda);
+  const vueltaLegsAll = aereos.filter(l => l.fechaVuelta);
 
-  // Detectores de transferencia terrestre típica
+  // Detectores de transferencia terrestre típica (además de isTransfer)
   const U = s => String(s||'').toUpperCase();
   const isColegioToAero = (t) => U(t.origen).includes('COLEGIO')   && U(t.destino).includes('AEROPUERTO');
   const isAeroToColegio = (t) => U(t.origen).includes('AEROPUERTO') && U(t.destino).includes('COLEGIO');
 
-  const hasColegioToAeropuerto = terrestres.some(isColegioToAero);
-  const hasAeropuertoToColegio = terrestres.some(isAeroToColegio);
+  // TRANSFERS TERRESTRES (por bandera o por patrón típico)
+  const transferTerrestreIda    = terrestres.filter(t => t.isTransfer || isColegioToAero(t)).map(t => ({ ...t, __modo:'ida', __tipo:'terrestre' }));
+  const transferTerrestreVuelta = terrestres.filter(t => t.isTransfer || isAeroToColegio(t)).map(t => ({ ...t, __modo:'vuelta', __tipo:'terrestre' }));
 
-  // TRANSFER TERRESTRE (solo para "Información General")
-  const transferTerrestreIda    = terrestres.filter(isColegioToAero).map(t => ({ ...t, __modo:'ida', __tipo:'terrestre' }));
-  const transferTerrestreVuelta = terrestres.filter(isAeroToColegio).map(t => ({ ...t, __modo:'vuelta', __tipo:'terrestre' }));
+  // TRANSFER AÉREO ("traslado aéreo" guardado como isTransfer=true)
+  const transferAereoIda    = idaLegsAll.filter(l => l.isTransfer).map(l => ({ ...l, __modo:'ida', __tipo:'aereo' }));
+  const transferAereoVuelta = vueltaLegsAll.filter(l => l.isTransfer).map(l => ({ ...l, __modo:'vuelta', __tipo:'aereo' }));
 
-  // TRANSFER AÉREO ("traslado aéreo"): aéreos marcados como transfer
-  const transferAereoIda    = idaLegs.filter(l => l.isTransfer).map(l => ({ ...l, __modo:'ida', __tipo:'aereo' }));
-  const transferAereoVuelta = vueltaLegs.filter(l => l.isTransfer).map(l => ({ ...l, __modo:'vuelta', __tipo:'aereo' }));
+  // Para PLAN DE VIAJE → aéreos SIN transfers
+  const idaLegsPlan    = idaLegsAll.filter(l => !l.isTransfer);
+  const vueltaLegsPlan = vueltaLegsAll.filter(l => !l.isTransfer);
 
-  // Primer transfer de ida/vuelta (para cálculos secundarios)
-  const transferIda    = transferTerrestreIda[0]    || transferAereoIda[0]    || null;
-  const transferVuelta = transferTerrestreVuelta[0] || transferAereoVuelta[0] || null;
+  // Para PLAN DE VIAJE → buses SIN transfers
+  const terrestresNoTransfer = terrestres.filter(t => !t.isTransfer && !isColegioToAero(t) && !isAeroToColegio(t));
+  const terrestresPlanIda    = terrestresNoTransfer.filter(t => !!(t.fechaIda || t.presentacionIda || t.salidaIda));
+  const terrestresPlanVuelta = terrestresNoTransfer.filter(t => !!(t.fechaVuelta || t.presentacionVuelta || t.salidaVuelta));
 
-  // === NUEVO: Terrestres "de plan" (excluye transfers) para Plan de Viaje
-  const terrestresNoTransfer = terrestres.filter(t => !isColegioToAero(t) && !isAeroToColegio(t) && !t.isTransfer);
-
-  // Separar en IDA/VUELTA segun datos presentes
-  const terrestresPlanIda = terrestresNoTransfer.filter(t =>
-    !!(t.fechaIda || t.presentacionIda || t.salidaIda)
-  );
-  const terrestresPlanVuelta = terrestresNoTransfer.filter(t =>
-    !!(t.fechaVuelta || t.presentacionVuelta || t.salidaVuelta)
-  );
+  const hasColegioToAeropuerto = transferTerrestreIda.length > 0;
+  const hasAeropuertoToColegio = transferTerrestreVuelta.length > 0;
 
   return {
-    idaLegs, vueltaLegs,
-    terrestres,                          // crudo (no se usa para plan)
+    // crudos (si los necesitas)
+    idaLegs: idaLegsAll, vueltaLegs: vueltaLegsAll,
+    terrestres,
+
+    // para leyendas
     hasColegioToAeropuerto, hasAeropuertoToColegio,
-    transferIda, transferVuelta,
+
+    // transfers para Información General
     transferTerrestreIda, transferTerrestreVuelta,
     transferAereoIda, transferAereoVuelta,
-    // 👉 para Plan de Viaje (cuando no hay vuelos)
+
+    // SOLO PARA PLAN (excluyen transfers)
+    idaLegsPlan, vueltaLegsPlan,
     terrestresPlanIda, terrestresPlanVuelta
   };
 }
@@ -610,26 +616,30 @@ function renderTransferTable(arr){
 // Prioridad: transfer COLEGIO→AEROPUERTO (ida) → primer vuelo de ida → primer terrestre.
 function computeFechaInicioViaje(vuelosNorm){
   if (!Array.isArray(vuelosNorm) || !vuelosNorm.length) return '';
-  const { idaLegs, terrestres, transferIda } = particionarVuelos(vuelosNorm);
+  const {
+    idaLegs, terrestres,
+    transferTerrestreIda, transferAereoIda
+  } = particionarVuelos(vuelosNorm);
 
-  // 1) Transfer COLEGIO → AEROPUERTO (si existe)
-  if (transferIda && (transferIda.fechaIda || transferIda.fecha)) {
-    return toISO(transferIda.fechaIda || transferIda.fecha);
-  }
+  const toFirstISO = (arr, pick) => {
+    const xs = (arr||[]).map(pick).map(toISO).filter(Boolean).sort();
+    return xs[0] || '';
+  };
 
-  // 2) Primer vuelo de ida (legs ya vienen ordenados por fecha en particionarVuelos)
-  if (idaLegs && idaLegs.length) {
-    return toISO(idaLegs[0].fechaIda || idaLegs[0].fecha);
-  }
+  // 1) Transfer COLEGIO → AEROPUERTO (ida) (prioridad)
+  const firstTransferIdaISO = toFirstISO(
+    [...(transferTerrestreIda||[]), ...(transferAereoIda||[])],
+    x => x.fechaIda || x.fecha
+  );
+  if (firstTransferIdaISO) return firstTransferIdaISO;
 
-  // 3) Terrestre simple (sin vuelos)
-  if (terrestres && terrestres.length) {
-    const cand = [...terrestres]
-      .map(t => toISO(t.fechaIda || t.fecha || ''))
-      .filter(Boolean)
-      .sort();
-    if (cand.length) return cand[0];
-  }
+  // 2) Primer vuelo de ida
+  const firstIdaISO = toFirstISO(idaLegs||[], x => x.fechaIda || x.fecha);
+  if (firstIdaISO) return firstIdaISO;
+
+  // 3) Primer terrestre (cuando no hay aéreos)
+  const firstTerISO = toFirstISO(terrestres||[], x => x.fechaIda || x.fecha);
+  if (firstTerISO) return firstTerISO;
 
   return '';
 }
@@ -660,43 +670,51 @@ function renderSelector(lista, cont, hideNotes){
 ────────────────────────────────────────────────────────────────────────── */
 function extractPresentacion(grupo, vuelosNorm){
   const {
-    idaLegs,
-    transferIda,
-    transferVuelta,
+    idaLegs, // crudos (fallback)
+    transferTerrestreIda, transferTerrestreVuelta,
+    transferAereoIda,     transferAereoVuelta,
     hasColegioToAeropuerto
   } = particionarVuelos(vuelosNorm);
 
-  const primeraIda = idaLegs[0];
+  const T_IDA    = [...(transferTerrestreIda||[]), ...(transferAereoIda||[])].sort((a,b)=> (toISO(a.fechaIda||a.fecha||'')||'').localeCompare(toISO(b.fechaIda||b.fecha||'')||''));
+  const T_VUELTA = [...(transferTerrestreVuelta||[]), ...(transferAereoVuelta||[])].sort((a,b)=> (toISO(a.fechaVuelta||a.fecha||'')||'').localeCompare(toISO(b.fechaVuelta||b.fecha||'')||''));
 
-  // Lugar por defecto según haya transfer COLEGIO→AEROPUERTO
+  const primeraIda = (idaLegs||[])[0] || null;
+  const firstTransIda    = T_IDA[0]    || null;
+  const firstTransVuelta = T_VUELTA[0] || null;
+
+  // Lugar por defecto según exista transfer COLEGIO→AEROPUERTO
   let lugar = (grupo.presentacionLugar || '').trim();
   if (!lugar) {
     lugar = hasColegioToAeropuerto ? 'En las puertas del Colegio'
                                    : (primeraIda ? 'En el aeropuerto' : 'Punto de encuentro');
   }
 
-  // Aeropuerto (texto) si aplica
-  let aeropuerto = grupo.presentacionAeropuerto || (primeraIda ? primeraIda.origen : '');
+  // Aeropuerto (texto) si aplica: origen del primer aéreo ida o, si no hay, del transfer de vuelta
+  let aeropuerto = grupo.presentacionAeropuerto || (primeraIda ? primeraIda.origen : '') || (firstTransVuelta ? firstTransVuelta.origen : '');
 
-  // Horas de presentación/salida (prioridad: transfer ida → vuelo ida → transfer vuelta)
-  let presHora = '';
+  // Horas
+  let presHora   = '';
   let salidaHora = '';
 
-  if (transferIda){
-    presHora   = transferIda.presentacionIda || transferIda.salidaIda || '';
-    salidaHora = transferIda.salidaIda || '';
+  // Prioridad 1: transfer ida
+  if (firstTransIda){
+    presHora   = firstTransIda.presentacionIda || firstTransIda.salidaIda || '';
+    salidaHora = firstTransIda.salidaIda || '';
   }
+  // Prioridad 2: primer vuelo de ida
   if (!presHora && primeraIda) presHora = primeraIda.presentacionIda || primeraIda.salidaIda || '';
   if (!salidaHora && primeraIda) salidaHora = primeraIda.salidaIda || '';
 
-  // Caso “SOLO VUELTA” (no hubo ida): tomar desde transferVuelta
-  if (!presHora && transferVuelta){
-    presHora   = transferVuelta.presentacionVuelta || transferVuelta.salidaVuelta || '';
-    salidaHora = transferVuelta.salidaVuelta || '';
-    aeropuerto = transferVuelta.origen || aeropuerto;
+  // Caso solo-vuelta (no hubo ida)
+  if (!presHora && firstTransVuelta){
+    presHora   = firstTransVuelta.presentacionVuelta || firstTransVuelta.salidaVuelta || '';
+    salidaHora = firstTransVuelta.salidaVuelta || '';
+    aeropuerto = firstTransVuelta.origen || aeropuerto;
     if (!lugar) lugar = 'En el aeropuerto';
   }
 
+  // Campo libre “encuentroAeropuerto” en documentos aéreos (si viene cargado)
   const encuentro = (vuelosNorm || [])
     .find(x => norm(x.tipoTransporte || '') === 'aereo' && x.encuentroAeropuerto)?.encuentroAeropuerto || '';
 
@@ -822,9 +840,14 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   const P = extractPresentacion(grupo, vuelosNorm);
 
   const {
-    idaLegs, vueltaLegs,
+    // aéreos “plan” sin transfers
+    idaLegsPlan, vueltaLegsPlan,
+    // info para leyendas
     hasColegioToAeropuerto, hasAeropuertoToColegio,
+    // transfers (terrestre + “aéreo”)
     transferTerrestreIda, transferTerrestreVuelta,
+    transferAereoIda, transferAereoVuelta,
+    // buses de plan (sin transfers)
     terrestresPlanIda, terrestresPlanVuelta
   } = particionarVuelos(vuelosNorm);
 
@@ -863,24 +886,25 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     const parts = s.split('//').map(x=>x.trim());
     return (modo === 'ida') ? (parts[0]||'') : (parts[parts.length-1]||'');
   };
+
   const idaHeaderAereo = (() => {
-    const f = idaLegs[0]; if (!f) return '';
-    return `IDA: VUELO ${chooseNum(f.numero,'ida')} VÍA ${f.aerolinea||''}`.trim();
+    const f = idaLegsPlan[0]; if (!f) return '';
+    const tipo = f.tipoVuelo ? ` (${String(f.tipoVuelo).toUpperCase()})` : '';
+    return `IDA: VUELO ${chooseNum(f.numero,'ida')} VÍA ${f.aerolinea||''}${tipo}`.trim();
   })();
   const vtaHeaderAereo = (() => {
-    const f = vueltaLegs[0]; if (!f) return '';
-    return `VUELTA: VUELO ${chooseNum(f.numero,'vuelta')} VÍA ${f.aerolinea||''}`.trim();
+    const f = vueltaLegsPlan[0]; if (!f) return '';
+    const tipo = f.tipoVuelo ? ` (${String(f.tipoVuelo).toUpperCase()})` : '';
+    return `VUELTA: VUELO ${chooseNum(f.numero,'vuelta')} VÍA ${f.aerolinea||''}${tipo}`.trim();
   })();
 
   // Punto de encuentro (SOLO en Plan de viaje)
   const puntoEncuentroTexto = (() => {
-    // Si hay vuelos, aeropuerto origen del primer vuelo de ida
-    if (idaLegs.length) {
+    if (idaLegsPlan.length) {
       if (P.encuentro) return P.encuentro;
-      const aero = idaLegs[0]?.origen || '';
+      const aero = idaLegsPlan[0]?.origen || '';
       return aero ? `Encuentro en Aeropuerto ${aero}` : '';
     }
-    // Si no hay vuelos y sí buses de plan, origen del primer bus de ida
     if (terrestresPlanIda.length) {
       const ori = terrestresPlanIda[0]?.origen || '';
       return ori ? `Encuentro en ${ori}` : '';
@@ -890,16 +914,21 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
 
   // TRANSFERS (solo para Información General)
   const transfersHTML = (() => {
-    const arr = [...(transferTerrestreIda||[]), ...(transferTerrestreVuelta||[])];
+    const arr = [
+      ...(transferTerrestreIda || []),
+      ...(transferTerrestreVuelta || []),
+      ...(transferAereoIda || []),
+      ...(transferAereoVuelta || [])
+    ];
     if (!arr.length) return '';
     return `
-      <div style="font-weight:700;margin:.8rem 0 .25rem 0;">PLAN DE TRASLADOS TERRESTRES</div>
+      <div style="font-weight:700;margin:.8rem 0 .25rem 0;">PLAN DE TRASLADOS</div>
       ${renderTransferTable(arr)}
     `;
   })();
 
   // Bloque Plan de Viaje → aéreos si existen; si no, buses (sin transfers)
-  const hayAereos = idaLegs.length || vueltaLegs.length;
+  const hayAereos = idaLegsPlan.length || vueltaLegsPlan.length;
   const hayBusesPlan = terrestresPlanIda.length || terrestresPlanVuelta.length;
 
   const planLegend = `Los horarios a continuación pueden sufrir modificaciones por causa mayor; cualquier cambio será informado a la brevedad.`;
@@ -1419,9 +1448,10 @@ function syncHotelColumnToDocs(){
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const P = extractPresentacion(grupo, vuelosNorm);
   const {
-    idaLegs, vueltaLegs,
+    idaLegsPlan, vueltaLegsPlan,
     hasColegioToAeropuerto, hasAeropuertoToColegio,
     transferTerrestreIda, transferTerrestreVuelta,
+    transferAereoIda, transferAereoVuelta,
     terrestresPlanIda, terrestresPlanVuelta
   } = particionarVuelos(vuelosNorm);
 
@@ -1492,29 +1522,15 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
   // TRANSFERS (solo para sección 1)
   const transfersBlock = (() => {
-    const arr = [...(transferTerrestreIda||[]), ...(transferTerrestreVuelta||[])];
-    if (!arr.length) return '';
-    const items = arr.map(l=>{
-      const modo  = (l.__modo === 'vuelta') ? 'vuelta' : 'ida';
-      const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
-      const pres  = (modo==='ida') ? l.presentacionIda       : l.presentacionVuelta;
-      const sal   = (modo==='ida') ? l.salidaIda             : l.salidaVuelta;
-      const arrb  = (modo==='ida') ? l.arriboIda             : l.arriboVuelta;
-      return `
-        <ul class="flight-lines">
-          <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
-          <li><span class="lbl">Origen:</span> ${U(l.origen)}</li>
-          <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
-          <li><span class="lbl">Hora de salida:</span> ${withHrs(sal)}</li>
-          <li><span class="lbl">Destino:</span> ${U(l.destino)}</li>
-          <li><span class="lbl">Hora de arribo:</span> ${withHrs(arrb)}</li>
-        </ul>`;
-    }).join('');
-    return `<div class="flight-block">
-      <div class="flights-header">PLAN DE TRASLADOS TERRESTRES</div>
-      <div class="flight-legs">${items}</div>
-    </div>`;
+    const arr = [
+      ...(transferTerrestreIda || []),
+      ...(transferTerrestreVuelta || []),
+      ...(transferAereoIda || []),
+      ...(transferAereoVuelta || [])
+    ];
+    ...
   })();
+
 
   // Punto de encuentro (SOLO en sección 2)
   const puntoEncuentroTexto = (() => {
@@ -1596,10 +1612,11 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         <div class="sec-title">2. INFORMACIÓN DEL PLAN DE VIAJE</div>
         <div class="note">${planLegend}</div>
         ${puntoEncuentroTexto ? `<p><strong>Punto de encuentro con el guía:</strong> ${puntoEncuentroTexto}.</p>` : ''}
-        ${flightsBlock(idaLegs, 'ida') || ''}
-        ${flightsBlock(vueltaLegs, 'vuelta') || ''}
-        ${(!idaLegs.length && !vueltaLegs.length) ? (busesBlock(terrestresPlanIda, 'ida') + busesBlock(terrestresPlanVuelta, 'vuelta')) : ''}
-        ${(!idaLegs.length && !vueltaLegs.length && !terrestresPlanIda.length && !terrestresPlanVuelta.length) ? `<div class="note">— Sin información del plan —</div>` : ''}
+        ${flightsBlock(idaLegsPlan, 'ida') || ''}
+        ${flightsBlock(vueltaLegsPlan, 'vuelta') || ''}
+        ${(!idaLegsPlan.length && !vueltaLegsPlan.length) ? (busesBlock(terrestresPlanIda, 'ida') + busesBlock(terrestresPlanVuelta, 'vuelta')) : ''}
+        ${(!idaLegsPlan.length && !vueltaLegsPlan.length && !terrestresPlanIda.length && !terrestresPlanVuelta.length) ? `<div class="note">— Sin información del plan —</div>` : ''}
+
       </div>
 
       <!-- 3. HOTELERÍA -->
