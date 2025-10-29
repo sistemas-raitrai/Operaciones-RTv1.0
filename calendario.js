@@ -35,85 +35,77 @@ function compararActividades(a = {}, b = {}) {
 }
 
 // ======================================================
-// Helpers de "Vuelos" (AGREGAR)
-//  - Extrae ids de grupo desde varios posibles esquemas.
-//  - Arma un resumen compacto del vuelo/trayecto.
-//  - Carga horarios publicados y, si no hay, usa draft como fallback.
+// Helpers de "Vuelos" (LEE COLECCIÓN 'vuelos')
 // ======================================================
 function _safe(v){ return (v ?? '').toString().trim(); }
 function _bon(fechaISO){
   return (fechaISO && /^\d{4}-\d{2}-\d{2}$/.test(fechaISO))
     ? formatearFechaBonita(fechaISO) : (fechaISO || '');
 }
-function _extractGroupIds(d={}){
-  if (Array.isArray(d.grupos))         return d.grupos.map(String);
-  if (Array.isArray(d.groups))         return d.groups.map(String);
-  if (Array.isArray(d.gruposIds))      return d.gruposIds.map(String);
-  if (d.statusPorGrupo && typeof d.statusPorGrupo === 'object')
-    return Object.keys(d.statusPorGrupo);
-  if (d.asignaciones && typeof d.asignaciones === 'object')
-    return Object.keys(d.asignaciones);
-  if (d.gruposMap && typeof d.gruposMap === 'object')
-    return Object.keys(d.gruposMap);
-  return [];
-}
-function _resumenHorario(d={}){
-  const transporte = (_safe(d.transporte) || _safe(d.tipoTransporte) || 'aereo').toUpperCase();
-  const etiqueta = (transporte === 'TERRESTRE') ? 'BUS' : 'AÉREO';
-  const prov  = _safe(d.proveedor);
-  const num   = _safe(d.numero);
 
-  // top-level más usados por tu modal
-  let ori = _safe(d.origen);
-  let des = _safe(d.destino);
-  const fIda = d.fechaIda || d.fecha_ida || d.idaFecha || d.fechaIdaTer || d['ida.fecha'] || '';
-  const fVta = d.fechaVuelta || d.fecha_vuelta || d.vueltaFecha || d.fechaVueltaTer || d['vuelta.fecha'] || '';
+// Resumen compacto del vuelo/trayecto
+function _resumenVuelo(v = {}){
+  const transporte = (_safe(v.transporte) || _safe(v.tipoTransporte) || 'aereo').toUpperCase();
+  const etiqueta   = (transporte === 'TERRESTRE') ? 'BUS' : 'AÉREO';
+  const prov       = _safe(v.proveedor);
+  const num        = _safe(v.numero);
 
-  // horas (aéreo o bus)
-  const idaHora = d.vueloIdaHora || d.horaIda || d.idaHora || '';
-  const vtaHora = d.vueloVueltaHora || d.horaVuelta || d.vueltaHora || '';
+  // origen/destino + fechas/horas (tolerante a distintos nombres)
+  let origen  = _safe(v.origen);
+  let destino = _safe(v.destino);
 
-  // Si hay tramos, intenta tomar el primero y el último para compactar
-  if (Array.isArray(d.tramos) && d.tramos.length){
-    const first = d.tramos[0] || {};
-    const last  = d.tramos[d.tramos.length - 1] || {};
-    ori = _safe(first.origen) || ori;
-    des = _safe(last.destino) || des;
+  let fechaIda = v.fechaIda || v.idaFecha || v.fechaIdaTer || v['ida.fecha'] || '';
+  let fechaVta = v.fechaVuelta || v.vueltaFecha || v.fechaVueltaTer || v['vuelta.fecha'] || '';
+
+  let horaIda = v.vueloIdaHora || v.idaHora || v.presentacionIdaHora || '';
+  let horaVta = v.vueloVueltaHora || v.vueltaHora || v.presentacionVueltaHora || '';
+
+  // Si hay tramos, usar 1º origen y último destino (y horas/fechas si existen)
+  if (Array.isArray(v.tramos) && v.tramos.length){
+    const first = v.tramos[0] || {};
+    const last  = v.tramos[v.tramos.length - 1] || {};
+    origen   = _safe(first.origen)  || origen;
+    destino  = _safe(last.destino)  || destino;
+    fechaIda = first.fecha || fechaIda;
+    fechaVta = last.fecha  || fechaVta;
+    horaIda  = first.vueloHora || first.hora || horaIda;
+    horaVta  = last.vueloHora  || last.hora  || horaVta;
   }
 
-  const ida = [ (ori && des) ? `${ori}→${des}` : '', _bon(fIda), _safe(idaHora) ].filter(Boolean).join(' ');
-  const vta = [ (des && ori) ? `${des}→${ori}` : '', _bon(fVta), _safe(vtaHora) ].filter(Boolean).join(' ');
+  const idaTxt = [ (origen && destino) ? `${origen}→${destino}` : '', _bon(fechaIda), _safe(horaIda) ]
+                  .filter(Boolean).join(' ');
+  const vtaTxt = [ (destino && origen) ? `${destino}→${origen}` : '', _bon(fechaVta), _safe(horaVta) ]
+                  .filter(Boolean).join(' ');
 
-  const head = `${etiqueta} ${prov ? prov + ' ' : ''}${num}`.trim();
-  return [ head, ida ? `IDA: ${ida}` : '', vta ? `REG: ${vta}` : '' ]
-    .filter(Boolean).join(' · ');
+  const head = `${etiqueta}${prov ? ' ' + prov : ''}${num ? ' ' + num : ''}`.trim();
+  return [ head, idaTxt ? `IDA: ${idaTxt}` : '', vtaTxt ? `REG: ${vtaTxt}` : '' ]
+         .filter(Boolean).join(' · ');
 }
 
-async function cargarHorariosIndex(){
+// Devuelve Map<groupId, string[]> a partir de 'vuelos'
+async function cargarVuelosIndex(){
   const index = new Map();
+  const snap  = await getDocs(collection(db, 'vuelos'));
 
-  async function acum(nombreCol){
-    try{
-      const snap = await getDocs(collection(db, nombreCol));
-      snap.forEach(ds => {
-        const d = ds.data() || {};
-        const ids = _extractGroupIds(d);
-        if (!ids.length) return;
-        const resumen = _resumenHorario(d);
-        ids.forEach(gid => {
-          if (!index.has(gid)) index.set(gid, []);
-          index.get(gid).push(resumen);
-        });
-      });
-    }catch(err){
-      console.warn('No se pudo leer', nombreCol, err);
-    }
-  }
+  snap.forEach(ds => {
+    const d = ds.data() || {};
+    // IDs de grupos soportados (tu screenshot muestra un array 'grupos')
+    let groupIds = [];
+    if (Array.isArray(d.grupos)) groupIds = d.grupos.map(String);
+    else if (Array.isArray(d.groups)) groupIds = d.groups.map(String);
+    else if (d.statusPorGrupo && typeof d.statusPorGrupo === 'object') groupIds = Object.keys(d.statusPorGrupo);
+    else if (d.gruposMap && typeof d.gruposMap === 'object')          groupIds = Object.keys(d.gruposMap);
 
-  await acum('horarios_publicos');       // preferente: lo publicado
-  if (index.size === 0) await acum('horarios_draft'); // fallback: borradores
+    if (!groupIds.length) return;
 
-  return index; // Map<groupId, string[]>
+    const resumen = _resumenVuelo(d);
+    groupIds.forEach(gid => {
+      if (!index.has(gid)) index.set(gid, []);
+      index.get(gid).push(resumen);
+    });
+  });
+
+  return index;
 }
 
 // Extrae parámetro de URL (si lo quieres usar luego)
@@ -144,7 +136,7 @@ async function generarTablaCalendario(userEmail) {
   const fechasUnicas = new Set();
   const destinosSet = new Set();
   const aniosSet = new Set();
-  const indexHorarios = await cargarHorariosIndex(); // Map<groupId, string[]>
+  const indexVuelos = await cargarVuelosIndex(); // Map<groupId, string[]>
 
   snapshot.forEach(docSnap => {
     const d = docSnap.data();
@@ -217,20 +209,21 @@ async function generarTablaCalendario(userEmail) {
   const $tbody = $('#cuerpoCalendario').empty();
   grupos.forEach(g => {
     const $tr = $('<tr>');
-    // Siete primeras celdas fijas (la 7ª es el Año y va oculta en DataTables) (REEMPLAZO)
-    const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
-    const vuelosTxt  = (indexHorarios.get(g.id) || []).join("\n");
-    
-    $tr.append(
-      $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
-      $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
-      $('<td>').text(g.destino).attr('data-doc-id', g.id),
-      $('<td>').text(g.programa).attr('data-doc-id', g.id),
-      // NUEVO: columna Vuelos
-      $('<td>').text(vuelosTxt).attr('data-doc-id', g.id),
-      $('<td>').text(resumenPax).attr('data-doc-id', g.id),
-      $('<td>').text(g.anoViaje).attr('data-doc-id', g.id) // Año (oculto)
-    );
+   // Siete primeras celdas fijas (la 7ª es "Año" que va oculta en DataTables)
+  const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
+  // Busca por g.id y, si no, por g.numeroNegocio (por seguridad)
+  const vuelosTxt  = (indexVuelos.get(g.id) || indexVuelos.get(g.numeroNegocio) || []).join("\n");
+  
+  $tr.append(
+    $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
+    $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
+    $('<td>').text(g.destino).attr('data-doc-id', g.id),
+    $('<td>').text(g.programa).attr('data-doc-id', g.id),
+    $('<td>').text(vuelosTxt).attr('data-doc-id', g.id),       // ← NUEVA columna "Vuelos"
+    $('<td>').text(resumenPax).attr('data-doc-id', g.id),
+    $('<td>').text(g.anoViaje).attr('data-doc-id', g.id)       // Año (oculta)
+  );
+
 
 
     // Una celda por cada fecha (ordenando actividades por hora al mostrar)
