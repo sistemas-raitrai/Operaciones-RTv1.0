@@ -830,14 +830,14 @@ function getDERTextos(programa, overrides = {}) {
           title: 'NACIONALES',
           items: [
             'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).',
-            'Verificar que la autorización notarial de quienes tengan la patria potestad del menor esté con los datos correctos de Nombres / Rut, la cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país (según detalle de normativa entregada con anticipación a los encargados del grupo).'
-          ]
+            'Verificar que la autorización notarial esté con todos los datos correctos según detalle enviado a los encargados del grupo. La cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país.'
+        
         },
         {
           title: 'EXTRANJEROS',
           items: [
             'Verificar que Cédula de Identidad Chilena y Pasaporte de origen, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).',
-            'Verificar con consulado del país de destino los requerimientos para el ingreso y salida de acuerdo a la nacionalidad del menor. Es de absoluta responsabilidad de los tutores del menor encargarse de la correcta documentación para el viaje.'
+            'Verificar con consulado del país de destino los requerimientos para el ingreso y salida de acuerdo a la nacionalidad del menor. Es responsabilidad de cada pasajero, junto a sus padres o apoderados, tener la documentación vigente, correcta y necesaria para su viaje.'
           ]
         }
       ];
@@ -845,8 +845,8 @@ function getDERTextos(programa, overrides = {}) {
       overrides.recomendaciones || [
         'Llevar ropa y calzado, cómodo, adecuado a Clima del Destino. Llevar protector solar',
         'Llevar una botella reutilizable para el consumo de agua',
-        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
-        'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
+        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida.',
+        'Las pertenencias personales son de responsabilidad exclusiva de cada pasajero.',
         'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros o documento que corresponda.'
       ];
     return { docsText, equipajeText1, equipajeText2, recs };
@@ -865,8 +865,8 @@ function getDERTextos(programa, overrides = {}) {
         'Llevar una botella reutilizable para el consumo de agua',
         'Llevar Saco de Dormir',
         'Llevar toalla, Shampoo y Jabón (Huilo Huilo NO INCLUYE TOALLAS NI AMENIDADES)',
-        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
-        'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
+        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida.',
+        'Las pertenencias personales son de responsabilidad exclusiva de cada pasajero.',
         'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros.'
       ];
     return { docsText, equipajeText1, equipajeText2, recs };
@@ -881,8 +881,8 @@ function getDERTextos(programa, overrides = {}) {
       overrides.recomendaciones || [
         'Llevar ropa y calzado, cómodo, adecuado a Clima del Destino. Llevar protector solar',
         'Llevar una botella reutilizable para el consumo de agua',
-        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida',
-        'Las pertenencias personales son de responsabilidad exclusiva de cada persona, se recomienda que los elementos de valor queden en sus domicilios',
+        'Se recomienda que la documentación quede bajo la supervisión de los adultos para evitar su pérdida.',
+        'Las pertenencias personales son de responsabilidad exclusiva de cada pasajero.',
         'Se recomienda que los adultos acompañantes tengan una fotocopia de las Cédulas de Identidad de todos los pasajeros.'
       ];
     return { docsText, equipajeText1, equipajeText2, recs };
@@ -1019,7 +1019,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   const hayAereos = idaLegsPlan.length || vueltaLegsPlan.length;
   const hayBusesPlan = terrestresPlanIda.length || terrestresPlanVuelta.length;
 
-  const planLegend = `Los horarios a continuación pueden sufrir modificaciones por causa mayor; cualquier cambio será informado a la brevedad.`;
+  const planLegend = `Los horarios a continuación pueden sufrir modificaciones sin previo aviso.`;
 
   const planDeViajeHTML = (() => {
     // AÉREO
@@ -1571,7 +1571,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const fechaInicioViajeISO = computeFechaInicioViaje(vuelosNorm);
   const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
 
-  const planLegend = `Los horarios a continuación pueden sufrir modificaciones por causa mayor; cualquier cambio será informado a la brevedad.`;
+  const planLegend = `Los horarios a continuación pueden sufrir modificaciones sin previo aviso.`;
   const withHrs = t => t ? `${t} HRS` : '—';
   const U = s => String(s||'').toUpperCase();
 
