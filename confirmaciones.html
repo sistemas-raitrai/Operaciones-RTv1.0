@@ -3,55 +3,86 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Confirmaciones | Rai Trai</title>
+  <title>Confirmaciones | RT</title>
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <!-- Estilos mínimos coherentes con tu sistema -->
   <style>
     :root{ color-scheme: light; }
-    html, body{ background:#f7f7f8 !important; color:#111 !important; } /* SIN font:... -> respeta estilos.css */
+    html, body{ background:#f7f7f8 !important; color:#111 !important; } /* sin font -> respeta estilos.css */
   
-    /* Layout */
+    /* ===== Layout base (no toca tu fuente) ===== */
     .main { max-width: 1200px; margin: 18px auto 40px; padding: 0 16px; }
+    /* quitamos el upper global; lo aplicamos selectivo abajo */
     .page { padding: 1rem 1.2rem; }
-    .page, .page * { text-transform: uppercase; }  /* igual que coordinadores */
   
     h2 { margin:.6rem 0 1rem; }
   
-    /* Panel de filtros (nombre único para no chocar con tu .panel/.card global) */
-    .cf-panel{ border:1px solid #ddd; border-radius:10px; background:#fff; }
-    .cf-toolbar{ display:flex; flex-wrap:wrap; gap:.6rem; padding:.6rem .8rem; align-items:center; }
-    .cf-toolbar .grow{ flex:1; min-width:260px; }            /* el buscador no se corta */
-    .cf-toolbar input, .cf-toolbar select, .cf-toolbar button{
-      height:34px; font: inherit !important;                 /* respeta tu fuente de estilos.css */
-    }
-    .note{ font-size:.9rem; color:#6b7280; padding:0 .8rem .6rem; }
-  
-    /* Grid de resultados */
-    #grillaGrupos{
-      display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr));
-      gap:12px; margin-top:12px;
-    }
-  
-    /* Cards SOLO dentro de grilla de confirmaciones (evita “universal”) */
-    #grillaGrupos .card{
+    /* ===== Card SOLO dentro de #cf para no chocar con “universal” ===== */
+    #cf .card{
       border:1px solid #ddd; border-radius:12px; background:#fff;
       box-shadow:0 2px 4px rgba(0,0,0,.06);
+      padding:.6rem .8rem;
     }
-    #grillaGrupos .card .hd{
-      padding:.6rem .8rem; border-bottom:1px solid #eee;
-      display:flex; justify-content:space-between; align-items:center; gap:.5rem;
+  
+    /* ===== Filtros (grid responsivo) ===== */
+    #cf .filters{
+      display:grid; gap:12px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      align-items:start;
     }
-    #grillaGrupos .card .bd{ padding:.6rem .8rem; }
+    #cf .filters .col-2{ grid-column: span 2; }
+    #cf .filters .col-6{ grid-column: span 6; }
   
-    /* Controles “claros” coherentes con el sistema */
-    .ctrl{ border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; background:#fff; }
-    .ctrl:focus{ outline:none; border-color:#93c5fd; box-shadow:0 0 0 3px rgba(147,197,253,.35); }
+    /* Etiquetas y títulos en MAYÚSCULA; inputs no */
+    #cf .filters label,
+    #cf th,
+    #cf .toolbar button { text-transform: uppercase; }
   
-    /* Botones (dejas tus clases si ya existen en estilos.css) */
-    .btn-primary{ background:#0ea5e9; border:1px solid #0284c7; color:#fff; border-radius:8px; padding:.45em .8em; }
-    .btn-primary:hover{ filter:brightness(.95); }
+    /* Controles coherentes con el sistema */
+    #cf input[type="text"],
+    #cf input[type="date"],
+    #cf select{
+      width:100%; box-sizing:border-box;
+      border:1px solid #d1d5db; border-radius:8px;
+      padding:8px 10px; background:#fff; font:inherit !important;
+    }
+    #cf input:focus, #cf select:focus{
+      outline:none; border-color:#93c5fd; box-shadow:0 0 0 3px rgba(147,197,253,.35);
+    }
+  
+    /* ===== Toolbar / Botones ===== */
+    #cf .toolbar{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
+    #cf .toolbar .progress{ margin-left:auto; color:#6b7280; font-size:.9rem; }
+  
+    #cf button.primary{
+      background:#0ea5e9; border:1px solid #0284c7; color:#fff;
+      border-radius:8px; padding:.45em .8em; cursor:pointer;
+    }
+    #cf button.primary:hover{ filter:brightness(.95); }
+  
+    #cf button.ghost{
+      background:#e8eef6; color:#1f64b2; border:1px solid #cfe0f9;
+      border-radius:8px; padding:.45em .8em; cursor:pointer;
+    }
+  
+    /* ===== Tabla ===== */
+    #cf table{ width:100%; border-collapse:collapse; }
+    #cf th, #cf td{ border:1px solid #eee; padding:.5rem .6rem; text-align:left; vertical-align:top; }
+    #cf th{ background:#f8fafc; font-weight:600; }
+    #cf th.right, #cf td.right{ text-align:right; }
+  
+    /* Pistas / ayudas */
+    #cf .hint{ color:#6b7280; font-size:.9rem; }
+  
+    /* Responsive */
+    @media (max-width: 900px){
+      #cf .filters{ grid-template-columns: 1fr 1fr; }
+      #cf .filters .col-2{ grid-column: span 2; }
+      #cf .filters .col-6{ grid-column: span 2; }
+    }
   </style>
+
 
 
   <!-- html2pdf bundle (html2canvas + jsPDF) -->
@@ -70,7 +101,7 @@
     <button class="ico" id="btnLogout" title="Cerrar sesión">⏏️</button>
   </header>
 
-  <main>
+  <div id="cf" class="page"><main class="main">
     <section class="card">
       <form id="filtros" class="filters">
         <div>
@@ -146,7 +177,7 @@
       </table>
       <div class="hint" id="countHint" style="margin-top:6px;">—</div>
     </section>
-  </main>
+  </main></div>
 
   <!-- contenedor temporal invisible para render a PDF -->
   <div id="pdf-work" style="position:absolute; left:-9999px; top:-9999px; width:794px; background:#ffffff;"></div>
