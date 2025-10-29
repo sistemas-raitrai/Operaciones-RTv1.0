@@ -8,62 +8,51 @@
 
   <!-- Estilos mínimos coherentes con tu sistema -->
   <style>
-    :root{
-      --bg:#0b0c10;
-      --card:#111218;
-      --muted:#9aa0a6;
-      --text:#e5e7eb;
-      --brand:#00E0FF;
-      --accent:#22d3ee;
-      --border:#21222b;
+    :root{ color-scheme: light; }
+    html, body{ background:#f7f7f8 !important; color:#111 !important; } /* SIN font:... -> respeta estilos.css */
+  
+    /* Layout */
+    .main { max-width: 1200px; margin: 18px auto 40px; padding: 0 16px; }
+    .page { padding: 1rem 1.2rem; }
+    .page, .page * { text-transform: uppercase; }  /* igual que coordinadores */
+  
+    h2 { margin:.6rem 0 1rem; }
+  
+    /* Panel de filtros (nombre único para no chocar con tu .panel/.card global) */
+    .cf-panel{ border:1px solid #ddd; border-radius:10px; background:#fff; }
+    .cf-toolbar{ display:flex; flex-wrap:wrap; gap:.6rem; padding:.6rem .8rem; align-items:center; }
+    .cf-toolbar .grow{ flex:1; min-width:260px; }            /* el buscador no se corta */
+    .cf-toolbar input, .cf-toolbar select, .cf-toolbar button{
+      height:34px; font: inherit !important;                 /* respeta tu fuente de estilos.css */
     }
-    html,body{margin:0;padding:0;background:#0b0c10;color:var(--text);font:14px/1.35 Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;}
-    a{color:var(--accent);text-decoration:none}
-    header{
-      position:sticky; top:0; z-index:10;
-      display:flex; align-items:center; gap:10px;
-      padding:12px 16px; background:linear-gradient(180deg,#0b0c10 0%, #0b0c10ee 70%, #0b0c1000 100%);
-      border-bottom:1px solid var(--border);
-      backdrop-filter: blur(6px);
+    .note{ font-size:.9rem; color:#6b7280; padding:0 .8rem .6rem; }
+  
+    /* Grid de resultados */
+    #grillaGrupos{
+      display:grid; grid-template-columns:repeat(auto-fill, minmax(320px,1fr));
+      gap:12px; margin-top:12px;
     }
-    header .title{font-weight:800; letter-spacing:.2px}
-    header .spacer{flex:1}
-    header .ico{font-size:18px; padding:6px 10px; border:1px solid var(--border); border-radius:10px; background:#0f1016; cursor:pointer}
-    header .ico:hover{border-color:#2a2c39}
-    main{max-width:1100px; margin:18px auto; padding:0 14px;}
-
-    .card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:14px;}
-    .filters{display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; align-items:end}
-    .filters .col-2{grid-column: span 2}
-    .filters .col-3{grid-column: span 3}
-    .filters .col-6{grid-column: span 6}
-    label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px}
-    input[type="text"], input[type="date"], select{
-      width:100%; box-sizing:border-box; padding:9px 10px; border-radius:10px;
-      background:#0f1118; border:1px solid #1c1f2a; color:var(--text);
-      outline:none;
+  
+    /* Cards SOLO dentro de grilla de confirmaciones (evita “universal”) */
+    #grillaGrupos .card{
+      border:1px solid #ddd; border-radius:12px; background:#fff;
+      box-shadow:0 2px 4px rgba(0,0,0,.06);
     }
-    button{
-      padding:10px 12px; border-radius:10px; border:1px solid #1c1f2a; background:#141726;
-      color:#e5e7eb; cursor:pointer; font-weight:600;
+    #grillaGrupos .card .hd{
+      padding:.6rem .8rem; border-bottom:1px solid #eee;
+      display:flex; justify-content:space-between; align-items:center; gap:.5rem;
     }
-    button.primary{ background: linear-gradient(180deg,#00E0FF,#00b8d6); border-color:#00b8d6; color:#001018}
-    button.ghost{ background:#0f1118; }
-    button:disabled{opacity:.6; cursor:default}
-
-    .toolbar{display:flex; gap:8px; align-items:center; margin-top:10px}
-    .hint{color:var(--muted); font-size:12px}
-
-    table{width:100%; border-collapse:collapse; margin-top:8px; font-size:13px}
-    th, td{border-bottom:1px solid #1f2230; padding:8px 8px; text-align:left; vertical-align:top}
-    th{color:#aeb3bd; font-weight:700}
-    tbody tr:hover{background:#10121c}
-    .badge{display:inline-block; padding:2px 6px; font-size:11px; border:1px solid #263042; border-radius:999px; color:#cbd5e1; background:#0f131d}
-    .right{ text-align:right; }
-
-    .progress{margin-left:auto; font-size:12px; color:#9aa0a6}
-    .sr-only{position:absolute; left:-9999px}
+    #grillaGrupos .card .bd{ padding:.6rem .8rem; }
+  
+    /* Controles “claros” coherentes con el sistema */
+    .ctrl{ border:1px solid #d1d5db; border-radius:8px; padding:6px 10px; background:#fff; }
+    .ctrl:focus{ outline:none; border-color:#93c5fd; box-shadow:0 0 0 3px rgba(147,197,253,.35); }
+  
+    /* Botones (dejas tus clases si ya existen en estilos.css) */
+    .btn-primary{ background:#0ea5e9; border:1px solid #0284c7; color:#fff; border-radius:8px; padding:.45em .8em; }
+    .btn-primary:hover{ filter:brightness(.95); }
   </style>
+
 
   <!-- html2pdf bundle (html2canvas + jsPDF) -->
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
