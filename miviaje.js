@@ -1332,9 +1332,9 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         ${transfersHTML}
       </li>
 
-      <!-- 2. INFORMACIÓN DEL PLAN DE VIAJE -->
+      <!-- 2. INFORMACIÓN DEL VUELO -->
       <li style="margin-bottom:12px;">
-        <div style="font-weight:700;">INFORMACIÓN DEL PLAN DE VIAJE</div>
+        <div style="font-weight:700;">INFORMACIÓN DEL VUELO</div>
         ${planDeViajeHTML}
       </li>
 
@@ -1879,9 +1879,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         ${transfersBlock}
       </div>
 
-      <!-- 2. INFORMACIÓN DEL PLAN DE VIAJE -->
+      <!-- 2. INFORMACIÓN DEL VUELO -->
       <div class="sec">
-        <div class="sec-title">2. INFORMACIÓN DEL PLAN DE VIAJE</div>
+        <div class="sec-title">2. INFORMACIÓN DEL VUELO</div>
         <div class="note">${planLegend}</div>
         ${puntoEncuentroTexto ? `<p><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}.</p>` : ''}
         ${flightsBlock(idaLegsPlan, 'ida') || ''}
