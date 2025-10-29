@@ -1080,7 +1080,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <div class="legend" style="color:#6b7280;margin:.25rem 0 .45rem 0;">${legendInline}</div>
         ${fechaInicioViajeISO ? `<div><strong>Fecha de inicio del viaje:</strong> ${fechaInicioViajeTxt}</div>` : ''}
         <div class="presentacion" style="line-height:1.35;">
-          Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''} ${P.aeropuerto ? `para salir con destino a ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} hrs.` : ''}.
+          Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} hrs.` : ''}${P.aeropuerto ? ` en el Aeropuerto ${String(P.aeropuerto||'').toUpperCase()}` : ''}${P.salidaHora ? `; salida a las ${P.salidaHora} hrs.` : ''}.
         </div>
         ${transfersHTML}
       </li>
@@ -1653,7 +1653,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
           ${hasColegioToAeropuerto ? 'Este grupo contempla traslado COLEGIO → AEROPUERTO. ' : ''}
           ${hasAeropuertoToColegio ? 'Este grupo contempla traslado AEROPUERTO → COLEGIO.' : ''}
         </div>
-        <p>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} HRS` : ''}${P.aeropuerto ? ` para salir con destino a ${U(P.aeropuerto)}` : ''}${P.salidaHora ? ` a las ${P.salidaHora} HRS` : ''}.</p>
+        <p>Presentación: ${P.lugar}${P.presHora ? ` a las ${P.presHora} HRS` : ''}${P.aeropuerto ? ` EN EL AEROPUERTO ${U(P.aeropuerto)}` : ''}${P.salidaHora ? `; SALIDA A LAS ${P.salidaHora} HRS` : ''}.</p>
         ${transfersBlock}
       </div>
 
@@ -1732,7 +1732,7 @@ async function main(){
   if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
   if(!numeroNegocio && !id){
-    cont.innerHTML = `<p style="padding:1rem;">Falta <code>numeroNegocio</code> o <code>id</code> en la URL.</p>`;
+    if (cont) cont.innerHTML = `<p style="padding:1rem;">Falta <code>numeroNegocio</code> o <code>id</code> en la URL.</p>`;
     if (printEl) printEl.textContent = '';
     return;
   }
@@ -1759,15 +1759,16 @@ async function main(){
   btnShare?.addEventListener('click', async ()=>{ try{ await navigator.clipboard.writeText(shareUrl); alert('Enlace copiado'); }catch{ const i=document.createElement('input'); i.value=shareUrl; document.body.appendChild(i); i.select(); document.execCommand('copy'); i.remove(); alert('Enlace copiado'); } });
 
   // Cabecera
-  titleEl.textContent   = ' ' + (g.programa || '—').toString().toUpperCase(); // ← sin template literal
-  nombreEl.textContent  = g.nombreGrupo || '—';
-  numEl.textContent     = g.numeroNegocio ?? g.id ?? '—';
-  destinoEl.textContent = g.destino || '—';
-  fechasEl.textContent  = formatDateRange(g.fechaInicio, g.fechaFin);
+  titleEl   && (titleEl.textContent   = ' ' + (g.programa || '—').toString().toUpperCase());
+  nombreEl  && (nombreEl.textContent  = g.nombreGrupo || '—');
+  numEl     && (numEl.textContent     = g.numeroNegocio ?? g.id ?? '—');
+  destinoEl && (destinoEl.textContent = g.destino || '—');
+  fechasEl  && (fechasEl.textContent  = formatDateRange(g.fechaInicio, g.fechaFin));
+  
+  const totalA = parseInt(g.adultos,10)||0, totalE = parseInt(g.estudiantes,10)||0;
+  const total  = (totalA + totalE) || g.pax || g.cantidadgrupo || '';
+  resumenPax && (resumenPax.textContent = total ? `👥 Total pax: ${total}${(totalA||totalE)?` (A:${totalA} · E:${totalE})`:''}` : '');
 
-  const totalA = parseInt(g.adultos,10)||0, totalE=parseInt(g.estudiantes,10)||0;
-  const total = (totalA + totalE) || g.pax || g.cantidadgrupo || '';
-  resumenPax.textContent = total ? `👥 Total pax: ${total}${(totalA||totalE)?` (A:${totalA} · E:${totalE})`:''}` : '';
 
   // Fechas del itinerario
   let fechas=[];
