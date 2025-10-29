@@ -1895,7 +1895,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
   return `
     <div class="print-doc">
-      <div class="doc-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
+      <div class="doc-title">${titulo || ('Viaje de Estudios: COLEGIO ' + (grupo.programa||''))}</div>
 
       <!-- 1. INFORMACIÓN GENERAL -->
       <div class="sec">
