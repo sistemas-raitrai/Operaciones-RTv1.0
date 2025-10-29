@@ -1387,6 +1387,16 @@ function injectPrintStyles(){
   s.id = ID; s.textContent = css; document.head.appendChild(s);
 }
 
+// === Logo fijo en impresión (arriba-derecha) ===
+function ensurePrintLogo(){
+  if (document.getElementById('print-logo')) return;
+  const img = document.createElement('img');
+  img.id = 'print-logo';
+  img.src = 'Logo Raitrai.png';           // ajusta ruta si tu logo está en otra carpeta
+  img.alt = 'Turismo Rai Trai';
+  document.body.appendChild(img);         // queda fijo por CSS @media print
+}
+
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
 function injectScreenHotelStyles(){
   if (document.getElementById('screen-hotel-styles')) return;
@@ -1412,6 +1422,21 @@ function injectScreenHotelStyles(){
   `;
   const s = document.createElement('style');
   s.id = 'screen-hotel-styles';
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+
+// Menos aire en pantalla para la Hoja Resumen
+function injectCompactScreenStyles(){
+  if (document.getElementById('compact-screen-styles')) return;
+  const css = `
+    #hoja-resumen .legend{ margin:.25rem 0 .35rem 0 !important; }
+    #hoja-resumen li{ margin-bottom:8px !important; }
+    #hoja-resumen .subsec{ margin:.35rem 0 .2rem 0 !important; }
+    #hoja-resumen table{ margin-top:2px !important; }
+  `;
+  const s = document.createElement('style');
+  s.id = 'compact-screen-styles';
   s.textContent = css;
   document.head.appendChild(s);
 }
@@ -1703,6 +1728,7 @@ async function main(){
 
   // Estilos de impresión + acción del botón
   injectPrintStyles();
+  injectCompactScreenStyles(); 
   if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
   if(!numeroNegocio && !id){
@@ -1765,9 +1791,10 @@ async function main(){
  }
 
  // Genera el documento de IMPRESIÓN (una vez)
- if (printEl) {
-   printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas || []);
- }
+if (printEl) {
+  printEl.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas || []);
+  ensurePrintLogo(); // ← NUEVO: inserta <img id="print-logo"> para que el @media print lo fije arriba-derecha
+}
 syncHotelColumnToDocs();
 window.addEventListener('resize', syncHotelColumnToDocs);
 }
