@@ -832,7 +832,7 @@ function getDERTextos(programa, overrides = {}) {
             'Verificar que Cédula de Identidad o Pasaporte, esté en buen estado y vigente (mínimo 6 meses a futuro al momento del viaje).',
             'Verificar que la autorización notarial esté con todos los datos correctos según detalle enviado a los encargados del grupo. La cédula de identidad debe estar en óptimas condiciones para que los pasajeros no tengan problemas para salir del país.'
         
-        },
+        }
         {
           title: 'EXTRANJEROS',
           items: [
