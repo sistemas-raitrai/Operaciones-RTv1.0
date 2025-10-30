@@ -61,6 +61,13 @@
     .btn-secondary{background:#1f2937;color:#fff}
     .rt-check{display:flex;align-items:center;gap:8px}
 
+    /* Mayúsculas SOLO en la columna "Hotel" de la tabla principal */
+    #tablaHoteles th:nth-child(1),
+    #tablaHoteles td:nth-child(1) .badge{
+      text-transform: uppercase;
+      letter-spacing: .02em; /* opcional, se ve más prolijo */
+    }
+
   </style>
 </head>
 <body>
