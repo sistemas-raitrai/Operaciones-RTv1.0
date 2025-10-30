@@ -87,6 +87,7 @@ function populateFiltroAno(){
 // Filtra un 'rec' (entrada de AGG por hotel) solo al año indicado
 function recForYear(rec, year){
   if (!year) return rec;
+
   const porDia = rec.porDia || new Map();
 
   const byDay = (porDia instanceof Map)
@@ -99,19 +100,27 @@ function recForYear(rec, year){
   for (const [, list] of byDay){
     (list || []).forEach(it => {
       const gid = it.grupoId || it.gid || it.grupo || '';
-      const g = grupos.get(gid) || { nombreGrupo: it.nombreGrupo || it.name || '', alm:0, cen:0 };
-      g.alm += Number(it.alm || 0);
-      g.cen += Number(it.cen || 0);
+      const g = grupos.get(gid) || {
+        grupoId: gid,
+        numeroNegocio: it.numeroNegocio || '',
+        nombreGrupo: it.nombreGrupo || it.name || '',
+        identificador: it.identificador || '',
+        totAlm: 0,
+        totCen: 0
+      };
+      g.totAlm += Number(it.alm || 0);
+      g.totCen += Number(it.cen || 0);
       grupos.set(gid, g);
+
       totAlm += Number(it.alm || 0);
       totCen += Number(it.cen || 0);
     });
   }
 
-  // reconstruimos un rec compatible
   const filteredPorDia = new Map(byDay.map(([iso, list]) => [iso, list]));
   return { hotel: rec.hotel, grupos, totAlm, totCen, porDia: filteredPorDia };
 }
+
 
 // regex robustas:
 const NEG = /(no incluye|por cuenta|libre|sin\s+(almuerzo|cena))/i;
@@ -382,15 +391,18 @@ function renderSubtablaHotel(rec){
     .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo))
     .map(g => {
       const label = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo || ''}`;
+      const almTot = (g.totAlm ?? g.alm ?? 0);
+      const cenTot = (g.totCen ?? g.cen ?? 0);
       return `
         <tr>
           <td>${label}</td>
-          <td>${g.totAlm}</td>
-          <td>${g.totCen}</td>
+          <td>${almTot}</td>
+          <td>${cenTot}</td>
           <td><button class="btn btn-mini" data-act="detalle-grupo" data-gid="${g.grupoId}" data-hid="${rec.hotel.id}">Detalle</button></td>
         </tr>
       `;
     }).join('');
+
   // regresa tabla + wire posterior
   setTimeout(()=>{
     document.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
