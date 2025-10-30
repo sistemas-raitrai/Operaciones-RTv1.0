@@ -94,13 +94,18 @@ function sumGrupoDesdeDias(g){
     cen: vals.reduce((s,d)=> s + Number(d?.cen || 0), 0),
   };
 }
+
 function totalesDeGrupo(g){
-  // Si recForYear construyó el grupo, viene con totAlm/totCen
-  if (typeof g?.totAlm === 'number' || typeof g?.totCen === 'number') {
-    return { alm: Number(g.totAlm || 0), cen: Number(g.totCen || 0) };
-  }
-  // Si es el gInfo de AGG, calculamos desde g.dias
-  return sumGrupoDesdeDias(g);
+  // si hay días, SIEMPRE sumar desde g.dias
+  const hasDias =
+    (g?.dias instanceof Map   && g.dias.size > 0) ||
+    (Array.isArray(g?.dias)   && g.dias.length > 0) ||
+    (g?.dias && typeof g.dias === 'object' && Object.keys(g.dias).length > 0);
+
+  if (hasDias) return sumGrupoDesdeDias(g);
+
+  // fallback: usar totAlm/totCen si no hay días disponibles
+  return { alm: Number(g?.totAlm || 0), cen: Number(g?.totCen || 0) };
 }
 
 
@@ -294,13 +299,23 @@ function rebuildAgg(includeCoord=true, includeCond=true){
         flags
       });
 
+      // acumular totales por grupo
+      gInfo.totAlm += alm;
+      gInfo.totCen += cen;
+
       // Acumulados por hotel
       byHotel.totAlm += alm;
       byHotel.totCen += cen;
 
       // Índice por día a nivel hotel (para filtro Año)
       const list = byHotel.porDia.get(fecha) || [];
-      list.push({ grupoId: g.id, nombreGrupo: g.nombreGrupo || '', alm, cen });
+      list.push({
+        grupoId: g.id,
+        numeroNegocio: g.numeroNegocio || '',
+        nombreGrupo:   g.nombreGrupo   || '',
+        identificador: g.identificador || '',
+        alm, cen
+      });
       byHotel.porDia.set(fecha, list);
 
       byHotel.grupos.set(g.id, gInfo);
@@ -508,6 +523,12 @@ async function abrirModalHotel(hotelId){
     cuerpo += `- ${etiqueta} — Alm: ${tot.alm} | Cen: ${tot.cen}\n`;
   }
   cuerpo += `\nAtte.\nOperaciones Rai Trai`;
+
+  // encabezado y campos del modal
+  document.getElementById('mh-title').textContent = `Reservar — ${h.nombre || hotelId}`;
+  document.getElementById('mh-para').value   = para || 'CORREO@HOTEL.COM';
+  document.getElementById('mh-asunto').value = `Reserva alimentación — ${h.nombre || hotelId}`;
+  document.getElementById('mh-cuerpo').value = cuerpo;
 
   // pintar tabla del modal
   const tb = document.querySelector('#mh-tablaGrupos tbody');
