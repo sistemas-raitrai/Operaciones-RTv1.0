@@ -193,19 +193,14 @@ function rebuildAgg(includeCoord=true, includeCond=true){
 function renderTable(){
   const rows = [];
   const destinos = new Set();
-  const hotelOptions = new Map();
 
   // Filtros actuales
   const filDest = document.getElementById('filtroDestino').value || '';
   const filHot  = document.getElementById('filtroHotel').value || '';
   const busc    = norm(document.getElementById('buscador').value || '');
 
-  // construir opciones
-  for (const h of HOTELES) {
-    destinos.add(h.destino || '');
-    hotelOptions.set(h.id, h.nombre || h.id);
-  }
-  // rellenar selects si están vacíos (una vez)
+  // Opciones de selects (una vez)
+  for (const h of HOTELES) destinos.add(h.destino || '');
   const elDes = document.getElementById('filtroDestino');
   const elHot = document.getElementById('filtroHotel');
   if (elDes && elDes.options.length === 1) {
@@ -216,7 +211,7 @@ function renderTable(){
       .forEach(h => elHot.appendChild(new Option(h.nombre || h.id, h.id)));
   }
 
-  // Filtrar / preparar filas
+  // Construir filas (SOLO 1 <tr> por hotel, sin sub-fila)
   for (const [hotelId, rec] of AGG.entries()) {
     const h = rec.hotel || {};
     if (filDest && (h.destino||'') !== filDest) continue;
@@ -237,38 +232,47 @@ function renderTable(){
         <td>${rec.totCen}</td>
         <td>${gruposCount}</td>
         <td>
-          <button class="btn btn-ver" data-act="ver" data-hotel="${hotelId}">Ver grupos</button>
-          <button class="btn btn-res" data-act="reservar" data-hotel="${hotelId}">Reservar</button>
-        </td>
-      </tr>
-      <tr class="subfila" data-sub="${hotelId}" style="display:none;">
-        <td colspan="7">
-          ${renderSubtablaHotel(rec)}
+          <button class="btn" data-act="ver" data-hotel="${hotelId}">Ver grupos</button>
+          <button class="btn" data-act="reservar" data-hotel="${hotelId}">Reservar</button>
         </td>
       </tr>
     `);
   }
+
+  // Pintar tbody
   const tbody = document.querySelector('#tablaHoteles tbody');
   tbody.innerHTML = rows.join('') || `<tr><td colspan="7" class="muted">No hay datos para los filtros actuales.</td></tr>`;
 
-  // Wire: ver / reservar
-  tbody.querySelectorAll('button[data-act="ver"]').forEach(b=>{
-    b.onclick = () => {
-      const hid = b.dataset.hotel;
-      const sub = tbody.querySelector(`tr[data-sub="${hid}"]`);
-      if (sub) sub.style.display = (sub.style.display==='none' || !sub.style.display) ? '' : 'none';
-    };
-  });
-  tbody.querySelectorAll('button[data-act="reservar"]').forEach(b=>{
-    b.onclick = () => abrirModalHotel(b.dataset.hotel);
-  });
-
-  // DataTable create/refresh
+  // (Re)inicializar DataTable
   if (DT && $.fn.DataTable.isDataTable('#tablaHoteles')) {
     DT.destroy();
   }
   DT = $('#tablaHoteles').DataTable({
-    paging: false, searching: false, info: false, fixedHeader: { header:true, headerOffset: 90 }, order: []
+    paging:false, searching:false, info:false,
+    fixedHeader:{ header:true, headerOffset:90 },
+    order:[]
+  });
+
+  // Delegación de eventos sobre el tbody (para no duplicar handlers)
+  const $tbody = $('#tablaHoteles tbody');
+  $tbody.off('click', 'button[data-act="ver"]');
+  $tbody.on('click', 'button[data-act="ver"]', function(){
+    const hid = this.dataset.hotel;
+    const rec = AGG.get(hid);
+    if (!rec) return;
+    const row = DT.row($(this).closest('tr'));
+    if (row.child.isShown()) {
+      row.child.hide();
+      this.textContent = 'Ver grupos';
+    } else {
+      row.child(`<div style="padding:6px 0">${renderSubtablaHotel(rec)}</div>`).show();
+      this.textContent = 'Ocultar';
+    }
+  });
+
+  $tbody.off('click', 'button[data-act="reservar"]');
+  $tbody.on('click', 'button[data-act="reservar"]', function(){
+    abrirModalHotel(this.dataset.hotel);
   });
 }
 
