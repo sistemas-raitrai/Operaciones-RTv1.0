@@ -56,10 +56,67 @@ function* eachDateISO(startISO, endISOExcl){
 const stripAccents = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const norm = s => stripAccents(String(s||'').toLowerCase().trim());
 
+// ====== Años disponibles desde los días detectados (rec.porDia) ======
+function populateFiltroAno(){
+  const sel = document.getElementById('filtroAno');
+  if (!sel) return;
+  const years = new Set();
+
+  for (const [, rec] of AGG.entries()){
+    const porDia = rec.porDia || new Map();
+    // porDia puede ser Object o Map
+    if (porDia instanceof Map){
+      for (const iso of porDia.keys()){
+        if (iso && /^\d{4}-/.test(iso)) years.add(iso.slice(0,4));
+      }
+    } else {
+      for (const iso of Object.keys(porDia || {})){
+        if (iso && /^\d{4}-/.test(iso)) years.add(iso.slice(0,4));
+      }
+    }
+  }
+
+  const current = sel.value;
+  sel.innerHTML = `<option value="">TODOS</option>` +
+    Array.from(years).sort().map(y => `<option value="${y}">${y}</option>`).join('');
+
+  // si existía selección previa, la conservamos
+  if ([...years].includes(current)) sel.value = current;
+}
+
+// Filtra un 'rec' (entrada de AGG por hotel) solo al año indicado
+function recForYear(rec, year){
+  if (!year) return rec;
+  const porDia = rec.porDia || new Map();
+
+  const byDay = (porDia instanceof Map)
+    ? [...porDia.entries()].filter(([iso]) => String(iso).startsWith(year + '-'))
+    : Object.entries(porDia || {}).filter(([iso]) => String(iso).startsWith(year + '-'));
+
+  const grupos = new Map();
+  let totAlm = 0, totCen = 0;
+
+  for (const [, list] of byDay){
+    (list || []).forEach(it => {
+      const gid = it.grupoId || it.gid || it.grupo || '';
+      const g = grupos.get(gid) || { nombreGrupo: it.nombreGrupo || it.name || '', alm:0, cen:0 };
+      g.alm += Number(it.alm || 0);
+      g.cen += Number(it.cen || 0);
+      grupos.set(gid, g);
+      totAlm += Number(it.alm || 0);
+      totCen += Number(it.cen || 0);
+    });
+  }
+
+  // reconstruimos un rec compatible
+  const filteredPorDia = new Map(byDay.map(([iso, list]) => [iso, list]));
+  return { hotel: rec.hotel, grupos, totAlm, totCen, porDia: filteredPorDia };
+}
+
 // regex robustas:
 const NEG = /(no incluye|por cuenta|libre|sin\s+(almuerzo|cena))/i;
 const R_ALM = /(almuerzo|lunch)/i;
-const R_CEN = /\bcena|dinner\b/i;
+const R_CEN = /\b(cena|dinner)\b/i;
 const R_HOT = /\bhotel\b/i;
 
 // =============== Carga base ===============
@@ -126,12 +183,11 @@ function buildIndexItin(){
 function rebuildAgg(includeCoord=true, includeCond=true){
   AGG = new Map();
 
-  // Helper: obtener pax base desde asignación
   const paxFromAsg = (asg) => {
-    const a = Number(asg?.adultosTotal || 0);
-    const e = Number(asg?.estudiantesTotal || 0);
-    const c = includeCoord ? Number(asg?.coordinadores || 0) : 0;
-    const d = includeCond  ? Number(asg?.conductores   || 0) : 0;
+    const a = Number(asg?.adultosTotal ?? asg?.adultostotal ?? 0);
+    const e = Number(asg?.estudiantesTotal ?? asg?.estudiantestotal ?? 0);
+    const c = includeCoord ? Number(asg?.coordinadores ?? 0) : 0;
+    const d = includeCond  ? Number(asg?.conductores   ?? 0) : 0;
     return a + e + c + d;
   };
 
@@ -146,12 +202,12 @@ function rebuildAgg(includeCoord=true, includeCond=true){
       const it = itIdx.get(fecha) || { text:'', almCount:0, cenCount:0 };
       const alm = it.almCount > 0 ? paxFromAsg(asg) : 0;
       const cen = it.cenCount > 0 ? paxFromAsg(asg) : 0;
-
-      if (alm === 0 && cen === 0) continue; // nada que agregar
+      if (alm === 0 && cen === 0) continue;
 
       const byHotel = AGG.get(hotelId) || {
         hotel: HOTELES.find(h=>h.id===hotelId) || { id:hotelId, nombre:'(Hotel)', destino:'', ciudad:'' },
         grupos: new Map(),
+        porDia: new Map(),     // ← ahora se construye
         totAlm: 0,
         totCen: 0
       };
@@ -161,7 +217,7 @@ function rebuildAgg(includeCoord=true, includeCond=true){
         numeroNegocio: g.numeroNegocio || g.id,
         nombreGrupo: g.nombreGrupo || '',
         identificador: g.identificador || '',
-        dias: new Map(),   // fecha -> { alm, cen, paxBase, texto, flags }
+        dias: new Map(),       // fecha -> { alm, cen, paxBase, texto, flags }
         totAlm: 0,
         totCen: 0
       };
@@ -178,10 +234,14 @@ function rebuildAgg(includeCoord=true, includeCond=true){
         flags
       });
 
-      gInfo.totAlm += alm;
-      gInfo.totCen += cen;
+      // Acumulados por hotel
       byHotel.totAlm += alm;
       byHotel.totCen += cen;
+
+      // Índice por día a nivel hotel (para filtro Año)
+      const list = byHotel.porDia.get(fecha) || [];
+      list.push({ grupoId: g.id, nombreGrupo: g.nombreGrupo || '', alm, cen });
+      byHotel.porDia.set(fecha, list);
 
       byHotel.grupos.set(g.id, gInfo);
       AGG.set(hotelId, byHotel);
@@ -197,9 +257,10 @@ function renderTable(){
   // Filtros actuales
   const filDest = document.getElementById('filtroDestino').value || '';
   const filHot  = document.getElementById('filtroHotel').value || '';
+  const filAno  = document.getElementById('filtroAno').value   || '';
   const busc    = norm(document.getElementById('buscador').value || '');
 
-  // Opciones de selects (una vez)
+  // Opciones de selects (una sola vez por sesión)
   for (const h of HOTELES) destinos.add(h.destino || '');
   const elDes = document.getElementById('filtroDestino');
   const elHot = document.getElementById('filtroHotel');
@@ -211,8 +272,9 @@ function renderTable(){
       .forEach(h => elHot.appendChild(new Option(h.nombre || h.id, h.id)));
   }
 
-  // Construir filas (SOLO 1 <tr> por hotel, sin sub-fila)
-  for (const [hotelId, rec] of AGG.entries()) {
+  // Construir filas (SOLO 1 <tr> por hotel; el detalle va como child row)
+  for (const [hotelId, recRaw] of AGG.entries()) {
+    const rec = filAno ? recForYear(recRaw, filAno) : recRaw;   // ← aplica año
     const h = rec.hotel || {};
     if (filDest && (h.destino||'') !== filDest) continue;
     if (filHot && hotelId !== filHot) continue;
@@ -222,6 +284,8 @@ function renderTable(){
     if (busc && !searchBlob.includes(busc)) continue;
 
     const gruposCount = rec.grupos.size;
+    // si por año no hay datos, escondemos el hotel
+    if (filAno && rec.totAlm + rec.totCen === 0) continue;
 
     rows.push(`
       <tr data-hotel="${hotelId}">
@@ -253,19 +317,24 @@ function renderTable(){
     order:[]
   });
 
-  // Delegación de eventos sobre el tbody (para no duplicar handlers)
+  // Delegación de eventos sobre el tbody
   const $tbody = $('#tablaHoteles tbody');
   $tbody.off('click', 'button[data-act="ver"]');
   $tbody.on('click', 'button[data-act="ver"]', function(){
     const hid = this.dataset.hotel;
-    const rec = AGG.get(hid);
-    if (!rec) return;
+    const recRaw = AGG.get(hid);
+    if (!recRaw) return;
+    const rec = filAno ? recForYear(recRaw, filAno) : recRaw;   // ← detalle coherente con el año
     const row = DT.row($(this).closest('tr'));
     if (row.child.isShown()) {
       row.child.hide();
       this.textContent = 'Ver grupos';
     } else {
-      row.child(`<div style="padding:6px 0">${renderSubtablaHotel(rec)}</div>`).show();
+      // Si tu función existente acepta un solo arg, no pasa nada por pasar uno.
+      // Si tienes ya `renderSubtablaHotel(rec)`, úsala; si no, inserta tu HTML aquí.
+      const htmlDetalle = renderSubtablaHotel ? renderSubtablaHotel(rec) 
+                                             : `<div style="padding:6px 0">Sin renderer de subtabla.</div>`;
+      row.child(`<div style="padding:6px 0">${htmlDetalle}</div>`).show();
       this.textContent = 'Ocultar';
     }
   });
@@ -275,6 +344,7 @@ function renderTable(){
     abrirModalHotel(this.dataset.hotel);
   });
 }
+
 
 function renderSubtablaHotel(rec){
   const rows = [...rec.grupos.values()]
@@ -536,12 +606,16 @@ function exportExcel(){
 }
 
 // =============== Eventos UI ===============
-document.getElementById('btnRecalcular').onclick = recalcAndPaint;
-document.getElementById('togCoord').onchange  =
-document.getElementById('togCond').onchange  =
-document.getElementById('filtroDestino').onchange =
-document.getElementById('filtroHotel').onchange  =
-document.getElementById('buscador').oninput    = () => renderTable();
+document.getElementById('btnRecalcular').addEventListener('click', recalcAndPaint);
+document.getElementById('filtroDestino').addEventListener('change', renderTable);
+document.getElementById('filtroHotel').addEventListener('change', renderTable);
+document.getElementById('filtroAno').addEventListener('change', renderTable);
+document.getElementById('buscador').addEventListener('input', renderTable);
+
+// Estos SÍ cambian el cómputo => recalcular
+document.getElementById('chkCoord').addEventListener('change', recalcAndPaint);
+document.getElementById('chkCond').addEventListener('change', recalcAndPaint);
+
 
 // =============== Init ===============
 async function init(){
@@ -556,8 +630,9 @@ async function init(){
 }
 
 function recalcAndPaint(){
-  const incC = document.getElementById('togCoord').checked;
-  const incD = document.getElementById('togCond').checked;
+  const incC = document.getElementById('chkCoord').checked;
+  const incD = document.getElementById('chkCond').checked;
   rebuildAgg(incC, incD);
+  populateFiltroAno();
   renderTable();
 }
