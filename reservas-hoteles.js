@@ -405,8 +405,40 @@ function renderTable(){
   });
 }
 
+// Subtabla: lista de grupos del hotel con Σ almuerzos/cenas
+function renderSubtablaHotel(rec){
+  const hid = (rec && rec.hotel && rec.hotel.id) ? rec.hotel.id : '';
 
-renderSubtablaHotel
+  const rows = [...rec.grupos.values()]
+    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo))
+    .map(g => {
+      const label = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo || ''}`;
+      const { alm: almTot, cen: cenTot } = totalesDeGrupo(g);
+      return `
+        <tr>
+          <td>${label}</td>
+          <td>${almTot}</td>
+          <td>${cenTot}</td>
+          <td><button class="btn btn-mini" data-act="detalle-grupo" data-gid="${g.grupoId}" data-hid="${hid}">Detalle</button></td>
+        </tr>
+      `;
+    }).join('');
+
+  // wire de botones "Detalle"
+  setTimeout(()=>{
+    document.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
+      b.onclick = ()=> abrirModalGrupo(b.dataset.hid, b.dataset.gid);
+    });
+  },0);
+
+  return `
+    <table class="subtabla">
+      <thead><tr><th>Grupo</th><th>Σ Almuerzos</th><th>Σ Cenas</th><th>Detalle</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="4" class="muted">Sin grupos.</td></tr>`}</tbody>
+    </table>
+  `;
+}
+
 // =============== MODAL: Detalle Grupo (día a día) ===============
 function abrirModalGrupo(hotelId, grupoId){
   const recH = AGG.get(hotelId);
