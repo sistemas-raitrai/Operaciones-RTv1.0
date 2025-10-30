@@ -390,10 +390,12 @@ function renderTable(){
       row.child.hide();
       this.textContent = 'Ver grupos';
     } else {
+      
       // Si tu función existente acepta un solo arg, no pasa nada por pasar uno.
-      // Si tienes ya `renderSubtablaHotel(rec)`, úsala; si no, inserta tu HTML aquí.
-      const htmlDetalle = renderSubtablaHotel ? renderSubtablaHotel(rec) 
-                                             : `<div style="padding:6px 0">Sin renderer de subtabla.</div>`;
+      const htmlDetalle = (typeof renderSubtablaHotel === 'function')
+        ? renderSubtablaHotel(rec)
+        : `<div style="padding:6px 0">Sin renderer de subtabla.</div>`;
+      
       row.child(`<div style="padding:6px 0">${htmlDetalle}</div>`).show();
       this.textContent = 'Ocultar';
     }
