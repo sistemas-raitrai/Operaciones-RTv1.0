@@ -1553,6 +1553,9 @@ async function deleteVuelo(id){
   renderVuelos();
 }
 
+// 👇 EXponer la función para que la vea el onclick del HTML
+window.deleteVuelo = deleteVuelo;
+
 // ======= Render principal de cards =======
 
 function buildTransfersIndexes(){
