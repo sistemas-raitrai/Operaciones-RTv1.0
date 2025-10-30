@@ -119,6 +119,25 @@ const R_ALM = /(almuerzo|lunch)/i;
 const R_CEN = /\b(cena|dinner)\b/i;
 const R_HOT = /\bhotel\b/i;
 
+// --- helpers de timestamp para ordenar por "el último guardado" ---
+function toMillis(x){
+  if (!x) return 0;
+  if (typeof x === 'number') return x;
+  if (typeof x === 'string') { const t = Date.parse(x); return isNaN(t) ? 0 : t; }
+  // Firestore Timestamp u objeto con toDate()
+  if (typeof x.toDate === 'function') return +x.toDate();
+  if (x.seconds !== undefined) return x.seconds * 1000 + Math.floor((x.nanoseconds||0)/1e6);
+  if (x instanceof Date) return +x;
+  return 0;
+}
+const savedAtOf = (asg) =>
+  Math.max(
+    toMillis(asg?.updatedAt),
+    toMillis(asg?.createdAt),
+    toMillis(asg?.changedAt) // por si usas otro campo
+  );
+
+
 // =============== Carga base ===============
 async function loadAll(){
   const [snapH, snapA, snapG] = await Promise.all([
@@ -132,24 +151,36 @@ async function loadAll(){
 }
 
 // =============== Index ocupación por día (checkIn ≤ D < checkOut) ===============
+// =============== Index ocupación por día (preferir último guardado) ===============
 function buildIndexOcup(){
   INDEX_OCUP = new Map();
-  for (const a of ASIGNS) {
-    const g = a.grupoId, h = a.hotelId;
-    if (!g || !h) continue;
-    const ci = toISO(a.checkIn), co = toISO(a.checkOut);
-    if (!ci || !co) continue;
 
-    const byDate = INDEX_OCUP.get(g) || new Map();
+  for (const a of ASIGNS) {
+    const gid = a.grupoId, hid = a.hotelId;
+    const ci  = toISO(a.checkIn), co = toISO(a.checkOut);
+    if (!gid || !hid || !ci || !co) continue;
+
+    const byDate = INDEX_OCUP.get(gid) || new Map();
+    const stamp  = savedAtOf(a);
+
     for (const d of eachDateISO(ci, co)) {
       const prev = byDate.get(d);
-      // Si ya existe algo, guardamos conflicto suave (no duplicamos)
-      if (!prev) byDate.set(d, { hotelId: h, asg: a, conflict: false });
-      else byDate.set(d, { hotelId: h, asg: a, conflict: true });
+      if (!prev) {
+        // primera asignación para ese día
+        byDate.set(d, { hotelId: hid, asg: a, conflict: false, _ts: stamp });
+      } else {
+        // ya había algo: nos quedamos con la MÁS RECIENTE
+        const winner = (stamp >= (prev._ts || 0))
+          ? { hotelId: hid, asg: a, _ts: stamp }
+          : prev;
+        // marcamos conflicto, pero guardamos el ganador
+        byDate.set(d, { ...winner, conflict: true });
+      }
     }
-    INDEX_OCUP.set(g, byDate);
+    INDEX_OCUP.set(gid, byDate);
   }
 }
+
 
 // =============== Index itinerario: por grupo y día, conteos alm/cena ===============
 function buildIndexItin(){
