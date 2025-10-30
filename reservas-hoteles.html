@@ -44,6 +44,21 @@
     .btn-ghost{ border:1px solid #ccc; background:#fff; border-radius:8px; padding:.45rem .7rem; cursor:pointer; }
     .btn-primary{ border:1px solid #0f62fe; background:#0f62fe; color:#fff; border-radius:8px; padding:.45rem .7rem; cursor:pointer; }
     .btn-warn{ border:1px solid #b45309; background:#b45309; color:#fff; border-radius:8px; padding:.45rem .7rem; cursor:pointer; }
+
+    .rt-toolbar{padding:10px;border:1px solid #e5e7eb;border-radius:12px;background:#fff;margin-bottom:12px}
+    .rt-row{display:flex;align-items:center;flex-wrap:wrap}
+    .rt-row.gap{gap:10px}
+    .rt-row.three > *{flex:1 1 240px;min-width:220px}
+    .rt-input{height:40px;border:1px solid #d1d5db;border-radius:8px;padding:0 12px}
+    .rt-input.grow{flex:1 1 auto;min-width:320px}
+    .rt-select{height:40px;border:1px solid #d1d5db;border-radius:8px;padding:0 8px;background:#fff;width:100%}
+    .rt-field{display:flex;flex-direction:column;gap:4px;min-width:220px}
+    .rt-btns{display:flex;gap:8px}
+    .btn{height:40px;padding:0 14px;border-radius:8px;border:none;cursor:pointer}
+    .btn-primary{background:#0d47a1;color:#fff}
+    .btn-secondary{background:#1f2937;color:#fff}
+    .rt-check{display:flex;align-items:center;gap:8px}
+
   </style>
 </head>
 <body>
@@ -54,25 +69,55 @@
   <main class="wrap">
     <h2 style="margin:.2rem 0 0;">Reservas de Hoteles</h2>
 
-    <div class="toolbar">
-      <div class="box">
-        <label><input type="checkbox" id="togCoord" checked> Incluir coordinadores</label>
-        &nbsp;&nbsp;
-        <label><input type="checkbox" id="togCond" checked> Incluir conductores</label>
-      </div>
-      <div class="box">
-        <label>Destino: <select id="filtroDestino"><option value="">Todos</option></select></label>
-        &nbsp;&nbsp;
-        <label>Hotel: <select id="filtroHotel"><option value="">Todos</option></select></label>
-      </div>
-      <div class="box">
-        <button id="btnRecalcular" class="btn">Recalcular</button>
-        <button id="btnExportExcel" class="btn">Exportar Excel</button>
-      </div>
-      <div class="box">
-        <input id="buscador" class="input" placeholder="Buscar por hotel o grupo…"/>
+  <!-- ====== Toolbar / Filtros (REEMPLAZO COMPLETO) ====== -->
+  <section id="toolbar" class="rt-toolbar">
+  
+    <!-- Fila 1: buscador ancho + botones cortos -->
+    <div class="rt-row gap">
+      <input id="buscador" type="text" placeholder="BUSCAR POR HOTEL O GRUPO" class="rt-input grow">
+      <div class="rt-btns">
+        <button id="btnRecalcular" class="btn btn-primary">Recalcular</button>
+        <button id="btnExportExcel" class="btn btn-secondary">Exportar Excel</button>
       </div>
     </div>
+  
+    <!-- Fila 2: tres columnas (Destino / Hotel / Año) -->
+    <div class="rt-row gap three">
+      <label class="rt-field">
+        <span>Destino:</span>
+        <select id="filtroDestino" class="rt-select">
+          <option value="">TODOS</option>
+        </select>
+      </label>
+  
+      <label class="rt-field">
+        <span>Hotel:</span>
+        <select id="filtroHotel" class="rt-select">
+          <option value="">TODOS</option>
+        </select>
+      </label>
+  
+      <label class="rt-field">
+        <span>Año:</span>
+        <select id="filtroAno" class="rt-select">
+          <option value="">TODOS</option>
+        </select>
+      </label>
+    </div>
+  
+    <!-- Fila 3: checks en línea con texto a la derecha -->
+    <div class="rt-row gap">
+      <label class="rt-check">
+        <input type="checkbox" id="chkCoord" checked>
+        <span>Incluir coordinadores</span>
+      </label>
+      <label class="rt-check">
+        <input type="checkbox" id="chkCond" checked>
+        <span>Incluir conductores</span>
+      </label>
+    </div>
+  </section>
+
 
     <table id="tablaHoteles" class="display" style="width:100%">
       <thead>
