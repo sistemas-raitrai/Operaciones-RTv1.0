@@ -84,6 +84,26 @@ function populateFiltroAno(){
   if ([...years].includes(current)) sel.value = current;
 }
 
+// === Totales robustos por grupo (funciona con g.dias ó con g.totAlm/totCen) ===
+function sumGrupoDesdeDias(g){
+  const vals = g?.dias instanceof Map ? [...g.dias.values()]
+             : Array.isArray(g?.dias) ? g.dias
+             : Object.values(g?.dias || {});
+  return {
+    alm: vals.reduce((s,d)=> s + Number(d?.alm || 0), 0),
+    cen: vals.reduce((s,d)=> s + Number(d?.cen || 0), 0),
+  };
+}
+function totalesDeGrupo(g){
+  // Si recForYear construyó el grupo, viene con totAlm/totCen
+  if (typeof g?.totAlm === 'number' || typeof g?.totCen === 'number') {
+    return { alm: Number(g.totAlm || 0), cen: Number(g.totCen || 0) };
+  }
+  // Si es el gInfo de AGG, calculamos desde g.dias
+  return sumGrupoDesdeDias(g);
+}
+
+
 // Filtra un 'rec' (entrada de AGG por hotel) solo al año indicado
 function recForYear(rec, year){
   if (!year) return rec;
@@ -386,38 +406,7 @@ function renderTable(){
 }
 
 
-function renderSubtablaHotel(rec){
-  const rows = [...rec.grupos.values()]
-    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo))
-    .map(g => {
-      const label = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo || ''}`;
-      const almTot = (g.totAlm ?? g.alm ?? 0);
-      const cenTot = (g.totCen ?? g.cen ?? 0);
-      return `
-        <tr>
-          <td>${label}</td>
-          <td>${almTot}</td>
-          <td>${cenTot}</td>
-          <td><button class="btn btn-mini" data-act="detalle-grupo" data-gid="${g.grupoId}" data-hid="${rec.hotel.id}">Detalle</button></td>
-        </tr>
-      `;
-    }).join('');
-
-  // regresa tabla + wire posterior
-  setTimeout(()=>{
-    document.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
-      b.onclick = ()=> abrirModalGrupo(b.dataset.hid, b.dataset.gid);
-    });
-  },0);
-
-  return `
-    <table class="subtabla">
-      <thead><tr><th>Grupo</th><th>Σ Almuerzos</th><th>Σ Cenas</th><th>Detalle</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="4" class="muted">Sin grupos.</td></tr>`}</tbody>
-    </table>
-  `;
-}
-
+renderSubtablaHotel
 // =============== MODAL: Detalle Grupo (día a día) ===============
 function abrirModalGrupo(hotelId, grupoId){
   const recH = AGG.get(hotelId);
@@ -465,12 +454,13 @@ async function abrirModalHotel(hotelId){
 
   // construir tabla por grupo (solo los que suman algo)
   const gruposOrden = [...rec.grupos.values()]
-    .filter(g => (g.totAlm + g.totCen) > 0)
-    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo));
+    .map(g => ({ g, tot: totalesDeGrupo(g) }))
+    .filter(x => (x.tot.alm + x.tot.cen) > 0)
+    .sort((a,b)=> (a.g.numeroNegocio+' '+a.g.nombreGrupo).localeCompare(b.g.numeroNegocio+' '+b.g.nombreGrupo));
 
-  // totales hotel
-  const totalAlmHotel = gruposOrden.reduce((s,g)=>s+g.totAlm,0);
-  const totalCenHotel = gruposOrden.reduce((s,g)=>s+g.totCen,0);
+  // totales hotel calculados desde los grupos (coherente con el detalle)
+  const totalAlmHotel = gruposOrden.reduce((s,x)=> s + x.tot.alm, 0);
+  const totalCenHotel = gruposOrden.reduce((s,x)=> s + x.tot.cen, 0);
 
   // armar cuerpo
   let cuerpo = `Estimado/a:\n\n`;
@@ -479,28 +469,24 @@ async function abrirModalHotel(hotelId){
   cuerpo += `- Almuerzos: ${totalAlmHotel}\n`;
   cuerpo += `- Cenas: ${totalCenHotel}\n\n`;
   cuerpo += `Detalle por grupo:\n`;
-  for (const g of gruposOrden) {
+  for (const {g, tot} of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo}`;
-    cuerpo += `- ${etiqueta} — Alm: ${g.totAlm} | Cen: ${g.totCen}\n`;
+    cuerpo += `- ${etiqueta} — Alm: ${tot.alm} | Cen: ${tot.cen}\n`;
   }
   cuerpo += `\nAtte.\nOperaciones Rai Trai`;
 
-  // PINTAR MODAL
-  document.getElementById('mh-title').textContent = `Reservar — ${h.nombre || hotelId}`;
-  document.getElementById('mh-para').value   = para;
-  document.getElementById('mh-asunto').value = `Reserva alimentación — ${h.nombre || hotelId}`;
-  document.getElementById('mh-cuerpo').value = cuerpo;
-
+  // pintar tabla del modal
   const tb = document.querySelector('#mh-tablaGrupos tbody');
-  tb.innerHTML = gruposOrden.map(g => {
+  tb.innerHTML = gruposOrden.map(({g, tot}) => {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo}`;
     return `<tr>
       <td>${etiqueta}</td>
-      <td>${g.totAlm}</td>
-      <td>${g.totCen}</td>
+      <td>${tot.alm}</td>
+      <td>${tot.cen}</td>
       <td><button class="btn btn-mini" data-act="detalle-grupo" data-hid="${hotelId}" data-gid="${g.grupoId}">Ver detalle</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="4" class="muted">Sin grupos con consumo.</td></tr>`;
+
 
   tb.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
     b.onclick = ()=> abrirModalGrupo(b.dataset.hid, b.dataset.gid);
