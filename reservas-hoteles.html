@@ -68,6 +68,26 @@
       letter-spacing: .02em; /* opcional, se ve más prolijo */
     }
 
+    /* Hotel en la 1ª columna: mayúscula, negrita y azul, sin fondo de "badge" */
+    #tablaHoteles td:nth-child(1) .badge,
+    #tablaHoteles th:nth-child(1) .badge {
+      background: transparent !important;
+      border: none !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      padding: 0 !important;
+    
+      text-transform: uppercase;
+      font-weight: 700;
+      color: var(--brand-blue, #0b63ff);
+      letter-spacing: .02em;
+      text-decoration: none;
+    }
+    
+    /* Evitar subrayado/hover azulado si fuese un <a> dentro de .badge */
+    #tablaHoteles td:nth-child(1) .badge:hover {
+      text-decoration: none;
+    }
   </style>
 </head>
 <body>
