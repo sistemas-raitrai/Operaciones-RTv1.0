@@ -71,6 +71,20 @@ function addMinutesHM(hm, mins = 0){
   const mm = String(d.getMinutes()).padStart(2,'0');
   return `${hh}:${mm}`;
 }
+// === +1 si el arribo es menor que la salida (cruza medianoche) ===
+function hmToMin(hm){
+  const t = normTime(hm);
+  if (!t) return null;
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+function withPlus1IfNextDay(salidaHM, arriboHM){
+  const s = hmToMin(salidaHM);
+  const a = hmToMin(arriboHM);
+  const base = normTime(arriboHM) || (arriboHM || '');
+  if (s == null || a == null || !base) return base || '';
+  return (a < s) ? `${base} +1` : base;
+}
 
 function formatShortDate(iso){ // 25 de septiembre 2025
   if(!iso) return '—'; const [y,m,d]=iso.split('-').map(Number);
@@ -615,6 +629,7 @@ function chooseFlightNumber(raw, modo){
 }
 
 // Filas genéricas para cualquier "leg"
+// Filas genéricas para cualquier "leg"
 function rowHTML(leg, modo){
   const fecha        = (modo==='ida') ? (leg.fechaIda || leg.fecha) : (leg.fechaVuelta || leg.fecha);
   const presentacion = (modo==='ida') ? leg.presentacionIda         : leg.presentacionVuelta;
@@ -622,6 +637,9 @@ function rowHTML(leg, modo){
   const arribo       = (modo==='ida') ? leg.arriboIda               : leg.arriboVuelta;
   const { origen, destino } = maybeSwapOD(leg.origen, leg.destino, modo);
   const nro = chooseFlightNumber(leg.numero, modo);
+
+  // ⬅️ agrega “+1” si corresponde
+  const arriboDisp = withPlus1IfNextDay(salida, arribo);
 
   return `
     <tr>
@@ -631,11 +649,10 @@ function rowHTML(leg, modo){
       <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
       <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
       <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(destino)}</td>
-      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arribo)}</td>
+      <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arriboDisp)}</td>
     </tr>`;
 }
 
-// Tabla de TRANSFERS (terrestre o “traslado aéreo”)
 // Tabla de TRANSFERS (separa terrestre vs aéreo)
 function renderTransferTable(arr){
   if (!arr || !arr.length) return '';
@@ -712,6 +729,7 @@ function renderTransferTable(arr){
 const td = (v)=> `<td>${v ?? '—'}</td>`;
 
 // Tabla de PLAN (aéreo o terrestre) para impresión — con mes 3 letras
+// Tabla de PLAN (aéreo o terrestre) para impresión — con mes 3 letras
 function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
   if (!legs.length) return '';
   const tituloModo = (modo === 'ida') ? 'IDA' : 'VUELTA / REGRESO';
@@ -733,6 +751,10 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
     const pres   = (modo==='ida') ? l.presentacionIda       : l.presentacionVuelta;
     const salida = (modo==='ida') ? l.salidaIda             : l.salidaVuelta;
     const arribo = (modo==='ida') ? l.arriboIda             : l.arriboVuelta;
+
+    // ⬅️ “+1” si cruza medianoche
+    const arriboDisp = withPlus1IfNextDay(salida, arribo);
+
     const { origen, destino } = maybeSwapOD(l.origen, l.destino, modo);
     return `
       <tr>
@@ -741,7 +763,7 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
         ${td(pres   || '—')}
         ${td(salida || '—')}
         ${td(destino|| '—')}
-        ${isAereo ? td(arribo || '—') : ''}
+        ${isAereo ? td(arriboDisp || '—') : ''}
       </tr>`;
   }).join('');
 
@@ -776,6 +798,7 @@ function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
     </div>`;
 }
 
+// Tabla de TRANSFERS para IMPRESIÓN — con mes 3 letras y salida(terrestre)=presentación+30
 // Tabla de TRANSFERS para IMPRESIÓN — con mes 3 letras y salida(terrestre)=presentación+30
 function printTableTransfers(arr = []){
   if (!arr.length) return '';
@@ -824,6 +847,10 @@ function printTableTransfers(arr = []){
     const pres  = (modo==='ida') ? x.presentacionIda       : x.presentacionVuelta;
     const salida = (modo==='ida') ? x.salidaIda : x.salidaVuelta;
     const arribo = (modo==='ida') ? x.arriboIda : x.arriboVuelta;
+
+    // ⬅️ “+1” si cruza medianoche
+    const arriboDisp = withPlus1IfNextDay(salida, arribo);
+
     const nro = chooseFlightNumber(x.numero, modo);
     const { origen, destino } = maybeSwapOD(x.origen, x.destino, modo);
     return `
@@ -834,7 +861,7 @@ function printTableTransfers(arr = []){
         ${td(pres   || '—')}
         ${td(salida || '—')}
         ${td(destino|| '—')}
-        ${td(arribo || '—')}
+        ${td(arriboDisp || '—')}
       </tr>`;
   }).join('');
 
@@ -1117,6 +1144,10 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
     const presentacion = (modo === 'ida') ? r.presentacionIda       : r.presentacionVuelta;
     const salida       = (modo === 'ida') ? r.salidaIda             : r.salidaVuelta;
     const arribo       = (modo === 'ida') ? r.arriboIda             : r.arriboVuelta;
+  
+    // ⬅️ suma “+1” si arribo < salida
+    const arriboDisp   = withPlus1IfNextDay(salida, arribo);
+  
     const { origen, destino } = maybeSwapOD(r.origen, r.destino, modo);
     return `
       <tr>
@@ -1125,9 +1156,10 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(presentacion)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(salida)}</td>
         <td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(destino)}</td>
-        ${isAereo ? `<td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arribo)}</td>` : ``}
+        ${isAereo ? `<td style="padding:6px 8px;border:1px solid #d1d5db;">${safe(arriboDisp)}</td>` : ``}
       </tr>`;
   }).join('');
+
 
   // Encabezados para aéreos (si aplica)
   const chooseNum = (raw, modo) => {
