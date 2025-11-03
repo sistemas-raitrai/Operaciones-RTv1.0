@@ -87,6 +87,16 @@
     #tablaHoteles td:nth-child(1) .badge:hover {
       text-decoration: none;
     }
+
+    /* Pastilla azul para ALMUERZO/CENA de hotel en actividades */
+    .pill-blue{
+      background: #e8f1ff;
+      color: #0b63ff;
+      padding: 1px 6px;
+      border-radius: 999px;
+      display: inline-block;
+    }
+
   </style>
 </head>
 <body>
@@ -168,7 +178,7 @@
   <section id="modalHotel" class="modal" role="dialog" aria-modal="true">
     <header>
       <h3 id="mh-title">Reservar — </h3>
-      <button id="mh-close" class="btn-ghost">Cerrar</button>
+      <button id="mh-close" class="btn-primary">Cerrar</button>
     </header>
     <div class="body">
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
@@ -205,7 +215,7 @@
   <section id="modalGrupo" class="modal" role="dialog" aria-modal="true">
     <header>
       <h3 id="mg-title">Detalle — </h3>
-      <button id="mg-close" class="btn-ghost">Cerrar</button>
+      <button id="mg-close" class="btn-primary">Cerrar</button>
     </header>
     <div class="body">
       <table id="mg-tabla" class="subtabla">
