@@ -145,6 +145,44 @@ function stayRangeForGrupoHotel(grupoId, hotelId){
   return { start:min, end:max, checkout };
 }
 
+// Empareja "noches sin cena" con "días con almuerzo sin cena" dentro del hotel
+function listReemplazos(grupo, hotelId){
+  const gid   = grupo.grupoId || grupo.id;
+  const range = stayRangeForGrupoHotel(gid, hotelId);
+  if (!range) return [];
+
+  // Recorremos SOLO las noches reales: start..end (checkout queda fuera)
+  const lunchesOnly = [];   // fechas con ALM=1 y CEN=0
+  const missingCen  = [];   // noches con CEN=0 (falten o no almuerzo)
+
+  let iso = range.start;
+  while (true){
+    const d = grupo.dias.get(iso) || { alm:0, cen:0 };
+    if (d.cen === 0)                missingCen.push(iso);
+    if (d.alm === 1 && d.cen === 0) lunchesOnly.push(iso);
+
+    if (iso === range.end) break;   // hasta la última NOCHE
+    iso = addDaysISO(iso, 1);
+  }
+
+  // Emparejar en orden: prioriza "mismo día"; si no, la noche sin cena más próxima disponible
+  const pairs = [];
+  const used  = new Set();
+
+  for (const L of lunchesOnly){
+    // 1) intentar mismo día
+    let M = missingCen.find(md => !used.has(md) && md === L);
+    // 2) si no hay, tomar la noche sin cena no usada más temprana
+    if (!M) M = missingCen.find(md => !used.has(md));
+    if (!M) break;
+
+    used.add(M);
+    pairs.push({ miss: M, lunch: L });
+  }
+
+  return pairs;
+}
+
 const stripAccents = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const norm = s => stripAccents(String(s||'').toLowerCase().trim());
 
@@ -977,22 +1015,20 @@ async function abrirModalHotel(hotelId){
     cuerpo += `DETALLE POR DÍA:\n${bloqueDia.toUpperCase()}\n\n`;
   }
 
-  // Detalle por grupo (alias + TOTAL = alm+cen) y notas de reemplazo en media pensión
+  // Detalle por grupo (alias + TOTAL) + líneas de reemplazo CENA→ALMUERZO
   cuerpo += `DETALLE POR GRUPO:\n`;
   for (const {g, tot} of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
-    const totalG = tot.alm + tot.cen;
-
-    // detectar "reemplazos" (día con alm=1 y cen=0) para pensión media
-    let repl = 0, zeros = 0, doubles = 0;
-    for (const d of g.dias?.values?.() || []) {
-      const s = Number(d.alm||0) + Number(d.cen||0);
-      if (s === 0) zeros++;
-      if (s > 1)   doubles++;
-      if (Number(d.alm||0) === 1 && Number(d.cen||0) === 0) repl++;
+    const totalG = (Number(tot.alm||0) + Number(tot.cen||0)) || 0;
+  
+    // línea principal
+    cuerpo += `- ${etiqueta} — ALM: ${tot.alm||0} | CEN: ${tot.cen||0} / (TOTAL = ${totalG})\n`;
+  
+    // líneas de reemplazo (simple, sin mencionar "media pensión")
+    const pares = listReemplazos(g, hotelId);
+    for (const p of pares) {
+      cuerpo += `  REEMPLAZO CENA ${fmt(p.miss)} POR ALMUERZO ${fmt(p.lunch)}\n`;
     }
-    const notaMedia = (pen === 'media' && repl > 0) ? ` (media pensión: ${repl} reemplazo(s) cena→almuerzo)` : '';
-    cuerpo += `- ${etiqueta} — ALM: ${tot.alm} | CEN: ${tot.cen} / (TOTAL = ${totalG})${notaMedia}\n`;
   }
 
   // Saldos por servicios vs plan (si aplica)
