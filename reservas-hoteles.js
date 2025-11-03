@@ -261,31 +261,60 @@ async function loadAll(){
   ASIGNS  = snapA.docs.map(d=>({ id:d.id, ...d.data() }));
   GRUPOS  = snapG.docs.map(d=>({ id:d.id, ...d.data() }));
 }
+// Devuelve un mapa: groupId -> { hotelId, ts }
+// Es el hotel de la ASIGNACIÓN más reciente de cada grupo.
+function makeLatestHotelPerGroup(){
+  const latest = new Map();
+  for (const a of ASIGNS){
+    const gid = a?.grupoId, hid = a?.hotelId;
+    if (!gid || !hid) continue;
+    const ts = savedAtOf(a);
+    const prev = latest.get(gid);
+    if (!prev || ts > prev.ts) latest.set(gid, { hotelId: hid, ts });
+  }
+  return latest;
+}
 
-// =============== Index ocupación por día (checkIn ≤ D < checkOut) ===============
 // =============== Index ocupación por día (preferir último guardado) ===============
 function buildIndexOcup(){
   INDEX_OCUP = new Map();
+
+  // ① Elegimos el hotel de la asignación MÁS RECIENTE por grupo
+  const LATEST = makeLatestHotelPerGroup();
 
   for (const a of ASIGNS) {
     const gid = a.grupoId, hid = a.hotelId;
     const ci  = toISO(a.checkIn), co = toISO(a.checkOut);
     if (!gid || !hid || !ci || !co) continue;
 
+    // Ignorar asignaciones canceladas/anuladas si ocupas estos campos
+    const estado = String(a.estado || a.status || '').toLowerCase();
+    const anulado = !!a.anulado || !!a.cancelado;
+    if (anulado || estado === 'anulado' || estado === 'cancelado') continue;
+
+    // ② Si este no es el hotel MÁS RECIENTE del grupo, lo ignoramos COMPLETAMENTE
+    const latestHotel = LATEST.get(gid)?.hotelId;
+    if (latestHotel && hid !== latestHotel) continue;
+
     const byDate = INDEX_OCUP.get(gid) || new Map();
     const stamp  = savedAtOf(a);
 
+    // ③ Igual mantenemos "último gana" por si hay varias asignaciones del MISMO hotel
     for (const d of eachDateISO(ci, co)) {
       const prev = byDate.get(d);
       if (!prev) {
-        // primera asignación para ese día
         byDate.set(d, { hotelId: hid, asg: a, conflict: false, _ts: stamp });
       } else {
-        // ya había algo: nos quedamos con la MÁS RECIENTE
-        const winner = (stamp >= (prev._ts || 0))
-          ? { hotelId: hid, asg: a, _ts: stamp }
-          : prev;
-        // marcamos conflicto, pero guardamos el ganador
+        const prevTs = prev._ts || 0;
+        let winner = prev;
+        if (stamp > prevTs) {
+          winner = { hotelId: hid, asg: a, _ts: stamp };
+        } else if (stamp === prevTs) {
+          // desempate estable por id de doc para evitar parpadeos
+          const prevId = String(prev.asg?.id || prev.asg?.__id || '');
+          const curId  = String(a.id || a.__id || '');
+          if (curId > prevId) winner = { hotelId: hid, asg: a, _ts: stamp };
+        }
         byDate.set(d, { ...winner, conflict: true });
       }
     }
