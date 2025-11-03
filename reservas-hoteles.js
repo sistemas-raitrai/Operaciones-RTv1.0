@@ -573,10 +573,6 @@ function rebuildAgg(includeCoord = true, includeCond = true) {
         byHotel.totAlm += incAlm;
         byHotel.totCen += incCen;
         
-        // Acumulados del hotel (Σ de días, no de ocurrencias)
-        byHotel.totAlm += incAlm;
-        byHotel.totCen += incCen;
-        
         // Índice por fecha para el correo (merge por grupo, sin duplicar)
         let mapList = byHotel.porDia.get(fecha);
         if (!(mapList instanceof Map)) mapList = new Map();
@@ -1158,8 +1154,10 @@ function exportExcel(){
         Ciudad: rec.hotel.ciudad || '',
         Grupo: g.numeroNegocio,
         NombreGrupo: g.nombreGrupo,
-        'Σ Almuerzos': g.totAlm,
-        'Σ Cenas': g.totCen
+        Noches: g.noches || 0,
+        'Σ Almuerzos': g.almDias || 0,
+        'Σ Cenas': g.cenDias || 0,
+        PAX: g.paxGrupo || 0
       });
     }
   }
@@ -1195,22 +1193,25 @@ document.getElementById('buscador').addEventListener('input', renderTable);
 document.getElementById('chkCoord').addEventListener('change', recalcAndPaint);
 document.getElementById('chkCond').addEventListener('change', recalcAndPaint);
 
-
 // =============== Init ===============
 async function init(){
   await loadAll();
   buildIndexOcup();
   buildIndexItin();
+
+  // forzar estado inicial desmarcado ANTES de calcular
+  const chkC = document.getElementById('chkCoord');
+  const chkD = document.getElementById('chkCond');
+  if (chkC) chkC.checked = false;
+  if (chkD) chkD.checked = false;
+
   recalcAndPaint();
 
   // cerrar modales al click en backdrop
   document.getElementById('modalHotelBackdrop').onclick = closeModalHotel;
   document.getElementById('modalGrupoBackdrop').onclick = closeModalGrupo;
-  // forzar estado inicial desmarcado
-  document.getElementById('chkCoord').checked = false;
-  document.getElementById('chkCond').checked  = false;
-
 }
+
 
 function recalcAndPaint(){
   const incC = document.getElementById('chkCoord').checked;
