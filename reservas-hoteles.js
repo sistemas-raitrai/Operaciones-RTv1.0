@@ -328,38 +328,7 @@ const escHTML = s => String(s ?? '')
   .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 
 const toMinHM = (v) => {
-  if (!v) return 1e9;                           // sin hora => al final
-  const m = String(v).match(/(\d{1,2})[:.](\d{2})/);
-  if (!m) return 1e9;
-  return (parseInt(m[1],10)*60) + parseInt(m[2],10);
-};
-const startMinOf = (it) =>
-  Math.min(toMinHM(it?.horaInicio), toMinHM(it?.hora), toMinHM(it?.inicio), toMinHM(it?.desde));
-const endMinOf = (it) =>
-  Math.min(toMinHM(it?.horaFin), toMinHM(it?.fin), toMinHM(it?.hasta));
-
-const cmpItin = (a,b) =>
-  (startMinOf(a) - startMinOf(b)) ||
-  (endMinOf(a)   - endMinOf(b))   ||
-  String(a?.actividad||a?.texto||'').localeCompare(String(b?.actividad||b?.texto||''));
-
-const fmtHM = (v) => {
-  const m = String(v||'').match(/(\d{1,2})[:.](\d{2})/);
-  return m ? `${m[1].padStart(2,'0')}:${m[2]}` : '';
-};
-const labelOf = (it) => {
-  const h = fmtHM(it?.horaInicio || it?.hora || it?.inicio);
-  const raw = escHTML(it?.actividad || it?.texto || '');
-  return `${h ? `[${h}] ` : ''}${raw}`;
-};
-
-// ===== Helpers para ordenar por hora y render seguro =====
-const escHTML = s => String(s ?? '')
-  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-
-const toMinHM = (v) => {
-  if (!v) return 1e9;                           // sin hora => al final
+  if (!v) return 1e9; // sin hora => al final
   const m = String(v).match(/(\d{1,2})[:.](\d{2})/);
   if (!m) return 1e9;
   return (parseInt(m[1],10)*60) + parseInt(m[2],10);
