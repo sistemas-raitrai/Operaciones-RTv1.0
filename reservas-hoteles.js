@@ -56,7 +56,15 @@ const fmtDiaMayus = (iso) => {
   return `${di} DE ${mi}`;
 };
 
+// sumar días a un ISO (YYYY-MM-DD)
+function addDaysISO(iso, add){
+  const d = new Date(iso + 'T00:00:00');
+  d.setDate(d.getDate() + (add||0));
+  return d.toISOString().slice(0,10);
+}
+
 // Construye el bloque "DETALLE POR DÍA" usando rec.porDia
+// Construye el bloque "DETALLE POR DÍA" usando rec.porDia (con PAX)
 function buildBloqueDia(rec){
   const entries = (rec?.porDia instanceof Map)
     ? [...rec.porDia.entries()]
@@ -75,14 +83,16 @@ function buildBloqueDia(rec){
       out += `- ALMUERZO:\n`;
       almList.forEach((it, idx) => {
         const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${it.nombreGrupo || ''}`.trim();
-        out += `       ${idx+1}) ${etiqueta} (${Number(it.alm)} PAX)\n`;
+        const pax = Number(it.pax || 0);
+        out += `       ${idx+1}) ${etiqueta} (${pax} PAX)\n`;
       });
     }
     if (cenList.length){
       out += `- CENA:\n`;
       cenList.forEach((it, idx) => {
         const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${it.nombreGrupo || ''}`.trim();
-        out += `       ${idx+1}) ${etiqueta} (${Number(it.cen)} PAX)\n`;
+        const pax = Number(it.pax || 0);
+        out += `       ${idx+1}) ${etiqueta} (${pax} PAX)\n`;
       });
     }
     out += `\n`;
@@ -261,45 +271,25 @@ async function loadAll(){
   ASIGNS  = snapA.docs.map(d=>({ id:d.id, ...d.data() }));
   GRUPOS  = snapG.docs.map(d=>({ id:d.id, ...d.data() }));
 }
-// Devuelve un mapa: groupId -> { hotelId, ts }
-// Es el hotel de la ASIGNACIÓN más reciente de cada grupo.
-function makeLatestHotelPerGroup(){
-  const latest = new Map();
-  for (const a of ASIGNS){
-    const gid = a?.grupoId, hid = a?.hotelId;
-    if (!gid || !hid) continue;
-    const ts = savedAtOf(a);
-    const prev = latest.get(gid);
-    if (!prev || ts > prev.ts) latest.set(gid, { hotelId: hid, ts });
-  }
-  return latest;
-}
 
-// =============== Index ocupación por día (preferir último guardado) ===============
+// =============== Index ocupación por día (checkIn ≤ D < checkOut)
+// Regla: si dos asignaciones tocan el MISMO día, gana la más reciente (por timestamp)
 function buildIndexOcup(){
   INDEX_OCUP = new Map();
 
-  // ① Elegimos el hotel de la asignación MÁS RECIENTE por grupo
-  const LATEST = makeLatestHotelPerGroup();
-
   for (const a of ASIGNS) {
-    const gid = a.grupoId, hid = a.hotelId;
-    const ci  = toISO(a.checkIn), co = toISO(a.checkOut);
+    const gid = a?.grupoId, hid = a?.hotelId;
+    const ci  = toISO(a?.checkIn), co = toISO(a?.checkOut);
     if (!gid || !hid || !ci || !co) continue;
 
-    // Ignorar asignaciones canceladas/anuladas si ocupas estos campos
+    // ignora canceladas/anuladas si usas estos flags/campos
     const estado = String(a.estado || a.status || '').toLowerCase();
     const anulado = !!a.anulado || !!a.cancelado;
     if (anulado || estado === 'anulado' || estado === 'cancelado') continue;
 
-    // ② Si este no es el hotel MÁS RECIENTE del grupo, lo ignoramos COMPLETAMENTE
-    const latestHotel = LATEST.get(gid)?.hotelId;
-    if (latestHotel && hid !== latestHotel) continue;
-
     const byDate = INDEX_OCUP.get(gid) || new Map();
     const stamp  = savedAtOf(a);
 
-    // ③ Igual mantenemos "último gana" por si hay varias asignaciones del MISMO hotel
     for (const d of eachDateISO(ci, co)) {
       const prev = byDate.get(d);
       if (!prev) {
@@ -310,7 +300,7 @@ function buildIndexOcup(){
         if (stamp > prevTs) {
           winner = { hotelId: hid, asg: a, _ts: stamp };
         } else if (stamp === prevTs) {
-          // desempate estable por id de doc para evitar parpadeos
+          // desempate estable por id
           const prevId = String(prev.asg?.id || prev.asg?.__id || '');
           const curId  = String(a.id || a.__id || '');
           if (curId > prevId) winner = { hotelId: hid, asg: a, _ts: stamp };
@@ -353,8 +343,7 @@ const labelOf = (it) => {
   return `${h ? `[${h}] ` : ''}${raw}`;
 };
 
-// =============== Index itinerario: por grupo y día, conteos alm/cena ===============
-// =============== Index itinerario: por grupo y día, conteos alm/cena + ORDEN por hora ===============
+// =============== Index itinerario: por grupo/día con orden por hora y highlights
 function buildIndexItin(){
   INDEX_ITIN = new Map();
 
@@ -364,9 +353,7 @@ function buildIndexItin(){
 
     for (const [fecha, arr] of Object.entries(itin)) {
       const items = Array.isArray(arr) ? arr.slice() : [];
-
-      // Ordenar por hora (inicio, luego fin)
-      items.sort(cmpItin);
+      items.sort(cmpItin); // por hora
 
       let almC = 0, cenC = 0;
       const plain = [];
@@ -375,39 +362,28 @@ function buildIndexItin(){
       for (const it of items) {
         const s = norm(it?.actividad || it?.texto || '');
         if (!s) continue;
-
-        // detección (mismo criterio que los conteos)
         const notNeg = !NEG.test(s);
         const hasAlm = notNeg && R_ALM.test(s) && R_HOT.test(s);
         const hasCen = notNeg && R_CEN.test(s) && R_HOT.test(s);
-
         if (hasAlm) almC++;
         if (hasCen) cenC++;
 
-        const label = labelOf(it);               // [HH:MM] texto (escapado)
+        const label = labelOf(it); // [HH:MM] texto
         plain.push(label);
-
-        // destacar en AZUL si es alm/cena de hotel
-        if (hasAlm || hasCen) {
-          html.push(`<span class="pill-blue">${label}</span>`);
-        } else {
-          html.push(label);
-        }
+        html.push(hasAlm || hasCen ? `<span class="pill-blue">${label}</span>` : label);
       }
 
       idx.set(toISO(fecha), {
-        text: plain.join(' | '),        // se mantiene 'texto' plano para compatibilidad
-        textoHtml: html.join(' | '),    // HTML con destacados
+        text: plain.join(' | '),
+        textoHtml: html.join(' | '),
         almCount: almC,
         cenCount: cenC
       });
     }
-
     INDEX_ITIN.set(g.id, idx);
   }
 }
 
-// =============== Construir AGG: Hotel → Grupo → Día ===============
 function rebuildAgg(includeCoord=true, includeCond=true){
   AGG = new Map();
 
@@ -420,9 +396,10 @@ function rebuildAgg(includeCoord=true, includeCond=true){
   };
 
   for (const g of GRUPOS) {
-    const byDate = INDEX_OCUP.get(g.id) || new Map();   // días ocupados por hotel
-    const itIdx  = INDEX_ITIN.get(g.id) || new Map();   // conteo de 'hotel alm/cen' por fecha
+    const byDate = INDEX_OCUP.get(g.id) || new Map();
+    const itIdx  = INDEX_ITIN.get(g.id) || new Map();
 
+    // 5.1 Primero procesamos todas las fechas de NOCHE
     for (const [fecha, occ] of byDate.entries()) {
       const { hotelId, asg } = occ || {};
       if (!hotelId || !asg) continue;
@@ -430,9 +407,9 @@ function rebuildAgg(includeCoord=true, includeCond=true){
       const byHotel = AGG.get(hotelId) || {
         hotel: HOTELES.find(h=>h.id===hotelId) || { id:hotelId, nombre:'(Hotel)', destino:'', ciudad:'' },
         grupos: new Map(),
-        porDia: new Map(),     // fecha -> lista de {grupoId, ...alm, cen (0/1)}
-        totAlm: 0,             // Σ alm(días) del hotel
-        totCen: 0              // Σ cen(días) del hotel
+        porDia: new Map(), // fecha -> [{grupoId, ... , pax}]
+        totAlm: 0,
+        totCen: 0
       };
 
       const gInfo = byHotel.grupos.get(g.id) || {
@@ -440,15 +417,14 @@ function rebuildAgg(includeCoord=true, includeCond=true){
         numeroNegocio: g.numeroNegocio || g.id,
         nombreGrupo:   g.nombreGrupo   || '',
         identificador: g.identificador || '',
-        dias: new Map(),     // fecha -> { alm:0/1, cen:0/1, texto, flags }
-        almDias: 0,          // Σ alm(días)
-        cenDias: 0,          // Σ cen(días)
-        noches:  0,          // noches en este hotel (= #fechas asignadas)
-        paxGrupo: 0          // pax informativo del grupo
+        dias: new Map(),     // fecha -> { alm:0/1, cen:0/1, texto, textoHtml, paxBase, flags }
+        almDias: 0,
+        cenDias: 0,
+        noches:  0,
+        paxGrupo: 0
       };
 
-      // detector de servicios en el ITINERARIO del día
-      const it = itIdx.get(fecha) || { text:'', almCount:0, cenCount:0 };
+      const it = itIdx.get(fecha) || { text:'', textoHtml:'', almCount:0, cenCount:0 };
       const alm = it.almCount > 0 ? 1 : 0;
       const cen = it.cenCount > 0 ? 1 : 0;
 
@@ -457,40 +433,113 @@ function rebuildAgg(includeCoord=true, includeCond=true){
       if (it.cenCount > 1) flags.push('cena duplicada');
       if (occ.conflict)    flags.push('conflicto ocupación');
 
-      // por día
+      const paxRef = paxFromAsg(asg);
+      if (paxRef > gInfo.paxGrupo) gInfo.paxGrupo = paxRef;
+
       gInfo.dias.set(fecha, {
         alm, cen,
         texto: it.text,
-        textoHtml: it.textoHtml,   // ← NUEVO: versión con spans azules
+        textoHtml: it.textoHtml,
+        paxBase: paxRef,
         flags
       });
 
-      // acumulados por grupo / hotel (días, no pax)
       gInfo.almDias += alm;
       gInfo.cenDias += cen;
       gInfo.noches  += 1;
 
-      // pax de referencia (solo informativo)
-      const paxRef = paxFromAsg(asg);
-      if (paxRef > gInfo.paxGrupo) gInfo.paxGrupo = paxRef;
-
-      // acumulados por hotel
       byHotel.totAlm += alm;
       byHotel.totCen += cen;
 
-      // índice por fecha a nivel hotel (para filtro Año)
       const list = byHotel.porDia.get(fecha) || [];
       list.push({
         grupoId: g.id,
         numeroNegocio: g.numeroNegocio || '',
         nombreGrupo:   g.nombreGrupo   || '',
         identificador: g.identificador || '',
-        alm, cen
+        alm, cen,
+        pax: paxRef
       });
       byHotel.porDia.set(fecha, list);
 
       byHotel.grupos.set(g.id, gInfo);
       AGG.set(hotelId, byHotel);
+    }
+
+    // 5.2 Ahora agregamos el "día de check-out" si tiene servicio hotel
+    const fechas = [...byDate.keys()].sort();
+    let i = 0;
+    while (i < fechas.length) {
+      const start = fechas[i];
+      let end = start;
+      let lastOcc = byDate.get(start); // misma cadena (hotel + consecutivo)
+
+      while (i + 1 < fechas.length) {
+        const next = addDaysISO(end, 1);
+        const d1   = fechas[i + 1];
+        const occ1 = byDate.get(d1);
+        if (d1 === next && occ1 && occ1.hotelId === lastOcc.hotelId) {
+          i++;
+          end = d1;
+          lastOcc = occ1;
+        } else { break; }
+      }
+
+      const dayAfter = addDaysISO(end, 1);
+      const itOut = itIdx.get(dayAfter);
+      if (itOut && (itOut.almCount > 0 || itOut.cenCount > 0)) {
+        const hotelId = lastOcc.hotelId;
+        const byHotel = AGG.get(hotelId) || {
+          hotel: HOTELES.find(h=>h.id===hotelId) || { id:hotelId, nombre:'(Hotel)', destino:'', ciudad:'' },
+          grupos: new Map(),
+          porDia: new Map(),
+          totAlm: 0, totCen: 0
+        };
+        const gInfo = byHotel.grupos.get(g.id) || {
+          grupoId: g.id,
+          numeroNegocio: g.numeroNegocio || g.id,
+          nombreGrupo:   g.nombreGrupo   || '',
+          identificador: g.identificador || '',
+          dias: new Map(),
+          almDias: 0, cenDias: 0, noches: 0, paxGrupo: 0
+        };
+
+        const paxRef = Math.max(gInfo.paxGrupo || 0, paxFromAsg(lastOcc.asg) || 0);
+        if (paxRef > gInfo.paxGrupo) gInfo.paxGrupo = paxRef;
+
+        const alm = itOut.almCount > 0 ? 1 : 0;
+        const cen = itOut.cenCount > 0 ? 1 : 0;
+
+        // agrega día extra SIN sumar noches
+        gInfo.dias.set(dayAfter, {
+          alm, cen,
+          texto: itOut.text,
+          textoHtml: itOut.textoHtml,
+          paxBase: paxRef,
+          flags: ['extra sin noche']
+        });
+        gInfo.almDias += alm;
+        gInfo.cenDias += cen;
+
+        byHotel.totAlm += alm;
+        byHotel.totCen += cen;
+
+        const list2 = byHotel.porDia.get(dayAfter) || [];
+        list2.push({
+          grupoId: g.id,
+          numeroNegocio: g.numeroNegocio || '',
+          nombreGrupo:   g.nombreGrupo   || '',
+          identificador: g.identificador || '',
+          alm, cen,
+          pax: paxRef
+        });
+        byHotel.porDia.set(dayAfter, list2);
+
+        byHotel.grupos.set(g.id, gInfo);
+        AGG.set(hotelId, byHotel);
+      }
+
+      i++;
     }
   }
 }
