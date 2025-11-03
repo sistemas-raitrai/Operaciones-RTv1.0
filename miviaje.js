@@ -122,7 +122,7 @@ function ensureCursoMedio(cursoRaw){
   // Si es exactamente 1..4 con opcional °/º (sin letras), forzamos "Medio"
   if (/^[1-4][°º]?$/.test(compact)) {
     const n = compact.replace(/[°º]/g,'');
-    return `${n} Medio`;
+    return `${n} MEDIO`;
   }
   // En cualquier otro caso, se respeta lo que vino
   return raw;
