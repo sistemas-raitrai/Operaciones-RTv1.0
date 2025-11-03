@@ -113,6 +113,21 @@ function formatDM(iso){ // 06/12
 function formatDateRange(ini,fin){ if(!ini||!fin) return '—'; return `${formatShortDate(toISO(ini))} — ${formatShortDate(toISO(fin))}`; }
 function getDateRange(s,e){ const out=[]; const A=toISO(s), B=toISO(e); if(!A||!B) return out; const a=new Date(A), b=new Date(B); for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);} return out; }
 
+// === Si el curso es sólo 1..4 (con o sin °/º), agrega "Medio". Si trae letra (A/B/...), lo deja igual.
+function ensureCursoMedio(cursoRaw){
+  const raw = (cursoRaw ?? '').toString().trim();
+  if (!raw) return '';
+  // versión compacta en mayúsculas, sin espacios
+  const compact = raw.replace(/\s+/g,'').toUpperCase();
+  // Si es exactamente 1..4 con opcional °/º (sin letras), forzamos "Medio"
+  if (/^[1-4][°º]?$/.test(compact)) {
+    const n = compact.replace(/[°º]/g,'');
+    return `${n} Medio`;
+  }
+  // En cualquier otro caso, se respeta lo que vino
+  return raw;
+}
+
 /* ──────────────────────────────────────────────────────────────────────────
    Firestore: Grupo por id/numero
 ────────────────────────────────────────────────────────────────────────── */
@@ -1113,10 +1128,11 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   }
 
   const colegio = grupo.colegio || grupo.cliente || '';
-  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
-  const titulo  = (colegio || curso)
-    ? `Viaje de Estudios: COLEGIO ${colegio ? colegio : ''} ${curso ? curso : ''}`.trim()
+  const cursoBranded = ensureCursoMedio(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '');
+  const titulo  = (colegio || cursoBranded)
+    ? `Viaje de Estudios: COLEGIO ${colegio ? colegio : ''} ${cursoBranded ? cursoBranded : ''}`.trim()
     : `Viaje de Estudios: COLEGIO ${grupo.programa||''}`.trim();
+
 
   const P = extractPresentacion(grupo, vuelosNorm);
 
@@ -1922,7 +1938,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     return `<ul class="itinerario">${days.join('')}</ul>`;
   })();
 
-  const titulo  = `Viaje de Estudios: COLEGIO ${(grupo.colegio || grupo.cliente || '')} ${(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '')}`.trim();
+  const colegioBP  = grupo.colegio || grupo.cliente || '';
+  const cursoBP    = ensureCursoMedio(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '');
+  const titulo     = `Viaje de Estudios: COLEGIO ${colegioBP} ${cursoBP}`.trim();
 
   return `
     <div class="print-doc">
