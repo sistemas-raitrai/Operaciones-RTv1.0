@@ -783,26 +783,62 @@ function abrirModalGrupo(hotelId, grupoId){
   document.getElementById('mg-title').textContent =
     `Detalle — ${recH.hotel.nombre} — (${g.numeroNegocio}) ${g.nombreGrupo}`;
 
-  // rows por día ordenadas
-  const rows = [...g.dias.entries()].sort((a,b)=> a[0].localeCompare(b[0]))
-    .map(([fecha, d]) => `
+  // 1) Fechas de NOCHE en este hotel (checkIn ≤ D < checkOut) + día de regreso (checkout)
+  const byOccAll   = INDEX_OCUP.get(grupoId) || new Map();
+  const nightsHere = [...byOccAll.entries()]
+    .filter(([iso, occ]) => occ?.hotelId === hotelId)
+    .map(([iso]) => iso)
+    .sort();
+
+  const dateSet = new Set();
+
+  // Rango continuo desde la 1ª noche hasta el DÍA DE CHECKOUT (inclusive)
+  if (nightsHere.length){
+    const startISO   = nightsHere[0];
+    const lastNight  = nightsHere[nightsHere.length - 1];
+    const checkoutISO = addDaysISO(lastNight, 1); // día de regreso
+
+    // incluye todas las fechas del rango [startISO .. checkoutISO]
+    for (const d of eachDateISO(startISO, addDaysISO(checkoutISO, 1))) {
+      dateSet.add(d);
+    }
+  }
+
+  // 2) Asegurar también cualquier día con comidas asignadas (por si caen fuera del rango)
+  for (const iso of g.dias.keys()) dateSet.add(iso);
+
+  // 3) Construcción de filas día a día (incluyendo días sin consumo)
+  const itIdx = INDEX_ITIN.get(grupoId) || new Map();
+  const allDates = [...dateSet].sort();
+
+  const rows = allDates.map((iso) => {
+    // datos de consumo (si no hay, queda 0/0)
+    const d = g.dias.get(iso) || { alm:0, cen:0, texto:'', textoHtml:'', flags:[] };
+
+    // texto de actividades: preferir textoHtml de g.dias; si no, usar lo del itinerario del día
+    const it = itIdx.get(iso) || {};
+    const textoHtml = d.textoHtml || (it.textoHtml || escHTML(d.texto || it.text || ''));
+
+    return `
       <tr>
-        <td>${fmt(fecha)}</td>
+        <td>${fmt(iso)}</td>
         <td style="text-align:center">${tick(d.alm)}</td>
         <td style="text-align:center">${tick(d.cen)}</td>
         <td style="text-align:center">${g.paxGrupo}</td>
-        <td>${d.textoHtml || escHTML(d.texto || '')}</td>
+        <td>${textoHtml}</td>
         <td>${(d.flags || []).join(', ')}</td>
       </tr>
-    `).join('');
+    `;
+  }).join('');
 
-
-  document.querySelector('#mg-tabla tbody').innerHTML = rows || `<tr><td colspan="6" class="muted">Sin datos para este grupo.</td></tr>`;
+  document.querySelector('#mg-tabla tbody').innerHTML =
+    rows || `<tr><td colspan="6" class="muted">Sin datos para este grupo.</td></tr>`;
 
   // open
   document.getElementById('modalGrupoBackdrop').style.display = 'block';
   document.getElementById('modalGrupo').style.display = 'block';
 }
+
 document.getElementById('mg-close').onclick = closeModalGrupo;
 document.getElementById('mg-ok').onclick    = closeModalGrupo;
 function closeModalGrupo(){
