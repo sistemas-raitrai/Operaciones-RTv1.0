@@ -621,6 +621,21 @@ function rebuildAgg(includeCoord = true, includeCond = true) {
     }
   }
 
+  // 3.bis) Recalcular Σ por hotel desde los días (fuente única, evita dobles)
+  for (const [, rec] of AGG.entries()) {
+    let A = 0, C = 0;
+    for (const g of rec.grupos.values()) {
+      const diasIt = (g.dias instanceof Map) ? g.dias.values() : Object.values(g.dias || {});
+      for (const d of diasIt) {
+        A += Number(!!d.alm);
+        C += Number(!!d.cen);
+      }
+    }
+    rec.totAlm = A;
+    rec.totCen = C;
+  }
+
+
   // 4) Normalizar porDia (Map→Array) para el correo
   for (const [, rec] of AGG.entries()) {
     for (const [iso, mapList] of rec.porDia.entries()) {
