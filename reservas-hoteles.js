@@ -46,6 +46,50 @@ const fmt = (iso) => {
   const d = new Date(iso + 'T00:00:00');
   return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
 };
+// === Helpers fecha MAYÚS ===
+const MES_ABR = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+const fmtDiaMayus = (iso) => {
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-');
+  const di = String(parseInt(d,10));
+  const mi = MES_ABR[(parseInt(m,10)-1) || 0] || '';
+  return `${di} DE ${mi}`;
+};
+
+// Construye el bloque "DETALLE POR DÍA" usando rec.porDia
+function buildBloqueDia(rec){
+  const entries = (rec?.porDia instanceof Map)
+    ? [...rec.porDia.entries()]
+    : Object.entries(rec?.porDia || {});
+  entries.sort((a,b)=> a[0].localeCompare(b[0]));
+
+  let out = '';
+  for (const [fecha, listRaw] of entries){
+    const list = Array.isArray(listRaw) ? listRaw : [];
+    const almList = list.filter(it => Number(it.alm) > 0);
+    const cenList = list.filter(it => Number(it.cen) > 0);
+    if (almList.length === 0 && cenList.length === 0) continue;
+
+    out += `${fmtDiaMayus(fecha)}:\n`;
+    if (almList.length){
+      out += `- ALMUERZO:\n`;
+      almList.forEach((it, idx) => {
+        const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${it.nombreGrupo || ''}`.trim();
+        out += `       ${idx+1}) ${etiqueta} (${Number(it.alm)} PAX)\n`;
+      });
+    }
+    if (cenList.length){
+      out += `- CENA:\n`;
+      cenList.forEach((it, idx) => {
+        const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${it.nombreGrupo || ''}`.trim();
+        out += `       ${idx+1}) ${etiqueta} (${Number(it.cen)} PAX)\n`;
+      });
+    }
+    out += `\n`;
+  }
+  return out.trimEnd();
+}
+
 function* eachDateISO(startISO, endISOExcl){
   let d = new Date(startISO + 'T00:00:00');
   const end = new Date(endISOExcl + 'T00:00:00');
@@ -550,61 +594,74 @@ function closeModalGrupo(){
 }
 
 // =============== MODAL: Hotel (Reservar) ===============
+// =============== MODAL: Hotel (Reservar) ===============
 async function abrirModalHotel(hotelId){
-  const rec = AGG.get(hotelId);
-  if (!rec) return;
+  const recBase = AGG.get(hotelId);
+  if (!recBase) return;
 
-  const h = rec.hotel || {};
-  const pension = h.pension || '';
-  const para = h.contactoCorreo || h.contacto || '';
+  const h = recBase.hotel || {};
+  const paraDefault = h.contactoCorreo || h.contacto || '';
 
-  // ordenar grupos con consumo (aunque ahora el "consumo" son días marcados)
+  // Respetar filtro de AÑO al armar el correo
+  const filAno = (document.getElementById('filtroAno')?.value || '').trim();
+  const rec = filAno ? recForYear(recBase, filAno) : recBase;
+
+  // construir tabla por grupo (solo los que suman algo)
   const gruposOrden = [...rec.grupos.values()]
-    .filter(g => (g.almDias + g.cenDias) > 0 || g.noches > 0)
-    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo));
+    .map(g => ({ g, tot: totalesDeGrupo(g) }))
+    .filter(x => (x.tot.alm + x.tot.cen) > 0)
+    .sort((a,b)=> (a.g.numeroNegocio+' '+a.g.nombreGrupo).localeCompare(b.g.numeroNegocio+' '+b.g.nombreGrupo));
 
-  // texto de correo
+  // totales hotel calculados desde los grupos (coherente con el detalle)
+  const totalAlmHotel = gruposOrden.reduce((s,x)=> s + x.tot.alm, 0);
+  const totalCenHotel = gruposOrden.reduce((s,x)=> s + x.tot.cen, 0);
+
+  // BLOQUE: resumen por grupo
   let cuerpo = `Estimado/a:\n\n`;
-  cuerpo += `Reserva de alimentación para ${h.nombre || '(Hotel)'}.\n`;
-  cuerpo += `Pensión declarada: ${pension || '(sin dato)'}.\n\n`;
-  cuerpo += `Resumen por grupo (días de servicio):\n`;
-
-  for (const g of gruposOrden) {
-    const est = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
+  cuerpo += `Reserva de alimentación para ${h.nombre || '(HOTEL)'}.\n\n`;
+  cuerpo += `Totales del hotel:\n`;
+  cuerpo += `- Almuerzos: ${totalAlmHotel}\n`;
+  cuerpo += `- Cenas: ${totalCenHotel}\n\n`;
+  cuerpo += `Detalle por grupo:\n`;
+  for (const {g, tot} of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo}`;
-    cuerpo += `- ${etiqueta} — Noches:${g.noches} | Alm(días):${g.almDias} | Cen(días):${g.cenDias} | PAX:${g.paxGrupo} | ${est.ok ? 'OK' : 'ATENCIÓN: '+est.detail}\n`;
+    cuerpo += `- ${etiqueta} — Alm: ${tot.alm} | Cen: ${tot.cen}\n`;
   }
-  cuerpo += `\nAtte.\nOperaciones Rai Trai`;
 
-  // pintar modal
+  // BLOQUE: detalle por día (MAYÚSCULAS)
+  const bloqueDia = buildBloqueDia(rec);
+  if (bloqueDia) {
+    cuerpo += `\nDETALLE POR DÍA:\n`;
+    cuerpo += bloqueDia.toUpperCase();
+  }
+
+  // encabezado y campos del modal
   document.getElementById('mh-title').textContent = `Reservar — ${h.nombre || hotelId}`;
-  document.getElementById('mh-para').value   = para || 'CORREO@HOTEL.COM';
+  document.getElementById('mh-para').value   = paraDefault || 'CORREO@HOTEL.COM';
   document.getElementById('mh-asunto').value = `Reserva alimentación — ${h.nombre || hotelId}`;
   document.getElementById('mh-cuerpo').value = cuerpo;
 
+  // pintar tabla del modal (resumen por grupo)
   const tb = document.querySelector('#mh-tablaGrupos tbody');
-  tb.innerHTML = gruposOrden.map(g => {
-    const est = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
+  tb.innerHTML = gruposOrden.map(({g, tot}) => {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo}`;
     return `<tr>
       <td>${etiqueta}</td>
-      <td style="text-align:center">${g.noches}</td>
-      <td style="text-transform:capitalize">${pension || '(sin dato)'}</td>
-      <td style="text-align:center">${g.almDias}</td>
-      <td style="text-align:center">${g.cenDias}</td>
-      <td style="text-align:center">${g.paxGrupo}</td>
-      <td>${est.ok ? '✔️ OK' : ('⚠️ ' + est.detail)}</td>
+      <td>${tot.alm}</td>
+      <td>${tot.cen}</td>
       <td><button class="btn btn-mini" data-act="detalle-grupo" data-hid="${hotelId}" data-gid="${g.grupoId}">Ver detalle</button></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" class="muted">Sin grupos para mostrar.</td></tr>`;
+  }).join('') || `<tr><td colspan="4" class="muted">Sin grupos con consumo.</td></tr>`;
 
   tb.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
     b.onclick = ()=> abrirModalGrupo(b.dataset.hid, b.dataset.gid);
   });
 
+  // datasets para guardar/enviar
   document.getElementById('mh-guardarPend').dataset.hid = hotelId;
   document.getElementById('mh-enviar').dataset.hid = hotelId;
 
+  // open
   document.getElementById('modalHotelBackdrop').style.display = 'block';
   document.getElementById('modalHotel').style.display = 'block';
 }
