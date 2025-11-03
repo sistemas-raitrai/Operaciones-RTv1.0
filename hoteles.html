@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Distribución Hotelera | RT v1.0</title>
+  <title>Distribución Hotelera | RT</title>
 
   <!-- Estilos globales -->
   <link rel="stylesheet" href="estilos.css"/>
@@ -229,6 +229,14 @@
         <input id="m-contactoNombre"   type="text" placeholder="Nombre" required/>
         <input id="m-contactoCorreo"   type="email" placeholder="Correo" required/>
         <input id="m-contactoTelefono" type="tel"   placeholder="Teléfono" required/>
+        <!-- ✅ NUEVO: Tipo de Pensión (después de los datos de contacto) -->
+        <div class="field">
+          <label for="m-pension">Tipo de pensión</label>
+          <select id="m-pension" required>
+            <option value="media">Media pensión (MP)</option>
+            <option value="completa">Pensión completa (PC)</option>
+          </select>
+        </div>
       </fieldset>
       <label>Disponible Desde:<input id="m-fechaInicio" type="date" required/></label>
       <label>Hasta:<input id="m-fechaFin" type="date" required/></label>
