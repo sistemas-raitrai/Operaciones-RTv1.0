@@ -173,7 +173,7 @@
     </table>
   </main>
 
-  <!-- MODAL HOTEL (Reservar) -->
+  <!-- MODAL HOTEL (Reservar) — REEMPLAZO COMPLETO -->
   <div id="modalHotelBackdrop" class="modal-backdrop"></div>
   <section id="modalHotel" class="modal" role="dialog" aria-modal="true">
     <header>
@@ -191,17 +191,10 @@
           <input id="mh-asunto" class="input"/>
         </div>
       </div>
+  
       <div style="margin-top:10px;">
         <label>Mensaje</label>
         <textarea id="mh-cuerpo"></textarea>
-      </div>
-
-      <div style="margin-top:10px;">
-        <h4>Totales por grupo</h4>
-        <table id="mh-tablaGrupos" class="subtabla">
-          <thead><tr><th>Grupo</th><th>Σ Almuerzos</th><th>Σ Cenas</th><th>Detalle</th></tr></thead>
-          <tbody><!-- via JS --></tbody>
-        </table>
       </div>
     </div>
     <footer>
@@ -209,6 +202,7 @@
       <button id="mh-enviar" class="btn-primary">Enviar</button>
     </footer>
   </section>
+
 
   <!-- MODAL GRUPO (detalle día a día) -->
   <div id="modalGrupoBackdrop" class="modal-backdrop"></div>
