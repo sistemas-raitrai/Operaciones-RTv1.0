@@ -733,6 +733,25 @@ async function abrirModalHotel(hotelId){
   document.getElementById('modalHotel').style.display = 'block';
 }
 
+// ==== CIERRE MODAL HOTEL (faltaba) ====
+function closeModalHotel(){
+  const bd = document.getElementById('modalHotelBackdrop');
+  const md = document.getElementById('modalHotel');
+  if (bd) bd.style.display = 'none';
+  if (md) md.style.display = 'none';
+}
+
+// Wire de cierre (botón, backdrop y tecla ESC)
+const btnCloseHotel = document.getElementById('mh-close');
+if (btnCloseHotel) btnCloseHotel.onclick = closeModalHotel;
+
+const bdHotel = document.getElementById('modalHotelBackdrop');
+if (bdHotel) bdHotel.onclick = closeModalHotel;
+
+document.addEventListener('keydown', (e)=>{
+  if (e.key === 'Escape') closeModalHotel();
+});
+
 // Guardar PENDIENTE (marca por cada fecha con consumo > 0)
 document.getElementById('mh-guardarPend').onclick = async (e)=>{
   try {
