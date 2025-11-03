@@ -528,9 +528,9 @@ function abrirModalGrupo(hotelId, grupoId){
     .map(([fecha, d]) => `
       <tr>
         <td>${fmt(fecha)}</td>
-        <td>${d.alm}</td>
-        <td>${d.cen}</td>
-        <td>${d.paxBase}</td>
+        <td style="text-align:center">${tick(d.alm)}</td>
+        <td style="text-align:center">${tick(d.cen)}</td>
+        <td style="text-align:center">${g.paxGrupo}</td>
         <td>${(d.texto || '').slice(0,180)}</td>
         <td>${(d.flags || []).join(', ')}</td>
       </tr>
