@@ -747,7 +747,7 @@ const td = (v)=> `<td>${v ?? '—'}</td>`;
 // Tabla de PLAN (aéreo o terrestre) para impresión — con mes 3 letras
 function printTablePlan(legs = [], modo = 'ida', tipo = 'aereo'){
   if (!legs.length) return '';
-  const tituloModo = (modo === 'ida') ? 'IDA' : 'VUELTA / REGRESO';
+  const tituloModo = (modo === 'ida') ? 'IDA' : 'REGRESO';
   const isAereo = (tipo === 'aereo');
 
   let header = '';
@@ -1300,7 +1300,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
           </table>
         </div>
 
-        <div class="subsec" style="font-weight:700;margin:.6rem 0 .25rem 0;">VUELTA</div>
+        <div class="subsec" style="font-weight:700;margin:.6rem 0 .25rem 0;">REGRESO</div>
         <div style="overflow:auto;margin-top:2px;">
           <table style="border-collapse:collapse;min-width:560px;">
 
