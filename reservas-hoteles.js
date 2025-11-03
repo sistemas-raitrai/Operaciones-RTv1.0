@@ -239,11 +239,26 @@ function recForYear(rec, year){
 }
 
 
-// regex robustas:
+// regex robustas (ajustadas)
 const NEG = /(no incluye|por cuenta|libre|sin\s+(almuerzo|cena))/i;
-const R_ALM = /(almuerzo|lunch)/i;
-const R_CEN = /\b(cena|dinner)\b/i;
-const R_HOT = /\bhotel\b/i;
+
+// Solo aceptamos "almuerzo" o "cena" (sin 'lunch')
+const R_ALM = /\b(almuerzo|alm\.)\b/i;
+const R_CEN = /\b(cena|cen\.)\b/i;
+
+const R_HOT = /\bhotel\b/i;                 // token "hotel" (por compat, puede quedar)
+const R_BOX = /\bbox\s*lunch\b/i;            // excluir "box lunch"
+const R_EN_HOTEL = /\ben\s+hotel\b/i;        // "en hotel ..." no cuenta como pensión
+
+// Acepta "CENA HOTEL", "ALMUERZO - HOTEL", "CENA: HOTEL" (adyacentes)
+const R_COMIDA_HOTEL_ADY = /\b(almuerzo|cena)\s*(?:-|:)?\s*hotel\b/i;
+
+const isAlmuerzoHotel = (s) =>
+  R_ALM.test(s) && R_COMIDA_HOTEL_ADY.test(s) && !R_BOX.test(s) && !NEG.test(s);
+
+const isCenaHotel = (s) =>
+  R_CEN.test(s) && R_COMIDA_HOTEL_ADY.test(s) && !R_BOX.test(s) && !NEG.test(s);
+
 
 // ✔︎ helper visual
 const tick = v => (v ? '✓' : '—');
@@ -412,9 +427,8 @@ function buildIndexItin(){
         }
 
         // detección comidas de hotel
-        const notNeg = !NEG.test(s);
-        const hasAlm = notNeg && R_ALM.test(s) && R_HOT.test(s);
-        const hasCen = notNeg && R_CEN.test(s) && R_HOT.test(s);
+        const hasAlm = isAlmuerzoHotel(s);
+        const hasCen = isCenaHotel(s);
 
         if (hasAlm) { almC++; meals.push({ kind:'alm', tmin:startMinOf(it), label: labelOf(it) }); }
         if (hasCen) { cenC++; meals.push({ kind:'cen', tmin:startMinOf(it), label: labelOf(it) }); }
