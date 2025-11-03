@@ -418,14 +418,6 @@ function rebuildAgg(includeCoord=true, includeCond=true){
     const e = Number(asg?.estudiantesTotal ?? asg?.estudiantestotal ?? 0);
     const c = includeCoord ? Number(asg?.coordinadores ?? 0) : 0;
     const d = includeCond  ? Number(asg?.conductores   ?? 0) : 0;
-    return function rebuildAgg(includeCoord=true, includeCond=true){
-  AGG = new Map();
-
-  const paxFromAsg = (asg) => {
-    const a = Number(asg?.adultosTotal ?? asg?.adultostotal ?? 0);
-    const e = Number(asg?.estudiantesTotal ?? asg?.estudiantestotal ?? 0);
-    const c = includeCoord ? Number(asg?.coordinadores ?? 0) : 0;
-    const d = includeCond  ? Number(asg?.conductores   ?? 0) : 0;
     return a + e + c + d;
   };
 
@@ -917,7 +909,7 @@ function exportExcel(){
           Fecha: fecha,
           Almuerzo: d.alm,
           Cena: d.cen,
-          PaxBase: d.paxBase,
+          PaxGrupo: g.paxGrupo,
           Texto: d.texto.slice(0,300),
           Flags: (d.flags||[]).join(', ')
         });
