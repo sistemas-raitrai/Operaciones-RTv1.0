@@ -56,6 +56,11 @@ function fmtFecha(iso) {
   }).replace(/^\w/,c=>c.toUpperCase());
 }
 
+// ✅ NUEVO: formateador de tipo de pensión
+function fmtPension(v) {
+  return (v === 'completa') ? 'PENSIÓN COMPLETA' : 'MEDIA PENSIÓN';
+}
+
 // ===== Inicialización =====
 onAuthStateChanged(getAuth(app), user=>{
   if(!user) return location.href='login.html';
@@ -178,7 +183,7 @@ function openHotelModal(h){
   document.getElementById('m-contactoNombre').value   = h?.contactoNombre   ?? '';
   document.getElementById('m-contactoCorreo').value   = h?.contactoCorreo   ?? '';
   document.getElementById('m-contactoTelefono').value = h?.contactoTelefono ?? '';
-
+  document.getElementById('m-pension').value = h?.pension ?? 'media';
   document.getElementById('modal-backdrop').style.display='block';
   document.getElementById('modal-hotel').style.display  ='block';
 }
@@ -192,18 +197,23 @@ async function onSubmitHotel(e){
     nombre:   document.getElementById('m-nombre').value.trim(),
     destino:  document.getElementById('m-destino').value,
     direccion:document.getElementById('m-direccion').value.trim(),
-    ciudad:   document.getElementById('m-ciudad').value.trim(),   // ← NUEVO
+    ciudad:   document.getElementById('m-ciudad').value.trim(),
     contactoNombre:  document.getElementById('m-contactoNombre').value.trim(),
     contactoCorreo:  document.getElementById('m-contactoCorreo').value.trim(),
     contactoTelefono:document.getElementById('m-contactoTelefono').value.trim(),
+    // ✅ NUEVO: tipo de pensión
+    pension:  document.getElementById('m-pension').value, // 'media' | 'completa'
+    // Fechas normalizadas
     fechaInicio: toISO(document.getElementById('m-fechaInicio').value),
     fechaFin:    toISO(document.getElementById('m-fechaFin').value),
+    // Capacidades
     singles:   +document.getElementById('m-singles').value||0,
     dobles:    +document.getElementById('m-dobles').value||0,
     triples:   +document.getElementById('m-triples').value||0,
     cuadruples:+document.getElementById('m-cuadruples').value||0,
     updatedAt: serverTimestamp()
   };
+
 
   if (isEditHotel){
     const bef=(await getDoc(doc(db,'hoteles',editHotelId))).data();
@@ -255,6 +265,7 @@ async function renderHoteles() {
       <h3>${toUpper(h.nombre)}</h3>
       <div class="subtitulo">DESTINO: ${toUpper(h.destino||'')}</div>
       <div class="subtitulo">CIUDAD: ${toUpper(h.ciudad||'')}</div>
+      <div class="subsubtitulo">PENSIÓN: ${fmtPension(h.pension || 'media')}</div>
       <div class="subsubtitulo">
         DISPONIBILIDAD: ${fmtFecha(h.fechaInicio)} → ${fmtFecha(h.fechaFin)}
       </div>
@@ -910,7 +921,8 @@ function exportToExcel() {
     return {
       Hotel: h.nombre,
       Destino: h.destino,
-      Ciudad: h.ciudad,  
+      Ciudad: h.ciudad,
+      'Pensión': fmtPension(h.pension || 'media'),
       'Dispon. desde': h.fechaInicio,
       'Dispon. hasta': h.fechaFin,
       'Asign. desde': asignDesde,
@@ -949,6 +961,7 @@ function exportToExcel() {
         Hotel: h.nombre,
         Destino: h.destino,
         Ciudad: h.ciudad,  
+        'Pensión': fmtPension(h.pension || 'media'),
         Grupo: g.numeroNegocio,
         NombreGrupo: g.nombreGrupo,
         Identificador: g.identificador,
