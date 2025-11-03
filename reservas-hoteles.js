@@ -501,8 +501,8 @@ function renderSubtablaHotel(rec){
           <th>Grupo</th>
           <th>Noches</th>
           <th>Pensión</th>
-          <th>Σ Alm (días)</th>
-          <th>Σ Cen (días)</th>
+          <th>Σ Almuerzos</th>
+          <th>Σ Cenas</th>
           <th>PAX</th>
           <th>Estado</th>
           <th>Detalle</th>
