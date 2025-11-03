@@ -529,21 +529,38 @@ function rebuildAgg(includeCoord = true, includeCond = true) {
         byHotel.totAlm += incAlm;
         byHotel.totCen += incCen;
         
-        // Índice por fecha para el correo (OR lógico para no duplicar)
-        const mapList = byHotel.porDia.get(fecha) || new Map();
-        const row = mapList.get(g.id) || {
-          grupoId: g.id,
-          numeroNegocio: g.numeroNegocio || '',
-          nombreGrupo:   g.nombreGrupo   || '',
-          identificador: g.identificador || '',
-          alm:0, cen:0, pax: paxRef
-        };
-        row.alm = row.alm || (incAlm === 1);
-        row.cen = row.cen || (incCen === 1);
+        // Acumulados del hotel (Σ de días, no de ocurrencias)
+        byHotel.totAlm += incAlm;
+        byHotel.totCen += incCen;
+        
+        // Índice por fecha para el correo (merge por grupo, sin duplicar)
+        let mapList = byHotel.porDia.get(fecha);
+        if (!(mapList instanceof Map)) mapList = new Map();
+        
+        let row = mapList.get(g.id);
+        if (!row) {
+          row = {
+            grupoId: g.id,
+            numeroNegocio: g.numeroNegocio || '',
+            nombreGrupo:   g.nombreGrupo   || '',
+            alias:         g.alias || g.aliasGrupo || '',
+            identificador: g.identificador || '',
+            alm: 0, cen: 0, pax: paxRef
+          };
+        }
+        // solo marcar si pasó de 0→1 en este día
+        if (incAlm === 1) row.alm = 1;
+        if (incCen === 1) row.cen = 1;
         row.pax = paxRef;
+        
         mapList.set(g.id, row);
         byHotel.porDia.set(fecha, mapList);
-    }
+        
+        // asegurar que el objeto quede persistido en los mapas
+        byHotel.grupos.set(g.id, gInfo);
+        AGG.set(targetH, byHotel);
+        } // ← cierra for (const m of recIt.meals)
+        } // ← cierra for (const fecha of sortedDates)
 
     // 3) Recalcular Σ almDias / cenDias por grupo
     for (const [, rec] of AGG.entries()) {
