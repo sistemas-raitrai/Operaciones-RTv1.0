@@ -543,26 +543,6 @@ function rebuildAgg(includeCoord = true, includeCond = true) {
         row.pax = paxRef;
         mapList.set(g.id, row);
         byHotel.porDia.set(fecha, mapList);
-
-        // índice por fecha → correo (merge por grupo)
-        const mapList = byHotel.porDia.get(fecha) || new Map();
-        const row = mapList.get(g.id) || {
-          grupoId: g.id,
-          numeroNegocio: g.numeroNegocio || '',
-          nombreGrupo:   g.nombreGrupo   || '',
-          alias:         g.alias || g.aliasGrupo || '',
-          identificador: g.identificador || '',
-          alm: 0, cen: 0, pax: paxRef
-        };
-        if (m.kind === 'alm') row.alm = 1;
-        if (m.kind === 'cen') row.cen = 1;
-        row.pax = paxRef;
-        mapList.set(g.id, row);
-        byHotel.porDia.set(fecha, mapList);
-
-        byHotel.grupos.set(g.id, gInfo);
-        AGG.set(targetH, byHotel);
-      }
     }
 
     // 3) Recalcular Σ almDias / cenDias por grupo
