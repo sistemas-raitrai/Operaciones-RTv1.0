@@ -810,8 +810,8 @@ function renderSubtablaHotel(rec){
         <td><b>Totales hotel</b></td>
         <td style="text-align:center">${totNoches}</td>
         <td>completa</td>
-        <td style="text-align:center"><b>${totAlm}</b> / esp. ${expA}</td>
-        <td style="text-align:center"><b>${totCen}</b> / esp. ${expC}</td>
+        <td style="text-align:center"><b>${totAlm}</b> / ${expA}</td>
+        <td style="text-align:center"><b>${totCen}</b> / ${expC}</td>
         <td></td>
         <td colspan="2">Δ Alm: ${dA>0?`+${dA}`:dA}, Δ Cenas: ${dC>0?`+${dC}`:dC}</td>
       </tr>`;
@@ -828,7 +828,7 @@ function renderSubtablaHotel(rec){
         <td style="text-align:center"><b>${totAlm}</b></td>
         <td style="text-align:center"><b>${totCen}</b></td>
         <td></td>
-        <td colspan="2">${tag} (esp. ${expT})</td>
+        <td colspan="2">${tag} / ${expT}</td>
       </tr>`;
   }
 
