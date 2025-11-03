@@ -615,6 +615,33 @@ function rebuildAgg(includeCoord = true, includeCond = true) {
   }
 }
 
+// Elimina grupos duplicados de hoteles sin nombre ("(HOTEL)") cuando ese grupo ya
+// existe en un hotel real.
+function dedupeGruposSinHotel(){
+  // 1) marcar todos los grupos que aparecen en hoteles reales
+  const gruposEnReales = new Set();
+  for (const [, rec] of AGG.entries()){
+    const nombre = String(rec?.hotel?.nombre || '');
+    const esReal = nombre && !/^\(hotel\)$/i.test(nombre);
+    if (esReal){
+      for (const gid of rec.grupos.keys()) gruposEnReales.add(gid);
+    }
+  }
+
+  // 2) podar los hoteles "fantasma"
+  for (const [hid, rec] of [...AGG.entries()]){
+    const nombre = String(rec?.hotel?.nombre || '');
+    const esFantasma = !nombre || /^\(hotel\)$/i.test(nombre);
+    if (!esFantasma) continue;
+
+    for (const gid of [...rec.grupos.keys()]){
+      if (gruposEnReales.has(gid)) rec.grupos.delete(gid);
+    }
+    if (rec.grupos.size === 0) AGG.delete(hid);
+  }
+}
+
+
 // =============== Render tabla principal ===============
 function renderTable(){
   const rows = [];
@@ -1150,12 +1177,17 @@ async function init(){
   // cerrar modales al click en backdrop
   document.getElementById('modalHotelBackdrop').onclick = closeModalHotel;
   document.getElementById('modalGrupoBackdrop').onclick = closeModalGrupo;
+  // forzar estado inicial desmarcado
+  document.getElementById('chkCoord').checked = false;
+  document.getElementById('chkCond').checked  = false;
+
 }
 
 function recalcAndPaint(){
   const incC = document.getElementById('chkCoord').checked;
   const incD = document.getElementById('chkCond').checked;
   rebuildAgg(incC, incD);
+  dedupeGruposSinHotel();
   populateFiltroAno();
   renderTable();
 }
