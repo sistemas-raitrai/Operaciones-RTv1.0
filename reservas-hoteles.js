@@ -64,8 +64,6 @@ function addDaysISO(iso, add){
 }
 
 // Construye el bloque "DETALLE POR DÍA" usando rec.porDia
-// Construye el bloque "DETALLE POR DÍA" usando rec.porDia (con PAX)
-// Construye el bloque "DETALLE POR DÍA" usando rec.porDia
 function buildBloqueDia(rec){
   const entries = (rec?.porDia instanceof Map)
     ? [...rec.porDia.entries()]
@@ -79,20 +77,20 @@ function buildBloqueDia(rec){
       : (listRaw instanceof Map ? [...listRaw.values()] : []);
     const almList = list.filter(it => Number(it.alm) > 0);
     const cenList = list.filter(it => Number(it.cen) > 0);
-    if (almList.length === 0 && cenList.length === 0) continue;
+    if (!almList.length && !cenList.length) continue;
 
     out += `${fmtDiaMayus(fecha)}:\n`;
     if (almList.length){
       out += `- ALMUERZO:\n`;
       almList.forEach((it, idx) => {
-        const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${it.nombreGrupo || ''}`.trim();
+        const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${(it.alias || it.nombreGrupo || '').trim()}`;
         out += `       ${idx+1}) ${etiqueta} (${Number(it.pax||0)} PAX)\n`;
       });
     }
     if (cenList.length){
       out += `- CENA:\n`;
       cenList.forEach((it, idx) => {
-        const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${it.nombreGrupo || ''}`.trim();
+        const etiqueta = `(${it.numeroNegocio || ''}) ${it.identificador ? it.identificador+' – ' : ''}${(it.alias || it.nombreGrupo || '').trim()}`;
         out += `       ${idx+1}) ${etiqueta} (${Number(it.pax||0)} PAX)\n`;
       });
     }
@@ -410,7 +408,7 @@ function buildIndexItin(){
   }
 }
 
-function rebuildAgg(includeCoord=true, includeCond=true){
+function rebuildAgg(includeCoord = true, includeCond = true) {
   AGG = new Map();
 
   const paxFromAsg = (asg) => {
@@ -421,28 +419,31 @@ function rebuildAgg(includeCoord=true, includeCond=true){
     return a + e + c + d;
   };
 
-  const hotelDoc = (hid) => HOTELES.find(h=>h.id===hid) || { id:hid, nombre:'(Hotel)', destino:'', ciudad:'' };
+  const hotelDoc = (hid) => HOTELES.find(h => h.id === hid) || { id: hid, nombre: '(Hotel)', destino: '', ciudad: '' };
 
   for (const g of GRUPOS) {
-    const byDate = INDEX_OCUP.get(g.id) || new Map(); // noches por fecha (hotel de esa noche)
-    const itIdx  = INDEX_ITIN.get(g.id) || new Map(); // itinerario ordenado por fecha
+    const byDate = INDEX_OCUP.get(g.id) || new Map(); // noches por fecha
+    const itIdx  = INDEX_ITIN.get(g.id) || new Map(); // itinerario por fecha (ordenado)
 
-    // 1) Primero registrar NOCHES por hotel (aunque no haya comidas ese día)
+    // 1) Registrar noches por hotel
     for (const [fecha, occ] of byDate.entries()) {
       const hid = occ?.hotelId; if (!hid) continue;
+
       const byHotel = AGG.get(hid) || {
         hotel: hotelDoc(hid),
         grupos: new Map(),
-        porDia: new Map(), // luego se convertirá a Array por fecha
+        porDia: new Map(), // luego lo pasamos a Array para el correo
         totAlm: 0,
         totCen: 0
       };
+
       const gInfo = byHotel.grupos.get(g.id) || {
         grupoId: g.id,
         numeroNegocio: g.numeroNegocio || g.id,
         nombreGrupo:   g.nombreGrupo   || '',
+        alias:         g.alias || g.aliasGrupo || '',
         identificador: g.identificador || '',
-        dias: new Map(),     // fecha -> { alm:0/1, cen:0/1, texto, textoHtml, flags }
+        dias: new Map(),     // fecha -> { alm, cen, texto, textoHtml, flags }
         almDias: 0,
         cenDias: 0,
         noches:  0,
@@ -450,7 +451,6 @@ function rebuildAgg(includeCoord=true, includeCond=true){
       };
 
       gInfo.noches += 1;
-      // pax de referencia máximo
       const paxRef = paxFromAsg(occ.asg);
       if (paxRef > gInfo.paxGrupo) gInfo.paxGrupo = paxRef;
 
@@ -458,40 +458,35 @@ function rebuildAgg(includeCoord=true, includeCond=true){
       AGG.set(hid, byHotel);
     }
 
-    // 2) Luego asignar CADA COMIDA al hotel correcto
-    //    Fechas candidatas: unión de días con noches y días con itinerario
+    // 2) Asignar cada comida al hotel correcto (según reglas de check-out)
     const dates = new Set([...byDate.keys(), ...itIdx.keys()]);
     const sortedDates = [...dates].sort();
 
     for (const fecha of sortedDates) {
-      const recIt = itIdx.get(fecha) || { meals: [], checkOutMin: 1e9, text:'', textoHtml:'' };
-      const Hs    = byDate.get(fecha)?.hotelId || '';                 // hotel de la noche de "fecha"
+      const recIt = itIdx.get(fecha) || { meals: [], checkOutMin: 1e9, text: '', textoHtml: '' };
+      const Hs    = byDate.get(fecha)?.hotelId || '';                 // hotel de la noche "fecha"
       const Hp    = byDate.get(prevDateISO(fecha))?.hotelId || '';    // hotel de la noche anterior
       const asgS  = byDate.get(fecha)?.asg || null;
       const asgP  = byDate.get(prevDateISO(fecha))?.asg || null;
 
-      // Si no hay comidas ese día, saltamos (las noches ya fueron contabilizadas)
       if (!recIt.meals || recIt.meals.length === 0) continue;
 
       const cut = recIt.checkOutMin ?? 1e9;
+
       for (const m of recIt.meals) {
-        // Regla de reparto:
-        // - si hay check-out y la comida es ANTES/IGUAL al check-out => va a Hp
-        // - si hay check-out y es DESPUÉS => va a Hs (si existe) o Hp si no hay Hs (último día)
-        // - si NO hay check-out:
-        //     * si Hs existe => Hs
-        //     * si no, => Hp (último día)
         let targetH = '';
         if (isFinite(cut) && cut !== 1e9) {
+          // con check-out
           targetH = (m.tmin <= cut) ? (Hp || Hs) : (Hs || Hp);
         } else {
-          targetH = Hs || Hp; // sin check-out => por defecto la noche de ese día; si no hay, la anterior
+          // sin check-out
+          targetH = Hs || Hp;
         }
-        if (!targetH) continue; // sin contexto de hotel no podemos asignar
+        if (!targetH) continue;
 
         const paxRef = (targetH === Hs) ? paxFromAsg(asgS) : paxFromAsg(asgP);
 
-        // Asegurar estructuras
+        // estructuras
         const byHotel = AGG.get(targetH) || {
           hotel: hotelDoc(targetH),
           grupos: new Map(),
@@ -499,10 +494,12 @@ function rebuildAgg(includeCoord=true, includeCond=true){
           totAlm: 0,
           totCen: 0
         };
+
         const gInfo = byHotel.grupos.get(g.id) || {
           grupoId: g.id,
           numeroNegocio: g.numeroNegocio || g.id,
           nombreGrupo:   g.nombreGrupo   || '',
+          alias:         g.alias || g.aliasGrupo || '',
           identificador: g.identificador || '',
           dias: new Map(),
           almDias: 0,
@@ -512,29 +509,31 @@ function rebuildAgg(includeCoord=true, includeCond=true){
         };
         if (paxRef > gInfo.paxGrupo) gInfo.paxGrupo = paxRef;
 
-        // Marcar el día en el hotel con ALM o CEN (flags 0/1 por día)
-        const d = gInfo.dias.get(fecha) || { alm:0, cen:0, texto:'', textoHtml:'', flags:[] };
-        if (m.kind === 'alm') d.alm = 1; else if (m.kind === 'cen') d.cen = 1;
+        // marcar día
+        const d = gInfo.dias.get(fecha) || { alm: 0, cen: 0, texto: '', textoHtml: '', flags: [] };
+        if (m.kind === 'alm') d.alm = 1;
+        if (m.kind === 'cen') d.cen = 1;
         if (!d.texto)     d.texto     = recIt.text || '';
         if (!d.textoHtml) d.textoHtml = recIt.textoHtml || '';
         gInfo.dias.set(fecha, d);
 
-        // Acumulados por hotel (Σ de días, no de pax)
+        // acumulados hotel
         if (m.kind === 'alm') byHotel.totAlm += 1;
         if (m.kind === 'cen') byHotel.totCen += 1;
 
-        // Índice por fecha a nivel hotel para el correo (merge por grupo)
+        // índice por fecha → correo (merge por grupo)
         const mapList = byHotel.porDia.get(fecha) || new Map();
         const row = mapList.get(g.id) || {
           grupoId: g.id,
           numeroNegocio: g.numeroNegocio || '',
           nombreGrupo:   g.nombreGrupo   || '',
+          alias:         g.alias || g.aliasGrupo || '',
           identificador: g.identificador || '',
-          alm:0, cen:0, pax: paxRef
+          alm: 0, cen: 0, pax: paxRef
         };
         if (m.kind === 'alm') row.alm = 1;
         if (m.kind === 'cen') row.cen = 1;
-        row.pax = paxRef; // por si cambió (coordinadores/conductores on/off)
+        row.pax = paxRef;
         mapList.set(g.id, row);
         byHotel.porDia.set(fecha, mapList);
 
@@ -543,8 +542,8 @@ function rebuildAgg(includeCoord=true, includeCond=true){
       }
     }
 
-    // 3) Recalcular Σ almDias / cenDias por grupo (suma de flags por día)
-    for (const [hid, rec] of AGG.entries()){
+    // 3) Recalcular Σ almDias / cenDias por grupo
+    for (const [, rec] of AGG.entries()) {
       const gi = rec.grupos.get(g.id);
       if (!gi) continue;
       let a = 0, c = 0;
@@ -558,12 +557,10 @@ function rebuildAgg(includeCoord=true, includeCond=true){
     }
   }
 
-  // 4) Convertir porDia (Map de grupos) a Array para el renderer del correo
-  for (const [, rec] of AGG.entries()){
-    for (const [iso, mapList] of rec.porDia.entries()){
-      if (mapList instanceof Map) {
-        rec.porDia.set(iso, [...mapList.values()]);
-      }
+  // 4) Normalizar porDia (Map→Array) para el correo
+  for (const [, rec] of AGG.entries()) {
+    for (const [iso, mapList] of rec.porDia.entries()) {
+      if (mapList instanceof Map) rec.porDia.set(iso, [...mapList.values()]);
     }
   }
 }
@@ -669,28 +666,67 @@ function renderTable(){
 // Subtabla: lista de grupos del hotel con Σ almuerzos/cenas
 function renderSubtablaHotel(rec){
   const hid = rec?.hotel?.id || '';
-  const pension = rec?.hotel?.pension || '';  // 'media' | 'completa' | ''
+  const pension = (rec?.hotel?.pension || '').toLowerCase();  // 'media' | 'completa' | ''
 
-  const rows = [...rec.grupos.values()]
-    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo))
-    .map(g => {
-      const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo || ''}`;
-      const estado = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
-      return `
-        <tr>
-          <td>${etiqueta}</td>
-          <td style="text-align:center">${g.noches}</td>
-          <td style="text-transform:capitalize">${pension || '(sin dato)'}</td>
-          <td style="text-align:center">${g.almDias}</td>
-          <td style="text-align:center">${g.cenDias}</td>
-          <td style="text-align:center">${g.paxGrupo}</td>
-          <td>${estado.ok ? '✔️ OK' : ('⚠️ ' + estado.detail)}</td>
-          <td><button class="btn btn-mini" data-act="detalle-grupo" data-gid="${g.grupoId}" data-hid="${hid}">Detalle</button></td>
-        </tr>
-      `;
-    }).join('');
+  const arr = [...rec.grupos.values()]
+    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo));
 
-  // wire de "Detalle"
+  // filas
+  const rows = arr.map(g => {
+    const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
+    const estado = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
+    return `
+      <tr>
+        <td>${etiqueta}</td>
+        <td style="text-align:center">${g.noches}</td>
+        <td style="text-transform:capitalize">${pension || '(sin dato)'}</td>
+        <td style="text-align:center">${g.almDias}</td>
+        <td style="text-align:center">${g.cenDias}</td>
+        <td style="text-align:center">${g.paxGrupo}</td>
+        <td>${estado.ok ? '✔️ OK' : ('⚠️ ' + estado.detail)}</td>
+        <td><button class="btn btn-mini" data-act="detalle-grupo" data-gid="${g.grupoId}" data-hid="${hid}">Detalle</button></td>
+      </tr>
+    `;
+  }).join('');
+
+  // totales
+  const totNoches = arr.reduce((s,g)=> s + Number(g.noches||0), 0);
+  const totAlm    = arr.reduce((s,g)=> s + Number(g.almDias||0), 0);
+  const totCen    = arr.reduce((s,g)=> s + Number(g.cenDias||0), 0);
+
+  let tfoot = '';
+  if (pension === 'completa') {
+    const expA = totNoches, expC = totNoches;
+    const dA   = totAlm - expA;
+    const dC   = totCen - expC;
+    tfoot = `
+      <tr class="tr-total">
+        <td><b>Totales hotel</b></td>
+        <td style="text-align:center">${totNoches}</td>
+        <td>completa</td>
+        <td style="text-align:center"><b>${totAlm}</b> / esp. ${expA}</td>
+        <td style="text-align:center"><b>${totCen}</b> / esp. ${expC}</td>
+        <td></td>
+        <td colspan="2">Δ Alm: ${dA>0?`+${dA}`:dA}, Δ Cenas: ${dC>0?`+${dC}`:dC}</td>
+      </tr>`;
+  } else {
+    const expT = totNoches;
+    const actT = totAlm + totCen;
+    const dT   = actT - expT;
+    const tag  = dT === 0 ? 'OK' : (dT > 0 ? `sobran ${dT}` : `faltan ${-dT}`);
+    tfoot = `
+      <tr class="tr-total">
+        <td><b>Totales hotel</b></td>
+        <td style="text-align:center">${totNoches}</td>
+        <td>${pension || 'media'}</td>
+        <td style="text-align:center"><b>${totAlm}</b></td>
+        <td style="text-align:center"><b>${totCen}</b></td>
+        <td></td>
+        <td colspan="2">${tag} (esp. ${expT})</td>
+      </tr>`;
+  }
+
+  // wire "Detalle"
   setTimeout(()=>{
     document.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
       b.onclick = ()=> abrirModalGrupo(b.dataset.hid, b.dataset.gid);
@@ -712,6 +748,7 @@ function renderSubtablaHotel(rec){
         </tr>
       </thead>
       <tbody>${rows || `<tr><td colspan="8" class="muted">Sin grupos.</td></tr>`}</tbody>
+      <tfoot>${tfoot}</tfoot>
     </table>
   `;
 }
@@ -769,27 +806,74 @@ async function abrirModalHotel(hotelId){
   const gruposOrden = [...rec.grupos.values()]
     .map(g => ({ g, tot: totalesDeGrupo(g) }))
     .filter(x => (x.tot.alm + x.tot.cen) > 0)
-    .sort((a,b)=> (a.g.numeroNegocio+' '+a.g.nombreGrupo).localeCompare(b.g.numeroNegocio+' '+b.g.nombreGrupo));
+    .sort((a,b)=> (a.g.numeroNegocio+' '+(a.g.alias||a.g.nombreGrupo||'')).localeCompare(b.g.numeroNegocio+' '+(b.g.alias||b.g.nombreGrupo||'')));
 
   const totalAlmHotel = gruposOrden.reduce((s,x)=> s + x.tot.alm, 0);
   const totalCenHotel = gruposOrden.reduce((s,x)=> s + x.tot.cen, 0);
+  const totalServ     = totalAlmHotel + totalCenHotel;
 
-  // cuerpo del correo
-  let cuerpo = `Estimado/a:\n\n`;
-  cuerpo += `RESERVA DE ALIMENTACIÓN PARA ${String(h.nombre||'(HOTEL)').toUpperCase()}.\n\n`;
-  cuerpo += `TOTALES DEL HOTEL:\n`;
-  cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
-  cuerpo += `- CENAS: ${totalCenHotel}\n\n`;
-  cuerpo += `DETALLE POR GRUPO:\n`;
-  for (const {g, tot} of gruposOrden) {
-    const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo}`;
-    cuerpo += `- ${etiqueta} — ALM: ${tot.alm} | CEN: ${tot.cen}\n`;
+  // esperado vs plan (para saldo)
+  const pen = (h.pension || '').toLowerCase();
+  const sumNoches = [...rec.grupos.values()].reduce((s,g)=> s + Number(g.noches||0), 0);
+  let diffServicios = 0;
+  if (pen === 'completa'){
+    diffServicios = (totalAlmHotel - sumNoches) + (totalCenHotel - sumNoches);
+  } else {
+    diffServicios = totalServ - sumNoches; // media o sin dato
   }
 
-  // bloque por día (ya lo tienes implementado)
+  let cuerpo = `Estimado/a:\n\n`;
+  cuerpo += `RESERVA DE ALIMENTACIÓN PARA ${String(h.nombre||'(HOTEL)').toUpperCase()}.\n\n`;
+  cuerpo += `TOTALES DEL HOTEL: (${totalServ})\n`;
+  cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
+  cuerpo += `- CENAS: ${totalCenHotel}\n\n`;
+
+  // Detalle por día (con alias + pax)
   const bloqueDia = buildBloqueDia(rec);
   if (bloqueDia) {
-    cuerpo += `\nDETALLE POR DÍA:\n${bloqueDia.toUpperCase()}`;
+    cuerpo += `DETALLE POR DÍA:\n${bloqueDia.toUpperCase()}\n\n`;
+  }
+
+  // Detalle por grupo (alias + TOTAL = alm+cen) y notas de reemplazo en media pensión
+  cuerpo += `DETALLE POR GRUPO:\n`;
+  for (const {g, tot} of gruposOrden) {
+    const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
+    const totalG = tot.alm + tot.cen;
+
+    // detectar "reemplazos" (día con alm=1 y cen=0) para pensión media
+    let repl = 0, zeros = 0, doubles = 0;
+    for (const d of g.dias?.values?.() || []) {
+      const s = Number(d.alm||0) + Number(d.cen||0);
+      if (s === 0) zeros++;
+      if (s > 1)   doubles++;
+      if (Number(d.alm||0) === 1 && Number(d.cen||0) === 0) repl++;
+    }
+    const notaMedia = (pen === 'media' && repl > 0) ? ` (media pensión: ${repl} reemplazo(s) cena→almuerzo)` : '';
+    cuerpo += `- ${etiqueta} — ALM: ${tot.alm} | CEN: ${tot.cen} / (TOTAL = ${totalG})${notaMedia}\n`;
+  }
+
+  // Saldos por servicios vs plan (si aplica)
+  if (diffServicios !== 0){
+    const favHotel = diffServicios > 0 ? diffServicios : 0;
+    const favRT    = diffServicios < 0 ? -diffServicios : 0;
+    cuerpo += `\nTOTAL = ${totalServ}\n`;
+    if (favRT)    cuerpo += `SALDO A FAVOR DE RAI TRAI = ${favRT}\n`;
+    if (favHotel) cuerpo += `SALDO A FAVOR DEL HOTEL = ${favHotel}\n`;
+  } else {
+    cuerpo += `\nTOTAL = ${totalServ}\n`;
+  }
+
+  // Alertas (solo las que no están OK)
+  const alertas = [];
+  for (const g of rec.grupos.values()){
+    const est = calcEstadoGrupo(pen, g.noches, g.almDias, g.cenDias, g.dias);
+    if (!est.ok) {
+      const nombre = `(${g.numeroNegocio}) ${(g.alias || g.nombreGrupo || '').trim()}`;
+      alertas.push(`- ${nombre}: ${est.detail}`);
+    }
+  }
+  if (alertas.length){
+    cuerpo += `\nALERTAS:\n${alertas.join('\n')}\n`;
   }
 
   // seteo de campos + datasets
