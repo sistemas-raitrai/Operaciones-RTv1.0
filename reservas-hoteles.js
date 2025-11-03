@@ -153,6 +153,40 @@ const R_ALM = /(almuerzo|lunch)/i;
 const R_CEN = /\b(cena|dinner)\b/i;
 const R_HOT = /\bhotel\b/i;
 
+// ✔︎ helper visual
+const tick = v => (v ? '✓' : '—');
+
+// ✔︎ calcula estado/alertas según pensión y noches
+function calcEstadoGrupo(pension, noches, almDias, cenDias, diasMap){
+  const pen = (pension || '').toLowerCase();
+  const total = almDias + cenDias;
+
+  // desgloses por día (para media pensión)
+  let zeroDays = 0, doubleDays = 0;
+  if (diasMap && diasMap.size){
+    for (const d of diasMap.values()){
+      const s = Number(d.alm||0) + Number(d.cen||0);
+      if (s === 0) zeroDays++;
+      if (s > 1)   doubleDays++;
+    }
+  }
+
+  let ok = true;
+  const notes = [];
+  if (pen === 'completa'){
+    if (almDias !== noches) { ok = false; notes.push(`almuerzos ${almDias}/${noches}`); }
+    if (cenDias !== noches) { ok = false; notes.push(`cenas ${cenDias}/${noches}`); }
+  } else if (pen === 'media'){
+    if (total !== noches)   { ok = false; notes.push(`total servicios ${total}/${noches}`); }
+    if (zeroDays > 0)       { ok = false; notes.push(`${zeroDays} día(s) sin servicio`); }
+    if (doubleDays > 0)     { ok = false; notes.push(`${doubleDays} día(s) con 2 servicios`); }
+  } else {
+    // sin dato: no exigimos, pero lo mostramos
+    notes.push('pensión sin dato');
+  }
+  return { ok, label: ok ? 'OK' : 'Revisar', detail: notes.join('; ') };
+}
+
 // --- helpers de timestamp para ordenar por "el último guardado" ---
 function toMillis(x){
   if (!x) return 0;
@@ -257,57 +291,64 @@ function rebuildAgg(includeCoord=true, includeCond=true){
   };
 
   for (const g of GRUPOS) {
-    const byDate = INDEX_OCUP.get(g.id) || new Map();
-    const itIdx  = INDEX_ITIN.get(g.id) || new Map();
+    const byDate = INDEX_OCUP.get(g.id) || new Map();   // días ocupados por hotel
+    const itIdx  = INDEX_ITIN.get(g.id) || new Map();   // conteo de 'hotel alm/cen' por fecha
 
     for (const [fecha, occ] of byDate.entries()) {
       const { hotelId, asg } = occ || {};
       if (!hotelId || !asg) continue;
 
-      const it = itIdx.get(fecha) || { text:'', almCount:0, cenCount:0 };
-      const alm = it.almCount > 0 ? paxFromAsg(asg) : 0;
-      const cen = it.cenCount > 0 ? paxFromAsg(asg) : 0;
-      if (alm === 0 && cen === 0) continue;
-
       const byHotel = AGG.get(hotelId) || {
         hotel: HOTELES.find(h=>h.id===hotelId) || { id:hotelId, nombre:'(Hotel)', destino:'', ciudad:'' },
         grupos: new Map(),
-        porDia: new Map(),     // ← ahora se construye
-        totAlm: 0,
-        totCen: 0
+        porDia: new Map(),     // fecha -> lista de {grupoId, ...alm, cen (0/1)}
+        totAlm: 0,             // Σ alm(días) del hotel
+        totCen: 0              // Σ cen(días) del hotel
       };
 
       const gInfo = byHotel.grupos.get(g.id) || {
         grupoId: g.id,
         numeroNegocio: g.numeroNegocio || g.id,
-        nombreGrupo: g.nombreGrupo || '',
+        nombreGrupo:   g.nombreGrupo   || '',
         identificador: g.identificador || '',
-        dias: new Map(),       // fecha -> { alm, cen, paxBase, texto, flags }
-        totAlm: 0,
-        totCen: 0
+        dias: new Map(),     // fecha -> { alm:0/1, cen:0/1, texto, flags }
+        almDias: 0,          // Σ alm(días)
+        cenDias: 0,          // Σ cen(días)
+        noches:  0,          // noches en este hotel (= #fechas asignadas)
+        paxGrupo: 0          // pax informativo del grupo
       };
+
+      // detector de servicios en el ITINERARIO del día
+      const it = itIdx.get(fecha) || { text:'', almCount:0, cenCount:0 };
+      const alm = it.almCount > 0 ? 1 : 0;
+      const cen = it.cenCount > 0 ? 1 : 0;
 
       const flags = [];
       if (it.almCount > 1) flags.push('almuerzo duplicado');
       if (it.cenCount > 1) flags.push('cena duplicada');
       if (occ.conflict)    flags.push('conflicto ocupación');
 
+      // por día
       gInfo.dias.set(fecha, {
         alm, cen,
-        paxBase: paxFromAsg(asg),
         texto: it.text,
         flags
       });
 
-      // acumular totales por grupo
-      gInfo.totAlm += alm;
-      gInfo.totCen += cen;
+      // acumulados por grupo / hotel (días, no pax)
+      gInfo.almDias += alm;
+      gInfo.cenDias += cen;
+      gInfo.noches  += 1;
 
-      // Acumulados por hotel
+      // pax de referencia (solo informativo)
+      const paxRef = paxFromAsg(asg);
+      if (paxRef > gInfo.paxGrupo) gInfo.paxGrupo = paxRef;
+
+      // acumulados por hotel
       byHotel.totAlm += alm;
       byHotel.totCen += cen;
 
-      // Índice por día a nivel hotel (para filtro Año)
+      // índice por fecha a nivel hotel (para filtro Año)
       const list = byHotel.porDia.get(fecha) || [];
       list.push({
         grupoId: g.id,
@@ -424,24 +465,29 @@ function renderTable(){
 
 // Subtabla: lista de grupos del hotel con Σ almuerzos/cenas
 function renderSubtablaHotel(rec){
-  const hid = (rec && rec.hotel && rec.hotel.id) ? rec.hotel.id : '';
+  const hid = rec?.hotel?.id || '';
+  const pension = rec?.hotel?.pension || '';  // 'media' | 'completa' | ''
 
   const rows = [...rec.grupos.values()]
     .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo))
     .map(g => {
-      const label = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo || ''}`;
-      const { alm: almTot, cen: cenTot } = totalesDeGrupo(g);
+      const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo || ''}`;
+      const estado = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
       return `
         <tr>
-          <td>${label}</td>
-          <td>${almTot}</td>
-          <td>${cenTot}</td>
+          <td>${etiqueta}</td>
+          <td style="text-align:center">${g.noches}</td>
+          <td style="text-transform:capitalize">${pension || '(sin dato)'}</td>
+          <td style="text-align:center">${g.almDias}</td>
+          <td style="text-align:center">${g.cenDias}</td>
+          <td style="text-align:center">${g.paxGrupo}</td>
+          <td>${estado.ok ? '✔️ OK' : ('⚠️ ' + estado.detail)}</td>
           <td><button class="btn btn-mini" data-act="detalle-grupo" data-gid="${g.grupoId}" data-hid="${hid}">Detalle</button></td>
         </tr>
       `;
     }).join('');
 
-  // wire de botones "Detalle"
+  // wire de "Detalle"
   setTimeout(()=>{
     document.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
       b.onclick = ()=> abrirModalGrupo(b.dataset.hid, b.dataset.gid);
@@ -450,8 +496,19 @@ function renderSubtablaHotel(rec){
 
   return `
     <table class="subtabla">
-      <thead><tr><th>Grupo</th><th>Σ Almuerzos</th><th>Σ Cenas</th><th>Detalle</th></tr></thead>
-      <tbody>${rows || `<tr><td colspan="4" class="muted">Sin grupos.</td></tr>`}</tbody>
+      <thead>
+        <tr>
+          <th>Grupo</th>
+          <th>Noches</th>
+          <th>Pensión</th>
+          <th>Σ Alm (días)</th>
+          <th>Σ Cen (días)</th>
+          <th>PAX</th>
+          <th>Estado</th>
+          <th>Detalle</th>
+        </tr>
+      </thead>
+      <tbody>${rows || `<tr><td colspan="8" class="muted">Sin grupos.</td></tr>`}</tbody>
     </table>
   `;
 }
@@ -498,67 +555,58 @@ async function abrirModalHotel(hotelId){
   if (!rec) return;
 
   const h = rec.hotel || {};
-  // destinatario desde ficha de hotel
+  const pension = h.pension || '';
   const para = h.contactoCorreo || h.contacto || '';
 
-  // construir tabla por grupo (solo los que suman algo)
+  // ordenar grupos con consumo (aunque ahora el "consumo" son días marcados)
   const gruposOrden = [...rec.grupos.values()]
-    .map(g => ({ g, tot: totalesDeGrupo(g) }))
-    .filter(x => (x.tot.alm + x.tot.cen) > 0)
-    .sort((a,b)=> (a.g.numeroNegocio+' '+a.g.nombreGrupo).localeCompare(b.g.numeroNegocio+' '+b.g.nombreGrupo));
+    .filter(g => (g.almDias + g.cenDias) > 0 || g.noches > 0)
+    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo));
 
-  // totales hotel calculados desde los grupos (coherente con el detalle)
-  const totalAlmHotel = gruposOrden.reduce((s,x)=> s + x.tot.alm, 0);
-  const totalCenHotel = gruposOrden.reduce((s,x)=> s + x.tot.cen, 0);
-
-  // armar cuerpo
+  // texto de correo
   let cuerpo = `Estimado/a:\n\n`;
-  cuerpo += `Reserva de alimentación para ${h.nombre || '(Hotel)'}.\n\n`;
-  cuerpo += `Totales del hotel:\n`;
-  cuerpo += `- Almuerzos: ${totalAlmHotel}\n`;
-  cuerpo += `- Cenas: ${totalCenHotel}\n\n`;
-  cuerpo += `Detalle por grupo:\n`;
-  for (const {g, tot} of gruposOrden) {
+  cuerpo += `Reserva de alimentación para ${h.nombre || '(Hotel)'}.\n`;
+  cuerpo += `Pensión declarada: ${pension || '(sin dato)'}.\n\n`;
+  cuerpo += `Resumen por grupo (días de servicio):\n`;
+
+  for (const g of gruposOrden) {
+    const est = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo}`;
-    cuerpo += `- ${etiqueta} — Alm: ${tot.alm} | Cen: ${tot.cen}\n`;
+    cuerpo += `- ${etiqueta} — Noches:${g.noches} | Alm(días):${g.almDias} | Cen(días):${g.cenDias} | PAX:${g.paxGrupo} | ${est.ok ? 'OK' : 'ATENCIÓN: '+est.detail}\n`;
   }
   cuerpo += `\nAtte.\nOperaciones Rai Trai`;
 
-  // encabezado y campos del modal
+  // pintar modal
   document.getElementById('mh-title').textContent = `Reservar — ${h.nombre || hotelId}`;
   document.getElementById('mh-para').value   = para || 'CORREO@HOTEL.COM';
   document.getElementById('mh-asunto').value = `Reserva alimentación — ${h.nombre || hotelId}`;
   document.getElementById('mh-cuerpo').value = cuerpo;
 
-  // pintar tabla del modal
   const tb = document.querySelector('#mh-tablaGrupos tbody');
-  tb.innerHTML = gruposOrden.map(({g, tot}) => {
+  tb.innerHTML = gruposOrden.map(g => {
+    const est = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${g.nombreGrupo}`;
     return `<tr>
       <td>${etiqueta}</td>
-      <td>${tot.alm}</td>
-      <td>${tot.cen}</td>
+      <td style="text-align:center">${g.noches}</td>
+      <td style="text-transform:capitalize">${pension || '(sin dato)'}</td>
+      <td style="text-align:center">${g.almDias}</td>
+      <td style="text-align:center">${g.cenDias}</td>
+      <td style="text-align:center">${g.paxGrupo}</td>
+      <td>${est.ok ? '✔️ OK' : ('⚠️ ' + est.detail)}</td>
       <td><button class="btn btn-mini" data-act="detalle-grupo" data-hid="${hotelId}" data-gid="${g.grupoId}">Ver detalle</button></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="4" class="muted">Sin grupos con consumo.</td></tr>`;
-
+  }).join('') || `<tr><td colspan="8" class="muted">Sin grupos para mostrar.</td></tr>`;
 
   tb.querySelectorAll('button[data-act="detalle-grupo"]').forEach(b=>{
     b.onclick = ()=> abrirModalGrupo(b.dataset.hid, b.dataset.gid);
   });
 
-  // datasets para guardar/enviar
   document.getElementById('mh-guardarPend').dataset.hid = hotelId;
   document.getElementById('mh-enviar').dataset.hid = hotelId;
 
-  // open
   document.getElementById('modalHotelBackdrop').style.display = 'block';
   document.getElementById('modalHotel').style.display = 'block';
-}
-document.getElementById('mh-close').onclick = closeModalHotel;
-function closeModalHotel(){
-  document.getElementById('modalHotelBackdrop').style.display = 'none';
-  document.getElementById('modalHotel').style.display = 'none';
 }
 
 // Guardar PENDIENTE (marca por cada fecha con consumo > 0)
