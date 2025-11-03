@@ -322,31 +322,87 @@ function buildIndexOcup(){
   }
 }
 
+// ===== Helpers para ordenar por hora y render seguro =====
+const escHTML = s => String(s ?? '')
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+
+const toMinHM = (v) => {
+  if (!v) return 1e9;                           // sin hora => al final
+  const m = String(v).match(/(\d{1,2})[:.](\d{2})/);
+  if (!m) return 1e9;
+  return (parseInt(m[1],10)*60) + parseInt(m[2],10);
+};
+const startMinOf = (it) =>
+  Math.min(toMinHM(it?.horaInicio), toMinHM(it?.hora), toMinHM(it?.inicio), toMinHM(it?.desde));
+const endMinOf = (it) =>
+  Math.min(toMinHM(it?.horaFin), toMinHM(it?.fin), toMinHM(it?.hasta));
+
+const cmpItin = (a,b) =>
+  (startMinOf(a) - startMinOf(b)) ||
+  (endMinOf(a)   - endMinOf(b))   ||
+  String(a?.actividad||a?.texto||'').localeCompare(String(b?.actividad||b?.texto||''));
+
+const fmtHM = (v) => {
+  const m = String(v||'').match(/(\d{1,2})[:.](\d{2})/);
+  return m ? `${m[1].padStart(2,'0')}:${m[2]}` : '';
+};
+const labelOf = (it) => {
+  const h = fmtHM(it?.horaInicio || it?.hora || it?.inicio);
+  const raw = escHTML(it?.actividad || it?.texto || '');
+  return `${h ? `[${h}] ` : ''}${raw}`;
+};
 
 // =============== Index itinerario: por grupo y día, conteos alm/cena ===============
+// =============== Index itinerario: por grupo y día, conteos alm/cena + ORDEN por hora ===============
 function buildIndexItin(){
   INDEX_ITIN = new Map();
+
   for (const g of GRUPOS) {
     const idx = new Map();
     const itin = g.itinerario || {};
+
     for (const [fecha, arr] of Object.entries(itin)) {
-      const items = Array.isArray(arr) ? arr : [];
+      const items = Array.isArray(arr) ? arr.slice() : [];
+
+      // Ordenar por hora (inicio, luego fin)
+      items.sort(cmpItin);
+
       let almC = 0, cenC = 0;
-      const chunks = [];
+      const plain = [];
+      const html  = [];
 
       for (const it of items) {
         const s = norm(it?.actividad || it?.texto || '');
         if (!s) continue;
-        chunks.push(s);
-        if (!NEG.test(s)) {
-          const hasAlm = R_ALM.test(s) && R_HOT.test(s);
-          const hasCen = R_CEN.test(s) && R_HOT.test(s);
-          if (hasAlm) almC++;
-          if (hasCen) cenC++;
+
+        // detección (mismo criterio que los conteos)
+        const notNeg = !NEG.test(s);
+        const hasAlm = notNeg && R_ALM.test(s) && R_HOT.test(s);
+        const hasCen = notNeg && R_CEN.test(s) && R_HOT.test(s);
+
+        if (hasAlm) almC++;
+        if (hasCen) cenC++;
+
+        const label = labelOf(it);               // [HH:MM] texto (escapado)
+        plain.push(label);
+
+        // destacar en AZUL si es alm/cena de hotel
+        if (hasAlm || hasCen) {
+          html.push(`<span class="pill-blue">${label}</span>`);
+        } else {
+          html.push(label);
         }
       }
-      idx.set(toISO(fecha), { text: chunks.join(' | '), almCount: almC, cenCount: cenC });
+
+      idx.set(toISO(fecha), {
+        text: plain.join(' | '),        // se mantiene 'texto' plano para compatibilidad
+        textoHtml: html.join(' | '),    // HTML con destacados
+        almCount: almC,
+        cenCount: cenC
+      });
     }
+
     INDEX_ITIN.set(g.id, idx);
   }
 }
@@ -405,6 +461,7 @@ function rebuildAgg(includeCoord=true, includeCond=true){
       gInfo.dias.set(fecha, {
         alm, cen,
         texto: it.text,
+        textoHtml: it.textoHtml,   // ← NUEVO: versión con spans azules
         flags
       });
 
@@ -604,10 +661,11 @@ function abrirModalGrupo(hotelId, grupoId){
         <td style="text-align:center">${tick(d.alm)}</td>
         <td style="text-align:center">${tick(d.cen)}</td>
         <td style="text-align:center">${g.paxGrupo}</td>
-        <td>${(d.texto || '').slice(0,180)}</td>
+        <td>${d.textoHtml || escHTML(d.texto || '')}</td>
         <td>${(d.flags || []).join(', ')}</td>
       </tr>
     `).join('');
+
 
   document.querySelector('#mg-tabla tbody').innerHTML = rows || `<tr><td colspan="6" class="muted">Sin datos para este grupo.</td></tr>`;
 
