@@ -110,17 +110,6 @@ function toHHMM(x){
   return `${pad2(hh)}:${pad2(mm)}`;
 }
 
-// Normaliza hora a 'HH:MM' 24h (si viene mal/empty -> '')
-function toHHMM(x){
-  if (!x) return '';
-  let s = String(x).trim();
-  const m = s.match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return '';
-  let hh = Math.max(0, Math.min(23, parseInt(m[1],10)));
-  let mm = Math.max(0, Math.min(59, parseInt(m[2],10)));
-  return `${pad2(hh)}:${pad2(mm)}`;
-}
-
 // === NUEVO: si arribo < salida, llega al día siguiente → agrega " +1"
 function hhmmToMin(s){
   const m = /^(\d{1,2}):(\d{2})$/.exec(String(s||'').trim());
