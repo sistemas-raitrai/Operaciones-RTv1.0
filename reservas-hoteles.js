@@ -151,32 +151,38 @@ function listReemplazos(grupo, hotelId){
   const range = stayRangeForGrupoHotel(gid, hotelId);
   if (!range) return [];
 
-  // Recorremos SOLO las noches reales: start..end (checkout queda fuera)
-  const lunchesOnly = [];   // fechas con ALM=1 y CEN=0
-  const missingCen  = [];   // noches con CEN=0 (falten o no almuerzo)
-
+  // 1) Noches sin cena: desde la 1ª noche hasta la ÚLTIMA NOCHE (excluye checkout)
+  const missingCen = [];
   let iso = range.start;
   while (true){
     const d = grupo.dias.get(iso) || { alm:0, cen:0 };
-    if (d.cen === 0)                missingCen.push(iso);
-    if (d.alm === 1 && d.cen === 0) lunchesOnly.push(iso);
-
-    if (iso === range.end) break;   // hasta la última NOCHE
+    if (Number(d.cen) === 0) missingCen.push(iso);
+    if (iso === range.end) break;           // solo noches
     iso = addDaysISO(iso, 1);
   }
 
-  // Emparejar en orden: prioriza "mismo día"; si no, la noche sin cena más próxima disponible
+  // 2) Días con ALMUERZO pero sin CENA: desde la 1ª noche hasta CHECK-OUT (INCLUYE checkout)
+  const lunchesOnly = [];
+  iso = range.start;
+  while (true){
+    const d = grupo.dias.get(iso) || { alm:0, cen:0 };
+    if (Number(d.alm) === 1 && Number(d.cen) === 0) lunchesOnly.push(iso);
+    if (iso === range.checkout) break;      // incluye check-out
+    iso = addDaysISO(iso, 1);
+  }
+
+  // 3) Emparejar: primero "mismo día", si no hay, la noche sin cena más temprana libre
   const pairs = [];
-  const used  = new Set();
+  const usados = new Set();
 
   for (const L of lunchesOnly){
-    // 1) intentar mismo día
-    let M = missingCen.find(md => !used.has(md) && md === L);
-    // 2) si no hay, tomar la noche sin cena no usada más temprana
-    if (!M) M = missingCen.find(md => !used.has(md));
+    // a) mismo día
+    let M = missingCen.find(md => !usados.has(md) && md === L);
+    // b) si no, la primera noche sin cena disponible
+    if (!M) M = missingCen.find(md => !usados.has(md));
     if (!M) break;
 
-    used.add(M);
+    usados.add(M);
     pairs.push({ miss: M, lunch: L });
   }
 
