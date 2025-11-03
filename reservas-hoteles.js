@@ -115,6 +115,36 @@ function prevDateISO(iso){
   return d.toISOString().slice(0,10);
 }
 
+// Rango de estadía (noche mínima y máxima) del grupo en un hotel.
+// Incluye además el día de CHECK-OUT (último día aunque no haya noche).
+function stayRangeForGrupoHotel(grupoId, hotelId){
+  // Noches ocupadas por ese grupo
+  const occ = INDEX_OCUP.get(grupoId) || new Map();
+  let min = null, max = null;
+  for (const [iso, info] of occ.entries()){
+    if (info?.hotelId !== hotelId) continue;
+    if (!min || iso < min) min = iso;
+    if (!max || iso > max) max = iso;
+  }
+
+  // Fallback: si no encontrara noches (caso extremo), usar días con comidas ya detectados
+  if (!min || !max){
+    const recH = AGG.get(hotelId);
+    const g = recH?.grupos?.get(grupoId);
+    const keys = g ? [...g.dias.keys()].sort() : [];
+    if (keys.length){
+      min = min || keys[0];
+      max = max || keys[keys.length - 1];
+    }
+  }
+
+  if (!min || !max) return null;
+
+  // El día de check-out es el día siguiente a la última noche
+  const checkout = addDaysISO(max, 1);
+  return { start:min, end:max, checkout };
+}
+
 const stripAccents = s => (s||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 const norm = s => stripAccents(String(s||'').toLowerCase().trim());
 
@@ -774,6 +804,7 @@ function renderSubtablaHotel(rec){
 }
 
 // =============== MODAL: Detalle Grupo (día a día) ===============
+// =============== MODAL: Detalle Grupo (día a día) ===============
 function abrirModalGrupo(hotelId, grupoId){
   const recH = AGG.get(hotelId);
   if (!recH) return;
@@ -783,53 +814,57 @@ function abrirModalGrupo(hotelId, grupoId){
   document.getElementById('mg-title').textContent =
     `Detalle — ${recH.hotel.nombre} — (${g.numeroNegocio}) ${g.nombreGrupo}`;
 
-  // 1) Fechas de NOCHE en este hotel (checkIn ≤ D < checkOut) + día de regreso (checkout)
-  const byOccAll   = INDEX_OCUP.get(grupoId) || new Map();
-  const nightsHere = [...byOccAll.entries()]
-    .filter(([iso, occ]) => occ?.hotelId === hotelId)
-    .map(([iso]) => iso)
-    .sort();
-
-  const dateSet = new Set();
-
-  // Rango continuo desde la 1ª noche hasta el DÍA DE CHECKOUT (inclusive)
-  if (nightsHere.length){
-    const startISO   = nightsHere[0];
-    const lastNight  = nightsHere[nightsHere.length - 1];
-    const checkoutISO = addDaysISO(lastNight, 1); // día de regreso
-
-    // incluye todas las fechas del rango [startISO .. checkoutISO]
-    for (const d of eachDateISO(startISO, addDaysISO(checkoutISO, 1))) {
-      dateSet.add(d);
-    }
-  }
-
-  // 2) Asegurar también cualquier día con comidas asignadas (por si caen fuera del rango)
-  for (const iso of g.dias.keys()) dateSet.add(iso);
-
-  // 3) Construcción de filas día a día (incluyendo días sin consumo)
+  // Calcula rango: desde la 1ª noche en el hotel hasta el DÍA DE CHECK-OUT (inclusive)
+  const range = stayRangeForGrupoHotel(grupoId, hotelId);
   const itIdx = INDEX_ITIN.get(grupoId) || new Map();
-  const allDates = [...dateSet].sort();
 
-  const rows = allDates.map((iso) => {
-    // datos de consumo (si no hay, queda 0/0)
-    const d = g.dias.get(iso) || { alm:0, cen:0, texto:'', textoHtml:'', flags:[] };
+  let rows = '';
 
-    // texto de actividades: preferir textoHtml de g.dias; si no, usar lo del itinerario del día
-    const it = itIdx.get(iso) || {};
-    const textoHtml = d.textoHtml || (it.textoHtml || escHTML(d.texto || it.text || ''));
+  if (range){
+    // Recorre TODOS los días desde start hasta checkout (INCLUSIVE),
+    // mostrará "— —" cuando no haya consumo.
+    let iso = range.start;
+    while (true){
+      // Datos del día (si no existe, crea uno vacío)
+      const d = g.dias.get(iso) || { alm:0, cen:0, texto:'', textoHtml:'', flags:[] };
 
-    return `
-      <tr>
-        <td>${fmt(iso)}</td>
-        <td style="text-align:center">${tick(d.alm)}</td>
-        <td style="text-align:center">${tick(d.cen)}</td>
-        <td style="text-align:center">${g.paxGrupo}</td>
-        <td>${textoHtml}</td>
-        <td>${(d.flags || []).join(', ')}</td>
-      </tr>
-    `;
-  }).join('');
+      // Si no había texto guardado para ese día, intenta mostrar el itinerario del día
+      if (!d.texto && !d.textoHtml){
+        const it = itIdx.get(iso);
+        if (it){
+          d.texto     = it.text || '';
+          d.textoHtml = it.textoHtml || d.text || '';
+        }
+      }
+
+      rows += `
+        <tr>
+          <td>${fmt(iso)}</td>
+          <td style="text-align:center">${tick(d.alm)}</td>
+          <td style="text-align:center">${tick(d.cen)}</td>
+          <td style="text-align:center">${g.paxGrupo}</td>
+          <td>${d.textoHtml || escHTML(d.texto || '')}</td>
+          <td>${(d.flags || []).join(', ')}</td>
+        </tr>
+      `;
+
+      if (iso === range.checkout) break;           // incluimos el día de check-out
+      iso = addDaysISO(iso, 1);
+    }
+  } else {
+    // Fallback: comportamiento anterior (solo días con registro)
+    rows = [...g.dias.entries()].sort((a,b)=> a[0].localeCompare(b[0]))
+      .map(([fecha, d]) => `
+        <tr>
+          <td>${fmt(fecha)}</td>
+          <td style="text-align:center">${tick(d.alm)}</td>
+          <td style="text-align:center">${tick(d.cen)}</td>
+          <td style="text-align:center">${g.paxGrupo}</td>
+          <td>${d.textoHtml || escHTML(d.texto || '')}</td>
+          <td>${(d.flags || []).join(', ')}</td>
+        </tr>
+      `).join('');
+  }
 
   document.querySelector('#mg-tabla tbody').innerHTML =
     rows || `<tr><td colspan="6" class="muted">Sin datos para este grupo.</td></tr>`;
