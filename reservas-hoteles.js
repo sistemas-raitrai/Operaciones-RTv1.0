@@ -1317,9 +1317,24 @@ document.getElementById('mh-enviar').onclick = async (e)=>{
   }
 };
 
+// Carga SheetJS en caliente si no está disponible
+async function ensureXLSX(){
+  if (window.XLSX) return window.XLSX;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('No se pudo cargar XLSX'));
+    document.head.appendChild(s);
+  });
+  return window.XLSX;
+}
+
 // =============== Export a Excel ===============
 document.getElementById('btnExportExcel').onclick = exportExcel;
-function exportExcel(){
+async function exportExcel(){
+  const XLSX = await ensureXLSX();
+
   // Hoja 1: Detalle día a día
   const detalle = [];
   for (const [hid, rec] of AGG.entries()) {
@@ -1335,7 +1350,7 @@ function exportExcel(){
           Almuerzo: d.alm,
           Cena: d.cen,
           PaxGrupo: g.paxGrupo,
-          Texto: d.texto.slice(0,300),
+          Texto: (d.texto || '').slice(0,300),
           Flags: (d.flags||[]).join(', ')
         });
       }
