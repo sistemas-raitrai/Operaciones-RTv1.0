@@ -68,6 +68,67 @@ const etiquetaGrupo = (g) => {
   return `(${g.numeroNegocio || ''}) ${g.identificador ? g.identificador + ' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
 };
 
+// ===== Buscador avanzado (coma = OR, punto = AND) =====
+// Ejemplos:
+//  - "ipanema"                         -> contiene "ipanema" en hotel/destino/ciudad o en algún grupo
+//  - "ipanema.pendiente"               -> (AND) ipanema y estado PENDIENTE
+//  - "ipanema,enviada"                 -> (OR) ipanema  O  estado ENVIADA
+//  - "noches:3" o "n:3"                -> algún grupo con 3 noches (también sirve sólo "3")
+function parseSearch(raw){
+  const s = norm(raw || '');
+  if (!s) return [];
+  return s.split(',')                         // OR por coma
+          .map(cl => cl.trim())
+          .filter(Boolean)
+          .map(cl => cl.split('.')            // AND por punto
+                       .map(t => t.trim())
+                       .filter(Boolean));
+}
+
+function matchesHotelRec({rec, nombre, destino, ciudad}, clauses, year){
+  if (!clauses.length) return true;
+
+  const estHotel = norm(estadoHotelParaAnio(rec.hotel, year) || '');
+  const hotelBlob = norm(`${nombre} ${destino} ${ciudad}`);
+
+  const gruposArr  = [...rec.grupos.values()];
+  const groupBlobs = gruposArr.map(g => ({
+    g,
+    blob: norm(`${g.numeroNegocio||''} ${(g.identificador||'')} ${(g.alias||g.nombreGrupo||'')}`)
+  }));
+
+  // evalúa un término contra hotel y grupos
+  function termMatches(term){
+    if (!term) return true;
+
+    // noches:NN o n:NN
+    const m1 = term.match(/^noches?:(\d{1,3})$/);
+    const m2 = term.match(/^n:(\d{1,3})$/);
+    if (m1 || m2){
+      const n = parseInt((m1 ? m1[1] : m2[1]), 10);
+      return gruposArr.some(x => Number(x.noches||0) === n);
+    }
+
+    // estado del hotel (filtrado por año)
+    if (term === 'pendiente' || term === 'enviada'){
+      return estHotel === term.toUpperCase();
+    }
+
+    // número simple: lo interpreto como noches exactas de algún grupo
+    if (/^\d+$/.test(term)){
+      const n = Number(term);
+      if (gruposArr.some(x => Number(x.noches||0) === n)) return true;
+    }
+
+    // coincidencia por texto
+    if (hotelBlob.includes(term)) return true;
+    return groupBlobs.some(({blob}) => blob.includes(term));
+  }
+
+  // OR entre cláusulas; AND dentro de cada cláusula
+  return clauses.some(andTerms => andTerms.every(termMatches));
+}
+
 // === Estado del botón por hotel y año seleccionado ===
 // Prioridad: ENVIADA > PENDIENTE > (vacío = "Reservar")
 function estadoHotelParaAnio(hotelDoc, year){
@@ -762,6 +823,8 @@ function renderTable(){
 
   // 1) Filtrar y preparar lista de hoteles renderizables
   const list = [];
+  const rawQuery = document.getElementById('buscador').value || '';
+  const clauses  = parseSearch(rawQuery);
   for (const [hotelId, recRaw] of AGG.entries()) {
     const rec = filAno ? recForYear(recRaw, filAno) : recRaw;   // aplica filtro por año
     const h = rec.hotel || {};
@@ -773,7 +836,15 @@ function renderTable(){
     if (filHot  && hotelId !== filHot)  continue;
 
     const searchBlob = norm(`${name} ${destino} ${ciudad} ${[...rec.grupos.values()].map(g=>g.nombreGrupo).join(' ')}`);
-    if (busc && !searchBlob.includes(busc)) continue;
+    // Buscador avanzado (coma = OR, punto = AND)
+    if (clauses.length && !matchesHotelRec(
+          { rec, nombre: name, destino, ciudad }, 
+          clauses, 
+          filAno
+        )) {
+      continue;
+}
+
 
     // si por año no hay datos, escondemos el hotel
     if (filAno && (rec.totAlm + rec.totCen === 0)) continue;
