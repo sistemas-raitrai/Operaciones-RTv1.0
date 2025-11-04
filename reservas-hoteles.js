@@ -60,6 +60,9 @@ const fmtDiaMayus = (iso) => {
 const COLL = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
 const cmpAZ = (a, b) => COLL.compare(String(a ?? ''), String(b ?? ''));
 
+// Nombre visible para ordenar (prioriza alias)
+const nombreVisibleGrupo = (g) => (g?.alias || g?.nombreGrupo || '').trim();
+
 // Etiqueta estándar de grupo para listas/correos
 const etiquetaGrupo = (g) => {
   return `(${g.numeroNegocio || ''}) ${g.identificador ? g.identificador + ' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
@@ -859,7 +862,7 @@ function renderSubtablaHotel(rec){
 
   // Orden A→Z por etiqueta visible
   const arr = [...rec.grupos.values()]
-    .sort((a, b) => cmpAZ(etiquetaGrupo(a), etiquetaGrupo(b)));
+    .sort((a, b) => cmpAZ(nombreVisibleGrupo(a), nombreVisibleGrupo(b)));
 
   // filas
   const rows = arr.map(g => {
