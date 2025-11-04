@@ -805,6 +805,7 @@ function renderTable(){
           <td></td><td></td><td></td><td></td><td></td><td></td>
         </tr>
       `);
+    }
   
     // === NUEVO: decidir estado del botón según reservasAlimentos del hotel (y filtro de año) ===
     const est = estadoHotelParaAnio(it.rec.hotel, filAno);
@@ -827,7 +828,7 @@ function renderTable(){
         </td>
       </tr>
     `);
-  }
+   }
 
 
   // Pintar tbody
