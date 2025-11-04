@@ -1177,8 +1177,12 @@ document.getElementById('mh-guardarPend').onclick = async (e)=>{
         }
       }
       HOTELES[hotelIdx].reservasAlimentos = current;
+      
+      // también sincronizamos el hotel dentro de AGG para reflejar el estado inmediato
+      const aggRec = AGG.get(hid);
+      if (aggRec) aggRec.hotel.reservasAlimentos = current;
     }
-    renderTable();
+    recalcAndPaint();
 
     closeModalHotel();
     alert('Guardado como PENDIENTE.');
@@ -1229,8 +1233,12 @@ document.getElementById('mh-enviar').onclick = async (e)=>{
         }
       }
       HOTELES[hotelIdx].reservasAlimentos = current;
+      
+      // también sincronizamos el hotel dentro de AGG para reflejar el estado inmediato
+      const aggRec = AGG.get(hid);
+      if (aggRec) aggRec.hotel.reservasAlimentos = current;
     }
-    renderTable();
+    recalcAndPaint();
     
     closeModalHotel();
   } catch(err) {
