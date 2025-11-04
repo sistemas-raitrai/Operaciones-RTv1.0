@@ -56,6 +56,16 @@ const fmtDiaMayus = (iso) => {
   return `${di} DE ${mi}`;
 };
 
+// === Ordenación A→Z (soporta español y números) ===
+const COLL = new Intl.Collator('es', { sensitivity: 'base', numeric: true });
+const cmpAZ = (a, b) => COLL.compare(String(a ?? ''), String(b ?? ''));
+
+// Etiqueta estándar de grupo para listas/correos
+const etiquetaGrupo = (g) => {
+  return `(${g.numeroNegocio || ''}) ${g.identificador ? g.identificador + ' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
+};
+
+
 // sumar días a un ISO (YYYY-MM-DD)
 function addDaysISO(iso, add){
   const d = new Date(iso + 'T00:00:00');
@@ -713,7 +723,6 @@ function dedupeGruposSinHotel(){
 
 // =============== Render tabla principal ===============
 function renderTable(){
-  const rows = [];
   const destinos = new Set();
 
   // Filtros actuales
@@ -727,39 +736,70 @@ function renderTable(){
   const elDes = document.getElementById('filtroDestino');
   const elHot = document.getElementById('filtroHotel');
   if (elDes && elDes.options.length === 1) {
-    [...destinos].sort().forEach(d => elDes.appendChild(new Option(d || '(sin)', d)));
+    [...destinos].sort((a,b)=> cmpAZ(a,b)).forEach(d => elDes.appendChild(new Option(d || '(sin)', d)));
   }
   if (elHot && elHot.options.length === 1) {
-    HOTELES.slice().sort((a,b)=> (a.nombre||'').localeCompare(b.nombre||''))
+    HOTELES.slice()
+      .sort((a,b)=> cmpAZ(a.nombre||a.id, b.nombre||b.id))
       .forEach(h => elHot.appendChild(new Option(h.nombre || h.id, h.id)));
   }
 
-  // Construir filas (SOLO 1 <tr> por hotel; el detalle va como child row)
+  // 1) Filtrar y preparar lista de hoteles renderizables
+  const list = [];
   for (const [hotelId, recRaw] of AGG.entries()) {
-    const rec = filAno ? recForYear(recRaw, filAno) : recRaw;   // ← aplica año
+    const rec = filAno ? recForYear(recRaw, filAno) : recRaw;   // aplica filtro por año
     const h = rec.hotel || {};
-    if (filDest && (h.destino||'') !== filDest) continue;
-    if (filHot && hotelId !== filHot) continue;
+    const name = h.nombre || hotelId;
+    const destino = h.destino || '';
+    const ciudad  = h.ciudad  || '';
 
-    const name = `${h.nombre || hotelId}`;
-    const searchBlob = norm(`${name} ${h.destino||''} ${h.ciudad||''} ${[...rec.grupos.values()].map(g=>g.nombreGrupo).join(' ')}`);
+    if (filDest && destino !== filDest) continue;
+    if (filHot  && hotelId !== filHot)  continue;
+
+    const searchBlob = norm(`${name} ${destino} ${ciudad} ${[...rec.grupos.values()].map(g=>g.nombreGrupo).join(' ')}`);
     if (busc && !searchBlob.includes(busc)) continue;
 
-    const gruposCount = rec.grupos.size;
     // si por año no hay datos, escondemos el hotel
-    if (filAno && rec.totAlm + rec.totCen === 0) continue;
+    if (filAno && (rec.totAlm + rec.totCen === 0)) continue;
 
+    list.push({
+      hotelId,
+      rec,
+      nombre: name,
+      destino,
+      ciudad,
+      totAlm: rec.totAlm,
+      totCen: rec.totCen,
+      gruposCount: rec.grupos.size
+    });
+  }
+
+  // 2) Orden A→Z por Destino y luego por Nombre
+  list.sort((A,B) => cmpAZ(A.destino, B.destino) || cmpAZ(A.nombre, B.nombre));
+
+  // 3) Render con separadores por Destino
+  const rows = [];
+  let curDest = '__INIT__';
+  for (const it of list) {
+    if (it.destino !== curDest) {
+      curDest = it.destino;
+      rows.push(`
+        <tr class="tr-destino">
+          <td colspan="7">DESTINO: ${curDest || '(sin destino)'}</td>
+        </tr>
+      `);
+    }
     rows.push(`
-      <tr data-hotel="${hotelId}">
-        <td><span class="badge">${name}</span></td>
-        <td>${h.destino || ''}</td>
-        <td>${h.ciudad || ''}</td>
-        <td>${rec.totAlm}</td>
-        <td>${rec.totCen}</td>
-        <td>${gruposCount}</td>
+      <tr data-hotel="${it.hotelId}">
+        <td><span class="badge">${it.nombre}</span></td>
+        <td>${it.destino}</td>
+        <td>${it.ciudad}</td>
+        <td>${it.totAlm}</td>
+        <td>${it.totCen}</td>
+        <td>${it.gruposCount}</td>
         <td>
-          <button class="btn" data-act="ver" data-hotel="${hotelId}">Ver grupos</button>
-          <button class="btn" data-act="reservar" data-hotel="${hotelId}">Reservar</button>
+          <button class="btn" data-act="ver" data-hotel="${it.hotelId}">Ver grupos</button>
+          <button class="btn" data-act="reservar" data-hotel="${it.hotelId}">Reservar</button>
         </td>
       </tr>
     `);
@@ -776,28 +816,25 @@ function renderTable(){
   DT = $('#tablaHoteles').DataTable({
     paging:false, searching:false, info:false,
     fixedHeader:{ header:true, headerOffset:90 },
-    order:[]
+    order:[] // dejamos el orden por DOM (ya agrupado y ordenado)
   });
 
-  // Delegación de eventos sobre el tbody
+  // Delegación de eventos sobre el tbody (sin cambios)
   const $tbody = $('#tablaHoteles tbody');
   $tbody.off('click', 'button[data-act="ver"]');
   $tbody.on('click', 'button[data-act="ver"]', function(){
     const hid = this.dataset.hotel;
     const recRaw = AGG.get(hid);
     if (!recRaw) return;
-    const rec = filAno ? recForYear(recRaw, filAno) : recRaw;   // ← detalle coherente con el año
+    const rec = filAno ? recForYear(recRaw, filAno) : recRaw;
     const row = DT.row($(this).closest('tr'));
     if (row.child.isShown()) {
       row.child.hide();
       this.textContent = 'Ver grupos';
     } else {
-      
-      // Si tu función existente acepta un solo arg, no pasa nada por pasar uno.
       const htmlDetalle = (typeof renderSubtablaHotel === 'function')
         ? renderSubtablaHotel(rec)
         : `<div style="padding:6px 0">Sin renderer de subtabla.</div>`;
-      
       row.child(`<div style="padding:6px 0">${htmlDetalle}</div>`).show();
       this.textContent = 'Ocultar';
     }
@@ -814,16 +851,17 @@ function renderSubtablaHotel(rec){
   const hid = rec?.hotel?.id || '';
   const pension = (rec?.hotel?.pension || '').toLowerCase();  // 'media' | 'completa' | ''
 
+  // Orden A→Z por etiqueta visible
   const arr = [...rec.grupos.values()]
-    .sort((a,b)=> (a.numeroNegocio+' '+a.nombreGrupo).localeCompare(b.numeroNegocio+' '+b.nombreGrupo));
+    .sort((a, b) => cmpAZ(etiquetaGrupo(a), etiquetaGrupo(b)));
 
   // filas
   const rows = arr.map(g => {
-    const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
+    const label = etiquetaGrupo(g);
     const estado = calcEstadoGrupo(pension, g.noches, g.almDias, g.cenDias, g.dias);
     return `
       <tr>
-        <td>${etiqueta}</td>
+        <td>${label}</td>
         <td style="text-align:center">${g.noches}</td>
         <td style="text-transform:capitalize">${pension || '(sin dato)'}</td>
         <td style="text-align:center">${g.almDias}</td>
@@ -868,7 +906,7 @@ function renderSubtablaHotel(rec){
         <td style="text-align:center"><b>${totAlm}</b></td>
         <td style="text-align:center"><b>${totCen}</b></td>
         <td></td>
-        <td colspan="2">${tag} / ${expT}</td>
+        <td colspan="2">${tag} (esp. ${expT})</td>
       </tr>`;
   }
 
