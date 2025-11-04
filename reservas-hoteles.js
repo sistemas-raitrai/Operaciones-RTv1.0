@@ -68,6 +68,19 @@ const etiquetaGrupo = (g) => {
   return `(${g.numeroNegocio || ''}) ${g.identificador ? g.identificador + ' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
 };
 
+// === Estado del botón por hotel y año seleccionado ===
+// Prioridad: ENVIADA > PENDIENTE > (vacío = "Reservar")
+function estadoHotelParaAnio(hotelDoc, year){
+  const map = hotelDoc?.reservasAlimentos || {};
+  let hasPend = false;
+  for (const [fecha, info] of Object.entries(map)) {
+    if (year && !String(fecha).startsWith(year + '-')) continue;
+    const st = String(info?.estado || '').toUpperCase();
+    if (st === 'ENVIADA') return 'ENVIADA';
+    if (st === 'PENDIENTE') hasPend = true;
+  }
+  return hasPend ? 'PENDIENTE' : '';
+}
 
 // sumar días a un ISO (YYYY-MM-DD)
 function addDaysISO(iso, add){
@@ -788,11 +801,18 @@ function renderTable(){
       curDest = it.destino;
       rows.push(`
         <tr class="tr-destino">
-          <td>DESTINO: ${curDest || '(sin destino)'}</td>
-          <td></td><td></td><td></td><td></td><td></td><td></td>
+          <td colspan="7">DESTINO: ${curDest || '(sin destino)'}</td>
         </tr>
       `);
     }
+  
+    // === NUEVO: decidir estado del botón según reservasAlimentos del hotel (y filtro de año) ===
+    const est = estadoHotelParaAnio(it.rec.hotel, filAno);
+    const btnTxt = est || 'Reservar';
+    const btnCls = est === 'ENVIADA' ? 'btn btn-enviada'
+                 : est === 'PENDIENTE' ? 'btn btn-pendiente'
+                 : 'btn';
+  
     rows.push(`
       <tr data-hotel="${it.hotelId}">
         <td><span class="badge">${it.nombre}</span></td>
@@ -803,11 +823,12 @@ function renderTable(){
         <td>${it.gruposCount}</td>
         <td>
           <button class="btn" data-act="ver" data-hotel="${it.hotelId}">Ver grupos</button>
-          <button class="btn" data-act="reservar" data-hotel="${it.hotelId}">Reservar</button>
+          <button class="${btnCls}" data-act="reservar" data-hotel="${it.hotelId}">${btnTxt}</button>
         </td>
       </tr>
     `);
   }
+
 
   // Pintar tbody
   const tbody = document.querySelector('#tablaHoteles tbody');
@@ -1144,6 +1165,20 @@ document.getElementById('mh-guardarPend').onclick = async (e)=>{
         { estado:'PENDIENTE', cuerpo, totAlmuerzos: t.alm, totCenas: t.cen };
     }
     if (Object.keys(patch).length) await updateDoc(doc(db,'hoteles', hid), patch);
+
+    // === NUEVO: cache + repaint ===
+    const hotelIdx = HOTELES.findIndex(h => h.id === hid);
+    if (hotelIdx >= 0) {
+      const current = { ...(HOTELES[hotelIdx].reservasAlimentos || {}) };
+      for (const [fecha, t] of perDate.entries()) {
+        if ((t.alm + t.cen) > 0) {
+          current[fecha] = { estado:'PENDIENTE', cuerpo, totAlmuerzos:t.alm, totCenas:t.cen };
+        }
+      }
+      HOTELES[hotelIdx].reservasAlimentos = current;
+    }
+    renderTable();
+
     closeModalHotel();
     alert('Guardado como PENDIENTE.');
   } catch(err) {
@@ -1182,6 +1217,20 @@ document.getElementById('mh-enviar').onclick = async (e)=>{
         { estado:'ENVIADA', cuerpo, totAlmuerzos: t.alm, totCenas: t.cen };
     }
     if (Object.keys(patch).length) await updateDoc(doc(db,'hoteles', hid), patch);
+
+    // === NUEVO: cache + repaint ===
+    const hotelIdx = HOTELES.findIndex(h => h.id === hid);
+    if (hotelIdx >= 0) {
+      const current = { ...(HOTELES[hotelIdx].reservasAlimentos || {}) };
+      for (const [fecha, t] of perDate.entries()) {
+        if ((t.alm + t.cen) > 0) {
+          current[fecha] = { estado:'ENVIADA', cuerpo, totAlmuerzos:t.alm, totCenas:t.cen };
+        }
+      }
+      HOTELES[hotelIdx].reservasAlimentos = current;
+    }
+    renderTable();
+    
     closeModalHotel();
   } catch(err) {
     console.error(err); alert('No se pudo marcar ENVIADA.');
