@@ -1009,57 +1009,37 @@ async function abrirModalHotel(hotelId){
     diffServicios = totalServ - sumNoches; // media o sin dato
   }
 
+  // ===== NUEVO FORMATO DE CUERPO =====
   let cuerpo = `Estimado/a:\n\n`;
   cuerpo += `RESERVA DE ALIMENTACIÓN PARA ${String(h.nombre||'(HOTEL)').toUpperCase()}.\n\n`;
-  cuerpo += `TOTALES DEL HOTEL: (${totalServ})\n`;
-  cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
-  cuerpo += `- CENAS: ${totalCenHotel}\n\n`;
 
-  // Detalle por día (con alias + pax)
+  // 1) DETALLE POR DÍA (primero)
   const bloqueDia = buildBloqueDia(rec);
   if (bloqueDia) {
     cuerpo += `DETALLE POR DÍA:\n${bloqueDia.toUpperCase()}\n\n`;
+  } else {
+    cuerpo += `DETALLE POR DÍA:\n( SIN REGISTROS )\n\n`;
   }
 
-  // Detalle por grupo (alias + TOTAL) + líneas de reemplazo CENA→ALMUERZO
-  cuerpo += `DETALLE POR GRUPO:\n`;
+  // 2) RESUMEN
+  cuerpo += `===================================================\n`;
+  cuerpo += `RESUMEN\n`;
+  cuerpo += `===================================================\n\n`;
+
+  // 2.a) TOTALES POR GRUPO (sin reemplazos ni alertas)
+  cuerpo += `TOTALES POR GRUPO:\n`;
   for (const {g, tot} of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
-    const totalG = (Number(tot.alm||0) + Number(tot.cen||0)) || 0;
-  
-    // línea principal
-    cuerpo += `- ${etiqueta} — ALM: ${tot.alm||0} | CEN: ${tot.cen||0} / (TOTAL = ${totalG})\n`;
-  
-    // líneas de reemplazo (simple, sin mencionar "media pensión")
-    const pares = listReemplazos(g, hotelId);
-    for (const p of pares) {
-      cuerpo += `  REEMPLAZO CENA ${fmt(p.miss)} POR ALMUERZO ${fmt(p.lunch)}\n`;
-    }
+    const alm = Number(tot.alm||0), cen = Number(tot.cen||0);
+    const totalG = alm + cen;
+    cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG})\n`;
   }
 
-  // Saldos por servicios vs plan (si aplica)
-  if (diffServicios !== 0){
-    const favHotel = diffServicios > 0 ? diffServicios : 0;
-    const favRT    = diffServicios < 0 ? -diffServicios : 0;
-    cuerpo += `\nTOTAL = ${totalServ}\n`;
-    if (favRT)    cuerpo += `SALDO A FAVOR DE RAI TRAI = ${favRT}\n`;
-    if (favHotel) cuerpo += `SALDO A FAVOR DEL HOTEL = ${favHotel}\n`;
-  } else {
-    cuerpo += `\nTOTAL = ${totalServ}\n`;
-  }
+  // 3) TOTALES FINALES (al final, sin “saldo” ni “alertas”)
+  cuerpo += `\nTOTAL = ${totalServ}\n`;
+  cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
+  cuerpo += `- CENAS: ${totalCenHotel}\n`;
 
-  // Alertas (solo las que no están OK)
-  const alertas = [];
-  for (const g of rec.grupos.values()){
-    const est = calcEstadoGrupo(pen, g.noches, g.almDias, g.cenDias, g.dias);
-    if (!est.ok) {
-      const nombre = `(${g.numeroNegocio}) ${(g.alias || g.nombreGrupo || '').trim()}`;
-      alertas.push(`- ${nombre}: ${est.detail}`);
-    }
-  }
-  if (alertas.length){
-    cuerpo += `\nALERTAS:\n${alertas.join('\n')}\n`;
-  }
 
   // seteo de campos + datasets
   document.getElementById('mh-title').textContent = `Reservar — ${h.nombre || hotelId}`;
