@@ -250,22 +250,97 @@ async function loadHotelesInfo(g){
     };
   });
 
-  // DEDUPE por (checkIn, checkOut): quedarse con el "último" guardado
-  const byRange = new Map();
-  for (const h of mapped){
-    const k = `${h.checkIn||''}__${h.checkOut||''}`;
-    const prev = byRange.get(k);
-    if (!prev) byRange.set(k, h);
-    else {
-      const takeThis = (h.__ts > prev.__ts) || (h.__ts === prev.__ts && h.__ord > prev.__ord);
-      if (takeThis) byRange.set(k, h);
+  // ──────────────────────────────────────────────────────────────
+  // NUEVO: resolución por DÍA ("último gana") y recompresión a tramos
+  // ──────────────────────────────────────────────────────────────
+
+  // Helpers locales para este algoritmo (no contaminan global)
+  const datesBetween = (ci, co) => {
+    const A = toISO(ci), B = toISO(co);
+    if (!A || !B) return [];
+    const res = [];
+    const a = new Date(A);
+    const b = new Date(B);
+    for (let d = new Date(a); d < b; d.setDate(d.getDate() + 1)) {
+      res.push(d.toISOString().slice(0, 10));
+    }
+    return res; // [ci, co) exclusivo en checkout (no noche)
+  };
+  const nextDayISO = (iso) => {
+    const [y,m,d] = iso.split('-').map(Number);
+    const dt = new Date(y, m-1, d);
+    dt.setDate(dt.getDate() + 1);
+    return dt.toISOString().slice(0,10);
+  };
+  const hotelKeyOf = (h) => {
+    // Preferimos id del doc de hotel; si no, normalizamos nombre+destino/ciudad
+    const H = h.hotel || {};
+    return H.id
+      ? String(H.id)
+      : `${norm(h.hotelNombre || H.nombre || '')}|${norm(H.destino || H.ciudad || '')}`;
+  };
+  const hasNamedHotel = (h) => {
+    const H = h.hotel || {};
+    const name = (h.hotelNombre || H.nombre || '').trim();
+    return !!name;
+  };
+
+  // 1) Filtramos a las asignaciones válidas (con nombre/doc hotel y rango correcto)
+  const valid = mapped.filter(h => {
+    if (!hasNamedHotel(h)) return false;
+    if (!h.checkIn || !h.checkOut) return false;
+    return new Date(h.checkIn) < new Date(h.checkOut);
+  });
+
+  // 2) Para cada día del rango, escogemos la asignación "ganadora" (más nueva)
+  const dayWinner = new Map(); // isoDay -> h (asignación)
+  for (const h of valid){
+    for (const iso of datesBetween(h.checkIn, h.checkOut)){
+      const prev = dayWinner.get(iso);
+      if (!prev ||
+          (h.__ts > prev.__ts) ||
+          (h.__ts === prev.__ts && h.__ord > prev.__ord)) {
+        dayWinner.set(iso, h);
+      }
     }
   }
 
-  // Resultado ordenado por checkIn asc
-  const out = [...byRange.values()].sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||''));
+  // 3) Recompactamos días consecutivos con el mismo hotel
+  const days = [...dayWinner.keys()].sort();
+  const segments = [];
+  let cur = null;
 
-  cache.hotelesByGroup.set(key,out);
+  for (const iso of days){
+    const h = dayWinner.get(iso);
+    const keyHotel = hotelKeyOf(h);
+    if (!cur){
+      cur = { keyHotel, first: iso, last: iso, ref: h };
+    } else if (cur.keyHotel === keyHotel && nextDayISO(cur.last) === iso){
+      cur.last = iso; // extendemos segmento contiguo
+    } else {
+      segments.push(cur);
+      cur = { keyHotel, first: iso, last: iso, ref: h };
+    }
+  }
+  if (cur) segments.push(cur);
+
+  // 4) Armamos salida final en el mismo formato que usaba la vista
+  const out = segments.map(seg => {
+    const h = seg.ref;
+    const H = h.hotel || null;
+    const checkIn  = seg.first;
+    const checkOut = nextDayISO(seg.last);
+    const noches   = datesBetween(checkIn, checkOut).length;
+    return {
+      ...h,
+      hotel: H,
+      hotelNombre: h.hotelNombre || H?.nombre || '',
+      checkIn, checkOut, noches
+    };
+  }).sort((a,b)=>(a.checkIn||'').localeCompare(b.checkIn||''));
+
+  // Guardamos en caché y devolvemos
+  cache.hotelesByGroup.set(key, out);
   return out;
 }
 
