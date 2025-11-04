@@ -785,7 +785,8 @@ function renderTable(){
       curDest = it.destino;
       rows.push(`
         <tr class="tr-destino">
-          <td colspan="7">DESTINO: ${curDest || '(sin destino)'}</td>
+          <td>DESTINO: ${curDest || '(sin destino)'}</td>
+          <td></td><td></td><td></td><td></td><td></td><td></td>
         </tr>
       `);
     }
@@ -807,7 +808,12 @@ function renderTable(){
 
   // Pintar tbody
   const tbody = document.querySelector('#tablaHoteles tbody');
-  tbody.innerHTML = rows.join('') || `<tr><td colspan="7" class="muted">No hay datos para los filtros actuales.</td></tr>`;
+  tbody.innerHTML = rows.join('') || `
+    <tr class="tr-empty">
+      <td class="muted">No hay datos para los filtros actuales.</td>
+      <td></td><td></td><td></td><td></td><td></td><td></td>
+    </tr>`;
+
 
   // (Re)inicializar DataTable
   if (DT && $.fn.DataTable.isDataTable('#tablaHoteles')) {
