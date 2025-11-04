@@ -60,6 +60,22 @@ function normTime(t){
   const mi=String(Math.max(0,Math.min(59,parseInt(m[2],10)))).padStart(2,'0');
   return `${h}:${mi}`;
 }
+// === Normalizador de nombre de actividad (presentación) ===
+function formatActividadDisplay(raw) {
+  const txt = (raw ?? '').toString().trim();
+  if (!txt) return '';
+  // normalizado sin tildes y en minúsculas
+  const n = norm(txt);
+  // Detecta variantes: "ALMUERZO REST", "ALMUERZO REST.", "ALMUERZO RESTAURANT", "ALMUERZO RESTAURANTE"
+  const esAlmRest = /^almuerzo\s+rest(\.|aurant(e)?)?/.test(n);
+  const yaNormal  = /almuerzo\s+en\s+restaurante/.test(n);
+  if (esAlmRest && !yaNormal) {
+    return 'ALMUERZO EN RESTAURANTE';
+  }
+  // Comportamiento por defecto: MAYÚSCULAS (como hoy)
+  return txt.toUpperCase();
+}
+
 // Suma minutos a un "HH:MM" (devuelve "HH:MM")
 function addMinutesHM(hm, mins = 0){
   const t = normTime(hm);
@@ -1523,7 +1539,7 @@ function buildPrintHtml(grupo, fechas){
       .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
 
     const actividades = arr
-      .map(a => (a?.actividad || '').toString().trim().toUpperCase())
+      .map(a => formatActividadDisplay(a?.actividad))
       .filter(Boolean);
 
     // Cabecera de día en NEGRITA y MAYÚSCULAS
@@ -1584,7 +1600,7 @@ function renderItin(grupo, fechas, hideNotes, targetEl){
         const li=document.createElement('li');
         li.className='activity-card';
         const notesHtml = (!hideNotes && act.notas) ? `<p style="opacity:.85;">📝 ${act.notas}</p>` : '';
-        li.innerHTML = `<p><strong>${(act.actividad||'').toString().toUpperCase()}</strong></p>${notesHtml}`;
+        li.innerHTML = `<p><strong>${formatActividadDisplay(act.actividad)}</strong></p>${notesHtml}`;
         ul.appendChild(li);
       });
     }
@@ -2005,7 +2021,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       const arr = (Array.isArray(src) ? src
                   : (src && typeof src==='object' ? Object.values(src) : []))
                   .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
-      const acts = arr.map(a => (a?.actividad || '').toString().trim().toUpperCase()).filter(Boolean);
+      const acts = arr.map(a => formatActividadDisplay(a?.actividad)).filter(Boolean);
       const head = `DÍA ${i+1} - ${formatDateReadable(f).toUpperCase()}:`;
       const body = acts.length ? (acts.join(' — ')) : '—';
       return `<li class="it-day"><div class="day-head"><strong>${head}</strong></div><div>${body}</div></li>`;
