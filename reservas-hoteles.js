@@ -801,10 +801,10 @@ function renderTable(){
       curDest = it.destino;
       rows.push(`
         <tr class="tr-destino">
-          <td colspan="7">DESTINO: ${curDest || '(sin destino)'}</td>
+          <td>DESTINO: ${curDest || '(sin destino)'}</td>
+          <td></td><td></td><td></td><td></td><td></td><td></td>
         </tr>
       `);
-    }
   
     // === NUEVO: decidir estado del botón según reservasAlimentos del hotel (y filtro de año) ===
     const est = estadoHotelParaAnio(it.rec.hotel, filAno);
