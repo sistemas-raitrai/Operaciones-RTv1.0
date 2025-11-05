@@ -1319,7 +1319,7 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
   // Bloque Plan de Viaje → aéreos si existen; si no, buses (sin transfers)
   const hayAereos = idaLegsPlan.length || vueltaLegsPlan.length;
   const hayBusesPlan = terrestresPlanIda.length || terrestresPlanVuelta.length;
-
+  const infoTitle = hayAereos ? 'INFORMACIÓN DEL VUELO' : 'INFORMACIÓN DEL VIAJE';
   const planLegend = `Los horarios a continuación pueden sufrir modificaciones sin previo aviso.`;
 
   const planDeViajeHTML = (() => {
@@ -1476,9 +1476,9 @@ function renderHojaResumen(grupo, vuelosNorm, hoteles){
         ${transfersHTML}
       </li>
 
-      <!-- 2. INFORMACIÓN DEL VUELO -->
+      <!-- 2. INFORMACIÓN DEL VUELO/VIAJE (dinámico) -->
       <li style="margin-bottom:12px;">
-        <div style="font-weight:700;">INFORMACIÓN DEL VUELO</div>
+        <div style="font-weight:700;">${infoTitle}</div>
         ${planDeViajeHTML}
       </li>
 
@@ -2032,6 +2032,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const colegioBP  = grupo.colegio || grupo.cliente || '';
   const cursoBP    = ensureCursoMedio(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '');
   const titulo     = `Viaje de Estudios: COLEGIO ${colegioBP} ${cursoBP}`.trim();
+  const hayAereosPrint = (idaLegsPlan.length || vueltaLegsPlan.length);
+  const infoTitlePrint = hayAereosPrint ? '2. INFORMACIÓN DEL VUELO' : '2. INFORMACIÓN DEL VIAJE';
+
 
   return `
     <div class="print-doc">
@@ -2051,7 +2054,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
       <!-- 2. INFORMACIÓN DEL VUELO -->
       <div class="sec">
-        <div class="sec-title">2. INFORMACIÓN DEL VUELO</div>
+        <div class="sec-title">${infoTitlePrint}</div>
         <div class="note">${planLegend}</div>
         ${puntoEncuentroTexto ? `<p><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}.</p>` : ''}
         ${flightsBlock(idaLegsPlan, 'ida') || ''}
