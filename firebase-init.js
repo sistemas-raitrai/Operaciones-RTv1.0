@@ -36,6 +36,7 @@ const STAFF_EMAILS = new Set([
   "yenny@raitrai.cl",
   "patricia@raitrai.cl",
   "administracion@raitrai.cl",
+  "administracion@hotelbordeandino.cl",
 ].map(e => e.toLowerCase()));
 
 // Páginas públicas del sistema principal
