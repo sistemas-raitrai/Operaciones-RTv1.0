@@ -1208,6 +1208,48 @@ function renderDocsList(docsText) {
   return `<li>${docsText}</li>`;
 }
 
+// === Estilos mínimos para la hoja en pantalla y PDF (hoteles/resumen) ===
+// Agrégalo una sola vez en el archivo. Evita redeclaración si ya existe.
+if (typeof window.injectScreenHotelStyles !== 'function') {
+  window.injectScreenHotelStyles = function () {
+    // No lo vuelvas a inyectar si ya está
+    if (document.getElementById('screenHotelStyles')) return;
+
+    const css = `
+      /* Tamaño y márgenes de página al imprimir */
+      @page { size: A4; margin: 10mm; }
+
+      html, body { height: 100%; margin: 0; padding: 0; }
+
+      /* Contenedor principal de la hoja/resumen */
+      .hoja-resumen, .print-doc, #printArea, .resumen, main {
+        width: 100% !important;
+        max-width: 190mm !important;   /* 210mm - márgenes */
+        margin: 0 auto !important;
+        box-sizing: border-box !important;
+        padding: 0 !important;
+      }
+
+      /* Evitar cortes feos entre tarjetas/bloques */
+      .section, .bloque, .card, .fila {
+        page-break-inside: avoid;
+        break-inside: avoid;
+      }
+
+      /* Oculta cromos de la web al imprimir */
+      @media print {
+        header, nav, footer, .no-print, .hide-on-print { display: none !important; }
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    `;
+
+    const st = document.createElement('style');
+    st.id = 'screenHotelStyles';
+    st.textContent = css;
+    document.head.appendChild(st);
+  };
+}
+
 function renderHojaResumen(grupo, vuelosNorm, hoteles){
   let hoja = document.getElementById('hoja-resumen');
   if(!hoja){
