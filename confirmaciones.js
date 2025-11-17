@@ -19,6 +19,16 @@ const TZ = 'America/Santiago';
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const safe = (v, fb='—') => (v===0||v)?v:fb;
 
+// Espera activa a que una condición sea verdadera (o venza el timeout)
+async function waitFor(testFn, timeout = 6000, step = 120) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeout) {
+    try { if (testFn()) return true; } catch { /* noop */ }
+    await new Promise(r => setTimeout(r, step));
+  }
+  return false;
+}
+
 /* === UI CLARA + LAYOUT DE ANCHO COMPLETO PARA ESTA PÁGINA ============ */
 function injectPageLightStyles(){
   if (document.getElementById('light-ui-overrides')) return;
@@ -955,7 +965,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
 
   // 1) Cargar MiViaje en iframe oculto
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:opacity 90;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
   await new Promise(res => { iframe.onload = res; });
