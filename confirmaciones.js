@@ -869,30 +869,10 @@ async function descargarUno(grupoId){
   const fechaDescarga = formatDMYDownload(new Date());
   const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
-
-  const opt = {
-    margin: 0,
-    filename,
-    pagebreak: { mode: ['css', 'legacy'] },
-    image: { type: 'jpeg', quality: 0.96 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
-      // forzamos dimensiones de ventana y lienzo para que no “encoja”
-      windowWidth: A4_WIDTH_PX,
-      windowHeight: A4_HEIGHT_PX,
-      width: A4_WIDTH_PX,
-      height: A4_HEIGHT_PX,
-      scrollX: 0,
-      scrollY: 0
-    },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-  };
-
-  await html2pdf().set(opt).from(target).save();
-  work.innerHTML = '';
+  
+  // === Usar la impresión real de MiViaje para PDF (idéntica) ===
+  await pdfDesdeMiViaje(g.id, filename);
+  return;
 }
 
 async function descargarSeleccionados(){
@@ -925,6 +905,51 @@ async function descargarLote(ids){
   setTimeout(()=> prog.textContent = '', 4000);
 }
 
+async function pdfDesdeMiViaje(grupoId, filename){
+  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4);
+
+  // 1) Crea iframe oculto con la página MiViaje del grupo
+  const iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
+  // Ajusta la URL si tu ruta real de MiViaje es otra:
+  iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&print=1&embed=1`;
+  document.body.appendChild(iframe);
+
+  // 2) Espera carga
+  await new Promise(res => { iframe.onload = res; });
+
+  // 3) Toma el nodo de impresión dentro del iframe (usa el mismo selector que MiViaje)
+  const idoc = iframe.contentDocument;
+  let target = idoc.querySelector('.print-doc') || idoc.querySelector('#print-root') || idoc.body;
+
+  // 4) Fuerza ancho exacto A4 para evitar encogimiento
+  target.style.width = A4_WIDTH_PX + 'px';
+  try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch(e) {}
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // 5) Genera PDF con html2pdf
+  await html2pdf().set({
+    margin: 0,
+    filename,
+    pagebreak: { mode: ['css', 'legacy'] },
+    image: { type: 'jpeg', quality: 0.96 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      backgroundColor: '#ffffff',
+      windowWidth: A4_WIDTH_PX,
+      scrollX: 0,
+      scrollY: 0
+    },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).from(target).save();
+
+  // 6) Limpia
+  iframe.remove();
+}
+
+
 /* ──────────────────────────────────────────────────────────────────────
    Boot
 ────────────────────────────────────────────────────────────────────── */
@@ -956,6 +981,8 @@ async function init(){
 }
 
 init().catch(e=>{
+
+  
   console.error('Init error', e);
   document.getElementById('countHint').textContent='Error inicializando la página.';
 });
