@@ -870,7 +870,7 @@ async function descargarUno(grupoId){
   const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
   
-  // === Usar la impresión real de MiViaje para PDF (idéntica) ===
+  // Usa la impresión real de MiViaje (idéntica al botón "Imprimir")
   await pdfDesdeMiViaje(g.id, filename);
   return;
 }
@@ -908,26 +908,44 @@ async function descargarLote(ids){
 async function pdfDesdeMiViaje(grupoId, filename){
   const A4_WIDTH_PX = Math.round(210 * 96 / 25.4);
 
-  // 1) Crea iframe oculto con la página MiViaje del grupo
+  // 1) Iframe oculto (MISMA ORIGEN / mismo dominio)
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
-  // Ajusta la URL si tu ruta real de MiViaje es otra:
-  iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&print=1&embed=1`;
+  iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
 
-  // 2) Espera carga
+  // 2) Espera carga del documento
   await new Promise(res => { iframe.onload = res; });
-
-  // 3) Toma el nodo de impresión dentro del iframe (usa el mismo selector que MiViaje)
   const idoc = iframe.contentDocument;
-  let target = idoc.querySelector('.print-doc') || idoc.querySelector('#print-root') || idoc.body;
 
-  // 4) Fuerza ancho exacto A4 para evitar encogimiento
+  // 3) Si tu MiViaje usa un botón para construir la impresión, simúlalo
+  const tryClickPrint = () => {
+    const btn = idoc.querySelector('#btnImprimir, .btn-imprimir, [data-role="imprimir"]');
+    if (btn) { try { btn.click(); } catch(_){} }
+  };
+  tryClickPrint();
+
+  // 4) Espera a que exista .print-doc (hasta 5s)
+  const target = await new Promise(resolve => {
+    let tries = 0;
+    const iv = setInterval(() => {
+      let t = idoc.querySelector('.print-doc');
+      if (!t) tryClickPrint();               // insiste en construirla si no existe
+      if (t || ++tries > 50) { clearInterval(iv); resolve(t || null); }
+    }, 100);
+  });
+
+  if (!target) {
+    iframe.remove();
+    throw new Error('No se encontró .print-doc en MiViaje (revisa que la página la genere).');
+  }
+
+  // 5) Fuerza ancho exacto A4 y espera fuentes/layout
   target.style.width = A4_WIDTH_PX + 'px';
   try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch(e) {}
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-  // 5) Genera PDF con html2pdf
+  // 6) Exporta SOLO la .print-doc
   await html2pdf().set({
     margin: 0,
     filename,
@@ -945,9 +963,10 @@ async function pdfDesdeMiViaje(grupoId, filename){
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(target).save();
 
-  // 6) Limpia
+  // 7) Limpieza
   iframe.remove();
 }
+
 
 
 /* ──────────────────────────────────────────────────────────────────────
