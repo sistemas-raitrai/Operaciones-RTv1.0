@@ -7,18 +7,6 @@ import {
   collection, getDocs, doc, getDoc, query, where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-// === Loader de html2pdf (necesario para exportar PDFs) ===
-async function ensureHtml2Pdf(){
-  if (window.html2pdf) return;
-  await new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
 // Fuerzo una clase de página para poder sobreescribir estilos globales
 document.body.classList.add('confirmaciones-page');
 
@@ -82,7 +70,28 @@ function injectPageLightStyles(){
 
 injectPageLightStyles();
 
+/* ====== NUEVO: utilidades para exportar PDF y contenedores ====== */
+async function ensureHtml2Pdf(){
+  if (window.html2pdf) return;
+  await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    s.onload = res;
+    s.onerror = () => rej(new Error('No se pudo cargar html2pdf'));
+    document.head.appendChild(s);
+  });
+}
 
+function ensurePdfWork(){
+  let el = document.getElementById('pdf-work');
+  if (!el){
+    el = document.createElement('div');
+    el.id = 'pdf-work';
+    el.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
+    document.body.appendChild(el);
+  }
+  return el;
+}
 
 function toISO(x){
   if (!x) return '';
@@ -841,19 +850,43 @@ function renderTabla(rows){
    Exportación a PDF (uno / lote)
 ────────────────────────────────────────────────────────────────────── */
 async function descargarUno(grupoId){
-  // 1) Trae el grupo (solo para armar el nombre del archivo)
+  // Estilos del PDF (A4) para el render local
+  injectPdfStyles();
+
+  // 1) Lee el grupo
   const d = await getDoc(doc(db,'grupos', grupoId));
   if (!d.exists()) return;
   const g = { id:d.id, ...d.data() };
 
-  // 2) Nombre de archivo (DDMMAAAA)
+  // 2) Prepara datos (vuelos/hoteles) para el documento
+  const vuelosDocs = await loadVuelosInfo(g);
+  const vuelosNorm = vuelosDocs.map(normalizeVuelo);
+  const hoteles    = await loadHotelesInfo(g);
+
+  // 3) Renderiza el HTML del PDF dentro de un contenedor oculto
+  const work = ensurePdfWork();              // crea/recupera #pdf-work
+  work.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, []); // fechas no usadas aquí
+
+  const node = work.querySelector('.print-doc');
+  if (!node) throw new Error('print-doc no renderizado');
+
+  // Fijar ancho exacto A4 (px) para evitar reescalados en html2canvas
+  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
+  node.style.width = A4_WIDTH_PX + 'px';
+
+  // Asegurar tipografías + layout pintado
+  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch {}
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+  // 4) Nombre de archivo (DDMMAAAA)
   const fechaDescarga = formatDMYDownload(new Date());
   const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
 
-  // 3) Exporta desde el DOM real de MiViaje (idéntico a “Imprimir”)
-  await pdfDesdeMiViaje(g.id, filename);
+  // 5) Exporta: intenta MiViaje; si falla (#print-block), usa el HTML local
+  await exportarPDFconFallback({ grupoId: g.id, node, filename });
 }
+
 
 async function descargarSeleccionados(){
   const tb = document.getElementById('tbody');
@@ -955,6 +988,39 @@ async function pdfDesdeMiViaje(grupoId, filename){
 
   // 6) Limpieza
   iframe.remove();
+}
+
+/* ====== NUEVO: usa MiViaje si está ok; si falla, usa el HTML local ====== */
+async function exportarPDFconFallback({ grupoId, node, filename }){
+  try{
+    await pdfDesdeMiViaje(grupoId, filename);
+  }catch(e){
+    console.warn('MiViaje no entregó #print-block, uso fallback local:', e);
+    await ensureHtml2Pdf();
+
+    // Calcular ancho de captura: mantener A4 real o el scrollWidth
+    const A4_PX = Math.round(210 * 96 / 25.4);
+    const capW  = Math.max(A4_PX, node.scrollWidth, Math.ceil(node.getBoundingClientRect().width));
+
+    // Exportación directa del nodo local (el que construiste con buildPrintDoc)
+    await html2pdf().set({
+      margin: 0,
+      filename,
+      pagebreak: { mode: ['css', 'legacy'] },
+      image: { type: 'jpeg', quality: 0.96 },
+      html2canvas: {
+        scale: 2,
+        windowWidth: capW,
+        width: capW,
+        scrollX: 0,
+        scrollY: 0,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        allowTaint: true
+      },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).from(node).save();
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────────────
