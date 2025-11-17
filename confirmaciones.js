@@ -53,6 +53,9 @@ function injectPageLightStyles(){
       gap: 12px !important;
       grid-template-columns: 1fr !important;
     }
+    
+    .print-doc{ margin:0 auto !important; }
+
     @media (min-width: 1000px){
       body.confirmaciones-page .main.fullwidth .filters .row{
         grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
@@ -852,6 +855,11 @@ async function descargarUno(grupoId){
   work.innerHTML = html;
 
   const target = work.querySelector('.print-doc');
+  // ——— FIJAR ANCHO EXACTO A A4 EN PIXELES PARA EVITAR ESCALADOS ———
+  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4); // 794 px
+  target.style.width = A4_WIDTH_PX + 'px';         // asegura ancho real de captura
+  const A4_HEIGHT_PX = Math.max(target.scrollHeight, Math.round(297 * 96 / 25.4)); // alto dinámico
+
   if (!target) throw new Error('print-doc no renderizado');
 
   // Espera a fuentes y al siguiente frame para asegurar layout pintado
@@ -863,7 +871,7 @@ async function descargarUno(grupoId){
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
 
   const opt = {
-    margin: 0,                               // usamos el padding de .print-doc como margen real
+    margin: 0,
     filename,
     pagebreak: { mode: ['css', 'legacy'] },
     image: { type: 'jpeg', quality: 0.96 },
@@ -872,16 +880,16 @@ async function descargarUno(grupoId){
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
-      // ancho de ventana ≈ 210mm @96dpi (para evitar “encogimientos”)
-      windowWidth: Math.round(210 * 96 / 25.4),
-      // fuerza a capturar sin “espacio previo” por scroll u offsets raros
+      // forzamos dimensiones de ventana y lienzo para que no “encoja”
+      windowWidth: A4_WIDTH_PX,
+      windowHeight: A4_HEIGHT_PX,
+      width: A4_WIDTH_PX,
+      height: A4_HEIGHT_PX,
       scrollX: 0,
       scrollY: 0
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
-
-
 
   await html2pdf().set(opt).from(target).save();
   work.innerHTML = '';
