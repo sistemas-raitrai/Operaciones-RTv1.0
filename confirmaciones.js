@@ -524,13 +524,19 @@ function injectPdfStyles(){
   .print-doc{
     background:#ffffff !important;
     color:#111 !important;
-    width:210mm !important;          /* A4 exacto */
-    min-height:297mm;                 /* llena la primera página */
+    width:208mm !important;           /* zona segura para evitar cortes */
+    min-height:297mm;
     box-sizing:border-box;
-    padding:8mm 10mm 10mm 10mm;       /* márgenes reales (pequeños) */
-    margin:0 !important;
-    font:11pt/1.25 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    padding:12mm 12mm 14mm 12mm;      /* márgenes internos un poco mayores */
+    margin:0 auto !important;
+    font:11pt/1.28 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   }
+  /* Evitar que textos/URLs largos rompan el ancho y se “salgan” */
+  .hotel-right, .hotel-right a, .flight-legs, .itinerario{
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  
   .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 5mm 0; text-align:center; }
   .sec{ margin:0 0 4.5mm 0; break-inside:avoid; page-break-inside:avoid; }
   .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2mm 0; }
@@ -918,11 +924,12 @@ async function descargarUno(grupoId){
 
   // Fijar ancho A4 en px para html2canvas
   const target = work.querySelector('.print-doc');
-  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
+  const CAPTURE_PX = Math.round(208 * 96 / 25.4); // zona segura
   if (target){
-    target.style.width = A4_WIDTH_PX + 'px';
+    target.style.width = CAPTURE_PX + 'px';
     target.style.minHeight = Math.round(297 * 96 / 25.4) + 'px';
   }
+
 
   // ====== PRUEBA MI VIAJE y si se cae/recorta → fallback local ======
   await exportarPDFconFallback({ grupoId: g.id, node: target || work, filename });
@@ -960,17 +967,16 @@ async function descargarLote(ids){
 }
 
 async function pdfDesdeMiViaje(grupoId, filename){
-  const A4_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
+  const SAFE_PX = Math.round(208 * 96 / 25.4); // zona segura
   await ensureHtml2Pdf();
 
   // 1) Cargar MiViaje en iframe oculto
   const iframe = document.createElement('iframe');
-  // NO usar visibility:hidden (html2canvas no renderiza). Lo dejamos fuera de pantalla + opacity:0
+  // fuera de pantalla + opaco (no visibility:hidden para que renderice)
   iframe.style.cssText = 'position:absolute;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;z-index:-1;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
   await new Promise(res => { iframe.onload = res; });
-
 
   const idoc = iframe.contentDocument || iframe.contentWindow?.document;
 
@@ -991,7 +997,6 @@ async function pdfDesdeMiViaje(grupoId, filename){
   const fix = idoc.createElement('style');
   fix.id = 'miViajePdfFix';
   fix.textContent = `
-    /* Mostrar #print-block también en pantalla (no solo @media print) */
     #print-block {
       display: block !important;
       visibility: visible !important;
@@ -999,7 +1004,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
       transform: none !important;
       -webkit-transform: none !important;
       zoom: 1 !important;
-      width: 210mm !important;
+      width: 208mm !important;             /* zona segura */
       margin: 0 auto !important;
       background: #ffffff !important;
     }
@@ -1010,7 +1015,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
       transform: none !important;
       -webkit-transform: none !important;
       zoom: 1 !important;
-      width: 210mm !important;
+      width: 208mm !important;             /* zona segura */
       min-height: 297mm !important;
       margin: 0 auto !important;
       background: #ffffff !important;
@@ -1021,6 +1026,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
       page-break-after: auto !important;
     }
   `;
+
 
   idoc.head.appendChild(fix);
 
@@ -1033,7 +1039,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
     p.style.display = 'block';
     p.style.visibility = 'visible';
     p.style.opacity = '1';
-    p.style.width = '210mm';
+    p.style.width = '208mm';
     p.style.minHeight = '297mm';
     p.style.background = '#ffffff';
     p.style.transform = 'none';
@@ -1083,9 +1089,9 @@ async function exportarPDFconFallback({ grupoId, node, filename }){
     await ensureHtml2Pdf();
 
     // Calcular ancho de captura: mantener A4 real o el scrollWidth
-    const A4_PX = Math.round(210 * 96 / 25.4);
-    const capW  = Math.max(A4_PX, node.scrollWidth, Math.ceil(node.getBoundingClientRect().width));
-
+    const SAFE_PX = Math.round(208 * 96 / 25.4);
+    const capW  = Math.max(SAFE_PX, node.scrollWidth, Math.ceil(node.getBoundingClientRect().width));
+    
     // Exportación directa del nodo local (el que construiste con buildPrintDoc)
     await html2pdf().set({
       margin: 0,
