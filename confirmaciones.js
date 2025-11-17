@@ -850,41 +850,55 @@ function renderTabla(rows){
    Exportación a PDF (uno / lote)
 ────────────────────────────────────────────────────────────────────── */
 async function descargarUno(grupoId){
-  // Estilos del PDF (A4) para el render local
-  injectPdfStyles();
-
-  // 1) Lee el grupo
+  // Trae el grupo (para nombre y para fallback local)
   const d = await getDoc(doc(db,'grupos', grupoId));
   if (!d.exists()) return;
   const g = { id:d.id, ...d.data() };
 
-  // 2) Prepara datos (vuelos/hoteles) para el documento
-  const vuelosDocs = await loadVuelosInfo(g);
-  const vuelosNorm = vuelosDocs.map(normalizeVuelo);
-  const hoteles    = await loadHotelesInfo(g);
-
-  // 3) Renderiza el HTML del PDF dentro de un contenedor oculto
-  const work = ensurePdfWork();              // crea/recupera #pdf-work
-  work.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, []); // fechas no usadas aquí
-
-  const node = work.querySelector('.print-doc');
-  if (!node) throw new Error('print-doc no renderizado');
-
-  // Fijar ancho exacto A4 (px) para evitar reescalados en html2canvas
-  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
-  node.style.width = A4_WIDTH_PX + 'px';
-
-  // Asegurar tipografías + layout pintado
-  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch {}
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-  // 4) Nombre de archivo (DDMMAAAA)
+  // Nombre de archivo (DDMMAAAA)
   const fechaDescarga = formatDMYDownload(new Date());
   const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
 
-  // 5) Exporta: intenta MiViaje; si falla (#print-block), usa el HTML local
-  await exportarPDFconFallback({ grupoId: g.id, node, filename });
+  // ====== PREPAREMOS FALLBACK LOCAL (por si MiViaje no sirve) ======
+  // Datos necesarios para render local
+  const vuelosDocs = await loadVuelosInfo(g);
+  const vuelosNorm = (vuelosDocs || []).map(normalizeVuelo);
+  const hoteles    = await loadHotelesInfo(g);
+
+  // Fechas para el itinerario (si aplica)
+  const fechas = (() => {
+    if (g.itinerario && typeof g.itinerario==='object') {
+      return Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
+    }
+    if (g.fechaInicio && g.fechaFin) {
+      const out=[]; const A=toISO(g.fechaInicio), B=toISO(g.fechaFin);
+      if(A&&B){
+        const a=new Date(A), b=new Date(B);
+        for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){
+          out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+        }
+      }
+      return out;
+    }
+    return [];
+  })();
+
+  // Render local oculto
+  injectPdfStyles();                   // estilos A4
+  const work = ensurePdfWork();        // crea #pdf-work si no existe
+  work.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas);
+
+  // Fijar ancho A4 en px para html2canvas
+  const target = work.querySelector('.print-doc');
+  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
+  if (target){
+    target.style.width = A4_WIDTH_PX + 'px';
+    target.style.minHeight = Math.round(297 * 96 / 25.4) + 'px';
+  }
+
+  // ====== PRUEBA MI VIAJE y si se cae/recorta → fallback local ======
+  await exportarPDFconFallback({ grupoId: g.id, node: target || work, filename });
 }
 
 
@@ -920,11 +934,9 @@ async function descargarLote(ids){
 
 async function pdfDesdeMiViaje(grupoId, filename){
   const A4_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
-
-  // Asegura html2pdf cargado
   await ensureHtml2Pdf();
 
-  // 1) Iframe oculto con MiViaje en modo embed (sin UI)
+  // 1) Cargar MiViaje en iframe oculto
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
@@ -933,8 +945,8 @@ async function pdfDesdeMiViaje(grupoId, filename){
 
   const idoc = iframe.contentDocument || iframe.contentWindow?.document;
 
-  // 2) Esperar el bloque imprimible
-  const waitFor = (sel, tries=150) => new Promise(r=>{
+  // 2) Esperar bloque imprimible
+  const waitFor = (sel, tries=180) => new Promise(r=>{
     const iv = setInterval(()=>{
       const el = idoc?.querySelector(sel);
       if (el || --tries<=0){ clearInterval(iv); r(el||null); }
@@ -942,32 +954,60 @@ async function pdfDesdeMiViaje(grupoId, filename){
   });
 
   const printBlock = await waitFor('#print-block');
-  const firstPage  = printBlock ? printBlock.querySelector('.print-doc') : null;
-
-  if (!firstPage || !printBlock){
+  if (!printBlock){
     iframe.remove();
     throw new Error('No se encontró #print-block en MiViaje.');
   }
 
-  // 3) Fuerza tamaño A4 en runtime (por si el CSS aún no aplicó)
+  // 3) Inyecta FIX: elimina zoom/transform y fuerza A4 + saltos de página
+  const fix = idoc.createElement('style');
+  fix.id = 'miViajePdfFix';
+  fix.textContent = `
+    #print-block {
+      transform: none !important;
+      -webkit-transform: none !important;
+      zoom: 1 !important;
+      width: 210mm !important;
+      margin: 0 auto !important;
+      background: #ffffff !important;
+    }
+    #print-block .print-doc{
+      transform: none !important;
+      -webkit-transform: none !important;
+      zoom: 1 !important;
+      width: 210mm !important;
+      min-height: 297mm !important;
+      margin: 0 auto !important;
+      background: #ffffff !important;
+      page-break-after: always !important; /* fuerza salto entre páginas */
+      break-inside: avoid !important;
+    }
+    #print-block .print-doc:last-child{
+      page-break-after: auto !important;
+    }
+  `;
+  idoc.head.appendChild(fix);
+
+  // 4) Ajuste directo en runtime por si quedan estilos inline
   printBlock.style.width = '210mm';
   [...printBlock.querySelectorAll('.print-doc')].forEach(p=>{
     p.style.width = '210mm';
     p.style.minHeight = '297mm';
     p.style.background = '#ffffff';
+    p.style.transform = 'none';
   });
 
   try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch {}
   await new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-  // 4) Ancho real de captura (evita escalados)
+  // 5) Ancho real de captura (evita escalado que “encoge” dos páginas en una)
   const capW = Math.max(
     A4_PX,
     printBlock.scrollWidth,
     Math.ceil(printBlock.getBoundingClientRect().width)
   );
 
-  // 5) Exportar el bloque completo (sin clonar)
+  // 6) Exportar tal cual (sin clonar), respetando los page-break CSS
   await html2pdf().set({
     margin: 0,
     filename,
@@ -986,9 +1026,10 @@ async function pdfDesdeMiViaje(grupoId, filename){
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(printBlock).save();
 
-  // 6) Limpieza
+  // 7) Limpieza
   iframe.remove();
 }
+
 
 /* ====== NUEVO: usa MiViaje si está ok; si falla, usa el HTML local ====== */
 async function exportarPDFconFallback({ grupoId, node, filename }){
