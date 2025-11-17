@@ -1208,48 +1208,6 @@ function renderDocsList(docsText) {
   return `<li>${docsText}</li>`;
 }
 
-// === Estilos mínimos para la hoja en pantalla y PDF (hoteles/resumen) ===
-// Agrégalo una sola vez en el archivo. Evita redeclaración si ya existe.
-if (typeof window.injectScreenHotelStyles !== 'function') {
-  window.injectScreenHotelStyles = function () {
-    // No lo vuelvas a inyectar si ya está
-    if (document.getElementById('screenHotelStyles')) return;
-
-    const css = `
-      /* Tamaño y márgenes de página al imprimir */
-      @page { size: A4; margin: 10mm; }
-
-      html, body { height: 100%; margin: 0; padding: 0; }
-
-      /* Contenedor principal de la hoja/resumen */
-      .hoja-resumen, .print-doc, #printArea, .resumen, main {
-        width: 100% !important;
-        max-width: 190mm !important;   /* 210mm - márgenes */
-        margin: 0 auto !important;
-        box-sizing: border-box !important;
-        padding: 0 !important;
-      }
-
-      /* Evitar cortes feos entre tarjetas/bloques */
-      .section, .bloque, .card, .fila {
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-
-      /* Oculta cromos de la web al imprimir */
-      @media print {
-        header, nav, footer, .no-print, .hide-on-print { display: none !important; }
-        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      }
-    `;
-
-    const st = document.createElement('style');
-    st.id = 'screenHotelStyles';
-    st.textContent = css;
-    document.head.appendChild(st);
-  };
-}
-
 function renderHojaResumen(grupo, vuelosNorm, hoteles){
   let hoja = document.getElementById('hoja-resumen');
   if(!hoja){
@@ -1896,118 +1854,34 @@ function ensurePrintLogo(){
   document.body.appendChild(img);         // queda fijo por CSS @media print
 }
 
-// === Modo EMBED para exportar a PDF desde html2canvas/html2pdf (sin @media print)
-function __applyPdfEmbedStyles(){
-  // Mostrar el documento imprimible y ocultar la UI de pantalla
-  const css = `
-    /* mostrar el contenedor de impresión en pantalla */
-    #print-block{
-      display:block !important;
-      visibility:visible !important;
-      width:210mm !important;
-      margin:0 auto !important;
-      padding:0 !important;              /* sin reserva de logo para que no se angoste */
-    }
-    /* ocultar todo lo demás */
-    #hoja-resumen,#mi-itin,#itin-slot,.dias-embebidas,header{ display:none !important; }
-    #print-logo{ display:none !important; } /* evita elementos fixed que puedan distorsionar la captura */
-
-    /* Reglas clave de tablas (clon de las de @media print, pero para pantalla) */
-    #print-block .table-wrap{ break-inside:avoid; page-break-inside:avoid; margin:0 0 4mm 0; }
-    #print-block .table-title{ font-weight:700; margin:0 0 1.8mm 0; }
-    #print-block table.print-table{
-      width:100%; border-collapse:collapse; table-layout:fixed; word-break:break-word; font-size:0.6em;
-    }
-    #print-block .print-table thead{ display:table-header-group; }
-    #print-block .print-table th,#print-block .print-table td{
-      padding:2mm 2.5mm; border:0.2mm solid #d1d5db; vertical-align:top;
-    }
-    #print-block .thead-muted th{ background:#f3f4f6; text-align:left; font-weight:600; }
-    .print-doc{ width:210mm !important; page-break-after:always; }
-    .print-doc:last-child{ page-break-after:auto; }
-  `;
-  const s = document.createElement('style');
-  s.id = 'force-print-for-export';
-  s.textContent = css;
-  document.head.appendChild(s);
-}
-
-
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
-// === Modo EMBED para exportar a PDF desde html2canvas/html2pdf (sin @media print)
-function enablePdfExportMode(){
-  // Elimina restos de intentos anteriores
-  const prev = document.getElementById('force-print-for-export');
-  if (prev) prev.remove();
-
+function injectScreenHotelStyles(){
+  if (document.getElementById('screen-hotel-styles')) return;
   const css = `
-    html, body {
-      width: 210mm !important;
-      min-width: 210mm !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      background: #fff !important;
+    .hoteles-list{
+      list-style: disc;
+      margin: 4px 0 0 18px;   /* mismo margen que el resto de listas */
+      padding: 0;
     }
+    .hoteles-list > li.hotel-item{ margin: 6px 0 8px; }
+    .hoteles-list .hotel-grid{
+      display: grid;
+      grid-template-columns: var(--hotel-left-col, 240px) 1fr; /* ← columna ciudad auto-ajustada */
+      column-gap: 16px;
+    }
+    .hoteles-list .hotel-left{ font-weight: 400; } /* sin negrita */
+    .hoteles-list .hotel-right > div{ margin: 2px 0; }
 
-    /* Mostrar sólo el bloque imprimible */
-    #print-block{
-      display:block !important;
-      visibility:visible !important;
-      width:210mm !important;
-      min-width:210mm !important;
-      margin:0 auto !important;
-      padding:0 !important;
-      box-sizing:border-box !important;
+    /* Responsive: apila en móviles */
+    @media (max-width: 640px){
+      .hoteles-list .hotel-grid{ grid-template-columns: 1fr; }
     }
-
-    /* Páginas internas a tamaño A4 real, sin escalas */
-    #print-block .print-doc{
-      width:210mm !important;
-      min-height:297mm !important;
-      margin:0 auto !important;
-      box-sizing:border-box !important;
-      /* ANULA cualquier modo compacto previo */
-      transform:none !important;
-      -webkit-transform:none !important;
-      zoom:1 !important;
-      max-width:none !important;
-      scale:1 !important;
-    }
-
-    /* Anula transformaciones/zooms heredadas en TODO el contenido del print */
-    #print-block, #print-block *{
-      transform:none !important;
-      -webkit-transform:none !important;
-      zoom:1 !important;
-      max-width:none !important;
-      scale:1 !important;
-    }
-
-    /* Oculta la UI de pantalla que no queremos capturar */
-    header, #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas, #print-logo {
-      display:none !important;
-    }
-
-    /* Tablas y estilos clave (clon de @media print) */
-    #print-block .table-wrap{ break-inside:avoid; page-break-inside:avoid; margin:0 0 4mm 0; }
-    #print-block .table-title{ font-weight:700; margin:0 0 1.8mm 0; }
-    #print-block table.print-table{
-      width:100%; border-collapse:collapse; table-layout:fixed; word-break:break-word; font-size:0.6em;
-    }
-    #print-block .print-table thead{ display:table-header-group; }
-    #print-block .print-table th,#print-block .print-table td{
-      padding:2mm 2.5mm; border:0.2mm solid #d1d5db; vertical-align:top;
-    }
-    #print-block .thead-muted th{ background:#f3f4f6; text-align:left; font-weight:600; }
-    .print-doc{ page-break-after:always; }
-    .print-doc:last-child{ page-break-after:auto; }
   `;
   const s = document.createElement('style');
-  s.id = 'force-print-for-export';
+  s.id = 'screen-hotel-styles';
   s.textContent = css;
   document.head.appendChild(s);
 }
-
 
 // Menos aire en pantalla para la Hoja Resumen
 function injectCompactScreenStyles(){
@@ -2252,10 +2126,6 @@ async function main(){
   // Estilos de impresión + acción del botón
   injectPrintStyles();
   injectCompactScreenStyles(); 
-  // ← NUEVO: si viene ?embed=1, mostramos #print-block en pantalla para capturarlo
-  if (new URLSearchParams(location.search).get('embed') === '1') {
-    __applyPdfEmbedStyles();
-  }
   if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
   if(!numeroNegocio && !id){
@@ -2381,4 +2251,3 @@ export {
   computeFechaInicioViaje,
   getDERTextos
 };
-
