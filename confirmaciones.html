@@ -233,7 +233,20 @@
   </main>
 
   <!-- Contenedor temporal invisible para render a PDF -->
-  <div id="pdf-work" style="position:absolute; left:-9999px; top:-9999px; width:794px; background:#ffffff;"></div>
+  <div
+    id="pdf-work"
+    style="
+      position:fixed;
+      left:0;
+      top:0;
+      width:794px;
+      background:#ffffff;
+      opacity:0;
+      pointer-events:none;
+      z-index:-1;
+    ">
+  </div>
+
 
 </body>
 </html>
