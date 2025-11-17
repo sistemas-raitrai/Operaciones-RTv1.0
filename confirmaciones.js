@@ -906,9 +906,9 @@ async function descargarLote(ids){
 }
 
 async function pdfDesdeMiViaje(grupoId, filename){
-  const A4_PX = Math.round(210 * 96 / 25.4);
+  const A4_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
 
-  // 1) Iframe oculto apuntando a miviaje con ?embed=1 (activa modo export)
+  // 1) Iframe oculto con modo embed=1
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
@@ -917,30 +917,36 @@ async function pdfDesdeMiViaje(grupoId, filename){
 
   const idoc = iframe.contentDocument;
 
-  // 2) Espera a que se construya el print-block con el contenido
-  const waitFor = (sel, tries=100) => new Promise(r=>{
+  // 2) Esperar a que exista el bloque imprimible
+  const waitFor = (sel, tries=120) => new Promise(r=>{
     const iv = setInterval(()=>{
       const el = idoc.querySelector(sel);
       if (el || --tries<=0){ clearInterval(iv); r(el||null); }
     }, 80);
   });
 
-  const printBlock = await waitFor('#print-block .print-doc')  // al menos 1 página
-    .then(()=> idoc.getElementById('print-block'));
+  const firstPage = await waitFor('#print-block .print-doc');
+  const printBlock = idoc.getElementById('print-block');
 
-  if (!printBlock){
+  if (!firstPage || !printBlock){
     iframe.remove();
     throw new Error('No se encontró #print-block en MiViaje.');
   }
 
-  // 3) Asegura fuentes y layout
+  // 3) Asegura tamaño real en runtime (por si CSS no llegó aún)
+  printBlock.style.width = '210mm';
+  [...printBlock.querySelectorAll('.print-doc')].forEach(p=>{
+    p.style.width = '210mm';
+    p.style.minHeight = '297mm';
+  });
+
   try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch {}
   await new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-  // 4) Ancho de captura = scrollWidth real del contenedor imprimible
+  // 4) Ancho de captura: usa el mayor entre A4 y el scrollWidth real
   const capW = Math.max(A4_PX, printBlock.scrollWidth, Math.ceil(printBlock.getBoundingClientRect().width));
 
-  // 5) Exportar
+  // 5) Exportar el #print-block completo (sin clonar)
   await html2pdf().set({
     margin: 0,
     filename,
@@ -948,18 +954,21 @@ async function pdfDesdeMiViaje(grupoId, filename){
     image: { type: 'jpeg', quality: 0.96 },
     html2canvas: {
       scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      backgroundColor: '#ffffff',
+      // Fuerza el viewport de render a nuestro ancho real
       windowWidth: capW,
+      width: capW,
       scrollX: 0,
-      scrollY: 0
+      scrollY: 0,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      allowTaint: true
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(printBlock).save();
 
   iframe.remove();
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────
    Boot
