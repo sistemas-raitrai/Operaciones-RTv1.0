@@ -965,7 +965,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
 
   // 1) Cargar MiViaje en iframe oculto
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:opacity 90;';
+  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
   await new Promise(res => { iframe.onload = res; });
