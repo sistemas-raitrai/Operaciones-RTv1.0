@@ -87,11 +87,23 @@ function ensurePdfWork(){
   if (!el){
     el = document.createElement('div');
     el.id = 'pdf-work';
-    el.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
+    // IMPORTANTE: sin visibility:hidden (provoca PDF en blanco)
+    el.style.cssText = [
+      'position:fixed',
+      'left:-10000px',
+      'top:0',
+      'width:210mm',
+      'min-height:297mm',
+      'display:block',
+      'opacity:0',              // invisible, pero renderizable
+      'pointer-events:none',    // no captura clicks
+      'background:#ffffff'
+    ].join(';');
     document.body.appendChild(el);
   }
   return el;
 }
+
 
 function toISO(x){
   if (!x) return '';
@@ -495,6 +507,10 @@ function renderDocsList(docsText) {
 function injectPdfStyles(){
   if (document.getElementById('pdf-styles')) return;
   const css = `
+  @page { size: A4 portrait; margin: 0; }
+  .print-doc{ page-break-after: always; }
+  .print-doc:last-child{ page-break-after: auto; }
+
   .print-doc{
     background:#ffffff !important;
     color:#111 !important;
@@ -522,11 +538,12 @@ function injectPdfStyles(){
   .it-day{ margin:0 0 3mm 0; }
   .closing{ text-align:center; font-weight:800; margin-top:7mm; }
   `;
-  const s=document.createElement('style');
-  s.id='pdf-styles';
-  s.textContent=css;
+  const s = document.createElement('style');
+  s.id = 'pdf-styles';
+  s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
