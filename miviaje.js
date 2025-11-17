@@ -2236,3 +2236,19 @@ globalThis.__itinDebug = function () {
     hasSplit: !!document.querySelector('.dias-embebidas')
   });
 };
+
+// === Exports para reutilizar desde otras páginas (confirmaciones.js, etc.) ===
+export {
+  buildPrintDoc,
+  injectPrintStyles,
+  ensurePrintLogo,
+  renderTransferTable,
+  loadVuelosInfo,
+  loadHotelesInfo,
+  normalizeVuelo,
+  particionarVuelos,
+  extractPresentacion,
+  computeFechaInicioViaje,
+  getDERTextos
+};
+
