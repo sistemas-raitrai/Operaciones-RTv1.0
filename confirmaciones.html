@@ -125,10 +125,6 @@
     }
 
   </style>
-
-  <!-- html2pdf bundle -->
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
-
   <!-- Lógica de la página -->
   <script type="module" src="./confirmaciones.js"></script>
 </head>
@@ -232,22 +228,7 @@
     </section>
   </main>
 
-  <!-- Contenedor temporal invisible para render a PDF -->
-  <div
-    id="pdf-work"
-    style="
-      position:fixed;
-      left:0;
-      top:0;
-      width:794px;
-      background:#ffffff;
-      opacity:0;
-      pointer-events:none;
-      z-index:-1;
-    ">
-  </div>
-
-  <!-- Contenedor off-screen donde se monta la .print-doc antes de convertir a PDF -->
+<!-- Contenedor off-screen donde se monta la .print-doc antes de convertir a PDF -->
 <div id="pdf-work" aria-hidden="true" style="position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;"></div>
 
 
