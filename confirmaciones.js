@@ -804,7 +804,7 @@ function renderTabla(rows){
       <td>${g.programa ?? '—'}</td>
       <td><span class="badge">${inicioTxt}</span></td>
       <td class="right">
-        <button class="btn-add btn-one">PDF</button>
+        <button class="btn-add btn-one">CONFIRMACIÓN</button>
       </td>
     `;
     tb.appendChild(tr);
