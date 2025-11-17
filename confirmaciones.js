@@ -863,9 +863,9 @@ async function descargarUno(grupoId){
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
 
   const opt = {
-    margin: 0,                               // márgenes del PDF (0: usamos el padding CSS)
+    margin: 0,                               // usamos el padding de .print-doc como margen real
     filename,
-    pagebreak: { mode: ['css','legacy'] },   // respeta cortes si los usas
+    pagebreak: { mode: ['css', 'legacy'] },
     image: { type: 'jpeg', quality: 0.96 },
     html2canvas: {
       scale: 2,
@@ -873,10 +873,14 @@ async function descargarUno(grupoId){
       allowTaint: true,
       backgroundColor: '#ffffff',
       // ancho de ventana ≈ 210mm @96dpi (para evitar “encogimientos”)
-      windowWidth: Math.round(210 * 96 / 25.4)
+      windowWidth: Math.round(210 * 96 / 25.4),
+      // fuerza a capturar sin “espacio previo” por scroll u offsets raros
+      scrollX: 0,
+      scrollY: 0
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   };
+
 
 
   await html2pdf().set(opt).from(target).save();
