@@ -906,46 +906,78 @@ async function descargarLote(ids){
 }
 
 async function pdfDesdeMiViaje(grupoId, filename){
-  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4);
+  const A4_PX = Math.round(210 * 96 / 25.4);
 
-  // 1) Iframe oculto (MISMA ORIGEN / mismo dominio)
+  // 1) Iframe oculto (misma origen)
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
 
-  // 2) Espera carga del documento
   await new Promise(res => { iframe.onload = res; });
   const idoc = iframe.contentDocument;
 
-  // 3) Si tu MiViaje usa un botón para construir la impresión, simúlalo
-  const tryClickPrint = () => {
+  // 2) Si tu MiViaje necesita un click para construir la impresión, házlo
+  const pokePrint = () => {
     const btn = idoc.querySelector('#btnImprimir, .btn-imprimir, [data-role="imprimir"]');
     if (btn) { try { btn.click(); } catch(_){} }
   };
-  tryClickPrint();
+  pokePrint();
 
-  // 4) Espera a que exista .print-doc (hasta 5s)
-  const target = await new Promise(resolve => {
-    let tries = 0;
+  // 3) Espera a que MiViaje construya el DOM imprimible
+  const waitFor = sel => new Promise(resolve => {
+    let t = 0;
     const iv = setInterval(() => {
-      let t = idoc.querySelector('.print-doc');
-      if (!t) tryClickPrint();               // insiste en construirla si no existe
-      if (t || ++tries > 50) { clearInterval(iv); resolve(t || null); }
+      const node = idoc.querySelector(sel);
+      if (node || ++t > 70) { clearInterval(iv); resolve(node || null); }
     }, 100);
   });
 
+  // root conocido o, si no existe, juntamos todas las .print-doc
+  let target = await waitFor('[data-print-root], .print-root, #printRoot');
+  if (!target) {
+    // Puede haber varias páginas .print-doc → combínalas
+    const pages = [...idoc.querySelectorAll('.print-doc')];
+    if (!pages.length) {
+      // intenta de nuevo construirlas
+      pokePrint();
+      await new Promise(r => setTimeout(r, 300));
+    }
+    const again = [...idoc.querySelectorAll('.print-doc')];
+    if (again.length) {
+      const wrap = idoc.createElement('div');
+      wrap.id = 'pdf-root';
+      again.forEach(p => wrap.appendChild(p.cloneNode(true)));
+      idoc.body.appendChild(wrap);
+      target = wrap;
+    }
+  }
   if (!target) {
     iframe.remove();
-    throw new Error('No se encontró .print-doc en MiViaje (revisa que la página la genere).');
+    throw new Error('No se encontró contenido imprimible (.print-doc / .print-root) en MiViaje.');
   }
 
-  // 5) Fuerza ancho exacto A4 y espera fuentes/layout
-  target.style.width = A4_WIDTH_PX + 'px';
-  try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch(e) {}
+  // 4) Forzar ancho A4 y que nada lo escale/oculte
+  const style = idoc.createElement('style');
+  style.textContent = `
+    #pdf-root, .print-root, .print-doc {
+      width:210mm !important; max-width:210mm !important;
+      margin:0 auto !important; position:static !important; transform:none !important;
+      overflow:visible !important; box-sizing:border-box !important;
+    }
+    .print-doc { page-break-after: always; }
+    .print-doc:last-child { page-break-after: avoid; }
+    *{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  `;
+  idoc.head.appendChild(style);
+
+  // Asegura layout antes de capturar
+  try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch(e){}
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-  // 6) Exporta SOLO la .print-doc
+  // 5) Ancho de captura = scrollWidth real (evita cortes)
+  const capW = Math.max(A4_PX, target.scrollWidth, Math.ceil(target.getBoundingClientRect().width));
+
   await html2pdf().set({
     margin: 0,
     filename,
@@ -956,18 +988,15 @@ async function pdfDesdeMiViaje(grupoId, filename){
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
-      windowWidth: A4_WIDTH_PX,
+      windowWidth: capW,
       scrollX: 0,
       scrollY: 0
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(target).save();
 
-  // 7) Limpieza
   iframe.remove();
 }
-
-
 
 /* ──────────────────────────────────────────────────────────────────────
    Boot
