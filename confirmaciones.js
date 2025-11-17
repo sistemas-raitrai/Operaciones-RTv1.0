@@ -7,6 +7,18 @@ import {
   collection, getDocs, doc, getDoc, query, where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+// === Loader de html2pdf (necesario para exportar PDFs) ===
+async function ensureHtml2Pdf(){
+  if (window.html2pdf) return;
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
 // Fuerzo una clase de página para poder sobreescribir estilos globales
 document.body.classList.add('confirmaciones-page');
 
@@ -829,50 +841,18 @@ function renderTabla(rows){
    Exportación a PDF (uno / lote)
 ────────────────────────────────────────────────────────────────────── */
 async function descargarUno(grupoId){
-  injectPdfStyles();
+  // 1) Trae el grupo (solo para armar el nombre del archivo)
   const d = await getDoc(doc(db,'grupos', grupoId));
   if (!d.exists()) return;
   const g = { id:d.id, ...d.data() };
 
-  // data para doc
-  const vuelosDocs = await loadVuelosInfo(g);
-  const vuelosNorm = vuelosDocs.map(normalizeVuelo);
-  const hoteles    = await loadHotelesInfo(g);
-
-  const fechas = (() => {
-    if (g.itinerario && typeof g.itinerario==='object') return Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
-    if (g.fechaInicio && g.fechaFin) {
-      const out=[]; const A=toISO(g.fechaInicio), B=toISO(g.fechaFin);
-      if(A&&B){ const a=new Date(A), b=new Date(B); for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);} }
-      return out;
-    }
-    return [];
-  })();
-
-  const html = buildPrintDoc(g, vuelosNorm, hoteles, fechas);
-  const work = document.getElementById('pdf-work');
-  if (!work) throw new Error('#pdf-work no encontrado');
-  work.innerHTML = html;
-
-  const target = work.querySelector('.print-doc');
-  // ——— FIJAR ANCHO EXACTO A A4 EN PIXELES PARA EVITAR ESCALADOS ———
-  const A4_WIDTH_PX = Math.round(210 * 96 / 25.4); // 794 px
-  target.style.width = A4_WIDTH_PX + 'px';         // asegura ancho real de captura
-  const A4_HEIGHT_PX = Math.max(target.scrollHeight, Math.round(297 * 96 / 25.4)); // alto dinámico
-
-  if (!target) throw new Error('print-doc no renderizado');
-
-  // Espera a fuentes y al siguiente frame para asegurar layout pintado
-  try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch(e) {}
-  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
+  // 2) Nombre de archivo (DDMMAAAA)
   const fechaDescarga = formatDMYDownload(new Date());
   const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
   const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
-  
-  // Usa la impresión real de MiViaje (idéntica al botón "Imprimir")
+
+  // 3) Exporta desde el DOM real de MiViaje (idéntico a “Imprimir”)
   await pdfDesdeMiViaje(g.id, filename);
-  return;
 }
 
 async function descargarSeleccionados(){
@@ -908,45 +888,53 @@ async function descargarLote(ids){
 async function pdfDesdeMiViaje(grupoId, filename){
   const A4_PX = Math.round(210 * 96 / 25.4); // ≈ 794 px
 
-  // 1) Iframe oculto con modo embed=1
+  // Asegura html2pdf cargado
+  await ensureHtml2Pdf();
+
+  // 1) Iframe oculto con MiViaje en modo embed (sin UI)
   const iframe = document.createElement('iframe');
   iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
   await new Promise(res => { iframe.onload = res; });
 
-  const idoc = iframe.contentDocument;
+  const idoc = iframe.contentDocument || iframe.contentWindow?.document;
 
-  // 2) Esperar a que exista el bloque imprimible
-  const waitFor = (sel, tries=120) => new Promise(r=>{
+  // 2) Esperar el bloque imprimible
+  const waitFor = (sel, tries=150) => new Promise(r=>{
     const iv = setInterval(()=>{
-      const el = idoc.querySelector(sel);
+      const el = idoc?.querySelector(sel);
       if (el || --tries<=0){ clearInterval(iv); r(el||null); }
     }, 80);
   });
 
-  const firstPage = await waitFor('#print-block .print-doc');
-  const printBlock = idoc.getElementById('print-block');
+  const printBlock = await waitFor('#print-block');
+  const firstPage  = printBlock ? printBlock.querySelector('.print-doc') : null;
 
   if (!firstPage || !printBlock){
     iframe.remove();
     throw new Error('No se encontró #print-block en MiViaje.');
   }
 
-  // 3) Asegura tamaño real en runtime (por si CSS no llegó aún)
+  // 3) Fuerza tamaño A4 en runtime (por si el CSS aún no aplicó)
   printBlock.style.width = '210mm';
   [...printBlock.querySelectorAll('.print-doc')].forEach(p=>{
     p.style.width = '210mm';
     p.style.minHeight = '297mm';
+    p.style.background = '#ffffff';
   });
 
   try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch {}
   await new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r)));
 
-  // 4) Ancho de captura: usa el mayor entre A4 y el scrollWidth real
-  const capW = Math.max(A4_PX, printBlock.scrollWidth, Math.ceil(printBlock.getBoundingClientRect().width));
+  // 4) Ancho real de captura (evita escalados)
+  const capW = Math.max(
+    A4_PX,
+    printBlock.scrollWidth,
+    Math.ceil(printBlock.getBoundingClientRect().width)
+  );
 
-  // 5) Exportar el #print-block completo (sin clonar)
+  // 5) Exportar el bloque completo (sin clonar)
   await html2pdf().set({
     margin: 0,
     filename,
@@ -954,7 +942,6 @@ async function pdfDesdeMiViaje(grupoId, filename){
     image: { type: 'jpeg', quality: 0.96 },
     html2canvas: {
       scale: 2,
-      // Fuerza el viewport de render a nuestro ancho real
       windowWidth: capW,
       width: capW,
       scrollX: 0,
@@ -966,9 +953,9 @@ async function pdfDesdeMiViaje(grupoId, filename){
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(printBlock).save();
 
+  // 6) Limpieza
   iframe.remove();
 }
-
 
 /* ──────────────────────────────────────────────────────────────────────
    Boot
@@ -979,7 +966,9 @@ async function init(){
 
   // Año (default: actual)
   const selAno = document.getElementById('fAno');
-  const currentYear = (new Date().toLocaleString('en-US',{ timeZone: TZ })).split('/').pop();
+  const currentYear = new Date(
+    new Date().toLocaleString('en-US', { timeZone: TZ })
+  ).getFullYear();
   fillSelect(selAno, anos.map(a=>({value:a,label:a})), '(Todos)');
   if (anos.includes(String(currentYear))) selAno.value = String(currentYear);
 
