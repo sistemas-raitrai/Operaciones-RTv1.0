@@ -1855,7 +1855,7 @@ function ensurePrintLogo(){
 }
 
 // === Modo EMBED para exportar a PDF desde html2canvas/html2pdf (sin @media print)
-function enablePdfExportMode(){
+function __applyPdfEmbedStyles(){
   // Mostrar el documento imprimible y ocultar la UI de pantalla
   const css = `
     /* mostrar el contenedor de impresión en pantalla */
@@ -2212,7 +2212,7 @@ async function main(){
   injectCompactScreenStyles(); 
   // ← NUEVO: si viene ?embed=1, mostramos #print-block en pantalla para capturarlo
   if (new URLSearchParams(location.search).get('embed') === '1') {
-    enablePdfExportMode();
+    __applyPdfEmbedStyles();
   }
   if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
