@@ -1854,6 +1854,43 @@ function ensurePrintLogo(){
   document.body.appendChild(img);         // queda fijo por CSS @media print
 }
 
+// === Modo EMBED para exportar a PDF desde html2canvas/html2pdf (sin @media print)
+function enablePdfExportMode(){
+  // Mostrar el documento imprimible y ocultar la UI de pantalla
+  const css = `
+    /* mostrar el contenedor de impresión en pantalla */
+    #print-block{
+      display:block !important;
+      visibility:visible !important;
+      width:210mm !important;
+      margin:0 auto !important;
+      padding:0 !important;              /* sin reserva de logo para que no se angoste */
+    }
+    /* ocultar todo lo demás */
+    #hoja-resumen,#mi-itin,#itin-slot,.dias-embebidas,header{ display:none !important; }
+    #print-logo{ display:none !important; } /* evita elementos fixed que puedan distorsionar la captura */
+
+    /* Reglas clave de tablas (clon de las de @media print, pero para pantalla) */
+    #print-block .table-wrap{ break-inside:avoid; page-break-inside:avoid; margin:0 0 4mm 0; }
+    #print-block .table-title{ font-weight:700; margin:0 0 1.8mm 0; }
+    #print-block table.print-table{
+      width:100%; border-collapse:collapse; table-layout:fixed; word-break:break-word; font-size:0.6em;
+    }
+    #print-block .print-table thead{ display:table-header-group; }
+    #print-block .print-table th,#print-block .print-table td{
+      padding:2mm 2.5mm; border:0.2mm solid #d1d5db; vertical-align:top;
+    }
+    #print-block .thead-muted th{ background:#f3f4f6; text-align:left; font-weight:600; }
+    .print-doc{ width:210mm !important; page-break-after:always; }
+    .print-doc:last-child{ page-break-after:auto; }
+  `;
+  const s = document.createElement('style');
+  s.id = 'force-print-for-export';
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+
+
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
 function injectScreenHotelStyles(){
   if (document.getElementById('screen-hotel-styles')) return;
@@ -2126,6 +2163,10 @@ async function main(){
   // Estilos de impresión + acción del botón
   injectPrintStyles();
   injectCompactScreenStyles(); 
+  // ← NUEVO: si viene ?embed=1, mostramos #print-block en pantalla para capturarlo
+  if (new URLSearchParams(location.search).get('embed') === '1') {
+    enablePdfExportMode();
+  }
   if (btnPrint) btnPrint.addEventListener('click', () => window.print());
 
   if(!numeroNegocio && !id){
