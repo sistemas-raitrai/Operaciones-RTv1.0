@@ -965,32 +965,37 @@ async function pdfDesdeMiViaje(grupoId, filename){
 
   // 1) Cargar MiViaje en iframe oculto
   const iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:210mm;min-height:297mm;visibility:hidden;';
+  // NO usar visibility:hidden (html2canvas no renderiza). Lo dejamos fuera de pantalla + opacity:0
+  iframe.style.cssText = 'position:absolute;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;z-index:-1;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
   await new Promise(res => { iframe.onload = res; });
 
+
   const idoc = iframe.contentDocument || iframe.contentWindow?.document;
 
-  // 2) Esperar bloque imprimible
-  const waitFor = (sel, tries=180) => new Promise(r=>{
-    const iv = setInterval(()=>{
-      const el = idoc?.querySelector(sel);
-      if (el || --tries<=0){ clearInterval(iv); r(el||null); }
-    }, 80);
-  });
-
-  const printBlock = await waitFor('#print-block');
-  if (!printBlock){
+  // 2) Esperar a que #print-block exista y sea RENDERIZABLE (con tamaño > 0)
+  const okPB = await waitFor(() => {
+    const el = idoc?.querySelector('#print-block');
+    return el && el.offsetWidth > 0 && el.offsetHeight > 0;
+  }, 8000, 100);
+  
+  const printBlock = idoc?.querySelector('#print-block');
+  if (!okPB || !printBlock){
     iframe.remove();
-    throw new Error('No se encontró #print-block en MiViaje.');
+    throw new Error('No se encontró #print-block visible en MiViaje.');
   }
+
 
   // 3) Inyecta FIX: elimina zoom/transform y fuerza A4 + saltos de página
   const fix = idoc.createElement('style');
   fix.id = 'miViajePdfFix';
   fix.textContent = `
+    /* Mostrar #print-block también en pantalla (no solo @media print) */
     #print-block {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
       transform: none !important;
       -webkit-transform: none !important;
       zoom: 1 !important;
@@ -999,6 +1004,9 @@ async function pdfDesdeMiViaje(grupoId, filename){
       background: #ffffff !important;
     }
     #print-block .print-doc{
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
       transform: none !important;
       -webkit-transform: none !important;
       zoom: 1 !important;
@@ -1006,23 +1014,31 @@ async function pdfDesdeMiViaje(grupoId, filename){
       min-height: 297mm !important;
       margin: 0 auto !important;
       background: #ffffff !important;
-      page-break-after: always !important; /* fuerza salto entre páginas */
+      page-break-after: always !important;
       break-inside: avoid !important;
     }
     #print-block .print-doc:last-child{
       page-break-after: auto !important;
     }
   `;
+
   idoc.head.appendChild(fix);
 
-  // 4) Ajuste directo en runtime por si quedan estilos inline
+  // 4) Ajuste directo en runtime por si quedan estilos inline que oculten
+  printBlock.style.display = 'block';
+  printBlock.style.visibility = 'visible';
+  printBlock.style.opacity = '1';
   printBlock.style.width = '210mm';
   [...printBlock.querySelectorAll('.print-doc')].forEach(p=>{
+    p.style.display = 'block';
+    p.style.visibility = 'visible';
+    p.style.opacity = '1';
     p.style.width = '210mm';
     p.style.minHeight = '297mm';
     p.style.background = '#ffffff';
     p.style.transform = 'none';
   });
+
 
   try { if (idoc.fonts && idoc.fonts.ready) await idoc.fonts.ready; } catch {}
   await new Promise(r => requestAnimationFrame(()=>requestAnimationFrame(r)));
