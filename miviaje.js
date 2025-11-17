@@ -1892,33 +1892,80 @@ function enablePdfExportMode(){
 
 
 // ===== Estilos de PANTALLA para la lista de hotelería (viñeta + 2 columnas) =====
-function injectScreenHotelStyles(){
-  if (document.getElementById('screen-hotel-styles')) return;
-  const css = `
-    .hoteles-list{
-      list-style: disc;
-      margin: 4px 0 0 18px;   /* mismo margen que el resto de listas */
-      padding: 0;
-    }
-    .hoteles-list > li.hotel-item{ margin: 6px 0 8px; }
-    .hoteles-list .hotel-grid{
-      display: grid;
-      grid-template-columns: var(--hotel-left-col, 240px) 1fr; /* ← columna ciudad auto-ajustada */
-      column-gap: 16px;
-    }
-    .hoteles-list .hotel-left{ font-weight: 400; } /* sin negrita */
-    .hoteles-list .hotel-right > div{ margin: 2px 0; }
+// === Modo EMBED para exportar a PDF desde html2canvas/html2pdf (sin @media print)
+function enablePdfExportMode(){
+  // Elimina restos de intentos anteriores
+  const prev = document.getElementById('force-print-for-export');
+  if (prev) prev.remove();
 
-    /* Responsive: apila en móviles */
-    @media (max-width: 640px){
-      .hoteles-list .hotel-grid{ grid-template-columns: 1fr; }
+  const css = `
+    html, body {
+      width: 210mm !important;
+      min-width: 210mm !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #fff !important;
     }
+
+    /* Mostrar sólo el bloque imprimible */
+    #print-block{
+      display:block !important;
+      visibility:visible !important;
+      width:210mm !important;
+      min-width:210mm !important;
+      margin:0 auto !important;
+      padding:0 !important;
+      box-sizing:border-box !important;
+    }
+
+    /* Páginas internas a tamaño A4 real, sin escalas */
+    #print-block .print-doc{
+      width:210mm !important;
+      min-height:297mm !important;
+      margin:0 auto !important;
+      box-sizing:border-box !important;
+      /* ANULA cualquier modo compacto previo */
+      transform:none !important;
+      -webkit-transform:none !important;
+      zoom:1 !important;
+      max-width:none !important;
+      scale:1 !important;
+    }
+
+    /* Anula transformaciones/zooms heredadas en TODO el contenido del print */
+    #print-block, #print-block *{
+      transform:none !important;
+      -webkit-transform:none !important;
+      zoom:1 !important;
+      max-width:none !important;
+      scale:1 !important;
+    }
+
+    /* Oculta la UI de pantalla que no queremos capturar */
+    header, #hoja-resumen, #mi-itin, #itin-slot, .dias-embebidas, #print-logo {
+      display:none !important;
+    }
+
+    /* Tablas y estilos clave (clon de @media print) */
+    #print-block .table-wrap{ break-inside:avoid; page-break-inside:avoid; margin:0 0 4mm 0; }
+    #print-block .table-title{ font-weight:700; margin:0 0 1.8mm 0; }
+    #print-block table.print-table{
+      width:100%; border-collapse:collapse; table-layout:fixed; word-break:break-word; font-size:0.6em;
+    }
+    #print-block .print-table thead{ display:table-header-group; }
+    #print-block .print-table th,#print-block .print-table td{
+      padding:2mm 2.5mm; border:0.2mm solid #d1d5db; vertical-align:top;
+    }
+    #print-block .thead-muted th{ background:#f3f4f6; text-align:left; font-weight:600; }
+    .print-doc{ page-break-after:always; }
+    .print-doc:last-child{ page-break-after:auto; }
   `;
   const s = document.createElement('style');
-  s.id = 'screen-hotel-styles';
+  s.id = 'force-print-for-export';
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 // Menos aire en pantalla para la Hoja Resumen
 function injectCompactScreenStyles(){
