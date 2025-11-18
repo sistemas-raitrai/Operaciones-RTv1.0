@@ -572,6 +572,11 @@ function injectPdfStyles(){
   .closing{ text-align:center; font-weight:800; margin-top:7mm; }
 
   /* ───── ESTADO DE CUENTAS DEL VIAJE (FINANZAS) ───── */
+
+  .finanzas-doc{
+    min-height: auto !important;   /* así no fuerza 297mm + padding → 2ª página en blanco */
+  }
+  
   .finanzas-doc .finanzas-header{
     display:flex;
     align-items:flex-start;
@@ -1111,6 +1116,9 @@ function renderTabla(rows){
 // ──────────────────────────────────────────────────────────────
 // Descargar PDF de FINANZAS (Estado de cuentas del viaje)
 // ──────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+// Descargar PDF de FINANZAS (Estado de cuentas del viaje)
+// ──────────────────────────────────────────────────────────────
 async function descargarFinanzas(grupoId){
   // 1) Traer datos del grupo
   const d = await getDoc(doc(db,'grupos', grupoId));
@@ -1122,21 +1130,17 @@ async function descargarFinanzas(grupoId){
 
   // 3) Preparar contenedor oculto y estilos
   injectPdfStyles();
-  const work = ensurePdfWork();
+  const work = ensurePdfWork();              // usa el mismo #pdf-work
   work.innerHTML = buildFinanzasDoc(g, abonos);
 
   const node = work.querySelector('.finanzas-doc') || work;
 
-  // Fijar tamaño A4 en px para html2canvas
-  const CAPTURE_PX = Math.round(208 * 96 / 25.4);
-  if (node){
-    node.style.width     = CAPTURE_PX + 'px';
-    node.style.minHeight = Math.round(297 * 96 / 25.4) + 'px';
-  }
+  // Calculamos ancho real de captura, sin forzar width a mano
+  const SAFE_PX = Math.round(208 * 96 / 25.4);  // ≈ ancho A4 “seguro”
   const capW = Math.max(
-    CAPTURE_PX,
-    node.scrollWidth || CAPTURE_PX,
-    Math.ceil(node.getBoundingClientRect().width || CAPTURE_PX)
+    SAFE_PX,
+    node.scrollWidth || SAFE_PX,
+    Math.ceil(node.getBoundingClientRect().width || SAFE_PX)
   );
 
   // 4) Nombre de archivo
@@ -1164,6 +1168,7 @@ async function descargarFinanzas(grupoId){
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(node).save();
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────
    Exportación a PDF (uno / lote)
