@@ -100,7 +100,7 @@ function ensurePdfWork(){
     // IMPORTANTE: sin visibility:hidden (provoca PDF en blanco)
     el.style.cssText = [
       'position:fixed',
-      'left:0px',
+      'left:-10000pxx',
       'top:0',
       'width:210mm',
       'min-height:297mm',
@@ -1119,6 +1119,9 @@ function renderTabla(rows){
 // ──────────────────────────────────────────────────────────────
 // Descargar PDF de FINANZAS (Estado de cuentas del viaje)
 // ──────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────
+// Descargar PDF de FINANZAS (Estado de cuentas del viaje)
+// ──────────────────────────────────────────────────────────────
 async function descargarFinanzas(grupoId){
   // 1) Traer datos del grupo
   const d = await getDoc(doc(db,'grupos', grupoId));
@@ -1130,12 +1133,17 @@ async function descargarFinanzas(grupoId){
 
   // 3) Preparar contenedor oculto y estilos
   injectPdfStyles();
-  const work = ensurePdfWork();              // usa el mismo #pdf-work
+  const work = ensurePdfWork();
   work.innerHTML = buildFinanzasDoc(g, abonos);
+
+  // *** IMPORTANTE: mover el contenedor a la vista para que no lo corte a la izquierda ***
+  work.style.position = 'absolute';
+  work.style.left = '0';
+  work.style.top = '0';
 
   const node = work.querySelector('.finanzas-doc') || work;
 
-  // Calculamos ancho real de captura, sin forzar width a mano
+  // Calculamos ancho real de captura
   const SAFE_PX = Math.round(208 * 96 / 25.4);  // ≈ ancho A4 “seguro”
   const capW = Math.max(
     SAFE_PX,
@@ -1167,8 +1175,10 @@ async function descargarFinanzas(grupoId){
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(node).save();
-}
 
+  // (opcional) si quieres, después de generar puedes volver a esconderlo lejos:
+  // work.style.left = '-10000px';
+}
 
 /* ──────────────────────────────────────────────────────────────────────
    Exportación a PDF (uno / lote)
@@ -1264,7 +1274,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
   // 1) Cargar MiViaje en iframe oculto
   const iframe = document.createElement('iframe');
   // fuera de pantalla + opaco (no visibility:hidden para que renderice)
-  iframe.style.cssText = 'position:absolute;left:0px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;z-index:-1;';
+  iframe.style.cssText = 'position:absolute;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;z-index:-1;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
   await new Promise(res => { iframe.onload = res; });
