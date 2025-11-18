@@ -100,7 +100,7 @@ function ensurePdfWork(){
     // IMPORTANTE: sin visibility:hidden (provoca PDF en blanco)
     el.style.cssText = [
       'position:fixed',
-      'left:-10000px',
+      'left:0px',
       'top:0',
       'width:210mm',
       'min-height:297mm',
@@ -1264,7 +1264,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
   // 1) Cargar MiViaje en iframe oculto
   const iframe = document.createElement('iframe');
   // fuera de pantalla + opaco (no visibility:hidden para que renderice)
-  iframe.style.cssText = 'position:absolute;left:-10000px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;z-index:-1;';
+  iframe.style.cssText = 'position:absolute;left:0px;top:0;width:210mm;height:297mm;opacity:0;pointer-events:none;border:0;z-index:-1;';
   iframe.src = `./miviaje.html?id=${encodeURIComponent(grupoId)}&embed=1`;
   document.body.appendChild(iframe);
   await new Promise(res => { iframe.onload = res; });
