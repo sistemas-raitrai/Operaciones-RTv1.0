@@ -1,7 +1,4 @@
-// hoteles.js — Gestión de hoteles y asignaciones RT
-// Base: tu implementación
-// Mejora: normalización de fechas, createdAt/updatedAt, cálculo robusto de noches,
-//         autocorrección suave en lecturas, y updates consistentes en todas las mutaciones.
+// hoteles.js 
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
