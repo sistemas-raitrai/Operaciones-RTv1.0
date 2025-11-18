@@ -20,6 +20,18 @@ let choiceDestino = null, choiceGrupo = null;
 let swapMode = false;
 let swapFirstAssignId = null;
 
+// Solo estos correos pueden editar PAX (adultos/estudiantes)
+const PAX_EDITORS = new Set([
+  'sistemas@raitrai.cl',
+  'aleoperaciones@raitrai.cl',
+  'yenny@raitrai.cl'
+]);
+
+function canEditPax() {
+  return currentUserEmail && PAX_EDITORS.has(currentUserEmail.toLowerCase());
+}
+
+
 // ===== Utilitarios =====
 const toUpper = x => typeof x==='string' ? x.toUpperCase() : x;
 
@@ -284,15 +296,28 @@ async function renderHoteles() {
         </div>`;
         continue;
       }
+
       const adSum = (a.adultos?.M||0) + (a.adultos?.F||0) + (a.adultos?.O||0);
       const esSum = (a.estudiantes?.M||0) + (a.estudiantes?.F||0) + (a.estudiantes?.O||0);
       const totalSinCoord = adSum + esSum;
+
+      // Habitaciones vs PAX para marcar alerta
+      const hab = a.habitaciones || {};
+      const paxHab = (hab.singles || 0)*1
+                   + (hab.dobles  || 0)*2
+                   + (hab.triples || 0)*3
+                   + (hab.cuadruples || 0)*4;
+
+      const habMismatch = paxHab > 0 && paxHab !== totalSinCoord;
+      const warnLabel = habMismatch
+        ? ' <span class="group-hab-warning">⚠️ HAB≠PAX</span>'
+        : '';
 
       html += `
         <div class="group-block">
           <div class="group-header" style="gap:.5em; flex-wrap:wrap;">
             <span>
-              <strong>${g.numeroNegocio} - ${g.identificador} — ${toUpper(g.nombreGrupo||'')}</strong>
+              <strong>${g.numeroNegocio} - ${g.identificador} — ${toUpper(g.nombreGrupo||'')}${warnLabel}</strong>
               &nbsp; PAX: ${totalSinCoord}
               (A:${a.adultos?.M||0}/${a.adultos?.F||0}/${a.adultos?.O||0}
                – E:${a.estudiantes?.M||0}/${a.estudiantes?.F||0}/${a.estudiantes?.O||0})
@@ -320,6 +345,7 @@ async function renderHoteles() {
         </div>
       `;
     }
+
 
     html += `
       <div style="margin-top:.7em;">
@@ -438,6 +464,12 @@ function setupAssignModal(){
   document.getElementById('assign-cancel').addEventListener('click', closeAssignModal);
   document.getElementById('assign-form').addEventListener('submit', onSubmitAssign);
 
+  // NUEVO: botón separado para guardar solo PAX (adultos/estudiantes)
+  const btnSavePax = document.getElementById('btnSavePax');
+  if (btnSavePax) {
+    btnSavePax.addEventListener('click', onSavePax);
+  }
+
   ['a-checkin','a-checkout'].forEach(id=>{
     document.getElementById(id).addEventListener('change', () => {
       const ci = toISO(document.getElementById('a-checkin').value);
@@ -446,6 +478,7 @@ function setupAssignModal(){
     });
   });
 }
+
 
 function openAssignModal(hotelId, assignId){
   isEditAssign = !!assignId;
@@ -490,8 +523,12 @@ function openAssignModal(hotelId, assignId){
     const gid = e.target.value;
     const g   = grupos.find(x=>x.id===gid) || {};
 
-    document.getElementById('max-adultos').textContent     = g.adultos    ?? 0;
-    document.getElementById('max-estudiantes').textContent = g.estudiantes?? 0;
+    const adultos     = g.adultos       ?? 0;
+    const estudiantes = g.estudiantes   ?? 0;
+    const total       = (g.cantidadgrupo ?? g.cantidadGrupo ?? (adultos + estudiantes)) || 0;
+
+    document.getElementById('max-adultos').textContent     = adultos;
+    document.getElementById('max-estudiantes').textContent = estudiantes;
     document.getElementById('grupo-fechas').textContent =
       `Rango: ${fmtFechaCorta(g.fechaInicio)} → ${fmtFechaCorta(g.fechaFin)}`;
 
@@ -504,9 +541,22 @@ function openAssignModal(hotelId, assignId){
 
     document.getElementById('a-noches').value = diffNoches(ci.value, co.value);
 
-    document.getElementById('g-adultos').value       = g.adultos ?? 0;
-    document.getElementById('g-estudiantes').value   = g.estudiantes ?? 0;
-    document.getElementById('g-cantidadgrupo').value = g.cantidadgrupo ?? g.cantidadGrupo ?? 0;
+    // Totales visibles (solo lectura, luego se recalculan desde el detalle)
+    document.getElementById('g-adultos').value       = adultos;
+    document.getElementById('g-estudiantes').value   = estudiantes;
+    document.getElementById('g-cantidadgrupo').value = total;
+
+    // Distribución inicial: todo el pax en "O" para que cuadre desde el inicio
+    document.getElementById('a-ad-M').value = 0;
+    document.getElementById('a-ad-F').value = 0;
+    document.getElementById('a-ad-O').value = adultos;
+
+    document.getElementById('a-es-M').value = 0;
+    document.getElementById('a-es-F').value = 0;
+    document.getElementById('a-es-O').value = estudiantes;
+
+    recalcTotalsFromDetail();
+    chequearHabitacionesVsPax();
   };
 
   if (isEditAssign) {
@@ -550,18 +600,29 @@ function openAssignModal(hotelId, assignId){
   document.getElementById('modal-assign').style.display='block';
 
   ['a-singles','a-dobles','a-triples','a-cuadruples','a-ad-M','a-ad-F','a-ad-O','a-es-M','a-es-F','a-es-O']
-    .forEach(id => { document.getElementById(id).oninput = chequearHabitacionesVsPax; });
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.oninput = chequearHabitacionesVsPax;
+    });
+
+  applyPaxEditPermissions();
   chequearHabitacionesVsPax();
 }
+
 
 function closeAssignModal(){ hideModals(); }
 
 function chequearHabitacionesVsPax() {
+  // Siempre recalculamos totales visibles desde el detalle
+  recalcTotalsFromDetail();
+
   const singles    = Number(document.getElementById('a-singles').value)    || 0;
   const dobles     = Number(document.getElementById('a-dobles').value)     || 0;
   const triples    = Number(document.getElementById('a-triples').value)    || 0;
   const cuadruples = Number(document.getElementById('a-cuadruples').value) || 0;
   const paxHab = singles*1 + dobles*2 + triples*3 + cuadruples*4;
+
   const adSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-ad-${k}`).value||0), 0);
   const esSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-es-${k}`).value||0), 0);
   const totalPax = adSum + esSum;
@@ -576,6 +637,133 @@ function chequearHabitacionesVsPax() {
   }
 }
 
+function recalcTotalsFromDetail() {
+  const adSum = ['M','F','O'].reduce((s,k)=> {
+    const el = document.getElementById(`a-ad-${k}`);
+    return s + Number(el ? el.value : 0);
+  }, 0);
+  const esSum = ['M','F','O'].reduce((s,k)=> {
+    const el = document.getElementById(`a-es-${k}`);
+    return s + Number(el ? el.value : 0);
+  }, 0);
+  const total = adSum + esSum;
+
+  const fa = document.getElementById('g-adultos');
+  const fe = document.getElementById('g-estudiantes');
+  const ft = document.getElementById('g-cantidadgrupo');
+  if (fa) fa.value = adSum;
+  if (fe) fe.value = esSum;
+  if (ft) ft.value = total;
+}
+
+function applyPaxEditPermissions() {
+  // Totales nunca editables para nadie
+  ['g-adultos','g-estudiantes','g-cantidadgrupo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.readOnly = true;
+    el.classList.add('readonly');
+  });
+
+  const can = canEditPax();
+
+  // Detalle por sexo solo editable para los correos autorizados
+  ['a-ad-M','a-ad-F','a-ad-O','a-es-M','a-es-F','a-es-O'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.readOnly = !can;
+    el.classList.toggle('readonly', !can);
+  });
+
+  const btnPax = document.getElementById('btnSavePax');
+  if (btnPax) btnPax.disabled = !can;
+}
+
+// Guarda solo PAX (adultos/estudiantes) y sincroniza GRUPOS (+ asignación si existe)
+async function onSavePax() {
+  if (!canEditPax()) {
+    return alert('Solo usuarios autorizados pueden modificar PAX (sistemas, aleoperaciones, yenny).');
+  }
+
+  const gId = document.getElementById('a-grupo').value;
+  if (!gId) return alert('Selecciona un grupo');
+
+  const adSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-ad-${k}`).value || 0), 0);
+  const esSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-es-${k}`).value || 0), 0);
+  const newAdultos     = adSum;
+  const newEstudiantes = esSum;
+  const newCantidad    = adSum + esSum;
+
+  // Actualiza campos totales visibles
+  recalcTotalsFromDetail();
+
+  // Actualiza GRUPOS
+  const gRef    = doc(db, 'grupos', gId);
+  const gSnap   = await getDoc(gRef);
+  const gBefore = gSnap.data() || {};
+
+  const gUpdate = {
+    adultos:       newAdultos,
+    estudiantes:   newEstudiantes,
+    cantidadgrupo: newCantidad,
+    cantidadGrupo: newCantidad
+  };
+
+  await updateDoc(gRef, gUpdate);
+  await addDoc(collection(db,'historial'),{
+    tipo: 'grupo-update-from-assign-pax-only',
+    grupoId: gId,
+    antes: {
+      adultos:       gBefore.adultos ?? 0,
+      estudiantes:   gBefore.estudiantes ?? 0,
+      cantidadgrupo: (gBefore.cantidadgrupo ?? gBefore.cantidadGrupo ?? 0)
+    },
+    despues: gUpdate,
+    usuario: currentUserEmail,
+    ts: serverTimestamp()
+  });
+
+  // Si ya existe una asignación, actualizamos también sus PAX
+  if (isEditAssign && editAssignId) {
+    const refAssign = doc(db,'hotelAssignments', editAssignId);
+    const beforeSnap = await getDoc(refAssign);
+    const beforeAssign = beforeSnap.data() || {};
+
+    const assignUpdate = {
+      adultos: {
+        M: Number(document.getElementById('a-ad-M').value) || 0,
+        F: Number(document.getElementById('a-ad-F').value) || 0,
+        O: Number(document.getElementById('a-ad-O').value) || 0
+      },
+      estudiantes: {
+        M: Number(document.getElementById('a-es-M').value) || 0,
+        F: Number(document.getElementById('a-es-F').value) || 0,
+        O: Number(document.getElementById('a-es-O').value) || 0
+      },
+      adultosTotal:     newAdultos,
+      estudiantesTotal: newEstudiantes,
+      cantidadgrupo:    newCantidad,
+      changedBy: currentUserEmail,
+      updatedAt: serverTimestamp()
+    };
+
+    await updateDoc(refAssign, assignUpdate);
+    await addDoc(collection(db,'historial'),{
+      tipo: 'assign-pax-update',
+      docId: editAssignId,
+      antes: beforeAssign,
+      despues: { ...beforeAssign, ...assignUpdate },
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
+  }
+
+  await loadAsignaciones();
+  await loadGrupos();
+  await renderHoteles();
+  alert('PAX guardados correctamente.');
+}
+
 // Guardar asignación (normaliza fechas + noches + timestamps)
 async function onSubmitAssign(e) {
   e.preventDefault();
@@ -583,34 +771,35 @@ async function onSubmitAssign(e) {
   const existing     = isEditAssign ? asignaciones.find(x => x.id === editAssignId) : null;
   const hotelIdFinal = isEditAssign ? (editHotelId || existing?.hotelId) : editHotelId;
 
-  const gId = document.getElementById('a-grupo').value;
+   const gId = document.getElementById('a-grupo').value;
   if (!gId) return alert('Selecciona un grupo');
 
-  const newAdultos      = Number(document.getElementById('g-adultos').value);
-  const newEstudiantes  = Number(document.getElementById('g-estudiantes').value);
-  const newCantidad     = Number(document.getElementById('g-cantidadgrupo').value);
+  // PAX siempre calculado desde el detalle M/F/O
+  const adSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-ad-${k}`).value || 0), 0);
+  const esSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-es-${k}`).value || 0), 0);
+  const newAdultos     = adSum;
+  const newEstudiantes = esSum;
+  const newCantidad    = adSum + esSum;
 
-  const adSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-ad-${k}`).value), 0);
-  const esSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-es-${k}`).value), 0);
-
-  if (newAdultos + newEstudiantes !== newCantidad) {
-    return alert(`La suma de adultos (${newAdultos}) y estudiantes (${newEstudiantes}) debe ser igual a pasajeros totales (${newCantidad}).`);
-  }
-  if (adSum !== newAdultos) {
-    return alert(`Debes asignar exactamente ${newAdultos} adultos (la suma de sexos no coincide).`);
-  }
-  if (esSum !== newEstudiantes) {
-    return alert(`Debes asignar exactamente ${newEstudiantes} estudiantes (la suma de sexos no coincide).`);
-  }
+  // Actualiza totales visibles (que son de solo lectura)
+  recalcTotalsFromDetail();
 
   const singles    = Number(document.getElementById('a-singles').value)    || 0;
   const dobles     = Number(document.getElementById('a-dobles').value)     || 0;
   const triples    = Number(document.getElementById('a-triples').value)    || 0;
   const cuadruples = Number(document.getElementById('a-cuadruples').value) || 0;
-  const paxHab = singles*1 + dobles*2 + triples*3 + cuadruples*4;
-  if (paxHab > 0 && paxHab !== (newAdultos + newEstudiantes)) {
-    return alert(`El total de personas en habitaciones (${paxHab}) no coincide con el total de adultos + estudiantes (${newAdultos + newEstudiantes}).`);
+
+  const paxHab    = singles*1 + dobles*2 + triples*3 + cuadruples*4;
+  const totalPax  = newAdultos + newEstudiantes;
+  const habCuadran = (paxHab === 0 || paxHab === totalPax);
+
+  if (!habCuadran) {
+    alert(
+      `⚠️ Las habitaciones asignadas (${paxHab}) NO coinciden con el total de adultos + estudiantes (${totalPax}). ` +
+      `La asignación se guardará en estado PENDIENTE.`
+    );
   }
+
 
   // Sync hacia GRUPOS (mantén compatibilidad cantidadgrupo/cantidadGrupo)
   const gRef    = doc(db, 'grupos', gId);
@@ -662,7 +851,7 @@ async function onSubmitAssign(e) {
     adultosTotal:      newAdultos,
     estudiantesTotal:  newEstudiantes,
     cantidadgrupo:     newCantidad,
-    status: 'confirmado',
+    status: habCuadran ? 'confirmado' : 'pendiente',
     changedBy: currentUserEmail,
     updatedAt: serverTimestamp()
   };
