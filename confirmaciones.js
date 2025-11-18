@@ -151,6 +151,23 @@ function formatDMYDownload(date=new Date()){
   const yyyy = dt.getFullYear();
   return `${dd}${mm}${yyyy}`;
 }
+function formatMoney(value, moneda='CLP'){
+  if (value === null || value === undefined || value === '') return '';
+  const num = Number(value);
+  if (!isFinite(num)) return String(value);
+
+  try{
+    return new Intl.NumberFormat('es-CL', {
+      style: 'currency',
+      currency: moneda || 'CLP',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(num);
+  }catch(_){
+    return `${num} ${moneda || ''}`.trim();
+  }
+}
+
 function fileSafe(s=''){
   return s.toString().trim()
     .replace(/[\\/:*?"<>|]/g,'-')
@@ -553,14 +570,83 @@ function injectPdfStyles(){
   .itinerario{ list-style:none; margin:0; padding:0; }
   .it-day{ margin:0 0 3mm 0; }
   .closing{ text-align:center; font-weight:800; margin-top:7mm; }
+
+  /* ───── ESTADO DE CUENTAS DEL VIAJE (FINANZAS) ───── */
+  .finanzas-doc .finanzas-header{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    margin-bottom:6mm;
+  }
+  .finanzas-title{
+    font-size:16pt;
+    font-weight:800;
+    margin:0 0 2mm 0;
+  }
+  .finanzas-subtitle{
+    font-size:11pt;
+    font-weight:600;
+    margin:0 0 1mm 0;
+  }
+  .finanzas-meta span{
+    display:inline-block;
+    font-size:9.5pt;
+    margin-right:4mm;
+  }
+  .finanzas-logo img{
+    max-height:18mm;
+    width:auto;
+  }
+  .finanzas-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:10pt;
+    margin-top:2mm;
+  }
+  .finanzas-table th,
+  .finanzas-table td{
+    border:0.4pt solid #111;
+    padding:2px 3px;
+    vertical-align:top;
+  }
+  .finanzas-table th{
+    text-align:left;
+    background:#f3f4f6;
+    font-weight:700;
+  }
+  .finanzas-table td:nth-child(1),
+  .finanzas-table td:nth-child(2),
+  .finanzas-table td:nth-child(5),
+  .finanzas-table td:nth-child(6){
+    white-space:nowrap;
+  }
+  .finanzas-table .no-rows{
+    text-align:center;
+    font-style:italic;
+    color:#6b7280;
+  }
+  .finanzas-total-label{
+    text-align:right;
+    font-weight:700;
+    padding-top:3px;
+    border-top:0.6pt solid #111;
+  }
+  .finanzas-total-value{
+    font-weight:700;
+    padding-top:3px;
+    border-top:0.6pt solid #111;
+  }
+  .finanzas-footnote{
+    margin-top:6mm;
+    font-size:9pt;
+    color:#4b5563;
+  }
   `;
   const s = document.createElement('style');
   s.id = 'pdf-styles';
   s.textContent = css;
   document.head.appendChild(s);
 }
-
-
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
@@ -716,6 +802,138 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   `;
 }
 
+// ──────────────────────────────────────────────────────────────
+// FINANZAS: leer subcolección finanzas_abonos del grupo
+// ──────────────────────────────────────────────────────────────
+async function fetchFinanzasAbonos(grupoId){
+  const out = [];
+  try{
+    const col = collection(db, 'grupos', grupoId, 'finanzas_abonos');
+    const snap = await getDocs(col);
+    snap.forEach(d => {
+      const x = d.data() || {};
+      const fechaISO = toISO(x.fecha || x.createdAt || x.fechaMovimiento || '');
+      let montoNum = null;
+      ['monto','total','montoCLP','totalCLP'].some(k => {
+        if (typeof x[k] === 'number' && isFinite(x[k])) {
+          montoNum = x[k];
+          return true;
+        }
+        return false;
+      });
+      out.push({
+        id: d.id,
+        fechaISO,
+        asunto: (x.asunto || '').toString(),
+        medio: (x.medio || '').toString(),
+        moneda: (x.moneda || '').toString() || 'CLP',
+        montoNum,
+        comentarios: (x.comentarios || '').toString()
+      });
+    });
+    out.sort((a,b)=> (a.fechaISO || '').localeCompare(b.fechaISO || ''));
+  }catch(e){
+    console.error('Error cargando finanzas_abonos para', grupoId, e);
+  }
+  return out;
+}
+
+// ──────────────────────────────────────────────────────────────
+// FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
+// ──────────────────────────────────────────────────────────────
+function buildFinanzasDoc(grupo, abonos){
+  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const colegio = grupo.colegio || grupo.cliente || '';
+  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
+  const destino = grupo.destino || '';
+  const programa= grupo.programa || '';
+  const ano     = grupo.anoViaje || '';
+
+  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
+
+  const rowsHtml = (abonos && abonos.length)
+    ? abonos.map((a,idx)=>`
+        <tr>
+          <td>${idx+1}</td>
+          <td>${a.fechaISO ? formatShortDate(a.fechaISO) : '—'}</td>
+          <td>${safe(a.asunto)}</td>
+          <td>${safe(a.medio)}</td>
+          <td>${safe(a.moneda || 'CLP')}</td>
+          <td>${a.montoNum != null ? formatMoney(a.montoNum, a.moneda || 'CLP') : ''}</td>
+          <td>${safe(a.comentarios)}</td>
+        </tr>
+      `).join('')
+    : `<tr><td colspan="7" class="no-rows">No hay abonos registrados para este grupo.</td></tr>`;
+
+  const totalesPorMoneda = new Map();
+  (abonos || []).forEach(a => {
+    if (a.montoNum != null) {
+      const key = a.moneda || 'CLP';
+      totalesPorMoneda.set(key, (totalesPorMoneda.get(key) || 0) + Number(a.montoNum));
+    }
+  });
+
+  let tfootHtml = '';
+  if (totalesPorMoneda.size){
+    const lineas = [];
+    totalesPorMoneda.forEach((val, mon) => {
+      lineas.push(`${formatMoney(val, mon)} ${mon}`);
+    });
+    tfootHtml = `
+      <tfoot>
+        <tr>
+          <td colspan="5" class="finanzas-total-label">TOTAL</td>
+          <td colspan="2" class="finanzas-total-value">${lineas.join(' · ')}</td>
+        </tr>
+      </tfoot>`;
+  }
+
+  return `
+    <div class="print-doc finanzas-doc">
+      <div class="finanzas-header">
+        <div class="finanzas-title-block">
+          <div class="finanzas-title">ESTADO DE CUENTAS DEL VIAJE</div>
+          <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
+          <div class="finanzas-meta">
+            ${grupo.numeroNegocio ? `<span>Nº NEGOCIO: ${grupo.numeroNegocio}</span>` : ''}
+            ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
+            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
+          </div>
+        </div>
+        <div class="finanzas-logo">
+          <!-- Ajusta la ruta del logo si es distinta -->
+          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">ABONOS ENTREGADOS AL GRUPO</div>
+        <table class="finanzas-table">
+          <thead>
+            <tr>
+              <th>N°</th>
+              <th>Fecha</th>
+              <th>Actividad / Concepto</th>
+              <th>Medio de pago</th>
+              <th>Moneda</th>
+              <th>Monto</th>
+              <th>Comentario</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+          ${tfootHtml}
+        </table>
+      </div>
+
+      <div class="finanzas-footnote">
+        Documento generado por Turismo RaiTrai para uso del/de la coordinador(a) durante el viaje.
+      </div>
+    </div>
+  `;
+}
+
 /* ──────────────────────────────────────────────────────────────────────
    Carga de opciones (Año, Destino, Programa, Hotel)
 ────────────────────────────────────────────────────────────────────── */
@@ -859,8 +1077,10 @@ function renderTabla(rows){
       <td><span class="badge">${inicioTxt}</span></td>
       <td class="right">
         <button class="btn-add btn-one">CONFIRMACIÓN</button>
+        <button class="btn-add btn-finanzas">FINANZAS</button>
       </td>
     `;
+
     tb.appendChild(tr);
   }
 
@@ -874,9 +1094,75 @@ function renderTabla(rows){
     });
   });
 
+  tb.querySelectorAll('.btn-finanzas').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      const tr = ev.currentTarget.closest('tr');
+      const id = tr?.dataset?.id;
+      if (!id) return;
+      await descargarFinanzas(id);
+    });
+  });
+
   document.getElementById('chkAll').onchange = (ev)=>{
     tb.querySelectorAll('.rowchk').forEach(c=> c.checked = ev.currentTarget.checked);
   };
+}
+
+// ──────────────────────────────────────────────────────────────
+// Descargar PDF de FINANZAS (Estado de cuentas del viaje)
+// ──────────────────────────────────────────────────────────────
+async function descargarFinanzas(grupoId){
+  // 1) Traer datos del grupo
+  const d = await getDoc(doc(db,'grupos', grupoId));
+  if (!d.exists()) return;
+  const g = { id:d.id, ...d.data() };
+
+  // 2) Traer abonos
+  const abonos = await fetchFinanzasAbonos(grupoId);
+
+  // 3) Preparar contenedor oculto y estilos
+  injectPdfStyles();
+  const work = ensurePdfWork();
+  work.innerHTML = buildFinanzasDoc(g, abonos);
+
+  const node = work.querySelector('.finanzas-doc') || work;
+
+  // Fijar tamaño A4 en px para html2canvas
+  const CAPTURE_PX = Math.round(208 * 96 / 25.4);
+  if (node){
+    node.style.width     = CAPTURE_PX + 'px';
+    node.style.minHeight = Math.round(297 * 96 / 25.4) + 'px';
+  }
+  const capW = Math.max(
+    CAPTURE_PX,
+    node.scrollWidth || CAPTURE_PX,
+    Math.ceil(node.getBoundingClientRect().width || CAPTURE_PX)
+  );
+
+  // 4) Nombre de archivo
+  const fechaDescarga = formatDMYDownload(new Date());
+  const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
+  const filename = `Finanzas_${fileSafe(base)}_${fechaDescarga}.pdf`;
+
+  // 5) Exportar con html2pdf (solo local, no usa MiViaje)
+  await ensureHtml2Pdf();
+  await html2pdf().set({
+    margin: 0,
+    filename,
+    pagebreak: { mode: ['css', 'legacy'] },
+    image: { type: 'jpeg', quality: 0.96 },
+    html2canvas: {
+      scale: 2,
+      windowWidth: capW,
+      width: capW,
+      scrollX: 0,
+      scrollY: 0,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      allowTaint: true
+    },
+    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+  }).from(node).save();
 }
 
 /* ──────────────────────────────────────────────────────────────────────
