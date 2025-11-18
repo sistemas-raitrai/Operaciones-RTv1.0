@@ -1,15 +1,4 @@
 // itinerario.js — Editor de Itinerarios (RT v1.0)
-// ======================================================================
-// Novedades en esta versión:
-//  • Botón tri-estado por actividad (⭕/✅/❌) SOLO en edición (editMode).
-//  • Estado global del itinerario: OK / PENDIENTE / RECHAZADO.
-//  • Persistencia en grupo: grupos.{estadoRevisionItinerario}.
-//  • Botón "⚠️ Alertas (n)" + Panel de alertas (grupo actual y otros).
-//  • Motivo obligatorio al pasar a ❌ (rechazado) → queda en actividad y alerta.
-//  • Historial DETALLADO para todas las acciones: crear, editar, borrar,
-//    cambiar revisión, swap día/actividad, editar fecha base, cargar plantilla.
-//  • Se mantiene TODO lo funcional previo.
-// ======================================================================
 
 // —————————————————————————————————
 // 0) Importes de Firebase
