@@ -171,7 +171,17 @@
       width:100%; padding:.5em; border:none;
       border-radius:4px; cursor:pointer; font-weight:bold;
     }
-     
+
+    .group-hab-warning {
+      color: #c00;
+      font-weight: 700;
+      margin-left: .25em;
+    }
+    input.readonly {
+      background: #f5f5f5;
+      color: #555;
+    }
+
     /* ========== Para el modal de asignar, filas limpias ========== */
     .assign-row {
       display: flex;
@@ -324,7 +334,8 @@
       </div>
 
       <div style="margin-top:1em;">
-        <button type="submit">Guardar Asignación</button>
+        <button type="button" id="btnSavePax" class="btn sec">💾 Guardar pasajeros</button>
+        <button type="submit" class="btn pri">🛏 Guardar habitaciones / asignación</button>
         <button type="button" id="assign-cancel">Cancelar</button>
       </div>
     </form>
