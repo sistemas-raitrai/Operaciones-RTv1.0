@@ -94,25 +94,30 @@ async function ensureHtml2Pdf(){
 
 function ensurePdfWork(){
   let el = document.getElementById('pdf-work');
+
+  // Si no existe (por si lo quitas del HTML), lo creamos
   if (!el){
     el = document.createElement('div');
     el.id = 'pdf-work';
-    // IMPORTANTE: sin visibility:hidden (provoca PDF en blanco)
-    el.style.cssText = [
-      'position:fixed',
-      'left:-10000pxx',
-      'top:0',
-      'width:210mm',
-      'min-height:297mm',
-      'display:block',
-      'opacity:0',              // invisible, pero renderizable
-      'pointer-events:none',    // no captura clicks
-      'background:#ffffff'
-    ].join(';');
     document.body.appendChild(el);
   }
+
+  // Estilo unificado: SIEMPRE en (0,0), invisible pero renderizable
+  el.setAttribute('aria-hidden', 'true');
+  el.style.position       = 'fixed';
+  el.style.left           = '0';
+  el.style.top            = '0';
+  el.style.width          = '210mm';
+  el.style.minHeight      = '297mm';
+  el.style.display        = 'block';
+  el.style.opacity        = '0';           // no se ve
+  el.style.pointerEvents  = 'none';        // no captura clicks
+  el.style.background     = '#ffffff';
+  el.style.zIndex         = '-1';          // queda detrás de todo
+
   return el;
 }
+
 
 
 function toISO(x){
@@ -1116,12 +1121,6 @@ function renderTabla(rows){
 // ──────────────────────────────────────────────────────────────
 // Descargar PDF de FINANZAS (Estado de cuentas del viaje)
 // ──────────────────────────────────────────────────────────────
-// ──────────────────────────────────────────────────────────────
-// Descargar PDF de FINANZAS (Estado de cuentas del viaje)
-// ──────────────────────────────────────────────────────────────
-// ──────────────────────────────────────────────────────────────
-// Descargar PDF de FINANZAS (Estado de cuentas del viaje)
-// ──────────────────────────────────────────────────────────────
 async function descargarFinanzas(grupoId){
   // 1) Traer datos del grupo
   const d = await getDoc(doc(db,'grupos', grupoId));
@@ -1133,30 +1132,25 @@ async function descargarFinanzas(grupoId){
 
   // 3) Preparar contenedor oculto y estilos
   injectPdfStyles();
-  const work = ensurePdfWork();
+  const work = ensurePdfWork();                 // ← ya lo deja en (0,0) invisible
   work.innerHTML = buildFinanzasDoc(g, abonos);
-
-  // *** IMPORTANTE: mover el contenedor a la vista para que no lo corte a la izquierda ***
-  work.style.position = 'absolute';
-  work.style.left = '0';
-  work.style.top = '0';
 
   const node = work.querySelector('.finanzas-doc') || work;
 
-  // Calculamos ancho real de captura
-  const SAFE_PX = Math.round(208 * 96 / 25.4);  // ≈ ancho A4 “seguro”
+  // 4) Calcular ancho real de captura (zona segura A4)
+  const SAFE_PX = Math.round(208 * 96 / 25.4);  // ≈ ancho 208mm en px
   const capW = Math.max(
     SAFE_PX,
     node.scrollWidth || SAFE_PX,
     Math.ceil(node.getBoundingClientRect().width || SAFE_PX)
   );
 
-  // 4) Nombre de archivo
+  // 5) Nombre de archivo
   const fechaDescarga = formatDMYDownload(new Date());
   const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
   const filename = `Finanzas_${fileSafe(base)}_${fechaDescarga}.pdf`;
 
-  // 5) Exportar con html2pdf (solo local, no usa MiViaje)
+  // 6) Exportar con html2pdf (local, sin MiViaje)
   await ensureHtml2Pdf();
   await html2pdf().set({
     margin: 0,
@@ -1175,9 +1169,6 @@ async function descargarFinanzas(grupoId){
     },
     jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
   }).from(node).save();
-
-  // (opcional) si quieres, después de generar puedes volver a esconderlo lejos:
-  // work.style.left = '-10000px';
 }
 
 /* ──────────────────────────────────────────────────────────────────────
