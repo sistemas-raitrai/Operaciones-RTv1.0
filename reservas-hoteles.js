@@ -1156,7 +1156,7 @@ async function abrirModalHotel(hotelId){
   // 1) DETALLE POR DÍA (primero)
   const bloqueDia = buildBloqueDia(rec);
   if (bloqueDia) {
-    cuerpo += `DETALLE POR DÍA:\n${bloqueDia.toUpperCase()}\n\n`;
+    cuerpo += `DETALLE POR DÍA: ➡️ Fecha \n${bloqueDia.toUpperCase()}\n\n`;
   } else {
     cuerpo += `DETALLE POR DÍA:\n( SIN REGISTROS )\n\n`;
   }
