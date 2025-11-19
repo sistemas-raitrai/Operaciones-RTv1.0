@@ -1009,6 +1009,11 @@ function buildFinanzasDoc(grupo, abonos){
             ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
+          <div class="finanzas-meta">
+            ${grupo ? `<span>Nº PAX: ${grupo.cantidadGrupo}</span>` : ''}
+            ${grupo ? `<span>ESTUDIANTES: ${grupo.estudiantes}</span>` : ''}
+            ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
+          </div>
         </div>
         <div class="finanzas-logo">
           <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
