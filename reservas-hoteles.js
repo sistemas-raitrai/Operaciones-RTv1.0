@@ -1172,14 +1172,13 @@ async function abrirModalHotel(hotelId){
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
     const alm = Number(tot.alm||0), cen = Number(tot.cen||0);
     const totalG = alm + cen;
-    cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG})\n`;
+    cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG})\n COMIDAS`;
   }
 
   // 3) TOTALES FINALES (al final, sin “saldo” ni “alertas”)
-  cuerpo += `\nTOTAL GRUPOS= ${totalServ}\n`;
-  cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n GRUPOS`;
-  
-  cuerpo += `- CENAS: ${totalCenHotel}\n GRUPOS`;
+  cuerpo += `\nTOTAL DE COMIDAS= ${totalServ}\n`;
+  // cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
+  // cuerpo += `- CENAS: ${totalCenHotel}\n`;
 
 
   // seteo de campos + datasets
