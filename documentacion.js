@@ -1,4 +1,4 @@
-// confirmaciones.js
+// documentacion.js
 // Página de lotes PDF para confirmaciones (filtrado + exportación)
 // NOTA: Requiere tu './firebase-core.js' (exporta { app, db })
 
