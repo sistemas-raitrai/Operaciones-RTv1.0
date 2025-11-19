@@ -1176,9 +1176,9 @@ async function abrirModalHotel(hotelId){
   }
 
   // 3) TOTALES FINALES (al final, sin “saldo” ni “alertas”)
-  cuerpo += `\nTOTAL = ${totalServ}\n`;
-  cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
-  cuerpo += `- CENAS: ${totalCenHotel}\n`;
+  cuerpo += `\nTOTAL GRUPOS= ${totalServ}\n`;
+  cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n GRUPOS`;
+  cuerpo += `- CENAS: ${totalCenHotel}\n GRUPOS`;
 
 
   // seteo de campos + datasets
