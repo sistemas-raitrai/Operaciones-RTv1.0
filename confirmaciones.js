@@ -549,7 +549,7 @@ function injectPdfStyles(){
     width:208mm !important;           /* zona segura para evitar cortes */
     min-height:297mm;
     box-sizing:border-box;
-    padding:12mm 12mm 14mm 100mm;      /* márgenes internos un poco mayores */
+    padding:12mm 12mm 14mm 200mm;      /* márgenes internos un poco mayores */
     margin:0 auto !important;
     font:11pt/1.28 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   }
