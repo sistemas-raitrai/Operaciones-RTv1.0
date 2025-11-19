@@ -7,6 +7,9 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
+// Clave requerida para modificar PAX / ADULTOS / ESTUDIANTES
+const PAX_PASSWORD = 'Nacho123!';
+
 
 // Propiedades en el mismo orden que aparecen en la tabla
 const camposFire = [
@@ -713,6 +716,9 @@ async function cargarYMostrarTabla() {
       const docId = $td.attr('data-doc-id');
       const orig  = $td.attr('data-original');
 
+      // Si no hay campo o docId (ej. celda fija), salir
+      if (!campo || !docId) return;
+
       // valor escrito por el usuario
       const raw = $td.text().trim();
 
@@ -744,6 +750,23 @@ async function cargarYMostrarTabla() {
       // Si no cambió realmente, salir
       if (String(orig ?? '') === String(displayText)) return;
 
+      // ---------- PROTECCIÓN CAMPOS SENSIBLES (PAX / ADULTOS / ESTUDIANTES) ----------
+      const esCampoPax =
+        campo === 'cantidadgrupo' ||  // PAX
+        campo === 'adultos'       ||  // ADULTOS
+        campo === 'estudiantes';      // ESTUDIANTES;
+
+      if (esCampoPax) {
+        const clave = window.prompt('⚠️ Para modificar PAX / ADULTOS / ESTUDIANTES, ingresa la clave:');
+        if (clave !== PAX_PASSWORD) {
+          alert('Clave incorrecta. No se guardaron los cambios.');
+          // Revertimos el texto a su valor original
+          $td.text(String(orig ?? ''));
+          return;
+        }
+      }
+      // ------------------------------------------------------------------------------
+
       try {
         // Actualiza en Firestore con el TIPO correcto
         await updateDoc(doc(db, 'grupos', docId), { [campo]: nuevoValor });
@@ -772,6 +795,7 @@ async function cargarYMostrarTabla() {
         $td.text(String(orig ?? ''));
       }
     });
+
 
   // 6) Toggle edición
   $('#btn-toggle-edit').off('click').on('click', async () => {
