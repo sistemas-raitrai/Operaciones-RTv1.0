@@ -1010,9 +1010,18 @@ function buildFinanzasDoc(grupo, abonos){
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
           <div class="finanzas-meta">
-            ${grupo ? `<span>Nº PAX: ${grupo.cantidadGrupo}</span>` : ''}
+            <span>CANTIDAD PAXS:</span>
             ${grupo ? `<span>ESTUDIANTES: ${grupo.estudiantes}</span>` : ''}
             ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
+            ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
+          </div>
+          <div class="finanzas-subtitle"> 
+            ${grupo ? `<span>COORDINADOR(A): ${grupo.coordinador}</span>` : ''}
+          </div>
+          <div class="finanzas-meta">
+            ${coordinadores(grupo.coordinador) ? `<span>CORREO: ${coordinadores.correo}</span>` : ''}
+            ${coordinadores(grupo.coordinador) ? `<span>TELÉFONO: ${coordinadores.telefono}</span>` : ''}
+            ${coordinadores(grupo.coordinador) ? `<span>RUT: ${coordinadores.rut}</span>` : ''}
           </div>
         </div>
         <div class="finanzas-logo">
@@ -1030,7 +1039,7 @@ function buildFinanzasDoc(grupo, abonos){
               <th>Actividad / Concepto</th>
               <th>Medio de pago</th>
               <th>Moneda</th>
-              <th>Monto</th>
+              <th>VValor</th>
               <th>Comentario</th>
             </tr>
           </thead>
