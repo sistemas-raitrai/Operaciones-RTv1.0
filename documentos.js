@@ -1019,9 +1019,10 @@ function buildFinanzasDoc(grupo, abonos){
             <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           </div>
           <div class="finanzas-meta">
-            ${coordinadores(grupo.coordinador) ? `<span>CORREO: ${coordinadores.correo}</span>` : ''}
-            ${coordinadores(grupo.coordinador) ? `<span>TELÉFONO: ${coordinadores.telefono}</span>` : ''}
-            ${coordinadores(grupo.coordinador) ? `<span>RUT: ${coordinadores.rut}</span>` : ''}
+            <span>CANTIDAD PAXS:</span>
+            ${grupo ? `<span>ESTUDIANTES: ${grupo.estudiantes}</span>` : ''}
+            ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
+            ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
           </div>
         </div>
         <div class="finanzas-logo">
