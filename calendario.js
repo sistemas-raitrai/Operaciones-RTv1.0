@@ -297,17 +297,28 @@ async function generarTablaCalendario(userEmail) {
   });
 
   // 8) Toggle modo edición (activa contenteditable en todas las celdas del body)
+  // 8) Toggle modo edición
+  //    Solo las celdas de itinerario (las que tienen data-fecha) serán editables.
+  //    Las columnas fijas (incluida PAX) quedan siempre deshabilitadas.
   $('#btn-toggle-edit').off('click').on('click', async () => {
     editMode = !editMode;
+
     $('#btn-toggle-edit')
       .text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
-    $('#tablaCalendario tbody td').attr('contenteditable', editMode);
+
+    // Solo hacemos contenteditable en las celdas que representan itinerario (tienen data-fecha)
+    $('#tablaCalendario tbody td').each(function () {
+      const tieneFecha = $(this).attr('data-fecha'); // solo las columnas de días lo tienen
+      $(this).attr('contenteditable', editMode && !!tieneFecha);
+    });
+
     await addDoc(collection(db, 'historial'), {
       accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
       usuario: userEmail,
       timestamp: new Date()
     });
   });
+
 
   // 9) Guardar cambios al salir de una celda editable del itinerario
   $('#tablaCalendario tbody').on('focusout', 'td[contenteditable]', async function () {
