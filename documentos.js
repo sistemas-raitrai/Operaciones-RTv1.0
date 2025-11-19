@@ -1179,7 +1179,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
     const nombreCoord = (coord.nombre || coord.nombreCompleto || '').toString().trim();
     const rutCoord    = (coord.rut || coord.RUT || '').toString().trim();
     const telCoord    = (coord.telefono || coord.fono || coord.celular || '').toString().trim();
-    const notasCoord  = (coord.notas || '').toString().trim();
+    const correoCoord  = (coord.correo || '').toString().trim();
 
     if (!nombreCoord && !rutCoord && !telCoord && !notasCoord) return '';
 
@@ -1190,7 +1190,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
           ${nombreCoord ? `<div><strong>Nombre:</strong> ${nombreCoord.toUpperCase()}</div>` : ''}
           ${rutCoord ? `<div><strong>RUT:</strong> ${rutCoord}</div>` : ''}
           ${telCoord ? `<div><strong>Teléfono:</strong> ${telCoord}</div>` : ''}
-          ${notasCoord ? `<div><strong>Notas:</strong> ${notasCoord}</div>` : ''}
+          ${correoCoord ? `<div><strong>Correo:</strong> ${correoCoord}</div>` : ''}
         </div>
       </div>
     `;
@@ -1242,14 +1242,13 @@ function buildFinanzasDoc(grupo, abonos, coord){
       </div>
 
       <div class="finanzas-footnote">
-        Documento generado por Turismo RaiTrai para uso del/de la coordinador(a) durante el viaje.
-        
-        NOMBRE:
-        
-        FECHA:
-
-        
-        FIRMA:
+       NOMBRE COORDINADOR:
+      </div>
+      <div class="finanzas-footnote">
+       FECHA:
+      </div>
+      <div class="finanzas-footnote">
+       FIRMA:
       </div>
     </div>
   `;
