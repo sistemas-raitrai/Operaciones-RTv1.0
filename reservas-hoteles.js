@@ -1176,7 +1176,7 @@ async function abrirModalHotel(hotelId){
   }
 
   // 3) TOTALES FINALES (al final, sin “saldo” ni “alertas”)
-  cuerpo += `\nTOTAL DE COMIDAS= ${totalServ}\n`;
+  // cuerpo += `\nTOTAL DE COMIDAS= ${totalServ}\n`;
   // cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
   // cuerpo += `- CENAS: ${totalCenHotel}\n`;
 
