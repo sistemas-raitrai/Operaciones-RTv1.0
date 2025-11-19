@@ -1002,7 +1002,7 @@ function buildFinanzasDoc(grupo, abonos){
     <div class="print-doc finanzas-doc">
       <div class="finanzas-header">
         <div class="finanzas-title-block">
-          <div class="finanzas-title">ESTADO DE CUENTAS DEL VIAJE</div>
+          <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
             ${grupo.numeroNegocio ? `<span>Nº NEGOCIO: ${grupo.numeroNegocio}</span>` : ''}
@@ -1011,13 +1011,12 @@ function buildFinanzasDoc(grupo, abonos){
           </div>
         </div>
         <div class="finanzas-logo">
-          <!-- Ajusta la ruta del logo si es distinta -->
           <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
         </div>
       </div>
 
       <div class="sec">
-        <div class="sec-title">ABONOS ENTREGADOS AL GRUPO</div>
+        <div class="sec-title">ABONOS ENTREGADOS AL COORDINADOR(A)</div>
         <table class="finanzas-table">
           <thead>
             <tr>
