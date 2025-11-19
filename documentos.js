@@ -1123,7 +1123,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
           <div class="finanzas-meta">
-            <span>CANTIDAD PAXS:</span>
+            <span>CANTIDAD DE PASAJEROS:</span>
             ${grupo ? `<span>ESTUDIANTES: ${grupo.estudiantes}</span>` : ''}
             ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
             ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
