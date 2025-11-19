@@ -53,7 +53,7 @@ const fmtDiaMayus = (iso) => {
   const [y,m,d] = iso.split('-');
   const di = String(parseInt(d,10));
   const mi = MES_ABR[(parseInt(m,10)-1) || 0] || '';
-  return `${di} DE ${mi}`;
+  return `➡️ Fecha ${di} DE ${mi}`;
 };
 
 // === Ordenación A→Z (soporta español y números) ===
@@ -1156,7 +1156,7 @@ async function abrirModalHotel(hotelId){
   // 1) DETALLE POR DÍA (primero)
   const bloqueDia = buildBloqueDia(rec);
   if (bloqueDia) {
-    cuerpo += `DETALLE POR DÍA: ➡️ Fecha \n${bloqueDia.toUpperCase()}\n\n`;
+    cuerpo += `DETALLE POR DÍA:\n${bloqueDia.toUpperCase()}\n\n`;
   } else {
     cuerpo += `DETALLE POR DÍA:\n( SIN REGISTROS )\n\n`;
   }
