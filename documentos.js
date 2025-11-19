@@ -1015,15 +1015,6 @@ function buildFinanzasDoc(grupo, abonos){
             ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
             ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
           </div>
-          <div class="finanzas-subtitle"> 
-            <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
-          </div>
-          <div class="finanzas-meta">
-            <span>CANTIDAD PAXS:</span>
-            ${grupo ? `<span>ESTUDIANTES: ${grupo.estudiantes}</span>` : ''}
-            ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
-            ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
-          </div>
         </div>
         <div class="finanzas-logo">
           <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
