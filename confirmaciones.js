@@ -939,6 +939,13 @@ function buildFinanzasDoc(grupo, abonos){
 
       <div class="finanzas-footnote">
         Documento generado por Turismo RaiTrai para uso del/de la coordinador(a) durante el viaje.
+        
+        NOMBRE:
+        
+        FECHA:
+
+        
+        FIRMA:
       </div>
     </div>
   `;
