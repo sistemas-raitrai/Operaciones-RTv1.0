@@ -658,6 +658,70 @@ function injectPdfStyles(){
   document.head.appendChild(s);
 }
 
+/* ======================================================================
+   NUEVO: IMPRESIÓN NATIVA (SIN HTML2PDF)
+   - Reusa #pdf-work como contenedor oculto
+   - Oculta toda la UI en @media print y muestra sólo .print-doc
+====================================================================== */
+function injectNativePrintStyles(){
+  if (document.getElementById('native-print-styles')) return;
+
+  const css = `
+    @media print{
+      html, body{
+        background:#ffffff !important;
+        color:#000000 !important;
+      }
+
+      /* Oculta todo lo demás y deja sólo el contenido imprimible */
+      body > *:not(#pdf-work){
+        display:none !important;
+      }
+
+      #pdf-work{
+        display:block !important;
+        position:static !important;
+        opacity:1 !important;
+        pointer-events:auto !important;
+        width:auto !important;
+        min-height:auto !important;
+        z-index:1 !important;
+        background:#ffffff !important;
+      }
+
+      #pdf-work .print-doc{
+        page-break-after:always;
+      }
+      #pdf-work .print-doc:last-child{
+        page-break-after:auto;
+      }
+    }
+  `;
+
+  const s = document.createElement('style');
+  s.id = 'native-print-styles';
+  s.textContent = css;
+  document.head.appendChild(s);
+}
+
+/**
+ * Recibe HTML con uno o varios <div class="print-doc"> y abre el
+ * diálogo de impresión del navegador usando #pdf-work como contenedor.
+ */
+function imprimirHtml(html){
+  injectPdfStyles();          // estilos A4 de .print-doc y finanzas
+  injectNativePrintStyles();
+
+  const work = ensurePdfWork();
+  work.innerHTML = html;
+
+  // pequeño delay para que el layout se calcule antes de imprimir
+  setTimeout(() => {
+    window.focus();
+    window.print();
+  }, 150);
+}
+
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
   const fechaInicioViajeISO = computeInicioSoloPrimerVueloIda(vuelosNorm); // ← regla solicitada
@@ -810,6 +874,42 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       <div class="closing">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
     </div>
   `;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Helper: construir HTML de confirmación para un grupo
+// ──────────────────────────────────────────────────────────────
+async function buildConfirmacionHTML(grupoId){
+  // 1) Traer el grupo
+  const d = await getDoc(doc(db,'grupos', grupoId));
+  if (!d.exists()) return '';
+  const g = { id:d.id, ...d.data() };
+
+  // 2) Datos necesarios para render local (igual que antes en descargarUno)
+  const vuelosDocs = await loadVuelosInfo(g);
+  const vuelosNorm = (vuelosDocs || []).map(normalizeVuelo);
+  const hoteles    = await loadHotelesInfo(g);
+
+  // 3) Fechas para el itinerario (si aplica)
+  const fechas = (() => {
+    if (g.itinerario && typeof g.itinerario==='object') {
+      return Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
+    }
+    if (g.fechaInicio && g.fechaFin) {
+      const out=[]; const A=toISO(g.fechaInicio), B=toISO(g.fechaFin);
+      if(A&&B){
+        const a=new Date(A), b=new Date(B);
+        for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){
+          out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+        }
+      }
+      return out;
+    }
+    return [];
+  })();
+
+  // 4) Devuelve el HTML que antes se mandaba a html2pdf
+  return buildPrintDoc(g, vuelosNorm, hoteles, fechas);
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -1126,7 +1226,7 @@ function renderTabla(rows){
 }
 
 // ──────────────────────────────────────────────────────────────
-// Descargar PDF de FINANZAS (Estado de cuentas del viaje)
+// FINANZAS: imprimir "ESTADO DE CUENTAS DEL VIAJE"
 // ──────────────────────────────────────────────────────────────
 async function descargarFinanzas(grupoId){
   // 1) Traer datos del grupo
@@ -1137,103 +1237,20 @@ async function descargarFinanzas(grupoId){
   // 2) Traer abonos
   const abonos = await fetchFinanzasAbonos(grupoId);
 
-  // 3) Preparar contenedor oculto y estilos
-  injectPdfStyles();
-  const work = ensurePdfWork();                 // ← ya lo deja en (0,0) invisible
-  work.innerHTML = buildFinanzasDoc(g, abonos);
-
-  const node = work.querySelector('.finanzas-doc') || work;
-
-  // 4) Calcular ancho real de captura (zona segura A4)
-  const SAFE_PX = Math.round(190 * 96 / 25.4);  // ≈ ancho 208mm en px
-  const capW = Math.max(
-    SAFE_PX,
-    node.scrollWidth || SAFE_PX,
-    Math.ceil(node.getBoundingClientRect().width || SAFE_PX)
-  );
-
-  // 5) Nombre de archivo
-  const fechaDescarga = formatDMYDownload(new Date());
-  const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
-  const filename = `Finanzas_${fileSafe(base)}_${fechaDescarga}.pdf`;
-
-  // 6) Exportar con html2pdf (local, sin MiViaje)
-  await ensureHtml2Pdf();
-  await html2pdf().set({
-    margin: 0,
-    filename,
-    pagebreak: { mode: ['css', 'legacy'] },
-    image: { type: 'jpeg', quality: 0.96 },
-    html2canvas: {
-      scale: 2,
-      windowWidth: capW,
-      width: capW,
-      scrollX: 0,
-      scrollY: 0,
-      backgroundColor: '#ffffff',
-      useCORS: true,
-      allowTaint: true
-    },
-    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-  }).from(node).save();
+  // 3) Construir el HTML y mandar a imprimir
+  const html = buildFinanzasDoc(g, abonos);
+  imprimirHtml(html);
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────
-   Exportación a PDF (uno / lote)
+   Exportación / IMPRESIÓN de CONFIRMACIÓN (uno)
 ────────────────────────────────────────────────────────────────────── */
 async function descargarUno(grupoId){
-  // Trae el grupo (para nombre y para fallback local)
-  const d = await getDoc(doc(db,'grupos', grupoId));
-  if (!d.exists()) return;
-  const g = { id:d.id, ...d.data() };
-
-  // Nombre de archivo (DDMMAAAA)
-  const fechaDescarga = formatDMYDownload(new Date());
-  const base = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || 'Grupo';
-  const filename = `Conf_${fileSafe(base)}_${fechaDescarga}.pdf`;
-
-  // ====== PREPAREMOS FALLBACK LOCAL (por si MiViaje no sirve) ======
-  // Datos necesarios para render local
-  const vuelosDocs = await loadVuelosInfo(g);
-  const vuelosNorm = (vuelosDocs || []).map(normalizeVuelo);
-  const hoteles    = await loadHotelesInfo(g);
-
-  // Fechas para el itinerario (si aplica)
-  const fechas = (() => {
-    if (g.itinerario && typeof g.itinerario==='object') {
-      return Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
-    }
-    if (g.fechaInicio && g.fechaFin) {
-      const out=[]; const A=toISO(g.fechaInicio), B=toISO(g.fechaFin);
-      if(A&&B){
-        const a=new Date(A), b=new Date(B);
-        for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){
-          out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
-        }
-      }
-      return out;
-    }
-    return [];
-  })();
-
-  // Render local oculto
-  injectPdfStyles();                   // estilos A4
-  const work = ensurePdfWork();        // crea #pdf-work si no existe
-  work.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas);
-
-  // Fijar ancho A4 SEGURO en px para html2canvas (basado en 190mm x 270mm)
-  const target = work.querySelector('.print-doc');
-  const CAPTURE_PX = Math.round(190 * 96 / 25.4); // ≈ ancho 190mm en px
-  if (target){
-    target.style.width = CAPTURE_PX + 'px';
-    target.style.minHeight = Math.round(270 * 96 / 25.4) + 'px';
-  }
-
-
-  // ====== PRUEBA MI VIAJE y si se cae/recorta → fallback local ======
-  await exportarPDFconFallback({ grupoId: g.id, node: target || work, filename });
+  const html = await buildConfirmacionHTML(grupoId);
+  if (!html) return;
+  imprimirHtml(html);
 }
-
 
 async function descargarSeleccionados(){
   const tb = document.getElementById('tbody');
@@ -1250,20 +1267,35 @@ async function descargarTodos(){
 async function descargarLote(ids){
   if (!ids.length) return;
   const prog = document.getElementById('progressTxt');
-  let ok=0, fail=0;
-  for (let i=0;i<ids.length;i++){
-    prog.textContent = `Generando ${i+1}/${ids.length}…`;
+  let ok = 0, fail = 0;
+  const partes = [];
+
+  for (let i = 0; i < ids.length; i++){
+    prog.textContent = `Preparando ${i+1}/${ids.length}…`;
     try{
-      await descargarUno(ids[i]);
-      ok++;
+      const html = await buildConfirmacionHTML(ids[i]);
+      if (html){
+        partes.push(html);   // cada html trae su <div class="print-doc">
+        ok++;
+      }else{
+        fail++;
+      }
     }catch(e){
-      console.error('PDF error', ids[i], e);
+      console.error('Error generando confirmación', ids[i], e);
       fail++;
     }
   }
+
   prog.textContent = `Listo: ${ok} ok${fail?`, ${fail} con error`:''}.`;
   setTimeout(()=> prog.textContent = '', 4000);
+
+  if (!partes.length) return;
+
+  // Un solo documento con varias páginas .print-doc
+  const htmlLote = partes.join('');
+  imprimirHtml(htmlLote);
 }
+
 
 async function pdfDesdeMiViaje(grupoId, filename){
   const SAFE_PX = Math.round(190 * 96 / 25.4); // zona segura
