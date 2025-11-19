@@ -610,7 +610,7 @@ function injectPdfStyles(){
   .finanzas-table{
     width:100%;
     border-collapse:collapse;
-    font-size:10pt;
+    font-size:9.5pt;          /* un poco más pequeño para más columnas */
     margin-top:2mm;
   }
   .finanzas-table th,
@@ -624,10 +624,7 @@ function injectPdfStyles(){
     background:#f3f4f6;
     font-weight:700;
   }
-  .finanzas-table td:nth-child(1),
-  .finanzas-table td:nth-child(2),
-  .finanzas-table td:nth-child(5),
-  .finanzas-table td:nth-child(6){
+  .finanzas-table .nowrap{
     white-space:nowrap;
   }
   .finanzas-table .no-rows{
@@ -651,6 +648,7 @@ function injectPdfStyles(){
     font-size:9pt;
     color:#4b5563;
   }
+
   `;
   const s = document.createElement('style');
   s.id = 'pdf-styles';
@@ -923,20 +921,25 @@ async function fetchFinanzasAbonos(grupoId){
     snap.forEach(d => {
       const x = d.data() || {};
       const fechaISO = toISO(x.fecha || x.createdAt || x.fechaMovimiento || '');
+
+      // 👉 AHORA PRIORIZA "valor" (tu esquema actual)
       let montoNum = null;
-      ['monto','total','montoCLP','totalCLP'].some(k => {
+      ['valor','monto','total','montoCLP','totalCLP'].some(k => {
         if (typeof x[k] === 'number' && isFinite(x[k])) {
           montoNum = x[k];
           return true;
         }
         return false;
       });
+
+      const moneda = (x.moneda || 'CLP').toString().trim().toUpperCase();
+
       out.push({
         id: d.id,
         fechaISO,
         asunto: (x.asunto || '').toString(),
         medio: (x.medio || '').toString(),
-        moneda: (x.moneda || '').toString() || 'CLP',
+        moneda: moneda || 'CLP',
         montoNum,
         comentarios: (x.comentarios || '').toString()
       });
@@ -949,9 +952,70 @@ async function fetchFinanzasAbonos(grupoId){
 }
 
 // ──────────────────────────────────────────────────────────────
+// COORDINADOR(A): buscar datos en colección "coordinadores"
+// ──────────────────────────────────────────────────────────────
+function slugCoordinadorName(name){
+  return norm(name || '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+async function fetchCoordinadorPrincipal(grupo){
+  try{
+    const nombres = [];
+
+    if (Array.isArray(grupo.coordinadores) && grupo.coordinadores.length){
+      grupo.coordinadores.forEach(n => {
+        if (n) nombres.push(String(n));
+      });
+    }
+    if (grupo.coordinador){
+      nombres.push(String(grupo.coordinador));
+    }
+
+    if (!nombres.length) return null;
+
+    const baseName = nombres[0];
+    const slug = slugCoordinadorName(baseName);
+
+    // 1) Intento directo por ID (ej: "aldo-hip")
+    try{
+      const docRef = doc(db, 'coordinadores', slug);
+      const d = await getDoc(docRef);
+      if (d.exists()){
+        return { id: d.id, ...d.data() };
+      }
+    }catch(e){ /* noop */ }
+
+    // 2) Fallback: recorrer colección y emparejar por nombre normalizado
+    const snap = await getDocs(collection(db, 'coordinadores'));
+    const targetNorm = norm(baseName);
+    let best = null;
+
+    snap.forEach(dd => {
+      const x = dd.data() || {};
+      const n = norm(x.nombre || dd.id || '');
+      if (!n) return;
+
+      if (n === targetNorm){
+        best = { id: dd.id, ...x };
+      } else if (!best && (n.includes(targetNorm) || targetNorm.includes(n))){
+        best = { id: dd.id, ...x };
+      }
+    });
+
+    return best;
+  }catch(e){
+    console.error('Error buscando coordinador principal', e);
+    return null;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
 // ──────────────────────────────────────────────────────────────
-function buildFinanzasDoc(grupo, abonos){
+function buildFinanzasDoc(grupo, abonos, coord){
   const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
   const colegio = grupo.colegio || grupo.cliente || '';
   const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
@@ -961,19 +1025,44 @@ function buildFinanzasDoc(grupo, abonos){
 
   const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
 
+  // ── MONEDAS PRESENTES → una columna por moneda que tenga algún valor
+  const monedas = (() => {
+    const found = new Set();
+    (abonos || []).forEach(a => {
+      if (a && a.montoNum != null){
+        const m = (a.moneda || 'CLP').toString().trim() || 'CLP';
+        if (m) found.add(m);
+      }
+    });
+    const pref = ['CLP','BRL','USD','EUR','ARS'];
+    const out = [];
+    pref.forEach(m => { if (found.has(m)) { out.push(m); found.delete(m); }});
+    return out.concat([...found].sort());
+  })();
+
+  const headerMonedas = monedas.map(m => `<th>${m}</th>`).join('');
+  const colCount = 4 + monedas.length + 1; // N°, Fecha, Concepto, Medio, [monedas...], Comentario
+
   const rowsHtml = (abonos && abonos.length)
-    ? abonos.map((a,idx)=>`
-        <tr>
-          <td>${idx+1}</td>
-          <td>${a.fechaISO ? formatShortDate(a.fechaISO) : '—'}</td>
-          <td>${safe(a.asunto)}</td>
-          <td>${safe(a.medio)}</td>
-          <td>${safe(a.moneda || 'CLP')}</td>
-          <td>${a.montoNum != null ? formatMoney(a.montoNum, a.moneda || 'CLP') : ''}</td>
-          <td>${safe(a.comentarios)}</td>
-        </tr>
-      `).join('')
-    : `<tr><td colspan="7" class="no-rows">No hay abonos registrados para este grupo.</td></tr>`;
+    ? abonos.map((a,idx)=>{
+        const fechaTxt = a.fechaISO ? formatShortDate(a.fechaISO) : '—';
+        const celdasMon = monedas.map(m => {
+          const show = (a.montoNum != null && (a.moneda || 'CLP') === m);
+          const valor = show ? formatMoney(a.montoNum, m) : '';
+          return `<td class="nowrap">${valor}</td>`;
+        }).join('');
+        return `
+          <tr>
+            <td class="nowrap">${idx+1}</td>
+            <td class="nowrap">${fechaTxt}</td>
+            <td>${safe(a.asunto)}</td>
+            <td class="nowrap">${safe(a.medio)}</td>
+            ${celdasMon}
+            <td>${safe(a.comentarios)}</td>
+          </tr>
+        `;
+      }).join('')
+    : `<tr><td colspan="${colCount}" class="no-rows">No hay abonos registrados para este grupo.</td></tr>`;
 
   const totalesPorMoneda = new Map();
   (abonos || []).forEach(a => {
@@ -984,19 +1073,43 @@ function buildFinanzasDoc(grupo, abonos){
   });
 
   let tfootHtml = '';
-  if (totalesPorMoneda.size){
-    const lineas = [];
-    totalesPorMoneda.forEach((val, mon) => {
-      lineas.push(`${formatMoney(val, mon)} ${mon}`);
-    });
+  if (totalesPorMoneda.size && monedas.length){
+    const celdasTotales = monedas.map(m => {
+      const val = totalesPorMoneda.get(m);
+      return `<td class="finanzas-total-value">${val != null ? formatMoney(val, m) : ''}</td>`;
+    }).join('');
     tfootHtml = `
       <tfoot>
         <tr>
-          <td colspan="5" class="finanzas-total-label">TOTAL</td>
-          <td colspan="2" class="finanzas-total-value">${lineas.join(' · ')}</td>
+          <td colspan="4" class="finanzas-total-label">TOTAL</td>
+          ${celdasTotales}
+          <td></td>
         </tr>
       </tfoot>`;
   }
+
+  // ── Bloque con datos del coordinador(a)
+  const coordBlock = (() => {
+    if (!coord) return '';
+    const nombreCoord = (coord.nombre || coord.nombreCompleto || '').toString().trim();
+    const rutCoord    = (coord.rut || coord.RUT || '').toString().trim();
+    const telCoord    = (coord.telefono || coord.fono || coord.celular || '').toString().trim();
+    const notasCoord  = (coord.notas || '').toString().trim();
+
+    if (!nombreCoord && !rutCoord && !telCoord && !notasCoord) return '';
+
+    return `
+      <div class="sec finanzas-coord">
+        <div class="sec-title">COORDINADOR(A) A CARGO</div>
+        <div class="note">
+          ${nombreCoord ? `<div><strong>Nombre:</strong> ${nombreCoord.toUpperCase()}</div>` : ''}
+          ${rutCoord ? `<div><strong>RUT:</strong> ${rutCoord}</div>` : ''}
+          ${telCoord ? `<div><strong>Teléfono:</strong> ${telCoord}</div>` : ''}
+          ${notasCoord ? `<div><strong>Notas:</strong> ${notasCoord}</div>` : ''}
+        </div>
+      </div>
+    `;
+  })();
 
   return `
     <div class="print-doc finanzas-doc">
@@ -1021,6 +1134,8 @@ function buildFinanzasDoc(grupo, abonos){
         </div>
       </div>
 
+      ${coordBlock}
+
       <div class="sec">
         <div class="sec-title">ABONOS ENTREGADOS AL COORDINADOR(A)</div>
         <table class="finanzas-table">
@@ -1030,8 +1145,7 @@ function buildFinanzasDoc(grupo, abonos){
               <th>Fecha</th>
               <th>Actividad / Concepto</th>
               <th>Medio de pago</th>
-              <th>Moneda</th>
-              <th>VValor</th>
+              ${headerMonedas}
               <th>Comentario</th>
             </tr>
           </thead>
@@ -1242,8 +1356,11 @@ async function descargarFinanzas(grupoId){
   // 2) Traer abonos
   const abonos = await fetchFinanzasAbonos(grupoId);
 
-  // 3) Construir el HTML y mandar a imprimir
-  const html = buildFinanzasDoc(g, abonos);
+  // 3) Buscar datos del coordinador(a) principal en colección "coordinadores"
+  const coordData = await fetchCoordinadorPrincipal(g);
+
+  // 4) Construir el HTML y mandar a imprimir
+  const html = buildFinanzasDoc(g, abonos, coordData);
   imprimirHtml(html);
 }
 
