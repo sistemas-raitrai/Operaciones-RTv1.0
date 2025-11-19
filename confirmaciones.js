@@ -1221,12 +1221,12 @@ async function descargarUno(grupoId){
   const work = ensurePdfWork();        // crea #pdf-work si no existe
   work.innerHTML = buildPrintDoc(g, vuelosNorm, hoteles, fechas);
 
-  // Fijar ancho A4 en px para html2canvas
+  // Fijar ancho A4 SEGURO en px para html2canvas (basado en 190mm x 270mm)
   const target = work.querySelector('.print-doc');
-  const CAPTURE_PX = Math.round(208 * 96 / 25.4); // zona segura
+  const CAPTURE_PX = Math.round(190 * 96 / 25.4); // ≈ ancho 190mm en px
   if (target){
     target.style.width = CAPTURE_PX + 'px';
-    target.style.minHeight = Math.round(297 * 96 / 25.4) + 'px';
+    target.style.minHeight = Math.round(270 * 96 / 25.4) + 'px';
   }
 
 
@@ -1266,7 +1266,7 @@ async function descargarLote(ids){
 }
 
 async function pdfDesdeMiViaje(grupoId, filename){
-  const SAFE_PX = Math.round(208 * 96 / 25.4); // zona segura
+  const SAFE_PX = Math.round(190 * 96 / 25.4); // zona segura
   await ensureHtml2Pdf();
 
   // 1) Cargar MiViaje en iframe oculto
@@ -1303,7 +1303,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
       transform: none !important;
       -webkit-transform: none !important;
       zoom: 1 !important;
-      width: 208mm !important;             /* zona segura */
+      width: 190mm !important;             /* zona segura */
       margin: 0 auto !important;
       background: #ffffff !important;
     }
@@ -1338,8 +1338,8 @@ async function pdfDesdeMiViaje(grupoId, filename){
     p.style.display = 'block';
     p.style.visibility = 'visible';
     p.style.opacity = '1';
-    p.style.width = '208mm';
-    p.style.minHeight = '297mm';
+    p.style.width = '190mm';
+    p.style.minHeight = '270mm';
     p.style.background = '#ffffff';
     p.style.transform = 'none';
   });
@@ -1350,7 +1350,7 @@ async function pdfDesdeMiViaje(grupoId, filename){
 
   // 5) Ancho real de captura (evita escalado que “encoge” dos páginas en una)
   const capW = Math.max(
-    A4_PX,
+    SAFE_PX,
     printBlock.scrollWidth,
     Math.ceil(printBlock.getBoundingClientRect().width)
   );
