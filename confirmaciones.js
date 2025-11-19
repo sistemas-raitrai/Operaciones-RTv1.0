@@ -1145,7 +1145,7 @@ async function descargarFinanzas(grupoId){
   const node = work.querySelector('.finanzas-doc') || work;
 
   // 4) Calcular ancho real de captura (zona segura A4)
-  const SAFE_PX = Math.round(208 * 96 / 25.4);  // ≈ ancho 208mm en px
+  const SAFE_PX = Math.round(190 * 96 / 25.4);  // ≈ ancho 208mm en px
   const capW = Math.max(
     SAFE_PX,
     node.scrollWidth || SAFE_PX,
@@ -1388,7 +1388,7 @@ async function exportarPDFconFallback({ grupoId, node, filename }){
     await ensureHtml2Pdf();
 
     // Calcular ancho de captura: mantener A4 real o el scrollWidth
-    const SAFE_PX = Math.round(208 * 96 / 25.4);
+    const SAFE_PX = Math.round(190 * 96 / 25.4);
     const capW  = Math.max(SAFE_PX, node.scrollWidth, Math.ceil(node.getBoundingClientRect().width));
     
     // Exportación directa del nodo local (el que construiste con buildPrintDoc)
