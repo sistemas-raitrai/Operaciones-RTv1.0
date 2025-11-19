@@ -35,11 +35,14 @@ let GRUPOS = [];   // catálogo de viajes (grupos)
 let SETS   = [];   // asignaciones (conjuntos)
 let ID2GRUPO = new Map();
 
-// Horas de inicio por grupo (cargadas desde 'vuelos')
 let HORAS_INICIO = new Map(); // groupId -> { pres:'HH:MM'|null, inicio:'HH:MM'|null, fuente:'aereo|terrestre', vueloId:string|null }
 
 // Hoteles asignados por grupo (ya depurados sin solapes y tomando el último creado)
 let HOTELES_POR_GRUPO = new Map(); // groupId -> [{ nombre, ini, fin }]
+
+// Catálogo de hoteles: id → nombre (y otros datos si quisieras después)
+let HOTELS_BY_ID = new Map(); // hotelId -> nombreHotel
+
 
 
 let DESTINOS = []; // catálogo (normalizado) desde GRUPOS
@@ -355,16 +358,36 @@ async function loadHorasViajes(){
 async function loadHotelAssignments(){
   console.time('loadHotelAssignments');
   HOTELES_POR_GRUPO.clear();
+  HOTELS_BY_ID.clear();
 
   try{
+    /* 1) Cargar catálogo de hoteles (colección "hoteles") */
+    const snapHot = await getDocs(collection(db, 'hoteles'));
+    snapHot.forEach(d=>{
+      const x = d.data() || {};
+      const nombre = (
+        x.nombre ||
+        x.Nombre ||
+        x.NOMBRE ||
+        x.hotelNombre ||
+        ''
+      ).toString().trim();
+
+      HOTELS_BY_ID.set(d.id, nombre || '(SIN NOMBRE)');
+    });
+    L('loadHotelAssignments: hoteles cargados =', HOTELS_BY_ID.size);
+
+    /* 2) Cargar asignaciones desde "hotelAssignments" */
     const snap = await getDocs(collection(db, 'hotelAssignments'));
     L('hotelAssignments size =', snap.size);
 
-    // Paso 1: acumular por grupo
-    const tmp = new Map(); // gid -> [{ nombre, ini, fin, ts }]
+    // gid -> [{ nombre, ini, fin, ts }]
+    const tmp = new Map();
+
     snap.forEach(d=>{
       const x = d.data() || {};
 
+      // Resolver a qué grupo pertenece esta asignación
       const gid = resolveGrupoIdFromHotelAssignment(
         x.grupoId || x.grupo || x.groupId || x.numeroNegocio || x.negocioId
       );
@@ -373,6 +396,7 @@ async function loadHotelAssignments(){
       const g = ID2GRUPO.get(gid);
       if (!g) return;
 
+      // Fechas de la reserva de hotel
       const ini = asISO(
         x.fechaInicio || x.fechaIni || x.inicio ||
         x.fechaEntrada || x.checkIn
@@ -386,19 +410,35 @@ async function loadHotelAssignments(){
       // Solo consideramos asignaciones que se cruzan con el rango del viaje
       if (!overlap(ini, fin, g.fechaInicio, g.fechaFin)) return;
 
-      const nombre = (
-        x.hotelNombre || x.hotel || x.nombreHotel || x.nombre || ''
-      ).toString().trim() || '(SIN NOMBRE)';
+      // Id del hotel y nombre cruzado con colección "hoteles"
+      const hotelId = x.hotelId || x.hotelID || x.idHotel || null;
 
-      const ts = x.createdAt?.toDate
-        ? x.createdAt.toDate().getTime()
-        : (x.createdAt?.seconds ? x.createdAt.seconds * 1000 : 0);
+      let nombre = hotelId && HOTELS_BY_ID.has(hotelId)
+        ? HOTELS_BY_ID.get(hotelId)
+        : (
+            x.hotelNombre ||
+            x.hotel ||
+            x.nombreHotel ||
+            x.nombre ||
+            ''
+          ).toString().trim();
+
+      if (!nombre) nombre = '(SIN NOMBRE)';
+
+      // Timestamp para decidir "el último" en caso de solapes (usar updatedAt si existe, si no createdAt)
+      const ts = x.updatedAt?.toDate
+        ? x.updatedAt.toDate().getTime()
+        : (x.createdAt?.toDate
+            ? x.createdAt.toDate().getTime()
+            : (x.updatedAt?.seconds
+                ? x.updatedAt.seconds * 1000
+                : (x.createdAt?.seconds ? x.createdAt.seconds * 1000 : 0)));
 
       if (!tmp.has(gid)) tmp.set(gid, []);
       tmp.get(gid).push({ nombre, ini, fin, ts });
     });
 
-    // Paso 2: dentro de cada grupo, nos quedamos con el último registro por tramo sin solapes
+    // 3) Por cada grupo: quedarnos con el último registro por tramo, sin solapes
     for (const [gid, arr] of tmp.entries()){
       const ordered = arr
         .filter(h => h.ini && h.fin && new Date(h.ini) <= new Date(h.fin))
@@ -406,12 +446,14 @@ async function loadHotelAssignments(){
 
       const picked = [];
       for (const h of ordered){
-        // si se solapa con algo ya elegido, lo ignoramos (porque éste es más viejo)
+        // si se solapa con algo ya elegido, lo ignoramos porque éste es más viejo
         const choca = picked.some(p => overlap(p.ini, p.fin, h.ini, h.fin));
         if (!choca) picked.push(h);
       }
 
+      // Ordenar cronológicamente para mostrar bonito
       picked.sort((a,b) => cmpISO(a.ini, b.ini));
+
       if (picked.length) HOTELES_POR_GRUPO.set(gid, picked);
     }
 
