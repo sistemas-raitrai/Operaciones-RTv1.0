@@ -1172,7 +1172,7 @@ async function abrirModalHotel(hotelId){
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
     const alm = Number(tot.alm||0), cen = Number(tot.cen||0);
     const totalG = alm + cen;
-    cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG})COMIDAS\n`;
+    cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG} COMIDAS)\n`;
   }
 
   // 3) TOTALES FINALES (al final, sin “saldo” ni “alertas”)
