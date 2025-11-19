@@ -922,7 +922,7 @@ async function fetchFinanzasAbonos(grupoId){
       const x = d.data() || {};
       const fechaISO = toISO(x.fecha || x.createdAt || x.fechaMovimiento || '');
 
-      // 👉 AHORA PRIORIZA "valor" (tu esquema actual)
+      // PRIORIZA "valor" (tu esquema actual)
       let montoNum = null;
       ['valor','monto','total','montoCLP','totalCLP'].some(k => {
         if (typeof x[k] === 'number' && isFinite(x[k])) {
@@ -937,17 +937,97 @@ async function fetchFinanzasAbonos(grupoId){
       out.push({
         id: d.id,
         fechaISO,
-        asunto: (x.asunto || '').toString(),
-        medio: (x.medio || '').toString(),
-        moneda: moneda || 'CLP',
+        asunto:   (x.asunto || '').toString(),
+        actividad:(x.actividad || x.servicio || '').toString(),  // ← NUEVO
+        concepto: (x.concepto  || '').toString(),                // ← NUEVO
+        medio:    (x.medio || '').toString(),
+        moneda:   moneda || 'CLP',
         montoNum,
         comentarios: (x.comentarios || '').toString()
       });
     });
+    // Orden base por fecha del abono (luego reordenamos por fecha de actividad)
     out.sort((a,b)=> (a.fechaISO || '').localeCompare(b.fechaISO || ''));
   }catch(e){
     console.error('Error cargando finanzas_abonos para', grupoId, e);
   }
+  return out;
+}
+
+// ──────────────────────────────────────────────────────────────
+// ITINERARIO: mapear actividades a fecha (YYYY-MM-DD)
+// ──────────────────────────────────────────────────────────────
+function buildItinerarioIndex(grupo){
+  // index: nombreActividadNormalizado -> fechaISO
+  const idx = new Map();
+  const it = grupo.itinerario;
+
+  if (!it || typeof it !== 'object') return idx;
+
+  Object.entries(it).forEach(([dia, raw]) => {
+    const fechaISO = toISO(dia);
+    if (!fechaISO) return;
+
+    const arr = Array.isArray(raw)
+      ? raw
+      : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+
+    arr.forEach(act => {
+      if (!act) return;
+      const nombre = norm(
+        (act.actividad || act.servicio || act.nombre || act.titulo || '').toString()
+      );
+      if (!nombre) return;
+
+      const prev = idx.get(nombre);
+      // si aparece varias veces la misma actividad, nos quedamos con la fecha más temprana
+      if (!prev || fechaISO < prev){
+        idx.set(nombre, fechaISO);
+      }
+    });
+  });
+
+  return idx;
+}
+
+/**
+ * Enriquecer abonos con fechaActividadISO = fecha del itinerario
+ * según el nombre de la actividad/concepto.
+ */
+function enrichAbonosWithItinerario(grupo, abonos){
+  if (!abonos || !abonos.length) return [];
+
+  const idx  = buildItinerarioIndex(grupo);
+  const keys = [...idx.keys()];
+
+  const pickFecha = (nombreNorm) => {
+    if (!nombreNorm) return null;
+    if (idx.has(nombreNorm)) return idx.get(nombreNorm);
+
+    // fallback: match parcial
+    const hit = keys.find(k => k.includes(nombreNorm) || nombreNorm.includes(k));
+    return hit ? idx.get(hit) : null;
+  };
+
+  const out = abonos.map(a => {
+    const nombreNorm = norm(
+      (a.actividad || a.concepto || a.asunto || '').toString()
+    );
+    const fechaActividadISO = pickFecha(nombreNorm);
+
+    return {
+      ...a,
+      fechaActividadISO   // puede ser null si no se encuentra
+    };
+  });
+
+  // Ordenamos por fecha de actividad; si no hay, por fecha del abono
+  out.sort((a,b) => {
+    const fa = a.fechaActividadISO || a.fechaISO || '';
+    const fb = b.fechaActividadISO || b.fechaISO || '';
+    return fa.localeCompare(fb);
+  });
+
   return out;
 }
 
@@ -1045,12 +1125,16 @@ function buildFinanzasDoc(grupo, abonos, coord){
 
   const rowsHtml = (abonos && abonos.length)
     ? abonos.map((a,idx)=>{
-        const fechaTxt = a.fechaISO ? formatShortDate(a.fechaISO) : '—';
+        // ← FECHA: primero la del itinerario, si existe; si no, la fecha del abono
+        const baseFechaISO = a.fechaActividadISO || a.fechaISO;
+        const fechaTxt = baseFechaISO ? formatShortDate(baseFechaISO) : '—';
+
         const celdasMon = monedas.map(m => {
           const show = (a.montoNum != null && (a.moneda || 'CLP') === m);
           const valor = show ? formatMoney(a.montoNum, m) : '';
           return `<td class="nowrap">${valor}</td>`;
         }).join('');
+
         return `
           <tr>
             <td class="nowrap">${idx+1}</td>
@@ -1063,6 +1147,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
         `;
       }).join('')
     : `<tr><td colspan="${colCount}" class="no-rows">No hay abonos registrados para este grupo.</td></tr>`;
+
 
   const totalesPorMoneda = new Map();
   (abonos || []).forEach(a => {
@@ -1353,16 +1438,20 @@ async function descargarFinanzas(grupoId){
   if (!d.exists()) return;
   const g = { id:d.id, ...d.data() };
 
-  // 2) Traer abonos
-  const abonos = await fetchFinanzasAbonos(grupoId);
+  // 2) Traer abonos "crudos"
+  const abonosRaw = await fetchFinanzasAbonos(grupoId);
 
-  // 3) Buscar datos del coordinador(a) principal en colección "coordinadores"
+  // 3) Enriquecer con FECHA DE ACTIVIDAD desde el itinerario del grupo
+  const abonos = enrichAbonosWithItinerario(g, abonosRaw);
+
+  // 4) Buscar datos del coordinador(a) principal en colección "coordinadores"
   const coordData = await fetchCoordinadorPrincipal(g);
 
-  // 4) Construir el HTML y mandar a imprimir
+  // 5) Construir el HTML y mandar a imprimir
   const html = buildFinanzasDoc(g, abonos, coordData);
   imprimirHtml(html);
 }
+
 
 
 /* ──────────────────────────────────────────────────────────────────────
