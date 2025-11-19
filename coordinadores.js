@@ -34,8 +34,13 @@ let COORDS = [];   // {id, nombre, rut, telefono, correo, destinos:string[], dis
 let GRUPOS = [];   // catálogo de viajes (grupos)
 let SETS   = [];   // asignaciones (conjuntos)
 let ID2GRUPO = new Map();
+
 // Horas de inicio por grupo (cargadas desde 'vuelos')
 let HORAS_INICIO = new Map(); // groupId -> { pres:'HH:MM'|null, inicio:'HH:MM'|null, fuente:'aereo|terrestre', vueloId:string|null }
+
+// Hoteles asignados por grupo (ya depurados sin solapes y tomando el último creado)
+let HOTELES_POR_GRUPO = new Map(); // groupId -> [{ nombre, ini, fin }]
+
 
 let DESTINOS = []; // catálogo (normalizado) desde GRUPOS
 // ===== Snapshot para diffs en guardado =====
@@ -136,6 +141,19 @@ function isAptoDestino(coord, destino){
   const L = coord?.destinos || [];
   // lista vacía = apto para todos
   return !L.length || L.includes(d);
+}
+
+// Resolver el ID real del grupo a partir de un grupoId que viene en hotelAssignments
+function resolveGrupoIdFromHotelAssignment(rawGrupoId){
+  const k = (rawGrupoId || '').toString().trim();
+  if (!k) return null;
+
+  // 1) Coincide con el ID del documento de grupos
+  if (ID2GRUPO.has(k)) return k;
+
+  // 2) Coincide con numeroNegocio del grupo
+  const hit = GRUPOS.find(g => String(g.numeroNegocio || '').trim() === k);
+  return hit ? hit.id : null;
 }
 
 /* =========================================================
@@ -331,6 +349,77 @@ async function loadHorasViajes(){
     E('loadHorasViajes error:', err);
   }finally{
     console.timeEnd('loadHorasViajes');
+  }
+}
+
+async function loadHotelAssignments(){
+  console.time('loadHotelAssignments');
+  HOTELES_POR_GRUPO.clear();
+
+  try{
+    const snap = await getDocs(collection(db, 'hotelAssignments'));
+    L('hotelAssignments size =', snap.size);
+
+    // Paso 1: acumular por grupo
+    const tmp = new Map(); // gid -> [{ nombre, ini, fin, ts }]
+    snap.forEach(d=>{
+      const x = d.data() || {};
+
+      const gid = resolveGrupoIdFromHotelAssignment(
+        x.grupoId || x.grupo || x.groupId || x.numeroNegocio || x.negocioId
+      );
+      if (!gid) return;
+
+      const g = ID2GRUPO.get(gid);
+      if (!g) return;
+
+      const ini = asISO(
+        x.fechaInicio || x.fechaIni || x.inicio ||
+        x.fechaEntrada || x.checkIn
+      );
+      const fin = asISO(
+        x.fechaFin || x.fin || x.fechaSalida ||
+        x.fechaFinReserva || x.checkOut
+      );
+      if (!ini || !fin) return;
+
+      // Solo consideramos asignaciones que se cruzan con el rango del viaje
+      if (!overlap(ini, fin, g.fechaInicio, g.fechaFin)) return;
+
+      const nombre = (
+        x.hotelNombre || x.hotel || x.nombreHotel || x.nombre || ''
+      ).toString().trim() || '(SIN NOMBRE)';
+
+      const ts = x.createdAt?.toDate
+        ? x.createdAt.toDate().getTime()
+        : (x.createdAt?.seconds ? x.createdAt.seconds * 1000 : 0);
+
+      if (!tmp.has(gid)) tmp.set(gid, []);
+      tmp.get(gid).push({ nombre, ini, fin, ts });
+    });
+
+    // Paso 2: dentro de cada grupo, nos quedamos con el último registro por tramo sin solapes
+    for (const [gid, arr] of tmp.entries()){
+      const ordered = arr
+        .filter(h => h.ini && h.fin && new Date(h.ini) <= new Date(h.fin))
+        .sort((a,b) => (b.ts || 0) - (a.ts || 0)); // más nuevo primero
+
+      const picked = [];
+      for (const h of ordered){
+        // si se solapa con algo ya elegido, lo ignoramos (porque éste es más viejo)
+        const choca = picked.some(p => overlap(p.ini, p.fin, h.ini, h.fin));
+        if (!choca) picked.push(h);
+      }
+
+      picked.sort((a,b) => cmpISO(a.ini, b.ini));
+      if (picked.length) HOTELES_POR_GRUPO.set(gid, picked);
+    }
+
+    L('loadHotelAssignments => grupos con hotel =', HOTELES_POR_GRUPO.size);
+  }catch(err){
+    E('loadHotelAssignments error:', err);
+  }finally{
+    console.timeEnd('loadHotelAssignments');
   }
 }
 
@@ -808,11 +897,22 @@ function renderLibres(){
   const libres = filtrarLibresBusquedaYDia(pre);
   L('Libres:', libres.length, 'Usados en sets:', usados.size, 'Grupos totales:', GRUPOS.length);
   if (!elWrapLibres){ W('elWrapLibres no existe'); console.groupEnd(); return; }
-  if (!libres.length){ elWrapLibres.innerHTML='<div class="empty">No hay viajes libres.</div>'; console.groupEnd(); return; }
-  elWrapLibres.innerHTML=libres.map(g=>`
+  
+  if (!libres.length){
+    elWrapLibres.innerHTML = '<div class="empty">No hay viajes libres.</div>';
+    console.groupEnd();
+    return;
+  }
+
+  elWrapLibres.innerHTML = libres.map(g=>`
     <div class="card">
       <div class="hd">
-        <div><b title="${escapeHtml(g.nombreGrupo||'')}">${g.aliasGrupo||'(sin alias)'}</b> <span class="muted">#${g.numeroNegocio}</span></div>
+        <div>
+          <b title="${escapeHtml(g.nombreGrupo||'')}">
+            ${g.aliasGrupo || '(sin alias)'}
+          </b>
+          <span class="muted">#${g.numeroNegocio}</span>
+        </div>
         <button class="btn small" data-add="${g.id}">Agregar a viaje…</button>
       </div>
       <div class="bd">
@@ -821,10 +921,16 @@ function renderLibres(){
            ${g._horasInicio && (g._horasInicio.pres || g._horasInicio.inicio)
              ? ` · ${g._horasInicio.pres ? 'Pres ' + g._horasInicio.pres : ''}${(g._horasInicio.pres && g._horasInicio.inicio)?' · ':''}${g._horasInicio.inicio ? 'Salida ' + g._horasInicio.inicio : ''}`
              : ''}
-         </div>
-        <div class="muted">${g.identificador?`ID: ${escapeHtml(g.identificador)} · `:''}${g.programa?`Prog: ${escapeHtml(g.programa)} · `:''}${g.destino?`Dest: ${escapeHtml(g.destino)}`:''}</div>
+        </div>
+        <div class="muted">
+          ${g.identificador?`ID: ${escapeHtml(g.identificador)} · `:''}
+          ${g.programa?`Prog: ${escapeHtml(g.programa)} · `:''}
+          ${g.destino?`Dest: ${escapeHtml(g.destino)}`:''}
+        </div>
+        ${getHotelResumenHtmlForGroup(g)}
       </div>
     </div>`).join('');
+
   elWrapLibres.querySelectorAll('button[data-add]').forEach(b=> b.onclick=()=>seleccionarConjuntoDestino(b.dataset.add));
   console.groupEnd();
 }
@@ -868,8 +974,10 @@ function renderSets(){
                 ${v.identificador?`<div class="muted">ID: ${escapeHtml(v.identificador)}</div>`:''}
                 ${v.programa?`<div class="muted">Programa: ${escapeHtml(v.programa)}</div>`:''}
                 ${v.destino?`<div class="muted">Destino: ${escapeHtml(v.destino)}</div>`:''}
+                ${getHotelResumenHtmlForGroup(v)}
               </td>
             </tr>
+
             <tr><td colspan="3">
               <div class="row">
                 <button class="btn small" data-swap="${v.id}" data-set="${idx}">Swap</button>
@@ -1557,6 +1665,18 @@ function limpiarAlias(nombreCompleto){
 }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
+function getHotelResumenHtmlForGroup(g){
+  if (!g) return '';
+  const gid = g.id;
+  const lista = gid ? (HOTELES_POR_GRUPO.get(gid) || []) : [];
+  if (!lista.length) return '';
+
+  const partes = lista.map(h =>
+    `${escapeHtml(h.nombre)} (${fmtDMY(h.ini)} → ${fmtDMY(h.fin)})`
+  );
+  return `<div class="muted">Hotel: ${partes.join(' · ')}</div>`;
+}
+
 function sameArr(a = [], b = []) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
@@ -1920,8 +2040,12 @@ async function __bootCoordinadores(){
     // NUEVO: Cargar horas por grupo desde 'vuelos'
     await loadHorasViajes();
 
+    // NUEVO: Cargar hoteles por grupo desde "hotelAssignments"
+    await loadHotelAssignments();
+
     await loadSets();
     console.log('[RTV/coord] SETS construidos =', SETS.length);
+
 
     populateFilterOptions();
     render();
@@ -1940,11 +2064,13 @@ async function __bootCoordinadores(){
     reloadAll: async ()=>{
       await loadCoordinadores();
       await loadGrupos();
-      await loadHorasViajes(); // ← NUEVO
+      await loadHorasViajes();
+      await loadHotelAssignments();
       await loadSets();
       render();
       return { coords: COORDS.length, grupos: GRUPOS.length, sets: SETS.length };
     }
+
   };
 }
 
