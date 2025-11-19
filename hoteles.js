@@ -153,11 +153,56 @@ function bindUI(){
   },true);
 }
 
-function filterHoteles(q){
-  const terms = q.toLowerCase().split(',').map(t=>t.trim()).filter(Boolean);
-  document.querySelectorAll('.hotel-card').forEach(card=>{
-    const txt=card.textContent.toLowerCase();
-    card.style.display = (!terms.length||terms.some(t=>txt.includes(t)))?'':'none';
+// ===== FILTRO DE HOTELES + GRUPOS =====
+function filterHoteles(q) {
+  const terms = q.toLowerCase().split(',').map(t => t.trim()).filter(Boolean);
+
+  const cards = document.querySelectorAll('.hotel-card');
+
+  // Si no hay términos: mostramos todo tal cual
+  if (!terms.length) {
+    cards.forEach(card => {
+      card.style.display = '';
+      card.querySelectorAll('.group-block').forEach(gb => {
+        gb.style.display = '';
+      });
+    });
+    return;
+  }
+
+  cards.forEach(card => {
+    const cardText = card.textContent.toLowerCase();
+
+    // ¿La cabecera del hotel (nombre/destino/etc.) coincide?
+    const headerMatches = terms.some(t => cardText.includes(t));
+
+    // Filtramos los grupos dentro del hotel
+    const groupBlocks = card.querySelectorAll('.group-block');
+    let anyGroupVisible = false;
+
+    groupBlocks.forEach(gb => {
+      const gText = gb.textContent.toLowerCase();
+      const groupMatches = terms.some(t => gText.includes(t));
+
+      // Si el hotel matchea por cabecera, dejamos todos los grupos visibles.
+      // Si no, solo mostramos los grupos que coinciden.
+      if (headerMatches || groupMatches) {
+        gb.style.display = '';
+        anyGroupVisible = true;
+      } else {
+        gb.style.display = 'none';
+      }
+    });
+
+    // Mostrar u ocultar la tarjeta completa:
+    // - Si el hotel matchea por cabecera → mostrar
+    // - O si al menos un group-block quedó visible → mostrar
+    // - Si no → ocultar la tarjeta
+    if (headerMatches || anyGroupVisible) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
   });
 }
 
