@@ -546,8 +546,8 @@ function injectPdfStyles(){
   .print-doc{
     background:#ffffff !important;
     color:#111 !important;
-    width:208mm !important;           /* zona segura para evitar cortes */
-    min-height:297mm;
+    width:190mm !important;           /* zona segura para evitar cortes */
+    min-height:270mm;
     box-sizing:border-box;
     padding:12mm 12mm 14mm 14mm;      /* márgenes internos un poco mayores */
     margin:0 auto !important;
@@ -1314,8 +1314,8 @@ async function pdfDesdeMiViaje(grupoId, filename){
       transform: none !important;
       -webkit-transform: none !important;
       zoom: 1 !important;
-      width: 208mm !important;             /* zona segura */
-      min-height: 297mm !important;
+      width: 190mm !important;             /* zona segura */
+      min-height: 270mm !important;
       margin: 0 auto !important;
       background: #ffffff !important;
       page-break-after: always !important;
