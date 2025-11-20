@@ -1247,6 +1247,7 @@ function buildCuerpoModo1(ctx){
 // ========== CONSTRUCTOR MODO 2 (DETALLE POR GRUPO + RESUMEN GLOBAL) ==========
 function buildCuerpoModo2(ctx){
   const {
+    hotelId,
     h,
     gruposOrden,
     totalAlmHotel,
@@ -1261,32 +1262,79 @@ function buildCuerpoModo2(ctx){
   cuerpo += `RESERVA DE ALIMENTACIÓN PARA ${String(h.nombre||'(HOTEL)').toUpperCase()}.\n\n`;
   cuerpo += `DETALLE POR GRUPO:\n\n`;
 
-  for (const { g, tot, esperadas } of gruposOrden) {
+  for (const { g, baseG, tot, esperadas } of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
     const alm = Number(tot.alm || 0);
     const cen = Number(tot.cen || 0);
     const totalG = alm + cen;
-    const pax = Number(g.paxGrupo || 0);
+
+    // PAX: usamos el del baseG cuando exista
+    const pax = Number(
+      (baseG && baseG.paxGrupo != null) ? baseG.paxGrupo
+                                        : (g.paxGrupo || 0)
+    );
 
     cuerpo += `- ${etiqueta}\n\n`;
 
-    // Días del grupo en este hotel
-    const diasEntries = (g.dias instanceof Map)
-      ? [...g.dias.entries()]
-      : Object.entries(g.dias || {});
+    // Fuente de días: preferimos baseG.dias (del AGG completo) y caemos a g.dias
+    const srcDias = (baseG && baseG.dias) ? baseG.dias : g.dias;
+    const diasEntries = (srcDias instanceof Map)
+      ? [...srcDias.entries()]
+      : Object.entries(srcDias || {}).map(([iso, d]) => [iso, d]);
+
     diasEntries.sort((a,b)=> a[0].localeCompare(b[0]));
 
-    for (const [iso, d] of diasEntries) {
-      const hasAlm = Number(d.alm || 0) > 0;
-      const hasCen = Number(d.cen || 0) > 0;
-      if (!hasAlm && !hasCen) continue;
+    // Rango de estadía en el hotel (inicio–checkout)
+    const gid = (baseG && (baseG.grupoId || baseG.id)) || g.grupoId || g.id;
+    const range = gid ? stayRangeForGrupoHotel(gid, hotelId) : null;
 
-      let tipo = '';
-      if (hasAlm && hasCen)      tipo = 'ALMUERZO Y CENA';
-      else if (hasAlm)           tipo = 'ALMUERZO';
-      else if (hasCen)           tipo = 'CENA';
+    if (range) {
+      // Recorremos TODOS los días desde start hasta checkout (inclusive)
+      let iso = range.start;
+      while (true){
+        // Buscar datos del día (si no existe, asumimos 0–0)
+        const d =
+          (srcDias instanceof Map)
+            ? (srcDias.get(iso) || { alm:0, cen:0 })
+            : ((srcDias && srcDias[iso]) || { alm:0, cen:0 });
 
-      cuerpo += `${fmtDiaMayus(iso).toUpperCase()}: ${tipo} (${pax} PAX).\n`;
+        const hasAlm = Number(d.alm || 0) > 0;
+        const hasCen = Number(d.cen || 0) > 0;
+
+        if (!hasAlm && !hasCen){
+          // NUEVO: día explícito sin consumo
+          cuerpo += `${fmtDiaMayus(iso).toUpperCase()}: SIN COMIDAS.\n`;
+        } else {
+          let tipo = '';
+          if (hasAlm && hasCen)      tipo = 'ALMUERZO Y CENA';
+          else if (hasAlm)           tipo = 'ALMUERZO';
+          else if (hasCen)           tipo = 'CENA';
+
+          cuerpo += `${fmtDiaMayus(iso).toUpperCase()}: ${tipo} (${pax} PAX).\n`;
+        }
+
+        if (iso === range.checkout) break;
+        iso = addDaysISO(iso, 1);
+      }
+    } else {
+      // Fallback: si no tenemos rango, usamos solo los días con registro,
+      // pero igual imprimimos "SIN COMIDAS." cuando alm=0 y cen=0
+      for (const [iso, d] of diasEntries) {
+        const hasAlm = Number(d.alm || 0) > 0;
+        const hasCen = Number(d.cen || 0) > 0;
+
+        if (!hasAlm && !hasCen){
+          cuerpo += `${fmtDiaMayus(iso).toUpperCase()}: SIN COMIDAS.\n`;
+          continue;
+        }
+
+        let tipo = '';
+        if (hasAlm && hasCen)      tipo = 'ALMUERZO Y CENA';
+        else if (hasAlm)           tipo = 'ALMUERZO';
+        else if (hasCen)           tipo = 'CENA';
+
+        cuerpo += `${fmtDiaMayus(iso).toUpperCase()}: ${tipo} (${pax} PAX).\n`;
+      }
     }
 
     cuerpo += `\nTOTAL COMIDAS: ALM: ${alm} | CEN: ${cen}  = ${totalG} COMIDAS.\n`;
