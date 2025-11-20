@@ -1130,10 +1130,16 @@ async function abrirModalHotel(hotelId){
   const rec = filAno ? recForYear(recBase, filAno) : recBase;
 
   // resumen por grupo (solo grupos con consumo)
-  const gruposOrden = [...rec.grupos.values()]
-    .map(g => ({ g, tot: totalesDeGrupo(g) }))
+  const gruposOrden = [...rec.grupos.entries()]
+    .map(([gid, g]) => {
+      const baseG = (recBase.grupos && typeof recBase.grupos.get === 'function')
+        ? (recBase.grupos.get(gid) || g)
+        : g;
+      return { gid, g, baseG, tot: totalesDeGrupo(g) };
+    })
     .filter(x => (x.tot.alm + x.tot.cen) > 0)
     .sort((a,b)=> (a.g.numeroNegocio+' '+(a.g.alias||a.g.nombreGrupo||'')).localeCompare(b.g.numeroNegocio+' '+(b.g.alias||b.g.nombreGrupo||'')));
+
 
   const totalAlmHotel = gruposOrden.reduce((s,x)=> s + x.tot.alm, 0);
   const totalCenHotel = gruposOrden.reduce((s,x)=> s + x.tot.cen, 0);
@@ -1166,14 +1172,39 @@ async function abrirModalHotel(hotelId){
   cuerpo += `RESUMEN\n`;
   cuerpo += `===================================================\n\n`;
 
-  // 2.a) TOTALES POR GRUPO (sin reemplazos ni alertas)
+  // 2.a) TOTALES POR GRUPO + nota si faltan 1 ó 2 comidas
   cuerpo += `TOTALES POR GRUPO:\n`;
-  for (const {g, tot} of gruposOrden) {
+  for (const { g, baseG, tot } of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
-    const alm = Number(tot.alm||0), cen = Number(tot.cen||0);
+    const alm = Number(tot.alm || 0);
+    const cen = Number(tot.cen || 0);
     const totalG = alm + cen;
+
+    // línea principal
     cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG} COMIDAS)\n`;
+
+    // === NOTA EXTRA: cuando faltan 1 ó 2 comidas según noches y pensión ===
+    const nochesG = Number(baseG?.noches || 0);
+    let esperadas = 0;
+
+    if (pen === 'completa') {
+      // 2 comidas por noche
+      esperadas = nochesG * 2;
+    } else if (pen === 'media') {
+      // 1 comida por noche
+      esperadas = nochesG;
+    }
+
+    if (esperadas > 0) {
+      const faltan = esperadas - totalG;
+      if (faltan === 1) {
+        cuerpo += `  SIN UNA (1) COMIDA.\n`;
+      } else if (faltan === 2) {
+        cuerpo += `  SIN DOS (2) COMIDAS.\n`;
+      }
+    }
   }
+
 
   // 3) TOTALES FINALES (al final, sin “saldo” ni “alertas”)
   // cuerpo += `\nTOTAL DE COMIDAS= ${totalServ}\n`;
