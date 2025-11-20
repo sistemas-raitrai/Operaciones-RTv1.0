@@ -1204,6 +1204,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
             ${grupo.numeroNegocio ? `<span>Nº NEGOCIO: ${grupo.numeroNegocio}</span>` : ''}
+            ${grupo.fechaInicio ? `<span>INICIO: ${grupo.fechaInicio}</span>` : ''} ${grupo.fechaFin ? `<span>FIN: ${grupo.fechaFin}</span>` : ''}
             ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
