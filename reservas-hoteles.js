@@ -17,6 +17,11 @@ let INDEX_ITIN = new Map();// grupoId -> Map(fechaISO -> { text, almCount, cenCo
 
 let DT = null;             // DataTable principal
 
+// ===== Estado del modal de correo =====
+let MH_MODE = 1;           // 1 = MODO 1 (actual, detalle por día), 2 = MODO 2 (detalle por grupo)
+let MH_HID  = null;        // hotelId actualmente abierto en el modal
+
+
 // =============== Encabezado + Login ===============
 (async function mountHeader(){
   try {
@@ -1117,17 +1122,16 @@ function closeModalGrupo(){
   document.getElementById('modalGrupo').style.display = 'none';
 }
 
-// =============== MODAL: Hotel (Reservar) ===============
-async function abrirModalHotel(hotelId){
+// Construye el contexto necesario para armar el correo (para cualquier modo)
+function buildHotelMailContext(hotelId){
   const recBase = AGG.get(hotelId);
-  if (!recBase) return;
+  if (!recBase) return null;
 
   const h = recBase.hotel || {};
-  const paraDefault = h.contactoCorreo || h.contacto || '';
-
-  // respetar filtro de AÑO para el cuerpo del correo
   const filAno = (document.getElementById('filtroAno')?.value || '').trim();
   const rec = filAno ? recForYear(recBase, filAno) : recBase;
+
+  const pen = (h.pension || '').toLowerCase();
 
   // resumen por grupo (solo grupos con consumo)
   const gruposOrden = [...rec.grupos.entries()]
@@ -1135,27 +1139,70 @@ async function abrirModalHotel(hotelId){
       const baseG = (recBase.grupos && typeof recBase.grupos.get === 'function')
         ? (recBase.grupos.get(gid) || g)
         : g;
-      return { gid, g, baseG, tot: totalesDeGrupo(g) };
+      const tot = totalesDeGrupo(g); // desde g.dias o totAlm/totCen
+
+      const nochesG = Number(baseG?.noches || 0);
+      let esperadas = 0;
+      if (pen === 'completa') {
+        esperadas = nochesG * 2;
+      } else if (pen === 'media') {
+        esperadas = nochesG;
+      }
+
+      const totalG = Number(tot.alm || 0) + Number(tot.cen || 0);
+      const faltan = Math.max(0, esperadas - totalG);
+
+      return { gid, g, baseG, tot, esperadas, faltan };
     })
     .filter(x => (x.tot.alm + x.tot.cen) > 0)
-    .sort((a,b)=> (a.g.numeroNegocio+' '+(a.g.alias||a.g.nombreGrupo||'')).localeCompare(b.g.numeroNegocio+' '+(b.g.alias||b.g.nombreGrupo||'')));
+    .sort((a,b)=> (a.g.numeroNegocio+' '+(a.g.alias||a.g.nombreGrupo||''))
+      .localeCompare(b.g.numeroNegocio+' '+(b.g.alias||b.g.nombreGrupo||'')));
 
-
-  const totalAlmHotel = gruposOrden.reduce((s,x)=> s + x.tot.alm, 0);
-  const totalCenHotel = gruposOrden.reduce((s,x)=> s + x.tot.cen, 0);
+  // Totales para resumen global
+  const totalAlmHotel = gruposOrden.reduce((s,x)=> s + Number(x.tot.alm || 0), 0);
+  const totalCenHotel = gruposOrden.reduce((s,x)=> s + Number(x.tot.cen || 0), 0);
   const totalServ     = totalAlmHotel + totalCenHotel;
 
-  // esperado vs plan (para saldo)
-  const pen = (h.pension || '').toLowerCase();
-  const sumNoches = [...rec.grupos.values()].reduce((s,g)=> s + Number(g.noches||0), 0);
-  let diffServicios = 0;
-  if (pen === 'completa'){
-    diffServicios = (totalAlmHotel - sumNoches) + (totalCenHotel - sumNoches);
-  } else {
-    diffServicios = totalServ - sumNoches; // media o sin dato
-  }
+  // Totales de NOCHES por hotel (para info, si lo necesitas)
+  const sumNoches = [...rec.grupos.values()]
+    .reduce((s,g)=> s + Number(g.noches||0), 0);
 
-  // ===== NUEVO FORMATO DE CUERPO =====
+  // Faltantes globales (en servicios)
+  const totalFaltantes = gruposOrden.reduce((s,x)=> s + Number(x.faltan || 0), 0);
+
+  // Totales ponderados por PAX (para Modo 2)
+  const totalAlmPax = gruposOrden.reduce(
+    (s,x)=> s + Number(x.tot.alm || 0) * Number(x.g.paxGrupo || 0), 0
+  );
+  const totalCenPax = gruposOrden.reduce(
+    (s,x)=> s + Number(x.tot.cen || 0) * Number(x.g.paxGrupo || 0), 0
+  );
+  const totalFaltantesPax = gruposOrden.reduce(
+    (s,x)=> s + Number(x.faltan || 0) * Number(x.g.paxGrupo || 0), 0
+  );
+
+  return {
+    hotelId: hotelId,
+    h,
+    rec,
+    recBase,
+    pen,
+    gruposOrden,
+    totalAlmHotel,
+    totalCenHotel,
+    totalServ,
+    sumNoches,
+    totalFaltantes,
+    totalAlmPax,
+    totalCenPax,
+    totalFaltantesPax
+  };
+}
+
+// ========== CONSTRUCTOR MODO 1 (como ahora, DETALLE POR DÍA + RESUMEN) ==========
+function buildCuerpoModo1(ctx){
+  const { h, rec, gruposOrden, pen } = ctx;
+
   let cuerpo = `Estimado/a:\n\n`;
   cuerpo += `RESERVA DE ALIMENTACIÓN PARA ${String(h.nombre||'(HOTEL)').toUpperCase()}.\n\n`;
 
@@ -1172,30 +1219,15 @@ async function abrirModalHotel(hotelId){
   cuerpo += `RESUMEN\n`;
   cuerpo += `===================================================\n\n`;
 
-  // 2.a) TOTALES POR GRUPO + nota si faltan 1 ó 2 comidas
-  // 2.a) TOTALES POR GRUPO + nota si faltan 1 ó 2 comidas
-  cuerpo += `TOTALES POR GRUPO:\n\n`;  // ← aquí agregamos la línea en blanco
+  cuerpo += `TOTALES POR GRUPO:\n\n`;
 
-  for (const { g, baseG, tot } of gruposOrden) {
+  for (const { g, baseG, tot, esperadas } of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
     const alm = Number(tot.alm || 0);
     const cen = Number(tot.cen || 0);
     const totalG = alm + cen;
 
-    // Línea principal del grupo
     cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG} COMIDAS)\n`;
-
-    // === NOTA EXTRA: cuando faltan 1 ó 2 comidas según noches y pensión ===
-    const nochesG = Number(baseG?.noches || 0);
-    let esperadas = 0;
-
-    if (pen === 'completa') {
-      // 2 comidas por noche
-      esperadas = nochesG * 2;
-    } else if (pen === 'media') {
-      // 1 comida por noche
-      esperadas = nochesG;
-    }
 
     if (esperadas > 0) {
       const faltan = esperadas - totalG;
@@ -1206,16 +1238,117 @@ async function abrirModalHotel(hotelId){
       }
     }
 
-    // línea en blanco entre grupos
     cuerpo += `\n`;
   }
 
+  return cuerpo;
+}
 
-  // 3) TOTALES FINALES (al final, sin “saldo” ni “alertas”)
-  // cuerpo += `\nTOTAL DE COMIDAS= ${totalServ}\n`;
-  // cuerpo += `- ALMUERZOS: ${totalAlmHotel}\n`;
-  // cuerpo += `- CENAS: ${totalCenHotel}\n`;
+// ========== CONSTRUCTOR MODO 2 (DETALLE POR GRUPO + RESUMEN GLOBAL) ==========
+function buildCuerpoModo2(ctx){
+  const {
+    h,
+    gruposOrden,
+    totalAlmHotel,
+    totalCenHotel,
+    totalFaltantes,
+    totalAlmPax,
+    totalCenPax,
+    totalFaltantesPax
+  } = ctx;
 
+  let cuerpo = `Estimado/a:\n\n`;
+  cuerpo += `RESERVA DE ALIMENTACIÓN PARA ${String(h.nombre||'(HOTEL)').toUpperCase()}.\n\n`;
+  cuerpo += `DETALLE POR GRUPO:\n\n`;
+
+  for (const { g, tot, esperadas } of gruposOrden) {
+    const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
+    const alm = Number(tot.alm || 0);
+    const cen = Number(tot.cen || 0);
+    const totalG = alm + cen;
+    const pax = Number(g.paxGrupo || 0);
+
+    cuerpo += `- ${etiqueta}\n\n`;
+
+    // Días del grupo en este hotel
+    const diasEntries = (g.dias instanceof Map)
+      ? [...g.dias.entries()]
+      : Object.entries(g.dias || {});
+    diasEntries.sort((a,b)=> a[0].localeCompare(b[0]));
+
+    for (const [iso, d] of diasEntries) {
+      const hasAlm = Number(d.alm || 0) > 0;
+      const hasCen = Number(d.cen || 0) > 0;
+      if (!hasAlm && !hasCen) continue;
+
+      let tipo = '';
+      if (hasAlm && hasCen)      tipo = 'ALMUERZO Y CENA';
+      else if (hasAlm)           tipo = 'ALMUERZO';
+      else if (hasCen)           tipo = 'CENA';
+
+      cuerpo += `${fmtDiaMayus(iso).toUpperCase()}: ${tipo} (${pax} PAX).\n`;
+    }
+
+    cuerpo += `\nTOTAL COMIDAS: ALM: ${alm} | CEN: ${cen}  = ${totalG} COMIDAS.\n`;
+
+    if (esperadas > 0) {
+      const faltan = esperadas - totalG;
+      if (faltan === 1) {
+        cuerpo += `- SIN UNA (1) COMIDA DE LAS ${esperadas} ESPERADAS.\n`;
+      } else if (faltan === 2) {
+        cuerpo += `- SIN DOS (2) COMIDAS DE LAS ${esperadas} ESPERADAS.\n`;
+      } else if (faltan > 2) {
+        cuerpo += `- SIN ${faltan} COMIDAS DE LAS ${esperadas} ESPERADAS.\n`;
+      }
+    }
+
+    cuerpo += `\n`;
+  }
+
+  cuerpo += `===================================================\n`;
+  cuerpo += `RESUMEN\n`;
+  cuerpo += `===================================================\n\n`;
+
+  cuerpo += `TOTAL ALMUERZOS: ${totalAlmHotel} (${totalAlmPax} PAXS)\n`;
+  cuerpo += `TOTAL CENAS: ${totalCenHotel} (${totalCenPax} PAXS)\n`;
+  cuerpo += `TOTAL COMIDAS PENDIENTES: ${totalFaltantes} (${totalFaltantesPax} PAXS)\n`;
+
+  return cuerpo;
+}
+
+// Alterna modo y reconstruye el cuerpo del correo
+function toggleModoCorreo(){
+  if (!MH_HID) return;
+  const btn = document.getElementById('mh-mode');
+  const ctx = buildHotelMailContext(MH_HID);
+  if (!ctx) return;
+
+  MH_MODE = (MH_MODE === 1 ? 2 : 1);
+  if (btn) btn.textContent = (MH_MODE === 1 ? 'MODO 2' : 'MODO 1');
+
+  const cuerpo = (MH_MODE === 1) ? buildCuerpoModo1(ctx) : buildCuerpoModo2(ctx);
+  const ta = document.getElementById('mh-cuerpo');
+  if (ta) ta.value = cuerpo;
+}
+
+// =============== MODAL: Hotel (Reservar) ===============
+async function abrirModalHotel(hotelId){
+  const ctx = buildHotelMailContext(hotelId);
+  if (!ctx) return;
+
+  const { h } = ctx;
+  const recBase = ctx.recBase;
+
+  const paraDefault = h.contactoCorreo || h.contacto || '';
+
+  // Estado inicial del modal
+  MH_HID  = hotelId;
+  MH_MODE = 1; // siempre abre en MODO 1
+  const btnMode = document.getElementById('mh-mode');
+  if (btnMode) btnMode.textContent = 'MODO 2';
+
+  // Cuerpo inicial (Modo 1)
+  const cuerpo = buildCuerpoModo1(ctx);
 
   // seteo de campos + datasets
   document.getElementById('mh-title').textContent = `Reservar — ${h.nombre || hotelId}`;
@@ -1231,12 +1364,16 @@ async function abrirModalHotel(hotelId){
   document.getElementById('modalHotel').style.display = 'block';
 }
 
-// ==== CIERRE MODAL HOTEL (faltaba) ====
+// ==== CIERRE MODAL HOTEL ====
 function closeModalHotel(){
   const bd = document.getElementById('modalHotelBackdrop');
   const md = document.getElementById('modalHotel');
   if (bd) bd.style.display = 'none';
   if (md) md.style.display = 'none';
+
+  // reset estado de modal
+  MH_HID  = null;
+  MH_MODE = 1;
 }
 
 // Wire de cierre (botón, backdrop y tecla ESC)
@@ -1249,6 +1386,11 @@ if (bdHotel) bdHotel.onclick = closeModalHotel;
 document.addEventListener('keydown', (e)=>{
   if (e.key === 'Escape') closeModalHotel();
 });
+
+// Botón de cambio de modo (MODO 1 / MODO 2)
+const btnModeHotel = document.getElementById('mh-mode');
+if (btnModeHotel) btnModeHotel.onclick = toggleModoCorreo;
+
 
 // Guardar PENDIENTE (marca por cada fecha con consumo > 0)
 document.getElementById('mh-guardarPend').onclick = async (e)=>{
