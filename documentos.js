@@ -1203,7 +1203,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
           <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
-            ${grupo.numeroNegocio ? `<span>Nº NEGOCIO: ${grupo.numeroNegocio}</span>` : ''}
+            ${grupo.numeroNegocio ? `<span>CÓDIGO ID: ${grupo.numeroNegocio}</span>` : ''}
             ${grupo.fechaInicio ? `<span>INICIO: ${grupo.fechaInicio}</span>` : ''} ${grupo.fechaFin ? `<span>FIN: ${grupo.fechaFin}</span>` : ''}
             ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
@@ -1242,17 +1242,18 @@ function buildFinanzasDoc(grupo, abonos, coord){
         </table>
       </div>
 
-      <hr>
+      
       <div class="finanzas-footnote">
        NOMBRE COORDINADOR:
       </div>
-      <hr>
+      <br>
       <div class="finanzas-footnote">
        FECHA:
       </div>
-      <hr>
+      <br>
       <div class="finanzas-footnote">
        FIRMA:
+      <br>
       </div>
     </div>
   `;
