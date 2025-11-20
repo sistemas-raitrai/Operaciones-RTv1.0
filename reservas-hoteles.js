@@ -1173,14 +1173,16 @@ async function abrirModalHotel(hotelId){
   cuerpo += `===================================================\n\n`;
 
   // 2.a) TOTALES POR GRUPO + nota si faltan 1 ó 2 comidas
-  cuerpo += `TOTALES POR GRUPO:\n`;
+  // 2.a) TOTALES POR GRUPO + nota si faltan 1 ó 2 comidas
+  cuerpo += `TOTALES POR GRUPO:\n\n`;  // ← aquí agregamos la línea en blanco
+
   for (const { g, baseG, tot } of gruposOrden) {
     const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
     const alm = Number(tot.alm || 0);
     const cen = Number(tot.cen || 0);
     const totalG = alm + cen;
 
-    // línea principal
+    // Línea principal del grupo
     cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG} COMIDAS)\n`;
 
     // === NOTA EXTRA: cuando faltan 1 ó 2 comidas según noches y pensión ===
@@ -1198,11 +1200,14 @@ async function abrirModalHotel(hotelId){
     if (esperadas > 0) {
       const faltan = esperadas - totalG;
       if (faltan === 1) {
-        cuerpo += `  Sin una comida de las ${esperadas} esperadas.\n`;
+        cuerpo += `  SIN UNA (1) COMIDA.\n`;
       } else if (faltan === 2) {
-        cuerpo += `  Sin dos comidas de las ${esperadas} esperadas.\n`;
+        cuerpo += `  SIN DOS (2) COMIDAS.\n`;
       }
     }
+
+    // línea en blanco entre grupos
+    cuerpo += `\n`;
   }
 
 
