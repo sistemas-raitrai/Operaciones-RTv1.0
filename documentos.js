@@ -1432,7 +1432,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 </li>
               `).join('')}
             </ul>`
-          : `<div class="note">— Sin actividades con voucher físico registradas —</div>`
+          : `<div class="note">— Sin actividades con voucher registradas —</div>`
       }
     </div>
   `;
@@ -1455,7 +1455,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 </li>
               `).join('')}
             </ul>`
-          : `<div class="note">— Sin actividades con voucher tipo ticket registradas —</div>`
+          : `<div class="note">— Sin actividades con ticket registradas —</div>`
       }
     </div>
   `;
@@ -1469,7 +1469,9 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
           <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
-            ${grupo.numeroNegocio ? `<span>Nº NEGOCIO: ${grupo.numeroNegocio}</span>` : ''}
+            ${grupo.numeroNegocio ? `<span> CODIGO ID: ${grupo.numeroNegocio}</span>` : ''}
+            ${grupo.fechaInicio ? `<span>INICIO: ${grupo.fechaInicio}</span>` : ''}
+            ${grupo.fechaFin ? `<span>INICIO: ${grupo.numeroFin}</span>` : ''}
             ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
@@ -1510,7 +1512,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
       ${vouchersSectionHtml}
 
       <div class="finanzas-footnote">
-        Declaro haber recibido a conformidad los abonos indicados, los vouchers físicos y los vouchers tipo ticket señalados en este documento.
+        Declaro haber recibido a conformidad los abonos indicados, los vouchers y los tickets señalados en este documento.
       </div>
       <div class="finanzas-footnote">
         NOMBRE COORDINADOR(A): __________________________________________
