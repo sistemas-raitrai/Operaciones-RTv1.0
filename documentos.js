@@ -1670,8 +1670,8 @@ function renderTabla(rows){
       <td>${g.programa ?? '—'}</td>
       <td><span class="badge">${inicioTxt}</span></td>
       <td class="right">
-        <button class="btn-add btn-one">CONFIRMACIÓN</button>
-        <button class="btn-add btn-finanzas">FINANZAS</button>
+        <button class="btn-add btn-one">C</button>
+        <button class="btn-add btn-finanzas">R</button>
       </td>
     `;
 
