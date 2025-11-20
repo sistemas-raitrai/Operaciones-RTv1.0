@@ -1200,9 +1200,9 @@ async function abrirModalHotel(hotelId){
     if (esperadas > 0) {
       const faltan = esperadas - totalG;
       if (faltan === 1) {
-        cuerpo += `  SIN UNA (1) COMIDA.\n`;
+        cuerpo += `  Sin una (1) comida de las ${esperadas} esperadas.\n`;
       } else if (faltan === 2) {
-        cuerpo += `  SIN DOS (2) COMIDAS.\n`;
+        cuerpo += `  Sin dos (2) comidas de las ${esperadas} esperadas.\n`;
       }
     }
 
