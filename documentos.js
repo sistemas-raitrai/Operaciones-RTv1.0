@@ -1241,12 +1241,15 @@ function buildFinanzasDoc(grupo, abonos, coord){
         </table>
       </div>
 
+      <hr>
       <div class="finanzas-footnote">
        NOMBRE COORDINADOR:
       </div>
+      <hr>
       <div class="finanzas-footnote">
        FECHA:
       </div>
+      <hr>
       <div class="finanzas-footnote">
        FIRMA:
       </div>
