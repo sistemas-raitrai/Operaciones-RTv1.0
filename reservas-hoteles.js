@@ -1412,7 +1412,7 @@ async function abrirModalHotel(hotelId){
   MH_HID  = hotelId;
   MH_MODE = 1; // siempre abre en MODO 1
   const btnMode = document.getElementById('mh-mode');
-  if (btnMode) btnMode.textContent = 'MODO 2';
+  if (btnMode) btnMode.textContent = 'Modo 2';
 
   // Cuerpo inicial (Modo 1)
   const cuerpo = buildCuerpoModo1(ctx);
