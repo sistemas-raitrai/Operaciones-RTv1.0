@@ -1469,9 +1469,8 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
           <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
-            ${grupo.numeroNegocio ? `<span> CODIGO ID: ${grupo.numeroNegocio}</span>` : ''}
             ${grupo.fechaInicio ? `<span>INICIO: ${grupo.fechaInicio}</span>` : ''}
-            ${grupo.fechaFin ? `<span>INICIO: ${grupo.numeroFin}</span>` : ''}
+            ${grupo.fechaFin ? `<span>FIN: ${grupo.fechaFin}</span>` : ''}
             ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
@@ -1497,9 +1496,9 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
               <th>N°</th>
               <th>Fecha</th>
               <th>Actividad / Concepto</th>
+              <th>Comentario</th>
               <th>Medio de pago</th>
               ${headerMonedas}
-              <th>Comentario</th>
             </tr>
           </thead>
           <tbody>
