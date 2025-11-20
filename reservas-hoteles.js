@@ -1305,13 +1305,32 @@ function buildCuerpoModo2(ctx){
     cuerpo += `\n`;
   }
 
+  // 2) RESUMEN
   cuerpo += `===================================================\n`;
   cuerpo += `RESUMEN\n`;
   cuerpo += `===================================================\n\n`;
 
-  cuerpo += `TOTAL ALMUERZOS: ${totalAlmHotel} (${totalAlmPax} PAXS)\n`;
-  cuerpo += `TOTAL CENAS: ${totalCenHotel} (${totalCenPax} PAXS)\n`;
-  cuerpo += `TOTAL COMIDAS PENDIENTES: ${totalFaltantes} (${totalFaltantesPax} PAXS)\n`;
+  cuerpo += `TOTALES POR GRUPO:\n\n`;
+
+  for (const { g, baseG, tot, esperadas } of gruposOrden) {
+    const etiqueta = `(${g.numeroNegocio}) ${g.identificador ? g.identificador+' – ' : ''}${(g.alias || g.nombreGrupo || '').trim()}`;
+    const alm = Number(tot.alm || 0);
+    const cen = Number(tot.cen || 0);
+    const totalG = alm + cen;
+
+    cuerpo += `- ${etiqueta} — ALM: ${alm} | CEN: ${cen} / (TOTAL = ${totalG} COMIDAS)\n`;
+
+    if (esperadas > 0) {
+      const faltan = esperadas - totalG;
+      if (faltan === 1) {
+        cuerpo += `  Sin una (1) comida de las ${esperadas} esperadas.\n`;
+      } else if (faltan === 2) {
+        cuerpo += `  Sin dos (2) comidas de las ${esperadas} esperadas.\n`;
+      }
+    }
+
+    cuerpo += `\n`;
+  }
 
   return cuerpo;
 }
@@ -1324,7 +1343,7 @@ function toggleModoCorreo(){
   if (!ctx) return;
 
   MH_MODE = (MH_MODE === 1 ? 2 : 1);
-  if (btn) btn.textContent = (MH_MODE === 1 ? 'MODO 2' : 'MODO 1');
+  if (btn) btn.textContent = (MH_MODE === 1 ? 'Modo 2' : 'Modo 1');
 
   const cuerpo = (MH_MODE === 1) ? buildCuerpoModo1(ctx) : buildCuerpoModo2(ctx);
   const ta = document.getElementById('mh-cuerpo');
