@@ -149,6 +149,29 @@ function formatShortDate(iso){ // 25 de septiembre 2025
   const mes=dt.toLocaleDateString('es-CL',{month:'long', timeZone:'UTC'});
   return `${d} de ${mes} ${y}`;
 }
+
+// NUEVO: para finanzas → "13 DIC"
+function formatShortDayMonth(iso){
+  if (!iso) return '—';
+  const parts = iso.split('-').map(Number);
+  if (parts.length < 3) return '—';
+  const [y,m,d] = parts;
+  if (!y || !m || !d) return '—';
+  const dt = new Date(Date.UTC(y, m-1, d));
+  let txt = dt.toLocaleDateString('es-CL', { day:'2-digit', month:'short', timeZone:'UTC' });
+  // suele venir "13 dic." → sacamos el punto y dejamos mayúsculas
+  txt = txt.replace(/\./g,'');
+  return txt.toUpperCase();
+}
+
+// NUEVO: para rangos → "1 DIC al 7 DIC"
+function formatRangeDayMonth(startIso, endIso){
+  if (!startIso && !endIso) return '—';
+  if (!startIso) return formatShortDayMonth(endIso);
+  if (!endIso) return formatShortDayMonth(startIso);
+  return `${formatShortDayMonth(startIso)} al ${formatShortDayMonth(endIso)}`;
+}
+
 function formatDMYDownload(date=new Date()){
   const dt = new Date(date.toLocaleString('en-US', { timeZone: TZ }));
   const dd = String(dt.getDate()).padStart(2,'0');
@@ -156,6 +179,35 @@ function formatDMYDownload(date=new Date()){
   const yyyy = dt.getFullYear();
   return `${dd}${mm}${yyyy}`;
 }
+
+// NUEVO: rango de viaje (inicio / fin) para usar en finanzas
+function computeRangoViaje(grupo, abonos){
+  let inicio = toISO(grupo.fechaInicio || grupo.fechaViaje || '');
+  let fin    = toISO(grupo.fechaFin || grupo.fechaRegreso || '');
+
+  const it = grupo.itinerario;
+  if ((!inicio || !fin) && it && typeof it === 'object'){
+    const fechas = Object.keys(it).map(toISO).filter(Boolean).sort();
+    if (!inicio && fechas.length) inicio = fechas[0];
+    if (!fin && fechas.length)    fin    = fechas[fechas.length-1];
+  }
+
+  // último respaldo: rangos a partir de fechas de abonos
+  if ((!inicio || !fin) && Array.isArray(abonos) && abonos.length){
+    const fechasA = abonos
+      .map(a => a.fechaActividadISO || a.fechaISO)
+      .filter(Boolean)
+      .sort();
+    if (!inicio && fechasA.length) inicio = fechasA[0];
+    if (!fin && fechasA.length)    fin    = fechasA[fechasA.length-1];
+  }
+
+  return {
+    inicio: inicio || null,
+    fin:    fin    || null
+  };
+}
+
 function formatMoney(value, moneda='CLP'){
   if (value === null || value === undefined || value === '') return '';
   const num = Number(value);
@@ -1021,13 +1073,6 @@ function enrichAbonosWithItinerario(grupo, abonos){
     };
   });
 
-  // Ordenamos por fecha de actividad; si no hay, por fecha del abono
-  out.sort((a,b) => {
-    const fa = a.fechaActividadISO || a.fechaISO || '';
-    const fb = b.fechaActividadISO || b.fechaISO || '';
-    return fa.localeCompare(fb);
-  });
-
   return out;
 }
 
@@ -1092,6 +1137,49 @@ async function fetchCoordinadorPrincipal(grupo){
   }
 }
 
+// NUEVO: a partir del itinerario del grupo, arma listas de actividades con voucher
+function collectVoucherActivities(grupo){
+  const fisicos = [];
+  const tickets = [];
+  const it = grupo && grupo.itinerario;
+
+  if (!it || typeof it !== 'object') return { fisicos, tickets };
+
+  const pushUnique = (arr, item) => {
+    const key = item.key;
+    if (!arr.some(x => x.key === key)) arr.push(item);
+  };
+
+  Object.values(it).forEach(raw => {
+    const arr = Array.isArray(raw)
+      ? raw
+      : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+
+    arr.forEach(act => {
+      if (!act) return;
+      const nombre = (act.actividad || act.servicio || act.nombre || '').toString().trim();
+      if (!nombre) return;
+
+      const tipo = String(act.voucherTipo || act.tipoVoucher || '').toLowerCase();
+      const isFisico = act.voucherFisico === true || tipo === 'fisico' || tipo === 'físico' || tipo === 'physical';
+      const isTicket = act.voucherTicket === true || tipo === 'ticket';
+
+      if (!isFisico && !isTicket) return;
+
+      const contacto = (act.contactoActividad || act.contacto || act.contactoNombre || '').toString().trim();
+      const telefono = (act.fonoActividad || act.telefono || act.fono || '').toString().trim();
+      const key = norm(nombre);
+
+      const base = { key, nombre, contacto, telefono };
+
+      if (isFisico) pushUnique(fisicos, base);
+      if (isTicket) pushUnique(tickets, base);
+    });
+  });
+
+  return { fisicos, tickets };
+}
+
 // ──────────────────────────────────────────────────────────────
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
 // ──────────────────────────────────────────────────────────────
@@ -1105,10 +1193,41 @@ function buildFinanzasDoc(grupo, abonos, coord){
 
   const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
 
+  // ── RANGO DE VIAJE + DECORADO DE ABONOS (fechas y "IMPREVISTOS")
+  const { inicio: inicioViajeISO, fin: finViajeISO } = computeRangoViaje(grupo, abonos || []);
+
+  const abonosDecorados = (abonos || []).map(a => {
+    const baseText = (a.actividad || a.concepto || a.asunto || '').toString();
+    const isImprevistos = norm(baseText).includes('imprevisto');
+
+    // fecha base para ordenar y mostrar:
+    // 1) fechaActividadISO (itinerario)
+    // 2) inicio del viaje
+    // 3) fecha del abono
+    let fechaBaseISO = a.fechaActividadISO || '';
+    if (!fechaBaseISO && inicioViajeISO) fechaBaseISO = inicioViajeISO;
+    if (!fechaBaseISO) fechaBaseISO = a.fechaISO || '';
+
+    return {
+      ...a,
+      isImprevistos,
+      fechaBaseISO
+    };
+  });
+
+  // Orden final: por fecha, dejando IMPREVISTOS al final
+  abonosDecorados.sort((a,b) => {
+    if (a.isImprevistos && !b.isImprevistos) return 1;
+    if (!a.isImprevistos && b.isImprevistos) return -1;
+    const fa = a.fechaBaseISO || '';
+    const fb = b.fechaBaseISO || '';
+    return fa.localeCompare(fb);
+  });
+
   // ── MONEDAS PRESENTES → una columna por moneda que tenga algún valor
   const monedas = (() => {
     const found = new Set();
-    (abonos || []).forEach(a => {
+    (abonosDecorados || []).forEach(a => {
       if (a && a.montoNum != null){
         const m = (a.moneda || 'CLP').toString().trim() || 'CLP';
         if (m) found.add(m);
@@ -1123,11 +1242,16 @@ function buildFinanzasDoc(grupo, abonos, coord){
   const headerMonedas = monedas.map(m => `<th>${m}</th>`).join('');
   const colCount = 4 + monedas.length + 1; // N°, Fecha, Concepto, Medio, [monedas...], Comentario
 
-  const rowsHtml = (abonos && abonos.length)
-    ? abonos.map((a,idx)=>{
-        // ← FECHA: primero la del itinerario, si existe; si no, la fecha del abono
-        const baseFechaISO = a.fechaActividadISO || a.fechaISO;
-        const fechaTxt = baseFechaISO ? formatShortDate(baseFechaISO) : '—';
+  const rowsHtml = (abonosDecorados && abonosDecorados.length)
+    ? abonosDecorados.map((a,idx)=>{
+        let fechaTxt = '—';
+        if (a.isImprevistos && inicioViajeISO && finViajeISO){
+          // "1 DIC al 7 DIC"
+          fechaTxt = formatRangeDayMonth(inicioViajeISO, finViajeISO);
+        } else if (a.fechaBaseISO){
+          // "13 DIC"
+          fechaTxt = formatShortDayMonth(a.fechaBaseISO);
+        }
 
         const celdasMon = monedas.map(m => {
           const show = (a.montoNum != null && (a.moneda || 'CLP') === m);
@@ -1148,9 +1272,8 @@ function buildFinanzasDoc(grupo, abonos, coord){
       }).join('')
     : `<tr><td colspan="${colCount}" class="no-rows">No hay abonos registrados para este grupo.</td></tr>`;
 
-
   const totalesPorMoneda = new Map();
-  (abonos || []).forEach(a => {
+  (abonosDecorados || []).forEach(a => {
     if (a.montoNum != null) {
       const key = a.moneda || 'CLP';
       totalesPorMoneda.set(key, (totalesPorMoneda.get(key) || 0) + Number(a.montoNum));
@@ -1179,9 +1302,9 @@ function buildFinanzasDoc(grupo, abonos, coord){
     const nombreCoord = (coord.nombre || coord.nombreCompleto || '').toString().trim();
     const rutCoord    = (coord.rut || coord.RUT || '').toString().trim();
     const telCoord    = (coord.telefono || coord.fono || coord.celular || '').toString().trim();
-    const correoCoord  = (coord.correo || '').toString().trim();
+    const correoCoord = (coord.correo || '').toString().trim();
 
-    if (!nombreCoord && !rutCoord && !telCoord && !notasCoord) return '';
+    if (!nombreCoord && !rutCoord && !telCoord && !correoCoord) return '';
 
     return `
       <div class="sec finanzas-coord">
@@ -1196,6 +1319,53 @@ function buildFinanzasDoc(grupo, abonos, coord){
     `;
   })();
 
+  // ── Listados de vouchers (físicos y tipo ticket) basados en el itinerario del grupo
+  const { fisicos, tickets } = collectVoucherActivities(grupo);
+
+  const vouchersFisicosHtml = `
+    <div class="sec">
+      <div class="sec-title">VOUCHERS FÍSICOS ENTREGADOS</div>
+      ${
+        fisicos.length
+          ? `<ul class="itinerario">
+              ${fisicos.map(v => `
+                <li class="it-day">
+                  <div><strong>${v.nombre}</strong></div>
+                  ${v.contacto ? `<div>Contacto: ${v.contacto}</div>` : ''}
+                  ${v.telefono ? `<div>Teléfono: ${v.telefono}</div>` : ''}
+                </li>
+              `).join('')}
+            </ul>`
+          : `<div class="note">— Sin actividades con voucher físico registradas —</div>`
+      }
+    </div>
+  `;
+
+  const totalEst = Number(grupo.estudiantes || grupo.cantidadEstudiantes || 0) || 0;
+  const totalAd  = Number(grupo.adultos || grupo.cantidadAdultos || 0) || 0;
+
+  const vouchersTicketsHtml = `
+    <div class="sec">
+      <div class="sec-title">VOUCHERS TICKET / ENTRADAS</div>
+      ${
+        tickets.length
+          ? `<ul class="itinerario">
+              ${tickets.map(v => `
+                <li class="it-day">
+                  <div><strong>${v.nombre}</strong></div>
+                  <div>${totalEst} tickets estudiantes, ${totalAd} tickets adultos, 1 ticket coordinador(a)</div>
+                  ${v.contacto ? `<div>Contacto: ${v.contacto}</div>` : ''}
+                  ${v.telefono ? `<div>Teléfono: ${v.telefono}</div>` : ''}
+                </li>
+              `).join('')}
+            </ul>`
+          : `<div class="note">— Sin actividades con voucher tipo ticket registradas —</div>`
+      }
+    </div>
+  `;
+
+  const vouchersSectionHtml = vouchersFisicosHtml + vouchersTicketsHtml;
+
   return `
     <div class="print-doc finanzas-doc">
       <div class="finanzas-header">
@@ -1203,8 +1373,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
           <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
-            ${grupo.numeroNegocio ? `<span>CÓDIGO ID: ${grupo.numeroNegocio}</span>` : ''}
-            ${grupo.fechaInicio ? `<span>INICIO: ${grupo.fechaInicio}</span>` : ''} ${grupo.fechaFin ? `<span>FIN: ${grupo.fechaFin}</span>` : ''}
+            ${grupo.numeroNegocio ? `<span>Nº NEGOCIO: ${grupo.numeroNegocio}</span>` : ''}
             ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
             ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
@@ -1242,22 +1411,24 @@ function buildFinanzasDoc(grupo, abonos, coord){
         </table>
       </div>
 
-      
+      ${vouchersSectionHtml}
+
       <div class="finanzas-footnote">
-       NOMBRE COORDINADOR:
+        Declaro haber recibido a conformidad los abonos indicados, los vouchers físicos y los vouchers tipo ticket señalados en este documento.
       </div>
-      <br>
       <div class="finanzas-footnote">
-       FECHA:
+        NOMBRE COORDINADOR(A): __________________________________________
       </div>
-      <br>
       <div class="finanzas-footnote">
-       FIRMA:
-      <br>
+        FECHA: __________________________________________
+      </div>
+      <div class="finanzas-footnote">
+        FIRMA: __________________________________________
       </div>
     </div>
   `;
 }
+
 
 /* ──────────────────────────────────────────────────────────────────────
    Carga de opciones (Año, Destino, Programa, Hotel)
