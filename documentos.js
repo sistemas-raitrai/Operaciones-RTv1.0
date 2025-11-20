@@ -250,7 +250,10 @@ function buildCompositeVariants(v) {
 const cache = {
   hotelesIndex: null,
   hotelesByGroup: new Map(),
-  vuelosByGroup: new Map()
+  vuelosByGroup: new Map(),
+  // NUEVO: índices para servicios y proveedores por destino (BRASIL, SUR DE CHILE, etc.)
+  serviciosByDestino: new Map(),
+  proveedoresByDestino: new Map()
 };
 
 async function ensureHotelesIndex(){
@@ -413,6 +416,80 @@ async function loadVuelosInfo(g){
   });
   cache.vuelosByGroup.set(key, out);
   return out;
+}
+
+// ================== SERVICIOS + PROVEEDORES (para vouchers) ==================
+
+async function ensureServiciosIndex(destinoKeyRaw){
+  const destinoKey = (destinoKeyRaw || '').toString().trim();
+  if (!destinoKey){
+    return {
+      serviciosByNombre: new Map(),
+      proveedoresByNombre: new Map()
+    };
+  }
+
+  // Si ya lo tenemos cacheado, lo devolvemos
+  if (cache.serviciosByDestino.has(destinoKey)){
+    return {
+      serviciosByNombre: cache.serviciosByDestino.get(destinoKey),
+      proveedoresByNombre: cache.proveedoresByDestino.get(destinoKey) || new Map()
+    };
+  }
+
+  const serviciosByNombre = new Map();
+  const proveedoresByNombre = new Map();
+
+  // 1) Cargar servicios: Servicios/{DESTINO}/Listado
+  try{
+    const collServ = collection(db, 'Servicios', destinoKey, 'Listado');
+    const snapServ = await getDocs(collServ);
+    snapServ.forEach(d => {
+      const x = d.data() || {};
+      const baseNombre = (x.servicio || d.id || '').toString();
+      const slugBase = norm(baseNombre);
+      if (!slugBase) return;
+
+      const docu = { id:d.id, ...x };
+      serviciosByNombre.set(slugBase, docu);
+
+      // alias y prevIds también apuntan al mismo servicio
+      if (Array.isArray(x.aliases)){
+        x.aliases.forEach(a => {
+          const s = norm(a);
+          if (s) serviciosByNombre.set(s, docu);
+        });
+      }
+      if (Array.isArray(x.prevIds)){
+        x.prevIds.forEach(a => {
+          const s = norm(a);
+          if (s) serviciosByNombre.set(s, docu);
+        });
+      }
+    });
+  }catch(e){
+    console.warn('No se pudieron cargar Servicios para destino', destinoKey, e);
+  }
+
+  // 2) Cargar proveedores: Proveedores/{DESTINO}/Listado
+  try{
+    const collProv = collection(db, 'Proveedores', destinoKey, 'Listado');
+    const snapProv = await getDocs(collProv);
+    snapProv.forEach(d => {
+      const x = d.data() || {};
+      const nombre = (x.proveedor || d.id || '').toString();
+      const slug = norm(nombre);
+      if (!slug) return;
+      proveedoresByNombre.set(slug, { id:d.id, ...x });
+    });
+  }catch(e){
+    console.warn('No se pudieron cargar Proveedores para destino', destinoKey, e);
+  }
+
+  cache.serviciosByDestino.set(destinoKey, serviciosByNombre);
+  cache.proveedoresByDestino.set(destinoKey, proveedoresByNombre);
+
+  return { serviciosByNombre, proveedoresByNombre };
 }
 
 function normalizeVuelo(v){
@@ -1137,13 +1214,17 @@ async function fetchCoordinadorPrincipal(grupo){
   }
 }
 
-// NUEVO: a partir del itinerario del grupo, arma listas de actividades con voucher
-function collectVoucherActivities(grupo){
+// A partir del itinerario del grupo, arma listas de actividades con voucher,
+// cruzando con Servicios/{DESTINO}/Listado y Proveedores/{DESTINO}/Listado
+async function collectVoucherActivities(grupo){
+  const it = grupo && grupo.itinerario;
   const fisicos = [];
   const tickets = [];
-  const it = grupo && grupo.itinerario;
 
   if (!it || typeof it !== 'object') return { fisicos, tickets };
+
+  const destinoKey = (grupo.destino || '').toString().trim();
+  const { serviciosByNombre, proveedoresByNombre } = await ensureServiciosIndex(destinoKey);
 
   const pushUnique = (arr, item) => {
     const key = item.key;
@@ -1157,33 +1238,48 @@ function collectVoucherActivities(grupo){
 
     arr.forEach(act => {
       if (!act) return;
+
       const nombre = (act.actividad || act.servicio || act.nombre || '').toString().trim();
       if (!nombre) return;
 
-      const tipo = String(act.voucherTipo || act.tipoVoucher || '').toLowerCase();
-      const isFisico = act.voucherFisico === true || tipo === 'fisico' || tipo === 'físico' || tipo === 'physical';
-      const isTicket = act.voucherTicket === true || tipo === 'ticket';
+      const slugNombre = norm(nombre);
+      const servDoc = serviciosByNombre.get(slugNombre);
+      if (!servDoc) return;
+
+      const voucherVal = String(servDoc.voucher || '').toUpperCase();
+      const isFisico = voucherVal.includes('FISICO') || voucherVal.includes('FÍSICO');
+      const isTicket = voucherVal.includes('TICKET');
 
       if (!isFisico && !isTicket) return;
 
-      const contacto = (act.contactoActividad || act.contacto || act.contactoNombre || '').toString().trim();
-      const telefono = (act.fonoActividad || act.telefono || act.fono || '').toString().trim();
-      const key = norm(nombre);
+      // Buscar proveedor para contacto / teléfono
+      const provName = (servDoc.proveedor || '').toString();
+      const provSlug = norm(provName);
+      const provDoc = provSlug ? proveedoresByNombre.get(provSlug) : null;
 
-      const base = { key, nombre, contacto, telefono };
+      const contacto = (provDoc?.contacto || provDoc?.contactoNombre || '').toString().trim();
+      const telefono = (provDoc?.telefono || provDoc?.fono || provDoc?.celular || '').toString().trim();
 
-      if (isFisico) pushUnique(fisicos, base);
-      if (isTicket) pushUnique(tickets, base);
+      const item = {
+        key: slugNombre,
+        nombre,
+        contacto,
+        telefono
+      };
+
+      if (isFisico) pushUnique(fisicos, item);
+      if (isTicket) pushUnique(tickets, item);
     });
   });
 
   return { fisicos, tickets };
 }
 
+
 // ──────────────────────────────────────────────────────────────
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
 // ──────────────────────────────────────────────────────────────
-function buildFinanzasDoc(grupo, abonos, coord){
+function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
   const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
   const colegio = grupo.colegio || grupo.cliente || '';
   const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
@@ -1320,7 +1416,7 @@ function buildFinanzasDoc(grupo, abonos, coord){
   })();
 
   // ── Listados de vouchers (físicos y tipo ticket) basados en el itinerario del grupo
-  const { fisicos, tickets } = collectVoucherActivities(grupo);
+   const { fisicos = [], tickets = [] } = vouchersData || {};
 
   const vouchersFisicosHtml = `
     <div class="sec">
@@ -1622,12 +1718,13 @@ async function descargarFinanzas(grupoId){
   // 4) Buscar datos del coordinador(a) principal en colección "coordinadores"
   const coordData = await fetchCoordinadorPrincipal(g);
 
-  // 5) Construir el HTML y mandar a imprimir
-  const html = buildFinanzasDoc(g, abonos, coordData);
+  // 5) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
+  const vouchersData = await collectVoucherActivities(g);
+
+  // 6) Construir el HTML y mandar a imprimir
+  const html = buildFinanzasDoc(g, abonos, coordData, vouchersData);
   imprimirHtml(html);
 }
-
-
 
 /* ──────────────────────────────────────────────────────────────────────
    Exportación / IMPRESIÓN de CONFIRMACIÓN (uno)
