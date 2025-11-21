@@ -256,6 +256,30 @@ const cache = {
   proveedoresByDestino: new Map()
 };
 
+// NUEVO: resuelve uno o varios destinos "base" para buscar en
+// Servicios/{DESTINO}/Listado y Proveedores/{DESTINO}/Listado
+function getDestinoServiciosKeys(grupo){
+  const raw = (grupo?.destino || '').toString().trim().toUpperCase();
+  const keys = new Set();
+
+  if (!raw) return [];
+
+  // Destinos principales (ajusta o agrega más si es necesario)
+  if (raw.includes('BRASIL'))         keys.add('BRASIL');
+  if (raw.includes('SUR DE CHILE'))   keys.add('SUR DE CHILE');
+  if (raw.includes('BARILOCHE'))      keys.add('BARILOCHE');
+  if (raw.includes('NORTE DE CHILE')) keys.add('NORTE DE CHILE');
+
+  // Ejemplos:
+  //  - "SUR DE CHILE Y BARILOCHE"  → ["SUR DE CHILE","BARILOCHE"]
+  //  - "BRASIL - ITAPEMA 2025"     → ["BRASIL"]
+
+  // Si no se detectó ninguno, usamos el texto tal cual como key de colección
+  if (!keys.size) keys.add(raw);
+
+  return [...keys];
+}
+
 async function ensureHotelesIndex(){
   if (cache.hotelesIndex) return cache.hotelesIndex;
   const byId=new Map(), bySlug=new Map(), all=[];
@@ -1216,6 +1240,9 @@ async function fetchCoordinadorPrincipal(grupo){
 
 // A partir del itinerario del grupo, arma listas de actividades con voucher,
 // cruzando con Servicios/{DESTINO}/Listado y Proveedores/{DESTINO}/Listado
+// - Soporta multi-destino (ej: "SUR DE CHILE Y BARILOCHE")
+// - SOLO considera servicios cuyo campo "voucher" contenga "FISICO"/"FÍSICO" o "TICKET"
+//   (si dice "NO APLICA" u otra cosa, se ignora).
 async function collectVoucherActivities(grupo){
   const it = grupo && grupo.itinerario;
   const fisicos = [];
@@ -1223,8 +1250,32 @@ async function collectVoucherActivities(grupo){
 
   if (!it || typeof it !== 'object') return { fisicos, tickets };
 
-  const destinoKey = (grupo.destino || '').toString().trim();
-  const { serviciosByNombre, proveedoresByNombre } = await ensureServiciosIndex(destinoKey);
+  // Puede devolver 1 o varios destinos base:
+  //   ["SUR DE CHILE","BARILOCHE"], ["BRASIL"], etc.
+  const destinoKeys = getDestinoServiciosKeys(grupo);
+
+  // Índices combinados de todos esos destinos
+  const serviciosByNombre   = new Map();
+  const proveedoresByNombre = new Map();
+
+  for (const key of destinoKeys){
+    if (!key) continue;
+
+    const {
+      serviciosByNombre: servIdx,
+      proveedoresByNombre: provIdx
+    } = await ensureServiciosIndex(key);
+
+    // Unimos índices sin sobrescribir si ya existe la clave
+    for (const [slug, doc] of servIdx){
+      if (!serviciosByNombre.has(slug)) serviciosByNombre.set(slug, doc);
+    }
+    if (provIdx){
+      for (const [slug, doc] of provIdx){
+        if (!proveedoresByNombre.has(slug)) proveedoresByNombre.set(slug, doc);
+      }
+    }
+  }
 
   const pushUnique = (arr, item) => {
     const key = item.key;
@@ -1247,6 +1298,8 @@ async function collectVoucherActivities(grupo){
       if (!servDoc) return;
 
       const voucherVal = String(servDoc.voucher || '').toUpperCase();
+
+      // SOLO FÍSICO / TICKET; "NO APLICA" queda fuera
       const isFisico = voucherVal.includes('FISICO') || voucherVal.includes('FÍSICO');
       const isTicket = voucherVal.includes('TICKET');
 
@@ -1274,6 +1327,7 @@ async function collectVoucherActivities(grupo){
 
   return { fisicos, tickets };
 }
+
 
 
 // ──────────────────────────────────────────────────────────────
