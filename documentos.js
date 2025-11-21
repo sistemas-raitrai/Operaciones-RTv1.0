@@ -1575,8 +1575,6 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                     </strong>
                   </div>
                   <div>${totalEst} tickets estudiantes, ${totalAd} tickets adultos, 1 ticket coordinador(a)</div>
-                  ${v.contacto ? `<div>Contacto: ${v.contacto}</div>` : ''}
-                  ${v.telefono ? `<div>Teléfono: ${v.telefono}</div>` : ''}
                 </li>
               `).join('')}
             </ul>`
