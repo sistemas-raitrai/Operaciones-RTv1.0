@@ -842,6 +842,8 @@ function injectNativePrintStyles(){
   const css = `
     @media print{
       html, body{
+        margin:0 !important;
+        padding:0 !important;
         background:#ffffff !important;
         color:#000000 !important;
       }
@@ -876,6 +878,7 @@ function injectNativePrintStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 /**
  * Recibe HTML con uno o varios <div class="print-doc"> y abre el
