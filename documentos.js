@@ -1542,7 +1542,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
       ${coordBlock}
 
-      <div class="sec">
+       <div class="sec">
         <div class="sec-title">ABONOS ENTREGADOS AL COORDINADOR(A)</div>
         <table class="finanzas-table">
           <thead>
@@ -1550,8 +1550,8 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
               <th>N°</th>
               <th>Fecha</th>
               <th>Actividad / Concepto</th>
-              <th>Comentario</th>
               <th>Medio de pago</th>
+              <th>Detalle</th>
               ${headerMonedas}
             </tr>
           </thead>
@@ -1561,6 +1561,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
           ${tfootHtml}
         </table>
       </div>
+
 
       ${vouchersSectionHtml}
 
