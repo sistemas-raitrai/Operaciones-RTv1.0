@@ -30,50 +30,144 @@ async function waitFor(testFn, timeout = 6000, step = 120) {
 }
 
 /* === UI CLARA + LAYOUT DE ANCHO COMPLETO PARA ESTA PÁGINA ============ */
-function injectPageLightStyles(){
-  if (document.getElementById('light-ui-overrides')) return;
+function injectPdfStyles(){
+  if (document.getElementById('pdf-styles')) return;
   const css = `
-    :root { color-scheme: light; }
-    html, body { background:#f7f7f8 !important; color:#111 !important; }
-    body.confirmaciones-page * { color-scheme: light; }
+  /* Margen REAL por página: se aplica en TODAS las hojas
+     (soluciona que la segunda hoja salga sin margen) */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 10mm 18mm 10mm; /* top right bottom left */
+  }
 
-    /* === ancho completo (por si el CSS global prevalece) === */
-    body.confirmaciones-page main.main.fullwidth,
-    body.confirmaciones-page .main.fullwidth{
-      max-width: none !important;
-      width: 100% !important;
-      margin: 12px 0 40px !important;
-      padding-left: 12px !important;
-      padding-right: 12px !important;
-      display: block !important;
-    }
-    body.confirmaciones-page .main.fullwidth > .card{
-      width: 100% !important;
-      max-width: none !important;
-      margin-left: 0 !important;
-      margin-right: 0 !important;
-      display: block !important;
-      box-sizing: border-box;
-    }
-    body.confirmaciones-page .main.fullwidth table{
-      width: 100% !important;
-    }
-    body.confirmaciones-page .main.fullwidth .filters .row{
-      display: grid !important;
-      gap: 12px !important;
-      grid-template-columns: 1fr !important;
-    }
-    
-    .print-doc{ margin:0 auto !important; }
+  .print-doc{ page-break-after: always; }
+  .print-doc:last-child{ page-break-after: auto; }
 
-    @media (min-width: 1000px){
-      body.confirmaciones-page .main.fullwidth .filters .row{
-        grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
-      }
-    }
+  .print-doc{
+    background:#ffffff !important;
+    color:#111 !important;
+    width:190mm !important;           /* zona segura para evitar cortes */
+    min-height:auto;                  /* que crezca según contenido, sin forzar alto fijo */
+    box-sizing:border-box;
+    /* ahora el “margen fuerte” lo da @page; este padding es solo acolchado interno */
+    padding:4mm 6mm 6mm 6mm;
+    margin:0 auto !important;
+    font:11pt/1.28 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+
+  /* Evitar que textos/URLs largos rompan el ancho y se “salgan” */
+  .hotel-right, .hotel-right a, .flight-legs, .itinerario{
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  
+  .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 5mm 0; text-align:center; }
+
+  /* Secciones normales: intentamos no cortarlas… */
+  .sec{
+    margin:0 0 4.5mm 0;
+    break-inside:avoid;
+    page-break-inside:avoid;
+  }
+
+  /* …pero las secciones de vouchers pueden repartirse en varias páginas
+     para que no desaparezcan ni se corten raro */
+  .finanzas-doc .sec.vouchers-section{
+    break-inside:auto;
+    page-break-inside:auto;
+  }
+
+  .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2mm 0; }
+  .note{ color:#374151; font-size:10pt; }
+  .flight-block{ margin:0 0 4mm 0; }
+  .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
+  .flight-lines{ list-style:none; margin:0 0 2mm 0; padding:0; }
+  .flight-lines li{ margin:.6mm 0; line-height:1.22; }
+  .flight-lines .lbl{ font-weight:700; }
+  .hoteles-list{ list-style:none; margin:.8mm 0 0 0; padding:0; }
+  .hotel-item{ margin:.6mm 0 .8mm; }
+  .hotel-grid{ display:grid; grid-template-columns:48mm 1fr; column-gap:5mm; }
+  .hotel-right > div{ margin:.15mm 0; }
+  .itinerario{ list-style:none; margin:0; padding:0; }
+  .it-day{ margin:0 0 3mm 0; }
+  .closing{ text-align:center; font-weight:800; margin-top:7mm; }
+
+  /* ───── ESTADO DE CUENTAS DEL VIAJE (FINANZAS) ───── */
+
+  .finanzas-doc{
+    min-height: auto !important;   /* así no fuerza 297mm + padding → 2ª página en blanco */
+  }
+  
+  .finanzas-doc .finanzas-header{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    margin-bottom:6mm;
+  }
+  .finanzas-title{
+    font-size:16pt;
+    font-weight:800;
+    margin:0 0 2mm 0;
+  }
+  .finanzas-subtitle{
+    font-size:11pt;
+    font-weight:600;
+    margin:0 0 1mm 0;
+  }
+  .finanzas-meta span{
+    display:inline-block;
+    font-size:9.5pt;
+    margin-right:4mm;
+  }
+  .finanzas-logo img{
+    max-height:18mm;
+    width:auto;
+  }
+  .finanzas-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:9.5pt;          /* un poco más pequeño para más columnas */
+    margin-top:2mm;
+  }
+  .finanzas-table th,
+  .finanzas-table td{
+    border:0.4pt solid #111;
+    padding:2px 3px;
+    vertical-align:top;
+  }
+  .finanzas-table th{
+    text-align:left;
+    background:#f3f4f6;
+    font-weight:700;
+  }
+  .finanzas-table .nowrap{
+    white-space:nowrap;
+  }
+  .finanzas-table .no-rows{
+    text-align:center;
+    font-style:italic;
+    color:#6b7280;
+  }
+  .finanzas-total-label{
+    text-align:right;
+    font-weight:700;
+    padding-top:3px;
+    border-top:0.6pt solid #111;
+  }
+  .finanzas-total-value{
+    font-weight:700;
+    padding-top:3px;
+    border-top:0.6pt solid #111;
+  }
+  .finanzas-footnote{
+    margin-top:6mm;
+    font-size:9pt;
+    color:#4b5563;
+  }
+
   `;
   const s = document.createElement('style');
-  s.id = 'light-ui-overrides';
+  s.id = 'pdf-styles';
   s.textContent = css;
   document.head.appendChild(s);
 }
