@@ -1565,8 +1565,9 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
               <th>Fecha</th>
               <th>Actividad / Concepto</th>
               <th>Medio de pago</th>
-              <th>Detalle</th>
+              
               ${headerMonedas}
+              <th>Detalle</th>
             </tr>
           </thead>
           <tbody>
