@@ -737,7 +737,7 @@ function injectPdfStyles(){
   }
 
   .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2mm 0; }
-  .note{ color:#374151; font-size:10pt; }
+  .note{ color:#000000; font-size:10pt; }
   .flight-block{ margin:0 0 4mm 0; }
   .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
   .flight-lines{ list-style:none; margin:0 0 2mm 0; padding:0; }
@@ -805,7 +805,7 @@ function injectPdfStyles(){
   .finanzas-table .no-rows{
     text-align:center;
     font-style:italic;
-    color:#6b7280;
+    color:#000000; /* TEXTO NEGRO */
   }
   .finanzas-total-label{
     text-align:right;
@@ -821,8 +821,31 @@ function injectPdfStyles(){
   .finanzas-footnote{
     margin-top:6mm;
     font-size:9pt;
-    color:#4b5563;
+    color:#000000; /* TEXTO NEGRO */
   }
+
+  /* Las secciones de vouchers pueden partir página, pero con más espacio */
+  .finanzas-doc .sec.vouchers-section{
+    break-inside:auto;
+    page-break-inside:auto;
+    margin-top:6mm;              /* separa más de la tabla de abonos */
+  }
+
+  /* Doble separación entre VOUCHERS FÍSICOS y VOUCHERS TICKET */
+  .finanzas-doc .sec.vouchers-section + .sec.vouchers-section{
+    margin-top:8mm;
+  }
+
+  /* Doble separación entre el último bloque de vouchers y la firma */
+  .finanzas-doc .vouchers-section + .finanzas-footnote{
+    margin-top:10mm;
+  }
+
+  /* Separación normal entre líneas de firma */
+  .finanzas-doc .finanzas-footnote + .finanzas-footnote{
+    margin-top:4mm;
+  }
+
 
   `;
   const s = document.createElement('style');
@@ -1263,17 +1286,15 @@ async function fetchCoordinadorPrincipal(grupo){
   }
 }
 
-// A partir del itinerario del grupo, arma listas de actividades con voucher,
-// cruzando con Servicios/{DESTINO}/Listado y Proveedores/{DESTINO}/Listado
-// - Soporta multi-destino (ej: "SUR DE CHILE Y BARILOCHE")
-// - SOLO considera servicios cuyo campo "voucher" contenga "FISICO"/"FÍSICO" o "TICKET"
-//   (si dice "NO APLICA" u otra cosa, se ignora).
 async function collectVoucherActivities(grupo){
   const it = grupo && grupo.itinerario;
   const fisicos = [];
   const tickets = [];
 
   if (!it || typeof it !== 'object') return { fisicos, tickets };
+
+  // índice de fechas por actividad (primer día donde aparece en el itinerario)
+  const itIndex = buildItinerarioIndex(grupo);
 
   // Puede devolver 1 o varios destinos base:
   //   ["SUR DE CHILE","BARILOCHE"], ["BRASIL"], etc.
@@ -1338,11 +1359,15 @@ async function collectVoucherActivities(grupo){
       const contacto = (provDoc?.contacto || provDoc?.contactoNombre || '').toString().trim();
       const telefono = (provDoc?.telefono || provDoc?.fono || provDoc?.celular || '').toString().trim();
 
+      // Fecha en el itinerario (si existe) según nombre normalizado
+      const fechaActividadISO = itIndex.get(slugNombre) || null;
+
       const item = {
         key: slugNombre,
         nombre,
         contacto,
-        telefono
+        telefono,
+        fechaActividadISO
       };
 
       if (isFisico) pushUnique(fisicos, item);
@@ -1350,10 +1375,21 @@ async function collectVoucherActivities(grupo){
     });
   });
 
+  // Ordenar por fecha de actividad (las sin fecha al final, luego por nombre)
+  const sortByFecha = (a, b) => {
+    const fa = a.fechaActividadISO || '';
+    const fb = b.fechaActividadISO || '';
+    if (fa && fb) return fa.localeCompare(fb);
+    if (fa && !fb) return -1;
+    if (!fa && fb) return 1;
+    return a.nombre.localeCompare(b.nombre, 'es');
+  };
+
+  fisicos.sort(sortByFecha);
+  tickets.sort(sortByFecha);
+
   return { fisicos, tickets };
 }
-
-
 
 // ──────────────────────────────────────────────────────────────
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
@@ -1495,7 +1531,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
   })();
 
   // ── Listados de vouchers (físicos y tipo ticket) basados en el itinerario del grupo
-   const { fisicos = [], tickets = [] } = vouchersData || {};
+  const { fisicos = [], tickets = [] } = vouchersData || {};
 
   const vouchersFisicosHtml = `
     <div class="sec vouchers-section">
@@ -1505,7 +1541,12 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
           ? `<ul class="itinerario">
               ${fisicos.map(v => `
                 <li class="it-day">
-                  <div><strong>${v.nombre}</strong></div>
+                  <div>
+                    <strong>
+                      ${v.fechaActividadISO ? `FECHA ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.nombre}
+                    </strong>
+                  </div>
                   ${v.contacto ? `<div>Contacto: ${v.contacto}</div>` : ''}
                   ${v.telefono ? `<div>Teléfono: ${v.telefono}</div>` : ''}
                 </li>
@@ -1527,7 +1568,12 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
           ? `<ul class="itinerario">
               ${tickets.map(v => `
                 <li class="it-day">
-                  <div><strong>${v.nombre}</strong></div>
+                  <div>
+                    <strong>
+                      ${v.fechaActividadISO ? `FECHA ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.nombre}
+                    </strong>
+                  </div>
                   <div>${totalEst} tickets estudiantes, ${totalAd} tickets adultos, 1 ticket coordinador(a)</div>
                   ${v.contacto ? `<div>Contacto: ${v.contacto}</div>` : ''}
                   ${v.telefono ? `<div>Teléfono: ${v.telefono}</div>` : ''}
@@ -1540,6 +1586,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
   `;
 
   const vouchersSectionHtml = vouchersFisicosHtml + vouchersTicketsHtml;
+
 
   return `
     <div class="print-doc finanzas-doc">
