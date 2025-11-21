@@ -696,7 +696,7 @@ function injectPdfStyles(){
      (soluciona que la segunda hoja salga sin margen) */
   @page {
     size: A4 portrait;
-    margin: 25mm 10mm 28mm 10mm; /* top right bottom left */
+    margin: 25mm 10mm 25mm 10mm; /* top right bottom left */
   }
 
   .print-doc{ page-break-after: always; }
