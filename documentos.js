@@ -713,7 +713,21 @@ function injectPdfStyles(){
   }
   
   .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 5mm 0; text-align:center; }
-  .sec{ margin:0 0 4.5mm 0; break-inside:avoid; page-break-inside:avoid; }
+
+  /* Secciones normales: intentamos no cortarlas… */
+  .sec{
+    margin:0 0 4.5mm 0;
+    break-inside:avoid;
+    page-break-inside:avoid;
+  }
+
+  /* …pero las secciones de vouchers pueden repartirse en varias páginas
+     para que no desaparezcan ni se corten raro */
+  .finanzas-doc .sec.vouchers-section{
+    break-inside:auto;
+    page-break-inside:auto;
+  }
+
   .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2mm 0; }
   .note{ color:#374151; font-size:10pt; }
   .flight-block{ margin:0 0 4mm 0; }
@@ -1473,7 +1487,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
    const { fisicos = [], tickets = [] } = vouchersData || {};
 
   const vouchersFisicosHtml = `
-    <div class="sec">
+    <div class="sec vouchers-section">
       <div class="sec-title">VOUCHERS FÍSICOS ENTREGADOS</div>
       ${
         fisicos.length
@@ -1495,7 +1509,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
   const totalAd  = Number(grupo.adultos || grupo.cantidadAdultos || 0) || 0;
 
   const vouchersTicketsHtml = `
-    <div class="sec">
+    <div class="sec vouchers-section">
       <div class="sec-title">VOUCHERS TICKET / ENTRADAS</div>
       ${
         tickets.length
