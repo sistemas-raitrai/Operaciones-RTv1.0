@@ -692,7 +692,13 @@ function renderDocsList(docsText) {
 function injectPdfStyles(){
   if (document.getElementById('pdf-styles')) return;
   const css = `
-  @page { size: A4 portrait; margin: 0; }
+  /* Margen REAL por página: se aplica en TODAS las hojas
+     (soluciona que la segunda hoja salga sin margen) */
+  @page {
+    size: A4 portrait;
+    margin: 10mm 10mm 18mm 10mm; /* top right bottom left */
+  }
+
   .print-doc{ page-break-after: always; }
   .print-doc:last-child{ page-break-after: auto; }
 
@@ -700,12 +706,14 @@ function injectPdfStyles(){
     background:#ffffff !important;
     color:#111 !important;
     width:190mm !important;           /* zona segura para evitar cortes */
-    min-height:270mm;
+    min-height:auto;                  /* que crezca según contenido, sin forzar alto fijo */
     box-sizing:border-box;
-    padding:12mm 12mm 14mm 14mm;      /* márgenes internos un poco mayores */
+    /* ahora el “margen fuerte” lo da @page; este padding es solo acolchado interno */
+    padding:4mm 6mm 6mm 6mm;
     margin:0 auto !important;
     font:11pt/1.28 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   }
+
   /* Evitar que textos/URLs largos rompan el ancho y se “salgan” */
   .hotel-right, .hotel-right a, .flight-legs, .itinerario{
     word-break: break-word;
