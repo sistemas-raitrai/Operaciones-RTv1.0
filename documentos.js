@@ -1535,7 +1535,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
   const vouchersFisicosHtml = `
     <div class="sec vouchers-section">
-      <div class="sec-title">VOUCHERS FÍSICOS ENTREGADOS</div>
+      <div class="sec-title">ACTIVIDADES CON VOUCHERS PARA ENTREGAR</div>
       ${
         fisicos.length
           ? `<ul class="itinerario">
@@ -1543,7 +1543,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 <li class="it-day">
                   <div>
                     <strong>
-                      ${v.fechaActividadISO ? `✉ ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.fechaActividadISO ? `📝 ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
                       ${v.nombre}
                     </strong>
                   </div>
@@ -1562,7 +1562,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
-      <div class="sec-title">VOUCHERS TICKET / ENTRADAS</div>
+      <div class="sec-title"> ACTIVIDADES COP TICKET / ENTRADAS QUE ENTREGAR</div>
       ${
         tickets.length
           ? `<ul class="itinerario">
@@ -1570,7 +1570,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 <li class="it-day">
                   <div>
                     <strong>
-                      ${v.fechaActividadISO ? `FECHA ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.fechaActividadISO ? `📄 ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
                       ${v.nombre}
                     </strong>
                   </div>
