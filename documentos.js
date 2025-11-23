@@ -1690,13 +1690,6 @@ function buildVouchersDoc(grupo, vouchersData){
     return `
       <div class="print-doc vouchers-doc">
         <div class="vouchers-header">
-          <div class="vouchers-title">VOUCHERS DE SERVICIO</div>
-          <div class="vouchers-subtitle">${safe(lineaPrincipal, '')}</div>
-          <div class="vouchers-meta">
-            ${aliasLabel ? `<span>Grupo: ${aliasLabel}</span>` : ''}
-            ${ano ? `<span>Año viaje: ${ano}</span>` : ''}
-            ${programa ? `<span>Programa: ${programa}</span>` : ''}
-          </div>
         </div>
         <div class="note">No hay actividades con voucher físico registradas para este grupo.</div>
       </div>
