@@ -714,129 +714,7 @@ function injectPdfStyles(){
     font:11pt/1.28 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   }
 
-  /* Evitar que textos/URLs largos rompan el ancho y se “salgan” */
-  .hotel-right, .hotel-right a, .flight-legs, .itinerario{
-    word-break: break-word;
-    overflow-wrap: anywhere;
-  }
-  
-  .doc-title{ font-weight:800; font-size:17pt; line-height:1.12; margin:0 0 5mm 0; text-align:center; }
-
-  /* Secciones normales: intentamos no cortarlas… */
-  .sec{
-    margin:0 0 4.5mm 0;
-    break-inside:avoid;
-    page-break-inside:avoid;
-  }
-
-  /* …pero las secciones de vouchers pueden repartirse en varias páginas
-     para que no desaparezcan ni se corten raro */
-  .finanzas-doc .sec.vouchers-section{
-    break-inside:auto;
-    page-break-inside:auto;
-  }
-
-  .sec-title{ font-weight:700; font-size:11pt; margin:0 0 2mm 0; }
-  .note{ color:#000000; font-size:10pt; }
-  .flight-block{ margin:0 0 4mm 0; }
-  .flights-header{ font-weight:700; margin:0 0 1.6mm 0; }
-  .flight-lines{ list-style:none; margin:0 0 2mm 0; padding:0; }
-  .flight-lines li{ margin:.6mm 0; line-height:1.22; }
-  .flight-lines .lbl{ font-weight:700; }
-  .hoteles-list{ list-style:none; margin:.8mm 0 0 0; padding:0; }
-  .hotel-item{ margin:.6mm 0 .8mm; }
-  .hotel-grid{ display:grid; grid-template-columns:48mm 1fr; column-gap:5mm; }
-  .hotel-right > div{ margin:.15mm 0; }
-  .itinerario{ list-style:none; margin:0; padding:0; }
-  .it-day{ margin:0 0 3mm 0; }
-  .closing{ text-align:center; font-weight:800; margin-top:7mm; }
-
-  /* ───── ESTADO DE CUENTAS DEL VIAJE (FINANZAS) ───── */
-
-  .finanzas-doc{
-    min-height: auto !important;   /* así no fuerza 297mm + padding → 2ª página en blanco */
-  }
-  
-  .finanzas-doc .finanzas-header{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    margin-bottom:6mm;
-  }
-  .finanzas-title{
-    font-size:16pt;
-    font-weight:800;
-    margin:0 0 2mm 0;
-  }
-  .finanzas-subtitle{
-    font-size:11pt;
-    font-weight:600;
-    margin:0 0 1mm 0;
-  }
-  .finanzas-meta span{
-    display:inline-block;
-    font-size:9.5pt;
-    margin-right:4mm;
-  }
-  .finanzas-logo img{
-    max-height:18mm;
-    width:auto;
-  }
-  .finanzas-table{
-    width:100%;
-    border-collapse:collapse;
-    font-size:9.5pt;          /* un poco más pequeño para más columnas */
-    margin-top:2mm;
-  }
-  .finanzas-table th,
-  .finanzas-table td{
-    border:0.4pt solid #111;
-    padding:2px 3px;
-    vertical-align:top;
-  }
-  .finanzas-table th{
-    text-align:left;
-    background:#f3f4f6;
-    font-weight:700;
-  }
-  .finanzas-table .nowrap{
-    white-space:nowrap;
-  }
-  .finanzas-table .no-rows{
-    text-align:center;
-    font-style:italic;
-    color:#000000; /* TEXTO NEGRO */
-  }
-  .finanzas-total-label{
-    text-align:right;
-    font-weight:700;
-    padding-top:3px;
-    border-top:0.6pt solid #111;
-  }
-  .finanzas-total-value{
-    font-weight:700;
-    padding-top:3px;
-    border-top:0.6pt solid #111;
-  }
-  .finanzas-footnote{
-    margin-top:6mm;
-    font-size:9pt;
-    color:#000000; /* TEXTO NEGRO */
-  }
-
-  /* Las secciones de vouchers pueden partir página, pero con más espacio */
-  .finanzas-doc .sec.vouchers-section{
-    break-inside:auto;
-    page-break-inside:auto;
-    margin-top:6mm;              /* separa más de la tabla de abonos */
-  }
-
-  /* Doble separación entre VOUCHERS FÍSICOS y VOUCHERS TICKET */
-  .finanzas-doc .sec.vouchers-section + .sec.vouchers-section{
-    margin-top:8mm;
-  }
-
-  /* Doble separación entre el último bloque de vouchers y la firma */
+  ...
   .finanzas-doc .vouchers-section + .finanzas-footnote{
     margin-top:10mm;
   }
@@ -846,6 +724,132 @@ function injectPdfStyles(){
     margin-top:4mm;
   }
 
+  /* ===== VOUCHERS FÍSICOS (3 por página aprox.) ===== */
+  .vouchers-doc{
+    min-height:auto !important;
+  }
+  .vouchers-doc .vouchers-header{
+    margin-bottom:4mm;
+  }
+  .vouchers-doc .vouchers-title{
+    font-size:14pt;
+    font-weight:800;
+    margin:0 0 1mm 0;
+  }
+  .vouchers-doc .vouchers-subtitle{
+    font-size:10.5pt;
+    font-weight:600;
+    margin:0 0 1mm 0;
+  }
+  .vouchers-doc .vouchers-meta span{
+    display:inline-block;
+    font-size:9pt;
+    margin-right:4mm;
+  }
+
+  .vouchers-doc .voucher-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:4mm;
+  }
+  @media print{
+    .vouchers-doc .voucher-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .voucher-card{
+    border:0.6pt solid #111;
+    padding:3mm 4mm;
+    min-height:75mm;               /* pensado para ~3 vouchers por página */
+    box-sizing:border-box;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    page-break-inside:avoid;
+    break-inside:avoid;
+  }
+
+  .voucher-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    margin-bottom:2mm;
+    gap:3mm;
+  }
+  .voucher-title{
+    font-size:11pt;
+    font-weight:800;
+    margin:0;
+  }
+  .voucher-subtitle{
+    font-size:9pt;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    margin:0 0 1mm 0;
+  }
+  .voucher-group{
+    font-size:9pt;
+    margin-bottom:1mm;
+  }
+  .voucher-meta{
+    font-size:8.5pt;
+  }
+  .voucher-meta span{
+    display:inline-block;
+    margin-right:3mm;
+  }
+  .voucher-logo img{
+    max-height:14mm;
+    width:auto;
+  }
+
+  .voucher-body{
+    font-size:9.5pt;
+  }
+  .voucher-row{
+    margin:1mm 0;
+  }
+  .voucher-row .lbl{
+    font-weight:700;
+  }
+
+  .voucher-asistencia-box{
+    border:0.5pt solid #111;
+    padding:2mm 3mm;
+    margin-top:1mm;
+  }
+  .voucher-asistencia-inner{
+    display:flex;
+    flex-wrap:wrap;
+    gap:4mm;
+    font-size:9pt;
+  }
+  .voucher-asistencia-inner span{
+    flex:1 1 auto;
+  }
+
+  .voucher-observaciones-box{
+    border:0.5pt solid #111;
+    margin-top:1mm;
+    min-height:16mm;
+  }
+
+  .voucher-footer{
+    margin-top:3mm;
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:4mm;
+    font-size:8.5pt;
+  }
+  .voucher-firma-label{
+    margin-bottom:3mm;
+  }
+  .voucher-firma-line{
+    border-bottom:0.5pt solid #111;
+    height:0;
+    margin-top:6mm;
+  }
 
   `;
   const s = document.createElement('style');
@@ -853,6 +857,7 @@ function injectPdfStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
+
 
 /* ======================================================================
    NUEVO: IMPRESIÓN NATIVA (SIN HTML2PDF)
@@ -1365,6 +1370,7 @@ async function collectVoucherActivities(grupo){
       const item = {
         key: slugNombre,
         nombre,
+        proveedor: provName,
         contacto,
         telefono,
         fechaActividadISO
@@ -1652,6 +1658,149 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
   `;
 }
 
+function buildVouchersDoc(grupo, vouchersData){
+  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const colegio = grupo.colegio || grupo.cliente || '';
+  const curso   = grupo.curso || grupo.subgrupo || '';
+  const destino = grupo.destino || '';
+  const programa= grupo.programa || '';
+  const ano     = grupo.anoViaje || '';
+
+  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
+
+  const aliasLabel = (() => {
+    const num = grupo.numeroNegocio || '';
+    const al  = grupo.aliasGrupo || grupo.nombreGrupo || '';
+    if (num && al) return `(${num}) ${al}`;
+    return num || al || '';
+  })();
+
+  const totalEst = Number(grupo.estudiantes || grupo.cantidadEstudiantes || 0) || 0;
+  const totalAd  = Number(grupo.adultos || grupo.cantidadAdultos || 0) || 0;
+  const totalGrupo = (() => {
+    const base =
+      Number(grupo.cantidadGrupo || grupo.cantidadgrupo || grupo.pax || 0) ||
+      (totalEst + totalAd);
+    return base || '';
+  })();
+
+  const { fisicos = [] } = vouchersData || {};
+
+  if (!fisicos.length){
+    return `
+      <div class="print-doc vouchers-doc">
+        <div class="vouchers-header">
+          <div class="vouchers-title">VOUCHERS DE SERVICIO</div>
+          <div class="vouchers-subtitle">${safe(lineaPrincipal, '')}</div>
+          <div class="vouchers-meta">
+            ${aliasLabel ? `<span>Grupo: ${aliasLabel}</span>` : ''}
+            ${ano ? `<span>Año viaje: ${ano}</span>` : ''}
+            ${programa ? `<span>Programa: ${programa}</span>` : ''}
+          </div>
+        </div>
+        <div class="note">No hay actividades con voucher físico registradas para este grupo.</div>
+      </div>
+    `;
+  }
+
+  const cardsHtml = fisicos.map(v => {
+    const fechaTxt = v.fechaActividadISO ? formatShortDate(v.fechaActividadISO) : '—';
+    const proveedor = v.proveedor || '';
+
+    return `
+      <div class="voucher-card">
+        <div class="voucher-header">
+          <div>
+            <div class="voucher-title">VOUCHER DE SERVICIO</div>
+            <div class="voucher-subtitle">TURISMO RAITRAI</div>
+            ${aliasLabel ? `<div class="voucher-group"><span class="lbl">Grupo:</span> ${aliasLabel}</div>` : ''}
+            <div class="voucher-meta">
+              ${colegio ? `<span>${colegio}</span>` : ''}
+              ${curso ? `<span>${curso}</span>` : ''}
+              ${destino ? `<span>${destino}</span>` : ''}
+            </div>
+          </div>
+          <div class="voucher-logo">
+            <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+          </div>
+        </div>
+
+        <div class="voucher-body">
+          <div class="voucher-row">
+            <span class="lbl">Proveedor:</span> ${proveedor || '____________________________'}
+          </div>
+          <div class="voucher-row">
+            <span class="lbl">Servicio:</span> ${v.nombre}
+          </div>
+          <div class="voucher-row">
+            <span class="lbl">Fecha de uso:</span> ${fechaTxt}
+          </div>
+          <div class="voucher-row">
+            <span class="lbl">Pax planificados:</span>
+            ${
+              totalGrupo
+                ? `${totalGrupo} pax${
+                    (totalEst || totalAd)
+                      ? ` (Estudiantes: ${totalEst || 0} · Adultos: ${totalAd || 0})`
+                      : ''
+                  }`
+                : '________________'
+            }
+          </div>
+
+          <div class="voucher-row">
+            <span class="lbl">Asistencia real:</span>
+          </div>
+          <div class="voucher-asistencia-box">
+            <div class="voucher-asistencia-inner">
+              <span>Estudiantes: __________</span>
+              <span>Adultos: __________</span>
+              <span>Total: __________</span>
+            </div>
+          </div>
+
+          <div class="voucher-row">
+            <span class="lbl">Observaciones:</span>
+          </div>
+          <div class="voucher-observaciones-box"></div>
+        </div>
+
+        <div class="voucher-footer">
+          <div class="voucher-firma">
+            <div class="voucher-firma-label">Firma PROVEEDOR (firma o timbre):</div>
+            <div class="voucher-firma-line"></div>
+          </div>
+          <div class="voucher-firma">
+            <div class="voucher-firma-label">Firma COORDINADOR(A):</div>
+            <div class="voucher-firma-line"></div>
+          </div>
+          <div class="voucher-firma">
+            <div class="voucher-firma-label">Timbre Rai Trai:</div>
+            <div class="voucher-firma-line"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="print-doc vouchers-doc">
+      <div class="vouchers-header">
+        <div class="vouchers-title">VOUCHERS DE SERVICIO</div>
+        <div class="vouchers-subtitle">${safe(lineaPrincipal, '')}</div>
+        <div class="vouchers-meta">
+          ${aliasLabel ? `<span>Grupo: ${aliasLabel}</span>` : ''}
+          ${ano ? `<span>Año viaje: ${ano}</span>` : ''}
+          ${programa ? `<span>Programa: ${programa}</span>` : ''}
+        </div>
+      </div>
+      <div class="voucher-grid">
+        ${cardsHtml}
+      </div>
+    </div>
+  `;
+}
+
 
 /* ──────────────────────────────────────────────────────────────────────
    Carga de opciones (Año, Destino, Programa, Hotel)
@@ -1797,6 +1946,7 @@ function renderTabla(rows){
       <td class="right">
         <button class="btn-add btn-one">C</button>
         <button class="btn-add btn-finanzas">R</button>
+        <button class="btn-add btn-vouchers">V</button>
       </td>
     `;
 
@@ -1819,6 +1969,15 @@ function renderTabla(rows){
       const id = tr?.dataset?.id;
       if (!id) return;
       await descargarFinanzas(id);
+    });
+  });
+
+  tb.querySelectorAll('.btn-vouchers').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      const tr = ev.currentTarget.closest('tr');
+      const id = tr?.dataset?.id;
+      if (!id) return;
+      await descargarVouchers(id);
     });
   });
 
@@ -1850,6 +2009,23 @@ async function descargarFinanzas(grupoId){
 
   // 6) Construir el HTML y mandar a imprimir
   const html = buildFinanzasDoc(g, abonos, coordData, vouchersData);
+  imprimirHtml(html);
+}
+
+// ──────────────────────────────────────────────────────────────
+// VOUCHERS FÍSICOS: imprimir hoja con vouchers del grupo
+// ──────────────────────────────────────────────────────────────
+async function descargarVouchers(grupoId){
+  // 1) Traer datos del grupo
+  const d = await getDoc(doc(db,'grupos', grupoId));
+  if (!d.exists()) return;
+  const g = { id:d.id, ...d.data() };
+
+  // 2) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
+  const vouchersData = await collectVoucherActivities(g);
+
+  // 3) Construir HTML de vouchers físicos y mandar a imprimir
+  const html = buildVouchersDoc(g, vouchersData);
   imprimirHtml(html);
 }
 
