@@ -1543,7 +1543,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 <li class="it-day">
                   <div>
                     <strong>
-                      ${v.fechaActividadISO ? `📝 ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.fechaActividadISO ? `- ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
                       ${v.nombre}
                     </strong>
                   </div>
@@ -1570,7 +1570,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 <li class="it-day">
                   <div>
                     <strong>
-                      ${v.fechaActividadISO ? `📄 ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.fechaActividadISO ? `- ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
                       ${v.nombre}
                     </strong>
                   </div>
