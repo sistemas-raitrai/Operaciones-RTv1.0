@@ -1562,7 +1562,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
-      <div class="sec-title"> ACTIVIDADES COP TICKET / ENTRADAS QUE ENTREGAR</div>
+      <div class="sec-title"> ACTIVIDADES CON TICKET / INGRESOS QUE PRESENTAR</div>
       ${
         tickets.length
           ? `<ul class="itinerario">
