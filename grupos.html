@@ -17,32 +17,35 @@
   <div id="encabezado"></div>
 
   <main class="main">
-    <!-- Barra de filtros -->
-    <div class="filter-bar">
-      <div class="row">
-        <div class="column long">
-          <label for="buscador">BUSCADOR DE GRUPOS:</label>
-          <input type="text" id="buscador" placeholder="...">
-        </div>
-        <div class="column short">
-          <label for="filtroDestino">Destino</label>
-          <select id="filtroDestino"><option value="">Todos</option></select>
-        </div>
-        <div class="column short">
-          <label for="filtroAno">Año de Viaje</label>
-          <select id="filtroAno"><option value="">Todos</option></select>
-        </div>
-        <div class="column short">
-          <label for="filter-grupo-modo">Uso del vuelo:</label>
-          <select id="filter-grupo-modo">
-            <option value="all">Todos</option>
-            <option value="solo">1 grupo</option>
-            <option value="compartido">2+ grupos</option>
-            <option value="sin-grupo">Sin grupos</option>
-          </select>
-        </div>
+  <!-- Barra de filtros -->
+  <div class="filter-bar">
+    <div class="row">
+      <div class="column long">
+        <label for="buscador">BUSCADOR DE GRUPOS:</label>
+        <input type="text" id="buscador" placeholder="...">
+      </div>
+      <div class="column short">
+        <label for="filtroDestino">Destino</label>
+        <select id="filtroDestino"><option value="">Todos</option></select>
+      </div>
+      <div class="column short">
+        <label for="filtroAno">Año de Viaje</label>
+        <select id="filtroAno"><option value="">Todos</option></select>
+      </div>
+      <div class="column short">
+        <label for="filter-tipoVuelo">Tipo vuelo:</label>
+        <select id="filter-tipoVuelo">
+          <option value="all">Charter + Regular</option>
+          <option value="charter">Charter</option>
+          <option value="regular">Regular</option>
+        </select>
+      </div>
+      <div class="column short">
+        <label for="filter-fechaIda">Fecha ida:</label>
+        <input type="date" id="filter-fechaIda" />
       </div>
     </div>
+  </div>
 
     <!-- Botones de edición e historial -->
     <div class="row" id="toolbar" style="margin-bottom:1rem;gap:1rem;">
