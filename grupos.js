@@ -352,20 +352,29 @@ async function _loadVuelosInfo(db, g){
 
 // ------------ ÍNDICES RÁPIDOS PARA COORDINADORES ------------
 async function _buildCoordIndexes() {
-  // 1) coordinadorId -> { nombre, correo }
+  // 1) coordinadorId -> { nombre, correo, telefono }
   const coordById = new Map();
   try {
     const snapC = await getDocs(collection(db, 'coordinadores'));
     snapC.forEach(d => {
       const x = d.data() || {};
-      coordById.set(d.id, { nombre: (x.nombre || '').trim(), correo: (x.correo || '').trim().toLowerCase() });
+      const nombre   = (x.nombre || '').trim();
+      const correo   = (x.correo || '').trim().toLowerCase();
+      const telefono =
+        (x.telefono || x.fono || x.celular || (x.meta && (x.meta.telefono || x.meta.celular)) || '')
+        .toString()
+        .trim();
+
+      coordById.set(d.id, { nombre, correo, telefono });
     });
-  } catch(e) { console.warn('No pude leer coordinadores:', e); }
+  } catch (e) {
+    console.warn('No pude leer coordinadores:', e);
+  }
 
   // 2) grupoId -> coordinadorId (desde collectionGroup('conjuntos'))
   const coordIdByGrupo = new Map();
   const estadoByGrupo  = new Map();
-  
+
   try {
     const snapSets = await getDocs(collectionGroup(db, 'conjuntos'));
     snapSets.forEach(s => {
@@ -375,13 +384,16 @@ async function _buildCoordIndexes() {
       (x.viajes || []).forEach(gid => {
         const k = String(gid);
         coordIdByGrupo.set(k, coordId);
-        estadoByGrupo.set(k, est);      // ← NUEVO
+        estadoByGrupo.set(k, est);
       });
     });
-  } catch(e) { console.warn('No pude leer conjuntos:', e); }
+  } catch (e) {
+    console.warn('No pude leer conjuntos:', e);
+  }
 
-  return { coordById, coordIdByGrupo, estadoByGrupo }; // ← NUEVO
+  return { coordById, coordIdByGrupo, estadoByGrupo };
 }
+
 
 async function cargarYMostrarTabla() {
   // 1) Leer coleccion "grupos"
@@ -406,10 +418,14 @@ async function cargarYMostrarTabla() {
       (d.coordinador || '').toString().trim() ||
       (coordInfo?.correo || '').trim() || '';
   
+    const coordTelefono =
+      (coordInfo?.telefono || '').toString().trim();
+  
     return {
       id:   docSnap.id,
       fila: camposFire.map(c => d[c] || ''),
       coordTexto,
+      coordTelefono,
       estadoCoord: d.coordEstado || estadoByGrupo.get(docSnap.id) || 'pendiente'
     };
   });
@@ -549,7 +565,7 @@ async function cargarYMostrarTabla() {
   const $tb = $('#tablaGrupos tbody').empty();
   valores.forEach(item => {
     const $tr = $('<tr>');
-  
+
     // columnas 0..4 (hasta Vendedor[a])
     for (let idx = 0; idx <= 4; idx++) {
       const campo = camposFire[idx];
@@ -559,7 +575,7 @@ async function cargarYMostrarTabla() {
         .attr('data-doc-id', item.id)
         .attr('data-campo', campo)
         .attr('data-original', celda);
-      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo','number');
+      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo', 'number');
       $tr.append($td);
     }
 
@@ -573,10 +589,21 @@ async function cargarYMostrarTabla() {
       .attr('data-campo', '')
       .attr('data-original', coordText)
       .attr('title', 'Estado: ' + est.toUpperCase())
-      .attr('style', _bgEstado(est)); // ← color verde/amarillo/rojo
+      .attr('style', _bgEstado(est)); // verde/amarillo/rojo
     $tr.append($tdCoord);
-  
-    // resto de columnas 5..23 (corren a 6..24)
+
+    // 👉 COLUMNA 6: TELÉFONO DEL COORDINADOR (no editable)
+    const telText = (item.coordTelefono || '').toString().trim();
+    const $tdTel = $('<td>')
+      .text(telText)
+      .attr('data-doc-id', item.id)
+      .attr('data-fixed', '1')
+      .attr('data-campo', '')
+      .attr('data-original', telText)
+      .attr('title', 'Teléfono coordinador');
+    $tr.append($tdTel);
+
+    // resto de columnas 5..23 (corren a 7..25)
     for (let idx = 5; idx < camposFire.length; idx++) {
       const campo = camposFire[idx];
       const celda = item.fila[idx];
@@ -585,17 +612,19 @@ async function cargarYMostrarTabla() {
         .attr('data-doc-id', item.id)
         .attr('data-campo', campo)
         .attr('data-original', celda);
-      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo','number');
+      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo', 'number');
       $tr.append($td);
     }
-  
+
     $tb.append($tr);
   });
   
   // Encabezado "Coordinadores" (tras el 5º th)
   const $theadRow = $('#tablaGrupos thead tr');
   if ($theadRow.find('th').length === camposFire.length) {
-    $('<th>Coordinadores</th>').insertAfter($theadRow.find('th').eq(4));
+    const $afterVendedor = $theadRow.find('th').eq(4); // Vendedor(a)
+    $('<th>Coordinadores</th>').insertAfter($afterVendedor);
+    $('<th>Tel. Coord.</th>').insertAfter($afterVendedor.next());
   }
 
 
@@ -615,7 +644,7 @@ async function cargarYMostrarTabla() {
     lengthChange: false,
     // Ojo: con la nueva columna, los índices cambian.
     // Orden sugerido: Destino (11), Programa (12), Fecha Inicio (13), Identificador (1)
-    order: [[11,'desc'],[12,'desc'],[13,'desc'],[1,'desc']],
+    order: [[12, 'desc'], [13, 'desc'], [14, 'desc'], [1, 'desc']],
     scrollX: true,
     autoWidth: false,
     fixedHeader: {
@@ -623,37 +652,38 @@ async function cargarYMostrarTabla() {
       headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
     },
     columnDefs: [
-      // Ajusta visibilidad por defecto (revisa que coincida con lo que quieres ocultar de inicio)
-      { targets: [9,10,15,16,18,20,23,24], visible: false },
-  
+      // Columnas ocultas por defecto
+      { targets: [10, 11, 16, 17, 19, 21, 24, 25], visible: false },
+
       { targets: 0,  width: '20px'  },  // N° Negocio
       { targets: 1,  width: '20px'  },  // Identificador
       { targets: 2,  width: '100px' },  // Nombre de Grupo
       { targets: 3,  width: '20px'  },  // Año
       { targets: 4,  width: '50px'  },  // Vendedor(a)
-      { targets: 5,  width: '140px' },  // 👈 Coordinadores
-      { targets: 6,  width: '20px'  },  // Pax
-      { targets: 7,  width: '20px'  },  // Adultos
-      { targets: 8,  width: '20px'  },  // Estudiantes
-      { targets: 9,  width: '70px'  },  // Colegio
-      { targets: 10, width: '20px'  },  // Curso
-      { targets: 11, width: '70px'  },  // Destino
-      { targets: 12, width: '70px'  },  // Programa
-      { targets: 13, width: '40px'  },  // Fecha Inicio
-      { targets: 14, width: '40px'  },  // Fecha Fin
-      { targets: 15, width: '30px'  },  // Seguro Médico
-      { targets: 16, width: '80px'  },  // Autoriz.
-      { targets: 17, width: '50px'  },  // Hoteles
-      { targets: 18, width: '80px'  },  // Ciudades
-      { targets: 19, width: '50px'  },  // Transporte
-      { targets: 20, width: '50px'  },  // Tramos
-      { targets: 21, width: '80px'  },  // Indicaciones de la Fecha
-      { targets: 22, width: '100px' },  // Observaciones
-      { targets: 23, width: '50px'  },  // Creado Por
-      { targets: 24, width: '50px'  },  // Fecha Creación
-  
-      // Alineación y tipo numérico
-      { targets: [6,7,8], type: 'num', className: 'dt-body-right' }
+      { targets: 5,  width: '140px' },  // Coordinadores
+      { targets: 6,  width: '90px'  },  // Tel. Coord.
+      { targets: 7,  width: '20px'  },  // Pax
+      { targets: 8,  width: '20px'  },  // Adultos
+      { targets: 9,  width: '20px'  },  // Estudiantes
+      { targets: 10, width: '70px'  },  // Colegio
+      { targets: 11, width: '20px'  },  // Curso
+      { targets: 12, width: '70px'  },  // Destino
+      { targets: 13, width: '70px'  },  // Programa
+      { targets: 14, width: '40px'  },  // Fecha Inicio
+      { targets: 15, width: '40px'  },  // Fecha Fin
+      { targets: 16, width: '30px'  },  // Seguro Médico
+      { targets: 17, width: '80px'  },  // Autoriz.
+      { targets: 18, width: '50px'  },  // Hoteles
+      { targets: 19, width: '80px'  },  // Ciudades
+      { targets: 20, width: '50px'  },  // Transporte
+      { targets: 21, width: '50px'  },  // Tramos
+      { targets: 22, width: '80px'  },  // Indicaciones de la Fecha
+      { targets: 23, width: '100px' },  // Observaciones
+      { targets: 24, width: '50px'  },  // Creado Por
+      { targets: 25, width: '50px'  },  // Fecha Creación
+
+      // Alineación y tipo numérico (ojo: Pax/Adultos/Estudiantes ahora 7,8,9)
+      { targets: [7, 8, 9], type: 'num', className: 'dt-body-right' }
     ]
   });
   tabla.buttons().container().appendTo('#toolbar');
@@ -703,7 +733,7 @@ async function cargarYMostrarTabla() {
   }
   tabla.draw();
 });
-  $('#filtroDestino').on('change', function(){ tabla.column(11).search(this.value).draw(); }); // Destino
+  $('#filtroDestino').on('change', function(){ tabla.column(12).search(this.value).draw(); }); // Destino
   $('#filtroAno').on('change',     function(){ tabla.column(3).search(this.value).draw();  }); // Año
 
 
@@ -1080,7 +1110,7 @@ function exportarGrupos() {
 
   // Encabezados igual a las columnas definidas en el HTML (ordenado)
   const headers = [
-    "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Coordinadores",
+    "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Coordinadores","Tel. Coord.",
     "Pax","Adultos","Estudiantes","Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
     "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
     "Observaciones","Creado Por","Fecha Creación"
