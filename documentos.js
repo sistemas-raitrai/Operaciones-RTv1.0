@@ -1611,9 +1611,6 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
             ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
           </div>
         </div>
-        <div class="finanzas-logo">
-          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
-        </div>
       </div>
 
       ${coordBlock}
