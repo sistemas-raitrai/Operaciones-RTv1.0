@@ -851,6 +851,52 @@ function injectPdfStyles(){
     margin-top:6mm;
   }
 
+    /* ===== AJUSTE CABECERA RESUMEN OPERATIVO (FINANZAS) ===== */
+  .finanzas-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:8mm;
+    margin-bottom:6mm;
+  }
+
+  .finanzas-title-block{
+    flex:1 1 auto;
+  }
+
+  .finanzas-title{
+    font-size:16pt;
+    font-weight:800;
+    text-transform:uppercase;
+    margin:0 0 2mm 0;
+  }
+
+  .finanzas-subtitle{
+    font-size:11pt;
+    font-weight:600;
+    margin:0 0 2mm 0;
+  }
+
+  .finanzas-meta{
+    font-size:9pt;
+  }
+
+  .finanzas-meta span{
+    display:inline-block;
+    margin-right:4mm;
+  }
+
+  .finanzas-logo{
+    flex:0 0 auto;
+    text-align:right;
+  }
+
+  .finanzas-logo img{
+    max-height:14mm;
+    width:auto;
+    display:block;
+  }
+
   `;
   const s = document.createElement('style');
   s.id = 'pdf-styles';
