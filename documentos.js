@@ -1842,21 +1842,21 @@ function buildVouchersDoc(grupo, vouchersData){
 
   const { fisicos = [] } = vouchersData || {};
 
+  // Si no hay vouchers físicos, devolvemos una sola página con el mensaje
   if (!fisicos.length){
     return `
       <div class="print-doc vouchers-doc">
-        <div class="vouchers-header">
-        </div>
         <div class="note">No hay actividades con voucher físico registradas para este grupo.</div>
       </div>
     `;
   }
 
-  const cardsHtml = fisicos.map(v => {
+  // 🔹 AHORA: 1 voucher = 1 página (1 .print-doc por tarjeta)
+  const pagesHtml = fisicos.map(v => {
     const fechaTxt = v.fechaActividadISO ? formatShortDate(v.fechaActividadISO) : '—';
     const proveedor = v.proveedor || '';
 
-    return `
+    const cardHtml = `
       <div class="voucher-card">
         <div class="voucher-header">
           <div>
@@ -1930,24 +1930,16 @@ function buildVouchersDoc(grupo, vouchersData){
         </div>
       </div>
     `;
+
+    // Cada tarjeta va dentro de su propia página .print-doc
+    return `
+      <div class="print-doc vouchers-doc">
+        ${cardHtml}
+      </div>
+    `;
   }).join('');
 
-  return `
-    <div class="print-doc vouchers-doc">
-      <div class="vouchers-header">
-        <div class="vouchers-title">VOUCHERS DE SERVICIO</div>
-        <div class="vouchers-subtitle">${safe(lineaPrincipal, '')}</div>
-        <div class="vouchers-meta">
-          ${aliasLabel ? `<span>Grupo: ${aliasLabel}</span>` : ''}
-          ${ano ? `<span>Año viaje: ${ano}</span>` : ''}
-          ${programa ? `<span>Programa: ${programa}</span>` : ''}
-        </div>
-      </div>
-      <div class="voucher-grid">
-        ${cardsHtml}
-      </div>
-    </div>
-  `;
+  return pagesHtml;
 }
 
 
