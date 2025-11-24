@@ -991,6 +991,71 @@ function injectPdfStyles(){
     display:block;
   }
 
+    /* ===== ITINERARIO IMPRESO (DOCUMENTO ADICIONAL) ===== */
+  .itinerario-doc .it-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:8mm;
+    margin-bottom:6mm;
+  }
+  .itinerario-doc .it-title-block{
+    flex:1 1 auto;
+  }
+  .itinerario-doc .it-title{
+    font-size:16pt;
+    font-weight:800;
+    text-transform:uppercase;
+    margin:0 0 2mm 0;
+  }
+  .itinerario-doc .it-subtitle{
+    font-size:11pt;
+    font-weight:600;
+    margin:0 0 2mm 0;
+  }
+  .itinerario-doc .it-meta{
+    font-size:9pt;
+  }
+  .itinerario-doc .it-meta span{
+    display:inline-block;
+    margin-right:4mm;
+  }
+  .itinerario-doc .it-body{
+    font-size:9.5pt;
+  }
+  .itinerario-doc .it-day{
+    margin-top:4mm;
+    page-break-inside:avoid;
+    break-inside:avoid;
+  }
+  .itinerario-doc .it-day-head{
+    font-weight:700;
+    margin-bottom:2mm;
+    border-bottom:0.5pt solid #111;
+    padding-bottom:1mm;
+  }
+  .itinerario-doc .it-day-head span{
+    text-transform:uppercase;
+  }
+  .itinerario-doc .it-day-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:9pt;
+  }
+  .itinerario-doc .it-day-table th,
+  .itinerario-doc .it-day-table td{
+    border:0.4pt solid #000;
+    padding:1mm 2mm;
+    vertical-align:top;
+  }
+  .itinerario-doc .it-day-table th{
+    background:#f2f2f2;
+    font-weight:700;
+  }
+  .itinerario-doc .it-day-table td.hora{
+    white-space:nowrap;
+  }
+
   `;
   const s = document.createElement('style');
   s.id = 'pdf-styles';
@@ -1942,6 +2007,157 @@ function buildVouchersDoc(grupo, vouchersData){
   return pagesHtml;
 }
 
+function buildItinerarioDoc(grupo){
+  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const colegio = grupo.colegio || grupo.cliente || '';
+  const curso   = grupo.curso || grupo.subgrupo || '';
+  const destino = grupo.destino || '';
+  const programa= grupo.programa || '';
+  const ano     = grupo.anoViaje || '';
+
+  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
+
+  const aliasLabel = (() => {
+    const num = grupo.numeroNegocio || '';
+    const al  = grupo.aliasGrupo || grupo.nombreGrupo || '';
+    if (num && al) return `(${num}) ${al}`;
+    return num || al || '';
+  })();
+
+  // Rango de viaje para mostrar INICIO / FIN
+  const { inicio: inicioViajeISO, fin: finViajeISO } = computeRangoViaje(grupo, []);
+  const inicioTxt = inicioViajeISO ? formatShortDate(inicioViajeISO) : '—';
+  const finTxt    = finViajeISO   ? formatShortDate(finViajeISO)   : '—';
+
+  // Construir lista ordenada de fechas + actividades
+  const entries = [];
+  const it = grupo.itinerario;
+
+  if (it && typeof it === 'object'){
+    Object.entries(it).forEach(([dia, raw]) => {
+      const iso = toISO(dia);
+      if (!iso) return;
+      entries.push([iso, raw]);
+    });
+    entries.sort((a,b)=> a[0].localeCompare(b[0]));
+  }
+
+  // Si no hay itinerario, mensaje simple
+  if (!entries.length){
+    return `
+      <div class="print-doc itinerario-doc">
+        <div class="it-header">
+          <div class="it-title-block">
+            <div class="it-title">ITINERARIO DEL VIAJE</div>
+            <div class="it-subtitle">${safe(lineaPrincipal, '')}</div>
+            <div class="it-meta">
+              ${inicioTxt !== '—' ? `<span>INICIO: ${inicioTxt}</span>` : ''}
+              ${finTxt    !== '—' ? `<span>FIN: ${finTxt}</span>`       : ''}
+              ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
+              ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
+            </div>
+          </div>
+          <div class="finanzas-logo">
+            <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+          </div>
+        </div>
+        <div class="it-body">
+          <div class="note">— Sin itinerario registrado para este grupo —</div>
+        </div>
+      </div>
+    `;
+  }
+
+  const diasHtml = entries.map(([fechaIso, raw], idx) => {
+    const [y,m,d] = fechaIso.split('-').map(Number);
+    const etiquetaFecha = `${formatShortDayMonth(fechaIso)} ${y}`; // ej: 29 NOV 2025
+
+    const arr = Array.isArray(raw)
+      ? raw
+      : (raw && typeof raw === 'object' ? Object.values(raw) : []);
+
+    // Ordenar por hora de inicio
+    arr.sort((a,b)=> {
+      const ha = normTime(a?.horaInicio || a?.hora || '') || '99:99';
+      const hb = normTime(b?.horaInicio || b?.hora || '') || '99:99';
+      return ha.localeCompare(hb);
+    });
+
+    const filas = arr.length
+      ? arr.map(act => {
+          const hIni = normTime(act.horaInicio || act.hora || '');
+          const hFin = normTime(act.horaFin || act.fin || '');
+          let horaTxt = '—';
+          if (hIni && hFin) horaTxt = `${hIni} - ${hFin}`;
+          else if (hIni || hFin) horaTxt = hIni || hFin;
+          if (horaTxt !== '—') horaTxt += ' HRS';
+
+          const nombre = (act.actividad || act.servicio || act.nombre || '').toString().trim();
+          const ciudad = (act.ciudad || act.lugar || '').toString().trim();
+          const detalle = (act.detalle || act.descripcion || act.observaciones || '').toString().trim();
+
+          let desc = '';
+          if (ciudad) desc += ciudad;
+          if (detalle) desc += (desc ? ' – ' : '') + detalle;
+
+          return `
+            <tr>
+              <td class="hora">${horaTxt}</td>
+              <td><strong>${nombre.toUpperCase()}</strong></td>
+              <td>${desc || ''}</td>
+            </tr>
+          `;
+        }).join('')
+      : `
+        <tr>
+          <td colspan="3">— Sin actividades registradas para este día —</td>
+        </tr>
+      `;
+
+    return `
+      <div class="it-day">
+        <div class="it-day-head">
+          <span>DÍA ${idx+1} – ${etiquetaFecha}</span>
+        </div>
+        <table class="it-day-table">
+          <thead>
+            <tr>
+              <th>HORA</th>
+              <th>ACTIVIDAD</th>
+              <th>DETALLE / LUGAR</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filas}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="print-doc itinerario-doc">
+      <div class="it-header">
+        <div class="it-title-block">
+          <div class="it-title">ITINERARIO DEL VIAJE</div>
+          <div class="it-subtitle">${safe(lineaPrincipal, '')}</div>
+          <div class="it-meta">
+            ${inicioTxt !== '—' ? `<span>INICIO: ${inicioTxt}</span>` : ''}
+            ${finTxt    !== '—' ? `<span>FIN: ${finTxt}</span>`       : ''}
+            ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
+            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
+          </div>
+        </div>
+        <div class="finanzas-logo">
+          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+        </div>
+      </div>
+      <div class="it-body">
+        ${diasHtml}
+      </div>
+    </div>
+  `;
+}
 
 /* ──────────────────────────────────────────────────────────────────────
    Carga de opciones (Año, Destino, Programa, Hotel)
@@ -2084,11 +2300,13 @@ function renderTabla(rows){
       <td>${g.destino ?? '—'}</td>
       <td>${g.programa ?? '—'}</td>
       <td><span class="badge">${inicioTxt}</span></td>
+
       <td class="acciones">
         <div class="acciones-wrap">
           <button class="btn-add btn-one">C</button>
           <button class="btn-add btn-finanzas">R</button>
           <button class="btn-add btn-vouchers">V</button>
+          <button class="btn-add btn-itinerario">I</button>
         </div>
       </td>
 
@@ -2124,6 +2342,16 @@ function renderTabla(rows){
       await descargarVouchers(id);
     });
   });
+
+    tb.querySelectorAll('.btn-itinerario').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      const tr = ev.currentTarget.closest('tr');
+      const id = tr?.dataset?.id;
+      if (!id) return;
+      await descargarItinerario(id);
+    });
+  });
+
 
   document.getElementById('chkAll').onchange = (ev)=>{
     tb.querySelectorAll('.rowchk').forEach(c=> c.checked = ev.currentTarget.checked);
@@ -2172,6 +2400,19 @@ async function descargarVouchers(grupoId){
   const html = buildVouchersDoc(g, vouchersData);
   imprimirHtml(html);
 }
+
+// ──────────────────────────────────────────────────────────────
+// ITINERARIO: imprimir documento de itinerario del grupo
+// ──────────────────────────────────────────────────────────────
+async function descargarItinerario(grupoId){
+  const d = await getDoc(doc(db,'grupos', grupoId));
+  if (!d.exists()) return;
+  const g = { id:d.id, ...d.data() };
+
+  const html = buildItinerarioDoc(g);
+  imprimirHtml(html);
+}
+
 
 /* ──────────────────────────────────────────────────────────────────────
    Exportación / IMPRESIÓN de CONFIRMACIÓN (uno)
