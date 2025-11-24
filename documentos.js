@@ -1783,7 +1783,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
       <!-- ITEM IV: DECLARACIÓN -->
       <div class="finanzas-footnote finanzas-footnote-main">
-        IV. DECLARO HABER RECIBIDO A CONFORMIDAD LOS ABONOS INDICADOS, LOS VOUCHERS Y LOS TICKETS SEÑALADOS EN ESTE DOCUMENTO.
+      DECLARO HABER RECIBIDO A CONFORMIDAD LOS ABONOS INDICADOS, LOS VOUCHERS Y LOS TICKETS SEÑALADOS EN ESTE DOCUMENTO.
       </div>
       &nbsp;
       &nbsp;
