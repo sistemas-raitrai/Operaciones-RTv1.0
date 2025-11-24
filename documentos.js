@@ -1528,7 +1528,6 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
         <div class="sec-title">COORDINADOR(A) A CARGO</div>
         <div class="note">
           ${nombreCoord ? `<div><strong>Nombre:</strong> ${nombreCoord.toUpperCase()}</div>` : ''}
-          ${rutCoord ? `<div><strong>RUT:</strong> ${rutCoord}</div>` : ''}
           ${telCoord ? `<div><strong>Teléfono:</strong> ${telCoord}</div>` : ''}
           ${correoCoord ? `<div><strong>Correo:</strong> ${correoCoord}</div>` : ''}
         </div>
