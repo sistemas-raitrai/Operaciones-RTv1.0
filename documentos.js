@@ -724,6 +724,31 @@ function injectPdfStyles(){
     margin-top:4mm;
   }
 
+    /* Espacios dobles entre I, II y III */
+  /* I. ABONOS después del bloque de COORDINADOR(A) */
+  .finanzas-doc .finanzas-coord + .sec{
+    margin-top:8mm;        /* separa COORDINADOR de I. ABONOS */
+  }
+
+  /* II. ACTIVIDADES CON VOUCHERS después de I. ABONOS */
+  .finanzas-doc .sec + .vouchers-section{
+    margin-top:8mm;        /* doble espacio entre I y II */
+  }
+
+  /* III. ACTIVIDADES CON TICKETS después de II */
+  .finanzas-doc .vouchers-section + .vouchers-section{
+    margin-top:8mm;        /* doble espacio entre II y III */
+  }
+
+  .finanzas-doc .vouchers-section + .finanzas-footnote{
+    margin-top:10mm;
+  }
+
+  /* Separación normal entre líneas de firma */
+  .finanzas-doc .finanzas-footnote + .finanzas-footnote{
+    margin-top:4mm;
+  }
+
   /* Extra separación entre bloque de coordinador y sección I (abonos) */
   .finanzas-doc .finanzas-coord{
     margin-bottom:8mm;
@@ -1640,7 +1665,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 <li class="it-day">
                   <div>
                     <strong>
-                      ${v.fechaActividadISO ? `- ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.fechaActividadISO ? `${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
                       ${v.nombre}
                     </strong>
                   </div>
@@ -1667,7 +1692,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                 <li class="it-day">
                   <div>
                     <strong>
-                      ${v.fechaActividadISO ? `- ${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
+                      ${v.fechaActividadISO ? `${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
                       ${v.nombre}
                     </strong>
                   </div>
@@ -1690,10 +1715,10 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
           <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
+            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
             ${grupo.fechaInicio ? `<span>INICIO: ${grupo.fechaInicio}</span>` : ''}
             ${grupo.fechaFin ? `<span>FIN: ${grupo.fechaFin}</span>` : ''}
             ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
-            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
           </div>
           <div class="finanzas-meta">
             <span>CANTIDAD DE PASAJEROS:</span>
@@ -1734,14 +1759,26 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
       ${vouchersSectionHtml}
 
       <div class="finanzas-footnote">
+       &nbsp;
+       &nbsp;
+       &nbsp; 
+       &nbsp;
         Declaro haber recibido a conformidad los abonos indicados, los vouchers y los tickets señalados en este documento.
       </div>
+      &nbsp;
+      &nbsp;
       <div class="finanzas-footnote">
-        NOMBRE COORDINADOR(A): __________________________________________
+        NOMBRE COORDINADOR(A): ___________________________________________________________________________________________
       </div>
+      &nbsp;
+      &nbsp;
       <div class="finanzas-footnote">
         FECHA: __________________________________________
       </div>
+      &nbsp;
+      &nbsp;
+      &nbsp;
+      &nbsp;
       <div class="finanzas-footnote">
         FIRMA: __________________________________________
       </div>
