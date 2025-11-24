@@ -83,6 +83,18 @@
     th, td { border-bottom:1px solid #e5e7eb; padding:8px 10px; text-align:left; vertical-align:top; }
     td.right, th.right { text-align:right; }
 
+    /* Botones C / R / V alineados en una sola fila */
+    td.acciones .acciones-wrap {
+      display: flex;
+      justify-content: flex-end; /* los empuja a la derecha */
+      gap: 4px;                  /* separación entre botones */
+    }
+    
+    td.acciones .btn-add {
+      flex: 0 0 auto;            /* que no se estiren */
+    }
+    
+
     /* Badge fecha */
     .badge { display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #e5e7eb; font-size:.85rem; }
 
