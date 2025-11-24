@@ -1754,12 +1754,12 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
        &nbsp;
        &nbsp; 
        &nbsp;
-        Declaro haber recibido a conformidad los abonos indicados, los vouchers y los tickets señalados en este documento.
+      Declaro haber recibido a conformidad los abonos indicados, los vouchers y los tickets señalados en este documento.
       </div>
       &nbsp;
       &nbsp;
       <div class="finanzas-footnote">
-        NOMBRE COORDINADOR(A): ___________________________________________________________________________________________
+        NOMBRE COORDINADOR(A): ___________________________________________________________
       </div>
       &nbsp;
       &nbsp;
