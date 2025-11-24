@@ -724,6 +724,52 @@ function injectPdfStyles(){
     margin-top:4mm;
   }
 
+  /* Extra separación entre bloque de coordinador y sección I (abonos) */
+  .finanzas-doc .finanzas-coord{
+    margin-bottom:8mm;
+  }
+  .finanzas-doc .finanzas-abonos{
+    margin-top:2mm; /* se suma al margen general de .sec */
+  }
+
+  /* Tabla de abonos bien marcada (bordes completos) */
+  .finanzas-doc .finanzas-table{
+    width:100%;
+    border-collapse:collapse;
+    border:0.6pt solid #000;
+    font-size:9pt;
+    margin-top:2mm;
+  }
+  .finanzas-doc .finanzas-table th,
+  .finanzas-doc .finanzas-table td{
+    border:0.6pt solid #000;
+    padding:1.5mm 2mm;
+    text-align:left;
+    vertical-align:middle;
+  }
+  .finanzas-doc .finanzas-table thead th{
+    background:#f2f2f2;
+    font-weight:700;
+    text-transform:uppercase;
+    font-size:8.5pt;
+  }
+  .finanzas-doc .finanzas-table tfoot td.finanzas-total-label{
+    font-weight:700;
+    text-align:right;
+  }
+  .finanzas-doc .finanzas-table tfoot td.finanzas-total-value{
+    font-weight:700;
+  }
+  .finanzas-doc .finanzas-table td.nowrap,
+  .finanzas-doc .finanzas-table th.nowrap{
+    white-space:nowrap;
+  }
+  .finanzas-doc .finanzas-table .no-rows{
+    text-align:center;
+    padding:3mm 2mm;
+    font-style:italic;
+  }
+
   /* ===== VOUCHERS FÍSICOS (3 por página aprox.) ===== */
   .vouchers-doc{
     min-height:auto !important;
@@ -1586,7 +1632,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
   const vouchersFisicosHtml = `
     <div class="sec vouchers-section">
-      <div class="sec-title">ACTIVIDADES CON VOUCHERS PARA ENTREGAR</div>
+     <div class="sec-title">II. ACTIVIDADES CON VOUCHERS</div>
       ${
         fisicos.length
           ? `<ul class="itinerario">
@@ -1613,7 +1659,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
-      <div class="sec-title"> ACTIVIDADES CON TICKET / INGRESOS QUE PRESENTAR</div>
+     <div class="sec-title">III. ACTIVIDADES CON TICKETS</div>
       ${
         tickets.length
           ? `<ul class="itinerario">
@@ -1663,8 +1709,8 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
       ${coordBlock}
 
-       <div class="sec">
-        <div class="sec-title">ABONOS ENTREGADOS AL COORDINADOR(A)</div>
+      <div class="sec finanzas-abonos">
+        <div class="sec-title">I. ABONOS ENTREGADOS AL COORDINADOR(A)</div>
         <table class="finanzas-table">
           <thead>
             <tr>
