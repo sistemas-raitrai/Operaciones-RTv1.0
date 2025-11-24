@@ -2091,26 +2091,19 @@ function buildItinerarioDoc(grupo){
           if (hIni && hFin) horaTxt = `${hIni} - ${hFin}`;
           else if (hIni || hFin) horaTxt = hIni || hFin;
           if (horaTxt !== '—') horaTxt += ' HRS';
-
+    
           const nombre = (act.actividad || act.servicio || act.nombre || '').toString().trim();
-          const ciudad = (act.ciudad || act.lugar || '').toString().trim();
-          const detalle = (act.detalle || act.descripcion || act.observaciones || '').toString().trim();
-
-          let desc = '';
-          if (ciudad) desc += ciudad;
-          if (detalle) desc += (desc ? ' – ' : '') + detalle;
-
+    
           return `
             <tr>
               <td class="hora">${horaTxt}</td>
               <td><strong>${nombre.toUpperCase()}</strong></td>
-              <td>${desc || ''}</td>
             </tr>
           `;
         }).join('')
       : `
         <tr>
-          <td colspan="3">— Sin actividades registradas para este día —</td>
+          <td colspan="2">— Sin actividades registradas para este día —</td>
         </tr>
       `;
 
@@ -2124,7 +2117,6 @@ function buildItinerarioDoc(grupo){
             <tr>
               <th>HORA</th>
               <th>ACTIVIDAD</th>
-              
             </tr>
           </thead>
           <tbody>
