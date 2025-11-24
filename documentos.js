@@ -1041,6 +1041,7 @@ function injectPdfStyles(){
     width:100%;
     border-collapse:collapse;
     font-size:9pt;
+    table-layout:fixed;          /* fija el layout para que todas las columnas respeten el mismo ancho */
   }
   .itinerario-doc .it-day-table th,
   .itinerario-doc .it-day-table td{
@@ -1052,8 +1053,18 @@ function injectPdfStyles(){
     background:#f2f2f2;
     font-weight:700;
   }
-  .itinerario-doc .it-day-table td.hora{
+
+  /* Columna 1 = HORA (misma medida en todos los días) */
+  .itinerario-doc .it-day-table th:nth-child(1),
+  .itinerario-doc .it-day-table td:nth-child(1){
+    width:28mm;          /* ajusta si quieres 26–30mm aprox */
     white-space:nowrap;
+  }
+
+  /* Columna 2 = ACTIVIDAD (ocupa el resto) */
+  .itinerario-doc .it-day-table th:nth-child(2),
+  .itinerario-doc .it-day-table td:nth-child(2){
+    width:auto;
   }
 
   `;
