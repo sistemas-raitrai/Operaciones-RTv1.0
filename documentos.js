@@ -2124,7 +2124,7 @@ function buildItinerarioDoc(grupo){
             <tr>
               <th>HORA</th>
               <th>ACTIVIDAD</th>
-              <th>DETALLE / LUGAR</th>
+              
             </tr>
           </thead>
           <tbody>
