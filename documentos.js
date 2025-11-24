@@ -731,14 +731,46 @@ function injectPdfStyles(){
     margin-top:8mm;        /* doble espacio entre II y III */
   }
 
-  .finanzas-doc .vouchers-section + .finanzas-footnote{
-    margin-top:10mm;
+  /* Doble espacio entre:
+     - I. ABONOS …  y  II. ACTIVIDADES CON VOUCHERS
+     - II. ACTIVIDADES CON VOUCHERS  y  III. ACTIVIDADES CON TICKETS
+  */
+  .finanzas-doc .vouchers-section{
+    margin-top:8mm;
+  }
+  .finanzas-doc .vouchers-section + .vouchers-section{
+    margin-top:8mm;
   }
 
-  /* Separación normal entre líneas de firma */
-  .finanzas-doc .finanzas-footnote + .finanzas-footnote{
+  /* ITEM IV: DECLARACIÓN */
+  .finanzas-footnote-main{
+    margin-top:10mm;           /* baja el texto "IV. DECLARO..." */
+    font-weight:700;
+    font-size:10pt;
+    text-transform:uppercase;  /* TODO en mayúscula */
+  }
+
+  /* Bloque de firmas (NOMBRE / FECHA / FIRMA) */
+  .finanzas-signatures{
     margin-top:4mm;
   }
+  .finanzas-signatures .firma-row{
+    display:flex;
+    align-items:center;
+    font-size:9.5pt;
+    margin-top:3mm;
+  }
+  .finanzas-signatures .firma-row .lbl{
+    font-weight:700;
+    margin-right:3mm;
+    white-space:nowrap;
+  }
+  .finanzas-signatures .firma-row .line{
+    flex:1;
+    border-bottom:0.5pt solid #111;
+    height:0;
+  }
+
 
   /* Extra separación entre bloque de coordinador y sección I (abonos) */
   .finanzas-doc .finanzas-coord{
@@ -1747,35 +1779,32 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
       </div>
 
 
-      ${vouchersSectionHtml}
+       ${vouchersSectionHtml}
 
-      <div class="finanzas-footnote">
-       &nbsp;
-       &nbsp;
-       &nbsp; 
-       &nbsp;
-      Declaro haber recibido a conformidad los abonos indicados, los vouchers y los tickets señalados en este documento.
+      <!-- ITEM IV: DECLARACIÓN -->
+      <div class="finanzas-footnote finanzas-footnote-main">
+        IV. DECLARO HABER RECIBIDO A CONFORMIDAD LOS ABONOS INDICADOS, LOS VOUCHERS Y LOS TICKETS SEÑALADOS EN ESTE DOCUMENTO.
       </div>
-      &nbsp;
-      &nbsp;
-      <div class="finanzas-footnote">
-        NOMBRE COORDINADOR(A): ___________________________________________________________
-      </div>
-      &nbsp;
-      &nbsp;
-      <div class="finanzas-footnote">
-        FECHA: __________________________________________
-      </div>
-      &nbsp;
-      &nbsp;
-      &nbsp;
-      &nbsp;
-      <div class="finanzas-footnote">
-        FIRMA: __________________________________________
+
+      <!-- Líneas de firma que llegan hasta el margen derecho -->
+      <div class="finanzas-signatures">
+        <div class="firma-row">
+          <span class="lbl">NOMBRE COORDINADOR(A):</span>
+          <span class="line"></span>
+        </div>
+        <div class="firma-row">
+          <span class="lbl">FECHA:</span>
+          <span class="line"></span>
+        </div>
+        <div class="firma-row">
+          <span class="lbl">FIRMA:</span>
+          <span class="line"></span>
+        </div>
       </div>
     </div>
   `;
 }
+
 
 function buildVouchersDoc(grupo, vouchersData){
   const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
