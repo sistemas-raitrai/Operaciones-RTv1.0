@@ -185,7 +185,7 @@ async function generarTablaCalendario(userEmail) {
     $('#filtroAno').append(`<option value="${a}">${a}</option>`)
   );
 
-  // Cabecera de la tabla (REEMPLAZO)
+  // Cabecera de la tabla
   const $trhead = $('#encabezadoCalendario').empty();
   $trhead.append(`
     <th>N° Negocio</th>
@@ -196,13 +196,18 @@ async function generarTablaCalendario(userEmail) {
     <th>Pax</th>
     <th>Año</th>      <!-- columna oculta para filtro de año -->
   `);
+
   // Encabezados de fechas (domingo con clase 'domingo')
+  // Guardamos además el ISO real en data-fechaiso para la exportación
   fechasOrdenadas.forEach(f => {
     const [y1, m1, d1] = f.split('-').map(Number);
     const fechaObj = new Date(y1, m1 - 1, d1);
     const clase = fechaObj.getDay() === 0 ? 'domingo' : '';
-    $trhead.append(`<th class="${clase}">${formatearFechaBonita(f)}</th>`);
+    $trhead.append(
+      `<th class="${clase}" data-fechaiso="${f}">${formatearFechaBonita(f)}</th>`
+    );
   });
+
 
 
   // 3) Construir cuerpo de la tabla
@@ -437,20 +442,38 @@ function formatearFechaBonita(fechaISO) {
 }
 
 // ------------------------------------------------------------------
-// Exportar a Excel con SheetJS
+// Exportar a Excel con SheetJS (usa DOM real, respeta filtros y ediciones)
 // ------------------------------------------------------------------
 document.getElementById('btn-export-excel').addEventListener('click', () => {
   const tabla = $('#tablaCalendario').DataTable();
-  const rows = tabla.rows({ search:'applied' }).data().toArray();
-  const headers = $("#tablaCalendario thead th")
-    .toArray().map(th => th.innerText);
-  const datos = rows.map(row => {
-    const obj = {};
-    headers.forEach((h,i) => obj[h] = row[i]);
-    return obj;
+
+  // 1) Encabezados: usamos data-fechaiso si existe (para columnas de días)
+  const ths = $("#tablaCalendario thead th").toArray();
+  const headers = ths.map(th => {
+    const iso = th.getAttribute('data-fechaiso');
+    return iso || th.innerText.trim();
   });
-  const ws = XLSX.utils.json_to_sheet(datos,{ header:headers });
+
+  const datos = [];
+
+  // 2) Recorremos las filas tal como se muestran (respeta orden + filtros)
+  tabla.rows({ search: 'applied', order: 'applied' }).every(function () {
+    const rowNode = this.node(); // <tr> real
+    const rowObj = {};
+
+    $(rowNode).find('td').each((i, td) => {
+      const header = headers[i] || `Col_${i + 1}`;
+      // Tomamos el texto exactamente como está en la celda (incluye ediciones)
+      rowObj[header] = $(td).text().trim();
+    });
+
+    datos.push(rowObj);
+  });
+
+  // 3) Generar y descargar Excel
+  const ws = XLSX.utils.json_to_sheet(datos, { header: headers });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Calendario");
   XLSX.writeFile(wb, "calendario.xlsx");
 });
+
