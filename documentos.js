@@ -714,6 +714,105 @@ function injectPdfStyles(){
     font:11pt/1.28 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
   }
 
+    /* === NUEVO: estilos genéricos de secciones (todas las páginas) === */
+  .print-doc .sec{
+    margin-top:4mm;
+    font-size:10pt;
+  }
+  .print-doc .sec-title{
+    font-weight:700;
+    font-size:10.5pt;
+    margin-bottom:1.5mm;
+    text-transform:uppercase;
+  }
+  .print-doc .note{
+    font-size:9pt;
+    color:#444;
+  }
+  .print-doc .closing{
+    margin-top:6mm;
+    font-weight:700;
+    text-align:center;
+    font-size:11pt;
+  }
+  .print-doc .itinerario{
+    list-style:none;
+    padding-left:0;
+    margin:2mm 0 0 0;
+  }
+  .print-doc .itinerario .it-day{
+    margin-top:2mm;
+  }
+  .print-doc .itinerario .day-head{
+    font-weight:700;
+  }
+
+  /* === NUEVO: cabecera de CONFIRMACIÓN (C) con logo === */
+  .confirm-doc .confirm-header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:8mm;
+    margin-bottom:6mm;
+  }
+  .confirm-doc .confirm-title-block{
+    flex:1 1 auto;
+  }
+  .confirm-doc .confirm-title{
+    font-size:16pt;
+    font-weight:800;
+    text-transform:uppercase;
+    margin:0 0 2mm 0;
+  }
+  .confirm-doc .confirm-subtitle{
+    font-size:11pt;
+    font-weight:600;
+    margin:0 0 2mm 0;
+  }
+  .confirm-doc .confirm-meta{
+    font-size:9pt;
+  }
+  .confirm-doc .confirm-meta span{
+    display:inline-block;
+    margin-right:4mm;
+  }
+  .confirm-doc .confirm-logo{
+    flex:0 0 auto;
+    text-align:right;
+  }
+  .confirm-doc .confirm-logo img{
+    max-height:14mm;
+    width:auto;
+    display:block;
+  }
+
+  /* === NUEVO: tabla de vuelos en la confirmación === */
+  .confirm-flight-table{
+    width:100%;
+    border-collapse:collapse;
+    border:0.6pt solid #000;
+    font-size:9pt;
+    margin-top:2mm;
+    margin-bottom:3mm;
+  }
+  .confirm-flight-table th,
+  .confirm-flight-table td{
+    border:0.6pt solid #000;
+    padding:1.5mm 2mm;
+    text-align:left;
+    vertical-align:middle;
+  }
+  .confirm-flight-table thead th{
+    background:#f2f2f2;
+    font-weight:700;
+    text-transform:uppercase;
+    font-size:8.5pt;
+  }
+  .confirm-flight-table td.nowrap,
+  .confirm-flight-table th.nowrap{
+    white-space:nowrap;
+  }
+
   ...
   /* Espacios dobles entre I, II y III */
   /* I. ABONOS después del bloque de COORDINADOR(A) */
@@ -1144,53 +1243,83 @@ function imprimirHtml(html){
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
-  const fechaInicioViajeISO = computeInicioSoloPrimerVueloIda(vuelosNorm); // ← regla solicitada
+  const fechaInicioViajeISO = computeInicioSoloPrimerVueloIda(vuelosNorm); // solo primer vuelo de ida
   const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
 
-  // Punto de encuentro: si hay ida, usa origen del primer aereo ida
+  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const colegio = grupo.colegio || grupo.cliente || '';
+  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
+  const destino = grupo.destino || '';
+  const programa= grupo.programa || '';
+  const ano     = grupo.anoViaje || '';
+
+  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
+
+  // Punto de encuentro: si hay ida, usa origen del primer aéreo ida
   const puntoEncuentroTexto = (() => {
-    if (idaLegsPlan.length) return idaLegsPlan[0]?.origen ? `Encuentro en Aeropuerto ${idaLegsPlan[0].origen}` : '';
+    if (idaLegsPlan.length){
+      return idaLegsPlan[0]?.origen
+        ? `Encuentro en Aeropuerto ${idaLegsPlan[0].origen}`
+        : '';
+    }
     return '';
   })();
 
   const withHrs = t => t ? `${t} HRS` : '—';
   const U = s => String(s||'').toUpperCase();
 
+  // NUEVO: tabla de vuelos (IDA / VUELTA) con formato de tabla
   const flightsBlock = (legs, modo) => {
     if (!legs || !legs.length) return '';
-    const header = (() => {
-      const f = legs[0];
-      const chooseNum = (raw) => {
-        const s = String(raw||'').toUpperCase();
-        if (!s.includes('//')) return s;
-        const p = s.split('//').map(x=>x.trim());
-        return (modo === 'ida') ? (p[0]||'') : (p[p.length-1]||'');
-      };
-      const nro = chooseNum(f.numero);
-      const via = f.aerolinea ? ` VÍA ${U(f.aerolinea)}` : '';
-      return `${modo==='ida' ? 'IDA' : 'VUELTA'}: VUELO ${nro}${via}`;
-    })();
 
-    const legsHtml = legs.map(l=>{
+    const tramoLabel = (modo === 'ida') ? 'IDA' : 'VUELTA';
+
+    const rows = legs.map(l => {
       const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
       const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
       const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
       const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
+
       return `
-        <ul class="flight-lines">
-          <li><span class="lbl">Fecha:</span> ${formatShortDate(fecha)}</li>
-          <li><span class="lbl">Origen:</span> ${U(l.origen)}</li>
-          <li><span class="lbl">Presentación:</span> ${withHrs(pres)}</li>
-          <li><span class="lbl">Hora de salida:</span> ${withHrs(sal)}</li>
-          <li><span class="lbl">Destino:</span> ${U(l.destino)}</li>
-          <li><span class="lbl">Hora de arribo:</span> ${withHrs(arr)}</li>
-        </ul>`;
+        <tr>
+          <td class="nowrap">${tramoLabel}</td>
+          <td class="nowrap">${formatShortDate(fecha)}</td>
+          <td class="nowrap">${U(l.origen)}</td>
+          <td class="nowrap">${withHrs(pres)}</td>
+          <td class="nowrap">${withHrs(sal)}</td>
+          <td class="nowrap">${U(l.destino)}</td>
+          <td class="nowrap">${withHrs(arr)}</td>
+        </tr>
+      `;
     }).join('');
 
-    return `<div class="flight-block"><div class="flights-header">${header}</div><div class="flight-legs">${legsHtml}</div></div>`;
+    return `
+      <table class="confirm-flight-table">
+        <thead>
+          <tr>
+            <th class="nowrap">Tramo</th>
+            <th class="nowrap">Fecha</th>
+            <th class="nowrap">Origen</th>
+            <th class="nowrap">Presentación</th>
+            <th class="nowrap">Salida</th>
+            <th class="nowrap">Destino</th>
+            <th class="nowrap">Arribo</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    `;
   };
 
-  const dmy = (s) => { const iso = toISO(s); if (!iso) return '—'; const [y,m,d] = iso.split('-'); return `${d}-${m}-${y}`; };
+  const dmy = (s) => {
+    const iso = toISO(s);
+    if (!iso) return '—';
+    const [y,m,d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  };
+
   const hotelesHtml = `
     <ul class="hoteles-list">
       ${(hoteles||[]).map(h=>{
@@ -1221,42 +1350,77 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const { docsText, equipajeText1, equipajeText2, recs } =
     getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
   const documentosHTML = renderDocsList(docsText);
-  const recomendacionesHTML = Array.isArray(recs) ? recs.map(r => `<li>${r}</li>`).join('') : `<li>${recs}</li>`;
+  const recomendacionesHTML = Array.isArray(recs)
+    ? recs.map(r => `<li>${r}</li>`).join('')
+    : `<li>${recs}</li>`;
 
   const titulo  = `Viaje de Estudios ${(grupo.colegio || grupo.cliente || '')} ${(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '')}`.trim();
 
-  // Itinerario compacto (para PDF)
+  // Itinerario compacto (para sección 7)
   const itinHTML = (() => {
     const fechas = (() => {
-      if (grupo.itinerario && typeof grupo.itinerario==='object') return Object.keys(grupo.itinerario).sort((a,b)=> new Date(a)-new Date(b));
+      if (grupo.itinerario && typeof grupo.itinerario==='object'){
+        return Object.keys(grupo.itinerario)
+          .sort((a,b)=> new Date(a)-new Date(b));
+      }
       if (grupo.fechaInicio && grupo.fechaFin) {
-        const out=[]; const A=toISO(grupo.fechaInicio), B=toISO(grupo.fechaFin);
-        if(A&&B){ const a=new Date(A), b=new Date(B); for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){ out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);} }
+        const out=[];
+        const A=toISO(grupo.fechaInicio), B=toISO(grupo.fechaFin);
+        if(A&&B){
+          const a=new Date(A), b=new Date(B);
+          for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){
+            out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
+          }
+        }
         return out;
       }
       return [];
     })();
+
     if (!fechas.length) return '<div class="note">— Sin actividades —</div>';
+
     const days = fechas.map((f, i) => {
       const src = grupo.itinerario?.[f];
-      const arr = (Array.isArray(src) ? src : (src && typeof src==='object' ? Object.values(src) : []))
+      const arr = (Array.isArray(src)
+        ? src
+        : (src && typeof src==='object' ? Object.values(src) : []))
         .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
-      const acts = arr.map(a => (a?.actividad || '').toString().trim().toUpperCase()).filter(Boolean);
+      const acts = arr
+        .map(a => (a?.actividad || '').toString().trim().toUpperCase())
+        .filter(Boolean);
       const head = `DÍA ${i+1} - ${new Date(f).toLocaleDateString('es-CL',{weekday:'long', day:'2-digit', month:'2-digit'}).toUpperCase()}:`;
       const body = acts.length ? (acts.join(' — ')) : '—';
-      return `<li class="it-day"><div class="day-head"><strong>${head}</strong></div><div>${body}</div></li>`;
+      return `
+        <li class="it-day">
+          <div class="day-head"><strong>${head}</strong></div>
+          <div>${body}</div>
+        </li>`;
     });
+
     return `<ul class="itinerario">${days.join('')}</ul>`;
   })();
 
   return `
-    <div class="print-doc">
-      <div class="doc-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
-      <div class="sec-title">Fecha de inicio del viaje: ${fechaInicioViajeTxt}</div>
+    <div class="print-doc confirm-doc">
+      <div class="confirm-header">
+        <div class="confirm-title-block">
+          <div class="confirm-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
+          <div class="confirm-subtitle">${safe(lineaPrincipal, '')}</div>
+          <div class="confirm-meta">
+            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
+            ${fechaInicioViajeTxt !== '—' ? `<span>INICIO: ${fechaInicioViajeTxt}</span>` : ''}
+            ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
+          </div>
+        </div>
+        <div class="confirm-logo">
+          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+        </div>
+      </div>
 
       <div class="sec">
         <div class="sec-title">1. INFORMACIÓN GENERAL</div>
         ${puntoEncuentroTexto ? `<p><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}.</p>` : ''}
+        <p><strong>Fecha de inicio del viaje:</strong> ${fechaInicioViajeTxt}</p>
       </div>
 
       <div class="sec">
@@ -1277,7 +1441,10 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
       <div class="sec">
         <div class="sec-title">5. EQUIPAJE</div>
-        <ul><li>${equipajeText1}</li><li>${equipajeText2}</li></ul>
+        <ul>
+          <li>${equipajeText1}</li>
+          <li>${equipajeText2}</li>
+        </ul>
       </div>
 
       <div class="sec">
@@ -1295,6 +1462,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     </div>
   `;
 }
+
 
 // ──────────────────────────────────────────────────────────────
 // Helper: construir HTML de confirmación para un grupo
