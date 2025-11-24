@@ -46,6 +46,12 @@ let editMode = false;
 let dtHist = null;
 let GRUPOS_RAW = [];
 
+// 👇 NUEVO: estado de filtros de vuelo
+const FLT_FILTER = {
+  tipo: 'all',      // 'all' | 'charter' | 'regular'
+  fechaIda: ''      // 'YYYY-MM-DD' o ''
+};
+
 $(function(){
   $('#btn-logout').click(() => signOut(auth).then(()=>location='login.html'));
   onAuthStateChanged(auth, user => {
@@ -543,23 +549,35 @@ async function cargarYMostrarTabla() {
     await Promise.allSettled(jobs);
   } // ← cierre del for (i += BATCH)
 
+  // Para filtros rápido (Destino / Año / Transporte)
+  const destinosUnicos     = new Set();
+  const aniosUnicos        = new Set();
+  const transportesUnicos  = new Set();
 
-  // Para filtros rápido (Destino/Año)
-  const destinosUnicos = new Set();
-  const aniosUnicos    = new Set();
   valores.forEach(item => {
     const fila = item.fila;
-    destinosUnicos.add(fila[10]); // Destino
-    aniosUnicos.add(fila[3]);     // Año
+    destinosUnicos.add(fila[10]);          // Destino
+    aniosUnicos.add(fila[3]);              // Año
+    if (fila[18]) transportesUnicos.add(fila[18]); // Texto de TRANSPORTE (vuelo/bus) ya enriquecido
   });
-  const destinos = Array.from(destinosUnicos).sort();
-  const anios    = Array.from(aniosUnicos).sort();
 
+  const destinos    = Array.from(destinosUnicos).sort();
+  const anios       = Array.from(aniosUnicos).sort();
+  const transportes = Array.from(transportesUnicos).sort();
+
+  // Destinos
   const $filtroDestino = $('#filtroDestino').empty().append('<option value="">Todos</option>');
   destinos.forEach(d => $filtroDestino.append(`<option value="${d}">${d}</option>`));
 
+  // Años
   const $filtroAno = $('#filtroAno').empty().append('<option value="">Todos</option>');
   anios.forEach(a => $filtroAno.append(`<option value="${a}">${a}</option>`));
+
+  // 👇 NUEVO: selector de Vuelo / Transporte (columna Transporte)
+  const $filtroTransporte = $('#filter-transporte').empty().append('<option value="">Todos</option>');
+  transportes.forEach(t => {
+    $filtroTransporte.append(`<option value="${t}">${t}</option>`);
+  });
 
   // 3) Renderizar <tbody>
   const $tb = $('#tablaGrupos tbody').empty();
@@ -630,6 +648,7 @@ async function cargarYMostrarTabla() {
 
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
+    // (config actual igual)
     language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
     dom:        'Brtip',
     buttons: [
@@ -642,8 +661,6 @@ async function cargarYMostrarTabla() {
     ],
     pageLength: -1,
     lengthChange: false,
-    // Ojo: con la nueva columna, los índices cambian.
-    // Orden sugerido: Destino (11), Programa (12), Fecha Inicio (13), Identificador (1)
     order: [[12, 'desc'], [13, 'desc'], [14, 'desc'], [1, 'desc']],
     scrollX: true,
     autoWidth: false,
@@ -652,37 +669,33 @@ async function cargarYMostrarTabla() {
       headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
     },
     columnDefs: [
-      // Columnas ocultas por defecto
       { targets: [10, 11, 16, 17, 19, 21, 24, 25], visible: false },
-
-      { targets: 0,  width: '20px'  },  // N° Negocio
-      { targets: 1,  width: '20px'  },  // Identificador
-      { targets: 2,  width: '100px' },  // Nombre de Grupo
-      { targets: 3,  width: '20px'  },  // Año
-      { targets: 4,  width: '50px'  },  // Vendedor(a)
-      { targets: 5,  width: '140px' },  // Coordinadores
-      { targets: 6,  width: '90px'  },  // Tel. Coord.
-      { targets: 7,  width: '20px'  },  // Pax
-      { targets: 8,  width: '20px'  },  // Adultos
-      { targets: 9,  width: '20px'  },  // Estudiantes
-      { targets: 10, width: '70px'  },  // Colegio
-      { targets: 11, width: '20px'  },  // Curso
-      { targets: 12, width: '70px'  },  // Destino
-      { targets: 13, width: '70px'  },  // Programa
-      { targets: 14, width: '40px'  },  // Fecha Inicio
-      { targets: 15, width: '40px'  },  // Fecha Fin
-      { targets: 16, width: '30px'  },  // Seguro Médico
-      { targets: 17, width: '80px'  },  // Autoriz.
-      { targets: 18, width: '50px'  },  // Hoteles
-      { targets: 19, width: '80px'  },  // Ciudades
+      { targets: 0,  width: '20px'  },
+      { targets: 1,  width: '20px'  },
+      { targets: 2,  width: '100px' },
+      { targets: 3,  width: '20px'  },
+      { targets: 4,  width: '50px'  },
+      { targets: 5,  width: '140px' },
+      { targets: 6,  width: '90px'  },
+      { targets: 7,  width: '20px'  },
+      { targets: 8,  width: '20px'  },
+      { targets: 9,  width: '20px'  },
+      { targets: 10, width: '70px'  },
+      { targets: 11, width: '20px'  },
+      { targets: 12, width: '70px'  },
+      { targets: 13, width: '70px'  },
+      { targets: 14, width: '40px'  },
+      { targets: 15, width: '40px'  },
+      { targets: 16, width: '30px'  },
+      { targets: 17, width: '80px'  },
+      { targets: 18, width: '50px'  },
+      { targets: 19, width: '80px'  },
       { targets: 20, width: '50px'  },  // Transporte
-      { targets: 21, width: '50px'  },  // Tramos
-      { targets: 22, width: '80px'  },  // Indicaciones de la Fecha
-      { targets: 23, width: '100px' },  // Observaciones
-      { targets: 24, width: '50px'  },  // Creado Por
-      { targets: 25, width: '50px'  },  // Fecha Creación
-
-      // Alineación y tipo numérico (ojo: Pax/Adultos/Estudiantes ahora 7,8,9)
+      { targets: 21, width: '50px'  },
+      { targets: 22, width: '80px'  },
+      { targets: 23, width: '100px' },
+      { targets: 24, width: '50px'  },
+      { targets: 25, width: '50px'  },
       { targets: [7, 8, 9], type: 'num', className: 'dt-body-right' }
     ]
   });
@@ -691,16 +704,38 @@ async function cargarYMostrarTabla() {
   // ——— BÚSQUEDA ESPECIAL: "<texto>,..."  para incluir coordinadores en blanco ———
   const BUSQ_ESPECIAL = { activo:false, termino:'' };
   
-  // Filtro personalizado de DataTables (se evalúa SOLO cuando BUSQ_ESPECIAL.activo)
+  // Filtro personalizado de DataTables (BUSQ_ESPECIAL + filtros de vuelo)
   $.fn.dataTable.ext.search.push(function (settings, rowData) {
     if (settings.nTable.id !== 'tablaGrupos') return true;
+
+    // 1) FILTRO DE VUELOS → usamos la columna Transporte (índice 20)
+    const trans = (rowData[20] || '').toString();
+
+    // Tipo vuelo: 'charter' | 'regular' | 'all'
+    if (FLT_FILTER.tipo === 'charter' || FLT_FILTER.tipo === 'regular') {
+      const target = FLT_FILTER.tipo.toUpperCase();
+      if (!trans.toUpperCase().includes(target)) {
+        return false; // no coincide tipo → excluimos fila
+      }
+    }
+
+    // Fecha ida: viene como YYYY-MM-DD desde el <input type="date">
+    if (FLT_FILTER.fechaIda) {
+      const [yyyy, mm, dd] = FLT_FILTER.fechaIda.split('-');
+      const dmy = `${dd}-${mm}-${yyyy}`; // así la escribimos en el texto de Transporte
+      if (!trans.includes(dmy)) {
+        return false; // no coincide fecha de ida → excluimos
+      }
+    }
+
+    // 2) MODO BUSQ_ESPECIAL (misma lógica que tenías)
     if (!BUSQ_ESPECIAL.activo) return true;
-  
-    const colCoord = 5;                                 // índice de columna "Coordinadores"
+
+    const colCoord = 5;                                 // índice de "Coordinadores"
     const coordTxt = (rowData[colCoord] || '').trim();  // texto en Coordinadores
     const term     = BUSQ_ESPECIAL.termino.toLowerCase();
   
-    // Si NO hay término (p. ej. escribiste solo ",") => mostrar SOLO los vacíos
+    // Si NO hay término (p.ej. escribiste solo ",") => mostrar SOLO los vacíos
     if (!term) return coordTxt === '';
   
     // Hay término: incluir fila si:
@@ -711,30 +746,71 @@ async function cargarYMostrarTabla() {
     return coincide || coordTxt === '';
   });
 
+
   
   // Filtros con los nuevos índices
+  // Filtros con los nuevos índices
   $('#buscador').on('input', function () {
-  const raw = String(this.value || '');
-  const tieneComa = raw.includes(',');
+    const raw = String(this.value || '');
+    const tieneComa = raw.includes(',');
 
-  if (tieneComa) {
-    // Modo especial: término = lo que va antes de la primera coma
-    const termino = raw.split(',')[0].trim();
-    BUSQ_ESPECIAL.activo  = true;
-    BUSQ_ESPECIAL.termino = termino;
+    if (tieneComa) {
+      // Modo especial: término = lo que va antes de la primera coma
+      const termino = raw.split(',')[0].trim();
+      BUSQ_ESPECIAL.activo  = true;
+      BUSQ_ESPECIAL.termino = termino;
 
-    // Desactivamos la búsqueda global de DT y usamos SOLO nuestro filtro
-    tabla.search('');
-  } else {
-    // Modo normal: sin “OR con blancos”
-    BUSQ_ESPECIAL.activo  = false;
-    BUSQ_ESPECIAL.termino = '';
-    tabla.search(raw);   // búsqueda global normal de DataTables
-  }
-  tabla.draw();
-});
-  $('#filtroDestino').on('change', function(){ tabla.column(12).search(this.value).draw(); }); // Destino
-  $('#filtroAno').on('change',     function(){ tabla.column(3).search(this.value).draw();  }); // Año
+      // Desactivamos la búsqueda global de DT y usamos SOLO nuestro filtro
+      tabla.search('');
+    } else {
+      // Modo normal: sin “OR con blancos”
+      BUSQ_ESPECIAL.activo  = false;
+      BUSQ_ESPECIAL.termino = '';
+      tabla.search(raw);   // búsqueda global normal de DataTables
+    }
+    tabla.draw();
+  });
+
+  // Destino (columna 12 de la tabla)
+  $('#filtroDestino').on('change', function(){
+    tabla.column(12).search(this.value).draw();
+  });
+
+  // Año de viaje (columna 3)
+  $('#filtroAno').on('change', function(){
+    tabla.column(3).search(this.value).draw();
+  });
+
+  // 👇 NUEVO: Tipo de vuelo (usa FLT_FILTER.tipo y ext.search)
+  $('#filter-tipoVuelo').on('change', function () {
+    const v = this.value || 'all';
+    if (v === 'charter' || v === 'regular') {
+      FLT_FILTER.tipo = v;
+    } else {
+      FLT_FILTER.tipo = 'all';
+    }
+    tabla.draw();
+  });
+
+  // 👇 NUEVO: Fecha de ida (usa FLT_FILTER.fechaIda y ext.search)
+  $('#filter-fechaIda').on('change', function () {
+    FLT_FILTER.fechaIda = this.value || '';
+    tabla.draw();
+  });
+
+  // 👇 NUEVO: selector de Vuelo / Transporte → filtra por coincidencia exacta
+  $('#filter-transporte').on('change', function () {
+    const val = this.value || '';
+    if (!val) {
+      // Limpia filtro de columna
+      tabla.column(20).search('', true, false).draw();
+    } else {
+      const escaped = $.fn.dataTable.util.escapeRegex(val);
+      // ^...$ para coincidencia EXACTA del texto de Transporte
+      tabla.column(20).search('^' + escaped + '$', true, false).draw();
+    }
+  });
+
 
 
   // 5) Edición inline en blur (numéricos -> número real en Firestore)
