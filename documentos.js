@@ -2018,6 +2018,44 @@ function buildVouchersDoc(grupo, vouchersData){
   return pagesHtml;
 }
 
+// ──────────────────────────────────────────────────────────────
+// HELPERS: construir HTML de finanzas y vouchers sin imprimir
+// ──────────────────────────────────────────────────────────────
+async function buildFinanzasHTML(grupoId){
+  // 1) Traer datos del grupo
+  const d = await getDoc(doc(db,'grupos', grupoId));
+  if (!d.exists()) return '';
+  const g = { id:d.id, ...d.data() };
+
+  // 2) Traer abonos "crudos"
+  const abonosRaw = await fetchFinanzasAbonos(grupoId);
+
+  // 3) Enriquecer con FECHA DE ACTIVIDAD desde el itinerario del grupo
+  const abonos = enrichAbonosWithItinerario(g, abonosRaw);
+
+  // 4) Buscar datos del coordinador(a) principal en colección "coordinadores"
+  const coordData = await fetchCoordinadorPrincipal(g);
+
+  // 5) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
+  const vouchersData = await collectVoucherActivities(g);
+
+  // 6) Construir el HTML (NO imprimir aquí)
+  return buildFinanzasDoc(g, abonos, coordData, vouchersData);
+}
+
+async function buildVouchersHTML(grupoId){
+  // 1) Traer datos del grupo
+  const d = await getDoc(doc(db,'grupos', grupoId));
+  if (!d.exists()) return '';
+  const g = { id:d.id, ...d.data() };
+
+  // 2) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
+  const vouchersData = await collectVoucherActivities(g);
+
+  // 3) Construir HTML de vouchers físicos (NO imprimir aquí)
+  return buildVouchersDoc(g, vouchersData);
+}
+
 function buildItinerarioDoc(grupo){
   const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
   const colegio = grupo.colegio || grupo.cliente || '';
@@ -2362,45 +2400,20 @@ function renderTabla(rows){
 }
 
 // ──────────────────────────────────────────────────────────────
-// FINANZAS: imprimir "ESTADO DE CUENTAS DEL VIAJE"
+// FINANZAS: imprimir "ESTADO DE CUENTAS DEL VIAJE" (R individual)
 // ──────────────────────────────────────────────────────────────
 async function descargarFinanzas(grupoId){
-  // 1) Traer datos del grupo
-  const d = await getDoc(doc(db,'grupos', grupoId));
-  if (!d.exists()) return;
-  const g = { id:d.id, ...d.data() };
-
-  // 2) Traer abonos "crudos"
-  const abonosRaw = await fetchFinanzasAbonos(grupoId);
-
-  // 3) Enriquecer con FECHA DE ACTIVIDAD desde el itinerario del grupo
-  const abonos = enrichAbonosWithItinerario(g, abonosRaw);
-
-  // 4) Buscar datos del coordinador(a) principal en colección "coordinadores"
-  const coordData = await fetchCoordinadorPrincipal(g);
-
-  // 5) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
-  const vouchersData = await collectVoucherActivities(g);
-
-  // 6) Construir el HTML y mandar a imprimir
-  const html = buildFinanzasDoc(g, abonos, coordData, vouchersData);
+  const html = await buildFinanzasHTML(grupoId);
+  if (!html) return;
   imprimirHtml(html);
 }
 
 // ──────────────────────────────────────────────────────────────
-// VOUCHERS FÍSICOS: imprimir hoja con vouchers del grupo
+// VOUCHERS FÍSICOS: imprimir hoja con vouchers del grupo (V individual)
 // ──────────────────────────────────────────────────────────────
 async function descargarVouchers(grupoId){
-  // 1) Traer datos del grupo
-  const d = await getDoc(doc(db,'grupos', grupoId));
-  if (!d.exists()) return;
-  const g = { id:d.id, ...d.data() };
-
-  // 2) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
-  const vouchersData = await collectVoucherActivities(g);
-
-  // 3) Construir HTML de vouchers físicos y mandar a imprimir
-  const html = buildVouchersDoc(g, vouchersData);
+  const html = await buildVouchersHTML(grupoId);
+  if (!html) return;
   imprimirHtml(html);
 }
 
@@ -2426,50 +2439,76 @@ async function descargarUno(grupoId){
   imprimirHtml(html);
 }
 
+// ──────────────────────────────────────────────────────────────
+// DESPACHO: 3×C + 2×R + 1×V por grupo (seleccionados / todos)
+// ──────────────────────────────────────────────────────────────
 async function descargarSeleccionados(){
   const tb = document.getElementById('tbody');
-  const ids = [...tb.querySelectorAll('tr')].filter(tr=> tr.querySelector('.rowchk')?.checked).map(tr=> tr.dataset.id);
-  await descargarLote(ids);
+  const ids = [...tb.querySelectorAll('tr')]
+    .filter(tr => tr.querySelector('.rowchk')?.checked)
+    .map(tr => tr.dataset.id);
+
+  await descargarDespachoLote(ids);
 }
 
 async function descargarTodos(){
   const tb = document.getElementById('tbody');
-  const ids = [...tb.querySelectorAll('tr')].map(tr=> tr.dataset.id);
-  await descargarLote(ids);
+  const ids = [...tb.querySelectorAll('tr')].map(tr => tr.dataset.id);
+  await descargarDespachoLote(ids);
 }
 
-async function descargarLote(ids){
+async function descargarDespachoLote(ids){
   if (!ids.length) return;
+
   const prog = document.getElementById('progressTxt');
   let ok = 0, fail = 0;
   const partes = [];
 
   for (let i = 0; i < ids.length; i++){
-    prog.textContent = `Preparando ${i+1}/${ids.length}…`;
+    const grupoId = ids[i];
+    prog.textContent = `Preparando despacho ${i+1}/${ids.length}…`;
+
     try{
-      const html = await buildConfirmacionHTML(ids[i]);
-      if (html){
-        partes.push(html);   // cada html trae su <div class="print-doc">
-        ok++;
-      }else{
-        fail++;
+      // C = Confirmación, R = Resumen/Finanzas, V = Vouchers
+      const [htmlC, htmlR, htmlV] = await Promise.all([
+        buildConfirmacionHTML(grupoId),
+        buildFinanzasHTML(grupoId),
+        buildVouchersHTML(grupoId)
+      ]);
+
+      // 3 copias de C
+      if (htmlC){
+        partes.push(htmlC, htmlC, htmlC);
       }
+
+      // 2 copias de R
+      if (htmlR){
+        partes.push(htmlR, htmlR);
+      }
+
+      // 1 copia de V
+      if (htmlV){
+        partes.push(htmlV);
+      }
+
+      if (htmlC || htmlR || htmlV) ok++;
+      else fail++;
+
     }catch(e){
-      console.error('Error generando confirmación', ids[i], e);
+      console.error('Error generando despacho para grupo', grupoId, e);
       fail++;
     }
   }
 
-  prog.textContent = `Listo: ${ok} ok${fail?`, ${fail} con error`:''}.`;
+  prog.textContent = `Despacho listo: ${ok} grupo(s) ok${fail ? `, ${fail} con error` : ''}.`;
   setTimeout(()=> prog.textContent = '', 4000);
 
   if (!partes.length) return;
 
-  // Un solo documento con varias páginas .print-doc
+  // Todas las copias en un solo documento imprimible
   const htmlLote = partes.join('');
   imprimirHtml(htmlLote);
 }
-
 
 async function pdfDesdeMiViaje(grupoId, filename){
   const SAFE_PX = Math.round(190 * 96 / 25.4); // zona segura
