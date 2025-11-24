@@ -715,16 +715,7 @@ function injectPdfStyles(){
   }
 
   ...
-  .finanzas-doc .vouchers-section + .finanzas-footnote{
-    margin-top:10mm;
-  }
-
-  /* Separación normal entre líneas de firma */
-  .finanzas-doc .finanzas-footnote + .finanzas-footnote{
-    margin-top:4mm;
-  }
-
-    /* Espacios dobles entre I, II y III */
+  /* Espacios dobles entre I, II y III */
   /* I. ABONOS después del bloque de COORDINADOR(A) */
   .finanzas-doc .finanzas-coord + .sec{
     margin-top:8mm;        /* separa COORDINADOR de I. ABONOS */
