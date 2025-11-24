@@ -1935,11 +1935,14 @@ function renderTabla(rows){
       <td>${g.destino ?? '—'}</td>
       <td>${g.programa ?? '—'}</td>
       <td><span class="badge">${inicioTxt}</span></td>
-      <td class="right">
-        <button class="btn-add btn-one">C</button>
-        <button class="btn-add btn-finanzas">R</button>
-        <button class="btn-add btn-vouchers">V</button>
+      <td class="acciones">
+        <div class="acciones-wrap">
+          <button class="btn-add btn-one">C</button>
+          <button class="btn-add btn-finanzas">R</button>
+          <button class="btn-add btn-vouchers">V</button>
+        </div>
       </td>
+
     `;
 
     tb.appendChild(tr);
