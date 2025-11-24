@@ -1785,17 +1785,25 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
       <div class="finanzas-footnote finanzas-footnote-main">
         IV. DECLARO HABER RECIBIDO A CONFORMIDAD LOS ABONOS INDICADOS, LOS VOUCHERS Y LOS TICKETS SEÑALADOS EN ESTE DOCUMENTO.
       </div>
-
+      &nbsp;
+      &nbsp;
+      &nbsp;
       <!-- Líneas de firma que llegan hasta el margen derecho -->
       <div class="finanzas-signatures">
         <div class="firma-row">
           <span class="lbl">NOMBRE COORDINADOR(A):</span>
           <span class="line"></span>
         </div>
+        &nbsp;
+        &nbsp;
+        &nbsp;
         <div class="firma-row">
           <span class="lbl">FECHA:</span>
           <span class="line"></span>
         </div>
+        &nbsp;
+        &nbsp;
+        &nbsp;
         <div class="firma-row">
           <span class="lbl">FIRMA:</span>
           <span class="line"></span>
