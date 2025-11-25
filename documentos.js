@@ -1951,7 +1951,7 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
-     <div class="sec-title">III. ACTIVIDADES CON TICKETS</div>
+      <div class="sec-title">III. ACTIVIDADES CON TICKETS</div>
       ${
         tickets.length
           ? `<ul class="itinerario">
@@ -1964,6 +1964,11 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
                     </strong>
                   </div>
                   <div>${totalEst} tickets estudiantes, ${totalAd} tickets adultos, 1 ticket coordinador(a)</div>
+                  ${
+                    v.nota
+                      ? `<div class="ticket-note">Nota: ${v.nota}</div>`
+                      : ''
+                  }
                 </li>
               `).join('')}
             </ul>`
