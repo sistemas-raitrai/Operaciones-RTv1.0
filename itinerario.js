@@ -1128,7 +1128,7 @@ function ensureNotasTicketSelect() {
 async function applyNotasTicketMode(destino, actividad, servicioId, notasCrudas) {
   if (!fldNotas) return;
 
-  const notaExistente = (notasCrudas || fldNotas.value || '').toString().toUpperCase();
+  const notaExistente = (notasCrudas || '').toString().toUpperCase();
   const selNotas = ensureNotasTicketSelect();
 
   let esTicket = false;
