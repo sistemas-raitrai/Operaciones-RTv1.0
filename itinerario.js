@@ -71,6 +71,16 @@ const fldPax         = document.getElementById("m-pax");
 const fldNotas       = document.getElementById("m-notas");
 const btnCancel      = document.getElementById("modal-cancel");
 
+// [NUEVO] opciones de notas cuando el servicio usa voucher "TICKET"
+const TICKET_NOTAS_OPCIONES = [
+  "PEDIR TICKETS A CDRA. GENERAL",
+  "COORDINADOR(A) LLEVA LOS TICKETS",
+  "PEDIR TICKETS EN VENTANILLA",
+  "OTRO"
+];
+
+let notasTicketSelect = null;  // se crea bajo demanda en el modal
+
 // —— Modal Alertas
 const modalAlertas       = document.getElementById("modal-alertas");
 const btnCloseAlertas    = document.getElementById("alertas-close");
@@ -1075,6 +1085,99 @@ async function quickAddActivity() {
 }
 
 // —————————————————————————————————
+// Notas especiales para servicios con voucher "TICKET"
+// —————————————————————————————————
+
+// Crea (una sola vez) el <select> con las 4 opciones y lo inserta después del input de notas.
+function ensureNotasTicketSelect() {
+  if (notasTicketSelect && notasTicketSelect.isConnected) return notasTicketSelect;
+  if (!fldNotas) return null;
+
+  const sel = document.createElement('select');
+  sel.id = 'm-notas-ticket';
+  sel.className = fldNotas.className || '';
+  sel.style.marginTop = '0.25rem';
+
+  // Opción placeholder
+  const opt0 = document.createElement('option');
+  opt0.value = '';
+  opt0.textContent = '(selecciona una opción)';
+  sel.appendChild(opt0);
+
+  // Las 4 opciones requeridas
+  TICKET_NOTAS_OPCIONES.forEach(txt => {
+    const opt = document.createElement('option');
+    opt.value = txt;
+    opt.textContent = txt;
+    sel.appendChild(opt);
+  });
+
+  // Insertar justo después del input de notas
+  fldNotas.insertAdjacentElement('afterend', sel);
+  sel.style.display = 'none';
+
+  notasTicketSelect = sel;
+  return notasTicketSelect;
+}
+
+/**
+ * Activa / desactiva el modo "TICKET" en el modal:
+ * - Si el servicio tiene voucher TICKET → se muestra el <select> y se oculta el input.
+ * - Si no → solo se muestra el input normal.
+ */
+async function applyNotasTicketMode(destino, actividad, servicioId, notasCrudas) {
+  if (!fldNotas) return;
+
+  const notaExistente = (notasCrudas || fldNotas.value || '').toString().toUpperCase();
+  const selNotas = ensureNotasTicketSelect();
+
+  let esTicket = false;
+  try {
+    const svcMaps = await getServiciosMaps(destino || '');
+    let pack = null;
+
+    // 1) Preferimos servicioId si viene en la actividad
+    if (servicioId && svcMaps.byId.has(servicioId)) {
+      pack = svcMaps.byId.get(servicioId);
+    } else if (actividad) {
+      // 2) Si no, buscamos por nombre normalizado
+      const key = K(actividad);
+      if (svcMaps.byName.has(key)) {
+        pack = svcMaps.byName.get(key);
+      }
+    }
+
+    if (pack && pack.data && typeof pack.data.voucher !== 'undefined') {
+      esTicket = (pack.data.voucher || '').toString().toUpperCase() === 'TICKET';
+    }
+  } catch (_) {
+    esTicket = false;
+  }
+
+  if (esTicket && selNotas) {
+    // Mostrar el select y ocultar el input libre
+    fldNotas.style.display = 'none';
+    selNotas.style.display = '';
+
+    // ¿la nota existente coincide con alguna de las 4 opciones?
+    const coincide = TICKET_NOTAS_OPCIONES.includes(notaExistente) ? notaExistente : 'OTRO';
+    selNotas.value = coincide;
+
+    // Si es "OTRO", dejamos el texto anterior en el input oculto; si no, sincronizamos.
+    if (coincide === 'OTRO') {
+      fldNotas.value = notaExistente || '';
+    } else {
+      fldNotas.value = coincide;
+    }
+  } else {
+    // Modo normal: sin select, solo input texto
+    fldNotas.style.display = '';
+    if (selNotas) selNotas.style.display = 'none';
+    fldNotas.value = notaExistente || '';
+  }
+}
+
+// —————————————————————————————————
 /** 5) openModal(): precarga datos en el modal **/
 // —————————————————————————————————
 async function openModal(data, isEdit) {
@@ -1085,17 +1188,46 @@ async function openModal(data, isEdit) {
   const g     = snapG.data()||{};
   const A = parseInt(g.adultos, 10) || 0;
   const E = parseInt(g.estudiantes, 10) || 0;
-  const T = (() => { const t = parseInt(g.cantidadgrupo, 10); return Number.isFinite(t) ? t : (A + E); })();
+  const T = (() => {
+    const t = parseInt(g.cantidadgrupo, 10);
+    return Number.isFinite(t) ? t : (A + E);
+  })();
   
+  // Datos base del modal
   fldFecha.value    = data.fecha;
   fldHi.value       = data.horaInicio || "07:00";
   fldHf.value       = data.horaFin    || sumarUnaHora(fldHi.value);
   fldAct.value      = data.actividad  || "";
   await prepararCampoActividad("m-actividad", g.destino);
-  fldNotas.value    = data.notas      || "";
+
+  // Notas (texto que venía en la actividad, si existía)
+  const notasCrudas = (data.notas || "").toString();
+
+  // Aplica modo "TICKET" (select) o modo normal según el servicio
+  await applyNotasTicketMode(
+    g.destino || '',
+    data.actividad || '',
+    data.servicioId || null,
+    notasCrudas
+  );
+
+  // Además, si el usuario cambia la actividad dentro del modal,
+  // volvemos a evaluar si corresponde usar el select de TICKET o no.
+  fldAct.onchange = () => {
+    applyNotasTicketMode(
+      g.destino || '',
+      fldAct.value || '',
+      editData?.servicioId || null,
+      fldNotas.value || ''
+    );
+  };
+
+  // Pax
   fldAdultos.value     = A;
   fldEstudiantes.value = E;
   fldPax.value         = T;
+
+  // Al cambiar hora inicio, ajustamos hora fin
   fldHi.onchange = () => { fldHf.value = sumarUnaHora(fldHi.value); };
 
   modalBg.style.display = modal.style.display = "block";
@@ -1131,6 +1263,26 @@ async function onSubmitModal(evt) {
   const key = K(typedUpper);
   const sv = svcMaps.byName.get(key) || null;
 
+  // === NUEVO: determinar notas teniendo en cuenta el select especial de TICKETS ===
+  let notasValor = '';
+  if (notasTicketSelect && notasTicketSelect.style.display !== 'none') {
+    // Estamos en modo "voucher TICKET": usar el valor del <select>
+    const selVal = (notasTicketSelect.value || '').toString().toUpperCase();
+    if (selVal === 'OTRO') {
+      // Si elige OTRO, usamos lo que haya escrito en el input (si hay), o la palabra OTRO
+      const libre = (fldNotas.value || '').trim().toUpperCase();
+      notasValor = libre || 'OTRO';
+    } else {
+      notasValor = selVal;
+      // Sincroniza el input oculto para que el objeto actividad también tenga ese texto
+      fldNotas.value = selVal;
+    }
+  } else {
+    // Modo normal: se guarda lo que haya escrito en el input de notas
+    notasValor = (fldNotas.value || '').trim().toUpperCase();
+  }
+  // ================================================================================
+
   const payloadBase = {
     horaInicio: fldHi.value,
     horaFin:    fldHf.value,
@@ -1138,7 +1290,7 @@ async function onSubmitModal(evt) {
     pasajeros:  pax,
     adultos:    a,
     estudiantes:e,
-    notas:      (fldNotas.value || '').trim().toUpperCase(),
+    notas:      notasValor,
     servicioId:       sv ? sv.id : (editData?.servicioId || null),
     servicioNombre:   sv ? sv.nombre : (editData?.servicioNombre || null),
     servicioDestino:  sv ? sv.destino : (editData?.servicioDestino || null)
