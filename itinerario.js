@@ -1043,11 +1043,25 @@ async function quickAddActivity() {
   const key = K(textUpper);
   const sv  = svcMaps.byName.get(key) || null;
 
+  // ¿Este servicio usa voucher TICKET?
+  const isTicketService = !!(sv && sv.data && String(sv.data.voucher || '').toUpperCase() === 'TICKET');
+  const actNameUpperForTicket = ((sv ? sv.nombre : textUpper) || '').toString().toUpperCase();
+
   const fechas = Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
 
   for (let idx of selIdx) {
     const f   = fechas[idx];
     const arr = g.itinerario[f]||[];
+
+    // Nota por defecto para servicios TICKET
+    let notaDefault = "";
+    if (isTicketService) {
+      if (actNameUpperForTicket === 'BIG WHEEL (RUEDA GIGANTE)') {
+        notaDefault = 'PEDIR TICKETS EN VENTANILLA';
+      } else {
+        notaDefault = 'PEDIR TICKETS A CDRA. GENERAL';
+      }
+    }
 
     const item = {
       horaInicio,
@@ -1056,7 +1070,7 @@ async function quickAddActivity() {
       pasajeros:  totalAdults + totalStudents,
       adultos:    totalAdults,
       estudiantes:totalStudents,
-      notas:      "",
+      notas:      notaDefault,
       servicioId:       sv ? sv.id : null,
       servicioNombre:   sv ? sv.nombre : null,
       servicioDestino:  sv ? sv.destino : null,
@@ -1124,14 +1138,23 @@ function ensureNotasTicketSelect() {
  * Activa / desactiva el modo "TICKET" en el modal:
  * - Si el servicio tiene voucher TICKET → se muestra el <select> y se oculta el input.
  * - Si no → solo se muestra el input normal.
+ *
+ * Reglas de default:
+ * - TICKET + sin nota previa:
+ *     - BIG WHEEL (RUEDA GIGANTE) → PEDIR TICKETS EN VENTANILLA
+ *     - Otros TICKET → PEDIR TICKETS A CDRA. GENERAL
  */
 async function applyNotasTicketMode(destino, actividad, servicioId, notasCrudas) {
   if (!fldNotas) return;
 
-  const notaExistente = (notasCrudas || '').toString().toUpperCase();
-  const selNotas = ensureNotasTicketSelect();
+  const rawNota   = (notasCrudas || '').toString();
+  const notaTrim  = rawNota.trim();
+  const notaUpper = notaTrim.toUpperCase();
+  const selNotas  = ensureNotasTicketSelect();
 
-  let esTicket = false;
+  let esTicket     = false;
+  let actNameUpper = (actividad || '').toString().toUpperCase();
+
   try {
     const svcMaps = await getServiciosMaps(destino || '');
     let pack = null;
@@ -1147,8 +1170,11 @@ async function applyNotasTicketMode(destino, actividad, servicioId, notasCrudas)
       }
     }
 
-    if (pack && pack.data && typeof pack.data.voucher !== 'undefined') {
-      esTicket = (pack.data.voucher || '').toString().toUpperCase() === 'TICKET';
+    if (pack) {
+      actNameUpper = (pack.nombre || actNameUpper || '').toString().toUpperCase();
+      if (pack.data && typeof pack.data.voucher !== 'undefined') {
+        esTicket = (pack.data.voucher || '').toString().toUpperCase() === 'TICKET';
+      }
     }
   } catch (_) {
     esTicket = false;
@@ -1159,21 +1185,37 @@ async function applyNotasTicketMode(destino, actividad, servicioId, notasCrudas)
     fldNotas.style.display = 'none';
     selNotas.style.display = '';
 
-    // ¿la nota existente coincide con alguna de las 4 opciones?
-    const coincide = TICKET_NOTAS_OPCIONES.includes(notaExistente) ? notaExistente : 'OTRO';
-    selNotas.value = coincide;
+    let selValue;
 
-    // Si es "OTRO", dejamos el texto anterior en el input oculto; si no, sincronizamos.
-    if (coincide === 'OTRO') {
-      fldNotas.value = notaExistente || '';
+    if (notaTrim) {
+      // Ya había una nota guardada
+      if (TICKET_NOTAS_OPCIONES.includes(notaUpper)) {
+        selValue = notaUpper;
+      } else {
+        selValue = 'OTRO';
+      }
     } else {
-      fldNotas.value = coincide;
+      // Sin nota previa → aplicar DEFAULT según actividad
+      if (actNameUpper === 'BIG WHEEL (RUEDA GIGANTE)') {
+        selValue = 'PEDIR TICKETS EN VENTANILLA';
+      } else {
+        selValue = 'PEDIR TICKETS A CDRA. GENERAL';
+      }
+    }
+
+    selNotas.value = selValue;
+
+    if (selValue === 'OTRO') {
+      // Dejamos el texto libre como estaba (posiblemente vacío)
+      fldNotas.value = notaTrim;
+    } else {
+      fldNotas.value = selValue;
     }
   } else {
     // Modo normal: sin select, solo input texto
     fldNotas.style.display = '';
     if (selNotas) selNotas.style.display = 'none';
-    fldNotas.value = notaExistente || '';
+    fldNotas.value = notaTrim;
   }
 }
 
@@ -1996,6 +2038,118 @@ window.repararServiciosAntiguos = async function(opts = {}) {
 
   console.log(`FIN Reparación — grupos procesados: ${gruposProc}, grupos modificados: ${gruposMod}, acts modificadas: ${actsMod} (fuzzy:${actsFuzzy}), sin match: ${actsNoMatch}, dryRun: ${dryRun}`);
   return { gruposProc, gruposMod, actsMod, actsFuzzy, actsNoMatch, dryRun };
+};
+
+// ===========================================================
+// APLICAR DEFAULT DE NOTAS PARA SERVICIOS CON VOUCHER "TICKET"
+// - Rellena SOLO actividades TICKET que NO tengan nota.
+// - BIG WHEEL (RUEDA GIGANTE) → PEDIR TICKETS EN VENTANILLA
+// - Otros TICKET → PEDIR TICKETS A CDRA. GENERAL
+// - Respeta actividades que ya tienen nota (aunque sea texto libre).
+// Uso desde consola:
+//   await aplicarNotasDefaultTickets({ dryRun: true  });  // solo muestra
+//   await aplicarNotasDefaultTickets({ dryRun: false });  // escribe en Firestore
+// ===========================================================
+window.aplicarNotasDefaultTickets = async function(opts = {}) {
+  const dryRun = (opts.dryRun !== undefined) ? !!opts.dryRun : true;
+
+  const qs = await getDocs(collection(db,'grupos'));
+  const gruposDocs = qs.docs;
+
+  let gruposProc  = 0;
+  let gruposMod   = 0;
+  let actsModTot  = 0;
+
+  for (const d of gruposDocs) {
+    const g = { id: d.id, ...(d.data() || {}) };
+    const it = g.itinerario || {};
+    const fechas = Object.keys(it);
+    if (!fechas.length) { gruposProc++; continue; }
+
+    const svcMaps = await getServiciosMaps(g.destino || '');
+    let cambiosEnGrupo = false;
+    let actsModGrupo   = 0;
+    const nuevoIt      = {};
+
+    for (const f of fechas) {
+      const arr = it[f] || [];
+      const nuevoArr = arr.map(act => {
+        if (!act) return act;
+
+        // Localizar el servicio en el índice
+        let pack = null;
+        if (act.servicioId && svcMaps.byId.has(act.servicioId)) {
+          pack = svcMaps.byId.get(act.servicioId);
+        } else if (act.actividad || act.servicioNombre) {
+          const nombreBase = (act.servicioNombre || act.actividad || '').toString();
+          const key = K(nombreBase);
+          if (svcMaps.byName.has(key)) {
+            pack = svcMaps.byName.get(key);
+          }
+        }
+
+        let esTicket = false;
+        if (pack && pack.data && typeof pack.data.voucher !== 'undefined') {
+          esTicket = (pack.data.voucher || '').toString().toUpperCase() === 'TICKET';
+        }
+        if (!esTicket) return act; // no es TICKET → no tocar
+
+        const notaRaw   = (act.notas || '').toString().trim();
+        const notaUpper = notaRaw.toUpperCase();
+
+        // Si ya tiene una de las 4 opciones → respetar
+        if (notaUpper && TICKET_NOTAS_OPCIONES.includes(notaUpper)) return act;
+
+        // Si tiene otro texto libre → no tocar (solo rellenamos vacíos)
+        if (notaUpper) return act;
+
+        // Sin nota → aplicar default según actividad
+        const nombreActUpper = ((act.servicioNombre || act.actividad || '') || '')
+          .toString()
+          .toUpperCase();
+
+        let nuevaNota;
+        if (nombreActUpper === 'BIG WHEEL (RUEDA GIGANTE)') {
+          nuevaNota = 'PEDIR TICKETS EN VENTANILLA';
+        } else {
+          nuevaNota = 'PEDIR TICKETS A CDRA. GENERAL';
+        }
+
+        const nuevoAct = { ...act, notas: nuevaNota };
+        cambiosEnGrupo = true;
+        actsModGrupo++;
+        actsModTot++;
+        return nuevoAct;
+      });
+
+      nuevoIt[f] = nuevoArr;
+    }
+
+    gruposProc++;
+
+    if (cambiosEnGrupo) {
+      console.log(`${dryRun ? '[DRY] ' : '[APLICADO] '}Grupo ${g.id} (${g.numeroNegocio || ''}) — actividades TICKET actualizadas: ${actsModGrupo}`);
+
+      if (!dryRun) {
+        await updateDoc(doc(db,'grupos',g.id), { itinerario: nuevoIt });
+        try {
+          await logHist(g.id, 'APLICAR DEFAULT NOTAS TICKET', {
+            _group: g,
+            anterior: '',
+            nuevo: `Actividades TICKET actualizadas: ${actsModGrupo}`
+          });
+        } catch (_) {}
+        gruposMod++;
+      }
+    }
+  }
+
+  console.log(
+    `FIN aplicarNotasDefaultTickets — ` +
+    `grupos procesados: ${gruposProc}, grupos modificados: ${gruposMod}, ` +
+    `actividades modificadas: ${actsModTot}, dryRun: ${dryRun}`
+  );
+  return { gruposProc, gruposMod, actsMod: actsModTot, dryRun };
 };
 
 // ===== UTILIDAD: Sincronizar TODOS los itinerarios con Servicios (concurrencia limitada) =====
