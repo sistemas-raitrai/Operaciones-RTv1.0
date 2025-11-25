@@ -2708,6 +2708,70 @@ async function descargarDespachoLote(ids){
   imprimirHtml(htmlLote);
 }
 
+// ──────────────────────────────────────────────────────────────
+// RESUMEN (2×R): 2 copias de "R" por grupo (seleccionados)
+// ──────────────────────────────────────────────────────────────
+async function descargarResumenSeleccionados(){
+  const tb = document.getElementById('tbody');
+  const ids = [...tb.querySelectorAll('tr')]
+    .filter(tr => tr.querySelector('.rowchk')?.checked)
+    .map(tr => tr.dataset.id);
+
+  await descargarResumenLote(ids);
+}
+
+// NUEVO: Resumen (2×R) para TODOS
+async function descargarResumenTodos(){
+  const tb = document.getElementById('tbody');
+  const ids = [...tb.querySelectorAll('tr')].map(tr => tr.dataset.id);
+  await descargarResumenLote(ids);
+}
+
+async function descargarResumenLote(ids){
+  const prog = document.getElementById('progressTxt');
+
+  if (!ids || !ids.length){
+    if (prog) prog.textContent = 'Selecciona al menos un grupo para imprimir RESUMEN (2×R).';
+    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 3000);
+    return;
+  }
+
+  let ok = 0, fail = 0;
+  const partes = [];
+
+  for (let i = 0; i < ids.length; i++){
+    const grupoId = ids[i];
+    if (prog) prog.textContent = `Preparando resumen ${i+1}/${ids.length}…`;
+
+    try{
+      // R = Resumen/Finanzas
+      const htmlR = await buildFinanzasHTML(grupoId);
+
+      // 2 copias de R
+      if (htmlR){
+        partes.push(htmlR, htmlR);
+        ok++;
+      }else{
+        fail++;
+      }
+
+    }catch(e){
+      console.error('Error generando resumen para grupo', grupoId, e);
+      fail++;
+    }
+  }
+
+  if (prog){
+    prog.textContent = `Resumen listo: ${ok} grupo(s) ok${fail ? `, ${fail} con error` : ''}.`;
+    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 4000);
+  }
+
+  if (!partes.length) return;
+
+  imprimirHtml(partes.join(''));
+}
+
+
 async function pdfDesdeMiViaje(grupoId, filename){
   const SAFE_PX = Math.round(190 * 96 / 25.4); // zona segura
   await ensureHtml2Pdf();
@@ -2885,6 +2949,8 @@ async function init(){
 
   document.getElementById('btnDescSel').addEventListener('click', descargarSeleccionados);
   document.getElementById('btnDescAll').addEventListener('click', descargarTodos);
+  document.getElementById('btnResSel').addEventListener('click', descargarResumenSeleccionados);
+  document.getElementById('btnResAll').addEventListener('click', descargarResumenTodos);
 }
 
 init().catch(e=>{
