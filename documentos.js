@@ -1685,8 +1685,8 @@ async function collectVoucherActivities(grupo){
   // índice de fechas por actividad (primer día donde aparece en el itinerario)
   const itIndex = buildItinerarioIndex(grupo);
 
-  // Puede devolver 1 o varios destinos base:
-  //   ["SUR DE CHILE","BARILOCHE"], ["BRASIL"], etc.
+  // Puede devolver 1 o varios destinos "base" para buscar en
+  // Servicios/{DESTINO}/Listado y Proveedores/{DESTINO}/Listado
   const destinoKeys = getDestinoServiciosKeys(grupo);
 
   // Índices combinados de todos esos destinos
@@ -1712,9 +1712,22 @@ async function collectVoucherActivities(grupo){
     }
   }
 
+  // ⬇️ Ahora, si ya existe el item, actualizamos nota/fecha en vez de ignorarlo
   const pushUnique = (arr, item) => {
     const key = item.key;
-    if (!arr.some(x => x.key === key)) arr.push(item);
+    const existing = arr.find(x => x.key === key);
+    if (!existing){
+      arr.push(item);
+    }else{
+      // Si antes no tenía nota y ahora sí, la guardamos
+      if (!existing.nota && item.nota) {
+        existing.nota = item.nota;
+      }
+      // Si antes no tenía fecha de actividad y ahora sí, la guardamos
+      if (!existing.fechaActividadISO && item.fechaActividadISO) {
+        existing.fechaActividadISO = item.fechaActividadISO;
+      }
+    }
   };
 
   Object.values(it).forEach(raw => {
@@ -1751,13 +1764,24 @@ async function collectVoucherActivities(grupo){
       // Fecha en el itinerario (si existe) según nombre normalizado
       const fechaActividadISO = itIndex.get(slugNombre) || null;
 
+      // ⬇️ NUEVO: nota asociada a la actividad (pensada para vouchers TICKET)
+      // Ajusta aquí si en tu itinerario usas otro nombre de campo
+      const notaRaw = (
+        act.notaTicket ??
+        act.nota ??
+        act.notas ??
+        ''
+      );
+      const nota = (typeof notaRaw === 'string') ? notaRaw.trim() : '';
+
       const item = {
         key: slugNombre,
         nombre,
         proveedor: provName,
         contacto,
         telefono,
-        fechaActividadISO
+        fechaActividadISO,
+        ...(nota ? { nota } : {})   // solo incluimos nota si viene con algo
       };
 
       if (isFisico) pushUnique(fisicos, item);
@@ -1780,6 +1804,7 @@ async function collectVoucherActivities(grupo){
 
   return { fisicos, tickets };
 }
+
 
 // ──────────────────────────────────────────────────────────────
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
