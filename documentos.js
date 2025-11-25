@@ -2710,6 +2710,7 @@ async function descargarDespachoLote(ids){
 
 // ──────────────────────────────────────────────────────────────
 // RESUMEN (2×R): 2 copias de "R" por grupo (seleccionados)
+//   → Botón: RESUMEN (SELECCIONADOS)
 // ──────────────────────────────────────────────────────────────
 async function descargarResumenSeleccionados(){
   const tb = document.getElementById('tbody');
@@ -2717,13 +2718,6 @@ async function descargarResumenSeleccionados(){
     .filter(tr => tr.querySelector('.rowchk')?.checked)
     .map(tr => tr.dataset.id);
 
-  await descargarResumenLote(ids);
-}
-
-// NUEVO: Resumen (2×R) para TODOS
-async function descargarResumenTodos(){
-  const tb = document.getElementById('tbody');
-  const ids = [...tb.querySelectorAll('tr')].map(tr => tr.dataset.id);
   await descargarResumenLote(ids);
 }
 
@@ -2768,6 +2762,58 @@ async function descargarResumenLote(ids){
 
   if (!partes.length) return;
 
+  imprimirHtml(partes.join(''));
+}
+
+// ──────────────────────────────────────────────────────────────
+// VOUCHERS (1×V): 1 copia de "V" por grupo (TODOS los de la tabla)
+//   → Botón: RESUMEN (TODOS)  [ahora imprime V]
+// ──────────────────────────────────────────────────────────────
+async function descargarVouchersTodos(){
+  const tb   = document.getElementById('tbody');
+  const prog = document.getElementById('progressTxt');
+
+  // TODOS los grupos actualmente listados en la tabla
+  const ids = [...tb.querySelectorAll('tr')].map(tr => tr.dataset.id);
+
+  if (!ids.length){
+    if (prog) prog.textContent = 'No hay grupos en la tabla para imprimir VOUCHERS.';
+    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 3000);
+    return;
+  }
+
+  let ok = 0, fail = 0;
+  const partes = [];
+
+  for (let i = 0; i < ids.length; i++){
+    const grupoId = ids[i];
+    if (prog) prog.textContent = `Preparando vouchers ${i+1}/${ids.length}…`;
+
+    try{
+      // V = Vouchers físicos (1 copia por grupo)
+      const htmlV = await buildVouchersHTML(grupoId);
+
+      if (htmlV){
+        partes.push(htmlV);   // 1×V
+        ok++;
+      }else{
+        fail++;
+      }
+
+    }catch(e){
+      console.error('Error generando vouchers para grupo', grupoId, e);
+      fail++;
+    }
+  }
+
+  if (prog){
+    prog.textContent = `Vouchers listos: ${ok} grupo(s) ok${fail ? `, ${fail} con error` : ''}.`;
+    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 4000);
+  }
+
+  if (!partes.length) return;
+
+  // Un solo “lote” imprimible con todos los vouchers
   imprimirHtml(partes.join(''));
 }
 
@@ -2947,10 +2993,20 @@ async function init(){
     document.getElementById('countHint').textContent='—';
   });
 
-  document.getElementById('btnDescSel').addEventListener('click', descargarSeleccionados);
-  document.getElementById('btnDescAll').addEventListener('click', descargarTodos);
-  document.getElementById('btnResSel').addEventListener('click', descargarResumenSeleccionados);
-  document.getElementById('btnResAll').addEventListener('click', descargarResumenTodos);
+  // Estos botones pueden estar comentados en el HTML, así que los tomamos con cuidado
+  const btnDescSel = document.getElementById('btnDescSel');
+  if (btnDescSel) btnDescSel.addEventListener('click', descargarSeleccionados);
+
+  const btnDescAll = document.getElementById('btnDescAll');
+  if (btnDescAll) btnDescAll.addEventListener('click', descargarTodos);
+
+  const btnResSel = document.getElementById('btnResSel');
+  if (btnResSel) btnResSel.addEventListener('click', descargarResumenSeleccionados);
+
+  // IMPORTANTE: este ahora imprime 1×V (vouchers) para TODOS los grupos de la tabla
+  const btnResAll = document.getElementById('btnResAll');
+  if (btnResAll) btnResAll.addEventListener('click', descargarVouchersTodos);
+
 }
 
 init().catch(e=>{
