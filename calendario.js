@@ -55,7 +55,8 @@ function filtroDestinoCalendario(settings, rowData){
 
 
 // ======================================================
-// Buscador con coma: "t1,t2,..." => exige TODOS los términos (AND)
+// Buscador con coma: "t1,t2,..." => acepta CUALQUIER término (OR)
+// Ej: "1358, 1511" muestra filas que contengan 1358 O 1511
 // ======================================================
 const BUSQ_COMA = { activo:false, terminos:[] };
 
@@ -65,7 +66,7 @@ function filtroBusquedaPorComa(settings, rowData){
   if (!BUSQ_COMA.activo) return true;
 
   const rowText = (rowData || []).join(' ').toLowerCase();
-  return BUSQ_COMA.terminos.every(t => rowText.includes(t));
+  return BUSQ_COMA.terminos.some(t => rowText.includes(t));
 }
 
 
@@ -99,6 +100,57 @@ function compararActividades(a = {}, b = {}) {
 // Helpers de "Vuelos" (LEE COLECCIÓN 'vuelos')
 // ======================================================
 function _safe(v){ return (v ?? '').toString().trim(); }
+// ---------- Helpers tolerantes para leer campos por "paths" ----------
+const BIG_SORT = 9e15;
+
+function _getPath(obj, path){
+  try{
+    return path.split('.').reduce((acc,k)=> (acc && acc[k]!==undefined) ? acc[k] : undefined, obj);
+  }catch{ return undefined; }
+}
+function _pick(obj, ...paths){
+  for (const p of paths){
+    const v = _getPath(obj, p);
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+function _fmtHM(v){
+  const s = String(v||'').trim();
+  if (!s) return '';
+  const m = s.match(/(\d{1,2})[:h\.]?(\d{2})/i);
+  if (!m) return s;
+  const hh = String(parseInt(m[1],10)).padStart(2,'0');
+  const mm = String(parseInt(m[2],10)).padStart(2,'0');
+  return `${hh}:${mm}`;
+}
+function _sortNumFrom(dateAny, timeAny){
+  const iso = _toISODate(dateAny);
+  if (!iso) return BIG_SORT;
+  const t = _fmtHM(timeAny) || '23:59';
+  const d = new Date(`${iso}T${t}:00`);
+  const ms = d.getTime();
+  return Number.isFinite(ms) ? ms : BIG_SORT;
+}
+function _sortNumVuelo(v = {}){
+  // fecha/hora de SALIDA (IDA) como criterio principal
+  let fechaIda = _pick(v,
+    'fechaIda','idaFecha','fechaSalida','salida.fecha','ida.fecha','fecha','fecha_ida'
+  );
+  let horaSal = _pick(v,
+    'vueloIdaHora','idaHora','salidaHora','salida.hora','horaSalidaIda'
+  );
+
+  // si hay tramos, primera salida manda
+  if (Array.isArray(v.tramos) && v.tramos.length){
+    const first = v.tramos[0] || {};
+    fechaIda = _pick(first,'fecha','fechaIda','salida.fecha') || fechaIda;
+    horaSal  = _pick(first,'vueloHora','hora','salidaHora','salida.hora') || horaSal;
+  }
+
+  return _sortNumFrom(fechaIda, horaSal);
+}
+
 function _toISODate(x){
   if (!x) return '';
   // Firestore Timestamp
@@ -140,39 +192,68 @@ function _resumenVuelo(v = {}){
   const prov       = _safe(v.proveedor);
   const num        = _safe(v.numero);
 
-  // origen/destino + fechas/horas (tolerante a distintos nombres)
+  // origen/destino
   let origen  = _safe(v.origen);
   let destino = _safe(v.destino);
 
-  let fechaIda = v.fechaIda || v.idaFecha || v.fechaIdaTer || v['ida.fecha'] || '';
-  let fechaVta = v.fechaVuelta || v.vueltaFecha || v.fechaVueltaTer || v['vuelta.fecha'] || '';
+  // fechas ida/vuelta (tolerante)
+  let fechaIda = _pick(v,'fechaIda','idaFecha','fechaSalida','salida.fecha','ida.fecha','fecha','fecha_ida');
+  let fechaVta = _pick(v,'fechaVuelta','fechaVueltaTer','vueltaFecha','fechaRegreso','regreso.fecha','vuelta.fecha','fecha_vuelta');
 
-  let horaIda = v.vueloIdaHora || v.idaHora || v.presentacionIdaHora || '';
-  let horaVta = v.vueloVueltaHora || v.vueltaHora || v.presentacionVueltaHora || '';
+  // horas ida (PRES / SAL / ARR)
+  let presIda = _pick(v,'presentacionIdaHora','idaPresentacionHora','presentacionHoraIda','ida.presentacionHora','salida.presentacionHora');
+  let salIda  = _pick(v,'vueloIdaHora','idaHora','salidaHora','salida.hora','horaSalidaIda');
+  let arrIda  = _pick(v,'arriboIdaHora','llegadaIdaHora','horaArriboIda','idaArriboHora','ida.llegadaHora','llegada.hora','arribo.hora');
 
-  // Si hay tramos, usar 1º origen y último destino (y horas/fechas si existen)
+  // horas vuelta (PRES / SAL / ARR)
+  let presVta = _pick(v,'presentacionVueltaHora','vueltaPresentacionHora','presentacionHoraVuelta','vuelta.presentacionHora','regreso.presentacionHora');
+  let salVta  = _pick(v,'vueloVueltaHora','vueltaHora','regresoHora','regreso.hora','horaSalidaVuelta');
+  let arrVta  = _pick(v,'arriboVueltaHora','llegadaVueltaHora','horaArriboVuelta','vueltaArriboHora','vuelta.llegadaHora','llegadaVuelta.hora');
+
+  // Si hay tramos: ORIGEN = primer tramo, DESTINO = último tramo,
+  // y la SALIDA/ARRIBO se pueden sacar de esos tramos si existen.
   if (Array.isArray(v.tramos) && v.tramos.length){
     const first = v.tramos[0] || {};
     const last  = v.tramos[v.tramos.length - 1] || {};
     origen   = _safe(first.origen)  || origen;
     destino  = _safe(last.destino)  || destino;
-    fechaIda = first.fecha || fechaIda;
-    fechaVta = last.fecha  || fechaVta;
-    horaIda  = first.vueloHora || first.hora || horaIda;
-    horaVta  = last.vueloHora  || last.hora  || horaVta;
+
+    fechaIda = _pick(first,'fecha','fechaIda','salida.fecha') || fechaIda;
+
+    // salida/arribo desde tramos si vienen
+    presIda  = _pick(first,'presentacionHora','presentacionIdaHora','presentacion') || presIda;
+    salIda   = _pick(first,'vueloHora','hora','salidaHora','salida.hora') || salIda;
+    arrIda   = _pick(last,'arriboHora','llegadaHora','horaArribo','arribo.hora','llegada.hora') || arrIda;
   }
 
-  const idaTxt = [ (origen && destino) ? `${origen}→${destino}` : '', _bon(fechaIda), _safe(horaIda) ]
-                  .filter(Boolean).join(' ');
-  const vtaTxt = [ (destino && origen) ? `${destino}→${origen}` : '', _bon(fechaVta), _safe(horaVta) ]
-                  .filter(Boolean).join(' ');
-
   const head = `${etiqueta}${prov ? ' ' + prov : ''}${num ? ' ' + num : ''}`.trim();
-  return [ head, idaTxt ? `IDA: ${idaTxt}` : '', vtaTxt ? `REG: ${vtaTxt}` : '' ]
-         .filter(Boolean).join(' · ');
+
+  const idaParts = [];
+  const idaRuta  = (origen && destino) ? `${origen}→${destino}` : '';
+  if (idaRuta) idaParts.push(idaRuta);
+  if (fechaIda) idaParts.push(_bon(fechaIda));
+  if (_fmtHM(presIda)) idaParts.push(`PRES ${_fmtHM(presIda)}`);
+  if (_fmtHM(salIda))  idaParts.push(`SAL ${_fmtHM(salIda)}`);
+  if (_fmtHM(arrIda))  idaParts.push(`ARR ${_fmtHM(arrIda)}`);
+
+  const vtaParts = [];
+  const vtaRuta  = (destino && origen) ? `${destino}→${origen}` : '';
+  if (vtaRuta) vtaParts.push(vtaRuta);
+  if (fechaVta) vtaParts.push(_bon(fechaVta));
+  if (_fmtHM(presVta)) vtaParts.push(`PRES ${_fmtHM(presVta)}`);
+  if (_fmtHM(salVta))  vtaParts.push(`SAL ${_fmtHM(salVta)}`);
+  if (_fmtHM(arrVta))  vtaParts.push(`ARR ${_fmtHM(arrVta)}`);
+
+  return [
+    head,
+    idaParts.length ? `IDA: ${idaParts.join(' · ')}` : '',
+    vtaParts.length ? `REG: ${vtaParts.join(' · ')}` : ''
+  ].filter(Boolean).join(' · ');
 }
 
+
 // Devuelve Map<groupId, string[]> a partir de 'vuelos'
+// Devuelve Map<groupKey, {items:[{text, sort}], minSort:number}>
 async function cargarVuelosIndex(){
   const index = new Map();
   let snap;
@@ -184,7 +265,12 @@ async function cargarVuelosIndex(){
     return index;
   }
 
-  const add = (key, line) => {
+  const ensure = (vk) => {
+    if (!index.has(vk)) index.set(vk, { items: [], minSort: BIG_SORT });
+    return index.get(vk);
+  };
+
+  const add = (key, item) => {
     const k = String(key || '').trim();
     if (!k) return;
 
@@ -193,20 +279,22 @@ async function cargarVuelosIndex(){
     if (k.includes('-')) vars.add(k.split('-')[0]);
 
     vars.forEach(vk => {
-      if (!index.has(vk)) index.set(vk, []);
-      const arr = index.get(vk);
-      if (!arr.includes(line)) arr.push(line); // dedupe
+      const box = ensure(vk);
+      if (!box.items.some(x => x.text === item.text)) box.items.push(item);
+      box.minSort = Math.min(box.minSort, item.sort);
     });
   };
 
   snap.forEach(ds => {
     const d = ds.data() || {};
-    const resumen = _resumenVuelo(d);
+    const text = _resumenVuelo(d);
+    if (!text) return;
+
+    const item = { text, sort: _sortNumVuelo(d) };
 
     // Recolectar keys posibles de grupo desde múltiples esquemas
     const keys = new Set();
 
-    // 1) arrays típicos
     const arrs = []
       .concat(Array.isArray(d.grupoIds) ? d.grupoIds : [])
       .concat(Array.isArray(d.grupos) ? d.grupos : [])
@@ -220,7 +308,6 @@ async function cargarVuelosIndex(){
       }
     });
 
-    // 2) mapas por grupo
     if (d.statusPorGrupo && typeof d.statusPorGrupo === 'object'){
       Object.keys(d.statusPorGrupo).forEach(k => keys.add(String(k).trim()));
     }
@@ -228,20 +315,21 @@ async function cargarVuelosIndex(){
       Object.keys(d.gruposMap).forEach(k => keys.add(String(k).trim()));
     }
 
-    // 3) root fields (muchos sistemas guardan 1 grupo acá)
     keys.add(String(d.grupoId || '').trim());
     keys.add(String(d.grupoDocId || '').trim());
     keys.add(String(d.grupoNumero || d.numeroNegocio || '').trim());
 
-    // limpiar vacíos
     const clean = [...keys].filter(Boolean);
     if (!clean.length) return;
 
-    clean.forEach(gk => add(gk, resumen));
+    clean.forEach(gk => add(gk, item));
   });
 
-  // Orden bonito
-  for (const [k, arr] of index) arr.sort((a,b) => a.localeCompare(b));
+  // Orden bonito dentro de cada grupo
+  for (const [k, box] of index){
+    box.items.sort((a,b) => (a.sort - b.sort) || a.text.localeCompare(b.text));
+  }
+
   return index;
 }
 
@@ -461,13 +549,39 @@ async function generarTablaCalendario(userEmail) {
   const k1b = k1.includes('-') ? k1.split('-')[0] : '';
   const k2b = k2.includes('-') ? k2.split('-')[0] : '';
   
-  // Vuelos (dedupe + saltos de línea)
-  const vuelosArr = []
-    .concat(indexVuelos.get(k1)  || [])
-    .concat(indexVuelos.get(k2)  || [])
-    .concat(indexVuelos.get(k1b) || [])
-    .concat(indexVuelos.get(k2b) || []);
-  const vuelosTxt = [...new Set(vuelosArr)].join("\n");
+  // Vuelos (dedupe + orden por fecha salida)
+  const vBoxes = []
+    .concat(indexVuelos.get(k1)  || null)
+    .concat(indexVuelos.get(k2)  || null)
+    .concat(indexVuelos.get(k1b) || null)
+    .concat(indexVuelos.get(k2b) || null)
+    .filter(Boolean);
+  
+  // Aplanar a items [{text, sort}] (compatible si te queda algún array legacy)
+  const flat = [];
+  vBoxes.forEach(b => {
+    if (Array.isArray(b)) {
+      b.forEach(s => flat.push({ text: String(s||''), sort: BIG_SORT }));
+    } else if (Array.isArray(b.items)) {
+      b.items.forEach(it => flat.push(it));
+    }
+  });
+  
+  const uniq = new Map(); // text -> bestSort
+  flat.forEach(it => {
+    const t = String(it?.text || '').trim();
+    if (!t) return;
+    const s = Number.isFinite(it.sort) ? it.sort : BIG_SORT;
+    if (!uniq.has(t) || s < uniq.get(t)) uniq.set(t, s);
+  });
+  
+  const vuelosList = [...uniq.entries()]
+    .map(([text, sort]) => ({ text, sort }))
+    .sort((a,b) => (a.sort - b.sort) || a.text.localeCompare(b.text));
+  
+  const vuelosTxt  = vuelosList.map(x => x.text).join("\n");
+  const vuelosSort = vuelosList.length ? vuelosList[0].sort : BIG_SORT;
+
   
   // Hoteles (dedupe + saltos de línea)
   const hotelesArr = []
@@ -486,21 +600,23 @@ async function generarTablaCalendario(userEmail) {
       .text(`${(g.destino||'').trim()} // ${(g.programa||'').trim()}`.replace(/^\s*\/\/\s*|\s*\/\/\s*$/g,''))
       .attr('data-doc-id', g.id),
   
-    // 👇 (antes Programa) ahora Hoteles
+    // 👇 Hoteles
     $('<td>')
       .text(hotelesTxt)
       .attr('data-doc-id', g.id)
       .css('white-space','pre-line'),
   
-    // 👇 Vuelos/Traslados
+    // 👇 Vuelos/Traslados (aquí va el orden por salida)
     $('<td>')
       .text(vuelosTxt)
       .attr('data-doc-id', g.id)
+      .attr('data-order', String(vuelosSort))   // 👈 orden por fecha/hora salida
       .css('white-space','pre-line'),
   
     $('<td>').text(resumenPax).attr('data-doc-id', g.id),
     $('<td>').text(g.anoViaje).attr('data-doc-id', g.id)
   );
+
 
 
 
@@ -540,7 +656,7 @@ async function generarTablaCalendario(userEmail) {
     scrollX: true,
     dom: 'Brtip',
     pageLength: grupos.length, 
-    order: [],
+    order: [[4, 'asc']], 
     fixedHeader: {
       header: true,
       headerOffset: 90    // ajusta a la altura del header global
@@ -553,6 +669,7 @@ async function generarTablaCalendario(userEmail) {
     }],
     // Ocultamos la columna "Año" (index 5) pero la dejamos searchable
     columnDefs: [
+      { targets: [4], type: 'num' },             // asegura orden numérico por data-order
       { targets: [6], visible: false, searchable: true }
     ],
     language: {
@@ -560,13 +677,11 @@ async function generarTablaCalendario(userEmail) {
     }
   });
 
-  // Registrar filtro de destino (evita duplicarse si se re-renderiza)
-  $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(fn => fn !== filtroDestinoCalendario);
-  $.fn.dataTable.ext.search.push(filtroDestinoCalendario);
-
-  // Asegura que el filtro por coma se registre 1 sola vez (sin duplicarse)
-  $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(fn => fn !== filtroBusquedaPorComa);
-  $.fn.dataTable.ext.search.push(filtroBusquedaPorComa);
+  // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
+  const _ext = $.fn.dataTable.ext.search;
+  if (!_ext.includes(filtroDestinoCalendario)) _ext.push(filtroDestinoCalendario);
+  if (!_ext.includes(filtroBusquedaPorComa))  _ext.push(filtroBusquedaPorComa);
+  
 
   
   // 5) Buscador libre
