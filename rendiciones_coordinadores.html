@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Rendiciones de Coordinadores</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Usa los mismos estilos generales de tu portal -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <style>
+    /* Ajustes mínimos para esta página (puedes mover a tu CSS global) */
+    body.rendiciones-page {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:#f5f5f5;
+    }
+    main {
+      max-width: 1100px;
+      margin: 1.5rem auto 3rem auto;
+      padding: 0 1rem;
+    }
+    .card {
+      background:#fff;
+      border-radius:8px;
+      padding:0.9rem 1rem;
+      margin-bottom:1rem;
+      box-shadow:0 1px 3px rgba(0,0,0,.06);
+    }
+    .card h2 {
+      font-size:1rem;
+      margin:0 0 .4rem 0;
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+    .rowflex {
+      display:flex;
+      flex-wrap:wrap;
+      gap:.6rem;
+      align-items:center;
+    }
+    .rowflex > * {
+      flex:0 0 auto;
+    }
+    label.meta {
+      font-size:.85rem;
+      color:#555;
+    }
+    .muted { color:#777; font-size:.85rem; }
+    .mono { font-family:"Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    .small { font-size:.82rem; }
+
+    #tblGastos {
+      width:100%;
+      border-collapse:collapse;
+      font-size:.9rem;
+    }
+    #tblGastos thead {
+      background:#e6e6e6;
+    }
+    #tblGastos th,
+    #tblGastos td {
+      padding:.25rem .35rem;
+      border-bottom:1px solid #ddd;
+      vertical-align:middle;
+    }
+    #tblGastos th {
+      text-align:left;
+      font-weight:600;
+    }
+    #tblGastos td.monto,
+    #tblGastos th.monto {
+      text-align:right;
+      white-space:nowrap;
+    }
+    #tblGastos td.chk {
+      text-align:center;
+      width:32px;
+    }
+    textarea {
+      resize:vertical;
+      min-height:3rem;
+      width:100%;
+    }
+    input[type="number"] {
+      max-width:140px;
+    }
+
+    #resumenFinal strong {
+      display:block;
+      margin-bottom:.25rem;
+    }
+
+    /* Bloque de impresión (muy simple, luego puedes ajustarlo) */
+    #printSheet {
+      display:none;
+    }
+    @media print {
+      body.rendiciones-page main,
+      body.rendiciones-page header,
+      body.rendiciones-page nav {
+        display:none !important;
+      }
+      #printSheet {
+        display:block !important;
+      }
+      #printSheet .print-doc {
+        padding:18mm 20mm;
+        font-family:Calibri, Arial, sans-serif;
+        font-size:11px;
+      }
+      #printSheet h1 {
+        font-size:18px;
+        margin:0 0 6px 0;
+        text-transform:uppercase;
+      }
+      #printSheet h2 {
+        font-size:13px;
+        margin:12px 0 4px 0;
+        text-transform:uppercase;
+      }
+      #printSheet table {
+        width:100%;
+        border-collapse:collapse;
+      }
+      #printSheet .tbl-resumen td {
+        padding:2px 4px;
+      }
+      #printSheet .tbl-detalle th,
+      #printSheet .tbl-detalle td {
+        padding:3px 4px;
+        border-bottom:1px solid #ccc;
+        vertical-align:middle;
+        font-size:11px;
+      }
+      #printSheet .mono {
+        font-family:"Roboto Mono", Consolas, "Courier New", monospace;
+      }
+    }
+  </style>
+</head>
+<body class="rendiciones-page">
+
+  <header class="card" style="max-width:1100px;margin:1rem auto 0 auto;padding:.5rem 1rem;">
+    <div class="rowflex" style="justify-content:space-between;">
+      <div>
+        <strong>Rendiciones de coordinadores</strong>
+        <div class="small muted">Rai Trai · Módulo de cierre financiero</div>
+      </div>
+      <div class="small">
+        <span id="userEmail" class="mono"></span>
+        <button id="btn-logout" class="btn sec small" style="margin-left:.5rem;">Salir</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- FILTROS PRINCIPALES -->
+    <section class="card">
+      <h2>Selección de grupo y snapshot</h2>
+      <div class="rowflex" style="gap:1.2rem;">
+        <div>
+          <label class="meta">Grupo</label><br/>
+          <input id="grupoInput" list="dlGrupos" class="mono"
+                 placeholder="Escribe y elige un grupo" style="min-width:260px;">
+          <datalist id="dlGrupos"></datalist>
+        </div>
+        <div>
+          <label class="meta">Snapshot financiero</label><br/>
+          <select id="snapshotSelect" style="min-width:260px;">
+            <option value="">(elige grupo primero)</option>
+          </select>
+        </div>
+        <div style="align-self:flex-end;">
+          <button id="btnCargar" class="btn">Cargar rendición</button>
+          <button id="btnRefrescar" class="btn sec small">Refrescar grupos</button>
+        </div>
+      </div>
+      <div id="estadoCarga" class="muted small" style="margin-top:.4rem;"></div>
+    </section>
+
+    <!-- INFO DEL GRUPO -->
+    <section class="card" id="infoGrupo">
+      <h2>Datos del grupo</h2>
+      <div id="infoTitulo" class="small" style="font-weight:600;"></div>
+      <div id="infoSub" class="small muted" style="margin-top:.1rem;"></div>
+      <div id="infoMeta" class="small" style="margin-top:.35rem;"></div>
+    </section>
+
+    <!-- DOCUMENTOS DE RESPALDO -->
+    <section class="card" id="docsBlock">
+      <h2>Documentos de respaldo</h2>
+
+      <div class="rowflex" style="margin:.25rem 0;">
+        <label class="meta" style="min-width:220px;">Transferencia coordinador → Rai Trai</label>
+        <a id="linkTransfer" href="#" target="_blank" class="btn sec small">—</a>
+        <label class="meta"><input type="checkbox" id="chkTransferOk"> Documento correcto</label>
+        <span id="infoTransfer" class="small muted"></span>
+      </div>
+
+      <div class="rowflex" style="margin:.25rem 0;">
+        <label class="meta" style="min-width:220px;">Constancia efectivo USD</label>
+        <a id="linkCash" href="#" target="_blank" class="btn sec small">—</a>
+        <label class="meta"><input type="checkbox" id="chkCashOk"> Documento correcto</label>
+        <span id="infoCash" class="small muted"></span>
+      </div>
+
+      <div class="rowflex" style="margin:.25rem 0;">
+        <label class="meta" style="min-width:220px;">Boleta / factura coordinador</label>
+        <a id="linkBoleta" href="#" target="_blank" class="btn sec small">—</a>
+        <label class="meta"><input type="checkbox" id="chkBoletaOk"> Documento correcto</label>
+        <span id="infoBoleta" class="small muted"></span>
+      </div>
+    </section>
+
+    <!-- DESCUENTO / AJUSTE -->
+    <section class="card" id="descuentoBlock">
+      <h2>Descuento / ajuste manual</h2>
+      <div class="rowflex" style="gap:1.2rem;">
+        <div>
+          <label class="meta">Monto de descuento (CLP)</label><br/>
+          <input id="descuentoMonto" type="number" step="1" min="0" class="mono" style="max-width:160px;">
+        </div>
+        <div style="flex:1 1 auto;">
+          <label class="meta">Motivo del descuento</label><br/>
+          <textarea id="descuentoMotivo" placeholder="Ej: Falta boleta de taxi, gasto no autorizado, etc."></textarea>
+        </div>
+      </div>
+      <div class="muted small" style="margin-top:.25rem;">
+        Si hay descuento, el motivo es obligatorio y se mostrará en la rendición impresa.
+      </div>
+    </section>
+
+    <!-- TABLA DE GASTOS -->
+    <section class="card" id="tablaGastos">
+      <h2>Detalle de gastos rendidos</h2>
+      <div id="resumenTotales" class="small muted" style="margin-bottom:.4rem;">(sin datos)</div>
+      <div style="overflow:auto;">
+        <table id="tblGastos">
+          <thead>
+            <tr>
+              <th class="chk">OK</th>
+              <th>ASUNTO</th>
+              <th>AUTOR</th>
+              <th>MONEDA</th>
+              <th class="monto">VALOR ORIGINAL</th>
+              <th class="monto">MONTO APROBADO</th>
+              <th>COMPROBANTE</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="muted small" style="margin-top:.35rem;">
+        Marca sólo los gastos que se incluirán en la rendición y ajusta el monto aprobado si corresponde.
+      </div>
+    </section>
+
+    <!-- RESUMEN FINAL Y ACCIONES -->
+    <section class="card" id="acciones">
+      <div id="resumenFinal" class="small" style="margin-bottom:.5rem;"></div>
+      <div class="rowflex" style="gap:.6rem;">
+        <button id="btnGuardarRendicion" class="btn ok">Guardar rendición</button>
+        <button id="btnImprimirRendicion" class="btn">Imprimir rendición</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Contenedor oculto para impresión -->
+  <div id="printSheet">
+    <div id="print-block" class="print-doc"></div>
+  </div>
+
+  <!-- Lógica principal -->
+  <script type="module" src="./rendiciones_coordinadores.js"></script>
+</body>
+</html>
