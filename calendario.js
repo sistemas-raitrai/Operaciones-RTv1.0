@@ -9,6 +9,21 @@ let dtHist = null;
 let editMode = false;
 
 // ======================================================
+// Buscador con coma: "t1,t2,..." => exige TODOS los términos (AND)
+// ======================================================
+const BUSQ_COMA = { activo:false, terminos:[] };
+
+function filtroBusquedaPorComa(settings, rowData){
+  // Solo afecta esta tabla
+  if (settings.nTable.id !== 'tablaCalendario') return true;
+  if (!BUSQ_COMA.activo) return true;
+
+  const rowText = (rowData || []).join(' ').toLowerCase();
+  return BUSQ_COMA.terminos.every(t => rowText.includes(t));
+}
+
+
+// ======================================================
 // Helpers de hora y orden de actividades (NUEVO)
 // - Convierte "HH:mm" en minutos; si no hay hora, va al final.
 // - Compara por horaInicio y desempatando por horaFin.
@@ -485,9 +500,38 @@ async function generarTablaCalendario(userEmail) {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
+
+  // Asegura que el filtro por coma se registre 1 sola vez (sin duplicarse)
+  $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(fn => fn !== filtroBusquedaPorComa);
+  $.fn.dataTable.ext.search.push(filtroBusquedaPorComa);
+
   
   // 5) Buscador libre
-  $('#buscador').on('input', () => tabla.search($('#buscador').val()).draw());
+  // - Sin coma: búsqueda normal DataTables
+  // - Con coma: "t1,t2,..." => AND (tienen que estar TODOS)
+  $('#buscador').off('input').on('input', function () {
+    const raw = String(this.value || '');
+  
+    if (raw.includes(',')) {
+      const terms = raw
+        .split(',')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(s => s.toLowerCase());
+  
+      BUSQ_COMA.activo = terms.length > 0;
+      BUSQ_COMA.terminos = terms;
+  
+      // Apagamos búsqueda global para que mande el filtro por coma
+      tabla.search('');
+      tabla.draw();
+    } else {
+      BUSQ_COMA.activo = false;
+      BUSQ_COMA.terminos = [];
+      tabla.search(raw).draw();
+    }
+  });
+
 
   // 6) Aplicar filtro destino (columna 2)
   $('#filtroDestino').on('change', function () {
