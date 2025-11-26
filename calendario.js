@@ -370,7 +370,7 @@ async function generarTablaCalendario(userEmail) {
   $trhead.append(`
     <th>N° Negocio</th>
     <th>Grupo</th>
-    <th>Destino</th>
+    <th>Destino / Programa</th>
     <th>Hoteles</th>
     <th>Vuelos</th>
     <th>Pax</th>
@@ -425,7 +425,9 @@ async function generarTablaCalendario(userEmail) {
   $tr.append(
     $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
     $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
-    $('<td>').text(g.destino).attr('data-doc-id', g.id),
+    $('<td>')
+      .text(`${(g.destino||'').trim()} // ${(g.programa||'').trim()}`.replace(/^\s*\/\/\s*|\s*\/\/\s*$/g,''))
+      .attr('data-doc-id', g.id),
   
     // 👇 (antes Programa) ahora Hoteles
     $('<td>')
