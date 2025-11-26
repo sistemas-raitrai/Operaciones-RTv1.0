@@ -9,6 +9,52 @@ let dtHist = null;
 let editMode = false;
 
 // ======================================================
+// Filtro Destino (robusto aunque la celda sea "DESTINO // PROGRAMA")
+// + Regla especial: "SUR DE CHILE Y BARILOCHE" entra en ambos filtros.
+// ======================================================
+const FLT_DESTINO = { value: '' };
+
+function _normKey(s=''){
+  return String(s)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/\s+/g,'')
+    .trim();
+}
+function _destinoBaseFromCell(txt=''){
+  // La celda puede ser: "DESTINO // PROGRAMA"
+  return String(txt || '').split('//')[0].trim();
+}
+function _isMixSurBar(rawDestino=''){
+  const k = _normKey(rawDestino);
+  return k.includes('surdechile') && k.includes('bariloche');
+}
+
+// DataTables ext.search callback
+function filtroDestinoCalendario(settings, rowData){
+  if (settings.nTable.id !== 'tablaCalendario') return true;
+
+  const sel = (FLT_DESTINO.value || '').trim();
+  if (!sel) return true;
+
+  const selK  = _normKey(sel);
+  const cell  = (rowData && rowData[2]) ? rowData[2] : ''; // columna 2 = "Destino / Programa"
+  const base  = _destinoBaseFromCell(cell);
+  const baseK = _normKey(base);
+
+  const mixed = _isMixSurBar(base);
+
+  // Si seleccionan BARILOCHE o SUR DE CHILE, incluir también el mixto
+  if (selK === 'bariloche' || selK === 'surdechile') {
+    return baseK === selK || mixed;
+  }
+
+  // Para otros destinos: match exacto del destino base
+  return baseK === selK;
+}
+
+
+// ======================================================
 // Buscador con coma: "t1,t2,..." => exige TODOS los términos (AND)
 // ======================================================
 const BUSQ_COMA = { activo:false, terminos:[] };
@@ -324,7 +370,18 @@ async function generarTablaCalendario(userEmail) {
     const itinerario = d.itinerario || {};
     // Recolectar todas las fechas usadas en itinerarios
     Object.keys(itinerario).forEach(fecha => fechasUnicas.add(fecha));
-    destinosSet.add(d.destino || "");
+    const destRaw = (d.destino || '').toString().trim();
+    if (destRaw) {
+      // Si es mixto "SUR DE CHILE Y BARILOCHE", no lo agregamos como opción,
+      // sino que agregamos ambos destinos base.
+      if (_isMixSurBar(destRaw)) {
+        destinosSet.add('SUR DE CHILE');
+        destinosSet.add('BARILOCHE');
+      } else {
+        destinosSet.add(destRaw.toUpperCase());
+      }
+    }
+
     aniosSet.add(d.anoViaje || "");
 
     grupos.push({
@@ -503,6 +560,10 @@ async function generarTablaCalendario(userEmail) {
     }
   });
 
+  // Registrar filtro de destino (evita duplicarse si se re-renderiza)
+  $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(fn => fn !== filtroDestinoCalendario);
+  $.fn.dataTable.ext.search.push(filtroDestinoCalendario);
+
   // Asegura que el filtro por coma se registre 1 sola vez (sin duplicarse)
   $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(fn => fn !== filtroBusquedaPorComa);
   $.fn.dataTable.ext.search.push(filtroBusquedaPorComa);
@@ -536,9 +597,9 @@ async function generarTablaCalendario(userEmail) {
 
 
   // 6) Aplicar filtro destino (columna 2)
-  $('#filtroDestino').on('change', function () {
-    const val = this.value;
-    tabla.column(2).search(val ? '^'+val+'$' : '', true, false).draw();
+  $('#filtroDestino').off('change').on('change', function () {
+    FLT_DESTINO.value = (this.value || '').trim();
+    tabla.draw(); // aplica ext.search
   });
 
   // 7) Aplicar filtro año sobre la columna oculta 5 (NUEVO: ahora sí funciona)
