@@ -21,6 +21,7 @@ let swapFirstAssignId = null;
 const PAX_EDITORS = new Set([
   'sistemas@raitrai.cl',
   'aleoperaciones@raitrai.cl',
+  'operaciones@raitrai.cl',
   'yenny@raitrai.cl'
 ]);
 
