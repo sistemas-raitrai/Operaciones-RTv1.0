@@ -403,7 +403,9 @@ async function generarTablaCalendario(userEmail) {
     .concat(indexHoteles.get(k2)  || [])
     .concat(indexHoteles.get(k1b) || [])
     .concat(indexHoteles.get(k2b) || []);
-  const hotelesTxt = [...new Set(hotelesArr)].join("\n");
+  const hotelesTxt = [...new Set(hotelesArr)]
+  .map(s => String(s || '').toUpperCase())
+  .join("\n");
   
   $tr.append(
     $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
