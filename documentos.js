@@ -2022,7 +2022,9 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
             ${grupo ? `<span>ESTUDIANTES: ${grupo.estudiantes}</span>` : ''}
             ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
             ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
-            TELÉFONOS DE OPERACIONES: +569 5011 7289 - +569 8341 5663
+          </div>
+          <div class="finanzas-meta">
+          TELÉFONOS DE OPERACIONES: +569 5011 7289 // +569 8341 5663
           </div>
         </div>
         <div class="finanzas-logo">
