@@ -38,10 +38,39 @@ function compararActividades(a = {}, b = {}) {
 // Helpers de "Vuelos" (LEE COLECCIÓN 'vuelos')
 // ======================================================
 function _safe(v){ return (v ?? '').toString().trim(); }
-function _bon(fechaISO){
-  return (fechaISO && /^\d{4}-\d{2}-\d{2}$/.test(fechaISO))
-    ? formatearFechaBonita(fechaISO) : (fechaISO || '');
+function _toISODate(x){
+  if (!x) return '';
+  // Firestore Timestamp
+  if (x?.toDate) return x.toDate().toISOString().slice(0,10);
+  // Timestamp-like
+  if (x?.seconds != null) return new Date(x.seconds * 1000).toISOString().slice(0,10);
+  // Date
+  if (x instanceof Date) return x.toISOString().slice(0,10);
+
+  // String
+  const t = String(x).trim();
+  if (!t) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+
+  // dd-mm-yyyy / dd/mm/yyyy / dd.mm.yyyy
+  const m = t.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})$/);
+  if (m){
+    let dd = m[1].padStart(2,'0');
+    let mm = m[2].padStart(2,'0');
+    let yy = m[3];
+    yy = (yy.length === 2) ? ('20' + yy) : yy;
+    return `${yy}-${mm}-${dd}`;
+  }
+
+  const d = new Date(t);
+  return isNaN(d) ? '' : d.toISOString().slice(0,10);
 }
+
+function _bon(x){
+  const iso = _toISODate(x);
+  return iso ? formatearFechaBonita(iso) : (x ? String(x) : '');
+}
+
 
 // Resumen compacto del vuelo/trayecto
 function _resumenVuelo(v = {}){
@@ -85,26 +114,161 @@ function _resumenVuelo(v = {}){
 // Devuelve Map<groupId, string[]> a partir de 'vuelos'
 async function cargarVuelosIndex(){
   const index = new Map();
-  const snap  = await getDocs(collection(db, 'vuelos'));
+  let snap;
+
+  try{
+    snap = await getDocs(collection(db, 'vuelos'));
+  }catch(e){
+    console.warn('[VUELOS] No pude leer colección "vuelos":', e);
+    return index;
+  }
+
+  const add = (key, line) => {
+    const k = String(key || '').trim();
+    if (!k) return;
+
+    // Variantes útiles: "1412-101" también indexa "1412"
+    const vars = new Set([k]);
+    if (k.includes('-')) vars.add(k.split('-')[0]);
+
+    vars.forEach(vk => {
+      if (!index.has(vk)) index.set(vk, []);
+      const arr = index.get(vk);
+      if (!arr.includes(line)) arr.push(line); // dedupe
+    });
+  };
 
   snap.forEach(ds => {
     const d = ds.data() || {};
-    // IDs de grupos soportados (tu screenshot muestra un array 'grupos')
-    let groupIds = [];
-    if (Array.isArray(d.grupos)) groupIds = d.grupos.map(String);
-    else if (Array.isArray(d.groups)) groupIds = d.groups.map(String);
-    else if (d.statusPorGrupo && typeof d.statusPorGrupo === 'object') groupIds = Object.keys(d.statusPorGrupo);
-    else if (d.gruposMap && typeof d.gruposMap === 'object')          groupIds = Object.keys(d.gruposMap);
-
-    if (!groupIds.length) return;
-
     const resumen = _resumenVuelo(d);
-    groupIds.forEach(gid => {
-      if (!index.has(gid)) index.set(gid, []);
-      index.get(gid).push(resumen);
+
+    // Recolectar keys posibles de grupo desde múltiples esquemas
+    const keys = new Set();
+
+    // 1) arrays típicos
+    const arrs = []
+      .concat(Array.isArray(d.grupoIds) ? d.grupoIds : [])
+      .concat(Array.isArray(d.grupos) ? d.grupos : [])
+      .concat(Array.isArray(d.groups) ? d.groups : []);
+
+    arrs.forEach(x => {
+      if (typeof x === 'string' || typeof x === 'number') keys.add(String(x).trim());
+      else if (x && typeof x === 'object'){
+        keys.add(String(x.id || x.grupoId || '').trim());
+        keys.add(String(x.numeroNegocio || x.grupoNumero || x.numNegocio || '').trim());
+      }
     });
+
+    // 2) mapas por grupo
+    if (d.statusPorGrupo && typeof d.statusPorGrupo === 'object'){
+      Object.keys(d.statusPorGrupo).forEach(k => keys.add(String(k).trim()));
+    }
+    if (d.gruposMap && typeof d.gruposMap === 'object'){
+      Object.keys(d.gruposMap).forEach(k => keys.add(String(k).trim()));
+    }
+
+    // 3) root fields (muchos sistemas guardan 1 grupo acá)
+    keys.add(String(d.grupoId || '').trim());
+    keys.add(String(d.grupoDocId || '').trim());
+    keys.add(String(d.grupoNumero || d.numeroNegocio || '').trim());
+
+    // limpiar vacíos
+    const clean = [...keys].filter(Boolean);
+    if (!clean.length) return;
+
+    clean.forEach(gk => add(gk, resumen));
   });
 
+  // Orden bonito
+  for (const [k, arr] of index) arr.sort((a,b) => a.localeCompare(b));
+  return index;
+}
+
+async function cargarHotelesIndex(){
+  const index = new Map();
+
+  // 1) Índice hoteles: hotelDocId -> nombre
+  const hotelesById = new Map();
+  try{
+    const snapH = await getDocs(collection(db, 'hoteles'));
+    snapH.forEach(ds => {
+      const h = ds.data() || {};
+      const name = _safe(h.nombre || h.name || h.hotel || ds.id);
+      hotelesById.set(String(ds.id), name);
+    });
+  }catch(e){
+    console.warn('[HOTELES] No pude leer colección "hoteles":', e);
+  }
+
+  // 2) Leer asignaciones hoteleras (1 pasada)
+  let snapA;
+  try{
+    snapA = await getDocs(collection(db, 'hotelAssignments'));
+  }catch(e){
+    console.warn('[HOTELES] No pude leer colección "hotelAssignments":', e);
+    return index;
+  }
+
+  const add = (key, line) => {
+    const k = String(key || '').trim();
+    if (!k) return;
+
+    const vars = new Set([k]);
+    if (k.includes('-')) vars.add(k.split('-')[0]);
+
+    vars.forEach(vk => {
+      if (!index.has(vk)) index.set(vk, []);
+      const arr = index.get(vk);
+      if (!arr.includes(line)) arr.push(line); // dedupe
+    });
+  };
+
+  snapA.forEach(ds => {
+    const a = ds.data() || {};
+
+    // keys posibles de grupo
+    const keys = new Set();
+    keys.add(String(a.grupoId || '').trim());
+    keys.add(String(a.grupoDocId || '').trim());
+    keys.add(String(a.grupoNumero || a.numeroNegocio || '').trim());
+    if (a.grupo && typeof a.grupo === 'object'){
+      keys.add(String(a.grupo.id || a.grupo.grupoId || '').trim());
+      keys.add(String(a.grupo.numeroNegocio || a.grupo.grupoNumero || '').trim());
+    }
+    if (Array.isArray(a.grupos)){
+      a.grupos.forEach(x => keys.add(String(x).trim()));
+    }
+
+    const clean = [...keys].filter(Boolean);
+    if (!clean.length) return;
+
+    // resolver nombre hotel
+    let hotelName = _safe(a.hotelNombre || a.nombre || (a.hotel && a.hotel.nombre) || '');
+    if (!hotelName){
+      const hid = _safe(a.hotelId || a.hotelDocId || (a.hotel && a.hotel.id) || '');
+      if (hid && hotelesById.has(hid)) hotelName = hotelesById.get(hid);
+      else {
+        const m = _safe(a.hotelPath || '').match(/hoteles\/([^/]+)/i);
+        if (m && hotelesById.has(m[1])) hotelName = hotelesById.get(m[1]);
+        else hotelName = hid; // fallback
+      }
+    }
+
+    // fechas (tolerante)
+    const ciISO = _toISODate(a.checkIn || a.checkin || a.fechaInicio || '');
+    const coISO = _toISODate(a.checkOut || a.checkout || a.fechaFin || '');
+
+    const rango = (ciISO || coISO)
+      ? ` (${ciISO ? formatearFechaBonita(ciISO) : '—'} → ${coISO ? formatearFechaBonita(coISO) : '—'})`
+      : '';
+
+    const line = `${hotelName}${rango}`.trim();
+    if (!line) return;
+
+    clean.forEach(gk => add(gk, line));
+  });
+
+  for (const [k, arr] of index) arr.sort((a,b)=>a.localeCompare(b));
   return index;
 }
 
@@ -136,7 +300,8 @@ async function generarTablaCalendario(userEmail) {
   const fechasUnicas = new Set();
   const destinosSet = new Set();
   const aniosSet = new Set();
-  const indexVuelos = await cargarVuelosIndex(); // Map<groupId, string[]>
+  const indexVuelos   = await cargarVuelosIndex();   // Map<groupKey, string[]>
+  const indexHoteles  = await cargarHotelesIndex();  // Map<groupKey, string[]>
 
   snapshot.forEach(docSnap => {
     const d = docSnap.data();
@@ -149,7 +314,7 @@ async function generarTablaCalendario(userEmail) {
 
     grupos.push({
       id,
-      numeroNegocio: id,
+      numeroNegocio: (d.numeroNegocio ?? id),  // ← mejor: usa el campo si existe
       nombreGrupo: d.nombreGrupo || "",
       destino: d.destino || "",
       programa: d.programa || "",
@@ -191,11 +356,12 @@ async function generarTablaCalendario(userEmail) {
     <th>N° Negocio</th>
     <th>Grupo</th>
     <th>Destino</th>
-    <th>Programa</th>
-    <th>Vuelos</th>   <!-- NUEVA COLUMNA -->
+    <th>Hoteles</th>
+    <th>Vuelos</th>
     <th>Pax</th>
-    <th>Año</th>      <!-- columna oculta para filtro de año -->
+    <th>Año</th>
   `);
+
 
   // Encabezados de fechas (domingo con clase 'domingo')
   // Guardamos además el ISO real en data-fechaiso para la exportación
@@ -216,18 +382,50 @@ async function generarTablaCalendario(userEmail) {
     const $tr = $('<tr>');
    // Siete primeras celdas fijas (la 7ª es "Año" que va oculta en DataTables)
   const resumenPax = `${g.cantidadgrupo} (A: ${g.adultos} E: ${g.estudiantes})`;
-  // Busca por g.id y, si no, por g.numeroNegocio (por seguridad)
-  const vuelosTxt  = (indexVuelos.get(g.id) || indexVuelos.get(g.numeroNegocio) || []).join("\n");
+  
+  // Keys variantes para calzar con distintos esquemas (ej: "1412-101" y "1412")
+  const k1 = String(g.id || '').trim();
+  const k2 = String(g.numeroNegocio || '').trim();
+  const k1b = k1.includes('-') ? k1.split('-')[0] : '';
+  const k2b = k2.includes('-') ? k2.split('-')[0] : '';
+  
+  // Vuelos (dedupe + saltos de línea)
+  const vuelosArr = []
+    .concat(indexVuelos.get(k1)  || [])
+    .concat(indexVuelos.get(k2)  || [])
+    .concat(indexVuelos.get(k1b) || [])
+    .concat(indexVuelos.get(k2b) || []);
+  const vuelosTxt = [...new Set(vuelosArr)].join("\n");
+  
+  // Hoteles (dedupe + saltos de línea)
+  const hotelesArr = []
+    .concat(indexHoteles.get(k1)  || [])
+    .concat(indexHoteles.get(k2)  || [])
+    .concat(indexHoteles.get(k1b) || [])
+    .concat(indexHoteles.get(k2b) || []);
+  const hotelesTxt = [...new Set(hotelesArr)].join("\n");
   
   $tr.append(
     $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
     $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
     $('<td>').text(g.destino).attr('data-doc-id', g.id),
-    $('<td>').text(g.programa).attr('data-doc-id', g.id),
-    $('<td>').text(vuelosTxt).attr('data-doc-id', g.id),       // ← NUEVA columna "Vuelos"
+  
+    // 👇 (antes Programa) ahora Hoteles
+    $('<td>')
+      .text(hotelesTxt)
+      .attr('data-doc-id', g.id)
+      .css('white-space','pre-line'),
+  
+    // 👇 Vuelos/Traslados
+    $('<td>')
+      .text(vuelosTxt)
+      .attr('data-doc-id', g.id)
+      .css('white-space','pre-line'),
+  
     $('<td>').text(resumenPax).attr('data-doc-id', g.id),
-    $('<td>').text(g.anoViaje).attr('data-doc-id', g.id)       // Año (oculta)
+    $('<td>').text(g.anoViaje).attr('data-doc-id', g.id)
   );
+
 
 
 
