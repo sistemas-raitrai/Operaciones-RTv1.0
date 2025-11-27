@@ -12,7 +12,7 @@ const auth = getAuth(app);
 /* ====================== STATE ====================== */
 const state = {
   user: null,
-  filtros: { coord: '', grupo: '' },
+  filtros: { coord: '', grupo: '', grupoNombre: '' },
   caches: {
     grupos: new Map(),         // gid -> {numero,nombre,coordEmail,destino,paxTotal,programa,fechas,urls}
     coords: [],                // correos coordinadores
@@ -89,11 +89,13 @@ async function preloadCatalogs() {
 
   const snap = await getDocs(collection(db,'grupos'));
   const dlG = document.getElementById('dl-grupos');
+  const dlN = document.getElementById('dl-grupos-nombre');
   const dlC = document.getElementById('dl-coords');
-  if (!dlG || !dlC) return;
 
-  dlG.innerHTML = '';
-  dlC.innerHTML = '';
+  if (dlG) dlG.innerHTML = '';
+  if (dlN) dlN.innerHTML = '';
+  if (dlC) dlC.innerHTML = '';
+
 
   snap.forEach(d => {
     const x   = d.data() || {};
@@ -129,19 +131,31 @@ async function preloadCatalogs() {
       }
     }
 
-    const opt = document.createElement('option');
-    opt.value = gid;
-    opt.label = `${numero} — ${nombre}`;
-    dlG.appendChild(opt);
+    if (dlG) {
+      const opt = document.createElement('option');
+      opt.value = gid;                          // busca por ID / nº negocio
+      opt.label = `${numero} — ${nombre}`;
+      dlG.appendChild(opt);
+    }
+
+    if (dlN) {
+      const optN = document.createElement('option');
+      optN.value = nombre;                      // busca por nombre de grupo
+      optN.label = `${numero} — ${nombre}`;
+      dlN.appendChild(optN);
+    }
   });
 
-  for (const email of state.caches.coords) {
-    const opt = document.createElement('option');
-    opt.value = email;
-    opt.label = email;
-    dlC.appendChild(opt);
+  if (dlC) {
+    for (const email of state.caches.coords) {
+      const opt = document.createElement('option');
+      opt.value = email;
+      opt.label = email;
+      dlC.appendChild(opt);
+    }
   }
 }
+
 
 /* ====================== NORMALIZADOR ====================== */
 function gastoToItem(grupoId, gInfo, raw, coordFromPath) {
@@ -298,13 +312,29 @@ async function loadDataForCurrentFilters() {
   state.gastos = [];
   state.abonos = [];
 
-  const gid   = state.filtros.grupo || '';
+  let gid   = state.filtros.grupo || '';
   const coord = (state.filtros.coord || '').toLowerCase();
+  const nombreGrupo = (state.filtros.grupoNombre || '').trim();
+
+  // Si no hay gid pero sí nombre de grupo, lo buscamos en el catálogo
+  if (!gid && nombreGrupo) {
+    for (const [id, info] of state.caches.grupos.entries()) {
+      if (
+        info.nombre === nombreGrupo ||
+        `${info.numero} — ${info.nombre}` === nombreGrupo
+      ) {
+        gid = id;
+        state.filtros.grupo = id;
+        break;
+      }
+    }
+  }
 
   if (!gid && !coord) return;
 
   const gInfo = gid ? state.caches.grupos.get(gid) : null;
   const coordHint = coord || (gInfo?.coordEmail || '');
+
 
   const [gastos, abonos] = await Promise.all([
     fetchGastosByGroup({ coordEmailHint: coordHint, grupoId: gid }),
@@ -625,4 +655,120 @@ function wireUI() {
 
       const dlG = document.getElementById('dl-grupos');
       if (!dlG) return;
-      dlG.inne
+      dlG.innerHTML = '';
+
+      if (state.caches.groupsByCoord.has(val)) {
+        for (const gid of state.caches.groupsByCoord.get(val)) {
+          const info = state.caches.grupos.get(gid);
+          const opt = document.createElement('option');
+          opt.value = gid;
+          opt.label = `${info.numero} — ${info.nombre}`;
+          dlG.appendChild(opt);
+        }
+      } else {
+        for (const [gid,info] of state.caches.grupos.entries()) {
+          const opt = document.createElement('option');
+          opt.value = gid;
+          opt.label = `${info.numero} — ${info.nombre}`;
+          dlG.appendChild(opt);
+        }
+      }
+    });
+  }
+
+  // grupo
+  const inputGrupo = document.getElementById('filtroGrupo');
+  if (inputGrupo) {
+    inputGrupo.addEventListener('input', (e) => {
+      state.filtros.grupo = e.target.value || '';
+    });
+  }
+
+    // nombre de grupo (usa datalist de nombres, resuelve gid automático)
+  const inputNombreGrupo = document.getElementById('filtroNombreGrupo');
+  if (inputNombreGrupo) {
+    inputNombreGrupo.addEventListener('input', (e) => {
+      const val = (e.target.value || '').trim();
+      state.filtros.grupoNombre = val;
+
+      if (!val) return;
+
+      for (const [gid, info] of state.caches.grupos.entries()) {
+        if (
+          info.nombre === val ||
+          `${info.numero} — ${info.nombre}` === val
+        ) {
+          state.filtros.grupo = gid;
+          const inpG = document.getElementById('filtroGrupo');
+          if (inpG) inpG.value = gid;   // refleja en el campo de ID
+          break;
+        }
+      }
+    });
+  }
+
+
+  // Cargar datos
+  const btnCargar = document.getElementById('btnCargar');
+  if (btnCargar) {
+    btnCargar.addEventListener('click', async () => {
+      const gid = state.filtros.grupo || '';
+      if (!gid && !state.filtros.coord) {
+        alert('Selecciona al menos un grupo o un coordinador.');
+        return;
+      }
+      const pagInfo = document.getElementById('pagInfo');
+      if (pagInfo) pagInfo.textContent = 'Cargando datos…';
+      await loadDataForCurrentFilters();
+      renderTablaGastos();
+      renderResumenFinanzas();
+      if (pagInfo) pagInfo.textContent = 'Listo.';
+    });
+  }
+
+  // Guardar descuento
+  const btnGuardarDesc = document.getElementById('btnGuardarDescuento');
+  if (btnGuardarDesc) {
+    btnGuardarDesc.addEventListener('click', async () => {
+      const gid = state.filtros.grupo || '';
+      if (!gid) { alert('Selecciona un grupo.'); return; }
+      await guardarDescuento(gid);
+      renderResumenFinanzas();
+    });
+  }
+
+  // Guardar docs OK
+  const btnGuardarDocs = document.getElementById('btnGuardarDocs');
+  if (btnGuardarDocs) {
+    btnGuardarDocs.addEventListener('click', async () => {
+      const gid = state.filtros.grupo || '';
+      if (!gid) { alert('Selecciona un grupo.'); return; }
+      await guardarDocsOk(gid);
+    });
+  }
+
+  // Imprimir
+  const btnPrint = document.getElementById('btnImprimirRendicion');
+  if (btnPrint) {
+    btnPrint.addEventListener('click', () => {
+      const gid = state.filtros.grupo || '';
+      if (!gid) { alert('Selecciona un grupo.'); return; }
+      renderPrintSheet();
+      window.print();
+    });
+  }
+}
+
+/* ====================== ARRANQUE ====================== */
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    location.href = 'login.html';
+    return;
+  }
+  state.user = user;
+
+  await preloadCatalogs();
+  wireUI();
+  renderTablaGastos();
+  renderResumenFinanzas();
+});
