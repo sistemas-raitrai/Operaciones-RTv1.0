@@ -4,7 +4,8 @@
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, getDocs, doc, getDoc, updateDoc, setDoc
+  collection, collectionGroup, getDocs, doc, getDoc,
+  updateDoc, setDoc, addDoc, deleteDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -21,8 +22,26 @@ const state = {
   gastos: [],
   abonos: [],
   summary: null,               // grupos/{gid}/finanzas/summary
-  descuento: { monto: 0, asunto: '' },
+  descuento: { monto: 0, asunto: '' }, // LEGADO (no se usa en el nuevo flujo)
+  descuentos: [],              // NUEVO: descuentos múltiples (subcolección finanzas_descuentos)
 };
+
+// Categorías de rendición de gastos
+const CATEGORIAS_GASTO = [
+  'GASTOS DEL GRUPO',
+  'GASTOS DE LA EMPRESA',
+  'SEGURO DE VIAJES',
+  'OTROS'
+];
+
+const escapeHtml = (str='') =>
+  String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+
 
 /* ====================== UTILS ====================== */
 const norm = (s='') =>
@@ -177,6 +196,23 @@ function gastoToItem(grupoId, gInfo, raw, coordFromPath) {
   const fechaTxt = fechaMs ? fmtDDMMYYYY(fechaMs) : '';
 
   const rend = raw.rendicion || {};
+  const categoriaRendicion = coalesce(
+    raw.categoriaRendicion,
+    rend.categoria,
+    'GASTOS DEL GRUPO'
+  );
+
+  const rendOk = (typeof raw.rendicionOk === 'boolean')
+    ? !!raw.rendicionOk
+    : !!rend.ok;
+
+  const imgUrl = coalesce(
+    raw.imgUrl,
+    raw.imageUrl,
+    raw.imagenUrl,
+    raw.comprobanteUrl,
+    ''
+  );
 
   return {
     id: raw.id || raw._id || '',
@@ -191,7 +227,9 @@ function gastoToItem(grupoId, gInfo, raw, coordFromPath) {
     montoAprobado,
     fechaMs,
     fechaTxt,
-    rendOk: !!rend.ok,
+    categoriaRendicion,
+    imgUrl,
+    rendOk,
   };
 }
 
@@ -286,26 +324,42 @@ async function fetchAbonosByGroup(gid) {
 
 // SUMMARY — grupos/{gid}/finanzas/summary
 async function loadSummaryForGroup(gid) {
-  state.summary   = null;
-  state.descuento = { monto: 0, asunto: '' };
+  state.summary = null;
   if (!gid) return;
   try {
     const ref  = doc(db,'grupos',gid,'finanzas','summary');
     const snap = await getDoc(ref);
-    if (snap.exists()) {
-      const data = snap.data() || {};
-      state.summary = data;
-      if (data.descuento) {
-        state.descuento = {
-          monto: Number(data.descuento.monto || 0),
-          asunto: data.descuento.asunto || ''
-        };
-      }
-    }
+    state.summary = snap.exists() ? (snap.data() || {}) : null;
   } catch (e) {
     console.warn('[REN] loadSummaryForGroup', e);
   }
 }
+
+// DESCUENTOS — grupos/{gid}/finanzas_descuentos/*
+async function loadDescuentosForGroup(gid) {
+  state.descuentos = [];
+  if (!gid) return;
+  try {
+    const ref  = collection(db,'grupos',gid,'finanzas_descuentos');
+    const snap = await getDocs(ref);
+    const out = [];
+    snap.forEach(d => {
+      const x = d.data() || {};
+      out.push({
+        id: d.id,
+        grupoId: gid,
+        monto: parseMonto(x.monto),
+        motivo: coalesce(x.motivo, x.asunto, ''),
+        coordEmail: (x.coordEmail || x.coordinador || '').toLowerCase(),
+        createdAtMs: pickFechaMs(x) || _toMs(x.createdAt || 0),
+      });
+    });
+    state.descuentos = out.sort((a,b)=>(a.createdAtMs||0)-(b.createdAtMs||0));
+  } catch (e) {
+    console.warn('[REN] loadDescuentosForGroup', e);
+  }
+}
+
 
 // Carga principal
 async function loadDataForCurrentFilters() {
@@ -343,52 +397,137 @@ async function loadDataForCurrentFilters() {
 
   state.gastos = gastos;
   state.abonos = abonos;
-  await loadSummaryForGroup(gid);
+
+  await Promise.all([
+    loadSummaryForGroup(gid),
+    loadDescuentosForGroup(gid)
+  ]);
 }
 
+
 /* ====================== ESCRITURA ====================== */
-async function saveMontoAprobado(item, nuevoMonto) {
+async function updateGastoRendicionFields(item, patch = {}) {
   const gid   = item.grupoId;
   const coord = item.coordinador;
   if (!gid || !coord || !item.id) return false;
 
-  const val = parseMonto(nuevoMonto);
+  const email = (auth.currentUser?.email || '').toLowerCase();
+  const fsPatch = {
+    ...(patch.montoAprobado !== undefined ? { montoAprobado: parseMonto(patch.montoAprobado) } : {}),
+    ...(patch.categoriaRendicion !== undefined ? {
+      categoriaRendicion: patch.categoriaRendicion || 'GASTOS DEL GRUPO'
+    } : {}),
+    ...(patch.rendicionOk !== undefined ? {
+      rendicionOk: !!patch.rendicionOk,
+      'rendicion.ok': !!patch.rendicionOk
+    } : {}),
+    'rendicion.by': email,
+    'rendicion.at': Date.now()
+  };
+
   try {
     const ref = doc(db,'coordinadores',coord,'gastos',item.id);
-    await updateDoc(ref, {
-      montoAprobado: val,
-      'rendicion.ok': true,
-      'rendicion.by': (auth.currentUser?.email || '').toLowerCase(),
-      'rendicion.at': Date.now()
-    });
-    item.montoAprobado = val;
-    item.rendOk = true;
+    await updateDoc(ref, fsPatch);
+
+    if (patch.montoAprobado !== undefined) {
+      item.montoAprobado = parseMonto(patch.montoAprobado);
+    }
+    if (patch.categoriaRendicion !== undefined) {
+      item.categoriaRendicion = patch.categoriaRendicion || 'GASTOS DEL GRUPO';
+    }
+    if (patch.rendicionOk !== undefined) {
+      item.rendOk = !!patch.rendicionOk;
+    }
     return true;
   } catch (e) {
-    console.error('[REN] saveMontoAprobado', e);
-    alert('No se pudo guardar el monto aprobado.');
+    console.error('[REN] updateGastoRendicionFields', e);
+    alert('No se pudo guardar la rendición del gasto.');
     return false;
   }
 }
 
-async function guardarDescuento(gid) {
-  const monto  = parseMonto(document.getElementById('descuentoMonto').value || 0);
-  const asunto = (document.getElementById('descuentoAsunto').value || '').trim();
-  state.descuento = { monto, asunto };
+async function saveMontoAprobado(item, nuevoMonto) {
+  const val = parseMonto(nuevoMonto);
+  return updateGastoRendicionFields(item, {
+    montoAprobado: val,
+    rendicionOk: true
+  });
+}
+
+async function saveCategoriaRendicion(item, categoria) {
+  const cat = categoria || 'GASTOS DEL GRUPO';
+  return updateGastoRendicionFields(item, { categoriaRendicion: cat });
+}
+
+async function saveRendicionOk(item, ok) {
+  return updateGastoRendicionFields(item, { rendicionOk: !!ok });
+}
+
+// CRUD descuentos (subcolección finanzas_descuentos)
+async function crearDescuento(gid) {
+  const inpMonto  = document.getElementById('nuevoDescMonto');
+  const inpMotivo = document.getElementById('nuevoDescMotivo');
+
+  const monto  = parseMonto(inpMonto?.value || 0);
+  const motivo = (inpMotivo?.value || '').trim();
+
+  if (!monto || !motivo) {
+    alert('Ingresa monto y motivo del descuento.');
+    return;
+  }
+
   try {
-    const ref = doc(db,'grupos',gid,'finanzas','summary');
-    await setDoc(ref, {
-      descuento: {
-        monto,
-        asunto,
-        by: (auth.currentUser?.email || '').toLowerCase(),
-        at: Date.now()
-      }
-    }, { merge:true });
-    alert('Descuento guardado.');
+    const refCol = collection(db,'grupos',gid,'finanzas_descuentos');
+    await addDoc(refCol, {
+      grupoId: gid,
+      monto,
+      motivo,
+      coordEmail: (state.filtros.coord || '').toLowerCase(),
+      createdAt: Date.now(),
+      createdBy: (auth.currentUser?.email || '').toLowerCase()
+    });
+
+    if (inpMonto)  inpMonto.value = '';
+    if (inpMotivo) inpMotivo.value = '';
+
+    await loadDescuentosForGroup(gid);
+    renderResumenFinanzas();
   } catch (e) {
-    console.error('[REN] guardarDescuento', e);
-    alert('No se pudo guardar el descuento.');
+    console.error('[REN] crearDescuento', e);
+    alert('No se pudo crear el descuento.');
+  }
+}
+
+async function actualizarDescuento(desc, nuevoMonto, nuevoMotivo) {
+  if (!desc?.id || !desc?.grupoId) return;
+  const ref = doc(db,'grupos',desc.grupoId,'finanzas_descuentos',desc.id);
+  try {
+    await updateDoc(ref, {
+      monto: parseMonto(nuevoMonto),
+      motivo: (nuevoMotivo || '').trim(),
+      updatedAt: Date.now(),
+      updatedBy: (auth.currentUser?.email || '').toLowerCase()
+    });
+    await loadDescuentosForGroup(desc.grupoId);
+    renderResumenFinanzas();
+  } catch (e) {
+    console.error('[REN] actualizarDescuento', e);
+    alert('No se pudo actualizar el descuento.');
+  }
+}
+
+async function eliminarDescuento(desc) {
+  if (!desc?.id || !desc?.grupoId) return;
+  if (!confirm('¿Eliminar este descuento de rendición?')) return;
+
+  const ref = doc(db,'grupos',desc.grupoId,'finanzas_descuentos',desc.id);
+  try {
+    await deleteDoc(ref);
+    await loadDescuentosForGroup(desc.grupoId);
+    renderResumenFinanzas();
+  } catch (e) {
+    console.error('[REN] eliminarDescuento', e);
+    alert('No se pudo eliminar el descuento.');
   }
 }
 
@@ -401,6 +540,11 @@ async function guardarDocsOk(gid) {
   const docCompOk   = chkC ? !!chkC.checked : false;
   const docTransfOk = chkT ? !!chkT.checked : false;
 
+  const inpDevCLP = document.getElementById('montoDevueltoCLP');
+  const inpDevUSD = document.getElementById('montoDevueltoUSD');
+  const montoDevCLP = inpDevCLP ? parseMonto(inpDevCLP.value || 0) : 0;
+  const montoDevUSD = inpDevUSD ? Number(inpDevUSD.value || 0) || 0 : 0;
+
   try {
     const ref = doc(db,'grupos',gid,'finanzas','summary');
     await setDoc(ref, {
@@ -408,16 +552,21 @@ async function guardarDocsOk(gid) {
         boleta: docBoletaOk,
         comprobante: docCompOk,
         transferencia: docTransfOk,
+        montoDevueltoCLP: montoDevCLP,
+        montoDevueltoUSD: montoDevUSD,
         by: (auth.currentUser?.email || '').toLowerCase(),
         at: Date.now()
       }
     }, { merge:true });
     alert('Estado de documentos guardado.');
+    await loadSummaryForGroup(gid);
+    renderResumenFinanzas();
   } catch (e) {
     console.error('[REN] guardarDocsOk', e);
     alert('No se pudo guardar el estado de documentos.');
   }
 }
+
 
 /* ====================== RENDER TABLA ====================== */
 function renderTablaGastos() {
@@ -431,7 +580,7 @@ function renderTablaGastos() {
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 9;
     td.innerHTML = '<div class="muted">Sin gastos registrados para este criterio.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -440,13 +589,15 @@ function renderTablaGastos() {
     rows.forEach(item => {
       const tr = document.createElement('tr');
 
-      const tdFecha  = document.createElement('td');
-      const tdAsunto = document.createElement('td');
-      const tdAutor  = document.createElement('td');
-      const tdMon    = document.createElement('td');
-      const tdMonto  = document.createElement('td');
+      const tdFecha      = document.createElement('td');
+      const tdAsunto     = document.createElement('td');
+      const tdAutor      = document.createElement('td');
+      const tdMon        = document.createElement('td');
+      const tdMonto      = document.createElement('td');
       const tdMontoAprob = document.createElement('td');
-      const tdChk    = document.createElement('td');
+      const tdCat        = document.createElement('td');
+      const tdDoc        = document.createElement('td');
+      const tdChk        = document.createElement('td');
 
       tdFecha.textContent  = item.fechaTxt || '—';
       tdAsunto.textContent = item.asunto || '—';
@@ -454,6 +605,7 @@ function renderTablaGastos() {
       tdMon.textContent    = item.moneda || 'CLP';
       tdMonto.innerHTML    = `<span class="mono">${moneyBy(item.monto, item.moneda||'CLP')}</span>`;
 
+      // Monto aprobado
       const wrap = document.createElement('div');
       wrap.className = 'monto-aprob-wrap rev-cell';
 
@@ -475,7 +627,6 @@ function renderTablaGastos() {
       chk.type = 'checkbox';
       chk.checked = !!item.rendOk;
       chk.title = 'Marcar gasto incluido en rendición';
-      // el check se fuerza a true cuando se guarda el monto
 
       const doSave = async () => {
         const val = parseMonto(inp.value);
@@ -495,9 +646,61 @@ function renderTablaGastos() {
 
       wrap.append(btn, inp);
       tdMontoAprob.appendChild(wrap);
+
+      // Categoría
+      const sel = document.createElement('select');
+      sel.className = 'input-field';
+      CATEGORIAS_GASTO.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        sel.appendChild(opt);
+      });
+      sel.value = item.categoriaRendicion || 'GASTOS DEL GRUPO';
+
+      sel.addEventListener('change', async () => {
+        const ok = await saveCategoriaRendicion(item, sel.value);
+        if (!ok) {
+          sel.value = item.categoriaRendicion || 'GASTOS DEL GRUPO';
+        } else {
+          sel.classList.add('saved');
+          setTimeout(()=> sel.classList.remove('saved'), 800);
+          renderResumenFinanzas();
+        }
+      });
+
+      tdCat.appendChild(sel);
+
+      // Comprobante
+      if (item.imgUrl) {
+        const a = document.createElement('a');
+        a.href = item.imgUrl;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = 'VER';
+        a.className = 'link-doc';
+        tdDoc.appendChild(a);
+      } else {
+        tdDoc.textContent = '—';
+      }
+
+      // Checkbox OK con persistencia
+      chk.addEventListener('change', async (e) => {
+        const nuevo = !!e.target.checked;
+        const ok = await saveRendicionOk(item, nuevo);
+        if (!ok) {
+          e.target.checked = !nuevo; // revertir
+        } else {
+          renderResumenFinanzas();
+        }
+      });
+
       tdChk.appendChild(chk);
 
-      tr.append(tdFecha, tdAsunto, tdAutor, tdMon, tdMonto, tdMontoAprob, tdChk);
+      tr.append(
+        tdFecha, tdAsunto, tdAutor, tdMon,
+        tdMonto, tdMontoAprob, tdCat, tdDoc, tdChk
+      );
       frag.appendChild(tr);
     });
     tbody.appendChild(frag);
@@ -506,6 +709,82 @@ function renderTablaGastos() {
   if (resumenEl) {
     resumenEl.textContent = `Mostrando ${rows.length} gastos.`;
   }
+}
+
+function renderTablaDescuentos() {
+  const tbody = document.querySelector('#tblDescuentos tbody');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+
+  if (!state.descuentos.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 3;
+    td.innerHTML = '<div class="muted">Sin descuentos registrados.</div>';
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  state.descuentos.forEach(desc => {
+    const tr = document.createElement('tr');
+
+    const tdMotivo = document.createElement('td');
+    const tdMonto  = document.createElement('td');
+    const tdAcc    = document.createElement('td');
+
+    const inpMotivo = document.createElement('input');
+    inpMotivo.type = 'text';
+    inpMotivo.className = 'input-field';
+    inpMotivo.value = desc.motivo || '';
+
+    const inpMonto = document.createElement('input');
+    inpMonto.type = 'number';
+    inpMonto.className = 'input-field mono';
+    inpMonto.min = '0';
+    inpMonto.step = '1000';
+    inpMonto.value = desc.monto || 0;
+
+    const btnSave = document.createElement('button');
+    btnSave.type = 'button';
+    btnSave.className = 'revbtn';
+    btnSave.textContent = '💾';
+    btnSave.title = 'Guardar cambios';
+
+    const btnDel = document.createElement('button');
+    btnDel.type = 'button';
+    btnDel.className = 'revbtn';
+    btnDel.textContent = '🗑';
+    btnDel.title = 'Eliminar';
+
+    const doSave = () => {
+      actualizarDescuento(desc, inpMonto.value, inpMotivo.value);
+    };
+    const doDel = () => {
+      eliminarDescuento(desc);
+    };
+
+    btnSave.onclick = doSave;
+    btnDel.onclick  = doDel;
+
+    inpMotivo.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSave();
+    });
+    inpMonto.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSave();
+    });
+
+    tdMotivo.appendChild(inpMotivo);
+    tdMonto.appendChild(inpMonto);
+    tdAcc.append(btnSave, btnDel);
+
+    tr.append(tdMotivo, tdMonto, tdAcc);
+    frag.appendChild(tr);
+  });
+
+  tbody.appendChild(frag);
 }
 
 /* ====================== RESUMEN + PRINT ====================== */
@@ -529,31 +808,48 @@ function renderResumenFinanzas() {
     if (elFechas)  elFechas.textContent  = gInfo.fechas || '—';
   }
 
-  const totalGastos = state.gastos
+  const gastosOk = state.gastos.filter(it => it.rendOk);
+  const totalGastos = gastosOk
     .reduce((s,it)=> s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto), 0);
   const totalAbonos = state.abonos
     .reduce((s,it)=> s + (Number(it.monto) || 0), 0);
+  const totalDescuentos = state.descuentos
+    .reduce((s,d)=> s + (Number(d.monto) || 0), 0);
 
-  const saldo     = totalAbonos - totalGastos;
-  const descMonto = state.descuento.monto || 0;
-  const saldoNeto = saldo - descMonto;
+  const gastosNetos     = totalGastos - totalDescuentos;
+  const saldoEsperado   = totalAbonos - gastosNetos;
 
-  const elAbonos    = document.getElementById('sumAbonos');
-  const elGastos    = document.getElementById('sumGastos');
-  const elSaldo     = document.getElementById('sumSaldo');
-  const elSaldoNeto = document.getElementById('sumSaldoNeto');
+  const docsOk = (state.summary && state.summary.docsOk) || {};
+  const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
+  const montoDevUSD = Number(docsOk.montoDevueltoUSD || 0) || 0;
 
-  if (elAbonos)    elAbonos.textContent    = moneyCLP(totalAbonos);
-  if (elGastos)    elGastos.textContent    = moneyCLP(totalGastos);
-  if (elSaldo)     elSaldo.textContent     = moneyCLP(saldo);
-  if (elSaldoNeto) elSaldoNeto.textContent = moneyCLP(saldoNeto);
+  const diff = saldoEsperado - montoDevCLP;
+  let textoResultado = '';
+  if (Math.abs(diff) < 500) {
+    textoResultado = 'Saldo cuadrado (≈ $0)';
+  } else if (diff > 0) {
+    textoResultado = `A favor de Rai Trai: ${moneyCLP(diff)}`;
+  } else {
+    textoResultado = `A favor del coordinador: ${moneyCLP(-diff)}`;
+  }
 
-  const inDescMonto  = document.getElementById('descuentoMonto');
-  const inDescAsunto = document.getElementById('descuentoAsunto');
-  if (inDescMonto)  inDescMonto.value  = state.descuento.monto || 0;
-  if (inDescAsunto) inDescAsunto.value = state.descuento.asunto || '';
+  const elAbonos        = document.getElementById('sumAbonos');
+  const elGastos        = document.getElementById('sumGastos');
+  const elDescuentos    = document.getElementById('sumDescuentos');
+  const elGastosNetos   = document.getElementById('sumGastosNetos');
+  const elSaldoEsperado = document.getElementById('sumSaldoEsperado');
+  const elDevuelto      = document.getElementById('sumDevuelto');
+  const elResultado     = document.getElementById('sumResultado');
 
-  // links docs
+  if (elAbonos)        elAbonos.textContent        = moneyCLP(totalAbonos);
+  if (elGastos)        elGastos.textContent        = moneyCLP(totalGastos);
+  if (elDescuentos)    elDescuentos.textContent    = moneyCLP(totalDescuentos);
+  if (elGastosNetos)   elGastosNetos.textContent   = moneyCLP(gastosNetos);
+  if (elSaldoEsperado) elSaldoEsperado.textContent = moneyCLP(saldoEsperado);
+  if (elDevuelto)      elDevuelto.textContent      = moneyCLP(montoDevCLP);
+  if (elResultado)     elResultado.textContent     = textoResultado;
+
+  // links docs (igual que antes)
   if (gInfo) {
     const boletaUrl = gInfo.urls?.boleta || '';
     const compUrl   = gInfo.urls?.comprobante || '';
@@ -577,7 +873,7 @@ function renderResumenFinanzas() {
     }
   }
 
-  // checkboxes docs desde summary
+  // checkboxes + montos devueltos desde summary.docsOk
   if (state.summary && state.summary.docsOk) {
     const chkB = document.getElementById('chkBoletaOk');
     const chkC = document.getElementById('chkComprobanteOk');
@@ -585,56 +881,151 @@ function renderResumenFinanzas() {
     if (chkB) chkB.checked = !!state.summary.docsOk.boleta;
     if (chkC) chkC.checked = !!state.summary.docsOk.comprobante;
     if (chkT) chkT.checked = !!state.summary.docsOk.transferencia;
+
+    const inpDevCLP = document.getElementById('montoDevueltoCLP');
+    const inpDevUSD = document.getElementById('montoDevueltoUSD');
+    if (inpDevCLP) inpDevCLP.value = state.summary.docsOk.montoDevueltoCLP || 0;
+    if (inpDevUSD) inpDevUSD.value = state.summary.docsOk.montoDevueltoUSD || 0;
   }
 
-  renderPrintSheet();
+  renderTablaDescuentos();
+  renderPrintActa();
 }
 
-function renderPrintSheet() {
+function renderPrintActa() {
   const gid   = state.filtros.grupo || '';
   const gInfo = gid ? state.caches.grupos.get(gid) : null;
-  const print = document.getElementById('printSheet');
-  if (!print || !gInfo) return;
+  const cont  = document.getElementById('printActa');
+  if (!cont || !gInfo) return;
 
-  const totalGastos = state.gastos
+  const gastosOk = state.gastos
+    .filter(it => it.rendOk)
+    .slice()
+    .sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0));
+
+  const totalGastos = gastosOk
     .reduce((s,it)=> s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto), 0);
   const totalAbonos = state.abonos
     .reduce((s,it)=> s + (Number(it.monto) || 0), 0);
+  const totalDescuentos = state.descuentos
+    .reduce((s,d)=> s + (Number(d.monto) || 0), 0);
+  const gastosNetos   = totalGastos - totalDescuentos;
+  const saldoEsperado = totalAbonos - gastosNetos;
 
-  const saldo     = totalAbonos - totalGastos;
-  const desc      = state.descuento.monto || 0;
-  const saldoNeto = saldo - desc;
+  const docsOk = (state.summary && state.summary.docsOk) || {};
+  const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
+  const diff = saldoEsperado - montoDevCLP;
 
-  const lines = [];
-
-  lines.push(`GASTOS DEL GRUPO`.padEnd(40) + `${gInfo.nombre} (${gInfo.numero})`);
-  lines.push('');
-  lines.push(`COORDINADOR(A): ${gInfo.coordEmail || ''}`);
-  lines.push(`DESTINO:        ${gInfo.destino || ''}`);
-  lines.push(`PAX TOTAL:      ${gInfo.paxTotal || ''}`);
-  lines.push(`PROGRAMA:       ${gInfo.programa || ''}`);
-  lines.push(`FECHAS:         ${gInfo.fechas || ''}`);
-  lines.push('');
-  lines.push('RESUMEN FINANZAS');
-  lines.push(`  ABONOS: ${moneyCLP(totalAbonos)}`);
-  lines.push(`  GASTOS: ${moneyCLP(totalGastos)}`);
-  lines.push(`  SALDO:  ${moneyCLP(saldo)}`);
-  if (desc) {
-    lines.push(`  DESCTO: ${moneyCLP(desc)} — ${state.descuento.asunto || ''}`);
-    lines.push(`  NETO:   ${moneyCLP(saldoNeto)}`);
+  let textoResultado = '';
+  if (Math.abs(diff) < 500) {
+    textoResultado = 'Saldo cuadrado (≈ $0)';
+  } else if (diff > 0) {
+    textoResultado = `A favor de Rai Trai: ${moneyCLP(diff)}`;
+  } else {
+    textoResultado = `A favor del coordinador: ${moneyCLP(-diff)}`;
   }
-  lines.push('');
-  lines.push('DETALLE DE GASTOS:');
-  state.gastos
-    .slice()
-    .sort((a,b)=> (a.fechaMs||0)-(b.fechaMs||0))
-    .forEach(it => {
-      const fecha = it.fechaTxt || '--';
-      const monto = moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP');
-      lines.push(`  ${fecha}  ${monto}  ${it.asunto || ''}`);
-    });
 
-  print.textContent = lines.join('\n');
+  const filasGastos = gastosOk.map(it => `
+    <tr>
+      <td>${it.fechaTxt || '—'}</td>
+      <td>${escapeHtml(it.asunto || '')}</td>
+      <td>${escapeHtml(it.categoriaRendicion || 'GASTOS DEL GRUPO')}</td>
+      <td>${it.moneda || 'CLP'}</td>
+      <td class="num">${moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP')}</td>
+    </tr>
+  `).join('') || `
+    <tr><td colspan="5" class="muted">Sin gastos aprobados.</td></tr>
+  `;
+
+  const filasDescuentos = state.descuentos.map(d => `
+    <tr>
+      <td>${escapeHtml(d.motivo || '')}</td>
+      <td class="num">${moneyCLP(d.monto || 0)}</td>
+    </tr>
+  `).join('') || `
+    <tr><td colspan="2" class="muted">Sin descuentos aplicados.</td></tr>
+  `;
+
+  cont.innerHTML = `
+    <div class="acta">
+      <header class="acta-header">
+        <div class="acta-head-left">
+          <h1>GASTOS DEL GRUPO — RENDICIÓN DE COORDINADOR</h1>
+          <p class="acta-sub">Grupo ${escapeHtml(gInfo.numero || '')} — ${escapeHtml(gInfo.nombre || '')}</p>
+        </div>
+        <div class="acta-head-right">
+          <img src="Logo Raitrai.png" alt="Rai Trai" class="acta-logo" />
+        </div>
+      </header>
+
+      <section class="acta-meta">
+        <div><span>Coordinador(a)</span><strong>${escapeHtml(gInfo.coordEmail || '—')}</strong></div>
+        <div><span>Destino</span><strong>${escapeHtml(gInfo.destino || '—')}</strong></div>
+        <div><span>Pax total</span><strong>${gInfo.paxTotal || '—'}</strong></div>
+        <div><span>Programa</span><strong>${escapeHtml(gInfo.programa || '—')}</strong></div>
+        <div><span>Fechas</span><strong>${escapeHtml(gInfo.fechas || '—')}</strong></div>
+      </section>
+
+      <section class="acta-section">
+        <h2>1. Gastos aprobados</h2>
+        <table class="acta-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Asunto</th>
+              <th>Categoría</th>
+              <th>Moneda</th>
+              <th class="num">Monto aprobado</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filasGastos}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="acta-section">
+        <h2>2. Descuentos de rendición</h2>
+        <table class="acta-table">
+          <thead>
+            <tr>
+              <th>Motivo</th>
+              <th class="num">Monto (CLP)</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filasDescuentos}
+          </tbody>
+        </table>
+      </section>
+
+      <section class="acta-section">
+        <h2>3. Resumen financiero</h2>
+        <table class="acta-table acta-resumen">
+          <tbody>
+            <tr><td>Abonos totales</td><td class="num">${moneyCLP(totalAbonos)}</td></tr>
+            <tr><td>Gastos aprobados</td><td class="num">${moneyCLP(totalGastos)}</td></tr>
+            <tr><td>Descuentos de rendición</td><td class="num">${moneyCLP(totalDescuentos)}</td></tr>
+            <tr><td>Gastos netos</td><td class="num">${moneyCLP(gastosNetos)}</td></tr>
+            <tr><td>Saldo esperado (abonos – gastos netos)</td><td class="num">${moneyCLP(saldoEsperado)}</td></tr>
+            <tr><td>Monto devuelto (CLP)</td><td class="num">${moneyCLP(montoDevCLP)}</td></tr>
+            <tr><td>Resultado final</td><td class="num">${escapeHtml(textoResultado)}</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="acta-section acta-firmas">
+        <div>
+          <span>Firma coordinador(a)</span>
+          <div class="firm-line"></div>
+        </div>
+        <div>
+          <span>Firma Rai Trai</span>
+          <div class="firm-line"></div>
+        </div>
+      </section>
+    </div>
+  `;
 }
 
 /* ====================== WIRING UI ====================== */
@@ -726,14 +1117,13 @@ function wireUI() {
     });
   }
 
-  // Guardar descuento
-  const btnGuardarDesc = document.getElementById('btnGuardarDescuento');
-  if (btnGuardarDesc) {
-    btnGuardarDesc.addEventListener('click', async () => {
+  // Agregar descuento
+  const btnAgregarDesc = document.getElementById('btnAgregarDesc');
+  if (btnAgregarDesc) {
+    btnAgregarDesc.addEventListener('click', async () => {
       const gid = state.filtros.grupo || '';
       if (!gid) { alert('Selecciona un grupo.'); return; }
-      await guardarDescuento(gid);
-      renderResumenFinanzas();
+      await crearDescuento(gid);
     });
   }
 
@@ -753,7 +1143,7 @@ function wireUI() {
     btnPrint.addEventListener('click', () => {
       const gid = state.filtros.grupo || '';
       if (!gid) { alert('Selecciona un grupo.'); return; }
-      renderPrintSheet();
+      renderPrintActa();
       window.print();
     });
   }
