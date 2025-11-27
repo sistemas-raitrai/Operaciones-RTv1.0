@@ -10,41 +10,82 @@
 
   <style>
     .page { padding: 1rem 1.2rem; }
+
+    /* Toolbar de esta página: inputs a lo ancho */
     .toolbar {
-      display:flex; flex-wrap:wrap; gap:.6rem;
-      align-items:center; margin:.8rem 0 1rem;
+      display:flex;
+      flex-direction:column;
+      gap:.6rem;
+      align-items:stretch;
+      margin:.8rem 0 1rem;
     }
     .toolbar .tag { font-size:.85rem; opacity:.8; }
-    .toolbar input, .toolbar select {
-      padding:.4rem .5rem; border:1px solid #ddd;
-      border-radius:8px;
-    }
+    .toolbar input,
+    .toolbar select,
     .toolbar button {
-      padding:.45rem .8rem; border:1px solid #ddd;
-      border-radius:10px; background:#fff; cursor:pointer;
-      font-weight:600; color:#111;
+      padding:.45rem .55rem;
+      border:1px solid #ddd;
+      border-radius:8px;
+      font-size:.9rem;
+      width:100%;
+      max-width:100%;
+      box-sizing:border-box;
     }
     .toolbar button.primary { border-color:#0b57d0; }
 
-    table.finanzas {
-      width:100%; border-collapse:collapse;
-      background:#fff; border:1px solid #eee;
-      border-radius:10px; overflow:hidden;
+    @media (min-width: 900px) {
+      .toolbar {
+        flex-direction:row;
+        align-items:center;
+      }
+      .toolbar input,
+      .toolbar select {
+        flex:1 1 0;
+      }
+      .toolbar button {
+        flex:0 0 auto;
+        width:auto;
+      }
+      .toolbar .tag {
+        flex:0 0 auto;
+        width:auto;
+      }
     }
-    table.finanzas th, table.finanzas td {
-      padding:.55rem .6rem; border-bottom:1px solid #f1f1f1;
-      vertical-align:middle; font-size:.9rem;
+
+    /* Tarjetas y tabla ocupan todo el ancho */
+    #rendicionesRoot .card,
+    #rendicionesRoot table.finanzas {
+      width:100%;
+      max-width:100%;
+      box-sizing:border-box;
+    }
+
+    table.finanzas {
+      border-collapse:collapse;
+      background:#fff;
+      border:1px solid #eee;
+      border-radius:10px;
+      overflow:hidden;
+    }
+    table.finanzas th,
+    table.finanzas td {
+      padding:.55rem .6rem;
+      border-bottom:1px solid #f1f1f1;
+      vertical-align:middle;
+      font-size:.9rem;
     }
     table.finanzas thead th {
-      background:#fafafa; text-align:left; font-weight:700;
+      background:#fafafa;
+      text-align:left;
+      font-weight:700;
       text-transform:uppercase;
     }
     table.finanzas td .mono,
-    table.finanzas th .mono {
-      font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    table.finanzas th .mono,
+    .mono {
+      font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace;
       text-transform:none;
     }
-    .mono { font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
     .muted { opacity:.65; }
 
     @media (max-width: 900px) {
@@ -53,18 +94,23 @@
     }
 
     .rev-cell {
-      display:flex; align-items:center; gap:.35rem;
+      display:flex;
+      align-items:center;
+      gap:.35rem;
     }
     .revbtn {
-      min-width:1.8rem; height:1.6rem; line-height:1.6rem;
-      border-radius:6px; border:1px solid #ddd; background:#fff;
-      cursor:pointer; font-weight:700; font-size:.9rem;
+      min-width:1.8rem;
+      height:1.6rem;
+      line-height:1.6rem;
+      border-radius:6px;
+      border:1px solid #ddd;
+      background:#fff;
+      cursor:pointer;
+      font-weight:700;
+      font-size:.9rem;
       padding:0 .35rem;
     }
-
-    .monto-aprob-input {
-      width:110px;
-    }
+    .monto-aprob-input { width:110px; }
     .monto-aprob-wrap.saved {
       background:#e6ffed;
       transition:background .8s;
@@ -88,19 +134,23 @@
 
     .grupo-grid {
       display:grid;
-      grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
       gap:.4rem .8rem;
       font-size:.9rem;
     }
     .grupo-grid span.label {
-      font-weight:600; text-transform:uppercase; font-size:.76rem;
-      color:#6b7280; display:block;
+      font-weight:600;
+      text-transform:uppercase;
+      font-size:.76rem;
+      color:#6b7280;
+      display:block;
     }
 
     .resumen-financiero {
       display:grid;
       grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-      gap:1rem; margin-top:.5rem;
+      gap:1rem;
+      margin-top:.5rem;
     }
     .stat-card {
       background:#f9fafb;
@@ -114,11 +164,15 @@
       border-color:#f59e0b;
     }
     .stat-label {
-      font-size:.8rem; text-transform:uppercase;
-      color:#6b7280; margin-bottom:.3rem; font-weight:600;
+      font-size:.8rem;
+      text-transform:uppercase;
+      color:#6b7280;
+      margin-bottom:.3rem;
+      font-weight:600;
     }
     .stat-value {
-      font-size:1.3rem; font-weight:700;
+      font-size:1.3rem;
+      font-weight:700;
       font-family:ui-monospace,monospace;
     }
     .stat-value.gastos { color:#dc2626; }
@@ -133,11 +187,15 @@
     .seccion-form h4 {
       margin:0 0 .7rem;
       font-size:1rem;
-      display:flex; align-items:center; gap:.4rem;
+      display:flex;
+      align-items:center;
+      gap:.4rem;
     }
     .hint-inline {
-      font-size:.8rem; font-style:italic;
-      font-weight:400; color:#6b7280;
+      font-size:.8rem;
+      font-style:italic;
+      font-weight:400;
+      color:#6b7280;
     }
 
     .form-grid {
@@ -146,11 +204,15 @@
       gap:.8rem;
     }
     .form-item {
-      display:flex; flex-direction:column; gap:.25rem;
+      display:flex;
+      flex-direction:column;
+      gap:.25rem;
     }
     .form-item label {
-      font-size:.78rem; text-transform:uppercase;
-      color:#4b5563; font-weight:600;
+      font-size:.78rem;
+      text-transform:uppercase;
+      color:#4b5563;
+      font-weight:600;
     }
     .input-field {
       padding:.45rem .55rem;
@@ -165,7 +227,9 @@
     }
 
     .link-doc {
-      color:#0ea5e9; text-decoration:none; font-weight:600;
+      color:#0ea5e9;
+      text-decoration:none;
+      font-weight:600;
       font-size:.9rem;
     }
     .link-doc:hover { text-decoration:underline; }
@@ -180,21 +244,29 @@
       font-weight:600;
     }
     .btn-accion.primary {
-      background:#0ea5e9; color:#fff; border-color:#0ea5e9;
+      background:#0ea5e9;
+      color:#fff;
+      border-color:#0ea5e9;
     }
     .btn-accion.primary:hover {
-      background:#0369a1; border-color:#0369a1;
+      background:#0369a1;
+      border-color:#0369a1;
     }
 
-    @media (max-width: 768px) {
-      .grupo-grid, .resumen-financiero, .form-grid {
+    @media (max-width:768px) {
+      .grupo-grid,
+      .resumen-financiero,
+      .form-grid {
         grid-template-columns:1fr;
       }
     }
 
     /* PRINT */
     @media print {
-      #encabezado, .toolbar, .btn-accion, button { display:none !important; }
+      #encabezado,
+      .toolbar,
+      .btn-accion,
+      button { display:none !important; }
       #printSheet { display:block; }
       @page { size:A4; margin:18mm; }
     }
@@ -205,6 +277,7 @@
       font-size:11pt;
     }
   </style>
+
 </head>
 <body>
   <div id="encabezado"></div>
@@ -217,8 +290,11 @@
       <input id="filtroCoord" type="email" placeholder="COORDINADOR(A)" list="dl-coords" />
       <datalist id="dl-coords"></datalist>
 
-      <input id="filtroGrupo" type="text" placeholder="GRUPO (ID)" list="dl-grupos" />
+      <input id="filtroGrupo" type="text" placeholder="GRUPO (ID / Nº NEGOCIO)" list="dl-grupos" />
       <datalist id="dl-grupos"></datalist>
+
+      <input id="filtroNombreGrupo" type="text" placeholder="NOMBRE DEL GRUPO" list="dl-grupos-nombre" />
+      <datalist id="dl-grupos-nombre"></datalist>
 
       <button id="btnCargar" class="primary">CARGAR</button>
       <span class="tag" id="pagInfo"></span>
