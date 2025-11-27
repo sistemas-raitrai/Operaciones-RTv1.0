@@ -1,976 +1,628 @@
 // rendiciones_coordinadores.js
-// Pantalla para revisar y rendir gastos a partir de finanzas_snapshots
+// Rendición de gastos por grupo/coordinador (basado en Revisión financiera v2)
 
 import { app, db } from './firebase-init.js';
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  getAuth,
-  onAuthStateChanged,
-  signOut
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-
-import {
-  collection,
-  getDocs,
-  doc,
-  getDoc,
-  updateDoc,
-  query,
-  orderBy,
-  limit
+  collection, collectionGroup, getDocs, doc, getDoc, updateDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
 /* ====================== STATE ====================== */
-
 const state = {
   user: null,
-
-  gruposIndex: new Map(),  // gid -> { numero, nombre }
-  currentGrupo: null,      // { id, ...data }
-  snapshots: [],           // [{ id, ...data }]
-  currentSnap: null,       // snapshot seleccionado ({ id, ...data })
-
-  // Modelo de trabajo para la rendición (se guarda dentro del snapshot)
-  rendicion: {
-    gastos: {},            // gastoId -> { incluido, montoAprobado }
-    docsOk: {},            // { transfer, cashUsd, boleta }
-    descuento: { monto: 0, motivo: '' },
-    calculado: null        // { abonos, gastos, saldos, saldoFinalCLP }
-  }
+  filtros: { coord: '', grupo: '' },
+  caches: {
+    grupos: new Map(),         // gid -> {numero,nombre,coordEmail,destino,paxTotal,programa,fechas,urls}
+    coords: [],                // correos coordinadores
+    groupsByCoord: new Map(),  // coordEmail -> Set(gid)
+  },
+  gastos: [],
+  abonos: [],
+  summary: null,               // grupos/{gid}/finanzas/summary
+  descuento: { monto: 0, asunto: '' },
 };
 
 /* ====================== UTILS ====================== */
+const norm = (s='') =>
+  s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+
+const coalesce = (...xs) =>
+  xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
 const parseMonto = (any) => {
-  if (any == null || any === '') return 0;
+  if (any == null) return 0;
   if (typeof any === 'number' && isFinite(any)) return Math.round(any);
-  const n = parseInt(String(any).replace(/[^\d-]/g, ''), 10);
+  const n = parseInt(String(any).replace(/[^\d-]/g,''),10);
   return isFinite(n) ? n : 0;
 };
 
-const moneyCLP = (n) =>
-  isFinite(+n)
-    ? (+n).toLocaleString('es-CL', {
-        style: 'currency',
-        currency: 'CLP',
-        maximumFractionDigits: 0
-      })
-    : '—';
+const moneyCLP = n =>
+  (isFinite(+n)
+    ? (+n).toLocaleString('es-CL',{ style:'currency', currency:'CLP', maximumFractionDigits:0 })
+    : '—');
 
-const moneyBy = (n, curr = 'CLP') =>
-  isFinite(+n)
-    ? (+n).toLocaleString('es-CL', {
-        style: 'currency',
-        currency: curr,
-        maximumFractionDigits: 0
-      })
-    : '—';
+const moneyBy = (n, curr='CLP') =>
+  (isFinite(+n)
+    ? (+n).toLocaleString('es-CL',{ style:'currency', currency:curr, maximumFractionDigits:2 })
+    : '—');
 
-// Convierte varias formas de fecha (Timestamp, string, ms, segundos) a ms
-function toMs(v) {
+// --- fechas ---
+function _toMs(v){
   if (v == null) return 0;
   if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
   if (typeof v === 'string') {
-    const t = Date.parse(v);
-    return isFinite(t) ? t : 0;
+    const t = Date.parse(v); return isFinite(t) ? t : 0;
   }
   if (typeof v === 'object') {
-    if ('seconds' in v) {
-      return v.seconds * 1000 + Math.floor((v.nanoseconds || 0) / 1e6);
-    }
-    const t = Date.parse(v);
-    return isFinite(t) ? t : 0;
+    if ('seconds' in v) return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1e6);
+    const t = Date.parse(v); return isFinite(t) ? t : 0;
   }
   return 0;
 }
-
-function fmtDmyFromAny(v) {
-  const ms = toMs(v);
+function pickFechaMs(raw){
+  const cands = [
+    raw.fecha, raw.fechaPago, raw.fechaAbono,
+    raw.createdAt, raw.created, raw.ts, raw.at, raw.timestamp, raw.time
+  ];
+  for (const c of cands){
+    const ms = _toMs(c);
+    if (ms) return ms;
+  }
+  return 0;
+}
+function fmtDDMMYYYY(ms){
   if (!ms) return '';
   const d = new Date(ms);
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
   const yyyy = d.getFullYear();
   return `${dd}-${mm}-${yyyy}`;
 }
 
-// Suma por moneda: rows[] con campos .moneda y .valor (o fieldAlt)
-function sumByMoneda(rows, field = 'valor', fieldAlt = 'monto') {
-  const out = {};
-  (rows || []).forEach((r) => {
-    const mon = String(r.moneda || 'CLP').toUpperCase();
-    const v = Number(r[field] ?? r[fieldAlt] ?? 0) || 0;
-    out[mon] = (out[mon] || 0) + v;
-  });
-  return out;
-}
+/* ====================== CATALOGOS ====================== */
+async function preloadCatalogs() {
+  state.caches.grupos.clear();
+  state.caches.coords.length = 0;
+  state.caches.groupsByCoord.clear();
 
-// Combina abonos y gastos → saldos por moneda
-function buildSaldos(abonosMap, gastosMap) {
-  const out = {};
-  const allMon = new Set([
-    ...Object.keys(abonosMap || {}),
-    ...Object.keys(gastosMap || {})
-  ]);
-  allMon.forEach((m) => {
-    out[m] = (abonosMap[m] || 0) - (gastosMap[m] || 0);
-  });
-  return out;
-}
+  const snap = await getDocs(collection(db,'grupos'));
+  const dlG = document.getElementById('dl-grupos');
+  const dlC = document.getElementById('dl-coords');
+  if (!dlG || !dlC) return;
 
-// Formatea un mapa { CLP: 1000, USD: 0, ... } a texto tipo "CLP 1.000 · USD 0 · BRL 0 · ARS 0"
-function formatMapaMonedas(map) {
-  const mons = ['CLP', 'USD', 'BRL', 'ARS'];
-  if (!map) return '(sin datos)';
-  return mons
-    .map((m) => `${m} ${(map[m] || 0).toLocaleString('es-CL')}`)
-    .join(' · ');
-}
+  dlG.innerHTML = '';
+  dlC.innerHTML = '';
 
-function normStr(s = '') {
-  return s
-    .toString()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim();
-}
-
-/* ====================== CARGA DE DATOS ====================== */
-
-// Índice básico de grupos para el datalist
-async function loadGruposIndex() {
-  const dl = document.getElementById('dlGrupos');
-  dl.innerHTML = '';
-  state.gruposIndex.clear();
-
-  const snap = await getDocs(collection(db, 'grupos'));
-  snap.forEach((d) => {
-    const x = d.data() || {};
+  snap.forEach(d => {
+    const x   = d.data() || {};
     const gid = d.id;
-    const numero =
-      x.numeroNegocio || x.numNegocio || x.idNegocio || gid;
-    const nombre =
-      x.nombreGrupo || x.aliasGrupo || x.nombre || x.grupo || gid;
 
-    state.gruposIndex.set(gid, { id: gid, numero, nombre });
+    const numero   = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, gid);
+    const nombre   = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, gid);
+    const coordEmail = coalesce(
+      x.coordinadorEmail, x.coordinador?.email, x.coordinador,
+      x.coord, x.responsable, x.owner, ''
+    ).toLowerCase();
+    const destino  = coalesce(x.destino, x.lugar, '');
+    const paxTotal = Number(x.paxTotal || x.pax || x.pax_total || 0);
+    const programa = coalesce(x.programa, x.plan, '');
+    const fechas   = coalesce(x.fechas, x.fechaDeViaje, x.fechaViaje, '');
+
+    state.caches.grupos.set(gid, {
+      numero, nombre, coordEmail, destino, paxTotal, programa, fechas,
+      urls:{
+        boleta: x?.finanzas?.boletaUrl || x.boletaUrl || '',
+        comprobante: x?.finanzas?.comprobanteUrl || x.comprobanteUrl || '',
+        transferenciaCoord: x?.finanzas?.transferenciaCoordUrl || x.transferenciaCoordUrl || ''
+      }
+    });
+
+    if (coordEmail) {
+      if (!state.caches.groupsByCoord.has(coordEmail)) {
+        state.caches.groupsByCoord.set(coordEmail, new Set());
+      }
+      state.caches.groupsByCoord.get(coordEmail).add(gid);
+      if (!state.caches.coords.includes(coordEmail)) {
+        state.caches.coords.push(coordEmail);
+      }
+    }
 
     const opt = document.createElement('option');
     opt.value = gid;
     opt.label = `${numero} — ${nombre}`;
-    dl.appendChild(opt);
+    dlG.appendChild(opt);
   });
 
-  document.getElementById('estadoCarga').textContent =
-    `Grupos cargados: ${state.gruposIndex.size}`;
+  for (const email of state.caches.coords) {
+    const opt = document.createElement('option');
+    opt.value = email;
+    opt.label = email;
+    dlC.appendChild(opt);
+  }
 }
 
-// Trae grupo completo
-async function loadGrupo(gid) {
-  const ref = doc(db, 'grupos', gid);
-  const d = await getDoc(ref);
-  if (!d.exists()) throw new Error('Grupo no encontrado');
-  state.currentGrupo = { id: gid, ...(d.data() || {}) };
-}
-
-// Lista snapshots de finanzas (ordenados desc)
-async function listarSnapshotsFinanzas(gid, max = 20) {
-  const qs = await getDocs(
-    query(
-      collection(db, 'grupos', gid, 'finanzas_snapshots'),
-      orderBy('createdAt', 'desc'),
-      limit(max)
-    )
+/* ====================== NORMALIZADOR ====================== */
+function gastoToItem(grupoId, gInfo, raw, coordFromPath) {
+  const brutoMonto = coalesce(
+    raw.monto, raw.montoCLP, raw.neto, raw.importe,
+    raw.valor, raw.total, raw.totalCLP, raw.monto_str, 0
   );
+  const monto   = parseMonto(brutoMonto);
+  const moneda  = (raw.moneda || raw.currency || 'CLP').toString().toUpperCase();
+  const montoAprobadoRaw = coalesce(
+    raw.montoAprobado, raw.aprobado, raw.monto_aprobado, null
+  );
+  const montoAprobado = (montoAprobadoRaw == null) ? monto : parseMonto(montoAprobadoRaw);
+
+  const asunto = coalesce(raw.asunto, raw.detalle, raw.descripcion, raw.concepto, raw.motivo, '');
+  const autor  = coalesce(raw.autor, raw.user, raw.creadoPor, raw.email, gInfo?.coordEmail || '', '');
+
+  const fechaMs  = pickFechaMs(raw);
+  const fechaTxt = fechaMs ? fmtDDMMYYYY(fechaMs) : '';
+
+  const rend = raw.rendicion || {};
+
+  return {
+    id: raw.id || raw._id || '',
+    grupoId,
+    nombreGrupo: gInfo?.nombre || '',
+    numeroNegocio: gInfo?.numero || grupoId,
+    coordinador: coordFromPath || gInfo?.coordEmail || '',
+    asunto,
+    autor,
+    monto,
+    moneda,
+    montoAprobado,
+    fechaMs,
+    fechaTxt,
+    rendOk: !!rend.ok,
+  };
+}
+
+/* ====================== LECTURA DE DATOS ====================== */
+// GASTOS — collectionGroup('gastos')
+async function fetchGastosByGroup({ coordEmailHint = '', grupoId = '' } = {}) {
   const out = [];
-  qs.forEach((d) => out.push({ id: d.id, ...(d.data() || {}) }));
+  try {
+    const normCoord = (s='') =>
+      s.toString()
+       .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+       .toLowerCase()
+       .replace(/[\s_]+/g,'-')
+       .trim();
+
+    const hint = normCoord(coordEmailHint);
+
+    const snap = await getDocs(collectionGroup(db,'gastos'));
+    snap.forEach(docSnap => {
+      const raw = docSnap.data() || {};
+
+      const gid = coalesce(
+        raw.grupoId, raw.grupo_id, raw.gid, raw.idGrupo,
+        raw.grupo, raw.id_grupo,
+        (raw.numeroNegocio && raw.identificador)
+          ? `${raw.numeroNegocio}-${raw.identificador}` : ''
+      );
+      if (!gid) return;
+      if (grupoId && gid !== grupoId) return;
+
+      const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
+
+      if (hint) {
+        const blob = [
+          normCoord(coordFromPath),
+          normCoord(raw.coordinadorEmail || ''),
+          normCoord(raw.coordinador || '')
+        ].join(' ');
+        if (!blob.includes(hint)) return;
+      }
+
+      const gInfo = state.caches.grupos.get(gid) ||
+                    { numero: gid, nombre:'', coordEmail: coordFromPath };
+
+      const item = gastoToItem(gid, gInfo, { id: docSnap.id, ...raw }, coordFromPath);
+      out.push(item);
+    });
+  } catch (e) {
+    console.warn('[REN] fetchGastosByGroup', e);
+  }
   return out;
 }
 
-/* ====================== RENDICIÓN: MODELO Y RENDER ====================== */
+// ABONOS — grupos/{gid}/finanzas_abonos/*
+async function fetchAbonosByGroup(gid) {
+  const out = [];
+  if (!gid) return out;
+  try {
+    const ref  = collection(db,'grupos',gid,'finanzas_abonos');
+    const snap = await getDocs(ref);
+    const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre:'', coordEmail:'' };
 
-function initRendicionFromSnapshot() {
-  const snap = state.currentSnap;
-  if (!snap) return;
+    snap.forEach(d => {
+      const x = d.data() || {};
+      const brutoMonto = coalesce(
+        x.monto, x.montoCLP, x.neto, x.importe,
+        x.valor, x.total, x.totalCLP, x.monto_str, 0
+      );
+      const monto  = parseMonto(brutoMonto);
+      const moneda = (x.moneda || x.currency || 'CLP').toString().toUpperCase();
+      const fechaMs  = pickFechaMs(x);
+      const fechaTxt = fechaMs ? fmtDDMMYYYY(fechaMs) : '';
+      const asunto   = coalesce(x.asunto, x.detalle, x.descripcion, x.concepto, 'ABONO');
 
-  const rendPrev = snap.rendicion || {};
-  const gastosCfg = {};
-  const gastos = Array.isArray(snap.gastosAprobados)
-    ? snap.gastosAprobados
-    : [];
-
-  gastos.forEach((g) => {
-    const id = g.id || g._id || '';
-    if (!id) return;
-    const prev = (rendPrev.gastos || {})[id] || {};
-    const montoBase = Number(g.valor || 0) || 0;
-    gastosCfg[id] = {
-      incluido: prev.incluido !== false, // por defecto true
-      montoAprobado:
-        typeof prev.montoAprobado === 'number' && isFinite(prev.montoAprobado)
-          ? prev.montoAprobado
-          : montoBase
-    };
-  });
-
-  state.rendicion = {
-    gastos: gastosCfg,
-    docsOk: rendPrev.docsOk || {},
-    descuento: rendPrev.descuento || { monto: 0, motivo: '' },
-    calculado: null
-  };
-}
-
-function calcResumenFinanzas() {
-  const snap = state.currentSnap;
-  if (!snap) return { abonos: {}, gastos: {}, saldos: {} };
-
-  const abonos = Array.isArray(snap.abonos) ? snap.abonos : [];
-  const gastos = Array.isArray(snap.gastosAprobados)
-    ? snap.gastosAprobados
-    : [];
-
-  const abMap = sumByMoneda(abonos, 'valor');
-  const gaMap = {};
-  gastos.forEach((g) => {
-    const id = g.id || g._id || '';
-    if (!id) return;
-
-    const cfg = state.rendicion.gastos[id] || {};
-    if (cfg.incluido === false) return;
-
-    const mon = String(g.moneda || 'CLP').toUpperCase();
-    const base = Number(g.valor || 0) || 0;
-    const val =
-      typeof cfg.montoAprobado === 'number' && isFinite(cfg.montoAprobado)
-        ? cfg.montoAprobado
-        : base;
-
-    gaMap[mon] = (gaMap[mon] || 0) + val;
-  });
-
-  const salMap = buildSaldos(abMap, gaMap);
-
-  const descMonto = parseMonto(
-    state.rendicion.descuento?.monto || 0
-  );
-  const saldoCLP = salMap['CLP'] || 0;
-  const saldoFinalCLP = saldoCLP - descMonto;
-
-  const calculado = {
-    abonos: abMap,
-    gastos: gaMap,
-    saldos: salMap,
-    saldoFinalCLP,
-    descuentoCLP: descMonto
-  };
-  state.rendicion.calculado = calculado;
-  return calculado;
-}
-
-/* ----- RENDER: INFO GRUPO ----- */
-
-function renderInfoGrupo() {
-  const g = state.currentGrupo;
-  const snap = state.currentSnap;
-  const titulo = document.getElementById('infoTitulo');
-  const sub = document.getElementById('infoSub');
-  const meta = document.getElementById('infoMeta');
-
-  if (!g || !snap) {
-    titulo.textContent = '(elige un grupo y snapshot)';
-    sub.textContent = '';
-    meta.textContent = '';
-    return;
+      out.push({
+        id: d.id,
+        grupoId: gid,
+        nombreGrupo: gInfo.nombre,
+        numeroNegocio: gInfo.numero,
+        asunto,
+        monto,
+        moneda,
+        fechaMs,
+        fechaTxt,
+      });
+    });
+  } catch (e) {
+    console.warn('[REN] fetchAbonosByGroup', e);
   }
-
-  const numero =
-    snap.numeroNegocio ||
-    g.numeroNegocio ||
-    g.numNegocio ||
-    g.idNegocio ||
-    g.id ||
-    g.gid ||
-    '—';
-  const nombre = snap.nombreGrupo || g.nombreGrupo || g.aliasGrupo || '—';
-  const ident = snap.identificador || g.identificador || '';
-
-  titulo.textContent = `${numero} — ${nombre}`;
-  sub.textContent = ident ? `Código interno: ${ident}` : '';
-
-  const coord =
-    g.coordinadorEmail ||
-    g.coordinador ||
-    g.coordEmail ||
-    g.responsable ||
-    '';
-  const destino = snap.destino || g.destino || '—';
-  const pax =
-    g.paxTotal || g.cantidadgrupo || g.pax || g.pax_total || null;
-  const programa = g.programa || g.nombrePrograma || '—';
-
-  const fIni =
-    g.fechaInicio ||
-    g.fecha_inicio ||
-    g.fechas?.inicio ||
-    g.fechas?.desde ||
-    null;
-  const fFin =
-    g.fechaFin ||
-    g.fecha_fin ||
-    g.fechas?.fin ||
-    g.fechas?.hasta ||
-    null;
-
-  const rango =
-    fIni || fFin
-      ? `${fmtDmyFromAny(fIni)} — ${fmtDmyFromAny(fFin)}`
-      : '—';
-
-  meta.innerHTML = `
-    COORDINADOR(A): <span class="mono">${(coord || '—').toUpperCase()}</span><br>
-    DESTINO: ${destino || '—'} · PAX TOTAL: ${pax ?? '—'} · PROGRAMA: ${programa || '—'}<br>
-    FECHAS: ${rango}
-  `;
+  return out;
 }
 
-/* ----- RENDER: DOCS (TRANSFER, CASH, BOLETA) ----- */
-
-function renderDocs() {
-  const snap = state.currentSnap;
-  const rend = state.rendicion;
-  const cierre = snap?.cierrePrevio || {};
-
-  const docRows = [
-    {
-      key: 'transfer',
-      linkId: 'linkTransfer',
-      chkId: 'chkTransferOk',
-      infoId: 'infoTransfer',
-      data: cierre.transfer
-    },
-    {
-      key: 'cashUsd',
-      linkId: 'linkCash',
-      chkId: 'chkCashOk',
-      infoId: 'infoCash',
-      data: cierre.cashUsd
-    },
-    {
-      key: 'boleta',
-      linkId: 'linkBoleta',
-      chkId: 'chkBoletaOk',
-      infoId: 'infoBoleta',
-      data: cierre.boleta
+// SUMMARY — grupos/{gid}/finanzas/summary
+async function loadSummaryForGroup(gid) {
+  state.summary   = null;
+  state.descuento = { monto: 0, asunto: '' };
+  if (!gid) return;
+  try {
+    const ref  = doc(db,'grupos',gid,'finanzas','summary');
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      state.summary = data;
+      if (data.descuento) {
+        state.descuento = {
+          monto: Number(data.descuento.monto || 0),
+          asunto: data.descuento.asunto || ''
+        };
+      }
     }
-  ];
-
-  docRows.forEach((row) => {
-    const link = document.getElementById(row.linkId);
-    const chk = document.getElementById(row.chkId);
-    const info = document.getElementById(row.infoId);
-
-    const d = row.data || {};
-    const url =
-      d.comprobanteUrl || d.url || d.href || d.link || '';
-
-    if (url) {
-      link.href = url;
-      link.textContent = 'VER';
-      link.target = '_blank';
-      link.classList.remove('muted');
-    } else {
-      link.href = '#';
-      link.textContent = '—';
-      link.removeAttribute('target');
-      link.classList.add('muted');
-    }
-
-    const fechaTxt = d.fecha ? fmtDmyFromAny(d.fecha) : '';
-    const medio = d.medio || d.tipo || '';
-    info.textContent =
-      fechaTxt || medio
-        ? `(${[fechaTxt, medio].filter(Boolean).join(' · ')})`
-        : '';
-
-    chk.checked = !!(rend.docsOk || {})[row.key];
-    chk.onchange = () => {
-      rend.docsOk[row.key] = chk.checked;
-    };
-  });
+  } catch (e) {
+    console.warn('[REN] loadSummaryForGroup', e);
+  }
 }
 
-/* ----- RENDER: DESCUENTO ----- */
+// Carga principal
+async function loadDataForCurrentFilters() {
+  state.gastos = [];
+  state.abonos = [];
 
-function renderDescuento() {
-  const desc = state.rendicion.descuento || { monto: 0, motivo: '' };
-  const inpMonto = document.getElementById('descuentoMonto');
-  const txtMotivo = document.getElementById('descuentoMotivo');
+  const gid   = state.filtros.grupo || '';
+  const coord = (state.filtros.coord || '').toLowerCase();
 
-  inpMonto.value = desc.monto || '';
-  txtMotivo.value = desc.motivo || '';
+  if (!gid && !coord) return;
 
-  inpMonto.oninput = () => {
-    const v = parseMonto(inpMonto.value);
-    state.rendicion.descuento.monto = v;
-    calcResumenFinanzas();
-    renderResumen();
-  };
-  txtMotivo.oninput = () => {
-    state.rendicion.descuento.motivo = txtMotivo.value || '';
-  };
+  const gInfo = gid ? state.caches.grupos.get(gid) : null;
+  const coordHint = coord || (gInfo?.coordEmail || '');
+
+  const [gastos, abonos] = await Promise.all([
+    fetchGastosByGroup({ coordEmailHint: coordHint, grupoId: gid }),
+    gid ? fetchAbonosByGroup(gid) : Promise.resolve([])
+  ]);
+
+  state.gastos = gastos;
+  state.abonos = abonos;
+  await loadSummaryForGroup(gid);
 }
 
-/* ----- RENDER: TABLA DE GASTOS ----- */
+/* ====================== ESCRITURA ====================== */
+async function saveMontoAprobado(item, nuevoMonto) {
+  const gid   = item.grupoId;
+  const coord = item.coordinador;
+  if (!gid || !coord || !item.id) return false;
 
-function renderGastosTable() {
-  const tbody = document.querySelector('#tblGastos tbody');
-  const g = state.currentGrupo;
-  const snap = state.currentSnap;
-  const rows = Array.isArray(snap?.gastosAprobados)
-    ? snap.gastosAprobados
-    : [];
+  const val = parseMonto(nuevoMonto);
+  try {
+    const ref = doc(db,'coordinadores',coord,'gastos',item.id);
+    await updateDoc(ref, {
+      montoAprobado: val,
+      'rendicion.ok': true,
+      'rendicion.by': (auth.currentUser?.email || '').toLowerCase(),
+      'rendicion.at': Date.now()
+    });
+    item.montoAprobado = val;
+    item.rendOk = true;
+    return true;
+  } catch (e) {
+    console.error('[REN] saveMontoAprobado', e);
+    alert('No se pudo guardar el monto aprobado.');
+    return false;
+  }
+}
+
+async function guardarDescuento(gid) {
+  const monto  = parseMonto(document.getElementById('descuentoMonto').value || 0);
+  const asunto = (document.getElementById('descuentoAsunto').value || '').trim();
+  state.descuento = { monto, asunto };
+  try {
+    const ref = doc(db,'grupos',gid,'finanzas','summary');
+    await setDoc(ref, {
+      descuento: {
+        monto,
+        asunto,
+        by: (auth.currentUser?.email || '').toLowerCase(),
+        at: Date.now()
+      }
+    }, { merge:true });
+    alert('Descuento guardado.');
+  } catch (e) {
+    console.error('[REN] guardarDescuento', e);
+    alert('No se pudo guardar el descuento.');
+  }
+}
+
+async function guardarDocsOk(gid) {
+  const chkB = document.getElementById('chkBoletaOk');
+  const chkC = document.getElementById('chkComprobanteOk');
+  const chkT = document.getElementById('chkTransferenciaOk');
+
+  const docBoletaOk = chkB ? !!chkB.checked : false;
+  const docCompOk   = chkC ? !!chkC.checked : false;
+  const docTransfOk = chkT ? !!chkT.checked : false;
+
+  try {
+    const ref = doc(db,'grupos',gid,'finanzas','summary');
+    await setDoc(ref, {
+      docsOk: {
+        boleta: docBoletaOk,
+        comprobante: docCompOk,
+        transferencia: docTransfOk,
+        by: (auth.currentUser?.email || '').toLowerCase(),
+        at: Date.now()
+      }
+    }, { merge:true });
+    alert('Estado de documentos guardado.');
+  } catch (e) {
+    console.error('[REN] guardarDocsOk', e);
+    alert('No se pudo guardar el estado de documentos.');
+  }
+}
+
+/* ====================== RENDER TABLA ====================== */
+function renderTablaGastos() {
+  const tbody      = document.querySelector('#tblGastos tbody');
+  const resumenEl  = document.getElementById('resumenTabla');
+  if (!tbody) return;
+
+  const rows = state.gastos.slice().sort((a,b)=> (a.fechaMs||0) - (b.fechaMs||0));
 
   tbody.innerHTML = '';
-
   if (!rows.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
     td.colSpan = 7;
-    td.innerHTML =
-      '<div class="muted">Este snapshot no tiene gastos aprobados.</div>';
+    td.innerHTML = '<div class="muted">Sin gastos registrados para este criterio.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
-    document.getElementById('resumenTotales').textContent =
-      '(sin datos)';
-    return;
-  }
+  } else {
+    const frag = document.createDocumentFragment();
+    rows.forEach(item => {
+      const tr = document.createElement('tr');
 
-  const coord =
-    g?.coordinadorEmail ||
-    g?.coordinador ||
-    g?.coordEmail ||
-    g?.responsable ||
-    '';
+      const tdFecha  = document.createElement('td');
+      const tdAsunto = document.createElement('td');
+      const tdAutor  = document.createElement('td');
+      const tdMon    = document.createElement('td');
+      const tdMonto  = document.createElement('td');
+      const tdMontoAprob = document.createElement('td');
+      const tdChk    = document.createElement('td');
 
-  rows.forEach((gx) => {
-    const id = gx.id || gx._id || '';
-    if (!id) return;
+      tdFecha.textContent  = item.fechaTxt || '—';
+      tdAsunto.textContent = item.asunto || '—';
+      tdAutor.textContent  = item.autor || item.coordinador || '—';
+      tdMon.textContent    = item.moneda || 'CLP';
+      tdMonto.innerHTML    = `<span class="mono">${moneyBy(item.monto, item.moneda||'CLP')}</span>`;
 
-    const cfg = state.rendicion.gastos[id] || {
-      incluido: true,
-      montoAprobado: Number(gx.valor || 0) || 0
-    };
-    state.rendicion.gastos[id] = cfg;
+      const wrap = document.createElement('div');
+      wrap.className = 'monto-aprob-wrap rev-cell';
 
-    const tr = document.createElement('tr');
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.step = '1';
+      inp.min  = '0';
+      inp.inputMode = 'numeric';
+      inp.className = 'mono monto-aprob-input';
+      inp.value = isFinite(+item.montoAprobado) ? +item.montoAprobado : +item.monto;
 
-    // Check OK
-    const tdChk = document.createElement('td');
-    tdChk.className = 'chk';
-    const ch = document.createElement('input');
-    ch.type = 'checkbox';
-    ch.checked = cfg.incluido !== false;
-    ch.onchange = () => {
-      cfg.incluido = ch.checked;
-      calcResumenFinanzas();
-      renderResumen();
-    };
-    tdChk.appendChild(ch);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'revbtn ghost';
+      btn.title = 'Guardar monto aprobado (y marcar rendido)';
+      btn.textContent = '💾';
 
-    // Asunto (actividad / proveedor)
-    const tdAsunto = document.createElement('td');
-    const actividad = gx.actividad || gx.asunto || '';
-    const prov = gx.proveedor || '';
-    tdAsunto.textContent =
-      actividad || prov || '(sin descripción)';
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = !!item.rendOk;
+      chk.title = 'Marcar gasto incluido en rendición';
+      // el check se fuerza a true cuando se guarda el monto
 
-    // Autor (correo coord)
-    const tdAutor = document.createElement('td');
-    tdAutor.textContent =
-      (coord || '').toString().toUpperCase() || '—';
+      const doSave = async () => {
+        const val = parseMonto(inp.value);
+        const ok  = await saveMontoAprobado(item, val);
+        if (ok) {
+          chk.checked = true;
+          wrap.classList.add('saved');
+          setTimeout(()=> wrap.classList.remove('saved'), 800);
+          renderResumenFinanzas();
+        }
+      };
 
-    // Moneda
-    const tdMon = document.createElement('td');
-    const mon = String(gx.moneda || 'CLP').toUpperCase();
-    tdMon.textContent = mon;
-
-    // Monto original
-    const tdOri = document.createElement('td');
-    tdOri.className = 'monto mono';
-    tdOri.textContent = moneyBy(Number(gx.valor || 0) || 0, mon);
-
-    // Monto aprobado (editable)
-    const tdApr = document.createElement('td');
-    tdApr.className = 'monto';
-    const inp = document.createElement('input');
-    inp.type = 'number';
-    inp.step = '1';
-    inp.min = '0';
-    inp.className = 'mono';
-    inp.style.maxWidth = '120px';
-    inp.value = cfg.montoAprobado ?? Number(gx.valor || 0) || 0;
-
-    const update = () => {
-      const v = parseMonto(inp.value);
-      cfg.montoAprobado = v;
-      calcResumenFinanzas();
-      renderResumen();
-    };
-
-    inp.addEventListener('change', update);
-    inp.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') update();
-    });
-
-    tdApr.appendChild(inp);
-
-    // Comprobante
-    const tdComp = document.createElement('td');
-    const url =
-      gx.comprobanteUrl ||
-      gx.urlComprobante ||
-      gx.fileUrl ||
-      gx.url ||
-      '';
-    if (url) {
-      const a = document.createElement('a');
-      a.href = url;
-      a.target = '_blank';
-      a.textContent = 'VER';
-      a.className = 'small';
-      tdComp.appendChild(a);
-    } else {
-      tdComp.innerHTML = '<span class="muted small">—</span>';
-    }
-
-    tr.append(tdChk, tdAsunto, tdAutor, tdMon, tdOri, tdApr, tdComp);
-    tbody.appendChild(tr);
-  });
-
-  calcResumenFinanzas();
-  renderResumen();
-}
-
-/* ----- RENDER: RESUMEN (pantalla) ----- */
-
-function renderResumen() {
-  const resumenTot = document.getElementById('resumenTotales');
-  const resumenFinal = document.getElementById('resumenFinal');
-  const calc = state.rendicion.calculado || calcResumenFinanzas();
-
-  const txtAb = formatMapaMonedas(calc.abonos);
-  const txtGa = formatMapaMonedas(calc.gastos);
-  const txtSa = formatMapaMonedas(calc.saldos);
-
-  resumenTot.textContent =
-    `ABONOS: ${txtAb} · GASTOS: ${txtGa} · SALDO: ${txtSa}`;
-
-  resumenFinal.innerHTML = `
-    <strong>Resumen final de rendición</strong>
-    ABONOS: ${txtAb}<br>
-    GASTOS: ${txtGa}<br>
-    SALDO: ${txtSa}<br>
-    DESCUENTO (CLP): ${moneyCLP(calc.descuentoCLP || 0)}<br>
-    <strong>MONTO FINAL A PAGAR (CLP): ${moneyCLP(calc.saldoFinalCLP || 0)}</strong>
-  `;
-}
-
-/* ====================== GUARDADO EN FIRESTORE ====================== */
-
-async function guardarRendicion() {
-  const snap = state.currentSnap;
-  const g = state.currentGrupo;
-  if (!snap || !g) {
-    alert('Selecciona grupo y snapshot.');
-    return;
-  }
-
-  const desc = state.rendicion.descuento || { monto: 0, motivo: '' };
-  const descMonto = parseMonto(desc.monto || 0);
-  const descMotivo = (desc.motivo || '').trim();
-
-  if (descMonto > 0 && !descMotivo) {
-    alert('Debes indicar el MOTIVO del descuento.');
-    return;
-  }
-
-  const calc = calcResumenFinanzas();
-
-  const payload = {
-    rendicion: {
-      gastos: state.rendicion.gastos,
-      docsOk: state.rendicion.docsOk,
-      descuento: {
-        monto: descMonto,
-        motivo: descMotivo
-      },
-      resumen: {
-        totalesAbonos: calc.abonos,
-        totalesGastos: calc.gastos,
-        saldos: calc.saldos,
-        saldoFinalCLP: calc.saldoFinalCLP,
-        descuentoCLP: descMonto
-      },
-      updatedAt: Date.now(),
-      updatedBy: (state.user?.email || '').toLowerCase()
-    }
-  };
-
-  try {
-    const ref = doc(
-      db,
-      'grupos',
-      g.id || g.grupoId || snap.grupoId,
-      'finanzas_snapshots',
-      snap.id
-    );
-    await updateDoc(ref, payload);
-    alert('Rendición guardada correctamente.');
-  } catch (e) {
-    console.error('guardarRendicion', e);
-    alert('No se pudo guardar la rendición. Revisa la consola.');
-  }
-}
-
-/* ====================== IMPRESIÓN ====================== */
-
-function buildPrintHTML() {
-  const snap = state.currentSnap;
-  const g = state.currentGrupo;
-  if (!snap || !g) return '';
-
-  const calc = state.rendicion.calculado || calcResumenFinanzas();
-  const desc = state.rendicion.descuento || { monto: 0, motivo: '' };
-
-  const ab = calc.abonos || {};
-  const ga = calc.gastos || {};
-  const sa = calc.saldos || {};
-
-  const clpAb = ab['CLP'] || 0;
-  const clpGa = ga['CLP'] || 0;
-  const clpSa = sa['CLP'] || 0;
-
-  const coord =
-    g.coordinadorEmail ||
-    g.coordinador ||
-    g.coordEmail ||
-    g.responsable ||
-    '';
-  const destino = snap.destino || g.destino || '—';
-  const pax =
-    g.paxTotal || g.cantidadgrupo || g.pax || g.pax_total || '—';
-  const programa = g.programa || g.nombrePrograma || '—';
-
-  const fIni =
-    g.fechaInicio ||
-    g.fecha_inicio ||
-    g.fechas?.inicio ||
-    g.fechas?.desde ||
-    null;
-  const fFin =
-    g.fechaFin ||
-    g.fecha_fin ||
-    g.fechas?.fin ||
-    g.fechas?.hasta ||
-    null;
-  const rango =
-    fIni || fFin
-      ? `${fmtDmyFromAny(fIni)} — ${fmtDmyFromAny(fFin)}`
-      : '—';
-
-  const numero =
-    snap.numeroNegocio ||
-    g.numeroNegocio ||
-    g.numNegocio ||
-    g.idNegocio ||
-    g.id ||
-    '—';
-  const nombre = snap.nombreGrupo || g.nombreGrupo || g.aliasGrupo || '—';
-  const ident = snap.identificador || g.identificador || '';
-
-  const rowsG = Array.isArray(snap.gastosAprobados)
-    ? snap.gastosAprobados.filter((gx) => {
-        const id = gx.id || gx._id || '';
-        if (!id) return false;
-        const cfg = state.rendicion.gastos[id] || {};
-        return cfg.incluido !== false;
-      })
-    : [];
-
-  const cierre = snap.cierrePrevio || {};
-  const docsOk = state.rendicion.docsOk || {};
-
-  const descMonto = parseMonto(desc.monto || 0);
-  const descMotivo = (desc.motivo || '').trim();
-
-  const lineaTotal =
-    `TOTAL — CLP: ${clpGa.toLocaleString('es-CL')} · ` +
-    `USD: ${(ga['USD'] || 0).toLocaleString('es-CL')} · ` +
-    `BRL: ${(ga['BRL'] || 0).toLocaleString('es-CL')} · ` +
-    `ARS: ${(ga['ARS'] || 0).toLocaleString('es-CL')}`;
-
-  const transfTxt = cierre.transfer
-    ? (docsOk.transfer ? 'REVISADA' : 'PENDIENTE')
-    : 'NO HIZO';
-
-  const bolTxt = cierre.boleta
-    ? (docsOk.boleta ? 'REVISADA' : 'PENDIENTE')
-    : 'NO APLICA';
-
-  const descLinea =
-    descMonto > 0
-      ? `DESCUENTO (CLP): ${descMonto.toLocaleString(
-          'es-CL'
-        )} — MOTIVO: ${descMotivo || '(sin detalle)'}`
-      : 'DESCUENTO (CLP): 0';
-
-  const htmlRows = rowsG
-    .map((gx) => {
-      const id = gx.id || gx._id || '';
-      const cfg = state.rendicion.gastos[id] || {};
-      const mon = String(gx.moneda || 'CLP').toUpperCase();
-      const val =
-        typeof cfg.montoAprobado === 'number' && isFinite(cfg.montoAprobado)
-          ? cfg.montoAprobado
-          : Number(gx.valor || 0) || 0;
-      const actividad = gx.actividad || gx.asunto || '';
-      const compUrl =
-        gx.comprobanteUrl ||
-        gx.urlComprobante ||
-        gx.fileUrl ||
-        gx.url ||
-        '';
-
-      const compTxt = compUrl ? 'VER' : '';
-      return `
-        <tr>
-          <td>${actividad || '(sin descripción)'}</td>
-          <td>${(coord || '—').toString().toUpperCase()}</td>
-          <td>${mon}</td>
-          <td class="mono" style="text-align:right;">${val.toLocaleString(
-            'es-CL'
-          )}</td>
-          <td>${compTxt}</td>
-        </tr>
-      `;
-    })
-    .join('');
-
-  return `
-    <div class="print-doc">
-      <h1>GASTOS DEL GRUPO</h1>
-      <table style="margin-bottom:8px;">
-        <tr>
-          <td style="width:50%; vertical-align:top;">
-            <div><strong>COORDINADOR(A)</strong><br>${(coord ||
-              '—')
-              .toString()
-              .toUpperCase()}</div>
-            <div style="margin-top:4px;"><strong>DESTINO</strong><br>${destino}</div>
-            <div style="margin-top:4px;"><strong>PAX TOTAL</strong><br>${pax}</div>
-            <div style="margin-top:4px;"><strong>PROGRAMA</strong><br>${programa}</div>
-            <div style="margin-top:4px;"><strong>FECHAS</strong><br>${rango}</div>
-          </td>
-          <td style="width:50%; vertical-align:top;">
-            <div><strong>${nombre}</strong></div>
-            <div style="margin-top:4px;">CÓDIGO: (${numero}${
-    ident ? ' - ' + ident : ''
-  })</div>
-          </td>
-        </tr>
-      </table>
-
-      <h2>RESUMEN FINANZAS</h2>
-      <table class="tbl-resumen" style="margin-bottom:10px;">
-        <tr style="background:#f2f2f2;">
-          <td style="width:80px;"><strong>ABONOS</strong></td>
-          <td>CLP ${clpAb.toLocaleString('es-CL')} · USD ${(ab['USD'] ||
-            0).toLocaleString('es-CL')} · BRL ${(ab['BRL'] ||
-    0).toLocaleString('es-CL')} · ARS ${(ab['ARS'] ||
-    0).toLocaleString('es-CL')}</td>
-        </tr>
-        <tr style="background:#f7f7f7;">
-          <td><strong>GASTOS</strong></td>
-          <td>CLP ${clpGa.toLocaleString('es-CL')} · USD ${(ga['USD'] ||
-            0).toLocaleString('es-CL')} · BRL ${(ga['BRL'] ||
-    0).toLocaleString('es-CL')} · ARS ${(ga['ARS'] ||
-    0).toLocaleString('es-CL')}</td>
-        </tr>
-        <tr style="background:#fffcc0;">
-          <td><strong>SALDO</strong></td>
-          <td>CLP ${clpSa.toLocaleString('es-CL')} · USD ${(sa['USD'] ||
-            0).toLocaleString('es-CL')} · BRL ${(sa['BRL'] ||
-    0).toLocaleString('es-CL')} · ARS ${(sa['ARS'] ||
-    0).toLocaleString('es-CL')}</td>
-        </tr>
-      </table>
-
-      <h2>DETALLE DE GASTOS</h2>
-      <table class="tbl-detalle" style="margin-bottom:6px;">
-        <thead>
-          <tr>
-            <th>ASUNTO</th>
-            <th>AUTOR</th>
-            <th>MONEDA</th>
-            <th style="text-align:right;">VALOR</th>
-            <th>COMPROBANTE</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${htmlRows || '<tr><td colspan="5">(sin gastos)</td></tr>'}
-        </tbody>
-      </table>
-
-      <div style="margin-top:4px;">${lineaTotal}</div>
-      <div style="margin-top:8px;">TRANSFERENCIA: ${transfTxt}</div>
-      <div>BOLETA: ${bolTxt}</div>
-      <div style="margin-top:8px;">${descLinea}</div>
-      <div style="margin-top:4px;"><strong>MONTO FINAL A PAGAR (CLP): ${calc.saldoFinalCLP.toLocaleString(
-        'es-CL'
-      )}</strong></div>
-    </div>
-  `;
-}
-
-function imprimirRendicion() {
-  const block = document.getElementById('print-block');
-  if (!state.currentSnap || !state.currentGrupo) {
-    alert('Selecciona grupo y snapshot antes de imprimir.');
-    return;
-  }
-  block.innerHTML = buildPrintHTML();
-  window.print();
-}
-
-/* ====================== UI / WIRING ====================== */
-
-function wireUI() {
-  const btnRef = document.getElementById('btnRefrescar');
-  const btnCargar = document.getElementById('btnCargar');
-  const snapSel = document.getElementById('snapshotSelect');
-  const btnGuardar = document.getElementById('btnGuardarRendicion');
-  const btnPrint = document.getElementById('btnImprimirRendicion');
-
-  btnRef.onclick = async () => {
-    try {
-      document.getElementById('estadoCarga').textContent =
-        'Cargando grupos…';
-      await loadGruposIndex();
-    } catch (e) {
-      console.error(e);
-      alert('No se pudieron cargar los grupos.');
-    }
-  };
-
-  btnCargar.onclick = async () => {
-    const gid = (document.getElementById('grupoInput').value || '').trim();
-    if (!gid) {
-      alert('Selecciona un grupo desde la lista.');
-      return;
-    }
-
-    try {
-      document.getElementById('estadoCarga').textContent =
-        'Cargando grupo y snapshots…';
-      await loadGrupo(gid);
-      state.snapshots = await listarSnapshotsFinanzas(gid);
-      if (!state.snapshots.length) {
-        document.getElementById('estadoCarga').textContent =
-          'Este grupo aún no tiene snapshots de finanzas.';
-        snapSel.innerHTML =
-          '<option value="">(sin snapshots)</option>';
-        state.currentSnap = null;
-        renderInfoGrupo();
-        renderDocs();
-        renderDescuento();
-        renderGastosTable();
-        return;
-      }
-
-      snapSel.innerHTML = '';
-      state.snapshots.forEach((s, idx) => {
-        const opt = document.createElement('option');
-        const fechaTxt = s.createdAt
-          ? fmtDmyFromAny(s.createdAt)
-          : '(sin fecha)';
-        opt.value = s.id;
-        opt.textContent = `${fechaTxt} · ${s.motivo || 'snapshot'}`;
-        if (idx === 0) opt.selected = true;
-        snapSel.appendChild(opt);
+      btn.onclick = doSave;
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doSave();
       });
 
-      state.currentSnap = state.snapshots[0];
-      initRendicionFromSnapshot();
-      renderInfoGrupo();
-      renderDocs();
-      renderDescuento();
-      renderGastosTable();
+      wrap.append(btn, inp);
+      tdMontoAprob.appendChild(wrap);
+      tdChk.appendChild(chk);
 
-      document.getElementById('estadoCarga').textContent =
-        `Snapshots cargados: ${state.snapshots.length} (mostrando el último)`;
-    } catch (e) {
-      console.error(e);
-      alert('Error al cargar grupo/snapshots.');
-    }
-  };
+      tr.append(tdFecha, tdAsunto, tdAutor, tdMon, tdMonto, tdMontoAprob, tdChk);
+      frag.appendChild(tr);
+    });
+    tbody.appendChild(frag);
+  }
 
-  snapSel.onchange = () => {
-    const id = snapSel.value;
-    if (!id) return;
-    const snap = state.snapshots.find((s) => s.id === id);
-    if (!snap) return;
-    state.currentSnap = snap;
-    initRendicionFromSnapshot();
-    renderInfoGrupo();
-    renderDocs();
-    renderDescuento();
-    renderGastosTable();
-  };
-
-  btnGuardar.onclick = () => {
-    guardarRendicion();
-  };
-  btnPrint.onclick = () => {
-    imprimirRendicion();
-  };
+  if (resumenEl) {
+    resumenEl.textContent = `Mostrando ${rows.length} gastos.`;
+  }
 }
 
-/* ====================== ARRANQUE ====================== */
+/* ====================== RESUMEN + PRINT ====================== */
+function renderResumenFinanzas() {
+  const gid   = state.filtros.grupo || '';
+  const gInfo = gid ? state.caches.grupos.get(gid) : null;
 
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    location.href = 'login.html';
-    return;
+  if (gInfo) {
+    const elGrupo   = document.getElementById('infoGrupo');
+    const elCoord   = document.getElementById('infoCoord');
+    const elDestino = document.getElementById('infoDestino');
+    const elPax     = document.getElementById('infoPax');
+    const elProg    = document.getElementById('infoPrograma');
+    const elFechas  = document.getElementById('infoFechas');
+
+    if (elGrupo)   elGrupo.textContent   = `${gInfo.numero} — ${gInfo.nombre}`;
+    if (elCoord)   elCoord.textContent   = gInfo.coordEmail || '—';
+    if (elDestino) elDestino.textContent = gInfo.destino || '—';
+    if (elPax)     elPax.textContent     = gInfo.paxTotal ? `${gInfo.paxTotal}` : '—';
+    if (elProg)    elProg.textContent    = gInfo.programa || '—';
+    if (elFechas)  elFechas.textContent  = gInfo.fechas || '—';
   }
-  state.user = user;
-  try {
-    document.getElementById('userEmail').textContent =
-      user.email || '';
-  } catch (_) {}
 
-  // Logout
+  const totalGastos = state.gastos
+    .reduce((s,it)=> s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto), 0);
+  const totalAbonos = state.abonos
+    .reduce((s,it)=> s + (Number(it.monto) || 0), 0);
+
+  const saldo     = totalAbonos - totalGastos;
+  const descMonto = state.descuento.monto || 0;
+  const saldoNeto = saldo - descMonto;
+
+  const elAbonos    = document.getElementById('sumAbonos');
+  const elGastos    = document.getElementById('sumGastos');
+  const elSaldo     = document.getElementById('sumSaldo');
+  const elSaldoNeto = document.getElementById('sumSaldoNeto');
+
+  if (elAbonos)    elAbonos.textContent    = moneyCLP(totalAbonos);
+  if (elGastos)    elGastos.textContent    = moneyCLP(totalGastos);
+  if (elSaldo)     elSaldo.textContent     = moneyCLP(saldo);
+  if (elSaldoNeto) elSaldoNeto.textContent = moneyCLP(saldoNeto);
+
+  const inDescMonto  = document.getElementById('descuentoMonto');
+  const inDescAsunto = document.getElementById('descuentoAsunto');
+  if (inDescMonto)  inDescMonto.value  = state.descuento.monto || 0;
+  if (inDescAsunto) inDescAsunto.value = state.descuento.asunto || '';
+
+  // links docs
+  if (gInfo) {
+    const boletaUrl = gInfo.urls?.boleta || '';
+    const compUrl   = gInfo.urls?.comprobante || '';
+    const transfUrl = gInfo.urls?.transferenciaCoord || '';
+
+    const linkBoleta = document.getElementById('linkBoleta');
+    const linkComp   = document.getElementById('linkComprobante');
+    const linkTransf = document.getElementById('linkTransferencia');
+
+    if (linkBoleta) {
+      if (boletaUrl) { linkBoleta.href = boletaUrl; linkBoleta.textContent = 'VER'; }
+      else { linkBoleta.href = '#'; linkBoleta.textContent = '—'; }
+    }
+    if (linkComp) {
+      if (compUrl) { linkComp.href = compUrl; linkComp.textContent = 'VER'; }
+      else { linkComp.href = '#'; linkComp.textContent = '—'; }
+    }
+    if (linkTransf) {
+      if (transfUrl) { linkTransf.href = transfUrl; linkTransf.textContent = 'VER'; }
+      else { linkTransf.href = '#'; linkTransf.textContent = '—'; }
+    }
+  }
+
+  // checkboxes docs desde summary
+  if (state.summary && state.summary.docsOk) {
+    const chkB = document.getElementById('chkBoletaOk');
+    const chkC = document.getElementById('chkComprobanteOk');
+    const chkT = document.getElementById('chkTransferenciaOk');
+    if (chkB) chkB.checked = !!state.summary.docsOk.boleta;
+    if (chkC) chkC.checked = !!state.summary.docsOk.comprobante;
+    if (chkT) chkT.checked = !!state.summary.docsOk.transferencia;
+  }
+
+  renderPrintSheet();
+}
+
+function renderPrintSheet() {
+  const gid   = state.filtros.grupo || '';
+  const gInfo = gid ? state.caches.grupos.get(gid) : null;
+  const print = document.getElementById('printSheet');
+  if (!print || !gInfo) return;
+
+  const totalGastos = state.gastos
+    .reduce((s,it)=> s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto), 0);
+  const totalAbonos = state.abonos
+    .reduce((s,it)=> s + (Number(it.monto) || 0), 0);
+
+  const saldo     = totalAbonos - totalGastos;
+  const desc      = state.descuento.monto || 0;
+  const saldoNeto = saldo - desc;
+
+  const lines = [];
+
+  lines.push(`GASTOS DEL GRUPO`.padEnd(40) + `${gInfo.nombre} (${gInfo.numero})`);
+  lines.push('');
+  lines.push(`COORDINADOR(A): ${gInfo.coordEmail || ''}`);
+  lines.push(`DESTINO:        ${gInfo.destino || ''}`);
+  lines.push(`PAX TOTAL:      ${gInfo.paxTotal || ''}`);
+  lines.push(`PROGRAMA:       ${gInfo.programa || ''}`);
+  lines.push(`FECHAS:         ${gInfo.fechas || ''}`);
+  lines.push('');
+  lines.push('RESUMEN FINANZAS');
+  lines.push(`  ABONOS: ${moneyCLP(totalAbonos)}`);
+  lines.push(`  GASTOS: ${moneyCLP(totalGastos)}`);
+  lines.push(`  SALDO:  ${moneyCLP(saldo)}`);
+  if (desc) {
+    lines.push(`  DESCTO: ${moneyCLP(desc)} — ${state.descuento.asunto || ''}`);
+    lines.push(`  NETO:   ${moneyCLP(saldoNeto)}`);
+  }
+  lines.push('');
+  lines.push('DETALLE DE GASTOS:');
+  state.gastos
+    .slice()
+    .sort((a,b)=> (a.fechaMs||0)-(b.fechaMs||0))
+    .forEach(it => {
+      const fecha = it.fechaTxt || '--';
+      const monto = moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP');
+      lines.push(`  ${fecha}  ${monto}  ${it.asunto || ''}`);
+    });
+
+  print.textContent = lines.join('\n');
+}
+
+/* ====================== WIRING UI ====================== */
+function wireUI() {
+  // logout (viene del encabezado)
   try {
-    document
-      .getElementById('btn-logout')
+    document.querySelector('#btn-logout')
       ?.addEventListener('click', () =>
-        signOut(auth).then(() => (location.href = 'login.html'))
-      );
+        signOut(auth).then(()=> location.href='login.html'));
   } catch (_) {}
 
-  try {
-    document.getElementById('estadoCarga').textContent =
-      'Cargando grupos…';
-    await loadGruposIndex();
-  } catch (e) {
-    console.error(e);
-    document.getElementById('estadoCarga').textContent =
-      'No se pudieron cargar los grupos.';
-  }
+  // coord ⇒ limita grupos
+  const inputCoord = document.getElementById('filtroCoord');
+  if (inputCoord) {
+    inputCoord.addEventListener('input', (e) => {
+      const val = (e.target.value || '').toLowerCase().trim();
+      state.filtros.coord = val;
 
-  wireUI();
-  renderInfoGrupo();
-  renderDocs();
-  renderDescuento();
-  renderGastosTable();
-});
+      const dlG = document.getElementById('dl-grupos');
+      if (!dlG) return;
+      dlG.inne
