@@ -8,264 +8,275 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-<style>
-  :root{
-    /* Base: fondo blanco */
-    --bg:#ffffff;
-    --card:#ffffff;
-    --ink:#0f172a;          /* texto principal */
-    --muted:#6b7280;        /* texto secundario */
-    --line:#d1d5db;         /* bordes suaves */
-
-    /* Acentos AZULES (monocromático) */
-    --accent:#0056a4;       /* azul fuerte (títulos / énfasis) */
-    --accent-soft:rgba(37,99,235,.06);      /* azul muy suave */
-    --accent-soft-strong:rgba(37,99,235,.14); /* azul un poco más fuerte */
-
-    --pill-bg:#f3f4f6;
-    --fade:.25s;
-    --col-min:400px;
-  }
-
-  *{ box-sizing:border-box; }
-
-  body.envivo{
-    background:var(--bg);
-    color:var(--ink);
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-  }
-
-  /* Header (ocultable) */
-  .envivo header.hideable-ui{
-    display:flex; align-items:center; gap:.75rem;
-    padding:.6rem 1rem;
-    border-bottom:1px solid #e5e7eb;
-    position:sticky; top:0;
-    background:#ffffff;
-    z-index:10;
-  }
-  .envivo header img{ height:34px; width:auto; }
-  .envivo header h1{
-    font-size:1.1rem; margin:0;
-    font-weight:700; color:var(--accent);
-  }
-
-  .envivo .toolbar{
-    margin-left:auto; display:flex; align-items:center;
-    gap:.5rem; flex-wrap:wrap;
-  }
-  .envivo .toolbar label{
-    font-size:.8rem; color:var(--muted);
-  }
-  .envivo .toolbar select,
-  .envivo .toolbar input,
-  .envivo .toolbar button{
-    background:#ffffff;
-    color:var(--ink);
-    border:1px solid var(--line);
-    padding:.45rem .6rem;
-    border-radius:.6rem;
-    font-size:.9rem;
-  }
-  .envivo .toolbar select:focus,
-  .envivo .toolbar input:focus,
-  .envivo .toolbar button:focus{
-    outline:none;
-    border-color:var(--accent);
-    box-shadow:0 0 0 2px rgba(37,99,235,.25);
-  }
-  .envivo .toolbar input[type="range"]{ width:120px; }
-  .envivo .toolbar button{
-    cursor:pointer;
-    background:var(--accent-soft);
-  }
-  .envivo .toolbar button:hover{
-    background:var(--accent-soft-strong);
-  }
-  .envivo .toolbar .multi{
-    min-width:260px; max-width:380px; height:8.5rem;
-  }
-
-  .envivo .content{
-    padding:1rem; display:grid; gap:1rem;
-  }
-
-  .envivo .pill{
-    font-size:.75rem;
-    color:var(--muted);
-    padding:.15rem .5rem;
-    border:1px solid var(--line);
-    border-radius:999px;
-    background:var(--pill-bg);
-  }
-
-  /* Bloques por destino */
-  .envivo .destino-bloque{
-    border:1px solid var(--line);
-    border-radius:14px;
-    background:#ffffff;             /* sin degradé */
-    opacity:1;
-    transition:opacity var(--fade) ease;
-  }
-  .envivo .destino-bloque.fade-out{ opacity:.08; }
-  .envivo .destino-bloque.is-hidden{ display:none; }
-
-  .envivo .destino-hd{
-    padding:.85rem 1rem;
-    border-bottom:1px solid var(--line);
-    display:flex; align-items:center; gap:.6rem;
-    background:var(--accent-soft);         /* franja azul suave */
-  }
-  .envivo .destino-hd h2{
-    margin:0; font-size:1rem; font-weight:700;
-    letter-spacing:.2px; color:var(--accent);
-  }
-
-  /* grilla de tarjetas */
-  .envivo .grupo-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(var(--col-min), 1fr)) !important;
-    gap:1rem; padding:1rem;
-  }
-
-  /* Tarjeta grupo */
-  .envivo .group-card{
-    background:var(--card);
-    border:1px solid var(--line);
-    border-radius:16px;
-    padding:1rem;
-    display:grid; gap:.65rem;
-    box-shadow:0 4px 12px rgba(15,23,42,.05);
-  }
-  .envivo .group-card h3{
-    margin:0;
-    font-size:1rem;
-    line-height:1.15;
-    font-weight:800;
-    letter-spacing:.3px;
-    text-transform:uppercase;
-    color:var(--accent);            /* azul fuerte en negrita */
-  }
-  .envivo .sub{
-    font-size:.82rem;
-    color:var(--muted);
-    line-height:1.25;
-  }
-
-  /* Triptych (Antes/Ahora/Después) */
-  .envivo .stage{ display:grid; gap:.35rem; }
-  .envivo .stage-hd{
-    font-size:.78rem;
-    color:var(--muted);
-    text-transform:uppercase;
-    letter-spacing:.04em;
-  }
-
-  .envivo .stage-box{
-    border:1px dashed var(--line);
-    border-radius:12px;
-    padding:.6rem .7rem;
-    min-height:54px;
-    display:grid;
-    align-content:center;
-    justify-items:center;
-    text-align:center;
-    background:var(--accent-soft);   /* azul muy suave */
-  }
-  .envivo .stage-box .title{
-    font-weight:800;
-    font-size:.95rem;
-    letter-spacing:.2px;
-    text-transform:uppercase;
-    color:var(--ink);
-  }
-  .envivo .stage-box .time{
-    font-size:.78rem;
-    color:var(--muted);
-    margin-top:.15rem;
-  }
-
-  /* "Ahora" = azul más marcado, sin cambiar tipografía */
-  .envivo .stage-now{
-    border-style:solid;
-    border-color:var(--accent);
-    background:var(--accent-soft-strong);
-    box-shadow:0 0 0 2px rgba(37,99,235,.25);
-  }
-  .envivo .stage-now .title{
-    color:var(--accent);    /* azul intenso, negrita */
-    font-size:1.05rem;
-  }
-  .envivo .stage-now .time{
-    color:var(--ink);
-  }
-
-  /* Día completo (vista FULL_DAY) */
-  .envivo .day-list{ display:grid; gap:.5rem; }
-
-  .envivo .act-item{
-    border:1px dashed var(--line);
-    border-radius:10px;
-    padding:.5rem .7rem;
-    display:flex;
-    justify-content:space-between;
-    gap:.8rem;
-    align-items:baseline;
-    background:var(--accent-soft);        /* azul suave */
-  }
-  .envivo .act-item .name{
-    font-weight:800;
-    text-transform:uppercase;
-    font-size:.95rem;
-    color:var(--ink);
-  }
-  .envivo .act-item .time{
-    font-size:.8rem;
-    color:var(--muted);
-    white-space:nowrap;
-  }
-
-  .envivo .act-item.is-now{
-    border-color:var(--accent);
-    background:var(--accent-soft-strong); /* misma lógica que "Ahora" */
-  }
-  .envivo .act-item.is-past{
-    opacity:.5;
-  }
-
-  /* Modo monitor: oculta header + HUD */
-  body.envivo.monitor .hideable-ui{
-    display:none !important;
-  }
-
-  .envivo .hud{
-    position:fixed;
-    right:12px; bottom:10px;
-    background:#ffffff;
-    border:1px solid var(--line);
-    border-radius:999px;
-    padding:.25rem .6rem;
-    font-size:.78rem;
-    color:var(--muted);
-    z-index:9999;
-    cursor:pointer;
-    box-shadow:0 4px 10px rgba(15,23,42,.06);
-  }
-  body.envivo:not(.monitor) .hud{
-    display:none;
-  }
-
-  @media print{
-    .envivo .hideable-ui{ display:none !important; }
-    body.envivo{ background:#fff; color:#000; }
-    .envivo .group-card,
-    .envivo .destino-bloque{
-      background:#fff;
-      border:1px solid #ccc;
-      box-shadow:none;
+  <style>
+    :root{
+      /* Base: fondo blanco */
+      --bg:#ffffff;
+      --card:#ffffff;
+      --ink:#222222;          /* texto principal */
+      --muted:#666666;        /* texto secundario */
+      --line:#e5e7eb;         /* bordes suaves */
+  
+      /* Paleta inspirada en la imagen */
+      --red:#e53935;          /* rojo polera */
+      --green:#00b894;        /* verde brillante */
+      --yellow:#ffd54f;       /* amarillo */
+      --orange:#ffb300;       /* naranjo */
+      --brown:#bf855a;        /* café piel/camisa */
+  
+      /* Usos principales */
+      --accent:var(--red);                   /* títulos importantes */
+      --soft-red:rgba(229,57,53,.10);
+      --soft-green:rgba(0,184,148,.12);
+      --soft-yellow:rgba(255,213,79,.18);
+      --soft-orange:rgba(255,179,0,.20);
+      --soft-brown:rgba(191,133,90,.08);
+  
+      --pill-bg:#f9fafb;
+      --fade:.25s;
+      --col-min:400px;
     }
-  }
-</style>
+  
+    *{ box-sizing:border-box; }
+  
+    body.envivo{
+      background:var(--bg);
+      color:var(--ink);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    }
+  
+    /* Header (ocultable) */
+    .envivo header.hideable-ui{
+      display:flex; align-items:center; gap:.75rem;
+      padding:.6rem 1rem;
+      border-bottom:1px solid #e5e7eb;
+      position:sticky; top:0;
+      background:#ffffff;
+      z-index:10;
+    }
+    .envivo header img{ height:34px; width:auto; }
+    .envivo header h1{
+      font-size:1.1rem; margin:0;
+      font-weight:700; color:var(--accent);
+    }
+  
+    .envivo .toolbar{
+      margin-left:auto; display:flex; align-items:center;
+      gap:.5rem; flex-wrap:wrap;
+    }
+    .envivo .toolbar label{
+      font-size:.8rem; color:var(--muted);
+    }
+    .envivo .toolbar select,
+    .envivo .toolbar input,
+    .envivo .toolbar button{
+      background:#ffffff;
+      color:var(--ink);
+      border:1px solid var(--line);
+      padding:.45rem .6rem;
+      border-radius:.6rem;
+      font-size:.9rem;
+    }
+    .envivo .toolbar select:focus,
+    .envivo .toolbar input:focus,
+    .envivo .toolbar button:focus{
+      outline:none;
+      border-color:var(--green);
+      box-shadow:0 0 0 2px rgba(0,184,148,.25);
+    }
+    .envivo .toolbar input[type="range"]{ width:120px; }
+    .envivo .toolbar button{
+      cursor:pointer;
+      background:var(--soft-green);
+    }
+    .envivo .toolbar button:hover{
+      background:rgba(0,184,148,.20);
+    }
+    .envivo .toolbar .multi{
+      min-width:260px; max-width:380px; height:8.5rem;
+    }
+  
+    .envivo .content{
+      padding:1rem; display:grid; gap:1rem;
+    }
+  
+    .envivo .pill{
+      font-size:.75rem;
+      color:var(--muted);
+      padding:.15rem .5rem;
+      border:1px solid var(--line);
+      border-radius:999px;
+      background:var(--pill-bg);
+    }
+  
+    /* Bloques por destino */
+    .envivo .destino-bloque{
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:#ffffff;      /* sin degradé */
+      opacity:1;
+      transition:opacity var(--fade) ease;
+    }
+    .envivo .destino-bloque.fade-out{ opacity:.08; }
+    .envivo .destino-bloque.is-hidden{ display:none; }
+  
+    .envivo .destino-hd{
+      padding:.85rem 1rem;
+      border-bottom:1px solid var(--line);
+      display:flex; align-items:center; gap:.6rem;
+      background:var(--soft-yellow);        /* franja amarillo suave */
+    }
+    .envivo .destino-hd h2{
+      margin:0; font-size:1rem; font-weight:700;
+      letter-spacing:.2px; color:var(--accent);
+    }
+  
+    /* grilla de tarjetas */
+    .envivo .grupo-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(var(--col-min), 1fr)) !important;
+      gap:1rem; padding:1rem;
+    }
+  
+    /* Tarjeta grupo */
+    .envivo .group-card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:1rem;
+      display:grid; gap:.65rem;
+      box-shadow:0 4px 12px rgba(15,23,42,.05);
+    }
+    .envivo .group-card h3{
+      margin:0;
+      font-size:1rem;
+      line-height:1.15;
+      font-weight:800;
+      letter-spacing:.3px;
+      text-transform:uppercase;
+      color:var(--accent);          /* rojo fuerte, en negrita */
+    }
+    .envivo .sub{
+      font-size:.82rem;
+      color:var(--muted);
+      line-height:1.25;
+    }
+  
+    /* Triptych (Antes/Ahora/Después) */
+    .envivo .stage{ display:grid; gap:.35rem; }
+    .envivo .stage-hd{
+      font-size:.78rem;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+  
+    .envivo .stage-box{
+      border:1px dashed var(--line);
+      border-radius:12px;
+      padding:.6rem .7rem;
+      min-height:54px;
+      display:grid;
+      align-content:center;
+      justify-items:center;
+      text-align:center;
+      background:var(--soft-brown);        /* beige muy suave */
+    }
+    .envivo .stage-box .title{
+      font-weight:800;
+      font-size:.95rem;
+      letter-spacing:.2px;
+      text-transform:uppercase;
+      color:var(--ink);
+    }
+    .envivo .stage-box .time{
+      font-size:.78rem;
+      color:var(--muted);
+      margin-top:.15rem;
+    }
+  
+    /* "Ahora": naranjo/amarillo más protagonista */
+    .envivo .stage-now{
+      border-style:solid;
+      border-color:var(--orange);
+      background:var(--soft-orange);
+      box-shadow:0 0 0 2px rgba(255,179,0,.25);
+    }
+    .envivo .stage-now .title{
+      color:var(--accent);    /* rojo fuerte */
+      font-size:1.05rem;
+    }
+    .envivo .stage-now .time{
+      color:#8a4b00;
+    }
+  
+    /* Día completo (vista FULL_DAY) */
+    .envivo .day-list{ display:grid; gap:.5rem; }
+  
+    .envivo .act-item{
+      border:1px dashed var(--line);
+      border-radius:10px;
+      padding:.5rem .7rem;
+      display:flex;
+      justify-content:space-between;
+      gap:.8rem;
+      align-items:baseline;
+      background:var(--soft-green);        /* verde suave para actividades */
+    }
+    .envivo .act-item .name{
+      font-weight:800;
+      text-transform:uppercase;
+      font-size:.95rem;
+      color:var(--ink);
+    }
+    .envivo .act-item .time{
+      font-size:.8rem;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+  
+    .envivo .act-item.is-now{
+      border-color:var(--orange);
+      background:var(--soft-yellow);       /* destaca el bloque actual */
+    }
+    .envivo .act-item.is-past{
+      opacity:.55;
+    }
+  
+    /* Modo monitor: oculta header + HUD */
+    body.envivo.monitor .hideable-ui{
+      display:none !important;
+    }
+  
+    .envivo .hud{
+      position:fixed;
+      right:12px; bottom:10px;
+      background:#ffffff;
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:.25rem .6rem;
+      font-size:.78rem;
+      color:var(--muted);
+      z-index:9999;
+      cursor:pointer;
+      box-shadow:0 4px 10px rgba(15,23,42,.06);
+    }
+    body.envivo:not(.monitor) .hud{
+      display:none;
+    }
+  
+    @media print{
+      .envivo .hideable-ui{ display:none !important; }
+      body.envivo{ background:#fff; color:#000; }
+      .envivo .group-card,
+      .envivo .destino-bloque{
+        background:#fff;
+        border:1px solid #ccc;
+        box-shadow:none;
+      }
+    }
+  </style>
+
 
 
 
