@@ -1,8 +1,4 @@
 // En vivo — dónde están los grupos (solo lectura, sin auth)
-// - Cards DOBLES de ancho (grilla usa --col-min: 560px)
-// - Vista TRIPTYCH / FULL_DAY, multiselect para ocultar actividades
-// - Monitor (ocultar panel), HUD, atajos M/F, carrusel/scroll en loop
-// - Coordinador(a), simulación ?now=, auto-refresh 30min
 
 import { app, db } from './firebase-core.js';
 import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
