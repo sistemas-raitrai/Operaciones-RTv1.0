@@ -803,7 +803,7 @@ function renderResumenFinanzas() {
     if (elGrupo)   elGrupo.textContent   = `${gInfo.numero} — ${gInfo.nombre}`;
     if (elCoord)   elCoord.textContent   = gInfo.coordEmail || '—';
     if (elDestino) elDestino.textContent = gInfo.destino || '—';
-    if (elPax)     elPax.textContent     = gInfo.paxTotal ? `${gInfo.paxTotal}` : '—';
+    if (elPax)     elPax.textContent     = gInfo.cantidadGrupo ? `${gInfo.cantidadGrupo}` : '—';
     if (elProg)    elProg.textContent    = gInfo.programa || '—';
     if (elFechas)  elFechas.textContent  = gInfo.fechas || '—';
   }
@@ -961,7 +961,7 @@ function renderPrintActa() {
       <section class="acta-meta">
         <div><span>Coordinador(a)</span><strong>${escapeHtml(gInfo.coordEmail || '—')}</strong></div>
         <div><span>Destino</span><strong>${escapeHtml(gInfo.destino || '—')}</strong></div>
-        <div><span>Pax total</span><strong>${gInfo.paxTotal || '—'}</strong></div>
+        <div><span>Pax total</span><strong>${gInfo.cantidadGrupo || '—'}</strong></div>
         <div><span>Programa</span><strong>${escapeHtml(gInfo.programa || '—')}</strong></div>
         <div><span>Fechas</span><strong>${escapeHtml(gInfo.fechas || '—')}</strong></div>
       </section>
@@ -1016,11 +1016,11 @@ function renderPrintActa() {
 
       <section class="acta-section acta-firmas">
         <div>
-          <span>Firma coordinador(a)</span>
+          <span>Firma Operaciones</span>
           <div class="firm-line"></div>
         </div>
         <div>
-          <span>Firma Rai Trai</span>
+          <span>Firma Contabilidad</span>
           <div class="firm-line"></div>
         </div>
       </section>
