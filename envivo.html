@@ -13,22 +13,16 @@
     /* Base: fondo blanco */
     --bg:#ffffff;
     --card:#ffffff;
-    --ink:#152032;          /* texto principal */
+    --ink:#0f172a;          /* texto principal */
     --muted:#6b7280;        /* texto secundario */
-    --line:#e5e7eb;         /* bordes suaves */
+    --line:#d1d5db;         /* bordes suaves */
 
-    /* Acentos cálidos y verdes (sin degradé) */
-    --yellow:#facc15;       /* amarillo */
-    --orange:#fb923c;       /* naranjo */
-    --green:#22c55e;        /* verde */
+    /* Acentos AZULES (monocromático) */
+    --accent:#0056a4;       /* azul fuerte (títulos / énfasis) */
+    --accent-soft:rgba(37,99,235,.06);      /* azul muy suave */
+    --accent-soft-strong:rgba(37,99,235,.14); /* azul un poco más fuerte */
 
-    /* Usos */
-    --accent:var(--orange);           /* títulos y botones principales */
-    --bg-soft-yellow:rgba(250,204,21,.12);
-    --bg-soft-orange:rgba(251,146,60,.12);
-    --bg-soft-green:rgba(34,197,94,.08);
-    --pill-bg:#f9fafb;
-
+    --pill-bg:#f3f4f6;
     --fade:.25s;
     --col-min:400px;
   }
@@ -78,15 +72,15 @@
   .envivo .toolbar button:focus{
     outline:none;
     border-color:var(--accent);
-    box-shadow:0 0 0 2px rgba(251,146,60,.25);
+    box-shadow:0 0 0 2px rgba(37,99,235,.25);
   }
   .envivo .toolbar input[type="range"]{ width:120px; }
   .envivo .toolbar button{
     cursor:pointer;
-    background:var(--bg-soft-orange);
+    background:var(--accent-soft);
   }
   .envivo .toolbar button:hover{
-    background:rgba(251,146,60,.2);
+    background:var(--accent-soft-strong);
   }
   .envivo .toolbar .multi{
     min-width:260px; max-width:380px; height:8.5rem;
@@ -120,7 +114,7 @@
     padding:.85rem 1rem;
     border-bottom:1px solid var(--line);
     display:flex; align-items:center; gap:.6rem;
-    background:var(--bg-soft-yellow);  /* franja amarilla suave */
+    background:var(--accent-soft);         /* franja azul suave */
   }
   .envivo .destino-hd h2{
     margin:0; font-size:1rem; font-weight:700;
@@ -150,7 +144,7 @@
     font-weight:800;
     letter-spacing:.3px;
     text-transform:uppercase;
-    color:var(--accent);
+    color:var(--accent);            /* azul fuerte en negrita */
   }
   .envivo .sub{
     font-size:.82rem;
@@ -176,7 +170,7 @@
     align-content:center;
     justify-items:center;
     text-align:center;
-    background:rgba(148,163,184,.08);   /* gris muy suave, sin degradé */
+    background:var(--accent-soft);   /* azul muy suave */
   }
   .envivo .stage-box .title{
     font-weight:800;
@@ -191,19 +185,19 @@
     margin-top:.15rem;
   }
 
-  /* "Ahora" = naranjo/amarillo */
+  /* "Ahora" = azul más marcado, sin cambiar tipografía */
   .envivo .stage-now{
     border-style:solid;
-    border-color:var(--orange);
-    background:var(--bg-soft-yellow);
-    box-shadow:0 0 0 2px rgba(251,146,60,.25);
+    border-color:var(--accent);
+    background:var(--accent-soft-strong);
+    box-shadow:0 0 0 2px rgba(37,99,235,.25);
   }
   .envivo .stage-now .title{
-    color:#92400e;
+    color:var(--accent);    /* azul intenso, negrita */
     font-size:1.05rem;
   }
   .envivo .stage-now .time{
-    color:#b45309;
+    color:var(--ink);
   }
 
   /* Día completo (vista FULL_DAY) */
@@ -217,7 +211,7 @@
     justify-content:space-between;
     gap:.8rem;
     align-items:baseline;
-    background:var(--bg-soft-green);           /* verde MUY suave */
+    background:var(--accent-soft);        /* azul suave */
   }
   .envivo .act-item .name{
     font-weight:800;
@@ -232,11 +226,11 @@
   }
 
   .envivo .act-item.is-now{
-    border-color:var(--orange);
-    background:var(--bg-soft-yellow);
+    border-color:var(--accent);
+    background:var(--accent-soft-strong); /* misma lógica que "Ahora" */
   }
   .envivo .act-item.is-past{
-    opacity:.55;
+    opacity:.5;
   }
 
   /* Modo monitor: oculta header + HUD */
@@ -272,6 +266,7 @@
     }
   }
 </style>
+
 
 
 
