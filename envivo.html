@@ -8,116 +8,271 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-  <style>
+    <style>
     :root{
-      --bg:#0b1020;          /* fondo general */
-      --card:#111a36;        /* tarjeta */
-      --ink:#e8eefc;         /* texto principal */
-      --muted:#9fb0d1;       /* texto secundario */
-      --line:#2a3a67;        /* bordes */
-      --accent:#6ea8ff;      /* acento (ahora) */
-      --ok:#1db954;          /* verde sutil */
-      --fade:.35s;
-
-      /* >>> ancho mínimo de columna (DOBLE respecto a 280px) */
-      --col-min: 400px;
+      /* Paleta base (fondo claro) */
+      --bg:#ffffff;            /* fondo general blanco */
+      --card:#ffffff;          /* tarjetas blancas */
+      --ink:#002b3f;           /* texto principal (azul oscuro) */
+      --muted:#6b7280;         /* texto secundario gris-azulado */
+      --line:#d4e0f0;          /* bordes suaves azul claro */
+  
+      /* Colores inspirados en el logo Rai Trai */
+      --accent:#004060;        /* azul logo (acentos fríos) */
+      --accent-soft:#e3f2fd;   /* azul muy claro para fondos */
+      --accent-warm:#fff4cf;   /* amarillo cálido para "Ahora" */
+      --ok:#2e7d32;            /* verde logo (por si lo usamos en otros estados) */
+  
+      --pill-bg:#f5f7fb;       /* fondo pill */
+      --fade:.30s;
+  
+      /* ancho mínimo de columna */
+      --col-min:400px;
     }
+  
     *{ box-sizing:border-box; }
-    body.envivo{ background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; }
-
+  
+    body.envivo{
+      background:var(--bg);
+      color:var(--ink);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    }
+  
     /* Header (ocultable) */
     .envivo header.hideable-ui{
       display:flex; align-items:center; gap:.75rem;
-      padding:.6rem 1rem; border-bottom:1px solid rgba(255,255,255,.08);
-      position:sticky; top:0; backdrop-filter:saturate(1.2) blur(6px); background:rgba(11,16,32,.7);
+      padding:.6rem 1rem;
+      border-bottom:1px solid #e5e7eb;
+      position:sticky; top:0;
+      background:rgba(255,255,255,.96);
+      backdrop-filter:saturate(1.2) blur(6px);
       z-index:10;
     }
     .envivo header img{ height:34px; width:auto; }
-    .envivo header h1{ font-size:1.1rem; margin:0; font-weight:700; }
-    .envivo .toolbar{ margin-left:auto; display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
-    .envivo .toolbar label{ font-size:.8rem; color:var(--muted); }
-    .envivo .toolbar select,.envivo .toolbar input,.envivo .toolbar button{
-      background:var(--card); color:var(--ink); border:1px solid var(--line);
-      padding:.45rem .6rem; border-radius:.6rem; font-size:.9rem;
+    .envivo header h1{
+      font-size:1.1rem; margin:0; font-weight:700; color:var(--accent);
+    }
+  
+    .envivo .toolbar{
+      margin-left:auto; display:flex; align-items:center;
+      gap:.5rem; flex-wrap:wrap;
+    }
+    .envivo .toolbar label{
+      font-size:.8rem; color:var(--muted);
+    }
+    .envivo .toolbar select,
+    .envivo .toolbar input,
+    .envivo .toolbar button{
+      background:#ffffff;
+      color:var(--ink);
+      border:1px solid var(--line);
+      padding:.45rem .6rem;
+      border-radius:.6rem;
+      font-size:.9rem;
+    }
+    .envivo .toolbar select:focus,
+    .envivo .toolbar input:focus,
+    .envivo .toolbar button:focus{
+      outline:none;
+      border-color:var(--accent);
+      box-shadow:0 0 0 2px rgba(0,64,96,.12);
     }
     .envivo .toolbar input[type="range"]{ width:120px; }
-    .envivo .toolbar button{ cursor:pointer; }
-    .envivo .toolbar .multi{ min-width:260px; max-width:380px; height:8.5rem; }
-
-    .envivo .content{ padding:1rem; display:grid; gap:1rem; }
-    .envivo .pill{ font-size:.75rem; color:var(--muted); padding:.15rem .5rem; border:1px solid var(--line); border-radius:999px; }
-
+    .envivo .toolbar button{
+      cursor:pointer;
+      background:var(--accent-soft);
+    }
+    .envivo .toolbar button:hover{
+      background:rgba(0,64,96,.04);
+    }
+    .envivo .toolbar .multi{
+      min-width:260px; max-width:380px; height:8.5rem;
+    }
+  
+    .envivo .content{
+      padding:1rem; display:grid; gap:1rem;
+    }
+  
+    .envivo .pill{
+      font-size:.75rem;
+      color:var(--muted);
+      padding:.15rem .5rem;
+      border:1px solid var(--line);
+      border-radius:999px;
+      background:var(--pill-bg);
+    }
+  
     /* Bloques por destino */
     .envivo .destino-bloque{
-      border:1px solid var(--line); border-radius:14px;
-      background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.015));
-      opacity:1; transition:opacity var(--fade) ease;
+      border:1px solid var(--line);
+      border-radius:14px;
+      background:linear-gradient(180deg,#ffffff, var(--accent-soft));
+      opacity:1;
+      transition:opacity var(--fade) ease;
     }
-    .envivo .destino-bloque.fade-out{ opacity:.02; }
+    .envivo .destino-bloque.fade-out{ opacity:.05; }
     .envivo .destino-bloque.is-hidden{ display:none; }
-    .envivo .destino-hd{ padding:.85rem 1rem; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:.6rem; }
-    .envivo .destino-hd h2{ margin:0; font-size:1rem; font-weight:700; letter-spacing:.2px; }
-
-    /* >>> grilla de tarjetas (usa col-min y fuerza la regla) */
+  
+    .envivo .destino-hd{
+      padding:.85rem 1rem;
+      border-bottom:1px solid var(--line);
+      display:flex; align-items:center; gap:.6rem;
+      background:rgba(227,242,253,.6);
+    }
+    .envivo .destino-hd h2{
+      margin:0; font-size:1rem; font-weight:700;
+      letter-spacing:.2px; color:var(--accent);
+    }
+  
+    /* grilla de tarjetas */
     .envivo .grupo-grid{
       display:grid;
       grid-template-columns:repeat(auto-fill, minmax(var(--col-min), 1fr)) !important;
       gap:1rem; padding:1rem;
     }
-
+  
     /* Tarjeta */
     .envivo .group-card{
-      background:var(--card); border:1px solid var(--line); border-radius:16px; padding:1rem;
-      display:grid; gap:.65rem; box-shadow:0 6px 18px rgba(0,0,0,.18);
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:1rem;
+      display:grid; gap:.65rem;
+      box-shadow:0 4px 15px rgba(15,23,42,.06);
     }
-    .envivo .group-card h3{ margin:0; font-size:1rem; line-height:1.15; font-weight:800; letter-spacing:.3px; text-transform:uppercase; }
-    .envivo .sub{ font-size:.82rem; color:var(--muted); line-height:1.25; }
-
+    .envivo .group-card h3{
+      margin:0;
+      font-size:1rem;
+      line-height:1.15;
+      font-weight:800;
+      letter-spacing:.3px;
+      text-transform:uppercase;
+      color:var(--accent);
+    }
+    .envivo .sub{
+      font-size:.82rem;
+      color:var(--muted);
+      line-height:1.25;
+    }
+  
     /* Triptych (Antes/Ahora/Después) */
     .envivo .stage{ display:grid; gap:.35rem; }
-    .envivo .stage-hd{ font-size:.78rem; color:var(--muted); }
+    .envivo .stage-hd{
+      font-size:.78rem;
+      color:var(--muted);
+      text-transform:uppercase;
+      letter-spacing:.04em;
+    }
+  
     .envivo .stage-box{
-      border:1px dashed var(--line); border-radius:12px; padding:.6rem .7rem; min-height:54px;
-      display:grid; align-content:center; justify-items:center; text-align:center; background:rgba(255,255,255,.03);
+      border:1px dashed var(--line);
+      border-radius:12px;
+      padding:.6rem .7rem;
+      min-height:54px;
+      display:grid;
+      align-content:center;
+      justify-items:center;
+      text-align:center;
+      background:var(--accent-soft);
     }
-    .envivo .stage-box .title{ font-weight:800; font-size:.95rem; letter-spacing:.2px; text-transform:uppercase; }
-    .envivo .stage-box .time{ font-size:.78rem; color:var(--muted); margin-top:.15rem; }
-    .envivo .stage-now{ border-style:solid; border-color:rgba(110,168,255,.5);
-      background:linear-gradient(180deg, rgba(110,168,255,.18), rgba(44,111,255,.15));
-      box-shadow:0 0 0 3px rgba(44,111,255,.08) inset, 0 8px 28px rgba(44,111,255,.15);
+    .envivo .stage-box .title{
+      font-weight:800;
+      font-size:.95rem;
+      letter-spacing:.2px;
+      text-transform:uppercase;
+      color:var(--ink);
     }
-    .envivo .stage-now .title{ color:#f5f9ff; font-size:1.05rem; }
-    .envivo .stage-now .time{ color:#d8e7ff; }
-
+    .envivo .stage-box .time{
+      font-size:.78rem;
+      color:var(--muted);
+      margin-top:.15rem;
+    }
+  
+    /* "Ahora" con amarillo del logo */
+    .envivo .stage-now{
+      border-style:solid;
+      border-color:rgba(246,195,66,.9);
+      background:linear-gradient(180deg, #fff8df, var(--accent-warm));
+      box-shadow:
+        0 0 0 2px rgba(246,195,66,.35) inset,
+        0 8px 24px rgba(246,195,66,.35);
+    }
+    .envivo .stage-now .title{
+      color:#8b5a00;
+      font-size:1.05rem;
+    }
+    .envivo .stage-now .time{
+      color:#a76a00;
+    }
+  
     /* Día completo */
     .envivo .day-list{ display:grid; gap:.5rem; }
+  
     .envivo .act-item{
-      border:1px dashed var(--line); border-radius:10px; padding:.5rem .7rem;
-      display:flex; justify-content:space-between; gap:.8rem; align-items:baseline;
-      background:rgba(255,255,255,.03);
+      border:1px dashed var(--line);
+      border-radius:10px;
+      padding:.5rem .7rem;
+      display:flex;
+      justify-content:space-between;
+      gap:.8rem;
+      align-items:baseline;
+      background:var(--accent-soft);
     }
-    .envivo .act-item .name{ font-weight:800; text-transform:uppercase; font-size:.95rem; }
-    .envivo .act-item .time{ font-size:.8rem; color:var(--muted); white-space:nowrap; }
-    .envivo .act-item.is-now{ border-color:rgba(110,168,255,.6);
-      background:linear-gradient(180deg, rgba(110,168,255,.18), rgba(44,111,255,.15));
+    .envivo .act-item .name{
+      font-weight:800;
+      text-transform:uppercase;
+      font-size:.95rem;
+      color:var(--ink);
     }
-    .envivo .act-item.is-past{ opacity:.6; }
-
+    .envivo .act-item .time{
+      font-size:.8rem;
+      color:var(--muted);
+      white-space:nowrap;
+    }
+  
+    .envivo .act-item.is-now{
+      border-color:rgba(246,195,66,.9);
+      background:var(--accent-warm);
+    }
+    .envivo .act-item.is-past{
+      opacity:.6;
+    }
+  
     /* Modo monitor: oculta header + HUD */
-    body.envivo.monitor .hideable-ui{ display:none !important; }
-    .envivo .hud{
-      position:fixed; right:12px; bottom:10px; background:rgba(0,0,0,.45);
-      border:1px solid var(--line); border-radius:999px; padding:.25rem .6rem;
-      font-size:.78rem; color:var(--muted); z-index:9999; cursor:pointer;
+    body.envivo.monitor .hideable-ui{
+      display:none !important;
     }
-    body.envivo:not(.monitor) .hud{ display:none; }
-
+  
+    .envivo .hud{
+      position:fixed;
+      right:12px; bottom:10px;
+      background:rgba(255,255,255,.92);
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:.25rem .6rem;
+      font-size:.78rem;
+      color:var(--muted);
+      z-index:9999;
+      cursor:pointer;
+      box-shadow:0 4px 10px rgba(15,23,42,.1);
+    }
+    body.envivo:not(.monitor) .hud{
+      display:none;
+    }
+  
     @media print{
       .envivo .hideable-ui{ display:none !important; }
       body.envivo{ background:#fff; color:#000; }
-      .envivo .group-card,.envivo .destino-bloque{ background:#fff; border:1px solid #ccc; box-shadow:none; }
+      .envivo .group-card,
+      .envivo .destino-bloque{
+        background:#fff;
+        border:1px solid #ccc;
+        box-shadow:none;
+      }
     }
   </style>
+
+
 </head>
 
 <body class="envivo">
