@@ -261,21 +261,98 @@
       }
     }
 
-    /* PRINT */
-    @media print {
-      #encabezado,
-      .toolbar,
-      .btn-accion,
-      button { display:none !important; }
-      #printSheet { display:block; }
-      @page { size:A4; margin:18mm; }
-    }
-    #printSheet {
+    /* PRINT: acta de rendición */
+    #printActa {
       display:none;
-      white-space:pre-wrap;
       font-family:Calibri, Arial, sans-serif;
       font-size:11pt;
     }
+    #printActa .acta {
+      max-width:190mm;
+      margin:0 auto;
+    }
+    #printActa .acta-header {
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      margin-bottom:12px;
+    }
+    #printActa .acta-head-left h1 {
+      font-size:16pt;
+      margin:0 0 4px;
+    }
+    #printActa .acta-head-left .acta-sub {
+      margin:0;
+      font-size:10pt;
+      color:#4b5563;
+    }
+    #printActa .acta-logo {
+      max-height:40px;
+      object-fit:contain;
+    }
+    #printActa .acta-meta {
+      display:grid;
+      grid-template-columns:repeat(2, minmax(0,1fr));
+      gap:4px 12px;
+      margin-bottom:12px;
+      font-size:9.5pt;
+    }
+    #printActa .acta-meta span {
+      display:block;
+      text-transform:uppercase;
+      font-size:8pt;
+      color:#6b7280;
+    }
+    #printActa .acta-meta strong {
+      font-weight:600;
+    }
+    #printActa .acta-section {
+      margin-top:10px;
+    }
+    #printActa .acta-section h2 {
+      font-size:11pt;
+      margin:0 0 4px;
+    }
+    #printActa .acta-table {
+      width:100%;
+      border-collapse:collapse;
+      font-size:9.5pt;
+    }
+    #printActa .acta-table th,
+    #printActa .acta-table td {
+      border:1px solid #e5e7eb;
+      padding:3px 4px;
+      vertical-align:top;
+    }
+    #printActa .acta-table th {
+      background:#f9fafb;
+      font-weight:600;
+    }
+    #printActa .acta-table .num {
+      text-align:right;
+      white-space:nowrap;
+    }
+    #printActa .acta-resumen td:first-child {
+      width:70%;
+    }
+    #printActa .acta-firmas {
+      display:flex;
+      justify-content:space-between;
+      gap:16mm;
+      margin-top:18mm;
+      font-size:9pt;
+    }
+    #printActa .acta-firmas .firm-line {
+      border-bottom:1px solid #000;
+      margin-top:18mm;
+    }
+
+    @media print {
+      @page { size:A4; margin:18mm; }
+      body > *:not(#printActa) { display:none !important; }
+      #printActa { display:block; }
+    }
+
   </style>
 
 </head>
@@ -342,11 +419,14 @@
           <th>Moneda</th>
           <th>Monto</th>
           <th>Monto aprobado</th>
+          <th>Categoría</th>
+          <th>Comprobante</th>
           <th>OK</th>
         </tr>
       </thead>
       <tbody></tbody>
     </table>
+
 
     <div class="toolbar">
       <span class="tag" id="resumenTabla"></span>
@@ -354,6 +434,81 @@
     </div>
 
     <!-- Resumen financiero y ajustes -->
+    <!-- Descuentos de rendición -->
+    <div class="card">
+      <h3>Descuentos de rendición</h3>
+      <p class="muted" style="margin-bottom:.6rem;">
+        Estos descuentos se restan de los gastos aprobados del coordinador.
+      </p>
+
+      <table class="finanzas" id="tblDescuentos">
+        <thead>
+          <tr>
+            <th>Motivo</th>
+            <th>Monto (CLP)</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="seccion-form">
+        <h4>Agregar descuento</h4>
+        <div class="form-grid">
+          <div class="form-item">
+            <label for="nuevoDescMonto">Monto (CLP)</label>
+            <input id="nuevoDescMonto" type="number" min="0" step="1000" class="input-field mono" />
+          </div>
+          <div class="form-item">
+            <label for="nuevoDescMotivo">Motivo / asunto</label>
+            <input id="nuevoDescMotivo" type="text" class="input-field" />
+          </div>
+        </div>
+        <button id="btnAgregarDesc" class="btn-accion primary">Agregar descuento</button>
+      </div>
+    </div>
+
+    <!-- Documentos del coordinador -->
+    <div class="card">
+      <h3>Documentos del coordinador</h3>
+      <div class="form-grid">
+        <div class="form-item">
+          <label>Boleta</label>
+          <a id="linkBoleta" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
+          <label style="margin-top:.25rem;">
+            <input type="checkbox" id="chkBoletaOk" />
+            Boleta revisada y correcta
+          </label>
+        </div>
+        <div class="form-item">
+          <label>Comprobante transferencia CLP</label>
+          <a id="linkComprobante" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
+          <label style="margin-top:.25rem; display:block;">
+            <input type="checkbox" id="chkComprobanteOk" />
+            Comprobante revisado y correcto
+          </label>
+          <label style="margin-top:.25rem; font-size:.78rem; text-transform:uppercase; color:#4b5563; font-weight:600;">
+            Monto devuelto (CLP)
+          </label>
+          <input id="montoDevueltoCLP" type="number" min="0" step="1000" class="input-field mono" />
+        </div>
+        <div class="form-item">
+          <label>Constancia efectivo USD / transferencia coordinador</label>
+          <a id="linkTransferencia" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
+          <label style="margin-top:.25rem;">
+            <input type="checkbox" id="chkTransferenciaOk" />
+            Documento revisado y correcto
+          </label>
+          <label style="margin-top:.25rem; font-size:.78rem; text-transform:uppercase; color:#4b5563; font-weight:600;">
+            Monto devuelto (USD)
+          </label>
+          <input id="montoDevueltoUSD" type="number" step="0.01" min="0" class="input-field mono" />
+        </div>
+      </div>
+      <button id="btnGuardarDocs" class="btn-accion">Guardar estado de documentos</button>
+    </div>
+
+    <!-- Resumen financiero -->
     <div class="card">
       <h3>Resumen financiero</h3>
 
@@ -366,68 +521,33 @@
           <div class="stat-label">Gastos aprobados</div>
           <div class="stat-value gastos" id="sumGastos">—</div>
         </div>
-        <div class="stat-card highlight">
-          <div class="stat-label">Saldo (Abonos – Gastos)</div>
-          <div class="stat-value saldo" id="sumSaldo">—</div>
+        <div class="stat-card">
+          <div class="stat-label">Descuentos de rendición</div>
+          <div class="stat-value gastos" id="sumDescuentos">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Saldo neto (menos descuento)</div>
-          <div class="stat-value saldo" id="sumSaldoNeto">—</div>
+          <div class="stat-label">Gastos netos</div>
+          <div class="stat-value gastos" id="sumGastosNetos">—</div>
         </div>
-      </div>
-
-      <!-- Descuento -->
-      <div class="seccion-form">
-        <h4>Descuento / ajuste <span class="hint-inline">(si corresponde restar algo al saldo a pagar)</span></h4>
-        <div class="form-grid">
-          <div class="form-item">
-            <label for="descuentoMonto">Monto descuento (CLP)</label>
-            <input id="descuentoMonto" type="number" min="0" step="1000" class="input-field mono" />
-          </div>
-          <div class="form-item">
-            <label for="descuentoAsunto">Motivo / asunto descuento</label>
-            <input id="descuentoAsunto" type="text" class="input-field" />
-          </div>
+        <div class="stat-card highlight">
+          <div class="stat-label">Saldo esperado (abonos – gastos netos)</div>
+          <div class="stat-value saldo" id="sumSaldoEsperado">—</div>
         </div>
-        <button id="btnGuardarDescuento" class="btn-accion primary">Guardar descuento</button>
-      </div>
-
-      <!-- Documentos -->
-      <div class="seccion-form">
-        <h4>Documentos del coordinador</h4>
-        <div class="form-grid">
-          <div class="form-item">
-            <label>Boleta</label>
-            <a id="linkBoleta" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
-            <label style="margin-top:.25rem;">
-              <input type="checkbox" id="chkBoletaOk" />
-              Boleta revisada y correcta
-            </label>
-          </div>
-          <div class="form-item">
-            <label>Comprobante transferencia</label>
-            <a id="linkComprobante" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
-            <label style="margin-top:.25rem;">
-              <input type="checkbox" id="chkComprobanteOk" />
-              Comprobante revisado y correcto
-            </label>
-          </div>
-          <div class="form-item">
-            <label>Transferencia coordinador</label>
-            <a id="linkTransferencia" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
-            <label style="margin-top:.25rem;">
-              <input type="checkbox" id="chkTransferenciaOk" />
-              Transferencia revisada y correcta
-            </label>
-          </div>
+        <div class="stat-card">
+          <div class="stat-label">Monto devuelto (CLP)</div>
+          <div class="stat-value saldo" id="sumDevuelto">—</div>
         </div>
-        <button id="btnGuardarDocs" class="btn-accion">Guardar estado de documentos</button>
+        <div class="stat-card">
+          <div class="stat-label">Resultado final</div>
+          <div class="stat-value saldo" id="sumResultado">—</div>
+        </div>
       </div>
     </div>
   </div>
 
   <!-- Hoja de impresión -->
-  <div id="printSheet"></div>
+  <div id="printActa"></div>
+  <div id="printSheet" style="display:none;"></div>
 
   <!-- Carga encabezado + firebase + lógica -->
   <script type="module">
