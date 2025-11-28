@@ -5,12 +5,12 @@ import { app } from "./firebase-init.js";
 
 const auth = getAuth(app);
 
-// 🟢 Mostrar usuario conectado
+// 🟢 Mostrar usuario conectado + controlar tarjeta FINANZAS
 onAuthStateChanged(auth, user => {
   const userDiv = document.getElementById("usuario-conectado");
   if (userDiv) userDiv.textContent = user ? user.email : "";
 
-  // 🔐 Correos autorizados para ver la tarjeta de FINANZAS
+  // 🔐 Correos autorizados para ver FINANZAS
   const allowedFinanzas = [
     "anamaria@raitrai.cl",
     "yenny@raitrai.cl",
@@ -21,14 +21,17 @@ onAuthStateChanged(auth, user => {
   const cardFinanzas = document.getElementById("card-finanzas");
 
   if (cardFinanzas) {
-    // Si el usuario está logueado y su correo está en la lista -> mostrar
-    if (user && allowedFinanzas.includes(emailUsuario)) {
-      cardFinanzas.style.display = "flex"; // respeta el layout de .card en la grilla
+    const puedeVer = user && allowedFinanzas.includes(emailUsuario);
+
+    // Si puede ver, quitamos la clase que oculta
+    if (puedeVer) {
+      cardFinanzas.classList.remove("ocultar-finanzas");
     } else {
-      cardFinanzas.style.display = "none";
+      cardFinanzas.classList.add("ocultar-finanzas");
     }
   }
 });
+
 // 🕒 Mostrar hora actual en <div id="reloj">
 function actualizarReloj() {
   const ahora = new Date();
