@@ -1061,6 +1061,7 @@ function renderPrintActa() {
 
       <section class="acta-section">
         <h2>1. Gastos aprobados</h2>
+  
         <table class="acta-table">
           <thead>
             <tr>
@@ -1069,8 +1070,10 @@ function renderPrintActa() {
               <th>Categoría</th>
               <th>Moneda</th>
               <th class="num">Monto aprobado</th>
+              <th>Doc.</th>
             </tr>
           </thead>
+
           <tbody>
             ${filasGastos}
           </tbody>
