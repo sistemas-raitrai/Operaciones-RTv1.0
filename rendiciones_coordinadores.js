@@ -871,9 +871,31 @@ function renderResumenFinanzas() {
 
   // ====== Estado visual de documentos (lista TRANSF / CONSTANCIA / BOLETA) ======
   if (gInfo) {
-    const boletaUrl = gInfo.urls?.boleta || '';
-    const compUrl   = gInfo.urls?.comprobante || '';
-    const transfUrl = gInfo.urls?.transferenciaCoord || '';
+    const summary = state.summary || {};
+
+    // Preferimos siempre lo que venga desde finanzas/summary
+    const boletaUrl = coalesce(
+      summary.boleta?.url,
+      summary.boletaUrl,
+      gInfo.urls?.boleta,
+      ''
+    );
+
+    const compUrl = coalesce(
+      summary.comprobante?.url,
+      summary.transferenciaCLP?.url,
+      summary.comprobanteCLP?.url,
+      gInfo.urls?.comprobante,
+      ''
+    );
+
+    const transfUrl = coalesce(
+      summary.constancia?.url,
+      summary.transferenciaCoord?.url,
+      summary.constanciaUSD?.url,
+      gInfo.urls?.transferenciaCoord,
+      ''
+    );
 
     // Estimamos si "aplica" cada documento
     const aplicaTransfCLP = !!(compUrl || montoDevCLP || docsOk.comprobante);
@@ -887,7 +909,7 @@ function renderResumenFinanzas() {
     const celdaTransfCLP  = document.getElementById('celdaEstadoTransf');
     const celdaConstUSD   = document.getElementById('celdaEstadoConstancia');
 
-    // BOLETA / DOC SII (todos deberían tener algo, pero si no, queda pendiente)
+    // BOLETA / DOC SII
     if (linkBoleta) {
       if (boletaUrl) {
         linkBoleta.href = boletaUrl;
@@ -941,6 +963,7 @@ function renderResumenFinanzas() {
     }
   }
 
+
   // checkboxes + montos devueltos desde summary.docsOk
   const chkB = document.getElementById('chkBoletaOk');
   const chkC = document.getElementById('chkComprobanteOk');
@@ -991,26 +1014,51 @@ function renderPrintActa() {
   } else {
     textoResultado = `A favor del coordinador: ${moneyCLP(-diff)}`;
   }
-    // Estado de documentos para el punto 3
-  const boletaUrl = gInfo.urls?.boleta || '';
-  const compUrl   = gInfo.urls?.comprobante || '';
-  const transfUrl = gInfo.urls?.transferenciaCoord || '';
 
-  const aplicaTransfCLP = !!(compUrl || montoDevCLP || docsOk.comprobante);
-  const montoDevUSDPrint = Number(docsOk.montoDevueltoUSD || 0) || 0;
-  const aplicaConstUSD   = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
+  // Estado de documentos para el punto 3
+  const summary = state.summary || {};
+
+  const boletaUrl = coalesce(
+    summary.boleta?.url,
+    summary.boletaUrl,
+    gInfo.urls?.boleta,
+    ''
+  );
+
+  const compUrl = coalesce(
+    summary.comprobante?.url,
+    summary.transferenciaCLP?.url,
+    summary.comprobanteCLP?.url,
+    gInfo.urls?.comprobante,
+    ''
+  );
+
+  const transfUrl = coalesce(
+    summary.constancia?.url,
+    summary.transferenciaCoord?.url,
+    summary.constanciaUSD?.url,
+    gInfo.urls?.transferenciaCoord,
+    ''
+  );
+
+  const aplicaTransfCLP    = !!(compUrl || montoDevCLP || docsOk.comprobante);
+  const montoDevUSDPrint   = Number(docsOk.montoDevueltoUSD || 0) || 0;
+  const aplicaConstUSD     = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
 
   const textoBoleta = docsOk.boleta
     ? 'Boleta / documento SII: OK'
     : (boletaUrl ? 'Boleta / documento SII: pendiente de revisión' : 'Boleta / documento SII: no registrada');
 
   const textoCompCLP = aplicaTransfCLP
-    ? (docsOk.comprobante ? 'Comprobante transferencia CLP: OK' : 'Comprobante transferencia CLP: pendiente de revisión')
+    ? (docsOk.comprobante ? 'Comprobante transferencia CLP: OK'
+                          : 'Comprobante transferencia CLP: pendiente de revisión')
     : 'Comprobante transferencia CLP: NO APLICA';
 
   const textoConstUSD = aplicaConstUSD
-    ? (docsOk.transferencia ? 'Constancia efectivo USD / transferencia coordinador: OK' : 'Constancia efectivo USD / transferencia coordinador: pendiente de revisión')
+    ? (docsOk.transferencia ? 'Constancia efectivo USD / transferencia coordinador: OK'
+                             : 'Constancia efectivo USD / transferencia coordinador: pendiente de revisión')
     : 'Constancia efectivo USD / transferencia coordinador: NO APLICA';
+
 
 
   const filasGastos = gastosOk.map(it => `
