@@ -1140,23 +1140,31 @@ function wireUI() {
   try {
     document.querySelector('#btn-logout')
       ?.addEventListener('click', () =>
-        signOut(auth).then(()=> location.href='login.html'));
+        signOut(auth).then(() => location.href = 'login.html'));
   } catch (_) {}
 
-  // Helper: reconstruye los datalist de grupos (ID + nombre) según coordinador
+  /* ---------------------------------------------------
+     Helper: reconstruye los datalist de grupos
+     coordVal = email del coordinador (lowercase) o ''
+  --------------------------------------------------- */
   function rebuildGroupDatalists(coordVal = '') {
-    const dlG = document.getElementById('dl-grupos');
-    const dlN = document.getElementById('dl-grupos-nombre');
+    const dlG = document.getElementById('dl-grupos');          // por ID
+    const dlN = document.getElementById('dl-grupos-nombre');   // por nombre
     if (dlG) dlG.innerHTML = '';
     if (dlN) dlN.innerHTML = '';
 
     const addOpt = (gid, info) => {
+      if (!info) return;
+
+      // ID / Nº negocio
       if (dlG) {
         const opt = document.createElement('option');
-        opt.value = gid; // ID grupo
+        opt.value = gid; // lo que se escribe en el input
         opt.label = `${info.numero} — ${info.nombre}`;
         dlG.appendChild(opt);
       }
+
+      // Nombre de grupo
       if (dlN) {
         const optN = document.createElement('option');
         optN.value = info.nombre;
@@ -1165,38 +1173,42 @@ function wireUI() {
       }
     };
 
-    // Si hay coordinador y está indexado, usamos solo sus grupos
+    // Si hay coordinador, solo sus grupos
     if (coordVal && state.caches.groupsByCoord.has(coordVal)) {
       for (const gid of state.caches.groupsByCoord.get(coordVal)) {
         const info = state.caches.grupos.get(gid);
-        if (info) addOpt(gid, info);
+        addOpt(gid, info);
       }
     } else {
-      // Si no hay coordinador, mostramos todos
+      // Sin coordinador: todos los grupos
       for (const [gid, info] of state.caches.grupos.entries()) {
         addOpt(gid, info);
       }
     }
   }
 
-  // coord ⇒ limita grupos (ID + nombre) y limpia grupo si no corresponde
+  /* ---------------------------------------------------
+     COORDINADOR  ⇒ filtra datalist de grupos
+  --------------------------------------------------- */
   const inputCoord = document.getElementById('filtroCoord');
   if (inputCoord) {
     inputCoord.addEventListener('input', (e) => {
       const val = (e.target.value || '').toLowerCase().trim();
       state.filtros.coord = val;
 
+      // reconstruye las listas de grupos según el coord
       rebuildGroupDatalists(val);
 
-      // Si había un grupo seleccionado que no pertenece a este coord, lo limpiamos
+      // si había un grupo seleccionado que no corresponde a ese coord, lo limpio
       if (state.filtros.grupo) {
         const info = state.caches.grupos.get(state.filtros.grupo);
         const coordGrupo = (info?.coordEmail || '').toLowerCase();
         if (val && coordGrupo && coordGrupo !== val) {
           state.filtros.grupo = '';
           state.filtros.grupoNombre = '';
-          const inpG  = document.getElementById('filtroGrupo');
-          const inpN  = document.getElementById('filtroNombreGrupo');
+
+          const inpG = document.getElementById('filtroGrupo');
+          const inpN = document.getElementById('filtroNombreGrupo');
           if (inpG) inpG.value = '';
           if (inpN) inpN.value = '';
         }
@@ -1204,7 +1216,9 @@ function wireUI() {
     });
   }
 
-  // grupo (ID) ⇒ actualiza nombre de grupo y coordinador
+  /* ---------------------------------------------------
+     GRUPO (ID) ⇒ rellena nombre de grupo + coord
+  --------------------------------------------------- */
   const inputGrupo = document.getElementById('filtroGrupo');
   if (inputGrupo) {
     inputGrupo.addEventListener('input', (e) => {
@@ -1225,11 +1239,14 @@ function wireUI() {
       if (inputCoord) inputCoord.value = coordEmail;
       state.filtros.coord = coordEmail;
 
+      // reconstruye listas de grupos para ese coord
       rebuildGroupDatalists(coordEmail);
     });
   }
 
-  // nombre de grupo ⇒ resuelve gid y coord, y sincroniza todo
+  /* ---------------------------------------------------
+     NOMBRE DE GRUPO ⇒ rellena ID + coord
+  --------------------------------------------------- */
   const inputNombreGrupo = document.getElementById('filtroNombreGrupo');
   if (inputNombreGrupo) {
     inputNombreGrupo.addEventListener('input', (e) => {
@@ -1242,7 +1259,7 @@ function wireUI() {
           info.nombre === val ||
           `${info.numero} — ${info.nombre}` === val
         ) {
-          // setea ID de grupo
+          // setea ID grupo
           state.filtros.grupo = gid;
           const inpG = document.getElementById('filtroGrupo');
           if (inpG) inpG.value = gid;
@@ -1260,35 +1277,9 @@ function wireUI() {
     });
   }
 
-  // Al iniciar, nos aseguramos que los datalist estén completos
-  rebuildGroupDatalists(state.filtros.coord || '');
-
-
-    // nombre de grupo (usa datalist de nombres, resuelve gid automático)
-  const inputNombreGrupo = document.getElementById('filtroNombreGrupo');
-  if (inputNombreGrupo) {
-    inputNombreGrupo.addEventListener('input', (e) => {
-      const val = (e.target.value || '').trim();
-      state.filtros.grupoNombre = val;
-
-      if (!val) return;
-
-      for (const [gid, info] of state.caches.grupos.entries()) {
-        if (
-          info.nombre === val ||
-          `${info.numero} — ${info.nombre}` === val
-        ) {
-          state.filtros.grupo = gid;
-          const inpG = document.getElementById('filtroGrupo');
-          if (inpG) inpG.value = gid;   // refleja en el campo de ID
-          break;
-        }
-      }
-    });
-  }
-
-
-  // Cargar datos
+  /* ---------------------------------------------------
+     BOTÓN CARGAR DATOS
+  --------------------------------------------------- */
   const btnCargar = document.getElementById('btnCargar');
   if (btnCargar) {
     btnCargar.addEventListener('click', async () => {
@@ -1306,7 +1297,9 @@ function wireUI() {
     });
   }
 
-  // Agregar descuento
+  /* ---------------------------------------------------
+     AGREGAR DESCUENTO
+  --------------------------------------------------- */
   const btnAgregarDesc = document.getElementById('btnAgregarDesc');
   if (btnAgregarDesc) {
     btnAgregarDesc.addEventListener('click', async () => {
@@ -1316,7 +1309,9 @@ function wireUI() {
     });
   }
 
-  // Guardar docs OK
+  /* ---------------------------------------------------
+     GUARDAR ESTADO DOCUMENTOS
+  --------------------------------------------------- */
   const btnGuardarDocs = document.getElementById('btnGuardarDocs');
   if (btnGuardarDocs) {
     btnGuardarDocs.addEventListener('click', async () => {
@@ -1326,7 +1321,9 @@ function wireUI() {
     });
   }
 
-  // Imprimir
+  /* ---------------------------------------------------
+     IMPRIMIR RENDICIÓN
+  --------------------------------------------------- */
   const btnPrint = document.getElementById('btnImprimirRendicion');
   if (btnPrint) {
     btnPrint.addEventListener('click', () => {
@@ -1336,6 +1333,9 @@ function wireUI() {
       window.print();
     });
   }
+
+  // Al iniciar, dejo los datalist llenos (todos los grupos o filtrados por coord si ya está)
+  rebuildGroupDatalists((state.filtros.coord || '').toLowerCase());
 }
 
 /* ====================== ARRANQUE ====================== */
