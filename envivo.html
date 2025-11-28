@@ -29,11 +29,25 @@
   
     *{ box-sizing:border-box; }
   
-    body.envivo{
-      background:var(--bg);
-      color:var(--ink);
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-    }
+  body.envivo{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    position:relative;          /* para la pseudo-capa del logo */
+    overflow-x:hidden;
+  }
+
+  /* Marca de agua con el logo Rai Trai */
+  body.envivo::before{
+    content:'';
+    position:fixed;
+    inset:0;
+    background:url("Logo Raitrai.png") center center no-repeat;
+    background-size:480px auto;  /* ajusta tamaño si quieres */
+    opacity:0.04;                /* MUY suave, casi agua */
+    pointer-events:none;         /* no bloquea clics */
+    z-index:-1;                  /* siempre detrás de todo */
+  }
   
     /* Header (ocultable) */
     .envivo header.hideable-ui{
