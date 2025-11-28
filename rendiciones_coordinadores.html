@@ -352,7 +352,48 @@
       body > *:not(#printActa) { display:none !important; }
       #printActa { display:block; }
     }
-
+    /* Fila "Agregar descuento": monto chico + motivo largo + botón al final */
+    .descuento-row {
+      display: flex;
+      gap: .6rem;
+      align-items: flex-end;
+      margin-top: .4rem;
+    }
+    
+    .descuento-row .form-item {
+      margin: 0;
+    }
+    
+    .descuento-monto {
+      flex: 0 0 150px;   /* ancho fijo para el monto */
+    }
+    
+    .descuento-motivo {
+      flex: 1 1 auto;    /* el motivo ocupa todo el resto */
+    }
+    
+    .descuento-btn {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    
+    /* En pantallas chicas se apila vertical */
+    @media (max-width: 768px) {
+      .descuento-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    
+      .descuento-monto,
+      .descuento-motivo {
+        flex: 1 1 auto;
+      }
+    
+      .descuento-btn {
+        width: 100%;
+        text-align: center;
+      }
+    }
   </style>
 
 </head>
@@ -452,19 +493,37 @@
         <tbody></tbody>
       </table>
 
-      <div class="seccion-form">
-        <h4>Agregar descuento</h4>
-        <div class="form-grid">
-          <div class="form-item">
-            <label for="nuevoDescMonto">Monto (CLP)</label>
-            <input id="nuevoDescMonto" type="number" min="0" step="1000" class="input-field mono" />
-          </div>
-          <div class="form-item">
-            <label for="nuevoDescMotivo">Motivo / asunto</label>
-            <input id="nuevoDescMotivo" type="text" class="input-field" />
-          </div>
+    <div class="seccion-form">
+      <h4>Agregar descuento</h4>
+
+      <div class="descuento-row">
+        <div class="form-item descuento-monto">
+          <label for="nuevoDescMonto">Monto (CLP)</label>
+          <input
+            id="nuevoDescMonto"
+            type="number"
+            min="0"
+            step="1000"
+            class="input-field mono"
+          />
         </div>
-        <button id="btnAgregarDesc" class="btn-accion primary">Agregar descuento</button>
+
+        <div class="form-item descuento-motivo">
+          <label for="nuevoDescMotivo">Motivo / asunto</label>
+          <input
+            id="nuevoDescMotivo"
+            type="text"
+            class="input-field"
+          />
+        </div>
+
+        <button
+          id="btnAgregarDesc"
+          class="btn-accion primary descuento-btn"
+          type="button"
+        >
+          Agregar descuento
+        </button>
       </div>
     </div>
 
