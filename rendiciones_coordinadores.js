@@ -839,7 +839,7 @@ function renderResumenFinanzas() {
   const gastosNetos     = totalGastos - totalDescuentos;
   const saldoEsperado   = totalAbonos - gastosNetos;
 
-  const docsOk = (state.summary && state.summary.docsOk) || {};
+   const docsOk = (state.summary && state.summary.docsOk) || {};
   const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
   const montoDevUSD = Number(docsOk.montoDevueltoUSD || 0) || 0;
 
@@ -869,48 +869,95 @@ function renderResumenFinanzas() {
   if (elDevuelto)      elDevuelto.textContent      = moneyCLP(montoDevCLP);
   if (elResultado)     elResultado.textContent     = textoResultado;
 
-  // links docs (igual que antes)
+  // ====== Estado visual de documentos (lista TRANSF / CONSTANCIA / BOLETA) ======
   if (gInfo) {
     const boletaUrl = gInfo.urls?.boleta || '';
     const compUrl   = gInfo.urls?.comprobante || '';
     const transfUrl = gInfo.urls?.transferenciaCoord || '';
 
+    // Estimamos si "aplica" cada documento
+    const aplicaTransfCLP = !!(compUrl || montoDevCLP || docsOk.comprobante);
+    const aplicaConstUSD  = !!(transfUrl || montoDevUSD || docsOk.transferencia);
+
     const linkBoleta = document.getElementById('linkBoleta');
     const linkComp   = document.getElementById('linkComprobante');
     const linkTransf = document.getElementById('linkTransferencia');
 
+    const celdaBoleta     = document.getElementById('celdaEstadoBoleta');
+    const celdaTransfCLP  = document.getElementById('celdaEstadoTransf');
+    const celdaConstUSD   = document.getElementById('celdaEstadoConstancia');
+
+    // BOLETA / DOC SII (todos deberían tener algo, pero si no, queda pendiente)
     if (linkBoleta) {
-      if (boletaUrl) { linkBoleta.href = boletaUrl; linkBoleta.textContent = 'VER'; }
-      else { linkBoleta.href = '#'; linkBoleta.textContent = '—'; }
+      if (boletaUrl) {
+        linkBoleta.href = boletaUrl;
+        linkBoleta.textContent = 'VER';
+      } else {
+        linkBoleta.removeAttribute('href');
+        linkBoleta.textContent = 'PENDIENTE';
+      }
     }
-    if (linkComp) {
-      if (compUrl) { linkComp.href = compUrl; linkComp.textContent = 'VER'; }
-      else { linkComp.href = '#'; linkComp.textContent = '—'; }
+    if (celdaBoleta && !boletaUrl) {
+      celdaBoleta.classList.add('muted');
+    } else if (celdaBoleta) {
+      celdaBoleta.classList.remove('muted');
     }
-    if (linkTransf) {
-      if (transfUrl) { linkTransf.href = transfUrl; linkTransf.textContent = 'VER'; }
-      else { linkTransf.href = '#'; linkTransf.textContent = '—'; }
+
+    // TRANSFERENCIA CLP
+    if (celdaTransfCLP && linkComp) {
+      if (!aplicaTransfCLP) {
+        // NO APLICA
+        linkComp.removeAttribute('href');
+        linkComp.textContent = 'NO APLICA';
+        celdaTransfCLP.classList.add('muted');
+      } else {
+        celdaTransfCLP.classList.remove('muted');
+        if (compUrl) {
+          linkComp.href = compUrl;
+          linkComp.textContent = 'VER';
+        } else {
+          linkComp.removeAttribute('href');
+          linkComp.textContent = 'SIN ARCHIVO';
+        }
+      }
+    }
+
+    // CONSTANCIA USD / TRANSFERENCIA COORDINADOR
+    if (celdaConstUSD && linkTransf) {
+      if (!aplicaConstUSD) {
+        linkTransf.removeAttribute('href');
+        linkTransf.textContent = 'NO APLICA';
+        celdaConstUSD.classList.add('muted');
+      } else {
+        celdaConstUSD.classList.remove('muted');
+        if (transfUrl) {
+          linkTransf.href = transfUrl;
+          linkTransf.textContent = 'VER';
+        } else {
+          linkTransf.removeAttribute('href');
+          linkTransf.textContent = 'SIN ARCHIVO';
+        }
+      }
     }
   }
 
   // checkboxes + montos devueltos desde summary.docsOk
-  if (state.summary && state.summary.docsOk) {
-    const chkB = document.getElementById('chkBoletaOk');
-    const chkC = document.getElementById('chkComprobanteOk');
-    const chkT = document.getElementById('chkTransferenciaOk');
-    if (chkB) chkB.checked = !!state.summary.docsOk.boleta;
-    if (chkC) chkC.checked = !!state.summary.docsOk.comprobante;
-    if (chkT) chkT.checked = !!state.summary.docsOk.transferencia;
+  const chkB = document.getElementById('chkBoletaOk');
+  const chkC = document.getElementById('chkComprobanteOk');
+  const chkT = document.getElementById('chkTransferenciaOk');
+  if (chkB) chkB.checked = !!docsOk.boleta;
+  if (chkC) chkC.checked = !!docsOk.comprobante;
+  if (chkT) chkT.checked = !!docsOk.transferencia;
 
-    const inpDevCLP = document.getElementById('montoDevueltoCLP');
-    const inpDevUSD = document.getElementById('montoDevueltoUSD');
-    if (inpDevCLP) inpDevCLP.value = state.summary.docsOk.montoDevueltoCLP || 0;
-    if (inpDevUSD) inpDevUSD.value = state.summary.docsOk.montoDevueltoUSD || 0;
-  }
+  const inpDevCLP = document.getElementById('montoDevueltoCLP');
+  const inpDevUSD = document.getElementById('montoDevueltoUSD');
+  if (inpDevCLP) inpDevCLP.value = montoDevCLP || 0;
+  if (inpDevUSD) inpDevUSD.value = montoDevUSD || 0;
 
   renderTablaDescuentos();
   renderPrintActa();
 }
+
 
 function renderPrintActa() {
   const gid   = state.filtros.grupo || '';
@@ -944,6 +991,27 @@ function renderPrintActa() {
   } else {
     textoResultado = `A favor del coordinador: ${moneyCLP(-diff)}`;
   }
+    // Estado de documentos para el punto 3
+  const boletaUrl = gInfo.urls?.boleta || '';
+  const compUrl   = gInfo.urls?.comprobante || '';
+  const transfUrl = gInfo.urls?.transferenciaCoord || '';
+
+  const aplicaTransfCLP = !!(compUrl || montoDevCLP || docsOk.comprobante);
+  const montoDevUSDPrint = Number(docsOk.montoDevueltoUSD || 0) || 0;
+  const aplicaConstUSD   = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
+
+  const textoBoleta = docsOk.boleta
+    ? 'Boleta / documento SII: OK'
+    : (boletaUrl ? 'Boleta / documento SII: pendiente de revisión' : 'Boleta / documento SII: no registrada');
+
+  const textoCompCLP = aplicaTransfCLP
+    ? (docsOk.comprobante ? 'Comprobante transferencia CLP: OK' : 'Comprobante transferencia CLP: pendiente de revisión')
+    : 'Comprobante transferencia CLP: NO APLICA';
+
+  const textoConstUSD = aplicaConstUSD
+    ? (docsOk.transferencia ? 'Constancia efectivo USD / transferencia coordinador: OK' : 'Constancia efectivo USD / transferencia coordinador: pendiente de revisión')
+    : 'Constancia efectivo USD / transferencia coordinador: NO APLICA';
+
 
   const filasGastos = gastosOk.map(it => `
     <tr>
@@ -952,10 +1020,12 @@ function renderPrintActa() {
       <td>${escapeHtml(it.categoriaRendicion || 'GASTOS DEL GRUPO')}</td>
       <td>${it.moneda || 'CLP'}</td>
       <td class="num">${moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP')}</td>
+      <td>${it.imgUrl ? 'VER' : '—'}</td>
     </tr>
   `).join('') || `
-    <tr><td colspan="5" class="muted">Sin gastos aprobados.</td></tr>
+    <tr><td colspan="6" class="muted">Sin gastos aprobados.</td></tr>
   `;
+
 
   const filasDescuentos = state.descuentos.map(d => `
     <tr>
@@ -1021,7 +1091,7 @@ function renderPrintActa() {
           </tbody>
         </table>
       </section>
-
+      
       <section class="acta-section">
         <h2>3. Resumen financiero</h2>
         <table class="acta-table acta-resumen">
@@ -1035,7 +1105,17 @@ function renderPrintActa() {
             <tr><td>Resultado final</td><td class="num">${escapeHtml(textoResultado)}</td></tr>
           </tbody>
         </table>
+
+        <p style="margin-top:6px;font-size:9pt;">
+          Estado de documentos:
+        </p>
+        <ul style="margin:2px 0 0 16px;font-size:9pt;padding-left:12px;">
+          <li>${escapeHtml(textoBoleta)}</li>
+          <li>${escapeHtml(textoCompCLP)}</li>
+          <li>${escapeHtml(textoConstUSD)}</li>
+        </ul>
       </section>
+
 
       <section class="acta-section acta-firmas">
         <div>
