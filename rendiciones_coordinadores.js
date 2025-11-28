@@ -1143,43 +1143,126 @@ function wireUI() {
         signOut(auth).then(()=> location.href='login.html'));
   } catch (_) {}
 
-  // coord ⇒ limita grupos
+  // Helper: reconstruye los datalist de grupos (ID + nombre) según coordinador
+  function rebuildGroupDatalists(coordVal = '') {
+    const dlG = document.getElementById('dl-grupos');
+    const dlN = document.getElementById('dl-grupos-nombre');
+    if (dlG) dlG.innerHTML = '';
+    if (dlN) dlN.innerHTML = '';
+
+    const addOpt = (gid, info) => {
+      if (dlG) {
+        const opt = document.createElement('option');
+        opt.value = gid; // ID grupo
+        opt.label = `${info.numero} — ${info.nombre}`;
+        dlG.appendChild(opt);
+      }
+      if (dlN) {
+        const optN = document.createElement('option');
+        optN.value = info.nombre;
+        optN.label = `${info.numero} — ${info.nombre}`;
+        dlN.appendChild(optN);
+      }
+    };
+
+    // Si hay coordinador y está indexado, usamos solo sus grupos
+    if (coordVal && state.caches.groupsByCoord.has(coordVal)) {
+      for (const gid of state.caches.groupsByCoord.get(coordVal)) {
+        const info = state.caches.grupos.get(gid);
+        if (info) addOpt(gid, info);
+      }
+    } else {
+      // Si no hay coordinador, mostramos todos
+      for (const [gid, info] of state.caches.grupos.entries()) {
+        addOpt(gid, info);
+      }
+    }
+  }
+
+  // coord ⇒ limita grupos (ID + nombre) y limpia grupo si no corresponde
   const inputCoord = document.getElementById('filtroCoord');
   if (inputCoord) {
     inputCoord.addEventListener('input', (e) => {
       const val = (e.target.value || '').toLowerCase().trim();
       state.filtros.coord = val;
 
-      const dlG = document.getElementById('dl-grupos');
-      if (!dlG) return;
-      dlG.innerHTML = '';
+      rebuildGroupDatalists(val);
 
-      if (state.caches.groupsByCoord.has(val)) {
-        for (const gid of state.caches.groupsByCoord.get(val)) {
-          const info = state.caches.grupos.get(gid);
-          const opt = document.createElement('option');
-          opt.value = gid;
-          opt.label = `${info.numero} — ${info.nombre}`;
-          dlG.appendChild(opt);
-        }
-      } else {
-        for (const [gid,info] of state.caches.grupos.entries()) {
-          const opt = document.createElement('option');
-          opt.value = gid;
-          opt.label = `${info.numero} — ${info.nombre}`;
-          dlG.appendChild(opt);
+      // Si había un grupo seleccionado que no pertenece a este coord, lo limpiamos
+      if (state.filtros.grupo) {
+        const info = state.caches.grupos.get(state.filtros.grupo);
+        const coordGrupo = (info?.coordEmail || '').toLowerCase();
+        if (val && coordGrupo && coordGrupo !== val) {
+          state.filtros.grupo = '';
+          state.filtros.grupoNombre = '';
+          const inpG  = document.getElementById('filtroGrupo');
+          const inpN  = document.getElementById('filtroNombreGrupo');
+          if (inpG) inpG.value = '';
+          if (inpN) inpN.value = '';
         }
       }
     });
   }
 
-  // grupo
+  // grupo (ID) ⇒ actualiza nombre de grupo y coordinador
   const inputGrupo = document.getElementById('filtroGrupo');
   if (inputGrupo) {
     inputGrupo.addEventListener('input', (e) => {
-      state.filtros.grupo = e.target.value || '';
+      const gid = e.target.value || '';
+      state.filtros.grupo = gid;
+
+      const info = gid ? state.caches.grupos.get(gid) : null;
+      if (!info) return;
+
+      // sincroniza nombre de grupo
+      const inputNombreGrupo = document.getElementById('filtroNombreGrupo');
+      if (inputNombreGrupo) inputNombreGrupo.value = info.nombre;
+      state.filtros.grupoNombre = info.nombre;
+
+      // sincroniza coordinador
+      const coordEmail = (info.coordEmail || '').toLowerCase();
+      const inputCoord = document.getElementById('filtroCoord');
+      if (inputCoord) inputCoord.value = coordEmail;
+      state.filtros.coord = coordEmail;
+
+      rebuildGroupDatalists(coordEmail);
     });
   }
+
+  // nombre de grupo ⇒ resuelve gid y coord, y sincroniza todo
+  const inputNombreGrupo = document.getElementById('filtroNombreGrupo');
+  if (inputNombreGrupo) {
+    inputNombreGrupo.addEventListener('input', (e) => {
+      const val = (e.target.value || '').trim();
+      state.filtros.grupoNombre = val;
+      if (!val) return;
+
+      for (const [gid, info] of state.caches.grupos.entries()) {
+        if (
+          info.nombre === val ||
+          `${info.numero} — ${info.nombre}` === val
+        ) {
+          // setea ID de grupo
+          state.filtros.grupo = gid;
+          const inpG = document.getElementById('filtroGrupo');
+          if (inpG) inpG.value = gid;
+
+          // setea coord
+          const coordEmail = (info.coordEmail || '').toLowerCase();
+          const inpC = document.getElementById('filtroCoord');
+          if (inpC) inpC.value = coordEmail;
+          state.filtros.coord = coordEmail;
+
+          rebuildGroupDatalists(coordEmail);
+          break;
+        }
+      }
+    });
+  }
+
+  // Al iniciar, nos aseguramos que los datalist estén completos
+  rebuildGroupDatalists(state.filtros.coord || '');
+
 
     // nombre de grupo (usa datalist de nombres, resuelve gid automático)
   const inputNombreGrupo = document.getElementById('filtroNombreGrupo');
