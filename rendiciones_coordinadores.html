@@ -471,42 +471,80 @@
     <!-- Documentos del coordinador -->
     <div class="card">
       <h3>Documentos del coordinador</h3>
-      <div class="form-grid">
-        <div class="form-item">
-          <label>Boleta</label>
-          <a id="linkBoleta" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
-          <label style="margin-top:.25rem;">
-            <input type="checkbox" id="chkBoletaOk" />
-            Boleta revisada y correcta
-          </label>
-        </div>
-        <div class="form-item">
-          <label>Comprobante transferencia CLP</label>
-          <a id="linkComprobante" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
-          <label style="margin-top:.25rem; display:block;">
-            <input type="checkbox" id="chkComprobanteOk" />
-            Comprobante revisado y correcto
-          </label>
-          <label style="margin-top:.25rem; font-size:.78rem; text-transform:uppercase; color:#4b5563; font-weight:600;">
-            Monto devuelto (CLP)
-          </label>
-          <input id="montoDevueltoCLP" type="number" min="0" step="1000" class="input-field mono" />
-        </div>
-        <div class="form-item">
-          <label>Constancia efectivo USD / transferencia coordinador</label>
-          <a id="linkTransferencia" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
-          <label style="margin-top:.25rem;">
-            <input type="checkbox" id="chkTransferenciaOk" />
-            Documento revisado y correcto
-          </label>
-          <label style="margin-top:.25rem; font-size:.78rem; text-transform:uppercase; color:#4b5563; font-weight:600;">
-            Monto devuelto (USD)
-          </label>
-          <input id="montoDevueltoUSD" type="number" step="0.01" min="0" class="input-field mono" />
-        </div>
-      </div>
+
+      <table class="finanzas docs-table">
+        <thead>
+          <tr>
+            <th>Documento</th>
+            <th>Estado</th>
+            <th>Monto real</th>
+            <th>OK</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- TRANSFERENCIA CLP -->
+          <tr>
+            <td><strong>Transferencia CLP</strong></td>
+            <td id="celdaEstadoTransf">
+              <!-- Si aplica: link VER; si no aplica: "NO APLICA" -->
+              <a id="linkComprobante" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
+            </td>
+            <td>
+              <input
+                id="montoDevueltoCLP"
+                type="number"
+                min="0"
+                step="1000"
+                class="input-field mono"
+              />
+            </td>
+            <td style="text-align:center;">
+              <input type="checkbox" id="chkComprobanteOk" />
+            </td>
+          </tr>
+
+          <!-- CONSTANCIA USD -->
+          <tr>
+            <td><strong>Constancia USD / transferencia coord.</strong></td>
+            <td id="celdaEstadoConstancia">
+              <a id="linkTransferencia" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
+            </td>
+            <td>
+              <input
+                id="montoDevueltoUSD"
+                type="number"
+                step="0.01"
+                min="0"
+                class="input-field mono"
+              />
+            </td>
+            <td style="text-align:center;">
+              <input type="checkbox" id="chkTransferenciaOk" />
+            </td>
+          </tr>
+
+          <!-- BOLETA / DOC SII -->
+          <tr>
+            <td><strong>Boleta / doc. SII</strong></td>
+            <td id="celdaEstadoBoleta">
+              <a id="linkBoleta" href="#" target="_blank" rel="noopener" class="link-doc">—</a>
+            </td>
+            <td class="muted" style="font-size:.8rem;">Sin monto asociado</td>
+            <td style="text-align:center;">
+              <input type="checkbox" id="chkBoletaOk" />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p class="muted" style="margin-top:.6rem;font-size:.8rem;">
+        * “NO APLICA” se usa cuando ese documento no corresponde para este grupo
+        (por ejemplo, sin devolución en USD o sin transferencia CLP).
+      </p>
+
       <button id="btnGuardarDocs" class="btn-accion">Guardar estado de documentos</button>
     </div>
+
 
     <!-- Resumen financiero -->
     <div class="card">
