@@ -163,7 +163,10 @@ table.dataTable td {
   'opsz' 48
 }
 
-
+/* Oculta la tarjeta de finanzas por defecto */
+.ocultar-finanzas {
+  display: none !important;
+}
 
 /* ----------------------------------------------------------------------- */
 /* Estilos específicos para la vista de “Visualización de Grupos”          */
