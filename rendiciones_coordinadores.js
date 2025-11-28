@@ -127,12 +127,28 @@ async function preloadCatalogs() {
       x.coord, x.responsable, x.owner, ''
     ).toLowerCase();
     const destino  = coalesce(x.destino, x.lugar, '');
-    const paxTotal = Number(x.paxTotal || x.pax || x.pax_total || 0);
+
+    // 🔴 AHORA USAMOS SIEMPRE "cantidadGrupo" COMO FUENTE PRINCIPAL
+    const cantidadGrupo = Number(
+      x.cantidadGrupo ??
+      x.paxTotal ??
+      x.pax ??
+      x.pax_total ??
+      0
+    );
+
     const programa = coalesce(x.programa, x.plan, '');
     const fechas   = coalesce(x.fechas, x.fechaDeViaje, x.fechaViaje, '');
 
     state.caches.grupos.set(gid, {
-      numero, nombre, coordEmail, destino, paxTotal, programa, fechas,
+      numero,
+      nombre,
+      coordEmail,
+      destino,
+      paxTotal: cantidadGrupo,   // alias por compatibilidad
+      cantidadGrupo,             // campo explícito para esta pantalla
+      programa,
+      fechas,
       urls:{
         boleta: x?.finanzas?.boletaUrl || x.boletaUrl || '',
         comprobante: x?.finanzas?.comprobanteUrl || x.comprobanteUrl || '',
@@ -803,7 +819,11 @@ function renderResumenFinanzas() {
     if (elGrupo)   elGrupo.textContent   = `${gInfo.numero} — ${gInfo.nombre}`;
     if (elCoord)   elCoord.textContent   = gInfo.coordEmail || '—';
     if (elDestino) elDestino.textContent = gInfo.destino || '—';
-    if (elPax)     elPax.textContent     = gInfo.cantidadGrupo ? `${gInfo.cantidadGrupo}` : '—';
+
+    // 🔴 Usa cantidadGrupo como fuente principal, con fallback a paxTotal
+    const paxMostrar = gInfo.cantidadGrupo ?? gInfo.paxTotal ?? 0;
+    if (elPax) elPax.textContent = paxMostrar ? String(paxMostrar) : '—';
+
     if (elProg)    elProg.textContent    = gInfo.programa || '—';
     if (elFechas)  elFechas.textContent  = gInfo.fechas || '—';
   }
@@ -946,6 +966,8 @@ function renderPrintActa() {
     <tr><td colspan="2" class="muted">Sin descuentos aplicados.</td></tr>
   `;
 
+  const paxPrint = (gInfo.cantidadGrupo ?? gInfo.paxTotal ?? '—') || '—';
+
   cont.innerHTML = `
     <div class="acta">
       <header class="acta-header">
@@ -961,10 +983,11 @@ function renderPrintActa() {
       <section class="acta-meta">
         <div><span>Coordinador(a)</span><strong>${escapeHtml(gInfo.coordEmail || '—')}</strong></div>
         <div><span>Destino</span><strong>${escapeHtml(gInfo.destino || '—')}</strong></div>
-        <div><span>Pax total</span><strong>${gInfo.cantidadGrupo || '—'}</strong></div>
+        <div><span>Pax total</span><strong>${paxPrint}</strong></div>
         <div><span>Programa</span><strong>${escapeHtml(gInfo.programa || '—')}</strong></div>
         <div><span>Fechas</span><strong>${escapeHtml(gInfo.fechas || '—')}</strong></div>
       </section>
+
 
       <section class="acta-section">
         <h2>1. Gastos aprobados</h2>
