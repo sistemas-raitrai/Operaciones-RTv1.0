@@ -873,7 +873,7 @@ function renderResumenFinanzas() {
   if (gInfo) {
     const summary = state.summary || {};
 
-    // Preferimos siempre lo que venga desde finanzas/summary
+    // Boleta / doc SII (ya funcionaba bien)
     const boletaUrl = coalesce(
       summary.boleta?.url,
       summary.boletaUrl,
@@ -881,21 +881,33 @@ function renderResumenFinanzas() {
       ''
     );
 
+    // Transferencia CLP / comprobante CLP
+    // - coordinadores.js guarda en: transferenciaCLP, comprobanteCLP
+    // - dejamos también variantes antiguas por compatibilidad
     const compUrl = coalesce(
-      summary.comprobante?.url,
       summary.transferenciaCLP?.url,
       summary.comprobanteCLP?.url,
+      summary.comprobante?.url,
+      summary.transferencia?.url,
+      summary.transferenciaCLPUrl,
+      summary.comprobanteUrl,
       gInfo.urls?.comprobante,
       ''
     );
 
+    // Constancia USD / transferencia coordinador
+    // - coordinadores.js guarda en: constanciaUSD, transferenciaCoord
+    // - también consideramos variantes antiguas
     const transfUrl = coalesce(
-      summary.constancia?.url,
       summary.transferenciaCoord?.url,
       summary.constanciaUSD?.url,
+      summary.constancia?.url,
+      summary.transferenciaCoordUrl,
+      summary.constanciaUrl,
       gInfo.urls?.transferenciaCoord,
       ''
     );
+
 
     // Estimamos si "aplica" cada documento
     const aplicaTransfCLP = !!(compUrl || montoDevCLP || docsOk.comprobante);
@@ -1049,6 +1061,7 @@ function renderPrintActa() {
   // --- Estado docs para el punto 3 ---
   const summary = state.summary || {};
 
+  // Boleta / doc SII
   const boletaUrl = coalesce(
     summary.boleta?.url,
     summary.boletaUrl,
@@ -1056,18 +1069,25 @@ function renderPrintActa() {
     ''
   );
 
+  // Transferencia CLP / comprobante CLP
   const compUrl = coalesce(
-    summary.comprobante?.url,
     summary.transferenciaCLP?.url,
     summary.comprobanteCLP?.url,
+    summary.comprobante?.url,
+    summary.transferencia?.url,
+    summary.transferenciaCLPUrl,
+    summary.comprobanteUrl,
     gInfo.urls?.comprobante,
     ''
   );
 
+  // Constancia USD / transferencia coordinador
   const transfUrl = coalesce(
-    summary.constancia?.url,
     summary.transferenciaCoord?.url,
     summary.constanciaUSD?.url,
+    summary.constancia?.url,
+    summary.transferenciaCoordUrl,
+    summary.constanciaUrl,
     gInfo.urls?.transferenciaCoord,
     ''
   );
