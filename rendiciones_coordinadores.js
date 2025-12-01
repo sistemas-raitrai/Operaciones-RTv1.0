@@ -1196,11 +1196,11 @@ function renderPrintActa() {
 
         <section class="acta-section acta-firmas">
           <div>
-            <span>Firma Operaciones</span>
+            <span>FIRMA DE OPERACIONES</span>
             <div class="firm-line"></div>
           </div>
           <div>
-            <span>Firma Contabilidad</span>
+            <span>FIRMA DE CONTABILIDAD</span>
             <div class="firm-line"></div>
           </div>
         </section>
