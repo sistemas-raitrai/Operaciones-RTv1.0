@@ -242,7 +242,22 @@
       cursor:pointer;
       font-size:.9rem;
       font-weight:600;
+      color:#111827;                 /* asegura texto visible */
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
     }
+    
+    .btn-accion.primary {
+      background:#0ea5e9;
+      color:#ffffff;
+      border-color:#0ea5e9;
+    }
+    
+    #btnGuardarDocs {
+      margin-top:.6rem;
+    }
+
     .btn-accion.primary {
       background:#0ea5e9;
       color:#fff;
@@ -627,7 +642,10 @@
         (por ejemplo, sin devolución en USD o sin transferencia CLP).
       </p>
 
-      <button id="btnGuardarDocs" class="btn-accion">Guardar estado de documentos</button>
+      <button id="btnGuardarDocs" class="btn-accion primary">
+        Guardar estado de documentos
+      </button>
+
     </div>
 
 
