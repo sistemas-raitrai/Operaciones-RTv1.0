@@ -1089,18 +1089,25 @@ function renderPrintActa() {
                              : 'Constancia efectivo USD / transferencia coordinador: pendiente de revisión')
     : 'Constancia efectivo USD / transferencia coordinador: NO APLICA';
 
-  const filasGastos = gastosOk.map(it => `
-    <tr>
-      <td>${it.fechaTxt || '—'}</td>
-      <td>${escapeHtml(it.asunto || '')}</td>
-      <td>${escapeHtml(it.categoriaRendicion || 'GASTOS DEL GRUPO')}</td>
-      <td>${it.moneda || 'CLP'}</td>
-      <td class="num">${moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP')}</td>
-      <td>${it.imgUrl ? 'VER' : '—'}</td>
-    </tr>
-  `).join('') || `
+  const filasGastos = gastosOk.map(it => {
+    // ✔ = tiene imagen / comprobante
+    // ✗ = no tiene
+    const docSymbol = it.imgUrl ? '✓' : '✗';
+  
+    return `
+      <tr>
+        <td>${it.fechaTxt || '—'}</td>
+        <td>${escapeHtml(it.asunto || '')}</td>
+        <td>${escapeHtml(it.categoriaRendicion || 'GASTOS DEL GRUPO')}</td>
+        <td>${it.moneda || 'CLP'}</td>
+        <td class="num">${moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP')}</td>
+        <td style="text-align:center;">${docSymbol}</td>
+      </tr>
+    `;
+  }).join('') || `
     <tr><td colspan="6" class="muted">Sin gastos aprobados.</td></tr>
   `;
+
 
   const filasDescuentos = state.descuentos.map(d => `
     <tr>
