@@ -1434,6 +1434,43 @@ function wireUI() {
   }
 
   /* ---------------------------------------------------
+     BOTÓN LIMPIAR FILTROS
+  --------------------------------------------------- */
+  const btnLimpiar = document.getElementById('btnLimpiarFiltros');
+  if (btnLimpiar) {
+    btnLimpiar.addEventListener('click', () => {
+      // 1) Reset estado de filtros
+      state.filtros.coord       = '';
+      state.filtros.grupo       = '';
+      state.filtros.grupoNombre = '';
+
+      // 2) Limpiar inputs
+      const inpCoord  = document.getElementById('filtroCoord');
+      const inpGrupo  = document.getElementById('filtroGrupo');
+      const inpNombre = document.getElementById('filtroNombreGrupo');
+
+      if (inpCoord)  inpCoord.value  = '';
+      if (inpGrupo)  inpGrupo.value  = '';
+      if (inpNombre) inpNombre.value = '';
+
+      // 3) Regenerar datalists con TODOS los grupos
+      rebuildGroupDatalists('');
+
+      // 4) Vaciar datos en pantalla
+      state.gastos     = [];
+      state.abonos     = [];
+      state.descuentos = [];
+      state.summary    = null;
+
+      renderTablaGastos();
+      renderResumenFinanzas();
+
+      const pagInfo = document.getElementById('pagInfo');
+      if (pagInfo) pagInfo.textContent = 'Filtros limpios.';
+    });
+  }
+
+  /* ---------------------------------------------------
      AGREGAR DESCUENTO
   --------------------------------------------------- */
   const btnAgregarDesc = document.getElementById('btnAgregarDesc');
