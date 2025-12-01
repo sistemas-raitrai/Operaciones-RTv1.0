@@ -882,12 +882,14 @@ function renderResumenFinanzas() {
     );
 
     // Transferencia CLP / comprobante CLP
-    // - coordinadores.js guarda en: transferenciaCLP, comprobanteCLP
-    // - dejamos también variantes antiguas por compatibilidad
+    // coordinadores.js guarda AHORA en: summary.transfer.comprobanteUrl
+    // dejamos también variantes antiguas por compatibilidad
     const compUrl = coalesce(
+      summary.transfer?.comprobanteUrl,          // NUEVO: campo real
       summary.transferenciaCLP?.url,
       summary.comprobanteCLP?.url,
       summary.comprobante?.url,
+      summary.transfer?.url,
       summary.transferencia?.url,
       summary.transferenciaCLPUrl,
       summary.comprobanteUrl,
@@ -896,9 +898,10 @@ function renderResumenFinanzas() {
     );
 
     // Constancia USD / transferencia coordinador
-    // - coordinadores.js guarda en: constanciaUSD, transferenciaCoord
-    // - también consideramos variantes antiguas
+    // coordinadores.js guarda AHORA en: summary.cashUsd.comprobanteUrl
+    // dejamos variantes antiguas como respaldo
     const transfUrl = coalesce(
+      summary.cashUsd?.comprobanteUrl,           // NUEVO: campo real
       summary.transferenciaCoord?.url,
       summary.constanciaUSD?.url,
       summary.constancia?.url,
@@ -907,6 +910,7 @@ function renderResumenFinanzas() {
       gInfo.urls?.transferenciaCoord,
       ''
     );
+
 
 
     // Estimamos si "aplica" cada documento
@@ -1070,10 +1074,13 @@ function renderPrintActa() {
   );
 
   // Transferencia CLP / comprobante CLP
+  // coordinadores.js → summary.transfer.comprobanteUrl
   const compUrl = coalesce(
+    summary.transfer?.comprobanteUrl,          // NUEVO
     summary.transferenciaCLP?.url,
     summary.comprobanteCLP?.url,
     summary.comprobante?.url,
+    summary.transfer?.url,
     summary.transferencia?.url,
     summary.transferenciaCLPUrl,
     summary.comprobanteUrl,
@@ -1082,7 +1089,9 @@ function renderPrintActa() {
   );
 
   // Constancia USD / transferencia coordinador
+  // coordinadores.js → summary.cashUsd.comprobanteUrl
   const transfUrl = coalesce(
+    summary.cashUsd?.comprobanteUrl,           // NUEVO
     summary.transferenciaCoord?.url,
     summary.constanciaUSD?.url,
     summary.constancia?.url,
@@ -1091,6 +1100,7 @@ function renderPrintActa() {
     gInfo.urls?.transferenciaCoord,
     ''
   );
+
 
   const aplicaTransfCLP  = !!(compUrl || montoDevCLP || docsOk.comprobante);
   const aplicaConstUSD   = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
