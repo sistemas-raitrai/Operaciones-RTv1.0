@@ -353,24 +353,25 @@
         margin: 18mm;
       }
 
-      /* Oculta todo por defecto solo a nivel de visibilidad */
-      body {
-        background: #ffffff !important;
-      }
-      body * {
-        visibility: hidden !important;
+      html, body {
+        margin: 0;
+        padding: 0;
       }
 
-      /* Muestra SOLO el acta (y su contenido) */
-      #printActa {
-        display: block !important;
-        visibility: visible !important;
-        position: relative;
-        margin: 0 auto;
-        max-width: 190mm;
+      /* Ocultar TODO el contenido de la página al imprimir… */
+      body * {
+        display: none !important;
       }
+
+      /* …excepto el acta y todo lo que está dentro de ella */
+      #printActa,
       #printActa * {
-        visibility: visible !important;
+        display: block !important;
+      }
+
+      #printActa {
+        max-width: 190mm;
+        margin: 0 auto;
       }
     }
 
