@@ -983,15 +983,21 @@ function renderResumenFinanzas() {
 
 
 function renderPrintActa() {
-  const gid  = state.filtros.grupo || '';
-  let gInfo  = gid ? state.caches.grupos.get(gid) : null;
-  const cont = document.getElementById('printActa');
+  const gid = state.filtros.grupo || '';
+  let gInfo = gid ? state.caches.grupos.get(gid) : null;
 
-  // Si no hay contenedor o no tenemos info de grupo, no seguimos
-  if (!cont) return;
+  // 👉 Dos posibles contenedores:
+  //    - HTML nuevo:  #printActa
+  //    - Texto legado: #printSheet  (el que tenías cuando “sí funcionaba”)
+  const contHtml = document.getElementById('printActa');
+  const contText = document.getElementById('printSheet');
 
-  // Fallback: si por alguna razón no está gInfo pero sí hay gastos,
-  // intento recuperar el grupo desde el primer gasto.
+  if (!contHtml && !contText) {
+    console.warn('[REN] renderPrintActa: no hay ni #printActa ni #printSheet en el DOM');
+    return;
+  }
+
+  // Fallback: si no tengo gInfo pero sí hay gastos, intento deducir el grupo
   if (!gInfo && state.gastos.length) {
     const first = state.gastos[0];
     if (first?.grupoId) {
@@ -1000,7 +1006,12 @@ function renderPrintActa() {
   }
   if (!gInfo) {
     console.warn('[REN] renderPrintActa: sin gInfo para imprimir');
-    cont.innerHTML = '<div class="acta"><p class="muted">No hay datos para imprimir.</p></div>';
+    if (contHtml) {
+      contHtml.innerHTML = '<div class="acta"><p class="muted">No hay datos para imprimir.</p></div>';
+    }
+    if (contText) {
+      contText.textContent = 'No hay datos para imprimir.';
+    }
     return;
   }
 
@@ -1023,6 +1034,7 @@ function renderPrintActa() {
 
   const docsOk = (state.summary && state.summary.docsOk) || {};
   const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
+  const montoDevUSDPrint = Number(docsOk.montoDevueltoUSD || 0) || 0;
   const diff = saldoEsperado - montoDevCLP;
 
   let textoResultado = '';
@@ -1034,7 +1046,7 @@ function renderPrintActa() {
     textoResultado = `A favor del coordinador: ${moneyCLP(-diff)}`;
   }
 
-  // Estado de documentos para el punto 3
+  // --- Estado docs para el punto 3 ---
   const summary = state.summary || {};
 
   const boletaUrl = coalesce(
@@ -1060,9 +1072,8 @@ function renderPrintActa() {
     ''
   );
 
-  const aplicaTransfCLP    = !!(compUrl || montoDevCLP || docsOk.comprobante);
-  const montoDevUSDPrint   = Number(docsOk.montoDevueltoUSD || 0) || 0;
-  const aplicaConstUSD     = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
+  const aplicaTransfCLP  = !!(compUrl || montoDevCLP || docsOk.comprobante);
+  const aplicaConstUSD   = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
 
   const textoBoleta = docsOk.boleta
     ? 'Boleta / documento SII: OK'
@@ -1078,8 +1089,6 @@ function renderPrintActa() {
                              : 'Constancia efectivo USD / transferencia coordinador: pendiente de revisión')
     : 'Constancia efectivo USD / transferencia coordinador: NO APLICA';
 
-
-
   const filasGastos = gastosOk.map(it => `
     <tr>
       <td>${it.fechaTxt || '—'}</td>
@@ -1093,7 +1102,6 @@ function renderPrintActa() {
     <tr><td colspan="6" class="muted">Sin gastos aprobados.</td></tr>
   `;
 
-
   const filasDescuentos = state.descuentos.map(d => `
     <tr>
       <td>${escapeHtml(d.motivo || '')}</td>
@@ -1105,100 +1113,124 @@ function renderPrintActa() {
 
   const paxPrint = (gInfo.cantidadGrupo ?? gInfo.paxTotal ?? '—') || '—';
 
-  cont.innerHTML = `
-    <div class="acta">
-      <header class="acta-header">
-        <div class="acta-head-left">
-          <h1>GASTOS DEL GRUPO — RENDICIÓN DE COORDINADOR</h1>
-          <p class="acta-sub">Grupo ${escapeHtml(gInfo.numero || '')} — ${escapeHtml(gInfo.nombre || '')}</p>
-        </div>
-        <div class="acta-head-right">
-          <img src="Logo Raitrai.png" alt="Rai Trai" class="acta-logo" />
-        </div>
-      </header>
+  // 1) ACTA HTML NUEVA (si existe #printActa)
+  if (contHtml) {
+    contHtml.innerHTML = `
+      <div class="acta">
+        <header class="acta-header">
+          <div class="acta-head-left">
+            <h1>GASTOS DEL GRUPO — RENDICIÓN DE COORDINADOR</h1>
+            <p class="acta-sub">Grupo ${escapeHtml(gInfo.numero || '')} — ${escapeHtml(gInfo.nombre || '')}</p>
+          </div>
+          <div class="acta-head-right">
+            <img src="Logo Raitrai.png" alt="Rai Trai" class="acta-logo" />
+          </div>
+        </header>
 
-      <section class="acta-meta">
-        <div><span>Coordinador(a)</span><strong>${escapeHtml(gInfo.coordEmail || '—')}</strong></div>
-        <div><span>Destino</span><strong>${escapeHtml(gInfo.destino || '—')}</strong></div>
-        <div><span>Pax total</span><strong>${paxPrint}</strong></div>
-        <div><span>Programa</span><strong>${escapeHtml(gInfo.programa || '—')}</strong></div>
-        <div><span>Fechas</span><strong>${escapeHtml(gInfo.fechas || '—')}</strong></div>
-      </section>
+        <section class="acta-meta">
+          <div><span>Coordinador(a)</span><strong>${escapeHtml(gInfo.coordEmail || '—')}</strong></div>
+          <div><span>Destino</span><strong>${escapeHtml(gInfo.destino || '—')}</strong></div>
+          <div><span>Pax total</span><strong>${paxPrint}</strong></div>
+          <div><span>Programa</span><strong>${escapeHtml(gInfo.programa || '—')}</strong></div>
+          <div><span>Fechas</span><strong>${escapeHtml(gInfo.fechas || '—')}</strong></div>
+        </section>
 
+        <section class="acta-section">
+          <h2>1. Gastos aprobados</h2>
+          <table class="acta-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Asunto</th>
+                <th>Categoría</th>
+                <th>Moneda</th>
+                <th class="num">Monto aprobado</th>
+                <th>Doc.</th>
+              </tr>
+            </thead>
+            <tbody>${filasGastos}</tbody>
+          </table>
+        </section>
 
-      <section class="acta-section">
-        <h2>1. Gastos aprobados</h2>
-  
-        <table class="acta-table">
-          <thead>
-            <tr>
-              <th>Fecha</th>
-              <th>Asunto</th>
-              <th>Categoría</th>
-              <th>Moneda</th>
-              <th class="num">Monto aprobado</th>
-              <th>Doc.</th>
-            </tr>
-          </thead>
+        <section class="acta-section">
+          <h2>2. Descuentos de rendición</h2>
+          <table class="acta-table">
+            <thead>
+              <tr>
+                <th>Motivo</th>
+                <th class="num">Monto (CLP)</th>
+              </tr>
+            </thead>
+            <tbody>${filasDescuentos}</tbody>
+          </table>
+        </section>
 
-          <tbody>
-            ${filasGastos}
-          </tbody>
-        </table>
-      </section>
+        <section class="acta-section">
+          <h2>3. Resumen financiero</h2>
+          <table class="acta-table acta-resumen">
+            <tbody>
+              <tr><td>Abonos totales</td><td class="num">${moneyCLP(totalAbonos)}</td></tr>
+              <tr><td>Gastos aprobados</td><td class="num">${moneyCLP(totalGastos)}</td></tr>
+              <tr><td>Descuentos de rendición</td><td class="num">${moneyCLP(totalDescuentos)}</td></tr>
+              <tr><td>Gastos netos</td><td class="num">${moneyCLP(gastosNetos)}</td></tr>
+              <tr><td>Saldo esperado (abonos – gastos netos)</td><td class="num">${moneyCLP(saldoEsperado)}</td></tr>
+              <tr><td>Monto devuelto (CLP)</td><td class="num">${moneyCLP(montoDevCLP)}</td></tr>
+              <tr><td>Resultado final</td><td class="num">${escapeHtml(textoResultado)}</td></tr>
+            </tbody>
+          </table>
 
-      <section class="acta-section">
-        <h2>2. Descuentos de rendición</h2>
-        <table class="acta-table">
-          <thead>
-            <tr>
-              <th>Motivo</th>
-              <th class="num">Monto (CLP)</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${filasDescuentos}
-          </tbody>
-        </table>
-      </section>
-      
-      <section class="acta-section">
-        <h2>3. Resumen financiero</h2>
-        <table class="acta-table acta-resumen">
-          <tbody>
-            <tr><td>Abonos totales</td><td class="num">${moneyCLP(totalAbonos)}</td></tr>
-            <tr><td>Gastos aprobados</td><td class="num">${moneyCLP(totalGastos)}</td></tr>
-            <tr><td>Descuentos de rendición</td><td class="num">${moneyCLP(totalDescuentos)}</td></tr>
-            <tr><td>Gastos netos</td><td class="num">${moneyCLP(gastosNetos)}</td></tr>
-            <tr><td>Saldo esperado (abonos – gastos netos)</td><td class="num">${moneyCLP(saldoEsperado)}</td></tr>
-            <tr><td>Monto devuelto (CLP)</td><td class="num">${moneyCLP(montoDevCLP)}</td></tr>
-            <tr><td>Resultado final</td><td class="num">${escapeHtml(textoResultado)}</td></tr>
-          </tbody>
-        </table>
+          <p style="margin-top:6px;font-size:9pt;">Estado de documentos:</p>
+          <ul style="margin:2px 0 0 16px;font-size:9pt;padding-left:12px;">
+            <li>${escapeHtml(textoBoleta)}</li>
+            <li>${escapeHtml(textoCompCLP)}</li>
+            <li>${escapeHtml(textoConstUSD)}</li>
+          </ul>
+        </section>
 
-        <p style="margin-top:6px;font-size:9pt;">
-          Estado de documentos:
-        </p>
-        <ul style="margin:2px 0 0 16px;font-size:9pt;padding-left:12px;">
-          <li>${escapeHtml(textoBoleta)}</li>
-          <li>${escapeHtml(textoCompCLP)}</li>
-          <li>${escapeHtml(textoConstUSD)}</li>
-        </ul>
-      </section>
+        <section class="acta-section acta-firmas">
+          <div>
+            <span>Firma Operaciones</span>
+            <div class="firm-line"></div>
+          </div>
+          <div>
+            <span>Firma Contabilidad</span>
+            <div class="firm-line"></div>
+          </div>
+        </section>
+      </div>
+    `;
+  }
 
+  // 2) TEXTO LEGADO (si existe #printSheet) por si tu CSS de impresión aún usa ese id
+  if (contText && contText !== contHtml) {
+    const lines = [];
 
-      <section class="acta-section acta-firmas">
-        <div>
-          <span>Firma Operaciones</span>
-          <div class="firm-line"></div>
-        </div>
-        <div>
-          <span>Firma Contabilidad</span>
-          <div class="firm-line"></div>
-        </div>
-      </section>
-    </div>
-  `;
+    lines.push(`GASTOS DEL GRUPO - RENDICIÓN COORDINADOR`);
+    lines.push(`${gInfo.numero || ''} — ${gInfo.nombre || ''}`);
+    lines.push('');
+    lines.push(`Coordinador(a): ${gInfo.coordEmail || ''}`);
+    lines.push(`Destino:       ${gInfo.destino || ''}`);
+    lines.push(`Pax total:     ${paxPrint}`);
+    lines.push(`Programa:      ${gInfo.programa || ''}`);
+    lines.push(`Fechas:        ${gInfo.fechas || ''}`);
+    lines.push('');
+    lines.push(`ABONOS:        ${moneyCLP(totalAbonos)}`);
+    lines.push(`GASTOS APROB.: ${moneyCLP(totalGastos)}`);
+    lines.push(`DESCUENTOS:    ${moneyCLP(totalDescuentos)}`);
+    lines.push(`GASTOS NETOS:  ${moneyCLP(gastosNetos)}`);
+    lines.push(`SALDO ESP.:    ${moneyCLP(saldoEsperado)}`);
+    lines.push(`DEVUELTO CLP:  ${moneyCLP(montoDevCLP)}`);
+    lines.push(`RESULTADO:     ${textoResultado}`);
+    lines.push('');
+    lines.push('DETALLE GASTOS APROBADOS:');
+    gastosOk.forEach(it => {
+      const fecha = it.fechaTxt || '--';
+      const monto = moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP');
+      lines.push(`  ${fecha}  ${monto}  ${it.asunto || ''}`);
+    });
+
+    contText.textContent = lines.join('\n');
+  }
 }
 
 /* ====================== WIRING UI ====================== */
