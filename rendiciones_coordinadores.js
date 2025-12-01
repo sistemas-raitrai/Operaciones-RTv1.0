@@ -1421,7 +1421,7 @@ function wireUI() {
   }
 
   /* ---------------------------------------------------
-     IMPRIMIR RENDICIÓN  (abre una ventana solo con el acta)
+     IMPRIMIR RENDICIÓN  (usa @media print y #printActa)
   --------------------------------------------------- */
   const btnPrint = document.getElementById('btnImprimirRendicion');
   if (btnPrint) {
@@ -1432,133 +1432,14 @@ function wireUI() {
         return;
       }
 
-      // Recalcula resumen + acta en el DOM actual
+      // Aseguramos que el resumen y el acta estén actualizados
       renderResumenFinanzas();
+      renderPrintActa();
 
+      // Pequeña espera para que el DOM pinte #printActa
       setTimeout(() => {
-        // Nos aseguramos de tener la versión más fresca del acta
-        renderPrintActa();
-
-        const contHtml = document.getElementById('printActa');
-        const actaHTML = contHtml ? contHtml.innerHTML : '<p>Sin datos para imprimir.</p>';
-
-        // Abrimos una ventana nueva SOLO para imprimir el acta
-        const w = window.open('', '_blank');
-        if (!w) {
-          alert('No se pudo abrir la ventana de impresión (¿pop-up bloqueado?).');
-          return;
-        }
-
-        const css = `
-          @page { size: A4; margin: 18mm; }
-          body {
-            font-family: Calibri, Arial, sans-serif;
-            font-size: 11pt;
-            margin: 0;
-            padding: 0;
-          }
-          .acta {
-            max-width: 190mm;
-            margin: 0 auto;
-          }
-          .acta-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 12px;
-          }
-          .acta-head-left h1 {
-            font-size: 16pt;
-            margin: 0 0 4px;
-          }
-          .acta-head-left .acta-sub {
-            margin: 0;
-            font-size: 10pt;
-            color: #4b5563;
-          }
-          .acta-logo {
-            max-height: 40px;
-            object-fit: contain;
-          }
-          .acta-meta {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0,1fr));
-            gap: 4px 12px;
-            margin-bottom: 12px;
-            font-size: 9.5pt;
-          }
-          .acta-meta span {
-            display: block;
-            text-transform: uppercase;
-            font-size: 8pt;
-            color: #6b7280;
-          }
-          .acta-meta strong {
-            font-weight: 600;
-          }
-          .acta-section {
-            margin-top: 10px;
-          }
-          .acta-section h2 {
-            font-size: 11pt;
-            margin: 0 0 4px;
-          }
-          .acta-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 9.5pt;
-          }
-          .acta-table th,
-          .acta-table td {
-            border: 1px solid #e5e7eb;
-            padding: 3px 4px;
-            vertical-align: top;
-          }
-          .acta-table th {
-            background: #f9fafb;
-            font-weight: 600;
-          }
-          .acta-table .num {
-            text-align: right;
-            white-space: nowrap;
-          }
-          .acta-resumen td:first-child {
-            width: 70%;
-          }
-          .acta-firmas {
-            display: flex;
-            justify-content: space-between;
-            gap: 16mm;
-            margin-top: 18mm;
-            font-size: 9pt;
-          }
-          .acta-firmas .firm-line {
-            border-bottom: 1px solid #000;
-            margin-top: 18mm;
-          }
-        `;
-
-        w.document.open();
-        w.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Rendición de coordinador</title>
-  <style>${css}</style>
-</head>
-<body>
-  ${actaHTML}
-</body>
-</html>`);
-        w.document.close();
-
-        // Damos un pequeño tiempo para que cargue y luego imprimimos
-        setTimeout(() => {
-          w.focus();
-          w.print();
-          w.close();
-        }, 200);
-      }, 100);
+        window.print();   // aquí entra en juego tu @media print del HTML
+      }, 50);
     });
   }
 
