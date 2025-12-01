@@ -348,10 +348,32 @@
     }
 
     @media print {
-      @page { size:A4; margin:18mm; }
-      body > *:not(#printActa) { display:none !important; }
-      #printActa { display:block; }
+      @page {
+        size: A4;
+        margin: 18mm;
+      }
+
+      /* Oculta todo por defecto solo a nivel de visibilidad */
+      body {
+        background: #ffffff !important;
+      }
+      body * {
+        visibility: hidden !important;
+      }
+
+      /* Muestra SOLO el acta (y su contenido) */
+      #printActa {
+        display: block !important;
+        visibility: visible !important;
+        position: relative;
+        margin: 0 auto;
+        max-width: 190mm;
+      }
+      #printActa * {
+        visibility: visible !important;
+      }
     }
+
     /* Fila "Agregar descuento": monto chico + motivo largo + botón al final */
     .descuento-row {
       display: flex;
