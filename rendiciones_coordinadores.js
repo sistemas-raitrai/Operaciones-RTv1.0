@@ -1152,7 +1152,7 @@ function renderPrintActa() {
                 <th>Categoría</th>
                 <th>Moneda</th>
                 <th class="num">Monto aprobado</th>
-                <th>Doc.</th>
+                <th>Boleta</th>
               </tr>
             </thead>
             <tbody>${filasGastos}</tbody>
