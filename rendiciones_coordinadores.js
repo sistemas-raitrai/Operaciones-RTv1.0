@@ -983,10 +983,29 @@ function renderResumenFinanzas() {
 
 
 function renderPrintActa() {
-  const gid   = state.filtros.grupo || '';
-  const gInfo = gid ? state.caches.grupos.get(gid) : null;
-  const cont  = document.getElementById('printActa');
-  if (!cont || !gInfo) return;
+  const gid  = state.filtros.grupo || '';
+  let gInfo  = gid ? state.caches.grupos.get(gid) : null;
+  const cont = document.getElementById('printActa');
+
+  // Si no hay contenedor o no tenemos info de grupo, no seguimos
+  if (!cont) return;
+
+  // Fallback: si por alguna razón no está gInfo pero sí hay gastos,
+  // intento recuperar el grupo desde el primer gasto.
+  if (!gInfo && state.gastos.length) {
+    const first = state.gastos[0];
+    if (first?.grupoId) {
+      gInfo = state.caches.grupos.get(first.grupoId) || null;
+    }
+  }
+  if (!gInfo) {
+    console.warn('[REN] renderPrintActa: sin gInfo para imprimir');
+    cont.innerHTML = '<div class="acta"><p class="muted">No hay datos para imprimir.</p></div>';
+    return;
+  }
+
+  console.log('[REN] renderPrintActa -> gid:', gid,
+              'gastosOk:', state.gastos.filter(it => it.rendOk).length);
 
   const gastosOk = state.gastos
     .filter(it => it.rendOk)
@@ -1376,9 +1395,19 @@ function wireUI() {
   if (btnPrint) {
     btnPrint.addEventListener('click', () => {
       const gid = state.filtros.grupo || '';
-      if (!gid) { alert('Selecciona un grupo.'); return; }
-      renderPrintActa();
-      window.print();
+      if (!gid) {
+        alert('Selecciona un grupo.');
+        return;
+      }
+
+      // Recalcula todo el resumen (incluye renderPrintActa al final)
+      renderResumenFinanzas();
+
+      // Aseguramos que el DOM alcance a pintar el acta antes de imprimir
+      setTimeout(() => {
+        renderPrintActa();   // refuerza por si acaso
+        window.print();
+      }, 50);
     });
   }
 
