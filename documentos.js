@@ -2972,49 +2972,110 @@ async function exportarPDFconFallback({ grupoId, node, filename }){
    Boot
 ────────────────────────────────────────────────────────────────────── */
 async function init(){
-  // Filtros
+  // 1) Cargar opciones base desde Firestore
   const { anos, destinos, programas, hoteles } = await fetchDistinctOptions();
 
-  // Año (default: actual)
-  const selAno = document.getElementById('fAno');
-  const currentYear = new Date(
-    new Date().toLocaleString('en-US', { timeZone: TZ })
-  ).getFullYear();
-  fillSelect(selAno, anos.map(a=>({value:a,label:a})), '(Todos)');
-  if (anos.includes(String(currentYear))) selAno.value = String(currentYear);
+  const selAno      = document.getElementById('fAno');
+  const selDestino  = document.getElementById('fDestino');
+  const selPrograma = document.getElementById('fPrograma');
+  const selHotel    = document.getElementById('fHotel');
 
-  fillSelect(document.getElementById('fDestino'), destinos.map(v=>({value:v,label:v})));
-  fillSelect(document.getElementById('fPrograma'), programas.map(v=>({value:v,label:v})));
-  fillSelect(document.getElementById('fHotel'), hoteles.map(h=>({value:h.id,label:h.nombre})));
+  // --- Año (default: año actual, si existe en la lista) ---
+  if (selAno){
+    fillSelect(selAno, anos.map(a => ({ value:a, label:a })), '(Todos)');
+    const currentYear = new Date(
+      new Date().toLocaleString('en-US', { timeZone: TZ })
+    ).getFullYear();
+    if (anos.includes(String(currentYear))){
+      selAno.value = String(currentYear);
+    }
+  }
 
-  // Eventos
-  document.getElementById('btnBuscar').addEventListener('click', buscar);
-  document.getElementById('btnLimpiar').addEventListener('click', ()=>{
-    document.getElementById('filtros').reset();
-    selAno.value = String(currentYear);
-    document.getElementById('tbody').innerHTML='';
-    document.getElementById('countHint').textContent='—';
+  // --- Destino / Programa / Hotel (filtros) ---
+  if (selDestino){
+    fillSelect(selDestino, destinos, '(Todos)');
+  }
+  if (selPrograma){
+    fillSelect(selPrograma, programas, '(Todos)');
+  }
+  if (selHotel){
+    fillSelect(selHotel, hoteles.map(h => ({ value:h.id, label:h.nombre })), '(Todos)');
+  }
+
+  // 2) Botones principales de la página
+  const btnBuscar   = document.getElementById('btnBuscar');
+  const btnLimpiar  = document.getElementById('btnLimpiar');
+  const btnDescSel  = document.getElementById('btnDescSel');   // 3C+2R+1V (SELECCIONADOS)
+  const btnDescAll  = document.getElementById('btnDescAll');   // 3C+2R+1V (TODOS)
+  const btnResSel   = document.getElementById('btnResSel');    // 2×R (RESÚMENES seleccionados)
+  const btnResAll   = document.getElementById('btnResAll');    // 1×V (VOUCHERS todos en tabla)
+
+  // --- Buscar ---
+  if (btnBuscar){
+    btnBuscar.addEventListener('click', buscar);
+  }
+
+  // También permitir ENTER en los filtros de texto
+  ['fNombre', 'fCodigo', 'fCoordinador'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('keyup', ev => {
+      if (ev.key === 'Enter') buscar();
+    });
   });
 
-  // Estos botones pueden estar comentados en el HTML, así que los tomamos con cuidado
-  const btnDescSel = document.getElementById('btnDescSel');
-  if (btnDescSel) btnDescSel.addEventListener('click', descargarSeleccionados);
+  // --- Limpiar filtros ---
+  if (btnLimpiar){
+    btnLimpiar.addEventListener('click', () => {
+      const fNombre      = document.getElementById('fNombre');
+      const fCodigo      = document.getElementById('fCodigo');
+      const fCoord       = document.getElementById('fCoordinador');
+      const fInicioDia   = document.getElementById('fInicioDia');
+      const tb           = document.getElementById('tbody');
+      const countHint    = document.getElementById('countHint');
+      const chkAll       = document.getElementById('chkAll');
 
-  const btnDescAll = document.getElementById('btnDescAll');
-  if (btnDescAll) btnDescAll.addEventListener('click', descargarTodos);
+      if (fNombre)    fNombre.value    = '';
+      if (fCodigo)    fCodigo.value    = '';
+      if (fCoord)     fCoord.value     = '';
+      if (fInicioDia) fInicioDia.value = '';
+      if (selAno)     selAno.value     = '';
+      if (selDestino) selDestino.value = '';
+      if (selPrograma)selPrograma.value= '';
+      if (selHotel)   selHotel.value   = '';
+      if (chkAll)     chkAll.checked   = false;
 
-  const btnResSel = document.getElementById('btnResSel');
-  if (btnResSel) btnResSel.addEventListener('click', descargarResumenSeleccionados);
+      if (tb)        tb.innerHTML      = '';
+      if (countHint) countHint.textContent = '';
+    });
+  }
 
-  // IMPORTANTE: este ahora imprime 1×V (vouchers) para TODOS los grupos de la tabla
-  const btnResAll = document.getElementById('btnResAll');
-  if (btnResAll) btnResAll.addEventListener('click', descargarVouchersTodos);
+  // --- Lote 3C + 2R + 1V (seleccionados) ---
+  if (btnDescSel){
+    btnDescSel.addEventListener('click', descargarSeleccionados);
+  }
 
+  // --- Lote 3C + 2R + 1V (todos los de la tabla) ---
+  if (btnDescAll){
+    btnDescAll.addEventListener('click', descargarTodos);
+  }
+
+  // --- NUEVO: RESÚMENES (2×R) sólo grupos seleccionados ---
+  if (btnResSel){
+    btnResSel.addEventListener('click', descargarResumenSeleccionados);
+  }
+
+  // --- NUEVO: VOUCHERS (1×V) para TODOS los grupos de la tabla ---
+  if (btnResAll){
+    btnResAll.addEventListener('click', descargarVouchersTodos);
+  }
+
+  // 3) Cargar tabla inicial (opcional: puedes comentarlo si no quieres auto-búsqueda)
+  await buscar();
 }
 
-init().catch(e=>{
-
-  
-  console.error('Init error', e);
-  document.getElementById('countHint').textContent='Error inicializando la página.';
+// Asegura que init() corra cuando el DOM está listo
+document.addEventListener('DOMContentLoaded', () => {
+  init().catch(e => console.error('Error en init()', e));
 });
+
