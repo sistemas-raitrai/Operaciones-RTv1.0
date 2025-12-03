@@ -2820,6 +2820,68 @@ async function descargarVouchersTodos(){
   imprimirHtml(partes.join(''));
 }
 
+// ──────────────────────────────────────────────────────────────
+// ITINERARIOS (1×I): 1 copia del ITINERARIO por grupo (SELECCIONADOS)
+//   → Botón: IMPRIMIR ITINERARIOS (seleccionados)
+// ──────────────────────────────────────────────────────────────
+async function descargarItinerariosSeleccionados(){
+  const tb   = document.getElementById('tbody');
+  const prog = document.getElementById('progressTxt');
+
+  // Sólo los grupos con checkbox marcado
+  const ids = [...tb.querySelectorAll('tr')]
+    .filter(tr => tr.querySelector('.rowchk')?.checked)
+    .map(tr => tr.dataset.id);
+
+  if (!ids.length){
+    if (prog) prog.textContent = 'Selecciona al menos un grupo para imprimir ITINERARIOS.';
+    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 3000);
+    return;
+  }
+
+  let ok = 0, fail = 0;
+  const partes = [];
+
+  for (let i = 0; i < ids.length; i++){
+    const grupoId = ids[i];
+    if (prog) prog.textContent = `Preparando itinerario ${i+1}/${ids.length}…`;
+
+    try{
+      const d = await getDoc(doc(db,'grupos', grupoId));
+      if (!d.exists()){
+        fail++;
+        continue;
+      }
+
+      const g = { id:d.id, ...d.data() };
+      const htmlIt = buildItinerarioDoc(g);
+
+      if (htmlIt){
+        // 1× ITINERARIO por grupo
+        partes.push(htmlIt);
+        ok++;
+      }else{
+        fail++;
+      }
+
+    }catch(e){
+      console.error('Error generando itinerario para grupo', grupoId, e);
+      fail++;
+    }
+  }
+
+  if (prog){
+    prog.textContent = `Itinerarios listos: ${ok} grupo(s) ok${fail ? `, ${fail} con error` : ''}.`;
+    setTimeout(()=>{ if (prog) prog.textContent = ''; }, 4000);
+  }
+
+  if (!partes.length) return;
+
+  // Un único documento imprimible con todos los itinerarios
+  imprimirHtml(partes.join(''));
+}
+
+
 
 async function pdfDesdeMiViaje(grupoId, filename){
   const SAFE_PX = Math.round(190 * 96 / 25.4); // zona segura
@@ -3077,5 +3139,18 @@ async function init(){
 // Asegura que init() corra cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', () => {
   init().catch(e => console.error('Error en init()', e));
+});
+
+// ──────────────────────────────────────────────────────────────
+// Hook de botones globales (lote)
+// ──────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const btnResSel  = document.getElementById('btnResSel');
+  const btnResAll  = document.getElementById('btnResAll');
+  const btnItinSel = document.getElementById('btnItinerariosSel');
+
+  if (btnResSel)  btnResSel.addEventListener('click', descargarResumenSeleccionados);
+  if (btnResAll)  btnResAll.addEventListener('click', descargarVouchersTodos);
+  if (btnItinSel) btnItinSel.addEventListener('click', descargarItinerariosSeleccionados);
 });
 
