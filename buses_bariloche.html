@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Gestor de Buses – Bariloche</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Si tienes un styles.css global, déjalo así -->
+  <link rel="stylesheet" href="styles.css" />
+
+  <style>
+    /* Estilos mínimos para que sea usable si aún no tienes CSS global */
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #020617;
+      color: #e5e7eb;
+    }
+
+    header.app-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      background: #020617;
+      border-bottom: 1px solid #1f2937;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .app-header-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #9ca3af;
+    }
+
+    .app-header-right {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .icon-btn {
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: #e5e7eb;
+      border-radius: 999px;
+      padding: 0.3rem 0.9rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .icon-btn span.emoji {
+      font-size: 1.1rem;
+    }
+
+    .icon-btn:hover {
+      background: #111827;
+    }
+
+    main {
+      padding: 1rem;
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+      gap: 1rem;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    section.card {
+      background: #020617;
+      border: 1px solid #1f2937;
+      border-radius: 0.75rem;
+      padding: 0.9rem;
+    }
+
+    section.card h2 {
+      font-size: 0.95rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #9ca3af;
+      margin: 0 0 0.75rem;
+    }
+
+    .filters-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      align-items: center;
+    }
+
+    label.field {
+      display: inline-flex;
+      flex-direction: column;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #9ca3af;
+      gap: 0.2rem;
+    }
+
+    label.field input,
+    label.field select,
+    label.field textarea {
+      background: #020617;
+      border: 1px solid #1f2937;
+      border-radius: 0.5rem;
+      padding: 0.3rem 0.5rem;
+      color: #e5e7eb;
+      font-size: 0.85rem;
+      min-width: 140px;
+    }
+
+    label.field textarea {
+      min-height: 60px;
+      resize: vertical;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+
+    thead {
+      background: #020617;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+
+    th, td {
+      border-bottom: 1px solid #1f2937;
+      padding: 0.3rem 0.4rem;
+      text-align: left;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+
+    th {
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-size: 0.72rem;
+      color: #9ca3af;
+    }
+
+    tbody tr:nth-child(odd) {
+      background: #020617;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #020617;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 0.15rem 0.5rem;
+      font-size: 0.7rem;
+      border: 1px solid #1f2937;
+    }
+
+    .pill.ok {
+      border-color: #16a34a;
+      color: #bbf7d0;
+    }
+
+    .pill.warn {
+      border-color: #f97316;
+      color: #fed7aa;
+    }
+
+    .pill.bad {
+      border-color: #ef4444;
+      color: #fecaca;
+    }
+
+    .btn {
+      border-radius: 999px;
+      border: 1px solid #1f2937;
+      background: #020617;
+      color: #e5e7eb;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.78rem;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      border-color: #22c55e;
+      background: #16a34a;
+      color: #022c22;
+      font-weight: 600;
+    }
+
+    .btn.secondary {
+      border-color: #1f2937;
+    }
+
+    .btn.danger {
+      border-color: #b91c1c;
+      color: #fecaca;
+    }
+
+    .btn + .btn {
+      margin-left: 0.3rem;
+    }
+
+    .actions {
+      display: flex;
+      gap: 0.25rem;
+      flex-wrap: wrap;
+    }
+
+    .subnote {
+      font-size: 0.7rem;
+      color: #6b7280;
+      margin-top: 0.25rem;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 0.5rem;
+      height: 0.5rem;
+      border-radius: 999px;
+      margin-right: 0.3rem;
+    }
+
+    .status-pendiente {
+      background: #facc15;
+    }
+    .status-curso {
+      background: #22c55e;
+    }
+    .status-ok {
+      background: #16a34a;
+    }
+    .status-cancelado {
+      background: #ef4444;
+    }
+
+    .flex-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .flex-1 {
+      flex: 1 1 180px;
+    }
+
+    .text-right {
+      text-align: right;
+    }
+
+    .text-center {
+      text-align: center;
+    }
+
+    .muted {
+      color: #6b7280;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ───────────── ENCABEZADO COMÚN ───────────── -->
+  <header class="app-header">
+    <div class="app-header-left">
+      <span>RAITRAI · GESTOR DE BUSES · BARILOCHE</span>
+    </div>
+    <div class="app-header-right">
+      <button id="btnHome" class="icon-btn" type="button">
+        <span class="emoji">🏠</span><span>Inicio</span>
+      </button>
+      <button id="btnRefresh" class="icon-btn" type="button">
+        <span class="emoji">🔄</span><span>Actualizar</span>
+      </button>
+      <button id="btnBack" class="icon-btn" type="button">
+        <span class="emoji">⬅️</span><span>Volver</span>
+      </button>
+      <button id="btnLogout" class="icon-btn" type="button">
+        <span class="emoji">⏏️</span><span>Salir</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ───────────── CONTENIDO PRINCIPAL ───────────── -->
+  <main>
+    <!-- ========= PANEL IZQUIERDO: BUSES + FILTRO ========= -->
+    <section class="card" id="panel-buses">
+      <h2>Buses Bariloche</h2>
+
+      <div class="filters-row">
+        <label class="field">
+          Fecha
+          <input type="date" id="filtroFecha" />
+        </label>
+        <div class="subnote">
+          Solo se listan <strong>traslados</strong para la fecha seleccionada.<br>
+          Los buses se cargan desde la colección <code>buses_bariloche</code>.
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Bus</th>
+            <th>Cap.</th>
+            <th>Conductor</th>
+            <th>WhatsApp</th>
+            <th class="text-center">Estado hoy</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyBuses">
+          <!-- Se completa desde JS -->
+        </tbody>
+      </table>
+
+      <p class="subnote">
+        *Estado hoy = basado en traslados de la fecha seleccionada con horas que se solapan con la hora actual.
+      </p>
+    </section>
+
+    <!-- ========= PANEL DERECHO: FORM + TRASLADOS ========= -->
+    <section class="card" id="panel-traslados">
+      <h2>Asignación de buses por grupo</h2>
+
+      <!-- FORMULARIO DE TRASLADO -->
+      <form id="formTraslado" autocomplete="off">
+        <div class="flex-row">
+          <label class="field flex-1">
+            Grupo (solo Bariloche)
+            <select id="selGrupo" required>
+              <option value="">— Seleccionar grupo —</option>
+            </select>
+          </label>
+
+          <label class="field">
+            Pax
+            <input type="number" id="inputPax" readonly />
+          </label>
+        </div>
+
+        <div class="flex-row">
+          <label class="field flex-1">
+            Actividad / Servicio
+            <input type="text" id="inputActividad" placeholder="Ej: BOWLING DEL LAGO" required />
+          </label>
+        </div>
+
+        <div class="flex-row">
+          <label class="field">
+            Fecha
+            <input type="date" id="inputFecha" required />
+          </label>
+
+          <label class="field">
+            Hora salida
+            <input type="time" id="inputSalida" required />
+          </label>
+
+          <label class="field">
+            Hora regreso
+            <input type="time" id="inputRegreso" required />
+          </label>
+        </div>
+
+        <div class="flex-row">
+          <label class="field flex-1">
+            Bus ida
+            <select id="selBusIda" required>
+              <option value="">— Seleccionar bus —</option>
+            </select>
+            <span class="subnote">Solo buses libres y con capacidad suficiente.</span>
+          </label>
+
+          <label class="field flex-1">
+            Bus regreso
+            <select id="selBusRegreso" required>
+              <option value="">— Seleccionar bus —</option>
+            </select>
+            <span class="subnote">Puede ser el mismo u otro.</span>
+          </label>
+        </div>
+
+        <div class="flex-row" style="margin-top:0.5rem;">
+          <div class="flex-1 subnote">
+            <span id="estadoEdicion" class="muted">Modo: nuevo traslado</span>
+          </div>
+          <div class="text-right" style="flex: 1 1 auto;">
+            <button type="button" id="btnNuevo" class="btn secondary">Nuevo</button>
+            <button type="submit" id="btnGuardar" class="btn primary">Guardar traslado</button>
+          </div>
+        </div>
+      </form>
+
+      <!-- LISTA DE TRASLADOS DEL DÍA -->
+      <hr style="border-color:#1f2937;margin:0.75rem 0;" />
+
+      <div class="filters-row" style="justify-content: space-between;">
+        <div class="subnote">
+          Traslados para la fecha <span id="lblFechaActual">—</span>.
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Hora</th>
+            <th>Grupo</th>
+            <th>Actividad</th>
+            <th>Bus ida</th>
+            <th>Bus regreso</th>
+            <th>Estado</th>
+            <th class="text-center">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyTraslados">
+          <!-- Se completa desde JS -->
+        </tbody>
+      </table>
+
+      <p class="subnote">
+        Estados: <strong>Pendiente</strong> (planificado), <strong>En curso</strong> (ya salió), <strong>Completado</strong> (ya regresó), <strong>Cancelado</strong> (no se realiza).
+      </p>
+    </section>
+  </main>
+
+  <!-- JS principal del módulo -->
+  <script type="module" src="./buses_bariloche.js"></script>
+</body>
+</html>
