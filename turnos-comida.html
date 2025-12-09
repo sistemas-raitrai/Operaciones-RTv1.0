@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Turnos de Comida - Bariloche</title>
+  <link rel="icon" type="image/png" href="RaitraiLogo.png" />
+
+  <style>
+    :root{
+      --bg:#0b1329;
+      --panel:#0f172a;
+      --panel-soft:#111827;
+      --line:#1f2937;
+      --accent:#38bdf8;
+      --accent-soft:rgba(56,189,248,.18);
+      --danger:#f97373;
+      --ok:#16a34a;
+      --warn:#facc15;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --radius:12px;
+      --fade:.2s;
+    }
+
+    *{ box-sizing:border-box; }
+
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+      background:radial-gradient(circle at top,#111827 0,#020617 55%,#020617 100%);
+      color:var(--text);
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+      padding:16px;
+      gap:16px;
+    }
+
+    header{
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+
+    .title-block{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+
+    .title-badge{
+      background:linear-gradient(135deg,#0ea5e9,#22d3ee);
+      color:#0b1120;
+      font-weight:700;
+      padding:4px 10px;
+      border-radius:999px;
+      font-size:11px;
+      letter-spacing:.1em;
+    }
+
+    h1{
+      font-size:20px;
+      margin:0;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+    }
+
+    .sub{
+      margin:0;
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    .controls{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:flex-end;
+      justify-content:flex-end;
+    }
+
+    .field{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.06em;
+      color:var(--muted);
+    }
+
+    .field input{
+      background:var(--panel-soft);
+      border:1px solid var(--line);
+      border-radius:999px;
+      padding:6px 10px;
+      color:var(--text);
+      font-size:13px;
+      outline:none;
+    }
+
+    .field input:focus{
+      border-color:var(--accent);
+      box-shadow:0 0 0 1px rgba(56,189,248,.4);
+    }
+
+    .btn{
+      border-radius:999px;
+      border:1px solid var(--line);
+      background:var(--panel-soft);
+      color:var(--text);
+      font-size:12px;
+      padding:6px 14px;
+      text-transform:uppercase;
+      letter-spacing:.1em;
+      cursor:pointer;
+      transition:background var(--fade),border-color var(--fade),transform var(--fade),box-shadow var(--fade);
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+
+    .btn-primary{
+      background:linear-gradient(135deg,#0ea5e9,#22c55e);
+      color:#020617;
+      border-color:transparent;
+      font-weight:600;
+    }
+
+    .btn:hover{
+      transform:translateY(-1px);
+      box-shadow:0 6px 16px rgba(15,23,42,.6);
+    }
+
+    .btn:active{
+      transform:translateY(0);
+      box-shadow:none;
+    }
+
+    main{
+      display:grid;
+      grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);
+      gap:14px;
+      align-items:stretch;
+    }
+
+    @media (max-width:900px){
+      main{
+        grid-template-columns:1fr;
+      }
+    }
+
+    .panel{
+      background:radial-gradient(circle at top left,rgba(56,189,248,.08) 0,transparent 55%),
+                  radial-gradient(circle at bottom right,rgba(56,189,248,.03) 0,transparent 50%),
+                  var(--panel);
+      border-radius:var(--radius);
+      border:1px solid var(--line);
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      min-height:0;
+    }
+
+    .panel-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:6px;
+    }
+
+    .panel-title{
+      font-size:12px;
+      text-transform:uppercase;
+      letter-spacing:.12em;
+      color:var(--muted);
+    }
+
+    .pill{
+      font-size:11px;
+      padding:2px 8px;
+      border-radius:999px;
+      border:1px solid rgba(148,163,184,.5);
+      color:var(--muted);
+      white-space:nowrap;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:12px;
+    }
+
+    thead{
+      position:sticky;
+      top:0;
+      background:linear-gradient(to bottom,rgba(15,23,42,.96),rgba(15,23,42,.9));
+      z-index:2;
+    }
+
+    th,td{
+      padding:6px 6px;
+      border-bottom:1px solid rgba(31,41,55,.7);
+      text-align:left;
+    }
+
+    th{
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:var(--muted);
+    }
+
+    tbody tr:nth-child(even){
+      background-color:rgba(15,23,42,.7);
+    }
+
+    tbody tr:hover{
+      background-color:rgba(30,64,175,.45);
+    }
+
+    .tag{
+      display:inline-flex;
+      padding:2px 7px;
+      border-radius:999px;
+      font-size:11px;
+      border:1px solid rgba(148,163,184,.5);
+      color:var(--muted);
+      gap:4px;
+      align-items:center;
+    }
+
+    .tag-dot{
+      width:6px;
+      height:6px;
+      border-radius:999px;
+      background:var(--accent);
+    }
+
+    .select-turno{
+      width:100%;
+      background:rgba(15,23,42,.7);
+      border-radius:999px;
+      border:1px solid var(--line);
+      color:var(--text);
+      font-size:11px;
+      padding:3px 8px;
+      outline:none;
+    }
+
+    .select-turno:focus{
+      border-color:var(--accent);
+    }
+
+    .scroll{
+      overflow:auto;
+      border-radius:10px;
+    }
+
+    .turnos-grid{
+      display:grid;
+      grid-template-columns:1fr;
+      gap:10px;
+    }
+
+    .turno-card{
+      border-radius:var(--radius);
+      background:var(--panel-soft);
+      border:1px solid var(--line);
+      padding:8px 10px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+
+    .turno-header{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:6px;
+      font-size:11px;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    }
+
+    .turno-pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:2px 8px;
+      border-radius:999px;
+      font-size:11px;
+      border:1px solid rgba(148,163,184,.5);
+      background:rgba(15,23,42,.9);
+    }
+
+    .turno-badge{
+      font-weight:600;
+    }
+
+    .turno-status-ok{
+      color:var(--ok);
+    }
+    .turno-status-warn{
+      color:var(--warn);
+    }
+    .turno-status-danger{
+      color:var(--danger);
+    }
+
+    .turno-list{
+      list-style:none;
+      margin:0;
+      padding:0;
+      font-size:12px;
+      max-height:120px;
+      overflow:auto;
+    }
+
+    .turno-list li{
+      display:flex;
+      justify-content:space-between;
+      gap:8px;
+      padding:2px 0;
+      border-bottom:1px dashed rgba(31,41,55,.7);
+    }
+
+    .turno-list span:first-child{
+      flex:1;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .turno-list span:last-child{
+      white-space:nowrap;
+      color:var(--muted);
+    }
+
+    .whatsapp-block{
+      margin-top:8px;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+
+    .whatsapp-block textarea{
+      width:100%;
+      min-height:90px;
+      resize:vertical;
+      border-radius:10px;
+      border:1px solid var(--line);
+      background:#020617;
+      color:var(--text);
+      font-size:11px;
+      padding:6px 8px;
+      font-family:ui-monospace,Menlo,Monaco,"SF Mono",monospace;
+    }
+
+    .hint{
+      font-size:11px;
+      color:var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="title-block">
+      <div>
+        <div class="title-badge">MÓDULO OPERATIVO</div>
+        <h1>Turnos de comida · Bariloche</h1>
+        <p class="sub">Asignación de almuerzos y cenas por grupo / coordinador con capacidad máxima por turno.</p>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="field">
+        <label for="filtroFecha">Fecha</label>
+        <input type="date" id="filtroFecha">
+      </div>
+
+      <div class="field">
+        <label for="maxPaxTurno">Máx. pax por turno</label>
+        <input type="number" id="maxPaxTurno" min="1" value="96">
+      </div>
+
+      <div class="field">
+        <label>Horarios almuerzo</label>
+        <div style="display:flex;gap:4px;">
+          <input id="horaAlm1" type="time" value="12:00">
+          <input id="horaAlm2" type="time" value="13:00">
+          <input id="horaAlm3" type="time" value="14:00">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Horarios cena</label>
+        <div style="display:flex;gap:4px;">
+          <input id="horaCen1" type="time" value="20:00">
+          <input id="horaCen2" type="time" value="21:00">
+          <input id="horaCen3" type="time" value="22:00">
+        </div>
+      </div>
+
+      <button id="btnRecalcular" class="btn">
+        ♻️ Recalcular sugerencia
+      </button>
+
+      <button id="btnGuardar" class="btn btn-primary">
+        💾 Guardar (lógico / en memoria)
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <!-- PANEL IZQUIERDO: LISTA DE GRUPOS -->
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Grupos en Bariloche · Día seleccionado</div>
+        <div class="pill" id="resumenGrupos">0 grupos · 0 pax</div>
+      </div>
+
+      <div class="scroll" style="flex:1;">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:70px;">N° NEGOCIO</th>
+              <th>GRUPO</th>
+              <th style="width:70px;">PAX</th>
+              <th>COORDINADOR</th>
+              <th style="width:95px;">ALMUERZO</th>
+              <th style="width:90px;">CENA</th>
+            </tr>
+          </thead>
+          <tbody id="tablaGruposBody">
+            <!-- Filas generadas por JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <p class="hint">
+        Puedes modificar manualmente el turno de almuerzo y cena de cada grupo. <br>
+        El botón <strong>Recalcular sugerencia</strong> redistribuye todo según la capacidad máxima.
+      </p>
+    </section>
+
+    <!-- PANEL DERECHO: RESUMEN DE TURNOS Y WHATSAPP -->
+    <section class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Turnos del día · Resumen por horario</div>
+        <div class="pill" id="resumenCapacidad">Máx 96 pax por turno</div>
+      </div>
+
+      <div class="turnos-grid" id="turnosGrid">
+        <!-- Tarjetas de turnos generadas por JS -->
+      </div>
+
+      <div class="whatsapp-block">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+          <span class="panel-title">Texto para WhatsApp / correo</span>
+          <button id="btnCopiarWhats" class="btn" style="padding:4px 10px;font-size:11px;">
+            📋 Copiar texto
+          </button>
+        </div>
+        <textarea id="whatsText" readonly></textarea>
+        <p class="hint">
+          Este texto se genera según los turnos actuales (almuerzo y cena). Puedes pegarlo directamente en WhatsApp del hotel/casino.
+        </p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Script principal -->
+  <script src="turnos-comida.js"></script>
+</body>
+</html>
