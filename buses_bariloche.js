@@ -64,14 +64,25 @@ const rangesOverlap = (start1, end1, start2, end2) => {
   return start1 < end2 && end1 > start2;
 };
 
-// Fecha de hoy en formato YYYY-MM-DD (local)
+// Fecha de MAÑANA en formato YYYY-MM-DD (local, día calendario siguiente)
+// Nota: dejamos el nombre todayISO para no cambiar el resto del código,
+// pero internamente suma +1 día al calendario.
 const todayISO = () => {
   const d = new Date();
+  // Normalizamos a inicio de día y luego sumamos 1 día calendario
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+  const hoy = todayISO();
+  $('#filtroFecha').value = hoy;
+  $('#inputFecha').value = hoy;
+  $('#lblFechaActual').textContent = hoy;
 
 // Formatea breve la etiqueta de grupo
 const labelGrupo = (g) => {
