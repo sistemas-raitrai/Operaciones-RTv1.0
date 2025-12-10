@@ -1,5 +1,9 @@
-// turnos-comida.js
-// Módulo de asignación de turnos de comida (almuerzo / cena) para Bariloche.
+// turnos-comidas.js
+// Asignador de turnos de comida (almuerzo / cena) para Bariloche.
+// Versión inicial: trabaja en memoria con datos de prueba.
+
+import { app, db } from './firebase-init.js';
+// Más adelante: importamos getDocs, query, where, etc. para leer Firestore.
 
 // =========================
 // Estado en memoria
@@ -15,13 +19,13 @@ const state = {
     }
   },
   asignacion: {
-    almuerzo: { 1: [], 2: [], 3: [] },  // arrays de ids de grupos
+    almuerzo: { 1: [], 2: [], 3: [] },  // ids de grupos
     cena:     { 1: [], 2: [], 3: [] }
   }
 };
 
 // =========================
-// Utilidades
+// Utilidades básicas
 // =========================
 function normDateISO(d = new Date()){
   const y = d.getFullYear();
@@ -44,63 +48,61 @@ function sumPax(ids){
 // =========================
 // Datos de prueba (MOCK)
 // =========================
-// ➜ Reemplaza esta función por tu lectura real desde Firestore:
-//    - filtrar por fecha (grupo está en Bariloche ese día)
-//    - destino = "BARILOCHE" o similar
+// ➜ Luego reemplazamos esta función por lectura real desde Firestore
 async function cargarGruposDelDiaMock(fechaISO){
-  // Para probar, ignoramos la fecha y devolvemos siempre lo mismo.
-  // Puedes ajustar pax y cantidad para testear límites.
+  // Puedes variar pax para ver cómo se comporta el reparto
   return [
     {
       id: 'g1',
       numeroNegocio: '1479',
       nombreGrupo: '(1479) SANTO TOMAS CURICO 3B',
       pax: 30,
-      coordinador: 'Coordinador 1479'
+      coordinador: 'VALENTÍN'
     },
     {
       id: 'g2',
       numeroNegocio: '1444',
       nombreGrupo: '(1444) CASTELGANDOLFO 3A',
       pax: 38,
-      coordinador: 'Coordinador 1444'
+      coordinador: 'COORD CASTEL'
     },
     {
       id: 'g3',
       numeroNegocio: '1486',
       nombreGrupo: '(1486) SAN JUAN 3',
       pax: 23,
-      coordinador: 'Coordinador 1486'
+      coordinador: 'COORD SAN JUAN'
     },
     {
       id: 'g4',
       numeroNegocio: '1399',
       nombreGrupo: '(1399) ALIANZA 3B',
       pax: 30,
-      coordinador: 'Coordinador 1399'
+      coordinador: 'COORD ALIANZA'
     },
     {
       id: 'g5',
       numeroNegocio: '1391',
       nombreGrupo: '(1391) MANQUECURA CIUDAD ESTE 3B',
       pax: 42,
-      coordinador: 'Coordinador 1391'
+      coordinador: 'COORD MCE'
     },
     {
       id: 'g6',
       numeroNegocio: '1407',
       nombreGrupo: '(1407) MANQUECURA CIUDAD VALLE 3B',
       pax: 36,
-      coordinador: 'Coordinador 1407'
+      coordinador: 'COORD MCV'
     }
   ];
 }
 
 // =========================
-// Render de tabla de grupos
+// Render tabla de grupos
 // =========================
 function renderTablaGrupos(){
   const tbody = document.getElementById('tablaGruposBody');
+  if(!tbody) return;
   tbody.innerHTML = '';
 
   let totalPax = 0;
@@ -112,7 +114,7 @@ function renderTablaGrupos(){
     const tdNeg = document.createElement('td');
     tdNeg.textContent = g.numeroNegocio;
     tdNeg.style.fontWeight = '600';
-    tdNeg.style.fontSize = '11px';
+    tdNeg.style.fontSize = '.75rem';
 
     const tdNombre = document.createElement('td');
     tdNombre.textContent = g.nombreGrupo;
@@ -122,10 +124,10 @@ function renderTablaGrupos(){
     tdPax.style.textAlign = 'right';
 
     const tdCoord = document.createElement('td');
-    const coordSpan = document.createElement('span');
-    coordSpan.className = 'tag';
-    coordSpan.innerHTML = `<span class="tag-dot"></span><span>${g.coordinador || '—'}</span>`;
-    tdCoord.appendChild(coordSpan);
+    const spanCoord = document.createElement('span');
+    spanCoord.className = 'coord-tag';
+    spanCoord.innerHTML = `<span class="coord-dot"></span><span>${g.coordinador || '—'}</span>`;
+    tdCoord.appendChild(spanCoord);
 
     const tdAlm = document.createElement('td');
     const selAlm = document.createElement('select');
@@ -162,9 +164,11 @@ function renderTablaGrupos(){
   }
 
   const resumen = document.getElementById('resumenGrupos');
-  resumen.textContent = `${state.grupos.length} grupo(s) · ${totalPax} pax`;
+  if(resumen){
+    resumen.textContent = `${state.grupos.length} grupo(s) · ${totalPax} pax`;
+  }
 
-  // Eventos para selects
+  // Eventos de cambio en select almuerzo/cena
   tbody.querySelectorAll('.sel-almuerzo').forEach(sel=>{
     sel.addEventListener('change', ()=>{
       reconstruirAsignacionDesdeSelects();
@@ -192,48 +196,42 @@ function resetAsignacionVacia(){
 }
 
 /**
- * Algoritmo sencillo tipo "greedy balanceado":
- * - Ordena grupos por pax (desc).
- * - Va tirando cada grupo al turno con menos pax acumulado
- *   mientras no se pase del maxPax; si no cabe en ninguno
- *   igual lo coloca donde haya menos, pero quedará como "sobrecupo".
+ * Algoritmo "greedy balanceado":
+ * - Ordena grupos por pax DESC.
+ * - Va poniendo cada grupo en el turno con menos pax,
+ *   respetando maxPax cuando se pueda.
  */
 function sugerirTurnos(tipo){
   const maxPax = state.config.maxPax;
   const asign = state.asignacion[tipo];
 
-  // Reset solo de ese tipo
   asign[1] = [];
   asign[2] = [];
   asign[3] = [];
 
-  // Copia de grupos
   const gruposOrdenados = [...state.grupos].sort((a,b)=>b.pax - a.pax);
 
   for(const g of gruposOrdenados){
-    // Totales actuales por turno
     const t1 = sumPax(asign[1]);
     const t2 = sumPax(asign[2]);
     const t3 = sumPax(asign[3]);
 
-    // Intentar turno con menos pax que permita no pasarse del máximo
     const opciones = [
       { turno:1, total:t1 },
       { turno:2, total:t2 },
       { turno:3, total:t3 }
-    ].sort((a,b)=>a.total - b.total); // ascendente
+    ].sort((a,b)=>a.total - b.total);
 
     let elegido = null;
 
-    // 1) Intento donde no se pase del máximo
+    // Intentar no superar el máximo
     for(const op of opciones){
       if(op.total + g.pax <= maxPax){
         elegido = op.turno;
         break;
       }
     }
-
-    // 2) Si ninguno cabe "limpio", pongo en el más vacío (posible sobrecupo)
+    // Si no cabe "limpio", tirarlo al más vacío de todas formas
     if(!elegido){
       elegido = opciones[0].turno;
     }
@@ -243,22 +241,18 @@ function sugerirTurnos(tipo){
 }
 
 /**
- * Tras recalcular con el motor automático, sincronizamos los selects
- * para que representen lo que hay en state.asignacion.
+ * Sincroniza los <select> con state.asignacion
  */
 function syncSelectsConAsignacion(){
-  // Poner todos en 0
-  document.querySelectorAll('.sel-almuerzo').forEach(sel => sel.value = '0');
-  document.querySelectorAll('.sel-cena').forEach(sel => sel.value = '0');
+  document.querySelectorAll('.sel-almuerzo').forEach(sel=> sel.value = '0');
+  document.querySelectorAll('.sel-cena').forEach(sel=> sel.value = '0');
 
-  // Almuerzo
   for(const turno of [1,2,3]){
     for(const gid of state.asignacion.almuerzo[turno]){
       const sel = document.querySelector(`.sel-almuerzo[data-gid="${gid}"]`);
       if(sel) sel.value = String(turno);
     }
   }
-  // Cena
   for(const turno of [1,2,3]){
     for(const gid of state.asignacion.cena[turno]){
       const sel = document.querySelector(`.sel-cena[data-gid="${gid}"]`);
@@ -268,8 +262,8 @@ function syncSelectsConAsignacion(){
 }
 
 /**
- * Si el usuario mueve los selects manualmente, reconstruimos
- * state.asignacion desde esos valores.
+ * Reconstruye state.asignacion leyendo lo que el usuario
+ * cambió manualmente en los selects.
  */
 function reconstruirAsignacionDesdeSelects(){
   resetAsignacionVacia();
@@ -294,21 +288,19 @@ function reconstruirAsignacionDesdeSelects(){
 // =========================
 function renderTurnos(){
   const grid = document.getElementById('turnosGrid');
+  if(!grid) return;
   grid.innerHTML = '';
 
   const horasA = state.config.horas.almuerzo;
   const horasC = state.config.horas.cena;
   const maxPax = state.config.maxPax;
 
-  // Helper estado de color
   function getEstadoClass(total){
     if(total === 0) return '';
     if(total <= maxPax) return 'turno-status-ok';
     if(total <= maxPax * 1.1) return 'turno-status-warn';
     return 'turno-status-danger';
   }
-
-  // Helper texto estado
   function getEstadoText(total){
     if(total === 0) return 'Sin grupos';
     if(total <= maxPax) return 'Dentro de capacidad';
@@ -316,10 +308,9 @@ function renderTurnos(){
     return 'Sobrecupo';
   }
 
-  // Construir 6 tarjetas: 3 almuerzo + 3 cena
   const bloques = [
-    { tipo:'almuerzo', label:'ALMUERZO', horas:horasA },
-    { tipo:'cena',     label:'CENA',     horas:horasC }
+    { tipo:'almuerzo', label:'Almuerzo', horas:horasA },
+    { tipo:'cena',     label:'Cena',     horas:horasC }
   ];
 
   for(const bloque of bloques){
@@ -328,8 +319,8 @@ function renderTurnos(){
       const ids = state.asignacion[tipo][t] || [];
       const total = sumPax(ids);
       const hora = bloque.horas[t-1] || '—';
-      const estadoClass = getEstadoClass(total);
-      const estadoText = getEstadoText(total);
+      const estClass = getEstadoClass(total);
+      const estText = getEstadoText(total);
 
       const card = document.createElement('div');
       card.className = 'turno-card';
@@ -337,10 +328,10 @@ function renderTurnos(){
       const header = document.createElement('div');
       header.className = 'turno-header';
       header.innerHTML = `
-        <span>${bloque.label} · TURNO ${t} · ${hora} H</span>
+        <span>${bloque.label.toUpperCase()} · TURNO ${t} · ${hora} H</span>
         <span class="turno-pill">
-          <span class="turno-badge ${estadoClass}">${total} pax</span>
-          <span class="${estadoClass}" style="font-size:10px;">${estadoText}</span>
+          <span class="turno-badge ${estClass}">${total} pax</span>
+          <span class="${estClass}" style="font-size:.7rem;">${estText}</span>
         </span>
       `;
 
@@ -349,7 +340,7 @@ function renderTurnos(){
 
       if(ids.length === 0){
         const li = document.createElement('li');
-        li.innerHTML = '<span style="color:var(--muted);">— Sin grupos asignados —</span><span></span>';
+        li.innerHTML = `<span style="color:#9ca3af;">— Sin grupos asignados —</span><span></span>`;
         ul.appendChild(li);
       }else{
         for(const gid of ids){
@@ -370,32 +361,33 @@ function renderTurnos(){
     }
   }
 
-  document.getElementById('resumenCapacidad').textContent =
-    `Máx ${maxPax} pax por turno`;
+  const resumenCap = document.getElementById('resumenCapacidad');
+  if(resumenCap){
+    resumenCap.textContent = `Máx ${maxPax} pax por turno`;
+  }
 }
 
 // =========================
 // Texto para WhatsApp / correo
 // =========================
 function renderTextoWhats(){
-  const dateLabel = state.fechaISO || 'SIN FECHA';
   const horasA = state.config.horas.almuerzo;
   const horasC = state.config.horas.cena;
   const maxPax = state.config.maxPax;
+  const fechaLabel = formatearFechaHumana(state.fechaISO);
 
   const lineas = [];
-  lineas.push(`TURNO COMIDAS · FECHA ${formatearFechaHumana(state.fechaISO)}`);
+  lineas.push(`TURNO COMIDAS · FECHA ${fechaLabel}`);
   lineas.push(`Capacidad referencia: ${maxPax} pax por turno`);
   lineas.push('');
 
-  // Helper para un bloque
   function pushBloque(tipo,label,horas){
     lineas.push(`➡️ ${label.toUpperCase()}:`);
     for(let t=1;t<=3;t++){
       const ids = state.asignacion[tipo][t] || [];
       const total = sumPax(ids);
       const hora = horas[t-1] || '—';
-      lineas.push(``);
+      lineas.push('');
       lineas.push(`${label.toUpperCase()} - TURNO ${hora} H (${total} pax)`);
 
       if(ids.length === 0){
@@ -415,7 +407,9 @@ function renderTextoWhats(){
   pushBloque('cena','Cena',horasC);
 
   const textarea = document.getElementById('whatsText');
-  textarea.value = lineas.join('\n');
+  if(textarea){
+    textarea.value = lineas.join('\n');
+  }
 }
 
 function formatearFechaHumana(fechaISO){
@@ -428,28 +422,8 @@ function formatearFechaHumana(fechaISO){
 }
 
 // =========================
-// Inicialización / eventos
+// Config desde UI + eventos
 // =========================
-async function cargarDia(fechaISO){
-  state.fechaISO = fechaISO;
-
-  // 1) Cargar grupos (mock o real)
-  state.grupos = await cargarGruposDelDiaMock(fechaISO);
-
-  // 2) Reset asignación y tabla
-  resetAsignacionVacia();
-  renderTablaGrupos();
-
-  // 3) Sugerir turnos (almuerzo y cena)
-  sugerirTurnos('almuerzo');
-  sugerirTurnos('cena');
-  syncSelectsConAsignacion();
-
-  // 4) Render resumen
-  renderTurnos();
-  renderTextoWhats();
-}
-
 function leerConfigDesdeUI(){
   const maxInput = document.getElementById('maxPaxTurno');
   const alm1 = document.getElementById('horaAlm1');
@@ -459,71 +433,129 @@ function leerConfigDesdeUI(){
   const cen2 = document.getElementById('horaCen2');
   const cen3 = document.getElementById('horaCen3');
 
-  const maxPax = Number(maxInput.value) || 96;
+  const maxPax = Number(maxInput?.value) || 96;
   state.config.maxPax = maxPax;
-  state.config.horas.almuerzo = [alm1.value || '12:00', alm2.value || '13:00', alm3.value || '14:00'];
-  state.config.horas.cena     = [cen1.value || '20:00', cen2.value || '21:00', cen3.value || '22:00'];
+
+  state.config.horas.almuerzo = [
+    alm1?.value || '12:00',
+    alm2?.value || '13:00',
+    alm3?.value || '14:00'
+  ];
+  state.config.horas.cena = [
+    cen1?.value || '20:00',
+    cen2?.value || '21:00',
+    cen3?.value || '22:00'
+  ];
 }
 
-function initUI(){
-  const inputFecha = document.getElementById('filtroFecha');
-  const hoy = normDateISO();
-  inputFecha.value = hoy;
+// Carga de datos de un día
+async function cargarDia(fechaISO){
+  state.fechaISO = fechaISO;
 
-  inputFecha.addEventListener('change', ()=>{
-    const f = inputFecha.value || hoy;
-    cargarDia(f);
-  });
+  // TODO: aquí después usamos Firestore.
+  state.grupos = await cargarGruposDelDiaMock(fechaISO);
 
-  document.getElementById('maxPaxTurno').addEventListener('change', ()=>{
-    leerConfigDesdeUI();
-    // Recalcular con nuevo máximo
-    sugerirTurnos('almuerzo');
-    sugerirTurnos('cena');
-    syncSelectsConAsignacion();
-    renderTurnos();
-    renderTextoWhats();
-  });
+  resetAsignacionVacia();
+  renderTablaGrupos();
 
-  // Horarios: cualquier cambio recalcula sin tocar selección manual por ahora.
+  // Sugerencia automática
+  sugerirTurnos('almuerzo');
+  sugerirTurnos('cena');
+  syncSelectsConAsignacion();
+  renderTurnos();
+  renderTextoWhats();
+
+  // Setear fecha en input si viene de fuera
+  const inputFecha = document.getElementById('fechaTurno');
+  if(inputFecha && !inputFecha.value){
+    inputFecha.value = fechaISO;
+  }
+}
+
+// Inicialización principal
+function initTurnosComidas(){
+  const hoyISO = normDateISO();
+
+  const inputFecha = document.getElementById('fechaTurno');
+  if(inputFecha){
+    inputFecha.value = hoyISO;
+    inputFecha.addEventListener('change', ()=>{
+      const f = inputFecha.value || hoyISO;
+      cargarDia(f);
+    });
+  }
+
+  const maxPaxInput = document.getElementById('maxPaxTurno');
+  if(maxPaxInput){
+    maxPaxInput.addEventListener('change', ()=>{
+      leerConfigDesdeUI();
+      sugerirTurnos('almuerzo');
+      sugerirTurnos('cena');
+      syncSelectsConAsignacion();
+      renderTurnos();
+      renderTextoWhats();
+    });
+  }
+
   ['horaAlm1','horaAlm2','horaAlm3','horaCen1','horaCen2','horaCen3'].forEach(id=>{
-    document.getElementById(id).addEventListener('change', ()=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
       leerConfigDesdeUI();
       renderTurnos();
       renderTextoWhats();
     });
   });
 
-  document.getElementById('btnRecalcular').addEventListener('click', ()=>{
-    leerConfigDesdeUI();
-    // Vuelve a usar el motor automático desde cero
-    sugerirTurnos('almuerzo');
-    sugerirTurnos('cena');
-    syncSelectsConAsignacion();
-    renderTurnos();
-    renderTextoWhats();
-  });
+  const btnRecalcular = document.getElementById('btnRecalcular');
+  if(btnRecalcular){
+    btnRecalcular.addEventListener('click', ()=>{
+      // 1) Leer config actual (máx pax + horarios)
+      leerConfigDesdeUI();
 
-  document.getElementById('btnGuardar').addEventListener('click', ()=>{
-    // Por ahora solo mostramos por consola.
-    // Aquí en el futuro podrías hacer:
-    // - Escribir en Firestore (colección "turnosCasino")
-    // - Guardar snapshot, etc.
-    console.log('Guardar turnos (mock):', JSON.stringify(state, null, 2));
-    alert('Turnos guardados en memoria (mock). Luego se conecta a Firestore).');
-  });
+      // 2) Ignorar cualquier selección manual anterior
+      resetAsignacionVacia();
 
-  document.getElementById('btnCopiarWhats').addEventListener('click', ()=>{
-    const txt = document.getElementById('whatsText').value;
-    navigator.clipboard.writeText(txt)
-      .then(()=> alert('Texto copiado al portapapeles.'))
-      .catch(()=> alert('No se pudo copiar automáticamente, copia manualmente.'));
-  });
+      // 3) Volver a sugerir desde cero usando TODOS los grupos del día
+      sugerirTurnos('almuerzo');
+      sugerirTurnos('cena');
 
-  // Primera carga
+      // 4) Reflejar esa nueva asignación en los <select>
+      syncSelectsConAsignacion();
+
+      // 5) Redibujar tarjetas + texto WhatsApp
+      renderTurnos();
+      renderTextoWhats();
+
+      // 6) Pequeño log para confirmar que se ejecutó
+      console.log('[TurnosComidas] Recalcular ejecutado con maxPax =', state.config.maxPax);
+    });
+  }
+
+
+  const btnGuardar = document.getElementById('btnGuardar');
+  if(btnGuardar){
+    btnGuardar.addEventListener('click', ()=>{
+      // Aquí en el futuro: guardar en Firestore (colección turnosCasino)
+      console.log('Turnos a guardar (mock):', JSON.stringify(state, null, 2));
+      alert('Turnos guardados en memoria (mock). Luego conectamos a Firestore.');
+    });
+  }
+
+  const btnCopiar = document.getElementById('btnCopiarWhats');
+  if(btnCopiar){
+    btnCopiar.addEventListener('click', ()=>{
+      const txt = document.getElementById('whatsText')?.value || '';
+      if(!txt) return;
+      navigator.clipboard.writeText(txt)
+        .then(()=> alert('Texto copiado al portapapeles.'))
+        .catch(()=> alert('No se pudo copiar automáticamente, copia manualmente.'));
+    });
+  }
+
   leerConfigDesdeUI();
-  cargarDia(hoy);
+  cargarDia(hoyISO);
 }
 
-// Cuando carga el DOM
-document.addEventListener('DOMContentLoaded', initUI);
+// Como este módulo se carga al final del body, inicializamos directo
+initTurnosComidas();
