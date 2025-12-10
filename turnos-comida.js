@@ -47,56 +47,95 @@ function sumPax(ids){
 }
 
 // =========================
-// Datos de prueba (MOCK)
+// Loader REAL desde Firestore
 // =========================
-// ➜ Luego reemplazamos esta función por lectura real desde Firestore
-async function cargarGruposDelDiaMock(fechaISO){
-  // Puedes variar pax para ver cómo se comporta el reparto
-  return [
-    {
-      id: 'g1',
-      numeroNegocio: '1479',
-      nombreGrupo: '(1479) SANTO TOMAS CURICO 3B',
-      pax: 30,
-      coordinador: 'VALENTÍN'
-    },
-    {
-      id: 'g2',
-      numeroNegocio: '1444',
-      nombreGrupo: '(1444) CASTELGANDOLFO 3A',
-      pax: 38,
-      coordinador: 'COORD CASTEL'
-    },
-    {
-      id: 'g3',
-      numeroNegocio: '1486',
-      nombreGrupo: '(1486) SAN JUAN 3',
-      pax: 23,
-      coordinador: 'COORD SAN JUAN'
-    },
-    {
-      id: 'g4',
-      numeroNegocio: '1399',
-      nombreGrupo: '(1399) ALIANZA 3B',
-      pax: 30,
-      coordinador: 'COORD ALIANZA'
-    },
-    {
-      id: 'g5',
-      numeroNegocio: '1391',
-      nombreGrupo: '(1391) MANQUECURA CIUDAD ESTE 3B',
-      pax: 42,
-      coordinador: 'COORD MCE'
-    },
-    {
-      id: 'g6',
-      numeroNegocio: '1407',
-      nombreGrupo: '(1407) MANQUECURA CIUDAD VALLE 3B',
-      pax: 36,
-      coordinador: 'COORD MCV'
-    }
-  ];
+
+// ¿El destino del grupo incluye BARILOCHE?
+function incluyeBariloche(destinoRaw = '') {
+  const txt = String(destinoRaw).normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase();
+  // Ej: "BARILOCHE", "SUR DE CHILE Y BARILOCHE", etc.
+  return txt.includes('BARILOCHE');
 }
+
+// Convierte diferentes formatos de fecha (Timestamp, string ISO, Date) a Date
+function toDateSafe(v) {
+  if (!v) return null;
+  // Firestore Timestamp
+  if (typeof v.toDate === 'function') return v.toDate();
+  // String tipo "2025-12-09"
+  if (typeof v === 'string') {
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // Date
+  if (v instanceof Date) return v;
+  return null;
+}
+
+// ¿La fecha objetivo está dentro del rango [inicio, fin]?
+function dentroRangoFechas(targetDate, inicioRaw, finRaw) {
+  const ini = toDateSafe(inicioRaw);
+  const fin = toDateSafe(finRaw);
+  if (!ini || !fin) return false;
+  const t = targetDate.getTime();
+  return t >= ini.setHours(0,0,0,0) && t <= fin.setHours(23,59,59,999);
+}
+
+/**
+ * Carga grupos que:
+ *  - Están en BARILOCHE (por destino)
+ *  - Están "en viaje" en la fecha seleccionada (entre fechaInicioViaje y fechaFinViaje)
+ */
+async function cargarGruposDelDia(fechaISO) {
+  const fechaObj = new Date(`${fechaISO}T00:00:00`);
+  if (isNaN(fechaObj.getTime())) return [];
+
+  const gruposRef = collection(db, 'grupos');
+  const snap = await getDocs(gruposRef);
+
+  const resultados = [];
+
+  snap.forEach(docSnap => {
+    const data = docSnap.data() || {};
+
+    // 1) Destino debe incluir BARILOCHE
+    if (!incluyeBariloche(data.destino || data.destinoBase || '')) return;
+
+    // 2) Rango de fechas: ajusta a tus nombres reales
+    //   - aquí supongo campos "fechaInicioViaje" y "fechaFinViaje"
+    const ini = data.fechaInicioViaje || data.fechaInicio || data.inicioViaje;
+    const fin = data.fechaFinViaje    || data.fechaFin    || data.finViaje;
+
+    if (!dentroRangoFechas(fechaObj, ini, fin)) return;
+
+    // 3) Campos visibles en el módulo
+    const pax = Number(
+      data.cantidadGrupo ??
+      data.pax ??
+      data.paxTotal ??
+      0
+    );
+
+    const grupo = {
+      id: docSnap.id,
+      numeroNegocio: data.numeroNegocio || data.numNegocio || data.numero || docSnap.id,
+      nombreGrupo: data.nombreGrupo || data.grupo || data.nombre || `(sin nombre)`,
+      pax,
+      coordinador:
+        data.coordinadorNombre ||
+        data.coordinador ||
+        data.coordNombre ||
+        data.coordinadorPrincipal ||
+        ''
+    };
+
+    resultados.push(grupo);
+  });
+
+  return resultados;
+}
+
 
 // =========================
 // Render tabla de grupos
