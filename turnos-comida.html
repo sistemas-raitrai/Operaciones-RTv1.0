@@ -382,11 +382,10 @@
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
-
-      // Inicializa Firebase + lógica general si corresponde
+  
       await import('./firebase-init.js');
       await import('./script.js');          // si quieres reutilizar header/usuario/reloj
-      await import('./turnos-comidas.js');  // lógica de esta página
+      await import('./turnos-comida.js');   // 👈 MISMO NOMBRE QUE EL ARCHIVO JS
     })();
   </script>
 </body>
