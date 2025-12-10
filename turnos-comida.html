@@ -278,17 +278,21 @@
         <div class="field">
           <label>Horarios Almuerzo</label>
           <div style="display:flex;gap:.25rem;">
-            <input type="time" id="horaAlm1" value="12:00" />
-            <input type="time" id="horaAlm2" value="13:00" />
-            <input type="time" id="horaAlm3" value="14:00" />
+            <input type="time" id="horaAlm1" value="12:30" />
+            <input type="time" id="horaAlm2" value="13:30" />
+            <input type="time" id="horaAlm3" value="14:30" />
+            <!-- 4.º turno opcional: si lo dejas vacío, el sistema funciona con 3 -->
+            <input type="time" id="horaAlm4" value="" />
           </div>
         </div>
         <div class="field">
           <label>Horarios Cena</label>
           <div style="display:flex;gap:.25rem;">
-            <input type="time" id="horaCen1" value="20:00" />
-            <input type="time" id="horaCen2" value="21:00" />
-            <input type="time" id="horaCen3" value="22:00" />
+            <input type="time" id="horaCen1" value="19:30" />
+            <input type="time" id="horaCen2" value="20:30" />
+            <input type="time" id="horaCen3" value="21:30" />
+            <!-- 4.º turno opcional -->
+            <input type="time" id="horaCen4" value="" />
           </div>
         </div>
         <div class="field">
@@ -341,7 +345,20 @@
         </div>
       </div>
 
-      <!-- Panel derecho: resumen turnos + texto -->
+    <!-- NUEVA POSICIÓN: Texto WhatsApp / correo -->
+    <div class="panel-box whats-box" style="margin-top:.75rem;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;">
+        <h3>Texto para WhatsApp / correo</h3>
+        <button id="btnCopiarWhats" type="button" class="btn-small secondary">📋 Copiar</button>
+      </div>
+      <textarea id="whatsText" readonly></textarea>
+      <div class="help">
+        Se genera en base a los turnos actuales (almuerzo y cena). Puedes pegarlo directo en WhatsApp del hotel/casino.
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel derecho: SOLO turnos del día -->
       <div class="column long">
         <div class="panel-box" style="margin-bottom:.75rem;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.45rem;">
@@ -353,20 +370,9 @@
             </div>
             <div id="resumenCapacidad" class="badge-chip">Máx 96 pax por turno</div>
           </div>
-
+    
           <div class="turnos-grid" id="turnosGrid">
             <!-- tarjetas turno por JS -->
-          </div>
-        </div>
-
-        <div class="panel-box whats-box">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;">
-            <h3>Texto para WhatsApp / correo</h3>
-            <button id="btnCopiarWhats" type="button" class="btn-small secondary">📋 Copiar</button>
-          </div>
-          <textarea id="whatsText" readonly></textarea>
-          <div class="help">
-            Se genera en base a los turnos actuales (almuerzo y cena). Puedes pegarlo directo en WhatsApp del hotel/casino.
           </div>
         </div>
       </div>
