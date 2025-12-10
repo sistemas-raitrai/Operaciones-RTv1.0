@@ -16,13 +16,13 @@ const state = {
   config: {
     maxPax: 96,
     horas: {
-      almuerzo: ['12:30', '13:30', '14:30', ''], // 4º opcional
-      cena:     ['19:30', '20:30', '21:30', '']  // 4º opcional
+      almuerzo: ['12:00', '13:00', '14:00'],
+      cena:     ['20:00', '21:00', '22:00']
     }
   },
   asignacion: {
-    almuerzo: { 1: [], 2: [], 3: [], 4: [] },  // ids de grupos
-    cena:     { 1: [], 2: [], 3: [], 4: [] }
+    almuerzo: { 1: [], 2: [], 3: [] },  // ids de grupos
+    cena:     { 1: [], 2: [], 3: [] }
   }
 };
 
@@ -70,6 +70,12 @@ function normTxt(s=''){
     .toUpperCase();
 }
 
+function safeHora(h) {
+  if (!h) return '';
+  const [H,M] = String(h).split(':');
+  return `${String(H).padStart(2,'0')}:${String(M || '0').padStart(2,'0')}`;
+}
+
 // =========================
 // Modal Itinerario
 // =========================
@@ -94,12 +100,6 @@ function initModalItinListeners(){
   const mb = document.getElementById('modal-itin-backdrop');
   if(btnClose) btnClose.addEventListener('click', cerrarModalItin);
   if(mb) mb.addEventListener('click', cerrarModalItin);
-}
-
-function safeHora(h) {
-  if (!h) return '';
-  const [H,M] = String(h).split(':');
-  return `${String(H).padStart(2,'0')}:${String(M || '0').padStart(2,'0')}`;
 }
 
 /**
@@ -172,17 +172,21 @@ async function verItinerarioGrupo(gid, nombreGrupo){
 
 // ¿El destino del grupo incluye BARILOCHE?
 function incluyeBariloche(destinoRaw = '') {
+  // Ej: "BARILOCHE", "SUR DE CHILE Y BARILOCHE", etc.
   return normTxt(destinoRaw).includes('BARILOCHE');
 }
 
 // Convierte diferentes formatos de fecha (Timestamp, string ISO, Date) a Date
 function toDateSafe(v) {
   if (!v) return null;
-  if (typeof v.toDate === 'function') return v.toDate(); // Firestore Timestamp
+  // Firestore Timestamp
+  if (typeof v.toDate === 'function') return v.toDate();
+  // String tipo "2025-12-09"
   if (typeof v === 'string') {
     const d = new Date(v);
     return isNaN(d.getTime()) ? null : d;
   }
+  // Date
   if (v instanceof Date) return v;
   return null;
 }
@@ -226,7 +230,7 @@ async function calcularComidasGrupo(gid, fechaISO){
  * Carga grupos que:
  *  - Están en BARILOCHE (por destino)
  *  - Están "en viaje" en la fecha seleccionada (entre fechaInicioViaje y fechaFinViaje)
- *  - Marca comeAlmuerzo / comeCena según itinerario de ese día.
+ *  - Marca comeAlmuerzo / comeCena según itinerario.
  */
 async function cargarGruposDelDia(fechaISO) {
   const fechaObj = new Date(`${fechaISO}T00:00:00`);
@@ -248,6 +252,7 @@ async function cargarGruposDelDia(fechaISO) {
     const fin = data.fechaFinViaje    || data.fechaFin    || data.finViaje;
     if (!dentroRangoFechas(fechaObj, ini, fin)) return;
 
+    // 3) Campos visibles
     const pax = Number(
       data.cantidadGrupo ??
       data.pax ??
@@ -258,7 +263,7 @@ async function cargarGruposDelDia(fechaISO) {
     const grupo = {
       id: docSnap.id,
       numeroNegocio: data.numeroNegocio || data.numNegocio || data.numero || docSnap.id,
-      nombreGrupo:   data.nombreGrupo   || data.grupo      || data.nombre || '(sin nombre)',
+      nombreGrupo:   data.nombreGrupo   || data.grupo      || data.nombre || `(sin nombre)`,
       pax,
       coordinador:
         data.coordinadorNombre ||
@@ -271,8 +276,8 @@ async function cargarGruposDelDia(fechaISO) {
     resultados.push(grupo);
   });
 
-  // Cálculo de comidas según itinerario (uno por grupo)
-  for(const g of resultados){
+  // 4) Marcar comeAlmuerzo / comeCena para cada grupo
+  for (const g of resultados) {
     const flags = await calcularComidasGrupo(g.id, fechaISO);
     g.comeAlmuerzo = flags.comeAlmuerzo;
     g.comeCena     = flags.comeCena;
@@ -301,14 +306,14 @@ function renderTablaGrupos(){
     tdNeg.style.fontSize = '.75rem';
 
     const tdNombre = document.createElement('td');
-    const btnNombre = document.createElement('button');
-    btnNombre.type = 'button';
-    btnNombre.className = 'link-like btn-grupo-itin';
-    btnNombre.textContent = g.nombreGrupo;
-    btnNombre.addEventListener('click', () => {
+    const spanNombre = document.createElement('span');
+    spanNombre.textContent = g.nombreGrupo;
+    spanNombre.style.cursor = 'pointer';
+    spanNombre.style.textDecoration = 'underline';
+    spanNombre.addEventListener('click', () => {
       verItinerarioGrupo(g.id, g.nombreGrupo);
     });
-    tdNombre.appendChild(btnNombre);
+    tdNombre.appendChild(spanNombre);
 
     const tdPax = document.createElement('td');
     tdPax.textContent = g.pax;
@@ -325,6 +330,7 @@ function renderTablaGrupos(){
     selAlm.className = 'select-turno sel-almuerzo';
     selAlm.dataset.gid = g.id;
 
+    // Opciones dinámicas según número de turnos activos
     let htmlAlm = `<option value="0">—</option>`;
     const nAlm = getNumTurnos('almuerzo');
     for(let i=1;i<=nAlm;i++){
@@ -332,6 +338,7 @@ function renderTablaGrupos(){
     }
     selAlm.innerHTML = htmlAlm;
 
+    // Si este grupo NO almuerza en el hotel, deshabilitar select
     if(g.comeAlmuerzo === false){
       selAlm.disabled = true;
       selAlm.title = 'Este grupo no almuerza en el hotel en esta fecha.';
@@ -421,10 +428,11 @@ function sugerirTurnos(tipo){
     asign[i] = [];
   }
 
-  if(n === 0) return;
+  if(n === 0) return; // sin turnos activos, no hacemos nada
 
   const gruposOrdenados = [...state.grupos]
     .filter(g => {
+      // Ignorar grupos que no comen esa comida en el hotel
       if(tipo === 'almuerzo' && g.comeAlmuerzo === false) return false;
       if(tipo === 'cena'     && g.comeCena     === false) return false;
       return true;
@@ -434,6 +442,7 @@ function sugerirTurnos(tipo){
   for(const g of gruposOrdenados){
     if(!g.pax) continue;
 
+    // Totales actuales por turno
     const opciones = [];
     for(let i=1;i<=n;i++){
       opciones.push({ turno:i, total: sumPax(asign[i]) });
@@ -450,7 +459,7 @@ function sugerirTurnos(tipo){
       }
     }
 
-    // 2) Si ninguno cabe → no se asigna
+    // 2) Si ninguno cabe sin pasarse → NO se asigna (queda en "—")
     if(!elegido){
       console.warn('[TurnosComida] Grupo no cabe en ningún turno sin sobrepasar capacidad:', g.nombreGrupo, g.pax);
       continue;
@@ -467,19 +476,14 @@ function syncSelectsConAsignacion(){
   document.querySelectorAll('.sel-almuerzo').forEach(sel=> sel.value = '0');
   document.querySelectorAll('.sel-cena').forEach(sel=> sel.value = '0');
 
-  const nAlm = getNumTurnos('almuerzo');
-  const nCen = getNumTurnos('cena');
-
-  for(let turno=1; turno<=nAlm; turno++){
-    const lista = state.asignacion.almuerzo[turno] || [];
-    for(const gid of lista){
+  for(const turno of [1,2,3]){
+    for(const gid of state.asignacion.almuerzo[turno] || []){
       const sel = document.querySelector(`.sel-almuerzo[data-gid="${gid}"]`);
       if(sel) sel.value = String(turno);
     }
   }
-  for(let turno=1; turno<=nCen; turno++){
-    const lista = state.asignacion.cena[turno] || [];
-    for(const gid of lista){
+  for(const turno of [1,2,3]){
+    for(const gid of state.asignacion.cena[turno] || []){
       const sel = document.querySelector(`.sel-cena[data-gid="${gid}"]`);
       if(sel) sel.value = String(turno);
     }
@@ -540,14 +544,12 @@ function renderTurnos(){
 
   for(const bloque of bloques){
     const tipo = bloque.tipo;
-    const nTurnos = getNumTurnos(tipo);
-
-    for(let t=1; t<=nTurnos; t++){
+    for(let t=1;t<=3;t++){
       const ids = state.asignacion[tipo][t] || [];
       const total = sumPax(ids);
       const hora = bloque.horas[t-1] || '—';
       const estClass = getEstadoClass(total);
-      const estText  = getEstadoText(total);
+      const estText = getEstadoText(total);
 
       const card = document.createElement('div');
       card.className = 'turno-card';
@@ -610,9 +612,7 @@ function renderTextoWhats(){
 
   function pushBloque(tipo,label,horas){
     lineas.push(`➡️ ${label.toUpperCase()}:`);
-    const nTurnos = getNumTurnos(tipo);
-
-    for(let t=1; t<=nTurnos; t++){
+    for(let t=1;t<=3;t++){
       const ids = state.asignacion[tipo][t] || [];
       const total = sumPax(ids);
       const hora = horas[t-1] || '—';
@@ -658,11 +658,9 @@ function leerConfigDesdeUI(){
   const alm1 = document.getElementById('horaAlm1');
   const alm2 = document.getElementById('horaAlm2');
   const alm3 = document.getElementById('horaAlm3');
-  const alm4 = document.getElementById('horaAlm4');
   const cen1 = document.getElementById('horaCen1');
   const cen2 = document.getElementById('horaCen2');
   const cen3 = document.getElementById('horaCen3');
-  const cen4 = document.getElementById('horaCen4');
 
   const maxPax = Number(maxInput?.value) || 96;
   state.config.maxPax = maxPax;
@@ -670,31 +668,32 @@ function leerConfigDesdeUI(){
   state.config.horas.almuerzo = [
     alm1?.value || '12:30',
     alm2?.value || '13:30',
-    alm3?.value || '14:30',
-    alm4?.value || ''
+    alm3?.value || '14:30'
   ];
   state.config.horas.cena = [
     cen1?.value || '19:30',
     cen2?.value || '20:30',
-    cen3?.value || '21:30',
-    cen4?.value || ''
+    cen3?.value || '21:30'
   ];
 }
 
 async function cargarDia(fechaISO){
   state.fechaISO = fechaISO;
 
+  // Loader REAL desde Firestore + comidas
   state.grupos = await cargarGruposDelDia(fechaISO);
 
   resetAsignacionVacia();
   renderTablaGrupos();
 
+  // Sugerencia automática
   sugerirTurnos('almuerzo');
   sugerirTurnos('cena');
   syncSelectsConAsignacion();
   renderTurnos();
   renderTextoWhats();
 
+  // Setear fecha en input si viene de fuera
   const inputFecha = document.getElementById('fechaTurno');
   if(inputFecha && !inputFecha.value){
     inputFecha.value = fechaISO;
@@ -732,14 +731,11 @@ function initTurnosComidas(){
     });
   }
 
-  ['horaAlm1','horaAlm2','horaAlm3','horaAlm4','horaCen1','horaCen2','horaCen3','horaCen4'].forEach(id=>{
+  ['horaAlm1','horaAlm2','horaAlm3','horaCen1','horaCen2','horaCen3'].forEach(id=>{
     const el = document.getElementById(id);
     if(!el) return;
     el.addEventListener('change', ()=>{
       leerConfigDesdeUI();
-      sugerirTurnos('almuerzo');
-      sugerirTurnos('cena');
-      syncSelectsConAsignacion();
       renderTurnos();
       renderTextoWhats();
     });
@@ -748,13 +744,23 @@ function initTurnosComidas(){
   const btnRecalcular = document.getElementById('btnRecalcular');
   if(btnRecalcular){
     btnRecalcular.addEventListener('click', ()=>{
+      // 1) Leer config actual (máx pax + horarios)
       leerConfigDesdeUI();
+
+      // 2) Ignorar cualquier selección manual anterior
       resetAsignacionVacia();
+
+      // 3) Volver a sugerir desde cero usando TODOS los grupos del día
       sugerirTurnos('almuerzo');
       sugerirTurnos('cena');
+
+      // 4) Reflejar esa nueva asignación en los <select>
       syncSelectsConAsignacion();
+
+      // 5) Redibujar tarjetas + texto WhatsApp
       renderTurnos();
       renderTextoWhats();
+
       console.log('[TurnosComidas] Recalcular ejecutado con maxPax =', state.config.maxPax);
     });
   }
