@@ -1,481 +1,393 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Turnos de Comida - Bariloche</title>
-  <link rel="icon" type="image/png" href="RaitraiLogo.png" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Turnos de Comida Bariloche | RT v1.0</title>
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/choices.js/public/assets/styles/choices.min.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
+  <!-- Estilos mínimos específicos de este módulo (puedes moverlos a estilos.css) -->
   <style>
-    :root{
-      --bg:#0b1329;
-      --panel:#0f172a;
-      --panel-soft:#111827;
-      --line:#1f2937;
-      --accent:#38bdf8;
-      --accent-soft:rgba(56,189,248,.18);
-      --danger:#f97373;
-      --ok:#16a34a;
-      --warn:#facc15;
-      --text:#e5e7eb;
-      --muted:#9ca3af;
-      --radius:12px;
-      --fade:.2s;
-    }
-
-    *{ box-sizing:border-box; }
-
-    body{
-      margin:0;
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-      background:radial-gradient(circle at top,#111827 0,#020617 55%,#020617 100%);
-      color:var(--text);
-      min-height:100vh;
-      display:flex;
-      flex-direction:column;
-      padding:16px;
-      gap:16px;
-    }
-
-    header{
+    .turnos-header {
       display:flex;
       flex-wrap:wrap;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-    }
-
-    .title-block{
-      display:flex;
-      align-items:center;
-      gap:10px;
-    }
-
-    .title-badge{
-      background:linear-gradient(135deg,#0ea5e9,#22d3ee);
-      color:#0b1120;
-      font-weight:700;
-      padding:4px 10px;
-      border-radius:999px;
-      font-size:11px;
-      letter-spacing:.1em;
-    }
-
-    h1{
-      font-size:20px;
-      margin:0;
-      text-transform:uppercase;
-      letter-spacing:.12em;
-    }
-
-    .sub{
-      margin:0;
-      font-size:12px;
-      color:var(--muted);
-    }
-
-    .controls{
-      display:flex;
-      flex-wrap:wrap;
-      gap:10px;
+      gap:1rem;
       align-items:flex-end;
-      justify-content:flex-end;
+      margin-bottom:1rem;
+      border-bottom:1px solid #e5e7eb;
+      padding-bottom:.75rem;
     }
-
-    .field{
+    .turnos-header h2 {
+      margin:0;
+      font-size:1.2rem;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+    }
+    .turnos-header .subtitle {
+      font-size:.9rem;
+      color:#6b7280;
+      margin-top:.15rem;
+    }
+    .turnos-header .field-group {
+      display:flex;
+      flex-wrap:wrap;
+      gap:.75rem;
+      margin-left:auto;
+    }
+    .turnos-header .field {
       display:flex;
       flex-direction:column;
-      gap:4px;
-      font-size:11px;
+      gap:.15rem;
+      font-size:.8rem;
+    }
+    .turnos-header .field label {
+      font-weight:600;
       text-transform:uppercase;
       letter-spacing:.06em;
-      color:var(--muted);
+      color:#6b7280;
+      font-size:.7rem;
     }
-
-    .field input{
-      background:var(--panel-soft);
-      border:1px solid var(--line);
+    .turnos-header .field input {
+      padding:.3rem .5rem;
       border-radius:999px;
-      padding:6px 10px;
-      color:var(--text);
-      font-size:13px;
-      outline:none;
+      border:1px solid #d1d5db;
+      font-size:.85rem;
     }
 
-    .field input:focus{
-      border-color:var(--accent);
-      box-shadow:0 0 0 1px rgba(56,189,248,.4);
-    }
-
-    .btn{
+    .btn-small {
+      padding:.35rem .7rem;
       border-radius:999px;
-      border:1px solid var(--line);
-      background:var(--panel-soft);
-      color:var(--text);
-      font-size:12px;
-      padding:6px 14px;
+      border:1px solid #111827;
+      background:#111827;
+      color:#fff;
+      font-size:.75rem;
       text-transform:uppercase;
-      letter-spacing:.1em;
+      letter-spacing:.08em;
       cursor:pointer;
-      transition:background var(--fade),border-color var(--fade),transform var(--fade),box-shadow var(--fade);
-      display:inline-flex;
-      align-items:center;
-      gap:6px;
-    }
-
-    .btn-primary{
-      background:linear-gradient(135deg,#0ea5e9,#22c55e);
-      color:#020617;
-      border-color:transparent;
-      font-weight:600;
-    }
-
-    .btn:hover{
-      transform:translateY(-1px);
-      box-shadow:0 6px 16px rgba(15,23,42,.6);
-    }
-
-    .btn:active{
-      transform:translateY(0);
-      box-shadow:none;
-    }
-
-    main{
-      display:grid;
-      grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);
-      gap:14px;
-      align-items:stretch;
-    }
-
-    @media (max-width:900px){
-      main{
-        grid-template-columns:1fr;
-      }
-    }
-
-    .panel{
-      background:radial-gradient(circle at top left,rgba(56,189,248,.08) 0,transparent 55%),
-                  radial-gradient(circle at bottom right,rgba(56,189,248,.03) 0,transparent 50%),
-                  var(--panel);
-      border-radius:var(--radius);
-      border:1px solid var(--line);
-      padding:12px;
-      display:flex;
-      flex-direction:column;
-      gap:10px;
-      min-height:0;
-    }
-
-    .panel-header{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:6px;
-    }
-
-    .panel-title{
-      font-size:12px;
-      text-transform:uppercase;
-      letter-spacing:.12em;
-      color:var(--muted);
-    }
-
-    .pill{
-      font-size:11px;
-      padding:2px 8px;
-      border-radius:999px;
-      border:1px solid rgba(148,163,184,.5);
-      color:var(--muted);
       white-space:nowrap;
     }
+    .btn-small.secondary {
+      background:#e5e7eb;
+      color:#111827;
+      border-color:#d1d5db;
+    }
+    .btn-small + .btn-small { margin-left:.25rem; }
 
-    table{
+    .panel-box {
+      background:#fff;
+      border-radius:10px;
+      border:1px solid #e5e7eb;
+      padding:.75rem .9rem;
+      box-shadow:0 1px 2px rgba(0,0,0,.04);
+    }
+    .panel-box h3 {
+      margin:0 0 .35rem;
+      font-size:.9rem;
+      text-transform:uppercase;
+      letter-spacing:.08em;
+      color:#4b5563;
+    }
+    .panel-box .panel-sub {
+      font-size:.75rem;
+      color:#9ca3af;
+      margin-bottom:.5rem;
+    }
+
+    .badge-chip {
+      display:inline-flex;
+      align-items:center;
+      gap:.25rem;
+      border-radius:999px;
+      border:1px solid #e5e7eb;
+      padding:.15rem .55rem;
+      font-size:.75rem;
+      background:#f9fafb;
+      color:#4b5563;
+    }
+
+    /* Tabla de grupos */
+    #tablaGrupos {
       width:100%;
       border-collapse:collapse;
-      font-size:12px;
+      font-size:.8rem;
     }
-
-    thead{
-      position:sticky;
-      top:0;
-      background:linear-gradient(to bottom,rgba(15,23,42,.96),rgba(15,23,42,.9));
-      z-index:2;
-    }
-
-    th,td{
-      padding:6px 6px;
-      border-bottom:1px solid rgba(31,41,55,.7);
+    #tablaGrupos th,
+    #tablaGrupos td {
+      padding:.35rem .4rem;
+      border-bottom:1px solid #e5e7eb;
       text-align:left;
     }
-
-    th{
-      font-size:11px;
+    #tablaGrupos th {
+      font-size:.7rem;
       text-transform:uppercase;
       letter-spacing:.08em;
-      color:var(--muted);
+      color:#6b7280;
+      background:#f9fafb;
+      position:sticky;
+      top:0;
+      z-index:1;
     }
-
-    tbody tr:nth-child(even){
-      background-color:rgba(15,23,42,.7);
+    #tablaGrupos tbody tr:nth-child(even){
+      background:#f9fafb;
     }
-
-    tbody tr:hover{
-      background-color:rgba(30,64,175,.45);
+    #tablaGrupos tbody tr:hover{
+      background:#eef2ff;
     }
-
-    .tag{
+    .coord-tag{
       display:inline-flex;
-      padding:2px 7px;
-      border-radius:999px;
-      font-size:11px;
-      border:1px solid rgba(148,163,184,.5);
-      color:var(--muted);
-      gap:4px;
       align-items:center;
-    }
-
-    .tag-dot{
-      width:6px;
-      height:6px;
+      gap:.25rem;
+      font-size:.75rem;
+      padding:.1rem .4rem;
       border-radius:999px;
-      background:var(--accent);
+      background:#eff6ff;
+      color:#1d4ed8;
     }
-
-    .select-turno{
+    .coord-dot{
+      width:6px;height:6px;border-radius:999px;
+      background:#1d4ed8;
+    }
+    .select-turno {
       width:100%;
-      background:rgba(15,23,42,.7);
+      padding:.18rem .35rem;
       border-radius:999px;
-      border:1px solid var(--line);
-      color:var(--text);
-      font-size:11px;
-      padding:3px 8px;
-      outline:none;
+      border:1px solid #d1d5db;
+      font-size:.75rem;
+      background:#fff;
     }
 
-    .select-turno:focus{
-      border-color:var(--accent);
-    }
-
-    .scroll{
-      overflow:auto;
-      border-radius:10px;
-    }
-
-    .turnos-grid{
+    /* Panel derecho: tarjetas de turnos */
+    .turnos-grid {
       display:grid;
       grid-template-columns:1fr;
-      gap:10px;
+      gap:.5rem;
     }
-
-    .turno-card{
-      border-radius:var(--radius);
-      background:var(--panel-soft);
-      border:1px solid var(--line);
-      padding:8px 10px;
-      display:flex;
-      flex-direction:column;
-      gap:6px;
+    .turno-card {
+      border-radius:10px;
+      border:1px solid #e5e7eb;
+      padding:.55rem .6rem;
+      background:#f9fafb;
     }
-
-    .turno-header{
+    .turno-header {
       display:flex;
       justify-content:space-between;
       align-items:center;
-      gap:6px;
-      font-size:11px;
+      gap:.5rem;
+      font-size:.75rem;
       text-transform:uppercase;
       letter-spacing:.08em;
+      margin-bottom:.35rem;
     }
-
-    .turno-pill{
+    .turno-pill {
       display:inline-flex;
       align-items:center;
-      gap:6px;
-      padding:2px 8px;
+      gap:.35rem;
       border-radius:999px;
-      font-size:11px;
-      border:1px solid rgba(148,163,184,.5);
-      background:rgba(15,23,42,.9);
+      border:1px solid #e5e7eb;
+      padding:.2rem .5rem;
+      font-size:.7rem;
+      background:#fff;
     }
-
-    .turno-badge{
+    .turno-badge {
       font-weight:600;
     }
+    .turno-status-ok    { color:#15803d; }
+    .turno-status-warn  { color:#a16207; }
+    .turno-status-danger{ color:#b91c1c; }
 
-    .turno-status-ok{
-      color:var(--ok);
-    }
-    .turno-status-warn{
-      color:var(--warn);
-    }
-    .turno-status-danger{
-      color:var(--danger);
-    }
-
-    .turno-list{
+    .turno-list {
       list-style:none;
-      margin:0;
       padding:0;
-      font-size:12px;
+      margin:0;
       max-height:120px;
       overflow:auto;
+      font-size:.78rem;
     }
-
-    .turno-list li{
+    .turno-list li {
       display:flex;
       justify-content:space-between;
-      gap:8px;
-      padding:2px 0;
-      border-bottom:1px dashed rgba(31,41,55,.7);
+      align-items:center;
+      gap:.5rem;
+      padding:.2rem 0;
+      border-bottom:1px dashed #e5e7eb;
     }
-
-    .turno-list span:first-child{
+    .turno-list li span:first-child{
       flex:1;
       white-space:nowrap;
       overflow:hidden;
       text-overflow:ellipsis;
     }
-
-    .turno-list span:last-child{
+    .turno-list li span:last-child{
       white-space:nowrap;
-      color:var(--muted);
+      color:#6b7280;
     }
 
-    .whatsapp-block{
-      margin-top:8px;
-      display:flex;
-      flex-direction:column;
-      gap:4px;
-    }
-
-    .whatsapp-block textarea{
+    /* WhatsApp text area */
+    .whats-box textarea {
       width:100%;
-      min-height:90px;
+      min-height:110px;
       resize:vertical;
-      border-radius:10px;
-      border:1px solid var(--line);
-      background:#020617;
-      color:var(--text);
-      font-size:11px;
-      padding:6px 8px;
+      border-radius:8px;
+      border:1px solid #d1d5db;
+      font-size:.8rem;
+      padding:.4rem .45rem;
       font-family:ui-monospace,Menlo,Monaco,"SF Mono",monospace;
+      background:#f9fafb;
+    }
+    .whats-box .help {
+      font-size:.75rem;
+      color:#6b7280;
+      margin-top:.25rem;
     }
 
-    .hint{
-      font-size:11px;
-      color:var(--muted);
+    @media (max-width: 900px){
+      .turnos-header {
+        flex-direction:column;
+      }
+      .turnos-header .field-group {
+        margin-left:0;
+      }
     }
   </style>
 </head>
-<body>
+<body class="itinerario-page"><!-- puedes usar otra clase si tienes una para módulos nuevos -->
 
-  <header>
-    <div class="title-block">
+  <div id="encabezado"></div>
+
+  <main class="main">
+    <!-- ENCABEZADO DEL MÓDULO -->
+    <section class="turnos-header">
       <div>
-        <div class="title-badge">MÓDULO OPERATIVO</div>
-        <h1>Turnos de comida · Bariloche</h1>
-        <p class="sub">Asignación de almuerzos y cenas por grupo / coordinador con capacidad máxima por turno.</p>
-      </div>
-    </div>
-
-    <div class="controls">
-      <div class="field">
-        <label for="filtroFecha">Fecha</label>
-        <input type="date" id="filtroFecha">
-      </div>
-
-      <div class="field">
-        <label for="maxPaxTurno">Máx. pax por turno</label>
-        <input type="number" id="maxPaxTurno" min="1" value="96">
-      </div>
-
-      <div class="field">
-        <label>Horarios almuerzo</label>
-        <div style="display:flex;gap:4px;">
-          <input id="horaAlm1" type="time" value="12:00">
-          <input id="horaAlm2" type="time" value="13:00">
-          <input id="horaAlm3" type="time" value="14:00">
+        <h2>Turnos de Comida · Bariloche</h2>
+        <div class="subtitle">
+          Asignación de almuerzos y cenas por grupo / coordinador con capacidad máxima por turno.
         </div>
       </div>
 
-      <div class="field">
-        <label>Horarios cena</label>
-        <div style="display:flex;gap:4px;">
-          <input id="horaCen1" type="time" value="20:00">
-          <input id="horaCen2" type="time" value="21:00">
-          <input id="horaCen3" type="time" value="22:00">
+      <div class="field-group">
+        <div class="field">
+          <label for="fechaTurno">Fecha</label>
+          <input type="date" id="fechaTurno" />
+        </div>
+        <div class="field">
+          <label for="maxPaxTurno">Máx. pax turno</label>
+          <input type="number" id="maxPaxTurno" min="1" value="96" />
+        </div>
+        <div class="field">
+          <label>Horarios Almuerzo</label>
+          <div style="display:flex;gap:.25rem;">
+            <input type="time" id="horaAlm1" value="12:00" />
+            <input type="time" id="horaAlm2" value="13:00" />
+            <input type="time" id="horaAlm3" value="14:00" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Horarios Cena</label>
+          <div style="display:flex;gap:.25rem;">
+            <input type="time" id="horaCen1" value="20:00" />
+            <input type="time" id="horaCen2" value="21:00" />
+            <input type="time" id="horaCen3" value="22:00" />
+          </div>
+        </div>
+        <div class="field">
+          <label>&nbsp;</label>
+          <div>
+            <button id="btnRecalcular" type="button" class="btn-small secondary">♻️ Recalcular</button>
+            <button id="btnGuardar" type="button" class="btn-small">💾 Guardar</button>
+          </div>
         </div>
       </div>
-
-      <button id="btnRecalcular" class="btn">
-        ♻️ Recalcular sugerencia
-      </button>
-
-      <button id="btnGuardar" class="btn btn-primary">
-        💾 Guardar (lógico / en memoria)
-      </button>
-    </div>
-  </header>
-
-  <main>
-    <!-- PANEL IZQUIERDO: LISTA DE GRUPOS -->
-    <section class="panel">
-      <div class="panel-header">
-        <div class="panel-title">Grupos en Bariloche · Día seleccionado</div>
-        <div class="pill" id="resumenGrupos">0 grupos · 0 pax</div>
-      </div>
-
-      <div class="scroll" style="flex:1;">
-        <table>
-          <thead>
-            <tr>
-              <th style="width:70px;">N° NEGOCIO</th>
-              <th>GRUPO</th>
-              <th style="width:70px;">PAX</th>
-              <th>COORDINADOR</th>
-              <th style="width:95px;">ALMUERZO</th>
-              <th style="width:90px;">CENA</th>
-            </tr>
-          </thead>
-          <tbody id="tablaGruposBody">
-            <!-- Filas generadas por JS -->
-          </tbody>
-        </table>
-      </div>
-
-      <p class="hint">
-        Puedes modificar manualmente el turno de almuerzo y cena de cada grupo. <br>
-        El botón <strong>Recalcular sugerencia</strong> redistribuye todo según la capacidad máxima.
-      </p>
     </section>
 
-    <!-- PANEL DERECHO: RESUMEN DE TURNOS Y WHATSAPP -->
-    <section class="panel">
-      <div class="panel-header">
-        <div class="panel-title">Turnos del día · Resumen por horario</div>
-        <div class="pill" id="resumenCapacidad">Máx 96 pax por turno</div>
-      </div>
+    <!-- CONTENIDO PRINCIPAL: DOS COLUMNAS -->
+    <section class="row">
+      <!-- Panel izquierdo: grupos -->
+      <div class="column long">
+        <div class="panel-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;">
+            <div>
+              <h3>Grupos en Bariloche · Día seleccionado</h3>
+              <div class="panel-sub">
+                Se muestran solo los grupos presentes en Bariloche en la fecha elegida (luego conectamos a Firestore).
+              </div>
+            </div>
+            <div id="resumenGrupos" class="badge-chip">0 grupo(s) · 0 pax</div>
+          </div>
 
-      <div class="turnos-grid" id="turnosGrid">
-        <!-- Tarjetas de turnos generadas por JS -->
-      </div>
+          <div style="max-height:380px;overflow:auto;margin-top:.25rem;">
+            <table id="tablaGrupos">
+              <thead>
+                <tr>
+                  <th style="width:80px;">N° negocio</th>
+                  <th>Grupo</th>
+                  <th style="width:60px;">Pax</th>
+                  <th>Coordinador</th>
+                  <th style="width:90px;">Almuerzo</th>
+                  <th style="width:90px;">Cena</th>
+                </tr>
+              </thead>
+              <tbody id="tablaGruposBody">
+                <!-- filas por JS -->
+              </tbody>
+            </table>
+          </div>
 
-      <div class="whatsapp-block">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-          <span class="panel-title">Texto para WhatsApp / correo</span>
-          <button id="btnCopiarWhats" class="btn" style="padding:4px 10px;font-size:11px;">
-            📋 Copiar texto
-          </button>
+          <p style="font-size:.75rem;color:#6b7280;margin-top:.45rem;">
+            Puedes mover manualmente el turno de cada grupo. El botón <strong>Recalcular</strong> reparte de forma automática
+            según la capacidad máxima configurada.
+          </p>
         </div>
-        <textarea id="whatsText" readonly></textarea>
-        <p class="hint">
-          Este texto se genera según los turnos actuales (almuerzo y cena). Puedes pegarlo directamente en WhatsApp del hotel/casino.
-        </p>
+      </div>
+
+      <!-- Panel derecho: resumen turnos + texto -->
+      <div class="column long">
+        <div class="panel-box" style="margin-bottom:.75rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.45rem;">
+            <div>
+              <h3>Turnos del día</h3>
+              <div class="panel-sub">
+                Vista rápida de almuerzos y cenas por horario, con total de pax por turno.
+              </div>
+            </div>
+            <div id="resumenCapacidad" class="badge-chip">Máx 96 pax por turno</div>
+          </div>
+
+          <div class="turnos-grid" id="turnosGrid">
+            <!-- tarjetas turno por JS -->
+          </div>
+        </div>
+
+        <div class="panel-box whats-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;">
+            <h3>Texto para WhatsApp / correo</h3>
+            <button id="btnCopiarWhats" type="button" class="btn-small secondary">📋 Copiar</button>
+          </div>
+          <textarea id="whatsText" readonly></textarea>
+          <div class="help">
+            Se genera en base a los turnos actuales (almuerzo y cena). Puedes pegarlo directo en WhatsApp del hotel/casino.
+          </div>
+        </div>
       </div>
     </section>
   </main>
 
-  <!-- Script principal -->
-  <script src="turnos-comida.js"></script>
+  <!-- Recursos externos (mismos que en tus otras páginas) -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/choices.js/public/assets/scripts/choices.min.js"></script>
+
+  <!-- Bootstrap del encabezado + módulo -->
+  <script type="module">
+    (async () => {
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+
+      // Inicializa Firebase + lógica general si corresponde
+      await import('./firebase-init.js');
+      await import('./script.js');          // si quieres reutilizar header/usuario/reloj
+      await import('./turnos-comidas.js');  // lógica de esta página
+    })();
+  </script>
 </body>
 </html>
