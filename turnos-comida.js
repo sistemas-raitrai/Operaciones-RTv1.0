@@ -35,6 +35,14 @@ function normDateISO(d = new Date()){
   return `${y}-${m}-${day}`;
 }
 
+// Devuelve la fecha de MAÑANA en ISO (día calendario siguiente)
+function tomorrowISO() {
+  const d = new Date();
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 1);
+  return normDateISO(d);
+}
+
 function getGrupoById(id){
   return state.grupos.find(g => g.id === id) || null;
 }
@@ -44,6 +52,14 @@ function sumPax(ids){
     const g = getGrupoById(id);
     return acc + (g ? g.pax : 0);
   },0);
+}
+
+// Número de turnos activos (según horas NO vacías)
+function getNumTurnos(tipo){
+  const horas = tipo === 'almuerzo'
+    ? state.config.horas.almuerzo
+    : state.config.horas.cena;
+  return horas.filter(h => h && h.trim()).length;
 }
 
 // =========================
@@ -173,25 +189,40 @@ function renderTablaGrupos(){
     const selAlm = document.createElement('select');
     selAlm.className = 'select-turno sel-almuerzo';
     selAlm.dataset.gid = g.id;
-    selAlm.innerHTML = `
-      <option value="0">—</option>
-      <option value="1">T1</option>
-      <option value="2">T2</option>
-      <option value="3">T3</option>
-    `;
+    
+    // Opciones dinámicas según número de turnos activos
+    let htmlAlm = `<option value="0">—</option>`;
+    const nAlm = getNumTurnos('almuerzo');
+    for(let i=1;i<=nAlm;i++){
+      htmlAlm += `<option value="${i}">T${i}</option>`;
+    }
+    selAlm.innerHTML = htmlAlm;
+    
+    // Si este grupo NO almuerza en el hotel, deshabilitar select
+    if(g.comeAlmuerzo === false){
+      selAlm.disabled = true;
+      selAlm.title = 'Este grupo no almuerza en el hotel en esta fecha.';
+    }
     tdAlm.appendChild(selAlm);
-
+    
     const tdCen = document.createElement('td');
     const selCen = document.createElement('select');
     selCen.className = 'select-turno sel-cena';
     selCen.dataset.gid = g.id;
-    selCen.innerHTML = `
-      <option value="0">—</option>
-      <option value="1">T1</option>
-      <option value="2">T2</option>
-      <option value="3">T3</option>
-    `;
+    
+    let htmlCen = `<option value="0">—</option>`;
+    const nCen = getNumTurnos('cena');
+    for(let i=1;i<=nCen;i++){
+      htmlCen += `<option value="${i}">T${i}</option>`;
+    }
+    selCen.innerHTML = htmlCen;
+    
+    if(g.comeCena === false){
+      selCen.disabled = true;
+      selCen.title = 'Este grupo no cena en el hotel en esta fecha.';
+    }
     tdCen.appendChild(selCen);
+
 
     tr.appendChild(tdNeg);
     tr.appendChild(tdNombre);
@@ -229,11 +260,19 @@ function renderTablaGrupos(){
 // Asignación automática
 // =========================
 function resetAsignacionVacia(){
-  state.asignacion = {
-    almuerzo: { 1: [], 2: [], 3: [] },
-    cena:     { 1: [], 2: [], 3: [] }
-  };
+  const nAlm = getNumTurnos('almuerzo');
+  const nCen = getNumTurnos('cena');
+
+  state.asignacion = { almuerzo:{}, cena:{} };
+
+  for(let i=1;i<=nAlm;i++){
+    state.asignacion.almuerzo[i] = [];
+  }
+  for(let i=1;i<=nCen;i++){
+    state.asignacion.cena[i] = [];
+  }
 }
+
 
 /**
  * Algoritmo "greedy balanceado":
@@ -244,41 +283,54 @@ function resetAsignacionVacia(){
 function sugerirTurnos(tipo){
   const maxPax = state.config.maxPax;
   const asign = state.asignacion[tipo];
+  const n = getNumTurnos(tipo);
 
-  asign[1] = [];
-  asign[2] = [];
-  asign[3] = [];
+  // Limpia asignación actual
+  for(let i=1;i<=n;i++){
+    asign[i] = [];
+  }
 
-  const gruposOrdenados = [...state.grupos].sort((a,b)=>b.pax - a.pax);
+  if(n === 0) return; // sin turnos activos, no hacemos nada
+
+  const gruposOrdenados = [...state.grupos]
+    .filter(g => {
+      // Ignorar grupos que no comen esa comida en el hotel
+      if(tipo === 'almuerzo' && g.comeAlmuerzo === false) return false;
+      if(tipo === 'cena'     && g.comeCena     === false) return false;
+      return true;
+    })
+    .sort((a,b)=>b.pax - a.pax);
 
   for(const g of gruposOrdenados){
-    const t1 = sumPax(asign[1]);
-    const t2 = sumPax(asign[2]);
-    const t3 = sumPax(asign[3]);
+    if(!g.pax) continue;
 
-    const opciones = [
-      { turno:1, total:t1 },
-      { turno:2, total:t2 },
-      { turno:3, total:t3 }
-    ].sort((a,b)=>a.total - b.total);
+    // Totales actuales por turno
+    const opciones = [];
+    for(let i=1;i<=n;i++){
+      opciones.push({ turno:i, total: sumPax(asign[i]) });
+    }
+    opciones.sort((a,b)=>a.total - b.total);
 
     let elegido = null;
 
-    // Intentar no superar el máximo
+    // 1) Intentar turno que NO supere maxPax
     for(const op of opciones){
       if(op.total + g.pax <= maxPax){
         elegido = op.turno;
         break;
       }
     }
-    // Si no cabe "limpio", tirarlo al más vacío de todas formas
+
+    // 2) Si ninguno cabe sin pasarse → NO se asigna (queda en "—")
     if(!elegido){
-      elegido = opciones[0].turno;
+      console.warn('[TurnosComida] Grupo no cabe en ningún turno sin sobrepasar capacidad:', g.nombreGrupo, g.pax);
+      continue;
     }
 
     asign[elegido].push(g.id);
   }
 }
+
 
 /**
  * Sincroniza los <select> con state.asignacion
@@ -516,13 +568,13 @@ async function cargarDia(fechaISO){
 
 // Inicialización principal
 function initTurnosComidas(){
-  const hoyISO = normDateISO();
+  const fechaInicial = tomorrowISO();
 
   const inputFecha = document.getElementById('fechaTurno');
   if(inputFecha){
-    inputFecha.value = hoyISO;
+    inputFecha.value = fechaInicial;
     inputFecha.addEventListener('change', ()=>{
-      const f = inputFecha.value || hoyISO;
+      const f = inputFecha.value || fechaInicial;
       cargarDia(f);
     });
   }
@@ -596,7 +648,7 @@ function initTurnosComidas(){
   }
 
   leerConfigDesdeUI();
-  cargarDia(hoyISO);
+  cargarDia(fechaInicial);
 }
 
 // Como este módulo se carga al final del body, inicializamos directo
