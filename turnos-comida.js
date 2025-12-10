@@ -3,8 +3,9 @@
 // Versión inicial: trabaja en memoria con datos de prueba.
 
 import { app, db } from './firebase-init.js';
-// Más adelante: importamos getDocs, query, where, etc. para leer Firestore.
-
+import {
+  collection, getDocs
+} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 // =========================
 // Estado en memoria
 // =========================
