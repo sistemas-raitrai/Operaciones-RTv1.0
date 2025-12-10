@@ -437,14 +437,14 @@ function leerConfigDesdeUI(){
   state.config.maxPax = maxPax;
 
   state.config.horas.almuerzo = [
-    alm1?.value || '12:00',
-    alm2?.value || '13:00',
-    alm3?.value || '14:00'
+    alm1?.value || '12:30',
+    alm2?.value || '13:30',
+    alm3?.value || '14:30'
   ];
   state.config.horas.cena = [
-    cen1?.value || '20:00',
-    cen2?.value || '21:00',
-    cen3?.value || '22:00'
+    cen1?.value || '19:30',
+    cen2?.value || '20:30',
+    cen3?.value || '21:30'
   ];
 }
 
