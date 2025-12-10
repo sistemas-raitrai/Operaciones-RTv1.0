@@ -488,12 +488,11 @@ function leerConfigDesdeUI(){
   ];
 }
 
-// Carga de datos de un día
 async function cargarDia(fechaISO){
   state.fechaISO = fechaISO;
 
-  // TODO: aquí después usamos Firestore.
-  state.grupos = await cargarGruposDelDiaMock(fechaISO);
+  // 🔄 Ahora usamos loader REAL desde Firestore
+  state.grupos = await cargarGruposDelDia(fechaISO);
 
   resetAsignacionVacia();
   renderTablaGrupos();
@@ -510,7 +509,10 @@ async function cargarDia(fechaISO){
   if(inputFecha && !inputFecha.value){
     inputFecha.value = fechaISO;
   }
+
+  console.log('[TurnosComida] Grupos cargados para', fechaISO, state.grupos);
 }
+
 
 // Inicialización principal
 function initTurnosComidas(){
