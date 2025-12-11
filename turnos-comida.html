@@ -249,16 +249,6 @@
       .turnos-header .field-group {
         margin-left:0;
       }
-      /* Modal itinerario: reutiliza estilos base */
-      #modal-itin .modal-body li{
-        padding:.2rem 0;
-        border-bottom:1px solid #e5e7eb;
-        font-size:.82rem;
-      }
-      #modal-itin .modal-body li span.hora{
-        font-weight:600;
-        margin-right:.35rem;
-      }
     }
   </style>
 </head>
@@ -288,21 +278,17 @@
         <div class="field">
           <label>Horarios Almuerzo</label>
           <div style="display:flex;gap:.25rem;">
-            <input type="time" id="horaAlm1" value="12:30" />
-            <input type="time" id="horaAlm2" value="13:30" />
-            <input type="time" id="horaAlm3" value="14:30" />
-            <!-- 4.º turno opcional: si lo dejas vacío, el sistema funciona con 3 -->
-            <input type="time" id="horaAlm4" value="" />
+            <input type="time" id="horaAlm1" value="12:00" />
+            <input type="time" id="horaAlm2" value="13:00" />
+            <input type="time" id="horaAlm3" value="14:00" />
           </div>
         </div>
         <div class="field">
           <label>Horarios Cena</label>
           <div style="display:flex;gap:.25rem;">
-            <input type="time" id="horaCen1" value="19:30" />
-            <input type="time" id="horaCen2" value="20:30" />
-            <input type="time" id="horaCen3" value="21:30" />
-            <!-- 4.º turno opcional -->
-            <input type="time" id="horaCen4" value="" />
+            <input type="time" id="horaCen1" value="20:00" />
+            <input type="time" id="horaCen2" value="21:00" />
+            <input type="time" id="horaCen3" value="22:00" />
           </div>
         </div>
         <div class="field">
@@ -317,7 +303,7 @@
 
     <!-- CONTENIDO PRINCIPAL: DOS COLUMNAS -->
     <section class="row">
-      <!-- Panel izquierdo: grupos + texto WhatsApp -->
+      <!-- Panel izquierdo: grupos -->
       <div class="column long">
         <div class="panel-box">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;">
@@ -353,21 +339,9 @@
             según la capacidad máxima configurada.
           </p>
         </div>
-
-        <!-- NUEVA POSICIÓN: Texto WhatsApp / correo (dentro de la misma columna) -->
-        <div class="panel-box whats-box" style="margin-top:.75rem;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;">
-            <h3>Texto para WhatsApp / correo</h3>
-            <button id="btnCopiarWhats" type="button" class="btn-small secondary">📋 Copiar</button>
-          </div>
-          <textarea id="whatsText" readonly></textarea>
-          <div class="help">
-            Se genera en base a los turnos actuales (almuerzo y cena). Puedes pegarlo directo en WhatsApp del hotel/casino.
-          </div>
-        </div>
       </div>
 
-      <!-- Panel derecho: SOLO turnos del día -->
+      <!-- Panel derecho: resumen turnos + texto -->
       <div class="column long">
         <div class="panel-box" style="margin-bottom:.75rem;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.45rem;">
@@ -384,21 +358,19 @@
             <!-- tarjetas turno por JS -->
           </div>
         </div>
+
+        <div class="panel-box whats-box">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;margin-bottom:.3rem;">
+            <h3>Texto para WhatsApp / correo</h3>
+            <button id="btnCopiarWhats" type="button" class="btn-small secondary">📋 Copiar</button>
+          </div>
+          <textarea id="whatsText" readonly></textarea>
+          <div class="help">
+            Se genera en base a los turnos actuales (almuerzo y cena). Puedes pegarlo directo en WhatsApp del hotel/casino.
+          </div>
+        </div>
       </div>
     </section>
-
-    <!-- Modal Itinerario Grupo -->
-    <div id="modal-itin-backdrop" class="modal-backdrop" style="display:none;"></div>
-    <div id="modal-itin" class="modal" style="display:none; max-width:700px;">
-      <div class="modal-header">
-        <h3 id="modal-itin-title">Itinerario</h3>
-        <button id="modal-itin-close" type="button">✖</button>
-      </div>
-      <div class="modal-body">
-        <p id="modal-itin-fecha" style="font-size:.85rem;color:#6b7280;margin-top:0;"></p>
-        <ul id="modal-itin-list" style="list-style:none;padding:0;margin:.5rem 0;"></ul>
-      </div>
-    </div>
   </main>
 
   <!-- Recursos externos (mismos que en tus otras páginas) -->
