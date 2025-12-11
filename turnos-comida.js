@@ -161,23 +161,70 @@ function extraerItinerarioDia(itinerarioRaw, fechaISO){
   const dia = itinerarioRaw[fechaISO];
   if (!dia || typeof dia !== 'object') return [];
 
-  const claves = Object.keys(dia).sort((a,b)=> Number(a) - Number(b));
+  // Helpers internos para detectar y ordenar por hora
+  const regexHora = /([01]\d|2[0-3]):[0-5]\d/;
+
+  function pickHoraFromAct(act){
+    if (!act || typeof act !== 'object') return '';
+
+    // 1) Candidatos típicos que podrías estar usando
+    const candidatos = [
+      act.hora,
+      act.horario,
+      act.horaInicio,
+      act.horaSalida,
+      act.horaTexto,
+      act.horaLabel
+    ];
+
+    for (const c of candidatos){
+      if (typeof c === 'string' && regexHora.test(c)) return c.match(regexHora)[0];
+    }
+
+    // 2) Si lo anterior no sirvió, buscar en TODOS los valores string del objeto
+    for (const val of Object.values(act)){
+      if (typeof val === 'string' && regexHora.test(val)){
+        return val.match(regexHora)[0];
+      }
+    }
+
+    return '';
+  }
+
+  function horaToMinutos(horaStr){
+    if (!horaStr || !regexHora.test(horaStr)) return 9999; // al final si no hay hora
+    const m = horaStr.match(regexHora);
+    if (!m) return 9999;
+    const [hh, mm] = m[0].split(':').map(n => parseInt(n, 10));
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return 9999;
+    return hh * 60 + mm;
+  }
+
   const actividades = [];
 
-  for (const k of claves){
+  // Recorremos todas las claves (0,1,2...) pero luego ordenamos por hora real
+  for (const k of Object.keys(dia)){
     const act = dia[k];
     if (!act || typeof act !== 'object') continue;
 
+    const horaStr = pickHoraFromAct(act);
+
     actividades.push({
-      hora:       act.hora       || act.horario || '',
+      hora:       horaStr,
       actividad:  act.actividad  || act.titulo  || act.nombre || '(sin nombre)',
       lugar:      act.lugar      || act.ciudad  || '',
-      notas:      act.notas      || act.detalle || act.obs || ''
+      notas:      act.notas      || act.detalle || act.obs || '',
+      _orden:     horaToMinutos(horaStr)
     });
   }
 
-  return actividades;
+  // Ordenar por hora (las sin hora quedan al final)
+  actividades.sort((a,b)=> a._orden - b._orden);
+
+  // Devolver sin el campo interno _orden
+  return actividades.map(({ _orden, ...rest }) => rest);
 }
+
 
 /**
  * Devuelve un texto legible para pegar en textarea o alert()
