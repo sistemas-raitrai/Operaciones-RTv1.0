@@ -654,25 +654,26 @@
     <div class="card">
       <h3>Resumen financiero</h3>
 
+      <!-- FILA CLP -->
       <div class="resumen-financiero">
         <div class="stat-card">
-          <div class="stat-label">Abonos totales</div>
+          <div class="stat-label">Abonos totales (CLP)</div>
           <div class="stat-value abonos" id="sumAbonos">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Gastos aprobados</div>
+          <div class="stat-label">Gastos aprobados (CLP)</div>
           <div class="stat-value gastos" id="sumGastos">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Descuentos de rendición</div>
+          <div class="stat-label">Descuentos de rendición (CLP)</div>
           <div class="stat-value gastos" id="sumDescuentos">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Gastos netos</div>
+          <div class="stat-label">Gastos netos (CLP)</div>
           <div class="stat-value gastos" id="sumGastosNetos">—</div>
         </div>
         <div class="stat-card highlight">
-          <div class="stat-label">Saldo esperado (abonos – gastos netos)</div>
+          <div class="stat-label">Saldo esperado (CLP)</div>
           <div class="stat-value saldo" id="sumSaldoEsperado">—</div>
         </div>
         <div class="stat-card">
@@ -680,8 +681,36 @@
           <div class="stat-value saldo" id="sumDevuelto">—</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Resultado final</div>
+          <div class="stat-label">Resultado final (CLP)</div>
           <div class="stat-value saldo" id="sumResultado">—</div>
+        </div>
+      </div>
+
+      <!-- FILA USD (opcional, rellenada por JS si hay datos en USD) -->
+      <div class="resumen-financiero" style="margin-top:1rem;">
+        <div class="stat-card">
+          <div class="stat-label">Abonos totales (USD)</div>
+          <div class="stat-value abonos" id="sumAbonosUSD">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Gastos aprobados (USD)</div>
+          <div class="stat-value gastos" id="sumGastosUSD">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Gastos netos (USD)</div>
+          <div class="stat-value gastos" id="sumGastosNetosUSD">—</div>
+        </div>
+        <div class="stat-card highlight">
+          <div class="stat-label">Saldo esperado (USD)</div>
+          <div class="stat-value saldo" id="sumSaldoEsperadoUSD">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Monto devuelto (USD)</div>
+          <div class="stat-value saldo" id="sumDevueltoUSD">—</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Resultado final (USD)</div>
+          <div class="stat-value saldo" id="sumResultadoUSD">—</div>
         </div>
       </div>
     </div>
