@@ -314,14 +314,13 @@ function renderTablaGrupos(){
     tdNeg.style.fontSize = '.75rem';
 
     const tdNombre = document.createElement('td');
-    const btnNombre = document.createElement('button');
-    btnNombre.type = 'button';
-    btnNombre.className = 'btn-link-nombre'; // dale estilo en tu CSS si quieres
-    btnNombre.textContent = g.nombreGrupo;
-    btnNombre.addEventListener('click', () => {
+    const linkNombre = document.createElement('span');
+    linkNombre.textContent = g.nombreGrupo;
+    linkNombre.className = 'link-itinerario';
+    linkNombre.addEventListener('click', () => {
       mostrarItinerarioGrupo(g.id, g.nombreGrupo);
     });
-    tdNombre.appendChild(btnNombre);
+    tdNombre.appendChild(linkNombre);
 
 
     const tdPax = document.createElement('td');
