@@ -804,6 +804,107 @@ function renderTablaDescuentos() {
 }
 
 /* ====================== RESUMEN + PRINT ====================== */
+
+// Suma montos separando por moneda (CLP / USD)
+function sumMontosByMoneda(items, getter = (it) => it.monto, defaultMoneda = 'CLP') {
+  const totals = { CLP: 0, USD: 0 };
+
+  for (const it of items || []) {
+    const moneda = (it.moneda || defaultMoneda || 'CLP').toString().toUpperCase();
+    const val = getter(it);
+    const num = Number(val);
+    if (!isFinite(num)) continue;
+
+    if (moneda === 'USD') {
+      totals.USD += num;
+    } else {
+      totals.CLP += num;
+    }
+  }
+
+  return totals;
+}
+
+// Calcula todos los totales de resumen (CLP y USD)
+// Se usa tanto en pantalla como en el acta impresa
+function computeResumenFinanzas() {
+  const gastosOk = state.gastos.filter(it => it.rendOk);
+
+  // GASTOS aprobados por moneda
+  const totalGastos = sumMontosByMoneda(
+    gastosOk,
+    (it) => (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto),
+    'CLP'
+  );
+
+  // ABONOS por moneda
+  const totalAbonos = sumMontosByMoneda(
+    state.abonos,
+    (it) => Number(it.monto) || 0,
+    'CLP'
+  );
+
+  // DESCUENTOS: solo CLP
+  const totalDescuentosCLP = state.descuentos
+    .reduce((s, d) => s + (Number(d.monto) || 0), 0);
+
+  const gastosNetosCLP   = totalGastos.CLP - totalDescuentosCLP;
+  const gastosNetosUSD   = totalGastos.USD; // descuentos están sólo en CLP
+  const saldoEsperadoCLP = totalAbonos.CLP - gastosNetosCLP;
+  const saldoEsperadoUSD = totalAbonos.USD - gastosNetosUSD;
+
+  const docsOk = (state.summary && state.summary.docsOk) || {};
+  const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
+  const montoDevUSD = Number(docsOk.montoDevueltoUSD || 0) || 0;
+
+  // Resultado CLP (mantener comportamiento actual)
+  const diffCLP = saldoEsperadoCLP - montoDevCLP;
+  let textoResultadoCLP = '';
+  if (Math.abs(diffCLP) < 500) {
+    textoResultadoCLP = 'Saldo cuadrado (≈ $0)';
+  } else if (diffCLP > 0) {
+    textoResultadoCLP = `A favor de Rai Trai: ${moneyCLP(diffCLP)}`;
+  } else {
+    textoResultadoCLP = `A favor del coordinador: ${moneyCLP(-diffCLP)}`;
+  }
+
+  // Resultado USD
+  const diffUSD = saldoEsperadoUSD - montoDevUSD;
+  let textoResultadoUSD = '';
+  if (Math.abs(diffUSD) < 0.5) {
+    textoResultadoUSD = 'Saldo cuadrado (≈ USD 0)';
+  } else if (diffUSD > 0) {
+    textoResultadoUSD = `A favor de Rai Trai: ${moneyBy(diffUSD, 'USD')}`;
+  } else if (diffUSD < 0) {
+    textoResultadoUSD = `A favor del coordinador: ${moneyBy(-diffUSD, 'USD')}`;
+  }
+
+  return {
+    gastosOk,
+
+    totalGastosCLP: totalGastos.CLP,
+    totalGastosUSD: totalGastos.USD,
+    totalAbonosCLP: totalAbonos.CLP,
+    totalAbonosUSD: totalAbonos.USD,
+    totalDescuentosCLP,
+
+    gastosNetosCLP,
+    gastosNetosUSD,
+    saldoEsperadoCLP,
+    saldoEsperadoUSD,
+
+    docsOk,
+    montoDevCLP,
+    montoDevUSD,
+
+    diffCLP,
+    diffUSD,
+    textoResultadoCLP,
+    textoResultadoUSD,
+  };
+}
+
+/* ====================== RESUMEN + PRINT ====================== */
 function renderResumenFinanzas() {
   const gid   = state.filtros.grupo || '';
   const gInfo = gid ? state.caches.grupos.get(gid) : null;
@@ -828,31 +929,26 @@ function renderResumenFinanzas() {
     if (elFechas)  elFechas.textContent  = gInfo.fechas || '—';
   }
 
-  const gastosOk = state.gastos.filter(it => it.rendOk);
-  const totalGastos = gastosOk
-    .reduce((s,it)=> s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto), 0);
-  const totalAbonos = state.abonos
-    .reduce((s,it)=> s + (Number(it.monto) || 0), 0);
-  const totalDescuentos = state.descuentos
-    .reduce((s,d)=> s + (Number(d.monto) || 0), 0);
+  // Totales por moneda (usa helper compartido)
+  const totals = computeResumenFinanzas();
+  const {
+    totalGastosCLP,
+    totalGastosUSD,
+    totalAbonosCLP,
+    totalAbonosUSD,
+    totalDescuentosCLP,
+    gastosNetosCLP,
+    gastosNetosUSD,
+    saldoEsperadoCLP,
+    saldoEsperadoUSD,
+    docsOk,
+    montoDevCLP,
+    montoDevUSD,
+    textoResultadoCLP,
+    textoResultadoUSD,
+  } = totals;
 
-  const gastosNetos     = totalGastos - totalDescuentos;
-  const saldoEsperado   = totalAbonos - gastosNetos;
-
-   const docsOk = (state.summary && state.summary.docsOk) || {};
-  const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
-  const montoDevUSD = Number(docsOk.montoDevueltoUSD || 0) || 0;
-
-  const diff = saldoEsperado - montoDevCLP;
-  let textoResultado = '';
-  if (Math.abs(diff) < 500) {
-    textoResultado = 'Saldo cuadrado (≈ $0)';
-  } else if (diff > 0) {
-    textoResultado = `A favor de Rai Trai: ${moneyCLP(diff)}`;
-  } else {
-    textoResultado = `A favor del coordinador: ${moneyCLP(-diff)}`;
-  }
-
+  // ====== CUADROS RESUMEN CLP (los actuales) ======
   const elAbonos        = document.getElementById('sumAbonos');
   const elGastos        = document.getElementById('sumGastos');
   const elDescuentos    = document.getElementById('sumDescuentos');
@@ -861,13 +957,31 @@ function renderResumenFinanzas() {
   const elDevuelto      = document.getElementById('sumDevuelto');
   const elResultado     = document.getElementById('sumResultado');
 
-  if (elAbonos)        elAbonos.textContent        = moneyCLP(totalAbonos);
-  if (elGastos)        elGastos.textContent        = moneyCLP(totalGastos);
-  if (elDescuentos)    elDescuentos.textContent    = moneyCLP(totalDescuentos);
-  if (elGastosNetos)   elGastosNetos.textContent   = moneyCLP(gastosNetos);
-  if (elSaldoEsperado) elSaldoEsperado.textContent = moneyCLP(saldoEsperado);
+  if (elAbonos)        elAbonos.textContent        = moneyCLP(totalAbonosCLP);
+  if (elGastos)        elGastos.textContent        = moneyCLP(totalGastosCLP);
+  if (elDescuentos)    elDescuentos.textContent    = moneyCLP(totalDescuentosCLP);
+  if (elGastosNetos)   elGastosNetos.textContent   = moneyCLP(gastosNetosCLP);
+  if (elSaldoEsperado) elSaldoEsperado.textContent = moneyCLP(saldoEsperadoCLP);
   if (elDevuelto)      elDevuelto.textContent      = moneyCLP(montoDevCLP);
-  if (elResultado)     elResultado.textContent     = textoResultado;
+  if (elResultado)     elResultado.textContent     = textoResultadoCLP;
+
+  // ====== (Opcional) Bloques USD si existen en el HTML ======
+  // Crea en tu HTML spans con estos IDs si quieres mostrar también USD:
+  // sumAbonosUSD, sumGastosUSD, sumGastosNetosUSD, sumSaldoEsperadoUSD,
+  // sumDevueltoUSD, sumResultadoUSD.
+  const elAbonosUSD        = document.getElementById('sumAbonosUSD');
+  const elGastosUSD        = document.getElementById('sumGastosUSD');
+  const elGastosNetosUSD   = document.getElementById('sumGastosNetosUSD');
+  const elSaldoEsperadoUSD = document.getElementById('sumSaldoEsperadoUSD');
+  const elDevueltoUSD      = document.getElementById('sumDevueltoUSD');
+  const elResultadoUSD     = document.getElementById('sumResultadoUSD');
+
+  if (elAbonosUSD)        elAbonosUSD.textContent        = moneyBy(totalAbonosUSD, 'USD');
+  if (elGastosUSD)        elGastosUSD.textContent        = moneyBy(totalGastosUSD, 'USD');
+  if (elGastosNetosUSD)   elGastosNetosUSD.textContent   = moneyBy(gastosNetosUSD, 'USD');
+  if (elSaldoEsperadoUSD) elSaldoEsperadoUSD.textContent = moneyBy(saldoEsperadoUSD, 'USD');
+  if (elDevueltoUSD)      elDevueltoUSD.textContent      = moneyBy(montoDevUSD, 'USD');
+  if (elResultadoUSD)     elResultadoUSD.textContent     = textoResultadoUSD || '—';
 
   // ====== Estado visual de documentos (lista TRANSF / CONSTANCIA / BOLETA) ======
   if (gInfo) {
@@ -1034,33 +1148,31 @@ function renderPrintActa() {
   console.log('[REN] renderPrintActa -> gid:', gid,
               'gastosOk:', state.gastos.filter(it => it.rendOk).length);
 
-  const gastosOk = state.gastos
-    .filter(it => it.rendOk)
+  // Reutilizamos el mismo cálculo de totales que en pantalla
+  const totals = computeResumenFinanzas();
+  let {
+    gastosOk,
+    totalGastosCLP,
+    totalGastosUSD,
+    totalAbonosCLP,
+    totalAbonosUSD,
+    totalDescuentosCLP,
+    gastosNetosCLP,
+    gastosNetosUSD,
+    saldoEsperadoCLP,
+    saldoEsperadoUSD,
+    docsOk,
+    montoDevCLP,
+    montoDevUSD,
+    textoResultadoCLP,
+    textoResultadoUSD,
+  } = totals;
+
+  // Para el acta, ordenamos los gastos aprobados por fecha
+  gastosOk = gastosOk
     .slice()
     .sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0));
 
-  const totalGastos = gastosOk
-    .reduce((s,it)=> s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto), 0);
-  const totalAbonos = state.abonos
-    .reduce((s,it)=> s + (Number(it.monto) || 0), 0);
-  const totalDescuentos = state.descuentos
-    .reduce((s,d)=> s + (Number(d.monto) || 0), 0);
-  const gastosNetos   = totalGastos - totalDescuentos;
-  const saldoEsperado = totalAbonos - gastosNetos;
-
-  const docsOk = (state.summary && state.summary.docsOk) || {};
-  const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
-  const montoDevUSDPrint = Number(docsOk.montoDevueltoUSD || 0) || 0;
-  const diff = saldoEsperado - montoDevCLP;
-
-  let textoResultado = '';
-  if (Math.abs(diff) < 500) {
-    textoResultado = 'Saldo cuadrado (≈ $0)';
-  } else if (diff > 0) {
-    textoResultado = `A favor de Rai Trai: ${moneyCLP(diff)}`;
-  } else {
-    textoResultado = `A favor del coordinador: ${moneyCLP(-diff)}`;
-  }
 
   // --- Estado docs para el punto 3 ---
   const summary = state.summary || {};
@@ -1204,17 +1316,47 @@ function renderPrintActa() {
 
         <section class="acta-section">
           <h2>3. Resumen financiero</h2>
+
+          <!-- 3.1 Resumen en CLP -->
           <table class="acta-table acta-resumen">
             <tbody>
-              <tr><td>Abonos totales</td><td class="num">${moneyCLP(totalAbonos)}</td></tr>
-              <tr><td>Gastos aprobados</td><td class="num">${moneyCLP(totalGastos)}</td></tr>
-              <tr><td>Descuentos de rendición</td><td class="num">${moneyCLP(totalDescuentos)}</td></tr>
-              <tr><td>Gastos netos</td><td class="num">${moneyCLP(gastosNetos)}</td></tr>
-              <tr><td>Saldo esperado (abonos – gastos netos)</td><td class="num">${moneyCLP(saldoEsperado)}</td></tr>
+              <tr><td>Abonos totales (CLP)</td><td class="num">${moneyCLP(totalAbonosCLP)}</td></tr>
+              <tr><td>Gastos aprobados (CLP)</td><td class="num">${moneyCLP(totalGastosCLP)}</td></tr>
+              <tr><td>Descuentos de rendición (CLP)</td><td class="num">${moneyCLP(totalDescuentosCLP)}</td></tr>
+              <tr><td>Gastos netos (CLP)</td><td class="num">${moneyCLP(gastosNetosCLP)}</td></tr>
+              <tr><td>Saldo esperado (abonos – gastos netos, CLP)</td><td class="num">${moneyCLP(saldoEsperadoCLP)}</td></tr>
               <tr><td>Monto devuelto (CLP)</td><td class="num">${moneyCLP(montoDevCLP)}</td></tr>
-              <tr><td>Resultado final</td><td class="num">${escapeHtml(textoResultado)}</td></tr>
+              <tr><td>Resultado final (CLP)</td><td class="num">${escapeHtml(textoResultadoCLP)}</td></tr>
             </tbody>
           </table>
+
+          <!-- 3.2 Resumen en USD (solo si hay montos) -->
+          ${(
+            Math.abs(totalAbonosUSD) > 0.0001 ||
+            Math.abs(totalGastosUSD) > 0.0001 ||
+            Math.abs(montoDevUSD) > 0.0001
+          ) ? `
+          <br/>
+          <table class="acta-table acta-resumen">
+            <tbody>
+              <tr><td>Abonos totales (USD)</td><td class="num">${moneyBy(totalAbonosUSD, 'USD')}</td></tr>
+              <tr><td>Gastos aprobados (USD)</td><td class="num">${moneyBy(totalGastosUSD, 'USD')}</td></tr>
+              <tr><td>Gastos netos (USD)</td><td class="num">${moneyBy(gastosNetosUSD, 'USD')}</td></tr>
+              <tr><td>Saldo esperado (abonos – gastos netos, USD)</td><td class="num">${moneyBy(saldoEsperadoUSD, 'USD')}</td></tr>
+              <tr><td>Monto devuelto (USD)</td><td class="num">${moneyBy(montoDevUSD, 'USD')}</td></tr>
+              <tr><td>Resultado final (USD)</td><td class="num">${escapeHtml(textoResultadoUSD || '')}</td></tr>
+            </tbody>
+          </table>
+          ` : '' }
+
+          <p style="margin-top:6px;font-size:9pt;">Estado de documentos:</p>
+          <ul style="margin:2px 0 0 16px;font-size:9pt;padding-left:12px;">
+            <li>${escapeHtml(textoBoleta)}</li>
+            <li>${escapeHtml(textoCompCLP)}</li>
+            <li>${escapeHtml(textoConstUSD)}</li>
+          </ul>
+        </section>
+
 
           <p style="margin-top:6px;font-size:9pt;">Estado de documentos:</p>
           <ul style="margin:2px 0 0 16px;font-size:9pt;padding-left:12px;">
@@ -1251,13 +1393,28 @@ function renderPrintActa() {
     lines.push(`Programa:      ${gInfo.programa || ''}`);
     lines.push(`Fechas:        ${gInfo.fechas || ''}`);
     lines.push('');
-    lines.push(`ABONOS:        ${moneyCLP(totalAbonos)}`);
-    lines.push(`GASTOS APROB.: ${moneyCLP(totalGastos)}`);
-    lines.push(`DESCUENTOS:    ${moneyCLP(totalDescuentos)}`);
-    lines.push(`GASTOS NETOS:  ${moneyCLP(gastosNetos)}`);
-    lines.push(`SALDO ESP.:    ${moneyCLP(saldoEsperado)}`);
-    lines.push(`DEVUELTO CLP:  ${moneyCLP(montoDevCLP)}`);
-    lines.push(`RESULTADO:     ${textoResultado}`);
+    // Resumen CLP
+    lines.push(`ABONOS (CLP):        ${moneyCLP(totalAbonosCLP)}`);
+    lines.push(`GASTOS APROB. (CLP): ${moneyCLP(totalGastosCLP)}`);
+    lines.push(`DESCUENTOS (CLP):    ${moneyCLP(totalDescuentosCLP)}`);
+    lines.push(`GASTOS NETOS (CLP):  ${moneyCLP(gastosNetosCLP)}`);
+    lines.push(`SALDO ESP. (CLP):    ${moneyCLP(saldoEsperadoCLP)}`);
+    lines.push(`DEVUELTO CLP:        ${moneyCLP(montoDevCLP)}`);
+    lines.push(`RESULTADO (CLP):     ${textoResultadoCLP}`);
+
+    // Resumen USD (solo si hay valores)
+    if (Math.abs(totalAbonosUSD) > 0.0001 ||
+        Math.abs(totalGastosUSD) > 0.0001 ||
+        Math.abs(montoDevUSD) > 0.0001) {
+      lines.push('');
+      lines.push(`ABONOS (USD):       ${moneyBy(totalAbonosUSD, 'USD')}`);
+      lines.push(`GASTOS APROB. USD:  ${moneyBy(totalGastosUSD, 'USD')}`);
+      lines.push(`GASTOS NETOS USD:   ${moneyBy(gastosNetosUSD, 'USD')}`);
+      lines.push(`SALDO ESP. USD:     ${moneyBy(saldoEsperadoUSD, 'USD')}`);
+      lines.push(`DEVUELTO USD:       ${moneyBy(montoDevUSD, 'USD')}`);
+      lines.push(`RESULTADO USD:      ${textoResultadoUSD || ''}`);
+    }
+
     lines.push('');
     lines.push('DETALLE GASTOS APROBADOS:');
     gastosOk.forEach(it => {
