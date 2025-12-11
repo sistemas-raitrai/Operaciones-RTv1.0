@@ -1250,9 +1250,12 @@ function renderPrintActa() {
     .slice()
     .sort((a, b) => (a.fechaMs || 0) - (b.fechaMs || 0));
 
-  // Separar por moneda (CLP / USD)
-  const gastosCLP = gastosOk.filter(it => (it.moneda || 'CLP').toUpperCase() === 'CLP');
-  const gastosUSD = gastosOk.filter(it => (it.moneda || 'CLP').toUpperCase() === 'USD');
+  // Separar por moneda:
+  //  - USD se queda como USD
+  //  - TODO lo demás (CLP, BRL, ARS, etc.) se trata como CLP (monto aprobado ya está en pesos)
+  const gastosUSD = gastosOk.filter(it => (it.moneda || '').toUpperCase() === 'USD');
+  const gastosCLP = gastosOk.filter(it => (it.moneda || '').toUpperCase() !== 'USD');
+
 
   const abonosCLP = state.abonos.filter(it => (it.moneda || 'CLP').toUpperCase() === 'CLP');
   const abonosUSD = state.abonos.filter(it => (it.moneda || 'CLP').toUpperCase() === 'USD');
@@ -1365,19 +1368,33 @@ function renderPrintActa() {
   const filasGastos = gastosOk.map(it => {
     const docSymbol = it.imgUrl ? '✓' : '✗'; // tiene o no comprobante
 
+    const monRaw   = (it.moneda || 'CLP').toUpperCase();
+    const esUSD    = monRaw === 'USD';
+
+    const montoBase = it.montoAprobado || it.monto;
+
+    // Regla:
+    //  - USD  -> se muestra en USD
+    //  - Cualquier otra moneda (CLP, BRL, ARS, etc.) -> se muestra como CLP
+    const monMostrar   = esUSD ? 'USD' : 'CLP';
+    const montoMostrar = esUSD
+      ? moneyBy(montoBase, 'USD')
+      : moneyCLP(montoBase);
+
     return `
       <tr>
         <td>${it.fechaTxt || '—'}</td>
         <td>${escapeHtml(it.asunto || '')}</td>
         <td>${escapeHtml(it.categoriaRendicion || 'GASTOS DEL GRUPO')}</td>
-        <td>${it.moneda || 'CLP'}</td>
-        <td class="num">${moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP')}</td>
+        <td>${monMostrar}</td>
+        <td class="num">${montoMostrar}</td>
         <td style="text-align:center;">${docSymbol}</td>
       </tr>
     `;
   }).join('') || `
     <tr><td colspan="6" class="muted">Sin gastos aprobados.</td></tr>
   `;
+
 
   const filasDescuentos = state.descuentos.map(d => `
     <tr>
