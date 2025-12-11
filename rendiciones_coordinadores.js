@@ -925,9 +925,18 @@ function renderResumenFinanzas() {
     const paxMostrar = gInfo.cantidadGrupo ?? gInfo.paxTotal ?? 0;
     if (elPax) elPax.textContent = paxMostrar ? String(paxMostrar) : '—';
 
-    if (elProg)    elProg.textContent    = gInfo.programa || '—';
-    if (elFechas)  elFechas.textContent  = gInfo.fechas || '—';
+    if (elProg) elProg.textContent = gInfo.programa || '—';
+
+    // 👇 Mejor fallback para FECHAS del viaje
+    const fechasTxt =
+      gInfo.fechas ||
+      (state.summary?.fechasViaje) ||
+      (state.summary?.fechas) ||
+      '';
+
+    if (elFechas) elFechas.textContent = fechasTxt || '—';
   }
+
 
   // Totales por moneda (usa helper compartido)
   const totals = computeResumenFinanzas();
@@ -1118,7 +1127,7 @@ function renderPrintActa() {
 
   // 👉 Dos posibles contenedores:
   //    - HTML nuevo:  #printActa
-  //    - Texto legado: #printSheet  (el que tenías cuando “sí funcionaba”)
+  //    - Texto legado: #printSheet  (por si aún lo usas en algún lado)
   const contHtml = document.getElementById('printActa');
   const contText = document.getElementById('printSheet');
 
@@ -1145,36 +1154,75 @@ function renderPrintActa() {
     return;
   }
 
-  console.log('[REN] renderPrintActa -> gid:', gid,
-              'gastosOk:', state.gastos.filter(it => it.rendOk).length);
+  console.log(
+    '[REN] renderPrintActa -> gid:',
+    gid,
+    'gastosOk:',
+    state.gastos.filter(it => it.rendOk).length
+  );
 
-  // Reutilizamos el mismo cálculo de totales que en pantalla
-  const totals = computeResumenFinanzas();
-  let {
-    gastosOk,
-    totalGastosCLP,
-    totalGastosUSD,
-    totalAbonosCLP,
-    totalAbonosUSD,
-    totalDescuentosCLP,
-    gastosNetosCLP,
-    gastosNetosUSD,
-    saldoEsperadoCLP,
-    saldoEsperadoUSD,
-    docsOk,
-    montoDevCLP,
-    montoDevUSD,
-    textoResultadoCLP,
-    textoResultadoUSD,
-  } = totals;
-
-  // Para el acta, ordenamos los gastos aprobados por fecha
-  gastosOk = gastosOk
+  // --- GASTOS APROBADOS (solo rendOk === true) ---
+  const gastosOk = state.gastos
+    .filter(it => it.rendOk)
     .slice()
-    .sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0));
+    .sort((a, b) => (a.fechaMs || 0) - (b.fechaMs || 0));
 
+  // Separar por moneda (CLP / USD)
+  const gastosCLP = gastosOk.filter(it => (it.moneda || 'CLP').toUpperCase() === 'CLP');
+  const gastosUSD = gastosOk.filter(it => (it.moneda || 'CLP').toUpperCase() === 'USD');
 
-  // --- Estado docs para el punto 3 ---
+  const abonosCLP = state.abonos.filter(it => (it.moneda || 'CLP').toUpperCase() === 'CLP');
+  const abonosUSD = state.abonos.filter(it => (it.moneda || 'CLP').toUpperCase() === 'USD');
+
+  const totalAbonosCLP = abonosCLP.reduce((s, it) => s + (Number(it.monto) || 0), 0);
+  const totalAbonosUSD = abonosUSD.reduce((s, it) => s + (Number(it.monto) || 0), 0);
+
+  const totalGastosCLP = gastosCLP.reduce(
+    (s, it) => s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto),
+    0
+  );
+  const totalGastosUSD = gastosUSD.reduce(
+    (s, it) => s + (isFinite(+it.montoAprobado) ? +it.montoAprobado : +it.monto),
+    0
+  );
+
+  const totalDescuentosCLP = state.descuentos.reduce(
+    (s, d) => s + (Number(d.monto) || 0),
+    0
+  );
+
+  const gastosNetosCLP = totalGastosCLP - totalDescuentosCLP;
+  const gastosNetosUSD = totalGastosUSD; // (por ahora sin descuentos en USD)
+
+  const saldoEsperadoCLP = totalAbonosCLP - gastosNetosCLP;
+  const saldoEsperadoUSD = totalAbonosUSD - gastosNetosUSD;
+
+  const docsOk = (state.summary && state.summary.docsOk) || {};
+  const montoDevCLP = parseMonto(docsOk.montoDevueltoCLP || 0);
+  const montoDevUSDPrint = Number(docsOk.montoDevueltoUSD || 0) || 0;
+
+  const diffCLP = saldoEsperadoCLP - montoDevCLP;
+  const diffUSD = saldoEsperadoUSD - montoDevUSDPrint;
+
+  let textoResultadoCLP = '';
+  if (Math.abs(diffCLP) < 500) {
+    textoResultadoCLP = 'Saldo cuadrado (≈ $0)';
+  } else if (diffCLP > 0) {
+    textoResultadoCLP = `A favor de Rai Trai: ${moneyCLP(diffCLP)}`;
+  } else {
+    textoResultadoCLP = `A favor del coordinador: ${moneyCLP(-diffCLP)}`;
+  }
+
+  let textoResultadoUSD = '';
+  if (Math.abs(diffUSD) < 0.5) {
+    textoResultadoUSD = 'Saldo cuadrado (≈ USD 0)';
+  } else if (diffUSD > 0) {
+    textoResultadoUSD = `A favor de Rai Trai: ${moneyBy(diffUSD, 'USD')}`;
+  } else {
+    textoResultadoUSD = `A favor del coordinador: ${moneyBy(-diffUSD, 'USD')}`;
+  }
+
+  // --- Estado docs para el punto 4 ---
   const summary = state.summary || {};
 
   // Boleta / doc SII
@@ -1185,10 +1233,9 @@ function renderPrintActa() {
     ''
   );
 
-  // Transferencia CLP / comprobante CLP
-  // coordinadores.js → summary.transfer.comprobanteUrl
+  // Transferencia CLP / comprobante CLP (coordinadores.js → summary.transfer.comprobanteUrl)
   const compUrl = coalesce(
-    summary.transfer?.comprobanteUrl,          // NUEVO
+    summary.transfer?.comprobanteUrl, // NUEVO
     summary.transferenciaCLP?.url,
     summary.comprobanteCLP?.url,
     summary.comprobante?.url,
@@ -1200,10 +1247,9 @@ function renderPrintActa() {
     ''
   );
 
-  // Constancia USD / transferencia coordinador
-  // coordinadores.js → summary.cashUsd.comprobanteUrl
+  // Constancia USD / transferencia coord (coordinadores.js → summary.cashUsd.comprobanteUrl)
   const transfUrl = coalesce(
-    summary.cashUsd?.comprobanteUrl,           // NUEVO
+    summary.cashUsd?.comprobanteUrl, // NUEVO
     summary.transferenciaCoord?.url,
     summary.constanciaUSD?.url,
     summary.constancia?.url,
@@ -1213,29 +1259,29 @@ function renderPrintActa() {
     ''
   );
 
-
-  const aplicaTransfCLP  = !!(compUrl || montoDevCLP || docsOk.comprobante);
-  const aplicaConstUSD   = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
+  const aplicaTransfCLP = !!(compUrl || montoDevCLP || docsOk.comprobante);
+  const aplicaConstUSD = !!(transfUrl || montoDevUSDPrint || docsOk.transferencia);
 
   const textoBoleta = docsOk.boleta
     ? 'Boleta / documento SII: OK'
-    : (boletaUrl ? 'Boleta / documento SII: pendiente de revisión' : 'Boleta / documento SII: no registrada');
+    : (boletaUrl ? 'Boleta / documento SII: pendiente de revisión'
+                 : 'Boleta / documento SII: no registrada');
 
   const textoCompCLP = aplicaTransfCLP
-    ? (docsOk.comprobante ? 'Comprobante transferencia CLP: OK'
-                          : 'Comprobante transferencia CLP: pendiente de revisión')
+    ? (docsOk.comprobante
+        ? 'Comprobante transferencia CLP: OK'
+        : 'Comprobante transferencia CLP: pendiente de revisión')
     : 'Comprobante transferencia CLP: NO APLICA';
 
   const textoConstUSD = aplicaConstUSD
-    ? (docsOk.transferencia ? 'Constancia efectivo USD / transferencia coordinador: OK'
-                             : 'Constancia efectivo USD / transferencia coordinador: pendiente de revisión')
+    ? (docsOk.transferencia
+        ? 'Constancia efectivo USD / transferencia coordinador: OK'
+        : 'Constancia efectivo USD / transferencia coordinador: pendiente de revisión')
     : 'Constancia efectivo USD / transferencia coordinador: NO APLICA';
 
   const filasGastos = gastosOk.map(it => {
-    // ✔ = tiene imagen / comprobante
-    // ✗ = no tiene
-    const docSymbol = it.imgUrl ? '✓' : '✗';
-  
+    const docSymbol = it.imgUrl ? '✓' : '✗'; // tiene o no comprobante
+
     return `
       <tr>
         <td>${it.fechaTxt || '—'}</td>
@@ -1250,7 +1296,6 @@ function renderPrintActa() {
     <tr><td colspan="6" class="muted">Sin gastos aprobados.</td></tr>
   `;
 
-
   const filasDescuentos = state.descuentos.map(d => `
     <tr>
       <td>${escapeHtml(d.motivo || '')}</td>
@@ -1262,7 +1307,16 @@ function renderPrintActa() {
 
   const paxPrint = (gInfo.cantidadGrupo ?? gInfo.paxTotal ?? '—') || '—';
 
-  // 1) ACTA HTML NUEVA (si existe #printActa)
+  // Mismo fallback de fechas que en la tarjeta
+  const fechasTxt =
+    gInfo.fechas ||
+    (state.summary?.fechasViaje) ||
+    (state.summary?.fechas) ||
+    '';
+
+  /* ======================================================
+     1) ACTA HTML NUEVA (#printActa)
+  ====================================================== */
   if (contHtml) {
     contHtml.innerHTML = `
       <div class="acta">
@@ -1281,7 +1335,7 @@ function renderPrintActa() {
           <div><span>Destino</span><strong>${escapeHtml(gInfo.destino || '—')}</strong></div>
           <div><span>Pax total</span><strong>${paxPrint}</strong></div>
           <div><span>Programa</span><strong>${escapeHtml(gInfo.programa || '—')}</strong></div>
-          <div><span>Fechas</span><strong>${escapeHtml(gInfo.fechas || '—')}</strong></div>
+          <div><span>Fechas</span><strong>${escapeHtml(fechasTxt || '—')}</strong></div>
         </section>
 
         <section class="acta-section">
@@ -1317,10 +1371,9 @@ function renderPrintActa() {
         <section class="acta-section">
           <h2>3. Resumen financiero</h2>
 
-          <!-- 3.1 Resumen en CLP -->
           <table class="acta-table acta-resumen">
             <tbody>
-              <tr><td>Abonos totales (CLP)</td><td class="num">${moneyCLP(totalAbonosCLP)}</td></tr>
+              <tr><td><strong>Abonos totales (CLP)</strong></td><td class="num">${moneyCLP(totalAbonosCLP)}</td></tr>
               <tr><td>Gastos aprobados (CLP)</td><td class="num">${moneyCLP(totalGastosCLP)}</td></tr>
               <tr><td>Descuentos de rendición (CLP)</td><td class="num">${moneyCLP(totalDescuentosCLP)}</td></tr>
               <tr><td>Gastos netos (CLP)</td><td class="num">${moneyCLP(gastosNetosCLP)}</td></tr>
@@ -1330,36 +1383,23 @@ function renderPrintActa() {
             </tbody>
           </table>
 
-          <!-- 3.2 Resumen en USD (solo si hay montos) -->
-          ${(
-            Math.abs(totalAbonosUSD) > 0.0001 ||
-            Math.abs(totalGastosUSD) > 0.0001 ||
-            Math.abs(montoDevUSD) > 0.0001
-          ) ? `
           <br/>
+
           <table class="acta-table acta-resumen">
             <tbody>
-              <tr><td>Abonos totales (USD)</td><td class="num">${moneyBy(totalAbonosUSD, 'USD')}</td></tr>
+              <tr><td><strong>Abonos totales (USD)</strong></td><td class="num">${moneyBy(totalAbonosUSD, 'USD')}</td></tr>
               <tr><td>Gastos aprobados (USD)</td><td class="num">${moneyBy(totalGastosUSD, 'USD')}</td></tr>
               <tr><td>Gastos netos (USD)</td><td class="num">${moneyBy(gastosNetosUSD, 'USD')}</td></tr>
               <tr><td>Saldo esperado (abonos – gastos netos, USD)</td><td class="num">${moneyBy(saldoEsperadoUSD, 'USD')}</td></tr>
-              <tr><td>Monto devuelto (USD)</td><td class="num">${moneyBy(montoDevUSD, 'USD')}</td></tr>
-              <tr><td>Resultado final (USD)</td><td class="num">${escapeHtml(textoResultadoUSD || '')}</td></tr>
+              <tr><td>Monto devuelto (USD)</td><td class="num">${moneyBy(montoDevUSDPrint, 'USD')}</td></tr>
+              <tr><td>Resultado final (USD)</td><td class="num">${escapeHtml(textoResultadoUSD)}</td></tr>
             </tbody>
           </table>
-          ` : '' }
-
-          <p style="margin-top:6px;font-size:9pt;">Estado de documentos:</p>
-          <ul style="margin:2px 0 0 16px;font-size:9pt;padding-left:12px;">
-            <li>${escapeHtml(textoBoleta)}</li>
-            <li>${escapeHtml(textoCompCLP)}</li>
-            <li>${escapeHtml(textoConstUSD)}</li>
-          </ul>
         </section>
 
-
-          <p style="margin-top:6px;font-size:9pt;">Estado de documentos:</p>
-          <ul style="margin:2px 0 0 16px;font-size:9pt;padding-left:12px;">
+        <section class="acta-section">
+          <h2>4. Estado de documentos</h2>
+          <ul style="margin:4px 0 0 16px;font-size:9pt;padding-left:12px;">
             <li>${escapeHtml(textoBoleta)}</li>
             <li>${escapeHtml(textoCompCLP)}</li>
             <li>${escapeHtml(textoConstUSD)}</li>
@@ -1380,7 +1420,9 @@ function renderPrintActa() {
     `;
   }
 
-  // 2) TEXTO LEGADO (si existe #printSheet) por si tu CSS de impresión aún usa ese id
+  /* ======================================================
+     2) TEXTO LEGADO (#printSheet) – opcional
+  ====================================================== */
   if (contText && contText !== contHtml) {
     const lines = [];
 
@@ -1391,37 +1433,27 @@ function renderPrintActa() {
     lines.push(`Destino:       ${gInfo.destino || ''}`);
     lines.push(`Pax total:     ${paxPrint}`);
     lines.push(`Programa:      ${gInfo.programa || ''}`);
-    lines.push(`Fechas:        ${gInfo.fechas || ''}`);
+    lines.push(`Fechas:        ${fechasTxt || ''}`);
     lines.push('');
-    // Resumen CLP
-    lines.push(`ABONOS (CLP):        ${moneyCLP(totalAbonosCLP)}`);
-    lines.push(`GASTOS APROB. (CLP): ${moneyCLP(totalGastosCLP)}`);
-    lines.push(`DESCUENTOS (CLP):    ${moneyCLP(totalDescuentosCLP)}`);
-    lines.push(`GASTOS NETOS (CLP):  ${moneyCLP(gastosNetosCLP)}`);
-    lines.push(`SALDO ESP. (CLP):    ${moneyCLP(saldoEsperadoCLP)}`);
-    lines.push(`DEVUELTO CLP:        ${moneyCLP(montoDevCLP)}`);
-    lines.push(`RESULTADO (CLP):     ${textoResultadoCLP}`);
-
-    // Resumen USD (solo si hay valores)
-    if (Math.abs(totalAbonosUSD) > 0.0001 ||
-        Math.abs(totalGastosUSD) > 0.0001 ||
-        Math.abs(montoDevUSD) > 0.0001) {
-      lines.push('');
-      lines.push(`ABONOS (USD):       ${moneyBy(totalAbonosUSD, 'USD')}`);
-      lines.push(`GASTOS APROB. USD:  ${moneyBy(totalGastosUSD, 'USD')}`);
-      lines.push(`GASTOS NETOS USD:   ${moneyBy(gastosNetosUSD, 'USD')}`);
-      lines.push(`SALDO ESP. USD:     ${moneyBy(saldoEsperadoUSD, 'USD')}`);
-      lines.push(`DEVUELTO USD:       ${moneyBy(montoDevUSD, 'USD')}`);
-      lines.push(`RESULTADO USD:      ${textoResultadoUSD || ''}`);
-    }
-
+    lines.push(`ABONOS CLP:        ${moneyCLP(totalAbonosCLP)}`);
+    lines.push(`GASTOS APROB. CLP: ${moneyCLP(totalGastosCLP)}`);
+    lines.push(`DESCUENTOS CLP:    ${moneyCLP(totalDescuentosCLP)}`);
+    lines.push(`GASTOS NETOS CLP:  ${moneyCLP(gastosNetosCLP)}`);
+    lines.push(`SALDO ESP. CLP:    ${moneyCLP(saldoEsperadoCLP)}`);
+    lines.push(`DEVUELTO CLP:      ${moneyCLP(montoDevCLP)}`);
+    lines.push(`RESULTADO CLP:     ${textoResultadoCLP}`);
     lines.push('');
-    lines.push('DETALLE GASTOS APROBADOS:');
-    gastosOk.forEach(it => {
-      const fecha = it.fechaTxt || '--';
-      const monto = moneyBy(it.montoAprobado || it.monto, it.moneda || 'CLP');
-      lines.push(`  ${fecha}  ${monto}  ${it.asunto || ''}`);
-    });
+    lines.push(`ABONOS USD:        ${moneyBy(totalAbonosUSD, 'USD')}`);
+    lines.push(`GASTOS APROB. USD: ${moneyBy(totalGastosUSD, 'USD')}`);
+    lines.push(`GASTOS NETOS USD:  ${moneyBy(gastosNetosUSD, 'USD')}`);
+    lines.push(`SALDO ESP. USD:    ${moneyBy(saldoEsperadoUSD, 'USD')}`);
+    lines.push(`DEVUELTO USD:      ${moneyBy(montoDevUSDPrint, 'USD')}`);
+    lines.push(`RESULTADO USD:     ${textoResultadoUSD}`);
+    lines.push('');
+    lines.push('Estado de documentos:');
+    lines.push(`  - ${textoBoleta}`);
+    lines.push(`  - ${textoCompCLP}`);
+    lines.push(`  - ${textoConstUSD}`);
 
     contText.textContent = lines.join('\n');
   }
