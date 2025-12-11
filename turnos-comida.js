@@ -4,8 +4,9 @@
 
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs
+  collection, getDocs, doc, getDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+
 // =========================
 // Estado en memoria
 // =========================
@@ -136,6 +137,115 @@ async function cargarGruposDelDia(fechaISO) {
   return resultados;
 }
 
+// =========================
+// Itinerario por grupo / día
+// =========================
+
+/**
+ * Extrae las actividades de un día específico desde el campo "itinerario"
+ * de grupos/{gid}.
+ *
+ * Estructura esperada aproximada:
+ * itinerario: {
+ *   "2025-12-06": {
+ *      "0": { hora:"09:00", actividad:"City tour", ... },
+ *      "1": { hora:"14:00", actividad:"Cerro Otto", ... },
+ *      ...
+ *   },
+ *   ...
+ * }
+ */
+function extraerItinerarioDia(itinerarioRaw, fechaISO){
+  if (!itinerarioRaw || typeof itinerarioRaw !== 'object') return [];
+
+  const dia = itinerarioRaw[fechaISO];
+  if (!dia || typeof dia !== 'object') return [];
+
+  const claves = Object.keys(dia).sort((a,b)=> Number(a) - Number(b));
+  const actividades = [];
+
+  for (const k of claves){
+    const act = dia[k];
+    if (!act || typeof act !== 'object') continue;
+
+    actividades.push({
+      hora:       act.hora       || act.horario || '',
+      actividad:  act.actividad  || act.titulo  || act.nombre || '(sin nombre)',
+      lugar:      act.lugar      || act.ciudad  || '',
+      notas:      act.notas      || act.detalle || act.obs || ''
+    });
+  }
+
+  return actividades;
+}
+
+/**
+ * Devuelve un texto legible para pegar en textarea o alert()
+ */
+function formatearItinerarioGrupo(lista){
+  if (!lista.length){
+    return 'No hay actividades registradas para este día.';
+  }
+
+  const lineas = [];
+  lineas.push('ITINERARIO DEL DÍA');
+  lineas.push('');
+
+  lista.forEach((item, idx)=>{
+    const hora = item.hora || '--:--';
+    let linea = `${idx+1}) ${hora} · ${item.actividad}`;
+    const extras = [];
+
+    if (item.lugar) extras.push(item.lugar);
+    if (item.notas) extras.push(item.notas);
+
+    if (extras.length){
+      linea += ` (${extras.join(' · ')})`;
+    }
+    lineas.push(linea);
+  });
+
+  return lineas.join('\n');
+}
+
+/**
+ * Lee grupos/{gid}, extrae itinerario[state.fechaISO] y lo muestra.
+ * - Si existe <textarea id="itinerarioGrupo"> lo rellena ahí.
+ * - Si no existe, usa alert().
+ */
+async function mostrarItinerarioGrupo(gid, nombreGrupo){
+  if (!state.fechaISO){
+    alert('Primero selecciona una fecha.');
+    return;
+  }
+
+  try{
+    const ref = doc(db, 'grupos', gid);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()){
+      alert('No se encontró el grupo en la base de datos.');
+      return;
+    }
+
+    const data = snap.data() || {};
+    const lista = extraerItinerarioDia(data.itinerario || {}, state.fechaISO);
+    const texto = `GRUPO: ${nombreGrupo}\nFECHA: ${formatearFechaHumana(state.fechaISO)}\n\n`
+      + formatearItinerarioGrupo(lista);
+
+    const textarea = document.getElementById('itinerarioGrupo');
+    if (textarea){
+      textarea.value = texto;
+      textarea.scrollIntoView({ behavior:'smooth', block:'center' });
+    }else{
+      alert(texto);
+    }
+  }catch(err){
+    console.error('[TurnosComidas] Error al leer itinerario', err);
+    alert('No se pudo leer el itinerario de este grupo.');
+  }
+}
+
 
 // =========================
 // Render tabla de grupos
@@ -157,7 +267,15 @@ function renderTablaGrupos(){
     tdNeg.style.fontSize = '.75rem';
 
     const tdNombre = document.createElement('td');
-    tdNombre.textContent = g.nombreGrupo;
+    const btnNombre = document.createElement('button');
+    btnNombre.type = 'button';
+    btnNombre.className = 'btn-link-nombre'; // dale estilo en tu CSS si quieres
+    btnNombre.textContent = g.nombreGrupo;
+    btnNombre.addEventListener('click', () => {
+      mostrarItinerarioGrupo(g.id, g.nombreGrupo);
+    });
+    tdNombre.appendChild(btnNombre);
+
 
     const tdPax = document.createElement('td');
     tdPax.textContent = g.pax;
@@ -322,6 +440,109 @@ function reconstruirAsignacionDesdeSelects(){
     state.asignacion.cena[turno].push(gid);
   });
 }
+
+// =========================
+// Persistencia de turnos (turnosCasino/{fechaISO})
+// =========================
+
+/**
+ * Construye un mapa por grupo:
+ * grupos[gid] = { numeroNegocio, nombreGrupo, pax, coordinador, almuerzoTurno, cenaTurno }
+ * leyendo directamente los <select> del DOM.
+ */
+function buildAsignacionPorGrupo(){
+  const resultado = {};
+
+  for (const g of state.grupos){
+    const selAlm = document.querySelector(`.sel-almuerzo[data-gid="${g.id}"]`);
+    const selCen = document.querySelector(`.sel-cena[data-gid="${g.id}"]`);
+
+    resultado[g.id] = {
+      numeroNegocio: g.numeroNegocio,
+      nombreGrupo:   g.nombreGrupo,
+      pax:           g.pax,
+      coordinador:   g.coordinador || '',
+      almuerzoTurno: Number(selAlm?.value || 0),
+      cenaTurno:     Number(selCen?.value || 0)
+    };
+  }
+
+  return resultado;
+}
+
+/**
+ * Aplica al state.asignacion lo que viene guardado en Firestore.
+ * Espera un objeto:
+ * {
+ *   gid: { almuerzoTurno:1..3, cenaTurno:1..3, ... },
+ *   ...
+ * }
+ */
+function aplicarAsignacionGuardada(gruposGuardados){
+  resetAsignacionVacia();
+
+  if (!gruposGuardados || typeof gruposGuardados !== 'object') return;
+
+  for (const [gid, cfg] of Object.entries(gruposGuardados)){
+    if (!cfg) continue;
+
+    const alm = Number(cfg.almuerzoTurno || 0);
+    const cen = Number(cfg.cenaTurno     || 0);
+
+    if (alm >= 1 && alm <= 3){
+      state.asignacion.almuerzo[alm].push(gid);
+    }
+    if (cen >= 1 && cen <= 3){
+      state.asignacion.cena[cen].push(gid);
+    }
+  }
+}
+
+/**
+ * Guarda el día actual en turnosCasino/{fechaISO}.
+ */
+async function guardarTurnosDia(){
+  if (!state.fechaISO){
+    alert('Selecciona una fecha antes de guardar.');
+    return;
+  }
+  if (!state.grupos.length){
+    alert('No hay grupos para este día.');
+    return;
+  }
+
+  try{
+    // Aseguramos que config esté alineada con la UI
+    leerConfigDesdeUI();
+
+    // Reconstruimos asignación por si hubo cambios manuales
+    reconstruirAsignacionDesdeSelects();
+
+    const gruposAsign = buildAsignacionPorGrupo();
+
+    const ref = doc(db, 'turnosCasino', state.fechaISO);
+    const payload = {
+      fecha: state.fechaISO,
+      config: {
+        maxPax: state.config.maxPax,
+        horas: {
+          almuerzo: state.config.horas.almuerzo,
+          cena:     state.config.horas.cena
+        }
+      },
+      grupos: gruposAsign,
+      updatedAt: new Date().toISOString()
+    };
+
+    await setDoc(ref, payload);
+    console.log('[TurnosComidas] Turnos guardados en', ref.path, payload);
+    alert('Turnos guardados correctamente en la base de datos.');
+  }catch(err){
+    console.error('[TurnosComidas] Error al guardar turnos', err);
+    alert('Ocurrió un error al guardar los turnos.');
+  }
+}
+
 
 // =========================
 // Render de tarjetas de turnos
@@ -491,27 +712,90 @@ function leerConfigDesdeUI(){
 async function cargarDia(fechaISO){
   state.fechaISO = fechaISO;
 
-  // 🔄 Ahora usamos loader REAL desde Firestore
+  // 1) Cargar grupos para ese día
   state.grupos = await cargarGruposDelDia(fechaISO);
 
-  resetAsignacionVacia();
-  renderTablaGrupos();
+  // 2) Config base desde la UI (por si no hay nada guardado)
+  leerConfigDesdeUI();
 
-  // Sugerencia automática
-  sugerirTurnos('almuerzo');
-  sugerirTurnos('cena');
+  let encontradaGuardada = false;
+
+  // 3) Intentar leer documento turnosCasino/{fechaISO}
+  try{
+    const ref = doc(db, 'turnosCasino', fechaISO);
+    const snap = await getDoc(ref);
+
+    if (snap.exists()){
+      const data = snap.data() || {};
+      encontradaGuardada = true;
+
+      // Config guardada
+      if (data.config){
+        if (typeof data.config.maxPax === 'number'){
+          state.config.maxPax = data.config.maxPax;
+        }
+        if (data.config.horas){
+          if (Array.isArray(data.config.horas.almuerzo)){
+            state.config.horas.almuerzo = data.config.horas.almuerzo;
+          }
+          if (Array.isArray(data.config.horas.cena)){
+            state.config.horas.cena = data.config.horas.cena;
+          }
+        }
+      }
+
+      // Asignación por grupo
+      aplicarAsignacionGuardada(data.grupos || {});
+    }else{
+      // Si NO hay datos guardados → sugerencia automática
+      resetAsignacionVacia();
+      sugerirTurnos('almuerzo');
+      sugerirTurnos('cena');
+    }
+  }catch(err){
+    console.error('[TurnosComidas] Error al cargar turnos guardados', err);
+    resetAsignacionVacia();
+    sugerirTurnos('almuerzo');
+    sugerirTurnos('cena');
+  }
+
+  // 4) Renderizar tabla + selects + tarjetas
+  renderTablaGrupos();
   syncSelectsConAsignacion();
   renderTurnos();
   renderTextoWhats();
 
-  // Setear fecha en input si viene de fuera
+  // 5) Reflejar config actual en los inputs de la UI
+  const maxInput = document.getElementById('maxPaxTurno');
+  if (maxInput){
+    maxInput.value = state.config.maxPax;
+  }
+  const [alm1,alm2,alm3] = state.config.horas.almuerzo;
+  const [cen1,cen2,cen3] = state.config.horas.cena;
+  const ids  = ['horaAlm1','horaAlm2','horaAlm3','horaCen1','horaCen2','horaCen3'];
+  const vals = [alm1,alm2,alm3,cen1,cen2,cen3];
+
+  ids.forEach((id, idx)=>{
+    const el = document.getElementById(id);
+    if (el && vals[idx]){
+      el.value = vals[idx];
+    }
+  });
+
+  // 6) Setear fecha en input
   const inputFecha = document.getElementById('fechaTurno');
-  if(inputFecha && !inputFecha.value){
+  if (inputFecha){
     inputFecha.value = fechaISO;
   }
 
-  console.log('[TurnosComida] Grupos cargados para', fechaISO, state.grupos);
+  console.log(
+    '[TurnosComidas] Grupos cargados para',
+    fechaISO,
+    state.grupos,
+    encontradaGuardada ? '(con asignación guardada)' : '(sin asignación guardada)'
+  );
 }
+
 
 
 // Inicialización principal
@@ -578,9 +862,7 @@ function initTurnosComidas(){
   const btnGuardar = document.getElementById('btnGuardar');
   if(btnGuardar){
     btnGuardar.addEventListener('click', ()=>{
-      // Aquí en el futuro: guardar en Firestore (colección turnosCasino)
-      console.log('Turnos a guardar (mock):', JSON.stringify(state, null, 2));
-      alert('Turnos guardados en memoria (mock). Luego conectamos a Firestore.');
+      guardarTurnosDia();
     });
   }
 
