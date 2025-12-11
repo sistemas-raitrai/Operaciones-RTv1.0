@@ -100,6 +100,89 @@ function fmtDDMMYYYY(ms){
   return `${dd}-${mm}-${yyyy}`;
 }
 
+/* ----- Rango de fechas del viaje (fechaInicio / fechaFin) ----- */
+
+// meses cortos en minúscula
+const MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+
+function toDateFromAny(v) {
+  if (!v) return null;
+  // Firestore Timestamp
+  if (typeof v === 'object' && typeof v.toDate === 'function') {
+    try { return v.toDate(); } catch (_) { return null; }
+  }
+  if (typeof v === 'number') {
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  }
+  if (typeof v === 'string') {
+    const d = new Date(v);
+    return isNaN(d) ? null : d;
+  }
+  return null;
+}
+
+/**
+ * Devuelve algo tipo:
+ *  - "11 a 18 dic de 2025"           (mismo mes/año)
+ *  - "30 nov a 3 dic de 2025"        (mismo año, distinto mes)
+ *  - "30 nov 2025 a 3 ene 2026"      (años distintos)
+ */
+function formatRangoFechasTexto(fIni, fFin) {
+  const d1 = toDateFromAny(fIni);
+  const d2 = toDateFromAny(fFin);
+  if (!d1 || !d2) return '';
+
+  const dia1 = d1.getDate();
+  const dia2 = d2.getDate();
+  const mes1 = d1.getMonth();
+  const mes2 = d2.getMonth();
+  const ano1 = d1.getFullYear();
+  const ano2 = d2.getFullYear();
+
+  if (ano1 === ano2 && mes1 === mes2) {
+    // Mismo mes y año
+    return `${dia1} a ${dia2} ${MESES_CORTOS[mes1]} de ${ano1}`;
+  }
+  if (ano1 === ano2) {
+    // Mismo año, distinto mes
+    return `${dia1} ${MESES_CORTOS[mes1]} a ${dia2} ${MESES_CORTOS[mes2]} de ${ano1}`;
+  }
+  // Años distintos
+  return `${dia1} ${MESES_CORTOS[mes1]} ${ano1} a ${dia2} ${MESES_CORTOS[mes2]} ${ano2}`;
+}
+
+/**
+ * Construye el texto de fechas del viaje usando primero
+ * fechaInicio / fechaFin del grupo (o de summary) y si no
+ * existe, cae al texto viejo gInfo.fechas / summary.fechas.
+ */
+function buildFechasViajeTexto(gInfo = {}, summary = {}) {
+  const fIni =
+    gInfo.fechaInicio ??
+    gInfo.fechaInicioViaje ??
+    summary.fechaInicio ??
+    summary.fechaInicioViaje;
+
+  const fFin =
+    gInfo.fechaFin ??
+    gInfo.fechaFinViaje ??
+    summary.fechaFin ??
+    summary.fechaFinViaje;
+
+  if (fIni && fFin) {
+    const txt = formatRangoFechasTexto(fIni, fFin);
+    if (txt) return txt;
+  }
+
+  return (
+    gInfo.fechas ||
+    summary.fechasViaje ||
+    summary.fechas ||
+    ''
+  );
+}
+
 /* ====================== CATALOGOS ====================== */
 async function preloadCatalogs() {
   state.caches.grupos.clear();
@@ -149,12 +232,16 @@ async function preloadCatalogs() {
       cantidadGrupo,             // campo explícito para esta pantalla
       programa,
       fechas,
+      // 🔹 Nuevos: fechas crudas desde Firebase para usar en el rango
+      fechaInicio: x.fechaInicio || x.fechaInicioViaje || null,
+      fechaFin:    x.fechaFin    || x.fechaFinViaje    || null,
       urls:{
         boleta: x?.finanzas?.boletaUrl || x.boletaUrl || '',
         comprobante: x?.finanzas?.comprobanteUrl || x.comprobanteUrl || '',
         transferenciaCoord: x?.finanzas?.transferenciaCoordUrl || x.transferenciaCoordUrl || ''
       }
     });
+
 
     if (coordEmail) {
       if (!state.caches.groupsByCoord.has(coordEmail)) {
@@ -927,14 +1014,10 @@ function renderResumenFinanzas() {
 
     if (elProg) elProg.textContent = gInfo.programa || '—';
 
-    // 👇 Mejor fallback para FECHAS del viaje
-    const fechasTxt =
-      gInfo.fechas ||
-      (state.summary?.fechasViaje) ||
-      (state.summary?.fechas) ||
-      '';
-
+    // ✅ Fechas del viaje basadas en fechaInicio / fechaFin (con fallback)
+    const fechasTxt = buildFechasViajeTexto(gInfo, state.summary || {});
     if (elFechas) elFechas.textContent = fechasTxt || '—';
+
   }
 
 
@@ -1307,12 +1390,8 @@ function renderPrintActa() {
 
   const paxPrint = (gInfo.cantidadGrupo ?? gInfo.paxTotal ?? '—') || '—';
 
-  // Mismo fallback de fechas que en la tarjeta
-  const fechasTxt =
-    gInfo.fechas ||
-    (state.summary?.fechasViaje) ||
-    (state.summary?.fechas) ||
-    '';
+  // ✅ Mismo rango de fechas que en el card, usando fechaInicio / fechaFin
+  const fechasTxt = buildFechasViajeTexto(gInfo, state.summary || {});
 
   /* ======================================================
      1) ACTA HTML NUEVA (#printActa)
@@ -1450,7 +1529,7 @@ function renderPrintActa() {
     lines.push(`DEVUELTO USD:      ${moneyBy(montoDevUSDPrint, 'USD')}`);
     lines.push(`RESULTADO USD:     ${textoResultadoUSD}`);
     lines.push('');
-    lines.push('Estado de documentos:');
+    lines.push('4. Estado de documentos');
     lines.push(`  - ${textoBoleta}`);
     lines.push(`  - ${textoCompCLP}`);
     lines.push(`  - ${textoConstUSD}`);
