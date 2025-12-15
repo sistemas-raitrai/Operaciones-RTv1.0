@@ -187,15 +187,20 @@ function render(grupos, dNow){
       const card = document.createElement('article');
       card.className = 'group-card';
 
+      const pax =
+        (g.cantidadGrupo ?? g.cantidadgrupo ?? g.paxTotal ?? g.pax ?? null);
+      
       const headerHTML = `
         <div>
           <h3>${(g.nombreGrupo||'—')}· N° ${g.numeroNegocio ?? g.id}</h3>
           <br>
           <div class="sub">Programa: ${(g.programa||'—')}</div>
+          <div class="sub">PAX: ${(pax ?? '—')}</div>
           <div class="sub">Coordinador(a): ${coordinadorTexto(g)}</div>
           <div class="sub">Vendedor(a): ${vendedoraTexto(g)}</div> 
         </div>
       `;
+
 
       if(viewMode === 'TRIPTYCH'){
         const prevTxt   = anal.prev ? normName(anal.prev.actividad) : '—';
