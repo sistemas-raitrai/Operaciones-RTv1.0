@@ -728,6 +728,22 @@ function init(){
     });
   }
 
+  // ✅ Punto 8: Recargar si cambia destino o tiempos globales
+  const destinoSel = document.getElementById('destinoFiltro');
+  if(destinoSel){
+    destinoSel.addEventListener('change', ()=>{
+      cargarDia(state.fechaISO || hoy);
+    });
+  }
+
+  ['duracionVueltaMin','bufferMinGlobal'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      cargarDia(state.fechaISO || hoy);
+    });
+  });
+
   // Tabs
   document.querySelectorAll('.tab').forEach(btn=>{
     btn.addEventListener('click', ()=> setTurnoActivo(btn.dataset.turno));
