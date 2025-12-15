@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Asignador de Buses · RT</title>
+
+  <style>
+    :root{
+      --bg:#0b1329; --panel:#0e1834; --line:#334155;
+      --text:#e5e7eb; --muted:#94a3b8;
+      --ok:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+      --card:#0f1c3f;
+      --radius:14px;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    }
+    header{
+      position:sticky; top:0; z-index:20;
+      background:rgba(11,19,41,.88); backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--line);
+      padding:14px 16px;
+      display:flex; gap:12px; align-items:center; flex-wrap:wrap;
+    }
+    header h1{ font-size:1rem; margin:0; letter-spacing:.2px; }
+    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .input, select, textarea{
+      background:var(--panel); color:var(--text);
+      border:1px solid var(--line); border-radius:10px;
+      padding:10px 10px; font-size:.9rem;
+      outline:none;
+    }
+    .input{ min-width:170px; }
+    .btn{
+      background:#1f2a55; border:1px solid var(--line);
+      color:var(--text); padding:10px 12px;
+      border-radius:10px; cursor:pointer;
+      font-weight:600;
+    }
+    .btn:hover{ filter:brightness(1.08); }
+    .btn.primary{ background:#2563eb; border-color:#2563eb; }
+    .btn.ghost{ background:transparent; }
+    .pill{
+      padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line); color:var(--muted);
+      font-size:.78rem;
+    }
+
+    main{ padding:16px; max-width:1200px; margin:0 auto; }
+
+    .tabs{
+      display:flex; gap:8px; flex-wrap:wrap;
+      margin:8px 0 14px;
+    }
+    .tab{
+      padding:10px 12px; border-radius:999px;
+      border:1px solid var(--line); background:transparent;
+      color:var(--text); cursor:pointer; font-weight:700;
+      font-size:.85rem;
+    }
+    .tab.active{ background:#1f2a55; }
+    .grid{
+      display:grid; grid-template-columns: 1fr;
+      gap:14px;
+    }
+    @media (min-width: 980px){
+      .grid{ grid-template-columns: 1.15fr .85fr; }
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      padding:14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.22);
+    }
+    .card h2{
+      margin:0 0 10px;
+      font-size:.95rem; letter-spacing:.2px;
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px;
+    }
+    .muted{ color:var(--muted); font-size:.85rem; }
+    .split{ display:flex; gap:10px; flex-wrap:wrap; }
+    .split > *{ flex:1; min-width:160px; }
+
+    table{
+      width:100%;
+      border-collapse:separate;
+      border-spacing:0;
+      font-size:.88rem;
+      overflow:hidden;
+      border:1px solid var(--line);
+      border-radius:12px;
+    }
+    th, td{
+      padding:10px 10px;
+      border-bottom:1px solid rgba(51,65,85,.55);
+      vertical-align:top;
+    }
+    th{
+      text-align:left; color:var(--muted);
+      font-size:.78rem; letter-spacing:.3px;
+      background:rgba(14,24,52,.55);
+    }
+    tr:last-child td{ border-bottom:none; }
+    td.right{ text-align:right; white-space:nowrap; }
+    .tag{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 10px; border-radius:999px;
+      border:1px solid var(--line);
+      background:rgba(255,255,255,.03);
+      font-size:.78rem;
+    }
+    .dot{ width:8px; height:8px; border-radius:999px; background:var(--muted); }
+    .dot.ok{ background:var(--ok); }
+    .dot.warn{ background:var(--warn); }
+    .dot.bad{ background:var(--bad); }
+
+    textarea{ width:100%; min-height:220px; resize:vertical; }
+    .small{ font-size:.78rem; }
+    .danger{ color: #fecaca; }
+    .oktext{ color:#bbf7d0; }
+    .warntext{ color:#fde68a; }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>🚌 Asignador de Buses (Manual)</h1>
+
+  <div class="row">
+    <label class="muted">Fecha:</label>
+    <input id="fechaMov" class="input" type="date" />
+  </div>
+
+  <div class="row">
+    <span id="resumenDia" class="pill">—</span>
+  </div>
+
+  <div class="row">
+    <button id="btnGuardar" class="btn primary">Guardar día</button>
+    <button id="btnCopiarWhats" class="btn">Copiar WhatsApp</button>
+    <button id="btnResetDia" class="btn ghost">Reset (en memoria)</button>
+  </div>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" data-turno="manana">MAÑANA</button>
+    <button class="tab" data-turno="tarde">TARDE</button>
+    <button class="tab" data-turno="noche">NOCHE</button>
+  </div>
+
+  <div class="grid">
+    <!-- Panel principal -->
+    <section class="card">
+      <h2>
+        <span id="tituloTurno">Turno: MAÑANA</span>
+        <span id="resumenTurno" class="pill">—</span>
+      </h2>
+
+      <!-- Form agregar bus -->
+      <div class="card" style="padding:12px; margin-bottom:12px; background:rgba(255,255,255,.02);">
+        <div class="split">
+          <div>
+            <div class="muted small">N° Bus</div>
+            <input id="busNumero" class="input" placeholder="Ej: 12" />
+          </div>
+          <div>
+            <div class="muted small">Conductor</div>
+            <input id="busConductor" class="input" placeholder="Ej: Yann" />
+          </div>
+          <div>
+            <div class="muted small">Capacidad</div>
+            <input id="busCapacidad" class="input" type="number" min="1" placeholder="Ej: 45" />
+          </div>
+          <div style="display:flex; align-items:end;">
+            <button id="btnAgregarBus" class="btn">+ Agregar bus</button>
+          </div>
+        </div>
+        <div class="muted small" style="margin-top:8px;">
+          Los buses son <b>por turno</b>. Puedes repetir un mismo número en otro turno si aplica.
+        </div>
+      </div>
+
+      <!-- Tabla buses -->
+      <div style="margin-bottom:14px;">
+        <div class="muted" style="margin:0 0 8px;">Buses disponibles</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px;">Bus</th>
+              <th>Conductor</th>
+              <th class="right" style="width:110px;">Capacidad</th>
+              <th class="right" style="width:110px;">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="busesBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Form agregar salida -->
+      <div class="card" style="padding:12px; margin-bottom:12px; background:rgba(255,255,255,.02);">
+        <div class="split">
+          <div>
+            <div class="muted small">Hora salida</div>
+            <input id="salidaHora" class="input" type="time" value="09:00" />
+          </div>
+          <div>
+            <div class="muted small">Duración (min)</div>
+            <input id="salidaDur" class="input" type="number" min="10" value="80" />
+          </div>
+          <div>
+            <div class="muted small">Buffer (min)</div>
+            <input id="salidaBuf" class="input" type="number" min="0" value="10" />
+          </div>
+          <div>
+            <div class="muted small">Destino / Actividad</div>
+            <input id="salidaDestino" class="input" placeholder="Ej: Río Limay" />
+          </div>
+        </div>
+        <div class="split" style="margin-top:10px;">
+          <div style="flex:2; min-width:260px;">
+            <div class="muted small">Grupos (texto libre)</div>
+            <input id="salidaGrupos" class="input" placeholder="Ej: (1492) MARAMBIO 4B, (1479) SANTO TOMAS..." />
+          </div>
+          <div style="max-width:180px;">
+            <div class="muted small">Pax total</div>
+            <input id="salidaPax" class="input" type="number" min="0" value="0" />
+          </div>
+          <div style="display:flex; align-items:end;">
+            <button id="btnAgregarSalida" class="btn">+ Agregar salida</button>
+          </div>
+        </div>
+        <div class="muted small" style="margin-top:8px;">
+          La disponibilidad se calcula como: <b>horaSalida → horaSalida + duración + buffer</b>.
+        </div>
+      </div>
+
+      <!-- Tabla salidas -->
+      <div>
+        <div class="muted" style="margin:0 0 8px;">Salidas del turno</div>
+        <table>
+          <thead>
+            <tr>
+              <th style="width:90px;">Hora</th>
+              <th>Destino</th>
+              <th style="width:120px;">Bloque</th>
+              <th class="right" style="width:90px;">Pax</th>
+              <th style="width:210px;">Bus</th>
+              <th style="width:110px;">Estado</th>
+              <th class="right" style="width:110px;">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="salidasBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Panel WhatsApp -->
+    <aside class="card">
+      <h2>
+        <span>Texto para WhatsApp</span>
+        <span class="pill">Auto</span>
+      </h2>
+      <p class="muted" style="margin:0 0 10px;">
+        Se arma por turno (ordenado por hora). Si hay conflictos, se marca.
+      </p>
+      <textarea id="whatsText" readonly></textarea>
+      <p class="muted small" style="margin-top:10px;">
+        Tip: puedes copiar y pegar directo al chat del equipo.
+      </p>
+    </aside>
+  </div>
+</main>
+
+<script type="module" src="./buses-turnos.js"></script>
+</body>
+</html>
