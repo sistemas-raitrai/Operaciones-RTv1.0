@@ -231,7 +231,7 @@ async function initPage(user) {
     loadBuses(),
   ]);
 
-  await loadTrasladosForDate(hoy);
+  await loadTrasladosForDate(hoy); 
   refreshBusSelects();
 }
 
