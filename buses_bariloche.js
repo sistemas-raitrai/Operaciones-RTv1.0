@@ -12,6 +12,7 @@ import {
 import {
   collection,
   getDocs,
+  getDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -20,6 +21,7 @@ import {
   query,
   where
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+
 
 const auth = getAuth(app);
 
@@ -96,6 +98,74 @@ const findGrupoById = (gid) => state.grupos.find((g) => g.id === gid) || null;
 
 // Encuentra bus por id
 const findBusById = (bid) => state.buses.find((b) => b.id === bid) || null;
+
+// ---- Itinerario: leer actividades del grupo en una fecha ----
+function pickHoraFromAct(act){
+  const regexHora = /([01]\d|2[0-3]):[0-5]\d/;
+  if(!act || typeof act !== 'object') return '';
+  const candidatos = [act.hora, act.horario, act.horaInicio, act.horaSalida, act.horaTexto];
+  for(const c of candidatos){
+    if(typeof c === 'string' && regexHora.test(c)) return c.match(regexHora)[0];
+  }
+  for(const v of Object.values(act)){
+    if(typeof v === 'string' && regexHora.test(v)) return v.match(regexHora)[0];
+  }
+  return '';
+}
+
+function extraerItinerarioDia(itinerarioRaw, fechaISO){
+  if(!itinerarioRaw || typeof itinerarioRaw !== 'object') return [];
+  const dia = itinerarioRaw[fechaISO];
+  if(!dia || typeof dia !== 'object') return [];
+
+  const acts = [];
+  for(const k of Object.keys(dia)){
+    const act = dia[k];
+    if(!act || typeof act !== 'object') continue;
+    const hora = pickHoraFromAct(act);
+    const actividad = act.actividad || act.titulo || act.nombre || '(sin nombre)';
+    acts.push({ hora, actividad });
+  }
+
+  // orden por hora (las sin hora al final)
+  acts.sort((a,b)=>{
+    const ma = toMinutes(a.hora) ?? 9999;
+    const mb = toMinutes(b.hora) ?? 9999;
+    return ma - mb;
+  });
+
+  return acts;
+}
+
+async function getItinerarioGrupoDia(gid, fechaISO){
+  try{
+    const ref = doc(db, 'grupos', gid);
+    const snap = await getDoc(ref);
+    if(!snap.exists()) return [];
+    const data = snap.data() || {};
+    const itinerario = data.itinerario || {};
+    return extraerItinerarioDia(itinerario, fechaISO);
+  }catch(err){
+    console.error('Error leyendo itinerario del grupo', err);
+    return [];
+  }
+}
+
+function poblarDatalistActividades(lista){
+  const dl = document.getElementById('actividadList');
+  if(!dl) return;
+  dl.innerHTML = '';
+  // evitamos duplicados por nombre
+  const seen = new Set();
+  for(const a of lista){
+    const key = norm(a.actividad);
+    if(!key || seen.has(key)) continue;
+    seen.add(key);
+    const opt = document.createElement('option');
+    opt.value = a.actividad;
+    dl.appendChild(opt);
+  }
+}
 
 /* ─────────────────────────────────────────────────────────
    MANEJO DE SESIÓN + HEADER
@@ -586,14 +656,73 @@ function setupFormListeners() {
     });
   }
 
+  // Calcula automáticamente "ocupado hasta" = salida + dur + buffer
+  const recalcOcupadoHasta = () => {
+    const salida = $('#inputSalida')?.value || '';
+    const start = toMinutes(salida);
+    const dur = Number($('#inputDuracion')?.value || 0);
+    const buf = Number($('#inputBuffer')?.value || 0);
+
+    if(start == null || !Number.isFinite(dur) || dur <= 0 || !Number.isFinite(buf) || buf < 0){
+      $('#inputRegreso').value = '';
+      return;
+    }
+    const end = start + dur + buf;
+    const hh = String(Math.floor(end / 60)).padStart(2,'0');
+    const mm = String(end % 60).padStart(2,'0');
+    $('#inputRegreso').value = `${hh}:${mm}`;
+  };
+
   if (selGrupo) {
-    selGrupo.addEventListener('change', () => {
+    selGrupo.addEventListener('change', async () => {
       const gid = selGrupo.value;
       const g = gid ? findGrupoById(gid) : null;
       $('#inputPax').value = g?.pax ?? '';
+
+      // 1) Poblar actividades desde itinerario del grupo para la fecha del form
+      const fecha = $('#inputFecha').value || $('#filtroFecha').value || todayISO();
+      const acts = gid ? await getItinerarioGrupoDia(gid, fecha) : [];
+      poblarDatalistActividades(acts);
+
+      // 2) Si hay actividades con hora y aún no hay salida, sugerir la primera
+      if(acts.length && (!$('#inputSalida').value)){
+        const primeraConHora = acts.find(a => a.hora);
+        if(primeraConHora?.hora) $('#inputSalida').value = primeraConHora.hora;
+      }
+
+      recalcOcupadoHasta();
       refreshBusSelects();
     });
   }
+
+  // Si cambia fecha, recargamos sugerencias de actividad del grupo seleccionado
+  if (inputFecha) {
+    inputFecha.addEventListener('change', async () => {
+      const f = inputFecha.value || todayISO();
+      $('#filtroFecha').value = f;
+      $('#lblFechaActual').textContent = f;
+
+      await loadTrasladosForDate(f);
+
+      const gid = $('#selGrupo')?.value || '';
+      const acts = gid ? await getItinerarioGrupoDia(gid, f) : [];
+      poblarDatalistActividades(acts);
+
+      recalcOcupadoHasta();
+      refreshBusSelects();
+    });
+  }
+
+  // Recalcular ocupado-hasta si cambia salida / duración / buffer
+  ['inputSalida','inputDuracion','inputBuffer'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('change', ()=>{
+      recalcOcupadoHasta();
+      refreshBusSelects();
+    });
+  });
+
 
   if (inputFecha) {
     inputFecha.addEventListener('change', () => {
