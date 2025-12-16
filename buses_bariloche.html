@@ -374,11 +374,22 @@
             Hora salida
             <input type="time" id="inputSalida" required />
           </label>
-
+          
           <label class="field">
-            Hora regreso
-            <input type="time" id="inputRegreso" required />
+            Duración vuelta (min)
+            <input type="number" id="inputDuracion" value="40" min="1" />
           </label>
+          
+          <label class="field">
+            Buffer (min)
+            <input type="number" id="inputBuffer" value="10" min="0" />
+          </label>
+          
+          <label class="field">
+            Ocupado hasta
+            <input type="time" id="inputRegreso" readonly />
+          </label>
+
         </div>
 
         <div class="flex-row">
