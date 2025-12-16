@@ -357,7 +357,10 @@
         <div class="flex-row">
           <label class="field flex-1">
             Actividad / Servicio
-            <input type="text" id="inputActividad" placeholder="Ej: BOWLING DEL LAGO" required />
+            <!-- Combo: puedes elegir o escribir -->
+            <input list="actividadList" id="inputActividad" placeholder="Ej: DESAYUNO HOTEL / DISCO / CITY TOUR..." required />
+            <datalist id="actividadList"></datalist>
+            <span class="subnote">Sugerencias desde el itinerario del grupo para esa fecha. También puedes escribir una nueva.</span>
           </label>
         </div>
 
