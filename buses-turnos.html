@@ -232,42 +232,67 @@
       </div>
 
       <!-- Form agregar salida -->
+      <!-- Form agregar salida -->
       <div class="card" style="padding:12px; margin-bottom:12px; background:rgba(255,255,255,.02);">
+      
+        <!-- Fila 1 -->
         <div class="split">
           <div>
             <div class="muted small">Hora salida</div>
             <input id="salidaHora" class="input" type="time" value="09:00" />
           </div>
+      
           <div>
             <div class="muted small">Duración (min)</div>
             <input id="salidaDur" class="input" type="number" min="10" value="80" />
           </div>
+      
           <div>
             <div class="muted small">Buffer (min)</div>
             <input id="salidaBuf" class="input" type="number" min="0" value="10" />
           </div>
+      
           <div>
-            <div class="muted small">Destino / Actividad</div>
-            <input id="salidaDestino" class="input" placeholder="Ej: Río Limay" />
+            <div class="muted small">Coordinador(a)</div>
+            <select id="selCoord" class="input">
+              <option value="">— Seleccionar coordinador(a) —</option>
+            </select>
           </div>
         </div>
+      
+        <!-- Fila 2 -->
         <div class="split" style="margin-top:10px;">
           <div style="flex:2; min-width:260px;">
-            <div class="muted small">Grupos (texto libre)</div>
-            <input id="salidaGrupos" class="input" placeholder="Ej: (1492) MARAMBIO 4B, (1479) SANTO TOMAS..." />
+            <div class="muted small">Destino / Actividad (sugerida por itinerario)</div>
+      
+            <!-- ✅ Conectamos el input al datalist -->
+            <input id="salidaDestino" class="input" list="actividadList" placeholder="Escribe o elige una sugerencia" />
+      
+            <!-- ✅ Datalist que llenará buses-turnos.js según coordinador + fecha -->
+            <datalist id="actividadList"></datalist>
           </div>
+      
+          <div style="flex:2; min-width:260px;">
+            <div class="muted small">Grupos (auto, editable)</div>
+            <input id="salidaGrupos" class="input" placeholder="Se completa al elegir coordinador/actividad (puedes editar)" />
+          </div>
+      
           <div style="max-width:180px;">
-            <div class="muted small">Pax total</div>
+            <div class="muted small">Pax total (auto, editable)</div>
             <input id="salidaPax" class="input" type="number" min="0" value="0" />
           </div>
+      
           <div style="display:flex; align-items:end;">
             <button id="btnAgregarSalida" class="btn">+ Agregar salida</button>
           </div>
         </div>
+      
         <div class="muted small" style="margin-top:8px;">
           La disponibilidad se calcula como: <b>horaSalida → horaSalida + duración + buffer</b>.
+          Selecciona <b>coordinador</b> para ver sugerencias de <b>actividades</b> (no se agregan solas).
         </div>
       </div>
+
 
       <!-- Tabla salidas -->
       <div>
