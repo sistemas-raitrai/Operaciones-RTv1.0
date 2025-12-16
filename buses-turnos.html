@@ -5,27 +5,24 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Asignador de Buses · RT</title>
 
-   <style>
+  <style>
     :root{
-      /* Base: fondo blanco (como tu estilo aprobado) */
       --bg:#ffffff;
       --card:#ffffff;
       --ink:#0f172a;
       --muted:#6b7280;
       --line:#d1d5db;
-  
-      /* Acentos azules */
+
       --accent:#0056a4;
       --accent-soft:rgba(0,86,164,.08);
-      --accent-soft-strong:rgba(0,86,164,.14);
-  
+
       --ok:#16a34a;
       --warn:#f59e0b;
       --bad:#dc2626;
-  
+
       --radius:14px;
     }
-  
+
     *{ box-sizing:border-box; }
     body{
       margin:0;
@@ -33,7 +30,7 @@
       color:var(--ink);
       font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
     }
-  
+
     header{
       position:sticky; top:0; z-index:20;
       background:#fff;
@@ -43,7 +40,7 @@
     }
     header h1{ font-size:1rem; margin:0; color:var(--accent); }
     .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  
+
     .input, select, textarea{
       background:#fff;
       color:var(--ink);
@@ -54,7 +51,7 @@
       outline:none;
     }
     .input{ min-width:170px; }
-  
+
     .btn{
       background:#fff;
       border:1px solid var(--line);
@@ -71,7 +68,7 @@
       color:#fff;
     }
     .btn.primary:hover{ filter:brightness(1.03); }
-  
+
     .pill{
       padding:6px 10px; border-radius:999px;
       border:1px solid var(--line);
@@ -79,9 +76,9 @@
       font-size:.78rem;
       background:#fff;
     }
-  
+
     main{ padding:16px; max-width:1200px; margin:0 auto; }
-  
+
     .tabs{ display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px; }
     .tab{
       padding:10px 12px; border-radius:999px;
@@ -91,10 +88,10 @@
       cursor:pointer; font-weight:800; font-size:.85rem;
     }
     .tab.active{ background:var(--accent-soft); border-color:rgba(0,86,164,.4); color:var(--accent); }
-  
+
     .grid{ display:grid; grid-template-columns:1fr; gap:14px; }
     @media (min-width: 980px){ .grid{ grid-template-columns: 1.15fr .85fr; } }
-  
+
     .card{
       background:var(--card);
       border:1px solid var(--line);
@@ -111,7 +108,7 @@
     .small{ font-size:.78rem; }
     .split{ display:flex; gap:10px; flex-wrap:wrap; }
     .split > *{ flex:1; min-width:160px; }
-  
+
     table{
       width:100%;
       border-collapse:separate;
@@ -134,7 +131,7 @@
     }
     tr:last-child td{ border-bottom:none; }
     td.right{ text-align:right; white-space:nowrap; }
-  
+
     .tag{
       display:inline-flex; align-items:center; gap:6px;
       padding:6px 10px; border-radius:999px;
@@ -146,14 +143,15 @@
     .dot.ok{ background:var(--ok); }
     .dot.warn{ background:var(--warn); }
     .dot.bad{ background:var(--bad); }
-  
+
     textarea{ width:100%; min-height:220px; resize:vertical; }
-  
+
     .oktext{ color:var(--ok); }
     .warntext{ color:#b45309; }
     .danger{ color:var(--bad); }
-  </style>
 
+    .inline-note{ margin-top:8px; }
+  </style>
 </head>
 
 <body>
@@ -166,13 +164,23 @@
   </div>
 
   <div class="row">
+    <label class="muted">Destino:</label>
+    <select id="destinoFiltro" class="input">
+      <option value="BARILOCHE">BARILOCHE</option>
+      <option value="BRASIL">BRASIL</option>
+      <option value="CAMBORIU">CAMBORIÚ</option>
+    </select>
+  </div>
+
+  <div class="row">
     <span id="resumenDia" class="pill">—</span>
   </div>
 
   <div class="row">
+    <button id="btnCalcular" class="btn">Calcular / Asignar buses</button>
     <button id="btnGuardar" class="btn primary">Guardar día</button>
     <button id="btnCopiarWhats" class="btn">Copiar WhatsApp</button>
-    <button id="btnResetDia" class="btn ghost">Reset (en memoria)</button>
+    <button id="btnResetDia" class="btn">Reset (en memoria)</button>
   </div>
 </header>
 
@@ -192,7 +200,7 @@
       </h2>
 
       <!-- Form agregar bus -->
-      <div class="card" style="padding:12px; margin-bottom:12px; background:rgba(255,255,255,.02);">
+      <div class="card" style="padding:12px; margin-bottom:12px;">
         <div class="split">
           <div>
             <div class="muted small">N° Bus</div>
@@ -210,7 +218,7 @@
             <button id="btnAgregarBus" class="btn">+ Agregar bus</button>
           </div>
         </div>
-        <div class="muted small" style="margin-top:8px;">
+        <div class="muted small inline-note">
           Los buses son <b>por turno</b>. Puedes repetir un mismo número en otro turno si aplica.
         </div>
       </div>
@@ -231,68 +239,65 @@
         </table>
       </div>
 
-      <!-- Form agregar salida -->
-      <!-- Form agregar salida -->
-      <div class="card" style="padding:12px; margin-bottom:12px; background:rgba(255,255,255,.02);">
-      
-        <!-- Fila 1 -->
+      <!-- Form agregar salida (NUEVO FLUJO) -->
+      <div class="card" style="padding:12px; margin-bottom:12px;">
         <div class="split">
-          <div>
-            <div class="muted small">Hora salida</div>
-            <input id="salidaHora" class="input" type="time" value="09:00" />
+          <div style="flex:2; min-width:260px;">
+            <div class="muted small">Actividad del día (sugerida por itinerario)</div>
+            <input id="salidaActividad" class="input" list="actividadList" placeholder="Escribe o elige una sugerencia" />
+            <datalist id="actividadList"></datalist>
+            <div class="muted small" style="margin-top:6px;">
+              Hora inicio: <b id="lblHoraInicio">—</b>
+            </div>
           </div>
-      
+
           <div>
-            <div class="muted small">Duración (min)</div>
-            <input id="salidaDur" class="input" type="number" min="10" value="80" />
+            <div class="muted small">Duración traslado (min)</div>
+            <input id="salidaDur" class="input" type="number" min="5" value="40" />
           </div>
-      
+
           <div>
             <div class="muted small">Buffer (min)</div>
             <input id="salidaBuf" class="input" type="number" min="0" value="10" />
           </div>
-      
+
           <div>
-            <div class="muted small">Coordinador(a)</div>
-            <select id="selCoord" class="input">
-              <option value="">— Seleccionar coordinador(a) —</option>
-            </select>
+            <div class="muted small">Hora salida (auto, editable)</div>
+            <input id="salidaHora" class="input" type="time" />
           </div>
         </div>
-      
-        <!-- Fila 2 -->
+
         <div class="split" style="margin-top:10px;">
-          <div style="flex:2; min-width:260px;">
-            <div class="muted small">Destino / Actividad (sugerida por itinerario)</div>
-      
-            <!-- ✅ Conectamos el input al datalist -->
-            <input id="salidaDestino" class="input" list="actividadList" placeholder="Escribe o elige una sugerencia" />
-      
-            <!-- ✅ Datalist que llenará buses-turnos.js según coordinador + fecha -->
-            <datalist id="actividadList"></datalist>
+          <div>
+            <div class="muted small">Coordinador(a)</div>
+            <select id="salidaCoord" class="input">
+              <option value="">— Seleccionar —</option>
+            </select>
+            <div class="muted small" style="margin-top:6px;">
+              Grupo(s) del coord en el día → se arma abajo (editable)
+            </div>
           </div>
-      
+
           <div style="flex:2; min-width:260px;">
             <div class="muted small">Grupos (auto, editable)</div>
-            <input id="salidaGrupos" class="input" placeholder="Se completa al elegir coordinador/actividad (puedes editar)" />
+            <input id="salidaGrupos" class="input" placeholder="Se completa al elegir coordinador" />
           </div>
-      
-          <div style="max-width:180px;">
+
+          <div style="max-width:220px;">
             <div class="muted small">Pax total (auto, editable)</div>
             <input id="salidaPax" class="input" type="number" min="0" value="0" />
           </div>
-      
+
           <div style="display:flex; align-items:end;">
             <button id="btnAgregarSalida" class="btn">+ Agregar salida</button>
           </div>
         </div>
-      
-        <div class="muted small" style="margin-top:8px;">
-          La disponibilidad se calcula como: <b>horaSalida → horaSalida + duración + buffer</b>.
-          Selecciona <b>coordinador</b> para ver sugerencias de <b>actividades</b> (no se agregan solas).
+
+        <div class="muted small inline-note">
+          Flujo: <b>Actividad → (dur/buffer) → Coordinador → hora salida auto</b>.  
+          Nada se agrega solo: solo aparece en la tabla cuando haces <b>+ Agregar salida</b>.
         </div>
       </div>
-
 
       <!-- Tabla salidas -->
       <div>
