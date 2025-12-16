@@ -33,6 +33,10 @@ const state = {
 
   // grupos reales cargados desde Firestore (como en turnos-comidas)
   grupos: [],
+  
+  // ✅ índices para seleccionar por coordinador
+  coordinadores: [],          // [{ key, label }]
+  groupsByCoord: new Map(),   // keyCoord -> [grupo, ...]
 
   turnoActivo: 'manana',
   data: {
@@ -96,6 +100,39 @@ function incluyeDestino(destinoRaw='', destinoFiltro=''){
   const d   = K(destinoFiltro);
   return d && txt.includes(d);
 }
+
+function coordKeyFromGrupo(g){
+  // key estable: email si existe; si no, nombre normalizado
+  const email = (g.coordinadorEmail || g.coordEmail || '').toString().trim().toLowerCase();
+  if(email) return `MAIL:${email}`;
+  const nom = K(g.coordinador || g.coordinadorNombre || g.coordNombre || '');
+  return nom ? `NOM:${nom}` : 'NOM:—';
+}
+
+function coordLabelFromGrupo(g){
+  return (g.coordinadorNombre || g.coordinador || g.coordNombre || g.coordinadorEmail || g.coordEmail || 'SIN COORD').toString().trim();
+}
+
+function buildCoordIndexes(){
+  state.coordinadores = [];
+  state.groupsByCoord = new Map();
+
+  for(const g of state.grupos){
+    const key = coordKeyFromGrupo(g);
+    const label = coordLabelFromGrupo(g);
+
+    if(!state.groupsByCoord.has(key)) state.groupsByCoord.set(key, []);
+    state.groupsByCoord.get(key).push(g);
+
+    if(!state.coordinadores.find(x=>x.key===key)){
+      state.coordinadores.push({ key, label });
+    }
+  }
+
+  // ordenar coordinadores por label
+  state.coordinadores.sort((a,b)=> a.label.localeCompare(b.label,'es'));
+}
+
 
 function toDateSafe(v){
   if(!v) return null;
@@ -268,8 +305,10 @@ async function cargarGruposDelDia(fechaISO, destinoFiltro){
       nombreGrupo: data.nombreGrupo || data.grupo || data.nombre || '(sin nombre)',
       pax,
       coordinador: data.coordinadorNombre || data.coordinador || data.coordNombre || '',
+      coordinadorEmail: data.coordinadorEmail || data.coordEmail || data.emailCoordinador || '',
       itinerarioRaw: data.itinerario || {}
     });
+
   });
 
   return resultados;
@@ -356,6 +395,8 @@ async function cargarDia(fechaISO){
   // (Opcional) igual podemos cargar grupos para ayudarte a seleccionar,
   // pero NO los convertimos en “salidas” automáticamente.
   state.grupos = await cargarGruposDelDia(fechaISO, state.destino);
+  buildCoordIndexes();
+  renderSelectCoordinadores(); // ✅ nuevo: llena el select de coordinador
   
   // 3) Leer documento guardado para recuperar BUSES + SALIDAS (manuales)
   try{
@@ -495,6 +536,62 @@ function setBusEnSalida(turno, salidaId, busIdOrNull){
   s.busId = busIdOrNull || null;
   renderTodo();
 }
+
+function renderSelectCoordinadores(){
+  const sel = document.getElementById('selCoord'); // ✅ crea este select en HTML (o cambia el id)
+  if(!sel) return;
+
+  sel.innerHTML = '<option value="">— Seleccionar coordinador(a) —</option>';
+  for(const c of state.coordinadores){
+    const opt = document.createElement('option');
+    opt.value = c.key;
+    opt.textContent = c.label;
+    sel.appendChild(opt);
+  }
+}
+
+// Junta actividades de todos los grupos del coordinador en esa fecha
+function getActsForCoordOnDate(coordKey, fechaISO){
+  const gs = state.groupsByCoord.get(coordKey) || [];
+  const out = [];
+
+  for(const g of gs){
+    const acts = extraerItinerarioDia(g.itinerarioRaw || {}, fechaISO);
+    for(const a of acts){
+      if(!a.hora) continue;
+      out.push({
+        hora: a.hora,
+        actividad: a.actividad || '(sin nombre)',
+        gid: g.id,
+        numeroNegocio: g.numeroNegocio,
+        nombreGrupo: g.nombreGrupo,
+        pax: Number(g.pax || 0),
+      });
+    }
+  }
+
+  out.sort((a,b)=> timeToMin(a.hora) - timeToMin(b.hora));
+  return out;
+}
+
+function poblarDatalistActividadesCoord(lista){
+  const dl = document.getElementById('actividadList'); // datalist existente
+  if(!dl) return;
+  dl.innerHTML = '';
+
+  const seen = new Set();
+  for(const a of lista){
+    const key = `${a.hora}__${K(a.actividad)}__${a.gid}`;
+    if(seen.has(key)) continue;
+    seen.add(key);
+
+    const opt = document.createElement('option');
+    // value visible: "HH:MM · ACTIVIDAD (NUM) GRUPO"
+    opt.value = `${a.hora} · ${a.actividad} · (${a.numeroNegocio}) ${a.nombreGrupo}`;
+    dl.appendChild(opt);
+  }
+}
+
 
 /* =========================
    Render UI
@@ -719,6 +816,50 @@ function init(){
     });
   }
 
+  // Coordinador -> carga sugerencias de actividades (NO agrega salidas)
+  const selCoord = document.getElementById('selCoord');
+  if(selCoord){
+    selCoord.addEventListener('change', ()=>{
+      const key = selCoord.value || '';
+      const acts = key ? getActsForCoordOnDate(key, state.fechaISO) : [];
+      poblarDatalistActividadesCoord(acts);
+  
+      // opcional: si quieres limpiar campos al cambiar coord
+      // document.getElementById('salidaDestino').value = '';
+      // document.getElementById('salidaHora').value = '';
+      // document.getElementById('salidaPax').value = '0';
+    });
+  }
+  
+  // Si escriben/seleccionan una opción del datalist: autocompleta
+  const actInput = document.getElementById('salidaDestino'); // en tu UI esto es "Destino / Actividad"
+  if(actInput){
+    actInput.addEventListener('change', ()=>{
+      const key = document.getElementById('selCoord')?.value || '';
+      if(!key) return;
+  
+      const acts = getActsForCoordOnDate(key, state.fechaISO);
+      const v = actInput.value || '';
+  
+      // buscamos match por prefijo "HH:MM ·"
+      const hhmm = (v.match(/^([01]\d|2[0-3]):[0-5]\d/) || [])[0];
+      if(!hhmm) return;
+  
+      const act = acts.find(a => a.hora === hhmm && v.includes(a.actividad));
+      if(!act) return;
+  
+      // Autocomplete
+      const horaEl = document.getElementById('salidaHora');
+      const paxEl  = document.getElementById('salidaPax');
+  
+      if(horaEl) horaEl.value = act.hora;
+      if(paxEl)  paxEl.value = String(act.pax || 0);
+  
+      // el destino/actividad ya está en actInput.value (lo dejamos)
+    });
+  }
+  
+
   // ✅ Punto 8: Recargar si cambia destino o tiempos globales
   const destinoSel = document.getElementById('destinoFiltro');
   if(destinoSel){
@@ -774,8 +915,16 @@ function init(){
         document.getElementById('salidaDur')?.value,
         document.getElementById('salidaBuf')?.value,
         document.getElementById('salidaDestino')?.value,
-        document.getElementById('salidaGrupos')?.value,
+        // gruposTxt auto desde coordinador (si hay selCoord), si no usa lo escrito
+        (() => {
+          const key = document.getElementById('selCoord')?.value || '';
+          const manual = document.getElementById('salidaGrupos')?.value || '';
+          if(manual.trim()) return manual.trim();
+          const gs = state.groupsByCoord.get(key) || [];
+          return gs.map(g => `(${g.numeroNegocio}) ${g.nombreGrupo}`).join(' / ');
+        })(),
         document.getElementById('salidaPax')?.value
+
       );
       // limpiar liviano
       const dest = document.getElementById('salidaDestino'); if(dest) dest.value='';
