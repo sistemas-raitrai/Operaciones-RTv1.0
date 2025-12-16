@@ -25,6 +25,9 @@ import {
 
 const auth = getAuth(app);
 
+// ✅ Colección SOLO para "salidas a coordinar" (manuales)
+const COL_SALIDAS = 'buses_salidas';
+
 /* ─────────────────────────────────────────────────────────
    STATE
 ────────────────────────────────────────────────────────── */
@@ -287,17 +290,14 @@ async function loadBuses() {
       });
     });
 
-    // DEBUG: muestra EXACTAMENTE lo que está viniendo de Firestore
-    console.log('[DEBUG] Traslados Firestore', fechaISO, traslados.map(t => ({
+    console.log('[DEBUG] state.traslados', (state.traslados || []).map(t => ({
       id: t.id,
       grupo: t.grupoNombre,
       actividad: t.actividad,
       salida: t.salidaHora,
-      regreso: t.recogerHora,
-      creado: t.tsCreado,
-      mod: t.tsModificado,
-      por: t.modificadoPor
+      regreso: t.recogerHora
     })));
+
 
     // Orden simple por numeroBus
     buses.sort((a, b) => String(a.numeroBus).localeCompare(String(b.numeroBus)));
@@ -312,24 +312,16 @@ async function loadBuses() {
 async function loadTrasladosForDate(fechaISO) {
   try {
     const q = query(
-      collection(db, 'buses_traslados'),
+      collection(db, COL_SALIDAS),
       where('fecha', '==', fechaISO)
     );
     const snap = await getDocs(q);
     const traslados = [];
     snap.forEach((docSnap) => {
       const d = docSnap.data() || {};
-    
-      // ✅ Solo mostramos los que tú creas/seleccionas
-      // (si un doc viejo no tiene "origen", lo tratamos como "auto" para que NO aparezca)
-      const origen = (d.origen || 'auto');
-      if (origen !== 'manual') return;
-    
-      traslados.push({
-        id: docSnap.id,
-        ...d,
-      });
+      traslados.push({ id: docSnap.id, ...d });
     });
+
 
 
     // Ordena por hora de salida
@@ -715,8 +707,7 @@ function setupFormListeners() {
       $('#filtroFecha').value = f;
       $('#lblFechaActual').textContent = f;
   
-      // ✅ NO cargamos traslados guardados al cambiar fecha.
-      // Solo dejamos la lista local vacía para que agregues manualmente.
+      // ✅ NO cargamos nada "automático"
       state.traslados = [];
       renderTablaTraslados();
       renderTablaBuses();
@@ -919,13 +910,11 @@ async function handleFormSubmit(ev) {
     let savedId = state.editingId;
 
     if (state.editingId) {
-      // UPDATE (Firestore)
-      const ref = doc(db, 'buses_traslados', state.editingId);
+      const ref = doc(db, COL_SALIDAS, state.editingId);
       await updateDoc(ref, payload);
     } else {
-      // CREATE (Firestore)
       payload.tsCreado = serverTimestamp();
-      const ref = await addDoc(collection(db, 'buses_traslados'), payload);
+      const ref = await addDoc(collection(db, COL_SALIDAS), payload);
       savedId = ref.id;
     }
 
@@ -969,7 +958,7 @@ async function deleteTraslado(trasladoId) {
 
   try {
     // Borra en Firestore (si existe)
-    await deleteDoc(doc(db, 'buses_traslados', trasladoId));
+    await deleteDoc(doc(db, COL_SALIDAS, trasladoId));
 
     // ✅ Borra en la lista LOCAL (lo que se ve abajo)
     state.traslados = state.traslados.filter(x => x.id !== trasladoId);
