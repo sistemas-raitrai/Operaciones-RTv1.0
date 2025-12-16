@@ -347,36 +347,32 @@ async function cargarDia(fechaISO){
   if(Number.isFinite(durUI) && durUI > 0) state.config.duracionVueltaMin = durUI;
   if(Number.isFinite(bufUI) && bufUI >= 0) state.config.bufferMin = bufUI;
 
-  // 2) Base vacía (buses se cargan desde doc; salidas se generan desde itinerario)
+  // 2) Base vacía (TODO manual). Salidas NO se auto-generan.
   state.data = {
-    buses: { manana: [], tarde: [], noche: [] },
+    buses:   { manana: [], tarde: [], noche: [] },
     salidas: { manana: [], tarde: [], noche: [] }
   };
-
-  // 3) Cargar grupos reales del día (AUTO)
+  
+  // (Opcional) igual podemos cargar grupos para ayudarte a seleccionar,
+  // pero NO los convertimos en “salidas” automáticamente.
   state.grupos = await cargarGruposDelDia(fechaISO, state.destino);
-
-  // 4) Generar salidas desde itinerario (AUTO)
-  generarSalidasDesdeItinerario();
-
-  // 5) Leer documento guardado para recuperar BUSES + ASIGNACIONES
+  
+  // 3) Leer documento guardado para recuperar BUSES + SALIDAS (manuales)
   try{
     const ref = doc(db, 'busesTurnos', fechaISO);
     const snap = await getDoc(ref);
-
+  
     if(snap.exists()){
       const data = snap.data() || {};
-      if(data.buses) state.data.buses = normalizarTurnosObj(data.buses);
-
-      // Re-aplicar asignaciones guardadas (busId por salida “estable”)
-      if(data.asignaciones) aplicarAsignacionesGuardadas(data.asignaciones);
+      if(data.buses)   state.data.buses   = normalizarTurnosObj(data.buses);
+      if(data.salidas) state.data.salidas = normalizarTurnosObj(data.salidas);
     }
   }catch(err){
     console.error('[BusesTurnos] Error cargando día (doc busesTurnos)', err);
-    // seguimos igual con lo auto generado
   }
-
+  
   renderTodo();
+
 }
 
 async function guardarDia(){
@@ -385,23 +381,17 @@ async function guardarDia(){
     return;
   }
 
-  // Guardamos asignaciones estables (porque salidas se regeneran desde itinerario)
-  const asignaciones = {};
-  for(const t of ['manana','tarde','noche']){
-    for(const s of state.data.salidas[t]){
-      if(!s.busId) continue;
-      asignaciones[keyAsignacionSalida(s)] = s.busId;
-    }
-  }
-
   try{
     const ref = doc(db, 'busesTurnos', state.fechaISO);
     const payload = {
       fecha: state.fechaISO,
       destino: state.destino,
       config: { ...state.config },
+  
+      // ✅ Guardamos TODO lo que tú agregas manualmente
       buses: state.data.buses,
-      asignaciones,
+      salidas: state.data.salidas,
+  
       updatedAt: new Date().toISOString()
     };
     await setDoc(ref, payload);
@@ -410,6 +400,7 @@ async function guardarDia(){
     console.error('[BusesTurnos] Error guardando día', err);
     alert('Ocurrió un error al guardar.');
   }
+
 }
 
 function normalizarTurnosObj(obj){
@@ -616,7 +607,7 @@ function renderSalidasTable(turno){
         <div><b>${escapeHtml(s.destino || '(sin destino)')}</b></div>
         <div class="muted small">${escapeHtml(s.gruposTexto || '')}</div>
       </td>
-      <td class="small">${bloqueTxt}<div class="muted small">${s.duracionMin}m + ${s.bufferMin}m</div></td>
+      <td class="small">${bloqueTxt}<div class="muted small">${s.duracionMin ?? s.duracionVueltaMin ?? ''}m + ${s.bufferMin ?? ''}m</div></td>
       <td class="right"><b>${Number(s.pax||0)}</b></td>
       <td>
         <select class="select-bus" data-salida="${s.id}">
@@ -740,9 +731,16 @@ function init(){
     const el = document.getElementById(id);
     if(!el) return;
     el.addEventListener('change', ()=>{
-      cargarDia(state.fechaISO || hoy);
+      const durUI = Number(document.getElementById('duracionVueltaMin')?.value);
+      const bufUI = Number(document.getElementById('bufferMinGlobal')?.value);
+      if(Number.isFinite(durUI) && durUI > 0) state.config.duracionVueltaMin = durUI;
+      if(Number.isFinite(bufUI) && bufUI >= 0) state.config.bufferMin = bufUI;
+  
+      // ✅ Solo re-render (NO recargar día, NO auto-generar)
+      renderTodo();
     });
   });
+
 
   // Tabs
   document.querySelectorAll('.tab').forEach(btn=>{
