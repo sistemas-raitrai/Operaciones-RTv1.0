@@ -674,22 +674,15 @@ function setupFormListeners() {
   };
 
   if (selGrupo) {
-    selGrupo.addEventListener('change', async () => {
+    selGrupo.addEventListener('change', () => {
       const gid = selGrupo.value;
       const g = gid ? findGrupoById(gid) : null;
+  
+      // Solo autocompletamos pax del grupo
       $('#inputPax').value = g?.pax ?? '';
-
-      // 1) Poblar actividades desde itinerario del grupo para la fecha del form
-      const fecha = $('#inputFecha').value || $('#filtroFecha').value || todayISO();
-      const acts = gid ? await getItinerarioGrupoDia(gid, fecha) : [];
-      poblarDatalistActividades(acts);
-
-      // 2) Si hay actividades con hora y aún no hay salida, sugerir la primera
-      if(acts.length && (!$('#inputSalida').value)){
-        const primeraConHora = acts.find(a => a.hora);
-        if(primeraConHora?.hora) $('#inputSalida').value = primeraConHora.hora;
-      }
-
+  
+      // NO cargamos actividades automáticamente.
+      // La actividad la eliges/escribes tú y recién al guardar queda registrada.
       recalcOcupadoHasta();
       refreshBusSelects();
     });
@@ -701,17 +694,15 @@ function setupFormListeners() {
       const f = inputFecha.value || todayISO();
       $('#filtroFecha').value = f;
       $('#lblFechaActual').textContent = f;
-
+  
       await loadTrasladosForDate(f);
-
-      const gid = $('#selGrupo')?.value || '';
-      const acts = gid ? await getItinerarioGrupoDia(gid, f) : [];
-      poblarDatalistActividades(acts);
-
+  
+      // NO cargamos actividades automáticamente.
       recalcOcupadoHasta();
       refreshBusSelects();
     });
   }
+
 
   // Recalcular ocupado-hasta si cambia salida / duración / buffer
   ['inputSalida','inputDuracion','inputBuffer'].forEach(id=>{
