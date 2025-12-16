@@ -226,7 +226,9 @@ async function initPage(user) {
     loadBuses(),
   ]);
 
-  await loadTrasladosForDate(hoy); 
+  state.traslados = [];
+  renderTablaTraslados();
+  renderTablaBuses();
   refreshBusSelects();
 }
 
@@ -661,14 +663,18 @@ function setupFormListeners() {
     filtroFecha.addEventListener('change', async () => {
       const f = filtroFecha.value || todayISO();
       $('#lblFechaActual').textContent = f;
-      // Sincronizamos también la fecha del formulario si estaba vacía
-      if (!inputFecha.value) {
-        inputFecha.value = f;
-      }
-      await loadTrasladosForDate(f);
+
+      if (!inputFecha.value) inputFecha.value = f;
+
+      // ✅ Al cambiar fecha, NO cargamos nada desde Firestore.
+      // Solo limpiamos la lista "seleccionada" para esa fecha.
+      state.traslados = [];
+      renderTablaTraslados();
+      renderTablaBuses();
       refreshBusSelects();
     });
   }
+
 
   // Calcula automáticamente "ocupado hasta" = salida + dur + buffer
   const recalcOcupadoHasta = () => {
@@ -704,18 +710,20 @@ function setupFormListeners() {
 
   // Si cambia fecha, recargamos sugerencias de actividad del grupo seleccionado
   if (inputFecha) {
-    inputFecha.addEventListener('change', async () => {
+    inputFecha.addEventListener('change', () => {
       const f = inputFecha.value || todayISO();
       $('#filtroFecha').value = f;
       $('#lblFechaActual').textContent = f;
   
-      await loadTrasladosForDate(f);
-  
-      // NO cargamos actividades automáticamente.
-      recalcOcupadoHasta();
+      // ✅ NO cargamos traslados guardados al cambiar fecha.
+      // Solo dejamos la lista local vacía para que agregues manualmente.
+      state.traslados = [];
+      renderTablaTraslados();
+      renderTablaBuses();
       refreshBusSelects();
     });
   }
+
 
 
   // Recalcular ocupado-hasta si cambia salida / duración / buffer
@@ -908,22 +916,40 @@ async function handleFormSubmit(ev) {
   }
 
   try {
+    let savedId = state.editingId;
+
     if (state.editingId) {
-      // UPDATE
+      // UPDATE (Firestore)
       const ref = doc(db, 'buses_traslados', state.editingId);
       await updateDoc(ref, payload);
     } else {
-      // CREATE
+      // CREATE (Firestore)
       payload.tsCreado = serverTimestamp();
-      const ref = collection(db, 'buses_traslados');
-      await addDoc(ref, payload);
+      const ref = await addDoc(collection(db, 'buses_traslados'), payload);
+      savedId = ref.id;
     }
 
-    const f = fecha;
-    await loadTrasladosForDate(f);
+    // ✅ Actualizamos la lista LOCAL (lo que se ve abajo)
+    if (state.editingId) {
+      const idx = state.traslados.findIndex(x => x.id === state.editingId);
+      if (idx !== -1) state.traslados[idx] = { id: state.editingId, ...payload };
+    } else {
+      state.traslados.push({ id: savedId, ...payload });
+    }
+
+    // Ordena por hora y re-render
+    state.traslados.sort((a,b)=>{
+      const ma = toMinutes(a.salidaHora) ?? 0;
+      const mb = toMinutes(b.salidaHora) ?? 0;
+      return ma - mb;
+    });
+
+    renderTablaTraslados();
+    renderTablaBuses();
     resetForm();
     $('#btnGuardar').textContent = 'Guardar traslado';
     refreshBusSelects();
+
   } catch (err) {
     console.error('Error guardando traslado', err);
     alert('Ocurrió un error al guardar el traslado. Revisa la consola.');
@@ -942,9 +968,14 @@ async function deleteTraslado(trasladoId) {
   }
 
   try {
+    // Borra en Firestore (si existe)
     await deleteDoc(doc(db, 'buses_traslados', trasladoId));
-    const fecha = $('#filtroFecha').value || todayISO();
-    await loadTrasladosForDate(fecha);
+
+    // ✅ Borra en la lista LOCAL (lo que se ve abajo)
+    state.traslados = state.traslados.filter(x => x.id !== trasladoId);
+
+    renderTablaTraslados();
+    renderTablaBuses();
     resetForm();
   } catch (err) {
     console.error('Error eliminando traslado', err);
