@@ -1,6 +1,12 @@
 // buses-turnos.js
 // Asignador MANUAL de salidas + asignación de buses por turno
-// Regla: capacidad + NO solapamiento en el tiempo (duración + buffer).
+// NUEVO FLUJO:
+// 1) eliges Actividad (con hora inicio sugerida)
+// 2) indicas duración traslado + buffer
+// 3) eliges Coordinador => auto arma grupos + pax (editable)
+// 4) hora salida = horaInicio - duracion (editable)
+// 5) + Agregar salida => recién aparece en tabla
+// 6) Calcular/Asignar buses => auto asigna (capacidad + no solape)
 
 import { app, db } from './firebase-init.js';
 import {
@@ -8,45 +14,45 @@ import {
   doc, getDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-
 /* =========================
    STATE
 ========================= */
 const state = {
   fechaISO: null,
-
-  // destino elegido en UI (BARILOCHE / BRASIL / etc.)
   destino: 'BARILOCHE',
 
-  // Rangos de turnos para clasificar actividades por hora
   turnos: {
     manana: { label:'MAÑANA', ini:'06:00', fin:'11:59' },
     tarde:  { label:'TARDE',  ini:'12:00', fin:'18:59' },
     noche:  { label:'NOCHE',  ini:'19:00', fin:'23:59' }
   },
 
-  // Config global del “bloque” (ida+vuelta) que deja un bus ocupado
-  config: {
-    duracionVueltaMin: 40,
-    bufferMin: 10
+  // grupos cargados desde Firestore (solo para sugerencias)
+  grupos: [],
+
+  // catálogo del día (sugerencias) {label, horaInicio, actividad, lugar, gid, coordKey, grupoLabel, pax}
+  actividadesDia: [],
+
+  // selección actual del formulario
+  form: {
+    actividadKey: '',   // clave interna de actividad sugerida
+    horaInicio: '',     // HH:MM
+    actividadLabel: '', // texto visible
+    durMin: 40,
+    bufMin: 10,
+    horaSalida: '',     // HH:MM auto
+    coordKey: '',       // clave coordinador
+    gruposTexto: '',
+    pax: 0
   },
 
-  // grupos reales cargados desde Firestore (como en turnos-comidas)
-  grupos: [],
-  
-  // ✅ índices para seleccionar por coordinador
-  coordinadores: [],          // [{ key, label }]
-  groupsByCoord: new Map(),   // keyCoord -> [grupo, ...]
-
   turnoActivo: 'manana',
+
   data: {
     buses:   { manana: [], tarde: [], noche: [] },
-
-    // OJO: ahora se auto-genera desde el itinerario del día
     salidas: { manana: [], tarde: [], noche: [] }
   }
 };
-
 
 /* =========================
    Utils (fecha/hora)
@@ -57,16 +63,6 @@ function normDateISO(d = new Date()){
   const day = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
 }
-
-function formatearFechaHumana(fechaISO){
-  if(!fechaISO) return 'SIN FECHA';
-  const [y,m,d] = fechaISO.split('-').map(Number);
-  const date = new Date(y,m-1,d);
-  const dia = String(d).padStart(2,'0');
-  const meses = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
-  return `${dia}-${meses[date.getMonth()]}-${y}`;
-}
-
 function pad2(n){ return String(n).padStart(2,'0'); }
 
 function timeToMin(hhmm){
@@ -75,21 +71,26 @@ function timeToMin(hhmm){
   if(!m) return NaN;
   return parseInt(m[1],10)*60 + parseInt(m[2],10);
 }
-
 function minToTime(min){
   if(!Number.isFinite(min)) return '--:--';
   const hh = Math.floor(min/60);
   const mm = min%60;
   return `${pad2(hh)}:${pad2(mm)}`;
 }
-
 function uid(){
-  // id simple suficiente para UI/Firestore
   return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(2,8);
+}
+function escapeHtml(s){
+  return String(s ?? '')
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
 }
 
 /* =========================
-   Helpers (destino / fechas / itinerario) — igual estilo turnos-comidas
+   Normalización texto / destino
 ========================= */
 const K = s => (s ?? '').toString()
   .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -101,42 +102,9 @@ function incluyeDestino(destinoRaw='', destinoFiltro=''){
   return d && txt.includes(d);
 }
 
-function coordKeyFromGrupo(g){
-  // key estable: email si existe; si no, nombre normalizado
-  const email = (g.coordinadorEmail || g.coordEmail || '').toString().trim().toLowerCase();
-  if(email) return `MAIL:${email}`;
-  const nom = K(g.coordinador || g.coordinadorNombre || g.coordNombre || '');
-  return nom ? `NOM:${nom}` : 'NOM:—';
-}
-
-function coordLabelFromGrupo(g){
-  return (g.coordinadorNombre || g.coordinador || g.coordNombre || g.coordinadorEmail || g.coordEmail || 'SIN COORD').toString().trim();
-}
-
-function buildCoordIndexes(){
-  state.coordinadores = [];
-  state.groupsByCoord = new Map();
-
-  for(const g of state.grupos){
-    const key = coordKeyFromGrupo(g);
-    const label = coordLabelFromGrupo(g);
-
-    if(!state.groupsByCoord.has(key)) state.groupsByCoord.set(key, []);
-    state.groupsByCoord.get(key).push(g);
-
-    if(!state.coordinadores.find(x=>x.key===key)){
-      state.coordinadores.push({ key, label });
-    }
-  }
-
-  // ordenar coordinadores por label
-  state.coordinadores.sort((a,b)=> a.label.localeCompare(b.label,'es'));
-}
-
-
 function toDateSafe(v){
   if(!v) return null;
-  if(typeof v.toDate === 'function') return v.toDate(); // Timestamp Firestore
+  if(typeof v.toDate === 'function') return v.toDate();
   if(typeof v === 'string'){ const d = new Date(v); return isNaN(d.getTime()) ? null : d; }
   if(v instanceof Date) return v;
   return null;
@@ -150,7 +118,9 @@ function dentroRangoFechas(targetDate, inicioRaw, finRaw){
   return t >= ini.setHours(0,0,0,0) && t <= fin.setHours(23,59,59,999);
 }
 
-// Extrae actividades del día desde itinerario[fechaISO] (igual turnos-comidas)
+/* =========================
+   Itinerario -> actividades del día (solo sugerencias)
+========================= */
 function extraerItinerarioDia(itinerarioRaw, fechaISO){
   if (!itinerarioRaw || typeof itinerarioRaw !== 'object') return [];
   const dia = itinerarioRaw[fechaISO];
@@ -197,7 +167,6 @@ function extraerItinerarioDia(itinerarioRaw, fechaISO){
   return out.map(({_orden, ...rest}) => rest);
 }
 
-// Determina turno por hora según state.turnos
 function turnoPorHora(hhmm){
   const m = timeToMin(hhmm);
   if(!Number.isFinite(m)) return null;
@@ -214,7 +183,7 @@ function turnoPorHora(hhmm){
 }
 
 /* =========================
-   Modelo de cálculo: bloque
+   Modelo bloque + solape
 ========================= */
 function calcBloqueSalida(s){
   const start = timeToMin(s.hora);
@@ -223,14 +192,12 @@ function calcBloqueSalida(s){
   const end = start + dur + buf;
   return { start, end, dur, buf };
 }
-
 function solapa(a, b){
-  // [a.start, a.end) con [b.start, b.end)
   return a.start < b.end && b.start < a.end;
 }
 
 /* =========================
-   Validaciones (capacidad + solapamiento)
+   Validación salida (capacidad + solape)
 ========================= */
 function evaluarSalida(turno, salidaId){
   const salidas = state.data.salidas[turno] || [];
@@ -238,7 +205,6 @@ function evaluarSalida(turno, salidaId){
   const s = salidas.find(x => x.id === salidaId);
   if(!s) return { ok:true, level:'ok', msg:'OK' };
 
-  // 1) Si no hay bus asignado
   if(!s.busId){
     return { ok:false, level:'warn', msg:'Sin bus' };
   }
@@ -248,13 +214,11 @@ function evaluarSalida(turno, salidaId){
     return { ok:false, level:'bad', msg:'Bus no existe' };
   }
 
-  // 2) Capacidad
   const pax = Number(s.pax || 0);
   if (pax > Number(bus.capacidad || 0)){
     return { ok:false, level:'bad', msg:`Sobrecupo (${pax}/${bus.capacidad})` };
   }
 
-  // 3) Solapamiento: comparar con otras salidas del mismo turno asignadas al mismo bus
   const bloqueS = calcBloqueSalida(s);
   if(!Number.isFinite(bloqueS.start) || !Number.isFinite(bloqueS.end)){
     return { ok:false, level:'warn', msg:'Hora inválida' };
@@ -272,16 +236,15 @@ function evaluarSalida(turno, salidaId){
 
   return { ok:true, level:'ok', msg:'OK' };
 }
+
 /* =========================
-   Loader REAL (grupos del día) + Auto-salidas desde itinerario
+   Loader grupos del día (para sugerencias)
 ========================= */
 async function cargarGruposDelDia(fechaISO, destinoFiltro){
   const fechaObj = new Date(`${fechaISO}T00:00:00`);
   if (isNaN(fechaObj.getTime())) return [];
 
-  const gruposRef = collection(db, 'grupos');
-  const snap = await getDocs(gruposRef);
-
+  const snap = await getDocs(collection(db, 'grupos'));
   const resultados = [];
 
   snap.forEach(docSnap => {
@@ -291,167 +254,153 @@ async function cargarGruposDelDia(fechaISO, destinoFiltro){
     const destinoRaw = data.destino || data.destinoBase || '';
     if (!incluyeDestino(destinoRaw, destinoFiltro)) return;
 
-    // 2) Rango de fechas (ajusta nombres si alguno difiere)
+    // 2) Rango fechas
     const ini = data.fechaInicioViaje || data.fechaInicio || data.inicioViaje;
     const fin = data.fechaFinViaje    || data.fechaFin    || data.finViaje;
     if (!dentroRangoFechas(fechaObj, ini, fin)) return;
 
-    // 3) Pax
     const pax = Number(data.cantidadGrupo ?? data.pax ?? data.paxTotal ?? 0);
+
+    const numeroNegocio = data.numeroNegocio || data.numNegocio || data.numero || docSnap.id;
+    const nombreGrupo   = data.nombreGrupo || data.grupo || data.nombre || '(sin nombre)';
+    const coordinador   = data.coordinadorNombre || data.coordinador || data.coordNombre || '';
 
     resultados.push({
       id: docSnap.id,
-      numeroNegocio: data.numeroNegocio || data.numNegocio || data.numero || docSnap.id,
-      nombreGrupo: data.nombreGrupo || data.grupo || data.nombre || '(sin nombre)',
+      numeroNegocio,
+      nombreGrupo,
       pax,
-      coordinador: data.coordinadorNombre || data.coordinador || data.coordNombre || '',
-      coordinadorEmail: data.coordinadorEmail || data.coordEmail || data.emailCoordinador || '',
+      coordinador,
       itinerarioRaw: data.itinerario || {}
     });
-
   });
 
   return resultados;
 }
 
-// Genera salidas AUTOMÁTICAS desde el itinerario del día
-function generarSalidasDesdeItinerario(){
-  state.data.salidas = { manana: [], tarde: [], noche: [] };
-
-  const dur = Number(state.config.duracionVueltaMin || 40);
-  const buf = Number(state.config.bufferMin || 10);
+/* =========================
+   Sugerencias: construir catálogo de actividades y coordinadores
+========================= */
+function buildActividadesDia(){
+  const acts = [];
+  const seen = new Set();
 
   for(const g of state.grupos){
-    const acts = extraerItinerarioDia(g.itinerarioRaw || {}, state.fechaISO);
+    const grupoLabel = `(${g.numeroNegocio}) ${g.nombreGrupo}`;
+    const coordKey = K(g.coordinador || 'SIN COORD');
+    const actsDia = extraerItinerarioDia(g.itinerarioRaw || {}, state.fechaISO);
 
-    for(const a of acts){
+    for(const a of actsDia){
       if(!a.hora) continue;
 
-      const turno = turnoPorHora(a.hora);
-      if(!turno) continue;
+      // clave para “deduplicar” sugerencias (hora + actividad)
+      const key = `${a.hora}__${K(a.actividad)}`;
+      if(seen.has(key)) continue;
+      seen.add(key);
 
-      state.data.salidas[turno].push({
-        id: uid(),
-        hora: a.hora,
-
-        // Bloque automático (ida+vuelta)
-        duracionMin: dur,
-        bufferMin: buf,
-
-        destino: a.actividad || '(actividad)',
-
-        // Texto automático (lo puedes mejorar después)
-        gruposTexto: `(${g.numeroNegocio}) ${g.nombreGrupo}`,
-        pax: Number(g.pax || 0),
-
-        // trazabilidad para re-aplicar asignaciones guardadas
-        gid: g.id,
-        actividad: a.actividad || '',
-        busId: null
+      acts.push({
+        key,
+        horaInicio: a.hora,
+        actividad: a.actividad || '(sin nombre)',
+        lugar: a.lugar || '',
+        // solo para referencia (no fija grupo)
+        sample: {
+          gid: g.id,
+          coordKey,
+          grupoLabel,
+          pax: Number(g.pax||0)
+        }
       });
     }
   }
 
-  for(const t of ['manana','tarde','noche']){
-    state.data.salidas[t].sort((a,b)=> timeToMin(a.hora) - timeToMin(b.hora));
+  acts.sort((x,y)=> timeToMin(x.horaInicio) - timeToMin(y.horaInicio));
+  state.actividadesDia = acts;
+
+  // datalist
+  const dl = document.getElementById('actividadList');
+  if(dl){
+    dl.innerHTML = '';
+    for(const a of acts){
+      const opt = document.createElement('option');
+      // valor visible (lo que escribes/seleccionas)
+      opt.value = `${a.horaInicio} · ${a.actividad}${a.lugar ? ` · ${a.lugar}` : ''}`;
+      // guardamos key para poder “resolver” luego
+      opt.dataset.key = a.key;
+      dl.appendChild(opt);
+    }
   }
 }
 
-// Clave estable para guardar/reaplicar bus asignado aunque regeneremos salidas
-function keyAsignacionSalida(s){
-  return `${s.gid || ''}__${s.hora || ''}__${K(s.actividad || s.destino || '')}`;
-}
+function buildCoordinadoresDia(){
+  const sel = document.getElementById('salidaCoord');
+  if(!sel) return;
 
-function aplicarAsignacionesGuardadas(map){
-  if(!map || typeof map !== 'object') return;
-  for(const t of ['manana','tarde','noche']){
-    for(const s of state.data.salidas[t]){
-      const k = keyAsignacionSalida(s);
-      if(map[k]) s.busId = map[k];
-    }
+  const map = new Map(); // coordKey -> {name, grupos:[]}
+  for(const g of state.grupos){
+    const key = K(g.coordinador || 'SIN COORD');
+    const name = (g.coordinador || 'SIN COORD').toString().trim() || 'SIN COORD';
+    if(!map.has(key)) map.set(key, { key, name, grupos: [] });
+    map.get(key).grupos.push(g);
+  }
+
+  const coords = Array.from(map.values()).sort((a,b)=> a.name.localeCompare(b.name));
+  sel.innerHTML = '<option value="">— Seleccionar —</option>';
+  for(const c of coords){
+    const opt = document.createElement('option');
+    opt.value = c.key;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
   }
 }
 
 /* =========================
-   Firestore: busesTurnos/{fechaISO}
+   Form helpers (auto hora salida + coord => pax/grupos)
 ========================= */
-async function cargarDia(fechaISO){
-  state.fechaISO = fechaISO;
-
-  // 1) Leer destino + config global desde UI (si existen esos inputs)
-  state.destino = document.getElementById('destinoFiltro')?.value || state.destino;
-
-  const durUI = Number(document.getElementById('duracionVueltaMin')?.value);
-  const bufUI = Number(document.getElementById('bufferMinGlobal')?.value);
-  if(Number.isFinite(durUI) && durUI > 0) state.config.duracionVueltaMin = durUI;
-  if(Number.isFinite(bufUI) && bufUI >= 0) state.config.bufferMin = bufUI;
-
-  // 2) Base vacía (TODO manual). Salidas NO se auto-generan.
-  state.data = {
-    buses:   { manana: [], tarde: [], noche: [] },
-    salidas: { manana: [], tarde: [], noche: [] }
-  };
-  
-  // (Opcional) igual podemos cargar grupos para ayudarte a seleccionar,
-  // pero NO los convertimos en “salidas” automáticamente.
-  state.grupos = await cargarGruposDelDia(fechaISO, state.destino);
-  buildCoordIndexes();
-  renderSelectCoordinadores(); // ✅ nuevo: llena el select de coordinador
-  
-  // 3) Leer documento guardado para recuperar BUSES + SALIDAS (manuales)
-  try{
-    const ref = doc(db, 'busesTurnos', fechaISO);
-    const snap = await getDoc(ref);
-  
-    if(snap.exists()){
-      const data = snap.data() || {};
-      if(data.buses)   state.data.buses   = normalizarTurnosObj(data.buses);
-      if(data.salidas) state.data.salidas = normalizarTurnosObj(data.salidas);
-    }
-  }catch(err){
-    console.error('[BusesTurnos] Error cargando día (doc busesTurnos)', err);
-  }
-  
-  renderTodo();
-
+function setHoraInicioUI(hhmm){
+  state.form.horaInicio = hhmm || '';
+  const lbl = document.getElementById('lblHoraInicio');
+  if(lbl) lbl.textContent = hhmm || '—';
 }
 
-async function guardarDia(){
-  if(!state.fechaISO){
-    alert('Selecciona una fecha.');
+function recalcHoraSalida(){
+  const iniMin = timeToMin(state.form.horaInicio);
+  const dur = Number(state.form.durMin || 0);
+  if(!Number.isFinite(iniMin) || !Number.isFinite(dur) || dur <= 0){
+    state.form.horaSalida = '';
+    const inp = document.getElementById('salidaHora');
+    if(inp) inp.value = '';
     return;
   }
+  const salidaMin = iniMin - dur;
+  const hhmm = minToTime(salidaMin);
+  state.form.horaSalida = hhmm;
+  const inp = document.getElementById('salidaHora');
+  if(inp) inp.value = hhmm;
 
-  try{
-    const ref = doc(db, 'busesTurnos', state.fechaISO);
-    const payload = {
-      fecha: state.fechaISO,
-      destino: state.destino,
-      config: { ...state.config },
-  
-      // ✅ Guardamos TODO lo que tú agregas manualmente
-      buses: state.data.buses,
-      salidas: state.data.salidas,
-  
-      updatedAt: new Date().toISOString()
-    };
-    await setDoc(ref, payload);
-    alert('Día guardado correctamente.');
-  }catch(err){
-    console.error('[BusesTurnos] Error guardando día', err);
-    alert('Ocurrió un error al guardar.');
+  // si al recalcular cambia de turno, nos movemos al tab correspondiente
+  const turno = turnoPorHora(hhmm);
+  if(turno){
+    setTurnoActivo(turno);
   }
-
 }
 
-function normalizarTurnosObj(obj){
-  // garantiza estructura {manana:[], tarde:[], noche:[]}
-  const out = { manana: [], tarde: [], noche: [] };
-  if(!obj || typeof obj !== 'object') return out;
-  for(const t of ['manana','tarde','noche']){
-    if(Array.isArray(obj[t])) out[t] = obj[t];
-  }
-  return out;
+function applyCoordinadorToForm(coordKey){
+  state.form.coordKey = coordKey || '';
+
+  const grupos = state.grupos.filter(g => K(g.coordinador || 'SIN COORD') === coordKey);
+  const gruposTexto = grupos
+    .map(g => `(${g.numeroNegocio}) ${g.nombreGrupo}`)
+    .join(', ');
+  const pax = grupos.reduce((acc,g)=> acc + Number(g.pax||0), 0);
+
+  state.form.gruposTexto = gruposTexto;
+  state.form.pax = pax;
+
+  const inG = document.getElementById('salidaGrupos');
+  const inP = document.getElementById('salidaPax');
+  if(inG) inG.value = gruposTexto;
+  if(inP) inP.value = String(pax);
 }
 
 /* =========================
@@ -478,7 +427,6 @@ function agregarBus(turno, numero, conductor, capacidad){
 }
 
 function eliminarBus(turno, busId){
-  // Ojo: si un bus se elimina, dejamos las salidas que lo usaban con busId=null
   state.data.buses[turno] = (state.data.buses[turno] || []).filter(b => b.id !== busId);
   (state.data.salidas[turno] || []).forEach(s => {
     if(s.busId === busId) s.busId = null;
@@ -487,40 +435,67 @@ function eliminarBus(turno, busId){
 }
 
 /* =========================
-   CRUD en memoria: salidas
+   CRUD en memoria: salidas (manuales)
 ========================= */
-function agregarSalida(turno, hora, durMin, bufMin, destino, gruposTxt, pax){
-  const hhmm = String(hora || '').trim();
-  const start = timeToMin(hhmm);
-  if(!Number.isFinite(start)){
-    alert('Hora inválida. Usa HH:MM.');
+function agregarSalidaManual(){
+  // actividad
+  const actTxt = (document.getElementById('salidaActividad')?.value || '').trim();
+  const dur = Number(document.getElementById('salidaDur')?.value || 0);
+  const buf = Number(document.getElementById('salidaBuf')?.value || 0);
+  const horaSalida = (document.getElementById('salidaHora')?.value || '').trim();
+  const coordKey = document.getElementById('salidaCoord')?.value || '';
+  const gruposTxt = (document.getElementById('salidaGrupos')?.value || '').trim();
+  const pax = Number(document.getElementById('salidaPax')?.value || 0);
+
+  if(!actTxt){
+    alert('Elige o escribe una Actividad.');
     return;
   }
-
-  const dur = Number(durMin);
-  const buf = Number(bufMin);
   if(!Number.isFinite(dur) || dur <= 0){
-    alert('Duración inválida (min).');
+    alert('Duración traslado inválida.');
     return;
   }
   if(!Number.isFinite(buf) || buf < 0){
-    alert('Buffer inválido (min).');
+    alert('Buffer inválido.');
+    return;
+  }
+  if(!horaSalida || !Number.isFinite(timeToMin(horaSalida))){
+    alert('Hora salida inválida (HH:MM).');
+    return;
+  }
+  if(!coordKey){
+    alert('Selecciona un Coordinador(a).');
     return;
   }
 
+  const turno = turnoPorHora(horaSalida) || state.turnoActivo;
+
   state.data.salidas[turno].push({
     id: uid(),
-    hora: hhmm,
+    hora: horaSalida,
     duracionMin: dur,
     bufferMin: buf,
-    destino: String(destino || '').trim(),
-    gruposTexto: String(gruposTxt || '').trim(),
-    pax: Number(pax || 0),
+
+    // “Destino” en tabla = la actividad elegida
+    destino: actTxt,
+
+    // texto de grupos auto (editable)
+    gruposTexto: gruposTxt,
+
+    // pax auto (editable)
+    pax: Number.isFinite(pax) ? pax : 0,
+
+    // guardamos coordKey por referencia
+    coordKey,
+
+    // asignación
     busId: null
   });
 
-  // mantener orden por hora
   state.data.salidas[turno].sort((a,b)=> timeToMin(a.hora) - timeToMin(b.hora));
+
+  // mover a ese turno para verlo inmediatamente
+  setTurnoActivo(turno);
 
   renderTodo();
 }
@@ -537,61 +512,145 @@ function setBusEnSalida(turno, salidaId, busIdOrNull){
   renderTodo();
 }
 
-function renderSelectCoordinadores(){
-  const sel = document.getElementById('selCoord'); // ✅ crea este select en HTML (o cambia el id)
-  if(!sel) return;
+/* =========================
+   Auto asignación buses (capacidad + no solape)
+   - sólo asigna si busId está vacío
+========================= */
+function autoAsignarBusesTurno(turno){
+  const buses = (state.data.buses[turno] || []).slice()
+    .sort((a,b)=> Number(a.capacidad||0) - Number(b.capacidad||0)); // primero el más chico que sirva
 
-  sel.innerHTML = '<option value="">— Seleccionar coordinador(a) —</option>';
-  for(const c of state.coordinadores){
-    const opt = document.createElement('option');
-    opt.value = c.key;
-    opt.textContent = c.label;
-    sel.appendChild(opt);
+  const salidas = (state.data.salidas[turno] || []).slice()
+    .sort((a,b)=> timeToMin(a.hora) - timeToMin(b.hora));
+
+  // tracks por bus: lista de bloques asignados
+  const agenda = new Map(); // busId -> [{start,end}]
+  for(const b of buses) agenda.set(b.id, []);
+
+  function puedeAsignar(bus, salida){
+    const pax = Number(salida.pax||0);
+    if(pax > Number(bus.capacidad||0)) return false;
+
+    const bloque = calcBloqueSalida(salida);
+    if(!Number.isFinite(bloque.start) || !Number.isFinite(bloque.end)) return false;
+
+    const slots = agenda.get(bus.id) || [];
+    for(const s of slots){
+      if(solapa(bloque, s)) return false;
+    }
+    return true;
   }
-}
 
-// Junta actividades de todos los grupos del coordinador en esa fecha
-function getActsForCoordOnDate(coordKey, fechaISO){
-  const gs = state.groupsByCoord.get(coordKey) || [];
-  const out = [];
+  // asignación greedy
+  for(const salida of salidas){
+    if(salida.busId) {
+      // si ya tenía bus asignado, lo “reservamos” en agenda
+      const bus = buses.find(b=> b.id === salida.busId);
+      if(bus){
+        const bloque = calcBloqueSalida(salida);
+        if(Number.isFinite(bloque.start) && Number.isFinite(bloque.end)){
+          agenda.get(bus.id).push({start: bloque.start, end: bloque.end});
+        }
+      }
+      continue;
+    }
 
-  for(const g of gs){
-    const acts = extraerItinerarioDia(g.itinerarioRaw || {}, fechaISO);
-    for(const a of acts){
-      if(!a.hora) continue;
-      out.push({
-        hora: a.hora,
-        actividad: a.actividad || '(sin nombre)',
-        gid: g.id,
-        numeroNegocio: g.numeroNegocio,
-        nombreGrupo: g.nombreGrupo,
-        pax: Number(g.pax || 0),
-      });
+    // busca el primer bus que pueda (por capacidad + no solape)
+    let chosen = null;
+    for(const bus of buses){
+      if(puedeAsignar(bus, salida)){
+        chosen = bus;
+        break;
+      }
+    }
+
+    if(chosen){
+      salida.busId = chosen.id;
+      const bloque = calcBloqueSalida(salida);
+      agenda.get(chosen.id).push({start: bloque.start, end: bloque.end});
     }
   }
 
-  out.sort((a,b)=> timeToMin(a.hora) - timeToMin(b.hora));
+  // escribir de vuelta en state (manteniendo objetos)
+  // (resolvemos por id)
+  const map = new Map(salidas.map(s=>[s.id, s]));
+  state.data.salidas[turno] = (state.data.salidas[turno] || []).map(s => map.get(s.id) || s);
+
+  renderTodo();
+}
+
+/* =========================
+   Firestore: busesTurnos/{fechaISO}
+   - ahora guardamos buses + salidas (manuales)
+========================= */
+function normalizarTurnosObj(obj){
+  const out = { manana: [], tarde: [], noche: [] };
+  if(!obj || typeof obj !== 'object') return out;
+  for(const t of ['manana','tarde','noche']){
+    if(Array.isArray(obj[t])) out[t] = obj[t];
+  }
   return out;
 }
 
-function poblarDatalistActividadesCoord(lista){
-  const dl = document.getElementById('actividadList'); // datalist existente
-  if(!dl) return;
-  dl.innerHTML = '';
+async function cargarDia(fechaISO){
+  state.fechaISO = fechaISO;
 
-  const seen = new Set();
-  for(const a of lista){
-    const key = `${a.hora}__${K(a.actividad)}__${a.gid}`;
-    if(seen.has(key)) continue;
-    seen.add(key);
+  state.destino = document.getElementById('destinoFiltro')?.value || state.destino;
 
-    const opt = document.createElement('option');
-    // value visible: "HH:MM · ACTIVIDAD (NUM) GRUPO"
-    opt.value = `${a.hora} · ${a.actividad} · (${a.numeroNegocio}) ${a.nombreGrupo}`;
-    dl.appendChild(opt);
+  // 1) base vacía
+  state.data = {
+    buses: { manana: [], tarde: [], noche: [] },
+    salidas: { manana: [], tarde: [], noche: [] }
+  };
+
+  // 2) cargar grupos del día (para sugerencias)
+  state.grupos = await cargarGruposDelDia(fechaISO, state.destino);
+
+  // 3) construir sugerencias
+  buildActividadesDia();
+  buildCoordinadoresDia();
+
+  // 4) cargar doc guardado (si existe)
+  try{
+    const ref = doc(db, 'busesTurnos', fechaISO);
+    const snap = await getDoc(ref);
+    if(snap.exists()){
+      const data = snap.data() || {};
+      if(data.buses) state.data.buses = normalizarTurnosObj(data.buses);
+      if(data.salidas) state.data.salidas = normalizarTurnosObj(data.salidas);
+    }
+  }catch(err){
+    console.error('[BusesTurnos] Error cargando día', err);
   }
+
+  // reset form UI (sin agregar nada)
+  resetFormUI();
+
+  renderTodo();
 }
 
+async function guardarDia(){
+  if(!state.fechaISO){
+    alert('Selecciona una fecha.');
+    return;
+  }
+
+  try{
+    const ref = doc(db, 'busesTurnos', state.fechaISO);
+    const payload = {
+      fecha: state.fechaISO,
+      destino: state.destino,
+      buses: state.data.buses,
+      salidas: state.data.salidas,
+      updatedAt: new Date().toISOString()
+    };
+    await setDoc(ref, payload);
+    alert('Día guardado correctamente.');
+  }catch(err){
+    console.error('[BusesTurnos] Error guardando día', err);
+    alert('Ocurrió un error al guardar.');
+  }
+}
 
 /* =========================
    Render UI
@@ -613,7 +672,7 @@ function renderHeaderResumen(){
     totalPax += (state.data.salidas[t] || []).reduce((acc,s)=> acc + Number(s.pax||0), 0);
   }
 
-  el.textContent = `${formatearFechaHumana(state.fechaISO)} · ${totalSalidas} salida(s) · ${totalPax} pax`;
+  el.textContent = `${state.fechaISO} · ${totalSalidas} salida(s) · ${totalPax} pax`;
 }
 
 function renderTurnoActivo(){
@@ -648,9 +707,9 @@ function renderBusesTable(turno){
   for(const b of buses){
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><b>${b.numero}</b></td>
-      <td>${b.conductor}</td>
-      <td class="right">${b.capacidad}</td>
+      <td><b>${escapeHtml(b.numero)}</b></td>
+      <td>${escapeHtml(b.conductor)}</td>
+      <td class="right">${Number(b.capacidad||0)}</td>
       <td class="right">
         <button class="btn" data-delbus="${b.id}">Eliminar</button>
       </td>
@@ -691,20 +750,19 @@ function renderSalidasTable(turno){
     const dotClass = ev.level === 'ok' ? 'ok' : (ev.level === 'warn' ? 'warn' : 'bad');
     const msgClass = ev.level === 'ok' ? 'oktext' : (ev.level === 'warn' ? 'warntext' : 'danger');
 
-    // select buses
     const options = [
       `<option value="">— Sin bus —</option>`,
-      ...buses.map(b => `<option value="${b.id}" ${s.busId===b.id?'selected':''}>Bus ${b.numero} · ${b.conductor} (${b.capacidad})</option>`)
+      ...buses.map(b => `<option value="${b.id}" ${s.busId===b.id?'selected':''}>Bus ${escapeHtml(b.numero)} · ${escapeHtml(b.conductor)} (${Number(b.capacidad||0)})</option>`)
     ].join('');
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><b>${s.hora}</b></td>
+      <td><b>${escapeHtml(s.hora)}</b></td>
       <td>
         <div><b>${escapeHtml(s.destino || '(sin destino)')}</b></div>
         <div class="muted small">${escapeHtml(s.gruposTexto || '')}</div>
       </td>
-      <td class="small">${bloqueTxt}<div class="muted small">${s.duracionMin ?? s.duracionVueltaMin ?? ''}m + ${s.bufferMin ?? ''}m</div></td>
+      <td class="small">${bloqueTxt}<div class="muted small">${Number(s.duracionMin||0)}m + ${Number(s.bufferMin||0)}m</div></td>
       <td class="right"><b>${Number(s.pax||0)}</b></td>
       <td>
         <select class="select-bus" data-salida="${s.id}">
@@ -712,7 +770,7 @@ function renderSalidasTable(turno){
         </select>
       </td>
       <td>
-        <span class="tag"><span class="dot ${dotClass}"></span><span class="${msgClass}">${ev.msg}</span></span>
+        <span class="tag"><span class="dot ${dotClass}"></span><span class="${msgClass}">${escapeHtml(ev.msg)}</span></span>
       </td>
       <td class="right">
         <button class="btn" data-delsalida="${s.id}">Eliminar</button>
@@ -739,26 +797,15 @@ function renderSalidasTable(turno){
   });
 }
 
-function escapeHtml(s){
-  return String(s ?? '')
-    .replaceAll('&','&amp;')
-    .replaceAll('<','&lt;')
-    .replaceAll('>','&gt;')
-    .replaceAll('"','&quot;')
-    .replaceAll("'","&#039;");
-}
-
 /* =========================
-   WhatsApp text
+   WhatsApp
 ========================= */
 function renderWhats(){
   const ta = document.getElementById('whatsText');
   if(!ta) return;
 
-  const fechaLabel = formatearFechaHumana(state.fechaISO);
   const lineas = [];
-
-  lineas.push(`🚌 MOVILIZACIÓN · FECHA ${fechaLabel}`);
+  lineas.push(`🚌 MOVILIZACIÓN · FECHA ${state.fechaISO || '—'} · DESTINO ${state.destino || '—'}`);
   lineas.push('');
 
   for(const turno of ['manana','tarde','noche']){
@@ -804,10 +851,137 @@ function setTurnoActivo(turno){
   renderWhats();
 }
 
+/* =========================
+   Form UI bindings
+========================= */
+function resetFormUI(){
+  // No borra sugerencias; solo limpia campos
+  const inAct = document.getElementById('salidaActividad');
+  const inDur = document.getElementById('salidaDur');
+  const inBuf = document.getElementById('salidaBuf');
+  const inHora = document.getElementById('salidaHora');
+  const selCoord = document.getElementById('salidaCoord');
+  const inGr = document.getElementById('salidaGrupos');
+  const inP = document.getElementById('salidaPax');
+
+  if(inAct) inAct.value = '';
+  if(inDur) inDur.value = 40;
+  if(inBuf) inBuf.value = 10;
+  if(inHora) inHora.value = '';
+  if(selCoord) selCoord.value = '';
+  if(inGr) inGr.value = '';
+  if(inP) inP.value = '0';
+
+  state.form = {
+    actividadKey: '',
+    horaInicio: '',
+    actividadLabel: '',
+    durMin: 40,
+    bufMin: 10,
+    horaSalida: '',
+    coordKey: '',
+    gruposTexto: '',
+    pax: 0
+  };
+  setHoraInicioUI('');
+}
+
+function resolveActividadFromInput(){
+  // Intenta matchear el string del input con alguna sugerencia (por prefijo HH:MM · ...)
+  const txt = (document.getElementById('salidaActividad')?.value || '').trim();
+  if(!txt){
+    state.form.actividadKey = '';
+    state.form.actividadLabel = '';
+    setHoraInicioUI('');
+    return;
+  }
+
+  // si coincide con una opción generada: "HH:MM · actividad ..."
+  const m = txt.match(/^([01]\d|2[0-3]):[0-5]\d/);
+  const hora = m ? m[0] : '';
+
+  // buscamos por hora+actividad “normalizada” (lo más estable)
+  const guessKey = hora ? `${hora}__${K(txt.replace(/^([01]\d|2[0-3]):[0-5]\d\s*·\s*/,'').split('·')[0])}` : '';
+
+  const found = state.actividadesDia.find(a => a.key === guessKey)
+    || state.actividadesDia.find(a => txt.startsWith(`${a.horaInicio} · ${a.actividad}`))
+    || null;
+
+  if(found){
+    state.form.actividadKey = found.key;
+    state.form.horaInicio = found.horaInicio;
+    state.form.actividadLabel = `${found.horaInicio} · ${found.actividad}${found.lugar ? ` · ${found.lugar}` : ''}`;
+    setHoraInicioUI(found.horaInicio);
+  }else{
+    // si no matchea, al menos intentamos usar hora del texto si existe
+    state.form.actividadKey = '';
+    state.form.actividadLabel = txt;
+    if(hora){
+      state.form.horaInicio = hora;
+      setHoraInicioUI(hora);
+    }else{
+      state.form.horaInicio = '';
+      setHoraInicioUI('');
+    }
+  }
+
+  // recalcula hora salida si ya tenemos horaInicio
+  state.form.durMin = Number(document.getElementById('salidaDur')?.value || 0);
+  recalcHoraSalida();
+}
+
+function initFormListeners(){
+  const inAct = document.getElementById('salidaActividad');
+  const inDur = document.getElementById('salidaDur');
+  const inBuf = document.getElementById('salidaBuf');
+  const inHora = document.getElementById('salidaHora');
+  const selCoord = document.getElementById('salidaCoord');
+
+  if(inAct){
+    inAct.addEventListener('change', resolveActividadFromInput);
+    inAct.addEventListener('blur', resolveActividadFromInput);
+  }
+
+  if(inDur){
+    inDur.addEventListener('change', ()=>{
+      state.form.durMin = Number(inDur.value || 0);
+      recalcHoraSalida();
+    });
+  }
+
+  if(inBuf){
+    inBuf.addEventListener('change', ()=>{
+      state.form.bufMin = Number(inBuf.value || 0);
+      // buffer afecta el bloque, no la hora salida (pero queda guardado)
+    });
+  }
+
+  if(inHora){
+    inHora.addEventListener('change', ()=>{
+      // el usuario puede editar hora salida manualmente
+      state.form.horaSalida = inHora.value || '';
+      const turno = turnoPorHora(state.form.horaSalida);
+      if(turno) setTurnoActivo(turno);
+    });
+  }
+
+  if(selCoord){
+    selCoord.addEventListener('change', ()=>{
+      const key = selCoord.value || '';
+      if(!key) return;
+      applyCoordinadorToForm(key);
+    });
+  }
+}
+
+/* =========================
+   Init
+========================= */
 function init(){
-  // Fecha
   const hoy = normDateISO();
   const inputFecha = document.getElementById('fechaMov');
+  const destinoSel = document.getElementById('destinoFiltro');
+
   if(inputFecha){
     inputFecha.value = hoy;
     inputFecha.addEventListener('change', ()=>{
@@ -816,77 +990,18 @@ function init(){
     });
   }
 
-  // Coordinador -> carga sugerencias de actividades (NO agrega salidas)
-  const selCoord = document.getElementById('selCoord');
-  if(selCoord){
-    selCoord.addEventListener('change', ()=>{
-      const key = selCoord.value || '';
-      const acts = key ? getActsForCoordOnDate(key, state.fechaISO) : [];
-      poblarDatalistActividadesCoord(acts);
-  
-      // opcional: si quieres limpiar campos al cambiar coord
-      // document.getElementById('salidaDestino').value = '';
-      // document.getElementById('salidaHora').value = '';
-      // document.getElementById('salidaPax').value = '0';
-    });
-  }
-  
-  // Si escriben/seleccionan una opción del datalist: autocompleta
-  const actInput = document.getElementById('salidaDestino'); // en tu UI esto es "Destino / Actividad"
-  if(actInput){
-    actInput.addEventListener('change', ()=>{
-      const key = document.getElementById('selCoord')?.value || '';
-      if(!key) return;
-  
-      const acts = getActsForCoordOnDate(key, state.fechaISO);
-      const v = actInput.value || '';
-  
-      // buscamos match por prefijo "HH:MM ·"
-      const hhmm = (v.match(/^([01]\d|2[0-3]):[0-5]\d/) || [])[0];
-      if(!hhmm) return;
-  
-      const act = acts.find(a => a.hora === hhmm && v.includes(a.actividad));
-      if(!act) return;
-  
-      // Autocomplete
-      const horaEl = document.getElementById('salidaHora');
-      const paxEl  = document.getElementById('salidaPax');
-  
-      if(horaEl) horaEl.value = act.hora;
-      if(paxEl)  paxEl.value = String(act.pax || 0);
-  
-      // el destino/actividad ya está en actInput.value (lo dejamos)
-    });
-  }
-  
-
-  // ✅ Punto 8: Recargar si cambia destino o tiempos globales
-  const destinoSel = document.getElementById('destinoFiltro');
   if(destinoSel){
     destinoSel.addEventListener('change', ()=>{
+      state.destino = destinoSel.value || state.destino;
       cargarDia(state.fechaISO || hoy);
     });
   }
 
-  ['duracionVueltaMin','bufferMinGlobal'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(!el) return;
-    el.addEventListener('change', ()=>{
-      const durUI = Number(document.getElementById('duracionVueltaMin')?.value);
-      const bufUI = Number(document.getElementById('bufferMinGlobal')?.value);
-      if(Number.isFinite(durUI) && durUI > 0) state.config.duracionVueltaMin = durUI;
-      if(Number.isFinite(bufUI) && bufUI >= 0) state.config.bufferMin = bufUI;
-  
-      // ✅ Solo re-render (NO recargar día, NO auto-generar)
-      renderTodo();
-    });
-  });
-
-
-  // Tabs
   document.querySelectorAll('.tab').forEach(btn=>{
     btn.addEventListener('click', ()=> setTurnoActivo(btn.dataset.turno));
   });
+
+  initFormListeners();
 
   // Agregar bus
   const btnAgregarBus = document.getElementById('btnAgregarBus');
@@ -898,38 +1013,35 @@ function init(){
         document.getElementById('busConductor')?.value,
         document.getElementById('busCapacidad')?.value
       );
-      // limpiar
       const n = document.getElementById('busNumero'); if(n) n.value='';
       const c = document.getElementById('busConductor'); if(c) c.value='';
       const cap = document.getElementById('busCapacidad'); if(cap) cap.value='';
     });
   }
 
-  // Agregar salida
+  // Agregar salida (manual)
   const btnAgregarSalida = document.getElementById('btnAgregarSalida');
   if(btnAgregarSalida){
     btnAgregarSalida.addEventListener('click', ()=>{
-      agregarSalida(
-        state.turnoActivo,
-        document.getElementById('salidaHora')?.value,
-        document.getElementById('salidaDur')?.value,
-        document.getElementById('salidaBuf')?.value,
-        document.getElementById('salidaDestino')?.value,
-        // gruposTxt auto desde coordinador (si hay selCoord), si no usa lo escrito
-        (() => {
-          const key = document.getElementById('selCoord')?.value || '';
-          const manual = document.getElementById('salidaGrupos')?.value || '';
-          if(manual.trim()) return manual.trim();
-          const gs = state.groupsByCoord.get(key) || [];
-          return gs.map(g => `(${g.numeroNegocio}) ${g.nombreGrupo}`).join(' / ');
-        })(),
-        document.getElementById('salidaPax')?.value
+      agregarSalidaManual();
+      // limpiar solo lo necesario
+      const inAct = document.getElementById('salidaActividad'); if(inAct) inAct.value='';
+      const selCoord = document.getElementById('salidaCoord'); if(selCoord) selCoord.value='';
+      const inGr = document.getElementById('salidaGrupos'); if(inGr) inGr.value='';
+      const inP = document.getElementById('salidaPax'); if(inP) inP.value='0';
+      const inHora = document.getElementById('salidaHora'); if(inHora) inHora.value='';
+      setHoraInicioUI('');
+      state.form.horaInicio = '';
+      state.form.actividadKey = '';
+      state.form.actividadLabel = '';
+    });
+  }
 
-      );
-      // limpiar liviano
-      const dest = document.getElementById('salidaDestino'); if(dest) dest.value='';
-      const grupos = document.getElementById('salidaGrupos'); if(grupos) grupos.value='';
-      const pax = document.getElementById('salidaPax'); if(pax) pax.value='0';
+  // Calcular / asignar buses (turno activo)
+  const btnCalcular = document.getElementById('btnCalcular');
+  if(btnCalcular){
+    btnCalcular.addEventListener('click', ()=>{
+      autoAsignarBusesTurno(state.turnoActivo);
     });
   }
 
@@ -962,9 +1074,7 @@ function init(){
     });
   }
 
-  // cargar hoy
   cargarDia(hoy);
 }
 
 init();
-
