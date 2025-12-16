@@ -81,11 +81,6 @@ const todayISO = () => {
   return `${year}-${month}-${day}`;
 };
 
-  const hoy = todayISO();
-  $('#filtroFecha').value = hoy;
-  $('#inputFecha').value = hoy;
-  $('#lblFechaActual').textContent = hoy;
-
 // Formatea breve la etiqueta de grupo
 const labelGrupo = (g) => {
   const num = g.numeroNegocio ? `(${g.numeroNegocio}) ` : '';
@@ -290,6 +285,18 @@ async function loadBuses() {
       });
     });
 
+    // DEBUG: muestra EXACTAMENTE lo que está viniendo de Firestore
+    console.log('[DEBUG] Traslados Firestore', fechaISO, traslados.map(t => ({
+      id: t.id,
+      grupo: t.grupoNombre,
+      actividad: t.actividad,
+      salida: t.salidaHora,
+      regreso: t.recogerHora,
+      creado: t.tsCreado,
+      mod: t.tsModificado,
+      por: t.modificadoPor
+    })));
+
     // Orden simple por numeroBus
     buses.sort((a, b) => String(a.numeroBus).localeCompare(String(b.numeroBus)));
     state.buses = buses;
@@ -309,12 +316,19 @@ async function loadTrasladosForDate(fechaISO) {
     const snap = await getDocs(q);
     const traslados = [];
     snap.forEach((docSnap) => {
-      const d = docSnap.data();
+      const d = docSnap.data() || {};
+    
+      // ✅ Solo mostramos los que tú creas/seleccionas
+      // (si un doc viejo no tiene "origen", lo tratamos como "auto" para que NO aparezca)
+      const origen = (d.origen || 'auto');
+      if (origen !== 'manual') return;
+    
       traslados.push({
         id: docSnap.id,
         ...d,
       });
     });
+
 
     // Ordena por hora de salida
     traslados.sort((a, b) => {
@@ -886,6 +900,7 @@ async function handleFormSubmit(ev) {
       : null,
     estado: 'pendiente',
     tsModificado: serverTimestamp(),
+    origen: 'manual'
   };
 
   if (state.user?.email) {
