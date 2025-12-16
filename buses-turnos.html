@@ -5,156 +5,241 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Asignador de Buses · RT</title>
 
-  <style>
-    :root{
-      --bg:#ffffff;
-      --card:#ffffff;
-      --ink:#0f172a;
-      --muted:#6b7280;
-      --line:#d1d5db;
+<style>
+  /* =========================
+     ESTILOS AISLADOS PÁGINA
+     (no dependen del global)
+  ========================= */
+  .buses-turnos-page{
+    margin:0;
+    background:#ffffff;
+    color:#0f172a;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+  }
+  .buses-turnos-page *{ box-sizing:border-box; }
 
-      --accent:#0056a4;
-      --accent-soft:rgba(0,86,164,.08);
+  :root{
+    --bg:#ffffff;
+    --card:#ffffff;
+    --ink:#0f172a;
+    --muted:#6b7280;
+    --line:#d1d5db;
 
-      --ok:#16a34a;
-      --warn:#f59e0b;
-      --bad:#dc2626;
+    --accent:#0056a4;
+    --accent-soft:rgba(0,86,164,.08);
 
-      --radius:14px;
-    }
+    --ok:#16a34a;
+    --warn:#f59e0b;
+    --bad:#dc2626;
 
-    *{ box-sizing:border-box; }
-    body{
-      margin:0;
-      background:var(--bg);
-      color:var(--ink);
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
-    }
+    --radius:14px;
+  }
 
-    header{
-      position:sticky; top:0; z-index:20;
-      background:#fff;
-      border-bottom:1px solid var(--line);
-      padding:14px 16px;
-      display:flex; gap:12px; align-items:center; flex-wrap:wrap;
-    }
-    header h1{ font-size:1rem; margin:0; color:var(--accent); }
-    .row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  header{
+    position:sticky; top:0; z-index:20;
+    background:#fff;
+    border-bottom:1px solid var(--line);
+    padding:12px 14px;
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  header h1{ font-size:1rem; margin:0; color:var(--accent); }
 
-    .input, select, textarea{
-      background:#fff;
-      color:var(--ink);
-      border:1px solid var(--line);
-      border-radius:10px;
-      padding:10px 10px;
-      font-size:.9rem;
-      outline:none;
-    }
-    .input{ min-width:170px; }
+  main{ padding:14px; max-width:1200px; margin:0 auto; }
 
-    .btn{
-      background:#fff;
-      border:1px solid var(--line);
-      color:var(--ink);
-      padding:10px 12px;
-      border-radius:10px;
-      cursor:pointer;
-      font-weight:700;
-    }
-    .btn:hover{ background:var(--accent-soft); border-color:rgba(0,86,164,.35); }
-    .btn.primary{
-      background:var(--accent);
-      border-color:var(--accent);
-      color:#fff;
-    }
-    .btn.primary:hover{ filter:brightness(1.03); }
+  /* Inputs full-width y sin min-width que rompa layout */
+  .input, select, textarea{
+    width:100%;
+    min-width:0;
+    background:#fff;
+    color:var(--ink);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:10px 10px;
+    font-size:.9rem;
+    outline:none;
+  }
 
-    .pill{
-      padding:6px 10px; border-radius:999px;
-      border:1px solid var(--line);
-      color:var(--muted);
-      font-size:.78rem;
-      background:#fff;
-    }
+  .row{
+    display:flex;
+    gap:10px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+  .row > *{ flex: 0 0 auto; }
 
-    main{ padding:16px; max-width:1200px; margin:0 auto; }
+  .btn{
+    background:#fff;
+    border:1px solid var(--line);
+    color:var(--ink);
+    padding:10px 12px;
+    border-radius:10px;
+    cursor:pointer;
+    font-weight:700;
+    white-space:nowrap;
+  }
+  .btn:hover{ background:var(--accent-soft); border-color:rgba(0,86,164,.35); }
+  .btn.primary{
+    background:var(--accent);
+    border-color:var(--accent);
+    color:#fff;
+  }
 
-    .tabs{ display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 14px; }
-    .tab{
-      padding:10px 12px; border-radius:999px;
-      border:1px solid var(--line);
-      background:#fff;
-      color:var(--ink);
-      cursor:pointer; font-weight:800; font-size:.85rem;
-    }
-    .tab.active{ background:var(--accent-soft); border-color:rgba(0,86,164,.4); color:var(--accent); }
+  .pill{
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    color:var(--muted);
+    font-size:.78rem;
+    background:#fff;
+    white-space:nowrap;
+  }
 
-    .grid{ display:grid; grid-template-columns:1fr; gap:14px; }
-    @media (min-width: 980px){ .grid{ grid-template-columns: 1.15fr .85fr; } }
+  .tabs{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin:8px 0 14px;
+  }
+  .tab{
+    padding:10px 12px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+    color:var(--ink);
+    cursor:pointer;
+    font-weight:800;
+    font-size:.85rem;
+  }
+  .tab.active{
+    background:var(--accent-soft);
+    border-color:rgba(0,86,164,.4);
+    color:var(--accent);
+  }
 
-    .card{
-      background:var(--card);
-      border:1px solid var(--line);
-      border-radius:var(--radius);
-      padding:14px;
-      box-shadow: 0 10px 30px rgba(15,23,42,.06);
-    }
-    .card h2{
-      margin:0 0 10px; font-size:.95rem;
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
-      color:var(--ink);
-    }
-    .muted{ color:var(--muted); font-size:.85rem; }
-    .small{ font-size:.78rem; }
-    .split{ display:flex; gap:10px; flex-wrap:wrap; }
-    .split > *{ flex:1; min-width:160px; }
+  /* Grid principal: 1 col en móvil, 2 cols en desktop */
+  .grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:14px;
+    align-items:start;
+  }
+  @media (min-width: 980px){
+    .grid{ grid-template-columns: 1.15fr .85fr; }
+  }
 
-    table{
-      width:100%;
-      border-collapse:separate;
-      border-spacing:0;
-      font-size:.88rem;
-      overflow:hidden;
-      border:1px solid var(--line);
-      border-radius:12px;
-    }
-    th, td{
-      padding:10px 10px;
-      border-bottom:1px solid #eef2f7;
-      vertical-align:top;
-    }
-    th{
-      text-align:left;
-      color:var(--muted);
-      font-size:.78rem;
-      background:#f8fafc;
-    }
-    tr:last-child td{ border-bottom:none; }
-    td.right{ text-align:right; white-space:nowrap; }
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:14px;
+    box-shadow: 0 10px 30px rgba(15,23,42,.06);
+  }
+  .card h2{
+    margin:0 0 10px;
+    font-size:.95rem;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    color:var(--ink);
+    flex-wrap:wrap;
+  }
 
-    .tag{
-      display:inline-flex; align-items:center; gap:6px;
-      padding:6px 10px; border-radius:999px;
-      border:1px solid var(--line);
-      background:#fff;
-      font-size:.78rem;
-    }
-    .dot{ width:8px; height:8px; border-radius:999px; background:var(--muted); }
-    .dot.ok{ background:var(--ok); }
-    .dot.warn{ background:var(--warn); }
-    .dot.bad{ background:var(--bad); }
+  .muted{ color:var(--muted); font-size:.85rem; }
+  .small{ font-size:.78rem; }
 
-    textarea{ width:100%; min-height:220px; resize:vertical; }
+  /* ✅ Reemplazo del viejo .split por grids más estables */
+  .form-grid{
+    display:grid;
+    gap:10px;
+    grid-template-columns: 1fr;
+  }
+  @media (min-width: 680px){
+    .form-grid.cols-3{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .form-grid.cols-4{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  }
 
-    .oktext{ color:var(--ok); }
-    .warntext{ color:#b45309; }
-    .danger{ color:var(--bad); }
+  .field .label{
+    color:var(--muted);
+    font-size:.78rem;
+    margin-bottom:6px;
+  }
 
-    .inline-note{ margin-top:8px; }
-  </style>
+  .inline-note{ margin-top:8px; }
+
+  /* Tablas responsivas: scroll horizontal en móvil */
+  .table-wrap{
+    width:100%;
+    overflow-x:auto;
+    border-radius:12px;
+  }
+
+  table{
+    width:100%;
+    min-width:720px; /* permite scroll en móvil sin romper */
+    border-collapse:separate;
+    border-spacing:0;
+    font-size:.88rem;
+    border:1px solid var(--line);
+    border-radius:12px;
+    overflow:hidden;
+    background:#fff;
+  }
+  th, td{
+    padding:10px 10px;
+    border-bottom:1px solid #eef2f7;
+    vertical-align:top;
+  }
+  th{
+    text-align:left;
+    color:var(--muted);
+    font-size:.78rem;
+    background:#f8fafc;
+  }
+  tr:last-child td{ border-bottom:none; }
+  td.right{ text-align:right; white-space:nowrap; }
+
+  .tag{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid var(--line);
+    background:#fff;
+    font-size:.78rem;
+    white-space:nowrap;
+  }
+  .dot{ width:8px; height:8px; border-radius:999px; background:var(--muted); }
+  .dot.ok{ background:var(--ok); }
+  .dot.warn{ background:var(--warn); }
+  .dot.bad{ background:var(--bad); }
+
+  textarea{
+    width:100%;
+    min-height:220px;
+    resize:vertical;
+  }
+
+  .oktext{ color:var(--ok); }
+  .warntext{ color:#b45309; }
+  .danger{ color:var(--bad); }
+
+  /* Header en móvil: que no se apriete */
+  @media (max-width: 520px){
+    header{ gap:8px; }
+    header .row{ width:100%; }
+    header .row > *{ flex:1 1 auto; }
+    .btn{ width:100%; }
+  }
+</style>
+
 </head>
 
-<body>
+<body class="buses-turnos-page">
 <header>
   <h1>🚌 Asignador de Buses (Manual)</h1>
 
@@ -201,49 +286,52 @@
 
       <!-- Form agregar bus -->
       <div class="card" style="padding:12px; margin-bottom:12px;">
-        <div class="split">
-          <div>
-            <div class="muted small">N° Bus</div>
+        <div class="form-grid cols-4">
+          <div class="field">
+            <div class="label">N° Bus</div>
             <input id="busNumero" class="input" placeholder="Ej: 12" />
           </div>
-          <div>
-            <div class="muted small">Conductor</div>
+
+          <div class="field">
+            <div class="label">Conductor</div>
             <input id="busConductor" class="input" placeholder="Ej: Yann" />
           </div>
-          <div>
-            <div class="muted small">Capacidad</div>
+
+          <div class="field">
+            <div class="label">Capacidad</div>
             <input id="busCapacidad" class="input" type="number" min="1" placeholder="Ej: 45" />
           </div>
-          <div style="display:flex; align-items:end;">
+
+          <div class="field" style="display:flex; align-items:end;">
             <button id="btnAgregarBus" class="btn">+ Agregar bus</button>
           </div>
-        </div>
-        <div class="muted small inline-note">
-          Los buses son <b>por turno</b>. Puedes repetir un mismo número en otro turno si aplica.
         </div>
       </div>
 
       <!-- Tabla buses -->
       <div style="margin-bottom:14px;">
         <div class="muted" style="margin:0 0 8px;">Buses disponibles</div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width:90px;">Bus</th>
-              <th>Conductor</th>
-              <th class="right" style="width:110px;">Capacidad</th>
-              <th class="right" style="width:110px;">Acción</th>
-            </tr>
-          </thead>
-          <tbody id="busesBody"></tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:90px;">Bus</th>
+                <th>Conductor</th>
+                <th class="right" style="width:110px;">Capacidad</th>
+                <th class="right" style="width:110px;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="busesBody"></tbody>
+          </table>
+        </div>
       </div>
 
       <!-- Form agregar salida (NUEVO FLUJO) -->
       <div class="card" style="padding:12px; margin-bottom:12px;">
-        <div class="split">
-          <div style="flex:2; min-width:260px;">
-            <div class="muted small">Actividad del día (sugerida por itinerario)</div>
+
+        <div class="form-grid cols-4">
+          <div class="field" style="grid-column: span 2;">
+            <div class="label">Actividad del día (sugerida por itinerario)</div>
             <input id="salidaActividad" class="input" list="actividadList" placeholder="Escribe o elige una sugerencia" />
             <datalist id="actividadList"></datalist>
             <div class="muted small" style="margin-top:6px;">
@@ -251,25 +339,25 @@
             </div>
           </div>
 
-          <div>
-            <div class="muted small">Duración traslado (min)</div>
+          <div class="field">
+            <div class="label">Duración traslado (min)</div>
             <input id="salidaDur" class="input" type="number" min="5" value="40" />
           </div>
 
-          <div>
-            <div class="muted small">Buffer (min)</div>
+          <div class="field">
+            <div class="label">Buffer (min)</div>
             <input id="salidaBuf" class="input" type="number" min="0" value="10" />
           </div>
 
-          <div>
-            <div class="muted small">Hora salida (auto, editable)</div>
+          <div class="field">
+            <div class="label">Hora salida (auto, editable)</div>
             <input id="salidaHora" class="input" type="time" />
           </div>
         </div>
 
-        <div class="split" style="margin-top:10px;">
-          <div>
-            <div class="muted small">Coordinador(a)</div>
+        <div class="form-grid cols-4" style="margin-top:10px;">
+          <div class="field">
+            <div class="label">Coordinador(a)</div>
             <select id="salidaCoord" class="input">
               <option value="">— Seleccionar —</option>
             </select>
@@ -278,23 +366,23 @@
             </div>
           </div>
 
-          <div style="flex:2; min-width:260px;">
-            <div class="muted small">Grupos (auto, editable)</div>
+          <div class="field" style="grid-column: span 2;">
+            <div class="label">Grupos (auto, editable)</div>
             <input id="salidaGrupos" class="input" placeholder="Se completa al elegir coordinador" />
           </div>
 
-          <div style="max-width:220px;">
-            <div class="muted small">Pax total (auto, editable)</div>
+          <div class="field">
+            <div class="label">Pax total (auto, editable)</div>
             <input id="salidaPax" class="input" type="number" min="0" value="0" />
           </div>
 
-          <div style="display:flex; align-items:end;">
+          <div class="field" style="display:flex; align-items:end;">
             <button id="btnAgregarSalida" class="btn">+ Agregar salida</button>
           </div>
         </div>
 
         <div class="muted small inline-note">
-          Flujo: <b>Actividad → (dur/buffer) → Coordinador → hora salida auto</b>.  
+          Flujo: <b>Actividad → (dur/buffer) → Coordinador → hora salida auto</b>.
           Nada se agrega solo: solo aparece en la tabla cuando haces <b>+ Agregar salida</b>.
         </div>
       </div>
@@ -302,20 +390,22 @@
       <!-- Tabla salidas -->
       <div>
         <div class="muted" style="margin:0 0 8px;">Salidas del turno</div>
-        <table>
-          <thead>
-            <tr>
-              <th style="width:90px;">Hora</th>
-              <th>Destino</th>
-              <th style="width:120px;">Bloque</th>
-              <th class="right" style="width:90px;">Pax</th>
-              <th style="width:210px;">Bus</th>
-              <th style="width:110px;">Estado</th>
-              <th class="right" style="width:110px;">Acción</th>
-            </tr>
-          </thead>
-          <tbody id="salidasBody"></tbody>
-        </table>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:90px;">Hora</th>
+                <th>Destino</th>
+                <th style="width:120px;">Bloque</th>
+                <th class="right" style="width:90px;">Pax</th>
+                <th style="width:210px;">Bus</th>
+                <th style="width:110px;">Estado</th>
+                <th class="right" style="width:110px;">Acción</th>
+              </tr>
+            </thead>
+            <tbody id="salidasBody"></tbody>
+          </table>
+        </div>
       </div>
     </section>
 
