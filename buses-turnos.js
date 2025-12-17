@@ -1,13 +1,4 @@
 // buses-turnos.js
-// Asignador MANUAL de salidas + asignación de buses por turno
-// NUEVO FLUJO:
-// 1) eliges Actividad (con hora inicio sugerida)
-// 2) indicas duración traslado + buffer
-// 3) eliges Coordinador => auto arma grupos + pax (editable)
-// 4) hora salida = horaInicio - duracion (editable)
-// 5) + Agregar salida => recién aparece en tabla
-// 6) Calcular/Asignar buses => auto asigna (capacidad + no solape)
-
 import { app, db } from './firebase-init.js';
 import {
   collection, getDocs,
@@ -30,18 +21,21 @@ const state = {
   // grupos cargados desde Firestore (solo para sugerencias)
   grupos: [],
 
-  // catálogo del día (sugerencias) {label, horaInicio, actividad, lugar, gid, coordKey, grupoLabel, pax}
+  // cache: gid -> grupo
+  gruposById: new Map(),
+
+  // catálogo del día (sugerencias) {key, horaInicio, actividad, lugar, sample}
   actividadesDia: [],
 
-  // selección actual del formulario
+  // selección actual del formulario (se mantiene)
   form: {
-    actividadKey: '',   // clave interna de actividad sugerida
-    horaInicio: '',     // HH:MM
-    actividadLabel: '', // texto visible
+    actividadKey: '',
+    horaInicio: '',
+    actividadLabel: '',
     durMin: 40,
     bufMin: 10,
-    horaSalida: '',     // HH:MM auto
-    coordKey: '',       // clave coordinador
+    horaSalida: '',
+    coordKey: '',
     gruposTexto: '',
     pax: 0
   },
@@ -184,20 +178,52 @@ function turnoPorHora(hhmm){
 
 /* =========================
    Modelo bloque + solape
+   - ahora puede incluir ida+vuelta opcional
 ========================= */
 function calcBloqueSalida(s){
   const start = timeToMin(s.hora);
-  const dur = Number(s.duracionMin || 0);
-  const buf = Number(s.bufferMin || 0);
-  const end = start + dur + buf;
-  return { start, end, dur, buf };
+
+  const durIda = Number(s.duracionMin || 0);
+  const bufIda = Number(s.bufferMin || 0);
+
+  const idaVuelta = !!s.idaVuelta; // nuevo (opcional)
+  const durVuelta = Number(s.duracionVueltaMin || 0);
+  const bufVuelta = Number(s.bufferVueltaMin || 0);
+
+  const extra = idaVuelta ? (Math.max(0, durVuelta) + Math.max(0, bufVuelta)) : 0;
+  const end = start + durIda + bufIda + extra;
+
+  return { start, end, durIda, bufIda, idaVuelta, durVuelta, bufVuelta };
 }
 function solapa(a, b){
   return a.start < b.end && b.start < a.end;
 }
 
 /* =========================
-   Validación salida (capacidad + solape)
+   NUEVO: helpers multi-bus
+========================= */
+function getAssignedBusIds(s){
+  // compatibilidad: si existe busIds (array) se usa; si no, cae a busId único
+  if(Array.isArray(s.busIds) && s.busIds.length) return s.busIds.filter(Boolean);
+  if(s.busId) return [s.busId];
+  return [];
+}
+
+function setAssignedBusIds(s, ids){
+  const clean = (Array.isArray(ids) ? ids : []).filter(Boolean);
+  s.busIds = clean.length ? clean : null;
+
+  // compatibilidad UI vieja: mantenemos busId como “principal” si hay 1 solo
+  if(clean.length === 1){
+    s.busId = clean[0];
+  }else{
+    s.busId = null;
+  }
+}
+
+/* =========================
+   Validación salida (capacidad + solape + llega tarde)
+   - soporta busIds (multi bus) + allowSplit
 ========================= */
 function evaluarSalida(turno, salidaId){
   const salidas = state.data.salidas[turno] || [];
@@ -205,32 +231,67 @@ function evaluarSalida(turno, salidaId){
   const s = salidas.find(x => x.id === salidaId);
   if(!s) return { ok:true, level:'ok', msg:'OK' };
 
-  if(!s.busId){
-    return { ok:false, level:'warn', msg:'Sin bus' };
-  }
+  const busIds = getAssignedBusIds(s);
 
-  const bus = buses.find(b => b.id === s.busId);
-  if(!bus){
-    return { ok:false, level:'bad', msg:'Bus no existe' };
-  }
-
-  const pax = Number(s.pax || 0);
-  if (pax > Number(bus.capacidad || 0)){
-    return { ok:false, level:'bad', msg:`Sobrecupo (${pax}/${bus.capacidad})` };
-  }
-
+  // 0) hora válida
   const bloqueS = calcBloqueSalida(s);
   if(!Number.isFinite(bloqueS.start) || !Number.isFinite(bloqueS.end)){
     return { ok:false, level:'warn', msg:'Hora inválida' };
   }
 
+  // 1) si no hay bus asignado
+  if(!busIds.length){
+    return { ok:false, level:'warn', msg:'Sin bus' };
+  }
+
+  // 2) capacidad (single o split)
+  const pax = Number(s.pax || 0);
+
+  const busesAsignados = busIds
+    .map(id => buses.find(b => b.id === id))
+    .filter(Boolean);
+
+  if(busesAsignados.length !== busIds.length){
+    return { ok:false, level:'bad', msg:'Bus no existe' };
+  }
+
+  const capTotal = busesAsignados.reduce((acc,b)=> acc + Number(b.capacidad||0), 0);
+
+  if(pax > capTotal){
+    // si allowSplit no está activo, además lo marcamos como sobrecupo “claro”
+    const allowSplit = !!s.allowSplit;
+    const txt = allowSplit
+      ? `Sobrecupo (${pax}/${capTotal})`
+      : `Sobrecupo (${pax}/${Number(busesAsignados[0]?.capacidad||0)})`;
+    return { ok:false, level:'bad', msg: txt };
+  }
+
+  // 3) solapamiento por bus (considera ida+vuelta si está marcado)
+  //    Compara con otras salidas del mismo turno, por cada bus asignado.
   for(const other of salidas){
     if(other.id === s.id) continue;
-    if(other.busId !== s.busId) continue;
+
+    const otherBusIds = getAssignedBusIds(other);
+    if(!otherBusIds.length) continue;
+
+    const comparteBus = otherBusIds.some(id => busIds.includes(id));
+    if(!comparteBus) continue;
+
     const bloqueO = calcBloqueSalida(other);
     if(!Number.isFinite(bloqueO.start) || !Number.isFinite(bloqueO.end)) continue;
+
     if(solapa(bloqueS, bloqueO)){
       return { ok:false, level:'bad', msg:'Choque horario' };
+    }
+  }
+
+  // 4) NUEVO: llega tarde a horaInicioActividad (si la guardamos)
+  //    regla: llegada = horaSalida + duracionMin (ida). Debe ser <= horaInicio.
+  if(s.horaInicioActividad){
+    const ini = timeToMin(s.horaInicioActividad);
+    const llegada = bloqueS.start + Number(s.duracionMin||0);
+    if(Number.isFinite(ini) && Number.isFinite(llegada) && llegada > ini){
+      return { ok:false, level:'warn', msg:'Llega tarde' };
     }
   }
 
@@ -286,14 +347,12 @@ function buildActividadesDia(){
   const seen = new Set();
 
   for(const g of state.grupos){
-    const grupoLabel = `(${g.numeroNegocio}) ${g.nombreGrupo}`;
-    const coordKey = K(g.coordinador || 'SIN COORD');
     const actsDia = extraerItinerarioDia(g.itinerarioRaw || {}, state.fechaISO);
 
     for(const a of actsDia){
       if(!a.hora) continue;
 
-      // clave para “deduplicar” sugerencias (hora + actividad)
+      // dedupe: hora + actividad
       const key = `${a.hora}__${K(a.actividad)}`;
       if(seen.has(key)) continue;
       seen.add(key);
@@ -303,11 +362,10 @@ function buildActividadesDia(){
         horaInicio: a.hora,
         actividad: a.actividad || '(sin nombre)',
         lugar: a.lugar || '',
-        // solo para referencia (no fija grupo)
         sample: {
           gid: g.id,
-          coordKey,
-          grupoLabel,
+          coordKey: K(g.coordinador || 'SIN COORD'),
+          grupoLabel: `(${g.numeroNegocio}) ${g.nombreGrupo}`,
           pax: Number(g.pax||0)
         }
       });
@@ -317,15 +375,12 @@ function buildActividadesDia(){
   acts.sort((x,y)=> timeToMin(x.horaInicio) - timeToMin(y.horaInicio));
   state.actividadesDia = acts;
 
-  // datalist
   const dl = document.getElementById('actividadList');
   if(dl){
     dl.innerHTML = '';
     for(const a of acts){
       const opt = document.createElement('option');
-      // valor visible (lo que escribes/seleccionas)
       opt.value = `${a.horaInicio} · ${a.actividad}${a.lugar ? ` · ${a.lugar}` : ''}`;
-      // guardamos key para poder “resolver” luego
       opt.dataset.key = a.key;
       dl.appendChild(opt);
     }
@@ -355,7 +410,31 @@ function buildCoordinadoresDia(){
 }
 
 /* =========================
-   Form helpers (auto hora salida + coord => pax/grupos)
+   NUEVO: (opcional) construir selector de grupos multi-select
+   - Si existe en el HTML un <select multiple id="salidaGruposSel">, lo llenamos.
+========================= */
+function buildGruposMultiSelect(){
+  const sel = document.getElementById('salidaGruposSel'); // (opcional)
+  if(!sel) return;
+
+  sel.innerHTML = '';
+  // orden por nombre
+  const sorted = state.grupos.slice().sort((a,b)=>{
+    const A = `${a.numeroNegocio} ${a.nombreGrupo}`.toLowerCase();
+    const B = `${b.numeroNegocio} ${b.nombreGrupo}`.toLowerCase();
+    return A.localeCompare(B);
+  });
+
+  for(const g of sorted){
+    const opt = document.createElement('option');
+    opt.value = g.id;
+    opt.textContent = `(${g.numeroNegocio}) ${g.nombreGrupo} · ${g.coordinador || 'SIN COORD'} · ${Number(g.pax||0)} pax`;
+    sel.appendChild(opt);
+  }
+}
+
+/* =========================
+   Form helpers (auto hora salida + coord/grupos => pax/grupos)
 ========================= */
 function setHoraInicioUI(hhmm){
   state.form.horaInicio = hhmm || '';
@@ -378,7 +457,6 @@ function recalcHoraSalida(){
   const inp = document.getElementById('salidaHora');
   if(inp) inp.value = hhmm;
 
-  // si al recalcular cambia de turno, nos movemos al tab correspondiente
   const turno = turnoPorHora(hhmm);
   if(turno){
     setTurnoActivo(turno);
@@ -392,6 +470,29 @@ function applyCoordinadorToForm(coordKey){
   const gruposTexto = grupos
     .map(g => `(${g.numeroNegocio}) ${g.nombreGrupo}`)
     .join(', ');
+  const pax = grupos.reduce((acc,g)=> acc + Number(g.pax||0), 0);
+
+  state.form.gruposTexto = gruposTexto;
+  state.form.pax = pax;
+
+  const inG = document.getElementById('salidaGrupos');
+  const inP = document.getElementById('salidaPax');
+  if(inG) inG.value = gruposTexto;
+  if(inP) inP.value = String(pax);
+
+  // NUEVO: si existe multi-select, también lo sincronizamos (selecciona los grupos del coord)
+  const sel = document.getElementById('salidaGruposSel');
+  if(sel && sel.multiple){
+    const setIds = new Set(grupos.map(x=>x.id));
+    Array.from(sel.options).forEach(o => { o.selected = setIds.has(o.value); });
+  }
+}
+
+function applySelectedGroupsToForm(groupIds){
+  const ids = (Array.isArray(groupIds) ? groupIds : []).filter(Boolean);
+  const grupos = ids.map(id => state.gruposById.get(id)).filter(Boolean);
+
+  const gruposTexto = grupos.map(g => `(${g.numeroNegocio}) ${g.nombreGrupo}`).join(', ');
   const pax = grupos.reduce((acc,g)=> acc + Number(g.pax||0), 0);
 
   state.form.gruposTexto = gruposTexto;
@@ -428,9 +529,13 @@ function agregarBus(turno, numero, conductor, capacidad){
 
 function eliminarBus(turno, busId){
   state.data.buses[turno] = (state.data.buses[turno] || []).filter(b => b.id !== busId);
+
+  // desasignar de salidas (soporta busId y busIds)
   (state.data.salidas[turno] || []).forEach(s => {
-    if(s.busId === busId) s.busId = null;
+    const ids = getAssignedBusIds(s).filter(id => id !== busId);
+    setAssignedBusIds(s, ids);
   });
+
   renderTodo();
 }
 
@@ -443,9 +548,29 @@ function agregarSalidaManual(){
   const dur = Number(document.getElementById('salidaDur')?.value || 0);
   const buf = Number(document.getElementById('salidaBuf')?.value || 0);
   const horaSalida = (document.getElementById('salidaHora')?.value || '').trim();
+
   const coordKey = document.getElementById('salidaCoord')?.value || '';
+
   const gruposTxt = (document.getElementById('salidaGrupos')?.value || '').trim();
   const pax = Number(document.getElementById('salidaPax')?.value || 0);
+
+  // NUEVO (opcionales si existen en HTML)
+  const chkSplit = document.getElementById('chkSplit');
+  const allowSplit = chkSplit ? !!chkSplit.checked : false;
+
+  const chkIdaVuelta = document.getElementById('chkIdaVuelta');
+  const idaVuelta = chkIdaVuelta ? !!chkIdaVuelta.checked : false;
+
+  const durVueltaEl = document.getElementById('salidaDurVuelta');
+  const bufVueltaEl = document.getElementById('salidaBufVuelta');
+  const durVuelta = durVueltaEl ? Number(durVueltaEl.value || 0) : 0;
+  const bufVuelta = bufVueltaEl ? Number(bufVueltaEl.value || 0) : 0;
+
+  // NUEVO (opcional): grupos multi-select
+  const selGr = document.getElementById('salidaGruposSel');
+  const groupIds = (selGr && selGr.multiple)
+    ? Array.from(selGr.selectedOptions).map(o=>o.value).filter(Boolean)
+    : [];
 
   if(!actTxt){
     alert('Elige o escribe una Actividad.');
@@ -463,12 +588,29 @@ function agregarSalidaManual(){
     alert('Hora salida inválida (HH:MM).');
     return;
   }
-  if(!coordKey){
-    alert('Selecciona un Coordinador(a).');
+
+  // Si hay multi-select, ya tenemos grupos; si no, exigimos coordinador como antes
+  if(!(groupIds.length) && !coordKey){
+    alert('Selecciona un Coordinador(a) (o selecciona grupos si tu UI los permite).');
     return;
   }
 
+  // Si marcó ida+vuelta, validamos campos (solo si existen)
+  if(idaVuelta){
+    if(durVueltaEl && (!Number.isFinite(durVuelta) || durVuelta < 0)){
+      alert('Duración vuelta inválida.');
+      return;
+    }
+    if(bufVueltaEl && (!Number.isFinite(bufVuelta) || bufVuelta < 0)){
+      alert('Buffer vuelta inválido.');
+      return;
+    }
+  }
+
   const turno = turnoPorHora(horaSalida) || state.turnoActivo;
+
+  // guardamos horaInicioActividad (si la tenemos en state.form)
+  const horaInicioActividad = state.form.horaInicio || '';
 
   state.data.salidas[turno].push({
     id: uid(),
@@ -476,27 +618,38 @@ function agregarSalidaManual(){
     duracionMin: dur,
     bufferMin: buf,
 
+    // NUEVO: para validación “llega tarde”
+    horaInicioActividad,
+
+    // NUEVO: split y ida/vuelta
+    allowSplit,
+    idaVuelta,
+    duracionVueltaMin: idaVuelta ? (Number.isFinite(durVuelta) ? durVuelta : 0) : 0,
+    bufferVueltaMin: idaVuelta ? (Number.isFinite(bufVuelta) ? bufVuelta : 0) : 0,
+
     // “Destino” en tabla = la actividad elegida
     destino: actTxt,
 
-    // texto de grupos auto (editable)
+    // texto de grupos (editable)
     gruposTexto: gruposTxt,
 
-    // pax auto (editable)
+    // pax (editable)
     pax: Number.isFinite(pax) ? pax : 0,
 
-    // guardamos coordKey por referencia
+    // guardamos coordKey por referencia (compatibilidad)
     coordKey,
 
-    // asignación
-    busId: null
+    // NUEVO: guardamos grupoIds si venían desde multi-select (no rompe nada si no existe)
+    groupIds: groupIds.length ? groupIds : null,
+
+    // asignación (compatibilidad)
+    busId: null,
+    busIds: null
   });
 
   state.data.salidas[turno].sort((a,b)=> timeToMin(a.hora) - timeToMin(b.hora));
 
-  // mover a ese turno para verlo inmediatamente
   setTurnoActivo(turno);
-
   renderTodo();
 }
 
@@ -508,13 +661,17 @@ function eliminarSalida(turno, salidaId){
 function setBusEnSalida(turno, salidaId, busIdOrNull){
   const s = (state.data.salidas[turno] || []).find(x => x.id === salidaId);
   if(!s) return;
-  s.busId = busIdOrNull || null;
+
+  // Si el usuario elige manualmente un bus (UI single-select), dejamos asignación simple
+  const id = busIdOrNull || null;
+  setAssignedBusIds(s, id ? [id] : []);
   renderTodo();
 }
 
 /* =========================
    Auto asignación buses (capacidad + no solape)
-   - sólo asigna si busId está vacío
+   - soporte split: si allowSplit y pax > capacidad de 1 bus, intenta 2+ buses.
+   - sólo asigna si NO hay buses ya asignados (busId/busIds vacío)
 ========================= */
 function autoAsignarBusesTurno(turno){
   const buses = (state.data.buses[turno] || []).slice()
@@ -523,56 +680,80 @@ function autoAsignarBusesTurno(turno){
   const salidas = (state.data.salidas[turno] || []).slice()
     .sort((a,b)=> timeToMin(a.hora) - timeToMin(b.hora));
 
-  // tracks por bus: lista de bloques asignados
+  // agenda por bus: lista de bloques asignados
   const agenda = new Map(); // busId -> [{start,end}]
   for(const b of buses) agenda.set(b.id, []);
 
-  function puedeAsignar(bus, salida){
-    const pax = Number(salida.pax||0);
-    if(pax > Number(bus.capacidad||0)) return false;
-
+  function bloqueOk(busId, salida){
     const bloque = calcBloqueSalida(salida);
     if(!Number.isFinite(bloque.start) || !Number.isFinite(bloque.end)) return false;
-
-    const slots = agenda.get(bus.id) || [];
+    const slots = agenda.get(busId) || [];
     for(const s of slots){
       if(solapa(bloque, s)) return false;
     }
     return true;
   }
 
-  // asignación greedy
+  function reservar(busId, salida){
+    const bloque = calcBloqueSalida(salida);
+    if(!Number.isFinite(bloque.start) || !Number.isFinite(bloque.end)) return;
+    agenda.get(busId).push({ start: bloque.start, end: bloque.end });
+  }
+
+  // primero “bloqueamos” los que ya venían asignados manualmente
   for(const salida of salidas){
-    if(salida.busId) {
-      // si ya tenía bus asignado, lo “reservamos” en agenda
-      const bus = buses.find(b=> b.id === salida.busId);
-      if(bus){
-        const bloque = calcBloqueSalida(salida);
-        if(Number.isFinite(bloque.start) && Number.isFinite(bloque.end)){
-          agenda.get(bus.id).push({start: bloque.start, end: bloque.end});
-        }
-      }
-      continue;
-    }
-
-    // busca el primer bus que pueda (por capacidad + no solape)
-    let chosen = null;
-    for(const bus of buses){
-      if(puedeAsignar(bus, salida)){
-        chosen = bus;
-        break;
-      }
-    }
-
-    if(chosen){
-      salida.busId = chosen.id;
-      const bloque = calcBloqueSalida(salida);
-      agenda.get(chosen.id).push({start: bloque.start, end: bloque.end});
+    const ids = getAssignedBusIds(salida);
+    if(!ids.length) continue;
+    for(const id of ids){
+      if(agenda.has(id)) reservar(id, salida);
     }
   }
 
-  // escribir de vuelta en state (manteniendo objetos)
-  // (resolvemos por id)
+  // asignación greedy
+  for(const salida of salidas){
+    const already = getAssignedBusIds(salida);
+    if(already.length) continue; // no tocar asignaciones existentes
+
+    const pax = Number(salida.pax||0);
+    const allowSplit = !!salida.allowSplit;
+
+    // 1) intentar 1 bus
+    let chosenSingle = null;
+    for(const bus of buses){
+      if(pax <= Number(bus.capacidad||0) && bloqueOk(bus.id, salida)){
+        chosenSingle = bus;
+        break;
+      }
+    }
+    if(chosenSingle){
+      setAssignedBusIds(salida, [chosenSingle.id]);
+      reservar(chosenSingle.id, salida);
+      continue;
+    }
+
+    // 2) split (solo si está permitido)
+    if(!allowSplit) continue;
+
+    // buscamos combinación mínima de buses libres (por capacidad + no solape)
+    // greedy: acumula capacidades con buses disponibles que no solapen
+    const picked = [];
+    let capSum = 0;
+
+    for(const bus of buses){
+      if(!bloqueOk(bus.id, salida)) continue;
+      picked.push(bus);
+      capSum += Number(bus.capacidad||0);
+      if(capSum >= pax) break;
+    }
+
+    if(picked.length && capSum >= pax){
+      const ids = picked.map(b=>b.id);
+      setAssignedBusIds(salida, ids);
+      for(const id of ids) reservar(id, salida);
+    }
+  }
+
+  // escribir de vuelta en state por id (mantiene referencias)
   const map = new Map(salidas.map(s=>[s.id, s]));
   state.data.salidas[turno] = (state.data.salidas[turno] || []).map(s => map.get(s.id) || s);
 
@@ -581,7 +762,7 @@ function autoAsignarBusesTurno(turno){
 
 /* =========================
    Firestore: busesTurnos/{fechaISO}
-   - ahora guardamos buses + salidas (manuales)
+   - guardamos buses + salidas (manuales)
 ========================= */
 function normalizarTurnosObj(obj){
   const out = { manana: [], tarde: [], noche: [] };
@@ -603,12 +784,14 @@ async function cargarDia(fechaISO){
     salidas: { manana: [], tarde: [], noche: [] }
   };
 
-  // 2) cargar grupos del día (para sugerencias)
+  // 2) cargar grupos del día
   state.grupos = await cargarGruposDelDia(fechaISO, state.destino);
+  state.gruposById = new Map(state.grupos.map(g => [g.id, g]));
 
   // 3) construir sugerencias
   buildActividadesDia();
   buildCoordinadoresDia();
+  buildGruposMultiSelect(); // opcional si existe
 
   // 4) cargar doc guardado (si existe)
   try{
@@ -618,14 +801,15 @@ async function cargarDia(fechaISO){
       const data = snap.data() || {};
       if(data.buses) state.data.buses = normalizarTurnosObj(data.buses);
       if(data.salidas) state.data.salidas = normalizarTurnosObj(data.salidas);
+
+      // compatibilidad: si venían salidas antiguas con solo busId, todo ok.
+      // si venían con busIds, también ok.
     }
   }catch(err){
     console.error('[BusesTurnos] Error cargando día', err);
   }
 
-  // reset form UI (sin agregar nada)
   resetFormUI();
-
   renderTodo();
 }
 
@@ -743,17 +927,32 @@ function renderSalidasTable(turno){
   }
 
   for(const s of salidas){
-    const { start, end } = calcBloqueSalida(s);
+    const { start, end, idaVuelta } = calcBloqueSalida(s);
     const bloqueTxt = `${minToTime(start)}–${minToTime(end)}`;
 
     const ev = evaluarSalida(turno, s.id);
     const dotClass = ev.level === 'ok' ? 'ok' : (ev.level === 'warn' ? 'warn' : 'bad');
     const msgClass = ev.level === 'ok' ? 'oktext' : (ev.level === 'warn' ? 'warntext' : 'danger');
 
+    // UI de selección de bus sigue siendo single (compatible)
     const options = [
       `<option value="">— Sin bus —</option>`,
       ...buses.map(b => `<option value="${b.id}" ${s.busId===b.id?'selected':''}>Bus ${escapeHtml(b.numero)} · ${escapeHtml(b.conductor)} (${Number(b.capacidad||0)})</option>`)
     ].join('');
+
+    // resumen de buses asignados (si split)
+    const ids = getAssignedBusIds(s);
+    const busTxt = ids.length
+      ? ids.map(id=>{
+          const b = buses.find(x=>x.id===id);
+          return b ? `Bus ${b.numero}` : 'Bus ?';
+        }).join(' + ')
+      : '—';
+
+    const extraFlags = [
+      s.allowSplit ? 'SPLIT' : '',
+      idaVuelta ? 'I/V' : ''
+    ].filter(Boolean).join(' · ');
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -761,13 +960,21 @@ function renderSalidasTable(turno){
       <td>
         <div><b>${escapeHtml(s.destino || '(sin destino)')}</b></div>
         <div class="muted small">${escapeHtml(s.gruposTexto || '')}</div>
+        ${extraFlags ? `<div class="muted small">⚙️ ${escapeHtml(extraFlags)} · ${escapeHtml(busTxt)}</div>` : (ids.length>1 ? `<div class="muted small">🚌 ${escapeHtml(busTxt)}</div>` : '')}
       </td>
-      <td class="small">${bloqueTxt}<div class="muted small">${Number(s.duracionMin||0)}m + ${Number(s.bufferMin||0)}m</div></td>
+      <td class="small">
+        ${bloqueTxt}
+        <div class="muted small">
+          ${Number(s.duracionMin||0)}m + ${Number(s.bufferMin||0)}m
+          ${s.idaVuelta ? ` + (vuelta ${Number(s.duracionVueltaMin||0)}m + ${Number(s.bufferVueltaMin||0)}m)` : ''}
+        </div>
+      </td>
       <td class="right"><b>${Number(s.pax||0)}</b></td>
       <td>
         <select class="select-bus" data-salida="${s.id}">
           ${options}
         </select>
+        ${ids.length > 1 ? `<div class="muted small" style="margin-top:6px;">Asignado: ${escapeHtml(busTxt)}</div>` : ''}
       </td>
       <td>
         <span class="tag"><span class="dot ${dotClass}"></span><span class="${msgClass}">${escapeHtml(ev.msg)}</span></span>
@@ -822,9 +1029,17 @@ function renderWhats(){
     for(const s of salidas){
       const ev = evaluarSalida(turno, s.id);
       const icon = ev.level === 'ok' ? '✅' : (ev.level === 'warn' ? '⚠️' : '⛔');
+
       const buses = state.data.buses[turno] || [];
-      const bus = s.busId ? buses.find(b => b.id === s.busId) : null;
-      const busTxt = bus ? `Bus ${bus.numero} (${bus.conductor})` : 'SIN BUS';
+      const ids = getAssignedBusIds(s);
+
+      let busTxt = 'SIN BUS';
+      if(ids.length){
+        busTxt = ids.map(id=>{
+          const b = buses.find(x=>x.id===id);
+          return b ? `Bus ${b.numero} (${b.conductor})` : 'Bus ?';
+        }).join(' + ');
+      }
 
       lineas.push('');
       lineas.push(`${icon} SALIDA ${s.hora} · ${s.destino || '(sin destino)'}`);
@@ -855,7 +1070,6 @@ function setTurnoActivo(turno){
    Form UI bindings
 ========================= */
 function resetFormUI(){
-  // No borra sugerencias; solo limpia campos
   const inAct = document.getElementById('salidaActividad');
   const inDur = document.getElementById('salidaDur');
   const inBuf = document.getElementById('salidaBuf');
@@ -872,6 +1086,23 @@ function resetFormUI(){
   if(inGr) inGr.value = '';
   if(inP) inP.value = '0';
 
+  // opcionales
+  const selGr = document.getElementById('salidaGruposSel');
+  if(selGr && selGr.multiple){
+    Array.from(selGr.options).forEach(o => { o.selected = false; });
+  }
+
+  const chkSplit = document.getElementById('chkSplit');
+  if(chkSplit) chkSplit.checked = false;
+
+  const chkIdaVuelta = document.getElementById('chkIdaVuelta');
+  if(chkIdaVuelta) chkIdaVuelta.checked = false;
+
+  const durVueltaEl = document.getElementById('salidaDurVuelta');
+  const bufVueltaEl = document.getElementById('salidaBufVuelta');
+  if(durVueltaEl) durVueltaEl.value = 0;
+  if(bufVueltaEl) bufVueltaEl.value = 0;
+
   state.form = {
     actividadKey: '',
     horaInicio: '',
@@ -887,7 +1118,6 @@ function resetFormUI(){
 }
 
 function resolveActividadFromInput(){
-  // Intenta matchear el string del input con alguna sugerencia (por prefijo HH:MM · ...)
   const txt = (document.getElementById('salidaActividad')?.value || '').trim();
   if(!txt){
     state.form.actividadKey = '';
@@ -896,12 +1126,12 @@ function resolveActividadFromInput(){
     return;
   }
 
-  // si coincide con una opción generada: "HH:MM · actividad ..."
   const m = txt.match(/^([01]\d|2[0-3]):[0-5]\d/);
   const hora = m ? m[0] : '';
 
-  // buscamos por hora+actividad “normalizada” (lo más estable)
-  const guessKey = hora ? `${hora}__${K(txt.replace(/^([01]\d|2[0-3]):[0-5]\d\s*·\s*/,'').split('·')[0])}` : '';
+  const guessKey = hora
+    ? `${hora}__${K(txt.replace(/^([01]\d|2[0-3]):[0-5]\d\s*·\s*/,'').split('·')[0])}`
+    : '';
 
   const found = state.actividadesDia.find(a => a.key === guessKey)
     || state.actividadesDia.find(a => txt.startsWith(`${a.horaInicio} · ${a.actividad}`))
@@ -913,7 +1143,6 @@ function resolveActividadFromInput(){
     state.form.actividadLabel = `${found.horaInicio} · ${found.actividad}${found.lugar ? ` · ${found.lugar}` : ''}`;
     setHoraInicioUI(found.horaInicio);
   }else{
-    // si no matchea, al menos intentamos usar hora del texto si existe
     state.form.actividadKey = '';
     state.form.actividadLabel = txt;
     if(hora){
@@ -925,7 +1154,6 @@ function resolveActividadFromInput(){
     }
   }
 
-  // recalcula hora salida si ya tenemos horaInicio
   state.form.durMin = Number(document.getElementById('salidaDur')?.value || 0);
   recalcHoraSalida();
 }
@@ -936,6 +1164,8 @@ function initFormListeners(){
   const inBuf = document.getElementById('salidaBuf');
   const inHora = document.getElementById('salidaHora');
   const selCoord = document.getElementById('salidaCoord');
+
+  const selGr = document.getElementById('salidaGruposSel'); // opcional multi-select
 
   if(inAct){
     inAct.addEventListener('change', resolveActividadFromInput);
@@ -952,13 +1182,12 @@ function initFormListeners(){
   if(inBuf){
     inBuf.addEventListener('change', ()=>{
       state.form.bufMin = Number(inBuf.value || 0);
-      // buffer afecta el bloque, no la hora salida (pero queda guardado)
+      // buffer afecta el bloque, no la hora salida
     });
   }
 
   if(inHora){
     inHora.addEventListener('change', ()=>{
-      // el usuario puede editar hora salida manualmente
       state.form.horaSalida = inHora.value || '';
       const turno = turnoPorHora(state.form.horaSalida);
       if(turno) setTurnoActivo(turno);
@@ -970,6 +1199,14 @@ function initFormListeners(){
       const key = selCoord.value || '';
       if(!key) return;
       applyCoordinadorToForm(key);
+    });
+  }
+
+  // NUEVO: si existe multi-select de grupos, recalcula pax/grupos al cambiar
+  if(selGr && selGr.multiple){
+    selGr.addEventListener('change', ()=>{
+      const ids = Array.from(selGr.selectedOptions).map(o=>o.value).filter(Boolean);
+      applySelectedGroupsToForm(ids);
     });
   }
 }
@@ -1024,7 +1261,8 @@ function init(){
   if(btnAgregarSalida){
     btnAgregarSalida.addEventListener('click', ()=>{
       agregarSalidaManual();
-      // limpiar solo lo necesario
+
+      // limpiar liviano (sin romper el resto)
       const inAct = document.getElementById('salidaActividad'); if(inAct) inAct.value='';
       const selCoord = document.getElementById('salidaCoord'); if(selCoord) selCoord.value='';
       const inGr = document.getElementById('salidaGrupos'); if(inGr) inGr.value='';
@@ -1034,14 +1272,29 @@ function init(){
       state.form.horaInicio = '';
       state.form.actividadKey = '';
       state.form.actividadLabel = '';
+
+      // opcionales
+      const selGr = document.getElementById('salidaGruposSel');
+      if(selGr && selGr.multiple){
+        Array.from(selGr.options).forEach(o => { o.selected = false; });
+      }
+      const chkSplit = document.getElementById('chkSplit');
+      if(chkSplit) chkSplit.checked = false;
+      const chkIdaVuelta = document.getElementById('chkIdaVuelta');
+      if(chkIdaVuelta) chkIdaVuelta.checked = false;
     });
   }
 
-  // Calcular / asignar buses (turno activo)
+  // Calcular / asignar buses
   const btnCalcular = document.getElementById('btnCalcular');
   if(btnCalcular){
     btnCalcular.addEventListener('click', ()=>{
-      autoAsignarBusesTurno(state.turnoActivo);
+      // Mejor para tu “recalcular en la medida que agrego”:
+      // asignamos en los 3 turnos (no rompe lo anterior y evita sorpresas).
+      for(const t of ['manana','tarde','noche']){
+        autoAsignarBusesTurno(t);
+      }
+      // renderTodo() ya lo hace autoAsignar
     });
   }
 
