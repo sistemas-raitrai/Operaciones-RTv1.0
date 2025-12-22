@@ -176,19 +176,23 @@ async function loadCoordinadores(){
         .map(r=>({inicio:asISO(r.inicio)||null, fin:asISO(r.fin)||null}))
         .filter(r=>r.inicio&&r.fin&&(new Date(r.inicio)<=new Date(r.fin)));
 
-      COORDS.push({
-        id:d.id,
-        nombre:(x.nombre||'').trim(),
-        rut:(x.rut||'').trim(),
-        // ← NUEVO
-        fechaNacimiento: asISO(x.fechaNacimiento) || null,
-        telefono:(x.telefono||'').trim(),
-        correo:(x.correo||'').trim().toLowerCase(),
-        destinos: cleanDestinos(x.destinos || x.destinosAptos || []),
-        disponibilidad,
-        activo:(x.activo!==false),
-        notas:(x.notas||'').trim()
-      });
+         COORDS.push({
+           id:d.id,
+           nombre:(x.nombre||'').trim(),
+           rut:(x.rut||'').trim(),
+           fechaNacimiento: asISO(x.fechaNacimiento) || null,
+         
+           // ← NUEVO: DATOS PARA TRANSFERIR
+           datosTransferir: (x.datosTransferir || x.datos_para_transferir || x.transferData || '').toString().trim(),
+         
+           telefono:(x.telefono||'').trim(),
+           correo:(x.correo||'').trim().toLowerCase(),
+           destinos: cleanDestinos(x.destinos || x.destinosAptos || []),
+           disponibilidad,
+           activo:(x.activo!==false),
+           notas:(x.notas||'').trim()
+         });
+
     });
     L('Coordinadores cargados:', COORDS.length);
   }catch(err){
@@ -643,14 +647,18 @@ btnCloseModal?.addEventListener('click', closeModal);
 btnCerrar?.addEventListener('click', closeModal);
 btnGuardarCoords?.addEventListener('click', ()=>withBusy(btnGuardarCoords, 'Guardando…', saveCoordsModal, 'Guardar coordinadores', '✅ Guardado'));
 btnAddCoord?.addEventListener('click', ()=>{
-  COORDS.unshift({
-    nombre:'', rut:'',
-    // ← NUEVO
-    fechaNacimiento: null,
-    telefono:'', correo:'',
-    destinos:[], disponibilidad:[],
-    _isNew:true
-  });
+   COORDS.unshift({
+     nombre:'', rut:'',
+     fechaNacimiento: null,
+   
+     // ← NUEVO
+     datosTransferir: '',
+   
+     telefono:'', correo:'',
+     destinos:[], disponibilidad:[],
+     _isNew:true
+   });
+
   renderCoordsTable(); setTimeout(initPickers,10);
 });
 btnAddLote?.addEventListener('click', ()=> inputExcel.click());
@@ -1394,8 +1402,11 @@ async function saveOneCoord(i){
    const base = {
      nombre,
      rut:(c.rut||'').replace(/\s+/g,'').toUpperCase(),
-     // ← NUEVO
      fechaNacimiento: asISO(c.fechaNacimiento) || null,
+   
+     // ← NUEVO
+     datosTransferir: (c.datosTransferir || '').toString().trim(),
+   
      telefono:(c.telefono||'').trim(),
      correo:(c.correo||'').trim().toLowerCase(),
      destinos: cleanDestinos(c.destinos),
@@ -1403,6 +1414,7 @@ async function saveOneCoord(i){
      activo:(c.activo!==false),
      notas:(c.notas||'').trim(),
    };
+
 
   let id = c.id || await findCoordId({ rut: base.rut, nombre: base.nombre });
   let isNew = false;
@@ -1596,6 +1608,18 @@ function renderCoordsTable(){
              placeholder="dd/mm/aaaa"
              readonly>
          </td>
+
+         <!-- ← NUEVO: DATOS PARA TRANSFERIR (al lado de fecha nacimiento) -->
+         <td>
+           <input
+             type="text"
+             data-f="datosTransferir"
+             data-i="${i}"
+             value="${escapeHtml(c.datosTransferir||'')}"
+             placeholder="Datos para transferir">
+         </td>
+
+         
          
          <td><input type="text" data-f="telefono" data-i="${i}" value="${c.telefono||''}" placeholder="Teléfono"></td>
          <td><input type="text" data-f="correo"   data-i="${i}" value="${c.correo||''}"   placeholder="Correo"></td>
@@ -2037,12 +2061,17 @@ function handleExcel(evt){
           c.nombre = nombre; c.rut = rut; c.telefono = telefono; c.correo = correo;
           if (destinosXLS.length){
             c.destinos = cleanDestinos([...(c.destinos||[]), ...destinosXLS]);
+         const transfer = (r['DATOS PARA TRANSFERIR'] || r['Datos para transferir'] || r['datosTransferir'] || r['datos_para_transferir'] || '').toString().trim();
+         if (transfer) c.datosTransferir = transfer;
           }
         } else {
-          c = {
+         c = {
            nombre, rut, telefono, correo,
-           // ← NUEVO: intenta parsear columna "Fecha Nacimiento"
            fechaNacimiento: asISO(r['Fecha Nacimiento'] || r['Fecha_nacimiento'] || r['fechaNacimiento']) || null,
+         
+           // ← NUEVO: DATOS PARA TRANSFERIR
+           datosTransferir: (r['DATOS PARA TRANSFERIR'] || r['Datos para transferir'] || r['datosTransferir'] || r['datos_para_transferir'] || '').toString().trim(),
+         
            destinos:destinosXLS, disponibilidad:[], _isNew:true
          };
           COORDS.unshift(c);
