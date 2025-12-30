@@ -1,57 +1,276 @@
-<!-- Filtros básicos -->
-<section class="filtros-docs">
-  <div>
-    <label>Destino</label>
-    <input id="filtroDestinoDocs" list="dl-destinos-docs" placeholder="Ej: BARILOCHE" />
-    <datalist id="dl-destinos-docs"></datalist>
-  </div>
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Revisión de Documentos · Rai Trai</title>
 
-  <div>
-    <label>Coordinador</label>
-    <input id="filtroCoordDocs" list="dl-coords-docs" placeholder="correo coord…" />
-    <datalist id="dl-coords-docs"></datalist>
-  </div>
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="RaitraiLogo.png"/>
 
-  <div>
-    <label>Fecha gasto desde</label>
-    <input id="filtroFechaDesdeDocs" type="date" />
-  </div>
+  <!-- ===== ESTILOS BASE (usa tus variables globales si ya existen) ===== -->
+  <style>
+    :root{
+      --bg:#0b1329;
+      --panel:#0e1834;
+      --line:#334155;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --accent:#22d3ee;
+      --accent-soft:#0ea5e9;
+      --ok:#22c55e;
+    }
 
-  <div>
-    <label>Fecha gasto hasta</label>
-    <input id="filtroFechaHastaDocs" type="date" />
-  </div>
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      min-height:100vh;
+    }
 
-  <div>
-    <label>Buscar texto</label>
-    <input id="filtroTextoDocs" placeholder="asunto, grupo, destino…" />
-  </div>
+    a{ color:var(--accent); text-decoration:none; }
+    a:hover{ text-decoration:underline; }
 
-  <div class="fila-botones">
-    <button id="btnCargarDocs">Cargar documentos</button>
-    <button id="btnLimpiarDocs">Limpiar</button>
-    <span id="infoDocs" class="muted"></span>
-  </div>
-</section>
+    /* ===== HEADER COMÚN ===== */
+    header.app-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:10px 16px;
+      background:#020617;
+      border-bottom:1px solid var(--line);
+    }
 
-<!-- Tabla de documentos -->
-<section class="tabla-docs">
-  <table id="tblDocs">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Grupo</th>
-        <th>Destino</th>
-        <th>Coord.</th>
-        <th>Tipo doc</th>
-        <th>Moneda</th>
-        <th>Monto</th>
-        <th>Archivo</th>
-        <th>Revisado</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- se llena desde JS -->
-    </tbody>
-  </table>
-</section>
+    .header-left{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .header-left img{
+      height:34px;
+    }
+
+    .header-left h1{
+      font-size:14px;
+      margin:0;
+      font-weight:600;
+      letter-spacing:.4px;
+    }
+
+    .header-actions{
+      display:flex;
+      gap:10px;
+    }
+
+    .header-actions button{
+      background:transparent;
+      border:1px solid var(--line);
+      color:var(--text);
+      padding:6px 10px;
+      border-radius:6px;
+      cursor:pointer;
+    }
+
+    .header-actions button:hover{
+      background:#020617;
+    }
+
+    /* ===== CONTENIDO ===== */
+    main{
+      padding:18px;
+      max-width:1600px;
+      margin:auto;
+    }
+
+    /* ===== FILTROS ===== */
+    .filtros-docs{
+      display:grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
+      gap:12px;
+      background:var(--panel);
+      padding:14px;
+      border:1px solid var(--line);
+      border-radius:10px;
+      margin-bottom:16px;
+    }
+
+    .filtros-docs label{
+      display:block;
+      font-size:11px;
+      color:var(--muted);
+      margin-bottom:4px;
+      text-transform:uppercase;
+    }
+
+    .filtros-docs input{
+      width:100%;
+      padding:8px 10px;
+      border-radius:6px;
+      border:1px solid var(--line);
+      background:#020617;
+      color:var(--text);
+    }
+
+    .fila-botones{
+      display:flex;
+      align-items:flex-end;
+      gap:8px;
+    }
+
+    .fila-botones button{
+      padding:8px 14px;
+      border-radius:6px;
+      border:1px solid var(--line);
+      background:#020617;
+      color:var(--text);
+      cursor:pointer;
+    }
+
+    .fila-botones button:hover{
+      background:#020617;
+      border-color:var(--accent);
+    }
+
+    .muted{
+      color:var(--muted);
+      font-size:12px;
+      margin-left:6px;
+    }
+
+    /* ===== TABLA ===== */
+    .tabla-docs{
+      background:var(--panel);
+      border:1px solid var(--line);
+      border-radius:10px;
+      overflow:auto;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:13px;
+    }
+
+    thead th{
+      position:sticky;
+      top:0;
+      background:#020617;
+      z-index:2;
+      font-weight:600;
+      text-align:left;
+      padding:10px;
+      border-bottom:1px solid var(--line);
+      white-space:nowrap;
+    }
+
+    tbody td{
+      padding:8px 10px;
+      border-bottom:1px solid var(--line);
+      vertical-align:top;
+      white-space:nowrap;
+    }
+
+    tbody tr:hover{
+      background:#020617;
+    }
+
+    td:last-child{
+      text-align:center;
+    }
+
+    input[type="checkbox"]{
+      transform:scale(1.1);
+      cursor:pointer;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ===== HEADER COMÚN ===== -->
+  <header class="app-header">
+    <div class="header-left">
+      <img src="RaitraiLogo.png" alt="Rai Trai"/>
+      <h1>REVISIÓN DE DOCUMENTOS</h1>
+    </div>
+
+    <div class="header-actions">
+      <button onclick="location.href='index.html'">🏠 Inicio</button>
+      <button onclick="history.back()">⬅ Volver</button>
+      <button id="btn-logout">⏏ Salir</button>
+    </div>
+  </header>
+
+  <!-- ===== CONTENIDO ===== -->
+  <main>
+
+    <!-- FILTROS -->
+    <section class="filtros-docs">
+
+      <div>
+        <label>Destino</label>
+        <input id="filtroDestinoDocs" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
+        <datalist id="dl-destinos-docs"></datalist>
+      </div>
+
+      <div>
+        <label>Coordinador</label>
+        <input id="filtroCoordDocs" list="dl-coords-docs" placeholder="correo@"/>
+        <datalist id="dl-coords-docs"></datalist>
+      </div>
+
+      <div>
+        <label>Fecha desde</label>
+        <input id="filtroFechaDesdeDocs" type="date"/>
+      </div>
+
+      <div>
+        <label>Fecha hasta</label>
+        <input id="filtroFechaHastaDocs" type="date"/>
+      </div>
+
+      <div>
+        <label>Buscar texto</label>
+        <input id="filtroTextoDocs" placeholder="grupo, asunto, destino…"/>
+      </div>
+
+      <div class="fila-botones">
+        <button id="btnCargarDocs">Cargar</button>
+        <button id="btnLimpiarDocs">Limpiar</button>
+        <span id="infoDocs" class="muted"></span>
+      </div>
+
+    </section>
+
+    <!-- TABLA -->
+    <section class="tabla-docs">
+      <table id="tblDocs">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Grupo</th>
+            <th>Destino</th>
+            <th>Coordinador</th>
+            <th>Tipo documento</th>
+            <th>Moneda</th>
+            <th>Monto</th>
+            <th>Archivo</th>
+            <th>Revisado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- filas desde JS -->
+        </tbody>
+      </table>
+    </section>
+
+  </main>
+
+  <!-- ===== JS ===== -->
+  <script type="module" src="revision_docs.js"></script>
+
+</body>
+</html>
