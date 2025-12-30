@@ -1,0 +1,57 @@
+<!-- Filtros básicos -->
+<section class="filtros-docs">
+  <div>
+    <label>Destino</label>
+    <input id="filtroDestinoDocs" list="dl-destinos-docs" placeholder="Ej: BARILOCHE" />
+    <datalist id="dl-destinos-docs"></datalist>
+  </div>
+
+  <div>
+    <label>Coordinador</label>
+    <input id="filtroCoordDocs" list="dl-coords-docs" placeholder="correo coord…" />
+    <datalist id="dl-coords-docs"></datalist>
+  </div>
+
+  <div>
+    <label>Fecha gasto desde</label>
+    <input id="filtroFechaDesdeDocs" type="date" />
+  </div>
+
+  <div>
+    <label>Fecha gasto hasta</label>
+    <input id="filtroFechaHastaDocs" type="date" />
+  </div>
+
+  <div>
+    <label>Buscar texto</label>
+    <input id="filtroTextoDocs" placeholder="asunto, grupo, destino…" />
+  </div>
+
+  <div class="fila-botones">
+    <button id="btnCargarDocs">Cargar documentos</button>
+    <button id="btnLimpiarDocs">Limpiar</button>
+    <span id="infoDocs" class="muted"></span>
+  </div>
+</section>
+
+<!-- Tabla de documentos -->
+<section class="tabla-docs">
+  <table id="tblDocs">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Grupo</th>
+        <th>Destino</th>
+        <th>Coord.</th>
+        <th>Tipo doc</th>
+        <th>Moneda</th>
+        <th>Monto</th>
+        <th>Archivo</th>
+        <th>Revisado</th>
+      </tr>
+    </thead>
+    <tbody>
+      <!-- se llena desde JS -->
+    </tbody>
+  </table>
+</section>
