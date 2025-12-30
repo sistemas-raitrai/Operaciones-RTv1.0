@@ -1,6 +1,12 @@
 // revision_docs.js
 // Revisión de boletas / comprobantes / constancias + comprobantes de gastos
 // Muestra muchos grupos a la vez (filtrado por destino, coord, fechas, texto).
+//
+// ✅ Mejoras incluidas:
+// 1) Separación coordId (ID real del doc en /coordinadores/{coordId}) vs coordEmail (para mostrar)
+// 2) Escritura de revisión de GASTO usando SIEMPRE coordId desde el path (evita fallos)
+// 3) Orden: documentos con fecha (gastos) primero; docs de summary (fechaMs=0) al final
+// 4) Render muestra coordinador “bonito” pero guarda con coordId
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -21,7 +27,7 @@ const state = {
     texto: ''
   },
   caches: {
-    grupos: new Map(),    // gid -> {numero, nombre, destino, coordEmail, ...}
+    grupos: new Map(),    // gid -> {gid, numero, nombre, destino, coordEmail, fechaInicio, fechaFin}
     coords: new Set(),
     destinos: new Set()
   },
@@ -64,6 +70,7 @@ function _toMs(v){
   }
   return 0;
 }
+
 function pickFechaMs(raw){
   const cands = [
     raw.fecha, raw.fechaPago, raw.fechaAbono,
@@ -75,6 +82,7 @@ function pickFechaMs(raw){
   }
   return 0;
 }
+
 function fmtDDMMYYYY(ms){
   if (!ms) return '';
   const d = new Date(ms);
@@ -172,6 +180,10 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const revisadoBy = rev.by || '';
   const revisadoAt = rev.at ? _toMs(rev.at) : 0;
 
+  // ✅ Importante: coordId debe ser SIEMPRE el docId real del path: /coordinadores/{coordId}/gastos/{id}
+  const coordId = (coordFromPath || '').toLowerCase();
+  const coordEmail = (grupoInfo.coordEmail || coordFromPath || '').toLowerCase();
+
   return {
     tipoDoc: 'GASTO',
     gastoId: raw.id || raw._id || '',
@@ -179,7 +191,11 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
     numeroGrupo: grupoInfo.numero,
     nombreGrupo: grupoInfo.nombre,
     destino: grupoInfo.destino,
-    coordEmail: coordFromPath || grupoInfo.coordEmail || '',
+
+    // ✅ separación para evitar fallas en updateDoc
+    coordId,
+    coordEmail,
+
     fechaMs,
     fechaTxt,
     moneda,
@@ -215,11 +231,13 @@ async function loadDocsSummaryForGroups(gids) {
     }
 
     const docsOk = (summary && summary.docsOk) || {};
+
     const boletaUrl = coalesce(
       summary?.boleta?.url,
       summary?.boletaUrl,
       ''
     );
+
     const compUrl = coalesce(
       summary?.transfer?.comprobanteUrl,
       summary?.transferenciaCLP?.url,
@@ -231,6 +249,7 @@ async function loadDocsSummaryForGroups(gids) {
       summary?.comprobanteUrl,
       ''
     );
+
     const transfUrl = coalesce(
       summary?.cashUsd?.comprobanteUrl,
       summary?.transferenciaCoord?.url,
@@ -247,10 +266,12 @@ async function loadDocsSummaryForGroups(gids) {
       nombreGrupo: gInfo.nombre,
       destino: gInfo.destino,
       coordEmail: gInfo.coordEmail || '',
+      coordId: '',               // no aplica para summary
       fechaMs: 0,
       fechaTxt: '',
       moneda: 'CLP',
-      monto: 0
+      monto: 0,
+      asunto: ''
     };
 
     // Boleta (si existe url o si docsOk.boleta está marcado)
@@ -329,7 +350,9 @@ async function loadDocsGastosForGroups(gids) {
       );
       if (!hasImg) return;
 
+      // ✅ este es el docId real del coordinador
       const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
+
       const gInfo = state.caches.grupos.get(gid);
       if (!gInfo) return;
 
@@ -358,13 +381,13 @@ async function loadDocsForCurrentFilters() {
   const fechaDesde = state.filtros.fechaDesde;
   const fechaHasta = state.filtros.fechaHasta;
 
-  // 1) obtener lista de grupos que pasan filtros por destino/coord
+  // 1) obtener lista de grupos que pasan filtros por destino/coord/texto (a nivel grupo)
   const filteredGids = [];
   for (const [gid, gInfo] of state.caches.grupos.entries()) {
     if (destinoFilter && gInfo.destino !== destinoFilter) continue;
     if (coordFilter && (gInfo.coordEmail || '').toLowerCase() !== coordFilter) continue;
 
-    // filtro textual a nivel grupo (nombre, numero, destino)
+    // filtro textual a nivel grupo (nombre, numero, destino, coordinador)
     const blobGrupo = norm(`${gInfo.numero} ${gInfo.nombre} ${gInfo.destino} ${gInfo.coordEmail}`);
     if (textoFilter && !blobGrupo.includes(textoFilter)) continue;
 
@@ -386,14 +409,14 @@ async function loadDocsForCurrentFilters() {
   let docsAll = [...docsSummary, ...docsGastos];
 
   // 3) filtros de fecha / texto a nivel documento
-  docsAll = docsAll.filter(doc => {
+  docsAll = docsAll.filter(docItem => {
     // fecha (si viene de gasto). Los docs summary tienen fechaMs 0 => entran igual.
-    if (fechaDesde && doc.fechaMs && doc.fechaMs < fechaDesde) return false;
-    if (fechaHasta && doc.fechaMs && doc.fechaMs > fechaHasta) return false;
+    if (fechaDesde && docItem.fechaMs && docItem.fechaMs < fechaDesde) return false;
+    if (fechaHasta && docItem.fechaMs && docItem.fechaMs > fechaHasta) return false;
 
     if (textoFilter) {
       const blob = norm(
-        `${doc.numeroGrupo} ${doc.nombreGrupo} ${doc.destino} ${doc.coordEmail} ${doc.tipoDoc} ${doc.asunto || ''}`
+        `${docItem.numeroGrupo} ${docItem.nombreGrupo} ${docItem.destino} ${docItem.coordEmail} ${docItem.tipoDoc} ${docItem.asunto || ''}`
       );
       if (!blob.includes(textoFilter)) return false;
     }
@@ -401,8 +424,12 @@ async function loadDocsForCurrentFilters() {
     return true;
   });
 
-  // ordenar por fecha (gastos primero por fecha; los de summary al final)
-  docsAll.sort((a,b) => (a.fechaMs || 0) - (b.fechaMs || 0));
+  // ✅ Mejora: ordenar con gastos (fecha) primero y docs summary (fechaMs=0) al final
+  docsAll.sort((a,b) => {
+    const aKey = a.fechaMs ? a.fechaMs : 9e15;
+    const bKey = b.fechaMs ? b.fechaMs : 9e15;
+    return aKey - bKey;
+  });
 
   state.docs = docsAll;
   renderDocsTable();
@@ -454,13 +481,13 @@ async function updateRevisionForDoc(docItem, checked) {
 
   // 2) Documentos de gasto individual (tipoDoc === 'GASTO')
   if (docItem.tipoDoc === 'GASTO') {
-    const gid   = docItem.grupoId;
-    const coord = docItem.coordEmail;
+    const gid     = docItem.grupoId;
+    const coordId = (docItem.coordId || '').toLowerCase(); // ✅ docId real
     const gastoId = docItem.gastoId;
-    if (!gid || !coord || !gastoId) return false;
+    if (!gid || !coordId || !gastoId) return false;
 
     try {
-      const ref = doc(db,'coordinadores',coord,'gastos',gastoId);
+      const ref = doc(db,'coordinadores',coordId,'gastos',gastoId);
       await updateDoc(ref, {
         'revisionDocs.ok': !!checked,
         'revisionDocs.by': email,
@@ -518,6 +545,8 @@ function renderDocsTable() {
     tdFecha.textContent = docItem.fechaTxt || '—';
     tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`;
     tdDest.textContent  = docItem.destino || '—';
+
+    // ✅ mostrar email “bonito”; guardar se hace con coordId por dentro
     tdCoord.textContent = docItem.coordEmail || '—';
 
     let tipoLabel = docItem.tipoDoc;
@@ -527,7 +556,8 @@ function renderDocsTable() {
     tdTipo.textContent = tipoLabel;
 
     tdMon.textContent = docItem.moneda || '—';
-    if (docItem.monto && docItem.moneda === 'USD') {
+
+    if (docItem.monto && (docItem.moneda || '').toUpperCase() === 'USD') {
       tdMonto.textContent = moneyBy(docItem.monto, 'USD');
     } else if (docItem.monto) {
       tdMonto.textContent = moneyCLP(docItem.monto);
