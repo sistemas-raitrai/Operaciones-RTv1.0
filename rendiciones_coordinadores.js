@@ -56,6 +56,8 @@ const normCoordId = (s='') =>
     .replace(/-+/g,'-')
     .trim();
 
+
+
 // Alias corto: PRIMER NOMBRE + PRIMER APELLIDO (1° y 3° palabra)
 const coordAliasCorto = (full='') => {
   const parts = full
@@ -91,6 +93,56 @@ const moneyBy = (n, curr='CLP') =>
   (isFinite(+n)
     ? (+n).toLocaleString('es-CL',{ style:'currency', currency:curr, maximumFractionDigits:2 })
     : '—');
+
+// ====================== COORD HELPERS ======================
+
+// "loreto beatriz leiva cabezas" -> ["loreto","beatriz","leiva","cabezas"]
+function splitNameParts(s='') {
+  return String(s)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/[^a-z\s-]/g, ' ')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter(Boolean);
+}
+
+// partes -> "loreto-beatriz-leiva-cabezas"
+function slugFromParts(parts=[]) {
+  return (parts || []).filter(Boolean).join('-');
+}
+
+// Regla de alias: PRIMERO + TERCERO (nombre + apellido paterno)
+function aliasPrimeroTercero(s='') {
+  const p = splitNameParts(s);
+  if (p.length >= 3) return `${p[0]}-${p[2]}`;
+  if (p.length >= 2) return `${p[0]}-${p[1]}`;
+  return p[0] || '';
+}
+
+// Normaliza cualquier string a slug con guiones
+function normCoordId(s='') {
+  const p = splitNameParts(s);
+  return slugFromParts(p);
+}
+
+// Genera candidatos posibles del gasto para comparar contra el hint del filtro
+function coordCandidates({ coordFromPath = '', rawCoord = '' } = {}) {
+  const cand = new Set();
+
+  const pathNorm = normCoordId(coordFromPath);
+  if (pathNorm) cand.add(pathNorm);
+  if (pathNorm) cand.add(aliasPrimeroTercero(pathNorm));
+
+  const rawNorm = normCoordId(rawCoord);
+  if (rawNorm) cand.add(rawNorm);
+  if (rawCoord) cand.add(aliasPrimeroTercero(rawCoord));
+
+  return [...cand].filter(Boolean);
+}
+
 
 // --- fechas ---
 function _toMs(v){
@@ -342,12 +394,22 @@ function gastoToItem(grupoId, gInfo, raw, coordFromPath) {
     ''
   );
 
+  const coordDocId = (coordFromPath || '').toLowerCase(); // ID REAL del path
+  const rawCoordNombre = coalesce(raw.coordinador, raw.coordinadorNombre, raw.coordNombre, '');
+  const coordDisplay = aliasPrimeroTercero(rawCoordNombre || coordDocId) || coordDocId;
+  
   return {
     id: raw.id || raw._id || '',
     grupoId,
     nombreGrupo: gInfo?.nombre || '',
     numeroNegocio: gInfo?.numero || grupoId,
-    coordinador: coordFromPath || gInfo?.coordEmail || '',
+  
+    // ✅ NUEVO: no se pierde el ID real
+    coordinadorDocId: coordDocId,
+  
+    // ✅ Lo que muestras / lo que puedes usar como "display"
+    coordinador: coordDisplay,
+  
     asunto,
     autor,
     monto,
@@ -391,24 +453,22 @@ async function fetchGastosByGroup({ coordEmailHint = '', grupoId = '' } = {}) {
       const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
 
       if (hint) {
-        const coordPathNorm  = normCoordId(coordFromPath);        // ej: loreto-leiva
-        const coordAliasNorm = coordAliasCorto(raw.coordinador); // ej: loreto-leiva
-        const coordFullNorm  = normCoordId(raw.coordinador || '');
-      
-        // 🔒 Regla estricta:
-        // - el hint debe tener AL MENOS 2 partes (nombre + apellido)
-        // - y debe matchear alias corto o nombre completo
+        // ⛔ No aceptamos búsquedas tipo "loreto" (1 palabra)
         const hintParts = hint.split('-').filter(Boolean);
+        if (hintParts.length < 2) return;
       
-        if (hintParts.length < 2) return; // ⛔ ignora búsquedas tipo "loreto"
+        const rawCoord = coalesce(raw.coordinador, raw.coordinadorNombre, raw.coordNombre, '');
+        const cands = coordCandidates({ coordFromPath, rawCoord }); // ej: ["loreto-leiva", "loreto-beatriz-leiva-cabezas", ...]
       
-        const ok =
-          coordAliasNorm === hint ||
-          coordFullNorm.includes(hint) ||
-          coordPathNorm === hint;
+        // Aceptamos:
+        // - match exacto del hint
+        // - o match exacto del alias primero-tercero del hint
+        const hintAlias = aliasPrimeroTercero(hint);
       
+        const ok = cands.includes(hint) || (hintAlias && cands.includes(hintAlias));
         if (!ok) return;
       }
+
 
       const gInfo = state.caches.grupos.get(gid) ||
                     { numero: gid, nombre:'', coordEmail: coordFromPath };
@@ -547,7 +607,7 @@ async function loadDataForCurrentFilters() {
 /* ====================== ESCRITURA ====================== */
 async function updateGastoRendicionFields(item, patch = {}) {
   const gid   = item.grupoId;
-  const coord = normCoordId(item.coordinador);
+  const coord = item.coordinadorDocId || item.coordinador; // ✅ prioridad al docId real
   if (!gid || !coord || !item.id) return false;
 
   const email = (auth.currentUser?.email || '').toLowerCase();
