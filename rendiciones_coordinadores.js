@@ -47,6 +47,31 @@ const escapeHtml = (str='') =>
 const norm = (s='') =>
   s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
+// Normaliza IDs tipo coordinador (para paths y matching)
+const normCoordId = (s='') =>
+  s.toString()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase()
+    .replace(/[\s_]+/g,'-')
+    .replace(/-+/g,'-')
+    .trim();
+
+// Alias corto: PRIMER NOMBRE + PRIMER APELLIDO (1° y 3° palabra)
+const coordAliasCorto = (full='') => {
+  const parts = full
+    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  // Esperado: Nombre Nombre Apellido Apellido
+  if (parts.length >= 3) {
+    return normCoordId(`${parts[0]}-${parts[2]}`);
+  }
+  return normCoordId(full);
+};
+
+
 const coalesce = (...xs) =>
   xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
@@ -366,12 +391,23 @@ async function fetchGastosByGroup({ coordEmailHint = '', grupoId = '' } = {}) {
       const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
 
       if (hint) {
-        const blob = [
-          normCoord(coordFromPath),
-          normCoord(raw.coordinadorEmail || ''),
-          normCoord(raw.coordinador || '')
-        ].join(' ');
-        if (!blob.includes(hint)) return;
+        const coordPathNorm  = normCoordId(coordFromPath);        // ej: loreto-leiva
+        const coordAliasNorm = coordAliasCorto(raw.coordinador); // ej: loreto-leiva
+        const coordFullNorm  = normCoordId(raw.coordinador || '');
+      
+        // 🔒 Regla estricta:
+        // - el hint debe tener AL MENOS 2 partes (nombre + apellido)
+        // - y debe matchear alias corto o nombre completo
+        const hintParts = hint.split('-').filter(Boolean);
+      
+        if (hintParts.length < 2) return; // ⛔ ignora búsquedas tipo "loreto"
+      
+        const ok =
+          coordAliasNorm === hint ||
+          coordFullNorm.includes(hint) ||
+          coordPathNorm === hint;
+      
+        if (!ok) return;
       }
 
       const gInfo = state.caches.grupos.get(gid) ||
@@ -511,7 +547,7 @@ async function loadDataForCurrentFilters() {
 /* ====================== ESCRITURA ====================== */
 async function updateGastoRendicionFields(item, patch = {}) {
   const gid   = item.grupoId;
-  const coord = item.coordinador;
+  const coord = normCoordId(item.coordinador);
   if (!gid || !coord || !item.id) return false;
 
   const email = (auth.currentUser?.email || '').toLowerCase();
