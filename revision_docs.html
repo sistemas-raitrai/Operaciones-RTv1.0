@@ -3,604 +3,334 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Revisión de Documentos | RT</title>
+  <title>Rendiciones Coordinadores · RT</title>
+
+  <!-- Favicon (ajusta si tu ruta es distinta) -->
   <link rel="icon" type="image/png" href="RaitraiLogo.png"/>
 
+  <!-- ✅ Estilos globales del sistema (tu estética común) -->
+  <link rel="stylesheet" href="./style.css"/>
+
+  <!-- (Opcional) Si tienes un CSS específico para esta pantalla -->
+  <!-- <link rel="stylesheet" href="./rendiciones_coordinadores.css"/> -->
+
+  <!-- ✅ Fix mínimo de layout (solo si no quieres tocar style.css).
+       Si ya lo agregarás en style.css, puedes borrar este <style>. -->
   <style>
-    /* =========================================================
-       ESTÉTICA CLARA (scoped a .docs-page)
-       ========================================================= */
-    :root{
-      --bg:#f4f6fb;
-      --panel:#ffffff;
-      --border:#d1d5db;
-      --ink:#0f172a;
-      --muted:#6b7280;
-      --accent:#00c7b6;
-      --accent-strong:#00a89d;
-      --accent-soft:#e0fffa;
-      --danger:#e11d48;
-      --shadow:0 12px 28px rgba(15,23,42,.10);
-      --radius:16px;
-    }
+    /* espacio para header común si es fixed/sticky */
+    main.page{ padding-top: 72px; }
 
-    body.docs-page{
-      margin:0;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      min-height: 100vh;
-    }
-
-    a{ color: inherit; text-decoration: none; }
-
-    /* ================= HEADER COMÚN ================= */
-    .topbar{
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      background: rgba(244,246,251,.86);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid var(--border);
-    }
-    .topbar-inner{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap: 12px;
-      padding: 10px 14px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-    .brand{
-      display:flex;
-      align-items:center;
-      gap:10px;
-      min-width: 180px;
-    }
-    .brand img{
-      width: 34px;
-      height: 34px;
-      object-fit: contain;
-    }
-    .brand .title{
-      display:flex;
-      flex-direction:column;
-      line-height:1.1;
-    }
-    .brand .title strong{
-      font-size: 14px;
-    }
-    .brand .title span{
-      font-size: 12px;
-      color: var(--muted);
-    }
-
-    .actions{
-      display:flex;
-      align-items:center;
-      gap: 8px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .iconbtn{
-      border: 1px solid var(--border);
-      background: var(--panel);
-      border-radius: 12px;
-      padding: 8px 10px;
-      cursor:pointer;
-      box-shadow: 0 6px 16px rgba(15,23,42,.06);
-      transition: transform .06s ease, border-color .2s ease;
-      user-select:none;
-      font-size: 14px;
-    }
-    .iconbtn:hover{ border-color:#b9c0cb; }
-    .iconbtn:active{ transform: translateY(1px); }
-
-    /* ================= LAYOUT ================= */
-    .wrap{
-      max-width: 1200px;
-      margin: 16px auto 40px;
-      padding: 0 14px;
-    }
-
-    .card{
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-    }
-
-    .card-head{
-      padding: 14px 14px 10px;
-      display:flex;
-      align-items:flex-start;
-      justify-content:space-between;
-      gap: 10px;
-      border-bottom: 1px solid var(--border);
-    }
-    .card-head h1{
-      margin:0;
-      font-size: 16px;
-      letter-spacing:.2px;
-    }
-    .card-head p{
-      margin:4px 0 0;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .card-body{
-      padding: 14px;
-      /* CLAVE: evita que el panel absolute del multiselect quede "cortado" */
-      overflow: visible;
-    }
-
-    /* ================= FILTROS ================= */
-    .filters{
+    /* panel de filtros responsive para evitar solapes */
+    .filters-panel{
       display:grid;
-      grid-template-columns: 1.1fr 1.2fr 1.2fr 1.2fr;
-      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap:12px;
       align-items:end;
-      position: relative;
-      z-index: 1;
     }
-    @media (max-width: 980px){
-      .filters{ grid-template-columns: 1fr 1fr; }
-    }
-    @media (max-width: 540px){
-      .filters{ grid-template-columns: 1fr; }
-    }
-
-    .field{
-      position: relative;
-      z-index: 1;
-      min-width: 0;
-    }
-
-    .field label{
-      display:block;
-      font-size: 12px;
-      color: var(--muted);
-      margin: 0 0 6px;
-    }
-    .input{
+    .filters-panel .field{ display:flex; flex-direction:column; gap:6px; }
+    .filters-panel input, .filters-panel select{
       width:100%;
-      padding: 10px 10px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: #fff;
-      outline: none;
-      font-size: 14px;
+      min-width:0;
+    }
+    .filters-actions{
+      display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-start;
     }
 
-    .btnrow{
-      display:flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      margin-top: 10px;
-    }
-    .btn{
-      border: 1px solid var(--border);
-      background: #fff;
-      border-radius: 12px;
-      padding: 10px 12px;
-      cursor:pointer;
-      font-weight: 600;
-      font-size: 13px;
-    }
-    .btn.primary{
-      background: var(--accent-strong);
-      border-color: var(--accent-strong);
-      color: #fff;
-    }
-    .btn.ghost{
-      background: #fff;
-    }
-    .btn.danger{
-      background: #fff;
-      border-color: #f3b4c0;
-      color: var(--danger);
-    }
-    .btn:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
+    /* wrappers */
+    .wrap{ max-width: 1200px; margin: 0 auto; padding: 18px 14px; }
+    .card{ border: 1px solid var(--border, #d1d5db); background: var(--card, #fff); border-radius: 12px; padding: 14px; }
+    .muted{ color: var(--muted, #6b7280); }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 
-    .pillrow{
-      margin-top: 10px;
-      display:flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      align-items:center;
-      justify-content:flex-end;
-    }
-    .pill{
-      background: var(--accent-soft);
-      border: 1px solid #c7fff9;
-      color: #064e3b;
-      border-radius: 999px;
-      padding: 6px 10px;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .muted{ color: var(--muted); }
+    /* tablas */
+    table{ width:100%; border-collapse:collapse; }
+    th, td{ border-bottom:1px solid var(--border, #d1d5db); padding:10px 8px; vertical-align:top; }
+    thead th{ font-weight:600; text-align:left; }
+    .num{ text-align:right; white-space:nowrap; }
 
-    /* ================= MULTISELECT DROPDOWN ================= */
-    details.multi{
-      position: relative;
-    }
-    /* CLAVE: el abierto se trae al frente, evita sobreposición fea */
-    details.multi[open]{
-      z-index: 80;
-    }
-
-    details.multi summary{
-      list-style: none;
-      cursor:pointer;
-      user-select:none;
-    }
-    details.multi summary::-webkit-details-marker{ display:none; }
-
-    .multi-display{
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 10px 10px;
-      background: #fff;
-      font-size: 14px;
-      display:flex;
-      justify-content: space-between;
-      align-items:center;
-      gap: 10px;
-      min-width: 0;
-    }
-    .multi-display small{ color: var(--muted); font-weight: 600; }
-
-    .multi-panel{
-      position:absolute;
-      top: calc(100% + 6px);
-      left:0;
-      right:0;
-      background: #fff;
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      box-shadow: var(--shadow);
-      z-index: 90;
-      padding: 10px;
-      max-height: 320px;
-      overflow: auto;
-    }
-
-    .multi-tools{
-      display:flex;
-      gap: 8px;
-      margin-bottom: 8px;
-    }
-    .multi-tools input{
-      flex:1;
-      border-radius: 12px;
-      border:1px solid var(--border);
-      padding: 8px 10px;
-      font-size: 13px;
-      outline:none;
-      min-width: 0;
-    }
-    .mini{
-      border: 1px solid var(--border);
-      background:#fff;
-      border-radius: 12px;
-      padding: 8px 10px;
-      cursor:pointer;
-      font-size: 12px;
-      font-weight: 700;
-      white-space: nowrap;
-    }
-
-    .opt{
-      display:flex;
-      gap: 8px;
-      align-items:flex-start;
-      padding: 6px 6px;
-      border-radius: 10px;
-    }
-    .opt:hover{ background: #f8fafc; }
-    .opt small{ color: var(--muted); display:block; }
-
-    /* ================= TABLA ================= */
-    .tablewrap{
-      margin-top: 14px;
-      overflow:auto;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
-      background:#fff;
-    }
-    table{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      min-width: 1120px;
-    }
-    thead th{
-      text-align:left;
-      position: sticky;
-      top: 0;
-      background: #f9fafb;
-      z-index: 2;
-      border-bottom: 1px solid var(--border);
-      padding: 10px 10px;
-      white-space: nowrap;
-    }
-    tbody td{
-      border-top: 1px solid #eef2f7;
-      padding: 9px 10px;
-      vertical-align: top;
-    }
-    tbody tr:hover{ background: #fbfdff; }
-    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
-    .tag{
-      display:inline-block;
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid var(--border);
-      background: #fff;
-      font-size: 12px;
-      white-space: nowrap;
-    }
-    .tag.ok{
-      border-color:#a7f3d0;
-      background:#ecfdf5;
-      color:#065f46;
-      font-weight: 800;
-    }
-    .tag.pending{
-      border-color:#fde68a;
-      background:#fffbeb;
-      color:#92400e;
-      font-weight: 800;
-    }
-
-    .link{
-      color: #0ea5e9;
-      font-weight: 800;
-      cursor: pointer;
-    }
-
-    .chk{
-      transform: scale(1.1);
-      cursor: pointer;
-    }
-
-    /* ================= MODAL VISOR ================= */
-    .modal{
-      position: fixed;
-      inset: 0;
-      background: rgba(15,23,42,.55);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      padding: 18px;
-      z-index: 999;
-    }
-    .modal.open{ display:flex; }
-    .modal-card{
-      width: min(1100px, 100%);
-      height: min(760px, 92vh);
-      background: #fff;
-      border-radius: 18px;
-      border: 1px solid var(--border);
-      box-shadow: var(--shadow);
-      display:flex;
-      flex-direction:column;
-      overflow:hidden;
-    }
-    .modal-head{
-      padding: 10px 12px;
-      border-bottom:1px solid var(--border);
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap: 10px;
-      background:#f9fafb;
-    }
-    .modal-head strong{ font-size: 13px; }
-    .modal-head .modal-actions{
-      display:flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      justify-content:flex-end;
-    }
-    .modal-body{
-      flex:1;
-      background:#fff;
-    }
-    .modal-body iframe,
-    .modal-body img{
-      width: 100%;
-      height: 100%;
-      border: 0;
-      object-fit: contain;
-      background:#fff;
-    }
+    /* botones (usa tus clases si ya existen en style.css) */
+    .btn-row{ display:flex; gap:10px; flex-wrap:wrap; }
   </style>
 </head>
 
-<body class="docs-page">
-  <!-- HEADER COMÚN -->
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <img src="RaitraiLogo.png" alt="RaiTrai"/>
-        <div class="title">
-          <strong>Revisión de Documentos</strong>
-          <span id="userEmail" class="muted">—</span>
-        </div>
-      </div>
+<body>
+  <!-- ✅ ENCABEZADO COMÚN (slot) -->
+  <div id="appHeader"></div>
 
-      <div class="actions">
-        <button class="iconbtn" id="btn-home" title="Inicio">🏠</button>
-        <button class="iconbtn" id="btn-refresh" title="Actualizar">🔄</button>
-        <button class="iconbtn" id="btn-back" title="Volver">⬅️</button>
-        <button class="iconbtn" id="btn-logout" title="Cerrar sesión">⏏️</button>
-      </div>
-    </div>
-  </header>
+  <main class="page">
+    <div class="wrap">
 
-  <main class="wrap">
-    <section class="card">
-      <div class="card-head">
-        <div>
-          <h1>Boletas / comprobantes / constancias + comprobantes de gastos</h1>
-          <p>Filtra múltiples grupos y marca cada documento como revisado. Todo queda guardado en Firebase.</p>
-        </div>
-        <div class="pillrow">
-          <span class="pill" id="infoDocs">0 documentos.</span>
-          <span class="pill" id="infoPendientes" style="display:none;">Cambios pendientes: 0</span>
-        </div>
-      </div>
+      <!-- =========================
+           TÍTULO / INFO
+      ========================== -->
+      <header style="margin-bottom:14px;">
+        <h1 style="margin:0 0 6px;">Rendición de gastos por grupo/coordinador</h1>
+        <div class="muted" id="pagInfo">Selecciona filtros y carga los datos.</div>
+      </header>
 
-      <div class="card-body">
-        <!-- FILTROS -->
-        <div class="filters">
+      <!-- =========================
+           FILTROS
+      ========================== -->
+      <section class="card" style="margin-bottom:14px;">
+        <h2 style="margin:0 0 10px; font-size:14px;">Filtros</h2>
+
+        <div class="filters-panel" id="panelFiltros">
+          <!-- Coordinador -->
           <div class="field">
-            <label>Destino (1)</label>
-            <input id="filtroDestinoDocs" class="input" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
-            <datalist id="dl-destinos-docs"></datalist>
+            <label for="filtroCoord" class="muted" style="font-size:12px;">Coordinador(a) (email)</label>
+            <input
+              id="filtroCoord"
+              class="input-field"
+              type="text"
+              placeholder="ej: loreto.leiva@..."
+              list="dl-coords"
+              autocomplete="off"
+            />
+            <datalist id="dl-coords"></datalist>
           </div>
 
+          <!-- Grupo (ID / Número negocio) -->
           <div class="field">
-            <label>Coordinadores (multi)</label>
-            <details class="multi" id="multiCoords">
-              <summary>
-                <div class="multi-display">
-                  <span id="multiCoordsLabel">Seleccionar…</span>
-                  <small>▼</small>
-                </div>
-              </summary>
-              <div class="multi-panel">
-                <div class="multi-tools">
-                  <input id="searchCoords" type="text" placeholder="Buscar coordinador…"/>
-                  <button class="mini" id="btnCoordsAll" type="button">TODO</button>
-                  <button class="mini" id="btnCoordsNone" type="button">NADA</button>
-                </div>
-                <div id="coordsList"></div>
-              </div>
-            </details>
+            <label for="filtroGrupo" class="muted" style="font-size:12px;">Grupo (ID / Nº negocio)</label>
+            <input
+              id="filtroGrupo"
+              class="input-field"
+              type="text"
+              placeholder="ej: 1492 o id del doc"
+              list="dl-grupos"
+              autocomplete="off"
+            />
+            <datalist id="dl-grupos"></datalist>
           </div>
 
+          <!-- Nombre de grupo -->
           <div class="field">
-            <label>Grupos (multi)</label>
-            <details class="multi" id="multiGrupos">
-              <summary>
-                <div class="multi-display">
-                  <span id="multiGruposLabel">Seleccionar…</span>
-                  <small>▼</small>
-                </div>
-              </summary>
-              <div class="multi-panel">
-                <div class="multi-tools">
-                  <input id="searchGrupos" type="text" placeholder="Buscar grupo (número/nombre)…"/>
-                  <button class="mini" id="btnGruposAll" type="button">TODO</button>
-                  <button class="mini" id="btnGruposNone" type="button">NADA</button>
-                </div>
-                <div id="gruposList"></div>
-              </div>
-            </details>
+            <label for="filtroNombreGrupo" class="muted" style="font-size:12px;">Nombre de grupo</label>
+            <input
+              id="filtroNombreGrupo"
+              class="input-field"
+              type="text"
+              placeholder="ej: CASTELGANDOLFO 3A"
+              list="dl-grupos-nombre"
+              autocomplete="off"
+            />
+            <datalist id="dl-grupos-nombre"></datalist>
           </div>
 
+          <!-- Acciones -->
           <div class="field">
-            <label>Tipo documento (multi)</label>
-            <details class="multi" id="multiTipos">
-              <summary>
-                <div class="multi-display">
-                  <span id="multiTiposLabel">Seleccionar…</span>
-                  <small>▼</small>
-                </div>
-              </summary>
-              <div class="multi-panel">
-                <div class="multi-tools">
-                  <input id="searchTipos" type="text" placeholder="Buscar tipo…"/>
-                  <button class="mini" id="btnTiposAll" type="button">TODO</button>
-                  <button class="mini" id="btnTiposNone" type="button">NADA</button>
-                </div>
-                <div id="tiposList"></div>
-              </div>
-            </details>
-          </div>
-
-          <!-- NUEVO: filtro gasto aprobado -->
-          <div class="field">
-            <label>Gasto aprobado</label>
-            <select id="filtroGastoAprobado" class="input">
-              <option value="">Todos</option>
-              <option value="OK">Solo OK</option>
-              <option value="NO">Solo NO</option>
-            </select>
-          </div>
-
-          <div class="field" style="grid-column: 1 / -1;">
-            <label>Texto libre (opcional)</label>
-            <input id="filtroTextoDocs" class="input" placeholder="Busca por grupo, destino, coord, tipo, asunto…"/>
+            <div class="muted" style="font-size:12px;">Acciones</div>
+            <div class="filters-actions">
+              <button id="btnCargar" type="button" class="btn btn-primary">Cargar datos</button>
+              <button id="btnLimpiarFiltros" type="button" class="btn btn-ghost">Limpiar</button>
+            </div>
           </div>
         </div>
+      </section>
 
-        <div class="btnrow">
-          <button class="btn ghost" id="btnLimpiarDocs" type="button">Limpiar</button>
-          <button class="btn primary" id="btnCargarDocs" type="button">Cargar documentos</button>
-          <!-- SIEMPRE visible -->
-          <button class="btn" id="btnGuardarPendientes" type="button">Guardar cambios</button>
+      <!-- =========================
+           INFO GRUPO (CARD)
+      ========================== -->
+      <section class="card" style="margin-bottom:14px;">
+        <h2 style="margin:0 0 10px; font-size:14px;">Información del grupo</h2>
+
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+          <div><div class="muted" style="font-size:12px;">Grupo</div><div id="infoGrupo">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Coordinador(a)</div><div id="infoCoord">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Destino</div><div id="infoDestino">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Pax</div><div id="infoPax">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Programa</div><div id="infoPrograma">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Fechas</div><div id="infoFechas">—</div></div>
+        </div>
+      </section>
+
+      <!-- =========================
+           TABLA GASTOS
+      ========================== -->
+      <section class="card" style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
+          <h2 style="margin:0; font-size:14px;">Gastos</h2>
+          <div id="resumenTabla" class="muted">—</div>
         </div>
 
-        <!-- TABLA -->
-        <div class="tablewrap" style="margin-top:14px;">
-          <table id="tblDocs">
+        <div style="overflow:auto; margin-top:10px;">
+          <table id="tblGastos">
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Grupo</th>
-                <th>Destino</th>
-                <th>Coordinador</th>
-                <th>Tipo</th>
-                <th>Rendición</th>
-                <th>Gasto aprobado</th>
-                <th>Moneda</th>
-                <th>Monto</th>
-                <th>Archivo</th>
-                <th>Revisado</th>
+                <th style="min-width:90px;">Fecha</th>
+                <th style="min-width:220px;">Asunto</th>
+                <th style="min-width:180px;">Autor</th>
+                <th style="min-width:70px;">Moneda</th>
+                <th style="min-width:120px;" class="num">Monto</th>
+                <th style="min-width:180px;">Monto aprobado</th>
+                <th style="min-width:190px;">Categoría</th>
+                <th style="min-width:90px;">Comprobante</th>
+                <th style="min-width:70px;">OK</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="11" class="muted">Sin datos.</td></tr>
+              <tr><td colspan="9"><div class="muted">Sin datos aún.</div></td></tr>
             </tbody>
           </table>
         </div>
+      </section>
 
-        <p class="muted" style="margin:10px 2px 0;font-size:12px;">
-          “Rendición” = <strong>OK</strong> si <span class="mono">grupos/{gid}/finanzas/summary → docsOk.boleta</span> está marcado (boleta SII revisada).
-          · “Gasto aprobado” = <strong>OK</strong> si <span class="mono">gastosGrabados &gt; 0</span> y <span class="mono">gastosGrabados ≤ costoTotal</span>.
-        </p>
-      </div>
-    </section>
+      <!-- =========================
+           DESCUENTOS
+      ========================== -->
+      <section class="card" style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
+          <h2 style="margin:0; font-size:14px;">Descuentos</h2>
+          <div class="btn-row">
+            <button id="btnAgregarDesc" type="button" class="btn btn-primary">+ Agregar descuento</button>
+          </div>
+        </div>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr auto; gap:10px; margin-top:10px; align-items:end;">
+          <div>
+            <div class="muted" style="font-size:12px;">Monto (CLP)</div>
+            <input id="nuevoDescMonto" type="number" class="input-field mono" min="0" step="1000" placeholder="ej: 15000"/>
+          </div>
+          <div>
+            <div class="muted" style="font-size:12px;">Motivo</div>
+            <input id="nuevoDescMotivo" type="text" class="input-field" placeholder="ej: Ajuste caja chica"/>
+          </div>
+          <div>
+            <div class="muted" style="font-size:12px;">&nbsp;</div>
+            <button id="btnAgregarDesc2" type="button" class="btn btn-ghost" style="display:none;">(no usar)</button>
+          </div>
+        </div>
+
+        <div style="overflow:auto; margin-top:10px;">
+          <table id="tblDescuentos">
+            <thead>
+              <tr>
+                <th>Motivo</th>
+                <th class="num" style="min-width:140px;">Monto (CLP)</th>
+                <th style="min-width:120px;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="3"><div class="muted">Sin descuentos registrados.</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- =========================
+           DOCUMENTOS / RESUMEN
+      ========================== -->
+      <section class="card" style="margin-bottom:14px;">
+        <h2 style="margin:0 0 10px; font-size:14px;">Resumen financiero</h2>
+
+        <!-- Bloques CLP (los IDs que tu JS usa) -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+          <div><div class="muted" style="font-size:12px;">Abonos (CLP)</div><div id="sumAbonos" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Gastos aprobados (CLP)</div><div id="sumGastos" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Descuentos (CLP)</div><div id="sumDescuentos" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Gastos netos (CLP)</div><div id="sumGastosNetos" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Saldo esperado (CLP)</div><div id="sumSaldoEsperado" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Devuelto (CLP)</div><div id="sumDevuelto" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Resultado (CLP)</div><div id="sumResultado">—</div></div>
+        </div>
+
+        <hr style="border:none;border-top:1px solid var(--border,#d1d5db); margin:14px 0;"/>
+
+        <!-- (Opcional) USD: tu JS los llena si existen -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:10px;">
+          <div><div class="muted" style="font-size:12px;">Abonos (USD)</div><div id="sumAbonosUSD" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Gastos aprobados (USD)</div><div id="sumGastosUSD" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Gastos netos (USD)</div><div id="sumGastosNetosUSD" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Saldo esperado (USD)</div><div id="sumSaldoEsperadoUSD" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Devuelto (USD)</div><div id="sumDevueltoUSD" class="mono">—</div></div>
+          <div><div class="muted" style="font-size:12px;">Resultado (USD)</div><div id="sumResultadoUSD">—</div></div>
+        </div>
+      </section>
+
+      <!-- =========================
+           ESTADO DOCS
+      ========================== -->
+      <section class="card" style="margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
+          <h2 style="margin:0; font-size:14px;">Estado de documentos</h2>
+          <button id="btnGuardarDocs" type="button" class="btn btn-primary">Guardar estado</button>
+        </div>
+
+        <div style="overflow:auto; margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Documento</th>
+                <th>Link</th>
+                <th style="min-width:180px;">OK</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td id="celdaEstadoBoleta">Boleta / Doc SII</td>
+                <td><a id="linkBoleta" class="link-doc" target="_blank" rel="noopener">PENDIENTE</a></td>
+                <td><label style="display:flex; gap:8px; align-items:center;"><input id="chkBoletaOk" type="checkbox"/> Revisado</label></td>
+              </tr>
+
+              <tr>
+                <td id="celdaEstadoTransf">Comprobante transferencia CLP</td>
+                <td><a id="linkComprobante" class="link-doc" target="_blank" rel="noopener">PENDIENTE</a></td>
+                <td>
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <label style="display:flex; gap:8px; align-items:center;">
+                      <input id="chkComprobanteOk" type="checkbox"/> Revisado
+                    </label>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                      <span class="muted" style="font-size:12px;">Monto devuelto CLP</span>
+                      <input id="montoDevueltoCLP" type="number" class="input-field mono" style="max-width:180px;" min="0" step="1000" value="0"/>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+
+              <tr>
+                <td id="celdaEstadoConstancia">Constancia efectivo USD / transferencia coord</td>
+                <td><a id="linkTransferencia" class="link-doc" target="_blank" rel="noopener">PENDIENTE</a></td>
+                <td>
+                  <div style="display:flex; flex-direction:column; gap:8px;">
+                    <label style="display:flex; gap:8px; align-items:center;">
+                      <input id="chkTransferenciaOk" type="checkbox"/> Revisado
+                    </label>
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                      <span class="muted" style="font-size:12px;">Monto devuelto USD</span>
+                      <input id="montoDevueltoUSD" type="number" class="input-field mono" style="max-width:180px;" min="0" step="0.01" value="0"/>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- =========================
+           IMPRESIÓN
+      ========================== -->
+      <section class="card" style="margin-bottom:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h2 style="margin:0; font-size:14px;">Acta de rendición</h2>
+          <button id="btnImprimirRendicion" type="button" class="btn btn-primary">Imprimir</button>
+        </div>
+
+        <!-- tu JS renderiza acá el HTML del acta -->
+        <div id="printActa" style="margin-top:12px;"></div>
+
+        <!-- fallback opcional si todavía ocupas printSheet -->
+        <pre id="printSheet" style="display:none;"></pre>
+      </section>
+
+    </div>
   </main>
 
-  <!-- MODAL VISOR -->
-  <div class="modal" id="viewerModal" aria-hidden="true">
-    <div class="modal-card">
-      <div class="modal-head">
-        <div>
-          <strong id="viewerTitle">Documento</strong>
-          <div class="muted" id="viewerSub" style="font-size:12px;margin-top:2px;">—</div>
-        </div>
-        <div class="modal-actions">
-          <a class="btn ghost" id="viewerOpenTab" href="#" target="_blank" rel="noopener">Abrir pestaña</a>
-          <button class="btn danger" id="viewerClose" type="button">Cerrar</button>
-        </div>
-      </div>
-      <div class="modal-body" id="viewerBody"></div>
-    </div>
-  </div>
+  <!-- ✅ Header común (debe existir este archivo en tu repo) -->
+  <script type="module" src="./header-common.js"></script>
 
-  <script type="module" src="./revision_docs.js"></script>
+  <!-- ✅ Tu lógica de la página -->
+  <script type="module" src="./rendiciones_coordinadores.js"></script>
 </body>
 </html>
