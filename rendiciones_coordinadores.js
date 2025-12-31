@@ -47,17 +47,6 @@ const escapeHtml = (str='') =>
 const norm = (s='') =>
   s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
-// Normaliza IDs tipo coordinador (para paths y matching)
-const normCoordId = (s='') =>
-  s.toString()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toLowerCase()
-    .replace(/[\s_]+/g,'-')
-    .replace(/-+/g,'-')
-    .trim();
-
-
-
 // Alias corto: PRIMER NOMBRE + PRIMER APELLIDO (1° y 3° palabra)
 const coordAliasCorto = (full='') => {
   const parts = full
@@ -428,14 +417,6 @@ function gastoToItem(grupoId, gInfo, raw, coordFromPath) {
 async function fetchGastosByGroup({ coordEmailHint = '', grupoId = '' } = {}) {
   const out = [];
   try {
-    const normCoord = (s='') =>
-      s.toString()
-       .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-       .toLowerCase()
-       .replace(/[\s_]+/g,'-')
-       .trim();
-
-    const hint = normCoord(coordEmailHint);
 
     const snap = await getDocs(collectionGroup(db,'gastos'));
     snap.forEach(docSnap => {
