@@ -1,185 +1,232 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bitácora por Actividad</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bitácora por Actividad | RT</title>
 
-  <!-- Tu CSS general (lo mantenemos) -->
-  <link rel="stylesheet" href="./estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+  <link rel="stylesheet" href="estilos.css" />
 
-  <!-- ✅ CSS “encima” para que no lo rompa estilos.css -->
+  <!-- ✅ OVERRIDE (encima de tu estilos.css) para que no rompa esta página -->
   <style>
-    /* Scope para no pelear con estilos globales */
-    .bitview { max-width: 1200px; margin: 0 auto; }
-    .bitview * { box-sizing: border-box; }
-
-    /* Evitar que el CSS global te destruya el layout */
-    .bitview input, .bitview select, .bitview textarea { text-transform: none !important; }
-
-    .bitview .panel {
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 16px;
-      margin: 16px 0;
-      box-shadow: 0 2px 10px rgba(0,0,0,.05);
+    /* Scope total para que tu CSS global no destruya esta vista */
+    body.bitacora-page{
+      background:#f6f6f6;
+    }
+    body.bitacora-page .page{
+      padding: 1rem 1.2rem;
+      max-width: 1200px;
+      margin: 0 auto;
     }
 
-    .bitview h1 { margin: 0 0 6px; font-size: 26px; }
-    .bitview .sub { margin: 0 0 14px; color: #475569; line-height: 1.35; }
-
-    .bitview .grid {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr 1fr;
-      gap: 12px;
-      margin: 12px 0;
-      justify-content: stretch;  /* pisa tu .grid global */
+    /* Tu CSS global fuerza uppercase y width:100% en todo. Aquí lo controlamos */
+    body.bitacora-page input,
+    body.bitacora-page select,
+    body.bitacora-page textarea{
+      text-transform: none !important;
+      width: auto;
     }
+
+    .card{
+      border:1px solid #e5e7eb;
+      border-radius:16px;
+      padding:1.1rem 1.2rem;
+      background:#fff;
+      box-shadow:0 2px 8px rgba(0,0,0,0.06);
+      margin-bottom:1rem;
+    }
+    .card h2{
+      margin:.2rem 0 .2rem;
+      font-size:1.6rem;
+      color:#111827;
+    }
+    .sub{
+      margin:0 0 .8rem;
+      color:#4b5563;
+      line-height:1.3;
+      font-size:.95rem;
+    }
+    .sub b{ color:#111827; }
+
+    .grid{
+      display:grid;
+      grid-template-columns:repeat(3, minmax(0, 1fr));
+      gap:.8rem;
+      align-items:end;
+    }
+    @media (max-width: 980px){
+      .grid{ grid-template-columns:1fr; }
+    }
+
+    .field{ display:flex; flex-direction:column; gap:.25rem; }
+    .field label{
+      margin:0;
+      font-size:.78rem;
+      text-transform:uppercase;
+      color:#4b5563;
+      font-weight:700;
+      letter-spacing:.02em;
+    }
+    .control{
+      width:100% !important;
+      padding:.55rem .6rem;
+      border:1px solid #d1d5db;
+      border-radius:10px;
+      font-size:.95rem;
+      background:#fff;
+      box-sizing:border-box;
+    }
+    .control:focus{
+      outline:none;
+      border-color:#0ea5e9;
+      box-shadow:0 0 0 2px rgba(14,165,233,0.2);
+    }
+
+    .actions{
+      display:flex;
+      gap:.6rem;
+      align-items:center;
+      flex-wrap:wrap;
+      margin-top:.6rem;
+    }
+    .btn{
+      padding:.6rem 1rem;
+      border-radius:10px;
+      border:1px solid #d1d5db;
+      background:#fff;
+      cursor:pointer;
+      font-size:.95rem;
+      font-weight:700;
+      color:#111827;
+    }
+    .btn.primary{
+      background:#0b57d0;
+      border-color:#0b57d0;
+      color:#fff;
+    }
+    .btn.primary:hover{ background:#093f96; border-color:#093f96; }
+    .btn.ghost:hover{ background:#f3f4f6; }
+
+    .status{
+      color:#374151;
+      font-size:.92rem;
+      opacity:.9;
+    }
+
+    .bar{
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:1rem;
+      flex-wrap:wrap;
+      margin-top:.7rem;
+    }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:.45rem;
+      border:1px solid #e5e7eb;
+      background:#f9fafb;
+      padding:.35rem .7rem;
+      border-radius:999px;
+      font-weight:800;
+      color:#111827;
+    }
+    .pill small{ font-weight:600; opacity:.7; }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      background:#fff;
+      border:1px solid #eee;
+      border-radius:12px;
+      overflow:hidden;
+    }
+    th, td{
+      padding:.6rem .65rem;
+      border-bottom:1px solid #f1f1f1;
+      vertical-align:top;
+      font-size:.92rem;
+    }
+    thead th{
+      background:#fafafa;
+      text-align:left;
+      font-weight:900;
+      text-transform:uppercase;
+      font-size:.78rem;
+      letter-spacing:.02em;
+    }
+
+    .mono{ font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
+    .muted{ opacity:.7; }
+    .nowrap{ white-space:nowrap; }
+
+    .empty{
+      padding:.8rem;
+      color:#6b7280;
+      font-style:italic;
+    }
+
+    /* Columna texto: permite saltos */
+    td.texto{
+      white-space:pre-wrap;
+      word-break:break-word;
+      max-width: 520px;
+    }
+
+    /* En móvil escondemos algunas columnas para respirar */
     @media (max-width: 900px){
-      .bitview .grid { grid-template-columns: 1fr; }
+      .hide-m{ display:none; }
     }
-
-    .bitview label { margin: 0 0 6px; font-size: 12px; color: #334155; font-weight: 700; letter-spacing: .02em; }
-    .bitview .ctrl { display:flex; flex-direction: column; gap: 6px; }
-    .bitview select, .bitview input {
-      width: 100%;
-      padding: 10px 12px;
-      border-radius: 8px;
-      border: 1px solid #cbd5e1;
-      background: #f8fafc;
-      outline: none;
-    }
-
-    .bitview .rowbtn {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      align-items: center;
-      margin-top: 10px;
-    }
-    .bitview .btn {
-      appearance: none;
-      border: 0;
-      border-radius: 8px;
-      padding: 10px 12px;
-      cursor: pointer;
-      background: #004080;
-      color: #fff;
-      font-weight: 700;
-      letter-spacing: .02em;
-    }
-    .bitview .btn.sec { background: #0f172a; }
-    .bitview .btn.ghost { background: #e2e8f0; color:#0f172a; }
-    .bitview .btn:disabled { opacity: .5; cursor: not-allowed; }
-
-    .bitview .metaLine { color:#475569; font-size: 13px; margin-top: 8px; }
-
-    .bitview .resultsHead {
-      display:flex; justify-content: space-between; align-items: baseline;
-      gap: 10px; flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-    .bitview .pill {
-      display:inline-flex; gap:8px; align-items:center;
-      padding: 6px 10px; border-radius: 999px;
-      border: 1px solid #cbd5e1; background:#f8fafc; color:#0f172a;
-      font-size: 12px; font-weight: 700;
-    }
-
-    .bitview .search {
-      width: min(520px, 100%);
-      padding: 10px 12px;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      background: #fff;
-    }
-
-    .bitview .cards { display: grid; gap: 10px; }
-    .bitview .card {
-      background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 12px;
-      padding: 12px;
-    }
-    .bitview .cardHead {
-      display:flex; justify-content: space-between; align-items: flex-start;
-      gap: 10px; flex-wrap: wrap;
-      border-bottom: 1px dashed #e2e8f0;
-      padding-bottom: 8px;
-      margin-bottom: 8px;
-    }
-    .bitview .cardTitle { font-weight: 900; letter-spacing: .02em; }
-    .bitview .cardSub { color:#475569; font-size: 13px; }
-    .bitview .note {
-      padding: 8px 10px;
-      border-radius: 10px;
-      background: #f8fafc;
-      border: 1px solid #e2e8f0;
-      margin: 6px 0;
-      white-space: pre-wrap;
-      line-height: 1.25;
-    }
-    .bitview .noteMeta { color:#64748b; font-size: 12px; margin-top: 4px; }
-    .bitview .muted { color:#64748b; }
-    .bitview .warn { color:#b45309; font-weight: 800; }
-    .bitview .err { color:#be123c; font-weight: 800; }
   </style>
 </head>
 
-<body>
-  <!-- respeta tu header fijo global si existe -->
-  <main class="bitview">
-    <div class="panel">
-      <h1>BITÁCORA POR ACTIVIDAD</h1>
+<body class="bitacora-page">
+  <!-- Encabezado común -->
+  <div id="encabezado"></div>
+
+  <div class="page">
+    <div class="card">
+      <h2>BITÁCORA POR ACTIVIDAD</h2>
       <p class="sub">
-        • <b>Modo Grupo</b>: muestra todas las actividades del itinerario del grupo + sus comentarios.<br>
-        • <b>Modo Actividad</b>: muestra una actividad (por destino/filtros) + todos los comentarios de todos los grupos filtrados.
+        • <b>Modo Grupo</b>: muestra todas las actividades del grupo (que tengan bitácora) + todos sus comentarios.<br/>
+        • <b>Modo Actividad</b>: muestra una actividad + todos los comentarios en todos los grupos filtrados.
       </p>
 
       <div class="grid">
-        <div class="ctrl">
-          <label>DESTINO (opcional, recomendado)</label>
-          <select id="fDestino">
-            <option value="">(Todos)</option>
+        <div class="field">
+          <label for="fDestino">Destino (opcional)</label>
+          <select id="fDestino" class="control"></select>
+        </div>
+
+        <div class="field">
+          <label for="fCoord">Coordinador(a) (opcional)</label>
+          <select id="fCoord" class="control"></select>
+        </div>
+
+        <div class="field">
+          <label for="fGrupo">Grupo específico (opcional)</label>
+          <select id="fGrupo" class="control"></select>
+        </div>
+
+        <div class="field">
+          <label for="fModo">Modo</label>
+          <select id="fModo" class="control">
+            <option value="GRUPO">POR GRUPO (todas sus actividades)</option>
+            <option value="ACTIVIDAD">POR ACTIVIDAD (en todos los grupos filtrados)</option>
           </select>
         </div>
 
-        <div class="ctrl">
-          <label>COORDINADOR(A) (opcional)</label>
-          <select id="fCoord">
-            <option value="">(Todos)</option>
-          </select>
+        <div class="field">
+          <label for="fActividad">Actividad (solo si MODO = ACTIVIDAD)</label>
+          <select id="fActividad" class="control" disabled></select>
         </div>
 
-        <div class="ctrl">
-          <label>GRUPO ESPECÍFICO (opcional)</label>
-          <select id="fGrupo">
-            <option value="">(Todos)</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="grid" style="grid-template-columns: 1.2fr 1fr 1fr;">
-        <div class="ctrl">
-          <label>MODO</label>
-          <select id="fModo">
-            <option value="grupo">POR GRUPO (todas sus actividades)</option>
-            <option value="actividad">POR ACTIVIDAD (en todos los grupos filtrados)</option>
-          </select>
-        </div>
-
-        <div class="ctrl">
-          <label>ACTIVIDAD (solo si MODO = ACTIVIDAD)</label>
-          <select id="fActividad" disabled>
-            <option value="">(Selecciona destino y/o carga)</option>
-          </select>
-        </div>
-
-        <div class="ctrl">
-          <label>LÍMITE (protección de rendimiento)</label>
-          <select id="fLimit">
-            <option value="80">80 notas</option>
+        <div class="field">
+          <label for="fLimite">Límite (protección rendimiento)</label>
+          <select id="fLimite" class="control">
+            <option value="100">100 notas</option>
             <option value="200" selected>200 notas</option>
             <option value="400">400 notas</option>
             <option value="800">800 notas</option>
@@ -187,25 +234,53 @@
         </div>
       </div>
 
-      <div class="rowbtn">
-        <button class="btn" id="btnCargar">CARGAR BITÁCORA</button>
-        <button class="btn ghost" id="btnLimpiar">LIMPIAR</button>
-        <span class="metaLine" id="metaStatus">Listo.</span>
+      <div class="actions">
+        <button id="btnCargar" class="btn primary">CARGAR BITÁCORA</button>
+        <button id="btnLimpiar" class="btn ghost">LIMPIAR</button>
+        <span class="status" id="status">Listo.</span>
       </div>
     </div>
 
-    <div class="panel">
-      <div class="resultsHead">
-        <div class="pill" id="pillResumen">ENTRADAS: 0</div>
-        <input class="search" id="qBuscar" placeholder="BUSCAR TEXTO (en resultados)" />
+    <div class="card">
+      <div class="bar">
+        <div class="pill" id="pillEntradas"><small>ENTRADAS</small> <span id="countEntradas">0</span></div>
+        <input id="buscador" class="control" style="max-width:520px;" placeholder="BUSCAR TEXTO (en resultados)" />
       </div>
 
-      <div id="results" class="cards">
-        <div class="muted">Sin resultados.</div>
+      <div style="margin-top:.8rem;">
+        <table id="tbl">
+          <thead>
+            <tr>
+              <th class="nowrap">Fecha</th>
+              <th class="nowrap">Hora</th>
+              <th>Grupo</th>
+              <th>Actividad</th>
+              <th>Texto</th>
+              <th class="hide-m">Autor</th>
+              <th class="hide-m nowrap">Timestamp</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="7" class="empty">Sin resultados.</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
-  </main>
+  </div>
 
-  <script type="module" src="./bitacora_actividades.js"></script>
+  <!-- Carga encabezado + firebase + lógica -->
+  <script type="module">
+    (async () => {
+      try {
+        const html = await (await fetch('encabezado.html')).text().catch(()=> '');
+        document.getElementById('encabezado').innerHTML = html || '';
+      } catch (_) {}
+
+      await import('./firebase-init.js'); // inicializa Firebase (exporta {app, db})
+      await import('./script.js');        // reloj/usuario del encabezado (si lo usas)
+      await import('./bitacora_actividad.js'); // lógica de esta página
+      console.log('✅ bitacora_actividad.js cargado');
+    })();
+  </script>
 </body>
 </html>
