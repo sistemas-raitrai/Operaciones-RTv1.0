@@ -3,274 +3,568 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Revisión de Documentos · Rai Trai</title>
-
-  <!-- Favicon -->
+  <title>Revisión de Documentos | RT</title>
   <link rel="icon" type="image/png" href="RaitraiLogo.png"/>
 
-  <!-- ===== ESTILOS BASE (usa tus variables globales si ya existen) ===== -->
   <style>
+    /* =========================================================
+       ESTÉTICA CLARA (scoped a .docs-page)
+       Si tu CSS global es oscuro, esto lo "pisa" localmente.
+       ========================================================= */
     :root{
-      --bg:#0b1329;
-      --panel:#0e1834;
-      --line:#334155;
-      --text:#e5e7eb;
-      --muted:#94a3b8;
-      --accent:#22d3ee;
-      --accent-soft:#0ea5e9;
-      --ok:#22c55e;
+      --bg:#f4f6fb;
+      --panel:#ffffff;
+      --border:#d1d5db;
+      --ink:#0f172a;
+      --muted:#6b7280;
+      --accent:#00c7b6;
+      --accent-strong:#00a89d;
+      --accent-soft:#e0fffa;
+      --danger:#e11d48;
+      --shadow:0 12px 28px rgba(15,23,42,.10);
+      --radius:16px;
     }
 
-    *{ box-sizing:border-box; }
-    body{
+    body.docs-page{
       margin:0;
-      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      background:var(--bg);
-      color:var(--text);
-      min-height:100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
     }
 
-    a{ color:var(--accent); text-decoration:none; }
-    a:hover{ text-decoration:underline; }
+    a{ color: inherit; text-decoration: none; }
 
-    /* ===== HEADER COMÚN ===== */
-    header.app-header{
+    /* ================= HEADER COMÚN ================= */
+    .topbar{
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(244,246,251,.86);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar-inner{
       display:flex;
       align-items:center;
       justify-content:space-between;
-      padding:10px 16px;
-      background:#020617;
-      border-bottom:1px solid var(--line);
+      gap: 12px;
+      padding: 10px 14px;
+      max-width: 1200px;
+      margin: 0 auto;
     }
-
-    .header-left{
+    .brand{
       display:flex;
       align-items:center;
-      gap:12px;
-    }
-
-    .header-left img{
-      height:34px;
-    }
-
-    .header-left h1{
-      font-size:14px;
-      margin:0;
-      font-weight:600;
-      letter-spacing:.4px;
-    }
-
-    .header-actions{
-      display:flex;
       gap:10px;
+      min-width: 180px;
     }
-
-    .header-actions button{
-      background:transparent;
-      border:1px solid var(--line);
-      color:var(--text);
-      padding:6px 10px;
-      border-radius:6px;
-      cursor:pointer;
+    .brand img{
+      width: 34px;
+      height: 34px;
+      object-fit: contain;
     }
-
-    .header-actions button:hover{
-      background:#020617;
-    }
-
-    /* ===== CONTENIDO ===== */
-    main{
-      padding:18px;
-      max-width:1600px;
-      margin:auto;
-    }
-
-    /* ===== FILTROS ===== */
-    .filtros-docs{
-      display:grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px,1fr));
-      gap:12px;
-      background:var(--panel);
-      padding:14px;
-      border:1px solid var(--line);
-      border-radius:10px;
-      margin-bottom:16px;
-    }
-
-    .filtros-docs label{
-      display:block;
-      font-size:11px;
-      color:var(--muted);
-      margin-bottom:4px;
-      text-transform:uppercase;
-    }
-
-    .filtros-docs input{
-      width:100%;
-      padding:8px 10px;
-      border-radius:6px;
-      border:1px solid var(--line);
-      background:#020617;
-      color:var(--text);
-    }
-
-    .fila-botones{
+    .brand .title{
       display:flex;
-      align-items:flex-end;
-      gap:8px;
+      flex-direction:column;
+      line-height:1.1;
+    }
+    .brand .title strong{
+      font-size: 14px;
+    }
+    .brand .title span{
+      font-size: 12px;
+      color: var(--muted);
     }
 
-    .fila-botones button{
-      padding:8px 14px;
-      border-radius:6px;
-      border:1px solid var(--line);
-      background:#020617;
-      color:var(--text);
+    .actions{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .iconbtn{
+      border: 1px solid var(--border);
+      background: var(--panel);
+      border-radius: 12px;
+      padding: 8px 10px;
       cursor:pointer;
+      box-shadow: 0 6px 16px rgba(15,23,42,.06);
+      transition: transform .06s ease, border-color .2s ease;
+      user-select:none;
+      font-size: 14px;
+    }
+    .iconbtn:hover{ border-color:#b9c0cb; }
+    .iconbtn:active{ transform: translateY(1px); }
+
+    /* ================= LAYOUT ================= */
+    .wrap{
+      max-width: 1200px;
+      margin: 16px auto 40px;
+      padding: 0 14px;
     }
 
-    .fila-botones button:hover{
-      background:#020617;
-      border-color:var(--accent);
+    .card{
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
     }
 
-    .muted{
-      color:var(--muted);
-      font-size:12px;
-      margin-left:6px;
+    .card-head{
+      padding: 14px 14px 10px;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-head h1{
+      margin:0;
+      font-size: 16px;
+      letter-spacing:.2px;
+    }
+    .card-head p{
+      margin:4px 0 0;
+      color: var(--muted);
+      font-size: 12px;
     }
 
-    /* ===== TABLA ===== */
-    .tabla-docs{
-      background:var(--panel);
-      border:1px solid var(--line);
-      border-radius:10px;
-      overflow:auto;
+    .card-body{
+      padding: 14px;
     }
 
-    table{
+    /* ================= FILTROS ================= */
+    .filters{
+      display:grid;
+      grid-template-columns: 1.2fr 1.2fr 1.2fr 1fr;
+      gap: 10px;
+      align-items:end;
+    }
+    @media (max-width: 980px){
+      .filters{ grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 540px){
+      .filters{ grid-template-columns: 1fr; }
+    }
+
+    .field label{
+      display:block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0 0 6px;
+    }
+    .input{
       width:100%;
-      border-collapse:collapse;
-      font-size:13px;
+      padding: 10px 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      outline: none;
+      font-size: 14px;
     }
 
-    thead th{
-      position:sticky;
-      top:0;
-      background:#020617;
-      z-index:2;
-      font-weight:600;
-      text-align:left;
-      padding:10px;
-      border-bottom:1px solid var(--line);
-      white-space:nowrap;
+    .btnrow{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      margin-top: 10px;
     }
-
-    tbody td{
-      padding:8px 10px;
-      border-bottom:1px solid var(--line);
-      vertical-align:top;
-      white-space:nowrap;
-    }
-
-    tbody tr:hover{
-      background:#020617;
-    }
-
-    td:last-child{
-      text-align:center;
-    }
-
-    input[type="checkbox"]{
-      transform:scale(1.1);
+    .btn{
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 12px;
       cursor:pointer;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .btn.primary{
+      background: var(--accent-strong);
+      border-color: var(--accent-strong);
+      color: #fff;
+    }
+    .btn.ghost{
+      background: #fff;
+    }
+    .btn.danger{
+      background: #fff;
+      border-color: #f3b4c0;
+      color: var(--danger);
+    }
+
+    .pillrow{
+      margin-top: 10px;
+      display:flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items:center;
+    }
+    .pill{
+      background: var(--accent-soft);
+      border: 1px solid #c7fff9;
+      color: #064e3b;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+    .muted{ color: var(--muted); }
+
+    /* ================= MULTISELECT DROPDOWN ================= */
+    details.multi{
+      position: relative;
+    }
+    details.multi summary{
+      list-style: none;
+      cursor:pointer;
+      user-select:none;
+    }
+    details.multi summary::-webkit-details-marker{ display:none; }
+
+    .multi-display{
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 10px;
+      background: #fff;
+      font-size: 14px;
+      display:flex;
+      justify-content: space-between;
+      align-items:center;
+      gap: 10px;
+    }
+    .multi-display small{ color: var(--muted); font-weight: 600; }
+
+    .multi-panel{
+      position:absolute;
+      top: calc(100% + 6px);
+      left:0;
+      right:0;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      z-index: 30;
+      padding: 10px;
+      max-height: 320px;
+      overflow: auto;
+    }
+
+    .multi-tools{
+      display:flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .multi-tools input{
+      flex:1;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      padding: 8px 10px;
+      font-size: 13px;
+      outline:none;
+    }
+    .mini{
+      border: 1px solid var(--border);
+      background:#fff;
+      border-radius: 12px;
+      padding: 8px 10px;
+      cursor:pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .opt{
+      display:flex;
+      gap: 8px;
+      align-items:flex-start;
+      padding: 6px 6px;
+      border-radius: 10px;
+    }
+    .opt:hover{ background: #f8fafc; }
+    .opt small{ color: var(--muted); display:block; }
+
+    /* ================= TABLA ================= */
+    .tablewrap{
+      margin-top: 14px;
+      overflow:auto;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background:#fff;
+    }
+    table{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 980px;
+    }
+    thead th{
+      text-align:left;
+      position: sticky;
+      top: 0;
+      background: #f9fafb;
+      z-index: 2;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 10px;
+      white-space: nowrap;
+    }
+    tbody td{
+      border-top: 1px solid #eef2f7;
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+    tbody tr:hover{ background: #fbfdff; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .tag{
+      display:inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .tag.ok{
+      border-color:#a7f3d0;
+      background:#ecfdf5;
+      color:#065f46;
+      font-weight: 800;
+    }
+    .tag.pending{
+      border-color:#fde68a;
+      background:#fffbeb;
+      color:#92400e;
+      font-weight: 800;
+    }
+
+    .link{
+      color: #0ea5e9;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .chk{
+      transform: scale(1.1);
+      cursor: pointer;
+    }
+
+    /* ================= MODAL VISOR ================= */
+    .modal{
+      position: fixed;
+      inset: 0;
+      background: rgba(15,23,42,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding: 18px;
+      z-index: 999;
+    }
+    .modal.open{ display:flex; }
+    .modal-card{
+      width: min(1100px, 100%);
+      height: min(760px, 92vh);
+      background: #fff;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+    .modal-head{
+      padding: 10px 12px;
+      border-bottom:1px solid var(--border);
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap: 10px;
+      background:#f9fafb;
+    }
+    .modal-head strong{ font-size: 13px; }
+    .modal-head .modal-actions{
+      display:flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content:flex-end;
+    }
+    .modal-body{
+      flex:1;
+      background:#fff;
+    }
+    .modal-body iframe,
+    .modal-body img{
+      width: 100%;
+      height: 100%;
+      border: 0;
+      object-fit: contain;
+      background:#fff;
     }
   </style>
 </head>
 
-<body>
+<body class="docs-page">
+  <!-- HEADER COMÚN -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img src="RaitraiLogo.png" alt="RaiTrai"/>
+        <div class="title">
+          <strong>Revisión de Documentos</strong>
+          <span id="userEmail" class="muted">—</span>
+        </div>
+      </div>
 
-  <!-- ===== HEADER COMÚN ===== -->
-  <header class="app-header">
-    <div class="header-left">
-      <img src="RaitraiLogo.png" alt="Rai Trai"/>
-      <h1>REVISIÓN DE DOCUMENTOS</h1>
-    </div>
-
-    <div class="header-actions">
-      <button onclick="location.href='index.html'">🏠 Inicio</button>
-      <button onclick="history.back()">⬅ Volver</button>
-      <button id="btn-logout">⏏ Salir</button>
+      <div class="actions">
+        <button class="iconbtn" id="btn-home" title="Inicio">🏠</button>
+        <button class="iconbtn" id="btn-refresh" title="Actualizar">🔄</button>
+        <button class="iconbtn" id="btn-back" title="Volver">⬅️</button>
+        <button class="iconbtn" id="btn-logout" title="Cerrar sesión">⏏️</button>
+      </div>
     </div>
   </header>
 
-  <!-- ===== CONTENIDO ===== -->
-  <main>
-
-    <!-- FILTROS -->
-    <section class="filtros-docs">
-
-      <div>
-        <label>Destino</label>
-        <input id="filtroDestinoDocs" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
-        <datalist id="dl-destinos-docs"></datalist>
+  <main class="wrap">
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h1>Boletas / comprobantes / constancias + comprobantes de gastos</h1>
+          <p>Filtra múltiples grupos y marca cada documento como revisado. Todo queda guardado en Firebase.</p>
+        </div>
+        <div class="pillrow">
+          <span class="pill" id="infoDocs">0 documentos.</span>
+          <span class="pill" id="infoPendientes" style="display:none;">Cambios pendientes: 0</span>
+        </div>
       </div>
 
-      <div>
-        <label>Coordinador</label>
-        <input id="filtroCoordDocs" list="dl-coords-docs" placeholder="correo@"/>
-        <datalist id="dl-coords-docs"></datalist>
-      </div>
+      <div class="card-body">
+        <!-- FILTROS -->
+        <div class="filters">
+          <div class="field">
+            <label>Destino (1)</label>
+            <input id="filtroDestinoDocs" class="input" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
+            <datalist id="dl-destinos-docs"></datalist>
+          </div>
 
-      <div>
-        <label>Fecha desde</label>
-        <input id="filtroFechaDesdeDocs" type="date"/>
-      </div>
+          <div class="field">
+            <label>Coordinadores (multi)</label>
+            <details class="multi" id="multiCoords">
+              <summary>
+                <div class="multi-display">
+                  <span id="multiCoordsLabel">Seleccionar…</span>
+                  <small>▼</small>
+                </div>
+              </summary>
+              <div class="multi-panel">
+                <div class="multi-tools">
+                  <input id="searchCoords" type="text" placeholder="Buscar coordinador…"/>
+                  <button class="mini" id="btnCoordsAll" type="button">TODO</button>
+                  <button class="mini" id="btnCoordsNone" type="button">NADA</button>
+                </div>
+                <div id="coordsList"></div>
+              </div>
+            </details>
+          </div>
 
-      <div>
-        <label>Fecha hasta</label>
-        <input id="filtroFechaHastaDocs" type="date"/>
-      </div>
+          <div class="field">
+            <label>Grupos (multi)</label>
+            <details class="multi" id="multiGrupos">
+              <summary>
+                <div class="multi-display">
+                  <span id="multiGruposLabel">Seleccionar…</span>
+                  <small>▼</small>
+                </div>
+              </summary>
+              <div class="multi-panel">
+                <div class="multi-tools">
+                  <input id="searchGrupos" type="text" placeholder="Buscar grupo (número/nombre)…"/>
+                  <button class="mini" id="btnGruposAll" type="button">TODO</button>
+                  <button class="mini" id="btnGruposNone" type="button">NADA</button>
+                </div>
+                <div id="gruposList"></div>
+              </div>
+            </details>
+          </div>
 
-      <div>
-        <label>Buscar texto</label>
-        <input id="filtroTextoDocs" placeholder="grupo, asunto, destino…"/>
-      </div>
+          <div class="field">
+            <label>Tipo documento (multi)</label>
+            <details class="multi" id="multiTipos">
+              <summary>
+                <div class="multi-display">
+                  <span id="multiTiposLabel">Seleccionar…</span>
+                  <small>▼</small>
+                </div>
+              </summary>
+              <div class="multi-panel">
+                <div class="multi-tools">
+                  <input id="searchTipos" type="text" placeholder="Buscar tipo…"/>
+                  <button class="mini" id="btnTiposAll" type="button">TODO</button>
+                  <button class="mini" id="btnTiposNone" type="button">NADA</button>
+                </div>
+                <div id="tiposList"></div>
+              </div>
+            </details>
+          </div>
 
-      <div class="fila-botones">
-        <button id="btnCargarDocs">Cargar</button>
-        <button id="btnLimpiarDocs">Limpiar</button>
-        <span id="infoDocs" class="muted"></span>
-      </div>
+          <div class="field" style="grid-column: 1 / -1;">
+            <label>Texto libre (opcional)</label>
+            <input id="filtroTextoDocs" class="input" placeholder="Busca por grupo, destino, coord, tipo, asunto…"/>
+          </div>
+        </div>
 
+        <div class="btnrow">
+          <button class="btn ghost" id="btnLimpiarDocs" type="button">Limpiar</button>
+          <button class="btn primary" id="btnCargarDocs" type="button">Cargar documentos</button>
+          <button class="btn" id="btnGuardarPendientes" type="button" style="display:none;">Guardar cambios</button>
+        </div>
+
+        <!-- TABLA -->
+        <div class="tablewrap" style="margin-top:14px;">
+          <table id="tblDocs">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Grupo</th>
+                <th>Destino</th>
+                <th>Coordinador</th>
+                <th>Tipo</th>
+                <th>Rendición</th>
+                <th>Moneda</th>
+                <th>Monto</th>
+                <th>Archivo</th>
+                <th>Revisado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="10" class="muted">Sin datos.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="muted" style="margin:10px 2px 0;font-size:12px;">
+          “Rendición” = <strong>OK</strong> si <span class="mono">grupos/{gid}/finanzas/summary → docsOk.boleta</span> está marcado (boleta SII revisada).
+        </p>
+      </div>
     </section>
-
-    <!-- TABLA -->
-    <section class="tabla-docs">
-      <table id="tblDocs">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Grupo</th>
-            <th>Destino</th>
-            <th>Coordinador</th>
-            <th>Tipo documento</th>
-            <th>Moneda</th>
-            <th>Monto</th>
-            <th>Archivo</th>
-            <th>Revisado</th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- filas desde JS -->
-        </tbody>
-      </table>
-    </section>
-
   </main>
 
-  <!-- ===== JS ===== -->
-  <script type="module" src="revision_docs.js"></script>
+  <!-- MODAL VISOR -->
+  <div class="modal" id="viewerModal" aria-hidden="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <strong id="viewerTitle">Documento</strong>
+          <div class="muted" id="viewerSub" style="font-size:12px;margin-top:2px;">—</div>
+        </div>
+        <div class="modal-actions">
+          <a class="btn ghost" id="viewerOpenTab" href="#" target="_blank" rel="noopener">Abrir pestaña</a>
+          <button class="btn danger" id="viewerClose" type="button">Cerrar</button>
+        </div>
+      </div>
+      <div class="modal-body" id="viewerBody"></div>
+    </div>
+  </div>
 
+  <script type="module" src="./revision_docs.js"></script>
 </body>
 </html>
