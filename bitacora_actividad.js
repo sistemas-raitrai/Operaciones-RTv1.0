@@ -1,25 +1,28 @@
 // bitacora_actividad.js
-// Bitácora por actividad en todos los grupos (por destino) o completa por grupo.
+// Bitácora:
+//  - Modo GRUPO: muestra todas las actividades del grupo con todos sus comentarios.
+//  - Modo DESTINO/ACTIVIDAD: muestra comentarios en todos los grupos del destino (y/o actividad).
 //
-// Estructura Firestore esperada:
-//   grupos/{gid}/bitacora/{actividadId}/{YYYY-MM-DD}/{docId}
-// Campos típicos: texto, byEmail, byUid, ts (Timestamp/Date/number)
+// Lectura Firestore esperada:
+//  grupos/{gid}/bitacora/{actividadId}/{YYYY-MM-DD}/{entryId}
+//
+// Campos típicos (soportados por fallback):
+//  texto | text | comentario | msg
+//  byEmail | email | autorEmail | by
+//  ts | at | createdAt | timestamp | time
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
-import {
-  collection, getDocs
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { collection, getDocs }
+  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
 /* =========================
    HELPERS
 ========================= */
-const TZ = 'America/Santiago';
-
 const coalesce = (...xs) =>
   xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
@@ -35,30 +38,14 @@ function escapeHtml(str='') {
     .replace(/'/g,'&#039;');
 }
 
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
 function setStatus(msg) {
   const el = document.getElementById('status');
   if (el) el.textContent = msg;
-}
-
-function setModeHint(msg) {
-  const el = document.getElementById('modeHint');
-  if (el) el.textContent = msg;
-}
-
-function setKpis({ grupos='—', dias='—', entradas=0 } = {}) {
-  const g = document.getElementById('kpiGrupos');
-  const d = document.getElementById('kpiDias');
-  const e = document.getElementById('kpiEntradas');
-  if (g) g.textContent = grupos;
-  if (d) d.textContent = dias;
-  if (e) e.textContent = String(entradas ?? 0);
-}
-
-function toISODate(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const dd = String(d.getDate()).padStart(2,'0');
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 function parseTsToMs(v) {
@@ -72,70 +59,49 @@ function parseTsToMs(v) {
     if (typeof v.toDate === 'function') {
       try { return v.toDate().getTime(); } catch { return 0; }
     }
-    if ('seconds' in v) return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1e6);
+    if ('seconds' in v) return v.seconds * 1000 + Math.floor((v.nanoseconds||0)/1e6);
   }
   return 0;
 }
 
-function msToHora(ms) {
+function fmtHora(ms) {
   if (!ms) return '—';
   const d = new Date(ms);
   const hh = String(d.getHours()).padStart(2,'0');
   const mm = String(d.getMinutes()).padStart(2,'0');
-  const ss = String(d.getSeconds()).padStart(2,'0');
-  return `${hh}:${mm}:${ss}`;
+  return `${hh}:${mm}`;
 }
-
-function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
 
 /* =========================
    STATE
 ========================= */
 const state = {
   user: null,
-
-  // cache catálogo grupos
-  grupos: new Map(), // gid -> {gid, numero, nombre, destino, coordEmail}
-
-  // actividades sugeridas (Set)
-  actividades: new Set(),
-
-  // resultados
-  resultsAll: [],
-  resultsView: []
+  grupos: new Map(),      // gid -> {gid, numero, nombre, destino, coordEmail}
+  actividades: new Set(), // sugeridas
+  results: []             // entries planas
 };
 
 /* =========================
-   UI
+   UI: leer filtros
 ========================= */
 function readFilters() {
   return {
     destino: (document.getElementById('fDestino')?.value || '').trim(),
     coord: (document.getElementById('fCoord')?.value || '').trim().toLowerCase(),
     grupo: (document.getElementById('fGrupo')?.value || '').trim(),
-    actividad: (document.getElementById('fActividad')?.value || '').trim(),
-    desde: (document.getElementById('fDesde')?.value || '').trim(),
-    hasta: (document.getElementById('fHasta')?.value || '').trim(),
-    buscarTxt: (document.getElementById('fBuscarTxt')?.value || '').trim()
+    actividad: (document.getElementById('fActividad')?.value || '').trim()
   };
-}
-
-function ensureDateRange() {
-  const today = toISODate(new Date());
-  const d = document.getElementById('fDesde');
-  const h = document.getElementById('fHasta');
-  if (d && !d.value) d.value = today;
-  if (h && !h.value) h.value = today;
 }
 
 function computeMode(f) {
   if (f.grupo) return 'GRUPO';
-  if (f.destino) return 'DESTINO';
+  if (f.destino || f.actividad || f.coord) return 'DESTINO/ACTIVIDAD';
   return 'NONE';
 }
 
 /* =========================
-   CATÁLOGO GRUPOS
+   CARGAR CATÁLOGO GRUPOS
 ========================= */
 async function preloadGruposCatalog() {
   state.grupos.clear();
@@ -143,16 +109,16 @@ async function preloadGruposCatalog() {
   const dlGrupos = document.getElementById('dl-grupos');
   const dlCoords = document.getElementById('dl-coords');
   const dlDest   = document.getElementById('dl-destinos');
+
   if (dlGrupos) dlGrupos.innerHTML = '';
   if (dlCoords) dlCoords.innerHTML = '';
-  if (dlDest)   dlDest.innerHTML = '';
+  if (dlDest) dlDest.innerHTML = '';
 
   setStatus('Cargando catálogo de grupos…');
 
   const snap = await getDocs(collection(db,'grupos'));
-
   const coordsSet = new Set();
-  const destSet   = new Set();
+  const destSet = new Set();
 
   snap.forEach(d => {
     const x = d.data() || {};
@@ -161,8 +127,8 @@ async function preloadGruposCatalog() {
     const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, gid);
     const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, gid);
 
-    const destino = coalesce(x.destino, x.lugar, '').toString().trim();
-    const coordEmail = coalesce(
+    const destino = String(coalesce(x.destino, x.lugar, '')).trim();
+    const coordEmail = String(coalesce(
       x.coordinadorEmail,
       x.coordinador?.email,
       x.coordinador,
@@ -170,7 +136,7 @@ async function preloadGruposCatalog() {
       x.responsable,
       x.owner,
       ''
-    ).toString().trim().toLowerCase();
+    )).trim().toLowerCase();
 
     state.grupos.set(gid, { gid, numero, nombre, destino, coordEmail });
 
@@ -207,14 +173,16 @@ async function preloadGruposCatalog() {
 }
 
 /* =========================
-   GRUPOS OBJETIVO
+   RESOLVER GRUPOS OBJETIVO
 ========================= */
 function resolveTargetGroups(f) {
+  // 1) Grupo específico directo
   if (f.grupo) {
     const g = state.grupos.get(f.grupo);
     return g ? [g] : [{ gid: f.grupo, numero: f.grupo, nombre: f.grupo, destino:'', coordEmail:'' }];
   }
 
+  // 2) Por destino / coordinador
   const destN = norm(f.destino);
   const out = [];
   for (const g of state.grupos.values()) {
@@ -226,7 +194,8 @@ function resolveTargetGroups(f) {
 }
 
 /* =========================
-   ACTIVIDADES SUGERIDAS
+   CARGAR ACTIVIDADES SUGERIDAS
+   (desde grupos objetivo)
 ========================= */
 async function loadSuggestedActivities() {
   const f = readFilters();
@@ -235,36 +204,35 @@ async function loadSuggestedActivities() {
   state.actividades.clear();
   const dlActs = document.getElementById('dl-actividades');
   if (dlActs) dlActs.innerHTML = '';
-  const actCount = document.getElementById('actCount');
-  if (actCount) actCount.textContent = 'Actividades sugeridas: 0';
 
   if (mode === 'NONE') {
-    setStatus('Elige un DESTINO o un GRUPO para cargar actividades.');
+    setStatus('Elige un GRUPO o un DESTINO / COORD para cargar actividades.');
+    setText('chipActividades', 'Actividades: —');
     return;
   }
 
   const targets = resolveTargetGroups(f);
   if (!targets.length) {
-    setStatus('Sin grupos objetivo para cargar actividades.');
+    setStatus('No hay grupos objetivo para cargar actividades.');
+    setText('chipActividades', 'Actividades: 0');
     return;
   }
 
-  setStatus(`Cargando actividades desde bitacora/* en ${targets.length} grupo(s)…`);
-
-  // Seguridad: si hay demasiados grupos, no explotar
+  // para no morir, límite razonable
   const MAX_GROUPS = 80;
   const safeTargets = targets.slice(0, MAX_GROUPS);
 
-  let i = 0;
-  for (const g of safeTargets) {
+  setStatus(`Leyendo actividades desde ${safeTargets.length} grupo(s)…`);
+
+  let totalActs = 0;
+  for (let i=0; i<safeTargets.length; i++) {
+    const g = safeTargets[i];
     try {
       const snapActs = await getDocs(collection(db,'grupos',g.gid,'bitacora'));
       snapActs.forEach(a => state.actividades.add(a.id));
-    } catch (e) {
-      // sin bitácora, ok
-    }
-    i++;
-    if (i % 6 === 0) await sleep(30);
+    } catch (_) {}
+    totalActs = state.actividades.size;
+    if ((i+1) % 6 === 0) await new Promise(r=>setTimeout(r, 20));
   }
 
   const acts = [...state.actividades].sort((a,b)=>a.localeCompare(b,'es'));
@@ -277,42 +245,21 @@ async function loadSuggestedActivities() {
     });
   }
 
-  if (actCount) actCount.textContent = `Actividades sugeridas: ${acts.length}`;
   setStatus(`Actividades cargadas: ${acts.length}`);
+  setText('chipActividades', `Actividades: ${acts.length}`);
 }
 
 /* =========================
-   RANGO DE FECHAS
+   LEER BITÁCORA COMPLETA (sin filtro de fechas)
+   Estrategia:
+   - Por grupo: lista actividades (bitacora) -> lista fechas (subcol) -> lista entradas
+   - Por destino/actividad: igual, pero para varios grupos
 ========================= */
-function listDatesInRange(desdeISO, hastaISO) {
-  const out = [];
-  const d1 = new Date(`${desdeISO}T00:00:00`);
-  const d2 = new Date(`${hastaISO}T00:00:00`);
-  if (isNaN(d1) || isNaN(d2)) return out;
-
-  const cur = new Date(d1);
-  const end = new Date(d2);
-
-  // soporta invertido
-  const step = cur <= end ? 1 : -1;
-
-  while (true) {
-    out.push(toISODate(cur));
-    if (toISODate(cur) === toISODate(end)) break;
-    cur.setDate(cur.getDate() + step);
-    if (out.length > 370) break;
-  }
-
-  return out.sort();
-}
-
-/* =========================
-   LECTURA BITÁCORA
-========================= */
-async function fetchBitacoraForGroup(g, datesISO, actividadFiltro='') {
+async function fetchAllBitacoraForGroup(g, actividadFiltro='') {
   const out = [];
   const gid = g.gid;
 
+  // 1) Actividades
   let activities = [];
   if (actividadFiltro) {
     activities = [actividadFiltro];
@@ -325,222 +272,227 @@ async function fetchBitacoraForGroup(g, datesISO, actividadFiltro='') {
     }
   }
 
+  // 2) Por actividad: fechas dinámicas
   for (const actId of activities) {
-    for (const dateISO of datesISO) {
+    let snapDates;
+    try {
+      snapDates = await getDocs(collection(db,'grupos',gid,'bitacora',actId));
+    } catch {
+      continue;
+    }
+
+    const dates = snapDates.docs.map(d => d.id).sort(); // ids tipo "2025-12-31"
+    for (const dateISO of dates) {
       try {
-        const snapDay = await getDocs(collection(db,'grupos',gid,'bitacora',actId,dateISO));
-
-        snapDay.forEach(docSnap => {
+        const snapEntries = await getDocs(collection(db,'grupos',gid,'bitacora',actId,dateISO));
+        snapEntries.forEach(docSnap => {
           const x = docSnap.data() || {};
+          const texto = String(coalesce(x.texto, x.text, x.comentario, x.msg, ''));
 
-          const texto = coalesce(x.texto, x.text, x.comentario, x.msg, '');
-          const byEmail = coalesce(x.byEmail, x.email, x.autorEmail, x.by, '');
+          const byEmail = String(coalesce(x.byEmail, x.email, x.autorEmail, x.by, '—'));
           const tsMs = parseTsToMs(coalesce(x.ts, x.at, x.createdAt, x.timestamp, x.time, 0));
 
-          let hora = tsMs ? msToHora(tsMs) : '—';
-          // fallback: docId "19:24:01.338"
+          // fallback hora: doc id si parece hora
+          let hora = tsMs ? fmtHora(tsMs) : '—';
           if (!tsMs && typeof docSnap.id === 'string' && docSnap.id.includes(':')) {
-            hora = docSnap.id;
+            hora = docSnap.id.slice(0,5); // HH:MM
           }
 
           out.push({
+            gid,
+            grupoLabel: `${g.numero || gid} — ${g.nombre || gid}`,
+            destino: g.destino || '',
+            coordEmail: g.coordEmail || '',
+            actividadId: actId,
             fechaISO: dateISO,
             hora,
-            grupoLabel: `${g.numero || gid} — ${g.nombre || gid}`,
-            actividadId: actId,
             texto,
-            autor: String(byEmail || '—'),
+            autor: byEmail,
             tsMs: tsMs || 0
           });
         });
-      } catch {
-        // subcolección no existe → vacío
-      }
+      } catch (_) {}
     }
   }
 
   return out;
 }
 
+/* =========================
+   CARGAR BITÁCORA (principal)
+========================= */
 async function loadBitacora() {
   const f = readFilters();
-  ensureDateRange();
-
   const mode = computeMode(f);
+
+  // chips modo
+  if (mode === 'GRUPO') setText('chipModo', 'Modo: GRUPO');
+  else if (mode === 'DESTINO/ACTIVIDAD') setText('chipModo', 'Modo: DESTINO/ACTIVIDAD');
+  else setText('chipModo', 'Modo: —');
+
   if (mode === 'NONE') {
-    alert('Debes elegir al menos un GRUPO específico o un DESTINO.');
-    return;
-  }
-
-  if (mode === 'GRUPO') setModeHint('Modo: GRUPO (todas las actividades del grupo)');
-  if (mode === 'DESTINO') setModeHint('Modo: DESTINO (todas las actividades en todos los grupos)');
-
-  if (!f.desde || !f.hasta) {
-    alert('Selecciona un rango de fechas (Desde / Hasta).');
-    return;
-  }
-
-  const datesISO = listDatesInRange(f.desde, f.hasta);
-  if (!datesISO.length) {
-    alert('Rango de fechas inválido.');
+    alert('Debes elegir un GRUPO o un DESTINO/COORD (y opcional ACTIVIDAD).');
     return;
   }
 
   const targets = resolveTargetGroups(f);
+
+  setText('chipGrupos', `Grupos: ${targets.length}`);
+  setText('chipEntradas', `Entradas: 0`);
+
   if (!targets.length) {
-    setStatus('No hay grupos que coincidan con ese destino/coordinador.');
-    state.resultsAll = [];
-    applyTextFilterAndRender(f.buscarTxt);
-    setKpis({ grupos: 0, dias: datesISO.length, entradas: 0 });
+    setStatus('No hay grupos para ese filtro.');
+    state.results = [];
+    renderGroupedByActivity([]);
     return;
   }
 
-  setStatus(`Consultando… grupos: ${targets.length} · días: ${datesISO.length}`);
-  setKpis({ grupos: targets.length, dias: datesISO.length, entradas: 0 });
+  setStatus(`Cargando bitácora… (${targets.length} grupo(s))`);
+
+  // performance: limitar si filtras demasiado amplio
+  const MAX_GROUPS = 80;
+  const safeTargets = targets.slice(0, MAX_GROUPS);
 
   const all = [];
-  let done = 0;
+  for (let i=0; i<safeTargets.length; i++) {
+    const g = safeTargets[i];
 
-  for (const g of targets) {
-    const chunk = await fetchBitacoraForGroup(g, datesISO, f.actividad);
+    setStatus(`Leyendo ${i+1}/${safeTargets.length} · ${g.numero || g.gid}`);
+    const chunk = await fetchAllBitacoraForGroup(g, f.actividad);
     all.push(...chunk);
 
-    done++;
-    setStatus(`Consultando… ${done}/${targets.length} grupos. Entradas: ${all.length}`);
-    setKpis({ grupos: targets.length, dias: datesISO.length, entradas: all.length });
-
-    if (done % 3 === 0) await sleep(30);
+    if ((i+1) % 3 === 0) await new Promise(r=>setTimeout(r, 20));
+    setText('chipEntradas', `Entradas: ${all.length}`);
   }
 
+  // ordenar: actividad -> fecha -> hora -> grupo
   all.sort((a,b) => {
+    if (a.actividadId !== b.actividadId) return a.actividadId.localeCompare(b.actividadId,'es');
     if (a.fechaISO !== b.fechaISO) return a.fechaISO.localeCompare(b.fechaISO);
-    const ta = a.tsMs || 0;
-    const tb = b.tsMs || 0;
-    if (ta !== tb) return ta - tb;
-    if (a.grupoLabel !== b.grupoLabel) return a.grupoLabel.localeCompare(b.grupoLabel,'es');
-    return a.actividadId.localeCompare(b.actividadId,'es');
+    if ((a.tsMs||0) !== (b.tsMs||0)) return (a.tsMs||0) - (b.tsMs||0);
+    if (a.hora !== b.hora) return String(a.hora).localeCompare(String(b.hora));
+    return a.grupoLabel.localeCompare(b.grupoLabel,'es');
   });
 
-  state.resultsAll = all;
-  applyTextFilterAndRender(f.buscarTxt);
+  state.results = all;
 
   setStatus(`Listo. Entradas: ${all.length}`);
+  setText('chipEntradas', `Entradas: ${all.length}`);
+
+  // render: agrupado por actividad
+  renderGroupedByActivity(all);
 }
 
 /* =========================
-   FILTRO TEXTO + RENDER
+   RENDER: agrupado por actividad
 ========================= */
-function applyTextFilterAndRender(qRaw='') {
-  const q = norm(qRaw || '');
-  state.resultsView = !q
-    ? state.resultsAll.slice()
-    : state.resultsAll.filter(r => {
-        const hay = norm(
-          `${r.fechaISO} ${r.hora} ${r.grupoLabel} ${r.actividadId} ${r.texto} ${r.autor}`
-        );
-        return hay.includes(q);
-      });
+function renderGroupedByActivity(entries) {
+  const root = document.getElementById('results');
+  if (!root) return;
 
-  renderTable();
-}
-
-function renderTable() {
-  const tbody = document.querySelector('#tbl tbody');
-  const info = document.getElementById('resultInfo');
-  if (!tbody) return;
-
-  const total = state.resultsAll.length;
-  const shown = state.resultsView.length;
-
-  if (info) {
-    info.textContent = total === shown
-      ? `Mostrando ${shown} entradas.`
-      : `Mostrando ${shown} de ${total} entradas (filtrado).`;
-  }
-
-  tbody.innerHTML = '';
-
-  if (!shown) {
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">Sin resultados para ese criterio.</td></tr>`;
+  if (!entries.length) {
+    root.innerHTML = `<div class="muted">Sin resultados.</div>`;
     return;
   }
 
-  const frag = document.createDocumentFragment();
+  // group by actividadId
+  const map = new Map();
+  for (const e of entries) {
+    if (!map.has(e.actividadId)) map.set(e.actividadId, []);
+    map.get(e.actividadId).push(e);
+  }
 
-  state.resultsView.forEach(r => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td class="mono">${escapeHtml(r.fechaISO)}</td>
-      <td class="mono">${escapeHtml(r.hora || '—')}</td>
-      <td>${escapeHtml(r.grupoLabel)}</td>
-      <td class="mono">${escapeHtml(r.actividadId)}</td>
-      <td>${escapeHtml(r.texto || '')}</td>
-      <td>${escapeHtml(r.autor || '—')}</td>
-    `;
-    frag.appendChild(tr);
-  });
+  const html = [];
+  for (const [actId, list] of map.entries()) {
+    const n = list.length;
 
-  tbody.appendChild(frag);
+    html.push(`
+      <div class="act-panel">
+        <div class="act-head">
+          <div>
+            <div class="act-title">${escapeHtml(actId)}</div>
+            <div class="muted" style="font-size:.85rem;margin-top:.15rem;">
+              ${escapeHtml(n)} comentario(s)
+            </div>
+          </div>
+          <div class="act-meta">
+            <span class="mono">${escapeHtml(list[0]?.fechaISO || '')}</span>
+            ${list[list.length-1]?.fechaISO && list[list.length-1].fechaISO !== list[0]?.fechaISO
+              ? ` → <span class="mono">${escapeHtml(list[list.length-1].fechaISO)}</span>`
+              : ''
+            }
+          </div>
+        </div>
+
+        <div class="act-body">
+          ${list.map(e => `
+            <div class="entry">
+              <div class="mono muted">
+                ${escapeHtml(e.fechaISO)}<br/>
+                <b>${escapeHtml(e.hora || '—')}</b>
+              </div>
+
+              <div class="entry-text">
+                ${escapeHtml(e.texto || '')}
+                <div class="muted" style="margin-top:.35rem;font-size:.85rem;">
+                  <span class="chip">${escapeHtml(e.grupoLabel)}</span>
+                  ${e.destino ? `<span class="chip">${escapeHtml(e.destino)}</span>` : ''}
+                </div>
+              </div>
+
+              <div class="right muted" style="font-size:.9rem;">
+                <b>Autor:</b> ${escapeHtml(e.autor || '—')}<br/>
+                ${e.coordEmail ? `<span class="muted">Coord: ${escapeHtml(e.coordEmail)}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `);
+  }
+
+  root.innerHTML = html.join('');
 }
 
 /* =========================
    LIMPIAR
 ========================= */
 function clearAll() {
-  const ids = ['fDestino','fCoord','fGrupo','fActividad','fBuscarTxt'];
-  ids.forEach(id => {
+  ['fDestino','fCoord','fGrupo','fActividad'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.value = '';
   });
 
-  const today = toISODate(new Date());
-  const d = document.getElementById('fDesde');
-  const h = document.getElementById('fHasta');
-  if (d) d.value = today;
-  if (h) h.value = today;
-
   state.actividades.clear();
-  state.resultsAll = [];
-  state.resultsView = [];
+  state.results = [];
 
   const dlActs = document.getElementById('dl-actividades');
   if (dlActs) dlActs.innerHTML = '';
 
-  const actCount = document.getElementById('actCount');
-  if (actCount) actCount.textContent = 'Actividades sugeridas: 0';
+  setText('chipModo', 'Modo: —');
+  setText('chipGrupos', 'Grupos: —');
+  setText('chipActividades', 'Actividades: —');
+  setText('chipEntradas', 'Entradas: 0');
 
-  setKpis({ grupos:'—', dias:'—', entradas:0 });
-  setModeHint('Modo: —');
   setStatus('Listo.');
-  renderTable();
+  renderGroupedByActivity([]);
 }
 
 /* =========================
-   WIRE UI
+   UI WIRE
 ========================= */
 function wireUI() {
-  ensureDateRange();
-
   document.getElementById('btnLoadActs')?.addEventListener('click', loadSuggestedActivities);
   document.getElementById('btnCargar')?.addEventListener('click', loadBitacora);
   document.getElementById('btnLimpiar')?.addEventListener('click', clearAll);
 
-  document.getElementById('fBuscarTxt')?.addEventListener('input', (e) => {
-    applyTextFilterAndRender(e.target.value || '');
-  });
+  // set initial chips
+  setText('chipModo', 'Modo: —');
+  setText('chipGrupos', 'Grupos: —');
+  setText('chipActividades', 'Actividades: —');
+  setText('chipEntradas', 'Entradas: 0');
 
-  // modo hint dinámico
-  ['fDestino','fGrupo'].forEach(id => {
-    document.getElementById(id)?.addEventListener('input', () => {
-      const f = readFilters();
-      const mode = computeMode(f);
-      if (mode === 'GRUPO') setModeHint('Modo: GRUPO (todas las actividades del grupo)');
-      else if (mode === 'DESTINO') setModeHint('Modo: DESTINO (todas las actividades en todos los grupos)');
-      else setModeHint('Modo: —');
-    });
-  });
-
-  renderTable();
+  renderGroupedByActivity([]);
   setStatus('Listo.');
 }
 
