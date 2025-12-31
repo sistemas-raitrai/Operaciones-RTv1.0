@@ -6,14 +6,39 @@
   <title>Revisión de Documentos | RT</title>
   <link rel="icon" type="image/png" href="RaitraiLogo.png"/>
 
-  <!-- ✅ Igual que el resto del sistema -->
+  <!-- ✅ CSS general del sistema (NO lo tocamos) -->
   <link rel="stylesheet" href="estilos.css"/>
 
   <style>
     /* =========================================================
-       ESTÉTICA CLARA (scoped a .docs-page)
+       ✅ OVERRIDES “ANTI estilos.css”
+       Todo lo de abajo está scopiado a body.docs-page
+       para que NO rompa otras páginas.
        ========================================================= */
-    :root{
+
+    /* 1) RESET del body: estilos.css le mete padding, acá lo anulamos */
+    body.docs-page{
+      padding: 0 !important;     /* estilos.css: body { padding:2rem } */
+      margin: 0 !important;
+      background: #f4f6fb !important;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+      min-height: 100vh;
+      color: #0f172a;
+    }
+
+    /* estilos.css pone padding-top por header fijo. En esta página NO lo queremos forzado */
+    body.docs-page{ padding-top: 0 !important; }
+
+    /* 2) Encabezado común inyectado: sticky arriba */
+    body.docs-page #encabezado{
+      position: sticky;
+      top: 0;
+      z-index: 999;
+      background: transparent;
+    }
+
+    /* 3) Variables “locales” (solo para esta vista) */
+    body.docs-page{
       --bg:#f4f6fb;
       --panel:#ffffff;
       --border:#d1d5db;
@@ -27,142 +52,63 @@
       --radius:16px;
     }
 
-    body.docs-page{
-      margin:0;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
-      min-height: 100vh;
-    }
-
-    a{ color: inherit; text-decoration: none; }
-
-    /* ✅ Encabezado común inyectado */
-    #encabezado{
-      position: sticky;
-      top: 0;
-      z-index: 999;
-    }
-
-    /* ================= LAYOUT ================= */
-    .wrap{
+    /* 4) Layout centrado y proporcional a pantalla */
+    body.docs-page .wrap{
       max-width: 1200px;
-      margin: 16px auto 40px;
-      padding: 0 14px;
+      margin: 18px auto 48px;
+      padding: 0 18px;
     }
 
-    .card{
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
+    /* 5) ✅ FIX CLAVE: estilos.css define .card width:220px; */
+    body.docs-page .card{
+      width: 100% !important;          /* anula width 220px */
+      max-width: 100% !important;
+      text-align: left !important;     /* anula text-align center */
+      background: var(--panel) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: var(--radius) !important;
+      box-shadow: var(--shadow) !important;
+      padding: 0 !important;           /* en esta vista la card se arma con head/body */
+      margin: 0 !important;
     }
 
-    .card-head{
-      padding: 14px 14px 10px;
+    body.docs-page .card-head{
+      padding: 14px 16px 10px;
       display:flex;
       align-items:flex-start;
       justify-content:space-between;
-      gap: 10px;
+      gap: 12px;
       border-bottom: 1px solid var(--border);
     }
-    .card-head h1{
+    body.docs-page .card-head h1{
       margin:0;
       font-size: 16px;
       letter-spacing:.2px;
+      line-height: 1.25;
     }
-    .card-head p{
-      margin:4px 0 0;
+    body.docs-page .card-head p{
+      margin:6px 0 0;
       color: var(--muted);
-      font-size: 12px;
+      font-size: 12.5px;
+      line-height: 1.35;
+      max-width: 62ch;
     }
 
-    .card-body{
-      padding: 14px;
-      overflow: visible; /* importante para dropdowns absolute */
+    body.docs-page .card-body{
+      padding: 14px 16px 16px;
+      overflow: visible; /* para que el panel del multiselect no se corte */
     }
 
-    /* ================= FILTROS =================
-       ✅ Arreglo: grid fluido (no se pisan campos cuando agregas más filtros)
-    */
-    .filters{
-      display:grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-      gap: 10px;
-      align-items:end;
-      position: relative;
-      z-index: 1;
-      isolation: isolate; /* stacking context estable */
-    }
-
-    .field{
-      position: relative;
-      min-width: 0;
-      z-index: 0;
-    }
-
-    .field label{
-      display:block;
-      font-size: 12px;
-      color: var(--muted);
-      margin: 0 0 6px;
-    }
-    .input{
-      width:100%;
-      padding: 10px 10px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: #fff;
-      outline: none;
-      font-size: 14px;
-      min-width: 0;
-      box-sizing: border-box;
-    }
-
-    .btnrow{
+    /* Pills */
+    body.docs-page .pillrow{
       display:flex;
       gap: 8px;
       flex-wrap: wrap;
-      justify-content: flex-end;
-      margin-top: 10px;
-    }
-    .btn{
-      border: 1px solid var(--border);
-      background: #fff;
-      border-radius: 12px;
-      padding: 10px 12px;
-      cursor:pointer;
-      font-weight: 600;
-      font-size: 13px;
-      user-select: none;
-    }
-    .btn.primary{
-      background: var(--accent-strong);
-      border-color: var(--accent-strong);
-      color: #fff;
-    }
-    .btn.ghost{
-      background: #fff;
-    }
-    .btn.danger{
-      background: #fff;
-      border-color: #f3b4c0;
-      color: var(--danger);
-    }
-    .btn:disabled{
-      opacity:.55;
-      cursor:not-allowed;
-    }
-
-    .pillrow{
-      margin-top: 10px;
-      display:flex;
-      gap: 6px;
-      flex-wrap: wrap;
       align-items:center;
       justify-content:flex-end;
+      margin-top: 2px;
     }
-    .pill{
+    body.docs-page .pill{
       background: var(--accent-soft);
       border: 1px solid #c7fff9;
       color: #064e3b;
@@ -171,28 +117,112 @@
       font-size: 12px;
       white-space: nowrap;
     }
-    .muted{ color: var(--muted); }
+    body.docs-page .muted{ color: var(--muted); }
 
-    /* ================= MULTISELECT DROPDOWN ================= */
-    details.multi{
+    /* 6) Filtros: grid fluido y con ancho real (no “tarjetita”) */
+    body.docs-page .filters{
+      display:grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 12px;
+      align-items:end;
       position: relative;
-      width: 100%;
-    }
-    details.multi[open]{
-      z-index: 80; /* CLAVE: al abrir se trae al frente */
+      z-index: 1;
+      isolation: isolate;
     }
 
-    details.multi summary{
-      list-style: none;
+    /* distribución tipo “panel pro” */
+    body.docs-page .field{ min-width: 0; position: relative; z-index: 0; }
+
+    /* Desktop: 4 columnas “grandes” */
+    body.docs-page .field.destino{ grid-column: span 3; }
+    body.docs-page .field.coords { grid-column: span 3; }
+    body.docs-page .field.grupos { grid-column: span 3; }
+    body.docs-page .field.tipos  { grid-column: span 3; }
+
+    body.docs-page .field.gasto  { grid-column: span 3; }
+    body.docs-page .field.texto  { grid-column: 1 / -1; }
+
+    @media (max-width: 1100px){
+      body.docs-page .field.destino,
+      body.docs-page .field.coords,
+      body.docs-page .field.grupos,
+      body.docs-page .field.tipos,
+      body.docs-page .field.gasto{
+        grid-column: span 6;
+      }
+    }
+    @media (max-width: 700px){
+      body.docs-page .filters{ grid-template-columns: 1fr; }
+      body.docs-page .field{ grid-column: 1 / -1 !important; }
+    }
+
+    body.docs-page .field label{
+      display:block;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0 0 6px;
+      font-weight: 700;
+      text-transform: none; /* evita mayúsculas raras en labels si tu css general las fuerza */
+    }
+
+    /* 7) ✅ Inputs/select del sistema vienen con text-transform uppercase.
+          Acá lo mantenemos en valores, pero evitamos que rompa placeholders. */
+    body.docs-page .input{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      outline: none;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    body.docs-page .input::placeholder{
+      text-transform: none;   /* placeholder legible */
+      opacity: .75;
+    }
+
+    /* 8) Botonera */
+    body.docs-page .btnrow{
+      display:flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      margin-top: 12px;
+    }
+    body.docs-page .btn{
+      border: 1px solid var(--border);
+      background: #fff;
+      border-radius: 12px;
+      padding: 10px 14px;
       cursor:pointer;
-      user-select:none;
+      font-weight: 800;
+      font-size: 13px;
+      user-select: none;
     }
-    details.multi summary::-webkit-details-marker{ display:none; }
+    body.docs-page .btn.primary{
+      background: var(--accent-strong);
+      border-color: var(--accent-strong);
+      color: #fff;
+    }
+    body.docs-page .btn.ghost{ background:#fff; }
+    body.docs-page .btn.danger{
+      background:#fff;
+      border-color:#f3b4c0;
+      color: var(--danger);
+    }
+    body.docs-page .btn:disabled{ opacity:.55; cursor:not-allowed; }
 
-    .multi-display{
+    /* 9) Multiselect */
+    body.docs-page details.multi{ position: relative; width:100%; }
+    body.docs-page details.multi[open]{ z-index: 80; }
+    body.docs-page details.multi summary{ list-style:none; cursor:pointer; user-select:none; }
+    body.docs-page details.multi summary::-webkit-details-marker{ display:none; }
+
+    body.docs-page .multi-display{
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 10px 10px;
+      padding: 10px 12px;
       background: #fff;
       font-size: 14px;
       display:flex;
@@ -202,9 +232,9 @@
       min-width: 0;
       box-sizing: border-box;
     }
-    .multi-display small{ color: var(--muted); font-weight: 600; }
+    body.docs-page .multi-display small{ color: var(--muted); font-weight: 800; }
 
-    .multi-panel{
+    body.docs-page .multi-panel{
       position:absolute;
       top: calc(100% + 6px);
       left:0;
@@ -218,13 +248,12 @@
       max-height: 320px;
       overflow: auto;
     }
-
-    .multi-tools{
+    body.docs-page .multi-tools{
       display:flex;
       gap: 8px;
       margin-bottom: 8px;
     }
-    .multi-tools input{
+    body.docs-page .multi-tools input{
       flex:1;
       border-radius: 12px;
       border:1px solid var(--border);
@@ -233,44 +262,44 @@
       outline:none;
       min-width: 0;
       box-sizing: border-box;
+      text-transform: none; /* buscador sin mayúsculas forzadas */
     }
-    .mini{
+    body.docs-page .mini{
       border: 1px solid var(--border);
       background:#fff;
       border-radius: 12px;
       padding: 8px 10px;
       cursor:pointer;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 900;
       white-space: nowrap;
       user-select: none;
     }
-
-    .opt{
+    body.docs-page .opt{
       display:flex;
       gap: 8px;
       align-items:flex-start;
       padding: 6px 6px;
       border-radius: 10px;
     }
-    .opt:hover{ background: #f8fafc; }
-    .opt small{ color: var(--muted); display:block; }
+    body.docs-page .opt:hover{ background: #f8fafc; }
+    body.docs-page .opt small{ color: var(--muted); display:block; }
 
-    /* ================= TABLA ================= */
-    .tablewrap{
+    /* 10) Tabla */
+    body.docs-page .tablewrap{
       margin-top: 14px;
       overflow:auto;
       border-radius: var(--radius);
       border: 1px solid var(--border);
       background:#fff;
     }
-    table{
+    body.docs-page table{
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
       min-width: 1120px;
     }
-    thead th{
+    body.docs-page thead th{
       text-align:left;
       position: sticky;
       top: 0;
@@ -280,14 +309,20 @@
       padding: 10px 10px;
       white-space: nowrap;
     }
-    tbody td{
+    body.docs-page tbody td{
       border-top: 1px solid #eef2f7;
       padding: 9px 10px;
       vertical-align: top;
+      text-transform: none; /* evita que los montos/monedas se vean raros */
     }
-    tbody tr:hover{ background: #fbfdff; }
-    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
-    .tag{
+    body.docs-page tbody tr:hover{ background: #fbfdff; }
+
+    body.docs-page .mono{
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      text-transform: none;
+    }
+
+    body.docs-page .tag{
       display:inline-block;
       padding: 4px 8px;
       border-radius: 999px;
@@ -295,33 +330,32 @@
       background: #fff;
       font-size: 12px;
       white-space: nowrap;
+      text-transform: none;
     }
-    .tag.ok{
+    body.docs-page .tag.ok{
       border-color:#a7f3d0;
       background:#ecfdf5;
       color:#065f46;
-      font-weight: 800;
+      font-weight: 900;
     }
-    .tag.pending{
+    body.docs-page .tag.pending{
       border-color:#fde68a;
       background:#fffbeb;
       color:#92400e;
-      font-weight: 800;
+      font-weight: 900;
     }
 
-    .link{
+    body.docs-page .link{
       color: #0ea5e9;
-      font-weight: 800;
+      font-weight: 900;
       cursor: pointer;
+      text-transform: none;
     }
 
-    .chk{
-      transform: scale(1.1);
-      cursor: pointer;
-    }
+    body.docs-page .chk{ transform: scale(1.1); cursor: pointer; }
 
-    /* ================= MODAL VISOR ================= */
-    .modal{
+    /* 11) Modal visor */
+    body.docs-page .modal{
       position: fixed;
       inset: 0;
       background: rgba(15,23,42,.55);
@@ -331,8 +365,8 @@
       padding: 18px;
       z-index: 2000;
     }
-    .modal.open{ display:flex; }
-    .modal-card{
+    body.docs-page .modal.open{ display:flex; }
+    body.docs-page .modal-card{
       width: min(1100px, 100%);
       height: min(760px, 92vh);
       background: #fff;
@@ -343,7 +377,7 @@
       flex-direction:column;
       overflow:hidden;
     }
-    .modal-head{
+    body.docs-page .modal-head{
       padding: 10px 12px;
       border-bottom:1px solid var(--border);
       display:flex;
@@ -352,19 +386,16 @@
       gap: 10px;
       background:#f9fafb;
     }
-    .modal-head strong{ font-size: 13px; }
-    .modal-head .modal-actions{
+    body.docs-page .modal-head strong{ font-size: 13px; }
+    body.docs-page .modal-head .modal-actions{
       display:flex;
       gap: 8px;
       flex-wrap: wrap;
       justify-content:flex-end;
     }
-    .modal-body{
-      flex:1;
-      background:#fff;
-    }
-    .modal-body iframe,
-    .modal-body img{
+    body.docs-page .modal-body{ flex:1; background:#fff; }
+    body.docs-page .modal-body iframe,
+    body.docs-page .modal-body img{
       width: 100%;
       height: 100%;
       border: 0;
@@ -375,7 +406,7 @@
 </head>
 
 <body class="docs-page">
-  <!-- ✅ Encabezado común del sistema -->
+  <!-- ✅ Encabezado común -->
   <div id="encabezado"></div>
 
   <main class="wrap">
@@ -394,13 +425,13 @@
       <div class="card-body">
         <!-- FILTROS -->
         <div class="filters">
-          <div class="field">
+          <div class="field destino">
             <label>Destino (1)</label>
             <input id="filtroDestinoDocs" class="input" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
             <datalist id="dl-destinos-docs"></datalist>
           </div>
 
-          <div class="field">
+          <div class="field coords">
             <label>Coordinadores (multi)</label>
             <details class="multi" id="multiCoords">
               <summary>
@@ -420,7 +451,7 @@
             </details>
           </div>
 
-          <div class="field">
+          <div class="field grupos">
             <label>Grupos (multi)</label>
             <details class="multi" id="multiGrupos">
               <summary>
@@ -440,7 +471,7 @@
             </details>
           </div>
 
-          <div class="field">
+          <div class="field tipos">
             <label>Tipo documento (multi)</label>
             <details class="multi" id="multiTipos">
               <summary>
@@ -460,8 +491,7 @@
             </details>
           </div>
 
-          <!-- filtro gasto aprobado -->
-          <div class="field">
+          <div class="field gasto">
             <label>Gasto aprobado</label>
             <select id="filtroGastoAprobado" class="input">
               <option value="">Todos</option>
@@ -470,7 +500,7 @@
             </select>
           </div>
 
-          <div class="field" style="grid-column: 1 / -1;">
+          <div class="field texto">
             <label>Texto libre (opcional)</label>
             <input id="filtroTextoDocs" class="input" placeholder="Busca por grupo, destino, coord, tipo, asunto…"/>
           </div>
@@ -483,7 +513,7 @@
         </div>
 
         <!-- TABLA -->
-        <div class="tablewrap" style="margin-top:14px;">
+        <div class="tablewrap">
           <table id="tblDocs">
             <thead>
               <tr>
@@ -531,7 +561,7 @@
     </div>
   </div>
 
-  <!-- ✅ Carga encabezado + firebase + lógica (MISMO PATRÓN QUE TU SISTEMA) -->
+  <!-- ✅ Carga encabezado + firebase + lógica (igual que tus otras páginas) -->
   <script type="module">
     (async () => {
       try {
@@ -539,18 +569,12 @@
         document.getElementById('encabezado').innerHTML = html || '';
       } catch (_) {}
 
-      // Inicializa Firebase y lógica común del encabezado (login/usuario/reloj, etc.)
-      await import('./firebase-init.js');
-      await import('./script.js');
-
-      // Lógica de esta página
-      await import('./revision_docs.js');
+      await import('./firebase-init.js'); // inicializa Firebase
+      await import('./script.js');        // usuario/login/header (si lo usas)
+      await import('./revision_docs.js'); // lógica de esta página
 
       console.log('✅ revision_docs.js cargado');
     })();
   </script>
-
-  <!-- (Opcional) Si tu proyecto igual lo incluye en otras páginas, lo dejo tal cual -->
-  <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
