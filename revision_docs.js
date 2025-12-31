@@ -2,7 +2,8 @@
 // Revisión de boletas / comprobantes / constancias + comprobantes de gastos
 // Muestra muchos grupos a la vez (filtrado por destino, coord(s), grupos(s), tipo(s), texto).
 // + Columna "Rendición" = OK cuando docsOk.boleta está marcado (boleta SII revisada).
-// + Persistencia real en Firestore (summary.docsOk y coordinadores/{coord}/gastos/{gasto}.revisionDocs).
+// + Columna "Gasto aprobado" = OK cuando gastosGrabados > 0 y gastosGrabados <= costoTotal.
+// + Persistencia en Firestore SOLO al apretar "Guardar cambios" (sin autosave).
 // + Modal visor de documentos (imagen/pdf/lo que sea embebible).
 
 import { app, db } from './firebase-init.js';
@@ -21,6 +22,7 @@ const state = {
     coords: new Set(),      // multi
     grupos: new Set(),      // multi (gids)
     tipos: new Set(),       // multi (BOLETA/COMP_CLP/CONST_USD/GASTO)
+    gastoAprobado: '',      // '' | 'OK' | 'NO'
     texto: ''
   },
   caches: {
@@ -29,7 +31,8 @@ const state = {
     destinos: [],           // strings
   },
   docs: [],                 // lista plana de documentos a mostrar en tabla
-  rendicionOkByGid: new Map(), // gid -> boolean (docsOk.boleta)
+  rendicionOkByGid: new Map(),     // gid -> boolean (docsOk.boleta)
+  gastoAprobadoByGid: new Map(),   // gid -> boolean (regla gastos<=costo && gastos>0)
   pending: new Map()        // key -> {docItem, checked} para "Guardar cambios"
 };
 
@@ -92,10 +95,6 @@ function fmtDDMMYYYY(ms){
 function isImageUrl(url=''){
   const u = String(url).toLowerCase();
   return u.includes('.png') || u.includes('.jpg') || u.includes('.jpeg') || u.includes('.webp') || u.includes('image');
-}
-function isPdfUrl(url=''){
-  const u = String(url).toLowerCase();
-  return u.includes('.pdf') || u.includes('application/pdf');
 }
 
 /* ====================== UI HELPERS (MULTISELECT) ====================== */
@@ -319,10 +318,38 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   };
 }
 
+/* ====================== CÁLCULO: GASTO APROBADO ====================== */
+/**
+ * REGLA: OK si gastosGrabados > 0 y gastosGrabados <= costoTotal
+ * ⚠️ Ajusta los nombres de campos si tu summary usa otros.
+ */
+function computeGastoAprobado(summary = {}) {
+  const gastosGrabados = Number(coalesce(
+    summary?.gastosGrabados,
+    summary?.gastosTotal,
+    summary?.gastos?.total,
+    summary?.totalGastos,
+    summary?.gastos,
+    0
+  )) || 0;
+
+  const costoTotal = Number(coalesce(
+    summary?.costoTotal,
+    summary?.costo,
+    summary?.totalCosto,
+    summary?.presupuestoTotal,
+    summary?.presupuesto,
+    0
+  )) || 0;
+
+  return (gastosGrabados > 0) && (costoTotal > 0) && (gastosGrabados <= costoTotal);
+}
+
 /* ====================== CARGA DE DOCUMENTOS ====================== */
 async function loadDocsSummaryForGroups(gids) {
   const out = [];
   state.rendicionOkByGid.clear();
+  state.gastoAprobadoByGid.clear();
 
   for (const gid of gids) {
     const gInfo = state.caches.grupos.get(gid);
@@ -339,9 +366,13 @@ async function loadDocsSummaryForGroups(gids) {
 
     const docsOk = (summary && summary.docsOk) || {};
 
-    // 👇 Rendición (boleta SII revisada)
+    // Rendición (boleta SII revisada)
     const rendOk = !!docsOk.boleta;
     state.rendicionOkByGid.set(gid, rendOk);
+
+    // Gasto aprobado (según regla)
+    const aprobOk = computeGastoAprobado(summary || {});
+    state.gastoAprobadoByGid.set(gid, aprobOk);
 
     const boletaUrl = coalesce(summary?.boleta?.url, summary?.boletaUrl, '');
     const compUrl = coalesce(
@@ -456,7 +487,6 @@ function getFilteredGids() {
   const destinoFilter = state.filtros.destino ? state.filtros.destino.toUpperCase().trim() : '';
   const textoFilter   = norm(state.filtros.texto || '');
 
-  // Si el usuario seleccionó grupos, partimos desde esos
   const baseGids = state.filtros.grupos.size
     ? Array.from(state.filtros.grupos)
     : Array.from(state.caches.grupos.keys());
@@ -468,13 +498,11 @@ function getFilteredGids() {
 
     if (destinoFilter && gInfo.destino !== destinoFilter) continue;
 
-    // Coordinadores multi (si hay seleccionados)
     if (state.filtros.coords.size) {
       const c = (gInfo.coordEmail || '').toLowerCase();
       if (!state.filtros.coords.has(c)) continue;
     }
 
-    // Texto libre a nivel grupo
     if (textoFilter) {
       const blob = norm(`${gInfo.numero} ${gInfo.nombre} ${gInfo.destino} ${gInfo.coordEmail}`);
       if (!blob.includes(textoFilter)) continue;
@@ -511,6 +539,14 @@ async function loadDocsForCurrentFilters() {
     docsAll = docsAll.filter(d => state.filtros.tipos.has(d.tipoDoc));
   }
 
+  // Filtro por gasto aprobado (por grupo)
+  if (state.filtros.gastoAprobado === 'OK') {
+    docsAll = docsAll.filter(d => !!state.gastoAprobadoByGid.get(d.grupoId));
+  }
+  if (state.filtros.gastoAprobado === 'NO') {
+    docsAll = docsAll.filter(d => !state.gastoAprobadoByGid.get(d.grupoId));
+  }
+
   // Texto libre a nivel documento (incluye asunto)
   const textoFilter = norm(state.filtros.texto || '');
   if (textoFilter) {
@@ -531,11 +567,13 @@ async function loadDocsForCurrentFilters() {
 
 /* ====================== GUARDAR REVISIÓN (Firestore) ====================== */
 function docKey(docItem){
-  // key estable para pending map
   if (docItem.tipoDoc === 'GASTO') return `GASTO:${docItem.grupoId}:${docItem.coordEmail}:${docItem.gastoId}`;
   return `${docItem.tipoDoc}:${docItem.grupoId}`;
 }
 
+/**
+ * Esta función SÍ guarda (se usa solo desde "Guardar cambios").
+ */
 async function updateRevisionForDoc(docItem, checked) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const now   = Date.now();
@@ -561,11 +599,12 @@ async function updateRevisionForDoc(docItem, checked) {
 
     try {
       await setDoc(ref, patch, { merge:true });
+
       docItem.revisadoOk = !!checked;
       docItem.revisadoBy = email;
       docItem.revisadoAt = now;
 
-      // 👇 si es BOLETA, esto afecta la columna "Rendición"
+      // Si es BOLETA, afecta la columna Rendición
       if (docItem.tipoDoc === 'BOLETA') {
         state.rendicionOkByGid.set(gid, !!checked);
       }
@@ -591,9 +630,11 @@ async function updateRevisionForDoc(docItem, checked) {
         'revisionDocs.by': email,
         'revisionDocs.at': now
       });
+
       docItem.revisadoOk = !!checked;
       docItem.revisadoBy = email;
       docItem.revisadoAt = now;
+
       return true;
     } catch (e) {
       console.error('[DOCS] updateRevisionForDoc gasto', e);
@@ -612,14 +653,17 @@ function refreshPendingUI(){
   const btn = document.getElementById('btnGuardarPendientes');
   if (!el || !btn) return;
 
+  // botón SIEMPRE visible (pedido). Solo habilitamos/inhabilitamos.
+  btn.style.display = 'inline-block';
+  btn.disabled = (n === 0);
+
   if (!n) {
     el.style.display = 'none';
-    btn.style.display = 'none';
     return;
   }
+
   el.style.display = 'inline-block';
   el.textContent = `Cambios pendientes: ${n}`;
-  btn.style.display = 'inline-block';
 }
 
 async function flushPending(){
@@ -628,6 +672,7 @@ async function flushPending(){
   const entries = Array.from(state.pending.values());
   let okCount = 0;
 
+  // Guardado secuencial (simple y seguro)
   for (const it of entries) {
     const ok = await updateRevisionForDoc(it.docItem, it.checked);
     if (ok) okCount++;
@@ -636,7 +681,7 @@ async function flushPending(){
   state.pending.clear();
   refreshPendingUI();
 
-  // refresca la tabla para que "Rendición" se actualice visualmente
+  // refresca la tabla (Rendición puede cambiar visualmente)
   renderDocsTable();
 
   alert(`Guardado: ${okCount}/${entries.length} cambios.`);
@@ -702,11 +747,12 @@ function renderDocsTable() {
   if (!state.docs.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 10;
+    td.colSpan = 11;
     td.innerHTML = '<div class="muted">Sin documentos para los filtros seleccionados.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
     if (infoEl) infoEl.textContent = '0 documentos.';
+    refreshPendingUI();
     return;
   }
 
@@ -721,6 +767,7 @@ function renderDocsTable() {
     const tdCoord   = document.createElement('td');
     const tdTipo    = document.createElement('td');
     const tdRend    = document.createElement('td');
+    const tdAprob   = document.createElement('td');
     const tdMon     = document.createElement('td');
     const tdMonto   = document.createElement('td');
     const tdArchivo = document.createElement('td');
@@ -736,6 +783,12 @@ function renderDocsTable() {
     // Rendición = docsOk.boleta por gid
     const rendOk = !!state.rendicionOkByGid.get(docItem.grupoId);
     tdRend.innerHTML = rendOk
+      ? `<span class="tag ok">OK</span>`
+      : `<span class="tag pending">—</span>`;
+
+    // Gasto aprobado (por grupo)
+    const aprobOk = !!state.gastoAprobadoByGid.get(docItem.grupoId);
+    tdAprob.innerHTML = aprobOk
       ? `<span class="tag ok">OK</span>`
       : `<span class="tag pending">—</span>`;
 
@@ -758,7 +811,6 @@ function renderDocsTable() {
       });
       tdArchivo.appendChild(a);
 
-      // hint de asunto si viene de gasto
       if (docItem.asunto) {
         const small = document.createElement('div');
         small.className = 'muted';
@@ -771,61 +823,45 @@ function renderDocsTable() {
       tdArchivo.textContent = '—';
     }
 
-    // Checkbox (modo seguro: queda en "pendientes" y también intenta guardar al tiro)
+    // Checkbox (SIN autosave): solo pending, se guarda con botón.
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.className = 'chk';
     chk.checked = !!docItem.revisadoOk;
     chk.title = 'Marcar como revisado';
 
-    chk.addEventListener('change', async (e) => {
+    chk.addEventListener('change', (e) => {
       const nuevo = !!e.target.checked;
 
-      // 1) dejamos pendiente (por si falla o el user quiere "Guardar cambios")
       const key = docKey(docItem);
       state.pending.set(key, { docItem, checked: nuevo });
+
+      // Actualizamos visualmente el docItem local (para que si recargas tabla sin guardar, se vea)
+      docItem.revisadoOk = nuevo;
+
       refreshPendingUI();
-
-      // 2) autosave inmediato (para asegurar persistencia sin depender del botón)
-      const ok = await updateRevisionForDoc(docItem, nuevo);
-      if (!ok) {
-        // revertir UI y mantener pending (para reintentar)
-        e.target.checked = !nuevo;
-        return;
-      }
-
-      // si guardó ok, lo saco de pending
-      state.pending.delete(key);
-      refreshPendingUI();
-
-      // refresca celda rendición si cambió boleta
-      renderDocsTable();
     });
 
     tdChk.appendChild(chk);
 
-    tr.append(tdFecha, tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdMon, tdMonto, tdArchivo, tdChk);
+    tr.append(tdFecha, tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdChk);
     frag.appendChild(tr);
   });
 
   tbody.appendChild(frag);
 
   if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
+  refreshPendingUI();
 }
 
 /* ====================== WIRING UI ====================== */
 function wireUI() {
   // Header común
-  const btnHome = document.getElementById('btn-home');
-  const btnRefresh = document.getElementById('btn-refresh');
-  const btnBack = document.getElementById('btn-back');
-
-  btnHome?.addEventListener('click', () => {
-    // Home del sistema (según tu estándar)
+  document.getElementById('btn-home')?.addEventListener('click', () => {
     location.href = 'https://sistemas-raitrai.github.io/Operaciones-RTv1.0';
   });
-  btnRefresh?.addEventListener('click', () => location.reload());
-  btnBack?.addEventListener('click', () => history.back());
+  document.getElementById('btn-refresh')?.addEventListener('click', () => location.reload());
+  document.getElementById('btn-back')?.addEventListener('click', () => history.back());
 
   // logout
   document.querySelector('#btn-logout')
@@ -844,12 +880,16 @@ function wireUI() {
   // filtros simples
   const inpDestino = document.getElementById('filtroDestinoDocs');
   const inpTexto   = document.getElementById('filtroTextoDocs');
+  const selAprob   = document.getElementById('filtroGastoAprobado');
 
   inpDestino?.addEventListener('input', e => {
     state.filtros.destino = (e.target.value || '').toUpperCase().trim();
   });
   inpTexto?.addEventListener('input', e => {
     state.filtros.texto = e.target.value || '';
+  });
+  selAprob?.addEventListener('change', e => {
+    state.filtros.gastoAprobado = e.target.value || '';
   });
 
   // cerrar details al click afuera (mejor UX)
@@ -874,14 +914,15 @@ function wireUI() {
   btnLimpiar?.addEventListener('click', () => {
     state.filtros.destino = '';
     state.filtros.texto = '';
+    state.filtros.gastoAprobado = '';
     state.filtros.coords.clear();
     state.filtros.grupos.clear();
     state.filtros.tipos.clear();
 
     if (inpDestino) inpDestino.value = '';
     if (inpTexto) inpTexto.value = '';
+    if (selAprob) selAprob.value = '';
 
-    // refrescar labels
     setMultiLabel(document.getElementById('multiCoordsLabel'), 0);
     setMultiLabel(document.getElementById('multiGruposLabel'), 0);
     setMultiLabel(document.getElementById('multiTiposLabel'), 0);
@@ -895,6 +936,9 @@ function wireUI() {
   });
 
   btnGuardarPend?.addEventListener('click', flushPending);
+
+  // estado inicial del botón
+  refreshPendingUI();
 }
 
 /* ====================== ARRANQUE ====================== */
