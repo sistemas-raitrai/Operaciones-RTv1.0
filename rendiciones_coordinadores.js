@@ -418,8 +418,33 @@ async function fetchGastosByGroup({ coordEmailHint = '', grupoId = '' } = {}) {
   const out = [];
   try {
 
+    // =========================================================
+    // HINT coordinador:
+    // - Puede venir como email (loreto.leiva@...) o como texto/slug
+    // - Si queda 1 palabra (ej: "loreto"):
+    //    - con grupoId: NO filtramos por coord (porque el grupo ya acota)
+    //    - sin grupoId: rechazamos ese filtro (para no permitir 1 palabra)
+    // =========================================================
+    function buildCoordHintSlug(s='') {
+      const str = String(s || '').trim().toLowerCase();
+      if (!str) return '';
+
+      const local = str.includes('@') ? str.split('@')[0] : str; // "loreto.leiva"
+      const cleaned = local.replace(/[._]+/g, ' ');              // "loreto leiva"
+      return normCoordId(cleaned);                               // "loreto-leiva"
+    }
+
+    let hint = buildCoordHintSlug(coordEmailHint);
+    const hintParts = hint.split('-').filter(Boolean);
+
+    // si es 1 palabra:
+    if (hintParts.length < 2) {
+      hint = grupoId ? '' : hint; // con grupo => desactiva filtro por coord
+    }
+
     const snap = await getDocs(collectionGroup(db,'gastos'));
     snap.forEach(docSnap => {
+
       const raw = docSnap.data() || {};
 
       const gid = coalesce(
@@ -434,21 +459,15 @@ async function fetchGastosByGroup({ coordEmailHint = '', grupoId = '' } = {}) {
       const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
 
       if (hint) {
-        // ⛔ No aceptamos búsquedas tipo "loreto" (1 palabra)
-        const hintParts = hint.split('-').filter(Boolean);
-        if (hintParts.length < 2) return;
-      
         const rawCoord = coalesce(raw.coordinador, raw.coordinadorNombre, raw.coordNombre, '');
-        const cands = coordCandidates({ coordFromPath, rawCoord }); // ej: ["loreto-leiva", "loreto-beatriz-leiva-cabezas", ...]
+        const cands = coordCandidates({ coordFromPath, rawCoord });
       
-        // Aceptamos:
-        // - match exacto del hint
-        // - o match exacto del alias primero-tercero del hint
         const hintAlias = aliasPrimeroTercero(hint);
       
         const ok = cands.includes(hint) || (hintAlias && cands.includes(hintAlias));
         if (!ok) return;
       }
+      
 
 
       const gInfo = state.caches.grupos.get(gid) ||
