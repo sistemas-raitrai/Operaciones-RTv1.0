@@ -3,217 +3,264 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>BITÁCORA POR ACTIVIDAD · RT</title>
+  <title>RT · Bitácora</title>
   <link rel="icon" type="image/png" href="RaitraiLogo.png" />
-  <!-- Reusa tu estética global -->
   <link rel="stylesheet" href="style.css"/>
 
   <style>
-    /* Ajustes mínimos (sin romper tu style.css) */
-    .page { max-width: 1200px; margin: 0 auto; padding: 16px; }
-    .topbar {
-      display:flex; align-items:center; justify-content:space-between;
-      gap: 10px; padding: 10px 12px; border-radius: 14px;
-      background: var(--panel, #fff); border: 1px solid var(--border, #d1d5db);
-      position: sticky; top: 10px; z-index: 10;
-    }
-    .topbar-left { display:flex; align-items:center; gap:10px; }
-    .topbar .brand { display:flex; align-items:center; gap:10px; }
-    .topbar .brand img { height: 28px; width:auto; }
-    .topbar .brand b { letter-spacing: .3px; }
-    .topbar-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    .iconbtn {
-      border: 1px solid var(--border, #d1d5db);
-      background: var(--card, #fff);
+    /* Solo extras mínimos para esta pantalla (sin romper tu estética global) */
+    .page-wrap{ max-width: 1200px; margin: 18px auto; padding: 0 14px; }
+    .card{ background: var(--card, #fff); border: 1px solid var(--border, #d1d5db); border-radius: 14px; padding: 14px; box-shadow: 0 8px 18px rgba(2,6,23,.06); }
+    .h1{ font-size: 22px; margin: 10px 0 2px; letter-spacing: .2px; }
+    .sub{ margin: 0 0 14px; color: var(--muted,#6b7280); font-size: 13px; }
+
+    .grid{ display:grid; gap:10px; }
+    .grid-3{ grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .grid-2{ grid-template-columns: repeat(2, minmax(0,1fr)); }
+    @media (max-width: 980px){ .grid-3{ grid-template-columns: 1fr; } .grid-2{ grid-template-columns: 1fr; } }
+
+    .field label{ display:block; font-size: 12px; color: var(--muted,#6b7280); margin-bottom: 6px; }
+    .input, select{
+      width:100%;
+      padding: 10px 12px;
+      border: 1px solid var(--border,#d1d5db);
       border-radius: 12px;
-      padding: 8px 10px;
-      cursor: pointer;
-      line-height: 1;
-    }
-    .iconbtn:hover { filter: brightness(0.98); }
-    .card {
-      margin-top: 14px;
-      background: var(--panel, #fff);
-      border: 1px solid var(--border, #d1d5db);
-      border-radius: 14px;
-      padding: 12px;
-    }
-    .grid {
-      display:grid;
-      grid-template-columns: repeat(6, minmax(0, 1fr));
-      gap: 10px;
-      align-items: end;
-    }
-    .grid .span2 { grid-column: span 2; }
-    .grid .span3 { grid-column: span 3; }
-    .grid .span6 { grid-column: span 6; }
-    label { display:block; font-size: 12px; color: var(--muted, #6b7280); margin: 0 0 4px; }
-    input, select {
-      width: 100%;
-      border: 1px solid var(--border, #d1d5db);
-      background: var(--card, #fff);
-      color: var(--ink, #0f172a);
-      border-radius: 12px;
-      padding: 10px 10px;
+      background: #fff;
+      font-size: 14px;
       outline: none;
     }
-    .btnrow { display:flex; gap:8px; flex-wrap:wrap; }
-    .btn {
-      border: 1px solid var(--border, #d1d5db);
-      background: var(--bg-strong, #00a89d);
-      color: white;
-      border-radius: 12px;
+    .input:focus, select:focus{ border-color: var(--accent,#00c7b6); box-shadow: 0 0 0 3px rgba(0,199,182,.12); }
+
+    .actions{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top: 10px; }
+    .btn{
+      border: 1px solid var(--border,#d1d5db);
       padding: 10px 12px;
+      border-radius: 12px;
+      font-weight: 700;
       cursor: pointer;
-      font-weight: 600;
+      background: #fff;
     }
-    .btn.secondary {
-      background: var(--card, #fff);
-      color: var(--ink, #0f172a);
+    .btn-primary{
+      background: var(--bg-strong,#00a89d);
+      color: #fff;
+      border-color: transparent;
     }
-    .muted { color: var(--muted, #6b7280); font-size: 12px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { border-bottom: 1px solid var(--border, #e5e7eb); padding: 8px 8px; vertical-align: top; }
-    th { text-align:left; font-size: 12px; color: var(--muted, #6b7280); font-weight: 700; }
-    td { font-size: 13px; }
-    .pill {
-      display:inline-block; padding: 3px 8px; border-radius: 999px;
-      border: 1px solid var(--border, #d1d5db);
+    .btn-ghost{ background:#fff; }
+    .muted{ color: var(--muted,#6b7280); }
+    .small{ font-size: 12px; }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    .kpis{ display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 10px; }
+    @media (max-width: 980px){ .kpis{ grid-template-columns: 1fr; } }
+    .kpi{ border: 1px solid var(--border,#d1d5db); border-radius: 14px; padding: 10px 12px; background:#fff; }
+    .kpi .t{ font-size: 12px; color: var(--muted,#6b7280); }
+    .kpi .v{ font-size: 18px; font-weight: 900; margin-top: 2px; }
+
+    table{ width: 100%; border-collapse: collapse; margin-top: 10px; }
+    thead th{
+      text-align:left;
       font-size: 12px;
-      background: rgba(0,0,0,.02);
+      color: var(--muted,#6b7280);
+      border-bottom: 1px solid var(--border,#d1d5db);
+      padding: 10px 8px;
+      position: sticky;
+      top: 0;
+      background: var(--card,#fff);
+      z-index: 1;
     }
-    .nowrap { white-space: nowrap; }
-    .wraptext { white-space: pre-wrap; }
-    .rowlink { text-decoration: underline; }
-    .right { text-align:right; }
-    .kpi { display:flex; gap:14px; flex-wrap:wrap; }
-    .kpi > div { padding: 8px 10px; border:1px solid var(--border, #d1d5db); border-radius: 12px; background: var(--card,#fff); }
-    .kpi .v { font-weight: 800; }
-    @media (max-width: 980px){
-      .grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-      .grid .span2, .grid .span3, .grid .span6 { grid-column: span 2; }
+    tbody td{
+      border-bottom: 1px solid rgba(209,213,219,.6);
+      padding: 10px 8px;
+      vertical-align: top;
+      font-size: 14px;
     }
+    .pill{
+      display:inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(209,213,219,.8);
+      font-size: 12px;
+      white-space: nowrap;
+      background:#fff;
+    }
+
+    /* Header común (si ya lo tienes en style.css, esto no molesta) */
+    .topbar{
+      background: #fff;
+      border-bottom: 1px solid var(--border,#d1d5db);
+    }
+    .topbar-inner{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 10px 14px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .brand{
+      display:flex; align-items:center; gap:10px;
+    }
+    .brand img{ width: 34px; height:34px; object-fit:contain; }
+    .brand .ttl{ font-weight: 900; letter-spacing:.4px; }
+    .brand .usr{ font-size: 13px; color: var(--muted,#6b7280); }
+    .brand .usr b{ color: var(--bg-strong,#00a89d); }
+
+    .top-actions{
+      display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+      justify-content: flex-end;
+    }
+    .iconbtn{
+      width: 34px; height: 34px;
+      border-radius: 10px;
+      border: 1px solid var(--border,#d1d5db);
+      background:#fff;
+      cursor:pointer;
+      display:grid;
+      place-items:center;
+      font-size: 18px;
+    }
+    .clock{ font-size: 13px; color: var(--muted,#6b7280); }
   </style>
 </head>
 
 <body>
-  <div class="page">
-    <!-- Encabezado común (mismo espíritu que tus módulos) -->
-    <div class="topbar">
-      <div class="topbar-left">
-        <div class="brand">
-          <img src="RaitraiLogo.png" alt="RT"/>
-          <div>
-            <b>BITÁCORA POR ACTIVIDAD</b>
-            <div class="muted">Ver comentarios de una actividad en todos los grupos</div>
-          </div>
+  <!-- HEADER COMÚN -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <img src="RaitraiLogo.png" alt="RT">
+        <div>
+          <div class="ttl">SISTEMA DE OPERACIONES RTv1.0</div>
+          <div class="usr">Usuario conectado: <b id="userEmail">—</b></div>
         </div>
       </div>
 
-      <div class="topbar-actions">
+      <div class="top-actions">
+        <div class="clock"><span id="clock">—</span></div>
         <button class="iconbtn" id="btn-home" title="Inicio">🏠</button>
         <button class="iconbtn" id="btn-refresh" title="Actualizar">🔄</button>
         <button class="iconbtn" id="btn-back" title="Volver">⬅️</button>
         <button class="iconbtn" id="btn-logout" title="Cerrar sesión">⏏️</button>
       </div>
     </div>
+  </header>
 
-    <!-- Filtros -->
+  <main class="page-wrap">
     <div class="card">
-      <div class="grid">
-        <div class="span2">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div>
+          <div class="h1">BITÁCORA</div>
+          <p class="sub">Ver comentarios de actividades por <b>grupo</b> o por <b>destino</b> (actividad transversal entre grupos).</p>
+        </div>
+        <div class="muted small" id="modeHint">Modo: —</div>
+      </div>
+
+      <!-- FILTROS -->
+      <div class="grid grid-3">
+        <div class="field">
           <label>Destino (opcional, recomendado)</label>
-          <input id="filtroDestino" list="dl-destinos" placeholder="Ej: BARILOCHE / BRASIL / ..."/>
+          <input class="input" id="fDestino" list="dl-destinos" placeholder="Ej: BARILOCHE"/>
           <datalist id="dl-destinos"></datalist>
         </div>
 
-        <div class="span2">
+        <div class="field">
           <label>Coordinador(a) (opcional)</label>
-          <input id="filtroCoord" list="dl-coords" placeholder="email coordinador"/>
+          <input class="input" id="fCoord" list="dl-coords" placeholder="email coordinador"/>
           <datalist id="dl-coords"></datalist>
         </div>
 
-        <div class="span2">
+        <div class="field">
           <label>Grupo específico (opcional)</label>
-          <input id="filtroGrupo" list="dl-grupos" placeholder="ID grupo (gid)"/>
+          <input class="input" id="fGrupo" list="dl-grupos" placeholder="Ej: 1369"/>
           <datalist id="dl-grupos"></datalist>
         </div>
+      </div>
 
-        <div class="span3">
-          <label>Actividad (obligatorio)</label>
-          <input id="filtroActividad" list="dl-actividades" placeholder="Ej: telefericoparque..."/>
+      <div class="grid grid-2" style="margin-top:10px;">
+        <div class="field">
+          <label>Actividad (opcional)</label>
+          <input class="input mono" id="fActividad" list="dl-actividades" placeholder="Ej: telefericoparque... (activityId)"/>
           <datalist id="dl-actividades"></datalist>
-          <div class="muted" style="margin-top:6px;">
-            Tip: usa “Cargar actividades” para poblar sugerencias según destino/coord/fechas.
+          <div class="muted small" style="margin-top:6px;">
+            Tip: usa <b>“Cargar actividades”</b> para poblar sugerencias según destino/coord/grupo.
+            <span id="actCount" class="muted">Actividades sugeridas: 0</span>
           </div>
         </div>
 
-        <div>
-          <label>Desde</label>
-          <input id="filtroDesde" type="date"/>
+        <div class="grid grid-2">
+          <div class="field">
+            <label>Desde</label>
+            <input class="input" id="fDesde" type="date"/>
+          </div>
+          <div class="field">
+            <label>Hasta</label>
+            <input class="input" id="fHasta" type="date"/>
+          </div>
         </div>
+      </div>
 
-        <div>
-          <label>Hasta</label>
-          <input id="filtroHasta" type="date"/>
-        </div>
+      <div class="actions">
+        <button class="btn btn-ghost" id="btnLoadActs">Cargar actividades</button>
+        <button class="btn btn-primary" id="btnCargar">Cargar bitácora</button>
+        <button class="btn btn-ghost" id="btnLimpiar">Limpiar</button>
 
-        <div class="span6 btnrow" style="margin-top:6px;">
-          <button class="btn secondary" id="btnCargarActividades">Cargar actividades</button>
-          <button class="btn" id="btnCargar">Cargar bitácora</button>
-          <button class="btn secondary" id="btnLimpiar">Limpiar</button>
-
-          <div style="flex:1"></div>
-
-          <div style="min-width: 280px;">
+        <div style="margin-left:auto; min-width: 280px; max-width: 360px;">
+          <div class="field">
             <label>Buscar texto (en resultados)</label>
-            <input id="buscarTexto" placeholder="Ej: apoderada / no realizan / etc."/>
+            <input class="input" id="fBuscarTxt" placeholder="Ej: apoderada / no realizan / etc."/>
           </div>
         </div>
 
-        <div class="span6">
-          <div id="pagInfo" class="muted">Listo.</div>
+        <div class="muted small" id="status" style="flex-basis:100%;margin-top:-2px;">Listo.</div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="t">Grupos considerados</div>
+          <div class="v" id="kpiGrupos">—</div>
+        </div>
+        <div class="kpi">
+          <div class="t">Días consultados</div>
+          <div class="v" id="kpiDias">—</div>
+        </div>
+        <div class="kpi">
+          <div class="t">Entradas encontradas</div>
+          <div class="v" id="kpiEntradas">0</div>
         </div>
       </div>
-    </div>
 
-    <!-- KPI -->
-    <div class="card">
-      <div class="kpi">
-        <div><div class="muted">Grupos considerados</div><div class="v" id="kpiGrupos">—</div></div>
-        <div><div class="muted">Días consultados</div><div class="v" id="kpiDias">—</div></div>
-        <div><div class="muted">Entradas encontradas</div><div class="v" id="kpiEntradas">—</div></div>
-      </div>
-      <div class="muted" style="margin-top:8px;">
+      <div class="muted small" style="margin-top:10px;">
         Nota: como la subcolección de fecha es dinámica, el sistema consulta día a día dentro del rango seleccionado.
       </div>
     </div>
 
-    <!-- Tabla -->
-    <div class="card">
-      <div class="muted" id="resumenTabla">Sin datos.</div>
-      <div style="overflow:auto; margin-top:8px;">
-        <table id="tblBitacora">
+    <div class="card" style="margin-top:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+        <div class="h1" style="font-size:18px;margin:0;">Resultados</div>
+        <div class="muted small" id="resultInfo">Sin resultados.</div>
+      </div>
+
+      <div style="overflow:auto; border-radius: 12px;">
+        <table id="tbl">
           <thead>
             <tr>
-              <th class="nowrap">Fecha</th>
-              <th class="nowrap">Hora</th>
-              <th>Grupo</th>
-              <th class="nowrap">Actividad</th>
-              <th>Texto</th>
-              <th class="nowrap">Autor</th>
+              <th style="min-width:105px;">Fecha</th>
+              <th style="min-width:90px;">Hora</th>
+              <th style="min-width:220px;">Grupo</th>
+              <th style="min-width:220px;">Actividad</th>
+              <th style="min-width:360px;">Texto</th>
+              <th style="min-width:220px;">Autor</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td colspan="6" class="muted">Cargando…</td></tr>
+            <tr><td colspan="6" class="muted">Sin resultados para ese criterio.</td></tr>
           </tbody>
         </table>
       </div>
     </div>
+  </main>
 
-  </div>
-
-  <script type="module" src="./bitacora_actividad.js"></script>
+  <script type="module" src="bitacora_actividad.js"></script>
 </body>
 </html>
