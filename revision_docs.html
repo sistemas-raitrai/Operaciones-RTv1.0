@@ -2,380 +2,312 @@
 <html lang="es">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Revisión de Documentos | RT</title>
 
-  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
-  <link rel="stylesheet" href="estilos.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png"/>
+  <link rel="stylesheet" href="estilos.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
 
   <style>
-    /* =========================================================
-       REVISION_DOCS.HTML (mejorado)
-       - Inspirado en tu HTML de rendiciones (cards, toolbar, tabla)
-       - Respeta encabezado/login y paleta de estilos.css (variables)
-       - Sin “azules inventados”: usa --bg-strong / --bg-dark / --accent
-       ========================================================= */
+    /* =====================================================
+       🔒 AISLAMIENTO TOTAL DE REVISION DOCS
+       (para que estilos.css NO rompa el layout)
+       ===================================================== */
 
-    .page { padding: 1rem 1.2rem; }
-
-    /* Encabezado de página */
-    .page-title {
-      display:flex;
-      flex-direction:column;
-      gap:.2rem;
-      margin:.35rem 0 1rem;
-    }
-    .page-title h2{
-      margin:0;
-      letter-spacing:.2px;
-    }
-    .page-title p{
-      margin:0;
-      opacity:.75;
-      font-size:.9rem;
+    body {
+      background: #f6f6f6;
     }
 
-    /* Card base (como rendiciones) */
-    .card{
-      border:1px solid #e5e7eb;
-      border-radius:16px;
-      padding:1.1rem 1.2rem;
-      background:#fff;
-      box-shadow:0 2px 8px rgba(0,0,0,0.06);
-      margin-bottom:1rem;
-    }
-    .card h3{
-      margin:0 0 .75rem;
-      font-size:1.05rem;
-      color:#111827;
-      border-bottom:1px solid #e5e7eb;
-      padding-bottom:.55rem;
-      display:flex;
-      align-items:center;
-      gap:.45rem;
-    }
-    .muted{ opacity:.7; }
-
-    /* Grid de filtros (más ordenado que “todo en una línea”) */
-    .filters-grid{
-      display:grid;
-      grid-template-columns:repeat(12, minmax(0,1fr));
-      gap:.75rem;
-      align-items:end;
+    /* CONTENEDOR PRINCIPAL */
+    #revisionDocsRoot {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 1.2rem 1.4rem;
     }
 
-    .field{
-      display:flex;
-      flex-direction:column;
-      gap:.28rem;
-      min-width:0;
+    /* TÍTULO */
+    .rd-title {
+      margin-bottom: 1rem;
     }
-    .field label{
-      font-size:.78rem;
-      text-transform:uppercase;
-      color:#4b5563;
-      font-weight:700;
-      letter-spacing:.4px;
+    .rd-title h2 {
+      margin: 0;
     }
-    .control{
-      padding:.52rem .6rem;
-      border:1px solid #d1d5db;
-      border-radius:12px;
-      font-size:.92rem;
-      background:#fff;
-      width:100%;
-      box-sizing:border-box;
-    }
-    .control:focus{
-      outline:none;
-      border-color: var(--accent);
-      box-shadow:0 0 0 3px rgba(0,199,182,0.18); /* suave, acorde a RT */
+    .rd-title p {
+      margin: .25rem 0 0;
+      color: #555;
+      font-size: .9rem;
     }
 
-    /* Layout columnas (desktop) */
-    .col-3{ grid-column:span 3; }
-    .col-4{ grid-column:span 4; }
-    .col-6{ grid-column:span 6; }
-    .col-12{ grid-column:span 12; }
-
-    /* Botonera / toolbar secundaria */
-    .toolbar{
-      display:flex;
-      flex-wrap:wrap;
-      gap:.6rem;
-      align-items:center;
-      justify-content:flex-start;
-      margin-top:.85rem;
-    }
-    .tag{
-      font-size:.85rem;
-      opacity:.8;
+    /* TARJETAS (no usar .card global) */
+    .rd-card {
+      background: #ffffff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 1rem 1.2rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
     }
 
-    /* Botones (usar tu paleta) */
-    .btn{
-      padding:.6rem 1rem;
-      border-radius:12px;
-      border:1px solid #d1d5db;
-      background:#fff;
-      cursor:pointer;
-      font-size:.92rem;
-      font-weight:700;
-      display:inline-flex;
-      align-items:center;
-      gap:.45rem;
-      color:#111827;
-      user-select:none;
-    }
-    .btn:active{ transform: translateY(1px); }
-
-    .btn-primary{
-      background: var(--bg-strong);
-      border-color: var(--bg-strong);
-      color:#fff;
-    }
-    .btn-primary:hover{
-      background: var(--bg-dark);
-      border-color: var(--bg-dark);
+    .rd-card h3 {
+      margin: 0 0 .75rem;
+      font-size: 1rem;
+      border-bottom: 1px solid #eee;
+      padding-bottom: .4rem;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
     }
 
-    .btn-ghost{
-      background:#fff;
-      border-color:#d1d5db;
-    }
-    .btn-ghost:hover{
-      background:#f8fafc;
-    }
-
-    /* Tabla (misma lógica que rendiciones) */
-    table.finanzas{
-      width:100%;
-      border-collapse:collapse;
-      background:#fff;
-      border:1px solid #eee;
-      border-radius:14px;
-      overflow:hidden;
-    }
-    table.finanzas th,
-    table.finanzas td{
-      padding:.6rem .65rem;
-      border-bottom:1px solid #f1f1f1;
-      vertical-align:middle;
-      font-size:.92rem;
-    }
-    table.finanzas thead th{
-      background:#fafafa;
-      text-align:left;
-      font-weight:800;
-      text-transform:uppercase;
-      letter-spacing:.35px;
-      font-size:.78rem;
+    /* =======================
+       FILTROS (GRID REAL)
+       ======================= */
+    .rd-filters {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: .75rem;
+      align-items: end;
     }
 
-    .mono{
-      font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace;
-      text-transform:none;
-      white-space:nowrap;
+    .rd-field {
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
     }
 
-    /* Pills de estado */
-    .pill{
-      display:inline-flex;
-      align-items:center;
-      gap:.35rem;
-      border-radius:999px;
-      padding:.18rem .55rem;
-      font-size:.78rem;
-      font-weight:800;
-      border:1px solid #e5e7eb;
-      background:#f9fafb;
-      white-space:nowrap;
-    }
-    .pill.ok{
-      background: rgba(16,185,129,.12);
-      border-color: rgba(16,185,129,.35);
-    }
-    .pill.warn{
-      background: rgba(245,158,11,.15);
-      border-color: rgba(245,158,11,.35);
-    }
-    .pill.bad{
-      background: rgba(225,29,72,.12);
-      border-color: rgba(225,29,72,.30);
+    .rd-field label {
+      font-size: .75rem;
+      font-weight: 600;
+      color: #444;
+      text-transform: uppercase;
     }
 
-    /* Enlaces de archivo */
-    .link-doc{
-      color: var(--bg-strong);
-      font-weight:800;
-      text-decoration:none;
-    }
-    .link-doc:hover{ text-decoration:underline; }
-
-    /* Responsive */
-    @media (max-width: 980px){
-      .col-3,.col-4,.col-6{ grid-column:span 12; }
-      .toolbar{ justify-content:stretch; }
-      .btn{ width:100%; justify-content:center; }
+    .rd-field input,
+    .rd-field select {
+      padding: .45rem .5rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      font-size: .9rem;
+      background: #fff;
+      width: 100%;
+      box-sizing: border-box;
+      text-transform: none; /* 👈 IMPORTANTÍSIMO */
     }
 
-    /* Ayuda bajo tabla */
-    .help-note{
-      font-size:.82rem;
-      opacity:.75;
-      margin-top:.6rem;
-      line-height:1.35;
+    .rd-span-2 { grid-column: span 2; }
+    .rd-span-3 { grid-column: span 3; }
+    .rd-span-6 { grid-column: span 6; }
+
+    /* BOTONES */
+    .rd-actions {
+      display: flex;
+      gap: .6rem;
+      margin-top: .8rem;
+      flex-wrap: wrap;
+    }
+
+    .rd-btn {
+      padding: .55rem 1.1rem;
+      border-radius: 6px;
+      border: 1px solid #004080;
+      background: #004080;
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: .9rem;
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+    }
+
+    .rd-btn.secondary {
+      background: #fff;
+      color: #004080;
+    }
+
+    /* =======================
+       TABLA
+       ======================= */
+    .rd-table-wrap {
+      overflow-x: auto;
+    }
+
+    table.rd-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      min-width: 1200px;
+    }
+
+    table.rd-table th,
+    table.rd-table td {
+      border: 1px solid #ddd;
+      padding: .5rem .6rem;
+      font-size: .85rem;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    table.rd-table thead th {
+      background: #f1f1f1;
+      font-size: .75rem;
+      text-transform: uppercase;
+    }
+
+    /* ESTADOS */
+    .pill {
+      display: inline-block;
+      padding: .15rem .5rem;
+      border-radius: 999px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .pill.ok {
+      background: #d1fae5;
+      border: 1px solid #34d399;
+    }
+    .pill.warn {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+    }
+
+    .rd-link {
+      color: #004080;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width: 1200px) {
+      .rd-filters {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 700px) {
+      .rd-filters {
+        grid-template-columns: 1fr;
+      }
+      table.rd-table {
+        min-width: unset;
+      }
     }
   </style>
 </head>
 
 <body>
-  <!-- ✅ Mantener tu encabezado/login/usuario/hora -->
+  <!-- HEADER GLOBAL -->
   <div id="encabezado"></div>
 
-  <div id="revisionDocsRoot" class="page" data-mode="sistema">
+  <!-- CONTENIDO -->
+  <div id="revisionDocsRoot">
 
-    <div class="page-title">
+    <div class="rd-title">
       <h2>REVISIÓN DE DOCUMENTOS</h2>
-      <p class="muted">Filtra por destino / coordinador / grupo / tipo de documento, y revisa rápidamente lo pendiente.</p>
+      <p>Filtra por destino, coordinador, grupo y tipo de documento. Marca lo revisado y guarda.</p>
     </div>
 
-    <!-- ===================== FILTROS ===================== -->
-    <div class="card">
-      <h3><span class="material-symbols-outlined" style="font-size:20px;opacity:.9;">tune</span> Filtros</h3>
+    <!-- FILTROS -->
+    <div class="rd-card">
+      <h3><span class="material-symbols-outlined">tune</span> Filtros</h3>
 
-      <div class="filters-grid">
-
-        <!-- Destino -->
-        <div class="field col-3">
-          <label for="filtroDestino">Destino</label>
-          <input id="filtroDestino" class="control" type="text" placeholder="Ej: BARILOCHE" />
+      <div class="rd-filters">
+        <div class="rd-field">
+          <label>Destino</label>
+          <input id="filtroDestino" placeholder="Ej: BARILOCHE"/>
         </div>
 
-        <!-- Coordinadores (multi) -->
-        <div class="field col-3">
-          <label for="filtroCoords">Coordinadores (multi)</label>
-          <select id="filtroCoords" class="control" multiple size="1">
-            <!-- options por JS -->
-          </select>
+        <div class="rd-field">
+          <label>Coordinadores</label>
+          <select id="filtroCoords" multiple></select>
         </div>
 
-        <!-- Grupos (multi) -->
-        <div class="field col-3">
-          <label for="filtroGrupos">Grupos (multi)</label>
-          <select id="filtroGrupos" class="control" multiple size="1">
-            <!-- options por JS -->
-          </select>
+        <div class="rd-field">
+          <label>Grupos</label>
+          <select id="filtroGrupos" multiple></select>
         </div>
 
-        <!-- Tipo doc (multi) -->
-        <div class="field col-3">
-          <label for="filtroTipos">Tipo documento (multi)</label>
-          <select id="filtroTipos" class="control" multiple size="1">
-            <!-- options por JS -->
-          </select>
+        <div class="rd-field">
+          <label>Tipo documento</label>
+          <select id="filtroTipos" multiple></select>
         </div>
 
-        <!-- Gasto aprobado -->
-        <div class="field col-3">
-          <label for="filtroAprobado">Gasto aprobado</label>
-          <select id="filtroAprobado" class="control">
-            <option value="TODOS" selected>TODOS</option>
+        <div class="rd-field">
+          <label>Gasto aprobado</label>
+          <select id="filtroAprobado">
+            <option value="TODOS">Todos</option>
             <option value="OK">OK</option>
-            <option value="PENDIENTE">PENDIENTE</option>
+            <option value="NO">No</option>
           </select>
         </div>
 
-        <!-- Texto libre -->
-        <div class="field col-9">
-          <label for="filtroTexto">Texto libre (opcional)</label>
-          <input id="filtroTexto" class="control" type="text"
-                 placeholder="Busca por grupo, destino, coord, tipo, asunto..." />
+        <div class="rd-field rd-span-2">
+          <label>Texto libre</label>
+          <input id="filtroTexto" placeholder="Grupo, destino, coord, asunto..."/>
         </div>
+      </div>
 
-        <!-- Acciones -->
-        <div class="col-12">
-          <div class="toolbar">
-            <button id="btnCargarDocs" class="btn btn-primary" type="button">
-              <span class="material-symbols-outlined" style="font-size:20px;">cloud_download</span>
-              Cargar documentos
-            </button>
-
-            <button id="btnLimpiar" class="btn btn-ghost" type="button">
-              <span class="material-symbols-outlined" style="font-size:20px;">backspace</span>
-              Limpiar
-            </button>
-
-            <span class="tag" id="infoEstado"></span>
-          </div>
-        </div>
-
+      <div class="rd-actions">
+        <button class="rd-btn" id="btnCargarDocs">
+          <span class="material-symbols-outlined">search</span>
+          Cargar
+        </button>
+        <button class="rd-btn secondary" id="btnLimpiar">
+          Limpiar
+        </button>
+        <span id="infoEstado"></span>
       </div>
     </div>
 
-    <!-- ===================== TABLA ===================== -->
-    <div class="card">
-      <h3><span class="material-symbols-outlined" style="font-size:20px;opacity:.9;">folder_open</span> Resultados</h3>
+    <!-- RESULTADOS -->
+    <div class="rd-card">
+      <h3><span class="material-symbols-outlined">folder_open</span> Resultados</h3>
 
-      <table class="finanzas" id="tblDocs">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Grupo</th>
-            <th>Destino</th>
-            <th>Coordinador</th>
-            <th>Tipo</th>
-            <th>Rendición</th>
-            <th>Gasto aprobado</th>
-            <th>Moneda</th>
-            <th>Monto</th>
-            <th>Archivo</th>
-            <th>Revisado</th>
-          </tr>
-        </thead>
-        <tbody>
-          <!-- rows por JS -->
-          <tr>
-            <td colspan="11" class="muted">Sin documentos para los filtros seleccionados.</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div class="help-note">
-        <div>
-          <span class="mono">“Rendición”</span> = OK si <span class="mono">grupos/{gid}/finanzas/summary → docsOk.boleta</span> está marcado (boleta SII revisada).
-        </div>
-        <div>
-          <span class="mono">“Gasto aprobado”</span> = OK si <span class="mono">gastosGrabados &gt; 0</span> y <span class="mono">gastosGrabados ≤ costoTotal</span>.
-        </div>
+      <div class="rd-table-wrap">
+        <table class="rd-table" id="tblDocs">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Grupo</th>
+              <th>Destino</th>
+              <th>Coordinador</th>
+              <th>Tipo</th>
+              <th>Rendición</th>
+              <th>Gasto aprobado</th>
+              <th>Moneda</th>
+              <th>Monto</th>
+              <th>Archivo</th>
+              <th>Revisado</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="11">Sin documentos para los filtros seleccionados.</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+
+      <p style="font-size:.75rem;color:#555;margin-top:.5rem;">
+        Rendición = OK si <code>docsOk.boleta</code> está marcado.  
+        Gasto aprobado = monto &gt; 0 y ≤ costo total.
+      </p>
     </div>
 
   </div>
 
-  <!-- =========================================================
-       Carga encabezado + Firebase + lógica de esta página
-       (ajusta el import final a TU archivo real: revision_docs.js)
-       ========================================================= -->
+  <!-- SCRIPTS -->
   <script type="module">
     (async () => {
       try {
-        const html = await (await fetch('encabezado.html')).text().catch(()=> '');
-        document.getElementById('encabezado').innerHTML = html || '';
-      } catch (_) {}
+        const html = await (await fetch('encabezado.html')).text();
+        document.getElementById('encabezado').innerHTML = html;
+      } catch(e){}
 
-      // Inicializa Firebase + lógica común encabezado (si lo usas)
       await import('./firebase-init.js');
       await import('./script.js').catch(()=>{});
-
-      // ✅ TU LÓGICA (ya la tienes hecha): cámbialo al nombre exacto
       await import('./revision_docs.js');
-      console.log('✅ revision_docs.js cargado');
     })();
   </script>
-
-  <!-- (opcional redundante si ya importas arriba, pero lo dejo como en tus páginas) -->
-  <script type="module" src="firebase-init.js" defer></script>
 </body>
 </html>
