@@ -11,186 +11,329 @@
 
   <style>
     /* =====================================================
-       🔒 AISLAMIENTO TOTAL DE REVISION DOCS
-       (para que estilos.css NO rompa el layout)
+       🔒 AISLAMIENTO DE ESTA PÁGINA (para no pelear con estilos.css)
        ===================================================== */
+    body { background:#f6f6f6; }
 
-    body {
-      background: #f6f6f6;
-    }
-
-    /* CONTENEDOR PRINCIPAL */
-    #revisionDocsRoot {
-      max-width: 1600px;
-      margin: 0 auto;
-      padding: 1.2rem 1.4rem;
+    #revisionDocsRoot{
+      max-width:1600px;
+      margin:0 auto;
+      padding:1.2rem 1.4rem;
     }
 
-    /* TÍTULO */
-    .rd-title {
-      margin-bottom: 1rem;
-    }
-    .rd-title h2 {
-      margin: 0;
-    }
-    .rd-title p {
-      margin: .25rem 0 0;
-      color: #555;
-      font-size: .9rem;
-    }
+    .rd-title{ margin-bottom:1rem; }
+    .rd-title h2{ margin:0; }
+    .rd-title p{ margin:.25rem 0 0; color:#555; font-size:.9rem; }
 
-    /* TARJETAS (no usar .card global) */
-    .rd-card {
-      background: #ffffff;
-      border: 1px solid #ddd;
-      border-radius: 10px;
-      padding: 1rem 1.2rem;
-      margin-bottom: 1rem;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    .rd-card{
+      background:#fff;
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:1rem 1.2rem;
+      margin-bottom:1rem;
+      box-shadow:0 2px 6px rgba(0,0,0,.05);
     }
-
-    .rd-card h3 {
-      margin: 0 0 .75rem;
-      font-size: 1rem;
-      border-bottom: 1px solid #eee;
-      padding-bottom: .4rem;
-      display: flex;
-      align-items: center;
-      gap: .4rem;
+    .rd-card h3{
+      margin:0 0 .75rem;
+      font-size:1rem;
+      border-bottom:1px solid #eee;
+      padding-bottom:.4rem;
+      display:flex;
+      align-items:center;
+      gap:.4rem;
     }
 
     /* =======================
-       FILTROS (GRID REAL)
+       GRID FILTROS
        ======================= */
-    .rd-filters {
-      display: grid;
-      grid-template-columns: repeat(6, 1fr);
-      gap: .75rem;
-      align-items: end;
+    .rd-filters{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:.75rem;
+      align-items:end;
+    }
+    .rd-field{ display:flex; flex-direction:column; gap:.25rem; }
+    .rd-field label{
+      font-size:.75rem;
+      font-weight:600;
+      color:#444;
+      text-transform:uppercase;
     }
 
-    .rd-field {
-      display: flex;
-      flex-direction: column;
-      gap: .25rem;
+    .rd-field input, .rd-field select{
+      padding:.45rem .5rem;
+      border:1px solid #ccc;
+      border-radius:6px;
+      font-size:.9rem;
+      background:#fff;
+      width:100%;
+      box-sizing:border-box;
+      text-transform:none; /* IMPORTANTÍSIMO (tu css global pone uppercase) */
     }
 
-    .rd-field label {
-      font-size: .75rem;
-      font-weight: 600;
-      color: #444;
-      text-transform: uppercase;
+    .col-3{ grid-column: span 3; }
+    .col-4{ grid-column: span 4; }
+    .col-6{ grid-column: span 6; }
+    .col-12{ grid-column: span 12; }
+
+    /* =======================
+       MULTISELECT (details)
+       (Tu JS crea los items dentro)
+       ======================= */
+    details.multi{
+      border:1px solid #ccc;
+      border-radius:8px;
+      background:#fff;
+      padding:.35rem .5rem;
+    }
+    details.multi summary{
+      cursor:pointer;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:.5rem;
+      font-weight:600;
+      font-size:.85rem;
+    }
+    details.multi summary::-webkit-details-marker{ display:none; }
+    .multi-pill{
+      font-weight:600;
+      color:#004080;
+      background:#e7f0ff;
+      border:1px solid #b9d4ff;
+      padding:.1rem .45rem;
+      border-radius:999px;
+      font-size:.75rem;
+    }
+    .multi-panel{
+      margin-top:.55rem;
+      border-top:1px solid #eee;
+      padding-top:.6rem;
+      display:flex;
+      flex-direction:column;
+      gap:.5rem;
+    }
+    .multi-panel input{
+      border:1px solid #ddd;
+      border-radius:8px;
+      padding:.45rem .55rem;
+      width:100%;
+    }
+    .multi-actions{
+      display:flex;
+      gap:.5rem;
+      flex-wrap:wrap;
+    }
+    .mini-btn{
+      padding:.35rem .6rem;
+      border-radius:8px;
+      border:1px solid #ddd;
+      background:#fff;
+      cursor:pointer;
+      font-weight:700;
+      font-size:.75rem;
+    }
+    .multi-list{
+      max-height:220px;
+      overflow:auto;
+      border:1px solid #eee;
+      border-radius:10px;
+      padding:.35rem;
+    }
+    .multi-list .opt{
+      display:flex;
+      gap:.5rem;
+      align-items:flex-start;
+      padding:.35rem .35rem;
+      border-radius:8px;
+      cursor:pointer;
+    }
+    .multi-list .opt:hover{ background:#f6f7fb; }
+    .multi-list input[type="checkbox"]{
+      margin-top:.15rem;
+      width:auto;
     }
 
-    .rd-field input,
-    .rd-field select {
-      padding: .45rem .5rem;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      font-size: .9rem;
-      background: #fff;
-      width: 100%;
-      box-sizing: border-box;
-      text-transform: none; /* 👈 IMPORTANTÍSIMO */
+    /* =======================
+       BOTONES
+       ======================= */
+    .rd-actions{
+      display:flex;
+      gap:.6rem;
+      margin-top:.8rem;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .rd-btn{
+      padding:.55rem 1.1rem;
+      border-radius:6px;
+      border:1px solid #004080;
+      background:#004080;
+      color:#fff;
+      font-weight:700;
+      cursor:pointer;
+      font-size:.9rem;
+      display:inline-flex;
+      align-items:center;
+      gap:.4rem;
+    }
+    .rd-btn.secondary{
+      background:#fff;
+      color:#004080;
+    }
+    .rd-btn:disabled{
+      opacity:.5;
+      cursor:not-allowed;
     }
 
-    .rd-span-2 { grid-column: span 2; }
-    .rd-span-3 { grid-column: span 3; }
-    .rd-span-6 { grid-column: span 6; }
-
-    /* BOTONES */
-    .rd-actions {
-      display: flex;
-      gap: .6rem;
-      margin-top: .8rem;
-      flex-wrap: wrap;
-    }
-
-    .rd-btn {
-      padding: .55rem 1.1rem;
-      border-radius: 6px;
-      border: 1px solid #004080;
-      background: #004080;
-      color: #fff;
-      font-weight: 600;
-      cursor: pointer;
-      font-size: .9rem;
-      display: inline-flex;
-      align-items: center;
-      gap: .4rem;
-    }
-
-    .rd-btn.secondary {
-      background: #fff;
-      color: #004080;
+    #infoPendientes{
+      display:none;
+      padding:.35rem .55rem;
+      border-radius:999px;
+      border:1px solid #f59e0b;
+      background:#fff7ed;
+      color:#7c2d12;
+      font-weight:800;
+      font-size:.8rem;
     }
 
     /* =======================
        TABLA
        ======================= */
-    .rd-table-wrap {
-      overflow-x: auto;
+    .rd-table-wrap{ overflow-x:auto; }
+    table.rd-table{
+      width:100%;
+      border-collapse:collapse;
+      background:#fff;
+      min-width:1200px;
+    }
+    table.rd-table th, table.rd-table td{
+      border:1px solid #ddd;
+      padding:.5rem .6rem;
+      font-size:.85rem;
+      text-align:left;
+      white-space:nowrap;
+    }
+    table.rd-table thead th{
+      background:#f1f1f1;
+      font-size:.75rem;
+      text-transform:uppercase;
+    }
+    .muted{ color:#6b7280; }
+
+    /* Estilos que tu JS usa en celdas */
+    .tag{
+      display:inline-block;
+      padding:.15rem .45rem;
+      border-radius:999px;
+      border:1px solid #ddd;
+      background:#fff;
+      font-size:.75rem;
+      font-weight:800;
+    }
+    .tag.ok{ background:#d1fae5; border-color:#34d399; }
+    .tag.pending{ background:#f3f4f6; border-color:#d1d5db; color:#6b7280; }
+
+    .link{
+      color:#004080;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:underline;
+    }
+    .chk{ transform:scale(1.1); }
+
+    /* =======================
+       MODAL VISOR (ids usados por JS)
+       ======================= */
+    #viewerModal{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.55);
+      display:none;
+      z-index:9999;
+      padding:20px;
+    }
+    #viewerModal.open{ display:flex; align-items:center; justify-content:center; }
+    .viewer-card{
+      width:min(1100px, 96vw);
+      height:min(720px, 90vh);
+      background:#fff;
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 12px 40px rgba(0,0,0,.25);
+      display:flex;
+      flex-direction:column;
+    }
+    .viewer-head{
+      padding:12px 14px;
+      border-bottom:1px solid #eee;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .viewer-txt{
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      gap:2px;
+    }
+    #viewerTitle{ font-weight:900; font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #viewerSub{ font-size:.8rem; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .viewer-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-shrink:0;
+    }
+    #viewerOpenTab{
+      padding:.4rem .7rem;
+      border-radius:10px;
+      border:1px solid #004080;
+      color:#004080;
+      font-weight:900;
+      text-decoration:none;
+      white-space:nowrap;
+    }
+    #viewerClose{
+      padding:.4rem .7rem;
+      border-radius:10px;
+      border:1px solid #ddd;
+      background:#fff;
+      font-weight:900;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    #viewerBody{
+      flex:1;
+      background:#0b1329;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:auto;
+    }
+    #viewerBody iframe{
+      width:100%;
+      height:100%;
+      border:0;
+      background:#fff;
+    }
+    #viewerBody img{
+      max-width:100%;
+      max-height:100%;
+      object-fit:contain;
+      background:#fff;
     }
 
-    table.rd-table {
-      width: 100%;
-      border-collapse: collapse;
-      background: #fff;
-      min-width: 1200px;
+    @media (max-width: 1100px){
+      .rd-filters{ grid-template-columns: repeat(6, 1fr); }
+      .col-3,.col-4,.col-6{ grid-column: span 6; }
     }
-
-    table.rd-table th,
-    table.rd-table td {
-      border: 1px solid #ddd;
-      padding: .5rem .6rem;
-      font-size: .85rem;
-      text-align: left;
-      white-space: nowrap;
-    }
-
-    table.rd-table thead th {
-      background: #f1f1f1;
-      font-size: .75rem;
-      text-transform: uppercase;
-    }
-
-    /* ESTADOS */
-    .pill {
-      display: inline-block;
-      padding: .15rem .5rem;
-      border-radius: 999px;
-      font-size: .75rem;
-      font-weight: 600;
-    }
-    .pill.ok {
-      background: #d1fae5;
-      border: 1px solid #34d399;
-    }
-    .pill.warn {
-      background: #fef3c7;
-      border: 1px solid #f59e0b;
-    }
-
-    .rd-link {
-      color: #004080;
-      font-weight: 600;
-      text-decoration: none;
-    }
-
-    /* RESPONSIVE */
-    @media (max-width: 1200px) {
-      .rd-filters {
-        grid-template-columns: repeat(3, 1fr);
-      }
-    }
-
-    @media (max-width: 700px) {
-      .rd-filters {
-        grid-template-columns: 1fr;
-      }
-      table.rd-table {
-        min-width: unset;
-      }
+    @media (max-width: 700px){
+      .rd-filters{ grid-template-columns: 1fr; }
+      .col-3,.col-4,.col-6,.col-12{ grid-column: span 1; }
+      table.rd-table{ min-width:unset; }
     }
   </style>
 </head>
@@ -199,12 +342,14 @@
   <!-- HEADER GLOBAL -->
   <div id="encabezado"></div>
 
-  <!-- CONTENIDO -->
+  <!-- DATALIST DESTINOS (tu JS lo rellena) -->
+  <datalist id="dl-destinos-docs"></datalist>
+
   <div id="revisionDocsRoot">
 
     <div class="rd-title">
       <h2>REVISIÓN DE DOCUMENTOS</h2>
-      <p>Filtra por destino, coordinador, grupo y tipo de documento. Marca lo revisado y guarda.</p>
+      <p>Filtra por destino / coordinador / grupo / tipo y revisa rápidamente lo pendiente.</p>
     </div>
 
     <!-- FILTROS -->
@@ -212,39 +357,92 @@
       <h3><span class="material-symbols-outlined">tune</span> Filtros</h3>
 
       <div class="rd-filters">
-        <div class="rd-field">
+
+        <!-- DESTINO (ID EXACTO QUE TU JS USA) -->
+        <div class="rd-field col-3">
           <label>Destino</label>
-          <input id="filtroDestino" placeholder="Ej: BARILOCHE"/>
+          <input id="filtroDestinoDocs" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
         </div>
 
-        <div class="rd-field">
-          <label>Coordinadores</label>
-          <select id="filtroCoords" multiple></select>
+        <!-- COORDS MULTI (estructura e IDs usados por renderMultiList) -->
+        <div class="rd-field col-3">
+          <label>Coordinadores (multi)</label>
+
+          <details class="multi">
+            <summary>
+              <span id="multiCoordsLabel">Seleccionar…</span>
+              <span class="multi-pill">MULTI</span>
+            </summary>
+
+            <div class="multi-panel">
+              <input id="searchCoords" placeholder="Buscar coordinador…"/>
+              <div class="multi-actions">
+                <button type="button" class="mini-btn" id="btnCoordsAll">Todos</button>
+                <button type="button" class="mini-btn" id="btnCoordsNone">Ninguno</button>
+              </div>
+              <div class="multi-list" id="coordsList"></div>
+            </div>
+          </details>
         </div>
 
-        <div class="rd-field">
-          <label>Grupos</label>
-          <select id="filtroGrupos" multiple></select>
+        <!-- GRUPOS MULTI -->
+        <div class="rd-field col-3">
+          <label>Grupos (multi)</label>
+
+          <details class="multi">
+            <summary>
+              <span id="multiGruposLabel">Seleccionar…</span>
+              <span class="multi-pill">MULTI</span>
+            </summary>
+
+            <div class="multi-panel">
+              <input id="searchGrupos" placeholder="Buscar grupo… (número o nombre)"/>
+              <div class="multi-actions">
+                <button type="button" class="mini-btn" id="btnGruposAll">Todos</button>
+                <button type="button" class="mini-btn" id="btnGruposNone">Ninguno</button>
+              </div>
+              <div class="multi-list" id="gruposList"></div>
+            </div>
+          </details>
         </div>
 
-        <div class="rd-field">
-          <label>Tipo documento</label>
-          <select id="filtroTipos" multiple></select>
+        <!-- TIPOS MULTI -->
+        <div class="rd-field col-3">
+          <label>Tipo documento (multi)</label>
+
+          <details class="multi">
+            <summary>
+              <span id="multiTiposLabel">Seleccionar…</span>
+              <span class="multi-pill">MULTI</span>
+            </summary>
+
+            <div class="multi-panel">
+              <input id="searchTipos" placeholder="Buscar tipo…"/>
+              <div class="multi-actions">
+                <button type="button" class="mini-btn" id="btnTiposAll">Todos</button>
+                <button type="button" class="mini-btn" id="btnTiposNone">Ninguno</button>
+              </div>
+              <div class="multi-list" id="tiposList"></div>
+            </div>
+          </details>
         </div>
 
-        <div class="rd-field">
+        <!-- GASTO APROBADO -->
+        <div class="rd-field col-3">
           <label>Gasto aprobado</label>
-          <select id="filtroAprobado">
-            <option value="TODOS">Todos</option>
+          <select id="filtroGastoAprobado">
+            <option value="">(TODOS)</option>
             <option value="OK">OK</option>
-            <option value="NO">No</option>
+            <option value="NO">NO</option>
           </select>
         </div>
 
-        <div class="rd-field rd-span-2">
+        <!-- TEXTO LIBRE -->
+        <div class="rd-field col-6">
           <label>Texto libre</label>
-          <input id="filtroTexto" placeholder="Grupo, destino, coord, asunto..."/>
+          <input id="filtroTextoDocs" placeholder="Grupo, destino, coord, tipo, asunto…"/>
         </div>
+
       </div>
 
       <div class="rd-actions">
@@ -252,10 +450,19 @@
           <span class="material-symbols-outlined">search</span>
           Cargar
         </button>
-        <button class="rd-btn secondary" id="btnLimpiar">
+
+        <button class="rd-btn secondary" id="btnLimpiarDocs">
           Limpiar
         </button>
-        <span id="infoEstado"></span>
+
+        <span id="infoPendientes"></span>
+
+        <button class="rd-btn" id="btnGuardarPendientes" style="margin-left:auto;">
+          <span class="material-symbols-outlined">save</span>
+          Guardar cambios
+        </button>
+
+        <span id="infoDocs" class="muted"></span>
       </div>
     </div>
 
@@ -282,18 +489,35 @@
           </thead>
           <tbody>
             <tr>
-              <td colspan="11">Sin documentos para los filtros seleccionados.</td>
+              <td colspan="11" class="muted">Sin documentos para los filtros seleccionados.</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <p style="font-size:.75rem;color:#555;margin-top:.5rem;">
-        Rendición = OK si <code>docsOk.boleta</code> está marcado.  
-        Gasto aprobado = monto &gt; 0 y ≤ costo total.
+      <p class="muted" style="font-size:.75rem;margin-top:.6rem;">
+        “Rendición” = OK si <code>docsOk.boleta</code> está marcado. ·
+        “Gasto aprobado” = OK si <code>gastosGrabados &gt; 0</code> y <code>gastosGrabados ≤ costoTotal</code>.
       </p>
     </div>
 
+  </div>
+
+  <!-- MODAL VISOR (IDs exactos del JS) -->
+  <div id="viewerModal" aria-hidden="true">
+    <div class="viewer-card">
+      <div class="viewer-head">
+        <div class="viewer-txt">
+          <div id="viewerTitle">Documento</div>
+          <div id="viewerSub"></div>
+        </div>
+        <div class="viewer-actions">
+          <a id="viewerOpenTab" href="#" target="_blank" rel="noopener">Abrir pestaña</a>
+          <button id="viewerClose" type="button">Cerrar</button>
+        </div>
+      </div>
+      <div id="viewerBody"></div>
+    </div>
   </div>
 
   <!-- SCRIPTS -->
@@ -304,8 +528,13 @@
         document.getElementById('encabezado').innerHTML = html;
       } catch(e){}
 
+      // Importa SOLO lo necesario.
       await import('./firebase-init.js');
+
+      // Si tu encabezado depende de script.js (reloj / botones / etc), mantenlo:
       await import('./script.js').catch(()=>{});
+
+      // Tu módulo real:
       await import('./revision_docs.js');
     })();
   </script>
