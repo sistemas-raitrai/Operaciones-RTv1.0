@@ -1,12 +1,9 @@
 // revision_docs.js
 // Revisión de boletas / comprobantes / constancias + comprobantes de gastos
-// Muestra muchos grupos a la vez (filtrado por destino, coord, fechas, texto).
-//
-// ✅ Mejoras incluidas:
-// 1) Separación coordId (ID real del doc en /coordinadores/{coordId}) vs coordEmail (para mostrar)
-// 2) Escritura de revisión de GASTO usando SIEMPRE coordId desde el path (evita fallos)
-// 3) Orden: documentos con fecha (gastos) primero; docs de summary (fechaMs=0) al final
-// 4) Render muestra coordinador “bonito” pero guarda con coordId
+// Muestra muchos grupos a la vez (filtrado por destino, coord(s), grupos(s), tipo(s), texto).
+// + Columna "Rendición" = OK cuando docsOk.boleta está marcado (boleta SII revisada).
+// + Persistencia real en Firestore (summary.docsOk y coordinadores/{coord}/gastos/{gasto}.revisionDocs).
+// + Modal visor de documentos (imagen/pdf/lo que sea embebible).
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -20,18 +17,20 @@ const auth = getAuth(app);
 const state = {
   user: null,
   filtros: {
-    destino: '',
-    coord: '',
-    fechaDesde: null, // ms
-    fechaHasta: null, // ms
+    destino: '',            // string (1)
+    coords: new Set(),      // multi
+    grupos: new Set(),      // multi (gids)
+    tipos: new Set(),       // multi (BOLETA/COMP_CLP/CONST_USD/GASTO)
     texto: ''
   },
   caches: {
-    grupos: new Map(),    // gid -> {gid, numero, nombre, destino, coordEmail, fechaInicio, fechaFin}
-    coords: new Set(),
-    destinos: new Set()
+    grupos: new Map(),      // gid -> {gid,numero,nombre,destino,coordEmail,...}
+    coords: [],             // emails
+    destinos: [],           // strings
   },
-  docs: []               // lista plana de documentos a mostrar en la tabla
+  docs: [],                 // lista plana de documentos a mostrar en tabla
+  rendicionOkByGid: new Map(), // gid -> boolean (docsOk.boleta)
+  pending: new Map()        // key -> {docItem, checked} para "Guardar cambios"
 };
 
 /* ====================== UTILS ====================== */
@@ -70,7 +69,6 @@ function _toMs(v){
   }
   return 0;
 }
-
 function pickFechaMs(raw){
   const cands = [
     raw.fecha, raw.fechaPago, raw.fechaAbono,
@@ -82,7 +80,6 @@ function pickFechaMs(raw){
   }
   return 0;
 }
-
 function fmtDDMMYYYY(ms){
   if (!ms) return '';
   const d = new Date(ms);
@@ -92,17 +89,97 @@ function fmtDDMMYYYY(ms){
   return `${dd}-${mm}-${yyyy}`;
 }
 
+function isImageUrl(url=''){
+  const u = String(url).toLowerCase();
+  return u.includes('.png') || u.includes('.jpg') || u.includes('.jpeg') || u.includes('.webp') || u.includes('image');
+}
+function isPdfUrl(url=''){
+  const u = String(url).toLowerCase();
+  return u.includes('.pdf') || u.includes('application/pdf');
+}
+
+/* ====================== UI HELPERS (MULTISELECT) ====================== */
+function setMultiLabel(el, selectedCount, emptyText='Seleccionar…') {
+  if (!el) return;
+  el.textContent = selectedCount ? `${selectedCount} seleccionado(s)` : emptyText;
+}
+
+function renderMultiList({
+  container,
+  searchInput,
+  items,
+  getKey,
+  getLabel,
+  selectedSet,
+  onChange,
+  btnAll,
+  btnNone
+}) {
+  if (!container) return;
+
+  const draw = () => {
+    const q = norm(searchInput?.value || '');
+    container.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    items.forEach(it => {
+      const key = getKey(it);
+      const label = getLabel(it);
+      const blob = norm(label);
+
+      if (q && !blob.includes(q)) return;
+
+      const row = document.createElement('label');
+      row.className = 'opt';
+
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = selectedSet.has(key);
+      chk.addEventListener('change', () => {
+        if (chk.checked) selectedSet.add(key);
+        else selectedSet.delete(key);
+        onChange?.();
+      });
+
+      const txt = document.createElement('div');
+      txt.innerHTML = `<div><strong>${label}</strong></div>`;
+
+      row.append(chk, txt);
+      frag.appendChild(row);
+    });
+
+    container.appendChild(frag);
+  };
+
+  searchInput?.addEventListener('input', draw);
+
+  btnAll?.addEventListener('click', () => {
+    items.forEach(it => selectedSet.add(getKey(it)));
+    onChange?.();
+    draw();
+  });
+
+  btnNone?.addEventListener('click', () => {
+    selectedSet.clear();
+    onChange?.();
+    draw();
+  });
+
+  draw();
+}
+
 /* ====================== CATALOGOS (GRUPOS) ====================== */
 async function preloadGruposDocs() {
   state.caches.grupos.clear();
-  state.caches.coords.clear();
-  state.caches.destinos.clear();
+  state.caches.coords.length = 0;
+  state.caches.destinos.length = 0;
+
+  const coordsSet = new Set();
+  const destinosSet = new Set();
 
   const snap = await getDocs(collection(db,'grupos'));
 
-  const dlCoords   = document.getElementById('dl-coords-docs');
   const dlDestinos = document.getElementById('dl-destinos-docs');
-  if (dlCoords)   dlCoords.innerHTML   = '';
   if (dlDestinos) dlDestinos.innerHTML = '';
 
   snap.forEach(d => {
@@ -123,37 +200,86 @@ async function preloadGruposDocs() {
       nombre,
       coordEmail,
       destino,
-      // por si los quieres más adelante:
       fechaInicio: x.fechaInicio || x.fechaInicioViaje || null,
       fechaFin:    x.fechaFin    || x.fechaFinViaje    || null
     };
 
     state.caches.grupos.set(gid, gInfo);
-    if (coordEmail) state.caches.coords.add(coordEmail);
-    if (destino)    state.caches.destinos.add(destino);
+    if (coordEmail) coordsSet.add(coordEmail);
+    if (destino) destinosSet.add(destino);
   });
 
-  // llenar datalists
-  if (dlCoords) {
-    Array.from(state.caches.coords).sort().forEach(email => {
-      const opt = document.createElement('option');
-      opt.value = email;
-      opt.label = email;
-      dlCoords.appendChild(opt);
-    });
-  }
+  state.caches.coords = Array.from(coordsSet).sort();
+  state.caches.destinos = Array.from(destinosSet).sort();
 
   if (dlDestinos) {
-    Array.from(state.caches.destinos).sort().forEach(dest => {
+    state.caches.destinos.forEach(dest => {
       const opt = document.createElement('option');
       opt.value = dest;
       opt.label = dest;
       dlDestinos.appendChild(opt);
     });
   }
+
+  // Tipos fijos
+  const TIPOS = [
+    { key: 'BOLETA',   label: 'BOLETA (SII)' },
+    { key: 'COMP_CLP', label: 'COMP. CLP (Transferencia)' },
+    { key: 'CONST_USD',label: 'CONST. USD (Efectivo/Transf. coord)' },
+    { key: 'GASTO',    label: 'GASTO (Comprobante)' }
+  ];
+
+  // Render multiselects
+  const coordsList = document.getElementById('coordsList');
+  const gruposList = document.getElementById('gruposList');
+  const tiposList  = document.getElementById('tiposList');
+
+  renderMultiList({
+    container: coordsList,
+    searchInput: document.getElementById('searchCoords'),
+    items: state.caches.coords,
+    getKey: (email) => email,
+    getLabel: (email) => email,
+    selectedSet: state.filtros.coords,
+    onChange: () => setMultiLabel(document.getElementById('multiCoordsLabel'), state.filtros.coords.size),
+    btnAll: document.getElementById('btnCoordsAll'),
+    btnNone: document.getElementById('btnCoordsNone')
+  });
+
+  const gruposArr = Array.from(state.caches.grupos.values())
+    .sort((a,b) => String(a.numero).localeCompare(String(b.numero)));
+
+  renderMultiList({
+    container: gruposList,
+    searchInput: document.getElementById('searchGrupos'),
+    items: gruposArr,
+    getKey: (g) => g.gid,
+    getLabel: (g) => `${g.numero} — ${g.nombre}`,
+    selectedSet: state.filtros.grupos,
+    onChange: () => setMultiLabel(document.getElementById('multiGruposLabel'), state.filtros.grupos.size),
+    btnAll: document.getElementById('btnGruposAll'),
+    btnNone: document.getElementById('btnGruposNone')
+  });
+
+  renderMultiList({
+    container: tiposList,
+    searchInput: document.getElementById('searchTipos'),
+    items: TIPOS,
+    getKey: (t) => t.key,
+    getLabel: (t) => t.label,
+    selectedSet: state.filtros.tipos,
+    onChange: () => setMultiLabel(document.getElementById('multiTiposLabel'), state.filtros.tipos.size),
+    btnAll: document.getElementById('btnTiposAll'),
+    btnNone: document.getElementById('btnTiposNone')
+  });
+
+  // Labels iniciales
+  setMultiLabel(document.getElementById('multiCoordsLabel'), state.filtros.coords.size);
+  setMultiLabel(document.getElementById('multiGruposLabel'), state.filtros.grupos.size);
+  setMultiLabel(document.getElementById('multiTiposLabel'), state.filtros.tipos.size);
 }
 
-/* ====================== GASTO → ITEM (solo lo que necesitamos) ====================== */
+/* ====================== NORMALIZADORES ====================== */
 function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const brutoMonto = coalesce(
     raw.monto, raw.montoCLP, raw.neto, raw.importe,
@@ -166,23 +292,12 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const fechaTxt = fechaMs ? fmtDDMMYYYY(fechaMs) : '';
 
   const asunto = coalesce(raw.asunto, raw.detalle, raw.descripcion, raw.concepto, raw.motivo, '');
-  const imgUrl = coalesce(
-    raw.imgUrl,
-    raw.imageUrl,
-    raw.imagenUrl,
-    raw.comprobanteUrl,
-    ''
-  );
+  const imgUrl = coalesce(raw.imgUrl, raw.imageUrl, raw.imagenUrl, raw.comprobanteUrl, '');
 
-  // flags de revisión (nuevo namespace, para no confundir con rendición financiera)
   const rev = raw.revisionDocs || {};
   const revisadoOk = !!rev.ok;
   const revisadoBy = rev.by || '';
   const revisadoAt = rev.at ? _toMs(rev.at) : 0;
-
-  // ✅ Importante: coordId debe ser SIEMPRE el docId real del path: /coordinadores/{coordId}/gastos/{id}
-  const coordId = (coordFromPath || '').toLowerCase();
-  const coordEmail = (grupoInfo.coordEmail || coordFromPath || '').toLowerCase();
 
   return {
     tipoDoc: 'GASTO',
@@ -191,11 +306,7 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
     numeroGrupo: grupoInfo.numero,
     nombreGrupo: grupoInfo.nombre,
     destino: grupoInfo.destino,
-
-    // ✅ separación para evitar fallas en updateDoc
-    coordId,
-    coordEmail,
-
+    coordEmail: coordFromPath || grupoInfo.coordEmail || '',
     fechaMs,
     fechaTxt,
     moneda,
@@ -209,13 +320,9 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
 }
 
 /* ====================== CARGA DE DOCUMENTOS ====================== */
-
-/**
- * Construye documentos de nivel grupo (boleta / comp CLP / constancia USD)
- * usando grupos/{gid}/finanzas/summary
- */
 async function loadDocsSummaryForGroups(gids) {
   const out = [];
+  state.rendicionOkByGid.clear();
 
   for (const gid of gids) {
     const gInfo = state.caches.grupos.get(gid);
@@ -232,12 +339,11 @@ async function loadDocsSummaryForGroups(gids) {
 
     const docsOk = (summary && summary.docsOk) || {};
 
-    const boletaUrl = coalesce(
-      summary?.boleta?.url,
-      summary?.boletaUrl,
-      ''
-    );
+    // 👇 Rendición (boleta SII revisada)
+    const rendOk = !!docsOk.boleta;
+    state.rendicionOkByGid.set(gid, rendOk);
 
+    const boletaUrl = coalesce(summary?.boleta?.url, summary?.boletaUrl, '');
     const compUrl = coalesce(
       summary?.transfer?.comprobanteUrl,
       summary?.transferenciaCLP?.url,
@@ -249,7 +355,6 @@ async function loadDocsSummaryForGroups(gids) {
       summary?.comprobanteUrl,
       ''
     );
-
     const transfUrl = coalesce(
       summary?.cashUsd?.comprobanteUrl,
       summary?.transferenciaCoord?.url,
@@ -266,15 +371,13 @@ async function loadDocsSummaryForGroups(gids) {
       nombreGrupo: gInfo.nombre,
       destino: gInfo.destino,
       coordEmail: gInfo.coordEmail || '',
-      coordId: '',               // no aplica para summary
       fechaMs: 0,
       fechaTxt: '',
       moneda: 'CLP',
-      monto: 0,
-      asunto: ''
+      monto: 0
     };
 
-    // Boleta (si existe url o si docsOk.boleta está marcado)
+    // Solo agregamos si existe URL o si está marcado como revisado
     if (boletaUrl || docsOk.boleta) {
       out.push({
         ...base,
@@ -286,8 +389,6 @@ async function loadDocsSummaryForGroups(gids) {
         revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
       });
     }
-
-    // Comprobante CLP
     if (compUrl || docsOk.comprobante) {
       out.push({
         ...base,
@@ -299,8 +400,6 @@ async function loadDocsSummaryForGroups(gids) {
         revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
       });
     }
-
-    // Constancia USD / transferencia coord
     if (transfUrl || docsOk.transferencia) {
       out.push({
         ...base,
@@ -317,10 +416,6 @@ async function loadDocsSummaryForGroups(gids) {
   return out;
 }
 
-/**
- * Carga los gastos con imagen (comprobante) para los grupos indicados
- * usando collectionGroup('gastos') y filtrando por grupoId.
- */
 async function loadDocsGastosForGroups(gids) {
   const out = [];
   if (!gids.length) return out;
@@ -340,19 +435,10 @@ async function loadDocsGastosForGroups(gids) {
       );
       if (!gid || !gidSet.has(gid)) return;
 
-      // si no tiene imagen, no nos interesa para esta pantalla
-      const hasImg = coalesce(
-        raw.imgUrl,
-        raw.imageUrl,
-        raw.imagenUrl,
-        raw.comprobanteUrl,
-        ''
-      );
-      if (!hasImg) return;
+      const img = coalesce(raw.imgUrl, raw.imageUrl, raw.imagenUrl, raw.comprobanteUrl, '');
+      if (!img) return;
 
-      // ✅ este es el docId real del coordinador
       const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
-
       const gInfo = state.caches.grupos.get(gid);
       if (!gInfo) return;
 
@@ -366,33 +452,46 @@ async function loadDocsGastosForGroups(gids) {
   return out;
 }
 
-/**
- * Aplica filtros a los grupos y luego carga:
- *  - docs de summary (boleta/comp/constancia)
- *  - docs de gastos con imagen
- */
-async function loadDocsForCurrentFilters() {
-  state.docs = [];
-
+function getFilteredGids() {
   const destinoFilter = state.filtros.destino ? state.filtros.destino.toUpperCase().trim() : '';
-  const coordFilter   = state.filtros.coord ? state.filtros.coord.toLowerCase().trim() : '';
   const textoFilter   = norm(state.filtros.texto || '');
 
-  const fechaDesde = state.filtros.fechaDesde;
-  const fechaHasta = state.filtros.fechaHasta;
+  // Si el usuario seleccionó grupos, partimos desde esos
+  const baseGids = state.filtros.grupos.size
+    ? Array.from(state.filtros.grupos)
+    : Array.from(state.caches.grupos.keys());
 
-  // 1) obtener lista de grupos que pasan filtros por destino/coord/texto (a nivel grupo)
-  const filteredGids = [];
-  for (const [gid, gInfo] of state.caches.grupos.entries()) {
+  const out = [];
+  for (const gid of baseGids) {
+    const gInfo = state.caches.grupos.get(gid);
+    if (!gInfo) continue;
+
     if (destinoFilter && gInfo.destino !== destinoFilter) continue;
-    if (coordFilter && (gInfo.coordEmail || '').toLowerCase() !== coordFilter) continue;
 
-    // filtro textual a nivel grupo (nombre, numero, destino, coordinador)
-    const blobGrupo = norm(`${gInfo.numero} ${gInfo.nombre} ${gInfo.destino} ${gInfo.coordEmail}`);
-    if (textoFilter && !blobGrupo.includes(textoFilter)) continue;
+    // Coordinadores multi (si hay seleccionados)
+    if (state.filtros.coords.size) {
+      const c = (gInfo.coordEmail || '').toLowerCase();
+      if (!state.filtros.coords.has(c)) continue;
+    }
 
-    filteredGids.push(gid);
+    // Texto libre a nivel grupo
+    if (textoFilter) {
+      const blob = norm(`${gInfo.numero} ${gInfo.nombre} ${gInfo.destino} ${gInfo.coordEmail}`);
+      if (!blob.includes(textoFilter)) continue;
+    }
+
+    out.push(gid);
   }
+
+  return out;
+}
+
+async function loadDocsForCurrentFilters() {
+  state.docs = [];
+  state.pending.clear();
+  refreshPendingUI();
+
+  const filteredGids = getFilteredGids();
 
   if (!filteredGids.length) {
     state.docs = [];
@@ -400,7 +499,6 @@ async function loadDocsForCurrentFilters() {
     return;
   }
 
-  // 2) cargar docs de summary + docs de gastos
   const [docsSummary, docsGastos] = await Promise.all([
     loadDocsSummaryForGroups(filteredGids),
     loadDocsGastosForGroups(filteredGids)
@@ -408,40 +506,41 @@ async function loadDocsForCurrentFilters() {
 
   let docsAll = [...docsSummary, ...docsGastos];
 
-  // 3) filtros de fecha / texto a nivel documento
-  docsAll = docsAll.filter(docItem => {
-    // fecha (si viene de gasto). Los docs summary tienen fechaMs 0 => entran igual.
-    if (fechaDesde && docItem.fechaMs && docItem.fechaMs < fechaDesde) return false;
-    if (fechaHasta && docItem.fechaMs && docItem.fechaMs > fechaHasta) return false;
+  // Filtro por tipo (multi)
+  if (state.filtros.tipos.size) {
+    docsAll = docsAll.filter(d => state.filtros.tipos.has(d.tipoDoc));
+  }
 
-    if (textoFilter) {
+  // Texto libre a nivel documento (incluye asunto)
+  const textoFilter = norm(state.filtros.texto || '');
+  if (textoFilter) {
+    docsAll = docsAll.filter(d => {
       const blob = norm(
-        `${docItem.numeroGrupo} ${docItem.nombreGrupo} ${docItem.destino} ${docItem.coordEmail} ${docItem.tipoDoc} ${docItem.asunto || ''}`
+        `${d.numeroGrupo} ${d.nombreGrupo} ${d.destino} ${d.coordEmail} ${d.tipoDoc} ${d.asunto || ''}`
       );
-      if (!blob.includes(textoFilter)) return false;
-    }
+      return blob.includes(textoFilter);
+    });
+  }
 
-    return true;
-  });
-
-  // ✅ Mejora: ordenar con gastos (fecha) primero y docs summary (fechaMs=0) al final
-  docsAll.sort((a,b) => {
-    const aKey = a.fechaMs ? a.fechaMs : 9e15;
-    const bKey = b.fechaMs ? b.fechaMs : 9e15;
-    return aKey - bKey;
-  });
+  // Orden: primero gastos con fecha, después summary (fechaMs 0)
+  docsAll.sort((a,b) => (a.fechaMs || 0) - (b.fechaMs || 0));
 
   state.docs = docsAll;
   renderDocsTable();
 }
 
-/* ====================== GUARDAR REVISIÓN ====================== */
+/* ====================== GUARDAR REVISIÓN (Firestore) ====================== */
+function docKey(docItem){
+  // key estable para pending map
+  if (docItem.tipoDoc === 'GASTO') return `GASTO:${docItem.grupoId}:${docItem.coordEmail}:${docItem.gastoId}`;
+  return `${docItem.tipoDoc}:${docItem.grupoId}`;
+}
 
 async function updateRevisionForDoc(docItem, checked) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const now   = Date.now();
 
-  // 1) Documentos de resumen (BOLETA / COMP_CLP / CONST_USD)
+  // 1) Docs summary (BOLETA / COMP_CLP / CONST_USD)
   if (docItem.tipoDoc === 'BOLETA' ||
       docItem.tipoDoc === 'COMP_CLP' ||
       docItem.tipoDoc === 'CONST_USD') {
@@ -456,21 +555,21 @@ async function updateRevisionForDoc(docItem, checked) {
       'docsOk.at': now
     };
 
-    if (docItem.tipoDoc === 'BOLETA') {
-      patch['docsOk.boleta'] = !!checked;
-    }
-    if (docItem.tipoDoc === 'COMP_CLP') {
-      patch['docsOk.comprobante'] = !!checked;
-    }
-    if (docItem.tipoDoc === 'CONST_USD') {
-      patch['docsOk.transferencia'] = !!checked;
-    }
+    if (docItem.tipoDoc === 'BOLETA')    patch['docsOk.boleta'] = !!checked;
+    if (docItem.tipoDoc === 'COMP_CLP')  patch['docsOk.comprobante'] = !!checked;
+    if (docItem.tipoDoc === 'CONST_USD') patch['docsOk.transferencia'] = !!checked;
 
     try {
       await setDoc(ref, patch, { merge:true });
       docItem.revisadoOk = !!checked;
       docItem.revisadoBy = email;
       docItem.revisadoAt = now;
+
+      // 👇 si es BOLETA, esto afecta la columna "Rendición"
+      if (docItem.tipoDoc === 'BOLETA') {
+        state.rendicionOkByGid.set(gid, !!checked);
+      }
+
       return true;
     } catch (e) {
       console.error('[DOCS] updateRevisionForDoc summary', e);
@@ -479,15 +578,14 @@ async function updateRevisionForDoc(docItem, checked) {
     }
   }
 
-  // 2) Documentos de gasto individual (tipoDoc === 'GASTO')
+  // 2) Docs de gasto
   if (docItem.tipoDoc === 'GASTO') {
-    const gid     = docItem.grupoId;
-    const coordId = (docItem.coordId || '').toLowerCase(); // ✅ docId real
+    const coord = docItem.coordEmail;
     const gastoId = docItem.gastoId;
-    if (!gid || !coordId || !gastoId) return false;
+    if (!coord || !gastoId) return false;
 
     try {
-      const ref = doc(db,'coordinadores',coordId,'gastos',gastoId);
+      const ref = doc(db,'coordinadores',coord,'gastos',gastoId);
       await updateDoc(ref, {
         'revisionDocs.ok': !!checked,
         'revisionDocs.by': email,
@@ -507,7 +605,92 @@ async function updateRevisionForDoc(docItem, checked) {
   return false;
 }
 
+/* ====================== PENDIENTES (botón Guardar) ====================== */
+function refreshPendingUI(){
+  const n = state.pending.size;
+  const el = document.getElementById('infoPendientes');
+  const btn = document.getElementById('btnGuardarPendientes');
+  if (!el || !btn) return;
+
+  if (!n) {
+    el.style.display = 'none';
+    btn.style.display = 'none';
+    return;
+  }
+  el.style.display = 'inline-block';
+  el.textContent = `Cambios pendientes: ${n}`;
+  btn.style.display = 'inline-block';
+}
+
+async function flushPending(){
+  if (!state.pending.size) return;
+
+  const entries = Array.from(state.pending.values());
+  let okCount = 0;
+
+  for (const it of entries) {
+    const ok = await updateRevisionForDoc(it.docItem, it.checked);
+    if (ok) okCount++;
+  }
+
+  state.pending.clear();
+  refreshPendingUI();
+
+  // refresca la tabla para que "Rendición" se actualice visualmente
+  renderDocsTable();
+
+  alert(`Guardado: ${okCount}/${entries.length} cambios.`);
+}
+
+/* ====================== MODAL VISOR ====================== */
+function openViewer({ title, sub, url }) {
+  const modal = document.getElementById('viewerModal');
+  const body  = document.getElementById('viewerBody');
+  const h1    = document.getElementById('viewerTitle');
+  const h2    = document.getElementById('viewerSub');
+  const openTab = document.getElementById('viewerOpenTab');
+
+  if (!modal || !body || !h1 || !h2 || !openTab) return;
+
+  h1.textContent = title || 'Documento';
+  h2.textContent = sub || '';
+  openTab.href = url || '#';
+
+  body.innerHTML = '';
+
+  if (!url) {
+    body.innerHTML = `<div style="padding:14px;color:#6b7280;">Sin URL.</div>`;
+  } else if (isImageUrl(url)) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = title || 'Documento';
+    body.appendChild(img);
+  } else {
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    body.appendChild(iframe);
+  }
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeViewer() {
+  const modal = document.getElementById('viewerModal');
+  const body  = document.getElementById('viewerBody');
+  if (!modal || !body) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  body.innerHTML = '';
+}
+
 /* ====================== RENDER TABLA ====================== */
+function tipoLabel(tipo) {
+  if (tipo === 'COMP_CLP') return 'COMP. CLP';
+  if (tipo === 'CONST_USD') return 'CONST. USD';
+  if (tipo === 'GASTO') return 'GASTO (comprobante)';
+  return tipo;
+}
 
 function renderDocsTable() {
   const tbody  = document.querySelector('#tblDocs tbody');
@@ -519,7 +702,7 @@ function renderDocsTable() {
   if (!state.docs.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 9;
+    td.colSpan = 10;
     td.innerHTML = '<div class="muted">Sin documentos para los filtros seleccionados.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -537,6 +720,7 @@ function renderDocsTable() {
     const tdDest    = document.createElement('td');
     const tdCoord   = document.createElement('td');
     const tdTipo    = document.createElement('td');
+    const tdRend    = document.createElement('td');
     const tdMon     = document.createElement('td');
     const tdMonto   = document.createElement('td');
     const tdArchivo = document.createElement('td');
@@ -545,53 +729,82 @@ function renderDocsTable() {
     tdFecha.textContent = docItem.fechaTxt || '—';
     tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`;
     tdDest.textContent  = docItem.destino || '—';
-
-    // ✅ mostrar email “bonito”; guardar se hace con coordId por dentro
     tdCoord.textContent = docItem.coordEmail || '—';
 
-    let tipoLabel = docItem.tipoDoc;
-    if (tipoLabel === 'COMP_CLP') tipoLabel = 'COMP. CLP';
-    if (tipoLabel === 'CONST_USD') tipoLabel = 'CONST. USD';
-    if (tipoLabel === 'GASTO') tipoLabel = 'GASTO (comprobante)';
-    tdTipo.textContent = tipoLabel;
+    tdTipo.innerHTML = `<span class="tag">${tipoLabel(docItem.tipoDoc)}</span>`;
+
+    // Rendición = docsOk.boleta por gid
+    const rendOk = !!state.rendicionOkByGid.get(docItem.grupoId);
+    tdRend.innerHTML = rendOk
+      ? `<span class="tag ok">OK</span>`
+      : `<span class="tag pending">—</span>`;
 
     tdMon.textContent = docItem.moneda || '—';
 
-    if (docItem.monto && (docItem.moneda || '').toUpperCase() === 'USD') {
-      tdMonto.textContent = moneyBy(docItem.monto, 'USD');
-    } else if (docItem.monto) {
-      tdMonto.textContent = moneyCLP(docItem.monto);
-    } else {
-      tdMonto.textContent = '—';
-    }
+    if (docItem.monto && docItem.moneda === 'USD') tdMonto.textContent = moneyBy(docItem.monto, 'USD');
+    else if (docItem.monto) tdMonto.textContent = moneyCLP(docItem.monto);
+    else tdMonto.textContent = '—';
 
+    // Archivo (con visor modal)
     if (docItem.url) {
-      const a = document.createElement('a');
-      a.href = docItem.url;
-      a.target = '_blank';
-      a.rel = 'noopener';
+      const a = document.createElement('span');
+      a.className = 'link';
       a.textContent = 'VER';
+      a.title = 'Abrir visor';
+      a.addEventListener('click', () => {
+        const t = `${tipoLabel(docItem.tipoDoc)} — ${docItem.numeroGrupo} — ${docItem.nombreGrupo}`;
+        const s = `${docItem.destino} · ${docItem.coordEmail || '—'} ${docItem.asunto ? '· ' + docItem.asunto : ''}`;
+        openViewer({ title: t, sub: s, url: docItem.url });
+      });
       tdArchivo.appendChild(a);
+
+      // hint de asunto si viene de gasto
+      if (docItem.asunto) {
+        const small = document.createElement('div');
+        small.className = 'muted';
+        small.style.fontSize = '12px';
+        small.style.marginTop = '4px';
+        small.textContent = docItem.asunto;
+        tdArchivo.appendChild(small);
+      }
     } else {
       tdArchivo.textContent = '—';
     }
 
+    // Checkbox (modo seguro: queda en "pendientes" y también intenta guardar al tiro)
     const chk = document.createElement('input');
     chk.type = 'checkbox';
+    chk.className = 'chk';
     chk.checked = !!docItem.revisadoOk;
     chk.title = 'Marcar como revisado';
 
     chk.addEventListener('change', async (e) => {
       const nuevo = !!e.target.checked;
+
+      // 1) dejamos pendiente (por si falla o el user quiere "Guardar cambios")
+      const key = docKey(docItem);
+      state.pending.set(key, { docItem, checked: nuevo });
+      refreshPendingUI();
+
+      // 2) autosave inmediato (para asegurar persistencia sin depender del botón)
       const ok = await updateRevisionForDoc(docItem, nuevo);
       if (!ok) {
+        // revertir UI y mantener pending (para reintentar)
         e.target.checked = !nuevo;
+        return;
       }
+
+      // si guardó ok, lo saco de pending
+      state.pending.delete(key);
+      refreshPendingUI();
+
+      // refresca celda rendición si cambió boleta
+      renderDocsTable();
     });
 
     tdChk.appendChild(chk);
 
-    tr.append(tdFecha, tdGrupo, tdDest, tdCoord, tdTipo, tdMon, tdMonto, tdArchivo, tdChk);
+    tr.append(tdFecha, tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdMon, tdMonto, tdArchivo, tdChk);
     frag.appendChild(tr);
   });
 
@@ -601,92 +814,101 @@ function renderDocsTable() {
 }
 
 /* ====================== WIRING UI ====================== */
-
 function wireUI() {
-  // logout si tienes botón (opcional)
-  try {
-    document.querySelector('#btn-logout')
-      ?.addEventListener('click', () =>
-        signOut(auth).then(() => location.href = 'login.html'));
-  } catch (_) {}
+  // Header común
+  const btnHome = document.getElementById('btn-home');
+  const btnRefresh = document.getElementById('btn-refresh');
+  const btnBack = document.getElementById('btn-back');
 
-  const inpDestino    = document.getElementById('filtroDestinoDocs');
-  const inpCoord      = document.getElementById('filtroCoordDocs');
-  const inpFechaDesde = document.getElementById('filtroFechaDesdeDocs');
-  const inpFechaHasta = document.getElementById('filtroFechaHastaDocs');
-  const inpTexto      = document.getElementById('filtroTextoDocs');
+  btnHome?.addEventListener('click', () => {
+    // Home del sistema (según tu estándar)
+    location.href = 'https://sistemas-raitrai.github.io/Operaciones-RTv1.0';
+  });
+  btnRefresh?.addEventListener('click', () => location.reload());
+  btnBack?.addEventListener('click', () => history.back());
 
-  if (inpDestino) {
-    inpDestino.addEventListener('input', e => {
-      state.filtros.destino = (e.target.value || '').toUpperCase().trim();
-    });
-  }
-  if (inpCoord) {
-    inpCoord.addEventListener('input', e => {
-      state.filtros.coord = (e.target.value || '').toLowerCase().trim();
-    });
-  }
-  if (inpTexto) {
-    inpTexto.addEventListener('input', e => {
-      state.filtros.texto = e.target.value || '';
-    });
-  }
-  if (inpFechaDesde) {
-    inpFechaDesde.addEventListener('change', e => {
-      const v = e.target.value;
-      state.filtros.fechaDesde = v ? Date.parse(v + 'T00:00:00') : null;
-    });
-  }
-  if (inpFechaHasta) {
-    inpFechaHasta.addEventListener('change', e => {
-      const v = e.target.value;
-      state.filtros.fechaHasta = v ? Date.parse(v + 'T23:59:59') : null;
-    });
-  }
+  // logout
+  document.querySelector('#btn-logout')
+    ?.addEventListener('click', () =>
+      signOut(auth).then(() => location.href = 'login.html'));
 
+  // modal
+  document.getElementById('viewerClose')?.addEventListener('click', closeViewer);
+  document.getElementById('viewerModal')?.addEventListener('click', (e) => {
+    if (e.target?.id === 'viewerModal') closeViewer();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeViewer();
+  });
+
+  // filtros simples
+  const inpDestino = document.getElementById('filtroDestinoDocs');
+  const inpTexto   = document.getElementById('filtroTextoDocs');
+
+  inpDestino?.addEventListener('input', e => {
+    state.filtros.destino = (e.target.value || '').toUpperCase().trim();
+  });
+  inpTexto?.addEventListener('input', e => {
+    state.filtros.texto = e.target.value || '';
+  });
+
+  // cerrar details al click afuera (mejor UX)
+  document.addEventListener('click', (e) => {
+    const inside = e.target.closest?.('details.multi');
+    if (inside) return;
+    document.querySelectorAll('details.multi[open]').forEach(d => d.removeAttribute('open'));
+  });
+
+  // botones
   const btnCargar = document.getElementById('btnCargarDocs');
   const btnLimpiar = document.getElementById('btnLimpiarDocs');
+  const btnGuardarPend = document.getElementById('btnGuardarPendientes');
   const infoEl = document.getElementById('infoDocs');
 
-  if (btnCargar) {
-    btnCargar.addEventListener('click', async () => {
-      if (infoEl) infoEl.textContent = 'Cargando documentos…';
-      await loadDocsForCurrentFilters();
-      if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
-    });
-  }
+  btnCargar?.addEventListener('click', async () => {
+    if (infoEl) infoEl.textContent = 'Cargando documentos…';
+    await loadDocsForCurrentFilters();
+    if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
+  });
 
-  if (btnLimpiar) {
-    btnLimpiar.addEventListener('click', () => {
-      state.filtros = {
-        destino: '',
-        coord: '',
-        fechaDesde: null,
-        fechaHasta: null,
-        texto: ''
-      };
+  btnLimpiar?.addEventListener('click', () => {
+    state.filtros.destino = '';
+    state.filtros.texto = '';
+    state.filtros.coords.clear();
+    state.filtros.grupos.clear();
+    state.filtros.tipos.clear();
 
-      if (inpDestino)    inpDestino.value = '';
-      if (inpCoord)      inpCoord.value = '';
-      if (inpFechaDesde) inpFechaDesde.value = '';
-      if (inpFechaHasta) inpFechaHasta.value = '';
-      if (inpTexto)      inpTexto.value = '';
+    if (inpDestino) inpDestino.value = '';
+    if (inpTexto) inpTexto.value = '';
 
-      state.docs = [];
-      renderDocsTable();
-      if (infoEl) infoEl.textContent = 'Filtros limpios.';
-    });
-  }
+    // refrescar labels
+    setMultiLabel(document.getElementById('multiCoordsLabel'), 0);
+    setMultiLabel(document.getElementById('multiGruposLabel'), 0);
+    setMultiLabel(document.getElementById('multiTiposLabel'), 0);
+
+    state.docs = [];
+    state.pending.clear();
+    refreshPendingUI();
+    renderDocsTable();
+
+    if (infoEl) infoEl.textContent = 'Filtros limpios.';
+  });
+
+  btnGuardarPend?.addEventListener('click', flushPending);
 }
 
 /* ====================== ARRANQUE ====================== */
-
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     location.href = 'login.html';
     return;
   }
   state.user = user;
+
+  // email header
+  const userEmail = document.getElementById('userEmail');
+  if (userEmail) userEmail.textContent = user.email || '—';
+
   await preloadGruposDocs();
   wireUI();
   renderDocsTable();
