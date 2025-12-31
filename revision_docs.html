@@ -9,7 +9,6 @@
   <style>
     /* =========================================================
        ESTÉTICA CLARA (scoped a .docs-page)
-       Si tu CSS global es oscuro, esto lo "pisa" localmente.
        ========================================================= */
     :root{
       --bg:#f4f6fb;
@@ -134,20 +133,30 @@
 
     .card-body{
       padding: 14px;
+      /* CLAVE: evita que el panel absolute del multiselect quede "cortado" */
+      overflow: visible;
     }
 
     /* ================= FILTROS ================= */
     .filters{
       display:grid;
-      grid-template-columns: 1.2fr 1.2fr 1.2fr 1fr;
+      grid-template-columns: 1.1fr 1.2fr 1.2fr 1.2fr;
       gap: 10px;
       align-items:end;
+      position: relative;
+      z-index: 1;
     }
     @media (max-width: 980px){
       .filters{ grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 540px){
       .filters{ grid-template-columns: 1fr; }
+    }
+
+    .field{
+      position: relative;
+      z-index: 1;
+      min-width: 0;
     }
 
     .field label{
@@ -195,6 +204,10 @@
       border-color: #f3b4c0;
       color: var(--danger);
     }
+    .btn:disabled{
+      opacity:.55;
+      cursor:not-allowed;
+    }
 
     .pillrow{
       margin-top: 10px;
@@ -202,6 +215,7 @@
       gap: 6px;
       flex-wrap: wrap;
       align-items:center;
+      justify-content:flex-end;
     }
     .pill{
       background: var(--accent-soft);
@@ -210,6 +224,7 @@
       border-radius: 999px;
       padding: 6px 10px;
       font-size: 12px;
+      white-space: nowrap;
     }
     .muted{ color: var(--muted); }
 
@@ -217,6 +232,11 @@
     details.multi{
       position: relative;
     }
+    /* CLAVE: el abierto se trae al frente, evita sobreposición fea */
+    details.multi[open]{
+      z-index: 80;
+    }
+
     details.multi summary{
       list-style: none;
       cursor:pointer;
@@ -234,6 +254,7 @@
       justify-content: space-between;
       align-items:center;
       gap: 10px;
+      min-width: 0;
     }
     .multi-display small{ color: var(--muted); font-weight: 600; }
 
@@ -246,7 +267,7 @@
       border: 1px solid var(--border);
       border-radius: 14px;
       box-shadow: var(--shadow);
-      z-index: 30;
+      z-index: 90;
       padding: 10px;
       max-height: 320px;
       overflow: auto;
@@ -264,6 +285,7 @@
       padding: 8px 10px;
       font-size: 13px;
       outline:none;
+      min-width: 0;
     }
     .mini{
       border: 1px solid var(--border);
@@ -273,6 +295,7 @@
       cursor:pointer;
       font-size: 12px;
       font-weight: 700;
+      white-space: nowrap;
     }
 
     .opt{
@@ -297,7 +320,7 @@
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
-      min-width: 980px;
+      min-width: 1120px;
     }
     thead th{
       text-align:left;
@@ -506,6 +529,16 @@
             </details>
           </div>
 
+          <!-- NUEVO: filtro gasto aprobado -->
+          <div class="field">
+            <label>Gasto aprobado</label>
+            <select id="filtroGastoAprobado" class="input">
+              <option value="">Todos</option>
+              <option value="OK">Solo OK</option>
+              <option value="NO">Solo NO</option>
+            </select>
+          </div>
+
           <div class="field" style="grid-column: 1 / -1;">
             <label>Texto libre (opcional)</label>
             <input id="filtroTextoDocs" class="input" placeholder="Busca por grupo, destino, coord, tipo, asunto…"/>
@@ -515,7 +548,8 @@
         <div class="btnrow">
           <button class="btn ghost" id="btnLimpiarDocs" type="button">Limpiar</button>
           <button class="btn primary" id="btnCargarDocs" type="button">Cargar documentos</button>
-          <button class="btn" id="btnGuardarPendientes" type="button" style="display:none;">Guardar cambios</button>
+          <!-- SIEMPRE visible -->
+          <button class="btn" id="btnGuardarPendientes" type="button">Guardar cambios</button>
         </div>
 
         <!-- TABLA -->
@@ -529,6 +563,7 @@
                 <th>Coordinador</th>
                 <th>Tipo</th>
                 <th>Rendición</th>
+                <th>Gasto aprobado</th>
                 <th>Moneda</th>
                 <th>Monto</th>
                 <th>Archivo</th>
@@ -536,13 +571,14 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td colspan="10" class="muted">Sin datos.</td></tr>
+              <tr><td colspan="11" class="muted">Sin datos.</td></tr>
             </tbody>
           </table>
         </div>
 
         <p class="muted" style="margin:10px 2px 0;font-size:12px;">
           “Rendición” = <strong>OK</strong> si <span class="mono">grupos/{gid}/finanzas/summary → docsOk.boleta</span> está marcado (boleta SII revisada).
+          · “Gasto aprobado” = <strong>OK</strong> si <span class="mono">gastosGrabados &gt; 0</span> y <span class="mono">gastosGrabados ≤ costoTotal</span>.
         </p>
       </div>
     </section>
