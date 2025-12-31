@@ -1,19 +1,115 @@
 // bitacora_actividad.js
-// Ver bitácora POR ACTIVIDAD, en TODOS los grupos que tengan esa actividad
-// Estructura: grupos/{gid}/bitacora/{actividadId}/{YYYY-MM-DD}/{entradaId}
+// RT · Bitácora por grupo / por destino (actividad transversal)
+// Estructura esperada:
+//   grupos/{gid}/bitacora/{actividadId}/{YYYY-MM-DD}/{docId}
+// donde docId suele ser tipo "19:24:01.338"
+// y cada doc tiene: texto, byEmail, byUid, ts (Timestamp o number)
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+
 import {
-  collection, getDocs, doc, getDoc, query, where
+  collection, getDocs, doc, getDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
-/* ====================== STATE ====================== */
+/* =========================
+   HELPERS
+========================= */
+const TZ = 'America/Santiago';
+
+const coalesce = (...xs) =>
+  xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
+
+const norm = (s='') =>
+  String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+
+function escapeHtml(str='') {
+  return String(str)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+}
+
+function fmtClockNow() {
+  try {
+    const d = new Date();
+    const date = d.toLocaleDateString('es-CL', { timeZone: TZ, weekday:'long', year:'numeric', month:'long', day:'numeric' });
+    const time = d.toLocaleTimeString('es-CL', { timeZone: TZ });
+    return `${time} | ${date}`;
+  } catch {
+    return new Date().toLocaleString();
+  }
+}
+
+function setStatus(msg) {
+  const el = document.getElementById('status');
+  if (el) el.textContent = msg;
+}
+
+function setModeHint(msg) {
+  const el = document.getElementById('modeHint');
+  if (el) el.textContent = msg;
+}
+
+function setKpis({ grupos='—', dias='—', entradas=0 } = {}) {
+  const g = document.getElementById('kpiGrupos');
+  const d = document.getElementById('kpiDias');
+  const e = document.getElementById('kpiEntradas');
+  if (g) g.textContent = grupos;
+  if (d) d.textContent = dias;
+  if (e) e.textContent = String(entradas ?? 0);
+}
+
+function toISODate(d) {
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function parseTsToMs(v) {
+  if (v == null) return 0;
+  if (typeof v === 'number') return v > 1e12 ? v : v * 1000;
+  if (typeof v === 'string') {
+    const t = Date.parse(v);
+    return isFinite(t) ? t : 0;
+  }
+  if (typeof v === 'object') {
+    // Firestore Timestamp
+    if (typeof v.toDate === 'function') {
+      try { return v.toDate().getTime(); } catch { return 0; }
+    }
+    if ('seconds' in v) return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1e6);
+  }
+  return 0;
+}
+
+function msToHora(ms) {
+  if (!ms) return '—';
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  const ss = String(d.getSeconds()).padStart(2,'0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+/* =========================
+   STATE
+========================= */
 const state = {
   user: null,
+
+  // cache grupos: gid -> info
+  grupos: new Map(),
+
+  // filtros UI
   filtros: {
     destino: '',
     coord: '',
@@ -21,104 +117,60 @@ const state = {
     actividad: '',
     desde: '',
     hasta: '',
-    buscar: ''
+    buscarTxt: ''
   },
-  caches: {
-    grupos: new Map(),         // gid -> info
-    coords: [],
-    destinos: [],
-    groupsByCoord: new Map(),  // coordEmail -> Set(gid)
-  },
-  actividadesSet: new Set(),
-  rows: [],
-  meta: { gruposConsiderados: 0, dias: 0 }
+
+  // actividades sugeridas (Set)
+  actividades: new Set(),
+
+  // resultados completos (sin filtro texto) y visibles
+  resultsAll: [],
+  resultsView: []
 };
 
-/* ====================== HELPERS ====================== */
-const escapeHtml = (str='') =>
-  String(str)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;')
-    .replace(/'/g,'&#039;');
-
-const coalesce = (...xs) =>
-  xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
-
-const norm = (s='') =>
-  String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-
-function toISODate(d){
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const dd = String(d.getDate()).padStart(2,'0');
-  return `${yyyy}-${mm}-${dd}`;
+/* =========================
+   UI GETTERS
+========================= */
+function readFiltersFromUI() {
+  state.filtros.destino = (document.getElementById('fDestino')?.value || '').trim();
+  state.filtros.coord   = (document.getElementById('fCoord')?.value || '').trim().toLowerCase();
+  state.filtros.grupo   = (document.getElementById('fGrupo')?.value || '').trim();
+  state.filtros.actividad = (document.getElementById('fActividad')?.value || '').trim();
+  state.filtros.desde = (document.getElementById('fDesde')?.value || '').trim();
+  state.filtros.hasta = (document.getElementById('fHasta')?.value || '').trim();
+  state.filtros.buscarTxt = (document.getElementById('fBuscarTxt')?.value || '').trim();
 }
 
-function parseDateInput(v){
-  // input type="date" -> "YYYY-MM-DD"
-  if (!v) return null;
-  const d = new Date(v + 'T00:00:00');
-  return isNaN(d) ? null : d;
+function ensureDateRange() {
+  // default: hoy .. hoy si no hay nada
+  const today = toISODate(new Date());
+  const inpD = document.getElementById('fDesde');
+  const inpH = document.getElementById('fHasta');
+
+  if (inpD && !inpD.value) inpD.value = today;
+  if (inpH && !inpH.value) inpH.value = today;
 }
 
-function daysBetweenInclusive(fromISO, toISO){
-  const a = parseDateInput(fromISO);
-  const b = parseDateInput(toISO);
-  if (!a || !b) return [];
-  const out = [];
-  const cur = new Date(a.getTime());
-  while (cur <= b) {
-    out.push(toISODate(cur));
-    cur.setDate(cur.getDate()+1);
-  }
-  return out;
-}
+/* =========================
+   CATALOGOS (grupos, destinos, coords)
+========================= */
+async function preloadGruposCatalog() {
+  state.grupos.clear();
 
-function pickTsMs(raw){
-  // tolerante: raw.ts puede ser number / string / timestamp-like
-  if (!raw) return 0;
-  const v = raw.ts ?? raw.createdAt ?? raw.at ?? raw.time ?? null;
-  if (v == null) return 0;
+  const dlGrupos = document.getElementById('dl-grupos');
+  const dlCoords = document.getElementById('dl-coords');
+  const dlDest   = document.getElementById('dl-destinos');
+  if (dlGrupos) dlGrupos.innerHTML = '';
+  if (dlCoords) dlCoords.innerHTML = '';
+  if (dlDest)   dlDest.innerHTML = '';
 
-  if (typeof v === 'number' && isFinite(v)) {
-    return v > 1e12 ? v : v * 1000;
-  }
-  if (typeof v === 'string') {
-    const t = Date.parse(v);
-    return isFinite(t) ? t : 0;
-  }
-  if (typeof v === 'object' && v) {
-    // Firestore Timestamp
-    if (typeof v.toDate === 'function') {
-      try { return v.toDate().getTime(); } catch(_) {}
-    }
-    if ('seconds' in v) return v.seconds*1000 + Math.floor((v.nanoseconds||0)/1e6);
-  }
-  return 0;
-}
-
-function fmtHoraFromDocId(id=''){
-  // tus docs parecen ser "19:24:01.338"
-  return id || '—';
-}
-
-/* ====================== CATALOGOS ====================== */
-async function preloadCatalogs(){
-  state.caches.grupos.clear();
-  state.caches.coords.length = 0;
-  state.caches.destinos.length = 0;
-  state.caches.groupsByCoord.clear();
-
-  const dlG = document.getElementById('dl-grupos');
-  const dlC = document.getElementById('dl-coords');
-  const dlD = document.getElementById('dl-destinos');
-  if (dlG) dlG.innerHTML = '';
-  if (dlC) dlC.innerHTML = '';
-  if (dlD) dlD.innerHTML = '';
+  setStatus('Cargando catálogo de grupos…');
 
   const snap = await getDocs(collection(db,'grupos'));
+
+  const coordsSet = new Set();
+  const destSet   = new Set();
+
   snap.forEach(d => {
     const x = d.data() || {};
     const gid = d.id;
@@ -126,388 +178,487 @@ async function preloadCatalogs(){
     const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, gid);
     const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, gid);
 
+    const destino = coalesce(x.destino, x.lugar, '').toString().trim();
     const coordEmail = coalesce(
-      x.coordinadorEmail, x.coordinador?.email, x.coordinador,
-      x.coord, x.responsable, x.owner, ''
-    ).toLowerCase();
+      x.coordinadorEmail,
+      x.coordinador?.email,
+      x.coordinador,
+      x.coord,
+      x.responsable,
+      x.owner,
+      ''
+    ).toString().trim().toLowerCase();
 
-    const destino = coalesce(x.destino, x.lugar, '').toString();
+    state.grupos.set(gid, { gid, numero, nombre, destino, coordEmail });
 
-    const info = {
-      gid, numero, nombre,
-      coordEmail,
-      destino,
-      programa: coalesce(x.programa, x.plan, ''),
-      cantidadGrupo: Number(x.cantidadGrupo ?? x.paxTotal ?? x.pax ?? 0) || 0,
-      fechaInicio: x.fechaInicio || x.fechaInicioViaje || null,
-      fechaFin: x.fechaFin || x.fechaFinViaje || null
-    };
+    if (coordEmail) coordsSet.add(coordEmail);
+    if (destino) destSet.add(destino);
 
-    state.caches.grupos.set(gid, info);
-
-    // datalist grupos
-    if (dlG) {
+    if (dlGrupos) {
       const opt = document.createElement('option');
       opt.value = gid;
       opt.label = `${numero} — ${nombre}`;
-      dlG.appendChild(opt);
-    }
-
-    // coords
-    if (coordEmail) {
-      if (!state.caches.groupsByCoord.has(coordEmail)) {
-        state.caches.groupsByCoord.set(coordEmail, new Set());
-      }
-      state.caches.groupsByCoord.get(coordEmail).add(gid);
-      if (!state.caches.coords.includes(coordEmail)) state.caches.coords.push(coordEmail);
-    }
-
-    // destinos
-    if (destino) {
-      const dnorm = destino.trim();
-      if (dnorm && !state.caches.destinos.includes(dnorm)) state.caches.destinos.push(dnorm);
+      dlGrupos.appendChild(opt);
     }
   });
 
-  // coords datalist
-  if (dlC) {
-    state.caches.coords.sort().forEach(email => {
+  // coords
+  if (dlCoords) {
+    [...coordsSet].sort().forEach(email => {
       const opt = document.createElement('option');
       opt.value = email;
       opt.label = email;
-      dlC.appendChild(opt);
+      dlCoords.appendChild(opt);
     });
   }
 
-  // destinos datalist
-  if (dlD) {
-    state.caches.destinos.sort().forEach(dest => {
+  // destinos
+  if (dlDest) {
+    [...destSet].sort((a,b)=>a.localeCompare(b,'es')).forEach(dest => {
       const opt = document.createElement('option');
       opt.value = dest;
       opt.label = dest;
-      dlD.appendChild(opt);
+      dlDest.appendChild(opt);
     });
   }
+
+  setStatus(`Catálogo listo. Grupos: ${state.grupos.size}`);
 }
 
-/* ====================== SELECCIÓN DE GRUPOS OBJETIVO ====================== */
-function pickTargetGroups(){
-  const destino = norm(state.filtros.destino);
-  const coord = norm(state.filtros.coord);
+/* =========================
+   MODO SELECCIÓN
+========================= */
+function computeMode() {
+  // si hay grupo => modo GRUPO
+  // si no hay grupo pero hay destino => modo DESTINO
+  // si ninguno => invalido
   const gid = (state.filtros.grupo || '').trim();
+  const dest = (state.filtros.destino || '').trim();
 
-  // 1) si el usuario puso un grupo específico, mandamos solo ese
-  if (gid) {
-    return state.caches.grupos.has(gid) ? [gid] : [];
-  }
-
-  // 2) si hay coord, partimos desde sus grupos
-  let candidates = [];
-  if (coord && state.caches.groupsByCoord.has(coord)) {
-    candidates = [...state.caches.groupsByCoord.get(coord)];
-  } else {
-    candidates = [...state.caches.grupos.keys()];
-  }
-
-  // 3) si hay destino, filtramos por destino
-  if (destino) {
-    candidates = candidates.filter(id => {
-      const g = state.caches.grupos.get(id);
-      return norm(g?.destino || '') === destino;
-    });
-  }
-
-  return candidates;
+  if (gid) return 'GRUPO';
+  if (dest) return 'DESTINO';
+  return 'NONE';
 }
 
-/* ====================== CARGAR ACTIVIDADES (SUGERENCIAS) ====================== */
-async function cargarActividadesSugeridas(){
-  const dlA = document.getElementById('dl-actividades');
-  if (dlA) dlA.innerHTML = '';
-  state.actividadesSet.clear();
+/* =========================
+   RESOLVER GRUPOS OBJETIVO
+========================= */
+function resolveTargetGroups() {
+  // Si hay grupo específico, solo ese.
+  // Si no, filtra por destino (obligatorio en este modo) y opcionalmente coord.
+  const gid = (state.filtros.grupo || '').trim();
+  const dest = (state.filtros.destino || '').trim();
+  const coord = (state.filtros.coord || '').trim().toLowerCase();
 
-  const pagInfo = document.getElementById('pagInfo');
-  const actividadInput = document.getElementById('filtroActividad');
+  if (gid) {
+    const g = state.grupos.get(gid);
+    return g ? [g] : [{ gid, numero: gid, nombre: gid, destino:'', coordEmail:'' }];
+  }
 
-  const grupos = pickTargetGroups();
-  if (!grupos.length) {
-    if (pagInfo) pagInfo.textContent = 'No hay grupos para cargar actividades con esos filtros.';
+  const destN = norm(dest);
+  const out = [];
+  for (const g of state.grupos.values()) {
+    if (destN && norm(g.destino) !== destN) continue;
+    if (coord && (g.coordEmail || '').toLowerCase() !== coord) continue;
+    out.push(g);
+  }
+  return out;
+}
+
+/* =========================
+   ACTIVIDADES: sugerencias
+========================= */
+async function loadSuggestedActivities() {
+  readFiltersFromUI();
+  const targets = resolveTargetGroups();
+  state.actividades.clear();
+
+  const dlActs = document.getElementById('dl-actividades');
+  if (dlActs) dlActs.innerHTML = '';
+  const actCount = document.getElementById('actCount');
+  if (actCount) actCount.textContent = 'Actividades sugeridas: 0';
+
+  if (!targets.length) {
+    setStatus('Sin grupos objetivo para cargar actividades.');
     return;
   }
 
-  // Para no reventar, muestreamos hasta 35 grupos (normalmente basta para sacar el catálogo)
-  const sample = grupos.slice(0, 35);
+  setStatus(`Cargando actividades (leyendo bitacora/*) en ${targets.length} grupo(s)…`);
 
-  if (pagInfo) pagInfo.textContent = `Cargando actividades desde ${sample.length} grupos…`;
+  // Para no saturar: limitamos a primeras N lecturas si fuese enorme
+  const MAX_GROUPS = 80;
+  const safeTargets = targets.slice(0, MAX_GROUPS);
 
-  for (const gid of sample) {
+  let groupsDone = 0;
+
+  for (const g of safeTargets) {
     try {
-      const ref = collection(db, 'grupos', gid, 'bitacora');
-      const snap = await getDocs(ref);
-      snap.forEach(d => state.actividadesSet.add(d.id));
+      const refActs = collection(db,'grupos',g.gid,'bitacora');
+      const snapActs = await getDocs(refActs);
+      snapActs.forEach(a => state.actividades.add(a.id));
     } catch (e) {
-      console.warn('[BIT] cargarActividadesSugeridas', gid, e);
+      // si no existe bitacora, no pasa nada
+      console.warn('[BIT] loadSuggestedActivities group', g.gid, e);
     }
+    groupsDone++;
+    if (groupsDone % 6 === 0) await sleep(30);
   }
 
-  const list = [...state.actividadesSet].sort();
-  if (dlA) {
-    list.forEach(id => {
+  // Render datalist
+  const acts = [...state.actividades].sort((a,b)=>a.localeCompare(b,'es'));
+  if (dlActs) {
+    acts.forEach(id => {
       const opt = document.createElement('option');
       opt.value = id;
       opt.label = id;
-      dlA.appendChild(opt);
+      dlActs.appendChild(opt);
     });
   }
 
-  if (pagInfo) pagInfo.textContent = `Actividades sugeridas: ${list.length}.`;
-  if (actividadInput && !actividadInput.value && list.length) {
-    // no autopongo nada, solo dejo list listo
-  }
+  if (actCount) actCount.textContent = `Actividades sugeridas: ${acts.length}`;
+  setStatus(`Actividades cargadas: ${acts.length} (desde ${safeTargets.length} grupo(s)).`);
 }
 
-/* ====================== LECTURA BITÁCORA POR ACTIVIDAD ====================== */
-async function loadBitacoraByActividad(){
-  state.rows = [];
-  state.meta = { gruposConsiderados: 0, dias: 0 };
+/* =========================
+   LECTURA BITÁCORA
+========================= */
+function listDatesInRange(desdeISO, hastaISO) {
+  const out = [];
+  const d1 = new Date(`${desdeISO}T00:00:00`);
+  const d2 = new Date(`${hastaISO}T00:00:00`);
+  if (isNaN(d1) || isNaN(d2)) return out;
 
-  const actividadId = (state.filtros.actividad || '').trim();
-  if (!actividadId) {
-    alert('Debes indicar una Actividad.');
-    return;
+  const step = d1 <= d2 ? 1 : -1;
+  const cur = new Date(d1);
+
+  while (true) {
+    out.push(toISODate(cur));
+    if (toISODate(cur) === toISODate(d2)) break;
+    cur.setDate(cur.getDate() + step);
+
+    // safety
+    if (out.length > 370) break;
   }
 
-  const desde = state.filtros.desde;
-  const hasta = state.filtros.hasta;
+  // si venía invertido, igual devolvemos en orden ascendente
+  return out.sort();
+}
 
-  const days = daysBetweenInclusive(desde, hasta);
-  if (!days.length) {
-    alert('Debes indicar un rango de fechas válido (Desde / Hasta).');
-    return;
+async function fetchBitacoraForGroup(g, datesISO, actividadFiltro='') {
+  // Devuelve array de entradas normalizadas para ese grupo.
+  const out = [];
+  const gid = g.gid;
+
+  // Actividades: si hay filtro, usamos solo esa.
+  let activities = [];
+  if (actividadFiltro) {
+    activities = [actividadFiltro];
+  } else {
+    // listar actividades reales del grupo
+    try {
+      const snapActs = await getDocs(collection(db,'grupos',gid,'bitacora'));
+      activities = snapActs.docs.map(d => d.id);
+    } catch (e) {
+      // no bitacora
+      return out;
+    }
   }
 
-  const grupos = pickTargetGroups();
-  if (!grupos.length) {
-    alert('No hay grupos que coincidan con esos filtros (destino/coord/grupo).');
-    return;
-  }
-
-  state.meta.gruposConsiderados = grupos.length;
-  state.meta.dias = days.length;
-
-  const pagInfo = document.getElementById('pagInfo');
-  if (pagInfo) pagInfo.textContent = `Buscando “${actividadId}” en ${grupos.length} grupos · ${days.length} días…`;
-
-  // Recorrido principal
-  // Nota: Esto es intensivo: grupos * días (pero normalmente acotado por destino + rango)
-  let done = 0;
-  const total = grupos.length * days.length;
-
-  for (const gid of grupos) {
-    const gInfo = state.caches.grupos.get(gid) || { gid, numero: gid, nombre: gid };
-
-    for (const dayISO of days) {
-      done++;
-      if (pagInfo && (done % 20 === 0 || done === total)) {
-        pagInfo.textContent = `Consultando… (${done}/${total})`;
-      }
-
+  for (const actId of activities) {
+    for (const dateISO of datesISO) {
       try {
-        const ref = collection(db, 'grupos', gid, 'bitacora', actividadId, dayISO);
-        const snap = await getDocs(ref);
+        const refDay = collection(db,'grupos',gid,'bitacora',actId,dateISO);
+        const snapDay = await getDocs(refDay);
 
-        snap.forEach(d => {
-          const raw = d.data() || {};
-          state.rows.push({
+        snapDay.forEach(docSnap => {
+          const x = docSnap.data() || {};
+
+          const texto = coalesce(x.texto, x.text, x.comentario, x.msg, '');
+          const byEmail = coalesce(x.byEmail, x.email, x.autorEmail, x.by, '');
+          const tsMs = parseTsToMs(coalesce(x.ts, x.at, x.createdAt, x.timestamp, x.time, 0));
+
+          // Hora: preferimos ts; si no hay, intentamos parsear docId "19:24:01.338"
+          let hora = tsMs ? msToHora(tsMs) : '—';
+          if (!tsMs && typeof docSnap.id === 'string' && docSnap.id.includes(':')) {
+            hora = docSnap.id;
+          }
+
+          out.push({
             gid,
-            grupoLabel: `${gInfo.numero || gid} — ${gInfo.nombre || ''}`.trim(),
-            actividadId,
-            fechaISO: dayISO,
-            horaId: d.id,
-            texto: coalesce(raw.texto, raw.msg, raw.comentario, ''),
-            byEmail: coalesce(raw.byEmail, raw.email, raw.autor, raw.by, ''),
-            byUid: coalesce(raw.byUid, raw.uid, ''),
-            tsMs: pickTsMs(raw) || 0
+            grupoLabel: `${g.numero || gid} — ${g.nombre || gid}`,
+            destino: g.destino || '',
+            coordEmail: g.coordEmail || '',
+            actividadId: actId,
+            fechaISO: dateISO,
+            hora,
+            texto,
+            byEmail,
+            byUid: coalesce(x.byUid, x.uid, ''),
+            tsMs: tsMs || 0
           });
         });
       } catch (e) {
-        // si la colección del día no existe, Firestore simplemente devuelve vacío (normal).
-        // igual capturamos por si hay permisos o algo raro.
-        // console.warn('[BIT] load', gid, actividadId, dayISO, e);
+        // si no existe esa subcolección, Firestore devuelve vacío, pero si hay error real, seguimos
+        // console.warn('[BIT] day fetch', gid, actId, dateISO, e);
       }
     }
   }
 
-  // Orden: por fecha + hora (desc), y fallback tsMs
-  state.rows.sort((a,b) => {
-    const fa = `${a.fechaISO} ${a.horaId}`;
-    const fb = `${b.fechaISO} ${b.horaId}`;
-    if (fa < fb) return 1;
-    if (fa > fb) return -1;
-    return (b.tsMs||0) - (a.tsMs||0);
-  });
-
-  if (pagInfo) pagInfo.textContent = `Listo: ${state.rows.length} entradas.`;
+  return out;
 }
 
-/* ====================== RENDER TABLA ====================== */
-function renderTabla(){
-  const tbody = document.querySelector('#tblBitacora tbody');
-  const resumen = document.getElementById('resumenTabla');
-  const kpiG = document.getElementById('kpiGrupos');
-  const kpiD = document.getElementById('kpiDias');
-  const kpiE = document.getElementById('kpiEntradas');
+async function loadBitacora() {
+  readFiltersFromUI();
+  ensureDateRange();
 
-  if (kpiG) kpiG.textContent = state.meta.gruposConsiderados ? String(state.meta.gruposConsiderados) : '—';
-  if (kpiD) kpiD.textContent = state.meta.dias ? String(state.meta.dias) : '—';
+  const mode = computeMode();
+  if (mode === 'NONE') {
+    alert('Debes elegir al menos un GRUPO específico o un DESTINO.');
+    return;
+  }
 
-  const q = norm(state.filtros.buscar);
-  const rows = q
-    ? state.rows.filter(r => norm(r.texto).includes(q) || norm(r.grupoLabel).includes(q) || norm(r.byEmail).includes(q))
-    : state.rows;
+  const desde = state.filtros.desde || document.getElementById('fDesde')?.value;
+  const hasta = state.filtros.hasta || document.getElementById('fHasta')?.value;
 
-  if (kpiE) kpiE.textContent = String(rows.length);
+  if (!desde || !hasta) {
+    alert('Selecciona un rango de fechas (Desde / Hasta).');
+    return;
+  }
 
+  const datesISO = listDatesInRange(desde, hasta);
+  if (!datesISO.length) {
+    alert('Rango de fechas inválido.');
+    return;
+  }
+
+  const targets = resolveTargetGroups();
+
+  // Hint modo
+  if (mode === 'GRUPO') setModeHint('Modo: GRUPO (todas las actividades del grupo)');
+  if (mode === 'DESTINO') setModeHint('Modo: DESTINO (actividades y comentarios de todos los grupos)');
+
+  if (!targets.length) {
+    setStatus('No hay grupos que coincidan con ese destino/coordinador.');
+    setKpis({ grupos: 0, dias: datesISO.length, entradas: 0 });
+    state.resultsAll = [];
+    applyTextFilterAndRender();
+    return;
+  }
+
+  setStatus(`Consultando bitácora… grupos: ${targets.length} · días: ${datesISO.length}`);
+  setKpis({ grupos: targets.length, dias: datesISO.length, entradas: 0 });
+
+  const actividadFiltro = (state.filtros.actividad || '').trim();
+
+  // Para no reventar UI si hay muchos grupos, hacemos lazo y render parcial
+  const all = [];
+  let processed = 0;
+
+  for (const g of targets) {
+    const chunk = await fetchBitacoraForGroup(g, datesISO, actividadFiltro);
+    all.push(...chunk);
+
+    processed++;
+    setStatus(`Consultando bitácora… ${processed}/${targets.length} grupos. Entradas: ${all.length}`);
+    setKpis({ grupos: targets.length, dias: datesISO.length, entradas: all.length });
+
+    if (processed % 3 === 0) await sleep(30);
+  }
+
+  // Orden: fecha + (ts) + grupo + actividad
+  all.sort((a,b) => {
+    if (a.fechaISO !== b.fechaISO) return a.fechaISO.localeCompare(b.fechaISO);
+    const ta = a.tsMs || 0;
+    const tb = b.tsMs || 0;
+    if (ta !== tb) return ta - tb;
+    if (a.grupoLabel !== b.grupoLabel) return a.grupoLabel.localeCompare(b.grupoLabel,'es');
+    return a.actividadId.localeCompare(b.actividadId,'es');
+  });
+
+  state.resultsAll = all;
+  applyTextFilterAndRender();
+
+  setStatus(`Listo. Entradas: ${all.length}`);
+}
+
+/* =========================
+   FILTRO TEXTO + RENDER
+========================= */
+function applyTextFilterAndRender() {
+  const q = norm(state.filtros.buscarTxt || '');
+  if (!q) {
+    state.resultsView = state.resultsAll.slice();
+  } else {
+    state.resultsView = state.resultsAll.filter(r => {
+      const hay = [
+        r.texto, r.byEmail, r.grupoLabel, r.actividadId, r.fechaISO, r.hora
+      ].map(norm).join(' | ');
+      return hay.includes(q);
+    });
+  }
+  renderTable();
+}
+
+function renderTable() {
+  const tbody = document.querySelector('#tbl tbody');
+  const info = document.getElementById('resultInfo');
   if (!tbody) return;
+
+  const rows = state.resultsView || [];
+  if (info) {
+    const total = (state.resultsAll || []).length;
+    const shown = rows.length;
+    info.textContent = total === shown
+      ? `Mostrando ${shown} entradas.`
+      : `Mostrando ${shown} de ${total} entradas (filtrado).`;
+  }
+
   tbody.innerHTML = '';
 
   if (!rows.length) {
     const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 6;
-    td.innerHTML = `<div class="muted">Sin resultados para ese criterio.</div>`;
-    tr.appendChild(td);
+    tr.innerHTML = `<td colspan="6" class="muted">Sin resultados para ese criterio.</td>`;
     tbody.appendChild(tr);
-    if (resumen) resumen.textContent = 'Sin resultados.';
     return;
   }
 
   const frag = document.createDocumentFragment();
+
   rows.forEach(r => {
     const tr = document.createElement('tr');
 
-    const tdFecha = document.createElement('td');
-    tdFecha.className = 'nowrap mono';
-    tdFecha.textContent = r.fechaISO || '—';
+    const tdF = document.createElement('td');
+    tdF.innerHTML = `<span class="pill mono">${escapeHtml(r.fechaISO)}</span>`;
 
-    const tdHora = document.createElement('td');
-    tdHora.className = 'nowrap mono';
-    tdHora.textContent = fmtHoraFromDocId(r.horaId);
+    const tdH = document.createElement('td');
+    tdH.innerHTML = `<span class="mono">${escapeHtml(r.hora || '—')}</span>`;
 
-    const tdGrupo = document.createElement('td');
-    tdGrupo.innerHTML = `<span class="pill">${escapeHtml(r.grupoLabel || r.gid)}</span>`;
+    const tdG = document.createElement('td');
+    tdG.innerHTML = `
+      <div style="font-weight:800;">${escapeHtml(r.grupoLabel)}</div>
+      <div class="muted small">${escapeHtml(r.destino || '')}</div>
+    `;
 
-    const tdAct = document.createElement('td');
-    tdAct.className = 'nowrap mono';
-    tdAct.textContent = r.actividadId || '—';
+    const tdA = document.createElement('td');
+    tdA.innerHTML = `<span class="mono">${escapeHtml(r.actividadId)}</span>`;
 
-    const tdTexto = document.createElement('td');
-    tdTexto.className = 'wraptext';
-    tdTexto.textContent = r.texto || '—';
+    const tdT = document.createElement('td');
+    tdT.innerHTML = `<div>${escapeHtml(r.texto || '')}</div>`;
 
-    const tdAutor = document.createElement('td');
-    tdAutor.className = 'nowrap';
-    tdAutor.textContent = r.byEmail || '—';
+    const tdU = document.createElement('td');
+    tdU.innerHTML = `
+      <div>${escapeHtml(r.byEmail || '—')}</div>
+      ${r.byUid ? `<div class="muted small mono">${escapeHtml(r.byUid)}</div>` : ''}
+    `;
 
-    tr.append(tdFecha, tdHora, tdGrupo, tdAct, tdTexto, tdAutor);
+    tr.append(tdF, tdH, tdG, tdA, tdT, tdU);
     frag.appendChild(tr);
   });
 
   tbody.appendChild(frag);
-  if (resumen) resumen.textContent = `Mostrando ${rows.length} entradas.`;
 }
 
-/* ====================== UI WIRING ====================== */
-function setDefaultDates(){
-  // default: últimos 14 días (incluye hoy)
-  const hoy = new Date();
-  const desde = new Date(hoy.getTime());
-  desde.setDate(desde.getDate() - 13);
+/* =========================
+   LIMPIAR
+========================= */
+function clearAll() {
+  // inputs
+  const ids = ['fDestino','fCoord','fGrupo','fActividad','fBuscarTxt'];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
 
-  const inpD = document.getElementById('filtroDesde');
-  const inpH = document.getElementById('filtroHasta');
+  // fechas quedan “hoy”
+  const today = toISODate(new Date());
+  const d = document.getElementById('fDesde');
+  const h = document.getElementById('fHasta');
+  if (d) d.value = today;
+  if (h) h.value = today;
 
-  if (inpD && !inpD.value) inpD.value = toISODate(desde);
-  if (inpH && !inpH.value) inpH.value = toISODate(hoy);
+  // state
+  state.actividades.clear();
+  state.resultsAll = [];
+  state.resultsView = [];
+  setKpis({ grupos:'—', dias:'—', entradas:0 });
 
-  state.filtros.desde = inpD?.value || '';
-  state.filtros.hasta = inpH?.value || '';
+  const dlActs = document.getElementById('dl-actividades');
+  if (dlActs) dlActs.innerHTML = '';
+  const actCount = document.getElementById('actCount');
+  if (actCount) actCount.textContent = 'Actividades sugeridas: 0';
+
+  setModeHint('Modo: —');
+  setStatus('Filtros limpios.');
+  renderTable();
 }
 
-function wireUI(){
-  // header botones
+/* =========================
+   HEADER COMMON ACTIONS
+========================= */
+function wireHeader() {
   document.getElementById('btn-home')?.addEventListener('click', () => {
+    // tu home que dijiste fijo:
     location.href = 'https://sistemas-raitrai.github.io/Operaciones-RTv1.0';
   });
+
   document.getElementById('btn-refresh')?.addEventListener('click', () => location.reload());
+
   document.getElementById('btn-back')?.addEventListener('click', () => history.back());
-  document.getElementById('btn-logout')?.addEventListener('click', () => {
-    signOut(auth).then(() => location.href = 'login.html');
+
+  document.getElementById('btn-logout')?.addEventListener('click', async () => {
+    await signOut(auth);
+    location.href = 'login.html';
   });
 
-  // inputs -> state
-  const bind = (id, key, transform = (v)=>v) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.addEventListener('input', () => {
-      state.filtros[key] = transform(el.value);
-    });
-    state.filtros[key] = transform(el.value);
-  };
-
-  bind('filtroDestino', 'destino', v => v);
-  bind('filtroCoord', 'coord', v => v.toLowerCase().trim());
-  bind('filtroGrupo', 'grupo', v => v.trim());
-  bind('filtroActividad', 'actividad', v => v.trim());
-  bind('filtroDesde', 'desde', v => v);
-  bind('filtroHasta', 'hasta', v => v);
-  bind('buscarTexto', 'buscar', v => v);
-
-  // buscar texto en vivo
-  document.getElementById('buscarTexto')?.addEventListener('input', () => renderTabla());
-
-  // cargar actividades
-  document.getElementById('btnCargarActividades')?.addEventListener('click', async () => {
-    // asegura fechas default si están vacías (para muestreo consistente)
-    if (!state.filtros.desde || !state.filtros.hasta) setDefaultDates();
-    await cargarActividadesSugeridas();
-  });
-
-  // cargar bitácora
-  document.getElementById('btnCargar')?.addEventListener('click', async () => {
-    const pagInfo = document.getElementById('pagInfo');
-    if (pagInfo) pagInfo.textContent = 'Cargando…';
-
-    await loadBitacoraByActividad();
-    renderTabla();
-  });
-
-  // limpiar
-  document.getElementById('btnLimpiar')?.addEventListener('click', () => {
-    state.filtros.destino = '';
-    state.filtros.coord = '';
-    state.filtros.grupo = '';
-    state.filtros.actividad = '';
-    state.filtros.buscar = '';
-
-    const ids = ['filtroDestino','filtroCoord','filtroGrupo','filtroActividad','buscarTexto'];
-    ids.forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.value = '';
-    });
-
-    // No limpio fechas (las dejo por defecto, útil para no “romper” la lógica)
-    state.rows = [];
-    state.meta = { gruposConsiderados: 0, dias: 0 };
-
-    const pagInfo = document.getElementById('pagInfo');
-    if (pagInfo) pagInfo.textContent = 'Filtros limpios.';
-
-    renderTabla();
-  });
+  // reloj
+  const clock = document.getElementById('clock');
+  if (clock) {
+    clock.textContent = fmtClockNow();
+    setInterval(() => clock.textContent = fmtClockNow(), 1000);
+  }
 }
 
-/* ====================== ARRANQUE ====================== */
+/* =========================
+   WIRING UI
+========================= */
+function wireUI() {
+  ensureDateRange();
+  wireHeader();
+
+  // muestra email
+  const emailEl = document.getElementById('userEmail');
+  if (emailEl) emailEl.textContent = (auth.currentUser?.email || '—').toLowerCase();
+
+  // botones
+  document.getElementById('btnLoadActs')?.addEventListener('click', loadSuggestedActivities);
+  document.getElementById('btnCargar')?.addEventListener('click', loadBitacora);
+  document.getElementById('btnLimpiar')?.addEventListener('click', clearAll);
+
+  // filtro texto en vivo
+  document.getElementById('fBuscarTxt')?.addEventListener('input', (e) => {
+    state.filtros.buscarTxt = e.target.value || '';
+    applyTextFilterAndRender();
+  });
+
+  // si cambian filtros principales, ajustamos hint modo
+  const modeInputs = ['fDestino','fCoord','fGrupo'];
+  modeInputs.forEach(id => {
+    document.getElementById(id)?.addEventListener('input', () => {
+      readFiltersFromUI();
+      const mode = computeMode();
+      if (mode === 'GRUPO') setModeHint('Modo: GRUPO (todas las actividades del grupo)');
+      else if (mode === 'DESTINO') setModeHint('Modo: DESTINO (actividades y comentarios de todos los grupos)');
+      else setModeHint('Modo: —');
+    });
+  });
+
+  renderTable();
+  setStatus('Listo.');
+}
+
+/* =========================
+   ARRANQUE (AUTH)
+========================= */
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     location.href = 'login.html';
@@ -515,8 +666,6 @@ onAuthStateChanged(auth, async (user) => {
   }
   state.user = user;
 
-  await preloadCatalogs();
+  await preloadGruposCatalog();
   wireUI();
-  setDefaultDates();
-  renderTabla();
 });
