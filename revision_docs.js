@@ -5,6 +5,11 @@
 // + Columna "Gasto aprobado" = OK cuando gastosGrabados > 0 y gastosGrabados <= costoTotal.
 // + Persistencia en Firestore SOLO al apretar "Guardar cambios" (sin autosave).
 // + Modal visor de documentos (imagen/pdf/lo que sea embebible).
+// ✅ Mejoras integradas:
+//   - Exportar CSV (incluye URL)
+//   - Archivo: VER + LINK
+//   - Sin columna Fecha
+//   - computeGastoAprobado más robusto (paths + parseMonto)
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -220,21 +225,15 @@ async function preloadGruposDocs() {
     });
   }
 
-  // Tipos fijos
   const TIPOS = [
-    { key: 'BOLETA',   label: 'BOLETA (SII)' },
-    { key: 'COMP_CLP', label: 'COMP. CLP (Transferencia)' },
-    { key: 'CONST_USD',label: 'CONST. USD (Efectivo/Transf. coord)' },
-    { key: 'GASTO',    label: 'GASTO (Comprobante)' }
+    { key: 'BOLETA',    label: 'BOLETA (SII)' },
+    { key: 'COMP_CLP',  label: 'COMP. CLP (Transferencia)' },
+    { key: 'CONST_USD', label: 'CONST. USD (Efectivo/Transf. coord)' },
+    { key: 'GASTO',     label: 'GASTO (Comprobante)' }
   ];
 
-  // Render multiselects
-  const coordsList = document.getElementById('coordsList');
-  const gruposList = document.getElementById('gruposList');
-  const tiposList  = document.getElementById('tiposList');
-
   renderMultiList({
-    container: coordsList,
+    container: document.getElementById('coordsList'),
     searchInput: document.getElementById('searchCoords'),
     items: state.caches.coords,
     getKey: (email) => email,
@@ -249,7 +248,7 @@ async function preloadGruposDocs() {
     .sort((a,b) => String(a.numero).localeCompare(String(b.numero)));
 
   renderMultiList({
-    container: gruposList,
+    container: document.getElementById('gruposList'),
     searchInput: document.getElementById('searchGrupos'),
     items: gruposArr,
     getKey: (g) => g.gid,
@@ -261,7 +260,7 @@ async function preloadGruposDocs() {
   });
 
   renderMultiList({
-    container: tiposList,
+    container: document.getElementById('tiposList'),
     searchInput: document.getElementById('searchTipos'),
     items: TIPOS,
     getKey: (t) => t.key,
@@ -272,7 +271,6 @@ async function preloadGruposDocs() {
     btnNone: document.getElementById('btnTiposNone')
   });
 
-  // Labels iniciales
   setMultiLabel(document.getElementById('multiCoordsLabel'), state.filtros.coords.size);
   setMultiLabel(document.getElementById('multiGruposLabel'), state.filtros.grupos.size);
   setMultiLabel(document.getElementById('multiTiposLabel'), state.filtros.tipos.size);
@@ -318,29 +316,37 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   };
 }
 
-/* ====================== CÁLCULO: GASTO APROBADO ====================== */
-/**
- * REGLA: OK si gastosGrabados > 0 y gastosGrabados <= costoTotal
- * ⚠️ Ajusta los nombres de campos si tu summary usa otros.
- */
+/* ====================== CÁLCULO: GASTO APROBADO (ROBUSTO) ====================== */
 function computeGastoAprobado(summary = {}) {
-  const gastosGrabados = Number(coalesce(
+  // gastos grabados (CLP) - tolerante a strings con $/puntos
+  const gastosGrabados = parseMonto(coalesce(
     summary?.gastosGrabados,
+    summary?.gastosGrabadosCLP,
     summary?.gastosTotal,
-    summary?.gastos?.total,
+    summary?.gastosTotalCLP,
     summary?.totalGastos,
-    summary?.gastos,
+    summary?.totales?.gastos,
+    summary?.gastos?.total,
+    summary?.gastos?.totalCLP,
+    summary?.gastos?.clp,
+    summary?.gastosCLP,
     0
-  )) || 0;
+  ));
 
-  const costoTotal = Number(coalesce(
+  // costo total / presupuesto total (CLP)
+  const costoTotal = parseMonto(coalesce(
     summary?.costoTotal,
-    summary?.costo,
+    summary?.costoTotalCLP,
     summary?.totalCosto,
+    summary?.totales?.costoTotal,
     summary?.presupuestoTotal,
+    summary?.presupuesto?.total,
+    summary?.presupuesto?.costoTotal,
+    summary?.costos?.total,
+    summary?.costo?.total,
     summary?.presupuesto,
     0
-  )) || 0;
+  ));
 
   return (gastosGrabados > 0) && (costoTotal > 0) && (gastosGrabados <= costoTotal);
 }
@@ -366,15 +372,14 @@ async function loadDocsSummaryForGroups(gids) {
 
     const docsOk = (summary && summary.docsOk) || {};
 
-    // Rendición (boleta SII revisada)
     const rendOk = !!docsOk.boleta;
     state.rendicionOkByGid.set(gid, rendOk);
 
-    // Gasto aprobado (según regla)
     const aprobOk = computeGastoAprobado(summary || {});
     state.gastoAprobadoByGid.set(gid, aprobOk);
 
     const boletaUrl = coalesce(summary?.boleta?.url, summary?.boletaUrl, '');
+
     const compUrl = coalesce(
       summary?.transfer?.comprobanteUrl,
       summary?.transferenciaCLP?.url,
@@ -386,6 +391,7 @@ async function loadDocsSummaryForGroups(gids) {
       summary?.comprobanteUrl,
       ''
     );
+
     const transfUrl = coalesce(
       summary?.cashUsd?.comprobanteUrl,
       summary?.transferenciaCoord?.url,
@@ -408,7 +414,6 @@ async function loadDocsSummaryForGroups(gids) {
       monto: 0
     };
 
-    // Solo agregamos si existe URL o si está marcado como revisado
     if (boletaUrl || docsOk.boleta) {
       out.push({
         ...base,
@@ -534,12 +539,10 @@ async function loadDocsForCurrentFilters() {
 
   let docsAll = [...docsSummary, ...docsGastos];
 
-  // Filtro por tipo (multi)
   if (state.filtros.tipos.size) {
     docsAll = docsAll.filter(d => state.filtros.tipos.has(d.tipoDoc));
   }
 
-  // Filtro por gasto aprobado (por grupo)
   if (state.filtros.gastoAprobado === 'OK') {
     docsAll = docsAll.filter(d => !!state.gastoAprobadoByGid.get(d.grupoId));
   }
@@ -547,7 +550,6 @@ async function loadDocsForCurrentFilters() {
     docsAll = docsAll.filter(d => !state.gastoAprobadoByGid.get(d.grupoId));
   }
 
-  // Texto libre a nivel documento (incluye asunto)
   const textoFilter = norm(state.filtros.texto || '');
   if (textoFilter) {
     docsAll = docsAll.filter(d => {
@@ -558,7 +560,6 @@ async function loadDocsForCurrentFilters() {
     });
   }
 
-  // Orden: primero gastos con fecha, después summary (fechaMs 0)
   docsAll.sort((a,b) => (a.fechaMs || 0) - (b.fechaMs || 0));
 
   state.docs = docsAll;
@@ -571,14 +572,10 @@ function docKey(docItem){
   return `${docItem.tipoDoc}:${docItem.grupoId}`;
 }
 
-/**
- * Esta función SÍ guarda (se usa solo desde "Guardar cambios").
- */
 async function updateRevisionForDoc(docItem, checked) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const now   = Date.now();
 
-  // 1) Docs summary (BOLETA / COMP_CLP / CONST_USD)
   if (docItem.tipoDoc === 'BOLETA' ||
       docItem.tipoDoc === 'COMP_CLP' ||
       docItem.tipoDoc === 'CONST_USD') {
@@ -604,7 +601,6 @@ async function updateRevisionForDoc(docItem, checked) {
       docItem.revisadoBy = email;
       docItem.revisadoAt = now;
 
-      // Si es BOLETA, afecta la columna Rendición
       if (docItem.tipoDoc === 'BOLETA') {
         state.rendicionOkByGid.set(gid, !!checked);
       }
@@ -617,7 +613,6 @@ async function updateRevisionForDoc(docItem, checked) {
     }
   }
 
-  // 2) Docs de gasto
   if (docItem.tipoDoc === 'GASTO') {
     const coord = docItem.coordEmail;
     const gastoId = docItem.gastoId;
@@ -653,7 +648,6 @@ function refreshPendingUI(){
   const btn = document.getElementById('btnGuardarPendientes');
   if (!el || !btn) return;
 
-  // botón SIEMPRE visible (pedido). Solo habilitamos/inhabilitamos.
   btn.style.display = 'inline-block';
   btn.disabled = (n === 0);
 
@@ -672,7 +666,6 @@ async function flushPending(){
   const entries = Array.from(state.pending.values());
   let okCount = 0;
 
-  // Guardado secuencial (simple y seguro)
   for (const it of entries) {
     const ok = await updateRevisionForDoc(it.docItem, it.checked);
     if (ok) okCount++;
@@ -680,8 +673,6 @@ async function flushPending(){
 
   state.pending.clear();
   refreshPendingUI();
-
-  // refresca la tabla (Rendición puede cambiar visualmente)
   renderDocsTable();
 
   alert(`Guardado: ${okCount}/${entries.length} cambios.`);
@@ -747,7 +738,7 @@ function renderDocsTable() {
   if (!state.docs.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 11;
+    td.colSpan = 10; // ✅ FECHA ELIMINADA
     td.innerHTML = '<div class="muted">Sin documentos para los filtros seleccionados.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -761,7 +752,7 @@ function renderDocsTable() {
   state.docs.forEach(docItem => {
     const tr = document.createElement('tr');
 
-    const tdFecha   = document.createElement('td');
+    // ✅ FECHA ELIMINADA
     const tdGrupo   = document.createElement('td');
     const tdDest    = document.createElement('td');
     const tdCoord   = document.createElement('td');
@@ -773,24 +764,17 @@ function renderDocsTable() {
     const tdArchivo = document.createElement('td');
     const tdChk     = document.createElement('td');
 
-    tdFecha.textContent = docItem.fechaTxt || '—';
     tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`;
     tdDest.textContent  = docItem.destino || '—';
     tdCoord.textContent = docItem.coordEmail || '—';
 
     tdTipo.innerHTML = `<span class="tag">${tipoLabel(docItem.tipoDoc)}</span>`;
 
-    // Rendición = docsOk.boleta por gid
     const rendOk = !!state.rendicionOkByGid.get(docItem.grupoId);
-    tdRend.innerHTML = rendOk
-      ? `<span class="tag ok">OK</span>`
-      : `<span class="tag pending">—</span>`;
+    tdRend.innerHTML = rendOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
-    // Gasto aprobado (por grupo)
     const aprobOk = !!state.gastoAprobadoByGid.get(docItem.grupoId);
-    tdAprob.innerHTML = aprobOk
-      ? `<span class="tag ok">OK</span>`
-      : `<span class="tag pending">—</span>`;
+    tdAprob.innerHTML = aprobOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
     tdMon.textContent = docItem.moneda || '—';
 
@@ -798,18 +782,29 @@ function renderDocsTable() {
     else if (docItem.monto) tdMonto.textContent = moneyCLP(docItem.monto);
     else tdMonto.textContent = '—';
 
-    // Archivo (con visor modal)
+    // Archivo: VER (visor) + LINK (url directa)
     if (docItem.url) {
-      const a = document.createElement('span');
-      a.className = 'link';
-      a.textContent = 'VER';
-      a.title = 'Abrir visor';
-      a.addEventListener('click', () => {
+      const ver = document.createElement('span');
+      ver.className = 'link';
+      ver.textContent = 'VER';
+      ver.title = 'Abrir visor';
+      ver.addEventListener('click', () => {
         const t = `${tipoLabel(docItem.tipoDoc)} — ${docItem.numeroGrupo} — ${docItem.nombreGrupo}`;
         const s = `${docItem.destino} · ${docItem.coordEmail || '—'} ${docItem.asunto ? '· ' + docItem.asunto : ''}`;
         openViewer({ title: t, sub: s, url: docItem.url });
       });
-      tdArchivo.appendChild(a);
+
+      const link = document.createElement('a');
+      link.href = docItem.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.className = 'link';
+      link.style.marginLeft = '10px';
+      link.textContent = 'LINK';
+      link.title = 'Abrir enlace directo';
+
+      tdArchivo.appendChild(ver);
+      tdArchivo.appendChild(link);
 
       if (docItem.asunto) {
         const small = document.createElement('div');
@@ -823,7 +818,7 @@ function renderDocsTable() {
       tdArchivo.textContent = '—';
     }
 
-    // Checkbox (SIN autosave): solo pending, se guarda con botón.
+    // Checkbox (sin autosave)
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.className = 'chk';
@@ -832,19 +827,15 @@ function renderDocsTable() {
 
     chk.addEventListener('change', (e) => {
       const nuevo = !!e.target.checked;
-
       const key = docKey(docItem);
       state.pending.set(key, { docItem, checked: nuevo });
-
-      // Actualizamos visualmente el docItem local (para que si recargas tabla sin guardar, se vea)
       docItem.revisadoOk = nuevo;
-
       refreshPendingUI();
     });
 
     tdChk.appendChild(chk);
 
-    tr.append(tdFecha, tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdChk);
+    tr.append(tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdChk);
     frag.appendChild(tr);
   });
 
@@ -852,6 +843,85 @@ function renderDocsTable() {
 
   if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
   refreshPendingUI();
+}
+
+/* ====================== EXPORT CSV ====================== */
+function csvEscape(v){
+  const s = (v ?? '').toString();
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+  return s;
+}
+
+function buildExportRows(){
+  return state.docs.map(d => {
+    const rendOk  = !!state.rendicionOkByGid.get(d.grupoId);
+    const aprobOk = !!state.gastoAprobadoByGid.get(d.grupoId);
+
+    const montoTxt =
+      d.monto
+        ? (d.moneda === 'USD' ? moneyBy(d.monto, 'USD') : moneyCLP(d.monto))
+        : '';
+
+    return {
+      grupo: `${d.numeroGrupo || ''} — ${d.nombreGrupo || ''}`.trim(),
+      destino: d.destino || '',
+      coordinador: d.coordEmail || '',
+      tipo: tipoLabel(d.tipoDoc),
+      rendicion: rendOk ? 'OK' : '',
+      gastoAprobado: aprobOk ? 'OK' : '',
+      moneda: d.moneda || '',
+      monto: montoTxt,
+      asunto: d.asunto || '',
+      url: d.url || '',
+      revisado: d.revisadoOk ? 'SI' : 'NO'
+    };
+  });
+}
+
+function exportDocsCSV(){
+  const rows = buildExportRows();
+  if (!rows.length) {
+    alert('No hay datos para exportar.');
+    return;
+  }
+
+  const headers = [
+    'GRUPO','DESTINO','COORDINADOR','TIPO','RENDICION','GASTO_APROBADO',
+    'MONEDA','MONTO','ASUNTO','URL','REVISADO'
+  ];
+
+  const lines = [];
+  lines.push(headers.join(','));
+
+  for (const r of rows){
+    lines.push([
+      csvEscape(r.grupo),
+      csvEscape(r.destino),
+      csvEscape(r.coordinador),
+      csvEscape(r.tipo),
+      csvEscape(r.rendicion),
+      csvEscape(r.gastoAprobado),
+      csvEscape(r.moneda),
+      csvEscape(r.monto),
+      csvEscape(r.asunto),
+      csvEscape(r.url),
+      csvEscape(r.revisado),
+    ].join(','));
+  }
+
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `revision_documentos_${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 /* ====================== WIRING UI ====================== */
@@ -892,7 +962,7 @@ function wireUI() {
     state.filtros.gastoAprobado = e.target.value || '';
   });
 
-  // cerrar details al click afuera (mejor UX)
+  // cerrar details al click afuera
   document.addEventListener('click', (e) => {
     const inside = e.target.closest?.('details.multi');
     if (inside) return;
@@ -902,6 +972,7 @@ function wireUI() {
   // botones
   const btnCargar = document.getElementById('btnCargarDocs');
   const btnLimpiar = document.getElementById('btnLimpiarDocs');
+  const btnExport = document.getElementById('btnExportDocs');
   const btnGuardarPend = document.getElementById('btnGuardarPendientes');
   const infoEl = document.getElementById('infoDocs');
 
@@ -935,9 +1006,9 @@ function wireUI() {
     if (infoEl) infoEl.textContent = 'Filtros limpios.';
   });
 
+  btnExport?.addEventListener('click', exportDocsCSV);
   btnGuardarPend?.addEventListener('click', flushPending);
 
-  // estado inicial del botón
   refreshPendingUI();
 }
 
@@ -949,7 +1020,6 @@ onAuthStateChanged(auth, async (user) => {
   }
   state.user = user;
 
-  // email header
   const userEmail = document.getElementById('userEmail');
   if (userEmail) userEmail.textContent = user.email || '—';
 
