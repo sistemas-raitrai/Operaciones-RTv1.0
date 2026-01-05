@@ -442,7 +442,7 @@
 
         <button class="rd-btn secondary" id="btnExportDocs">
           <span class="material-symbols-outlined">download</span>
-          Exportar CSV
+          Exportar Excel
         </button>
 
         <span id="infoPendientes"></span>
@@ -464,7 +464,6 @@
         <table class="rd-table" id="tblDocs">
           <thead>
             <tr>
-              <!-- ✅ FECHA ELIMINADA -->
               <th>Grupo</th>
               <th>Destino</th>
               <th>Coordinador</th>
@@ -487,7 +486,9 @@
 
       <p class="muted" style="font-size:.75rem;margin-top:.6rem;">
         “Rendición” = OK si <code>docsOk.boleta</code> está marcado. ·
-        “Gasto aprobado” = OK si <code>gastosGrabados &gt; 0</code> y <code>gastosGrabados ≤ costoTotal</code>.
+        “Gasto aprobado”:
+        si <strong>Tipo = GASTO</strong> ⇒ OK si <code>montoAprobado &gt; 0</code> (en <code>coordinadores/{coord}/gastos/{gastoId}</code>),
+        si no ⇒ se calcula por <code>summary</code> (gastosGrabados vs costoTotal).
       </p>
     </div>
 
@@ -509,6 +510,9 @@
       <div id="viewerBody"></div>
     </div>
   </div>
+
+  <!-- ✅ XLSX (SheetJS) para exportar a Excel -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- SCRIPTS -->
   <script type="module">
