@@ -1,13 +1,20 @@
 // revision_docs.js
-// Revisión de documentos (tabla sin link, links solo en exportación)
+// Revisión de boletas / comprobantes / constancias + comprobantes de gastos
+// Muestra muchos grupos a la vez (filtrado por destino, coord(s), grupos(s), tipo(s), texto).
+// + Columna "Rendición" = OK cuando docsOk.boleta está marcado (boleta SII revisada).
+// + Columna "Gasto aprobado" = OK cuando gastosGrabados > 0 y gastosGrabados <= costoTotal.
+// + Persistencia en Firestore SOLO al apretar "Guardar cambios" (sin autosave).
+// + Modal visor de documentos (imagen/pdf/lo que sea embebible).
+// ✅ Mejoras integradas:
+//   - Exportar CSV (incluye URL)
+//   - Archivo: VER + LINK
+//   - Sin columna Fecha
+//   - computeGastoAprobado más robusto (paths + parseMonto)
 
 import { app, db } from './firebase-init.js';
-import { getAuth, onAuthStateChanged, signOut }
-  from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-
+import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, getDocs, collectionGroup,
-  doc, getDoc
+  collection, collectionGroup, getDocs, doc, getDoc, setDoc, updateDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -15,26 +22,31 @@ const auth = getAuth(app);
 /* ====================== STATE ====================== */
 const state = {
   user: null,
-  filtros: { coord: '', grupo: '', grupoNombre: '' },
-  caches: {
-    grupos: new Map(),         // gid -> info
-    coords: [],                // emails coordinadores
-    groupsByCoord: new Map(),  // coordEmail -> Set(gid)
+  filtros: {
+    destino: '',            // string (1)
+    coords: new Set(),      // multi
+    grupos: new Set(),      // multi (gids)
+    tipos: new Set(),       // multi (BOLETA/COMP_CLP/CONST_USD/GASTO)
+    gastoAprobado: '',      // '' | 'OK' | 'NO'
+    texto: ''
   },
-  docs: [],      // listado final para tabla/export
-  summary: null, // grupos/{gid}/finanzas/summary (solo cuando hay gid)
+  caches: {
+    grupos: new Map(),      // gid -> {gid,numero,nombre,destino,coordEmail,...}
+    coords: [],             // emails
+    destinos: [],           // strings
+  },
+  docs: [],                 // lista plana de documentos a mostrar en tabla
+  rendicionOkByGid: new Map(),     // gid -> boolean (docsOk.boleta)
+  gastoAprobadoByGid: new Map(),   // gid -> boolean (regla gastos<=costo && gastos>0)
+  pending: new Map()        // key -> {docItem, checked} para "Guardar cambios"
 };
 
 /* ====================== UTILS ====================== */
-const coalesce = (...xs) => xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
+const norm = (s='') =>
+  s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
 
-const escapeHtml = (str='') =>
-  String(str)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;')
-    .replace(/'/g,'&#039;');
+const coalesce = (...xs) =>
+  xs.find(v => v !== undefined && v !== null && v !== '') ?? '';
 
 const parseMonto = (any) => {
   if (any == null) return 0;
@@ -43,9 +55,14 @@ const parseMonto = (any) => {
   return isFinite(n) ? n : 0;
 };
 
+const moneyCLP = n =>
+  (isFinite(+n)
+    ? (+n).toLocaleString('es-CL',{ style:'currency', currency:'CLP', maximumFractionDigits:0 })
+    : '—');
+
 const moneyBy = (n, curr='CLP') =>
   (isFinite(+n)
-    ? (+n).toLocaleString('es-CL',{ style:'currency', currency:curr, maximumFractionDigits:(curr==='CLP'?0:2) })
+    ? (+n).toLocaleString('es-CL',{ style:'currency', currency:curr, maximumFractionDigits:2 })
     : '—');
 
 function _toMs(v){
@@ -80,590 +97,848 @@ function fmtDDMMYYYY(ms){
   return `${dd}-${mm}-${yyyy}`;
 }
 
-/* ====================== COORD HINT HELPERS (igual espíritu rendiciones) ====================== */
-function splitNameParts(s='') {
-  return String(s)
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toLowerCase()
-    .replace(/[^a-z\s-]/g, ' ')
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean);
-}
-function slugFromParts(parts=[]) {
-  return (parts || []).filter(Boolean).join('-');
-}
-function aliasPrimeroTercero(s='') {
-  const p = splitNameParts(s);
-  if (p.length >= 3) return `${p[0]}-${p[2]}`;
-  if (p.length >= 2) return `${p[0]}-${p[1]}`;
-  return p[0] || '';
-}
-function normCoordId(s='') {
-  const p = splitNameParts(s);
-  return slugFromParts(p);
-}
-function coordCandidates({ coordFromPath = '', rawCoord = '' } = {}) {
-  const cand = new Set();
-  const pathNorm = normCoordId(coordFromPath);
-  if (pathNorm) cand.add(pathNorm);
-  if (pathNorm) cand.add(aliasPrimeroTercero(pathNorm));
-  const rawNorm = normCoordId(rawCoord);
-  if (rawNorm) cand.add(rawNorm);
-  if (rawCoord) cand.add(aliasPrimeroTercero(rawCoord));
-  return [...cand].filter(Boolean);
-}
-function buildCoordHintSlug(s='') {
-  const str = String(s || '').trim().toLowerCase();
-  if (!str) return '';
-  const local = str.includes('@') ? str.split('@')[0] : str; // "loreto.leiva"
-  const cleaned = local.replace(/[._]+/g, ' ');              // "loreto leiva"
-  return normCoordId(cleaned);                               // "loreto-leiva"
+function isImageUrl(url=''){
+  const u = String(url).toLowerCase();
+  return u.includes('.png') || u.includes('.jpg') || u.includes('.jpeg') || u.includes('.webp') || u.includes('image');
 }
 
-/* ====================== CATALOGOS: grupos + datalists ====================== */
-async function preloadCatalogs() {
+/* ====================== UI HELPERS (MULTISELECT) ====================== */
+function setMultiLabel(el, selectedCount, emptyText='Seleccionar…') {
+  if (!el) return;
+  el.textContent = selectedCount ? `${selectedCount} seleccionado(s)` : emptyText;
+}
+
+function renderMultiList({
+  container,
+  searchInput,
+  items,
+  getKey,
+  getLabel,
+  selectedSet,
+  onChange,
+  btnAll,
+  btnNone
+}) {
+  if (!container) return;
+
+  const draw = () => {
+    const q = norm(searchInput?.value || '');
+    container.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    items.forEach(it => {
+      const key = getKey(it);
+      const label = getLabel(it);
+      const blob = norm(label);
+
+      if (q && !blob.includes(q)) return;
+
+      const row = document.createElement('label');
+      row.className = 'opt';
+
+      const chk = document.createElement('input');
+      chk.type = 'checkbox';
+      chk.checked = selectedSet.has(key);
+      chk.addEventListener('change', () => {
+        if (chk.checked) selectedSet.add(key);
+        else selectedSet.delete(key);
+        onChange?.();
+      });
+
+      const txt = document.createElement('div');
+      txt.innerHTML = `<div><strong>${label}</strong></div>`;
+
+      row.append(chk, txt);
+      frag.appendChild(row);
+    });
+
+    container.appendChild(frag);
+  };
+
+  searchInput?.addEventListener('input', draw);
+
+  btnAll?.addEventListener('click', () => {
+    items.forEach(it => selectedSet.add(getKey(it)));
+    onChange?.();
+    draw();
+  });
+
+  btnNone?.addEventListener('click', () => {
+    selectedSet.clear();
+    onChange?.();
+    draw();
+  });
+
+  draw();
+}
+
+/* ====================== CATALOGOS (GRUPOS) ====================== */
+async function preloadGruposDocs() {
   state.caches.grupos.clear();
   state.caches.coords.length = 0;
-  state.caches.groupsByCoord.clear();
+  state.caches.destinos.length = 0;
+
+  const coordsSet = new Set();
+  const destinosSet = new Set();
 
   const snap = await getDocs(collection(db,'grupos'));
 
-  const dlG = document.getElementById('dl-grupos');
-  const dlN = document.getElementById('dl-grupos-nombre');
-  const dlC = document.getElementById('dl-coords');
-
-  if (dlG) dlG.innerHTML = '';
-  if (dlN) dlN.innerHTML = '';
-  if (dlC) dlC.innerHTML = '';
+  const dlDestinos = document.getElementById('dl-destinos-docs');
+  if (dlDestinos) dlDestinos.innerHTML = '';
 
   snap.forEach(d => {
-    const x = d.data() || {};
+    const x   = d.data() || {};
     const gid = d.id;
 
     const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, gid);
     const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, gid);
-
     const coordEmail = coalesce(
       x.coordinadorEmail, x.coordinador?.email, x.coordinador,
       x.coord, x.responsable, x.owner, ''
     ).toLowerCase();
+    const destino = coalesce(x.destino, x.lugar, '').toUpperCase().trim();
 
-    const destino = coalesce(x.destino, x.lugar, '');
-    const programa = coalesce(x.programa, x.plan, '');
+    const gInfo = {
+      gid,
+      numero,
+      nombre,
+      coordEmail,
+      destino,
+      fechaInicio: x.fechaInicio || x.fechaInicioViaje || null,
+      fechaFin:    x.fechaFin    || x.fechaFinViaje    || null
+    };
 
-    const cantidadGrupo = Number(
-      x.cantidadGrupo ??
-      x.paxTotal ??
-      x.pax ??
-      x.pax_total ??
-      0
-    );
-
-    state.caches.grupos.set(gid, { gid, numero, nombre, coordEmail, destino, programa, cantidadGrupo });
-
-    if (coordEmail) {
-      if (!state.caches.groupsByCoord.has(coordEmail)) state.caches.groupsByCoord.set(coordEmail, new Set());
-      state.caches.groupsByCoord.get(coordEmail).add(gid);
-      if (!state.caches.coords.includes(coordEmail)) state.caches.coords.push(coordEmail);
-    }
-
-    if (dlG) {
-      const opt = document.createElement('option');
-      opt.value = gid;
-      opt.label = `${numero} — ${nombre}`;
-      dlG.appendChild(opt);
-    }
-    if (dlN) {
-      const optN = document.createElement('option');
-      optN.value = nombre;
-      optN.label = `${numero} — ${nombre}`;
-      dlN.appendChild(optN);
-    }
+    state.caches.grupos.set(gid, gInfo);
+    if (coordEmail) coordsSet.add(coordEmail);
+    if (destino) destinosSet.add(destino);
   });
 
-  if (dlC) {
-    for (const email of state.caches.coords) {
+  state.caches.coords = Array.from(coordsSet).sort();
+  state.caches.destinos = Array.from(destinosSet).sort();
+
+  if (dlDestinos) {
+    state.caches.destinos.forEach(dest => {
       const opt = document.createElement('option');
-      opt.value = email;
-      opt.label = email;
-      dlC.appendChild(opt);
-    }
+      opt.value = dest;
+      opt.label = dest;
+      dlDestinos.appendChild(opt);
+    });
   }
+
+  const TIPOS = [
+    { key: 'BOLETA',    label: 'BOLETA (SII)' },
+    { key: 'COMP_CLP',  label: 'COMP. CLP (Transferencia)' },
+    { key: 'CONST_USD', label: 'CONST. USD (Efectivo/Transf. coord)' },
+    { key: 'GASTO',     label: 'GASTO (Comprobante)' }
+  ];
+
+  renderMultiList({
+    container: document.getElementById('coordsList'),
+    searchInput: document.getElementById('searchCoords'),
+    items: state.caches.coords,
+    getKey: (email) => email,
+    getLabel: (email) => email,
+    selectedSet: state.filtros.coords,
+    onChange: () => setMultiLabel(document.getElementById('multiCoordsLabel'), state.filtros.coords.size),
+    btnAll: document.getElementById('btnCoordsAll'),
+    btnNone: document.getElementById('btnCoordsNone')
+  });
+
+  const gruposArr = Array.from(state.caches.grupos.values())
+    .sort((a,b) => String(a.numero).localeCompare(String(b.numero)));
+
+  renderMultiList({
+    container: document.getElementById('gruposList'),
+    searchInput: document.getElementById('searchGrupos'),
+    items: gruposArr,
+    getKey: (g) => g.gid,
+    getLabel: (g) => `${g.numero} — ${g.nombre}`,
+    selectedSet: state.filtros.grupos,
+    onChange: () => setMultiLabel(document.getElementById('multiGruposLabel'), state.filtros.grupos.size),
+    btnAll: document.getElementById('btnGruposAll'),
+    btnNone: document.getElementById('btnGruposNone')
+  });
+
+  renderMultiList({
+    container: document.getElementById('tiposList'),
+    searchInput: document.getElementById('searchTipos'),
+    items: TIPOS,
+    getKey: (t) => t.key,
+    getLabel: (t) => t.label,
+    selectedSet: state.filtros.tipos,
+    onChange: () => setMultiLabel(document.getElementById('multiTiposLabel'), state.filtros.tipos.size),
+    btnAll: document.getElementById('btnTiposAll'),
+    btnNone: document.getElementById('btnTiposNone')
+  });
+
+  setMultiLabel(document.getElementById('multiCoordsLabel'), state.filtros.coords.size);
+  setMultiLabel(document.getElementById('multiGruposLabel'), state.filtros.grupos.size);
+  setMultiLabel(document.getElementById('multiTiposLabel'), state.filtros.tipos.size);
 }
 
-/* ====================== DATA: summary para gid ====================== */
-async function loadSummaryForGroup(gid) {
-  state.summary = null;
-  if (!gid) return;
-  try {
-    const ref = doc(db,'grupos',gid,'finanzas','summary');
-    const snap = await getDoc(ref);
-    state.summary = snap.exists() ? (snap.data() || {}) : null;
-  } catch (e) {
-    console.warn('[DOCS] loadSummaryForGroup', e);
-  }
-}
+/* ====================== NORMALIZADORES ====================== */
+function gastoToDocItem(grupoInfo, raw, coordFromPath) {
+  const brutoMonto = coalesce(
+    raw.monto, raw.montoCLP, raw.neto, raw.importe,
+    raw.valor, raw.total, raw.totalCLP, raw.monto_str, 0
+  );
+  const monto   = parseMonto(brutoMonto);
+  const moneda  = (raw.moneda || raw.currency || 'CLP').toString().toUpperCase();
 
-/* ====================== DATA: construir docs desde gastos + summary ====================== */
-function tipoLabel(tipo='') {
-  const t = (tipo || '').toUpperCase();
-  if (t === 'GASTO') return 'Gasto (comprobante)';
-  if (t === 'BOLETA') return 'Boleta / SII';
-  if (t === 'COMP_CLP') return 'Comprobante transf. CLP';
-  if (t === 'CONST_USD') return 'Constancia USD / transf. coord';
-  return tipo || 'Documento';
-}
+  const fechaMs  = pickFechaMs(raw);
+  const fechaTxt = fechaMs ? fmtDDMMYYYY(fechaMs) : '';
 
-function makeDocItemBase({ gid, gInfo }) {
+  const asunto = coalesce(raw.asunto, raw.detalle, raw.descripcion, raw.concepto, raw.motivo, '');
+  const imgUrl = coalesce(raw.imgUrl, raw.imageUrl, raw.imagenUrl, raw.comprobanteUrl, '');
+
+  const rev = raw.revisionDocs || {};
+  const revisadoOk = !!rev.ok;
+  const revisadoBy = rev.by || '';
+  const revisadoAt = rev.at ? _toMs(rev.at) : 0;
+
   return {
-    grupoId: gid,
-    numeroGrupo: gInfo?.numero || gid,
-    nombreGrupo: gInfo?.nombre || '',
-    destino: gInfo?.destino || '',
-    coordEmail: gInfo?.coordEmail || '',
-    programa: gInfo?.programa || '',
-    fechaMs: 0,
-    fechaTxt: '',
-    tipoDoc: '',
-    detalle: '',
-    monto: 0,
-    moneda: 'CLP',
-    rendicionOk: false,      // del gasto (si aplica)
-    montoAprobadoOk: false,  // ✅ "monto aprobado" (no “gasto aprobado”)
-    url: '',                 // 🔴 link real: solo se exporta / visor interno
+    tipoDoc: 'GASTO',
+    gastoId: raw.id || raw._id || '',
+    grupoId: grupoInfo.gid,
+    numeroGrupo: grupoInfo.numero,
+    nombreGrupo: grupoInfo.nombre,
+    destino: grupoInfo.destino,
+    coordEmail: coordFromPath || grupoInfo.coordEmail || '',
+    fechaMs,
+    fechaTxt,
+    moneda,
+    monto,
+    asunto,
+    url: imgUrl,
+    revisadoOk,
+    revisadoBy,
+    revisadoAt
   };
 }
 
-// Lee collectionGroup('gastos') y arma items doc tipo GASTO (si tienen imgUrl)
-async function fetchDocsFromGastos({ coordHint = '', grupoId = '' } = {}) {
+/* ====================== CÁLCULO: GASTO APROBADO (ROBUSTO) ====================== */
+function computeGastoAprobado(summary = {}) {
+  // gastos grabados (CLP) - tolerante a strings con $/puntos
+  const gastosGrabados = parseMonto(coalesce(
+    summary?.gastosGrabados,
+    summary?.gastosGrabadosCLP,
+    summary?.gastosTotal,
+    summary?.gastosTotalCLP,
+    summary?.totalGastos,
+    summary?.totales?.gastos,
+    summary?.gastos?.total,
+    summary?.gastos?.totalCLP,
+    summary?.gastos?.clp,
+    summary?.gastosCLP,
+    0
+  ));
+
+  // costo total / presupuesto total (CLP)
+  const costoTotal = parseMonto(coalesce(
+    summary?.costoTotal,
+    summary?.costoTotalCLP,
+    summary?.totalCosto,
+    summary?.totales?.costoTotal,
+    summary?.presupuestoTotal,
+    summary?.presupuesto?.total,
+    summary?.presupuesto?.costoTotal,
+    summary?.costos?.total,
+    summary?.costo?.total,
+    summary?.presupuesto,
+    0
+  ));
+
+  return (gastosGrabados > 0) && (costoTotal > 0) && (gastosGrabados <= costoTotal);
+}
+
+/* ====================== CARGA DE DOCUMENTOS ====================== */
+async function loadDocsSummaryForGroups(gids) {
   const out = [];
+  state.rendicionOkByGid.clear();
+  state.gastoAprobadoByGid.clear();
 
-  let hint = buildCoordHintSlug(coordHint);
-  const hintParts = hint.split('-').filter(Boolean);
-  if (hintParts.length < 2) hint = grupoId ? '' : hint; // con grupo => no filtra por coord
+  for (const gid of gids) {
+    const gInfo = state.caches.grupos.get(gid);
+    if (!gInfo) continue;
 
-  const snap = await getDocs(collectionGroup(db,'gastos'));
-  snap.forEach(docSnap => {
-    const raw = docSnap.data() || {};
+    let summary = null;
+    try {
+      const ref  = doc(db,'grupos',gid,'finanzas','summary');
+      const snap = await getDoc(ref);
+      summary = snap.exists() ? (snap.data() || {}) : null;
+    } catch (e) {
+      console.warn('[DOCS] load summary', gid, e);
+    }
 
-    const gid = coalesce(
-      raw.grupoId, raw.grupo_id, raw.gid, raw.idGrupo,
-      raw.grupo, raw.id_grupo,
-      (raw.numeroNegocio && raw.identificador) ? `${raw.numeroNegocio}-${raw.identificador}` : ''
+    const docsOk = (summary && summary.docsOk) || {};
+
+    const rendOk = !!docsOk.boleta;
+    state.rendicionOkByGid.set(gid, rendOk);
+
+    const aprobOk = computeGastoAprobado(summary || {});
+    state.gastoAprobadoByGid.set(gid, aprobOk);
+
+    const boletaUrl = coalesce(summary?.boleta?.url, summary?.boletaUrl, '');
+
+    const compUrl = coalesce(
+      summary?.transfer?.comprobanteUrl,
+      summary?.transferenciaCLP?.url,
+      summary?.comprobanteCLP?.url,
+      summary?.comprobante?.url,
+      summary?.transfer?.url,
+      summary?.transferencia?.url,
+      summary?.transferenciaCLPUrl,
+      summary?.comprobanteUrl,
+      ''
     );
-    if (!gid) return;
-    if (grupoId && gid !== grupoId) return;
 
-    const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
+    const transfUrl = coalesce(
+      summary?.cashUsd?.comprobanteUrl,
+      summary?.transferenciaCoord?.url,
+      summary?.constanciaUSD?.url,
+      summary?.constancia?.url,
+      summary?.transferenciaCoordUrl,
+      summary?.constanciaUrl,
+      ''
+    );
 
-    if (hint) {
-      const rawCoord = coalesce(raw.coordinador, raw.coordinadorNombre, raw.coordNombre, '');
-      const cands = coordCandidates({ coordFromPath, rawCoord });
-      const hintAlias = aliasPrimeroTercero(hint);
-      const ok = cands.includes(hint) || (hintAlias && cands.includes(hintAlias));
-      if (!ok) return;
+    const base = {
+      grupoId: gid,
+      numeroGrupo: gInfo.numero,
+      nombreGrupo: gInfo.nombre,
+      destino: gInfo.destino,
+      coordEmail: gInfo.coordEmail || '',
+      fechaMs: 0,
+      fechaTxt: '',
+      moneda: 'CLP',
+      monto: 0
+    };
+
+    if (boletaUrl || docsOk.boleta) {
+      out.push({
+        ...base,
+        tipoDoc: 'BOLETA',
+        gastoId: null,
+        url: boletaUrl,
+        revisadoOk: !!docsOk.boleta,
+        revisadoBy: docsOk.by || '',
+        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
+      });
     }
-
-    const gInfo = state.caches.grupos.get(gid) || { numero: gid, nombre: '', coordEmail: coordFromPath, destino:'', programa:'' };
-
-    const imgUrl = coalesce(raw.imgUrl, raw.imageUrl, raw.imagenUrl, raw.comprobanteUrl, '');
-
-    // Si no hay doc, este gasto no aporta a revisión de docs (para esta pantalla)
-    if (!imgUrl) return;
-
-    const item = makeDocItemBase({ gid, gInfo });
-
-    const fechaMs = pickFechaMs(raw);
-    item.fechaMs = fechaMs;
-    item.fechaTxt = fechaMs ? fmtDDMMYYYY(fechaMs) : '—';
-
-    item.tipoDoc = 'GASTO';
-
-    item.detalle = coalesce(raw.asunto, raw.detalle, raw.descripcion, raw.concepto, raw.motivo, '');
-    item.monto = parseMonto(coalesce(raw.montoAprobado, raw.monto, raw.total, raw.valor, 0));
-    item.moneda = (coalesce(raw.moneda, raw.currency, 'CLP') || 'CLP').toString().toUpperCase();
-
-    // ✅ rendición OK (checkbox)
-    const rend = raw.rendicion || {};
-    item.rendicionOk = (typeof raw.rendicionOk === 'boolean') ? !!raw.rendicionOk : !!rend.ok;
-
-    // ✅ “Monto aprobado” (no gasto aprobado)
-    // Regla: si existe raw.montoAprobado (no null/undefined) => ok
-    const ma = coalesce(raw.montoAprobado, raw.aprobado, raw.monto_aprobado, null);
-    item.montoAprobadoOk = (ma !== null);
-
-    item.url = imgUrl;
-
-    out.push(item);
-  });
+    if (compUrl || docsOk.comprobante) {
+      out.push({
+        ...base,
+        tipoDoc: 'COMP_CLP',
+        gastoId: null,
+        url: compUrl,
+        revisadoOk: !!docsOk.comprobante,
+        revisadoBy: docsOk.by || '',
+        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
+      });
+    }
+    if (transfUrl || docsOk.transferencia) {
+      out.push({
+        ...base,
+        tipoDoc: 'CONST_USD',
+        gastoId: null,
+        url: transfUrl,
+        revisadoOk: !!docsOk.transferencia,
+        revisadoBy: docsOk.by || '',
+        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
+      });
+    }
+  }
 
   return out;
 }
 
-// Construye docs "administrativos" desde summary (para un gid)
-function buildDocsFromSummary(gid, gInfo, summary, docsOk) {
+async function loadDocsGastosForGroups(gids) {
   const out = [];
+  if (!gids.length) return out;
 
-  const base = (tipoDoc, detalle, url, extra = {}) => {
-    const it = makeDocItemBase({ gid, gInfo });
-    it.tipoDoc = tipoDoc;
-    it.detalle = detalle || '';
-    it.url = url || '';
-    it.rendicionOk = !!extra.rendicionOk;
-    it.montoAprobadoOk = !!extra.montoAprobadoOk;
-    it.moneda = extra.moneda || 'CLP';
-    it.monto = Number(extra.monto || 0) || 0;
-    it.fechaTxt = '—';
-    return it;
-  };
+  const gidSet = new Set(gids);
 
-  // Boleta / SII
-  const boletaUrl = coalesce(summary.boleta?.url, summary.boletaUrl, '');
-  out.push(base('BOLETA', 'Boleta / documento SII', boletaUrl, {}));
+  try {
+    const snap = await getDocs(collectionGroup(db,'gastos'));
+    snap.forEach(docSnap => {
+      const raw = docSnap.data() || {};
 
-  // Comprobante transferencia CLP
-  const compUrl = coalesce(
-    summary.transfer?.comprobanteUrl,          // NUEVO real
-    summary.transferenciaCLP?.url,
-    summary.comprobanteCLP?.url,
-    summary.comprobante?.url,
-    summary.transfer?.url,
-    summary.transferencia?.url,
-    summary.transferenciaCLPUrl,
-    summary.comprobanteUrl,
-    ''
-  );
-  out.push(base('COMP_CLP', 'Comprobante transferencia CLP', compUrl, {}));
+      const gid = coalesce(
+        raw.grupoId, raw.grupo_id, raw.gid, raw.idGrupo,
+        raw.grupo, raw.id_grupo,
+        (raw.numeroNegocio && raw.identificador)
+          ? `${raw.numeroNegocio}-${raw.identificador}` : ''
+      );
+      if (!gid || !gidSet.has(gid)) return;
 
-  // Constancia USD / transf coord
-  const transfUrl = coalesce(
-    summary.cashUsd?.comprobanteUrl,           // NUEVO real
-    summary.transferenciaCoord?.url,
-    summary.constanciaUSD?.url,
-    summary.constancia?.url,
-    summary.transferenciaCoordUrl,
-    summary.constanciaUrl,
-    ''
-  );
-  out.push(base('CONST_USD', 'Constancia efectivo USD / transferencia coordinador', transfUrl, {}));
+      const img = coalesce(raw.imgUrl, raw.imageUrl, raw.imagenUrl, raw.comprobanteUrl, '');
+      if (!img) return;
 
-  // Marcar “pendiente/ok” (visual) lo dejamos para chips; aquí solo entregamos items
+      const coordFromPath = (docSnap.ref.parent.parent?.id || '').toLowerCase();
+      const gInfo = state.caches.grupos.get(gid);
+      if (!gInfo) return;
+
+      const item = gastoToDocItem(gInfo, { id: docSnap.id, ...raw }, coordFromPath);
+      out.push(item);
+    });
+  } catch (e) {
+    console.warn('[DOCS] load gastos docs', e);
+  }
+
   return out;
 }
 
-/* ====================== LOAD: principal ====================== */
-async function loadData() {
+function getFilteredGids() {
+  const destinoFilter = state.filtros.destino ? state.filtros.destino.toUpperCase().trim() : '';
+  const textoFilter   = norm(state.filtros.texto || '');
+
+  const baseGids = state.filtros.grupos.size
+    ? Array.from(state.filtros.grupos)
+    : Array.from(state.caches.grupos.keys());
+
+  const out = [];
+  for (const gid of baseGids) {
+    const gInfo = state.caches.grupos.get(gid);
+    if (!gInfo) continue;
+
+    if (destinoFilter && gInfo.destino !== destinoFilter) continue;
+
+    if (state.filtros.coords.size) {
+      const c = (gInfo.coordEmail || '').toLowerCase();
+      if (!state.filtros.coords.has(c)) continue;
+    }
+
+    if (textoFilter) {
+      const blob = norm(`${gInfo.numero} ${gInfo.nombre} ${gInfo.destino} ${gInfo.coordEmail}`);
+      if (!blob.includes(textoFilter)) continue;
+    }
+
+    out.push(gid);
+  }
+
+  return out;
+}
+
+async function loadDocsForCurrentFilters() {
   state.docs = [];
-  state.summary = null;
+  state.pending.clear();
+  refreshPendingUI();
 
-  let gid = state.filtros.grupo || '';
-  const coord = (state.filtros.coord || '').toLowerCase();
-  const nombreGrupo = (state.filtros.grupoNombre || '').trim();
+  const filteredGids = getFilteredGids();
 
-  // si no hay gid pero hay nombre, resolverlo
-  if (!gid && nombreGrupo) {
-    for (const [id, info] of state.caches.grupos.entries()) {
-      if (info.nombre === nombreGrupo || `${info.numero} — ${info.nombre}` === nombreGrupo) {
-        gid = id;
-        state.filtros.grupo = id;
-        break;
+  if (!filteredGids.length) {
+    state.docs = [];
+    renderDocsTable();
+    return;
+  }
+
+  const [docsSummary, docsGastos] = await Promise.all([
+    loadDocsSummaryForGroups(filteredGids),
+    loadDocsGastosForGroups(filteredGids)
+  ]);
+
+  let docsAll = [...docsSummary, ...docsGastos];
+
+  if (state.filtros.tipos.size) {
+    docsAll = docsAll.filter(d => state.filtros.tipos.has(d.tipoDoc));
+  }
+
+  if (state.filtros.gastoAprobado === 'OK') {
+    docsAll = docsAll.filter(d => !!state.gastoAprobadoByGid.get(d.grupoId));
+  }
+  if (state.filtros.gastoAprobado === 'NO') {
+    docsAll = docsAll.filter(d => !state.gastoAprobadoByGid.get(d.grupoId));
+  }
+
+  const textoFilter = norm(state.filtros.texto || '');
+  if (textoFilter) {
+    docsAll = docsAll.filter(d => {
+      const blob = norm(
+        `${d.numeroGrupo} ${d.nombreGrupo} ${d.destino} ${d.coordEmail} ${d.tipoDoc} ${d.asunto || ''}`
+      );
+      return blob.includes(textoFilter);
+    });
+  }
+
+  docsAll.sort((a,b) => (a.fechaMs || 0) - (b.fechaMs || 0));
+
+  state.docs = docsAll;
+  renderDocsTable();
+}
+
+/* ====================== GUARDAR REVISIÓN (Firestore) ====================== */
+function docKey(docItem){
+  if (docItem.tipoDoc === 'GASTO') return `GASTO:${docItem.grupoId}:${docItem.coordEmail}:${docItem.gastoId}`;
+  return `${docItem.tipoDoc}:${docItem.grupoId}`;
+}
+
+async function updateRevisionForDoc(docItem, checked) {
+  const email = (auth.currentUser?.email || '').toLowerCase();
+  const now   = Date.now();
+
+  if (docItem.tipoDoc === 'BOLETA' ||
+      docItem.tipoDoc === 'COMP_CLP' ||
+      docItem.tipoDoc === 'CONST_USD') {
+
+    const gid = docItem.grupoId;
+    if (!gid) return false;
+
+    const ref = doc(db,'grupos',gid,'finanzas','summary');
+
+    const patch = {
+      'docsOk.by': email,
+      'docsOk.at': now
+    };
+
+    if (docItem.tipoDoc === 'BOLETA')    patch['docsOk.boleta'] = !!checked;
+    if (docItem.tipoDoc === 'COMP_CLP')  patch['docsOk.comprobante'] = !!checked;
+    if (docItem.tipoDoc === 'CONST_USD') patch['docsOk.transferencia'] = !!checked;
+
+    try {
+      await setDoc(ref, patch, { merge:true });
+
+      docItem.revisadoOk = !!checked;
+      docItem.revisadoBy = email;
+      docItem.revisadoAt = now;
+
+      if (docItem.tipoDoc === 'BOLETA') {
+        state.rendicionOkByGid.set(gid, !!checked);
       }
+
+      return true;
+    } catch (e) {
+      console.error('[DOCS] updateRevisionForDoc summary', e);
+      alert('No se pudo guardar la revisión del documento de grupo.');
+      return false;
     }
   }
 
-  if (!gid && !coord) return;
+  if (docItem.tipoDoc === 'GASTO') {
+    const coord = docItem.coordEmail;
+    const gastoId = docItem.gastoId;
+    if (!coord || !gastoId) return false;
 
-  const gInfo = gid ? state.caches.grupos.get(gid) : null;
-  const coordHint = coord || (gInfo?.coordEmail || '');
+    try {
+      const ref = doc(db,'coordinadores',coord,'gastos',gastoId);
+      await updateDoc(ref, {
+        'revisionDocs.ok': !!checked,
+        'revisionDocs.by': email,
+        'revisionDocs.at': now
+      });
 
-  // 1) Gastos con comprobante
-  const docsGastos = await fetchDocsFromGastos({ coordHint, grupoId: gid });
+      docItem.revisadoOk = !!checked;
+      docItem.revisadoBy = email;
+      docItem.revisadoAt = now;
 
-  // 2) Summary docs (solo si hay gid)
-  if (gid) await loadSummaryForGroup(gid);
-
-  const summary = state.summary || {};
-  const docsOk = (summary && summary.docsOk) || {};
-
-  let docsSummary = [];
-  if (gid && gInfo) {
-    docsSummary = buildDocsFromSummary(gid, gInfo, summary, docsOk);
+      return true;
+    } catch (e) {
+      console.error('[DOCS] updateRevisionForDoc gasto', e);
+      alert('No se pudo guardar la revisión del comprobante de gasto.');
+      return false;
+    }
   }
 
-  // Merge + orden
-  const merged = [...docsGastos, ...docsSummary]
-    .filter(Boolean)
-    .sort((a,b)=>(a.fechaMs||0)-(b.fechaMs||0));
-
-  state.docs = merged;
+  return false;
 }
 
-/* ====================== VIEWER: visor interno ====================== */
+/* ====================== PENDIENTES (botón Guardar) ====================== */
+function refreshPendingUI(){
+  const n = state.pending.size;
+  const el = document.getElementById('infoPendientes');
+  const btn = document.getElementById('btnGuardarPendientes');
+  if (!el || !btn) return;
+
+  btn.style.display = 'inline-block';
+  btn.disabled = (n === 0);
+
+  if (!n) {
+    el.style.display = 'none';
+    return;
+  }
+
+  el.style.display = 'inline-block';
+  el.textContent = `Cambios pendientes: ${n}`;
+}
+
+async function flushPending(){
+  if (!state.pending.size) return;
+
+  const entries = Array.from(state.pending.values());
+  let okCount = 0;
+
+  for (const it of entries) {
+    const ok = await updateRevisionForDoc(it.docItem, it.checked);
+    if (ok) okCount++;
+  }
+
+  state.pending.clear();
+  refreshPendingUI();
+  renderDocsTable();
+
+  alert(`Guardado: ${okCount}/${entries.length} cambios.`);
+}
+
+/* ====================== MODAL VISOR ====================== */
 function openViewer({ title, sub, url }) {
   const modal = document.getElementById('viewerModal');
-  const t = document.getElementById('viewerTitle');
-  const s = document.getElementById('viewerSub');
-  const f = document.getElementById('viewerFrame');
+  const body  = document.getElementById('viewerBody');
+  const h1    = document.getElementById('viewerTitle');
+  const h2    = document.getElementById('viewerSub');
+  const openTab = document.getElementById('viewerOpenTab');
 
-  if (!modal || !f) return;
+  if (!modal || !body || !h1 || !h2 || !openTab) return;
 
-  if (t) t.textContent = title || 'Documento';
-  if (s) s.textContent = sub || '—';
+  h1.textContent = title || 'Documento';
+  h2.textContent = sub || '';
+  openTab.href = url || '#';
 
-  // Visor: embed directo
-  f.src = url || '';
+  body.innerHTML = '';
+
+  if (!url) {
+    body.innerHTML = `<div style="padding:14px;color:#6b7280;">Sin URL.</div>`;
+  } else if (isImageUrl(url)) {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = title || 'Documento';
+    body.appendChild(img);
+  } else {
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    body.appendChild(iframe);
+  }
+
   modal.classList.add('open');
-  modal.setAttribute('aria-hidden','false');
+  modal.setAttribute('aria-hidden', 'false');
 }
+
 function closeViewer() {
   const modal = document.getElementById('viewerModal');
-  const f = document.getElementById('viewerFrame');
-  if (f) f.src = '';
-  if (modal) {
-    modal.classList.remove('open');
-    modal.setAttribute('aria-hidden','true');
-  }
+  const body  = document.getElementById('viewerBody');
+  if (!modal || !body) return;
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  body.innerHTML = '';
 }
 
-/* ====================== RENDER: chips resumen ====================== */
-function renderChips() {
-  const el = document.getElementById('chipsResumen');
-  if (!el) return;
-
-  const total = state.docs.length;
-  const conUrl = state.docs.filter(d => !!d.url).length;
-
-  // rendición ok: para gastos, cuenta rendicionOk true
-  const gastos = state.docs.filter(d => d.tipoDoc === 'GASTO');
-  const rendOk = gastos.filter(d => d.rendicionOk).length;
-
-  // monto aprobado ok (gastos con montoAprobado set)
-  const montoAprobOk = gastos.filter(d => d.montoAprobadoOk).length;
-
-  // summary docs: boleta/comp/const
-  const summaryDocs = state.docs.filter(d => d.tipoDoc !== 'GASTO');
-  const summaryConUrl = summaryDocs.filter(d => !!d.url).length;
-
-  el.innerHTML = `
-    <div class="chip"><span class="dot ${total?'ok':'warn'}"></span><strong>${total}</strong> <span class="muted">docs listados</span></div>
-    <div class="chip"><span class="dot ${conUrl? 'ok':'warn'}"></span><strong>${conUrl}</strong> <span class="muted">con archivo</span></div>
-    <div class="chip"><span class="dot ${gastos.length? 'ok':'warn'}"></span><strong>${gastos.length}</strong> <span class="muted">gastos con comprobante</span></div>
-    <div class="chip"><span class="dot ${rendOk===gastos.length && gastos.length?'ok':'warn'}"></span><strong>${rendOk}/${gastos.length}</strong> <span class="muted">rendición OK</span></div>
-    <div class="chip"><span class="dot ${montoAprobOk===gastos.length && gastos.length?'ok':'warn'}"></span><strong>${montoAprobOk}/${gastos.length}</strong> <span class="muted">monto aprobado</span></div>
-    <div class="chip"><span class="dot ${summaryConUrl===summaryDocs.length && summaryDocs.length?'ok':'warn'}"></span><strong>${summaryConUrl}/${summaryDocs.length}</strong> <span class="muted">docs summary con archivo</span></div>
-  `;
+/* ====================== RENDER TABLA ====================== */
+function tipoLabel(tipo) {
+  if (tipo === 'COMP_CLP') return 'COMP. CLP';
+  if (tipo === 'CONST_USD') return 'CONST. USD';
+  if (tipo === 'GASTO') return 'GASTO (comprobante)';
+  return tipo;
 }
 
-/* ====================== RENDER: tabla (✅ sin links) ====================== */
-function renderTabla() {
-  const tbody = document.querySelector('#tblDocs tbody');
+function renderDocsTable() {
+  const tbody  = document.querySelector('#tblDocs tbody');
+  const infoEl = document.getElementById('infoDocs');
   if (!tbody) return;
 
-  const rows = state.docs.slice();
-
   tbody.innerHTML = '';
-  if (!rows.length) {
+
+  if (!state.docs.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 10;
-    td.innerHTML = '<div class="muted">Sin datos. Usa Cargar.</div>';
+    td.colSpan = 10; // ✅ FECHA ELIMINADA
+    td.innerHTML = '<div class="muted">Sin documentos para los filtros seleccionados.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
-    renderChips();
+    if (infoEl) infoEl.textContent = '0 documentos.';
+    refreshPendingUI();
     return;
   }
 
   const frag = document.createDocumentFragment();
 
-  rows.forEach(d => {
+  state.docs.forEach(docItem => {
     const tr = document.createElement('tr');
 
-    const tdFecha = document.createElement('td');
-    tdFecha.textContent = d.fechaTxt || '—';
+    // ✅ FECHA ELIMINADA
+    const tdGrupo   = document.createElement('td');
+    const tdDest    = document.createElement('td');
+    const tdCoord   = document.createElement('td');
+    const tdTipo    = document.createElement('td');
+    const tdRend    = document.createElement('td');
+    const tdAprob   = document.createElement('td');
+    const tdMon     = document.createElement('td');
+    const tdMonto   = document.createElement('td');
+    const tdArchivo = document.createElement('td');
+    const tdChk     = document.createElement('td');
 
-    const tdGrupo = document.createElement('td');
-    tdGrupo.innerHTML = `<div><strong>${escapeHtml(d.numeroGrupo || '')}</strong></div><div class="small">${escapeHtml(d.nombreGrupo || '')}</div>`;
+    tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`;
+    tdDest.textContent  = docItem.destino || '—';
+    tdCoord.textContent = docItem.coordEmail || '—';
 
-    const tdDest = document.createElement('td');
-    tdDest.textContent = d.destino || '—';
+    tdTipo.innerHTML = `<span class="tag">${tipoLabel(docItem.tipoDoc)}</span>`;
 
-    const tdCoord = document.createElement('td');
-    tdCoord.textContent = d.coordEmail || '—';
+    const rendOk = !!state.rendicionOkByGid.get(docItem.grupoId);
+    tdRend.innerHTML = rendOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
-    const tdTipo = document.createElement('td');
-    tdTipo.textContent = tipoLabel(d.tipoDoc);
+    const aprobOk = !!state.gastoAprobadoByGid.get(docItem.grupoId);
+    tdAprob.innerHTML = aprobOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
-    const tdDet = document.createElement('td');
-    tdDet.textContent = d.detalle || '—';
+    tdMon.textContent = docItem.moneda || '—';
 
-    const tdMonto = document.createElement('td');
-    tdMonto.className = 'right mono';
-    tdMonto.textContent = d.monto ? moneyBy(d.monto, d.moneda || 'CLP') : '—';
+    if (docItem.monto && docItem.moneda === 'USD') tdMonto.textContent = moneyBy(docItem.monto, 'USD');
+    else if (docItem.monto) tdMonto.textContent = moneyCLP(docItem.monto);
+    else tdMonto.textContent = '—';
 
-    // ✅ Doc (NO link): solo “VER” botón para visor interno, o “—”
-    const tdDoc = document.createElement('td');
-    tdDoc.className = 'center';
-    if (d.url) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.textContent = 'VER';
-      btn.className = 'btn-ver-doc';
-      btn.title = 'Ver documento (visor interno)';
-      btn.addEventListener('click', () => {
-        const title = `${tipoLabel(d.tipoDoc)} — ${d.numeroGrupo} — ${d.nombreGrupo}`;
-        const sub = `${d.destino} · ${d.coordEmail || '—'}${d.detalle ? ' · ' + d.detalle : ''}`;
-        openViewer({ title, sub, url: d.url });
+    // Archivo: VER (visor) + LINK (url directa)
+    if (docItem.url) {
+      const ver = document.createElement('span');
+      ver.className = 'link';
+      ver.textContent = 'VER';
+      ver.title = 'Abrir visor';
+      ver.addEventListener('click', () => {
+        const t = `${tipoLabel(docItem.tipoDoc)} — ${docItem.numeroGrupo} — ${docItem.nombreGrupo}`;
+        const s = `${docItem.destino} · ${docItem.coordEmail || '—'} ${docItem.asunto ? '· ' + docItem.asunto : ''}`;
+        openViewer({ title: t, sub: s, url: docItem.url });
       });
-      tdDoc.appendChild(btn);
+
+      const link = document.createElement('a');
+      link.href = docItem.url;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      link.className = 'link';
+      link.style.marginLeft = '10px';
+      link.textContent = 'LINK';
+      link.title = 'Abrir enlace directo';
+
+      tdArchivo.appendChild(ver);
+      tdArchivo.appendChild(link);
+
+      if (docItem.asunto) {
+        const small = document.createElement('div');
+        small.className = 'muted';
+        small.style.fontSize = '12px';
+        small.style.marginTop = '4px';
+        small.textContent = docItem.asunto;
+        tdArchivo.appendChild(small);
+      }
     } else {
-      tdDoc.textContent = '—';
-      tdDoc.classList.add('muted');
+      tdArchivo.textContent = '—';
     }
 
-    // Rendición OK (solo aplica a GASTO)
-    const tdRend = document.createElement('td');
-    tdRend.className = 'center';
-    if (d.tipoDoc === 'GASTO') {
-      tdRend.innerHTML = d.rendicionOk
-        ? `<span class="okBadge">✓</span>`
-        : `<span class="warnBadge">—</span>`;
-    } else {
-      tdRend.innerHTML = `<span class="muted">—</span>`;
-    }
+    // Checkbox (sin autosave)
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.className = 'chk';
+    chk.checked = !!docItem.revisadoOk;
+    chk.title = 'Marcar como revisado';
 
-    // ✅ Monto aprobado (no “gasto aprobado”)
-    const tdAprob = document.createElement('td');
-    tdAprob.className = 'center';
-    if (d.tipoDoc === 'GASTO') {
-      tdAprob.innerHTML = d.montoAprobadoOk
-        ? `<span class="okBadge">✓</span>`
-        : `<span class="warnBadge">—</span>`;
-    } else {
-      tdAprob.innerHTML = `<span class="muted">—</span>`;
-    }
+    chk.addEventListener('change', (e) => {
+      const nuevo = !!e.target.checked;
+      const key = docKey(docItem);
+      state.pending.set(key, { docItem, checked: nuevo });
+      docItem.revisadoOk = nuevo;
+      refreshPendingUI();
+    });
 
-    tr.append(tdFecha, tdGrupo, tdDest, tdCoord, tdTipo, tdDet, tdMonto, tdDoc, tdRend, tdAprob);
+    tdChk.appendChild(chk);
+
+    tr.append(tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdChk);
     frag.appendChild(tr);
   });
 
   tbody.appendChild(frag);
-  renderChips();
+
+  if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
+  refreshPendingUI();
 }
 
-/* ====================== EXPORT: XLSX (link SOLO aquí) ====================== */
-function exportXLSX() {
-  if (!window.XLSX) { alert('No está cargada la librería XLSX.'); return; }
-  if (!state.docs.length) { alert('No hay datos para exportar.'); return; }
-
-  const rows = state.docs.map(d => ({
-    fecha: d.fechaTxt || '',
-    numeroGrupo: d.numeroGrupo || '',
-    nombreGrupo: d.nombreGrupo || '',
-    destino: d.destino || '',
-    coordinador: d.coordEmail || '',
-    tipo: tipoLabel(d.tipoDoc),
-    detalle: d.detalle || '',
-    monto: d.monto || 0,
-    moneda: d.moneda || 'CLP',
-    rendicionOk: (d.tipoDoc === 'GASTO') ? (d.rendicionOk ? 'OK' : 'NO') : '',
-    montoAprobado: (d.tipoDoc === 'GASTO') ? (d.montoAprobadoOk ? 'OK' : 'NO') : '',
-
-    // ✅ SOLO EN EXPORTACIÓN:
-    documentoUrl: d.url || ''
-  }));
-
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'RevisionDocs');
-
-  const gid = state.filtros.grupo || '';
-  const fname = gid ? `RevisionDocs_${gid}.xlsx` : `RevisionDocs_${Date.now()}.xlsx`;
-
-  XLSX.writeFile(wb, fname);
+/* ====================== EXPORT CSV ====================== */
+function csvEscape(v){
+  const s = (v ?? '').toString();
+  if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
+  return s;
 }
 
-/* ====================== EXPORT: DOC (Word-friendly, link SOLO aquí) ====================== */
-function exportDOC() {
-  if (!state.docs.length) { alert('No hay datos para exportar.'); return; }
+function buildExportRows(){
+  return state.docs.map(d => {
+    const rendOk  = !!state.rendicionOkByGid.get(d.grupoId);
+    const aprobOk = !!state.gastoAprobadoByGid.get(d.grupoId);
 
-  const title = 'REVISIÓN DE DOCUMENTOS — RT';
-  const subtitle = `Exportado: ${new Date().toLocaleString('es-CL')}`;
+    const montoTxt =
+      d.monto
+        ? (d.moneda === 'USD' ? moneyBy(d.monto, 'USD') : moneyCLP(d.monto))
+        : '';
 
-  const filas = state.docs.map(d => `
-    <tr>
-      <td>${escapeHtml(d.fechaTxt || '—')}</td>
-      <td>${escapeHtml(d.numeroGrupo || '')}<br/><span style="color:#666;font-size:10pt;">${escapeHtml(d.nombreGrupo || '')}</span></td>
-      <td>${escapeHtml(d.destino || '—')}</td>
-      <td>${escapeHtml(d.coordEmail || '—')}</td>
-      <td>${escapeHtml(tipoLabel(d.tipoDoc))}</td>
-      <td>${escapeHtml(d.detalle || '—')}</td>
-      <td style="text-align:right;white-space:nowrap;">${escapeHtml(d.monto ? moneyBy(d.monto, d.moneda || 'CLP') : '—')}</td>
-      <td>${d.url ? `<a href="${escapeHtml(d.url)}">${escapeHtml(d.url)}</a>` : '—'}</td>
-      <td style="text-align:center;">${d.tipoDoc==='GASTO' ? (d.rendicionOk ? 'OK' : '—') : '—'}</td>
-      <td style="text-align:center;">${d.tipoDoc==='GASTO' ? (d.montoAprobadoOk ? 'OK' : '—') : '—'}</td>
-    </tr>
-  `).join('');
+    return {
+      grupo: `${d.numeroGrupo || ''} — ${d.nombreGrupo || ''}`.trim(),
+      destino: d.destino || '',
+      coordinador: d.coordEmail || '',
+      tipo: tipoLabel(d.tipoDoc),
+      rendicion: rendOk ? 'OK' : '',
+      gastoAprobado: aprobOk ? 'OK' : '',
+      moneda: d.moneda || '',
+      monto: montoTxt,
+      asunto: d.asunto || '',
+      url: d.url || '',
+      revisado: d.revisadoOk ? 'SI' : 'NO'
+    };
+  });
+}
 
-  const html = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8"/>
-  <title>${title}</title>
-</head>
-<body style="font-family:Calibri,Arial,sans-serif;">
-  <h2 style="margin:0;">${title}</h2>
-  <div style="color:#666;font-size:10pt;margin:6px 0 14px;">${subtitle}</div>
+function exportDocsCSV(){
+  const rows = buildExportRows();
+  if (!rows.length) {
+    alert('No hay datos para exportar.');
+    return;
+  }
 
-  <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse;width:100%;font-size:10.5pt;">
-    <thead style="background:#f2f2f2;">
-      <tr>
-        <th>Fecha</th>
-        <th>Grupo</th>
-        <th>Destino</th>
-        <th>Coordinador</th>
-        <th>Tipo</th>
-        <th>Detalle</th>
-        <th>Monto</th>
-        <th>documentoUrl (solo export)</th>
-        <th>Rendición</th>
-        <th>Monto aprobado</th>
-      </tr>
-    </thead>
-    <tbody>${filas}</tbody>
-  </table>
-</body>
-</html>`;
+  const headers = [
+    'GRUPO','DESTINO','COORDINADOR','TIPO','RENDICION','GASTO_APROBADO',
+    'MONEDA','MONTO','ASUNTO','URL','REVISADO'
+  ];
 
-  const blob = new Blob([html], { type: 'application/msword' });
+  const lines = [];
+  lines.push(headers.join(','));
+
+  for (const r of rows){
+    lines.push([
+      csvEscape(r.grupo),
+      csvEscape(r.destino),
+      csvEscape(r.coordinador),
+      csvEscape(r.tipo),
+      csvEscape(r.rendicion),
+      csvEscape(r.gastoAprobado),
+      csvEscape(r.moneda),
+      csvEscape(r.monto),
+      csvEscape(r.asunto),
+      csvEscape(r.url),
+      csvEscape(r.revisado),
+    ].join(','));
+  }
+
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
+
   const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
   a.href = url;
-  a.download = (state.filtros.grupo ? `RevisionDocs_${state.filtros.grupo}.doc` : `RevisionDocs_${Date.now()}.doc`);
+  a.download = `revision_documentos_${stamp}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-/* ====================== UI wiring (filtros) ====================== */
+/* ====================== WIRING UI ====================== */
 function wireUI() {
-  // nav
+  // Header común
   document.getElementById('btn-home')?.addEventListener('click', () => {
-    location.href = 'index.html';
+    location.href = 'https://sistemas-raitrai.github.io/Operaciones-RTv1.0';
   });
-  document.getElementById('btn-reload')?.addEventListener('click', () => {
-    location.reload();
-  });
+  document.getElementById('btn-refresh')?.addEventListener('click', () => location.reload());
+  document.getElementById('btn-back')?.addEventListener('click', () => history.back());
 
   // logout
-  document.getElementById('btn-logout')?.addEventListener('click', () => {
-    signOut(auth).then(() => location.href = 'login.html');
-  });
+  document.querySelector('#btn-logout')
+    ?.addEventListener('click', () =>
+      signOut(auth).then(() => location.href = 'login.html'));
 
-  // viewer
+  // modal
   document.getElementById('viewerClose')?.addEventListener('click', closeViewer);
   document.getElementById('viewerModal')?.addEventListener('click', (e) => {
     if (e.target?.id === 'viewerModal') closeViewer();
@@ -672,147 +947,83 @@ function wireUI() {
     if (e.key === 'Escape') closeViewer();
   });
 
-  // filtros
-  const inputCoord = document.getElementById('filtroCoord');
-  const inputGrupo = document.getElementById('filtroGrupo');
-  const inputNombre = document.getElementById('filtroNombreGrupo');
+  // filtros simples
+  const inpDestino = document.getElementById('filtroDestinoDocs');
+  const inpTexto   = document.getElementById('filtroTextoDocs');
+  const selAprob   = document.getElementById('filtroGastoAprobado');
 
-  // helper: reconstruir datalists según coord
-  function rebuildGroupDatalists(coordVal = '') {
-    const dlG = document.getElementById('dl-grupos');
-    const dlN = document.getElementById('dl-grupos-nombre');
-    if (dlG) dlG.innerHTML = '';
-    if (dlN) dlN.innerHTML = '';
-
-    const addOpt = (gid, info) => {
-      if (!info) return;
-      if (dlG) {
-        const opt = document.createElement('option');
-        opt.value = gid;
-        opt.label = `${info.numero} — ${info.nombre}`;
-        dlG.appendChild(opt);
-      }
-      if (dlN) {
-        const optN = document.createElement('option');
-        optN.value = info.nombre;
-        optN.label = `${info.numero} — ${info.nombre}`;
-        dlN.appendChild(optN);
-      }
-    };
-
-    if (coordVal && state.caches.groupsByCoord.has(coordVal)) {
-      for (const gid of state.caches.groupsByCoord.get(coordVal)) {
-        addOpt(gid, state.caches.grupos.get(gid));
-      }
-    } else {
-      for (const [gid, info] of state.caches.grupos.entries()) addOpt(gid, info);
-    }
-  }
-
-  inputCoord?.addEventListener('input', (e) => {
-    const val = (e.target.value || '').toLowerCase().trim();
-    state.filtros.coord = val;
-
-    rebuildGroupDatalists(val);
-
-    // si el grupo actual no corresponde al coord, limpiar
-    if (state.filtros.grupo) {
-      const info = state.caches.grupos.get(state.filtros.grupo);
-      const coordGrupo = (info?.coordEmail || '').toLowerCase();
-      if (val && coordGrupo && coordGrupo !== val) {
-        state.filtros.grupo = '';
-        state.filtros.grupoNombre = '';
-        if (inputGrupo) inputGrupo.value = '';
-        if (inputNombre) inputNombre.value = '';
-      }
-    }
+  inpDestino?.addEventListener('input', e => {
+    state.filtros.destino = (e.target.value || '').toUpperCase().trim();
+  });
+  inpTexto?.addEventListener('input', e => {
+    state.filtros.texto = e.target.value || '';
+  });
+  selAprob?.addEventListener('change', e => {
+    state.filtros.gastoAprobado = e.target.value || '';
   });
 
-  inputGrupo?.addEventListener('input', (e) => {
-    const gid = e.target.value || '';
-    state.filtros.grupo = gid;
-
-    const info = gid ? state.caches.grupos.get(gid) : null;
-    if (!info) return;
-
-    // set nombre
-    if (inputNombre) inputNombre.value = info.nombre;
-    state.filtros.grupoNombre = info.nombre;
-
-    // set coord
-    const coordEmail = (info.coordEmail || '').toLowerCase();
-    if (inputCoord) inputCoord.value = coordEmail;
-    state.filtros.coord = coordEmail;
-
-    rebuildGroupDatalists(coordEmail);
+  // cerrar details al click afuera
+  document.addEventListener('click', (e) => {
+    const inside = e.target.closest?.('details.multi');
+    if (inside) return;
+    document.querySelectorAll('details.multi[open]').forEach(d => d.removeAttribute('open'));
   });
 
-  inputNombre?.addEventListener('input', (e) => {
-    const val = (e.target.value || '').trim();
-    state.filtros.grupoNombre = val;
-    if (!val) return;
+  // botones
+  const btnCargar = document.getElementById('btnCargarDocs');
+  const btnLimpiar = document.getElementById('btnLimpiarDocs');
+  const btnExport = document.getElementById('btnExportDocs');
+  const btnGuardarPend = document.getElementById('btnGuardarPendientes');
+  const infoEl = document.getElementById('infoDocs');
 
-    for (const [gid, info] of state.caches.grupos.entries()) {
-      if (info.nombre === val || `${info.numero} — ${info.nombre}` === val) {
-        state.filtros.grupo = gid;
-        if (inputGrupo) inputGrupo.value = gid;
-
-        const coordEmail = (info.coordEmail || '').toLowerCase();
-        if (inputCoord) inputCoord.value = coordEmail;
-        state.filtros.coord = coordEmail;
-
-        rebuildGroupDatalists(coordEmail);
-        break;
-      }
-    }
+  btnCargar?.addEventListener('click', async () => {
+    if (infoEl) infoEl.textContent = 'Cargando documentos…';
+    await loadDocsForCurrentFilters();
+    if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
   });
 
-  // cargar
-  document.getElementById('btnCargar')?.addEventListener('click', async () => {
-    const pagInfo = document.getElementById('pagInfo');
-    if (!state.filtros.grupo && !state.filtros.coord) {
-      alert('Selecciona al menos un grupo o un coordinador.');
-      return;
-    }
-    if (pagInfo) pagInfo.textContent = 'Cargando…';
-    await loadData();
-    renderTabla();
-    if (pagInfo) pagInfo.textContent = `Listo. (${state.docs.length} registros)`;
-  });
+  btnLimpiar?.addEventListener('click', () => {
+    state.filtros.destino = '';
+    state.filtros.texto = '';
+    state.filtros.gastoAprobado = '';
+    state.filtros.coords.clear();
+    state.filtros.grupos.clear();
+    state.filtros.tipos.clear();
 
-  // limpiar
-  document.getElementById('btnLimpiar')?.addEventListener('click', () => {
-    state.filtros.coord = '';
-    state.filtros.grupo = '';
-    state.filtros.grupoNombre = '';
+    if (inpDestino) inpDestino.value = '';
+    if (inpTexto) inpTexto.value = '';
+    if (selAprob) selAprob.value = '';
+
+    setMultiLabel(document.getElementById('multiCoordsLabel'), 0);
+    setMultiLabel(document.getElementById('multiGruposLabel'), 0);
+    setMultiLabel(document.getElementById('multiTiposLabel'), 0);
+
     state.docs = [];
-    state.summary = null;
+    state.pending.clear();
+    refreshPendingUI();
+    renderDocsTable();
 
-    if (inputCoord) inputCoord.value = '';
-    if (inputGrupo) inputGrupo.value = '';
-    if (inputNombre) inputNombre.value = '';
-
-    rebuildGroupDatalists('');
-    renderTabla();
-
-    const pagInfo = document.getElementById('pagInfo');
-    if (pagInfo) pagInfo.textContent = 'Filtros limpios.';
+    if (infoEl) infoEl.textContent = 'Filtros limpios.';
   });
 
-  // export
-  document.getElementById('btnExportXLS')?.addEventListener('click', exportXLSX);
-  document.getElementById('btnExportDOC')?.addEventListener('click', exportDOC);
+  btnExport?.addEventListener('click', exportDocsCSV);
+  btnGuardarPend?.addEventListener('click', flushPending);
 
-  // init datalists
-  rebuildGroupDatalists((state.filtros.coord || '').toLowerCase());
+  refreshPendingUI();
 }
 
-/* ====================== BOOT ====================== */
+/* ====================== ARRANQUE ====================== */
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { location.href = 'login.html'; return; }
+  if (!user) {
+    location.href = 'login.html';
+    return;
+  }
   state.user = user;
 
-  await preloadCatalogs();
+  const userEmail = document.getElementById('userEmail');
+  if (userEmail) userEmail.textContent = user.email || '—';
+
+  await preloadGruposDocs();
   wireUI();
-  renderTabla(); // vacío inicial
+  renderDocsTable();
 });
