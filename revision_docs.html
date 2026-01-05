@@ -78,7 +78,6 @@
 
     /* =======================
        MULTISELECT (details)
-       (Tu JS crea los items dentro)
        ======================= */
     details.multi{
       border:1px solid #ccc;
@@ -214,6 +213,7 @@
       font-size:.85rem;
       text-align:left;
       white-space:nowrap;
+      vertical-align:top;
     }
     table.rd-table thead th{
       background:#f1f1f1;
@@ -222,7 +222,6 @@
     }
     .muted{ color:#6b7280; }
 
-    /* Estilos que tu JS usa en celdas */
     .tag{
       display:inline-block;
       padding:.15rem .45rem;
@@ -244,7 +243,7 @@
     .chk{ transform:scale(1.1); }
 
     /* =======================
-       MODAL VISOR (ids usados por JS)
+       MODAL VISOR
        ======================= */
     #viewerModal{
       position:fixed;
@@ -357,23 +356,18 @@
       <h3><span class="material-symbols-outlined">tune</span> Filtros</h3>
 
       <div class="rd-filters">
-
-        <!-- DESTINO (ID EXACTO QUE TU JS USA) -->
         <div class="rd-field col-3">
           <label>Destino</label>
           <input id="filtroDestinoDocs" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
         </div>
 
-        <!-- COORDS MULTI (estructura e IDs usados por renderMultiList) -->
         <div class="rd-field col-3">
           <label>Coordinadores (multi)</label>
-
           <details class="multi">
             <summary>
               <span id="multiCoordsLabel">Seleccionar…</span>
               <span class="multi-pill">MULTI</span>
             </summary>
-
             <div class="multi-panel">
               <input id="searchCoords" placeholder="Buscar coordinador…"/>
               <div class="multi-actions">
@@ -385,16 +379,13 @@
           </details>
         </div>
 
-        <!-- GRUPOS MULTI -->
         <div class="rd-field col-3">
           <label>Grupos (multi)</label>
-
           <details class="multi">
             <summary>
               <span id="multiGruposLabel">Seleccionar…</span>
               <span class="multi-pill">MULTI</span>
             </summary>
-
             <div class="multi-panel">
               <input id="searchGrupos" placeholder="Buscar grupo… (número o nombre)"/>
               <div class="multi-actions">
@@ -406,16 +397,13 @@
           </details>
         </div>
 
-        <!-- TIPOS MULTI -->
         <div class="rd-field col-3">
           <label>Tipo documento (multi)</label>
-
           <details class="multi">
             <summary>
               <span id="multiTiposLabel">Seleccionar…</span>
               <span class="multi-pill">MULTI</span>
             </summary>
-
             <div class="multi-panel">
               <input id="searchTipos" placeholder="Buscar tipo…"/>
               <div class="multi-actions">
@@ -427,7 +415,6 @@
           </details>
         </div>
 
-        <!-- GASTO APROBADO -->
         <div class="rd-field col-3">
           <label>Gasto aprobado</label>
           <select id="filtroGastoAprobado">
@@ -437,12 +424,10 @@
           </select>
         </div>
 
-        <!-- TEXTO LIBRE -->
         <div class="rd-field col-6">
           <label>Texto libre</label>
           <input id="filtroTextoDocs" placeholder="Grupo, destino, coord, tipo, asunto…"/>
         </div>
-
       </div>
 
       <div class="rd-actions">
@@ -453,6 +438,11 @@
 
         <button class="rd-btn secondary" id="btnLimpiarDocs">
           Limpiar
+        </button>
+
+        <button class="rd-btn secondary" id="btnExportDocs">
+          <span class="material-symbols-outlined">download</span>
+          Exportar CSV
         </button>
 
         <span id="infoPendientes"></span>
@@ -474,7 +464,7 @@
         <table class="rd-table" id="tblDocs">
           <thead>
             <tr>
-              <th>Fecha</th>
+              <!-- ✅ FECHA ELIMINADA -->
               <th>Grupo</th>
               <th>Destino</th>
               <th>Coordinador</th>
@@ -489,7 +479,7 @@
           </thead>
           <tbody>
             <tr>
-              <td colspan="11" class="muted">Sin documentos para los filtros seleccionados.</td>
+              <td colspan="10" class="muted">Sin documentos para los filtros seleccionados.</td>
             </tr>
           </tbody>
         </table>
@@ -503,7 +493,7 @@
 
   </div>
 
-  <!-- MODAL VISOR (IDs exactos del JS) -->
+  <!-- MODAL VISOR -->
   <div id="viewerModal" aria-hidden="true">
     <div class="viewer-card">
       <div class="viewer-head">
@@ -528,13 +518,8 @@
         document.getElementById('encabezado').innerHTML = html;
       } catch(e){}
 
-      // Importa SOLO lo necesario.
       await import('./firebase-init.js');
-
-      // Si tu encabezado depende de script.js (reloj / botones / etc), mantenlo:
       await import('./script.js').catch(()=>{});
-
-      // Tu módulo real:
       await import('./revision_docs.js');
     })();
   </script>
