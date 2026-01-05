@@ -2,255 +2,526 @@
 <html lang="es">
 <head>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Revisión de Documentos — RT</title>
-  <link rel="icon" type="image/png" href="RaitraiLogo.png"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Revisión de Documentos | RT</title>
+
+  <link rel="icon" type="image/png" href="Logo Raitrai.png"/>
+  <link rel="stylesheet" href="estilos.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
 
   <style>
-    :root{
-      --bg:#0b1329; --panel:#0e1834; --line:#334155;
-      --text:#e5e7eb; --muted:#94a3b8; --ok:#22c55e; --warn:#f59e0b;
-      --danger:#ef4444; --btn:#1f2a4a; --btn2:#162041;
-      --chip:#0b1a3a;
+    /* =====================================================
+       🔒 AISLAMIENTO DE ESTA PÁGINA (para no pelear con estilos.css)
+       ===================================================== */
+    body { background:#f6f6f6; }
+
+    #revisionDocsRoot{
+      max-width:1600px;
+      margin:0 auto;
+      padding:1.2rem 1.4rem;
     }
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
-    a{color:inherit;text-decoration:none}
-    .wrap{max-width:1280px;margin:0 auto;padding:18px}
-    .topbar{
-      display:flex;align-items:center;justify-content:space-between;
-      gap:12px;padding:12px 14px;background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.08);border-radius:14px;
-      position:sticky;top:10px;z-index:10;backdrop-filter:blur(8px);
+
+    .rd-title{ margin-bottom:1rem; }
+    .rd-title h2{ margin:0; }
+    .rd-title p{ margin:.25rem 0 0; color:#555; font-size:.9rem; }
+
+    .rd-card{
+      background:#fff;
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:1rem 1.2rem;
+      margin-bottom:1rem;
+      box-shadow:0 2px 6px rgba(0,0,0,.05);
     }
-    .brand{display:flex;align-items:center;gap:10px}
-    .brand img{height:28px;width:auto}
-    .brand h1{font-size:14px;font-weight:800;letter-spacing:.2px}
-    .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .btn{
-      background:var(--btn); border:1px solid rgba(255,255,255,.10);
-      color:var(--text); padding:8px 10px; border-radius:10px;
-      cursor:pointer; font-weight:700; font-size:12px;
+    .rd-card h3{
+      margin:0 0 .75rem;
+      font-size:1rem;
+      border-bottom:1px solid #eee;
+      padding-bottom:.4rem;
+      display:flex;
+      align-items:center;
+      gap:.4rem;
     }
-    .btn:hover{background:var(--btn2)}
-    .btn.danger{border-color:rgba(239,68,68,.35)}
-    .btn.ok{border-color:rgba(34,197,94,.35)}
-    .btn.secondary{background:transparent}
-    .grid{
-      margin-top:14px;
-      display:grid; grid-template-columns: 1.2fr 1fr;
+
+    /* =======================
+       GRID FILTROS
+       ======================= */
+    .rd-filters{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap:.75rem;
+      align-items:end;
+    }
+    .rd-field{ display:flex; flex-direction:column; gap:.25rem; }
+    .rd-field label{
+      font-size:.75rem;
+      font-weight:600;
+      color:#444;
+      text-transform:uppercase;
+    }
+
+    .rd-field input, .rd-field select{
+      padding:.45rem .5rem;
+      border:1px solid #ccc;
+      border-radius:6px;
+      font-size:.9rem;
+      background:#fff;
+      width:100%;
+      box-sizing:border-box;
+      text-transform:none; /* IMPORTANTÍSIMO (tu css global pone uppercase) */
+    }
+
+    .col-3{ grid-column: span 3; }
+    .col-4{ grid-column: span 4; }
+    .col-6{ grid-column: span 6; }
+    .col-12{ grid-column: span 12; }
+
+    /* =======================
+       MULTISELECT (details)
+       ======================= */
+    details.multi{
+      border:1px solid #ccc;
+      border-radius:8px;
+      background:#fff;
+      padding:.35rem .5rem;
+    }
+    details.multi summary{
+      cursor:pointer;
+      list-style:none;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:.5rem;
+      font-weight:600;
+      font-size:.85rem;
+    }
+    details.multi summary::-webkit-details-marker{ display:none; }
+    .multi-pill{
+      font-weight:600;
+      color:#004080;
+      background:#e7f0ff;
+      border:1px solid #b9d4ff;
+      padding:.1rem .45rem;
+      border-radius:999px;
+      font-size:.75rem;
+    }
+    .multi-panel{
+      margin-top:.55rem;
+      border-top:1px solid #eee;
+      padding-top:.6rem;
+      display:flex;
+      flex-direction:column;
+      gap:.5rem;
+    }
+    .multi-panel input{
+      border:1px solid #ddd;
+      border-radius:8px;
+      padding:.45rem .55rem;
+      width:100%;
+    }
+    .multi-actions{
+      display:flex;
+      gap:.5rem;
+      flex-wrap:wrap;
+    }
+    .mini-btn{
+      padding:.35rem .6rem;
+      border-radius:8px;
+      border:1px solid #ddd;
+      background:#fff;
+      cursor:pointer;
+      font-weight:700;
+      font-size:.75rem;
+    }
+    .multi-list{
+      max-height:220px;
+      overflow:auto;
+      border:1px solid #eee;
+      border-radius:10px;
+      padding:.35rem;
+    }
+    .multi-list .opt{
+      display:flex;
+      gap:.5rem;
+      align-items:flex-start;
+      padding:.35rem .35rem;
+      border-radius:8px;
+      cursor:pointer;
+    }
+    .multi-list .opt:hover{ background:#f6f7fb; }
+    .multi-list input[type="checkbox"]{
+      margin-top:.15rem;
+      width:auto;
+    }
+
+    /* =======================
+       BOTONES
+       ======================= */
+    .rd-actions{
+      display:flex;
+      gap:.6rem;
+      margin-top:.8rem;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .rd-btn{
+      padding:.55rem 1.1rem;
+      border-radius:6px;
+      border:1px solid #004080;
+      background:#004080;
+      color:#fff;
+      font-weight:700;
+      cursor:pointer;
+      font-size:.9rem;
+      display:inline-flex;
+      align-items:center;
+      gap:.4rem;
+    }
+    .rd-btn.secondary{
+      background:#fff;
+      color:#004080;
+    }
+    .rd-btn:disabled{
+      opacity:.5;
+      cursor:not-allowed;
+    }
+
+    #infoPendientes{
+      display:none;
+      padding:.35rem .55rem;
+      border-radius:999px;
+      border:1px solid #f59e0b;
+      background:#fff7ed;
+      color:#7c2d12;
+      font-weight:800;
+      font-size:.8rem;
+    }
+
+    /* =======================
+       TABLA
+       ======================= */
+    .rd-table-wrap{ overflow-x:auto; }
+    table.rd-table{
+      width:100%;
+      border-collapse:collapse;
+      background:#fff;
+      min-width:1200px;
+    }
+    table.rd-table th, table.rd-table td{
+      border:1px solid #ddd;
+      padding:.5rem .6rem;
+      font-size:.85rem;
+      text-align:left;
+      white-space:nowrap;
+      vertical-align:top;
+    }
+    table.rd-table thead th{
+      background:#f1f1f1;
+      font-size:.75rem;
+      text-transform:uppercase;
+    }
+    .muted{ color:#6b7280; }
+
+    .tag{
+      display:inline-block;
+      padding:.15rem .45rem;
+      border-radius:999px;
+      border:1px solid #ddd;
+      background:#fff;
+      font-size:.75rem;
+      font-weight:800;
+    }
+    .tag.ok{ background:#d1fae5; border-color:#34d399; }
+    .tag.pending{ background:#f3f4f6; border-color:#d1d5db; color:#6b7280; }
+
+    .link{
+      color:#004080;
+      font-weight:900;
+      cursor:pointer;
+      text-decoration:underline;
+    }
+    .chk{ transform:scale(1.1); }
+
+    /* =======================
+       MODAL VISOR
+       ======================= */
+    #viewerModal{
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.55);
+      display:none;
+      z-index:9999;
+      padding:20px;
+    }
+    #viewerModal.open{ display:flex; align-items:center; justify-content:center; }
+    .viewer-card{
+      width:min(1100px, 96vw);
+      height:min(720px, 90vh);
+      background:#fff;
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 12px 40px rgba(0,0,0,.25);
+      display:flex;
+      flex-direction:column;
+    }
+    .viewer-head{
+      padding:12px 14px;
+      border-bottom:1px solid #eee;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
       gap:12px;
     }
-    @media (max-width: 980px){
-      .grid{grid-template-columns: 1fr}
-      .topbar{position:relative;top:auto}
+    .viewer-txt{
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      gap:2px;
     }
-    .card{
-      background:rgba(255,255,255,.03);
-      border:1px solid rgba(255,255,255,.08);
-      border-radius:14px;
-      padding:12px;
+    #viewerTitle{ font-weight:900; font-size:.95rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    #viewerSub{ font-size:.8rem; color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .viewer-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-shrink:0;
     }
-    .card h2{font-size:12px;margin-bottom:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
-    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
-    label{font-size:11px;color:var(--muted);display:block;margin-bottom:6px}
-    input[type="text"], input[type="email"]{
-      width: 260px; max-width:100%;
-      padding:9px 10px; border-radius:10px;
-      background:rgba(0,0,0,.20);
-      border:1px solid rgba(255,255,255,.12);
-      color:var(--text);
-      outline:none;
+    #viewerOpenTab{
+      padding:.4rem .7rem;
+      border-radius:10px;
+      border:1px solid #004080;
+      color:#004080;
+      font-weight:900;
+      text-decoration:none;
+      white-space:nowrap;
     }
-    input[type="text"]::placeholder{color:rgba(148,163,184,.6)}
-    .hint{font-size:11px;color:var(--muted);margin-top:8px}
-    .muted{color:var(--muted)}
-    .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-    .chip{
-      background:rgba(255,255,255,.04);
-      border:1px solid rgba(255,255,255,.10);
-      border-radius:999px;
-      padding:6px 10px;
-      font-size:12px;
-      display:flex;gap:8px;align-items:center;
+    #viewerClose{
+      padding:.4rem .7rem;
+      border-radius:10px;
+      border:1px solid #ddd;
+      background:#fff;
+      font-weight:900;
+      cursor:pointer;
+      white-space:nowrap;
     }
-    .dot{width:8px;height:8px;border-radius:50%}
-    .dot.ok{background:var(--ok)}
-    .dot.warn{background:var(--warn)}
-    .dot.bad{background:var(--danger)}
-    .tablewrap{overflow:auto;border-radius:12px;border:1px solid rgba(255,255,255,.08);margin-top:12px}
-    table{width:100%;border-collapse:collapse;min-width:980px}
-    th,td{padding:10px 10px;border-bottom:1px solid rgba(255,255,255,.07);vertical-align:top}
-    th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;background:rgba(0,0,0,.14);position:sticky;top:0;z-index:2}
-    td{font-size:12px}
-    .mono{font-variant-numeric:tabular-nums;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
-    .center{text-align:center}
-    .right{text-align:right}
-    .small{font-size:11px;color:var(--muted)}
-    .okBadge{color:var(--ok);font-weight:900}
-    .badBadge{color:var(--danger);font-weight:900}
-    .warnBadge{color:var(--warn);font-weight:900}
-
-    /* ✅ “VER” NO es link: es botón */
-    .btn-ver-doc{
-      background: transparent;
-      border: 1px solid rgba(96,165,250,.55);
-      color: #93c5fd;
-      font-weight: 900;
-      font-size: 11px;
-      padding: 4px 10px;
-      border-radius: 10px;
-      cursor: pointer;
-      letter-spacing:.2px;
-    }
-    .btn-ver-doc:hover{background:rgba(59,130,246,.12)}
-
-    /* Modal visor */
-    .modal{
-      position:fixed; inset:0; display:none; place-items:center;
-      background:rgba(0,0,0,.55); z-index:100;
-      padding:14px;
-    }
-    .modal.open{display:grid}
-    .modalCard{
-      width:min(1100px, 98vw);
-      height:min(82vh, 820px);
+    #viewerBody{
+      flex:1;
       background:#0b1329;
-      border:1px solid rgba(255,255,255,.14);
-      border-radius:16px;
-      overflow:hidden;
-      display:flex; flex-direction:column;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      overflow:auto;
     }
-    .modalHead{
-      display:flex; align-items:center; justify-content:space-between;
-      gap:10px; padding:10px 12px;
-      border-bottom:1px solid rgba(255,255,255,.10);
-      background:rgba(255,255,255,.03);
+    #viewerBody iframe{
+      width:100%;
+      height:100%;
+      border:0;
+      background:#fff;
     }
-    .modalTitle{font-size:13px;font-weight:900}
-    .modalSub{font-size:11px;color:var(--muted);margin-top:2px}
-    .modalBody{flex:1; background:#000}
-    .modalBody iframe{width:100%;height:100%;border:0}
-    .x{cursor:pointer;border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:6px 10px;background:transparent;color:var(--text);font-weight:900}
-    .x:hover{background:rgba(255,255,255,.06)}
+    #viewerBody img{
+      max-width:100%;
+      max-height:100%;
+      object-fit:contain;
+      background:#fff;
+    }
+
+    @media (max-width: 1100px){
+      .rd-filters{ grid-template-columns: repeat(6, 1fr); }
+      .col-3,.col-4,.col-6{ grid-column: span 6; }
+    }
+    @media (max-width: 700px){
+      .rd-filters{ grid-template-columns: 1fr; }
+      .col-3,.col-4,.col-6,.col-12{ grid-column: span 1; }
+      table.rd-table{ min-width:unset; }
+    }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="brand">
-        <img src="Logo Raitrai.png" alt="RT"/>
-        <div>
-          <h1>REVISIÓN DE DOCUMENTOS</h1>
-          <div class="small">Docs en tabla sin link · Link sólo en exportación</div>
+  <!-- HEADER GLOBAL -->
+  <div id="encabezado"></div>
+
+  <!-- DATALIST DESTINOS (tu JS lo rellena) -->
+  <datalist id="dl-destinos-docs"></datalist>
+
+  <div id="revisionDocsRoot">
+
+    <div class="rd-title">
+      <h2>REVISIÓN DE DOCUMENTOS</h2>
+      <p>Filtra por destino / coordinador / grupo / tipo y revisa rápidamente lo pendiente.</p>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="rd-card">
+      <h3><span class="material-symbols-outlined">tune</span> Filtros</h3>
+
+      <div class="rd-filters">
+        <div class="rd-field col-3">
+          <label>Destino</label>
+          <input id="filtroDestinoDocs" list="dl-destinos-docs" placeholder="Ej: BARILOCHE"/>
+        </div>
+
+        <div class="rd-field col-3">
+          <label>Coordinadores (multi)</label>
+          <details class="multi">
+            <summary>
+              <span id="multiCoordsLabel">Seleccionar…</span>
+              <span class="multi-pill">MULTI</span>
+            </summary>
+            <div class="multi-panel">
+              <input id="searchCoords" placeholder="Buscar coordinador…"/>
+              <div class="multi-actions">
+                <button type="button" class="mini-btn" id="btnCoordsAll">Todos</button>
+                <button type="button" class="mini-btn" id="btnCoordsNone">Ninguno</button>
+              </div>
+              <div class="multi-list" id="coordsList"></div>
+            </div>
+          </details>
+        </div>
+
+        <div class="rd-field col-3">
+          <label>Grupos (multi)</label>
+          <details class="multi">
+            <summary>
+              <span id="multiGruposLabel">Seleccionar…</span>
+              <span class="multi-pill">MULTI</span>
+            </summary>
+            <div class="multi-panel">
+              <input id="searchGrupos" placeholder="Buscar grupo… (número o nombre)"/>
+              <div class="multi-actions">
+                <button type="button" class="mini-btn" id="btnGruposAll">Todos</button>
+                <button type="button" class="mini-btn" id="btnGruposNone">Ninguno</button>
+              </div>
+              <div class="multi-list" id="gruposList"></div>
+            </div>
+          </details>
+        </div>
+
+        <div class="rd-field col-3">
+          <label>Tipo documento (multi)</label>
+          <details class="multi">
+            <summary>
+              <span id="multiTiposLabel">Seleccionar…</span>
+              <span class="multi-pill">MULTI</span>
+            </summary>
+            <div class="multi-panel">
+              <input id="searchTipos" placeholder="Buscar tipo…"/>
+              <div class="multi-actions">
+                <button type="button" class="mini-btn" id="btnTiposAll">Todos</button>
+                <button type="button" class="mini-btn" id="btnTiposNone">Ninguno</button>
+              </div>
+              <div class="multi-list" id="tiposList"></div>
+            </div>
+          </details>
+        </div>
+
+        <div class="rd-field col-3">
+          <label>Gasto aprobado</label>
+          <select id="filtroGastoAprobado">
+            <option value="">(TODOS)</option>
+            <option value="OK">OK</option>
+            <option value="NO">NO</option>
+          </select>
+        </div>
+
+        <div class="rd-field col-6">
+          <label>Texto libre</label>
+          <input id="filtroTextoDocs" placeholder="Grupo, destino, coord, tipo, asunto…"/>
         </div>
       </div>
-      <div class="actions">
-        <button class="btn secondary" id="btn-home">🏠 Inicio</button>
-        <button class="btn secondary" id="btn-reload">🔄 Recargar</button>
-        <button class="btn danger" id="btn-logout">⏏️ Salir</button>
+
+      <div class="rd-actions">
+        <button class="rd-btn" id="btnCargarDocs">
+          <span class="material-symbols-outlined">search</span>
+          Cargar
+        </button>
+
+        <button class="rd-btn secondary" id="btnLimpiarDocs">
+          Limpiar
+        </button>
+
+        <button class="rd-btn secondary" id="btnExportDocs">
+          <span class="material-symbols-outlined">download</span>
+          Exportar CSV
+        </button>
+
+        <span id="infoPendientes"></span>
+
+        <button class="rd-btn" id="btnGuardarPendientes" style="margin-left:auto;">
+          <span class="material-symbols-outlined">save</span>
+          Guardar cambios
+        </button>
+
+        <span id="infoDocs" class="muted"></span>
       </div>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <h2>Filtros</h2>
+    <!-- RESULTADOS -->
+    <div class="rd-card">
+      <h3><span class="material-symbols-outlined">folder_open</span> Resultados</h3>
 
-        <div class="row">
-          <div>
-            <label>Coordinador (email o hint)</label>
-            <input id="filtroCoord" type="text" placeholder="ej: loreto.leiva@... o loreto leiva" list="dl-coords"/>
-            <datalist id="dl-coords"></datalist>
-          </div>
-
-          <div>
-            <label>Grupo (ID / Nº negocio)</label>
-            <input id="filtroGrupo" type="text" placeholder="ej: 1492 o gid..." list="dl-grupos"/>
-            <datalist id="dl-grupos"></datalist>
-          </div>
-
-          <div>
-            <label>Nombre de grupo</label>
-            <input id="filtroNombreGrupo" type="text" placeholder="ej: SAINT LOUIS..." list="dl-grupos-nombre"/>
-            <datalist id="dl-grupos-nombre"></datalist>
-          </div>
-
-          <div>
-            <button class="btn ok" id="btnCargar">📥 Cargar</button>
-            <button class="btn secondary" id="btnLimpiar">🧹 Limpiar</button>
-          </div>
-        </div>
-
-        <div class="hint" id="pagInfo">Listo.</div>
-
-        <div class="chips" id="chipsResumen">
-          <!-- JS pinta chips -->
-        </div>
-      </div>
-
-      <div class="card">
-        <h2>Exportación</h2>
-
-        <div class="row">
-          <button class="btn" id="btnExportXLS">📄 Exportar XLSX</button>
-          <button class="btn" id="btnExportDOC">📝 Exportar DOC (Word)</button>
-        </div>
-
-        <div class="hint">
-          ✅ La tabla no muestra links. <br/>
-          ✅ En los exports sí va <span class="mono">documentoUrl</span>.
-        </div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:12px;">
-      <h2>Listado</h2>
-
-      <div class="tablewrap">
-        <table id="tblDocs">
+      <div class="rd-table-wrap">
+        <table class="rd-table" id="tblDocs">
           <thead>
             <tr>
-              <th>Fecha</th>
+              <!-- ✅ FECHA ELIMINADA -->
               <th>Grupo</th>
               <th>Destino</th>
               <th>Coordinador</th>
               <th>Tipo</th>
-              <th>Detalle</th>
-              <th class="right">Monto</th>
-              <th class="center">Doc</th>
-              <th class="center">Rendición</th>
-              <th class="center">Monto aprobado</th>
+              <th>Rendición</th>
+              <th>Gasto aprobado</th>
+              <th>Moneda</th>
+              <th>Monto</th>
+              <th>Archivo</th>
+              <th>Revisado</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td colspan="10" class="muted">Sin datos. Usa Cargar.</td></tr>
+            <tr>
+              <td colspan="10" class="muted">Sin documentos para los filtros seleccionados.</td>
+            </tr>
           </tbody>
         </table>
       </div>
+
+      <p class="muted" style="font-size:.75rem;margin-top:.6rem;">
+        “Rendición” = OK si <code>docsOk.boleta</code> está marcado. ·
+        “Gasto aprobado” = OK si <code>gastosGrabados &gt; 0</code> y <code>gastosGrabados ≤ costoTotal</code>.
+      </p>
     </div>
 
-    <!-- Modal visor interno -->
-    <div class="modal" id="viewerModal" aria-hidden="true">
-      <div class="modalCard">
-        <div class="modalHead">
-          <div>
-            <div class="modalTitle" id="viewerTitle">Documento</div>
-            <div class="modalSub" id="viewerSub">—</div>
-          </div>
-          <button class="x" id="viewerClose">✕</button>
+  </div>
+
+  <!-- MODAL VISOR -->
+  <div id="viewerModal" aria-hidden="true">
+    <div class="viewer-card">
+      <div class="viewer-head">
+        <div class="viewer-txt">
+          <div id="viewerTitle">Documento</div>
+          <div id="viewerSub"></div>
         </div>
-        <div class="modalBody">
-          <iframe id="viewerFrame" src=""></iframe>
+        <div class="viewer-actions">
+          <a id="viewerOpenTab" href="#" target="_blank" rel="noopener">Abrir pestaña</a>
+          <button id="viewerClose" type="button">Cerrar</button>
         </div>
       </div>
+      <div id="viewerBody"></div>
     </div>
-
-    <!-- Lib XLSX (SheetJS) -->
-    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
-    <!-- Tu JS -->
-    <script type="module" src="./revision_docs.js"></script>
   </div>
+
+  <!-- SCRIPTS -->
+  <script type="module">
+    (async () => {
+      try {
+        const html = await (await fetch('encabezado.html')).text();
+        document.getElementById('encabezado').innerHTML = html;
+      } catch(e){}
+
+      await import('./firebase-init.js');
+      await import('./script.js').catch(()=>{});
+      await import('./revision_docs.js');
+    })();
+  </script>
 </body>
 </html>
