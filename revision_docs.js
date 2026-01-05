@@ -785,7 +785,7 @@ function renderDocsTable() {
     // Archivo: VER (visor) + LINK (url directa)
     if (docItem.url) {
       const ver = document.createElement('span');
-
+      ver.className = 'link';
       ver.textContent = 'VER';
       ver.title = 'Abrir visor';
       ver.addEventListener('click', () => {
