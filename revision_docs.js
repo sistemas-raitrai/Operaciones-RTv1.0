@@ -1,15 +1,12 @@
 // revision_docs.js
 // Revisión de boletas / comprobantes / constancias + comprobantes de gastos
-// Muestra muchos grupos a la vez (filtrado por destino, coord(s), grupos(s), tipo(s), texto).
-// + Columna "Rendición" = OK cuando docsOk.boleta está marcado (boleta SII revisada).
-// + Columna "Gasto aprobado" = OK cuando gastosGrabados > 0 y gastosGrabados <= costoTotal.
-// + Persistencia en Firestore SOLO al apretar "Guardar cambios" (sin autosave).
-// + Modal visor de documentos (imagen/pdf/lo que sea embebible).
-// ✅ Mejoras integradas:
-//   - Exportar CSV (incluye URL)
-//   - Archivo: VER + LINK
-//   - Sin columna Fecha
-//   - computeGastoAprobado más robusto (paths + parseMonto)
+// ✅ "Rendición" = OK cuando docsOk.boleta está marcado (boleta SII revisada).
+// ✅ "Gasto aprobado":
+//    - Si tipoDoc === 'GASTO' => OK si montoAprobado > 0 (en coordinadores/{coord}/gastos/{gastoId})
+//    - Si no => se mantiene regla por summary (gastosGrabados<=costoTotal y >0)
+// ✅ Persistencia SOLO al apretar "Guardar cambios" (sin autosave).
+// ✅ Modal visor de documentos (imagen/pdf/lo que sea embebible).
+// ✅ Exportación Excel (xlsx) en vez de CSV.
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -23,22 +20,22 @@ const auth = getAuth(app);
 const state = {
   user: null,
   filtros: {
-    destino: '',            // string (1)
-    coords: new Set(),      // multi
-    grupos: new Set(),      // multi (gids)
-    tipos: new Set(),       // multi (BOLETA/COMP_CLP/CONST_USD/GASTO)
-    gastoAprobado: '',      // '' | 'OK' | 'NO'
+    destino: '',
+    coords: new Set(),
+    grupos: new Set(),
+    tipos: new Set(),
+    gastoAprobado: '',
     texto: ''
   },
   caches: {
-    grupos: new Map(),      // gid -> {gid,numero,nombre,destino,coordEmail,...}
-    coords: [],             // emails
-    destinos: [],           // strings
+    grupos: new Map(),
+    coords: [],
+    destinos: [],
   },
-  docs: [],                 // lista plana de documentos a mostrar en tabla
-  rendicionOkByGid: new Map(),     // gid -> boolean (docsOk.boleta)
-  gastoAprobadoByGid: new Map(),   // gid -> boolean (regla gastos<=costo && gastos>0)
-  pending: new Map()        // key -> {docItem, checked} para "Guardar cambios"
+  docs: [],
+  rendicionOkByGid: new Map(),
+  gastoAprobadoByGid: new Map(),
+  pending: new Map()
 };
 
 /* ====================== UTILS ====================== */
@@ -296,6 +293,9 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const revisadoBy = rev.by || '';
   const revisadoAt = rev.at ? _toMs(rev.at) : 0;
 
+  // ✅ CLAVE: montoAprobado vive en coordinadores/{coord}/gastos/{gastoId}
+  const montoAprobado = parseMonto(coalesce(raw.montoAprobado, raw.aprobado, raw.monto_aprobado, 0));
+
   return {
     tipoDoc: 'GASTO',
     gastoId: raw.id || raw._id || '',
@@ -308,6 +308,10 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
     fechaTxt,
     moneda,
     monto,
+
+    // ✅ NUEVO
+    montoAprobado,
+
     asunto,
     url: imgUrl,
     revisadoOk,
@@ -316,9 +320,10 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   };
 }
 
-/* ====================== CÁLCULO: GASTO APROBADO (ROBUSTO) ====================== */
+/* ======================
+   CÁLCULO: GASTO APROBADO (summary)
+   ====================== */
 function computeGastoAprobado(summary = {}) {
-  // gastos grabados (CLP) - tolerante a strings con $/puntos
   const gastosGrabados = parseMonto(coalesce(
     summary?.gastosGrabados,
     summary?.gastosGrabadosCLP,
@@ -333,7 +338,6 @@ function computeGastoAprobado(summary = {}) {
     0
   ));
 
-  // costo total / presupuesto total (CLP)
   const costoTotal = parseMonto(coalesce(
     summary?.costoTotal,
     summary?.costoTotalCLP,
@@ -349,6 +353,21 @@ function computeGastoAprobado(summary = {}) {
   ));
 
   return (gastosGrabados > 0) && (costoTotal > 0) && (gastosGrabados <= costoTotal);
+}
+
+/* ======================
+   ✅ GASTO APROBADO por FILA (regla final)
+   ====================== */
+function isAprobOkForRow(docItem){
+  if (!docItem) return false;
+
+  // 🔹 Si es GASTO => depende del gasto (montoAprobado)
+  if (docItem.tipoDoc === 'GASTO') {
+    return Number(docItem.montoAprobado || 0) > 0;
+  }
+
+  // 🔹 Si NO es GASTO => se mantiene regla por grupo (summary)
+  return !!state.gastoAprobadoByGid.get(docItem.grupoId);
 }
 
 /* ====================== CARGA DE DOCUMENTOS ====================== */
@@ -543,11 +562,12 @@ async function loadDocsForCurrentFilters() {
     docsAll = docsAll.filter(d => state.filtros.tipos.has(d.tipoDoc));
   }
 
+  // ✅ Filtro Gasto aprobado (por FILA, no por gid a ciegas)
   if (state.filtros.gastoAprobado === 'OK') {
-    docsAll = docsAll.filter(d => !!state.gastoAprobadoByGid.get(d.grupoId));
+    docsAll = docsAll.filter(d => isAprobOkForRow(d));
   }
   if (state.filtros.gastoAprobado === 'NO') {
-    docsAll = docsAll.filter(d => !state.gastoAprobadoByGid.get(d.grupoId));
+    docsAll = docsAll.filter(d => !isAprobOkForRow(d));
   }
 
   const textoFilter = norm(state.filtros.texto || '');
@@ -738,7 +758,7 @@ function renderDocsTable() {
   if (!state.docs.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 10; // ✅ FECHA ELIMINADA
+    td.colSpan = 10;
     td.innerHTML = '<div class="muted">Sin documentos para los filtros seleccionados.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
@@ -752,7 +772,6 @@ function renderDocsTable() {
   state.docs.forEach(docItem => {
     const tr = document.createElement('tr');
 
-    // ✅ FECHA ELIMINADA
     const tdGrupo   = document.createElement('td');
     const tdDest    = document.createElement('td');
     const tdCoord   = document.createElement('td');
@@ -773,7 +792,8 @@ function renderDocsTable() {
     const rendOk = !!state.rendicionOkByGid.get(docItem.grupoId);
     tdRend.innerHTML = rendOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
-    const aprobOk = !!state.gastoAprobadoByGid.get(docItem.grupoId);
+    // ✅ Gasto aprobado correcto (por fila)
+    const aprobOk = isAprobOkForRow(docItem);
     tdAprob.innerHTML = aprobOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
     tdMon.textContent = docItem.moneda || '—';
@@ -790,7 +810,10 @@ function renderDocsTable() {
       ver.title = 'Abrir visor';
       ver.addEventListener('click', () => {
         const t = `${tipoLabel(docItem.tipoDoc)} — ${docItem.numeroGrupo} — ${docItem.nombreGrupo}`;
-        const s = `${docItem.destino} · ${docItem.coordEmail || '—'} ${docItem.asunto ? '· ' + docItem.asunto : ''}`;
+        const extraAprob = (docItem.tipoDoc === 'GASTO' && Number(docItem.montoAprobado || 0) > 0)
+          ? ` · Aprobado: ${moneyCLP(docItem.montoAprobado)}`
+          : '';
+        const s = `${docItem.destino} · ${docItem.coordEmail || '—'}${docItem.asunto ? ' · ' + docItem.asunto : ''}${extraAprob}`;
         openViewer({ title: t, sub: s, url: docItem.url });
       });
 
@@ -845,83 +868,79 @@ function renderDocsTable() {
   refreshPendingUI();
 }
 
-/* ====================== EXPORT CSV ====================== */
-function csvEscape(v){
-  const s = (v ?? '').toString();
-  if (/[",\n]/.test(s)) return `"${s.replace(/"/g,'""')}"`;
-  return s;
-}
-
+/* ====================== EXPORT EXCEL (XLSX) ====================== */
 function buildExportRows(){
   return state.docs.map(d => {
     const rendOk  = !!state.rendicionOkByGid.get(d.grupoId);
-    const aprobOk = !!state.gastoAprobadoByGid.get(d.grupoId);
+    const aprobOk = isAprobOkForRow(d);
 
     const montoTxt =
       d.monto
         ? (d.moneda === 'USD' ? moneyBy(d.monto, 'USD') : moneyCLP(d.monto))
         : '';
 
+    const aprobadoMontoTxt =
+      d.tipoDoc === 'GASTO' && Number(d.montoAprobado || 0) > 0
+        ? moneyCLP(d.montoAprobado)
+        : '';
+
     return {
-      grupo: `${d.numeroGrupo || ''} — ${d.nombreGrupo || ''}`.trim(),
-      destino: d.destino || '',
-      coordinador: d.coordEmail || '',
-      tipo: tipoLabel(d.tipoDoc),
-      rendicion: rendOk ? 'OK' : '',
-      gastoAprobado: aprobOk ? 'OK' : '',
-      moneda: d.moneda || '',
-      monto: montoTxt,
-      asunto: d.asunto || '',
-      url: d.url || '',
-      revisado: d.revisadoOk ? 'SI' : 'NO'
+      GRUPO: `${d.numeroGrupo || ''} — ${d.nombreGrupo || ''}`.trim(),
+      DESTINO: d.destino || '',
+      COORDINADOR: d.coordEmail || '',
+      TIPO: tipoLabel(d.tipoDoc),
+      RENDICION: rendOk ? 'OK' : '',
+      GASTO_APROBADO: aprobOk ? 'OK' : '',
+      MONEDA: d.moneda || '',
+      MONTO: montoTxt,
+      MONTO_APROBADO: aprobadoMontoTxt, // útil para gastos (si quieres)
+      ASUNTO: d.asunto || '',
+      URL: d.url || '',
+      REVISADO: d.revisadoOk ? 'SI' : 'NO'
     };
   });
 }
 
-function exportDocsCSV(){
+function exportDocsExcel(){
   const rows = buildExportRows();
   if (!rows.length) {
     alert('No hay datos para exportar.');
     return;
   }
 
-  const headers = [
-    'GRUPO','DESTINO','COORDINADOR','TIPO','RENDICION','GASTO_APROBADO',
-    'MONEDA','MONTO','ASUNTO','URL','REVISADO'
-  ];
-
-  const lines = [];
-  lines.push(headers.join(','));
-
-  for (const r of rows){
-    lines.push([
-      csvEscape(r.grupo),
-      csvEscape(r.destino),
-      csvEscape(r.coordinador),
-      csvEscape(r.tipo),
-      csvEscape(r.rendicion),
-      csvEscape(r.gastoAprobado),
-      csvEscape(r.moneda),
-      csvEscape(r.monto),
-      csvEscape(r.asunto),
-      csvEscape(r.url),
-      csvEscape(r.revisado),
-    ].join(','));
+  // SheetJS disponible por <script> global => window.XLSX
+  const XLSX = window.XLSX;
+  if (!XLSX) {
+    alert('No se encontró la librería XLSX. Revisa que el <script> esté cargando.');
+    return;
   }
 
-  const csv = lines.join('\n');
-  const blob = new Blob([csv], { type:'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows, { skipHeader: false });
 
-  const a = document.createElement('a');
+  // Opcional: congelar primera fila (encabezado)
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+  // Opcional: ancho básico por columna
+  ws['!cols'] = [
+    { wch: 35 }, // GRUPO
+    { wch: 14 }, // DESTINO
+    { wch: 26 }, // COORDINADOR
+    { wch: 18 }, // TIPO
+    { wch: 10 }, // RENDICION
+    { wch: 14 }, // GASTO_APROBADO
+    { wch: 8  }, // MONEDA
+    { wch: 16 }, // MONTO
+    { wch: 18 }, // MONTO_APROBADO
+    { wch: 40 }, // ASUNTO
+    { wch: 60 }, // URL
+    { wch: 10 }, // REVISADO
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'RevisionDocs');
+
   const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
-  a.href = url;
-  a.download = `revision_documentos_${stamp}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  XLSX.writeFile(wb, `revision_documentos_${stamp}.xlsx`);
 }
 
 /* ====================== WIRING UI ====================== */
@@ -1006,7 +1025,7 @@ function wireUI() {
     if (infoEl) infoEl.textContent = 'Filtros limpios.';
   });
 
-  btnExport?.addEventListener('click', exportDocsCSV);
+  btnExport?.addEventListener('click', exportDocsExcel);
   btnGuardarPend?.addEventListener('click', flushPending);
 
   refreshPendingUI();
