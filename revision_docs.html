@@ -186,6 +186,14 @@
       cursor:not-allowed;
     }
 
+    /* ✅ Guardar: gris cuando disabled */
+    #btnGuardarPendientes:disabled{
+      background:#e5e7eb !important;
+      border-color:#d1d5db !important;
+      color:#6b7280 !important;
+      opacity:1 !important;
+    }
+
     #infoPendientes{
       display:none;
       padding:.35rem .55rem;
@@ -233,6 +241,7 @@
     }
     .tag.ok{ background:#d1fae5; border-color:#34d399; }
     .tag.pending{ background:#f3f4f6; border-color:#d1d5db; color:#6b7280; }
+    .tag.rejected{ background:#fee2e2; border-color:#ef4444; color:#991b1b; } /* ✅ RECHAZADO */
 
     .link{
       color:#004080;
@@ -241,6 +250,25 @@
       text-decoration:underline;
     }
     .chk{ transform:scale(1.1); }
+
+    /* ✅ Columna Grupo más angosta */
+    table.rd-table th:nth-child(1),
+    table.rd-table td:nth-child(1){
+      max-width: 260px;
+      width: 260px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ✅ Select Documento Fiscal compacto */
+    .docf-select{
+      padding:.25rem .35rem;
+      border:1px solid #ccc;
+      border-radius:8px;
+      font-weight:800;
+      font-size:.78rem;
+      background:#fff;
+    }
 
     /* =======================
        MODAL VISOR
@@ -473,12 +501,13 @@
               <th>Moneda</th>
               <th>Monto</th>
               <th>Archivo</th>
+              <th>Documento Fiscal</th>
               <th>Revisado</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td colspan="10" class="muted">Sin documentos para los filtros seleccionados.</td>
+              <td colspan="11" class="muted">Sin documentos para los filtros seleccionados.</td>
             </tr>
           </tbody>
         </table>
@@ -487,8 +516,8 @@
       <p class="muted" style="font-size:.75rem;margin-top:.6rem;">
         “Rendición” = OK si <code>docsOk.boleta</code> está marcado. ·
         “Gasto aprobado”:
-        si <strong>Tipo = GASTO</strong> ⇒ OK si <code>montoAprobado &gt; 0</code> (en <code>coordinadores/{coord}/gastos/{gastoId}</code>),
-        si no ⇒ se calcula por <code>summary</code> (gastosGrabados vs costoTotal).
+        si <strong>Tipo = GASTO</strong> ⇒ OK si <code>montoAprobado &gt; 0</code>,
+        si <code>montoAprobado = 0</code> ⇒ <strong>RECHAZADO</strong>.
       </p>
     </div>
 
