@@ -261,6 +261,17 @@
       font-size: .92rem !important;
     }
     .es-scope .cell-input.num{ text-align:right !important; }
+
+    /* =========================
+   Columna Coordinador (angosta)
+    ========================= */
+    .es-scope .col-coord{
+      max-width: 160px;     /* ajusta: 140–180 suele ser ideal */
+      width: 160px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
   </style>
 </head>
 
@@ -390,7 +401,7 @@
             <tr>
               <th class="es-nowrap">GID</th>
               <th>Grupo</th>
-              <th class="es-nowrap">Coordinador</th>
+              <th class="es-nowrap col-coord">Coordinador(a)</th>
           
               <th class="es-nowrap es-right">PAX Esperados</th>
               <th class="es-nowrap es-right">PAX Declarados</th>
