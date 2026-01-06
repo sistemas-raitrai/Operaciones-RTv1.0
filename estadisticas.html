@@ -4,325 +4,372 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Estadísticas | RT</title>
-  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
-  <!-- Tu CSS global -->
-  <link rel="stylesheet" href="estilos.css"/>
+  <!-- TU CSS GLOBAL -->
+  <link rel="stylesheet" href="style.css"/>
 
+  <!-- IMPORTANTE:
+       Todo lo de esta página está "namespaced" bajo body.rt-stats
+       para que NO lo pisen tus clases genéricas (.grid, .card, .row, label, input, button, body, etc.)
+  -->
   <style>
-    /* Ajustes mínimos (no pisa tu style.css; solo complementa) */
-    .page {
+    /* ===========================
+       SCOPE: SOLO ESTA PÁGINA
+       =========================== */
+    body.rt-stats {
+      /* No tocamos tu CSS global, pero aseguramos que esta vista se vea consistente */
+      background: var(--bg, #f4f6fb);
+      color: var(--ink, #0f172a);
+      /* tu estilos.css mete padding-top por header fijo;
+         acá NO lo anulamos globalmente para no pelear.
+         Solo trabajamos con contenedores internos. */
+    }
+
+    body.rt-stats .rtstats-page {
       max-width: 1200px;
       margin: 0 auto;
       padding: 18px;
     }
 
-    .topbar {
+    /* Header propio (NO usa .header para no chocar con header.header del global) */
+    body.rt-stats .rtstats-topbar {
       display:flex;
       align-items:center;
       justify-content:space-between;
       gap:12px;
       padding: 12px 14px;
-      border: 1px solid var(--border);
-      background: var(--card);
+      border: 1px solid var(--border, #d1d5db);
+      background: var(--card, #fff);
       border-radius: 14px;
       box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
       margin-bottom: 14px;
     }
-    .topbar .left {
+    body.rt-stats .rtstats-topbar .left {
       display:flex;
       align-items:center;
       gap:10px;
       min-width: 220px;
     }
-    .brand {
+    body.rt-stats .rtstats-brand {
       font-weight: 800;
       letter-spacing: .2px;
     }
-    .top-actions {
+    body.rt-stats .rtstats-actions {
       display:flex;
       gap:8px;
       align-items:center;
       flex-wrap: wrap;
     }
-    .btn {
-      border: 1px solid var(--border);
-      background: var(--card);
+
+    /* Botones propios (NO usar button global) */
+    body.rt-stats .rtstats-btn {
+      border: 1px solid var(--border, #d1d5db);
+      background: var(--card, #fff);
       padding: 8px 10px;
       border-radius: 10px;
       cursor: pointer;
       font-weight: 600;
+      line-height: 1;
     }
-    .btn.primary {
-      background: var(--bg-strong);
-      border-color: var(--bg-strong);
+    body.rt-stats .rtstats-btn.primary {
+      background: var(--bg-strong, #00a89d);
+      border-color: var(--bg-strong, #00a89d);
       color: white;
     }
 
-    .grid {
+    /* Layout principal (NO .grid) */
+    body.rt-stats .rtstats-grid {
       display:grid;
       grid-template-columns: 420px 1fr;
       gap: 14px;
     }
     @media (max-width: 980px){
-      .grid { grid-template-columns: 1fr; }
+      body.rt-stats .rtstats-grid { grid-template-columns: 1fr; }
     }
 
-    .card {
-      border: 1px solid var(--border);
-      background: var(--card);
+    /* Cards propias (NO .card) */
+    body.rt-stats .rtstats-card {
+      border: 1px solid var(--border, #d1d5db);
+      background: var(--card, #fff);
       border-radius: 14px;
       box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
       padding: 12px;
     }
-    .card h3 {
+    body.rt-stats .rtstats-card h3 {
       margin: 0 0 10px;
       font-size: 14px;
       text-transform: uppercase;
       letter-spacing: .4px;
-      color: var(--muted);
+      color: var(--muted, #6b7280);
     }
 
-    .filters .row {
+    /* Filtros (NO .row) */
+    body.rt-stats .rtstats-row {
       display:grid;
       grid-template-columns: 1fr 1fr;
       gap: 10px;
       margin-bottom: 10px;
     }
-    .filters .row.one { grid-template-columns: 1fr; }
-    .filters label {
+    body.rt-stats .rtstats-row.one {
+      grid-template-columns: 1fr;
+    }
+
+    /* Labels e inputs SOLO dentro de esta página (tu CSS global pone label bold + margin-top; lo anulamos acá) */
+    body.rt-stats .rtstats-card label {
       display:block;
+      margin: 0 0 4px;
       font-size: 12px;
-      color: var(--muted);
-      margin-bottom: 4px;
-      font-weight: 700;
+      color: var(--muted, #6b7280);
+      font-weight: 800;
       text-transform: uppercase;
       letter-spacing: .3px;
     }
-    .input, select {
+
+    /* Importante: tu estilos.css fuerza text-transform: uppercase a TODOS los inputs/select/textarea.
+       Aquí lo anulamos SOLO para esta página (si quieres mantener mayúsculas, borra estas 2 líneas). */
+    body.rt-stats .rtstats-input,
+    body.rt-stats .rtstats-select {
       width: 100%;
       padding: 10px 10px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border, #d1d5db);
       border-radius: 10px;
-      background: white;
+      background: #fff;
       outline: none;
+      box-sizing: border-box;
+      margin: 0;
+      font-size: 14px;
+      text-transform: none !important; /* 👈 evita que quede todo en mayúsculas por estilos.css */
     }
 
-    .kpis {
+    /* KPIs */
+    body.rt-stats .rtstats-kpis {
       display:grid;
       grid-template-columns: repeat(4, 1fr);
       gap: 10px;
       margin-bottom: 12px;
     }
     @media (max-width: 980px){
-      .kpis { grid-template-columns: repeat(2, 1fr); }
+      body.rt-stats .rtstats-kpis { grid-template-columns: repeat(2, 1fr); }
     }
-    .kpi {
-      border: 1px solid var(--border);
+
+    body.rt-stats .rtstats-kpi {
+      border: 1px solid var(--border, #d1d5db);
       border-radius: 12px;
       padding: 10px;
       background: #fff;
     }
-    .kpi .label {
+    body.rt-stats .rtstats-kpi .label {
       font-size: 12px;
-      color: var(--muted);
-      font-weight: 800;
+      color: var(--muted, #6b7280);
+      font-weight: 900;
       text-transform: uppercase;
       letter-spacing: .3px;
       margin-bottom: 6px;
     }
-    .kpi .value {
+    body.rt-stats .rtstats-kpi .value {
       font-size: 22px;
       font-weight: 900;
     }
-    .kpi .sub {
+    body.rt-stats .rtstats-kpi .sub {
       margin-top: 6px;
       font-size: 12px;
-      color: var(--muted);
+      color: var(--muted, #6b7280);
     }
 
-    table {
+    /* Tabla */
+    body.rt-stats .rtstats-tablewrap {
+      margin-top: 12px;
+      overflow:auto;
+    }
+
+    body.rt-stats table.rtstats-table {
       width: 100%;
       border-collapse: collapse;
       font-size: 13px;
       background: #fff;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border, #d1d5db);
       border-radius: 12px;
       overflow: hidden;
     }
-    thead th {
+    body.rt-stats table.rtstats-table thead th {
       text-align: left;
       background: #f9fafb;
-      border-bottom: 1px solid var(--border);
+      border-bottom: 1px solid var(--border, #d1d5db);
       padding: 10px 10px;
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: .3px;
-      color: var(--muted);
+      color: var(--muted, #6b7280);
+      white-space: nowrap;
     }
-    tbody td {
+    body.rt-stats table.rtstats-table tbody td {
       border-bottom: 1px solid #eef2f7;
       padding: 9px 10px;
       vertical-align: top;
     }
-    tbody tr:hover { background: #fafafa; }
+    body.rt-stats table.rtstats-table tbody tr:hover { background: #fafafa; }
 
-    .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
-    .muted { color: var(--muted); }
-    .right { text-align:right; }
-    .pill {
+    body.rt-stats .mono {
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    }
+    body.rt-stats .muted { color: var(--muted, #6b7280); }
+    body.rt-stats .right { text-align:right; }
+
+    body.rt-stats .rtstats-pill {
       display:inline-block;
       padding: 3px 8px;
       border-radius: 999px;
-      border: 1px solid var(--border);
+      border: 1px solid var(--border, #d1d5db);
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 800;
       background: #fff;
+      white-space: nowrap;
     }
 
-    .footerline {
+    body.rt-stats .rtstats-footerline {
       margin-top: 10px;
       display:flex;
       align-items:center;
       justify-content: space-between;
       gap:10px;
       flex-wrap: wrap;
-      color: var(--muted);
+      color: var(--muted, #6b7280);
       font-size: 12px;
     }
   </style>
 </head>
 
-<body>
-  <div class="page">
+<body class="rt-stats">
+  <div class="rtstats-page">
 
-    <!-- Encabezado común (simple). Si tú ya usas layout.js/sidebar, lo puedes reemplazar por tu header estándar -->
-    <header class="topbar">
+    <!-- Encabezado -->
+    <header class="rtstats-topbar">
       <div class="left">
-        <div class="brand">RT · Estadísticas</div>
+        <div class="rtstats-brand">RT · Estadísticas</div>
         <div id="whoami" class="muted" style="font-size:12px;">—</div>
       </div>
 
-      <div class="top-actions">
-        <button class="btn" id="btnHome" title="Inicio">🏠</button>
-        <button class="btn" id="btnReload" title="Actualizar">🔄</button>
-        <button class="btn" id="btnBack" title="Volver">⬅️</button>
-        <button class="btn primary" id="btn-logout" title="Cerrar sesión">⏏️</button>
+      <div class="rtstats-actions">
+        <button class="rtstats-btn" id="btnHome" title="Inicio">🏠</button>
+        <button class="rtstats-btn" id="btnReload" title="Actualizar">🔄</button>
+        <button class="rtstats-btn" id="btnBack" title="Volver">⬅️</button>
+        <button class="rtstats-btn primary" id="btn-logout" title="Cerrar sesión">⏏️</button>
       </div>
     </header>
 
-    <div class="grid">
+    <div class="rtstats-grid">
       <!-- FILTROS -->
-      <section class="card filters">
+      <section class="rtstats-card">
         <h3>Filtros</h3>
 
-        <div class="row one">
+        <div class="rtstats-row one">
           <div>
             <label for="q">Buscar (grupo / número / coord / destino / programa)</label>
-            <input class="input" id="q" type="text" placeholder="ej: 1492, bariloche, loreto..." />
+            <input class="rtstats-input" id="q" type="text" placeholder="Ej: 1492, Bariloche, Loreto..." />
           </div>
         </div>
 
-        <div class="row">
+        <div class="rtstats-row">
           <div>
             <label for="fCoord">Coordinador (email)</label>
-            <input class="input" id="fCoord" list="dlCoords" placeholder="coord@..." />
+            <input class="rtstats-input" id="fCoord" list="dlCoords" placeholder="coord@..." />
             <datalist id="dlCoords"></datalist>
           </div>
           <div>
             <label for="fGrupo">Grupo (ID)</label>
-            <input class="input" id="fGrupo" list="dlGrupos" placeholder="gid..." />
+            <input class="rtstats-input" id="fGrupo" list="dlGrupos" placeholder="gid..." />
             <datalist id="dlGrupos"></datalist>
           </div>
         </div>
 
-        <div class="row">
+        <div class="rtstats-row">
           <div>
             <label for="fDestino">Destino</label>
-            <select id="fDestino">
+            <select class="rtstats-select" id="fDestino">
               <option value="">(Todos)</option>
             </select>
           </div>
           <div>
             <label for="fPrograma">Programa</label>
-            <select id="fPrograma">
+            <select class="rtstats-select" id="fPrograma">
               <option value="">(Todos)</option>
             </select>
           </div>
         </div>
 
-        <div class="row">
+        <div class="rtstats-row">
           <div>
             <label for="fAno">Año (de fechaInicio)</label>
-            <select id="fAno">
+            <select class="rtstats-select" id="fAno">
               <option value="">(Todos)</option>
             </select>
           </div>
           <div>
             <label for="fInicioDesde">Fecha inicio desde</label>
-            <input class="input" id="fInicioDesde" type="date"/>
+            <input class="rtstats-input" id="fInicioDesde" type="date"/>
           </div>
         </div>
 
-        <div class="row">
+        <div class="rtstats-row">
           <div>
             <label for="fInicioHasta">Fecha inicio hasta</label>
-            <input class="input" id="fInicioHasta" type="date"/>
+            <input class="rtstats-input" id="fInicioHasta" type="date"/>
           </div>
           <div>
             <label>&nbsp;</label>
-            <button class="btn primary" id="btnAplicar">Aplicar filtros</button>
+            <button class="rtstats-btn primary" id="btnAplicar" style="width:100%;">Aplicar filtros</button>
           </div>
         </div>
 
-        <div class="row one">
-          <button class="btn" id="btnLimpiar">Limpiar filtros</button>
+        <div class="rtstats-row one">
+          <button class="rtstats-btn" id="btnLimpiar" style="width:100%;">Limpiar filtros</button>
         </div>
 
-        <div class="footerline">
+        <div class="rtstats-footerline">
           <div id="status">—</div>
           <div>
-            <button class="btn" id="btnExportCSV">Exportar CSV</button>
+            <button class="rtstats-btn" id="btnExportCSV">Exportar CSV</button>
           </div>
         </div>
       </section>
 
       <!-- RESULTADOS -->
-      <section class="card">
+      <section class="rtstats-card">
         <h3>Totales</h3>
 
-        <div class="kpis">
-          <div class="kpi">
+        <div class="rtstats-kpis">
+          <div class="rtstats-kpi">
             <div class="label">Grupos</div>
             <div class="value mono" id="kGrupos">0</div>
             <div class="sub" id="kGruposSub">—</div>
           </div>
 
-          <div class="kpi">
+          <div class="rtstats-kpi">
             <div class="label">PAX esperados</div>
             <div class="value mono" id="kEsperados">0</div>
             <div class="sub">Suma de cantidadGrupo</div>
           </div>
 
-          <div class="kpi">
+          <div class="rtstats-kpi">
             <div class="label">PAX declarados</div>
             <div class="value mono" id="kDeclarados">0</div>
             <div class="sub">Suma de paxViajando.total</div>
           </div>
 
-          <div class="kpi">
+          <div class="rtstats-kpi">
             <div class="label">Delta</div>
             <div class="value mono" id="kDelta">0</div>
             <div class="sub">(Declarados - Esperados)</div>
           </div>
         </div>
 
-        <div class="footerline" style="margin-top:0;">
+        <div class="rtstats-footerline" style="margin-top:0;">
           <div class="muted">Tip: si no hay “declarados”, el grupo aún no inició viaje (o no se guardó paxViajando).</div>
         </div>
 
-        <div style="margin-top:12px; overflow:auto;">
-          <table id="tbl">
+        <div class="rtstats-tablewrap">
+          <table class="rtstats-table" id="tbl">
             <thead>
               <tr>
                 <th>Grupo</th>
