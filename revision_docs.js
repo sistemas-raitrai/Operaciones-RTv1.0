@@ -878,10 +878,10 @@ async function flushPending(){
 
 /* ====================== MODAL VISOR ====================== */
 function openViewer({ title, sub, url }) {
-  const modal = document.getElementById('viewerModal');
-  const body  = document.getElementById('viewerBody');
-  const h1    = document.getElementById('viewerTitle');
-  const h2    = document.getElementById('viewerSub');
+  const modal   = document.getElementById('viewerModal');
+  const body    = document.getElementById('viewerBody');
+  const h1      = document.getElementById('viewerTitle');
+  const h2      = document.getElementById('viewerSub');
   const openTab = document.getElementById('viewerOpenTab');
 
   if (!modal || !body || !h1 || !h2 || !openTab) return;
@@ -894,20 +894,52 @@ function openViewer({ title, sub, url }) {
 
   if (!url) {
     body.innerHTML = `<div style="padding:14px;color:#6b7280;">Sin URL.</div>`;
-  }  else if (isImageUrl(url)) {
-  
-     modal.classList.add('open');
-     modal.setAttribute('aria-hidden', 'false');
-   }
-  
-   function closeViewer() {
-     const modal = document.getElementById('viewerModal');
-     const body  = document.getElementById('viewerBody');
-     if (!modal || !body) return;
-     modal.classList.remove('open');
-     modal.setAttribute('aria-hidden', 'true');
-     body.innerHTML = '';
-   }
+  } else if (isImageUrl(url)) {
+    // ✅ IMAGEN
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = title || 'Documento';
+    img.style.maxWidth = '100%';
+    img.style.maxHeight = '100%';
+    img.style.objectFit = 'contain';
+    img.style.background = '#fff';
+    body.appendChild(img);
+
+  } else if (isPdfUrl(url)) {
+    // ✅ PDF
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = '0';
+    iframe.style.background = '#fff';
+    body.appendChild(iframe);
+
+  } else {
+    // ✅ Otros: intenta embebido igual
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    iframe.style.width = '100%';
+    iframe.style.height = '100%';
+    iframe.style.border = '0';
+    iframe.style.background = '#fff';
+    body.appendChild(iframe);
+  }
+
+  modal.classList.add('open');
+  modal.setAttribute('aria-hidden', 'false');
+}
+
+function closeViewer() {
+  const modal = document.getElementById('viewerModal');
+  const body  = document.getElementById('viewerBody');
+  if (!modal || !body) return;
+
+  modal.classList.remove('open');
+  modal.setAttribute('aria-hidden', 'true');
+  body.innerHTML = '';
+}
+
 
 /* ====================== RENDER TABLA ====================== */
 function tipoLabel(tipo) {
