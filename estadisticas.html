@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Estadísticas | RT</title>
+
+  <!-- Tu CSS global -->
+  <link rel="stylesheet" href="style.css"/>
+
+  <style>
+    /* Ajustes mínimos (no pisa tu style.css; solo complementa) */
+    .page {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .topbar {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding: 12px 14px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+      margin-bottom: 14px;
+    }
+    .topbar .left {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-width: 220px;
+    }
+    .brand {
+      font-weight: 800;
+      letter-spacing: .2px;
+    }
+    .top-actions {
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap: wrap;
+    }
+    .btn {
+      border: 1px solid var(--border);
+      background: var(--card);
+      padding: 8px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn.primary {
+      background: var(--bg-strong);
+      border-color: var(--bg-strong);
+      color: white;
+    }
+
+    .grid {
+      display:grid;
+      grid-template-columns: 420px 1fr;
+      gap: 14px;
+    }
+    @media (max-width: 980px){
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
+      padding: 12px;
+    }
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: .4px;
+      color: var(--muted);
+    }
+
+    .filters .row {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .filters .row.one { grid-template-columns: 1fr; }
+    .filters label {
+      display:block;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 4px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+    }
+    .input, select {
+      width: 100%;
+      padding: 10px 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: white;
+      outline: none;
+    }
+
+    .kpis {
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    @media (max-width: 980px){
+      .kpis { grid-template-columns: repeat(2, 1fr); }
+    }
+    .kpi {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px;
+      background: #fff;
+    }
+    .kpi .label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      margin-bottom: 6px;
+    }
+    .kpi .value {
+      font-size: 22px;
+      font-weight: 900;
+    }
+    .kpi .sub {
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    thead th {
+      text-align: left;
+      background: #f9fafb;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 10px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .3px;
+      color: var(--muted);
+    }
+    tbody td {
+      border-bottom: 1px solid #eef2f7;
+      padding: 9px 10px;
+      vertical-align: top;
+    }
+    tbody tr:hover { background: #fafafa; }
+
+    .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .muted { color: var(--muted); }
+    .right { text-align:right; }
+    .pill {
+      display:inline-block;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 700;
+      background: #fff;
+    }
+
+    .footerline {
+      margin-top: 10px;
+      display:flex;
+      align-items:center;
+      justify-content: space-between;
+      gap:10px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+
+    <!-- Encabezado común (simple). Si tú ya usas layout.js/sidebar, lo puedes reemplazar por tu header estándar -->
+    <header class="topbar">
+      <div class="left">
+        <div class="brand">RT · Estadísticas</div>
+        <div id="whoami" class="muted" style="font-size:12px;">—</div>
+      </div>
+
+      <div class="top-actions">
+        <button class="btn" id="btnHome" title="Inicio">🏠</button>
+        <button class="btn" id="btnReload" title="Actualizar">🔄</button>
+        <button class="btn" id="btnBack" title="Volver">⬅️</button>
+        <button class="btn primary" id="btn-logout" title="Cerrar sesión">⏏️</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <!-- FILTROS -->
+      <section class="card filters">
+        <h3>Filtros</h3>
+
+        <div class="row one">
+          <div>
+            <label for="q">Buscar (grupo / número / coord / destino / programa)</label>
+            <input class="input" id="q" type="text" placeholder="ej: 1492, bariloche, loreto..." />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="fCoord">Coordinador (email)</label>
+            <input class="input" id="fCoord" list="dlCoords" placeholder="coord@..." />
+            <datalist id="dlCoords"></datalist>
+          </div>
+          <div>
+            <label for="fGrupo">Grupo (ID)</label>
+            <input class="input" id="fGrupo" list="dlGrupos" placeholder="gid..." />
+            <datalist id="dlGrupos"></datalist>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="fDestino">Destino</label>
+            <select id="fDestino">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div>
+            <label for="fPrograma">Programa</label>
+            <select id="fPrograma">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="fAno">Año (de fechaInicio)</label>
+            <select id="fAno">
+              <option value="">(Todos)</option>
+            </select>
+          </div>
+          <div>
+            <label for="fInicioDesde">Fecha inicio desde</label>
+            <input class="input" id="fInicioDesde" type="date"/>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="fInicioHasta">Fecha inicio hasta</label>
+            <input class="input" id="fInicioHasta" type="date"/>
+          </div>
+          <div>
+            <label>&nbsp;</label>
+            <button class="btn primary" id="btnAplicar">Aplicar filtros</button>
+          </div>
+        </div>
+
+        <div class="row one">
+          <button class="btn" id="btnLimpiar">Limpiar filtros</button>
+        </div>
+
+        <div class="footerline">
+          <div id="status">—</div>
+          <div>
+            <button class="btn" id="btnExportCSV">Exportar CSV</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- RESULTADOS -->
+      <section class="card">
+        <h3>Totales</h3>
+
+        <div class="kpis">
+          <div class="kpi">
+            <div class="label">Grupos</div>
+            <div class="value mono" id="kGrupos">0</div>
+            <div class="sub" id="kGruposSub">—</div>
+          </div>
+
+          <div class="kpi">
+            <div class="label">PAX esperados</div>
+            <div class="value mono" id="kEsperados">0</div>
+            <div class="sub">Suma de cantidadGrupo</div>
+          </div>
+
+          <div class="kpi">
+            <div class="label">PAX declarados</div>
+            <div class="value mono" id="kDeclarados">0</div>
+            <div class="sub">Suma de paxViajando.total</div>
+          </div>
+
+          <div class="kpi">
+            <div class="label">Delta</div>
+            <div class="value mono" id="kDelta">0</div>
+            <div class="sub">(Declarados - Esperados)</div>
+          </div>
+        </div>
+
+        <div class="footerline" style="margin-top:0;">
+          <div class="muted">Tip: si no hay “declarados”, el grupo aún no inició viaje (o no se guardó paxViajando).</div>
+        </div>
+
+        <div style="margin-top:12px; overflow:auto;">
+          <table id="tbl">
+            <thead>
+              <tr>
+                <th>Grupo</th>
+                <th>Coordinador</th>
+                <th>Destino</th>
+                <th>Programa</th>
+                <th class="right">Esperados</th>
+                <th class="right">Declarados</th>
+                <th class="right">Δ</th>
+                <th>Inicio</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+      </section>
+    </div>
+  </div>
+
+  <script type="module" src="estadisticas.js"></script>
+</body>
+</html>
