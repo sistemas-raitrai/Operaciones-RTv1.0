@@ -467,7 +467,7 @@ function render(){
     tr.innerHTML = `
       <td class="es-nowrap es-mono">${escapeHtml(r.gid)}</td>
       <td>${escapeHtml(r.nombre || '(sin nombre)')}</td>
-      <td class="es-nowrap">${escapeHtml(r.coord || '')}</td>
+      <td class="es-nowrap">${escapeHtml((r.coord || '').toUpperCase())}</td>
 
       <td class="es-nowrap es-right es-mono">${expected}</td>
       <td class="es-nowrap es-right es-mono">${declared}</td>
