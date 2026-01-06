@@ -483,6 +483,7 @@ function render(){
         <input class="cell-input" type="text"
                data-role="revision"
                value="${escapeAttr(revisionVal)}"
+               title="${escapeAttr(revisionVal)}"
                placeholder="${revPh}"
                ${revisionDisabled} />
       </td>
@@ -542,6 +543,7 @@ function onEditRow(gid, tr){
   }
 
   const revisionTxt = needsManual ? safeText(inpRevision?.value || '') : '';
+  if (inpRevision) inpRevision.title = safeText(inpRevision.value || '');
 
   // ✅ badge estado basado en reglas nuevas
   const st = calcStatus(row, realesOk, revisionTxt);
