@@ -1,13 +1,13 @@
-// revision_docs.js
+// ✅ revision_docs.js (COMPLETO)
 // Revisión de boletas / comprobantes / constancias + comprobantes de gastos
-// ✅ "Rendición" = OK cuando docsOk.boleta está marcado.
-// ✅ "Gasto aprobado":
-//    - Si tipoDoc === 'GASTO' => OK si montoAprobado > 0; RECHAZADO si montoAprobado === 0
+// ✅ Rendición: OK si docsOk.boleta
+// ✅ Gasto aprobado:
+//    - Si tipoDoc === 'GASTO' => OK si montoAprobado > 0; si =0 => "Rechazado" (rojo)
 //    - Si NO es GASTO => se mantiene regla por summary (gastosGrabados<=costoTotal y >0)
-// ✅ Persistencia SOLO al apretar "Guardar cambios" (sin autosave).
-// ✅ Modal visor.
-// ✅ Exportación Excel con hipervínculo "VER".
-// ✅ Nueva columna "Documento Fiscal" (select) + export.
+// ✅ Guardar cambios persiste:
+//    - Checkbox Revisado
+//    - Select Documento Fiscal (Es Boleta / No es Boleta)
+// ✅ Exportación Excel (xlsx) con HIPERVÍNCULO en la columna URL
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -29,14 +29,18 @@ const state = {
     texto: ''
   },
   caches: {
-    grupos: new Map(),
+    grupos: new Map(),   // gid -> info
     coords: [],
     destinos: [],
   },
   docs: [],
+
+  // Maps por grupo (summary)
   rendicionOkByGid: new Map(),
   gastoAprobadoByGid: new Map(),
-  pending: new Map()
+
+  // Pendientes a guardar (revisado + fiscal)
+  pending: new Map() // key -> { docItem, checked?, fiscal? }
 };
 
 /* ====================== UTILS ====================== */
@@ -75,6 +79,7 @@ function _toMs(v){
   }
   return 0;
 }
+
 function pickFechaMs(raw){
   const cands = [
     raw.fecha, raw.fechaPago, raw.fechaAbono,
@@ -86,6 +91,7 @@ function pickFechaMs(raw){
   }
   return 0;
 }
+
 function fmtDDMMYYYY(ms){
   if (!ms) return '';
   const d = new Date(ms);
@@ -100,12 +106,23 @@ function isImageUrl(url=''){
   return u.includes('.png') || u.includes('.jpg') || u.includes('.jpeg') || u.includes('.webp') || u.includes('image');
 }
 
-// ✅ Coordinador display: sin guiones + mayúsculas (solo visual / export)
-function formatCoordDisplay(s=''){
-  return String(s || '')
-    .replace(/[-_]+/g, ' ')
-    .toUpperCase()
-    .trim();
+// ✅ display coord: sacar guiones y MAYÚSCULAS (como pediste)
+function coordDisplay(email=''){
+  const s = (email || '').toString().replace(/-/g,' ').toUpperCase();
+  return s || '—';
+}
+
+/* ======================
+   DOCUMENTO FISCAL (VALORES)
+   ====================== */
+const FISCAL_ES = 'ES_BOLETA';
+const FISCAL_NO = 'NO_ES_BOLETA';
+const FISCAL_EMPTY = ''; // sin definir
+
+function fiscalLabel(v){
+  if (v === FISCAL_ES) return 'Es Boleta';
+  if (v === FISCAL_NO) return 'No es Boleta';
+  return '(Sin definir)';
 }
 
 /* ====================== UI HELPERS (MULTISELECT) ====================== */
@@ -198,6 +215,7 @@ async function preloadGruposDocs() {
 
     const numero = coalesce(x.numeroNegocio, x.numNegocio, x.idNegocio, gid);
     const nombre = coalesce(x.nombreGrupo, x.aliasGrupo, x.nombre, x.grupo, gid);
+
     const coordEmail = coalesce(
       x.coordinadorEmail, x.coordinador?.email, x.coordinador,
       x.coord, x.responsable, x.owner, ''
@@ -284,13 +302,6 @@ async function preloadGruposDocs() {
 }
 
 /* ====================== NORMALIZADORES ====================== */
-function defaultDocFiscalByTipo(tipoDoc=''){
-  return (tipoDoc === 'BOLETA') ? 'ES_BOLETA' : 'NO_ES_BOLETA';
-}
-function docFiscalLabel(v){
-  return (v === 'ES_BOLETA') ? 'Es Boleta' : 'No es Boleta';
-}
-
 function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const brutoMonto = coalesce(
     raw.monto, raw.montoCLP, raw.neto, raw.importe,
@@ -310,8 +321,10 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const revisadoBy = rev.by || '';
   const revisadoAt = rev.at ? _toMs(rev.at) : 0;
 
-  // ✅ CLAVE: montoAprobado viene de coordinadores/{coord}/gastos/{gastoId}
   const montoAprobado = parseMonto(coalesce(raw.montoAprobado, raw.aprobado, raw.monto_aprobado, 0));
+
+  // ✅ Documento fiscal guardado a nivel gasto
+  const docFiscal = coalesce(raw.documentoFiscal, raw.docFiscal, raw.fiscal, '');
 
   return {
     tipoDoc: 'GASTO',
@@ -320,7 +333,7 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
     numeroGrupo: grupoInfo.numero,
     nombreGrupo: grupoInfo.nombre,
     destino: grupoInfo.destino,
-    coordEmail: coordFromPath || grupoInfo.coordEmail || '',
+    coordEmail: (coordFromPath || grupoInfo.coordEmail || '').toLowerCase(),
     fechaMs,
     fechaTxt,
     moneda,
@@ -329,8 +342,8 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
     asunto,
     url: imgUrl,
 
-    // ✅ NUEVO: Documento Fiscal (editable en tabla, solo para export/visual)
-    docFiscal: defaultDocFiscalByTipo('GASTO'),
+    // ✅ NUEVO
+    documentoFiscal: docFiscal,
 
     revisadoOk,
     revisadoBy,
@@ -376,16 +389,31 @@ function computeGastoAprobado(summary = {}) {
 /* ======================
    ✅ GASTO APROBADO por FILA (regla final)
    ====================== */
-function isAprobOkForRow(docItem){
-  if (!docItem) return false;
+function aprobStateForRow(docItem){
+  if (!docItem) return { ok:false, label:'—', cls:'pending' };
 
-  // 🔹 Si es GASTO => depende del gasto (montoAprobado)
   if (docItem.tipoDoc === 'GASTO') {
-    return Number(docItem.montoAprobado || 0) > 0;
+    const ma = Number(docItem.montoAprobado || 0);
+    if (ma > 0) return { ok:true, label:'OK', cls:'ok' };
+    return { ok:false, label:'Rechazado', cls:'bad' }; // ✅ pedido
   }
 
-  // 🔹 Si NO es GASTO => se mantiene regla por grupo (summary)
-  return !!state.gastoAprobadoByGid.get(docItem.grupoId);
+  const ok = !!state.gastoAprobadoByGid.get(docItem.grupoId);
+  return ok ? { ok:true, label:'OK', cls:'ok' } : { ok:false, label:'—', cls:'pending' };
+}
+
+function isAprobOkForRow(docItem){
+  return aprobStateForRow(docItem).ok;
+}
+
+/* ======================
+   DOC FISCAL: KEY según tipo
+   ====================== */
+function fiscalKeyForTipo(tipoDoc){
+  if (tipoDoc === 'BOLETA') return 'boleta';
+  if (tipoDoc === 'COMP_CLP') return 'comprobante';
+  if (tipoDoc === 'CONST_USD') return 'transferencia';
+  return '';
 }
 
 /* ====================== CARGA DE DOCUMENTOS ====================== */
@@ -408,6 +436,7 @@ async function loadDocsSummaryForGroups(gids) {
     }
 
     const docsOk = (summary && summary.docsOk) || {};
+    const docsFiscal = (summary && summary.docsFiscal) || {};
 
     const rendOk = !!docsOk.boleta;
     state.rendicionOkByGid.set(gid, rendOk);
@@ -416,7 +445,6 @@ async function loadDocsSummaryForGroups(gids) {
     state.gastoAprobadoByGid.set(gid, aprobOk);
 
     const boletaUrl = coalesce(summary?.boleta?.url, summary?.boletaUrl, '');
-
     const compUrl = coalesce(
       summary?.transfer?.comprobanteUrl,
       summary?.transferenciaCLP?.url,
@@ -428,7 +456,6 @@ async function loadDocsSummaryForGroups(gids) {
       summary?.comprobanteUrl,
       ''
     );
-
     const transfUrl = coalesce(
       summary?.cashUsd?.comprobanteUrl,
       summary?.transferenciaCoord?.url,
@@ -444,15 +471,11 @@ async function loadDocsSummaryForGroups(gids) {
       numeroGrupo: gInfo.numero,
       nombreGrupo: gInfo.nombre,
       destino: gInfo.destino,
-      coordEmail: gInfo.coordEmail || '',
+      coordEmail: (gInfo.coordEmail || '').toLowerCase(),
       fechaMs: 0,
       fechaTxt: '',
       moneda: 'CLP',
-      monto: 0,
-      montoAprobado: 0,
-      asunto: '',
-      // ✅ NUEVO
-      docFiscal: 'NO_ES_BOLETA'
+      monto: 0
     };
 
     if (boletaUrl || docsOk.boleta) {
@@ -461,10 +484,11 @@ async function loadDocsSummaryForGroups(gids) {
         tipoDoc: 'BOLETA',
         gastoId: null,
         url: boletaUrl,
-        docFiscal: 'ES_BOLETA',
         revisadoOk: !!docsOk.boleta,
         revisadoBy: docsOk.by || '',
-        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
+        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0,
+
+        documentoFiscal: coalesce(docsFiscal.boleta, '')
       });
     }
     if (compUrl || docsOk.comprobante) {
@@ -473,10 +497,11 @@ async function loadDocsSummaryForGroups(gids) {
         tipoDoc: 'COMP_CLP',
         gastoId: null,
         url: compUrl,
-        docFiscal: 'NO_ES_BOLETA',
         revisadoOk: !!docsOk.comprobante,
         revisadoBy: docsOk.by || '',
-        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
+        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0,
+
+        documentoFiscal: coalesce(docsFiscal.comprobante, '')
       });
     }
     if (transfUrl || docsOk.transferencia) {
@@ -485,10 +510,11 @@ async function loadDocsSummaryForGroups(gids) {
         tipoDoc: 'CONST_USD',
         gastoId: null,
         url: transfUrl,
-        docFiscal: 'NO_ES_BOLETA',
         revisadoOk: !!docsOk.transferencia,
         revisadoBy: docsOk.by || '',
-        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0
+        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0,
+
+        documentoFiscal: coalesce(docsFiscal.transferencia, '')
       });
     }
   }
@@ -607,21 +633,28 @@ async function loadDocsForCurrentFilters() {
 
   docsAll.sort((a,b) => (a.fechaMs || 0) - (b.fechaMs || 0));
 
-  // ✅ Asegurar docFiscal siempre
-  docsAll.forEach(d => {
-    if (!d.docFiscal) d.docFiscal = defaultDocFiscalByTipo(d.tipoDoc);
-  });
-
   state.docs = docsAll;
   renderDocsTable();
 }
 
-/* ====================== GUARDAR REVISIÓN (Firestore) ====================== */
+/* ======================
+   GUARDAR: keys + helpers pending
+   ====================== */
 function docKey(docItem){
   if (docItem.tipoDoc === 'GASTO') return `GASTO:${docItem.grupoId}:${docItem.coordEmail}:${docItem.gastoId}`;
   return `${docItem.tipoDoc}:${docItem.grupoId}`;
 }
 
+function markPending(docItem, patch){
+  const key = docKey(docItem);
+  const prev = state.pending.get(key) || { docItem };
+  state.pending.set(key, { ...prev, ...patch, docItem });
+  refreshPendingUI();
+}
+
+/* ======================
+   FIRESTORE: guardar revisado
+   ====================== */
 async function updateRevisionForDoc(docItem, checked) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const now   = Date.now();
@@ -664,7 +697,7 @@ async function updateRevisionForDoc(docItem, checked) {
   }
 
   if (docItem.tipoDoc === 'GASTO') {
-    const coord = docItem.coordEmail;
+    const coord = (docItem.coordEmail || '').toLowerCase();
     const gastoId = docItem.gastoId;
     if (!coord || !gastoId) return false;
 
@@ -684,6 +717,69 @@ async function updateRevisionForDoc(docItem, checked) {
     } catch (e) {
       console.error('[DOCS] updateRevisionForDoc gasto', e);
       alert('No se pudo guardar la revisión del comprobante de gasto.');
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/* ======================
+   FIRESTORE: guardar Documento Fiscal
+   ====================== */
+async function updateFiscalForDoc(docItem, fiscalValue) {
+  const email = (auth.currentUser?.email || '').toLowerCase();
+  const now   = Date.now();
+
+  const v = (fiscalValue || '').toString();
+  // permitimos '' para "sin definir"
+  if (v && v !== FISCAL_ES && v !== FISCAL_NO) return false;
+
+  if (docItem.tipoDoc === 'BOLETA' ||
+      docItem.tipoDoc === 'COMP_CLP' ||
+      docItem.tipoDoc === 'CONST_USD') {
+
+    const gid = docItem.grupoId;
+    if (!gid) return false;
+
+    const k = fiscalKeyForTipo(docItem.tipoDoc);
+    if (!k) return false;
+
+    const ref = doc(db,'grupos',gid,'finanzas','summary');
+
+    const patch = {};
+    patch[`docsFiscal.${k}`] = v; // '' | ES_BOLETA | NO_ES_BOLETA
+    patch[`docsFiscalBy`] = email;
+    patch[`docsFiscalAt`] = now;
+
+    try {
+      await setDoc(ref, patch, { merge:true });
+      docItem.documentoFiscal = v;
+      return true;
+    } catch (e) {
+      console.error('[DOCS] updateFiscalForDoc summary', e);
+      alert('No se pudo guardar Documento Fiscal en el documento del grupo.');
+      return false;
+    }
+  }
+
+  if (docItem.tipoDoc === 'GASTO') {
+    const coord = (docItem.coordEmail || '').toLowerCase();
+    const gastoId = docItem.gastoId;
+    if (!coord || !gastoId) return false;
+
+    try {
+      const ref = doc(db,'coordinadores',coord,'gastos',gastoId);
+      await updateDoc(ref, {
+        'documentoFiscal': v,
+        'documentoFiscalBy': email,
+        'documentoFiscalAt': now
+      });
+      docItem.documentoFiscal = v;
+      return true;
+    } catch (e) {
+      console.error('[DOCS] updateFiscalForDoc gasto', e);
+      alert('No se pudo guardar Documento Fiscal en el gasto.');
       return false;
     }
   }
@@ -717,15 +813,29 @@ async function flushPending(){
   let okCount = 0;
 
   for (const it of entries) {
-    const ok = await updateRevisionForDoc(it.docItem, it.checked);
-    if (ok) okCount++;
+    const docItem = it.docItem;
+    let okLocal = true;
+
+    // 1) revisado (si viene)
+    if (Object.prototype.hasOwnProperty.call(it, 'checked')) {
+      const ok = await updateRevisionForDoc(docItem, it.checked);
+      okLocal = okLocal && ok;
+    }
+
+    // 2) fiscal (si viene)
+    if (Object.prototype.hasOwnProperty.call(it, 'fiscal')) {
+      const ok = await updateFiscalForDoc(docItem, it.fiscal);
+      okLocal = okLocal && ok;
+    }
+
+    if (okLocal) okCount++;
   }
 
   state.pending.clear();
   refreshPendingUI();
   renderDocsTable();
 
-  alert(`Guardado: ${okCount}/${entries.length} cambios.`);
+  alert(`Guardado: ${okCount}/${entries.length} filas actualizadas.`);
 }
 
 /* ====================== MODAL VISOR ====================== */
@@ -774,7 +884,7 @@ function closeViewer() {
 function tipoLabel(tipo) {
   if (tipo === 'COMP_CLP') return 'COMP. CLP';
   if (tipo === 'CONST_USD') return 'CONST. USD';
-  if (tipo === 'GASTO') return 'GASTO (COMPROBANTE)';
+  if (tipo === 'GASTO') return 'GASTO (comprobante)';
   return tipo;
 }
 
@@ -802,46 +912,42 @@ function renderDocsTable() {
   state.docs.forEach(docItem => {
     const tr = document.createElement('tr');
 
-    const tdGrupo   = document.createElement('td');
-    const tdDest    = document.createElement('td');
-    const tdCoord   = document.createElement('td');
-    const tdTipo    = document.createElement('td');
-    const tdRend    = document.createElement('td');
-    const tdAprob   = document.createElement('td');
-    const tdMon     = document.createElement('td');
-    const tdMonto   = document.createElement('td');
-    const tdArchivo = document.createElement('td');
-    const tdDocFis  = document.createElement('td');
-    const tdChk     = document.createElement('td');
+    const tdGrupo   = document.createElement('td'); tdGrupo.className = 'col-grupo';
+    const tdDest    = document.createElement('td'); tdDest.className = 'col-dest';
+    const tdCoord   = document.createElement('td'); tdCoord.className = 'col-coord';
+    const tdTipo    = document.createElement('td'); tdTipo.className = 'col-tipo';
+    const tdRend    = document.createElement('td'); tdRend.className = 'col-rend';
+    const tdAprob   = document.createElement('td'); tdAprob.className = 'col-aprob';
+    const tdMon     = document.createElement('td'); tdMon.className = 'col-mon';
+    const tdMonto   = document.createElement('td'); tdMonto.className = 'col-monto';
+    const tdArchivo = document.createElement('td'); tdArchivo.className = 'col-arch';
+    const tdFiscal  = document.createElement('td'); tdFiscal.className = 'col-fiscal';
+    const tdChk     = document.createElement('td'); tdChk.className = 'col-rev';
 
-    tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`;
+    tdGrupo.title = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`.trim();
+    tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`.trim();
     tdDest.textContent  = docItem.destino || '—';
-    tdCoord.textContent = formatCoordDisplay(docItem.coordEmail || '—');
+
+    // ✅ coordinador: sin guiones + mayúsculas
+    tdCoord.textContent = coordDisplay(docItem.coordEmail || '');
 
     tdTipo.innerHTML = `<span class="tag">${tipoLabel(docItem.tipoDoc)}</span>`;
 
     const rendOk = !!state.rendicionOkByGid.get(docItem.grupoId);
     tdRend.innerHTML = rendOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
-    // ✅ Gasto aprobado:
-    // - GASTO: OK si montoAprobado>0, RECHAZADO si =0
-    // - NO-GASTO: OK si summary ok, sino —
-    if (docItem.tipoDoc === 'GASTO') {
-      const mAp = Number(docItem.montoAprobado || 0);
-      if (mAp > 0) tdAprob.innerHTML = `<span class="tag ok">OK</span>`;
-      else tdAprob.innerHTML = `<span class="tag rejected">RECHAZADO</span>`;
-    } else {
-      const aprobOk = isAprobOkForRow(docItem);
-      tdAprob.innerHTML = aprobOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
-    }
+    // ✅ aprobado por fila (incluye Rechazado)
+    const aprob = aprobStateForRow(docItem);
+    tdAprob.innerHTML = `<span class="tag ${aprob.cls}">${aprob.label}</span>`;
 
     tdMon.textContent = docItem.moneda || '—';
 
+    // Monto (lo que se pagó/registró)
     if (docItem.monto && docItem.moneda === 'USD') tdMonto.textContent = moneyBy(docItem.monto, 'USD');
     else if (docItem.monto) tdMonto.textContent = moneyCLP(docItem.monto);
     else tdMonto.textContent = '—';
 
-    // Archivo: SOLO VER
+    // ✅ Archivo: SOLO VER (como pediste)
     if (docItem.url) {
       const ver = document.createElement('span');
       ver.className = 'link';
@@ -852,9 +958,10 @@ function renderDocsTable() {
         const extraAprob = (docItem.tipoDoc === 'GASTO' && Number(docItem.montoAprobado || 0) > 0)
           ? ` · APROBADO: ${moneyCLP(docItem.montoAprobado)}`
           : (docItem.tipoDoc === 'GASTO' ? ' · RECHAZADO' : '');
-        const s = `${docItem.destino} · ${formatCoordDisplay(docItem.coordEmail || '—')}${docItem.asunto ? ' · ' + docItem.asunto : ''}${extraAprob}`;
+        const s = `${docItem.destino} · ${coordDisplay(docItem.coordEmail || '—')}${docItem.asunto ? ' · ' + docItem.asunto : ''}${extraAprob}`;
         openViewer({ title: t, sub: s, url: docItem.url });
       });
+
       tdArchivo.appendChild(ver);
 
       if (docItem.asunto) {
@@ -869,24 +976,23 @@ function renderDocsTable() {
       tdArchivo.textContent = '—';
     }
 
-    // ✅ Documento Fiscal (select)
-    if (!docItem.docFiscal) docItem.docFiscal = defaultDocFiscalByTipo(docItem.tipoDoc);
+    // ✅ Documento Fiscal select (se guarda en Firebase al "Guardar cambios")
     const sel = document.createElement('select');
-    sel.className = 'docf-select';
+    sel.className = 'sel-fiscal';
     sel.innerHTML = `
-      <option value="ES_BOLETA">Es Boleta</option>
-      <option value="NO_ES_BOLETA">No es Boleta</option>
+      <option value="">(Sin definir)</option>
+      <option value="${FISCAL_ES}">Es Boleta</option>
+      <option value="${FISCAL_NO}">No es Boleta</option>
     `;
-    sel.value = docItem.docFiscal;
-
+    sel.value = (docItem.documentoFiscal || '').toString();
     sel.addEventListener('change', (e) => {
-      docItem.docFiscal = e.target.value || 'NO_ES_BOLETA';
-      // No va a Firestore (solo visual/export)
+      const v = e.target.value || '';
+      docItem.documentoFiscal = v;
+      markPending(docItem, { fiscal: v });
     });
+    tdFiscal.appendChild(sel);
 
-    tdDocFis.appendChild(sel);
-
-    // Checkbox revisado (sin autosave)
+    // ✅ Revisado checkbox (se guarda en Firebase al "Guardar cambios")
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.className = 'chk';
@@ -895,15 +1001,13 @@ function renderDocsTable() {
 
     chk.addEventListener('change', (e) => {
       const nuevo = !!e.target.checked;
-      const key = docKey(docItem);
-      state.pending.set(key, { docItem, checked: nuevo });
-      docItem.revisadoOk = nuevo;
-      refreshPendingUI();
+      docItem.revisadoOk = nuevo; // feedback inmediato en UI
+      markPending(docItem, { checked: nuevo });
     });
 
     tdChk.appendChild(chk);
 
-    tr.append(tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdDocFis, tdChk);
+    tr.append(tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdFiscal, tdChk);
     frag.appendChild(tr);
   });
 
@@ -914,72 +1018,61 @@ function renderDocsTable() {
 }
 
 /* ====================== EXPORT EXCEL (XLSX) ====================== */
-function exportDocsExcel(){
-  const XLSX = window.XLSX;
-  if (!XLSX) {
-    alert('No se encontró la librería XLSX. Revisa que el <script> esté cargando.');
-    return;
-  }
-
-  if (!state.docs.length) {
-    alert('No hay datos para exportar.');
-    return;
-  }
-
-  // Encabezados (sin URL visible; ARCHIVO será "VER" con hipervínculo)
-  const headers = [
-    'GRUPO','DESTINO','COORDINADOR','TIPO','RENDICION','GASTO_APROBADO',
-    'MONEDA','MONTO','ARCHIVO','DOCUMENTO_FISCAL','REVISADO'
-  ];
-
-  const aoa = [headers];
-
-  // Guardamos urls para setear hyperlinks
-  const urls = [];
-
-  state.docs.forEach(d => {
-    const rendOk = !!state.rendicionOkByGid.get(d.grupoId);
-
-    // GASTO_APROBADO text: OK / RECHAZADO / '' (para no-gasto si no ok)
-    let gastoAprobTxt = '';
-    if (d.tipoDoc === 'GASTO') {
-      gastoAprobTxt = (Number(d.montoAprobado || 0) > 0) ? 'OK' : 'RECHAZADO';
-    } else {
-      gastoAprobTxt = isAprobOkForRow(d) ? 'OK' : '';
-    }
+function buildExportRows(){
+  return state.docs.map(d => {
+    const rendOk  = !!state.rendicionOkByGid.get(d.grupoId);
+    const aprob   = aprobStateForRow(d);
 
     const montoTxt =
       d.monto
         ? (d.moneda === 'USD' ? moneyBy(d.monto, 'USD') : moneyCLP(d.monto))
         : '';
 
-    const coordTxt = formatCoordDisplay(d.coordEmail || '');
+    const montoAprobTxt =
+      d.tipoDoc === 'GASTO'
+        ? moneyCLP(parseMonto(d.montoAprobado || 0))
+        : '';
 
-    const docFiscalTxt = docFiscalLabel(d.docFiscal || defaultDocFiscalByTipo(d.tipoDoc));
-
-    aoa.push([
-      `${d.numeroGrupo || ''} — ${d.nombreGrupo || ''}`.trim(),
-      d.destino || '',
-      coordTxt,
-      tipoLabel(d.tipoDoc),
-      rendOk ? 'OK' : '',
-      gastoAprobTxt,
-      d.moneda || '',
-      montoTxt,
-      (d.url ? 'VER' : ''),
-      docFiscalTxt,
-      d.revisadoOk ? 'SI' : 'NO'
-    ]);
-
-    urls.push(d.url || '');
+    return {
+      GRUPO: `${d.numeroGrupo || ''} — ${d.nombreGrupo || ''}`.trim(),
+      DESTINO: d.destino || '',
+      COORDINADOR: coordDisplay(d.coordEmail || ''),
+      TIPO: tipoLabel(d.tipoDoc),
+      RENDICION: rendOk ? 'OK' : '',
+      GASTO_APROBADO: aprob.label === 'OK' ? 'OK' : (aprob.label === 'Rechazado' ? 'Rechazado' : ''),
+      MONEDA: d.moneda || '',
+      MONTO: montoTxt,
+      MONTO_APROBADO: montoAprobTxt,
+      DOCUMENTO_FISCAL: fiscalLabel(d.documentoFiscal || ''),
+      ASUNTO: d.asunto || '',
+      URL: d.url || '',
+      REVISADO: d.revisadoOk ? 'SI' : 'NO'
+    };
   });
+}
 
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+function exportDocsExcel(){
+  const rows = buildExportRows();
+  if (!rows.length) {
+    alert('No hay datos para exportar.');
+    return;
+  }
+
+  const XLSX = window.XLSX;
+  if (!XLSX) {
+    alert('No se encontró la librería XLSX. Revisa que el <script> esté cargando.');
+    return;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(rows, { skipHeader:false });
+
+  // Congelar encabezado
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
 
   // Anchos
   ws['!cols'] = [
-    { wch: 35 }, // GRUPO
+    { wch: 32 }, // GRUPO
     { wch: 14 }, // DESTINO
     { wch: 28 }, // COORDINADOR
     { wch: 18 }, // TIPO
@@ -987,23 +1080,32 @@ function exportDocsExcel(){
     { wch: 14 }, // GASTO_APROBADO
     { wch: 8  }, // MONEDA
     { wch: 16 }, // MONTO
-    { wch: 10 }, // ARCHIVO
-    { wch: 18 }, // DOCUMENTO_FISCAL
+    { wch: 18 }, // MONTO_APROBADO
+    { wch: 16 }, // DOCUMENTO_FISCAL
+    { wch: 40 }, // ASUNTO
+    { wch: 60 }, // URL
     { wch: 10 }, // REVISADO
   ];
 
-  // ✅ Hipervínculo en columna ARCHIVO (I) — fila 2 en adelante
-  // Columnas: A=1 ... I=9 => ARCHIVO está en I
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
-    if (!url) continue;
-    const excelRow = i + 2; // header en 1
-    const addr = `I${excelRow}`;
-    if (!ws[addr]) ws[addr] = { t:'s', v:'VER' };
-    ws[addr].l = { Target: url, Tooltip: 'Abrir documento' };
+  // ✅ HIPERVÍNCULO para URL (columna "URL")
+  // Encontrar índice de columna URL en la hoja
+  const headerKeys = Object.keys(rows[0]);
+  const urlColIndex0 = headerKeys.indexOf('URL'); // 0-based
+  if (urlColIndex0 >= 0) {
+    const urlColLetter = XLSX.utils.encode_col(urlColIndex0);
+    // filas: 2..n+1 (porque fila 1 es encabezado)
+    for (let r = 0; r < rows.length; r++) {
+      const addr = `${urlColLetter}${r + 2}`;
+      const url = rows[r].URL;
+      if (!url) continue;
+
+      // convertir celda a hyperlink
+      ws[addr] = ws[addr] || { t:'s', v: url };
+      ws[addr].l = { Target: url, Tooltip: url };
+      ws[addr].s = ws[addr].s || {};
+    }
   }
 
-  const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'RevisionDocs');
 
   const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
