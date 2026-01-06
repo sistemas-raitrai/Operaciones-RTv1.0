@@ -491,23 +491,31 @@ function recalcKpis(){
 
   let realesSum = 0;
   let realesCount = 0;
-
+  let esperadosBaseReales = 0; // ✅ esperados solo donde hay reales
+  
   for (const r of rows){
     esperados += (r.esperados || 0);
     declarados += (r.declarados || 0);
-
-    // ⚠️ Reales deben reflejar lo que el usuario está editando (dirty)
+  
+    // ✅ Reales deben reflejar lo que el usuario edita (dirty)
     const d = state.dirty.get(r.gid);
     const vReales = (d && d.paxReales !== undefined) ? d.paxReales : r.paxReales;
-
-    if (vReales != null && Number.isFinite(Number(vReales))){
+  
+    const hasReales = (vReales != null && vReales !== '' && Number.isFinite(Number(vReales)));
+    if (hasReales){
       realesSum += Number(vReales);
       realesCount += 1;
+  
+      // ✅ solo sumamos esperados para el mismo subconjunto
+      esperadosBaseReales += (r.esperados || 0);
     }
   }
-
+  
   const deltaDeclarados = declarados - esperados;
-  const deltaReales = realesSum - esperados;
+  
+  // ✅ AHORA el delta reales tiene sentido: solo en grupos con reales informados
+  const deltaReales = realesSum - esperadosBaseReales;
+
 
   ui.kGrupos.textContent = String(grupos);
   ui.kGruposHint.textContent = `${state.dirty.size} con cambios pendientes`;
@@ -528,8 +536,16 @@ function recalcKpis(){
   // delta reales
   ui.kDeltaReales.textContent = String(deltaReales);
   ui.kDeltaRealesBox.classList.remove('delta-neg','delta-pos');
-  if (deltaReales < 0) ui.kDeltaRealesBox.classList.add('delta-neg');
-  else if (deltaReales > 0) ui.kDeltaRealesBox.classList.add('delta-pos');
+  
+  // ✅ si aún no hay reales cargados, no coloreamos (neutro)
+  if (realesCount === 0) {
+    // nada
+  } else if (deltaReales < 0) {
+    ui.kDeltaRealesBox.classList.add('delta-neg');
+  } else if (deltaReales > 0) {
+    ui.kDeltaRealesBox.classList.add('delta-pos');
+  }
+
 }
 
 
