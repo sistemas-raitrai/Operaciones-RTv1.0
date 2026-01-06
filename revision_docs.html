@@ -1,3 +1,4 @@
+<!-- ✅ revision_docs.html (COMPLETO) -->
 <!doctype html>
 <html lang="es">
 <head>
@@ -68,7 +69,7 @@
       background:#fff;
       width:100%;
       box-sizing:border-box;
-      text-transform:none; /* IMPORTANTÍSIMO (tu css global pone uppercase) */
+      text-transform:none; /* tu css global pone uppercase */
     }
 
     .col-3{ grid-column: span 3; }
@@ -182,16 +183,9 @@
       color:#004080;
     }
     .rd-btn:disabled{
-      opacity:.5;
+      opacity:.45;
       cursor:not-allowed;
-    }
-
-    /* ✅ Guardar: gris cuando disabled */
-    #btnGuardarPendientes:disabled{
-      background:#e5e7eb !important;
-      border-color:#d1d5db !important;
-      color:#6b7280 !important;
-      opacity:1 !important;
+      filter:grayscale(.2);
     }
 
     #infoPendientes{
@@ -213,7 +207,9 @@
       width:100%;
       border-collapse:collapse;
       background:#fff;
-      min-width:1200px;
+      /* ✅ para que “entren más” y el grupo no explote */
+      table-layout:fixed;
+      min-width:1180px;
     }
     table.rd-table th, table.rd-table td{
       border:1px solid #ddd;
@@ -222,6 +218,8 @@
       text-align:left;
       white-space:nowrap;
       vertical-align:top;
+      overflow:hidden;
+      text-overflow:ellipsis;
     }
     table.rd-table thead th{
       background:#f1f1f1;
@@ -241,7 +239,7 @@
     }
     .tag.ok{ background:#d1fae5; border-color:#34d399; }
     .tag.pending{ background:#f3f4f6; border-color:#d1d5db; color:#6b7280; }
-    .tag.rejected{ background:#fee2e2; border-color:#ef4444; color:#991b1b; } /* ✅ RECHAZADO */
+    .tag.bad{ background:#fee2e2; border-color:#ef4444; color:#991b1b; }
 
     .link{
       color:#004080;
@@ -251,23 +249,29 @@
     }
     .chk{ transform:scale(1.1); }
 
-    /* ✅ Columna Grupo más angosta */
-    table.rd-table th:nth-child(1),
-    table.rd-table td:nth-child(1){
-      max-width: 260px;
-      width: 260px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
+    /* ✅ Anchos por columna (para que no se desborde) */
+    th.col-grupo, td.col-grupo{ width:220px; }         /* más angosto */
+    th.col-dest,  td.col-dest{ width:120px; }
+    th.col-coord, td.col-coord{ width:180px; }         /* email normalizado */
+    th.col-tipo,  td.col-tipo{ width:140px; }
+    th.col-rend,  td.col-rend{ width:110px; }
+    th.col-aprob, td.col-aprob{ width:140px; }
+    th.col-mon,   td.col-mon{ width:80px; }
+    th.col-monto, td.col-monto{ width:140px; }
+    th.col-arch,  td.col-arch{ width:110px; }
+    th.col-fiscal,td.col-fiscal{ width:150px; }
+    th.col-rev,   td.col-rev{ width:90px; }
 
-    /* ✅ Select Documento Fiscal compacto */
-    .docf-select{
-      padding:.25rem .35rem;
+    /* Select fiscal compacto */
+    .sel-fiscal{
+      width:100%;
+      padding:.35rem .45rem;
       border:1px solid #ccc;
       border-radius:8px;
       font-weight:800;
       font-size:.78rem;
       background:#fff;
+      text-transform:none;
     }
 
     /* =======================
@@ -369,7 +373,7 @@
   <!-- HEADER GLOBAL -->
   <div id="encabezado"></div>
 
-  <!-- DATALIST DESTINOS (tu JS lo rellena) -->
+  <!-- DATALIST DESTINOS -->
   <datalist id="dl-destinos-docs"></datalist>
 
   <div id="revisionDocsRoot">
@@ -464,9 +468,7 @@
           Cargar
         </button>
 
-        <button class="rd-btn secondary" id="btnLimpiarDocs">
-          Limpiar
-        </button>
+        <button class="rd-btn secondary" id="btnLimpiarDocs">Limpiar</button>
 
         <button class="rd-btn secondary" id="btnExportDocs">
           <span class="material-symbols-outlined">download</span>
@@ -492,17 +494,17 @@
         <table class="rd-table" id="tblDocs">
           <thead>
             <tr>
-              <th>Grupo</th>
-              <th>Destino</th>
-              <th>Coordinador</th>
-              <th>Tipo</th>
-              <th>Rendición</th>
-              <th>Gasto aprobado</th>
-              <th>Moneda</th>
-              <th>Monto</th>
-              <th>Archivo</th>
-              <th>Documento Fiscal</th>
-              <th>Revisado</th>
+              <th class="col-grupo">Grupo</th>
+              <th class="col-dest">Destino</th>
+              <th class="col-coord">Coordinador</th>
+              <th class="col-tipo">Tipo</th>
+              <th class="col-rend">Rendición</th>
+              <th class="col-aprob">Gasto aprobado</th>
+              <th class="col-mon">Moneda</th>
+              <th class="col-monto">Monto</th>
+              <th class="col-arch">Archivo</th>
+              <th class="col-fiscal">Documento Fiscal</th>
+              <th class="col-rev">Revisado</th>
             </tr>
           </thead>
           <tbody>
@@ -516,8 +518,8 @@
       <p class="muted" style="font-size:.75rem;margin-top:.6rem;">
         “Rendición” = OK si <code>docsOk.boleta</code> está marcado. ·
         “Gasto aprobado”:
-        si <strong>Tipo = GASTO</strong> ⇒ OK si <code>montoAprobado &gt; 0</code>,
-        si <code>montoAprobado = 0</code> ⇒ <strong>RECHAZADO</strong>.
+        si <strong>Tipo = GASTO</strong> ⇒ <strong>OK</strong> si <code>montoAprobado &gt; 0</code>, si <code>montoAprobado = 0</code> ⇒ <strong style="color:#b91c1c;">Rechazado</strong>.
+        Si <strong>NO</strong> es GASTO ⇒ se calcula por <code>summary</code> (gastosGrabados vs costoTotal).
       </p>
     </div>
 
@@ -540,7 +542,7 @@
     </div>
   </div>
 
-  <!-- ✅ XLSX (SheetJS) para exportar a Excel -->
+  <!-- ✅ XLSX (SheetJS) -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <!-- SCRIPTS -->
