@@ -277,7 +277,7 @@ async function preloadCatalogs() {
     ).toLowerCase();
     const destino  = coalesce(x.destino, x.lugar, '');
 
-    // 🔴 AHORA USAMOS SIEMPRE "cantidadGrupo" COMO FUENTE PRINCIPAL
+    // 🔴 PAX ESPERADOS (planificado): usamos SIEMPRE "cantidadGrupo" como fuente principal
     const cantidadGrupo = Number(
       x.cantidadGrupo ??
       x.paxTotal ??
@@ -285,6 +285,17 @@ async function preloadCatalogs() {
       x.pax_total ??
       0
     );
+    
+    // 🟢 PAX DECLARADOS (al iniciar viaje): paxViajando.total (si existe)
+    const paxDeclarados =
+      (x?.paxViajando && typeof x.paxViajando.total === 'number')
+        ? Number(x.paxViajando.total)
+        : (
+            // fallback por si viene A/E pero no total
+            (x?.paxViajando && (typeof x.paxViajando.A === 'number' || typeof x.paxViajando.E === 'number'))
+              ? Number(x.paxViajando.A || 0) + Number(x.paxViajando.E || 0)
+              : null
+          );
 
     const programa = coalesce(x.programa, x.plan, '');
     const fechas   = coalesce(x.fechas, x.fechaDeViaje, x.fechaViaje, '');
@@ -295,7 +306,8 @@ async function preloadCatalogs() {
       coordEmail,
       destino,
       paxTotal: cantidadGrupo,   // alias por compatibilidad
-      cantidadGrupo,             // campo explícito para esta pantalla
+      cantidadGrupo,
+      paxDeclarados,
       programa,
       fechas,
       // 🔹 Nuevos: fechas crudas desde Firebase para usar en el rango
@@ -1104,9 +1116,19 @@ function renderResumenFinanzas() {
     if (elCoord)   elCoord.textContent   = gInfo.coordEmail || '—';
     if (elDestino) elDestino.textContent = gInfo.destino || '—';
 
-    // 🔴 Usa cantidadGrupo como fuente principal, con fallback a paxTotal
-    const paxMostrar = gInfo.cantidadGrupo ?? gInfo.paxTotal ?? 0;
-    if (elPax) elPax.textContent = paxMostrar ? String(paxMostrar) : '—';
+    // 🔴 PAX ESPERADOS vs PAX DECLARADOS (paxViajando)
+    const paxEsperados = (gInfo.cantidadGrupo ?? gInfo.paxTotal ?? 0);
+    const paxDeclarados = (typeof gInfo.paxDeclarados === 'number') ? gInfo.paxDeclarados : null;
+    
+    if (elPax) {
+      if (paxEsperados && paxDeclarados != null) {
+        elPax.textContent = `Esperados: ${paxEsperados} · Declarados: ${paxDeclarados}`;
+      } else if (paxEsperados) {
+        elPax.textContent = `Esperados: ${paxEsperados}`;
+      } else {
+        elPax.textContent = '—';
+      }
+    }
 
     if (elProg) elProg.textContent = gInfo.programa || '—';
 
@@ -1501,7 +1523,14 @@ function renderPrintActa() {
     <tr><td colspan="2" class="muted">Sin descuentos aplicados.</td></tr>
   `;
 
-  const paxPrint = (gInfo.cantidadGrupo ?? gInfo.paxTotal ?? '—') || '—';
+  const paxEsperadosPrint = (gInfo.cantidadGrupo ?? gInfo.paxTotal ?? null);
+  const paxDeclaradosPrint = (typeof gInfo.paxDeclarados === 'number') ? gInfo.paxDeclarados : null;
+  
+  const paxPrint =
+    (paxEsperadosPrint && paxDeclaradosPrint != null)
+      ? `Esperados: ${paxEsperadosPrint} · Declarados: ${paxDeclaradosPrint}`
+      : (paxEsperadosPrint ? `Esperados: ${paxEsperadosPrint}` : '—');
+  
 
   // ✅ Mismo rango de fechas que en el card, usando fechaInicio / fechaFin
   const fechasTxt = buildFechasViajeTexto(gInfo, state.summary || {});
