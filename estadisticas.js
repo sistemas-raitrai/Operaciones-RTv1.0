@@ -154,10 +154,18 @@ const ui = {
 
   kGrupos: $('kGrupos'),
   kGruposHint: $('kGruposHint'),
+
   kEsperados: $('kEsperados'),
   kDeclarados: $('kDeclarados'),
+
+  kReales: $('kReales'),
+  kRealesHint: $('kRealesHint'),
+
   kDelta: $('kDelta'),
   kDeltaBox: $('kDeltaBox'),
+
+  kDeltaReales: $('kDeltaReales'),
+  kDeltaRealesBox: $('kDeltaRealesBox'),
 };
 
 /* =========================
@@ -481,23 +489,49 @@ function recalcKpis(){
   let esperados = 0;
   let declarados = 0;
 
+  let realesSum = 0;
+  let realesCount = 0;
+
   for (const r of rows){
     esperados += (r.esperados || 0);
     declarados += (r.declarados || 0);
+
+    // ⚠️ Reales deben reflejar lo que el usuario está editando (dirty)
+    const d = state.dirty.get(r.gid);
+    const vReales = (d && d.paxReales !== undefined) ? d.paxReales : r.paxReales;
+
+    if (vReales != null && Number.isFinite(Number(vReales))){
+      realesSum += Number(vReales);
+      realesCount += 1;
+    }
   }
 
-  const delta = declarados - esperados;
+  const deltaDeclarados = declarados - esperados;
+  const deltaReales = realesSum - esperados;
 
   ui.kGrupos.textContent = String(grupos);
   ui.kGruposHint.textContent = `${state.dirty.size} con cambios pendientes`;
+
   ui.kEsperados.textContent = String(esperados);
   ui.kDeclarados.textContent = String(declarados);
-  ui.kDelta.textContent = String(delta);
 
+  // ✅ nuevos KPI
+  ui.kReales.textContent = String(realesSum);
+  ui.kRealesHint.textContent = String(realesCount);
+
+  // delta declarados
+  ui.kDelta.textContent = String(deltaDeclarados);
   ui.kDeltaBox.classList.remove('delta-neg','delta-pos');
-  if (delta < 0) ui.kDeltaBox.classList.add('delta-neg');
-  else if (delta > 0) ui.kDeltaBox.classList.add('delta-pos');
+  if (deltaDeclarados < 0) ui.kDeltaBox.classList.add('delta-neg');
+  else if (deltaDeclarados > 0) ui.kDeltaBox.classList.add('delta-pos');
+
+  // delta reales
+  ui.kDeltaReales.textContent = String(deltaReales);
+  ui.kDeltaRealesBox.classList.remove('delta-neg','delta-pos');
+  if (deltaReales < 0) ui.kDeltaRealesBox.classList.add('delta-neg');
+  else if (deltaReales > 0) ui.kDeltaRealesBox.classList.add('delta-pos');
 }
+
 
 /* =========================
    RESET FILTERS
