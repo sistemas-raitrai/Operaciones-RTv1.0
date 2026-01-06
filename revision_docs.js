@@ -102,9 +102,47 @@ function fmtDDMMYYYY(ms){
 }
 
 function isImageUrl(url=''){
-  const u = String(url).toLowerCase();
-  return u.includes('.png') || u.includes('.jpg') || u.includes('.jpeg') || u.includes('.webp') || u.includes('image');
+  const u0 = String(url || '').trim();
+  if (!u0) return false;
+
+  // Lower para comparar
+  const u = u0.toLowerCase();
+
+  // 1) Si viene con indicios de imagen en query/headers típicos
+  // Firebase storage a veces no trae extensión limpia, pero sí "contentType=image/..."
+  if (u.includes('contenttype=image/')) return true;
+  if (u.includes('alt=media') && (u.includes('image') || u.includes('png') || u.includes('jpg') || u.includes('jpeg') || u.includes('webp'))) return true;
+
+  // 2) Revisar extensión real del "path" SIN querystring ni hash
+  // Ej: .../archivo.jpg?alt=media&token=...
+  const clean = u.split('#')[0].split('?')[0];
+
+  // Extensiones típicas
+  if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(clean)) return true;
+
+  // 3) Casos comunes: enlaces de Google/Firebase donde el filename puede estar URL-encoded
+  // Ej: ...%2Ffoto%2FIMG_1234.JPG?...
+  try {
+    const decoded = decodeURIComponent(clean);
+    if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(decoded)) return true;
+  } catch (e) {
+    // si falla decode, no pasa nada
+  }
+
+  return false;
 }
+
+function isPdfUrl(url=''){
+  const u0 = String(url || '').trim();
+  if (!u0) return false;
+  const u = u0.toLowerCase();
+  const clean = u.split('#')[0].split('?')[0];
+  if (clean.endsWith('.pdf')) return true;
+  // algunos links dicen application/pdf o pdf en parámetros
+  if (u.includes('application/pdf') || u.includes('contenttype=application/pdf')) return true;
+  return false;
+}
+
 
 // ✅ display coord: sacar guiones y MAYÚSCULAS (como pediste)
 function coordDisplay(email=''){
@@ -856,29 +894,20 @@ function openViewer({ title, sub, url }) {
 
   if (!url) {
     body.innerHTML = `<div style="padding:14px;color:#6b7280;">Sin URL.</div>`;
-  } else if (isImageUrl(url)) {
-    const img = document.createElement('img');
-    img.src = url;
-    img.alt = title || 'Documento';
-    body.appendChild(img);
-  } else {
-    const iframe = document.createElement('iframe');
-    iframe.src = url;
-    body.appendChild(iframe);
-  }
-
-  modal.classList.add('open');
-  modal.setAttribute('aria-hidden', 'false');
-}
-
-function closeViewer() {
-  const modal = document.getElementById('viewerModal');
-  const body  = document.getElementById('viewerBody');
-  if (!modal || !body) return;
-  modal.classList.remove('open');
-  modal.setAttribute('aria-hidden', 'true');
-  body.innerHTML = '';
-}
+  }  else if (isImageUrl(url)) {
+  
+     modal.classList.add('open');
+     modal.setAttribute('aria-hidden', 'false');
+   }
+  
+   function closeViewer() {
+     const modal = document.getElementById('viewerModal');
+     const body  = document.getElementById('viewerBody');
+     if (!modal || !body) return;
+     modal.classList.remove('open');
+     modal.setAttribute('aria-hidden', 'true');
+     body.innerHTML = '';
+   }
 
 /* ====================== RENDER TABLA ====================== */
 function tipoLabel(tipo) {
