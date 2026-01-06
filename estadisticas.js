@@ -1,8 +1,14 @@
 // estadisticas.js
 // RT · Estadísticas (PAX esperados / declarados / reales + revisión)
 // ✅ Mantiene estética (encabezado + estilos.css) y aisla UI con overrides en el HTML
-// ✅ Edita PAX Reales; si difiere de Declarados => habilita Revisión
-// ✅ Botón Guardar: escribe SOLO cambios en Firestore
+// ✅ Edita PAX Reales
+// ✅ NUEVO:
+//    - Si Esperados == Declarados => PAX Reales se autocompleta con ese valor (sin escribir en Firestore)
+//      y el estado queda OK (auto) + cuenta en KPI de Reales.
+//    - Si Esperados != Declarados => estado PENDIENTE hasta que se corrija (reales + revisión).
+//      Al corregir => estado "CORREGIDO" en verde (NO "DIFERENCIA" en rojo).
+// ✅ Botón Guardar: escribe SOLO cambios (dirty) en Firestore
+// ✅ Robusto a HTML parcial (si faltan filtros/IDs, no se cae)
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -17,16 +23,16 @@ const GROUPS_COLLECTION = 'grupos';          // 👈 si tu colección es otra, c
 const LOGIN_PAGE = 'login.html';            // 👈 si tu sistema usa otra, cámbiala aquí
 
 // Campos esperados (fallbacks)
-// - Esperados: cantidadGrupo (si no existe, intenta paxEsperados / cantidadgrupo / paxTotal)
-// - Declarados: paxViajando.total (si no existe, intenta paxDeclarados / paxViajandoTotal)
 const EXPECTED_KEYS = ['cantidadGrupo', 'paxEsperados', 'cantidadgrupo', 'paxTotal', 'pax'];
+
+// Declarados (fallbacks)
 const DECLARED_PATHS = [
   ['paxViajando','total'],
   ['paxViajandoTotal'],
   ['paxDeclarados'],
 ];
 
-// Fecha inicio (fallbacks): fechaInicio / fechas.inicio / fechaDeViaje (si es rango no sirve perfecto)
+// Fecha inicio (fallbacks)
 const START_DATE_PATHS = [
   ['fechaInicio'],
   ['fechas','inicio'],
@@ -36,7 +42,8 @@ const START_DATE_PATHS = [
 /* =========================
    HELPERS
 ========================= */
-const $ = (id)=> document.getElementById(id) || null;
+const $ = (id)=> document.getElementById(id);
+const exists = (el)=> !!el;
 
 const norm = (s='') =>
   s.toString()
@@ -54,6 +61,14 @@ function getByPath(obj, pathArr){
     }
     return cur;
   } catch { return undefined; }
+}
+
+function toNum(v){
+  if (v == null || v === '') return NaN;
+  if (typeof v === 'number') return v;
+  const s = v.toString().replace(/[^\d\-.,]/g,'').replace(/\./g,'').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : NaN;
 }
 
 function pickNumber(obj, keys){
@@ -74,14 +89,6 @@ function pickDeclared(obj){
   return 0;
 }
 
-function toNum(v){
-  if (v == null || v === '') return NaN;
-  if (typeof v === 'number') return v;
-  const s = v.toString().replace(/[^\d\-.,]/g,'').replace(/\./g,'').replace(',', '.');
-  const n = Number(s);
-  return Number.isFinite(n) ? n : NaN;
-}
-
 function parseDateAny(v){
   if (!v) return null;
   if (v instanceof Date && !isNaN(v.getTime())) return v;
@@ -92,6 +99,7 @@ function parseDateAny(v){
   }
 
   const s = v.toString().trim();
+
   // ISO
   const iso = new Date(s);
   if (!isNaN(iso.getTime())) return iso;
@@ -119,6 +127,69 @@ function safeText(v){
   return String(v);
 }
 
+function isFiniteNum(v){
+  const n = (typeof v === 'number') ? v : Number(v);
+  return Number.isFinite(n);
+}
+
+/**
+ * ✅ Reales “efectivos”:
+ * - Si hay reales en Firestore => usa eso
+ * - Si NO hay reales y (esperados == declarados) => reales efectivos = declarados (auto OK)
+ * - Si no, null
+ */
+function effectiveReales(row){
+  const r = row.paxReales;
+  if (r != null && r !== '' && isFiniteNum(r)) return Number(r);
+
+  const expected = row.esperados || 0;
+  const declared = row.declarados || 0;
+
+  if (expected === declared) return declared;  // 👈 auto OK
+  return null;
+}
+
+/**
+ * ✅ Baseline para comparar dirty (para que el auto OK NO marque cambios)
+ * - Si Firestore trae paxReales => baseline = ese valor
+ * - Si no trae y expected==declared => baseline = declared (auto)
+ * - Si no, baseline = null
+ */
+function baselineReales(row){
+  const r = row.paxReales;
+  if (r != null && r !== '' && isFiniteNum(r)) return Number(r);
+
+  const expected = row.esperados || 0;
+  const declared = row.declarados || 0;
+
+  if (expected === declared) return declared;
+  return null;
+}
+
+/**
+ * ✅ Estados:
+ * - OK (auto): expected==declared (reales efectivos existe por regla auto) y NO requiere acción
+ * - PENDIENTE: expected!=declared y aún no está corregido (falta reales y/o revisión)
+ * - CORREGIDO: expected!=declared y ya hay reales + revisión
+ */
+function calcStatus(row, effectiveRealesValue, revisionText){
+  const expected = row.esperados || 0;
+  const declared = row.declarados || 0;
+  const needsManual = (expected !== declared);
+
+  if (!needsManual){
+    return { key:'OK', label:'OK', css:'ok' };
+  }
+
+  const hasReales = (effectiveRealesValue != null && Number.isFinite(effectiveRealesValue));
+  const hasRev = !!safeText(revisionText).trim();
+
+  if (hasReales && hasRev){
+    return { key:'CORREGIDO', label:'CORREGIDO', css:'ok' }; // verde
+  }
+  return { key:'PENDIENTE', label:'PENDIENTE', css:'warn' }; // ámbar
+}
+
 /* =========================
    STATE
 ========================= */
@@ -132,10 +203,11 @@ const state = {
 };
 
 /* =========================
-   UI REFS
+   UI REFS (robusto si faltan IDs)
 ========================= */
 const ui = {
   q: $('q'),
+
   fDestino: $('fDestino'),
   fPrograma: $('fPrograma'),
   fCoord: $('fCoord'),
@@ -173,7 +245,6 @@ const ui = {
 ========================= */
 onAuthStateChanged(auth, (user)=>{
   if (!user){
-    // si tu sistema no redirige, comenta esto
     window.location.href = LOGIN_PAGE;
     return;
   }
@@ -200,14 +271,15 @@ async function boot(){
    EVENTS
 ========================= */
 function wireEvents(){
-  ui.btnAplicar.addEventListener('click', ()=> applyFilters());
-  ui.btnLimpiar.addEventListener('click', ()=> resetFilters());
-  ui.btnGuardar.addEventListener('click', ()=> guardarCambios());
+  if (exists(ui.btnAplicar)) ui.btnAplicar.addEventListener('click', ()=> applyFilters());
+  if (exists(ui.btnLimpiar)) ui.btnLimpiar.addEventListener('click', ()=> resetFilters());
+  if (exists(ui.btnGuardar)) ui.btnGuardar.addEventListener('click', ()=> guardarCambios());
 
-  // aplicar con Enter en el buscador
-  ui.q.addEventListener('keydown', (e)=>{
-    if (e.key === 'Enter'){ e.preventDefault(); applyFilters(); }
-  });
+  if (exists(ui.q)){
+    ui.q.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter'){ e.preventDefault(); applyFilters(); }
+    });
+  }
 }
 
 /* =========================
@@ -216,7 +288,7 @@ function wireEvents(){
 async function loadGroups(){
   state.rowsAll = [];
   state.dirty.clear();
-  ui.btnGuardar.disabled = true;
+  if (exists(ui.btnGuardar)) ui.btnGuardar.disabled = true;
 
   const snap = await getDocs(collection(db, GROUPS_COLLECTION));
   snap.forEach((ds)=>{
@@ -228,15 +300,12 @@ async function loadGroups(){
     const programa = g.programa || g.Programa || '';
     const coord = g.coordinadorEmail || g.coordEmail || g.coordinador || g.coord || '';
 
-    // esperados / declarados
     const esperados = pickNumber(g, EXPECTED_KEYS);
     const declarados = pickDeclared(g);
 
-    // pax reales + revisión
     const paxReales = Number.isFinite(toNum(g.paxReales)) ? toNum(g.paxReales) : null;
     const revisionPax = safeText(g.revisionPax || '');
 
-    // fecha inicio
     let fechaInicio = null;
     for (const p of START_DATE_PATHS){
       const v = getByPath(g, p);
@@ -245,10 +314,7 @@ async function loadGroups(){
     }
     const ano = fechaInicio ? String(fechaInicio.getFullYear()) : '';
 
-    // texto para búsqueda
-    const searchBlob = norm([
-      gid, nombre, destino, programa, coord
-    ].join(' '));
+    const searchBlob = norm([gid, nombre, destino, programa, coord].join(' '));
 
     state.rowsAll.push({
       gid,
@@ -266,7 +332,6 @@ async function loadGroups(){
     });
   });
 
-  // orden estable: por fecha inicio, luego gid
   state.rowsAll.sort((a,b)=>{
     const ta = a.fechaInicio ? a.fechaInicio.getTime() : 0;
     const tb = b.fechaInicio ? b.fechaInicio.getTime() : 0;
@@ -276,16 +341,17 @@ async function loadGroups(){
 }
 
 /* =========================
-   FILTER OPTIONS
+   FILTER OPTIONS (solo si existe el select)
 ========================= */
 function buildFilterOptions(){
-  if (ui.fDestino) fillSelect(ui.fDestino, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.destino).filter(Boolean))]);
-  if (ui.fPrograma) fillSelect(ui.fPrograma, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.programa).filter(Boolean))]);
-  if (ui.fCoord) fillSelect(ui.fCoord, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.coord).filter(Boolean))]);
-  if (ui.fAno) fillSelect(ui.fAno, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.ano).filter(Boolean)).sort()]);
+  if (exists(ui.fDestino)) fillSelect(ui.fDestino, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.destino).filter(Boolean))]);
+  if (exists(ui.fPrograma)) fillSelect(ui.fPrograma, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.programa).filter(Boolean))]);
+  if (exists(ui.fCoord)) fillSelect(ui.fCoord, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.coord).filter(Boolean))]);
+  if (exists(ui.fAno)) fillSelect(ui.fAno, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.ano).filter(Boolean)).sort()]);
 }
 
 function fillSelect(sel, values){
+  if (!sel) return;
   sel.innerHTML = '';
   for (const v of values){
     const opt = document.createElement('option');
@@ -301,25 +367,21 @@ function uniq(arr){
 }
 
 /* =========================
-   APPLY FILTERS
+   APPLY FILTERS (tolerante a filtros faltantes)
 ========================= */
 function applyFilters(){
-  const q = norm(ui.q?.value || '');
-  
-  // ✅ si el select no existe, se asume (TODOS)
-  const destino  = ui.fDestino?.value  || '(TODOS)';
-  const programa = ui.fPrograma?.value || '(TODOS)';
-  const coord    = ui.fCoord?.value    || '(TODOS)';
-  const ano      = ui.fAno?.value      || '(TODOS)';
-  
-  // ✅ si no existen, se asume NO
-  const soloDif       = (ui.fSoloDiferencias?.value === 'SI');
-  const soloSinReales = (ui.fSoloSinReales?.value === 'SI');
-  
-  // ✅ si el input no existe, null
-  const desde = ui.fDesde?.value ? new Date(ui.fDesde.value + 'T00:00:00') : null;
-  const hasta = ui.fHasta?.value ? new Date(ui.fHasta.value + 'T23:59:59') : null;
+  const q = exists(ui.q) ? norm(ui.q.value || '') : '';
 
+  const destino = exists(ui.fDestino) ? (ui.fDestino.value || '(TODOS)') : '(TODOS)';
+  const programa = exists(ui.fPrograma) ? (ui.fPrograma.value || '(TODOS)') : '(TODOS)';
+  const coord = exists(ui.fCoord) ? (ui.fCoord.value || '(TODOS)') : '(TODOS)';
+  const ano = exists(ui.fAno) ? (ui.fAno.value || '(TODOS)') : '(TODOS)';
+
+  const soloDif = exists(ui.fSoloDiferencias) ? (ui.fSoloDiferencias.value === 'SI') : false;
+  const soloSinReales = exists(ui.fSoloSinReales) ? (ui.fSoloSinReales.value === 'SI') : false;
+
+  const desde = (exists(ui.fDesde) && ui.fDesde.value) ? new Date(ui.fDesde.value + 'T00:00:00') : null;
+  const hasta = (exists(ui.fHasta) && ui.fHasta.value) ? new Date(ui.fHasta.value + 'T23:59:59') : null;
 
   const rows = state.rowsAll.filter(r=>{
     if (destino !== '(TODOS)' && r.destino !== destino) return false;
@@ -329,19 +391,19 @@ function applyFilters(){
 
     if (desde && r.fechaInicio && r.fechaInicio < desde) return false;
     if (hasta && r.fechaInicio && r.fechaInicio > hasta) return false;
-    // si no hay fechaInicio y el usuario filtró por fecha => afuera
     if ((desde || hasta) && !r.fechaInicio) return false;
 
     if (q && !r.searchBlob.includes(q)) return false;
 
-    const declared = r.declarados || 0;
-    const reales = (r.paxReales == null ? null : r.paxReales);
+    // ✅ “reales efectivos” incluye auto OK cuando expected==declared
+    const effReales = effectiveReales(r);
 
-    if (soloSinReales && reales != null) return false;
+    if (soloSinReales && effReales != null) return false;
 
     if (soloDif){
-      if (reales == null) return false;
-      if (reales === declared) return false;
+      // solo dif entre DECLARADOS y REALES EFECTIVOS (si hay)
+      if (effReales == null) return false;
+      if (effReales === (r.declarados || 0)) return false;
     }
 
     return true;
@@ -358,6 +420,8 @@ function applyFilters(){
 function render(){
   const rows = state.rowsView;
 
+  if (!exists(ui.tbody)) return;
+
   if (!rows.length){
     ui.tbody.innerHTML = `<tr><td colspan="8" class="es-empty">Sin resultados.</td></tr>`;
     return;
@@ -369,109 +433,141 @@ function render(){
     const tr = document.createElement('tr');
     tr.dataset.gid = r.gid;
 
-    const declared = r.declarados || 0;
     const expected = r.esperados || 0;
+    const declared = r.declarados || 0;
 
-    // valor a mostrar en input: si el usuario lo cambió (dirty), mostrar dirty; si no, el de firestore
     const dirty = state.dirty.get(r.gid);
-    const valReales = (dirty && dirty.paxReales !== undefined) ? dirty.paxReales : r.paxReales;
+
+    // ✅ valor reales a mostrar:
+    // - si hay dirty => dirty
+    // - si no => reales efectivos (incluye auto OK)
+    const baseEff = effectiveReales(r);
+    const valReales = (dirty && dirty.paxReales !== undefined) ? dirty.paxReales : baseEff;
 
     const realesNum = (valReales == null || valReales === '' ? null : Number(valReales));
-    const diff = (realesNum != null && Number.isFinite(realesNum) && realesNum !== declared);
-
     const revisionVal = (dirty && dirty.revisionPax !== undefined) ? dirty.revisionPax : (r.revisionPax || '');
-    const needsRevision = diff;
 
-    const estadoHTML = needsRevision
-      ? `<span class="es-badge warn">DIFERENCIA</span>`
-      : `<span class="es-badge">OK</span>`;
+    const st = calcStatus(r, realesNum, revisionVal);
+
+    // ✅ Revisión habilitada solo si necesita manual (expected!=declared)
+    const needsManual = (expected !== declared);
+    const revisionDisabled = needsManual ? '' : 'disabled';
+
+    // placeholder de revisión
+    const revPh = needsManual ? 'Motivo / comentario' : '—';
+
+    // badge
+    const estadoHTML = (st.key === 'OK')
+      ? `<span class="es-badge">OK</span>`
+      : (st.key === 'CORREGIDO'
+          ? `<span class="es-badge" style="border-color:#16a34a;background:#ecfdf5;color:#166534;">CORREGIDO</span>`
+          : `<span class="es-badge warn">PENDIENTE</span>`
+        );
 
     tr.innerHTML = `
       <td class="es-nowrap es-mono">${escapeHtml(r.gid)}</td>
       <td>${escapeHtml(r.nombre || '(sin nombre)')}</td>
       <td class="es-nowrap">${escapeHtml(r.coord || '')}</td>
-    
+
       <td class="es-nowrap es-right es-mono">${expected}</td>
       <td class="es-nowrap es-right es-mono">${declared}</td>
-    
+
       <td class="es-nowrap">
         <input class="cell-input num" type="number" min="0" step="1"
-               data-role="paxReales" value="${valReales == null ? '' : String(valReales)}"
+               data-role="paxReales"
+               value="${valReales == null ? '' : String(valReales)}"
                placeholder="(vacío)" />
       </td>
-    
+
       <td>
         <input class="cell-input" type="text"
                data-role="revision"
                value="${escapeAttr(revisionVal)}"
-               placeholder="${needsRevision ? 'Motivo / comentario' : '—'}"
-               ${needsRevision ? '' : 'disabled'} />
+               placeholder="${revPh}"
+               ${revisionDisabled} />
       </td>
-    
+
       <td class="es-nowrap">${estadoHTML}</td>
     `;
 
-
-    // listeners por fila (inputs)
     const inpReales = tr.querySelector('input[data-role="paxReales"]');
     const inpRevision = tr.querySelector('input[data-role="revision"]');
 
-    inpReales.addEventListener('input', ()=>{
-      onEditRow(r.gid, tr);
-    });
-    inpRevision.addEventListener('input', ()=>{
-      onEditRow(r.gid, tr, { onlyRevision:true });
-    });
+    // ✅ Si NO necesita manual, dejamos revisión deshabilitada y NO exigimos comentario.
+    //    Si necesitas permitir comentarios igual, me dices y lo habilitamos.
+    if (needsManual){
+      // listeners
+      inpReales.addEventListener('input', ()=> onEditRow(r.gid, tr));
+      inpRevision.addEventListener('input', ()=> onEditRow(r.gid, tr, { onlyRevision:true }));
+    } else {
+      // Aún permitimos cambiar PAX Reales si alguien quiere, pero eso lo convierte en dirty.
+      inpReales.addEventListener('input', ()=> onEditRow(r.gid, tr));
+    }
 
     ui.tbody.appendChild(tr);
 
-    // si ya estaba dirty, marca
     if (state.dirty.has(r.gid)) tr.classList.add('es-row-dirty');
   }
 }
 
-function onEditRow(gid, tr, opts = {}){
+function onEditRow(gid, tr){
   const row = state.rowsAll.find(x=>x.gid === gid);
   if (!row) return;
 
+  const expected = row.esperados || 0;
   const declared = row.declarados || 0;
+  const needsManual = (expected !== declared);
 
   const inpReales = tr.querySelector('input[data-role="paxReales"]');
   const inpRevision = tr.querySelector('input[data-role="revision"]');
 
   const rawReales = inpReales.value;
   const nReales = rawReales === '' ? null : Number(rawReales);
-  const diff = (nReales != null && Number.isFinite(nReales) && nReales !== declared);
+  const realesOk = (nReales == null ? null : (Number.isFinite(nReales) ? nReales : null));
 
-  // habilitar/deshabilitar revisión según diff
-  if (diff){
-    inpRevision.disabled = false;
-    if (!inpRevision.placeholder || inpRevision.placeholder === '—'){
-      inpRevision.placeholder = 'Motivo / comentario';
+  // ✅ lógica de habilitación de revisión:
+  // - Solo si needsManual (expected!=declared) => revisión habilitada
+  // - Si no needsManual => revisión siempre deshabilitada + vacía (no se guarda)
+  if (!needsManual){
+    if (inpRevision){
+      inpRevision.disabled = true;
+      inpRevision.value = '';
+      inpRevision.placeholder = '—';
     }
   } else {
-    inpRevision.disabled = true;
-    inpRevision.value = '';         // 👈 recomendación: si no hay diferencia, no guardamos revisión
-    inpRevision.placeholder = '—';
+    if (inpRevision){
+      inpRevision.disabled = false;
+      inpRevision.placeholder = 'Motivo / comentario';
+    }
   }
 
-  // estado badge
-  const estadoCell = tr.lastElementChild;
-  estadoCell.innerHTML = diff
-    ? `<span class="es-badge warn">DIFERENCIA</span>`
-    : `<span class="es-badge">OK</span>`;
+  const revisionTxt = needsManual ? safeText(inpRevision?.value || '') : '';
 
-  // marcar dirty
+  // ✅ badge estado basado en reglas nuevas
+  const st = calcStatus(row, realesOk, revisionTxt);
+  const estadoCell = tr.lastElementChild;
+
+  if (st.key === 'OK'){
+    estadoCell.innerHTML = `<span class="es-badge">OK</span>`;
+  } else if (st.key === 'CORREGIDO'){
+    estadoCell.innerHTML = `<span class="es-badge" style="border-color:#16a34a;background:#ecfdf5;color:#166534;">CORREGIDO</span>`;
+  } else {
+    estadoCell.innerHTML = `<span class="es-badge warn">PENDIENTE</span>`;
+  }
+
+  // ✅ marcar dirty comparando contra BASELINE (para no ensuciar por auto-fill)
   const prev = state.dirty.get(gid) || {};
   const next = {
     ...prev,
-    paxReales: nReales, // null si vacío
-    revisionPax: diff ? (inpRevision.value || '') : '',
+    paxReales: realesOk,                 // null si vacío
+    revisionPax: needsManual ? revisionTxt : '',
   };
 
-  // Si no cambió nada vs lo que ya hay en Firestore, des-marcar dirty
-  const sameReales = (row.paxReales == null ? null : Number(row.paxReales)) === (next.paxReales == null ? null : Number(next.paxReales));
-  const sameRev = (safeText(row.revisionPax || '') === safeText(next.revisionPax || ''));
+  const baseReales = baselineReales(row);
+  const baseRev = needsManual ? safeText(row.revisionPax || '') : '';
+
+  const sameReales = (baseReales == null ? null : Number(baseReales)) === (next.paxReales == null ? null : Number(next.paxReales));
+  const sameRev = (safeText(baseRev) === safeText(next.revisionPax || ''));
 
   if (sameReales && sameRev){
     state.dirty.delete(gid);
@@ -481,8 +577,8 @@ function onEditRow(gid, tr, opts = {}){
     tr.classList.add('es-row-dirty');
   }
 
-  ui.btnGuardar.disabled = (state.dirty.size === 0);
-  recalcKpis(); // opcional: KPI se mantiene consistente si quieres (no obligatorio)
+  if (exists(ui.btnGuardar)) ui.btnGuardar.disabled = (state.dirty.size === 0);
+  recalcKpis();
 }
 
 /* =========================
@@ -497,81 +593,90 @@ function recalcKpis(){
 
   let realesSum = 0;
   let realesCount = 0;
-  let esperadosBaseReales = 0; // ✅ esperados solo donde hay reales
-  
+  let esperadosBaseReales = 0; // ✅ esperados solo donde hay reales efectivos
+
   for (const r of rows){
     esperados += (r.esperados || 0);
     declarados += (r.declarados || 0);
-  
+
     // ✅ Reales deben reflejar lo que el usuario edita (dirty)
     const d = state.dirty.get(r.gid);
-    const vReales = (d && d.paxReales !== undefined) ? d.paxReales : r.paxReales;
-  
-    const hasReales = (vReales != null && vReales !== '' && Number.isFinite(Number(vReales)));
+    let eff;
+
+    if (d && d.paxReales !== undefined){
+      // si el usuario está editando, usamos eso como "reales efectivos"
+      eff = (d.paxReales == null ? null : Number(d.paxReales));
+    } else {
+      eff = effectiveReales(r); // incluye auto OK
+    }
+
+    const hasReales = (eff != null && Number.isFinite(eff));
     if (hasReales){
-      realesSum += Number(vReales);
+      realesSum += eff;
       realesCount += 1;
-  
-      // ✅ solo sumamos esperados para el mismo subconjunto
       esperadosBaseReales += (r.esperados || 0);
     }
   }
-  
+
   const deltaDeclarados = declarados - esperados;
-  
-  // ✅ AHORA el delta reales tiene sentido: solo en grupos con reales informados
   const deltaReales = realesSum - esperadosBaseReales;
 
+  // --- pintar KPIs si existen ---
+  if (exists(ui.kGrupos)) ui.kGrupos.textContent = String(grupos);
+  if (exists(ui.kGruposHint)) ui.kGruposHint.textContent = `${state.dirty.size} con cambios pendientes`;
 
-  ui.kGrupos.textContent = String(grupos);
-  ui.kGruposHint.textContent = `${state.dirty.size} con cambios pendientes`;
+  if (exists(ui.kEsperados)) ui.kEsperados.textContent = String(esperados);
+  if (exists(ui.kDeclarados)) ui.kDeclarados.textContent = String(declarados);
 
-  ui.kEsperados.textContent = String(esperados);
-  ui.kDeclarados.textContent = String(declarados);
+  if (exists(ui.kReales)) ui.kReales.textContent = String(realesSum);
+  if (exists(ui.kRealesHint)) ui.kRealesHint.textContent = String(realesCount);
 
-  // ✅ nuevos KPI
-  ui.kReales.textContent = String(realesSum);
-  ui.kRealesHint.textContent = String(realesCount);
-
-  // delta declarados
-  ui.kDelta.textContent = String(deltaDeclarados);
-  ui.kDeltaBox.classList.remove('delta-neg','delta-pos');
-  if (deltaDeclarados < 0) ui.kDeltaBox.classList.add('delta-neg');
-  else if (deltaDeclarados > 0) ui.kDeltaBox.classList.add('delta-pos');
-
-  // delta reales
-  ui.kDeltaReales.textContent = String(deltaReales);
-  ui.kDeltaRealesBox.classList.remove('delta-neg','delta-pos');
-  
-  // ✅ si aún no hay reales cargados, no coloreamos (neutro)
-  if (realesCount === 0) {
-    // nada
-  } else if (deltaReales < 0) {
-    ui.kDeltaRealesBox.classList.add('delta-neg');
-  } else if (deltaReales > 0) {
-    ui.kDeltaRealesBox.classList.add('delta-pos');
+  // delta declarados (mantiene tu regla clásica: negativo rojo, positivo verde)
+  if (exists(ui.kDelta)) ui.kDelta.textContent = String(deltaDeclarados);
+  if (exists(ui.kDeltaBox)){
+    ui.kDeltaBox.classList.remove('delta-neg','delta-pos');
+    if (deltaDeclarados < 0) ui.kDeltaBox.classList.add('delta-neg');
+    else if (deltaDeclarados > 0) ui.kDeltaBox.classList.add('delta-pos');
   }
 
+  // ✅ delta reales:
+  // IMPORTANTE: tú pediste explícitamente que cuando sea negativo "debería ser en verde".
+  // Por eso invertimos el color:
+  //   - deltaReales < 0 => verde (delta-pos)
+  //   - deltaReales > 0 => rojo (delta-neg)
+  if (exists(ui.kDeltaReales)) ui.kDeltaReales.textContent = String(deltaReales);
+  if (exists(ui.kDeltaRealesBox)){
+    ui.kDeltaRealesBox.classList.remove('delta-neg','delta-pos');
+
+    if (realesCount === 0){
+      // neutro
+    } else if (deltaReales < 0){
+      ui.kDeltaRealesBox.classList.add('delta-pos'); // verde (invertido)
+    } else if (deltaReales > 0){
+      ui.kDeltaRealesBox.classList.add('delta-neg'); // rojo (invertido)
+    }
+  }
 }
 
-
 /* =========================
-   RESET FILTERS
+   RESET FILTERS (tolerante a faltantes)
 ========================= */
 function resetFilters(){
-  if (ui.q) ui.q.value = '';
-  if (ui.fDestino) ui.fDestino.value = '(TODOS)';
-  if (ui.fPrograma) ui.fPrograma.value = '(TODOS)';
-  if (ui.fCoord) ui.fCoord.value = '(TODOS)';
-  if (ui.fAno) ui.fAno.value = '(TODOS)';
-  if (ui.fDesde) ui.fDesde.value = '';
-  if (ui.fHasta) ui.fHasta.value = '';
-  if (ui.fSoloDiferencias) ui.fSoloDiferencias.value = 'NO';
-  if (ui.fSoloSinReales) ui.fSoloSinReales.value = 'NO';
+  if (exists(ui.q)) ui.q.value = '';
+
+  if (exists(ui.fDestino)) ui.fDestino.value = '(TODOS)';
+  if (exists(ui.fPrograma)) ui.fPrograma.value = '(TODOS)';
+  if (exists(ui.fCoord)) ui.fCoord.value = '(TODOS)';
+  if (exists(ui.fAno)) ui.fAno.value = '(TODOS)';
+
+  if (exists(ui.fDesde)) ui.fDesde.value = '';
+  if (exists(ui.fHasta)) ui.fHasta.value = '';
+
+  if (exists(ui.fSoloDiferencias)) ui.fSoloDiferencias.value = 'NO';
+  if (exists(ui.fSoloSinReales)) ui.fSoloSinReales.value = 'NO';
 
   applyFilters();
 }
-
 
 /* =========================
    SAVE
@@ -580,23 +685,28 @@ async function guardarCambios(){
   if (!state.user) return;
   if (state.dirty.size === 0) return;
 
-  // validación: si hay diferencia, Revisión no puede quedar vacía (recomendación)
-  // Si quieres permitir vacío, comenta este bloque.
+  // ✅ validación NUEVA:
+  // SOLO exigimos "Revisión" cuando el grupo requiere manual (expected!=declared)
+  // y además estamos guardando reales (o cambio) para ese grupo.
   const problems = [];
   for (const [gid, ch] of state.dirty.entries()){
     const row = state.rowsAll.find(x=>x.gid === gid);
     if (!row) continue;
 
-    const declared = row.declarados || 0;
-    const reales = ch.paxReales;
+    const needsManual = ((row.esperados || 0) !== (row.declarados || 0));
+    if (!needsManual) continue;
 
-    const diff = (reales != null && Number.isFinite(reales) && reales !== declared);
-    if (diff && !safeText(ch.revisionPax).trim()){
+    const hasReales = (ch.paxReales != null && Number.isFinite(ch.paxReales));
+    const hasRev = !!safeText(ch.revisionPax).trim();
+
+    // Si requiere manual, pedimos comentario siempre (aunque ponga reales igual a declarados)
+    if (hasReales && !hasRev){
       problems.push(gid);
     }
   }
+
   if (problems.length){
-    setStatus(`Falta "Revisión" en ${problems.length} grupo(s) con diferencia (ej: ${problems.slice(0,3).join(', ')})`, true);
+    setStatus(`Falta "Revisión" en ${problems.length} grupo(s) que están PENDIENTE/CORRECCIÓN (ej: ${problems.slice(0,3).join(', ')})`, true);
     return;
   }
 
@@ -629,9 +739,8 @@ async function guardarCambios(){
     }
 
     state.dirty.clear();
-    ui.btnGuardar.disabled = true;
+    if (exists(ui.btnGuardar)) ui.btnGuardar.disabled = true;
 
-    // re-render para limpiar marcas y re-desactivar revisión si corresponde
     render();
     recalcKpis();
 
@@ -646,6 +755,7 @@ async function guardarCambios(){
    UI status
 ========================= */
 function setStatus(msg, isErr=false){
+  if (!exists(ui.status)) return;
   ui.status.textContent = msg;
   ui.status.style.color = isErr ? '#b91c1c' : '#374151';
 }
