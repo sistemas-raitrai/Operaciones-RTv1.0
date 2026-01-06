@@ -418,7 +418,7 @@ function render(){
       <td>${escapeHtml(r.nombre || '(sin nombre)')}</td>
 
       <!-- ✅ Coordinador en mayúsculas (visual) -->
-      <td class="es-nowrap">${escapeHtml((r.coord || '').toUpperCase())}</td>
+      <td class="es-nowrap col-coord">${escapeHtml((r.coord || '').toUpperCase())}</td>
 
       <td class="es-nowrap es-right es-mono">${expected}</td>
       <td class="es-nowrap es-right es-mono">${declared}</td>
