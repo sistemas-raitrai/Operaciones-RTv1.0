@@ -1,14 +1,11 @@
 // estadisticas.js
-// RT · Estadísticas (PAX esperados / declarados / reales + revisión)
-// ✅ Mantiene estética (encabezado + estilos.css) y aisla UI con overrides en el HTML
-// ✅ Edita PAX Reales
-// ✅ NUEVO:
-//    - Si Esperados == Declarados => PAX Reales se autocompleta con ese valor (sin escribir en Firestore)
-//      y el estado queda OK (auto) + cuenta en KPI de Reales.
-//    - Si Esperados != Declarados => estado PENDIENTE hasta que se corrija (reales + revisión).
-//      Al corregir => estado "CORREGIDO" en verde (NO "DIFERENCIA" en rojo).
-// ✅ Botón Guardar: escribe SOLO cambios (dirty) en Firestore
-// ✅ Robusto a HTML parcial (si faltan filtros/IDs, no se cae)
+// RT · Estadísticas (PAX esperados / declarados / liberados / reales + revisión)
+// ✅ Edita PAX Reales y PAX Liberados
+// ✅ PAX Liberados default = floor(esperados/10) pero editable
+// ✅ Si cambias liberados o reales => habilita Revisión y estado "CORREGIDO" (verde)
+// ✅ Tooltip flotante en Revisión (title)
+// ✅ Coordinador en MAYÚSCULAS (visual)
+// ✅ Guardar: escribe SOLO cambios en Firestore
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -17,15 +14,13 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* =========================
-   CONFIG (AJUSTA SOLO SI TU RUTA ES OTRA)
+   CONFIG
 ========================= */
-const GROUPS_COLLECTION = 'grupos';          // 👈 si tu colección es otra, cámbiala aquí
-const LOGIN_PAGE = 'login.html';            // 👈 si tu sistema usa otra, cámbiala aquí
+const GROUPS_COLLECTION = 'grupos';
+const LOGIN_PAGE = 'login.html';
 
-// Campos esperados (fallbacks)
+// Esperados / Declarados
 const EXPECTED_KEYS = ['cantidadGrupo', 'paxEsperados', 'cantidadgrupo', 'paxTotal', 'pax'];
-
-// Declarados (fallbacks)
 const DECLARED_PATHS = [
   ['paxViajando','total'],
   ['paxViajandoTotal'],
@@ -36,14 +31,16 @@ const DECLARED_PATHS = [
 const START_DATE_PATHS = [
   ['fechaInicio'],
   ['fechas','inicio'],
-  ['fechaDeViaje'], // si viene como texto, se intenta parse
+  ['fechaDeViaje'],
 ];
+
+// Campo Firestore para liberados (nuevo)
+const LIBERADOS_KEY = 'paxLiberados';
 
 /* =========================
    HELPERS
 ========================= */
 const $ = (id)=> document.getElementById(id);
-const exists = (el)=> !!el;
 
 const norm = (s='') =>
   s.toString()
@@ -127,67 +124,9 @@ function safeText(v){
   return String(v);
 }
 
-function isFiniteNum(v){
-  const n = (typeof v === 'number') ? v : Number(v);
-  return Number.isFinite(n);
-}
-
-/**
- * ✅ Reales “efectivos”:
- * - Si hay reales en Firestore => usa eso
- * - Si NO hay reales y (esperados == declarados) => reales efectivos = declarados (auto OK)
- * - Si no, null
- */
-function effectiveReales(row){
-  const r = row.paxReales;
-  if (r != null && r !== '' && isFiniteNum(r)) return Number(r);
-
-  const expected = row.esperados || 0;
-  const declared = row.declarados || 0;
-
-  if (expected === declared) return declared;  // 👈 auto OK
-  return null;
-}
-
-/**
- * ✅ Baseline para comparar dirty (para que el auto OK NO marque cambios)
- * - Si Firestore trae paxReales => baseline = ese valor
- * - Si no trae y expected==declared => baseline = declared (auto)
- * - Si no, baseline = null
- */
-function baselineReales(row){
-  const r = row.paxReales;
-  if (r != null && r !== '' && isFiniteNum(r)) return Number(r);
-
-  const expected = row.esperados || 0;
-  const declared = row.declarados || 0;
-
-  if (expected === declared) return declared;
-  return null;
-}
-
-/**
- * ✅ Estados:
- * - OK (auto): expected==declared (reales efectivos existe por regla auto) y NO requiere acción
- * - PENDIENTE: expected!=declared y aún no está corregido (falta reales y/o revisión)
- * - CORREGIDO: expected!=declared y ya hay reales + revisión
- */
-function calcStatus(row, effectiveRealesValue, revisionText){
-  const expected = row.esperados || 0;
-  const declared = row.declarados || 0;
-  const needsManual = (expected !== declared);
-
-  if (!needsManual){
-    return { key:'OK', label:'OK', css:'ok' };
-  }
-
-  const hasReales = (effectiveRealesValue != null && Number.isFinite(effectiveRealesValue));
-  const hasRev = !!safeText(revisionText).trim();
-
-  if (hasReales && hasRev){
-    return { key:'CORREGIDO', label:'CORREGIDO', css:'ok' }; // verde
-  }
-  return { key:'PENDIENTE', label:'PENDIENTE', css:'warn' }; // ámbar
+function defaultLiberados(esperados){
+  const n = Number(esperados) || 0;
+  return Math.floor(n / 10);
 }
 
 /* =========================
@@ -197,17 +136,17 @@ const auth = getAuth(app);
 
 const state = {
   user: null,
-  rowsAll: [],     // rows normalizadas
-  rowsView: [],    // filtradas
-  dirty: new Map(),// gid -> { paxReales, revisionPax }
+  rowsAll: [],
+  rowsView: [],
+  // dirty: gid -> { paxReales, paxLiberados, revisionPax }
+  dirty: new Map(),
 };
 
 /* =========================
-   UI REFS (robusto si faltan IDs)
+   UI REFS
 ========================= */
 const ui = {
   q: $('q'),
-
   fDestino: $('fDestino'),
   fPrograma: $('fPrograma'),
   fCoord: $('fCoord'),
@@ -238,6 +177,12 @@ const ui = {
 
   kDeltaReales: $('kDeltaReales'),
   kDeltaRealesBox: $('kDeltaRealesBox'),
+
+  // nuevos KPI (si los agregaste al HTML)
+  kLiberados: $('kLiberados'),
+  kLiberadosBox: $('kLiberadosBox'),
+  kNeto: $('kNeto'),
+  kNetoBox: $('kNetoBox'),
 };
 
 /* =========================
@@ -263,7 +208,7 @@ async function boot(){
   setStatus('Cargando grupos...');
   await loadGroups();
   buildFilterOptions();
-  applyFilters(); // render inicial
+  applyFilters();
   setStatus('Listo.');
 }
 
@@ -271,15 +216,13 @@ async function boot(){
    EVENTS
 ========================= */
 function wireEvents(){
-  if (exists(ui.btnAplicar)) ui.btnAplicar.addEventListener('click', ()=> applyFilters());
-  if (exists(ui.btnLimpiar)) ui.btnLimpiar.addEventListener('click', ()=> resetFilters());
-  if (exists(ui.btnGuardar)) ui.btnGuardar.addEventListener('click', ()=> guardarCambios());
+  ui.btnAplicar?.addEventListener('click', ()=> applyFilters());
+  ui.btnLimpiar?.addEventListener('click', ()=> resetFilters());
+  ui.btnGuardar?.addEventListener('click', ()=> guardarCambios());
 
-  if (exists(ui.q)){
-    ui.q.addEventListener('keydown', (e)=>{
-      if (e.key === 'Enter'){ e.preventDefault(); applyFilters(); }
-    });
-  }
+  ui.q?.addEventListener('keydown', (e)=>{
+    if (e.key === 'Enter'){ e.preventDefault(); applyFilters(); }
+  });
 }
 
 /* =========================
@@ -288,7 +231,7 @@ function wireEvents(){
 async function loadGroups(){
   state.rowsAll = [];
   state.dirty.clear();
-  if (exists(ui.btnGuardar)) ui.btnGuardar.disabled = true;
+  if (ui.btnGuardar) ui.btnGuardar.disabled = true;
 
   const snap = await getDocs(collection(db, GROUPS_COLLECTION));
   snap.forEach((ds)=>{
@@ -303,9 +246,17 @@ async function loadGroups(){
     const esperados = pickNumber(g, EXPECTED_KEYS);
     const declarados = pickDeclared(g);
 
-    const paxReales = Number.isFinite(toNum(g.paxReales)) ? toNum(g.paxReales) : null;
+    // pax reales
+    const paxRealesFS = Number.isFinite(toNum(g.paxReales)) ? toNum(g.paxReales) : null;
+
+    // liberados: si existe en FS úsalo; si no, default
+    const liberadosFSNum = Number.isFinite(toNum(g[LIBERADOS_KEY])) ? toNum(g[LIBERADOS_KEY]) : null;
+    const liberadosDefault = defaultLiberados(esperados);
+    const paxLiberados = (liberadosFSNum == null ? liberadosDefault : liberadosFSNum);
+
     const revisionPax = safeText(g.revisionPax || '');
 
+    // fecha inicio
     let fechaInicio = null;
     for (const p of START_DATE_PATHS){
       const v = getByPath(g, p);
@@ -322,9 +273,14 @@ async function loadGroups(){
       destino,
       programa,
       coord,
+
       esperados,
       declarados,
-      paxReales,      // null si no existe
+
+      paxReales: paxRealesFS,         // null si no existe
+      paxLiberados,                   // siempre num (default o FS)
+      paxLiberadosDefault: liberadosDefault,
+
       revisionPax,
       fechaInicio,
       ano,
@@ -341,13 +297,13 @@ async function loadGroups(){
 }
 
 /* =========================
-   FILTER OPTIONS (solo si existe el select)
+   FILTER OPTIONS
 ========================= */
 function buildFilterOptions(){
-  if (exists(ui.fDestino)) fillSelect(ui.fDestino, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.destino).filter(Boolean))]);
-  if (exists(ui.fPrograma)) fillSelect(ui.fPrograma, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.programa).filter(Boolean))]);
-  if (exists(ui.fCoord)) fillSelect(ui.fCoord, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.coord).filter(Boolean))]);
-  if (exists(ui.fAno)) fillSelect(ui.fAno, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.ano).filter(Boolean)).sort()]);
+  if (ui.fDestino) fillSelect(ui.fDestino, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.destino).filter(Boolean))]);
+  if (ui.fPrograma) fillSelect(ui.fPrograma, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.programa).filter(Boolean))]);
+  if (ui.fCoord) fillSelect(ui.fCoord, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.coord).filter(Boolean))]);
+  if (ui.fAno) fillSelect(ui.fAno, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.ano).filter(Boolean)).sort()]);
 }
 
 function fillSelect(sel, values){
@@ -367,21 +323,20 @@ function uniq(arr){
 }
 
 /* =========================
-   APPLY FILTERS (tolerante a filtros faltantes)
+   APPLY FILTERS
 ========================= */
 function applyFilters(){
-  const q = exists(ui.q) ? norm(ui.q.value || '') : '';
+  const q = norm(ui.q?.value || '');
+  const destino = ui.fDestino?.value || '(TODOS)';
+  const programa = ui.fPrograma?.value || '(TODOS)';
+  const coord = ui.fCoord?.value || '(TODOS)';
+  const ano = ui.fAno?.value || '(TODOS)';
 
-  const destino = exists(ui.fDestino) ? (ui.fDestino.value || '(TODOS)') : '(TODOS)';
-  const programa = exists(ui.fPrograma) ? (ui.fPrograma.value || '(TODOS)') : '(TODOS)';
-  const coord = exists(ui.fCoord) ? (ui.fCoord.value || '(TODOS)') : '(TODOS)';
-  const ano = exists(ui.fAno) ? (ui.fAno.value || '(TODOS)') : '(TODOS)';
+  const soloDif = (ui.fSoloDiferencias?.value === 'SI');
+  const soloSinReales = (ui.fSoloSinReales?.value === 'SI');
 
-  const soloDif = exists(ui.fSoloDiferencias) ? (ui.fSoloDiferencias.value === 'SI') : false;
-  const soloSinReales = exists(ui.fSoloSinReales) ? (ui.fSoloSinReales.value === 'SI') : false;
-
-  const desde = (exists(ui.fDesde) && ui.fDesde.value) ? new Date(ui.fDesde.value + 'T00:00:00') : null;
-  const hasta = (exists(ui.fHasta) && ui.fHasta.value) ? new Date(ui.fHasta.value + 'T23:59:59') : null;
+  const desde = ui.fDesde?.value ? new Date(ui.fDesde.value + 'T00:00:00') : null;
+  const hasta = ui.fHasta?.value ? new Date(ui.fHasta.value + 'T23:59:59') : null;
 
   const rows = state.rowsAll.filter(r=>{
     if (destino !== '(TODOS)' && r.destino !== destino) return false;
@@ -395,15 +350,14 @@ function applyFilters(){
 
     if (q && !r.searchBlob.includes(q)) return false;
 
-    // ✅ “reales efectivos” incluye auto OK cuando expected==declared
-    const effReales = effectiveReales(r);
+    const declared = r.declarados || 0;
+    const reales = (r.paxReales == null ? null : r.paxReales);
 
-    if (soloSinReales && effReales != null) return false;
+    if (soloSinReales && reales != null) return false;
 
     if (soloDif){
-      // solo dif entre DECLARADOS y REALES EFECTIVOS (si hay)
-      if (effReales == null) return false;
-      if (effReales === (r.declarados || 0)) return false;
+      if (reales == null) return false;
+      if (reales === declared) return false;
     }
 
     return true;
@@ -420,10 +374,10 @@ function applyFilters(){
 function render(){
   const rows = state.rowsView;
 
-  if (!exists(ui.tbody)) return;
+  if (!ui.tbody) return;
 
   if (!rows.length){
-    ui.tbody.innerHTML = `<tr><td colspan="8" class="es-empty">Sin resultados.</td></tr>`;
+    ui.tbody.innerHTML = `<tr><td colspan="9" class="es-empty">Sin resultados.</td></tr>`;
     return;
   }
 
@@ -433,49 +387,53 @@ function render(){
     const tr = document.createElement('tr');
     tr.dataset.gid = r.gid;
 
-    const expected = r.esperados || 0;
     const declared = r.declarados || 0;
+    const expected = r.esperados || 0;
 
     const dirty = state.dirty.get(r.gid);
 
-    // ✅ valor reales a mostrar:
-    // - si hay dirty => dirty
-    // - si no => reales efectivos (incluye auto OK)
-    const baseEff = effectiveReales(r);
-    const valReales = (dirty && dirty.paxReales !== undefined) ? dirty.paxReales : baseEff;
+    // liberados (dirty o base)
+    const valLiberados = (dirty && dirty.paxLiberados !== undefined) ? dirty.paxLiberados : r.paxLiberados;
 
+    // reales (dirty o base)
+    const valReales = (dirty && dirty.paxReales !== undefined) ? dirty.paxReales : r.paxReales;
+
+    const liberadosNum = (valLiberados == null || valLiberados === '' ? null : Number(valLiberados));
     const realesNum = (valReales == null || valReales === '' ? null : Number(valReales));
+
+    const liberadosChanged = (liberadosNum != null && Number.isFinite(liberadosNum) && liberadosNum !== r.paxLiberadosDefault);
+    const realesDiff = (realesNum != null && Number.isFinite(realesNum) && realesNum !== declared);
+
+    // “corrección pendiente” si cambias liberados o reales difiere
+    const needsRevision = (liberadosChanged || realesDiff);
+
     const revisionVal = (dirty && dirty.revisionPax !== undefined) ? dirty.revisionPax : (r.revisionPax || '');
 
-    const st = calcStatus(r, realesNum, revisionVal);
-
-    // ✅ Revisión habilitada solo si necesita manual (expected!=declared)
-    const needsManual = (expected !== declared);
-    const revisionDisabled = needsManual ? '' : 'disabled';
-
-    // placeholder de revisión
-    const revPh = needsManual ? 'Motivo / comentario' : '—';
-
-    // badge
-    const estadoHTML = (st.key === 'OK')
-      ? `<span class="es-badge">OK</span>`
-      : (st.key === 'CORREGIDO'
-          ? `<span class="es-badge" style="border-color:#16a34a;background:#ecfdf5;color:#166534;">CORREGIDO</span>`
-          : `<span class="es-badge warn">PENDIENTE</span>`
-        );
+    const estadoHTML = needsRevision
+      ? `<span class="es-badge ok">CORREGIDO</span>`
+      : `<span class="es-badge">OK</span>`;
 
     tr.innerHTML = `
       <td class="es-nowrap es-mono">${escapeHtml(r.gid)}</td>
       <td>${escapeHtml(r.nombre || '(sin nombre)')}</td>
+
+      <!-- ✅ Coordinador en mayúsculas (visual) -->
       <td class="es-nowrap">${escapeHtml((r.coord || '').toUpperCase())}</td>
 
       <td class="es-nowrap es-right es-mono">${expected}</td>
       <td class="es-nowrap es-right es-mono">${declared}</td>
 
+      <!-- ✅ NUEVO: PAX LIBERADOS -->
       <td class="es-nowrap">
         <input class="cell-input num" type="number" min="0" step="1"
-               data-role="paxReales"
-               value="${valReales == null ? '' : String(valReales)}"
+               data-role="paxLiberados"
+               value="${valLiberados == null ? '' : String(valLiberados)}"
+               placeholder="${String(r.paxLiberadosDefault)}" />
+      </td>
+
+      <td class="es-nowrap">
+        <input class="cell-input num" type="number" min="0" step="1"
+               data-role="paxReales" value="${valReales == null ? '' : String(valReales)}"
                placeholder="(vacío)" />
       </td>
 
@@ -483,27 +441,22 @@ function render(){
         <input class="cell-input" type="text"
                data-role="revision"
                value="${escapeAttr(revisionVal)}"
-               title="${escapeAttr(revisionVal)}"
-               placeholder="${revPh}"
-               ${revisionDisabled} />
+               placeholder="${needsRevision ? 'Motivo / comentario' : '—'}"
+               title="${escapeAttr(revisionVal || '')}"
+               ${needsRevision ? '' : 'disabled'} />
       </td>
 
       <td class="es-nowrap">${estadoHTML}</td>
     `;
 
+    // listeners
+    const inpLiberados = tr.querySelector('input[data-role="paxLiberados"]');
     const inpReales = tr.querySelector('input[data-role="paxReales"]');
     const inpRevision = tr.querySelector('input[data-role="revision"]');
 
-    // ✅ Si NO necesita manual, dejamos revisión deshabilitada y NO exigimos comentario.
-    //    Si necesitas permitir comentarios igual, me dices y lo habilitamos.
-    if (needsManual){
-      // listeners
-      inpReales.addEventListener('input', ()=> onEditRow(r.gid, tr));
-      inpRevision.addEventListener('input', ()=> onEditRow(r.gid, tr, { onlyRevision:true }));
-    } else {
-      // Aún permitimos cambiar PAX Reales si alguien quiere, pero eso lo convierte en dirty.
-      inpReales.addEventListener('input', ()=> onEditRow(r.gid, tr));
-    }
+    inpLiberados.addEventListener('input', ()=> onEditRow(r.gid, tr));
+    inpReales.addEventListener('input', ()=> onEditRow(r.gid, tr));
+    inpRevision.addEventListener('input', ()=> onEditRow(r.gid, tr, { onlyRevision:true }));
 
     ui.tbody.appendChild(tr);
 
@@ -511,67 +464,75 @@ function render(){
   }
 }
 
-function onEditRow(gid, tr){
+function onEditRow(gid, tr, opts = {}){
   const row = state.rowsAll.find(x=>x.gid === gid);
   if (!row) return;
 
-  const expected = row.esperados || 0;
   const declared = row.declarados || 0;
-  const needsManual = (expected !== declared);
 
+  const inpLiberados = tr.querySelector('input[data-role="paxLiberados"]');
   const inpReales = tr.querySelector('input[data-role="paxReales"]');
   const inpRevision = tr.querySelector('input[data-role="revision"]');
 
+  const rawLiberados = inpLiberados.value;
+  const nLiberados = rawLiberados === '' ? null : Number(rawLiberados);
+
   const rawReales = inpReales.value;
   const nReales = rawReales === '' ? null : Number(rawReales);
-  const realesOk = (nReales == null ? null : (Number.isFinite(nReales) ? nReales : null));
 
-  // ✅ lógica de habilitación de revisión:
-  // - Solo si needsManual (expected!=declared) => revisión habilitada
-  // - Si no needsManual => revisión siempre deshabilitada + vacía (no se guarda)
-  if (!needsManual){
-    if (inpRevision){
-      inpRevision.disabled = true;
-      inpRevision.value = '';
-      inpRevision.placeholder = '—';
-    }
-  } else {
-    if (inpRevision){
-      inpRevision.disabled = false;
+  const liberadosChanged = (nLiberados != null && Number.isFinite(nLiberados) && nLiberados !== row.paxLiberadosDefault);
+  const realesDiff = (nReales != null && Number.isFinite(nReales) && nReales !== declared);
+
+  const needsRevision = (liberadosChanged || realesDiff);
+
+  // habilitar/deshabilitar revisión
+  if (needsRevision){
+    inpRevision.disabled = false;
+    if (!inpRevision.placeholder || inpRevision.placeholder === '—'){
       inpRevision.placeholder = 'Motivo / comentario';
     }
-  }
-
-  const revisionTxt = needsManual ? safeText(inpRevision?.value || '') : '';
-  if (inpRevision) inpRevision.title = safeText(inpRevision.value || '');
-
-  // ✅ badge estado basado en reglas nuevas
-  const st = calcStatus(row, realesOk, revisionTxt);
-  const estadoCell = tr.lastElementChild;
-
-  if (st.key === 'OK'){
-    estadoCell.innerHTML = `<span class="es-badge">OK</span>`;
-  } else if (st.key === 'CORREGIDO'){
-    estadoCell.innerHTML = `<span class="es-badge" style="border-color:#16a34a;background:#ecfdf5;color:#166534;">CORREGIDO</span>`;
   } else {
-    estadoCell.innerHTML = `<span class="es-badge warn">PENDIENTE</span>`;
+    inpRevision.disabled = true;
+    inpRevision.value = '';
+    inpRevision.placeholder = '—';
+    inpRevision.title = '';
   }
 
-  // ✅ marcar dirty comparando contra BASELINE (para no ensuciar por auto-fill)
+  // actualizar tooltip siempre
+  if (!inpRevision.disabled){
+    inpRevision.title = inpRevision.value || '';
+  }
+
+  // estado
+  const estadoCell = tr.lastElementChild;
+  estadoCell.innerHTML = needsRevision
+    ? `<span class="es-badge ok">CORREGIDO</span>`
+    : `<span class="es-badge">OK</span>`;
+
+  // marcar dirty
   const prev = state.dirty.get(gid) || {};
   const next = {
     ...prev,
-    paxReales: realesOk,                 // null si vacío
-    revisionPax: needsManual ? revisionTxt : '',
+    paxLiberados: nLiberados, // null si vacío (pero lo trataremos en save)
+    paxReales: nReales,
+    revisionPax: needsRevision ? (inpRevision.value || '') : '',
   };
 
-  const baseReales = baselineReales(row);
-  const baseRev = needsManual ? safeText(row.revisionPax || '') : '';
+  // Normalización para comparar vs base:
+  // - base liberados = row.paxLiberados (que ya viene con FS o default)
+  // - base reales = row.paxReales
+  const baseLiberados = Number(row.paxLiberados);
+  const curLiberados = (next.paxLiberados == null ? baseLiberados : Number(next.paxLiberados));
 
-  const sameReales = (baseReales == null ? null : Number(baseReales)) === (next.paxReales == null ? null : Number(next.paxReales));
-  const sameRev = (safeText(baseRev) === safeText(next.revisionPax || ''));
+  const sameLiberados = Number.isFinite(curLiberados) && (curLiberados === baseLiberados);
 
-  if (sameReales && sameRev){
+  const baseReales = (row.paxReales == null ? null : Number(row.paxReales));
+  const curReales = (next.paxReales == null ? null : Number(next.paxReales));
+  const sameReales = (baseReales === curReales);
+
+  const sameRev = (safeText(row.revisionPax || '') === safeText(next.revisionPax || ''));
+
+  if (sameLiberados && sameReales && sameRev){
     state.dirty.delete(gid);
     tr.classList.remove('es-row-dirty');
   } else {
@@ -579,7 +540,7 @@ function onEditRow(gid, tr){
     tr.classList.add('es-row-dirty');
   }
 
-  if (exists(ui.btnGuardar)) ui.btnGuardar.disabled = (state.dirty.size === 0);
+  if (ui.btnGuardar) ui.btnGuardar.disabled = (state.dirty.size === 0);
   recalcKpis();
 }
 
@@ -595,87 +556,89 @@ function recalcKpis(){
 
   let realesSum = 0;
   let realesCount = 0;
-  let esperadosBaseReales = 0; // ✅ esperados solo donde hay reales efectivos
+  let esperadosBaseReales = 0;
+
+  let liberadosSum = 0;
 
   for (const r of rows){
     esperados += (r.esperados || 0);
     declarados += (r.declarados || 0);
 
-    // ✅ Reales deben reflejar lo que el usuario edita (dirty)
     const d = state.dirty.get(r.gid);
-    let eff;
 
-    if (d && d.paxReales !== undefined){
-      // si el usuario está editando, usamos eso como "reales efectivos"
-      eff = (d.paxReales == null ? null : Number(d.paxReales));
-    } else {
-      eff = effectiveReales(r); // incluye auto OK
-    }
+    // reales (considera dirty)
+    const vReales = (d && d.paxReales !== undefined) ? d.paxReales : r.paxReales;
+    const hasReales = (vReales != null && vReales !== '' && Number.isFinite(Number(vReales)));
 
-    const hasReales = (eff != null && Number.isFinite(eff));
+    // liberados (considera dirty; si vacío, vuelve al valor base)
+    const vLiberadosRaw = (d && d.paxLiberados !== undefined) ? d.paxLiberados : r.paxLiberados;
+    const vLiberados = (vLiberadosRaw == null || vLiberadosRaw === '' ? Number(r.paxLiberados) : Number(vLiberadosRaw));
+    if (Number.isFinite(vLiberados)) liberadosSum += vLiberados;
+
     if (hasReales){
-      realesSum += eff;
+      realesSum += Number(vReales);
       realesCount += 1;
       esperadosBaseReales += (r.esperados || 0);
     }
   }
 
   const deltaDeclarados = declarados - esperados;
-  const deltaReales = realesSum - esperadosBaseReales;
 
-  // --- pintar KPIs si existen ---
-  if (exists(ui.kGrupos)) ui.kGrupos.textContent = String(grupos);
-  if (exists(ui.kGruposHint)) ui.kGruposHint.textContent = `${state.dirty.size} con cambios pendientes`;
+  // deltaReales: solo en grupos con reales informados
+  const deltaReales = (realesCount === 0) ? 0 : (realesSum - esperadosBaseReales);
 
-  if (exists(ui.kEsperados)) ui.kEsperados.textContent = String(esperados);
-  if (exists(ui.kDeclarados)) ui.kDeclarados.textContent = String(declarados);
+  // ✅ Cuenta final pedida: NETO = Reales - Liberados
+  const neto = realesSum - liberadosSum;
 
-  if (exists(ui.kReales)) ui.kReales.textContent = String(realesSum);
-  if (exists(ui.kRealesHint)) ui.kRealesHint.textContent = String(realesCount);
+  // UI
+  if (ui.kGrupos) ui.kGrupos.textContent = String(grupos);
+  if (ui.kGruposHint) ui.kGruposHint.textContent = `${state.dirty.size} con cambios pendientes`;
 
-  // delta declarados (mantiene tu regla clásica: negativo rojo, positivo verde)
-  if (exists(ui.kDelta)) ui.kDelta.textContent = String(deltaDeclarados);
-  if (exists(ui.kDeltaBox)){
+  if (ui.kEsperados) ui.kEsperados.textContent = String(esperados);
+  if (ui.kDeclarados) ui.kDeclarados.textContent = String(declarados);
+
+  if (ui.kReales) ui.kReales.textContent = String(realesSum);
+  if (ui.kRealesHint) ui.kRealesHint.textContent = String(realesCount);
+
+  if (ui.kDelta) ui.kDelta.textContent = String(deltaDeclarados);
+  if (ui.kDeltaBox){
     ui.kDeltaBox.classList.remove('delta-neg','delta-pos');
     if (deltaDeclarados < 0) ui.kDeltaBox.classList.add('delta-neg');
     else if (deltaDeclarados > 0) ui.kDeltaBox.classList.add('delta-pos');
   }
 
-  // ✅ delta reales:
-  // IMPORTANTE: tú pediste explícitamente que cuando sea negativo "debería ser en verde".
-  // Por eso invertimos el color:
-  //   - deltaReales < 0 => verde (delta-pos)
-  //   - deltaReales > 0 => rojo (delta-neg)
-  if (exists(ui.kDeltaReales)) ui.kDeltaReales.textContent = String(deltaReales);
-  if (exists(ui.kDeltaRealesBox)){
+  if (ui.kDeltaReales) ui.kDeltaReales.textContent = String(deltaReales);
+  if (ui.kDeltaRealesBox){
     ui.kDeltaRealesBox.classList.remove('delta-neg','delta-pos');
-
     if (realesCount === 0){
       // neutro
-    } else if (deltaReales < 0){
-      ui.kDeltaRealesBox.classList.add('delta-pos'); // verde (invertido)
-    } else if (deltaReales > 0){
-      ui.kDeltaRealesBox.classList.add('delta-neg'); // rojo (invertido)
-    }
+    } else if (deltaReales < 0) ui.kDeltaRealesBox.classList.add('delta-neg');
+    else if (deltaReales > 0) ui.kDeltaRealesBox.classList.add('delta-pos');
+  }
+
+  // nuevos KPI (si existen en HTML)
+  if (ui.kLiberados) ui.kLiberados.textContent = String(liberadosSum);
+  if (ui.kNeto) ui.kNeto.textContent = String(neto);
+
+  if (ui.kNetoBox){
+    ui.kNetoBox.classList.remove('delta-neg','delta-pos');
+    // neto “bueno/malo” depende de tu criterio; lo dejo neutro (sin color).
   }
 }
 
 /* =========================
-   RESET FILTERS (tolerante a faltantes)
+   RESET FILTERS
 ========================= */
 function resetFilters(){
-  if (exists(ui.q)) ui.q.value = '';
-
-  if (exists(ui.fDestino)) ui.fDestino.value = '(TODOS)';
-  if (exists(ui.fPrograma)) ui.fPrograma.value = '(TODOS)';
-  if (exists(ui.fCoord)) ui.fCoord.value = '(TODOS)';
-  if (exists(ui.fAno)) ui.fAno.value = '(TODOS)';
-
-  if (exists(ui.fDesde)) ui.fDesde.value = '';
-  if (exists(ui.fHasta)) ui.fHasta.value = '';
-
-  if (exists(ui.fSoloDiferencias)) ui.fSoloDiferencias.value = 'NO';
-  if (exists(ui.fSoloSinReales)) ui.fSoloSinReales.value = 'NO';
+  if (ui.q) ui.q.value = '';
+  if (ui.fDestino) ui.fDestino.value = '(TODOS)';
+  if (ui.fPrograma) ui.fPrograma.value = '(TODOS)';
+  if (ui.fCoord) ui.fCoord.value = '(TODOS)';
+  if (ui.fAno) ui.fAno.value = '(TODOS)';
+  if (ui.fDesde) ui.fDesde.value = '';
+  if (ui.fHasta) ui.fHasta.value = '';
+  if (ui.fSoloDiferencias) ui.fSoloDiferencias.value = 'NO';
+  if (ui.fSoloSinReales) ui.fSoloSinReales.value = 'NO';
 
   applyFilters();
 }
@@ -687,28 +650,28 @@ async function guardarCambios(){
   if (!state.user) return;
   if (state.dirty.size === 0) return;
 
-  // ✅ validación NUEVA:
-  // SOLO exigimos "Revisión" cuando el grupo requiere manual (expected!=declared)
-  // y además estamos guardando reales (o cambio) para ese grupo.
+  // validación: si needsRevision => revision no puede quedar vacía
   const problems = [];
   for (const [gid, ch] of state.dirty.entries()){
     const row = state.rowsAll.find(x=>x.gid === gid);
     if (!row) continue;
 
-    const needsManual = ((row.esperados || 0) !== (row.declarados || 0));
-    if (!needsManual) continue;
+    const declared = row.declarados || 0;
 
-    const hasReales = (ch.paxReales != null && Number.isFinite(ch.paxReales));
-    const hasRev = !!safeText(ch.revisionPax).trim();
+    const reales = ch.paxReales;
+    const realesDiff = (reales != null && Number.isFinite(reales) && reales !== declared);
 
-    // Si requiere manual, pedimos comentario siempre (aunque ponga reales igual a declarados)
-    if (hasReales && !hasRev){
+    const liberados = (ch.paxLiberados == null ? null : Number(ch.paxLiberados));
+    const liberadosChanged = (liberados != null && Number.isFinite(liberados) && liberados !== row.paxLiberadosDefault);
+
+    const needsRevision = (realesDiff || liberadosChanged);
+
+    if (needsRevision && !safeText(ch.revisionPax).trim()){
       problems.push(gid);
     }
   }
-
   if (problems.length){
-    setStatus(`Falta "Revisión" en ${problems.length} grupo(s) que están PENDIENTE/CORRECCIÓN (ej: ${problems.slice(0,3).join(', ')})`, true);
+    setStatus(`Falta "Revisión" en ${problems.length} grupo(s) corregidos (ej: ${problems.slice(0,3).join(', ')})`, true);
     return;
   }
 
@@ -721,8 +684,17 @@ async function guardarCambios(){
     for (const [gid, ch] of state.dirty.entries()){
       const ref = doc(db, GROUPS_COLLECTION, gid);
 
+      // liberados: si viene null/vacío al editar, lo normalizamos al valor base actual del row
+      const row = state.rowsAll.find(x=>x.gid === gid);
+      const liberadosFinal =
+        (ch.paxLiberados == null || ch.paxLiberados === '')
+          ? Number(row?.paxLiberados ?? row?.paxLiberadosDefault ?? 0)
+          : Number(ch.paxLiberados);
+
       batch.update(ref, {
-        paxReales: ch.paxReales,               // null si vacío (Firestore acepta null)
+        paxReales: ch.paxReales, // puede ser null
+        [LIBERADOS_KEY]: Number.isFinite(liberadosFinal) ? liberadosFinal : 0,
+
         revisionPax: safeText(ch.revisionPax || ''),
         revisionPaxUpdatedAt: now,
         revisionPaxUpdatedBy: state.user.email || '',
@@ -734,14 +706,21 @@ async function guardarCambios(){
     // aplicar cambios al state base
     for (const [gid, ch] of state.dirty.entries()){
       const row = state.rowsAll.find(x=>x.gid === gid);
-      if (row){
-        row.paxReales = ch.paxReales;
-        row.revisionPax = safeText(ch.revisionPax || '');
-      }
+      if (!row) continue;
+
+      row.paxReales = ch.paxReales;
+      row.revisionPax = safeText(ch.revisionPax || '');
+
+      const liberadosFinal =
+        (ch.paxLiberados == null || ch.paxLiberados === '')
+          ? Number(row.paxLiberados)
+          : Number(ch.paxLiberados);
+
+      row.paxLiberados = Number.isFinite(liberadosFinal) ? liberadosFinal : row.paxLiberados;
     }
 
     state.dirty.clear();
-    if (exists(ui.btnGuardar)) ui.btnGuardar.disabled = true;
+    if (ui.btnGuardar) ui.btnGuardar.disabled = true;
 
     render();
     recalcKpis();
@@ -757,7 +736,7 @@ async function guardarCambios(){
    UI status
 ========================= */
 function setStatus(msg, isErr=false){
-  if (!exists(ui.status)) return;
+  if (!ui.status) return;
   ui.status.textContent = msg;
   ui.status.style.color = isErr ? '#b91c1c' : '#374151';
 }
