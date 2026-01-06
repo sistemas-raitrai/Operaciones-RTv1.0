@@ -1,396 +1,408 @@
-<!doctype html>
+<!-- estadisticas.html -->
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
   <title>Estadísticas | RT</title>
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <!-- TU CSS GLOBAL -->
   <link rel="stylesheet" href="estilos.css"/>
 
-  <!-- IMPORTANTE:
-       Todo lo de esta página está "namespaced" bajo body.rt-stats
-       para que NO lo pisen tus clases genéricas (.grid, .card, .row, label, input, button, body, etc.)
-  -->
+  <!-- ✅ OVERRIDE FUERTE (aislado) para ganarle a estilos.css SIN romper el resto -->
   <style>
-    /* ===========================
-       SCOPE: SOLO ESTA PÁGINA
-       =========================== */
-    body.rt-stats {
-      /* No tocamos tu CSS global, pero aseguramos que esta vista se vea consistente */
-      background: var(--bg, #f4f6fb);
-      color: var(--ink, #0f172a);
-      /* tu estilos.css mete padding-top por header fijo;
-         acá NO lo anulamos globalmente para no pelear.
-         Solo trabajamos con contenedores internos. */
-    }
+    /* ==========================================================
+       AISLAMIENTO TOTAL DE ESTA VISTA
+       ========================================================== */
+    body { background:#f6f6f6; }
 
-    body.rt-stats .rtstats-page {
-      max-width: 1200px;
+    /* Wrapper: todo dentro de esto es "otra mini app" */
+    .es-scope{
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      padding: 16px 18px;
+      max-width: 1250px;
       margin: 0 auto;
-      padding: 18px;
+    }
+    .es-scope *{ box-sizing:border-box; }
+
+    /* Evitar que tu .grid global rompa el layout */
+    .es-scope .grid{
+      display:grid !important;
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+      gap: 12px !important;
+      justify-content: stretch !important;
+      margin: 0 !important;
+      width: 100% !important;
+    }
+    @media (max-width: 1100px){
+      .es-scope .grid{ grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    }
+    @media (max-width: 740px){
+      .es-scope .grid{ grid-template-columns: 1fr !important; }
     }
 
-    /* Header propio (NO usa .header para no chocar con header.header del global) */
-    body.rt-stats .rtstats-topbar {
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      padding: 12px 14px;
-      border: 1px solid var(--border, #d1d5db);
-      background: var(--card, #fff);
-      border-radius: 14px;
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
-      margin-bottom: 14px;
-    }
-    body.rt-stats .rtstats-topbar .left {
-      display:flex;
-      align-items:center;
-      gap:10px;
-      min-width: 220px;
-    }
-    body.rt-stats .rtstats-brand {
-      font-weight: 800;
-      letter-spacing: .2px;
-    }
-    body.rt-stats .rtstats-actions {
-      display:flex;
-      gap:8px;
-      align-items:center;
-      flex-wrap: wrap;
+    /* Evitar que tu .card global (width 220px / center) aplaste */
+    .es-scope .card{
+      width: auto !important;
+      text-align: left !important;
+      border-radius: 14px !important;
+      padding: 16px 18px !important;
+      background:#fff !important;
+      border: 1px solid #e5e7eb !important;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06) !important;
+      margin: 0 0 14px 0 !important;
     }
 
-    /* Botones propios (NO usar button global) */
-    body.rt-stats .rtstats-btn {
-      border: 1px solid var(--border, #d1d5db);
-      background: var(--card, #fff);
-      padding: 8px 10px;
-      border-radius: 10px;
-      cursor: pointer;
-      font-weight: 600;
-      line-height: 1;
-    }
-    body.rt-stats .rtstats-btn.primary {
-      background: var(--bg-strong, #00a89d);
-      border-color: var(--bg-strong, #00a89d);
-      color: white;
+    /* Labels */
+    .es-scope label{
+      margin: 0 !important;
+      font-weight: 800 !important;
+      font-size: .78rem !important;
+      letter-spacing: .02em !important;
+      text-transform: uppercase !important;
+      color: #4b5563 !important;
+      display:block !important;
     }
 
-    /* Layout principal (NO .grid) */
-    body.rt-stats .rtstats-grid {
-      display:grid;
-      grid-template-columns: 420px 1fr;
-      gap: 14px;
+    /* Inputs/selects dentro del scope (tu global fuerza uppercase y width 100%) */
+    .es-scope input,
+    .es-scope select,
+    .es-scope textarea{
+      width: 100% !important;
+      padding: 10px 10px !important;
+      font-size: .95rem !important;
+      margin-top: 6px !important;
+      border: 1px solid #d1d5db !important;
+      border-radius: 10px !important;
+      background:#fff !important;
+      text-transform: none !important; /* 👈 no grites */
     }
-    @media (max-width: 980px){
-      body.rt-stats .rtstats-grid { grid-template-columns: 1fr; }
+    .es-scope input:focus,
+    .es-scope select:focus,
+    .es-scope textarea:focus{
+      outline:none !important;
+      border-color:#0ea5e9 !important;
+      box-shadow:0 0 0 3px rgba(14,165,233,.18) !important;
     }
-
-    /* Cards propias (NO .card) */
-    body.rt-stats .rtstats-card {
-      border: 1px solid var(--border, #d1d5db);
-      background: var(--card, #fff);
-      border-radius: 14px;
-      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
-      padding: 12px;
-    }
-    body.rt-stats .rtstats-card h3 {
-      margin: 0 0 10px;
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: .4px;
-      color: var(--muted, #6b7280);
-    }
-
-    /* Filtros (NO .row) */
-    body.rt-stats .rtstats-row {
-      display:grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-bottom: 10px;
-    }
-    body.rt-stats .rtstats-row.one {
-      grid-template-columns: 1fr;
+    .es-scope input[disabled],
+    .es-scope textarea[disabled]{
+      background:#f3f4f6 !important;
+      color:#6b7280 !important;
+      cursor:not-allowed !important;
     }
 
-    /* Labels e inputs SOLO dentro de esta página (tu CSS global pone label bold + margin-top; lo anulamos acá) */
-    body.rt-stats .rtstats-card label {
-      display:block;
-      margin: 0 0 4px;
-      font-size: 12px;
-      color: var(--muted, #6b7280);
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: .3px;
-    }
-
-    /* Importante: tu estilos.css fuerza text-transform: uppercase a TODOS los inputs/select/textarea.
-       Aquí lo anulamos SOLO para esta página (si quieres mantener mayúsculas, borra estas 2 líneas). */
-    body.rt-stats .rtstats-input,
-    body.rt-stats .rtstats-select {
-      width: 100%;
-      padding: 10px 10px;
-      border: 1px solid var(--border, #d1d5db);
-      border-radius: 10px;
-      background: #fff;
-      outline: none;
-      box-sizing: border-box;
-      margin: 0;
-      font-size: 14px;
-      text-transform: none !important; /* 👈 evita que quede todo en mayúsculas por estilos.css */
-    }
-
-    /* KPIs */
-    body.rt-stats .rtstats-kpis {
-      display:grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 10px;
-      margin-bottom: 12px;
-    }
-    @media (max-width: 980px){
-      body.rt-stats .rtstats-kpis { grid-template-columns: repeat(2, 1fr); }
-    }
-
-    body.rt-stats .rtstats-kpi {
-      border: 1px solid var(--border, #d1d5db);
-      border-radius: 12px;
-      padding: 10px;
-      background: #fff;
-    }
-    body.rt-stats .rtstats-kpi .label {
-      font-size: 12px;
-      color: var(--muted, #6b7280);
+    /* Títulos */
+    .es-title{
+      margin: 0 0 6px 0;
+      font-size: 1.55rem;
       font-weight: 900;
+      color: #111827;
+      letter-spacing: .01em;
+    }
+    .es-sub{
+      margin: 0 0 12px 0;
+      color:#4b5563;
+      font-size:.95rem;
+      line-height:1.35;
+    }
+
+    /* Botones (pisan tu global button) */
+    .es-scope button{
+      padding: 10px 14px !important;
+      border-radius: 10px !important;
+      border: 1px solid #d1d5db !important;
+      background:#fff !important;
+      color:#111827 !important;
+      font-weight: 900 !important;
+      cursor:pointer !important;
+      text-transform: uppercase !important;
+      letter-spacing: .02em !important;
+    }
+    .es-scope button.primary{
+      background:#0b57d0 !important;
+      border-color:#0b57d0 !important;
+      color:#fff !important;
+    }
+    .es-scope button.primary:hover{
+      background:#083f9a !important;
+      border-color:#083f9a !important;
+    }
+    .es-scope button.ghost:hover{ background:#f3f4f6 !important; }
+    .es-scope button.danger{
+      background:#dc2626 !important; border-color:#dc2626 !important; color:#fff !important;
+    }
+    .es-scope button.danger:hover{
+      background:#b91c1c !important; border-color:#b91c1c !important;
+    }
+    .es-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      margin-top: 12px;
+    }
+    .es-status{
+      color:#374151;
+      font-size:.92rem;
+      opacity:.92;
+    }
+
+    /* Totales */
+    .es-totales{
+      display:grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 10px;
+    }
+    @media (max-width: 900px){
+      .es-totales{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    .es-kpi{
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background:#fff;
+      padding: 12px 14px;
+      box-shadow: 0 1px 8px rgba(0,0,0,.05);
+    }
+    .es-kpi small{
+      display:block;
+      color:#6b7280;
       text-transform: uppercase;
-      letter-spacing: .3px;
+      font-weight: 900;
+      letter-spacing: .02em;
+      font-size: .75rem;
       margin-bottom: 6px;
     }
-    body.rt-stats .rtstats-kpi .value {
-      font-size: 22px;
-      font-weight: 900;
+    .es-kpi .num{
+      font-size: 1.35rem;
+      font-weight: 950;
+      color:#111827;
+      line-height: 1.05;
     }
-    body.rt-stats .rtstats-kpi .sub {
+    .es-kpi .hint{
       margin-top: 6px;
-      font-size: 12px;
-      color: var(--muted, #6b7280);
+      color:#6b7280;
+      font-size: .85rem;
     }
+    .es-kpi.delta-neg .num{ color:#dc2626; }
+    .es-kpi.delta-pos .num{ color:#16a34a; }
 
     /* Tabla */
-    body.rt-stats .rtstats-tablewrap {
+    .es-tablewrap{
       margin-top: 12px;
-      overflow:auto;
-    }
-
-    body.rt-stats table.rtstats-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      background: #fff;
-      border: 1px solid var(--border, #d1d5db);
+      border:1px solid #eee;
       border-radius: 12px;
-      overflow: hidden;
+      overflow:auto;
+      background:#fff;
     }
-    body.rt-stats table.rtstats-table thead th {
-      text-align: left;
-      background: #f9fafb;
-      border-bottom: 1px solid var(--border, #d1d5db);
+    .es-scope table{
+      width:100%;
+      border-collapse: collapse;
+      background:#fff;
+    }
+    .es-scope thead th{
+      background:#fafafa;
+      text-align:left;
       padding: 10px 10px;
-      font-size: 12px;
+      font-weight: 950;
       text-transform: uppercase;
-      letter-spacing: .3px;
-      color: var(--muted, #6b7280);
+      font-size: .78rem;
+      letter-spacing: .02em;
+      border-bottom:1px solid #eee;
+      position: sticky;
+      top: 0;
+      z-index: 1;
       white-space: nowrap;
     }
-    body.rt-stats table.rtstats-table tbody td {
-      border-bottom: 1px solid #eef2f7;
-      padding: 9px 10px;
-      vertical-align: top;
+    .es-scope td{
+      padding: 10px 10px;
+      border-bottom:1px solid #f1f1f1;
+      vertical-align: middle;
+      font-size: .92rem;
     }
-    body.rt-stats table.rtstats-table tbody tr:hover { background: #fafafa; }
-
-    body.rt-stats .mono {
-      font-variant-numeric: tabular-nums;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-    }
-    body.rt-stats .muted { color: var(--muted, #6b7280); }
-    body.rt-stats .right { text-align:right; }
-
-    body.rt-stats .rtstats-pill {
-      display:inline-block;
-      padding: 3px 8px;
-      border-radius: 999px;
-      border: 1px solid var(--border, #d1d5db);
-      font-size: 12px;
-      font-weight: 800;
-      background: #fff;
-      white-space: nowrap;
-    }
-
-    body.rt-stats .rtstats-footerline {
-      margin-top: 10px;
-      display:flex;
+    .es-nowrap{ white-space: nowrap; }
+    .es-mono{ font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
+    .es-right{ text-align:right; }
+    .es-dim{ color:#6b7280; }
+    .es-badge{
+      display:inline-flex;
       align-items:center;
-      justify-content: space-between;
-      gap:10px;
-      flex-wrap: wrap;
-      color: var(--muted, #6b7280);
-      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid #e5e7eb;
+      background: #f9fafb;
+      font-weight: 900;
+      font-size: .78rem;
+      white-space: nowrap;
     }
+    .es-badge.warn{
+      border-color:#f59e0b;
+      background:#fff7ed;
+      color:#9a3412;
+    }
+    .es-row-dirty{
+      outline: 2px solid rgba(11,87,208,.35);
+      outline-offset: -2px;
+      background: #f0f7ff !important;
+    }
+    .es-empty{
+      padding: 14px;
+      color:#6b7280;
+      font-style: italic;
+    }
+
+    /* Inputs compactos dentro de tabla */
+    .es-scope .cell-input{
+      padding: 8px 10px !important;
+      margin-top: 0 !important;
+      border-radius: 10px !important;
+      font-size: .92rem !important;
+    }
+    .es-scope .cell-input.num{ text-align:right !important; }
   </style>
 </head>
 
-<body class="rt-stats">
-  <div class="rtstats-page">
+<body>
+  <!-- Encabezado común -->
+  <div id="encabezado"></div>
 
-    <!-- Encabezado -->
-    <header class="rtstats-topbar">
-      <div class="left">
-        <div class="rtstats-brand">RT · Estadísticas</div>
-        <div id="whoami" class="muted" style="font-size:12px;">—</div>
+  <div class="es-scope">
+    <div class="card">
+      <h2 class="es-title">RT · ESTADÍSTICAS</h2>
+      <p class="es-sub">
+        Totales de PAX por filtros (coordinador, grupo, destino, programa, año, fecha inicio).<br/>
+        <b>PAX Esperados</b> = campo del grupo (ej: cantidadGrupo). <b>PAX Declarados</b> = paxViajando.total.<br/>
+        Puedes editar <b>PAX Reales</b> y, si difiere de Declarados, completar <b>Revisión</b> y guardar.
+      </p>
+
+      <div class="grid">
+        <div class="field" style="grid-column: span 2;">
+          <label for="q">Buscar (grupo / gid / coordinador / destino / programa)</label>
+          <input id="q" placeholder="Ej: 1492, BARILOCHE, LOF, VICENTE..." />
+        </div>
+
+        <div class="field">
+          <label for="fDestino">Destino</label>
+          <select id="fDestino"></select>
+        </div>
+
+        <div class="field">
+          <label for="fPrograma">Programa</label>
+          <select id="fPrograma"></select>
+        </div>
+
+        <div class="field">
+          <label for="fCoord">Coordinador(a) (email)</label>
+          <select id="fCoord"></select>
+        </div>
+
+        <div class="field">
+          <label for="fAno">Año (por fecha inicio)</label>
+          <select id="fAno"></select>
+        </div>
+
+        <div class="field">
+          <label for="fDesde">Fecha inicio desde</label>
+          <input id="fDesde" type="date" />
+        </div>
+
+        <div class="field">
+          <label for="fHasta">Fecha inicio hasta</label>
+          <input id="fHasta" type="date" />
+        </div>
+
+        <div class="field">
+          <label for="fSoloDiferencias">Solo diferencias (Declarados ≠ Reales)</label>
+          <select id="fSoloDiferencias">
+            <option value="NO" selected>NO</option>
+            <option value="SI">SÍ</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="fSoloSinReales">Solo “sin PAX Reales”</label>
+          <select id="fSoloSinReales">
+            <option value="NO" selected>NO</option>
+            <option value="SI">SÍ</option>
+          </select>
+        </div>
       </div>
 
-      <div class="rtstats-actions">
-        <button class="rtstats-btn" id="btnHome" title="Inicio">🏠</button>
-        <button class="rtstats-btn" id="btnReload" title="Actualizar">🔄</button>
-        <button class="rtstats-btn" id="btnBack" title="Volver">⬅️</button>
-        <button class="rtstats-btn primary" id="btn-logout" title="Cerrar sesión">⏏️</button>
+      <div class="es-actions">
+        <button id="btnAplicar" class="primary">Aplicar</button>
+        <button id="btnLimpiar" class="ghost">Limpiar</button>
+        <button id="btnGuardar" class="primary" disabled>Guardar cambios</button>
+        <span class="es-status" id="status">Listo.</span>
       </div>
-    </header>
 
-    <div class="rtstats-grid">
-      <!-- FILTROS -->
-      <section class="rtstats-card">
-        <h3>Filtros</h3>
-
-        <div class="rtstats-row one">
-          <div>
-            <label for="q">Buscar (grupo / número / coord / destino / programa)</label>
-            <input class="rtstats-input" id="q" type="text" placeholder="Ej: 1492, Bariloche, Loreto..." />
-          </div>
+      <div class="es-totales">
+        <div class="es-kpi">
+          <small>Grupos (filtrados)</small>
+          <div class="num" id="kGrupos">0</div>
+          <div class="hint" id="kGruposHint">—</div>
         </div>
-
-        <div class="rtstats-row">
-          <div>
-            <label for="fCoord">Coordinador (email)</label>
-            <input class="rtstats-input" id="fCoord" list="dlCoords" placeholder="coord@..." />
-            <datalist id="dlCoords"></datalist>
-          </div>
-          <div>
-            <label for="fGrupo">Grupo (ID)</label>
-            <input class="rtstats-input" id="fGrupo" list="dlGrupos" placeholder="gid..." />
-            <datalist id="dlGrupos"></datalist>
-          </div>
+        <div class="es-kpi">
+          <small>PAX Esperados</small>
+          <div class="num" id="kEsperados">0</div>
+          <div class="hint">Suma de “cantidadGrupo” (o equivalente)</div>
         </div>
-
-        <div class="rtstats-row">
-          <div>
-            <label for="fDestino">Destino</label>
-            <select class="rtstats-select" id="fDestino">
-              <option value="">(Todos)</option>
-            </select>
-          </div>
-          <div>
-            <label for="fPrograma">Programa</label>
-            <select class="rtstats-select" id="fPrograma">
-              <option value="">(Todos)</option>
-            </select>
-          </div>
+        <div class="es-kpi">
+          <small>PAX Declarados</small>
+          <div class="num" id="kDeclarados">0</div>
+          <div class="hint">Suma de paxViajando.total</div>
         </div>
-
-        <div class="rtstats-row">
-          <div>
-            <label for="fAno">Año (de fechaInicio)</label>
-            <select class="rtstats-select" id="fAno">
-              <option value="">(Todos)</option>
-            </select>
-          </div>
-          <div>
-            <label for="fInicioDesde">Fecha inicio desde</label>
-            <input class="rtstats-input" id="fInicioDesde" type="date"/>
-          </div>
+        <div class="es-kpi" id="kDeltaBox">
+          <small>Delta (Declarados - Esperados)</small>
+          <div class="num" id="kDelta">0</div>
+          <div class="hint">Referencia operativa</div>
         </div>
+      </div>
+    </div>
 
-        <div class="rtstats-row">
-          <div>
-            <label for="fInicioHasta">Fecha inicio hasta</label>
-            <input class="rtstats-input" id="fInicioHasta" type="date"/>
-          </div>
-          <div>
-            <label>&nbsp;</label>
-            <button class="rtstats-btn primary" id="btnAplicar" style="width:100%;">Aplicar filtros</button>
-          </div>
-        </div>
-
-        <div class="rtstats-row one">
-          <button class="rtstats-btn" id="btnLimpiar" style="width:100%;">Limpiar filtros</button>
-        </div>
-
-        <div class="rtstats-footerline">
-          <div id="status">—</div>
-          <div>
-            <button class="rtstats-btn" id="btnExportCSV">Exportar CSV</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- RESULTADOS -->
-      <section class="rtstats-card">
-        <h3>Totales</h3>
-
-        <div class="rtstats-kpis">
-          <div class="rtstats-kpi">
-            <div class="label">Grupos</div>
-            <div class="value mono" id="kGrupos">0</div>
-            <div class="sub" id="kGruposSub">—</div>
-          </div>
-
-          <div class="rtstats-kpi">
-            <div class="label">PAX esperados</div>
-            <div class="value mono" id="kEsperados">0</div>
-            <div class="sub">Suma de cantidadGrupo</div>
-          </div>
-
-          <div class="rtstats-kpi">
-            <div class="label">PAX declarados</div>
-            <div class="value mono" id="kDeclarados">0</div>
-            <div class="sub">Suma de paxViajando.total</div>
-          </div>
-
-          <div class="rtstats-kpi">
-            <div class="label">Delta</div>
-            <div class="value mono" id="kDelta">0</div>
-            <div class="sub">(Declarados - Esperados)</div>
-          </div>
-        </div>
-
-        <div class="rtstats-footerline" style="margin-top:0;">
-          <div class="muted">Tip: si no hay “declarados”, el grupo aún no inició viaje (o no se guardó paxViajando).</div>
-        </div>
-
-        <div class="rtstats-tablewrap">
-          <table class="rtstats-table" id="tbl">
-            <thead>
-              <tr>
-                <th>Grupo</th>
-                <th>Coordinador</th>
-                <th>Destino</th>
-                <th>Programa</th>
-                <th class="right">Esperados</th>
-                <th class="right">Declarados</th>
-                <th class="right">Δ</th>
-                <th>Inicio</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-
-      </section>
+    <div class="card">
+      <div class="es-tablewrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="es-nowrap">GID</th>
+              <th>Grupo</th>
+              <th class="es-nowrap">Coordinador(a)</th>
+              <th class="es-nowrap">Destino</th>
+              <th class="es-nowrap">Programa</th>
+              <th class="es-nowrap">Inicio</th>
+              <th class="es-nowrap es-right">Esperados</th>
+              <th class="es-nowrap es-right">Declarados</th>
+              <th class="es-nowrap es-right">Reales</th>
+              <th class="es-nowrap">Revisión</th>
+              <th class="es-nowrap">Estado</th>
+            </tr>
+          </thead>
+          <tbody id="tbody">
+            <tr><td colspan="11" class="es-empty">Sin resultados.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <script type="module" src="estadisticas.js"></script>
+  <!-- Carga encabezado + firebase + lógica -->
+  <script type="module">
+    (async () => {
+      try {
+        const html = await (await fetch('encabezado.html')).text().catch(()=> '');
+        document.getElementById('encabezado').innerHTML = html || '';
+      } catch(_) {}
+
+      // tu init + scripts comunes (mantiene estética/login/header)
+      await import('./firebase-init.js');
+      await import('./script.js');
+
+      // ESTA PÁGINA
+      await import('./estadisticas.js');
+      console.log('✅ estadisticas.js cargado');
+    })();
+  </script>
 </body>
 </html>
