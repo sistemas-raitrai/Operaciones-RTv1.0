@@ -341,7 +341,7 @@
         <div class="es-kpi">
           <small>PAX Esperados</small>
           <div class="num" id="kEsperados">0</div>
-          <div class="hint">Suma de “cantidadGrupo” (o equivalente)</div>
+          <div class="hint">Suma de “CantidadGrupo” (o equivalente)</div>
         </div>
 
         <div class="es-kpi">
@@ -354,6 +354,18 @@
           <small>PAX Reales (revisados)</small>
           <div class="num" id="kReales">0</div>
           <div class="hint"><span id="kRealesHint">0</span> grupos con real informado</div>
+        </div>
+
+        <div class="es-kpi" id="kLiberadosBox">
+          <small>PAX Liberados</small>
+          <div class="num" id="kLiberados">0</div>
+          <div class="hint">Suma de liberados</div>
+        </div>
+        
+        <div class="es-kpi" id="kNetoBox">
+          <small>PAX Neto (Reales - Liberados)</small>
+          <div class="num" id="kNeto">0</div>
+          <div class="hint">Cuenta final</div>
         </div>
         
         <div class="es-kpi" id="kDeltaBox">
@@ -382,7 +394,9 @@
           
               <th class="es-nowrap es-right">PAX Esperados</th>
               <th class="es-nowrap es-right">PAX Declarados</th>
-          
+              
+              <th class="es-nowrap es-right">PAX Liberados</th>
+              
               <th class="es-nowrap es-right">PAX Reales</th>
               <th>Revisión</th>
               <th class="es-nowrap">Estado</th>
@@ -390,7 +404,7 @@
           </thead>
 
           <tbody id="tbody">
-            <tr><td colspan="8" class="es-empty">Sin resultados.</td></tr>
+            <tr><td colspan="9" class="es-empty">Sin resultados.</td></tr>
           </tbody>
         </table>
       </div>
