@@ -345,7 +345,7 @@ function render(){
   const rows = state.rowsView;
 
   if (!rows.length){
-    ui.tbody.innerHTML = `<tr><td colspan="11" class="es-empty">Sin resultados.</td></tr>`;
+    ui.tbody.innerHTML = `<tr><td colspan="8" class="es-empty">Sin resultados.</td></tr>`;
     return;
   }
 
@@ -376,18 +376,16 @@ function render(){
       <td class="es-nowrap es-mono">${escapeHtml(r.gid)}</td>
       <td>${escapeHtml(r.nombre || '(sin nombre)')}</td>
       <td class="es-nowrap">${escapeHtml(r.coord || '')}</td>
-      <td class="es-nowrap">${escapeHtml(r.destino || '')}</td>
-      <td class="es-nowrap">${escapeHtml(r.programa || '')}</td>
-      <td class="es-nowrap es-dim">${escapeHtml(r.fechaInicio ? fmtDate(r.fechaInicio) : '')}</td>
+    
       <td class="es-nowrap es-right es-mono">${expected}</td>
       <td class="es-nowrap es-right es-mono">${declared}</td>
-
+    
       <td class="es-nowrap">
         <input class="cell-input num" type="number" min="0" step="1"
                data-role="paxReales" value="${valReales == null ? '' : String(valReales)}"
                placeholder="(vacío)" />
       </td>
-
+    
       <td>
         <input class="cell-input" type="text"
                data-role="revision"
@@ -395,9 +393,10 @@ function render(){
                placeholder="${needsRevision ? 'Motivo / comentario' : '—'}"
                ${needsRevision ? '' : 'disabled'} />
       </td>
-
+    
       <td class="es-nowrap">${estadoHTML}</td>
     `;
+
 
     // listeners por fila (inputs)
     const inpReales = tr.querySelector('input[data-role="paxReales"]');
