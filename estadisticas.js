@@ -36,7 +36,7 @@ const START_DATE_PATHS = [
 /* =========================
    HELPERS
 ========================= */
-const $ = (id)=> document.getElementById(id);
+const $ = (id)=> document.getElementById(id) || null;
 
 const norm = (s='') =>
   s.toString()
@@ -279,10 +279,10 @@ async function loadGroups(){
    FILTER OPTIONS
 ========================= */
 function buildFilterOptions(){
-  fillSelect(ui.fDestino, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.destino).filter(Boolean))]);
-  fillSelect(ui.fPrograma, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.programa).filter(Boolean))]);
-  fillSelect(ui.fCoord, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.coord).filter(Boolean))]);
-  fillSelect(ui.fAno, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.ano).filter(Boolean)).sort()]);
+  if (ui.fDestino) fillSelect(ui.fDestino, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.destino).filter(Boolean))]);
+  if (ui.fPrograma) fillSelect(ui.fPrograma, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.programa).filter(Boolean))]);
+  if (ui.fCoord) fillSelect(ui.fCoord, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.coord).filter(Boolean))]);
+  if (ui.fAno) fillSelect(ui.fAno, ['(TODOS)', ...uniq(state.rowsAll.map(r=>r.ano).filter(Boolean)).sort()]);
 }
 
 function fillSelect(sel, values){
@@ -304,16 +304,22 @@ function uniq(arr){
    APPLY FILTERS
 ========================= */
 function applyFilters(){
-  const q = norm(ui.q.value || '');
-  const destino = ui.fDestino.value || '(TODOS)';
-  const programa = ui.fPrograma.value || '(TODOS)';
-  const coord = ui.fCoord.value || '(TODOS)';
-  const ano = ui.fAno.value || '(TODOS)';
-  const soloDif = (ui.fSoloDiferencias.value === 'SI');
-  const soloSinReales = (ui.fSoloSinReales.value === 'SI');
+  const q = norm(ui.q?.value || '');
+  
+  // ✅ si el select no existe, se asume (TODOS)
+  const destino  = ui.fDestino?.value  || '(TODOS)';
+  const programa = ui.fPrograma?.value || '(TODOS)';
+  const coord    = ui.fCoord?.value    || '(TODOS)';
+  const ano      = ui.fAno?.value      || '(TODOS)';
+  
+  // ✅ si no existen, se asume NO
+  const soloDif       = (ui.fSoloDiferencias?.value === 'SI');
+  const soloSinReales = (ui.fSoloSinReales?.value === 'SI');
+  
+  // ✅ si el input no existe, null
+  const desde = ui.fDesde?.value ? new Date(ui.fDesde.value + 'T00:00:00') : null;
+  const hasta = ui.fHasta?.value ? new Date(ui.fHasta.value + 'T23:59:59') : null;
 
-  const desde = ui.fDesde.value ? new Date(ui.fDesde.value + 'T00:00:00') : null;
-  const hasta = ui.fHasta.value ? new Date(ui.fHasta.value + 'T23:59:59') : null;
 
   const rows = state.rowsAll.filter(r=>{
     if (destino !== '(TODOS)' && r.destino !== destino) return false;
@@ -553,18 +559,19 @@ function recalcKpis(){
    RESET FILTERS
 ========================= */
 function resetFilters(){
-  ui.q.value = '';
-  ui.fDestino.value = '(TODOS)';
-  ui.fPrograma.value = '(TODOS)';
-  ui.fCoord.value = '(TODOS)';
-  ui.fAno.value = '(TODOS)';
-  ui.fDesde.value = '';
-  ui.fHasta.value = '';
-  ui.fSoloDiferencias.value = 'NO';
-  ui.fSoloSinReales.value = 'NO';
+  if (ui.q) ui.q.value = '';
+  if (ui.fDestino) ui.fDestino.value = '(TODOS)';
+  if (ui.fPrograma) ui.fPrograma.value = '(TODOS)';
+  if (ui.fCoord) ui.fCoord.value = '(TODOS)';
+  if (ui.fAno) ui.fAno.value = '(TODOS)';
+  if (ui.fDesde) ui.fDesde.value = '';
+  if (ui.fHasta) ui.fHasta.value = '';
+  if (ui.fSoloDiferencias) ui.fSoloDiferencias.value = 'NO';
+  if (ui.fSoloSinReales) ui.fSoloSinReales.value = 'NO';
 
   applyFilters();
 }
+
 
 /* =========================
    SAVE
