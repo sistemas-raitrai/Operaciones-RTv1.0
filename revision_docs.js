@@ -581,6 +581,32 @@ async function loadDocsSummaryForGroups(gids) {
       const ref  = doc(db,'grupos',gid,'finanzas','summary');
       const snap = await getDoc(ref);
       summary = snap.exists() ? (snap.data() || {}) : null;
+
+      // ✅ (FALLBACK) Revisiones de GASTOS guardadas dentro del summary
+      // Ruta: summary.docsRevGastos.{coord__gastoId} = { ok, by, at }
+      try {
+        const map = (summary && summary.docsRevGastos) ? summary.docsRevGastos : {};
+        if (map && typeof map === 'object') {
+          Object.entries(map).forEach(([k, v]) => {
+            // k esperado: "coord@email.com__GASTOID"
+            const parts = String(k).split('__');
+            const coord = (parts[0] || '').toLowerCase();
+            const gastoId = (parts[1] || '');
+            if (!coord || !gastoId) return;
+      
+            const key = `GASTO:${gid}:${coord}:${gastoId}`;
+            const obj = (v && typeof v === 'object') ? v : {};
+            state.revByDocKey.set(key, {
+              ok: !!obj.ok,
+              by: obj.by || '',
+              at: obj.at || 0
+            });
+          });
+        }
+      } catch (e) {
+        console.warn('[DOCS] summary.docsRevGastos parse', gid, e);
+      }
+
     } catch (e) {
       console.warn('[DOCS] load summary', gid, e);
     }
@@ -767,10 +793,9 @@ async function loadDocsForCurrentFilters() {
     return;
   }
 
-  const [docsSummary, docsGastos] = await Promise.all([
-    loadDocsSummaryForGroups(filteredGids),
-    loadDocsGastosForGroups(filteredGids)
-  ]);
+  // ✅ IMPORTANTE: primero Summary (porque llena revByDocKey), después Gastos.
+  const docsSummary = await loadDocsSummaryForGroups(filteredGids);
+  const docsGastos  = await loadDocsGastosForGroups(filteredGids);
 
   let docsAll = [...docsSummary, ...docsGastos];
 
@@ -823,30 +848,26 @@ async function updateRevisionForDoc(docItem, checked) {
   const gid = docItem.grupoId;
   if (!gid) return false;
 
+  // 1) Intento A: guardar en subcolección nueva (ideal)
   const docId = revisionDocIdForItem(docItem);
-  if (!docId) return false;
+  const refA  = doc(db,'grupos',gid,'finanzas','docsRevision',docId);
 
-  const ref = doc(db,'grupos',gid,'finanzas','docsRevision',docId);
-
-  // payload explícito
-  const payload = {
+  const payloadA = {
     ok: !!checked,
     by: email,
     at: now,
     tipoDoc: docItem.tipoDoc
   };
-
-  // Para gasto guardamos metadata útil (pero NO tocamos el doc del gasto)
   if (docItem.tipoDoc === 'GASTO') {
-    payload.gastoId = docItem.gastoId || '';
-    payload.coordEmail = (docItem.coordEmail || '').toLowerCase();
-    payload.url = docItem.url || '';
+    payloadA.gastoId = docItem.gastoId || '';
+    payloadA.coordEmail = (docItem.coordEmail || '').toLowerCase();
+    payloadA.url = docItem.url || '';
   }
 
   try {
-    await setDoc(ref, payload, { merge:true });
+    await setDoc(refA, payloadA, { merge:true });
 
-    // actualizar memoria local (para UI inmediata)
+    // memoria local
     const k = docKey(docItem);
     state.revByDocKey.set(k, { ok: !!checked, by: email, at: now });
 
@@ -856,10 +877,72 @@ async function updateRevisionForDoc(docItem, checked) {
 
     return true;
   } catch (e) {
-    console.error('[DOCS] updateRevisionForDoc docsRevision', e);
-    alert('No se pudo guardar la revisión del documento.');
-    return false;
+    console.warn('[DOCS] docsRevision write failed, fallback to summary', e?.code || e);
+    // seguimos al fallback
   }
+
+  // 2) Intento B (FALLBACK): guardar dentro de summary (casi seguro permitido por tus rules)
+  const refB = doc(db,'grupos',gid,'finanzas','summary');
+
+  // a) Summary docs: usar docsRev.* como antes
+  if (docItem.tipoDoc === 'BOLETA' || docItem.tipoDoc === 'COMP_CLP' || docItem.tipoDoc === 'CONST_USD') {
+    const patch = {
+      docsRevBy: email,
+      docsRevAt: now
+    };
+    if (docItem.tipoDoc === 'BOLETA')    patch['docsRev.boleta'] = !!checked;
+    if (docItem.tipoDoc === 'COMP_CLP')  patch['docsRev.comprobante'] = !!checked;
+    if (docItem.tipoDoc === 'CONST_USD') patch['docsRev.transferencia'] = !!checked;
+
+    try {
+      await setDoc(refB, patch, { merge:true });
+
+      const k = docKey(docItem);
+      state.revByDocKey.set(k, { ok: !!checked, by: email, at: now });
+
+      docItem.revisadoOk = !!checked;
+      docItem.revisadoBy = email;
+      docItem.revisadoAt = now;
+
+      return true;
+    } catch (e2) {
+      console.error('[DOCS] fallback summary docsRev failed', e2);
+      alert('No se pudo guardar la revisión del documento (summary).');
+      return false;
+    }
+  }
+
+  // b) Gasto: guardar en summary.docsRevGastos.{coord__gastoId}.{ok,by,at}
+  if (docItem.tipoDoc === 'GASTO') {
+    const coord = (docItem.coordEmail || '').toLowerCase();
+    const gastoId = docItem.gastoId || '';
+    if (!coord || !gastoId) return false;
+
+    const mapKey = `${coord}__${gastoId}`;
+    const patch = {};
+    patch[`docsRevGastos.${mapKey}.ok`] = !!checked;
+    patch[`docsRevGastos.${mapKey}.by`] = email;
+    patch[`docsRevGastos.${mapKey}.at`] = now;
+
+    try {
+      await setDoc(refB, patch, { merge:true });
+
+      const k = docKey(docItem);
+      state.revByDocKey.set(k, { ok: !!checked, by: email, at: now });
+
+      docItem.revisadoOk = !!checked;
+      docItem.revisadoBy = email;
+      docItem.revisadoAt = now;
+
+      return true;
+    } catch (e2) {
+      console.error('[DOCS] fallback summary docsRevGastos failed', e2);
+      alert('No se pudo guardar la revisión del gasto (summary).');
+      return false;
+    }
+  }
+
+  return false;
 }
 
 /* ======================
@@ -1158,7 +1241,9 @@ function renderDocsTable() {
     `;
     sel.value = (docItem.documentoFiscal || '').toString();
 
-    sel.disabled = !!docItem.revisadoOk;
+    const pend = state.pending.get(docKey(docItem)) || null;
+    const pendingChecked = pend && Object.prototype.hasOwnProperty.call(pend,'checked') ? !!pend.checked : null;
+    sel.disabled = !!docItem.revisadoOk || pendingChecked === true;
     sel.title = sel.disabled
       ? 'Bloqueado: primero debes DESMARCAR “Revisado” (pide contraseña).'
       : 'Selecciona el tipo de documento fiscal.';
