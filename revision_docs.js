@@ -5,9 +5,11 @@
 //    - Si tipoDoc === 'GASTO' => OK si montoAprobado > 0; si =0 => "Rechazado" (rojo)
 //    - Si NO es GASTO => se mantiene regla por summary (gastosGrabados<=costoTotal y >0)
 // ✅ Guardar cambios persiste:
-//    - Checkbox Revisado (P2: ahora va a docsRev separado de docsOk)
-//    - Select Documento Fiscal (P3)
-// ✅ (P4) Para DESMARCAR revisado => pide contraseña
+//    - Checkbox Revisado => AHORA se guarda en ruta propia: grupos/{gid}/finanzas/docsRevision/{docId}
+//      (Nada que ver con el gasto)
+//    - Select Documento Fiscal (summary en docsFiscal.*, gasto se mantiene en el doc del gasto)
+// ✅ Para DESMARCAR revisado => pide contraseña
+// ✅ Documento Fiscal NO se puede cambiar si Revisado está marcado
 // ✅ Exportación Excel (xlsx) con HIPERVÍNCULO en la columna URL
 
 import { app, db } from './firebase-init.js';
@@ -39,6 +41,10 @@ const state = {
   // Maps por grupo (summary)
   rendicionOkByGid: new Map(),
   gastoAprobadoByGid: new Map(),
+
+  // ✅ Revisiones cargadas desde grupos/{gid}/finanzas/docsRevision/{docId}
+  // key = docKey(docItem)  -> { ok, by, at }
+  revByDocKey: new Map(),
 
   // Pendientes a guardar (revisado + fiscal)
   pending: new Map() // key -> { docItem, checked?, fiscal? }
@@ -334,6 +340,27 @@ async function preloadGruposDocs() {
   setMultiLabel(document.getElementById('multiTiposLabel'), state.filtros.tipos.size);
 }
 
+/* ======================
+   KEY UNIFICADA (para pending + rev map)
+   ====================== */
+function docKey(docItem){
+  if (docItem.tipoDoc === 'GASTO') return `GASTO:${docItem.grupoId}:${docItem.coordEmail}:${docItem.gastoId}`;
+  return `${docItem.tipoDoc}:${docItem.grupoId}`;
+}
+
+/* ======================
+   docsRevision docId (ruta independiente)
+   ====================== */
+function revisionDocIdForItem(docItem){
+  if (docItem.tipoDoc === 'GASTO') {
+    const coord = (docItem.coordEmail || '').toLowerCase();
+    const gastoId = docItem.gastoId || '';
+    return `GASTO__${coord}__${gastoId}`;
+  }
+  // BOLETA | COMP_CLP | CONST_USD
+  return docItem.tipoDoc;
+}
+
 /* ====================== NORMALIZADORES ====================== */
 function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const brutoMonto = coalesce(
@@ -349,17 +376,19 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
   const asunto = coalesce(raw.asunto, raw.detalle, raw.descripcion, raw.concepto, raw.motivo, '');
   const imgUrl = coalesce(raw.imgUrl, raw.imageUrl, raw.imagenUrl, raw.comprobanteUrl, '');
 
-  const rev = raw.revisionDocs || {};
-  const revisadoOk = !!rev.ok;
-  const revisadoBy = rev.by || '';
-  const revisadoAt = rev.at ? _toMs(rev.at) : 0;
-
   const montoAprobado = parseMonto(coalesce(raw.montoAprobado, raw.aprobado, raw.monto_aprobado, 0));
 
-  // ✅ (P3) Documento fiscal guardado a nivel gasto
+  // ✅ Documento fiscal del gasto (se mantiene aquí)
   const docFiscal = coalesce(raw.documentoFiscal, raw.docFiscal, raw.fiscal, '');
 
-  return {
+  // ✅ Revisado del gasto se toma desde state.revByDocKey (ruta independiente),
+  //    NO desde raw.revisionDocs (legacy). Igual dejamos fallback si no existe.
+  const legacyRev = raw.revisionDocs || {};
+  const legacyOk = !!legacyRev.ok;
+  const legacyBy = legacyRev.by || '';
+  const legacyAt = legacyRev.at ? _toMs(legacyRev.at) : 0;
+
+  const base = {
     tipoDoc: 'GASTO',
     gastoId: raw.id || raw._id || '',
     grupoId: grupoInfo.gid,
@@ -375,12 +404,28 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
     asunto,
     url: imgUrl,
 
-    documentoFiscal: docFiscal, // ✅ (P3)
+    documentoFiscal: docFiscal,
 
-    revisadoOk,
-    revisadoBy,
-    revisadoAt
+    revisadoOk: false,
+    revisadoBy: '',
+    revisadoAt: 0
   };
+
+  const k = docKey(base);
+  const rev = state.revByDocKey.get(k);
+
+  if (rev) {
+    base.revisadoOk = !!rev.ok;
+    base.revisadoBy = rev.by || '';
+    base.revisadoAt = _toMs(rev.at || 0);
+  } else {
+    // fallback legacy si no hay registro en docsRevision
+    base.revisadoOk = legacyOk;
+    base.revisadoBy = legacyBy;
+    base.revisadoAt = legacyAt;
+  }
+
+  return base;
 }
 
 /* ======================
@@ -450,13 +495,12 @@ function fiscalKeyForTipo(tipoDoc){
 
 /* ====================== CARGA DE DOCUMENTOS (SUMMARY) ====================== */
 function getSummaryDocUrls(summary = {}){
-  // buscamos URLs en varias estructuras posibles sin asumir formato único
   const docs = summary?.docs || summary?.documentos || {};
   const urls = summary?.urls || summary?.docUrls || summary?.docsUrls || {};
 
   const boletaUrl = coalesce(
     summary?.boletaUrl, docs?.boletaUrl, urls?.boleta,
-    summary?.docsOk?.boletaUrl, summary?.docsOk?.boleta, // a veces guardan URL acá
+    summary?.docsOk?.boletaUrl, summary?.docsOk?.boleta,
     summary?.boleta, docs?.boleta, urls?.boletaUrl
   );
 
@@ -475,15 +519,63 @@ function getSummaryDocUrls(summary = {}){
   return { boletaUrl, compUrl, transfUrl };
 }
 
+/* ======================
+   CARGA DE REVISIONES (ruta independiente)
+   grupos/{gid}/finanzas/docsRevision/{docId}
+   ====================== */
+async function loadRevisionsForGid(gid){
+  // limpia SOLO las keys de ese gid? -> más simple: llenamos map desde cero por carga
+  // (lo hacemos en loadDocsSummaryForGroups al inicio con clear global)
+  try {
+    const revSnap = await getDocs(collection(db,'grupos',gid,'finanzas','docsRevision'));
+    revSnap.forEach(s => {
+      const d = s.data() || {};
+      const docId = s.id;
+
+      // 1) Tipos simples
+      if (docId === 'BOLETA' || docId === 'COMP_CLP' || docId === 'CONST_USD') {
+        const k = `${docId}:${gid}`;
+        state.revByDocKey.set(k, {
+          ok: !!d.ok,
+          by: d.by || '',
+          at: d.at || 0
+        });
+        return;
+      }
+
+      // 2) Gastos: "GASTO__{coord}__{gastoId}"
+      if (docId.startsWith('GASTO__')) {
+        const coord = (d.coordEmail || '').toLowerCase() || (docId.split('__')[1] || '').toLowerCase();
+        const gastoId = d.gastoId || (docId.split('__')[2] || '');
+        if (!coord || !gastoId) return;
+
+        const k = `GASTO:${gid}:${coord}:${gastoId}`;
+        state.revByDocKey.set(k, {
+          ok: !!d.ok,
+          by: d.by || '',
+          at: d.at || 0
+        });
+      }
+    });
+  } catch (e) {
+    console.warn('[DOCS] load revisions for gid', gid, e);
+  }
+}
+
 async function loadDocsSummaryForGroups(gids) {
   const out = [];
   state.rendicionOkByGid.clear();
   state.gastoAprobadoByGid.clear();
+  state.revByDocKey.clear();
 
   for (const gid of gids) {
     const gInfo = state.caches.grupos.get(gid);
     if (!gInfo) continue;
 
+    // ✅ 1) cargar revisiones independientes (incluye BOLETA/COMP/CONST + gastos)
+    await loadRevisionsForGid(gid);
+
+    // ✅ 2) cargar summary normal
     let summary = null;
     try {
       const ref  = doc(db,'grupos',gid,'finanzas','summary');
@@ -493,19 +585,14 @@ async function loadDocsSummaryForGroups(gids) {
       console.warn('[DOCS] load summary', gid, e);
     }
 
-    // si no hay summary igual podemos mostrar docs si están en grupoInfo? (normalmente no)
     const docsOk     = (summary && summary.docsOk) || {};        // Rendición (mantener)
-    const docsFiscal = (summary && summary.docsFiscal) || {};    // (P3)
-    const docsRev    = (summary && summary.docsRev) || {};       // (P2) revisado separado
+    const docsFiscal = (summary && summary.docsFiscal) || {};    // Documento fiscal en summary
 
     // Rendición OK por grupo (regla original)
     state.rendicionOkByGid.set(gid, !!docsOk.boleta);
 
     // Gasto aprobado por grupo (solo para NO-GASTO)
     state.gastoAprobadoByGid.set(gid, computeGastoAprobado(summary || {}));
-
-    const docsRevBy = coalesce(summary?.docsRevBy, docsRev?.by, '');
-    const docsRevAt = _toMs(coalesce(summary?.docsRevAt, docsRev?.at, 0));
 
     const { boletaUrl, compUrl, transfUrl } = getSummaryDocUrls(summary || {});
 
@@ -524,35 +611,54 @@ async function loadDocsSummaryForGroups(gids) {
       url: ''
     };
 
+    // helpers para tomar revisado desde state.revByDocKey (ruta independiente)
+    const getRevFor = (tipoDoc) => {
+      const k = `${tipoDoc}:${gid}`;
+      const rev = state.revByDocKey.get(k);
+      if (rev) return { ok:!!rev.ok, by:rev.by||'', at:_toMs(rev.at||0) };
+
+      // fallback legacy si existe (por si aún no crean docsRevision)
+      const legacy = (summary && summary.docsRev) || {};
+      const legacyBy = coalesce(summary?.docsRevBy, legacy?.by, '');
+      const legacyAt = _toMs(coalesce(summary?.docsRevAt, legacy?.at, 0));
+      const legacyOk =
+        tipoDoc === 'BOLETA' ? !!legacy.boleta :
+        tipoDoc === 'COMP_CLP' ? !!legacy.comprobante :
+        tipoDoc === 'CONST_USD' ? !!legacy.transferencia :
+        false;
+
+      return { ok: legacyOk, by: legacyBy, at: legacyAt };
+    };
+
     // BOLETA
     if (boletaUrl || docsOk.boleta) {
+      const rev = getRevFor('BOLETA');
       out.push({
         ...base,
         tipoDoc: 'BOLETA',
         gastoId: null,
         url: boletaUrl,
 
-        // (P2) revisado real separado
-        revisadoOk: !!docsRev.boleta,
-        revisadoBy: docsRevBy,
-        revisadoAt: docsRevAt,
+        revisadoOk: rev.ok,
+        revisadoBy: rev.by,
+        revisadoAt: rev.at,
 
-        // (P3) doc fiscal
         documentoFiscal: coalesce(docsFiscal.boleta, '')
       });
     }
 
     // COMP_CLP
     if (compUrl || docsOk.comprobante) {
+      const rev = getRevFor('COMP_CLP');
       out.push({
         ...base,
         tipoDoc: 'COMP_CLP',
         gastoId: null,
         url: compUrl,
 
-        revisadoOk: !!docsRev.comprobante,
-        revisadoBy: docsRevBy,
-        revisadoAt: docsRevAt,
+        revisadoOk: rev.ok,
+        revisadoBy: rev.by,
+        revisadoAt: rev.at,
 
         documentoFiscal: coalesce(docsFiscal.comprobante, '')
       });
@@ -560,15 +666,16 @@ async function loadDocsSummaryForGroups(gids) {
 
     // CONST_USD
     if (transfUrl || docsOk.transferencia) {
+      const rev = getRevFor('CONST_USD');
       out.push({
         ...base,
         tipoDoc: 'CONST_USD',
         gastoId: null,
         url: transfUrl,
 
-        revisadoOk: !!docsRev.transferencia,
-        revisadoBy: docsRevBy,
-        revisadoAt: docsRevAt,
+        revisadoOk: rev.ok,
+        revisadoBy: rev.by,
+        revisadoAt: rev.at,
 
         documentoFiscal: coalesce(docsFiscal.transferencia, '')
       });
@@ -696,13 +803,8 @@ async function loadDocsForCurrentFilters() {
 }
 
 /* ======================
-   GUARDAR: keys + helpers pending
+   PENDING helpers
    ====================== */
-function docKey(docItem){
-  if (docItem.tipoDoc === 'GASTO') return `GASTO:${docItem.grupoId}:${docItem.coordEmail}:${docItem.gastoId}`;
-  return `${docItem.tipoDoc}:${docItem.grupoId}`;
-}
-
 function markPending(docItem, patch){
   const key = docKey(docItem);
   const prev = state.pending.get(key) || { docItem };
@@ -711,78 +813,57 @@ function markPending(docItem, patch){
 }
 
 /* ======================
-   FIRESTORE: guardar revisado (P2)
+   FIRESTORE: guardar revisado (ruta independiente)
+   grupos/{gid}/finanzas/docsRevision/{docId}
    ====================== */
 async function updateRevisionForDoc(docItem, checked) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const now   = Date.now();
 
-  // Docs summary (grupo)
-  if (docItem.tipoDoc === 'BOLETA' ||
-      docItem.tipoDoc === 'COMP_CLP' ||
-      docItem.tipoDoc === 'CONST_USD') {
+  const gid = docItem.grupoId;
+  if (!gid) return false;
 
-    const gid = docItem.grupoId;
-    if (!gid) return false;
+  const docId = revisionDocIdForItem(docItem);
+  if (!docId) return false;
 
-    const ref = doc(db,'grupos',gid,'finanzas','summary');
+  const ref = doc(db,'grupos',gid,'finanzas','docsRevision',docId);
 
-    // (P2) docsRev separado de docsOk
-    const patch = {
-      'docsRevBy': email,
-      'docsRevAt': now
-    };
+  // payload explícito
+  const payload = {
+    ok: !!checked,
+    by: email,
+    at: now,
+    tipoDoc: docItem.tipoDoc
+  };
 
-    if (docItem.tipoDoc === 'BOLETA')    patch['docsRev.boleta'] = !!checked;
-    if (docItem.tipoDoc === 'COMP_CLP')  patch['docsRev.comprobante'] = !!checked;
-    if (docItem.tipoDoc === 'CONST_USD') patch['docsRev.transferencia'] = !!checked;
-
-    try {
-      await setDoc(ref, patch, { merge:true });
-
-      docItem.revisadoOk = !!checked;
-      docItem.revisadoBy = email;
-      docItem.revisadoAt = now;
-
-      return true;
-    } catch (e) {
-      console.error('[DOCS] updateRevisionForDoc summary', e);
-      alert('No se pudo guardar la revisión del documento de grupo.');
-      return false;
-    }
-  }
-
-  // Gasto (coordinadores/{email}/gastos/{id})
+  // Para gasto guardamos metadata útil (pero NO tocamos el doc del gasto)
   if (docItem.tipoDoc === 'GASTO') {
-    const coord = (docItem.coordEmail || '').toLowerCase();
-    const gastoId = docItem.gastoId;
-    if (!coord || !gastoId) return false;
-
-    try {
-      const ref = doc(db,'coordinadores',coord,'gastos',gastoId);
-      await updateDoc(ref, {
-        'revisionDocs.ok': !!checked,
-        'revisionDocs.by': email,
-        'revisionDocs.at': now
-      });
-
-      docItem.revisadoOk = !!checked;
-      docItem.revisadoBy = email;
-      docItem.revisadoAt = now;
-
-      return true;
-    } catch (e) {
-      console.error('[DOCS] updateRevisionForDoc gasto', e);
-      alert('No se pudo guardar la revisión del comprobante de gasto.');
-      return false;
-    }
+    payload.gastoId = docItem.gastoId || '';
+    payload.coordEmail = (docItem.coordEmail || '').toLowerCase();
+    payload.url = docItem.url || '';
   }
 
-  return false;
+  try {
+    await setDoc(ref, payload, { merge:true });
+
+    // actualizar memoria local (para UI inmediata)
+    const k = docKey(docItem);
+    state.revByDocKey.set(k, { ok: !!checked, by: email, at: now });
+
+    docItem.revisadoOk = !!checked;
+    docItem.revisadoBy = email;
+    docItem.revisadoAt = now;
+
+    return true;
+  } catch (e) {
+    console.error('[DOCS] updateRevisionForDoc docsRevision', e);
+    alert('No se pudo guardar la revisión del documento.');
+    return false;
+  }
 }
 
 /* ======================
-   FIRESTORE: guardar Documento Fiscal (P3)
+   FIRESTORE: guardar Documento Fiscal (summary + gasto)
    ====================== */
 async function updateFiscalForDoc(docItem, fiscalValue) {
   const email = (auth.currentUser?.email || '').toLowerCase();
@@ -791,7 +872,10 @@ async function updateFiscalForDoc(docItem, fiscalValue) {
   const v = (fiscalValue || '').toString();
   if (v && v !== FISCAL_ES && v !== FISCAL_NO) return false;
 
-  // Summary docs
+  // Regla: si está revisado, no debería llegar aquí (UI bloquea)
+  if (docItem.revisadoOk) return false;
+
+  // Summary docs -> docsFiscal
   if (docItem.tipoDoc === 'BOLETA' ||
       docItem.tipoDoc === 'COMP_CLP' ||
       docItem.tipoDoc === 'CONST_USD') {
@@ -820,7 +904,7 @@ async function updateFiscalForDoc(docItem, fiscalValue) {
     }
   }
 
-  // Gastos
+  // Gastos -> se mantiene en el doc del gasto (solo fiscal, NO revisado)
   if (docItem.tipoDoc === 'GASTO') {
     const coord = (docItem.coordEmail || '').toLowerCase();
     const gastoId = docItem.gastoId;
@@ -870,13 +954,11 @@ async function flushPending(){
   const btn = document.getElementById('btnGuardarPendientes');
   const info = document.getElementById('infoDocs');
 
-  // UI: bloquear botón mientras guarda
   const prevText = info?.textContent || '';
   if (btn) btn.disabled = true;
   if (info) info.textContent = `Guardando ${state.pending.size} cambio(s)…`;
 
-  // Trabajamos por key para poder mantener fallidos
-  const entries = Array.from(state.pending.entries()); // [key, payload]
+  const entries = Array.from(state.pending.entries());
   let okCount = 0;
   let failCount = 0;
 
@@ -903,10 +985,9 @@ async function flushPending(){
 
     if (okLocal) {
       okCount++;
-      state.pending.delete(key); // ✅ solo borramos si realmente guardó
+      state.pending.delete(key);
     } else {
       failCount++;
-      // ✅ se queda pendiente para reintentar
     }
   }
 
@@ -921,10 +1002,8 @@ async function flushPending(){
     alert(`⚠️ Guardado parcial: ${okCount}/${okCount + failCount}\nQuedaron ${failCount} pendiente(s) para reintentar.`);
   }
 
-  // UI: re-habilitar botón (si quedan pendientes, queda habilitado)
   if (btn) btn.disabled = (state.pending.size === 0);
 }
-
 
 /* ====================== MODAL VISOR ====================== */
 function openViewer({ title, sub, url }) {
@@ -953,9 +1032,7 @@ function openViewer({ title, sub, url }) {
     img.style.objectFit = 'contain';
     img.style.background = '#fff';
     body.appendChild(img);
-
   } else {
-    // PDF u otros
     const iframe = document.createElement('iframe');
     iframe.src = url;
     iframe.style.width = '100%';
@@ -1071,7 +1148,7 @@ function renderDocsTable() {
       tdArchivo.textContent = '—';
     }
 
-    // Documento Fiscal (P3)
+    // Documento Fiscal (bloqueado si Revisado=true)
     const sel = document.createElement('select');
     sel.className = 'sel-fiscal';
     sel.innerHTML = `
@@ -1080,14 +1157,24 @@ function renderDocsTable() {
       <option value="${FISCAL_NO}">No es Boleta</option>
     `;
     sel.value = (docItem.documentoFiscal || '').toString();
+
+    sel.disabled = !!docItem.revisadoOk;
+    sel.title = sel.disabled
+      ? 'Bloqueado: primero debes DESMARCAR “Revisado” (pide contraseña).'
+      : 'Selecciona el tipo de documento fiscal.';
+
     sel.addEventListener('change', (e) => {
+      if (docItem.revisadoOk) {
+        e.target.value = (docItem.documentoFiscal || '').toString();
+        return;
+      }
       const v = e.target.value || '';
       docItem.documentoFiscal = v;
       markPending(docItem, { fiscal: v });
     });
     tdFiscal.appendChild(sel);
 
-    // Revisado (P2 + P4)
+    // Revisado (ruta independiente + password al desmarcar)
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.className = 'chk';
@@ -1098,18 +1185,27 @@ function renderDocsTable() {
       const was = !!docItem.revisadoOk;
       const nuevo = !!e.target.checked;
 
-      // (P4) si intenta DESMARCAR, pedir contraseña
+      // Si intenta DESMARCAR, pedir contraseña
       if (was === true && nuevo === false) {
         const ok = askUnlockOrCancel();
         if (!ok) {
           // revertir UI
           chk.checked = true;
+          docItem.revisadoOk = true;
+          sel.disabled = true;
+          sel.title = 'Bloqueado: primero debes DESMARCAR “Revisado” (pide contraseña).';
           return;
         }
       }
 
-      docItem.revisadoOk = nuevo; // feedback inmediato en UI
+      docItem.revisadoOk = nuevo;
       markPending(docItem, { checked: nuevo });
+
+      // lock/unlock del select según estado
+      sel.disabled = nuevo;
+      sel.title = nuevo
+        ? 'Bloqueado: primero debes DESMARCAR “Revisado” (pide contraseña).'
+        : 'Selecciona el tipo de documento fiscal.';
     });
 
     tdChk.appendChild(chk);
@@ -1194,7 +1290,7 @@ function exportDocsExcel(){
 
   // ✅ HIPERVÍNCULO para URL
   const headerKeys = Object.keys(rows[0]);
-  const urlColIndex0 = headerKeys.indexOf('URL'); // 0-based
+  const urlColIndex0 = headerKeys.indexOf('URL');
   if (urlColIndex0 >= 0) {
     const urlColLetter = XLSX.utils.encode_col(urlColIndex0);
     for (let r = 0; r < rows.length; r++) {
@@ -1291,14 +1387,15 @@ function wireUI() {
   });
 
   btnExport?.addEventListener('click', exportDocsExcel);
+
   btnGuardarPend?.addEventListener('click', async () => {
-  await flushPending();
-  // ✅ recargar desde Firestore para reflejar docsRev/docsFiscal reales
-  const infoEl = document.getElementById('infoDocs');
-  if (infoEl) infoEl.textContent = 'Actualizando…';
-  await loadDocsForCurrentFilters();
-  if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
-});
+    await flushPending();
+    // ✅ recargar desde Firestore para reflejar revisiones reales (docsRevision) y docsFiscal reales
+    const infoEl2 = document.getElementById('infoDocs');
+    if (infoEl2) infoEl2.textContent = 'Actualizando…';
+    await loadDocsForCurrentFilters();
+    if (infoEl2) infoEl2.textContent = `Mostrando ${state.docs.length} documentos.`;
+  });
 
   refreshPendingUI();
 }
