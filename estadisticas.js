@@ -817,7 +817,14 @@ function exportarXLS(){
   });
 
   // Crear worksheet
-  const ws = XLSX.utils.json_to_sheet(rows);
+  const ws = XLSX.utils.jso  const XLSX = window.XLSX;
+  if (!XLSX){
+    setStatus('❌ No se cargó la librería XLSX (SheetJS).', true);
+    return;
+  }
+
+  // Crear worksheet
+  const ws = XLSX.utils.json_to_sheet(rows);n_to_sheet(rows);
 
   // Auto ancho de columnas
   ws['!cols'] = Object.keys(rows[0]).map(k=>({
