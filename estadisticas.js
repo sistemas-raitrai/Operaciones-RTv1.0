@@ -2,7 +2,8 @@
 // RT · Estadísticas (PAX esperados / declarados / liberados / reales + revisión)
 // ✅ Edita PAX Reales y PAX Liberados
 // ✅ PAX Liberados default = floor(esperados/10) pero editable
-// ✅ Si cambias liberados o reales => habilita Revisión y estado "CORREGIDO" (verde)
+// ✅ Si esperados == declarados y NO hay paxReales en FS => PAX Reales se precarga (solo visual) y cuenta como revisado OK
+// ✅ Estados: OK / PENDIENTE / CORREGIDO (verde)
 // ✅ Tooltip flotante en Revisión (title)
 // ✅ Coordinador en MAYÚSCULAS (visual)
 // ✅ Guardar: escribe SOLO cambios en Firestore
@@ -34,7 +35,7 @@ const START_DATE_PATHS = [
   ['fechaDeViaje'],
 ];
 
-// Campo Firestore para liberados (nuevo)
+// Campo Firestore para liberados
 const LIBERADOS_KEY = 'paxLiberados';
 
 /* =========================
@@ -90,18 +91,15 @@ function parseDateAny(v){
   if (!v) return null;
   if (v instanceof Date && !isNaN(v.getTime())) return v;
 
-  // Firestore Timestamp-like { seconds, nanoseconds }
   if (typeof v === 'object' && typeof v.seconds === 'number'){
     return new Date(v.seconds * 1000);
   }
 
   const s = v.toString().trim();
 
-  // ISO
   const iso = new Date(s);
   if (!isNaN(iso.getTime())) return iso;
 
-  // dd-mm-aaaa or dd/mm/aaaa
   const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (m){
     const dd = Number(m[1]), mm = Number(m[2]) - 1, yy = Number(m[3]);
@@ -109,14 +107,6 @@ function parseDateAny(v){
     return isNaN(d.getTime()) ? null : d;
   }
   return null;
-}
-
-function fmtDate(d){
-  if (!d) return '';
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const dd = String(d.getDate()).padStart(2,'0');
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 function safeText(v){
@@ -178,12 +168,80 @@ const ui = {
   kDeltaReales: $('kDeltaReales'),
   kDeltaRealesBox: $('kDeltaRealesBox'),
 
-  // nuevos KPI (si los agregaste al HTML)
   kLiberados: $('kLiberados'),
   kLiberadosBox: $('kLiberadosBox'),
   kNeto: $('kNeto'),
   kNetoBox: $('kNetoBox'),
 };
+
+/* =========================
+   AUTO-REALES (solo UI)
+   - Si esperados == declarados, y no hay paxReales en FS, y no hay dirty => mostrar declarados
+========================= */
+function effectiveReales(row){
+  const d = state.dirty.get(row.gid);
+  if (d && d.paxReales !== undefined) return d.paxReales;
+
+  if (row.paxReales != null && row.paxReales !== '') return row.paxReales;
+
+  const exp = Number(row.esperados || 0);
+  const dec = Number(row.declarados || 0);
+  if (exp > 0 && dec > 0 && exp === dec) return dec;
+
+  return null;
+}
+
+function effectiveLiberados(row){
+  const d = state.dirty.get(row.gid);
+  if (d && d.paxLiberados !== undefined) return d.paxLiberados;
+
+  // si viene null por alguna razón, volvemos a base
+  if (row.paxLiberados == null || row.paxLiberados === '') return Number(row.paxLiberadosDefault || 0);
+
+  return row.paxLiberados;
+}
+
+/* =========================
+   REGLAS DE ESTADO
+========================= */
+function computeStatus(row, revisionText){
+  const expected = Number(row.esperados || 0);
+  const declared = Number(row.declarados || 0);
+
+  const reales = effectiveReales(row);
+  const liberados = effectiveLiberados(row);
+
+  const realesNum = (reales == null || reales === '') ? null : Number(reales);
+  const liberadosNum = (liberados == null || liberados === '') ? null : Number(liberados);
+
+  const hasReales = (realesNum != null && Number.isFinite(realesNum));
+  const hasReason = safeText(revisionText).trim().length > 0;
+
+  // 1) mismatch base: esperados != declarados => requiere revisión
+  const mismatch = (expected !== declared);
+
+  // 2) liberados: si usuario se aparta del default => requiere revisión
+  //    (si es null no cuenta como cambio, pero en UI igual debe verse base)
+  const liberadosChangedFromDefault =
+    (liberadosNum != null && Number.isFinite(liberadosNum) && liberadosNum !== Number(row.paxLiberadosDefault || 0));
+
+  // 3) reales: si usuario puso un real distinto a declarado => requiere revisión
+  //    OJO: si mismatch existe, aunque reales sea igual, igual quieres revisión (porque el problema está antes)
+  const realesDiffFromDeclared =
+    (realesNum != null && Number.isFinite(realesNum) && realesNum !== declared);
+
+  const needsRevision = mismatch || liberadosChangedFromDefault || realesDiffFromDeclared;
+
+  // 4) estado final
+  if (!needsRevision) return { status:'OK', needsRevision:false };
+
+  // Para que sea CORREGIDO: debe haber MOTIVO.
+  // y además debe existir "algo" confirmado (reales presentes). Si no hay reales, no hay confirmación.
+  // Nota: si mismatch existe, y reales auto-cargado no aplica (porque auto solo cuando exp==dec).
+  if (hasReason && hasReales) return { status:'CORREGIDO', needsRevision:true };
+
+  return { status:'PENDIENTE', needsRevision:true };
+}
 
 /* =========================
    AUTH GATE
@@ -246,10 +304,10 @@ async function loadGroups(){
     const esperados = pickNumber(g, EXPECTED_KEYS);
     const declarados = pickDeclared(g);
 
-    // pax reales
+    // reales (FS)
     const paxRealesFS = Number.isFinite(toNum(g.paxReales)) ? toNum(g.paxReales) : null;
 
-    // liberados: si existe en FS úsalo; si no, default
+    // liberados: FS o default
     const liberadosFSNum = Number.isFinite(toNum(g[LIBERADOS_KEY])) ? toNum(g[LIBERADOS_KEY]) : null;
     const liberadosDefault = defaultLiberados(esperados);
     const paxLiberados = (liberadosFSNum == null ? liberadosDefault : liberadosFSNum);
@@ -278,7 +336,7 @@ async function loadGroups(){
       declarados,
 
       paxReales: paxRealesFS,         // null si no existe
-      paxLiberados,                   // siempre num (default o FS)
+      paxLiberados,                   // num (default o FS)
       paxLiberadosDefault: liberadosDefault,
 
       revisionPax,
@@ -350,14 +408,16 @@ function applyFilters(){
 
     if (q && !r.searchBlob.includes(q)) return false;
 
-    const declared = r.declarados || 0;
-    const reales = (r.paxReales == null ? null : r.paxReales);
+    // OJO: filtros “soloDif / soloSinReales” deben usar effectiveReales (incluye auto)
+    const declared = Number(r.declarados || 0);
+    const realesEff = effectiveReales(r);
+    const realesNum = (realesEff == null || realesEff === '') ? null : Number(realesEff);
 
-    if (soloSinReales && reales != null) return false;
+    if (soloSinReales && (realesNum != null && Number.isFinite(realesNum))) return false;
 
     if (soloDif){
-      if (reales == null) return false;
-      if (reales === declared) return false;
+      if (realesNum == null || !Number.isFinite(realesNum)) return false;
+      if (realesNum === declared) return false;
     }
 
     return true;
@@ -373,7 +433,6 @@ function applyFilters(){
 ========================= */
 function render(){
   const rows = state.rowsView;
-
   if (!ui.tbody) return;
 
   if (!rows.length){
@@ -387,43 +446,39 @@ function render(){
     const tr = document.createElement('tr');
     tr.dataset.gid = r.gid;
 
-    const declared = r.declarados || 0;
-    const expected = r.esperados || 0;
+    const expected = Number(r.esperados || 0);
+    const declared = Number(r.declarados || 0);
 
     const dirty = state.dirty.get(r.gid);
 
-    // liberados (dirty o base)
     const valLiberados = (dirty && dirty.paxLiberados !== undefined) ? dirty.paxLiberados : r.paxLiberados;
-
-    // reales (dirty o base)
-    const valReales = (dirty && dirty.paxReales !== undefined) ? dirty.paxReales : r.paxReales;
-
-    const liberadosNum = (valLiberados == null || valLiberados === '' ? null : Number(valLiberados));
-    const realesNum = (valReales == null || valReales === '' ? null : Number(valReales));
-
-    const liberadosChanged = (liberadosNum != null && Number.isFinite(liberadosNum) && liberadosNum !== r.paxLiberadosDefault);
-    const realesDiff = (realesNum != null && Number.isFinite(realesNum) && realesNum !== declared);
-
-    // “corrección pendiente” si cambias liberados o reales difiere
-    const needsRevision = (liberadosChanged || realesDiff);
+    const valReales = effectiveReales(r);
 
     const revisionVal = (dirty && dirty.revisionPax !== undefined) ? dirty.revisionPax : (r.revisionPax || '');
 
-    const estadoHTML = needsRevision
-      ? `<span class="es-badge ok">CORREGIDO</span>`
-      : `<span class="es-badge">OK</span>`;
+    const { status, needsRevision } = computeStatus(r, revisionVal);
+
+    // clases visuales (para CSS)
+    const revClass =
+      (status === 'CORREGIDO') ? 'rev-ok' :
+      (status === 'PENDIENTE') ? 'rev-warn' : 'rev-neutral';
+
+    const estadoHTML =
+      (status === 'CORREGIDO') ? `<span class="es-badge ok">CORREGIDO</span>` :
+      (status === 'PENDIENTE') ? `<span class="es-badge warn">PENDIENTE</span>` :
+                                 `<span class="es-badge">OK</span>`;
 
     tr.innerHTML = `
       <td class="es-nowrap es-mono">${escapeHtml(r.gid)}</td>
       <td>${escapeHtml(r.nombre || '(sin nombre)')}</td>
 
-      <!-- ✅ Coordinador en mayúsculas (visual) -->
+      <!-- Coordinador en mayúsculas (visual) -->
       <td class="es-nowrap col-coord">${escapeHtml((r.coord || '').toUpperCase())}</td>
 
       <td class="es-nowrap es-right es-mono">${expected}</td>
       <td class="es-nowrap es-right es-mono">${declared}</td>
 
-      <!-- ✅ NUEVO: PAX LIBERADOS -->
+      <!-- PAX LIBERADOS -->
       <td class="es-nowrap">
         <input class="cell-input num" type="number" min="0" step="1"
                data-role="paxLiberados"
@@ -431,17 +486,19 @@ function render(){
                placeholder="${String(r.paxLiberadosDefault)}" />
       </td>
 
+      <!-- PAX REALES (usa effectiveReales => puede venir auto-cargado) -->
       <td class="es-nowrap">
         <input class="cell-input num" type="number" min="0" step="1"
-               data-role="paxReales" value="${valReales == null ? '' : String(valReales)}"
+               data-role="paxReales"
+               value="${valReales == null ? '' : String(valReales)}"
                placeholder="(vacío)" />
       </td>
 
       <td>
-        <input class="cell-input" type="text"
+        <input class="cell-input rev ${revClass}" type="text"
                data-role="revision"
                value="${escapeAttr(revisionVal)}"
-               placeholder="${needsRevision ? 'Motivo / comentario' : '—'}"
+               placeholder="${needsRevision ? 'Motivo / comentario' : 'OK'}"
                title="${escapeAttr(revisionVal || '')}"
                ${needsRevision ? '' : 'disabled'} />
       </td>
@@ -468,62 +525,64 @@ function onEditRow(gid, tr, opts = {}){
   const row = state.rowsAll.find(x=>x.gid === gid);
   if (!row) return;
 
-  const declared = row.declarados || 0;
-
   const inpLiberados = tr.querySelector('input[data-role="paxLiberados"]');
   const inpReales = tr.querySelector('input[data-role="paxReales"]');
   const inpRevision = tr.querySelector('input[data-role="revision"]');
 
+  // leer valores
   const rawLiberados = inpLiberados.value;
   const nLiberados = rawLiberados === '' ? null : Number(rawLiberados);
 
   const rawReales = inpReales.value;
   const nReales = rawReales === '' ? null : Number(rawReales);
 
-  const liberadosChanged = (nLiberados != null && Number.isFinite(nLiberados) && nLiberados !== row.paxLiberadosDefault);
-  const realesDiff = (nReales != null && Number.isFinite(nReales) && nReales !== declared);
+  // construir next dirty
+  const prev = state.dirty.get(gid) || {};
+  const next = {
+    ...prev,
+    paxLiberados: nLiberados,
+    paxReales: nReales,
+    // ojo: la revisión se decide abajo con needsRevision
+    revisionPax: safeText(inpRevision.value || ''),
+  };
 
-  const needsRevision = (liberadosChanged || realesDiff);
+  // aplicar provisionalmente a state.dirty para que computeStatus use effective* con dirty
+  state.dirty.set(gid, next);
 
-  // habilitar/deshabilitar revisión
+  // recalcular estado (con lo que el usuario escribió)
+  const { status, needsRevision } = computeStatus(row, next.revisionPax);
+
+  // habilitar/deshabilitar revisión según needsRevision
   if (needsRevision){
     inpRevision.disabled = false;
-    if (!inpRevision.placeholder || inpRevision.placeholder === '—'){
+    if (!inpRevision.placeholder || inpRevision.placeholder === 'OK'){
       inpRevision.placeholder = 'Motivo / comentario';
     }
   } else {
     inpRevision.disabled = true;
-    inpRevision.value = '';
-    inpRevision.placeholder = '—';
-    inpRevision.title = '';
+    inpRevision.value = '';         // si ya no requiere, limpiamos
+    next.revisionPax = '';
   }
 
-  // actualizar tooltip siempre
-  if (!inpRevision.disabled){
-    inpRevision.title = inpRevision.value || '';
-  }
+  // tooltip siempre sincronizado si está habilitado
+  inpRevision.title = inpRevision.disabled ? '' : (inpRevision.value || '');
 
-  // estado
+  // clases visuales revisión
+  inpRevision.classList.remove('rev-ok','rev-warn','rev-neutral');
+  if (status === 'CORREGIDO') inpRevision.classList.add('rev-ok');
+  else if (status === 'PENDIENTE') inpRevision.classList.add('rev-warn');
+  else inpRevision.classList.add('rev-neutral');
+
+  // badge
   const estadoCell = tr.lastElementChild;
-  estadoCell.innerHTML = needsRevision
-    ? `<span class="es-badge ok">CORREGIDO</span>`
-    : `<span class="es-badge">OK</span>`;
+  estadoCell.innerHTML =
+    (status === 'CORREGIDO') ? `<span class="es-badge ok">CORREGIDO</span>` :
+    (status === 'PENDIENTE') ? `<span class="es-badge warn">PENDIENTE</span>` :
+                               `<span class="es-badge">OK</span>`;
 
-  // marcar dirty
-  const prev = state.dirty.get(gid) || {};
-  const next = {
-    ...prev,
-    paxLiberados: nLiberados, // null si vacío (pero lo trataremos en save)
-    paxReales: nReales,
-    revisionPax: needsRevision ? (inpRevision.value || '') : '',
-  };
-
-  // Normalización para comparar vs base:
-  // - base liberados = row.paxLiberados (que ya viene con FS o default)
-  // - base reales = row.paxReales
-  const baseLiberados = Number(row.paxLiberados);
+  // decidir si realmente queda dirty (comparado con base)
+  const baseLiberados = Number(row.paxLiberados); // base ya trae FS o default
   const curLiberados = (next.paxLiberados == null ? baseLiberados : Number(next.paxLiberados));
-
   const sameLiberados = Number.isFinite(curLiberados) && (curLiberados === baseLiberados);
 
   const baseReales = (row.paxReales == null ? null : Number(row.paxReales));
@@ -532,6 +591,9 @@ function onEditRow(gid, tr, opts = {}){
 
   const sameRev = (safeText(row.revisionPax || '') === safeText(next.revisionPax || ''));
 
+  // IMPORTANTE:
+  // - el auto-reales NO es dirty, porque no queremos escribir a FS.
+  // - si el usuario no tocó reales/liberados/revision, no debe quedar dirty.
   if (sameLiberados && sameReales && sameRev){
     state.dirty.delete(gid);
     tr.classList.remove('es-row-dirty');
@@ -561,36 +623,32 @@ function recalcKpis(){
   let liberadosSum = 0;
 
   for (const r of rows){
-    esperados += (r.esperados || 0);
-    declarados += (r.declarados || 0);
+    esperados += Number(r.esperados || 0);
+    declarados += Number(r.declarados || 0);
 
-    const d = state.dirty.get(r.gid);
-
-    // reales (considera dirty)
-    const vReales = (d && d.paxReales !== undefined) ? d.paxReales : r.paxReales;
+    // reales (incluye auto)
+    const vReales = effectiveReales(r);
     const hasReales = (vReales != null && vReales !== '' && Number.isFinite(Number(vReales)));
 
-    // liberados (considera dirty; si vacío, vuelve al valor base)
-    const vLiberadosRaw = (d && d.paxLiberados !== undefined) ? d.paxLiberados : r.paxLiberados;
-    const vLiberados = (vLiberadosRaw == null || vLiberadosRaw === '' ? Number(r.paxLiberados) : Number(vLiberadosRaw));
+    // liberados (dirty o base)
+    const vLiberadosRaw = effectiveLiberados(r);
+    const vLiberados = (vLiberadosRaw == null || vLiberadosRaw === '' ? Number(r.paxLiberadosDefault || 0) : Number(vLiberadosRaw));
     if (Number.isFinite(vLiberados)) liberadosSum += vLiberados;
 
     if (hasReales){
       realesSum += Number(vReales);
       realesCount += 1;
-      esperadosBaseReales += (r.esperados || 0);
+
+      // ✅ Para delta reales, mantenemos tu criterio anterior:
+      // solo sumamos esperados en los grupos que tienen "reales informados" (incluye auto-reales)
+      esperadosBaseReales += Number(r.esperados || 0);
     }
   }
 
   const deltaDeclarados = declarados - esperados;
-
-  // deltaReales: solo en grupos con reales informados
   const deltaReales = (realesCount === 0) ? 0 : (realesSum - esperadosBaseReales);
-
-  // ✅ Cuenta final pedida: NETO = Reales - Liberados
   const neto = realesSum - liberadosSum;
 
-  // UI
   if (ui.kGrupos) ui.kGrupos.textContent = String(grupos);
   if (ui.kGruposHint) ui.kGruposHint.textContent = `${state.dirty.size} con cambios pendientes`;
 
@@ -599,6 +657,9 @@ function recalcKpis(){
 
   if (ui.kReales) ui.kReales.textContent = String(realesSum);
   if (ui.kRealesHint) ui.kRealesHint.textContent = String(realesCount);
+
+  if (ui.kLiberados) ui.kLiberados.textContent = String(liberadosSum);
+  if (ui.kNeto) ui.kNeto.textContent = String(neto);
 
   if (ui.kDelta) ui.kDelta.textContent = String(deltaDeclarados);
   if (ui.kDeltaBox){
@@ -614,15 +675,6 @@ function recalcKpis(){
       // neutro
     } else if (deltaReales < 0) ui.kDeltaRealesBox.classList.add('delta-neg');
     else if (deltaReales > 0) ui.kDeltaRealesBox.classList.add('delta-pos');
-  }
-
-  // nuevos KPI (si existen en HTML)
-  if (ui.kLiberados) ui.kLiberados.textContent = String(liberadosSum);
-  if (ui.kNeto) ui.kNeto.textContent = String(neto);
-
-  if (ui.kNetoBox){
-    ui.kNetoBox.classList.remove('delta-neg','delta-pos');
-    // neto “bueno/malo” depende de tu criterio; lo dejo neutro (sin color).
   }
 }
 
@@ -650,28 +702,21 @@ async function guardarCambios(){
   if (!state.user) return;
   if (state.dirty.size === 0) return;
 
-  // validación: si needsRevision => revision no puede quedar vacía
+  // validación: si requiere revisión => motivo obligatorio
   const problems = [];
   for (const [gid, ch] of state.dirty.entries()){
     const row = state.rowsAll.find(x=>x.gid === gid);
     if (!row) continue;
 
-    const declared = row.declarados || 0;
-
-    const reales = ch.paxReales;
-    const realesDiff = (reales != null && Number.isFinite(reales) && reales !== declared);
-
-    const liberados = (ch.paxLiberados == null ? null : Number(ch.paxLiberados));
-    const liberadosChanged = (liberados != null && Number.isFinite(liberados) && liberados !== row.paxLiberadosDefault);
-
-    const needsRevision = (realesDiff || liberadosChanged);
+    // computeStatus usando el texto guardado
+    const { needsRevision, status } = computeStatus(row, ch.revisionPax || '');
 
     if (needsRevision && !safeText(ch.revisionPax).trim()){
       problems.push(gid);
     }
   }
   if (problems.length){
-    setStatus(`Falta "Revisión" en ${problems.length} grupo(s) corregidos (ej: ${problems.slice(0,3).join(', ')})`, true);
+    setStatus(`Falta "Revisión" en ${problems.length} grupo(s) (ej: ${problems.slice(0,3).join(', ')})`, true);
     return;
   }
 
@@ -684,15 +729,15 @@ async function guardarCambios(){
     for (const [gid, ch] of state.dirty.entries()){
       const ref = doc(db, GROUPS_COLLECTION, gid);
 
-      // liberados: si viene null/vacío al editar, lo normalizamos al valor base actual del row
       const row = state.rowsAll.find(x=>x.gid === gid);
+
       const liberadosFinal =
         (ch.paxLiberados == null || ch.paxLiberados === '')
           ? Number(row?.paxLiberados ?? row?.paxLiberadosDefault ?? 0)
           : Number(ch.paxLiberados);
 
       batch.update(ref, {
-        paxReales: ch.paxReales, // puede ser null
+        paxReales: ch.paxReales, // puede ser null si lo dejaste vacío
         [LIBERADOS_KEY]: Number.isFinite(liberadosFinal) ? liberadosFinal : 0,
 
         revisionPax: safeText(ch.revisionPax || ''),
