@@ -524,10 +524,13 @@ function getSummaryDocUrls(summary = {}){
    grupos/{gid}/finanzas/docsRevision/{docId}
    ====================== */
 async function loadRevisionsForGid(gid){
-  // limpia SOLO las keys de ese gid? -> más simple: llenamos map desde cero por carga
-  // (lo hacemos en loadDocsSummaryForGroups al inicio con clear global)
   try {
-    const revSnap = await getDocs(collection(db,'grupos',gid,'finanzas','docsRevision'));
+    // ✅ Ruta correcta:
+    // grupos/{gid}/finanzas (doc) / docsRevision (subcol) / {docId}
+    const finDoc = doc(db,'grupos',gid,'finanzas');
+    const revCol = collection(finDoc,'docsRevision');
+    const revSnap = await getDocs(revCol);
+
     revSnap.forEach(s => {
       const d = s.data() || {};
       const docId = s.id;
@@ -557,10 +560,12 @@ async function loadRevisionsForGid(gid){
         });
       }
     });
+
   } catch (e) {
     console.warn('[DOCS] load revisions for gid', gid, e);
   }
 }
+
 
 async function loadDocsSummaryForGroups(gids) {
   const out = [];
@@ -850,7 +855,8 @@ async function updateRevisionForDoc(docItem, checked) {
 
   // 1) Intento A: guardar en subcolección nueva (ideal)
   const docId = revisionDocIdForItem(docItem);
-  const refA  = doc(db,'grupos',gid,'finanzas','docsRevision',docId);
+  const finDoc = doc(db,'grupos',gid,'finanzas');
+  const refA   = doc(finDoc,'docsRevision',docId);
 
   const payloadA = {
     ok: !!checked,
