@@ -1175,7 +1175,7 @@ function renderDocsTable() {
   if (!state.docs.length) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 11;
+    td.colSpan = 10;
     td.innerHTML = '<div class="muted">Sin documentos para los filtros seleccionados.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
