@@ -14,8 +14,6 @@ import {
   collection, getDocs, doc, writeBatch, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-import * as XLSX from 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/+esm';
-
 /* =========================
    CONFIG
 ========================= */
