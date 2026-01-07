@@ -5,8 +5,9 @@
 //    - Si tipoDoc === 'GASTO' => OK si montoAprobado > 0; si =0 => "Rechazado" (rojo)
 //    - Si NO es GASTO => se mantiene regla por summary (gastosGrabados<=costoTotal y >0)
 // ✅ Guardar cambios persiste:
-//    - Checkbox Revisado
-//    - Select Documento Fiscal (Es Boleta / No es Boleta)
+//    - Checkbox Revisado (P2: ahora va a docsRev separado de docsOk)
+//    - Select Documento Fiscal (P3)
+// ✅ (P4) Para DESMARCAR revisado => pide contraseña
 // ✅ Exportación Excel (xlsx) con HIPERVÍNCULO en la columna URL
 
 import { app, db } from './firebase-init.js';
@@ -104,30 +105,18 @@ function fmtDDMMYYYY(ms){
 function isImageUrl(url=''){
   const u0 = String(url || '').trim();
   if (!u0) return false;
-
-  // Lower para comparar
   const u = u0.toLowerCase();
 
-  // 1) Si viene con indicios de imagen en query/headers típicos
-  // Firebase storage a veces no trae extensión limpia, pero sí "contentType=image/..."
   if (u.includes('contenttype=image/')) return true;
   if (u.includes('alt=media') && (u.includes('image') || u.includes('png') || u.includes('jpg') || u.includes('jpeg') || u.includes('webp'))) return true;
 
-  // 2) Revisar extensión real del "path" SIN querystring ni hash
-  // Ej: .../archivo.jpg?alt=media&token=...
   const clean = u.split('#')[0].split('?')[0];
-
-  // Extensiones típicas
   if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(clean)) return true;
 
-  // 3) Casos comunes: enlaces de Google/Firebase donde el filename puede estar URL-encoded
-  // Ej: ...%2Ffoto%2FIMG_1234.JPG?...
   try {
     const decoded = decodeURIComponent(clean);
     if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(decoded)) return true;
-  } catch (e) {
-    // si falla decode, no pasa nada
-  }
+  } catch (e) {}
 
   return false;
 }
@@ -138,18 +127,17 @@ function isPdfUrl(url=''){
   const u = u0.toLowerCase();
   const clean = u.split('#')[0].split('?')[0];
   if (clean.endsWith('.pdf')) return true;
-  // algunos links dicen application/pdf o pdf en parámetros
   if (u.includes('application/pdf') || u.includes('contenttype=application/pdf')) return true;
   return false;
 }
 
-
-// ✅ display coord: sacar guiones y MAYÚSCULAS (como pediste)
+// ✅ display coord: sacar guiones y MAYÚSCULAS
 function coordDisplay(email=''){
   const s = (email || '').toString().replace(/-/g,' ').toUpperCase();
   return s || '—';
 }
 
+/* ====================== (P4) UNLOCK DESMARCAR ====================== */
 const UNLOCK_PASSWORD = 'Patricia';
 
 function askUnlockOrCancel(){
@@ -163,7 +151,6 @@ function askUnlockOrCancel(){
    ====================== */
 const FISCAL_ES = 'ES_BOLETA';
 const FISCAL_NO = 'NO_ES_BOLETA';
-const FISCAL_EMPTY = ''; // sin definir
 
 function fiscalLabel(v){
   if (v === FISCAL_ES) return 'Es Boleta';
@@ -369,7 +356,7 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
 
   const montoAprobado = parseMonto(coalesce(raw.montoAprobado, raw.aprobado, raw.monto_aprobado, 0));
 
-  // ✅ Documento fiscal guardado a nivel gasto
+  // ✅ (P3) Documento fiscal guardado a nivel gasto
   const docFiscal = coalesce(raw.documentoFiscal, raw.docFiscal, raw.fiscal, '');
 
   return {
@@ -388,8 +375,7 @@ function gastoToDocItem(grupoInfo, raw, coordFromPath) {
     asunto,
     url: imgUrl,
 
-    // ✅ NUEVO
-    documentoFiscal: docFiscal,
+    documentoFiscal: docFiscal, // ✅ (P3)
 
     revisadoOk,
     revisadoBy,
@@ -441,7 +427,7 @@ function aprobStateForRow(docItem){
   if (docItem.tipoDoc === 'GASTO') {
     const ma = Number(docItem.montoAprobado || 0);
     if (ma > 0) return { ok:true, label:'OK', cls:'ok' };
-    return { ok:false, label:'Rechazado', cls:'bad' }; // ✅ pedido
+    return { ok:false, label:'Rechazado', cls:'bad' };
   }
 
   const ok = !!state.gastoAprobadoByGid.get(docItem.grupoId);
@@ -453,7 +439,7 @@ function isAprobOkForRow(docItem){
 }
 
 /* ======================
-   DOC FISCAL: KEY según tipo
+   DOC FISCAL: KEY según tipo (summary)
    ====================== */
 function fiscalKeyForTipo(tipoDoc){
   if (tipoDoc === 'BOLETA') return 'boleta';
@@ -462,7 +448,33 @@ function fiscalKeyForTipo(tipoDoc){
   return '';
 }
 
-/* ====================== CARGA DE DOCUMENTOS ====================== */
+/* ====================== CARGA DE DOCUMENTOS (SUMMARY) ====================== */
+function getSummaryDocUrls(summary = {}){
+  // buscamos URLs en varias estructuras posibles sin asumir formato único
+  const docs = summary?.docs || summary?.documentos || {};
+  const urls = summary?.urls || summary?.docUrls || summary?.docsUrls || {};
+
+  const boletaUrl = coalesce(
+    summary?.boletaUrl, docs?.boletaUrl, urls?.boleta,
+    summary?.docsOk?.boletaUrl, summary?.docsOk?.boleta, // a veces guardan URL acá
+    summary?.boleta, docs?.boleta, urls?.boletaUrl
+  );
+
+  const compUrl = coalesce(
+    summary?.comprobanteUrl, docs?.comprobanteUrl, urls?.comprobante,
+    summary?.docsOk?.comprobanteUrl, summary?.docsOk?.comprobante,
+    summary?.comprobante, docs?.comprobante, urls?.comprobanteUrl
+  );
+
+  const transfUrl = coalesce(
+    summary?.transferenciaUrl, docs?.transferenciaUrl, urls?.transferencia,
+    summary?.docsOk?.transferenciaUrl, summary?.docsOk?.transferencia,
+    summary?.transferencia, docs?.transferencia, urls?.transferenciaUrl
+  );
+
+  return { boletaUrl, compUrl, transfUrl };
+}
+
 async function loadDocsSummaryForGroups(gids) {
   const out = [];
   state.rendicionOkByGid.clear();
@@ -481,65 +493,92 @@ async function loadDocsSummaryForGroups(gids) {
       console.warn('[DOCS] load summary', gid, e);
     }
 
-    const docsOk = (summary && summary.docsOk) || {};          // Rendición (se mantiene)
-    const docsFiscal = (summary && summary.docsFiscal) || {};
-    const docsRev = (summary && summary.docsRev) || {};        // ✅ NUEVO: Revisado real (separado)
-    
-    const docsRevBy = coalesce(summary?.docsRevBy, '');
-    const docsRevAt = _toMs(coalesce(summary?.docsRevAt, 0));
-    
-    // ...
+    // si no hay summary igual podemos mostrar docs si están en grupoInfo? (normalmente no)
+    const docsOk     = (summary && summary.docsOk) || {};        // Rendición (mantener)
+    const docsFiscal = (summary && summary.docsFiscal) || {};    // (P3)
+    const docsRev    = (summary && summary.docsRev) || {};       // (P2) revisado separado
+
+    // Rendición OK por grupo (regla original)
+    state.rendicionOkByGid.set(gid, !!docsOk.boleta);
+
+    // Gasto aprobado por grupo (solo para NO-GASTO)
+    state.gastoAprobadoByGid.set(gid, computeGastoAprobado(summary || {}));
+
+    const docsRevBy = coalesce(summary?.docsRevBy, docsRev?.by, '');
+    const docsRevAt = _toMs(coalesce(summary?.docsRevAt, docsRev?.at, 0));
+
+    const { boletaUrl, compUrl, transfUrl } = getSummaryDocUrls(summary || {});
+
+    const base = {
+      grupoId: gid,
+      numeroGrupo: gInfo.numero,
+      nombreGrupo: gInfo.nombre,
+      destino: gInfo.destino,
+      coordEmail: (gInfo.coordEmail || '').toLowerCase(),
+      fechaMs: 0,
+      fechaTxt: '',
+      moneda: 'CLP',
+      monto: 0,
+      montoAprobado: 0,
+      asunto: '',
+      url: ''
+    };
+
+    // BOLETA
     if (boletaUrl || docsOk.boleta) {
       out.push({
         ...base,
         tipoDoc: 'BOLETA',
         gastoId: null,
         url: boletaUrl,
-    
-        // ✅ Revisado ya NO depende de docsOk
+
+        // (P2) revisado real separado
         revisadoOk: !!docsRev.boleta,
         revisadoBy: docsRevBy,
         revisadoAt: docsRevAt,
-    
+
+        // (P3) doc fiscal
         documentoFiscal: coalesce(docsFiscal.boleta, '')
       });
     }
-    
+
+    // COMP_CLP
     if (compUrl || docsOk.comprobante) {
       out.push({
         ...base,
         tipoDoc: 'COMP_CLP',
         gastoId: null,
         url: compUrl,
-    
+
         revisadoOk: !!docsRev.comprobante,
         revisadoBy: docsRevBy,
         revisadoAt: docsRevAt,
-    
+
         documentoFiscal: coalesce(docsFiscal.comprobante, '')
       });
     }
-    
+
+    // CONST_USD
     if (transfUrl || docsOk.transferencia) {
       out.push({
         ...base,
         tipoDoc: 'CONST_USD',
         gastoId: null,
         url: transfUrl,
-    
+
         revisadoOk: !!docsRev.transferencia,
         revisadoBy: docsRevBy,
         revisadoAt: docsRevAt,
-    
+
         documentoFiscal: coalesce(docsFiscal.transferencia, '')
       });
     }
-
   }
 
   return out;
 }
 
+/* ====================== CARGA DE DOCUMENTOS (GASTOS) ====================== */
 async function loadDocsGastosForGroups(gids) {
   const out = [];
   if (!gids.length) return out;
@@ -576,6 +615,7 @@ async function loadDocsGastosForGroups(gids) {
   return out;
 }
 
+/* ====================== FILTROS ====================== */
 function getFilteredGids() {
   const destinoFilter = state.filtros.destino ? state.filtros.destino.toUpperCase().trim() : '';
   const textoFilter   = norm(state.filtros.texto || '');
@@ -671,12 +711,13 @@ function markPending(docItem, patch){
 }
 
 /* ======================
-   FIRESTORE: guardar revisado
+   FIRESTORE: guardar revisado (P2)
    ====================== */
 async function updateRevisionForDoc(docItem, checked) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const now   = Date.now();
 
+  // Docs summary (grupo)
   if (docItem.tipoDoc === 'BOLETA' ||
       docItem.tipoDoc === 'COMP_CLP' ||
       docItem.tipoDoc === 'CONST_USD') {
@@ -686,26 +727,22 @@ async function updateRevisionForDoc(docItem, checked) {
 
     const ref = doc(db,'grupos',gid,'finanzas','summary');
 
+    // (P2) docsRev separado de docsOk
     const patch = {
-      // ✅ NUEVO: Revisado real separado
       'docsRevBy': email,
       'docsRevAt': now
     };
-    
+
     if (docItem.tipoDoc === 'BOLETA')    patch['docsRev.boleta'] = !!checked;
     if (docItem.tipoDoc === 'COMP_CLP')  patch['docsRev.comprobante'] = !!checked;
     if (docItem.tipoDoc === 'CONST_USD') patch['docsRev.transferencia'] = !!checked;
-    
-    await setDoc(ref, patch, { merge:true });
 
+    try {
+      await setDoc(ref, patch, { merge:true });
 
       docItem.revisadoOk = !!checked;
       docItem.revisadoBy = email;
       docItem.revisadoAt = now;
-
-      if (docItem.tipoDoc === 'BOLETA') {
-        state.rendicionOkByGid.set(gid, !!checked);
-      }
 
       return true;
     } catch (e) {
@@ -715,6 +752,7 @@ async function updateRevisionForDoc(docItem, checked) {
     }
   }
 
+  // Gasto (coordinadores/{email}/gastos/{id})
   if (docItem.tipoDoc === 'GASTO') {
     const coord = (docItem.coordEmail || '').toLowerCase();
     const gastoId = docItem.gastoId;
@@ -744,16 +782,16 @@ async function updateRevisionForDoc(docItem, checked) {
 }
 
 /* ======================
-   FIRESTORE: guardar Documento Fiscal
+   FIRESTORE: guardar Documento Fiscal (P3)
    ====================== */
 async function updateFiscalForDoc(docItem, fiscalValue) {
   const email = (auth.currentUser?.email || '').toLowerCase();
   const now   = Date.now();
 
   const v = (fiscalValue || '').toString();
-  // permitimos '' para "sin definir"
   if (v && v !== FISCAL_ES && v !== FISCAL_NO) return false;
 
+  // Summary docs
   if (docItem.tipoDoc === 'BOLETA' ||
       docItem.tipoDoc === 'COMP_CLP' ||
       docItem.tipoDoc === 'CONST_USD') {
@@ -767,7 +805,7 @@ async function updateFiscalForDoc(docItem, fiscalValue) {
     const ref = doc(db,'grupos',gid,'finanzas','summary');
 
     const patch = {};
-    patch[`docsFiscal.${k}`] = v; // '' | ES_BOLETA | NO_ES_BOLETA
+    patch[`docsFiscal.${k}`] = v;
     patch[`docsFiscalBy`] = email;
     patch[`docsFiscalAt`] = now;
 
@@ -782,6 +820,7 @@ async function updateFiscalForDoc(docItem, fiscalValue) {
     }
   }
 
+  // Gastos
   if (docItem.tipoDoc === 'GASTO') {
     const coord = (docItem.coordEmail || '').toLowerCase();
     const gastoId = docItem.gastoId;
@@ -835,13 +874,11 @@ async function flushPending(){
     const docItem = it.docItem;
     let okLocal = true;
 
-    // 1) revisado (si viene)
     if (Object.prototype.hasOwnProperty.call(it, 'checked')) {
       const ok = await updateRevisionForDoc(docItem, it.checked);
       okLocal = okLocal && ok;
     }
 
-    // 2) fiscal (si viene)
     if (Object.prototype.hasOwnProperty.call(it, 'fiscal')) {
       const ok = await updateFiscalForDoc(docItem, it.fiscal);
       okLocal = okLocal && ok;
@@ -876,7 +913,6 @@ function openViewer({ title, sub, url }) {
   if (!url) {
     body.innerHTML = `<div style="padding:14px;color:#6b7280;">Sin URL.</div>`;
   } else if (isImageUrl(url)) {
-    // ✅ IMAGEN
     const img = document.createElement('img');
     img.src = url;
     img.alt = title || 'Documento';
@@ -886,18 +922,8 @@ function openViewer({ title, sub, url }) {
     img.style.background = '#fff';
     body.appendChild(img);
 
-  } else if (isPdfUrl(url)) {
-    // ✅ PDF
-    const iframe = document.createElement('iframe');
-    iframe.src = url;
-    iframe.style.width = '100%';
-    iframe.style.height = '100%';
-    iframe.style.border = '0';
-    iframe.style.background = '#fff';
-    body.appendChild(iframe);
-
   } else {
-    // ✅ Otros: intenta embebido igual
+    // PDF u otros
     const iframe = document.createElement('iframe');
     iframe.src = url;
     iframe.style.width = '100%';
@@ -920,7 +946,6 @@ function closeViewer() {
   modal.setAttribute('aria-hidden', 'true');
   body.innerHTML = '';
 }
-
 
 /* ====================== RENDER TABLA ====================== */
 function tipoLabel(tipo) {
@@ -970,26 +995,22 @@ function renderDocsTable() {
     tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`.trim();
     tdDest.textContent  = docItem.destino || '—';
 
-    // ✅ coordinador: sin guiones + mayúsculas
     tdCoord.textContent = coordDisplay(docItem.coordEmail || '');
-
     tdTipo.innerHTML = `<span class="tag">${tipoLabel(docItem.tipoDoc)}</span>`;
 
     const rendOk = !!state.rendicionOkByGid.get(docItem.grupoId);
     tdRend.innerHTML = rendOk ? `<span class="tag ok">OK</span>` : `<span class="tag pending">—</span>`;
 
-    // ✅ aprobado por fila (incluye Rechazado)
     const aprob = aprobStateForRow(docItem);
     tdAprob.innerHTML = `<span class="tag ${aprob.cls}">${aprob.label}</span>`;
 
     tdMon.textContent = docItem.moneda || '—';
 
-    // Monto (lo que se pagó/registró)
     if (docItem.monto && docItem.moneda === 'USD') tdMonto.textContent = moneyBy(docItem.monto, 'USD');
     else if (docItem.monto) tdMonto.textContent = moneyCLP(docItem.monto);
     else tdMonto.textContent = '—';
 
-    // ✅ Archivo: SOLO VER (como pediste)
+    // Archivo: VER
     if (docItem.url) {
       const ver = document.createElement('span');
       ver.className = 'link';
@@ -1018,7 +1039,7 @@ function renderDocsTable() {
       tdArchivo.textContent = '—';
     }
 
-    // ✅ Documento Fiscal select (se guarda en Firebase al "Guardar cambios")
+    // Documento Fiscal (P3)
     const sel = document.createElement('select');
     sel.className = 'sel-fiscal';
     sel.innerHTML = `
@@ -1034,7 +1055,7 @@ function renderDocsTable() {
     });
     tdFiscal.appendChild(sel);
 
-    // ✅ Revisado checkbox (se guarda en Firebase al "Guardar cambios")
+    // Revisado (P2 + P4)
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     chk.className = 'chk';
@@ -1042,7 +1063,19 @@ function renderDocsTable() {
     chk.title = 'Marcar como revisado';
 
     chk.addEventListener('change', (e) => {
+      const was = !!docItem.revisadoOk;
       const nuevo = !!e.target.checked;
+
+      // (P4) si intenta DESMARCAR, pedir contraseña
+      if (was === true && nuevo === false) {
+        const ok = askUnlockOrCancel();
+        if (!ok) {
+          // revertir UI
+          chk.checked = true;
+          return;
+        }
+      }
+
       docItem.revisadoOk = nuevo; // feedback inmediato en UI
       markPending(docItem, { checked: nuevo });
     });
@@ -1109,10 +1142,8 @@ function exportDocsExcel(){
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows, { skipHeader:false });
 
-  // Congelar encabezado
   ws['!freeze'] = { xSplit: 0, ySplit: 1 };
 
-  // Anchos
   ws['!cols'] = [
     { wch: 32 }, // GRUPO
     { wch: 14 }, // DESTINO
@@ -1129,19 +1160,16 @@ function exportDocsExcel(){
     { wch: 10 }, // REVISADO
   ];
 
-  // ✅ HIPERVÍNCULO para URL (columna "URL")
-  // Encontrar índice de columna URL en la hoja
+  // ✅ HIPERVÍNCULO para URL
   const headerKeys = Object.keys(rows[0]);
   const urlColIndex0 = headerKeys.indexOf('URL'); // 0-based
   if (urlColIndex0 >= 0) {
     const urlColLetter = XLSX.utils.encode_col(urlColIndex0);
-    // filas: 2..n+1 (porque fila 1 es encabezado)
     for (let r = 0; r < rows.length; r++) {
       const addr = `${urlColLetter}${r + 2}`;
       const url = rows[r].URL;
       if (!url) continue;
 
-      // convertir celda a hyperlink
       ws[addr] = ws[addr] || { t:'s', v: url };
       ws[addr].l = { Target: url, Tooltip: url };
       ws[addr].s = ws[addr].s || {};
@@ -1156,19 +1184,16 @@ function exportDocsExcel(){
 
 /* ====================== WIRING UI ====================== */
 function wireUI() {
-  // Header común
   document.getElementById('btn-home')?.addEventListener('click', () => {
     location.href = 'https://sistemas-raitrai.github.io/Operaciones-RTv1.0';
   });
   document.getElementById('btn-refresh')?.addEventListener('click', () => location.reload());
   document.getElementById('btn-back')?.addEventListener('click', () => history.back());
 
-  // logout
   document.querySelector('#btn-logout')
     ?.addEventListener('click', () =>
       signOut(auth).then(() => location.href = 'login.html'));
 
-  // modal
   document.getElementById('viewerClose')?.addEventListener('click', closeViewer);
   document.getElementById('viewerModal')?.addEventListener('click', (e) => {
     if (e.target?.id === 'viewerModal') closeViewer();
@@ -1177,7 +1202,6 @@ function wireUI() {
     if (e.key === 'Escape') closeViewer();
   });
 
-  // filtros simples
   const inpDestino = document.getElementById('filtroDestinoDocs');
   const inpTexto   = document.getElementById('filtroTextoDocs');
   const selAprob   = document.getElementById('filtroGastoAprobado');
@@ -1192,14 +1216,12 @@ function wireUI() {
     state.filtros.gastoAprobado = e.target.value || '';
   });
 
-  // cerrar details al click afuera
   document.addEventListener('click', (e) => {
     const inside = e.target.closest?.('details.multi');
     if (inside) return;
     document.querySelectorAll('details.multi[open]').forEach(d => d.removeAttribute('open'));
   });
 
-  // botones
   const btnCargar = document.getElementById('btnCargarDocs');
   const btnLimpiar = document.getElementById('btnLimpiarDocs');
   const btnExport = document.getElementById('btnExportDocs');
