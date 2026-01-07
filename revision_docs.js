@@ -1190,7 +1190,7 @@ function renderDocsTable() {
     const tr = document.createElement('tr');
 
     const tdGrupo   = document.createElement('td'); tdGrupo.className = 'col-grupo';
-    const tdDest    = document.createElement('td'); tdDest.className = 'col-dest';
+  
     const tdCoord   = document.createElement('td'); tdCoord.className = 'col-coord';
     const tdTipo    = document.createElement('td'); tdTipo.className = 'col-tipo';
     const tdRend    = document.createElement('td'); tdRend.className = 'col-rend';
@@ -1203,7 +1203,6 @@ function renderDocsTable() {
 
     tdGrupo.title = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`.trim();
     tdGrupo.textContent = `${docItem.numeroGrupo || ''} — ${docItem.nombreGrupo || ''}`.trim();
-    tdDest.textContent  = docItem.destino || '—';
 
     tdCoord.textContent = coordDisplay(docItem.coordEmail || '');
     tdTipo.innerHTML = `<span class="tag">${tipoLabel(docItem.tipoDoc)}</span>`;
@@ -1312,7 +1311,7 @@ function renderDocsTable() {
 
     tdChk.appendChild(chk);
 
-    tr.append(tdGrupo, tdDest, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdFiscal, tdChk);
+    tr.append(tdGrupo, tdCoord, tdTipo, tdRend, tdAprob, tdMon, tdMonto, tdArchivo, tdFiscal, tdChk);
     frag.appendChild(tr);
   });
 
