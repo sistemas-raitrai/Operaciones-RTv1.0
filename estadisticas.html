@@ -447,7 +447,9 @@
     </div>
   </div>
 
+<!-- ✅ XLSX (SheetJS) — necesario para Exportar XLS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js"></script>
+
   <!-- Carga encabezado + firebase + lógica -->
   <script type="module">
     (async () => {
@@ -456,15 +458,12 @@
         document.getElementById('encabezado').innerHTML = html || '';
       } catch(_) {}
 
-      // tu init + scripts comunes (mantiene estética/login/header)
       await import('./firebase-init.js');
       await import('./script.js');
 
-      // ESTA PÁGINA
       await import('./estadisticas.js');
       console.log('✅ estadisticas.js cargado');
     })();
   </script>
-  
 </body>
 </html>
