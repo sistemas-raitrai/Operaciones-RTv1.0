@@ -14,6 +14,8 @@ import {
   collection, getDocs, doc, writeBatch, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+import * as XLSX from 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/+esm';
+
 /* =========================
    CONFIG
 ========================= */
@@ -791,11 +793,6 @@ function setStatus(msg, isErr=false){
 function exportarXLS(){
   if (!state.rowsView || !state.rowsView.length){
     setStatus('No hay datos para exportar.', true);
-    return;
-  }
-
-  if (typeof XLSX === 'undefined'){
-    setStatus('No se cargó la librería XLSX. Revisa que el <script src="...xlsx..."> esté en el HTML.', true);
     return;
   }
 
