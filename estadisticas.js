@@ -794,12 +794,19 @@ function exportarXLS(){
     return;
   }
 
+  if (typeof XLSX === 'undefined'){
+    setStatus('No se cargó la librería XLSX. Revisa que el <script src="...xlsx..."> esté en el HTML.', true);
+    return;
+  }
+
   // Construimos filas
   const rows = state.rowsView.map(r=>{
     const reales = effectiveReales(r);
     const liberados = effectiveLiberados(r);
 
-    const { status } = computeStatus(r, r.revisionPax || '');
+    const d = state.dirty.get(r.gid);
+    const revisionNow = (d && d.revisionPax !== undefined) ? d.revisionPax : (r.revisionPax || '');
+    const { status } = computeStatus(r, revisionNow);
 
     return {
       GID: r.gid,
@@ -810,7 +817,7 @@ function exportarXLS(){
       'PAX Liberados': Number(liberados || 0),
       'PAX Reales': (reales == null ? '' : Number(reales)),
       Estado: status,
-      Revisión: safeText(r.revisionPax || ''),
+      Revisión: safeText(revisionNow || ''),
     };
   });
 
