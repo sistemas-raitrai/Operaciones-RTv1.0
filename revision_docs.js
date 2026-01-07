@@ -867,32 +867,64 @@ function refreshPendingUI(){
 async function flushPending(){
   if (!state.pending.size) return;
 
-  const entries = Array.from(state.pending.values());
-  let okCount = 0;
+  const btn = document.getElementById('btnGuardarPendientes');
+  const info = document.getElementById('infoDocs');
 
-  for (const it of entries) {
+  // UI: bloquear botón mientras guarda
+  const prevText = info?.textContent || '';
+  if (btn) btn.disabled = true;
+  if (info) info.textContent = `Guardando ${state.pending.size} cambio(s)…`;
+
+  // Trabajamos por key para poder mantener fallidos
+  const entries = Array.from(state.pending.entries()); // [key, payload]
+  let okCount = 0;
+  let failCount = 0;
+
+  for (const [key, it] of entries) {
     const docItem = it.docItem;
     let okLocal = true;
 
-    if (Object.prototype.hasOwnProperty.call(it, 'checked')) {
-      const ok = await updateRevisionForDoc(docItem, it.checked);
-      okLocal = okLocal && ok;
+    try {
+      // 1) revisado
+      if (Object.prototype.hasOwnProperty.call(it, 'checked')) {
+        const ok = await updateRevisionForDoc(docItem, it.checked);
+        okLocal = okLocal && ok;
+      }
+
+      // 2) fiscal
+      if (Object.prototype.hasOwnProperty.call(it, 'fiscal')) {
+        const ok = await updateFiscalForDoc(docItem, it.fiscal);
+        okLocal = okLocal && ok;
+      }
+    } catch (e) {
+      console.error('[DOCS] flushPending error', key, e);
+      okLocal = false;
     }
 
-    if (Object.prototype.hasOwnProperty.call(it, 'fiscal')) {
-      const ok = await updateFiscalForDoc(docItem, it.fiscal);
-      okLocal = okLocal && ok;
+    if (okLocal) {
+      okCount++;
+      state.pending.delete(key); // ✅ solo borramos si realmente guardó
+    } else {
+      failCount++;
+      // ✅ se queda pendiente para reintentar
     }
-
-    if (okLocal) okCount++;
   }
 
-  state.pending.clear();
   refreshPendingUI();
   renderDocsTable();
 
-  alert(`Guardado: ${okCount}/${entries.length} filas actualizadas.`);
+  if (info) info.textContent = prevText;
+
+  if (failCount === 0) {
+    alert(`✅ Guardado OK: ${okCount}/${okCount}`);
+  } else {
+    alert(`⚠️ Guardado parcial: ${okCount}/${okCount + failCount}\nQuedaron ${failCount} pendiente(s) para reintentar.`);
+  }
+
+  // UI: re-habilitar botón (si quedan pendientes, queda habilitado)
+  if (btn) btn.disabled = (state.pending.size === 0);
 }
+
 
 /* ====================== MODAL VISOR ====================== */
 function openViewer({ title, sub, url }) {
@@ -1259,7 +1291,14 @@ function wireUI() {
   });
 
   btnExport?.addEventListener('click', exportDocsExcel);
-  btnGuardarPend?.addEventListener('click', flushPending);
+  btnGuardarPend?.addEventListener('click', async () => {
+  await flushPending();
+  // ✅ recargar desde Firestore para reflejar docsRev/docsFiscal reales
+  const infoEl = document.getElementById('infoDocs');
+  if (infoEl) infoEl.textContent = 'Actualizando…';
+  await loadDocsForCurrentFilters();
+  if (infoEl) infoEl.textContent = `Mostrando ${state.docs.length} documentos.`;
+});
 
   refreshPendingUI();
 }
