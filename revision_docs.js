@@ -525,11 +525,12 @@ function getSummaryDocUrls(summary = {}){
    ====================== */
 async function loadRevisionsForGid(gid){
   try {
-    // ✅ Ruta correcta:
-    // grupos/{gid}/finanzas (doc) / docsRevision (subcol) / {docId}
-    const finDoc = doc(db,'grupos',gid,'finanzas');
-    const revCol = collection(finDoc,'docsRevision');
-    const revSnap = await getDocs(revCol);
+    // ✅ Ruta REAL válida (porque "finanzas" es COLECCIÓN):
+    // grupos/{gid}/finanzas (col) / docsRevision (doc) / items (col) / {docId} (doc)
+    const finCol   = collection(db,'grupos',gid,'finanzas');
+    const revDoc   = doc(finCol,'docsRevision');
+    const itemsCol = collection(revDoc,'items');
+    const revSnap  = await getDocs(itemsCol);
 
     revSnap.forEach(s => {
       const d = s.data() || {};
@@ -855,8 +856,11 @@ async function updateRevisionForDoc(docItem, checked) {
 
   // 1) Intento A: guardar en subcolección nueva (ideal)
   const docId = revisionDocIdForItem(docItem);
-  const finDoc = doc(db,'grupos',gid,'finanzas');
-  const refA   = doc(finDoc,'docsRevision',docId);
+
+  // ✅ Ruta REAL válida:
+  const finCol = collection(db,'grupos',gid,'finanzas');
+  const revDoc = doc(finCol,'docsRevision');
+  const refA   = doc(revDoc,'items',docId);
 
   const payloadA = {
     ok: !!checked,
