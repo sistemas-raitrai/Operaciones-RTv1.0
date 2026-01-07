@@ -1161,7 +1161,7 @@ function renderDocsTable() {
     td.innerHTML = '<div class="muted">Sin documentos para los filtros seleccionados.</div>';
     tr.appendChild(td);
     tbody.appendChild(tr);
-    if (infoEl) infoEl.textContent = '0 documentos.';
+    if (infoEl) infoEl.textContent = '';
     refreshPendingUI();
     return;
   }
