@@ -1073,6 +1073,12 @@ async function flushPending(){
       }
     } catch (e) {
       console.error('[DOCS] flushPending error', key, e);
+    
+      // ✅ Mostrar motivo exacto
+      const code = e?.code || '';
+      const msg  = e?.message || String(e);
+      alert(`❌ No se pudo guardar:\n${key}\n\n${code}\n${msg}`);
+    
       okLocal = false;
     }
 
