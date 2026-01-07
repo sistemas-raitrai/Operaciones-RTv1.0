@@ -138,18 +138,53 @@ function isPdfUrl(url=''){
 }
 
 function pickUrl(...vals){
-  for (const v of vals){
-    if (typeof v !== 'string') continue;
-    const s = v.trim();
+  const normalizeOne = (v) => {
+    if (!v) return '';
+
+    // 1) string directo
+    if (typeof v === 'string') return v.trim();
+
+    // 2) array (a veces guardan [url1,url2])
+    if (Array.isArray(v)) {
+      for (const it of v) {
+        const s = normalizeOne(it);
+        if (s) return s;
+      }
+      return '';
+    }
+
+    // 3) objeto con keys típicas
+    if (typeof v === 'object') {
+      const candidate =
+        v.url || v.URL || v.href ||
+        v.downloadURL || v.downloadUrl ||
+        v.link || v.webViewLink || v.webContentLink ||
+        v.path || v.fullPath || v.gs || v.gsUrl;
+      if (candidate) return normalizeOne(candidate);
+    }
+
+    return '';
+  };
+
+  for (const raw of vals){
+    const s = normalizeOne(raw);
     if (!s) continue;
 
-    // Acepta http(s), gs://, o URLs típicas de Firebase Storage
+    // Acepta cualquier https/http (Drive, otro storage, etc.)
     if (/^https?:\/\//i.test(s)) return s;
+
+    // Acepta gs:// pero OJO: iframe no lo puede abrir directo (sirve si después lo conviertes)
     if (/^gs:\/\//i.test(s)) return s;
+
+    // Firebase Storage download URL
     if (s.includes('firebasestorage.googleapis.com')) return s;
+
+    // Si viene como "path" tipo "folder/file.pdf" (otro storage interno), no lo inventamos aquí.
+    // Lo dejamos caer para evitar volver a "true" u otra basura.
   }
   return '';
 }
+
 
 
 // ✅ display coord: sacar guiones y MAYÚSCULAS
@@ -604,6 +639,7 @@ async function loadDocsSummaryForGroups(gids) {
       const ref  = doc(db,'grupos',gid,'finanzas','summary');
       const snap = await getDoc(ref);
       summary = snap.exists() ? (snap.data() || {}) : null;
+      console.log('[SUMMARY]', gid, summary);
 
       // ✅ (FALLBACK) Revisiones de GASTOS guardadas dentro del summary
       // Ruta: summary.docsRevGastos.{coord__gastoId} = { ok, by, at }
