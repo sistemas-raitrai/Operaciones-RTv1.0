@@ -149,6 +149,7 @@ const ui = {
   btnAplicar: $('btnAplicar'),
   btnLimpiar: $('btnLimpiar'),
   btnGuardar: $('btnGuardar'),
+  btnExportar: $('btnExportar'),
 
   status: $('status'),
   tbody: $('tbody'),
@@ -277,6 +278,7 @@ function wireEvents(){
   ui.btnAplicar?.addEventListener('click', ()=> applyFilters());
   ui.btnLimpiar?.addEventListener('click', ()=> resetFilters());
   ui.btnGuardar?.addEventListener('click', ()=> guardarCambios());
+  ui.btnExportar?.addEventListener('click', ()=> exportarXLS());
 
   ui.q?.addEventListener('keydown', (e)=>{
     if (e.key === 'Enter'){ e.preventDefault(); applyFilters(); }
@@ -786,6 +788,56 @@ function setStatus(msg, isErr=false){
   ui.status.style.color = isErr ? '#b91c1c' : '#374151';
 }
 
+function exportarXLS(){
+  if (!state.rowsView || !state.rowsView.length){
+    setStatus('No hay datos para exportar.', true);
+    return;
+  }
+
+  // Construimos filas
+  const rows = state.rowsView.map(r=>{
+    const reales = effectiveReales(r);
+    const liberados = effectiveLiberados(r);
+
+    const { status } = computeStatus(r, r.revisionPax || '');
+
+    return {
+      GID: r.gid,
+      Grupo: r.nombre || '',
+      Coordinador: (r.coord || '').toUpperCase(),
+      'PAX Esperados': Number(r.esperados || 0),
+      'PAX Declarados': Number(r.declarados || 0),
+      'PAX Liberados': Number(liberados || 0),
+      'PAX Reales': (reales == null ? '' : Number(reales)),
+      Estado: status,
+      Revisión: safeText(r.revisionPax || ''),
+    };
+  });
+
+  // Crear worksheet
+  const ws = XLSX.utils.json_to_sheet(rows);
+
+  // Auto ancho de columnas
+  ws['!cols'] = Object.keys(rows[0]).map(k=>({
+    wch: Math.max(
+      k.length,
+      ...rows.map(r=> String(r[k] ?? '').length)
+    ) + 2
+  }));
+
+  // Crear workbook
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Estadísticas');
+
+  const today = new Date().toISOString().slice(0,10);
+  const filename = `RT_Estadisticas_PAX_${today}.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+
+  setStatus('📊 Archivo XLS exportado.');
+}
+
+
 /* =========================
    ESCAPE HTML
 ========================= */
@@ -798,3 +850,5 @@ function escapeHtml(s=''){
     .replaceAll("'","&#039;");
 }
 function escapeAttr(s=''){ return escapeHtml(s); }
+
+
