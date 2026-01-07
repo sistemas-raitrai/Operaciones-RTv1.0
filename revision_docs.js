@@ -137,6 +137,21 @@ function isPdfUrl(url=''){
   return false;
 }
 
+function pickUrl(...vals){
+  for (const v of vals){
+    if (typeof v !== 'string') continue;
+    const s = v.trim();
+    if (!s) continue;
+
+    // Acepta http(s), gs://, o URLs típicas de Firebase Storage
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^gs:\/\//i.test(s)) return s;
+    if (s.includes('firebasestorage.googleapis.com')) return s;
+  }
+  return '';
+}
+
+
 // ✅ display coord: sacar guiones y MAYÚSCULAS
 function coordDisplay(email=''){
   const s = (email || '').toString().replace(/-/g,' ').toUpperCase();
@@ -497,27 +512,29 @@ function fiscalKeyForTipo(tipoDoc){
 function getSummaryDocUrls(summary = {}){
   const docs = summary?.docs || summary?.documentos || {};
   const urls = summary?.urls || summary?.docUrls || summary?.docsUrls || {};
+  const docsOk = summary?.docsOk || {};
 
-  const boletaUrl = coalesce(
+  const boletaUrl = pickUrl(
     summary?.boletaUrl, docs?.boletaUrl, urls?.boleta,
-    summary?.docsOk?.boletaUrl, summary?.docsOk?.boleta,
+    docsOk?.boletaUrl, docsOk?.boleta,              // <- si aquí hay boolean, pickUrl lo ignora
     summary?.boleta, docs?.boleta, urls?.boletaUrl
   );
 
-  const compUrl = coalesce(
+  const compUrl = pickUrl(
     summary?.comprobanteUrl, docs?.comprobanteUrl, urls?.comprobante,
-    summary?.docsOk?.comprobanteUrl, summary?.docsOk?.comprobante,
+    docsOk?.comprobanteUrl, docsOk?.comprobante,
     summary?.comprobante, docs?.comprobante, urls?.comprobanteUrl
   );
 
-  const transfUrl = coalesce(
+  const transfUrl = pickUrl(
     summary?.transferenciaUrl, docs?.transferenciaUrl, urls?.transferencia,
-    summary?.docsOk?.transferenciaUrl, summary?.docsOk?.transferencia,
+    docsOk?.transferenciaUrl, docsOk?.transferencia,
     summary?.transferencia, docs?.transferencia, urls?.transferenciaUrl
   );
 
   return { boletaUrl, compUrl, transfUrl };
 }
+
 
 /* ======================
    CARGA DE REVISIONES (ruta independiente)
@@ -1220,7 +1237,8 @@ function renderDocsTable() {
     else tdMonto.textContent = '—';
 
     // Archivo: VER
-    if (docItem.url) {
+    const safeUrl = (typeof docItem.url === 'string') ? docItem.url.trim() : '';
+    if (safeUrl) {
       const ver = document.createElement('span');
       ver.className = 'link';
       ver.textContent = 'VER';
