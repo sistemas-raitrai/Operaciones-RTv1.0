@@ -1060,17 +1060,19 @@ async function flushPending(){
     let okLocal = true;
 
     try {
-      // 1) revisado
+      
+      // 1) fiscal (primero, porque después puede quedar revisado y bloquear)
+      if (Object.prototype.hasOwnProperty.call(it, 'fiscal')) {
+        const ok = await updateFiscalForDoc(docItem, it.fiscal);
+        okLocal = okLocal && ok;
+      }
+      
+      // 2) revisado (después)
       if (Object.prototype.hasOwnProperty.call(it, 'checked')) {
         const ok = await updateRevisionForDoc(docItem, it.checked);
         okLocal = okLocal && ok;
       }
 
-      // 2) fiscal
-      if (Object.prototype.hasOwnProperty.call(it, 'fiscal')) {
-        const ok = await updateFiscalForDoc(docItem, it.fiscal);
-        okLocal = okLocal && ok;
-      }
     } catch (e) {
       console.error('[DOCS] flushPending error', key, e);
     
@@ -1299,7 +1301,6 @@ function renderDocsTable() {
         }
       }
 
-      docItem.revisadoOk = nuevo;
       markPending(docItem, { checked: nuevo });
 
       // lock/unlock del select según estado
