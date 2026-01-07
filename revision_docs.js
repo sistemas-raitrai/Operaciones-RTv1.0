@@ -150,6 +150,14 @@ function coordDisplay(email=''){
   return s || '—';
 }
 
+const UNLOCK_PASSWORD = 'Patricia';
+
+function askUnlockOrCancel(){
+  const inpass = prompt('Contraseña para DESMARCAR y desbloquear:');
+  if (inpass === null) return false;              // cancel
+  return String(inpass).trim() === UNLOCK_PASSWORD;
+}
+
 /* ======================
    DOCUMENTO FISCAL (VALORES)
    ====================== */
@@ -473,88 +481,60 @@ async function loadDocsSummaryForGroups(gids) {
       console.warn('[DOCS] load summary', gid, e);
     }
 
-    const docsOk = (summary && summary.docsOk) || {};
+    const docsOk = (summary && summary.docsOk) || {};          // Rendición (se mantiene)
     const docsFiscal = (summary && summary.docsFiscal) || {};
-
-    const rendOk = !!docsOk.boleta;
-    state.rendicionOkByGid.set(gid, rendOk);
-
-    const aprobOk = computeGastoAprobado(summary || {});
-    state.gastoAprobadoByGid.set(gid, aprobOk);
-
-    const boletaUrl = coalesce(summary?.boleta?.url, summary?.boletaUrl, '');
-    const compUrl = coalesce(
-      summary?.transfer?.comprobanteUrl,
-      summary?.transferenciaCLP?.url,
-      summary?.comprobanteCLP?.url,
-      summary?.comprobante?.url,
-      summary?.transfer?.url,
-      summary?.transferencia?.url,
-      summary?.transferenciaCLPUrl,
-      summary?.comprobanteUrl,
-      ''
-    );
-    const transfUrl = coalesce(
-      summary?.cashUsd?.comprobanteUrl,
-      summary?.transferenciaCoord?.url,
-      summary?.constanciaUSD?.url,
-      summary?.constancia?.url,
-      summary?.transferenciaCoordUrl,
-      summary?.constanciaUrl,
-      ''
-    );
-
-    const base = {
-      grupoId: gid,
-      numeroGrupo: gInfo.numero,
-      nombreGrupo: gInfo.nombre,
-      destino: gInfo.destino,
-      coordEmail: (gInfo.coordEmail || '').toLowerCase(),
-      fechaMs: 0,
-      fechaTxt: '',
-      moneda: 'CLP',
-      monto: 0
-    };
-
+    const docsRev = (summary && summary.docsRev) || {};        // ✅ NUEVO: Revisado real (separado)
+    
+    const docsRevBy = coalesce(summary?.docsRevBy, '');
+    const docsRevAt = _toMs(coalesce(summary?.docsRevAt, 0));
+    
+    // ...
     if (boletaUrl || docsOk.boleta) {
       out.push({
         ...base,
         tipoDoc: 'BOLETA',
         gastoId: null,
         url: boletaUrl,
-        revisadoOk: !!docsOk.boleta,
-        revisadoBy: docsOk.by || '',
-        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0,
-
+    
+        // ✅ Revisado ya NO depende de docsOk
+        revisadoOk: !!docsRev.boleta,
+        revisadoBy: docsRevBy,
+        revisadoAt: docsRevAt,
+    
         documentoFiscal: coalesce(docsFiscal.boleta, '')
       });
     }
+    
     if (compUrl || docsOk.comprobante) {
       out.push({
         ...base,
         tipoDoc: 'COMP_CLP',
         gastoId: null,
         url: compUrl,
-        revisadoOk: !!docsOk.comprobante,
-        revisadoBy: docsOk.by || '',
-        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0,
-
+    
+        revisadoOk: !!docsRev.comprobante,
+        revisadoBy: docsRevBy,
+        revisadoAt: docsRevAt,
+    
         documentoFiscal: coalesce(docsFiscal.comprobante, '')
       });
     }
+    
     if (transfUrl || docsOk.transferencia) {
       out.push({
         ...base,
         tipoDoc: 'CONST_USD',
         gastoId: null,
         url: transfUrl,
-        revisadoOk: !!docsOk.transferencia,
-        revisadoBy: docsOk.by || '',
-        revisadoAt: docsOk.at ? _toMs(docsOk.at) : 0,
-
+    
+        revisadoOk: !!docsRev.transferencia,
+        revisadoBy: docsRevBy,
+        revisadoAt: docsRevAt,
+    
         documentoFiscal: coalesce(docsFiscal.transferencia, '')
       });
     }
+
   }
 
   return out;
@@ -707,16 +687,17 @@ async function updateRevisionForDoc(docItem, checked) {
     const ref = doc(db,'grupos',gid,'finanzas','summary');
 
     const patch = {
-      'docsOk.by': email,
-      'docsOk.at': now
+      // ✅ NUEVO: Revisado real separado
+      'docsRevBy': email,
+      'docsRevAt': now
     };
+    
+    if (docItem.tipoDoc === 'BOLETA')    patch['docsRev.boleta'] = !!checked;
+    if (docItem.tipoDoc === 'COMP_CLP')  patch['docsRev.comprobante'] = !!checked;
+    if (docItem.tipoDoc === 'CONST_USD') patch['docsRev.transferencia'] = !!checked;
+    
+    await setDoc(ref, patch, { merge:true });
 
-    if (docItem.tipoDoc === 'BOLETA')    patch['docsOk.boleta'] = !!checked;
-    if (docItem.tipoDoc === 'COMP_CLP')  patch['docsOk.comprobante'] = !!checked;
-    if (docItem.tipoDoc === 'CONST_USD') patch['docsOk.transferencia'] = !!checked;
-
-    try {
-      await setDoc(ref, patch, { merge:true });
 
       docItem.revisadoOk = !!checked;
       docItem.revisadoBy = email;
