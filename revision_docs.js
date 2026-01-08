@@ -1223,6 +1223,10 @@ async function openViewer({ title, sub, url }) {
       const jpgBlob = Array.isArray(out) ? out[0] : out;
 
       const imgUrl = URL.createObjectURL(jpgBlob);
+      // ✅ IMPORTANTÍSIMO: que "Abrir en nueva pestaña" abra el JPG convertido
+      openTab.href = imgUrl;
+      openTab.target = '_blank';
+      openTab.rel = 'noopener';
       const img = document.createElement('img');
       img.src = imgUrl;
       img.alt = title || 'Documento';
@@ -1282,6 +1286,9 @@ function closeViewer() {
   if (img?.dataset?.objectUrl) {
     URL.revokeObjectURL(img.dataset.objectUrl);
   }
+
+  const openTab = document.getElementById('viewerOpenTab');
+  if (openTab) openTab.href = '#';
 
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
