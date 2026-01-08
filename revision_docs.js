@@ -1589,13 +1589,6 @@ function wireUI() {
     if (e.key === 'Escape') closeViewer();
   });
 
-  document.getElementById('viewerOpenTab')?.addEventListener('click', (e) => {
-    const a = e.currentTarget;
-    if (!a || a.getAttribute('href') === '#') {
-      e.preventDefault();
-    }
-  });
-
   const inpDestino = document.getElementById('filtroDestinoDocs');
   const inpTexto   = document.getElementById('filtroTextoDocs');
   const selAprob   = document.getElementById('filtroGastoAprobado');
