@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Contador de Actividades | RT</title>
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+  <link rel="stylesheet" href="estilos.css"/>
+
+  <!-- ✅ OVERRIDE FUERTE (aislado) para ganarle a estilos.css SIN romper el resto -->
+  <style>
+    body { background:#f6f6f6; }
+
+    .ct-scope{
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      padding: 16px 18px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .ct-scope *{ box-sizing:border-box; }
+
+    .ct-scope .card{
+      width: auto !important;
+      text-align: left !important;
+      border-radius: 14px !important;
+      padding: 16px 18px !important;
+      background:#fff !important;
+      border: 1px solid #e5e7eb !important;
+      box-shadow: 0 2px 10px rgba(0,0,0,.06) !important;
+      margin: 0 0 14px 0 !important;
+    }
+
+    .ct-title{
+      margin: 0 0 6px 0;
+      font-size: 1.55rem;
+      font-weight: 900;
+      color: #111827;
+      letter-spacing: .01em;
+    }
+    .ct-sub{
+      margin: 0 0 12px 0;
+      color:#4b5563;
+      font-size:.95rem;
+      line-height:1.35;
+    }
+
+    /* Evitar que tu .grid global rompa el layout */
+    .ct-scope .grid{
+      display:grid !important;
+      grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+      gap: 12px !important;
+      justify-content: stretch !important;
+      margin: 0 !important;
+      width: 100% !important;
+    }
+    @media (max-width: 1100px){
+      .ct-scope .grid{ grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    }
+    @media (max-width: 740px){
+      .ct-scope .grid{ grid-template-columns: 1fr !important; }
+    }
+
+    .ct-scope label{
+      margin: 0 !important;
+      font-weight: 800 !important;
+      font-size: .78rem !important;
+      letter-spacing: .02em !important;
+      text-transform: uppercase !important;
+      color: #4b5563 !important;
+      display:block !important;
+    }
+    .ct-scope input,
+    .ct-scope select{
+      width: 100% !important;
+      padding: 10px 10px !important;
+      font-size: .95rem !important;
+      margin-top: 6px !important;
+      border: 1px solid #d1d5db !important;
+      border-radius: 10px !important;
+      background:#fff !important;
+      text-transform: none !important;
+    }
+    .ct-scope input:focus,
+    .ct-scope select:focus{
+      outline:none !important;
+      border-color:#0ea5e9 !important;
+      box-shadow:0 0 0 3px rgba(14,165,233,.18) !important;
+    }
+
+    .ct-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      flex-wrap:wrap;
+      margin-top: 12px;
+    }
+    .ct-scope button{
+      padding: 10px 14px !important;
+      border-radius: 10px !important;
+      border: 1px solid #d1d5db !important;
+      background:#fff !important;
+      color:#111827 !important;
+      font-weight: 900 !important;
+      cursor:pointer !important;
+      text-transform: uppercase !important;
+      letter-spacing: .02em !important;
+    }
+    .ct-scope button.primary{
+      background:#0b57d0 !important;
+      border-color:#0b57d0 !important;
+      color:#fff !important;
+    }
+    .ct-scope button.primary:hover{
+      background:#083f9a !important;
+      border-color:#083f9a !important;
+    }
+    .ct-scope button.ghost:hover{ background:#f3f4f6 !important; }
+
+    .ct-status{
+      color:#374151;
+      font-size:.92rem;
+      opacity:.92;
+    }
+
+    .ct-tablewrap{
+      margin-top: 12px;
+      border:1px solid #eee;
+      border-radius: 12px;
+      overflow:auto;
+      background:#fff;
+    }
+    .ct-scope table{
+      width:100%;
+      border-collapse: collapse;
+      background:#fff;
+    }
+    .ct-scope thead th{
+      background:#fafafa;
+      text-align:left;
+      padding: 10px 10px;
+      font-weight: 950;
+      text-transform: uppercase;
+      font-size: .78rem;
+      letter-spacing: .02em;
+      border-bottom:1px solid #eee;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      white-space: nowrap;
+    }
+    .ct-scope td{
+      padding: 10px 10px;
+      border-bottom:1px solid #f1f1f1;
+      vertical-align: middle;
+      font-size: .92rem;
+      white-space: nowrap;
+    }
+
+    .ct-right{ text-align:right; }
+    .ct-dim{ color:#6b7280; }
+    .ct-mono{ font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
+    .ct-empty{
+      padding: 14px;
+      color:#6b7280;
+      font-style: italic;
+    }
+
+    /* fijar primeras columnas (Servicio/Proveedor/Ciudad) */
+    .ct-sticky-1, .ct-sticky-2, .ct-sticky-3{
+      position: sticky;
+      left: 0;
+      background: #fff;
+      z-index: 1;
+      box-shadow: 2px 0 6px rgba(0,0,0,.06);
+    }
+    .ct-sticky-2{ left: 260px; }
+    .ct-sticky-3{ left: 500px; }
+
+    .ct-col-serv{ min-width:260px; max-width:260px; overflow:hidden; text-overflow:ellipsis; }
+    .ct-col-prov{ min-width:240px; max-width:240px; overflow:hidden; text-overflow:ellipsis; }
+    .ct-col-city{ min-width:140px; max-width:140px; overflow:hidden; text-overflow:ellipsis; }
+    .ct-col-date{ min-width:110px; }
+  </style>
+</head>
+
+<body>
+  <!-- Encabezado común -->
+  <div id="encabezado"></div>
+
+  <div class="ct-scope">
+    <div class="card">
+      <h2 class="ct-title">RT · CONTADOR DE ACTIVIDADES</h2>
+      <div class="ct-sub">
+        Cruce automático: <b>Itinerario → Servicio → Proveedor</b>. Sin columna destino (solo filtro).
+      </div>
+
+      <div class="grid">
+        <div class="field" style="grid-column: span 4;">
+          <label for="q">Buscador</label>
+          <input id="q" placeholder="ACTIVIDAD / PROVEEDOR / CIUDAD / GID / GRUPO" />
+        </div>
+
+        <div class="field" style="grid-column: span 3;">
+          <label for="fDestino">Destino</label>
+          <select id="fDestino"></select>
+        </div>
+
+        <div class="field" style="grid-column: span 2;">
+          <label for="fDesde">Desde</label>
+          <input id="fDesde" type="date" />
+        </div>
+
+        <div class="field" style="grid-column: span 2;">
+          <label for="fHasta">Hasta</label>
+          <input id="fHasta" type="date" />
+        </div>
+
+        <div class="field" style="grid-column: span 1;">
+          <label>&nbsp;</label>
+          <button id="btnHoy" class="ghost" title="Setea desde/hasta hoy">Hoy</button>
+        </div>
+      </div>
+
+      <div class="ct-actions">
+        <button id="btnAplicar" class="primary">Aplicar</button>
+        <button id="btnLimpiar" class="ghost">Limpiar</button>
+        <button id="btnExportar" class="ghost">Exportar XLS</button>
+        <span class="ct-status" id="status"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ct-tablewrap">
+        <table>
+          <thead id="thead"></thead>
+          <tbody id="tbody">
+            <tr><td class="ct-empty">Sin resultados.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ XLSX (SheetJS) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js"></script>
+
+  <script type="module">
+    (async () => {
+      try {
+        const html = await (await fetch('encabezado.html')).text().catch(()=> '');
+        document.getElementById('encabezado').innerHTML = html || '';
+      } catch(_) {}
+
+      await import('./firebase-init.js');
+      await import('./script.js');
+      await import('./contabilidad.js');
+      console.log('✅ contabilidad.js cargado');
+    })();
+  </script>
+</body>
+</html>
