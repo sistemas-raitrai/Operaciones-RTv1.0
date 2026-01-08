@@ -117,15 +117,18 @@ function isImageUrl(url=''){
   if (u.includes('alt=media') && (u.includes('image') || u.includes('png') || u.includes('jpg') || u.includes('jpeg') || u.includes('webp'))) return true;
 
   const clean = u.split('#')[0].split('?')[0];
-  if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(clean)) return true;
+
+  // ✅ incluye HEIC/HEIF
+  if (/\.(png|jpe?g|webp|gif|bmp|svg|heic|heif)$/.test(clean)) return true;
 
   try {
     const decoded = decodeURIComponent(clean);
-    if (/\.(png|jpe?g|webp|gif|bmp|svg)$/.test(decoded)) return true;
+    if (/\.(png|jpe?g|webp|gif|bmp|svg|heic|heif)$/.test(decoded)) return true;
   } catch (e) {}
 
   return false;
 }
+
 
 function isPdfUrl(url=''){
   const u0 = String(url || '').trim();
@@ -136,6 +139,20 @@ function isPdfUrl(url=''){
   if (u.includes('application/pdf') || u.includes('contenttype=application/pdf')) return true;
   return false;
 }
+
+function isHeicUrl(url=''){
+  const u0 = String(url || '').trim();
+  if (!u0) return false;
+  const u = u0.toLowerCase();
+  const clean = u.split('#')[0].split('?')[0];
+  if (/\.(heic|heif)$/.test(clean)) return true;
+
+  // casos donde viene el contentType en query (algunos storage)
+  if (u.includes('contenttype=image/heic') || u.includes('contenttype=image/heif')) return true;
+
+  return false;
+}
+
 
 function pickUrl(...vals){
   const normalizeOne = (v) => {
@@ -1160,7 +1177,7 @@ async function flushPending(){
 }
 
 /* ====================== MODAL VISOR ====================== */
-function openViewer({ title, sub, url }) {
+async function openViewer({ title, sub, url }) {
   const modal   = document.getElementById('viewerModal');
   const body    = document.getElementById('viewerBody');
   const h1      = document.getElementById('viewerTitle');
@@ -1177,7 +1194,63 @@ function openViewer({ title, sub, url }) {
 
   if (!url) {
     body.innerHTML = `<div style="padding:14px;color:#6b7280;">Sin URL.</div>`;
-  } else if (isImageUrl(url)) {
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    return;
+  }
+
+  // ✅ HEIC/HEIF => convertir a JPEG y mostrar como <img>
+  if (isHeicUrl(url)) {
+    body.innerHTML = `<div style="padding:14px;color:#6b7280;">Cargando HEIC…</div>`;
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+
+    try {
+      const heic2any = window.heic2any;
+      if (!heic2any) throw new Error('No está cargada la librería heic2any.');
+
+      const resp = await fetch(url, { mode: 'cors' });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+
+      const out = await heic2any({
+        blob,
+        toType: 'image/jpeg',
+        quality: 0.92
+      });
+
+      // heic2any puede devolver Blob o Array (si fueran varias imágenes)
+      const jpgBlob = Array.isArray(out) ? out[0] : out;
+
+      const imgUrl = URL.createObjectURL(jpgBlob);
+      const img = document.createElement('img');
+      img.src = imgUrl;
+      img.alt = title || 'Documento';
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '100%';
+      img.style.objectFit = 'contain';
+      img.style.background = '#fff';
+
+      // limpiar blob URL cuando cierre modal
+      img.dataset.objectUrl = imgUrl;
+
+      body.innerHTML = '';
+      body.appendChild(img);
+      return;
+
+    } catch (e) {
+      console.error('[HEIC] convert error', e);
+      body.innerHTML = `
+        <div style="padding:14px;color:#6b7280;">
+          No se pudo convertir el HEIC para previsualizar.<br/>
+          Usa “Abrir en nueva pestaña”.
+        </div>`;
+      return;
+    }
+  }
+
+  // ✅ imágenes normales
+  if (isImageUrl(url)) {
     const img = document.createElement('img');
     img.src = url;
     img.alt = title || 'Documento';
@@ -1204,6 +1277,11 @@ function closeViewer() {
   const modal = document.getElementById('viewerModal');
   const body  = document.getElementById('viewerBody');
   if (!modal || !body) return;
+  
+  const img = body.querySelector('img[data-object-url]');
+  if (img?.dataset?.objectUrl) {
+    URL.revokeObjectURL(img.dataset.objectUrl);
+  }
 
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
