@@ -1188,16 +1188,7 @@ async function openViewer({ title, sub, url }) {
 
   h1.textContent = title || 'Documento';
   h2.textContent = sub || '';
-  
-  // ✅ Por defecto apunta al URL original,
-  // pero si es HEIC lo vamos a BLOQUEAR hasta convertir.
   openTab.href = url || '#';
-  openTab.target = '_blank';
-  openTab.rel = 'noopener';
-  openTab.style.pointerEvents = '';
-  openTab.style.opacity = '';
-  openTab.title = '';
-
 
   body.innerHTML = '';
 
@@ -1210,12 +1201,6 @@ async function openViewer({ title, sub, url }) {
 
   // ✅ HEIC/HEIF => convertir a JPEG y mostrar como <img>
   if (isHeicUrl(url)) {
-    // ✅ Bloquear "Abrir en nueva pestaña" mientras se convierte (si no, descarga el HEIC)
-    openTab.href = '#';
-    openTab.style.pointerEvents = 'none';
-    openTab.style.opacity = '0.5';
-    openTab.title = 'Convirtiendo a JPG… (espera un segundo)';
-    
     body.innerHTML = `<div style="padding:14px;color:#6b7280;">Cargando HEIC…</div>`;
     modal.classList.add('open');
     modal.setAttribute('aria-hidden', 'false');
@@ -1238,14 +1223,6 @@ async function openViewer({ title, sub, url }) {
       const jpgBlob = Array.isArray(out) ? out[0] : out;
 
       const imgUrl = URL.createObjectURL(jpgBlob);
-      // ✅ IMPORTANTÍSIMO: que "Abrir en nueva pestaña" abra el JPG convertido
-      openTab.href = imgUrl;
-      openTab.target = '_blank';
-      openTab.rel = 'noopener';
-      openTab.style.pointerEvents = '';
-      openTab.style.opacity = '';
-      openTab.title = 'Abrir JPG en nueva pestaña';
-      
       const img = document.createElement('img');
       img.src = imgUrl;
       img.alt = title || 'Documento';
@@ -1305,9 +1282,6 @@ function closeViewer() {
   if (img?.dataset?.objectUrl) {
     URL.revokeObjectURL(img.dataset.objectUrl);
   }
-
-  const openTab = document.getElementById('viewerOpenTab');
-  if (openTab) openTab.href = '#';
 
   modal.classList.remove('open');
   modal.setAttribute('aria-hidden', 'true');
