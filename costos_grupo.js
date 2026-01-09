@@ -1,801 +1,608 @@
-// costos_grupo.js
-// RT · Costos por Grupo (estilo estadisticas + revisado por línea tipo revision_docs)
+// costos_grupos.js (COMPLETO)
+// Objetivo: total COSTO por grupo (no “conteo de actividades”).
+// Cruces:
+// - Itinerario (grupos/{gid}.itinerario) -> Servicios/{dest}/Listado/{servicioId o actividad} -> valorServicio/tipoCobro/moneda
+// - Hotel: noches + comidas hotel (configurable)
+// - Coordinador: regla configurable
+// - Gastos aprobados: colección/subcolección configurable (mapeo abajo)
 //
-// ✅ Lee grupos (colección "grupos") y su itinerario
-// ✅ Cruza actividades con Servicios/{DESTINO}/Listado (y si destino es mixto, carga ambos listados)
-// ✅ Calcula qty/total (con overrides)
-// ✅ Revisión por línea: se guarda en ruta independiente:
-//    grupos/{gid}/costosRevision/v1/items/{rowId}
-// ✅ Para DESMARCAR "Revisado" pide PIN (configurable)
-// ✅ Exporta XLS con líneas filtradas
-//
-// Importante:
-// - Este módulo NO modifica el doc del grupo ni el servicio.
-// - Todo lo de revisión/overrides/notas vive en su colección separada.
+// ✅ IMPORTANTE: arriba hay un bloque "MAPEO" para ajustar a TU Firestore real.
 
-import { app, db } from './firebase-init.js';
-import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import { auth, db } from './firebase-init.js';
+import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, getDocs, query, orderBy,
-  doc, getDoc, setDoc,
+  doc, getDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-const auth = getAuth(app);
+/* =========================================================
+   0) MAPEO (AJUSTA AQUÍ 1 SOLA VEZ)
+   ========================================================= */
 
-/* =========================
-   CONFIG
-========================= */
+// Destinos donde existe Servicios/{DEST}/Listado
+const DESTINOS_SERVICIOS = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE','OTRO'];
 
-// Ruta de revisión por grupo
-const REV_DOC_ID = 'v1'; // puedes versionar esto si mañana cambias cálculo
-const REV_PIN_DEFAULT = '0000'; // 👈 cambia esto (o define window.RT_PIN_DESMARCAR)
-
-/* =========================
-   STATE
-========================= */
-const state = {
-  user: null,
-
-  // caches
-  grupos: [],                 // [{id, numeroNegocio, nombreGrupo, destino, fechaInicio, itinerario}]
-  serviciosByDestino: new Map(), // destino -> Map(servicioId -> data)
-  revisionByGid: new Map(),      // gid -> Map(rowId -> revisionData)
-
-  // ui
-  filtros: {
-    q: '',
-    gid: '',
-    destino: 'TODOS',
-    ano: 'TODOS',
-    proveedor: 'TODOS',
-    soloNoRevisado: 'NO',
-  },
-
-  // computed
-  rowsAll: [],     // todas las líneas construidas (sin filtros)
-  rowsView: [],    // filtradas
-  dirty: new Map() // rowId -> payload a guardar
+// Cómo leer “pax total” desde grupo / actividad
+const PAX = {
+  // del grupo
+  groupTotal: (g) => num(g?.paxTotal ?? g?.pax ?? g?.PAX ?? g?.cantidadgrupo),
+  // de una actividad (si viene detalle por actividad)
+  actTotal: (a) => {
+    const adultos = num(a?.adultos ?? a?.Adultos);
+    const est     = num(a?.estudiantes ?? a?.Estudiantes ?? a?.paxEstudiantes);
+    const pax     = num(a?.pax ?? a?.Pax);
+    return pax || (adultos + est) || 0;
+  }
 };
 
-/* =========================
-   DOM
-========================= */
+// Campos de fechas del grupo (si no existen, inferimos por itinerario)
+const FECHAS = {
+  // deben devolver ISO YYYY-MM-DD o vacío
+  inicio: (g) => iso(g?.fechaInicio ?? g?.inicioViaje ?? g?.fechaDeViajeInicio ?? ''),
+  fin:    (g) => iso(g?.fechaFin ?? g?.finViaje ?? g?.fechaDeViajeFin ?? ''),
+};
+
+// Hotel del grupo (si existe a nivel grupo)
+const HOTEL = {
+  nombre:  (g) => (g?.hotel ?? g?.Hotel ?? g?.hotelNombre ?? '').toString().trim(),
+  regimen: (g) => (g?.regimen ?? g?.pension ?? g?.regimenHotel ?? '').toString().trim(), // EJ: PC / MP / SA
+};
+
+// ¿Dónde está el “pago coordinador”?
+// Si no hay campo, usamos regla por defecto.
+const COORD = {
+  // si hay valor fijo ya calculado en el doc:
+  pagoFijo: (g) => num(g?.pagoCoordinador ?? g?.coordinadorPago ?? g?.finanzas?.pagoCoordinador),
+  // regla fallback si no hay pago fijo:
+  regla: ({ dias, paxTotal }) => 0, // ← AJUSTA (ej: dias*120000, o paxTotal*3000, etc.)
+};
+
+// ¿Cómo calculamos hotel?
+// Si no tienes tarifas en BD, puedes partir con “0” y luego conectar a tu catálogo.
+const HOTEL_COST = {
+  // tarifa por NOCHE por persona (ejemplo placeholder)
+  // OJO: puedes cambiarlo a lectura desde Firestore (hoteles/{dest}/listado/{hotel})
+  tarifaNochePP: ({ destino, hotel, regimen }) => 0,   // ← AJUSTA
+  // comidas incluidas por noche según regimen
+  // Ej: PC incluye almuerzo+cena; MP incluye cena; etc.
+  comidasIncluidas: ({ regimen }) => {
+    const r = U(regimen);
+    if (r.includes('PC')) return { almuerzo: true, cena: true };
+    if (r.includes('MP')) return { almuerzo: false, cena: true };
+    return { almuerzo: false, cena: false };
+  },
+  // costo comida extra por persona (si no está incluida)
+  costoAlmuerzoPP: ({ destino }) => 0, // ← AJUSTA
+  costoCenaPP:     ({ destino }) => 0, // ← AJUSTA
+};
+
+// ¿Dónde están los “gastos extras aprobados (coordinadores)”?
+// Opciones típicas:
+// A) grupos/{gid}/finanzas/gastos (subcolección)
+// B) collectionGroup('finanzas_gastos') con campo gid
+// C) grupos/{gid}/finanzas_gastos (subcolección)
+// -> Te dejo A por defecto y fallback a 0 si no existe.
+const GASTOS = {
+  // Devuelve array de docs { montoAprobado, tipoDoc, ... }
+  // Si tu ruta es distinta, cámbiala aquí.
+  async listarAprobados(gid){
+    // Ajuste: subcolección "finanzas/gastos" o "finanzas_gastos"
+    const paths = [
+      ['grupos', gid, 'finanzas', 'gastos'],
+      ['grupos', gid, 'finanzas_gastos'],
+      ['grupos', gid, 'finanzas', 'gastosCoordinador']
+    ];
+
+    for (const p of paths){
+      try{
+        const colRef = collection(db, ...p);
+        const snap = await getDocs(colRef);
+        if (!snap.empty){
+          return snap.docs
+            .map(d => ({ id:d.id, ...d.data() }))
+            .filter(x => {
+              const tipo = U(x.tipoDoc ?? x.tipo ?? '');
+              const m = num(x.montoAprobado ?? x.aprobado ?? x.monto ?? 0);
+              // Regla que ya vienes usando: si tipoDoc === 'GASTO' => OK si montoAprobado > 0
+              if (tipo === 'GASTO') return m > 0;
+              // si no es GASTO, igual sumamos si viene montoAprobado > 0
+              return m > 0;
+            });
+        }
+      } catch(_){}
+    }
+    return [];
+  },
+  monto: (x) => num(x?.montoAprobado ?? x?.aprobado ?? x?.monto ?? 0),
+  moneda: (x) => (x?.moneda ?? x?.currency ?? 'PESO CHILENO').toString()
+};
+
+// Moneda: si hay múltiples monedas, aquí defines conversión (placeholder 1:1)
+const FX = {
+  // retorna valor convertido a CLP (o tu moneda base)
+  toBase: ({ amount, moneda }) => amount, // ← AJUSTA si quieres (usar tabla de cambios)
+  base: 'CLP'
+};
+
+/* =========================================================
+   1) UI + Auth gate
+   ========================================================= */
 const $ = (id) => document.getElementById(id);
 
-const els = {
-  q: $('q'),
-  fGrupo: $('fGrupo'),
-  fDestino: $('fDestino'),
-  fAno: $('fAno'),
-  fProveedor: $('fProveedor'),
-  fSoloNoRevisado: $('fSoloNoRevisado'),
+onAuthStateChanged(auth, (u) => {
+  if (!u) return (location.href = 'login.html');
+  init().catch(err => {
+    console.error(err);
+    alert('Error: ' + (err?.message || err));
+  });
+});
 
-  btnAplicar: $('btnAplicar'),
-  btnLimpiar: $('btnLimpiar'),
-  btnGuardar: $('btnGuardar'),
-  btnExportar: $('btnExportar'),
-
-  status: $('status'),
-  tbody: $('tbody'),
-
-  kLineas: $('kLineas'),
-  kLineasHint: $('kLineasHint'),
-  kTotal: $('kTotal'),
-  kRevisados: $('kRevisados'),
-  kSinMatch: $('kSinMatch'),
-  kProv: $('kProv'),
+const state = {
+  servicesIndex: new Map(), // destino -> Map(key -> svc)
+  grupos: [],               // [{id, data}]
+  destinos: ['ALL', ...DESTINOS_SERVICIOS],
 };
 
-/* =========================
-   HELPERS
-========================= */
-function setStatus(msg='') {
-  els.status.textContent = msg || '';
-}
-
-function escapeHtml(s='') {
-  return String(s)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-function normId(s='') {
-  // normaliza a formato docId estilo "DISCO_BR"
-  return String(s || '')
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toUpperCase()
-    .trim()
-    .replace(/[^A-Z0-9]+/g,'_')
-    .replace(/^_+|_+$/g,'');
-}
-
-function parseAnoFromISO(iso='') {
-  // iso: YYYY-MM-DD
-  const m = /^(\d{4})-/.exec(iso || '');
-  return m ? m[1] : '';
-}
-
-function destinosParaGrupo(destino='') {
-  const d = String(destino || '').toUpperCase();
-
-  // caso mixto (ajusta aquí si tu texto real cambia)
-  const isBar = d.includes('BARILOCHE');
-  const isSur = d.includes('SUR');
-
-  if (isBar && isSur) return ['BARILOCHE', 'SUR DE CHILE'];
-  if (isBar) return ['BARILOCHE'];
-  if (isSur) return ['SUR DE CHILE'];
-  if (d.includes('BRASIL')) return ['BRASIL'];
-  if (d.includes('NORTE')) return ['NORTE DE CHILE'];
-
-  // fallback: intenta usar literal
-  return [destino];
-}
-
-function unidadToQty(unidad, item, grupo) {
-  const u = String(unidad || '').toUpperCase();
-
-  const est = Number(item?.estudiantes ?? item?.paxEstudiantes ?? 0) || 0;
-  const adu = Number(item?.adultos ?? item?.paxAdultos ?? 0) || 0;
-  const pax = (est + adu) || Number(item?.pax ?? 0) || Number(grupo?.paxTotal ?? 0) || 0;
-
-  if (u.includes('PERSONA') || u.includes('PAX')) return pax || 0;
-  if (u.includes('GRUPO')) return 1;
-  if (u.includes('BUS')) return Number(item?.buses ?? 1) || 1;
-
-  // default: si no sabemos, tratamos como por grupo
-  return 1;
-}
-
-function fmtMoney(n) {
-  const x = Number(n || 0);
-  // no forzamos CLP, es genérico; el usuario decide por moneda.
-  return x.toLocaleString('es-CL', { maximumFractionDigits: 0 });
-}
-
-function buildRowId(gid, fechaISO, servicioId, idx=0) {
-  // estable: gid + fecha + servicioId + idx (por si repites servicio el mismo día)
-  return `${gid}__${fechaISO}__${servicioId || 'SIN_SERVICIO'}__${idx}`;
-}
-
-function getRevPin() {
-  return String(window.RT_PIN_DESMARCAR || REV_PIN_DEFAULT);
-}
-
-/* =========================
-   LOADERS
-========================= */
-
-async function loadGrupos() {
-  // Si necesitas ordenar por algún campo, cámbialo aquí.
-  const snap = await getDocs(collection(db, 'grupos'));
-  const out = [];
-  snap.forEach(d => {
-    const x = d.data() || {};
-    out.push({
-      id: d.id,
-      numeroNegocio: x.numeroNegocio || '',
-      nombreGrupo: x.nombreGrupo || x.nombre || '',
-      destino: x.destino || '',
-      fechaInicio: x.fechaInicio || x.fechaDeViaje || x.inicioViaje || '', // fallback
-      itinerario: x.itinerario || {}, // esperado: { "YYYY-MM-DD": [ {actividad, servicioId?, hora, estudiantes, adultos, ...}, ... ] }
-      paxTotal: x.paxTotal || x.cantidadgrupo || x.cantidadGrupo || 0
-    });
-  });
-  state.grupos = out;
-}
-
-async function loadServiciosForDestino(destino) {
-  const key = String(destino || '').toUpperCase();
-  if (state.serviciosByDestino.has(key)) return state.serviciosByDestino.get(key);
-
-  // Firestore: Servicios/{DESTINO}/Listado/{servicioId}
-  // En tu screenshot: Servicios > BARILOCHE > Listado > docs
-  const colRef = collection(db, 'Servicios', key, 'Listado');
-  const snap = await getDocs(colRef);
-
-  const map = new Map();
-  snap.forEach(d => map.set(d.id, d.data() || {}));
-
-  state.serviciosByDestino.set(key, map);
-  return map;
-}
-
-async function loadRevisionForGid(gid) {
-  if (!gid) return new Map();
-  if (state.revisionByGid.has(gid)) return state.revisionByGid.get(gid);
-
-  const itemsCol = collection(db, 'grupos', gid, 'costosRevision', REV_DOC_ID, 'items');
-  const snap = await getDocs(itemsCol);
-
-  const map = new Map();
-  snap.forEach(d => map.set(d.id, d.data() || {}));
-
-  state.revisionByGid.set(gid, map);
-  return map;
-}
-
-/* =========================
-   BUILD ROWS (core)
-========================= */
-
-async function buildRows() {
-  const rows = [];
-
-  // armamos por grupo
-  for (const g of state.grupos) {
-    const destinos = destinosParaGrupo(g.destino);
-
-    // index de servicios combinados (si es mixto, junta ambos)
-    const servicesMerged = new Map();
-    for (const d of destinos) {
-      const m = await loadServiciosForDestino(d);
-      for (const [sid, sdata] of m.entries()) {
-        if (!servicesMerged.has(sid)) servicesMerged.set(sid, { ...sdata, _destinoCatalogo: String(d).toUpperCase() });
-      }
-    }
-
-    // carga revisión de este grupo (se guarda independiente)
-    const revMap = await loadRevisionForGid(g.id);
-
-    // it: {fechaISO: [items]}
-    const it = g.itinerario || {};
-    const fechas = Object.keys(it).sort();
-
-    for (const fechaISO of fechas) {
-      const items = Array.isArray(it[fechaISO]) ? it[fechaISO] : [];
-
-      items.forEach((item, idx) => {
-        // intentos de servicioId:
-        const servicioId =
-          (item?.servicioId && String(item.servicioId)) ||
-          (item?.servicio && String(item.servicio)) ||
-          normId(item?.actividad || item?.nombre || item?.descripcion || '');
-
-        const sData = servicesMerged.get(servicioId) || null;
-
-        // base pricing
-        const unidad = sData?.unidadCobro || sData?.unidad || 'POR_GRUPO';
-        const moneda = sData?.moneda || '—';
-        const precioBase = Number(sData?.precioBase ?? sData?.precio ?? 0) || 0;
-
-        const qtyCalc = unidadToQty(unidad, item, g);
-        const totalCalc = (precioBase || 0) * (qtyCalc || 0);
-
-        const rowId = buildRowId(g.id, fechaISO, servicioId || 'SIN_SERVICIO', idx);
-
-        const rev = revMap.get(rowId) || {};
-
-       rows.push({
-          rowId,
-          gid: g.id,
-          numeroNegocio: g.numeroNegocio,
-          grupo: g.nombreGrupo,
-          destinoGrupo: g.destino,
-          fechaISO,
-          servicioId: servicioId || '',
-          servicioNombre: sData?.nombre || (servicioId ? servicioId.replaceAll('_',' ') : (item?.actividad || '')),
-          proveedor: sData?.proveedor || sData?.proveedorId || '—',
-          unidad,
-          moneda,
-          // calculado
-          precioBase,
-          qtyCalc,
-          totalCalc,
-          // revisión/overrides
-          revisado: !!rev.revisado,
-          qtyOverride: (rev.qtyOverride ?? ''),
-          precioOverride: (rev.precioOverride ?? ''),
-          nota: (rev.nota ?? ''),
-          // estado
-          hasMatch: !!sData,
-          catalogoDestino: sData?._destinoCatalogo || '—',
-        });
-      });
-    }
-  }
-
-  state.rowsAll = rows;
-}
-
-/* =========================
-   FILTERS + KPIs
-========================= */
-
-function applyFilters() {
-  const q = (state.filtros.q || '').toLowerCase().trim();
-
-  const gid = state.filtros.gid || '';
-  const dest = state.filtros.destino || 'TODOS';
-  const ano = state.filtros.ano || 'TODOS';
-  const prov = state.filtros.proveedor || 'TODOS';
-  const soloNoRev = state.filtros.soloNoRevisado || 'NO';
-
-  let rows = [...state.rowsAll];
-
-  if (gid) rows = rows.filter(r => r.gid === gid);
-
-  if (dest !== 'TODOS') {
-    rows = rows.filter(r => String(r.destinoGrupo || '').toUpperCase() === String(dest).toUpperCase());
-  }
-
-  if (ano !== 'TODOS') {
-    rows = rows.filter(r => parseAnoFromISO(r.fechaISO) === String(ano));
-  }
-
-  if (prov !== 'TODOS') {
-    rows = rows.filter(r => String(r.proveedor || '').toUpperCase() === String(prov).toUpperCase());
-  }
-
-  if (soloNoRev === 'SI') {
-    rows = rows.filter(r => !r.revisado);
-  }
-
-  if (q) {
-    rows = rows.filter(r => {
-      const blob = [
-        r.gid, r.numeroNegocio, r.grupo, r.destinoGrupo, r.fechaISO,
-        r.servicioId, r.servicioNombre, r.proveedor, r.unidad, r.moneda
-      ].join(' ').toLowerCase();
-      return blob.includes(q);
-    });
-  }
-
-  state.rowsView = rows;
-  render();
-}
-
-/* =========================
-   RENDER
-========================= */
-
-function calcRowNumbers(r) {
-  const precio = (r.precioOverride !== '' && r.precioOverride != null)
-    ? Number(r.precioOverride || 0)
-    : Number(r.precioBase || 0);
-
-  const qty = (r.qtyOverride !== '' && r.qtyOverride != null)
-    ? Number(r.qtyOverride || 0)
-    : Number(r.qtyCalc || 0);
-
-  const total = (precio || 0) * (qty || 0);
-
-  return { precio, qty, total };
-}
-
-function renderKPIs() {
-  const rows = state.rowsView;
-
-  els.kLineas.textContent = String(rows.length);
-  els.kLineasHint.textContent = state.filtros.gid ? `Grupo: ${state.filtros.gid}` : '—';
-
-  const revisados = rows.filter(r => r.revisado).length;
-  els.kRevisados.textContent = String(revisados);
-
-  const sinMatch = rows.filter(r => !r.hasMatch).length;
-  els.kSinMatch.textContent = String(sinMatch);
-
-  const provSet = new Set(rows.map(r => r.proveedor).filter(Boolean));
-  els.kProv.textContent = String(provSet.size);
-
-  // total por moneda
-  const byMon = new Map();
-  for (const r of rows) {
-    const { total } = calcRowNumbers(r);
-    const m = r.moneda || '—';
-    byMon.set(m, (byMon.get(m) || 0) + (total || 0));
-  }
-  const parts = [...byMon.entries()].map(([m, v]) => `${m}: ${fmtMoney(v)}`);
-  els.kTotal.textContent = parts.length ? parts.join(' · ') : '0';
-}
-
-function rowEstadoBadge(r) {
-  if (!r.hasMatch) return `<span class="cs-badge bad">SIN SERVICIO</span>`;
-  if (r.revisado) return `<span class="cs-badge ok">REVISADO</span>`;
-  return `<span class="cs-badge warn">PENDIENTE</span>`;
-}
-
-function render() {
-  renderKPIs();
-
-  const rows = state.rowsView;
-  if (!rows.length) {
-    els.tbody.innerHTML = `<tr><td colspan="14" class="cs-empty">Sin resultados.</td></tr>`;
-    els.btnGuardar.disabled = state.dirty.size === 0;
-    return;
-  }
-
-  els.tbody.innerHTML = rows.map(r => {
-    const { precio, qty, total } = calcRowNumbers(r);
-
-    const dirty = state.dirty.has(r.rowId);
-    const trClass = dirty ? 'cs-row-dirty' : '';
-
-    return `
-      <tr data-rowid="${escapeHtml(r.rowId)}" class="${trClass}">
-        <td class="cs-mono cs-dim">${escapeHtml(r.rowId.split('__').slice(-1)[0])}</td>
-        <td class="cs-mono">${escapeHtml(r.gid)}</td>
-        <td title="${escapeHtml(r.grupo)}">${escapeHtml(r.grupo || '—')}</td>
-        <td class="cs-mono">${escapeHtml(r.fechaISO)}</td>
-
-        <td>
-          <div style="font-weight:900">${escapeHtml(r.servicioNombre || '—')}</div>
-          <div class="cs-dim cs-mono" style="font-size:.82rem">
-            ${escapeHtml(r.servicioId || 'SIN_ID')}
-            <span class="cs-dim"> · cat:</span> ${escapeHtml(r.catalogoDestino || '—')}
-          </div>
-        </td>
-
-        <td>${escapeHtml(r.proveedor || '—')}</td>
-        <td class="cs-mono">${escapeHtml(r.unidad || '—')}</td>
-
-        <td class="cs-right">
-          <input class="cell-input num" data-field="precioOverride"
-            value="${escapeHtml(r.precioOverride ?? '')}"
-            placeholder="${escapeHtml(String(r.precioBase || 0))}" />
-          <div class="cs-dim cs-mono" style="font-size:.78rem;margin-top:4px">
-            base: ${escapeHtml(String(r.precioBase || 0))}
-          </div>
-        </td>
-
-        <td class="cs-right">
-          <input class="cell-input num" data-field="qtyOverride"
-            value="${escapeHtml(r.qtyOverride ?? '')}"
-            placeholder="${escapeHtml(String(r.qtyCalc || 0))}" />
-          <div class="cs-dim cs-mono" style="font-size:.78rem;margin-top:4px">
-            calc: ${escapeHtml(String(r.qtyCalc || 0))}
-          </div>
-        </td>
-
-        <td class="cs-right cs-mono" data-total="${total || 0}">
-          ${escapeHtml(fmtMoney(total || 0))}
-        </td>
-
-        <td class="cs-right cs-mono">${escapeHtml(r.moneda || '—')}</td>
-
-        <td>
-          <input type="checkbox" class="chk" data-field="revisado" ${r.revisado ? 'checked' : ''} />
-        </td>
-
-        <td>${rowEstadoBadge(r)}</td>
-
-        <td>
-          <input class="cell-input" data-field="nota"
-            value="${escapeHtml(r.nota ?? '')}"
-            placeholder="..." />
-        </td>
-      </tr>
-    `;
-  }).join('');
-
-  els.btnGuardar.disabled = state.dirty.size === 0;
-}
-
-/* =========================
-   DIRTY / SAVE (revision)
-========================= */
-
-function markDirty(rowId, patch) {
-  // merge patch con lo que ya está marcado
-  const curr = state.dirty.get(rowId) || {};
-  state.dirty.set(rowId, { ...curr, ...patch });
-  els.btnGuardar.disabled = state.dirty.size === 0;
-
-  // marca visualmente la fila
-  const tr = els.tbody.querySelector(`tr[data-rowid="${CSS.escape(rowId)}"]`);
-  if (tr) tr.classList.add('cs-row-dirty');
-}
-
-function findRow(rowId) {
-  return state.rowsAll.find(r => r.rowId === rowId);
-}
-
-async function saveDirty() {
-  if (!state.dirty.size) return;
-
-  setStatus('Guardando...');
-  let ok = 0, fail = 0;
-
-  // agrupamos por gid
-  const byGid = new Map();
-  for (const [rowId, patch] of state.dirty.entries()) {
-    const row = findRow(rowId);
-    if (!row) continue;
-    if (!byGid.has(row.gid)) byGid.set(row.gid, []);
-    byGid.get(row.gid).push({ rowId, patch, row });
-  }
-
-  for (const [gid, items] of byGid.entries()) {
-    for (const { rowId, patch, row } of items) {
-      try {
-        const ref = doc(db, 'grupos', gid, 'costosRevision', REV_DOC_ID, 'items', rowId);
-
-        // payload minimal, auditable
-        const payload = {
-          ...patch,
-          updatedAt: new Date().toISOString(),
-          updatedBy: state.user?.email || 'unknown',
-          // opcional: info base de la línea (para auditoría)
-          _meta: {
-            fechaISO: row.fechaISO,
-            servicioId: row.servicioId || '',
-            servicioNombre: row.servicioNombre || '',
-            proveedor: row.proveedor || '',
-            moneda: row.moneda || '',
-            unidad: row.unidad || '',
-          }
-        };
-
-        await setDoc(ref, payload, { merge: true });
-        ok++;
-
-        // aplica al estado local (rowsAll + rowsView)
-        const applyLocal = (arr) => {
-          const i = arr.findIndex(r => r.rowId === rowId);
-          if (i >= 0) {
-            if ('revisado' in patch) arr[i].revisado = !!patch.revisado;
-            if ('qtyOverride' in patch) arr[i].qtyOverride = patch.qtyOverride;
-            if ('precioOverride' in patch) arr[i].precioOverride = patch.precioOverride;
-            if ('nota' in patch) arr[i].nota = patch.nota;
-          }
-        };
-        applyLocal(state.rowsAll);
-        applyLocal(state.rowsView);
-
-        // update cache revision map
-        const revMap = await loadRevisionForGid(gid);
-        revMap.set(rowId, { ...(revMap.get(rowId) || {}), ...patch });
-
-      } catch (e) {
-        console.error('save fail', gid, rowId, e);
-        fail++;
-      }
-    }
-  }
-
-  // limpia dirty + re-render
-  state.dirty.clear();
-  render();
-  setStatus(`Listo. Guardados: ${ok}${fail ? ` · Fallidos: ${fail}` : ''}`);
-}
-
-/* =========================
-   EVENTS
-========================= */
-
-function bindTableEvents() {
-  els.tbody.addEventListener('input', (ev) => {
-    const tr = ev.target.closest('tr[data-rowid]');
-    if (!tr) return;
-
-    const rowId = tr.getAttribute('data-rowid');
-    const field = ev.target.getAttribute('data-field');
-    if (!field) return;
-
-    // inputs num: dejamos vacío si lo borran (significa "usar calc/base")
-    if (field === 'qtyOverride' || field === 'precioOverride') {
-      const raw = String(ev.target.value || '').trim();
-      const clean = raw === '' ? '' : String(Number(raw.replace(',', '.')) || 0);
-      markDirty(rowId, { [field]: clean });
-      return;
-    }
-
-    if (field === 'nota') {
-      markDirty(rowId, { nota: String(ev.target.value || '') });
-      return;
-    }
-  });
-
-  els.tbody.addEventListener('change', async (ev) => {
-    const tr = ev.target.closest('tr[data-rowid]');
-    if (!tr) return;
-
-    const rowId = tr.getAttribute('data-rowid');
-    const field = ev.target.getAttribute('data-field');
-    if (field !== 'revisado') return;
-
-    const checked = !!ev.target.checked;
-    const row = findRow(rowId);
-
-    // si intenta DESMARCAR, pedimos pin
-    if (!checked && row?.revisado) {
-      const pin = prompt('PIN para desmarcar "Revisado":');
-      if (String(pin || '') !== getRevPin()) {
-        alert('PIN incorrecto.');
-        ev.target.checked = true; // vuelve a checked
-        return;
-      }
-    }
-
-    markDirty(rowId, { revisado: checked });
-  });
-}
-
-/* =========================
-   EXPORT XLS
-========================= */
-
-function exportXLS() {
-  const rows = state.rowsView;
-
-  const out = rows.map(r => {
-    const { precio, qty, total } = calcRowNumbers(r);
-    return {
-      rowId: r.rowId,
-      gid: r.gid,
-      numeroNegocio: r.numeroNegocio,
-      grupo: r.grupo,
-      destino: r.destinoGrupo,
-      fecha: r.fechaISO,
-      servicioId: r.servicioId,
-      servicio: r.servicioNombre,
-      proveedor: r.proveedor,
-      unidad: r.unidad,
-      moneda: r.moneda,
-      precio: precio,
-      qty: qty,
-      total: total,
-      revisado: r.revisado ? 'SI' : 'NO',
-      nota: r.nota || ''
-    };
-  });
-
-  const ws = XLSX.utils.json_to_sheet(out);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Costos');
-
-  const fname = `RT_Costos_${state.filtros.gid || 'FILTRADO'}_${new Date().toISOString().slice(0,10)}.xlsx`;
-  XLSX.writeFile(wb, fname);
-}
-
-/* =========================
-   UI POPULATE FILTERS
-========================= */
-
-function populateSelect(sel, options, { includeTodos=true, todosLabel='TODOS' } = {}) {
-  const prev = sel.value;
+async function init(){
+  // llenar destino select
+  const sel = $('dest');
   sel.innerHTML = '';
+  sel.appendChild(new Option('— Todos —', 'ALL'));
+  DESTINOS_SERVICIOS.forEach(d => sel.appendChild(new Option(d, d)));
+  sel.value = 'ALL';
 
-  if (includeTodos) {
-    const op = document.createElement('option');
-    op.value = 'TODOS';
-    op.textContent = todosLabel;
-    sel.appendChild(op);
+  $('hoy').addEventListener('click', () => {
+    const t = todayISO();
+    $('desde').value = t;
+    $('hasta').value = t;
+  });
+
+  $('aplicar').addEventListener('click', aplicar);
+  $('exportar').addEventListener('click', exportXLS);
+
+  setStatus('Cargando servicios...');
+  await loadServiciosIndex();
+
+  setStatus('Cargando grupos...');
+  const gSnap = await getDocs(collection(db, 'grupos'));
+  state.grupos = gSnap.docs.map(d => ({ id:d.id, data:d.data() || {} }));
+
+  setStatus(`Listo ✅ (grupos: ${state.grupos.length}, servicios indexados)`);
+  await aplicar();
+}
+
+function setStatus(msg){ const el=$('status'); if(el) el.textContent = msg || ''; }
+
+/* =========================================================
+   2) Carga Servicios + Index (para precio por actividad)
+   ========================================================= */
+async function loadServiciosIndex(){
+  state.servicesIndex.clear();
+
+  for (const dest of DESTINOS_SERVICIOS){
+    const idx = new Map();
+    state.servicesIndex.set(U(dest), idx);
+
+    try{
+      const snap = await getDocs(query(
+        collection(db,'Servicios',dest,'Listado'),
+        orderBy('servicio','asc')
+      ));
+
+      snap.forEach(docSnap => {
+        const o = docSnap.data() || {};
+        const id = docSnap.id;
+
+        const nombre = U(o.nombre || o.servicio || id);
+        const aliases = new Set([]
+          .concat(o.aliases || [])
+          .concat(o.prevIds || [])
+          .concat([id, nombre])
+          .map(U)
+          .filter(Boolean)
+        );
+
+        const svc = {
+          destino: dest,
+          id,
+          nombre,
+          proveedor: U(o.proveedor || ''),
+          ciudad: U(o.ciudad || ''),
+          tipoCobro: U(o.tipoCobro || ''),
+          moneda: (o.moneda || 'PESO CHILENO').toString(),
+          valorServicio: num(o.valorServicio || 0),
+          voucher: (o.voucher || '').toString(),
+          raw: o
+        };
+
+        // index por id/nombre/aliases
+        idx.set(U(id), svc);
+        idx.set(nombre, svc);
+        aliases.forEach(a => idx.set(a, svc));
+      });
+    } catch(_){
+      // destino puede no existir: ok
+    }
+  }
+}
+
+function findServicio({ destinoHint, servicioId, actividadTxt }){
+  const d = U(destinoHint || '');
+  const idU = U(servicioId || '');
+  const actU = U(actividadTxt || '');
+
+  // 1) con destino
+  if (d && state.servicesIndex.has(d)){
+    const idx = state.servicesIndex.get(d);
+    if (idU && idx.has(idU)) return idx.get(idU);
+    if (actU && idx.has(actU)) return idx.get(actU);
   }
 
-  for (const { value, label } of options) {
-    const op = document.createElement('option');
-    op.value = value;
-    op.textContent = label;
-    sel.appendChild(op);
+  // 2) global
+  if (idU){
+    for (const idx of state.servicesIndex.values()){
+      if (idx.has(idU)) return idx.get(idU);
+    }
+  }
+  if (actU){
+    for (const idx of state.servicesIndex.values()){
+      if (idx.has(actU)) return idx.get(actU);
+    }
+  }
+  return null;
+}
+
+/* =========================================================
+   3) Cálculo por grupo
+   ========================================================= */
+async function aplicar(){
+  const q = U($('q').value || '');
+  const dest = $('dest').value || 'ALL';
+  const desde = $('desde').value || '';
+  const hasta = $('hasta').value || '';
+
+  setStatus('Calculando...');
+  const tbody = $('tbody');
+  tbody.innerHTML = '';
+
+  const rows = [];
+  let n = 0;
+
+  for (const g of state.grupos){
+    const G = g.data || {};
+    const gid = g.id;
+
+    const nombreGrupo = (G.nombreGrupo || G.nombre || '').toString().trim();
+    const numeroNegocio = (G.numeroNegocio || G.numero || '').toString().trim();
+    const destinoGrupo = (G.destino || G.Destino || '').toString().trim();
+
+    const paxTotal = PAX.groupTotal(G) || inferPaxFromItinerario(G) || 0;
+
+    // Fechas
+    const { inicio, fin, fechasIt } = getFechasGrupo(G);
+    const fechasTxt = (inicio && fin) ? `${inicio} → ${fin}` : (fechasIt.length ? `${fechasIt[0]} → ${fechasIt[fechasIt.length-1]}` : '—');
+
+    // Filtro destino (si aplica)
+    if (dest !== 'ALL' && U(dest) !== U(destinoGrupo) && U(dest) !== 'OTRO'){
+      // OJO: igual puede haber servicioDestino distinto a destinoGrupo; aquí filtramos por destinoGrupo.
+      // Si prefieres filtrar por actividad, lo cambiamos.
+      continue;
+    }
+
+    // Filtro texto
+    if (q){
+      const hay = U([gid, nombreGrupo, numeroNegocio, destinoGrupo, (G.coordinador||G.coord||'')].join(' '))
+        .includes(q);
+      if (!hay) continue;
+    }
+
+    // Rango fechas (aplica por inicio/fin si existen; si no, por fechas itinerario)
+    if (!grupoEnRango({ inicio, fin, fechasIt }, desde, hasta)) continue;
+
+    // 1) Actividades (itinerario -> servicios -> costo)
+    const acts = calcActividades({ G, gid, paxTotal, destinoGrupo });
+
+    // 2) Hotel (noches + comidas)
+    const hot = calcHotel({ G, paxTotal, destinoGrupo, inicio, fin, fechasIt });
+
+    // 3) Coordinador
+    const coord = calcCoordinador({ G, paxTotal, inicio, fin, fechasIt });
+
+    // 4) Gastos aprobados (async)
+    const gastosArr = await GASTOS.listarAprobados(gid);
+    const gastos = gastosArr.reduce((acc,x)=> acc + FX.toBase({ amount: GASTOS.monto(x), moneda: GASTOS.moneda(x) }), 0);
+
+    const total = acts.total + hot.total + coord.total + gastos;
+    const porPax = paxTotal ? (total / paxTotal) : 0;
+
+    const alerts = []
+      .concat(acts.alerts)
+      .concat(hot.alerts)
+      .concat(coord.alerts)
+      .concat(gastosArr.length ? [] : []); // si quieres alertar “sin gastos”: no
+
+    rows.push({
+      n: ++n,
+      gid, numeroNegocio, nombreGrupo,
+      destino: destinoGrupo,
+      pax: paxTotal,
+      fechas: fechasTxt,
+      acts, hot, coord, gastos,
+      total, porPax,
+      alerts
+    });
   }
 
-  // intenta mantener selección previa
-  if (prev && [...sel.options].some(o => o.value === prev)) sel.value = prev;
-}
+  // ordenar por total desc
+  rows.sort((a,b)=> (b.total - a.total));
 
-function refreshFilterOptionsFromRows() {
-  // destinos: desde grupos
-  const destinos = [...new Set(state.grupos.map(g => g.destino).filter(Boolean))]
-    .sort((a,b)=>String(a).localeCompare(String(b)));
-
-  populateSelect(els.fDestino, destinos.map(d => ({ value:d, label:d })), { includeTodos:true });
-
-  // grupos: label con numeroNegocio + nombre
-  populateSelect(els.fGrupo,
-    state.grupos
-      .slice()
-      .sort((a,b)=>String(a.nombreGrupo).localeCompare(String(b.nombreGrupo)))
-      .map(g => ({
-        value: g.id,
-        label: `(${g.numeroNegocio || g.id}) ${g.nombreGrupo || '—'}`
-      })),
-    { includeTodos:false }
-  );
-
-  // año: desde rowsAll por fecha
-  const anos = [...new Set(state.rowsAll.map(r => parseAnoFromISO(r.fechaISO)).filter(Boolean))].sort();
-  populateSelect(els.fAno, anos.map(a => ({ value:a, label:a })), { includeTodos:true });
-
-  // proveedor: desde rowsAll
-  const provs = [...new Set(state.rowsAll.map(r => r.proveedor).filter(p => p && p !== '—'))]
-    .sort((a,b)=>String(a).localeCompare(String(b)));
-  populateSelect(els.fProveedor, provs.map(p => ({ value:p, label:p })), { includeTodos:true });
-}
-
-/* =========================
-   INIT
-========================= */
-
-function bindTopEvents() {
-  els.btnAplicar.addEventListener('click', () => {
-    state.filtros.q = els.q.value || '';
-    state.filtros.gid = els.fGrupo.value || '';
-    state.filtros.destino = els.fDestino.value || 'TODOS';
-    state.filtros.ano = els.fAno.value || 'TODOS';
-    state.filtros.proveedor = els.fProveedor.value || 'TODOS';
-    state.filtros.soloNoRevisado = els.fSoloNoRevisado.value || 'NO';
-    applyFilters();
-    setStatus('Filtros aplicados.');
-  });
-
-  els.btnLimpiar.addEventListener('click', () => {
-    els.q.value = '';
-    els.fDestino.value = 'TODOS';
-    els.fAno.value = 'TODOS';
-    els.fProveedor.value = 'TODOS';
-    els.fSoloNoRevisado.value = 'NO';
-    // grupo lo dejamos vacío (si quieres resetear, pon el primero)
-    state.filtros = {
-      q: '',
-      gid: els.fGrupo.value || '',
-      destino: 'TODOS',
-      ano: 'TODOS',
-      proveedor: 'TODOS',
-      soloNoRevisado: 'NO',
-    };
-    applyFilters();
-    setStatus('Filtros limpiados.');
-  });
-
-  els.btnGuardar.addEventListener('click', saveDirty);
-  els.btnExportar.addEventListener('click', exportXLS);
-
-  // auto-aplicar al cambiar grupo (para que sea fluido)
-  els.fGrupo.addEventListener('change', () => {
-    state.filtros.gid = els.fGrupo.value || '';
-    applyFilters();
-  });
-}
-
-async function boot() {
-  setStatus('Inicializando...');
-
-  await loadGrupos();
-  setStatus(`Grupos cargados: ${state.grupos.length}. Preparando...`);
-
-  // construye todas las líneas cruzando servicios
-  await buildRows();
-
-  // poblar filtros y render
-  refreshFilterOptionsFromRows();
-
-  // valor por defecto: si hay año actual en opciones, selecciónalo
-  const y = String(new Date().getFullYear());
-  if ([...els.fAno.options].some(o => o.value === y)) els.fAno.value = y;
-
-  // bind events
-  bindTopEvents();
-  bindTableEvents();
-
-  // aplica filtros iniciales
-  state.filtros.gid = els.fGrupo.value || '';
-  state.filtros.q = '';
-  state.filtros.destino = 'TODOS';
-  state.filtros.ano = els.fAno.value || 'TODOS';
-  state.filtros.proveedor = 'TODOS';
-  state.filtros.soloNoRevisado = 'NO';
-  applyFilters();
-
-  setStatus('Listo.');
-}
-
-onAuthStateChanged(auth, async (user) => {
-  state.user = user || null;
-
-  // Si tu script.js ya redirige cuando no hay usuario, esto igual queda ok.
-  if (!user) {
-    setStatus('Debes iniciar sesión.');
+  // render
+  if (!rows.length){
+    tbody.innerHTML = `<tr><td colspan="13" class="muted">Sin resultados.</td></tr>`;
+    setStatus('OK ✅ (0 filas)');
+    // guarda cache para export
+    window.__COSTOS_ROWS__ = [];
     return;
   }
 
-  try {
-    await boot();
-  } catch (e) {
-    console.error(e);
-    setStatus('Error cargando datos (ver consola).');
+  for (const r of rows){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${r.n}</td>
+      <td title="${esc(r.gid)}">${esc((r.numeroNegocio ? `(${r.numeroNegocio}) ` : '') + (r.nombreGrupo || r.gid))}</td>
+      <td>${esc(r.destino || '—')}</td>
+      <td class="right">${fmt0(r.pax)}</td>
+      <td class="muted">${esc(r.fechas)}</td>
+      <td class="right">${fmtMoney(r.acts.total)}</td>
+      <td class="right">${fmtMoney(r.hot.hotel)}</td>
+      <td class="right">${fmtMoney(r.hot.comidasExtra)}</td>
+      <td class="right">${fmtMoney(r.coord.total)}</td>
+      <td class="right">${fmtMoney(r.gastos)}</td>
+      <td class="right"><b>${fmtMoney(r.total)}</b></td>
+      <td class="right">${r.pax ? fmtMoney(r.porPax) : '—'}</td>
+      <td class="${r.alerts.length ? 'warn' : 'muted'}" title="${esc(r.alerts.join(' | '))}">
+        ${r.alerts.length ? esc(r.alerts.slice(0,2).join(' · ') + (r.alerts.length>2?' …':'')) : '—'}
+      </td>
+    `;
+    tbody.appendChild(tr);
   }
-});
+
+  window.__COSTOS_ROWS__ = rows;
+  setStatus(`OK ✅ (${rows.length} grupos)`);
+}
+
+/* =========================
+   Actividades
+========================= */
+function calcActividades({ G, gid, paxTotal, destinoGrupo }){
+  const it = G.itinerario || {};
+  const alerts = [];
+  let total = 0;
+
+  for (const fecha of Object.keys(it)){
+    const arr = Array.isArray(it[fecha]) ? it[fecha] : [];
+    for (const a0 of arr){
+      const A = a0 || {};
+      const servicioId = A.servicioId || A.servicio || '';
+      const actividad = A.actividad || A.servicioNombre || A.nombre || '';
+      const destinoAct = (A.servicioDestino || A.destino || destinoGrupo || '').toString();
+
+      const svc = findServicio({ destinoHint: destinoAct, servicioId, actividadTxt: actividad });
+
+      if (!svc){
+        alerts.push(`SIN TARIFA: ${U(actividad||servicioId||'ACT')}`);
+        continue;
+      }
+
+      const precio = num(svc.valorServicio);
+      if (!precio){
+        alerts.push(`TARIFA=0: ${svc.nombre}`);
+        continue;
+      }
+
+      // cantidad base para cobrar
+      const tipoCobro = U(svc.tipoCobro);
+      const paxAct = PAX.actTotal(A) || paxTotal; // si actividad no trae pax, usa pax grupo
+
+      let qty = 1;
+      if (tipoCobro.includes('POR PERSONA')) qty = paxAct || paxTotal || 0;
+      else if (tipoCobro.includes('POR GRUPO')) qty = 1;
+      else if (tipoCobro.includes('POR DIA')) qty = 1; // ocurrencia diaria ya está implícita por fecha
+      else qty = 1;
+
+      const amount = precio * qty;
+      total += FX.toBase({ amount, moneda: svc.moneda });
+
+      // Si quieres guardar detalle por actividad, lo agregamos después.
+    }
+  }
+
+  return { total, alerts };
+}
+
+/* =========================
+   Hotel (noches + comidas)
+========================= */
+function calcHotel({ G, paxTotal, destinoGrupo, inicio, fin, fechasIt }){
+  const alerts = [];
+
+  const hotel = HOTEL.nombre(G);
+  const regimen = HOTEL.regimen(G);
+
+  // noches
+  const nights = calcNoches({ inicio, fin, fechasIt });
+  if (!nights){
+    alerts.push('NOCHES? (sin fechas)');
+  }
+
+  // tarifa noche PP
+  let hotelCost = 0;
+  if (!hotel){
+    alerts.push('HOTEL? (sin asignación)');
+  } else {
+    const t = num(HOTEL_COST.tarifaNochePP({ destino: destinoGrupo, hotel, regimen }));
+    if (!t) alerts.push('TARIFA HOTEL?');
+    hotelCost = t * (paxTotal || 0) * (nights || 0);
+  }
+
+  // comidas extra: si regimen no incluye, cobramos por día (nights) o por “días de viaje”
+  // Asunción: por noche hay 1 almuerzo + 1 cena (ajustable)
+  const inc = HOTEL_COST.comidasIncluidas({ regimen });
+
+  let comidasExtra = 0;
+  const dias = calcDias({ inicio, fin, fechasIt });
+
+  if (!inc.almuerzo){
+    const alm = num(HOTEL_COST.costoAlmuerzoPP({ destino: destinoGrupo }));
+    if (!alm) alerts.push('COSTO ALMUERZO?');
+    comidasExtra += alm * (paxTotal || 0) * (dias || 0);
+  }
+  if (!inc.cena){
+    const cena = num(HOTEL_COST.costoCenaPP({ destino: destinoGrupo }));
+    if (!cena) alerts.push('COSTO CENA?');
+    comidasExtra += cena * (paxTotal || 0) * (dias || 0);
+  }
+
+  return {
+    hotel: FX.toBase({ amount: hotelCost, moneda: FX.base }),
+    comidasExtra: FX.toBase({ amount: comidasExtra, moneda: FX.base }),
+    total: FX.toBase({ amount: (hotelCost + comidasExtra), moneda: FX.base }),
+    alerts
+  };
+}
+
+/* =========================
+   Coordinador
+========================= */
+function calcCoordinador({ G, paxTotal, inicio, fin, fechasIt }){
+  const alerts = [];
+  const fijo = COORD.pagoFijo(G);
+
+  if (fijo > 0) return { total: fijo, alerts: [] };
+
+  const dias = calcDias({ inicio, fin, fechasIt });
+  const calc = num(COORD.regla({ dias, paxTotal }));
+
+  if (!calc) alerts.push('PAGO COORD?');
+  return { total: calc, alerts };
+}
+
+/* =========================================================
+   4) Export XLS (lo que se ve)
+   ========================================================= */
+function exportXLS(){
+  try{
+    if (!window.XLSX) throw new Error('XLSX no cargado');
+    const rows = window.__COSTOS_ROWS__ || [];
+    if (!rows.length) return alert('No hay datos para exportar');
+
+    const aoa = [
+      ['#','GID','NumeroNegocio','Grupo','Destino','PAX','Fechas',
+       'Actividades','Hotel','Comidas extra','Coord','Gastos aprob','TOTAL','$/PAX','Alertas']
+    ];
+
+    rows.forEach(r => {
+      aoa.push([
+        r.n, r.gid, r.numeroNegocio || '', r.nombreGrupo || '', r.destino || '',
+        r.pax, r.fechas,
+        r.acts.total, r.hot.hotel, r.hot.comidasExtra, r.coord.total, r.gastos,
+        r.total, r.porPax,
+        (r.alerts || []).join(' | ')
+      ]);
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    XLSX.utils.book_append_sheet(wb, ws, 'COSTOS');
+    const fecha = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Costos_por_Grupo_${fecha}.xlsx`);
+  } catch(e){
+    alert('No se pudo exportar: ' + (e?.message || e));
+  }
+}
+
+/* =========================================================
+   5) Utilidades (fechas / inferencias / formatos)
+   ========================================================= */
+function U(s){ return (s ?? '').toString().trim().toUpperCase(); }
+function num(v){ const n = Number(v); return Number.isFinite(n) ? n : 0; }
+
+function todayISO(){
+  const d = new Date();
+  const z = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+  return z.toISOString().slice(0,10);
+}
+function iso(s){
+  // si ya viene YYYY-MM-DD, ok
+  const t = (s||'').toString().trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return '';
+}
+
+function getFechasGrupo(G){
+  const inicio = FECHAS.inicio(G);
+  const fin = FECHAS.fin(G);
+
+  // fallback: por itinerario
+  const it = G.itinerario || {};
+  const fechasIt = Object.keys(it)
+    .filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k))
+    .sort();
+
+  return { inicio, fin, fechasIt };
+}
+
+function calcNoches({ inicio, fin, fechasIt }){
+  const a = inicio || (fechasIt[0] || '');
+  const b = fin || (fechasIt[fechasIt.length-1] || '');
+  if (!a || !b) return 0;
+  // noches = diferencia días (fin - inicio)
+  const ms = (new Date(b) - new Date(a));
+  const days = Math.round(ms / 86400000);
+  return Math.max(0, days);
+}
+function calcDias({ inicio, fin, fechasIt }){
+  const a = inicio || (fechasIt[0] || '');
+  const b = fin || (fechasIt[fechasIt.length-1] || '');
+  if (!a || !b) return fechasIt.length || 0;
+  const ms = (new Date(b) - new Date(a));
+  const days = Math.round(ms / 86400000) + 1;
+  return Math.max(0, days);
+}
+
+function inferPaxFromItinerario(G){
+  const it = G.itinerario || {};
+  let best = 0;
+  for (const f of Object.keys(it)){
+    const arr = Array.isArray(it[f]) ? it[f] : [];
+    for (const A of arr){
+      const p = PAX.actTotal(A);
+      if (p > best) best = p;
+    }
+  }
+  return best;
+}
+
+function grupoEnRango({ inicio, fin, fechasIt }, desde, hasta){
+  // si no hay filtros, ok
+  if (!desde && !hasta) return true;
+
+  const a = inicio || (fechasIt[0] || '');
+  const b = fin || (fechasIt[fechasIt.length-1] || '');
+  if (!a && !b) return true;
+
+  // se considera “en rango” si se superpone
+  const start = a || b;
+  const end = b || a;
+
+  if (desde && end < desde) return false;
+  if (hasta && start > hasta) return false;
+  return true;
+}
+
+function fmt0(n){ return (Number(n)||0).toLocaleString('es-CL'); }
+function fmtMoney(n){
+  const v = Number(n)||0;
+  return '$' + v.toLocaleString('es-CL');
+}
+function esc(s){ return (s??'').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])); }
