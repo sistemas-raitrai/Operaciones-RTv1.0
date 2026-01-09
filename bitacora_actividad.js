@@ -7,7 +7,7 @@
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, getDocs, doc, getDoc, query, where
+  collection, getDocs
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -22,6 +22,7 @@ const el = {
   limite:    document.getElementById('fLimite'),
 
   btnCargar: document.getElementById('btnCargar'),
+  btnExportDestino: document.getElementById('btnExportDestino'),
   btnLimpiar:document.getElementById('btnLimpiar'),
   status:    document.getElementById('status'),
 
@@ -37,13 +38,9 @@ const state = {
   grupoById: new Map(),
   destinos: [],
   coords: [],
-  // Mapa de actividad para mostrar bonito:
-  // actKey -> "Nombre Actividad"
-  actNameByKey: new Map(),
-  // ActKeys disponibles por filtro actual (para dropdown)
+  actNameByKey: new Map(), // actKey -> "Nombre Actividad"
   filteredActKeys: [],
-  // resultados
-  rows: [],            // [{fechaISO, hora, grupoLabel, actName, texto, autor, tsMs, tsStr}]
+  rows: [],
 };
 
 const TZ = 'America/Santiago';
@@ -62,10 +59,8 @@ function slug(s=''){
     .replace(/^-|-$/g,'');
 }
 
-// MISMA IDEA QUE EN COORDINADORES.JS (slugActKey)
 function slugActKey(actName=''){
   const k = slug(actName);
-  // prevención: si queda vacío, algo estable
   return k || 'actividad';
 }
 
@@ -77,10 +72,7 @@ function option(sel, value, label){
   o.textContent = label;
   sel.appendChild(o);
 }
-
-function clearSelect(sel){
-  sel.innerHTML = '';
-}
+function clearSelect(sel){ sel.innerHTML = ''; }
 
 function grupoLabel(g){
   const n = (g.numeroNegocio ?? g.numero ?? '').toString().trim();
@@ -91,30 +83,20 @@ function grupoLabel(g){
   return g.id;
 }
 
-// ts -> string simple
 function fmtTS(ms){
   if(!ms) return '—';
   const d = new Date(ms);
   return d.toLocaleString('es-CL', { timeZone: TZ });
 }
-
-function pad2(n){ return String(n).padStart(2,'0'); }
 function fmtHoraFromMs(ms){
   if(!ms) return '—';
   const d = new Date(ms);
-  // ojo: toLocaleTimeString con TZ
   return d.toLocaleTimeString('es-CL', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
 }
 
-/* ======================================================
-   ✅ REGLA NUEVA DESTINO (COMPUESTO CON "Y")
-   - Si filtro = "BARILOCHE"
-     => calzan grupos con destino "BARILOCHE"
-     => y también "SUR DE CHILE Y BARILOCHE"
-   - Si filtro = "SUR DE CHILE"
-     => calzan "SUR DE CHILE" y "SUR DE CHILE Y BARILOCHE"
-   - Si no hay filtro => true
-====================================================== */
+/* ======================
+   ✅ DESTINO POR COMPONENTES ("Y")
+====================== */
 function destinoMatchPorComponentes(destinoGrupo='', destinoFiltro=''){
   if(!destinoFiltro) return true;
 
@@ -122,15 +104,9 @@ function destinoMatchPorComponentes(destinoGrupo='', destinoFiltro=''){
   const g = norm(destinoGrupo);
 
   if(!f || !g) return false;
-
-  // Exacto (caso simple)
   if(g === f) return true;
 
-  // Componentes por " y " (tu caso: siempre con Y)
-  // "sur de chile y bariloche" => ["sur de chile", "bariloche"]
   const parts = g.split(/\s+y\s+/).map(p => p.trim()).filter(Boolean);
-
-  // Si el filtro coincide EXACTO con uno de los componentes => match
   return parts.includes(f);
 }
 
@@ -152,9 +128,9 @@ async function cargarGruposBase(){
     const data = d.data() || {};
     const g = { id: d.id, ...data };
 
-    // Normalizamos campos típicos
     g.destino = (g.destino ?? '').toString().trim();
-    g.coordinadorEmail = (g.coordinadorEmail ?? g.coordEmail ?? g.coordinador ?? '').toString().trim().toLowerCase();
+    g.coordinadorEmail = (g.coordinadorEmail ?? g.coordEmail ?? g.coordinador ?? '')
+      .toString().trim().toLowerCase();
     g.numeroNegocio = (g.numeroNegocio ?? g.numero ?? g.id ?? '').toString().trim();
     g.nombreGrupo = (g.nombreGrupo ?? g.nombre ?? '').toString().trim();
 
@@ -164,8 +140,7 @@ async function cargarGruposBase(){
     if(g.destino) destinosSet.add(g.destino);
     if(g.coordinadorEmail) coordsSet.add(g.coordinadorEmail);
 
-    // ✅ Mapeo actKey -> nombre actividad (si existe itinerario)
-    // itinerario[fechaISO] = [{actividad, hora, ...}, ...]
+    // Mapeo actKey -> nombre (si existe itinerario)
     const itin = g.itinerario || {};
     Object.keys(itin).forEach(fechaISO => {
       const arr = Array.isArray(itin[fechaISO]) ? itin[fechaISO] : [];
@@ -188,17 +163,14 @@ async function cargarGruposBase(){
    POBLAR FILTROS
 ====================== */
 function poblarFiltros(){
-  // DESTINO
   clearSelect(el.destino);
   option(el.destino, '', '(Todos)');
   state.destinos.forEach(d => option(el.destino, d, d));
 
-  // COORD
   clearSelect(el.coord);
   option(el.coord, '', '(Todos)');
   state.coords.forEach(c => option(el.coord, c, c));
 
-  // GRUPO
   clearSelect(el.grupo);
   option(el.grupo, '', '(Todos)');
   state.grupos
@@ -206,7 +178,6 @@ function poblarFiltros(){
     .sort((a,b)=> grupoLabel(a).localeCompare(grupoLabel(b),'es'))
     .forEach(g => option(el.grupo, g.id, grupoLabel(g)));
 
-  // ACTIVIDAD (se llena dinámico según filtro)
   clearSelect(el.actividad);
   option(el.actividad, '', '(Selecciona destino y/o carga)');
   el.actividad.disabled = (el.modo.value !== 'ACTIVIDAD');
@@ -227,17 +198,14 @@ function gruposFiltrados(){
     return g ? [g] : [];
   }
 
-  // ✅ CAMBIO CLAVE: destino por componentes (incluye compuestos con "Y")
   if(d) arr = arr.filter(g => destinoMatchPorComponentes(g.destino || '', d));
-
   if(c) arr = arr.filter(g => (g.coordinadorEmail || '') === c);
 
   return arr;
 }
 
 /* ======================
-   ACTIVIDADES DISPONIBLES SEGÚN FILTRO
-   (usamos asistencias como índice)
+   ACTIVIDADES DISPONIBLES (índice asistencias)
 ====================== */
 function recalcularActividadesDisponibles(){
   const grupos = gruposFiltrados();
@@ -249,7 +217,6 @@ function recalcularActividadesDisponibles(){
       const day = asist[fechaISO] || {};
       Object.keys(day).forEach(actKey => {
         const v = day[actKey] || {};
-        // si hay "notas" en índice, asumimos que existe bitácora
         if(v?.notas) keysSet.add(actKey);
       });
     });
@@ -266,12 +233,8 @@ function recalcularActividadesDisponibles(){
 
   clearSelect(el.actividad);
   option(el.actividad, '', '(Selecciona actividad)');
-  keys.forEach(k => {
-    const name = state.actNameByKey.get(k) || k;
-    option(el.actividad, k, name);
-  });
+  keys.forEach(k => option(el.actividad, k, state.actNameByKey.get(k) || k));
 
-  // si no hay nada, deja un placeholder útil
   if(!keys.length){
     clearSelect(el.actividad);
     option(el.actividad, '', '(Sin actividades con bitácora en este filtro)');
@@ -282,7 +245,6 @@ function recalcularActividadesDisponibles(){
    LECTURA BITÁCORA REAL
 ====================== */
 async function fetchBitacoraDocs(grupoId, actKey, fechaISO){
-  // ruta: grupos/{gid}/bitacora/{actKey}/{fechaISO}/{timeId}
   const col = collection(db, 'grupos', grupoId, 'bitacora', actKey, fechaISO);
   const snap = await getDocs(col);
 
@@ -300,7 +262,7 @@ async function fetchBitacoraDocs(grupoId, actKey, fechaISO){
 }
 
 /* ======================
-   CONSTRUIR ROWS (Modo GRUPO / ACTIVIDAD)
+   CARGAR BITÁCORA (tabla)
 ====================== */
 async function cargarBitacora(){
   const modo = el.modo.value;
@@ -324,16 +286,16 @@ async function cargarBitacora(){
 
   setStatus('Leyendo bitácora en Firebase...');
   el.btnCargar.disabled = true;
+  el.btnExportDestino.disabled = true;
   el.btnLimpiar.disabled = true;
 
   const rows = [];
 
   try{
     if(modo === 'GRUPO'){
-      // trae todas las actividades con notas (índice) y luego lee bitácora real
       for(const g of grupos){
         const asist = g.asistencias || {};
-        const fechas = Object.keys(asist).sort(); // asc
+        const fechas = Object.keys(asist).sort();
 
         for(const fechaISO of fechas){
           const day = asist[fechaISO] || {};
@@ -341,9 +303,8 @@ async function cargarBitacora(){
 
           for(const actKey of actKeys){
             const idx = day[actKey] || {};
-            if(!idx?.notas) continue; // sin índice => no buscamos
+            if(!idx?.notas) continue;
 
-            // lee docs reales
             const docs = await fetchBitacoraDocs(g.id, actKey, fechaISO);
 
             for(const d of docs){
@@ -369,7 +330,6 @@ async function cargarBitacora(){
         if(rows.length >= limite) break;
       }
     } else {
-      // modo ACTIVIDAD: trae sólo esa actKey en todos los grupos filtrados
       const actKey = el.actividad.value;
 
       for(const g of grupos){
@@ -405,12 +365,10 @@ async function cargarBitacora(){
       }
     }
 
-    // Orden: más nuevo primero
     rows.sort((a,b)=>{
       const A = a.tsMs || 0;
       const B = b.tsMs || 0;
       if(B !== A) return B - A;
-      // fallback: por fecha
       return String(b.fechaISO).localeCompare(String(a.fechaISO));
     });
 
@@ -423,6 +381,142 @@ async function cargarBitacora(){
     setStatus('Error leyendo Firebase (ver consola).');
   } finally {
     el.btnCargar.disabled = false;
+    el.btnExportDestino.disabled = false;
+    el.btnLimpiar.disabled = false;
+  }
+}
+
+/* ======================
+   ✅ EXPORTAR (CSV) POR DESTINO
+====================== */
+function csvEscape(v){
+  const s = (v ?? '').toString();
+  if(/[",\n\r;]/.test(s)) return `"${s.replaceAll('"','""')}"`;
+  return s;
+}
+
+function downloadTextFile(filename, text, mime='text/plain'){
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 1000);
+}
+
+async function exportarComentariosPorDestino(){
+  // Usa los filtros actuales destino/coord/grupo
+  // PERO exporta TODO (sin límite) dentro de ese universo.
+  // Si destino = (Todos), puede ser grande.
+  const destinoSel = el.destino.value || '';
+  const grupos = gruposFiltrados();
+
+  if(!grupos.length){
+    setStatus('No hay grupos para exportar con este filtro.');
+    return;
+  }
+
+  const nombreDestinoArchivo = destinoSel ? destinoSel : 'TODOS';
+  const safeName = slug(nombreDestinoArchivo).toUpperCase() || 'TODOS';
+
+  setStatus(destinoSel
+    ? `Exportando comentarios del destino: ${destinoSel}...`
+    : 'Exportando comentarios de TODOS los destinos (puede demorar)...'
+  );
+
+  el.btnCargar.disabled = true;
+  el.btnExportDestino.disabled = true;
+  el.btnLimpiar.disabled = true;
+
+  try{
+    const header = [
+      'destinoFiltro',
+      'destinoGrupo',
+      'grupoId',
+      'grupo',
+      'coordinadorEmail',
+      'fechaISO',
+      'actKey',
+      'actividad',
+      'timeId',
+      'autor',
+      'tsMs',
+      'tsLocal',
+      'texto'
+    ];
+
+    const lines = [];
+    lines.push(header.join(';'));
+
+    let total = 0;
+    const MAX_EXPORT = 20000; // protección (ajústalo si quieres)
+
+    for(const g of grupos){
+      const asist = g.asistencias || {};
+      const fechas = Object.keys(asist).sort(); // asc
+
+      for(const fechaISO of fechas){
+        const day = asist[fechaISO] || {};
+        const actKeys = Object.keys(day);
+
+        for(const actKey of actKeys){
+          const idx = day[actKey] || {};
+          if(!idx?.notas) continue;
+
+          const docs = await fetchBitacoraDocs(g.id, actKey, fechaISO);
+
+          for(const d of docs){
+            const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
+
+            const row = [
+              destinoSel || 'TODOS',
+              g.destino || '',
+              g.id,
+              grupoLabel(g),
+              g.coordinadorEmail || '',
+              fechaISO,
+              actKey,
+              state.actNameByKey.get(actKey) || actKey,
+              d._id || '',
+              d.byEmail || '',
+              tsMs || '',
+              tsMs ? fmtTS(tsMs) : '',
+              d.texto || ''
+            ].map(csvEscape).join(';');
+
+            lines.push(row);
+            total++;
+
+            if(total % 250 === 0){
+              setStatus(`Exportando... ${total} comentarios`);
+            }
+            if(total >= MAX_EXPORT){
+              setStatus(`Exportación cortada por protección: ${MAX_EXPORT} filas. (sube MAX_EXPORT si lo necesitas)`);
+              break;
+            }
+          }
+          if(total >= MAX_EXPORT) break;
+        }
+        if(total >= MAX_EXPORT) break;
+      }
+      if(total >= MAX_EXPORT) break;
+    }
+
+    // BOM UTF-8 para Excel
+    const csv = '\uFEFF' + lines.join('\n');
+    const filename = `bitacora_${safeName}_${new Date().toISOString().slice(0,10)}.csv`;
+    downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
+
+    setStatus(`✅ Exportado: ${total} comentarios (${nombreDestinoArchivo}).`);
+  } catch(err){
+    console.error(err);
+    setStatus('Error exportando (ver consola).');
+  } finally{
+    el.btnCargar.disabled = false;
+    el.btnExportDestino.disabled = false;
     el.btnLimpiar.disabled = false;
   }
 }
@@ -430,6 +524,15 @@ async function cargarBitacora(){
 /* ======================
    RENDER + BUSCADOR
 ====================== */
+function escapeHtml(s=''){
+  return String(s)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
+}
+
 function renderRows(rows){
   el.count.textContent = String(rows.length);
 
@@ -449,15 +552,6 @@ function renderRows(rows){
       <td class="hide-m mono nowrap">${escapeHtml(r.tsStr || '—')}</td>
     </tr>
   `).join('');
-}
-
-function escapeHtml(s=''){
-  return String(s)
-    .replaceAll('&','&amp;')
-    .replaceAll('<','&lt;')
-    .replaceAll('>','&gt;')
-    .replaceAll('"','&quot;')
-    .replaceAll("'","&#039;");
 }
 
 function applySearch(){
@@ -499,14 +593,9 @@ function wire(){
   el.modo.addEventListener('change', () => {
     const isAct = el.modo.value === 'ACTIVIDAD';
     el.actividad.disabled = !isAct;
-
-    // recalcula actividades disponibles cuando corresponde
-    if(isAct){
-      recalcularActividadesDisponibles();
-    }
+    if(isAct) recalcularActividadesDisponibles();
   });
 
-  // cada cambio de filtro recalcula actividades (si está en modo actividad)
   const refilter = () => {
     if(el.modo.value === 'ACTIVIDAD') recalcularActividadesDisponibles();
   };
@@ -515,6 +604,7 @@ function wire(){
   el.grupo.addEventListener('change', refilter);
 
   el.btnCargar.addEventListener('click', cargarBitacora);
+  el.btnExportDestino.addEventListener('click', exportarComentariosPorDestino);
   el.btnLimpiar.addEventListener('click', limpiar);
   el.buscador.addEventListener('input', applySearch);
 }
@@ -527,7 +617,6 @@ async function init(){
   poblarFiltros();
   wire();
 
-  // precarga actividades si parte en modo actividad (no es el caso por defecto)
   if(el.modo.value === 'ACTIVIDAD'){
     recalcularActividadesDisponibles();
   }
@@ -537,7 +626,6 @@ async function init(){
 
 onAuthStateChanged(auth, async (u) => {
   if(!u){
-    // ajusta si tu login se llama distinto
     window.location.href = 'login.html';
     return;
   }
