@@ -10,26 +10,15 @@
 
   <!-- ✅ OVERRIDE FUERTE (aislado) para ganarle a estilos.css -->
   <style>
-    /* ==========================================================
-       AISLAMIENTO TOTAL DE ESTA VISTA (no rompe el resto del sitio)
-       ========================================================== */
-
-    body { background:#f6f6f6; } /* mantiene tu fondo */
-
-    /* Wrapper: todo dentro de esto es "otra mini app" */
+    body { background:#f6f6f6; }
     .ba-scope{
-      /* reset visual básico dentro del scope */
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       padding: 16px 18px;
       max-width: 1200px;
       margin: 0 auto;
     }
-
-    /* Tu CSS global pone padding al body + padding-top por header.
-       Aquí no lo tocamos; sólo evitamos que el contenido quede angosto */
     .ba-scope *{ box-sizing:border-box; }
 
-    /* Evitar que tu .grid global (flex, center, margin) rompa el layout */
     .ba-scope .grid{
       display:grid !important;
       grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
@@ -42,7 +31,6 @@
       .ba-scope .grid{ grid-template-columns: 1fr !important; }
     }
 
-    /* Evitar que tu .card global (width 220px / center) aplaste las cards */
     .ba-scope .card{
       width: auto !important;
       text-align: left !important;
@@ -54,7 +42,6 @@
       margin: 0 0 14px 0 !important;
     }
 
-    /* Labels */
     .ba-scope label{
       margin: 0 !important;
       font-weight: 800 !important;
@@ -65,8 +52,6 @@
       display:block !important;
     }
 
-    /* IMPORTANTE: tu global fuerza width:100% + uppercase.
-       Acá controlamos sólo dentro de esta vista */
     .ba-scope input,
     .ba-scope select,
     .ba-scope textarea{
@@ -77,7 +62,7 @@
       border: 1px solid #d1d5db !important;
       border-radius: 10px !important;
       background:#fff !important;
-      text-transform: none !important; /* 👈 no grites */
+      text-transform: none !important;
     }
     .ba-scope input:focus,
     .ba-scope select:focus,
@@ -87,7 +72,6 @@
       box-shadow:0 0 0 3px rgba(14,165,233,.18) !important;
     }
 
-    /* Encabezados / textos */
     .ba-title{
       margin: 0 0 6px 0;
       font-size: 1.55rem;
@@ -101,7 +85,6 @@
       line-height:1.35;
     }
 
-    /* Acciones */
     .ba-actions{
       display:flex;
       gap:10px;
@@ -110,8 +93,6 @@
       margin-top: 12px;
     }
 
-    /* Botones: tu global es button { background #004080 }.
-       Acá pisamos sólo en el scope */
     .ba-scope button{
       padding: 10px 14px !important;
       border-radius: 10px !important;
@@ -130,16 +111,25 @@
       background:#083f9a !important;
       border-color:#083f9a !important;
     }
-    .ba-scope button.ghost:hover{
-      background:#f3f4f6 !important;
+    .ba-scope button.ghost:hover{ background:#f3f4f6 !important; }
+
+    /* botón export */
+    .ba-scope button.export{
+      background:#16a34a !important;
+      border-color:#16a34a !important;
+      color:#fff !important;
     }
-    .ba-status{
-      color:#374151;
-      font-size:.92rem;
-      opacity:.9;
+    .ba-scope button.export:hover{
+      background:#15803d !important;
+      border-color:#15803d !important;
+    }
+    .ba-scope button:disabled{
+      opacity:.6 !important;
+      cursor:not-allowed !important;
     }
 
-    /* Barra superior resultados */
+    .ba-status{ color:#374151; font-size:.92rem; opacity:.9; }
+
     .ba-bar{
       display:flex;
       justify-content:space-between;
@@ -159,16 +149,9 @@
       font-weight: 900;
       color:#111827;
     }
-    .ba-pill small{
-      font-weight:700;
-      opacity:.7;
-    }
-    .ba-search{
-      max-width: 520px;
-      width: min(520px, 100%);
-    }
+    .ba-pill small{ font-weight:700; opacity:.7; }
+    .ba-search{ max-width: 520px; width: min(520px, 100%); }
 
-    /* Tabla */
     .ba-tablewrap{
       margin-top: 12px;
       border:1px solid #eee;
@@ -176,11 +159,7 @@
       overflow:auto;
       background:#fff;
     }
-    .ba-scope table{
-      width:100%;
-      border-collapse: collapse;
-      background:#fff;
-    }
+    .ba-scope table{ width:100%; border-collapse: collapse; background:#fff; }
     .ba-scope thead th{
       background:#fafafa;
       text-align:left;
@@ -202,16 +181,8 @@
     }
     .ba-mono{ font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
     .ba-nowrap{ white-space: nowrap; }
-    .ba-texto{
-      white-space: pre-wrap;
-      word-break: break-word;
-      min-width: 260px;
-    }
-    .ba-empty{
-      padding: 14px;
-      color:#6b7280;
-      font-style: italic;
-    }
+    .ba-texto{ white-space: pre-wrap; word-break: break-word; min-width: 260px; }
+    .ba-empty{ padding: 14px; color:#6b7280; font-style: italic; }
 
     @media (max-width: 900px){
       .ba-hide-m{ display:none; }
@@ -220,7 +191,6 @@
 </head>
 
 <body class="bitacora-page">
-  <!-- Encabezado común -->
   <div id="encabezado"></div>
 
   <div class="ba-scope">
@@ -273,6 +243,7 @@
 
       <div class="ba-actions">
         <button id="btnCargar" class="primary">CARGAR BITÁCORA</button>
+        <button id="btnExportDestino" class="export">EXPORTAR (DESTINO)</button>
         <button id="btnLimpiar" class="ghost">LIMPIAR</button>
         <span class="ba-status" id="status">Listo.</span>
       </div>
@@ -305,7 +276,6 @@
     </div>
   </div>
 
-  <!-- Carga encabezado + firebase + lógica -->
   <script type="module">
     (async () => {
       try {
@@ -314,8 +284,8 @@
       } catch (_) {}
 
       await import('./firebase-init.js');
-      await import('./script.js');              // si tu encabezado usa reloj/usuario
-      await import('./bitacora_actividad.js');  // ✅ mismo JS que ya te funciona
+      await import('./script.js');
+      await import('./bitacora_actividad.js');
       console.log('✅ bitacora_actividad.js cargado');
     })();
   </script>
