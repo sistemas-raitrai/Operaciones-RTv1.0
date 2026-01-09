@@ -1,14 +1,12 @@
 // bitacora_actividad.js
 // Bitácora por Grupo / por Actividad (lee desde Firestore)
-// FUENTE (según COORDINADORES.JS v2.5):
-// - índice: grupos/{gid}.asistencias[fechaISO][actKey].notas (sirve para saber qué fechas consultar)
+// FUENTE:
+// - índice: grupos/{gid}.asistencias[fechaISO][actKey].notas
 // - bitácora real: grupos/{gid}/bitacora/{actKey}/{fechaISO}/{timeId} => {texto, byEmail, ts}
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-import {
-  collection, getDocs
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
@@ -23,6 +21,7 @@ const el = {
 
   btnCargar: document.getElementById('btnCargar'),
   btnExportDestino: document.getElementById('btnExportDestino'),
+  btnExportVisible: document.getElementById('btnExportVisible'),
   btnLimpiar:document.getElementById('btnLimpiar'),
   status:    document.getElementById('status'),
 
@@ -34,13 +33,13 @@ const el = {
 /* ====================== STATE ====================== */
 const state = {
   user: null,
-  grupos: [],          // [{id, destino, coordinadorEmail, numeroNegocio, nombreGrupo, ...fullData}]
+  grupos: [],
   grupoById: new Map(),
   destinos: [],
   coords: [],
-  actNameByKey: new Map(), // actKey -> "Nombre Actividad"
+  actNameByKey: new Map(),
   filteredActKeys: [],
-  rows: [],
+  rows: [], // base cargada (sin buscador)
 };
 
 const TZ = 'America/Santiago';
@@ -111,6 +110,27 @@ function destinoMatchPorComponentes(destinoGrupo='', destinoFiltro=''){
 }
 
 /* ======================
+   CSV HELPERS (Excel-friendly)
+====================== */
+function csvEscape(v){
+  const s = (v ?? '').toString();
+  if(/[",\n\r;]/.test(s)) return `"${s.replaceAll('"','""')}"`;
+  return s;
+}
+
+function downloadTextFile(filename, text, mime='text/plain'){
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 1000);
+}
+
+/* ======================
    CARGA BASE: GRUPOS
 ====================== */
 async function cargarGruposBase(){
@@ -140,7 +160,6 @@ async function cargarGruposBase(){
     if(g.destino) destinosSet.add(g.destino);
     if(g.coordinadorEmail) coordsSet.add(g.coordinadorEmail);
 
-    // Mapeo actKey -> nombre (si existe itinerario)
     const itin = g.itinerario || {};
     Object.keys(itin).forEach(fechaISO => {
       const arr = Array.isArray(itin[fechaISO]) ? itin[fechaISO] : [];
@@ -287,6 +306,7 @@ async function cargarBitacora(){
   setStatus('Leyendo bitácora en Firebase...');
   el.btnCargar.disabled = true;
   el.btnExportDestino.disabled = true;
+  el.btnExportVisible.disabled = true;
   el.btnLimpiar.disabled = true;
 
   const rows = [];
@@ -379,38 +399,18 @@ async function cargarBitacora(){
     console.error(err);
     renderRows([]);
     setStatus('Error leyendo Firebase (ver consola).');
-  } finally {
+  } finally{
     el.btnCargar.disabled = false;
     el.btnExportDestino.disabled = false;
+    el.btnExportVisible.disabled = false;
     el.btnLimpiar.disabled = false;
   }
 }
 
 /* ======================
-   ✅ EXPORTAR (CSV) POR DESTINO
+   ✅ EXPORTAR DESTINO (todo)
 ====================== */
-function csvEscape(v){
-  const s = (v ?? '').toString();
-  if(/[",\n\r;]/.test(s)) return `"${s.replaceAll('"','""')}"`;
-  return s;
-}
-
-function downloadTextFile(filename, text, mime='text/plain'){
-  const blob = new Blob([text], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(()=> URL.revokeObjectURL(url), 1000);
-}
-
 async function exportarComentariosPorDestino(){
-  // Usa los filtros actuales destino/coord/grupo
-  // PERO exporta TODO (sin límite) dentro de ese universo.
-  // Si destino = (Todos), puede ser grande.
   const destinoSel = el.destino.value || '';
   const grupos = gruposFiltrados();
 
@@ -429,6 +429,7 @@ async function exportarComentariosPorDestino(){
 
   el.btnCargar.disabled = true;
   el.btnExportDestino.disabled = true;
+  el.btnExportVisible.disabled = true;
   el.btnLimpiar.disabled = true;
 
   try{
@@ -452,11 +453,11 @@ async function exportarComentariosPorDestino(){
     lines.push(header.join(';'));
 
     let total = 0;
-    const MAX_EXPORT = 20000; // protección (ajústalo si quieres)
+    const MAX_EXPORT = 20000;
 
     for(const g of grupos){
       const asist = g.asistencias || {};
-      const fechas = Object.keys(asist).sort(); // asc
+      const fechas = Object.keys(asist).sort();
 
       for(const fechaISO of fechas){
         const day = asist[fechaISO] || {};
@@ -490,11 +491,10 @@ async function exportarComentariosPorDestino(){
             lines.push(row);
             total++;
 
-            if(total % 250 === 0){
-              setStatus(`Exportando... ${total} comentarios`);
-            }
+            if(total % 250 === 0) setStatus(`Exportando... ${total} comentarios`);
+
             if(total >= MAX_EXPORT){
-              setStatus(`Exportación cortada por protección: ${MAX_EXPORT} filas. (sube MAX_EXPORT si lo necesitas)`);
+              setStatus(`Exportación cortada por protección: ${MAX_EXPORT} filas.`);
               break;
             }
           }
@@ -505,20 +505,81 @@ async function exportarComentariosPorDestino(){
       if(total >= MAX_EXPORT) break;
     }
 
-    // BOM UTF-8 para Excel
     const csv = '\uFEFF' + lines.join('\n');
-    const filename = `bitacora_${safeName}_${new Date().toISOString().slice(0,10)}.csv`;
+    const filename = `bitacora_DESTINO_${safeName}_${new Date().toISOString().slice(0,10)}.csv`;
     downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
 
-    setStatus(`✅ Exportado: ${total} comentarios (${nombreDestinoArchivo}).`);
+    setStatus(`✅ Exportado DESTINO: ${total} comentarios (${nombreDestinoArchivo}).`);
   } catch(err){
     console.error(err);
-    setStatus('Error exportando (ver consola).');
+    setStatus('Error exportando destino (ver consola).');
   } finally{
     el.btnCargar.disabled = false;
     el.btnExportDestino.disabled = false;
+    el.btnExportVisible.disabled = false;
     el.btnLimpiar.disabled = false;
   }
+}
+
+/* ======================
+   ✅ EXPORTAR LO VISIBLE (lo filtrado en pantalla)
+   - usa state.rows + buscador actual
+====================== */
+function getVisibleRows(){
+  const q = norm(el.buscador.value || '');
+  if(!q) return state.rows.slice();
+
+  return state.rows.filter(r => {
+    const blob = norm([
+      r.fechaISO, r.hora, r.grupoLabel, r.actName, r.actKey, r.texto, r.autor, r.tsStr
+    ].join(' '));
+    return blob.includes(q);
+  });
+}
+
+function exportarVisible(){
+  const rows = getVisibleRows();
+
+  if(!rows.length){
+    setStatus('No hay filas visibles para exportar.');
+    return;
+  }
+
+  const destinoSel = el.destino.value || 'TODOS';
+  const modoSel = el.modo.value || 'GRUPO';
+  const safeDestino = slug(destinoSel).toUpperCase() || 'TODOS';
+  const safeModo = slug(modoSel).toUpperCase() || 'MODO';
+
+  const header = [
+    'fechaISO',
+    'hora',
+    'grupo',
+    'actividad',
+    'texto',
+    'autor',
+    'timestampLocal'
+  ];
+
+  const lines = [];
+  lines.push(header.join(';'));
+
+  rows.forEach(r => {
+    lines.push([
+      r.fechaISO || '',
+      r.hora || '',
+      r.grupoLabel || '',
+      r.actName || r.actKey || '',
+      r.texto || '',
+      r.autor || '',
+      r.tsStr || ''
+    ].map(csvEscape).join(';'));
+  });
+
+  const csv = '\uFEFF' + lines.join('\n');
+  const filename = `bitacora_VISIBLE_${safeDestino}_${safeModo}_${new Date().toISOString().slice(0,10)}.csv`;
+  downloadTextFile(filename, csv, 'text/csv;charset=utf-8');
+
+  setStatus(`✅ Exportado VISIBLE: ${rows.length} filas.`);
 }
 
 /* ======================
@@ -555,17 +616,7 @@ function renderRows(rows){
 }
 
 function applySearch(){
-  const q = norm(el.buscador.value || '');
-  if(!q){
-    renderRows(state.rows);
-    return;
-  }
-  const filtered = state.rows.filter(r => {
-    const blob = norm([
-      r.fechaISO, r.hora, r.grupoLabel, r.actName, r.actKey, r.texto, r.autor, r.tsStr
-    ].join(' '));
-    return blob.includes(q);
-  });
+  const filtered = getVisibleRows(); // <- usa misma lógica
   renderRows(filtered);
   setStatus(`Filtrado: ${filtered.length}/${state.rows.length}`);
 }
@@ -605,6 +656,7 @@ function wire(){
 
   el.btnCargar.addEventListener('click', cargarBitacora);
   el.btnExportDestino.addEventListener('click', exportarComentariosPorDestino);
+  el.btnExportVisible.addEventListener('click', exportarVisible);
   el.btnLimpiar.addEventListener('click', limpiar);
   el.buscador.addEventListener('input', applySearch);
 }
