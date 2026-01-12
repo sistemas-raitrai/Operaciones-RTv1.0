@@ -9,37 +9,155 @@
   <link rel="stylesheet" href="estilos.css"/>
 
   <style>
-    body{ background:#f6f6f6; }
-    .cg-scope{ font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif; padding:16px 18px; max-width:1500px; margin:0 auto; }
-    .card{ background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:16px 18px; box-shadow:0 2px 10px rgba(0,0,0,.06); margin:0 0 14px 0; }
-    .h1{ font-size:1.55rem; font-weight:900; margin:0 0 4px; }
-    .muted{ color:#6b7280; }
-    .row{ display:flex; gap:12px; flex-wrap:wrap; align-items:end; }
-    label{ display:block; font-weight:800; font-size:.85rem; }
-    select,input{ width:100%; padding:10px 10px; border:1px solid #e5e7eb; border-radius:10px; background:#fff; }
-    .col{ flex:1; min-width:220px; }
-    .btn{ cursor:pointer; border:1px solid #e5e7eb; background:#111; color:#fff; padding:10px 12px; border-radius:10px; font-weight:800; }
-    .btn.secondary{ background:#fff; color:#111; }
-    .btn.excel{ background:#217346; border-color:#1e5e38; }
-    .kpis{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-top:10px; }
-    .kpi{ border:1px solid #e5e7eb; border-radius:12px; padding:10px 12px; background:#fff; }
-    .kpi .t{ font-size:.8rem; color:#6b7280; font-weight:800; text-transform:uppercase; }
-    .kpi .v{ font-size:1.15rem; font-weight:950; margin-top:2px; }
+    /* ==========================================================
+       🔥 CORTAFUEGOS: esta vista NO puede heredar layout global
+       ========================================================== */
+    body{
+      background:#f6f6f6;
+      padding: 0 !important;
+      padding-top: 90px !important; /* si tu header/toolbar es fijo */
+    }
 
-    .table-wrap{ overflow:auto; border:1px solid #e5e7eb; border-radius:12px; }
-    table{ width:100%; border-collapse:collapse; background:#fff; }
-    th,td{ border-bottom:1px solid #f1f5f9; padding:10px 10px; vertical-align:top; }
-    th{ position:sticky; top:0; background:#fafafa; text-align:left; font-size:.85rem; font-weight:950; text-transform:uppercase; }
-    td.right, th.right{ text-align:right; }
-    .pill{ display:inline-block; padding:3px 8px; border-radius:999px; font-size:.78rem; font-weight:900; border:1px solid #e5e7eb; }
-    .pill.pax{ background:#ecfeff; }
-    .pill.grp{ background:#fef9c3; }
-    .pill.dia{ background:#fff7ed; }
-    .warn{ color:#b45309; font-weight:900; }
-    .ok{ color:#166534; font-weight:900; }
+    /* Todo dentro de este scope */
+    .cg-scope{
+      font-family: system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif !important;
+      padding:16px 18px !important;
+      max-width:1500px !important;
+      margin:0 auto !important;
+    }
+
+    /* ✅ NO usar .card (choca con estilos.css) */
+    .cg-card{
+      background:#fff !important;
+      border:1px solid #e5e7eb !important;
+      border-radius:14px !important;
+      padding:16px 18px !important;
+      box-shadow:0 2px 10px rgba(0,0,0,.06) !important;
+      margin:0 0 14px 0 !important;
+      width:auto !important;
+      text-align:left !important;
+    }
+
+    .cg-h1{ font-size:1.55rem !important; font-weight:900 !important; margin:0 0 4px !important; color:#111827 !important; }
+    .cg-muted{ color:#6b7280 !important; }
+
+    /* ✅ NO usar .row (choca con estilos.css) */
+    .cg-row{
+      display:flex !important;
+      gap:12px !important;
+      flex-wrap:wrap !important;
+      align-items:end !important;
+      margin-top:12px !important;
+    }
+
+    .cg-col{ flex:1 !important; min-width:220px !important; }
+    .cg-col.wide{ min-width:360px !important; }
+
+    /* labels/inputs SOLO dentro del scope */
+    .cg-scope label{
+      display:block !important;
+      font-weight:800 !important;
+      font-size:.85rem !important;
+      margin:0 !important;
+      text-transform:uppercase !important;
+      color:#374151 !important;
+    }
+    .cg-scope select,
+    .cg-scope input{
+      width:100% !important;
+      padding:10px 10px !important;
+      border:1px solid #e5e7eb !important;
+      border-radius:10px !important;
+      background:#fff !important;
+      box-sizing:border-box !important;
+      margin-top:6px !important;
+      text-transform:none !important; /* evita uppercase global */
+      font-size:.95rem !important;
+    }
+
+    /* Botones SOLO dentro del scope */
+    .cg-btn{
+      cursor:pointer !important;
+      border:1px solid #e5e7eb !important;
+      background:#111827 !important;
+      color:#fff !important;
+      padding:10px 12px !important;
+      border-radius:10px !important;
+      font-weight:900 !important;
+      letter-spacing:.02em !important;
+      text-transform:uppercase !important;
+      width:100% !important;
+    }
+    .cg-btn:hover{ filter:brightness(.95) !important; }
+    .cg-btn.secondary{
+      background:#fff !important;
+      color:#111827 !important;
+    }
+    .cg-btn.excel{
+      background:#217346 !important;
+      border-color:#1e5e38 !important;
+    }
+
+    .cg-kpis{
+      display:grid !important;
+      grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+      gap:10px !important;
+      margin-top:10px !important;
+    }
+    .cg-kpi{
+      border:1px solid #e5e7eb !important;
+      border-radius:12px !important;
+      padding:10px 12px !important;
+      background:#fff !important;
+    }
+    .cg-kpi .t{
+      font-size:.8rem !important;
+      color:#6b7280 !important;
+      font-weight:900 !important;
+      text-transform:uppercase !important;
+    }
+    .cg-kpi .v{
+      font-size:1.15rem !important;
+      font-weight:950 !important;
+      margin-top:2px !important;
+      color:#111827 !important;
+    }
+
+    .cg-tablewrap{
+      overflow:auto !important;
+      border:1px solid #e5e7eb !important;
+      border-radius:12px !important;
+      background:#fff !important;
+    }
+    .cg-scope table{
+      width:100% !important;
+      border-collapse:collapse !important;
+      background:#fff !important;
+    }
+    .cg-scope th,
+    .cg-scope td{
+      border-bottom:1px solid #f1f5f9 !important;
+      padding:10px 10px !important;
+      vertical-align:top !important;
+      white-space:nowrap !important;
+    }
+    .cg-scope th{
+      position:sticky !important;
+      top:0 !important;
+      z-index:2 !important;
+      background:#fafafa !important;
+      text-align:left !important;
+      font-size:.85rem !important;
+      font-weight:950 !important;
+      text-transform:uppercase !important;
+    }
+    .cg-right{ text-align:right !important; }
+
+    .cg-warn{ color:#b45309 !important; font-weight:900 !important; }
+    .cg-ok{ color:#166534 !important; font-weight:900 !important; }
 
     @media (max-width: 900px){
-      .kpis{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+      .cg-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
     }
   </style>
 </head>
@@ -51,90 +169,95 @@
 
     <main class="main">
       <div class="cg-scope">
-        <div class="card">
-          <div class="h1">Costos por Grupo</div>
-          <div class="muted" id="who">—</div>
 
-          <div class="row" style="margin-top:12px;">
-            <div class="col">
-              <label>DESTINO (para filtrar grupos)</label>
+        <div class="cg-card">
+          <div class="cg-h1">Costos por Grupo</div>
+          <div class="cg-muted" id="who">—</div>
+
+          <div class="cg-row">
+            <div class="cg-col">
+              <label for="filtroDestino">DESTINO (para filtrar grupos)</label>
               <select id="filtroDestino">
                 <option value="*">TODOS</option>
               </select>
             </div>
 
-            <div class="col" style="min-width:360px;">
-              <label>GRUPO</label>
+            <div class="cg-col wide">
+              <label for="selGrupo">GRUPO</label>
               <select id="selGrupo">
                 <option value="">Cargando…</option>
               </select>
             </div>
 
-            <div class="col">
-              <label>FECHA DESDE</label>
+            <div class="cg-col">
+              <label for="fechaDesde">FECHA DESDE</label>
               <input type="date" id="fechaDesde" />
             </div>
-            <div class="col">
-              <label>FECHA HASTA</label>
+
+            <div class="cg-col">
+              <label for="fechaHasta">FECHA HASTA</label>
               <input type="date" id="fechaHasta" />
             </div>
 
-            <div class="col">
-              <label>TC CLP por 1 USD (opcional)</label>
+            <div class="cg-col">
+              <label for="tcUSD">TC CLP por 1 USD (opcional)</label>
               <input type="number" id="tcUSD" placeholder="ej: 980" />
             </div>
-            <div class="col">
-              <label>TC BRL por 1 USD (opcional)</label>
+
+            <div class="cg-col">
+              <label for="tcBRL">TC BRL por 1 USD (opcional)</label>
               <input type="number" id="tcBRL" placeholder="ej: 5.1" step="0.0001" />
             </div>
-            <div class="col">
-              <label>TC ARS por 1 USD (opcional)</label>
+
+            <div class="cg-col">
+              <label for="tcARS">TC ARS por 1 USD (opcional)</label>
               <input type="number" id="tcARS" placeholder="ej: 950" step="0.0001" />
             </div>
 
-            <div class="col" style="min-width:220px;">
-              <button class="btn" id="btnCalcular">CALCULAR</button>
+            <div class="cg-col" style="min-width:220px;">
+              <button class="cg-btn" id="btnCalcular">CALCULAR</button>
             </div>
-            <div class="col" style="min-width:220px;">
-              <button class="btn excel" id="btnExport">EXPORTAR LO QUE SE VE</button>
+
+            <div class="cg-col" style="min-width:220px;">
+              <button class="cg-btn excel" id="btnExport">EXPORTAR LO QUE SE VE</button>
             </div>
           </div>
 
-          <div class="kpis">
-            <div class="kpi">
+          <div class="cg-kpis">
+            <div class="cg-kpi">
               <div class="t">PAX BASE</div>
               <div class="v" id="kpiPaxBase">—</div>
             </div>
-            <div class="kpi">
+            <div class="cg-kpi">
               <div class="t">PAX REALES</div>
               <div class="v" id="kpiPaxReales">—</div>
             </div>
-            <div class="kpi">
+            <div class="cg-kpi">
               <div class="t">PAX LIBERADOS</div>
               <div class="v" id="kpiPaxLiberados">—</div>
             </div>
-            <div class="kpi">
+            <div class="cg-kpi">
               <div class="t">PAX CONTABLE</div>
               <div class="v" id="kpiPaxContable">—</div>
             </div>
           </div>
 
-          <div style="margin-top:10px;" class="muted" id="grupoInfo">—</div>
+          <div style="margin-top:10px;" class="cg-muted" id="grupoInfo">—</div>
         </div>
 
-        <div class="card">
-          <div class="row" style="align-items:center;">
+        <div class="cg-card">
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
             <div style="flex:1;">
-              <div style="font-weight:950;">Detalle de costos por servicio</div>
-              <div class="muted">Agrupado por servicio. “Por día” se cobra 1 vez por día si aparece en el itinerario.</div>
+              <div style="font-weight:950; color:#111827;">Detalle de costos por servicio</div>
+              <div class="cg-muted">Agrupado por servicio. “Por día” se cobra 1 vez por día si aparece en el itinerario.</div>
             </div>
             <div style="min-width:220px; text-align:right;">
-              <div class="muted">Total (equivalente CLP, si hay TC)</div>
-              <div style="font-size:1.35rem; font-weight:950;" id="kpiTotalCLP">—</div>
+              <div class="cg-muted">Total (equivalente CLP, si hay TC)</div>
+              <div style="font-size:1.35rem; font-weight:950; color:#111827;" id="kpiTotalCLP">—</div>
             </div>
           </div>
 
-          <div class="table-wrap" style="margin-top:12px;">
+          <div class="cg-tablewrap" style="margin-top:12px;">
             <table id="tbl">
               <thead>
                 <tr>
@@ -142,31 +265,31 @@
                   <th>PROVEEDOR</th>
                   <th>MONEDA</th>
                   <th>MODO</th>
-                  <th class="right">TARIFA</th>
-                  <th class="right">UNIDADES</th>
-                  <th class="right">TOTAL NATIVO</th>
-                  <th class="right">TOTAL CLP EQ</th>
+                  <th class="cg-right">TARIFA</th>
+                  <th class="cg-right">UNIDADES</th>
+                  <th class="cg-right">TOTAL NATIVO</th>
+                  <th class="cg-right">TOTAL CLP EQ</th>
                 </tr>
               </thead>
               <tbody></tbody>
               <tfoot>
                 <tr>
-                  <th colspan="6" class="right">TOTAL</th>
-                  <th class="right" id="totNativo">—</th>
-                  <th class="right" id="totCLP">—</th>
+                  <th colspan="6" class="cg-right">TOTAL</th>
+                  <th class="cg-right" id="totNativo">—</th>
+                  <th class="cg-right" id="totCLP">—</th>
                 </tr>
               </tfoot>
             </table>
           </div>
 
-          <div style="margin-top:10px;" class="muted" id="log">—</div>
+          <div style="margin-top:10px;" class="cg-muted" id="log">—</div>
         </div>
 
       </div>
     </main>
   </div>
 
-  <!-- Sidebar común (si lo usas en otras páginas) -->
+  <!-- Sidebar común (igual que tus otras páginas) -->
   <script type="module">
     import { loadSidebar } from './layout.js';
     await loadSidebar({ active: 'costos_grupo' });
