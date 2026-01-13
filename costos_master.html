@@ -1,0 +1,160 @@
+<!-- costos_master.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Costos Master (Principal + Detalles) | RT</title>
+
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+  <link rel="stylesheet" href="estilos.css"/>
+
+  <!-- 🔥 CORTAFUEGOS (igual que tus vistas) -->
+  <style>
+    body{ background:#f6f6f6; padding:0 !important; padding-top:90px !important; }
+    .cm-scope{ font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif !important; padding:16px 18px !important; max-width:1600px !important; margin:0 auto !important; }
+    .cm-card{ background:#fff !important; border:1px solid #e5e7eb !important; border-radius:14px !important; padding:16px 18px !important; box-shadow:0 2px 10px rgba(0,0,0,.06) !important; margin:0 0 14px 0 !important; }
+    .cm-h1{ font-size:1.55rem !important; font-weight:950 !important; margin:0 0 4px !important; color:#111827 !important; }
+    .cm-muted{ color:#6b7280 !important; }
+    .cm-row{ display:flex !important; gap:12px !important; flex-wrap:wrap !important; align-items:end !important; margin-top:12px !important; }
+    .cm-col{ flex:1 !important; min-width:220px !important; }
+    .cm-col.wide{ min-width:360px !important; }
+    .cm-scope label{ display:block !important; font-weight:900 !important; font-size:.82rem !important; margin:0 !important; text-transform:uppercase !important; color:#374151 !important; }
+    .cm-scope input, .cm-scope select{
+      width:100% !important; padding:10px 10px !important; border:1px solid #e5e7eb !important; border-radius:10px !important;
+      background:#fff !important; box-sizing:border-box !important; margin-top:6px !important; text-transform:none !important; font-size:.95rem !important;
+    }
+    .cm-btn{
+      cursor:pointer !important; border:1px solid #e5e7eb !important; background:#111827 !important; color:#fff !important;
+      padding:10px 12px !important; border-radius:10px !important; font-weight:950 !important; letter-spacing:.02em !important; text-transform:uppercase !important; width:100% !important;
+    }
+    .cm-btn:hover{ filter:brightness(.95) !important; }
+    .cm-btn.secondary{ background:#fff !important; color:#111827 !important; }
+    .cm-btn.excel{ background:#217346 !important; border-color:#1e5e38 !important; }
+
+    .cm-tabs{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .cm-tab{
+      border:1px solid #e5e7eb; background:#fff; color:#111827; border-radius:999px;
+      padding:8px 12px; font-weight:900; cursor:pointer; text-transform:uppercase; font-size:.82rem;
+    }
+    .cm-tab.active{ background:#111827; color:#fff; border-color:#111827; }
+    .cm-pane{ display:none; }
+    .cm-pane.active{ display:block; }
+
+    .cm-tablewrap{ overflow:auto !important; border:1px solid #e5e7eb !important; border-radius:12px !important; background:#fff !important; }
+    .cm-scope table{ width:100% !important; border-collapse:collapse !important; background:#fff !important; }
+    .cm-scope th, .cm-scope td{
+      border-bottom:1px solid #f1f5f9 !important; padding:10px 10px !important; vertical-align:top !important; white-space:nowrap !important;
+    }
+    .cm-scope th{
+      position:sticky !important; top:0 !important; z-index:2 !important; background:#fafafa !important;
+      text-align:left !important; font-size:.82rem !important; font-weight:950 !important; text-transform:uppercase !important;
+    }
+    .cm-right{ text-align:right !important; font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace; }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div id="sidebar-slot"></div>
+
+    <main class="main">
+      <div class="cm-scope">
+
+        <div class="cm-card">
+          <div class="cm-h1">Costos Master</div>
+          <div class="cm-muted" id="who">—</div>
+
+          <div class="cm-row">
+            <div class="cm-col">
+              <label for="filtroDestino">Destino (filtra grupos)</label>
+              <select id="filtroDestino"><option value="*">TODOS</option></select>
+            </div>
+
+            <div class="cm-col wide">
+              <label for="selGrupo">Grupo (opcional: si quieres ver 1)</label>
+              <select id="selGrupo"><option value="">— Todos los grupos filtrados —</option></select>
+            </div>
+
+            <div class="cm-col">
+              <label for="fechaDesde">Fecha desde</label>
+              <input type="date" id="fechaDesde" />
+            </div>
+            <div class="cm-col">
+              <label for="fechaHasta">Fecha hasta</label>
+              <input type="date" id="fechaHasta" />
+            </div>
+
+            <div class="cm-col">
+              <label for="fxCLP">FX: USD por 1 CLP</label>
+              <input type="number" id="fxCLP" step="0.00000001" placeholder="ej: 0.00105" />
+            </div>
+            <div class="cm-col">
+              <label for="fxBRL">FX: USD por 1 BRL</label>
+              <input type="number" id="fxBRL" step="0.00000001" placeholder="ej: 0.20" />
+            </div>
+            <div class="cm-col">
+              <label for="fxARS">FX: USD por 1 ARS</label>
+              <input type="number" id="fxARS" step="0.00000001" placeholder="ej: 0.0010" />
+            </div>
+
+            <div class="cm-col" style="min-width:220px;">
+              <button class="cm-btn" id="btnCalcular">Calcular</button>
+            </div>
+            <div class="cm-col" style="min-width:220px;">
+              <button class="cm-btn excel" id="btnExportXLSX">Exportar XLSX (con fórmulas)</button>
+            </div>
+          </div>
+
+          <div class="cm-muted" style="margin-top:10px;" id="log">—</div>
+        </div>
+
+        <div class="cm-card">
+          <div style="font-weight:950; color:#111827;">PRINCIPAL (resumen por grupo)</div>
+          <div class="cm-muted">Moneda base: Chile→CLP, Exterior→USD, Compuesto→CLP+USD y total consolidado en USD.</div>
+
+          <div class="cm-tablewrap" style="margin-top:10px;">
+            <table id="tblPrincipal">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>GID</th>
+                  <th>Código</th>
+                  <th>Grupo</th>
+                  <th>Destino</th>
+                  <th>Tipo</th>
+                  <th class="cm-right">PAX Contable</th>
+                  <th class="cm-right">Actividades CLP</th>
+                  <th class="cm-right">Actividades USD</th>
+                  <th class="cm-right">Gastos CLP</th>
+                  <th class="cm-right">Gastos USD</th>
+                  <th class="cm-right">TOTAL CLP (Chile)</th>
+                  <th class="cm-right">TOTAL USD (Exterior)</th>
+                  <th class="cm-right">TOTAL USD CONSOLIDADO</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+
+          <div class="cm-tabs" id="tabs"></div>
+
+          <div id="panes"></div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Sidebar común -->
+  <script type="module">
+    import { loadSidebar } from './layout.js';
+    await loadSidebar({ active: 'costos_master' });
+  </script>
+
+  <!-- SheetJS para export XLSX con fórmulas -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js"></script>
+
+  <script type="module" src="costos_master.js"></script>
+</body>
+</html>
