@@ -131,6 +131,24 @@ const COORD = {
 const auth = getAuth(app);
 const $ = (id) => document.getElementById(id);
 
+// ✅ Carga XLSX si no está disponible (Vercel/CSP/adblock a veces bloquea el script del HTML)
+async function ensureXLSX(){
+  if (window.XLSX) return true;
+
+  const url = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js';
+
+  const ok = await new Promise((resolve) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.async = true;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+
+  return ok && !!window.XLSX;
+}
+
 function U(s){ return (s ?? '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').trim().toUpperCase(); }
 function num(v){ const n = Number(v); return Number.isFinite(n) ? n : 0; }
 function iso(s){
@@ -868,9 +886,13 @@ function round2(x){
 /* =========================================================
    8) Export XLSX con fórmulas (Hoja 1 + FX)
    ========================================================= */
-function exportXLSX(rows){
+async function exportXLSX(rows){
   try{
-    if (!window.XLSX) throw new Error('XLSX no cargado');
+    // ✅ Asegura XLSX (si el <script> del HTML no cargó por CSP/adblock, lo reintenta)
+    const ok = await ensureXLSX();
+    if (!ok) throw new Error('XLSX no cargado (CDN bloqueado o falló la carga)');
+
+    const XLSX = window.XLSX; // ✅ usa el global real
 
     const fx = getFX();
     if (!fx.usdclp) {
@@ -893,17 +915,7 @@ function exportXLSX(rows){
 
     const aoa = [header];
 
-    // columnas (1-indexed) para fórmulas:
-    // A:Codigo B:Grupo C:Año D:Destino E:PAX F:Fechas G:Noches H:Aereo I:ValorAereoCLP
-    // K:MonTer L:ValTerUSD M:ValTerCLP
-    // O:MonHotel P:ValHotelUSD Q:ValHotelCLP
-    // R:MonAct S:ActUSD T:ActCLP
-    // V:MonCom W:ComUSD X:ComCLP
-    // Z:CoordCLP AA:GastosCLP
-    // AC:SeguroUSD
-    // AD:TotalUSD AE:TotalCLP
-
-    rows.forEach(r=>{
+    (rows || []).forEach(r=>{
       aoa.push(header.map(h => r[h] ?? ''));
     });
 
@@ -921,20 +933,16 @@ function exportXLSX(rows){
 
     // Poner fórmulas por fila (desde fila 2)
     for (let i=2; i<=aoa.length; i++){
-      // total USD = (AereoCLP / USDCLP) + TerUSD + (TerCLP/USDCLP) + HotelUSD + (HotelCLP/USDCLP) + ActUSD + (ActCLP/USDCLP) + ComUSD + (ComCLP/USDCLP) + SeguroUSD
       const totalUsdFormula =
         `=(I${i}/FX!$B$2)+L${i}+(M${i}/FX!$B$2)+P${i}+(Q${i}/FX!$B$2)+S${i}+(T${i}/FX!$B$2)+W${i}+(X${i}/FX!$B$2)+AC${i}`;
 
-      // total CLP = AereoCLP + TerCLP + HotelCLP + ActCLP + ComCLP + CoordCLP + GastosCLP + (TerUSD*USDCLP) + (HotelUSD*USDCLP) + (ActUSD*USDCLP) + (ComUSD*USDCLP) + (SeguroUSD*USDCLP)
       const totalClpFormula =
         `=I${i}+M${i}+Q${i}+T${i}+X${i}+Z${i}+AA${i}+(L${i}*FX!$B$2)+(P${i}*FX!$B$2)+(S${i}*FX!$B$2)+(W${i}*FX!$B$2)+(AC${i}*FX!$B$2)`;
 
-      // set formulas
       ws[`AD${i}`] = { t:'n', f: totalUsdFormula };
       ws[`AE${i}`] = { t:'n', f: totalClpFormula };
     }
 
-    // Ajuste básico de anchos (opcional)
     ws['!cols'] = header.map(h => ({ wch: Math.max(10, Math.min(35, (h||'').length + 2)) }));
 
     XLSX.utils.book_append_sheet(wb, ws, 'Hoja 1');
@@ -946,6 +954,7 @@ function exportXLSX(rows){
     alert('No se pudo exportar: ' + (e?.message || e));
   }
 }
+
 
 /* =========================================================
    9) Boot + filtros
@@ -978,7 +987,9 @@ async function boot(){
   $('modalBack').addEventListener('click', (e)=>{ if (e.target === $('modalBack')) closeModal(); });
 
   $('btnAplicar').addEventListener('click', aplicar);
-  $('btnExport').addEventListener('click', ()=> exportXLSX(state.rows || []));
+  $('btnExport').addEventListener('click', async ()=> {
+    await exportXLSX(state.rows || []);
+  });
 
   // defaults
   const today = new Date().toISOString().slice(0,10);
