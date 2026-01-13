@@ -550,19 +550,38 @@ function calcSeguro({ pax, destino, fx }){
   return { etiqueta: SEGURO.etiqueta(), usd, detalles };
 }
 
-function calcCoordinador({ G, fx }){
-  const clp = COORD.valorCLP(G) || 0;
-  const detalles = clp ? [{
+function calcCoordinador({ G, fx, noches, destino }) {
+  // Regla:
+  // - Normal: 70.000 CLP por día
+  // - Excepción: "Sur de Chile y Bariloche" => 75.000 CLP por día
+  // - días = noches + 1
+  const DIARIO_NORMAL_CLP = 70000;
+  const DIARIO_SUR_BARI_CLP = 75000;
+
+  const dias = Math.max(0, Number(noches || 0)) + 1;
+
+  const d = U(destino || '');
+  const esSurYBari =
+    d.includes('SUR') && d.includes('CHILE') && d.includes('BARILOCHE');
+
+  const diario = esSurYBari ? DIARIO_SUR_BARI_CLP : DIARIO_NORMAL_CLP;
+  const clp = diario * dias;
+
+  const detalles = [{
     empresa: 'COORDINACIÓN',
-    asunto: COORD.nombre(G) || 'COORDINADOR',
+    asunto: `${esSurYBari ? 'Coordinación (Sur+Bariloche)' : 'Coordinación'} · ${dias} día(s) x $${fmtInt(diario)}`,
     monedaOriginal: 'CLP',
     montoOriginal: clp,
     usd: toUSD(clp, 'CLP', fx),
     clp,
-    fuente: 'grupo/pagoCoordinador'
-  }] : [];
+    fuente: 'regla/coordinador'
+  }];
 
-  return { nombre: COORD.nombre(G) || '', clp, detalles };
+  return {
+    nombre: COORD.nombre(G) || '',
+    clp,
+    detalles
+  };
 }
 
 /* =========================================================
@@ -783,7 +802,7 @@ async function buildRows(){
     const ac = calcActividadesYComidas({ G, destinoGrupo: Dest, pax, fx });
 
     // 5) Coord (CLP)
-    const coord = calcCoordinador({ G, fx });
+    const coord = calcCoordinador({ G, fx, noches, destino: Dest });
 
     // 6) Gastos (CLP)
     const gastos = calcGastos({ gid, codigo: Codigo, fx });
