@@ -919,13 +919,9 @@ async function ensureXLSXLoaded(){
 /* =========================================================
    8) Export XLSX con fórmulas (Hoja 1 + FX)
    ========================================================= */
-async function exportXLSX(rows){
+function exportXLSX(rows){
   try{
-    // ✅ Asegura XLSX (si el <script> del HTML no cargó por CSP/adblock, lo reintenta)
-    const ok = await ensureXLSXLoaded();
-    if (!ok) throw new Error('XLSX no cargado (CDN bloqueado o falló la carga)');
-
-    const XLSX = window.XLSX; // ✅ usa el global real
+    if (!window.XLSX) throw new Error('XLSX no cargado');
 
     const fx = getFX();
     if (!fx.usdclp) {
@@ -933,7 +929,125 @@ async function exportXLSX(rows){
       return;
     }
 
-    // AOA principal (header exacto CSV)
+    const wb = XLSX.utils.book_new();
+
+    /* =========================
+       HOJA FX (tipos de cambio)
+       ========================= */
+    const fxAOA = [
+      ['FX','VALOR'],
+      ['USDCLP', fx.usdclp || 0],
+      ['USDBRL', fx.usdbrl || 0],
+      ['USDARS', fx.usdars || 0],
+    ];
+    const fxSheet = XLSX.utils.aoa_to_sheet(fxAOA);
+    XLSX.utils.book_append_sheet(wb, fxSheet, 'FX');
+
+    /* =====================================================
+       Helpers Excel: formulas para convertir a USD y a CLP
+       - En cada hoja item:
+         A:Codigo B:Grupo C:Año D:Destino E:Empresa F:Asunto
+         G:Moneda H:MontoOriginal I:USD J:CLP K:Fuente
+       ===================================================== */
+    const usdFormula = (rowNum) =>
+      `=IF(G${rowNum}="USD",H${rowNum},IF(G${rowNum}="CLP",H${rowNum}/FX!$B$2,IF(G${rowNum}="BRL",H${rowNum}/FX!$B$3,IF(G${rowNum}="ARS",H${rowNum}/FX!$B$4,""))))`;
+
+    const clpFormula = (rowNum) =>
+      `=IF(G${rowNum}="CLP",H${rowNum},IF(G${rowNum}="USD",H${rowNum}*FX!$B$2,IF(G${rowNum}="BRL",(H${rowNum}/FX!$B$3)*FX!$B$2,IF(G${rowNum}="ARS",(H${rowNum}/FX!$B$4)*FX!$B$2,""))))`;
+
+    function addItemSheet(sheetName, items){
+      // items: [{Codigo, Grupo, Año, Destino, empresa, asunto, monedaOriginal, montoOriginal, fuente}]
+      const aoa = [[
+        'Codigo','Grupo','Año','Destino','Empresa','Asunto','Moneda','MontoOriginal','USD','CLP','Fuente'
+      ]];
+
+      for (const it of items){
+        aoa.push([
+          it.Codigo || '',
+          it.Grupo || '',
+          it['Año'] || '',
+          it.Destino || '',
+          it.empresa || '',
+          it.asunto || '',
+          normMoneda(it.monedaOriginal || 'USD'),
+          Number(it.montoOriginal || 0),
+          '', // USD formula
+          '', // CLP formula
+          it.fuente || ''
+        ]);
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+      // fórmulas en columnas I (USD) y J (CLP), desde fila 2
+      for (let r=2; r<=aoa.length; r++){
+        ws[`I${r}`] = { t:'n', f: usdFormula(r) };
+        ws[`J${r}`] = { t:'n', f: clpFormula(r) };
+      }
+
+      ws['!cols'] = [
+        {wch:12},{wch:28},{wch:8},{wch:18},{wch:22},{wch:28},
+        {wch:10},{wch:16},{wch:14},{wch:14},{wch:28}
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    }
+
+    /* ==========================================
+       1) Construir DETALLES por ítem (global)
+       ========================================== */
+    const all = {
+      AEREOS: [],
+      TERRESTRES: [],
+      HOTELES: [],
+      ACTIVIDADES: [],
+      COMIDAS: [],
+      COORD: [],
+      GASTOS: [],
+      SEGURO: [],
+    };
+
+    for (const r of (rows || [])){
+      const base = { Codigo:r.Codigo, Grupo:r.Grupo, 'Año':r['Año'], Destino:r.Destino };
+
+      const pushMany = (arr, dets=[]) => {
+        for (const d of dets){
+          arr.push({
+            ...base,
+            empresa: d.empresa,
+            asunto: d.asunto,
+            monedaOriginal: d.monedaOriginal,
+            montoOriginal: d.montoOriginal,
+            fuente: d.fuente
+          });
+        }
+      };
+
+      pushMany(all.AEREOS, r._det?.aereo);
+      pushMany(all.TERRESTRES, r._det?.terrestre);
+      pushMany(all.HOTELES, r._det?.hotel);
+      pushMany(all.ACTIVIDADES, r._det?.actividades);
+      pushMany(all.COMIDAS, r._det?.comidas);
+      pushMany(all.COORD, r._det?.coord);
+      pushMany(all.GASTOS, r._det?.gastos);
+      pushMany(all.SEGURO, r._det?.seguro);
+    }
+
+    /* ==========================================
+       2) Crear hojas por ítem
+       ========================================== */
+    addItemSheet('Aereos', all.AEREOS);
+    addItemSheet('Terrestres', all.TERRESTRES);
+    addItemSheet('Hoteles', all.HOTELES);
+    addItemSheet('Actividades', all.ACTIVIDADES);
+    addItemSheet('Comidas', all.COMIDAS);
+    addItemSheet('Coordinador', all.COORD);
+    addItemSheet('Gastos', all.GASTOS);
+    addItemSheet('Seguro', all.SEGURO);
+
+    /* ===================================================
+       3) Hoja 1 (PRINCIPAL) — alimentada por fórmulas
+       =================================================== */
     const header = [
       'Codigo','Grupo','Año','Destino','PAX (paxReales - paxLiberados)','Fechas','Cantidad Noches',
       'Aéreo/s','Valor Aéreo (CLP)',
@@ -946,47 +1060,80 @@ async function exportXLSX(rows){
       'TOTAL USD','TOTAL CLP'
     ];
 
-    const aoa = [header];
+    const aoaMain = [header];
+    for (const r of (rows || [])){
+      aoaMain.push(header.map(h => (r[h] ?? '')));
+    }
 
-    (rows || []).forEach(r=>{
-      aoa.push(header.map(h => r[h] ?? ''));
-    });
+    const wsMain = XLSX.utils.aoa_to_sheet(aoaMain);
 
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    // Fórmulas “desde hojas de ítem”:
+    // Usamos SUMIF por Codigo (col A de hoja item) sumando:
+    // - CLP = col J
+    // - USD = col I
+    // Nota: SUMIF con rango completo es válido en Excel.
+    const sumifCLP = (sheet, row) => `=SUMIF(${sheet}!$A:$A,$A${row},${sheet}!$J:$J)`;
+    const sumifUSD = (sheet, row) => `=SUMIF(${sheet}!$A:$A,$A${row},${sheet}!$I:$I)`;
 
-    // Hoja FX
-    const fxSheet = XLSX.utils.aoa_to_sheet([
-      ['FX','VALOR'],
-      ['USDCLP', fx.usdclp || 0],
-      ['USDBRL', fx.usdbrl || 0],
-      ['USDARS', fx.usdars || 0],
-    ]);
-    XLSX.utils.book_append_sheet(wb, fxSheet, 'FX');
+    for (let i=2; i<=aoaMain.length; i++){
+      // Columnas Hoja 1:
+      // I: Valor Aéreo (CLP)
+      // L: Valor Terrestre (USD)
+      // M: Valor Terrestre (CLP)
+      // P: Valor Hotel (USD)
+      // Q: Valor Hotel (CLP)
+      // S: Actividades (USD)
+      // T: Actividades (CLP)
+      // W: Valor Comidas (USD)
+      // X: Valor Comidas (CLP)
+      // Z: Valor Coordinador/a CLP
+      // AA: Gastos aprob (CLP)
+      // AC: Valor Seguro (USD)
+      // AD: TOTAL USD
+      // AE: TOTAL CLP
 
-    // Poner fórmulas por fila (desde fila 2)
-    for (let i=2; i<=aoa.length; i++){
+      wsMain[`I${i}`]  = { t:'n', f: sumifCLP('Aereos', i) };
+
+      wsMain[`L${i}`]  = { t:'n', f: sumifUSD('Terrestres', i) };
+      wsMain[`M${i}`]  = { t:'n', f: sumifCLP('Terrestres', i) };
+
+      wsMain[`P${i}`]  = { t:'n', f: sumifUSD('Hoteles', i) };
+      wsMain[`Q${i}`]  = { t:'n', f: sumifCLP('Hoteles', i) };
+
+      wsMain[`S${i}`]  = { t:'n', f: sumifUSD('Actividades', i) };
+      wsMain[`T${i}`]  = { t:'n', f: sumifCLP('Actividades', i) };
+
+      wsMain[`W${i}`]  = { t:'n', f: sumifUSD('Comidas', i) };
+      wsMain[`X${i}`]  = { t:'n', f: sumifCLP('Comidas', i) };
+
+      wsMain[`Z${i}`]  = { t:'n', f: sumifCLP('Coordinador', i) };
+      wsMain[`AA${i}`] = { t:'n', f: sumifCLP('Gastos', i) };
+
+      wsMain[`AC${i}`] = { t:'n', f: sumifUSD('Seguro', i) };
+
+      // Totales principales (siguen tu lógica):
       const totalUsdFormula =
         `=(I${i}/FX!$B$2)+L${i}+(M${i}/FX!$B$2)+P${i}+(Q${i}/FX!$B$2)+S${i}+(T${i}/FX!$B$2)+W${i}+(X${i}/FX!$B$2)+AC${i}`;
 
       const totalClpFormula =
         `=I${i}+M${i}+Q${i}+T${i}+X${i}+Z${i}+AA${i}+(L${i}*FX!$B$2)+(P${i}*FX!$B$2)+(S${i}*FX!$B$2)+(W${i}*FX!$B$2)+(AC${i}*FX!$B$2)`;
 
-      ws[`AD${i}`] = { t:'n', f: totalUsdFormula };
-      ws[`AE${i}`] = { t:'n', f: totalClpFormula };
+      wsMain[`AD${i}`] = { t:'n', f: totalUsdFormula };
+      wsMain[`AE${i}`] = { t:'n', f: totalClpFormula };
     }
 
-    ws['!cols'] = header.map(h => ({ wch: Math.max(10, Math.min(35, (h||'').length + 2)) }));
-
-    XLSX.utils.book_append_sheet(wb, ws, 'Hoja 1');
+    wsMain['!cols'] = header.map(h => ({ wch: Math.max(10, Math.min(35, (h||'').length + 2)) }));
+    XLSX.utils.book_append_sheet(wb, wsMain, 'Hoja 1');
 
     const fecha = new Date().toISOString().slice(0,10);
-    XLSX.writeFile(wb, `Planilla_Costos_Hoja1_${fecha}.xlsx`);
+    XLSX.writeFile(wb, `Planilla_Costos_${fecha}.xlsx`);
+
   } catch(e){
     console.error(e);
     alert('No se pudo exportar: ' + (e?.message || e));
   }
 }
+
 
 
 /* =========================================================
