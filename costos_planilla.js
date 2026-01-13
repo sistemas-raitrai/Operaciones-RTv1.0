@@ -929,10 +929,36 @@ function exportXLSX(rows){
       return;
     }
 
+    // ✅ Workbook se crea UNA SOLA VEZ
     const wb = XLSX.utils.book_new();
 
+    /* ===================================================
+       1) Hoja "Costos" (PRINCIPAL) — PRIMERA hoja del libro
+       =================================================== */
+    const header = [
+      'Codigo','Grupo','Año','Destino','PAX (paxReales - paxLiberados)','Fechas','Cantidad Noches',
+      'Aéreo/s','Valor Aéreo (CLP)',
+      'Terrestre/s','Moneda Terrestre','Valor Terrestre (USD)','Valor Terrestre (CLP)',
+      'Hotel/es','Moneda Hotel','Valor Hotel (USD)','Valor Hotel (CLP)',
+      'Moneda Actividades ','Actividades (USD)','Actividades (CLP)',
+      'Comidas','Moneda Comidas','Valor Comidas (USD)','Valor Comidas (CLP)',
+      'CoordInador(a)','Valor Coordinador/a CLP','Gastos aprob (CLP)',
+      'Seguro ','Valor Seguro (USD)',
+      'TOTAL USD','TOTAL CLP'
+    ];
+
+    const aoaMain = [header];
+    for (const r of (rows || [])){
+      aoaMain.push(header.map(h => (r[h] ?? '')));
+    }
+
+    const wsMain = XLSX.utils.aoa_to_sheet(aoaMain);
+
+    // ✅ Costos primero
+    XLSX.utils.book_append_sheet(wb, wsMain, 'Costos');
+
     /* =========================
-       HOJA FX (tipos de cambio)
+       2) Hoja FX (tipos de cambio)
        ========================= */
     const fxAOA = [
       ['FX','VALOR'],
@@ -956,7 +982,6 @@ function exportXLSX(rows){
       `=IF(G${rowNum}="CLP",H${rowNum},IF(G${rowNum}="USD",H${rowNum}*FX!$B$2,IF(G${rowNum}="BRL",(H${rowNum}/FX!$B$3)*FX!$B$2,IF(G${rowNum}="ARS",(H${rowNum}/FX!$B$4)*FX!$B$2,""))))`;
 
     function addItemSheet(sheetName, items){
-      // items: [{Codigo, Grupo, Año, Destino, empresa, asunto, monedaOriginal, montoOriginal, fuente}]
       const aoa = [[
         'Codigo','Grupo','Año','Destino','Empresa','Asunto','Moneda','MontoOriginal','USD','CLP','Fuente'
       ]];
@@ -979,7 +1004,7 @@ function exportXLSX(rows){
 
       const ws = XLSX.utils.aoa_to_sheet(aoa);
 
-      // fórmulas en columnas I (USD) y J (CLP), desde fila 2
+      // fórmulas en I (USD) y J (CLP) desde fila 2
       for (let r=2; r<=aoa.length; r++){
         ws[`I${r}`] = { t:'n', f: usdFormula(r) };
         ws[`J${r}`] = { t:'n', f: clpFormula(r) };
@@ -994,7 +1019,7 @@ function exportXLSX(rows){
     }
 
     /* ==========================================
-       1) Construir DETALLES por ítem (global)
+       3) Construir DETALLES por ítem (global)
        ========================================== */
     const all = {
       AEREOS: [],
@@ -1011,7 +1036,7 @@ function exportXLSX(rows){
       const base = { Codigo:r.Codigo, Grupo:r.Grupo, 'Año':r['Año'], Destino:r.Destino };
 
       const pushMany = (arr, dets=[]) => {
-        for (const d of dets){
+        for (const d of (dets || [])){
           arr.push({
             ...base,
             empresa: d.empresa,
@@ -1034,7 +1059,7 @@ function exportXLSX(rows){
     }
 
     /* ==========================================
-       2) Crear hojas por ítem
+       4) Hojas por ítem (cada una un item)
        ========================================== */
     addItemSheet('Aereos', all.AEREOS);
     addItemSheet('Terrestres', all.TERRESTRES);
@@ -1046,52 +1071,12 @@ function exportXLSX(rows){
     addItemSheet('Seguro', all.SEGURO);
 
     /* ===================================================
-       3) Hoja 1 (PRINCIPAL) — alimentada por fórmulas
+       5) Fórmulas en "Costos" para alimentarse desde ítems
        =================================================== */
-    const header = [
-      'Codigo','Grupo','Año','Destino','PAX (paxReales - paxLiberados)','Fechas','Cantidad Noches',
-      'Aéreo/s','Valor Aéreo (CLP)',
-      'Terrestre/s','Moneda Terrestre','Valor Terrestre (USD)','Valor Terrestre (CLP)',
-      'Hotel/es','Moneda Hotel','Valor Hotel (USD)','Valor Hotel (CLP)',
-      'Moneda Actividades ','Actividades (USD)','Actividades (CLP)',
-      'Comidas','Moneda Comidas','Valor Comidas (USD)','Valor Comidas (CLP)',
-      'CoordInador(a)','Valor Coordinador/a CLP','Gastos aprob (CLP)',
-      'Seguro ','Valor Seguro (USD)',
-      'TOTAL USD','TOTAL CLP'
-    ];
-
-    const aoaMain = [header];
-    for (const r of (rows || [])){
-      aoaMain.push(header.map(h => (r[h] ?? '')));
-    }
-
-    const wsMain = XLSX.utils.aoa_to_sheet(aoaMain);
-
-    // Fórmulas “desde hojas de ítem”:
-    // Usamos SUMIF por Codigo (col A de hoja item) sumando:
-    // - CLP = col J
-    // - USD = col I
-    // Nota: SUMIF con rango completo es válido en Excel.
     const sumifCLP = (sheet, row) => `=SUMIF(${sheet}!$A:$A,$A${row},${sheet}!$J:$J)`;
     const sumifUSD = (sheet, row) => `=SUMIF(${sheet}!$A:$A,$A${row},${sheet}!$I:$I)`;
 
     for (let i=2; i<=aoaMain.length; i++){
-      // Columnas Hoja 1:
-      // I: Valor Aéreo (CLP)
-      // L: Valor Terrestre (USD)
-      // M: Valor Terrestre (CLP)
-      // P: Valor Hotel (USD)
-      // Q: Valor Hotel (CLP)
-      // S: Actividades (USD)
-      // T: Actividades (CLP)
-      // W: Valor Comidas (USD)
-      // X: Valor Comidas (CLP)
-      // Z: Valor Coordinador/a CLP
-      // AA: Gastos aprob (CLP)
-      // AC: Valor Seguro (USD)
-      // AD: TOTAL USD
-      // AE: TOTAL CLP
-
       wsMain[`I${i}`]  = { t:'n', f: sumifCLP('Aereos', i) };
 
       wsMain[`L${i}`]  = { t:'n', f: sumifUSD('Terrestres', i) };
@@ -1111,7 +1096,6 @@ function exportXLSX(rows){
 
       wsMain[`AC${i}`] = { t:'n', f: sumifUSD('Seguro', i) };
 
-      // Totales principales (siguen tu lógica):
       const totalUsdFormula =
         `=(I${i}/FX!$B$2)+L${i}+(M${i}/FX!$B$2)+P${i}+(Q${i}/FX!$B$2)+S${i}+(T${i}/FX!$B$2)+W${i}+(X${i}/FX!$B$2)+AC${i}`;
 
@@ -1122,12 +1106,12 @@ function exportXLSX(rows){
       wsMain[`AE${i}`] = { t:'n', f: totalClpFormula };
     }
 
+    // Anchos en Costos
     wsMain['!cols'] = header.map(h => ({ wch: Math.max(10, Math.min(35, (h||'').length + 2)) }));
-    const wb = XLSX.utils.book_new();
-    
-    // 👇 PRIMERA HOJA: COSTOS (PRINCIPAL)
-    XLSX.utils.book_append_sheet(wb, wsMain, 'Costos');
 
+    /* ==========================
+       6) Exporta archivo
+       ========================== */
     const fecha = new Date().toISOString().slice(0,10);
     XLSX.writeFile(wb, `Planilla_Costos_${fecha}.xlsx`);
 
@@ -1136,8 +1120,6 @@ function exportXLSX(rows){
     alert('No se pudo exportar: ' + (e?.message || e));
   }
 }
-
-
 
 /* =========================================================
    9) Boot + filtros
