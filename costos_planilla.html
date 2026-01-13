@@ -436,17 +436,17 @@
     // Intento #1: cdnjs
     (function(){
       const s = document.createElement('script');
-      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js';
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
       s.async = true;
       s.onerror = () => {
         // Intento #2: jsdelivr
         const s2 = document.createElement('script');
-        s2.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js';
+        s2.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
         s2.async = true;
         s2.onerror = () => {
           // Intento #3: unpkg
           const s3 = document.createElement('script');
-          s3.src = 'https://unpkg.com/xlsx@0.19.3/dist/xlsx.full.min.js';
+          s3.src = 'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js';
           s3.async = true;
           document.head.appendChild(s3);
         };
