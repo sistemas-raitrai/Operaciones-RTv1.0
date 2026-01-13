@@ -1123,7 +1123,10 @@ function exportXLSX(rows){
     }
 
     wsMain['!cols'] = header.map(h => ({ wch: Math.max(10, Math.min(35, (h||'').length + 2)) }));
-    XLSX.utils.book_append_sheet(wb, wsMain, 'Hoja 1');
+    const wb = XLSX.utils.book_new();
+    
+    // 👇 PRIMERA HOJA: COSTOS (PRINCIPAL)
+    XLSX.utils.book_append_sheet(wb, wsMain, 'Costos');
 
     const fecha = new Date().toISOString().slice(0,10);
     XLSX.writeFile(wb, `Planilla_Costos_${fecha}.xlsx`);
