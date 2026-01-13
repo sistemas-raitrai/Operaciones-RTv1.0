@@ -7,204 +7,269 @@
 
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <link rel="stylesheet" href="estilos.css"/>
-
+  
   <style>
-    /* ==========================================================
-       🔥 CORTAFUEGOS: esta vista NO puede heredar layout global
-       ========================================================== */
-    body{
-      background:#f6f6f6;
-      padding:0 !important;
-      padding-top:90px !important; /* respeta header fijo */
-    }
-
-    .cp-scope{
-      font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif !important;
-      padding:16px 18px !important;
-      max-width:1600px !important;
-      margin:0 auto !important;
-    }
-
-    .cp-card{
-      background:#fff !important;
-      border:1px solid #e5e7eb !important;
-      border-radius:14px !important;
-      padding:16px 18px !important;
-      box-shadow:0 2px 10px rgba(0,0,0,.06) !important;
-      margin:0 0 14px 0 !important;
-    }
-
-    .cp-h1{ font-size:1.55rem !important; font-weight:950 !important; margin:0 0 4px !important; color:#111827 !important; }
-    .cp-muted{ color:#6b7280 !important; }
-
-    .cp-row{
-      display:flex !important;
-      gap:12px !important;
-      flex-wrap:wrap !important;
-      align-items:end !important;
-      margin-top:12px !important;
-    }
-    .cp-col{ flex:1 !important; min-width:220px !important; }
-    .cp-col.wide{ min-width:360px !important; }
-
-    .cp-scope label{
-      display:block !important;
-      font-weight:900 !important;
-      font-size:.78rem !important;
-      margin:0 !important;
-      text-transform:uppercase !important;
-      color:#374151 !important;
-    }
-    .cp-scope select,
-    .cp-scope input{
-      width:100% !important;
-      padding:10px 10px !important;
-      border:1px solid #e5e7eb !important;
-      border-radius:10px !important;
-      background:#fff !important;
-      box-sizing:border-box !important;
-      margin-top:6px !important;
-      text-transform:none !important;
-      font-size:.95rem !important;
-    }
-
-    .cp-btn{
-      cursor:pointer !important;
-      border:1px solid #e5e7eb !important;
-      background:#111827 !important;
-      color:#fff !important;
-      padding:10px 12px !important;
-      border-radius:10px !important;
-      font-weight:950 !important;
-      letter-spacing:.02em !important;
-      text-transform:uppercase !important;
-      width:100% !important;
-    }
-    .cp-btn:hover{ filter:brightness(.95) !important; }
-    .cp-btn.secondary{
-      background:#fff !important;
-      color:#111827 !important;
-    }
-    .cp-btn.excel{
-      background:#217346 !important;
-      border-color:#1e5e38 !important;
-    }
-
+  /* ==========================================================
+     🔥 CORTAFUEGOS: esta vista NO puede heredar layout global
+     ========================================================== */
+  body{
+    background:#f6f6f6 !important;
+    padding:0 !important;
+    padding-top:90px !important; /* respeta header fijo */
+  }
+  
+  /* =======================
+     SCOPE GENERAL
+     ======================= */
+  .cp-scope{
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif !important;
+    padding:16px 18px !important;
+    max-width:1600px !important;
+    margin:0 auto !important;
+  }
+  
+  .cp-card{
+    background:#fff !important;
+    border:1px solid #e5e7eb !important;
+    border-radius:14px !important;
+    padding:16px 18px !important;
+    box-shadow:0 2px 10px rgba(0,0,0,.06) !important;
+    margin:0 0 14px 0 !important;
+  }
+  
+  .cp-h1{
+    font-size:1.55rem !important;
+    font-weight:950 !important;
+    margin:0 0 4px !important;
+    color:#111827 !important;
+  }
+  .cp-muted{ color:#6b7280 !important; }
+  
+  /* =======================
+     FORM / CONTROLES
+     ======================= */
+  .cp-row{
+    display:flex !important;
+    gap:12px !important;
+    flex-wrap:wrap !important;
+    align-items:end !important;
+    margin-top:12px !important;
+  }
+  .cp-col{ flex:1 !important; min-width:220px !important; }
+  .cp-col.wide{ min-width:360px !important; }
+  
+  .cp-scope label{
+    display:block !important;
+    font-weight:900 !important;
+    font-size:.78rem !important;
+    text-transform:uppercase !important;
+    color:#374151 !important;
+  }
+  
+  .cp-scope select,
+  .cp-scope input{
+    width:100% !important;
+    padding:10px !important;
+    border:1px solid #e5e7eb !important;
+    border-radius:10px !important;
+    background:#fff !important;
+    margin-top:6px !important;
+    font-size:.95rem !important;
+  }
+  
+  /* =======================
+     BOTONES
+     ======================= */
+  .cp-btn{
+    cursor:pointer !important;
+    border:1px solid #e5e7eb !important;
+    background:#111827 !important;
+    color:#fff !important;
+    padding:10px 12px !important;
+    border-radius:10px !important;
+    font-weight:950 !important;
+    text-transform:uppercase !important;
+    width:100% !important;
+  }
+  .cp-btn:hover{ filter:brightness(.95) !important; }
+  .cp-btn.secondary{ background:#fff !important; color:#111827 !important; }
+  .cp-btn.excel{
+    background:#217346 !important;
+    border-color:#1e5e38 !important;
+  }
+  
+  /* =======================
+     KPIs
+     ======================= */
+  .cp-kpis{
+    display:grid !important;
+    grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+    gap:10px !important;
+    margin-top:10px !important;
+  }
+  .cp-kpi{
+    border:1px solid #e5e7eb !important;
+    border-radius:12px !important;
+    padding:10px 12px !important;
+  }
+  .cp-kpi .t{
+    font-size:.78rem !important;
+    color:#6b7280 !important;
+    font-weight:950 !important;
+    text-transform:uppercase !important;
+  }
+  .cp-kpi .v{
+    font-size:1.1rem !important;
+    font-weight:950 !important;
+    color:#111827 !important;
+  }
+  
+  /* =======================
+     TABLAS
+     ======================= */
+  .cp-tablewrap{
+    overflow:auto !important;
+    border:1px solid #e5e7eb !important;
+    border-radius:12px !important;
+    background:#fff !important;
+  }
+  
+  .cp-scope table{
+    width:100% !important;
+    border-collapse:collapse !important;
+    font-size:.92rem !important;
+  }
+  
+  .cp-scope th,
+  .cp-scope td{
+    border-bottom:1px solid #f1f5f9 !important;
+    padding:10px !important;
+    white-space:nowrap !important;
+  }
+  
+  .cp-scope th{
+    position:sticky !important;
+    top:0 !important;
+    background:#fafafa !important;
+    z-index:2 !important;
+    font-size:.78rem !important;
+    font-weight:950 !important;
+    text-transform:uppercase !important;
+  }
+  
+  .cp-right{
+    text-align:right !important;
+    font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;
+  }
+  
+  .cp-link{
+    cursor:pointer !important;
+    text-decoration:underline !important;
+    font-weight:950 !important;
+  }
+  
+  /* =======================
+     MODAL (FIX DEFINITIVO)
+     ======================= */
+  .cp-modal-backdrop{
+    position:fixed !important;
+    inset:0 !important;
+    background:rgba(0,0,0,.45) !important;
+    display:none;
+    align-items:center !important;
+    justify-content:center !important;
+    padding:14px !important;
+    z-index:9999 !important;
+  }
+  
+  .cp-modal{
+    width:min(1150px,96vw) !important;
+    max-height:88vh !important;
+    background:#fff !important;
+    border-radius:14px !important;
+    border:1px solid #e5e7eb !important;
+    box-shadow:0 20px 60px rgba(0,0,0,.25) !important;
+    display:flex !important;
+    flex-direction:column !important;
+    overflow:hidden !important;
+  }
+  
+  /* Header fijo */
+  .cp-modal-head{
+    flex:0 0 auto !important;
+    background:#fff !important;
+    border-bottom:1px solid #e5e7eb !important;
+    padding:12px 14px !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:space-between !important;
+  }
+  
+  .cp-modal-title{
+    font-weight:950 !important;
+    color:#111827 !important;
+  }
+  
+  /* Botón cerrar visible SIEMPRE */
+  .cp-x{
+    border:1px solid #e5e7eb !important;
+    background:#fff !important;
+    color:#111827 !important;
+    border-radius:10px !important;
+    padding:8px 10px !important;
+    cursor:pointer !important;
+    font-weight:950 !important;
+    line-height:1 !important;
+  }
+  .cp-x:hover{ background:#f3f4f6 !important; }
+  
+  /* Body scrolleable */
+  .cp-modal-body{
+    flex:1 1 auto !important;
+    overflow:auto !important;
+    padding:12px 14px !important;
+  }
+  
+  /* Tabla dentro del modal */
+  .cp-modal-body .cp-tablewrap{
+    overflow:auto !important;
+    border:1px solid #e5e7eb !important;
+    border-radius:12px !important;
+  }
+  
+  .cp-modal-body table{
+    width:max-content !important;
+    min-width:100% !important;
+    border-collapse:collapse !important;
+  }
+  
+  .cp-modal-body th,
+  .cp-modal-body td{
+    padding:10px !important;
+    border-bottom:1px solid #f1f5f9 !important;
+    white-space:nowrap !important;
+  }
+  
+  .cp-modal-body th{
+    position:sticky !important;
+    top:0 !important;
+    background:#fafafa !important;
+    z-index:2 !important;
+    font-size:.78rem !important;
+    font-weight:950 !important;
+    text-transform:uppercase !important;
+  }
+  
+  /* =======================
+     RESPONSIVE
+     ======================= */
+  @media (max-width:900px){
     .cp-kpis{
-      display:grid !important;
-      grid-template-columns:repeat(4,minmax(0,1fr)) !important;
-      gap:10px !important;
-      margin-top:10px !important;
+      grid-template-columns:repeat(2,minmax(0,1fr)) !important;
     }
-    .cp-kpi{
-      border:1px solid #e5e7eb !important;
-      border-radius:12px !important;
-      padding:10px 12px !important;
-      background:#fff !important;
-    }
-    .cp-kpi .t{
-      font-size:.78rem !important;
-      color:#6b7280 !important;
-      font-weight:950 !important;
-      text-transform:uppercase !important;
-    }
-    .cp-kpi .v{
-      font-size:1.1rem !important;
-      font-weight:950 !important;
-      margin-top:2px !important;
-      color:#111827 !important;
-    }
-
-    .cp-tablewrap{
-      overflow:auto !important;
-      border:1px solid #e5e7eb !important;
-      border-radius:12px !important;
-      background:#fff !important;
-    }
-    .cp-scope table{
-      width:100% !important;
-      border-collapse:collapse !important;
-      background:#fff !important;
-      font-size:.92rem !important;
-    }
-    .cp-scope th,
-    .cp-scope td{
-      border-bottom:1px solid #f1f5f9 !important;
-      padding:10px 10px !important;
-      vertical-align:top !important;
-      white-space:nowrap !important;
-    }
-    .cp-scope th{
-      position:sticky !important;
-      top:0 !important;
-      z-index:2 !important;
-      background:#fafafa !important;
-      text-align:left !important;
-      font-size:.78rem !important;
-      font-weight:950 !important;
-      text-transform:uppercase !important;
-    }
-    .cp-right{ text-align:right !important; font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace; }
-
-    /* Celdas clickeables (detalle) */
-    .cp-link{
-      cursor:pointer !important;
-      text-decoration:underline !important;
-      text-underline-offset:2px !important;
-      font-weight:950 !important;
-    }
-    .cp-link:hover{ filter:brightness(.9) !important; }
-
-    /* Modal */
-    .cp-modal-backdrop{
-      position:fixed; inset:0;
-      background:rgba(0,0,0,.45);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      padding:14px;
-      z-index:9999;
-    }
-    .cp-modal{
-      width:min(1100px, 96vw);
-      max-height:88vh;
-      overflow:auto;
-      background:#fff;
-      border-radius:14px;
-      border:1px solid #e5e7eb;
-      box-shadow:0 20px 60px rgba(0,0,0,.25);
-    }
-    .cp-modal-head{
-      position:sticky; top:0; z-index:2;
-      background:#fff;
-      border-bottom:1px solid #e5e7eb;
-      padding:12px 14px;
-      display:flex;
-      gap:10px;
-      align-items:center;
-      justify-content:space-between;
-    }
-    .cp-modal-title{ font-weight:950; color:#111827; }
-    .cp-x{
-      border:1px solid #e5e7eb;
-      background:#fff;
-      border-radius:10px;
-      padding:8px 10px;
-      cursor:pointer;
-      font-weight:950;
-    }
-    .cp-x:hover{ background:#f3f4f6; }
-    .cp-modal-body{ padding:12px 14px; }
-    .cp-modal-body table{ width:100%; border-collapse:collapse; }
-    .cp-modal-body th, .cp-modal-body td{
-      padding:10px; border-bottom:1px solid #f1f5f9; white-space:nowrap;
-    }
-    .cp-modal-body th{ font-size:.78rem; text-transform:uppercase; background:#fafafa; position:sticky; top:54px; z-index:1; }
-
-    @media (max-width: 900px){
-      .cp-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
-    }
+  }
   </style>
+
 </head>
 
 <body>
