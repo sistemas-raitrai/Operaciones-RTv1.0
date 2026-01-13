@@ -1,149 +1,347 @@
-<!-- costos_master.html -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Costos Master (Principal + Detalles) | RT</title>
+  <title>Costos Master | RT</title>
 
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
   <link rel="stylesheet" href="estilos.css"/>
 
-  <!-- 🔥 CORTAFUEGOS (igual que tus vistas) -->
   <style>
-    body{ background:#f6f6f6; padding:0 !important; padding-top:90px !important; }
-    .cm-scope{ font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif !important; padding:16px 18px !important; max-width:1600px !important; margin:0 auto !important; }
-    .cm-card{ background:#fff !important; border:1px solid #e5e7eb !important; border-radius:14px !important; padding:16px 18px !important; box-shadow:0 2px 10px rgba(0,0,0,.06) !important; margin:0 0 14px 0 !important; }
-    .cm-h1{ font-size:1.55rem !important; font-weight:950 !important; margin:0 0 4px !important; color:#111827 !important; }
-    .cm-muted{ color:#6b7280 !important; }
-    .cm-row{ display:flex !important; gap:12px !important; flex-wrap:wrap !important; align-items:end !important; margin-top:12px !important; }
-    .cm-col{ flex:1 !important; min-width:220px !important; }
-    .cm-col.wide{ min-width:360px !important; }
-    .cm-scope label{ display:block !important; font-weight:900 !important; font-size:.82rem !important; margin:0 !important; text-transform:uppercase !important; color:#374151 !important; }
-    .cm-scope input, .cm-scope select{
-      width:100% !important; padding:10px 10px !important; border:1px solid #e5e7eb !important; border-radius:10px !important;
-      background:#fff !important; box-sizing:border-box !important; margin-top:6px !important; text-transform:none !important; font-size:.95rem !important;
+    /* ==========================================================
+       🔥 CORTAFUEGOS: misma estética que tus costos.html
+       ========================================================== */
+    body{
+      background:#f6f6f6;
+      padding: 0 !important;
+      padding-top: 90px !important; /* header fijo */
     }
-    .cm-btn{
-      cursor:pointer !important; border:1px solid #e5e7eb !important; background:#111827 !important; color:#fff !important;
-      padding:10px 12px !important; border-radius:10px !important; font-weight:950 !important; letter-spacing:.02em !important; text-transform:uppercase !important; width:100% !important;
-    }
-    .cm-btn:hover{ filter:brightness(.95) !important; }
-    .cm-btn.secondary{ background:#fff !important; color:#111827 !important; }
-    .cm-btn.excel{ background:#217346 !important; border-color:#1e5e38 !important; }
 
-    .cm-tabs{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
-    .cm-tab{
+    .cg-scope{
+      font-family: system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif !important;
+      padding:16px 18px !important;
+      max-width:1500px !important;
+      margin:0 auto !important;
+    }
+
+    .cg-card{
+      background:#fff !important;
+      border:1px solid #e5e7eb !important;
+      border-radius:14px !important;
+      padding:16px 18px !important;
+      box-shadow:0 2px 10px rgba(0,0,0,.06) !important;
+      margin:0 0 14px 0 !important;
+      width:auto !important;
+      text-align:left !important;
+    }
+
+    .cg-h1{ font-size:1.55rem !important; font-weight:900 !important; margin:0 0 4px !important; color:#111827 !important; }
+    .cg-muted{ color:#6b7280 !important; }
+
+    .cg-row{
+      display:flex !important;
+      gap:12px !important;
+      flex-wrap:wrap !important;
+      align-items:end !important;
+      margin-top:12px !important;
+    }
+
+    .cg-col{ flex:1 !important; min-width:220px !important; }
+    .cg-col.wide{ min-width:360px !important; }
+
+    .cg-scope label{
+      display:block !important;
+      font-weight:800 !important;
+      font-size:.85rem !important;
+      margin:0 !important;
+      text-transform:uppercase !important;
+      color:#374151 !important;
+    }
+    .cg-scope select,
+    .cg-scope input{
+      width:100% !important;
+      padding:10px 10px !important;
+      border:1px solid #e5e7eb !important;
+      border-radius:10px !important;
+      background:#fff !important;
+      box-sizing:border-box !important;
+      margin-top:6px !important;
+      text-transform:none !important;
+      font-size:.95rem !important;
+    }
+
+    .cg-btn{
+      cursor:pointer !important;
+      border:1px solid #e5e7eb !important;
+      background:#111827 !important;
+      color:#fff !important;
+      padding:10px 12px !important;
+      border-radius:10px !important;
+      font-weight:900 !important;
+      letter-spacing:.02em !important;
+      text-transform:uppercase !important;
+      width:100% !important;
+    }
+    .cg-btn:hover{ filter:brightness(.95) !important; }
+    .cg-btn.secondary{ background:#fff !important; color:#111827 !important; }
+    .cg-btn.excel{ background:#217346 !important; border-color:#1e5e38 !important; }
+
+    .cg-tablewrap{
+      overflow:auto !important;
+      border:1px solid #e5e7eb !important;
+      border-radius:12px !important;
+      background:#fff !important;
+    }
+    .cg-scope table{
+      width:100% !important;
+      border-collapse:collapse !important;
+      background:#fff !important;
+    }
+    .cg-scope th,
+    .cg-scope td{
+      border-bottom:1px solid #f1f5f9 !important;
+      padding:10px 10px !important;
+      vertical-align:top !important;
+      white-space:nowrap !important;
+    }
+    .cg-scope th{
+      position:sticky !important;
+      top:0 !important;
+      z-index:2 !important;
+      background:#fafafa !important;
+      text-align:left !important;
+      font-size:.85rem !important;
+      font-weight:950 !important;
+      text-transform:uppercase !important;
+    }
+    .cg-right{ text-align:right !important; font-family: ui-monospace, Menlo, Consolas, "Courier New", monospace; }
+
+    /* Links de detalle (click en monto) */
+    .cg-link{
+      color:#0b57d0 !important;
+      font-weight:950 !important;
+      cursor:pointer !important;
+      text-decoration:underline !important;
+    }
+    .cg-link:hover{ filter:brightness(.9) !important; }
+
+    /* Tabs simples (detalle global) */
+    .cg-tabs{ display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .cg-tab{
       border:1px solid #e5e7eb; background:#fff; color:#111827; border-radius:999px;
       padding:8px 12px; font-weight:900; cursor:pointer; text-transform:uppercase; font-size:.82rem;
     }
-    .cm-tab.active{ background:#111827; color:#fff; border-color:#111827; }
-    .cm-pane{ display:none; }
-    .cm-pane.active{ display:block; }
+    .cg-tab.active{ background:#111827; color:#fff; border-color:#111827; }
 
-    .cm-tablewrap{ overflow:auto !important; border:1px solid #e5e7eb !important; border-radius:12px !important; background:#fff !important; }
-    .cm-scope table{ width:100% !important; border-collapse:collapse !important; background:#fff !important; }
-    .cm-scope th, .cm-scope td{
-      border-bottom:1px solid #f1f5f9 !important; padding:10px 10px !important; vertical-align:top !important; white-space:nowrap !important;
+    .cg-pane{ display:none; }
+    .cg-pane.active{ display:block; }
+
+    /* Modal detalle */
+    .cg-modal-backdrop{
+      position:fixed; inset:0; background:rgba(0,0,0,.45);
+      display:none; align-items:center; justify-content:center;
+      z-index:9999;
+      padding:18px;
     }
-    .cm-scope th{
-      position:sticky !important; top:0 !important; z-index:2 !important; background:#fafafa !important;
-      text-align:left !important; font-size:.82rem !important; font-weight:950 !important; text-transform:uppercase !important;
+    .cg-modal{
+      width:min(1200px, 100%);
+      background:#fff;
+      border:1px solid #e5e7eb;
+      border-radius:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.25);
+      overflow:hidden;
     }
-    .cm-right{ text-align:right !important; font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace; }
+    .cg-modal-head{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:12px 14px; border-bottom:1px solid #e5e7eb;
+      background:#fafafa;
+    }
+    .cg-modal-title{ font-weight:950; color:#111827; }
+    .cg-modal-close{
+      border:1px solid #e5e7eb; background:#fff; color:#111827;
+      border-radius:10px; padding:8px 10px; cursor:pointer; font-weight:950;
+      text-transform:uppercase;
+    }
+    .cg-modal-body{ padding:14px; }
+    .cg-pill{
+      display:inline-block; padding:6px 10px; border-radius:999px;
+      border:1px solid #e5e7eb; font-weight:950; font-size:.78rem;
+      background:#fff; color:#111827; text-transform:uppercase;
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
+    <!-- SIDEBAR (inyectado) -->
     <div id="sidebar-slot"></div>
 
     <main class="main">
-      <div class="cm-scope">
+      <div class="cg-scope">
 
-        <div class="cm-card">
-          <div class="cm-h1">Costos Master</div>
-          <div class="cm-muted" id="who">—</div>
+        <div class="cg-card">
+          <div class="cg-h1">Costos Master</div>
+          <div class="cg-muted" id="who">—</div>
 
-          <div class="cm-row">
-            <div class="cm-col">
-              <label for="filtroDestino">Destino (filtra grupos)</label>
-              <select id="filtroDestino"><option value="*">TODOS</option></select>
+          <div class="cg-row">
+            <div class="cg-col">
+              <label for="filtroDestino">DESTINO (para filtrar grupos)</label>
+              <select id="filtroDestino">
+                <option value="*">TODOS</option>
+              </select>
             </div>
 
-            <div class="cm-col wide">
-              <label for="selGrupo">Grupo (opcional: si quieres ver 1)</label>
-              <select id="selGrupo"><option value="">— Todos los grupos filtrados —</option></select>
+            <div class="cg-col wide">
+              <label for="selGrupo">GRUPO (opcional)</label>
+              <select id="selGrupo">
+                <option value="">— TODOS LOS GRUPOS FILTRADOS —</option>
+              </select>
             </div>
 
-            <div class="cm-col">
-              <label for="fechaDesde">Fecha desde</label>
+            <div class="cg-col">
+              <label for="fechaDesde">FECHA DESDE</label>
               <input type="date" id="fechaDesde" />
             </div>
-            <div class="cm-col">
-              <label for="fechaHasta">Fecha hasta</label>
+
+            <div class="cg-col">
+              <label for="fechaHasta">FECHA HASTA</label>
               <input type="date" id="fechaHasta" />
             </div>
 
-            <div class="cm-col">
+            <!-- FX: USD por 1 unidad -->
+            <div class="cg-col">
               <label for="fxCLP">FX: USD por 1 CLP</label>
               <input type="number" id="fxCLP" step="0.00000001" placeholder="ej: 0.00105" />
             </div>
-            <div class="cm-col">
+            <div class="cg-col">
               <label for="fxBRL">FX: USD por 1 BRL</label>
               <input type="number" id="fxBRL" step="0.00000001" placeholder="ej: 0.20" />
             </div>
-            <div class="cm-col">
+            <div class="cg-col">
               <label for="fxARS">FX: USD por 1 ARS</label>
               <input type="number" id="fxARS" step="0.00000001" placeholder="ej: 0.0010" />
             </div>
 
-            <div class="cm-col" style="min-width:220px;">
-              <button class="cm-btn" id="btnCalcular">Calcular</button>
+            <div class="cg-col" style="min-width:220px;">
+              <button class="cg-btn" id="btnCalcular">CALCULAR</button>
             </div>
-            <div class="cm-col" style="min-width:220px;">
-              <button class="cm-btn excel" id="btnExportXLSX">Exportar XLSX (con fórmulas)</button>
+
+            <div class="cg-col" style="min-width:220px;">
+              <button class="cg-btn excel" id="btnExportXLSX">EXPORTAR XLSX (FÓRMULAS)</button>
             </div>
           </div>
 
-          <div class="cm-muted" style="margin-top:10px;" id="log">—</div>
+          <div style="margin-top:10px;" class="cg-muted" id="log">—</div>
         </div>
 
-        <div class="cm-card">
-          <div style="font-weight:950; color:#111827;">PRINCIPAL (resumen por grupo)</div>
-          <div class="cm-muted">Moneda base: Chile→CLP, Exterior→USD, Compuesto→CLP+USD y total consolidado en USD.</div>
+        <div class="cg-card">
+          <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <div style="flex:1;">
+              <div style="font-weight:950; color:#111827;">Hoja Principal (en pantalla)</div>
+              <div class="cg-muted">Haz click en un monto de un ítem para ver el detalle del ítem para ese grupo.</div>
+            </div>
+            <div class="cg-muted">
+              <span class="cg-pill">DETALLE POR ÍTEM</span>
+            </div>
+          </div>
 
-          <div class="cm-tablewrap" style="margin-top:10px;">
+          <div class="cg-tablewrap" style="margin-top:12px;">
             <table id="tblPrincipal">
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>GID</th>
-                  <th>Código</th>
+                  <!-- EXACTO como tu CSV -->
+                  <th>Codigo</th>
                   <th>Grupo</th>
+                  <th>Año</th>
                   <th>Destino</th>
-                  <th>Tipo</th>
-                  <th class="cm-right">PAX Contable</th>
-                  <th class="cm-right">Actividades CLP</th>
-                  <th class="cm-right">Actividades USD</th>
-                  <th class="cm-right">Gastos CLP</th>
-                  <th class="cm-right">Gastos USD</th>
-                  <th class="cm-right">TOTAL CLP (Chile)</th>
-                  <th class="cm-right">TOTAL USD (Exterior)</th>
-                  <th class="cm-right">TOTAL USD CONSOLIDADO</th>
+                  <th class="cg-right">PAX (paxReales - paxLiberados)</th>
+                  <th>Fechas</th>
+                  <th class="cg-right">Cantidad Noches</th>
+
+                  <th>Aéreo/s</th>
+                  <th class="cg-right">Valor Aéreo (CLP)</th>
+
+                  <th>Terrestre/s</th>
+                  <th>Moneda Terrestre</th>
+                  <th class="cg-right">Valor Terrestre (USD)</th>
+                  <th class="cg-right">Valor Terrestre (CLP)</th>
+
+                  <th>Hotel/es</th>
+                  <th>Moneda Hotel</th>
+                  <th class="cg-right">Valor Hotel (USD)</th>
+                  <th class="cg-right">Valor Hotel (CLP)</th>
+
+                  <th>Moneda Actividades</th>
+                  <th class="cg-right">Actividades (USD)</th>
+                  <th class="cg-right">Actividades (CLP)</th>
+
+                  <th>Comidas</th>
+                  <th>Moneda Comidas</th>
+                  <th class="cg-right">Valor Comidas (USD)</th>
+                  <th class="cg-right">Valor Comidas (CLP)</th>
+
+                  <th>CoordInador(a)</th>
+                  <th class="cg-right">Valor Coordinador/a CLP</th>
+
+                  <th class="cg-right">Gastos aprob (CLP)</th>
+
+                  <th>Seguro</th>
+                  <th class="cg-right">Valor Seguro (USD)</th>
+
+                  <th class="cg-right">TOTAL USD</th>
+                  <th class="cg-right">TOTAL CLP</th>
                 </tr>
               </thead>
               <tbody></tbody>
             </table>
           </div>
 
-          <div class="cm-tabs" id="tabs"></div>
-
+          <div class="cg-tabs" id="tabs"></div>
           <div id="panes"></div>
         </div>
 
       </div>
     </main>
+  </div>
+
+  <!-- MODAL DETALLE -->
+  <div class="cg-modal-backdrop" id="modalBackdrop" aria-hidden="true">
+    <div class="cg-modal" role="dialog" aria-modal="true">
+      <div class="cg-modal-head">
+        <div class="cg-modal-title" id="modalTitle">Detalle</div>
+        <button class="cg-modal-close" id="modalClose">Cerrar</button>
+      </div>
+      <div class="cg-modal-body">
+        <div class="cg-muted" id="modalSub">—</div>
+
+        <div class="cg-tablewrap" style="margin-top:12px;">
+          <table id="tblModal">
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Asunto</th>
+                <th>Moneda</th>
+                <th class="cg-right">Cantidad</th>
+                <th class="cg-right">Monto Original</th>
+                <th class="cg-right">Monto USD</th>
+                <th class="cg-right">Monto CLP</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+            <tfoot>
+              <tr>
+                <th colspan="4" class="cg-right">TOTAL</th>
+                <th class="cg-right" id="modalTotOrig">—</th>
+                <th class="cg-right" id="modalTotUSD">—</th>
+                <th class="cg-right" id="modalTotCLP">—</th>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+      </div>
+    </div>
   </div>
 
   <!-- Sidebar común -->
@@ -152,7 +350,7 @@
     await loadSidebar({ active: 'costos_master' });
   </script>
 
-  <!-- SheetJS para export XLSX con fórmulas -->
+  <!-- SheetJS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js"></script>
 
   <script type="module" src="costos_master.js"></script>
