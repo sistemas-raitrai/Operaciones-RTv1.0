@@ -884,12 +884,44 @@ function round2(x){
 }
 
 /* =========================================================
+  7/8) funcion helper
+   ========================================================= */
+async function ensureXLSXLoaded(){
+  if (window.XLSX) return true;
+
+  const urls = [
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.19.3/xlsx.full.min.js',
+    'https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js',
+    'https://unpkg.com/xlsx@0.19.3/dist/xlsx.full.min.js',
+  ];
+
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve(true);
+    s.onerror = () => reject(new Error('Falló carga: ' + src));
+    document.head.appendChild(s);
+  });
+
+  // intenta en serie
+  for (const u of urls){
+    try{
+      await loadScript(u);
+      if (window.XLSX) return true;
+    }catch(_){}
+  }
+  return false;
+}
+
+
+/* =========================================================
    8) Export XLSX con fórmulas (Hoja 1 + FX)
    ========================================================= */
 async function exportXLSX(rows){
   try{
     // ✅ Asegura XLSX (si el <script> del HTML no cargó por CSP/adblock, lo reintenta)
-    const ok = await ensureXLSX();
+    const ok = await ensureXLSXLoaded();
     if (!ok) throw new Error('XLSX no cargado (CDN bloqueado o falló la carga)');
 
     const XLSX = window.XLSX; // ✅ usa el global real
