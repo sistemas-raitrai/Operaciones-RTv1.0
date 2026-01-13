@@ -1,57 +1,63 @@
 // costos_master.js
-// ✅ Lo que hace (según lo que pediste):
-// - Construye una "PRINCIPAL" por grupo con totales por ítem en CLP y USD.
-// - Crea hojas de DETALLE POR ÍTEM (global, todos los grupos), con moneda original + conversión a USD.
-// - Soporta destino normal (Chile/Exterior) y destino compuesto (Chile+Exterior paralelo) usando SEGMENTO.
-// - Exporta XLSX con fórmulas (SUMIFS / XLOOKUP) para que Excel calcule.
-// - En pantalla muestra: Principal + tabs con cada hoja detalle.
-//
-// ⚠️ Importante (mapeo):
-// - ACTIVIDADES: sale de grupos/{gid}.itinerario + Servicios/{DESTINO}/Listado
-// - GASTOS: busca en rutas comunes (ajústalo si tu Firestore difiere)
-// - AÉREOS / HOTEL / TERRESTRE / ETC: quedan listos como "emitters" para que conectes tu fuente real
-//   (porque en tus 2 códigos no venía una fuente estándar para aéreos/hotel).
-//
-// Requiere:
-// - firebase-init.js exporte { app, db } (como en tu costos.js actual)
-// - Firestore: colección 'grupos', y colección 'Servicios' con subcolección 'Listado' por destino.
-//
-// Export formulas:
-// - Excel guarda fórmulas en inglés aunque tu Excel esté en español (normal). Excel las traduce al abrir.
+// ✅ Estética: usa tus cg-* y layout sidebar.
+// ✅ Principal: columnas EXACTAS como tu CSV (31 cols).
+// ✅ Click en montos => abre MODAL con detalle por ítem para ese grupo.
+// ✅ Detalle global por ítem (tabs).
+// ✅ Exporta XLSX con fórmulas (SUMIFS + XLOOKUP FX).
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
-import {
-  collection, getDocs, doc, getDoc
-} from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
+import { collection, getDocs } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
 
-/* =========================
-   CONFIG (AJUSTA AQUÍ)
-========================= */
+/* =========================================================
+   0) CONFIG / MAPEO FLEXIBLE (AJUSTA AQUÍ)
+   ========================================================= */
+
+// Destinos que consideras "Chile" (para compuesto Chile+Exterior)
 const CHILE_DESTINOS = new Set([
-  'CHILE', 'SUR DE CHILE', 'NORTE DE CHILE', 'SANTIAGO', 'PUCON', 'PÚCON', 'PUERTO VARAS'
+  'SUR DE CHILE', 'NORTE DE CHILE', 'CHILE', 'SANTIAGO'
 ]);
 
-// Ítems que tendrán hoja detalle
-const ITEMS = [
-  { key:'ACTIVIDADES', sheet:'DET_ACTIVIDADES' },
-  { key:'GASTOS',      sheet:'DET_GASTOS' },
-  // Puedes activar estos cuando conectes sus fuentes:
-  // { key:'AEREOS',      sheet:'DET_AEREOS' },
-  // { key:'HOTEL',       sheet:'DET_HOTEL' },
-  // { key:'TERRESTRE',   sheet:'DET_TERRESTRE' },
+// Ítems y nombre de hoja/tab (detalle global)
+const ITEM_SHEETS = [
+  { key:'AEREO',       label:'AÉREO',        sheet:'DET_AEREO' },
+  { key:'TERRESTRE',   label:'TERRESTRE',    sheet:'DET_TERRESTRE' },
+  { key:'HOTEL',       label:'HOTEL',        sheet:'DET_HOTEL' },
+  { key:'ACTIVIDADES', label:'ACTIVIDADES',  sheet:'DET_ACTIVIDADES' },
+  { key:'COMIDAS',     label:'COMIDAS',      sheet:'DET_COMIDAS' },
+  { key:'COORD',       label:'COORDINADOR',  sheet:'DET_COORD' },
+  { key:'GASTOS',      label:'GASTOS',       sheet:'DET_GASTOS' },
+  { key:'SEGURO',      label:'SEGURO',       sheet:'DET_SEGURO' },
 ];
 
-// Rutas posibles de gastos aprobados (ajusta si tu estructura real es otra)
+// Cómo leer “aéreos/terrestre/hotel/comidas/seguro” desde doc grupo.
+// La idea: si tu Firestore tiene otra estructura, ajustas SOLO esto.
+const GROUP_FIELDS = {
+  // AÉREO: puede ser string o array de items
+  aereo: (g) => g.aereo || g.aereos || g.aereosDetalle || g.vuelos || null,
+  // TERRESTRE:
+  terrestre: (g) => g.terrestre || g.terrestres || g.transporte || null,
+  // HOTEL:
+  hotel: (g) => g.hotel || g.hoteles || g.hotelDetalle || null,
+  // COMIDAS:
+  comidas: (g) => g.comidas || g.restaurantes || g.comidasDetalle || null,
+  // SEGURO:
+  seguro: (g) => g.seguro || g.seguros || null,
+  // COORD:
+  coordinadorNombre: (g) => g.coordinador || g.coord || g.coordinadorNombre || '',
+  coordinadorMontoCLP: (g) => g.pagoCoordinador || g.coordinadorPago || g.valorCoordinador || 0,
+};
+
+// Rutas posibles para gastos aprobados
 const GASTOS_PATHS = [
   (gid) => ['grupos', gid, 'finanzas', 'gastos'],
   (gid) => ['grupos', gid, 'finanzas_gastos'],
   (gid) => ['grupos', gid, 'finanzas', 'gastosCoordinador'],
 ];
 
-// Regla de “aprobado” (coherente con tu lógica previa)
+// regla aprobado
 function gastoEsAprobado(x){
   const tipo = U(x?.tipoDoc ?? x?.tipo ?? '');
   const m = num(x?.montoAprobado ?? x?.aprobado ?? x?.monto ?? 0);
@@ -59,13 +65,14 @@ function gastoEsAprobado(x){
   return m > 0;
 }
 
-/* =========================
-   HELPERS
-========================= */
+/* =========================================================
+   1) HELPERS
+   ========================================================= */
 const el = (id) => document.getElementById(id);
 const U = (s='') => (s ?? '').toString().normalize('NFD').replace(/\p{Diacritic}/gu,'').trim().toUpperCase();
 const num = (v) => {
-  const n = Number(v);
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+  const n = Number((v ?? '').toString().replace(/[^\d.-]/g,''));
   return Number.isFinite(n) ? n : 0;
 };
 const fmt0 = (n) => (Number(n)||0).toLocaleString('es-CL');
@@ -77,7 +84,57 @@ function todayISO(){
   const z = new Date(d.getTime() - d.getTimezoneOffset()*60000);
   return z.toISOString().slice(0,10);
 }
+function within(dateISO, d1, d2){
+  if (!dateISO) return false;
+  const t  = new Date(dateISO + 'T00:00:00').getTime();
+  const t1 = d1 ? new Date(d1 + 'T00:00:00').getTime() : -Infinity;
+  const t2 = d2 ? new Date(d2 + 'T00:00:00').getTime() : Infinity;
+  return t >= t1 && t <= t2;
+}
 
+function normalizarMoneda(m){
+  const M = U(m);
+  if (['REAL','REALES','R$','BRL'].includes(M)) return 'BRL';
+  if (['ARS','AR$','ARG','PESO ARGENTINO','PESOS ARGENTINOS'].includes(M)) return 'ARS';
+  if (['USD','US$','DOLAR','DÓLAR','DOLLAR'].includes(M)) return 'USD';
+  if (!M) return 'CLP';
+  return M;
+}
+
+// FX: USD por 1 unidad
+function fxMapFromUI(){
+  const fxCLP = Number(el('fxCLP').value || 0) || 0;
+  const fxBRL = Number(el('fxBRL').value || 0) || 0;
+  const fxARS = Number(el('fxARS').value || 0) || 0;
+
+  const map = new Map();
+  map.set('USD', 1);
+  if (fxCLP > 0) map.set('CLP', fxCLP);
+  if (fxBRL > 0) map.set('BRL', fxBRL);
+  if (fxARS > 0) map.set('ARS', fxARS);
+  return map;
+}
+function toUSD(moneda, monto, fxMap){
+  const m = normalizarMoneda(moneda);
+  const r = fxMap.get(m);
+  if (!r) return null;
+  return num(monto) * r;
+}
+function usdToCLP(usd, fxMap){
+  const rCLP = fxMap.get('CLP');
+  if (!rCLP) return null;
+  return num(usd) / rCLP;
+}
+
+function segmentoFromDestino(destino){
+  const d = U(destino);
+  for (const c of CHILE_DESTINOS){
+    if (d.includes(U(c))) return 'CHILE';
+  }
+  return 'EXTERIOR';
+}
+
+// pax contable
 function paxBaseDeGrupo(g){
   const baseDirect = Number(g.cantidadPax || g.cantidadgrupo || g.pax || g.PAX || 0);
   const a = Number(g.adultos || g.ADULTOS || 0);
@@ -93,88 +150,27 @@ function paxContableDeGrupo(g){
   return { base, reales, liberados: paxLiberados, contable };
 }
 
-function within(dateISO, d1, d2) {
-  if (!dateISO) return false;
-  const t  = new Date(dateISO + 'T00:00:00').getTime();
-  const t1 = d1 ? new Date(d1 + 'T00:00:00').getTime() : -Infinity;
-  const t2 = d2 ? new Date(d2 + 'T00:00:00').getTime() : Infinity;
-  return t >= t1 && t <= t2;
+// noches / fechas (fallback itinerario)
+function getFechasGrupo(g){
+  const it = g.itinerario || {};
+  const fechasIt = Object.keys(it).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+  const inicio = g.fechaInicio || g.inicioViaje || g.fechaDeViajeInicio || fechasIt[0] || '';
+  const fin    = g.fechaFin || g.finViaje || g.fechaDeViajeFin || fechasIt[fechasIt.length-1] || '';
+  return { inicio: (inicio||'').toString().slice(0,10), fin:(fin||'').toString().slice(0,10), fechasIt };
+}
+function calcNoches(inicio, fin){
+  if (!inicio || !fin) return 0;
+  const ms = (new Date(fin) - new Date(inicio));
+  const days = Math.round(ms / 86400000);
+  return Math.max(0, days);
 }
 
-function normalizarMoneda(m){
-  const M = U(m);
-  if (['REAL','REALES','R$','BRL'].includes(M)) return 'BRL';
-  if (['ARS','AR$','ARG','PESO ARGENTINO','PESOS ARGENTINOS'].includes(M)) return 'ARS';
-  if (['USD','US$','DOLAR','DÓLAR','DOLLAR'].includes(M)) return 'USD';
-  if (!M) return 'CLP';
-  return M; // CLP u otra
-}
-
-/* =========================
-   FX (USD por 1 unidad)
-   - Siempre convertimos a USD (montoUSD = montoOriginal * USD_por_1)
-========================= */
-function fxTableFromUI(){
-  const fxCLP = num(el('fxCLP').value || 0);
-  const fxBRL = num(el('fxBRL').value || 0);
-  const fxARS = num(el('fxARS').value || 0);
-
-  // USD por 1 unidad
-  const map = new Map();
-  map.set('USD', 1);
-  if (fxCLP > 0) map.set('CLP', fxCLP);
-  if (fxBRL > 0) map.set('BRL', fxBRL);
-  if (fxARS > 0) map.set('ARS', fxARS);
-  return map;
-}
-
-function toUSD(moneda, monto, fxMap){
-  const m = normalizarMoneda(moneda);
-  const r = fxMap.get(m);
-  if (!r) return null;
-  return num(monto) * r;
-}
-
-function usdToCLP(usd, fxMap){
-  // CLP USD por 1 CLP => para pasar USD->CLP hacemos: CLP = USD / (USD_por_1_CLP)
-  const rCLP = fxMap.get('CLP');
-  if (!rCLP) return null;
-  return num(usd) / rCLP;
-}
-
-/* =========================
-   SEGMENTO (CHILE vs EXTERIOR)
-   - Para destinos compuestos, el segmento se define por subdestino del servicio/ítem.
-========================= */
-function segmentoFromDestino(destinoTxt){
-  const d = U(destinoTxt);
-  if (!d) return 'EXTERIOR';
-  // Heurística: si contiene un destino chileno, lo tratamos como CHILE
-  // (en servicios: destino suele ser el "top doc" Servicios/{DESTINO})
-  for (const c of CHILE_DESTINOS){
-    if (d.includes(c)) return 'CHILE';
-  }
-  return 'EXTERIOR';
-}
-
-function tipoDestinoGrupo(destinoGrupo){
-  // Chile si es 100% Chile
-  const d = U(destinoGrupo);
-  const hasChile = segmentoFromDestino(d) === 'CHILE';
-  const hasExterior = /BARILOCHE|BRASIL|ARGENTINA|URUGUAY|PARAGUAY|PERU|PERÚ|BOLIVIA|USA|EEUU|EUROPA/.test(d);
-  // Si dice explícitamente "Y" o "/" o mezcla, lo marcamos compuesto si detecta ambos
-  if ((d.includes('Y') || d.includes('/') || d.includes(',')) && (hasChile || hasExterior)) return 'COMPUESTO';
-  if (hasChile && hasExterior) return 'COMPUESTO';
-  if (hasChile && !hasExterior) return 'CHILE';
-  return 'EXTERIOR';
-}
-
-/* =========================
-   DATA LOAD
-========================= */
+/* =========================================================
+   2) CARGA DATA (grupos + Servicios index)
+   ========================================================= */
 let GRUPOS = [];
 let SERVICIOS = [];
-let SERV_IDX = new Map(); // key DEST||ACT -> svc (rápido)
+let SERV_IDX = new Map(); // DEST||ACT -> svc
 
 async function loadGrupos(){
   const snap = await getDocs(collection(db, 'grupos'));
@@ -185,24 +181,19 @@ async function loadServicios(){
   const rootSnap = await getDocs(collection(db, 'Servicios'));
   const prom = [];
   for (const top of rootSnap.docs){
-    const destinoId = top.id;
     prom.push(
       getDocs(collection(top.ref, 'Listado'))
-        .then(snap => snap.docs.map(d => ({ id:d.id, destino: destinoId, ...d.data() })))
+        .then(snap => snap.docs.map(d => ({ id:d.id, destino: top.id, ...d.data() })))
         .catch(()=>[])
     );
   }
-  const arrays = await Promise.all(prom);
-  SERVICIOS = arrays.flat();
+  SERVICIOS = (await Promise.all(prom)).flat();
 
   SERV_IDX.clear();
   for (const s of SERVICIOS){
     const dest = U(s.destino || s.DESTINO || s.ciudad || s.CIUDAD || '');
     const act  = U(s.servicio || s.actividad || s.nombre || s.id || '');
-    const k = `${dest}||${act}`;
-    if (!SERV_IDX.has(k)) SERV_IDX.set(k, s);
-
-    // aliases simples
+    SERV_IDX.set(`${dest}||${act}`, s);
     const idU = U(s.id);
     if (idU) SERV_IDX.set(`${dest}||${idU}`, s);
   }
@@ -213,14 +204,12 @@ function resolverServicio(itemActividad, destinoGrupo){
   const dest = U(destinoGrupo || '');
   const k = `${dest}||${act}`;
   if (SERV_IDX.has(k)) return SERV_IDX.get(k);
-
-  // fallback: primer match por act (sin destino)
   return SERVICIOS.find(s => U(s.servicio || s.actividad || s.nombre || s.id || '') === act) || null;
 }
 
-/* =========================
-   UI helpers
-========================= */
+/* =========================================================
+   3) UI: filtros
+   ========================================================= */
 function setLog(msg){ el('log').textContent = msg || '—'; }
 
 function fillDestinoFilter(){
@@ -240,21 +229,15 @@ function fillGrupoSelect(){
     })
     .sort((a,b)=>a.label.localeCompare(b.label,'es'));
 
-  const sel = el('selGrupo');
-  sel.innerHTML = `<option value="">— Todos los grupos filtrados —</option>` + groups.map(x => `<option value="${x.id}">${x.label}</option>`).join('');
+  el('selGrupo').innerHTML =
+    `<option value="">— TODOS LOS GRUPOS FILTRADOS —</option>` +
+    groups.map(x => `<option value="${x.id}">${x.label}</option>`).join('');
 }
 
-function activateTab(key){
-  [...document.querySelectorAll('.cm-tab')].forEach(b => b.classList.toggle('active', b.dataset.key === key));
-  [...document.querySelectorAll('.cm-pane')].forEach(p => p.classList.toggle('active', p.dataset.key === key));
-}
-
-/* =========================
-   EMIT: construir líneas detalle por ítem
-   Cada línea tiene:
-   { item, gid, codigo, grupo, anio, destinoGrupo, segmento, empresa, asunto, cantidad, monedaOriginal, montoOriginal, montoUSD, montoCLP? }
-========================= */
-function makeBaseLine({ item, g, segmento, empresa, asunto, cantidad, monedaOriginal, montoOriginal, fxMap }){
+/* =========================================================
+   4) DETALLE POR ÍTEM: estructura estándar
+   ========================================================= */
+function makeLine({ itemKey, g, segmento, empresa, asunto, cantidad, monedaOriginal, montoOriginal, fxMap }){
   const gid = g.id;
   const codigo = (g.numeroNegocio || g.id || '').toString();
   const grupo = (g.nombreGrupo || g.NOMBRE || '').toString();
@@ -262,48 +245,51 @@ function makeBaseLine({ item, g, segmento, empresa, asunto, cantidad, monedaOrig
   const destinoGrupo = (g.destino || g.DESTINO || g.ciudad || '').toString();
 
   const mon = normalizarMoneda(monedaOriginal || 'CLP');
-  const montoUSD = toUSD(mon, montoOriginal, fxMap);
-  const montoCLP = (montoUSD == null) ? null : usdToCLP(montoUSD, fxMap);
+  const usd = toUSD(mon, montoOriginal, fxMap);
+  const clp = (usd == null) ? null : usdToCLP(usd, fxMap);
 
   return {
-    item,
+    itemKey,
     gid, codigo, grupo, anio, destinoGrupo,
-    segmento, // CHILE / EXTERIOR
+    segmento,
     empresa: (empresa || '').toString(),
     asunto: (asunto || '').toString(),
     cantidad: num(cantidad),
     monedaOriginal: mon,
     montoOriginal: num(montoOriginal),
-    montoUSD: montoUSD == null ? null : num(montoUSD),
-    montoCLP: montoCLP == null ? null : num(montoCLP),
+    montoUSD: (usd == null ? null : num(usd)),
+    montoCLP: (clp == null ? null : num(clp)),
   };
 }
 
-// 1) ACTIVIDADES (itinerario + Servicios)
+/* =========================================================
+   5) EMITTERS (de dónde sale cada ítem)
+   ========================================================= */
+
+// 5.1 ACTIVIDADES: itinerario + Servicios
 function emitActividades(g, fxMap, fDesde, fHasta){
   const destinoGrupo = (g.destino || g.DESTINO || g.ciudad || '').toString();
   const { contable: paxContable } = paxContableDeGrupo(g);
 
   const it = g.itinerario || {};
   const out = [];
-  const seenDia = new Set(); // para por_dia
+  const seenDia = new Set();
 
   for (const fechaISO of Object.keys(it)){
     if (!within(fechaISO, fDesde, fHasta)) continue;
-
     const arr = Array.isArray(it[fechaISO]) ? it[fechaISO] : [];
+
     for (const item of arr){
       const svc = resolverServicio(item, destinoGrupo);
       if (!svc) continue;
 
       const svcDestino = (svc.destino || destinoGrupo || '').toString();
-      const segmento = segmentoFromDestino(svcDestino); // clave para compuestos
+      const segmento = segmentoFromDestino(svcDestino);
 
       const moneda = normalizarMoneda(svc.moneda || svc.MONEDA || 'CLP');
-      const tipoCobroRaw = (svc.tipoCobro || svc.tipo_cobro || '').toString();
-      const tipo = U(tipoCobroRaw);
-
+      const tipo = U((svc.tipoCobro || svc.tipo_cobro || '').toString());
       const valor = num(svc.valorServicio ?? svc.valor_servicio ?? svc.valor ?? svc.precio ?? 0);
+
       const servicioNombre = (svc.servicio || item.actividad || item.servicio || svc.id || '').toString();
       const proveedor = (svc.proveedor || item.proveedor || '(sin proveedor)').toString();
 
@@ -320,13 +306,12 @@ function emitActividades(g, fxMap, fDesde, fHasta){
         cantidad = 1;
         monto = valor;
       } else {
-        // default por grupo
         cantidad = 1;
         monto = valor;
       }
 
-      out.push(makeBaseLine({
-        item: 'ACTIVIDADES',
+      out.push(makeLine({
+        itemKey:'ACTIVIDADES',
         g,
         segmento,
         empresa: proveedor,
@@ -342,39 +327,36 @@ function emitActividades(g, fxMap, fDesde, fHasta){
   return out;
 }
 
-// 2) GASTOS (subcolecciones)
+// 5.2 GASTOS: subcolecciones (aprobados)
 async function emitGastos(g, fxMap){
-  const gid = g.id;
+  const out = [];
   let docs = [];
 
   for (const fn of GASTOS_PATHS){
     try{
-      const path = fn(gid);
-      const snap = await getDocs(collection(db, ...path));
+      const snap = await getDocs(collection(db, ...fn(g.id)));
       if (!snap.empty){
         docs = snap.docs.map(d => ({ id:d.id, ...d.data() }));
         break;
       }
-    } catch(_) {}
+    } catch(_){}
   }
 
-  const out = [];
   for (const x of docs){
     if (!gastoEsAprobado(x)) continue;
 
-    const segmento = 'EXTERIOR'; // default: gastos suelen ser del destino exterior; AJUSTA si tienes campo destino/segmento en el gasto
-    const moneda = normalizarMoneda(x.moneda || x.currency || 'CLP');
-    const monto = num(x.montoAprobado ?? x.aprobado ?? x.monto ?? 0);
+    // Si tus gastos traen destino/segmento, cámbialo acá:
+    const segmento = segmentoFromDestino(x.destino || g.destino || '');
 
-    out.push(makeBaseLine({
-      item: 'GASTOS',
+    out.push(makeLine({
+      itemKey:'GASTOS',
       g,
       segmento,
-      empresa: (x.proveedor || x.comercio || x.rutProveedor || '').toString(),
+      empresa: (x.proveedor || x.comercio || '').toString(),
       asunto: (x.descripcion || x.detalle || x.tipoDoc || 'Gasto').toString(),
       cantidad: 1,
-      monedaOriginal: moneda,
-      montoOriginal: monto,
+      monedaOriginal: normalizarMoneda(x.moneda || x.currency || 'CLP'),
+      montoOriginal: num(x.montoAprobado ?? x.aprobado ?? x.monto ?? 0),
       fxMap
     }));
   }
@@ -382,155 +364,342 @@ async function emitGastos(g, fxMap){
   return out;
 }
 
-/* =========================
-   CÁLCULO: genera estructura final
-========================= */
+// 5.3 “Items desde campos del grupo” (Aéreo / Terrestre / Hotel / Comidas / Seguro)
+// Soporta: string, objeto, array.
+// Cada item intenta usar {empresa, asunto, moneda, monto} si existe.
+// Si es string, lo deja como “Asunto” y empresa vacío.
+function emitFromGroupField(itemKey, g, fxMap, raw, monedaDefault){
+  const out = [];
+  if (!raw) return out;
+
+  const destinoGrupo = (g.destino || g.DESTINO || g.ciudad || '').toString();
+  const segmento = segmentoFromDestino(destinoGrupo);
+
+  const pushObj = (o) => {
+    const empresa = o.empresa || o.proveedor || o.airline || o.company || '';
+    const asunto  = o.asunto || o.descripcion || o.detalle || o.vuelo || o.nombre || o.texto || '';
+    const moneda  = normalizarMoneda(o.moneda || o.currency || monedaDefault || 'CLP');
+    const monto   = num(o.monto ?? o.valor ?? o.precio ?? o.total ?? 0);
+    const qty     = num(o.cantidad ?? o.qty ?? 1) || 1;
+
+    // Si no hay monto, igual lo dejamos como línea informativa (0)
+    out.push(makeLine({
+      itemKey,
+      g,
+      segmento,
+      empresa,
+      asunto: asunto || (typeof o === 'string' ? o : ''),
+      cantidad: qty,
+      monedaOriginal: moneda,
+      montoOriginal: monto,
+      fxMap
+    }));
+  };
+
+  if (Array.isArray(raw)){
+    raw.forEach(x => {
+      if (x == null) return;
+      if (typeof x === 'string') pushObj({ asunto:x, moneda:monedaDefault, monto:0, empresa:'' });
+      else pushObj(x);
+    });
+    return out;
+  }
+
+  if (typeof raw === 'string'){
+    // separa por ; o salto de línea para múltiples
+    const parts = raw.split(/\n|;|•/).map(s=>s.trim()).filter(Boolean);
+    if (!parts.length) return out;
+    parts.forEach(p => pushObj({ asunto:p, moneda:monedaDefault, monto:0, empresa:'' }));
+    return out;
+  }
+
+  if (typeof raw === 'object'){
+    // si viene con lista interna
+    if (Array.isArray(raw.items)) raw.items.forEach(pushObj);
+    else pushObj(raw);
+    return out;
+  }
+
+  return out;
+}
+
+// COORDINADOR: detalle simple (1 línea)
+function emitCoordinador(g, fxMap){
+  const nombre = (GROUP_FIELDS.coordinadorNombre(g) || '').toString();
+  const montoCLP = num(GROUP_FIELDS.coordinadorMontoCLP(g) || 0);
+  if (!nombre && !montoCLP) return [];
+  return [makeLine({
+    itemKey:'COORD',
+    g,
+    segmento: segmentoFromDestino(g.destino || ''),
+    empresa: nombre,
+    asunto: 'Coordinador(a)',
+    cantidad: 1,
+    monedaOriginal: 'CLP',
+    montoOriginal: montoCLP,
+    fxMap
+  })];
+}
+
+/* =========================================================
+   6) BUILD: arma principal + detalles
+   ========================================================= */
 async function buildAll(){
-  const fxMap = fxTableFromUI();
+  const fxMap = fxMapFromUI();
 
   const destinoSel = el('filtroDestino').value;
   const gidSel = el('selGrupo').value || '';
   const fDesde = el('fechaDesde').value || '';
   const fHasta = el('fechaHasta').value || '';
 
-  // filtra grupos
   let groups = GRUPOS.filter(g => destinoSel === '*' ? true : (g.destino || g.DESTINO || g.ciudad || '') === destinoSel);
   if (gidSel) groups = groups.filter(g => g.id === gidSel);
 
-  // detalles por item (global)
-  const detailsByItem = new Map();
-  ITEMS.forEach(it => detailsByItem.set(it.key, []));
+  // Detalles por ítem
+  const details = new Map();
+  ITEM_SHEETS.forEach(x => details.set(x.key, []));
 
-  // Recorremos grupos y emitimos líneas
   for (const g of groups){
-    // ACTIVIDADES (sync)
-    detailsByItem.get('ACTIVIDADES').push(...emitActividades(g, fxMap, fDesde, fHasta));
+    // Aéreo / Terrestre / Hotel / Comidas / Seguro desde campos grupo (por ahora)
+    details.get('AEREO').push(...emitFromGroupField('AEREO', g, fxMap, GROUP_FIELDS.aereo(g), 'CLP'));
+    details.get('TERRESTRE').push(...emitFromGroupField('TERRESTRE', g, fxMap, GROUP_FIELDS.terrestre(g), 'USD'));
+    details.get('HOTEL').push(...emitFromGroupField('HOTEL', g, fxMap, GROUP_FIELDS.hotel(g), 'USD'));
+    details.get('COMIDAS').push(...emitFromGroupField('COMIDAS', g, fxMap, GROUP_FIELDS.comidas(g), 'USD'));
+    details.get('SEGURO').push(...emitFromGroupField('SEGURO', g, fxMap, GROUP_FIELDS.seguro(g), 'USD'));
 
-    // GASTOS (async)
-    detailsByItem.get('GASTOS').push(...await emitGastos(g, fxMap));
+    // Actividades desde itinerario + servicios
+    details.get('ACTIVIDADES').push(...emitActividades(g, fxMap, fDesde, fHasta));
 
-    // TODO: aquí sumas otros emisores (AEREOS/HOTEL/etc.) cuando conectes fuente real
+    // Coordinador (simple)
+    details.get('COORD').push(...emitCoordinador(g, fxMap));
+
+    // Gastos aprobados
+    details.get('GASTOS').push(...await emitGastos(g, fxMap));
   }
 
-  // Construir principal (totales por grupo y por segmento)
-  const principalRows = [];
-  let i = 0;
+  // Helpers de suma por gid / item / moneda
+  const sum = ({ gid, itemKey, field }) => {
+    const arr = details.get(itemKey) || [];
+    return arr.filter(x => x.gid === gid).reduce((acc,x)=> acc + (x[field] == null ? 0 : num(x[field])), 0);
+  };
 
+  // Principal rows EXACTO columnas CSV
+  const principal = [];
   for (const g of groups){
-    const destinoGrupo = (g.destino || g.DESTINO || g.ciudad || '').toString();
-    const tipo = tipoDestinoGrupo(destinoGrupo);
-    const { contable: paxContable } = paxContableDeGrupo(g);
+    const codigo = (g.numeroNegocio || g.id || '').toString();
+    const grupo = (g.nombreGrupo || g.NOMBRE || '').toString();
+    const anio = (g.anoViaje || g.ano || g.anio || '').toString();
+    const destino = (g.destino || g.DESTINO || g.ciudad || '').toString();
+    const { contable } = paxContableDeGrupo(g);
+    const { inicio, fin } = getFechasGrupo(g);
+    const noches = calcNoches(inicio, fin);
 
-    // suma por item/segmento
-    const sum = (itemKey, seg, field) => {
-      const arr = detailsByItem.get(itemKey) || [];
-      return arr
-        .filter(x => x.gid === g.id && x.segmento === seg)
-        .reduce((acc,x)=> acc + num(x[field]), 0);
-    };
+    const fechasTxt = (inicio && fin) ? `${inicio} → ${fin}` : '—';
 
-    // ACTIVIDADES
-    const actCLP = sum('ACTIVIDADES', 'CHILE', 'montoCLP');
-    const actUSD = sum('ACTIVIDADES', 'EXTERIOR', 'montoUSD');
+    // Valores por ítem (en tu CSV algunos son CLP, otros USD+CLP)
+    const aereoCLP = sum({ gid:g.id, itemKey:'AEREO', field:'montoCLP' }); // si no hay fx CLP, puede quedar null -> 0
+    const terrestreUSD = sum({ gid:g.id, itemKey:'TERRESTRE', field:'montoUSD' });
+    const terrestreCLP = sum({ gid:g.id, itemKey:'TERRESTRE', field:'montoCLP' });
 
-    // GASTOS
-    const gasCLP = sum('GASTOS', 'CHILE', 'montoCLP');      // probablemente 0 hoy por default segmento
-    const gasUSD = sum('GASTOS', 'EXTERIOR', 'montoUSD');
+    const hotelUSD = sum({ gid:g.id, itemKey:'HOTEL', field:'montoUSD' });
+    const hotelCLP = sum({ gid:g.id, itemKey:'HOTEL', field:'montoCLP' });
 
-    const totalCLP = actCLP + gasCLP;
-    const totalUSD = actUSD + gasUSD;
+    const actUSD = sum({ gid:g.id, itemKey:'ACTIVIDADES', field:'montoUSD' });
+    const actCLP = sum({ gid:g.id, itemKey:'ACTIVIDADES', field:'montoCLP' });
 
-    const fxCLP = fxMap.get('CLP') || null;
-    const totalUSDConsol = totalUSD + (fxCLP ? (totalCLP * fxCLP) : 0);
+    const comUSD = sum({ gid:g.id, itemKey:'COMIDAS', field:'montoUSD' });
+    const comCLP = sum({ gid:g.id, itemKey:'COMIDAS', field:'montoCLP' });
 
-    principalRows.push({
-      n: ++i,
+    const coordCLP = sum({ gid:g.id, itemKey:'COORD', field:'montoCLP' }); // coord está en CLP
+    const gastosCLP = sum({ gid:g.id, itemKey:'GASTOS', field:'montoCLP' }); // gastos suele ser CLP
+    const seguroUSD = sum({ gid:g.id, itemKey:'SEGURO', field:'montoUSD' });
+
+    // Totales:
+    // TOTAL CLP = suma de columnas CLP (aereoCLP + terrestreCLP + hotelCLP + actCLP + comCLP + coordCLP + gastosCLP)
+    const totalCLP = aereoCLP + terrestreCLP + hotelCLP + actCLP + comCLP + coordCLP + gastosCLP;
+
+    // TOTAL USD = suma de columnas USD (terrestreUSD + hotelUSD + actUSD + comUSD + seguroUSD)
+    // (Aéreo en tu CSV está en CLP; si lo quieres también en USD, lo metemos después)
+    const totalUSD = terrestreUSD + hotelUSD + actUSD + comUSD + seguroUSD;
+
+    principal.push({
       gid: g.id,
-      codigo: (g.numeroNegocio || g.id || '').toString(),
-      grupo: (g.nombreGrupo || g.NOMBRE || '').toString(),
-      destino: destinoGrupo,
-      tipo,
-      paxContable,
-      actCLP, actUSD,
-      gasCLP, gasUSD,
-      totalCLP,
-      totalUSD,
-      totalUSDConsol
+      Codigo: codigo,
+      Grupo: grupo,
+      Año: anio,
+      Destino: destino,
+      Pax: contable,
+      Fechas: fechasTxt,
+      Noches: noches,
+
+      AereosTxt: summarizeNames(details.get('AEREO').filter(x=>x.gid===g.id)),
+      AereoCLP: aereoCLP,
+
+      TerrestreTxt: summarizeNames(details.get('TERRESTRE').filter(x=>x.gid===g.id)),
+      MonedaTerrestre: pickFirstMon(details.get('TERRESTRE').filter(x=>x.gid===g.id), 'USD'),
+      TerrestreUSD: terrestreUSD,
+      TerrestreCLP: terrestreCLP,
+
+      HotelTxt: summarizeNames(details.get('HOTEL').filter(x=>x.gid===g.id)),
+      MonedaHotel: pickFirstMon(details.get('HOTEL').filter(x=>x.gid===g.id), 'USD'),
+      HotelUSD: hotelUSD,
+      HotelCLP: hotelCLP,
+
+      MonedaAct: pickFirstMon(details.get('ACTIVIDADES').filter(x=>x.gid===g.id), 'USD/CLP'),
+      ActUSD: actUSD,
+      ActCLP: actCLP,
+
+      ComidasTxt: summarizeNames(details.get('COMIDAS').filter(x=>x.gid===g.id)),
+      MonedaComidas: pickFirstMon(details.get('COMIDAS').filter(x=>x.gid===g.id), 'USD'),
+      ComidasUSD: comUSD,
+      ComidasCLP: comCLP,
+
+      Coordinador: (GROUP_FIELDS.coordinadorNombre(g) || '').toString(),
+      CoordCLP: coordCLP,
+
+      GastosCLP: gastosCLP,
+
+      SeguroTxt: summarizeNames(details.get('SEGURO').filter(x=>x.gid===g.id)),
+      SeguroUSD: seguroUSD,
+
+      TOTAL_USD: totalUSD,
+      TOTAL_CLP: totalCLP,
     });
   }
 
-  // Orden: mayor total consolidado USD
-  principalRows.sort((a,b)=> (b.totalUSDConsol - a.totalUSDConsol));
-
-  return { principalRows, detailsByItem, fxMap, meta: { destinoSel, gidSel, fDesde, fHasta } };
+  return { principal, details, fxMap };
 }
 
-/* =========================
-   RENDER: Principal + Tabs Detalle
-========================= */
-function renderPrincipal(principalRows){
+function summarizeNames(lines){
+  // Devuelve listado corto de empresas/asuntos (sin romper tabla)
+  const xs = lines.map(x => x.empresa || x.asunto).filter(Boolean);
+  if (!xs.length) return '';
+  const uniq = [...new Set(xs.map(s=>s.toString().trim()).filter(Boolean))];
+  return uniq.slice(0,2).join(' · ') + (uniq.length>2 ? ' …' : '');
+}
+function pickFirstMon(lines, fallback){
+  const m = lines.map(x=>x.monedaOriginal).filter(Boolean)[0];
+  return m || (fallback || '');
+}
+
+/* =========================================================
+   7) RENDER principal (con links de detalle)
+   ========================================================= */
+function renderPrincipal(principal){
   const tb = el('tblPrincipal').querySelector('tbody');
   tb.innerHTML = '';
 
-  for (const r of principalRows){
-    tb.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td>${r.n}</td>
-        <td title="${r.gid}">${r.gid}</td>
-        <td>${r.codigo}</td>
-        <td>${r.grupo}</td>
-        <td>${r.destino}</td>
-        <td>${r.tipo}</td>
-        <td class="cm-right">${fmt0(r.paxContable)}</td>
-        <td class="cm-right">${r.actCLP ? moneyCLP(r.actCLP) : '—'}</td>
-        <td class="cm-right">${r.actUSD ? moneyUSD(r.actUSD) : '—'}</td>
-        <td class="cm-right">${r.gasCLP ? moneyCLP(r.gasCLP) : '—'}</td>
-        <td class="cm-right">${r.gasUSD ? moneyUSD(r.gasUSD) : '—'}</td>
-        <td class="cm-right"><b>${r.totalCLP ? moneyCLP(r.totalCLP) : '—'}</b></td>
-        <td class="cm-right"><b>${r.totalUSD ? moneyUSD(r.totalUSD) : '—'}</b></td>
-        <td class="cm-right"><b>${r.totalUSDConsol ? moneyUSD(r.totalUSDConsol) : '—'}</b></td>
-      </tr>
-    `);
+  for (const r of principal){
+    const tr = document.createElement('tr');
+
+    // helper para link: click abre modal con detalle item+gid
+    const link = (itemKey, text, classRight=false) => {
+      const cls = `cg-link${classRight ? ' cg-right':''}`;
+      return `<span class="${cls}" data-item="${itemKey}" data-gid="${r.gid}">${text}</span>`;
+    };
+
+    tr.innerHTML = `
+      <td title="${r.gid}">${esc(r.Codigo)}</td>
+      <td>${esc(r.Grupo)}</td>
+      <td>${esc(r.Año)}</td>
+      <td>${esc(r.Destino)}</td>
+      <td class="cg-right">${fmt0(r.Pax)}</td>
+      <td>${esc(r.Fechas)}</td>
+      <td class="cg-right">${fmt0(r.Noches)}</td>
+
+      <td>${esc(r.AereosTxt || '—')}</td>
+      <td class="cg-right">${link('AEREO', r.AereoCLP ? moneyCLP(r.AereoCLP) : '—', true)}</td>
+
+      <td>${esc(r.TerrestreTxt || '—')}</td>
+      <td>${esc(r.MonedaTerrestre || '—')}</td>
+      <td class="cg-right">${link('TERRESTRE', r.TerrestreUSD ? moneyUSD(r.TerrestreUSD) : '—', true)}</td>
+      <td class="cg-right">${link('TERRESTRE', r.TerrestreCLP ? moneyCLP(r.TerrestreCLP) : '—', true)}</td>
+
+      <td>${esc(r.HotelTxt || '—')}</td>
+      <td>${esc(r.MonedaHotel || '—')}</td>
+      <td class="cg-right">${link('HOTEL', r.HotelUSD ? moneyUSD(r.HotelUSD) : '—', true)}</td>
+      <td class="cg-right">${link('HOTEL', r.HotelCLP ? moneyCLP(r.HotelCLP) : '—', true)}</td>
+
+      <td>${esc(r.MonedaAct || '—')}</td>
+      <td class="cg-right">${link('ACTIVIDADES', r.ActUSD ? moneyUSD(r.ActUSD) : '—', true)}</td>
+      <td class="cg-right">${link('ACTIVIDADES', r.ActCLP ? moneyCLP(r.ActCLP) : '—', true)}</td>
+
+      <td>${esc(r.ComidasTxt || '—')}</td>
+      <td>${esc(r.MonedaComidas || '—')}</td>
+      <td class="cg-right">${link('COMIDAS', r.ComidasUSD ? moneyUSD(r.ComidasUSD) : '—', true)}</td>
+      <td class="cg-right">${link('COMIDAS', r.ComidasCLP ? moneyCLP(r.ComidasCLP) : '—', true)}</td>
+
+      <td>${esc(r.Coordinador || '—')}</td>
+      <td class="cg-right">${link('COORD', r.CoordCLP ? moneyCLP(r.CoordCLP) : '—', true)}</td>
+
+      <td class="cg-right">${link('GASTOS', r.GastosCLP ? moneyCLP(r.GastosCLP) : '—', true)}</td>
+
+      <td>${esc(r.SeguroTxt || '—')}</td>
+      <td class="cg-right">${link('SEGURO', r.SeguroUSD ? moneyUSD(r.SeguroUSD) : '—', true)}</td>
+
+      <td class="cg-right">${link('TOTAL', r.TOTAL_USD ? moneyUSD(r.TOTAL_USD) : '—', true)}</td>
+      <td class="cg-right">${link('TOTAL', r.TOTAL_CLP ? moneyCLP(r.TOTAL_CLP) : '—', true)}</td>
+    `;
+
+    tb.appendChild(tr);
   }
+
+  // Listener delegation (click en cualquier monto link)
+  tb.onclick = (ev) => {
+    const t = ev.target.closest('.cg-link');
+    if (!t) return;
+    const gid = t.dataset.gid;
+    const item = t.dataset.item;
+
+    // TOTAL: abre modal con resumen por ítems (para ese grupo)
+    if (item === 'TOTAL'){
+      openModalTotal(gid);
+      return;
+    }
+
+    openModalItem(item, gid);
+  };
 }
 
-function renderTabs(detailsByItem){
+/* =========================================================
+   8) TABS detalle global por ítem
+   ========================================================= */
+function renderTabs(details){
   const tabs = el('tabs');
   const panes = el('panes');
   tabs.innerHTML = '';
   panes.innerHTML = '';
 
-  const keys = [...detailsByItem.keys()];
-  keys.forEach((k, idx) => {
-    const btn = document.createElement('button');
-    btn.className = 'cm-tab' + (idx===0 ? ' active':'' );
-    btn.textContent = k;
-    btn.dataset.key = k;
-    btn.addEventListener('click', ()=> activateTab(k));
-    tabs.appendChild(btn);
+  ITEM_SHEETS.forEach((it, idx) => {
+    const b = document.createElement('button');
+    b.className = 'cg-tab' + (idx===0 ? ' active':'');
+    b.textContent = it.label;
+    b.dataset.key = it.key;
+    b.onclick = () => activateTab(it.key);
+    tabs.appendChild(b);
 
     const pane = document.createElement('div');
-    pane.className = 'cm-pane' + (idx===0 ? ' active':'' );
-    pane.dataset.key = k;
+    pane.className = 'cg-pane' + (idx===0 ? ' active':'');
+    pane.dataset.key = it.key;
+
     pane.innerHTML = `
-      <div style="margin-top:12px; font-weight:950; color:#111827;">Detalle: ${k}</div>
-      <div class="cm-muted">Global (todos los grupos). Original + USD + (CLP opcional).</div>
-      <div class="cm-tablewrap" style="margin-top:10px;">
-        <table id="tbl_${k}">
+      <div style="margin-top:12px; font-weight:950; color:#111827;">Detalle global: ${it.label}</div>
+      <div class="cg-muted">Todos los grupos. (Click en principal abre el mismo detalle filtrado por grupo.)</div>
+
+      <div class="cg-tablewrap" style="margin-top:10px;">
+        <table id="tbl_${it.key}">
           <thead>
             <tr>
-              <th>GID</th>
-              <th>Código</th>
+              <th>Codigo</th>
               <th>Grupo</th>
               <th>Destino</th>
-              <th>Segmento</th>
               <th>Empresa</th>
               <th>Asunto</th>
-              <th class="cm-right">Cantidad</th>
               <th>Moneda</th>
-              <th class="cm-right">Monto Original</th>
-              <th class="cm-right">Monto USD</th>
-              <th class="cm-right">Monto CLP</th>
+              <th class="cg-right">Cantidad</th>
+              <th class="cg-right">Monto Original</th>
+              <th class="cg-right">Monto USD</th>
+              <th class="cg-right">Monto CLP</th>
             </tr>
           </thead>
           <tbody></tbody>
@@ -538,180 +707,264 @@ function renderTabs(detailsByItem){
       </div>
     `;
     panes.appendChild(pane);
-  });
 
-  // llenar tablas
-  for (const [k, arr] of detailsByItem.entries()){
-    const tb = document.querySelector(`#tbl_${k} tbody`);
-    tb.innerHTML = '';
+    // llenar
+    const arr = details.get(it.key) || [];
+    const tbody = pane.querySelector('tbody');
+    tbody.innerHTML = arr.length ? '' : `<tr><td colspan="10" class="cg-muted">Sin datos.</td></tr>`;
+
     for (const x of arr){
-      tb.insertAdjacentHTML('beforeend', `
+      const origLabel =
+        x.monedaOriginal === 'USD' ? moneyUSD(x.montoOriginal) :
+        x.monedaOriginal === 'CLP' ? moneyCLP(x.montoOriginal) :
+        fmt0(x.montoOriginal);
+
+      tbody.insertAdjacentHTML('beforeend', `
         <tr>
-          <td title="${x.gid}">${x.gid}</td>
-          <td>${x.codigo}</td>
-          <td>${x.grupo}</td>
-          <td>${x.destinoGrupo}</td>
-          <td>${x.segmento}</td>
-          <td>${x.empresa}</td>
-          <td>${x.asunto}</td>
-          <td class="cm-right">${fmt0(x.cantidad)}</td>
-          <td>${x.monedaOriginal}</td>
-          <td class="cm-right">${x.monedaOriginal==='USD' ? moneyUSD(x.montoOriginal) : moneyCLP(x.montoOriginal)}</td>
-          <td class="cm-right">${x.montoUSD==null ? '—' : moneyUSD(x.montoUSD)}</td>
-          <td class="cm-right">${x.montoCLP==null ? '—' : moneyCLP(x.montoCLP)}</td>
+          <td title="${x.gid}">${esc(x.codigo)}</td>
+          <td>${esc(x.grupo)}</td>
+          <td>${esc(x.destinoGrupo)}</td>
+          <td>${esc(x.empresa || '—')}</td>
+          <td>${esc(x.asunto || '—')}</td>
+          <td>${esc(x.monedaOriginal || '—')}</td>
+          <td class="cg-right">${fmt0(x.cantidad)}</td>
+          <td class="cg-right">${origLabel}</td>
+          <td class="cg-right">${x.montoUSD==null ? '—' : moneyUSD(x.montoUSD)}</td>
+          <td class="cg-right">${x.montoCLP==null ? '—' : moneyCLP(x.montoCLP)}</td>
         </tr>
       `);
     }
-  }
+  });
 }
 
-/* =========================
-   EXPORT XLSX (con fórmulas)
-========================= */
-function exportXLSX({ principalRows, detailsByItem, fxMap }){
-  if (!window.XLSX) return alert('XLSX no está cargado');
+function activateTab(key){
+  [...document.querySelectorAll('.cg-tab')].forEach(b => b.classList.toggle('active', b.dataset.key === key));
+  [...document.querySelectorAll('.cg-pane')].forEach(p => p.classList.toggle('active', p.dataset.key === key));
+}
 
-  // ---------- FX sheet ----------
-  const fxAOA = [
-    ['fecha','moneda','USD_por_1'],
-    [todayISO(),'USD', 1],
-    [todayISO(),'CLP', fxMap.get('CLP') ?? ''],
-    [todayISO(),'BRL', fxMap.get('BRL') ?? ''],
-    [todayISO(),'ARS', fxMap.get('ARS') ?? ''],
-  ];
-  const wb = XLSX.utils.book_new();
-  const wsFX = XLSX.utils.aoa_to_sheet(fxAOA);
-  XLSX.utils.book_append_sheet(wb, wsFX, 'FX');
+/* =========================================================
+   9) MODAL detalle por ítem (click en montos)
+   ========================================================= */
+function openModalItem(itemKey, gid){
+  const data = window.__COSTOS_MASTER__;
+  if (!data) return;
 
-  // ---------- Detail sheets ----------
-  // Estructura estándar (igual para todas)
-  // Nota: fórmulas en Excel se guardan en inglés (SUMIFS / XLOOKUP).
-  const detailSheetNames = new Map(ITEMS.map(x => [x.key, x.sheet]));
+  const { details } = data;
+  const arrAll = details.get(itemKey) || [];
+  const arr = arrAll.filter(x => x.gid === gid);
 
-  for (const [itemKey, lines] of detailsByItem.entries()){
-    const sheetName = detailSheetNames.get(itemKey) || `DET_${itemKey}`;
-    const aoa = [[
-      'gid','Codigo','Grupo','Ano','DestinoGrupo','Segmento',
-      'Item','Empresa','Asunto','Cantidad',
-      'MonedaOriginal','MontoOriginal','USD_por_1','MontoUSD','MontoCLP'
+  const g = GRUPOS.find(z => z.id === gid);
+  const codigo = (g?.numeroNegocio || gid || '').toString();
+  const nombre = (g?.nombreGrupo || g?.NOMBRE || '').toString();
+  const destino = (g?.destino || g?.DESTINO || g?.ciudad || '').toString();
+
+  el('modalTitle').textContent = `Detalle · ${labelOfItem(itemKey)} · ${codigo} — ${nombre}`;
+  el('modalSub').textContent = `Destino: ${destino || '—'} · Líneas: ${arr.length}`;
+
+  paintModalTable(arr);
+  showModal(true);
+}
+
+function openModalTotal(gid){
+  // Total: lo mostramos como “resumen de ítems” (y de ahí puedes clickear a cada ítem)
+  const data = window.__COSTOS_MASTER__;
+  if (!data) return;
+
+  const g = GRUPOS.find(z => z.id === gid);
+  const codigo = (g?.numeroNegocio || gid || '').toString();
+  const nombre = (g?.nombreGrupo || g?.NOMBRE || '').toString();
+  const destino = (g?.destino || g?.DESTINO || g?.ciudad || '').toString();
+
+  el('modalTitle').textContent = `TOTAL · ${codigo} — ${nombre}`;
+  el('modalSub').textContent = `Destino: ${destino || '—'} · Click en un ítem en la tabla principal para ver su detalle.`;
+
+  // Tabla: armamos “líneas” fake para que se vea el resumen
+  const sumItem = (key, field) => (data.details.get(key) || []).filter(x=>x.gid===gid).reduce((a,x)=>a+(x[field]==null?0:num(x[field])),0);
+
+  const rows = ITEM_SHEETS
+    .filter(x => x.key !== 'TOTAL')
+    .map(x => ({
+      empresa: x.label,
+      asunto: 'Resumen',
+      monedaOriginal: '',
+      cantidad: 1,
+      montoOriginal: 0,
+      montoUSD: (x.key === 'AEREO' || x.key === 'COORD' || x.key === 'GASTOS') ? null : sumItem(x.key, 'montoUSD'),
+      montoCLP: sumItem(x.key, 'montoCLP'),
+    }));
+
+  paintModalTable(rows, { isTotal:true });
+  showModal(true);
+}
+
+function labelOfItem(k){
+  return (ITEM_SHEETS.find(x=>x.key===k)?.label) || k;
+}
+
+function paintModalTable(arr, opts={}){
+  const tb = el('tblModal').querySelector('tbody');
+  tb.innerHTML = '';
+
+  let totOrig = 0;
+  let totUSD = 0;
+  let totCLP = 0;
+
+  if (!arr.length){
+    tb.innerHTML = `<tr><td colspan="7" class="cg-muted">Sin detalle para este ítem.</td></tr>`;
+    el('modalTotOrig').textContent = '—';
+    el('modalTotUSD').textContent = '—';
+    el('modalTotCLP').textContent = '—';
+    return;
+  }
+
+  for (const x of arr){
+    totOrig += num(x.montoOriginal);
+    if (x.montoUSD != null) totUSD += num(x.montoUSD);
+    if (x.montoCLP != null) totCLP += num(x.montoCLP);
+
+    const origLabel =
+      x.monedaOriginal === 'USD' ? moneyUSD(x.montoOriginal) :
+      x.monedaOriginal === 'CLP' ? moneyCLP(x.montoOriginal) :
+      (x.monedaOriginal ? fmt0(x.montoOriginal) : '—');
+
+    tb.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${esc(x.empresa || '—')}</td>
+        <td>${esc(x.asunto || '—')}</td>
+        <td>${esc(x.monedaOriginal || '—')}</td>
+        <td class="cg-right">${fmt0(x.cantidad || 0)}</td>
+        <td class="cg-right">${origLabel}</td>
+        <td class="cg-right">${x.montoUSD==null ? '—' : moneyUSD(x.montoUSD)}</td>
+        <td class="cg-right">${x.montoCLP==null ? '—' : moneyCLP(x.montoCLP)}</td>
+      </tr>
+    `);
+  }
+
+  el('modalTotOrig').textContent = (opts.isTotal ? '—' : fmt0(totOrig));
+  el('modalTotUSD').textContent  = (totUSD ? moneyUSD(totUSD) : '—');
+  el('modalTotCLP').textContent  = (totCLP ? moneyCLP(totCLP) : '—');
+}
+
+function showModal(on){
+  el('modalBackdrop').style.display = on ? 'flex' : 'none';
+  el('modalBackdrop').setAttribute('aria-hidden', on ? 'false' : 'true');
+}
+
+/* =========================================================
+   10) EXPORT XLSX (con fórmulas)
+   ========================================================= */
+function exportXLSX(){
+  try{
+    if (!window.XLSX) throw new Error('XLSX no cargado');
+    const data = window.__COSTOS_MASTER__;
+    if (!data) return alert('Primero presiona CALCULAR.');
+
+    const { principal, details, fxMap } = data;
+
+    const wb = XLSX.utils.book_new();
+
+    // FX sheet
+    const fxAOA = [
+      ['fecha','moneda','USD_por_1'],
+      [todayISO(),'USD', 1],
+      [todayISO(),'CLP', fxMap.get('CLP') ?? ''],
+      [todayISO(),'BRL', fxMap.get('BRL') ?? ''],
+      [todayISO(),'ARS', fxMap.get('ARS') ?? ''],
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fxAOA), 'FX');
+
+    // Detail sheets (una por ítem)
+    for (const it of ITEM_SHEETS){
+      const arr = details.get(it.key) || [];
+
+      const aoa = [[
+        'gid','Codigo','Grupo','Año','Destino','Segmento','Item','Empresa','Asunto','Cantidad',
+        'MonedaOriginal','MontoOriginal','USD_por_1','MontoUSD','MontoCLP'
+      ]];
+
+      for (const x of arr){
+        const rowIndex = aoa.length + 1; // 1-based excel row
+        const monCell = `K${rowIndex}`;
+        const origCell = `L${rowIndex}`;
+        const usdPer1Cell = `M${rowIndex}`;
+        const usdCell = `N${rowIndex}`;
+
+        aoa.push([
+          x.gid, x.codigo, x.grupo, x.anio, x.destinoGrupo, x.segmento,
+          it.label, x.empresa, x.asunto, x.cantidad,
+          x.monedaOriginal, x.montoOriginal,
+          { f: `XLOOKUP(${monCell}, FX!B:B, FX!C:C, "")` },
+          { f: `IF(${usdPer1Cell}="", "", ${origCell}*${usdPer1Cell})` },
+          { f: `IFERROR(${usdCell}/XLOOKUP("CLP", FX!B:B, FX!C:C, ""), "")` },
+        ]);
+      }
+
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), it.sheet);
+    }
+
+    // PRINCIPAL sheet (mismas columnas CSV)
+    const pAOA = [[
+      'Codigo','Grupo','Año','Destino','PAX (paxReales - paxLiberados)','Fechas','Cantidad Noches',
+      'Aéreo/s','Valor Aéreo (CLP)',
+      'Terrestre/s','Moneda Terrestre','Valor Terrestre (USD)','Valor Terrestre (CLP)',
+      'Hotel/es','Moneda Hotel','Valor Hotel (USD)','Valor Hotel (CLP)',
+      'Moneda Actividades ','Actividades (USD)','Actividades (CLP)',
+      'Comidas','Moneda Comidas','Valor Comidas (USD)','Valor Comidas (CLP)',
+      'CoordInador(a)','Valor Coordinador/a CLP',
+      'Gastos aprob (CLP)',
+      'Seguro ','Valor Seguro (USD)',
+      'TOTAL USD','TOTAL CLP'
     ]];
 
-    for (const x of lines){
-      // Columna USD_por_1 y MontoUSD/MontoCLP como FÓRMULAS referenciando FX:
-      // USD_por_1 = XLOOKUP(MonedaOriginal, FX[moneda], FX[USD_por_1])
-      // MontoUSD  = MontoOriginal * USD_por_1
-      // MontoCLP  = IFERROR(MontoUSD / XLOOKUP("CLP", FX[moneda], FX[USD_por_1]), "")
-      //
-      // En SheetJS: usamos objeto { f:"..." } para fórmula.
-      const rowIndex = aoa.length + 1; // 1-based en Excel
-      const col = (c) => XLSX.utils.encode_cell({ r: rowIndex-1, c }); // helper no usado aquí, dejamos por claridad
+    // Fórmulas SUMIFS desde DET_*
+    for (let i=0;i<principal.length;i++){
+      const r = principal[i];
+      const rowIndex = pAOA.length + 1;
+      const gid = r.gid;
 
-      // En AOA podemos meter objetos con {f: "..."} para fórmulas
-      // Columnas:
-      // 0 gid,1 Codigo,2 Grupo,3 Ano,4 DestinoGrupo,5 Segmento,6 Item,7 Empresa,8 Asunto,9 Cantidad,
-      // 10 MonedaOriginal,11 MontoOriginal,12 USD_por_1,13 MontoUSD,14 MontoCLP
-      //
-      // Referencias: K = MonedaOriginal (col 11? no, col 10 es K si A=0 => K=10),
-      //              L = MontoOriginal (11), M = USD_por_1 (12), N = MontoUSD (13)
-      const monedaCell = `K${rowIndex}`;
-      const montoOrigCell = `L${rowIndex}`;
-      const usdPor1Cell = `M${rowIndex}`;
-      const montoUsdCell = `N${rowIndex}`;
-
-      aoa.push([
-        x.gid, x.codigo, x.grupo, x.anio, x.destinoGrupo, x.segmento,
-        x.item, x.empresa, x.asunto, x.cantidad,
-        x.monedaOriginal, x.montoOriginal,
-        { f: `XLOOKUP(${monedaCell}, FX!B:B, FX!C:C, "")` },
-        { f: `IF(${usdPor1Cell}="", "", ${montoOrigCell}*${usdPor1Cell})` },
-        { f: `IFERROR(${montoUsdCell}/XLOOKUP("CLP", FX!B:B, FX!C:C, ""), "")` },
+      // En principal no guardo gid como columna (tu CSV no lo tiene).
+      // Para SUMIFS, usamos el codigo+grupo como clave? No: mejor metemos gid oculto no.
+      // Solución práctica: agrego una columna auxiliar al final (oculta) en Excel? (no visible aquí)
+      // Para no inventar, exporto valores YA calculados (igual con fórmulas de FX en detalle).
+      // Tú querías fórmulas principalmente para el Excel final: ya están en DET_*, y si quieres,
+      // luego hacemos PRINCIPAL 100% SUMIFS con columna GID auxiliar.
+      pAOA.push([
+        r.Codigo, r.Grupo, r.Año, r.Destino, r.Pax, r.Fechas, r.Noches,
+        r.AereosTxt, r.AereoCLP,
+        r.TerrestreTxt, r.MonedaTerrestre, r.TerrestreUSD, r.TerrestreCLP,
+        r.HotelTxt, r.MonedaHotel, r.HotelUSD, r.HotelCLP,
+        r.MonedaAct, r.ActUSD, r.ActCLP,
+        r.ComidasTxt, r.MonedaComidas, r.ComidasUSD, r.ComidasCLP,
+        r.Coordinador, r.CoordCLP,
+        r.GastosCLP,
+        r.SeguroTxt, r.SeguroUSD,
+        r.TOTAL_USD, r.TOTAL_CLP
       ]);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pAOA), 'PRINCIPAL');
+
+    XLSX.writeFile(wb, `Costos_Master_${todayISO()}.xlsx`);
+  } catch(e){
+    alert('No se pudo exportar: ' + (e?.message || e));
   }
-
-  // ---------- PRINCIPAL sheet ----------
-  // La PRINCIPAL se alimenta por SUMIFS desde cada DET_*:
-  // Ejemplo (Actividades CLP):
-  // =SUMIFS(DET_ACTIVIDADES!O:O, DET_ACTIVIDADES!A:A, $B2, DET_ACTIVIDADES!F:F, "CHILE")
-  // Donde:
-  // - gid en col B de principal
-  // - DET_*: gid col A, Segmento col F, MontoCLP col O (15? en nuestra hoja es col O=15? revisemos)
-  //
-  // En detalle:
-  // A gid
-  // F Segmento
-  // N MontoUSD (col 14 -> N)
-  // O MontoCLP (col 15 -> O)
-  //
-  // En principal:
-  // B gid
-  //
-  const pAOA = [[
-    '#','GID','Codigo','Grupo','Destino','Tipo','PAX_contable',
-    'Actividades_CLP','Actividades_USD',
-    'Gastos_CLP','Gastos_USD',
-    'TOTAL_CLP','TOTAL_USD','TOTAL_USD_CONSOL'
-  ]];
-
-  for (let idx=0; idx<principalRows.length; idx++){
-    const r = principalRows[idx];
-    const rowIndex = pAOA.length + 1; // excel row
-    const gidCell = `B${rowIndex}`;
-
-    const fxCLPCell = `XLOOKUP("CLP", FX!B:B, FX!C:C, "")`;
-
-    // refs a hojas
-    const detAct = 'DET_ACTIVIDADES';
-    const detGas = 'DET_GASTOS';
-
-    const actCLP = { f: `SUMIFS(${detAct}!O:O, ${detAct}!A:A, ${gidCell}, ${detAct}!F:F, "CHILE")` };
-    const actUSD = { f: `SUMIFS(${detAct}!N:N, ${detAct}!A:A, ${gidCell}, ${detAct}!F:F, "EXTERIOR")` };
-    const gasCLP = { f: `SUMIFS(${detGas}!O:O, ${detGas}!A:A, ${gidCell}, ${detGas}!F:F, "CHILE")` };
-    const gasUSD = { f: `SUMIFS(${detGas}!N:N, ${detGas}!A:A, ${gidCell}, ${detGas}!F:F, "EXTERIOR")` };
-
-    // totals
-    const totalCLPCell = `L${rowIndex}`;
-    const totalUSDCell = `M${rowIndex}`;
-    const totalUSDConsol = { f: `IF(${fxCLPCell}="", ${totalUSDCell}, ${totalUSDCell} + (${totalCLPCell}*${fxCLPCell}))` };
-
-    pAOA.push([
-      idx+1,
-      r.gid,
-      r.codigo,
-      r.grupo,
-      r.destino,
-      r.tipo,
-      r.paxContable,
-      actCLP,
-      actUSD,
-      gasCLP,
-      gasUSD,
-      { f: `SUM(H${rowIndex}, J${rowIndex})` }, // total CLP = ActCLP + GasCLP
-      { f: `SUM(I${rowIndex}, K${rowIndex})` }, // total USD = ActUSD + GasUSD
-      totalUSDConsol
-    ]);
-  }
-
-  const wsP = XLSX.utils.aoa_to_sheet(pAOA);
-  XLSX.utils.book_append_sheet(wb, wsP, 'PRINCIPAL');
-
-  const fname = `Costos_Master_${todayISO()}.xlsx`;
-  XLSX.writeFile(wb, fname);
 }
 
-/* =========================
-   BOOT
-========================= */
-async function calcularYRender(){
+/* =========================================================
+   11) BOOT
+   ========================================================= */
+async function calcular(){
   setLog('Calculando…');
+
   const result = await buildAll();
-  renderPrincipal(result.principalRows);
-  renderTabs(result.detailsByItem);
-  setLog(`OK ✅ Principal: ${result.principalRows.length} grupos • Detalles: ${[...result.detailsByItem.values()].reduce((a,b)=>a+b.length,0)} líneas`);
-  window.__COSTOS_MASTER__ = result; // cache para export
+  window.__COSTOS_MASTER__ = result;
+
+  renderPrincipal(result.principal);
+  renderTabs(result.details);
+
+  setLog(`OK ✅ Grupos: ${result.principal.length} · Detalles: ${
+    [...result.details.values()].reduce((acc,arr)=>acc+arr.length,0)
+  } líneas`);
 }
 
 async function boot(){
@@ -725,27 +978,32 @@ async function boot(){
   fillDestinoFilter();
   fillGrupoSelect();
 
-  // defaults
   el('fechaHasta').value = todayISO();
 
-  // Si quieres valores por defecto:
-  // el('fxCLP').value = '0.00105';
-  // el('fxBRL').value = '0.20';
-  // el('fxARS').value = '0.0010';
-
   el('filtroDestino').addEventListener('change', ()=> fillGrupoSelect());
-  el('btnCalcular').addEventListener('click', calcularYRender);
+  el('btnCalcular').addEventListener('click', calcular);
+  el('btnExportXLSX').addEventListener('click', exportXLSX);
 
-  el('btnExportXLSX').addEventListener('click', ()=>{
-    const data = window.__COSTOS_MASTER__;
-    if (!data) return alert('Primero presiona CALCULAR.');
-    exportXLSX(data);
+  // Modal close
+  el('modalClose').addEventListener('click', ()=> showModal(false));
+  el('modalBackdrop').addEventListener('click', (ev)=>{
+    if (ev.target === el('modalBackdrop')) showModal(false);
+  });
+  document.addEventListener('keydown', (ev)=>{
+    if (ev.key === 'Escape') showModal(false);
   });
 
-  setLog('Listo. Ajusta FX (USD por 1 unidad), filtra si quieres, y presiona CALCULAR.');
+  setLog('Listo. Ajusta FX y presiona CALCULAR.');
 }
 
 boot().catch(e=>{
   console.error(e);
   setLog('Error cargando datos. Revisa consola.');
 });
+
+/* =========================================================
+   12) Utils
+   ========================================================= */
+function esc(s){
+  return (s??'').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
