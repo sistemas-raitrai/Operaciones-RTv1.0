@@ -204,6 +204,81 @@
     @media (max-width: 900px){
       .cp-kpis{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
     }
+
+    /* ==========================================================
+   FIX MODAL DETALLE (letras entrecortadas / tabla)
+   Pegar al FINAL del <style> de la página o del CSS de esta vista
+   ========================================================== */
+
+    /* 1) Evita recortes por overflow/altura */
+    .modal .modal-content,
+    .modal .modal-body,
+    #modalDetalle .modal-content,
+    #modalDetalle .modal-body {
+      overflow: visible !important;
+      height: auto !important;
+      max-height: 80vh;              /* el modal no se pasa de pantalla */
+    }
+    
+    /* 2) El scroll debe ir dentro del body del modal, no en la tabla */
+    .modal .modal-body,
+    #modalDetalle .modal-body {
+      overflow: auto !important;
+      padding: 14px 16px !important;
+    }
+    
+    /* 3) Esto suele ser el culpable del “corte” de letras */
+    .modal,
+    #modalDetalle {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    
+    .modal table,
+    #modalDetalle table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: auto;            /* evita compresión rara */
+    }
+    
+    .modal th, .modal td,
+    #modalDetalle th, #modalDetalle td {
+      line-height: 1.25 !important;  /* clave para que NO se corten letras */
+      padding: 8px 10px !important;  /* más aire */
+      vertical-align: middle !important;
+      overflow: visible !important;
+    }
+    
+    /* 4) Si tienes encabezado pegajoso, evita clipping */
+    .modal thead th,
+    #modalDetalle thead th {
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 2;
+    }
+    
+    /* 5) Botón Cerrar azul (ajusta el selector según tu botón real) */
+    #btnCerrarDetalle,
+    #btnCerrar,
+    .modal .btn-cerrar,
+    #modalDetalle .btn-cerrar {
+      background: #2563eb !important;   /* azul */
+      color: #fff !important;
+      border: 1px solid #1d4ed8 !important;
+      padding: 8px 12px !important;
+      border-radius: 10px !important;
+      font-weight: 700 !important;
+      cursor: pointer;
+    }
+    
+    #btnCerrarDetalle:hover,
+    #btnCerrar:hover,
+    .modal .btn-cerrar:hover,
+    #modalDetalle .btn-cerrar:hover {
+      filter: brightness(0.95);
+    }
+
   </style>
 </head>
 
