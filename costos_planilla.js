@@ -43,19 +43,54 @@ const GRUPO = {
   fechasFin: (g) => iso(g.fechaFin || g.finViaje || ''),
 };
 
-// C) Vuelos: colección "vuelos" (si tu schema difiere, ajusta campos)
+// C) Vuelos: colección "vuelos" (ajustado a tu schema real)
 const VUELOS = {
-  // match grupo: por gid o numeroNegocio (o arrays legacy)
+  // ✅ Match grupo: primero por grupoIds (lo más sano), si no existe, fallback por stringify
   matchGroup: ({ vuelo, gid, codigo }) => {
     const v = vuelo || {};
+
+    // 1) grupoIds (array) recomendado
+    const ids = Array.isArray(v.grupoIds) ? v.grupoIds.map(x => String(x)) : [];
+    if (ids.includes(String(gid))) return true;
+    if (codigo && ids.includes(String(codigo))) return true;
+
+    // 2) fallback legacy (si hay data antigua)
     const s = JSON.stringify(v).toUpperCase();
     return s.includes(String(gid).toUpperCase()) || (codigo && s.includes(String(codigo).toUpperCase()));
   },
-  empresa: (v) => (v.empresa || v.aerolinea || v.airline || v.Empresa || '').toString().trim() || '(SIN EMPRESA)',
-  asunto: (v) => (v.asunto || v.vuelo || v.numeroVuelo || v.tramo || v.ruta || '').toString().trim() || '(SIN ASUNTO)',
-  moneda: (v) => normMoneda(v.moneda || v.currency || 'CLP'),
-  monto: (v) => num(v.monto || v.valor || v.precio || v.total || 0)
+
+  // ✅ SOLO AÉREO vs TERRESTRE (si no existe, asumimos aereo)
+  tipo: (v) => (v.tipoTransporte || v.tipo || v.medio || 'aereo').toString().trim().toLowerCase(),
+
+  // ✅ Empresa real (en tu viajes.js usas "proveedor")
+  empresa: (v) =>
+    (v.proveedor || v.empresa || v.aerolinea || v.airline || v.Empresa || v.tramos?.[0]?.aerolinea || '')
+      .toString().trim() || '(SIN EMPRESA)',
+
+  // ✅ Asunto: si no viene, lo armamos con datos típicos
+  asunto: (v) => {
+    const direct = (v.asunto || v.vuelo || v.numeroVuelo || v.tramo || v.ruta || '').toString().trim();
+    if (direct) return direct;
+
+    const prov = (v.proveedor || v.tramos?.[0]?.aerolinea || '').toString().trim();
+    const nume = (v.numero || v.tramos?.[0]?.numero || '').toString().trim();
+    const o = (v.origen || v.tramos?.[0]?.origen || '').toString().trim();
+    const d = (v.destino || v.tramos?.[0]?.destino || '').toString().trim();
+    const ida = (v.fechaIda || v.tramos?.[0]?.fechaIda || '').toString().trim();
+
+    const pn = [prov, nume].filter(Boolean).join(' ');
+    const od = (o || d) ? `${o}→${d}` : '';
+    return [pn, od, ida].filter(Boolean).join(' · ') || '(SIN ASUNTO)';
+  },
+
+  // ✅ Moneda + Monto: prioriza "costoMoneda/costoValor" (lo correcto),
+  // y deja fallback a campos antiguos.
+  moneda: (v) => normMoneda(v.costoMoneda || v.moneda || v.currency || 'CLP'),
+  monto: (v) => num(
+    v.costoValor ?? v.monto ?? v.valor ?? v.precio ?? v.total ?? 0
+  )
 };
+
 
 // D) Hotel Assignments: si traen costo, usamos eso. Si no, queda 0.
 const HOTEL = {
@@ -401,6 +436,9 @@ function calcAereos({ gid, codigo, fx }){
   for (const v of state.vuelos){
     if (!VUELOS.matchGroup({ vuelo: v, gid, codigo })) continue;
 
+    // ✅ SOLO AÉREO aquí
+    if (VUELOS.tipo(v) !== 'aereo') continue;
+
     const emp = VUELOS.empresa(v);
     const asu = VUELOS.asunto(v);
     const mon = VUELOS.moneda(v);
@@ -426,6 +464,41 @@ function calcAereos({ gid, codigo, fx }){
     detalles
   };
 }
+
+function calcTerrestresDesdeVuelos({ gid, codigo, fx }){
+  const detalles = [];
+  let usd = 0;
+  let clp = 0;
+
+  for (const v of state.vuelos){
+    if (!VUELOS.matchGroup({ vuelo: v, gid, codigo })) continue;
+
+    // ✅ SOLO TERRESTRE aquí
+    if (VUELOS.tipo(v) !== 'terrestre') continue;
+
+    const emp = VUELOS.empresa(v);
+    const asu = VUELOS.asunto(v);
+    const mon = VUELOS.moneda(v);
+    const monto = VUELOS.monto(v);
+
+    const _usd = toUSD(monto, mon, fx);
+    const _clp = toCLP(monto, mon, fx);
+
+    if (_usd != null) usd += _usd;
+    if (_clp != null) clp += _clp;
+
+    detalles.push({
+      empresa: emp, asunto: asu, monedaOriginal: mon,
+      montoOriginal: monto,
+      usd: _usd,
+      clp: _clp,
+      fuente: `vuelos/${v.id}`
+    });
+  }
+
+  return { usd, clp, detalles };
+}
+
 
 function calcHotel({ gid, codigo, fx, destinoGrupo }){
   const detalles = [];
@@ -873,7 +946,7 @@ async function buildRows(){
     const hotel = calcHotel({ gid, codigo: Codigo, fx, destinoGrupo: Dest });
 
     // 3) Terrestre (separado desde servicios)
-    const ter = calcTerrestresDesdeServicios({ G, gid, destinoGrupo: Dest, pax, fx });
+    const ter = calcTerrestresDesdeVuelos({ gid, codigo: Codigo, fx });
 
     // 4) Actividades + Comidas (desde servicios)
     const ac = calcActividadesYComidas({ G, destinoGrupo: Dest, pax, fx });
