@@ -856,23 +856,33 @@ function render(rows){
       <td class="cp-right">${fmtInt(r['PAX (paxReales - paxLiberados)'])}</td>
       <td class="cp-muted">${esc(r.Fechas)}</td>
       <td class="cp-right">${fmtInt(r['Cantidad Noches'])}</td>
-      <td>${esc(r['Aéreo/s'])}</td>
+    
+      <!-- ✅ AHORA CLICKEABLE TAMBIÉN EL ITEM -->
+      <td data-k="aereo_txt" style="white-space:pre-line">${esc(r['Aéreo/s'])}</td>
       <td class="cp-right" data-k="aereo">${moneyCLP(r['Valor Aéreo (CLP)'] || 0)}</td>
-      <td>${esc(r['Terrestre/s'])}</td>
+    
+      <!-- ✅ TERRESTRE ITEM CLICKEABLE -->
+      <td data-k="ter_txt" style="white-space:pre-line">${esc(r['Terrestre/s'])}</td>
       <td>${esc(r['Moneda Terrestre'])}</td>
       <td class="cp-right" data-k="ter_usd">${moneyUSD(r['Valor Terrestre (USD)'] || 0)}</td>
       <td class="cp-right" data-k="ter_clp">${moneyCLP(r['Valor Terrestre (CLP)'] || 0)}</td>
-      <td style="white-space:pre-line">${esc(r['Hotel/es'])}</td>
+    
+      <!-- ✅ HOTEL ITEM CLICKEABLE -->
+      <td data-k="hot_txt" style="white-space:pre-line">${esc(r['Hotel/es'])}</td>
       <td>${esc(r['Moneda Hotel'])}</td>
       <td class="cp-right" data-k="hot_usd">${moneyUSD(r['Valor Hotel (USD)'] || 0)}</td>
       <td class="cp-right" data-k="hot_clp">${moneyCLP(r['Valor Hotel (CLP)'] || 0)}</td>
+    
       <td>${esc(r['Moneda Actividades '])}</td>
       <td class="cp-right" data-k="act_usd">${moneyUSD(r['Actividades (USD)'] || 0)}</td>
       <td class="cp-right" data-k="act_clp">${moneyCLP(r['Actividades (CLP)'] || 0)}</td>
-      <td>${esc(r['Comidas'])}</td>
+    
+      <!-- ✅ COMIDAS ITEM CLICKEABLE -->
+      <td data-k="com_txt">${esc(r['Comidas'])}</td>
       <td>${esc(r['Moneda Comidas'])}</td>
       <td class="cp-right" data-k="com_usd">${moneyUSD(r['Valor Comidas (USD)'] || 0)}</td>
       <td class="cp-right" data-k="com_clp">${moneyCLP(r['Valor Comidas (CLP)'] || 0)}</td>
+    
       <td>${esc(r['CoordInador(a)'])}</td>
       <td class="cp-right" data-k="coord_clp">${moneyCLP(r['Valor Coordinador/a CLP'] || 0)}</td>
       <td class="cp-right" data-k="gastos_clp">${moneyCLP(r['Gastos aprob (CLP)'] || 0)}</td>
@@ -882,24 +892,38 @@ function render(rows){
       <td class="cp-right"><b>${moneyCLP(r['TOTAL CLP'] || 0)}</b></td>
     `;
 
+
     // enganchar clicks
     const fx = r._fx;
     const gid = r._gid;
 
     // Aereo CLP
-    tr.querySelector('[data-k="aereo"]').textContent = '';
-    tr.querySelector('[data-k="aereo"]').appendChild(
-      cellLink(
-        moneyCLP(r['Valor Aéreo (CLP)'] || 0),
-        ()=> openModal({
-          title: `Detalle Aéreos — ${r.Grupo}`,
-          sub: `${r.Destino} · ${r.Fechas}`,
-          detalles: (r._det?.aereo || []),
-          fx
-        }),
-        'Click para ver detalle'
-      )
-    );
+    // ✅ ALSO: Item text columns clickeables (Aéreo/s, Terrestre/s, Hotel/es, Comidas)
+    const bindItemCell = (selector, itemKey, titulo) => {
+      const td = tr.querySelector(selector);
+      if (!td) return;
+      const text = td.textContent || '';     // ya viene con saltos por white-space
+      td.textContent = '';
+      td.appendChild(
+        cellLink(
+          text,
+          ()=> openModal({
+            title: `Detalle ${titulo} — ${r.Grupo}`,
+            sub: `${r.Destino} · ${r.Fechas}`,
+            detalles: (r._det?.[itemKey] || []),
+            fx
+          }),
+          'Click para ver detalle'
+        )
+      );
+    };
+    
+    // Nota: itemKey debe coincidir con tus keys de _det
+    bindItemCell('[data-k="aereo_txt"]', 'aereo', 'Aéreos');
+    bindItemCell('[data-k="ter_txt"]', 'terrestre', 'Terrestres');
+    bindItemCell('[data-k="hot_txt"]', 'hotel', 'Hoteles');
+    bindItemCell('[data-k="com_txt"]', 'comidas', 'Comidas');
+
 
     // Terrestre USD/CLP
     ['ter_usd','ter_clp','hot_usd','hot_clp','act_usd','act_clp','com_usd','com_clp','coord_clp','gastos_clp','seg_usd']
