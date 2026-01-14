@@ -162,15 +162,21 @@ function moneyUSD(n){ return '$' + (Number(n)||0).toLocaleString('en-US', { maxi
 
 // Resume empresas/asuntos para mostrar en la tabla (similar a costos_master.js)
 function summarizeNamesFromDetalles(detalles = []){
+  // ✅ Queremos estilo Imagen 2: lista vertical con "- "
+  // Prioriza "empresa" (hotelNombre) y filtra placeholders tipo "(HOTEL)"
   const xs = (detalles || [])
     .map(d => (d.empresa || d.asunto || '').toString().trim())
-    .filter(Boolean);
+    .filter(s => s && s !== '(HOTEL)' && s !== 'HOTEL');
 
   if (!xs.length) return '';
 
   const uniq = [...new Set(xs)];
-  return uniq.slice(0,2).join(' · ') + (uniq.length > 2 ? ' …' : '');
+  // 6 líneas máximo para no hacer la tabla eterna (ajústalo si quieres)
+  const cut = uniq.slice(0, 6);
+  const txt = cut.map(x => `- ${x}`).join('\n');
+  return txt + (uniq.length > 6 ? `\n- …` : '');
 }
+
 
 
 function normMoneda(m){
