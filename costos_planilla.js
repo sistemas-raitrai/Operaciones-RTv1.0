@@ -160,6 +160,19 @@ function fmtInt(n){ return (Math.round(Number(n)||0)).toLocaleString('es-CL'); }
 function moneyCLP(n){ return '$' + fmtInt(n); }
 function moneyUSD(n){ return '$' + (Number(n)||0).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
 
+// Resume empresas/asuntos para mostrar en la tabla (similar a costos_master.js)
+function summarizeNamesFromDetalles(detalles = []){
+  const xs = (detalles || [])
+    .map(d => (d.empresa || d.asunto || '').toString().trim())
+    .filter(Boolean);
+
+  if (!xs.length) return '';
+
+  const uniq = [...new Set(xs)];
+  return uniq.slice(0,2).join(' · ') + (uniq.length > 2 ? ' …' : '');
+}
+
+
 function normMoneda(m){
   const M = U(m);
   if (['REAL','REALES','R$','BRL'].includes(M)) return 'BRL';
@@ -861,7 +874,7 @@ async function buildRows(){
       'Valor Terrestre (USD)': round2(ter.usd || 0),
       'Valor Terrestre (CLP)': Math.round(ter.clp || 0),
 
-      'Hotel/es': hotel.detalles.length ? `${hotel.detalles.length} item(s)` : '',
+      'Hotel/es': hotel.detalles.length ? summarizeNamesFromDetalles(hotel.detalles) : '',
       'Moneda Hotel': 'USD/CLP',
       'Valor Hotel (USD)': round2(hotel.usd || 0),
       'Valor Hotel (CLP)': Math.round(hotel.clp || 0),
