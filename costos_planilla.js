@@ -264,6 +264,8 @@ const state = {
   servicios: [],  // flat
   svcIndex: new Map(), // key: DEST||NAME -> svc
   vuelos: [],
+  hoteles: [],                 // ✅ NUEVO
+  hotelIndex: new Map(),       // ✅ NUEVO (id/slug/nombre -> doc)
   hotelAsg: [],
   gastos: [],     // collectionGroup gastos
   rows: [],       // filas visibles con detalle
@@ -330,6 +332,54 @@ async function loadVuelos(){
   state.vuelos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
 }
 
+async function loadHoteles(){
+  // ✅ Índice global para resolver nombres aunque hotelAssignments tenga solo IDs/slugs
+  const snap = await getDocs(collection(db, 'hoteles'));
+  state.hoteles = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+
+  state.hotelIndex.clear();
+  for (const h of state.hoteles){
+    const id = (h.id || '').toString().trim();
+    const slug = (h.slug || h.codigo || h.code || '').toString().trim();
+    const nombre = (h.nombre || h.hotel || h.nombreHotel || h.titulo || '').toString().trim();
+
+    // index por docId
+    if (id) state.hotelIndex.set(U(id), h);
+
+    // index por slug/código
+    if (slug) state.hotelIndex.set(U(slug), h);
+
+    // index por nombre
+    if (nombre) state.hotelIndex.set(U(nombre), h);
+  }
+}
+
+// Intenta resolver un hotel desde cualquier “puntero” que venga en hotelAssignments
+function resolveHotelFromAssignment(ha){
+  if (!ha) return null;
+
+  const candidates = [
+    ha.hotelId,
+    ha.hotelDocId,
+    ha.hotelRefId,
+    ha.hotelRef,
+    ha.hotelSlug,
+    ha.slugHotel,
+    ha.codigoHotel,
+    ha.hotelCodigo,
+    ha.hotelNombre,
+    ha.hotel,
+    ha.nombreHotel,
+    ha.nombre
+  ].filter(Boolean).map(x => U(String(x)));
+
+  for (const k of candidates){
+    if (state.hotelIndex.has(k)) return state.hotelIndex.get(k);
+  }
+
+  return null;
+}
+
 async function loadHotelAssignments(){
   const snap = await getDocs(collection(db, 'hotelAssignments'));
   state.hotelAsg = snap.docs.map(d => ({ id:d.id, ...d.data() }));
@@ -385,8 +435,16 @@ function calcHotel({ gid, codigo, fx, destinoGrupo }){
   for (const ha of state.hotelAsg){
     if (!HOTEL.matchGroup({ ha, gid, codigo })) continue;
 
-    const emp = HOTEL.empresa(ha);
+    // ✅ Primero toma lo que venga directo en assignment
+    let emp = HOTEL.empresa(ha);
     const asu = HOTEL.asunto(ha);
+    
+    // ✅ Si no viene nombre, lo resolvemos desde colección "hoteles"
+    if (!emp){
+      const h = resolveHotelFromAssignment(ha);
+      emp = (h?.nombre || h?.hotel || h?.nombreHotel || h?.titulo || '').toString().trim();
+    }
+
     const mon = HOTEL.moneda(ha);
     const monto = HOTEL.monto(ha);
 
@@ -1204,6 +1262,7 @@ async function boot(){
     loadGrupos(),
     loadServicios(),
     loadVuelos(),
+    loadHoteles(), 
     loadHotelAssignments(),
     loadGastos()
   ]);
