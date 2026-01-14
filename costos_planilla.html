@@ -140,11 +140,22 @@
     font-size:.92rem !important;
   }
   
+  /* ✅ Por defecto TODO a la izquierda (incluye TH y TD) */
   .cp-scope th,
   .cp-scope td{
+    text-align:left !important;                 /* 👈 clave */
     border-bottom:1px solid #f1f5f9 !important;
     padding:10px !important;
     white-space:nowrap !important;
+  
+    /* ✅ Líneas verticales gris claro */
+    border-right:1px solid #eef0f3 !important;  /* 👈 líneas columnas */
+  }
+  
+  /* ✅ sin línea vertical en la última columna */
+  .cp-scope th:last-child,
+  .cp-scope td:last-child{
+    border-right:none !important;
   }
   
   .cp-scope th{
@@ -157,16 +168,32 @@
     text-transform:uppercase !important;
   }
   
+  /* ✅ Derecha SOLO para números (sirve para TH y TD) */
   .cp-right{
     text-align:right !important;
     font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;
   }
+
   
   .cp-link{
     cursor:pointer !important;
     text-decoration:underline !important;
     font-weight:950 !important;
   }
+
+  /* ✅ Zebra solo en la tabla principal */
+  #tbl tbody tr:nth-child(even){
+    background:#fafafa !important;
+  }
+  #tbl tbody tr:nth-child(odd){
+    background:#ffffff !important;
+  }
+  
+  /* (opcional) hover suave */
+  #tbl tbody tr:hover{
+    background:#f3f4f6 !important;
+  }
+
   
   /* =======================
      MODAL (FIX DEFINITIVO)
