@@ -830,7 +830,7 @@ function render(rows){
   tb.innerHTML = '';
 
   if (!rows.length){
-    tb.innerHTML = `<tr><td colspan="31" class="cp-muted">Sin resultados.</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="33" class="cp-muted">Sin resultados.</td></tr>`;
     return;
   }
 
@@ -873,19 +873,25 @@ function render(rows){
       <td class="cp-right" data-k="hot_usd">${moneyUSD(r['Valor Hotel (USD)'] || 0)}</td>
       <td class="cp-right" data-k="hot_clp">${moneyCLP(r['Valor Hotel (CLP)'] || 0)}</td>
     
+      <!-- ✅ ACTIVIDADES: nueva columna ITEMS + montos -->
+      <td data-k="act_txt">${esc(r['Actividades'])}</td>
       <td>${esc(r['Moneda Actividades '])}</td>
       <td class="cp-right" data-k="act_usd">${moneyUSD(r['Actividades (USD)'] || 0)}</td>
       <td class="cp-right" data-k="act_clp">${moneyCLP(r['Actividades (CLP)'] || 0)}</td>
-    
-      <!-- ✅ COMIDAS ITEM CLICKEABLE -->
+      
+      <!-- ✅ COMIDAS (ya existía) -->
       <td data-k="com_txt">${esc(r['Comidas'])}</td>
       <td>${esc(r['Moneda Comidas'])}</td>
       <td class="cp-right" data-k="com_usd">${moneyUSD(r['Valor Comidas (USD)'] || 0)}</td>
       <td class="cp-right" data-k="com_clp">${moneyCLP(r['Valor Comidas (CLP)'] || 0)}</td>
-    
+      
       <td>${esc(r['CoordInador(a)'])}</td>
       <td class="cp-right" data-k="coord_clp">${moneyCLP(r['Valor Coordinador/a CLP'] || 0)}</td>
+      
+      <!-- ✅ GASTOS: nueva columna ITEMS + monto -->
+      <td data-k="gastos_txt">${esc(r['Gastos'])}</td>
       <td class="cp-right" data-k="gastos_clp">${moneyCLP(r['Gastos aprob (CLP)'] || 0)}</td>
+      
       <td>${esc(r['Seguro '])}</td>
       <td class="cp-right" data-k="seg_usd">${moneyUSD(r['Valor Seguro (USD)'] || 0)}</td>
       <td class="cp-right"><b>${moneyUSD(r['TOTAL USD'] || 0)}</b></td>
@@ -922,7 +928,12 @@ function render(rows){
     bindItemCell('[data-k="aereo_txt"]', 'aereo', 'Aéreos');
     bindItemCell('[data-k="ter_txt"]', 'terrestre', 'Terrestres');
     bindItemCell('[data-k="hot_txt"]', 'hotel', 'Hoteles');
+    
+    bindItemCell('[data-k="act_txt"]', 'actividades', 'Actividades'); // ✅ NUEVO
     bindItemCell('[data-k="com_txt"]', 'comidas', 'Comidas');
+    
+    bindItemCell('[data-k="gastos_txt"]', 'gastos', 'Gastos');        // ✅ NUEVO
+
 
 
     // Terrestre USD/CLP
@@ -1073,10 +1084,13 @@ async function buildRows(){
       'Valor Hotel (USD)': round2(hotel.usd || 0),
       'Valor Hotel (CLP)': Math.round(hotel.clp || 0),
 
+      // ✅ ACTIVIDADES: items “X Actividades”
+      'Actividades': ac.actividades.detalles.length ? `${ac.actividades.detalles.length} Actividad(es)` : '',
       'Moneda Actividades ': 'USD/CLP',
       'Actividades (USD)': round2(ac.actividades.usd || 0),
       'Actividades (CLP)': Math.round(ac.actividades.clp || 0),
-
+      
+      // ✅ COMIDAS: (igual que antes)
       'Comidas': ac.comidas.detalles.length ? `${ac.comidas.detalles.length} item(s)` : '',
       'Moneda Comidas': 'USD/CLP',
       'Valor Comidas (USD)': round2(ac.comidas.usd || 0),
@@ -1085,6 +1099,8 @@ async function buildRows(){
       'CoordInador(a)': coord.nombre || '',
       'Valor Coordinador/a CLP': Math.round(coord.clp || 0),
 
+      // ✅ GASTOS: items “X Gastos”
+      'Gastos': gastos.detalles.length ? `${gastos.detalles.length} item(s)` : '',
       'Gastos aprob (CLP)': Math.round(gastos.totalCLP || 0),
 
       'Seguro ': seguro.etiqueta || '',
@@ -1166,9 +1182,10 @@ function exportXLSX(rows){
       'Aéreo/s','Valor Aéreo (CLP)',
       'Terrestre/s','Moneda Terrestre','Valor Terrestre (USD)','Valor Terrestre (CLP)',
       'Hotel/es','Moneda Hotel','Valor Hotel (USD)','Valor Hotel (CLP)',
-      'Moneda Actividades ','Actividades (USD)','Actividades (CLP)',
+      'Actividades','Moneda Actividades ','Actividades (USD)','Actividades (CLP)',
       'Comidas','Moneda Comidas','Valor Comidas (USD)','Valor Comidas (CLP)',
-      'CoordInador(a)','Valor Coordinador/a CLP','Gastos aprob (CLP)',
+      'CoordInador(a)','Valor Coordinador/a CLP',
+      'Gastos','Gastos aprob (CLP)',
       'Seguro ','Valor Seguro (USD)',
       'TOTAL USD','TOTAL CLP'
     ];
@@ -1356,6 +1373,10 @@ function fillFilters(){
     .sort((a,b)=>a-b);
   const selAno = $('filtroAno');
   selAno.innerHTML = `<option value="*">TODOS</option>` + anos.map(a=>`<option value="${a}">${a}</option>`).join('');
+  
+  // ✅ Default: año actual si existe en la lista; si no, deja TODOS
+  const y = String(new Date().getFullYear());
+  if ([...selAno.options].some(o => o.value === y)) selAno.value = y;
 
   // destinos
   const destinos = [...new Set(state.grupos.map(g => (GRUPO.destino(g.data||{})||'').trim()).filter(Boolean))]
