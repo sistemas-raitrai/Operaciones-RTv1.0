@@ -66,7 +66,7 @@ const HOTEL = {
     const numOK = (codigo && (String(o.grupoNumero||'') === String(codigo)));
     return gidOK || docOK || numOK;
   },
-  empresa: (ha) => (ha.hotelNombre || ha.hotel || ha.nombreHotel || '').toString().trim() || '(HOTEL)',
+  empresa: (ha) => (ha.hotelNombre || ha.hotel || ha.nombreHotel || '').toString().trim() || '',
   asunto: (ha) => (ha.asunto || ha.regimen || ha.tipo || 'HOTEL').toString().trim(),
   moneda: (ha) => normMoneda(ha.moneda || ha.currency || 'USD'),
   monto: (ha) => num(ha.monto || ha.valor || ha.tarifaTotal || ha.total || 0)
@@ -699,7 +699,7 @@ function render(rows){
       <td>${esc(r['Moneda Terrestre'])}</td>
       <td class="cp-right" data-k="ter_usd">${moneyUSD(r['Valor Terrestre (USD)'] || 0)}</td>
       <td class="cp-right" data-k="ter_clp">${moneyCLP(r['Valor Terrestre (CLP)'] || 0)}</td>
-      <td>${esc(r['Hotel/es'])}</td>
+      <td style="white-space:pre-line">${esc(r['Hotel/es'])}</td>
       <td>${esc(r['Moneda Hotel'])}</td>
       <td class="cp-right" data-k="hot_usd">${moneyUSD(r['Valor Hotel (USD)'] || 0)}</td>
       <td class="cp-right" data-k="hot_clp">${moneyCLP(r['Valor Hotel (CLP)'] || 0)}</td>
