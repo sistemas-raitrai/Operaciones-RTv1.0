@@ -240,8 +240,8 @@ function summarizeNamesFromDetalles(detalles = [], opts = {}){
 
   const uniq = [...new Set(xs)];
   const cut = uniq.slice(0, 6);
-  const txt = cut.map(x => `- ${x}`).join('\n');
-  return txt + (uniq.length > 6 ? `\n- …` : '');
+  const txt = cut.join('\n');
+  return txt + (uniq.length > 6 ? `\n…` : '');
 }
 
 
