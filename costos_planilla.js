@@ -196,17 +196,49 @@ function moneyCLP(n){ return '$' + fmtInt(n); }
 function moneyUSD(n){ return '$' + (Number(n)||0).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
 
 // Resume empresas/asuntos para mostrar en la tabla (similar a costos_master.js)
-function summarizeNamesFromDetalles(detalles = []){
-  // ✅ Queremos estilo Imagen 2: lista vertical con "- "
-  // Prioriza "empresa" (hotelNombre) y filtra placeholders tipo "(HOTEL)"
+function summarizeNamesFromDetalles(detalles = [], opts = {}){
+  // opts.mode: 'aereo' | 'terrestre' | 'default'
+  const mode = (opts.mode || 'default').toString();
+
+  const pickLabel = (d) => {
+    const empresa = (d?.empresa || '').toString().trim();
+    const asunto  = (d?.asunto  || '').toString().trim();
+
+    // 1) AÉREOS: mostrar solo la "marca" (LATAM, SKY, etc.)
+    //    Preferimos empresa porque en vuelos viene limpio.
+    if (mode === 'aereo') {
+      if (empresa) return empresa.split(/\s+/)[0].trim(); // por si empresa trae algo extra
+      if (asunto) return asunto.split(/\s+/)[0].trim();
+      return '';
+    }
+
+    // 2) TERRESTRES: mostrar solo el primer tramo
+    //    Ej: "SERGIO CARRASCO : COLEGIO—AEROPUERTO..." => "SERGIO CARRASCO"
+    //    Soporta separadores comunes: ":" "." "·" "–" "-"
+    if (mode === 'terrestre') {
+      const base = (asunto || empresa || '').trim();
+      if (!base) return '';
+      const first =
+        base.split(':')[0]
+            .split('.')[0]
+            .split('·')[0]
+            .split('–')[0]
+            .split('-')[0]
+            .trim();
+      return first;
+    }
+
+    // 3) DEFAULT: lo mismo que tenías (asunto o empresa completo)
+    return (asunto || empresa || '').trim();
+  };
+
   const xs = (detalles || [])
-    .map(d => (d.asunto || d.empresa || '').toString().trim())
+    .map(pickLabel)
     .filter(s => s && s !== '(HOTEL)' && s !== 'HOTEL');
 
   if (!xs.length) return '';
 
   const uniq = [...new Set(xs)];
-  // 6 líneas máximo para no hacer la tabla eterna (ajústalo si quieres)
   const cut = uniq.slice(0, 6);
   const txt = cut.map(x => `- ${x}`).join('\n');
   return txt + (uniq.length > 6 ? `\n- …` : '');
@@ -1004,10 +1036,10 @@ async function buildRows(){
       'Cantidad Noches': noches,
 
       // ✅ Texto “humano” (como en Hotel/es)
-      'Aéreo/s': aereos.detalles.length ? summarizeNamesFromDetalles(aereos.detalles) : '',
+      'Aéreo/s': aereos.detalles.length ? summarizeNamesFromDetalles(aereos.detalles, { mode:'aereo' }) : '',
       'Valor Aéreo (CLP)': Math.round(aereos.totalCLP || 0),
       
-      'Terrestre/s': ter.detalles.length ? summarizeNamesFromDetalles(ter.detalles) : '',
+      'Terrestre/s': ter.detalles.length ? summarizeNamesFromDetalles(ter.detalles, { mode:'terrestre' }) : '',
       'Moneda Terrestre': 'USD/CLP',
       'Valor Terrestre (USD)': round2(ter.usd || 0),
       'Valor Terrestre (CLP)': Math.round(ter.clp || 0),
