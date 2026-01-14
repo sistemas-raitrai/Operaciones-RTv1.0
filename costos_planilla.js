@@ -930,10 +930,11 @@ async function buildRows(){
       Fechas: rangoTxt,
       'Cantidad Noches': noches,
 
-      'Aéreo/s': aereos.detalles.length ? `${aereos.detalles.length} item(s)` : '',
+      // ✅ Texto “humano” (como en Hotel/es)
+      'Aéreo/s': aereos.detalles.length ? summarizeNamesFromDetalles(aereos.detalles) : '',
       'Valor Aéreo (CLP)': Math.round(aereos.totalCLP || 0),
-
-      'Terrestre/s': ter.detalles.length ? `${ter.detalles.length} item(s)` : '',
+      
+      'Terrestre/s': ter.detalles.length ? summarizeNamesFromDetalles(ter.detalles) : '',
       'Moneda Terrestre': 'USD/CLP',
       'Valor Terrestre (USD)': round2(ter.usd || 0),
       'Valor Terrestre (CLP)': Math.round(ter.clp || 0),
