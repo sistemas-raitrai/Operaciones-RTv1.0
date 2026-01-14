@@ -165,7 +165,7 @@ function summarizeNamesFromDetalles(detalles = []){
   // ✅ Queremos estilo Imagen 2: lista vertical con "- "
   // Prioriza "empresa" (hotelNombre) y filtra placeholders tipo "(HOTEL)"
   const xs = (detalles || [])
-    .map(d => (d.empresa || d.asunto || '').toString().trim())
+    .map(d => (d.asunto || d.empresa || '').toString().trim())
     .filter(s => s && s !== '(HOTEL)' && s !== 'HOTEL');
 
   if (!xs.length) return '';
