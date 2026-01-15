@@ -291,6 +291,21 @@
   #tbl {
     text-transform: uppercase;
   }
+
+  .cp-inp{
+  width:100% !important;
+  padding:8px !important;
+  border:1px solid #e5e7eb !important;
+  border-radius:10px !important;
+  background:#fff !important;
+  font-size:.92rem !important;
+  }
+  .cp-hrow{
+    padding:8px 10px;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    background:#fafafa;
+  }
   
   /* =======================
      RESPONSIVE
@@ -450,12 +465,19 @@
     <div class="cp-modal">
       <div class="cp-modal-head">
         <div class="cp-modal-title" id="modalTitle">Detalle</div>
-        <button class="cp-x" id="modalClose">Cerrar ✕</button>
+      
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="cp-x" id="modalSave" style="background:#2563eb; border-color:#1d4ed8; color:#fff;">
+            Guardar
+          </button>
+          <button class="cp-x" id="modalClose">Cerrar ✕</button>
+        </div>
       </div>
       <div class="cp-modal-body">
         <div class="cp-muted" id="modalSub" style="margin-bottom:10px;">—</div>
         <div class="cp-tablewrap">
           <table id="modalTbl">
+
             <thead>
               <tr>
                 <th>Empresa</th>
@@ -465,12 +487,21 @@
                 <th class="cp-right">USD</th>
                 <th class="cp-right">CLP</th>
                 <th>Fuente</th>
+                <th>Revisado</th>
               </tr>
             </thead>
+
             <tbody></tbody>
           </table>
         </div>
+
         <div class="cp-muted" id="modalFoot" style="margin-top:10px;">—</div>
+
+        <div style="margin-top:14px;">
+          <div style="font-weight:950; margin-bottom:6px;">Historial (últimos 20)</div>
+          <div id="modalHist" class="cp-muted" style="display:grid; gap:8px;"></div>
+        </div>
+
       </div>
     </div>
   </div>
