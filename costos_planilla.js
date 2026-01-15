@@ -599,7 +599,7 @@ function calcHotel({ gid, codigo, fx, destinoGrupo }){
       usd: _usd,
       clp: _clp,
       fuente: `hotelAssignments/${ha.id}`
-    });
+    };
     det0.itemId = makeItemId(det0);
     detalles.push(det0);
   }
