@@ -1750,9 +1750,17 @@ function fillFilters(){
   const selAno = $('filtroAno');
   selAno.innerHTML = `<option value="*">TODOS</option>` + anos.map(a=>`<option value="${a}">${a}</option>`).join('');
   
-  // ✅ Default: año actual si existe en la lista; si no, deja TODOS
-  const y = String(new Date().getFullYear());
-  if ([...selAno.options].some(o => o.value === y)) selAno.value = y;
+  // ✅ Default: año anterior (temporada cerrada) si existe; si no, año actual; si no, TODOS
+  const nowY = new Date().getFullYear();
+  const prefer = String(nowY - 1);
+  const current = String(nowY);
+  
+  const has = (val) => [...selAno.options].some(o => o.value === String(val));
+  
+  if (has(prefer)) selAno.value = prefer;
+  else if (has(current)) selAno.value = current;
+  else selAno.value = '*';
+
 
   // destinos
   const destinos = [...new Set(state.grupos.map(g => (GRUPO.destino(g.data||{})||'').trim()).filter(Boolean))]
@@ -1761,14 +1769,50 @@ function fillFilters(){
   selDest.innerHTML = `<option value="*">TODOS</option>` + destinos.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
 }
 
-async function aplicar(){
-  setStatus('Calculando…');
-  const rows = await buildRows();
-  state.rows = rows;
-  render(rows);
-  setKPIs({ rows, fx: getFX() });
-  setStatus(`OK ✅ (${rows.length} filas). Click en cualquier monto para ver detalle.`);
+// ✅ flags de carga pesada (se inicializan la primera vez que aplicas)
+state.loaded = state.loaded || {
+  servicios:false,
+  vuelos:false,
+  hoteles:false,
+  hotelAsg:false,
+  gastos:false
+};
+
+async function ensureHeavyDataLoaded(){
+  // Carga solo lo que falta (una vez)
+  const tasks = [];
+
+  if (!state.loaded.servicios){ tasks.push(loadServicios().then(()=> state.loaded.servicios=true)); }
+  if (!state.loaded.vuelos){ tasks.push(loadVuelos().then(()=> state.loaded.vuelos=true)); }
+  if (!state.loaded.hoteles){ tasks.push(loadHoteles().then(()=> state.loaded.hoteles=true)); }
+  if (!state.loaded.hotelAsg){ tasks.push(loadHotelAssignments().then(()=> state.loaded.hotelAsg=true)); }
+  if (!state.loaded.gastos){ tasks.push(loadGastos().then(()=> state.loaded.gastos=true)); }
+
+  if (!tasks.length) return; // ya está todo listo
+  setStatus('Cargando datos para cálculo…');
+  await Promise.all(tasks);
 }
+
+async function aplicar(){
+  try{
+    // ✅ 1) Cargar data pesada SOLO cuando se aplica
+    await ensureHeavyDataLoaded();
+
+    // ✅ 2) Calcular y renderizar
+    setStatus('Calculando…');
+    const rows = await buildRows();
+    state.rows = rows;
+    render(rows);
+    setKPIs({ rows, fx: getFX() });
+
+    setStatus(`OK ✅ (${rows.length} filas). Click en cualquier monto para ver detalle.`);
+  }catch(e){
+    console.error(e);
+    setStatus('Error calculando. Revisa consola.');
+    alert('Error: ' + (e?.message || e));
+  }
+}
+
 
 async function boot(){
   $('modalClose').addEventListener('click', closeModal);
@@ -1792,21 +1836,17 @@ async function boot(){
   const today = new Date().toISOString().slice(0,10);
   $('hasta').value = today;
 
-  setStatus('Cargando datos…');
-
-  await Promise.all([
-    loadGrupos(),
-    loadServicios(),
-    loadVuelos(),
-    loadHoteles(), 
-    loadHotelAssignments(),
-    loadGastos()
-  ]);
-
+  setStatus('Cargando grupos…');
+  
+  // ✅ 1) SOLO grupos al iniciar (rápido)
+  await loadGrupos();
+  
+  // ✅ 2) Filtros listos + año default (año actual - 1 si existe)
   fillFilters();
+  
+  // ✅ 3) NO calculamos automáticamente
+  setStatus(`Listo ✅ (grupos: ${state.grupos.length}). Ajusta filtros y presiona APLICAR.`);
 
-  setStatus(`Listo ✅ (grupos: ${state.grupos.length}). Define FX y presiona APLICAR.`);
-  await aplicar();
 }
 
 onAuthStateChanged(auth, (user)=>{
