@@ -1576,12 +1576,12 @@ function exportXLSX(rows){
       `=IF(G${rowNum}="CLP",H${rowNum},"")`;
     
     // Modo CLP_ONLY: solo CLP (convertido si hace falta), USD vacío
-    const usdBlank = (_rowNum) => `=""`;
-    const clpOnly  = (rowNum) => `${clpAny(rowNum)}`;
+    const usdZero = (_rowNum) => `0`;
+    const clpZero = (_rowNum) => `0`;
     
     // Modo USD_ONLY: solo USD (convertido si hace falta), CLP vacío
     const usdOnly  = (rowNum) => `${usdAny(rowNum)}`;
-    const clpBlank = (_rowNum) => `=""`;
+    const clpBlank = (_rowNum) => `0`;
     
     function addItemSheet(sheetName, items, mode='PARALLEL'){
       const aoa = [[
@@ -1615,16 +1615,17 @@ function exportXLSX(rows){
           fUsd = usdParallel(r);
           fClp = clpParallel(r);
         } else if (mode === 'CLP_ONLY'){
-          fUsd = usdBlank(r);
-          fClp = clpOnly(r);
+          fUsd = usdZero(r);     // 0 (numérico)
+          fClp = clpAny(r);      // CLP convertido si aplica
         } else if (mode === 'USD_ONLY'){
-          fUsd = usdOnly(r);
-          fClp = clpBlank(r);
+          fUsd = usdOnly(r);     // USD convertido si aplica
+          fClp = clpBlank(r);    // 0 (numérico)
         }
+
     
         // Nota: devolvemos "" cuando no aplica; Excel lo trata como vacío.
-        ws[`I${r}`] = { t:'n', f: fUsd };
-        ws[`J${r}`] = { t:'n', f: fClp };
+        ws[`I${r}`] = { f: fUsd };
+        ws[`J${r}`] = { f: fClp };
       }
     
       ws['!cols'] = [
@@ -1691,42 +1692,91 @@ function exportXLSX(rows){
 
     /* ===================================================
        5) Fórmulas en "Costos" para alimentarse desde ítems
+       (✅ columnas dinámicas según header)
        =================================================== */
-    const sumifCLP = (sheet, row) => `=SUMIF(${sheet}!$A:$A,$A${row},${sheet}!$J:$J)`;
-    const sumifUSD = (sheet, row) => `=SUMIF(${sheet}!$A:$A,$A${row},${sheet}!$I:$I)`;
-
-    for (let i=2; i<=aoaMain.length; i++){
-      wsMain[`I${i}`]  = { t:'n', f: sumifCLP('Aereos', i) };
-
-      wsMain[`L${i}`]  = { t:'n', f: sumifUSD('Terrestres', i) };
-      wsMain[`M${i}`]  = { t:'n', f: sumifCLP('Terrestres', i) };
-
-      wsMain[`P${i}`]  = { t:'n', f: sumifUSD('Hoteles', i) };
-      wsMain[`Q${i}`]  = { t:'n', f: sumifCLP('Hoteles', i) };
-
-      wsMain[`S${i}`]  = { t:'n', f: sumifUSD('Actividades', i) };
-      wsMain[`T${i}`]  = { t:'n', f: sumifCLP('Actividades', i) };
-
-      wsMain[`W${i}`]  = { t:'n', f: sumifUSD('Comidas', i) };
-      wsMain[`X${i}`]  = { t:'n', f: sumifCLP('Comidas', i) };
-
-      wsMain[`Z${i}`]  = { t:'n', f: sumifCLP('Coordinador', i) };
-      wsMain[`AA${i}`] = { t:'n', f: sumifCLP('Gastos', i) };
-
-      wsMain[`AC${i}`] = { t:'n', f: sumifUSD('Seguro', i) };
-
-      const totalUsdFormula =
-        `=(I${i}/FX!$B$2)+L${i}+(M${i}/FX!$B$2)+P${i}+(Q${i}/FX!$B$2)+S${i}+(T${i}/FX!$B$2)+W${i}+(X${i}/FX!$B$2)+AC${i}`;
-
-      const totalClpFormula =
-        `=I${i}+M${i}+Q${i}+T${i}+X${i}+Z${i}+AA${i}+(L${i}*FX!$B$2)+(P${i}*FX!$B$2)+(S${i}*FX!$B$2)+(W${i}*FX!$B$2)+(AC${i}*FX!$B$2)`;
-
-      wsMain[`AD${i}`] = { t:'n', f: totalUsdFormula };
-      wsMain[`AE${i}`] = { t:'n', f: totalClpFormula };
+    
+    // --- Helpers de columna Excel ---
+    function colLetter(n){ // 1-based -> A, B, ... Z, AA...
+      let s = '';
+      while (n > 0){
+        const m = (n - 1) % 26;
+        s = String.fromCharCode(65 + m) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
     }
-
-    // Anchos en Costos
-    wsMain['!cols'] = header.map(h => ({ wch: Math.max(10, Math.min(35, (h||'').length + 2)) }));
+    function colIndex(name){
+      const idx0 = header.indexOf(name);
+      if (idx0 < 0) throw new Error(`Export XLSX: no existe columna "${name}" en header`);
+      return idx0 + 1; // 1-based
+    }
+    function cell(name, row){
+      return `${colLetter(colIndex(name))}${row}`;
+    }
+    function setF(name, row, f){
+      wsMain[cell(name,row)] = { f };
+    }
+    
+    // SUMIF: en hojas ítem, col A=Codigo, I=USD, J=CLP
+    const sumifCLP = (sheet, row) => `=SUMIF(${sheet}!$A:$A,${cell('Codigo',row)},${sheet}!$J:$J)`;
+    const sumifUSD = (sheet, row) => `=SUMIF(${sheet}!$A:$A,${cell('Codigo',row)},${sheet}!$I:$I)`;
+    
+    for (let i=2; i<=aoaMain.length; i++){
+    
+      setF('Valor Aéreo (CLP)', i, sumifCLP('Aereos', i));
+    
+      setF('Valor Terrestre (USD)', i, sumifUSD('Terrestres', i));
+      setF('Valor Terrestre (CLP)', i, sumifCLP('Terrestres', i));
+    
+      setF('Valor Hotel (USD)', i, sumifUSD('Hoteles', i));
+      setF('Valor Hotel (CLP)', i, sumifCLP('Hoteles', i));
+    
+      setF('Actividades (USD)', i, sumifUSD('Actividades', i));
+      setF('Actividades (CLP)', i, sumifCLP('Actividades', i));
+    
+      setF('Valor Comidas (USD)', i, sumifUSD('Comidas', i));
+      setF('Valor Comidas (CLP)', i, sumifCLP('Comidas', i));
+    
+      setF('Valor Coordinador/a CLP', i, sumifCLP('Coordinador', i));
+      setF('Gastos aprob (CLP)', i, sumifCLP('Gastos', i));
+    
+      setF('Valor Seguro (USD)', i, sumifUSD('Seguro', i));
+    
+      // ---- Totales
+      const AER_CLP = cell('Valor Aéreo (CLP)', i);
+    
+      const TER_USD = cell('Valor Terrestre (USD)', i);
+      const TER_CLP = cell('Valor Terrestre (CLP)', i);
+    
+      const HOT_USD = cell('Valor Hotel (USD)', i);
+      const HOT_CLP = cell('Valor Hotel (CLP)', i);
+    
+      const ACT_USD = cell('Actividades (USD)', i);
+      const ACT_CLP = cell('Actividades (CLP)', i);
+    
+      const COM_USD = cell('Valor Comidas (USD)', i);
+      const COM_CLP = cell('Valor Comidas (CLP)', i);
+    
+      const COORD_CLP = cell('Valor Coordinador/a CLP', i);
+      const GASTOS_CLP = cell('Gastos aprob (CLP)', i);
+    
+      const SEG_USD = cell('Valor Seguro (USD)', i);
+    
+      const totalUsdFormula =
+        `=(${AER_CLP}/FX!$B$2)` +
+        `+${TER_USD}+(${TER_CLP}/FX!$B$2)` +
+        `+${HOT_USD}+(${HOT_CLP}/FX!$B$2)` +
+        `+${ACT_USD}+(${ACT_CLP}/FX!$B$2)` +
+        `+${COM_USD}+(${COM_CLP}/FX!$B$2)` +
+        `+${SEG_USD}`;
+    
+      const totalClpFormula =
+        `=${AER_CLP}+${TER_CLP}+${HOT_CLP}+${ACT_CLP}+${COM_CLP}+${COORD_CLP}+${GASTOS_CLP}` +
+        `+(${TER_USD}*FX!$B$2)+(${HOT_USD}*FX!$B$2)+(${ACT_USD}*FX!$B$2)+(${COM_USD}*FX!$B$2)+(${SEG_USD}*FX!$B$2)`;
+    
+      wsMain[cell('TOTAL USD', i)] = { f: totalUsdFormula };
+      wsMain[cell('TOTAL CLP', i)] = { f: totalClpFormula };
+    }
 
     /* ==========================
        6) Exporta archivo
