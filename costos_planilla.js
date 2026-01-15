@@ -165,7 +165,16 @@ const COORD = {
    1) Helpers
    ========================================================= */
 const auth = getAuth(app);
+// Helper seguro: no revienta si el ID no existe
 const $ = (id) => document.getElementById(id);
+
+// Setea textContent solo si el elemento existe (evita null.textContent)
+function setText(id, txt){
+  const el = $(id);
+  if (!el) return;
+  el.textContent = txt ?? '';
+}
+
 
 // ✅ Carga XLSX si no está disponible (Vercel/CSP/adblock a veces bloquea el script del HTML)
 async function ensureXLSX(){
@@ -1126,7 +1135,9 @@ function applyOverrideToDetalle(det, ovItems, fx, mode='PARALLEL'){
 /* =========================================================
    6) Render tabla principal (CSV columns)
    ========================================================= */
-function setStatus(msg){ $('status').textContent = msg || '—'; }
+function setStatus(msg){
+  setText('status', msg || '—');
+}
 function setKPIs({ rows, fx }){
   $('kpiGrupos').textContent = String(rows.length || 0);
 
@@ -1902,7 +1913,10 @@ async function boot(){
 onAuthStateChanged(auth, (user)=>{
   if (!user) return (location.href = 'login.html');
   state.user = user;
-  $('who').textContent = user?.email ? `Conectado: ${user.email}` : '—';
+
+  // ✅ no revienta si el HTML no tiene #who
+  setText('who', user?.email ? `Conectado: ${user.email}` : '—');
+
   boot().catch(err=>{
     console.error(err);
     setStatus('Error cargando datos. Revisa consola.');
