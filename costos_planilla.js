@@ -1567,32 +1567,38 @@ function exportXLSX(rows){
        - Columnas item sheet:
          A:Codigo B:Grupo C:Año D:Destino E:Empresa F:Asunto
          G:Moneda H:MontoOriginal I:USD J:CLP K:Fuente
+    
+       ✅ IMPORTANTE:
+       - En SheetJS (XLSX), ws[cell].f debe ir SIN "="
+       - Si anidas fórmulas, jamás metas otra fórmula que empiece con "="
        ===================================================== */
     
     // Convierte cualquier moneda a USD (si FX falta, deja "")
-    const usdAny = (rowNum) =>
-      `=IF(G${rowNum}="USD",H${rowNum},IF(G${rowNum}="CLP",IF(FX!$B$2=0,"",H${rowNum}/FX!$B$2),IF(G${rowNum}="BRL",IF(FX!$B$3=0,"",H${rowNum}/FX!$B$3),IF(G${rowNum}="ARS",IF(FX!$B$4=0,"",H${rowNum}/FX!$B$4),""))) )`;
+    const usdAny = (r) =>
+      `IF(G${r}="USD",H${r},` +
+      `IF(G${r}="CLP",IF(FX!$B$2=0,"",H${r}/FX!$B$2),` +
+      `IF(G${r}="BRL",IF(FX!$B$3=0,"",H${r}/FX!$B$3),` +
+      `IF(G${r}="ARS",IF(FX!$B$4=0,"",H${r}/FX!$B$4),""))))`;
     
     // Convierte cualquier moneda a CLP (si FX falta, deja "")
-    const clpAny = (rowNum) =>
-      `=IF(G${rowNum}="CLP",H${rowNum},IF(G${rowNum}="USD",IF(FX!$B$2=0,"",H${rowNum}*FX!$B$2),IF(G${rowNum}="BRL",IF(OR(FX!$B$2=0,FX!$B$3=0),"",(H${rowNum}/FX!$B$3)*FX!$B$2),IF(G${rowNum}="ARS",IF(OR(FX!$B$2=0,FX!$B$4=0),"",(H${rowNum}/FX!$B$4)*FX!$B$2),""))) )`;
+    const clpAny = (r) =>
+      `IF(G${r}="CLP",H${r},` +
+      `IF(G${r}="USD",IF(FX!$B$2=0,"",H${r}*FX!$B$2),` +
+      `IF(G${r}="BRL",IF(OR(FX!$B$2=0,FX!$B$3=0),"",(H${r}/FX!$B$3)*FX!$B$2),` +
+      `IF(G${r}="ARS",IF(OR(FX!$B$2=0,FX!$B$4=0),"",(H${r}/FX!$B$4)*FX!$B$2),""))))`;
     
     // Modo PARALLEL:
     // - Si moneda=CLP => CLP lleno, USD vacío
     // - Si moneda!=CLP => USD lleno (USD o convertido), CLP vacío
-    const usdParallel = (rowNum) =>
-      `=IF(G${rowNum}="CLP","",${usdAny(rowNum)})`;
+    const usdParallel = (r) => `IF(G${r}="CLP","",${usdAny(r)})`;
+    const clpParallel = (r) => `IF(G${r}="CLP",H${r},"")`;
     
-    const clpParallel = (rowNum) =>
-      `=IF(G${rowNum}="CLP",H${rowNum},"")`;
+    // Modo CLP_ONLY: solo CLP (convertido si hace falta), USD = 0
+    const usdZero = (_r) => `0`;
     
-    // Modo CLP_ONLY: solo CLP (convertido si hace falta), USD vacío
-    const usdZero = (_rowNum) => `0`;
-    const clpZero = (_rowNum) => `0`;
-    
-    // Modo USD_ONLY: solo USD (convertido si hace falta), CLP vacío
-    const usdOnly  = (rowNum) => `${usdAny(rowNum)}`;
-    const clpBlank = (_rowNum) => `0`;
+    // Modo USD_ONLY: solo USD (convertido si hace falta), CLP = 0
+    const usdOnly = (r) => `${usdAny(r)}`;
+    const clpZero = (_r) => `0`;
     
     function addItemSheet(sheetName, items, mode='PARALLEL'){
       const aoa = [[
@@ -1626,15 +1632,14 @@ function exportXLSX(rows){
           fUsd = usdParallel(r);
           fClp = clpParallel(r);
         } else if (mode === 'CLP_ONLY'){
-          fUsd = usdZero(r);     // 0 (numérico)
-          fClp = clpAny(r);      // CLP convertido si aplica
+          fUsd = usdZero(r);  // 0
+          fClp = clpAny(r);   // CLP convertido si aplica
         } else if (mode === 'USD_ONLY'){
-          fUsd = usdOnly(r);     // USD convertido si aplica
-          fClp = clpBlank(r);    // 0 (numérico)
+          fUsd = usdOnly(r);  // USD convertido si aplica
+          fClp = clpZero(r);  // 0
         }
-
     
-        // Nota: devolvemos "" cuando no aplica; Excel lo trata como vacío.
+        // ✅ SIN "="
         ws[`I${r}`] = { f: fUsd };
         ws[`J${r}`] = { f: fClp };
       }
@@ -1646,7 +1651,7 @@ function exportXLSX(rows){
     
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     }
-
+    
     /* ==========================================
        3) Construir DETALLES por ítem (global)
        ========================================== */
@@ -1660,10 +1665,10 @@ function exportXLSX(rows){
       GASTOS: [],
       SEGURO: [],
     };
-
+    
     for (const r of (rows || [])){
       const base = { Codigo:r.Codigo, Grupo:r.Grupo, 'Año':r['Año'], Destino:r.Destino };
-
+    
       const pushMany = (arr, dets=[]) => {
         for (const d of (dets || [])){
           arr.push({
@@ -1676,7 +1681,7 @@ function exportXLSX(rows){
           });
         }
       };
-
+    
       pushMany(all.AEREOS, r._det?.aereo);
       pushMany(all.TERRESTRES, r._det?.terrestre);
       pushMany(all.HOTELES, r._det?.hotel);
@@ -1686,11 +1691,10 @@ function exportXLSX(rows){
       pushMany(all.GASTOS, r._det?.gastos);
       pushMany(all.SEGURO, r._det?.seguro);
     }
-
+    
     /* ==========================================
        4) Hojas por ítem (cada una un item)
        ========================================== */
-    // ✅ Modos por hoja (respeta “bolsas”)
     addItemSheet('Aereos',      all.AEREOS,      'CLP_ONLY');
     addItemSheet('Terrestres',  all.TERRESTRES,  'PARALLEL');
     addItemSheet('Hoteles',     all.HOTELES,     'PARALLEL');
@@ -1699,8 +1703,7 @@ function exportXLSX(rows){
     addItemSheet('Coordinador', all.COORD,       'CLP_ONLY');
     addItemSheet('Gastos',      all.GASTOS,      'CLP_ONLY');
     addItemSheet('Seguro',      all.SEGURO,      'USD_ONLY');
-
-
+    
     /* ===================================================
        5) Fórmulas en "Costos" para alimentarse desde ítems
        (✅ columnas dinámicas según header)
@@ -1728,9 +1731,9 @@ function exportXLSX(rows){
       wsMain[cell(name,row)] = { f };
     }
     
-    // SUMIF: en hojas ítem, col A=Codigo, I=USD, J=CLP
-    const sumifCLP = (sheet, row) => `=SUMIF(${sheet}!$A:$A,${cell('Codigo',row)},${sheet}!$J:$J)`;
-    const sumifUSD = (sheet, row) => `=SUMIF(${sheet}!$A:$A,${cell('Codigo',row)},${sheet}!$I:$I)`;
+    // ✅ SUMIF SIN "="
+    const sumifCLP = (sheet, row) => `SUMIF(${sheet}!$A:$A,${cell('Codigo',row)},${sheet}!$J:$J)`;
+    const sumifUSD = (sheet, row) => `SUMIF(${sheet}!$A:$A,${cell('Codigo',row)},${sheet}!$I:$I)`;
     
     for (let i=2; i<=aoaMain.length; i++){
     
@@ -1753,7 +1756,7 @@ function exportXLSX(rows){
     
       setF('Valor Seguro (USD)', i, sumifUSD('Seguro', i));
     
-      // ---- Totales
+      // ---- Totales (SIN "=")
       const AER_CLP = cell('Valor Aéreo (CLP)', i);
     
       const TER_USD = cell('Valor Terrestre (USD)', i);
@@ -1768,13 +1771,13 @@ function exportXLSX(rows){
       const COM_USD = cell('Valor Comidas (USD)', i);
       const COM_CLP = cell('Valor Comidas (CLP)', i);
     
-      const COORD_CLP = cell('Valor Coordinador/a CLP', i);
+      const COORD_CLP  = cell('Valor Coordinador/a CLP', i);
       const GASTOS_CLP = cell('Gastos aprob (CLP)', i);
     
       const SEG_USD = cell('Valor Seguro (USD)', i);
     
       const totalUsdFormula =
-        `=(${AER_CLP}/FX!$B$2)` +
+        `(${AER_CLP}/FX!$B$2)` +
         `+${TER_USD}+(${TER_CLP}/FX!$B$2)` +
         `+${HOT_USD}+(${HOT_CLP}/FX!$B$2)` +
         `+${ACT_USD}+(${ACT_CLP}/FX!$B$2)` +
@@ -1782,7 +1785,7 @@ function exportXLSX(rows){
         `+${SEG_USD}`;
     
       const totalClpFormula =
-        `=${AER_CLP}+${TER_CLP}+${HOT_CLP}+${ACT_CLP}+${COM_CLP}+${COORD_CLP}+${GASTOS_CLP}` +
+        `${AER_CLP}+${TER_CLP}+${HOT_CLP}+${ACT_CLP}+${COM_CLP}+${COORD_CLP}+${GASTOS_CLP}` +
         `+(${TER_USD}*FX!$B$2)+(${HOT_USD}*FX!$B$2)+(${ACT_USD}*FX!$B$2)+(${COM_USD}*FX!$B$2)+(${SEG_USD}*FX!$B$2)`;
     
       wsMain[cell('TOTAL USD', i)] = { f: totalUsdFormula };
