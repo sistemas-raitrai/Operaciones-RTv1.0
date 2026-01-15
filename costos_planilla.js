@@ -1552,22 +1552,42 @@ function exportXLSX(rows){
     XLSX.utils.book_append_sheet(wb, fxSheet, 'FX');
 
     /* =====================================================
-       Helpers Excel: formulas para convertir a USD y a CLP
-       - En cada hoja item:
+       Helpers Excel: formulas por MODO (respeta “bolsas”)
+       - Columnas item sheet:
          A:Codigo B:Grupo C:Año D:Destino E:Empresa F:Asunto
          G:Moneda H:MontoOriginal I:USD J:CLP K:Fuente
        ===================================================== */
-    const usdFormula = (rowNum) =>
-      `=IF(G${rowNum}="USD",H${rowNum},IF(G${rowNum}="CLP",H${rowNum}/FX!$B$2,IF(G${rowNum}="BRL",H${rowNum}/FX!$B$3,IF(G${rowNum}="ARS",H${rowNum}/FX!$B$4,""))))`;
-
-    const clpFormula = (rowNum) =>
-      `=IF(G${rowNum}="CLP",H${rowNum},IF(G${rowNum}="USD",H${rowNum}*FX!$B$2,IF(G${rowNum}="BRL",(H${rowNum}/FX!$B$3)*FX!$B$2,IF(G${rowNum}="ARS",(H${rowNum}/FX!$B$4)*FX!$B$2,""))))`;
-
-    function addItemSheet(sheetName, items){
+    
+    // Convierte cualquier moneda a USD (si FX falta, deja "")
+    const usdAny = (rowNum) =>
+      `=IF(G${rowNum}="USD",H${rowNum},IF(G${rowNum}="CLP",IF(FX!$B$2=0,"",H${rowNum}/FX!$B$2),IF(G${rowNum}="BRL",IF(FX!$B$3=0,"",H${rowNum}/FX!$B$3),IF(G${rowNum}="ARS",IF(FX!$B$4=0,"",H${rowNum}/FX!$B$4),""))) )`;
+    
+    // Convierte cualquier moneda a CLP (si FX falta, deja "")
+    const clpAny = (rowNum) =>
+      `=IF(G${rowNum}="CLP",H${rowNum},IF(G${rowNum}="USD",IF(FX!$B$2=0,"",H${rowNum}*FX!$B$2),IF(G${rowNum}="BRL",IF(OR(FX!$B$2=0,FX!$B$3=0),"",(H${rowNum}/FX!$B$3)*FX!$B$2),IF(G${rowNum}="ARS",IF(OR(FX!$B$2=0,FX!$B$4=0),"",(H${rowNum}/FX!$B$4)*FX!$B$2),""))) )`;
+    
+    // Modo PARALLEL:
+    // - Si moneda=CLP => CLP lleno, USD vacío
+    // - Si moneda!=CLP => USD lleno (USD o convertido), CLP vacío
+    const usdParallel = (rowNum) =>
+      `=IF(G${rowNum}="CLP","",${usdAny(rowNum)})`;
+    
+    const clpParallel = (rowNum) =>
+      `=IF(G${rowNum}="CLP",H${rowNum},"")`;
+    
+    // Modo CLP_ONLY: solo CLP (convertido si hace falta), USD vacío
+    const usdBlank = (_rowNum) => `=""`;
+    const clpOnly  = (rowNum) => `${clpAny(rowNum)}`;
+    
+    // Modo USD_ONLY: solo USD (convertido si hace falta), CLP vacío
+    const usdOnly  = (rowNum) => `${usdAny(rowNum)}`;
+    const clpBlank = (_rowNum) => `=""`;
+    
+    function addItemSheet(sheetName, items, mode='PARALLEL'){
       const aoa = [[
         'Codigo','Grupo','Año','Destino','Empresa','Asunto','Moneda','MontoOriginal','USD','CLP','Fuente'
       ]];
-
+    
       for (const it of items){
         aoa.push([
           it.Codigo || '',
@@ -1583,20 +1603,35 @@ function exportXLSX(rows){
           it.fuente || ''
         ]);
       }
-
+    
       const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-      // fórmulas en I (USD) y J (CLP) desde fila 2
+    
+      // Fórmulas en I (USD) y J (CLP) desde fila 2
       for (let r=2; r<=aoa.length; r++){
-        ws[`I${r}`] = { t:'n', f: usdFormula(r) };
-        ws[`J${r}`] = { t:'n', f: clpFormula(r) };
+        let fUsd = usdAny(r);
+        let fClp = clpAny(r);
+    
+        if (mode === 'PARALLEL'){
+          fUsd = usdParallel(r);
+          fClp = clpParallel(r);
+        } else if (mode === 'CLP_ONLY'){
+          fUsd = usdBlank(r);
+          fClp = clpOnly(r);
+        } else if (mode === 'USD_ONLY'){
+          fUsd = usdOnly(r);
+          fClp = clpBlank(r);
+        }
+    
+        // Nota: devolvemos "" cuando no aplica; Excel lo trata como vacío.
+        ws[`I${r}`] = { t:'n', f: fUsd };
+        ws[`J${r}`] = { t:'n', f: fClp };
       }
-
+    
       ws['!cols'] = [
         {wch:12},{wch:28},{wch:8},{wch:18},{wch:22},{wch:28},
         {wch:10},{wch:16},{wch:14},{wch:14},{wch:28}
       ];
-
+    
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
     }
 
@@ -1643,14 +1678,16 @@ function exportXLSX(rows){
     /* ==========================================
        4) Hojas por ítem (cada una un item)
        ========================================== */
-    addItemSheet('Aereos', all.AEREOS);
-    addItemSheet('Terrestres', all.TERRESTRES);
-    addItemSheet('Hoteles', all.HOTELES);
-    addItemSheet('Actividades', all.ACTIVIDADES);
-    addItemSheet('Comidas', all.COMIDAS);
-    addItemSheet('Coordinador', all.COORD);
-    addItemSheet('Gastos', all.GASTOS);
-    addItemSheet('Seguro', all.SEGURO);
+    // ✅ Modos por hoja (respeta “bolsas”)
+    addItemSheet('Aereos',      all.AEREOS,      'CLP_ONLY');
+    addItemSheet('Terrestres',  all.TERRESTRES,  'PARALLEL');
+    addItemSheet('Hoteles',     all.HOTELES,     'PARALLEL');
+    addItemSheet('Actividades', all.ACTIVIDADES, 'PARALLEL');
+    addItemSheet('Comidas',     all.COMIDAS,     'PARALLEL');
+    addItemSheet('Coordinador', all.COORD,       'CLP_ONLY');
+    addItemSheet('Gastos',      all.GASTOS,      'CLP_ONLY');
+    addItemSheet('Seguro',      all.SEGURO,      'USD_ONLY');
+
 
     /* ===================================================
        5) Fórmulas en "Costos" para alimentarse desde ítems
