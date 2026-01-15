@@ -195,6 +195,20 @@ function fmtInt(n){ return (Math.round(Number(n)||0)).toLocaleString('es-CL'); }
 function moneyCLP(n){ return '$' + fmtInt(n); }
 function moneyUSD(n){ return '$' + (Number(n)||0).toLocaleString('en-US', { maximumFractionDigits: 2 }); }
 
+function shortCoordName(full){
+  const s = (full || '').toString().trim();
+  if (!s) return '';
+  const p = s.split(/\s+/).filter(Boolean);
+
+  if (p.length <= 2) return p.join(' ');
+  if (p.length === 3) return `${p[0]} ${p[1]}`; // 1 + 2
+  if (p.length === 4) return `${p[0]} ${p[2]}`; // 1 + 3
+  if (p.length === 5) return `${p[0]} ${p[3]}`; // 1 + 4
+
+  // fallback 6+ (por si acaso)
+  return `${p[0]} ${p[p.length - 1]}`;
+}
+
 // Resume empresas/asuntos para mostrar en la tabla (similar a costos_master.js)
 function summarizeNamesFromDetalles(detalles = [], opts = {}){
   // opts.mode: 'aereo' | 'terrestre' | 'default'
@@ -885,8 +899,11 @@ function render(rows){
       <td class="cp-right" data-k="com_usd">${moneyUSD(r['Valor Comidas (USD)'] || 0)}</td>
       <td class="cp-right" data-k="com_clp">${moneyCLP(r['Valor Comidas (CLP)'] || 0)}</td>
       
-      <td>${esc(r['CoordInador(a)'])}</td>
+      <td data-k="coord_txt" title="${esc(r['CoordInador(a)'])}">
+        ${esc(shortCoordName(r['CoordInador(a)']))}
+      </td>
       <td class="cp-right" data-k="coord_clp">${moneyCLP(r['Valor Coordinador/a CLP'] || 0)}</td>
+
       
       <!-- ✅ GASTOS: nueva columna ITEMS + monto -->
       <td data-k="gastos_txt">${esc(r['Gastos'])}</td>
@@ -933,6 +950,7 @@ function render(rows){
     bindItemCell('[data-k="com_txt"]', 'comidas', 'Comidas');
     
     bindItemCell('[data-k="gastos_txt"]', 'gastos', 'Gastos');        // ✅ NUEVO
+    bindItemCell('[data-k="coord_txt"]', 'coord', 'Coordinador');
 
 
 
