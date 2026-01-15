@@ -647,7 +647,7 @@ function calcTerrestresDesdeServicios({ G, gid, destinoGrupo, pax, fx }){
         montoOriginal: monto,
         usd: _usd, clp: _clp,
         fuente: `Servicios/${svc.destino}/Listado/${svc.id} @ ${fecha}`
-      });
+      };
       det0.itemId = makeItemId(det0);
       detalles.push(det0);
     }
@@ -745,7 +745,7 @@ function calcGastos({ gid, codigo, fx }){
       usd: toUSD(monto, mon, fx),
       clp,
       fuente: `gastos/${g.id}`
-    });
+    };
     det0.itemId = makeItemId(det0);
     detalles.push(det0);
   }
