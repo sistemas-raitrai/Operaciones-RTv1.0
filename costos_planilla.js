@@ -9,7 +9,8 @@
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, getDocs, query, where, orderBy
+  collection, collectionGroup, getDocs, query, where, orderBy,
+  doc, getDoc, setDoc, updateDoc, addDoc, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 /* =========================================================
@@ -345,11 +346,24 @@ const state = {
   servicios: [],  // flat
   svcIndex: new Map(), // key: DEST||NAME -> svc
   vuelos: [],
-  hoteles: [],                 // ✅ NUEVO
-  hotelIndex: new Map(),       // ✅ NUEVO (id/slug/nombre -> doc)
+  hoteles: [],
+  hotelIndex: new Map(),
   hotelAsg: [],
-  gastos: [],     // collectionGroup gastos
-  rows: [],       // filas visibles con detalle
+  gastos: [],
+  rows: [],
+
+  // ✅ Overrides (cache por gid+bucket)
+  overrides: new Map(), // key: `${gid}||${bucket}` -> { items: { [itemId]: {isChecked, monedaOriginal, montoOriginal, updatedBy, updatedAt} } }
+
+  // ✅ Contexto modal para guardar
+  modal: {
+    gid: '',
+    bucket: '',
+    fx: null,
+    baseDetalles: [],   // detalles ya calculados (con overrides aplicados)
+    title: '',
+    sub: ''
+  }
 };
 
 async function loadGrupos(){
@@ -495,13 +509,15 @@ function calcAereos({ gid, codigo, fx }){
     if (clp == null) continue;
 
     totalCLP += clp;
-    detalles.push({
+    const det0 = {
       empresa: emp, asunto: asu, monedaOriginal: mon,
       montoOriginal: monto,
       usd: toUSD(monto, mon, fx),
       clp,
       fuente: `vuelos/${v.id}`
     });
+    det0.itemId = makeItemId(det0);
+    detalles.push(det0);
   }
 
   return {
@@ -533,13 +549,15 @@ function calcTerrestresDesdeVuelos({ gid, codigo, fx }){
     if (_usd != null) usd += _usd;
     if (_clp != null) clp += _clp;
 
-    detalles.push({
+    const det0 = {
       empresa: emp, asunto: asu, monedaOriginal: mon,
       montoOriginal: monto,
       usd: _usd,
       clp: _clp,
       fuente: `vuelos/${v.id}`
     });
+    det0.itemId = makeItemId(det0);
+    detalles.push(det0);
   }
 
   return { usd, clp, detalles };
@@ -574,13 +592,15 @@ function calcHotel({ gid, codigo, fx, destinoGrupo }){
     if (_usd != null) usd += _usd;
     if (_clp != null) clp += _clp;
 
-    detalles.push({
+    const det0 = {
       empresa: emp, asunto: asu, monedaOriginal: mon,
       montoOriginal: monto,
       usd: _usd,
       clp: _clp,
       fuente: `hotelAssignments/${ha.id}`
     });
+    det0.itemId = makeItemId(det0);
+    detalles.push(det0);
   }
 
   return { usd, clp, detalles };
@@ -621,12 +641,14 @@ function calcTerrestresDesdeServicios({ G, gid, destinoGrupo, pax, fx }){
       if (_usd != null) usd += _usd;
       if (_clp != null) clp += _clp;
 
-      detalles.push({
+      const det0 = {
         empresa: emp, asunto: asu, monedaOriginal: mon,
         montoOriginal: monto,
         usd: _usd, clp: _clp,
         fuente: `Servicios/${svc.destino}/Listado/${svc.id} @ ${fecha}`
       });
+      det0.itemId = makeItemId(det0);
+      detalles.push(det0);
     }
   }
 
@@ -715,13 +737,15 @@ function calcGastos({ gid, codigo, fx }){
     if (clp == null) continue;
 
     totalCLP += clp;
-    detalles.push({
+    const det0 = {
       empresa: emp, asunto: asu, monedaOriginal: mon,
       montoOriginal: monto,
       usd: toUSD(monto, mon, fx),
       clp,
       fuente: `gastos/${g.id}`
     });
+    det0.itemId = makeItemId(det0);
+    detalles.push(det0);
   }
 
   return { totalCLP, detalles };
@@ -763,7 +787,7 @@ function calcCoordinador({ G, fx, noches, destino }) {
   const diario = esSurYBari ? DIARIO_SUR_BARI_CLP : DIARIO_NORMAL_CLP;
   const clp = diario * dias;
 
-  const detalles = [{
+  const det0 = {
     empresa: 'COORDINACIÓN',
     asunto: `${esSurYBari ? 'Coordinación (Sur+Bariloche)' : 'Coordinación'} · ${dias} día(s) x $${fmtInt(diario)}`,
     monedaOriginal: 'CLP',
@@ -772,6 +796,9 @@ function calcCoordinador({ G, fx, noches, destino }) {
     clp,
     fuente: 'regla/coordinador'
   }];
+  det0.itemId = makeItemId(det0);
+
+  const detalles = [det0];
 
   return {
     nombre: COORD.nombre(G) || '',
@@ -783,9 +810,17 @@ function calcCoordinador({ G, fx, noches, destino }) {
 /* =========================================================
    5) UI: modal detalle
    ========================================================= */
-function openModal({ title, sub, detalles, fx }){
-  $('modalTitle').textContent = title || 'Detalle';
-  $('modalSub').textContent = sub || '—';
+function openModal({ title, sub, detalles, fx, gid, bucket }){
+  // ✅ guardar contexto modal
+  state.modal.gid = String(gid || '');
+  state.modal.bucket = String(bucket || '');
+  state.modal.fx = fx || getFX();
+  state.modal.baseDetalles = Array.isArray(detalles) ? detalles : [];
+  state.modal.title = title || 'Detalle';
+  state.modal.sub = sub || '—';
+
+  $('modalTitle').textContent = state.modal.title;
+  $('modalSub').textContent = state.modal.sub;
 
   const tb = $('modalTbl').querySelector('tbody');
   tb.innerHTML = '';
@@ -793,34 +828,267 @@ function openModal({ title, sub, detalles, fx }){
   let sumUSD = 0;
   let sumCLP = 0;
 
-  (detalles || []).forEach(d => {
+  (state.modal.baseDetalles || []).forEach((d, idx) => {
     const usd = (d.usd == null ? null : Number(d.usd));
     const clp = (d.clp == null ? null : Number(d.clp));
     if (usd != null) sumUSD += usd;
     if (clp != null) sumCLP += clp;
 
     const tr = document.createElement('tr');
+    tr.dataset.itemId = d.itemId || makeItemId(d);
+    tr.dataset.idx = String(idx);
+
     tr.innerHTML = `
       <td title="${esc(d.empresa)}">${esc(d.empresa)}</td>
       <td title="${esc(d.asunto)}">${esc(d.asunto)}</td>
-      <td>${esc(d.monedaOriginal || '')}</td>
-      <td class="cp-right">${fmtInt(d.montoOriginal || 0)}</td>
-      <td class="cp-right">${usd == null ? '—' : moneyUSD(usd)}</td>
-      <td class="cp-right">${clp == null ? '—' : moneyCLP(clp)}</td>
+
+      <!-- ✅ editable -->
+      <td>
+        <select class="cp-inp moneda">
+          <option value="CLP" ${normMoneda(d.monedaOriginal)==='CLP'?'selected':''}>CLP</option>
+          <option value="USD" ${normMoneda(d.monedaOriginal)==='USD'?'selected':''}>USD</option>
+          <option value="BRL" ${normMoneda(d.monedaOriginal)==='BRL'?'selected':''}>BRL</option>
+          <option value="ARS" ${normMoneda(d.monedaOriginal)==='ARS'?'selected':''}>ARS</option>
+        </select>
+      </td>
+
+      <td class="cp-right">
+        <input class="cp-inp monto cp-right" type="number" value="${Number(d.montoOriginal||0)}" />
+      </td>
+
+      <td class="cp-right usd">${usd == null ? '—' : moneyUSD(usd)}</td>
+      <td class="cp-right clp">${clp == null ? '—' : moneyCLP(clp)}</td>
+
       <td class="cp-muted" title="${esc(d.fuente||'')}">${esc(d.fuente||'')}</td>
+
+      <td class="cp-muted">${d._override ? 'REVISADO' : ''}</td>
     `;
+
+    // ✅ al cambiar moneda/monto recalcula preview USD/CLP
+    const selMon = tr.querySelector('select.moneda');
+    const inpMonto = tr.querySelector('input.monto');
+    const tdUsd = tr.querySelector('td.usd');
+    const tdClp = tr.querySelector('td.clp');
+
+    const recalc = ()=>{
+      const fx0 = state.modal.fx || getFX();
+      const mon = normMoneda(selMon.value);
+      const monto = num(inpMonto.value);
+      const _usd = toUSD(monto, mon, fx0);
+      const _clp = toCLP(monto, mon, fx0);
+      tdUsd.textContent = (_usd==null) ? '—' : moneyUSD(_usd);
+      tdClp.textContent = (_clp==null) ? '—' : moneyCLP(_clp);
+    };
+    selMon.addEventListener('change', recalc);
+    inpMonto.addEventListener('input', recalc);
+
     tb.appendChild(tr);
   });
 
   $('modalFoot').textContent = `Total detalle: ${moneyUSD(sumUSD)} USD · ${moneyCLP(sumCLP)} CLP`;
+
   $('modalBack').style.display = 'flex';
+
+  // ✅ cargar historial del bucket
+  loadModalHistorial().catch(()=>{});
 }
+
 function closeModal(){ $('modalBack').style.display = 'none'; }
+
+async function loadModalHistorial(){
+  const gid = state.modal.gid;
+  const bucket = state.modal.bucket;
+  if (!gid || !bucket) return;
+
+  const wrap = $('modalHist');
+  if (!wrap) return;
+
+  wrap.innerHTML = `<div class="cp-muted">Cargando historial…</div>`;
+
+  const histCol = collection(db, 'grupos', gid, 'costos_override', bucket, 'historial');
+  const snap = await getDocs(query(histCol, orderBy('ts','desc'))).catch(()=>null);
+
+  const rows = snap?.docs?.map(d => d.data()) || [];
+  if (!rows.length){
+    wrap.innerHTML = `<div class="cp-muted">Sin cambios registrados.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = rows.slice(0,20).map(h => `
+    <div class="cp-hrow">
+      <b>${esc(h.by || '')}</b> · <span class="cp-muted">${esc(h.when || '')}</span><br/>
+      <span class="cp-muted">${esc(h.itemId||'')}</span> · ${esc(h.field||'')}:
+      <b>${esc(String(h.prev||''))}</b> → <b>${esc(String(h.next||''))}</b>
+    </div>
+  `).join('');
+}
+
+async function saveModalEdits(){
+  const gid = state.modal.gid;
+  const bucket = state.modal.bucket;
+  const fx0 = state.modal.fx || getFX();
+
+  if (!gid || !bucket){
+    alert('Falta contexto (gid/bucket).');
+    return;
+  }
+
+  // Base actual aplicada (ya con overrides)
+  const base = state.modal.baseDetalles || [];
+  const tb = $('modalTbl')?.querySelector('tbody');
+  if (!tb) return;
+
+  // Carga overrides actuales (cache)
+  const pack = await loadOverrides(gid, bucket);
+  const ovItems = { ...(pack.items || {}) };
+
+  const nowISO = new Date().toISOString();
+
+  // Recorremos filas y detectamos cambios
+  const trs = [...tb.querySelectorAll('tr')];
+  const hist = [];
+
+  trs.forEach(tr=>{
+    const itemId = tr.dataset.itemId;
+    const idx = Number(tr.dataset.idx || 0);
+    const d0 = base[idx] || {};
+    const monNew = normMoneda(tr.querySelector('select.moneda')?.value || d0.monedaOriginal || 'USD');
+    const montoNew = num(tr.querySelector('input.monto')?.value || d0.montoOriginal || 0);
+
+    const monPrev = normMoneda(d0.monedaOriginal || 'USD');
+    const montoPrev = num(d0.montoOriginal || 0);
+
+    const changedMon = monNew !== monPrev;
+    const changedMonto = Math.abs(montoNew - montoPrev) > 0.000001;
+
+    if (!changedMon && !changedMonto) return;
+
+    // Guardamos override “chequeado”
+    ovItems[itemId] = {
+      isChecked: true,
+      monedaOriginal: monNew,
+      montoOriginal: montoNew,
+      updatedBy: state.user?.email || '',
+      updatedAt: nowISO
+    };
+
+    if (changedMon){
+      hist.push({ itemId, field:'monedaOriginal', prev: monPrev, next: monNew });
+    }
+    if (changedMonto){
+      hist.push({ itemId, field:'montoOriginal', prev: montoPrev, next: montoNew });
+    }
+  });
+
+  // Si no hay cambios, no hacemos nada
+  if (!hist.length){
+    alert('No hay cambios para guardar.');
+    return;
+  }
+
+  // Guardar doc override (merge)
+  const ref = overrideDocRef(gid, bucket);
+  await setDoc(ref, { items: ovItems, updatedAt: serverTimestamp(), updatedBy: state.user?.email || '' }, { merge:true });
+
+  // Guardar historial (1 doc por cambio)
+  const histCol = collection(db, 'grupos', gid, 'costos_override', bucket, 'historial');
+  for (const h of hist){
+    await addDoc(histCol, {
+      ...h,
+      by: state.user?.email || '',
+      when: nowISO,
+      ts: serverTimestamp()
+    });
+  }
+
+  // Refrescar cache local
+  state.overrides.set(`${gid}||${bucket}`, { items: ovItems });
+
+  // Re-aplicar para que el principal cambie
+  await aplicar();
+
+  // Recargar historial en modal
+  await loadModalHistorial();
+
+  alert('Guardado ✅ (override activo).');
+}
 
 function esc(s){
   return (s??'').toString().replace(/[&<>"']/g, m => (
     {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]
   ));
+}
+
+/* =========================================================
+   OVERRIDES (revisados/chequeados)
+   Ruta:
+   - Doc override: grupos/{gid}/costos_override/{bucket}  (items: map)
+   - Historial:    grupos/{gid}/costos_override/{bucket}/historial
+   ========================================================= */
+
+// Hash simple estable para generar itemId desde "fuente" + empresa + asunto
+function hash32(str){
+  let h = 2166136261;
+  for (let i=0; i<str.length; i++){
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+
+function makeItemId(d){
+  // Fuente es lo más estable (vuelos/{id}, hotelAssignments/{id}, regla/coordinador, Servicios/...@fecha, gastos/{id})
+  const key = [
+    d?.fuente || '',
+    d?.empresa || '',
+    d?.asunto || '',
+    normMoneda(d?.monedaOriginal || ''),
+  ].join('||');
+  return 'it_' + hash32(key);
+}
+
+function overrideDocRef(gid, bucket){
+  return doc(db, 'grupos', String(gid), 'costos_override', String(bucket));
+}
+
+async function loadOverrides(gid, bucket){
+  const k = `${gid}||${bucket}`;
+  if (state.overrides.has(k)) return state.overrides.get(k);
+
+  const ref = overrideDocRef(gid, bucket);
+  const snap = await getDoc(ref).catch(()=>null);
+
+  const data = snap?.exists() ? (snap.data() || {}) : {};
+  const pack = { items: data.items || {} };
+
+  state.overrides.set(k, pack);
+  return pack;
+}
+
+function applyOverrideToDetalle(det, ovItems, fx){
+  // si existe override chequeado => reemplaza moneda/monto y recalcula usd/clp
+  const itemId = det.itemId || makeItemId(det);
+  const ov = ovItems?.[itemId];
+
+  if (ov && ov.isChecked){
+    const mon = normMoneda(ov.monedaOriginal || det.monedaOriginal || 'USD');
+    const monto = num(ov.montoOriginal ?? det.montoOriginal ?? 0);
+
+    return {
+      ...det,
+      itemId,
+      // guardamos los revisados
+      monedaOriginal: mon,
+      montoOriginal: monto,
+      usd: toUSD(monto, mon, fx),
+      clp: toCLP(monto, mon, fx),
+      _override: true,
+      _overrideBy: ov.updatedBy || '',
+      _overrideAt: ov.updatedAt || null
+    };
+  }
+
+  return { ...det, itemId, _override:false };
 }
 
 /* =========================================================
@@ -928,16 +1196,20 @@ function render(rows){
       const text = td.textContent || '';     // ya viene con saltos por white-space
       td.textContent = '';
       td.appendChild(
+      
         cellLink(
           text,
           ()=> openModal({
             title: `Detalle ${titulo} — ${r.Grupo}`,
             sub: `${r.Destino} · ${r.Fechas}`,
             detalles: (r._det?.[itemKey] || []),
-            fx
+            fx,
+            gid: r._gid,
+            bucket: itemKey
           }),
           'Click para ver detalle'
         )
+
       );
     };
     
@@ -1024,56 +1296,64 @@ async function buildRows(){
 
     const pax = paxContable(G);
 
-    // 1) Aéreos
     const aereos = calcAereos({ gid, codigo: Codigo, fx });
-
-    // 2) Hotel
     const hotel = calcHotel({ gid, codigo: Codigo, fx, destinoGrupo: Dest });
-
-    // 3) Terrestre (separado desde servicios)
     const ter = calcTerrestresDesdeVuelos({ gid, codigo: Codigo, fx });
-
-    // 4) Actividades + Comidas (desde servicios)
     const ac = calcActividadesYComidas({ G, destinoGrupo: Dest, pax, fx });
-
-    // 5) Coord (CLP)
     const coord = calcCoordinador({ G, fx, noches, destino: Dest });
-
-    // 6) Gastos (CLP)
     const gastos = calcGastos({ gid, codigo: Codigo, fx });
-
-    // 7) Seguro (USD)
     const seguro = calcSeguro({ pax, destino: Dest, fx });
-
-    // Totales para “principal”:
-    // - TOTAL USD: suma de USD + (CLP -> USD) + (BRL/ARS -> USD via toUSD ya aplicado si corresponde)
-    // - TOTAL CLP: suma de CLP + (USD -> CLP)
-    // Nota: tus columnas incluyen Aereo CLP (lo convertimos a USD para TOTAL USD).
-    const aereoUSD = toUSD(aereos.totalCLP, 'CLP', fx) || 0;
-
+    
+    // ✅ aplicar overrides por bucket (manda el revisado)
+    const ovA = (await loadOverrides(gid, 'aereo')).items;
+    const ovT = (await loadOverrides(gid, 'terrestre')).items;
+    const ovH = (await loadOverrides(gid, 'hotel')).items;
+    const ovAc = (await loadOverrides(gid, 'actividades')).items;
+    const ovCo = (await loadOverrides(gid, 'comidas')).items;
+    const ovC = (await loadOverrides(gid, 'coord')).items;
+    const ovG = (await loadOverrides(gid, 'gastos')).items;
+    const ovS = (await loadOverrides(gid, 'seguro')).items;
+    
+    // Reemplazamos detalles por “detalles aplicados”
+    const detA = aereos.detalles.map(d => applyOverrideToDetalle(d, ovA, fx));
+    const detT = ter.detalles.map(d => applyOverrideToDetalle(d, ovT, fx));
+    const detH = hotel.detalles.map(d => applyOverrideToDetalle(d, ovH, fx));
+    const detAct = ac.actividades.detalles.map(d => applyOverrideToDetalle(d, ovAc, fx));
+    const detCom = ac.comidas.detalles.map(d => applyOverrideToDetalle(d, ovCo, fx));
+    const detCoord = coord.detalles.map(d => applyOverrideToDetalle(d, ovC, fx));
+    const detGastos = gastos.detalles.map(d => applyOverrideToDetalle(d, ovG, fx));
+    const detSeg = seguro.detalles.map(d => applyOverrideToDetalle(d, ovS, fx));
+    
+    // ✅ Totales recalculados desde detalles (si hay override, ya viene aplicado)
+    const sumUSD = (arr) => (arr||[]).reduce((a,x)=> a + (x.usd==null?0:Number(x.usd)), 0);
+    const sumCLP = (arr) => (arr||[]).reduce((a,x)=> a + (x.clp==null?0:Number(x.clp)), 0);
+    
+    // Aéreo “oficial” en tu planilla era CLP (pero total USD necesita conversion):
+    const aereoCLP = sumCLP(detA);
+    const aereoUSD = toUSD(aereoCLP, 'CLP', fx) || 0;
+    
     const totalUSD =
       aereoUSD +
-      (ter.usd || 0) + (hotel.usd || 0) + (ac.actividades.usd || 0) + (ac.comidas.usd || 0) +
-      (seguro.usd || 0);
-
-    // CLP total: sumamos CLP directos + USD convertidos
+      sumUSD(detT) + sumUSD(detH) + sumUSD(detAct) + sumUSD(detCom) +
+      sumUSD(detSeg);
+    
+    // CLP total: CLP directos + USD convertidos
     const totalCLP =
-      (aereos.totalCLP || 0) +
-      (ter.clp || 0) + (hotel.clp || 0) + (ac.actividades.clp || 0) + (ac.comidas.clp || 0) +
-      (coord.clp || 0) + (gastos.totalCLP || 0) +
-      (toCLP(seguro.usd || 0, 'USD', fx) || 0);
-
-    // destino compuesto: solo afecta “lectura”, pero el total combinado USD ya lo estamos dando
-    // (porque aereo/hotel/acts etc ya tienen ambas monedas convertidas a USD para el total)
+      aereoCLP +
+      sumCLP(detT) + sumCLP(detH) + sumCLP(detAct) + sumCLP(detCom) +
+      sumCLP(detCoord) + sumCLP(detGastos) +
+      (toCLP(sumUSD(detSeg), 'USD', fx) || 0);
+    
+    // ✅ Reemplazamos “det” para que modal muestre lo aplicado
     const det = {
-      aereo: aereos.detalles,
-      hotel: hotel.detalles,
-      terrestre: ter.detalles,
-      actividades: ac.actividades.detalles,
-      comidas: ac.comidas.detalles,
-      coord: coord.detalles,
-      gastos: gastos.detalles,
-      seguro: seguro.detalles
+      aereo: detA,
+      hotel: detH,
+      terrestre: detT,
+      actividades: detAct,
+      comidas: detCom,
+      coord: detCoord,
+      gastos: detGastos,
+      seguro: detSeg
     };
 
     rows.push({
@@ -1414,6 +1694,15 @@ async function aplicar(){
 
 async function boot(){
   $('modalClose').addEventListener('click', closeModal);
+
+  const btnSave = $('modalSave');
+  if (btnSave) btnSave.addEventListener('click', ()=> {
+    saveModalEdits().catch(e=>{
+      console.error(e);
+      alert('Error guardando: ' + (e?.message || e));
+    });
+  });
+
   $('modalBack').addEventListener('click', (e)=>{ if (e.target === $('modalBack')) closeModal(); });
 
   $('btnAplicar').addEventListener('click', aplicar);
