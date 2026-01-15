@@ -1072,31 +1072,56 @@ async function loadOverrides(gid, bucket){
   return pack;
 }
 
-function applyOverrideToDetalle(det, ovItems, fx){
-  // si existe override chequeado => reemplaza moneda/monto y recalcula usd/clp
+// mode:
+// - 'PARALLEL' : CLP se queda en CLP; NO-CLP (USD/BRL/ARS) se transforma a USD y NO genera CLP
+// - 'CLP_ONLY' : todo se expresa solo en CLP (si no se puede convertir, queda null)
+// - 'USD_ONLY' : todo se expresa solo en USD (si no se puede convertir, queda null)
+// - 'BOTH'     : (legacy) calcula ambas (no lo usaremos en la planilla principal)
+function applyOverrideToDetalle(det, ovItems, fx, mode='PARALLEL'){
   const itemId = det.itemId || makeItemId(det);
   const ov = ovItems?.[itemId];
 
-  if (ov && ov.isChecked){
-    const mon = normMoneda(ov.monedaOriginal || det.monedaOriginal || 'USD');
-    const monto = num(ov.montoOriginal ?? det.montoOriginal ?? 0);
+  // 1) Tomar base (o override si está chequeado)
+  const monBase = normMoneda((ov?.isChecked ? ov.monedaOriginal : det.monedaOriginal) || 'USD');
+  const montoBase = num(ov?.isChecked ? (ov.montoOriginal ?? det.montoOriginal) : (det.montoOriginal ?? 0));
 
-    return {
-      ...det,
-      itemId,
-      // guardamos los revisados
-      monedaOriginal: mon,
-      montoOriginal: monto,
-      usd: toUSD(monto, mon, fx),
-      clp: toCLP(monto, mon, fx),
-      _override: true,
-      _overrideBy: ov.updatedBy || '',
-      _overrideAt: ov.updatedAt || null
-    };
+  // 2) Calcular valores según modo
+  let usd = null;
+  let clp = null;
+
+  if (mode === 'CLP_ONLY'){
+    clp = toCLP(montoBase, monBase, fx);
+    usd = null;
+  } else if (mode === 'USD_ONLY'){
+    usd = toUSD(montoBase, monBase, fx);
+    clp = null;
+  } else if (mode === 'PARALLEL'){
+    if (monBase === 'CLP'){
+      clp = montoBase;          // CLP real
+      usd = null;               // NO convertimos a USD en paralelo
+    } else {
+      usd = toUSD(montoBase, monBase, fx); // USD real (USD directo o BRL/ARS->USD)
+      clp = null;                           // NO convertimos a CLP en paralelo
+    }
+  } else { // 'BOTH' (solo si algún día lo necesitas)
+    usd = toUSD(montoBase, monBase, fx);
+    clp = toCLP(montoBase, monBase, fx);
   }
 
-  return { ...det, itemId, _override:false };
+  // 3) Armar retorno
+  return {
+    ...det,
+    itemId,
+    monedaOriginal: monBase,
+    montoOriginal: montoBase,
+    usd,
+    clp,
+    _override: !!(ov && ov.isChecked),
+    _overrideBy: (ov && ov.isChecked) ? (ov.updatedBy || '') : '',
+    _overrideAt: (ov && ov.isChecked) ? (ov.updatedAt || null) : null
+  };
 }
+
 
 /* =========================================================
    6) Render tabla principal (CSV columns)
@@ -1324,15 +1349,17 @@ async function buildRows(){
     const ovG = (await loadOverrides(gid, 'gastos')).items;
     const ovS = (await loadOverrides(gid, 'seguro')).items;
     
-    // Reemplazamos detalles por “detalles aplicados”
-    const detA = aereos.detalles.map(d => applyOverrideToDetalle(d, ovA, fx));
-    const detT = ter.detalles.map(d => applyOverrideToDetalle(d, ovT, fx));
-    const detH = hotel.detalles.map(d => applyOverrideToDetalle(d, ovH, fx));
-    const detAct = ac.actividades.detalles.map(d => applyOverrideToDetalle(d, ovAc, fx));
-    const detCom = ac.comidas.detalles.map(d => applyOverrideToDetalle(d, ovCo, fx));
-    const detCoord = coord.detalles.map(d => applyOverrideToDetalle(d, ovC, fx));
-    const detGastos = gastos.detalles.map(d => applyOverrideToDetalle(d, ovG, fx));
-    const detSeg = seguro.detalles.map(d => applyOverrideToDetalle(d, ovS, fx));
+    // ✅ Modos por bucket según tu regla de “bolsas”
+    const detA     = aereos.detalles.map(d => applyOverrideToDetalle(d, ovA,  fx, 'CLP_ONLY'));   // Aéreo planilla: CLP
+    const detT     = ter.detalles.map(d    => applyOverrideToDetalle(d, ovT,  fx, 'PARALLEL'));   // Paralelo real
+    const detH     = hotel.detalles.map(d  => applyOverrideToDetalle(d, ovH,  fx, 'PARALLEL'));   // Paralelo real
+    const detAct   = ac.actividades.detalles.map(d => applyOverrideToDetalle(d, ovAc, fx, 'PARALLEL')); // ✅ clave
+    const detCom   = ac.comidas.detalles.map(d     => applyOverrideToDetalle(d, ovCo, fx, 'PARALLEL')); // ✅ clave
+    
+    const detCoord = coord.detalles.map(d  => applyOverrideToDetalle(d, ovC,  fx, 'CLP_ONLY'));   // Coordinador: CLP
+    const detGastos= gastos.detalles.map(d => applyOverrideToDetalle(d, ovG,  fx, 'CLP_ONLY'));   // Gastos aprobados: CLP
+    const detSeg   = seguro.detalles.map(d => applyOverrideToDetalle(d, ovS,  fx, 'USD_ONLY'));   // Seguro: USD
+
     
     // ✅ Totales recalculados desde detalles (si hay override, ya viene aplicado)
     const sumUSD = (arr) => (arr||[]).reduce((a,x)=> a + (x.usd==null?0:Number(x.usd)), 0);
