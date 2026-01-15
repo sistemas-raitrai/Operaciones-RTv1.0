@@ -515,9 +515,10 @@ function calcAereos({ gid, codigo, fx }){
       usd: toUSD(monto, mon, fx),
       clp,
       fuente: `vuelos/${v.id}`
-    });
+    };
     det0.itemId = makeItemId(det0);
     detalles.push(det0);
+
   }
 
   return {
@@ -692,6 +693,7 @@ function calcActividadesYComidas({ G, destinoGrupo, pax, fx }){
         usd: _usd, clp: _clp,
         fuente: `Servicios/${svc.destino}/Listado/${svc.id} @ ${fecha}`
       };
+      row.itemId = makeItemId(row);
 
       if (CLASIF.isComida(svc)){
         if (_usd != null) comUSD += _usd;
@@ -757,15 +759,19 @@ function calcSeguro({ pax, destino, fx }){
     ? (SEGURO.usdPorPaxExterior() * (pax || 0))
     : 0;
 
-  const detalles = usd ? [{
-    empresa: 'ASSIST CARD',
-    asunto: `Seguro x ${pax || 0} pax`,
-    monedaOriginal: 'USD',
-    montoOriginal: usd,
-    usd,
-    clp: toCLP(usd, 'USD', fx),
-    fuente: 'regla/seguro'
-  }] : [];
+    const detalles = usd ? (() => {
+      const det0 = {
+        empresa: 'ASSIST CARD',
+        asunto: `Seguro x ${pax || 0} pax`,
+        monedaOriginal: 'USD',
+        montoOriginal: usd,
+        usd,
+        clp: toCLP(usd, 'USD', fx),
+        fuente: 'regla/seguro'
+      };
+      det0.itemId = makeItemId(det0); // ✅ NUEVO
+      return [det0];
+    })() : [];
 
   return { etiqueta: SEGURO.etiqueta(), usd, detalles };
 }
@@ -795,7 +801,7 @@ function calcCoordinador({ G, fx, noches, destino }) {
     usd: toUSD(clp, 'CLP', fx),
     clp,
     fuente: 'regla/coordinador'
-  }];
+  };
   det0.itemId = makeItemId(det0);
 
   const detalles = [det0];
@@ -805,6 +811,7 @@ function calcCoordinador({ G, fx, noches, destino }) {
     clp,
     detalles
   };
+
 }
 
 /* =========================================================
@@ -1250,8 +1257,11 @@ function render(rows){
               title: `Detalle ${itemKey.toUpperCase()} — ${r.Grupo}`,
               sub: `${r.Destino} · ${r.Fechas}`,
               detalles: (r._det?.[itemKey] || []),
-              fx
+              fx,
+              gid: r._gid,
+              bucket: itemKey
             }),
+
             'Click para ver detalle'
           )
         );
@@ -1368,41 +1378,45 @@ async function buildRows(){
       Fechas: rangoTxt,
       'Cantidad Noches': noches,
 
-      // ✅ Texto “humano” (como en Hotel/es)
-      'Aéreo/s': aereos.detalles.length ? summarizeNamesFromDetalles(aereos.detalles, { mode:'aereo' }) : '',
-      'Valor Aéreo (CLP)': Math.round(aereos.totalCLP || 0),
+      // Aéreo: texto desde detA y monto CLP desde aereoCLP (recalculado)
+      'Aéreo/s': detA.length ? summarizeNamesFromDetalles(detA, { mode:'aereo' }) : '',
+      'Valor Aéreo (CLP)': Math.round(aereoCLP || 0),
       
-      'Terrestre/s': ter.detalles.length ? summarizeNamesFromDetalles(ter.detalles, { mode:'terrestre' }) : '',
+      // Terrestre: desde detT
+      'Terrestre/s': detT.length ? summarizeNamesFromDetalles(detT, { mode:'terrestre' }) : '',
       'Moneda Terrestre': 'USD/CLP',
-      'Valor Terrestre (USD)': round2(ter.usd || 0),
-      'Valor Terrestre (CLP)': Math.round(ter.clp || 0),
-
-      'Hotel/es': hotel.detalles.length ? summarizeNamesFromDetalles(hotel.detalles) : '',
-      'Moneda Hotel': 'USD/CLP',
-      'Valor Hotel (USD)': round2(hotel.usd || 0),
-      'Valor Hotel (CLP)': Math.round(hotel.clp || 0),
-
-      // ✅ ACTIVIDADES: items “X Actividades”
-      'Actividades': ac.actividades.detalles.length ? `${ac.actividades.detalles.length} Actividad(es)` : '',
-      'Moneda Actividades ': 'USD/CLP',
-      'Actividades (USD)': round2(ac.actividades.usd || 0),
-      'Actividades (CLP)': Math.round(ac.actividades.clp || 0),
+      'Valor Terrestre (USD)': round2(sumUSD(detT)),
+      'Valor Terrestre (CLP)': Math.round(sumCLP(detT)),
       
-      // ✅ COMIDAS: (igual que antes)
-      'Comidas': ac.comidas.detalles.length ? `${ac.comidas.detalles.length} item(s)` : '',
+      // Hotel: desde detH
+      'Hotel/es': detH.length ? summarizeNamesFromDetalles(detH) : '',
+      'Moneda Hotel': 'USD/CLP',
+      'Valor Hotel (USD)': round2(sumUSD(detH)),
+      'Valor Hotel (CLP)': Math.round(sumCLP(detH)),
+      
+      // Actividades: desde detAct
+      'Actividades': detAct.length ? `${detAct.length} Actividad(es)` : '',
+      'Moneda Actividades ': 'USD/CLP',
+      'Actividades (USD)': round2(sumUSD(detAct)),
+      'Actividades (CLP)': Math.round(sumCLP(detAct)),
+      
+      // Comidas: desde detCom
+      'Comidas': detCom.length ? `${detCom.length} item(s)` : '',
       'Moneda Comidas': 'USD/CLP',
-      'Valor Comidas (USD)': round2(ac.comidas.usd || 0),
-      'Valor Comidas (CLP)': Math.round(ac.comidas.clp || 0),
-
+      'Valor Comidas (USD)': round2(sumUSD(detCom)),
+      'Valor Comidas (CLP)': Math.round(sumCLP(detCom)),
+      
+      // Coordinador: desde detCoord
       'CoordInador(a)': coord.nombre || '',
-      'Valor Coordinador/a CLP': Math.round(coord.clp || 0),
-
-      // ✅ GASTOS: items “X Gastos”
-      'Gastos': gastos.detalles.length ? `${gastos.detalles.length} item(s)` : '',
-      'Gastos aprob (CLP)': Math.round(gastos.totalCLP || 0),
-
+      'Valor Coordinador/a CLP': Math.round(sumCLP(detCoord)),
+      
+      // Gastos: desde detGastos
+      'Gastos': detGastos.length ? `${detGastos.length} item(s)` : '',
+      'Gastos aprob (CLP)': Math.round(sumCLP(detGastos)),
+      
+      // Seguro: desde detSeg
       'Seguro ': seguro.etiqueta || '',
-      'Valor Seguro (USD)': round2(seguro.usd || 0),
+      'Valor Seguro (USD)': round2(sumUSD(detSeg)),
 
       'TOTAL USD': round2(totalUSD),
       'TOTAL CLP': Math.round(totalCLP),
