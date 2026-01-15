@@ -556,7 +556,7 @@ function calcTerrestresDesdeVuelos({ gid, codigo, fx }){
       usd: _usd,
       clp: _clp,
       fuente: `vuelos/${v.id}`
-    });
+    };
     det0.itemId = makeItemId(det0);
     detalles.push(det0);
   }
