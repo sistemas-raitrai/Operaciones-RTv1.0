@@ -1601,13 +1601,25 @@ function exportXLSX(rows){
     const clpZero = (_r) => `0`;
     
     function addItemSheet(sheetName, items, mode='PARALLEL'){
+      // ✅ Índice: para cada Codigo guardamos la PRIMERA fila (Excel) donde aparece en esta hoja
+      const firstRowByCodigo = new Map(); // Codigo(string) -> rowNumber (>=2)
+    
       const aoa = [[
         'Codigo','Grupo','Año','Destino','Empresa','Asunto','Moneda','MontoOriginal','USD','CLP','Fuente'
       ]];
     
       for (const it of items){
+        const codigo = (it.Codigo ?? '').toString().trim();
+    
+        // La fila Excel donde quedará este item (header=1, datos parten en 2)
+        const nextRow = aoa.length + 1; // porque aoa[0] es header
+    
+        if (codigo && !firstRowByCodigo.has(codigo)){
+          firstRowByCodigo.set(codigo, nextRow);
+        }
+    
         aoa.push([
-          it.Codigo || '',
+          codigo,
           it.Grupo || '',
           it['Año'] || '',
           it.Destino || '',
@@ -1640,8 +1652,8 @@ function exportXLSX(rows){
         }
     
         // ✅ SIN "="
-        ws[`I${r}`] = { f: fUsd };
-        ws[`J${r}`] = { f: fClp };
+        ws[`I${r}`] = { t:'n', f: fUsd };
+        ws[`J${r}`] = { t:'n', f: fClp };
       }
     
       ws['!cols'] = [
@@ -1650,7 +1662,11 @@ function exportXLSX(rows){
       ];
     
       XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    
+      // ✅ devolvemos el índice para construir links desde "Costos"
+      return { firstRowByCodigo };
     }
+
     
     /* ==========================================
        3) Construir DETALLES por ítem (global)
@@ -1695,14 +1711,57 @@ function exportXLSX(rows){
     /* ==========================================
        4) Hojas por ítem (cada una un item)
        ========================================== */
-    addItemSheet('Aereos',      all.AEREOS,      'CLP_ONLY');
-    addItemSheet('Terrestres',  all.TERRESTRES,  'PARALLEL');
-    addItemSheet('Hoteles',     all.HOTELES,     'PARALLEL');
-    addItemSheet('Actividades', all.ACTIVIDADES, 'PARALLEL');
-    addItemSheet('Comidas',     all.COMIDAS,     'PARALLEL');
-    addItemSheet('Coordinador', all.COORD,       'CLP_ONLY');
-    addItemSheet('Gastos',      all.GASTOS,      'CLP_ONLY');
-    addItemSheet('Seguro',      all.SEGURO,      'USD_ONLY');
+      const idxAereos      = addItemSheet('Aereos',      all.AEREOS,      'CLP_ONLY');
+      const idxTerrestres  = addItemSheet('Terrestres',  all.TERRESTRES,  'PARALLEL');
+      const idxHoteles     = addItemSheet('Hoteles',     all.HOTELES,     'PARALLEL');
+      const idxActividades = addItemSheet('Actividades', all.ACTIVIDADES, 'PARALLEL');
+      const idxComidas     = addItemSheet('Comidas',     all.COMIDAS,     'PARALLEL');
+      addItemSheet('Coordinador', all.COORD, 'CLP_ONLY'); // (sin link por ahora)
+      const idxGastos      = addItemSheet('Gastos',      all.GASTOS,      'CLP_ONLY');
+      addItemSheet('Seguro',      all.SEGURO, 'USD_ONLY'); // (sin link por ahora)
+
+    /* ===================================================
+       4.5) Links en "Costos" -> saltar al primer ítem del grupo
+       =================================================== */
+
+    // ✅ helper: setear link interno en una celda (SheetJS)
+    function setInternalLink(ws, addr, sheetName, rowNumber){
+      if (!ws[addr]) return; // celda no existe
+      const r = Math.max(1, Number(rowNumber||1));
+      // Target interno: #'<Hoja>'!A{fila}
+      ws[addr].l = { Target: `#'${sheetName}'!A${r}` };
+    }
+    
+    const linkMap = [
+      { colName:'Aéreo/s',      sheet:'Aereos',      idx: idxAereos?.firstRowByCodigo },
+      { colName:'Terrestre/s',  sheet:'Terrestres',  idx: idxTerrestres?.firstRowByCodigo },
+      { colName:'Hotel/es',     sheet:'Hoteles',     idx: idxHoteles?.firstRowByCodigo },
+      { colName:'Actividades',  sheet:'Actividades', idx: idxActividades?.firstRowByCodigo },
+      { colName:'Comidas',      sheet:'Comidas',     idx: idxComidas?.firstRowByCodigo },
+      { colName:'Gastos',       sheet:'Gastos',      idx: idxGastos?.firstRowByCodigo },
+    ];
+    
+    // Recorremos filas de "Costos" (data parte en fila 2)
+    for (let i=2; i<=aoaMain.length; i++){
+      const codigoCell = cell('Codigo', i);
+      const codigo = (wsMain[codigoCell]?.v ?? '').toString().trim();
+      if (!codigo) continue;
+    
+      for (const m of linkMap){
+        const addr = cell(m.colName, i);
+    
+        // Si la celda está vacía, no ponemos link
+        const v = wsMain[addr]?.v;
+        if (v == null || String(v).trim() === '') continue;
+    
+        // Buscar la primera fila del código en la hoja destino
+        const firstRow = m.idx?.get(codigo);
+    
+        // Si no hay ítems, opcionalmente lo mandamos al inicio de la hoja (fila 1)
+        setInternalLink(wsMain, addr, m.sheet, firstRow || 1);
+      }
+    }
+
     
     /* ===================================================
        5) Fórmulas en "Costos" para alimentarse desde ítems
