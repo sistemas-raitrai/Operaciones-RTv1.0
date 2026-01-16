@@ -802,8 +802,14 @@ function calcCoordinador({ G, fx, noches, destino }) {
   const diario = esSurYBari ? DIARIO_SUR_BARI_CLP : DIARIO_NORMAL_CLP;
   const clp = diario * dias;
 
+  // ✅ Nombre coordinador para mostrar como "Empresa" en el detalle (modal + Excel)
+  const coordName = (COORD.nombre(G) || '').toString().trim();
+  
   const det0 = {
-    empresa: 'COORDINACIÓN',
+    // Antes: 'COORDINACIÓN'
+    // Ahora: nombre real del coordinador (fallback si viene vacío)
+    empresa: coordName || 'COORDINACIÓN',
+  
     asunto: `${esSurYBari ? 'Coordinación (Sur+Bariloche)' : 'Coordinación'} · ${dias} día(s) x $${fmtInt(diario)}`,
     monedaOriginal: 'CLP',
     montoOriginal: clp,
