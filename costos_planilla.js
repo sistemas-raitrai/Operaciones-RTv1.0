@@ -1894,62 +1894,36 @@ function svcKey(name){
 
 // ✅ Unifica gastos “parecidos”
 function canonGasto(name){
-  let s = (name || '').toString();
+  let s = svcKey(name);
+  if (!s) return 'GASTO';
 
-  // Normaliza: MAYUS, sin tildes (si tu U() ya hace esto, igual sirve)
-  s = U(s).trim();
-
-  // Quita ruido típico (números, boletas, signos)
+  // limpia ruido común
   s = s
     .replace(/\b(NRO|NO|NUM|Nº)\b\s*\d+/g, '')
     .replace(/\b(BOLETA|FACTURA|RECIBO|TICKET|COMPROBANTE)\b/g, '')
-    .replace(/[0-9]/g, ' ')
-    .replace(/[^\p{L}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g,' ')
     .trim();
 
-  if (!s) return 'GASTO';
-
-  // Tokeniza y elimina “palabras vacías”
-  const stop = new Set(['DE','DEL','LA','LAS','EL','LOS','Y','O','EN','CON','POR','PARA','A','AL','UN','UNA','UNO','UNOS','UNAS','SE','SU']);
-  const tokens = s.split(' ').map(t=>t.trim()).filter(t => t && !stop.has(t));
-
-  if (!tokens.length) return 'GASTO';
-
-  // Diccionario de “palabra clave” -> categoría
-  // (si comparten palabra, quedan agrupados)
+  // reglas típicas (ajusta si quieres)
   const rules = [
-    { key:'PEAJE', rx:/\b(PEAJE|PEAJES|TAG)\b/ },
-    { key:'COMBUSTIBLE', rx:/\b(COMBUS(TIBLE)?|BENCINA|GASOLINA|DIESEL|NAFTA)\b/ },
-    { key:'ESTACIONAMIENTO', rx:/\b(ESTACIONAMIENTO|PARKING)\b/ },
-    { key:'TAXI', rx:/\b(TAXI)\b/ },
-    { key:'UBER', rx:/\b(UBER)\b/ },
-    { key:'CABIFY', rx:/\b(CABIFY)\b/ },
-    { key:'TRANSPORTE', rx:/\b(TRANSPORTE|TRASLADO|MOVILIDAD)\b/ },
-    { key:'PROPINAS', rx:/\b(PROPINA|PROPINA(S)?|TIP|TIPS)\b/ },
-    { key:'SUPERMERCADO', rx:/\b(SUPERMERCADO|MARKET|ALMACEN)\b/ },
-    { key:'FARMACIA', rx:/\b(FARMACIA|MEDICAMENTO(S)?)\b/ },
-    { key:'HIELO', rx:/\b(HIELO)\b/ },
-    { key:'AGUA', rx:/\b(AGUA)\b/ },
+    { k:'PEAJE',      rx:/\b(PEAJE|PEAJES|TAG)\b/ },
+    { k:'COMBUSTIBLE',rx:/\b(BENCINA|GASOLINA|DIESEL|COMBUSTIBLE|NAFTA)\b/ },
+    { k:'ESTACIONAMIENTO', rx:/\b(ESTACIONAMIENTO|PARKING)\b/ },
+    { k:'PROPINA',    rx:/\b(PROPINA|TIPS?)\b/ },
+    { k:'SUPERMERCADO', rx:/\b(SUPERMERCADO|MARKET|ALMACEN)\b/ },
+    { k:'FARMACIA',   rx:/\b(FARMACIA|MEDICAMENTOS?)\b/ },
+    { k:'COMIDA',     rx:/\b(COMIDA|ALMUERZO|CENA|DESAYUNO|SNACK)\b/ },
+    { k:'MOVILIDAD',  rx:/\b(TAXI|UBER|CABIFY|REMIS|TRANSPORTE|TRASLADO)\b/ },
   ];
 
-  const joined = ` ${tokens.join(' ')} `;
   for (const r of rules){
-    if (r.rx.test(joined)) return r.key;
+    if (r.rx.test(s)) return r.k;
   }
 
-  // ✅ Si no matchea regla: agrupa por “primera palabra fuerte”
-  // Esto hace que:
-  // "TAXI AEROPUERTO" y "TAXI HOTEL" -> TAXI (si no estuviera en rules, igual cae)
-  // "PEAJE RUTA" -> PEAJE, etc.
-  let key = tokens[0];
-
-  // Si la primera palabra es muy corta o genérica, usa la siguiente
-  const weak = new Set(['PAGO','COMPRA','SERVICIO','VARIOS','OTROS','GASTO']);
-  if ((key.length < 4 || weak.has(key)) && tokens[1]) key = tokens[1];
-
-  key = key.slice(0, 28).trim();
-  return key || 'GASTO';
+  // fallback: corta a algo razonable
+  if (s.length > 28) s = s.slice(0,28).trim();
+  return s || 'GASTO';
 }
 
 function exportXLSXMacro(rows){
@@ -1971,7 +1945,7 @@ function exportXLSXMacro(rows){
     const comCLP = new Set();
     const gasKEY = new Set();
 
-    const pickNameOnly = (d) => ((d?.asunto || d?.empresa || d?.fuente || '')).toString().trim();
+    const pickNameOnly = (d) => (d?.asunto || '').toString().trim();
 
     for (const r of (rows||[])){
       const detAct = r._det?.actividades || [];
@@ -2134,20 +2108,9 @@ function exportXLSXMacro(rows){
       setCell(row, 'VALOR TERRESTRE (CLP)', Number(r['Valor Terrestre (CLP)'] || 0));
 
       // Hoteles
-      // HOTeles (✅ MISMA lógica que la tabla resumen: usa los campos ya calculados)
-      const hotelTxt =
-        r['Hotel/es'] ?? r['HOTEL/ES'] ?? r.Hotel ?? r.hotel ?? '';
-      
-      const hotelUsd =
-        r['Valor Hotel (USD)'] ?? r['HOTEL (USD)'] ?? r['VALOR HOTEL (USD)'] ?? 0;
-      
-      const hotelClp =
-        r['Valor Hotel (CLP)'] ?? r['HOTEL (CLP)'] ?? r['VALOR HOTEL (CLP)'] ?? 0;
-      
-      setCell(row, 'HOTEL/ES', U(hotelTxt || ''));
-      setCell(row, 'VALOR HOTEL (USD)', Number(hotelUsd || 0));
-      setCell(row, 'VALOR HOTEL (CLP)', Number(hotelClp || 0));
-
+      setCell(row, 'HOTEL/ES', U(r['Hotel/es'] || ''));
+      setCell(row, 'VALOR HOTEL (USD)', Number(r['Valor Hotel (USD)'] || 0));
+      setCell(row, 'VALOR HOTEL (CLP)', Number(r['Valor Hotel (CLP)'] || 0));
 
       // Actividades: totales + desglose
       setCell(row, 'TOTAL ACTIVIDADES (USD)', Number(r['Actividades (USD)'] || 0));
@@ -2216,16 +2179,7 @@ function exportXLSXMacro(rows){
       setCell(row, 'VALOR COORDINADOR/A (CLP)', Number(r['Valor Coordinador/a CLP'] || 0));
 
       // Gastos: total + desglose unificado
-      const totalGastosClp =
-        r['Gastos aprob (CLP)'] ??
-        r['Gastos aprobados (CLP)'] ??
-        r['GASTOS APROB (CLP)'] ??
-        r['TOTAL GASTOS APROB (CLP)'] ??
-        r['Valor Gastos (CLP)'] ??
-        0;
-      
-      setCell(row, 'TOTAL GASTOS APROB (CLP)', Number(totalGastosClp || 0));
-
+      setCell(row, 'TOTAL GASTOS APROB (CLP)', Number(r['Gastos aprob (CLP)'] || 0));
       const detGas = r._det?.gastos || [];
       for (const d of detGas){
         const nm = canonGasto((d?.asunto || '') || (d?.empresa || 'GASTO'));
