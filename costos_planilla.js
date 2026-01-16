@@ -1724,13 +1724,24 @@ function exportXLSX(rows){
        4.5) Links en "Costos" -> saltar al primer ítem del grupo
        =================================================== */
 
-    // ✅ helper: setear link interno en una celda (SheetJS)
     function setInternalLink(ws, addr, sheetName, rowNumber){
-      if (!ws[addr]) return; // celda no existe
-      const r = Math.max(1, Number(rowNumber||1));
-      // Target interno: #'<Hoja>'!A{fila}
-      ws[addr].l = { Target: `#'${sheetName}'!A${r}` };
+      if (!ws[addr]) return;
+    
+      const r = Math.max(1, Number(rowNumber || 1));
+    
+      // Texto visible actual (lo que ya se ve en la celda)
+      const label = (ws[addr].v ?? '').toString();
+    
+      // OJO: fórmula va SIN "=" en SheetJS
+      // Esto fuerza link interno real (no file://)
+      const target = `#'${sheetName}'!A${r}`;
+      ws[addr].f = `HYPERLINK("${target}","${label.replace(/"/g, '""')}")`;
+    
+      // Cache del valor (para que se vea igual incluso antes de recalcular)
+      ws[addr].t = 's';
+      ws[addr].v = label;
     }
+
     
     const linkMap = [
       { colName:'Aéreo/s',      sheet:'Aereos',      idx: idxAereos?.firstRowByCodigo },
