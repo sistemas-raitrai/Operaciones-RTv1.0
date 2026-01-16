@@ -1881,6 +1881,268 @@ function exportXLSX(rows){
 }
 
 /* =========================================================
+   8.B) Export XLSX MACRO (1 hoja, sin hojas auxiliares)
+   - 1 fila por grupo (lineal)
+   - Columnas dinámicas por ítem visible
+   - Exterior (USD/BRL/ARS) => todo a USD
+   - CLP solo para ítems nativos CLP: Aéreo, Coordinador, Gastos
+   - Fórmulas de TOTAL USD y TOTAL CLP usando USDCLP en la MISMA hoja
+   ========================================================= */
+function exportXLSXMacro(rows){
+  try{
+    if (!window.XLSX) throw new Error('XLSX no cargado');
+
+    const fx = getFX();
+    if (!fx.usdclp) {
+      alert('Para exportar MACRO necesitas USD→CLP (usdclp).');
+      return;
+    }
+
+    // ----------------------------
+    // 1) Recolectar "columnas dinámicas" desde lo visible (rows filtrados)
+    // ----------------------------
+    const bucketsUSD = ['terrestre','hotel','actividades','comidas','seguro']; // todo esto a USD
+    const bucketsCLP = ['aereo','coord','gastos']; // CLP nativo
+
+    // label estable por item (para que la columna sea entendible)
+    const labelOf = (d) => {
+      const emp = (d?.empresa || '').toString().trim();
+      const asu = (d?.asunto  || '').toString().trim();
+      const base = [emp, asu].filter(Boolean).join(' · ').trim();
+      // limita largo para que no se vuelva infinito
+      return (base || '(SIN DETALLE)').slice(0, 80);
+    };
+
+    // Map bucket -> Set(labels)
+    const labelsUSD = new Map(); // bucket -> Set
+    const labelsCLP = new Map();
+
+    for (const b of bucketsUSD) labelsUSD.set(b, new Set());
+    for (const b of bucketsCLP) labelsCLP.set(b, new Set());
+
+    for (const r of (rows || [])){
+      for (const b of bucketsUSD){
+        const dets = r._det?.[b] || [];
+        for (const d of dets) labelsUSD.get(b).add(labelOf(d));
+      }
+      for (const b of bucketsCLP){
+        const dets = r._det?.[b] || [];
+        for (const d of dets) labelsCLP.get(b).add(labelOf(d));
+      }
+    }
+
+    // Ordena labels alfabético para estabilidad
+    const sortSet = (set) => [...set].sort((a,b)=> a.localeCompare(b,'es'));
+    const colsUSD = [];
+    const colsCLP = [];
+
+    // Columnas USD: secciones por bucket (Terrestre, Hotel, Actividades, Comidas, Seguro)
+    const bucketTitle = {
+      terrestre:'TERRESTRE',
+      hotel:'HOTEL',
+      actividades:'ACTIVIDAD',
+      comidas:'COMIDA',
+      seguro:'SEGURO',
+      aereo:'AEREO',
+      coord:'COORD',
+      gastos:'GASTO'
+    };
+
+    for (const b of bucketsUSD){
+      for (const lab of sortSet(labelsUSD.get(b))){
+        colsUSD.push(`${bucketTitle[b]} | ${lab} (USD)`);
+      }
+    }
+
+    // Columnas CLP: Aéreo / Coord / Gastos
+    for (const b of bucketsCLP){
+      for (const lab of sortSet(labelsCLP.get(b))){
+        colsCLP.push(`${bucketTitle[b]} | ${lab} (CLP)`);
+      }
+    }
+
+    // ----------------------------
+    // 2) Header final
+    // ----------------------------
+    const fixed = [
+      'Codigo','Grupo','Año','Destino',
+      'PAX (paxReales - paxLiberados)','Fechas','Cantidad Noches'
+    ];
+
+    // Totales
+    const totals = ['TOTAL USD (fórmula)','TOTAL CLP (fórmula)'];
+
+    const header = [...fixed, ...colsUSD, ...colsCLP, ...totals];
+
+    // ----------------------------
+    // 3) Helpers Excel (col letters)
+    // ----------------------------
+    function colLetter(n){ // 1-based -> A..Z..AA..
+      let s = '';
+      while (n > 0){
+        const m = (n - 1) % 26;
+        s = String.fromCharCode(65 + m) + s;
+        n = Math.floor((n - 1) / 26);
+      }
+      return s;
+    }
+    function cellAt(colIdx1Based, row1Based){
+      return `${colLetter(colIdx1Based)}${row1Based}`;
+    }
+
+    // ----------------------------
+    // 4) Armar AOA con 2 filas arriba para FX + header en fila 3
+    //   Fila 1: FX en la MISMA hoja
+    // ----------------------------
+    const aoa = [];
+    // Row 1 (FX)
+    aoa.push(['USDCLP', fx.usdclp || 0, 'USDBRL', fx.usdbrl || 0, 'USDARS', fx.usdars || 0]);
+    // Row 2 (vacía)
+    aoa.push([]);
+    // Row 3 (header)
+    aoa.push(header);
+
+    // Para acceso rápido: índices de columnas
+    const colIndexByName = new Map();
+    header.forEach((h,i)=> colIndexByName.set(h, i+1)); // 1-based dentro del header (fila 3)
+
+    // ----------------------------
+    // 5) Construir filas por grupo (fila 4 en adelante)
+    // ----------------------------
+    const toUsdStrict = (monto, mon) => {
+      const m = normMoneda(mon);
+      const a = Number(monto)||0;
+      if (m === 'USD') return a;
+      if (m === 'BRL' && fx.usdbrl) return a / fx.usdbrl;
+      if (m === 'ARS' && fx.usdars) return a / fx.usdars;
+      if (m === 'CLP' && fx.usdclp) return a / fx.usdclp;
+      return 0;
+    };
+
+    const sumByLabel = (dets, mode /* 'USD'|'CLP' */) => {
+      const map = new Map(); // label -> sum
+      for (const d of (dets || [])){
+        const lab = labelOf(d);
+        if (!map.has(lab)) map.set(lab, 0);
+
+        if (mode === 'USD'){
+          const usd = toUsdStrict(d.montoOriginal, d.monedaOriginal);
+          map.set(lab, map.get(lab) + (usd || 0));
+        } else {
+          // CLP: solo lo dejamos como CLP "nativo"
+          // (si alguien mete USD acá, igual lo convertiría, pero según tu regla esto es CLP-only)
+          const clp = (normMoneda(d.monedaOriginal)==='CLP')
+            ? (Number(d.montoOriginal)||0)
+            : (toCLP(Number(d.montoOriginal)||0, d.monedaOriginal, fx) || 0);
+          map.set(lab, map.get(lab) + (clp || 0));
+        }
+      }
+      return map;
+    };
+
+    // Rangos para fórmulas de totales (se definen más abajo)
+    const firstUSDCol = fixed.length + 1;
+    const lastUSDCol  = fixed.length + colsUSD.length;
+
+    const firstCLPCol = lastUSDCol + 1;
+    const lastCLPCol  = lastUSDCol + colsCLP.length;
+
+    // Columnas de totales
+    const totalUSDCol = lastCLPCol + 1;
+    const totalCLPCol = lastCLPCol + 2;
+
+    // Fila Excel real donde está el header: 3
+    const headerRow = 3;
+    // Primera fila de datos: 4
+    let excelRow = 4;
+
+    for (const r of (rows || [])){
+      const rowObj = {};
+
+      // Fixed
+      rowObj['Codigo'] = r.Codigo ?? '';
+      rowObj['Grupo']  = r.Grupo ?? '';
+      rowObj['Año']    = r['Año'] ?? '';
+      rowObj['Destino']= r.Destino ?? '';
+      rowObj['PAX (paxReales - paxLiberados)'] = r['PAX (paxReales - paxLiberados)'] ?? '';
+      rowObj['Fechas'] = r.Fechas ?? '';
+      rowObj['Cantidad Noches'] = r['Cantidad Noches'] ?? '';
+
+      // USD buckets -> sums por label
+      for (const b of bucketsUSD){
+        const m = sumByLabel(r._det?.[b] || [], 'USD');
+        for (const lab of sortSet(labelsUSD.get(b))){
+          const col = `${bucketTitle[b]} | ${lab} (USD)`;
+          rowObj[col] = round2(m.get(lab) || 0);
+        }
+      }
+
+      // CLP buckets -> sums por label
+      for (const b of bucketsCLP){
+        const m = sumByLabel(r._det?.[b] || [], 'CLP');
+        for (const lab of sortSet(labelsCLP.get(b))){
+          const col = `${bucketTitle[b]} | ${lab} (CLP)`;
+          rowObj[col] = Math.round(m.get(lab) || 0);
+        }
+      }
+
+      // AOA row en el orden del header
+      const dataRow = header.map(h => (rowObj[h] ?? 0));
+      aoa.push(dataRow);
+
+      // Deja vacíos los totales por ahora (se pondrán con fórmula)
+      excelRow++;
+    }
+
+    // ----------------------------
+    // 6) Crear hoja y poner fórmulas de totales
+    // ----------------------------
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // Fórmulas:
+    // - TOTAL USD = SUM(USD cols) + (SUM(CLP cols) / USDCLP)
+    // - TOTAL CLP = SUM(CLP cols) + (SUM(USD cols) * USDCLP)
+    //
+    // USDCLP está en B1 (porque pusimos ['USDCLP', valor] en A1,B1)
+    const USDCLP_CELL = '$B$1';
+
+    // Recorremos filas de datos: desde fila 4 hasta aoa.length
+    for (let row = 4; row <= aoa.length; row++){
+      const usdSum = (colsUSD.length > 0)
+        ? `SUM(${cellAt(firstUSDCol, row)}:${cellAt(lastUSDCol, row)})`
+        : '0';
+
+      const clpSum = (colsCLP.length > 0)
+        ? `SUM(${cellAt(firstCLPCol, row)}:${cellAt(lastCLPCol, row)})`
+        : '0';
+
+      // TOTAL USD
+      ws[cellAt(totalUSDCol, row)] = { t:'n', f: `(${usdSum})+(${clpSum}/${USDCLP_CELL})` };
+
+      // TOTAL CLP
+      ws[cellAt(totalCLPCol, row)] = { t:'n', f: `(${clpSum})+(${usdSum}*${USDCLP_CELL})` };
+    }
+
+    // Anchos básicos
+    ws['!cols'] = header.map(h => ({ wch: Math.min(42, Math.max(12, (h||'').length + 2)) }));
+
+    XLSX.utils.book_append_sheet(wb, ws, 'MACRO');
+
+    // ----------------------------
+    // 7) Exportar
+    // ----------------------------
+    const fecha = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `Macro_Costos_${fecha}.xlsx`);
+
+  }catch(e){
+    console.error(e);
+    alert('No se pudo exportar MACRO: ' + (e?.message || e));
+  }
+}
+
+
+/* =========================================================
    9) Boot + filtros
    ========================================================= */
 function fillFilters(){
@@ -1970,6 +2232,11 @@ async function boot(){
   $('btnAplicar').addEventListener('click', aplicar);
   $('btnExport').addEventListener('click', async ()=> {
     await exportXLSX(state.rows || []);
+  });
+
+  // ✅ NUEVO
+  $('btnExportMacro').addEventListener('click', async ()=> {
+    await exportXLSXMacro(state.rows || []);
   });
 
   // defaults
