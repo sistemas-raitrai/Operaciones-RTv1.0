@@ -2590,8 +2590,8 @@ function exportXLSXGastosDetalle(rows){
       for (const d of detGas){
         let k = canonKey(d) || 'GASTO';
         if (isCenaHotel(k)){
-          // ✅ FORZAMOS 2 columnas separadas (USD/ARS)
-          gasCols.add('CENA HOTEL (USD)');
+          // ✅ FORZAMOS 2 columnas separadas (CLP/ARS)
+          gasCols.add('CENA HOTEL (CLP)');
           gasCols.add('CENA HOTEL (ARS)');
         } else {
           gasCols.add(k);
@@ -2599,7 +2599,14 @@ function exportXLSXGastosDetalle(rows){
       }
     }
 
-    const gasColsSorted = [...gasCols].sort((a,b)=> a.localeCompare(b,'es'));
+    const gasColsSorted = [...gasCols].sort((a,b)=> {
+      const A = U(a), B = U(b);
+      const aIs = A.startsWith('CENA HOTEL');
+      const bIs = B.startsWith('CENA HOTEL');
+      if (aIs && !bIs) return -1;
+      if (!aIs && bIs) return 1;
+      return a.localeCompare(b,'es');
+    });
 
     // 2) Header base + dinámicas (todo en mayúsculas)
     const header = [
@@ -2638,18 +2645,23 @@ function exportXLSXGastosDetalle(rows){
         let k = canonKey(d) || 'GASTO';
 
         // ✅ caso especial CENA HOTEL => 2 columnas
+        // ✅ caso especial CENA HOTEL => 2 columnas: CLP y ARS
         if (isCenaHotel(k)){
           const mon = normMoneda(d.monedaOriginal || 'CLP');
+        
           if (mon === 'ARS'){
+            // ARS: guardamos el monto original en ARS
             const idx = colIndex.get(U('CENA HOTEL (ARS)'));
             if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.montoOriginal || 0);
           } else {
-            // todo lo demás cae en USD (incluye USD directo)
-            const idx = colIndex.get(U('CENA HOTEL (USD)'));
-            if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.montoOriginal || 0);
+            // CLP: guardamos el valor en CLP (si venía CLP es igual, si venía otra moneda ya está convertido en d.clp)
+            const idx = colIndex.get(U('CENA HOTEL (CLP)'));
+            if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.clp || 0);
           }
+        
           continue;
         }
+
 
         // default: suma en CLP (porque tu bucket gastos es CLP_ONLY)
         const key = U(k);
