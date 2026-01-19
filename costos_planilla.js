@@ -1,10 +1,4 @@
-// costos_planilla.js — Planilla “Hoja 1” en pantalla + Export XLSX con fórmulas
-// ✅ Columnas EXACTAS del CSV
-// ✅ Click en montos de ítems -> Modal con detalle
-// ✅ Soporta destino compuesto: CLP (Chile) + USD (Exterior) en paralelo + total USD combinado
-// ✅ Export XLSX con hoja FX + fórmulas por fila (SUM + conversiones)
-// Requiere: firebase-init.js (exporta app/db/auth o app/db + getAuth)
-// y XLSX global
+// costos_planilla.js 
 
 import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
@@ -325,6 +319,60 @@ function paxContable(G){
   return Math.max(0, reales - liberados);
 }
 
+/* ===========================
+   EFECTIVO -> MATCH con GASTOS
+   =========================== */
+
+// Stopwords (evitar matches basura tipo "DEL", "LAGO", etc.)
+const STOP_WORDS = new Set([
+  'DE','DEL','LA','LAS','LOS','Y','EN','EL','AL','A','POR','PARA','CON',
+  'UN','UNA','UNO','UNAS','UNOS','THE','AND',
+  'LAGO' // 👈 explícito por tu ejemplo (puedes agregar más si quieres)
+]);
+
+function normTxt(s){
+  return U(s || '')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g,' ')
+    .trim();
+}
+
+function tokenizeStrong(s){
+  const t = normTxt(s);
+  if (!t) return [];
+  return t.split(' ')
+    .map(x=>x.trim())
+    .filter(x => x && x.length >= 5 && !STOP_WORDS.has(x)); // ✅ mínimo calidad
+}
+
+// ✅ Texto de gasto (para buscar coincidencias)
+function gastoHaystack(g){
+  return normTxt([
+    g?.asunto, g?.descripcion, g?.detalle, g?.glosa,
+    g?.proveedor, g?.comercio, g?.empresa
+  ].filter(Boolean).join(' '));
+}
+
+function containsWord(hay, word){
+  // word ya viene normalizado (A-Z), exigimos palabra completa
+  // usamos bordes con espacios para reducir falsos positivos
+  const H = ` ${hay} `;
+  const W = ` ${word} `;
+  return H.includes(W);
+}
+
+/**
+ * Decide keywords para una actividad:
+ * - si existe svc.clave => se usa ESA (mejor certeza)
+ * - si no => se sacan tokens fuertes del nombre de la actividad
+ */
+function actividadKeywords(svc){
+  const k = (svc?.clave || '').toString().trim();
+  if (k) return tokenizeStrong(k); // si clave es frase, la tokenizamos
+  return tokenizeStrong(svc?.nombre || '');
+}
+
+
 /* =========================================================
    2) FX (USD pivot) — en UI inputs
    ========================================================= */
@@ -421,9 +469,15 @@ function normalizeSvc(s){
     valorServicio: num(s.valorServicio ?? s.valor ?? s.precio ?? 0),
     tipoCobro: U(s.tipoCobro || ''),
     categoria: (s.categoria || s.tipo || '').toString().trim(),
+
+    // ✅ NUEVO: para regla EFECTIVO
+    formaPago: U(s.formaPago || ''),
+    clave: (s.clave || '').toString().trim(),
+
     raw: s
   };
 }
+
 
 function findSvc({ destino, actividad }){
   const d = U(destino || '');
@@ -691,23 +745,40 @@ function calcActividadesYComidas({ G, destinoGrupo, pax, fx }){
       const emp = svc.proveedor || '(PROVEEDOR)';
       const asu = svc.nombre;
       const mon = svc.moneda;
+
+      // ✅ NUEVO: detectar EFECTIVO
+      const esEfectivo = U(svc.formaPago || '').includes('EFECTIVO');
+
+      // Si es EFECTIVO: actividad NO se valoriza por tarifa (queda 0),
+      // porque el costo real queda en GASTOS APROBADOS (Opción A)
       const valor = num(svc.valorServicio);
-      if (!valor) continue;
 
-      // qty
-      let qty = 1;
-      if (svc.tipoCobro.includes('PERSONA')) qty = pax || 0;
-      else if (svc.tipoCobro.includes('GRUPO')) qty = 1;
-      else if (svc.tipoCobro.includes('DIA')) qty = 1;
+      // qty...
+      let monto = valor * qty;
 
-      const monto = valor * qty;
+      // ✅ Si EFECTIVO: FORZAR 0 (y no sumar a actividades)
+      if (esEfectivo) monto = 0;
+
       const _usd = toUSD(monto, mon, fx);
       const _clp = toCLP(monto, mon, fx);
 
       const row = {
-        empresa: emp, asunto: asu, monedaOriginal: mon,
+        empresa: emp,
+        asunto: asu,
+
+        monedaOriginal: mon,
         montoOriginal: monto,
-        usd: _usd, clp: _clp,
+        usd: _usd,
+        clp: _clp,
+
+        // ✅ NUEVO: metadata para reconciliar con gastos
+        esEfectivo,
+        svcClave: (svc.clave || '').toString().trim(),
+        svcNombre: (svc.nombre || '').toString().trim(),
+
+        // ✅ “nota” simple (se puede mostrar en modal vía fuente o en asunto si quieres)
+        nota: esEfectivo ? 'VALOR EN GASTOS' : '',
+
         fuente: `Servicios/${svc.destino}/Listado/${svc.id} @ ${fecha}`
       };
       row.itemId = makeItemId(row);
@@ -867,6 +938,10 @@ function openModal({ title, sub, detalles, fx, gid, bucket }){
     const tr = document.createElement('tr');
     tr.dataset.itemId = d.itemId || makeItemId(d);
     tr.dataset.idx = String(idx);
+
+    // ✅ Amarillo si es PENDIENTE (EFECTIVO incierto)
+    if (d._efeStatus === 'PENDIENTE') tr.classList.add('cp-pend');
+    if (d._efeStatus === 'RESUELTO') tr.classList.add('cp-ok');
 
     tr.innerHTML = `
       <td title="${esc(d.empresa)}">${esc(d.empresa)}</td>
@@ -1384,6 +1459,106 @@ async function buildRows(){
     const detCoord = coord.detalles.map(d  => applyOverrideToDetalle(d, ovC,  fx, 'CLP_ONLY'));   // Coordinador: CLP
     const detGastos= gastos.detalles.map(d => applyOverrideToDetalle(d, ovG,  fx, 'CLP_ONLY'));   // Gastos aprobados: CLP
     const detSeg   = seguro.detalles.map(d => applyOverrideToDetalle(d, ovS,  fx, 'USD_ONLY'));   // Seguro: USD
+
+    /* =========================================================
+       EFECTIVO: reconciliar Actividades (0) con Gastos (costo real)
+       - Opción A: NO mueve montos. Solo marca RESUELTO/PENDIENTE.
+       ========================================================= */
+
+    // Solo consideramos actividades marcadas como EFECTIVO
+    const actsEfe = (detAct || []).filter(x => !!x.esEfectivo);
+
+    // Pre-armar "haystack" de cada gasto (texto para buscar)
+    const gastosWithText = (detGastos || []).map(g => ({
+      ...g,
+      _hay: gastoHaystack(g),
+      _matchActs: new Set() // actividades a las que podría matchear (para detectar ambigüedad)
+    }));
+
+    // Para cada actividad EFECTIVO, buscamos gastos que contengan keywords
+    const actToGastos = new Map(); // act.itemId -> array gastos indices
+    for (const a of actsEfe){
+      const keys = actividadKeywords({ clave: a.svcClave, nombre: a.svcNombre || a.asunto });
+
+      const hits = [];
+      if (keys.length){
+        for (let gi=0; gi<gastosWithText.length; gi++){
+          const gg = gastosWithText[gi];
+          // match: basta 1 keyword fuerte
+          const ok = keys.some(k => containsWord(gg._hay, k));
+          if (ok){
+            hits.push(gi);
+            gg._matchActs.add(a.itemId);
+          }
+        }
+      }
+
+      actToGastos.set(a.itemId, hits);
+    }
+
+    // Resolver:
+    // - Si un gasto matchea con 2+ actividades => AMBIGUO => queda PENDIENTE
+    // - Si una actividad matchea con 0 => PENDIENTE (actividad+ninguno)
+    // - Si una actividad matchea con N gastos y esos gastos SOLO matchean con esa actividad => RESUELTO
+    const mark = (obj, status) => {
+      obj._efeStatus = status; // 'RESUELTO' | 'PENDIENTE'
+    };
+
+    // 1) Marcar gastos ambiguos (match a varias actividades)
+    const gastoEsAmbiguo = new Set();
+    for (let gi=0; gi<gastosWithText.length; gi++){
+      const m = gastosWithText[gi]._matchActs;
+      if (m.size >= 2) gastoEsAmbiguo.add(gi);
+    }
+
+    // 2) Resolver por actividad
+    for (const a of actsEfe){
+      const hits = actToGastos.get(a.itemId) || [];
+
+      if (!hits.length){
+        // no hay certeza => pendiente
+        mark(a, 'PENDIENTE');
+        continue;
+      }
+
+      // Si alguno de sus gastos es ambiguo => pendiente (porque ese gasto podría ser de otra actividad)
+      const hasAmb = hits.some(gi => gastoEsAmbiguo.has(gi));
+      if (hasAmb){
+        mark(a, 'PENDIENTE');
+        continue;
+      }
+
+      // ✅ Si llegamos acá => todos los gastos hit pertenecen SOLO a esta actividad => RESUELTO
+      mark(a, 'RESUELTO');
+      for (const gi of hits){
+        mark(gastosWithText[gi], 'RESUELTO');
+      }
+    }
+
+    // 3) Cualquier gasto que “calzó” pero quedó ambiguo => pendiente
+    for (let gi=0; gi<gastosWithText.length; gi++){
+      const gg = gastosWithText[gi];
+      if (gg._matchActs.size >= 1 && !gg._efeStatus){
+        // hit a algo pero no se pudo resolver => pendiente
+        gg._efeStatus = gastoEsAmbiguo.has(gi) ? 'PENDIENTE' : (gg._efeStatus || '');
+      }
+    }
+
+    // 4) Reinyectar a detGastos (con status) sin romper referencias
+    const detGastos2 = gastosWithText.map(x => {
+      const { _hay, _matchActs, ...rest } = x;
+      return rest;
+    });
+
+    // ✅ Reemplaza el detGastos desde aquí en adelante
+    // (para que modal/export puedan pintar estado)
+    // OJO: después usas detGastos en sumCLP, det, rows.push, etc.
+    // entonces pisa la variable:
+    // eslint-disable-next-line no-unused-vars
+    // (si te molesta el lint, borra este comentario)
+    detGastos.length = 0;
+    detGastos2.forEach(x => detGastos.push(x));
+
 
     
     // ✅ Totales recalculados desde detalles (si hay override, ya viene aplicado)
