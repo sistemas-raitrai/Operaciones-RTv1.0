@@ -125,13 +125,15 @@ const CLASIF = {
     if (incluyeComida) return false;
 
     // ✅ 3) Comidas reales: cuando el nombre ES la comida (típicamente parte con eso)
-    // Ej: "ALMUERZO REST. PATA LIEBRE" => COMIDA (true)
+    // Normaliza inicio: "CENA HOTEL", "CENA: HOTEL", "CENA - HOTEL", etc.
+    const nStart = n.replace(/^[^\p{L}\p{N}]*/gu,'').trim(); // quita basura inicial
+    
     const empiezaComoComida =
-      n.startsWith('ALMUERZO') ||
-      n.startsWith('CENA') ||
-      n.startsWith('DESAYUNO') ||
-      n.startsWith('COMIDA') ||
-      n.startsWith('BUFFET');
+      /^ALMUERZO\b/.test(nStart) ||
+      /^CENA\b/.test(nStart) ||
+      /^DESAYUNO\b/.test(nStart) ||
+      /^COMIDA\b/.test(nStart) ||
+      /^BUFFET\b/.test(nStart);
 
     if (empiezaComoComida) return true;
 
