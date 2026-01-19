@@ -109,13 +109,43 @@ const CLASIF = {
   isComida: (svc) => {
     const n = U(svc.nombre || svc.servicio || '');
     const cat = U(svc.categoria || svc.tipo || '');
-    return (
-      cat.includes('COMIDA') ||
-      n.includes('CENA') || n.includes('ALMUERZO') || n.includes('DESAYUNO') ||
-      n.includes('COMID') || n.includes('BUFFET')
-    );
+
+    // ✅ 1) Si la categoría dice COMIDA, mandamos a comidas SIEMPRE
+    if (cat.includes('COMIDA')) return true;
+
+    // ✅ 2) Excepción: actividades que "incluyen" comida (no son la comida en sí)
+    // Ej: "RAFTING PETROHUE CON ALMUERZO" => ACTIVIDAD (false)
+    // Ojo: si quieres, después agregamos "INCLUYE ALMUERZO" también.
+    const incluyeComida =
+      n.includes(' CON ALMUERZO') ||
+      n.includes(' CON CENA') ||
+      n.includes(' CON DESAYUNO') ||
+      n.includes(' CON BUFFET');
+
+    if (incluyeComida) return false;
+
+    // ✅ 3) Comidas reales: cuando el nombre ES la comida (típicamente parte con eso)
+    // Ej: "ALMUERZO REST. PATA LIEBRE" => COMIDA (true)
+    const empiezaComoComida =
+      n.startsWith('ALMUERZO') ||
+      n.startsWith('CENA') ||
+      n.startsWith('DESAYUNO') ||
+      n.startsWith('COMIDA') ||
+      n.startsWith('BUFFET');
+
+    if (empiezaComoComida) return true;
+
+    // ✅ 4) Fallback: palabras "fuertes" de comida SOLO si NO son del tipo "CON ..."
+    // (esto evita que caigan actividades raras en comidas por accidente)
+    const palabraComida =
+      n.includes('ALMUERZO') ||
+      n.includes('CENA') ||
+      n.includes('DESAYUNO') ||
+      n.includes('BUFFET');
+
+    return palabraComida;
   },
-  // Si quieres separar “Terrestre” desde servicios:
+
   isTerrestre: (svc) => {
     const n = U(svc.nombre || svc.servicio || '');
     const cat = U(svc.categoria || svc.tipo || '');
