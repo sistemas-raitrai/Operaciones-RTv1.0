@@ -753,11 +753,23 @@ function calcActividadesYComidas({ G, destinoGrupo, pax, fx }){
       // porque el costo real queda en GASTOS APROBADOS (Opción A)
       const valor = num(svc.valorServicio);
 
-      // qty...
+      // ✅ qty: depende del tipo de cobro (si viene)
+      // Reglas:
+      // - PERSONA / PAX => pax contable del grupo
+      // - GRUPO => 1
+      // - DÍA => 1 (si más adelante quieres multiplicar por días, lo hacemos acá)
+      // - Si no hay tipoCobro claro => 1
+      let qty = 1;
+      const tc = U(svc.tipoCobro || '');
+      if (tc.includes('PERSONA') || tc.includes('PAX')) qty = num(pax || 0);
+      else if (tc.includes('GRUPO')) qty = 1;
+      else if (tc.includes('DIA') || tc.includes('DÍA')) qty = 1;
+
       let monto = valor * qty;
 
       // ✅ Si EFECTIVO: FORZAR 0 (y no sumar a actividades)
       if (esEfectivo) monto = 0;
+
 
       const _usd = toUSD(monto, mon, fx);
       const _clp = toCLP(monto, mon, fx);
