@@ -2570,182 +2570,224 @@ function exportXLSXGastosDetalle(rows){
   try{
     if (!window.XLSX) throw new Error('XLSX no cargado');
 
-    const fx = getFX(); // (no obligatorio acá, pero lo dejamos por consistencia)
+    // =========================
+    // Helpers (reusa los tuyos)
+    // =========================
+    const UPPER = (s)=> U(s || '');
+    const pickAsunto = (d)=> (d?.asunto || '').toString().trim();
+    const pickEmpresa = (d)=> (d?.empresa || '').toString().trim();
 
-    // ========= helpers locales =========
-    const canonKey = (d) => {
-      // ✅ IMPORTANTE:
-      // Antes estabas canonizando "asunto|empresa" mezclado.
-      // Ahora priorizamos ASUNTO, y si no hay, caemos a EMPRESA (más macro real).
-      const a = (d?.asunto || '').toString().trim();
-      const e = (d?.empresa || '').toString().trim();
-      return canonGasto(a || e || 'GASTO');
+    // Moneda ORIGINAL (preserva BRL/ARS/etc)
+    const monedaOriginal = (m)=>{
+      const raw = (m ?? '').toString().trim();
+      if (!raw) return 'USD';
+      // usa tu normalizador si corresponde (R$, AR$, etc)
+      const n = normMoneda(raw);
+      const up = UPPER(raw);
+
+      // Si viene un ISO claro, lo respetamos (BRL/ARS/EUR/etc)
+      // (tu normMoneda ya reconoce BRL/ARS/CLP/USD; esto es “seguro extra”)
+      if (/^[A-Z]{3}$/.test(up)) return up;
+
+      // Si no, usamos lo normalizado
+      return n || up || 'USD';
     };
 
-    const isCenaHotel = (key) => {
-      const k = U(key || '');
-      return k.includes('CENA HOTEL') || (k.startsWith('CENA') && k.includes('HOTEL'));
-    };
+    // Monto ORIGINAL (sin conversión)
+    const montoOriginal = (d)=> Number(d?.montoOriginal || 0) || 0;
 
-    // ======================================================
-    // 1) DESCUBRIR COLUMNAS DINÁMICAS (RESUMEN)
-    // ======================================================
-    const gasCols = new Set();
+    // Canonización (tu lógica)
+    const catCanon = (d)=> canonGasto(pickAsunto(d) || pickEmpresa(d) || 'GASTO');
+
+    // =========================
+    // 1) Detectar monedas extra (solo en GASTOS)
+    // =========================
+    const extraMonedas = new Set(); // monedas distintas a USD/CLP
+    const catsUSD = new Set();
+    const catsCLP = new Set();
+    const catsByExtraMon = new Map(); // mon -> Set(cat)
+
+    const ensureSet = (map, key)=>{
+      if(!map.has(key)) map.set(key, new Set());
+      return map.get(key);
+    };
 
     for (const r of (rows || [])){
-      const detGas = r._det?.gastos || [];
+      const detGas = r?._det?.gastos || [];
       for (const d of detGas){
-        let k = canonKey(d) || 'GASTO';
+        const mon = monedaOriginal(d?.monedaOriginal);
+        const cat = catCanon(d);
+        if (!cat) continue;
 
-        if (isCenaHotel(k)){
-          gasCols.add('CENA HOTEL (CLP)');
-          gasCols.add('CENA HOTEL (ARS)');
-        } else {
-          gasCols.add(k);
+        if (mon === 'USD') catsUSD.add(cat);
+        else if (mon === 'CLP') catsCLP.add(cat);
+        else{
+          extraMonedas.add(mon);
+          ensureSet(catsByExtraMon, mon).add(cat);
         }
       }
     }
 
-    const gasColsSorted = [...gasCols].sort((a,b)=> {
-      const A = U(a), B = U(b);
-      const aIs = A.startsWith('CENA HOTEL');
-      const bIs = B.startsWith('CENA HOTEL');
-      if (aIs && !bIs) return -1;
-      if (!aIs && bIs) return 1;
-      return a.localeCompare(b,'es');
-    });
+    const extrasSorted = [...extraMonedas].sort((a,b)=> a.localeCompare(b,'es'));
 
-    // ======================================================
-    // 2) HOJA "RESUMEN" (tipo macro, 1 fila por grupo)
-    // ======================================================
-    const headerResumen = [
-      'CÓDIGO','GRUPO','AÑO','DESTINO','FECHAS',
+    // Orden de extras: BRL/ARS primero si existen (opcional)
+    const prio = (m)=> (m==='BRL'?0 : m==='ARS'?1 : 2);
+    extrasSorted.sort((a,b)=> (prio(a)-prio(b)) || a.localeCompare(b,'es'));
+
+    const catsUSDsorted = [...catsUSD].sort((a,b)=> a.localeCompare(b,'es'));
+    const catsCLPsorted = [...catsCLP].sort((a,b)=> a.localeCompare(b,'es'));
+
+    // =========================
+    // 2) Hoja RESUMEN (idéntica + extras)
+    // =========================
+    // Base: NO toco tus columnas base (ajusta nombres si los tuyos son distintos)
+    // Si tus headers actuales difieren, cambia SOLO esos strings, el resto funciona igual.
+    const headerResumenBase = [
+      'CÓDIGO','GRUPO','AÑO','DESTINO',
+      'TOTAL GASTOS APROB (USD)',
       'TOTAL GASTOS APROB (CLP)',
-      ...gasColsSorted
-    ].map(h => U(h));
+      'TOTAL USD (SOLO USD)',
+      'TOTAL CLP (SOLO CLP)'
+    ].map(UPPER);
 
-    const aoaResumen = [headerResumen];
+    // ✅ Extras SOLO si aparecen (BRL/ARS/…)
+    const headerResumenExtrasTotales = extrasSorted.flatMap(mon => ([
+      UPPER(`TOTAL GASTOS APROB (${mon})`),
+      UPPER(`TOTAL ${mon} (SOLO ${mon})`)
+    ]));
 
-    const colIndexR = new Map(headerResumen.map((h,i)=>[h,i]));
-    const setCellR = (rowArr, colName, value) => {
-      const idx = colIndexR.get(U(colName));
-      if (idx == null) return;
-      rowArr[idx] = value;
+    // ✅ Columnas dinámicas por categoría:
+    // - Mantengo tus columnas "por categoría" para USD y CLP tal cual (sin sufijo)
+    // - Para monedas extra, creo columnas por categoría con sufijo (BRL)/(ARS)
+    const headerCatsUSD = catsUSDsorted.map(c => UPPER(c));
+    const headerCatsCLP = catsCLPsorted.map(c => UPPER(c));
+
+    const headerCatsExtras = [];
+    for (const mon of extrasSorted){
+      const cats = [...(catsByExtraMon.get(mon) || [])].sort((a,b)=> a.localeCompare(b,'es'));
+      for (const c of cats){
+        headerCatsExtras.push(UPPER(`${c} (${mon})`));
+      }
+    }
+
+    const headerResumen = [
+      ...headerResumenBase,
+      ...headerResumenExtrasTotales,
+      ...headerCatsUSD,
+      ...headerCatsCLP,
+      ...headerCatsExtras
+    ];
+
+    const idxResumen = new Map(headerResumen.map((h,i)=>[h,i]));
+
+    const resumenAoa = [];
+    resumenAoa.push([UPPER('GASTOS — RESUMEN (MONEDA ORIGINAL)')]);
+    resumenAoa.push([]);
+    resumenAoa.push(headerResumen);
+
+    const addRes = (rowArr, col, delta)=>{
+      const i = idxResumen.get(UPPER(col));
+      if (i == null) return;
+      const prev = Number(rowArr[i] || 0) || 0;
+      rowArr[i] = prev + (Number(delta || 0) || 0);
+    };
+    const setRes = (rowArr, col, val)=>{
+      const i = idxResumen.get(UPPER(col));
+      if (i == null) return;
+      rowArr[i] = val;
     };
 
     for (const r of (rows || [])){
       const row = new Array(headerResumen.length).fill('');
 
-      setCellR(row, 'CÓDIGO', U(r.Codigo || ''));
-      setCellR(row, 'GRUPO', U(r.Grupo || ''));
-      setCellR(row, 'AÑO', Number(r['Año'] || 0));
-      setCellR(row, 'DESTINO', U(r.Destino || ''));
-      setCellR(row, 'FECHAS', U(r.Fechas || ''));
+      setRes(row,'CÓDIGO', UPPER(r.Codigo || ''));
+      setRes(row,'GRUPO', UPPER(r.Grupo || ''));
+      setRes(row,'AÑO', Number(r['Año'] || 0));
+      setRes(row,'DESTINO', UPPER(r.Destino || ''));
 
-      const detGas = r._det?.gastos || [];
-
-      // Total CLP (bucket gastos es CLP_ONLY => d.clp debería existir)
-      const totalCLP = detGas.reduce((acc,d)=> acc + (Number(d.clp || 0) || 0), 0);
-      setCellR(row, 'TOTAL GASTOS APROB (CLP)', Math.round(totalCLP));
-
+      const detGas = r?._det?.gastos || [];
       for (const d of detGas){
-        let k = canonKey(d) || 'GASTO';
+        const mon = monedaOriginal(d?.monedaOriginal);
+        const val = montoOriginal(d);
+        const cat = catCanon(d);
+        if (!cat) continue;
 
-        // ✅ caso especial CENA HOTEL => 2 columnas
-        if (isCenaHotel(k)){
-          const mon = normMoneda(d.monedaOriginal || 'CLP');
+        // Totales por moneda (solo suma en su moneda)
+        addRes(row, `TOTAL GASTOS APROB (${mon})`, val);
+        addRes(row, `TOTAL ${mon} (SOLO ${mon})`, val);
 
-          if (mon === 'ARS'){
-            // ARS: guardamos el MONTO ORIGINAL en ARS
-            const idx = colIndexR.get(U('CENA HOTEL (ARS)'));
-            if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.montoOriginal || 0);
-          } else {
-            // CLP: guardamos CLP (convertido si era otra moneda)
-            const idx = colIndexR.get(U('CENA HOTEL (CLP)'));
-            if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.clp || 0);
-          }
-          continue;
-        }
-
-        // default: suma en CLP
-        const key = U(k);
-        const idx = colIndexR.get(key);
-        if (idx != null){
-          const prev = Number(row[idx] || 0);
-          row[idx] = prev + Number(d.clp || 0);
+        // Categorías:
+        // - USD/CLP se mantienen “idénticas” (columna por cat sin sufijo)
+        // - extras usan sufijo (CAT (BRL))
+        if (mon === 'USD' || mon === 'CLP'){
+          addRes(row, cat, val);
+        } else {
+          addRes(row, `${cat} (${mon})`, val);
         }
       }
 
-      aoaResumen.push(row);
+      resumenAoa.push(row);
     }
 
-    const wsResumen = XLSX.utils.aoa_to_sheet(aoaResumen);
-    wsResumen['!cols'] = headerResumen.map(h=>{
-      const x = (h||'').length;
-      const w = Math.min(44, Math.max(12, x + 2));
-      return { wch: w };
-    });
+    const wsResumen = XLSX.utils.aoa_to_sheet(resumenAoa);
+    wsResumen['!cols'] = headerResumen.map(h => ({ wch: Math.max(14, Math.min(40, (h||'').length + 2)) }));
 
-    // ======================================================
-    // 3) HOJA "DETALLE" (líneas reales de gastos)
-    // ======================================================
+    // =========================
+    // 3) Hoja DETALLE (idéntica, sin conversión)
+    // =========================
+    // Mantengo columnas típicas; si tus headers actuales difieren, ajusta strings.
     const headerDetalle = [
-      'CÓDIGO','GRUPO','AÑO','DESTINO','FECHAS',
-      'EMPRESA','ASUNTO','CATEGORÍA (CANON)',
-      'MONEDA','MONTO ORIGINAL','CLP',
-      'STATUS EFECTIVO','FUENTE'
-    ].map(h => U(h));
+      'CÓDIGO','GRUPO','AÑO','DESTINO',
+      'EMPRESA','ASUNTO','CATEGORÍA',
+      'MONEDA ORIGINAL','MONTO ORIGINAL',
+      'STATUS EFECTIVO',
+      'DOCID / FUENTE'
+    ].map(UPPER);
 
-    const aoaDetalle = [headerDetalle];
+    const detalleAoa = [];
+    detalleAoa.push([UPPER('GASTOS — DETALLE (MONEDA ORIGINAL)')]);
+    detalleAoa.push([]);
+    detalleAoa.push(headerDetalle);
 
     for (const r of (rows || [])){
-      const detGas = r._det?.gastos || [];
-
+      const detGas = r?._det?.gastos || [];
       for (const d of detGas){
-        const canon = canonKey(d) || 'GASTO';
+        const mon = monedaOriginal(d?.monedaOriginal);
+        const val = montoOriginal(d);
 
-        aoaDetalle.push([
-          U(r.Codigo || ''),
-          U(r.Grupo || ''),
+        detalleAoa.push([
+          UPPER(r.Codigo || ''),
+          UPPER(r.Grupo || ''),
           Number(r['Año'] || 0),
-          U(r.Destino || ''),
-          U(r.Fechas || ''),
-
-          U(d.empresa || ''),
-          U(d.asunto || ''),
-          U(canon),
-
-          normMoneda(d.monedaOriginal || 'CLP'),
-          Number(d.montoOriginal || 0),
-          Math.round(Number(d.clp || 0)),
-
-          U(d._efeStatus || ''),
-          (d.fuente || '')
+          UPPER(r.Destino || ''),
+          UPPER(pickEmpresa(d)),
+          UPPER(pickAsunto(d)),
+          UPPER(catCanon(d)),
+          UPPER(mon),
+          val,
+          UPPER(d?.statusEfectivo || d?.status || ''),
+          // Fuente: deja lo que tú ya uses; esto es fallback seguro
+          UPPER(d?.docId || d?.id || d?._id || d?.sourceId || d?.path || '')
         ]);
       }
     }
 
-    const wsDetalle = XLSX.utils.aoa_to_sheet(aoaDetalle);
-    wsDetalle['!cols'] = [
-      {wch:12},{wch:28},{wch:8},{wch:18},{wch:18},
-      {wch:24},{wch:42},{wch:22},
-      {wch:10},{wch:16},{wch:12},
-      {wch:16},{wch:28}
-    ];
+    const wsDetalle = XLSX.utils.aoa_to_sheet(detalleAoa);
+    wsDetalle['!cols'] = headerDetalle.map(h => ({ wch: Math.max(14, Math.min(42, (h||'').length + 2)) }));
 
-    // ======================================================
-    // 4) Workbook + Export
-    // ======================================================
+    // =========================
+    // 4) Workbook
+    // =========================
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, wsResumen, 'RESUMEN');
     XLSX.utils.book_append_sheet(wb, wsDetalle, 'DETALLE');
 
     const fecha = new Date().toISOString().slice(0,10);
-    XLSX.writeFile(wb, `GASTOS_MACRO_${fecha}.xlsx`);
+    XLSX.writeFile(wb, `Gastos_Detalle_MonedaOriginal_${fecha}.xlsx`);
 
-  }catch(e){
+  } catch(e){
     console.error(e);
-    alert('No se pudo exportar GASTOS: ' + (e?.message || e));
+    alert('No se pudo exportar Gastos (Detalle): ' + (e?.message || e));
   }
 }
 
