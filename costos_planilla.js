@@ -2559,6 +2559,132 @@ function exportXLSXMacro(rows){
   }
 }
 
+// ======================================================
+// ✅ 3er Export: GASTOS (formato distinto)
+// - Exporta SOLO lo filtrado (rows que se ven)
+// - Columnas dinámicas por canonGasto(asunto|empresa)
+// - Caso especial: CENA HOTEL => 2 columnas: (USD) y (ARS)
+// ======================================================
+function exportXLSXGastosDetalle(rows){
+  try{
+    if (!window.XLSX) throw new Error('XLSX no cargado');
+
+    const fx = getFX(); // por si quieres agregar CLP conv, pero acá respetamos bolsas
+    const canonKey = (d) => {
+      const a = (d?.asunto || '').toString().trim();
+      const e = (d?.empresa || '').toString().trim();
+      return canonGasto([a, e].filter(Boolean).join(' | '));
+    };
+
+    // Detecta "CENA HOTEL" (robusto)
+    const isCenaHotel = (key) => {
+      const k = U(key || '');
+      return k.includes('CENA HOTEL') || (k.startsWith('CENA') && k.includes('HOTEL'));
+    };
+
+    // 1) Descubrir columnas
+    const gasCols = new Set();
+
+    for (const r of (rows || [])){
+      const detGas = r._det?.gastos || [];
+      for (const d of detGas){
+        let k = canonKey(d) || 'GASTO';
+        if (isCenaHotel(k)){
+          // ✅ FORZAMOS 2 columnas separadas (USD/ARS)
+          gasCols.add('CENA HOTEL (USD)');
+          gasCols.add('CENA HOTEL (ARS)');
+        } else {
+          gasCols.add(k);
+        }
+      }
+    }
+
+    const gasColsSorted = [...gasCols].sort((a,b)=> a.localeCompare(b,'es'));
+
+    // 2) Header base + dinámicas (todo en mayúsculas)
+    const header = [
+      'CÓDIGO','GRUPO','AÑO','DESTINO','FECHAS',
+      'TOTAL GASTOS APROB (CLP)',
+      ...gasColsSorted
+    ].map(h => U(h));
+
+    const aoa = [header];
+
+    // Map colName -> index
+    const colIndex = new Map(header.map((h,i)=>[h,i]));
+    const setCell = (rowArr, colName, value) => {
+      const idx = colIndex.get(U(colName));
+      if (idx == null) return;
+      rowArr[idx] = value;
+    };
+
+    // 3) Construir filas
+    for (const r of (rows || [])){
+      const row = new Array(header.length).fill('');
+
+      setCell(row, 'CÓDIGO', U(r.Codigo || ''));
+      setCell(row, 'GRUPO', U(r.Grupo || ''));
+      setCell(row, 'AÑO', Number(r['Año'] || 0));
+      setCell(row, 'DESTINO', U(r.Destino || ''));
+      setCell(row, 'FECHAS', U(r.Fechas || ''));
+
+      const detGas = r._det?.gastos || [];
+
+      // Total CLP (tu bucket gastos está en CLP_ONLY, así que d.clp debería venir)
+      const totalCLP = detGas.reduce((acc,d)=> acc + (Number(d.clp || 0) || 0), 0);
+      setCell(row, 'TOTAL GASTOS APROB (CLP)', Math.round(totalCLP));
+
+      for (const d of detGas){
+        let k = canonKey(d) || 'GASTO';
+
+        // ✅ caso especial CENA HOTEL => 2 columnas
+        if (isCenaHotel(k)){
+          const mon = normMoneda(d.monedaOriginal || 'CLP');
+          if (mon === 'ARS'){
+            const idx = colIndex.get(U('CENA HOTEL (ARS)'));
+            if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.montoOriginal || 0);
+          } else {
+            // todo lo demás cae en USD (incluye USD directo)
+            const idx = colIndex.get(U('CENA HOTEL (USD)'));
+            if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.montoOriginal || 0);
+          }
+          continue;
+        }
+
+        // default: suma en CLP (porque tu bucket gastos es CLP_ONLY)
+        const key = U(k);
+        const idx = colIndex.get(key);
+        if (idx != null){
+          const prev = Number(row[idx] || 0);
+          row[idx] = prev + Number(d.clp || 0);
+        }
+      }
+
+      aoa.push(row);
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // anchos básicos
+    ws['!cols'] = header.map(h=>{
+      const x = (h||'').length;
+      const w = Math.min(44, Math.max(12, x + 2));
+      return { wch: w };
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'GASTOS');
+
+    const fecha = new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb, `GASTOS_DETALLE_${fecha}.xlsx`);
+
+  }catch(e){
+    console.error(e);
+    alert('No se pudo exportar GASTOS: ' + (e?.message || e));
+  }
+}
+
+
 
 /* =========================================================
    9) Boot + filtros
@@ -2656,6 +2782,13 @@ async function boot(){
   if (btnMacro){
     btnMacro.addEventListener('click', async ()=> {
       await exportXLSXMacro(state.rows || []);
+    });
+  }
+
+  const btnGastos = $('btnExportGastos');
+  if (btnGastos){
+    btnGastos.addEventListener('click', async ()=> {
+      await exportXLSXGastosDetalle(state.rows || []);
     });
   }
 
