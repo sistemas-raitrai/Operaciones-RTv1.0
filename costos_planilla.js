@@ -313,6 +313,41 @@ function normMoneda(m){
   return (M || 'USD');
 }
 
+// ✅ Intenta obtener gid desde el PATH del documento (si viene de grupos/{gid}/.../gastos/{id})
+function gidFromDocPath(path){
+  const p = (path || '').toString();
+  // captura ".../grupos/{gid}/..."
+  const m = p.match(/(?:^|\/)grupos\/([^\/]+)(?:\/|$)/i);
+  return m ? m[1] : '';
+}
+
+// ✅ Obtiene una "clave grupo" desde campos típicos del gasto
+function gidFromGastoFields(g){
+  if (!g) return '';
+  return String(
+    g.grupoId ??
+    g.gid ??
+    g.grupoDocId ??
+    g.grupoRefId ??
+    g.idGrupo ??
+    g.groupId ??
+    ''
+  ).trim();
+}
+
+function codigoFromGastoFields(g){
+  if (!g) return '';
+  return String(
+    g.numeroNegocio ??
+    g.codigo ??
+    g.numero ??
+    g.grupoNumero ??
+    g.numNegocio ??
+    ''
+  ).trim();
+}
+
+
 function inRango({ inicio, fin, fechasIt }, desde, hasta){
   if (!desde && !hasta) return true;
   const a = inicio || (fechasIt[0] || '');
@@ -586,7 +621,13 @@ async function loadHotelAssignments(){
 async function loadGastos(){
   // Lee TODOS los gastos (staff). Si es pesado, lo optimizamos por rango/where.
   const snap = await getDocs(collectionGroup(db, 'gastos'));
-  state.gastos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+
+  // ✅ Guardamos también la ruta para poder extraer gid si el doc cuelga de grupos/{gid}/...
+  state.gastos = snap.docs.map(d => ({
+    id: d.id,
+    __path: d.ref.path,   // 👈 clave para match exacto
+    ...d.data()
+  }));
 }
 
 /* =========================================================
@@ -853,10 +894,23 @@ function calcGastos({ gid, codigo, fx }){
   let totalCLP = 0;
 
   // Filtrado robusto: por campos típicos
+  // ✅ Match EXACTO por grupo (NO por stringify)
   const match = (g) => {
-    const s = JSON.stringify(g).toUpperCase();
-    return s.includes(String(gid).toUpperCase()) || (codigo && s.includes(String(codigo).toUpperCase()));
+    const gidExact = gidFromGastoFields(g);
+    if (gidExact && String(gidExact) === String(gid)) return true;
+
+    // Si el gasto trae numeroNegocio/codigo explícito, úsalo
+    const codExact = codigoFromGastoFields(g);
+    if (codExact && codigo && String(codExact) === String(codigo)) return true;
+
+    // Fallback seguro: deducir gid desde la ruta del doc
+    const gidPath = gidFromDocPath(g.__path || g.path || '');
+    if (gidPath && String(gidPath) === String(gid)) return true;
+
+    // Si no hay evidencia sólida -> NO matchea (evita mezcla)
+    return false;
   };
+
 
   for (const g of state.gastos){
     if (!match(g)) continue;
