@@ -228,17 +228,14 @@ function summarizeNamesFromDetalles(detalles = [], opts = {}){
     const empresa = (d?.empresa || '').toString().trim();
     const asunto  = (d?.asunto  || '').toString().trim();
 
-    // 1) AÉREOS: mostrar solo la "marca" (LATAM, SKY, etc.)
-    //    Preferimos empresa porque en vuelos viene limpio.
+    // 1) AÉREOS
     if (mode === 'aereo') {
-      if (empresa) return empresa.split(/\s+/)[0].trim(); // por si empresa trae algo extra
+      if (empresa) return empresa.split(/\s+/)[0].trim();
       if (asunto) return asunto.split(/\s+/)[0].trim();
       return '';
     }
 
-    // 2) TERRESTRES: mostrar solo el primer tramo
-    //    Ej: "SERGIO CARRASCO : COLEGIO—AEROPUERTO..." => "SERGIO CARRASCO"
-    //    Soporta separadores comunes: ":" "." "·" "–" "-"
+    // 2) TERRESTRES
     if (mode === 'terrestre') {
       const base = (asunto || empresa || '').trim();
       if (!base) return '';
@@ -252,9 +249,20 @@ function summarizeNamesFromDetalles(detalles = [], opts = {}){
       return first;
     }
 
-    // 3) DEFAULT: lo mismo que tenías (asunto o empresa completo)
+    // ✅ 2.5) HOTELES (nuevo modo dedicado)
+    // Queremos el nombre del hotel SIEMPRE desde "empresa"
+    if (mode === 'hotel') {
+      return (empresa || asunto || '').trim();
+    }
+
+    // 3) DEFAULT (ajuste clave):
+    // Si el asunto es genérico ("HOTEL"), prioriza empresa.
+    const asuU = U(asunto);
+    if ((asuU === 'HOTEL' || asuU === '(HOTEL)') && empresa) return empresa;
+
     return (asunto || empresa || '').trim();
   };
+
 
   const xs = (detalles || [])
     .map(pickLabel)
@@ -1433,7 +1441,7 @@ async function buildRows(){
       'Valor Terrestre (CLP)': Math.round(sumCLP(detT)),
       
       // Hotel: desde detH
-      'Hotel/es': detH.length ? summarizeNamesFromDetalles(detH) : '',
+      'Hotel/es': detH.length ? U(summarizeNamesFromDetalles(detH, { mode:'hotel' })) : '',
       'Moneda Hotel': 'USD/CLP',
       'Valor Hotel (USD)': round2(sumUSD(detH)),
       'Valor Hotel (CLP)': Math.round(sumCLP(detH)),
