@@ -2559,6 +2559,22 @@ function exportXLSXMacro(rows){
   }
 }
 
+function setFormula(ws, r0, c0, formula){
+  const addr = XLSX.utils.encode_cell({ r: r0, c: c0 });
+  const existing = ws[addr];
+  const t = (existing && existing.t) ? existing.t : 'n'; // numérico
+  ws[addr] = { t, f: formula };
+}
+
+function colLetter(c){ return XLSX.utils.encode_col(c); }
+
+function sumRowCols(row1, cols){
+  // row1 = fila excel 1-based
+  if (!cols || !cols.length) return '';
+  const parts = cols.map(c => `${colLetter(c)}${row1}`);
+  return `SUM(${parts.join(',')})`;
+}
+
 function exportXLSXGastosDetalle(rows){
   try{
     if (!window.XLSX) throw new Error('XLSX no cargado');
@@ -2738,13 +2754,13 @@ function exportXLSXGastosDetalle(rows){
       setCell(row,'VALOR COORDINADOR/A (CLP)', Number(r['Valor Coordinador/a CLP'] || 0));
 
       // Totales SOLO por moneda para los “fijos”
-      addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Aéreo (CLP)'] || 0));
-      addTo(row,'TOTAL USD (SOLO USD)', Number(r['Valor Terrestre (USD)'] || 0));
-      addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Terrestre (CLP)'] || 0));
-      addTo(row,'TOTAL USD (SOLO USD)', Number(r['Valor Hotel (USD)'] || 0));
-      addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Hotel (CLP)'] || 0));
-      addTo(row,'TOTAL USD (SOLO USD)', Number(r['Valor Seguro (USD)'] || 0));
-      addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Coordinador/a CLP'] || 0));
+      // addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Aéreo (CLP)'] || 0));
+      // addTo(row,'TOTAL USD (SOLO USD)', Number(r['Valor Terrestre (USD)'] || 0));
+      // addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Terrestre (CLP)'] || 0));
+      // addTo(row,'TOTAL USD (SOLO USD)', Number(r['Valor Hotel (USD)'] || 0));
+      // addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Hotel (CLP)'] || 0));
+      // addTo(row,'TOTAL USD (SOLO USD)', Number(r['Valor Seguro (USD)'] || 0));
+      // addTo(row,'TOTAL CLP (SOLO CLP)', Number(r['Valor Coordinador/a CLP'] || 0));
 
       // ACTIVIDADES (moneda original)
       for (const d of (r?._det?.actividades || [])){
@@ -2752,10 +2768,9 @@ function exportXLSXGastosDetalle(rows){
         if (!nm) continue;
         const mon = monOrig(d?.monedaOriginal);
         const val = amountOrig(d);
-
-        addTo(row, `TOTAL ACTIVIDADES (${mon})`, val);
+      
+        // ✅ Solo llenamos la celda del item (no totales)
         addTo(row, `${nm} (${mon})`, val);
-        addTo(row, `TOTAL ${mon} (SOLO ${mon})`, val);
       }
 
       // COMIDAS (moneda original)
@@ -2764,10 +2779,8 @@ function exportXLSXGastosDetalle(rows){
         if (!nm) continue;
         const mon = monOrig(d?.monedaOriginal);
         const val = amountOrig(d);
-
-        addTo(row, `TOTAL COMIDAS (${mon})`, val);
+      
         addTo(row, `${nm} (${mon})`, val);
-        addTo(row, `TOTAL ${mon} (SOLO ${mon})`, val);
       }
 
       // GASTOS (moneda original)
@@ -2776,16 +2789,107 @@ function exportXLSXGastosDetalle(rows){
         if (!nm) continue;
         const mon = monOrig(d?.monedaOriginal);
         const val = amountOrig(d);
-
-        addTo(row, `TOTAL GASTOS APROB (${mon})`, val);
+      
         addTo(row, `${nm} (${mon})`, val);
-        addTo(row, `TOTAL ${mon} (SOLO ${mon})`, val);
       }
 
       aoa.push(row);
     }
 
     const wsMacro = XLSX.utils.aoa_to_sheet(aoa);
+    // =========================================================
+    // ✅ Inyectar FÓRMULAS para todos los totales (por fila)
+    // =========================================================
+    
+    // 1) Preparar índices de columnas por moneda
+    const idx = (name)=> colIndex.get(UPPER(name));
+    
+    const actItemColsByMon = new Map(); // mon -> [colIdx]
+    const comItemColsByMon = new Map();
+    const gasItemColsByMon = new Map();
+    
+    for (const x of colsAct){
+      const col = idx(`${x.name} (${x.mon})`);
+      if (col == null) continue;
+      if (!actItemColsByMon.has(x.mon)) actItemColsByMon.set(x.mon, []);
+      actItemColsByMon.get(x.mon).push(col);
+    }
+    for (const x of colsCom){
+      const col = idx(`${x.name} (${x.mon})`);
+      if (col == null) continue;
+      if (!comItemColsByMon.has(x.mon)) comItemColsByMon.set(x.mon, []);
+      comItemColsByMon.get(x.mon).push(col);
+    }
+    for (const x of colsGas){
+      const col = idx(`${x.name} (${x.mon})`);
+      if (col == null) continue;
+      if (!gasItemColsByMon.has(x.mon)) gasItemColsByMon.set(x.mon, []);
+      gasItemColsByMon.get(x.mon).push(col);
+    }
+    
+    // 2) Columnas “fijas” que van a TOTAL USD/CLP (SOLO)
+    const FIX_USD = [
+      idx('VALOR TERRESTRE (USD)'),
+      idx('VALOR HOTEL (USD)'),
+      idx('VALOR SEGURO (USD)')
+    ].filter(v => v != null);
+    
+    const FIX_CLP = [
+      idx('VALOR AÉREO (CLP)'),
+      idx('VALOR TERRESTRE (CLP)'),
+      idx('VALOR HOTEL (CLP)'),
+      idx('VALOR COORDINADOR/A (CLP)')
+    ].filter(v => v != null);
+    
+    // 3) Filas de datos en Excel:
+    // aoa tiene: 1 titulo + 1 blanco + 1 header => data inicia en la fila 4 (1-based)
+    const firstDataRowExcel = 4;
+    const dataRowCount = (rows || []).length;
+    
+    for (let i = 0; i < dataRowCount; i++){
+      const row1 = firstDataRowExcel + i; // fila Excel 1-based
+      const r0 = row1 - 1;                // fila sheet 0-based
+    
+      // ---- Totales ACTIVIDADES/COMIDAS/GASTOS por moneda ----
+      for (const mon of monedas){
+        const cActTot = idx(`TOTAL ACTIVIDADES (${mon})`);
+        const cComTot = idx(`TOTAL COMIDAS (${mon})`);
+        const cGasTot = idx(`TOTAL GASTOS APROB (${mon})`);
+    
+        if (cActTot != null){
+          const f = sumRowCols(row1, actItemColsByMon.get(mon) || []);
+          if (f) setFormula(wsMacro, r0, cActTot, f);
+        }
+        if (cComTot != null){
+          const f = sumRowCols(row1, comItemColsByMon.get(mon) || []);
+          if (f) setFormula(wsMacro, r0, cComTot, f);
+        }
+        if (cGasTot != null){
+          const f = sumRowCols(row1, gasItemColsByMon.get(mon) || []);
+          if (f) setFormula(wsMacro, r0, cGasTot, f);
+        }
+    
+        // ---- TOTAL MONEDA (SOLO MONEDA) ----
+        const cSolo = idx(`TOTAL ${mon} (SOLO ${mon})`);
+        if (cSolo != null){
+          const parts = [];
+    
+          // fijos solo para USD/CLP
+          if (mon === 'USD') parts.push(...FIX_USD.map(c => `${colLetter(c)}${row1}`));
+          if (mon === 'CLP') parts.push(...FIX_CLP.map(c => `${colLetter(c)}${row1}`));
+    
+          // y siempre suma los 3 totales por moneda si existen
+          if (cActTot != null) parts.push(`${colLetter(cActTot)}${row1}`);
+          if (cComTot != null) parts.push(`${colLetter(cComTot)}${row1}`);
+          if (cGasTot != null) parts.push(`${colLetter(cGasTot)}${row1}`);
+    
+          if (parts.length){
+            setFormula(wsMacro, r0, cSolo, `SUM(${parts.join(',')})`);
+          }
+        }
+      }
+    }
+
     wsMacro['!cols'] = header.map(h => ({ wch: Math.max(14, Math.min(38, (h||'').length + 2)) }));
 
     // ------------------------------
