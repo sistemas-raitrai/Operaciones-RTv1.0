@@ -2560,37 +2560,44 @@ function exportXLSXMacro(rows){
 }
 
 // ======================================================
-// ✅ 3er Export: GASTOS (formato distinto)
+// ✅ 3er Export: GASTOS (formato MACRO + DETALLE REAL)
 // - Exporta SOLO lo filtrado (rows que se ven)
-// - Columnas dinámicas por canonGasto(asunto|empresa)
-// - Caso especial: CENA HOTEL => 2 columnas: (USD) y (ARS)
+// - Hoja 1: "RESUMEN" (tipo Macro: 1 fila por grupo + columnas dinámicas canonGasto)
+// - Hoja 2: "DETALLE" (1 fila por gasto real, no resumido)
+// - Mantiene caso especial: CENA HOTEL => 2 columnas (CLP) y (ARS)
 // ======================================================
 function exportXLSXGastosDetalle(rows){
   try{
     if (!window.XLSX) throw new Error('XLSX no cargado');
 
-    const fx = getFX(); // por si quieres agregar CLP conv, pero acá respetamos bolsas
+    const fx = getFX(); // (no obligatorio acá, pero lo dejamos por consistencia)
+
+    // ========= helpers locales =========
     const canonKey = (d) => {
+      // ✅ IMPORTANTE:
+      // Antes estabas canonizando "asunto|empresa" mezclado.
+      // Ahora priorizamos ASUNTO, y si no hay, caemos a EMPRESA (más macro real).
       const a = (d?.asunto || '').toString().trim();
       const e = (d?.empresa || '').toString().trim();
-      return canonGasto([a, e].filter(Boolean).join(' | '));
+      return canonGasto(a || e || 'GASTO');
     };
 
-    // Detecta "CENA HOTEL" (robusto)
     const isCenaHotel = (key) => {
       const k = U(key || '');
       return k.includes('CENA HOTEL') || (k.startsWith('CENA') && k.includes('HOTEL'));
     };
 
-    // 1) Descubrir columnas
+    // ======================================================
+    // 1) DESCUBRIR COLUMNAS DINÁMICAS (RESUMEN)
+    // ======================================================
     const gasCols = new Set();
 
     for (const r of (rows || [])){
       const detGas = r._det?.gastos || [];
       for (const d of detGas){
         let k = canonKey(d) || 'GASTO';
+
         if (isCenaHotel(k)){
-          // ✅ FORZAMOS 2 columnas separadas (CLP/ARS)
           gasCols.add('CENA HOTEL (CLP)');
           gasCols.add('CENA HOTEL (ARS)');
         } else {
@@ -2608,87 +2615,133 @@ function exportXLSXGastosDetalle(rows){
       return a.localeCompare(b,'es');
     });
 
-    // 2) Header base + dinámicas (todo en mayúsculas)
-    const header = [
+    // ======================================================
+    // 2) HOJA "RESUMEN" (tipo macro, 1 fila por grupo)
+    // ======================================================
+    const headerResumen = [
       'CÓDIGO','GRUPO','AÑO','DESTINO','FECHAS',
       'TOTAL GASTOS APROB (CLP)',
       ...gasColsSorted
     ].map(h => U(h));
 
-    const aoa = [header];
+    const aoaResumen = [headerResumen];
 
-    // Map colName -> index
-    const colIndex = new Map(header.map((h,i)=>[h,i]));
-    const setCell = (rowArr, colName, value) => {
-      const idx = colIndex.get(U(colName));
+    const colIndexR = new Map(headerResumen.map((h,i)=>[h,i]));
+    const setCellR = (rowArr, colName, value) => {
+      const idx = colIndexR.get(U(colName));
       if (idx == null) return;
       rowArr[idx] = value;
     };
 
-    // 3) Construir filas
     for (const r of (rows || [])){
-      const row = new Array(header.length).fill('');
+      const row = new Array(headerResumen.length).fill('');
 
-      setCell(row, 'CÓDIGO', U(r.Codigo || ''));
-      setCell(row, 'GRUPO', U(r.Grupo || ''));
-      setCell(row, 'AÑO', Number(r['Año'] || 0));
-      setCell(row, 'DESTINO', U(r.Destino || ''));
-      setCell(row, 'FECHAS', U(r.Fechas || ''));
+      setCellR(row, 'CÓDIGO', U(r.Codigo || ''));
+      setCellR(row, 'GRUPO', U(r.Grupo || ''));
+      setCellR(row, 'AÑO', Number(r['Año'] || 0));
+      setCellR(row, 'DESTINO', U(r.Destino || ''));
+      setCellR(row, 'FECHAS', U(r.Fechas || ''));
 
       const detGas = r._det?.gastos || [];
 
-      // Total CLP (tu bucket gastos está en CLP_ONLY, así que d.clp debería venir)
+      // Total CLP (bucket gastos es CLP_ONLY => d.clp debería existir)
       const totalCLP = detGas.reduce((acc,d)=> acc + (Number(d.clp || 0) || 0), 0);
-      setCell(row, 'TOTAL GASTOS APROB (CLP)', Math.round(totalCLP));
+      setCellR(row, 'TOTAL GASTOS APROB (CLP)', Math.round(totalCLP));
 
       for (const d of detGas){
         let k = canonKey(d) || 'GASTO';
 
         // ✅ caso especial CENA HOTEL => 2 columnas
-        // ✅ caso especial CENA HOTEL => 2 columnas: CLP y ARS
         if (isCenaHotel(k)){
           const mon = normMoneda(d.monedaOriginal || 'CLP');
-        
+
           if (mon === 'ARS'){
-            // ARS: guardamos el monto original en ARS
-            const idx = colIndex.get(U('CENA HOTEL (ARS)'));
+            // ARS: guardamos el MONTO ORIGINAL en ARS
+            const idx = colIndexR.get(U('CENA HOTEL (ARS)'));
             if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.montoOriginal || 0);
           } else {
-            // CLP: guardamos el valor en CLP (si venía CLP es igual, si venía otra moneda ya está convertido en d.clp)
-            const idx = colIndex.get(U('CENA HOTEL (CLP)'));
+            // CLP: guardamos CLP (convertido si era otra moneda)
+            const idx = colIndexR.get(U('CENA HOTEL (CLP)'));
             if (idx != null) row[idx] = Number(row[idx] || 0) + Number(d.clp || 0);
           }
-        
           continue;
         }
 
-
-        // default: suma en CLP (porque tu bucket gastos es CLP_ONLY)
+        // default: suma en CLP
         const key = U(k);
-        const idx = colIndex.get(key);
+        const idx = colIndexR.get(key);
         if (idx != null){
           const prev = Number(row[idx] || 0);
           row[idx] = prev + Number(d.clp || 0);
         }
       }
 
-      aoa.push(row);
+      aoaResumen.push(row);
     }
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    // anchos básicos
-    ws['!cols'] = header.map(h=>{
+    const wsResumen = XLSX.utils.aoa_to_sheet(aoaResumen);
+    wsResumen['!cols'] = headerResumen.map(h=>{
       const x = (h||'').length;
       const w = Math.min(44, Math.max(12, x + 2));
       return { wch: w };
     });
 
+    // ======================================================
+    // 3) HOJA "DETALLE" (líneas reales de gastos)
+    // ======================================================
+    const headerDetalle = [
+      'CÓDIGO','GRUPO','AÑO','DESTINO','FECHAS',
+      'EMPRESA','ASUNTO','CATEGORÍA (CANON)',
+      'MONEDA','MONTO ORIGINAL','CLP',
+      'STATUS EFECTIVO','FUENTE'
+    ].map(h => U(h));
+
+    const aoaDetalle = [headerDetalle];
+
+    for (const r of (rows || [])){
+      const detGas = r._det?.gastos || [];
+
+      for (const d of detGas){
+        const canon = canonKey(d) || 'GASTO';
+
+        aoaDetalle.push([
+          U(r.Codigo || ''),
+          U(r.Grupo || ''),
+          Number(r['Año'] || 0),
+          U(r.Destino || ''),
+          U(r.Fechas || ''),
+
+          U(d.empresa || ''),
+          U(d.asunto || ''),
+          U(canon),
+
+          normMoneda(d.monedaOriginal || 'CLP'),
+          Number(d.montoOriginal || 0),
+          Math.round(Number(d.clp || 0)),
+
+          U(d._efeStatus || ''),
+          (d.fuente || '')
+        ]);
+      }
+    }
+
+    const wsDetalle = XLSX.utils.aoa_to_sheet(aoaDetalle);
+    wsDetalle['!cols'] = [
+      {wch:12},{wch:28},{wch:8},{wch:18},{wch:18},
+      {wch:24},{wch:42},{wch:22},
+      {wch:10},{wch:16},{wch:12},
+      {wch:16},{wch:28}
+    ];
+
+    // ======================================================
+    // 4) Workbook + Export
+    // ======================================================
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'GASTOS');
+    XLSX.utils.book_append_sheet(wb, wsResumen, 'RESUMEN');
+    XLSX.utils.book_append_sheet(wb, wsDetalle, 'DETALLE');
 
     const fecha = new Date().toISOString().slice(0,10);
-    XLSX.writeFile(wb, `GASTOS_DETALLE_${fecha}.xlsx`);
+    XLSX.writeFile(wb, `GASTOS_MACRO_${fecha}.xlsx`);
 
   }catch(e){
     console.error(e);
