@@ -686,7 +686,6 @@ function calcAereos({ gid, codigo, fx }){
       montoOriginal: monto,    // ✅ se preserva (monto real)
       usd,                     // puede ser null
       clp,                     // puede ser null
-      fuente: `gastos/${g.id}`
       fuente: `vuelos/${v.id}`
     };
 
