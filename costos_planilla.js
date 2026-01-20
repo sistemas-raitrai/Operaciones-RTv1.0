@@ -175,10 +175,35 @@ const GASTOS = {
 };
 
 // G) Seguro: regla simple por pax (editable)
+// G) Seguro: regla por PAX (editable)
+// ✅ Define aquí tus tarifas reales
 const SEGURO = {
-  etiqueta: () => 'AC 150',
-  // si es exterior o compuesto: seguro en USD por pax
-  usdPorPaxExterior: () => 150
+  // ✅ AJUSTA ESTOS 2 VALORES:
+  USD_POR_PAX_EXTERIOR: 0,   // ej: 18 USD por pax (cámbialo al real)
+  CLP_POR_PAX_CHILE:    0, // ej: 9.500 CLP por pax (cámbialo al real)
+
+  usdPorPaxExterior(){ return Number(this.USD_POR_PAX_EXTERIOR) || 0; },
+  clpPorPaxChile(){ return Number(this.CLP_POR_PAX_CHILE) || 0; },
+
+  // Regla de moneda del seguro (según lo que pediste)
+  moneda(dest){
+    const d = U(dest);
+
+    // ✅ Prioridad CLP: si incluye "SUR DE CHILE", aunque también diga Bariloche
+    if (d.includes('SUR DE CHILE')) return 'CLP';
+
+    // ✅ Chile puro (Norte/Sur/otros Chile)
+    if (d.includes('NORTE CHILE')) return 'CLP';
+    if (d.includes('CHILE')) return 'CLP';
+
+    // ✅ USD para Bariloche / Brasil
+    if (d.includes('BARILOCHE')) return 'USD';
+    if (d.includes('BRASIL') || d.includes('CAMBORIU')) return 'USD';
+
+    return 'USD';
+  },
+
+  etiqueta(){ return 'SEGURO'; }
 };
 
 // H) Coordinador: si existe valor fijo, úsalo, sino 0.
@@ -939,71 +964,47 @@ function calcGastos({ gid, codigo, fx }){
 }
 
 function calcSeguro({ pax, destino, fx }){
-  // Seguro siempre en USD (según tu explicación)
-  const usd = (DESTINO.isExterior(destino) || DESTINO.isCompuesto(destino))
+  const monedaSeguro = SEGURO.moneda(destino);
+
+  // Valores por pax (por ahora 0 en ambos)
+  const clp = (monedaSeguro === 'CLP')
+    ? (SEGURO.clpPorPaxChile() * (pax || 0))
+    : 0;
+
+  const usd = (monedaSeguro === 'USD')
     ? (SEGURO.usdPorPaxExterior() * (pax || 0))
     : 0;
 
-    const detalles = usd ? (() => {
-      const det0 = {
-        empresa: 'ASSIST CARD',
-        asunto: `Seguro x ${pax || 0} pax`,
-        monedaOriginal: 'USD',
-        montoOriginal: usd,
-        usd,
-        clp: toCLP(usd, 'USD', fx),
-        fuente: 'regla/seguro'
-      };
-      det0.itemId = makeItemId(det0); // ✅ NUEVO
-      return [det0];
-    })() : [];
+  // Detalle para modal + Excel (siempre consistente con moneda)
+  const monto = (monedaSeguro === 'CLP') ? clp : usd;
 
-  return { etiqueta: SEGURO.etiqueta(), usd, detalles };
-}
+  const detalles = monto ? (() => {
+    const det0 = {
+      empresa: 'ASSIST CARD',
+      asunto: `Seguro x ${pax || 0} pax`,
+      monedaOriginal: monedaSeguro,
+      montoOriginal: monto,
 
-function calcCoordinador({ G, fx, noches, destino }) {
-  // Regla:
-  // - Normal: 70.000 CLP por día
-  // - Excepción: "Sur de Chile y Bariloche" => 75.000 CLP por día
-  // - días = noches + 1
-  const DIARIO_NORMAL_CLP = 70000;
-  const DIARIO_SUR_BARI_CLP = 75000;
+      // Siempre guardamos ambas monedas calculadas (para tu planilla/mix)
+      usd: (monedaSeguro === 'USD') ? monto : toUSD(monto, 'CLP', fx),
+      clp: (monedaSeguro === 'CLP') ? monto : toCLP(monto, 'USD', fx),
 
-  const dias = Math.max(0, Number(noches || 0)) + 1;
+      fuente: 'regla/seguro'
+    };
+    det0.itemId = makeItemId(det0); // ✅ ok
+    return [det0];
+  })() : [];
 
-  const d = U(destino || '');
-  const esSurYBari =
-    d.includes('SUR') && d.includes('CHILE') && d.includes('BARILOCHE');
-
-  const diario = esSurYBari ? DIARIO_SUR_BARI_CLP : DIARIO_NORMAL_CLP;
-  const clp = diario * dias;
-
-  // ✅ Nombre coordinador para mostrar como "Empresa" en el detalle (modal + Excel)
-  const coordName = (COORD.nombre(G) || '').toString().trim();
-  
-  const det0 = {
-    // Antes: 'COORDINACIÓN'
-    // Ahora: nombre real del coordinador (fallback si viene vacío)
-    empresa: coordName || 'COORDINACIÓN',
-  
-    asunto: `${esSurYBari ? 'Coordinación (Sur+Bariloche)' : 'Coordinación'} · ${dias} día(s) x $${fmtInt(diario)}`,
-    monedaOriginal: 'CLP',
-    montoOriginal: clp,
-    usd: toUSD(clp, 'CLP', fx),
-    clp,
-    fuente: 'regla/coordinador'
-  };
-  det0.itemId = makeItemId(det0);
-
-  const detalles = [det0];
-
+  // Retornamos ambos (así sirve para tabla + export(s))
   return {
-    nombre: COORD.nombre(G) || '',
+    etiqueta: SEGURO.etiqueta ? SEGURO.etiqueta() : 'SEGURO',
+    moneda: monedaSeguro,
     clp,
+    usd,
     detalles
   };
-
 }
+
 
 /* =========================================================
    5) UI: modal detalle
