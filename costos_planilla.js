@@ -673,17 +673,22 @@ function calcAereos({ gid, codigo, fx }){
     const monto = VUELOS.monto(v);
 
     // En tu CSV “Valor Aéreo (CLP)” => lo dejamos como CLP (si viene USD lo convertimos a CLP)
-    const clp = toCLP(monto, mon, fx);
-    if (clp == null) continue;
-
-    totalCLP += clp;
+    const clp = toCLP(monto, mon, fx);     // puede ser null si falta FX
+    const usd = toUSD(monto, mon, fx);     // puede ser null si falta FX
+    
+    // ✅ OJO: solo sumamos al total CLP si pudimos convertir
+    if (clp != null) totalCLP += clp;
+    
     const det0 = {
-      empresa: emp, asunto: asu, monedaOriginal: mon,
-      montoOriginal: monto,
-      usd: toUSD(monto, mon, fx),
-      clp,
-      fuente: `vuelos/${v.id}`
+      empresa: emp,
+      asunto: asu,
+      monedaOriginal: mon,     // ✅ se preserva (BRL/ARS/USD/CLP)
+      montoOriginal: monto,    // ✅ se preserva (monto real)
+      usd,                     // puede ser null
+      clp,                     // puede ser null
+      fuente: `gastos/${g.id}`
     };
+
     det0.itemId = makeItemId(det0);
     detalles.push(det0);
 
@@ -915,7 +920,8 @@ function calcActividadesYComidas({ G, destinoGrupo, pax, fx }){
 
 function calcGastos({ gid, codigo, fx }){
   const detalles = [];
-  let totalCLP = 0;
+  let usd = 0;
+  let clp = 0;
 
   // Filtrado robusto: por campos típicos
   // ✅ Match EXACTO por grupo (NO por stringify)
@@ -923,18 +929,14 @@ function calcGastos({ gid, codigo, fx }){
     const gidExact = gidFromGastoFields(g);
     if (gidExact && String(gidExact) === String(gid)) return true;
 
-    // Si el gasto trae numeroNegocio/codigo explícito, úsalo
     const codExact = codigoFromGastoFields(g);
     if (codExact && codigo && String(codExact) === String(codigo)) return true;
 
-    // Fallback seguro: deducir gid desde la ruta del doc
     const gidPath = gidFromDocPath(g.__path || g.path || '');
     if (gidPath && String(gidPath) === String(gid)) return true;
 
-    // Si no hay evidencia sólida -> NO matchea (evita mezcla)
     return false;
   };
-
 
   for (const g of state.gastos){
     if (!match(g)) continue;
@@ -945,23 +947,39 @@ function calcGastos({ gid, codigo, fx }){
     const mon = GASTOS.moneda(g);
     const monto = GASTOS.monto(g);
 
-    const clp = toCLP(monto, mon, fx);
-    if (clp == null) continue;
+    // ✅ PARALLEL: si es CLP => CLP; si NO es CLP => USD
+    const _usd = toUSD(monto, mon, fx);
+    const _clp = toCLP(monto, mon, fx);
 
-    totalCLP += clp;
+    // si no puedo calcular nada, salto
+    if (_usd == null && _clp == null) continue;
+
+    // “bolsa” paralela (como Terrestres/Hoteles/Actividades/Comidas)
+    if (normMoneda(mon) === 'CLP'){
+      clp += monto;              // CLP real
+    } else {
+      if (_usd != null) usd += _usd; // USD real (USD directo o BRL/ARS -> USD)
+    }
+
     const det0 = {
-      empresa: emp, asunto: asu, monedaOriginal: mon,
+      empresa: emp,
+      asunto: asu,
+      monedaOriginal: mon,
       montoOriginal: monto,
-      usd: toUSD(monto, mon, fx),
-      clp,
+
+      // ✅ guardamos ambos cálculos posibles (pero luego en PARALLEL se usa solo 1 bolsa)
+      usd: (normMoneda(mon) === 'CLP') ? null : _usd,
+      clp: (normMoneda(mon) === 'CLP') ? monto : null,
+
       fuente: `gastos/${g.id}`
     };
     det0.itemId = makeItemId(det0);
     detalles.push(det0);
   }
 
-  return { totalCLP, detalles };
+  return { usd, clp, detalles };
 }
+
 
 function calcSeguro({ pax, destino, fx }){
   const monedaSeguro = SEGURO.moneda(destino);
@@ -1443,7 +1461,10 @@ function render(rows){
       
       <!-- ✅ GASTOS: nueva columna ITEMS + monto -->
       <td data-k="gastos_txt">${esc(r['Gastos'])}</td>
-      <td class="cp-right" data-k="gastos_clp">${moneyCLP(r['Gastos aprob (CLP)'] || 0)}</td>
+      <td>${esc(r['Moneda Gastos'] || 'USD/CLP')}</td>
+      <td class="cp-right" data-k="gastos_usd">${moneyUSD(r['Gastos (USD)'] || 0)}</td>
+      <td class="cp-right" data-k="gastos_clp">${moneyCLP(r['Gastos (CLP)'] || 0)}</td>
+
       
       <td>${esc(r['Seguro '])}</td>
       <td class="cp-right" data-k="seg_usd">${moneyUSD(r['Valor Seguro (USD)'] || 0)}</td>
@@ -1495,7 +1516,7 @@ function render(rows){
 
 
     // Terrestre USD/CLP
-    ['ter_usd','ter_clp','hot_usd','hot_clp','act_usd','act_clp','com_usd','com_clp','coord_clp','gastos_clp','seg_usd']
+    ['ter_usd','ter_clp','hot_usd','hot_clp','act_usd','act_clp','com_usd','com_clp','coord_clp','gastos_usd','gastos_clp','seg_usd']
       .forEach(k => {
         const td = tr.querySelector(`[data-k="${k}"]`);
         if (!td) return;
@@ -1507,7 +1528,10 @@ function render(rows){
           hot_usd:'hotel', hot_clp:'hotel',
           act_usd:'actividades', act_clp:'actividades',
           com_usd:'comidas', com_clp:'comidas',
-          coord_clp:'coord', gastos_clp:'gastos', seg_usd:'seguro'
+          coord_clp:'coord',
+          gastos_usd:'gastos',   // ✅ NUEVO
+          gastos_clp:'gastos',
+          seg_usd:'seguro'
         };
         const itemKey = mapKtoItem[k];
 
@@ -1593,7 +1617,7 @@ async function buildRows(){
     const detCom   = ac.comidas.detalles.map(d     => applyOverrideToDetalle(d, ovCo, fx, 'PARALLEL')); // ✅ clave
     
     const detCoord = coord.detalles.map(d  => applyOverrideToDetalle(d, ovC,  fx, 'CLP_ONLY'));   // Coordinador: CLP
-    const detGastos= gastos.detalles.map(d => applyOverrideToDetalle(d, ovG,  fx, 'CLP_ONLY'));   // Gastos aprobados: CLP
+    const detGastos= gastos.detalles.map(d => applyOverrideToDetalle(d, ovG,  fx, 'PARALLEL'));   // ✅ Gastos: paralelo real
     const detSeg   = seguro.detalles.map(d => applyOverrideToDetalle(d, ovS,  fx, 'USD_ONLY'));   // Seguro: USD
 
     /* =========================================================
@@ -1708,6 +1732,7 @@ async function buildRows(){
     const totalUSD =
       aereoUSD +
       sumUSD(detT) + sumUSD(detH) + sumUSD(detAct) + sumUSD(detCom) +
+      sumUSD(detGastos) +   // ✅ NUEVO
       sumUSD(detSeg);
     
     // CLP total: CLP directos + USD convertidos
@@ -1775,7 +1800,9 @@ async function buildRows(){
       
       // Gastos: desde detGastos
       'Gastos': detGastos.length ? `${detGastos.length} item(s)` : '',
-      'Gastos aprob (CLP)': Math.round(sumCLP(detGastos)),
+      'Moneda Gastos': 'USD/CLP',
+      'Gastos (USD)': round2(sumUSD(detGastos)),
+      'Gastos (CLP)': Math.round(sumCLP(detGastos)),
       
       // Seguro: desde detSeg
       'Seguro ': seguro.etiqueta || '',
@@ -1860,7 +1887,7 @@ function exportXLSX(rows){
       'Actividades','Moneda Actividades ','Actividades (USD)','Actividades (CLP)',
       'Comidas','Moneda Comidas','Valor Comidas (USD)','Valor Comidas (CLP)',
       'CoordInador(a)','Valor Coordinador/a CLP',
-      'Gastos','Gastos aprob (CLP)',
+      'Gastos','Moneda Gastos','Gastos (USD)','Gastos (CLP)',
       'Seguro ','Valor Seguro (USD)',
       'TOTAL USD','TOTAL CLP'
     ];
@@ -2042,7 +2069,7 @@ function exportXLSX(rows){
       const idxActividades = addItemSheet('Actividades', all.ACTIVIDADES, 'PARALLEL');
       const idxComidas     = addItemSheet('Comidas',     all.COMIDAS,     'PARALLEL');
       addItemSheet('Coordinador', all.COORD, 'CLP_ONLY'); // (sin link por ahora)
-      const idxGastos      = addItemSheet('Gastos',      all.GASTOS,      'CLP_ONLY');
+      const idxGastos = addItemSheet('Gastos', all.GASTOS, 'PARALLEL');
       addItemSheet('Seguro',      all.SEGURO, 'USD_ONLY'); // (sin link por ahora)
 
     /* ===================================================
@@ -2147,7 +2174,8 @@ function exportXLSX(rows){
       setF('Valor Comidas (CLP)', i, sumifCLP('Comidas', i));
     
       setF('Valor Coordinador/a CLP', i, sumifCLP('Coordinador', i));
-      setF('Gastos aprob (CLP)', i, sumifCLP('Gastos', i));
+      setF('Gastos (USD)', i, sumifUSD('Gastos', i));
+      setF('Gastos (CLP)', i, sumifCLP('Gastos', i));
     
       setF('Valor Seguro (USD)', i, sumifUSD('Seguro', i));
     
@@ -2168,6 +2196,9 @@ function exportXLSX(rows){
     
       const COORD_CLP  = cell('Valor Coordinador/a CLP', i);
       const GASTOS_CLP = cell('Gastos aprob (CLP)', i);
+
+      const GAS_USD = cell('Gastos (USD)', i);
+      const GAS_CLP = cell('Gastos (CLP)', i);
     
       const SEG_USD = cell('Valor Seguro (USD)', i);
     
@@ -2177,11 +2208,12 @@ function exportXLSX(rows){
         `+${HOT_USD}+(${HOT_CLP}/FX!$B$2)` +
         `+${ACT_USD}+(${ACT_CLP}/FX!$B$2)` +
         `+${COM_USD}+(${COM_CLP}/FX!$B$2)` +
+        `+${GAS_USD}+(${GAS_CLP}/FX!$B$2)` +
         `+${SEG_USD}`;
     
       const totalClpFormula =
         `${AER_CLP}+${TER_CLP}+${HOT_CLP}+${ACT_CLP}+${COM_CLP}+${COORD_CLP}+${GASTOS_CLP}` +
-        `+(${TER_USD}*FX!$B$2)+(${HOT_USD}*FX!$B$2)+(${ACT_USD}*FX!$B$2)+(${COM_USD}*FX!$B$2)+(${SEG_USD}*FX!$B$2)`;
+        `+(${TER_USD}*FX!$B$2)+(${HOT_USD}*FX!$B$2)+(${ACT_USD}*FX!$B$2)+(${COM_USD}*FX!$B$2)+${GAS_CLP}+(${GAS_USD}*FX!$B$2)+(${SEG_USD}*FX!$B$2)`;
     
       wsMain[cell('TOTAL USD', i)] = { f: totalUsdFormula };
       wsMain[cell('TOTAL CLP', i)] = { f: totalClpFormula };
