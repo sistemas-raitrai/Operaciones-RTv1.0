@@ -1005,6 +1005,44 @@ function calcSeguro({ pax, destino, fx }){
   };
 }
 
+function calcCoordinador({ G, fx, noches, destino }) {
+  // Regla:
+  // - Normal: 70.000 CLP por día
+  // - Excepción: "Sur de Chile y Bariloche" => 75.000 CLP por día
+  // - días = noches + 1
+  const DIARIO_NORMAL_CLP = 70000;
+  const DIARIO_SUR_BARI_CLP = 75000;
+
+  const dias = Math.max(0, Number(noches || 0)) + 1;
+
+  const d = U(destino || '');
+  const esSurYBari =
+    d.includes('SUR') && d.includes('CHILE') && d.includes('BARILOCHE');
+
+  const diario = esSurYBari ? DIARIO_SUR_BARI_CLP : DIARIO_NORMAL_CLP;
+  const clp = diario * dias;
+
+  const coordName = (COORD.nombre(G) || '').toString().trim();
+
+  const det0 = {
+    empresa: coordName || 'COORDINACIÓN',
+    asunto: `${esSurYBari ? 'Coordinación (Sur+Bariloche)' : 'Coordinación'} · ${dias} día(s) x $${fmtInt(diario)}`,
+    monedaOriginal: 'CLP',
+    montoOriginal: clp,
+    usd: toUSD(clp, 'CLP', fx),
+    clp,
+    fuente: 'regla/coordinador'
+  };
+  det0.itemId = makeItemId(det0);
+
+  return {
+    nombre: coordName || '',
+    clp,
+    detalles: [det0]
+  };
+}
+
+
 
 /* =========================================================
    5) UI: modal detalle
