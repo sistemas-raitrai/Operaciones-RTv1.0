@@ -407,7 +407,7 @@ function calcNoches({ inicio, fin, fechasIt }){
 function paxContable(G){
   const base = GRUPO.paxBase(G);
   const reales = GRUPO.paxReales(G) > 0 ? GRUPO.paxReales(G) : base;
-  return Math.max(0, reales - liberados);
+  return Math.max(0, reales);
 }
 
 /* ===========================
