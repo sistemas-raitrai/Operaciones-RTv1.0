@@ -687,6 +687,7 @@ function calcAereos({ gid, codigo, fx }){
       usd,                     // puede ser null
       clp,                     // puede ser null
       fuente: `gastos/${g.id}`
+      fuente: `vuelos/${v.id}`
     };
 
     det0.itemId = makeItemId(det0);
