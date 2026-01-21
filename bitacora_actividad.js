@@ -86,14 +86,21 @@ function grupoLabel(g){
 // ✅ PAX FINAL por asistencia (fechaISO + actKey)
 // Fuente: grupos/{gid}.asistencias[fechaISO][actKey].paxFinal
 // ======================
-function getPaxFinalFromAsistencia(g, fechaISO, actKey){
+function getPaxInfo(g, fechaISO, actKey){
+  // esperado: cantidadGrupo (en tu firebase)
+  const esperado = (typeof g?.cantidadGrupo === 'number' && isFinite(g.cantidadGrupo))
+    ? g.cantidadGrupo
+    : null;
+
+  // final: paxFinal en asistencias[fechaISO][actKey]
   const asist = g?.asistencias || {};
   const day = asist?.[fechaISO] || {};
   const idx = day?.[actKey] || {};
-  const v = idx?.paxFinal;
+  const final = (typeof idx?.paxFinal === 'number' && isFinite(idx.paxFinal))
+    ? idx.paxFinal
+    : null;
 
-  // si viene número => ok. si no existe => null (se muestra como "—")
-  return (typeof v === 'number' && isFinite(v)) ? v : null;
+  return { esperado, final };
 }
 
 
@@ -343,14 +350,16 @@ async function cargarBitacora(){
             const docs = await fetchBitacoraDocs(g.id, actKey, fechaISO);
 
             for(const d of docs){
+
               const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
-              const paxFinal = getPaxFinalFromAsistencia(g, fechaISO, actKey);
-  
+              const pax = getPaxInfo(g, fechaISO, actKey);
+              
               rows.push({
                 fechaISO,
                 hora: fmtHoraFromMs(tsMs),
                 grupoLabel: grupoLabel(g),
-                paxFinal, // ✅ NUEVO
+                paxEsperado: pax.esperado,
+                paxFinal: pax.final,
                 grupoId: g.id,
                 actKey,
                 actName: state.actNameByKey.get(actKey) || actKey,
@@ -359,6 +368,8 @@ async function cargarBitacora(){
                 tsMs,
                 tsStr: fmtTS(tsMs)
               });
+
+
 
               if(rows.length >= limite) break;
             }
@@ -493,7 +504,7 @@ async function exportarComentariosPorDestino(){
           for(const d of docs){
             const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
 
-            const paxFinal = getPaxFinalFromAsistencia(g, fechaISO, actKey);
+            const pax = getPaxInfo(g, fechaISO, actKey);
             
             const row = [
               destinoSel || 'TODOS',
@@ -504,7 +515,10 @@ async function exportarComentariosPorDestino(){
               fechaISO,
               actKey,
               state.actNameByKey.get(actKey) || actKey,
-              (typeof paxFinal === 'number') ? paxFinal : '',
+              (typeof pax.esperado === 'number' || typeof pax.final === 'number')
+                ? `${(typeof pax.esperado === 'number') ? pax.esperado : ''}${(typeof pax.esperado === 'number' && typeof pax.final === 'number') ? ' -> ' : ''}${(typeof pax.final === 'number') ? pax.final : ''}`
+                : '',
+
               d._id || '',
               d.byEmail || '',
               tsMs || '',
@@ -555,11 +569,13 @@ function getVisibleRows(){
   if(!q) return state.rows.slice();
 
   return state.rows.filter(r => {
+   
     const blob = norm([
       r.fechaISO, r.hora, r.grupoLabel,
-      r.paxFinal,
+      r.paxEsperado, r.paxFinal,
       r.actName, r.actKey, r.texto, r.autor, r.tsStr
     ].join(' '));
+
     return blob.includes(q);
   });
 }
@@ -581,7 +597,7 @@ function exportarVisible(){
     'fechaISO',
     'hora',
     'grupo',
-    'paxFinal', // ✅ NUEVO
+    'pax', // esperado -> final
     'actividad',
     'texto',
     'autor',
@@ -597,7 +613,10 @@ function exportarVisible(){
       r.fechaISO || '',
       r.hora || '',
       r.grupoLabel || '',
-      (typeof r.paxFinal === 'number') ? r.paxFinal : '',
+      (typeof r.paxEsperado === 'number' || typeof r.paxFinal === 'number')
+        ? `${(typeof r.paxEsperado === 'number') ? r.paxEsperado : ''}${(typeof r.paxEsperado === 'number' && typeof r.paxFinal === 'number') ? ' -> ' : ''}${(typeof r.paxFinal === 'number') ? r.paxFinal : ''}`
+        : '',
+
       r.actName || r.actKey || '',
       r.texto || '',
       r.autor || '',
@@ -628,7 +647,7 @@ function renderRows(rows){
   el.count.textContent = String(rows.length);
 
   if(!rows.length){
-    el.tbody.innerHTML = `<tr><td colspan="7" class="empty">Sin resultados.</td></tr>`;
+    el.tbody.innerHTML = `<tr><td colspan="8" class="empty">Sin resultados.</td></tr>`;
     return;
   }
 
@@ -639,7 +658,16 @@ function renderRows(rows){
       <td>${escapeHtml(r.grupoLabel || '—')}</td>
   
       <!-- ✅ NUEVA COLUMNA PAX -->
-      <td class="mono nowrap">${(typeof r.paxFinal === 'number') ? r.paxFinal : '—'}</td>
+      <td class="mono nowrap">${
+        (typeof r.paxEsperado === 'number' && typeof r.paxFinal === 'number')
+          ? `${r.paxEsperado} → ${r.paxFinal}`
+          : (typeof r.paxEsperado === 'number')
+            ? `${r.paxEsperado}`
+            : (typeof r.paxFinal === 'number')
+              ? `${r.paxFinal}`
+              : '—'
+      }</td>
+
   
       <td>${escapeHtml(r.actName || r.actKey || '—')}</td>
       <td class="texto">${escapeHtml(r.texto || '')}</td>
