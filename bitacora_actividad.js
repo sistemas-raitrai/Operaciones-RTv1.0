@@ -82,6 +82,21 @@ function grupoLabel(g){
   return g.id;
 }
 
+// ======================
+// ✅ PAX FINAL por asistencia (fechaISO + actKey)
+// Fuente: grupos/{gid}.asistencias[fechaISO][actKey].paxFinal
+// ======================
+function getPaxFinalFromAsistencia(g, fechaISO, actKey){
+  const asist = g?.asistencias || {};
+  const day = asist?.[fechaISO] || {};
+  const idx = day?.[actKey] || {};
+  const v = idx?.paxFinal;
+
+  // si viene número => ok. si no existe => null (se muestra como "—")
+  return (typeof v === 'number' && isFinite(v)) ? v : null;
+}
+
+
 function fmtTS(ms){
   if(!ms) return '—';
   const d = new Date(ms);
@@ -329,10 +344,13 @@ async function cargarBitacora(){
 
             for(const d of docs){
               const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
+              const paxFinal = getPaxFinalFromAsistencia(g, fechaISO, actKey);
+  
               rows.push({
                 fechaISO,
                 hora: fmtHoraFromMs(tsMs),
                 grupoLabel: grupoLabel(g),
+                paxFinal, // ✅ NUEVO
                 grupoId: g.id,
                 actKey,
                 actName: state.actNameByKey.get(actKey) || actKey,
@@ -341,6 +359,7 @@ async function cargarBitacora(){
                 tsMs,
                 tsStr: fmtTS(tsMs)
               });
+
               if(rows.length >= limite) break;
             }
             if(rows.length >= limite) break;
@@ -442,12 +461,14 @@ async function exportarComentariosPorDestino(){
       'fechaISO',
       'actKey',
       'actividad',
+      'paxFinal', // ✅ NUEVO
       'timeId',
       'autor',
       'tsMs',
       'tsLocal',
       'texto'
     ];
+
 
     const lines = [];
     lines.push(header.join(';'));
@@ -472,6 +493,8 @@ async function exportarComentariosPorDestino(){
           for(const d of docs){
             const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
 
+            const paxFinal = getPaxFinalFromAsistencia(g, fechaISO, actKey);
+            
             const row = [
               destinoSel || 'TODOS',
               g.destino || '',
@@ -481,12 +504,14 @@ async function exportarComentariosPorDestino(){
               fechaISO,
               actKey,
               state.actNameByKey.get(actKey) || actKey,
+              (typeof paxFinal === 'number') ? paxFinal : '',
               d._id || '',
               d.byEmail || '',
               tsMs || '',
               tsMs ? fmtTS(tsMs) : '',
               d.texto || ''
             ].map(csvEscape).join(';');
+
 
             lines.push(row);
             total++;
@@ -531,7 +556,9 @@ function getVisibleRows(){
 
   return state.rows.filter(r => {
     const blob = norm([
-      r.fechaISO, r.hora, r.grupoLabel, r.actName, r.actKey, r.texto, r.autor, r.tsStr
+      r.fechaISO, r.hora, r.grupoLabel,
+      r.paxFinal,
+      r.actName, r.actKey, r.texto, r.autor, r.tsStr
     ].join(' '));
     return blob.includes(q);
   });
@@ -554,11 +581,13 @@ function exportarVisible(){
     'fechaISO',
     'hora',
     'grupo',
+    'paxFinal', // ✅ NUEVO
     'actividad',
     'texto',
     'autor',
     'timestampLocal'
   ];
+
 
   const lines = [];
   lines.push(header.join(';'));
@@ -568,6 +597,7 @@ function exportarVisible(){
       r.fechaISO || '',
       r.hora || '',
       r.grupoLabel || '',
+      (typeof r.paxFinal === 'number') ? r.paxFinal : '',
       r.actName || r.actKey || '',
       r.texto || '',
       r.autor || '',
@@ -607,6 +637,10 @@ function renderRows(rows){
       <td class="mono nowrap">${r.fechaISO || '—'}</td>
       <td class="mono nowrap">${r.hora || '—'}</td>
       <td>${escapeHtml(r.grupoLabel || '—')}</td>
+  
+      <!-- ✅ NUEVA COLUMNA PAX -->
+      <td class="mono nowrap">${(typeof r.paxFinal === 'number') ? r.paxFinal : '—'}</td>
+  
       <td>${escapeHtml(r.actName || r.actKey || '—')}</td>
       <td class="texto">${escapeHtml(r.texto || '')}</td>
       <td class="hide-m">${escapeHtml(r.autor || '—')}</td>
