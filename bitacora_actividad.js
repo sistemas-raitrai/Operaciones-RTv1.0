@@ -395,10 +395,14 @@ async function cargarBitacora(){
 
           for(const d of docs){
             const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
+            const pax = getPaxInfo(g, fechaISO, actKey);
+            
             rows.push({
               fechaISO,
               hora: fmtHoraFromMs(tsMs),
               grupoLabel: grupoLabel(g),
+              paxEsperado: pax.esperado,
+              paxFinal: pax.final,
               grupoId: g.id,
               actKey,
               actName: state.actNameByKey.get(actKey) || actKey,
@@ -407,6 +411,7 @@ async function cargarBitacora(){
               tsMs,
               tsStr: fmtTS(tsMs)
             });
+
             if(rows.length >= limite) break;
           }
           if(rows.length >= limite) break;
