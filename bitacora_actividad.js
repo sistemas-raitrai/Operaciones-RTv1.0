@@ -345,15 +345,15 @@ async function cargarBitacora(){
 
           for(const actKey of actKeys){
             const idx = day[actKey] || {};
-            if(!idx?.notas) continue;
-
+            
+            // ✅ NO dependemos de idx.notas: consultamos la bitácora real
             const docs = await fetchBitacoraDocs(g.id, actKey, fechaISO);
-
+            if(!docs.length) continue;
+            
             for(const d of docs){
-
               const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
               const pax = getPaxInfo(g, fechaISO, actKey);
-              
+            
               rows.push({
                 fechaISO,
                 hora: fmtHoraFromMs(tsMs),
@@ -368,11 +368,10 @@ async function cargarBitacora(){
                 tsMs,
                 tsStr: fmtTS(tsMs)
               });
-
-
-
+            
               if(rows.length >= limite) break;
             }
+
             if(rows.length >= limite) break;
           }
           if(rows.length >= limite) break;
@@ -389,14 +388,15 @@ async function cargarBitacora(){
         for(const fechaISO of fechas){
           const day = asist[fechaISO] || {};
           const idx = day[actKey] || null;
-          if(!idx?.notas) continue;
-
+          
+          // ✅ NO dependemos de idx.notas: consultamos la bitácora real
           const docs = await fetchBitacoraDocs(g.id, actKey, fechaISO);
-
+          if(!docs.length) continue;
+          
           for(const d of docs){
             const tsMs = d.ts?.toMillis ? d.ts.toMillis() : null;
             const pax = getPaxInfo(g, fechaISO, actKey);
-            
+          
             rows.push({
               fechaISO,
               hora: fmtHoraFromMs(tsMs),
@@ -411,9 +411,10 @@ async function cargarBitacora(){
               tsMs,
               tsStr: fmtTS(tsMs)
             });
-
+          
             if(rows.length >= limite) break;
           }
+
           if(rows.length >= limite) break;
         }
         if(rows.length >= limite) break;
