@@ -4,28 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Bodega | Rai Trai</title>
-
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <style>
-    /* ==========================================================
-       ✅ CSS AISLADO SOLO PARA ESTA VISTA (no usa estilos.css)
-       ========================================================== */
     :root{
       --bg:#f6f6f6;
       --card:#ffffff;
       --ink:#121826;
       --muted:#6b7280;
       --line:#e5e7eb;
-      --brand:#0ea5a4;   /* teal RT-ish */
-      --brand2:#111827;  /* dark */
-      --warn:#f59e0b;
-      --bad:#ef4444;
-      --good:#22c55e;
+      --brand:#0ea5a4;
       --shadow: 0 10px 25px rgba(0,0,0,.08);
       --radius: 16px;
     }
-
     *{ box-sizing:border-box; }
     body{
       margin:0;
@@ -34,10 +25,8 @@
       font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
     }
 
-    /* Topbar */
     .rt-topbar{
-      position:fixed;
-      top:0; left:0; right:0;
+      position:fixed; top:0; left:0; right:0;
       height:72px;
       background:rgba(255,255,255,.92);
       backdrop-filter: blur(8px);
@@ -61,16 +50,8 @@
       gap:10px;
       min-width: 210px;
     }
-    .brand img{
-      height:38px;
-      width:auto;
-      display:block;
-    }
-    .brand .title{
-      display:flex;
-      flex-direction:column;
-      line-height:1.05;
-    }
+    .brand img{ height:38px; width:auto; display:block; }
+    .brand .title{ display:flex; flex-direction:column; line-height:1.05; }
     .brand .title b{ font-size:14px; letter-spacing:.2px; }
     .brand .title span{ font-size:12px; color:var(--muted); }
 
@@ -107,26 +88,15 @@
       user-select:none;
     }
     .btn:hover{ transform: translateY(-1px); }
-    .btn.primary{
-      background:var(--brand);
-      border-color:var(--brand);
-      color:#fff;
-    }
-    .btn.danger{
-      background:#fff;
-      border-color:#fecaca;
-      color:#b91c1c;
-    }
+    .btn.primary{ background:var(--brand); border-color:var(--brand); color:#fff; }
+    .btn.danger{ background:#fff; border-color:#fecaca; color:#b91c1c; }
     .btn.small{ padding:8px 10px; border-radius:10px; font-size:12px; }
-    .btn.ghost{
-      background:transparent;
-    }
+    .btn.ghost{ background:transparent; }
 
-    /* Layout */
     .wrap{
       width:min(1100px, 100%);
       margin:0 auto;
-      padding: 92px 12px 18px; /* deja espacio topbar */
+      padding: 92px 12px 18px;
     }
     .card{
       background:var(--card);
@@ -141,14 +111,12 @@
       gap:14px;
       align-items:start;
     }
-
     @media (max-width: 940px){
       .grid{ grid-template-columns: 1fr; }
       .brand{ min-width: 0; }
       .userbox{ min-width: 0; }
     }
 
-    /* Header area inside page */
     .pagehead{
       display:flex;
       align-items:flex-start;
@@ -156,16 +124,8 @@
       gap:12px;
       margin-bottom:12px;
     }
-    .pagehead h1{
-      margin:0;
-      font-size:18px;
-      letter-spacing:.2px;
-    }
-    .pagehead p{
-      margin:4px 0 0;
-      color:var(--muted);
-      font-size:13px;
-    }
+    .pagehead h1{ margin:0; font-size:18px; letter-spacing:.2px; }
+    .pagehead p{ margin:0; color:transparent; font-size:1px; height:0; }
 
     .row{
       display:flex;
@@ -201,7 +161,6 @@
       margin-top:10px;
     }
 
-    /* Inventory list */
     .list{
       display:grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -238,16 +197,9 @@
       align-items:center;
       justify-content:center;
     }
-    .thumb img{
-      width:100%;
-      height:100%;
-      object-fit:cover;
-      display:block;
-    }
-    .meta{
-      min-width:0;
-      flex:1;
-    }
+    .thumb img{ width:100%; height:100%; object-fit:cover; display:block; }
+
+    .meta{ min-width:0; flex:1; }
     .meta b{
       display:block;
       font-size:14px;
@@ -264,6 +216,12 @@
       -webkit-line-clamp:2;
       -webkit-box-orient: vertical;
       overflow:hidden;
+    }
+    .meta .loc{
+      margin-top:6px;
+      font-size:12px;
+      font-weight:800;
+      color:#0f172a;
     }
 
     .badges{
@@ -282,9 +240,6 @@
       background:#fff;
       font-weight:700;
     }
-    .badge.good{ border-color:#bbf7d0; color:#166534; }
-    .badge.warn{ border-color:#fde68a; color:#92400e; }
-    .badge.bad{ border-color:#fecaca; color:#991b1b; }
 
     .item .bottom{
       display:flex;
@@ -294,45 +249,20 @@
       padding:10px;
       border-top:1px solid var(--line);
       background:#fafafa;
+      flex-wrap:wrap;
     }
+    .mini{ font-size:12px; color:var(--muted); font-weight:700; }
 
-    .qty{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      font-weight:900;
-    }
-    .qty span{
-      font-size:16px;
-      min-width: 60px;
-      text-align:center;
-      display:inline-block;
-    }
-    .mini{
-      font-size:12px;
-      color:var(--muted);
-      font-weight:700;
-    }
-
-    /* Login card */
     .loginWrap{
       width:min(520px, 100%);
       margin: 92px auto 0;
       padding: 0 12px 18px;
     }
-    .loginCard{
-      padding:16px;
-    }
+    .loginCard{ padding:16px; }
     .loginCard h2{ margin:0; font-size:18px; }
-    .loginCard p{ margin:6px 0 0; color:var(--muted); font-size:13px; }
+    .loginCard p{ margin:0; color:transparent; font-size:1px; height:0; }
     .loginCard .row{ margin-top:12px; }
-    .hint{
-      margin-top:10px;
-      font-size:12px;
-      color:var(--muted);
-    }
 
-    /* Modal */
     .backdrop{
       position:fixed;
       inset:0;
@@ -344,7 +274,7 @@
       z-index:80;
     }
     .modal{
-      width:min(720px, 100%);
+      width:min(840px, 100%);
       background:#fff;
       border-radius:18px;
       border:1px solid var(--line);
@@ -363,9 +293,10 @@
     .modalHead b{ font-size:14px; }
     .modalBody{
       padding:12px 14px;
-      max-height: 70vh;
+      max-height: 76vh;
       overflow:auto;
     }
+
     .table{
       width:100%;
       border-collapse:collapse;
@@ -387,7 +318,6 @@
       z-index:1;
     }
 
-    /* Toast */
     .toast{
       position:fixed;
       left:50%;
@@ -405,7 +335,6 @@
       text-align:center;
     }
 
-    /* Utility */
     .hide{ display:none !important; }
     .muted{ color:var(--muted); }
     .sep{ height:1px; background:var(--line); margin:12px 0; }
@@ -413,14 +342,13 @@
 </head>
 
 <body>
-  <!-- TOPBAR -->
   <div class="rt-topbar">
     <div class="rt-topbar-inner">
       <div class="brand">
         <img src="Logo Raitrai.png" alt="Rai Trai">
         <div class="title">
           <b>BODEGA · RAI TRAI</b>
-          <span>Inventario simple con stock y fotos</span>
+          <span>Inventario</span>
         </div>
       </div>
 
@@ -431,65 +359,55 @@
     </div>
   </div>
 
-  <!-- LOGIN VIEW -->
   <div id="loginView" class="loginWrap">
     <div class="card loginCard">
       <h2>Ingreso</h2>
-      <p>Acceso con email y contraseña (Firebase Auth).</p>
 
       <div class="row">
         <div class="field">
           <label>Email</label>
-          <input id="loginEmail" type="email" placeholder="tu@raitrai.cl" autocomplete="username" />
+          <input id="loginEmail" type="email" autocomplete="username" />
         </div>
       </div>
+
       <div class="row">
         <div class="field">
           <label>Contraseña</label>
-          <input id="loginPass" type="password" placeholder="••••••••" autocomplete="current-password" />
+          <input id="loginPass" type="password" autocomplete="current-password" />
         </div>
       </div>
 
       <div class="row" style="justify-content:flex-end;">
         <button id="btnLogin" class="btn primary">Entrar</button>
       </div>
-
-      <div class="hint">
-        Tip: usa los mismos usuarios Firebase que ya tienes en el “universo” del sistema.
-      </div>
     </div>
   </div>
 
-  <!-- APP VIEW -->
   <div id="appView" class="wrap hide">
     <div class="grid">
 
-      <!-- LEFT: INVENTORY -->
       <div class="card">
         <div class="pagehead">
-          <div>
-            <h1>Inventario</h1>
-            <p>Selecciona una bodega y gestiona stock (sumas/restas) con historial.</p>
-          </div>
+          <div><h1>Cajas</h1></div>
         </div>
 
         <div class="row">
           <div class="field" style="min-width: 260px;">
-            <label>Bodega activa</label>
+            <label>Bodega</label>
             <select id="selBodega"></select>
           </div>
 
           <div class="field">
-            <label>Buscar ítem</label>
-            <input id="txtSearch" type="text" placeholder="ej: pulseras, botiquín, parlante..." />
+            <label>Buscar</label>
+            <input id="txtSearch" type="text" />
           </div>
 
           <div class="field" style="min-width: 180px;">
-            <label>Mostrar</label>
-            <select id="selFiltroStock">
+            <label>Filtro</label>
+            <select id="selFiltro">
               <option value="all">Todo</option>
-              <option value="low">Bajo stock</option>
-              <option value="zero">Stock 0</option>
+              <option value="with">Con contenido</option>
+              <option value="empty">Vacías</option>
             </select>
           </div>
         </div>
@@ -497,94 +415,55 @@
         <div class="toolbar">
           <div class="row">
             <button id="btnRefrescar" class="btn">Actualizar</button>
-            <button id="btnVerMovimientos" class="btn ghost">Ver movimientos</button>
+            <button id="btnVerMovimientos" class="btn ghost">Movimientos</button>
+            <button id="btnOpenAdmin" class="btn ghost">Administrar bodegas</button>
           </div>
           <div class="row">
             <span id="lblEstado" class="mini muted">Listo.</span>
           </div>
         </div>
 
-        <div id="itemsList" class="list"></div>
+        <div id="cajasList" class="list"></div>
       </div>
 
-      <!-- RIGHT: CREATE ITEM + BODEGAS -->
       <div class="card">
         <div class="pagehead">
-          <div>
-            <h1>Agregar ítem</h1>
-            <p>Foto + descripción + unidades iniciales.</p>
+          <div><h1>Nueva caja</h1></div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Caja</label>
+            <input id="cxNombre" type="text" />
           </div>
         </div>
 
         <div class="row">
           <div class="field">
-            <label>Nombre del ítem</label>
-            <input id="itNombre" type="text" placeholder="Ej: Pulseras Parque, Botiquín, Walkie..." />
+            <label>Ubicación</label>
+            <input id="cxUbicacion" type="text" placeholder="Ej: Z1-Estante A / Rack 2" />
           </div>
         </div>
 
         <div class="row">
           <div class="field">
-            <label>Descripción</label>
-            <textarea id="itDesc" placeholder="Detalle, uso, notas..."></textarea>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="field" style="min-width:140px;">
-            <label>Unidades</label>
-            <input id="itUnidades" type="number" min="0" step="1" value="0" />
-          </div>
-          <div class="field" style="min-width:140px;">
-            <label>Mínimo (alerta)</label>
-            <input id="itMinimo" type="number" min="0" step="1" value="3" />
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="field">
-            <label>Foto (opcional)</label>
-            <input id="itFoto" type="file" accept="image/*" />
+            <label>Foto</label>
+            <input id="cxFoto" type="file" accept="image/*" />
           </div>
         </div>
 
         <div class="row" style="justify-content:flex-end;">
-          <button id="btnCrearItem" class="btn primary">Guardar ítem</button>
+          <button id="btnCrearCaja" class="btn primary">Crear</button>
         </div>
-
-        <div class="sep"></div>
-
-       <!--  <div class="pagehead"> 
-          <div>
-            <h1>Bodegas</h1>
-            <p>Crea bodegas (ej: Externa, Oficina). No se cruza con otros módulos.</p>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="field">
-            <label>Nueva bodega</label>
-            <input id="bdNombre" type="text" placeholder="Ej: Bodega Externa" />
-          </div>
-        </div>
-
-        <div class="row" style="justify-content:flex-end;">
-          <button id="btnCrearBodega" class="btn">Crear bodega</button>
-        </div>
-
-        <div class="hint">
-          Nota: si no existen bodegas, el sistema creará automáticamente “Bodega Externa” y “Oficina”.
-        </div>
-      </div> -->
+      </div>
 
     </div>
   </div>
 
-  <!-- MOVIMIENTOS MODAL -->
   <div id="movBackdrop" class="backdrop">
     <div class="modal">
       <div class="modalHead">
-        <b>Movimientos (últimos 200)</b>
+        <b>Movimientos</b>
         <button id="btnCerrarMov" class="btn small">Cerrar</button>
       </div>
       <div class="modalBody">
@@ -592,7 +471,8 @@
           <thead>
             <tr>
               <th>Fecha</th>
-              <th>Ítem</th>
+              <th>Caja</th>
+              <th>Contenido</th>
               <th>Δ</th>
               <th>Stock</th>
               <th>Usuario</th>
@@ -605,9 +485,117 @@
     </div>
   </div>
 
+  <div id="adminBackdrop" class="backdrop">
+    <div class="modal">
+      <div class="modalHead">
+        <b>Administrar bodegas</b>
+        <button id="btnCerrarAdmin" class="btn small">Cerrar</button>
+      </div>
+      <div class="modalBody">
+        <div class="row">
+          <div class="field">
+            <label>Nueva bodega</label>
+            <input id="bdNombre" type="text" />
+          </div>
+        </div>
+        <div class="row" style="justify-content:flex-end;">
+          <button id="btnCrearBodega" class="btn primary">Crear</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <table class="table">
+          <thead>
+            <tr><th>Bodega</th><th>ID</th></tr>
+          </thead>
+          <tbody id="bdTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="cajaBackdrop" class="backdrop">
+    <div class="modal">
+      <div class="modalHead">
+        <b id="cajaTitle">Caja</b>
+        <div class="row" style="justify-content:flex-end;">
+          <button id="btnCajaEditar" class="btn small">Editar</button>
+          <button id="btnCajaBorrar" class="btn small danger">Borrar</button>
+          <button id="btnCajaCerrar" class="btn small">Cerrar</button>
+        </div>
+      </div>
+
+      <div class="modalBody">
+        <div class="row">
+          <div class="field" style="min-width:260px;">
+            <label>Ubicación</label>
+            <input id="cajaUbicacionView" type="text" disabled />
+          </div>
+          <div class="field">
+            <label>Buscar contenido</label>
+            <input id="cajaBuscar" type="text" />
+          </div>
+          <div class="field" style="min-width:180px;">
+            <label>Filtro</label>
+            <select id="cajaFiltro">
+              <option value="all">Todo</option>
+              <option value="low">Bajo stock</option>
+              <option value="zero">Stock 0</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="row">
+          <div class="field">
+            <label>Contenido</label>
+            <input id="ctNombre" type="text" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Descripción</label>
+            <textarea id="ctDesc"></textarea>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field" style="min-width:160px;">
+            <label>Unidades</label>
+            <input id="ctUnidades" type="number" min="0" step="1" value="0" />
+          </div>
+          <div class="field" style="min-width:160px;">
+            <label>Unidades por caja</label>
+            <input id="ctPackSize" type="number" min="1" step="1" value="100" />
+          </div>
+          <div class="field" style="min-width:160px;">
+            <label>Mínimo</label>
+            <input id="ctMinimo" type="number" min="0" step="1" value="3" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Foto</label>
+            <input id="ctFoto" type="file" accept="image/*" />
+          </div>
+        </div>
+
+        <div class="row" style="justify-content:flex-end;">
+          <button id="btnCrearContenido" class="btn primary">Guardar</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div id="contenidosList" class="list"></div>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast"></div>
 
-  <!-- Tu lógica -->
-  <script type="module" src="./bodega.js"></script>
+  <script type="module" src="/bodega.js"></script>
 </body>
 </html>
