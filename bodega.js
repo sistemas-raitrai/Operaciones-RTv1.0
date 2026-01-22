@@ -1,3 +1,12 @@
+// bodega.js (COMPLETO)
+// Inventario por ítem (total) + desglose por CAJAS con UBICACIÓN
+// Firestore:
+// - bodegas/{bodegaId}
+// - bodegas/{bodegaId}/cajas/{cajaId} {nombre, ubicacion}
+// - bodegas/{bodegaId}/items/{itemId} {unidadesTotal, minimo, ...}
+// - bodegas/{bodegaId}/items/{itemId}/stocks/{cajaId} {cajaId, unidades, actualizadoEn}
+// - .../movimientos/{movId} {ts, delta, stock, by, nota}
+
 import { app, db } from './firebase-init.js';
 
 import {
@@ -18,14 +27,17 @@ import {
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
   orderBy,
   limit,
-  serverTimestamp
+  serverTimestamp,
+  runTransaction
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
@@ -38,7 +50,7 @@ function toast(msg){
   el.textContent = msg;
   el.style.display = 'block';
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=> el.style.display='none', 2200);
+  toastTimer = setTimeout(()=> el.style.display='none', 2400);
 }
 function safeNum(n, def=0){
   const x = Number(n);
@@ -47,6 +59,7 @@ function safeNum(n, def=0){
 function setEstado(msg){
   $('lblEstado').textContent = msg || 'Listo.';
 }
+function U(s){ return String(s||'').trim().toUpperCase(); }
 function escapeHtml(str){
   return String(str ?? '')
     .replaceAll('&','&amp;')
@@ -56,39 +69,55 @@ function escapeHtml(str){
     .replaceAll("'","&#039;");
 }
 
+/* Paths */
 const COL_BODEGAS = 'bodegas';
+
+function bodegasCol(){ return collection(db, COL_BODEGAS); }
 
 function cajasCol(bodegaId){ return collection(db, COL_BODEGAS, bodegaId, 'cajas'); }
 function cajaDoc(bodegaId, cajaId){ return doc(db, COL_BODEGAS, bodegaId, 'cajas', cajaId); }
 
-function contCol(bodegaId, cajaId){ return collection(db, COL_BODEGAS, bodegaId, 'cajas', cajaId, 'contenidos'); }
-function contDoc(bodegaId, cajaId, contId){ return doc(db, COL_BODEGAS, bodegaId, 'cajas', cajaId, 'contenidos', contId); }
+function itemsCol(bodegaId){ return collection(db, COL_BODEGAS, bodegaId, 'items'); }
+function itemDoc(bodegaId, itemId){ return doc(db, COL_BODEGAS, bodegaId, 'items', itemId); }
 
-function movsCol(bodegaId, cajaId, contId){
-  return collection(db, COL_BODEGAS, bodegaId, 'cajas', cajaId, 'contenidos', contId, 'movimientos');
+function stocksCol(bodegaId, itemId){ return collection(db, COL_BODEGAS, bodegaId, 'items', itemId, 'stocks'); }
+function stockDoc(bodegaId, itemId, cajaId){ return doc(db, COL_BODEGAS, bodegaId, 'items', itemId, 'stocks', cajaId); }
+
+function movsCol(bodegaId, itemId, cajaId){
+  return collection(db, COL_BODEGAS, bodegaId, 'items', itemId, 'stocks', cajaId, 'movimientos');
 }
 
+/* State */
 const state = {
   user: null,
   bodegas: [],
   bodegaId: null,
 
-  cajas: [],
-  cajaActiva: null,
-  contenidos: [],
+  cajas: [],          // [{id,nombre,ubicacion}]
+  cajasById: new Map(),
+
+  items: [],          // [{id,nombre,unidadesTotal,minimo,...}]
+
+  modal: {
+    item: null,       // item activo en modal cajas
+    stocks: [],       // [{cajaId, unidades}]
+    stocksByCaja: new Map(),
+  }
 };
 
+/* Auth UI */
 $('btnLogin').addEventListener('click', async ()=>{
   const email = $('loginEmail').value.trim();
   const pass  = $('loginPass').value;
-  if(!email || !pass){ toast('Faltan datos'); return; }
+  if(!email || !pass){ toast('Completa email y contraseña.'); return; }
+
   try{
     setEstado('Ingresando...');
     await signInWithEmailAndPassword(auth, email, pass);
-  }catch(e){
-    console.error(e);
-    toast('Error de ingreso');
-    setEstado('Error');
+  }catch(err){
+    console.error(err);
+    toast('No se pudo ingresar.');
+    setEstado('Error de login.');
   }
 });
 
@@ -111,34 +140,42 @@ onAuthStateChanged(auth, async (user)=>{
     state.bodegas = [];
     state.bodegaId = null;
     state.cajas = [];
-    state.cajaActiva = null;
-    state.contenidos = [];
+    state.cajasById = new Map();
+    state.items = [];
     $('selBodega').innerHTML = '';
-    $('cajasList').innerHTML = '';
+    $('itemsList').innerHTML = '';
   }
 });
 
+/* Boot */
 async function boot(){
   try{
-    setEstado('Cargando...');
+    setEstado('Cargando bodegas...');
     await ensureDefaultBodegasIfEmpty();
     await loadBodegasIntoSelect();
+
+    setEstado('Cargando cajas...');
     await loadCajas();
-    wireUI();
+
+    setEstado('Cargando inventario...');
+    await loadItems();
+
+    wireFilters();
+    wireCajasModal();
     setEstado('Listo.');
-  }catch(e){
-    console.error(e);
-    setEstado('Error');
-    toast('Error');
+  }catch(err){
+    console.error(err);
+    setEstado('Error cargando.');
+    toast('Error cargando bodega.');
   }
 }
 
 async function ensureDefaultBodegasIfEmpty(){
-  const snap = await getDocs(query(collection(db, COL_BODEGAS), orderBy('nombre','asc'), limit(5)));
+  const snap = await getDocs(query(bodegasCol(), orderBy('nombre','asc'), limit(5)));
   if(snap.empty){
     const defaults = ['Bodega Externa', 'Oficina'];
     for(const nombre of defaults){
-      await addDoc(collection(db, COL_BODEGAS), {
+      await addDoc(bodegasCol(), {
         nombre,
         creadoEn: serverTimestamp(),
         creadoPor: state.user?.email || null,
@@ -152,11 +189,14 @@ async function loadBodegasIntoSelect(){
   const sel = $('selBodega');
   sel.innerHTML = '';
 
-  const snap = await getDocs(query(collection(db, COL_BODEGAS), orderBy('nombre','asc')));
+  const snap = await getDocs(query(bodegasCol(), orderBy('nombre','asc')));
   state.bodegas = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
 
-  if(!state.bodegaId) state.bodegaId = state.bodegas[0]?.id || null;
-  else if(!state.bodegas.some(b=>b.id===state.bodegaId)) state.bodegaId = state.bodegas[0]?.id || null;
+  if(!state.bodegaId){
+    state.bodegaId = state.bodegas[0]?.id || null;
+  }else if(!state.bodegas.some(b=>b.id===state.bodegaId)){
+    state.bodegaId = state.bodegas[0]?.id || null;
+  }
 
   for(const b of state.bodegas){
     const opt = document.createElement('option');
@@ -169,91 +209,84 @@ async function loadBodegasIntoSelect(){
   sel.onchange = async ()=>{
     state.bodegaId = sel.value;
     await loadCajas();
+    await loadItems();
   };
 }
 
-function wireUI(){
-  $('btnRefrescar').onclick = loadCajas;
-  $('txtSearch').oninput = renderCajas;
-  $('selFiltro').onchange = renderCajas;
+/* Cajas (catálogo por bodega) */
+async function loadCajas(){
+  state.cajas = [];
+  state.cajasById = new Map();
 
-  $('btnCrearCaja').onclick = crearCaja;
+  $('itCajaSel').innerHTML = '';
+  $('cxSel').innerHTML = '';
 
-  $('btnVerMovimientos').onclick = openMovModal;
-  $('btnCerrarMov').onclick = ()=> $('movBackdrop').style.display = 'none';
-  $('movBackdrop').addEventListener('click', (ev)=>{ if(ev.target === $('movBackdrop')) $('movBackdrop').style.display='none'; });
+  if(!state.bodegaId) return;
 
-  $('btnOpenAdmin').onclick = openAdminModal;
-  $('btnCerrarAdmin').onclick = ()=> $('adminBackdrop').style.display = 'none';
-  $('adminBackdrop').addEventListener('click', (ev)=>{ if(ev.target === $('adminBackdrop')) $('adminBackdrop').style.display='none'; });
+  const snap = await getDocs(query(cajasCol(state.bodegaId), orderBy('nombre','asc')));
+  state.cajas = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
+  for(const c of state.cajas) state.cajasById.set(c.id, c);
 
-  $('btnCrearBodega').onclick = crearBodega;
+  const opt0 = document.createElement('option');
+  opt0.value = '';
+  opt0.textContent = '(sin caja)';
+  $('itCajaSel').appendChild(opt0);
 
-  $('btnCajaCerrar').onclick = ()=> $('cajaBackdrop').style.display = 'none';
-  $('cajaBackdrop').addEventListener('click', (ev)=>{ if(ev.target === $('cajaBackdrop')) $('cajaBackdrop').style.display='none'; });
+  for(const c of state.cajas){
+    const t = `${c.nombre || '(sin nombre)'}${c.ubicacion ? ' · ' + c.ubicacion : ''}`;
 
-  $('btnCrearContenido').onclick = crearContenidoEnCaja;
-  $('cajaBuscar').oninput = renderContenidos;
-  $('cajaFiltro').onchange = renderContenidos;
+    const o1 = document.createElement('option');
+    o1.value = c.id;
+    o1.textContent = t;
+    $('itCajaSel').appendChild(o1);
 
-  $('btnCajaEditar').onclick = editarCajaActiva;
-  $('btnCajaBorrar').onclick = borrarCajaActiva;
-}
-
-async function crearBodega(){
-  const nombre = ($('bdNombre').value || '').trim();
-  if(!nombre){ toast('Falta nombre'); return; }
-  try{
-    setEstado('Creando...');
-    await addDoc(collection(db, COL_BODEGAS), {
-      nombre,
-      creadoEn: serverTimestamp(),
-      creadoPor: state.user?.email || null,
-      activo: true
-    });
-    $('bdNombre').value = '';
-    toast('OK');
-    await loadBodegasIntoSelect();
-    await paintBodegasTable();
-    setEstado('Listo.');
-  }catch(e){
-    console.error(e);
-    toast('Error');
-    setEstado('Error');
+    const o2 = document.createElement('option');
+    o2.value = c.id;
+    o2.textContent = t;
+    $('cxSel').appendChild(o2);
   }
 }
 
-async function openAdminModal(){
-  $('adminBackdrop').style.display = 'flex';
-  await paintBodegasTable();
-}
+/* Items */
+$('btnCrearItem').addEventListener('click', async ()=>{
+  if(!state.bodegaId){ toast('Selecciona bodega.'); return; }
 
-async function paintBodegasTable(){
-  const tb = $('bdTbody');
-  tb.innerHTML = '';
-  const snap = await getDocs(query(collection(db, COL_BODEGAS), orderBy('nombre','asc')));
-  const rows = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
-  for(const b of rows){
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${escapeHtml(b.nombre||'')}</td><td class="muted">${escapeHtml(b.id)}</td>`;
-    tb.appendChild(tr);
-  }
-}
+  const nombre = $('itNombre').value.trim();
+  const desc = $('itDesc').value.trim();
+  const minimo = Math.max(0, safeNum($('itMinimo').value, 0));
+  const unidadesInit = Math.max(0, safeNum($('itUnidades').value, 0));
+  const file = $('itFoto').files?.[0] || null;
 
-async function crearCaja(){
-  if(!state.bodegaId){ toast('Sin bodega'); return; }
+  const cajaSel = $('itCajaSel').value || '';
+  const cajaNueva = ($('itCajaNueva').value || '').trim();
+  const cajaUbic = ($('itCajaUbic').value || '').trim();
 
-  const nombre = ($('cxNombre').value || '').trim();
-  const ubicacion = ($('cxUbicacion').value || '').trim();
-  const file = $('cxFoto').files?.[0] || null;
-
-  if(!nombre){ toast('Falta caja'); return; }
+  if(!nombre){ toast('Ponle un nombre al ítem.'); return; }
 
   try{
-    setEstado('Guardando...');
-    const cRef = await addDoc(cajasCol(state.bodegaId), {
+    setEstado('Guardando ítem...');
+
+    let cajaId = cajaSel;
+
+    if(cajaNueva){
+      const cRef = await addDoc(cajasCol(state.bodegaId), {
+        nombre: cajaNueva,
+        ubicacion: cajaUbic || '',
+        creadoEn: serverTimestamp(),
+        creadoPor: state.user?.email || null,
+        actualizadoEn: serverTimestamp()
+      });
+      cajaId = cRef.id;
+
+      await loadCajas();
+      $('itCajaSel').value = cajaId;
+    }
+
+    const itRef = await addDoc(itemsCol(state.bodegaId), {
       nombre,
-      ubicacion: ubicacion || '',
+      descripcion: desc || '',
+      minimo,
+      unidadesTotal: 0,
       fotoURL: null,
       fotoPath: null,
       creadoEn: serverTimestamp(),
@@ -262,169 +295,98 @@ async function crearCaja(){
     });
 
     if(file){
-      const path = `bodegas/${state.bodegaId}/cajas/${cRef.id}/${Date.now()}_${file.name}`;
+      const path = `bodegas/${state.bodegaId}/items/${itRef.id}/${Date.now()}_${file.name}`;
       const r = sRef(storage, path);
+
       await new Promise((resolve, reject)=>{
         const task = uploadBytesResumable(r, file);
         task.on('state_changed', null, reject, resolve);
       });
+
       const url = await getDownloadURL(r);
-      await updateDoc(cRef, { fotoURL:url, fotoPath:path, actualizadoEn: serverTimestamp() });
+      await updateDoc(itRef, { fotoURL:url, fotoPath:path, actualizadoEn: serverTimestamp() });
     }
 
-    $('cxNombre').value = '';
-    $('cxUbicacion').value = '';
-    $('cxFoto').value = '';
+    if(unidadesInit > 0){
+      const targetCajaId = cajaId || '_SIN_CAJA_';
+      await applyDeltaToItemCaja({
+        bodegaId: state.bodegaId,
+        itemId: itRef.id,
+        cajaId: targetCajaId,
+        delta: +unidadesInit,
+        nota: 'Carga inicial'
+      });
+    }
 
-    toast('OK');
-    await loadCajas();
+    $('itNombre').value = '';
+    $('itDesc').value = '';
+    $('itUnidades').value = '0';
+    $('itMinimo').value = '3';
+    $('itFoto').value = '';
+    $('itCajaNueva').value = '';
+    $('itCajaUbic').value = '';
+    $('itCajaSel').value = '';
+
+    toast('Ítem guardado ✅');
+    await loadItems();
     setEstado('Listo.');
-  }catch(e){
-    console.error(e);
-    toast('Error');
-    setEstado('Error');
+  }catch(err){
+    console.error(err);
+    toast('Error guardando ítem.');
+    setEstado('Error.');
   }
-}
+});
 
-async function loadCajas(){
+async function loadItems(){
   if(!state.bodegaId){
-    $('cajasList').innerHTML = '';
+    $('itemsList').innerHTML = '';
     return;
   }
 
-  setEstado('Cargando...');
-  const snap = await getDocs(query(cajasCol(state.bodegaId), orderBy('nombre','asc')));
-  state.cajas = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
+  setEstado('Cargando inventario...');
+  const snap = await getDocs(query(itemsCol(state.bodegaId), orderBy('nombre','asc')));
+  state.items = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
 
-  await hydrateCajasConteo();
-  renderCajas();
-  setEstado(`Listo · ${state.cajas.length}`);
+  renderItems();
+  setEstado(`Listo · ${state.items.length} ítems`);
 }
 
-async function hydrateCajasConteo(){
-  for(const c of state.cajas){
+/* UI filters */
+function wireFilters(){
+  $('btnRefrescar').onclick = async ()=>{
+    await loadCajas();
+    await loadItems();
+  };
+  $('txtSearch').oninput = renderItems;
+  $('selFiltroStock').onchange = renderItems;
+
+  $('btnVerMovimientos').onclick = async ()=>{
+    if(!state.bodegaId) return;
+    $('movBackdrop').style.display = 'flex';
+    $('movTbody').innerHTML = '<tr><td colspan="8" class="muted">Cargando...</td></tr>';
     try{
-      const cs = await getDocs(query(contCol(state.bodegaId, c.id), limit(500)));
-      c._countCont = cs.size;
+      const moves = await fetchMovimientosUltimos(state.bodegaId, 200);
+      renderMovimientos(moves);
     }catch(e){
-      c._countCont = null;
+      console.error(e);
+      $('movTbody').innerHTML = '<tr><td colspan="8" class="muted">Error cargando movimientos.</td></tr>';
     }
-  }
+  };
+
+  $('btnCerrarMov').onclick = ()=> $('movBackdrop').style.display = 'none';
+  $('movBackdrop').addEventListener('click', (ev)=>{
+    if(ev.target === $('movBackdrop')) $('movBackdrop').style.display = 'none';
+  });
 }
 
-function renderCajas(){
-  const q = ($('txtSearch').value || '').trim().toLowerCase();
-  const f = $('selFiltro').value;
+function renderItems(){
+  const q = $('txtSearch').value.trim().toLowerCase();
+  const f = $('selFiltroStock').value;
 
-  let cajas = [...state.cajas];
-
-  if(q){
-    cajas = cajas.filter(c=>{
-      const a = (c.nombre || '').toLowerCase();
-      const b = (c.ubicacion || '').toLowerCase();
-      return a.includes(q) || b.includes(q);
-    });
-  }
-
-  if(f === 'with'){
-    cajas = cajas.filter(c => (c._countCont ?? 0) > 0);
-  }else if(f === 'empty'){
-    cajas = cajas.filter(c => (c._countCont ?? 0) === 0);
-  }
-
-  const list = $('cajasList');
+  const list = $('itemsList');
   list.innerHTML = '';
 
-  if(cajas.length === 0){
-    const empty = document.createElement('div');
-    empty.className = 'muted';
-    empty.style.padding = '8px 2px';
-    empty.textContent = 'Sin resultados';
-    list.appendChild(empty);
-    return;
-  }
-
-  for(const c of cajas){
-    list.appendChild(renderCajaCard(c));
-  }
-}
-
-function renderCajaCard(c){
-  const card = document.createElement('div');
-  card.className = 'item';
-
-  const count = (c._countCont ?? 0);
-
-  card.innerHTML = `
-    <div class="top">
-      <div class="thumb">
-        ${c.fotoURL ? `<img src="${c.fotoURL}" alt="foto">` : `<span class="muted" style="font-size:12px;font-weight:900;">SIN<br>FOTO</span>`}
-      </div>
-      <div class="meta">
-        <b title="${escapeHtml(c.nombre||'')}">${escapeHtml(c.nombre||'(sin nombre)')}</b>
-        <div class="desc">${escapeHtml(c.ubicacion||'')}</div>
-        <div class="badges">
-          <span class="badge">${count} contenido(s)</span>
-          <span class="badge">ID: ${c.id.slice(0,6)}…</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="bottom">
-      <div class="mini"> </div>
-      <div class="row" style="justify-content:flex-end;">
-        <button class="btn small" data-act="open">Abrir</button>
-      </div>
-    </div>
-  `;
-
-  card.querySelector('[data-act="open"]').onclick = ()=> openCaja(c);
-
-  return card;
-}
-
-async function openCaja(c){
-  state.cajaActiva = c;
-  $('cajaTitle').textContent = c.nombre || 'Caja';
-  $('cajaUbicacionView').value = c.ubicacion || '';
-
-  $('ctNombre').value = '';
-  $('ctDesc').value = '';
-  $('ctUnidades').value = '0';
-  $('ctPackSize').value = '100';
-  $('ctMinimo').value = '3';
-  $('ctFoto').value = '';
-  $('cajaBuscar').value = '';
-  $('cajaFiltro').value = 'all';
-
-  $('contenidosList').innerHTML = '';
-  $('cajaBackdrop').style.display = 'flex';
-
-  await loadContenidosCaja();
-}
-
-async function loadContenidosCaja(){
-  if(!state.bodegaId || !state.cajaActiva?.id) return;
-
-  setEstado('Cargando...');
-  const snap = await getDocs(query(contCol(state.bodegaId, state.cajaActiva.id), orderBy('nombre','asc')));
-  state.contenidos = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
-  renderContenidos();
-  setEstado('Listo.');
-}
-
-function calcBoxes(units, packSize){
-  const ps = Math.max(1, safeNum(packSize, 1));
-  const cajas = Math.floor(units / ps);
-  const sueltas = units % ps;
-  return { cajas, sueltas, ps };
-}
-
-function renderContenidos(){
-  const q = ($('cajaBuscar').value || '').trim().toLowerCase();
-  const f = $('cajaFiltro').value;
-
-  let items = [...state.contenidos];
+  let items = [...state.items];
 
   if(q){
     items = items.filter(it=>{
@@ -435,39 +397,37 @@ function renderContenidos(){
   }
 
   if(f === 'low'){
-    items = items.filter(it => safeNum(it.unidades,0) <= safeNum(it.minimo,3) && safeNum(it.unidades,0) > 0);
+    items = items.filter(it=>{
+      const total = safeNum(it.unidadesTotal,0);
+      const min = safeNum(it.minimo,3);
+      return total <= min && total > 0;
+    });
   }else if(f === 'zero'){
-    items = items.filter(it => safeNum(it.unidades,0) === 0);
+    items = items.filter(it=> safeNum(it.unidadesTotal,0) === 0);
   }
-
-  const list = $('contenidosList');
-  list.innerHTML = '';
 
   if(items.length === 0){
     const empty = document.createElement('div');
     empty.className = 'muted';
     empty.style.padding = '8px 2px';
-    empty.textContent = 'Sin resultados';
+    empty.textContent = 'No hay ítems para mostrar.';
     list.appendChild(empty);
     return;
   }
 
   for(const it of items){
-    list.appendChild(renderContenidoCard(it));
+    list.appendChild(renderItemCard(it));
   }
 }
 
-function renderContenidoCard(it){
-  const unidades = safeNum(it.unidades,0);
-  const minimo  = safeNum(it.minimo,3);
-  const packSize = Math.max(1, safeNum(it.packSize, 100));
-  const { cajas, sueltas, ps } = calcBoxes(unidades, packSize);
+function renderItemCard(it){
+  const total = safeNum(it.unidadesTotal,0);
+  const minimo = safeNum(it.minimo,3);
 
+  let badgeClass = 'good';
   let badgeText = 'OK';
-  let badgeStyle = '';
-  if(unidades === 0){ badgeText='STOCK 0'; badgeStyle='border-color:#fecaca;color:#991b1b;'; }
-  else if(unidades <= minimo){ badgeText='BAJO'; badgeStyle='border-color:#fde68a;color:#92400e;'; }
-  else { badgeText='OK'; badgeStyle='border-color:#bbf7d0;color:#166534;'; }
+  if(total === 0){ badgeClass='bad'; badgeText='STOCK 0'; }
+  else if(total <= minimo){ badgeClass='warn'; badgeText='BAJO'; }
 
   const card = document.createElement('div');
   card.className = 'item';
@@ -481,286 +441,356 @@ function renderContenidoCard(it){
         <b title="${escapeHtml(it.nombre||'')}">${escapeHtml(it.nombre||'(sin nombre)')}</b>
         <div class="desc">${escapeHtml(it.descripcion||'')}</div>
         <div class="badges">
-          <span class="badge" style="${badgeStyle}">${badgeText}</span>
+          <span class="badge ${badgeClass}">${badgeText}</span>
           <span class="badge">MÍN: ${minimo}</span>
-          <span class="badge">${ps}/CAJA</span>
+          <span class="badge">TOTAL: ${total}</span>
         </div>
       </div>
     </div>
 
     <div class="bottom">
       <div>
-        <div class="mini">${cajas} caja(s) + ${sueltas} suelta(s) (${unidades})</div>
-        <div class="row" style="margin-top:6px;">
-          <button class="btn small" data-act="decBox">−1 caja</button>
-          <button class="btn small" data-act="incBox">+1 caja</button>
-          <button class="btn small" data-act="dec1">−1</button>
-          <button class="btn small" data-act="inc1">+1</button>
+        <div class="mini">STOCK TOTAL</div>
+        <div class="qty">
+          <span>${total}</span>
         </div>
       </div>
 
       <div class="row" style="justify-content:flex-end;">
-        <button class="btn small" data-act="ajuste">Ajuste</button>
+        <button class="btn small" data-act="cajas">Cajas</button>
         <button class="btn small" data-act="editar">Editar</button>
         <button class="btn small danger" data-act="borrar">Borrar</button>
       </div>
     </div>
   `;
 
-  card.querySelector('[data-act="inc1"]').onclick = ()=> changeContenidoStock(it, +1, '+1 unidad');
-  card.querySelector('[data-act="dec1"]').onclick = ()=> changeContenidoStock(it, -1, '-1 unidad');
-  card.querySelector('[data-act="incBox"]').onclick = ()=> changeContenidoStock(it, +ps, `+1 caja (${ps})`);
-  card.querySelector('[data-act="decBox"]').onclick = ()=> changeContenidoStock(it, -ps, `-1 caja (${ps})`);
-
-  card.querySelector('[data-act="ajuste"]').onclick = async ()=>{
-    const v = prompt(`Nuevo stock total (unidades):`, String(unidades));
-    if(v === null) return;
-    const nuevo = Math.max(0, safeNum(v, unidades));
-    const delta = nuevo - unidades;
-    if(delta === 0) return toast('Sin cambios');
-    const nota = prompt('Nota:', 'Ajuste') || 'Ajuste';
-    await changeContenidoStock(it, delta, nota);
-  };
-
-  card.querySelector('[data-act="editar"]').onclick = ()=> editContenido(it);
-  card.querySelector('[data-act="borrar"]').onclick = ()=> deleteContenido(it);
+  card.querySelector('[data-act="cajas"]').onclick = ()=> openCajasModal(it);
+  card.querySelector('[data-act="editar"]').onclick = ()=> editItem(it);
+  card.querySelector('[data-act="borrar"]').onclick = ()=> deleteItem(it);
 
   return card;
 }
 
-async function crearContenidoEnCaja(){
-  if(!state.bodegaId || !state.cajaActiva?.id){ toast('Sin caja'); return; }
+async function editItem(it){
+  if(!state.bodegaId) return;
 
-  const nombre = ($('ctNombre').value || '').trim();
-  const desc = ($('ctDesc').value || '').trim();
-  const unidades = Math.max(0, safeNum($('ctUnidades').value, 0));
-  const packSize = Math.max(1, safeNum($('ctPackSize').value, 100));
-  const minimo = Math.max(0, safeNum($('ctMinimo').value, 3));
-  const file = $('ctFoto').files?.[0] || null;
-
-  if(!nombre){ toast('Falta contenido'); return; }
-
-  try{
-    setEstado('Guardando...');
-    const itRef = await addDoc(contCol(state.bodegaId, state.cajaActiva.id), {
-      nombre,
-      descripcion: desc || '',
-      unidades,
-      packSize,
-      minimo,
-      fotoURL: null,
-      fotoPath: null,
-      creadoEn: serverTimestamp(),
-      creadoPor: state.user?.email || null,
-      actualizadoEn: serverTimestamp()
-    });
-
-    if(file){
-      const path = `bodegas/${state.bodegaId}/cajas/${state.cajaActiva.id}/contenidos/${itRef.id}/${Date.now()}_${file.name}`;
-      const r = sRef(storage, path);
-      await new Promise((resolve, reject)=>{
-        const task = uploadBytesResumable(r, file);
-        task.on('state_changed', null, reject, resolve);
-      });
-      const url = await getDownloadURL(r);
-      await updateDoc(itRef, { fotoURL:url, fotoPath:path, actualizadoEn: serverTimestamp() });
-    }
-
-    if(unidades > 0){
-      await addDoc(movsCol(state.bodegaId, state.cajaActiva.id, itRef.id), {
-        ts: serverTimestamp(),
-        delta: +unidades,
-        stock: unidades,
-        by: state.user?.email || null,
-        nota: 'Carga inicial'
-      });
-    }
-
-    $('ctNombre').value = '';
-    $('ctDesc').value = '';
-    $('ctUnidades').value = '0';
-    $('ctPackSize').value = '100';
-    $('ctMinimo').value = '3';
-    $('ctFoto').value = '';
-
-    toast('OK');
-    await loadContenidosCaja();
-    await loadCajas();
-    setEstado('Listo.');
-  }catch(e){
-    console.error(e);
-    toast('Error');
-    setEstado('Error');
-  }
-}
-
-async function changeContenidoStock(it, delta, nota){
-  if(!state.bodegaId || !state.cajaActiva?.id) return;
-
-  const unidades = safeNum(it.unidades,0);
-  const nuevo = unidades + delta;
-  if(nuevo < 0){ toast('No permitido'); return; }
-
-  try{
-    setEstado('Guardando...');
-
-    await updateDoc(contDoc(state.bodegaId, state.cajaActiva.id, it.id), {
-      unidades: nuevo,
-      actualizadoEn: serverTimestamp()
-    });
-
-    await addDoc(movsCol(state.bodegaId, state.cajaActiva.id, it.id), {
-      ts: serverTimestamp(),
-      delta,
-      stock: nuevo,
-      by: state.user?.email || null,
-      nota: nota || ''
-    });
-
-    it.unidades = nuevo;
-    const idx = state.contenidos.findIndex(x=>x.id===it.id);
-    if(idx>=0) state.contenidos[idx].unidades = nuevo;
-
-    renderContenidos();
-    toast('OK');
-    setEstado('Listo.');
-  }catch(e){
-    console.error(e);
-    toast('Error');
-    setEstado('Error');
-  }
-}
-
-async function editContenido(it){
-  const nombre = prompt('Contenido:', it.nombre || '');
+  const nombre = prompt('Nombre del ítem:', it.nombre || '');
   if(nombre === null) return;
 
   const desc = prompt('Descripción:', it.descripcion || '');
   if(desc === null) return;
 
-  const pack = prompt('Unidades por caja:', String(Math.max(1, safeNum(it.packSize, 100))));
-  if(pack === null) return;
-
-  const minimo = prompt('Mínimo:', String(safeNum(it.minimo, 3)));
+  const minimo = prompt('Mínimo (alerta):', String(safeNum(it.minimo,3)));
   if(minimo === null) return;
 
   try{
-    setEstado('Actualizando...');
-    await updateDoc(contDoc(state.bodegaId, state.cajaActiva.id, it.id), {
+    setEstado('Actualizando ítem...');
+    await updateDoc(itemDoc(state.bodegaId, it.id), {
       nombre: nombre.trim(),
       descripcion: desc.trim(),
-      packSize: Math.max(1, safeNum(pack, 100)),
       minimo: Math.max(0, safeNum(minimo, 3)),
       actualizadoEn: serverTimestamp()
     });
-    toast('OK');
-    await loadContenidosCaja();
+
+    toast('Ítem actualizado ✅');
+    await loadItems();
     setEstado('Listo.');
   }catch(e){
     console.error(e);
-    toast('Error');
-    setEstado('Error');
+    toast('Error actualizando ítem.');
+    setEstado('Error.');
   }
 }
 
-async function deleteContenido(it){
-  const ok = confirm(`Borrar "${it.nombre}"?`);
+async function deleteItem(it){
+  if(!state.bodegaId) return;
+
+  const ok = confirm(`¿Borrar "${it.nombre}"?\n\nSe borra el ítem.\n(No borra automáticamente subcolecciones en Firestore).`);
   if(!ok) return;
 
   try{
-    setEstado('Borrando...');
+    setEstado('Borrando ítem...');
 
     if(it.fotoPath){
       try{ await deleteObject(sRef(storage, it.fotoPath)); }catch(e){}
     }
 
-    await deleteDoc(contDoc(state.bodegaId, state.cajaActiva.id, it.id));
+    await deleteDoc(itemDoc(state.bodegaId, it.id));
 
-    toast('OK');
-    await loadContenidosCaja();
-    await loadCajas();
+    toast('Ítem borrado.');
+    await loadItems();
     setEstado('Listo.');
   }catch(e){
     console.error(e);
-    toast('Error');
-    setEstado('Error');
+    toast('Error borrando ítem.');
+    setEstado('Error.');
   }
 }
 
-async function editarCajaActiva(){
-  if(!state.bodegaId || !state.cajaActiva?.id) return;
+/* Modal Cajas */
+function wireCajasModal(){
+  $('btnCajasCerrar').onclick = ()=> $('cajasBackdrop').style.display = 'none';
+  $('cajasBackdrop').addEventListener('click', (ev)=>{
+    if(ev.target === $('cajasBackdrop')) $('cajasBackdrop').style.display = 'none';
+  });
 
-  const nombre = prompt('Caja:', state.cajaActiva.nombre || '');
-  if(nombre === null) return;
+  $('btnCxCrear').onclick = async ()=>{
+    if(!state.bodegaId) return;
 
-  const ubic = prompt('Ubicación:', state.cajaActiva.ubicacion || '');
-  if(ubic === null) return;
+    const nombre = ($('cxNuevaNombre').value || '').trim();
+    const ubic = ($('cxNuevaUbic').value || '').trim();
+    if(!nombre){ toast('Falta nombre caja'); return; }
 
-  try{
-    setEstado('Actualizando...');
-    await updateDoc(cajaDoc(state.bodegaId, state.cajaActiva.id), {
-      nombre: nombre.trim(),
-      ubicacion: ubic.trim(),
-      actualizadoEn: serverTimestamp()
-    });
-    toast('OK');
-    await loadCajas();
-    const c2 = state.cajas.find(x=>x.id===state.cajaActiva.id);
-    state.cajaActiva = c2 || state.cajaActiva;
-    $('cajaTitle').textContent = state.cajaActiva.nombre || 'Caja';
-    $('cajaUbicacionView').value = state.cajaActiva.ubicacion || '';
-    setEstado('Listo.');
-  }catch(e){
-    console.error(e);
-    toast('Error');
-    setEstado('Error');
-  }
-}
+    try{
+      setEstado('Creando caja...');
+      const cRef = await addDoc(cajasCol(state.bodegaId), {
+        nombre,
+        ubicacion: ubic || '',
+        creadoEn: serverTimestamp(),
+        creadoPor: state.user?.email || null,
+        actualizadoEn: serverTimestamp()
+      });
 
-async function borrarCajaActiva(){
-  if(!state.bodegaId || !state.cajaActiva?.id) return;
+      $('cxNuevaNombre').value = '';
+      $('cxNuevaUbic').value = '';
 
-  const ok = confirm(`Borrar caja "${state.cajaActiva.nombre}"?`);
-  if(!ok) return;
+      await loadCajas();
+      $('cxSel').value = cRef.id;
+      toast('Caja creada ✅');
+      setEstado('Listo.');
+      await refreshCajasModalTable();
+    }catch(e){
+      console.error(e);
+      toast('Error creando caja');
+      setEstado('Error.');
+    }
+  };
 
-  try{
-    setEstado('Borrando...');
+  $('btnCxAplicar').onclick = async ()=>{
+    const it = state.modal.item;
+    if(!it || !state.bodegaId) return;
 
-    if(state.cajaActiva.fotoPath){
-      try{ await deleteObject(sRef(storage, state.cajaActiva.fotoPath)); }catch(e){}
+    const cajaId = $('cxSel').value || '';
+    const delta = safeNum($('cxDelta').value, 0);
+    const nota = ($('cxNota').value || '').trim() || 'Movimiento';
+
+    if(!cajaId){
+      toast('Selecciona caja');
+      return;
+    }
+    if(delta === 0){
+      toast('Delta 0');
+      return;
     }
 
-    await deleteDoc(cajaDoc(state.bodegaId, state.cajaActiva.id));
+    try{
+      await applyDeltaToItemCaja({
+        bodegaId: state.bodegaId,
+        itemId: it.id,
+        cajaId,
+        delta,
+        nota
+      });
+      $('cxDelta').value = '0';
+      $('cxNota').value = '';
+      toast('Listo ✅');
 
-    $('cajaBackdrop').style.display = 'none';
-    state.cajaActiva = null;
-    state.contenidos = [];
+      await loadItems();
+      await openCajasModal(it, true);
+    }catch(e){
+      console.error(e);
+      toast('Error aplicando');
+    }
+  };
+}
 
-    toast('OK');
-    await loadCajas();
-    setEstado('Listo.');
-  }catch(e){
-    console.error(e);
-    toast('Error');
-    setEstado('Error');
+async function openCajasModal(it, keepOpen=false){
+  if(!state.bodegaId) return;
+
+  state.modal.item = it;
+  $('cajasTitle').textContent = `Cajas · ${it.nombre || ''}`;
+
+  $('cxDelta').value = '0';
+  $('cxNota').value = '';
+  $('cxNuevaNombre').value = '';
+  $('cxNuevaUbic').value = '';
+
+  if(!keepOpen) $('cajasBackdrop').style.display = 'flex';
+
+  await loadCajas();
+  await loadStocksForItem(it.id);
+  await refreshCajasModalTable();
+}
+
+async function loadStocksForItem(itemId){
+  state.modal.stocks = [];
+  state.modal.stocksByCaja = new Map();
+
+  const snap = await getDocs(query(stocksCol(state.bodegaId, itemId)));
+  state.modal.stocks = snap.docs.map(d=>({ cajaId: d.id, ...(d.data()||{}) }));
+  for(const s of state.modal.stocks){
+    state.modal.stocksByCaja.set(s.cajaId, s);
   }
 }
 
+async function refreshCajasModalTable(){
+  const it = state.modal.item;
+  if(!it) return;
+
+  const tb = $('cajasTbody');
+  tb.innerHTML = '';
+
+  const cajas = [...state.cajas];
+
+  const ensureSpecial = (id, nombre, ubicacion) => {
+    if(!state.cajasById.has(id)){
+      const obj = { id, nombre, ubicacion };
+      cajas.push(obj);
+      state.cajasById.set(id, obj);
+    }
+  };
+
+  ensureSpecial('_SIN_CAJA_', '(sin caja)', '');
+
+  cajas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
+
+  for(const c of cajas){
+    const s = state.modal.stocksByCaja.get(c.id);
+    const unidades = safeNum(s?.unidades, 0);
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td style="font-weight:900;">${escapeHtml(c.nombre||'')}</td>
+      <td class="muted">${escapeHtml(c.ubicacion||'')}</td>
+      <td style="font-weight:900;">${unidades}</td>
+      <td>
+        <button class="btn small" data-act="dec">−1</button>
+        <button class="btn small" data-act="inc">+1</button>
+        <button class="btn small" data-act="ajuste">Ajuste</button>
+      </td>
+    `;
+
+    tr.querySelector('[data-act="inc"]').onclick = async ()=>{
+      await applyDeltaToItemCaja({
+        bodegaId: state.bodegaId,
+        itemId: it.id,
+        cajaId: c.id,
+        delta: +1,
+        nota: '+1'
+      });
+      await loadItems();
+      await openCajasModal(it, true);
+      toast('OK');
+    };
+
+    tr.querySelector('[data-act="dec"]').onclick = async ()=>{
+      await applyDeltaToItemCaja({
+        bodegaId: state.bodegaId,
+        itemId: it.id,
+        cajaId: c.id,
+        delta: -1,
+        nota: '-1'
+      });
+      await loadItems();
+      await openCajasModal(it, true);
+      toast('OK');
+    };
+
+    tr.querySelector('[data-act="ajuste"]').onclick = async ()=>{
+      const v = prompt(`Ajuste stock en ${c.nombre}\nNuevo stock:`, String(unidades));
+      if(v === null) return;
+      const nuevo = Math.max(0, safeNum(v, unidades));
+      const delta = nuevo - unidades;
+      if(delta === 0) return toast('Sin cambios');
+
+      const nota = prompt('Nota:', 'Ajuste') || 'Ajuste';
+
+      await applyDeltaToItemCaja({
+        bodegaId: state.bodegaId,
+        itemId: it.id,
+        cajaId: c.id,
+        delta,
+        nota
+      });
+      await loadItems();
+      await openCajasModal(it, true);
+      toast('OK');
+    };
+
+    tb.appendChild(tr);
+  }
+}
+
+/* Core: delta por caja + total */
+async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota }){
+  const _cajaId = cajaId || '_SIN_CAJA_';
+
+  const itRef = itemDoc(bodegaId, itemId);
+  const stRef = stockDoc(bodegaId, itemId, _cajaId);
+
+  await runTransaction(db, async (tx)=>{
+    const itSnap = await tx.get(itRef);
+    if(!itSnap.exists()) throw new Error('Item missing');
+
+    const itData = itSnap.data() || {};
+    const totalOld = safeNum(itData.unidadesTotal, 0);
+
+    const stSnap = await tx.get(stRef);
+    const stData = stSnap.exists() ? (stSnap.data()||{}) : {};
+    const boxOld = safeNum(stData.unidades, 0);
+
+    const boxNew = boxOld + delta;
+    if(boxNew < 0) throw new Error('NEG');
+
+    const totalNew = totalOld + delta;
+    if(totalNew < 0) throw new Error('NEG_TOTAL');
+
+    if(!stSnap.exists()){
+      tx.set(stRef, {
+        cajaId: _cajaId,
+        unidades: boxNew,
+        actualizadoEn: serverTimestamp()
+      });
+    }else{
+      tx.update(stRef, { unidades: boxNew, actualizadoEn: serverTimestamp() });
+    }
+
+    tx.update(itRef, { unidadesTotal: totalNew, actualizadoEn: serverTimestamp() });
+
+    const mvRef = doc(movsCol(bodegaId, itemId, _cajaId));
+    tx.set(mvRef, {
+      ts: serverTimestamp(),
+      delta,
+      stock: boxNew,
+      by: state.user?.email || null,
+      nota: nota || ''
+    });
+  });
+}
+
+/* Movimientos (últimos) */
 async function fetchMovimientosUltimos(bodegaId, maxItems=200){
-  const cajasSnap = await getDocs(query(cajasCol(bodegaId), orderBy('nombre','asc')));
+  const itemsSnap = await getDocs(query(itemsCol(bodegaId), orderBy('nombre','asc')));
   const moves = [];
 
-  for(const c of cajasSnap.docs){
-    const cData = c.data() || {};
-    const contSnap = await getDocs(query(contCol(bodegaId, c.id), orderBy('nombre','asc')));
-    for(const it of contSnap.docs){
-      const itData = it.data() || {};
-      const ms = await getDocs(query(movsCol(bodegaId, c.id, it.id), orderBy('ts','desc'), limit(10)));
+  const cajasSnap = await getDocs(query(cajasCol(bodegaId), orderBy('nombre','asc')));
+  const cajasMap = new Map();
+  cajasSnap.forEach(d=> cajasMap.set(d.id, d.data()||{}));
+  cajasMap.set('_SIN_CAJA_', { nombre:'(sin caja)', ubicacion:'' });
+
+  for (const it of itemsSnap.docs){
+    const itData = it.data() || {};
+    const stSnap = await getDocs(query(stocksCol(bodegaId, it.id)));
+    for(const st of stSnap.docs){
+      const cajaId = st.id;
+      const ms = await getDocs(query(movsCol(bodegaId, it.id, cajaId), orderBy('ts','desc'), limit(10)));
+      const cajaMeta = cajasMap.get(cajaId) || {};
       ms.forEach(d=>{
         moves.push({
           ...d.data(),
-          _cajaNombre: cData.nombre || '(caja)',
-          _contNombre: itData.nombre || '(contenido)',
+          _itemNombre: itData.nombre || '(sin nombre)',
+          _cajaNombre: cajaMeta.nombre || '(caja)',
+          _cajaUbic: cajaMeta.ubicacion || ''
         });
       });
     }
@@ -775,27 +805,12 @@ async function fetchMovimientosUltimos(bodegaId, maxItems=200){
   return moves.slice(0, maxItems);
 }
 
-async function openMovModal(){
-  if(!state.bodegaId) return;
-
-  $('movBackdrop').style.display = 'flex';
-  $('movTbody').innerHTML = '<tr><td colspan="7" class="muted">Cargando...</td></tr>';
-
-  try{
-    const moves = await fetchMovimientosUltimos(state.bodegaId, 200);
-    renderMovimientos(moves);
-  }catch(e){
-    console.error(e);
-    $('movTbody').innerHTML = '<tr><td colspan="7" class="muted">Error</td></tr>';
-  }
-}
-
 function renderMovimientos(moves){
   const tb = $('movTbody');
   tb.innerHTML = '';
 
   if(!moves.length){
-    tb.innerHTML = '<tr><td colspan="7" class="muted">Sin movimientos</td></tr>';
+    tb.innerHTML = '<tr><td colspan="8" class="muted">Sin movimientos.</td></tr>';
     return;
   }
 
@@ -807,8 +822,9 @@ function renderMovimientos(moves){
 
     tr.innerHTML = `
       <td>${escapeHtml(fecha)}</td>
+      <td>${escapeHtml(m._itemNombre || '')}</td>
       <td>${escapeHtml(m._cajaNombre || '')}</td>
-      <td>${escapeHtml(m._contNombre || '')}</td>
+      <td class="muted">${escapeHtml(m._cajaUbic || '')}</td>
       <td style="font-weight:900; ${delta<0?'color:#b91c1c':''} ${delta>0?'color:#166534':''}">
         ${delta>0?'+':''}${delta}
       </td>
