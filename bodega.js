@@ -213,33 +213,28 @@ async function loadBodegasIntoSelect(){
   };
 }
 
-/* Cajas (catálogo por bodega) */
 async function loadCajas(){
   state.cajas = [];
   state.cajasById = new Map();
 
-  // ⚠️ Estos 2 selects deben existir en el HTML
+  // ✅ itCajaSel debe existir (es el selector del formulario)
   const itCajaSel = $('itCajaSel');
-  const cxSel = $('cxSel');
-
-  // Si falta alguno, NO seguimos (evita el appendChild null)
   if(!itCajaSel){
     console.error('[BODEGA] Falta #itCajaSel en el HTML (loadCajas).');
     toast('Error UI: falta selector de caja del ítem (#itCajaSel).');
     return;
   }
-  if(!cxSel){
-    console.error('[BODEGA] Falta #cxSel en el HTML (loadCajas).');
-    toast('Error UI: falta selector de cajas del modal (#cxSel).');
-    return;
-  }
 
-  // Limpia ambos (antes solo limpiabas itCajaSel)
+  // ✅ cxSel es OPCIONAL (en tu HTML nuevo ya NO existe)
+  const cxSel = $('cxSel');
+
+  // Limpia selects (si existen)
   itCajaSel.innerHTML = '';
-  cxSel.innerHTML = '';
+  if(cxSel) cxSel.innerHTML = '';
 
   if(!state.bodegaId) return;
 
+  // ✅ CARGA REAL DESDE FIRESTORE (esto antes NO se ejecutaba si faltaba cxSel)
   const snap = await getDocs(query(cajasCol(state.bodegaId), orderBy('nombre','asc')));
   state.cajas = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
   for(const c of state.cajas) state.cajasById.set(c.id, c);
@@ -259,14 +254,16 @@ async function loadCajas(){
     o1.textContent = t;
     itCajaSel.appendChild(o1);
 
-    // Select del modal masivo (si lo usas ahí)
-    const o2 = document.createElement('option');
-    o2.value = c.id;
-    o2.textContent = t;
-    cxSel.appendChild(o2);
+    // ✅ Si existe cxSel (solo en algunos HTML antiguos), también lo poblamos
+    if(cxSel){
+      const o2 = document.createElement('option');
+      o2.value = c.id;
+      o2.textContent = t;
+      cxSel.appendChild(o2);
+    }
   }
-
 }
+
 
 /* Items */
 $('btnCrearItem').addEventListener('click', async ()=>{
