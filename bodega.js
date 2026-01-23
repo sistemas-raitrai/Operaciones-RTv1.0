@@ -668,15 +668,28 @@ async function refreshCajasModalTable(){
 
   const cajas = [...state.cajas];
 
+  // ✅ Siempre incluir "(sin caja)" como “caja virtual”
+  // (esto permite ver y ajustar stock suelto)
   const ensureSpecial = (id, nombre, ubicacion) => {
+    if(!cajas.some(x => x.id === id)){
+      cajas.push({ id, nombre, ubicacion });
+    }
     if(!state.cajasById.has(id)){
-      const obj = { id, nombre, ubicacion };
-      cajas.push(obj);
-      state.cajasById.set(id, obj);
+      state.cajasById.set(id, { id, nombre, ubicacion });
     }
   };
+  ensureSpecial('_SIN_CAJA_', '(sin caja)', '');
+
+  // ✅ Si no hay cajas reales, mostrar mensaje en tabla
+  if(cajas.length === 1 && cajas[0].id === '_SIN_CAJA_'){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td colspan="4" class="muted">No hay cajas creadas en esta bodega. Usa “Crear cajas”.</td>`;
+    tb.appendChild(tr);
+    return;
+  }
 
   cajas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
+
 
   for(const c of cajas){
     const s = state.modal.stocksByCaja.get(c.id);
