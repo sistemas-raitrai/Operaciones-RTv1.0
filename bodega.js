@@ -714,7 +714,7 @@ async function refreshCajasModalTable(){
     const unidades = safeNum(s?.unidades, 0);
 
     const tr = document.createElement('tr');
-    <tr.innerHTML = `
+    tr.innerHTML = `
       <td style="font-weight:900;">${escapeHtml(c.nombre||'')}</td>
       <td class="muted">${escapeHtml(c.ubicacion||'')}</td>
       <td style="font-weight:900;">${unidades}</td>
@@ -740,8 +740,9 @@ async function refreshCajasModalTable(){
       toast('OK');
     };
 
-    // ✅ AQUÍ MISMO (ANTES DEL appendChild)
+    // ✅ Acciones de caja (editar / borrar)
     if(c.id !== '_SIN_CAJA_'){
+    
       const btnDel = tr.querySelector('[data-act="del"]');
       if(btnDel){
         btnDel.onclick = async ()=>{
@@ -750,9 +751,7 @@ async function refreshCajasModalTable(){
           await refreshCajasModalTable();
         };
       }
-    }
-
-    if(c.id !== '_SIN_CAJA_'){
+    
       const btnEdit = tr.querySelector('[data-act="editBox"]');
       if(btnEdit){
         btnEdit.onclick = async ()=>{
@@ -781,7 +780,7 @@ async function refreshCajasModalTable(){
           }
         };
       }
-    }   
+    }
 
     tr.querySelector('[data-act="dec"]').onclick = async ()=>{
       await applyDeltaToItemCaja({
