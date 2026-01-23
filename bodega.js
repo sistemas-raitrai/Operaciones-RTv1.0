@@ -667,6 +667,7 @@ async function refreshCajasModalTable(){
         <button class="btn small" data-act="dec">−1</button>
         <button class="btn small" data-act="inc">+1</button>
         <button class="btn small" data-act="ajuste">Ajuste</button>
+        ${c.id === '_SIN_CAJA_' ? '' : `<button class="btn small danger" data-act="del">Borrar</button>`}
       </td>
     `;
 
@@ -682,6 +683,18 @@ async function refreshCajasModalTable(){
       await openCajasModal(it, true);
       toast('OK');
     };
+
+    // ✅ AQUÍ MISMO (ANTES DEL appendChild)
+    if(c.id !== '_SIN_CAJA_'){
+      const btnDel = tr.querySelector('[data-act="del"]');
+      if(btnDel){
+        btnDel.onclick = async ()=>{
+          await deleteCajaSeguro(c.id);
+          await loadCajas();
+          await refreshCajasModalTable();
+        };
+      }
+    }  
 
     tr.querySelector('[data-act="dec"]').onclick = async ()=>{
       await applyDeltaToItemCaja({
@@ -835,3 +848,57 @@ function renderMovimientos(moves){
     tb.appendChild(tr);
   }
 }
+
+async function deleteCajaSeguro(cajaId){
+  if(!state.bodegaId) return;
+
+  const cajaMeta = state.cajasById.get(cajaId) || {};
+  const nombreCaja = cajaMeta.nombre || cajaId;
+
+  const ok = confirm(`¿Borrar caja "${nombreCaja}"?\n\nSolo se puede borrar si NO tiene stock en ningún ítem.`);
+  if(!ok) return;
+
+  try{
+    setEstado('Revisando stock de la caja...');
+
+    // 1) Recorre todos los ítems de la bodega y verifica si esa caja tiene stock > 0
+    const itemsSnap = await getDocs(query(itemsCol(state.bodegaId), orderBy('nombre','asc')));
+
+    for(const it of itemsSnap.docs){
+      const stRef = stockDoc(state.bodegaId, it.id, cajaId);
+      const stSnap = await getDoc(stRef);
+      if(stSnap.exists()){
+        const u = safeNum(stSnap.data()?.unidades, 0);
+        if(u > 0){
+          toast(`No se puede borrar: stock ${u} en "${it.data()?.nombre || it.id}"`);
+          setEstado('Listo.');
+          return;
+        }
+      }
+    }
+
+    // 2) Si está todo en 0 (o no existe), borramos los stocks (en 0) para no dejar basura
+    setEstado('Borrando referencias...');
+    for(const it of itemsSnap.docs){
+      const stRef = stockDoc(state.bodegaId, it.id, cajaId);
+      const stSnap = await getDoc(stRef);
+      if(stSnap.exists()){
+        // unidades ya sabemos que es 0 aquí
+        await deleteDoc(stRef);
+        // Nota: no borramos subcolección movimientos automáticamente (Firestore no lo hace solo)
+      }
+    }
+
+    // 3) Borrar la caja
+    setEstado('Borrando caja...');
+    await deleteDoc(cajaDoc(state.bodegaId, cajaId));
+
+    toast('Caja borrada ✅');
+    setEstado('Listo.');
+  }catch(e){
+    console.error(e);
+    toast('Error borrando caja.');
+    setEstado('Error.');
+  }
+}
+
