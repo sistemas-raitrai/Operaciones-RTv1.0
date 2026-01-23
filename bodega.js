@@ -218,7 +218,25 @@ async function loadCajas(){
   state.cajas = [];
   state.cajasById = new Map();
 
-  $('itCajaSel').innerHTML = '';
+  // ⚠️ Estos 2 selects deben existir en el HTML
+  const itCajaSel = $('itCajaSel');
+  const cxSel = $('cxSel');
+
+  // Si falta alguno, NO seguimos (evita el appendChild null)
+  if(!itCajaSel){
+    console.error('[BODEGA] Falta #itCajaSel en el HTML (loadCajas).');
+    toast('Error UI: falta selector de caja del ítem (#itCajaSel).');
+    return;
+  }
+  if(!cxSel){
+    console.error('[BODEGA] Falta #cxSel en el HTML (loadCajas).');
+    toast('Error UI: falta selector de cajas del modal (#cxSel).');
+    return;
+  }
+
+  // Limpia ambos (antes solo limpiabas itCajaSel)
+  itCajaSel.innerHTML = '';
+  cxSel.innerHTML = '';
 
   if(!state.bodegaId) return;
 
@@ -226,24 +244,28 @@ async function loadCajas(){
   state.cajas = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
   for(const c of state.cajas) state.cajasById.set(c.id, c);
 
+  // Opción "(sin caja)" SOLO para el select del formulario de ítem
   const opt0 = document.createElement('option');
   opt0.value = '';
   opt0.textContent = '(sin caja)';
-  $('itCajaSel').appendChild(opt0);
+  itCajaSel.appendChild(opt0);
 
   for(const c of state.cajas){
     const t = `${c.nombre || '(sin nombre)'}${c.ubicacion ? ' · ' + c.ubicacion : ''}`;
 
+    // Select del formulario (crear ítem)
     const o1 = document.createElement('option');
     o1.value = c.id;
     o1.textContent = t;
-    $('itCajaSel').appendChild(o1);
+    itCajaSel.appendChild(o1);
 
+    // Select del modal masivo (si lo usas ahí)
     const o2 = document.createElement('option');
     o2.value = c.id;
     o2.textContent = t;
-    $('cxSel').appendChild(o2);
+    cxSel.appendChild(o2);
   }
+
 }
 
 /* Items */
