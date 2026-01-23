@@ -609,41 +609,44 @@
       </div>
       <div class="modalBody">
 
+        <!-- ✅ CREACIÓN MASIVA DE CAJAS (reemplaza "Agregar stock a caja" y "Nueva caja") -->
         <div class="row">
-          <div class="field" style="min-width:260px;">
-            <label>Agregar stock a caja</label>
-            <select id="cxSel"></select>
-          </div>
           <div class="field" style="min-width:160px;">
-            <label>Unidades</label>
-            <input id="cxDelta" type="number" step="1" value="0" />
+            <label>Prefijo</label>
+            <input id="cxPrefijo" type="text" value="A" placeholder="Ej: A" />
           </div>
-          <div class="field">
-            <label>Nota</label>
-            <input id="cxNota" type="text" placeholder="Ej: ingreso, salida, ajuste..." />
+        
+          <div class="field" style="min-width:140px;">
+            <label>Desde</label>
+            <input id="cxDesde" type="number" min="1" step="1" value="1" />
+          </div>
+        
+          <div class="field" style="min-width:140px;">
+            <label>Hasta</label>
+            <input id="cxHasta" type="number" min="1" step="1" value="30" />
+          </div>
+        
+          <div class="field" style="min-width:180px;">
+            <label>Ubicación</label>
+            <input id="cxUbicMasivo" type="text" value="Z1" placeholder="Ej: Z1" />
+          </div>
+        
+          <div class="field" style="min-width:180px;">
+            <label>Stock inicial por caja</label>
+            <input id="cxStockInicial" type="number" min="0" step="1" value="50" />
           </div>
         </div>
-
+        
         <div class="row" style="justify-content:flex-end;">
-          <button id="btnCxAplicar" class="btn primary">Aplicar</button>
+          <button id="btnCxCrearMasivo" class="btn primary">Crear cajas</button>
         </div>
-
+        
+        <div class="hint muted" style="margin-top:6px;">
+          Crea cajas tipo A1..A30 en la ubicación indicada. Si Stock inicial &gt; 0, se asigna a este ítem en cada caja.
+        </div>
+        
         <div class="sep"></div>
 
-        <div class="row">
-          <div class="field">
-            <label>Nueva caja</label>
-            <input id="cxNuevaNombre" type="text" placeholder="Ej: Caja B" />
-          </div>
-          <div class="field">
-            <label>Ubicación</label>
-            <input id="cxNuevaUbic" type="text" placeholder="Ej: Z2 Piso / Closet" />
-          </div>
-          <div class="field" style="min-width:180px;">
-            <label>&nbsp;</label>
-            <button id="btnCxCrear" class="btn">Crear caja</button>
-          </div>
-        </div>
 
         <div class="sep"></div>
 
