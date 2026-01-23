@@ -219,7 +219,6 @@ async function loadCajas(){
   state.cajasById = new Map();
 
   $('itCajaSel').innerHTML = '';
-  $('cxSel').innerHTML = '';
 
   if(!state.bodegaId) return;
 
@@ -527,137 +526,86 @@ async function deleteItem(it){
   }
 }
 
-/* Modal Cajas */
 function wireCajasModal(){
   $('btnCajasCerrar').onclick = ()=> $('cajasBackdrop').style.display = 'none';
   $('cajasBackdrop').addEventListener('click', (ev)=>{
     if(ev.target === $('cajasBackdrop')) $('cajasBackdrop').style.display = 'none';
   });
 
-  $('btnCxCrear').onclick = async ()=>{
+  // ✅ CREACIÓN MASIVA + STOCK INICIAL (por ítem del modal)
+  $('btnCxCrearMasivo').onclick = async ()=>{
     if(!state.bodegaId) return;
-  
-    const nombreRaw = ($('cxNuevaNombre').value || '').trim();
-    const ubic = ($('cxNuevaUbic').value || '').trim();
-  
-    if(!nombreRaw){ toast('Falta nombre caja'); return; }
-  
-    try{
-      setEstado('Creando caja(s)...');
-  
-      // ✅ MODO RÁPIDO:
-      // - "A1..A30" crea A1, A2, ... A30
-      // - "Caja 1..30" crea Caja 1, Caja 2, ... Caja 30
-      // - si no hay ".." => crea una sola
-      const m = nombreRaw.match(/^(.*?)(\d+)\s*\.\.\s*(\d+)\s*$/);
-      if(m){
-        const prefix = (m[1] || '').trim();
-        const start = Number(m[2]);
-        const end   = Number(m[3]);
-  
-        if(!Number.isFinite(start) || !Number.isFinite(end) || start <= 0 || end <= 0 || end < start){
-          toast('Rango inválido. Ej: A1..A30');
-          setEstado('Listo.');
-          return;
-        }
-  
-        // padding según ancho del número inicial (ej 01..30)
-        const padLen = String(m[2]).length;
-  
-        // evita duplicados si ya existen
-        const existentes = new Set(state.cajas.map(c => U(c.nombre || '')));
-        let creadas = 0;
-  
-        for(let i=start; i<=end; i++){
-          const n = String(i).padStart(padLen, '0');
-          const nombre = `${prefix}${n}`.trim();
-          const key = U(nombre);
-  
-          if(existentes.has(key)) continue;
-  
-          await addDoc(cajasCol(state.bodegaId), {
-            nombre,
-            ubicacion: ubic || '',
-            creadoEn: serverTimestamp(),
-            creadoPor: state.user?.email || null,
-            actualizadoEn: serverTimestamp()
-          });
-  
-          existentes.add(key);
-          creadas++;
-        }
-  
-        $('cxNuevaNombre').value = '';
-        $('cxNuevaUbic').value = '';
-  
-        await loadCajas();
-        toast(`Creadas: ${creadas} ✅`);
-        setEstado('Listo.');
-        await refreshCajasModalTable();
-        return;
-      }
-  
-      // ✅ MODO NORMAL: una sola caja
-      const cRef = await addDoc(cajasCol(state.bodegaId), {
-        nombre: nombreRaw,
-        ubicacion: ubic || '',
-        creadoEn: serverTimestamp(),
-        creadoPor: state.user?.email || null,
-        actualizadoEn: serverTimestamp()
-      });
-  
-      $('cxNuevaNombre').value = '';
-      $('cxNuevaUbic').value = '';
-  
-      await loadCajas();
-      $('cxSel').value = cRef.id;
-      toast('Caja creada ✅');
-      setEstado('Listo.');
-      await refreshCajasModalTable();
-    }catch(e){
-      console.error(e);
-      toast('Error creando caja');
-      setEstado('Error.');
-    }
-  };
 
-  $('btnCxAplicar').onclick = async ()=>{
     const it = state.modal.item;
-    if(!it || !state.bodegaId) return;
-
-    const cajaId = $('cxSel').value || '';
-    const delta = safeNum($('cxDelta').value, 0);
-    const nota = ($('cxNota').value || '').trim() || 'Movimiento';
-
-    if(!cajaId){
-      toast('Selecciona caja');
+    if(!it){
+      toast('Abre el modal desde un ítem.');
       return;
     }
-    if(delta === 0){
-      toast('Delta 0');
+
+    const prefijo = ( $('cxPrefijo').value || '' ).trim();
+    const desde = safeNum($('cxDesde').value, 0);
+    const hasta = safeNum($('cxHasta').value, 0);
+    const ubic = ( $('cxUbicMasivo').value || '' ).trim();
+    const stockInicial = Math.max(0, safeNum($('cxStockInicial').value, 0));
+
+    if(!prefijo){ toast('Falta prefijo'); return; }
+    if(desde <= 0 || hasta <= 0 || hasta < desde){
+      toast('Rango inválido (Desde/Hasta)');
       return;
     }
 
     try{
-      await applyDeltaToItemCaja({
-        bodegaId: state.bodegaId,
-        itemId: it.id,
-        cajaId,
-        delta,
-        nota
-      });
-      $('cxDelta').value = '0';
-      $('cxNota').value = '';
-      toast('Listo ✅');
+      setEstado('Creando cajas...');
+      await loadCajas(); // asegura state.cajas actualizado
+      const existentes = new Set(state.cajas.map(c => U(c.nombre || '')));
 
+      let creadas = 0;
+      let stockAplicado = 0;
+
+      for(let i=desde; i<=hasta; i++){
+        const nombre = `${prefijo}${i}`.trim();
+        const key = U(nombre);
+        if(existentes.has(key)) continue;
+
+        const cRef = await addDoc(cajasCol(state.bodegaId), {
+          nombre,
+          ubicacion: ubic || '',
+          creadoEn: serverTimestamp(),
+          creadoPor: state.user?.email || null,
+          actualizadoEn: serverTimestamp()
+        });
+
+        existentes.add(key);
+        creadas++;
+
+        // ✅ Si hay stock inicial, lo asignamos a este ítem en esa caja (movimiento "Carga inicial masiva")
+        if(stockInicial > 0){
+          await applyDeltaToItemCaja({
+            bodegaId: state.bodegaId,
+            itemId: it.id,
+            cajaId: cRef.id,
+            delta: +stockInicial,
+            nota: `Carga inicial masiva (${nombre})`
+          });
+          stockAplicado++;
+        }
+      }
+
+      toast(`Cajas creadas: ${creadas} ✅ · Stock aplicado: ${stockAplicado}`);
+      setEstado('Listo.');
+
+      // refrescar UI
+      await loadCajas();
       await loadItems();
       await openCajasModal(it, true);
     }catch(e){
       console.error(e);
-      toast('Error aplicando');
+      toast('Error en creación masiva');
+      setEstado('Error.');
     }
   };
 }
+
 
 async function openCajasModal(it, keepOpen=false){
   if(!state.bodegaId) return;
@@ -665,10 +613,11 @@ async function openCajasModal(it, keepOpen=false){
   state.modal.item = it;
   $('cajasTitle').textContent = `Cajas · ${it.nombre || ''}`;
 
-  $('cxDelta').value = '0';
-  $('cxNota').value = '';
-  $('cxNuevaNombre').value = '';
-  $('cxNuevaUbic').value = '';
+  $('cxPrefijo').value = 'A';
+  $('cxDesde').value = '1';
+  $('cxHasta').value = '30';
+  $('cxUbicMasivo').value = 'Z1';
+  $('cxStockInicial').value = '50';
 
   if(!keepOpen) $('cajasBackdrop').style.display = 'flex';
 
@@ -704,8 +653,6 @@ async function refreshCajasModalTable(){
       state.cajasById.set(id, obj);
     }
   };
-
-  ensureSpecial('_SIN_CAJA_', '(sin caja)', '');
 
   cajas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
 
