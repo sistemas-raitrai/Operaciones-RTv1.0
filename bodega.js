@@ -56,6 +56,14 @@ function safeNum(n, def=0){
   const x = Number(n);
   return Number.isFinite(x) ? x : def;
 }
+function sumVariants(obj){
+  const o = obj && typeof obj === 'object' ? obj : {};
+  let s = 0;
+  for(const k of Object.keys(o)){
+    s += safeNum(o[k], 0);
+  }
+  return s;
+}
 function setEstado(msg){
   $('lblEstado').textContent = msg || 'Listo.';
 }
@@ -706,6 +714,12 @@ async function refreshCajasModalTable(){
   // 4) Orden por nombre
   filas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
 
+  function pedirTalla(){
+    const v = prompt('Talla / Variante (ej: M, L, XL, XXL)\n(Deja vacío para stock general):', 'M');
+    if(v === null) return null;
+    return (v || '').trim();
+  }
+
   // 5) Render + acciones (mismas acciones que ya tenías)
   for(const c of filas){
     const tr = document.createElement('tr');
@@ -723,51 +737,81 @@ async function refreshCajasModalTable(){
     `;
 
     tr.querySelector('[data-act="inc"]').onclick = async ()=>{
+      const talla = pedirTalla();
+      if(talla === null) return; // canceló
+    
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
         delta: +1,
-        nota: '+1'
+        nota: talla ? `+1 (${U(talla)})` : '+1',
+        variante: talla || null
       });
+    
       await loadItems();
       await openCajasModal(it, true);
       toast('OK');
     };
 
+
     tr.querySelector('[data-act="dec"]').onclick = async ()=>{
+      const talla = pedirTalla();
+      if(talla === null) return; // canceló
+    
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
         delta: -1,
-        nota: '-1'
+        nota: talla ? `-1 (${U(talla)})` : '-1',
+        variante: talla || null
       });
+    
       await loadItems();
       await openCajasModal(it, true);
       toast('OK');
     };
 
+
     tr.querySelector('[data-act="ajuste"]').onclick = async ()=>{
-      const v = prompt(`Ajuste stock en ${c.nombre}\nNuevo stock:`, String(c.unidades));
+      const talla = pedirTalla();
+      if(talla === null) return; // canceló
+    
+      // ✅ Para leer variantes reales necesitamos el stock real (no solo "c.unidades")
+      const s = state.modal.stocksByCaja.get(c.id);
+      const vars = (s?.variantes && typeof s.variantes === 'object') ? s.variantes : {};
+      const key = talla ? U(talla) : null;
+    
+      // si hay talla => ajustamos esa talla; si no => ajustamos total
+      const actual = key ? safeNum(vars[key], 0) : safeNum(s?.unidades, 0);
+    
+      const v = prompt(
+        key ? `Ajuste stock en ${c.nombre} · Talla ${key}\nNuevo stock:` : `Ajuste stock en ${c.nombre}\nNuevo stock:`,
+        String(actual)
+      );
       if(v === null) return;
-      const nuevo = Math.max(0, safeNum(v, c.unidades));
-      const delta = nuevo - c.unidades;
+    
+      const nuevo = Math.max(0, safeNum(v, actual));
+      const delta = nuevo - actual;
       if(delta === 0) return toast('Sin cambios');
-
+    
       const nota = prompt('Nota:', 'Ajuste') || 'Ajuste';
-
+    
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
         delta,
-        nota
+        nota: key ? `${nota} (${key})` : nota,
+        variante: key || null
       });
+    
       await loadItems();
       await openCajasModal(it, true);
       toast('OK');
     };
+
 
     if(c.id !== '_SIN_CAJA_'){
       const btnDel = tr.querySelector('[data-act="del"]');
@@ -815,7 +859,7 @@ async function refreshCajasModalTable(){
 
 
 /* Core: delta por caja + total */
-async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota }){
+async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota, variante=null }){
   const _cajaId = cajaId || '_SIN_CAJA_';
 
   const itRef = itemDoc(bodegaId, itemId);
@@ -830,23 +874,48 @@ async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota }){
 
     const stSnap = await tx.get(stRef);
     const stData = stSnap.exists() ? (stSnap.data()||{}) : {};
-    const boxOld = safeNum(stData.unidades, 0);
-
-    const boxNew = boxOld + delta;
-    if(boxNew < 0) throw new Error('NEG');
-
+    
+    // ✅ Si viene "variante" (ej: M/L/XL), modificamos stData.variantes[variante]
+    // Si NO viene, operamos como antes sobre "unidades" (stock total sin desglose)
+    let variantes = (stData.variantes && typeof stData.variantes === 'object') ? { ...stData.variantes } : null;
+    
+    let boxOld;
+    let boxNew;
+    
+    if(variante){
+      const key = U(variante); // normaliza (m, M -> M)
+      if(!variantes) variantes = {};
+      const oldVar = safeNum(variantes[key], 0);
+      const newVar = oldVar + delta;
+      if(newVar < 0) throw new Error('NEG');
+      variantes[key] = newVar;
+    
+      // total caja = suma de variantes
+      boxOld = sumVariants(stData.variantes || {});
+      boxNew = sumVariants(variantes);
+    }else{
+      boxOld = safeNum(stData.unidades, 0);
+      boxNew = boxOld + delta;
+      if(boxNew < 0) throw new Error('NEG');
+    }
+    
     const totalNew = totalOld + delta;
     if(totalNew < 0) throw new Error('NEG_TOTAL');
-
+    
     if(!stSnap.exists()){
-      tx.set(stRef, {
+      const payload = {
         cajaId: _cajaId,
         unidades: boxNew,
         actualizadoEn: serverTimestamp()
-      });
+      };
+      if(variante) payload.variantes = variantes;
+      tx.set(stRef, payload);
     }else{
-      tx.update(stRef, { unidades: boxNew, actualizadoEn: serverTimestamp() });
+      const payload = { unidades: boxNew, actualizadoEn: serverTimestamp() };
+      if(variante) payload.variantes = variantes;
+      tx.update(stRef, payload);
     }
+
 
     tx.update(itRef, { unidadesTotal: totalNew, actualizadoEn: serverTimestamp() });
 
