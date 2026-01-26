@@ -173,7 +173,7 @@ async function boot(){
 async function ensureDefaultBodegasIfEmpty(){
   const snap = await getDocs(query(bodegasCol(), orderBy('nombre','asc'), limit(5)));
   if(snap.empty){
-    const defaults = ['Bodega Externa', 'Oficina'];
+    const defaults = ['Bodegas', 'Oficina'];
     for(const nombre of defaults){
       await addDoc(bodegasCol(), {
         nombre,
