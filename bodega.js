@@ -335,14 +335,26 @@ $('btnCrearItem').addEventListener('click', async ()=>{
 
     if(unidadesInit > 0){
       const targetCajaId = cajaId || '_SIN_CAJA_';
+    
+      // ✅ Preguntar talla SOLO si hay unidades iniciales
+      const tallaInit = prompt(
+        'Talla / Variante para la CARGA INICIAL (ej: M, L, XL)\n' +
+        '(Deja vacío para stock general):',
+        'M'
+      );
+      if(tallaInit === null) throw new Error('CANCEL_INIT'); // cancela todo el guardado
+    
+      const key = (tallaInit || '').trim();
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: itRef.id,
         cajaId: targetCajaId,
         delta: +unidadesInit,
-        nota: 'Carga inicial'
+        nota: key ? `Carga inicial (${U(key)})` : 'Carga inicial',
+        variante: key ? U(key) : null
       });
     }
+
 
     $('itNombre').value = '';
     $('itDesc').value = '';
@@ -589,6 +601,20 @@ function wireCajasModal(){
       let creadas = 0;
       let stockAplicado = 0;
 
+      // ✅ Si hay stock inicial, preguntamos UNA VEZ si es por talla
+      let varianteMasiva = null;
+      if(stockInicial > 0){
+        const v = prompt(
+          'Talla / Variante para el STOCK INICIAL MASIVO (ej: M, L, XL)\n' +
+          '(Deja vacío para stock general):',
+          'M'
+        );
+        if(v === null) return; // cancela toda la creación masiva
+        const kk = (v || '').trim();
+        varianteMasiva = kk ? U(kk) : null;
+      }
+
+
       for(let i=desde; i<=hasta; i++){
         const nombre = `${prefijo}${i}`.trim();
         const key = U(nombre);
@@ -612,10 +638,14 @@ function wireCajasModal(){
             itemId: it.id,
             cajaId: cRef.id,
             delta: +stockInicial,
-            nota: `Carga inicial masiva (${nombre})`
+            nota: varianteMasiva
+              ? `Carga inicial masiva (${nombre}) (${varianteMasiva})`
+              : `Carga inicial masiva (${nombre})`,
+            variante: varianteMasiva
           });
           stockAplicado++;
         }
+
       }
 
       toast(`Cajas creadas: ${creadas} ✅ · Stock aplicado: ${stockAplicado}`);
