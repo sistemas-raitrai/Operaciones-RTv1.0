@@ -663,40 +663,56 @@ async function refreshCajasModalTable(){
   const tb = $('cajasTbody');
   tb.innerHTML = '';
 
-  const cajas = [...state.cajas];
+  // ✅ Solo mostramos cajas donde este ÍTEM tiene stock > 0
+  // Fuente: stocksByCaja (subcolección items/{itemId}/stocks)
+  const filas = [];
 
-  // ✅ Siempre incluir "(sin caja)" como “caja virtual”
-  // (esto permite ver y ajustar stock suelto)
-  const ensureSpecial = (id, nombre, ubicacion) => {
-    if(!cajas.some(x => x.id === id)){
-      cajas.push({ id, nombre, ubicacion });
+  // 1) Cajas reales (solo si tienen stock > 0)
+  for(const c of state.cajas){
+    const s = state.modal.stocksByCaja.get(c.id);
+    const unidades = safeNum(s?.unidades, 0);
+    if(unidades > 0){
+      filas.push({
+        id: c.id,
+        nombre: c.nombre || '(sin nombre)',
+        ubicacion: c.ubicacion || '',
+        unidades
+      });
     }
-    if(!state.cajasById.has(id)){
-      state.cajasById.set(id, { id, nombre, ubicacion });
-    }
-  };
-  ensureSpecial('_SIN_CAJA_', '(sin caja)', '');
+  }
 
-  // ✅ Si no hay cajas reales, mostrar mensaje en tabla
-  if(cajas.length === 1 && cajas[0].id === '_SIN_CAJA_'){
+  // 2) “Sin caja” SOLO si tiene stock > 0
+  {
+    const s = state.modal.stocksByCaja.get('_SIN_CAJA_');
+    const unidades = safeNum(s?.unidades, 0);
+    if(unidades > 0){
+      filas.push({
+        id: '_SIN_CAJA_',
+        nombre: '(sin caja)',
+        ubicacion: '',
+        unidades
+      });
+    }
+  }
+
+  // 3) Si no hay nada con stock, mostramos mensaje (en vez de listado con 0)
+  if(filas.length === 0){
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td colspan="4" class="muted">No hay cajas creadas en esta bodega. Usa “Crear cajas”.</td>`;
+    tr.innerHTML = `<td colspan="4" class="muted">Este ítem no tiene stock asignado a ninguna caja.</td>`;
     tb.appendChild(tr);
     return;
   }
 
-  cajas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
+  // 4) Orden por nombre
+  filas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
 
-
-  for(const c of cajas){
-    const s = state.modal.stocksByCaja.get(c.id);
-    const unidades = safeNum(s?.unidades, 0);
-
+  // 5) Render + acciones (mismas acciones que ya tenías)
+  for(const c of filas){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td style="font-weight:900;">${escapeHtml(c.nombre||'')}</td>
       <td class="muted">${escapeHtml(c.ubicacion||'')}</td>
-      <td style="font-weight:900;">${unidades}</td>
+      <td style="font-weight:900;">${c.unidades}</td>
       <td>
         <button class="btn small" data-act="dec">−1</button>
         <button class="btn small" data-act="inc">+1</button>
@@ -719,48 +735,6 @@ async function refreshCajasModalTable(){
       toast('OK');
     };
 
-    // ✅ Acciones de caja (editar / borrar)
-    if(c.id !== '_SIN_CAJA_'){
-    
-      const btnDel = tr.querySelector('[data-act="del"]');
-      if(btnDel){
-        btnDel.onclick = async ()=>{
-          await deleteCajaSeguro(c.id);
-          await loadCajas();
-          await refreshCajasModalTable();
-        };
-      }
-    
-      const btnEdit = tr.querySelector('[data-act="editBox"]');
-      if(btnEdit){
-        btnEdit.onclick = async ()=>{
-          const nuevoNombre = prompt('Nombre de la caja:', c.nombre || '');
-          if(nuevoNombre === null) return;
-    
-          const nuevaUbic = prompt('Ubicación (ej: Z1, Estante 2, Zona A):', c.ubicacion || '');
-          if(nuevaUbic === null) return;
-    
-          try{
-            setEstado('Actualizando caja...');
-            await updateDoc(cajaDoc(state.bodegaId, c.id), {
-              nombre: (nuevoNombre || '').trim(),
-              ubicacion: (nuevaUbic || '').trim(),
-              actualizadoEn: serverTimestamp()
-            });
-    
-            toast('Caja actualizada ✅');
-            await loadCajas();
-            await refreshCajasModalTable();
-            setEstado('Listo.');
-          }catch(e){
-            console.error(e);
-            toast('Error actualizando caja');
-            setEstado('Error.');
-          }
-        };
-      }
-    }
-
     tr.querySelector('[data-act="dec"]').onclick = async ()=>{
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
@@ -775,10 +749,10 @@ async function refreshCajasModalTable(){
     };
 
     tr.querySelector('[data-act="ajuste"]').onclick = async ()=>{
-      const v = prompt(`Ajuste stock en ${c.nombre}\nNuevo stock:`, String(unidades));
+      const v = prompt(`Ajuste stock en ${c.nombre}\nNuevo stock:`, String(c.unidades));
       if(v === null) return;
-      const nuevo = Math.max(0, safeNum(v, unidades));
-      const delta = nuevo - unidades;
+      const nuevo = Math.max(0, safeNum(v, c.unidades));
+      const delta = nuevo - c.unidades;
       if(delta === 0) return toast('Sin cambios');
 
       const nota = prompt('Nota:', 'Ajuste') || 'Ajuste';
@@ -795,9 +769,50 @@ async function refreshCajasModalTable(){
       toast('OK');
     };
 
+    if(c.id !== '_SIN_CAJA_'){
+      const btnDel = tr.querySelector('[data-act="del"]');
+      if(btnDel){
+        btnDel.onclick = async ()=>{
+          await deleteCajaSeguro(c.id);
+          await loadCajas();
+          await openCajasModal(it, true);
+        };
+      }
+
+      const btnEdit = tr.querySelector('[data-act="editBox"]');
+      if(btnEdit){
+        btnEdit.onclick = async ()=>{
+          const nuevoNombre = prompt('Nombre de la caja:', c.nombre || '');
+          if(nuevoNombre === null) return;
+
+          const nuevaUbic = prompt('Ubicación (ej: Z1, Estante 2, Zona A):', c.ubicacion || '');
+          if(nuevaUbic === null) return;
+
+          try{
+            setEstado('Actualizando caja...');
+            await updateDoc(cajaDoc(state.bodegaId, c.id), {
+              nombre: (nuevoNombre || '').trim(),
+              ubicacion: (nuevaUbic || '').trim(),
+              actualizadoEn: serverTimestamp()
+            });
+
+            toast('Caja actualizada ✅');
+            await loadCajas();
+            await openCajasModal(it, true);
+            setEstado('Listo.');
+          }catch(e){
+            console.error(e);
+            toast('Error actualizando caja');
+            setEstado('Error.');
+          }
+        };
+      }
+    }
+
     tb.appendChild(tr);
   }
 }
+
 
 /* Core: delta por caja + total */
 async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota }){
