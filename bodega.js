@@ -620,7 +620,7 @@ function renderItemCard(it){
 
     <div class="bottom">
       <div>
-        ${it._ubicLine ? `<div class="mini">${escapeHtml(it._ubicLine)}</div>` : ``}
+        ${it._ubicLine ? `<div class="mini" style="color:var(--ink); font-weight:900;">${escapeHtml(it._ubicLine)}</div>` : ``}
         <div class="mini">STOCK TOTAL</div>
         <div class="qty">
           <span>${total}</span>
