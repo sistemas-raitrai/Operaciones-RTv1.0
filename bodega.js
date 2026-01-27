@@ -64,6 +64,15 @@ function sumVariants(obj){
   }
   return s;
 }
+function formatVariants(obj){
+  const v = (obj && typeof obj === 'object') ? obj : {};
+  const parts = Object.keys(v)
+    .sort((a,b)=> String(a).localeCompare(String(b), 'es'))
+    .map(k => `${k}:${safeNum(v[k],0)}`)
+    .filter(s => !s.endsWith(':0'));
+  return parts.join(' · ');
+}
+
 function setEstado(msg){
   $('lblEstado').textContent = msg || 'Listo.';
 }
@@ -491,6 +500,10 @@ function renderItemCard(it){
           <span class="badge">MÍN: ${minimo}</span>
           <span class="badge">TOTAL: ${total}</span>
         </div>
+        ${it.variantesTotal ? `<div class="muted" style="font-size:12px; font-weight:800; margin-top:6px;">
+          Tallas: ${escapeHtml(formatVariants(it.variantesTotal))}
+        </div>` : ''}
+
       </div>
     </div>
 
@@ -713,28 +726,34 @@ async function refreshCajasModalTable(){
     const s = state.modal.stocksByCaja.get(c.id);
     const unidades = safeNum(s?.unidades, 0);
     if(unidades > 0){
+      const vars = (s?.variantes && typeof s.variantes === 'object') ? s.variantes : null;
       filas.push({
         id: c.id,
         nombre: c.nombre || '(sin nombre)',
         ubicacion: c.ubicacion || '',
-        unidades
+        unidades,
+        variantes: vars
       });
     }
   }
+
 
   // 2) “Sin caja” SOLO si tiene stock > 0
   {
     const s = state.modal.stocksByCaja.get('_SIN_CAJA_');
     const unidades = safeNum(s?.unidades, 0);
     if(unidades > 0){
+      const vars = (s?.variantes && typeof s.variantes === 'object') ? s.variantes : null;
       filas.push({
         id: '_SIN_CAJA_',
         nombre: '(sin caja)',
         ubicacion: '',
-        unidades
+        unidades,
+        variantes: vars
       });
     }
   }
+
 
   // 3) Si no hay nada con stock, mostramos mensaje (en vez de listado con 0)
   if(filas.length === 0){
@@ -753,7 +772,12 @@ async function refreshCajasModalTable(){
     tr.innerHTML = `
       <td style="font-weight:900;">${escapeHtml(c.nombre||'')}</td>
       <td class="muted">${escapeHtml(c.ubicacion||'')}</td>
-      <td style="font-weight:900;">${c.unidades}</td>
+      <td style="font-weight:900;">
+        <div>${c.unidades}</div>
+        ${c.variantes ? `<div class="muted" style="font-weight:700; font-size:12px; margin-top:2px;">
+          ${escapeHtml(formatVariants(c.variantes))}
+        </div>` : ''}
+      </td>
       <td>
         <button class="btn small" data-act="dec">−1</button>
         <button class="btn small" data-act="inc">+1</button>
@@ -944,7 +968,25 @@ async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota, var
     }
 
 
-    tx.update(itRef, { unidadesTotal: totalNew, actualizadoEn: serverTimestamp() });
+    const itUpdate = { unidadesTotal: totalNew, actualizadoEn: serverTimestamp() };
+
+    if(variante){
+      const key = U(variante);
+    
+      const current = (itData.variantesTotal && typeof itData.variantesTotal === 'object')
+        ? { ...itData.variantesTotal }
+        : {};
+    
+      const oldVal = safeNum(current[key], 0);
+      const newVal = oldVal + delta;
+      if(newVal < 0) throw new Error('NEG_ITEM_VAR');
+    
+      current[key] = newVal;
+      itUpdate.variantesTotal = current;
+    }
+    
+    tx.update(itRef, itUpdate);
+
 
     const mvRef = doc(movsCol(bodegaId, itemId, _cajaId));
     tx.set(mvRef, {
