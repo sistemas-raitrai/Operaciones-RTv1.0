@@ -611,7 +611,6 @@ function renderItemCard(it){
         ${(it._variantsLine || it._ubicLine) ? `
           <div class="muted" style="margin-top:6px; font-size:12px; line-height:1.15;">
             ${it._variantsLine ? `<div>${escapeHtml(it._variantsLine)}</div>` : ``}
-            ${it._ubicLine ? `<div style="margin-top:2px;">${escapeHtml(it._ubicLine)}</div>` : ``}
           </div>
         ` : ``}
 
@@ -621,6 +620,7 @@ function renderItemCard(it){
 
     <div class="bottom">
       <div>
+        ${it._ubicLine ? `<div class="mini">${escapeHtml(it._ubicLine)}</div>` : ``}
         <div class="mini">STOCK TOTAL</div>
         <div class="qty">
           <span>${total}</span>
