@@ -1,12 +1,4 @@
-// bodega.js (COMPLETO)
-// Inventario por ítem (total) + desglose por CAJAS con UBICACIÓN
-// Firestore:
-// - bodegas/{bodegaId}
-// - bodegas/{bodegaId}/cajas/{cajaId} {nombre, ubicacion}
-// - bodegas/{bodegaId}/items/{itemId} {unidadesTotal, minimo, ...}
-// - bodegas/{bodegaId}/items/{itemId}/stocks/{cajaId} {cajaId, unidades, actualizadoEn}
-// - .../movimientos/{movId} {ts, delta, stock, by, nota}
-
+// bodega.js
 import { app, db } from './firebase-init.js';
 
 import {
