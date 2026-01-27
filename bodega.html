@@ -472,7 +472,10 @@
         <div class="toolbar">
           <div class="row">
             <button id="btnRefrescar" class="btn">Actualizar</button>
-            <button id="btnVerMovimientos" class="btn ghost">Ver movimientos</button>
+            
+            <button id="btnVerMovimientos" class="btn">Ver movimientos</button>
+            
+            <button id="btnExportMov" class="btn">Exportar movimientos</button>
           </div>
           <div class="row">
             <span id="lblEstado" class="mini muted"></span>
@@ -694,5 +697,6 @@
   <div id="toast" class="toast"></div>
 
   <script type="module" src="./bodega.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </body>
 </html>
