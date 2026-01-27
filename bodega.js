@@ -751,7 +751,7 @@ function renderItemCard(it){
       </div>
 
       <div class="row" style="justify-content:flex-end;">
-        <button class="btn small" data-act="cajas">Cajas</button>
+        <button class="btn small" data-act="cajas">Detalle</button>
         <button class="btn small" data-act="editar">Editar</button>
         <button class="btn small danger" data-act="borrar">Borrar</button>
       </div>
