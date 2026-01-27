@@ -128,6 +128,10 @@ function movsCol(bodegaId, itemId, cajaId){
   return collection(db, COL_BODEGAS, bodegaId, 'items', itemId, 'stocks', cajaId, 'movimientos');
 }
 
+function movsBodegaCol(bodegaId){
+  return collection(db, COL_BODEGAS, bodegaId, 'movimientos');
+}
+
 /* State */
 const state = {
   user: null,
@@ -1175,7 +1179,7 @@ async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota, var
     
     tx.update(itRef, itUpdate);
 
-
+    // 1) Movimiento “por caja” (como ya lo tenías)
     const mvRef = doc(movsCol(bodegaId, itemId, _cajaId));
     tx.set(mvRef, {
       ts: serverTimestamp(),
@@ -1184,11 +1188,54 @@ async function applyDeltaToItemCaja({ bodegaId, itemId, cajaId, delta, nota, var
       by: state.user?.email || null,
       nota: nota || ''
     });
+    
+    // 2) ✅ NUEVO: Movimiento “rápido” a nivel de bodega (1 query para últimos 200)
+    const cajaMeta = (_cajaId === '_SIN_CAJA_')
+      ? { nombre: '(sin caja)', ubicacion: '' }
+      : (state.cajasById.get(_cajaId) || { nombre:'(caja)', ubicacion:'' });
+    
+    const mvFastRef = doc(movsBodegaCol(bodegaId)); // id random
+    tx.set(mvFastRef, {
+      ts: serverTimestamp(),
+      delta,
+      stock: boxNew,
+      by: state.user?.email || null,
+      nota: nota || '',
+    
+      // metadata para render sin joins
+      itemId,
+      itemNombre: itData.nombre || '(sin nombre)',
+      cajaId: _cajaId,
+      cajaNombre: cajaMeta.nombre || '(caja)',
+      cajaUbic: normalizeUbic(cajaMeta.ubicacion || '')
+    });
   });
 }
 
 /* Movimientos (últimos) */
 async function fetchMovimientosUltimos(bodegaId, maxItems=200){
+  // ✅ 1) RÁPIDO: si existe bodegas/{bodegaId}/movimientos => 1 sola query
+  try{
+    const fastSnap = await getDocs(
+      query(movsBodegaCol(bodegaId), orderBy('ts','desc'), limit(maxItems))
+    );
+
+    if(!fastSnap.empty){
+      return fastSnap.docs.map(d=>{
+        const x = d.data() || {};
+        return {
+          ...x,
+          _itemNombre: x.itemNombre || '(sin nombre)',
+          _cajaNombre: x.cajaNombre || '(caja)',
+          _cajaUbic:   displayUbic(x.cajaUbic || '') // ✅ Z1 -> HUECHURABA también aquí
+        };
+      });
+    }
+  }catch(e){
+    console.warn('[BODEGA] fast movimientos falló, uso fallback legacy', e);
+  }
+
+  // ✅ 2) FALLBACK LEGACY (tu método antiguo) — más lento, pero mantiene historial viejo
   const itemsSnap = await getDocs(query(itemsCol(bodegaId), orderBy('nombre','asc')));
   const moves = [];
 
@@ -1200,16 +1247,20 @@ async function fetchMovimientosUltimos(bodegaId, maxItems=200){
   for (const it of itemsSnap.docs){
     const itData = it.data() || {};
     const stSnap = await getDocs(query(stocksCol(bodegaId, it.id)));
+
     for(const st of stSnap.docs){
       const cajaId = st.id;
-      const ms = await getDocs(query(movsCol(bodegaId, it.id, cajaId), orderBy('ts','desc'), limit(10)));
+
+      // 🔥 TIP: baja de 10 a 3 si quieres acelerar el fallback (histórico antiguo)
+      const ms = await getDocs(query(movsCol(bodegaId, it.id, cajaId), orderBy('ts','desc'), limit(3)));
+
       const cajaMeta = cajasMap.get(cajaId) || {};
       ms.forEach(d=>{
         moves.push({
           ...d.data(),
           _itemNombre: itData.nombre || '(sin nombre)',
           _cajaNombre: cajaMeta.nombre || '(caja)',
-          _cajaUbic: cajaMeta.ubicacion || ''
+          _cajaUbic: displayUbic(cajaMeta.ubicacion || '') // ✅ Z1 -> HUECHURABA
         });
       });
     }
@@ -1243,7 +1294,7 @@ function renderMovimientos(moves){
       <td>${escapeHtml(fecha)}</td>
       <td>${escapeHtml(m._itemNombre || '')}</td>
       <td>${escapeHtml(m._cajaNombre || '')}</td>
-      <td class="muted">${escapeHtml(m._cajaUbic || '')}</td>
+      <td class="muted">${escapeHtml(displayUbic(m._cajaUbic || ''))}</td>
       <td style="font-weight:900; ${delta<0?'color:#b91c1c':''} ${delta>0?'color:#166534':''}">
         ${delta>0?'+':''}${delta}
       </td>
