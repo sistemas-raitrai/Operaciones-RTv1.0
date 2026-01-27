@@ -582,9 +582,15 @@
   <div id="movBackdrop" class="backdrop">
     <div class="modal">
       <div class="modalHead">
-        <b>Movimientos (últimos 200)</b>
-        <button id="btnCerrarMov" class="btn small">Cerrar</button>
+        <b>Movimientos</b>
+      
+        <div class="row" style="justify-content:flex-end;">
+          <span id="movEstado" class="mini muted" style="margin-right:8px;"></span>
+          <button id="btnMovMas" class="btn small">Ver más</button>
+          <button id="btnCerrarMov" class="btn small">Cerrar</button>
+        </div>
       </div>
+
       <div class="modalBody">
         <table class="table">
           <thead>
