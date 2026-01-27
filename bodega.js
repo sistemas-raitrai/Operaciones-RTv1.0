@@ -1335,14 +1335,27 @@ async function cargarMasMovimientos({ pageSize=50, reset=false } = {}){
 
     // ✅ 1 sola query por página
     const snap = await getDocs(query(movsBodegaCol(state.bodegaId), ...qParts));
-
+    
     if(snap.empty){
+    
+      // ✅ FALLBACK: si es la primera carga (reset) y la colección rápida está vacía,
+      // mostramos 10 movimientos usando el método legacy (más lento, pero trae histórico).
       if(reset){
-        $('movTbody').innerHTML = '<tr><td colspan="8" class="muted">Sin movimientos.</td></tr>';
+        $('movEstado').textContent = 'No hay movimientos rápidos aún. Cargando histórico...';
+    
+        const legacy = await fetchMovimientosUltimos(state.bodegaId, pageSize); // pageSize=10 en la carga inicial
+        renderMovimientos(legacy);
+    
+        // en legacy no paginamos (porque sería muy lento). Ocultamos "Ver más".
+        state.mov.done = true;
+        $('btnMovMas').style.display = 'none';
+        $('movEstado').textContent = legacy.length ? `Mostrando histórico: ${legacy.length}` : 'Sin movimientos.';
+      }else{
+        state.mov.done = true;
+        $('movEstado').textContent = 'Fin.';
+        $('btnMovMas').style.display = 'none';
       }
-      state.mov.done = true;
-      $('movEstado').textContent = 'Fin.';
-      $('btnMovMas').style.display = 'none';
+    
       return;
     }
 
