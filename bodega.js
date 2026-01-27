@@ -77,6 +77,17 @@ function escapeHtml(str){
     .replaceAll("'","&#039;");
 }
 
+/* ======================
+   TALLAS / VARIANTES
+   - Devuelve string (ej "M") o "" si stock general
+   - Devuelve null si el usuario cancela
+   ====================== */
+function pedirTalla({ titulo='Talla / Variante', sugerida='M' } = {}){
+  const v = prompt(`${titulo} (ej: M, L, XL, XXL)\n(Deja vacío para stock general):`, sugerida);
+  if(v === null) return null;      // canceló
+  return (v || '').trim();         // '' => stock general
+}
+
 /* Paths */
 const COL_BODEGAS = 'bodegas';
 
@@ -337,14 +348,11 @@ $('btnCrearItem').addEventListener('click', async ()=>{
       const targetCajaId = cajaId || '_SIN_CAJA_';
     
       // ✅ Preguntar talla SOLO si hay unidades iniciales
-      const tallaInit = prompt(
-        'Talla / Variante para la CARGA INICIAL (ej: M, L, XL)\n' +
-        '(Deja vacío para stock general):',
-        'M'
-      );
-      if(tallaInit === null) throw new Error('CANCEL_INIT'); // cancela todo el guardado
-    
-      const key = (tallaInit || '').trim();
+      const tallaInit = pedirTalla({ titulo:'Carga inicial · Talla / Variante', sugerida:'M' });
+      if(tallaInit === null) throw new Error('CANCEL_INIT'); // cancela TODO el guardado
+      
+      const key = (tallaInit || '').trim(); // '' => stock general
+      
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: itRef.id,
@@ -353,6 +361,7 @@ $('btnCrearItem').addEventListener('click', async ()=>{
         nota: key ? `Carga inicial (${U(key)})` : 'Carga inicial',
         variante: key ? U(key) : null
       });
+
     }
 
 
@@ -743,12 +752,6 @@ async function refreshCajasModalTable(){
 
   // 4) Orden por nombre
   filas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
-
-  function pedirTalla(){
-    const v = prompt('Talla / Variante (ej: M, L, XL, XXL)\n(Deja vacío para stock general):', 'M');
-    if(v === null) return null;
-    return (v || '').trim();
-  }
 
   // 5) Render + acciones (mismas acciones que ya tenías)
   for(const c of filas){
