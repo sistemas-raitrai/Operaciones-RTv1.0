@@ -541,6 +541,81 @@ function wireFilters(){
   });
 }
 
+// ======================
+// BUSCADOR AVANZADO (cards)
+// - Busca en TODO lo visible de la card
+// - "," = AND (Y)
+// - "." = OR  (O)
+// Ej:
+//   "huechuraba, pulseras" => debe contener huechuraba Y pulseras
+//   "pulseras.huechuraba"  => pulseras O huechuraba
+//   "huechuraba, pulseras.nfc" => huechuraba Y (pulseras O nfc)
+// ======================
+
+function buildCardHaystack(it){
+  const total = safeNum(it?.unidadesTotal, 0);
+  const minimo = safeNum(it?.minimo, 3);
+
+  // Todo lo que puede aparecer (o ser relevante) en la card
+  const parts = [
+    it?.nombre || '',
+    it?.descripcion || '',
+    it?._variantsLine || '',
+    it?._ubicLine || '',
+    // badges / números visibles
+    String(total),
+    String(minimo),
+    `TOTAL ${total}`,
+    `MIN ${minimo}`,
+    `MÍN ${minimo}`,
+    // status textual (por si buscas "bajo", "stock 0", etc.)
+    (total === 0) ? 'STOCK 0' : (total <= minimo ? 'BAJO' : 'OK')
+  ];
+
+  return parts.join(' · ').toLowerCase();
+}
+
+/**
+ * Parse:
+ *  - split por "," => AND clauses
+ *  - dentro de cada clause, split por "." => OR terms
+ * Retorna: Array< Array<string> >
+ */
+function parseSearch(qRaw){
+  const q = String(qRaw || '').toLowerCase().trim();
+  if(!q) return [];
+
+  // AND groups
+  const andGroups = q
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(group => {
+      // OR terms
+      const ors = group
+        .split('.')
+        .map(s => s.trim())
+        .filter(Boolean);
+      return ors;
+    })
+    .filter(g => g.length);
+
+  return andGroups;
+}
+
+function matchesAdvancedSearch(it, qRaw){
+  const andGroups = parseSearch(qRaw);
+  if(andGroups.length === 0) return true;
+
+  const hay = buildCardHaystack(it);
+
+  // AND: todas las clausulas deben cumplirse
+  // OR: dentro de cada clausula, basta con 1 término
+  return andGroups.every(orTerms => {
+    return orTerms.some(term => hay.includes(term));
+  });
+}
+
 function renderItems(){
   const q = $('txtSearch').value.trim().toLowerCase();
   const f = $('selFiltroStock').value;
@@ -551,12 +626,9 @@ function renderItems(){
   let items = [...state.items];
 
   if(q){
-    items = items.filter(it=>{
-      const a = (it.nombre || '').toLowerCase();
-      const b = (it.descripcion || '').toLowerCase();
-      return a.includes(q) || b.includes(q);
-    });
+    items = items.filter(it => matchesAdvancedSearch(it, q));
   }
+
 
   if(f === 'low'){
     items = items.filter(it=>{
