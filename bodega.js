@@ -999,17 +999,22 @@ async function refreshCajasModalTable(){
         btnEdit.onclick = async ()=>{
           const nuevoNombre = prompt('Nombre de la caja:', c.nombre || '');
           if(nuevoNombre === null) return;
-
-          const nuevaUbic = prompt('Ubicación (HUECHURABA / POCURO / OFICINA):', displayUbic(c.ubicacion) || 'HUECHURABA');
+      
+          const nuevaUbic = prompt(
+            'Ubicación (HUECHURABA / POCURO / OFICINA):',
+            displayUbic(c.ubicacion) || 'HUECHURABA'
+          );
           if(nuevaUbic === null) return;
-          
-          await updateDoc(cajaDoc(state.bodegaId, c.id), {
-            nombre: (nuevoNombre || '').trim(),
-            ubicacion: normalizeUbic(nuevaUbic),
-            actualizadoEn: serverTimestamp()
-          });
-
-
+      
+          try{
+            setEstado('Actualizando caja...');
+      
+            await updateDoc(cajaDoc(state.bodegaId, c.id), {
+              nombre: (nuevoNombre || '').trim(),
+              ubicacion: normalizeUbic(nuevaUbic),
+              actualizadoEn: serverTimestamp()
+            });
+      
             toast('Caja actualizada ✅');
             await loadCajas();
             await openCajasModal(it, true);
@@ -1021,6 +1026,7 @@ async function refreshCajasModalTable(){
           }
         };
       }
+
     }
 
     tb.appendChild(tr);
