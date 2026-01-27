@@ -148,8 +148,8 @@ const state = {
     item: null,       // item activo en modal cajas
     stocks: [],       // [{cajaId, unidades}]
     stocksByCaja: new Map(),
-  }
-
+  },
+  
   mov: { lastDoc:null, done:false, loading:false }  
 };
 
