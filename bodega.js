@@ -133,6 +133,28 @@ function movsBodegaCol(bodegaId){
   return collection(db, COL_BODEGAS, bodegaId, 'movimientos');
 }
 
+function buildEventoPayload({ tipo, refId='', itemId='', itemNombre='', cajaId='', cajaNombre='', cajaUbic='', antes=null, despues=null, nota='' }){
+  return {
+    ts: serverTimestamp(),
+    tipo: tipo || 'EVENTO',
+    refId: refId || '',
+    itemId: itemId || '',
+    itemNombre: itemNombre || '',
+    cajaId: cajaId || '',
+    cajaNombre: cajaNombre || '',
+    cajaUbic: normalizeUbic(cajaUbic || ''),
+    antes: (antes === undefined ? null : antes),
+    despues: (despues === undefined ? null : despues),
+    by: state.user?.email || null,
+    nota: nota || ''
+  };
+}
+
+async function logEventoBodega(bodegaId, payload){
+  // doc random
+  await setDoc(doc(movsBodegaCol(bodegaId)), payload);
+}
+
 /* State */
 const state = {
   user: null,
@@ -359,6 +381,19 @@ $('btnCrearItem').addEventListener('click', async ()=>{
       creadoPor: state.user?.email || null,
       actualizadoEn: serverTimestamp()
     });
+
+    // ✅ LOG: creación de ítem
+    await logEventoBodega(state.bodegaId, buildEventoPayload({
+      tipo: 'ITEM_CREATE',
+      itemId: itRef.id,
+      itemNombre: nombre,
+      cajaId: cajaId || '',
+      cajaNombre: cajaNueva ? cajaNueva : (state.cajasById.get(cajaId||'')?.nombre || ''),
+      cajaUbic: cajaUbic || '',
+      despues: { nombre, descripcion: desc||'', minimo, unidadesInit },
+      nota: 'Creación de ítem'
+    }));
+
 
     if(file){
       const path = `bodegas/${state.bodegaId}/items/${itRef.id}/${Date.now()}_${file.name}`;
@@ -742,14 +777,37 @@ async function editItem(it){
   const minimo = prompt('Mínimo (alerta):', String(safeNum(it.minimo,3)));
   if(minimo === null) return;
 
+  const antes = {
+    nombre: it.nombre || '',
+    descripcion: it.descripcion || '',
+    minimo: safeNum(it.minimo, 3)
+  };
+
+  const despues = {
+    nombre: nombre.trim(),
+    descripcion: desc.trim(),
+    minimo: Math.max(0, safeNum(minimo, 3))
+  };
+
   try{
     setEstado('Actualizando ítem...');
+
     await updateDoc(itemDoc(state.bodegaId, it.id), {
-      nombre: nombre.trim(),
-      descripcion: desc.trim(),
-      minimo: Math.max(0, safeNum(minimo, 3)),
+      nombre: despues.nombre,
+      descripcion: despues.descripcion,
+      minimo: despues.minimo,
       actualizadoEn: serverTimestamp()
     });
+
+    // ✅ LOG (DENTRO del try)
+    await logEventoBodega(state.bodegaId, buildEventoPayload({
+      tipo: 'ITEM_EDIT',
+      itemId: it.id,
+      itemNombre: despues.nombre,
+      antes,
+      despues,
+      nota: 'Edición de ítem'
+    }));
 
     toast('Ítem actualizado ✅');
     await loadItems();
@@ -769,13 +827,27 @@ async function deleteItem(it){
 
   try{
     setEstado('Borrando ítem...');
-
+  
+    // ✅ LOG (antes de borrar)
+    await logEventoBodega(state.bodegaId, buildEventoPayload({
+      tipo: 'ITEM_DELETE',
+      itemId: it.id,
+      itemNombre: it.nombre || '',
+      antes: {
+        nombre: it.nombre || '',
+        descripcion: it.descripcion || '',
+        minimo: safeNum(it.minimo,3),
+        unidadesTotal: safeNum(it.unidadesTotal,0)
+      },
+      nota: 'Borrado de ítem'
+    }));
+  
     if(it.fotoPath){
       try{ await deleteObject(sRef(storage, it.fotoPath)); }catch(e){}
     }
-
+  
     await deleteDoc(itemDoc(state.bodegaId, it.id));
-
+  
     toast('Ítem borrado.');
     await loadItems();
     setEstado('Listo.');
