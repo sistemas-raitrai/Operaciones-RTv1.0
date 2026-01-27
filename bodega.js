@@ -589,6 +589,28 @@ function wireFilters(){
     await cargarMasMovimientos({ pageSize: 50, reset: false });
   };
 
+    // ✅ Exportar inventario (lo que está filtrado/buscado en cards)
+    $('btnExportInv').onclick = async ()=>{
+      try{
+        if(!state.bodegaId) return;
+  
+        // Asegura que variantes/ubicaciones estén listas
+        // (si ya cargaste items recién, esto será rápido)
+        setEstado('Preparando exportación...');
+        toast('Generando Excel...');
+  
+        exportarInventarioExcelFiltrado();
+  
+        setEstado('Listo.');
+        toast('Excel descargado ✅');
+      }catch(e){
+        console.error(e);
+        setEstado('Error exportando.');
+        toast('Error exportando inventario.');
+      }
+    };
+
+
     $('btnExportMov').onclick = async ()=>{
     if(!state.bodegaId) return;
 
@@ -1515,6 +1537,110 @@ function appendMovimientos(moves){
     tb.appendChild(tr);
   }
 }
+
+/* =========================================================
+   EXPORT INVENTARIO (CARDS)
+   - Exporta SOLO lo que se ve según buscador + filtro stock
+   - Incluye: nombre, desc, ubicaciones, variantes, min, total, estado
+   Requiere: XLSX global
+   ========================================================= */
+
+function getItemsFiltradosActuales(){
+  const q = $('txtSearch').value.trim().toLowerCase();
+  const f = $('selFiltroStock').value;
+
+  let items = [...state.items];
+
+  // mismo criterio que renderItems()
+  if(q){
+    items = items.filter(it => matchesAdvancedSearch(it, q));
+  }
+
+  if(f === 'low'){
+    items = items.filter(it=>{
+      const total = safeNum(it.unidadesTotal,0);
+      const min = safeNum(it.minimo,3);
+      return total <= min && total > 0;
+    });
+  }else if(f === 'zero'){
+    items = items.filter(it=> safeNum(it.unidadesTotal,0) === 0);
+  }
+
+  return items;
+}
+
+function estadoStock(it){
+  const total = safeNum(it.unidadesTotal,0);
+  const minimo = safeNum(it.minimo,3);
+  if(total === 0) return 'STOCK 0';
+  if(total <= minimo) return 'BAJO';
+  return 'OK';
+}
+
+function exportarInventarioExcelFiltrado(){
+  if(typeof XLSX === 'undefined'){
+    throw new Error('XLSX no está cargado (falta script CDN).');
+  }
+
+  const items = getItemsFiltradosActuales();
+
+  // Encabezados
+  const rows = [];
+  rows.push([
+    'BodegaId',
+    'ItemId',
+    'Nombre',
+    'Descripción',
+    'Ubicación(es)',
+    'Variantes (resumen)',
+    'Mínimo',
+    'Stock Total',
+    'Estado'
+  ]);
+
+  for(const it of items){
+    rows.push([
+      state.bodegaId || '',
+      it.id || '',
+      it.nombre || '',
+      it.descripcion || '',
+      it._ubicLine || '',         // ya viene normalizado (Z1->HUECHURABA)
+      it._variantsLine || '',     // "L:50 · M:40 ..."
+      safeNum(it.minimo,3),
+      safeNum(it.unidadesTotal,0),
+      estadoStock(it)
+    ]);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // ancho columnas
+  ws['!cols'] = [
+    { wch: 18 }, // BodegaId
+    { wch: 18 }, // ItemId
+    { wch: 30 }, // Nombre
+    { wch: 40 }, // Desc
+    { wch: 20 }, // Ubic
+    { wch: 28 }, // Variantes
+    { wch: 10 }, // Min
+    { wch: 12 }, // Total
+    { wch: 10 }  // Estado
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+
+  const d = new Date();
+  const pad = (n)=> String(n).padStart(2,'0');
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+
+  // Nombre incluye filtro actual (opcional)
+  const filtro = $('selFiltroStock')?.value || 'all';
+  const fname = `Inventario_${state.bodegaId}_${filtro}_${stamp}.xlsx`;
+
+  XLSX.writeFile(wb, fname);
+}
+
 
 /* =========================================================
    EXPORTAR MOVIMIENTOS A EXCEL (TODOS)
