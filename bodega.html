@@ -419,7 +419,7 @@
   <div id="loginView" class="loginWrap">
     <div class="card loginCard">
       <h2>Ingreso</h2>
-      <p>Acceso con email y contraseña (Firebase Auth).</p>
+      <p>Acceso con email y contraseña.</p>
 
       <div class="row">
         <div class="field">
@@ -520,6 +520,10 @@
           <div class="field" style="min-width:140px;">
             <label>Mínimo (alerta)</label>
             <input id="itMinimo" type="number" min="0" step="1" value="3" />
+          </div>
+          <div class="field" style="min-width:140px;">
+            <label>Talla o Variante (carga inicial)</label>
+            <input id="itVariante" type="text" placeholder="Ej: M, L, XL (vacío = general)" />
           </div>
         </div>
 
@@ -634,6 +638,11 @@
           <div class="field" style="min-width:180px;">
             <label>Stock inicial por caja</label>
             <input id="cxStockInicial" type="number" min="0" step="1" value="50" />
+          </div>
+
+          <div class="field" style="min-width:220px;">
+            <label>Talla / Variante (stock inicial)</label>
+            <input id="cxVarianteMasiva" type="text" placeholder="Ej: M, L, XL (vacío = general)" />
           </div>
         </div>
 
