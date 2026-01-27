@@ -80,6 +80,75 @@ function escapeHtml(str){
 }
 
 /* ======================
+   ORDEN NATURAL (NUEVO)
+   - B2 antes que B11
+   - 1.2 antes que 1.11
+   - A10 después de A2
+   ====================== */
+
+// Convierte "B11" => ["B", 11]
+// Convierte "1.11" => [1, 11]
+// Convierte "A2-1.3" => ["A", 2, "-",
+function naturalTokens(str){
+  const s = String(str ?? '').trim();
+  if(!s) return [];
+
+  const out = [];
+  // separamos por grupos: números con decimales o texto
+  const re = /(\d+(?:\.\d+)*)|([^\d]+)/g;
+  let m;
+
+  while((m = re.exec(s))){
+    if(m[1]){
+      // "1.11" => [1, 11]
+      const parts = m[1].split('.').map(n => Number(n));
+      out.push(...parts);
+    }else if(m[2]){
+      out.push(m[2].toUpperCase());
+    }
+  }
+  return out;
+}
+
+function naturalCompare(a, b){
+  const A = naturalTokens(a);
+  const B = naturalTokens(b);
+
+  const n = Math.max(A.length, B.length);
+  for(let i=0; i<n; i++){
+    const x = A[i];
+    const y = B[i];
+
+    if(x === undefined) return -1;
+    if(y === undefined) return  1;
+
+    const xNum = typeof x === 'number' && Number.isFinite(x);
+    const yNum = typeof y === 'number' && Number.isFinite(y);
+
+    // número vs número
+    if(xNum && yNum){
+      if(x !== y) return x - y;
+      continue;
+    }
+
+    // texto vs texto
+    if(!xNum && !yNum){
+      const c = String(x).localeCompare(String(y), 'es');
+      if(c !== 0) return c;
+      continue;
+    }
+
+    // si uno es número y el otro texto:
+    // priorizamos texto primero (ej: "B" antes que 2 dentro del tokenizado)
+    if(xNum && !yNum) return 1;
+    if(!xNum && yNum) return -1;
+  }
+
+  // fallback por longitud original
+  return String(a ?? '').localeCompare(String(b ?? ''), 'es');
+}
+
+/* ======================
    UBICACIONES (NUEVO)
    - Z1 se considera legacy => HUECHURABA
    - UI muestra siempre HUECHURABA/POCURO/OFICINA
@@ -345,6 +414,10 @@ async function loadCajas(){
   // ✅ CARGA REAL DESDE FIRESTORE (esto antes NO se ejecutaba si faltaba cxSel)
   const snap = await getDocs(query(cajasCol(state.bodegaId), orderBy('nombre','asc')));
   state.cajas = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
+  
+  // ✅ Orden humano (B2 < B11, 1.2 < 1.11)
+  state.cajas.sort((a,b)=> naturalCompare(a?.nombre, b?.nombre));
+  
   for(const c of state.cajas) state.cajasById.set(c.id, c);
 
   // Opción "(sin caja)" SOLO para el select del formulario de ítem
@@ -1123,7 +1196,7 @@ async function refreshCajasModalTable(){
   }
 
   // 4) Orden por nombre
-  filas.sort((a,b)=> String(a.nombre||'').localeCompare(String(b.nombre||''), 'es'));
+  filas.sort((a,b)=> naturalCompare(a?.nombre, b?.nombre));
 
   // 5) Render + acciones (mismas acciones que ya tenías)
   for(const c of filas){
