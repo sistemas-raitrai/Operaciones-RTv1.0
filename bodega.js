@@ -588,6 +588,28 @@ function wireFilters(){
     if(!state.bodegaId) return;
     await cargarMasMovimientos({ pageSize: 50, reset: false });
   };
+
+    $('btnExportMov').onclick = async ()=>{
+    if(!state.bodegaId) return;
+
+    try{
+      // feedback UI
+      setEstado('Exportando movimientos...');
+      toast('Preparando Excel...');
+
+      await exportarMovimientosExcel({
+        bodegaId: state.bodegaId,
+        pageSize: 800 // puedes subir/bajar
+      });
+
+      setEstado('Listo.');
+      toast('Excel descargado ✅');
+    }catch(e){
+      console.error(e);
+      setEstado('Error exportando.');
+      toast('Error exportando Excel.');
+    }
+  };
 }
 
 
@@ -1492,6 +1514,109 @@ function appendMovimientos(moves){
     `;
     tb.appendChild(tr);
   }
+}
+
+/* =========================================================
+   EXPORTAR MOVIMIENTOS A EXCEL (TODOS)
+   - Fuente: bodegas/{bodegaId}/movimientos (colección rápida)
+   - Orden: ts desc
+   - Descarga: .xlsx
+   Requiere: XLSX global (cdn xlsx.full.min.js)
+   ========================================================= */
+
+function toIsoLocal(ts){
+  try{
+    const d = ts?.toDate ? ts.toDate() : (ts instanceof Date ? ts : null);
+    if(!d) return '';
+    // ISO sin milisegundos, en hora local
+    const pad = (n)=> String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }catch(e){
+    return '';
+  }
+}
+
+async function exportarMovimientosExcel({ bodegaId, pageSize=800 } = {}){
+  if(typeof XLSX === 'undefined'){
+    throw new Error('XLSX no está cargado (falta script CDN).');
+  }
+
+  const rows = [];
+
+  // header “humano” (ordenado y claro)
+  // Puedes agregar columnas si quieres: tipo, refId, antes/despues…
+  rows.push([
+    'Fecha',
+    'Ítem',
+    'Caja',
+    'Ubicación',
+    'Δ',
+    'Stock',
+    'Usuario',
+    'Nota',
+    'Tipo'
+  ]);
+
+  // Paginación para traer TODO (sin reventar memoria de una sola)
+  let last = null;
+  let total = 0;
+  let page = 0;
+
+  while(true){
+    page++;
+
+    const parts = [ orderBy('ts','desc'), limit(pageSize) ];
+    if(last) parts.splice(1, 0, startAfter(last));
+
+    const snap = await getDocs(query(movsBodegaCol(bodegaId), ...parts));
+    if(snap.empty) break;
+
+    last = snap.docs[snap.docs.length - 1];
+
+    for(const d of snap.docs){
+      const x = d.data() || {};
+      const fecha = toIsoLocal(x.ts);
+      const item  = x.itemNombre || '';
+      const caja  = x.cajaNombre || '';
+      const ubic  = displayUbic(x.cajaUbic || '');
+      const delta = safeNum(x.delta, 0);
+      const stock = safeNum(x.stock, 0);
+      const by    = x.by || '';
+      const nota  = x.nota || '';
+      const tipo  = x.tipo || 'MOV'; // si no existe, queda MOV
+
+      rows.push([fecha, item, caja, ubic, delta, stock, by, nota, tipo]);
+      total++;
+    }
+
+    // feedback liviano
+    setEstado(`Exportando... (${total} filas)`);
+  }
+
+  // Armar workbook
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+
+  // ancho columnas (opcional, mejora lectura)
+  ws['!cols'] = [
+    { wch: 20 }, // Fecha
+    { wch: 28 }, // Ítem
+    { wch: 16 }, // Caja
+    { wch: 14 }, // Ubicación
+    { wch: 8  }, // Δ
+    { wch: 10 }, // Stock
+    { wch: 22 }, // Usuario
+    { wch: 40 }, // Nota
+    { wch: 14 }  // Tipo
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Movimientos');
+
+  const stamp = new Date();
+  const pad = (n)=> String(n).padStart(2,'0');
+  const fname = `Movimientos_${bodegaId}_${stamp.getFullYear()}-${pad(stamp.getMonth()+1)}-${pad(stamp.getDate())}_${pad(stamp.getHours())}${pad(stamp.getMinutes())}.xlsx`;
+
+  XLSX.writeFile(wb, fname);
 }
 
 async function deleteCajaSeguro(cajaId){
