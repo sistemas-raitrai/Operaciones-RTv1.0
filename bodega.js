@@ -1053,7 +1053,7 @@ async function refreshCajasModalTable(){
       <td>
         <button class="btn small" data-act="dec">−1</button>
         <button class="btn small" data-act="inc">+1</button>
-        <button class="btn small" data-act="ajuste">Ajuste</button>
+        <button class="btn small" data-act="ajuste">Agregar cantidad o variante</button>
         ${c.id === '_SIN_CAJA_' ? '' : `<button class="btn small" data-act="editBox">Editar</button>`}
         ${c.id === '_SIN_CAJA_' ? '' : `<button class="btn small danger" data-act="del">Borrar</button>`}
       </td>
