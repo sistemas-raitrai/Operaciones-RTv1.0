@@ -87,6 +87,27 @@ function escapeHtml(str){
 }
 
 /* ======================
+   UBICACIONES (NUEVO)
+   - Z1 se considera legacy => HUECHURABA
+   - UI muestra siempre HUECHURABA/POCURO/OFICINA
+   - Al guardar, normalizamos
+   ====================== */
+const UBIC_OPTS = ['HUECHURABA','POCURO','OFICINA'];
+
+function normalizeUbic(v){
+  const x = U(v);
+  if(!x) return '';                 // vacío permitido en algunos casos
+  if(x === 'Z1') return 'HUECHURABA';// legacy
+  if(UBIC_OPTS.includes(x)) return x;
+  return x;                         // si viene algo raro, lo dejamos pero en mayúscula
+}
+
+function displayUbic(v){
+  const x = normalizeUbic(v);
+  return x || ''; // si no hay, mostramos vacío
+}
+
+/* ======================
    TALLAS / VARIANTES
    - Devuelve string (ej "M") o "" si stock general
    - Devuelve null si el usuario cancela
@@ -686,7 +707,7 @@ function wireCajasModal(){
     const prefijo = ( $('cxPrefijo').value || '' ).trim();
     const desde = safeNum($('cxDesde').value, 0);
     const hasta = safeNum($('cxHasta').value, 0);
-    const ubic = ( $('cxUbicMasivo').value || '' ).trim();
+    const ubic = normalizeUbic($('cxUbicMasivo')?.value || '');
     const stockInicial = Math.max(0, safeNum($('cxStockInicial').value, 0));
 
     if(!prefijo){ toast('Falta prefijo'); return; }
@@ -770,7 +791,7 @@ async function openCajasModal(it, keepOpen=false){
   $('cxPrefijo').value = 'A';
   $('cxDesde').value = '1';
   $('cxHasta').value = '30';
-  $('cxUbicMasivo').value = 'Z1';
+  $('cxUbicMasivo').value = 'HUECHURABA';
   $('cxStockInicial').value = '50';
 
   if(!keepOpen) $('cajasBackdrop').style.display = 'flex';
@@ -852,7 +873,7 @@ async function refreshCajasModalTable(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td style="font-weight:900;">${escapeHtml(c.nombre||'')}</td>
-      <td class="muted">${escapeHtml(c.ubicacion||'')}</td>
+      <td class="muted">${escapeHtml(displayUbic(c.ubicacion)||'')}</td>
       <td style="font-weight:900;">
         <div>${c.unidades}</div>
         ${c.variantes ? `<div class="muted" style="font-weight:700; font-size:12px; margin-top:2px;">
@@ -961,16 +982,15 @@ async function refreshCajasModalTable(){
           const nuevoNombre = prompt('Nombre de la caja:', c.nombre || '');
           if(nuevoNombre === null) return;
 
-          const nuevaUbic = prompt('Ubicación (ej: Z1, Estante 2, Zona A):', c.ubicacion || '');
+          const nuevaUbic = prompt('Ubicación (HUECHURABA / POCURO / OFICINA):', displayUbic(c.ubicacion) || 'HUECHURABA');
           if(nuevaUbic === null) return;
+          
+          await updateDoc(cajaDoc(state.bodegaId, c.id), {
+            nombre: (nuevoNombre || '').trim(),
+            ubicacion: normalizeUbic(nuevaUbic),
+            actualizadoEn: serverTimestamp()
+          });
 
-          try{
-            setEstado('Actualizando caja...');
-            await updateDoc(cajaDoc(state.bodegaId, c.id), {
-              nombre: (nuevoNombre || '').trim(),
-              ubicacion: (nuevaUbic || '').trim(),
-              actualizadoEn: serverTimestamp()
-            });
 
             toast('Caja actualizada ✅');
             await loadCajas();
