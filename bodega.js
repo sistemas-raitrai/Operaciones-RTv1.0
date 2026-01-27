@@ -110,6 +110,44 @@ function pedirTalla({ titulo='Talla / Variante', sugerida='M' } = {}){
   if(v === null) return null;      // canceló
   return (v || '').trim();         // '' => stock general
 }
+// ======================
+// VARIANTES DISPONIBLES POR CAJA (A)
+// - Solo variantes con stock > 0 en ESA caja
+// ======================
+function getVariantOptionsInBox(itemId, cajaId){
+  const s = state.modal.stocksByCaja.get(cajaId);
+  const vars = (s?.variantes && typeof s.variantes === 'object') ? s.variantes : null;
+  if(!vars) return [];
+
+  return Object.keys(vars)
+    .map(k => U(k))
+    .filter(k => safeNum(vars[k], 0) > 0)
+    .sort((a,b)=> a.localeCompare(b,'es'));
+}
+
+function boxHasVariants(itemId, cajaId){
+  return getVariantOptionsInBox(itemId, cajaId).length > 0;
+}
+
+// prompt simple para elegir 1 variante existente (solo caja actual)
+function pedirVarianteExistenteEnCaja({ itemId, cajaId, titulo='Elige variante (existente)' } = {}){
+  const opts = getVariantOptionsInBox(itemId, cajaId);
+  if(!opts.length) return null;
+
+  const msg = `${titulo}\n\nOpciones:\n- ${opts.join('\n- ')}\n\nEscribe EXACTO una opción:`;
+  const v = prompt(msg, opts[0] || '');
+  if(v === null) return null;
+
+  const key = U(v);
+  return opts.includes(key) ? key : null; // si escribió algo inválido => null
+}
+
+function pedirCantidad({ titulo='Cantidad', sugerida=0 } = {}){
+  const v = prompt(titulo, String(sugerida));
+  if(v === null) return null;
+  const n = Math.max(0, safeNum(v, 0));
+  return n;
+}
 
 /* Paths */
 const COL_BODEGAS = 'bodegas';
@@ -1094,26 +1132,42 @@ async function refreshCajasModalTable(){
           ${escapeHtml(formatVariants(c.variantes))}
         </div>` : ''}
       </td>
+
       <td>
         <button class="btn small" data-act="dec">−1</button>
         <button class="btn small" data-act="inc">+1</button>
-        <button class="btn small" data-act="ajuste">Agregar cantidad o variante</button>
+
+        <button class="btn small" data-act="add">Agregar</button>
+        <button class="btn small" data-act="rem">Retirar</button>
+
         ${c.id === '_SIN_CAJA_' ? '' : `<button class="btn small" data-act="editBox">Editar</button>`}
         ${c.id === '_SIN_CAJA_' ? '' : `<button class="btn small danger" data-act="del">Borrar</button>`}
       </td>
     `;
 
+    // +1 (rápido)
     tr.querySelector('[data-act="inc"]').onclick = async ()=>{
-      const talla = ($('cxVarianteAccion')?.value || '').trim(); // '' => general
-      if(talla === null) return; // canceló
+      const hasVars = boxHasVariants(it.id, c.id);
+    
+      let variante = null;
+      if(hasVars){
+        // A: solo variantes existentes en ESA caja (stock > 0)
+        const v = pedirVarianteExistenteEnCaja({
+          itemId: it.id,
+          cajaId: c.id,
+          titulo: `Agregar +1 en ${c.nombre} (elige variante)`
+        });
+        if(v === null) return; // canceló o inválida
+        variante = v;
+      }
     
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
         delta: +1,
-        nota: talla ? `+1 (${U(talla)})` : '+1',
-        variante: talla ? U(talla) : null
+        nota: variante ? `+1 (${variante})` : '+1',
+        variante
       });
     
       await loadItems();
@@ -1121,18 +1175,28 @@ async function refreshCajasModalTable(){
       toast('OK');
     };
 
-
+    // -1 (rápido)
     tr.querySelector('[data-act="dec"]').onclick = async ()=>{
-      const talla = pedirTalla();
-      if(talla === null) return; // canceló
+      const hasVars = boxHasVariants(it.id, c.id);
+    
+      let variante = null;
+      if(hasVars){
+        const v = pedirVarianteExistenteEnCaja({
+          itemId: it.id,
+          cajaId: c.id,
+          titulo: `Retirar −1 en ${c.nombre} (elige variante)`
+        });
+        if(v === null) return; // canceló o inválida
+        variante = v;
+      }
     
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
         delta: -1,
-        nota: talla ? `-1 (${U(talla)})` : '-1',
-        variante: talla || null
+        nota: variante ? `-1 (${variante})` : '-1',
+        variante
       });
     
       await loadItems();
@@ -1141,43 +1205,65 @@ async function refreshCajasModalTable(){
     };
 
 
-    tr.querySelector('[data-act="ajuste"]').onclick = async ()=>{
-      const talla = pedirTalla();
-      if(talla === null) return; // canceló
-    
-      // ✅ Para leer variantes reales necesitamos el stock real (no solo "c.unidades")
-      const s = state.modal.stocksByCaja.get(c.id);
-      const vars = (s?.variantes && typeof s.variantes === 'object') ? s.variantes : {};
-      const key = talla ? U(talla) : null;
-    
-      // si hay talla => ajustamos esa talla; si no => ajustamos total
-      const actual = key ? safeNum(vars[key], 0) : safeNum(s?.unidades, 0);
-    
-      const v = prompt(
-        key ? `Ajuste stock en ${c.nombre} · Talla ${key}\nNuevo stock:` : `Ajuste stock en ${c.nombre}\nNuevo stock:`,
-        String(actual)
-      );
-      if(v === null) return;
-    
-      const nuevo = Math.max(0, safeNum(v, actual));
-      const delta = nuevo - actual;
-      if(delta === 0) return toast('Sin cambios');
-    
-      const nota = prompt('Nota:', 'Ajuste') || 'Ajuste';
-    
+    // AGREGAR (masivo): pide cantidad; si hay variantes en la caja, permite escribir variante (default vacío).
+    tr.querySelector('[data-act="add"]').onclick = async ()=>{
+      const cant = pedirCantidad({ titulo: `Agregar en ${c.nombre}\nCantidad:`, sugerida: 0 });
+      if(cant === null) return;
+      if(cant <= 0) return toast('Cantidad 0 (sin cambios)');
+
+      const hasVars = boxHasVariants(it.id, c.id);
+
+      let variante = null;
+      if(hasVars){
+        // permite escribir (default vacío). si escribe, se normaliza.
+        const t = prompt(`Variante (deja vacío para GENERAL)\n\n(En esta caja existen: ${getVariantOptionsInBox(it.id, c.id).join(', ')})`, '');
+        if(t === null) return;
+        variante = t.trim() ? U(t) : null;
+      }
+
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: it.id,
         cajaId: c.id,
-        delta,
-        nota: key ? `${nota} (${key})` : nota,
-        variante: key || null
+        delta: +cant,
+        nota: variante ? `Agregar ${cant} (${variante})` : `Agregar ${cant}`,
+        variante
       });
-    
+
       await loadItems();
       await openCajasModal(it, true);
       toast('OK');
     };
+
+    // RETIRAR (masivo): pide cantidad; si hay variantes => selector SOLO con variantes existentes en ESA caja (stock>0).
+    tr.querySelector('[data-act="rem"]').onclick = async ()=>{
+      const cant = pedirCantidad({ titulo: `Retirar en ${c.nombre}\nCantidad:`, sugerida: 0 });
+      if(cant === null) return;
+      if(cant <= 0) return toast('Cantidad 0 (sin cambios)');
+
+      const hasVars = boxHasVariants(it.id, c.id);
+
+      let variante = null;
+      if(hasVars){
+        const v = pedirVarianteExistenteEnCaja({ itemId: it.id, cajaId: c.id, titulo: `Retirar en ${c.nombre} (elige variante)` });
+        if(v === null) return toast('Variante inválida/cancelado o sin stock por variante.');
+        variante = v;
+      }
+
+      await applyDeltaToItemCaja({
+        bodegaId: state.bodegaId,
+        itemId: it.id,
+        cajaId: c.id,
+        delta: -cant,
+        nota: variante ? `Retirar ${cant} (${variante})` : `Retirar ${cant}`,
+        variante
+      });
+
+      await loadItems();
+      await openCajasModal(it, true);
+      toast('OK');
+    };
+
 
 
     if(c.id !== '_SIN_CAJA_'){
