@@ -1026,7 +1026,6 @@ async function refreshCajasModalTable(){
           }
         };
       }
-
     }
 
     tb.appendChild(tr);
