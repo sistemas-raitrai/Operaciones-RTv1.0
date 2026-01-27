@@ -392,6 +392,80 @@ $('btnCrearItem').addEventListener('click', async ()=>{
   }
 });
 
+/* ======================
+   VARIANTES (RESUMEN UI)
+   - Calcula desglose total por ítem (sumando todas sus cajas)
+   ====================== */
+
+function mergeVariants(dst, src){
+  if(!src || typeof src !== 'object') return dst;
+  for(const k of Object.keys(src)){
+    const kk = U(k);
+    dst[kk] = safeNum(dst[kk], 0) + safeNum(src[k], 0);
+  }
+  return dst;
+}
+
+function formatVariantsLine({ variantesTotales, general=0 }){
+  const parts = [];
+
+  // Si existe stock "general" (sin variantes) lo mostramos como GEN
+  if(general > 0) parts.push(`GEN:${general}`);
+
+  // Orden alfabético por talla (L, M, S... y XXL etc.)
+  const keys = Object.keys(variantesTotales || {}).sort((a,b)=> a.localeCompare(b,'es'));
+  for(const k of keys){
+    const v = safeNum(variantesTotales[k], 0);
+    if(v > 0) parts.push(`${k}:${v}`);
+  }
+
+  return parts.join(' · ');
+}
+
+/** Carga stocks de CADA item para armar:
+ *  it._variantsLine  => "L:50 · M:40 · XL:48 · XXL:60"
+ *  it._variantsObj   => {L:50, M:40, ...}
+ *  it._generalUnits  => unidades sin variantes (GEN)
+ */
+async function hydrateVariantsForItems(){
+  if(!state.bodegaId) return;
+
+  // Ojo: esto hace 1 query por ítem (OK si son pocos/medios ítems).
+  // Si crece mucho, lo optimizamos con cache o cloud function.
+  await Promise.all(state.items.map(async (it)=>{
+    try{
+      const snap = await getDocs(stocksCol(state.bodegaId, it.id));
+
+      const variantesTotales = {};
+      let general = 0;
+
+      snap.forEach((d)=>{
+        const s = d.data() || {};
+
+        // si tiene variantes => sumamos esas variantes
+        if(s.variantes && typeof s.variantes === 'object'){
+          mergeVariants(variantesTotales, s.variantes);
+        }else{
+          // si NO tiene variantes => lo tratamos como stock general
+          general += safeNum(s.unidades, 0);
+        }
+      });
+
+      const line = formatVariantsLine({ variantesTotales, general });
+
+      it._variantsObj  = variantesTotales;
+      it._generalUnits = general;
+      it._variantsLine = line; // string listo para UI (puede quedar "")
+
+    }catch(e){
+      console.warn('[BODEGA] No pude hidratar variantes de item', it?.id, e);
+      it._variantsObj = {};
+      it._generalUnits = 0;
+      it._variantsLine = '';
+    }
+  }));
+}
+
 async function loadItems(){
   if(!state.bodegaId){
     $('itemsList').innerHTML = '';
@@ -401,6 +475,10 @@ async function loadItems(){
   setEstado('Cargando inventario...');
   const snap = await getDocs(query(itemsCol(state.bodegaId), orderBy('nombre','asc')));
   state.items = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
+
+  // ✅ NUEVO: traer desglose de variantes (para pintar en tarjeta)
+  setEstado('Cargando variantes...');
+  await hydrateVariantsForItems();
 
   renderItems();
   setEstado(`Listo · ${state.items.length} ítems`);
@@ -500,9 +578,12 @@ function renderItemCard(it){
           <span class="badge">MÍN: ${minimo}</span>
           <span class="badge">TOTAL: ${total}</span>
         </div>
-        ${it.variantesTotal ? `<div class="muted" style="font-size:12px; font-weight:800; margin-top:6px;">
-          Tallas: ${escapeHtml(formatVariants(it.variantesTotal))}
-        </div>` : ''}
+        
+        ${it._variantsLine ? `
+          <div class="muted" style="margin-top:6px; font-size:12px; line-height:1.15;">
+            ${escapeHtml(it._variantsLine)}
+          </div>
+        ` : ``}
 
       </div>
     </div>
