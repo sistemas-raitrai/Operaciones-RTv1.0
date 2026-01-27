@@ -347,22 +347,20 @@ $('btnCrearItem').addEventListener('click', async ()=>{
     if(unidadesInit > 0){
       const targetCajaId = cajaId || '_SIN_CAJA_';
     
-      // ✅ Preguntar talla SOLO si hay unidades iniciales
-      const tallaInit = pedirTalla({ titulo:'Carga inicial · Talla / Variante', sugerida:'M' });
-      if(tallaInit === null) throw new Error('CANCEL_INIT'); // cancela TODO el guardado
-      
-      const key = (tallaInit || '').trim(); // '' => stock general
-      
+      // ✅ Lee talla desde input visible
+      const tallaInit = ($('itVariante')?.value || '').trim(); // '' => general
+      const key = tallaInit ? U(tallaInit) : null;
+    
       await applyDeltaToItemCaja({
         bodegaId: state.bodegaId,
         itemId: itRef.id,
         cajaId: targetCajaId,
         delta: +unidadesInit,
-        nota: key ? `Carga inicial (${U(key)})` : 'Carga inicial',
-        variante: key ? U(key) : null
+        nota: key ? `Carga inicial (${key})` : 'Carga inicial',
+        variante: key
       });
-
     }
+
 
 
     $('itNombre').value = '';
@@ -373,6 +371,7 @@ $('btnCrearItem').addEventListener('click', async ()=>{
     $('itCajaNueva').value = '';
     $('itCajaUbic').value = '';
     $('itCajaSel').value = '';
+    if($('itVariante')) $('itVariante').value = '';
 
     toast('Ítem guardado ✅');
     await loadItems();
@@ -613,15 +612,10 @@ function wireCajasModal(){
       // ✅ Si hay stock inicial, preguntamos UNA VEZ si es por talla
       let varianteMasiva = null;
       if(stockInicial > 0){
-        const v = prompt(
-          'Talla / Variante para el STOCK INICIAL MASIVO (ej: M, L, XL)\n' +
-          '(Deja vacío para stock general):',
-          'M'
-        );
-        if(v === null) return; // cancela toda la creación masiva
-        const kk = (v || '').trim();
-        varianteMasiva = kk ? U(kk) : null;
+        const v = ($('cxVarianteMasiva')?.value || '').trim(); // '' => general
+        varianteMasiva = v ? U(v) : null;
       }
+
 
 
       for(let i=desde; i<=hasta; i++){
@@ -770,7 +764,7 @@ async function refreshCajasModalTable(){
     `;
 
     tr.querySelector('[data-act="inc"]').onclick = async ()=>{
-      const talla = pedirTalla();
+      const talla = ($('cxVarianteAccion')?.value || '').trim(); // '' => general
       if(talla === null) return; // canceló
     
       await applyDeltaToItemCaja({
@@ -779,7 +773,7 @@ async function refreshCajasModalTable(){
         cajaId: c.id,
         delta: +1,
         nota: talla ? `+1 (${U(talla)})` : '+1',
-        variante: talla || null
+        variante: talla ? U(talla) : null
       });
     
       await loadItems();
