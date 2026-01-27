@@ -410,7 +410,7 @@ function formatVariantsLine({ variantesTotales, general=0 }){
   const parts = [];
 
   // Si existe stock "general" (sin variantes) lo mostramos como GEN
-  if(general > 0) parts.push(`GEN:${general}`);
+  if(general > 0) parts.push(``);
 
   // Orden alfabético por talla (L, M, S... y XXL etc.)
   const keys = Object.keys(variantesTotales || {}).sort((a,b)=> a.localeCompare(b,'es'));
