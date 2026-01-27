@@ -451,8 +451,6 @@ function formatVariantsLine({ variantesTotales, general=0 }){
 async function hydrateVariantsForItems(){
   if(!state.bodegaId) return;
 
-  // Ojo: esto hace 1 query por ítem (OK si son pocos/medios ítems).
-  // Si crece mucho, lo optimizamos con cache o cloud function.
   await Promise.all(state.items.map(async (it)=>{
     try{
       const snap = await getDocs(stocksCol(state.bodegaId, it.id));
@@ -460,32 +458,50 @@ async function hydrateVariantsForItems(){
       const variantesTotales = {};
       let general = 0;
 
+      // ✅ NUEVO: ubicaciones donde existe stock > 0 (según caja)
+      const ubicSet = new Set();
+
       snap.forEach((d)=>{
         const s = d.data() || {};
+        const cajaId = d.id;
+        const unidadesCaja = safeNum(s.unidades, 0);
 
-        // si tiene variantes => sumamos esas variantes
+        // --- Variantes / General (igual que antes)
         if(s.variantes && typeof s.variantes === 'object'){
           mergeVariants(variantesTotales, s.variantes);
         }else{
-          // si NO tiene variantes => lo tratamos como stock general
-          general += safeNum(s.unidades, 0);
+          general += unidadesCaja;
+        }
+
+        // --- ✅ Ubicación por caja (solo si hay stock > 0)
+        if(unidadesCaja > 0){
+          if(cajaId !== '_SIN_CAJA_'){
+            const cajaMeta = state.cajasById.get(cajaId) || {};
+            const ubic = displayUbic(cajaMeta.ubicacion || '');
+            if(ubic) ubicSet.add(ubic);
+          }
+          // Si está en _SIN_CAJA_ no tiene ubicación real => no lo mostramos
         }
       });
 
       const line = formatVariantsLine({ variantesTotales, general });
 
-      it._variantsObj  = variantesTotales;
-      it._generalUnits = general;
-      it._variantsLine = line; // string listo para UI (puede quedar "")
+      // ✅ Guardamos strings listos para UI
+      it._variantsObj   = variantesTotales;
+      it._generalUnits  = general;
+      it._variantsLine  = line; // puede ser ""
+      it._ubicLine      = Array.from(ubicSet).sort((a,b)=>a.localeCompare(b,'es')).join(' · '); // puede ser ""
 
     }catch(e){
-      console.warn('[BODEGA] No pude hidratar variantes de item', it?.id, e);
-      it._variantsObj = {};
+      console.warn('[BODEGA] No pude hidratar variantes/ubicación de item', it?.id, e);
+      it._variantsObj  = {};
       it._generalUnits = 0;
       it._variantsLine = '';
+      it._ubicLine     = '';
     }
   }));
 }
+
 
 async function loadItems(){
   if(!state.bodegaId){
@@ -600,11 +616,13 @@ function renderItemCard(it){
           <span class="badge">TOTAL: ${total}</span>
         </div>
         
-        ${it._variantsLine ? `
+        ${(it._variantsLine || it._ubicLine) ? `
           <div class="muted" style="margin-top:6px; font-size:12px; line-height:1.15;">
-            ${escapeHtml(it._variantsLine)}
+            ${it._variantsLine ? `<div>${escapeHtml(it._variantsLine)}</div>` : ``}
+            ${it._ubicLine ? `<div style="margin-top:2px;">${escapeHtml(it._ubicLine)}</div>` : ``}
           </div>
         ` : ``}
+
 
       </div>
     </div>
