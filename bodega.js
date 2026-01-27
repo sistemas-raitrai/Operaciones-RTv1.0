@@ -354,14 +354,18 @@ async function loadCajas(){
   itCajaSel.appendChild(opt0);
 
   for(const c of state.cajas){
-    const t = `${c.nombre || '(sin nombre)'}${c.ubicacion ? ' · ' + c.ubicacion : ''}`;
-
+  
+    // ✅ Normaliza visualmente: Z1 -> HUECHURABA (y mayúsculas consistentes)
+    const ubicTxt = displayUbic(c.ubicacion || '');
+  
+    const t = `${c.nombre || '(sin nombre)'}${ubicTxt ? ' · ' + ubicTxt : ''}`;
+  
     // Select del formulario (crear ítem)
     const o1 = document.createElement('option');
     o1.value = c.id;
     o1.textContent = t;
     itCajaSel.appendChild(o1);
-
+  
     // ✅ Si existe cxSel (solo en algunos HTML antiguos), también lo poblamos
     if(cxSel){
       const o2 = document.createElement('option');
@@ -370,6 +374,7 @@ async function loadCajas(){
       cxSel.appendChild(o2);
     }
   }
+
 }
 
 
