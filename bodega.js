@@ -28,6 +28,7 @@ import {
   query,
   orderBy,
   limit,
+  startAfter,  
   serverTimestamp,
   runTransaction
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
@@ -148,6 +149,8 @@ const state = {
     stocks: [],       // [{cajaId, unidades}]
     stocksByCaja: new Map(),
   }
+
+  mov: { lastDoc:null, done:false, loading:false }  
 };
 
 /* Auth UI */
@@ -528,22 +531,31 @@ function wireFilters(){
 
   $('btnVerMovimientos').onclick = async ()=>{
     if(!state.bodegaId) return;
+  
     $('movBackdrop').style.display = 'flex';
-    $('movTbody').innerHTML = '<tr><td colspan="8" class="muted">Cargando...</td></tr>';
-    try{
-      const moves = await fetchMovimientosUltimos(state.bodegaId, 200);
-      renderMovimientos(moves);
-    }catch(e){
-      console.error(e);
-      $('movTbody').innerHTML = '<tr><td colspan="8" class="muted">Error cargando movimientos.</td></tr>';
-    }
+  
+    // reset paginación
+    state.mov.lastDoc = null;
+    state.mov.done = false;
+    $('movTbody').innerHTML = '';
+    $('movEstado').textContent = 'Cargando...';
+  
+    // carga inicial rápida: 10
+    await cargarMasMovimientos({ pageSize: 10, reset: true });
   };
+
 
   $('btnCerrarMov').onclick = ()=> $('movBackdrop').style.display = 'none';
   $('movBackdrop').addEventListener('click', (ev)=>{
     if(ev.target === $('movBackdrop')) $('movBackdrop').style.display = 'none';
   });
+  $('btnMovMas').onclick = async ()=>{
+    if(!state.bodegaId) return;
+    await cargarMasMovimientos({ pageSize: 50, reset: false });
+  };
 }
+
+
 
 // ======================
 // BUSCADOR AVANZADO (cards)
@@ -1283,6 +1295,97 @@ function renderMovimientos(moves){
     tb.innerHTML = '<tr><td colspan="8" class="muted">Sin movimientos.</td></tr>';
     return;
   }
+
+  for(const m of moves){
+    const tr = document.createElement('tr');
+    const fecha = m.ts?.toDate ? m.ts.toDate().toLocaleString('es-CL') : '';
+    const delta = safeNum(m.delta,0);
+    const stock = safeNum(m.stock,0);
+
+    tr.innerHTML = `
+      <td>${escapeHtml(fecha)}</td>
+      <td>${escapeHtml(m._itemNombre || '')}</td>
+      <td>${escapeHtml(m._cajaNombre || '')}</td>
+      <td class="muted">${escapeHtml(displayUbic(m._cajaUbic || ''))}</td>
+      <td style="font-weight:900; ${delta<0?'color:#b91c1c':''} ${delta>0?'color:#166534':''}">
+        ${delta>0?'+':''}${delta}
+      </td>
+      <td style="font-weight:900;">${stock}</td>
+      <td class="muted">${escapeHtml(m.by || '')}</td>
+      <td>${escapeHtml(m.nota || '')}</td>
+    `;
+    tb.appendChild(tr);
+  }
+}
+
+async function cargarMasMovimientos({ pageSize=50, reset=false } = {}){
+  if(state.mov.loading) return;
+  if(state.mov.done && !reset) return;
+
+  state.mov.loading = true;
+
+  try{
+    $('movEstado').textContent = 'Cargando...';
+    $('btnMovMas').disabled = true;
+
+    const qParts = [ orderBy('ts','desc'), limit(pageSize) ];
+    if(!reset && state.mov.lastDoc){
+      qParts.splice(1, 0, startAfter(state.mov.lastDoc)); // después del orderBy
+    }
+
+    // ✅ 1 sola query por página
+    const snap = await getDocs(query(movsBodegaCol(state.bodegaId), ...qParts));
+
+    if(snap.empty){
+      if(reset){
+        $('movTbody').innerHTML = '<tr><td colspan="8" class="muted">Sin movimientos.</td></tr>';
+      }
+      state.mov.done = true;
+      $('movEstado').textContent = 'Fin.';
+      $('btnMovMas').style.display = 'none';
+      return;
+    }
+
+    // guarda cursor
+    state.mov.lastDoc = snap.docs[snap.docs.length - 1];
+
+    const moves = snap.docs.map(d=>{
+      const x = d.data() || {};
+      return {
+        ...x,
+        _itemNombre: x.itemNombre || '(sin nombre)',
+        _cajaNombre: x.cajaNombre || '(caja)',
+        _cajaUbic: displayUbic(x.cajaUbic || '') // ✅ Z1 -> HUECHURABA
+      };
+    });
+
+    // append (no reemplaza)
+    appendMovimientos(moves);
+
+    // si vino menos que pageSize => se acabó
+    if(snap.size < pageSize){
+      state.mov.done = true;
+      $('movEstado').textContent = 'Fin.';
+      $('btnMovMas').style.display = 'none';
+    }else{
+      $('movEstado').textContent = `Mostrando ${document.querySelectorAll('#movTbody tr').length}`;
+      $('btnMovMas').style.display = '';
+    }
+
+  }catch(e){
+    console.error(e);
+    $('movEstado').textContent = 'Error.';
+    if(reset){
+      $('movTbody').innerHTML = '<tr><td colspan="8" class="muted">Error cargando movimientos.</td></tr>';
+    }
+  }finally{
+    state.mov.loading = false;
+    $('btnMovMas').disabled = false;
+  }
+}
+
+function appendMovimientos(moves){
+  const tb = $('movTbody');
 
   for(const m of moves){
     const tr = document.createElement('tr');
