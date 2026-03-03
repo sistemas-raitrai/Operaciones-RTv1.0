@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trabajo Remoto · Sistema de Operaciones RTv1</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+
+  <style>
+    /* ✅ CSS local mínimo (para no tocar estilos.css) */
+    .pageWrap { padding: 16px; max-width: 1200px; margin: 0 auto; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .cardBox { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; }
+    .cardBox h2 { margin:0 0 8px 0; font-size:18px; }
+    .muted { opacity: .75; font-size: 13px; }
+    .btn { cursor:pointer; border:1px solid #d1d5db; background:#fff; padding:10px 12px; border-radius:10px; font-weight:600; }
+    .btnPrimary { border-color:#111827; }
+    .btnDanger { border-color:#b91c1c; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 900px){ .grid2{ grid-template-columns:1fr; } }
+
+    input, select, textarea {
+      width:100%;
+      padding:10px;
+      border:1px solid #d1d5db;
+      border-radius:10px;
+      font-size:14px;
+    }
+    textarea { min-height: 90px; resize: vertical; }
+
+    table { width:100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #eee; padding:10px; text-align:left; vertical-align: top; }
+    th { font-size: 13px; opacity:.75; }
+    .pill { display:inline-flex; gap:6px; align-items:center; padding:5px 10px; border:1px solid #e5e7eb; border-radius:999px; font-size:12px; }
+    .right { margin-left:auto; }
+
+    /* ✅ Modal check-in */
+    .backdrop {
+      position:fixed; inset:0; background:rgba(0,0,0,.5);
+      display:none; align-items:center; justify-content:center; z-index:9999;
+    }
+    .modal {
+      width:min(880px, 92vw);
+      background:#fff; border-radius:14px; padding:14px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.2);
+    }
+    .modalHeader { display:flex; gap:10px; align-items:center; }
+    .modalHeader h3{ margin:0; }
+    .modalBody { margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 900px){ .modalBody{ grid-template-columns:1fr; } }
+    video { width:100%; border-radius:12px; background:#000; }
+    .modalFooter { margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .countdown { font-weight:800; }
+    .statusLine { margin-top:8px; font-size:13px; opacity:.8; }
+    .mini { font-size:12px; opacity:.75; }
+  </style>
+</head>
+<body>
+
+  <!-- ✅ Encabezado cargado dinámicamente -->
+  <div id="encabezado"></div>
+
+  <div class="pageWrap">
+
+    <div class="row" style="margin-bottom:12px;">
+      <h1 style="margin:0;">Trabajo Remoto</h1>
+      <span class="pill" id="pillSession">Sesión: —</span>
+      <span class="pill" id="pillNext">Próximo check-in: —</span>
+      <span class="pill right" id="pillUser">Usuario: —</span>
+    </div>
+
+    <div class="grid2">
+      <!-- ✅ Panel jornada remota -->
+      <div class="cardBox">
+        <h2>Jornada remota</h2>
+        <div class="muted">Inicia la jornada para habilitar check-ins aleatorios (30–60 min). Cada check-in requiere OK en 1 minuto.</div>
+
+        <div class="row" style="margin-top:12px;">
+          <button class="btn btnPrimary" id="btnStart">Iniciar jornada</button>
+          <button class="btn" id="btnPause" disabled>Pausar</button>
+          <button class="btn btnDanger" id="btnEnd" disabled>Terminar jornada</button>
+        </div>
+
+        <div class="statusLine" id="sessionStatus">Estado: —</div>
+        <div class="mini" style="margin-top:10px;">
+          Nota: el permiso de cámara lo pide el navegador. Tu “OK 1 minuto” es un control interno del sistema (si no se aprueba, queda denegado).
+        </div>
+      </div>
+
+      <!-- ✅ Crear tarea -->
+      <div class="cardBox">
+        <h2>Crear tarea (Diaria / Semanal / Mensual)</h2>
+
+        <div class="row">
+          <select id="taskPeriod">
+            <option value="diario">Diaria</option>
+            <option value="semanal">Semanal</option>
+            <option value="mensual">Mensual</option>
+          </select>
+
+          <select id="taskPriority">
+            <option value="baja">Prioridad: Baja</option>
+            <option value="media" selected>Prioridad: Media</option>
+            <option value="alta">Prioridad: Alta</option>
+          </select>
+
+          <select id="taskStatus">
+            <option value="pendiente" selected>Pendiente</option>
+            <option value="en_progreso">En progreso</option>
+            <option value="bloqueada">Bloqueada</option>
+            <option value="lista">Lista</option>
+          </select>
+        </div>
+
+        <div style="margin-top:10px;">
+          <input id="taskTitle" placeholder="Título de la tarea" />
+        </div>
+
+        <div style="margin-top:10px;">
+          <textarea id="taskDetail" placeholder="Detalle / Qué se hará"></textarea>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <input id="taskEvidence" placeholder="Link evidencia (Drive, GitHub, Doc, etc.)" />
+          <button class="btn btnPrimary" id="btnAddTask">Agregar tarea</button>
+        </div>
+
+        <div class="statusLine" id="taskMsg">—</div>
+      </div>
+    </div>
+
+    <!-- ✅ Tabla tareas -->
+    <div class="cardBox" style="margin-top:12px;">
+      <div class="row">
+        <h2 style="margin:0;">Mis tareas</h2>
+        <select id="filterPeriod" class="right" style="max-width:220px;">
+          <option value="all">Ver: Todas</option>
+          <option value="diario">Solo: Diarias</option>
+          <option value="semanal">Solo: Semanales</option>
+          <option value="mensual">Solo: Mensuales</option>
+        </select>
+      </div>
+
+      <div style="overflow:auto; margin-top:10px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Periodo</th>
+              <th>Tarea</th>
+              <th>Estado</th>
+              <th>Prioridad</th>
+              <th>Evidencia</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="tasksTbody">
+            <tr><td colspan="6" class="muted">Cargando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ✅ Tabla check-ins -->
+    <div class="cardBox" style="margin-top:12px;">
+      <div class="row">
+        <h2 style="margin:0;">Check-ins de cámara (hoy)</h2>
+        <button class="btn right" id="btnReloadCheckins">Actualizar</button>
+      </div>
+
+      <div style="overflow:auto; margin-top:10px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Hora</th>
+              <th>Estado</th>
+              <th>Foto</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody id="checkinsTbody">
+            <tr><td colspan="4" class="muted">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ✅ Modal Check-in -->
+  <div class="backdrop" id="checkinBackdrop">
+    <div class="modal">
+      <div class="modalHeader">
+        <span class="material-symbols-outlined">photo_camera</span>
+        <div>
+          <h3>Check-in de cámara</h3>
+          <div class="muted">Debes presionar <b>OK</b> para capturar dentro de 1 minuto. Si no, queda como denegado.</div>
+        </div>
+        <div class="right">
+          <span class="pill">Tiempo: <span class="countdown" id="countdown">60</span>s</span>
+        </div>
+      </div>
+
+      <div class="modalBody">
+        <div>
+          <video id="video" autoplay playsinline muted></video>
+          <div class="mini" style="margin-top:8px;">
+            Si tu navegador bloquea cámara, revisa permisos del sitio.
+          </div>
+        </div>
+        <div>
+          <div class="cardBox" style="border-radius:12px;">
+            <h2 style="margin:0 0 6px 0;">Acción</h2>
+            <div class="muted">Al presionar OK se toma <b>1 foto</b> y se registra en el sistema.</div>
+
+            <div class="row" style="margin-top:12px;">
+              <button class="btn btnPrimary" id="btnOkShot">OK (capturar)</button>
+              <button class="btn btnDanger" id="btnDenyShot">Denegar</button>
+              <button class="btn" id="btnCloseModal">Cerrar</button>
+            </div>
+
+            <div class="statusLine" id="modalMsg">—</div>
+
+            <canvas id="canvas" style="display:none;"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini" style="margin-top:10px;">
+        Registro: el sistema guardará “approved / denied / timeout” con hora y (si corresponde) foto en Storage.
+      </div>
+    </div>
+  </div>
+
+  <!-- 1️⃣ Carga e inyección del encabezado (que contiene #reloj y .username) -->
+  <script type="module">
+    (async () => {
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+
+      await import('./firebase-init.js');
+      await import('./script.js');    // ✅ tu header + auth común
+      await import('./remoto.js');    // ✅ este módulo
+      console.log('✅ remoto.js cargado tras encabezado y firebase');
+    })();
+  </script>
+
+  <!-- 2️⃣ Inicialización de Firebase/Auth (sin DOM-dependencias) -->
+  <script type="module" src="firebase-init.js" defer></script>
+
+</body>
+</html>
