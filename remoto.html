@@ -49,7 +49,7 @@
     .pill { display:inline-flex; gap:6px; align-items:center; padding:5px 10px; border:1px solid #e5e7eb; border-radius:999px; font-size:12px; }
     .right { margin-left:auto; }
 
-    /* ✅ Modal check-in */
+    /* ✅ Modales */
     .backdrop {
       position:fixed; inset:0; background:rgba(0,0,0,.5);
       display:none; align-items:center; justify-content:center; z-index:9999;
@@ -64,7 +64,7 @@
     .modalBody { margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     @media (max-width: 900px){ .modalBody{ grid-template-columns:1fr; } }
     video { width:100%; border-radius:12px; background:#000; }
-    .countdown { font-weight:800; }
+    .countdown { font-weight:900; }
     .statusLine { margin-top:8px; font-size:13px; opacity:.8; }
     .mini { font-size:12px; opacity:.75; }
   </style>
@@ -72,7 +72,7 @@
 
 <body>
 
-  <!-- ✅ Encabezado cargado dinámicamente -->
+  <!-- ✅ Encabezado común -->
   <div id="encabezado"></div>
 
   <div class="pageWrap">
@@ -84,7 +84,7 @@
     </div>
 
     <div class="grid2">
-      <!-- ✅ Panel jornada remota -->
+      <!-- ✅ Jornada -->
       <div class="cardBox">
         <h2>Jornada remota</h2>
 
@@ -96,6 +96,7 @@
 
         <div class="statusLine" id="sessionStatus">Estado: —</div>
         <div class="mini" style="margin-top:10px;">
+          *Los check-ins no se muestran como historial en esta pantalla.
         </div>
       </div>
 
@@ -141,7 +142,7 @@
       </div>
     </div>
 
-    <!-- ✅ Tabla tareas -->
+    <!-- ✅ Mis tareas -->
     <div class="cardBox" style="margin-top:12px;">
       <div class="row">
         <h2 style="margin:0;">Mis tareas</h2>
@@ -174,23 +175,73 @@
 
   </div>
 
-  <!-- ✅ Modal Check-in -->
-  <div class="backdrop" id="checkinBackdrop">
+  <!-- ✅ Modal Consentimiento + Foto inicial -->
+  <div class="backdrop" id="consentBackdrop">
     <div class="modal">
       <div class="modalHeader">
-        <span class="material-symbols-outlined">photo_camera</span>
+        <span class="material-symbols-outlined">policy</span>
         <div>
-          <h3>Check-in de cámara</h3>
-          <div class="muted">Presiona <b>OK</b> para capturar dentro de 1 minuto. Si no, queda como denegado.</div>
-        </div>
-        <div class="right">
-          <span class="pill">Tiempo: <span class="countdown" id="countdown">60</span>s</span>
+          <h3>Consentimiento jornada remota</h3>
+          <div class="muted">
+            Se tomará una foto inicial para iniciar la jornada y luego fotos aleatorias cada 30–60 min.<br/>
+            En cada aviso podrás <b>denegar</b>. Si no respondes, se asume <b>OK</b> y se captura automáticamente.
+          </div>
         </div>
       </div>
 
       <div class="modalBody">
         <div>
           <video id="video" autoplay playsinline muted></video>
+          <div class="mini" style="margin-top:8px;">
+            Al aceptar, se solicitará permiso de cámara si es necesario.
+          </div>
+        </div>
+
+        <div>
+          <div class="cardBox" style="border-radius:12px;">
+            <h2 style="margin:0 0 6px 0;">Acción</h2>
+            <div class="muted">
+              Para iniciar jornada debes aceptar y permitir la foto inicial.
+            </div>
+
+            <div class="row" style="margin-top:12px;">
+              <button class="btn btnPrimary" id="btnConsentAccept">Acepto y comenzar</button>
+              <button class="btn btnDanger" id="btnConsentReject">No acepto</button>
+            </div>
+
+            <div class="statusLine" id="consentMsg">—</div>
+
+            <canvas id="canvas" style="display:none;"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="mini" style="margin-top:10px;">
+        Recomendado: permitir notificaciones del navegador para avisos (opcional).
+      </div>
+    </div>
+  </div>
+
+  <!-- ✅ Modal Check-in (DENEGAR / TOMAR AHORA / auto OK) -->
+  <div class="backdrop" id="checkinBackdrop">
+    <div class="modal">
+      <div class="modalHeader">
+        <span class="material-symbols-outlined">photo_camera</span>
+        <div>
+          <h3>Check-in de cámara</h3>
+          <div class="muted">
+            Se tomará una foto automáticamente en <b><span class="countdown" id="countdown">20</span>s</b>.
+            Si quieres, puedes <b>denegar</b>.
+          </div>
+        </div>
+        <div class="right">
+          <span class="pill">Auto OK: <span class="countdown" id="countdown2">20</span>s</span>
+        </div>
+      </div>
+
+      <div class="modalBody">
+        <div>
+          <video id="video2" autoplay playsinline muted></video>
           <div class="mini" style="margin-top:8px;">
             Si tu navegador bloquea cámara, revisa permisos del sitio.
           </div>
@@ -199,22 +250,54 @@
         <div>
           <div class="cardBox" style="border-radius:12px;">
             <h2 style="margin:0 0 6px 0;">Acción</h2>
-            <div class="muted">Al presionar OK se toma <b>1 foto</b> y se registra internamente.</div>
-
-            <div class="row" style="margin-top:12px;">
-              <button class="btn btnPrimary" id="btnOkShot">OK (capturar)</button>
-              <button class="btn btnDanger" id="btnDenyShot">Denegar</button>
+            <div class="muted">
+              Si no haces nada, se asume OK y se captura automáticamente.
             </div>
 
-            <div class="statusLine" id="modalMsg">—</div>
-            <canvas id="canvas" style="display:none;"></canvas>
+            <div class="row" style="margin-top:12px;">
+              <button class="btn btnPrimary" id="btnOkNow">Tomar ahora</button>
+              <button class="btn btnDanger" id="btnDeny">Denegar</button>
+            </div>
+
+            <div class="statusLine" id="checkinMsg">—</div>
+            <canvas id="canvas2" style="display:none;"></canvas>
           </div>
         </div>
       </div>
 
       <div class="mini" style="margin-top:10px;">
-        (Este registro no se muestra al usuario en forma de historial.)
+        (Este registro no se muestra aquí; solo auditoría.)
       </div>
+    </div>
+  </div>
+
+  <!-- ✅ Modal Pausa -->
+  <div class="backdrop" id="pauseBackdrop">
+    <div class="modal" style="width:min(520px, 92vw);">
+      <div class="modalHeader">
+        <span class="material-symbols-outlined">pause_circle</span>
+        <div>
+          <h3>Pausar jornada</h3>
+          <div class="muted">Elige la duración. Al reanudar, se toma foto automáticamente (sí o sí).</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <select id="pauseMinutes">
+          <option value="15">15 min</option>
+          <option value="20">20 min</option>
+          <option value="30" selected>30 min</option>
+          <option value="45">45 min</option>
+          <option value="60">60 min</option>
+        </select>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <button class="btn btnSoft" id="btnPauseConfirm">Pausar</button>
+        <button class="btn" id="btnPauseCancel">Cancelar</button>
+      </div>
+
+      <div class="statusLine" id="pauseMsg">—</div>
     </div>
   </div>
 
