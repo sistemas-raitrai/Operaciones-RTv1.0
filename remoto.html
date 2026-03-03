@@ -10,12 +10,12 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <style>
-    /* ✅ CSS local mínimo (para no tocar estilos.css) */
     .pageWrap { padding: 16px; max-width: 1200px; margin: 0 auto; }
     .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
     .cardBox { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; }
     .cardBox h2 { margin:0 0 8px 0; font-size:18px; }
     .muted { opacity: .75; font-size: 13px; }
+
     .btn{
       cursor:pointer;
       border:1px solid #d1d5db;
@@ -25,30 +25,11 @@
       border-radius:10px;
       font-weight:700;
     }
-    
-    .btnPrimary{
-      border-color:#111827;
-      background:#111827;   /* ✅ color botón */
-      color:#fff;           /* ✅ texto blanco */
-    }
-    
-    .btnDanger{
-      border-color:#b91c1c;
-      background:#b91c1c;   /* ✅ rojo */
-      color:#fff;
-    }
-    
-    .btnSoft{
-      border-color:#2563eb;
-      background:#2563eb;   /* ✅ azul */
-      color:#fff;
-    }
-    
-    .btn:disabled{
-      opacity:.45;
-      cursor:not-allowed;
-      filter: grayscale(20%);
-    }
+    .btnPrimary{ border-color:#111827; background:#111827; color:#fff; }
+    .btnDanger{ border-color:#b91c1c; background:#b91c1c; color:#fff; }
+    .btnSoft{ border-color:#2563eb; background:#2563eb; color:#fff; }
+    .btn:disabled{ opacity:.45; cursor:not-allowed; filter: grayscale(20%); }
+
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     @media (max-width: 900px){ .grid2{ grid-template-columns:1fr; } }
 
@@ -64,6 +45,7 @@
     table { width:100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid #eee; padding:10px; text-align:left; vertical-align: top; }
     th { font-size: 13px; opacity:.75; }
+
     .pill { display:inline-flex; gap:6px; align-items:center; padding:5px 10px; border:1px solid #e5e7eb; border-radius:999px; font-size:12px; }
     .right { margin-left:auto; }
 
@@ -82,12 +64,12 @@
     .modalBody { margin-top:12px; display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     @media (max-width: 900px){ .modalBody{ grid-template-columns:1fr; } }
     video { width:100%; border-radius:12px; background:#000; }
-    .modalFooter { margin-top:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .countdown { font-weight:800; }
     .statusLine { margin-top:8px; font-size:13px; opacity:.8; }
     .mini { font-size:12px; opacity:.75; }
   </style>
 </head>
+
 <body>
 
   <!-- ✅ Encabezado cargado dinámicamente -->
@@ -108,12 +90,13 @@
 
         <div class="row" style="margin-top:12px;">
           <button class="btn btnPrimary" id="btnStart">Iniciar jornada</button>
-          <button class="btn" id="btnPause" disabled>Pausar</button>
+          <button class="btn btnSoft" id="btnPause" disabled>Pausar</button>
           <button class="btn btnDanger" id="btnEnd" disabled>Terminar jornada</button>
         </div>
 
         <div class="statusLine" id="sessionStatus">Estado: —</div>
         <div class="mini" style="margin-top:10px;">
+          (Los check-ins aparecen como ventana emergente. No hay historial visible para el usuario.)
         </div>
       </div>
 
@@ -190,30 +173,6 @@
       </div>
     </div>
 
-    <!-- ✅ Tabla check-ins -->
-    <div class="cardBox" style="margin-top:12px;">
-      <div class="row">
-        <h2 style="margin:0;">Check-ins de cámara (hoy)</h2>
-        <button class="btn right" id="btnReloadCheckins">Actualizar</button>
-      </div>
-
-      <div style="overflow:auto; margin-top:10px;">
-        <table>
-          <thead>
-            <tr>
-              <th>Hora</th>
-              <th>Estado</th>
-              <th>Foto</th>
-              <th>Detalle</th>
-            </tr>
-          </thead>
-          <tbody id="checkinsTbody">
-            <tr><td colspan="4" class="muted">—</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
   </div>
 
   <!-- ✅ Modal Check-in -->
@@ -223,7 +182,7 @@
         <span class="material-symbols-outlined">photo_camera</span>
         <div>
           <h3>Check-in de cámara</h3>
-          <div class="muted">Debes presionar <b>OK</b> para capturar dentro de 1 minuto. Si no, queda como denegado.</div>
+          <div class="muted">Presiona <b>OK</b> para capturar dentro de 1 minuto. Si no, queda como denegado.</div>
         </div>
         <div class="right">
           <span class="pill">Tiempo: <span class="countdown" id="countdown">60</span>s</span>
@@ -237,45 +196,42 @@
             Si tu navegador bloquea cámara, revisa permisos del sitio.
           </div>
         </div>
+
         <div>
           <div class="cardBox" style="border-radius:12px;">
             <h2 style="margin:0 0 6px 0;">Acción</h2>
-            <div class="muted">Al presionar OK se toma <b>1 foto</b> y se registra en el sistema.</div>
+            <div class="muted">Al presionar OK se toma <b>1 foto</b> y se registra internamente.</div>
 
             <div class="row" style="margin-top:12px;">
               <button class="btn btnPrimary" id="btnOkShot">OK (capturar)</button>
               <button class="btn btnDanger" id="btnDenyShot">Denegar</button>
-              <button class="btn" id="btnCloseModal">Cerrar</button>
             </div>
 
             <div class="statusLine" id="modalMsg">—</div>
-
             <canvas id="canvas" style="display:none;"></canvas>
           </div>
         </div>
       </div>
 
       <div class="mini" style="margin-top:10px;">
-        Registro: el sistema guardará “approved / denied / timeout” con hora y (si corresponde) foto en Storage.
+        (Este registro no se muestra al usuario en forma de historial.)
       </div>
     </div>
   </div>
 
-  <!-- 1️⃣ Carga e inyección del encabezado (que contiene #reloj y .username) -->
+  <!-- 1️⃣ Encabezado + firebase + script común + remoto.js -->
   <script type="module">
     (async () => {
       const html = await (await fetch('encabezado.html')).text();
       document.getElementById('encabezado').innerHTML = html;
 
       await import('./firebase-init.js');
-      await import('./script.js');    // ✅ tu header + auth común
-      await import('./remoto.js');    // ✅ este módulo
-      console.log('✅ remoto.js cargado tras encabezado y firebase');
+      await import('./script.js');
+      await import('./remoto.js');
+      console.log('✅ remoto.js cargado');
     })();
   </script>
 
-  <!-- 2️⃣ Inicialización de Firebase/Auth (sin DOM-dependencias) -->
   <script type="module" src="firebase-init.js" defer></script>
-
 </body>
 </html>
