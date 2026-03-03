@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Revisión Remoto · Sistema de Operaciones RTv1</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+
+  <style>
+    .pageWrap { padding: 16px; max-width: 1300px; margin: 0 auto; }
+    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .cardBox { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; }
+    .muted { opacity:.75; font-size: 13px; }
+    .right { margin-left:auto; }
+
+    .btn{
+      cursor:pointer; border:1px solid #d1d5db; background:#fff; color:#111827;
+      padding:10px 12px; border-radius:10px; font-weight:700;
+    }
+    .btnPrimary{ border-color:#111827; background:#111827; color:#fff; }
+    .btnSoft{ border-color:#2563eb; background:#2563eb; color:#fff; }
+    .btnDanger{ border-color:#b91c1c; background:#b91c1c; color:#fff; }
+    .btn:disabled{ opacity:.45; cursor:not-allowed; }
+
+    input, select {
+      padding:10px; border:1px solid #d1d5db; border-radius:10px; font-size:14px;
+    }
+
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom: 1px solid #eee; padding:10px; text-align:left; vertical-align: top; }
+    th { font-size: 13px; opacity:.75; }
+
+    .pill { display:inline-flex; gap:6px; align-items:center; padding:5px 10px; border:1px solid #e5e7eb; border-radius:999px; font-size:12px; }
+
+    /* Modal clave */
+    .backdrop {
+      position:fixed; inset:0; background:rgba(0,0,0,.55);
+      display:none; align-items:center; justify-content:center; z-index:9999;
+    }
+    .modal { width:min(520px, 92vw); background:#fff; border-radius:14px; padding:14px; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+    .modalHead { display:flex; gap:10px; align-items:center; }
+    .modalHead h3{ margin:0; }
+    .statusLine { margin-top:8px; font-size:13px; opacity:.8; }
+
+    .thumb {
+      width: 120px;
+      height: 80px;
+      object-fit: cover;
+      border-radius: 10px;
+      border: 1px solid #e5e7eb;
+      background: #f3f4f6;
+    }
+
+    details > summary { cursor:pointer; font-weight:800; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 980px){ .grid2{ grid-template-columns: 1fr; } }
+  </style>
+</head>
+
+<body>
+  <div id="encabezado"></div>
+
+  <div class="pageWrap">
+    <div class="row" style="margin-bottom:12px;">
+      <h1 style="margin:0;">Revisión Remoto</h1>
+      <span class="pill" id="pillUnlocked">Bloqueado</span>
+      <span class="pill right" id="pillUser">Usuario: —</span>
+    </div>
+
+    <div class="cardBox">
+      <div class="row">
+        <div>
+          <div style="font-weight:900; font-size:16px;">Filtros</div>
+          <div class="muted">Selecciona periodo y carga sesiones (incluye tareas + check-ins + fotos).</div>
+        </div>
+
+        <select id="selRange" class="right">
+          <option value="today">Hoy</option>
+          <option value="month" selected>Mes actual</option>
+          <option value="custom">Rango</option>
+        </select>
+
+        <input type="date" id="dateFrom" />
+        <input type="date" id="dateTo" />
+
+        <button class="btn btnSoft" id="btnLoad">Cargar</button>
+      </div>
+
+      <div class="statusLine" id="auditMsg">—</div>
+    </div>
+
+    <div class="cardBox" style="margin-top:12px;">
+      <div class="row">
+        <h2 style="margin:0;">Sesiones</h2>
+        <span class="right muted" id="countSessions">0</span>
+      </div>
+
+      <div style="overflow:auto; margin-top:10px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Inicio</th>
+              <th>Fin</th>
+              <th>Usuario</th>
+              <th>Estado</th>
+              <th>Detalle</th>
+            </tr>
+          </thead>
+          <tbody id="sessionsTbody">
+            <tr><td colspan="5" class="muted">Bloqueado. Ingresa clave para ver.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Modal clave -->
+  <div class="backdrop" id="pwBackdrop">
+    <div class="modal">
+      <div class="modalHead">
+        <span class="material-symbols-outlined">lock</span>
+        <div>
+          <h3>Acceso a Revisión Remoto</h3>
+          <div class="muted">Ingresa la clave para abrir auditoría.</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <input id="pwInput" type="password" placeholder="Clave" style="width:100%;" />
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <button class="btn btnPrimary" id="btnPwOk">Ingresar</button>
+        <button class="btn" id="btnPwCancel">Cancelar</button>
+      </div>
+
+      <div class="statusLine" id="pwMsg">—</div>
+    </div>
+  </div>
+
+  <script type="module">
+    (async () => {
+      const html = await (await fetch('encabezado.html')).text();
+      document.getElementById('encabezado').innerHTML = html;
+
+      await import('./firebase-init.js');
+      await import('./script.js');
+      await import('./revisionremoto.js');
+      console.log('✅ revisionremoto.js cargado');
+    })();
+  </script>
+
+  <script type="module" src="firebase-init.js" defer></script>
+</body>
+</html>
