@@ -16,10 +16,39 @@
     .cardBox { background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:14px; }
     .cardBox h2 { margin:0 0 8px 0; font-size:18px; }
     .muted { opacity: .75; font-size: 13px; }
-    .btn { cursor:pointer; border:1px solid #d1d5db; background:#fff; padding:10px 12px; border-radius:10px; font-weight:600; }
-    .btnPrimary { border-color:#111827; }
-    .btnDanger { border-color:#b91c1c; }
-    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .btn{
+      cursor:pointer;
+      border:1px solid #d1d5db;
+      background:#fff;
+      color:#111827;
+      padding:10px 12px;
+      border-radius:10px;
+      font-weight:700;
+    }
+    
+    .btnPrimary{
+      border-color:#111827;
+      background:#111827;   /* ✅ color botón */
+      color:#fff;           /* ✅ texto blanco */
+    }
+    
+    .btnDanger{
+      border-color:#b91c1c;
+      background:#b91c1c;   /* ✅ rojo */
+      color:#fff;
+    }
+    
+    .btnSoft{
+      border-color:#2563eb;
+      background:#2563eb;   /* ✅ azul */
+      color:#fff;
+    }
+    
+    .btn:disabled{
+      opacity:.45;
+      cursor:not-allowed;
+      filter: grayscale(20%);
+    }
     .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     @media (max-width: 900px){ .grid2{ grid-template-columns:1fr; } }
 
