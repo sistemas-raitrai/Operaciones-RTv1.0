@@ -2,7 +2,8 @@
 // ✅ Iniciar jornada => consentimiento + foto inicial OBLIGATORIA (si no, no inicia)
 // ✅ Check-in aleatorio (30–60 min) => DENEGAR opcional, si no responde => captura automática
 // ✅ Pausa 15/20/30/45/60 => al reanudar se toma foto automáticamente (sí o sí)
-// ✅ Usuario NO ve historial; solo auditoría en revisionremoto.html
+// ✅ Tareas persistentes por usuario (plantillas) + estado por sesión (runs)
+// ✅ Usuario NO ve historial de fotos/check-ins; solo auditoría en revisionremoto.html
 
 import { app, db } from './firebase-init.js';
 
@@ -10,15 +11,16 @@ import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/
 import { getStorage, ref as sRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-storage.js';
 
 import {
-  collection, doc, addDoc, updateDoc, getDocs, getDoc,
-  query, orderBy, limit, serverTimestamp, Timestamp
+  collection, doc, addDoc, setDoc, updateDoc, getDocs, getDoc,
+  query, where, orderBy, limit,
+  serverTimestamp, Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const $ = (id) => document.getElementById(id);
 const auth = getAuth(app);
 const storage = getStorage(app);
 
-const CHECKIN_COUNTDOWN_SEC = 20; // ✅ auto-OK en 20s (puedes cambiar a 60 si quieres)
+const CHECKIN_COUNTDOWN_SEC = 20; // auto-OK en 20s
 
 const state = {
   user: null,
@@ -91,14 +93,12 @@ function beep(){
 }
 
 async function notifySystem(title, body){
-  // ✅ Notificación del sistema (si el usuario la habilita)
   try{
     if(!('Notification' in window)) return false;
     if(Notification.permission === 'granted'){
       new Notification(title, { body });
       return true;
     }
-    // No pedimos permiso de golpe acá; lo hacemos al aceptar consentimiento (opcional)
     return false;
   }catch{
     return false;
@@ -125,18 +125,28 @@ function blinkTabTitle(on){
 function sessionRef(){
   return doc(db, 'remote_sessions', state.sessionId);
 }
-function tasksCol(){
-  return collection(db, 'remote_sessions', state.sessionId, 'tasks');
-}
+
 function checkinsCol(){
   return collection(db, 'remote_sessions', state.sessionId, 'checkins');
+}
+
+// ✅ Plantillas persistentes (por usuario)
+function templatesCol(){
+  return collection(db, 'remote_task_templates', state.user.uid, 'items');
+}
+
+// ✅ Runs por sesión (estado “hoy / en esta jornada”)
+function taskRunsCol(){
+  return collection(db, 'remote_sessions', state.sessionId, 'taskRuns');
+}
+function taskRunRef(templateId){
+  return doc(db, 'remote_sessions', state.sessionId, 'taskRuns', templateId);
 }
 
 /* =========================
    Cámara
 ========================= */
 async function ensureCamera1(){
-  // Consentimiento / foto inicial
   if(state.stream) return state.stream;
 
   state.stream = await navigator.mediaDevices.getUserMedia({
@@ -153,7 +163,6 @@ async function ensureCamera1(){
 }
 
 async function ensureCamera2(){
-  // Check-in modal
   if(state.stream2) return state.stream2;
 
   state.stream2 = await navigator.mediaDevices.getUserMedia({
@@ -221,8 +230,6 @@ function startCountdown(onAuto){
    Check-ins (registro + subida)
 ========================= */
 async function createCheckinDoc({ type, mode }){
-  // type: 'initial_start' | 'random' | 'resume_mandatory'
-  // mode: 'mandatory' | 'default' | 'manual'
   const openedAt = new Date();
 
   const ref = await addDoc(checkinsCol(), {
@@ -288,7 +295,6 @@ async function openConsent(){
   setText('consentMsg', '—');
   show('consentBackdrop');
 
-  // intenta preparar cámara para que el usuario vea preview
   try{
     await ensureCamera1();
   }catch(err){
@@ -308,7 +314,6 @@ async function consentAcceptAndStart(){
   setText('consentMsg', 'Iniciando… solicitando permisos');
 
   try{
-    // (Opcional) pedir notificaciones en este momento, sin obligar
     try{
       if('Notification' in window && Notification.permission === 'default'){
         await Notification.requestPermission();
@@ -332,7 +337,7 @@ async function consentAcceptAndStart(){
     state.sessionId = sref.id;
     setText('pillSession', `Sesión: ${state.sessionId}`);
 
-    // 2) asegura cámara y captura obligatoria
+    // 2) foto inicial obligatoria
     await ensureCamera1();
     setText('consentMsg', 'Capturando foto inicial…');
 
@@ -343,7 +348,7 @@ async function consentAcceptAndStart(){
 
     await markCheckin('approved_mandatory', { photoPath: path, photoURL: url });
 
-    // 3) ahora sí, activa sesión
+    // 3) activa sesión
     await updateDoc(sessionRef(), {
       active: true,
       paused: false,
@@ -360,15 +365,13 @@ async function consentAcceptAndStart(){
     setText('sessionStatus', 'Estado: ✅ Jornada activa (foto inicial OK)');
     hide('consentBackdrop');
 
-    // carga tareas vacías
-    await loadTasks();
-
-    // programa primer check-in aleatorio
+    await loadTasks();          // ✅ carga plantillas + runs
     scheduleNextRandomCheckin();
+
   }catch(err){
     console.error('consentAcceptAndStart error', err);
     setText('consentMsg', '❌ No se pudo iniciar (cámara o permisos). La jornada NO se inicia.');
-    // si ya se creó sessionId, la dejamos como no activa (auditable)
+
     try{
       if(state.sessionId){
         await updateDoc(sessionRef(), {
@@ -379,6 +382,7 @@ async function consentAcceptAndStart(){
         });
       }
     }catch{}
+
     state.sessionActive = false;
     state.paused = false;
     state.sessionId = null;
@@ -395,7 +399,6 @@ async function consentAcceptAndStart(){
 async function openRandomCheckin(){
   if(!state.sessionActive || state.paused) return;
 
-  // crea doc y abre modal
   try{
     await createCheckinDoc({ type: 'random', mode: 'default' });
   }catch(err){
@@ -404,7 +407,6 @@ async function openRandomCheckin(){
     return;
   }
 
-  // alerta fuerte
   beep();
   blinkTabTitle(true);
   await notifySystem('Check-in requerido', `Se tomará foto automáticamente en ${CHECKIN_COUNTDOWN_SEC}s. Puedes denegar.`);
@@ -412,7 +414,6 @@ async function openRandomCheckin(){
   setText('checkinMsg', '—');
   show('checkinBackdrop');
 
-  // prepara cámara para el modal
   try{
     await ensureCamera2();
     setText('checkinMsg', `Se tomará foto automáticamente en ${CHECKIN_COUNTDOWN_SEC}s (si no deniegas).`);
@@ -422,7 +423,6 @@ async function openRandomCheckin(){
   }
 
   startCountdown(async () => {
-    // auto OK por defecto
     await autoCaptureDefaultOk();
   });
 }
@@ -432,10 +432,7 @@ async function autoCaptureDefaultOk(){
   $('btnDeny').disabled = true;
 
   try{
-    // intenta abrir cámara si no estaba
-    if(!state.stream2){
-      await ensureCamera2();
-    }
+    if(!state.stream2) await ensureCamera2();
 
     setText('checkinMsg', 'Capturando automáticamente…');
     const blob = await captureBlobFrom('video2', 'canvas2');
@@ -466,7 +463,6 @@ async function takeNowManual(){
   $('btnDeny').disabled = true;
 
   try{
-    // cambia mode a manual (para auditoría)
     await updateDoc(doc(db, 'remote_sessions', state.sessionId, 'checkins', state.currentCheckinId), {
       mode: 'manual',
       updatedAt: serverTimestamp()
@@ -561,7 +557,6 @@ async function confirmPause(){
 }
 
 async function resumeFromPauseMandatoryPhoto(){
-  // Reanuda y toma foto sí o sí
   try{
     state.paused = false;
 
@@ -575,18 +570,14 @@ async function resumeFromPauseMandatoryPhoto(){
     $('btnPause').disabled = false;
     setText('sessionStatus', 'Estado: ✅ Reanudando… (foto obligatoria)');
 
-    // crea checkin "resume"
     await createCheckinDoc({ type: 'resume_mandatory', mode: 'mandatory' });
 
-    // alerta para que no sea “sorpresa”, pero igual obligatoria
     beep();
     blinkTabTitle(true);
     await notifySystem('Reanudación', 'Se tomará foto obligatoria al reanudar la jornada.');
 
-    // Intento con cámara 2 (la del modal)
     try{ await ensureCamera2(); }catch{}
 
-    // Captura sin pedir ok
     const blob = await captureBlobFrom('video2', 'canvas2');
     const { path, url } = await uploadPhotoForCurrentCheckin(blob);
     await markCheckin('approved_mandatory', { photoPath: path, photoURL: url });
@@ -637,7 +628,7 @@ async function endSession(){
 }
 
 /* =========================
-   Tareas
+   TAREAS (Plantillas + Runs)
 ========================= */
 async function addTask(){
   const period = $('taskPeriod').value;
@@ -658,19 +649,53 @@ async function addTask(){
 
   setText('taskMsg', 'Guardando…');
 
-  await addDoc(tasksCol(), {
-    period, priority, status,
-    title, detail,
+  // 1) Buscar si ya existe plantilla con mismo título + periodo
+  const qTpl = query(
+    templatesCol(),
+    where('title', '==', title),
+    where('period', '==', period),
+    limit(1)
+  );
+  const snap = await getDocs(qTpl);
+
+  let templateId = null;
+
+  if(!snap.empty){
+    templateId = snap.docs[0].id;
+
+    await updateDoc(doc(templatesCol(), templateId), {
+      priority,
+      detail,
+      active: true,
+      updatedAt: serverTimestamp()
+    });
+  }else{
+    const tplRef = await addDoc(templatesCol(), {
+      period,
+      priority,
+      title,
+      detail,
+      active: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+    templateId = tplRef.id;
+  }
+
+  // 2) Crear/actualizar RUN para esta sesión
+  await setDoc(taskRunRef(templateId), {
+    templateId,
+    status: status || 'pendiente',
     evidenceLink: evidence || null,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
+    updatedAt: serverTimestamp(),
+    createdAt: serverTimestamp()
+  }, { merge:true });
 
   $('taskTitle').value = '';
   $('taskDetail').value = '';
   $('taskEvidence').value = '';
-  setText('taskMsg', '✅ Tarea agregada.');
 
+  setText('taskMsg', '✅ Tarea agregada. (Plantilla guardada + estado de hoy registrado)');
   await loadTasks();
 }
 
@@ -680,15 +705,22 @@ function nextStatus(s){
   return order[(i + 1 + order.length) % order.length];
 }
 
-async function cycleTaskStatus(taskId){
-  const ref = doc(db, 'remote_sessions', state.sessionId, 'tasks', taskId);
-  const snap = await getDoc(ref);
-  if(!snap.exists()) return;
+async function cycleTaskStatus(templateId){
+  if(!state.sessionActive) return;
 
-  const cur = snap.data().status || 'pendiente';
+  const ref = taskRunRef(templateId);
+  const snap = await getDoc(ref);
+
+  const cur = snap.exists() ? (snap.data().status || 'pendiente') : 'pendiente';
   const nxt = nextStatus(cur);
 
-  await updateDoc(ref, { status: nxt, updatedAt: serverTimestamp() });
+  await setDoc(ref, {
+    templateId,
+    status: nxt,
+    updatedAt: serverTimestamp(),
+    createdAt: serverTimestamp()
+  }, { merge:true });
+
   await loadTasks();
 }
 
@@ -697,46 +729,60 @@ async function loadTasks(){
   if(!tbody) return;
 
   if(!state.sessionActive){
-    tbody.innerHTML = `<tr><td colspan="6" class="muted">Inicia jornada para ver/crear tareas.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">Inicia jornada para ver/gestionar tareas.</td></tr>`;
     return;
   }
 
   const filter = $('filterPeriod')?.value || 'all';
-  const q = query(tasksCol(), orderBy('createdAt', 'desc'), limit(200));
-  const snap = await getDocs(q);
 
-  const rows = [];
-  snap.forEach(docu => {
-    const d = docu.data();
-    if(filter !== 'all' && d.period !== filter) return;
-
-    const evidence = d.evidenceLink
-      ? `<a href="${d.evidenceLink}" target="_blank" rel="noopener">Abrir</a>`
-      : `<span class="muted">—</span>`;
-
-    rows.push(`
-      <tr>
-        <td>${escapeHtml(d.period || '—')}</td>
-        <td>
-          <div><b>${escapeHtml(d.title || '')}</b></div>
-          <div class="muted">${escapeHtml(d.detail || '')}</div>
-        </td>
-        <td>${escapeHtml(d.status || '')}</td>
-        <td>${escapeHtml(d.priority || '')}</td>
-        <td>${evidence}</td>
-        <td><button class="btn" data-act="cycle" data-id="${docu.id}">Cambiar estado</button></td>
-      </tr>
-    `);
+  // 1) Plantillas (persistentes)
+  const tSnap = await getDocs(query(templatesCol(), orderBy('createdAt','desc'), limit(300)));
+  const templates = [];
+  tSnap.forEach(d => {
+    const x = d.data();
+    if(x.active === false) return;
+    if(filter !== 'all' && x.period !== filter) return;
+    templates.push({ id:d.id, ...x });
   });
 
-  tbody.innerHTML = rows.length
-    ? rows.join('')
-    : `<tr><td colspan="6" class="muted">No hay tareas.</td></tr>`;
+  // 2) Runs (estado de esta sesión)
+  const rSnap = await getDocs(query(taskRunsCol(), limit(500)));
+  const runs = new Map();
+  rSnap.forEach(d => runs.set(d.id, d.data())); // id = templateId
+
+  if(!templates.length){
+    tbody.innerHTML = `<tr><td colspan="6" class="muted">No hay tareas (plantillas) activas.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = templates.map(tpl => {
+    const run = runs.get(tpl.id) || null;
+    const status = run?.status || 'pendiente';
+    const evidence = run?.evidenceLink
+      ? `<a href="${run.evidenceLink}" target="_blank" rel="noopener">Abrir</a>`
+      : `<span class="muted">—</span>`;
+
+    return `
+      <tr>
+        <td>${escapeHtml(tpl.period || '—')}</td>
+        <td>
+          <div><b>${escapeHtml(tpl.title || '')}</b></div>
+          <div class="muted">${escapeHtml(tpl.detail || '')}</div>
+        </td>
+        <td>${escapeHtml(status)}</td>
+        <td>${escapeHtml(tpl.priority || '')}</td>
+        <td>${evidence}</td>
+        <td>
+          <button class="btn" data-act="cycle" data-id="${tpl.id}">Cambiar estado</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
 
   tbody.querySelectorAll('button[data-act="cycle"]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const id = btn.getAttribute('data-id');
-      await cycleTaskStatus(id);
+      const templateId = btn.getAttribute('data-id');
+      await cycleTaskStatus(templateId);
     });
   });
 }
@@ -761,11 +807,10 @@ function wireUI(){
   $('btnOkNow')?.addEventListener('click', takeNowManual);
   $('btnDeny')?.addEventListener('click', denyThisTime);
 
-  // bloquear cerrar click fuera (para que no “escape”)
   ['consentBackdrop','checkinBackdrop','pauseBackdrop'].forEach(id => {
     $(id)?.addEventListener('click', (e) => {
       if(e.target?.id === id){
-        // no-op
+        // no-op (evita cerrar clic afuera)
       }
     });
   });
@@ -784,7 +829,6 @@ function initAuth(){
     setText('pillUser', `Usuario: ${u.email || '—'}`);
     setText('sessionStatus', 'Estado: Listo. Inicia jornada.');
 
-    // reset estado UI
     state.sessionActive = false;
     state.paused = false;
     state.sessionId = null;
