@@ -1092,3 +1092,48 @@ body.modal-open { overflow: hidden; }
 .fixedHeader-locked {
   display: none !important;
 }
+
+/* =========================================================
+   Grupos: barra superior fija + encabezado tabla fijo
+========================================================= */
+
+body {
+  padding-top: 90px;
+}
+
+.main > .filter-bar,
+.main > #toolbar,
+.main > #loadBox,
+#tablaGrupos_wrapper .dt-buttons,
+#tablaGrupos_wrapper .dataTables_scrollHead {
+  position: sticky;
+  z-index: 50;
+  background: #f6f6f6;
+}
+
+.main > .filter-bar {
+  top: 70px;
+  z-index: 60;
+}
+
+.main > #toolbar {
+  top: 155px;
+  z-index: 59;
+  padding: 8px 0;
+}
+
+.main > #loadBox {
+  top: 205px;
+  z-index: 58;
+}
+
+#tablaGrupos_wrapper .dt-buttons {
+  top: 285px;
+  z-index: 57;
+  padding: 8px 0;
+}
+
+#tablaGrupos_wrapper .dataTables_scrollHead {
+  top: 335px;
+  z-index: 56;
+}
