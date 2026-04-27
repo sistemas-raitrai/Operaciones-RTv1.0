@@ -228,18 +228,6 @@ function cargarTablaInferior() {
   }
 }
 
-async function guardarIndiceGrupo(grupoId, g) {
-  await setDoc(doc(db, 'gruposIndice', grupoId), {
-    grupoId,
-    numeroNegocio: g.numeroNegocio || '',
-    nombreGrupo: g.nombreGrupo || '',
-    nombreGrupoUpper: (g.nombreGrupo || '').toString().toUpperCase(),
-    anoViaje: g.anoViaje || '',
-    destino: g.destino || '',
-    programa: g.programa || '',
-    actualizadoEn: new Date()
-  }, { merge: true });
-}
 
 // 8️⃣ GUARDAR EN FIREBASE Y REGISTRAR HISTORIAL
 async function guardar() {
@@ -267,9 +255,6 @@ async function guardar() {
   const before = snapB.exists() ? snapB.data() : {};
 
   await setDoc(ref, payload, { merge: true });
-
-  // Mantiene actualizado el índice liviano usado por itinerario.js
-  await guardarIndiceGrupo(docId, payload);
 
   const cambios = [];
   Object.keys(payload).forEach(k => {
