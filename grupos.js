@@ -556,6 +556,26 @@ function descartarCambiosPendientes() {
   cambiosPendientes = [];
 }
 
+function mostrarModalCambios() {
+  const $tb = $('#tablaCambiosPendientes');
+  $tb.empty();
+
+  cambiosPendientes.forEach(c => {
+    $tb.append(`
+      <tr>
+        <td>${c.numeroNegocio}</td>
+        <td>${c.identificador}</td>
+        <td>${c.nombreGrupo}</td>
+        <td>${c.campo}</td>
+        <td>${c.anteriorDisplay}</td>
+        <td>${c.nuevoDisplay}</td>
+      </tr>
+    `);
+  });
+
+  $('#modalConfirmarCambios').css('display', 'flex');
+}
+
 async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
   try {
     setCarga(5, 'Cargando grupos...', 'Leyendo colección grupos');
@@ -1503,38 +1523,6 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     setCargaError(err);
   }
 } // ← cierre de cargarYMostrarTabla()
-
-function descartarCambiosPendientes() {
-  cambiosPendientes.forEach(c => {
-    if (c.td) {
-      $(c.td)
-        .text(c.anteriorDisplay)
-        .attr('data-original', c.anteriorDisplay);
-    }
-  });
-
-  cambiosPendientes = [];
-}
-
-function mostrarModalCambios() {
-  const $tb = $('#tablaCambiosPendientes');
-  $tb.empty();
-
-  cambiosPendientes.forEach(c => {
-    $tb.append(`
-      <tr>
-        <td>${c.numeroNegocio}</td>
-        <td>${c.identificador}</td>
-        <td>${c.nombreGrupo}</td>
-        <td>${c.campo}</td>
-        <td>${c.anteriorDisplay}</td>
-        <td>${c.nuevoDisplay}</td>
-      </tr>
-    `);
-  });
-
-  $('#modalConfirmarCambios').css('display', 'flex');
-}
 
 // 1) Función que lee toda la tabla de DataTables y genera un Excel
 function exportarGrupos() {
