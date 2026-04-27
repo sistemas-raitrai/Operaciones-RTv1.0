@@ -81,7 +81,7 @@ function formatearCelda(valor, campo) {
     return date.toLocaleDateString('es-CL', {
       day: '2-digit',
       month: '2-digit',
-      year: '2-digit'
+      year: 'numeric'
     });
   }
   return valor?.toString() || '';
@@ -866,17 +866,16 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
   // Año de viaje: recarga desde Firestore, no solo filtra DataTable
   $('#filtroAno').off('change').on('change', async function () {
     const valor = this.value || 'actual';
-  
+
     try {
       if ($.fn.DataTable.isDataTable('#tablaGrupos')) {
         $('#tablaGrupos').DataTable().destroy();
       }
-  
+
       $('#tablaGrupos tbody').empty();
-      });
-  
+
       await cargarYMostrarTabla(valor);
-  
+
     } catch (err) {
       console.error('Error recargando por año:', err);
       alert('Error al cargar grupos del año seleccionado.');
@@ -919,28 +918,105 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     'fechaDeViaje',
     'fechaCreacion'
   ]);
-  
-  function parseFechaParaFirestore(raw) {
-    const txt = String(raw || '').trim();
-  
-    if (!txt) return null;
-  
-    // Acepta formato YYYY-MM-DD
-    if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) {
-      return Timestamp.fromDate(new Date(txt + 'T00:00:00'));
+
+  function timestampToInputDate(valor) {
+    if (!valor) return '';
+
+    if (valor instanceof Timestamp) {
+      return toInputDate(valor.toDate());
     }
-  
-    // Acepta formato DD-MM-YYYY o DD/MM/YYYY
-    const m = txt.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
-    if (m) {
-      let [, dd, mm, yy] = m;
-      yy = yy.length === 2 ? '20' + yy : yy;
-      return Timestamp.fromDate(new Date(`${yy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T00:00:00`));
+
+    if (valor?.toDate) {
+      return toInputDate(valor.toDate());
     }
-  
-    throw new Error('Fecha inválida. Usa formato DD-MM-YYYY o YYYY-MM-DD.');
+
+    if (valor instanceof Date) {
+      return toInputDate(valor);
+    }
+
+    const parsed = parseFechaPosible(valor);
+    return parsed ? toInputDate(parsed) : '';
   }
 
+  function inputDateToDisplay(value) {
+    if (!value) return '';
+    const [yyyy, mm, dd] = value.split('-');
+    return `${dd}-${mm}-${yyyy}`;
+  }
+
+  function inputDateToTimestamp(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error('Fecha inválida.');
+    }
+
+    return Timestamp.fromDate(new Date(value + 'T00:00:00'));
+  }
+
+  // Edición de fechas con calendario
+  $('#tablaGrupos tbody')
+    .off('click', 'td[data-campo]')
+    .on('click', 'td[data-campo]', function () {
+      if (!editMode) return;
+
+      const $td = $(this);
+      const campo = $td.attr('data-campo');
+
+      if (!DATE_FIELDS.has(campo)) return;
+      if ($td.find('input[type="date"]').length) return;
+
+      const valorOriginal = $td.attr('data-original');
+      const fechaInput = timestampToInputDate(valorOriginal || $td.text().trim());
+
+      const $input = $('<input type="date">')
+        .val(fechaInput)
+        .css({
+          width: '130px',
+          border: '1px solid #7c3aed',
+          padding: '4px',
+          borderRadius: '6px'
+        });
+
+      $td.empty().append($input);
+      $input.trigger('focus');
+
+      $input.on('change blur', async function () {
+        const value = this.value;
+
+        if (!value) {
+          $td.text(formatearCelda(valorOriginal, campo));
+          return;
+        }
+
+        const docId = $td.attr('data-doc-id');
+        const nuevoValor = inputDateToTimestamp(value);
+        const displayText = inputDateToDisplay(value);
+
+        try {
+          await updateDoc(doc(db, 'grupos', docId), {
+            [campo]: nuevoValor
+          });
+
+          await addDoc(collection(db, 'historial'), {
+            numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
+            campo,
+            anterior: formatearCelda(valorOriginal, campo),
+            nuevo: displayText,
+            modificadoPor: auth.currentUser.email,
+            timestamp: new Date()
+          });
+
+          $td
+            .text(displayText)
+            .attr('data-original', nuevoValor);
+
+        } catch (err) {
+          console.error('Error guardando fecha:', err);
+          alert('No se pudo guardar la fecha.');
+          $td.text(formatearCelda(valorOriginal, campo));
+        }
+      });
+    });
+    
   // 5) Edición inline en blur (numéricos -> número real en Firestore)
   $('#tablaGrupos tbody')
     .off('focusout', 'td[contenteditable]')
@@ -952,6 +1028,9 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
       // Si no hay campo o docId (ej. celda fija), salir
       if (!campo || !docId) return;
+
+      // Las fechas se editan con calendario, no como texto libre
+      if (DATE_FIELDS.has(campo)) return;
 
       // valor escrito por el usuario
       const raw = $td.text().trim();
