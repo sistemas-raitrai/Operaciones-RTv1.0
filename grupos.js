@@ -873,14 +873,6 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       }
   
       $('#tablaGrupos tbody').empty();
-  
-      // Quitar columnas dinámicas de coordinador si ya fueron agregadas
-      const $theadRow = $('#tablaGrupos thead tr');
-      $theadRow.find('th').each(function () {
-        const txt = $(this).text().trim().toLowerCase();
-        if (txt === 'coordinadores' || txt === 'tel. coord.') {
-          $(this).remove();
-        }
       });
   
       await cargarYMostrarTabla(valor);
