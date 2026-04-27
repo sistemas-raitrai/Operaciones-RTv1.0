@@ -519,7 +519,7 @@ async function guardarCambiosPendientes() {
     if (c.td) {
       $(c.td)
         .text(c.nuevoDisplay)
-        .attr('data-original', c.nuevoDisplay);
+        .attr('data-original', c.nuevoValorFirestore);
     }
   }
 
