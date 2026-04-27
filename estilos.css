@@ -977,3 +977,66 @@ body.modal-open { overflow: hidden; }
   overflow-x: visible !important;
 }
 
+.load-box {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  box-shadow: 0 4px 14px rgba(80, 60, 140, 0.08);
+}
+
+.load-title {
+  font-weight: 700;
+  color: #4c1d95;
+  margin-bottom: 8px;
+}
+
+.load-bar {
+  width: 100%;
+  height: 10px;
+  background: #e9d5ff;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.load-progress {
+  width: 0%;
+  height: 100%;
+  background: #7c3aed;
+  transition: width 0.3s ease;
+}
+
+.load-detail {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #5b21b6;
+}
+
+.load-box.ok {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+}
+
+.load-box.ok .load-title,
+.load-box.ok .load-detail {
+  color: #047857;
+}
+
+.load-box.ok .load-progress {
+  background: #10b981;
+}
+
+.load-box.error {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.load-box.error .load-title,
+.load-box.error .load-detail {
+  color: #b91c1c;
+}
+
+.load-box.error .load-progress {
+  background: #ef4444;
+}
