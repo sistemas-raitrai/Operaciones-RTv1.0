@@ -1040,3 +1040,50 @@ body.modal-open { overflow: hidden; }
 .load-box.error .load-progress {
   background: #ef4444;
 }
+
+/* =========================================================
+   Ajuste DataTable grupos: corregir desfase encabezado/cuerpo
+========================================================= */
+
+#tablaGrupos {
+  width: 100% !important;
+  table-layout: auto !important;
+}
+
+#tablaGrupos th,
+#tablaGrupos td {
+  white-space: nowrap !important;
+  vertical-align: middle;
+  box-sizing: border-box;
+}
+
+.dt-nowrap {
+  white-space: nowrap !important;
+}
+
+#tablaGrupos_wrapper {
+  width: 100%;
+  overflow: visible !important;
+}
+
+#tablaGrupos_wrapper .dataTables_scroll {
+  width: 100% !important;
+}
+
+#tablaGrupos_wrapper .dataTables_scrollHead,
+#tablaGrupos_wrapper .dataTables_scrollBody {
+  width: 100% !important;
+}
+
+#tablaGrupos_wrapper .dataTables_scrollHeadInner,
+#tablaGrupos_wrapper .dataTables_scrollHeadInner table {
+  width: 100% !important;
+}
+
+#tablaGrupos_wrapper .dataTables_scrollBody {
+  overflow-x: auto !important;
+}
+
+#tablaGrupos_wrapper table.dataTable {
+  margin: 0 !important;
+}
