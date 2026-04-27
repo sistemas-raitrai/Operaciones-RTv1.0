@@ -149,6 +149,35 @@
       </div>
     </div>
 
+    <!-- Modal Confirmar Cambios -->
+    <div id="modalConfirmarCambios" class="modal-backdrop" style="display:none;">
+      <div class="modal" style="max-width:800px;">
+        <h2>Confirmar cambios</h2>
+    
+        <div class="modal-body" style="max-height:400px; overflow:auto;">
+          <table style="width:100%; font-size:13px;">
+            <thead>
+              <tr>
+                <th>N° Negocio</th>
+                <th>ID</th>
+                <th>Grupo</th>
+                <th>Campo</th>
+                <th>Antes</th>
+                <th>Después</th>
+              </tr>
+            </thead>
+            <tbody id="tablaCambiosPendientes"></tbody>
+          </table>
+        </div>
+    
+        <div class="modal-header" style="justify-content:flex-end; gap:10px;">
+          <button id="btn-cambios-cancelar">Seguir editando</button>
+          <button id="btn-cambios-descartar">Descartar</button>
+          <button id="btn-cambios-guardar" style="background:#16a34a; color:white;">Guardar</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Modal de Totales -->
     <div id="modalTotales" class="modal-backdrop" style="display:none;">
       <div class="modal">
