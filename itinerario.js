@@ -2971,3 +2971,16 @@ window.crearIndiceGruposItinerario = async function() {
   console.log(`Índice creado/actualizado: ${total} grupos`);
 };
 
+async function guardarIndiceGrupo(grupoId, g) {
+  await setDoc(doc(db, 'gruposIndice', grupoId), {
+    grupoId,
+    numeroNegocio: g.numeroNegocio || '',
+    nombreGrupo: g.nombreGrupo || '',
+    nombreGrupoUpper: (g.nombreGrupo || '').toString().toUpperCase(),
+    anoViaje: g.anoViaje || '',
+    destino: g.destino || '',
+    programa: g.programa || '',
+    actualizadoEn: new Date()
+  }, { merge: true });
+}
+
