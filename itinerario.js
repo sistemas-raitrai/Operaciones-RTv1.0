@@ -7,7 +7,7 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, query, where, getDocs,
+  collection, query, where, getDocs, getDocsFromServer,
   doc, getDoc, updateDoc, addDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -2948,27 +2948,40 @@ async function runStats(){
   }
 
 window.crearIndiceGruposItinerario = async function() {
-  const snap = await getDocs(collection(db, 'grupos'));
-  let total = 0;
+  try {
+    console.log("Creando índice desde servidor...");
 
-  for (const d of snap.docs) {
-    const g = d.data() || {};
+    const snap = await getDocsFromServer(collection(db, 'grupos'));
 
-    await setDoc(doc(db, 'gruposIndice', d.id), {
-      grupoId: d.id,
-      numeroNegocio: g.numeroNegocio || '',
-      nombreGrupo: g.nombreGrupo || '',
-      nombreGrupoUpper: (g.nombreGrupo || '').toString().toUpperCase(),
-      anoViaje: g.anoViaje || '',
-      destino: g.destino || '',
-      programa: g.programa || '',
-      actualizadoEn: new Date()
-    });
+    if (snap.empty) {
+      console.warn("No se encontraron grupos en servidor. Revisa conexión o permisos.");
+      return;
+    }
 
-    total++;
+    let total = 0;
+
+    for (const d of snap.docs) {
+      const g = d.data() || {};
+
+      await setDoc(doc(db, 'gruposIndice', d.id), {
+        grupoId: d.id,
+        numeroNegocio: g.numeroNegocio || '',
+        nombreGrupo: g.nombreGrupo || '',
+        nombreGrupoUpper: (g.nombreGrupo || '').toString().toUpperCase(),
+        anoViaje: g.anoViaje || '',
+        destino: g.destino || '',
+        programa: g.programa || '',
+        actualizadoEn: new Date()
+      }, { merge: true });
+
+      total++;
+    }
+
+    console.log(`Índice creado/actualizado: ${total} grupos`);
+  } catch (e) {
+    console.error("No se pudo crear el índice. Firestore no conectó al servidor:", e);
+    alert("No se pudo crear el índice. Firestore está sin conexión o bloqueado.");
   }
-
-  console.log(`Índice creado/actualizado: ${total} grupos`);
 };
 
 async function guardarIndiceGrupo(grupoId, g) {
