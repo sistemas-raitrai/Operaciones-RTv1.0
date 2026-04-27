@@ -48,6 +48,17 @@ let editMode = false;
 let dtHist = null;
 let GRUPOS_RAW = [];
 
+let tablaGruposDT = null;
+
+const ANO_ACTUAL = new Date().getFullYear();
+
+function resolverAnoFiltro(valor) {
+  if (valor === 'anterior') return String(ANO_ACTUAL - 1);
+  if (valor === 'proximo') return String(ANO_ACTUAL + 1);
+  if (valor === 'todos') return 'todos';
+  return String(ANO_ACTUAL);
+}
+
 // 👇 NUEVO: estado de filtros de vuelo
 const FLT_FILTER = {
   tipo: 'all',      // 'all' | 'charter' | 'regular'
@@ -58,7 +69,7 @@ $(function(){
   $('#btn-logout').click(() => signOut(auth).then(()=>location='login.html'));
   onAuthStateChanged(auth, user => {
     if (!user) location = 'login.html';
-    else cargarYMostrarTabla();
+    else cargarYMostrarTabla('actual');
   });
 });
 
@@ -448,16 +459,28 @@ function setCargaError(error) {
   detail.textContent = error?.message || String(error) || 'Error desconocido. Revisa la consola.';
 }
 
-async function cargarYMostrarTabla() {
+async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
   try {
     setCarga(5, 'Cargando grupos...', 'Leyendo colección grupos');
 
-    // 1) Leer coleccion "grupos"
-    const snap = await getDocs(collection(db,'grupos'));
-
+    // 1) Leer colección "grupos" filtrada por año para cargar más rápido
+    const anoResuelto = resolverAnoFiltro(filtroAnoCarga);
+    
+    let qGrupos;
+    
+    if (anoResuelto === 'todos') {
+      qGrupos = query(collection(db, 'grupos'));
+    } else {
+      qGrupos = query(
+        collection(db, 'grupos'),
+        where('anoViaje', '==', anoResuelto)
+      );
+    }
+    
+    const snap = await getDocs(qGrupos);
+    
     if (snap.empty) {
-      setCargaOk('No hay grupos registrados.');
-      console.warn('No hay grupos');
+      console.warn('No hay grupos para el filtro:', filtroAnoCarga);
       return;
     }
 
@@ -636,9 +659,8 @@ async function cargarYMostrarTabla() {
   const $filtroDestino = $('#filtroDestino').empty().append('<option value="">Todos</option>');
   destinos.forEach(d => $filtroDestino.append(`<option value="${d}">${d}</option>`));
 
-  // Años
-  const $filtroAno = $('#filtroAno').empty().append('<option value="">Todos</option>');
-  anios.forEach(a => $filtroAno.append(`<option value="${a}">${a}</option>`));
+  // Año: se mantiene como selector de carga, no como filtro local
+  $('#filtroAno').val(filtroAnoCarga);
 
   // 👇 NUEVO: selector de Vuelo / Transporte (columna Transporte)
   const $filtroTransporte = $('#filter-transporte').empty().append('<option value="">Todos</option>');
@@ -767,6 +789,7 @@ async function cargarYMostrarTabla() {
       { targets: [7, 8, 9], type: 'num', className: 'dt-body-right' }
     ]
   });
+  tablaGruposDT = tabla;
   tabla.buttons().container().appendTo('#toolbar');
 
   // ——— BÚSQUEDA ESPECIAL: "<texto>,..."  para incluir coordinadores en blanco ———
@@ -844,9 +867,32 @@ async function cargarYMostrarTabla() {
     tabla.column(12).search(this.value).draw();
   });
 
-  // Año de viaje (columna 3)
-  $('#filtroAno').on('change', function(){
-    tabla.column(3).search(this.value).draw();
+  // Año de viaje: recarga desde Firestore, no solo filtra DataTable
+  $('#filtroAno').off('change').on('change', async function () {
+    const valor = this.value || 'actual';
+  
+    try {
+      if ($.fn.DataTable.isDataTable('#tablaGrupos')) {
+        $('#tablaGrupos').DataTable().destroy();
+      }
+  
+      $('#tablaGrupos tbody').empty();
+  
+      // Quitar columnas dinámicas de coordinador si ya fueron agregadas
+      const $theadRow = $('#tablaGrupos thead tr');
+      $theadRow.find('th').each(function () {
+        const txt = $(this).text().trim().toLowerCase();
+        if (txt === 'coordinadores' || txt === 'tel. coord.') {
+          $(this).remove();
+        }
+      });
+  
+      await cargarYMostrarTabla(valor);
+  
+    } catch (err) {
+      console.error('Error recargando por año:', err);
+      alert('Error al cargar grupos del año seleccionado.');
+    }
   });
 
   // 👇 NUEVO: Tipo de vuelo (usa FLT_FILTER.tipo y ext.search)
