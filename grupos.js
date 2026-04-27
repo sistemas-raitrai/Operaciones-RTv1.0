@@ -1205,8 +1205,29 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
   // 7) Ver Historial
   $('#btn-view-history').off('click').on('click', async () => {
-    await recargarHistorial();
-    $('#modalHistorial').show();
+    console.log('📜 Click en Ver Historial');
+
+    // Abre el modal inmediatamente
+    $('#modalHistorial').css('display', 'flex');
+
+    // Mensaje visual mientras carga
+    $('#tablaHistorial tbody').html(`
+      <tr>
+        <td colspan="6">Cargando historial...</td>
+      </tr>
+    `);
+
+    try {
+      await recargarHistorial();
+    } catch (err) {
+      console.error('Error al abrir historial:', err);
+
+      $('#tablaHistorial tbody').html(`
+        <tr>
+          <td colspan="6">Error al cargar historial. Revisa la consola.</td>
+        </tr>
+      `);
+    }
   });
 
   // =========================================================
@@ -1440,7 +1461,9 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
   // 10) Botones del Historial
   $('#btn-refresh-history').off('click').on('click', recargarHistorial);
-  $('#btn-close-history').off('click').on('click', () => $('#modalHistorial').hide());
+  $('#btn-close-history').off('click').on('click', () => {
+    $('#modalHistorial').hide();
+  });
   $('#buscadorHistorial').off('input').on('input', () => dtHist.search($('#buscadorHistorial').val()).draw());
 
   // 12) Filtro de fechas del Historial (ext.search)
