@@ -759,10 +759,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     scrollX: true,
     autoWidth: true,
     scrollCollapse: true,
-    fixedHeader: {
-      header: true,
-      headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
-    },
+    fixedHeader: false,
     columnDefs: [
       { targets: [10, 11, 16, 17, 19, 21, 24, 25], visible: false },
       { targets: [7, 8, 9], type: 'num', className: 'dt-body-right' },
@@ -776,10 +773,6 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     const $wrapper = $('#tablaGrupos').closest('.dataTables_wrapper');
 
     tabla.columns.adjust().draw(false);
-
-    if (tabla.fixedHeader) {
-      tabla.fixedHeader.adjust();
-    }
 
     $wrapper.find('.dataTables_scrollBody').scrollLeft(0);
   }, 300);
