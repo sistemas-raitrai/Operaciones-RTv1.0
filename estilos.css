@@ -213,8 +213,7 @@ table.dataTable td {
 
 /* Contenedor con scroll horizontal para no cortar la tabla */
 .table-container {
-  overflow-x: auto;
-  /* opcional: sombreado interior */
+  overflow-x: visible;
   box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
 }
 
@@ -1086,4 +1085,10 @@ body.modal-open { overflow: hidden; }
 
 #tablaGrupos_wrapper table.dataTable {
   margin: 0 !important;
+}
+
+/* Ocultar encabezados flotantes clonados de FixedHeader */
+.fixedHeader-floating,
+.fixedHeader-locked {
+  display: none !important;
 }
