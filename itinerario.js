@@ -333,7 +333,7 @@ async function initItinerario() {
       Selecciona un grupo por nombre o número de negocio para cargar su itinerario.
     </div>
   `;
-  hideLoader("Sistema listo");
+  console.log("Sistema listo");
 }
 
 // ————— Botón Activar/Desactivar edición —————
