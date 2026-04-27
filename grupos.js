@@ -4,7 +4,7 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, getDocs, query, orderBy, where,
+  collection, collectionGroup, getDocs, query, orderBy, where, limit,
   doc, updateDoc, addDoc, Timestamp, writeBatch   // ← agrega writeBatch aquí
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -1422,7 +1422,11 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       const $tabla = $('#tablaHistorial');
       if (!$tabla.length) { console.error('No encontré #tablaHistorial'); console.groupEnd(); return; }
 
-      const q    = query(collection(db, 'historial'), orderBy('timestamp', 'desc'));
+      const q = query(
+        collection(db, 'historial'),
+        orderBy('timestamp', 'desc'),
+        limit(300)
+      );
       const snap = await getDocs(q);
 
       const $tbH = $tabla.find('tbody').empty();
@@ -1441,6 +1445,13 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
             <td>${d.nuevo || ''}</td>
           </tr>
         `);
+        if (snap.empty) {
+          $tbH.html(`
+            <tr>
+              <td colspan="6">No hay historial registrado.</td>
+            </tr>
+          `);
+        }
       });
 
       if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
