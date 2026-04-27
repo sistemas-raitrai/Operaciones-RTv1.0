@@ -12,6 +12,43 @@
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
+<style>
+  /* Tamaños proporcionales filtros grupos */
+  .filter-bar .row {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+  }
+  
+  .filtro-buscador {
+    flex: 0 0 34%;
+  }
+  
+  .filtro-destino {
+    flex: 0 0 8%;
+  }
+  
+  .filtro-ano {
+    flex: 0 0 9%;
+  }
+  
+  .filtro-tipo {
+    flex: 0 0 9%;
+  }
+  
+  .filtro-fecha {
+    flex: 0 0 12%;
+  }
+  
+  .filtro-transporte {
+    flex: 1 1 auto;
+  }
+  
+  .filter-bar input,
+  .filter-bar select {
+    height: 34px;
+    font-size: 13px;
+  }
+</style>
 <body>
 
   <div id="encabezado"></div>
@@ -20,15 +57,15 @@
   <!-- Barra de filtros -->
   <div class="filter-bar">
     <div class="row">
-      <div class="column long">
+      <div class="column filtro-buscador">
         <label for="buscador">BUSCADOR DE GRUPOS:</label>
         <input type="text" id="buscador" placeholder="...">
       </div>
-      <div class="column short">
+      <div class="column filtro-destino">
         <label for="filtroDestino">Destino</label>
         <select id="filtroDestino"><option value="">Todos</option></select>
       </div>
-      <div class="column short">
+      <div class="column filtro-ano">
         <label for="filtroAno">Año de Viaje</label>
         <select id="filtroAno">
           <option value="actual">Año actual</option>
@@ -37,7 +74,7 @@
           <option value="todos">Todos</option>
         </select>
       </div>
-      <div class="column short">
+      <div class="column filtro-tipo">
         <label for="filter-tipoVuelo">Tipo vuelo:</label>
         <select id="filter-tipoVuelo">
           <option value="all">Charter + Regular</option>
@@ -45,13 +82,13 @@
           <option value="regular">Regular</option>
         </select>
       </div>
-      <div class="column short">
+      <div class="column filtro-fecha">
         <label for="filter-fechaIda">Fecha ida:</label>
         <input type="date" id="filter-fechaIda" />
       </div>
 
       <!-- 👇 NUEVO BLOQUE: filtro por vuelo / transporte -->
-      <div class="column long">
+      <div class="column filtro-transporte">
         <label for="filter-transporte">Vuelo / Transporte</label>
         <select id="filter-transporte">
           <option value="">Todos</option>
