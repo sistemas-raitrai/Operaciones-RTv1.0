@@ -1495,10 +1495,46 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
 // —————————————————————————————————
 // Utilidades fecha/hora
 // —————————————————————————————————
+function normalizarFechaISO(value) {
+  if (!value) return "";
+
+  // Si viene como Timestamp de Firebase
+  if (value?.toDate && typeof value.toDate === "function") {
+    const d = value.toDate();
+    return d.toISOString().slice(0, 10);
+  }
+
+  // Si viene como Date
+  if (value instanceof Date) {
+    return value.toISOString().slice(0, 10);
+  }
+
+  // Si viene como string
+  const txt = String(value).trim();
+
+  // Ya viene bien: YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) {
+    return txt;
+  }
+
+  // Si viene como ISO largo: 2026-12-01T00:00:00...
+  if (/^\d{4}-\d{2}-\d{2}T/.test(txt)) {
+    return txt.slice(0, 10);
+  }
+
+  return "";
+}
+
 function getDateRange(startStr, endStr) {
+  const startISO = normalizarFechaISO(startStr);
+  const endISO   = normalizarFechaISO(endStr);
+
   const out = [];
-  const [sy, sm, sd] = (startStr || '').split("-").map(Number);
-  const [ey, em, ed] = (endStr || '').split("-").map(Number);
+
+  if (!startISO || !endISO) return out;
+
+  const [sy, sm, sd] = startISO.split("-").map(Number);
+  const [ey, em, ed] = endISO.split("-").map(Number);
 
   if (!sy || !sm || !sd || !ey || !em || !ed) return out;
 
