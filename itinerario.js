@@ -788,10 +788,17 @@ async function renderItinerario() {
 
   // Inicializar itinerario si no existe
   if (!g.itinerario) {
-    const rango = getDateRange(g.fechaInicio, g.fechaFin);
-    const init  = {};
-    rango.forEach(d=> init[d]=[]);
-    await updateDoc(doc(db,'grupos',grupoId),{ itinerario:init });
+    let rango = getDateRange(g.fechaInicio, g.fechaFin);
+  
+    // Si no hay fechas reales, usar cantidad de días/noches
+    if (!rango.length) {
+      rango = getDiasRelativos(g);
+    }
+  
+    const init = {};
+    rango.forEach(d => init[d] = []);
+  
+    await updateDoc(doc(db, 'grupos', grupoId), { itinerario: init });
     g.itinerario = init;
   }
 
@@ -804,19 +811,19 @@ async function renderItinerario() {
   await updateEstadoRevisionAndBadge(grupoId, IT);
 
   // Fechas ordenadas
-  const fechas = Object.keys(IT).sort((a,b)=> new Date(a)-new Date(b));
+  const fechas = Object.keys(IT).sort(sortDiasItinerario);
 
   // —— Hoteles por día para este grupo ——
   const hotelByDay = await buildHotelDayMapForGroup(grupoId);
   const lastFecha = fechas[fechas.length - 1] || null;
 
   // Choices días
-  const opts = fechas.map((d,i)=>({ value: i, label: `Día ${i+1} – ${formatDateReadable(d)}` }));
+  const opts = fechas.map((d,i)=>({ value: i, label: `Día ${i+1} – ${formatDiaItinerario(d)}` }));
   if (choicesDias) { choicesDias.clearChoices(); choicesDias.setChoices(opts,'value','label',false); }
   else { choicesDias = new Choices(qaDia, { removeItemButton: true, placeholderValue: 'Selecciona día(s)', choices: opts }); }
 
   // Select fecha del modal
-  fldFecha.innerHTML = fechas.map((d,i)=>`<option value="${d}">Día ${i+1} – ${formatDateReadable(d)}</option>`).join('');
+  fldFecha.innerHTML = fechas.map((d,i)=>`<option value="${d}">Día ${i+1} – ${formatDiaItinerario(d)}</option>`).join('');
 
   // Helper botón
   function createBtn(icon, cls, title='') { const b = document.createElement("span"); b.className = cls; b.textContent = icon; b.title = title; b.style.cursor = "pointer"; return b; }
@@ -1047,7 +1054,7 @@ async function quickAddActivity() {
   const isTicketService = !!(sv && sv.data && String(sv.data.voucher || '').toUpperCase() === 'TICKET');
   const actNameUpperForTicket = ((sv ? sv.nombre : textUpper) || '').toString().toUpperCase();
 
-  const fechas = Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
+  const fechas = Object.keys(g.itinerario).sort(sortDiasItinerario);
 
   for (let idx of selIdx) {
     const f   = fechas[idx];
@@ -1486,18 +1493,72 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
 // —————————————————————————————————
 function getDateRange(startStr, endStr) {
   const out = [];
-  const [sy, sm, sd] = (startStr||'').split("-").map(Number);
-  const [ey, em, ed] = (endStr||'').split("-").map(Number);
-  if (!sy || !ey) return out;
-  const start = new Date(sy, sm - 1, sd || 1);
-  const end   = new Date(ey, em - 1, ed || 1);
+  const [sy, sm, sd] = (startStr || '').split("-").map(Number);
+  const [ey, em, ed] = (endStr || '').split("-").map(Number);
+
+  if (!sy || !sm || !sd || !ey || !em || !ed) return out;
+
+  const start = new Date(sy, sm - 1, sd);
+  const end   = new Date(ey, em - 1, ed);
+
+  if (end < start) return out;
+
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
     const yyyy = d.getFullYear();
     const mm   = String(d.getMonth() + 1).padStart(2, "0");
-    const dd   = String(d.getDate()     ).padStart(2, "0");
+    const dd   = String(d.getDate()).padStart(2, "0");
     out.push(`${yyyy}-${mm}-${dd}`);
   }
+
   return out;
+}
+
+function getDiasRelativos(g) {
+  const noches = parseInt(
+    g.cantidadNoches || g.noches || g.cantidadNochesViaje || 0,
+    10
+  );
+
+  const dias = parseInt(
+    g.cantidadDias || g.dias || g.cantidadDeDias || 0,
+    10
+  );
+
+  let totalDias = 0;
+
+  if (Number.isFinite(dias) && dias > 0) {
+    totalDias = dias;
+  } else if (Number.isFinite(noches) && noches > 0) {
+    totalDias = noches + 1;
+  }
+
+  if (!totalDias) return [];
+
+  return Array.from({ length: totalDias }, (_, i) => `DIA_${i + 1}`);
+}
+
+function isFechaReal(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || ""));
+}
+
+function sortDiasItinerario(a, b) {
+  const aReal = isFechaReal(a);
+  const bReal = isFechaReal(b);
+
+  if (aReal && bReal) return new Date(a) - new Date(b);
+  if (aReal) return -1;
+  if (bReal) return 1;
+
+  const na = parseInt(String(a).replace(/\D/g, ""), 10) || 0;
+  const nb = parseInt(String(b).replace(/\D/g, ""), 10) || 0;
+  return na - nb;
+}
+
+function formatDiaItinerario(key) {
+  if (isFechaReal(key)) return formatDateReadable(key);
+
+  const n = parseInt(String(key).replace(/\D/g, ""), 10) || "";
+  return `Día ${n} (sin fecha)`;
 }
 
 function formatDateReadable(isoStr) {
@@ -1530,7 +1591,7 @@ async function guardarPlantilla() {
   // Guardar como objeto por día
   const actividadesPorDia = {};
   const fechas = Object.keys(g.itinerario || {})
-    .sort((a,b)=> new Date(a)-new Date(b));
+    .sort(sortDiasItinerario);
   fechas.forEach((fecha, idx) => {
     actividadesPorDia[`dia${idx+1}`] =
       (g.itinerario[fecha]||[]).map(act => ({
@@ -1589,7 +1650,7 @@ async function cargarPlantilla() {
   const g             = grpSnap.data() || {};
 
   const fechas = Object.keys(g.itinerario || {})
-    .sort((a,b)=> new Date(a)-new Date(b));
+    .sort(sortDiasItinerario);
 
   const ok = confirm(
     "¿Seguro que quieres cargar un nuevo itinerario?\n" +
@@ -2376,7 +2437,7 @@ async function buildSignature(grupo){
   if (STATS_SIGS_CACHE.has(grupo.id)) return STATS_SIGS_CACHE.get(grupo.id);
 
   const it = grupo.itinerario || {};
-  const fechas = Object.keys(it).sort((a,b)=> new Date(a)-new Date(b));
+  const fechas = Object.keys(it).sort(sortDiasItinerario);
 
   // Secuencias por día (tokens) y sus etiquetas visibles (labels)
   const diasSeq  = [];
