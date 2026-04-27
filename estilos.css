@@ -751,7 +751,7 @@ input, select, textarea {
 
 /* Scroll horizontal mejorado */
 .dataTables_wrapper {
-  overflow-x: auto;
+  overflow-x: visible;
 }
 
 /* Encabezado fijo global */
