@@ -8,7 +8,7 @@ import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, query, where, getDocs,
-  doc, getDoc, updateDoc, addDoc
+  doc, getDoc, updateDoc, addDoc, setDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -206,8 +206,17 @@ onAuthStateChanged(auth, user => {
 
 async function initItinerario() {
   // 2.1) Cargo todos los grupos
-  const snap   = await getDocs(collection(db,'grupos'));
-  const grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  const snap = await getDocs(collection(db,'gruposIndice'));
+  const grupos = snap.docs.map(d => {
+    const x = d.data() || {};
+    return {
+      id: x.grupoId || d.id,
+      numeroNegocio: x.numeroNegocio || '',
+      nombreGrupo: x.nombreGrupo || '',
+      anoViaje: x.anoViaje || '',
+      destino: x.destino || ''
+    };
+  });
   
   // 2.2) Poblamos selects
   selectNum.innerHTML  = grupos.map(g=>
@@ -317,8 +326,14 @@ async function initItinerario() {
 
   await cargarListaPlantillas();
 
-  // 2.5) Primera carga
-  selectNum.dispatchEvent(new Event('change'));
+  // 2.5) No cargamos ningún itinerario automáticamente.
+  // Solo se carga cuando el usuario selecciona grupo.
+  contItinerario.innerHTML = `
+    <div class="empty">
+      Selecciona un grupo por nombre o número de negocio para cargar su itinerario.
+    </div>
+  `;
+  hideLoader("Sistema listo");
 }
 
 // ————— Botón Activar/Desactivar edición —————
@@ -2930,5 +2945,29 @@ async function runStats(){
       </tbody>
     </table>
   `;
+
+ window.crearIndiceGruposItinerario = async function() {
+  const snap = await getDocs(collection(db, 'grupos'));
+  let total = 0;
+
+  for (const d of snap.docs) {
+    const g = d.data() || {};
+
+    await setDoc(doc(db, 'gruposIndice', d.id), {
+      grupoId: d.id,
+      numeroNegocio: g.numeroNegocio || '',
+      nombreGrupo: g.nombreGrupo || '',
+      nombreGrupoUpper: (g.nombreGrupo || '').toString().toUpperCase(),
+      anoViaje: g.anoViaje || '',
+      destino: g.destino || '',
+      programa: g.programa || '',
+      actualizadoEn: new Date()
+    });
+
+    total++;
+  }
+
+  console.log(`Índice creado/actualizado: ${total} grupos`);
+}; 
   }
 
