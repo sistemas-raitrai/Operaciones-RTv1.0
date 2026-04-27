@@ -725,14 +725,6 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
     $tb.append($tr);
   });
-  
-  // Encabezado "Coordinadores" (tras el 5º th)
-  const $theadRow = $('#tablaGrupos thead tr');
-  if ($theadRow.find('th').length === camposFire.length) {
-    const $afterVendedor = $theadRow.find('th').eq(4); // Vendedor(a)
-    $('<th>Coordinadores</th>').insertAfter($afterVendedor);
-    $('<th>Tel. Coord.</th>').insertAfter($afterVendedor.next());
-  }
 
   setCarga(90, 'Renderizando tabla...', 'Inicializando DataTable');
     
@@ -791,6 +783,10 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
   });
   tablaGruposDT = tabla;
   tabla.buttons().container().appendTo('#toolbar');
+
+  setTimeout(() => {
+    tabla.columns.adjust().draw(false);
+  }, 200);
 
   // ——— BÚSQUEDA ESPECIAL: "<texto>,..."  para incluir coordinadores en blanco ———
   const BUSQ_ESPECIAL = { activo:false, termino:'' };
@@ -925,7 +921,33 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     }
   });
 
-
+  const DATE_FIELDS = new Set([
+    'fechaInicio',
+    'fechaFin',
+    'fechaDeViaje',
+    'fechaCreacion'
+  ]);
+  
+  function parseFechaParaFirestore(raw) {
+    const txt = String(raw || '').trim();
+  
+    if (!txt) return null;
+  
+    // Acepta formato YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(txt)) {
+      return Timestamp.fromDate(new Date(txt + 'T00:00:00'));
+    }
+  
+    // Acepta formato DD-MM-YYYY o DD/MM/YYYY
+    const m = txt.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (m) {
+      let [, dd, mm, yy] = m;
+      yy = yy.length === 2 ? '20' + yy : yy;
+      return Timestamp.fromDate(new Date(`${yy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}T00:00:00`));
+    }
+  
+    throw new Error('Fecha inválida. Usa formato DD-MM-YYYY o YYYY-MM-DD.');
+  }
 
   // 5) Edición inline en blur (numéricos -> número real en Firestore)
   $('#tablaGrupos tbody')
@@ -961,6 +983,10 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
           nuevoValor  = entero;           // Firestore: Number
           displayText = String(entero);   // UI
         }
+
+      } else if (DATE_FIELDS.has(campo)) {
+        nuevoValor = parseFechaParaFirestore(raw);
+        displayText = raw;
       } else {
         // texto normal
         nuevoValor  = raw.toUpperCase();
