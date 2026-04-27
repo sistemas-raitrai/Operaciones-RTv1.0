@@ -786,8 +786,8 @@ async function renderItinerario() {
   // Autocomplete
   await prepararCampoActividad("qa-actividad", g.destino);
 
-  // Inicializar itinerario si no existe
-  if (!g.itinerario) {
+  // Inicializar itinerario si no existe O si existe vacío
+  if (!g.itinerario || Object.keys(g.itinerario || {}).length === 0) {
     let rango = getDateRange(g.fechaInicio, g.fechaFin);
   
     // Si no hay fechas reales, usar cantidad de días/noches
