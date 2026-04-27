@@ -681,47 +681,6 @@ async function openAlertasPanel() {
   }
 }
 
-// 3) Otros grupos con estado PENDIENTE
-if (listAlertasPend) listAlertasPend.innerHTML = "Cargando…";
-try {
-  const qsPend = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','PENDIENTE')));
-  const otrosP = qsPend.docs
-    .filter(d => d.id !== grupoId)
-    .map(d => ({ id: d.id, ...(d.data()||{}) }));
-  listAlertasPend.innerHTML = otrosP.length
-    ? otrosP.map(g=>`
-        <li class="alert-item">
-          <div>
-            <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
-            <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
-          </div>
-          <div class="actions">
-            <button type="button" class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
-          </div>
-        </li>
-      `).join('')
-    : `<li class="alert-item"><div>— No hay otros grupos pendientes —</div></li>`;
-
-  listAlertasPend.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
-    btn.onclick = (e) => {
-      stopAll(e);
-      const id = btn.getAttribute('data-id');
-      choicesGrupoNum.setChoiceByValue(id);
-      choicesGrupoNom.setChoiceByValue(id);
-      modalAlertas.style.display = "none";
-      document.getElementById("modal-backdrop").style.display = "none";
-      document.body.classList.remove('modal-open');
-      renderItinerario();
-    };
-  });
-} catch (e) {
-  if (listAlertasPend) listAlertasPend.innerHTML = `<li class="empty">Error al cargar grupos pendientes.</li>`;
-}
-
-// —————————————————————————————————
-/** 3) renderItinerario(): dibuja grilla (sincronizado) **/
-// —————————————————————————————————
-
 // —————————————————————————————————
 // HOTELS: asignaciones por día para el grupo
 // —————————————————————————————————
