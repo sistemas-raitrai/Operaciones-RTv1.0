@@ -502,6 +502,22 @@ function resumenCambiosPendientes() {
 }
 
 async function guardarCambiosPendientes() {
+  const hayCambiosPax = cambiosPendientes.some(c =>
+    c.campo === 'cantidadgrupo' ||
+    c.campo === 'adultos' ||
+    c.campo === 'estudiantes'
+  );
+
+  if (hayCambiosPax) {
+    const clave = window.prompt(
+      '⚠️ Hay cambios en PAX / ADULTOS / ESTUDIANTES. Ingresa la clave para guardar:'
+    );
+
+    if (clave !== PAX_PASSWORD) {
+      throw new Error('Clave incorrecta. No se guardaron los cambios.');
+    }
+  }
+
   for (const c of cambiosPendientes) {
     await updateDoc(doc(db, 'grupos', c.docId), {
       [c.campo]: c.nuevoValorFirestore
@@ -1114,21 +1130,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       // Si no cambió realmente, salir
       if (String(orig ?? '') === String(displayText)) return;
 
-      // ---------- PROTECCIÓN CAMPOS SENSIBLES (PAX / ADULTOS / ESTUDIANTES) ----------
-      const esCampoPax =
-        campo === 'cantidadgrupo' ||  // PAX
-        campo === 'adultos'       ||  // ADULTOS
-        campo === 'estudiantes';      // ESTUDIANTES;
 
-      if (esCampoPax) {
-        const clave = window.prompt('⚠️ Para modificar PAX / ADULTOS / ESTUDIANTES, ingresa la clave:');
-        if (clave !== PAX_PASSWORD) {
-          alert('Clave incorrecta. No se guardaron los cambios.');
-          // Revertimos el texto a su valor original
-          $td.text(String(orig ?? ''));
-          return;
-        }
-      }
       // ------------------------------------------------------------------------------
 
       registrarCambioPendiente({
