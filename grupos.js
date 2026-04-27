@@ -486,7 +486,9 @@ function registrarCambioPendiente(cambio) {
   } else {
     cambiosPendientes.push({
       key,
-      ...cambio
+      ...cambio,
+      identificador: cambio.identificador || '',
+      nombreGrupo: cambio.nombreGrupo || ''
     });
   }
 }
@@ -1073,6 +1075,8 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
           anteriorDisplay,
           nuevoDisplay: displayText,
           nuevoValorFirestore: nuevoValor,
+          identificador: $td.closest('tr').find('td').eq(1).text().trim(),
+          nombreGrupo: $td.closest('tr').find('td').eq(2).text().trim(),
           td: $td[0]
         });
 
@@ -1140,6 +1144,8 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
         anteriorDisplay: orig ?? '',
         nuevoDisplay: displayText,
         nuevoValorFirestore: nuevoValor,
+        identificador: $td.closest('tr').find('td').eq(1).text().trim(),
+        nombreGrupo: $td.closest('tr').find('td').eq(2).text().trim(),
         td: $td[0]
       });
 
@@ -1155,9 +1161,8 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     if (editMode && cambiosPendientes.length > 0) {
       const resumen = resumenCambiosPendientes();
 
-      const decision = window.prompt(
-        `Cambios pendientes:\n\n${resumen}\n\nEscribe:\nG = Guardar cambios\nD = Descartar cambios\nC = Cancelar y seguir editando`
-      );
+      mostrarModalCambios();
+      return;
 
       const op = String(decision || '').trim().toUpperCase();
 
@@ -1499,6 +1504,38 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
   }
 } // ← cierre de cargarYMostrarTabla()
 
+function descartarCambiosPendientes() {
+  cambiosPendientes.forEach(c => {
+    if (c.td) {
+      $(c.td)
+        .text(c.anteriorDisplay)
+        .attr('data-original', c.anteriorDisplay);
+    }
+  });
+
+  cambiosPendientes = [];
+}
+
+function mostrarModalCambios() {
+  const $tb = $('#tablaCambiosPendientes');
+  $tb.empty();
+
+  cambiosPendientes.forEach(c => {
+    $tb.append(`
+      <tr>
+        <td>${c.numeroNegocio}</td>
+        <td>${c.identificador}</td>
+        <td>${c.nombreGrupo}</td>
+        <td>${c.campo}</td>
+        <td>${c.anteriorDisplay}</td>
+        <td>${c.nuevoDisplay}</td>
+      </tr>
+    `);
+  });
+
+  $('#modalConfirmarCambios').css('display', 'flex');
+}
+
 // 1) Función que lee toda la tabla de DataTables y genera un Excel
 function exportarGrupos() {
   // Usamos DataTables API para obtener datos tal como se muestran (filtrados, ordenados)
@@ -1558,5 +1595,53 @@ $(document).on('click.RTtot', '#btn-tot-cerrar', function (e) {
 $(document).on('click.RTtot', function (e) {
   if (!$(e.target).closest('#tot-popover, .tot-pill, .mini-link').length) {
     $('#tot-popover').hide();
+  }
+});
+
+// Botones modal cambios
+$(document).off('click.RTcambios');
+
+$(document).on('click.RTcambios', '#btn-cambios-cancelar', () => {
+  $('#modalConfirmarCambios').hide();
+});
+
+$(document).on('click.RTcambios', '#btn-cambios-descartar', async () => {
+  descartarCambiosPendientes();
+
+  $('#modalConfirmarCambios').hide();
+
+  editMode = false;
+  $('#btn-toggle-edit').text('🔓 Activar Edición');
+
+  $('#tablaGrupos tbody td').removeAttr('contenteditable');
+
+  await addDoc(collection(db, 'historial'), {
+    accion: 'DESCARTÓ CAMBIOS Y DESACTIVÓ MODO EDICIÓN',
+    usuario: auth.currentUser.email,
+    timestamp: new Date()
+  });
+});
+
+$(document).on('click.RTcambios', '#btn-cambios-guardar', async () => {
+  try {
+    await guardarCambiosPendientes();
+
+    $('#modalConfirmarCambios').hide();
+
+    editMode = false;
+    $('#btn-toggle-edit').text('🔓 Activar Edición');
+
+    $('#tablaGrupos tbody td').removeAttr('contenteditable');
+
+    await addDoc(collection(db, 'historial'), {
+      accion: 'GUARDÓ CAMBIOS Y DESACTIVÓ MODO EDICIÓN',
+      usuario: auth.currentUser.email,
+      timestamp: new Date()
+    });
+
+    alert('Cambios guardados correctamente.');
+  } catch (err) {
+    console.error('Error guardando cambios:', err);
+    alert(err.message || 'No se pudieron guardar los cambios.');
   }
 });
