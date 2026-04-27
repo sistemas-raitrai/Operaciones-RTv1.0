@@ -7,8 +7,8 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, query, where, getDocs, getDocsFromServer,
-  doc, getDoc, updateDoc, addDoc, setDoc
+  collection, query, where, getDocs,
+  doc, getDoc, updateDoc, addDoc
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -206,17 +206,8 @@ onAuthStateChanged(auth, user => {
 
 async function initItinerario() {
   // 2.1) Cargo todos los grupos
-  const snap = await getDocs(collection(db,'gruposIndice'));
-  const grupos = snap.docs.map(d => {
-    const x = d.data() || {};
-    return {
-      id: x.grupoId || d.id,
-      numeroNegocio: x.numeroNegocio || '',
-      nombreGrupo: x.nombreGrupo || '',
-      anoViaje: x.anoViaje || '',
-      destino: x.destino || ''
-    };
-  });
+  const snap   = await getDocs(collection(db,'grupos'));
+  const grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
   
   // 2.2) Poblamos selects
   selectNum.innerHTML  = grupos.map(g=>
@@ -326,14 +317,8 @@ async function initItinerario() {
 
   await cargarListaPlantillas();
 
-  // 2.5) No cargamos ningún itinerario automáticamente.
-  // Solo se carga cuando el usuario selecciona grupo.
-  contItinerario.innerHTML = `
-    <div class="empty">
-      Selecciona un grupo por nombre o número de negocio para cargar su itinerario.
-    </div>
-  `;
-  console.log("Sistema listo");
+  // 2.5) Primera carga
+  selectNum.dispatchEvent(new Event('change'));
 }
 
 // ————— Botón Activar/Desactivar edición —————
@@ -695,6 +680,47 @@ async function openAlertasPanel() {
     if (listAlertasOtros) listAlertasOtros.innerHTML = `<li class="empty">Error al cargar otros grupos.</li>`;
   }
 }
+
+// 3) Otros grupos con estado PENDIENTE
+if (listAlertasPend) listAlertasPend.innerHTML = "Cargando…";
+try {
+  const qsPend = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','PENDIENTE')));
+  const otrosP = qsPend.docs
+    .filter(d => d.id !== grupoId)
+    .map(d => ({ id: d.id, ...(d.data()||{}) }));
+  listAlertasPend.innerHTML = otrosP.length
+    ? otrosP.map(g=>`
+        <li class="alert-item">
+          <div>
+            <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
+            <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
+          </div>
+        </li>
+      `).join('')
+    : `<li class="alert-item"><div>— No hay otros grupos pendientes —</div></li>`;
+
+  listAlertasPend.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
+    btn.onclick = (e) => {
+      stopAll(e);
+      const id = btn.getAttribute('data-id');
+      choicesGrupoNum.setChoiceByValue(id);
+      choicesGrupoNom.setChoiceByValue(id);
+      modalAlertas.style.display = "none";
+      document.getElementById("modal-backdrop").style.display = "none";
+      document.body.classList.remove('modal-open');
+      renderItinerario();
+    };
+  });
+} catch (e) {
+  if (listAlertasPend) listAlertasPend.innerHTML = `<li class="empty">Error al cargar grupos pendientes.</li>`;
+}
+
+// —————————————————————————————————
+/** 3) renderItinerario(): dibuja grilla (sincronizado) **/
+// —————————————————————————————————
 
 // —————————————————————————————————
 // HOTELS: asignaciones por día para el grupo
@@ -2946,54 +2972,3 @@ async function runStats(){
     </table>
   `;
   }
-
-window.crearIndiceGruposItinerario = async function() {
-  try {
-    console.log("Creando índice desde servidor...");
-
-    const snap = await getDocsFromServer(collection(db, 'grupos'));
-
-    if (snap.empty) {
-      console.warn("No se encontraron grupos en servidor. Revisa conexión o permisos.");
-      return;
-    }
-
-    let total = 0;
-
-    for (const d of snap.docs) {
-      const g = d.data() || {};
-
-      await setDoc(doc(db, 'gruposIndice', d.id), {
-        grupoId: d.id,
-        numeroNegocio: g.numeroNegocio || '',
-        nombreGrupo: g.nombreGrupo || '',
-        nombreGrupoUpper: (g.nombreGrupo || '').toString().toUpperCase(),
-        anoViaje: g.anoViaje || '',
-        destino: g.destino || '',
-        programa: g.programa || '',
-        actualizadoEn: new Date()
-      }, { merge: true });
-
-      total++;
-    }
-
-    console.log(`Índice creado/actualizado: ${total} grupos`);
-  } catch (e) {
-    console.error("No se pudo crear el índice. Firestore no conectó al servidor:", e);
-    alert("No se pudo crear el índice. Firestore está sin conexión o bloqueado.");
-  }
-};
-
-async function guardarIndiceGrupo(grupoId, g) {
-  await setDoc(doc(db, 'gruposIndice', grupoId), {
-    grupoId,
-    numeroNegocio: g.numeroNegocio || '',
-    nombreGrupo: g.nombreGrupo || '',
-    nombreGrupoUpper: (g.nombreGrupo || '').toString().toUpperCase(),
-    anoViaje: g.anoViaje || '',
-    destino: g.destino || '',
-    programa: g.programa || '',
-    actualizadoEn: new Date()
-  }, { merge: true });
-}
-
