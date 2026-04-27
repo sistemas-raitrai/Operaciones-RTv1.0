@@ -402,14 +402,71 @@ async function _buildCoordIndexes() {
   return { coordById, coordIdByGrupo, estadoByGrupo };
 }
 
+function setCarga(porcentaje, titulo, detalle = '') {
+  const box = document.getElementById('loadBox');
+  const bar = document.getElementById('loadProgress');
+  const title = document.getElementById('loadTitle');
+  const detail = document.getElementById('loadDetail');
+
+  if (!box || !bar || !title || !detail) return;
+
+  box.classList.remove('ok', 'error');
+  box.style.display = 'block';
+
+  bar.style.width = `${Math.max(0, Math.min(100, porcentaje))}%`;
+  title.textContent = titulo;
+  detail.textContent = detalle;
+}
+
+function setCargaOk(detalle = 'Datos cargados correctamente.') {
+  const box = document.getElementById('loadBox');
+  const bar = document.getElementById('loadProgress');
+  const title = document.getElementById('loadTitle');
+  const detail = document.getElementById('loadDetail');
+
+  if (!box || !bar || !title || !detail) return;
+
+  box.classList.remove('error');
+  box.classList.add('ok');
+  bar.style.width = '100%';
+  title.textContent = 'Listo';
+  detail.textContent = detalle;
+}
+
+function setCargaError(error) {
+  const box = document.getElementById('loadBox');
+  const bar = document.getElementById('loadProgress');
+  const title = document.getElementById('loadTitle');
+  const detail = document.getElementById('loadDetail');
+
+  if (!box || !bar || !title || !detail) return;
+
+  box.classList.remove('ok');
+  box.classList.add('error');
+  bar.style.width = '100%';
+  title.textContent = 'Error al cargar';
+  detail.textContent = error?.message || String(error) || 'Error desconocido. Revisa la consola.';
+}
 
 async function cargarYMostrarTabla() {
-  // 1) Leer coleccion "grupos"
-  const snap = await getDocs(collection(db,'grupos'));
-  if (snap.empty) return console.warn('No hay grupos');
+  try {
+    setCarga(5, 'Cargando grupos...', 'Leyendo colección grupos');
+
+    // 1) Leer coleccion "grupos"
+    const snap = await getDocs(collection(db,'grupos'));
+
+    if (snap.empty) {
+      setCargaOk('No hay grupos registrados.');
+      console.warn('No hay grupos');
+      return;
+    }
+
+    setCarga(15, 'Grupos cargados', `${snap.size} grupos encontrados`);
 
   // Índices de coordinadores (1 sola vez)
+  setCarga(25, 'Cargando coordinadores...', 'Leyendo coordinadores y conjuntos');
   const { coordById, coordIdByGrupo, estadoByGrupo } = await _buildCoordIndexes();
+  setCarga(35, 'Coordinadores cargados', 'Preparando tabla principal');
 
   // 2) Mapear docs → {id,fila:[], coordTexto} PARA LA TABLA
   const valores = snap.docs.map(docSnap => {
@@ -486,6 +543,12 @@ async function cargarYMostrarTabla() {
   // Procesa en tandas para no saturar
   const BATCH = 15;
   for (let i=0; i<valores.length; i+=BATCH){
+    const avance = 40 + Math.round((i / Math.max(1, valores.length)) * 35);
+    setCarga(
+      avance,
+      'Enriqueciendo información...',
+      `Procesando hoteles, vuelos y coordinadores ${Math.min(i + BATCH, valores.length)} de ${valores.length}`
+    );
     const sliceVals = valores.slice(i, i+BATCH);
     const sliceGps  = gruposParaLookup.slice(i, i+BATCH);
 
@@ -550,6 +613,8 @@ async function cargarYMostrarTabla() {
     // Espera que terminen todas las tareas de este bloque
     await Promise.allSettled(jobs);
   } // ← cierre del for (i += BATCH)
+
+  setCarga(80, 'Construyendo filtros...', 'Preparando destino, año y transporte');
 
   // Para filtros rápido (Destino / Año / Transporte)
   const destinosUnicos     = new Set();
@@ -647,7 +712,8 @@ async function cargarYMostrarTabla() {
     $('<th>Tel. Coord.</th>').insertAfter($afterVendedor.next());
   }
 
-
+  setCarga(90, 'Renderizando tabla...', 'Inicializando DataTable');
+    
   // 4) Iniciar DataTable principal
   const tabla = $('#tablaGrupos').DataTable({
     // (config actual igual)
@@ -1177,6 +1243,13 @@ async function cargarYMostrarTabla() {
     return ts >= min && ts <= max;
   });
   $('#histInicio, #histFin').off('change').on('change', () => dtHist.draw());
+  
+  setCargaOk(`Tabla cargada correctamente con ${valores.length} grupos.`);
+
+  } catch (err) {
+    console.error('🔥 Error general en cargarYMostrarTabla():', err);
+    setCargaError(err);
+  }
 } // ← cierre de cargarYMostrarTabla()
 
 // 1) Función que lee toda la tabla de DataTables y genera un Excel
