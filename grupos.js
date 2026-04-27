@@ -50,6 +50,9 @@ let GRUPOS_RAW = [];
 
 let tablaGruposDT = null;
 
+// Cambios editados en pantalla pero todavía NO guardados en Firebase
+let cambiosPendientes = [];
+
 const ANO_ACTUAL = new Date().getFullYear();
 
 function resolverAnoFiltro(valor) {
@@ -469,6 +472,70 @@ function setCargaError(error) {
   bar.style.width = '100%';
   title.textContent = 'Error al cargar';
   detail.textContent = error?.message || String(error) || 'Error desconocido. Revisa la consola.';
+}
+
+function registrarCambioPendiente(cambio) {
+  const key = `${cambio.docId}__${cambio.campo}`;
+
+  const existente = cambiosPendientes.find(c => c.key === key);
+
+  if (existente) {
+    existente.nuevoDisplay = cambio.nuevoDisplay;
+    existente.nuevoValorFirestore = cambio.nuevoValorFirestore;
+    existente.td = cambio.td;
+  } else {
+    cambiosPendientes.push({
+      key,
+      ...cambio
+    });
+  }
+}
+
+function resumenCambiosPendientes() {
+  if (!cambiosPendientes.length) return 'No hay cambios pendientes.';
+
+  return cambiosPendientes
+    .map((c, i) => {
+      return `${i + 1}) Negocio ${c.numeroNegocio} | ${c.campo}: "${c.anteriorDisplay}" → "${c.nuevoDisplay}"`;
+    })
+    .join('\n');
+}
+
+async function guardarCambiosPendientes() {
+  for (const c of cambiosPendientes) {
+    await updateDoc(doc(db, 'grupos', c.docId), {
+      [c.campo]: c.nuevoValorFirestore
+    });
+
+    await addDoc(collection(db, 'historial'), {
+      numeroNegocio: c.numeroNegocio,
+      campo: c.campo,
+      anterior: c.anteriorDisplay ?? '',
+      nuevo: c.nuevoDisplay ?? '',
+      modificadoPor: auth.currentUser.email,
+      timestamp: new Date()
+    });
+
+    if (c.td) {
+      $(c.td)
+        .text(c.nuevoDisplay)
+        .attr('data-original', c.nuevoDisplay);
+    }
+  }
+
+  cambiosPendientes = [];
+}
+
+function descartarCambiosPendientes() {
+  cambiosPendientes.forEach(c => {
+    if (c.td) {
+      $(c.td)
+        .text(c.anteriorDisplay)
+        .attr('data-original', c.anteriorDisplay);
+    }
+  });
+
+  cambiosPendientes = [];
 }
 
 async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
@@ -981,29 +1048,19 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
         const nuevoValor = inputDateToTimestamp(value);
         const displayText = inputDateToDisplay(value);
 
-        try {
-          await updateDoc(doc(db, 'grupos', docId), {
-            [campo]: nuevoValor
-          });
+        const anteriorDisplay = formatearCelda(valorOriginal, campo);
 
-          await addDoc(collection(db, 'historial'), {
-            numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
-            campo,
-            anterior: formatearCelda(valorOriginal, campo),
-            nuevo: displayText,
-            modificadoPor: auth.currentUser.email,
-            timestamp: new Date()
-          });
+        registrarCambioPendiente({
+          docId,
+          numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
+          campo,
+          anteriorDisplay,
+          nuevoDisplay: displayText,
+          nuevoValorFirestore: nuevoValor,
+          td: $td[0]
+        });
 
-          $td
-            .text(displayText)
-            .attr('data-original', nuevoValor);
-
-        } catch (err) {
-          console.error('Error guardando fecha:', err);
-          alert('No se pudo guardar la fecha.');
-          $td.text(formatearCelda(valorOriginal, campo));
-        }
+        $td.text(displayText);
       });
     });
     
@@ -1074,43 +1131,63 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       }
       // ------------------------------------------------------------------------------
 
-      try {
-        // Actualiza en Firestore con el TIPO correcto
-        await updateDoc(doc(db, 'grupos', docId), { [campo]: nuevoValor });
+      registrarCambioPendiente({
+        docId,
+        numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
+        campo,
+        anteriorDisplay: orig ?? '',
+        nuevoDisplay: displayText,
+        nuevoValorFirestore: nuevoValor,
+        td: $td[0]
+      });
 
-        // Historial
-        await addDoc(collection(db, 'historial'), {
-          numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
-          campo,
-          anterior: orig ?? '',
-          nuevo: displayText,
-          modificadoPor: auth.currentUser.email,
-          timestamp: new Date()
-        });
-
-        // Actualiza atributos/UI locales
-        $td.text(displayText).attr('data-original', displayText);
-
-        // Mantén sincronizado GRUPOS_RAW para Totales si es numérico
-        if (NUMERIC_FIELDS.has(campo)) {
-          const g = GRUPOS_RAW.find(x => x._id === docId);
-          if (g) g[campo] = Number(displayText);
-        }
-      } catch (err) {
-        console.error('Error al guardar edición:', err);
-        // Revertimos visual si falla
-        $td.text(String(orig ?? ''));
-      }
+      // Solo cambia visualmente. Todavía NO guarda en Firebase.
+      $td.text(displayText);
     });
 
 
   // 6) Toggle edición
   $('#btn-toggle-edit').off('click').on('click', async () => {
+
+    // Si está en edición y se quiere desactivar, revisar cambios pendientes
+    if (editMode && cambiosPendientes.length > 0) {
+      const resumen = resumenCambiosPendientes();
+
+      const decision = window.prompt(
+        `Cambios pendientes:\n\n${resumen}\n\nEscribe:\nG = Guardar cambios\nD = Descartar cambios\nC = Cancelar y seguir editando`
+      );
+
+      const op = String(decision || '').trim().toUpperCase();
+
+      if (op === 'C' || op === '') {
+        return;
+      }
+
+      if (op === 'D') {
+        descartarCambiosPendientes();
+      } else if (op === 'G') {
+        try {
+          await guardarCambiosPendientes();
+          alert('Cambios guardados correctamente.');
+        } catch (err) {
+          console.error('Error guardando cambios pendientes:', err);
+          alert('Error al guardar cambios. Se mantiene el modo edición.');
+          return;
+        }
+      } else {
+        alert('Opción no válida. Usa G, D o C.');
+        return;
+      }
+    }
+
     editMode = !editMode;
-    $('#btn-toggle-edit').text(editMode?'🔒 Desactivar Edición':'🔓 Activar Edición');
-    $('#tablaGrupos tbody tr').each((_,tr)=>{
-      $(tr).find('td').each((i,td)=>{
+
+    $('#btn-toggle-edit').text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+
+    $('#tablaGrupos tbody tr').each((_, tr) => {
+      $(tr).find('td').each((i, td) => {
         const $td = $(td);
+
         if (i > 1 && !$td.attr('data-fixed')) {
           $td.attr('contenteditable', editMode);
         } else {
@@ -1118,8 +1195,9 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
         }
       });
     });
-    await addDoc(collection(db,'historial'),{
-      accion: editMode?'ACTIVÓ MODO EDICIÓN':'DESACTIVÓ MODO EDICIÓN',
+
+    await addDoc(collection(db, 'historial'), {
+      accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
       usuario: auth.currentUser.email,
       timestamp: new Date()
     });
