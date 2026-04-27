@@ -2945,8 +2945,9 @@ async function runStats(){
       </tbody>
     </table>
   `;
+  }
 
- window.crearIndiceGruposItinerario = async function() {
+window.crearIndiceGruposItinerario = async function() {
   const snap = await getDocs(collection(db, 'grupos'));
   let total = 0;
 
@@ -2968,6 +2969,5 @@ async function runStats(){
   }
 
   console.log(`Índice creado/actualizado: ${total} grupos`);
-}; 
-  }
+};
 
