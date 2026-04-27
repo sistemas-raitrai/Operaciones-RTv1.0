@@ -757,8 +757,9 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     lengthChange: false,
     order: [[12, 'desc'], [13, 'desc'], [14, 'desc'], [1, 'desc']],
     scrollX: true,
+    scrollY: 'calc(100vh - 360px)',
+    scrollCollapse: false,
     autoWidth: true,
-    scrollCollapse: true,
     fixedHeader: false,
     columnDefs: [
       { targets: [10, 11, 16, 17, 19, 21, 24, 25], visible: false },
