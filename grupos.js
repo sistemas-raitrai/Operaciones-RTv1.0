@@ -74,16 +74,28 @@ $(function(){
 });
 
 function formatearCelda(valor, campo) {
-  // Si es un campo de fecha, lo formatea a dd-mm-aa
   const camposFecha = ['fechaInicio', 'fechaFin', 'fechaDeViaje', 'fechaCreacion'];
-  if (camposFecha.includes(campo) && valor instanceof Timestamp) {
-    const date = valor.toDate();
-    return date.toLocaleDateString('es-CL', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+
+  if (camposFecha.includes(campo)) {
+    let date = null;
+
+    if (valor instanceof Timestamp) {
+      date = valor.toDate();
+    } else if (valor?.toDate) {
+      date = valor.toDate();
+    } else {
+      date = parseFechaPosible(valor);
+    }
+
+    if (date instanceof Date && !isNaN(date.getTime())) {
+      return date.toLocaleDateString('es-CL', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).replaceAll('/', '-');
+    }
   }
+
   return valor?.toString() || '';
 }
 
@@ -745,48 +757,32 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     lengthChange: false,
     order: [[12, 'desc'], [13, 'desc'], [14, 'desc'], [1, 'desc']],
     scrollX: true,
-    autoWidth: false,
+    autoWidth: true,
+    scrollCollapse: true,
     fixedHeader: {
       header: true,
       headerOffset: $('header.header').outerHeight() + $('.filter-bar').outerHeight()
     },
     columnDefs: [
       { targets: [10, 11, 16, 17, 19, 21, 24, 25], visible: false },
-      { targets: 0,  width: '20px'  },
-      { targets: 1,  width: '20px'  },
-      { targets: 2,  width: '100px' },
-      { targets: 3,  width: '20px'  },
-      { targets: 4,  width: '50px'  },
-      { targets: 5,  width: '140px' },
-      { targets: 6,  width: '90px'  },
-      { targets: 7,  width: '20px'  },
-      { targets: 8,  width: '20px'  },
-      { targets: 9,  width: '20px'  },
-      { targets: 10, width: '70px'  },
-      { targets: 11, width: '20px'  },
-      { targets: 12, width: '70px'  },
-      { targets: 13, width: '70px'  },
-      { targets: 14, width: '40px'  },
-      { targets: 15, width: '40px'  },
-      { targets: 16, width: '30px'  },
-      { targets: 17, width: '80px'  },
-      { targets: 18, width: '50px'  },
-      { targets: 19, width: '80px'  },
-      { targets: 20, width: '50px'  },  // Transporte
-      { targets: 21, width: '50px'  },
-      { targets: 22, width: '80px'  },
-      { targets: 23, width: '100px' },
-      { targets: 24, width: '50px'  },
-      { targets: 25, width: '50px'  },
-      { targets: [7, 8, 9], type: 'num', className: 'dt-body-right' }
+      { targets: [7, 8, 9], type: 'num', className: 'dt-body-right' },
+      { targets: '_all', className: 'dt-nowrap' }
     ]
   });
   tablaGruposDT = tabla;
   tabla.buttons().container().appendTo('#toolbar');
 
   setTimeout(() => {
+    const $wrapper = $('#tablaGrupos').closest('.dataTables_wrapper');
+
     tabla.columns.adjust().draw(false);
-  }, 200);
+
+    if (tabla.fixedHeader) {
+      tabla.fixedHeader.adjust();
+    }
+
+    $wrapper.find('.dataTables_scrollBody').scrollLeft(0);
+  }, 300);
 
   // ——— BÚSQUEDA ESPECIAL: "<texto>,..."  para incluir coordinadores en blanco ———
   const BUSQ_ESPECIAL = { activo:false, termino:'' };
