@@ -1440,9 +1440,9 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
             <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
             <td>${d.modificadoPor || d.usuario || ''}</td>
             <td>${d.numeroNegocio || ''}</td>
-            <td>${d.accion || d.campo || ''}</td>
-            <td>${d.anterior || ''}</td>
-            <td>${d.nuevo || ''}</td>
+            <td>${d.accion || d.campo || d.tipo || ''}</td>
+            <td>${d.anterior ?? d.valorAnterior ?? d.antes ?? ''}</td>
+            <td>${d.nuevo ?? d.valorNuevo ?? d.despues ?? d.nuevoDisplay ?? ''}</td>
           </tr>
         `);
         if (snap.empty) {
