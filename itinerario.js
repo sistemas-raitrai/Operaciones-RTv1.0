@@ -802,6 +802,10 @@ async function renderItinerario() {
     g.itinerario = init;
   }
 
+  // Si el itinerario tenía días relativos y ahora el grupo tiene fechas,
+  // convertir DIA_1, DIA_2, etc. a fechas reales.
+  g.itinerario = await convertirDiasRelativosAFechasSiCorresponde(grupoId, g);
+  
   // Sincronizar con Servicios
   const svcMaps = await getServiciosMaps(g.destino || '');
   const syncRes = await syncItinerarioServicios(grupoId, g, svcMaps);
@@ -838,7 +842,7 @@ async function renderItinerario() {
     if (d.getDay() === 0) sec.classList.add('domingo');
 
     sec.innerHTML = `
-      <h3>Día ${idx+1} – ${formatDateReadable(fecha)}</h3>
+      <h3>Día ${idx+1} – ${formatDiaItinerario(fecha)}</h3>
       <ul class="activity-list"></ul>
       <button type="button" class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
     `;
@@ -1559,6 +1563,43 @@ function formatDiaItinerario(key) {
 
   const n = parseInt(String(key).replace(/\D/g, ""), 10) || "";
   return `Día ${n} (sin fecha)`;
+}
+
+async function convertirDiasRelativosAFechasSiCorresponde(grupoId, g) {
+  const IT = g.itinerario || {};
+  const keys = Object.keys(IT);
+
+  if (!keys.length) return g.itinerario;
+
+  const tieneDiasRelativos = keys.some(k => String(k).startsWith("DIA_"));
+  const tieneFechasReales = keys.some(k => isFechaReal(k));
+
+  // Solo convierte si TODOS los días son relativos.
+  // Si ya hay fechas reales, no toca nada para evitar mezclar o perder datos.
+  if (!tieneDiasRelativos || tieneFechasReales) return g.itinerario;
+
+  const fechas = getDateRange(g.fechaInicio, g.fechaFin);
+  if (!fechas.length) return g.itinerario;
+
+  const diasRelativos = keys.sort(sortDiasItinerario);
+  const nuevoItinerario = {};
+
+  fechas.forEach((fechaReal, idx) => {
+    const diaRelativo = diasRelativos[idx];
+    nuevoItinerario[fechaReal] = IT[diaRelativo] || [];
+  });
+
+  await updateDoc(doc(db, "grupos", grupoId), {
+    itinerario: nuevoItinerario
+  });
+
+  await logHist(grupoId, "CONVERTIR ITINERARIO A FECHAS REALES", {
+    _group: g,
+    anterior: diasRelativos.join(", "),
+    nuevo: fechas.join(", ")
+  });
+
+  return nuevoItinerario;
 }
 
 function formatDateReadable(isoStr) {
