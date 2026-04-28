@@ -44,6 +44,41 @@ const camposFire = [
 // Campos que deben ser numéricos en Firestore
 const NUMERIC_FIELDS = new Set(['cantidadgrupo','adultos','estudiantes']);
 
+const PAX_FIELDS = new Set(['cantidadgrupo', 'adultos', 'estudiantes']);
+
+function validarFilaPax($tr) {
+  const $pax = $tr.find('td[data-campo="cantidadgrupo"]');
+  const $adultos = $tr.find('td[data-campo="adultos"]');
+  const $estudiantes = $tr.find('td[data-campo="estudiantes"]');
+
+  const pax = toNum($pax.text());
+  const adultos = toNum($adultos.text());
+  const estudiantes = toNum($estudiantes.text());
+
+  const ok = pax === adultos + estudiantes;
+
+  [$pax, $adultos, $estudiantes].forEach($td => {
+    $td.toggleClass('pax-error', !ok);
+    $td.attr(
+      'title',
+      ok ? '' : `Error: PAX ${pax} ≠ Adultos ${adultos} + Estudiantes ${estudiantes}`
+    );
+  });
+
+  return ok;
+}
+
+function validarTodasLasFilasPax() {
+  let todoOk = true;
+
+  $('#tablaGrupos tbody tr').each((_, tr) => {
+    const ok = validarFilaPax($(tr));
+    if (!ok) todoOk = false;
+  });
+
+  return todoOk;
+}7
+
 let editMode = false;
 let dtHist = null;
 let GRUPOS_RAW = [];
@@ -504,6 +539,12 @@ function resumenCambiosPendientes() {
 }
 
 async function guardarCambiosPendientes() {
+
+  const paxOk = validarTodasLasFilasPax();
+
+  if (!paxOk) {
+    throw new Error('Hay filas donde PAX no coincide con Adultos + Estudiantes. Corrige esas filas antes de guardar.');
+  }
   const hayCambiosPax = cambiosPendientes.some(c =>
     c.campo === 'cantidadgrupo' ||
     c.campo === 'adultos' ||
@@ -841,6 +882,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     }
 
     $tb.append($tr);
+    validarFilaPax($tr);
   });
 
   setCarga(90, 'Renderizando tabla...', 'Inicializando DataTable');
@@ -1101,6 +1143,9 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
         });
 
         $td.text(displayText);
+        if (PAX_FIELDS.has(campo)) {
+          validarFilaPax($td.closest('tr'));
+        }
       });
     });
     
