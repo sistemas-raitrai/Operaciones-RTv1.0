@@ -77,7 +77,7 @@ function validarTodasLasFilasPax() {
   });
 
   return todoOk;
-}7
+}
 
 let editMode = false;
 let dtHist = null;
@@ -1216,6 +1216,17 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
       // Solo cambia visualmente. Todavía NO guarda en Firebase.
       $td.text(displayText);
+
+      if (PAX_FIELDS.has(campo)) {
+        validarFilaPax($td.closest('tr'));
+      }
+    });
+
+      // Validación instantánea mientras escribes PAX / ADULTOS / ESTUDIANTES
+    $('#tablaGrupos tbody')
+    .off('input.paxLive', 'td[contenteditable][data-campo="cantidadgrupo"], td[contenteditable][data-campo="adultos"], td[contenteditable][data-campo="estudiantes"]')
+    .on('input.paxLive', 'td[contenteditable][data-campo="cantidadgrupo"], td[contenteditable][data-campo="adultos"], td[contenteditable][data-campo="estudiantes"]', function () {
+      validarFilaPax($(this).closest('tr'));
     });
 
 
