@@ -8,6 +8,20 @@ const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
 
+function getAnoComercialActual() {
+  const hoy = new Date();
+  const mes = hoy.getMonth(); // enero=0, febrero=1, marzo=2
+
+  // Enero y febrero pertenecen al año comercial anterior
+  if (mes < 2) {
+    return hoy.getFullYear() - 1;
+  }
+
+  return hoy.getFullYear();
+}
+
+const ANO_COMERCIAL_ACTUAL = String(getAnoComercialActual());
+
 // ======================================================
 // Barra de carga visual (igual lógica grupos.js)
 // ======================================================
@@ -573,6 +587,8 @@ async function generarTablaCalendario(userEmail) {
   anios.forEach(a =>
     $('#filtroAno').append(`<option value="${a}">${a}</option>`)
   );
+    
+  $('#filtroAno').val(ANO_COMERCIAL_ACTUAL);
 
   // Cabecera de la tabla
   const $trhead = $('#encabezadoCalendario').empty();
@@ -741,6 +757,8 @@ async function generarTablaCalendario(userEmail) {
       url: '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
+
+  tabla.column(6).search('^' + ANO_COMERCIAL_ACTUAL + '$', true, false).draw();
 
   // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
   const _ext = $.fn.dataTable.ext.search;
