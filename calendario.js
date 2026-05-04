@@ -9,6 +9,60 @@ let dtHist = null;
 let editMode = false;
 
 // ======================================================
+// Barra de carga visual (igual lógica grupos.js)
+// ======================================================
+function setCarga(porcentaje, titulo, detalle = '') {
+  const box = document.getElementById('loadBox');
+  const bar = document.getElementById('loadProgress');
+  const title = document.getElementById('loadTitle');
+  const detail = document.getElementById('loadDetail');
+
+  if (!box || !bar || !title || !detail) return;
+
+  box.classList.remove('ok', 'error');
+  box.style.display = 'block';
+
+  bar.style.width = `${Math.max(0, Math.min(100, porcentaje))}%`;
+  title.textContent = titulo;
+  detail.textContent = detalle;
+}
+
+function setCargaOk(detalle = 'Datos cargados correctamente.') {
+  const box = document.getElementById('loadBox');
+  const bar = document.getElementById('loadProgress');
+  const title = document.getElementById('loadTitle');
+  const detail = document.getElementById('loadDetail');
+
+  if (!box || !bar || !title || !detail) return;
+
+  box.classList.remove('error');
+  box.classList.add('ok');
+  box.style.display = 'block';
+
+  bar.style.width = '100%';
+  title.textContent = 'Listo';
+  detail.textContent = detalle;
+}
+
+function setCargaError(error) {
+  const box = document.getElementById('loadBox');
+  const bar = document.getElementById('loadProgress');
+  const title = document.getElementById('loadTitle');
+  const detail = document.getElementById('loadDetail');
+
+  if (!box || !bar || !title || !detail) return;
+
+  box.classList.remove('ok');
+  box.classList.add('error');
+  box.style.display = 'block';
+
+  bar.style.width = '100%';
+  title.textContent = 'Error al cargar';
+  detail.textContent =
+    error?.message || String(error) || 'Error desconocido. Revisa consola.';
+}
+
+// ======================================================
 // Filtro Destino (robusto aunque la celda sea "DESTINO // PROGRAMA")
 // + Regla especial: "SUR DE CHILE Y BARILOCHE" entra en ambos filtros.
 // ======================================================
@@ -443,14 +497,19 @@ $(function () {
 // Función principal: carga datos, construye tabla y DataTable
 // ------------------------------------------------------------------
 async function generarTablaCalendario(userEmail) {
+  try {
   // 1) Leer todos los grupos de Firestore
   const snapshot = await getDocs(collection(db, "grupos"));
+  setCarga(15, 'Grupos cargados', `${snapshot.size} grupos encontrados`);
   const grupos = [];
   const fechasUnicas = new Set();
   const destinosSet = new Set();
   const aniosSet = new Set();
-  const indexVuelos   = await cargarVuelosIndex();   // Map<groupKey, string[]>
-  const indexHoteles  = await cargarHotelesIndex();  // Map<groupKey, string[]>
+  setCarga(25, 'Cargando vuelos...', 'Leyendo colección vuelos');
+  const indexVuelos = await cargarVuelosIndex();
+
+  setCarga(40, 'Cargando hoteles...', 'Leyendo hoteles y asignaciones');
+  const indexHoteles = await cargarHotelesIndex();
 
   snapshot.forEach(docSnap => {
     const d = docSnap.data();
@@ -493,6 +552,7 @@ async function generarTablaCalendario(userEmail) {
   // ───────────────────────────  
   grupos.sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
 
+  setCarga(60, 'Procesando grupos...', `${grupos.length} grupos preparados`);    
   // 2) Preparar selects de filtros y cabecera
   const fechasOrdenadas = Array.from(fechasUnicas).sort();
   const destinos = Array.from(destinosSet).sort();
@@ -652,6 +712,7 @@ async function generarTablaCalendario(userEmail) {
   }); // ← cierra grupos.forEach
 
   // 4) Inicializar DataTable
+  setCarga(85, 'Construyendo tabla...', 'Inicializando DataTable');
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
     dom: 'Brtip',
@@ -814,6 +875,12 @@ async function generarTablaCalendario(userEmail) {
   });
   $('#btn-close-history').on('click', () => $('#modalHistorial').hide());
   $('#btn-refresh-history').on('click', recargarHistorial);
+  setCargaOk(`Calendario cargado correctamente con ${grupos.length} grupos.`);
+
+  } catch (err) {
+    console.error('🔥 Error general en generarTablaCalendario:', err);
+    setCargaError(err);
+  }
 } // ← cierra generarTablaCalendario
 
 // ------------------------------------------------------------------
