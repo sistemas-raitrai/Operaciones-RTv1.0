@@ -540,8 +540,8 @@ async function generarTablaCalendario(userEmail) {
       cantidadgrupo: d.cantidadgrupo || "",
       adultos: d.adultos || "",
       estudiantes: d.estudiantes || "",
-      fechaInicio: d.fechaInicio || "",
-      fechaFin: d.fechaFin || "",
+      fechaInicio: _toISODate(d.fechaInicio) || "",
+      fechaFin: _toISODate(d.fechaFin) || "",
       anoViaje: d.anoViaje || "",        // ← NUEVO: lo usamos para el filtro de año
       itinerario
     });
@@ -550,7 +550,11 @@ async function generarTablaCalendario(userEmail) {
   // ───────────────────────────  
   // Ordenar grupos solo por fechaInicio (YYYY-MM-DD)
   // ───────────────────────────  
-  grupos.sort((a, b) => a.fechaInicio.localeCompare(b.fechaInicio));
+  grupos.sort((a, b) => {
+    const fa = _toISODate(a.fechaInicio) || '9999-12-31';
+    const fb = _toISODate(b.fechaInicio) || '9999-12-31';
+    return fa.localeCompare(fb);
+  });
 
   setCarga(60, 'Procesando grupos...', `${grupos.length} grupos preparados`);    
   // 2) Preparar selects de filtros y cabecera
