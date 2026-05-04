@@ -626,23 +626,50 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     
     let qGrupos;
     
+    let docsGrupos = [];
+    
     if (anoResuelto === 'todos') {
-      qGrupos = query(collection(db, 'grupos'));
+      const snap = await getDocs(collection(db, 'grupos'));
+      docsGrupos = docsGrupos;
     } else {
-      qGrupos = query(
+      const snapTexto = await getDocs(query(
         collection(db, 'grupos'),
-        where('anoViaje', '==', anoResuelto)
-      );
+        where('anoViaje', '==', String(anoResuelto))
+      ));
+    
+      const snapNumero = await getDocs(query(
+        collection(db, 'grupos'),
+        where('anoViaje', '==', Number(anoResuelto))
+      ));
+    
+      const mapa = new Map();
+    
+      snapTexto.docs.forEach(d => mapa.set(d.id, d));
+      snapNumero.docs.forEach(d => mapa.set(d.id, d));
+    
+      docsGrupos = Array.from(mapa.values());
     }
     
-    const snap = await getDocs(qGrupos);
+    if (!docsGrupos.length) {
+      console.warn('No hay grupos para el filtro:', filtroAnoCarga);
+    
+      $('#tablaGrupos tbody').empty();
+      setCargaOk(`No hay grupos para el filtro seleccionado: ${filtroAnoCarga}`);
+    
+      return;
+    }
     
     if (snap.empty) {
       console.warn('No hay grupos para el filtro:', filtroAnoCarga);
+    
+      $('#tablaGrupos tbody').empty();
+    
+      setCargaOk(`No hay grupos para el filtro seleccionado: ${filtroAnoCarga}`);
+    
       return;
     }
 
-    setCarga(15, 'Grupos cargados', `${snap.size} grupos encontrados`);
+    setCarga(15, 'Grupos cargados', `${docsGrupos.length} grupos encontrados`);
 
   // Índices de coordinadores (1 sola vez)
   setCarga(25, 'Cargando coordinadores...', 'Leyendo coordinadores y conjuntos');
@@ -650,7 +677,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
   setCarga(35, 'Coordinadores cargados', 'Preparando tabla principal');
 
   // 2) Mapear docs → {id,fila:[], coordTexto} PARA LA TABLA
-  const valores = snap.docs.map(docSnap => {
+  const valores = docsGrupos.map(docSnap => {
     const d = docSnap.data();
   
     // Resolver coordinador visible: primero el que venga en el doc, si no, desde conjuntos
@@ -679,7 +706,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
 
   // 2.b) Normalizar datos crudos → GRUPOS_RAW (para Totales)
-  GRUPOS_RAW = snap.docs.map(s => {
+  GRUPOS_RAW = docsGrupos.map(s => {
     const d = s.data();
     return {
       _id: s.id,
@@ -704,7 +731,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
     // ============ ENRIQUECIMIENTO: HOTELES + VUELOS + COORDINADORES ============
   // Construimos un espejo mínimo del grupo para los loaders
-  const gruposParaLookup = snap.docs.map(s => {
+  const gruposParaLookup = docsGrupos.map(s => {
     const d = s.data() || {};
     return {
       id: s.id,
