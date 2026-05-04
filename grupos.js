@@ -1801,7 +1801,7 @@ window.convertirItinerariosRelativosExistentes = async function () {
   let convertidos = 0;
   let omitidos = 0;
 
-  for (const docSnap of snap.docs) {
+  for (const docSnap of docsGrupos) {
     revisados++;
 
     try {
