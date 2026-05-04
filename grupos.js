@@ -4,8 +4,8 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, getDocs, query, orderBy, where, limit,
-  doc, updateDoc, addDoc, Timestamp, writeBatch   // ← agrega writeBatch aquí
+  collection, collectionGroup, getDocs, getDoc, query, orderBy, where, limit,
+  doc, updateDoc, addDoc, Timestamp, writeBatch
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -169,6 +169,73 @@ function toInputDate(d) {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+function crearRangoFechasISO(fechaInicio, fechaFin) {
+  const ini = parseFechaPosible(fechaInicio);
+  const fin = parseFechaPosible(fechaFin);
+
+  if (!ini || !fin || fin < ini) return [];
+
+  const out = [];
+
+  for (let d = new Date(ini); d <= fin; d.setDate(d.getDate() + 1)) {
+    out.push(toInputDate(d));
+  }
+
+  return out;
+}
+
+function esDiaRelativoItinerario(k) {
+  return /^DIA_\d+$/i.test(String(k || '').trim());
+}
+
+function ordenarDiasRelativos(a, b) {
+  const na = parseInt(String(a).replace(/\D/g, ''), 10) || 0;
+  const nb = parseInt(String(b).replace(/\D/g, ''), 10) || 0;
+  return na - nb;
+}
+
+async function convertirItinerarioRelativoGrupo(docId) {
+  const ref = doc(db, 'grupos', docId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return false;
+
+  const g = snap.data() || {};
+  const IT = g.itinerario || {};
+  const keys = Object.keys(IT);
+
+  if (!keys.length) return false;
+
+  const tieneRelativos = keys.some(esDiaRelativoItinerario);
+  const tieneFechasReales = keys.some(k => /^\d{4}-\d{2}-\d{2}$/.test(String(k)));
+
+  if (!tieneRelativos || tieneFechasReales) return false;
+
+  const fechas = crearRangoFechasISO(g.fechaInicio, g.fechaFin);
+  if (!fechas.length) return false;
+
+  const diasRelativos = keys.sort(ordenarDiasRelativos);
+  const nuevoItinerario = {};
+
+  fechas.forEach((fechaReal, idx) => {
+    const diaRelativo = diasRelativos[idx];
+    nuevoItinerario[fechaReal] = IT[diaRelativo] || [];
+  });
+
+  await updateDoc(ref, { itinerario: nuevoItinerario });
+
+  await addDoc(collection(db, 'historial'), {
+    numeroNegocio: g.numeroNegocio || docId,
+    nombreGrupo: g.nombreGrupo || '',
+    accion: 'CONVERTIR ITINERARIO A FECHAS REALES',
+    anterior: diasRelativos.join(', '),
+    nuevo: fechas.join(', '),
+    usuario: auth.currentUser?.email || '',
+    timestamp: new Date()
+  });
+
+  return true;
 }
 
 // ================== ENRIQUECIMIENTO: HELPERS REUTILIZABLES ===================
@@ -539,12 +606,12 @@ function resumenCambiosPendientes() {
 }
 
 async function guardarCambiosPendientes() {
-
   const paxOk = validarTodasLasFilasPax();
 
   if (!paxOk) {
     throw new Error('Hay filas donde PAX no coincide con Adultos + Estudiantes. Corrige esas filas antes de guardar.');
   }
+
   const hayCambiosPax = cambiosPendientes.some(c =>
     c.campo === 'cantidadgrupo' ||
     c.campo === 'adultos' ||
@@ -561,10 +628,16 @@ async function guardarCambiosPendientes() {
     }
   }
 
+  const gruposConFechaEditada = new Set();
+
   for (const c of cambiosPendientes) {
     await updateDoc(doc(db, 'grupos', c.docId), {
       [c.campo]: c.nuevoValorFirestore
     });
+
+    if (c.campo === 'fechaInicio' || c.campo === 'fechaFin') {
+      gruposConFechaEditada.add(c.docId);
+    }
 
     await addDoc(collection(db, 'historial'), {
       numeroNegocio: c.numeroNegocio,
@@ -580,6 +653,10 @@ async function guardarCambiosPendientes() {
         .text(c.nuevoDisplay)
         .attr('data-original', c.nuevoValorFirestore);
     }
+  }
+
+  for (const docId of gruposConFechaEditada) {
+    await convertirItinerarioRelativoGrupo(docId);
   }
 
   cambiosPendientes = [];
@@ -1716,3 +1793,33 @@ $(document).on('click.RTcambios', '#btn-cambios-guardar', async () => {
     alert(err.message || 'No se pudieron guardar los cambios.');
   }
 });
+
+window.convertirItinerariosRelativosExistentes = async function () {
+  const snap = await getDocs(collection(db, 'grupos'));
+
+  let revisados = 0;
+  let convertidos = 0;
+  let omitidos = 0;
+
+  for (const docSnap of snap.docs) {
+    revisados++;
+
+    try {
+      const ok = await convertirItinerarioRelativoGrupo(docSnap.id);
+      if (ok) convertidos++;
+      else omitidos++;
+    } catch (err) {
+      console.error('Error convirtiendo grupo:', docSnap.id, err);
+      omitidos++;
+    }
+  }
+
+  console.log({ revisados, convertidos, omitidos });
+
+  alert(
+    `Proceso terminado.\n` +
+    `Revisados: ${revisados}\n` +
+    `Convertidos: ${convertidos}\n` +
+    `Omitidos: ${omitidos}`
+  );
+};
