@@ -166,8 +166,16 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(au
 // —————————————————————————————————————————————————————
 async function init() {
   // 5.1 Grupos
+  // 5.1 Grupos
   const gruposSnap = await getDocs(collection(db, 'grupos'));
-  grupos = gruposSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+  
+  // Año actual automático
+  const anoActual = String(new Date().getFullYear());
+  
+  // Solo grupos del año actual
+  grupos = gruposSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(g => String(g.anoViaje || '').trim() === anoActual);
 
   await buildIndexVuelosPorGrupo();
 
