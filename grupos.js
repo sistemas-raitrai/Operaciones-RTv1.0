@@ -707,7 +707,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     
     if (anoResuelto === 'todos') {
       const snap = await getDocs(collection(db, 'grupos'));
-      docsGrupos = docsGrupos;
+      docsGrupos = snap.docs;
     } else {
       const snapTexto = await getDocs(query(
         collection(db, 'grupos'),
@@ -731,16 +731,6 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       console.warn('No hay grupos para el filtro:', filtroAnoCarga);
     
       $('#tablaGrupos tbody').empty();
-      setCargaOk(`No hay grupos para el filtro seleccionado: ${filtroAnoCarga}`);
-    
-      return;
-    }
-    
-    if (snap.empty) {
-      console.warn('No hay grupos para el filtro:', filtroAnoCarga);
-    
-      $('#tablaGrupos tbody').empty();
-    
       setCargaOk(`No hay grupos para el filtro seleccionado: ${filtroAnoCarga}`);
     
       return;
@@ -1801,7 +1791,7 @@ window.convertirItinerariosRelativosExistentes = async function () {
   let convertidos = 0;
   let omitidos = 0;
 
-  for (const docSnap of docsGrupos) {
+  for (const docSnap of snap.docs) {
     revisados++;
 
     try {
