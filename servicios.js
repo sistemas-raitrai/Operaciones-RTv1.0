@@ -28,6 +28,12 @@ const campos = [
 // Secciones por destino; `null` representa la sección "OTRO"
 const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
+let ANO_TARIFA_ACTIVO = '2025';
+
+function getAnoTarifaActivo() {
+  return ANO_TARIFA_ACTIVO || '2025';
+}
+
 /* ===========================
    2) Utilidades globales (para exportación)
    =========================== */
@@ -94,8 +100,9 @@ onAuthStateChanged(auth, u => {
    4) Inicialización de la página (filtros y construcción)
    ===================================================== */
 function init(){
-  setupFilter();   // Filtro por destino (multiselect con "— Todos —")
-  setupSearch();   // 🔎 Buscador global
+  setupAnoTarifa();
+  setupFilter();
+  setupSearch();
   destinos.forEach(d => createSection(d));
 
   // Botón "Administrar Proveedores" ya existe (id=btnProv).
@@ -120,6 +127,35 @@ function init(){
   // Modal proveedores (callbacks globales)
   document.getElementById('btnProv').onclick = openProveedores;
   window.closeProveedores = closeProveedores;
+}
+
+function setupAnoTarifa(){
+  const header = document.querySelector('header');
+  if (!header) return;
+
+  const box = document.createElement('div');
+  box.style.display = 'flex';
+  box.style.gap = '.5rem';
+  box.style.alignItems = 'center';
+  box.style.margin = '0 .75rem';
+
+  box.innerHTML = `
+    <label style="font-weight:600;">Año tarifas:</label>
+    <select id="anoTarifa">
+      <option value="2025" selected>2025</option>
+      <option value="2026">2026</option>
+      <option value="2027">2027</option>
+    </select>
+  `;
+
+  header.appendChild(box);
+
+  document.getElementById('anoTarifa').addEventListener('change', e => {
+    ANO_TARIFA_ACTIVO = e.target.value;
+    document.getElementById('secciones').innerHTML = '';
+    allSections.length = 0;
+    destinos.forEach(d => createSection(d));
+  });
 }
 
 /* =======================================
@@ -257,14 +293,14 @@ function createSection(destFijo){
   if(!isOtro){
     (async () => {
       const snap = await getDocs(query(
-        collection(db,'Servicios',destFijo,'Listado'),
+        collection(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destFijo, 'Listado'),
         orderBy('servicio','asc')
       ));
       for(let d of snap.docs){
         const o = d.data();
         o.servicio = d.id;
         if (o.clave) clavesUsadas.add(o.clave);
-        await add(o, doc(db,'Servicios',destFijo,'Listado',d.id));
+        await add(o, doc(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destFijo, 'Listado', d.id));
       }
     })();
   }
@@ -413,20 +449,22 @@ function createSection(destFijo){
     if(!data.proveedor) throw new Error(`F${idx}: Falta Proveedor`);
   
     // Asegura la "carpeta" de destino
-    await setDoc(doc(db,'Servicios',destino), { _created: true }, { merge: true });
+    await setDoc(doc(db, 'ServiciosPorAno', getAnoTarifaActivo()), { _created: true }, { merge: true });
+    await setDoc(doc(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destino), { _created: true }, { merge: true });
   
     // Doc objetivo
     const targetId = data.servicio; // usamos el nombre como id de doc
-    const newRef   = doc(db, 'Servicios', destino, 'Listado', targetId);
+    const newRef = doc(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destino, 'Listado', targetId);
   
     // Helpers para visibilidad
     const newVisible = _visibleSvc(data, targetId);
   
     if (r.ref) {
       // Teníamos doc original
-      const parts = r.ref.path.split('/'); // Servicios/{dest}/Listado/{id}
-      const oldDest = parts[1];
-      const oldId   = parts[3];
+    const parts = r.ref.path.split('/');
+    // ServiciosPorAno/{ano}/Destinos/{dest}/Listado/{id}
+    const oldDest = parts[3];
+    const oldId   = parts[5];
       const destChanged = oldDest !== destino;
       const idChanged   = oldId !== targetId;
   
