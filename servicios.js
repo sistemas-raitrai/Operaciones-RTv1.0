@@ -129,9 +129,21 @@ function init(){
   window.closeProveedores = closeProveedores;
 }
 
+function getAnoComercialActual() {
+  const hoy = new Date();
+  const ano = hoy.getFullYear();
+  const mes = hoy.getMonth(); // enero=0, febrero=1, marzo=2
+
+  // Año comercial Rai Trai: desde 1 de marzo
+  return mes >= 2 ? ano : ano - 1;
+}
+
 function setupAnoTarifa(){
   const header = document.querySelector('header');
   if (!header) return;
+
+  const anoActual = getAnoComercialActual();
+  ANO_TARIFA_ACTIVO = String(anoActual);
 
   const box = document.createElement('div');
   box.style.display = 'flex';
@@ -142,10 +154,13 @@ function setupAnoTarifa(){
   box.innerHTML = `
     <label style="font-weight:600;">Año tarifas:</label>
     <select id="anoTarifa">
-      <option value="2025" selected>2025</option>
-      <option value="2026">2026</option>
-      <option value="2027">2027</option>
+      ${[anoActual - 1, anoActual, anoActual + 1].map(a => `
+        <option value="${a}" ${a === anoActual ? 'selected' : ''}>${a}</option>
+      `).join('')}
     </select>
+    <button id="btnCopiarTarifarioAnterior" type="button">
+      📋 Copiar tarifas año anterior
+    </button>
   `;
 
   header.appendChild(box);
@@ -155,6 +170,10 @@ function setupAnoTarifa(){
     document.getElementById('secciones').innerHTML = '';
     allSections.length = 0;
     destinos.forEach(d => createSection(d));
+  });
+
+  document.getElementById('btnCopiarTarifarioAnterior').addEventListener('click', async () => {
+    await copiarTarifarioAnteriorAlAnoActivo();
   });
 }
 
@@ -849,28 +868,33 @@ async function migrarServiciosActualesA2025() {
 window.migrarServiciosActualesA2025 = migrarServiciosActualesA2025;
 
 /* =====================================================
-   12) COPIAR TARIFAS ENTRE AÑOS
-   Uso desde consola:
-   copiarServiciosEntreAnos('2025', '2026')
+   12) BOTÓN: Copiar tarifas del año anterior al año activo
+   Ejemplo:
+   Año activo 2026 → copia 2025 a 2026
+   Año activo 2027 → copia 2026 a 2027
    ===================================================== */
-async function copiarServiciosEntreAnos(anoOrigen = '2025', anoDestino = '2026') {
+async function copiarTarifarioAnteriorAlAnoActivo() {
+  const anoDestino = getAnoTarifaActivo();
+  const anoOrigen = String(Number(anoDestino) - 1);
+
   const destinosCopiar = ['BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'NORTE DE CHILE'];
 
-  if (!confirm(
+  const ok = confirm(
     `Esto copiará las tarifas ${anoOrigen} hacia ${anoDestino}.\n\n` +
-    `No copiará abonos.\n` +
-    `Si ya existen servicios en ${anoDestino}, se actualizarán/mezclarán.\n\n` +
+    `Se usará el tarifario anterior como plantilla.\n` +
+    `No se copiarán abonos.\n` +
+    `Si ya existen servicios en ${anoDestino}, se actualizarán con merge.\n\n` +
     `¿Continuar?`
-  )) {
-    return;
-  }
+  );
+
+  if (!ok) return;
 
   let totalCopiados = 0;
 
   await setDoc(doc(db, 'ServiciosPorAno', anoDestino), {
     _created: true,
     anoTarifa: Number(anoDestino),
-    copiadoDesde: anoOrigen,
+    copiadoDesdeAno: Number(anoOrigen),
     fechaCopia: new Date().toISOString()
   }, { merge: true });
 
@@ -881,15 +905,21 @@ async function copiarServiciosEntreAnos(anoOrigen = '2025', anoDestino = '2026')
 
     await setDoc(doc(db, 'ServiciosPorAno', anoDestino, 'Destinos', destino), {
       _created: true,
-      destino
+      destino,
+      copiadoDesdeAno: Number(anoOrigen),
+      fechaCopia: new Date().toISOString()
     }, { merge: true });
 
     for (const docSnap of snap.docs) {
       const data = docSnap.data() || {};
 
       const limpio = { ...data };
+
+      // No arrastramos metadata de migración anterior
       delete limpio.migradoDesde;
       delete limpio.fechaMigracion;
+      delete limpio.copiadoDesdeAno;
+      delete limpio.fechaCopia;
 
       await setDoc(
         doc(db, 'ServiciosPorAno', anoDestino, 'Destinos', destino, 'Listado', docSnap.id),
@@ -906,10 +936,20 @@ async function copiarServiciosEntreAnos(anoOrigen = '2025', anoDestino = '2026')
       totalCopiados++;
     }
 
-    console.log(`✅ ${destino}: ${snap.size} servicios copiados`);
+    console.log(`✅ ${destino}: ${snap.size} servicios copiados de ${anoOrigen} a ${anoDestino}`);
   }
 
-  alert(`✅ Copia completada.\nServicios copiados de ${anoOrigen} a ${anoDestino}: ${totalCopiados}`);
+  alert(
+    `✅ Tarifario copiado.\n\n` +
+    `Origen: ${anoOrigen}\n` +
+    `Destino: ${anoDestino}\n` +
+    `Servicios copiados: ${totalCopiados}`
+  );
+
+  // Recargar tabla del año activo para ver lo copiado
+  document.getElementById('secciones').innerHTML = '';
+  allSections.length = 0;
+  destinos.forEach(d => createSection(d));
 }
 
-window.copiarServiciosEntreAnos = copiarServiciosEntreAnos;
+window.copiarTarifarioAnteriorAlAnoActivo = copiarTarifarioAnteriorAlAnoActivo;
