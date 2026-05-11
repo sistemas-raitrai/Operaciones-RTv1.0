@@ -788,3 +788,62 @@ function closeProveedores(){
   document.getElementById('backdrop-prov').style.display='none';
   document.getElementById('modal-prov').style.display='none';
 }
+
+/* =====================================================
+   11) MIGRACIÓN ÚNICA: Servicios actuales → Tarifas 2025
+   Ejecutar una sola vez desde consola:
+   migrarServiciosActualesA2025()
+   ===================================================== */
+async function migrarServiciosActualesA2025() {
+  const destinosMigrar = ['BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'NORTE DE CHILE'];
+
+  if (!confirm(
+    'Esto copiará los servicios actuales desde Servicios/{DESTINO}/Listado hacia ServiciosPorAno/2025/Destinos/{DESTINO}/Listado.\n\n' +
+    'No se borrará nada de la ruta antigua.\n\n¿Continuar?'
+  )) {
+    return;
+  }
+
+  let totalMigrados = 0;
+
+  for (const destino of destinosMigrar) {
+    console.log(`🔄 Migrando destino: ${destino}`);
+
+    const snap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
+
+    await setDoc(doc(db, 'ServiciosPorAno', '2025'), {
+      _created: true,
+      anoTarifa: 2025
+    }, { merge: true });
+
+    await setDoc(doc(db, 'ServiciosPorAno', '2025', 'Destinos', destino), {
+      _created: true,
+      destino
+    }, { merge: true });
+
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data() || {};
+
+      await setDoc(
+        doc(db, 'ServiciosPorAno', '2025', 'Destinos', destino, 'Listado', docSnap.id),
+        {
+          ...data,
+          anoTarifa: 2025,
+          destinoTarifa: destino,
+          migradoDesde: `Servicios/${destino}/Listado/${docSnap.id}`,
+          fechaMigracion: new Date().toISOString()
+        },
+        { merge: true }
+      );
+
+      totalMigrados++;
+    }
+
+    console.log(`✅ ${destino}: ${snap.size} servicios migrados`);
+  }
+
+  console.log(`✅ Migración completa. Total servicios migrados: ${totalMigrados}`);
+  alert(`✅ Migración 2025 completada.\nServicios migrados: ${totalMigrados}`);
+}
+
+window.migrarServiciosActualesA2025 = migrarServiciosActualesA2025;
