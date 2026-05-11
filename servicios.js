@@ -847,3 +847,69 @@ async function migrarServiciosActualesA2025() {
 }
 
 window.migrarServiciosActualesA2025 = migrarServiciosActualesA2025;
+
+/* =====================================================
+   12) COPIAR TARIFAS ENTRE AÑOS
+   Uso desde consola:
+   copiarServiciosEntreAnos('2025', '2026')
+   ===================================================== */
+async function copiarServiciosEntreAnos(anoOrigen = '2025', anoDestino = '2026') {
+  const destinosCopiar = ['BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'NORTE DE CHILE'];
+
+  if (!confirm(
+    `Esto copiará las tarifas ${anoOrigen} hacia ${anoDestino}.\n\n` +
+    `No copiará abonos.\n` +
+    `Si ya existen servicios en ${anoDestino}, se actualizarán/mezclarán.\n\n` +
+    `¿Continuar?`
+  )) {
+    return;
+  }
+
+  let totalCopiados = 0;
+
+  await setDoc(doc(db, 'ServiciosPorAno', anoDestino), {
+    _created: true,
+    anoTarifa: Number(anoDestino),
+    copiadoDesde: anoOrigen,
+    fechaCopia: new Date().toISOString()
+  }, { merge: true });
+
+  for (const destino of destinosCopiar) {
+    const snap = await getDocs(
+      collection(db, 'ServiciosPorAno', anoOrigen, 'Destinos', destino, 'Listado')
+    );
+
+    await setDoc(doc(db, 'ServiciosPorAno', anoDestino, 'Destinos', destino), {
+      _created: true,
+      destino
+    }, { merge: true });
+
+    for (const docSnap of snap.docs) {
+      const data = docSnap.data() || {};
+
+      const limpio = { ...data };
+      delete limpio.migradoDesde;
+      delete limpio.fechaMigracion;
+
+      await setDoc(
+        doc(db, 'ServiciosPorAno', anoDestino, 'Destinos', destino, 'Listado', docSnap.id),
+        {
+          ...limpio,
+          anoTarifa: Number(anoDestino),
+          destinoTarifa: destino,
+          copiadoDesdeAno: Number(anoOrigen),
+          fechaCopia: new Date().toISOString()
+        },
+        { merge: true }
+      );
+
+      totalCopiados++;
+    }
+
+    console.log(`✅ ${destino}: ${snap.size} servicios copiados`);
+  }
+
+  alert(`✅ Copia completada.\nServicios copiados de ${anoOrigen} a ${anoDestino}: ${totalCopiados}`);
+}
+
+window.copiarServiciosEntreAnos = copiarServiciosEntreAnos;
