@@ -515,12 +515,8 @@ function createSection(destFijo){
             aliases: [oldVisible]
           });
         } else {
-          // Incluso si no cambió el visible, registrar cambio permite refrescar textos por si otros campos afectan
-          serviceChanges.push({
-            destino, oldId: targetId, newId: targetId,
-            oldVisible: newVisible, newVisible,
-            aliases: (oldData?.aliases || [])
-          });
+          // No propagamos cambios de tarifa/moneda/proveedor/etc.
+          // Solo se propaga si cambió el nombre visible o el ID del servicio.
         }
       } else {
         // 🔁 Cambió ID y/o destino → crear nuevo y borrar el viejo, preservando historial/aliases
@@ -556,16 +552,9 @@ function createSection(destFijo){
       // Fila nueva
       await setDoc(newRef, data, { merge: true });
       r.ref = newRef;
-  
-      // Registrar alta para sincronizar textos por servicioId
-      serviceChanges.push({
-        destino,
-        oldId: targetId,
-        newId: targetId,
-        oldVisible: newVisible,
-        newVisible,
-        aliases: []
-      });
+
+      // No propagamos filas nuevas automáticamente.
+      // El itinerario solo debe cambiar cuando una actividad ya existente cambia de nombre/ID.
     }
   }
   
