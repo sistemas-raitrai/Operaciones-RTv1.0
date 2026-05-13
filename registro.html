@@ -10,7 +10,7 @@
 
 <style>
   body {
-    background: #f5f3ee;
+    background: #ffffff;
   }
 
   .registro-shell {
@@ -20,12 +20,13 @@
   }
 
   .registro-hero {
-    background: linear-gradient(135deg, #252525 0%, #5c5548 100%);
-    color: #fff;
+    background: #ffffff;
+    color: #202124;
     border-radius: 28px;
     padding: 28px;
     margin-bottom: 24px;
-    box-shadow: 0 18px 42px rgba(37,37,37,.18);
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, .06);
     display: flex;
     justify-content: space-between;
     gap: 18px;
@@ -38,11 +39,12 @@
     font-size: clamp(28px, 4vw, 42px);
     font-weight: 900;
     letter-spacing: .2px;
+    color: #111827;
   }
 
   .registro-hero p {
     margin: 8px 0 0;
-    color: rgba(255,255,255,.78);
+    color: #6b7280;
     font-size: 15px;
   }
 
@@ -63,30 +65,30 @@
   }
 
   .registro-btn.light {
-    background: #fff;
-    color: #252525;
+    background: #111827;
+    color: #ffffff;
   }
 
   .registro-btn.ghost {
-    background: rgba(255,255,255,.16);
-    color: #fff;
-    border: 1px solid rgba(255,255,255,.28);
+    background: #ffffff;
+    color: #111827;
+    border: 1px solid #d1d5db;
   }
 
   .registro-card {
-    background: rgba(255,255,255,.96);
-    border: 1px solid rgba(37,37,37,.10);
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
     border-radius: 24px;
     padding: 22px;
     margin-bottom: 24px;
-    box-shadow: 0 12px 30px rgba(37,37,37,.08);
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .05);
   }
 
   .registro-card-title {
     margin: 0 0 16px;
     font-size: 18px;
     font-weight: 900;
-    color: #252525;
+    color: #111827;
   }
 
   #formRegistro {
@@ -117,7 +119,7 @@
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: .35px;
-    color: #6b6256;
+    color: #6b7280;
     font-weight: 900;
   }
 
@@ -128,11 +130,11 @@
     width: 100%;
     min-height: 48px;
     border-radius: 14px;
-    border: 1px solid rgba(37,37,37,.14);
-    background: #fff;
+    border: 1px solid #d1d5db;
+    background: #ffffff;
     padding: 0 14px;
     font-size: 15px;
-    color: #252525;
+    color: #111827;
     outline: none;
     font-family: inherit;
   }
@@ -147,14 +149,14 @@
   #formRegistro select:focus,
   #formRegistro textarea:focus,
   .registro-filter select:focus {
-    border-color: rgba(92,85,72,.55);
-    box-shadow: 0 0 0 4px rgba(92,85,72,.10);
+    border-color: #111827;
+    box-shadow: 0 0 0 4px rgba(17, 24, 39, .08);
   }
 
   #formRegistro input[readonly],
   #formRegistro input:disabled {
-    background: #efede7;
-    color: #6b6256;
+    background: #f9fafb;
+    color: #6b7280;
   }
 
   #hoteles {
@@ -173,11 +175,11 @@
     border: 0;
     border-radius: 16px;
     padding: 0 24px;
-    background: linear-gradient(135deg, #252525 0%, #5c5548 100%);
-    color: #fff;
+    background: #111827;
+    color: #ffffff;
     font-weight: 900;
     cursor: pointer;
-    box-shadow: 0 12px 24px rgba(37,37,37,.18);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, .16);
   }
 
   .registro-filter {
@@ -187,19 +189,19 @@
   .registro-table-wrap {
     overflow-x: auto;
     border-radius: 20px;
-    border: 1px solid rgba(37,37,37,.10);
+    border: 1px solid #e5e7eb;
   }
 
   #tablaRegistros {
     width: 100%;
     border-collapse: collapse;
     font-size: .88rem;
-    background: #fff;
+    background: #ffffff;
   }
 
   #tablaRegistros th {
-    background: #ebe6dc;
-    color: #252525;
+    background: #f9fafb;
+    color: #111827;
     text-align: left;
     font-size: 12px;
     text-transform: uppercase;
@@ -210,8 +212,8 @@
 
   #tablaRegistros td {
     padding: 12px;
-    border-top: 1px solid #eee9df;
-    color: #2d2b28;
+    border-top: 1px solid #e5e7eb;
+    color: #202124;
     vertical-align: top;
   }
 
@@ -233,7 +235,7 @@
     }
   }
 </style>
-
+  
 <body>
   <!-- Encabezado común -->
   <div id="encabezado"></div>
