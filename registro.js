@@ -252,13 +252,11 @@ async function init() {
     DESTINOS_CANONICOS.map(d => `<option>${d}</option>`).join("");
 
   elems.numeroNegocio.onchange = () => {
-    if (!datosCargados) loadDatos(ventas);
-    else cargarTablaInferior();
+    loadDatos(ventas, { forzarRecarga: true });
   };
-
+  
   elems.nombreGrupo.onchange = () => {
-    if (!datosCargados) loadDatos(ventas);
-    else cargarTablaInferior();
+    loadDatos(ventas, { forzarRecarga: true });
   };
 
   elems.identificador.onchange = () => cargarTablaInferior();
@@ -315,84 +313,197 @@ function ajustComp(e) {
   else elems.adultos.value = Math.max(0, total - val);
 }
 
+function esFusionNegocio(value = "") {
+  // Detecta solo formato tipo 1414-1516, sin espacios.
+  return /^\d+-\d+$/.test(String(value || "").trim());
+}
+
+function numero(value = "") {
+  const n = Number(String(value || "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function buscarVentaPorNumero(ventas = [], numeroNegocio = "") {
+  const id = String(numeroNegocio || "").trim();
+
+  return ventas.find(g => {
+    const r = normalizarGrupoParaRegistro(g);
+    return String(r.numeroNegocio || "").trim() === id;
+  });
+}
+
+function fusionarGruposParaRegistro(baseRaw = {}, fusionRaw = {}, codigoFusion = "") {
+  const g1 = normalizarGrupoParaRegistro(baseRaw);
+  const g2 = normalizarGrupoParaRegistro(fusionRaw);
+
+  const paxTotal = numero(g1.cantidadgrupo) + numero(g2.cantidadgrupo);
+  const adultosTotal = numero(g1.adultos) + numero(g2.adultos);
+  const estudiantesTotal = numero(g1.estudiantes) + numero(g2.estudiantes);
+
+  return {
+    ...g1,
+
+    numeroNegocio: codigoFusion,
+
+    nombreGrupo: [
+      g1.nombreGrupo,
+      g2.nombreGrupo
+    ].filter(Boolean).join(" / "),
+
+    colegio: [
+      g1.colegio,
+      g2.colegio
+    ].filter(Boolean).join(" / "),
+
+    curso: [
+      g1.curso,
+      g2.curso
+    ].filter(Boolean).join(" / "),
+
+    cantidadgrupo: paxTotal || "",
+    adultos: adultosTotal || "",
+    estudiantes: estudiantesTotal || "",
+
+    // Estos quedan desde el grupo base g1:
+    destino: g1.destino,
+    anoViaje: g1.anoViaje,
+    asistenciaEnViajes: g1.asistenciaEnViajes,
+    programa: g1.programa,
+    autorizacion: g1.autorizacion,
+    fechaInicio: g1.fechaInicio,
+    duracion: g1.duracion,
+    noches: g1.noches,
+    fechaFin: g1.fechaFin,
+    hoteles: g1.hoteles,
+    vendedora: g1.vendedora,
+
+    fechaDeViaje: [
+      `GRUPO FUSIONADO: ${codigoFusion}`,
+      `Grupo base: ${g1.numeroNegocio} - ${g1.nombreGrupo}`,
+      `Grupo fusionado: ${g2.numeroNegocio} - ${g2.nombreGrupo}`,
+      "",
+      g1.fechaDeViaje || ""
+    ].join("\n").trim(),
+
+    observaciones: [
+      `GRUPO 1 - ${g1.numeroNegocio}:`,
+      g1.observaciones || "Sin observaciones para operaciones.",
+      "",
+      `GRUPO 2 - ${g2.numeroNegocio}:`,
+      g2.observaciones || "Sin observaciones para operaciones."
+    ].join("\n")
+  };
+}
+
+function aplicarVentaAlFormulario(venta = {}) {
+  elems.numeroNegocio.value = venta.numeroNegocio || "";
+  elems.nombreGrupo.value = venta.nombreGrupo || "";
+
+  campos.forEach(c => {
+    if (c === "identificador") return;
+
+    if (!["duracion", "noches", "fechaFin"].includes(c)) {
+      if (elems[c]) {
+        elems[c].value = venta[c] || "";
+      }
+    }
+  });
+
+  const dn =
+    DESTINOS_CANONICOS.find(d =>
+      String(venta.destino || "").toUpperCase().includes(d)
+    ) || "OTRO";
+
+  elems.destino.value = dn;
+  handleDestinoChange();
+
+  const pn =
+    (PROGRAMAS_POR_DESTINO[dn] || []).find(p =>
+      String(venta.programa || "").toUpperCase().includes(p)
+    ) || venta.programa || "";
+
+  elems.programa.value = pn;
+  handleProgramaChange();
+
+  calcularFin();
+
+  const origText = String(venta.hoteles || "").toUpperCase();
+
+  const libres = origText
+    .split(/,| Y |;|\n/i)
+    .map(h => h.trim())
+    .filter(Boolean);
+
+  const canonicos = HOTELES_POR_DESTINO[dn] || [];
+  const union = Array.from(new Set([...libres, ...canonicos]));
+
+  elems.hoteles.innerHTML = union
+    .map(h => `<option value="${h}" ${libres.includes(h) ? "selected" : ""}>${h}</option>`)
+    .join("");
+}
+
 // 7️⃣ CARGAR DATOS DESDE VENTAS Y FIREBASE
-async function loadDatos(ventas) {
-  if (datosCargados) {
+async function loadDatos(ventas, { forzarRecarga = false } = {}) {
+  if (datosCargados && !forzarRecarga) {
     cargarTablaInferior();
     return;
   }
 
-  let id = elems.numeroNegocio.value.trim();
+  const id = elems.numeroNegocio.value.trim();
   const nombre = elems.nombreGrupo.value.trim();
-
   const nombreNorm = normalizarBusqueda(nombre);
 
-  const ventaRaw = ventas.find(g => {
-    const r = normalizarGrupoParaRegistro(g);
+  let ventaFinal = null;
 
-    const coincideNumero =
-      id && String(r.numeroNegocio) === String(id);
+  // Caso especial: fusión oficial con guion junto. Ej: 1414-1516
+  if (esFusionNegocio(id)) {
+    const [codigoBase, codigoFusionado] = id.split("-").map(x => x.trim());
 
-    const coincideNombre =
-      nombreNorm &&
-      (
-        normalizarBusqueda(r.nombreGrupo) === nombreNorm ||
-        normalizarBusqueda(g.aliasGrupo) === nombreNorm ||
-        normalizarBusqueda(g.nombreGrupo) === nombreNorm ||
-        normalizarBusqueda(g.ficha?.nombreGrupo) === nombreNorm
-      );
+    const baseRaw = buscarVentaPorNumero(ventas, codigoBase);
+    const fusionRaw = buscarVentaPorNumero(ventas, codigoFusionado);
 
-    return coincideNumero || coincideNombre;
-  });
+    if (!baseRaw || !fusionRaw) {
+      alert(`⚠️ No encontré ambos grupos para fusionar: ${id}`);
+      datosCargados = true;
+      cargarTablaInferior();
+      return;
+    }
 
-  if (ventaRaw) {
-    const venta = normalizarGrupoParaRegistro(ventaRaw);
+    ventaFinal = fusionarGruposParaRegistro(baseRaw, fusionRaw, id);
+  }
 
-    elems.numeroNegocio.value = venta.numeroNegocio || "";
-    id = String(venta.numeroNegocio || "");
+  // Caso normal: un solo número de negocio o búsqueda por nombre.
+  if (!ventaFinal) {
+    const ventaRaw = ventas.find(g => {
+      const r = normalizarGrupoParaRegistro(g);
 
-    campos.forEach(c => {
-      if (c === "identificador") return;
+      const coincideNumero =
+        id && String(r.numeroNegocio) === String(id);
 
-      if (!["duracion", "noches", "fechaFin"].includes(c)) {
-        if (elems[c]) {
-          elems[c].value = venta[c] || "";
-        }
-      }
+      const coincideNombre =
+        nombreNorm &&
+        (
+          normalizarBusqueda(r.nombreGrupo) === nombreNorm ||
+          normalizarBusqueda(g.aliasGrupo) === nombreNorm ||
+          normalizarBusqueda(g.nombreGrupo) === nombreNorm ||
+          normalizarBusqueda(g.ficha?.nombreGrupo) === nombreNorm
+        );
+
+      return coincideNumero || coincideNombre;
     });
 
-    const dn =
-      DESTINOS_CANONICOS.find(d =>
-        String(venta.destino || "").toUpperCase().includes(d)
-      ) || "OTRO";
-
-    elems.destino.value = dn;
-    handleDestinoChange();
-
-    const pn =
-      (PROGRAMAS_POR_DESTINO[dn] || []).find(p =>
-        String(venta.programa || "").toUpperCase().includes(p)
-      ) || venta.programa || "";
-
-    elems.programa.value = pn;
-    handleProgramaChange();
-
-    calcularFin();
-
-    const origText = String(venta.hoteles || "").toUpperCase();
-
-    const libres = origText
-      .split(/,| Y |;|\n/i)
-      .map(h => h.trim())
-      .filter(Boolean);
-
-    const canonicos = HOTELES_POR_DESTINO[dn] || [];
-    const union = Array.from(new Set([...libres, ...canonicos]));
-
-    elems.hoteles.innerHTML = union
-      .map(h => `<option value="${h}" ${libres.includes(h) ? "selected" : ""}>${h}</option>`)
-      .join("");
+    if (ventaRaw) {
+      ventaFinal = normalizarGrupoParaRegistro(ventaRaw);
+    }
   }
+
+  if (!ventaFinal) {
+    datosCargados = true;
+    cargarTablaInferior();
+    return;
+  }
+
+  aplicarVentaAlFormulario(ventaFinal);
 
   datosCargados = true;
   cargarTablaInferior();
@@ -411,8 +522,12 @@ function cargarTablaInferior() {
 
 // 8️⃣ GUARDAR EN FIREBASE Y REGISTRAR HISTORIAL
 async function guardar() {
-  let negocio   = elems.numeroNegocio.value.trim().replace(/\//g, '-');
-  let identific = elems.identificador.value.trim().replace(/\//g, '-');
+  let negocioVisual = elems.numeroNegocio.value.trim();
+  let negocio = negocioVisual
+    .replace(/\s+/g, "")
+    .replace(/\//g, "-");
+  
+  let identific = elems.identificador.value.trim().replace(/\//g, "-");
 
   if (!negocio || !identific || !elems.nombreGrupo.value.trim()) {
     alert('⚠️ Debes completar número de negocio, identificador y nombre de grupo.');
@@ -425,7 +540,12 @@ async function guardar() {
 
   const payload = {};
   campos.forEach(c => payload[c] = elems[c].value);
-  payload.numeroNegocio = negocio;
+  payload.numeroNegocio = negocioVisual;
+  payload.numeroNegocioDocId = negocio;
+  payload.esFusion = esFusionNegocio(negocioVisual);
+  payload.negociosFusionados = esFusionNegocio(negocioVisual)
+    ? negocioVisual.split("-").map(x => x.trim())
+    : [];
   payload.identificador = identific;
   payload.hoteles = [...elems.hoteles.selectedOptions].map(o => o.value.trim()).filter(Boolean);
   payload.actualizadoPor = user;
