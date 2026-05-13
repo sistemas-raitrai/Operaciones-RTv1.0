@@ -8,6 +8,232 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
 
+<style>
+  body {
+    background: #f3f6f8;
+  }
+
+  .registro-shell {
+    max-width: 1380px;
+    margin: 0 auto;
+    padding: 24px 28px 40px;
+  }
+
+  .registro-hero {
+    background: linear-gradient(135deg, #0f2f3a 0%, #1f5d6b 100%);
+    color: #fff;
+    border-radius: 28px;
+    padding: 28px;
+    margin-bottom: 24px;
+    box-shadow: 0 18px 42px rgba(15, 47, 58, .18);
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .registro-hero h2 {
+    margin: 0;
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 900;
+    letter-spacing: .2px;
+  }
+
+  .registro-hero p {
+    margin: 8px 0 0;
+    color: rgba(255,255,255,.78);
+    font-size: 15px;
+  }
+
+  .registro-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .registro-btn {
+    min-height: 44px;
+    border: 0;
+    border-radius: 14px;
+    padding: 0 16px;
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 14px;
+  }
+
+  .registro-btn.light {
+    background: #fff;
+    color: #0f2f3a;
+  }
+
+  .registro-btn.ghost {
+    background: rgba(255,255,255,.14);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,.28);
+  }
+
+  .registro-card {
+    background: rgba(255,255,255,.96);
+    border: 1px solid rgba(15,47,58,.10);
+    border-radius: 24px;
+    padding: 22px;
+    margin-bottom: 24px;
+    box-shadow: 0 12px 30px rgba(15,47,58,.08);
+  }
+
+  .registro-card-title {
+    margin: 0 0 16px;
+    font-size: 18px;
+    font-weight: 900;
+    color: #0f2f3a;
+  }
+
+  #formRegistro {
+    display: grid;
+    gap: 18px;
+  }
+
+  #formRegistro .row {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  #formRegistro .column {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  #formRegistro .column.short { grid-column: span 2; }
+  #formRegistro .column.medium { grid-column: span 4; }
+  #formRegistro .column.long { grid-column: span 6; }
+
+  #formRegistro label,
+  .registro-filter label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .35px;
+    color: #52616b;
+    font-weight: 900;
+  }
+
+  #formRegistro input,
+  #formRegistro select,
+  #formRegistro textarea,
+  .registro-filter select {
+    width: 100%;
+    min-height: 48px;
+    border-radius: 14px;
+    border: 1px solid rgba(15,47,58,.14);
+    background: #fff;
+    padding: 0 14px;
+    font-size: 15px;
+    color: #1f2933;
+    outline: none;
+    font-family: inherit;
+  }
+
+  #formRegistro textarea {
+    min-height: 96px;
+    padding: 12px 14px;
+    resize: vertical;
+  }
+
+  #formRegistro input:focus,
+  #formRegistro select:focus,
+  #formRegistro textarea:focus,
+  .registro-filter select:focus {
+    border-color: rgba(31, 93, 107, .5);
+    box-shadow: 0 0 0 4px rgba(31, 93, 107, .10);
+  }
+
+  #formRegistro input[readonly],
+  #formRegistro input:disabled {
+    background: #eef3f5;
+    color: #60717a;
+  }
+
+  #hoteles {
+    min-height: 180px;
+    padding: 10px 14px;
+  }
+
+  .button-container {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+  }
+
+  #btnGuardar {
+    min-height: 48px;
+    border: 0;
+    border-radius: 16px;
+    padding: 0 24px;
+    background: linear-gradient(135deg, #0f2f3a 0%, #1f5d6b 100%);
+    color: #fff;
+    font-weight: 900;
+    cursor: pointer;
+    box-shadow: 0 12px 24px rgba(15,47,58,.18);
+  }
+
+  .registro-filter {
+    max-width: 220px;
+  }
+
+  .registro-table-wrap {
+    overflow-x: auto;
+    border-radius: 20px;
+    border: 1px solid rgba(15,47,58,.10);
+  }
+
+  #tablaRegistros {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .88rem;
+    background: #fff;
+  }
+
+  #tablaRegistros th {
+    background: #e7eef1;
+    color: #0f2f3a;
+    text-align: left;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+    padding: 12px;
+    white-space: nowrap;
+  }
+
+  #tablaRegistros td {
+    padding: 12px;
+    border-top: 1px solid #e4ecef;
+    color: #263238;
+    vertical-align: top;
+  }
+
+  #modal-grupos {
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0,0,0,.22);
+  }
+
+  @media (max-width: 980px) {
+    .registro-shell {
+      padding: 18px 14px 30px;
+    }
+
+    #formRegistro .column.short,
+    #formRegistro .column.medium,
+    #formRegistro .column.long {
+      grid-column: 1 / -1;
+    }
+  }
+</style>
+
 <body>
   <!-- Encabezado común -->
   <div id="encabezado"></div>
