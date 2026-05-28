@@ -1378,6 +1378,27 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       usuario: auth.currentUser.email,
       timestamp: new Date()
     });
+    // Asegura que cualquier celda editable quede editable al hacer clic,
+  // incluso si DataTables redibujó la fila después de activar edición.
+  $('#tablaGrupos tbody')
+    .off('click.ensureEditable', 'td[data-campo]')
+    .on('click.ensureEditable', 'td[data-campo]', function () {
+      if (!editMode) return;
+  
+      const $td = $(this);
+  
+      if ($td.attr('data-fixed')) return;
+  
+      const campo = $td.attr('data-campo');
+      if (!campo) return;
+  
+      // No permitir editar las dos primeras columnas
+      const index = $td.index();
+      if (index <= 1) return;
+  
+      $td.attr('contenteditable', 'true');
+      $td.trigger('focus');
+    });
   });
 
   // 7) Ver Historial
