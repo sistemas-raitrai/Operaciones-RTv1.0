@@ -52,7 +52,32 @@ function obtenerAnoOperativoHotel() {
 // Normaliza fecha a 'YYYY-MM-DD'
 function toISO(x){
   if (!x) return '';
-  if (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)) return x;
+
+  if (x?.toDate && typeof x.toDate === 'function') {
+    const d = x.toDate();
+    return isNaN(d) ? '' : d.toISOString().slice(0,10);
+  }
+
+  if (x instanceof Date) {
+    return isNaN(x) ? '' : x.toISOString().slice(0,10);
+  }
+
+  if (typeof x === 'string') {
+    const s = x.trim();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+      const [dd, mm, yyyy] = s.split('-');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+      const [dd, mm, yyyy] = s.split('/');
+      return `${yyyy}-${mm}-${dd}`;
+    }
+  }
+
   const d = new Date(x);
   return isNaN(d) ? '' : d.toISOString().slice(0,10);
 }
@@ -80,18 +105,35 @@ function actualizarNochesAsignacion() {
   nochesInput.value = diffNoches(ci, co);
 }
 
+function getFechasDesdeItinerarioGrupo(g) {
+  const IT = g.itinerario || {};
+
+  const fechas = Object.keys(IT)
+    .filter(k => /^\d{4}-\d{2}-\d{2}$/.test(String(k)))
+    .sort((a, b) => new Date(a) - new Date(b));
+
+  return {
+    inicio: fechas[0] || '',
+    fin: fechas[fechas.length - 1] || ''
+  };
+}
+
 function getFechaInicioGrupo(g) {
-  return toISO(
+  const directa = toISO(
     g.fechaInicio ||
     g.fechaInicioViaje ||
     g.fechaSalida ||
     g.fechaDeViaje ||
     ''
   );
+
+  if (directa) return directa;
+
+  return getFechasDesdeItinerarioGrupo(g).inicio;
 }
 
 function getFechaFinGrupo(g) {
-  return toISO(
+  const directa = toISO(
     g.fechaFin ||
     g.fechaFinViaje ||
     g.fechaRegreso ||
@@ -99,6 +141,10 @@ function getFechaFinGrupo(g) {
     g.fechaTermino ||
     ''
   );
+
+  if (directa) return directa;
+
+  return getFechasDesdeItinerarioGrupo(g).fin;
 }
 
 function sumarUnAnoISO(iso) {
@@ -168,32 +214,57 @@ async function loadGrupos() {
   );
 }
 
-// ===== Carga Asignaciones (con autocorrección suave) =====
 async function loadAsignaciones(){
   const snap = await getDocs(collection(db,'hotelAssignments'));
+
   asignaciones = snap.docs
     .map(d => ({ id:d.id, ...d.data() }))
     .filter(a => Number(a.anoViaje || 2025) === Number(anoHotelActivo));
 
-  // Autocorrección: si noches no coincide, lo recalculamos y guardamos.
-  // (Silencioso; asegura consistencia sin pedir confirmación)
   const fixes = [];
-  for (const a of asignaciones){
-    const ci = toISO(a.checkIn);
-    const co = toISO(a.checkOut);
-    const n  = diffNoches(ci, co);
-    const bad =
-      (a.checkIn !== ci) || (a.checkOut !== co) ||
-      (typeof a.noches !== 'number') || (a.noches !== n);
 
-    if (bad){
+  for (const a of asignaciones) {
+    const g = grupos.find(x => x.id === a.grupoId);
+
+    let ci = toISO(a.checkIn);
+    let co = toISO(a.checkOut);
+
+    // Si la asignación está marcada como automática,
+    // siempre sigue las fechas actuales del grupo.
+    if (a.fechasAutoDesdeGrupo === true && g) {
+      const inicioGrupo = getFechaInicioGrupo(g);
+      const finGrupo = getFechaFinGrupo(g);
+
+      if (inicioGrupo && finGrupo) {
+        ci = inicioGrupo;
+        co = finGrupo;
+      }
+    }
+
+    const n = diffNoches(ci, co);
+
+    const bad =
+      a.checkIn !== ci ||
+      a.checkOut !== co ||
+      typeof a.noches !== 'number' ||
+      a.noches !== n;
+
+    if (bad) {
       fixes.push(
         updateDoc(doc(db,'hotelAssignments', a.id), {
-          checkIn: ci, checkOut: co, noches: n, updatedAt: serverTimestamp()
+          checkIn: ci,
+          checkOut: co,
+          noches: n,
+          updatedAt: serverTimestamp()
         })
       );
+
+      a.checkIn = ci;
+      a.checkOut = co;
+      a.noches = n;
     }
   }
+
   if (fixes.length) await Promise.allSettled(fixes);
 }
 
@@ -697,8 +768,13 @@ function openAssignModal(hotelId, assignId){
       co.max = fechaFinGrupo;
     }
     
-    if (!ci.value && fechaInicioGrupo) ci.value = fechaInicioGrupo;
-    if (!co.value && fechaFinGrupo) co.value = fechaFinGrupo;
+    if (!isEditAssign) {
+      ci.value = fechaInicioGrupo || '';
+      co.value = fechaFinGrupo || '';
+    } else {
+      if (!ci.value && fechaInicioGrupo) ci.value = fechaInicioGrupo;
+      if (!co.value && fechaFinGrupo) co.value = fechaFinGrupo;
+    }
     
     actualizarNochesAsignacion();
 
@@ -858,6 +934,14 @@ async function onSavePax() {
   const co = toISO(document.getElementById('a-checkout').value);
   const n  = diffNoches(ci, co);
 
+  const gActual = grupos.find(x => x.id === gId) || {};
+  const inicioGrupo = getFechaInicioGrupo(gActual);
+  const finGrupo = getFechaFinGrupo(gActual);
+  
+  const fechasAutoDesdeGrupo =
+    ci === inicioGrupo &&
+    co === finGrupo;
+
   if (!ci || !co) {
     return alert('Debes ingresar check-in y check-out antes de guardar pasajeros.');
   }
@@ -921,7 +1005,7 @@ async function onSavePax() {
     checkIn: ci,
     checkOut: co,
     noches: n,
-
+    fechasAutoDesdeGrupo,
     adultos: {
       M: adM,
       F: adF,
@@ -1079,6 +1163,14 @@ async function onSubmitAssign(e) {
   const ci = toISO(document.getElementById('a-checkin').value);
   const co = toISO(document.getElementById('a-checkout').value);
   const n  = diffNoches(ci, co);
+
+  const gActual = grupos.find(x => x.id === gId) || {};
+  const inicioGrupo = getFechaInicioGrupo(gActual);
+  const finGrupo = getFechaFinGrupo(gActual);
+  
+  const fechasAutoDesdeGrupo =
+    ci === inicioGrupo &&
+    co === finGrupo;
   
   if (!hotelIdFinal) {
     alert('No se pudo identificar el hotel. Cierra el modal y vuelve a presionar ASIGNAR desde la tarjeta del hotel.');
@@ -1102,6 +1194,7 @@ async function onSubmitAssign(e) {
     checkIn:   ci,
     checkOut:  co,
     noches:    n,
+    fechasAutoDesdeGrupo,
     adultos: {
       M: Number(document.getElementById('a-ad-M').value),
       F: Number(document.getElementById('a-ad-F').value),
