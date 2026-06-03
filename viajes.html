@@ -117,7 +117,7 @@
   <!-- 2) Tu contenido principal -->
   <main class="main">
     <div class="column long"><h2>PLANIFICACIÓN DE VIAJES:</h2></div>
-    <div class="row" style="display:grid; grid-template-columns:70px 1fr 120px 110px 120px; align-items:end; gap:12px; width:100%;">
+    <div class="row" style="display:grid; grid-template-columns:70px minmax(350px, 1fr) 150px 130px 150px; align-items:end; gap:12px; width:100%;">
       <div class="column">
         <label for="filtro-ano-viajes" style="font-size:11px; font-weight:bold; margin:0 0 3px 0;">AÑO</label>
         <select id="filtro-ano-viajes" style="width:70px; height:32px; padding:2px 4px;"></select>
@@ -128,15 +128,15 @@
       </div>
     
       <div class="column">
-        <button id="btnAddVuelo" class="btn-add" style="height:36px;">➕ AGREGAR NUEVO</button>
+        <button id="btnAddVuelo" class="btn-add" style="height:36px; width:100%; white-space:nowrap;">➕ AGREGAR NUEVO</button>
       </div>
     
       <div class="column">
-        <button id="btnHistorial" class="btn-add" style="height:36px;">📜 HISTORIAL</button>
+        <button id="btnHistorial" class="btn-add" style="height:36px; width:100%; white-space:nowrap;">📜 HISTORIAL</button>
       </div>
     
       <div class="column">
-        <button id="btnExportExcel" class="btn-add" style="height:36px;">⬇️ EXPORTAR EXCEL</button>
+        <button id="btnExportExcel" class="btn-add" style="height:36px; width:100%; white-space:nowrap;">⬇️ EXPORTAR EXCEL</button>
       </div>
     </div>
 
