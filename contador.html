@@ -152,8 +152,60 @@
           <tbody id="verificacionPagosBody"></tbody>
         </table>
     
-        <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
+        <div style="display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem;">
+          <button id="btnGuardarVerificacionPagos">💾 Guardar información</button>
           <button id="btnCerrarVerificacionPagos">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal DETALLE DIFERENCIA PAX -->
+    <div id="modalDetalleDiferenciaPagos"
+         style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:13000;">
+      <div style="background:white; margin:6vh auto; padding:1rem;
+                  width:90%; max-width:800px; max-height:88vh; overflow:auto;">
+        <h3 id="detalleDiffTitulo">Detalle diferencia</h3>
+    
+        <div id="detalleDiffResumen" style="margin-bottom:1rem; font-weight:bold;"></div>
+    
+        <table border="1" width="100%" style="border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th>Categoría</th>
+              <th>Correo</th>
+              <th>Pagos</th>
+              <th>Diferencia</th>
+            </tr>
+          </thead>
+          <tbody id="detalleDiffBody"></tbody>
+        </table>
+    
+        <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
+          <button id="btnCerrarDetalleDiferenciaPagos">Cerrar</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Modal GUARDAR VERIFICACIÓN -->
+    <div id="modalGuardarVerificacionPagos"
+         style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:14000;">
+      <div style="background:white; margin:8vh auto; padding:1rem;
+                  width:90%; max-width:650px;">
+        <h3>Guardar verificación como historial</h3>
+    
+        <div id="guardarVerificacionResumen" style="margin-bottom:1rem;"></div>
+    
+        <label>
+          Justificación / comentario:
+          <textarea id="guardarVerificacionComentario"
+                    style="width:100%; min-height:120px; margin-top:.5rem;"></textarea>
+        </label>
+    
+        <div style="display:flex; justify-content:flex-end; gap:.5rem; margin-top:1rem;">
+          <button id="btnCancelarGuardarVerificacion">Cancelar</button>
+          <button id="btnConfirmarGuardarVerificacion">Guardar</button>
         </div>
       </div>
     </div>
