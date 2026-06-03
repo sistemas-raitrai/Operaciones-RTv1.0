@@ -17,11 +17,28 @@
   
     /* ========== CONTROLES ========== */
     .controls {
-      display: flex; gap: .5em; align-items: center; margin: 1em 0;
+      display: flex;
+      gap: .5em;
+      align-items: center;
+      margin: 1em 0;
     }
+    
+    #filtroAnoHotel {
+      width: 90px;
+      min-width: 90px;
+      flex: 0 0 90px;
+      padding: .5em;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    
     #search-input {
-      flex:1; padding:.5em; border:1px solid #ccc; border-radius:4px;
-      font-size:1em;
+      flex: 1;
+      min-width: 220px;
+      padding: .5em;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1em;
     }
     .controls button {
       background:#007bff; color:#fff; border:none;
