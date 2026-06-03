@@ -17,6 +17,8 @@ import {
 let grupos = [];               // documentos de 'grupos'
 let fechasOrdenadas = [];      // ['YYYY-MM-DD', ...] con pax > 0
 let proveedores = {};          // mapa proveedor -> {contacto, correo}
+let reservaActualSnapshot = null;
+const API_PAGOS_URL = '/api/pagos';
 
 // ===== [NUEVO] Índice de vuelos por grupo (root collection 'vuelos') =====
 let IDX_VUELOS_POR_GRUPO = new Map();
@@ -360,8 +362,15 @@ async function init() {
   // 5.11 Botones del modal de Reserva
   document.getElementById('btnCerrarReserva').onclick = () =>
     document.getElementById('modalReserva').style.display = 'none';
+  
   document.getElementById('btnGuardarPendiente').onclick = guardarPendiente;
   document.getElementById('btnEnviarReserva').onclick = enviarReserva;
+  
+  document.getElementById('btnVerificarPaxPagos').onclick = verificarPaxReservaConPagos;
+  
+  document.getElementById('btnCerrarVerificacionPagos').onclick = () => {
+    document.getElementById('modalVerificacionPagos').style.display = 'none';
+  };
 
   // (Opcional) Botón "Actualizar" del modal detalle: reajusta columnas si ya existe
   const btnAct = document.getElementById('btnActualizarModal');
@@ -405,9 +414,29 @@ async function abrirModalReserva(event) {
     .filter(d => d.lista.length > 0);
 
   const totalGlobal = perDateData.reduce((sum, d) => sum + d.paxTotal, 0);
-  const gruposUnicos = new Set();
-  perDateData.forEach(({ lista }) => lista.forEach(g => gruposUnicos.add(g.id)));
-  const totalGrupos = gruposUnicos.size;
+  
+  const gruposReservaMap = new Map();
+  
+  perDateData.forEach(({ lista }) => {
+    lista.forEach(g => {
+      if (!gruposReservaMap.has(g.id)) {
+        gruposReservaMap.set(g.id, {
+          id: g.id,
+          numeroNegocio: g.numeroNegocio || g.id,
+          nombreGrupo: g.nombreGrupo || '',
+          paxCorreo: Number(g.cantidadgrupo || g.cantidadGrupo || 0)
+        });
+      }
+    });
+  });
+  
+  const totalGrupos = gruposReservaMap.size;
+  
+  reservaActualSnapshot = {
+    destino,
+    actividad,
+    grupos: Array.from(gruposReservaMap.values())
+  };
 
   let cuerpo = `Estimado/a ${provInfo.contacto || ''}:\n\n`;
   cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
@@ -999,4 +1028,174 @@ function renderTablaModal(dataRows) {
       language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' }
     });
   }
+}
+
+// =====================================================
+// VERIFICACIÓN PAX RESERVA vs SISTEMA DE PAGOS
+// =====================================================
+
+async function verificarPaxReservaConPagos() {
+  if (!reservaActualSnapshot || !Array.isArray(reservaActualSnapshot.grupos)) {
+    alert('Primero abre una reserva.');
+    return;
+  }
+
+  const resumen = document.getElementById('verificacionPagosResumen');
+  const tbody = document.getElementById('verificacionPagosBody');
+
+  resumen.innerHTML = 'Consultando sistema de pagos...';
+  tbody.innerHTML = '';
+
+  document.getElementById('modalVerificacionPagos').style.display = 'block';
+
+  const resultados = [];
+
+  for (const g of reservaActualSnapshot.grupos) {
+    try {
+      const numeroNegocio = g.numeroNegocio || g.id;
+
+      const url = `${API_PAGOS_URL}?modo=detalle&numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
+      const res = await fetch(url);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const data = await res.json();
+
+      const pasajeros =
+        data?.nominas?.data?.pasajeros ||
+        data?.saldos?.data?.detalle_pasajeros ||
+        [];
+
+      const resumenPagos = calcularResumenPagosContador(pasajeros);
+      const paxPagos = resumenPagos.totalViajan;
+      const paxCorreo = Number(g.paxCorreo || 0);
+      const diferencia = paxPagos - paxCorreo;
+
+      resultados.push({
+        numeroNegocio,
+        nombreGrupo: g.nombreGrupo || '',
+        paxCorreo,
+        paxPagos,
+        diferencia,
+        estado: diferencia === 0 ? 'OK' : 'DIFERENCIA'
+      });
+
+    } catch (error) {
+      console.error('Error verificando grupo con pagos:', g, error);
+
+      resultados.push({
+        numeroNegocio: g.numeroNegocio || g.id,
+        nombreGrupo: g.nombreGrupo || '',
+        paxCorreo: Number(g.paxCorreo || 0),
+        paxPagos: '',
+        diferencia: '',
+        estado: 'ERROR CONSULTA'
+      });
+    }
+  }
+
+  renderVerificacionPagos(resultados);
+}
+
+function renderVerificacionPagos(resultados) {
+  const resumen = document.getElementById('verificacionPagosResumen');
+  const tbody = document.getElementById('verificacionPagosBody');
+
+  const conDiferencia = resultados.filter(r => r.estado !== 'OK');
+
+  if (!conDiferencia.length) {
+    resumen.innerHTML = `✅ Todos los grupos coinciden con el sistema de pagos. Total grupos revisados: ${resultados.length}.`;
+  } else {
+    resumen.innerHTML = `⚠️ Hay ${conDiferencia.length} grupo(s) con diferencia o error de consulta.`;
+  }
+
+  tbody.innerHTML = resultados.map(r => {
+    const color = r.estado === 'OK' ? '#09832e' : '#ca0a1f';
+    const diffTxt = r.diferencia === '' ? '' : (r.diferencia > 0 ? `+${r.diferencia}` : r.diferencia);
+
+    return `
+      <tr>
+        <td>${r.numeroNegocio}</td>
+        <td>${r.nombreGrupo}</td>
+        <td>${r.paxCorreo}</td>
+        <td>${r.paxPagos}</td>
+        <td style="font-weight:bold; color:${color};">${diffTxt}</td>
+        <td style="font-weight:bold; color:${color};">${r.estado}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function calcularResumenPagosContador(items) {
+  const resumen = {
+    totalViajan: 0,
+    totalNoViajan: 0,
+    totalLeidos: 0
+  };
+
+  const pasajeros = Array.isArray(items) ? items : [];
+
+  pasajeros.forEach(item => {
+    const p = item?.pasajero || item || {};
+    resumen.totalLeidos++;
+
+    if (pasajeroViajaContador(p)) {
+      resumen.totalViajan++;
+    } else {
+      resumen.totalNoViajan++;
+    }
+  });
+
+  return resumen;
+}
+
+function pasajeroViajaContador(p) {
+  const v =
+    p.viaja ??
+    p.estado_viaje ??
+    p.estado ??
+    p.activo ??
+    '';
+
+  if (typeof v === 'number') {
+    return Number(v) === 1;
+  }
+
+  const txt = normalizarTextoContador(v);
+
+  if (!txt) return true;
+
+  if (
+    txt === '1' ||
+    txt === 'si' ||
+    txt === 'sí' ||
+    txt === 'viaja' ||
+    txt === 'activo' ||
+    txt === 'activa'
+  ) {
+    return true;
+  }
+
+  if (
+    txt === '0' ||
+    txt === 'no' ||
+    txt === 'no viaja' ||
+    txt === 'anulado' ||
+    txt === 'anulada' ||
+    txt === 'baja'
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function normalizarTextoContador(txt) {
+  return String(txt || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 }
