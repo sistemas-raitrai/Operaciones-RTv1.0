@@ -214,12 +214,20 @@
   <div id="encabezado"></div>
   <h1>DISTRIBUCIÓN HOTELERA Y PAX TOTALES</h1>
 
-  <div class="controls">
-    <input type="text" id="search-input" placeholder="Buscar hotel..."/>
-    <button id="btnAddHotel">+ AGREGAR NUEVO</button>
-    <button id="btnHistorial">📜 HISTORIAL</button>
-    <button id="btnExportExcel">💾 EXPORTAR EXCEL</button>
-  </div>
+<div class="controls">
+  <select id="filtroAnoHotel" style="padding:.5em; border:1px solid #ccc; border-radius:4px;">
+    <option value="2025">2025</option>
+    <option value="2026" selected>2026</option>
+    <option value="2027">2027</option>
+  </select>
+
+  <input type="text" id="search-input" placeholder="Buscar hotel..."/>
+
+  <button id="btnAddHotel">+ AGREGAR NUEVO</button>
+  <button id="btnCopiarHotelesAno">📦 IMPORT HOTELES</button>
+  <button id="btnHistorial">📜 HISTORIAL</button>
+  <button id="btnExportExcel">💾 EXPORTAR EXCEL</button>
+</div>
 
   <div id="hoteles-container"></div>
 
