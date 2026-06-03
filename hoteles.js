@@ -66,6 +66,41 @@ function diffNoches(checkInISO, checkOutISO){
   return Math.max(0, d);
 }
 
+function actualizarNochesAsignacion() {
+  const ci = toISO(document.getElementById('a-checkin').value);
+  const co = toISO(document.getElementById('a-checkout').value);
+
+  const nochesInput = document.getElementById('a-noches');
+
+  if (!ci || !co) {
+    nochesInput.value = '';
+    return;
+  }
+
+  nochesInput.value = diffNoches(ci, co);
+}
+
+function getFechaInicioGrupo(g) {
+  return toISO(
+    g.fechaInicio ||
+    g.fechaInicioViaje ||
+    g.fechaSalida ||
+    g.fechaDeViaje ||
+    ''
+  );
+}
+
+function getFechaFinGrupo(g) {
+  return toISO(
+    g.fechaFin ||
+    g.fechaFinViaje ||
+    g.fechaRegreso ||
+    g.fechaRetorno ||
+    g.fechaTermino ||
+    ''
+  );
+}
+
 function sumarUnAnoISO(iso) {
   if (!iso) return '';
   const d = new Date(iso + 'T00:00:00');
@@ -553,6 +588,12 @@ function setupAssignModal(){
   if (!choiceGrupo) choiceGrupo = new Choices(selGrupo, { removeItemButton:false });
 
   document.getElementById('assign-cancel').addEventListener('click', closeAssignModal);
+  
+  const cancel2 = document.getElementById('assign-cancel-2');
+  if (cancel2) {
+    cancel2.addEventListener('click', closeAssignModal);
+  }
+  
   document.getElementById('assign-form').addEventListener('submit', onSubmitAssign);
 
   // NUEVO: botón separado para guardar solo PAX (adultos/estudiantes)
@@ -572,11 +613,9 @@ function setupAssignModal(){
   }
 
   ['a-checkin','a-checkout'].forEach(id=>{
-    document.getElementById(id).addEventListener('change', () => {
-      const ci = toISO(document.getElementById('a-checkin').value);
-      const co = toISO(document.getElementById('a-checkout').value);
-      document.getElementById('a-noches').value = diffNoches(ci, co);
-    });
+    const el = document.getElementById(id);
+    el.addEventListener('change', actualizarNochesAsignacion);
+    el.addEventListener('input', actualizarNochesAsignacion);
   });
 }
 
@@ -635,17 +674,33 @@ function openAssignModal(hotelId, assignId){
 
     document.getElementById('max-adultos').textContent     = adultos;
     document.getElementById('max-estudiantes').textContent = estudiantes;
+    const fechaInicioGrupo = getFechaInicioGrupo(g);
+    const fechaFinGrupo = getFechaFinGrupo(g);
+    
     document.getElementById('grupo-fechas').textContent =
-      `Rango: ${fmtFechaCorta(g.fechaInicio)} → ${fmtFechaCorta(g.fechaFin)}`;
-
+      fechaInicioGrupo || fechaFinGrupo
+        ? `Rango: ${fmtFechaCorta(fechaInicioGrupo)} → ${fmtFechaCorta(fechaFinGrupo)}`
+        : 'Rango: sin fechas registradas en el grupo';
+    
     const ci = document.getElementById('a-checkin');
     const co = document.getElementById('a-checkout');
-    ci.min = g.fechaInicio; ci.max = g.fechaFin;
-    co.min = g.fechaInicio; co.max = g.fechaFin;
-    if (!ci.value) ci.value = g.fechaInicio;
-    if (!co.value) co.value = g.fechaFin;
-
-    document.getElementById('a-noches').value = diffNoches(ci.value, co.value);
+    
+    ci.removeAttribute('min');
+    ci.removeAttribute('max');
+    co.removeAttribute('min');
+    co.removeAttribute('max');
+    
+    if (fechaInicioGrupo && fechaFinGrupo) {
+      ci.min = fechaInicioGrupo;
+      ci.max = fechaFinGrupo;
+      co.min = fechaInicioGrupo;
+      co.max = fechaFinGrupo;
+    }
+    
+    if (!ci.value && fechaInicioGrupo) ci.value = fechaInicioGrupo;
+    if (!co.value && fechaFinGrupo) co.value = fechaFinGrupo;
+    
+    actualizarNochesAsignacion();
 
     // Totales visibles (solo lectura, luego se recalculan desde el detalle)
     document.getElementById('g-adultos').value       = adultos;
@@ -794,16 +849,38 @@ async function onSavePax() {
   const gId = document.getElementById('a-grupo').value;
   if (!gId) return alert('Selecciona un grupo');
 
-  const adSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-ad-${k}`).value || 0), 0);
-  const esSum = ['M','F','O'].reduce((s,k)=>s + Number(document.getElementById(`a-es-${k}`).value || 0), 0);
-  const newAdultos     = adSum;
-  const newEstudiantes = esSum;
-  const newCantidad    = adSum + esSum;
+  const hotelIdFinal = editHotelId;
+  if (!hotelIdFinal) {
+    return alert('No se pudo identificar el hotel. Cierra el modal y vuelve a presionar ASIGNAR desde la tarjeta del hotel.');
+  }
 
-  // Actualiza campos totales visibles
+  const ci = toISO(document.getElementById('a-checkin').value);
+  const co = toISO(document.getElementById('a-checkout').value);
+  const n  = diffNoches(ci, co);
+
+  if (!ci || !co) {
+    return alert('Debes ingresar check-in y check-out antes de guardar pasajeros.');
+  }
+
+  if (n <= 0) {
+    return alert('El check-out debe ser posterior al check-in.');
+  }
+
+  const adM = Number(document.getElementById('a-ad-M').value) || 0;
+  const adF = Number(document.getElementById('a-ad-F').value) || 0;
+  const adO = Number(document.getElementById('a-ad-O').value) || 0;
+
+  const esM = Number(document.getElementById('a-es-M').value) || 0;
+  const esF = Number(document.getElementById('a-es-F').value) || 0;
+  const esO = Number(document.getElementById('a-es-O').value) || 0;
+
+  const newAdultos     = adM + adF + adO;
+  const newEstudiantes = esM + esF + esO;
+  const newCantidad    = newAdultos + newEstudiantes;
+
   recalcTotalsFromDetail();
 
-  // Actualiza GRUPOS
+  // 1) Actualiza GRUPOS
   const gRef    = doc(db, 'grupos', gId);
   const gSnap   = await getDoc(gRef);
   const gBefore = gSnap.data() || {};
@@ -816,6 +893,7 @@ async function onSavePax() {
   };
 
   await updateDoc(gRef, gUpdate);
+
   await addDoc(collection(db,'historial'),{
     tipo: 'grupo-update-from-assign-pax-only',
     grupoId: gId,
@@ -829,31 +907,59 @@ async function onSavePax() {
     ts: serverTimestamp()
   });
 
-  // Si ya existe una asignación, actualizamos también sus PAX
+  // 2) Busca si ya existe asignación para este hotel + grupo + año
+  const asignacionExistente = asignaciones.find(a =>
+    String(a.hotelId) === String(hotelIdFinal) &&
+    String(a.grupoId) === String(gId) &&
+    Number(a.anoViaje || 2025) === Number(anoHotelActivo)
+  );
+
+  const assignUpdate = {
+    anoViaje: Number(anoHotelActivo),
+    hotelId: hotelIdFinal,
+    grupoId: gId,
+    checkIn: ci,
+    checkOut: co,
+    noches: n,
+
+    adultos: {
+      M: adM,
+      F: adF,
+      O: adO
+    },
+    estudiantes: {
+      M: esM,
+      F: esF,
+      O: esO
+    },
+
+    adultosTotal: newAdultos,
+    estudiantesTotal: newEstudiantes,
+    cantidadgrupo: newCantidad,
+
+    // Preasignación: todavía no necesariamente tiene habitaciones
+    habitaciones: {
+      singles: 0,
+      dobles: 0,
+      triples: 0,
+      cuadruples: 0
+    },
+
+    coordinadores: Number(document.getElementById('a-coordinadores').value) || 0,
+    conductores: Number(document.getElementById('a-conductores').value) || 0,
+
+    status: 'pendiente',
+    changedBy: currentUserEmail,
+    updatedAt: serverTimestamp()
+  };
+
   if (isEditAssign && editAssignId) {
     const refAssign = doc(db,'hotelAssignments', editAssignId);
     const beforeSnap = await getDoc(refAssign);
     const beforeAssign = beforeSnap.data() || {};
 
-    const assignUpdate = {
-      adultos: {
-        M: Number(document.getElementById('a-ad-M').value) || 0,
-        F: Number(document.getElementById('a-ad-F').value) || 0,
-        O: Number(document.getElementById('a-ad-O').value) || 0
-      },
-      estudiantes: {
-        M: Number(document.getElementById('a-es-M').value) || 0,
-        F: Number(document.getElementById('a-es-F').value) || 0,
-        O: Number(document.getElementById('a-es-O').value) || 0
-      },
-      adultosTotal:     newAdultos,
-      estudiantesTotal: newEstudiantes,
-      cantidadgrupo:    newCantidad,
-      changedBy: currentUserEmail,
-      updatedAt: serverTimestamp()
-    };
-
     await updateDoc(refAssign, assignUpdate);
+
     await addDoc(collection(db,'historial'),{
       tipo: 'assign-pax-update',
       docId: editAssignId,
@@ -862,12 +968,50 @@ async function onSavePax() {
       usuario: currentUserEmail,
       ts: serverTimestamp()
     });
+
+  } else if (asignacionExistente) {
+    const refAssign = doc(db,'hotelAssignments', asignacionExistente.id);
+
+    await updateDoc(refAssign, assignUpdate);
+
+    await addDoc(collection(db,'historial'),{
+      tipo: 'assign-pax-update-existing',
+      docId: asignacionExistente.id,
+      antes: asignacionExistente,
+      despues: { ...asignacionExistente, ...assignUpdate },
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
+
+    editAssignId = asignacionExistente.id;
+    isEditAssign = true;
+
+  } else {
+    const toSave = {
+      ...assignUpdate,
+      createdAt: serverTimestamp()
+    };
+
+    const ref = await addDoc(collection(db, 'hotelAssignments'), toSave);
+
+    await addDoc(collection(db,'historial'),{
+      tipo: 'assign-pax-preassign-new',
+      docId: ref.id,
+      antes: null,
+      despues: toSave,
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
+
+    editAssignId = ref.id;
+    isEditAssign = true;
   }
 
   await loadAsignaciones();
   await loadGrupos();
   await renderHoteles();
-  alert('PAX guardados correctamente.');
+
+  alert('Pasajeros guardados y grupo preasignado al hotel correctamente.');
 }
 
 // Guardar asignación (normaliza fechas + noches + timestamps)
@@ -934,6 +1078,21 @@ async function onSubmitAssign(e) {
   const ci = toISO(document.getElementById('a-checkin').value);
   const co = toISO(document.getElementById('a-checkout').value);
   const n  = diffNoches(ci, co);
+  
+  if (!hotelIdFinal) {
+    alert('No se pudo identificar el hotel. Cierra el modal y vuelve a presionar ASIGNAR desde la tarjeta del hotel.');
+    return;
+  }
+  
+  if (!ci || !co) {
+    alert('Debes ingresar check-in y check-out.');
+    return;
+  }
+  
+  if (n <= 0) {
+    alert('El check-out debe ser posterior al check-in.');
+    return;
+  }
 
   const payload = {
     anoViaje:  Number(anoHotelActivo),
@@ -991,6 +1150,8 @@ async function onSubmitAssign(e) {
   await loadGrupos();
   await renderHoteles();
   hideModals();
+  
+  alert('Asignación hotelera guardada correctamente.');
 }
 
 // Eliminar asignación
