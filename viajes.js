@@ -35,6 +35,78 @@ let publicarOpEl; // cache del bloque PUBLICAR
 
 let isEditingTransfer = false;
 
+let anoFiltroViajes = null;
+
+function obtenerAnoOperativo() {
+  const hoy = new Date();
+  const ano = hoy.getFullYear();
+  const mes = hoy.getMonth() + 1;
+
+  // Desde marzo cambia al año actual.
+  // Antes de marzo se mantiene el año anterior.
+  // Excepción práctica: 2026 debe partir como año por defecto.
+  if (ano === 2026) return 2026;
+
+  return mes >= 3 ? ano : ano - 1;
+}
+
+function obtenerAnoDesdeFecha(iso) {
+  if (!iso) return null;
+  const m = String(iso).match(/^(\d{4})-/);
+  return m ? Number(m[1]) : null;
+}
+
+function obtenerAnoVuelo(v) {
+  return (
+    Number(v.anoViaje) ||
+    obtenerAnoDesdeFecha(v.fechaIda) ||
+    obtenerAnoDesdeFecha(v.fechaVuelta) ||
+    obtenerAnoDesdeFecha(v.tramos?.[0]?.fechaIda) ||
+    obtenerAnoDesdeFecha(v.tramos?.[0]?.fechaVuelta) ||
+    null
+  );
+}
+
+function obtenerAnoGrupo(g) {
+  return Number(g.anoViaje || g.añoViaje || g.ano || g.año) || null;
+}
+
+function initFiltroAnoViajes() {
+  const sel = document.getElementById('filtro-ano-viajes');
+  if (!sel) return;
+
+  const anoBase = obtenerAnoOperativo();
+
+  const anos = new Set([
+    2025,
+    anoBase,
+    anoBase + 1
+  ]);
+
+  grupos.forEach(g => {
+    const ag = obtenerAnoGrupo(g);
+    if (ag) anos.add(ag);
+  });
+
+  vuelos.forEach(v => {
+    const av = obtenerAnoVuelo(v);
+    if (av) anos.add(av);
+  });
+
+  sel.innerHTML = [...anos]
+    .sort((a, b) => b - a)
+    .map(a => `<option value="${a}">${a}</option>`)
+    .join('');
+
+  anoFiltroViajes = anoBase;
+  sel.value = String(anoBase);
+
+  sel.onchange = () => {
+    anoFiltroViajes = Number(sel.value);
+    renderVuelos();
+  };
+}
+
 // ====== ICONOS (AGREGADO) ======
 const ICONS = {
   flight: '✈️',
@@ -324,6 +396,8 @@ async function init(){
   await loadGrupos();
   bindUI();
   initModal();
+  await cargarVuelosBase();
+  initFiltroAnoViajes();
   await renderVuelos();
 
   // Modales de grupo e historial (con guardas)
@@ -1622,15 +1696,24 @@ function transferDetailLine(t){
   return `${prov}${num ? ' '+num : ''} · ${toUpper(t.origen||'')} → ${toUpper(t.destino||'')} · ${lados} ${legTxt ? ' · '+legTxt : ''}`;
 }
 
+async function cargarVuelosBase() {
+  const snap = await getDocs(collection(db,'vuelos'));
+  vuelos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
+}
+
 async function renderVuelos(){
   const cont = document.getElementById('vuelos-container');
   cont.innerHTML = '';
 
-  const snap = await getDocs(collection(db,'vuelos'));
-  vuelos = snap.docs.map(d => ({ id:d.id, ...d.data() }));
-
+  await cargarVuelosBase();
+  
+  const vuelosFiltrados = vuelos.filter(v => {
+    const anoV = obtenerAnoVuelo(v);
+    return anoV === anoFiltroViajes;
+  });
+  
   // Ordena por fechaIda normalizada (si no existe, muy al futuro)
-  vuelos.sort((a,b) => {
+  vuelosFiltrados.sort((a,b) => {
     const fa = toISO(a.fechaIda) || '9999-12-31';
     const fb = toISO(b.fechaIda) || '9999-12-31';
     if (fa !== fb) return fa.localeCompare(fb);
@@ -1640,8 +1723,10 @@ async function renderVuelos(){
   });
 
   // Construye índices de transfers
+  vuelos = vuelosFiltrados;
+  
   buildTransfersIndexes();
-
+  
   const docsToRender = vuelos.filter(v => !v.isTransfer);
 
   for (const v of docsToRender){
