@@ -10,6 +10,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 let hoteles = [], grupos = [], asignaciones = [];
+let resumenPagosActual = null;
 let anoHotelActivo = obtenerAnoOperativoHotel();
 let isEditHotel = false, editHotelId = null;
 let isEditAssign = false, editAssignId = null;
@@ -560,6 +561,16 @@ function setupAssignModal(){
     btnSavePax.addEventListener('click', onSavePax);
   }
 
+  const btnConsultarPagos = document.getElementById('btnConsultarPagosGrupo');
+  if (btnConsultarPagos) {
+    btnConsultarPagos.addEventListener('click', consultarPagosGrupoSeleccionado);
+  }
+  
+  const btnCopiarPagos = document.getElementById('btnCopiarPagosGrupo');
+  if (btnCopiarPagos) {
+    btnCopiarPagos.addEventListener('click', copiarDatosPagosAlFormulario);
+  }
+
   ['a-checkin','a-checkout'].forEach(id=>{
     document.getElementById(id).addEventListener('change', () => {
       const ci = toISO(document.getElementById('a-checkin').value);
@@ -602,6 +613,9 @@ function openAssignModal(hotelId, assignId){
   const form = document.getElementById('assign-form');
   form.reset();
   choiceGrupo.removeActiveItems();
+  
+  limpiarComparativoPagos();
+  
   document.getElementById('assign-title').textContent =
     isEditAssign ? 'Editar Asignación' : 'Nueva Asignación';
   document.getElementById('a-conductores').value = '0';
@@ -612,6 +626,8 @@ function openAssignModal(hotelId, assignId){
     if (filling) return;
     const gid = e.target.value;
     const g   = grupos.find(x=>x.id===gid) || {};
+    
+    limpiarComparativoPagos();
 
     const adultos     = g.adultos       ?? 0;
     const estudiantes = g.estudiantes   ?? 0;
@@ -1684,4 +1700,300 @@ async function copiarHotelesDesdeAnoAnterior() {
     `Hoteles creados para ${anoDestino}: ${creados}\n` +
     `Hoteles saltados porque ya existían: ${saltados}`
   );
+}
+
+// =====================================================
+// COMPARATIVO CON SISTEMA DE PAGOS
+// =====================================================
+
+const API_PAGOS_URL = '/api/pagos';
+
+function limpiarComparativoPagos() {
+  resumenPagosActual = null;
+
+  const box = document.getElementById('pagos-comparativo-resumen');
+  const btnCopiar = document.getElementById('btnCopiarPagosGrupo');
+
+  if (box) {
+    box.innerHTML = 'Selecciona un grupo y presiona consultar.';
+  }
+
+  if (btnCopiar) {
+    btnCopiar.disabled = true;
+  }
+}
+
+async function consultarPagosGrupoSeleccionado() {
+  const gid = document.getElementById('a-grupo').value;
+  if (!gid) {
+    alert('Selecciona un grupo primero.');
+    return;
+  }
+
+  const g = grupos.find(x => x.id === gid);
+  if (!g) {
+    alert('No encontré el grupo seleccionado.');
+    return;
+  }
+
+  const numeroNegocio = g.numeroNegocio;
+  if (!numeroNegocio) {
+    alert('El grupo seleccionado no tiene número de negocio.');
+    return;
+  }
+
+  const box = document.getElementById('pagos-comparativo-resumen');
+  const btnCopiar = document.getElementById('btnCopiarPagosGrupo');
+
+  if (box) {
+    box.innerHTML = `Consultando sistema de pagos para N° ${numeroNegocio}...`;
+  }
+
+  if (btnCopiar) {
+    btnCopiar.disabled = true;
+  }
+
+  try {
+    const url = `${API_PAGOS_URL}?modo=detalle&numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`Error HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+
+    const pasajeros =
+      data?.nominas?.data?.pasajeros ||
+      data?.saldos?.data?.detalle_pasajeros ||
+      [];
+
+    resumenPagosActual = calcularResumenPagos(pasajeros);
+
+    renderComparativoPagos(resumenPagosActual);
+
+    if (btnCopiar) {
+      btnCopiar.disabled = false;
+    }
+
+  } catch (error) {
+    console.error('Error consultando pagos:', error);
+
+    resumenPagosActual = null;
+
+    if (box) {
+      box.innerHTML = `
+        <span style="color:#c00;">
+          Error consultando sistema de pagos. Revisa que exista /api/pagos en este proyecto.
+        </span>
+      `;
+    }
+
+    if (btnCopiar) {
+      btnCopiar.disabled = true;
+    }
+  }
+}
+
+function calcularResumenPagos(items) {
+  const resumen = {
+    adultos: { M: 0, F: 0, O: 0 },
+    estudiantes: { M: 0, F: 0, O: 0 },
+    totalAdultos: 0,
+    totalEstudiantes: 0,
+    totalViajan: 0,
+    totalNoViajan: 0,
+    totalLeidos: 0
+  };
+
+  const pasajeros = Array.isArray(items) ? items : [];
+
+  pasajeros.forEach(item => {
+    const p = item?.pasajero || item || {};
+    resumen.totalLeidos++;
+
+    const viaja = pasajeroViaja(p);
+    if (!viaja) {
+      resumen.totalNoViajan++;
+      return;
+    }
+
+    resumen.totalViajan++;
+
+    const tipo = tipoPasajeroPagos(p);
+    const sexo = sexoPasajeroPagos(p);
+
+    if (tipo === 'estudiante') {
+      resumen.estudiantes[sexo]++;
+      resumen.totalEstudiantes++;
+    } else {
+      resumen.adultos[sexo]++;
+      resumen.totalAdultos++;
+    }
+  });
+
+  return resumen;
+}
+
+function pasajeroViaja(p) {
+  const v =
+    p.viaja ??
+    p.estado_viaje ??
+    p.estado ??
+    p.activo ??
+    '';
+
+  if (typeof v === 'number') {
+    return Number(v) === 1;
+  }
+
+  const txt = normalizarTextoLocal(v);
+
+  if (!txt) return true;
+
+  if (
+    txt === '1' ||
+    txt === 'si' ||
+    txt === 'sí' ||
+    txt === 'viaja' ||
+    txt === 'activo' ||
+    txt === 'activa'
+  ) {
+    return true;
+  }
+
+  if (
+    txt === '0' ||
+    txt === 'no' ||
+    txt === 'no viaja' ||
+    txt === 'anulado' ||
+    txt === 'anulada' ||
+    txt === 'baja'
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function tipoPasajeroPagos(p) {
+  const categoria = normalizarTextoLocal(
+    p.ocupacion_categoria ||
+    p.categoria ||
+    p.tipo_pasajero ||
+    p.tipo ||
+    p.ocupacion ||
+    ''
+  );
+
+  if (
+    categoria.includes('estudiante') ||
+    categoria.includes('alumno') ||
+    categoria.includes('alumna')
+  ) {
+    return 'estudiante';
+  }
+
+  return 'adulto';
+}
+
+function sexoPasajeroPagos(p) {
+  const sexo = normalizarTextoLocal(
+    p.sexo ||
+    p.genero ||
+    p.gender ||
+    ''
+  );
+
+  if (
+    sexo === 'm' ||
+    sexo.includes('masculino') ||
+    sexo.includes('hombre')
+  ) {
+    return 'M';
+  }
+
+  if (
+    sexo === 'f' ||
+    sexo.includes('femenino') ||
+    sexo.includes('mujer')
+  ) {
+    return 'F';
+  }
+
+  return 'O';
+}
+
+function renderComparativoPagos(resumen) {
+  const box = document.getElementById('pagos-comparativo-resumen');
+  if (!box) return;
+
+  const adultosSistema =
+    Number(document.getElementById('g-adultos').value || 0);
+
+  const estudiantesSistema =
+    Number(document.getElementById('g-estudiantes').value || 0);
+
+  const totalSistema =
+    Number(document.getElementById('g-cantidadgrupo').value || 0);
+
+  const totalPagos = resumen.totalAdultos + resumen.totalEstudiantes;
+
+  box.innerHTML = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px;">
+      <div style="background:#fff; border:1px solid #ddd; border-radius:6px; padding:8px;">
+        <strong>Operaciones / formulario</strong><br>
+        Adultos: ${adultosSistema}<br>
+        Estudiantes: ${estudiantesSistema}<br>
+        Total: ${totalSistema}
+      </div>
+
+      <div style="background:#fff; border:1px solid #ddd; border-radius:6px; padding:8px;">
+        <strong>Sistema de pagos</strong><br>
+        Adultos: ${resumen.totalAdultos}
+        <small>(M:${resumen.adultos.M} / F:${resumen.adultos.F} / O:${resumen.adultos.O})</small><br>
+
+        Estudiantes: ${resumen.totalEstudiantes}
+        <small>(M:${resumen.estudiantes.M} / F:${resumen.estudiantes.F} / O:${resumen.estudiantes.O})</small><br>
+
+        Total viajan: ${totalPagos}<br>
+        No viajan: ${resumen.totalNoViajan}
+      </div>
+    </div>
+
+    <div style="margin-top:8px; font-weight:bold; color:${totalSistema === totalPagos ? '#09832e' : '#ca0a1f'};">
+      ${totalSistema === totalPagos
+        ? '✅ Totales coinciden.'
+        : `⚠️ Diferencia: Operaciones ${totalSistema} vs Pagos ${totalPagos}.`}
+    </div>
+  `;
+}
+
+function copiarDatosPagosAlFormulario() {
+  if (!resumenPagosActual) {
+    alert('Primero consulta el sistema de pagos.');
+    return;
+  }
+
+  document.getElementById('a-ad-M').value = resumenPagosActual.adultos.M;
+  document.getElementById('a-ad-F').value = resumenPagosActual.adultos.F;
+  document.getElementById('a-ad-O').value = resumenPagosActual.adultos.O;
+
+  document.getElementById('a-es-M').value = resumenPagosActual.estudiantes.M;
+  document.getElementById('a-es-F').value = resumenPagosActual.estudiantes.F;
+  document.getElementById('a-es-O').value = resumenPagosActual.estudiantes.O;
+
+  recalcTotalsFromDetail();
+  chequearHabitacionesVsPax();
+  renderComparativoPagos(resumenPagosActual);
+
+  alert('Datos de pagos copiados al formulario. Ahora puedes guardar la asignación.');
+}
+
+function normalizarTextoLocal(txt) {
+  return String(txt || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
 }
