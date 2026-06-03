@@ -1010,7 +1010,8 @@ async function onSavePax() {
   await loadAsignaciones();
   await loadGrupos();
   await renderHoteles();
-
+  hideModals();
+  
   alert('Pasajeros guardados y grupo preasignado al hotel correctamente.');
 }
 
