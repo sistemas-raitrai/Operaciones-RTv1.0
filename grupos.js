@@ -1959,3 +1959,88 @@ window.sincronizarTodosLosItinerariosConFechas = async function (dryRun = true) 
     reporte
   };
 };
+
+window.rellenarFechasGrupoDesdeItinerario = async function (dryRun = true) {
+  const snap = await getDocs(collection(db, 'grupos'));
+
+  let revisados = 0;
+  let actualizados = 0;
+  let sinItinerarioConFechas = 0;
+
+  const reporte = [];
+
+  for (const docSnap of snap.docs) {
+    const g = docSnap.data() || {};
+    const docId = docSnap.id;
+
+    revisados++;
+
+    const IT = g.itinerario || {};
+    const fechasItinerario = Object.keys(IT)
+      .filter(k => /^\d{4}-\d{2}-\d{2}$/.test(String(k)))
+      .sort((a, b) => new Date(a) - new Date(b));
+
+    if (!fechasItinerario.length) {
+      sinItinerarioConFechas++;
+      continue;
+    }
+
+    const fechaInicioNueva = fechasItinerario[0];
+    const fechaFinNueva = fechasItinerario[fechasItinerario.length - 1];
+
+    const inicioActual = _toISO(g.fechaInicio);
+    const finActual = _toISO(g.fechaFin);
+
+    if (inicioActual === fechaInicioNueva && finActual === fechaFinNueva) {
+      continue;
+    }
+
+    reporte.push({
+      docId,
+      numeroNegocio: g.numeroNegocio || '',
+      nombreGrupo: g.nombreGrupo || '',
+      inicioActual,
+      finActual,
+      fechaInicioNueva,
+      fechaFinNueva
+    });
+
+    if (!dryRun) {
+      await updateDoc(doc(db, 'grupos', docId), {
+        fechaInicio: Timestamp.fromDate(new Date(fechaInicioNueva + 'T00:00:00')),
+        fechaFin: Timestamp.fromDate(new Date(fechaFinNueva + 'T00:00:00'))
+      });
+
+      await addDoc(collection(db, 'historial'), {
+        numeroNegocio: g.numeroNegocio || docId,
+        nombreGrupo: g.nombreGrupo || '',
+        accion: 'RELLENAR FECHAS DESDE ITINERARIO',
+        anterior: `${inicioActual || 'SIN INICIO'} → ${finActual || 'SIN FIN'}`,
+        nuevo: `${fechaInicioNueva} → ${fechaFinNueva}`,
+        usuario: auth.currentUser?.email || '',
+        timestamp: new Date()
+      });
+
+      actualizados++;
+    }
+  }
+
+  console.table(reporte);
+
+  console.log({
+    modo: dryRun ? 'PRUEBA / NO GUARDA' : 'REAL / GUARDA',
+    revisados,
+    detectados: reporte.length,
+    actualizados,
+    sinItinerarioConFechas
+  });
+
+  return {
+    modo: dryRun ? 'PRUEBA / NO GUARDA' : 'REAL / GUARDA',
+    revisados,
+    detectados: reporte.length,
+    actualizados,
+    sinItinerarioConFechas,
+    reporte
+  };
+};
