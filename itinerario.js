@@ -1887,38 +1887,64 @@ function resetSwap() {
 /** Editar fecha base (recalcula el rango) + historial **/
 // —————————————————————————————————
 async function handleDateEdit(oldFecha) {
-  const nueva1 = prompt("Nueva fecha para este día (YYYY-MM-DD):", oldFecha);
-  if (!nueva1) return;
+  const nuevaInicio = prompt("Nueva fecha de inicio del itinerario (YYYY-MM-DD):", oldFecha);
+  if (!nuevaInicio) return;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nuevaInicio)) {
+    alert("Fecha inválida. Usa formato YYYY-MM-DD.");
+    return;
+  }
 
   const grupoId = selectNum.value;
-  if (!grupoId) { alert("Selecciona primero un grupo."); return; }
-  const snapG = await getDoc(doc(db, 'grupos', grupoId));
-  const g     = snapG.data();
+  if (!grupoId) {
+    alert("Selecciona primero un grupo.");
+    return;
+  }
 
-  const fechas = Object.keys(g.itinerario || {}).sort((a, b) => new Date(a) - new Date(b));
-  const diasCount = fechas.length;
-  const newRango  = [];
-  const [yy, mm, dd] = nueva1.split("-").map(Number);
+  const snapG = await getDoc(doc(db, 'grupos', grupoId));
+  const g = snapG.data() || {};
+
+  const IT = g.itinerario || {};
+  const fechasActuales = Object.keys(IT).sort(sortDiasItinerario);
+  const diasCount = fechasActuales.length || 1;
+
+  const nuevoRango = [];
+  const [yy, mm, dd] = nuevaInicio.split("-").map(Number);
+
   for (let i = 0; i < diasCount; i++) {
     const d = new Date(yy, mm - 1, dd);
     d.setDate(d.getDate() + i);
+
     const yyyy = d.getFullYear();
-    const m2   = String(d.getMonth() + 1).padStart(2, "0");
-    const d2   = String(d.getDate()     ).padStart(2, "0");
-    newRango.push(`${yyyy}-${m2}-${d2}`);
+    const m2 = String(d.getMonth() + 1).padStart(2, "0");
+    const d2 = String(d.getDate()).padStart(2, "0");
+
+    nuevoRango.push(`${yyyy}-${m2}-${d2}`);
   }
 
-  const newIt = {};
-  fechas.forEach((fAnt, idx) => { newIt[newRango[idx]] = g.itinerario[fAnt]; });
+  const nuevoItinerario = {};
 
-  await updateDoc(doc(db, 'grupos', grupoId), { itinerario: newIt });
-  await logHist(grupoId, 'EDITAR FECHA BASE', {
-    _group: g,
-    anterior: fechas[0],
-    nuevo:    newRango[0],
-    detalle:  `Map: ${JSON.stringify(fechas.map((f,i)=>`${f}→${newRango[i]}`))}`
+  nuevoRango.forEach((fechaNueva, idx) => {
+    const fechaAnterior = fechasActuales[idx];
+    nuevoItinerario[fechaNueva] = fechaAnterior ? (IT[fechaAnterior] || []) : [];
   });
-  await updateEstadoRevisionAndBadge(grupoId, newIt);
+
+  const nuevaFechaFin = nuevoRango[nuevoRango.length - 1];
+
+  await updateDoc(doc(db, 'grupos', grupoId), {
+    fechaInicio: nuevaInicio,
+    fechaFin: nuevaFechaFin,
+    itinerario: nuevoItinerario
+  });
+
+  await logHist(grupoId, 'EDITAR FECHAS E ITINERARIO', {
+    _group: g,
+    anterior: fechasActuales.join(', '),
+    nuevo: nuevoRango.join(', '),
+    detalle: `fechaInicio: ${nuevaInicio} | fechaFin: ${nuevaFechaFin}`
+  });
+
+  await updateEstadoRevisionAndBadge(grupoId, nuevoItinerario);
   renderItinerario();
 }
 
