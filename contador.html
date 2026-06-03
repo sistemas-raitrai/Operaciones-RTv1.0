@@ -117,10 +117,43 @@
                     style="width:100%; min-height:50vh; flex:1 1 auto; resize:vertical;"></textarea>
         </label>
 
-        <div style="display:flex; justify-content:flex-end; gap:0.5rem;">
+        <div style="display:flex; justify-content:flex-end; gap:0.5rem; flex-wrap:wrap;">
           <button id="btnCerrarReserva">Cerrar</button>
+          <button id="btnVerificarPaxPagos">🔎 Verificar PAX con pagos</button>
           <button id="btnGuardarPendiente">Guardar Pendiente</button>
           <button id="btnEnviarReserva">Enviar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal VERIFICACIÓN PAX vs SISTEMA DE PAGOS -->
+    <div id="modalVerificacionPagos"
+         style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:12000;">
+      <div style="background:white; margin:5vh auto; padding:1rem;
+                  width:90%; max-width:1000px; max-height:90vh; overflow:auto;">
+        <h3>Verificación PAX con sistema de pagos</h3>
+    
+        <div id="verificacionPagosResumen"
+             style="margin-bottom:1rem; font-weight:bold;">
+        </div>
+    
+        <table border="1" width="100%" style="border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th>N° Negocio</th>
+              <th>Grupo</th>
+              <th>PAX correo</th>
+              <th>PAX pagos</th>
+              <th>Diferencia</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody id="verificacionPagosBody"></tbody>
+        </table>
+    
+        <div style="display:flex; justify-content:flex-end; margin-top:1rem;">
+          <button id="btnCerrarVerificacionPagos">Cerrar</button>
         </div>
       </div>
     </div>
