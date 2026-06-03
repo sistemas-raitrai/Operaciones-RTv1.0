@@ -196,40 +196,49 @@ function ordenarDiasRelativos(a, b) {
   return na - nb;
 }
 
-async function convertirItinerarioRelativoGrupo(docId) {
+async function sincronizarFechasEItinerarioGrupo(docId) {
   const ref = doc(db, 'grupos', docId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return false;
 
   const g = snap.data() || {};
-  const IT = g.itinerario || {};
-  const keys = Object.keys(IT);
-
-  if (!keys.length) return false;
-
-  const tieneRelativos = keys.some(esDiaRelativoItinerario);
-  const tieneFechasReales = keys.some(k => /^\d{4}-\d{2}-\d{2}$/.test(String(k)));
-
-  if (!tieneRelativos || tieneFechasReales) return false;
-
   const fechas = crearRangoFechasISO(g.fechaInicio, g.fechaFin);
   if (!fechas.length) return false;
 
-  const diasRelativos = keys.sort(ordenarDiasRelativos);
+  const IT = g.itinerario || {};
+  const keys = Object.keys(IT);
+
+  const keysOrdenadas = keys.length
+    ? keys.sort((a, b) => {
+        const aReal = /^\d{4}-\d{2}-\d{2}$/.test(String(a));
+        const bReal = /^\d{4}-\d{2}-\d{2}$/.test(String(b));
+
+        if (aReal && bReal) return new Date(a) - new Date(b);
+        if (aReal) return -1;
+        if (bReal) return 1;
+
+        const na = parseInt(String(a).replace(/\D/g, ''), 10) || 0;
+        const nb = parseInt(String(b).replace(/\D/g, ''), 10) || 0;
+        return na - nb;
+      })
+    : [];
+
   const nuevoItinerario = {};
 
   fechas.forEach((fechaReal, idx) => {
-    const diaRelativo = diasRelativos[idx];
-    nuevoItinerario[fechaReal] = IT[diaRelativo] || [];
+    const keyAnterior = keysOrdenadas[idx];
+    nuevoItinerario[fechaReal] = keyAnterior ? (IT[keyAnterior] || []) : [];
   });
 
-  await updateDoc(ref, { itinerario: nuevoItinerario });
+  await updateDoc(ref, {
+    itinerario: nuevoItinerario
+  });
 
   await addDoc(collection(db, 'historial'), {
     numeroNegocio: g.numeroNegocio || docId,
     nombreGrupo: g.nombreGrupo || '',
-    accion: 'CONVERTIR ITINERARIO A FECHAS REALES',
-    anterior: diasRelativos.join(', '),
+    accion: 'SINCRONIZAR FECHAS E ITINERARIO',
+    anterior: keysOrdenadas.join(', '),
     nuevo: fechas.join(', '),
     usuario: auth.currentUser?.email || '',
     timestamp: new Date()
@@ -656,7 +665,7 @@ async function guardarCambiosPendientes() {
   }
 
   for (const docId of gruposConFechaEditada) {
-    await convertirItinerarioRelativoGrupo(docId);
+    await sincronizarFechasEItinerarioGrupo(docId);
   }
 
   cambiosPendientes = [];
