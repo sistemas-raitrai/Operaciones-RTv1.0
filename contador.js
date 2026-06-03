@@ -247,6 +247,8 @@ async function init() {
     (snap.exists() && snap.data().reservas) ? snap.data().reservas : {}
   );
 
+  await revisarCambiosReservasEnviadas(servicios, todosLosReservas);
+
   // 5.8 Filas HTML (métricas por fecha)
   let rowsHTML = servicios.map((servicio, i) => {
     const reservas = todosLosReservas[i];
@@ -254,9 +256,7 @@ async function init() {
     const fechasConPax = fechasOrdenadas.filter(fecha =>
       grupos.some(g => (g.itinerario?.[fecha]||[]).some(a => a.actividad === servicio.nombre))
     );
-    const todasEnviadas = fechasConPax.every(fecha => reservas[fecha]?.estado === 'ENVIADA');
-    const tieneAlguna = Object.keys(reservas).length > 0;
-    const textoBtn = !tieneAlguna ? 'CREAR' : (todasEnviadas ? 'ENVIADA' : 'PENDIENTE');
+    const textoBtn = obtenerTextoBotonReserva(reservas, fechasConPax);
 
     const provInfo = proveedores[servicio.proveedor] || {};
     const proveedorStr = provInfo.contacto ? servicio.proveedor : '-';
@@ -1059,6 +1059,164 @@ function renderTablaModal(dataRows) {
       language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' }
     });
   }
+}
+
+// =====================================================
+// DETECTAR CAMBIOS POSTERIORES A RESERVAS ENVIADAS
+// =====================================================
+
+function obtenerTextoBotonReserva(reservas, fechasConPax) {
+  const fechas = fechasConPax || [];
+
+  if (!Object.keys(reservas || {}).length) return 'CREAR';
+
+  const tieneReenvio = fechas.some(f =>
+    reservas?.[f]?.estado === 'REQUIERE_REENVIO'
+  );
+
+  if (tieneReenvio) return 'REVISAR CAMBIOS';
+
+  const todasEnviadas = fechas.length > 0 && fechas.every(f =>
+    reservas?.[f]?.estado === 'ENVIADA'
+  );
+
+  if (todasEnviadas) return 'ENVIADA';
+
+  const todasVerificadas = fechas.length > 0 && fechas.every(f =>
+    reservas?.[f]?.estado === 'VERIFICADA'
+  );
+
+  if (todasVerificadas) return 'VERIFICADA';
+
+  return 'PENDIENTE';
+}
+
+async function revisarCambiosReservasEnviadas(servicios, todosLosReservas) {
+  for (let i = 0; i < servicios.length; i++) {
+    const servicio = servicios[i];
+    const reservas = todosLosReservas[i] || {};
+
+    const payload = {};
+
+    for (const [fecha, reserva] of Object.entries(reservas)) {
+      if (!reserva) continue;
+
+      const esEnviada =
+        reserva.estado === 'ENVIADA' ||
+        reserva.estado === 'VERIFICADA';
+
+      if (!esEnviada) continue;
+
+      const verificacion = reserva.verificacionPagos;
+      if (!verificacion || !Array.isArray(verificacion.grupos)) continue;
+
+      const cambios = await detectarCambiosEnVerificacionGuardada(verificacion);
+
+      if (!cambios.length) {
+        payload[`reservas.${fecha}.revisionCambios`] = {
+          estado: 'SIN_CAMBIOS',
+          ultimaRevision: new Date().toISOString(),
+          cambios: []
+        };
+        continue;
+      }
+
+      payload[`reservas.${fecha}.estado`] = 'REQUIERE_REENVIO';
+      payload[`reservas.${fecha}.revisionCambios`] = {
+        estado: 'CON_CAMBIOS',
+        ultimaRevision: new Date().toISOString(),
+        cambios
+      };
+
+      // Mutamos el objeto local para que el botón se pinte como REVISAR CAMBIOS
+      reservas[fecha].estado = 'REQUIERE_REENVIO';
+      reservas[fecha].revisionCambios = {
+        estado: 'CON_CAMBIOS',
+        ultimaRevision: new Date().toISOString(),
+        cambios
+      };
+    }
+
+    if (Object.keys(payload).length) {
+      const ref = doc(db, 'Servicios', servicio.destino, 'Listado', servicio.nombre);
+      await updateDoc(ref, payload);
+    }
+  }
+}
+
+async function detectarCambiosEnVerificacionGuardada(verificacion) {
+  const cambios = [];
+
+  for (const g of verificacion.grupos || []) {
+    if (!g || g.estado === 'ERROR CONSULTA') continue;
+
+    const numerosPago = Array.isArray(g.numerosPago) && g.numerosPago.length
+      ? g.numerosPago
+      : obtenerNumerosNegocioPago(g.numeroNegocio);
+
+    const actual = await consultarResumenPagosFusionado(numerosPago);
+
+    const antesPax = Number(g.paxPagos || 0);
+    const ahoraPax = Number(actual.totalViajan || 0);
+
+    const antesAdultos = Number(g.totalAdultosPagos || 0);
+    const ahoraAdultos = Number(actual.totalAdultos || 0);
+
+    const antesEstudiantes = Number(g.totalEstudiantesPagos || 0);
+    const ahoraEstudiantes = Number(actual.totalEstudiantes || 0);
+
+    const diffPax = ahoraPax - antesPax;
+    const diffAdultos = ahoraAdultos - antesAdultos;
+    const diffEstudiantes = ahoraEstudiantes - antesEstudiantes;
+
+    if (diffPax !== 0 || diffAdultos !== 0 || diffEstudiantes !== 0) {
+      cambios.push({
+        numeroNegocio: g.numeroNegocio,
+        nombreGrupo: g.nombreGrupo || '',
+        numerosPago,
+
+        antes: {
+          pax: antesPax,
+          adultos: antesAdultos,
+          estudiantes: antesEstudiantes
+        },
+
+        ahora: {
+          pax: ahoraPax,
+          adultos: ahoraAdultos,
+          estudiantes: ahoraEstudiantes
+        },
+
+        diferencia: {
+          pax: diffPax,
+          adultos: diffAdultos,
+          estudiantes: diffEstudiantes
+        },
+
+        detalle: construirTextoCambioReserva(diffAdultos, diffEstudiantes, diffPax)
+      });
+    }
+  }
+
+  return cambios;
+}
+
+function construirTextoCambioReserva(diffAdultos, diffEstudiantes, diffPax) {
+  const partes = [];
+
+  if (diffAdultos !== 0) {
+    partes.push(`Adultos ${diffAdultos > 0 ? '+' : ''}${diffAdultos}`);
+  }
+
+  if (diffEstudiantes !== 0) {
+    partes.push(`Estudiantes ${diffEstudiantes > 0 ? '+' : ''}${diffEstudiantes}`);
+  }
+
+  if (!partes.length && diffPax !== 0) {
+    partes.push(`PAX ${diffPax > 0 ? '+' : ''}${diffPax}`);
+  }
+
+  return partes.join(' · ');
 }
 
 // =====================================================
