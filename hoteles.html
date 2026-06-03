@@ -286,6 +286,25 @@
       </label>
       <div id="grupo-fechas" style="font-size:.9em;color:#555;margin:.5em 0;"></div>
 
+      <!-- COMPARATIVO SISTEMA DE PAGOS -->
+      <div id="pagos-comparativo-box" style="border:1px solid #d7dbe3; border-radius:8px; padding:10px; margin:10px 0; background:#f8fafc;">
+        <strong>Comparativo sistema de pagos</strong>
+      
+        <div id="pagos-comparativo-resumen" style="font-size:.9em; color:#555; margin-top:6px;">
+          Selecciona un grupo y presiona consultar.
+        </div>
+      
+        <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" id="btnConsultarPagosGrupo" class="btn-small">
+            🔎 Consultar pagos
+          </button>
+      
+          <button type="button" id="btnCopiarPagosGrupo" class="btn-small" disabled>
+            📥 Copiar datos de pagos
+          </button>
+        </div>
+      </div>
+
       <div class="assign-row">
         <label>Adultos totales:
           <input id="g-adultos" type="number" min="0" value="0" />
