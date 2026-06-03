@@ -1421,10 +1421,21 @@ function renderVerificacionPagos(resultados) {
 
   const conDiferencia = resultados.filter(r => r.estado !== 'OK');
 
-  if (!conDiferencia.length) {
+  const resumenCalc = calcularResumenVerificacion(resultados);
+  
+  if (resumenCalc.estadoGeneral === 'OK') {
     resumen.innerHTML = `✅ Todos los grupos coinciden con el sistema de pagos. Total grupos revisados: ${resultados.length}.`;
+  } else if (resumenCalc.estadoGeneral === 'REDISTRIBUCION') {
+    resumen.innerHTML = `
+      ⚠️ Redistribución detectada: hay ${resumenCalc.gruposConDiferencia} grupo(s) con diferencia,
+      pero la diferencia neta total es 0.
+      <br><small>El total general coincide, pero cambió la distribución por grupo.</small>
+    `;
   } else {
-    resumen.innerHTML = `⚠️ Hay ${conDiferencia.length} grupo(s) con diferencia o error de consulta.`;
+    resumen.innerHTML = `
+      ⚠️ Hay ${resumenCalc.gruposConDiferencia} grupo(s) con diferencia o error de consulta.
+      Diferencia neta total: ${resumenCalc.totalDiferencia}.
+    `;
   }
 
   tbody.innerHTML = resultados.map((r, idx) => {
@@ -1524,15 +1535,27 @@ function calcularResumenVerificacion(resultados) {
   const gruposError = resultados.filter(r => r.estado === 'ERROR CONSULTA').length;
   const totalDiferencia = resultados.reduce((s, r) => s + (Number(r.diferencia) || 0), 0);
 
+  let estadoGeneral = 'OK';
+  let tipoDiferencia = 'SIN_DIFERENCIAS';
+
+  if (gruposError > 0) {
+    estadoGeneral = 'CON_DIFERENCIAS';
+    tipoDiferencia = 'ERROR_CONSULTA';
+  } else if (gruposConDiferencia > 0 && totalDiferencia === 0) {
+    estadoGeneral = 'REDISTRIBUCION';
+    tipoDiferencia = 'REDISTRIBUCION_ENTRE_GRUPOS';
+  } else if (gruposConDiferencia > 0 && totalDiferencia !== 0) {
+    estadoGeneral = 'CON_DIFERENCIAS';
+    tipoDiferencia = 'CAMBIO_TOTAL_PAX';
+  }
+
   return {
     totalGrupos: resultados.length,
     gruposConDiferencia,
     gruposError,
     totalDiferencia,
-    estadoGeneral:
-      gruposConDiferencia === 0 && gruposError === 0
-        ? 'OK'
-        : 'CON_DIFERENCIAS'
+    estadoGeneral,
+    tipoDiferencia
   };
 }
 
@@ -1678,13 +1701,28 @@ function abrirModalGuardarVerificacionPagos() {
 
   const r = ultimaVerificacionPagos.resumen;
 
+  let estadoTexto = 'OK, sin diferencias';
+  
+  if (r.estadoGeneral === 'REDISTRIBUCION') {
+    estadoTexto = 'Redistribución entre grupos';
+  } else if (r.estadoGeneral === 'CON_DIFERENCIAS') {
+    estadoTexto = 'Con diferencias / pendientes';
+  }
+  
   document.getElementById('guardarVerificacionResumen').innerHTML = `
     <div><strong>Actividad:</strong> ${ultimaVerificacionPagos.actividad}</div>
     <div><strong>Destino:</strong> ${ultimaVerificacionPagos.destino}</div>
     <div><strong>Grupos revisados:</strong> ${r.totalGrupos}</div>
-    <div><strong>Estado:</strong> ${r.estadoGeneral === 'OK' ? 'OK, sin diferencias' : 'Con diferencias / pendientes'}</div>
+    <div><strong>Estado:</strong> ${estadoTexto}</div>
     <div><strong>Grupos con diferencia:</strong> ${r.gruposConDiferencia}</div>
-    <div><strong>Diferencia total:</strong> ${r.totalDiferencia}</div>
+    <div><strong>Diferencia neta total:</strong> ${r.totalDiferencia}</div>
+    ${
+      r.estadoGeneral === 'REDISTRIBUCION'
+        ? `<div style="margin-top:.5rem; color:#b26b00; font-weight:bold;">
+            ⚠️ El total general coincide, pero hay diferencias por grupo.
+          </div>`
+        : ''
+    }
   `;
 
   document.getElementById('guardarVerificacionComentario').value = '';
@@ -1702,7 +1740,7 @@ async function guardarVerificacionPagosEnReserva() {
   const resumen = ultimaVerificacionPagos.resumen;
 
   if (resumen.estadoGeneral !== 'OK' && !comentario) {
-    alert('Hay diferencias. Debes escribir una justificación antes de guardar.');
+    alert('Hay diferencias o redistribución entre grupos. Debes escribir una justificación antes de guardar.');
     return;
   }
 
