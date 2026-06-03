@@ -1843,3 +1843,119 @@ window.convertirItinerariosRelativosExistentes = async function () {
     `Omitidos: ${omitidos}`
   );
 };
+
+window.diagnosticarSincronizacionFechasItinerario = async function () {
+  const snap = await getDocs(collection(db, 'grupos'));
+
+  const reporte = [];
+
+  snap.forEach(docSnap => {
+    const g = docSnap.data() || {};
+    const IT = g.itinerario || {};
+    const keys = Object.keys(IT);
+
+    const fechasEsperadas = crearRangoFechasISO(g.fechaInicio, g.fechaFin);
+
+    if (!fechasEsperadas.length) return;
+
+    const iguales =
+      keys.length === fechasEsperadas.length &&
+      fechasEsperadas.every(f => keys.includes(f));
+
+    if (!iguales) {
+      reporte.push({
+        docId: docSnap.id,
+        numeroNegocio: g.numeroNegocio || '',
+        nombreGrupo: g.nombreGrupo || '',
+        fechaInicio: formatearCelda(g.fechaInicio, 'fechaInicio'),
+        fechaFin: formatearCelda(g.fechaFin, 'fechaFin'),
+        diasItinerarioActual: keys.join(', '),
+        diasEsperados: fechasEsperadas.join(', ')
+      });
+    }
+  });
+
+  console.table(reporte);
+  console.log(`Grupos desincronizados: ${reporte.length}`);
+  return reporte;
+};
+
+window.sincronizarTodosLosItinerariosConFechas = async function (dryRun = true) {
+  const snap = await getDocs(collection(db, 'grupos'));
+
+  let revisados = 0;
+  let corregidos = 0;
+  let sinFechas = 0;
+  let yaOk = 0;
+  let errores = 0;
+
+  const reporte = [];
+
+  for (const docSnap of snap.docs) {
+    try {
+      const g = docSnap.data() || {};
+      const docId = docSnap.id;
+
+      revisados++;
+
+      const fechasEsperadas = crearRangoFechasISO(g.fechaInicio, g.fechaFin);
+
+      if (!fechasEsperadas.length) {
+        sinFechas++;
+        continue;
+      }
+
+      const IT = g.itinerario || {};
+      const keys = Object.keys(IT);
+
+      const iguales =
+        keys.length === fechasEsperadas.length &&
+        fechasEsperadas.every(f => keys.includes(f));
+
+      if (iguales) {
+        yaOk++;
+        continue;
+      }
+
+      reporte.push({
+        docId,
+        numeroNegocio: g.numeroNegocio || '',
+        nombreGrupo: g.nombreGrupo || '',
+        antes: keys.join(', '),
+        despues: fechasEsperadas.join(', ')
+      });
+
+      if (!dryRun) {
+        await sincronizarFechasEItinerarioGrupo(docId);
+        corregidos++;
+      }
+
+    } catch (err) {
+      errores++;
+      console.error('Error sincronizando grupo:', docSnap.id, err);
+    }
+  }
+
+  console.table(reporte);
+
+  console.log({
+    modo: dryRun ? 'PRUEBA / NO GUARDA' : 'REAL / GUARDA',
+    revisados,
+    detectadosParaCorregir: reporte.length,
+    corregidos,
+    sinFechas,
+    yaOk,
+    errores
+  });
+
+  return {
+    modo: dryRun ? 'PRUEBA / NO GUARDA' : 'REAL / GUARDA',
+    revisados,
+    detectadosParaCorregir: reporte.length,
+    corregidos,
+    sinFechas,
+    yaOk,
+    errores,
+    reporte
+  };
+};
