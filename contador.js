@@ -1213,56 +1213,29 @@ function sumarResumenPagos(base, add) {
 }
 
 function construirDetalleDiferencia(g, resumenPagos) {
-  const adultosCorreo = g.adultosCorreo || { M: 0, F: 0, O: Number(g.totalAdultosCorreo || 0) };
-  const estudiantesCorreo = g.estudiantesCorreo || { M: 0, F: 0, O: Number(g.totalEstudiantesCorreo || 0) };
+  const totalAdultosCorreo = Number(g.totalAdultosCorreo || 0);
+  const totalEstudiantesCorreo = Number(g.totalEstudiantesCorreo || 0);
+  const totalCorreo = Number(g.paxCorreo || 0);
+
+  const totalAdultosPagos = Number(resumenPagos.totalAdultos || 0);
+  const totalEstudiantesPagos = Number(resumenPagos.totalEstudiantes || 0);
+  const totalPagos = Number(resumenPagos.totalViajan || 0);
 
   const filas = [
     {
-      categoria: 'Adultos Masculino',
-      correo: Number(adultosCorreo.M || 0),
-      pagos: Number(resumenPagos.adultos.M || 0)
+      categoria: 'Adultos',
+      correo: totalAdultosCorreo,
+      pagos: totalAdultosPagos
     },
     {
-      categoria: 'Adultos Femenino',
-      correo: Number(adultosCorreo.F || 0),
-      pagos: Number(resumenPagos.adultos.F || 0)
-    },
-    {
-      categoria: 'Adultos Otro',
-      correo: Number(adultosCorreo.O || 0),
-      pagos: Number(resumenPagos.adultos.O || 0)
-    },
-    {
-      categoria: 'Total Adultos',
-      correo: Number(g.totalAdultosCorreo || 0),
-      pagos: Number(resumenPagos.totalAdultos || 0),
-      total: true
-    },
-    {
-      categoria: 'Estudiantes Masculino',
-      correo: Number(estudiantesCorreo.M || 0),
-      pagos: Number(resumenPagos.estudiantes.M || 0)
-    },
-    {
-      categoria: 'Estudiantes Femenino',
-      correo: Number(estudiantesCorreo.F || 0),
-      pagos: Number(resumenPagos.estudiantes.F || 0)
-    },
-    {
-      categoria: 'Estudiantes Otro',
-      correo: Number(estudiantesCorreo.O || 0),
-      pagos: Number(resumenPagos.estudiantes.O || 0)
-    },
-    {
-      categoria: 'Total Estudiantes',
-      correo: Number(g.totalEstudiantesCorreo || 0),
-      pagos: Number(resumenPagos.totalEstudiantes || 0),
-      total: true
+      categoria: 'Estudiantes',
+      correo: totalEstudiantesCorreo,
+      pagos: totalEstudiantesPagos
     },
     {
       categoria: 'TOTAL',
-      correo: Number(g.paxCorreo || 0),
-      pagos: Number(resumenPagos.totalViajan || 0),
+      correo: totalCorreo,
+      pagos: totalPagos,
       total: true
     }
   ];
@@ -1271,19 +1244,16 @@ function construirDetalleDiferencia(g, resumenPagos) {
     f.diferencia = f.pagos - f.correo;
   });
 
-  const diffAdultos =
-    Number(resumenPagos.totalAdultos || 0) - Number(g.totalAdultosCorreo || 0);
-  
-  const diffEstudiantes =
-    Number(resumenPagos.totalEstudiantes || 0) - Number(g.totalEstudiantesCorreo || 0);
-  
-  const diffTotal =
-    Number(resumenPagos.totalViajan || 0) - Number(g.paxCorreo || 0);
-  
   return {
     filas,
+
+    desglosePagos: {
+      adultos: resumenPagos.adultos || { M: 0, F: 0, O: 0 },
+      estudiantes: resumenPagos.estudiantes || { M: 0, F: 0, O: 0 }
+    },
+
     tieneDiferenciaDetalle: filas.some(f => Number(f.diferencia || 0) !== 0),
-    tieneDiferenciaReal: diffAdultos !== 0 || diffEstudiantes !== 0 || diffTotal !== 0
+    tieneDiferenciaReal: filas.some(f => Number(f.diferencia || 0) !== 0)
   };
 }
 
@@ -1357,7 +1327,7 @@ function abrirDetalleDiferenciaPagos(r) {
   tbody.innerHTML = r.detalle.filas.map(f => {
     const color = f.diferencia === 0 ? '#09832e' : '#ca0a1f';
     const diffTxt = f.diferencia > 0 ? `+${f.diferencia}` : f.diferencia;
-
+  
     return `
       <tr style="${f.total ? 'font-weight:bold; background:#f7f7f7;' : ''}">
         <td>${f.categoria}</td>
@@ -1367,6 +1337,26 @@ function abrirDetalleDiferenciaPagos(r) {
       </tr>
     `;
   }).join('');
+  
+  const d = r.detalle.desglosePagos || {};
+  const adultos = d.adultos || { M: 0, F: 0, O: 0 };
+  const estudiantes = d.estudiantes || { M: 0, F: 0, O: 0 };
+  
+  tbody.innerHTML += `
+    <tr>
+      <td colspan="4" style="background:#f7f7f7; font-weight:bold;">
+        Desglose informativo del sistema de pagos
+      </td>
+    </tr>
+    <tr>
+      <td>Adultos en pagos</td>
+      <td colspan="3">Masculino: ${adultos.M} · Femenino: ${adultos.F} · Sin dato: ${adultos.O}</td>
+    </tr>
+    <tr>
+      <td>Estudiantes en pagos</td>
+      <td colspan="3">Masculino: ${estudiantes.M} · Femenino: ${estudiantes.F} · Sin dato: ${estudiantes.O}</td>
+    </tr>
+  `;
 
   document.getElementById('modalDetalleDiferenciaPagos').style.display = 'block';
 }
