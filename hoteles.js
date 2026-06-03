@@ -10,6 +10,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 let hoteles = [], grupos = [], asignaciones = [];
+let anoHotelActivo = obtenerAnoOperativoHotel();
 let isEditHotel = false, editHotelId = null;
 let isEditAssign = false, editAssignId = null;
 let currentUserEmail = null;
@@ -33,6 +34,20 @@ function canEditPax() {
 // ===== Utilitarios =====
 const toUpper = x => typeof x==='string' ? x.toUpperCase() : x;
 
+function obtenerAnoOperativoHotel() {
+  const hoy = new Date();
+  const anoActual = hoy.getFullYear();
+  const mes = hoy.getMonth() + 1; // enero = 1, febrero = 2, marzo = 3
+
+  // Antes de marzo seguimos trabajando el año anterior.
+  // Desde el 1 de marzo usamos el año actual.
+  if (mes < 3) {
+    return anoActual - 1;
+  }
+
+  return anoActual;
+}
+
 // Normaliza fecha a 'YYYY-MM-DD'
 function toISO(x){
   if (!x) return '';
@@ -48,6 +63,14 @@ function diffNoches(checkInISO, checkOutISO){
   const ms = co - ci;
   const d  = Math.round(ms / (1000*60*60*24));
   return Math.max(0, d);
+}
+
+function sumarUnAnoISO(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return '';
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function fmtFechaCorta(iso) {
@@ -90,7 +113,9 @@ async function init(){
 // ===== Carga Grupos y Destinos =====
 async function loadGrupos() {
   const snap = await getDocs(collection(db,'grupos'));
-  grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  grupos = snap.docs
+    .map(d => ({ id:d.id, ...d.data() }))
+    .filter(g => Number(g.anoViaje) === Number(anoHotelActivo));
 
   const destinos = [...new Set(grupos.map(g=>g.destino).filter(Boolean))];
   const elDestino = document.getElementById('m-destino');
@@ -100,6 +125,7 @@ async function loadGrupos() {
   } else {
     choiceDestino.clearChoices();
   }
+
   choiceDestino.setChoices(
     destinos.map(d => ({ value:d, label: toUpper(d) })),
     'value','label', true
@@ -109,7 +135,9 @@ async function loadGrupos() {
 // ===== Carga Asignaciones (con autocorrección suave) =====
 async function loadAsignaciones(){
   const snap = await getDocs(collection(db,'hotelAssignments'));
-  asignaciones = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  asignaciones = snap.docs
+    .map(d => ({ id:d.id, ...d.data() }))
+    .filter(a => Number(a.anoViaje || 2025) === Number(anoHotelActivo));
 
   // Autocorrección: si noches no coincide, lo recalculamos y guardamos.
   // (Silencioso; asegura consistencia sin pedir confirmación)
@@ -135,10 +163,28 @@ async function loadAsignaciones(){
 
 // ===== UI principal =====
 function bindUI(){
+  const filtroAno = document.getElementById('filtroAnoHotel');
+  if (filtroAno) {
+    anoHotelActivo = Number(filtroAno.value || 2026);
+
+    filtroAno.addEventListener('change', async e => {
+      anoHotelActivo = Number(e.target.value);
+      await loadGrupos();
+      await loadAsignaciones();
+      await renderHoteles();
+    });
+  }
+
   document.getElementById('search-input')
     .addEventListener('input',e=>filterHoteles(e.target.value));
+
   document.getElementById('btnAddHotel')
     .addEventListener('click',()=>openHotelModal(null));
+
+  const btnCopiar = document.getElementById('btnCopiarHotelesAno');
+  if (btnCopiar) {
+    btnCopiar.addEventListener('click', copiarHotelesDesdeAnoAnterior);
+  }
   document.getElementById('btnHistorial')
     .addEventListener('click',showHistorialModal);
   document.getElementById('btnExportExcel')
@@ -247,6 +293,7 @@ function closeHotelModal(){ hideModals(); }
 async function onSubmitHotel(e){
   e.preventDefault();
   const p = {
+    anoViaje: Number(anoHotelActivo),
     nombre:   document.getElementById('m-nombre').value.trim(),
     destino:  document.getElementById('m-destino').value,
     direccion:document.getElementById('m-direccion').value.trim(),
@@ -305,7 +352,9 @@ async function renderHoteles() {
   cont.innerHTML = '';
 
   const snapH = await getDocs(collection(db, 'hoteles'));
-  hoteles = snapH.docs.map(d => ({ id: d.id, ...d.data() }));
+  hoteles = snapH.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(h => Number(h.anoViaje || 2025) === Number(anoHotelActivo));
 
   // Orden por destino + fechaInicio
   hoteles.sort((a,b)=> (a.destino||'').localeCompare(b.destino||'')
@@ -315,7 +364,7 @@ async function renderHoteles() {
     const asigns = asignaciones.filter(a => a.hotelId === h.id);
 
     let html = `
-      <h3>${toUpper(h.nombre)}</h3>
+      <h3>${toUpper(h.nombre)} <span style="font-size:.75em;color:#666;">(${h.anoViaje || 2025})</span></h3>
       <div class="subtitulo">DESTINO: ${toUpper(h.destino||'')}</div>
       <div class="subtitulo">CIUDAD: ${toUpper(h.ciudad||'')}</div>
       <div class="subsubtitulo">PENSIÓN: ${fmtPension(h.pension || 'media')}</div>
@@ -871,6 +920,7 @@ async function onSubmitAssign(e) {
   const n  = diffNoches(ci, co);
 
   const payload = {
+    anoViaje:  Number(anoHotelActivo),
     hotelId:   hotelIdFinal,
     grupoId:   gId,
     checkIn:   ci,
@@ -1544,4 +1594,94 @@ async function saveSplitAndRecalc(hotelId){
   await loadAsignaciones();
   await calcAndRenderSpecials(hotelId);
   alert('Distribución M/F guardada y plan recalculado.');
+}
+
+async function copiarHotelesDesdeAnoAnterior() {
+  const anoDestino = Number(anoHotelActivo);
+  const anoOrigen = anoDestino - 1;
+
+  if (!confirm(`¿Copiar hoteles desde ${anoOrigen} hacia ${anoDestino}?\n\nEsto creará hoteles nuevos para ${anoDestino}, usando los mismos datos y disponibilidad corrida +1 año.`)) {
+    return;
+  }
+
+  const snap = await getDocs(collection(db, 'hoteles'));
+
+  const hotelesOrigen = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(h => Number(h.anoViaje || 2025) === anoOrigen);
+
+  if (!hotelesOrigen.length) {
+    alert(`No encontré hoteles del año ${anoOrigen} para copiar.`);
+    return;
+  }
+
+  let creados = 0;
+  let saltados = 0;
+
+  const hotelesDestino = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(h => Number(h.anoViaje || 2025) === anoDestino);
+
+  for (const h of hotelesOrigen) {
+    const yaExiste = hotelesDestino.some(x =>
+      String(x.nombre || '').trim().toLowerCase() === String(h.nombre || '').trim().toLowerCase() &&
+      String(x.destino || '').trim().toLowerCase() === String(h.destino || '').trim().toLowerCase() &&
+      String(x.ciudad || '').trim().toLowerCase() === String(h.ciudad || '').trim().toLowerCase()
+    );
+
+    if (yaExiste) {
+      saltados++;
+      continue;
+    }
+
+    const nuevoHotel = {
+      nombre: h.nombre || '',
+      destino: h.destino || '',
+      direccion: h.direccion || '',
+      ciudad: h.ciudad || '',
+      contactoNombre: h.contactoNombre || '',
+      contactoCorreo: h.contactoCorreo || '',
+      contactoTelefono: h.contactoTelefono || '',
+      pension: h.pension || 'media',
+
+      anoViaje: anoDestino,
+
+      fechaInicio: sumarUnAnoISO(h.fechaInicio),
+      fechaFin: sumarUnAnoISO(h.fechaFin),
+
+      singles: Number(h.singles || 0),
+      dobles: Number(h.dobles || 0),
+      triples: Number(h.triples || 0),
+      cuadruples: Number(h.cuadruples || 0),
+
+      creadoDesdeAno: anoOrigen,
+      hotelOrigenId: h.id,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+
+    const ref = await addDoc(collection(db, 'hoteles'), nuevoHotel);
+
+    await addDoc(collection(db, 'historial'), {
+      tipo: 'hotel-copy-year',
+      hotelId: ref.id,
+      hotelOrigenId: h.id,
+      anoOrigen,
+      anoDestino,
+      antes: h,
+      despues: nuevoHotel,
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
+
+    creados++;
+  }
+
+  await renderHoteles();
+
+  alert(
+    `Proceso terminado.\n\n` +
+    `Hoteles creados para ${anoDestino}: ${creados}\n` +
+    `Hoteles saltados porque ya existían: ${saltados}`
+  );
 }
