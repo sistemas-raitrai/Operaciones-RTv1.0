@@ -117,24 +117,26 @@
   <!-- 2) Tu contenido principal -->
   <main class="main">
     <div class="column long"><h2>PLANIFICACIÓN DE VIAJES:</h2></div>
-    <div class="row">
-      <div class="row">
-        <div class="column" style="width:80px; flex:0 0 80px;">
-          <label for="filtro-ano-viajes" style="font-size:11px; font-weight:bold; margin-bottom:3px;">AÑO</label>
-          <select id="filtro-ano-viajes" style="width:70px; height:28px; padding:2px 4px;"></select>
-        </div>
-      
-        <div class="column long">
-          <input id="search-input" type="text" placeholder="🔎 Buscar vuelos y grupos…" style="width:100%; padding:.3em;"/>
-        </div>
-      <div class="column medium">
-        <button id="btnAddVuelo" class="btn-add">➕ AGREGAR NUEVO</button>
+    <div class="row" style="align-items:flex-end; gap:12px;">
+      <div class="column" style="width:70px; flex:0 0 70px;">
+        <label for="filtro-ano-viajes" style="font-size:11px; font-weight:bold; margin:0 0 3px 0;">AÑO</label>
+        <select id="filtro-ano-viajes" style="width:70px; height:32px; padding:2px 4px;"></select>
       </div>
-      <div class="column medium">
+    
+      <div class="column" style="flex:1 1 auto; max-width:220px;">
+        <input id="search-input" type="text" placeholder="🔎 Buscar vuelos y grupos..." style="width:100%; height:32px; padding:4px 8px;"/>
+      </div>
+    
+      <div class="column" style="flex:0 0 auto;">
+        <button id="btnAddVuelo" class="btn-add">➕ AGREGAR<br>NUEVO</button>
+      </div>
+    
+      <div class="column" style="flex:0 0 auto;">
         <button id="btnHistorial" class="btn-add">📜 HISTORIAL</button>
       </div>
-      <div class="column medium">
-        <button id="btnExportExcel" class="btn-add">⬇️ EXPORTAR EXCEL</button>
+    
+      <div class="column" style="flex:0 0 auto;">
+        <button id="btnExportExcel" class="btn-add">⬇️ EXPORTAR<br>EXCEL</button>
       </div>
     </div>
 
