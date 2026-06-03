@@ -2044,3 +2044,26 @@ window.rellenarFechasGrupoDesdeItinerario = async function (dryRun = true) {
     reporte
   };
 };
+
+window.verGrupoDebug = async function (docId) {
+  const ref = doc(db, "grupos", docId);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    console.warn("No existe el grupo:", docId);
+    return null;
+  }
+
+  const g = snap.data();
+
+  console.log("docId:", docId);
+  console.log("numeroNegocio:", g.numeroNegocio);
+  console.log("nombreGrupo:", g.nombreGrupo);
+  console.log("fechaInicio:", g.fechaInicio);
+  console.log("fechaFin:", g.fechaFin);
+  console.log("fechaInicio ISO:", _toISO(g.fechaInicio));
+  console.log("fechaFin ISO:", _toISO(g.fechaFin));
+  console.log("itinerario keys:", Object.keys(g.itinerario || {}).sort());
+
+  return g;
+};
