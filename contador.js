@@ -5,7 +5,7 @@
 // ———————————————————————————————
 import { app, db } from './firebase-init.js';
 import {
-  getDocs, getDoc, collection, doc, updateDoc
+  getDocs, getDoc, collection, doc, updateDoc, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged, signOut
@@ -18,6 +18,7 @@ let grupos = [];               // documentos de 'grupos'
 let fechasOrdenadas = [];      // ['YYYY-MM-DD', ...] con pax > 0
 let proveedores = {};          // mapa proveedor -> {contacto, correo}
 let reservaActualSnapshot = null;
+let ultimaVerificacionPagos = null;
 const API_PAGOS_URL = '/api/pagos';
 
 // ===== [NUEVO] Índice de vuelos por grupo (root collection 'vuelos') =====
@@ -371,6 +372,18 @@ async function init() {
   document.getElementById('btnCerrarVerificacionPagos').onclick = () => {
     document.getElementById('modalVerificacionPagos').style.display = 'none';
   };
+  
+  document.getElementById('btnCerrarDetalleDiferenciaPagos').onclick = () => {
+    document.getElementById('modalDetalleDiferenciaPagos').style.display = 'none';
+  };
+  
+  document.getElementById('btnGuardarVerificacionPagos').onclick = abrirModalGuardarVerificacionPagos;
+  
+  document.getElementById('btnCancelarGuardarVerificacion').onclick = () => {
+    document.getElementById('modalGuardarVerificacionPagos').style.display = 'none';
+  };
+  
+  document.getElementById('btnConfirmarGuardarVerificacion').onclick = guardarVerificacionPagosEnReserva;
 
   // (Opcional) Botón "Actualizar" del modal detalle: reajusta columnas si ya existe
   const btnAct = document.getElementById('btnActualizarModal');
@@ -424,7 +437,22 @@ async function abrirModalReserva(event) {
           id: g.id,
           numeroNegocio: g.numeroNegocio || g.id,
           nombreGrupo: g.nombreGrupo || '',
-          paxCorreo: Number(g.cantidadgrupo || g.cantidadGrupo || 0)
+          paxCorreo: Number(g.cantidadgrupo || g.cantidadGrupo || 0),
+        
+          adultosCorreo: {
+            M: 0,
+            F: 0,
+            O: Number(g.adultos || 0)
+          },
+        
+          estudiantesCorreo: {
+            M: 0,
+            F: 0,
+            O: Number(g.estudiantes || 0)
+          },
+        
+          totalAdultosCorreo: Number(g.adultos || 0),
+          totalEstudiantesCorreo: Number(g.estudiantes || 0)
         });
       }
     });
@@ -511,7 +539,10 @@ async function enviarReserva() {
       }, 0);
 
       if (totalEnviado > 0) {
-        payload[`reservas.${f}`] = { estado: 'ENVIADA', cuerpo, totalEnviado };
+        payload[`reservas.${f}.estado`] = 'ENVIADA';
+        payload[`reservas.${f}.cuerpo`] = cuerpo;
+        payload[`reservas.${f}.totalEnviado`] = totalEnviado;
+        payload[`reservas.${f}.updatedAt`] = serverTimestamp();
       }
     }
 
@@ -1054,32 +1085,37 @@ async function verificarPaxReservaConPagos() {
     try {
       const numeroNegocio = g.numeroNegocio || g.id;
 
-      const url = `${API_PAGOS_URL}?modo=detalle&numeroNegocio=${encodeURIComponent(numeroNegocio)}`;
-      const res = await fetch(url);
+      // Si viene fusionado tipo 1581-1582, consulta ambos por separado y suma.
+      const numerosPago = obtenerNumerosNegocioPago(numeroNegocio);
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      const resumenPagos = await consultarResumenPagosFusionado(numerosPago);
 
-      const data = await res.json();
-
-      const pasajeros =
-        data?.nominas?.data?.pasajeros ||
-        data?.saldos?.data?.detalle_pasajeros ||
-        [];
-
-      const resumenPagos = calcularResumenPagosContador(pasajeros);
       const paxPagos = resumenPagos.totalViajan;
       const paxCorreo = Number(g.paxCorreo || 0);
       const diferencia = paxPagos - paxCorreo;
 
+      const detalle = construirDetalleDiferencia(g, resumenPagos);
+
       resultados.push({
         numeroNegocio,
+        numerosPago,
         nombreGrupo: g.nombreGrupo || '',
         paxCorreo,
         paxPagos,
         diferencia,
-        estado: diferencia === 0 ? 'OK' : 'DIFERENCIA'
+        estado: detalle.tieneDiferenciaReal ? 'DIFERENCIA' : 'OK',
+
+        adultosCorreo: g.adultosCorreo || { M: 0, F: 0, O: 0 },
+        estudiantesCorreo: g.estudiantesCorreo || { M: 0, F: 0, O: 0 },
+        totalAdultosCorreo: Number(g.totalAdultosCorreo || 0),
+        totalEstudiantesCorreo: Number(g.totalEstudiantesCorreo || 0),
+
+        adultosPagos: resumenPagos.adultos,
+        estudiantesPagos: resumenPagos.estudiantes,
+        totalAdultosPagos: resumenPagos.totalAdultos,
+        totalEstudiantesPagos: resumenPagos.totalEstudiantes,
+
+        detalle
       });
 
     } catch (error) {
@@ -1087,16 +1123,168 @@ async function verificarPaxReservaConPagos() {
 
       resultados.push({
         numeroNegocio: g.numeroNegocio || g.id,
+        numerosPago: obtenerNumerosNegocioPago(g.numeroNegocio || g.id),
         nombreGrupo: g.nombreGrupo || '',
         paxCorreo: Number(g.paxCorreo || 0),
         paxPagos: '',
         diferencia: '',
-        estado: 'ERROR CONSULTA'
+        estado: 'ERROR CONSULTA',
+        detalle: null
       });
     }
   }
 
+  ultimaVerificacionPagos = {
+    fecha: new Date().toISOString(),
+    destino: reservaActualSnapshot.destino,
+    actividad: reservaActualSnapshot.actividad,
+    grupos: resultados,
+    resumen: calcularResumenVerificacion(resultados)
+  };
+
   renderVerificacionPagos(resultados);
+}
+
+function obtenerNumerosNegocioPago(numeroNegocio) {
+  const raw = String(numeroNegocio || '').trim();
+
+  if (!raw) return [];
+
+  // Solo fusiona si es exactamente formato num-num, ejemplo: 1581-1582
+  // Evita romper IDs tipo 1412-101.
+  if (/^\d+\s*-\s*\d+$/.test(raw)) {
+    return raw
+      .split('-')
+      .map(x => x.trim())
+      .filter(Boolean);
+  }
+
+  return [raw];
+}
+
+async function consultarResumenPagosFusionado(numerosPago) {
+  const acumulado = crearResumenPagosVacio();
+
+  for (const numero of numerosPago) {
+    const url = `${API_PAGOS_URL}?modo=detalle&numeroNegocio=${encodeURIComponent(numero)}`;
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} consultando ${numero}`);
+    }
+
+    const data = await res.json();
+
+    const pasajeros =
+      data?.nominas?.data?.pasajeros ||
+      data?.saldos?.data?.detalle_pasajeros ||
+      [];
+
+    const resumen = calcularResumenPagosContador(pasajeros);
+    sumarResumenPagos(acumulado, resumen);
+  }
+
+  return acumulado;
+}
+
+function crearResumenPagosVacio() {
+  return {
+    adultos: { M: 0, F: 0, O: 0 },
+    estudiantes: { M: 0, F: 0, O: 0 },
+    totalAdultos: 0,
+    totalEstudiantes: 0,
+    totalViajan: 0,
+    totalNoViajan: 0,
+    totalLeidos: 0
+  };
+}
+
+function sumarResumenPagos(base, add) {
+  ['M', 'F', 'O'].forEach(k => {
+    base.adultos[k] += Number(add.adultos?.[k] || 0);
+    base.estudiantes[k] += Number(add.estudiantes?.[k] || 0);
+  });
+
+  base.totalAdultos += Number(add.totalAdultos || 0);
+  base.totalEstudiantes += Number(add.totalEstudiantes || 0);
+  base.totalViajan += Number(add.totalViajan || 0);
+  base.totalNoViajan += Number(add.totalNoViajan || 0);
+  base.totalLeidos += Number(add.totalLeidos || 0);
+}
+
+function construirDetalleDiferencia(g, resumenPagos) {
+  const adultosCorreo = g.adultosCorreo || { M: 0, F: 0, O: Number(g.totalAdultosCorreo || 0) };
+  const estudiantesCorreo = g.estudiantesCorreo || { M: 0, F: 0, O: Number(g.totalEstudiantesCorreo || 0) };
+
+  const filas = [
+    {
+      categoria: 'Adultos Masculino',
+      correo: Number(adultosCorreo.M || 0),
+      pagos: Number(resumenPagos.adultos.M || 0)
+    },
+    {
+      categoria: 'Adultos Femenino',
+      correo: Number(adultosCorreo.F || 0),
+      pagos: Number(resumenPagos.adultos.F || 0)
+    },
+    {
+      categoria: 'Adultos Otro',
+      correo: Number(adultosCorreo.O || 0),
+      pagos: Number(resumenPagos.adultos.O || 0)
+    },
+    {
+      categoria: 'Total Adultos',
+      correo: Number(g.totalAdultosCorreo || 0),
+      pagos: Number(resumenPagos.totalAdultos || 0),
+      total: true
+    },
+    {
+      categoria: 'Estudiantes Masculino',
+      correo: Number(estudiantesCorreo.M || 0),
+      pagos: Number(resumenPagos.estudiantes.M || 0)
+    },
+    {
+      categoria: 'Estudiantes Femenino',
+      correo: Number(estudiantesCorreo.F || 0),
+      pagos: Number(resumenPagos.estudiantes.F || 0)
+    },
+    {
+      categoria: 'Estudiantes Otro',
+      correo: Number(estudiantesCorreo.O || 0),
+      pagos: Number(resumenPagos.estudiantes.O || 0)
+    },
+    {
+      categoria: 'Total Estudiantes',
+      correo: Number(g.totalEstudiantesCorreo || 0),
+      pagos: Number(resumenPagos.totalEstudiantes || 0),
+      total: true
+    },
+    {
+      categoria: 'TOTAL',
+      correo: Number(g.paxCorreo || 0),
+      pagos: Number(resumenPagos.totalViajan || 0),
+      total: true
+    }
+  ];
+
+  filas.forEach(f => {
+    f.diferencia = f.pagos - f.correo;
+  });
+
+  const diffAdultos =
+    Number(resumenPagos.totalAdultos || 0) - Number(g.totalAdultosCorreo || 0);
+  
+  const diffEstudiantes =
+    Number(resumenPagos.totalEstudiantes || 0) - Number(g.totalEstudiantesCorreo || 0);
+  
+  const diffTotal =
+    Number(resumenPagos.totalViajan || 0) - Number(g.paxCorreo || 0);
+  
+  return {
+    filas,
+    tieneDiferenciaDetalle: filas.some(f => Number(f.diferencia || 0) !== 0),
+    tieneDiferenciaReal: diffAdultos !== 0 || diffEstudiantes !== 0 || diffTotal !== 0
+  };
 }
 
 function renderVerificacionPagos(resultados) {
@@ -1111,9 +1299,17 @@ function renderVerificacionPagos(resultados) {
     resumen.innerHTML = `⚠️ Hay ${conDiferencia.length} grupo(s) con diferencia o error de consulta.`;
   }
 
-  tbody.innerHTML = resultados.map(r => {
+  tbody.innerHTML = resultados.map((r, idx) => {
     const color = r.estado === 'OK' ? '#09832e' : '#ca0a1f';
     const diffTxt = r.diferencia === '' ? '' : (r.diferencia > 0 ? `+${r.diferencia}` : r.diferencia);
+
+    const diffHtml = r.estado === 'DIFERENCIA'
+      ? `<button class="btn-diff-pagos"
+                 data-idx="${idx}"
+                 style="border:0; background:transparent; color:${color}; font-weight:bold; text-decoration:underline; cursor:pointer;">
+           ${diffTxt}
+         </button>`
+      : `<span style="font-weight:bold; color:${color};">${diffTxt}</span>`;
 
     return `
       <tr>
@@ -1121,19 +1317,79 @@ function renderVerificacionPagos(resultados) {
         <td>${r.nombreGrupo}</td>
         <td>${r.paxCorreo}</td>
         <td>${r.paxPagos}</td>
-        <td style="font-weight:bold; color:${color};">${diffTxt}</td>
+        <td>${diffHtml}</td>
         <td style="font-weight:bold; color:${color};">${r.estado}</td>
       </tr>
     `;
   }).join('');
+
+  tbody.querySelectorAll('.btn-diff-pagos').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = Number(btn.dataset.idx);
+      abrirDetalleDiferenciaPagos(resultados[idx]);
+    });
+  });
+}
+
+function abrirDetalleDiferenciaPagos(r) {
+  if (!r || !r.detalle) return;
+
+  document.getElementById('detalleDiffTitulo').textContent =
+    `Detalle diferencia - ${r.numeroNegocio}`;
+
+  document.getElementById('detalleDiffResumen').innerHTML = `
+    <div>${r.nombreGrupo}</div>
+    <div style="margin-top:.5rem;">
+      PAX correo: ${r.paxCorreo} ·
+      PAX pagos: ${r.paxPagos} ·
+      Diferencia: <span style="color:${r.diferencia === 0 ? '#09832e' : '#ca0a1f'};">
+        ${r.diferencia > 0 ? '+' + r.diferencia : r.diferencia}
+      </span>
+    </div>
+    <div style="font-size:.9em; color:#555; margin-top:.35rem;">
+      Información calculada solo con pasajeros activos que viajan.
+      ${r.numerosPago?.length > 1 ? ` Se sumaron negocios: ${r.numerosPago.join(' + ')}.` : ''}
+    </div>
+  `;
+
+  const tbody = document.getElementById('detalleDiffBody');
+
+  tbody.innerHTML = r.detalle.filas.map(f => {
+    const color = f.diferencia === 0 ? '#09832e' : '#ca0a1f';
+    const diffTxt = f.diferencia > 0 ? `+${f.diferencia}` : f.diferencia;
+
+    return `
+      <tr style="${f.total ? 'font-weight:bold; background:#f7f7f7;' : ''}">
+        <td>${f.categoria}</td>
+        <td>${f.correo}</td>
+        <td>${f.pagos}</td>
+        <td style="color:${color}; font-weight:bold;">${diffTxt}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('modalDetalleDiferenciaPagos').style.display = 'block';
+}
+
+function calcularResumenVerificacion(resultados) {
+  const gruposConDiferencia = resultados.filter(r => r.estado === 'DIFERENCIA').length;
+  const gruposError = resultados.filter(r => r.estado === 'ERROR CONSULTA').length;
+  const totalDiferencia = resultados.reduce((s, r) => s + (Number(r.diferencia) || 0), 0);
+
+  return {
+    totalGrupos: resultados.length,
+    gruposConDiferencia,
+    gruposError,
+    totalDiferencia,
+    estadoGeneral:
+      gruposConDiferencia === 0 && gruposError === 0
+        ? 'OK'
+        : 'CON_DIFERENCIAS'
+  };
 }
 
 function calcularResumenPagosContador(items) {
-  const resumen = {
-    totalViajan: 0,
-    totalNoViajan: 0,
-    totalLeidos: 0
-  };
+  const resumen = crearResumenPagosVacio();
 
   const pasajeros = Array.isArray(items) ? items : [];
 
@@ -1141,10 +1397,24 @@ function calcularResumenPagosContador(items) {
     const p = item?.pasajero || item || {};
     resumen.totalLeidos++;
 
-    if (pasajeroViajaContador(p)) {
-      resumen.totalViajan++;
-    } else {
+    const viaja = pasajeroViajaContador(p);
+
+    if (!viaja) {
       resumen.totalNoViajan++;
+      return;
+    }
+
+    resumen.totalViajan++;
+
+    const tipo = tipoPasajeroPagosContador(p);
+    const sexo = sexoPasajeroPagosContador(p);
+
+    if (tipo === 'estudiante') {
+      resumen.estudiantes[sexo]++;
+      resumen.totalEstudiantes++;
+    } else {
+      resumen.adultos[sexo]++;
+      resumen.totalAdultos++;
     }
   });
 
@@ -1192,10 +1462,146 @@ function pasajeroViajaContador(p) {
   return true;
 }
 
+function tipoPasajeroPagosContador(p) {
+  const categoria = normalizarTextoContador(
+    p.ocupacion_categoria ||
+    p.categoria ||
+    p.tipo_pasajero ||
+    p.tipo ||
+    p.ocupacion ||
+    ''
+  );
+
+  if (
+    categoria.includes('estudiante') ||
+    categoria.includes('alumno') ||
+    categoria.includes('alumna')
+  ) {
+    return 'estudiante';
+  }
+
+  return 'adulto';
+}
+
+function sexoPasajeroPagosContador(p) {
+  const sexo = normalizarTextoContador(
+    p.sexo ||
+    p.genero ||
+    p.gender ||
+    ''
+  );
+
+  if (
+    sexo === 'm' ||
+    sexo.includes('masculino') ||
+    sexo.includes('hombre')
+  ) {
+    return 'M';
+  }
+
+  if (
+    sexo === 'f' ||
+    sexo.includes('femenino') ||
+    sexo.includes('mujer')
+  ) {
+    return 'F';
+  }
+
+  return 'O';
+}
+
 function normalizarTextoContador(txt) {
   return String(txt || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .trim();
+}
+
+// =====================================================
+// GUARDAR HISTORIAL DE VERIFICACIÓN EN RESERVA
+// =====================================================
+
+function abrirModalGuardarVerificacionPagos() {
+  if (!ultimaVerificacionPagos) {
+    alert('Primero debes verificar PAX con pagos.');
+    return;
+  }
+
+  const r = ultimaVerificacionPagos.resumen;
+
+  document.getElementById('guardarVerificacionResumen').innerHTML = `
+    <div><strong>Actividad:</strong> ${ultimaVerificacionPagos.actividad}</div>
+    <div><strong>Destino:</strong> ${ultimaVerificacionPagos.destino}</div>
+    <div><strong>Grupos revisados:</strong> ${r.totalGrupos}</div>
+    <div><strong>Estado:</strong> ${r.estadoGeneral === 'OK' ? 'OK, sin diferencias' : 'Con diferencias / pendientes'}</div>
+    <div><strong>Grupos con diferencia:</strong> ${r.gruposConDiferencia}</div>
+    <div><strong>Diferencia total:</strong> ${r.totalDiferencia}</div>
+  `;
+
+  document.getElementById('guardarVerificacionComentario').value = '';
+
+  document.getElementById('modalGuardarVerificacionPagos').style.display = 'block';
+}
+
+async function guardarVerificacionPagosEnReserva() {
+  if (!ultimaVerificacionPagos || !reservaActualSnapshot) {
+    alert('No hay verificación para guardar.');
+    return;
+  }
+
+  const comentario = document.getElementById('guardarVerificacionComentario').value.trim();
+  const resumen = ultimaVerificacionPagos.resumen;
+
+  if (resumen.estadoGeneral !== 'OK' && !comentario) {
+    alert('Hay diferencias. Debes escribir una justificación antes de guardar.');
+    return;
+  }
+
+  const destino = reservaActualSnapshot.destino;
+  const actividad = reservaActualSnapshot.actividad;
+  const cuerpo = document.getElementById('modalCuerpo').value;
+
+  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+
+  const payload = {};
+  const verificacionGuardada = {
+    ...ultimaVerificacionPagos,
+    comentario,
+    usuario: auth.currentUser?.email || '',
+    guardadoEn: new Date().toISOString()
+  };
+
+  for (const f of fechasOrdenadas) {
+    const totalEnviado = grupos.reduce((sum, g) => {
+      const acts = g.itinerario?.[f] || [];
+      const t = acts
+        .filter(a => a.actividad === actividad)
+        .reduce((acc, a) => acc + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
+      return sum + t;
+    }, 0);
+
+    if (totalEnviado > 0) {
+      payload[`reservas.${f}.estado`] =
+        resumen.estadoGeneral === 'OK'
+          ? 'VERIFICADA'
+          : 'PENDIENTE_VERIFICADA';
+
+      payload[`reservas.${f}.cuerpo`] = cuerpo;
+      payload[`reservas.${f}.totalEnviado`] = totalEnviado;
+      payload[`reservas.${f}.verificacionPagos`] = verificacionGuardada;
+      payload[`reservas.${f}.updatedAt`] = serverTimestamp();
+    }
+  }
+
+  if (!Object.keys(payload).length) {
+    alert('No hay fechas con PAX para guardar esta verificación.');
+    return;
+  }
+
+  await updateDoc(ref, payload);
+
+  document.getElementById('modalGuardarVerificacionPagos').style.display = 'none';
+
+  alert('Verificación guardada como historial de la reserva.');
 }
