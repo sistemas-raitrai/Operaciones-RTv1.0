@@ -1374,7 +1374,13 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       $(tr).find('td').each((i, td) => {
         const $td = $(td);
 
-        if (i > 1 && !$td.attr('data-fixed')) {
+        const campo = $td.attr('data-campo');
+        
+        if (
+          i > 1 &&
+          !$td.attr('data-fixed') &&
+          !DATE_FIELDS.has(campo)
+        ) {
           $td.attr('contenteditable', editMode);
         } else {
           $td.removeAttr('contenteditable');
@@ -1404,7 +1410,11 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       // No permitir editar las dos primeras columnas
       const index = $td.index();
       if (index <= 1) return;
-  
+      
+      // Las fechas NO deben ser contenteditable.
+      // Se editan solo con el calendario del input type="date".
+      if (DATE_FIELDS.has(campo)) return;
+      
       $td.attr('contenteditable', 'true');
       $td.trigger('focus');
     });
