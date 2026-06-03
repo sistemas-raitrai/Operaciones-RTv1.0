@@ -2019,11 +2019,11 @@ async function renderVuelos(){
       ${filasExtras}
       <p><strong>TOTAL PAX:</strong> ${totalPax} (A:${exclude?0:totA} E:${exclude?0:totE} C:${exclude?0:totC} X:${totX}) – CONFIRMADOS: ${totalConf}</p>
       ${lineaReservaHTML}
-      <div class="actions">
-        <button class="btn-add btn-edit">✏️ EDITAR</button>
-        <button class="btn-add btn-del">🗑️ ELIMINAR</button>
-        ${isAereo ? `<button class="btn-add btn-pax" style="background:green;color:white;" onclick="openPaxExtraModal('${v.id}')">+ AGREGAR PAX</button>` : ''}
-      </div>
+        <div class="actions flight-actions">
+          <button class="btn-add btn-edit">✏️ EDITAR</button>
+          <button class="btn-add btn-del">🗑️ ELIMINAR</button>
+          ${isAereo ? `<button class="btn-add btn-pax" onclick="openPaxExtraModal('${v.id}')">+ AGREGAR PAX</button>` : ''}
+        </div>
     `;
     card.querySelector('.btn-edit').onclick = () => openModal(v);
     card.querySelector('.btn-del' ).onclick = () => deleteVuelo(v.id);
