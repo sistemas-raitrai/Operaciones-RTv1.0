@@ -521,6 +521,74 @@ function cargarTablaInferior() {
 
 
 // 8️⃣ GUARDAR EN FIREBASE Y REGISTRAR HISTORIAL
+function fechaISOValida(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+}
+
+function crearRangoFechasRegistro(fechaInicio, fechaFin) {
+  if (!fechaISOValida(fechaInicio) || !fechaISOValida(fechaFin)) return [];
+
+  const [iy, im, id] = fechaInicio.split("-").map(Number);
+  const [fy, fm, fd] = fechaFin.split("-").map(Number);
+
+  const ini = new Date(iy, im - 1, id);
+  const fin = new Date(fy, fm - 1, fd);
+
+  if (fin < ini) return [];
+
+  const out = [];
+
+  for (let d = new Date(ini); d <= fin; d.setDate(d.getDate() + 1)) {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    out.push(`${yyyy}-${mm}-${dd}`);
+  }
+
+  return out;
+}
+
+function ordenarKeysItinerarioRegistro(a, b) {
+  const aReal = fechaISOValida(a);
+  const bReal = fechaISOValida(b);
+
+  if (aReal && bReal) return new Date(a) - new Date(b);
+  if (aReal) return -1;
+  if (bReal) return 1;
+
+  const na = parseInt(String(a).replace(/\D/g, ""), 10) || 0;
+  const nb = parseInt(String(b).replace(/\D/g, ""), 10) || 0;
+  return na - nb;
+}
+
+async function sincronizarItinerarioDesdeRegistro(docId, before, payload) {
+  const fechas = crearRangoFechasRegistro(payload.fechaInicio, payload.fechaFin);
+  if (!fechas.length) return;
+
+  const IT = before.itinerario || {};
+  const keys = Object.keys(IT).sort(ordenarKeysItinerarioRegistro);
+
+  const nuevoItinerario = {};
+
+  fechas.forEach((fechaReal, idx) => {
+    const keyAnterior = keys[idx];
+    nuevoItinerario[fechaReal] = keyAnterior ? (IT[keyAnterior] || []) : [];
+  });
+
+  await setDoc(doc(db, "grupos", docId), {
+    itinerario: nuevoItinerario
+  }, { merge: true });
+
+  await addDoc(collection(db, "historial"), {
+    numeroNegocio: docId,
+    accion: "SINCRONIZAR FECHAS E ITINERARIO DESDE REGISTRO",
+    anterior: keys.join(", "),
+    nuevo: fechas.join(", "),
+    modificadoPor: auth.currentUser?.email || "",
+    timestamp: new Date()
+  });
+}
+
 async function guardar() {
   let negocioVisual = elems.numeroNegocio.value.trim();
   let negocio = negocioVisual
@@ -555,6 +623,8 @@ async function guardar() {
   const before = snapB.exists() ? snapB.data() : {};
 
   await setDoc(ref, payload, { merge: true });
+  
+  await sincronizarItinerarioDesdeRegistro(docId, before, payload);
 
   const cambios = [];
   Object.keys(payload).forEach(k => {
