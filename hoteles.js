@@ -165,7 +165,7 @@ async function loadAsignaciones(){
 function bindUI(){
   const filtroAno = document.getElementById('filtroAnoHotel');
   if (filtroAno) {
-    anoHotelActivo = Number(filtroAno.value || 2026);
+    filtroAno.value = String(anoHotelActivo);
 
     filtroAno.addEventListener('change', async e => {
       anoHotelActivo = Number(e.target.value);
