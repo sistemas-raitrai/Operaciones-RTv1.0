@@ -339,10 +339,16 @@ function splitHorarios(v){
     horarioKeysTop.forEach(k => { delete paySansHorarios[k]; });
   }
 
-  // Si es AÉREO REGULAR con TRAMOS: no actualizamos el array "tramos" cuando NO publicas
-  if ((v.tipoTransporte || 'aereo') === 'aereo' && v.tipoVuelo === 'regular' && Array.isArray(v.tramos) && v.tramos.length){
-    delete paySansHorarios.tramos;
-  }
+  // IMPORTANTE:
+  // Los tramos son parte de la estructura operativa del viaje,
+  // no solo de los horarios públicos.
+  // Por eso SIEMPRE deben guardarse en la colección "vuelos",
+  // aunque "Publicar horarios" esté desmarcado.
+  // 
+  // Antes aquí se hacía:
+  // delete paySansHorarios.tramos;
+  // Eso provocaba que un multitramo guardado como PRIVADO
+  // perdiera sus tramos y quedara como regular simple.
 
   return { payOriginal, paySansHorarios };
 }
