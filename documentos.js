@@ -1497,39 +1497,48 @@ function getResumenVuelosPreliminar(vuelosNorm){
 }
 
 function getEquipajePreliminar(grupo, vuelosNorm){
-  const vuelosTxt = (vuelosNorm || []).map(v => {
-    const partes = [
-      v.proveedor,
-      v.tipoVuelo,
-      ...(Array.isArray(v.tramos) ? v.tramos.map(t => t.aerolinea) : [])
+
+  const tieneAereo = (vuelosNorm || []).some(v =>
+    (v.tipoTransporte || 'aereo').toLowerCase() === 'aereo'
+  );
+
+  if (!tieneAereo){
+    return [
+      'Cada persona podrá transportar una maleta de hasta 23 kg, la cual será almacenada en el compartimiento de equipaje del bus.',
+      'Se recomienda además llevar un bolso de mano con los elementos necesarios para el trayecto.',
+      'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
     ];
-    return partes.join(' ');
-  }).join(' ').toUpperCase();
+  }
+
+  const vuelosTxt = (vuelosNorm || [])
+    .map(v => JSON.stringify(v).toUpperCase())
+    .join(' ');
 
   const isRegular = vuelosTxt.includes('REGULAR');
-  const isLatam   = vuelosTxt.includes('LATAM') || vuelosTxt.includes('LAN');
+  const isLatam   = vuelosTxt.includes('LATAM');
   const isSky     = vuelosTxt.includes('SKY');
 
   if (!isRegular && isLatam){
     return [
-      'Cada persona podrá transportar una maleta de bodega de hasta 20 kg.',
-      'No existe la posibilidad de adquirir equipaje adicional directamente con la aerolínea.',
-      'Además, se permite llevar un bolso o mochila de mano, sujeto a las condiciones operacionales informadas por la aerolínea.'
+      'Cada persona podrá transportar una maleta de hasta 20 kg más equipaje de mano.',
+      'No es posible agregar maletas adicionales ni contratar peso extra directamente con la aerolínea.',
+      'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
     ];
   }
 
   if (!isRegular && isSky){
     return [
-      'Cada persona podrá transportar una maleta de bodega de hasta 23 kg.',
-      'No existe la posibilidad de adquirir equipaje adicional directamente con la aerolínea.',
-      'Además, se permite llevar un bolso o mochila de mano, sujeto a las condiciones operacionales informadas por la aerolínea.'
+      'Cada persona podrá transportar una maleta de hasta 23 kg más equipaje de mano.',
+      'No es posible agregar maletas adicionales ni contratar peso extra directamente con la aerolínea.',
+      'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
     ];
   }
 
-  const { equipajeText1, equipajeText2 } =
-    getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
-
-  return [equipajeText1, equipajeText2];
+  return [
+    'Las condiciones de equipaje dependerán de la tarifa aérea asociada al viaje.',
+    'Se recomienda revisar cuidadosamente las instrucciones que serán entregadas junto con la confirmación del viaje.',
+    'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
+  ];
 }
 
 function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
@@ -1598,11 +1607,56 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
     .map(t => `<li>${t}</li>`)
     .join('');
 
-  const recomendacionesHTML = Array.isArray(recs)
-    ? recs.map(r => `<li>${r}</li>`).join('')
-    : `<li>${recs}</li>`;
+  const recomendaciones = [];
+  
+  if (
+    /(bariloche|brasil)/i.test(
+      `${grupo.programa || ''} ${grupo.destino || ''}`
+    )
+  ){
+    recomendaciones.push(
+      'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
+    );
+  
+    recomendaciones.push(
+      'Al momento del regreso a Chile, el documento deberá mantener una vigencia mínima de 6 meses.'
+    );
+  }else{
+    recomendaciones.push(
+      'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
+    );
+  }
+  
+  recomendaciones.push(
+    'Recordar cargar oportunamente la documentación solicitada en el sistema de pagos.'
+  );
+  
+  recomendaciones.push(
+    'Mantener actualizada la información médica, alergias, medicamentos permanentes y datos de contacto de emergencia.'
+  );
+  
+  recomendaciones.push(
+    'Mantener al día las obligaciones administrativas y financieras asociadas al viaje.'
+  );
+  
+  recomendaciones.push(
+    'Planificar con anticipación la vestimenta y elementos personales necesarios para el viaje, considerando el clima y las actividades contempladas en el programa.'
+  );
+  
+  if (/huilo/i.test(`${grupo.programa || ''} ${grupo.destino || ''}`)){
+    recomendaciones.push(
+      'Recordar incluir saco de dormir, toallas y artículos de aseo personal, ya que estos elementos no son proporcionados por el recinto.'
+    );
+  }
+  
+  recomendaciones.push(
+    'Es normal que durante los meses previos al viaje existan ajustes operacionales relacionados con vuelos, hotelería o actividades. La información definitiva será comunicada oportunamente a través de los canales oficiales de Turismo Rai Trai.'
+  );
+  
+  const recomendacionesHTML =
+    recomendaciones.map(x => `<li>${x}</li>`).join('');
 
-  const titulo = `INFORMACIÓN PRELIMINAR DEL VIAJE`;
+  const titulo = `INFORMACIÓN PRELIMINAR DE SU VIAJE DE ESTUDIOS`;
 
   return `
     <div class="print-doc confirm-doc preconfirm-doc">
@@ -1627,9 +1681,9 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         <p><strong>Fecha estimada de inicio:</strong> ${fechaInicioTxt}</p>
         <p><strong>Fecha estimada de término:</strong> ${fechaFinTxt}</p>
         <p class="note">
-          Esta información tiene carácter preliminar y busca orientar la preparación del viaje.
-          Los horarios, citaciones, tramos y detalles operacionales finales serán informados posteriormente
-          en el documento de confirmación.
+          Esta información busca orientar la preparación del viaje.
+        
+          Los horarios, citaciones, vuelos, itinerarios y detalles operacionales serán informados posteriormente mediante el documento de confirmación, el cual será entregado aproximadamente un mes antes de la fecha de inicio del viaje.
         </p>
       </div>
 
@@ -1657,23 +1711,39 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       </div>
 
       <div class="sec">
-        <div class="sec-title">3. HOTELERÍA PRELIMINAR</div>
+        <div class="sec-title">3. HOTELERÍA</div>
         ${hotelesHtml}
       </div>
 
       <div class="sec">
-        <div class="sec-title">4. DOCUMENTACIÓN PARA EL VIAJE</div>
+        <div class="sec-title">4. PRÓXIMAS ETAPAS</div>
+      
+        <ul>
+          <li>Horarios de vuelos.</li>
+          <li>Citaciones y puntos de encuentro.</li>
+          <li>Itinerario detallado.</li>
+          <li>Información de coordinadores.</li>
+          <li>Indicaciones operacionales finales.</li>
+        </ul>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">5. DOCUMENTACIÓN PARA EL VIAJE</div>
         <ul>${documentosHTML}</ul>
       </div>
 
       <div class="sec">
-        <div class="sec-title">5. EQUIPAJE</div>
+        <div class="sec-title">6. EQUIPAJE</div>
         <ul>${equipajeItems}</ul>
       </div>
 
       <div class="sec">
-        <div class="sec-title">6. RECOMENDACIONES GENERALES</div>
+        <div class="sec-title">7. RECOMENDACIONES GENERALES</div>
         <ul>${recomendacionesHTML}</ul>
+      </div>
+
+      <div class="closing">
+      NOS ENCONTRAMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE.
       </div>
 
       <div class="closing">TURISMO RAITRAI</div>
