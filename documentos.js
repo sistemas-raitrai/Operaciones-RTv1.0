@@ -1563,7 +1563,7 @@ function getEquipajePreliminar(grupo, vuelosNorm){
 
   if (!isRegular && isLatam){
     return [
-      'Cada persona podrá transportar una maleta de hasta 20 kg más equipaje de mano.',
+      'Cada persona podrá transportar una maleta de hasta 20 kg más equipaje de mano de 5kg.',
       'No es posible agregar maletas adicionales ni contratar peso extra directamente con la aerolínea.',
       'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
     ];
@@ -1571,7 +1571,7 @@ function getEquipajePreliminar(grupo, vuelosNorm){
 
   if (!isRegular && isSky){
     return [
-      'Cada persona podrá transportar una maleta de hasta 23 kg más equipaje de mano.',
+      'Cada persona podrá transportar una maleta de hasta 23 kg más equipaje de mano de 5kg.',
       'No es posible agregar maletas adicionales ni contratar peso extra directamente con la aerolínea.',
       'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
     ];
@@ -1679,21 +1679,14 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
     )
   ){
     recomendaciones.push(
-      'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
+      'Verificar que la cédula de identidad se encuentre vigente y en buen estado. Al salir de Chile, el documento deberá tener una vigencia mínima de 6 meses posterior al regreso.'
     );
   
-    recomendaciones.push(
-      'Al momento del regreso a Chile, el documento deberá mantener una vigencia mínima de 6 meses.'
-    );
   }else{
     recomendaciones.push(
       'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
     );
   }
-  
-  recomendaciones.push(
-    'Recordar cargar oportunamente la documentación solicitada en el sistema de pagos.'
-  );
   
   recomendaciones.push(
     'Mantener actualizada la información médica, alergias, medicamentos permanentes y datos de contacto de emergencia.'
@@ -1796,7 +1789,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         <div class="sec-title">7. PRÓXIMAS ETAPAS</div>
         
         <p>
-          Aproximadamente un mes antes del viaje se entregará el documento de confirmación, con horarios, puntos de encuentro, coordinadores, itinerario diario e indicaciones finales.
+          Aproximadamente un mes antes del viaje se entregará el documento de confirmación, con horarios, puntos de encuentro, actividades diarias e indicaciones finales.
         </p>
       
         <p>
