@@ -1547,9 +1547,9 @@ function getEquipajePreliminar(grupo, vuelosNorm){
 
   if (!tieneAereo){
     return [
-      'Cada persona podrá transportar una maleta de hasta 23 kg, la cual será almacenada en el compartimiento de equipaje del bus.',
+      'Cada persona podrá transportar un equipaje de hasta 23 kg, el cual será almacenado en el compartimiento de equipaje del bus.',
       'Se recomienda además llevar un bolso de mano con los elementos necesarios para el trayecto.',
-      'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
+      'Recordar identificar claramente todo equipaje con nombre y número de contacto.'
     ];
   }
 
@@ -1563,16 +1563,16 @@ function getEquipajePreliminar(grupo, vuelosNorm){
 
   if (!isRegular && isLatam){
     return [
-      'Cada persona podrá transportar una maleta de hasta 20 kg más equipaje de mano de 5kg.',
-      'No es posible agregar maletas adicionales ni contratar peso extra directamente con la aerolínea.',
+      'Cada persona podrá transportar una maleta de hasta 20 kg más un bolso de mano de 5kg.',
+      'La aerolínea no permite agregar equipaje adicional ni sobrepeso para este tipo de vuelos.',
       'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
     ];
   }
 
   if (!isRegular && isSky){
     return [
-      'Cada persona podrá transportar una maleta de hasta 23 kg más equipaje de mano de 5kg.',
-      'No es posible agregar maletas adicionales ni contratar peso extra directamente con la aerolínea.',
+      'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de 5kg.',
+      'La aerolínea no permite agregar equipaje adicional ni sobrepeso para este tipo de vuelos.',
       'Se recomienda identificar claramente todo equipaje con nombre y número de contacto.'
     ];
   }
@@ -1646,14 +1646,18 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   );
   
   const documentos = [];
-  
+
   documentos.push(
     'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
   );
   
   if (esInternacional) {
     documentos.push(
-      'Para realizar viajes internacionales, la cédula de identidad deberá encontrarse vigente y mantener una vigencia mínima de 6 meses desde la fecha de regreso del viaje.'
+      'Para realizar viajes internacionales, la cédula de identidad deberá tener fecha de vencimiento mínimo de 6 meses desde la fecha de regreso del viaje.'
+    );
+
+    documentos.push(
+      'Los menores de edad deben contar con las autorizaciones notariales de ambos padres para salir del país.'
     );
   
     documentos.push(
@@ -1662,7 +1666,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   }
   
   documentos.push(
-    'Recordar cargar oportunamente la documentación solicitada en el sistema de pagos.'
+    'Recordar subir oportunamente la cédula de identidad solicitado en el sistema de pagos.'
   );
   
   const documentosHTML = documentos.map(x => `<li>${x}</li>`).join('');
@@ -1673,27 +1677,12 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
 
   const recomendaciones = [];
   
-  if (
-    /(bariloche|brasil)/i.test(
-      `${grupo.programa || ''} ${grupo.destino || ''}`
-    )
-  ){
-    recomendaciones.push(
-      'Verificar que la cédula de identidad se encuentre vigente y en buen estado. Al salir de Chile, el documento deberá tener una vigencia mínima de 6 meses posterior al regreso.'
-    );
-  
-  }else{
-    recomendaciones.push(
-      'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
-    );
-  }
-  
   recomendaciones.push(
-    'Mantener actualizada la información médica, alergias, medicamentos permanentes y datos de contacto de emergencia.'
+    'Tener al día las obligaciones administrativas y financieras asociadas al viaje.'
   );
   
   recomendaciones.push(
-    'Mantener al día las obligaciones administrativas y financieras asociadas al viaje.'
+    'Mantener actualizada la información médica, alergias, medicamentos permanentes y datos de contacto de emergencia con la empresa.'
   );
   
   recomendaciones.push(
@@ -1705,10 +1694,6 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       'Recordar incluir saco de dormir, toallas y artículos de aseo personal, ya que estos elementos no son proporcionados por el recinto.'
     );
   }
-  
-  recomendaciones.push(
-    'Es normal que durante los meses previos al viaje existan ajustes operacionales relacionados con vuelos, hotelería o actividades. La información definitiva será comunicada oportunamente a través de los canales oficiales de Turismo Rai Trai.'
-  );
   
   const recomendacionesHTML =
     recomendaciones.map(x => `<li>${x}</li>`).join('');
@@ -1734,12 +1719,10 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       <div class="sec">
         <div class="sec-title">1. INFORMACIÓN GENERAL DEL VIAJE</div>
       
-        <p><strong>Grupo:</strong> ${safe(alias)} ${ano ? `(${ano})` : ''}</p>
-        <p><strong>Programa:</strong> ${safe(programa)}</p>
-        <p><strong>Año viaje:</strong> ${safe(ano)}</p>
-      
-        <p><strong>Fecha inicio:</strong> ${fechaInicioTxt}</p>
-        <p><strong>Fecha regreso:</strong> ${fechaFinTxt}</p>
+        <p><strong>Grupo:</strong> ${safe(alias)}</p>
+        <p><strong>Programa:</strong> ${safe(programa)} - <strong>Año viaje:</strong> ${safe(ano)}</p>   
+        <p><strong>Fecha inicio:</strong> ${fechaInicioTxt} | <strong>Fecha regreso:</strong> ${fechaFinTxt}</p>
+        <p></p>
       </div>
       
       <div class="sec">
@@ -1793,7 +1776,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         </p>
       
         <p>
-          Cualquier información relevante que requiera ser comunicada con anterioridad será informada oportunamente a través de los canales oficiales de Turismo Rai Trai.
+          Es normal que durante los meses previos al viaje existan ajustes operacionales relacionados con vuelos, hotelería o actividades. La información definitiva será comunicada oportunamente a través de los canales oficiales de Turismo Rai Trai.
         </p>
       </div>
   `;
