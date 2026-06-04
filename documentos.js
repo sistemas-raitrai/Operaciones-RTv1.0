@@ -1764,11 +1764,9 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       </div>
 
       <div class="closing">
-      NOS ENCONTRAMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE.
+        NOS ENCONTRAMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE.<br>
+        TURISMO RAITRAI
       </div>
-
-      <div class="closing">TURISMO RAITRAI</div>
-    </div>
   `;
 }
 
