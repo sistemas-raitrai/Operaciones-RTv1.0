@@ -55,6 +55,52 @@
     font-weight: 700;
     border: 2px solid #ef4444 !important;
   }
+
+  #tablaRevisionPaxPagos {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: white;
+  }
+  
+  #tablaRevisionPaxPagos th,
+  #tablaRevisionPaxPagos td {
+    border: 1px solid #9ca3af;
+    padding: 5px 7px;
+    vertical-align: middle;
+  }
+  
+  #tablaRevisionPaxPagos th {
+    background: #f3f4f6;
+    font-weight: 700;
+    text-align: center;
+  }
+  
+  #tablaRevisionPaxPagos td {
+    text-align: center;
+  }
+  
+  #tablaRevisionPaxPagos td.col-texto {
+    text-align: left;
+  }
+  
+  #tablaRevisionPaxPagos tr:nth-child(even) {
+    background: #fafafa;
+  }
+  
+  #tablaRevisionPaxPagos .diff-ok {
+    color: #09832e;
+    font-weight: 700;
+  }
+  
+  #tablaRevisionPaxPagos .diff-error {
+    color: #ca0a1f;
+    font-weight: 700;
+  }
+  
+  #tablaRevisionPaxPagos .fila-error {
+    background: #fff1f2;
+  }
 </style>
 <body>
 
@@ -163,7 +209,7 @@
         <h2>Confirmar cambios</h2>
     
         <div class="modal-body" style="max-height:400px; overflow:auto;">
-          <table style="width:100%; font-size:13px;">
+          <table id="tablaRevisionPaxPagos">
             <thead>
               <tr>
                 <th>N° Negocio</th>
@@ -217,7 +263,7 @@
         <div id="revisionPaxResumen" style="font-weight:bold; margin-bottom:12px;"></div>
     
         <div class="modal-body" style="max-height:420px; overflow:auto;">
-          <table style="width:100%; font-size:13px;">
+          <table id="tablaRevisionPaxPagos">
             <thead>
               <tr>
                 <th>N° Negocio</th>
