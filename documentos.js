@@ -1598,10 +1598,31 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
     return `${d}-${m}-${y}`;
   }
 
-  const { docsText, recs } =
-    getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
-
-  const documentosHTML = renderDocsList(docsText);
+  const esInternacional = /(bariloche|brasil)/i.test(
+    `${grupo.programa || ''} ${grupo.destino || ''}`
+  );
+  
+  const documentos = [];
+  
+  documentos.push(
+    'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
+  );
+  
+  if (esInternacional) {
+    documentos.push(
+      'Al momento del regreso a Chile, la cédula de identidad deberá mantener una vigencia mínima de 6 meses.'
+    );
+  
+    documentos.push(
+      'Las personas extranjeras deberán revisar oportunamente los requisitos de ingreso y salida exigidos según su nacionalidad.'
+    );
+  }
+  
+  documentos.push(
+    'Recordar cargar oportunamente la documentación solicitada en el sistema de pagos.'
+  );
+  
+  const documentosHTML = documentos.map(x => `<li>${x}</li>`).join('');
 
   const equipajeItems = getEquipajePreliminar(grupo, vuelosNorm)
     .map(t => `<li>${t}</li>`)
