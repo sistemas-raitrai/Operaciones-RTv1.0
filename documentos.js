@@ -1627,30 +1627,21 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
           const direccion = (H.direccion || h.direccion || '').toString().trim();
   
-          const correo = (
-            H.correo ||
-            H.email ||
-            H.contactoCorreo ||
-            H.contactoEmail ||
+          const web = (
+            H.web ||
+            H.paginaWeb ||
+            H.sitioWeb ||
+            H.website ||
+            H.url ||
+            h.web ||
             ''
           ).toString().trim();
-  
-          const telefono = (
-            H.contactoTelefono ||
-            H.telefono ||
-            H.phone ||
-            H.contactoFono ||
-            H.celular ||
-            ''
-          ).toString().trim();
-  
-          const contacto = [correo, telefono].filter(Boolean).join(' / ');
   
           return `
             <li class="hotel-item">
               <strong>${hotel}</strong>
               ${direccion || ciudad ? `<div>${[direccion, ciudad].filter(Boolean).join(' - ')}</div>` : ''}
-              ${contacto ? `<div>Contacto: ${contacto}</div>` : ''}
+              ${web ? `<div>Página web: ${web}</div>` : ''}
             </li>
           `;
         }).join('')}
