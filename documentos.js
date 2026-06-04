@@ -1,4 +1,4 @@
-// documentacion.js
+// documentos.js
 // Página de lotes PDF para confirmaciones (filtrado + exportación)
 // NOTA: Requiere tu './firebase-core.js' (exporta { app, db })
 
@@ -1742,19 +1742,19 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       
         <p><strong>Grupo:</strong> ${safe(alias)}</p>
         <p><strong>Programa:</strong> ${safe(programa)}</p>   
-        <p><strong>Fecha inicio:</strong> ${fechaInicioTxt}</p>
-        <p><strong>Fecha regreso:</strong> ${fechaFinTxt}</p>
+        <p><strong>Fecha de Inicio:</strong> ${fechaInicioTxt}</p>
+        <p><strong>Fecha de Regreso:</strong> ${fechaFinTxt}</p>
         <p></p>
       </div>
       
       <div class="sec">
-        <div class="sec-title">2. TRANSPORTE AÉREO</div>
+        <div class="sec-title">2. INFORMACIÓN DE TRANSPORTES DEL VIAJE</div>
         <table class="confirm-flight-table">
           <thead>
             <tr>
               <th>Aerolínea</th>
-              <th>Fecha ida</th>
-              <th>Fecha regreso</th>
+              <th>Ida</th>
+              <th>Vuelta</th>
             </tr>
           </thead>
           <tbody>
