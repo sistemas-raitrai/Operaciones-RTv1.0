@@ -1683,31 +1683,26 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
     <div class="print-doc confirm-doc preconfirm-doc">
       <div class="confirm-header">
         <div class="confirm-title-block">
-          <div class="confirm-title">${titulo}</div>
-          <div class="confirm-subtitle">${safe(lineaPrincipal, '')}</div>
-          <div class="confirm-meta">
-            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
-            ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
-            ${grupo.numeroNegocio ? `<span>CÓDIGO: ${grupo.numeroNegocio}</span>` : ''}
-          </div>
-        </div>
+        <div class="confirm-title">${titulo}</div>
         <div class="confirm-logo">
           <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
-        </div>
       </div>
 
       <div class="sec">
         <div class="sec-title">1. INFORMACIÓN GENERAL DEL VIAJE</div>
-        <p><strong>Grupo:</strong> ${safe(alias)}</p>
-        <p><strong>Fecha estimada de inicio:</strong> ${fechaInicioTxt}</p>
-        <p><strong>Fecha estimada de término:</strong> ${fechaFinTxt}</p>
+      
+        <p><strong>Grupo:</strong> ${safe(alias)} ${ano ? `(${ano})` : ''}</p>
+        <p><strong>Programa:</strong> ${safe(programa)}</p>
+        <p><strong>Año viaje:</strong> ${safe(ano)}</p>
+      
+        <p><strong>Fecha inicio:</strong> ${fechaInicioTxt}</p>
+        <p><strong>Fecha regreso:</strong> ${fechaFinTxt}</p>
+      
         <p class="note">
-          Esta información busca orientar la preparación del viaje.
-        
-          Los horarios, citaciones, vuelos, itinerarios y detalles operacionales serán informados posteriormente mediante el documento de confirmación, el cual será entregado aproximadamente un mes antes de la fecha de inicio del viaje.
+          Esta información tiene por objetivo orientar la preparación del viaje y entregar una referencia preliminar de los principales aspectos asociados al programa.
         </p>
       </div>
-
+      
       <div class="sec">
         <div class="sec-title">2. TRANSPORTE AÉREO PRELIMINAR</div>
         <table class="confirm-flight-table">
@@ -1730,42 +1725,41 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           Los horarios, números de vuelo, terminales y puntos de encuentro serán informados en la confirmación final.
         </p>
       </div>
-
+      
       <div class="sec">
         <div class="sec-title">3. HOTELERÍA</div>
         ${hotelesHtml}
       </div>
-
-      <div class="sec">
-        <div class="sec-title">4. PRÓXIMAS ETAPAS</div>
       
-        <ul>
-          <li>Horarios de vuelos.</li>
-          <li>Citaciones y puntos de encuentro.</li>
-          <li>Itinerario detallado.</li>
-          <li>Información de coordinadores.</li>
-          <li>Indicaciones operacionales finales.</li>
-        </ul>
-      </div>
-
       <div class="sec">
-        <div class="sec-title">5. DOCUMENTACIÓN PARA EL VIAJE</div>
+        <div class="sec-title">4. DOCUMENTACIÓN PARA EL VIAJE</div>
         <ul>${documentosHTML}</ul>
       </div>
-
+      
       <div class="sec">
-        <div class="sec-title">6. EQUIPAJE</div>
+        <div class="sec-title">5. EQUIPAJE</div>
         <ul>${equipajeItems}</ul>
       </div>
-
+      
       <div class="sec">
-        <div class="sec-title">7. RECOMENDACIONES GENERALES</div>
+        <div class="sec-title">6. RECOMENDACIONES GENERALES</div>
         <ul>${recomendacionesHTML}</ul>
       </div>
-
-      <div class="closing">
-        NOS ENCONTRAMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE.<br>
-        TURISMO RAITRAI
+      
+      <div class="sec">
+        <div class="sec-title">7. PRÓXIMAS ETAPAS</div>
+      
+        <p>
+          Durante los meses previos al viaje, Turismo Rai Trai continuará trabajando en la coordinación y validación de los distintos aspectos operacionales del programa.
+        </p>
+      
+        <p>
+          Aproximadamente un mes antes de la fecha de inicio del viaje se entregará el documento de confirmación, el cual incluirá información detallada relacionada con vuelos, horarios, puntos de encuentro, coordinadores, itinerario diario e indicaciones finales para el viaje.
+        </p>
+      
+        <p>
+          Cualquier información relevante que requiera ser comunicada con anterioridad será informada oportunamente a través de los canales oficiales de Turismo Rai Trai.
+        </p>
       </div>
   `;
 }
