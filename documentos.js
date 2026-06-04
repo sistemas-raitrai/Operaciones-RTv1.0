@@ -7,9 +7,6 @@ import {
   collection, getDocs, doc, getDoc, query, where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
-console.log("✅ DOCUMENTOS.JS");
-alert("Cargando documentos.js");
-
 // Fuerzo una clase de página para poder sobreescribir estilos globales
 document.body.classList.add('confirmaciones-page');
 
@@ -859,7 +856,7 @@ function injectPdfStyles(){
     font-size:9.5pt !important;
     line-height:1.2 !important;
   }
-  ...
+
   /* Espacios dobles entre I, II y III */
   /* I. ABONOS después del bloque de COORDINADOR(A) */
   .finanzas-doc .finanzas-coord + .sec{
