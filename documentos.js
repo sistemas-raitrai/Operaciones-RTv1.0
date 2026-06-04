@@ -1610,7 +1610,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   
   if (esInternacional) {
     documentos.push(
-      'Al momento del regreso a Chile, la cédula de identidad deberá mantener una vigencia mínima de 6 meses.'
+      'Para realizar viajes internacionales, la cédula de identidad deberá encontrarse vigente y mantener una vigencia mínima de 6 meses desde la fecha de regreso del viaje.'
     );
   
     documentos.push(
@@ -1683,9 +1683,16 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
     <div class="print-doc confirm-doc preconfirm-doc">
       <div class="confirm-header">
         <div class="confirm-title-block">
-        <div class="confirm-title">${titulo}</div>
+          <div class="confirm-title">${titulo}</div>
+      
+          <p class="note">
+            Esta información tiene por objetivo orientar la preparación del viaje y entregar una referencia preliminar de los principales aspectos asociados al programa.
+          </p>
+        </div>
+      
         <div class="confirm-logo">
           <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+        </div>
       </div>
 
       <div class="sec">
@@ -1697,10 +1704,6 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       
         <p><strong>Fecha inicio:</strong> ${fechaInicioTxt}</p>
         <p><strong>Fecha regreso:</strong> ${fechaFinTxt}</p>
-      
-        <p class="note">
-          Esta información tiene por objetivo orientar la preparación del viaje y entregar una referencia preliminar de los principales aspectos asociados al programa.
-        </p>
       </div>
       
       <div class="sec">
