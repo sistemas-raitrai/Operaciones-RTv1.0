@@ -1698,7 +1698,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   const recomendacionesHTML =
     recomendaciones.map(x => `<li>${x}</li>`).join('');
 
-  const titulo = `INFORMACIÓN PRELIMINAR DE SU VIAJE DE ESTUDIOS`;
+  const titulo = `INFORMACIÓN DE SU VIAJE DE ESTUDIOS`;
 
   return `
     <div class="print-doc confirm-doc preconfirm-doc">
@@ -1707,7 +1707,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           <div class="confirm-title">${titulo}</div>
       
           <p class="note">
-            Esta información tiene por objetivo orientar la preparación del viaje y entregar una referencia preliminar de los principales aspectos asociados al programa.
+            Este documento tiene por objetivo orientar la preparación del viaje y entregar una información preliminar de los principales aspectos asociados al viaje.
           </p>
         </div>
       
@@ -1720,13 +1720,14 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         <div class="sec-title">1. INFORMACIÓN GENERAL DEL VIAJE</div>
       
         <p><strong>Grupo:</strong> ${safe(alias)}</p>
-        <p><strong>Programa:</strong> ${safe(programa)} - <strong>Año viaje:</strong> ${safe(ano)}</p>   
-        <p><strong>Fecha inicio:</strong> ${fechaInicioTxt} | <strong>Fecha regreso:</strong> ${fechaFinTxt}</p>
+        <p><strong>Programa:</strong> ${safe(programa)}</p>   
+        <p><strong>Fecha inicio:</strong> ${fechaInicioTxt}</p>
+        <p><strong>Fecha regreso:</strong> ${fechaFinTxt}</p>
         <p></p>
       </div>
       
       <div class="sec">
-        <div class="sec-title">2. TRANSPORTE AÉREO PRELIMINAR</div>
+        <div class="sec-title">2. TRANSPORTE AÉREO</div>
         <table class="confirm-flight-table">
           <thead>
             <tr>
