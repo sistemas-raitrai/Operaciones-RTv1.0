@@ -7,6 +7,9 @@ import {
   collection, getDocs, doc, getDoc, query, where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
+console.log("✅ DOCUMENTOS.JS");
+alert("Cargando documentos.js");
+
 // Fuerzo una clase de página para poder sobreescribir estilos globales
 document.body.classList.add('confirmaciones-page');
 
