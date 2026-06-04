@@ -2165,12 +2165,12 @@ async function revisarPaxGruposContraPagos() {
         : (r.diferencia > 0 ? `+${r.diferencia}` : r.diferencia);
 
     return `
-      <tr>
+      <tr class="${r.diferencia === 0 ? '' : 'fila-error'}">
         <td>${r.numeroNegocio}</td>
-        <td>${r.nombreGrupo}</td>
+        <td class="col-texto">${r.nombreGrupo}</td>
         <td>${r.paxSistema}</td>
         <td>${r.paxPagos}</td>
-        <td style="font-weight:bold; color:${color};">${diffTxt}</td>
+        <td class="${r.diferencia === 0 ? 'diff-ok' : 'diff-error'}">${diffTxt}</td>
         <td>${r.adultosSistema}</td>
         <td>${r.adultosPagos}</td>
         <td>${r.estudiantesSistema}</td>
