@@ -1463,6 +1463,236 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   `;
 }
 
+function uniqueClean(arr){
+  return [...new Set(
+    (arr || [])
+      .map(x => String(x || '').trim().toUpperCase())
+      .filter(Boolean)
+  )];
+}
+
+function getResumenVuelosPreliminar(vuelosNorm){
+  const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
+
+  const aerolineas = uniqueClean([
+    ...idaLegsPlan.map(v => v.aerolinea),
+    ...vueltaLegsPlan.map(v => v.aerolinea)
+  ]);
+
+  const fechasIda = idaLegsPlan
+    .map(v => toISO(v.fechaIda || v.fecha))
+    .filter(Boolean)
+    .sort();
+
+  const fechasVuelta = vueltaLegsPlan
+    .map(v => toISO(v.fechaVuelta || v.fecha))
+    .filter(Boolean)
+    .sort();
+
+  return {
+    aerolineas,
+    fechaIda: fechasIda[0] || '',
+    fechaVuelta: fechasVuelta[fechasVuelta.length - 1] || ''
+  };
+}
+
+function getEquipajePreliminar(grupo, vuelosNorm){
+  const vuelosTxt = (vuelosNorm || []).map(v => {
+    const partes = [
+      v.proveedor,
+      v.tipoVuelo,
+      ...(Array.isArray(v.tramos) ? v.tramos.map(t => t.aerolinea) : [])
+    ];
+    return partes.join(' ');
+  }).join(' ').toUpperCase();
+
+  const isRegular = vuelosTxt.includes('REGULAR');
+  const isLatam   = vuelosTxt.includes('LATAM') || vuelosTxt.includes('LAN');
+  const isSky     = vuelosTxt.includes('SKY');
+
+  if (!isRegular && isLatam){
+    return [
+      'Cada persona podrá transportar una maleta de bodega de hasta 20 kg.',
+      'No existe la posibilidad de adquirir equipaje adicional directamente con la aerolínea.',
+      'Además, se permite llevar un bolso o mochila de mano, sujeto a las condiciones operacionales informadas por la aerolínea.'
+    ];
+  }
+
+  if (!isRegular && isSky){
+    return [
+      'Cada persona podrá transportar una maleta de bodega de hasta 23 kg.',
+      'No existe la posibilidad de adquirir equipaje adicional directamente con la aerolínea.',
+      'Además, se permite llevar un bolso o mochila de mano, sujeto a las condiciones operacionales informadas por la aerolínea.'
+    ];
+  }
+
+  const { equipajeText1, equipajeText2 } =
+    getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+
+  return [equipajeText1, equipajeText2];
+}
+
+function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
+  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const colegio = grupo.colegio || grupo.cliente || '';
+  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
+  const destino = grupo.destino || '';
+  const programa= grupo.programa || '';
+  const ano     = grupo.anoViaje || '';
+
+  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
+
+  const resumenVuelos = getResumenVuelosPreliminar(vuelosNorm);
+
+  const fechaInicioISO = toISO(grupo.fechaInicio || grupo.fechaViaje || resumenVuelos.fechaIda || '');
+  const fechaFinISO    = toISO(grupo.fechaFin || grupo.fechaRegreso || resumenVuelos.fechaVuelta || '');
+
+  const fechaInicioTxt = fechaInicioISO ? formatShortDate(fechaInicioISO) : '—';
+  const fechaFinTxt    = fechaFinISO ? formatShortDate(fechaFinISO) : '—';
+
+  const aerolineasTxt = resumenVuelos.aerolineas.length
+    ? resumenVuelos.aerolineas.join(' / ')
+    : '—';
+
+  const fechaIdaTxt = resumenVuelos.fechaIda
+    ? formatShortDate(resumenVuelos.fechaIda)
+    : '—';
+
+  const fechaVueltaTxt = resumenVuelos.fechaVuelta
+    ? formatShortDate(resumenVuelos.fechaVuelta)
+    : '—';
+
+  const hotelesHtml = (hoteles && hoteles.length)
+    ? `
+      <ul class="hoteles-list">
+        ${hoteles.map(h => {
+          const H = h.hotel || {};
+          const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
+          const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
+
+          return `
+            <li class="hotel-item">
+              <strong>${ciudad ? ciudad + ': ' : ''}${hotel}</strong>
+              ${h.checkIn ? `<div>Check-in estimado: ${dmyLocal(h.checkIn)}</div>` : ''}
+              ${h.checkOut ? `<div>Check-out estimado: ${dmyLocal(h.checkOut)}</div>` : ''}
+            </li>
+          `;
+        }).join('')}
+      </ul>
+    `
+    : `<div class="note">Hotel por informar o sujeto a confirmación operacional.</div>`;
+
+  function dmyLocal(s){
+    const iso = toISO(s);
+    if (!iso) return '—';
+    const [y,m,d] = iso.split('-');
+    return `${d}-${m}-${y}`;
+  }
+
+  const { docsText, recs } =
+    getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
+
+  const documentosHTML = renderDocsList(docsText);
+
+  const equipajeItems = getEquipajePreliminar(grupo, vuelosNorm)
+    .map(t => `<li>${t}</li>`)
+    .join('');
+
+  const recomendacionesHTML = Array.isArray(recs)
+    ? recs.map(r => `<li>${r}</li>`).join('')
+    : `<li>${recs}</li>`;
+
+  const titulo = `INFORMACIÓN PRELIMINAR DEL VIAJE`;
+
+  return `
+    <div class="print-doc confirm-doc preconfirm-doc">
+      <div class="confirm-header">
+        <div class="confirm-title-block">
+          <div class="confirm-title">${titulo}</div>
+          <div class="confirm-subtitle">${safe(lineaPrincipal, '')}</div>
+          <div class="confirm-meta">
+            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
+            ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
+            ${grupo.numeroNegocio ? `<span>CÓDIGO: ${grupo.numeroNegocio}</span>` : ''}
+          </div>
+        </div>
+        <div class="confirm-logo">
+          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">1. INFORMACIÓN GENERAL DEL VIAJE</div>
+        <p><strong>Grupo:</strong> ${safe(alias)}</p>
+        <p><strong>Fecha estimada de inicio:</strong> ${fechaInicioTxt}</p>
+        <p><strong>Fecha estimada de término:</strong> ${fechaFinTxt}</p>
+        <p class="note">
+          Esta información tiene carácter preliminar y busca orientar la preparación del viaje.
+          Los horarios, citaciones, tramos y detalles operacionales finales serán informados posteriormente
+          en el documento de confirmación.
+        </p>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">2. TRANSPORTE AÉREO PRELIMINAR</div>
+        <table class="confirm-flight-table">
+          <thead>
+            <tr>
+              <th>Aerolínea</th>
+              <th>Fecha ida</th>
+              <th>Fecha regreso</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>${aerolineasTxt}</td>
+              <td>${fechaIdaTxt}</td>
+              <td>${fechaVueltaTxt}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="note">
+          Los horarios, números de vuelo, terminales y puntos de encuentro serán informados en la confirmación final.
+        </p>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">3. HOTELERÍA PRELIMINAR</div>
+        ${hotelesHtml}
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">4. DOCUMENTACIÓN PARA EL VIAJE</div>
+        <ul>${documentosHTML}</ul>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">5. EQUIPAJE</div>
+        <ul>${equipajeItems}</ul>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">6. RECOMENDACIONES GENERALES</div>
+        <ul>${recomendacionesHTML}</ul>
+      </div>
+
+      <div class="closing">TURISMO RAITRAI</div>
+    </div>
+  `;
+}
+
+async function buildPreconfirmacionHTML(grupoId){
+  const d = await getDoc(doc(db,'grupos', grupoId));
+  if (!d.exists()) return '';
+
+  const g = { id:d.id, ...d.data() };
+
+  const vuelosDocs = await loadVuelosInfo(g);
+  const vuelosNorm = (vuelosDocs || []).map(normalizeVuelo);
+  const hoteles    = await loadHotelesInfo(g);
+
+  return buildPreconfirmacionDoc(g, vuelosNorm, hoteles);
+}
 
 // ──────────────────────────────────────────────────────────────
 // Helper: construir HTML de confirmación para un grupo
@@ -2545,6 +2775,7 @@ function renderTabla(rows){
 
       <td class="acciones">
         <div class="acciones-wrap">
+          <button class="btn-add btn-preconfirmacion">P</button>
           <button class="btn-add btn-one">C</button>
           <button class="btn-add btn-finanzas">R</button>
           <button class="btn-add btn-vouchers">V</button>
@@ -2558,6 +2789,16 @@ function renderTabla(rows){
   }
 
   document.getElementById('countHint').textContent = `${rows.length} grupo(s) encontrados.`;
+
+  tb.querySelectorAll('.btn-preconfirmacion').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      const tr = ev.currentTarget.closest('tr');
+      const id = tr?.dataset?.id;
+      if (!id) return;
+      await descargarPreconfirmacion(id);
+    });
+  });
+  
   tb.querySelectorAll('.btn-one').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
       const tr = ev.currentTarget.closest('tr');
@@ -2634,6 +2875,12 @@ async function descargarItinerario(grupoId){
 /* ──────────────────────────────────────────────────────────────────────
    Exportación / IMPRESIÓN de CONFIRMACIÓN (uno)
 ────────────────────────────────────────────────────────────────────── */
+async function descargarPreconfirmacion(grupoId){
+  const html = await buildPreconfirmacionHTML(grupoId);
+  if (!html) return;
+  imprimirHtml(html);
+}
+
 async function descargarUno(grupoId){
   const html = await buildConfirmacionHTML(grupoId);
   if (!html) return;
