@@ -786,7 +786,7 @@ function injectPdfStyles(){
     display:block;
   }
 
-  / * ===== AJUSTE EQUILIBRADO SOLO PARA PRECONFIRMACIÓN (P) ===== */
+  /* ===== AJUSTE EQUILIBRADO SOLO PARA PRECONFIRMACIÓN (P) ===== */
   .preconfirm-doc{
     font-size:9.6pt !important;
     line-height:1.22 !important;
@@ -1619,21 +1619,42 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       <ul class="hoteles-list">
         ${hoteles.map(h => {
           const H = h.hotel || {};
+  
+          const hotel = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
           const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
-          const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
-
+          const direccion = (H.direccion || h.direccion || '').toString().trim();
+  
+          const correo = (
+            H.correo ||
+            H.email ||
+            H.contactoCorreo ||
+            H.contactoEmail ||
+            ''
+          ).toString().trim();
+  
+          const telefono = (
+            H.contactoTelefono ||
+            H.telefono ||
+            H.phone ||
+            H.contactoFono ||
+            H.celular ||
+            ''
+          ).toString().trim();
+  
+          const contacto = [correo, telefono].filter(Boolean).join(' / ');
+  
           return `
             <li class="hotel-item">
-              <strong>${ciudad ? ciudad + ': ' : ''}${hotel}</strong>
-              ${h.checkIn ? `<div>Check-in estimado: ${dmyLocal(h.checkIn)}</div>` : ''}
-              ${h.checkOut ? `<div>Check-out estimado: ${dmyLocal(h.checkOut)}</div>` : ''}
+              <strong>${hotel}</strong>
+              ${direccion || ciudad ? `<div>${[direccion, ciudad].filter(Boolean).join(' - ')}</div>` : ''}
+              ${contacto ? `<div>Contacto: ${contacto}</div>` : ''}
             </li>
           `;
         }).join('')}
       </ul>
     `
-    : `<div class="note">Hotel por informar o sujeto a confirmación operacional.</div>`;
-
+    : `<div class="note">Hotel por informar.</div>`;
+  
   function dmyLocal(s){
     const iso = toISO(s);
     if (!iso) return '—';
@@ -1780,6 +1801,12 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           Es normal que durante los meses previos al viaje existan ajustes operacionales relacionados con vuelos, hotelería o actividades. La información definitiva será comunicada oportunamente a través de los canales oficiales de Turismo Rai Trai.
         </p>
       </div>
+
+      <div class="closing">
+        ESTAREMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE.<br>
+        ATTE. EQUIPO DE TURISMO RAITRAI
+      </div>
+    </div>
   `;
 }
 
