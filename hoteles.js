@@ -389,6 +389,7 @@ function openHotelModal(h){
   document.getElementById('m-contactoNombre').value   = h?.contactoNombre   ?? '';
   document.getElementById('m-contactoCorreo').value   = h?.contactoCorreo   ?? '';
   document.getElementById('m-contactoTelefono').value = h?.contactoTelefono ?? '';
+  document.getElementById('m-contactoWeb').value = h?.contactoWeb ?? '';
   document.getElementById('m-pension').value = h?.pension ?? 'media';
   document.getElementById('modal-backdrop').style.display='block';
   document.getElementById('modal-hotel').style.display  ='block';
@@ -408,6 +409,7 @@ async function onSubmitHotel(e){
     contactoNombre:  document.getElementById('m-contactoNombre').value.trim(),
     contactoCorreo:  document.getElementById('m-contactoCorreo').value.trim(),
     contactoTelefono:document.getElementById('m-contactoTelefono').value.trim(),
+    contactoWeb: document.getElementById('m-contactoWeb').value.trim(),
     // ✅ NUEVO: tipo de pensión
     pension:  document.getElementById('m-pension').value, // 'media' | 'completa'
     // Fechas normalizadas
