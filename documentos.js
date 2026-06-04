@@ -786,104 +786,76 @@ function injectPdfStyles(){
     display:block;
   }
 
-  /* ===== AJUSTE COMPACTO SOLO PARA PRECONFIRMACIÓN (P) ===== */
+  / * ===== AJUSTE EQUILIBRADO SOLO PARA PRECONFIRMACIÓN (P) ===== */
   .preconfirm-doc{
-    font-size:9pt !important;
-    line-height:1.12 !important;
-    padding-top:2mm !important;
+    font-size:9.6pt !important;
+    line-height:1.22 !important;
+    padding-top:3mm !important;
   }
   
   .preconfirm-doc .confirm-header{
-    margin-bottom:3mm !important;
+    margin-bottom:4mm !important;
   }
   
   .preconfirm-doc .confirm-title{
-    font-size:14pt !important;
-    margin-bottom:1mm !important;
+    font-size:14.5pt !important;
+    margin-bottom:1.5mm !important;
   }
   
   .preconfirm-doc .note{
-    font-size:8pt !important;
-    line-height:1.12 !important;
-    margin:1mm 0 !important;
+    font-size:8.5pt !important;
+    line-height:1.2 !important;
+    margin:1.4mm 0 !important;
   }
   
   .preconfirm-doc .sec{
-    margin-top:2.2mm !important;
-    font-size:8.8pt !important;
-    line-height:1.12 !important;
+    margin-top:3mm !important;
+    font-size:9.2pt !important;
+    line-height:1.22 !important;
   }
   
   .preconfirm-doc .sec-title{
-    font-size:9.2pt !important;
-    margin-bottom:1mm !important;
+    font-size:9.7pt !important;
+    margin-bottom:1.2mm !important;
   }
   
   .preconfirm-doc p{
-    margin:1mm 0 !important;
+    margin:1.4mm 0 !important;
   }
   
   .preconfirm-doc ul{
-    margin:1mm 0 1mm 5mm !important;
-    padding-left:3mm !important;
+    margin:1.2mm 0 1.2mm 6mm !important;
+    padding-left:4mm !important;
   }
   
   .preconfirm-doc li{
-    margin:0.4mm 0 !important;
+    margin:0.7mm 0 !important;
   }
   
   .preconfirm-doc .confirm-flight-table{
-    font-size:8pt !important;
-    margin-top:1mm !important;
-    margin-bottom:1mm !important;
+    font-size:8.5pt !important;
+    margin-top:1.2mm !important;
+    margin-bottom:1.2mm !important;
   }
   
   .preconfirm-doc .confirm-flight-table th,
   .preconfirm-doc .confirm-flight-table td{
-    padding:0.8mm 1.2mm !important;
+    padding:1mm 1.4mm !important;
   }
   
   .preconfirm-doc .hoteles-list{
-    margin-top:1mm !important;
+    margin-top:1.2mm !important;
   }
   
   .preconfirm-doc .hotel-item{
-    margin-bottom:0.8mm !important;
+    margin-bottom:1mm !important;
   }
   
   .preconfirm-doc .closing{
-    margin-top:3mm !important;
-    font-size:9pt !important;
-    line-height:1.15 !important;
+    margin-top:3.5mm !important;
+    font-size:9.5pt !important;
+    line-height:1.2 !important;
   }
-
-  /* === NUEVO: tabla de vuelos en la confirmación === */
-  .confirm-flight-table{
-    width:100%;
-    border-collapse:collapse;
-    border:0.6pt solid #000;
-    font-size:9pt;
-    margin-top:2mm;
-    margin-bottom:3mm;
-  }
-  .confirm-flight-table th,
-  .confirm-flight-table td{
-    border:0.6pt solid #000;
-    padding:1.5mm 2mm;
-    text-align:left;
-    vertical-align:middle;
-  }
-  .confirm-flight-table thead th{
-    background:#f2f2f2;
-    font-weight:700;
-    text-transform:uppercase;
-    font-size:8.5pt;
-  }
-  .confirm-flight-table td.nowrap,
-  .confirm-flight-table th.nowrap{
-    white-space:nowrap;
-  }
-
   ...
   /* Espacios dobles entre I, II y III */
   /* I. ABONOS después del bloque de COORDINADOR(A) */
