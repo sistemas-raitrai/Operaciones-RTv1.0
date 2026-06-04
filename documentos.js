@@ -1690,7 +1690,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   }
   
   documentos.push(
-    'Recordar subir oportunamente la cédula de identidad solicitado en el sistema de pagos.'
+    'Recordar subir oportunamente la cédula de identidad solicitado en el sistema donde realiza los pagos.'
   );
   
   const documentosHTML = documentos.map(x => `<li>${x}</li>`).join('');
