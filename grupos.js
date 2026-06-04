@@ -11,6 +11,7 @@ import {
 const auth = getAuth(app);
 // Clave requerida para modificar PAX / ADULTOS / ESTUDIANTES
 const PAX_PASSWORD = 'Nacho123!';
+const API_PAGOS_URL = '/api/pagos';
 
 
 // Propiedades en el mismo orden que aparecen en la tabla
@@ -84,6 +85,7 @@ let dtHist = null;
 let GRUPOS_RAW = [];
 
 let tablaGruposDT = null;
+let REVISION_PAX_ACTIVA = false;
 
 // Cambios editados en pantalla pero todavía NO guardados en Firebase
 let cambiosPendientes = [];
@@ -1152,6 +1154,14 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     }
   });
 
+  $('#btn-revisar-pax-pagos').off('click').on('click', async () => {
+    await revisarPaxGruposContraPagos();
+  });
+  
+  $('#btnCerrarRevisionPaxPagos').off('click').on('click', () => {
+    $('#modalRevisionPaxPagos').hide();
+  });
+
   const DATE_FIELDS = new Set([
     'fechaInicio',
     'fechaFin',
@@ -2077,3 +2087,215 @@ window.verGrupoDebug = async function (docId) {
 
   return g;
 };
+
+async function revisarPaxGruposContraPagos() {
+  if (REVISION_PAX_ACTIVA) return;
+  REVISION_PAX_ACTIVA = true;
+
+  const $resumen = $('#revisionPaxResumen');
+  const $body = $('#revisionPaxBody');
+
+  $body.empty();
+  $resumen.text('Consultando sistema de pagos...');
+  $('#modalRevisionPaxPagos').css('display', 'flex');
+
+  const tabla = $('#tablaGrupos').DataTable();
+  const filas = tabla.rows({ search: 'applied' }).data().toArray();
+
+  const resultados = [];
+
+  for (const row of filas) {
+    const numeroNegocio = String(row[0] || '').trim();
+    const nombreGrupo = String(row[2] || '').trim();
+
+    const paxSistema = toNum(row[7]);
+    const adultosSistema = toNum(row[8]);
+    const estudiantesSistema = toNum(row[9]);
+
+    try {
+      const numerosPago = obtenerNumerosNegocioPagoGrupos(numeroNegocio);
+      const pagos = await consultarResumenPagosFusionadoGrupos(numerosPago);
+
+      const diferencia = pagos.totalViajan - paxSistema;
+      const diffAdultos = pagos.totalAdultos - adultosSistema;
+      const diffEstudiantes = pagos.totalEstudiantes - estudiantesSistema;
+
+      if (diferencia !== 0 || diffAdultos !== 0 || diffEstudiantes !== 0) {
+        resultados.push({
+          numeroNegocio,
+          nombreGrupo,
+          paxSistema,
+          paxPagos: pagos.totalViajan,
+          diferencia,
+          adultosSistema,
+          adultosPagos: pagos.totalAdultos,
+          estudiantesSistema,
+          estudiantesPagos: pagos.totalEstudiantes
+        });
+      }
+
+    } catch (err) {
+      console.error('Error revisando pagos grupo:', numeroNegocio, err);
+
+      resultados.push({
+        numeroNegocio,
+        nombreGrupo,
+        paxSistema,
+        paxPagos: 'ERROR',
+        diferencia: 'ERROR',
+        adultosSistema,
+        adultosPagos: 'ERROR',
+        estudiantesSistema,
+        estudiantesPagos: 'ERROR'
+      });
+    }
+  }
+
+  if (!resultados.length) {
+    $resumen.text(`✅ Todos los grupos visibles coinciden con pagos. Revisados: ${filas.length}.`);
+  } else {
+    $resumen.text(`⚠️ Hay ${resultados.length} grupo(s) con diferencia. Revisados: ${filas.length}.`);
+  }
+
+  $body.html(resultados.map(r => {
+    const color = r.diferencia === 0 ? '#09832e' : '#ca0a1f';
+    const diffTxt =
+      r.diferencia === 'ERROR'
+        ? 'ERROR'
+        : (r.diferencia > 0 ? `+${r.diferencia}` : r.diferencia);
+
+    return `
+      <tr>
+        <td>${r.numeroNegocio}</td>
+        <td>${r.nombreGrupo}</td>
+        <td>${r.paxSistema}</td>
+        <td>${r.paxPagos}</td>
+        <td style="font-weight:bold; color:${color};">${diffTxt}</td>
+        <td>${r.adultosSistema}</td>
+        <td>${r.adultosPagos}</td>
+        <td>${r.estudiantesSistema}</td>
+        <td>${r.estudiantesPagos}</td>
+      </tr>
+    `;
+  }).join(''));
+
+  REVISION_PAX_ACTIVA = false;
+}
+
+function obtenerNumerosNegocioPagoGrupos(numeroNegocio) {
+  const raw = String(numeroNegocio || '').trim();
+  if (!raw) return [];
+
+  // Fusionados: 1581-1582
+  if (/^\d+\s*-\s*\d+$/.test(raw)) {
+    return raw.split('-').map(x => x.trim()).filter(Boolean);
+  }
+
+  return [raw];
+}
+
+async function consultarResumenPagosFusionadoGrupos(numerosPago) {
+  const acumulado = crearResumenPagosVacioGrupos();
+
+  for (const numero of numerosPago) {
+    const url = `${API_PAGOS_URL}?modo=detalle&numeroNegocio=${encodeURIComponent(numero)}`;
+    const res = await fetch(url);
+
+    if (!res.ok) throw new Error(`HTTP ${res.status} consultando ${numero}`);
+
+    const data = await res.json();
+
+    const pasajeros =
+      data?.nominas?.data?.pasajeros ||
+      data?.saldos?.data?.detalle_pasajeros ||
+      [];
+
+    const resumen = calcularResumenPagosGrupos(pasajeros);
+    sumarResumenPagosGrupos(acumulado, resumen);
+  }
+
+  return acumulado;
+}
+
+function crearResumenPagosVacioGrupos() {
+  return {
+    totalViajan: 0,
+    totalAdultos: 0,
+    totalEstudiantes: 0
+  };
+}
+
+function sumarResumenPagosGrupos(base, add) {
+  base.totalViajan += Number(add.totalViajan || 0);
+  base.totalAdultos += Number(add.totalAdultos || 0);
+  base.totalEstudiantes += Number(add.totalEstudiantes || 0);
+}
+
+function calcularResumenPagosGrupos(items) {
+  const resumen = crearResumenPagosVacioGrupos();
+  const pasajeros = Array.isArray(items) ? items : [];
+
+  pasajeros.forEach(item => {
+    const p = item?.pasajero || item || {};
+
+    if (!pasajeroViajaGrupos(p)) return;
+
+    resumen.totalViajan++;
+
+    if (tipoPasajeroPagosGrupos(p) === 'estudiante') {
+      resumen.totalEstudiantes++;
+    } else {
+      resumen.totalAdultos++;
+    }
+  });
+
+  return resumen;
+}
+
+function pasajeroViajaGrupos(p) {
+  const v =
+    p.viaja ??
+    p.estado_viaje ??
+    p.estado ??
+    p.activo ??
+    '';
+
+  if (typeof v === 'number') return Number(v) === 1;
+
+  const txt = normalizarTextoPagosGrupos(v);
+  if (!txt) return true;
+
+  if (['1', 'si', 'sí', 'viaja', 'activo', 'activa'].includes(txt)) return true;
+  if (['0', 'no', 'no viaja', 'anulado', 'anulada', 'baja'].includes(txt)) return false;
+
+  return true;
+}
+
+function tipoPasajeroPagosGrupos(p) {
+  const categoria = normalizarTextoPagosGrupos(
+    p.ocupacion_categoria ||
+    p.categoria ||
+    p.tipo_pasajero ||
+    p.tipo ||
+    p.ocupacion ||
+    ''
+  );
+
+  if (
+    categoria.includes('estudiante') ||
+    categoria.includes('alumno') ||
+    categoria.includes('alumna')
+  ) {
+    return 'estudiante';
+  }
+
+  return 'adulto';
+}
+
+function normalizarTextoPagosGrupos(txt) {
+  return String(txt || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+}
