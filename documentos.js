@@ -1794,11 +1794,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       
       <div class="sec">
         <div class="sec-title">7. PRÓXIMAS ETAPAS</div>
-      
-        <p>
-          Durante los meses previos al viaje, Turismo Rai Trai continuará trabajando en la coordinación y validación de los distintos aspectos operacionales del programa.
-        </p>
-      
+        
         <p>
           Aproximadamente un mes antes del viaje se entregará el documento de confirmación, con horarios, puntos de encuentro, coordinadores, itinerario diario e indicaciones finales.
         </p>
