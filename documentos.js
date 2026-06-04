@@ -1800,7 +1800,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         </p>
       
         <p>
-          Aproximadamente un mes antes de la fecha de inicio del viaje se entregará el documento de confirmación, el cual incluirá información detallada relacionada con vuelos, horarios, puntos de encuentro, coordinadores, itinerario diario e indicaciones finales para el viaje.
+          Aproximadamente un mes antes del viaje se entregará el documento de confirmación, con horarios, puntos de encuentro, coordinadores, itinerario diario e indicaciones finales.
         </p>
       
         <p>
