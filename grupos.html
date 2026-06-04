@@ -111,6 +111,7 @@
       <button id="btn-view-history">📜 Ver Historial</button>
       <button id="btn-export-excel">📥 Exportar</button>
       <button id="btn-totales">📊 Totales</button>
+      <button id="btn-revisar-pax-pagos">🔎 Revisar PAX</button>
       <!-- El botón “Ver columnas” se inyectará aquí -->
     </div>
 
@@ -208,6 +209,37 @@
       <div id="tot-popover" class="tot-popover" style="display:none;"></div>
     </div>
 
+    <!-- Modal revisión PAX vs pagos -->
+    <div id="modalRevisionPaxPagos" class="modal-backdrop" style="display:none;">
+      <div class="modal" style="max-width:1000px;">
+        <h2>Revisión PAX contra sistema de pagos</h2>
+    
+        <div id="revisionPaxResumen" style="font-weight:bold; margin-bottom:12px;"></div>
+    
+        <div class="modal-body" style="max-height:420px; overflow:auto;">
+          <table style="width:100%; font-size:13px;">
+            <thead>
+              <tr>
+                <th>N° Negocio</th>
+                <th>Grupo</th>
+                <th>PAX sistema</th>
+                <th>PAX pagos</th>
+                <th>Diferencia</th>
+                <th>Adultos sistema</th>
+                <th>Adultos pagos</th>
+                <th>Estudiantes sistema</th>
+                <th>Estudiantes pagos</th>
+              </tr>
+            </thead>
+            <tbody id="revisionPaxBody"></tbody>
+          </table>
+        </div>
+    
+        <div class="modal-header" style="justify-content:flex-end; gap:10px;">
+          <button id="btnCerrarRevisionPaxPagos">Cerrar</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Tabla de Grupos -->
     <div class="row">
