@@ -788,7 +788,7 @@ function injectPdfStyles(){
   
   .confirm-doc .confirm-logo{
     position:absolute;
-    top:-6mm;
+    top:-12mm;
     right:-12mm;
     width:42mm;
     text-align:right;
