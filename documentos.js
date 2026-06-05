@@ -1799,13 +1799,9 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           <li>
             Aproximadamente un mes antes del viaje se entregará el <strong>documento de confirmación</strong>, con horarios, puntos de encuentro, actividades diarias e indicaciones finales.
           </li>
-      
+
           <li>
-            En las próximas semanas les compartiremos un enlace para completar la <strong>Ficha Médica / Nómina Final de Viaje</strong>. En esta etapa será fundamental registrar y mantener actualizada la información médica relevante, alergias, medicamentos permanentes y los datos de contacto de emergencia de la persona que viaja.
-          </li>
-      
-          <li>
-            Asimismo, les enviaremos una <strong>guía con recomendaciones</strong> de equipaje, vestimenta y elementos personales sugeridos, con el fin de apoyar la preparación del viaje y facilitar una experiencia cómoda y segura para todos los participantes.
+            En las próximas semanas les compartiremos un enlace para completar la <strong>Ficha Médica / Nómina Final de Viaje</strong>, donde se solicitará información relevante para el adecuado desarrollo de la gira. Asimismo, les enviaremos una <strong>guía con recomendaciones</strong> para apoyar la preparación del viaje.
           </li>
       
           <li>
