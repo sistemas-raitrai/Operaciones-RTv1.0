@@ -1800,7 +1800,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           </tbody>
         </table>
         <p class="note">
-          Los horarios, números de vuelo, terminales y puntos de encuentro serán informados en la confirmación final.
+          Los horarios, números de vuelo, terminal y punto de encuentro con la empresa serán informados en la confirmación final.
         </p>
       </div>
       
@@ -1836,18 +1836,18 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
             esInternacional
               ? `
                 <li>
-                  También un <strong>instructivo para la obtención de las autorizaciones notariales</strong> de salida del país. Este trámite deberá realizarse en los <strong>60 días previos al viaje</strong>, ya que la documentación posee una vigencia limitada.
+                  También un instructivo para la obtención de <strong>las autorizaciones notariales</strong> de salida del país. Este trámite deberá realizarse en los <strong>45 días previos al viaje</strong>, ya que la documentación posee una vigencia limitada.
                 </li>
               `
               : ''
           }
         
           <li>
-            Previo al viaje también se desarrollarán otras actividades asociadas a los programas, tales como la <strong>entrega de polerones</strong>, la ejecución de la <strong>Rifa Raitrai</strong> y otras coordinaciones informadas oportunamente.
+            Previo al viaje también se desarrollarán otras actividades asociadas a los programas, tales como la ejecución de la <strong>Rifa Raitrai</strong> u otras coordinaciones informadas oportunamente.
           </li>
         
           <li>
-            Aproximadamente un mes antes del viaje se entregará el <strong>Documento de Confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
+            Aproximadamente un mes antes del viaje se entregará el <strong>Documento de Confirmación</strong>, con horarios, información de vuelos, actividades diarias e indicaciones finales.
           </li>
         
           <li>
@@ -1859,7 +1859,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
 
       <div class="closing">
         ESTAREMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE<br>
-        Y ACOMPAÑÁNDOLES EN CADA ETAPA DEL VIAJE DE ESTUDIOS.<br>
+        Y ACOMPAÑÁNDOLES EN CADA ETAPA DE SU VIAJE DE ESTUDIOS.<br>
         ATTE. EQUIPO DE TURISMO RAITRAI
       </div>
     </div>
