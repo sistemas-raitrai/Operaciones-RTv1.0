@@ -1662,16 +1662,18 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   );
   
   const documentos = [];
-
+  
   documentos.push(
     'Verificar que la cédula de identidad se encuentre vigente y en buen estado.'
   );
   
+  // SOLO requisitos internacionales
   if (esInternacional) {
+  
     documentos.push(
       'Para realizar viajes internacionales, la cédula de identidad deberá tener fecha de vencimiento mínimo de 6 meses desde la fecha de regreso del viaje.'
     );
-
+  
     documentos.push(
       'Los menores de edad deben contar con las autorizaciones notariales de ambos padres para salir del país.'
     );
@@ -1681,35 +1683,40 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
     );
   }
   
+  // HUILO HUILO (aplica independiente de si es nacional o internacional)
+  if (/huilo/i.test(`${grupo.programa || ''} ${grupo.destino || ''}`)) {
+  
+    documentos.push(
+      'Para la Reserva Biológica Huilo Huilo será necesario completar documentación propia del recinto, la cual será enviada previamente al viaje.'
+    );
+  
+    documentos.push(
+      'Además, cada pasajero deberá considerar saco de dormir, toalla y artículos de aseo personal, ya que estos elementos no son proporcionados por el recinto.'
+    );
+  }
+  
+  // Aplica a todos los viajes
   documentos.push(
-    'Recordar subir oportunamente la cédula de identidad solicitado en el sistema donde realiza los pagos.'
+    'Recordar subir oportunamente la cédula de identidad solicitada en el sistema donde realiza los pagos.'
   );
   
-  const documentosHTML = documentos.map(x => `<li>${x}</li>`).join('');
-
+  const documentosHTML =
+    documentos.map(x => `<li>${x}</li>`).join('');
+  
   const equipajeItems = getEquipajePreliminar(grupo, vuelosNorm)
     .map(t => `<li>${t}</li>`)
     .join('');
-
+  
+  // APLICA A TODOS LOS VIAJES
   const recomendaciones = [];
   
   recomendaciones.push(
-    'Tener al día las obligaciones administrativas y financieras asociadas al viaje.'
+    'Mantener al día los compromisos financieros asociados al viaje.'
   );
   
   recomendaciones.push(
-    'Mantener actualizada la información médica, alergias, medicamentos permanentes y datos de contacto de emergencia con la empresa.'
+    'Responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo.'
   );
-  
-  recomendaciones.push(
-    'Planificar con anticipación la vestimenta y elementos personales necesarios para el viaje, considerando el clima y las actividades contempladas en el programa.'
-  );
-  
-  if (/huilo/i.test(`${grupo.programa || ''} ${grupo.destino || ''}`)){
-    recomendaciones.push(
-      'Recordar incluir saco de dormir, toallas y artículos de aseo personal, ya que estos elementos no son proporcionados por el recinto.'
-    );
-  }
   
   const recomendacionesHTML =
     recomendaciones.map(x => `<li>${x}</li>`).join('');
@@ -1769,20 +1776,20 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         <div class="sec-title">3. HOTELERÍA</div>
         ${hotelesHtml}
       </div>
+
+      <div class="sec">
+        <div class="sec-title">4. CONSIDERACIONES IMPORTANTES</div>
+        <ul>${recomendacionesHTML}</ul>
+      </div>
       
       <div class="sec">
-        <div class="sec-title">4. DOCUMENTACIÓN PARA EL VIAJE</div>
+        <div class="sec-title">5. DOCUMENTACIÓN PARA EL VIAJE</div>
         <ul>${documentosHTML}</ul>
       </div>
       
       <div class="sec">
-        <div class="sec-title">5. EQUIPAJE</div>
+        <div class="sec-title">6. EQUIPAJE</div>
         <ul>${equipajeItems}</ul>
-      </div>
-      
-      <div class="sec">
-        <div class="sec-title">6. RECOMENDACIONES GENERALES</div>
-        <ul>${recomendacionesHTML}</ul>
       </div>
       
       <div class="sec">
@@ -1791,9 +1798,17 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         <p>
           Aproximadamente un mes antes del viaje se entregará el documento de confirmación, con horarios, puntos de encuentro, actividades diarias e indicaciones finales.
         </p>
-      
+        
         <p>
-          Es normal que durante los meses previos al viaje existan ajustes operacionales relacionados con vuelos, hotelería o actividades. La información definitiva será comunicada oportunamente a través de los canales oficiales de Turismo Rai Trai.
+          En las próximas semanas les compartiremos un enlace para completar la <strong>Ficha Médica</strong> y la <strong>Nómina Final de Viaje</strong>. En esta etapa será fundamental registrar y mantener actualizada la información médica relevante, alergias, medicamentos permanentes y los datos de contacto de emergencia de la persona que viaja.
+        </p>
+        
+        <p>
+          Asimismo, les enviaremos una guía con recomendaciones de equipaje, vestimenta y elementos personales sugeridos, con el fin de apoyar la preparación del viaje y facilitar una experiencia cómoda y segura para todos los participantes.
+        </p>
+        
+        <p>
+           Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, continuaremos comunicando oportunamente todos los antecedentes relevantes a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
         </p>
       </div>
 
