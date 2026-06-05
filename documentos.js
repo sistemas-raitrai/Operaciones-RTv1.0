@@ -1847,18 +1847,18 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           </li>
         
           <li>
-            Aproximadamente un mes antes del viaje se entregará <strong>la Confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
+            Aproximadamente un mes antes del viaje se entregará el documento de <strong>Confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
           </li>
         
           <li>
-            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, <strong>continuaremos comunicando todos los antecedentes relevantes</strong> a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
+            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, <strong>continuaremos comunicando todos los antecedentes relevantes</strong> a través de nuestros canales oficiales.
           </li>
         
         </ul>
       </div>
 
       <div class="closing">
-        ESTAREMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE.<br>
+        ESTAREMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE Y ACOMPAÑÁNDOLES EN CADA ETAPA DEL VIAJE DE ESTUDIOS.<br>
         ATTE. EQUIPO DE TURISMO RAITRAI
       </div>
     </div>
