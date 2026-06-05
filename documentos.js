@@ -1642,7 +1642,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
             <li class="hotel-item">
               <strong>${hotel}</strong>
               ${direccion || ciudad ? `<div>${[direccion, ciudad].filter(Boolean).join(' - ')}</div>` : ''}
-              ${web ? `<div>Página web: ${web}</div>` : ''}
+              ${web ? `<div>${web}</div>` : ''}
             </li>
           `;
         }).join('')}
