@@ -1829,21 +1829,21 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         <ul>
         
           <li>
-            Como parte de la preparación del viaje, les compartiremos un enlace para completar la <strong>Ficha Médica</strong>, y una <strong>guía de viaje</strong> con información y recomendaciones útiles para los participantes.
+            Próximamente les compartiremos un enlace para completar la <strong>Ficha Médica</strong>, y les entregaremos una <strong>Guía de Viaje</strong> con información y recomendaciones útiles para los participantes.
           </li>
         
           ${
             esInternacional
               ? `
                 <li>
-                  También enviaremos un <strong>instructivo para la obtención de las autorizaciones notariales de salida del país</strong>. Este trámite deberá realizarse dentro de los <strong>90 días previos al viaje</strong>, ya que la documentación posee una vigencia limitada para efectos migratorios.
+                  También un <strong>instructivo para la obtención de laos permisos notariales de salida del país</strong>. Este trámite deberá realizarse en los <strong>90 días previos al viaje</strong>, ya que la documentación posee una vigencia limitada.
                 </li>
               `
               : ''
           }
         
           <li>
-            Previo al viaje también podrán desarrollarse otras actividades asociadas al programa, tales como la <strong>entrega de polerones</strong>, la ejecución de <strong>la Rifa Raitrai</strong> u otras coordinaciones informadas oportunamente por Turismo Rai Trai y/o los representantes del curso.
+            Previo al viaje también se desarrollarán otras actividades asociadas a los programas, tales como la <strong>entrega de polerones</strong>, la ejecución de <strong>la Rifa Raitrai</strong> y otras coordinaciones informadas oportunamente por Turismo Rai Trai y/o los representantes del curso.
           </li>
         
           <li>
@@ -1851,7 +1851,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           </li>
         
           <li>
-            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, continuaremos comunicando todos los antecedentes relevantes a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
+            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, <strong>continuaremos comunicando todos los antecedentes relevantes</strong> a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
           </li>
         
         </ul>
