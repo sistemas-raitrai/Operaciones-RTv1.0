@@ -1825,7 +1825,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       </div>
       
       <div class="sec">
-        <div class="sec-title">7. PRÓXIMAS ETAPAS</div>
+        <div class="sec-title">7. SIGUIENTES ETAPAS</div>
         <ul>
         
           <li>
