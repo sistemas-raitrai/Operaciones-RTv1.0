@@ -1713,9 +1713,9 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   }
   
   // Aplica a todos los viajes
-  documentos.push(
-    'Recordar subir oportunamente la cédula de identidad solicitada en el sistema donde realiza los pagos.'
-  );
+  // documentos.push(
+    //'Recordar subir oportunamente la cédula de identidad solicitada en el sistema donde realiza los pagos.'
+  //);
   
   const documentosHTML =
     documentos.map(x => `<li>${x}</li>`).join('');
@@ -1732,7 +1732,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   );
   
   recomendaciones.push(
-    'Responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo.'
+    'Responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo; como subir el carnet de identidad al sistema donde realiza los pagos.'
   );
   
   const recomendacionesHTML =
