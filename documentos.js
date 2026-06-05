@@ -1728,11 +1728,11 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   const recomendaciones = [];
   
   recomendaciones.push(
-    'Mantener al día los compromisos financieros asociados al viaje.'
+    'Deben estar al día los compromisos financieros asociados al viaje para estár en la nómina del viaje.'
   );
   
   recomendaciones.push(
-    'Responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo; como subir el carnet de identidad al sistema donde realiza los pagos.'
+    'Responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo. Como por ejemplo subir el carnet de identidad al sistema donde realiza los pagos.'
   );
   
   const recomendacionesHTML =
@@ -1836,18 +1836,18 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
             esInternacional
               ? `
                 <li>
-                  También un <strong>instructivo para la obtención de laos permisos notariales de salida del país</strong>. Este trámite deberá realizarse en los <strong>90 días previos al viaje</strong>, ya que la documentación posee una vigencia limitada.
+                  También un <strong>instructivo para la obtención de las autorizaciones notariales</strong> de salida del país. Este trámite deberá realizarse en los <strong>60 días previos al viaje</strong>, ya que la documentación posee una vigencia limitada.
                 </li>
               `
               : ''
           }
         
           <li>
-            Previo al viaje también se desarrollarán otras actividades asociadas a los programas, tales como la <strong>entrega de polerones</strong>, la ejecución de <strong>la Rifa Raitrai</strong> y otras coordinaciones informadas oportunamente.
+            Previo al viaje también se desarrollarán otras actividades asociadas a los programas, tales como la <strong>entrega de polerones</strong>, la ejecución de la <strong>Rifa Raitrai</strong> y otras coordinaciones informadas oportunamente.
           </li>
         
           <li>
-            Aproximadamente un mes antes del viaje se entregará el documento de <strong>Confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
+            Aproximadamente un mes antes del viaje se entregará el <strong>Documento de Confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
           </li>
         
           <li>
