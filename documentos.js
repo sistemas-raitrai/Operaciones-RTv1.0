@@ -779,16 +779,28 @@ function injectPdfStyles(){
     display:inline-block;
     margin-right:4mm;
   }
+  .confirm-doc .confirm-header{
+    position:relative;
+    display:block;
+    margin-bottom:6mm;
+    padding-right:48mm;
+  }
+  
   .confirm-doc .confirm-logo{
-    flex:0 0 35mm;       /* reserva espacio fijo */
+    position:absolute;
+    top:0;
+    right:0;
+    width:46mm;
     text-align:right;
   }
+  
   .confirm-doc .confirm-logo img{
-    max-height:22mm;      /* agranda el logo */
+    max-height:38mm;
+    max-width:46mm;
     width:auto;
     display:block;
     object-fit:contain;
-    filter:none !important; /* asegura color normal */
+    filter:none !important;
   }
 
   /* ===== AJUSTE EQUILIBRADO SOLO PARA PRECONFIRMACIÓN (P) ===== */
