@@ -1732,7 +1732,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   );
   
   recomendaciones.push(
-    'Responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo. Como por ejemplo subir el carnet de identidad al sistema donde realiza los pagos.'
+    'Responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo. Como por ejemplo subir el cédula de identidad al sistema donde realiza los pagos.'
   );
   
   const recomendacionesHTML =
