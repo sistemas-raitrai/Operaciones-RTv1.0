@@ -1628,6 +1628,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           const direccion = (H.direccion || h.direccion || '').toString().trim();
   
           const web = (
+            H.contactoWeb ||
             H.web ||
             H.paginaWeb ||
             H.sitioWeb ||
