@@ -1858,7 +1858,8 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       </div>
 
       <div class="closing">
-        ESTAREMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE Y ACOMPAÑÁNDOLES EN CADA ETAPA DEL VIAJE DE ESTUDIOS.<br>
+        ESTAREMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE<br>
+        Y ACOMPAÑÁNDOLES EN CADA ETAPA DEL VIAJE DE ESTUDIOS.<br>
         ATTE. EQUIPO DE TURISMO RAITRAI
       </div>
     </div>
