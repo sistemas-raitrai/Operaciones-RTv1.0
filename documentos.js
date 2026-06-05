@@ -1829,7 +1829,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         <ul>
         
           <li>
-            Como parte de la preparación del viaje, les compartiremos un enlace para completar la <strong>Ficha Médica</strong>, y una <strong>guía de preparación</strong> con información y recomendaciones útiles para los participantes.
+            Como parte de la preparación del viaje, les compartiremos un enlace para completar la <strong>Ficha Médica</strong>, y una <strong>guía de viaje</strong> con información y recomendaciones útiles para los participantes.
           </li>
         
           ${
@@ -1843,15 +1843,15 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           }
         
           <li>
-            Durante los meses previos al viaje también podrán desarrollarse otras actividades asociadas al programa, tales como la <strong>entrega de polerones</strong>, procesos relacionados con la <strong>rifa del grupo</strong> u otras coordinaciones informadas oportunamente por Turismo Rai Trai y/o los representantes del curso.
+            Previo al viaje también podrán desarrollarse otras actividades asociadas al programa, tales como la <strong>entrega de polerones</strong>, la ejecución de <strong>la Rifa Raitrai</strong> u otras coordinaciones informadas oportunamente por Turismo Rai Trai y/o los representantes del curso.
           </li>
         
           <li>
-            Aproximadamente un mes antes del viaje se entregará el <strong>documento de confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
+            Aproximadamente un mes antes del viaje se entregará <strong>la Confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
           </li>
         
           <li>
-            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, continuaremos comunicando oportunamente todos los antecedentes relevantes a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
+            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, continuaremos comunicando todos los antecedentes relevantes a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
           </li>
         
         </ul>
