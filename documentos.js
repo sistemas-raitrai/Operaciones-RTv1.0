@@ -834,6 +834,27 @@ function injectPdfStyles(){
   .preconfirm-doc li{
     margin:0.7mm 0 !important;
   }
+
+  .preconfirm-doc .preconfirm-info-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:8.5pt !important;
+    margin-top:1.2mm !important;
+    margin-bottom:1.2mm !important;
+  }
+  
+  .preconfirm-doc .preconfirm-info-table th,
+  .preconfirm-doc .preconfirm-info-table td{
+    border-bottom:0.4pt solid #ddd;
+    padding:1mm 1.4mm !important;
+    text-align:left;
+    vertical-align:top;
+  }
+  
+  .preconfirm-doc .preconfirm-info-table th{
+    font-weight:700;
+    text-transform:uppercase;
+  }
   
   .preconfirm-doc .confirm-flight-table{
     font-size:8.5pt !important;
@@ -1742,11 +1763,26 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       <div class="sec">
         <div class="sec-title">1. INFORMACIÓN GENERAL</div>
       
-        <p>Grupo: <strong>${safe(alias)}</strong></p>
-        <p>Programa: <strong>${safe(programa)}</strong></p>   
-        <p>Fecha de Inicio: <strong>${fechaInicioTxt}</strong></p>
-        <p>Fecha de Regreso: <strong>${fechaFinTxt}</strong></p>
-        <p></p>
+        <table class="preconfirm-info-table">
+          <tbody>
+            <tr>
+              <th>Grupo</th>
+              <td><strong>${safe(alias)}</strong></td>
+            </tr>
+            <tr>
+              <th>Programa</th>
+              <td><strong>${safe(programa)}</strong></td>
+            </tr>
+            <tr>
+              <th>Fecha de Inicio</th>
+              <td><strong>${fechaInicioTxt}</strong></td>
+            </tr>
+            <tr>
+              <th>Fecha de Regreso</th>
+              <td><strong>${fechaFinTxt}</strong></td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       
       <div class="sec">
