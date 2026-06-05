@@ -1797,9 +1797,9 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           </thead>
           <tbody>
             <tr>
-              <td>${aerolineasTxt}</td>
-              <td>${fechaIdaTxt}</td>
-              <td>${fechaVueltaTxt}</td>
+              <td><strong>${aerolineasTxt}</strong></td>
+              <td><strong>${fechaIdaTxt}</strong></td>
+              <td><strong>${fechaVueltaTxt}</strong></td>
             </tr>
           </tbody>
         </table>
@@ -1830,19 +1830,34 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       
       <div class="sec">
         <div class="sec-title">7. PRÓXIMAS ETAPAS</div>
-        
         <ul>
+        
           <li>
-            Aproximadamente un mes antes del viaje se entregará el <strong>documento de confirmación</strong>, con horarios, puntos de encuentro, actividades diarias e indicaciones finales.
+            Como parte de la preparación del viaje, les compartiremos un enlace para completar la <strong>Ficha Médica</strong>, y una <strong>guía de preparación</strong> con información y recomendaciones útiles para los participantes.
           </li>
-
+        
+          ${
+            esInternacional
+              ? `
+                <li>
+                  También enviaremos un <strong>instructivo para la obtención de las autorizaciones notariales de salida del país</strong>. Este trámite deberá realizarse dentro de los <strong>90 días previos al viaje</strong>, ya que la documentación posee una vigencia limitada para efectos migratorios.
+                </li>
+              `
+              : ''
+          }
+        
           <li>
-            En las próximas semanas les compartiremos un enlace para completar la <strong>Ficha Médica / Nómina Final de Viaje</strong>, donde se solicitará información relevante para el adecuado desarrollo de la gira. Asimismo, les enviaremos una <strong>guía con recomendaciones</strong> para apoyar la preparación del viaje.
+            Durante los meses previos al viaje también podrán desarrollarse otras actividades asociadas al programa, tales como la <strong>entrega de polerones</strong>, procesos relacionados con la <strong>rifa del grupo</strong> u otras coordinaciones informadas oportunamente por Turismo Rai Trai y/o los representantes del curso.
           </li>
-      
+        
           <li>
-            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, <strong>continuaremos comunicando oportunamente</strong> todos los antecedentes relevantes a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
+            Aproximadamente un mes antes del viaje se entregará el <strong>documento de confirmación</strong>, con horarios, puntos de encuentro, información de vuelos, actividades diarias e indicaciones finales.
           </li>
+        
+          <li>
+            Entendemos la importancia de contar con información oportuna y confiable para la planificación de un viaje. Por ello, continuaremos comunicando oportunamente todos los antecedentes relevantes a través de nuestros canales oficiales, acompañándolos en cada etapa del proceso previo a la gira.
+          </li>
+        
         </ul>
       </div>
 
