@@ -1843,7 +1843,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           }
         
           <li>
-            Previo al viaje también se desarrollarán otras actividades asociadas a los programas, tales como la <strong>entrega de polerones</strong>, la ejecución de <strong>la Rifa Raitrai</strong> y otras coordinaciones informadas oportunamente por Turismo Rai Trai y/o los representantes del curso.
+            Previo al viaje también se desarrollarán otras actividades asociadas a los programas, tales como la <strong>entrega de polerones</strong>, la ejecución de <strong>la Rifa Raitrai</strong> y otras coordinaciones informadas oportunamente.
           </li>
         
           <li>
