@@ -1594,13 +1594,13 @@ function getEquipajePreliminar(grupo, vuelosNorm){
 
   if (!isRegular && isSky){
     return [
-      'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcado con nombre y número de contacto',
+      'Cada persona podrá transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcados con nombre y número de contacto',
       'La aerolínea no permite agregar equipaje adicional ni sobrepeso para este tipo de vuelos.',
     ];
   }
 
   return [
-    'Las condiciones de equipaje dependerán de la tarifa aérea asociada al viaje. Generalmente permite transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcado con nombre y número de contacto',
+    'Las condiciones de equipaje dependerán de la tarifa aérea asociada al viaje. Generalmente permite transportar una maleta de hasta 23 kg más un bolso de mano de 5kg, ambos debidamente marcados con nombre y número de contacto',
   ];
 }
 
