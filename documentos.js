@@ -783,20 +783,20 @@ function injectPdfStyles(){
     position:relative;
     display:block;
     margin-bottom:6mm;
-    padding-right:48mm;
+    padding-right:34mm;
   }
   
   .confirm-doc .confirm-logo{
     position:absolute;
-    top:0;
-    right:0;
-    width:46mm;
+    top:-4mm;
+    right:-12mm;
+    width:42mm;
     text-align:right;
   }
   
   .confirm-doc .confirm-logo img{
-    max-height:38mm;
-    max-width:46mm;
+    max-height:34mm;
+    max-width:42mm;
     width:auto;
     display:block;
     object-fit:contain;
