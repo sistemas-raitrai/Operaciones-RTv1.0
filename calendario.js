@@ -106,7 +106,7 @@ function filtroDestinoCalendario(settings, rowData){
   if (!sel) return true;
 
   const selK  = _normKey(sel);
-  const cell  = (rowData && rowData[2]) ? rowData[2] : ''; // columna 2 = "Destino / Programa"
+  const cell  = (rowData && rowData[3]) ? rowData[3] : ''; // columna 3 = "Destino / Programa"
   const base  = _destinoBaseFromCell(cell);
   const baseK = _normKey(base);
 
@@ -595,10 +595,10 @@ async function generarTablaCalendario(userEmail) {
   $trhead.append(`
     <th>N° Negocio</th>
     <th>Grupo</th>
+    <th>Pax</th>
     <th>Destino / Programa</th>
     <th>Hoteles</th>
     <th>Vuelos</th>
-    <th>Pax</th>
     <th>Año</th>
   `);
 
@@ -673,30 +673,33 @@ async function generarTablaCalendario(userEmail) {
   .map(s => String(s || '').toUpperCase())
   .join("\n");
   
-  $tr.append(
-    $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
-    $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
-    $('<td>')
-      .text(`${(g.destino||'').trim()} // ${(g.programa||'').trim()}`.replace(/^\s*\/\/\s*|\s*\/\/\s*$/g,''))
-      .attr('data-doc-id', g.id),
-  
-    // 👇 Hoteles
-    $('<td>')
-      .text(hotelesTxt)
-      .attr('data-doc-id', g.id)
-      .css('white-space','pre-line'),
-  
-    // 👇 Vuelos/Traslados (aquí va el orden por salida)
-    $('<td>')
-      .text(vuelosTxt)
-      .attr('data-doc-id', g.id)
-      .attr('data-order', String(vuelosSort))   // 👈 orden por fecha/hora salida
-      .css('white-space','pre-line'),
-  
-    $('<td>').text(resumenPax).attr('data-doc-id', g.id),
-    $('<td>').text(g.anoViaje).attr('data-doc-id', g.id)
-  );
+$tr.append(
+  $('<td>').text(g.numeroNegocio).attr('data-doc-id', g.id),
+  $('<td>').text(g.nombreGrupo).attr('data-doc-id', g.id),
 
+  // 👇 Pax queda fijo como tercera columna
+  $('<td>').text(resumenPax).attr('data-doc-id', g.id),
+
+  $('<td>')
+    .text(`${(g.destino||'').trim()} // ${(g.programa||'').trim()}`.replace(/^\s*\/\/\s*|\s*\/\/\s*$/g,''))
+    .attr('data-doc-id', g.id),
+
+  // 👇 Hoteles
+  $('<td>')
+    .text(hotelesTxt)
+    .attr('data-doc-id', g.id)
+    .css('white-space','pre-line'),
+
+  // 👇 Vuelos/Traslados
+  $('<td>')
+    .text(vuelosTxt)
+    .attr('data-doc-id', g.id)
+    .attr('data-order', String(vuelosSort))
+    .css('white-space','pre-line'),
+
+  // 👇 Año queda oculto, pero sirve para filtro
+  $('<td>').text(g.anoViaje).attr('data-doc-id', g.id)
+);
 
 
 
@@ -735,9 +738,12 @@ async function generarTablaCalendario(userEmail) {
   setCarga(85, 'Construyendo tabla...', 'Inicializando DataTable');
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
+    fixedColumns: {
+      leftColumns: 3
+    },
     dom: 'Brtip',
-    pageLength: grupos.length, 
-    order: [[4, 'asc']], 
+    pageLength: grupos.length,
+    order: [[5, 'asc']],
     fixedHeader: {
       header: true,
       headerOffset: 90    // ajusta a la altura del header global
@@ -746,11 +752,11 @@ async function generarTablaCalendario(userEmail) {
       extend: 'colvis',
       text: 'Ver columnas',
       className: 'dt-button',
-      columns: ':gt(0)'
+      columns: ':gt(2)' // no permite ocultar N° Negocio, Grupo ni Pax
     }],
-    // Ocultamos la columna "Año" (index 5) pero la dejamos searchable
+    // Ocultamos la columna "Año" pero la dejamos searchable
     columnDefs: [
-      { targets: [4], type: 'num' },             // asegura orden numérico por data-order
+      { targets: [5], type: 'num' }, // Vuelos ahora está en columna 5
       { targets: [6], visible: false, searchable: true }
     ],
     language: {
