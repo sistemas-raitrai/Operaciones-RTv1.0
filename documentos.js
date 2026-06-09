@@ -1589,56 +1589,109 @@ function hrs(t){
 }
 
 function renderTransportesPreconfirmacion(vuelosNorm){
-  const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
-
-  const aereos = [
-    ...idaLegsPlan.map(v => ({ ...v, __modo:'IDA' })),
-    ...vueltaLegsPlan.map(v => ({ ...v, __modo:'VUELTA' }))
-  ];
-
-  const terrestres = (vuelosNorm || []).filter(v =>
-    norm(v.tipoTransporte || '') === 'terrestre' && !v.isTransfer
-  );
-
-  const transfers = (vuelosNorm || []).filter(v => !!v.isTransfer);
-
   const rows = [];
+  const vistos = new Set();
 
-  aereos.forEach(v => {
-    const fecha = v.__modo === 'IDA' ? (v.fechaIda || v.fecha) : (v.fechaVuelta || v.fecha);
+  const empresaAerea = (v, t = {}) =>
+    String(t.aerolinea || v.proveedor || v.aerolinea || '').toUpperCase();
+
+  const addRow = ({ tipo, tramo, empresa, ruta, fecha }) => {
+    const key = [tipo, tramo, empresa, ruta, fecha].join('__');
+    if (vistos.has(key)) return;
+    vistos.add(key);
+
     rows.push(`
       <tr>
-        <td><strong>AÉREO</strong></td>
-        <td>${v.__modo}</td>
-        <td>${[v.aerolinea, v.numero].filter(Boolean).join(' ') || '—'}</td>
-        <td>${[v.origen, v.destino].filter(Boolean).join(' → ') || '—'}</td>
-        <td>${fecha ? formatShortDate(fecha) : '—'}</td>
+        <td><strong>${tipo}</strong></td>
+        <td>${tramo}</td>
+        <td>${empresa || '—'}</td>
+        <td>${ruta || '—'}</td>
+        <td>${fecha || '—'}</td>
       </tr>
     `);
-  });
+  };
 
-  terrestres.forEach(v => {
-    rows.push(`
-      <tr>
-        <td><strong>TERRESTRE</strong></td>
-        <td>${v.fechaIda && v.fechaVuelta ? 'IDA Y VUELTA' : (v.fechaIda ? 'IDA' : 'VUELTA')}</td>
-        <td>${v.proveedor || '—'}</td>
-        <td>${[v.origen, v.destino].filter(Boolean).join(' → ') || '—'}</td>
-        <td>${[v.fechaIda ? formatShortDate(v.fechaIda) : '', v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''].filter(Boolean).join(' / ') || '—'}</td>
-      </tr>
-    `);
-  });
+  (vuelosNorm || []).forEach(v => {
+    const tipoTransporte = norm(v.tipoTransporte || 'aereo');
 
-  transfers.forEach(v => {
-    rows.push(`
-      <tr>
-        <td><strong>TRASLADO</strong></td>
-        <td>${tipoLegTxt(v.transferLeg)}</td>
-        <td>${v.proveedor || '—'}</td>
-        <td>${[v.origen, v.destino].filter(Boolean).join(' → ') || '—'}</td>
-        <td>${[v.fechaIda ? formatShortDate(v.fechaIda) : '', v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''].filter(Boolean).join(' / ') || '—'}</td>
-      </tr>
-    `);
+    // TRANSFER
+    if (v.isTransfer) {
+      addRow({
+        tipo: 'TRANSFER',
+        tramo: tipoLegTxt(v.transferLeg),
+        empresa: v.proveedor || '—',
+        ruta: [v.origen, v.destino].filter(Boolean).join(' → '),
+        fecha: [
+          v.fechaIda ? formatShortDate(v.fechaIda) : '',
+          v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''
+        ].filter(Boolean).join(' / ')
+      });
+      return;
+    }
+
+    // TERRESTRE
+    if (tipoTransporte === 'terrestre') {
+      addRow({
+        tipo: 'TERRESTRE',
+        tramo: v.fechaIda && v.fechaVuelta ? 'IDA Y VUELTA' : (v.fechaIda ? 'IDA' : 'VUELTA'),
+        empresa: v.proveedor || '—',
+        ruta: [v.origen, v.destino].filter(Boolean).join(' → '),
+        fecha: [
+          v.fechaIda ? formatShortDate(v.fechaIda) : '',
+          v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''
+        ].filter(Boolean).join(' / ')
+      });
+      return;
+    }
+
+    // AÉREO REGULAR MULTITRAMO
+    if (Array.isArray(v.tramos) && v.tramos.length) {
+      v.tramos.forEach(t => {
+        const tipoTramo = String(t.tipoTramo || '').toLowerCase();
+
+        if ((tipoTramo === 'ida' || tipoTramo === 'ida+vuelta' || (!tipoTramo && t.fechaIda)) && t.fechaIda) {
+          addRow({
+            tipo: 'AÉREO',
+            tramo: 'IDA',
+            empresa: empresaAerea(v, t),
+            ruta: [t.origen || v.origen, t.destino || v.destino].filter(Boolean).join(' → '),
+            fecha: formatShortDate(t.fechaIda)
+          });
+        }
+
+        if ((tipoTramo === 'vuelta' || tipoTramo === 'ida+vuelta' || (!tipoTramo && t.fechaVuelta)) && t.fechaVuelta) {
+          addRow({
+            tipo: 'AÉREO',
+            tramo: 'VUELTA',
+            empresa: empresaAerea(v, t),
+            ruta: [t.origen || v.origen, t.destino || v.destino].filter(Boolean).join(' → '),
+            fecha: formatShortDate(t.fechaVuelta)
+          });
+        }
+      });
+      return;
+    }
+
+    // AÉREO SIMPLE / CHARTER
+    if (v.fechaIda) {
+      addRow({
+        tipo: 'AÉREO',
+        tramo: 'IDA',
+        empresa: empresaAerea(v),
+        ruta: [v.origen, v.destino].filter(Boolean).join(' → '),
+        fecha: formatShortDate(v.fechaIda)
+      });
+    }
+
+    if (v.fechaVuelta) {
+      addRow({
+        tipo: 'AÉREO',
+        tramo: 'VUELTA',
+        empresa: empresaAerea(v),
+        ruta: [v.destino, v.origen].filter(Boolean).join(' → '),
+        fecha: formatShortDate(v.fechaVuelta)
+      });
+    }
   });
 
   if (!rows.length) {
@@ -1651,7 +1704,7 @@ function renderTransportesPreconfirmacion(vuelosNorm){
         <tr>
           <th>Tipo</th>
           <th>Tramo</th>
-          <th>Proveedor</th>
+          <th>Empresa</th>
           <th>Ruta</th>
           <th>Fecha</th>
         </tr>
