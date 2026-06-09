@@ -505,15 +505,17 @@ function ajustarVistaCalendario(tabla) {
 
       tabla.draw(false);
 
-      if (tabla.fixedHeader && typeof tabla.fixedHeader.adjust === 'function') {
-        tabla.fixedHeader.adjust();
+      try {
+        tabla.columns.adjust();
+      } catch (e) {
+        console.warn('columns.adjust omitido:', e);
       }
 
       $(window).trigger('resize');
     } catch (e) {
       console.warn('Ajuste visual calendario omitido:', e);
     }
-  }, 150);
+  }, 200);
 }
 
 // Cuando el DOM y Firebase Auth estén listos:
@@ -806,10 +808,6 @@ $tr.append(
     dom: 'Brtip',
     pageLength: grupos.length,
     order: [[5, 'asc']],
-    fixedHeader: {
-      header: true,
-      headerOffset: 70
-    },
     buttons: [{
       extend: 'colvis',
       text: 'Ver columnas',
