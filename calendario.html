@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
   <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css"/>
   <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/4.2.2/css/fixedColumns.dataTables.min.css"/>
   <link rel="stylesheet" href="estilos.css" />
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
@@ -71,7 +70,56 @@
 
 .load-box.error .load-progress {
   background: #dc2626;
-} 
+}
+  /* Header fijo vertical */
+.dataTables_scrollHead {
+  position: sticky !important;
+  top: 70px;
+  z-index: 60;
+  background: white;
+}
+
+/* Columnas fijas horizontales: N° Negocio, Grupo, Pax */
+#tablaCalendario th:nth-child(1),
+#tablaCalendario td:nth-child(1) {
+  position: sticky;
+  left: 0;
+  z-index: 40;
+  background: white;
+  min-width: 95px;
+}
+
+#tablaCalendario th:nth-child(2),
+#tablaCalendario td:nth-child(2) {
+  position: sticky;
+  left: 95px;
+  z-index: 40;
+  background: white;
+  min-width: 210px;
+}
+
+#tablaCalendario th:nth-child(3),
+#tablaCalendario td:nth-child(3) {
+  position: sticky;
+  left: 305px;
+  z-index: 40;
+  background: white;
+  min-width: 120px;
+}
+
+/* Encabezados fijos por encima de celdas */
+#tablaCalendario th:nth-child(1),
+#tablaCalendario th:nth-child(2),
+#tablaCalendario th:nth-child(3) {
+  z-index: 70;
+}
+
+/* Evita descuadres */
+#tablaCalendario th,
+#tablaCalendario td {
+  box-sizing: border-box;
+  vertical-align: top;
+}
 </style>
 <body>
 
@@ -139,7 +187,6 @@
   <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
-  <script src="https://cdn.datatables.net/fixedcolumns/4.2.2/js/dataTables.fixedColumns.min.js"></script>
 
   <script>
     fetch('encabezado.html')
