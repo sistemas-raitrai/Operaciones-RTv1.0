@@ -1506,10 +1506,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
       <div class="sec">
         <div class="sec-title">2. INFORMACIÓN DEL PLAN DE VIAJE</div>
-        ${flightsBlock(idaLegsPlan, 'ida') || '<div class="note">— Sin vuelos de ida —</div>'}
-        ${flightsBlock(vueltaLegsPlan, 'vuelta') || ''}
+        ${renderTransportesConfirmacion(vuelosNorm)}
       </div>
-
+      
       <div class="sec">
         <div class="sec-title">3. HOTELERÍA CONFIRMADA</div>
         ${hotelesHtml}
@@ -2001,26 +2000,8 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
       </div>
       
       <div class="sec">
-        <div class="sec-title">2. INFORMACIÓN DE TRANSPORTES DEL VIAJE</div>
-        <table class="confirm-flight-table">
-          <thead>
-            <tr>
-              <th>Aerolínea</th>
-              <th>Ida</th>
-              <th>Vuelta</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td><strong>${aerolineasTxt}</strong></td>
-              <td><strong>${fechaIdaTxt}</strong></td>
-              <td><strong>${fechaVueltaTxt}</strong></td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="note">
-          Los horarios, números de vuelo, terminal y punto de encuentro con la empresa serán informados en la confirmación final.
-        </p>
+        <div class="sec-title">2. INFORMACIÓN DEL PLAN DE VIAJE</div>
+        ${renderTransportesPreconfirmacion(vuelosNorm)}
       </div>
       
       <div class="sec">
