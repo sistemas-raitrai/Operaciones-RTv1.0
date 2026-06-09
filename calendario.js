@@ -812,6 +812,26 @@ $tr.append(
     tabla.column(6).search(val ? '^'+val+'$' : '', true, false).draw();
   });
 
+  // 7.1) Filtro de columnas por fecha: oculta fechas anteriores a la seleccionada
+  $('#filtroFechaDesde').off('change').on('change', function () {
+    const fechaDesde = this.value; // formato YYYY-MM-DD
+  
+    $('#tablaCalendario thead th').each(function (index) {
+      const fechaColumna = this.getAttribute('data-fechaiso');
+  
+      // Solo afecta columnas de fecha
+      if (!fechaColumna) return;
+  
+      const mostrar = !fechaDesde || fechaColumna >= fechaDesde;
+      tabla.column(index).visible(mostrar, false);
+    });
+  
+    tabla.columns.adjust().draw(false);
+  });
+ 
+  const hoyISO = new Date().toISOString().slice(0, 10);
+  $('#filtroFechaDesde').val(hoyISO).trigger('change');
+
   // 8) Toggle modo edición (activa contenteditable en todas las celdas del body)
   // 8) Toggle modo edición
   //    Solo las celdas de itinerario (las que tienen data-fecha) serán editables.
