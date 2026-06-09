@@ -498,6 +498,24 @@ function getParametroURL(nombre) {
 }
 const numeroNegocioInicial = getParametroURL("numeroNegocio");
 
+function ajustarVistaCalendario(tabla) {
+  setTimeout(() => {
+    try {
+      if (!$.fn.DataTable.isDataTable('#tablaCalendario')) return;
+
+      tabla.draw(false);
+
+      if (tabla.fixedHeader && typeof tabla.fixedHeader.adjust === 'function') {
+        tabla.fixedHeader.adjust();
+      }
+
+      $(window).trigger('resize');
+    } catch (e) {
+      console.warn('Ajuste visual calendario omitido:', e);
+    }
+  }, 150);
+}
+
 // Cuando el DOM y Firebase Auth estén listos:
 $(function () {
   onAuthStateChanged(auth, user => {
@@ -849,17 +867,7 @@ $tr.append(
     });
   }
   
-  tabla.columns.adjust().draw(false);
-  
-  setTimeout(() => {
-    tabla.columns.adjust();
-  
-    if (tabla.fixedHeader) {
-      tabla.fixedHeader.adjust();
-    }
-  
-    $(window).trigger('resize');
-  }, 150);
+  ajustarVistaCalendario(tabla);
   
   // 5) Buscador libre
   // - Sin coma: búsqueda normal DataTables
@@ -918,17 +926,7 @@ $tr.append(
     });
   
     // Redibuja sin usar columns.adjust(), porque con FixedColumns puede romper
-    tabla.columns.adjust().draw(false);
-    
-    setTimeout(() => {
-      tabla.columns.adjust();
-    
-      if (tabla.fixedHeader) {
-        tabla.fixedHeader.adjust();
-      }
-    
-      $(window).trigger('resize');
-    }, 150);
+    ajustarVistaCalendario(tabla);
   });
     
   // const hoyISO = new Date().toISOString().slice(0, 10);
