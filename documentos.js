@@ -1612,35 +1612,50 @@ function renderTransfersPreconfirmacion(vuelosNorm){
   const transfers = (vuelosNorm || []).filter(esTransferReal);
   if (!transfers.length) return '';
 
+  const items = [];
   const vistos = new Set();
 
-  const items = transfers.map(v => {
-    const ruta = [v.origen, v.destino].filter(Boolean).join(' - ') || 'Por informar';
+  transfers.forEach(v => {
+    const origen = v.origen || 'Origen por informar';
+    const destino = v.destino || 'Destino por informar';
 
-    const fecha = [
-      v.fechaIda ? formatShortDate(v.fechaIda) : '',
-      v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''
-    ].filter(Boolean).join(' / ') || 'Por informar';
+    if (v.fechaIda) {
+      const keyIda = `IDA__${origen}__${destino}__${v.fechaIda}`;
+      if (!vistos.has(keyIda)) {
+        vistos.add(keyIda);
+        items.push(`
+          <li>
+            <strong>${origen} → ${destino}:</strong>
+            ${formatShortDate(v.fechaIda)}
+          </li>
+        `);
+      }
+    }
 
-    const key = `${ruta}__${fecha}`;
-    if (vistos.has(key)) return '';
-    vistos.add(key);
+    if (v.fechaVuelta) {
+      const keyVuelta = `VUELTA__${destino}__${origen}__${v.fechaVuelta}`;
+      if (!vistos.has(keyVuelta)) {
+        vistos.add(keyVuelta);
+        items.push(`
+          <li>
+            <strong>${destino} → ${origen}:</strong>
+            ${formatShortDate(v.fechaVuelta)}
+          </li>
+        `);
+      }
+    }
+  });
 
-    return `
-      <div class="note" style="margin-top:1.5mm;">
-        <strong>Transfer:</strong> ${ruta}<br>
-        <strong>Fecha:</strong> ${fecha}
-      </div>
-    `;
-  }).join('');
+  if (!items.length) return '';
 
-  return items
-    ? `
-      <div style="margin-top:2mm;">
-        ${items}
-      </div>
-    `
-    : '';
+  return `
+    <div class="note" style="margin-top:1.5mm;">
+      <strong>Transfer:</strong>
+      <ul style="margin-top:1mm;">
+        ${items.join('')}
+      </ul>
+    </div>
+  `;
 }
 
 function renderTransportesPreconfirmacion(vuelosNorm){
