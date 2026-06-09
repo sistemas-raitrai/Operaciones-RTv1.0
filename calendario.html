@@ -12,7 +12,25 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
 <style>
- .load-box {
+ /* Encabezado fijo de DataTables con scroll horizontal */
+.dataTables_scrollHead {
+  position: sticky !important;
+  top: 70px;
+  z-index: 50;
+  background: #fff;
+}
+
+/* Evita descuadres visuales del encabezado */
+.dataTables_scrollHead table,
+.dataTables_scrollBody table {
+  margin: 0 !important;
+}
+
+#tablaCalendario thead th {
+  white-space: nowrap;
+}
+  
+.load-box {
   margin: 12px 0 18px;
   padding: 12px 14px;
   border: 1px solid #d7dbe3;
