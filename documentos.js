@@ -1650,7 +1650,7 @@ function renderTransfersPreconfirmacion(vuelosNorm){
 
   return `
     <div class="note" style="margin-top:1.5mm;">
-      <strong>Transfer:</strong>
+      <strong>Traslado(s):</strong>
       <ul style="margin-top:1mm;">
         ${items.join('')}
       </ul>
