@@ -812,23 +812,31 @@ $tr.append(
     tabla.column(6).search(val ? '^'+val+'$' : '', true, false).draw();
   });
 
-  // 7.1) Filtro de columnas por fecha: oculta fechas anteriores a la seleccionada
+  // 7.1) Filtro de columnas por fecha:
+  // Oculta/Muestra columnas de fecha, NO filtra grupos.
   $('#filtroFechaDesde').off('change').on('change', function () {
-    const fechaDesde = this.value; // formato YYYY-MM-DD
+    const fechaDesde = this.value; // YYYY-MM-DD
   
-    $('#tablaCalendario thead th').each(function (index) {
-      const fechaColumna = this.getAttribute('data-fechaiso');
+    tabla.columns().every(function () {
+      const th = this.header();
+      const fechaColumna = th?.getAttribute?.('data-fechaiso');
   
-      // Solo afecta columnas de fecha
+      // Solo afecta columnas que son fechas
       if (!fechaColumna) return;
   
       const mostrar = !fechaDesde || fechaColumna >= fechaDesde;
-      tabla.column(index).visible(mostrar, false);
+  
+      // false = no redibujar todavía
+      this.visible(mostrar, false);
     });
   
     tabla.columns.adjust().draw(false);
+  
+    setTimeout(() => {
+      tabla.columns.adjust().draw(false);
+    }, 50);
   });
- 
+    
   const hoyISO = new Date().toISOString().slice(0, 10);
   $('#filtroFechaDesde').val(hoyISO).trigger('change');
 
