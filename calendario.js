@@ -542,6 +542,20 @@ function escucharCambiosCalendario(userEmail) {
 // ------------------------------------------------------------------
 async function generarTablaCalendario(userEmail) {
   try {
+  // 0) Guardar filtros actuales antes de refrescar
+  const filtroBuscadorActual = $('#buscador').val() || '';
+  const filtroDestinoActual  = $('#filtroDestino').val() || '';
+  const filtroAnoActual      = $('#filtroAno').val() || ANO_COMERCIAL_ACTUAL;
+  const filtroFechaActual    = $('#filtroFechaDesde').val() || '';
+
+  // 0.1) Destruir DataTable ANTES de reconstruir la tabla
+  if ($.fn.DataTable.isDataTable('#tablaCalendario')) {
+    $('#tablaCalendario').DataTable().destroy();
+  }
+
+  $('#encabezadoCalendario').empty();
+  $('#cuerpoCalendario').empty();
+
   // 1) Leer todos los grupos de Firestore
   const snapshot = await getDocs(collection(db, "grupos"));
   setCarga(15, 'Grupos cargados', `${snapshot.size} grupos encontrados`);
@@ -763,11 +777,6 @@ $tr.append(
 
     $tbody.append($tr);
   }); // ← cierra grupos.forEach
-
-  // 4) Reiniciar DataTable si ya existía
-  if ($.fn.DataTable.isDataTable('#tablaCalendario')) {
-    $('#tablaCalendario').DataTable().clear().destroy();
-  }
   
   // 4.1) Inicializar DataTable
   setCarga(85, 'Construyendo tabla...', 'Inicializando DataTable');
@@ -799,7 +808,21 @@ $tr.append(
     }
   });
 
-  tabla.column(6).search('^' + ANO_COMERCIAL_ACTUAL + '$', true, false).draw();
+  // Reaplicar filtros que tenía el usuario antes del refresco
+  $('#buscador').val(filtroBuscadorActual);
+  $('#filtroDestino').val(filtroDestinoActual);
+  $('#filtroAno').val(filtroAnoActual);
+  $('#filtroFechaDesde').val(filtroFechaActual);
+  
+  FLT_DESTINO.value = filtroDestinoActual;
+  
+  tabla.column(6).search(filtroAnoActual ? '^' + filtroAnoActual + '$' : '', true, false);
+  
+  if (filtroBuscadorActual) {
+    tabla.search(filtroBuscadorActual);
+  }
+  
+  tabla.draw();
 
   // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
   const _ext = $.fn.dataTable.ext.search;
@@ -869,13 +892,7 @@ $tr.append(
   
     // Recalcula visualmente FixedColumns si la función existe
     setTimeout(() => {
-      try {
-        if (tabla.fixedColumns) {
-          tabla.fixedColumns().relayout();
-        }
-      } catch (e) {
-        console.warn('FixedColumns relayout omitido:', e);
-      }
+      tabla.columns.adjust().draw(false);
     }, 100);
   });
     
