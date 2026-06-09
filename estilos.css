@@ -1123,3 +1123,61 @@ body.modal-open { overflow: hidden; }
 #tablaGrupos td {
   white-space: nowrap !important;
 }
+
+/* =========================================================
+   Calendario: corrección final DataTables
+   Evita descuadre entre encabezado y cuerpo
+========================================================= */
+
+#tablaCalendario {
+  width: 100% !important;
+  table-layout: auto !important;
+  border-collapse: separate !important;
+}
+
+#tablaCalendario th,
+#tablaCalendario td {
+  box-sizing: border-box !important;
+  vertical-align: top !important;
+  white-space: pre-wrap !important;
+  min-width: 120px !important;
+  padding: 6px 8px !important;
+}
+
+/* No usar sticky en th/td internos */
+#tablaCalendario thead th,
+#tablaCalendario tbody td {
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
+}
+
+/* Header generado por DataTables */
+#tablaCalendario_wrapper .dataTables_scrollHead {
+  position: sticky !important;
+  top: 70px !important;
+  z-index: 80 !important;
+  background: #fff !important;
+  margin-bottom: 0 !important;
+}
+
+/* Alineación header/cuerpo */
+#tablaCalendario_wrapper .dataTables_scrollHead table,
+#tablaCalendario_wrapper .dataTables_scrollBody table {
+  margin: 0 !important;
+}
+
+#tablaCalendario_wrapper .dataTables_scrollHeadInner {
+  padding-left: 0 !important;
+}
+
+/* Scroll horizontal estable */
+#tablaCalendario_wrapper .dataTables_scrollBody {
+  overflow: auto !important;
+}
+
+/* Ocultar clones de FixedHeader si aparecen */
+.fixedHeader-floating,
+.fixedHeader-locked {
+  display: none !important;
+}
