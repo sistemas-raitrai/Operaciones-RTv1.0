@@ -724,13 +724,6 @@ input, select, textarea {
 /* Estilos específicos para el calendario de actividades                  */
 /* ----------------------------------------------------------------------- */
 
-/* Encabezado fijo bonito */
-#tablaCalendario thead th {
-  position: sticky;
-  top: 0;
-  background-color: #f1f1f1;
-  z-index: 1;
-}
 
 /* Botones DataTables (Excel, columnas, etc.) */
 #toolbar .dt-button {
@@ -746,11 +739,6 @@ input, select, textarea {
 
 #toolbar .dt-button:hover {
   background-color: #002f5f;
-}
-
-/* Scroll horizontal mejorado */
-.dataTables_wrapper {
-  overflow-x: visible;
 }
 
 /* Encabezado fijo global */
@@ -821,37 +809,6 @@ body {
 
 #hoteles {
   height: 80px; 
-}
-
-/* ──────────────────────────────────────────────── */
-/* Sticky header para el calendario                */
-/* ──────────────────────────────────────────────── */
-#tablaCalendario {
-  width: 100% !important;
-  background-color: #fff;
-  border-collapse: collapse;
-}
-
-#tablaCalendario th,
-#tablaCalendario td {
-  min-width: 160px; /* ⬅️ DOBLE DE LO NORMAL */
-  padding: 6px 10px;
-  text-align: left;
-  vertical-align: top;
-  white-space: pre-wrap;
-}
-
-/* Resaltar celdas de fecha de inicio y fin */
-#tablaCalendario td.inicio-fin {
-  background-color: #fff59d !important;
-  font-weight: bold;
-}
-
-#tablaCalendario thead th {
-  position: sticky;
-  top: 0;
-  background-color: #f1f1f1;
-  z-index: 10;
 }
 
 /* ──────────────────────────────────────────────── */
@@ -1126,30 +1083,37 @@ body.modal-open { overflow: hidden; }
 
 /* =========================================================
    Calendario: corrección final DataTables
-   Evita descuadre entre encabezado y cuerpo
 ========================================================= */
 
 #tablaCalendario {
   width: 100% !important;
-  table-layout: auto !important;
+  background: #fff !important;
   border-collapse: separate !important;
+  table-layout: auto !important;
 }
 
 #tablaCalendario th,
 #tablaCalendario td {
   box-sizing: border-box !important;
   vertical-align: top !important;
+  text-align: left !important;
   white-space: pre-wrap !important;
-  min-width: 120px !important;
   padding: 6px 8px !important;
-}
-
-/* No usar sticky en th/td internos */
-#tablaCalendario thead th,
-#tablaCalendario tbody td {
+  min-width: 120px !important;
   position: static !important;
   left: auto !important;
   top: auto !important;
+}
+
+#tablaCalendario td.inicio-fin {
+  background-color: #fff59d !important;
+  font-weight: bold !important;
+}
+
+#tablaCalendario th.domingo,
+#tablaCalendario td.domingo {
+  border: 1px solid #333333 !important;
+  background-color: #facfaf !important;
 }
 
 /* Header generado por DataTables */
@@ -1161,7 +1125,6 @@ body.modal-open { overflow: hidden; }
   margin-bottom: 0 !important;
 }
 
-/* Alineación header/cuerpo */
 #tablaCalendario_wrapper .dataTables_scrollHead table,
 #tablaCalendario_wrapper .dataTables_scrollBody table {
   margin: 0 !important;
@@ -1171,12 +1134,11 @@ body.modal-open { overflow: hidden; }
   padding-left: 0 !important;
 }
 
-/* Scroll horizontal estable */
 #tablaCalendario_wrapper .dataTables_scrollBody {
   overflow: auto !important;
 }
 
-/* Ocultar clones de FixedHeader si aparecen */
+/* Ocultar clones si FixedHeader aparece por caché */
 .fixedHeader-floating,
 .fixedHeader-locked {
   display: none !important;
