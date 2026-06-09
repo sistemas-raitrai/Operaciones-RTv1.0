@@ -320,35 +320,12 @@ function normalizeVueloPayload(pay){
   return pay;
 }
 
-// === Helper: separar horarios para no tocarlos al guardar sin publicar ===
+// === Helper: separar horarios para publicar o no publicar ===
 function splitHorarios(v){
-  // Clon superficial del payload completo (con horarios)
+  // "Publicar horarios" solo define si se copia a horarios_publicos.
+  // El documento principal en "vuelos" SIEMPRE debe guardar los horarios.
   const payOriginal = { ...v };
-
-  // Clon para guardar SIN tocar horarios del doc (cuando no se publica)
   const paySansHorarios = { ...v };
-
-  // 6 horarios top-level de AÉREO
-  const horarioKeysTop = [
-    'presentacionIdaHora','vueloIdaHora','arriboIdaHora',
-    'presentacionVueltaHora','vueloVueltaHora','arriboVueltaHora'
-  ];
-
-  // Si es aéreo, removemos del "sans" esos 6 campos para no pisarlos
-  if ((v.tipoTransporte || 'aereo') === 'aereo'){
-    horarioKeysTop.forEach(k => { delete paySansHorarios[k]; });
-  }
-
-  // IMPORTANTE:
-  // Los tramos son parte de la estructura operativa del viaje,
-  // no solo de los horarios públicos.
-  // Por eso SIEMPRE deben guardarse en la colección "vuelos",
-  // aunque "Publicar horarios" esté desmarcado.
-  // 
-  // Antes aquí se hacía:
-  // delete paySansHorarios.tramos;
-  // Eso provocaba que un multitramo guardado como PRIVADO
-  // perdiera sus tramos y quedara como regular simple.
 
   return { payOriginal, paySansHorarios };
 }
