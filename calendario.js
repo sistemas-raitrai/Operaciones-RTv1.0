@@ -802,9 +802,6 @@ $tr.append(
   setCarga(85, 'Construyendo tabla...', 'Inicializando DataTable');
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
-    fixedColumns: {
-      leftColumns: 3
-    },
     dom: 'Brtip',
     pageLength: grupos.length,
     order: [[5, 'asc']],
