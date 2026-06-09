@@ -1082,14 +1082,14 @@ body.modal-open { overflow: hidden; }
 }
 
 /* =========================================================
-   Calendario: corrección final simple
+   Calendario: corrección final DataTables
 ========================================================= */
 
 #tablaCalendario {
-  width: max-content !important;
-  min-width: 100% !important;
-  border-collapse: collapse !important;
+  width: 100% !important;
   background: #fff !important;
+  border-collapse: separate !important;
+  table-layout: auto !important;
 }
 
 #tablaCalendario th,
@@ -1100,53 +1100,46 @@ body.modal-open { overflow: hidden; }
   white-space: pre-wrap !important;
   padding: 6px 8px !important;
   min-width: 120px !important;
+  position: static !important;
+  left: auto !important;
+  top: auto !important;
 }
 
-/* Fila de encabezado fija al bajar */
-#tablaCalendario thead th {
+#tablaCalendario td.inicio-fin {
+  background-color: #fff59d !important;
+  font-weight: bold !important;
+}
+
+#tablaCalendario th.domingo,
+#tablaCalendario td.domingo {
+  border: 1px solid #333333 !important;
+  background-color: #facfaf !important;
+}
+
+/* Header generado por DataTables */
+#tablaCalendario_wrapper .dataTables_scrollHead {
   position: sticky !important;
   top: 70px !important;
   z-index: 80 !important;
   background: #fff !important;
+  margin-bottom: 0 !important;
 }
 
-/* Columna fija 1: N° Negocio */
-#tablaCalendario th:nth-child(1),
-#tablaCalendario td:nth-child(1) {
-  position: sticky !important;
-  left: 0 !important;
-  z-index: 60 !important;
-  background: #fff !important;
-  min-width: 90px !important;
+#tablaCalendario_wrapper .dataTables_scrollHead table,
+#tablaCalendario_wrapper .dataTables_scrollBody table {
+  margin: 0 !important;
 }
 
-/* Columna fija 2: Grupo */
-#tablaCalendario th:nth-child(2),
-#tablaCalendario td:nth-child(2) {
-  position: sticky !important;
-  left: 90px !important;
-  z-index: 60 !important;
-  background: #fff !important;
-  min-width: 190px !important;
+#tablaCalendario_wrapper .dataTables_scrollHeadInner {
+  padding-left: 0 !important;
 }
 
-/* Columna fija 3: Pax */
-#tablaCalendario th:nth-child(3),
-#tablaCalendario td:nth-child(3) {
-  position: sticky !important;
-  left: 280px !important;
-  z-index: 60 !important;
-  background: #fff !important;
-  min-width: 110px !important;
+#tablaCalendario_wrapper .dataTables_scrollBody {
+  overflow: auto !important;
 }
 
-/* Las 3 celdas de encabezado fijas deben quedar encima de todo */
-#tablaCalendario thead th:nth-child(1),
-#tablaCalendario thead th:nth-child(2),
-#tablaCalendario thead th:nth-child(3) {
-  z-index: 120 !important;
-}
-
-#tablaCalendario_wrapper {
-  overflow-x: auto !important;
+/* Ocultar clones si FixedHeader aparece por caché */
+.fixedHeader-floating,
+.fixedHeader-locked {
+  display: none !important;
 }
