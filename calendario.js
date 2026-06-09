@@ -826,19 +826,26 @@ $tr.append(
   
       const mostrar = !fechaDesde || fechaColumna >= fechaDesde;
   
-      // false = no redibujar todavía
       this.visible(mostrar, false);
     });
   
-    tabla.columns.adjust().draw(false);
+    // Redibuja sin usar columns.adjust(), porque con FixedColumns puede romper
+    tabla.draw(false);
   
+    // Recalcula visualmente FixedColumns si la función existe
     setTimeout(() => {
-      tabla.columns.adjust().draw(false);
-    }, 50);
+      try {
+        if (tabla.fixedColumns) {
+          tabla.fixedColumns().relayout();
+        }
+      } catch (e) {
+        console.warn('FixedColumns relayout omitido:', e);
+      }
+    }, 100);
   });
     
-  const hoyISO = new Date().toISOString().slice(0, 10);
-  $('#filtroFechaDesde').val(hoyISO).trigger('change');
+  // const hoyISO = new Date().toISOString().slice(0, 10);
+  // $('#filtroFechaDesde').val(hoyISO).trigger('change');
 
   // 8) Toggle modo edición (activa contenteditable en todas las celdas del body)
   // 8) Toggle modo edición
