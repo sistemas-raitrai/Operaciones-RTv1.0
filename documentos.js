@@ -1577,6 +1577,211 @@ function getResumenVuelosPreliminar(vuelosNorm){
   };
 }
 
+function tipoLegTxt(leg){
+  const x = String(leg || '').toLowerCase();
+  if (x === 'ida') return 'IDA';
+  if (x === 'vuelta') return 'VUELTA';
+  if (x === 'ida+vuelta') return 'IDA Y VUELTA';
+  return 'TRASLADO';
+}
+
+function hrs(t){
+  return t ? `${t} HRS` : '—';
+}
+
+function renderTransportesPreconfirmacion(vuelosNorm){
+  const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
+
+  const aereos = [
+    ...idaLegsPlan.map(v => ({ ...v, __modo:'IDA' })),
+    ...vueltaLegsPlan.map(v => ({ ...v, __modo:'VUELTA' }))
+  ];
+
+  const terrestres = (vuelosNorm || []).filter(v =>
+    norm(v.tipoTransporte || '') === 'terrestre' && !v.isTransfer
+  );
+
+  const transfers = (vuelosNorm || []).filter(v => !!v.isTransfer);
+
+  const rows = [];
+
+  aereos.forEach(v => {
+    const fecha = v.__modo === 'IDA' ? (v.fechaIda || v.fecha) : (v.fechaVuelta || v.fecha);
+    rows.push(`
+      <tr>
+        <td><strong>AÉREO</strong></td>
+        <td>${v.__modo}</td>
+        <td>${[v.aerolinea, v.numero].filter(Boolean).join(' ') || '—'}</td>
+        <td>${[v.origen, v.destino].filter(Boolean).join(' → ') || '—'}</td>
+        <td>${fecha ? formatShortDate(fecha) : '—'}</td>
+      </tr>
+    `);
+  });
+
+  terrestres.forEach(v => {
+    rows.push(`
+      <tr>
+        <td><strong>TERRESTRE</strong></td>
+        <td>${v.fechaIda && v.fechaVuelta ? 'IDA Y VUELTA' : (v.fechaIda ? 'IDA' : 'VUELTA')}</td>
+        <td>${v.proveedor || '—'}</td>
+        <td>${[v.origen, v.destino].filter(Boolean).join(' → ') || '—'}</td>
+        <td>${[v.fechaIda ? formatShortDate(v.fechaIda) : '', v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''].filter(Boolean).join(' / ') || '—'}</td>
+      </tr>
+    `);
+  });
+
+  transfers.forEach(v => {
+    rows.push(`
+      <tr>
+        <td><strong>TRASLADO</strong></td>
+        <td>${tipoLegTxt(v.transferLeg)}</td>
+        <td>${v.proveedor || '—'}</td>
+        <td>${[v.origen, v.destino].filter(Boolean).join(' → ') || '—'}</td>
+        <td>${[v.fechaIda ? formatShortDate(v.fechaIda) : '', v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''].filter(Boolean).join(' / ') || '—'}</td>
+      </tr>
+    `);
+  });
+
+  if (!rows.length) {
+    return `<div class="note">Transportes por informar.</div>`;
+  }
+
+  return `
+    <table class="confirm-flight-table">
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Tramo</th>
+          <th>Proveedor</th>
+          <th>Ruta</th>
+          <th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+    <p class="note">
+      Los horarios, terminales, puntos de encuentro y detalles finales serán informados en la confirmación final.
+    </p>
+  `;
+}
+
+function renderTransportesConfirmacion(vuelosNorm){
+  const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
+
+  const terrestres = (vuelosNorm || []).filter(v =>
+    norm(v.tipoTransporte || '') === 'terrestre' && !v.isTransfer
+  );
+
+  const transfers = (vuelosNorm || []).filter(v => !!v.isTransfer);
+
+  const rows = [];
+
+  idaLegsPlan.forEach(v => {
+    rows.push(`
+      <tr>
+        <td><strong>AÉREO</strong></td>
+        <td>IDA</td>
+        <td>${[v.aerolinea, v.numero].filter(Boolean).join(' ') || '—'}</td>
+        <td>${formatShortDate(v.fechaIda || v.fecha)}</td>
+        <td>${v.origen || '—'}</td>
+        <td>${hrs(v.presentacionIda)}</td>
+        <td>${hrs(v.salidaIda)}</td>
+        <td>${v.destino || '—'}</td>
+        <td>${hrs(v.arriboIda)}</td>
+      </tr>
+    `);
+  });
+
+  vueltaLegsPlan.forEach(v => {
+    rows.push(`
+      <tr>
+        <td><strong>AÉREO</strong></td>
+        <td>VUELTA</td>
+        <td>${[v.aerolinea, v.numero].filter(Boolean).join(' ') || '—'}</td>
+        <td>${formatShortDate(v.fechaVuelta || v.fecha)}</td>
+        <td>${v.origen || '—'}</td>
+        <td>${hrs(v.presentacionVuelta)}</td>
+        <td>${hrs(v.salidaVuelta)}</td>
+        <td>${v.destino || '—'}</td>
+        <td>${hrs(v.arriboVuelta)}</td>
+      </tr>
+    `);
+  });
+
+  terrestres.forEach(v => {
+    if (v.fechaIda) {
+      rows.push(`
+        <tr>
+          <td><strong>TERRESTRE</strong></td>
+          <td>IDA</td>
+          <td>${v.proveedor || '—'}</td>
+          <td>${formatShortDate(v.fechaIda)}</td>
+          <td>${v.origen || '—'}</td>
+          <td>—</td>
+          <td>${hrs(v.idaHora)}</td>
+          <td>${v.destino || '—'}</td>
+          <td>—</td>
+        </tr>
+      `);
+    }
+
+    if (v.fechaVuelta) {
+      rows.push(`
+        <tr>
+          <td><strong>TERRESTRE</strong></td>
+          <td>VUELTA</td>
+          <td>${v.proveedor || '—'}</td>
+          <td>${formatShortDate(v.fechaVuelta)}</td>
+          <td>${v.destino || '—'}</td>
+          <td>—</td>
+          <td>${hrs(v.vueltaHora)}</td>
+          <td>${v.origen || '—'}</td>
+          <td>—</td>
+        </tr>
+      `);
+    }
+  });
+
+  transfers.forEach(v => {
+    rows.push(`
+      <tr>
+        <td><strong>TRASLADO</strong></td>
+        <td>${tipoLegTxt(v.transferLeg)}</td>
+        <td>${v.proveedor || '—'}</td>
+        <td>${formatShortDate(v.fechaIda || v.fechaVuelta)}</td>
+        <td>${v.origen || '—'}</td>
+        <td>—</td>
+        <td>${hrs(v.idaHora || v.vueloIdaHora || v.vueltaHora || v.vueloVueltaHora)}</td>
+        <td>${v.destino || '—'}</td>
+        <td>—</td>
+      </tr>
+    `);
+  });
+
+  if (!rows.length) {
+    return `<div class="note">— Sin transportes registrados —</div>`;
+  }
+
+  return `
+    <table class="confirm-flight-table">
+      <thead>
+        <tr>
+          <th>Tipo</th>
+          <th>Tramo</th>
+          <th>Proveedor</th>
+          <th>Fecha</th>
+          <th>Origen</th>
+          <th>Presentación</th>
+          <th>Salida</th>
+          <th>Destino</th>
+          <th>Arribo</th>
+        </tr>
+      </thead>
+      <tbody>${rows.join('')}</tbody>
+    </table>
+  `;
+}
+
 function getEquipajePreliminar(grupo, vuelosNorm){
 
   const tieneAereo = (vuelosNorm || []).some(v =>
