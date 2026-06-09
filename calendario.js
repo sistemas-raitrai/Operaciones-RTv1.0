@@ -790,7 +790,7 @@ $tr.append(
     order: [[5, 'asc']],
     fixedHeader: {
       header: true,
-      headerOffset: 90    // ajusta a la altura del header global
+      headerOffset: 70
     },
     buttons: [{
       extend: 'colvis',
@@ -808,12 +808,7 @@ $tr.append(
     }
   });
 
-  // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
-  const _ext = $.fn.dataTable.ext.search;
-  if (!_ext.includes(filtroDestinoCalendario)) _ext.push(filtroDestinoCalendario);
-  if (!_ext.includes(filtroBusquedaPorComa))  _ext.push(filtroBusquedaPorComa);
-  
-  // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
+  // Registrar filtros ext.search SIN reemplazar el array
   const _ext = $.fn.dataTable.ext.search;
   if (!_ext.includes(filtroDestinoCalendario)) _ext.push(filtroDestinoCalendario);
   if (!_ext.includes(filtroBusquedaPorComa))  _ext.push(filtroBusquedaPorComa);
@@ -850,11 +845,17 @@ $tr.append(
     });
   }
   
-  tabla.draw(false);
+  tabla.columns.adjust().draw(false);
   
   setTimeout(() => {
-    tabla.columns.adjust().draw(false);
-  }, 100);
+    tabla.columns.adjust();
+  
+    if (tabla.fixedHeader) {
+      tabla.fixedHeader.adjust();
+    }
+  
+    $(window).trigger('resize');
+  }, 150);
   
   // 5) Buscador libre
   // - Sin coma: búsqueda normal DataTables
@@ -913,12 +914,17 @@ $tr.append(
     });
   
     // Redibuja sin usar columns.adjust(), porque con FixedColumns puede romper
-    tabla.draw(false);
-  
-    // Recalcula visualmente FixedColumns si la función existe
+    tabla.columns.adjust().draw(false);
+    
     setTimeout(() => {
-      tabla.columns.adjust().draw(false);
-    }, 100);
+      tabla.columns.adjust();
+    
+      if (tabla.fixedHeader) {
+        tabla.fixedHeader.adjust();
+      }
+    
+      $(window).trigger('resize');
+    }, 150);
   });
     
   // const hoyISO = new Date().toISOString().slice(0, 10);
