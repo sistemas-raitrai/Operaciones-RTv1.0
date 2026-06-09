@@ -1588,6 +1588,61 @@ function hrs(t){
   return t ? `${t} HRS` : '—';
 }
 
+function esAerolinea(txt){
+  const x = norm(txt || '');
+  return /(latam|sky|jetsmart|jet smart|avianca|copa|gol|azul|h2)/i.test(x);
+}
+
+function esTransferReal(v){
+  if (!v?.isTransfer) return false;
+
+  const proveedor = `${v.proveedor || ''} ${v.numero || ''}`;
+  const tipo = norm(v.tipoTransporte || '');
+
+  // Si viene marcado como transfer, pero es aerolínea, NO lo mostramos como transfer
+  if (esAerolinea(proveedor)) return false;
+
+  // Preferimos transfer terrestre/local
+  if (tipo === 'aereo') return false;
+
+  return true;
+}
+
+function renderTransfersPreconfirmacion(vuelosNorm){
+  const transfers = (vuelosNorm || []).filter(esTransferReal);
+  if (!transfers.length) return '';
+
+  const vistos = new Set();
+
+  const items = transfers.map(v => {
+    const ruta = [v.origen, v.destino].filter(Boolean).join(' - ') || 'Por informar';
+
+    const fecha = [
+      v.fechaIda ? formatShortDate(v.fechaIda) : '',
+      v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''
+    ].filter(Boolean).join(' / ') || 'Por informar';
+
+    const key = `${ruta}__${fecha}`;
+    if (vistos.has(key)) return '';
+    vistos.add(key);
+
+    return `
+      <div class="note" style="margin-top:1.5mm;">
+        <strong>Transfer:</strong> ${ruta}<br>
+        <strong>Fecha:</strong> ${fecha}
+      </div>
+    `;
+  }).join('');
+
+  return items
+    ? `
+      <div style="margin-top:2mm;">
+        ${items}
+      </div>
+    `
+    : '';
+}
+
 function renderTransportesPreconfirmacion(vuelosNorm){
   const rows = [];
   const vistos = new Set();
@@ -1614,22 +1669,12 @@ function renderTransportesPreconfirmacion(vuelosNorm){
   (vuelosNorm || []).forEach(v => {
     const tipoTransporte = norm(v.tipoTransporte || 'aereo');
 
-    // TRANSFER
-    if (v.isTransfer) {
-      addRow({
-        tipo: 'TRANSFER',
-        tramo: tipoLegTxt(v.transferLeg),
-        empresa: v.proveedor || '—',
-        ruta: [v.origen, v.destino].filter(Boolean).join(' → '),
-        fecha: [
-          v.fechaIda ? formatShortDate(v.fechaIda) : '',
-          v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''
-        ].filter(Boolean).join(' / ')
-      });
-      return;
-    }
+    // Los transfer reales van fuera de la tabla
+    if (esTransferReal(v)) return;
 
-    // TERRESTRE
+    // Si estaba mal marcado como transfer pero es aerolínea, lo ignoramos como transfer
+    if (v.isTransfer && !esTransferReal(v)) return;
+
     if (tipoTransporte === 'terrestre') {
       addRow({
         tipo: 'TERRESTRE',
@@ -1644,7 +1689,6 @@ function renderTransportesPreconfirmacion(vuelosNorm){
       return;
     }
 
-    // AÉREO REGULAR MULTITRAMO
     if (Array.isArray(v.tramos) && v.tramos.length) {
       v.tramos.forEach(t => {
         const tipoTramo = String(t.tipoTramo || '').toLowerCase();
@@ -1672,7 +1716,6 @@ function renderTransportesPreconfirmacion(vuelosNorm){
       return;
     }
 
-    // AÉREO SIMPLE / CHARTER
     if (v.fechaIda) {
       addRow({
         tipo: 'AÉREO',
@@ -1694,23 +1737,26 @@ function renderTransportesPreconfirmacion(vuelosNorm){
     }
   });
 
-  if (!rows.length) {
-    return `<div class="note">Transportes por informar.</div>`;
-  }
+  const tabla = rows.length
+    ? `
+      <table class="confirm-flight-table">
+        <thead>
+          <tr>
+            <th>Tipo</th>
+            <th>Tramo</th>
+            <th>Empresa</th>
+            <th>Ruta</th>
+            <th>Fecha</th>
+          </tr>
+        </thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    `
+    : `<div class="note">Transportes por informar.</div>`;
 
   return `
-    <table class="confirm-flight-table">
-      <thead>
-        <tr>
-          <th>Tipo</th>
-          <th>Tramo</th>
-          <th>Empresa</th>
-          <th>Ruta</th>
-          <th>Fecha</th>
-        </tr>
-      </thead>
-      <tbody>${rows.join('')}</tbody>
-    </table>
+    ${tabla}
+    ${renderTransfersPreconfirmacion(vuelosNorm)}
     <p class="note">
       Los horarios, terminales, puntos de encuentro y detalles finales serán informados en la confirmación final.
     </p>
