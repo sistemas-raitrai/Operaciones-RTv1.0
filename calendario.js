@@ -808,10 +808,14 @@ $tr.append(
     }
   });
 
-  // Registrar filtros ext.search SIN reemplazar el array
-  const _ext = $.fn.dataTable.ext.search;
-  if (!_ext.includes(filtroDestinoCalendario)) _ext.push(filtroDestinoCalendario);
-  if (!_ext.includes(filtroBusquedaPorComa))  _ext.push(filtroBusquedaPorComa);
+  // Registrar filtros ext.search SIN declarar variables duplicadas
+  if (!$.fn.dataTable.ext.search.includes(filtroDestinoCalendario)) {
+    $.fn.dataTable.ext.search.push(filtroDestinoCalendario);
+  }
+  
+  if (!$.fn.dataTable.ext.search.includes(filtroBusquedaPorComa)) {
+    $.fn.dataTable.ext.search.push(filtroBusquedaPorComa);
+  }
   
   // Reaplicar filtros que tenía el usuario antes del refresco
   $('#buscador').val(filtroBuscadorActual);
