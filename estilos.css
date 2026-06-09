@@ -1102,11 +1102,49 @@ body.modal-open { overflow: hidden; }
   min-width: 120px !important;
 }
 
+/* Fila de encabezado fija al bajar */
 #tablaCalendario thead th {
   position: sticky !important;
   top: 70px !important;
   z-index: 80 !important;
   background: #fff !important;
+}
+
+/* Columna fija 1: N° Negocio */
+#tablaCalendario th:nth-child(1),
+#tablaCalendario td:nth-child(1) {
+  position: sticky !important;
+  left: 0 !important;
+  z-index: 60 !important;
+  background: #fff !important;
+  min-width: 90px !important;
+}
+
+/* Columna fija 2: Grupo */
+#tablaCalendario th:nth-child(2),
+#tablaCalendario td:nth-child(2) {
+  position: sticky !important;
+  left: 90px !important;
+  z-index: 60 !important;
+  background: #fff !important;
+  min-width: 190px !important;
+}
+
+/* Columna fija 3: Pax */
+#tablaCalendario th:nth-child(3),
+#tablaCalendario td:nth-child(3) {
+  position: sticky !important;
+  left: 280px !important;
+  z-index: 60 !important;
+  background: #fff !important;
+  min-width: 110px !important;
+}
+
+/* Las 3 celdas de encabezado fijas deben quedar encima de todo */
+#tablaCalendario thead th:nth-child(1),
+#tablaCalendario thead th:nth-child(2),
+#tablaCalendario thead th:nth-child(3) {
+  z-index: 120 !important;
 }
 
 #tablaCalendario_wrapper {
