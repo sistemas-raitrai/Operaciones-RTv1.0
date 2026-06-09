@@ -1143,3 +1143,34 @@ body.modal-open { overflow: hidden; }
 .fixedHeader-locked {
   display: none !important;
 }
+
+/* =========================================================
+   Calendario: encabezado y 3 primeras columnas fijas
+========================================================= */
+
+#tablaCalendario_wrapper .dataTables_scrollBody {
+  max-height: calc(100vh - 330px) !important;
+  overflow: auto !important;
+}
+
+#tablaCalendario_wrapper .dataTables_scrollHead {
+  position: sticky !important;
+  top: 90px !important;
+  z-index: 200 !important;
+  background: #fff !important;
+}
+
+#tablaCalendario_wrapper .dtfc-fixed-left {
+  background: #fff !important;
+  z-index: 120 !important;
+}
+
+#tablaCalendario_wrapper thead .dtfc-fixed-left {
+  z-index: 220 !important;
+  background: #f8f9fa !important;
+}
+
+#tablaCalendario th,
+#tablaCalendario td {
+  white-space: pre-wrap !important;
+}
