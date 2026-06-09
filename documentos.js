@@ -1770,11 +1770,11 @@ function renderTransportesPreconfirmacion(vuelosNorm){
     : `<div class="note">Transportes por informar.</div>`;
 
   return `
-    ${tabla}
-    ${renderTransfersPreconfirmacion(vuelosNorm)}
     <p class="note">
       Los horarios, terminales, puntos de encuentro y detalles finales serán informados en la confirmación final.
     </p>
+    ${tabla}
+    ${renderTransfersPreconfirmacion(vuelosNorm)}
   `;
 }
 
