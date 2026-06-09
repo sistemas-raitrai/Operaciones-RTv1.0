@@ -808,28 +808,53 @@ $tr.append(
     }
   });
 
+  // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
+  const _ext = $.fn.dataTable.ext.search;
+  if (!_ext.includes(filtroDestinoCalendario)) _ext.push(filtroDestinoCalendario);
+  if (!_ext.includes(filtroBusquedaPorComa))  _ext.push(filtroBusquedaPorComa);
+  
+  // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
+  const _ext = $.fn.dataTable.ext.search;
+  if (!_ext.includes(filtroDestinoCalendario)) _ext.push(filtroDestinoCalendario);
+  if (!_ext.includes(filtroBusquedaPorComa))  _ext.push(filtroBusquedaPorComa);
+  
   // Reaplicar filtros que tenía el usuario antes del refresco
   $('#buscador').val(filtroBuscadorActual);
   $('#filtroDestino').val(filtroDestinoActual);
   $('#filtroAno').val(filtroAnoActual);
   $('#filtroFechaDesde').val(filtroFechaActual);
   
+  // Destino
   FLT_DESTINO.value = filtroDestinoActual;
   
-  tabla.column(6).search(filtroAnoActual ? '^' + filtroAnoActual + '$' : '', true, false);
+  // Año
+  tabla.column(6).search(
+    filtroAnoActual ? '^' + filtroAnoActual + '$' : '',
+    true,
+    false
+  );
   
-  if (filtroBuscadorActual) {
-    tabla.search(filtroBuscadorActual);
+  // Buscador
+  tabla.search(filtroBuscadorActual || '');
+  
+  // Fecha desde: ocultar columnas anteriores
+  if (filtroFechaActual) {
+    tabla.columns().every(function () {
+      const th = this.header();
+      const fechaColumna = th?.getAttribute?.('data-fechaiso');
+  
+      if (!fechaColumna) return;
+  
+      const mostrar = fechaColumna >= filtroFechaActual;
+      this.visible(mostrar, false);
+    });
   }
   
-  tabla.draw();
-
-  // Registrar filtros ext.search SIN reemplazar el array (solo push si no existe)
-  const _ext = $.fn.dataTable.ext.search;
-  if (!_ext.includes(filtroDestinoCalendario)) _ext.push(filtroDestinoCalendario);
-  if (!_ext.includes(filtroBusquedaPorComa))  _ext.push(filtroBusquedaPorComa);
+  tabla.draw(false);
   
-
+  setTimeout(() => {
+    tabla.columns.adjust().draw(false);
+  }, 100);
   
   // 5) Buscador libre
   // - Sin coma: búsqueda normal DataTables
