@@ -11,24 +11,6 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 </head>
 <style>
- /* Encabezado fijo de DataTables con scroll horizontal */
-.dataTables_scrollHead {
-  position: sticky !important;
-  top: 70px;
-  z-index: 50;
-  background: #fff;
-}
-
-/* Evita descuadres visuales del encabezado */
-.dataTables_scrollHead table,
-.dataTables_scrollBody table {
-  margin: 0 !important;
-}
-
-#tablaCalendario thead th {
-  white-space: nowrap;
-}
-  
 .load-box {
   margin: 12px 0 18px;
   padding: 12px 14px;
@@ -70,55 +52,6 @@
 
 .load-box.error .load-progress {
   background: #dc2626;
-}
-  /* Header fijo vertical */
-.dataTables_scrollHead {
-  position: sticky !important;
-  top: 70px;
-  z-index: 60;
-  background: white;
-}
-
-/* Columnas fijas horizontales: N° Negocio, Grupo, Pax */
-#tablaCalendario th:nth-child(1),
-#tablaCalendario td:nth-child(1) {
-  position: sticky;
-  left: 0;
-  z-index: 40;
-  background: white;
-  min-width: 95px;
-}
-
-#tablaCalendario th:nth-child(2),
-#tablaCalendario td:nth-child(2) {
-  position: sticky;
-  left: 95px;
-  z-index: 40;
-  background: white;
-  min-width: 210px;
-}
-
-#tablaCalendario th:nth-child(3),
-#tablaCalendario td:nth-child(3) {
-  position: sticky;
-  left: 305px;
-  z-index: 40;
-  background: white;
-  min-width: 120px;
-}
-
-/* Encabezados fijos por encima de celdas */
-#tablaCalendario th:nth-child(1),
-#tablaCalendario th:nth-child(2),
-#tablaCalendario th:nth-child(3) {
-  z-index: 70;
-}
-
-/* Evita descuadres */
-#tablaCalendario th,
-#tablaCalendario td {
-  box-sizing: border-box;
-  vertical-align: top;
 }
 </style>
 <body>
