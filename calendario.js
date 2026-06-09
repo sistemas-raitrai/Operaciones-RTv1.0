@@ -1,12 +1,14 @@
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, doc, getDoc, updateDoc, addDoc, query, orderBy
+  collection, getDocs, doc, getDoc, updateDoc, addDoc, query, orderBy, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import { getAuth, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
 const auth = getAuth(app);
 let dtHist = null;
 let editMode = false;
+let unsubscribeGruposCalendario = null;
+let refrescandoCalendario = false;
 
 function getAnoComercialActual() {
   const hoy = new Date();
@@ -502,10 +504,38 @@ $(function () {
     if (!user) {
       location = 'login.html';
     } else {
-      generarTablaCalendario(user.email);
+      escucharCambiosCalendario(user.email);
     }
   });
 }); // ← cierra $(function)
+
+// ------------------------------------------------------------------
+// Escucha cambios en tiempo real desde Firestore
+// Cada cambio en grupos actualiza calendario.html para todos los usuarios
+// ------------------------------------------------------------------
+function escucharCambiosCalendario(userEmail) {
+  if (unsubscribeGruposCalendario) {
+    unsubscribeGruposCalendario();
+  }
+
+  unsubscribeGruposCalendario = onSnapshot(
+    collection(db, "grupos"),
+    async () => {
+      if (refrescandoCalendario) return;
+
+      refrescandoCalendario = true;
+      try {
+        await generarTablaCalendario(userEmail);
+      } finally {
+        refrescandoCalendario = false;
+      }
+    },
+    error => {
+      console.error("Error escuchando cambios en calendario:", error);
+      setCargaError(error);
+    }
+  );
+}
 
 // ------------------------------------------------------------------
 // Función principal: carga datos, construye tabla y DataTable
@@ -734,7 +764,12 @@ $tr.append(
     $tbody.append($tr);
   }); // ← cierra grupos.forEach
 
-  // 4) Inicializar DataTable
+  // 4) Reiniciar DataTable si ya existía
+  if ($.fn.DataTable.isDataTable('#tablaCalendario')) {
+    $('#tablaCalendario').DataTable().clear().destroy();
+  }
+  
+  // 4.1) Inicializar DataTable
   setCarga(85, 'Construyendo tabla...', 'Inicializando DataTable');
   const tabla = $('#tablaCalendario').DataTable({
     scrollX: true,
