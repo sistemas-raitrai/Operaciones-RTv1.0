@@ -3363,6 +3363,33 @@ function escapeHtml(s=''){
     .replaceAll("'","&#039;");
 }
 
+function sanitizeNotaHtml(html=''){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html || '');
+
+  const allowed = new Set(['B','STRONG','I','EM','U','BR','DIV','P']);
+
+  tmp.querySelectorAll('*').forEach(el=>{
+    if (!allowed.has(el.tagName)){
+      el.replaceWith(document.createTextNode(el.textContent || ''));
+      return;
+    }
+
+    [...el.attributes].forEach(attr => el.removeAttribute(attr.name));
+
+    if (el.tagName === 'B') el.outerHTML = `<strong>${el.innerHTML}</strong>`;
+    if (el.tagName === 'I') el.outerHTML = `<em>${el.innerHTML}</em>`;
+  });
+
+  return tmp.innerHTML.trim();
+}
+
+function notaPlainText(html=''){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html || '';
+  return tmp.textContent.trim();
+}
+
 function getNotasDocumentoHTML(grupo, tipoDoc){
   const notas = Array.isArray(grupo.notasDocumento)
     ? grupo.notasDocumento
@@ -3370,7 +3397,7 @@ function getNotasDocumentoHTML(grupo, tipoDoc){
 
   const visibles = notas.filter(n =>
     n &&
-    n.texto &&
+    (n.html || n.texto) &&
     Array.isArray(n.mostrarEn) &&
     n.mostrarEn.includes(tipoDoc)
   );
@@ -3381,7 +3408,12 @@ function getNotasDocumentoHTML(grupo, tipoDoc){
     <div class="sec">
       <div class="sec-title">8. INFORMACIÓN COMPLEMENTARIA</div>
       <ul>
-        ${visibles.map(n => `<li>${escapeHtml(n.texto)}</li>`).join('')}
+        ${visibles.map(n => {
+          const html = n.html
+            ? sanitizeNotaHtml(n.html)
+            : escapeHtml(n.texto || '');
+          return `<li>${html}</li>`;
+        }).join('')}
       </ul>
     </div>
   `;
@@ -3403,7 +3435,16 @@ function ensureModalNotasDocumento(){
 
       <div class="notas-modal-body">
         <label class="notas-label">Nota</label>
-        <textarea id="notaDocumentoTexto" rows="4" placeholder="Escribe una nota personalizada para este grupo..."></textarea>
+        
+        <div class="notas-toolbar">
+          <button type="button" data-cmd="bold"><strong>B</strong></button>
+          <button type="button" data-cmd="italic"><em>I</em></button>
+          <button type="button" data-cmd="underline"><u>U</u></button>
+        </div>
+        
+        <div id="notaDocumentoEditor"
+             contenteditable="true"
+             data-placeholder="Escribe una nota personalizada para este grupo..."></div>
 
         <div class="notas-checks">
           <label><input type="checkbox" id="notaMostrarP"> Preconfirmación</label>
@@ -3481,16 +3522,39 @@ function ensureModalNotasDocumento(){
       font-weight:700;
       margin-bottom:6px;
     }
-    #notaDocumentoTexto{
+    .notas-toolbar{
+      display:flex;
+      gap:6px;
+      margin-bottom:6px;
+    }
+    
+    .notas-toolbar button{
+      border:1px solid #bbb;
+      background:#fff;
+      color:#111 !important;
+      border-radius:6px;
+      padding:5px 9px;
+      cursor:pointer;
+      font-weight:700;
+    }
+    
+    #notaDocumentoEditor{
       width:100%;
+      min-height:86px;
       box-sizing:border-box;
-      border:1px solid #ccc;
+      border:1px solid #111;
       border-radius:8px;
       padding:10px;
       font-size:14px;
-      resize:vertical;
       background:#fff;
       color:#111;
+      outline:none;
+      white-space:pre-wrap;
+    }
+    
+    #notaDocumentoEditor:empty:before{
+      content:attr(data-placeholder);
+      color:#888;
     }
     .notas-checks{
       display:flex;
@@ -3572,7 +3636,7 @@ async function abrirModalNotasDocumento(grupoId){
 
   let editIndex = null;
 
-  const txt = modal.querySelector('#notaDocumentoTexto');
+  const editor = modal.querySelector('#notaDocumentoEditor');
   const chkP = modal.querySelector('#notaMostrarP');
   const chkC = modal.querySelector('#notaMostrarC');
   const lista = modal.querySelector('#listaNotasDocumento');
@@ -3580,9 +3644,16 @@ async function abrirModalNotasDocumento(grupoId){
   const btnCancelar = modal.querySelector('#btnCancelarEdicionNota');
   const btnCerrar = modal.querySelector('#btnCerrarNotasDocumento');
 
+  modal.querySelectorAll('.notas-toolbar button').forEach(b=>{
+    b.onclick = ()=>{
+      editor.focus();
+      document.execCommand(b.dataset.cmd, false, null);
+    };
+  });
+
   function resetForm(){
     editIndex = null;
-    txt.value = '';
+    editor.innerHTML = '';
     chkP.checked = true;
     chkC.checked = true;
     btnGuardar.textContent = 'Agregar nota';
@@ -3607,7 +3678,7 @@ async function abrirModalNotasDocumento(grupoId){
 
       return `
         <div class="nota-card" data-idx="${idx}">
-          <div class="nota-card-texto">${escapeHtml(n.texto || '')}</div>
+          <div class="nota-card-texto">${n.html ? sanitizeNotaHtml(n.html) : escapeHtml(n.texto || '')}</div>
           <div class="nota-card-meta">Aparece en: ${label}</div>
           <div class="nota-card-actions">
             <button type="button" class="btnEditarNota">Editar</button>
@@ -3624,7 +3695,7 @@ async function abrirModalNotasDocumento(grupoId){
         const n = notas[idx];
 
         editIndex = idx;
-        txt.value = n.texto || '';
+        editor.innerHTML = n.html || escapeHtml(n.texto || '');
         chkP.checked = Array.isArray(n.mostrarEn) && n.mostrarEn.includes('P');
         chkC.checked = Array.isArray(n.mostrarEn) && n.mostrarEn.includes('C');
         btnGuardar.textContent = 'Guardar cambios';
@@ -3648,7 +3719,8 @@ async function abrirModalNotasDocumento(grupoId){
   }
 
   btnGuardar.onclick = async ()=>{
-    const texto = txt.value.trim();
+    const html = sanitizeNotaHtml(editor.innerHTML);
+    const texto = notaPlainText(html);
     const mostrarEn = [];
     if (chkP.checked) mostrarEn.push('P');
     if (chkC.checked) mostrarEn.push('C');
@@ -3664,6 +3736,7 @@ async function abrirModalNotasDocumento(grupoId){
     }
 
     const item = {
+      html,
       texto,
       mostrarEn,
       actualizadoEl: new Date().toISOString()
