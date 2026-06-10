@@ -1614,34 +1614,83 @@ function renderTransfersPreconfirmacion(vuelosNorm){
   const items = [];
   const vistos = new Set();
 
+  const addItem = ({ tramo, origen, destino, fecha }) => {
+    if (!fecha) return;
+
+    const o = origen || 'Origen por informar';
+    const d = destino || 'Destino por informar';
+    const key = `${tramo}__${o}__${d}__${fecha}`;
+
+    if (vistos.has(key)) return;
+    vistos.add(key);
+
+    items.push(`
+      <li>
+        <strong>${o} → ${d}:</strong>
+        ${formatShortDate(fecha)}
+      </li>
+    `);
+  };
+
   transfers.forEach(v => {
+    const leg = String(v.transferLeg || '').toLowerCase();
     const origen = v.origen || 'Origen por informar';
     const destino = v.destino || 'Destino por informar';
 
+    if (leg === 'ida') {
+      addItem({
+        tramo: 'IDA',
+        origen,
+        destino,
+        fecha: v.fechaIda
+      });
+      return;
+    }
+
+    if (leg === 'vuelta') {
+      addItem({
+        tramo: 'VUELTA',
+        origen: destino,
+        destino: origen,
+        fecha: v.fechaVuelta
+      });
+      return;
+    }
+
+    if (leg === 'ida+vuelta') {
+      addItem({
+        tramo: 'IDA',
+        origen,
+        destino,
+        fecha: v.fechaIda
+      });
+
+      addItem({
+        tramo: 'VUELTA',
+        origen: destino,
+        destino: origen,
+        fecha: v.fechaVuelta
+      });
+      return;
+    }
+
+    // Respaldo por si algún transfer antiguo no trae transferLeg
     if (v.fechaIda) {
-      const keyIda = `IDA__${origen}__${destino}__${v.fechaIda}`;
-      if (!vistos.has(keyIda)) {
-        vistos.add(keyIda);
-        items.push(`
-          <li>
-            <strong>${origen} → ${destino}:</strong>
-            ${formatShortDate(v.fechaIda)}
-          </li>
-        `);
-      }
+      addItem({
+        tramo: 'IDA',
+        origen,
+        destino,
+        fecha: v.fechaIda
+      });
     }
 
     if (v.fechaVuelta) {
-      const keyVuelta = `VUELTA__${destino}__${origen}__${v.fechaVuelta}`;
-      if (!vistos.has(keyVuelta)) {
-        vistos.add(keyVuelta);
-        items.push(`
-          <li>
-            <strong>${destino} → ${origen}:</strong>
-            ${formatShortDate(v.fechaVuelta)}
-          </li>
-        `);
-      }
+      addItem({
+        tramo: 'VUELTA',
+        origen: destino,
+        destino: origen,
+        fecha: v.fechaVuelta
+      });
     }
   });
 
@@ -1855,19 +1904,89 @@ function renderTransportesConfirmacion(vuelosNorm){
   });
 
   transfers.forEach(v => {
-    rows.push(`
-      <tr>
-        <td><strong>TRASLADO</strong></td>
-        <td>${tipoLegTxt(v.transferLeg)}</td>
-        <td>${v.proveedor || '—'}</td>
-        <td>${formatShortDate(v.fechaIda || v.fechaVuelta)}</td>
-        <td>${v.origen || '—'}</td>
-        <td>—</td>
-        <td>${hrs(v.idaHora || v.vueloIdaHora || v.vueltaHora || v.vueloVueltaHora)}</td>
-        <td>${v.destino || '—'}</td>
-        <td>—</td>
-      </tr>
-    `);
+    const leg = String(v.transferLeg || '').toLowerCase();
+    const origen = v.origen || '—';
+    const destino = v.destino || '—';
+  
+    const addTransferRow = ({ tramo, fecha, desde, hasta, hora }) => {
+      if (!fecha) return;
+  
+      rows.push(`
+        <tr>
+          <td><strong>TRASLADO</strong></td>
+          <td>${tramo}</td>
+          <td>${v.proveedor || '—'}</td>
+          <td>${formatShortDate(fecha)}</td>
+          <td>${desde || '—'}</td>
+          <td>—</td>
+          <td>${hrs(hora)}</td>
+          <td>${hasta || '—'}</td>
+          <td>—</td>
+        </tr>
+      `);
+    };
+  
+    if (leg === 'ida') {
+      addTransferRow({
+        tramo: 'IDA',
+        fecha: v.fechaIda,
+        desde: origen,
+        hasta: destino,
+        hora: v.idaHora || v.vueloIdaHora
+      });
+      return;
+    }
+  
+    if (leg === 'vuelta') {
+      addTransferRow({
+        tramo: 'VUELTA',
+        fecha: v.fechaVuelta,
+        desde: destino,
+        hasta: origen,
+        hora: v.vueltaHora || v.vueloVueltaHora
+      });
+      return;
+    }
+  
+    if (leg === 'ida+vuelta') {
+      addTransferRow({
+        tramo: 'IDA',
+        fecha: v.fechaIda,
+        desde: origen,
+        hasta: destino,
+        hora: v.idaHora || v.vueloIdaHora
+      });
+  
+      addTransferRow({
+        tramo: 'VUELTA',
+        fecha: v.fechaVuelta,
+        desde: destino,
+        hasta: origen,
+        hora: v.vueltaHora || v.vueloVueltaHora
+      });
+      return;
+    }
+  
+    // Respaldo para datos antiguos sin transferLeg
+    if (v.fechaIda) {
+      addTransferRow({
+        tramo: 'IDA',
+        fecha: v.fechaIda,
+        desde: origen,
+        hasta: destino,
+        hora: v.idaHora || v.vueloIdaHora
+      });
+    }
+  
+    if (v.fechaVuelta) {
+      addTransferRow({
+        tramo: 'VUELTA',
+        fecha: v.fechaVuelta,
+        desde: destino,
+        hasta: origen,
+        hora: v.vueltaHora || v.vueloVueltaHora
+      });
+    }
   });
 
   if (!rows.length) {
