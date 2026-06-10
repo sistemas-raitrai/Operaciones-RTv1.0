@@ -2064,7 +2064,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   );
   
   recomendaciones.push(
-    'También responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo. Como por ejemplo subir el cédula de identidad al sistema donde realiza los pagos.'
+    'También responder oportunamente a los requerimientos administrativos informados por Turismo Rai Trai o por el delegado(a) del grupo. Como por ejemplo subir la cédula de identidad al sistema donde realiza los pagos.'
   );
   
   const recomendacionesHTML =
