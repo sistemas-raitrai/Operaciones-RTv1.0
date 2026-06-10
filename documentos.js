@@ -3461,10 +3461,17 @@ function ensureModalNotasDocumento(){
     }
     #btnCerrarNotasDocumento{
       border:none;
-      background:transparent;
-      font-size:28px;
+      background:#e53935;
+      color:#fff !important;
+      font-size:22px;
       cursor:pointer;
       line-height:1;
+      width:32px;
+      height:32px;
+      border-radius:50%;
+      display:flex;
+      align-items:center;
+      justify-content:center;
     }
     .notas-modal-body{
       padding:16px 18px 18px;
@@ -3487,9 +3494,15 @@ function ensureModalNotasDocumento(){
     }
     .notas-checks{
       display:flex;
-      gap:18px;
+      gap:28px;
       margin:12px 0;
       font-weight:600;
+    }
+    
+    .notas-checks label{
+      display:flex;
+      align-items:center;
+      gap:6px;
     }
     .notas-actions{
       display:flex;
@@ -3531,11 +3544,13 @@ function ensureModalNotasDocumento(){
       gap:8px;
     }
     .nota-card-actions button{
-      border:1px solid #ccc;
-      background:#fff;
+      border:1px solid #0d6efd;
+      background:#0d6efd;
+      color:#fff !important;
       border-radius:7px;
       padding:6px 10px;
       cursor:pointer;
+      font-weight:700;
     }
   `;
   document.head.appendChild(style);
