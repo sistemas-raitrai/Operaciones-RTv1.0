@@ -4,7 +4,7 @@
 
 import { app, db } from './firebase-init.js';
 import {
-  collection, getDocs, doc, getDoc, query, where, orderBy, limit, startAfter
+  collection, getDocs, doc, getDoc, updateDoc, query, where, orderBy, limit, startAfter
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 console.log("✅ DOCUMENTOS.JS");
@@ -1537,9 +1537,10 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         <div class="note">El orden de las actividades podría ser modificado por razones de coordinación.</div>
         ${itinHTML}
       </div>
-
-      <div class="closing">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
-    </div>
+      
+      ${getNotasDocumentoHTML(grupo, 'C')}
+      
+      <div class="closing">
   `;
 }
 
@@ -2170,6 +2171,8 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
         
         </ul>
       </div>
+
+      ${getNotasDocumentoHTML(grupo, 'P')}
 
       <div class="closing">
         ESTAREMOS TRABAJANDO PARA QUE VIVAN UNA EXPERIENCIA INOLVIDABLE<br>
@@ -3274,6 +3277,7 @@ function renderTabla(rows){
 
       <td class="acciones">
         <div class="acciones-wrap">
+          <button class="btn-add btn-notas" title="Información complementaria">📝</button>
           <button class="btn-add btn-preconfirmacion">P</button>
           <button class="btn-add btn-one">C</button>
           <button class="btn-add btn-finanzas">R</button>
@@ -3288,6 +3292,15 @@ function renderTabla(rows){
   }
 
   document.getElementById('countHint').textContent = `${rows.length} grupo(s) encontrados.`;
+
+  tb.querySelectorAll('.btn-notas').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      const tr = ev.currentTarget.closest('tr');
+      const id = tr?.dataset?.id;
+      if (!id) return;
+      await abrirModalNotasDocumento(id);
+    });
+  });
 
   tb.querySelectorAll('.btn-preconfirmacion').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
@@ -3338,6 +3351,337 @@ function renderTabla(rows){
   document.getElementById('chkAll').onchange = (ev)=>{
     tb.querySelectorAll('.rowchk').forEach(c=> c.checked = ev.currentTarget.checked);
   };
+}
+
+function escapeHtml(s=''){
+  return String(s)
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
+}
+
+function getNotasDocumentoHTML(grupo, tipoDoc){
+  const notas = Array.isArray(grupo.notasDocumento)
+    ? grupo.notasDocumento
+    : [];
+
+  const visibles = notas.filter(n =>
+    n &&
+    n.texto &&
+    Array.isArray(n.mostrarEn) &&
+    n.mostrarEn.includes(tipoDoc)
+  );
+
+  if (!visibles.length) return '';
+
+  return `
+    <div class="sec">
+      <div class="sec-title">8. INFORMACIÓN COMPLEMENTARIA</div>
+      <ul>
+        ${visibles.map(n => `<li>${escapeHtml(n.texto)}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+function ensureModalNotasDocumento(){
+  let modal = document.getElementById('modalNotasDocumento');
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.id = 'modalNotasDocumento';
+  modal.className = 'notas-modal-backdrop';
+  modal.innerHTML = `
+    <div class="notas-modal">
+      <div class="notas-modal-head">
+        <h3>Información complementaria</h3>
+        <button type="button" id="btnCerrarNotasDocumento">×</button>
+      </div>
+
+      <div class="notas-modal-body">
+        <label class="notas-label">Nota</label>
+        <textarea id="notaDocumentoTexto" rows="4" placeholder="Escribe una nota personalizada para este grupo..."></textarea>
+
+        <div class="notas-checks">
+          <label><input type="checkbox" id="notaMostrarP"> Preconfirmación</label>
+          <label><input type="checkbox" id="notaMostrarC"> Confirmación</label>
+        </div>
+
+        <div class="notas-actions">
+          <button type="button" class="btn-add" id="btnGuardarNotaDocumento">Agregar nota</button>
+          <button type="button" class="btn-light" id="btnCancelarEdicionNota" style="display:none;">Cancelar edición</button>
+        </div>
+
+        <hr>
+
+        <div id="listaNotasDocumento" class="lista-notas-documento"></div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const style = document.createElement('style');
+  style.id = 'notas-documento-styles';
+  style.textContent = `
+    .notas-modal-backdrop{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.45);
+      z-index:99999;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+    }
+    .notas-modal-backdrop.open{ display:flex; }
+    .notas-modal{
+      width:min(760px, 96vw);
+      max-height:90vh;
+      overflow:auto;
+      background:#fff;
+      color:#111;
+      border-radius:12px;
+      box-shadow:0 18px 50px rgba(0,0,0,.25);
+    }
+    .notas-modal-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:14px 18px;
+      border-bottom:1px solid #ddd;
+      background:#f7f7f8;
+    }
+    .notas-modal-head h3{
+      margin:0;
+      font-size:18px;
+    }
+    #btnCerrarNotasDocumento{
+      border:none;
+      background:transparent;
+      font-size:28px;
+      cursor:pointer;
+      line-height:1;
+    }
+    .notas-modal-body{
+      padding:16px 18px 18px;
+    }
+    .notas-label{
+      display:block;
+      font-weight:700;
+      margin-bottom:6px;
+    }
+    #notaDocumentoTexto{
+      width:100%;
+      box-sizing:border-box;
+      border:1px solid #ccc;
+      border-radius:8px;
+      padding:10px;
+      font-size:14px;
+      resize:vertical;
+      background:#fff;
+      color:#111;
+    }
+    .notas-checks{
+      display:flex;
+      gap:18px;
+      margin:12px 0;
+      font-weight:600;
+    }
+    .notas-actions{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      margin-bottom:10px;
+    }
+    .btn-light{
+      border:1px solid #ccc;
+      background:#fff;
+      border-radius:8px;
+      padding:8px 12px;
+      cursor:pointer;
+    }
+    .lista-notas-documento{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      margin-top:12px;
+    }
+    .nota-card{
+      border:1px solid #ddd;
+      border-radius:10px;
+      padding:12px;
+      background:#fafafa;
+    }
+    .nota-card-texto{
+      white-space:pre-wrap;
+      margin-bottom:8px;
+    }
+    .nota-card-meta{
+      font-size:12px;
+      color:#555;
+      margin-bottom:8px;
+      font-weight:700;
+    }
+    .nota-card-actions{
+      display:flex;
+      gap:8px;
+    }
+    .nota-card-actions button{
+      border:1px solid #ccc;
+      background:#fff;
+      border-radius:7px;
+      padding:6px 10px;
+      cursor:pointer;
+    }
+  `;
+  document.head.appendChild(style);
+
+  return modal;
+}
+
+async function abrirModalNotasDocumento(grupoId){
+  const modal = ensureModalNotasDocumento();
+
+  const ref = doc(db, 'grupos', grupoId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+
+  const grupo = { id:snap.id, ...snap.data() };
+  let notas = Array.isArray(grupo.notasDocumento)
+    ? [...grupo.notasDocumento]
+    : [];
+
+  let editIndex = null;
+
+  const txt = modal.querySelector('#notaDocumentoTexto');
+  const chkP = modal.querySelector('#notaMostrarP');
+  const chkC = modal.querySelector('#notaMostrarC');
+  const lista = modal.querySelector('#listaNotasDocumento');
+  const btnGuardar = modal.querySelector('#btnGuardarNotaDocumento');
+  const btnCancelar = modal.querySelector('#btnCancelarEdicionNota');
+  const btnCerrar = modal.querySelector('#btnCerrarNotasDocumento');
+
+  function resetForm(){
+    editIndex = null;
+    txt.value = '';
+    chkP.checked = true;
+    chkC.checked = true;
+    btnGuardar.textContent = 'Agregar nota';
+    btnCancelar.style.display = 'none';
+  }
+
+  function renderLista(){
+    if (!notas.length){
+      lista.innerHTML = `<div class="note">No hay notas registradas para este grupo.</div>`;
+      return;
+    }
+
+    lista.innerHTML = notas.map((n, idx)=>{
+      const mostrar = Array.isArray(n.mostrarEn) ? n.mostrarEn : [];
+      const label = mostrar.includes('P') && mostrar.includes('C')
+        ? 'Preconfirmación y Confirmación'
+        : mostrar.includes('P')
+          ? 'Sólo Preconfirmación'
+          : mostrar.includes('C')
+            ? 'Sólo Confirmación'
+            : 'Sin documento asignado';
+
+      return `
+        <div class="nota-card" data-idx="${idx}">
+          <div class="nota-card-texto">${escapeHtml(n.texto || '')}</div>
+          <div class="nota-card-meta">Aparece en: ${label}</div>
+          <div class="nota-card-actions">
+            <button type="button" class="btnEditarNota">Editar</button>
+            <button type="button" class="btnEliminarNota">Eliminar</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    lista.querySelectorAll('.btnEditarNota').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const card = btn.closest('.nota-card');
+        const idx = Number(card.dataset.idx);
+        const n = notas[idx];
+
+        editIndex = idx;
+        txt.value = n.texto || '';
+        chkP.checked = Array.isArray(n.mostrarEn) && n.mostrarEn.includes('P');
+        chkC.checked = Array.isArray(n.mostrarEn) && n.mostrarEn.includes('C');
+        btnGuardar.textContent = 'Guardar cambios';
+        btnCancelar.style.display = 'inline-block';
+      });
+    });
+
+    lista.querySelectorAll('.btnEliminarNota').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const card = btn.closest('.nota-card');
+        const idx = Number(card.dataset.idx);
+
+        if (!confirm('¿Eliminar esta nota?')) return;
+
+        notas.splice(idx, 1);
+        await updateDoc(ref, { notasDocumento: notas });
+        resetForm();
+        renderLista();
+      });
+    });
+  }
+
+  btnGuardar.onclick = async ()=>{
+    const texto = txt.value.trim();
+    const mostrarEn = [];
+    if (chkP.checked) mostrarEn.push('P');
+    if (chkC.checked) mostrarEn.push('C');
+
+    if (!texto){
+      alert('Escribe una nota.');
+      return;
+    }
+
+    if (!mostrarEn.length){
+      alert('Selecciona si la nota irá en Preconfirmación, Confirmación o ambas.');
+      return;
+    }
+
+    const item = {
+      texto,
+      mostrarEn,
+      actualizadoEl: new Date().toISOString()
+    };
+
+    if (editIndex === null){
+      notas.push(item);
+    }else{
+      notas[editIndex] = {
+        ...(notas[editIndex] || {}),
+        ...item
+      };
+    }
+
+    await updateDoc(ref, { notasDocumento: notas });
+    resetForm();
+    renderLista();
+  };
+
+  btnCancelar.onclick = ()=>{
+    resetForm();
+  };
+
+  btnCerrar.onclick = ()=>{
+    modal.classList.remove('open');
+  };
+
+  modal.onclick = (ev)=>{
+    if (ev.target === modal) modal.classList.remove('open');
+  };
+
+  resetForm();
+  renderLista();
+  modal.classList.add('open');
 }
 
 // ──────────────────────────────────────────────────────────────
