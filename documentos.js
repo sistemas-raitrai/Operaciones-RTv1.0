@@ -1607,12 +1607,72 @@ function esTransferReal(v){
   return true;
 }
 
+function getRutaTransfer(v, leg){
+  const origen = v.origen || 'Origen por informar';
+  const destino = v.destino || 'Destino por informar';
+
+  const o = norm(origen);
+  const d = norm(destino);
+
+  const origenEsColegio = o.includes('colegio');
+  const destinoEsColegio = d.includes('colegio');
+  const origenEsAeropuerto = o.includes('aeropuerto');
+  const destinoEsAeropuerto = d.includes('aeropuerto');
+
+  // IDA debe ser COLEGIO → AEROPUERTO si detectamos esos textos
+  if (leg === 'ida') {
+    if (origenEsAeropuerto && destinoEsColegio) {
+      return { desde: destino, hasta: origen };
+    }
+    return { desde: origen, hasta: destino };
+  }
+
+  // VUELTA debe ser AEROPUERTO → COLEGIO si detectamos esos textos
+  if (leg === 'vuelta') {
+    if (origenEsColegio && destinoEsAeropuerto) {
+      return { desde: destino, hasta: origen };
+    }
+    return { desde: origen, hasta: destino };
+  }
+
+  return { desde: origen, hasta: destino };
+}
+
 function renderTransfersPreconfirmacion(vuelosNorm){
   const transfers = (vuelosNorm || []).filter(esTransferReal);
   if (!transfers.length) return '';
 
   const items = [];
   const vistos = new Set();
+
+  const rutaTransfer = (v, leg) => {
+    const origen = v.origen || 'Origen por informar';
+    const destino = v.destino || 'Destino por informar';
+
+    const o = norm(origen);
+    const d = norm(destino);
+
+    const origenEsColegio = o.includes('colegio');
+    const destinoEsColegio = d.includes('colegio');
+    const origenEsAeropuerto = o.includes('aeropuerto');
+    const destinoEsAeropuerto = d.includes('aeropuerto');
+
+    if (leg === 'ida') {
+      if (origenEsAeropuerto && destinoEsColegio) {
+        return { origen: destino, destino: origen };
+      }
+      return { origen, destino };
+    }
+
+    if (leg === 'vuelta') {
+      if (origenEsColegio && destinoEsAeropuerto) {
+        return { origen: destino, destino: origen };
+      }
+      return { origen, destino };
+    }
+
+    return { origen, destino };
+  };
 
   const addItem = ({ tramo, origen, destino, fecha }) => {
     if (!fecha) return;
@@ -1634,41 +1694,44 @@ function renderTransfersPreconfirmacion(vuelosNorm){
 
   transfers.forEach(v => {
     const leg = String(v.transferLeg || '').toLowerCase();
-    const origen = v.origen || 'Origen por informar';
-    const destino = v.destino || 'Destino por informar';
 
     if (leg === 'ida') {
+      const r = rutaTransfer(v, 'ida');
       addItem({
         tramo: 'IDA',
-        origen,
-        destino,
+        origen: r.origen,
+        destino: r.destino,
         fecha: v.fechaIda
       });
       return;
     }
 
     if (leg === 'vuelta') {
+      const r = rutaTransfer(v, 'vuelta');
       addItem({
         tramo: 'VUELTA',
-        origen: destino,
-        destino: origen,
+        origen: r.origen,
+        destino: r.destino,
         fecha: v.fechaVuelta
       });
       return;
     }
 
     if (leg === 'ida+vuelta') {
+      const rIda = rutaTransfer(v, 'ida');
+      const rVuelta = rutaTransfer(v, 'vuelta');
+
       addItem({
         tramo: 'IDA',
-        origen,
-        destino,
+        origen: rIda.origen,
+        destino: rIda.destino,
         fecha: v.fechaIda
       });
 
       addItem({
         tramo: 'VUELTA',
-        origen: destino,
-        destino: origen,
+        origen: rVuelta.origen,
+        destino: rVuelta.destino,
         fecha: v.fechaVuelta
       });
       return;
@@ -1676,19 +1739,21 @@ function renderTransfersPreconfirmacion(vuelosNorm){
 
     // Respaldo por si algún transfer antiguo no trae transferLeg
     if (v.fechaIda) {
+      const r = rutaTransfer(v, 'ida');
       addItem({
         tramo: 'IDA',
-        origen,
-        destino,
+        origen: r.origen,
+        destino: r.destino,
         fecha: v.fechaIda
       });
     }
 
     if (v.fechaVuelta) {
+      const r = rutaTransfer(v, 'vuelta');
       addItem({
         tramo: 'VUELTA',
-        origen: destino,
-        destino: origen,
+        origen: r.origen,
+        destino: r.destino,
         fecha: v.fechaVuelta
       });
     }
