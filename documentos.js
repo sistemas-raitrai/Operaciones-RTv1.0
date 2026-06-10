@@ -63,6 +63,14 @@ function injectPageLightStyles(){
       gap: 12px !important;
       grid-template-columns: 1fr !important;
     }
+    .btn-notas-icon{
+      background:transparent !important;
+      border:none !important;
+      box-shadow:none !important;
+      padding:2px 4px !important;
+      font-size:17px !important;
+      cursor:pointer;
+    }
     
     .print-doc{ margin:0 auto !important; }
 
@@ -3459,7 +3467,7 @@ function renderTabla(rows){
 
       <td class="acciones">
         <div class="acciones-wrap">
-          <button class="btn-add btn-notas" title="Información complementaria">📝</button>
+          <button class="btn-notas-icon" title="Información complementaria">📝</button>
           <button class="btn-add btn-preconfirmacion">P</button>
           <button class="btn-add btn-one">C</button>
           <button class="btn-add btn-finanzas">R</button>
@@ -3475,7 +3483,7 @@ function renderTabla(rows){
 
   document.getElementById('countHint').textContent = `${rows.length} grupo(s) encontrados.`;
 
-  tb.querySelectorAll('.btn-notas').forEach(btn=>{
+  tb.querySelectorAll('.btn-notas-icon').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
       const tr = ev.currentTarget.closest('tr');
       const id = tr?.dataset?.id;
