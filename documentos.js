@@ -2060,7 +2060,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
   const recomendaciones = [];
   
   recomendaciones.push(
-    'Deben estar al día los compromisos financieros asociados al viaje para estár en la nómina del viaje.'
+    'Para formar parte de la nómina oficial del viaje, el pasajero deberá mantener al día todos los compromisos financieros asociados al programa.'
   );
   
   recomendaciones.push(
