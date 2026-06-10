@@ -1540,8 +1540,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       
       ${getNotasDocumentoHTML(grupo, 'C')}
       
-      <div class="closing">
-  `;
+      <div class="closing">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
+      </div>
+      `;
 }
 
 function uniqueClean(arr){
