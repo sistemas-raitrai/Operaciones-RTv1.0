@@ -3771,7 +3771,14 @@ function ensureModalNotasDocumento(){
       display:flex;
       gap:10px;
       align-items:center;
+      margin-top:12px;
       margin-bottom:10px;
+      position:sticky;
+      bottom:0;
+      background:#fff;
+      padding:10px 0;
+      border-top:1px solid #ddd;
+      z-index:5;
     }
     .btn-light{
       border:1px solid #ccc;
@@ -4115,6 +4122,45 @@ function ensureModalAjustesDocumento(){
   `;
 
   document.body.appendChild(modal);
+  
+  if (!document.getElementById('ajustes-documento-styles')) {
+    const style = document.createElement('style');
+    style.id = 'ajustes-documento-styles';
+    style.textContent = `
+      #modalAjustesDocumento .notas-modal{
+        width:min(900px, 96vw);
+        max-height:90vh;
+        overflow:auto;
+      }
+  
+      #modalAjustesDocumento .notas-actions{
+        display:flex;
+        gap:10px;
+        align-items:center;
+        justify-content:flex-start;
+        flex-wrap:wrap;
+        position:sticky;
+        bottom:0;
+        background:#fff;
+        padding:12px 0;
+        border-top:1px solid #ddd;
+        z-index:20;
+      }
+  
+      #modalAjustesDocumento .notas-actions button{
+        min-width:auto;
+        white-space:nowrap;
+      }
+  
+      #ajusteDocumentoEditor{
+        box-sizing:border-box;
+        max-height:55vh;
+        overflow:auto;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
   return modal;
 }
 
