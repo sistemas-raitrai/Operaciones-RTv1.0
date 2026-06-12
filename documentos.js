@@ -4023,7 +4023,7 @@ function extraerCuerpoDocumento(html=''){
   const docEl = tmp.querySelector('.print-doc');
   if (!docEl) return html;
 
-  const header = docEl.querySelector('.confirm-header, .finanzas-header, .it-header');
+  const header = docEl.querySelector('.confirm-header, .finanzas-header, .it-header, .vouchers-header');
   if (header) header.remove();
 
   return docEl.innerHTML.trim();
@@ -4135,8 +4135,16 @@ function ensureModalAjustesDocumento(){
     style.id = 'ajustes-documento-styles';
     style.textContent = `
       #modalAjustesDocumento .notas-modal{
-        width:min(900px, 96vw);
+        width:min(980px, 96vw);
+        height:90vh;
         max-height:90vh;
+        display:flex;
+        flex-direction:column;
+        overflow:hidden;
+      }
+      
+      #modalAjustesDocumento .notas-modal-body{
+        flex:1;
         overflow:auto;
       }
   
