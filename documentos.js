@@ -4299,10 +4299,17 @@ async function abrirModalAjustesDocumento(grupoId){
   const btnCargarAuto = modal.querySelector('#btnCargarAutomaticoDocumento');
   const btnVolverAuto = modal.querySelector('#btnVolverAutomaticoDocumento');
 
-  modal.querySelectorAll('.notas-toolbar button').forEach(b=>{
-    b.onclick = ()=>{
-      editor.focus();
+  modal.querySelectorAll('.ajustes-doc-toolbar button').forEach(b=>{
+    b.onmousedown = (ev)=>{
+      ev.preventDefault();
+    };
+  
+    b.onclick = (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+  
       document.execCommand(b.dataset.cmd, false, null);
+      editor.focus();
     };
   });
 
