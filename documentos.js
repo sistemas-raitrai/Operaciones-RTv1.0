@@ -3468,6 +3468,7 @@ function renderTabla(rows){
       <td class="acciones">
         <div class="acciones-wrap">
           <button class="btn-notas-icon" title="Información complementaria">📝</button>
+          <button class="btn-notas-icon btn-ajustes-doc" title="Editar documento manualmente">⚙️</button>
           <button class="btn-add btn-preconfirmacion">P</button>
           <button class="btn-add btn-one">C</button>
           <button class="btn-add btn-finanzas">R</button>
@@ -3489,6 +3490,15 @@ function renderTabla(rows){
       const id = tr?.dataset?.id;
       if (!id) return;
       await abrirModalNotasDocumento(id);
+    });
+  });
+
+  tb.querySelectorAll('.btn-ajustes-doc').forEach(btn=>{
+    btn.addEventListener('click', async (ev)=>{
+      const tr = ev.currentTarget.closest('tr');
+      const id = tr?.dataset?.id;
+      if (!id) return;
+      await abrirModalAjustesDocumento(id);
     });
   });
 
@@ -3962,12 +3972,264 @@ async function abrirModalNotasDocumento(grupoId){
   modal.classList.add('open');
 }
 
+const DOC_LABELS = {
+  P: 'Preconfirmación',
+  C: 'Confirmación',
+  R: 'Resumen operativo',
+  V: 'Vouchers',
+  I: 'Itinerario'
+};
+
+function sanitizeManualDocHtml(html=''){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = String(html || '');
+
+  const allowed = new Set([
+    'B','STRONG','I','EM','U','BR',
+    'DIV','P','UL','OL','LI',
+    'TABLE','THEAD','TBODY','TR','TH','TD',
+    'H1','H2','H3','H4'
+  ]);
+
+  tmp.querySelectorAll('*').forEach(el=>{
+    if (!allowed.has(el.tagName)){
+      el.replaceWith(document.createTextNode(el.textContent || ''));
+      return;
+    }
+    [...el.attributes].forEach(attr => el.removeAttribute(attr.name));
+  });
+
+  return tmp.innerHTML.trim();
+}
+
+function extraerCuerpoDocumento(html=''){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = html;
+
+  const docEl = tmp.querySelector('.print-doc');
+  if (!docEl) return html;
+
+  const header = docEl.querySelector('.confirm-header, .finanzas-header, .it-header');
+  if (header) header.remove();
+
+  return docEl.innerHTML.trim();
+}
+
+async function buildDocumentoAutomaticoParaEdicion(grupoId, tipo){
+  if (tipo === 'P') return buildPreconfirmacionHTML(grupoId);
+  if (tipo === 'C') return buildConfirmacionHTML(grupoId);
+  if (tipo === 'R') return buildFinanzasHTML(grupoId);
+  if (tipo === 'V') return buildVouchersHTML(grupoId);
+  if (tipo === 'I') {
+    const d = await getDoc(doc(db,'grupos', grupoId));
+    if (!d.exists()) return '';
+    return buildItinerarioDoc({ id:d.id, ...d.data() });
+  }
+  return '';
+}
+
+function buildDocumentoManualHTML(grupo, tipo, config){
+  const titulo = config?.titulo || DOC_LABELS[tipo] || 'Documento';
+  const cuerpo = sanitizeManualDocHtml(config?.htmlCuerpo || '');
+
+  return `
+    <div class="print-doc confirm-doc manual-doc">
+      <div class="confirm-header">
+        <div class="confirm-title-block">
+          <div class="confirm-title">${escapeHtml(titulo)}</div>
+          <p class="note">
+            ${escapeHtml(grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '')}
+          </p>
+        </div>
+
+        <div class="confirm-logo">
+          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+        </div>
+      </div>
+
+      <div class="manual-doc-body">
+        ${cuerpo}
+      </div>
+    </div>
+  `;
+}
+
+async function aplicarDocumentoManualSiExiste(grupoId, tipo, htmlAuto){
+  const d = await getDoc(doc(db, 'grupos', grupoId));
+  if (!d.exists()) return htmlAuto;
+
+  const grupo = { id:d.id, ...d.data() };
+  const config = grupo.documentosManual?.[tipo];
+
+  if (config?.modo === 'manual' && config?.htmlCuerpo){
+    return buildDocumentoManualHTML(grupo, tipo, config);
+  }
+
+  return htmlAuto;
+}
+
+function ensureModalAjustesDocumento(){
+  let modal = document.getElementById('modalAjustesDocumento');
+  if (modal) return modal;
+
+  modal = document.createElement('div');
+  modal.id = 'modalAjustesDocumento';
+  modal.className = 'notas-modal-backdrop';
+  modal.innerHTML = `
+    <div class="notas-modal">
+      <div class="notas-modal-head">
+        <h3>Ajustes del documento</h3>
+        <button type="button" id="btnCerrarAjustesDocumento">×</button>
+      </div>
+
+      <div class="notas-modal-body">
+        <label class="notas-label">Documento</label>
+        <select id="ajusteDocumentoTipo" style="width:100%;padding:8px;margin-bottom:10px;">
+          <option value="P">Preconfirmación</option>
+          <option value="C">Confirmación</option>
+          <option value="R">Resumen operativo</option>
+          <option value="V">Vouchers</option>
+          <option value="I">Itinerario</option>
+        </select>
+
+        <label class="notas-label">Título</label>
+        <input id="ajusteDocumentoTitulo" type="text" style="width:100%;padding:8px;margin-bottom:10px;">
+
+        <div class="notas-toolbar">
+          <button type="button" data-cmd="bold"><strong>B</strong></button>
+          <button type="button" data-cmd="italic"><em>I</em></button>
+          <button type="button" data-cmd="underline"><u>U</u></button>
+        </div>
+
+        <div id="ajusteDocumentoEditor"
+             contenteditable="true"
+             style="width:100%;min-height:360px;border:1px solid #111;border-radius:8px;padding:10px;background:#fff;color:#111;overflow:auto;"></div>
+
+        <div class="notas-actions" style="margin-top:12px;">
+          <button type="button" class="btn-add" id="btnGuardarAjusteDocumento">Guardar versión manual</button>
+          <button type="button" class="btn-light" id="btnCargarAutomaticoDocumento">Cargar automático actual</button>
+          <button type="button" class="btn-light" id="btnVolverAutomaticoDocumento">Volver a automático</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  return modal;
+}
+
+async function abrirModalAjustesDocumento(grupoId){
+  const modal = ensureModalAjustesDocumento();
+
+  const ref = doc(db, 'grupos', grupoId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return;
+
+  let grupo = { id:snap.id, ...snap.data() };
+
+  const sel = modal.querySelector('#ajusteDocumentoTipo');
+  const tituloInput = modal.querySelector('#ajusteDocumentoTitulo');
+  const editor = modal.querySelector('#ajusteDocumentoEditor');
+
+  const btnCerrar = modal.querySelector('#btnCerrarAjustesDocumento');
+  const btnGuardar = modal.querySelector('#btnGuardarAjusteDocumento');
+  const btnCargarAuto = modal.querySelector('#btnCargarAutomaticoDocumento');
+  const btnVolverAuto = modal.querySelector('#btnVolverAutomaticoDocumento');
+
+  modal.querySelectorAll('.notas-toolbar button').forEach(b=>{
+    b.onclick = ()=>{
+      editor.focus();
+      document.execCommand(b.dataset.cmd, false, null);
+    };
+  });
+
+  async function cargarTipo(tipo){
+    const config = grupo.documentosManual?.[tipo];
+
+    tituloInput.value = config?.titulo || DOC_LABELS[tipo] || '';
+
+    if (config?.modo === 'manual' && config?.htmlCuerpo){
+      editor.innerHTML = sanitizeManualDocHtml(config.htmlCuerpo);
+      return;
+    }
+
+    const htmlAuto = await buildDocumentoAutomaticoParaEdicion(grupoId, tipo);
+    editor.innerHTML = extraerCuerpoDocumento(htmlAuto);
+  }
+
+  sel.onchange = async ()=>{
+    await cargarTipo(sel.value);
+  };
+
+  btnCargarAuto.onclick = async ()=>{
+    const htmlAuto = await buildDocumentoAutomaticoParaEdicion(grupoId, sel.value);
+    editor.innerHTML = extraerCuerpoDocumento(htmlAuto);
+  };
+
+  btnGuardar.onclick = async ()=>{
+    const tipo = sel.value;
+    const htmlCuerpo = sanitizeManualDocHtml(editor.innerHTML);
+
+    if (!htmlCuerpo){
+      alert('El documento no puede quedar vacío.');
+      return;
+    }
+
+    await updateDoc(ref, {
+      [`documentosManual.${tipo}`]: {
+        modo: 'manual',
+        titulo: tituloInput.value.trim() || DOC_LABELS[tipo] || 'Documento',
+        htmlCuerpo,
+        actualizadoEl: new Date().toISOString()
+      }
+    });
+
+    const nuevo = await getDoc(ref);
+    grupo = { id:nuevo.id, ...nuevo.data() };
+
+    alert('Documento manual guardado.');
+  };
+
+  btnVolverAuto.onclick = async ()=>{
+    const tipo = sel.value;
+
+    if (!confirm('¿Volver este documento al modo automático?')) return;
+
+    await updateDoc(ref, {
+      [`documentosManual.${tipo}`]: {
+        modo: 'automatico',
+        actualizadoEl: new Date().toISOString()
+      }
+    });
+
+    const nuevo = await getDoc(ref);
+    grupo = { id:nuevo.id, ...nuevo.data() };
+
+    await cargarTipo(tipo);
+    alert('Documento vuelto a automático.');
+  };
+
+  btnCerrar.onclick = ()=>{
+    modal.classList.remove('open');
+  };
+
+  modal.onclick = (ev)=>{
+    if (ev.target === modal) modal.classList.remove('open');
+  };
+
+  sel.value = 'P';
+  await cargarTipo('P');
+  modal.classList.add('open');
+}
+
 // ──────────────────────────────────────────────────────────────
 // FINANZAS: imprimir "ESTADO DE CUENTAS DEL VIAJE" (R individual)
 // ──────────────────────────────────────────────────────────────
 async function descargarFinanzas(grupoId){
-  const html = await buildFinanzasHTML(grupoId);
-  if (!html) return;
+  const htmlAuto = await buildFinanzasHTML(grupoId);
+  if (!htmlAuto) return;
+
+  const html = await aplicarDocumentoManualSiExiste(grupoId, 'R', htmlAuto);
   imprimirHtml(html);
 }
 
@@ -3975,8 +4237,10 @@ async function descargarFinanzas(grupoId){
 // VOUCHERS FÍSICOS: imprimir hoja con vouchers del grupo (V individual)
 // ──────────────────────────────────────────────────────────────
 async function descargarVouchers(grupoId){
-  const html = await buildVouchersHTML(grupoId);
-  if (!html) return;
+  const htmlAuto = await buildVouchersHTML(grupoId);
+  if (!htmlAuto) return;
+
+  const html = await aplicarDocumentoManualSiExiste(grupoId, 'V', htmlAuto);
   imprimirHtml(html);
 }
 
@@ -3986,9 +4250,11 @@ async function descargarVouchers(grupoId){
 async function descargarItinerario(grupoId){
   const d = await getDoc(doc(db,'grupos', grupoId));
   if (!d.exists()) return;
-  const g = { id:d.id, ...d.data() };
 
-  const html = buildItinerarioDoc(g);
+  const g = { id:d.id, ...d.data() };
+  const htmlAuto = buildItinerarioDoc(g);
+
+  const html = await aplicarDocumentoManualSiExiste(grupoId, 'I', htmlAuto);
   imprimirHtml(html);
 }
 
@@ -3997,14 +4263,18 @@ async function descargarItinerario(grupoId){
    Exportación / IMPRESIÓN de CONFIRMACIÓN (uno)
 ────────────────────────────────────────────────────────────────────── */
 async function descargarPreconfirmacion(grupoId){
-  const html = await buildPreconfirmacionHTML(grupoId);
-  if (!html) return;
+  const htmlAuto = await buildPreconfirmacionHTML(grupoId);
+  if (!htmlAuto) return;
+
+  const html = await aplicarDocumentoManualSiExiste(grupoId, 'P', htmlAuto);
   imprimirHtml(html);
 }
 
 async function descargarUno(grupoId){
-  const html = await buildConfirmacionHTML(grupoId);
-  if (!html) return;
+  const htmlAuto = await buildConfirmacionHTML(grupoId);
+  if (!htmlAuto) return;
+
+  const html = await aplicarDocumentoManualSiExiste(grupoId, 'C', htmlAuto);
   imprimirHtml(html);
 }
 
