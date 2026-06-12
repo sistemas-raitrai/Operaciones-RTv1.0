@@ -3486,15 +3486,25 @@ function renderTabla(rows){
 
   tb.querySelectorAll('.btn-notas-icon:not(.btn-ajustes-doc)').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+  
+      document.getElementById('modalAjustesDocumento')?.classList.remove('open');
+  
       const tr = ev.currentTarget.closest('tr');
       const id = tr?.dataset?.id;
       if (!id) return;
       await abrirModalNotasDocumento(id);
     });
   });
-
+  
   tb.querySelectorAll('.btn-ajustes-doc').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+  
+      document.getElementById('modalNotasDocumento')?.classList.remove('open');
+  
       const tr = ev.currentTarget.closest('tr');
       const id = tr?.dataset?.id;
       if (!id) return;
@@ -3998,7 +4008,7 @@ function sanitizeManualDocHtml(html=''){
     'B','STRONG','I','EM','U','BR',
     'DIV','P','UL','OL','LI',
     'TABLE','THEAD','TBODY','TR','TH','TD',
-    'H1','H2','H3','H4'
+    'H1','H2','H3','H4','SPAN'
   ]);
 
   tmp.querySelectorAll('*').forEach(el=>{
@@ -4008,7 +4018,12 @@ function sanitizeManualDocHtml(html=''){
     }
 
     [...el.attributes].forEach(attr => {
-      if (attr.name === 'style' && /text-align\s*:/i.test(attr.value)) return;
+      if (attr.name === 'style' && /text-align\s*:/i.test(attr.value)) {
+        const match = attr.value.match(/text-align\s*:\s*(left|center|right|justify)/i);
+        if (match) el.setAttribute('style', `text-align:${match[1].toLowerCase()};`);
+        else el.removeAttribute('style');
+        return;
+      }
       el.removeAttribute(attr.name);
     });
   });
@@ -4084,17 +4099,16 @@ function ensureModalAjustesDocumento(){
 
   modal = document.createElement('div');
   modal.id = 'modalAjustesDocumento';
-  modal.className = 'notas-modal-backdrop';
   modal.innerHTML = `
-    <div class="notas-modal">
-      <div class="notas-modal-head">
+    <div class="ajustes-doc-modal">
+      <div class="ajustes-doc-head">
         <h3>Ajustes del documento</h3>
         <button type="button" id="btnCerrarAjustesDocumento">×</button>
       </div>
 
-      <div class="notas-modal-body">
-        <label class="notas-label">Documento</label>
-        <select id="ajusteDocumentoTipo" style="width:100%;padding:8px;margin-bottom:10px;">
+      <div class="ajustes-doc-body">
+        <label>Documento</label>
+        <select id="ajusteDocumentoTipo">
           <option value="P">Preconfirmación</option>
           <option value="C">Confirmación</option>
           <option value="R">Resumen operativo</option>
@@ -4102,80 +4116,168 @@ function ensureModalAjustesDocumento(){
           <option value="I">Itinerario</option>
         </select>
 
-        <label class="notas-label">Título</label>
-        <input id="ajusteDocumentoTitulo" type="text" style="width:100%;padding:8px;margin-bottom:10px;">
+        <label>Título</label>
+        <input id="ajusteDocumentoTitulo" type="text">
 
-        <div class="notas-toolbar">
+        <div class="ajustes-doc-toolbar">
           <button type="button" data-cmd="bold"><strong>B</strong></button>
           <button type="button" data-cmd="italic"><em>I</em></button>
           <button type="button" data-cmd="underline"><u>U</u></button>
-          <button type="button" data-cmd="justifyLeft">⯇</button>
+          <button type="button" data-cmd="justifyLeft">◀</button>
           <button type="button" data-cmd="justifyCenter">≡</button>
-          <button type="button" data-cmd="justifyRight">⯈</button>
+          <button type="button" data-cmd="justifyRight">▶</button>
           <button type="button" data-cmd="justifyFull">☰</button>
         </div>
 
-        <div id="ajusteDocumentoEditor"
-             contenteditable="true"
-             style="width:100%;min-height:360px;border:1px solid #111;border-radius:8px;padding:10px;background:#fff;color:#111;overflow:auto;"></div>
+        <div id="ajusteDocumentoEditor" contenteditable="true"></div>
 
-        <div class="notas-actions" style="margin-top:12px;">
-          <button type="button" class="btn-add" id="btnGuardarAjusteDocumento">Guardar versión manual</button>
-          <button type="button" class="btn-light" id="btnCargarAutomaticoDocumento">Cargar automático actual</button>
-          <button type="button" class="btn-light" id="btnVolverAutomaticoDocumento">Volver a automático</button>
+        <div class="ajustes-doc-actions">
+          <button type="button" id="btnGuardarAjusteDocumento">Guardar manual</button>
+          <button type="button" id="btnCargarAutomaticoDocumento">Cargar automático</button>
+          <button type="button" id="btnVolverAutomaticoDocumento">Volver automático</button>
         </div>
       </div>
     </div>
   `;
 
   document.body.appendChild(modal);
-  
+
   if (!document.getElementById('ajustes-documento-styles')) {
     const style = document.createElement('style');
     style.id = 'ajustes-documento-styles';
     style.textContent = `
-      #modalAjustesDocumento .notas-modal{
+      #modalAjustesDocumento{
+        display:none;
+        position:fixed;
+        inset:0;
+        background:rgba(0,0,0,.45);
+        z-index:100000;
+        align-items:center;
+        justify-content:center;
+        padding:18px;
+      }
+
+      #modalAjustesDocumento.open{
+        display:flex;
+      }
+
+      #modalAjustesDocumento .ajustes-doc-modal{
         width:min(980px, 96vw);
         height:90vh;
-        max-height:90vh;
+        background:#fff;
+        color:#111;
+        border-radius:12px;
+        box-shadow:0 18px 50px rgba(0,0,0,.30);
         display:flex;
         flex-direction:column;
         overflow:hidden;
       }
-      
-      #modalAjustesDocumento .notas-modal-body{
+
+      #modalAjustesDocumento .ajustes-doc-head{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        padding:14px 18px;
+        border-bottom:1px solid #ddd;
+        background:#f7f7f8;
+        flex:0 0 auto;
+      }
+
+      #modalAjustesDocumento .ajustes-doc-head h3{
+        margin:0;
+        font-size:18px;
+      }
+
+      #btnCerrarAjustesDocumento{
+        width:34px;
+        height:34px;
+        padding:0;
+        border:none;
+        background:#004080;
+        color:#fff !important;
+        cursor:pointer;
+        font-size:18px;
+      }
+
+      #modalAjustesDocumento .ajustes-doc-body{
         flex:1;
         overflow:auto;
+        padding:14px 16px;
       }
-  
-      #modalAjustesDocumento .notas-actions{
+
+      #modalAjustesDocumento label{
+        display:block;
+        font-weight:700;
+        margin:8px 0 4px;
+      }
+
+      #ajusteDocumentoTipo,
+      #ajusteDocumentoTitulo{
+        width:100%;
+        padding:7px 8px;
+        margin-bottom:8px;
+        box-sizing:border-box;
+      }
+
+      #modalAjustesDocumento .ajustes-doc-toolbar{
         display:flex;
-        gap:10px;
-        align-items:center;
-        justify-content:flex-start;
-        flex-wrap:wrap;
+        gap:4px;
+        margin:6px 0;
+      }
+
+      #modalAjustesDocumento .ajustes-doc-toolbar button{
+        width:34px;
+        height:30px;
+        padding:0;
+        border:1px solid #aaa;
+        border-radius:5px;
+        background:#fff;
+        color:#111 !important;
+        font-weight:700;
+        cursor:pointer;
+      }
+
+      #ajusteDocumentoEditor{
+        width:100%;
+        min-height:430px;
+        max-height:58vh;
+        overflow:auto;
+        border:1px solid #111;
+        border-radius:8px;
+        padding:10px;
+        background:#fff;
+        color:#111;
+        box-sizing:border-box;
+      }
+
+      #modalAjustesDocumento .ajustes-doc-actions{
         position:sticky;
         bottom:0;
         background:#fff;
-        padding:12px 0;
         border-top:1px solid #ddd;
-        z-index:20;
+        padding:10px 0;
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        z-index:10;
       }
-  
-      #modalAjustesDocumento .notas-actions button{
-        min-width:auto;
+
+      #modalAjustesDocumento .ajustes-doc-actions button{
+        width:auto !important;
+        height:32px;
+        padding:0 12px;
+        border:none;
+        border-radius:4px;
+        background:#004080;
+        color:#fff !important;
+        font-size:13px;
+        cursor:pointer;
         white-space:nowrap;
-      }
-  
-      #ajusteDocumentoEditor{
-        box-sizing:border-box;
-        max-height:55vh;
-        overflow:auto;
       }
     `;
     document.head.appendChild(style);
   }
-  
+
   return modal;
 }
 
