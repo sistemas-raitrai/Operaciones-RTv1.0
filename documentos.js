@@ -2139,8 +2139,8 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
 
   const resumenVuelos = getResumenVuelosPreliminar(vuelosNorm);
 
-  const fechaInicioISO = toISO(grupo.fechaInicio || grupo.fechaViaje || resumenVuelos.fechaIda || '');
-  const fechaFinISO    = toISO(grupo.fechaFin || grupo.fechaRegreso || resumenVuelos.fechaVuelta || '');
+  const fechaInicioISO = toISO(resumenVuelos.fechaIda || grupo.fechaInicio || grupo.fechaViaje || '');
+  const fechaFinISO    = toISO(resumenVuelos.fechaVuelta || grupo.fechaFin || grupo.fechaRegreso || '');
 
   const fechaInicioTxt = fechaInicioISO ? formatShortDate(fechaInicioISO) : '—';
   const fechaFinTxt    = fechaFinISO ? formatShortDate(fechaFinISO) : '—';
