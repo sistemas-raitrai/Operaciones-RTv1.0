@@ -3484,7 +3484,7 @@ function renderTabla(rows){
 
   document.getElementById('countHint').textContent = `${rows.length} grupo(s) encontrados.`;
 
-  tb.querySelectorAll('.btn-notas-icon').forEach(btn=>{
+  tb.querySelectorAll('.btn-notas-icon:not(.btn-ajustes-doc)').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
       const tr = ev.currentTarget.closest('tr');
       const id = tr?.dataset?.id;
@@ -3574,7 +3574,10 @@ function sanitizeNotaHtml(html=''){
       return;
     }
 
-    [...el.attributes].forEach(attr => el.removeAttribute(attr.name));
+    [...el.attributes].forEach(attr => {
+      if (attr.name === 'style' && /text-align\s*:/i.test(attr.value)) return;
+      el.removeAttribute(attr.name);
+    });
 
     if (el.tagName === 'B') el.outerHTML = `<strong>${el.innerHTML}</strong>`;
     if (el.tagName === 'I') el.outerHTML = `<em>${el.innerHTML}</em>`;
@@ -4003,7 +4006,11 @@ function sanitizeManualDocHtml(html=''){
       el.replaceWith(document.createTextNode(el.textContent || ''));
       return;
     }
-    [...el.attributes].forEach(attr => el.removeAttribute(attr.name));
+
+    [...el.attributes].forEach(attr => {
+      if (attr.name === 'style' && /text-align\s*:/i.test(attr.value)) return;
+      el.removeAttribute(attr.name);
+    });
   });
 
   return tmp.innerHTML.trim();
@@ -4035,30 +4042,26 @@ async function buildDocumentoAutomaticoParaEdicion(grupoId, tipo){
   return '';
 }
 
-function buildDocumentoManualHTML(grupo, tipo, config){
-  const titulo = config?.titulo || DOC_LABELS[tipo] || 'Documento';
-  const cuerpo = sanitizeManualDocHtml(config?.htmlCuerpo || '');
+function aplicarCuerpoManualSobreMolde(htmlAuto, config){
+  const tmp = document.createElement('div');
+  tmp.innerHTML = htmlAuto;
 
-  return `
-    <div class="print-doc confirm-doc manual-doc">
-      <div class="confirm-header">
-        <div class="confirm-title-block">
-          <div class="confirm-title">${escapeHtml(titulo)}</div>
-          <p class="note">
-            ${escapeHtml(grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '')}
-          </p>
-        </div>
+  const docEl = tmp.querySelector('.print-doc');
+  if (!docEl) return htmlAuto;
 
-        <div class="confirm-logo">
-          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
-        </div>
-      </div>
+  const header = docEl.querySelector('.confirm-header, .finanzas-header, .it-header, .vouchers-header');
 
-      <div class="manual-doc-body">
-        ${cuerpo}
-      </div>
-    </div>
-  `;
+  [...docEl.children].forEach(child => {
+    if (child !== header) child.remove();
+  });
+
+  const wrap = document.createElement('div');
+  wrap.className = 'manual-doc-body';
+  wrap.innerHTML = sanitizeManualDocHtml(config?.htmlCuerpo || '');
+
+  docEl.appendChild(wrap);
+
+  return tmp.innerHTML;
 }
 
 async function aplicarDocumentoManualSiExiste(grupoId, tipo, htmlAuto){
@@ -4069,7 +4072,7 @@ async function aplicarDocumentoManualSiExiste(grupoId, tipo, htmlAuto){
   const config = grupo.documentosManual?.[tipo];
 
   if (config?.modo === 'manual' && config?.htmlCuerpo){
-    return buildDocumentoManualHTML(grupo, tipo, config);
+    return aplicarCuerpoManualSobreMolde(htmlAuto, config);
   }
 
   return htmlAuto;
@@ -4106,6 +4109,10 @@ function ensureModalAjustesDocumento(){
           <button type="button" data-cmd="bold"><strong>B</strong></button>
           <button type="button" data-cmd="italic"><em>I</em></button>
           <button type="button" data-cmd="underline"><u>U</u></button>
+          <button type="button" data-cmd="justifyLeft">⯇</button>
+          <button type="button" data-cmd="justifyCenter">≡</button>
+          <button type="button" data-cmd="justifyRight">⯈</button>
+          <button type="button" data-cmd="justifyFull">☰</button>
         </div>
 
         <div id="ajusteDocumentoEditor"
