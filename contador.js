@@ -686,6 +686,105 @@ async function abrirModalReserva(event) {
   document.getElementById('modalReserva').style.display = 'block';
 }
 
+async function guardarPendiente() {
+  const btn = document.getElementById('btnGuardarPendiente');
+  const destino = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
+  const fecha = btn.dataset.fecha;
+  const cuerpo = document.getElementById('modalCuerpo').value;
+
+  if (!destino || !actividad || !fecha) {
+    alert('No hay datos suficientes para guardar la reserva pendiente.');
+    return;
+  }
+
+  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+
+  await updateDoc(ref, {
+    [`reservas.${fecha}`]: {
+      estado: 'PENDIENTE',
+      cuerpo,
+      updatedAt: serverTimestamp()
+    }
+  });
+
+  const boton = document.querySelector(
+    `.btn-reserva[data-actividad="${actividad}"][data-destino="${destino}"]`
+  );
+
+  if (boton) boton.textContent = 'PENDIENTE';
+
+  document.getElementById('modalReserva').style.display = 'none';
+}
+
+async function enviarReserva() {
+  const btn = document.getElementById('btnEnviarReserva');
+  const destino = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
+  const para = document.getElementById('modalPara').value.trim();
+  const asunto = document.getElementById('modalAsunto').value.trim();
+  const cuerpo = document.getElementById('modalCuerpo').value;
+
+  const baseUrl = 'https://mail.google.com/mail/u/0/?view=cm&fs=1';
+  const params = [
+    `to=${encodeURIComponent(para)}`,
+    `su=${encodeURIComponent(asunto)}`,
+    `body=${encodeURIComponent(cuerpo)}`
+  ].join('&');
+
+  window.open(`${baseUrl}&${params}`, '_blank');
+
+  try {
+    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+    const payload = {};
+
+    for (const f of fechasOrdenadas) {
+      const totalEnviado = grupos.reduce((sum, g) => {
+        const acts = g.itinerario?.[f] || [];
+        const t = acts
+          .filter(a => a.actividad === actividad)
+          .reduce((acc, a) => acc + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
+
+        return sum + t;
+      }, 0);
+
+      if (totalEnviado > 0) {
+        payload[`reservas.${f}.estado`] = 'ENVIADA';
+        payload[`reservas.${f}.cuerpo`] = cuerpo;
+        payload[`reservas.${f}.totalEnviado`] = totalEnviado;
+        payload[`reservas.${f}.updatedAt`] = serverTimestamp();
+
+        if (reservaActualSnapshot) {
+          payload[`reservas.${f}.snapshotLogisticoInicial`] = {
+            destino,
+            actividad,
+            fechas: reservaActualSnapshot.fechas || [],
+            resumenLogistico: reservaActualSnapshot.resumenLogistico || {},
+            guardadoEn: new Date().toISOString(),
+            usuario: auth.currentUser?.email || ''
+          };
+        }
+      }
+    }
+
+    if (Object.keys(payload).length > 0) {
+      await updateDoc(ref, payload);
+    }
+
+    const boton = document.querySelector(
+      `.btn-reserva[data-actividad="${actividad}"][data-destino="${destino}"]`
+    );
+
+    if (boton) boton.textContent = 'ENVIADA';
+
+    document.getElementById('modalReserva').style.display = 'none';
+
+  } catch (err) {
+    console.error('Error al guardar ENVIADA por fecha:', err);
+    alert('No se pudo guardar el estado ENVIADA en Firestore. Revisa la consola.');
+  }
+}
+
 // —————————————————————————————————————————————
 // 7️⃣ Modal “Detalle de grupos” (click en celda)
 //     → usa el mismo renderer DataTables que el de estadísticas
