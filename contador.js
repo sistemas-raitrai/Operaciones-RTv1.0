@@ -402,69 +402,255 @@ async function init() {
 // —————————————————————————————————————————————
 // 6️⃣ Reserva (abrir/guardar/enviar)
 // —————————————————————————————————————————————
-async function abrirModalReserva(event) {
-  const btn       = event.currentTarget;
-  const destino   = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-  const fecha = fechasOrdenadas.find(f =>
-    (grupos.some(g => g.itinerario?.[f]?.some(a=>a.actividad===actividad)))
-  );
-  const proveedor = btn.dataset.proveedor;
+function construirSnapshotReservaPorFecha(destino, actividad, perDateData) {
+  const fechas = perDateData.map(({ fecha, lista }) => {
+    const gruposFecha = lista.map(g => {
+      const acts = g.itinerario?.[fecha] || [];
+      const actsActividad = acts.filter(a => a.actividad === actividad);
 
-  const provInfo  = proveedores[proveedor] || { contacto:'', correo:'' };
-  document.getElementById('modalPara').value   = provInfo.correo;
-  document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
+      const adultosActividad = actsActividad.reduce(
+        (s, a) => s + (parseInt(a.adultos) || 0),
+        0
+      );
 
-  // Arma cuerpo con totales por fecha
+      const estudiantesActividad = actsActividad.reduce(
+        (s, a) => s + (parseInt(a.estudiantes) || 0),
+        0
+      );
+
+      const paxActividad = adultosActividad + estudiantesActividad;
+
+      return {
+        id: g.id,
+        numeroNegocio: g.numeroNegocio || g.id,
+        nombreGrupo: g.nombreGrupo || '',
+        paxCorreo: paxActividad,
+        totalAdultosCorreo: adultosActividad,
+        totalEstudiantesCorreo: estudiantesActividad,
+        adultosCorreo: { M: 0, F: 0, O: adultosActividad },
+        estudiantesCorreo: { M: 0, F: 0, O: estudiantesActividad }
+      };
+    });
+
+    return {
+      fecha,
+      totalPax: gruposFecha.reduce((s, g) => s + Number(g.paxCorreo || 0), 0),
+      totalAdultos: gruposFecha.reduce((s, g) => s + Number(g.totalAdultosCorreo || 0), 0),
+      totalEstudiantes: gruposFecha.reduce((s, g) => s + Number(g.totalEstudiantesCorreo || 0), 0),
+      grupos: gruposFecha
+    };
+  });
+
+  const gruposMap = new Map();
+
+  fechas.forEach(f => {
+    f.grupos.forEach(g => {
+      const key = g.numeroNegocio || g.id;
+
+      if (!gruposMap.has(key)) {
+        gruposMap.set(key, {
+          ...g,
+          fechas: [f.fecha]
+        });
+      } else {
+        const actual = gruposMap.get(key);
+        actual.paxCorreo += Number(g.paxCorreo || 0);
+        actual.totalAdultosCorreo += Number(g.totalAdultosCorreo || 0);
+        actual.totalEstudiantesCorreo += Number(g.totalEstudiantesCorreo || 0);
+        actual.adultosCorreo.O += Number(g.totalAdultosCorreo || 0);
+        actual.estudiantesCorreo.O += Number(g.totalEstudiantesCorreo || 0);
+        actual.fechas.push(f.fecha);
+      }
+    });
+  });
+
+  return {
+    destino,
+    actividad,
+    fechas,
+    grupos: Array.from(gruposMap.values()),
+    resumenLogistico: {
+      totalFechas: fechas.length,
+      totalGruposFecha: fechas.reduce((s, f) => s + f.grupos.length, 0),
+      totalPax: fechas.reduce((s, f) => s + Number(f.totalPax || 0), 0),
+      totalAdultos: fechas.reduce((s, f) => s + Number(f.totalAdultos || 0), 0),
+      totalEstudiantes: fechas.reduce((s, f) => s + Number(f.totalEstudiantes || 0), 0)
+    }
+  };
+}
+
+function construirSnapshotReservaActual(destino, actividad) {
   const perDateData = fechasOrdenadas
     .map(fecha => {
       const lista = grupos.filter(g =>
         (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad)
       );
-      const paxTotal = lista.reduce((sum, g) => sum + (parseInt(g.cantidadgrupo) || 0), 0);
+
+      return {
+        fecha,
+        lista
+      };
+    })
+    .filter(d => d.lista.length > 0);
+
+  return construirSnapshotReservaPorFecha(destino, actividad, perDateData);
+}
+
+function keyGrupoFecha(fecha, grupo) {
+  return `${fecha}__${grupo.numeroNegocio || grupo.id}`;
+}
+
+function compararSnapshotLogisticoReserva(antesSnapshot, ahoraSnapshot) {
+  const cambios = [];
+
+  const antesFechas = Array.isArray(antesSnapshot?.fechas) ? antesSnapshot.fechas : [];
+  const ahoraFechas = Array.isArray(ahoraSnapshot?.fechas) ? ahoraSnapshot.fechas : [];
+
+  const antesMap = new Map();
+  const ahoraMap = new Map();
+
+  antesFechas.forEach(f => {
+    (f.grupos || []).forEach(g => {
+      antesMap.set(keyGrupoFecha(f.fecha, g), {
+        fecha: f.fecha,
+        grupo: g
+      });
+    });
+  });
+
+  ahoraFechas.forEach(f => {
+    (f.grupos || []).forEach(g => {
+      ahoraMap.set(keyGrupoFecha(f.fecha, g), {
+        fecha: f.fecha,
+        grupo: g
+      });
+    });
+  });
+
+  for (const [key, antes] of antesMap.entries()) {
+    const ahora = ahoraMap.get(key);
+
+    if (!ahora) {
+      cambios.push({
+        tipo: 'GRUPO_SALE_DE_FECHA',
+        fecha: antes.fecha,
+        numeroNegocio: antes.grupo.numeroNegocio || antes.grupo.id,
+        nombreGrupo: antes.grupo.nombreGrupo || '',
+        antes: {
+          pax: Number(antes.grupo.paxCorreo || 0),
+          adultos: Number(antes.grupo.totalAdultosCorreo || 0),
+          estudiantes: Number(antes.grupo.totalEstudiantesCorreo || 0)
+        },
+        ahora: {
+          pax: 0,
+          adultos: 0,
+          estudiantes: 0
+        },
+        diferencia: {
+          pax: -Number(antes.grupo.paxCorreo || 0),
+          adultos: -Number(antes.grupo.totalAdultosCorreo || 0),
+          estudiantes: -Number(antes.grupo.totalEstudiantesCorreo || 0)
+        },
+        detalle: `Sale de ${formatearFechaBonita(antes.fecha)}`
+      });
+
+      continue;
+    }
+
+    const diffPax = Number(ahora.grupo.paxCorreo || 0) - Number(antes.grupo.paxCorreo || 0);
+    const diffAdultos = Number(ahora.grupo.totalAdultosCorreo || 0) - Number(antes.grupo.totalAdultosCorreo || 0);
+    const diffEstudiantes = Number(ahora.grupo.totalEstudiantesCorreo || 0) - Number(antes.grupo.totalEstudiantesCorreo || 0);
+
+    if (diffPax !== 0 || diffAdultos !== 0 || diffEstudiantes !== 0) {
+      cambios.push({
+        tipo: 'CAMBIO_PAX_EN_FECHA',
+        fecha: antes.fecha,
+        numeroNegocio: antes.grupo.numeroNegocio || antes.grupo.id,
+        nombreGrupo: antes.grupo.nombreGrupo || '',
+        antes: {
+          pax: Number(antes.grupo.paxCorreo || 0),
+          adultos: Number(antes.grupo.totalAdultosCorreo || 0),
+          estudiantes: Number(antes.grupo.totalEstudiantesCorreo || 0)
+        },
+        ahora: {
+          pax: Number(ahora.grupo.paxCorreo || 0),
+          adultos: Number(ahora.grupo.totalAdultosCorreo || 0),
+          estudiantes: Number(ahora.grupo.totalEstudiantesCorreo || 0)
+        },
+        diferencia: {
+          pax: diffPax,
+          adultos: diffAdultos,
+          estudiantes: diffEstudiantes
+        },
+        detalle: `${formatearFechaBonita(antes.fecha)} · ${construirTextoCambioReserva(diffAdultos, diffEstudiantes, diffPax)}`
+      });
+    }
+  }
+
+  for (const [key, ahora] of ahoraMap.entries()) {
+    if (antesMap.has(key)) continue;
+
+    cambios.push({
+      tipo: 'GRUPO_ENTRA_A_FECHA',
+      fecha: ahora.fecha,
+      numeroNegocio: ahora.grupo.numeroNegocio || ahora.grupo.id,
+      nombreGrupo: ahora.grupo.nombreGrupo || '',
+      antes: {
+        pax: 0,
+        adultos: 0,
+        estudiantes: 0
+      },
+      ahora: {
+        pax: Number(ahora.grupo.paxCorreo || 0),
+        adultos: Number(ahora.grupo.totalAdultosCorreo || 0),
+        estudiantes: Number(ahora.grupo.totalEstudiantesCorreo || 0)
+      },
+      diferencia: {
+        pax: Number(ahora.grupo.paxCorreo || 0),
+        adultos: Number(ahora.grupo.totalAdultosCorreo || 0),
+        estudiantes: Number(ahora.grupo.totalEstudiantesCorreo || 0)
+      },
+      detalle: `Entra a ${formatearFechaBonita(ahora.fecha)}`
+    });
+  }
+
+  return cambios;
+}
+
+async function abrirModalReserva(event) {
+  const btn       = event.currentTarget;
+  const destino   = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
+  const fecha = fechasOrdenadas.find(f =>
+    grupos.some(g => g.itinerario?.[f]?.some(a => a.actividad === actividad))
+  );
+  const proveedor = btn.dataset.proveedor;
+
+  const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
+  document.getElementById('modalPara').value = provInfo.correo;
+  document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
+
+  const perDateData = fechasOrdenadas
+    .map(fecha => {
+      const lista = grupos.filter(g =>
+        (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad)
+      );
+
+      const paxTotal = lista.reduce((sum, g) => {
+        const acts = g.itinerario?.[fecha] || [];
+        return sum + acts
+          .filter(a => a.actividad === actividad)
+          .reduce((s, a) => s + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
+      }, 0);
+
       return { fecha, lista, paxTotal };
     })
     .filter(d => d.lista.length > 0);
 
-  const totalGlobal = perDateData.reduce((sum, d) => sum + d.paxTotal, 0);
-  
-  const gruposReservaMap = new Map();
-  
-  perDateData.forEach(({ lista }) => {
-    lista.forEach(g => {
-      if (!gruposReservaMap.has(g.id)) {
-        gruposReservaMap.set(g.id, {
-          id: g.id,
-          numeroNegocio: g.numeroNegocio || g.id,
-          nombreGrupo: g.nombreGrupo || '',
-          paxCorreo: Number(g.cantidadgrupo || g.cantidadGrupo || 0),
-        
-          adultosCorreo: {
-            M: 0,
-            F: 0,
-            O: Number(g.adultos || 0)
-          },
-        
-          estudiantesCorreo: {
-            M: 0,
-            F: 0,
-            O: Number(g.estudiantes || 0)
-          },
-        
-          totalAdultosCorreo: Number(g.adultos || 0),
-          totalEstudiantesCorreo: Number(g.estudiantes || 0)
-        });
-      }
-    });
-  });
-  
-  const totalGrupos = gruposReservaMap.size;
-  
-  reservaActualSnapshot = {
-    destino,
-    actividad,
-    grupos: Array.from(gruposReservaMap.values())
-  };
+  reservaActualSnapshot = construirSnapshotReservaPorFecha(destino, actividad, perDateData);
+
+  const totalGlobal = reservaActualSnapshot.resumenLogistico.totalPax;
+  const totalGrupos = reservaActualSnapshot.grupos.length;
 
   let cuerpo = `Estimado/a ${provInfo.contacto || ''}:\n\n`;
   cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
@@ -473,88 +659,31 @@ async function abrirModalReserva(event) {
   cuerpo += `Total Grupos: (${totalGrupos})\n`;
   cuerpo += `Total PAX: (${totalGlobal})\n\n`;
   cuerpo += `Fechas y grupos:\n\n`;
-  perDateData.forEach(({ fecha, lista, paxTotal }) => {
-    cuerpo += `➡️ Fecha ${formatearFechaBonita(fecha)} - Grupos (${lista.length}) - PAX (${paxTotal}):\n\n`;
-    lista.forEach(g => {
-      cuerpo += `  - N°: ${g.id}, Colegio: ${g.nombreGrupo}, Cantidad de Pax: ${g.cantidadgrupo}\n`;
+
+  reservaActualSnapshot.fechas.forEach(({ fecha, grupos, totalPax }) => {
+    cuerpo += `➡️ Fecha ${formatearFechaBonita(fecha)} - Grupos (${grupos.length}) - PAX (${totalPax}):\n\n`;
+
+    grupos.forEach(g => {
+      cuerpo += `  - N°: ${g.numeroNegocio}, Colegio: ${g.nombreGrupo}, Cantidad de Pax: ${g.paxCorreo}\n`;
     });
+
     cuerpo += `\n`;
   });
+
   cuerpo += `Atte.\nOperaciones RaiTrai`;
 
   document.getElementById('modalCuerpo').value = cuerpo;
 
-  // Guarda datos en botones del modal
   const btnPend = document.getElementById('btnGuardarPendiente');
-  btnPend.dataset.destino   = destino;
+  btnPend.dataset.destino = destino;
   btnPend.dataset.actividad = actividad;
-  btnPend.dataset.fecha     = fecha;
+  btnPend.dataset.fecha = fecha;
 
   const btnEnv = document.getElementById('btnEnviarReserva');
-  btnEnv.dataset.destino    = destino;
-  btnEnv.dataset.actividad  = actividad;
+  btnEnv.dataset.destino = destino;
+  btnEnv.dataset.actividad = actividad;
 
   document.getElementById('modalReserva').style.display = 'block';
-}
-
-async function guardarPendiente() {
-  const btn       = document.getElementById('btnGuardarPendiente');
-  const destino   = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-  const fecha     = btn.dataset.fecha;
-  const cuerpo    = document.getElementById('modalCuerpo').value;
-
-  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-  await updateDoc(ref, { [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo } });
-
-  document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).textContent = 'PENDIENTE';
-  document.getElementById('modalReserva').style.display = 'none';
-}
-
-async function enviarReserva() {
-  const btn       = document.getElementById('btnEnviarReserva');
-  const destino   = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-  const para      = document.getElementById('modalPara').value.trim();
-  const asunto    = document.getElementById('modalAsunto').value.trim();
-  const cuerpo    = document.getElementById('modalCuerpo').value;
-
-  // Abre redacción de Gmail
-  const baseUrl = 'https://mail.google.com/mail/u/0/?view=cm&fs=1';
-  const params  = [`to=${encodeURIComponent(para)}`, `su=${encodeURIComponent(asunto)}`, `body=${encodeURIComponent(cuerpo)}`].join('&');
-  window.open(`${baseUrl}&${params}`, '_blank');
-
-  // Guarda ENVIADA por cada fecha con pax>0
-  try {
-    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-    const payload = {};
-
-    for (const f of fechasOrdenadas) {
-      const totalEnviado = grupos.reduce((sum, g) => {
-        const acts = g.itinerario?.[f] || [];
-        const t = acts
-          .filter(a => a.actividad === actividad)
-          .reduce((acc, a) => acc + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
-        return sum + t;
-      }, 0);
-
-      if (totalEnviado > 0) {
-        payload[`reservas.${f}.estado`] = 'ENVIADA';
-        payload[`reservas.${f}.cuerpo`] = cuerpo;
-        payload[`reservas.${f}.totalEnviado`] = totalEnviado;
-        payload[`reservas.${f}.updatedAt`] = serverTimestamp();
-      }
-    }
-
-    if (Object.keys(payload).length > 0) await updateDoc(ref, payload);
-
-    const boton = document.querySelector(`.btn-reserva[data-actividad="${actividad}"][data-destino="${destino}"]`);
-    if (boton) boton.textContent = 'ENVIADA';
-    document.getElementById('modalReserva').style.display = 'none';
-  } catch (err) {
-    console.error('Error al guardar ENVIADA por fecha:', err);
-    alert('No se pudo guardar el estado ENVIADA en Firestore. Revisa la consola.');
-  }
 }
 
 // —————————————————————————————————————————————
@@ -1171,6 +1300,7 @@ async function detectarCambiosEnVerificacionGuardada(verificacion) {
 
     if (diffPax !== 0 || diffAdultos !== 0 || diffEstudiantes !== 0) {
       cambios.push({
+        tipo: 'CAMBIO_PAGOS_GRUPO',
         numeroNegocio: g.numeroNegocio,
         nombreGrupo: g.nombreGrupo || '',
         numerosPago,
@@ -1196,6 +1326,25 @@ async function detectarCambiosEnVerificacionGuardada(verificacion) {
         detalle: construirTextoCambioReserva(diffAdultos, diffEstudiantes, diffPax)
       });
     }
+  }
+
+  if (verificacion.snapshotLogistico) {
+    const ahoraSnapshot = construirSnapshotReservaActual(
+      verificacion.destino,
+      verificacion.actividad
+    );
+
+    const cambiosLogisticos = compararSnapshotLogisticoReserva(
+      verificacion.snapshotLogistico,
+      ahoraSnapshot
+    );
+
+    cambiosLogisticos.forEach(c => {
+      cambios.push({
+        ...c,
+        tipoControl: 'LOGISTICA_POR_FECHA'
+      });
+    });
   }
 
   return cambios;
@@ -1238,15 +1387,31 @@ async function verificarPaxReservaConPagos() {
   document.getElementById('modalVerificacionPagos').style.display = 'block';
 
   const resultados = [];
+  const cachePagos = new Map();
+
+  async function obtenerResumenPagosGrupo(numeroNegocio) {
+    const key = String(numeroNegocio || '').trim();
+
+    if (cachePagos.has(key)) {
+      return cachePagos.get(key);
+    }
+
+    const numerosPago = obtenerNumerosNegocioPago(key);
+    const resumenPagos = await consultarResumenPagosFusionado(numerosPago);
+
+    const data = {
+      numerosPago,
+      resumenPagos
+    };
+
+    cachePagos.set(key, data);
+    return data;
+  }
 
   for (const g of reservaActualSnapshot.grupos) {
     try {
       const numeroNegocio = g.numeroNegocio || g.id;
-
-      // Si viene fusionado tipo 1581-1582, consulta ambos por separado y suma.
-      const numerosPago = obtenerNumerosNegocioPago(numeroNegocio);
-
-      const resumenPagos = await consultarResumenPagosFusionado(numerosPago);
+      const { numerosPago, resumenPagos } = await obtenerResumenPagosGrupo(numeroNegocio);
 
       const paxPagos = resumenPagos.totalViajan;
       const paxCorreo = Number(g.paxCorreo || 0);
@@ -1273,6 +1438,8 @@ async function verificarPaxReservaConPagos() {
         totalAdultosPagos: resumenPagos.totalAdultos,
         totalEstudiantesPagos: resumenPagos.totalEstudiantes,
 
+        fechas: g.fechas || [],
+
         detalle
       });
 
@@ -1287,16 +1454,43 @@ async function verificarPaxReservaConPagos() {
         paxPagos: '',
         diferencia: '',
         estado: 'ERROR CONSULTA',
+        fechas: g.fechas || [],
         detalle: null
       });
     }
   }
 
+  const fechasVerificadas = reservaActualSnapshot.fechas.map(f => ({
+    ...f,
+    grupos: f.grupos.map(g => {
+      const encontrado = resultados.find(r =>
+        String(r.numeroNegocio) === String(g.numeroNegocio || g.id)
+      );
+
+      return {
+        ...g,
+        paxPagos: encontrado?.paxPagos ?? '',
+        totalAdultosPagos: encontrado?.totalAdultosPagos ?? '',
+        totalEstudiantesPagos: encontrado?.totalEstudiantesPagos ?? '',
+        estadoPagos: encontrado?.estado || ''
+      };
+    })
+  }));
+
   ultimaVerificacionPagos = {
     fecha: new Date().toISOString(),
     destino: reservaActualSnapshot.destino,
     actividad: reservaActualSnapshot.actividad,
+
     grupos: resultados,
+
+    snapshotLogistico: {
+      destino: reservaActualSnapshot.destino,
+      actividad: reservaActualSnapshot.actividad,
+      fechas: fechasVerificadas,
+      resumenLogistico: reservaActualSnapshot.resumenLogistico
+    },
+
     resumen: calcularResumenVerificacion(resultados)
   };
 
@@ -1755,7 +1949,14 @@ async function guardarVerificacionPagosEnReserva() {
     ...ultimaVerificacionPagos,
     comentario,
     usuario: auth.currentUser?.email || '',
-    guardadoEn: new Date().toISOString()
+    guardadoEn: new Date().toISOString(),
+  
+    snapshotLogistico: ultimaVerificacionPagos.snapshotLogistico || {
+      destino: reservaActualSnapshot.destino,
+      actividad: reservaActualSnapshot.actividad,
+      fechas: reservaActualSnapshot.fechas || [],
+      resumenLogistico: reservaActualSnapshot.resumenLogistico || {}
+    }
   };
 
   for (const f of fechasOrdenadas) {
