@@ -1,17 +1,5 @@
-// finanzas.js — Finanzas Operaciones RT (toolbar corregida + sorters)
-// =====================================================================================
-// - Equivalencias en USD/BRL/ARS/CLP (pivote CLP) con TC actuales (inputs de cabecera)
-// - Modal por proveedor:
-//    • Resumen por servicio (totales eq.) con "VER DETALLE"
-//    • Detalle fila a fila; moneda nativa en NARANJO
-//    • Sección ABONOS por servicio: responsable (email), estado (ORIGINAL/EDITADO/ARCHIVADO),
-//      acciones (VER COMPROBANTE / EDITAR / ARCHIVAR), buscador, y botón VER ARCHIVADOS (toggle).
-//    • Totales en negrita. SALDO POR PAGAR en rojo si ≠ 0.
-//    • Exportar a EXCEL (HTML compatible con Excel).
-// - Tablas con encabezados ordenables (flechas ↑/↓/↕).
-// - Ruta de abonos: Servicios/{DESTINO}/Listado/{SERVICIO}/Abonos/*
+// finanzas.js
 
-// Firebase
 import { app, db } from './firebase-init.js';
 import {
   collection, getDocs, addDoc, updateDoc, doc, serverTimestamp, getDoc, setDoc
@@ -430,18 +418,25 @@ function pedirClaveDialog(cont){
 // === Pairs destino/servicio con MONEDA ===
 function buildSvcPairs(items){
   const map = new Map();
+
   for (const it of items){
     if (!it.servicioId || !it.destinoGrupo) continue;
-    const key = `${it.destinoGrupo}||${it.servicioId}`;
+
+    const anoTarifa = String(it.anoTarifa || new Date().getFullYear());
+    const key = `${anoTarifa}||${it.destinoGrupo}||${it.servicioId}`;
+
     if (!map.has(key)){
       map.set(key, {
+        key,
+        anoTarifa,
         destinoId: it.destinoGrupo,
         servicioId: it.servicioId,
-        servicioNombre: it.servicio || '',
+        servicioNombre: `${it.servicio || ''} (${anoTarifa})`,
         moneda: normalizarMoneda(it.moneda || 'CLP'),
       });
     }
   }
+
   return [...map.values()];
 }
 
@@ -1259,22 +1254,31 @@ function currentTCSnapshot(){ return {
   BRL: Number(el('tcBRL')?.value || 0) || null,
   ARS: Number(el('tcARS')?.value || 0) || null,
 }; }
-
-async function loadAbonos(destinoId, servicioId) {
-  const col = collection(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos`);
-  const snap = await getDocs(col);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+function rutaAbonosServicio({ anoTarifa, destinoId, servicioId }) {
+  return `ServiciosPorAno/${anoTarifa}/Destinos/${destinoId}/Listado/${servicioId}/Abonos`;
 }
-async function guardarAbono({ destinoId, servicioId, abonoId, data, file }) {
+async function loadAbonos(anoTarifa, destinoId, servicioId) {
+  const col = collection(db, rutaAbonosServicio({ anoTarifa, destinoId, servicioId }));
+  const snap = await getDocs(col);
+  return snap.docs.map(d => ({ id: d.id, anoTarifa, ...d.data() }));
+}
+async function guardarAbono({ anoTarifa, destinoId, servicioId, abonoId, data, file }) {
   let comprobanteURL = data.comprobanteURL || null;
+
   if (file) {
-    const ref = storageRef(storage, `abonos/${destinoId}/${servicioId}/${Date.now()}_${file.name}`);
+    const ref = storageRef(
+      storage,
+      `abonos/${anoTarifa}/${destinoId}/${servicioId}/${Date.now()}_${file.name}`
+    );
     await uploadBytes(ref, file);
     comprobanteURL = await getDownloadURL(ref);
   }
 
   const email = (auth.currentUser?.email || '').toLowerCase();
+
   const base = {
+    anoTarifa,
+    destinoId,
     servicioId,
     fecha: data.fecha || nowISODate(),
     moneda: normalizarMoneda(data.moneda || 'CLP'),
@@ -1285,29 +1289,49 @@ async function guardarAbono({ destinoId, servicioId, abonoId, data, file }) {
     tcSnapshot: currentTCSnapshot(),
   };
 
+  const ruta = rutaAbonosServicio({ anoTarifa, destinoId, servicioId });
+
   if (!abonoId) {
-    await addDoc(collection(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos`), {
-      ...base, createdAt: serverTimestamp(), createdByEmail: email, version: 1, historial: [],
+    await addDoc(collection(db, ruta), {
+      ...base,
+      createdAt: serverTimestamp(),
+      createdByEmail: email,
+      version: 1,
+      historial: [],
     });
   } else {
-    const docRef = doc(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos/${abonoId}`);
+    const docRef = doc(db, `${ruta}/${abonoId}`);
     await updateDoc(docRef, {
-      ...base, updatedAt: serverTimestamp(), updatedByEmail: email,
-      estado: (data.estado || 'EDITADO'),
-      version: (Number(data.version || 1) + 1),
+      ...base,
+      updatedAt: serverTimestamp(),
+      updatedByEmail: email,
+      estado: data.estado || 'EDITADO',
+      version: Number(data.version || 1) + 1,
     });
   }
 }
-async function archivarAbono({ destinoId, servicioId, abonoId }) {
+async function archivarAbono({ anoTarifa, destinoId, servicioId, abonoId }) {
   const email = (auth.currentUser?.email || '').toLowerCase();
-  const docRef = doc(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos/${abonoId}`);
-  await updateDoc(docRef, { estado: 'ARCHIVADO', archivedAt: serverTimestamp(), archivedByEmail: email });
+  const ruta = rutaAbonosServicio({ anoTarifa, destinoId, servicioId });
+  const docRef = doc(db, `${ruta}/${abonoId}`);
+
+  await updateDoc(docRef, {
+    estado: 'ARCHIVADO',
+    archivedAt: serverTimestamp(),
+    archivedByEmail: email
+  });
 }
 
-async function desarchivarAbono({ destinoId, servicioId, abonoId }) {
+async function desarchivarAbono({ anoTarifa, destinoId, servicioId, abonoId }) {
   const email = (auth.currentUser?.email || '').toLowerCase();
-  const docRef = doc(db, `${RUTA_SERVICIOS}/${destinoId}/Listado/${servicioId}/Abonos/${abonoId}`);
-  await updateDoc(docRef, { estado: 'EDITADO', unarchivedAt: serverTimestamp(), unarchivedByEmail: email });
+  const ruta = rutaAbonosServicio({ anoTarifa, destinoId, servicioId });
+  const docRef = doc(db, `${ruta}/${abonoId}`);
+
+  await updateDoc(docRef, {
+    estado: 'EDITADO',
+    unarchivedAt: serverTimestamp(),
+    unarchivedByEmail: email
+  });
 }
 
 // --- Cargar realizaciones guardadas (Sí/No por item) ---
@@ -1345,28 +1369,33 @@ async function saveRealizacionesBatch(entries){
   }
 }
 
-// --- NUEVO: armar pares destino/servicio únicos para un proveedor ---
 function serviciosUnicosDeProveedor(items){
   const map = new Map();
+
   for (const it of items){
-    if (!it.servicioId || !it.destinoGrupo) continue; // si no hay id no podemos leer Abonos
-    const key = `${it.destinoGrupo}||${it.servicioId}`;
+    if (!it.servicioId || !it.destinoGrupo) continue;
+
+    const anoTarifa = String(it.anoTarifa || new Date().getFullYear());
+    const key = `${anoTarifa}||${it.destinoGrupo}||${it.servicioId}`;
+
     if (!map.has(key)) {
       map.set(key, {
+        anoTarifa,
         destinoId: it.destinoGrupo,
         servicioId: it.servicioId,
         servicioNombre: it.servicio || '',
+        moneda: normalizarMoneda(it.moneda || 'CLP'),
       });
     }
   }
+
   return [...map.values()];
 }
 
-// --- NUEVO: carga de abonos en lote para varios servicios ---
 async function loadAbonosLote(pares){
   return Promise.all(pares.map(async p => {
     try {
-      const ab = await loadAbonos(p.destinoId, p.servicioId);
+      const ab = await loadAbonos(p.anoTarifa, p.destinoId, p.servicioId);
       return { ...p, abonos: ab };
     } catch(e){
       return { ...p, abonos: [] };
