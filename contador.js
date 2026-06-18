@@ -429,6 +429,11 @@ async function init() {
   
   document.getElementById('btnGuardarPendiente').onclick = guardarPendiente;
   document.getElementById('btnEnviarReserva').onclick = enviarReserva;
+
+  const btnSincronizarPaxReserva = document.getElementById('btnSincronizarPaxReserva');
+  if (btnSincronizarPaxReserva) {
+    btnSincronizarPaxReserva.onclick = sincronizarPaxReservaManual;
+  }
   
   document.getElementById('btnVerificarPaxPagos').onclick = verificarPaxReservaConPagos;
   
@@ -680,22 +685,102 @@ function compararSnapshotLogisticoReserva(antesSnapshot, ahoraSnapshot) {
   return cambios;
 }
 
-async function abrirModalReserva(event) {
-  const btn       = event.currentTarget;
-  const destino   = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-  const fecha = fechasOrdenadas.find(f =>
-    grupos.some(g =>
-      g.itinerario?.[f]?.some(a => actividadCoincideReserva(a, actividad))
+function esFechaSyncHoy(valor) {
+  if (!valor) return false;
+
+  let d = null;
+
+  if (valor?.toDate) {
+    d = valor.toDate();
+  } else if (valor?.seconds) {
+    d = new Date(valor.seconds * 1000);
+  } else {
+    d = new Date(valor);
+  }
+
+  if (!d || Number.isNaN(d.getTime())) return false;
+
+  const hoy = new Date();
+
+  return (
+    d.getFullYear() === hoy.getFullYear() &&
+    d.getMonth() === hoy.getMonth() &&
+    d.getDate() === hoy.getDate()
+  );
+}
+
+function formatearFechaHoraSync(valor) {
+  if (!valor) return 'sin sincronización';
+
+  let d = null;
+
+  if (valor?.toDate) {
+    d = valor.toDate();
+  } else if (valor?.seconds) {
+    d = new Date(valor.seconds * 1000);
+  } else {
+    d = new Date(valor);
+  }
+
+  if (!d || Number.isNaN(d.getTime())) return 'sin sincronización';
+
+  return d.toLocaleString('es-CL', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  });
+}
+
+function obtenerGruposActividadReserva(actividad) {
+  return grupos.filter(g =>
+    Object.values(g.itinerario || {}).some(acts =>
+      (acts || []).some(a => actividadCoincideReserva(a, actividad))
     )
   );
-  const proveedor = btn.dataset.proveedor;
+}
 
+function mostrarEstadoSyncPaxReserva(actividad) {
+  const box = document.getElementById('estadoSyncPaxReserva');
+  const btnSync = document.getElementById('btnSincronizarPaxReserva');
+
+  if (!box) return;
+
+  const lista = obtenerGruposActividadReserva(actividad);
+
+  const sincronizadosHoy = lista.filter(g => esFechaSyncHoy(g.paxActualizadoEn));
+  const pendientes = lista.filter(g => !esFechaSyncHoy(g.paxActualizadoEn));
+
+  box.innerHTML = `
+    <div style="margin:.75rem 0; padding:.75rem; background:#f7f7f7; border:1px solid #ddd; border-radius:8px;">
+      <strong>Estado PAX pagos:</strong><br>
+      Grupos de esta reserva: <strong>${lista.length}</strong><br>
+      Sincronizados hoy: <strong>${sincronizadosHoy.length}</strong><br>
+      Pendientes/no sincronizados hoy: <strong>${pendientes.length}</strong>
+      ${
+        lista.length
+          ? `<div style="margin-top:.5rem; font-size:.9em;">
+              ${lista.map(g => `
+                <div>
+                  ${g.numeroNegocio || g.id} — ${g.nombreGrupo || ''}:
+                  ${esFechaSyncHoy(g.paxActualizadoEn) ? '✅' : '⚠️'}
+                  ${formatearFechaHoraSync(g.paxActualizadoEn)}
+                </div>
+              `).join('')}
+            </div>`
+          : ''
+      }
+    </div>
+  `;
+
+  if (btnSync) {
+    btnSync.style.display = lista.length ? 'inline-block' : 'none';
+    btnSync.textContent = pendientes.length
+      ? `Sincronizar PAX pendientes (${pendientes.length})`
+      : 'Forzar sincronización PAX';
+  }
+}
+
+function reconstruirCorreoReserva(destino, actividad, proveedor) {
   const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
-  document.getElementById('modalPara').value = provInfo.correo;
-  document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
-  
-  await sincronizarGruposReservaConPagos(actividad);
 
   const perDateData = fechasOrdenadas
     .map(fecha => {
@@ -740,6 +825,50 @@ async function abrirModalReserva(event) {
   cuerpo += `Atte.\nOperaciones RaiTrai`;
 
   document.getElementById('modalCuerpo').value = cuerpo;
+}
+
+async function sincronizarPaxReservaManual() {
+  const btnSync = document.getElementById('btnSincronizarPaxReserva');
+  if (!btnSync) return;
+
+  const destino = btnSync.dataset.destino;
+  const actividad = btnSync.dataset.actividad;
+  const proveedor = btnSync.dataset.proveedor;
+
+  btnSync.disabled = true;
+  btnSync.textContent = 'Sincronizando...';
+
+  try {
+    await sincronizarGruposReservaConPagos(actividad);
+
+    reconstruirCorreoReserva(destino, actividad, proveedor);
+    mostrarEstadoSyncPaxReserva(actividad);
+
+    alert('PAX sincronizado con pagos y correo actualizado.');
+  } catch (error) {
+    console.error('Error sincronizando PAX manualmente:', error);
+    alert('No se pudo sincronizar PAX con pagos. Revisa la consola.');
+  } finally {
+    btnSync.disabled = false;
+  }
+}
+
+async function abrirModalReserva(event) {
+  const btn       = event.currentTarget;
+  const destino   = btn.dataset.destino;
+  const actividad = btn.dataset.actividad;
+  const fecha = fechasOrdenadas.find(f =>
+    grupos.some(g =>
+      g.itinerario?.[f]?.some(a => actividadCoincideReserva(a, actividad))
+    )
+  );
+  const proveedor = btn.dataset.proveedor;
+
+  const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
+  document.getElementById('modalPara').value = provInfo.correo;
+  document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
+
+  reconstruirCorreoReserva(destino, actividad, proveedor);
 
   const btnPend = document.getElementById('btnGuardarPendiente');
   btnPend.dataset.destino = destino;
@@ -749,6 +878,15 @@ async function abrirModalReserva(event) {
   const btnEnv = document.getElementById('btnEnviarReserva');
   btnEnv.dataset.destino = destino;
   btnEnv.dataset.actividad = actividad;
+
+  const btnSync = document.getElementById('btnSincronizarPaxReserva');
+  if (btnSync) {
+    btnSync.dataset.destino = destino;
+    btnSync.dataset.actividad = actividad;
+    btnSync.dataset.proveedor = proveedor;
+  }
+
+  mostrarEstadoSyncPaxReserva(actividad);
 
   document.getElementById('modalReserva').style.display = 'block';
 }
