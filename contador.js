@@ -317,7 +317,7 @@ async function init() {
     const reservas = todosLosReservas[i];
 
     const fechasConPax = fechasOrdenadas.filter(fecha =>
-      grupos.some(g => (g.itinerario?.[fecha]||[]).some(a => a.actividad === servicio.nombre))
+      grupos.some(g => (g.itinerario?.[fecha]||[]).some(a => actividadCoincideReserva(a, servicio.nombre)))
     );
     const textoBtn = obtenerTextoBotonReserva(reservas, fechasConPax);
 
@@ -341,12 +341,12 @@ async function init() {
     fechasOrdenadas.forEach(fecha => {
       const totalPax = grupos.reduce((sum, g) => {
         return sum + (g.itinerario?.[fecha]||[])
-          .filter(a => a.actividad === servicio.nombre)
+          .filter(a => actividadCoincideReserva(a, servicio.nombre))
           .reduce((s2, a) => s2 + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
       }, 0);
 
       const groupCount = grupos.filter(g =>
-        (g.itinerario?.[fecha]||[]).some(a => a.actividad === servicio.nombre)
+        (g.itinerario?.[fecha]||[]).some(a => actividadCoincideReserva(a, servicio.nombre))
       ).length;
 
       fila += `
