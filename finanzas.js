@@ -969,15 +969,20 @@ function renderTablaProveedoresMonedaNativa(mapProv, visibleCurrencies){
     for (const [slugProv, agg] of Object.entries(result.porProv)){
       const tr = tbody.querySelector(`tr[data-prov="${slugProv}"]`);
       if (!tr) continue;
-      let ci = 3; // ✅ primera columna monetaria es el índice 3 (T)
       for (const m of visibleCurrencies){
-        const tdA = tr.children[ci+1]; // A
-        const tdS = tr.children[ci+2]; // S
+        const tdA = tr.querySelector(`td[data-key="A_${m}"]`);
+        const tdS = tr.querySelector(`td[data-key="S_${m}"]`);
+      
+        if (!tdA || !tdS) {
+          console.warn(`⚠️ No encontré columnas A/S para ${m} en proveedor`, slugProv);
+          continue;
+        }
+      
         tdA.textContent = agg.A[m] ? fmt(agg.A[m]) : '—';
         tdA.dataset.raw = String(agg.A[m] || 0);
+      
         tdS.textContent = agg.S[m] ? fmt(agg.S[m]) : '—';
         tdS.dataset.raw = String(agg.S[m] || 0);
-        ci += 3;
       }
     }
 
