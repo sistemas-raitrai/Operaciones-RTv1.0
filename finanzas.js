@@ -1637,6 +1637,7 @@ for (const r of resumen) {
       if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
         cont.dataset.curMode = 'ONE';
         await pintarAbonos({
+          anoTarifa: itemSvc.anoTarifa,
           destinoId: itemSvc.destinoGrupo,
           servicioId: itemSvc.servicioId,
           servicioNombre: itemSvc.servicio || '',
@@ -1759,6 +1760,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
         if (!(await pedirClaveDialog(cont))) return;
         abrirSubmodalAbono({
           cont,
+          anoTarifa: lote.anoTarifa,
           destinoId: lote.destinoId,
           servicioId: lote.servicioId,
           abono: { ...ab, id: ab.id }
@@ -1769,7 +1771,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
       if (btnArch) btnArch.addEventListener('click', async () => {
         if (!(await pedirClaveDialog(cont))) return;
         if (!confirm('¿ARCHIVAR ESTE ABONO?')) return;
-        await archivarAbono({ destinoId: lote.destinoId, servicioId: lote.servicioId, abonoId: ab.id });
+        await archivarAbono({ anoTarifa: lote.anoTarifa, destinoId: lote.destinoId, servicioId: lote.servicioId, abonoId: ab.id });
         await pintarAbonosTodosProveedor({ data, cont });
         calcSaldoDesdeTablas(cont);
       });
@@ -1777,7 +1779,7 @@ async function pintarAbonosTodosProveedor({ data, cont }){
       const btnUn = tr.querySelector('.btn-unarch');
       if (btnUn) btnUn.addEventListener('click', async () => {
         if (!(await pedirClaveDialog(cont))) return;
-        await desarchivarAbono({ destinoId: lote.destinoId, servicioId: lote.servicioId, abonoId: ab.id });
+        await desarchivarAbono({ anoTarifa: lote.anoTarifa, destinoId: lote.destinoId, servicioId: lote.servicioId, abonoId: ab.id });
         await pintarAbonosTodosProveedor({ data, cont });
         calcSaldoDesdeTablas(cont);
       });
@@ -2158,6 +2160,7 @@ async function openModalProveedor(slugProv, data) {
         // refresca abonos/tabla según modo actual
         if (cont.dataset.curMode === 'ONE' && cont.dataset.curServicioId && cont.dataset.curDestinoId) {
           await pintarAbonos({
+            anoTarifa: cont.dataset.curAnoTarifa,
             destinoId: cont.dataset.curDestinoId,
             servicioId: cont.dataset.curServicioId,
             servicioNombre: cont.dataset.curServicioNombre || '',
@@ -2214,6 +2217,7 @@ async function openModalProveedor(slugProv, data) {
       if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
         cont.dataset.curMode = 'ONE';
         await pintarAbonos({
+          anoTarifa: itemSvc.anoTarifa,
           destinoId: itemSvc.destinoGrupo,
           servicioId: itemSvc.servicioId,
           servicioNombre: itemSvc.servicio || '',
@@ -2389,6 +2393,7 @@ async function openModalProveedor(slugProv, data) {
       if (itemSvc?.servicioId && itemSvc?.destinoGrupo) {
         cont.dataset.curMode = 'ONE';
         await pintarAbonos({
+          anoTarifa: itemSvc.anoTarifa,
           destinoId: itemSvc.destinoGrupo,
           servicioId: itemSvc.servicioId,
           servicioNombre: itemSvc.servicio || '',
@@ -2401,7 +2406,7 @@ async function openModalProveedor(slugProv, data) {
 
   // === Botón ABONAR (siempre abre y eliges servicio) ===
   $('#btnAbonar', cont).onclick = () => {
-    abrirSubmodalAbono({ cont, destinoId: null, servicioId: null, abono: null });
+    abrirSubmodalAbono({ cont, anoTarifa: null, destinoId: null, servicioId: null, abono: null });
   };
 
   // === Al abrir: modo TODOS por defecto + abonos de todos ===
@@ -2431,7 +2436,8 @@ function limpiarAbonos(cont){
   const btnArch = $('#btnVerArch', cont);
   if (btnArch) { btnArch.setAttribute('aria-pressed','false'); btnArch.textContent = 'VER ARCHIVADOS'; }
 }
-async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
+async function pintarAbonos({ anoTarifa, destinoId, servicioId, servicioNombre, cont }) {
+  cont.dataset.curAnoTarifa = anoTarifa;
   cont.dataset.curDestinoId = destinoId;
   cont.dataset.curServicioId = servicioId;
   cont.dataset.curServicioNombre = servicioNombre || '';
@@ -2441,7 +2447,7 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
   const tbody = $('#tblAbonos tbody', cont);
   tbody.innerHTML = '';
 
-  let abonos = await loadAbonos(destinoId, servicioId);
+  let abonos = await loadAbonos(anoTarifa, destinoId, servicioId);
   abonos.sort((a,b)=> (b.fecha||'').localeCompare(a.fecha||''));
 
   const nat = cont.__nat || 'CLP';
@@ -2450,12 +2456,14 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
   for (const ab of abonos) {
     const estado = (ab.estado || 'ORIGINAL').toUpperCase();
     const incluir = (estado !== 'ARCHIVADO') || verArch;
+
     if (estado !== 'ARCHIVADO' && normalizarMoneda(ab.moneda) === nat) {
       tNAT += Number(ab.monto || 0);
     }
 
     const tr = document.createElement('tr');
     if (estado === 'ARCHIVADO') tr.classList.add('abono-archivado');
+
     tr.innerHTML = `
       <td title="${servicioNombre}">${servicioNombre}</td>
       <td title="${(ab.updatedByEmail || ab.createdByEmail || '').toLowerCase()}">
@@ -2468,56 +2476,65 @@ async function pintarAbonos({ destinoId, servicioId, servicioNombre, cont }) {
       <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank" rel="noopener">VER</a>` : '—'}</td>
       <td class="actions">
         <div class="icon-actions">
-          <button type="button" class="icon-btn edit btn-edit" aria-label="Editar" title="Editar">
-            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M13.586 3.586a2 2 0 012.828 2.828l-8.95 8.95a2 2 0 01-.878.507l-3.13.9a.5.5 0 01-.62-.62l.9-3.13a2 2 0 01.507-.878l8.95-8.95zM12 4.999l3 3" /></svg>
-          </button>
-          ${estado==='ARCHIVADO' ? `
-            <button type="button" class="icon-btn archive btn-unarch" aria-label="Desarchivar" title="Desarchivar">
-              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 3h14v3H3V3zm2 4h10v9a2 2 0 01-2 2H7a2 2 0 01-2-2V7zm2 3h6v2H7v-2z"/></svg>
-            </button>
-          ` : `
-            <button type="button" class="icon-btn archive btn-arch" aria-label="Archivar" title="Archivar">
-              <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3H3V3zm0 4h14v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7zm4 2h6v2H7V9z"/></svg>
-            </button>
-          `}
+          <button type="button" class="icon-btn edit btn-edit" title="Editar">✏️</button>
+          ${estado==='ARCHIVADO'
+            ? `<button type="button" class="icon-btn archive btn-unarch" title="Desarchivar">↩️</button>`
+            : `<button type="button" class="icon-btn archive btn-arch" title="Archivar">🗄️</button>`
+          }
         </div>
       </td>
       <td title="${estado}">${estado}</td>
     `;
+
     if (incluir) tbody.appendChild(tr);
 
     tr.querySelector('.btn-edit').addEventListener('click', async () => {
       if (!(await pedirClaveDialog(cont))) return;
-      abrirSubmodalAbono({ cont, destinoId, servicioId, abono: { ...ab, id: ab.id } });
+      abrirSubmodalAbono({
+        cont,
+        anoTarifa,
+        destinoId,
+        servicioId,
+        abono: { ...ab, id: ab.id }
+      });
     });
+
     const btnArch = tr.querySelector('.btn-arch');
     if (btnArch) btnArch.addEventListener('click', async () => {
       if (!(await pedirClaveDialog(cont))) return;
       if (!confirm('¿ARCHIVAR ESTE ABONO?')) return;
-      await archivarAbono({ destinoId, servicioId, abonoId: ab.id });
-      await pintarAbonos({ destinoId, servicioId, servicioNombre, cont });
+
+      await archivarAbono({ anoTarifa, destinoId, servicioId, abonoId: ab.id });
+      await pintarAbonos({
+        anoTarifa,
+        destinoId,
+        servicioId,
+        servicioNombre,
+        cont,
+      });
       calcSaldoDesdeTablas(cont);
     });
 
     const btnUn = tr.querySelector('.btn-unarch');
     if (btnUn) btnUn.addEventListener('click', async () => {
       if (!(await pedirClaveDialog(cont))) return;
-      await desarchivarAbono({ destinoId, servicioId, abonoId: ab.id });
-      await pintarAbonos({ destinoId, servicioId, servicioNombre, cont });
+
+      await desarchivarAbono({ anoTarifa, destinoId, servicioId, abonoId: ab.id });
+      await pintarAbonos({
+        anoTarifa,
+        destinoId,
+        servicioId,
+        servicioNombre,
+        cont,
+      });
       calcSaldoDesdeTablas(cont);
     });
   }
 
   $('#abTotNAT', cont).textContent = money(tNAT);
 
-  // Botón Abonar (permite re-abrir para el mismo servicio)
   $('#btnAbonar', cont).onclick = () =>
-    abrirSubmodalAbono({ cont, destinoId, servicioId, abono: null });
-
-  makeSortable($('#tblAbonos', cont),
-    ['text','text','date','text','num','text','text','text','text'],
-    {skipIdx:[7]}
-  );
+    abrirSubmodalAbono({ cont, anoTarifa, destinoId, servicioId, abono: null });
 }
 
 function calcSaldoDesdeTablas(cont){
@@ -2605,7 +2622,7 @@ function calcSaldoDesdeTablas(cont){
 }
 
 // Submodal (crear/editar)
-function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
+function abrirSubmodalAbono({ cont, anoTarifa, destinoId, servicioId, abono }) {
   const box = $('#submodalAbono', cont);
   box.hidden = false;
 
@@ -2614,23 +2631,35 @@ function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
   const selDest = $('#abDest', box);
   const selMon  = $('#abMoneda', box);
 
-  // Poblar selects (servicios únicos)
-  selSvc.innerHTML = pairs.map(p => `<option value="${p.servicioId}">${p.servicioNombre}</option>`).join('');
-  // Default: si viene servicioId, seleccionarlo
-  if (servicioId) selSvc.value = servicioId;
-  // Destinos asociados al servicio seleccionado
-  function refreshDestMon(){
-    const svc = selSvc.value;
-    const ds = pairs.filter(p => p.servicioId === svc);
-    selDest.innerHTML = ds.map(d => `<option value="${d.destinoId}">${d.destinoId}</option>`).join('');
-    // moneda (tomo la del primero)
-    selMon.value = (ds[0]?.moneda || cont.__nat || 'CLP').toUpperCase();
+  selSvc.innerHTML = pairs.map(p => `
+    <option value="${p.key}">
+      ${p.servicioNombre}
+    </option>
+  `).join('');
+
+  function getSelectedPair() {
+    return pairs.find(p => p.key === selSvc.value) || pairs[0] || null;
   }
+
+  const pre = pairs.find(p =>
+    String(p.anoTarifa) === String(anoTarifa) &&
+    p.destinoId === destinoId &&
+    p.servicioId === servicioId
+  );
+
+  if (pre) selSvc.value = pre.key;
+
+  function refreshDestMon(){
+    const p = getSelectedPair();
+    if (!p) return;
+
+    selDest.innerHTML = `<option value="${p.destinoId}">${p.destinoId}</option>`;
+    selDest.value = p.destinoId;
+    selMon.value = (p.moneda || cont.__nat || 'CLP').toUpperCase();
+  }
+
   refreshDestMon();
   selSvc.onchange = refreshDestMon;
-
-  // Si venían explícitos, forzar selección
-  if (destinoId) selDest.value = destinoId;
 
   $('#abFecha',  box).value = abono?.fecha || nowISODate();
   $('#abMonto',  box).value = abono?.monto || '';
@@ -2641,9 +2670,12 @@ function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
   $('#abCancelar', box).onclick = close;
 
   $('#abGuardar', box).onclick = async () => {
-    const dId = selDest.value;
-    const sId = selSvc.value;
-    if (!dId || !sId) { alert('Selecciona SERVICIO y DESTINO'); return; }
+    const p = getSelectedPair();
+
+    if (!p) {
+      alert('Selecciona un servicio');
+      return;
+    }
 
     const data = {
       fecha: $('#abFecha', box).value,
@@ -2654,18 +2686,37 @@ function abrirSubmodalAbono({ cont, destinoId, servicioId, abono }) {
       version: abono?.version || 1,
       comprobanteURL: abono?.comprobanteURL || '',
     };
+
     const file = $('#abFile', box).files[0] || null;
 
-    await guardarAbono({ destinoId: dId, servicioId: sId, abonoId: abono?.id || null, data, file });
+    await guardarAbono({
+      anoTarifa: p.anoTarifa,
+      destinoId: p.destinoId,
+      servicioId: p.servicioId,
+      abonoId: abono?.id || null,
+      data,
+      file
+    });
 
     close();
-    // Repintar según modo actual
-    // Repintar según modo actual
-    if (cont.dataset.curMode === 'ONE' && cont.dataset.curServicioId === sId && cont.dataset.curDestinoId === dId){
-      await pintarAbonos({ destinoId: dId, servicioId: sId, servicioNombre: cont.dataset.curServicioNombre || '', cont });
+
+    if (
+      cont.dataset.curMode === 'ONE' &&
+      cont.dataset.curAnoTarifa === String(p.anoTarifa) &&
+      cont.dataset.curServicioId === p.servicioId &&
+      cont.dataset.curDestinoId === p.destinoId
+    ) {
+      await pintarAbonos({
+        anoTarifa: p.anoTarifa,
+        destinoId: p.destinoId,
+        servicioId: p.servicioId,
+        servicioNombre: p.servicioNombre || '',
+        cont
+      });
     } else {
       await pintarAbonosTodosProveedor({ data: cont.__provData, cont });
     }
+
     calcSaldoDesdeTablas(cont);
   };
 }
