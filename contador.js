@@ -10,6 +10,7 @@ import {
 import {
   getAuth, onAuthStateChanged, signOut
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
+import { sincronizarPaxGrupoDesdePagos } from './pax-sync.js';
 
 // ———————————————————————————————
 // 2️⃣ Estado global
@@ -20,6 +21,68 @@ let proveedores = {};          // mapa proveedor -> {contacto, correo}
 let reservaActualSnapshot = null;
 let ultimaVerificacionPagos = null;
 const API_PAGOS_URL = '/api/pagos';
+
+function normalizarActividadReserva(txt = '') {
+  return String(txt || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function actividadCoincideReserva(a, actividad) {
+  return normalizarActividadReserva(a?.actividad) === normalizarActividadReserva(actividad);
+}
+
+async function recargarGruposContador(ids) {
+  const setIds = new Set(ids.map(String));
+
+  const actualizados = await Promise.all(
+    Array.from(setIds).map(async id => {
+      const snap = await getDoc(doc(db, 'grupos', id));
+      return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    })
+  );
+
+  const mapActualizados = new Map(
+    actualizados.filter(Boolean).map(g => [String(g.id), g])
+  );
+
+  grupos = grupos.map(g => mapActualizados.get(String(g.id)) || g);
+}
+
+async function sincronizarGruposReservaConPagos(actividad) {
+  const ids = grupos
+    .filter(g =>
+      Object.values(g.itinerario || {}).some(acts =>
+        (acts || []).some(a => actividadCoincideReserva(a, actividad))
+      )
+    )
+    .map(g => g.id);
+
+  if (!ids.length) return [];
+
+  const resultados = [];
+
+  for (const grupoId of ids) {
+    try {
+      const r = await sincronizarPaxGrupoDesdePagos(grupoId);
+      resultados.push(r);
+    } catch (error) {
+      console.error('Error sincronizando PAX con pagos:', grupoId, error);
+      resultados.push({
+        ok: false,
+        grupoId,
+        error: error.message || String(error)
+      });
+    }
+  }
+
+  await recargarGruposContador(ids);
+
+  return resultados;
+}
 
 // ===== [NUEVO] Índice de vuelos por grupo (root collection 'vuelos') =====
 let IDX_VUELOS_POR_GRUPO = new Map();
@@ -406,7 +469,7 @@ function construirSnapshotReservaPorFecha(destino, actividad, perDateData) {
   const fechas = perDateData.map(({ fecha, lista }) => {
     const gruposFecha = lista.map(g => {
       const acts = g.itinerario?.[fecha] || [];
-      const actsActividad = acts.filter(a => a.actividad === actividad);
+      const actsActividad = acts.filter(a => actividadCoincideReserva(a, actividad));
 
       const adultosActividad = actsActividad.reduce(
         (s, a) => s + (parseInt(a.adultos) || 0),
@@ -483,7 +546,7 @@ function construirSnapshotReservaActual(destino, actividad) {
   const perDateData = fechasOrdenadas
     .map(fecha => {
       const lista = grupos.filter(g =>
-        (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad)
+        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, actividad))
       );
 
       return {
@@ -622,24 +685,28 @@ async function abrirModalReserva(event) {
   const destino   = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
   const fecha = fechasOrdenadas.find(f =>
-    grupos.some(g => g.itinerario?.[f]?.some(a => a.actividad === actividad))
+    grupos.some(g =>
+      g.itinerario?.[f]?.some(a => actividadCoincideReserva(a, actividad))
+    )
   );
   const proveedor = btn.dataset.proveedor;
 
   const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
   document.getElementById('modalPara').value = provInfo.correo;
   document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
+  
+  await sincronizarGruposReservaConPagos(actividad);
 
   const perDateData = fechasOrdenadas
     .map(fecha => {
       const lista = grupos.filter(g =>
-        (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad)
+        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, actividad))
       );
 
       const paxTotal = lista.reduce((sum, g) => {
         const acts = g.itinerario?.[fecha] || [];
         return sum + acts
-          .filter(a => a.actividad === actividad)
+          .filter(a => actividadCoincideReserva(a, actividad))
           .reduce((s, a) => s + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
       }, 0);
 
@@ -720,7 +787,7 @@ async function enviarReserva() {
       const totalEnviado = grupos.reduce((sum, g) => {
         const acts = g.itinerario?.[f] || [];
         const t = acts
-          .filter(a => a.actividad === actividad)
+          .filter(a => actividadCoincideReserva(a, actividad))
           .reduce((acc, a) => acc + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
         return sum + t;
       }, 0);
@@ -2022,7 +2089,7 @@ async function guardarVerificacionPagosEnReserva() {
     const totalEnviado = grupos.reduce((sum, g) => {
       const acts = g.itinerario?.[f] || [];
       const t = acts
-        .filter(a => a.actividad === actividad)
+        .filter(a => actividadCoincideReserva(a, actividad))
         .reduce((acc, a) => acc + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
       return sum + t;
     }, 0);
