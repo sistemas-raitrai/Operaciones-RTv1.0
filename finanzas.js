@@ -26,7 +26,8 @@ import {
 // -------------------------------
 // 0) Rutas raíz
 // -------------------------------
-const RUTA_SERVICIOS  = 'Servicios';
+const RUTA_SERVICIOS_LEGACY = 'Servicios';
+const RUTA_SERVICIOS_ANO = 'ServiciosPorAno';
 const RUTA_PROV_ROOT  = 'Proveedores';
 const RUTA_HOTEL_ROOT = 'Hoteles';
 const RUTA_GRUPOS     = 'grupos';
@@ -169,6 +170,15 @@ const DESTINO_MONEDAS = {
   'DEFAULT': new Set(['USD','CLP']),
 };
 const TODAS_MONEDAS = ['CLP','USD','BRL','ARS'];
+
+function getAnoTarifaGrupo(g) {
+  return String(
+    g?.anoViaje ||
+    g?.anio ||
+    g?.year ||
+    new Date().getFullYear()
+  );
+}
 
 function monedasVisiblesFromFilter(filtro){
   if (filtro.all || filtro.tokens.size === 0) return TODAS_MONEDAS;
@@ -437,22 +447,95 @@ function buildSvcPairs(items){
 // 2) Carga de datos
 // -------------------------------
 async function loadServicios() {
-  const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS));
-  const promSub = [];
-  for (const docTop of rootSnap.docs) {
-    const destinoId = docTop.id;
-    promSub.push(
-      getDocs(collection(docTop.ref, 'Listado'))
-        .then(snap => snap.docs.map(d => {
-          const data = d.data() || {};
-          return { id: d.id, destino: destinoId, servicio: data.servicio || d.id, ...data };
-        }))
+  SERVICIOS = [];
+
+  const anos = new Set();
+
+  try {
+    const gruposSnap = await getDocs(collection(db, RUTA_GRUPOS));
+    gruposSnap.docs.forEach(d => {
+      const g = d.data() || {};
+      const ano = getAnoTarifaGrupo(g);
+      if (ano) anos.add(ano);
+    });
+  } catch (e) {
+    console.warn('No se pudieron leer años desde grupos:', e);
+  }
+
+  // Seguridad: cargar año actual y anterior por si hay filtros o grupos incompletos
+  const anoActual = new Date().getFullYear();
+  anos.add(String(anoActual));
+  anos.add(String(anoActual - 1));
+
+  const prom = [];
+
+  for (const ano of anos) {
+    prom.push(
+      getDocs(collection(db, RUTA_SERVICIOS_ANO, ano, 'Destinos'))
+        .then(async rootSnap => {
+          const subProm = [];
+
+          for (const docDestino of rootSnap.docs) {
+            const destinoId = docDestino.id;
+
+            subProm.push(
+              getDocs(collection(db, RUTA_SERVICIOS_ANO, ano, 'Destinos', destinoId, 'Listado'))
+                .then(snap => snap.docs.map(d => {
+                  const data = d.data() || {};
+                  return {
+                    id: d.id,
+                    anoTarifa: String(ano),
+                    destino: destinoId,
+                    servicio: data.servicio || d.id,
+                    ...data
+                  };
+                }))
+                .catch(() => [])
+            );
+          }
+
+          const arrays = await Promise.all(subProm);
+          return arrays.flat();
+        })
         .catch(() => [])
     );
   }
-  const arrays = await Promise.all(promSub);
+
+  const arrays = await Promise.all(prom);
   SERVICIOS = arrays.flat();
+
+  // Fallback temporal: si todavía no hay ServiciosPorAno, lee ruta antigua
+  if (!SERVICIOS.length) {
+    console.warn('No hay servicios por año. Usando ruta antigua Servicios como fallback.');
+
+    const rootSnap = await getDocs(collection(db, RUTA_SERVICIOS_LEGACY));
+    const promSub = [];
+
+    for (const docTop of rootSnap.docs) {
+      const destinoId = docTop.id;
+      promSub.push(
+        getDocs(collection(docTop.ref, 'Listado'))
+          .then(snap => snap.docs.map(d => {
+            const data = d.data() || {};
+            return {
+              id: d.id,
+              anoTarifa: 'LEGACY',
+              destino: destinoId,
+              servicio: data.servicio || d.id,
+              ...data
+            };
+          }))
+          .catch(() => [])
+      );
+    }
+
+    const legacyArrays = await Promise.all(promSub);
+    SERVICIOS = legacyArrays.flat();
+  }
+
+  console.log(`✅ Servicios cargados por año: ${SERVICIOS.length}`);
 }
+
 async function loadProveedores() {
   PROVEEDORES = {};
   try {
@@ -507,19 +590,42 @@ async function loadHotelesYAsignaciones() {
 // -------------------------------
 // 3) Resolver Servicio
 // -------------------------------
-function resolverServicio(itemActividad, destinoGrupo) {
-  const act    = norm(itemActividad?.actividad || itemActividad?.servicio || '');
+function resolverServicio(itemActividad, destinoGrupo, grupo) {
+  const anoTarifa = getAnoTarifaGrupo(grupo);
+  const act    = norm(itemActividad?.actividad || itemActividad?.servicio || itemActividad?.servicioNombre || '');
   const dest   = norm(destinoGrupo || '');
   const provIt = norm(itemActividad?.proveedor || '');
-  let cand = SERVICIOS.filter(s =>
+
+  let base = SERVICIOS.filter(s => String(s.anoTarifa) === String(anoTarifa));
+
+  // Fallback: si no hay tarifas para ese año, intenta año anterior
+  if (!base.length && anoTarifa !== 'LEGACY') {
+    const anoAnterior = String(Number(anoTarifa) - 1);
+    base = SERVICIOS.filter(s => String(s.anoTarifa) === anoAnterior);
+    if (base.length) {
+      console.warn(`⚠️ No hay tarifas ${anoTarifa}. Usando ${anoAnterior} como fallback.`);
+    }
+  }
+
+  // Fallback final: legacy
+  if (!base.length) {
+    base = SERVICIOS.filter(s => String(s.anoTarifa) === 'LEGACY');
+  }
+
+  let cand = base.filter(s =>
     norm(s.servicio) === act &&
     norm(s.destino || s.DESTINO || s.ciudad || s.CIUDAD) === dest
   );
-  if (cand.length === 0) cand = SERVICIOS.filter(s => norm(s.servicio) === act);
+
+  if (cand.length === 0) {
+    cand = base.filter(s => norm(s.servicio) === act);
+  }
+
   if (cand.length > 1 && provIt) {
     const afin = cand.filter(s => norm(s.proveedor) === provIt);
     if (afin.length) cand = afin;
   }
+
   return cand[0] || null;
 }
 
@@ -545,7 +651,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
       const arr = Array.isArray(it[fechaISO]) ? it[fechaISO] : [];
 
       for (const item of arr) {
-        const svc = resolverServicio(item, destinoGrupo);
+        const svc = resolverServicio(item, destinoGrupo, g);
 
         // Overlay de realizaciones: si está “No”, se excluye
         const svcIdOverlay = (svc && svc.id) ? svc.id : null;
@@ -557,6 +663,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
         if (!svc) {
           out.push({
             tipo:'actividad',
+            anoTarifa: getAnoTarifaGrupo(g),
             proveedor: item.proveedor || '(desconocido)',
             proveedorSlug: slug(item.proveedor || '(desconocido)'),
             servicio: item.actividad || item.servicio || '(sin nombre)',
@@ -604,6 +711,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
         out.push({
           tipo:'actividad',
+          anoTarifa: svc.anoTarifa || getAnoTarifaGrupo(g),
           proveedor, proveedorSlug: slug(proveedor),
           servicio: svc.servicio || item.actividad || '(sin nombre)',
           servicioId: svc.id,
