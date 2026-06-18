@@ -28,6 +28,7 @@ import {
 // -------------------------------
 const RUTA_SERVICIOS_LEGACY = 'Servicios';
 const RUTA_SERVICIOS_ANO = 'ServiciosPorAno';
+// Temporal: mantiene funcionando abonos mientras migramos abonos por año
 const RUTA_SERVICIOS = RUTA_SERVICIOS_LEGACY;
 const RUTA_PROV_ROOT  = 'Proveedores';
 const RUTA_HOTEL_ROOT = 'Hoteles';
