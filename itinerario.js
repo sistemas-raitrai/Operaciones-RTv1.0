@@ -2114,7 +2114,7 @@ async function buildServiciosIndex(includeAll = true, destinosStr = '') {
   const byId = new Map(), byName = new Map(), packs = [];
   for (const dest of destinos) {
     try {
-      const snap = await getDocs(collection(db, 'Servicios', dest, 'Listado'));
+      const snap = await getDocs(collection(db, 'ServiciosPorAno', getAnoTarifaItinerario(), 'Destinos', dest, 'Listado'));
       snap.forEach(ds => {
         const id   = ds.id;
         const data = ds.data() || {};
