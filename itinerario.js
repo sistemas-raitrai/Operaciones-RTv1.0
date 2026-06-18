@@ -23,6 +23,15 @@ const K = s => (s ?? '')
   .trim()
   .toUpperCase();
 
+function getAnoTarifaGrupo(g) {
+  return String(
+    g?.anoViaje ||
+    g?.anio ||
+    g?.year ||
+    new Date().getFullYear()
+  );
+}
+
 // —————————————————————————————————
 // 1) Referencias DOM + estado
 // —————————————————————————————————
@@ -336,38 +345,54 @@ btnToggleEdit.onclick = (e) => {
 // —————————————————————————————————
 // Autocomplete de actividades
 // —————————————————————————————————
-async function obtenerActividadesPorDestino(destino) {
+async function obtenerActividadesPorDestino(destino, grupo = null) {
   if (!destino) return [];
-  const colecServicios = "Servicios";
-  const colecListado   = "Listado";
+
+  const anoTarifa = getAnoTarifaGrupo(grupo);
   const partes = destino.toString()
     .split(/\s+Y\s+/i)
     .map(s => s.trim().toUpperCase());
+
   const todas = [];
+
   for (const parte of partes) {
-    const ref = collection(db, colecServicios, parte, colecListado);
     try {
+      const ref = collection(
+        db,
+        'ServiciosPorAno',
+        anoTarifa,
+        'Destinos',
+        parte,
+        'Listado'
+      );
+
       const snap = await getDocs(ref);
+
       snap.docs.forEach(ds =>
         todas.push(((ds.data().nombre || ds.data().servicio || ds.id) || '').toString().toUpperCase())
       );
-    } catch (_) { /* subcolección inexistente: ignorar */ }
+    } catch (_) {}
   }
+
   return [...new Set(todas)].sort();
 }
 
-async function prepararCampoActividad(inputId, destino) {
+async function prepararCampoActividad(inputId, destino, grupo = null) {
   const input = document.getElementById(inputId);
-  const acts  = await obtenerActividadesPorDestino(destino);
+  const acts  = await obtenerActividadesPorDestino(destino, grupo);
+
   const oldList = document.getElementById("lista-" + inputId);
   if (oldList) oldList.remove();
+
   const dl = document.createElement("datalist");
   dl.id = "lista-" + inputId;
+
   acts.forEach(a => {
     const opt = document.createElement("option");
     opt.value = a;
     dl.appendChild(opt);
   });
+
   document.body.appendChild(dl);
   input.setAttribute("list", "lista-" + inputId);
 }
@@ -375,33 +400,59 @@ async function prepararCampoActividad(inputId, destino) {
 // ======================================================
 // Catálogo de servicios por destino (con alias + normalización)
 // ======================================================
-async function getServiciosMaps(destinoStr) {
+async function getServiciosMaps(destinoStr, grupo = null) {
+  const anoTarifa = getAnoTarifaGrupo(grupo);
+
   const partes = destinoStr
     ? destinoStr.toString().split(/\s+Y\s+/i).map(s => s.trim().toUpperCase())
     : [];
+
   const byId = new Map();
   const byName = new Map();
   const packs = [];
 
   for (const parte of partes) {
     try {
-      const snap = await getDocs(collection(db, 'Servicios', parte, 'Listado'));
+      const snap = await getDocs(collection(
+        db,
+        'ServiciosPorAno',
+        anoTarifa,
+        'Destinos',
+        parte,
+        'Listado'
+      ));
+
       snap.forEach(ds => {
         const id   = ds.id;
         const data = ds.data() || {};
         const visible = ((data.nombre || data.servicio || id) || '').toString();
-        const pack = { id, destino: parte, nombre: visible.toUpperCase(), nombreK: K(visible), data };
+
+        const pack = {
+          id,
+          anoTarifa,
+          destino: parte,
+          nombre: visible.toUpperCase(),
+          nombreK: K(visible),
+          data
+        };
+
         byId.set(id, pack);
         packs.push(pack);
         byName.set(pack.nombreK, pack);
         byName.set(K(id), pack);
+
         if (data.servicio) byName.set(K(data.servicio), pack);
+
         if (Array.isArray(data.aliases)) {
-          data.aliases.forEach(a => { const key = K(a); if (key) byName.set(key, pack); });
+          data.aliases.forEach(a => {
+            const key = K(a);
+            if (key) byName.set(key, pack);
+          });
         }
       });
-    } catch (_) { /* destino no existente: ignorar */ }
+    } catch (_) {}
   }
+
   return { byId, byName, packs };
 }
 
@@ -784,7 +835,7 @@ async function renderItinerario() {
   titleGrupo.textContent = (g.programa||"–").toUpperCase();
 
   // Autocomplete
-  await prepararCampoActividad("qa-actividad", g.destino);
+  await prepararCampoActividad("qa-actividad", g.destino, g);
 
   // Inicializar itinerario si no existe O si existe vacío
   if (!g.itinerario || Object.keys(g.itinerario || {}).length === 0) {
@@ -807,7 +858,7 @@ async function renderItinerario() {
   g.itinerario = await convertirDiasRelativosAFechasSiCorresponde(grupoId, g);
   
   // Sincronizar con Servicios
-  const svcMaps = await getServiciosMaps(g.destino || '');
+  const svcMaps = await getServiciosMaps(g.destino || '', g);
   const syncRes = await syncItinerarioServicios(grupoId, g, svcMaps);
   const IT = syncRes.it;
 
@@ -1050,7 +1101,7 @@ async function quickAddActivity() {
   const totalAdults   = parseInt(g.adultos, 10)     || 0;
   const totalStudents = parseInt(g.estudiantes, 10) || 0;
 
-  const svcMaps = await getServiciosMaps(g.destino || '');
+  const svcMaps = await getServiciosMaps(g.destino || '', g);
   const key = K(textUpper);
   const sv  = svcMaps.byName.get(key) || null;
 
@@ -1251,7 +1302,7 @@ async function openModal(data, isEdit) {
   fldHi.value       = data.horaInicio || "07:00";
   fldHf.value       = data.horaFin    || sumarUnaHora(fldHi.value);
   fldAct.value      = data.actividad  || "";
-  await prepararCampoActividad("m-actividad", g.destino);
+  await prepararCampoActividad("m-actividad", g.destino, g);
 
   // Notas (texto que venía en la actividad, si existía)
   const notasCrudas = (data.notas || "").toString();
@@ -1311,7 +1362,7 @@ async function onSubmitModal(evt) {
   if (pax !== suma) return alert(`La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`);
   if (a < 0 || e < 0 || pax < 0) return alert("Los valores no pueden ser negativos.");
 
-  const svcMaps = await getServiciosMaps(g.destino || '');
+  const svcMaps = await getServiciosMaps(g.destino || '', g);
   const typedUpper = (fldAct.value || '').trim().toUpperCase();
   const key = K(typedUpper);
   const sv = svcMaps.byName.get(key) || null;
@@ -2230,7 +2281,7 @@ window.aplicarNotasDefaultTickets = async function(opts = {}) {
     const fechas = Object.keys(it);
     if (!fechas.length) { gruposProc++; continue; }
 
-    const svcMaps = await getServiciosMaps(g.destino || '');
+    const svcMaps = await getServiciosMaps(g.destino || '', g);
     let cambiosEnGrupo = false;
     let actsModGrupo   = 0;
     const nuevoIt      = {};
@@ -2327,7 +2378,7 @@ window.syncAllItinerariosConServicios = async function(limit = 4) {
 
     async function worker(g) {
       try {
-        const svcMaps = await getServiciosMaps(g.destino || '');
+        const svcMaps = await getServiciosMaps(g.destino || '', g);
         const res = await syncItinerarioServicios(g.id, g, svcMaps); // { it, changed }
         ok++; if (res.changed) changed++;
 
