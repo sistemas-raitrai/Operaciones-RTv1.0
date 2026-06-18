@@ -1,8 +1,4 @@
-// contador.js (COMPLETO)
-// Contador de actividades por fecha (columnas dinámicas) con cruce:
-// grupos.itinerario[*].(servicioId / actividad) -> Servicios/{DEST}/Listado/{id} -> proveedor
-// + Soporta aliases: Servicios doc puede tener aliases[] y prevIds[] (como tu servicios.js)
-// Estética / Auth gate: igual patrón que estadisticas.html
+// contador.js
 
 import { auth, db } from './firebase-init.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
