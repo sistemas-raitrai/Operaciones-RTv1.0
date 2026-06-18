@@ -28,7 +28,7 @@ const campos = [
 // Secciones por destino; `null` representa la sección "OTRO"
 const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
-let ANO_TARIFA_ACTIVO = '2025';
+let ANO_TARIFA_ACTIVO = String(new Date().getFullYear());
 
 function getAnoTarifaActivo() {
   return ANO_TARIFA_ACTIVO || '2025';
@@ -642,7 +642,7 @@ function createSection(destFijo){
 
   async function exportExcel(){
     const aoa = toAOA();
-    const nombre = `Servicios_${isOtro ? 'OTRO' : destFijo}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const nombre = `Servicios_${getAnoTarifaActivo()}_${isOtro ? 'OTRO' : destFijo}_${new Date().toISOString().slice(0,10)}.xlsx`;
     try {
       const XLSX = await loadXLSX();
       const wb = XLSX.utils.book_new();
@@ -678,7 +678,7 @@ async function exportAllSections(){
       XLSX.utils.book_append_sheet(wb, ws, sec.name.slice(0,31));
     });
 
-    XLSX.writeFile(wb, `Servicios_TODOS_${fecha}.xlsx`);
+    XLSX.writeFile(wb, `Servicios_TODOS_${getAnoTarifaActivo()}_${fecha}.xlsx`);
   } catch {
     // Fallback: un CSV por sección
     allSections.forEach(sec => {
@@ -877,7 +877,24 @@ async function copiarTarifarioAnteriorAlAnoActivo() {
   );
 
   if (!ok) return;
-
+  
+  let totalExistentes = 0;
+  for (const destino of destinosCopiar) {
+    const existeSnap = await getDocs(
+      collection(db, 'ServiciosPorAno', anoDestino, 'Destinos', destino, 'Listado')
+    );
+    totalExistentes += existeSnap.size;
+  }
+  
+  if (totalExistentes > 0) {
+    const ok2 = confirm(
+      `⚠️ Ya existen ${totalExistentes} servicios en el tarifario ${anoDestino}.\n\n` +
+      `Si continúas, se mezclarán/actualizarán con datos del ${anoOrigen}.\n\n` +
+      `¿Seguro que quieres continuar?`
+    );
+    if (!ok2) return;
+  }
+  
   let totalCopiados = 0;
 
   await setDoc(doc(db, 'ServiciosPorAno', anoDestino), {
