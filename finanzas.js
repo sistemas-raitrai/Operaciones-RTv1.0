@@ -795,7 +795,7 @@ function construirLineItems(fechaDesde, fechaHasta, destinosSel, incluirActivida
 
 function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHoteles) {
   const out = [];
-  if (!incluirHoteles || !ASIGNACIONES.length) return out;
+  if (!ASIGNACIONES.length) return out;
 
   const mapHotel = {};
   for (const h of HOTELES) mapHotel[h.id] = h;
@@ -3122,7 +3122,7 @@ function recalcular() {
 
   // Line items y hoteles SIN filtrar por destino (sí por fechas/año)
   LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, includeAnyFn, inclAct);
-  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, includeAnyFn, inclHot);
+  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, true);
 
   logDiagnostico(LINE_ITEMS);
 
