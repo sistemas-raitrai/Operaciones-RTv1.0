@@ -825,8 +825,15 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const destinoGrupo = g.destino || asg.destino || '';
     if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
 
-    const start = toISO(asg.checkIn);
-    const end = toISO(asg.checkOut);
+    const start = asg.checkIn || '';
+    const end = asg.checkOut || '';
+    
+    console.log('🛏️ Asignación hotel:', {
+      grupoId: asg.grupoId,
+      hotelId: asg.hotelId,
+      checkIn: asg.checkIn,
+      checkOut: asg.checkOut
+    });
     if (!start || !end) continue;
 
     const noches = diffNoches(start, end);
