@@ -608,6 +608,10 @@ function hotelFinKey({ anoTarifa, destino, hotelKey }) {
   return `${anoTarifa}__${slug(destino || '')}__${hotelKey || ''}`;
 }
 
+function hotelGrupoKey({ anoTarifa, destino, hotelKey, grupoKey }) {
+  return `${hotelFinKey({ anoTarifa, destino, hotelKey })}__${grupoKey}`;
+}
+
 function hotelTarifaKey({ anoTarifa, destino, hotelKey }) {
   return hotelFinKey({ anoTarifa, destino, hotelKey });
 }
@@ -618,14 +622,7 @@ async function loadTarifasHoteles() {
   const snap = await getDocs(collection(db, RUTA_HOTEL_TARIFAS));
 
   snap.docs.forEach(d => {
-    const data = d.data() || {};
-    const key = hotelTarifaKey({
-      anoTarifa: data.anoTarifa,
-      destino: data.destino,
-      hotelKey: data.hotelKey || hotelKeyNormalizado(data.hotelNombre || data.hotel || '')
-    });
-
-    HOTEL_TARIFAS.set(key, { id: d.id, ...data });
+    HOTEL_TARIFAS.set(d.id, { id: d.id, ...d.data() });
   });
 }
 
@@ -644,8 +641,11 @@ async function loadAbonosHoteles() {
   }
 }
 
-function getTarifaHotelManual({ anoTarifa, destino, hotelKey }) {
-  return HOTEL_TARIFAS.get(hotelTarifaKey({ anoTarifa, destino, hotelKey })) || null;
+function getTarifaHotelGrupo({ anoTarifa, destino, hotelKey, grupoKey }) {
+  const keyGrupo = hotelGrupoKey({ anoTarifa, destino, hotelKey, grupoKey });
+  const keyHotel = hotelFinKey({ anoTarifa, destino, hotelKey });
+
+  return HOTEL_TARIFAS.get(keyGrupo) || HOTEL_TARIFAS.get(keyHotel) || null;
 }
 
 function getAbonosHotel({ anoTarifa, destino, hotelKey }) {
@@ -660,29 +660,43 @@ function totalAbonosHotel({ anoTarifa, destino, hotelKey, moneda }) {
     .reduce((acc, a) => acc + Number(a.monto || 0), 0);
 }
 
-function calcularTotalHotel({ tipoTarifa, valor, pax, noches, paxNoche }) {
+function calcularTotalHotel({ tipoTarifa, valor, pax, paxCobrable, noches, paxNoche }) {
   const v = Number(valor || 0);
+  const paxBase = Number(paxCobrable ?? pax ?? 0);
 
-  if (tipoTarifa === 'pax_noche') return v * paxNoche;
-  if (tipoTarifa === 'pax') return v * pax;
-  if (tipoTarifa === 'noche') return v * noches;
+  if (tipoTarifa === 'pax_noche') return v * paxBase * Number(noches || 0);
+  if (tipoTarifa === 'pax') return v * paxBase;
+  if (tipoTarifa === 'noche') return v * Number(noches || 0);
   if (tipoTarifa === 'total') return v;
 
   return 0;
 }
 
-async function guardarTarifaHotel({ anoTarifa, destino, hotelKey, hotelNombre, moneda, tipoTarifa, valor, observacion }) {
-  const docId = hotelFinKey({ anoTarifa, destino, hotelKey });
+async function guardarTarifaHotelGrupo({
+  anoTarifa,
+  destino,
+  hotelKey,
+  hotelNombre,
+  grupoKey,
+  grupoNombre,
+  moneda,
+  tipoTarifa,
+  valor,
+  liberados
+}) {
+  const docId = hotelGrupoKey({ anoTarifa, destino, hotelKey, grupoKey });
 
   const data = {
     anoTarifa: String(anoTarifa),
     destino,
     hotelKey,
     hotelNombre: normalizarNombreHotel(hotelNombre),
+    grupoKey,
+    grupoNombre,
     moneda: normalizarMoneda(moneda || 'CLP'),
     tipoTarifa: tipoTarifa || 'pax_noche',
     valor: Number(valor || 0),
-    observacion: observacion || '',
+    liberados: Number(liberados || 0),
     updatedAt: serverTimestamp(),
     updatedByEmail: (auth.currentUser?.email || '').toLowerCase()
   };
@@ -721,6 +735,84 @@ async function guardarAbonoHotel({ anoTarifa, destino, hotelKey, hotelNombre, da
   });
 
   await loadAbonosHoteles();
+}
+
+async function archivarAbonoHotel({ anoTarifa, destino, hotelKey, abonoId }) {
+  const docId = hotelFinKey({ anoTarifa, destino, hotelKey });
+  await updateDoc(doc(db, RUTA_HOTEL_ABONOS, docId, 'Abonos', abonoId), {
+    estado: 'ARCHIVADO',
+    archivedAt: serverTimestamp(),
+    archivedByEmail: (auth.currentUser?.email || '').toLowerCase()
+  });
+  await loadAbonosHoteles();
+}
+
+function pedirClaveHotel() {
+  const clave = prompt('Ingrese clave para archivar abono:');
+  return String(clave || '').trim().toLowerCase() === 'nena';
+}
+
+function exportarHotelXLS(data) {
+  const filas = [];
+
+  filas.push(['Hotel', data.hotel]);
+  filas.push(['Destino', data.destino]);
+  filas.push(['Año', data.anoTarifa]);
+  filas.push(['Total', data.totalMoneda]);
+  filas.push(['Abonado', data.totalAbonado]);
+  filas.push(['Saldo', data.saldo]);
+  filas.push([]);
+  filas.push(['DETALLE DE CÁLCULO']);
+  filas.push(['Grupo', 'N° negocio', 'Check-in', 'Check-out', 'Noches', 'PAX reales', 'Liberados', 'PAX cobrables', 'PAX-noche cobrable', 'Moneda', 'Tipo tarifa', 'Tarifa', 'Total']);
+
+  for (const it of data.items || []) {
+    filas.push([
+      it.nombreGrupo || '',
+      it.numeroNegocio || '',
+      it.checkIn || '',
+      it.checkOut || '',
+      it.noches || 0,
+      it.pax || 0,
+      it.liberados || 0,
+      it.paxCobrable || 0,
+      it.paxNocheCobrable || 0,
+      it.moneda || '',
+      it.tipoTarifa || '',
+      it.tarifa || 0,
+      it.totalMoneda || 0
+    ]);
+  }
+
+  filas.push([]);
+  filas.push(['ABONOS']);
+  filas.push(['Fecha', 'Moneda', 'Monto', 'Nota', 'Comprobante', 'Usuario', 'Estado']);
+
+  for (const ab of getAbonosHotel({ anoTarifa: data.anoTarifa, destino: data.destino, hotelKey: data.hotelKey })) {
+    filas.push([
+      ab.fecha || '',
+      ab.moneda || '',
+      ab.monto || 0,
+      ab.nota || '',
+      ab.comprobanteURL || '',
+      ab.createdByEmail || '',
+      ab.estado || ''
+    ]);
+  }
+
+  const html = `
+    <html><head><meta charset="UTF-8"></head><body>
+      <table border="1">
+        ${filas.map(row => `<tr>${row.map(c => `<td>${String(c ?? '').replace(/</g,'&lt;')}</td>`).join('')}</tr>`).join('')}
+      </table>
+    </body></html>
+  `;
+
+  const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `Hotel_${data.anoTarifa}_${slug(data.destino)}_${data.hotelKey}.xls`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // -------------------------------
@@ -915,25 +1007,32 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
 
     const anoTarifa = String(hotel.anoViaje || asg.anoViaje || g.anoViaje || new Date().getFullYear());
 
+    const grupoKey = String(g.numeroNegocio || g.id || asg.grupoId || '');
+    
     const pax = paxDeGrupo(g);
-    const paxNoche = pax * noches;
-
-    const tarifaManual = getTarifaHotelManual({
+    const tarifaManual = getTarifaHotelGrupo({
       anoTarifa,
       destino: destinoGrupo,
-      hotelKey
+      hotelKey,
+      grupoKey
     });
-
+    
     const moneda = normalizarMoneda(tarifaManual?.moneda || 'CLP');
     const tipoTarifa = tarifaManual?.tipoTarifa || 'pax_noche';
     const valor = Number(tarifaManual?.valor || 0);
-
+    
+    const liberados = Number(tarifaManual?.liberados || 0);
+    const paxCobrable = Math.max(0, pax - liberados);
+    const paxNoche = pax * noches;
+    const paxNocheCobrable = paxCobrable * noches;
+    
     const totalMoneda = calcularTotalHotel({
       tipoTarifa,
       valor,
       pax,
+      paxCobrable,
       noches,
-      paxNoche
+      paxNoche: paxNocheCobrable
     });
 
     out.push({
@@ -944,13 +1043,17 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       hotel: hotelNombre,
       destinoGrupo,
       grupoId: g.id,
+      grupoKey,
       nombreGrupo: g.nombreGrupo || g.colegio || '',
       numeroNegocio: g.numeroNegocio || g.id,
       checkIn: start,
       checkOut: end,
       noches,
       pax,
+      liberados,
+      paxCobrable,
       paxNoche,
+      paxNocheCobrable,
       moneda,
       tipoTarifa,
       tarifa: valor,
@@ -1233,22 +1336,25 @@ function agruparPorHotel(itemsHotel) {
       destino: it.destinoGrupo || '(sin destino)',
       grupos: new Set(),
       paxTotal: 0,
+      liberados: 0,
+      paxCobrable: 0,
       noches: 0,
       paxNoche: 0,
+      paxNocheCobrable: 0,
       moneda: it.moneda || 'CLP',
-      tipoTarifa: it.tipoTarifa || 'pax_noche',
-      tarifa: it.tarifa || 0,
-      observacion: it.observacionTarifa || '',
       totalMoneda: 0,
       totalAbonado: 0,
       saldo: 0,
       items: []
     };
 
-    acc.grupos.add(it.grupoId || it.numeroNegocio);
+    acc.grupos.add(it.grupoKey || it.grupoId || it.numeroNegocio);
     acc.paxTotal += Number(it.pax || 0);
+    acc.liberados += Number(it.liberados || 0);
+    acc.paxCobrable += Number(it.paxCobrable || 0);
     acc.noches += Number(it.noches || 0);
     acc.paxNoche += Number(it.paxNoche || 0);
+    acc.paxNocheCobrable += Number(it.paxNocheCobrable || 0);
     acc.totalMoneda += Number(it.totalMoneda || 0);
     acc.items.push(it);
 
@@ -1449,17 +1555,15 @@ function renderTablaHoteles(mapHoteles) {
       <th>Año</th>
       <th>Hotel</th>
       <th>Destino</th>
-      <th class="right">Grupos</th>
-      <th class="right">PAX</th>
-      <th class="right">Noches</th>
-      <th class="right">PAX-noche</th>
-      <th>Moneda</th>
-      <th>Tipo tarifa</th>
-      <th class="right">Valor</th>
       <th class="right">Total</th>
       <th class="right">Abono</th>
       <th class="right">Saldo</th>
-      <th>Obs.</th>
+      <th class="right">Grupos</th>
+      <th class="right">PAX reales</th>
+      <th class="right">Liberados</th>
+      <th class="right">PAX cobrables</th>
+      <th class="right">Noches</th>
+      <th class="right">PAX-noche cobrable</th>
       <th>Acciones</th>
     </tr>
   `;
@@ -1469,80 +1573,33 @@ function renderTablaHoteles(mapHoteles) {
 
   for (const r of rows) {
     const tr = document.createElement('tr');
-    tr.dataset.key = r.key;
 
     tr.innerHTML = `
       <td>${r.anoTarifa}</td>
       <td title="${r.hotel}">${r.hotel}</td>
       <td title="${r.destino}">${r.destino}</td>
+      <td class="right">${fmt(r.totalMoneda)} ${r.moneda}</td>
+      <td class="right abono-cell">${fmt(r.totalAbonado || 0)} ${r.moneda}</td>
+      <td class="right ${r.saldo > 0 ? 'saldo-neg' : 'saldo-ok'}">${fmt(r.saldo || 0)} ${r.moneda}</td>
       <td class="right">${fmt(r.grupos.size)}</td>
       <td class="right">${fmt(r.paxTotal)}</td>
+      <td class="right">${fmt(r.liberados)}</td>
+      <td class="right">${fmt(r.paxCobrable)}</td>
       <td class="right">${fmt(r.noches)}</td>
-      <td class="right">${fmt(r.paxNoche)}</td>
-
-      <td>
-        <select class="hotel-moneda">
-          ${TODAS_MONEDAS.map(m => `
-            <option value="${m}" ${m === r.moneda ? 'selected' : ''}>${m}</option>
-          `).join('')}
-        </select>
-      </td>
-
-      <td>
-        <select class="hotel-tipo">
-          <option value="pax_noche" ${r.tipoTarifa === 'pax_noche' ? 'selected' : ''}>PAX/NOCHE</option>
-          <option value="pax" ${r.tipoTarifa === 'pax' ? 'selected' : ''}>PAX</option>
-          <option value="noche" ${r.tipoTarifa === 'noche' ? 'selected' : ''}>NOCHE</option>
-          <option value="total" ${r.tipoTarifa === 'total' ? 'selected' : ''}>TOTAL FIJO</option>
-        </select>
-      </td>
-
-      <td class="right">
-        <input class="hotel-valor" type="number" min="0" step="0.01" value="${r.tarifa || 0}" style="width:90px;text-align:right;">
-      </td>
-
-      <td class="right">${fmt(r.totalMoneda)}</td>
-      <td class="right abono-cell">${fmt(r.totalAbonado || 0)}</td>
-      <td class="right ${r.saldo > 0 ? 'saldo-neg' : 'saldo-ok'}">${fmt(r.saldo || 0)}</td>
-
-      <td>
-        <input class="hotel-obs" type="text" value="${r.observacion || ''}" style="width:130px;">
-      </td>
-
+      <td class="right">${fmt(r.paxNocheCobrable)}</td>
       <td class="hotel-actions">
-        <button class="btn secondary btn-guardar-hotel" type="button">Guardar</button>
-        <button class="btn secondary btn-detalle-hotel" type="button">Ver detalle</button>
+        <button class="btn secondary btn-detalle-hotel" type="button">VER DETALLE</button>
       </td>
     `;
 
     tb.appendChild(tr);
-
-    tr.querySelector('.btn-guardar-hotel').addEventListener('click', async () => {
-      await guardarTarifaHotel({
-        anoTarifa: r.anoTarifa,
-        destino: r.destino,
-        hotelKey: r.hotelKey,
-        hotelNombre: r.hotel,
-        moneda: tr.querySelector('.hotel-moneda').value,
-        tipoTarifa: tr.querySelector('.hotel-tipo').value,
-        valor: tr.querySelector('.hotel-valor').value,
-        observacion: tr.querySelector('.hotel-obs').value
-      });
-
-      alert('✅ Tarifa hotelera guardada');
-      recalcular();
-    });
 
     tr.querySelector('.btn-detalle-hotel').addEventListener('click', () => {
       abrirModalDetalleHotel(r);
     });
   }
 
-  makeSortable(tbl, [
-    'num', 'text', 'text',
-    'num', 'num', 'num', 'num',
-    'text', 'text', 'num', 'num', 'num', 'num', 'text', 'text'
-  ], { skipIdx: [14] });
+  makeSortable(tbl, ['num','text','text','num','num','num','num','num','num','num','num','num','text'], { skipIdx: [12] });
 }
 
 function abrirModalDetalleHotel(data) {
@@ -1557,29 +1614,36 @@ function abrirModalDetalleHotel(data) {
     `;
 
     modal.innerHTML = `
-      <div style="background:#fff; width:min(1100px,95vw); max-height:90vh; overflow:auto; border-radius:10px; padding:18px;">
+      <div style="background:#fff; width:min(1250px,96vw); max-height:92vh; overflow:auto; border-radius:10px; padding:18px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
           <h2 id="hotelModalTitulo">Detalle hotel</h2>
-          <button id="hotelModalCerrar" type="button">Cerrar</button>
+          <button id="hotelModalCerrar" class="btn primary" type="button">Cerrar</button>
         </div>
 
         <div id="hotelModalResumen" style="margin:10px 0 16px;"></div>
 
-        <h3>Abonar hotel</h3>
-        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px; align-items:end; margin-bottom:16px;">
-          <label>Fecha<br><input id="hotelAbFecha" type="date"></label>
-          <label>Moneda<br>
-            <select id="hotelAbMoneda">
-              <option value="CLP">CLP</option>
-              <option value="USD">USD</option>
-              <option value="BRL">BRL</option>
-              <option value="ARS">ARS</option>
-            </select>
-          </label>
-          <label>Monto<br><input id="hotelAbMonto" type="number" min="0" step="0.01"></label>
-          <label>Nota<br><input id="hotelAbNota" type="text"></label>
-          <label>Comprobante<br><input id="hotelAbFile" type="file"></label>
-          <button id="hotelAbGuardar" type="button">Guardar abono</button>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+          <button id="hotelBtnAbonar" class="btn primary" type="button">ABONAR DINERO</button>
+          <button id="hotelBtnExportar" class="btn btn-excel" type="button">EXPORTAR XLS</button>
+        </div>
+
+        <div id="hotelBoxAbono" hidden style="border:1px solid #ddd; padding:10px; border-radius:8px; margin-bottom:14px;">
+          <h3>Abonar hotel</h3>
+          <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px; align-items:end;">
+            <label>Fecha<br><input id="hotelAbFecha" type="date"></label>
+            <label>Moneda<br>
+              <select id="hotelAbMoneda">
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+                <option value="BRL">BRL</option>
+                <option value="ARS">ARS</option>
+              </select>
+            </label>
+            <label>Monto<br><input id="hotelAbMonto" type="number" min="0" step="0.01"></label>
+            <label>Nota<br><input id="hotelAbNota" type="text"></label>
+            <label>Comprobante<br><input id="hotelAbFile" type="file"></label>
+            <button id="hotelAbGuardar" type="button">Guardar abono</button>
+          </div>
         </div>
 
         <h3>Abonos</h3>
@@ -1592,12 +1656,14 @@ function abrirModalDetalleHotel(data) {
               <th>Nota</th>
               <th>Comprobante</th>
               <th>Usuario</th>
+              <th>Estado</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody id="hotelTblAbonos"></tbody>
         </table>
 
-        <h3>Grupos alojados</h3>
+        <h3>Detalle de cálculo por grupo</h3>
         <table class="fin-table" style="width:100%;">
           <thead>
             <tr>
@@ -1606,9 +1672,15 @@ function abrirModalDetalleHotel(data) {
               <th>Check-in</th>
               <th>Check-out</th>
               <th class="right">Noches</th>
-              <th class="right">PAX</th>
-              <th class="right">PAX-noche</th>
+              <th class="right">PAX reales</th>
+              <th class="right">Liberados</th>
+              <th class="right">PAX cobrables</th>
+              <th class="right">PAX-noche cobrable</th>
+              <th>Moneda</th>
+              <th>Tipo tarifa</th>
+              <th class="right">Tarifa</th>
               <th class="right">Total</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody id="hotelTblGrupos"></tbody>
@@ -1626,23 +1698,33 @@ function abrirModalDetalleHotel(data) {
   };
 
   $('#hotelModalTitulo', modal).textContent =
-    `${data.hotel} — ${data.destino} — ${data.anoTarifa}`;
+    `DETALLE — ${data.hotel} — ${data.destino} — ${data.anoTarifa}`;
 
   $('#hotelModalResumen', modal).innerHTML = `
-    <strong>Grupos:</strong> ${fmt(data.grupos.size)} |
-    <strong>PAX:</strong> ${fmt(data.paxTotal)} |
-    <strong>Noches:</strong> ${fmt(data.noches)} |
-    <strong>PAX-noche:</strong> ${fmt(data.paxNoche)} |
     <strong>Total:</strong> ${fmt(data.totalMoneda)} ${data.moneda} |
     <strong>Abonado:</strong> ${fmt(data.totalAbonado)} ${data.moneda} |
-    <strong>Saldo:</strong> ${fmt(data.saldo)} ${data.moneda}
+    <strong>Saldo:</strong> ${fmt(data.saldo)} ${data.moneda} |
+    <strong>Grupos:</strong> ${fmt(data.grupos.size)} |
+    <strong>PAX reales:</strong> ${fmt(data.paxTotal)} |
+    <strong>Liberados:</strong> ${fmt(data.liberados)} |
+    <strong>PAX cobrables:</strong> ${fmt(data.paxCobrable)} |
+    <strong>PAX-noche cobrable:</strong> ${fmt(data.paxNocheCobrable)}
   `;
 
-  $('#hotelAbFecha', modal).value = nowISODate();
-  $('#hotelAbMoneda', modal).value = data.moneda || 'CLP';
-  $('#hotelAbMonto', modal).value = '';
-  $('#hotelAbNota', modal).value = '';
-  $('#hotelAbFile', modal).value = '';
+  const boxAbono = $('#hotelBoxAbono', modal);
+
+  $('#hotelBtnAbonar', modal).onclick = () => {
+    boxAbono.hidden = !boxAbono.hidden;
+    $('#hotelAbFecha', modal).value = nowISODate();
+    $('#hotelAbMoneda', modal).value = data.moneda || 'CLP';
+    $('#hotelAbMonto', modal).value = '';
+    $('#hotelAbNota', modal).value = '';
+    $('#hotelAbFile', modal).value = '';
+  };
+
+  $('#hotelBtnExportar', modal).onclick = () => {
+    exportarHotelXLS(data);
+  };
 
   const tbodyAb = $('#hotelTblAbonos', modal);
   tbodyAb.innerHTML = '';
@@ -1654,7 +1736,7 @@ function abrirModalDetalleHotel(data) {
   });
 
   for (const ab of abonos) {
-    if ((ab.estado || 'ORIGINAL') === 'ARCHIVADO') continue;
+    const estado = (ab.estado || 'ORIGINAL').toUpperCase();
 
     const tr = document.createElement('tr');
     tr.innerHTML = `
@@ -1664,23 +1746,46 @@ function abrirModalDetalleHotel(data) {
       <td>${ab.nota || ''}</td>
       <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank">VER</a>` : '—'}</td>
       <td>${ab.createdByEmail || ''}</td>
+      <td>${estado}</td>
+      <td>
+        ${estado === 'ARCHIVADO'
+          ? '—'
+          : `<button class="btn secondary btn-archivar-abono-hotel" type="button">Archivar</button>`
+        }
+      </td>
     `;
     tbodyAb.appendChild(tr);
+
+    const btnArch = tr.querySelector('.btn-archivar-abono-hotel');
+    if (btnArch) {
+      btnArch.addEventListener('click', async () => {
+        if (!pedirClaveHotel()) {
+          alert('Clave incorrecta');
+          return;
+        }
+
+        if (!confirm('¿Archivar este abono hotelero?')) return;
+
+        await archivarAbonoHotel({
+          anoTarifa: data.anoTarifa,
+          destino: data.destino,
+          hotelKey: data.hotelKey,
+          abonoId: ab.id
+        });
+
+        alert('✅ Abono archivado');
+        recalcular();
+        modal.style.display = 'none';
+      });
+    }
   }
 
   const tbodyGr = $('#hotelTblGrupos', modal);
   tbodyGr.innerHTML = '';
 
   for (const it of data.items) {
-    const total = calcularTotalHotel({
-      tipoTarifa: data.tipoTarifa,
-      valor: data.tarifa,
-      pax: it.pax,
-      noches: it.noches,
-      paxNoche: it.paxNoche
-    });
-
     const tr = document.createElement('tr');
+
     tr.innerHTML = `
       <td>${it.nombreGrupo || ''}</td>
       <td>${it.numeroNegocio || ''}</td>
@@ -1688,10 +1793,53 @@ function abrirModalDetalleHotel(data) {
       <td>${it.checkOut || ''}</td>
       <td class="right">${fmt(it.noches || 0)}</td>
       <td class="right">${fmt(it.pax || 0)}</td>
-      <td class="right">${fmt(it.paxNoche || 0)}</td>
-      <td class="right">${fmt(total || 0)}</td>
+      <td class="right">
+        <input class="hotel-row-liberados" type="number" min="0" step="1" value="${it.liberados || 0}" style="width:70px;text-align:right;">
+      </td>
+      <td class="right">${fmt(it.paxCobrable || 0)}</td>
+      <td class="right">${fmt(it.paxNocheCobrable || 0)}</td>
+      <td>
+        <select class="hotel-row-moneda">
+          ${TODAS_MONEDAS.map(m => `<option value="${m}" ${m === it.moneda ? 'selected' : ''}>${m}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <select class="hotel-row-tipo">
+          <option value="pax_noche" ${it.tipoTarifa === 'pax_noche' ? 'selected' : ''}>PAX/NOCHE</option>
+          <option value="pax" ${it.tipoTarifa === 'pax' ? 'selected' : ''}>PAX</option>
+          <option value="noche" ${it.tipoTarifa === 'noche' ? 'selected' : ''}>NOCHE</option>
+          <option value="total" ${it.tipoTarifa === 'total' ? 'selected' : ''}>TOTAL FIJO</option>
+        </select>
+      </td>
+      <td class="right">
+        <input class="hotel-row-tarifa" type="number" min="0" step="0.01" value="${it.tarifa || 0}" style="width:90px;text-align:right;">
+      </td>
+      <td class="right">${fmt(it.totalMoneda || 0)}</td>
+      <td>
+        <button class="btn secondary btn-save-tarifa-grupo" type="button">Guardar</button>
+      </td>
     `;
+
     tbodyGr.appendChild(tr);
+
+    tr.querySelector('.btn-save-tarifa-grupo').addEventListener('click', async () => {
+      await guardarTarifaHotelGrupo({
+        anoTarifa: data.anoTarifa,
+        destino: data.destino,
+        hotelKey: data.hotelKey,
+        hotelNombre: data.hotel,
+        grupoKey: it.grupoKey || it.numeroNegocio || it.grupoId,
+        grupoNombre: it.nombreGrupo || '',
+        moneda: tr.querySelector('.hotel-row-moneda').value,
+        tipoTarifa: tr.querySelector('.hotel-row-tipo').value,
+        valor: tr.querySelector('.hotel-row-tarifa').value,
+        liberados: tr.querySelector('.hotel-row-liberados').value
+      });
+
+      alert('✅ Tarifa/liberados del grupo guardados');
+      recalcular();
+      modal.style.display = 'none';
+    });
   }
 
   $('#hotelAbGuardar', modal).onclick = async () => {
@@ -1711,10 +1859,7 @@ function abrirModalDetalleHotel(data) {
 
     alert('✅ Abono hotelero guardado');
     recalcular();
-
-    const mapHot = agruparPorHotel(LINE_HOTEL);
-    const actualizado = mapHot.get(data.key);
-    if (actualizado) abrirModalDetalleHotel(actualizado);
+    modal.style.display = 'none';
   };
 }
 
