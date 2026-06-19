@@ -561,26 +561,50 @@ async function loadGrupos() {
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 async function loadHotelesYAsignaciones() {
-  HOTELES = []; ASIGNACIONES = [];
+  HOTELES = [];
+  ASIGNACIONES = [];
+
   try {
     const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ROOT));
-    const promListado = [], promAsign = [];
+    const promListado = [];
+    const promAsign = [];
+
     for (const docTop of rootSnap.docs) {
       const destinoId = docTop.id;
+
       promListado.push(
         getDocs(collection(docTop.ref, 'Listado'))
-          .then(snap => snap.docs.map(d => ({ id:d.id, destino:destinoId, ...d.data() })))
+          .then(snap => snap.docs.map(d => ({
+            id: d.id,
+            destino: destinoId,
+            ...d.data()
+          })))
           .catch(() => [])
       );
+
       promAsign.push(
         getDocs(collection(docTop.ref, 'Asignaciones'))
-          .then(snap => snap.docs.map(d => ({ id:d.id, destino:destinoId, ...d.data() })))
+          .then(snap => snap.docs.map(d => ({
+            id: d.id,
+            destino: destinoId,
+            ...d.data()
+          })))
           .catch(() => [])
       );
     }
-    const [arrH, arrA] = await Promise.all([Promise.all(promListado), Promise.all(promAsign)]);
+
+    const [arrH, arrA] = await Promise.all([
+      Promise.all(promListado),
+      Promise.all(promAsign)
+    ]);
+
     HOTELES = arrH.flat();
     ASIGNACIONES = arrA.flat();
+
+    console.log('🏨 Hoteles cargados:', HOTELES.length);
+    console.log('🛏️ Asignaciones hoteleras cargadas:', ASIGNACIONES.length);
+    console.log('🧪 Primera asignación hotelera:', ASIGNACIONES[0] || null);
+
   } catch (e) {
     console.warn('Hoteles/Asignaciones no disponibles:', e);
   }
@@ -798,17 +822,47 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
   if (!ASIGNACIONES.length) return out;
 
   const mapHotel = {};
-  for (const h of HOTELES) mapHotel[h.id] = h;
+  for (const h of HOTELES) {
+    mapHotel[h.id] = h;
+    if (h.nombre) mapHotel[slug(h.nombre)] = h;
+  }
 
   for (const asg of ASIGNACIONES) {
-    const g = GRUPOS.find(x => x.id === (asg.grupoId || asg.idGrupo));
+    const grupoRef =
+      asg.grupoId ||
+      asg.idGrupo ||
+      asg.numeroNegocio ||
+      asg.negocio ||
+      asg.codigoGrupo ||
+      '';
+
+    const g = GRUPOS.find(x =>
+      String(x.id) === String(grupoRef) ||
+      String(x.numeroNegocio || '') === String(grupoRef)
+    );
+
     if (!g) continue;
 
     const destinoGrupo = g.destino || asg.destino || '';
+
     if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
 
-    const start = asg.fechaInicio;
-    const end = asg.fechaFin;
+    const start =
+      asg.fechaInicio ||
+      asg.checkIn ||
+      asg.fechaEntrada ||
+      asg.entrada ||
+      asg.desde ||
+      '';
+
+    const end =
+      asg.fechaFin ||
+      asg.checkOut ||
+      asg.fechaSalida ||
+      asg.salida ||
+      asg.hasta ||
+      '';
+
     if (!start || !end) continue;
 
     const nights = [];
@@ -824,9 +878,17 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const noches = nights.length;
     if (!noches) continue;
 
-    const hotelId = asg.hotelId || asg.idHotel || '';
-    const hotel = mapHotel[hotelId] || {};
-    const hotelNombre = hotel.nombre || asg.hotelNombre || '(hotel)';
+    const hotelId =
+      asg.hotelId ||
+      asg.idHotel ||
+      slug(asg.hotelNombre || asg.hotel || '');
+
+    const hotel = mapHotel[hotelId] || mapHotel[slug(asg.hotelNombre || asg.hotel || '')] || {};
+    const hotelNombre =
+      hotel.nombre ||
+      asg.hotelNombre ||
+      asg.hotel ||
+      '(hotel)';
 
     const anoTarifa = getAnoTarifaGrupo(g);
     const pax = paxDeGrupo(g);
@@ -838,28 +900,9 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       hotelId
     });
 
-    const moneda = normalizarMoneda(
-      tarifaManual?.moneda ||
-      asg.moneda ||
-      hotel.moneda ||
-      'CLP'
-    );
-
-    const tipoTarifa = (
-      tarifaManual?.tipoTarifa ||
-      asg.tipoTarifa ||
-      asg.tipoCobro ||
-      hotel.tipoTarifa ||
-      hotel.tipoCobro ||
-      'pax_noche'
-    ).replace('por_', '');
-
-    const valor = Number(
-      tarifaManual?.valor ??
-      asg.tarifa ??
-      hotel.tarifa ??
-      0
-    );
+    const moneda = normalizarMoneda(tarifaManual?.moneda || 'CLP');
+    const tipoTarifa = tarifaManual?.tipoTarifa || 'pax_noche';
+    const valor = Number(tarifaManual?.valor || 0);
 
     const totalMoneda = calcularTotalHotel({
       tipoTarifa,
@@ -876,9 +919,8 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       hotel: hotelNombre,
       destinoGrupo,
       grupoId: g.id,
-      nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
+      nombreGrupo: g.nombreGrupo || g.colegio || '',
       numeroNegocio: g.numeroNegocio || g.id,
-      identificador: g.identificador || g.IDENTIFICADOR || '',
       checkIn: start,
       checkOut: end,
       noches,
@@ -892,6 +934,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     });
   }
 
+  console.log('🏨 LINE_HOTEL construido:', out.length, out[0] || null);
   return out;
 }
 
@@ -3186,12 +3229,13 @@ function recalcular() {
 
   // ======== SECCIÓN HOTELES
   const secH = el('secHoteles');
-  if (LINE_HOTEL.length) {
-    secH.style.display = '';
-    const mapHot = agruparPorHotel(LINE_HOTEL);
-    renderTablaHoteles(mapHot);
-  } else {
-    secH.style.display = 'none';
+  secH.style.display = '';
+  
+  const mapHot = agruparPorHotel(LINE_HOTEL);
+  renderTablaHoteles(mapHot);
+  
+  if (!LINE_HOTEL.length) {
+    console.warn('⚠️ No se encontraron consumos hoteleros para el filtro actual.');
   }
 }
 
