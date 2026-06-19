@@ -19,7 +19,7 @@ const RUTA_SERVICIOS_ANO = 'ServiciosPorAno';
 // Temporal: mantiene funcionando abonos mientras migramos abonos por año
 const RUTA_SERVICIOS = RUTA_SERVICIOS_LEGACY;
 const RUTA_PROV_ROOT  = 'Proveedores';
-const RUTA_HOTEL_ROOT = 'Hoteles';
+const RUTA_HOTEL_ROOT = 'hoteles';
 const RUTA_GRUPOS     = 'grupos';
 const RUTA_HOTEL_TARIFAS = 'FinanzasHotelesTarifas';
 
@@ -565,28 +565,15 @@ async function loadHotelesYAsignaciones() {
   ASIGNACIONES = [];
 
   try {
-    // 1) Cargar hoteles desde Hoteles/{destino}/Listado
-    const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ROOT));
-    const promListado = [];
+    // Hoteles reales están en colección raíz: hoteles
+    const snapHoteles = await getDocs(collection(db, RUTA_HOTEL_ROOT));
 
-    for (const docTop of rootSnap.docs) {
-      const destinoId = docTop.id;
+    HOTELES = snapHoteles.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
 
-      promListado.push(
-        getDocs(collection(docTop.ref, 'Listado'))
-          .then(snap => snap.docs.map(d => ({
-            id: d.id,
-            destino: destinoId,
-            ...d.data()
-          })))
-          .catch(() => [])
-      );
-    }
-
-    const arrH = await Promise.all(promListado);
-    HOTELES = arrH.flat();
-
-    // 2) Cargar distribución real desde hotelAssignments
+    // Distribución real está en colección raíz: hotelAssignments
     const snapAssignments = await getDocs(collection(db, 'hotelAssignments'));
 
     ASIGNACIONES = snapAssignments.docs.map(d => ({
@@ -819,34 +806,39 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
   }
 
   for (const asg of ASIGNACIONES) {
-    const g = GRUPOS.find(x => String(x.id) === String(asg.grupoId));
+    const grupoRef = asg.grupoId || asg.numeroNegocio || asg.idGrupo || '';
+
+    const g = GRUPOS.find(x =>
+      String(x.id || '') === String(grupoRef) ||
+      String(x.numeroNegocio || '') === String(grupoRef)
+    );
+
     if (!g) continue;
 
-    const destinoGrupo = g.destino || asg.destino || '';
+    const hotelId = asg.hotelId || '';
+    const hotel = mapHotel[hotelId] || {};
+
+    const destinoGrupo = g.destino || hotel.destino || asg.destino || '';
     if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
 
-    const start = asg.checkIn || '';
-    const end = asg.checkOut || '';
-    
-    console.log('🛏️ Asignación hotel:', {
-      grupoId: asg.grupoId,
-      hotelId: asg.hotelId,
-      checkIn: asg.checkIn,
-      checkOut: asg.checkOut
-    });
+    const start = asg.checkIn || hotel.fechaInicio || '';
+    const end = asg.checkOut || hotel.fechaFin || '';
     if (!start || !end) continue;
+
+    // Filtrar por rango/año seleccionado
+    if (fechaDesde && end < fechaDesde) continue;
+    if (fechaHasta && start > fechaHasta) continue;
 
     const noches = Number(asg.noches || 0) || Math.max(
       0,
       Math.round((new Date(end + 'T00:00:00') - new Date(start + 'T00:00:00')) / 86400000)
     );
+
     if (!noches) continue;
 
-    const hotelId = asg.hotelId || '';
-    const hotel = mapHotel[hotelId] || {};
     const hotelNombre = hotel.nombre || asg.hotelNombre || asg.hotel || hotelId || '(hotel)';
+    const anoTarifa = String(hotel.anoViaje || asg.anoViaje || g.anoViaje || new Date().getFullYear());
 
-    const anoTarifa = String(asg.anoViaje || g.anoViaje || new Date().getFullYear());
     const pax = paxDeGrupo(g);
     const paxNoche = pax * noches;
 
@@ -3121,7 +3113,12 @@ function recalcular() {
 
   // Line items y hoteles SIN filtrar por destino (sí por fechas/año)
   LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, includeAnyFn, inclAct);
-  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, includeAnyFn, true);
+  LINE_HOTEL = construirLineItemsHotel(
+    fechaDesde,
+    fechaHasta,
+    destino => filtro.all || filtro.tokens.size === 0 || filtro.tokens.has(destino),
+    true
+  );
 
   logDiagnostico(LINE_ITEMS);
 
