@@ -3122,7 +3122,7 @@ function recalcular() {
 
   // Line items y hoteles SIN filtrar por destino (sí por fechas/año)
   LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, includeAnyFn, inclAct);
-  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, true);
+  LINE_HOTEL = construirLineItemsHotel(fechaDesde, fechaHasta, includeAnyFn, true);
 
   logDiagnostico(LINE_ITEMS);
 
