@@ -565,9 +565,9 @@ async function loadHotelesYAsignaciones() {
   ASIGNACIONES = [];
 
   try {
+    // 1) Cargar hoteles desde Hoteles/{destino}/Listado
     const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ROOT));
     const promListado = [];
-    const promAsign = [];
 
     for (const docTop of rootSnap.docs) {
       const destinoId = docTop.id;
@@ -581,32 +581,24 @@ async function loadHotelesYAsignaciones() {
           })))
           .catch(() => [])
       );
-
-      promAsign.push(
-        getDocs(collection(docTop.ref, 'Asignaciones'))
-          .then(snap => snap.docs.map(d => ({
-            id: d.id,
-            destino: destinoId,
-            ...d.data()
-          })))
-          .catch(() => [])
-      );
     }
 
-    const [arrH, arrA] = await Promise.all([
-      Promise.all(promListado),
-      Promise.all(promAsign)
-    ]);
-
+    const arrH = await Promise.all(promListado);
     HOTELES = arrH.flat();
-    ASIGNACIONES = arrA.flat();
 
-    console.log('🏨 Hoteles cargados:', HOTELES.length);
-    console.log('🛏️ Asignaciones hoteleras cargadas:', ASIGNACIONES.length);
-    console.log('🧪 Primera asignación hotelera:', ASIGNACIONES[0] || null);
+    // 2) Cargar distribución real desde hotelAssignments
+    const snapAssignments = await getDocs(collection(db, 'hotelAssignments'));
+
+    ASIGNACIONES = snapAssignments.docs.map(d => ({
+      id: d.id,
+      ...d.data()
+    }));
+
+    console.log('🏨 Hoteles cargados:', HOTELES.length, HOTELES[0] || null);
+    console.log('🛏️ Distribución hotelera cargada:', ASIGNACIONES.length, ASIGNACIONES[0] || null);
 
   } catch (e) {
-    console.warn('Hoteles/Asignaciones no disponibles:', e);
+    console.error('Error cargando hoteles/asignaciones:', e);
   }
 }
 
@@ -824,73 +816,27 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
   const mapHotel = {};
   for (const h of HOTELES) {
     mapHotel[h.id] = h;
-    if (h.nombre) mapHotel[slug(h.nombre)] = h;
   }
 
   for (const asg of ASIGNACIONES) {
-    const grupoRef =
-      asg.grupoId ||
-      asg.idGrupo ||
-      asg.numeroNegocio ||
-      asg.negocio ||
-      asg.codigoGrupo ||
-      '';
-
-    const g = GRUPOS.find(x =>
-      String(x.id) === String(grupoRef) ||
-      String(x.numeroNegocio || '') === String(grupoRef)
-    );
-
+    const g = GRUPOS.find(x => String(x.id) === String(asg.grupoId));
     if (!g) continue;
 
     const destinoGrupo = g.destino || asg.destino || '';
-
     if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
 
-    const start =
-      asg.fechaInicio ||
-      asg.checkIn ||
-      asg.fechaEntrada ||
-      asg.entrada ||
-      asg.desde ||
-      '';
-
-    const end =
-      asg.fechaFin ||
-      asg.checkOut ||
-      asg.fechaSalida ||
-      asg.salida ||
-      asg.hasta ||
-      '';
-
+    const start = toISO(asg.checkIn);
+    const end = toISO(asg.checkOut);
     if (!start || !end) continue;
 
-    const nights = [];
-    let cur = new Date(start + 'T00:00:00');
-    const fin = new Date(end + 'T00:00:00');
-
-    while (cur < fin) {
-      const iso = cur.toISOString().slice(0, 10);
-      if (within(iso, fechaDesde, fechaHasta)) nights.push(iso);
-      cur.setDate(cur.getDate() + 1);
-    }
-
-    const noches = nights.length;
+    const noches = diffNoches(start, end);
     if (!noches) continue;
 
-    const hotelId =
-      asg.hotelId ||
-      asg.idHotel ||
-      slug(asg.hotelNombre || asg.hotel || '');
+    const hotelId = asg.hotelId || '';
+    const hotel = mapHotel[hotelId] || {};
+    const hotelNombre = hotel.nombre || asg.hotelNombre || asg.hotel || hotelId || '(hotel)';
 
-    const hotel = mapHotel[hotelId] || mapHotel[slug(asg.hotelNombre || asg.hotel || '')] || {};
-    const hotelNombre =
-      hotel.nombre ||
-      asg.hotelNombre ||
-      asg.hotel ||
-      '(hotel)';
-
-    const anoTarifa = getAnoTarifaGrupo(g);
+    const anoTarifa = String(asg.anoViaje || g.anoViaje || new Date().getFullYear());
     const pax = paxDeGrupo(g);
     const paxNoche = pax * noches;
 
