@@ -836,7 +836,10 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     });
     if (!start || !end) continue;
 
-    const noches = diffNoches(start, end);
+    const noches = Number(asg.noches || 0) || Math.max(
+      0,
+      Math.round((new Date(end + 'T00:00:00') - new Date(start + 'T00:00:00')) / 86400000)
+    );
     if (!noches) continue;
 
     const hotelId = asg.hotelId || '';
