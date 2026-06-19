@@ -22,6 +22,7 @@ const RUTA_PROV_ROOT  = 'Proveedores';
 const RUTA_HOTEL_ROOT = 'hoteles';
 const RUTA_GRUPOS     = 'grupos';
 const RUTA_HOTEL_TARIFAS = 'FinanzasHotelesTarifas';
+const RUTA_HOTEL_ABONOS = 'FinanzasHotelesAbonos';
 
 // ---- TC persistente (Firestore) ----
 const RUTA_TC_DOC = ['Config','Finanzas']; // doc("Config/Finanzas")
@@ -78,6 +79,7 @@ let ASIGNACIONES = [];
 let LINE_ITEMS = [];
 let LINE_HOTEL = [];
 let HOTEL_TARIFAS = new Map();
+let HOTEL_ABONOS = new Map();
 
 const el    = id => document.getElementById(id);
 const $     = (sel, root=document) => root.querySelector(sel);
@@ -589,8 +591,25 @@ async function loadHotelesYAsignaciones() {
   }
 }
 
-function hotelTarifaKey({ anoTarifa, destino, hotelId }) {
-  return `${anoTarifa}||${destino || ''}||${hotelId || ''}`;
+function normalizarNombreHotel(nombre = '') {
+  return String(nombre || '')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toUpperCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function hotelKeyNormalizado(nombre = '') {
+  return slug(normalizarNombreHotel(nombre));
+}
+
+function hotelFinKey({ anoTarifa, destino, hotelKey }) {
+  return `${anoTarifa}__${slug(destino || '')}__${hotelKey || ''}`;
+}
+
+function hotelTarifaKey({ anoTarifa, destino, hotelKey }) {
+  return hotelFinKey({ anoTarifa, destino, hotelKey });
 }
 
 async function loadTarifasHoteles() {
@@ -603,15 +622,42 @@ async function loadTarifasHoteles() {
     const key = hotelTarifaKey({
       anoTarifa: data.anoTarifa,
       destino: data.destino,
-      hotelId: data.hotelId
+      hotelKey: data.hotelKey || hotelKeyNormalizado(data.hotelNombre || data.hotel || '')
     });
 
     HOTEL_TARIFAS.set(key, { id: d.id, ...data });
   });
 }
 
-function getTarifaHotelManual({ anoTarifa, destino, hotelId }) {
-  return HOTEL_TARIFAS.get(hotelTarifaKey({ anoTarifa, destino, hotelId })) || null;
+async function loadAbonosHoteles() {
+  HOTEL_ABONOS.clear();
+
+  const rootSnap = await getDocs(collection(db, RUTA_HOTEL_ABONOS));
+
+  for (const docHotel of rootSnap.docs) {
+    const snapAbonos = await getDocs(collection(db, RUTA_HOTEL_ABONOS, docHotel.id, 'Abonos'));
+
+    HOTEL_ABONOS.set(
+      docHotel.id,
+      snapAbonos.docs.map(d => ({ id: d.id, ...d.data() }))
+    );
+  }
+}
+
+function getTarifaHotelManual({ anoTarifa, destino, hotelKey }) {
+  return HOTEL_TARIFAS.get(hotelTarifaKey({ anoTarifa, destino, hotelKey })) || null;
+}
+
+function getAbonosHotel({ anoTarifa, destino, hotelKey }) {
+  const key = hotelFinKey({ anoTarifa, destino, hotelKey });
+  return HOTEL_ABONOS.get(key) || [];
+}
+
+function totalAbonosHotel({ anoTarifa, destino, hotelKey, moneda }) {
+  return getAbonosHotel({ anoTarifa, destino, hotelKey })
+    .filter(a => (a.estado || 'ORIGINAL') !== 'ARCHIVADO')
+    .filter(a => normalizarMoneda(a.moneda || 'CLP') === normalizarMoneda(moneda || 'CLP'))
+    .reduce((acc, a) => acc + Number(a.monto || 0), 0);
 }
 
 function calcularTotalHotel({ tipoTarifa, valor, pax, noches, paxNoche }) {
@@ -625,14 +671,14 @@ function calcularTotalHotel({ tipoTarifa, valor, pax, noches, paxNoche }) {
   return 0;
 }
 
-async function guardarTarifaHotel({ anoTarifa, destino, hotelId, hotelNombre, moneda, tipoTarifa, valor, observacion }) {
-  const docId = `${anoTarifa}_${slug(destino)}_${hotelId}`;
+async function guardarTarifaHotel({ anoTarifa, destino, hotelKey, hotelNombre, moneda, tipoTarifa, valor, observacion }) {
+  const docId = hotelFinKey({ anoTarifa, destino, hotelKey });
 
   const data = {
     anoTarifa: String(anoTarifa),
     destino,
-    hotelId,
-    hotelNombre,
+    hotelKey,
+    hotelNombre: normalizarNombreHotel(hotelNombre),
     moneda: normalizarMoneda(moneda || 'CLP'),
     tipoTarifa: tipoTarifa || 'pax_noche',
     valor: Number(valor || 0),
@@ -642,11 +688,39 @@ async function guardarTarifaHotel({ anoTarifa, destino, hotelId, hotelNombre, mo
   };
 
   await setDoc(doc(db, RUTA_HOTEL_TARIFAS, docId), data, { merge: true });
+  HOTEL_TARIFAS.set(docId, { id: docId, ...data });
+}
 
-  HOTEL_TARIFAS.set(
-    hotelTarifaKey({ anoTarifa, destino, hotelId }),
-    { id: docId, ...data }
-  );
+async function guardarAbonoHotel({ anoTarifa, destino, hotelKey, hotelNombre, data, file }) {
+  let comprobanteURL = data.comprobanteURL || '';
+
+  if (file) {
+    const ref = storageRef(
+      storage,
+      `abonos_hoteles/${anoTarifa}/${slug(destino)}/${hotelKey}/${Date.now()}_${file.name}`
+    );
+    await uploadBytes(ref, file);
+    comprobanteURL = await getDownloadURL(ref);
+  }
+
+  const docId = hotelFinKey({ anoTarifa, destino, hotelKey });
+
+  await addDoc(collection(db, RUTA_HOTEL_ABONOS, docId, 'Abonos'), {
+    anoTarifa: String(anoTarifa),
+    destino,
+    hotelKey,
+    hotelNombre: normalizarNombreHotel(hotelNombre),
+    fecha: data.fecha || nowISODate(),
+    moneda: normalizarMoneda(data.moneda || 'CLP'),
+    monto: Number(data.monto || 0),
+    nota: data.nota || '',
+    comprobanteURL,
+    estado: 'ORIGINAL',
+    createdAt: serverTimestamp(),
+    createdByEmail: (auth.currentUser?.email || '').toLowerCase()
+  });
+
+  await loadAbonosHoteles();
 }
 
 // -------------------------------
@@ -825,7 +899,6 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const end = asg.checkOut || hotel.fechaFin || '';
     if (!start || !end) continue;
 
-    // Filtrar por rango/año seleccionado
     if (fechaDesde && end < fechaDesde) continue;
     if (fechaHasta && start > fechaHasta) continue;
 
@@ -836,7 +909,10 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
 
     if (!noches) continue;
 
-    const hotelNombre = hotel.nombre || asg.hotelNombre || asg.hotel || hotelId || '(hotel)';
+    const hotelNombreOriginal = hotel.nombre || asg.hotelNombre || asg.hotel || hotelId || '(hotel)';
+    const hotelNombre = normalizarNombreHotel(hotelNombreOriginal);
+    const hotelKey = hotelKeyNormalizado(hotelNombre);
+
     const anoTarifa = String(hotel.anoViaje || asg.anoViaje || g.anoViaje || new Date().getFullYear());
 
     const pax = paxDeGrupo(g);
@@ -845,7 +921,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const tarifaManual = getTarifaHotelManual({
       anoTarifa,
       destino: destinoGrupo,
-      hotelId
+      hotelKey
     });
 
     const moneda = normalizarMoneda(tarifaManual?.moneda || 'CLP');
@@ -864,6 +940,7 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
       tipo: 'hotel',
       anoTarifa,
       hotelId,
+      hotelKey,
       hotel: hotelNombre,
       destinoGrupo,
       grupoId: g.id,
@@ -882,7 +959,6 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     });
   }
 
-  console.log('🏨 LINE_HOTEL construido:', out.length, out[0] || null);
   return out;
 }
 
@@ -1137,17 +1213,23 @@ async function completarAbonosEnTablaProveedoresMonedas(mapProv, visibleCurrenci
   }
   return { porProv, subtotales };
 }
+
 function agruparPorHotel(itemsHotel) {
   const r = new Map();
 
   for (const it of itemsHotel) {
-    const key = `${it.anoTarifa}||${it.destinoGrupo}||${it.hotelId || slug(it.hotel)}`;
+    const hotelKey = it.hotelKey || hotelKeyNormalizado(it.hotel);
+    const key = hotelFinKey({
+      anoTarifa: it.anoTarifa,
+      destino: it.destinoGrupo,
+      hotelKey
+    });
 
     const acc = r.get(key) || {
       key,
       anoTarifa: it.anoTarifa,
-      hotelId: it.hotelId,
-      hotel: it.hotel || '(hotel)',
+      hotelKey,
+      hotel: normalizarNombreHotel(it.hotel || '(hotel)'),
       destino: it.destinoGrupo || '(sin destino)',
       grupos: new Set(),
       paxTotal: 0,
@@ -1158,6 +1240,8 @@ function agruparPorHotel(itemsHotel) {
       tarifa: it.tarifa || 0,
       observacion: it.observacionTarifa || '',
       totalMoneda: 0,
+      totalAbonado: 0,
+      saldo: 0,
       items: []
     };
 
@@ -1169,6 +1253,16 @@ function agruparPorHotel(itemsHotel) {
     acc.items.push(it);
 
     r.set(key, acc);
+  }
+
+  for (const acc of r.values()) {
+    acc.totalAbonado = totalAbonosHotel({
+      anoTarifa: acc.anoTarifa,
+      destino: acc.destino,
+      hotelKey: acc.hotelKey,
+      moneda: acc.moneda
+    });
+    acc.saldo = acc.totalMoneda - acc.totalAbonado;
   }
 
   return r;
@@ -1363,6 +1457,8 @@ function renderTablaHoteles(mapHoteles) {
       <th>Tipo tarifa</th>
       <th class="right">Valor</th>
       <th class="right">Total</th>
+      <th class="right">Abono</th>
+      <th class="right">Saldo</th>
       <th>Obs.</th>
       <th></th>
     </tr>
@@ -1406,13 +1502,16 @@ function renderTablaHoteles(mapHoteles) {
       </td>
 
       <td class="right">${fmt(r.totalMoneda)}</td>
+      <td class="right abono-cell">${fmt(r.totalAbonado || 0)}</td>
+      <td class="right ${r.saldo > 0 ? 'saldo-neg' : 'saldo-ok'}">${fmt(r.saldo || 0)}</td>
 
       <td>
-        <input class="hotel-obs" type="text" value="${r.observacion || ''}" style="width:160px;">
+        <input class="hotel-obs" type="text" value="${r.observacion || ''}" style="width:130px;">
       </td>
 
       <td>
         <button class="btn secondary btn-guardar-hotel" type="button">Guardar</button>
+        <button class="btn secondary btn-detalle-hotel" type="button">Ver detalle</button>
       </td>
     `;
 
@@ -1422,7 +1521,7 @@ function renderTablaHoteles(mapHoteles) {
       await guardarTarifaHotel({
         anoTarifa: r.anoTarifa,
         destino: r.destino,
-        hotelId: r.hotelId || slug(r.hotel),
+        hotelKey: r.hotelKey,
         hotelNombre: r.hotel,
         moneda: tr.querySelector('.hotel-moneda').value,
         tipoTarifa: tr.querySelector('.hotel-tipo').value,
@@ -1433,13 +1532,190 @@ function renderTablaHoteles(mapHoteles) {
       alert('✅ Tarifa hotelera guardada');
       recalcular();
     });
+
+    tr.querySelector('.btn-detalle-hotel').addEventListener('click', () => {
+      abrirModalDetalleHotel(r);
+    });
   }
 
   makeSortable(tbl, [
     'num', 'text', 'text',
     'num', 'num', 'num', 'num',
-    'text', 'text', 'num', 'num', 'text', 'text'
-  ], { skipIdx: [12] });
+    'text', 'text', 'num', 'num', 'num', 'num', 'text', 'text'
+  ], { skipIdx: [14] });
+}
+
+function abrirModalDetalleHotel(data) {
+  let modal = el('modalDetalleHotelFinanzas');
+
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modalDetalleHotelFinanzas';
+    modal.style.cssText = `
+      position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:9999;
+      display:flex; align-items:center; justify-content:center;
+    `;
+
+    modal.innerHTML = `
+      <div style="background:#fff; width:min(1100px,95vw); max-height:90vh; overflow:auto; border-radius:10px; padding:18px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+          <h2 id="hotelModalTitulo">Detalle hotel</h2>
+          <button id="hotelModalCerrar" type="button">Cerrar</button>
+        </div>
+
+        <div id="hotelModalResumen" style="margin:10px 0 16px;"></div>
+
+        <h3>Abonar hotel</h3>
+        <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px; align-items:end; margin-bottom:16px;">
+          <label>Fecha<br><input id="hotelAbFecha" type="date"></label>
+          <label>Moneda<br>
+            <select id="hotelAbMoneda">
+              <option value="CLP">CLP</option>
+              <option value="USD">USD</option>
+              <option value="BRL">BRL</option>
+              <option value="ARS">ARS</option>
+            </select>
+          </label>
+          <label>Monto<br><input id="hotelAbMonto" type="number" min="0" step="0.01"></label>
+          <label>Nota<br><input id="hotelAbNota" type="text"></label>
+          <label>Comprobante<br><input id="hotelAbFile" type="file"></label>
+          <button id="hotelAbGuardar" type="button">Guardar abono</button>
+        </div>
+
+        <h3>Abonos</h3>
+        <table class="fin-table" style="width:100%; margin-bottom:16px;">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Moneda</th>
+              <th class="right">Monto</th>
+              <th>Nota</th>
+              <th>Comprobante</th>
+              <th>Usuario</th>
+            </tr>
+          </thead>
+          <tbody id="hotelTblAbonos"></tbody>
+        </table>
+
+        <h3>Grupos alojados</h3>
+        <table class="fin-table" style="width:100%;">
+          <thead>
+            <tr>
+              <th>Grupo</th>
+              <th>N° negocio</th>
+              <th>Check-in</th>
+              <th>Check-out</th>
+              <th class="right">Noches</th>
+              <th class="right">PAX</th>
+              <th class="right">PAX-noche</th>
+              <th class="right">Total</th>
+            </tr>
+          </thead>
+          <tbody id="hotelTblGrupos"></tbody>
+        </table>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+  }
+
+  modal.style.display = 'flex';
+
+  $('#hotelModalCerrar', modal).onclick = () => {
+    modal.style.display = 'none';
+  };
+
+  $('#hotelModalTitulo', modal).textContent =
+    `${data.hotel} — ${data.destino} — ${data.anoTarifa}`;
+
+  $('#hotelModalResumen', modal).innerHTML = `
+    <strong>Grupos:</strong> ${fmt(data.grupos.size)} |
+    <strong>PAX:</strong> ${fmt(data.paxTotal)} |
+    <strong>Noches:</strong> ${fmt(data.noches)} |
+    <strong>PAX-noche:</strong> ${fmt(data.paxNoche)} |
+    <strong>Total:</strong> ${fmt(data.totalMoneda)} ${data.moneda} |
+    <strong>Abonado:</strong> ${fmt(data.totalAbonado)} ${data.moneda} |
+    <strong>Saldo:</strong> ${fmt(data.saldo)} ${data.moneda}
+  `;
+
+  $('#hotelAbFecha', modal).value = nowISODate();
+  $('#hotelAbMoneda', modal).value = data.moneda || 'CLP';
+  $('#hotelAbMonto', modal).value = '';
+  $('#hotelAbNota', modal).value = '';
+  $('#hotelAbFile', modal).value = '';
+
+  const tbodyAb = $('#hotelTblAbonos', modal);
+  tbodyAb.innerHTML = '';
+
+  const abonos = getAbonosHotel({
+    anoTarifa: data.anoTarifa,
+    destino: data.destino,
+    hotelKey: data.hotelKey
+  });
+
+  for (const ab of abonos) {
+    if ((ab.estado || 'ORIGINAL') === 'ARCHIVADO') continue;
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${ab.fecha || ''}</td>
+      <td>${ab.moneda || 'CLP'}</td>
+      <td class="right">${fmt(ab.monto || 0)}</td>
+      <td>${ab.nota || ''}</td>
+      <td>${ab.comprobanteURL ? `<a href="${ab.comprobanteURL}" target="_blank">VER</a>` : '—'}</td>
+      <td>${ab.createdByEmail || ''}</td>
+    `;
+    tbodyAb.appendChild(tr);
+  }
+
+  const tbodyGr = $('#hotelTblGrupos', modal);
+  tbodyGr.innerHTML = '';
+
+  for (const it of data.items) {
+    const total = calcularTotalHotel({
+      tipoTarifa: data.tipoTarifa,
+      valor: data.tarifa,
+      pax: it.pax,
+      noches: it.noches,
+      paxNoche: it.paxNoche
+    });
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${it.nombreGrupo || ''}</td>
+      <td>${it.numeroNegocio || ''}</td>
+      <td>${it.checkIn || ''}</td>
+      <td>${it.checkOut || ''}</td>
+      <td class="right">${fmt(it.noches || 0)}</td>
+      <td class="right">${fmt(it.pax || 0)}</td>
+      <td class="right">${fmt(it.paxNoche || 0)}</td>
+      <td class="right">${fmt(total || 0)}</td>
+    `;
+    tbodyGr.appendChild(tr);
+  }
+
+  $('#hotelAbGuardar', modal).onclick = async () => {
+    await guardarAbonoHotel({
+      anoTarifa: data.anoTarifa,
+      destino: data.destino,
+      hotelKey: data.hotelKey,
+      hotelNombre: data.hotel,
+      data: {
+        fecha: $('#hotelAbFecha', modal).value,
+        moneda: $('#hotelAbMoneda', modal).value,
+        monto: $('#hotelAbMonto', modal).value,
+        nota: $('#hotelAbNota', modal).value
+      },
+      file: $('#hotelAbFile', modal).files[0] || null
+    });
+
+    alert('✅ Abono hotelero guardado');
+    recalcular();
+
+    const mapHot = agruparPorHotel(LINE_HOTEL);
+    const actualizado = mapHot.get(data.key);
+    if (actualizado) abrirModalDetalleHotel(actualizado);
+  };
 }
 
 // -------------------------------
@@ -2956,6 +3232,7 @@ async function boot() {
         loadProveedores(),
         loadHotelesYAsignaciones(),
         loadTarifasHoteles(),
+        loadAbonosHoteles(),
         loadRealizaciones()
       ]);
       await cargarTCGuardado();     // ← carga TC persistido (si existe)
