@@ -1460,7 +1460,7 @@ function renderTablaHoteles(mapHoteles) {
       <th class="right">Abono</th>
       <th class="right">Saldo</th>
       <th>Obs.</th>
-      <th></th>
+      <th>Acciones</th>
     </tr>
   `;
 
@@ -1509,7 +1509,7 @@ function renderTablaHoteles(mapHoteles) {
         <input class="hotel-obs" type="text" value="${r.observacion || ''}" style="width:130px;">
       </td>
 
-      <td>
+      <td class="hotel-actions">
         <button class="btn secondary btn-guardar-hotel" type="button">Guardar</button>
         <button class="btn secondary btn-detalle-hotel" type="button">Ver detalle</button>
       </td>
