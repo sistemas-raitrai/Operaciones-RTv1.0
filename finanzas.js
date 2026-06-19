@@ -21,6 +21,7 @@ const RUTA_SERVICIOS = RUTA_SERVICIOS_LEGACY;
 const RUTA_PROV_ROOT  = 'Proveedores';
 const RUTA_HOTEL_ROOT = 'Hoteles';
 const RUTA_GRUPOS     = 'grupos';
+const RUTA_HOTEL_TARIFAS = 'FinanzasHotelesTarifas';
 
 // ---- TC persistente (Firestore) ----
 const RUTA_TC_DOC = ['Config','Finanzas']; // doc("Config/Finanzas")
@@ -76,6 +77,7 @@ let ASIGNACIONES = [];
 
 let LINE_ITEMS = [];
 let LINE_HOTEL = [];
+let HOTEL_TARIFAS = new Map();
 
 const el    = id => document.getElementById(id);
 const $     = (sel, root=document) => root.querySelector(sel);
@@ -584,6 +586,66 @@ async function loadHotelesYAsignaciones() {
   }
 }
 
+function hotelTarifaKey({ anoTarifa, destino, hotelId }) {
+  return `${anoTarifa}||${destino || ''}||${hotelId || ''}`;
+}
+
+async function loadTarifasHoteles() {
+  HOTEL_TARIFAS.clear();
+
+  const snap = await getDocs(collection(db, RUTA_HOTEL_TARIFAS));
+
+  snap.docs.forEach(d => {
+    const data = d.data() || {};
+    const key = hotelTarifaKey({
+      anoTarifa: data.anoTarifa,
+      destino: data.destino,
+      hotelId: data.hotelId
+    });
+
+    HOTEL_TARIFAS.set(key, { id: d.id, ...data });
+  });
+}
+
+function getTarifaHotelManual({ anoTarifa, destino, hotelId }) {
+  return HOTEL_TARIFAS.get(hotelTarifaKey({ anoTarifa, destino, hotelId })) || null;
+}
+
+function calcularTotalHotel({ tipoTarifa, valor, pax, noches, paxNoche }) {
+  const v = Number(valor || 0);
+
+  if (tipoTarifa === 'pax_noche') return v * paxNoche;
+  if (tipoTarifa === 'pax') return v * pax;
+  if (tipoTarifa === 'noche') return v * noches;
+  if (tipoTarifa === 'total') return v;
+
+  return 0;
+}
+
+async function guardarTarifaHotel({ anoTarifa, destino, hotelId, hotelNombre, moneda, tipoTarifa, valor, observacion }) {
+  const docId = `${anoTarifa}_${slug(destino)}_${hotelId}`;
+
+  const data = {
+    anoTarifa: String(anoTarifa),
+    destino,
+    hotelId,
+    hotelNombre,
+    moneda: normalizarMoneda(moneda || 'CLP'),
+    tipoTarifa: tipoTarifa || 'pax_noche',
+    valor: Number(valor || 0),
+    observacion: observacion || '',
+    updatedAt: serverTimestamp(),
+    updatedByEmail: (auth.currentUser?.email || '').toLowerCase()
+  };
+
+  await setDoc(doc(db, RUTA_HOTEL_TARIFAS, docId), data, { merge: true });
+
+  HOTEL_TARIFAS.set(
+    hotelTarifaKey({ anoTarifa, destino, hotelId }),
+    { id: docId, ...data }
+  );
+}
+
 // -------------------------------
 // 3) Resolver Servicio
 // -------------------------------
@@ -735,7 +797,8 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
   const out = [];
   if (!incluirHoteles || !ASIGNACIONES.length) return out;
 
-  const mapHotel = {}; for (const h of HOTELES) mapHotel[h.id] = h;
+  const mapHotel = {};
+  for (const h of HOTELES) mapHotel[h.id] = h;
 
   for (const asg of ASIGNACIONES) {
     const g = GRUPOS.find(x => x.id === (asg.grupoId || asg.idGrupo));
@@ -744,44 +807,91 @@ function construirLineItemsHotel(fechaDesde, fechaHasta, destinosSel, incluirHot
     const destinoGrupo = g.destino || asg.destino || '';
     if (!includeDestinoCheck(destinosSel, destinoGrupo)) continue;
 
-    const start = asg.fechaInicio, end = asg.fechaFin;
+    const start = asg.fechaInicio;
+    const end = asg.fechaFin;
     if (!start || !end) continue;
 
     const nights = [];
     let cur = new Date(start + 'T00:00:00');
     const fin = new Date(end + 'T00:00:00');
+
     while (cur < fin) {
-      const iso = cur.toISOString().slice(0,10);
+      const iso = cur.toISOString().slice(0, 10);
       if (within(iso, fechaDesde, fechaHasta)) nights.push(iso);
-      cur.setDate(cur.getDate()+1);
+      cur.setDate(cur.getDate() + 1);
     }
 
-    const hotel = mapHotel[asg.hotelId] || {};
+    const noches = nights.length;
+    if (!noches) continue;
+
+    const hotelId = asg.hotelId || asg.idHotel || '';
+    const hotel = mapHotel[hotelId] || {};
     const hotelNombre = hotel.nombre || asg.hotelNombre || '(hotel)';
 
-    const pax       = paxDeGrupo(g);
-    const moneda    = normalizarMoneda(asg.moneda || hotel.moneda || 'CLP');
-    const tarifa    = Number(asg.tarifa || hotel.tarifa || 0);
-    const tipoCobro = (asg.tipoCobro || hotel.tipoCobro || 'por_pax_noche').toLowerCase();
+    const anoTarifa = getAnoTarifaGrupo(g);
+    const pax = paxDeGrupo(g);
+    const paxNoche = pax * noches;
 
-    let totalPorNoche = 0;
-    if (tipoCobro === 'por_pax_noche') totalPorNoche = tarifa * pax;
-    else if (tipoCobro === 'por_grupo_noche') totalPorNoche = tarifa;
-    else if (tipoCobro === 'por_hab_noche') totalPorNoche = tarifa;
+    const tarifaManual = getTarifaHotelManual({
+      anoTarifa,
+      destino: destinoGrupo,
+      hotelId
+    });
 
-    const totalMoneda = totalPorNoche * nights.length;
+    const moneda = normalizarMoneda(
+      tarifaManual?.moneda ||
+      asg.moneda ||
+      hotel.moneda ||
+      'CLP'
+    );
+
+    const tipoTarifa = (
+      tarifaManual?.tipoTarifa ||
+      asg.tipoTarifa ||
+      asg.tipoCobro ||
+      hotel.tipoTarifa ||
+      hotel.tipoCobro ||
+      'pax_noche'
+    ).replace('por_', '');
+
+    const valor = Number(
+      tarifaManual?.valor ??
+      asg.tarifa ??
+      hotel.tarifa ??
+      0
+    );
+
+    const totalMoneda = calcularTotalHotel({
+      tipoTarifa,
+      valor,
+      pax,
+      noches,
+      paxNoche
+    });
 
     out.push({
-      tipo:'hotel',
-      hotel:hotelNombre, destinoGrupo,
-      grupoId:g.id, nombreGrupo:g.nombreGrupo || '',
-      numeroNegocio:g.numeroNegocio || g.id,
-      identificador:g.identificador || g.IDENTIFICADOR || '',
-      noches:nights.length,
-      moneda, tarifa, tipoCobro,
-      totalMoneda,
+      tipo: 'hotel',
+      anoTarifa,
+      hotelId,
+      hotel: hotelNombre,
+      destinoGrupo,
+      grupoId: g.id,
+      nombreGrupo: g.nombreGrupo || g.NOMBRE || '',
+      numeroNegocio: g.numeroNegocio || g.id,
+      identificador: g.identificador || g.IDENTIFICADOR || '',
+      checkIn: start,
+      checkOut: end,
+      noches,
+      pax,
+      paxNoche,
+      moneda,
+      tipoTarifa,
+      tarifa: valor,
+      observacionTarifa: tarifaManual?.observacion || '',
+      totalMoneda
     });
   }
+
   return out;
 }
 
@@ -1038,17 +1148,38 @@ async function completarAbonosEnTablaProveedoresMonedas(mapProv, visibleCurrenci
 }
 function agruparPorHotel(itemsHotel) {
   const r = new Map();
+
   for (const it of itemsHotel) {
-    const key = it.hotel || '(hotel)';
-    const acc = r.get(key) || { destino: it.destinoGrupo || '(sin destino)', clpEq:0, usdEq:0, brlEq:0, arsEq:0, noches:0 };
-    const conv = convertirTodas(it.moneda, it.totalMoneda);
-    if (conv.CLP != null) acc.clpEq += conv.CLP;
-    if (conv.USD != null) acc.usdEq += conv.USD;
-    if (conv.BRL != null) acc.brlEq += conv.BRL;
-    if (conv.ARS != null) acc.arsEq += conv.ARS;
-    acc.noches += (it.noches || 0);
+    const key = `${it.anoTarifa}||${it.destinoGrupo}||${it.hotelId || slug(it.hotel)}`;
+
+    const acc = r.get(key) || {
+      key,
+      anoTarifa: it.anoTarifa,
+      hotelId: it.hotelId,
+      hotel: it.hotel || '(hotel)',
+      destino: it.destinoGrupo || '(sin destino)',
+      grupos: new Set(),
+      paxTotal: 0,
+      noches: 0,
+      paxNoche: 0,
+      moneda: it.moneda || 'CLP',
+      tipoTarifa: it.tipoTarifa || 'pax_noche',
+      tarifa: it.tarifa || 0,
+      observacion: it.observacionTarifa || '',
+      totalMoneda: 0,
+      items: []
+    };
+
+    acc.grupos.add(it.grupoId || it.numeroNegocio);
+    acc.paxTotal += Number(it.pax || 0);
+    acc.noches += Number(it.noches || 0);
+    acc.paxNoche += Number(it.paxNoche || 0);
+    acc.totalMoneda += Number(it.totalMoneda || 0);
+    acc.items.push(it);
+
     r.set(key, acc);
   }
+
   return r;
 }
 
@@ -1222,29 +1353,102 @@ async function completarAbonosEnTablaProveedores(mapProv){
 }
 
 function renderTablaHoteles(mapHoteles) {
-  const tb = el('tblHoteles').querySelector('tbody');
+  const tbl = el('tblHoteles');
+  const thead = tbl.querySelector('thead');
+  const tb = tbl.querySelector('tbody');
+
   tb.innerHTML = '';
-  const rows = [];
-  mapHoteles.forEach((v,k)=>rows.push({
-    hotel:k, destino:v.destino,
-    clpEq:v.clpEq||0, usdEq:v.usdEq||0, brlEq:v.brlEq||0, arsEq:v.arsEq||0,
-    noches:v.noches||0
-  }));
-  rows.sort((a,b)=>b.clpEq - a.clpEq);
+
+  thead.innerHTML = `
+    <tr>
+      <th>Año</th>
+      <th>Hotel</th>
+      <th>Destino</th>
+      <th class="right">Grupos</th>
+      <th class="right">PAX</th>
+      <th class="right">Noches</th>
+      <th class="right">PAX-noche</th>
+      <th>Moneda</th>
+      <th>Tipo tarifa</th>
+      <th class="right">Valor</th>
+      <th class="right">Total</th>
+      <th>Obs.</th>
+      <th></th>
+    </tr>
+  `;
+
+  const rows = [...mapHoteles.values()];
+  rows.sort((a, b) => b.totalMoneda - a.totalMoneda);
+
   for (const r of rows) {
-    tb.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td title="${r.hotel}">${r.hotel}</td>
-        <td title="${r.destino || ''}">${r.destino || ''}</td>
-        <td class="right" title="${r.clpEq}">${money(r.clpEq)}</td>
-        <td class="right" title="${r.usdEq}">${fmt(r.usdEq)}</td>
-        <td class="right" title="${r.brlEq}">${fmt(r.brlEq)}</td>
-        <td class="right" title="${r.arsEq}">${fmt(r.arsEq)}</td>
-        <td class="right" title="${r.noches}">${fmt(r.noches)}</td>
-      </tr>
-    `);
+    const tr = document.createElement('tr');
+    tr.dataset.key = r.key;
+
+    tr.innerHTML = `
+      <td>${r.anoTarifa}</td>
+      <td title="${r.hotel}">${r.hotel}</td>
+      <td title="${r.destino}">${r.destino}</td>
+      <td class="right">${fmt(r.grupos.size)}</td>
+      <td class="right">${fmt(r.paxTotal)}</td>
+      <td class="right">${fmt(r.noches)}</td>
+      <td class="right">${fmt(r.paxNoche)}</td>
+
+      <td>
+        <select class="hotel-moneda">
+          ${TODAS_MONEDAS.map(m => `
+            <option value="${m}" ${m === r.moneda ? 'selected' : ''}>${m}</option>
+          `).join('')}
+        </select>
+      </td>
+
+      <td>
+        <select class="hotel-tipo">
+          <option value="pax_noche" ${r.tipoTarifa === 'pax_noche' ? 'selected' : ''}>PAX/NOCHE</option>
+          <option value="pax" ${r.tipoTarifa === 'pax' ? 'selected' : ''}>PAX</option>
+          <option value="noche" ${r.tipoTarifa === 'noche' ? 'selected' : ''}>NOCHE</option>
+          <option value="total" ${r.tipoTarifa === 'total' ? 'selected' : ''}>TOTAL FIJO</option>
+        </select>
+      </td>
+
+      <td class="right">
+        <input class="hotel-valor" type="number" min="0" step="0.01" value="${r.tarifa || 0}" style="width:90px;text-align:right;">
+      </td>
+
+      <td class="right">${fmt(r.totalMoneda)}</td>
+
+      <td>
+        <input class="hotel-obs" type="text" value="${r.observacion || ''}" style="width:160px;">
+      </td>
+
+      <td>
+        <button class="btn secondary btn-guardar-hotel" type="button">Guardar</button>
+      </td>
+    `;
+
+    tb.appendChild(tr);
+
+    tr.querySelector('.btn-guardar-hotel').addEventListener('click', async () => {
+      await guardarTarifaHotel({
+        anoTarifa: r.anoTarifa,
+        destino: r.destino,
+        hotelId: r.hotelId || slug(r.hotel),
+        hotelNombre: r.hotel,
+        moneda: tr.querySelector('.hotel-moneda').value,
+        tipoTarifa: tr.querySelector('.hotel-tipo').value,
+        valor: tr.querySelector('.hotel-valor').value,
+        observacion: tr.querySelector('.hotel-obs').value
+      });
+
+      alert('✅ Tarifa hotelera guardada');
+      recalcular();
+    });
   }
-  makeSortable(el('tblHoteles'), ['text','text','money','num','num','num','num']);
+
+  makeSortable(tbl, [
+    'num', 'text', 'text',
+    'num', 'num', 'num', 'num',
+    'text', 'text', 'num', 'num', 'text', 'text'
+  ], { skipIdx: [12] });
 }
 
 // -------------------------------
@@ -2756,12 +2960,13 @@ async function boot() {
   onAuthStateChanged(auth, async () => {
     try {
       await Promise.all([
-      loadGrupos(),
-      loadServicios(),
-      loadProveedores(),
-      loadHotelesYAsignaciones(),
-      loadRealizaciones()     // ← NUEVO: overlay de HIZO
-    ]);
+        loadGrupos(),
+        loadServicios(),
+        loadProveedores(),
+        loadHotelesYAsignaciones(),
+        loadTarifasHoteles(),
+        loadRealizaciones()
+      ]);
       await cargarTCGuardado();     // ← carga TC persistido (si existe)
       poblarFiltrosBasicos();
       aplicarRangoPorAnio();
