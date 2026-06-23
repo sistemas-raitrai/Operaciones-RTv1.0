@@ -6,7 +6,7 @@ import { getAuth, onAuthStateChanged }
 import {
   collection, getDocs, doc, getDoc,
   addDoc, updateDoc, deleteDoc, setDoc,
-  serverTimestamp, query, where, orderBy
+  serverTimestamp, query, where, orderBy, Timestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 let hoteles = [], grupos = [], asignaciones = [];
@@ -145,6 +145,110 @@ function getFechaFinGrupo(g) {
   if (directa) return directa;
 
   return getFechasDesdeItinerarioGrupo(g).fin;
+}
+
+function crearRangoFechasISOHotel(fechaInicio, fechaFin) {
+  const iniISO = toISO(fechaInicio);
+  const finISO = toISO(fechaFin);
+  if (!iniISO || !finISO) return [];
+
+  const ini = new Date(iniISO + 'T00:00:00');
+  const fin = new Date(finISO + 'T00:00:00');
+
+  if (isNaN(ini) || isNaN(fin) || fin < ini) return [];
+
+  const out = [];
+
+  for (let d = new Date(ini); d <= fin; d.setDate(d.getDate() + 1)) {
+    out.push(d.toISOString().slice(0, 10));
+  }
+
+  return out;
+}
+
+function ordenarKeysItinerarioHotel(a, b) {
+  const aReal = /^\d{4}-\d{2}-\d{2}$/.test(String(a));
+  const bReal = /^\d{4}-\d{2}-\d{2}$/.test(String(b));
+
+  if (aReal && bReal) return new Date(a) - new Date(b);
+  if (aReal) return -1;
+  if (bReal) return 1;
+
+  const na = parseInt(String(a).replace(/\D/g, ''), 10) || 0;
+  const nb = parseInt(String(b).replace(/\D/g, ''), 10) || 0;
+  return na - nb;
+}
+
+async function sincronizarFechasGrupoDesdeHotelesConfirmados(grupoId) {
+  const asignsGrupo = asignaciones
+    .filter(a =>
+      String(a.grupoId) === String(grupoId) &&
+      String(a.status || '').toLowerCase() === 'confirmado'
+    )
+    .map(a => ({
+      ...a,
+      checkIn: toISO(a.checkIn),
+      checkOut: toISO(a.checkOut)
+    }))
+    .filter(a => a.checkIn && a.checkOut);
+
+  if (!asignsGrupo.length) return false;
+
+  const fechaInicioNueva = asignsGrupo
+    .map(a => a.checkIn)
+    .sort()[0];
+
+  const fechaFinNueva = asignsGrupo
+    .map(a => a.checkOut)
+    .sort()
+    .at(-1);
+
+  if (!fechaInicioNueva || !fechaFinNueva) return false;
+
+  const gRef = doc(db, 'grupos', grupoId);
+  const gSnap = await getDoc(gRef);
+  if (!gSnap.exists()) return false;
+
+  const g = gSnap.data() || {};
+  const IT = g.itinerario || {};
+  const keys = Object.keys(IT).sort(ordenarKeysItinerarioHotel);
+  const fechasNuevas = crearRangoFechasISOHotel(fechaInicioNueva, fechaFinNueva);
+
+  const nuevoItinerario = {};
+
+  fechasNuevas.forEach((fechaReal, idx) => {
+    const keyAnterior = keys[idx];
+    nuevoItinerario[fechaReal] = keyAnterior ? (IT[keyAnterior] || []) : [];
+  });
+
+  await updateDoc(gRef, {
+    fechaInicio: Timestamp.fromDate(new Date(fechaInicioNueva + 'T00:00:00')),
+    fechaFin: Timestamp.fromDate(new Date(fechaFinNueva + 'T00:00:00')),
+    itinerario: nuevoItinerario,
+    fechasConfirmadasDesdeHoteles: true,
+    updatedAt: serverTimestamp()
+  });
+
+  await addDoc(collection(db, 'historial'), {
+    tipo: 'grupo-fechas-confirmadas-desde-hoteles',
+    grupoId,
+    numeroNegocio: g.numeroNegocio || '',
+    nombreGrupo: g.nombreGrupo || '',
+    antes: {
+      fechaInicio: toISO(g.fechaInicio),
+      fechaFin: toISO(g.fechaFin),
+      itinerarioKeys: keys
+    },
+    despues: {
+      fechaInicio: fechaInicioNueva,
+      fechaFin: fechaFinNueva,
+      itinerarioKeys: fechasNuevas
+    },
+    usuario: currentUserEmail,
+    ts: serverTimestamp()
+  });
+
+  return true;
 }
 
 function sumarUnAnoISO(iso) {
@@ -637,20 +741,47 @@ async function swapAssignments(a1, a2) {
 
 // Toggle estado asignación
 async function toggleAssignStatus(assignId) {
-  const a = asignaciones.find(x=>x.id===assignId);
-  if(!a) return;
-  const nuevo = a.status==='pendiente' ? 'confirmado' : 'pendiente';
-  await updateDoc(doc(db,'hotelAssignments',assignId),{
-    status: nuevo, changedBy: currentUserEmail, updatedAt: serverTimestamp()
+  const a = asignaciones.find(x => x.id === assignId);
+  if (!a) return;
+
+  const nuevo = a.status === 'pendiente' ? 'confirmado' : 'pendiente';
+
+  const confirmarTexto = nuevo === 'confirmado'
+    ? 'Al confirmar, las fechas hoteleras pasarán a ser las fechas oficiales del grupo.\n\n¿Confirmar asignación?'
+    : '¿Volver esta asignación a pendiente?';
+
+  if (!confirm(confirmarTexto)) return;
+
+  await updateDoc(doc(db, 'hotelAssignments', assignId), {
+    status: nuevo,
+    fechasAutoDesdeGrupo: false,
+    changedBy: currentUserEmail,
+    updatedAt: serverTimestamp()
   });
-  await addDoc(collection(db,'historial'),{
+
+  await addDoc(collection(db, 'historial'), {
     tipo: 'assign-status',
     docId: assignId,
+    grupoId: a.grupoId,
     antes: a,
-    despues: { ...a, status: nuevo },
+    despues: {
+      ...a,
+      status: nuevo,
+      fechasAutoDesdeGrupo: false
+    },
     usuario: currentUserEmail,
     ts: serverTimestamp()
   });
+
+  await loadAsignaciones();
+
+  if (nuevo === 'confirmado') {
+    await sincronizarFechasGrupoDesdeHotelesConfirmados(a.grupoId);
+  } else {
+    await sincronizarFechasGrupoDesdeHotelesConfirmados(a.grupoId);
+  }
+
+  await loadGrupos();
   await loadAsignaciones();
   await renderHoteles();
 }
@@ -1213,7 +1344,7 @@ async function onSubmitAssign(e) {
     adultosTotal:      newAdultos,
     estudiantesTotal:  newEstudiantes,
     cantidadgrupo:     newCantidad,
-    status: habCuadran ? 'confirmado' : 'pendiente',
+    status: 'pendiente',
     changedBy: currentUserEmail,
     updatedAt: serverTimestamp()
   };
