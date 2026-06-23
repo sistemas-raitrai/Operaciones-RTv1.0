@@ -310,7 +310,9 @@ async function init() {
     (snap.exists() && snap.data().reservas) ? snap.data().reservas : {}
   );
 
-  await revisarCambiosReservasEnviadas(servicios, todosLosReservas);
+  revisarCambiosReservasEnviadas(servicios, todosLosReservas)
+  .then(() => console.log('Revisión de cambios de reservas terminada'))
+  .catch(error => console.error('Error revisando cambios de reservas:', error));
 
   // 5.8 Filas HTML (métricas por fecha)
   let rowsHTML = servicios.map((servicio, i) => {
