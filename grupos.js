@@ -773,11 +773,12 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       (coordInfo?.telefono || '').toString().trim();
   
     return {
-      id:   docSnap.id,
+      id: docSnap.id,
       fila: camposFire.map(c => d[c] || ''),
       coordTexto,
       coordTelefono,
-      estadoCoord: d.coordEstado || estadoByGrupo.get(docSnap.id) || 'pendiente'
+      estadoCoord: d.coordEstado || estadoByGrupo.get(docSnap.id) || 'pendiente',
+      fechasConfirmadasDesdeHoteles: !!d.fechasConfirmadasDesdeHoteles
     };
   });
 
@@ -977,12 +978,29 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     for (let idx = 5; idx < camposFire.length; idx++) {
       const campo = camposFire[idx];
       const celda = item.fila[idx];
+    
       const $td = $('<td>')
         .text(formatearCelda(celda, campo))
         .attr('data-doc-id', item.id)
         .attr('data-campo', campo)
         .attr('data-original', celda);
-      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo', 'number');
+    
+      if (NUMERIC_FIELDS.has(campo)) {
+        $td.attr('data-tipo', 'number');
+      }
+    
+      if (campo === 'fechaInicio' || campo === 'fechaFin') {
+        const estadoFechaHotel = item.fechasConfirmadasDesdeHoteles
+          ? 'aprobado'
+          : 'pendiente';
+    
+        $td
+          .attr('title', item.fechasConfirmadasDesdeHoteles
+            ? 'Fechas confirmadas desde hotelería'
+            : 'Fechas pendientes de confirmación hotelera')
+          .attr('style', _bgEstado(estadoFechaHotel));
+      }
+    
       $tr.append($td);
     }
 
