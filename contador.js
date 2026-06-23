@@ -231,26 +231,32 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(au
 // 5️⃣ Init: carga datos y arma tabla
 // —————————————————————————————————————————————————————
 async function init() {
-  // 5.1 Grupos
-  // 5.1 Grupos
+  console.time('CONTADOR carga total');
+
+  console.time('1 grupos');
   const gruposSnap = await getDocs(collection(db, 'grupos'));
-  
-  // Año actual automático
+  console.timeEnd('1 grupos');
+
+  console.time('2 filtrar grupos');
   const anoActual = String(new Date().getFullYear());
-  
-  // Solo grupos del año actual
+
   grupos = gruposSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
     .filter(g => String(g.anoViaje || '').trim() === anoActual);
+  console.timeEnd('2 filtrar grupos');
 
+  console.time('3 vuelos');
   await buildIndexVuelosPorGrupo();
+  console.timeEnd('3 vuelos');
 
-  // 5.2 Servicios (Servicios/{destino}/Listado)
+  console.time('4 servicios');
   const servicios = [];
   const serviciosRoot = await getDocs(collection(db, 'Servicios'));
+
   for (const destinoDoc of serviciosRoot.docs) {
     const destino = destinoDoc.id;
     const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
+
     listadoSnap.docs.forEach(sDoc => {
       const data = sDoc.data();
       servicios.push({
@@ -260,37 +266,45 @@ async function init() {
       });
     });
   }
+  console.timeEnd('4 servicios');
 
-  // 5.3 Proveedores (todas las regiones)
+  console.time('5 proveedores');
   const proveedoresLocal = {};
   const regionesSnap = await getDocs(collection(db, 'Proveedores'));
+
   for (const regionDoc of regionesSnap.docs) {
     const listadoSnap = await getDocs(collection(db, 'Proveedores', regionDoc.id, 'Listado'));
+
     listadoSnap.docs.forEach(pSnap => {
       const d = pSnap.data();
       if (d.proveedor) {
         proveedoresLocal[d.proveedor] = {
           contacto: d.contacto || '',
-          correo:   d.correo   || ''
+          correo: d.correo || ''
         };
       }
     });
   }
-  proveedores = proveedoresLocal;
 
-  // 5.4 Fechas únicas con pax > 0
+  proveedores = proveedoresLocal;
+  console.timeEnd('5 proveedores');
+
+  console.time('6 fechas');
   const fechasSet = new Set();
+
   grupos.forEach(g => {
     const itin = g.itinerario || {};
     Object.entries(itin).forEach(([fecha, acts]) => {
-      if (acts.some(a => (parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0) > 0)) {
+      if ((acts || []).some(a => (parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0) > 0)) {
         fechasSet.add(fecha);
       }
     });
   });
-  fechasOrdenadas = Array.from(fechasSet).sort();
 
-  // 5.5 <thead> con data-fecha en cada th de fecha
+  fechasOrdenadas = Array.from(fechasSet).sort();
+  console.timeEnd('6 fechas');
+
+  console.time('7 reservas');
   thead.innerHTML = `
     <tr>
       <th class="sticky-col sticky-header">Actividad</th>
@@ -300,29 +314,38 @@ async function init() {
       ${fechasOrdenadas.map(f => `<th data-fecha="${f}">${formatearFechaBonita(f)}</th>`).join('')}
     </tr>`;
 
-  // 5.6 Orden lógico de servicios
   servicios.sort((a, b) => (a.destino + a.nombre).localeCompare(b.destino + b.nombre));
 
-  // 5.7 Prefetch de reservas (por servicio)
   const referencias = servicios.map(s => doc(db, 'Servicios', s.destino, 'Listado', s.nombre));
   const snapshots = await Promise.all(referencias.map(ref => getDoc(ref)));
+
   const todosLosReservas = snapshots.map(snap =>
     (snap.exists() && snap.data().reservas) ? snap.data().reservas : {}
   );
+  console.timeEnd('7 reservas');
 
+  console.time('8 revisar cambios reservas');
   revisarCambiosReservasEnviadas(servicios, todosLosReservas)
-  .then(() => console.log('Revisión de cambios de reservas terminada'))
-  .catch(error => console.error('Error revisando cambios de reservas:', error));
+    .then(() => {
+      console.timeEnd('8 revisar cambios reservas');
+      console.log('Revisión de cambios de reservas terminada');
+    })
+    .catch(error => {
+      console.timeEnd('8 revisar cambios reservas');
+      console.error('Error revisando cambios de reservas:', error);
+    });
 
-  // 5.8 Filas HTML (métricas por fecha)
+  console.time('9 construir HTML tabla');
   let rowsHTML = servicios.map((servicio, i) => {
     const reservas = todosLosReservas[i];
 
     const fechasConPax = fechasOrdenadas.filter(fecha =>
-      grupos.some(g => (g.itinerario?.[fecha]||[]).some(a => actividadCoincideReserva(a, servicio.nombre)))
+      grupos.some(g =>
+        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, servicio.nombre))
+      )
     );
-    const textoBtn = obtenerTextoBotonReserva(reservas, fechasConPax);
 
+    const textoBtn = obtenerTextoBotonReserva(reservas, fechasConPax);
     const provInfo = proveedores[servicio.proveedor] || {};
     const proveedorStr = provInfo.contacto ? servicio.proveedor : '-';
 
@@ -342,13 +365,13 @@ async function init() {
 
     fechasOrdenadas.forEach(fecha => {
       const totalPax = grupos.reduce((sum, g) => {
-        return sum + (g.itinerario?.[fecha]||[])
+        return sum + (g.itinerario?.[fecha] || [])
           .filter(a => actividadCoincideReserva(a, servicio.nombre))
-          .reduce((s2, a) => s2 + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+          .reduce((s2, a) => s2 + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
       }, 0);
 
       const groupCount = grupos.filter(g =>
-        (g.itinerario?.[fecha]||[]).some(a => actividadCoincideReserva(a, servicio.nombre))
+        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, servicio.nombre))
       ).length;
 
       fila += `
@@ -361,13 +384,17 @@ async function init() {
 
     return fila + '</tr>';
   }).join('');
-  tbody.innerHTML = rowsHTML;
 
-  // 5.9 Delegación de eventos de la tabla
+  tbody.innerHTML = rowsHTML;
+  console.timeEnd('9 construir HTML tabla');
+
+  console.time('10 DataTables');
+
   tbody.addEventListener('click', e => {
     if (e.target.matches('.btn-reserva')) {
       abrirModalReserva({ currentTarget: e.target });
     }
+
     const celda = e.target.closest('.celda-interactiva');
     if (celda) {
       const { actividad, fecha } = JSON.parse(celda.dataset.info);
@@ -375,10 +402,10 @@ async function init() {
     }
   });
 
-  // 5.10 DataTables (búsqueda OR por comas, ignora tildes, export respeta visible/filtrado)
   function stripAccents(s) {
     return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
+
   $.fn.dataTable.ext.type.search.string = d => stripAccents(d);
 
   const table = $('#tablaConteo').DataTable({
@@ -400,24 +427,28 @@ async function init() {
     initComplete: function () {
       const api = this.api();
 
-      // Poblado del select de destino (col 1)
       const destinos = new Set(api.column(1).data().toArray());
       destinos.forEach(d => $('#filtroDestino').append(new Option(d, d)));
 
-      // Buscador: OR por comas/; ignorando tildes
       $('#buscador').on('keyup', () => {
         const val = stripAccents($('#buscador').val());
         const terms = val.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
-        if (!terms.length) { api.search('').draw(); return; }
+
+        if (!terms.length) {
+          api.search('').draw();
+          return;
+        }
+
         const rex = '(' + terms.map(t => t.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')).join('|') + ')';
         api.search(rex, true, false).draw();
       });
 
-      // Filtro por destino
       $('#filtroDestino').on('change', () => {
         const v = $('#filtroDestino').val();
-        if (!v) api.column(1).search('').draw();
-        else {
+
+        if (!v) {
+          api.column(1).search('').draw();
+        } else {
           const vEsc = v.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
           api.column(1).search(`^${vEsc}$`, true, false).draw();
         }
@@ -425,10 +456,9 @@ async function init() {
     }
   });
 
-  // 5.11 Botones del modal de Reserva
   document.getElementById('btnCerrarReserva').onclick = () =>
     document.getElementById('modalReserva').style.display = 'none';
-  
+
   document.getElementById('btnGuardarPendiente').onclick = guardarPendiente;
   document.getElementById('btnEnviarReserva').onclick = enviarReserva;
 
@@ -436,38 +466,41 @@ async function init() {
   if (btnSincronizarPaxReserva) {
     btnSincronizarPaxReserva.onclick = sincronizarPaxReservaManual;
   }
-  
+
   document.getElementById('btnVerificarPaxPagos').onclick = verificarPaxReservaConPagos;
-  
+
   document.getElementById('btnCerrarVerificacionPagos').onclick = () => {
     document.getElementById('modalVerificacionPagos').style.display = 'none';
   };
-  
+
   document.getElementById('btnCerrarDetalleDiferenciaPagos').onclick = () => {
     document.getElementById('modalDetalleDiferenciaPagos').style.display = 'none';
   };
-  
+
   document.getElementById('btnGuardarVerificacionPagos').onclick = abrirModalGuardarVerificacionPagos;
-  
+
   document.getElementById('btnCancelarGuardarVerificacion').onclick = () => {
     document.getElementById('modalGuardarVerificacionPagos').style.display = 'none';
   };
-  
+
   document.getElementById('btnConfirmarGuardarVerificacion').onclick = guardarVerificacionPagosEnReserva;
 
-  // (Opcional) Botón "Actualizar" del modal detalle: reajusta columnas si ya existe
   const btnAct = document.getElementById('btnActualizarModal');
   if (btnAct) {
     btnAct.addEventListener('click', async () => {
       await buildIndexVuelosPorGrupo();
+
       const S = window.__ULTIMO_DETALLE_MODAL__;
       if (S) {
-        mostrarListaDeGrupos(S.ids, S.titulo, S.dataset); // repinta y vuelve a calcular la columna "Vuelo"
+        mostrarListaDeGrupos(S.ids, S.titulo, S.dataset);
       } else if ($.fn.DataTable.isDataTable('#tablaModal')) {
         $('#tablaModal').DataTable().columns.adjust().draw(false);
       }
     });
   }
+
+  console.timeEnd('10 DataTables');
+  console.timeEnd('CONTADOR carga total');
 }
 // —————————————————————————————————————————————
 // 6️⃣ Reserva (abrir/guardar/enviar)
