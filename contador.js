@@ -22,6 +22,14 @@ let reservaActualSnapshot = null;
 let ultimaVerificacionPagos = null;
 const API_PAGOS_URL = '/api/pagos';
 
+function obtenerAnoComercialContador(fecha = new Date()) {
+  const ano = fecha.getFullYear();
+  const mes = fecha.getMonth() + 1; // enero = 1
+
+  // Año comercial cambia el 1 de marzo
+  return mes >= 3 ? String(ano) : String(ano - 1);
+}
+
 function normalizarActividadReserva(txt = '') {
   return String(txt || '')
     .toLowerCase()
@@ -238,11 +246,13 @@ async function init() {
   console.timeEnd('1 grupos');
 
   console.time('2 filtrar grupos');
-  const anoActual = String(new Date().getFullYear());
+  const anoComercial = obtenerAnoComercialContador();
 
   grupos = gruposSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
-    .filter(g => String(g.anoViaje || '').trim() === anoActual);
+    .filter(g => String(g.anoViaje || '').trim() === anoComercial);
+
+  console.log('Año comercial contador:', anoComercial);
   console.timeEnd('2 filtrar grupos');
 
   console.time('3 vuelos');
@@ -259,10 +269,12 @@ async function init() {
 
     listadoSnap.docs.forEach(sDoc => {
       const data = sDoc.data();
+
       servicios.push({
         destino,
         nombre: sDoc.id,
-        proveedor: data.proveedor || data.Proveedor || ''
+        proveedor: data.proveedor || data.Proveedor || '',
+        reservas: data.reservas || {}
       });
     });
   }
@@ -277,6 +289,7 @@ async function init() {
 
     listadoSnap.docs.forEach(pSnap => {
       const d = pSnap.data();
+
       if (d.proveedor) {
         proveedoresLocal[d.proveedor] = {
           contacto: d.contacto || '',
@@ -294,6 +307,7 @@ async function init() {
 
   grupos.forEach(g => {
     const itin = g.itinerario || {};
+
     Object.entries(itin).forEach(([fecha, acts]) => {
       if ((acts || []).some(a => (parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0) > 0)) {
         fechasSet.add(fecha);
@@ -305,6 +319,9 @@ async function init() {
   console.timeEnd('6 fechas');
 
   console.time('7 reservas');
+  const todosLosReservas = servicios.map(s => s.reservas || {});
+  console.timeEnd('7 reservas');
+
   thead.innerHTML = `
     <tr>
       <th class="sticky-col sticky-header">Actividad</th>
@@ -315,14 +332,6 @@ async function init() {
     </tr>`;
 
   servicios.sort((a, b) => (a.destino + a.nombre).localeCompare(b.destino + b.nombre));
-
-  const referencias = servicios.map(s => doc(db, 'Servicios', s.destino, 'Listado', s.nombre));
-  const snapshots = await Promise.all(referencias.map(ref => getDoc(ref)));
-
-  const todosLosReservas = snapshots.map(snap =>
-    (snap.exists() && snap.data().reservas) ? snap.data().reservas : {}
-  );
-  console.timeEnd('7 reservas');
 
   console.time('8 revisar cambios reservas');
   revisarCambiosReservasEnviadas(servicios, todosLosReservas)
@@ -396,6 +405,7 @@ async function init() {
     }
 
     const celda = e.target.closest('.celda-interactiva');
+
     if (celda) {
       const { actividad, fecha } = JSON.parse(celda.dataset.info);
       mostrarGruposCoincidentes(actividad, fecha);
@@ -502,6 +512,7 @@ async function init() {
   console.timeEnd('10 DataTables');
   console.timeEnd('CONTADOR carga total');
 }
+
 // —————————————————————————————————————————————
 // 6️⃣ Reserva (abrir/guardar/enviar)
 // —————————————————————————————————————————————
