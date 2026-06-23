@@ -564,6 +564,218 @@ function construirSnapshotReservaActual(destino, actividad) {
   return construirSnapshotReservaPorFecha(destino, actividad, perDateData);
 }
 
+function escapeHtmlReserva(txt = '') {
+  return String(txt || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+function obtenerFechasConPaxActividad(actividad) {
+  return fechasOrdenadas.filter(fecha =>
+    grupos.some(g =>
+      (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, actividad))
+    )
+  );
+}
+
+function deduplicarCambiosReserva(cambios = []) {
+  const vistos = new Set();
+
+  return cambios.filter(c => {
+    const key = [
+      c.tipo || '',
+      c.tipoControl || '',
+      c.fecha || '',
+      c.numeroNegocio || '',
+      c.nombreGrupo || '',
+      c.detalle || '',
+      c.diferencia?.pax ?? '',
+      c.diferencia?.adultos ?? '',
+      c.diferencia?.estudiantes ?? ''
+    ].join('__');
+
+    if (vistos.has(key)) return false;
+    vistos.add(key);
+    return true;
+  });
+}
+
+function textoCambioReserva(c) {
+  const grupo = [c.numeroNegocio, c.nombreGrupo].filter(Boolean).join(' · ');
+  const fecha = c.fecha ? formatearFechaBonita(c.fecha) : '';
+
+  if (c.tipo === 'CAMBIO_PAGOS_GRUPO') {
+    return `${grupo}: cambio en sistema de pagos (${c.detalle || 'PAX actualizado'}).`;
+  }
+
+  if (c.tipo === 'GRUPO_ENTRA_A_FECHA') {
+    return `${fecha}: entra ${grupo} con ${c.ahora?.pax || 0} PAX.`;
+  }
+
+  if (c.tipo === 'GRUPO_SALE_DE_FECHA') {
+    return `${fecha}: sale ${grupo}. Antes tenía ${c.antes?.pax || 0} PAX.`;
+  }
+
+  if (c.tipo === 'CAMBIO_PAX_EN_FECHA') {
+    return `${fecha}: ${grupo} cambia (${c.detalle || 'PAX actualizado'}).`;
+  }
+
+  return `${fecha ? fecha + ': ' : ''}${grupo} ${c.detalle || 'cambio detectado'}`.trim();
+}
+
+function construirBloqueCambiosReserva(revisionCambios) {
+  const cambios = deduplicarCambiosReserva(revisionCambios?.cambios || []);
+  if (!cambios.length) return '';
+
+  return cambios
+    .map(c => `- ${textoCambioReserva(c)}`)
+    .join('\n');
+}
+
+function pintarAlertaRevisionCambiosReserva(revisionCambios) {
+  const box = document.getElementById('alertaRevisionCambiosReserva');
+  if (!box) return;
+
+  const cambios = deduplicarCambiosReserva(revisionCambios?.cambios || []);
+
+  if (!cambios.length) {
+    box.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div style="margin:.75rem 0; padding:.75rem; border:1px solid #d89b00; background:#fff7e0; border-radius:8px;">
+      <strong>⚠️ Esta reserva requiere reenvío.</strong>
+      <div style="margin-top:.35rem;">
+        Motivo: se detectaron cambios posteriores a la última confirmación enviada.
+      </div>
+      <ul style="margin:.5rem 0 0 1.25rem;">
+        ${cambios.map(c => `<li>${escapeHtmlReserva(textoCambioReserva(c))}</li>`).join('')}
+      </ul>
+    </div>
+  `;
+}
+
+async function obtenerRevisionCambiosReserva(destino, actividad) {
+  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    return {
+      requiereReenvio: false,
+      cambios: []
+    };
+  }
+
+  const reservas = snap.data()?.reservas || {};
+  const fechasActividad = obtenerFechasConPaxActividad(actividad);
+
+  let cambios = [];
+
+  fechasActividad.forEach(fecha => {
+    const r = reservas?.[fecha];
+    if (r?.estado === 'REQUIERE_REENVIO' && r?.revisionCambios?.estado === 'CON_CAMBIOS') {
+      cambios = cambios.concat(r.revisionCambios.cambios || []);
+    }
+  });
+
+  cambios = deduplicarCambiosReserva(cambios);
+
+  return {
+    requiereReenvio: cambios.length > 0,
+    cambios
+  };
+}
+
+async function construirVerificacionActualParaReenvio(destino, actividad) {
+  const snapshot = reservaActualSnapshot || construirSnapshotReservaActual(destino, actividad);
+  const resultados = [];
+
+  for (const g of snapshot.grupos || []) {
+    try {
+      const numeroNegocio = g.numeroNegocio || g.id;
+      const numerosPago = obtenerNumerosNegocioPago(numeroNegocio);
+      const resumenPagos = await consultarResumenPagosFusionado(numerosPago);
+
+      const paxPagos = Number(resumenPagos.totalViajan || 0);
+      const paxCorreo = Number(g.paxCorreo || 0);
+
+      resultados.push({
+        numeroNegocio,
+        numerosPago,
+        nombreGrupo: g.nombreGrupo || '',
+        paxCorreo,
+        paxPagos,
+        diferencia: paxPagos - paxCorreo,
+        estado: paxPagos === paxCorreo ? 'OK' : 'DIFERENCIA',
+
+        adultosCorreo: g.adultosCorreo || { M: 0, F: 0, O: 0 },
+        estudiantesCorreo: g.estudiantesCorreo || { M: 0, F: 0, O: 0 },
+        totalAdultosCorreo: Number(g.totalAdultosCorreo || 0),
+        totalEstudiantesCorreo: Number(g.totalEstudiantesCorreo || 0),
+
+        adultosPagos: resumenPagos.adultos,
+        estudiantesPagos: resumenPagos.estudiantes,
+        totalAdultosPagos: Number(resumenPagos.totalAdultos || 0),
+        totalEstudiantesPagos: Number(resumenPagos.totalEstudiantes || 0),
+
+        fechas: g.fechas || []
+      });
+
+    } catch (error) {
+      resultados.push({
+        numeroNegocio: g.numeroNegocio || g.id,
+        numerosPago: obtenerNumerosNegocioPago(g.numeroNegocio || g.id),
+        nombreGrupo: g.nombreGrupo || '',
+        paxCorreo: Number(g.paxCorreo || 0),
+        paxPagos: '',
+        diferencia: '',
+        estado: 'ERROR CONSULTA',
+        fechas: g.fechas || []
+      });
+    }
+  }
+
+  const fechasVerificadas = (snapshot.fechas || []).map(f => ({
+    ...f,
+    grupos: (f.grupos || []).map(g => {
+      const encontrado = resultados.find(r =>
+        String(r.numeroNegocio) === String(g.numeroNegocio || g.id)
+      );
+
+      return {
+        ...g,
+        paxPagos: encontrado?.paxPagos ?? '',
+        totalAdultosPagos: encontrado?.totalAdultosPagos ?? '',
+        totalEstudiantesPagos: encontrado?.totalEstudiantesPagos ?? '',
+        estadoPagos: encontrado?.estado || ''
+      };
+    })
+  }));
+
+  return {
+    fecha: new Date().toISOString(),
+    destino,
+    actividad,
+    grupos: resultados,
+    snapshotLogistico: {
+      destino,
+      actividad,
+      fechas: fechasVerificadas,
+      resumenLogistico: snapshot.resumenLogistico || {}
+    },
+    resumen: calcularResumenVerificacion(resultados),
+    comentario: 'Base actualizada automáticamente por reenvío de confirmación.',
+    usuario: auth.currentUser?.email || '',
+    guardadoEn: new Date().toISOString()
+  };
+}
+
 function keyGrupoFecha(fecha, grupo) {
   return `${fecha}__${grupo.numeroNegocio || grupo.id}`;
 }
@@ -779,8 +991,10 @@ function mostrarEstadoSyncPaxReserva(actividad) {
   }
 }
 
-function reconstruirCorreoReserva(destino, actividad, proveedor) {
+function reconstruirCorreoReserva(destino, actividad, proveedor, opciones = {}) {
   const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
+  const revisionCambios = opciones.revisionCambios || null;
+  const requiereReenvio = !!revisionCambios?.requiereReenvio;
 
   const perDateData = fechasOrdenadas
     .map(fecha => {
@@ -805,7 +1019,16 @@ function reconstruirCorreoReserva(destino, actividad, proveedor) {
   const totalGrupos = reservaActualSnapshot.grupos.length;
 
   let cuerpo = `Estimado/a ${provInfo.contacto || ''}:\n\n`;
-  cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
+
+  if (requiereReenvio) {
+    cuerpo += `Junto con saludar, reenviamos la confirmación actualizada de la reserva, ya que hubo cambios posteriores al último envío.\n\n`;
+    cuerpo += `Cambios detectados:\n`;
+    cuerpo += `${construirBloqueCambiosReserva(revisionCambios)}\n\n`;
+    cuerpo += `A continuación se envía el detalle actualizado de la reserva:\n\n`;
+  } else {
+    cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
+  }
+
   cuerpo += `Actividad: ${actividad}\n`;
   cuerpo += `Destino: ${destino}\n`;
   cuerpo += `Total Grupos: (${totalGrupos})\n`;
@@ -865,10 +1088,17 @@ async function abrirModalReserva(event) {
   const proveedor = btn.dataset.proveedor;
 
   const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
-  document.getElementById('modalPara').value = provInfo.correo;
-  document.getElementById('modalAsunto').value = `Reserva: ${actividad} en ${destino}`;
 
-  reconstruirCorreoReserva(destino, actividad, proveedor);
+  const revisionCambios = await obtenerRevisionCambiosReserva(destino, actividad);
+
+  document.getElementById('modalPara').value = provInfo.correo;
+
+  document.getElementById('modalAsunto').value = revisionCambios.requiereReenvio
+    ? `Reenvío de confirmación: ${actividad} en ${destino}`
+    : `Reserva: ${actividad} en ${destino}`;
+
+  pintarAlertaRevisionCambiosReserva(revisionCambios);
+  reconstruirCorreoReserva(destino, actividad, proveedor, { revisionCambios });
 
   const btnPend = document.getElementById('btnGuardarPendiente');
   btnPend.dataset.destino = destino;
@@ -878,6 +1108,8 @@ async function abrirModalReserva(event) {
   const btnEnv = document.getElementById('btnEnviarReserva');
   btnEnv.dataset.destino = destino;
   btnEnv.dataset.actividad = actividad;
+  btnEnv.dataset.proveedor = proveedor;
+  btnEnv.dataset.requiereReenvio = revisionCambios.requiereReenvio ? '1' : '0';
 
   const btnSync = document.getElementById('btnSincronizarPaxReserva');
   if (btnSync) {
@@ -909,6 +1141,8 @@ async function enviarReserva() {
   const btn       = document.getElementById('btnEnviarReserva');
   const destino   = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
+  const requiereReenvio = btn.dataset.requiereReenvio === '1';
+
   const para      = document.getElementById('modalPara').value.trim();
   const asunto    = document.getElementById('modalAsunto').value.trim();
   const cuerpo    = document.getElementById('modalCuerpo').value;
@@ -920,6 +1154,12 @@ async function enviarReserva() {
   try {
     const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
     const payload = {};
+
+    let verificacionActualizada = null;
+
+    if (requiereReenvio) {
+      verificacionActualizada = await construirVerificacionActualParaReenvio(destino, actividad);
+    }
 
     for (const f of fechasOrdenadas) {
       const totalEnviado = grupos.reduce((sum, g) => {
@@ -935,6 +1175,19 @@ async function enviarReserva() {
         payload[`reservas.${f}.cuerpo`] = cuerpo;
         payload[`reservas.${f}.totalEnviado`] = totalEnviado;
         payload[`reservas.${f}.updatedAt`] = serverTimestamp();
+
+        if (requiereReenvio) {
+          payload[`reservas.${f}.revisionCambios`] = {
+            estado: 'REENVIO_ENVIADO',
+            ultimaRevision: new Date().toISOString(),
+            reenviadoEn: new Date().toISOString(),
+            cambios: []
+          };
+
+          if (verificacionActualizada) {
+            payload[`reservas.${f}.verificacionPagos`] = verificacionActualizada;
+          }
+        }
       }
     }
 
