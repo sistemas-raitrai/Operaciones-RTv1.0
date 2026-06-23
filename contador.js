@@ -603,20 +603,73 @@ function deduplicarCambiosReserva(cambios = []) {
   });
 }
 
+function consolidarCambiosReserva(cambios = []) {
+  const lista = deduplicarCambiosReserva(cambios);
+  const usados = new Set();
+  const consolidados = [];
+
+  lista.forEach((c, idx) => {
+    if (usados.has(idx)) return;
+
+    if (c.tipo !== 'GRUPO_SALE_DE_FECHA') {
+      return;
+    }
+
+    const entradaIdx = lista.findIndex((x, j) =>
+      !usados.has(j) &&
+      j !== idx &&
+      x.tipo === 'GRUPO_ENTRA_A_FECHA' &&
+      String(x.numeroNegocio || '') === String(c.numeroNegocio || '') &&
+      String(x.nombreGrupo || '') === String(c.nombreGrupo || '')
+    );
+
+    if (entradaIdx >= 0) {
+      const entrada = lista[entradaIdx];
+
+      consolidados.push({
+        tipo: 'GRUPO_CAMBIA_DE_FECHA',
+        numeroNegocio: c.numeroNegocio,
+        nombreGrupo: c.nombreGrupo,
+        fechaAntes: c.fecha,
+        fechaAhora: entrada.fecha,
+        antes: c.antes,
+        ahora: entrada.ahora,
+        diferencia: entrada.diferencia,
+        detalle: `Cambia de ${formatearFechaBonita(c.fecha)} a ${formatearFechaBonita(entrada.fecha)}`
+      });
+
+      usados.add(idx);
+      usados.add(entradaIdx);
+    }
+  });
+
+  lista.forEach((c, idx) => {
+    if (!usados.has(idx)) {
+      consolidados.push(c);
+    }
+  });
+
+  return consolidados;
+}
+
 function textoCambioReserva(c) {
   const grupo = [c.numeroNegocio, c.nombreGrupo].filter(Boolean).join(' · ');
   const fecha = c.fecha ? formatearFechaBonita(c.fecha) : '';
+
+  if (c.tipo === 'GRUPO_CAMBIA_DE_FECHA') {
+    return `${grupo}: cambió de fecha ${formatearFechaBonita(c.fechaAntes)} → ${formatearFechaBonita(c.fechaAhora)}.`;
+  }
 
   if (c.tipo === 'CAMBIO_PAGOS_GRUPO') {
     return `${grupo}: cambio en sistema de pagos (${c.detalle || 'PAX actualizado'}).`;
   }
 
   if (c.tipo === 'GRUPO_ENTRA_A_FECHA') {
-    return `${fecha}: entra ${grupo} con ${c.ahora?.pax || 0} PAX.`;
+    return `${fecha}: se agregó ${grupo} con ${c.ahora?.pax || 0} PAX.`;
   }
 
   if (c.tipo === 'GRUPO_SALE_DE_FECHA') {
-    return `${fecha}: sale ${grupo}. Antes tenía ${c.antes?.pax || 0} PAX.`;
+    return `${fecha}: se quitó ${grupo}. Antes tenía ${c.antes?.pax || 0} PAX.`;
   }
 
   if (c.tipo === 'CAMBIO_PAX_EN_FECHA') {
@@ -627,7 +680,7 @@ function textoCambioReserva(c) {
 }
 
 function construirBloqueCambiosReserva(revisionCambios) {
-  const cambios = deduplicarCambiosReserva(revisionCambios?.cambios || []);
+  const cambios = consolidarCambiosReserva(revisionCambios?.cambios || []);
   if (!cambios.length) return '';
 
   return cambios
@@ -639,7 +692,7 @@ function pintarAlertaRevisionCambiosReserva(revisionCambios) {
   const box = document.getElementById('alertaRevisionCambiosReserva');
   if (!box) return;
 
-  const cambios = deduplicarCambiosReserva(revisionCambios?.cambios || []);
+  const cambios = consolidarCambiosReserva(revisionCambios?.cambios || []);
 
   if (!cambios.length) {
     box.style.display = 'none';
