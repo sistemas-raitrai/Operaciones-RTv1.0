@@ -734,6 +734,28 @@ function construirBloqueCambiosReserva(revisionCambios) {
     .join('\n');
 }
 
+function construirBloqueHistorialCambiosReserva(historial = []) {
+  if (!Array.isArray(historial) || !historial.length) return '';
+
+  return historial
+    .map((item, idx) => {
+      const fecha = item.fecha
+        ? new Date(item.fecha).toLocaleString('es-CL', { dateStyle: 'short', timeStyle: 'short' })
+        : `Reenvío ${idx + 1}`;
+
+      const cambios = consolidarCambiosReserva(item.cambios || []);
+
+      if (!cambios.length) return '';
+
+      return [
+        `Reenvío anterior ${idx + 1} (${fecha}):`,
+        ...cambios.map(c => `- ${textoCambioReserva(c)}`)
+      ].join('\n');
+    })
+    .filter(Boolean)
+    .join('\n\n');
+}
+
 function pintarAlertaRevisionCambiosReserva(revisionCambios) {
   const box = document.getElementById('alertaRevisionCambiosReserva');
   if (!box) return;
@@ -767,7 +789,8 @@ async function obtenerRevisionCambiosReserva(destino, actividad) {
   if (!snap.exists()) {
     return {
       requiereReenvio: false,
-      cambios: []
+      cambios: [],
+      historial: []
     };
   }
 
@@ -775,19 +798,42 @@ async function obtenerRevisionCambiosReserva(destino, actividad) {
   const fechasActividad = obtenerFechasConPaxActividad(actividad);
 
   let cambios = [];
+  let historial = [];
 
   fechasActividad.forEach(fecha => {
     const r = reservas?.[fecha];
+
     if (r?.estado === 'REQUIERE_REENVIO' && r?.revisionCambios?.estado === 'CON_CAMBIOS') {
       cambios = cambios.concat(r.revisionCambios.cambios || []);
+    }
+
+    if (Array.isArray(r?.revisionCambiosHistorial)) {
+      historial = historial.concat(r.revisionCambiosHistorial);
     }
   });
 
   cambios = deduplicarCambiosReserva(cambios);
 
+  const historialMap = new Map();
+
+  historial.forEach(item => {
+    const key = [
+      item.fecha || '',
+      item.usuario || '',
+      JSON.stringify(item.cambios || [])
+    ].join('__');
+
+    if (!historialMap.has(key)) {
+      historialMap.set(key, item);
+    }
+  });
+
+  historial = Array.from(historialMap.values());
+
   return {
     requiereReenvio: cambios.length > 0,
-    cambios
+    cambios,
+    historial
   };
 }
 
@@ -1120,10 +1166,20 @@ function reconstruirCorreoReserva(destino, actividad, proveedor, opciones = {}) 
   let cuerpo = `Estimado/a ${provInfo.contacto || ''}:\n\n`;
 
   if (requiereReenvio) {
+    const bloqueActual = construirBloqueCambiosReserva(revisionCambios);
+    const bloqueHistorial = construirBloqueHistorialCambiosReserva(revisionCambios.historial || []);
+
     cuerpo += `Junto con saludar, reenviamos la confirmación actualizada de la reserva, ya que hubo cambios posteriores al último envío.\n\n`;
-    cuerpo += `Cambios detectados:\n`;
-    cuerpo += `${construirBloqueCambiosReserva(revisionCambios)}\n\n`;
-    cuerpo += `A continuación se envía el detalle actualizado de la reserva:\n\n`;
+
+    cuerpo += `Cambios de este reenvío:\n`;
+    cuerpo += `${bloqueActual || '- Sin detalle disponible.'}\n\n`;
+
+    if (bloqueHistorial) {
+      cuerpo += `Historial de cambios anteriores desde la reserva original:\n`;
+      cuerpo += `${bloqueHistorial}\n\n`;
+    }
+
+    cuerpo += `En cualquier caso, el detalle vigente y final de la reserva es el siguiente:\n\n`;
   } else {
     cuerpo += `A continuación se envía detalle de reserva para:\n\n`;
   }
@@ -1240,6 +1296,7 @@ async function enviarReserva() {
   const btn       = document.getElementById('btnEnviarReserva');
   const destino   = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
+  const proveedor = btn.dataset.proveedor;
   const requiereReenvio = btn.dataset.requiereReenvio === '1';
 
   const para      = document.getElementById('modalPara').value.trim();
@@ -1252,11 +1309,15 @@ async function enviarReserva() {
 
   try {
     const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
-    const payload = {};
+    const snap = await getDoc(ref);
+    const reservasActuales = snap.exists() ? (snap.data()?.reservas || {}) : {};
 
+    const payload = {};
     let verificacionActualizada = null;
+    let revisionActual = null;
 
     if (requiereReenvio) {
+      revisionActual = await obtenerRevisionCambiosReserva(destino, actividad);
       verificacionActualizada = await construirVerificacionActualParaReenvio(destino, actividad);
     }
 
@@ -1276,6 +1337,23 @@ async function enviarReserva() {
         payload[`reservas.${f}.updatedAt`] = serverTimestamp();
 
         if (requiereReenvio) {
+          const historialAnterior = Array.isArray(reservasActuales?.[f]?.revisionCambiosHistorial)
+            ? reservasActuales[f].revisionCambiosHistorial
+            : [];
+
+          const nuevoItemHistorial = {
+            fecha: new Date().toISOString(),
+            usuario: auth.currentUser?.email || '',
+            asunto,
+            proveedor: proveedor || '',
+            cambios: revisionActual?.cambios || []
+          };
+
+          payload[`reservas.${f}.revisionCambiosHistorial`] = [
+            ...historialAnterior,
+            nuevoItemHistorial
+          ];
+
           payload[`reservas.${f}.revisionCambios`] = {
             estado: 'REENVIO_ENVIADO',
             ultimaRevision: new Date().toISOString(),
