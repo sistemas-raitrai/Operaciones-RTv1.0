@@ -20,6 +20,7 @@ let fechasOrdenadas = [];      // ['YYYY-MM-DD', ...] con pax > 0
 let proveedores = {};          // mapa proveedor -> {contacto, correo}
 let reservaActualSnapshot = null;
 let ultimaVerificacionPagos = null;
+let revisionCambiosReservaActiva = null;
 const API_PAGOS_URL = '/api/pagos';
 
 function obtenerAnoComercialContador(fecha = new Date()) {
@@ -1219,7 +1220,14 @@ async function sincronizarPaxReservaManual() {
   try {
     await sincronizarGruposReservaConPagos(actividad);
 
-    const revisionCambios = await obtenerRevisionCambiosReserva(destino, actividad);
+    const revisionNueva = await obtenerRevisionCambiosReserva(destino, actividad);
+
+    const revisionCambios =
+      revisionCambiosReservaActiva?.requiereReenvio
+        ? revisionCambiosReservaActiva
+        : revisionNueva;
+
+    revisionCambiosReservaActiva = revisionCambios;
 
     pintarAlertaRevisionCambiosReserva(revisionCambios);
     reconstruirCorreoReserva(destino, actividad, proveedor, { revisionCambios });
@@ -1333,7 +1341,7 @@ async function enviarReserva() {
     let revisionActual = null;
 
     if (requiereReenvio) {
-      revisionActual = await obtenerRevisionCambiosReserva(destino, actividad);
+      revisionActual = revisionCambiosReservaActiva || await obtenerRevisionCambiosReserva(destino, actividad);
       verificacionActualizada = await construirVerificacionActualParaReenvio(destino, actividad);
     }
 
