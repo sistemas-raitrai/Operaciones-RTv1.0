@@ -1219,7 +1219,23 @@ async function sincronizarPaxReservaManual() {
   try {
     await sincronizarGruposReservaConPagos(actividad);
 
-    reconstruirCorreoReserva(destino, actividad, proveedor);
+    const revisionCambios = await obtenerRevisionCambiosReserva(destino, actividad);
+
+    pintarAlertaRevisionCambiosReserva(revisionCambios);
+    reconstruirCorreoReserva(destino, actividad, proveedor, { revisionCambios });
+
+    const btnEnv = document.getElementById('btnEnviarReserva');
+    if (btnEnv) {
+      btnEnv.dataset.destino = destino;
+      btnEnv.dataset.actividad = actividad;
+      btnEnv.dataset.proveedor = proveedor;
+      btnEnv.dataset.requiereReenvio = revisionCambios.requiereReenvio ? '1' : '0';
+    }
+
+    document.getElementById('modalAsunto').value = revisionCambios.requiereReenvio
+      ? `Reenvío de confirmación: ${actividad} en ${destino}`
+      : `Reserva: ${actividad} en ${destino}`;
+
     mostrarEstadoSyncPaxReserva(actividad);
 
     alert('PAX sincronizado con pagos y correo actualizado.');
