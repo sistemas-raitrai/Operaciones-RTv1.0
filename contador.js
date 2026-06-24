@@ -1269,6 +1269,7 @@ async function abrirModalReserva(event) {
   const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
 
   const revisionCambios = await obtenerRevisionCambiosReserva(destino, actividad);
+  revisionCambiosReservaActiva = revisionCambios;
 
   document.getElementById('modalPara').value = provInfo.correo;
 
