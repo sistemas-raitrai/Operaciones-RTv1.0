@@ -88,6 +88,24 @@ function injectPageLightStyles(){
 
 injectPageLightStyles();
 
+function progressSet(porcentaje, titulo, detalle = '') {
+  if (window.RaiProgress) {
+    window.RaiProgress.set(porcentaje, titulo, detalle);
+  }
+}
+
+function progressOk(detalle = 'Documentos cargados correctamente.') {
+  if (window.RaiProgress) {
+    window.RaiProgress.ok(detalle);
+  }
+}
+
+function progressError(error) {
+  if (window.RaiProgress) {
+    window.RaiProgress.error(error);
+  }
+}
+
 /* ====== NUEVO: utilidades para exportar PDF y contenedores ====== */
 async function ensureHtml2Pdf(){
   if (window.html2pdf) return;
@@ -3372,63 +3390,93 @@ function fillSelect(sel, values, placeholder='(Todos)'){
    Búsqueda y filtrado
 ────────────────────────────────────────────────────────────────────── */
 async function buscar(){
-  const nombre = norm(document.getElementById('fNombre').value);
-  const codigo = norm(document.getElementById('fCodigo').value);
-  const coord  = norm(document.getElementById('fCoordinador').value);
-  const ano    = document.getElementById('fAno').value;
-  const destino= document.getElementById('fDestino').value;
-  const programa = document.getElementById('fPrograma').value;
-  const hotelId = document.getElementById('fHotel').value;
-  const inicioDia = document.getElementById('fInicioDia').value; // yyyy-mm-dd
+  try {
+    progressSet(10, 'Cargando documentos...', 'Leyendo filtros seleccionados');
 
-  // 1) Prefiltro por grupos (aplico where donde es seguro)
-  // Para simplificar, traemos todos y filtramos cliente por ahora.
-  const snap = await getDocs(collection(db,'grupos'));
-  const candidatos = [];
-  snap.forEach(d=>{
-    const g = { id:d.id, ...d.data() };
-    if (ano && String(g.anoViaje||'') !== String(ano)) return;
-    if (destino && String(g.destino||'') !== String(destino)) return;
-    if (programa && String(g.programa||'') !== String(programa)) return;
+    const nombre = norm(document.getElementById('fNombre').value);
+    const codigo = norm(document.getElementById('fCodigo').value);
+    const coord  = norm(document.getElementById('fCoordinador').value);
+    const ano    = document.getElementById('fAno').value;
+    const destino= document.getElementById('fDestino').value;
+    const programa = document.getElementById('fPrograma').value;
+    const hotelId = document.getElementById('fHotel').value;
+    const inicioDia = document.getElementById('fInicioDia').value; // yyyy-mm-dd
 
-    const N = `${g.nombreGrupo||''} ${g.aliasGrupo||''}`.trim();
-    if (nombre && !norm(N).includes(nombre)) return;
+    progressSet(20, 'Leyendo grupos...', 'Consultando colección grupos');
 
-    const C = `${g.numeroNegocio||''}`;
-    if (codigo && !norm(C).includes(codigo)) return;
+    const snap = await getDocs(collection(db,'grupos'));
 
-    const COORDS = Array.isArray(g.coordinadores) ? g.coordinadores.join(' ') : (g.coordinador||'');
-    if (coord && !norm(COORDS).includes(coord)) return;
+    progressSet(35, 'Filtrando grupos...', 'Aplicando año, destino, programa, nombre y código');
 
-    candidatos.push(g);
-  });
+    const candidatos = [];
+    snap.forEach(d=>{
+      const g = { id:d.id, ...d.data() };
+      if (ano && String(g.anoViaje||'') !== String(ano)) return;
+      if (destino && String(g.destino||'') !== String(destino)) return;
+      if (programa && String(g.programa||'') !== String(programa)) return;
 
-  // 2) Para cada candidato: cargar vuelos (para obtener primer vuelo de ida) y (si es necesario) hoteles para filtrar por hotel
-  const rows = [];
-  for (const g of candidatos){
-    const vuelosDocs = await loadVuelosInfo(g);
-    const vuelosNorm = vuelosDocs.map(normalizeVuelo);
-    const inicioISO  = computeInicioSoloPrimerVueloIda(vuelosNorm); // ← SOLO primer vuelo de ida
+      const N = `${g.nombreGrupo||''} ${g.aliasGrupo||''}`.trim();
+      if (nombre && !norm(N).includes(nombre)) return;
 
-    if (inicioDia) {
-      if (!inicioISO) continue;               // sin vuelos de ida → no entra
-      if (inicioISO !== inicioDia) continue;  // no coincide el día
-    }
+      const C = `${g.numeroNegocio||''}`;
+      if (codigo && !norm(C).includes(codigo)) return;
 
-    // Filtro por hotel (si se pide)
-    if (hotelId) {
-      const asigs = await loadHotelesInfo(g);
-      const hit = (asigs||[]).some(a => String(a.hotel?.id||'') === hotelId);
-      if (!hit) continue;
-    }
+      const COORDS = Array.isArray(g.coordinadores) ? g.coordinadores.join(' ') : (g.coordinador||'');
+      if (coord && !norm(COORDS).includes(coord)) return;
 
-    rows.push({
-      g,
-      inicioISO
+      candidatos.push(g);
     });
-  }
 
-  renderTabla(rows);
+    progressSet(
+      45,
+      'Preparando documentos...',
+      `${candidatos.length} grupo(s) encontrados para revisar`
+    );
+
+    const rows = [];
+
+    for (let i = 0; i < candidatos.length; i++) {
+      const g = candidatos[i];
+
+      const avance = 45 + Math.round((i / Math.max(1, candidatos.length)) * 40);
+
+      progressSet(
+        avance,
+        'Revisando vuelos y hoteles...',
+        `Procesando grupo ${i + 1} de ${candidatos.length}`
+      );
+
+      const vuelosDocs = await loadVuelosInfo(g);
+      const vuelosNorm = vuelosDocs.map(normalizeVuelo);
+      const inicioISO  = computeInicioSoloPrimerVueloIda(vuelosNorm);
+
+      if (inicioDia) {
+        if (!inicioISO) continue;
+        if (inicioISO !== inicioDia) continue;
+      }
+
+      if (hotelId) {
+        const asigs = await loadHotelesInfo(g);
+        const hit = (asigs||[]).some(a => String(a.hotel?.id||'') === hotelId);
+        if (!hit) continue;
+      }
+
+      rows.push({
+        g,
+        inicioISO
+      });
+    }
+
+    progressSet(90, 'Construyendo tabla...', 'Mostrando resultados en pantalla');
+
+    renderTabla(rows);
+
+    progressOk(`${rows.length} grupo(s) cargados correctamente.`);
+
+  } catch (error) {
+    console.error('Error en buscar()', error);
+    progressError(error);
+  }
 }
 
 /* ──────────────────────────────────────────────────────────────────────
@@ -4946,7 +4994,10 @@ async function init(){
 
 // Asegura que init() corra cuando el DOM está listo
 document.addEventListener('DOMContentLoaded', () => {
-  init().catch(e => console.error('Error en init()', e));
+  init().catch(e => {
+    console.error('Error en init()', e);
+    progressError(e);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────
