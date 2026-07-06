@@ -305,39 +305,49 @@ async function init() {
   
   const destinosServicios = ['BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'NORTE DE CHILE'];
   
+  // 1) Cargar reservas operacionales desde Servicios, una sola vez por destino
+  const reservasOperacionalesPorDestino = new Map();
+  
+  for (const destino of destinosServicios) {
+    const opSnap = await getDocs(
+      collection(db, 'Servicios', destino, 'Listado')
+    );
+  
+    const mapaDestino = new Map();
+  
+    opSnap.docs.forEach(docSnap => {
+      const data = docSnap.data() || {};
+      mapaDestino.set(docSnap.id, data.reservas || {});
+    });
+  
+    reservasOperacionalesPorDestino.set(destino, mapaDestino);
+  }
+  
+  // 2) Cargar configuración anual desde ServiciosPorAno
   for (const destino of destinosServicios) {
     const listadoSnap = await getDocs(
       collection(db, 'ServiciosPorAno', anoTarifaContador, 'Destinos', destino, 'Listado')
     );
   
-    for (const sDoc of listadoSnap.docs) {
-      const data = sDoc.data();
+    const reservasDestino = reservasOperacionalesPorDestino.get(destino) || new Map();
+  
+    listadoSnap.docs.forEach(sDoc => {
+      const data = sDoc.data() || {};
   
       const nombreServicio = data.servicio || sDoc.id;
       const proveedorServicio = data.proveedor || data.Proveedor || '';
-  
-      let reservasOperacion = {};
-  
-      try {
-        const opSnap = await getDoc(doc(db, 'Servicios', destino, 'Listado', nombreServicio));
-        if (opSnap.exists()) {
-          reservasOperacion = opSnap.data()?.reservas || {};
-        }
-      } catch (error) {
-        console.warn('No se pudo leer reservas operacionales:', destino, nombreServicio, error);
-      }
   
       servicios.push({
         destino,
         nombre: nombreServicio,
         proveedor: proveedorServicio,
-        reservas: reservasOperacion
+        reservas: reservasDestino.get(nombreServicio) || reservasDestino.get(sDoc.id) || {}
       });
-    }
+    });
   }
   
   console.log('Servicios configuración cargados desde año:', anoTarifaContador);
-  console.log('Reservas operacionales leídas desde Servicios');
+  console.log('Reservas operacionales cargadas en bloque desde Servicios');
   console.timeEnd('4 servicios');
 
   console.time('5 proveedores');
