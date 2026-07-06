@@ -38,15 +38,10 @@ function getAnoContadorActivo() {
 }
 
 function refServicioContador(destino, actividad) {
-  return doc(
-    db,
-    'ServiciosPorAno',
-    getAnoContadorActivo(),
-    'Destinos',
-    destino,
-    'Listado',
-    actividad
-  );
+  // Opción B:
+  // Las reservas, snapshots, verificaciones e historial operacional
+  // siguen viviendo en la colección antigua Servicios.
+  return doc(db, 'Servicios', destino, 'Listado', actividad);
 }
 
 function limpiarTablaContadorSiExiste() {
@@ -315,19 +310,34 @@ async function init() {
       collection(db, 'ServiciosPorAno', anoTarifaContador, 'Destinos', destino, 'Listado')
     );
   
-    listadoSnap.docs.forEach(sDoc => {
+    for (const sDoc of listadoSnap.docs) {
       const data = sDoc.data();
+  
+      const nombreServicio = data.servicio || sDoc.id;
+      const proveedorServicio = data.proveedor || data.Proveedor || '';
+  
+      let reservasOperacion = {};
+  
+      try {
+        const opSnap = await getDoc(doc(db, 'Servicios', destino, 'Listado', nombreServicio));
+        if (opSnap.exists()) {
+          reservasOperacion = opSnap.data()?.reservas || {};
+        }
+      } catch (error) {
+        console.warn('No se pudo leer reservas operacionales:', destino, nombreServicio, error);
+      }
   
       servicios.push({
         destino,
-        nombre: data.servicio || sDoc.id,
-        proveedor: data.proveedor || data.Proveedor || '',
-        reservas: data.reservas || {}
+        nombre: nombreServicio,
+        proveedor: proveedorServicio,
+        reservas: reservasOperacion
       });
-    });
+    }
   }
   
-  console.log('Servicios contador cargados desde año:', anoTarifaContador);
+  console.log('Servicios configuración cargados desde año:', anoTarifaContador);
+  console.log('Reservas operacionales leídas desde Servicios');
   console.timeEnd('4 servicios');
 
   console.time('5 proveedores');
