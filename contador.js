@@ -262,23 +262,28 @@ async function init() {
 
   console.time('4 servicios');
   const servicios = [];
-  const serviciosRoot = await getDocs(collection(db, 'Servicios'));
-
-  for (const destinoDoc of serviciosRoot.docs) {
-    const destino = destinoDoc.id;
-    const listadoSnap = await getDocs(collection(db, 'Servicios', destino, 'Listado'));
-
+  const anoTarifaContador = anoComercial;
+  
+  const destinosServicios = ['BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'NORTE DE CHILE'];
+  
+  for (const destino of destinosServicios) {
+    const listadoSnap = await getDocs(
+      collection(db, 'ServiciosPorAno', anoTarifaContador, 'Destinos', destino, 'Listado')
+    );
+  
     listadoSnap.docs.forEach(sDoc => {
       const data = sDoc.data();
-
+  
       servicios.push({
         destino,
-        nombre: sDoc.id,
+        nombre: data.servicio || sDoc.id,
         proveedor: data.proveedor || data.Proveedor || '',
         reservas: data.reservas || {}
       });
     });
   }
+  
+  console.log('Servicios contador cargados desde año:', anoTarifaContador);
   console.timeEnd('4 servicios');
 
   console.time('5 proveedores');
