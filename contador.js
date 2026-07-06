@@ -1270,7 +1270,7 @@ function reconstruirCorreoReserva(destino, actividad, proveedor, opciones = {}) 
     cuerpo += `\n`;
   });
 
-  cuerpo += `Atte.\nOperaciones RaiTrai`;
+  cuerpo += `Atte.\nEquipo de Operaciones RaiTrai`;
 
   document.getElementById('modalCuerpo').value = cuerpo;
 }
