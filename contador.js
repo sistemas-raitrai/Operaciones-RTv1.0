@@ -22,6 +22,7 @@ let reservaActualSnapshot = null;
 let ultimaVerificacionPagos = null;
 let revisionCambiosReservaActiva = null;
 const API_PAGOS_URL = '/api/pagos';
+let anoContadorActivo = obtenerAnoComercialContador();
 
 function obtenerAnoComercialContador(fecha = new Date()) {
   const ano = fecha.getFullYear();
@@ -29,6 +30,37 @@ function obtenerAnoComercialContador(fecha = new Date()) {
 
   // Año comercial cambia el 1 de marzo
   return mes >= 3 ? String(ano) : String(ano - 1);
+}
+
+function getAnoContadorActivo() {
+  const sel = document.getElementById('filtroAnoContador');
+  return String(sel?.value || anoContadorActivo || obtenerAnoComercialContador());
+}
+
+function refServicioContador(destino, actividad) {
+  return doc(
+    db,
+    'ServiciosPorAno',
+    getAnoContadorActivo(),
+    'Destinos',
+    destino,
+    'Listado',
+    actividad
+  );
+}
+
+function limpiarTablaContadorSiExiste() {
+  if ($.fn.DataTable.isDataTable('#tablaConteo')) {
+    $('#tablaConteo').DataTable().destroy();
+  }
+
+  thead.innerHTML = '';
+  tbody.innerHTML = '';
+
+  const filtroDestino = document.getElementById('filtroDestino');
+  if (filtroDestino) {
+    filtroDestino.innerHTML = '<option value="">Todos los destinos</option>';
+  }
 }
 
 function normalizarActividadReserva(txt = '') {
@@ -242,12 +274,24 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(au
 async function init() {
   console.time('CONTADOR carga total');
 
+  limpiarTablaContadorSiExiste();
+
+  const selectorAno = document.getElementById('filtroAnoContador');
+  if (selectorAno) {
+    selectorAno.value = anoContadorActivo;
+
+    selectorAno.onchange = () => {
+      anoContadorActivo = selectorAno.value;
+      init();
+    };
+  }
+
   console.time('1 grupos');
   const gruposSnap = await getDocs(collection(db, 'grupos'));
   console.timeEnd('1 grupos');
 
   console.time('2 filtrar grupos');
-  const anoComercial = obtenerAnoComercialContador();
+  const anoComercial = getAnoContadorActivo();
 
   grupos = gruposSnap.docs
     .map(d => ({ id: d.id, ...d.data() }))
@@ -789,7 +833,7 @@ function pintarAlertaRevisionCambiosReserva(revisionCambios) {
 }
 
 async function obtenerRevisionCambiosReserva(destino, actividad) {
-  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+  const ref = refServicioContador(destino, actividad);
   const snap = await getDoc(ref);
 
   if (!snap.exists()) {
@@ -1315,7 +1359,7 @@ async function guardarPendiente() {
   const fecha     = btn.dataset.fecha;
   const cuerpo    = document.getElementById('modalCuerpo').value;
 
-  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+  const ref = refServicioContador(destino, actividad);
   await updateDoc(ref, { [`reservas.${fecha}`]: { estado: 'PENDIENTE', cuerpo } });
 
   document.querySelector(`.btn-reserva[data-actividad="${actividad}"]`).textContent = 'PENDIENTE';
@@ -1338,7 +1382,7 @@ async function enviarReserva() {
   window.open(`${baseUrl}&${params}`, '_blank');
 
   try {
-    const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+    const ref = refServicioContador(destino, actividad);
     const snap = await getDoc(ref);
     const reservasActuales = snap.exists() ? (snap.data()?.reservas || {}) : {};
 
@@ -1991,7 +2035,7 @@ async function revisarCambiosReservasEnviadas(servicios, todosLosReservas) {
     }
 
     if (Object.keys(payload).length) {
-      const ref = doc(db, 'Servicios', servicio.destino, 'Listado', servicio.nombre);
+      const ref = refServicioContador(servicio.destino, servicio.nombre);
       await updateDoc(ref, payload);
     }
   }
@@ -2666,7 +2710,7 @@ async function guardarVerificacionPagosEnReserva() {
   const actividad = reservaActualSnapshot.actividad;
   const cuerpo = document.getElementById('modalCuerpo').value;
 
-  const ref = doc(db, 'Servicios', destino, 'Listado', actividad);
+  const ref = refServicioContador(destino, actividad);
 
   const payload = {};
   const verificacionGuardada = {
