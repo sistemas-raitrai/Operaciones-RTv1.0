@@ -3562,9 +3562,10 @@ async function buscar(){
         const snap = await getDocs(query(gruposRef, ...filtros));
         addSnap(snap);
       }else{
-        // Respaldo sólo si el usuario busca por nombre/coordinador/hotel/inicio sin año/destino/programa.
-        // Idealmente usar siempre Año para evitar leer todo.
-        console.warn('[DOCUMENTOS] Búsqueda sin filtros directos. Se leerá grupos completo como respaldo.');
+        // Búsqueda tipo "buscador" por Grupo / Coordinador / Hotel / Inicio.
+        // Lee grupos y luego filtra localmente por palabra.
+        console.warn('[DOCUMENTOS] Búsqueda tipo buscador. Se leerán grupos para filtrar localmente.');
+      
         const snap = await getDocs(gruposRef);
         addSnap(snap);
       }
