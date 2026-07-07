@@ -3826,7 +3826,6 @@ function renderTabla(rows){
     });
   });
 
-  const chkAll = document.getElementById('chkAll');
   if (chkAll){
     chkAll.onchange = (ev)=>{
       tb.querySelectorAll('.rowchk').forEach(c=> c.checked = ev.currentTarget.checked);
