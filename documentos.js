@@ -19,6 +19,98 @@ const TZ = 'America/Santiago';
 const norm = (s='') => s.toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 const safe = (v, fb='—') => (v===0||v)?v:fb;
 
+function rtNow(){
+  return Math.round(performance.now());
+}
+
+function rtLog(etapa, data = {}){
+  console.log(`[DOCUMENTOS][${etapa}]`, {
+    t: `${rtNow()} ms`,
+    ...data
+  });
+}
+
+function limpiarCursoPorAno(texto = '', anoViaje = ''){
+  let s = String(texto || '').trim();
+  const ano = String(anoViaje || '').trim();
+
+  if (!s) return '';
+
+  if (ano){
+    const re = new RegExp(`([A-Za-zÁÉÍÓÚÑáéíóúñ0-9°º\\s]{1,30})\\s*\\(?\\s*${ano}\\s*\\)?`, 'g');
+    const matches = [...s.matchAll(re)];
+
+    if (matches.length){
+      s = matches[matches.length - 1][1] || s;
+    }
+
+    s = s
+      .replace(new RegExp(`\\(?\\s*${ano}\\s*\\)?`, 'g'), '')
+      .replace(/\b20\d{2}\b/g, '')
+      .replace(/[()]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  return s;
+}
+
+function getCursoOperacional(grupo){
+  const ano = grupo.anoViaje || '';
+
+  const cursoBase = (
+    grupo.curso ||
+    grupo.subgrupo ||
+    ''
+  ).toString().trim();
+
+  if (cursoBase){
+    return limpiarCursoPorAno(cursoBase, ano);
+  }
+
+  const nombreBase = (
+    grupo.nombreGrupo ||
+    grupo.aliasGrupo ||
+    ''
+  ).toString().trim();
+
+  return limpiarCursoPorAno(nombreBase, ano);
+}
+
+function getNombreGrupoOperacional(grupo){
+  const colegio = (
+    grupo.colegio ||
+    grupo.cliente ||
+    ''
+  ).toString().trim();
+
+  const curso = getCursoOperacional(grupo);
+
+  const nombre = [colegio, curso]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return nombre ||
+    grupo.nombreGrupo ||
+    grupo.aliasGrupo ||
+    grupo.numeroNegocio ||
+    '—';
+}
+
+function getTextoBusquedaGrupo(grupo){
+  return norm([
+    grupo.colegio,
+    grupo.cliente,
+    grupo.curso,
+    grupo.subgrupo,
+    grupo.nombreGrupo,
+    grupo.aliasGrupo,
+    getNombreGrupoOperacional(grupo)
+  ].filter(Boolean).join(' '));
+}
+
 // Espera activa a que una condición sea verdadera (o venza el timeout)
 async function waitFor(testFn, timeout = 6000, step = 120) {
   const t0 = Date.now();
@@ -1350,9 +1442,9 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   const fechaInicioViajeISO = computeInicioSoloPrimerVueloIda(vuelosNorm); // solo primer vuelo de ida
   const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
 
-  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
-  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
+  const curso   = getCursoOperacional(grupo);
   const destino = grupo.destino || '';
   const programa= grupo.programa || '';
   const ano     = grupo.anoViaje || '';
@@ -1458,7 +1550,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     ? recs.map(r => `<li>${r}</li>`).join('')
     : `<li>${recs}</li>`;
 
-  const titulo  = `Viaje de Estudios ${(grupo.colegio || grupo.cliente || '')} ${(grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '')}`.trim();
+  const titulo  = `Viaje de Estudios ${nombreOperacional}`.trim();
 
   // Itinerario compacto (para sección 7)
   const itinHTML = (() => {
@@ -2146,9 +2238,9 @@ function getEquipajePreliminar(grupo, vuelosNorm){
 }
 
 function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
-  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
-  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
+  const curso   = getCursoOperacional(grupo);
   const destino = grupo.destino || '';
   const programa= grupo.programa || '';
   const ano     = grupo.anoViaje || '';
@@ -2304,7 +2396,7 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
           <tbody>
             <tr>
               <th>Grupo</th>
-              <td><strong>${safe(alias)}</strong></td>
+              <td><strong>${safe(nombreOperacional)}</strong></td>
             </tr>
             <tr>
               <th>Programa</th>
@@ -2750,14 +2842,14 @@ async function collectVoucherActivities(grupo){
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
 // ──────────────────────────────────────────────────────────────
 function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
-  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
-  const curso   = grupo.curso || grupo.subgrupo || grupo.nombreGrupo || '';
+  const curso   = getCursoOperacional(grupo);
   const destino = grupo.destino || '';
   const programa= grupo.programa || '';
   const ano     = grupo.anoViaje || '';
 
-  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
+  const lineaPrincipal = [nombreOperacional, destino].filter(Boolean).join(' · ');
 
   // ── RANGO DE VIAJE + DECORADO DE ABONOS (fechas y "IMPREVISTOS")
   const { inicio: inicioViajeISO, fin: finViajeISO } = computeRangoViaje(grupo, abonos || []);
@@ -3032,9 +3124,9 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
 
 function buildVouchersDoc(grupo, vouchersData){
-  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
-  const curso   = grupo.curso || grupo.subgrupo || '';
+  const curso   = getCursoOperacional(grupo);
   const destino = grupo.destino || '';
   const programa= grupo.programa || '';
   const ano     = grupo.anoViaje || '';
@@ -3043,9 +3135,8 @@ function buildVouchersDoc(grupo, vouchersData){
 
   const aliasLabel = (() => {
     const num = grupo.numeroNegocio || '';
-    const al  = grupo.aliasGrupo || grupo.nombreGrupo || '';
-    if (num && al) return `(${num}) ${al}`;
-    return num || al || '';
+    if (num && nombreOperacional) return `(${num}) ${nombreOperacional}`;
+    return nombreOperacional || num || '';
   })();
 
   const totalEst = Number(grupo.estudiantes || grupo.cantidadEstudiantes || 0) || 0;
@@ -3198,21 +3289,14 @@ async function buildVouchersHTML(grupoId){
 }
 
 function buildItinerarioDoc(grupo){
-  const alias   = grupo.aliasGrupo || grupo.nombreGrupo || grupo.numeroNegocio || '';
+  const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
-  const curso   = grupo.curso || grupo.subgrupo || '';
+  const curso   = getCursoOperacional(grupo);
   const destino = grupo.destino || '';
   const programa= grupo.programa || '';
   const ano     = grupo.anoViaje || '';
 
-  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
-
-  const aliasLabel = (() => {
-    const num = grupo.numeroNegocio || '';
-    const al  = grupo.aliasGrupo || grupo.nombreGrupo || '';
-    if (num && al) return `(${num}) ${al}`;
-    return num || al || '';
-  })();
+  const lineaPrincipal = [nombreOperacional, destino].filter(Boolean).join(' · ');
 
   // Rango de viaje para mostrar INICIO / FIN
   const { inicio: inicioViajeISO, fin: finViajeISO } = computeRangoViaje(grupo, []);
@@ -3390,41 +3474,139 @@ function fillSelect(sel, values, placeholder='(Todos)'){
    Búsqueda y filtrado
 ────────────────────────────────────────────────────────────────────── */
 async function buscar(){
+  const t0 = performance.now();
+
   try {
     progressSet(10, 'Cargando documentos...', 'Leyendo filtros seleccionados');
 
-    const nombre = norm(document.getElementById('fNombre').value);
-    const codigo = norm(document.getElementById('fCodigo').value);
-    const coord  = norm(document.getElementById('fCoordinador').value);
-    const ano    = document.getElementById('fAno').value;
-    const destino= document.getElementById('fDestino').value;
+    const nombreRaw = document.getElementById('fNombre').value.trim();
+    const codigoRaw = document.getElementById('fCodigo').value.trim();
+    const coordRaw  = document.getElementById('fCoordinador').value.trim();
+
+    const nombre = norm(nombreRaw);
+    const codigo = norm(codigoRaw);
+    const coord  = norm(coordRaw);
+
+    const ano      = document.getElementById('fAno').value;
+    const destino  = document.getElementById('fDestino').value;
     const programa = document.getElementById('fPrograma').value;
-    const hotelId = document.getElementById('fHotel').value;
-    const inicioDia = document.getElementById('fInicioDia').value; // yyyy-mm-dd
+    const hotelId  = document.getElementById('fHotel').value;
+    const inicioDia = document.getElementById('fInicioDia').value;
 
-    progressSet(20, 'Leyendo grupos...', 'Consultando colección grupos');
+    rtLog('BUSCAR_INICIO', {
+      nombreRaw,
+      codigoRaw,
+      coordRaw,
+      ano,
+      destino,
+      programa,
+      hotelId,
+      inicioDia
+    });
 
-    const snap = await getDocs(collection(db,'grupos'));
+    if (!nombre && !codigo && !coord && !ano && !destino && !programa && !hotelId && !inicioDia){
+      alert('Selecciona al menos un filtro antes de buscar.');
+      progressOk('Selecciona filtros y presiona Buscar.');
+      return;
+    }
 
-    progressSet(35, 'Filtrando grupos...', 'Aplicando año, destino, programa, nombre y código');
+    progressSet(20, 'Leyendo grupos...', 'Consultando Firestore según filtros');
 
-    const candidatos = [];
-    snap.forEach(d=>{
-      const g = { id:d.id, ...d.data() };
-      if (ano && String(g.anoViaje||'') !== String(ano)) return;
-      if (destino && String(g.destino||'') !== String(destino)) return;
-      if (programa && String(g.programa||'') !== String(programa)) return;
+    const gruposRef = collection(db, 'grupos');
+    const vistos = new Map();
 
-      const N = `${g.nombreGrupo||''} ${g.aliasGrupo||''}`.trim();
-      if (nombre && !norm(N).includes(nombre)) return;
+    const addSnap = (snap) => {
+      snap.forEach(d => {
+        vistos.set(d.id, { id:d.id, ...d.data() });
+      });
+    };
 
-      const C = `${g.numeroNegocio||''}`;
-      if (codigo && !norm(C).includes(codigo)) return;
+    const tFirestore0 = performance.now();
 
-      const COORDS = Array.isArray(g.coordinadores) ? g.coordinadores.join(' ') : (g.coordinador||'');
-      if (coord && !norm(COORDS).includes(coord)) return;
+    // 1) Código: búsqueda directa por docId y numeroNegocio
+    if (codigoRaw){
+      try{
+        const d = await getDoc(doc(db, 'grupos', codigoRaw));
+        if (d.exists()) vistos.set(d.id, { id:d.id, ...d.data() });
+      }catch(e){
+        console.warn('No se pudo buscar por docId', codigoRaw, e);
+      }
 
-      candidatos.push(g);
+      try{
+        const snap1 = await getDocs(query(gruposRef, where('numeroNegocio', '==', codigoRaw)));
+        addSnap(snap1);
+      }catch(e){
+        console.warn('No se pudo buscar numeroNegocio string', codigoRaw, e);
+      }
+
+      const codigoNum = Number(codigoRaw);
+      if (!Number.isNaN(codigoNum)){
+        try{
+          const snap2 = await getDocs(query(gruposRef, where('numeroNegocio', '==', codigoNum)));
+          addSnap(snap2);
+        }catch(e){
+          console.warn('No se pudo buscar numeroNegocio number', codigoNum, e);
+        }
+      }
+    }
+
+    // 2) Si no hay código, usamos filtros directos Firestore
+    if (!codigoRaw){
+      const filtros = [];
+
+      if (ano) filtros.push(where('anoViaje', '==', Number(ano)));
+      if (destino) filtros.push(where('destino', '==', destino));
+      if (programa) filtros.push(where('programa', '==', programa));
+
+      if (filtros.length){
+        const snap = await getDocs(query(gruposRef, ...filtros));
+        addSnap(snap);
+      }else{
+        // Respaldo sólo si el usuario busca por nombre/coordinador/hotel/inicio sin año/destino/programa.
+        // Idealmente usar siempre Año para evitar leer todo.
+        console.warn('[DOCUMENTOS] Búsqueda sin filtros directos. Se leerá grupos completo como respaldo.');
+        const snap = await getDocs(gruposRef);
+        addSnap(snap);
+      }
+    }
+
+    const candidatosBase = [...vistos.values()];
+
+    rtLog('FIRESTORE_GRUPOS_OK', {
+      ms: Math.round(performance.now() - tFirestore0),
+      gruposLeidos: candidatosBase.length
+    });
+
+    progressSet(35, 'Filtrando grupos...', 'Aplicando filtros locales');
+
+    const tFiltro0 = performance.now();
+
+    const candidatos = candidatosBase.filter(g => {
+      if (ano && String(g.anoViaje || '') !== String(ano)) return false;
+      if (destino && String(g.destino || '') !== String(destino)) return false;
+      if (programa && String(g.programa || '') !== String(programa)) return false;
+
+      if (nombre && !getTextoBusquedaGrupo(g).includes(nombre)) return false;
+
+      if (codigo){
+        const C = norm(`${g.numeroNegocio || ''} ${g.id || ''}`);
+        if (!C.includes(codigo)) return false;
+      }
+
+      if (coord){
+        const COORDS = Array.isArray(g.coordinadores)
+          ? g.coordinadores.join(' ')
+          : (g.coordinador || '');
+
+        if (!norm(COORDS).includes(coord)) return false;
+      }
+
+      return true;
+    });
+
+    rtLog('FILTRO_LOCAL_OK', {
+      ms: Math.round(performance.now() - tFiltro0),
+      candidatos: candidatos.length
     });
 
     progressSet(
@@ -3438,6 +3620,7 @@ async function buscar(){
     for (let i = 0; i < candidatos.length; i++) {
       const g = candidatos[i];
 
+      const tGrupo0 = performance.now();
       const avance = 45 + Math.round((i / Math.max(1, candidatos.length)) * 40);
 
       progressSet(
@@ -3446,23 +3629,52 @@ async function buscar(){
         `Procesando grupo ${i + 1} de ${candidatos.length}`
       );
 
+      rtLog('GRUPO_INICIO', {
+        idx: i + 1,
+        total: candidatos.length,
+        id: g.id,
+        codigo: g.numeroNegocio,
+        grupo: getNombreGrupoOperacional(g)
+      });
+
       const vuelosDocs = await loadVuelosInfo(g);
       const vuelosNorm = vuelosDocs.map(normalizeVuelo);
       const inicioISO  = computeInicioSoloPrimerVueloIda(vuelosNorm);
 
       if (inicioDia) {
-        if (!inicioISO) continue;
-        if (inicioISO !== inicioDia) continue;
+        if (!inicioISO) {
+          rtLog('GRUPO_DESCARTADO_SIN_INICIO', { id:g.id });
+          continue;
+        }
+        if (inicioISO !== inicioDia) {
+          rtLog('GRUPO_DESCARTADO_INICIO_DISTINTO', {
+            id:g.id,
+            inicioISO,
+            inicioDia
+          });
+          continue;
+        }
       }
 
       if (hotelId) {
         const asigs = await loadHotelesInfo(g);
-        const hit = (asigs||[]).some(a => String(a.hotel?.id||'') === hotelId);
-        if (!hit) continue;
+        const hit = (asigs || []).some(a => String(a.hotel?.id || '') === hotelId);
+
+        if (!hit) {
+          rtLog('GRUPO_DESCARTADO_HOTEL', { id:g.id, hotelId });
+          continue;
+        }
       }
 
       rows.push({
         g,
+        inicioISO
+      });
+
+      rtLog('GRUPO_OK', {
+        id: g.id,
+        ms: Math.round(performance.now() - tGrupo0),
+        vuelos: vuelosDocs.length,
         inicioISO
       });
     }
@@ -3470,6 +3682,11 @@ async function buscar(){
     progressSet(90, 'Construyendo tabla...', 'Mostrando resultados en pantalla');
 
     renderTabla(rows);
+
+    rtLog('BUSCAR_FIN', {
+      totalMs: Math.round(performance.now() - t0),
+      rows: rows.length
+    });
 
     progressOk(`${rows.length} grupo(s) cargados correctamente.`);
 
@@ -3485,28 +3702,31 @@ async function buscar(){
 function renderTabla(rows){
   const tb = document.getElementById('tbody');
   const chkAll = document.getElementById('chkAll');
+
   tb.innerHTML = '';
-  chkAll.checked = false;
+  if (chkAll) chkAll.checked = false;
 
   rows.sort((a,b)=>{
-    const A=a.inicioISO||'', B=b.inicioISO||'';
-    if (A!==B) return A.localeCompare(B);
-    const an = norm(a.g.aliasGrupo||a.g.nombreGrupo||'');
-    const bn = norm(b.g.aliasGrupo||b.g.nombreGrupo||'');
+    const A = a.inicioISO || '';
+    const B = b.inicioISO || '';
+    if (A !== B) return A.localeCompare(B);
+
+    const an = norm(getNombreGrupoOperacional(a.g));
+    const bn = norm(getNombreGrupoOperacional(b.g));
     return an.localeCompare(bn);
   });
 
   for (const { g, inicioISO } of rows){
-    const tr=document.createElement('tr');
+    const tr = document.createElement('tr');
     tr.dataset.id = g.id;
 
-    const alias = g.aliasGrupo || g.nombreGrupo || g.numeroNegocio || '—';
-    const grupo = `${g.colegio||g.cliente||''} ${g.curso||g.subgrupo||g.nombreGrupo||''}`.trim();
+    const grupo = getNombreGrupoOperacional(g);
+    const ano = g.anoViaje || '—';
     const inicioTxt = inicioISO ? formatShortDate(inicioISO) : '—';
 
     tr.innerHTML = `
       <td><input type="checkbox" class="rowchk"/></td>
-      <td>${alias}</td>
+      <td>${ano}</td>
       <td>${grupo || '—'}</td>
       <td>${g.numeroNegocio ?? '—'}</td>
       <td>${g.destino ?? '—'}</td>
@@ -3524,7 +3744,6 @@ function renderTabla(rows){
           <button class="btn-add btn-itinerario">I</button>
         </div>
       </td>
-
     `;
 
     tb.appendChild(tr);
@@ -3536,26 +3755,28 @@ function renderTabla(rows){
     btn.addEventListener('click', async (ev)=>{
       ev.preventDefault();
       ev.stopPropagation();
-  
+
       document.getElementById('modalAjustesDocumento')?.classList.remove('open');
-  
+
       const tr = ev.currentTarget.closest('tr');
       const id = tr?.dataset?.id;
       if (!id) return;
+
       await abrirModalNotasDocumento(id);
     });
   });
-  
+
   tb.querySelectorAll('.btn-ajustes-doc').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
       ev.preventDefault();
       ev.stopPropagation();
-  
+
       document.getElementById('modalNotasDocumento')?.classList.remove('open');
-  
+
       const tr = ev.currentTarget.closest('tr');
       const id = tr?.dataset?.id;
       if (!id) return;
+
       await abrirModalAjustesDocumento(id);
     });
   });
@@ -3568,7 +3789,7 @@ function renderTabla(rows){
       await descargarPreconfirmacion(id);
     });
   });
-  
+
   tb.querySelectorAll('.btn-one').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
       const tr = ev.currentTarget.closest('tr');
@@ -3596,7 +3817,7 @@ function renderTabla(rows){
     });
   });
 
-    tb.querySelectorAll('.btn-itinerario').forEach(btn=>{
+  tb.querySelectorAll('.btn-itinerario').forEach(btn=>{
     btn.addEventListener('click', async (ev)=>{
       const tr = ev.currentTarget.closest('tr');
       const id = tr?.dataset?.id;
@@ -3605,10 +3826,12 @@ function renderTabla(rows){
     });
   });
 
-
-  document.getElementById('chkAll').onchange = (ev)=>{
-    tb.querySelectorAll('.rowchk').forEach(c=> c.checked = ev.currentTarget.checked);
-  };
+  const chkAll = document.getElementById('chkAll');
+  if (chkAll){
+    chkAll.onchange = (ev)=>{
+      tb.querySelectorAll('.rowchk').forEach(c=> c.checked = ev.currentTarget.checked);
+    };
+  }
 }
 
 function escapeHtml(s=''){
@@ -4988,8 +5211,16 @@ async function init(){
     btnResAll.addEventListener('click', descargarVouchersTodos);
   }
 
-  // 3) Cargar tabla inicial (opcional: puedes comentarlo si no quieres auto-búsqueda)
-  await buscar();
+  // 3) No cargar tabla automáticamente.
+  // La búsqueda se ejecuta sólo cuando el usuario presiona Buscar.
+  const countHint = document.getElementById('countHint');
+  if (countHint) {
+    countHint.textContent = 'Selecciona filtros y presiona Buscar.';
+  }
+  
+  rtLog('INIT_OK', {
+    mensaje: 'Página lista. No se ejecutó búsqueda automática.'
+  });
 }
 
 // Asegura que init() corra cuando el DOM está listo
