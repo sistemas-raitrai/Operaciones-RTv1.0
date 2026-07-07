@@ -3559,8 +3559,37 @@ async function buscar(){
       if (programa) filtros.push(where('programa', '==', programa));
 
       if (filtros.length){
-        const snap = await getDocs(query(gruposRef, ...filtros));
-        addSnap(snap);
+        // Si hay año, buscamos tanto como número como string,
+        // porque en Firebase puede existir anoViaje: 2026 o anoViaje: "2026".
+        if (ano){
+          const filtrosSinAno = [];
+      
+          if (destino) filtrosSinAno.push(where('destino', '==', destino));
+          if (programa) filtrosSinAno.push(where('programa', '==', programa));
+      
+          const anoNum = Number(ano);
+      
+          if (!Number.isNaN(anoNum)){
+            const snapNum = await getDocs(query(
+              gruposRef,
+              where('anoViaje', '==', anoNum),
+              ...filtrosSinAno
+            ));
+            addSnap(snapNum);
+          }
+      
+          const snapStr = await getDocs(query(
+            gruposRef,
+            where('anoViaje', '==', String(ano)),
+            ...filtrosSinAno
+          ));
+          addSnap(snapStr);
+      
+        }else{
+          const snap = await getDocs(query(gruposRef, ...filtros));
+          addSnap(snap);
+        }
+      
       }else{
         // Búsqueda tipo "buscador" por Grupo / Coordinador / Hotel / Inicio.
         // Lee grupos y luego filtra localmente por palabra.
