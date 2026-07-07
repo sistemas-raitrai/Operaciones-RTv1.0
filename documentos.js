@@ -56,17 +56,7 @@ function limpiarCursoPorAno(texto = '', anoViaje = ''){
 }
 
 function getCursoOperacional(grupo){
-  const ano = grupo.anoViaje || '';
-
-  const cursoBase = (
-    grupo.curso ||
-    grupo.subgrupo ||
-    ''
-  ).toString().trim();
-
-  if (cursoBase){
-    return limpiarCursoPorAno(cursoBase, ano);
-  }
+  const ano = String(grupo.anoViaje || '').trim();
 
   const nombreBase = (
     grupo.nombreGrupo ||
@@ -74,7 +64,42 @@ function getCursoOperacional(grupo){
     ''
   ).toString().trim();
 
-  return limpiarCursoPorAno(nombreBase, ano);
+  // Prioridad: si nombreGrupo trae el año de viaje,
+  // extraemos el curso asociado a ese año.
+  if (ano && nombreBase.includes(ano)){
+    const re = new RegExp(`([^()\\-–—,/]+)\\s*\\(\\s*${ano}\\s*\\)`, 'gi');
+    const matches = [...nombreBase.matchAll(re)];
+
+    if (matches.length){
+      let curso = matches[matches.length - 1][1] || '';
+
+      curso = curso
+        .replace(new RegExp(`\\b20\\d{2}\\b`, 'g'), '')
+        .replace(/[()]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      // Si viene "PUMAHUE PUERTO MONTT 3C", nos quedamos con "3C"
+      const mCurso = curso.match(/([0-9]{1,2}\s*[A-ZÁÉÍÓÚÑ]|[A-Z]{1,3}\s*MEDIO|[IVX]+\s*[A-ZÁÉÍÓÚÑ]?|KINDER|PREKINDER)$/i);
+      if (mCurso) return mCurso[1].replace(/\s+/g, '').toUpperCase();
+
+      return curso.toUpperCase();
+    }
+  }
+
+  // Respaldo: si no se pudo extraer desde nombreGrupo,
+  // usamos curso/subgrupo.
+  const cursoBase = (
+    grupo.curso ||
+    grupo.subgrupo ||
+    ''
+  ).toString().trim();
+
+  if (cursoBase){
+    return limpiarCursoPorAno(cursoBase, ano).toUpperCase();
+  }
+
+  return limpiarCursoPorAno(nombreBase, ano).toUpperCase();
 }
 
 function getNombreGrupoOperacional(grupo){
