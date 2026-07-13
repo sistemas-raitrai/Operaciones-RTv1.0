@@ -1730,12 +1730,12 @@ async function mostrarHistorial(abono) {
 }
 
 function abonosFiltrados() {
-  const ano = el('filtroAno').value;
-  const tipo = el('filtroTipo').value;
-  const destino = el('filtroDestino').value;
-  const estado = el('filtroEstado').value;
-  const usuario = norm(el('filtroUsuario').value);
-  const buscar = norm(el('filtroBuscar').value);
+  const ano = el('filtroAno')?.value || '';
+  const tipo = el('filtroTipo')?.value || '';
+  const destino = el('filtroDestino')?.value || '';
+  const estado = el('filtroEstado')?.value || '';
+  const usuario = norm(el('filtroUsuario')?.value || '');
+  const buscar = norm(el('filtroBuscar')?.value || '');
 
   return ABONOS.filter(abono => {
     if (ano && String(abono.ano) !== String(ano)) return false;
@@ -1743,11 +1743,16 @@ function abonosFiltrados() {
     if (destino && norm(abono.destino) !== norm(destino)) return false;
     if (estado && norm(abono.estado) !== norm(estado)) return false;
 
-    if (usuario && !norm(
-      abono.updatedByEmail ||
-      abono.createdByEmail ||
-      ''
-    ).includes(usuario)) return false;
+    if (
+      usuario &&
+      !norm(
+        abono.updatedByEmail ||
+        abono.createdByEmail ||
+        ''
+      ).includes(usuario)
+    ) {
+      return false;
+    }
 
     if (buscar) {
       const bolsa = norm([
