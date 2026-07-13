@@ -1379,6 +1379,15 @@
         Historial de abonos
       </h3>
 
+      <select id="limiteAbonos" title="Cantidad de registros visibles">
+          <option value="10" selected>Ver 10</option>
+          <option value="50">Ver 50</option>
+          <option value="100">Ver 100</option>
+          <option value="todos">Ver todos</option>
+      </select>
+                
+      <span id="pagInfo" class="tag"></span>
+
       <div class="toolbar">
         <select id="filtroAno">
           <option value="">
@@ -1463,15 +1472,6 @@
         >
           Limpiar
         </button>
-        
-        <select id="limiteAbonos" title="Cantidad de registros visibles">
-          <option value="10" selected>Ver 10</option>
-          <option value="50">Ver 50</option>
-          <option value="100">Ver 100</option>
-          <option value="todos">Ver todos</option>
-        </select>
-                
-        <span id="pagInfo" class="tag"></span>
       </div>
 
       <div class="table-wrap">
