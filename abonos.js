@@ -173,6 +173,35 @@ function setEstadoFormulario(texto = '', esError = false) {
   el('formEstado').style.color = esError ? '#b91c1c' : '#166534';
 }
 
+function abrirModalAbono() {
+  const modal = el('abonoModal');
+
+  if (!modal) {
+    console.error('No se encontró #abonoModal');
+    return;
+  }
+
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function cerrarModalAbono({
+  limpiar = true
+} = {}) {
+  const modal = el('abonoModal');
+
+  if (!modal) return;
+
+  modal.classList.remove('open');
+  document.body.style.overflow = '';
+
+  el('abResultadosBusqueda')?.classList.add('hidden');
+
+  if (limpiar) {
+    limpiarFormulario();
+  }
+}
+
 async function cargarGrupos() {
   const snap = await getDocs(collection(db, RUTA_GRUPOS));
   GRUPOS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -1196,7 +1225,12 @@ async function guardarAbono() {
     await cargarAbonos();
     poblarFiltrosGenerales();
     renderAbonos();
+    
     limpiarFormulario();
+    
+    cerrarModalAbono({
+      limpiar: false
+    });
   } catch (error) {
     console.error(error);
     setEstadoFormulario(error.message || 'No se pudo guardar.', true);
@@ -1210,6 +1244,10 @@ function limpiarFormulario() {
   abonoEditandoId = null;
   comprobanteActualURL = '';
   ENTIDAD_SELECCIONADA = null;
+
+  if (el('abonoModalTitulo')) {
+    el('abonoModalTitulo').textContent = 'Agregar abono';
+  }
 
   el('btnGuardarAbono').innerHTML = `
     <span class="material-symbols-outlined">save</span>
@@ -1255,8 +1293,14 @@ function limpiarFormulario() {
 
 function iniciarEdicion(abono) {
   abonoEditandoId = abono.id;
+
   comprobanteActualURL =
     abono.comprobanteURL || '';
+
+  if (el('abonoModalTitulo')) {
+    el('abonoModalTitulo').textContent =
+      `Editar abono · versión ${Number(abono.version || 1)}`;
+  }
 
   el('btnGuardarAbono').innerHTML = `
     <span class="material-symbols-outlined">save_as</span>
@@ -1283,7 +1327,8 @@ function iniciarEdicion(abono) {
         opcion.value === String(abono.ano)
     )
   ) {
-    el('abAno').value = String(abono.ano);
+    el('abAno').value =
+      String(abono.ano);
   }
 
   poblarDestinosFormulario({
@@ -1294,7 +1339,8 @@ function iniciarEdicion(abono) {
   const opcionDestino =
     [...el('abDestino').options].find(
       opcion =>
-        norm(opcion.value) === norm(abono.destino)
+        norm(opcion.value) ===
+        norm(abono.destino)
     );
 
   if (opcionDestino) {
@@ -1400,7 +1446,8 @@ function iniciarEdicion(abono) {
     Number(abono.monto || 0);
 
   el('abFormaPago').value =
-    abono.formaPago || 'transferencia';
+    abono.formaPago ||
+    'transferencia';
 
   el('abReferencia').value =
     abono.referencia || '';
@@ -1411,10 +1458,7 @@ function iniciarEdicion(abono) {
   el('abMotivoCambio').value = '';
   el('abComprobante').value = '';
 
-  window.scrollTo({
-    top: 0,
-    behavior: 'smooth'
-  });
+  abrirModalAbono();
 }
 
 async function archivarAbono(abono) {
@@ -1825,15 +1869,66 @@ function conectarEventos() {
     }
   );
 
+  /* AGREGAR ABONO */
+
+  el('btnAgregarAbono').addEventListener(
+    'click',
+    () => {
+      limpiarFormulario();
+      abrirModalAbono();
+
+      setTimeout(() => {
+        el('abAno')?.focus();
+      }, 50);
+    }
+  );
+
+  /* CERRAR MODAL */
+
+  el('btnCerrarModalAbono').addEventListener(
+    'click',
+    () => {
+      cerrarModalAbono({
+        limpiar: true
+      });
+    }
+  );
+
+  /* CERRAR AL TOCAR FONDO */
+
+  el('abonoModal').addEventListener(
+    'click',
+    event => {
+      if (
+        event.target ===
+        el('abonoModal')
+      ) {
+        cerrarModalAbono({
+          limpiar: true
+        });
+      }
+    }
+  );
+
+  /* GUARDAR */
+
   el('btnGuardarAbono').addEventListener(
     'click',
     guardarAbono
   );
 
+  /* CANCELAR EDICIÓN */
+
   el('btnCancelarEdicion').addEventListener(
     'click',
-    limpiarFormulario
+    () => {
+      cerrarModalAbono({
+        limpiar: true
+      });
+    }
   );
+
+  /* FILTROS */
 
   el('btnAplicarFiltros').addEventListener(
     'click',
@@ -1855,6 +1950,8 @@ function conectarEventos() {
     renderAbonos
   );
 
+  /* HISTORIAL */
+
   el('btnCerrarHistorial').addEventListener(
     'click',
     () => {
@@ -1872,6 +1969,36 @@ function conectarEventos() {
       ) {
         el('historialModal')
           .classList.remove('open');
+      }
+    }
+  );
+
+  /* ESCAPE */
+
+  document.addEventListener(
+    'keydown',
+    event => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (
+        el('historialModal')
+          .classList.contains('open')
+      ) {
+        el('historialModal')
+          .classList.remove('open');
+
+        return;
+      }
+
+      if (
+        el('abonoModal')
+          .classList.contains('open')
+      ) {
+        cerrarModalAbono({
+          limpiar: true
+        });
       }
     }
   );
@@ -1910,6 +2037,9 @@ async function inicializar() {
     renderAbonos();
 
     setEstadoFormulario('');
+
+    el('abonoModal').classList.remove('open');
+    document.body.style.overflow = '';
 
     console.log(
       '✅ Página de abonos inicializada'
