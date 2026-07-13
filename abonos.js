@@ -51,6 +51,7 @@ let comprobanteActualURL = '';
 let ENTIDAD_SELECCIONADA = null;
 let LIMITE_ABONOS = 10;
 let ULTIMO_ABONO_GUARDADO = null;
+let MOSTRAR_ARCHIVADOS = false;
 
 const el = id => document.getElementById(id);
 
@@ -1738,10 +1739,54 @@ function abonosFiltrados() {
   const buscar = norm(el('filtroBuscar')?.value || '');
 
   return ABONOS.filter(abono => {
-    if (ano && String(abono.ano) !== String(ano)) return false;
-    if (tipo && abono.tipo !== tipo) return false;
-    if (destino && norm(abono.destino) !== norm(destino)) return false;
-    if (estado && norm(abono.estado) !== norm(estado)) return false;
+    const esArchivado =
+      norm(abono.estado) === 'ARCHIVADO';
+
+    /*
+     * Vista normal: solamente abonos activos.
+     * Vista archivados: solamente abonos archivados.
+     */
+    if (MOSTRAR_ARCHIVADOS && !esArchivado) {
+      return false;
+    }
+
+    if (!MOSTRAR_ARCHIVADOS && esArchivado) {
+      return false;
+    }
+
+    if (
+      ano &&
+      String(abono.ano) !== String(ano)
+    ) {
+      return false;
+    }
+
+    if (
+      tipo &&
+      abono.tipo !== tipo
+    ) {
+      return false;
+    }
+
+    if (
+      destino &&
+      norm(abono.destino) !== norm(destino)
+    ) {
+      return false;
+    }
+
+    /*
+     * En la vista normal respeta el filtro de estado.
+     * En archivados no hace falta, porque ya sabemos
+     * que todos tienen estado ARCHIVADO.
+     */
+    if (
+      !MOSTRAR_ARCHIVADOS &&
+      estado &&
+      norm(abono.estado) !== norm(estado)
+    ) {
+      return false;
+    }
 
     if (
       usuario &&
@@ -1765,7 +1810,9 @@ function abonosFiltrados() {
         abono.formaPago
       ].join(' '));
 
-      if (!bolsa.includes(buscar)) return false;
+      if (!bolsa.includes(buscar)) {
+        return false;
+      }
     }
 
     return true;
@@ -1829,6 +1876,47 @@ function renderResumen(lista = []) {
 
   elementos.ARS.textContent =
     fmtNumero(totales.ARS);
+}
+
+function alternarVistaArchivados() {
+  MOSTRAR_ARCHIVADOS = !MOSTRAR_ARCHIVADOS;
+
+  const boton = el('btnVerArchivados');
+  const texto = el('textoBtnArchivados');
+  const filtroEstado = el('filtroEstado');
+
+  if (boton) {
+    boton.classList.toggle(
+      'activo',
+      MOSTRAR_ARCHIVADOS
+    );
+  }
+
+  if (texto) {
+    texto.textContent = MOSTRAR_ARCHIVADOS
+      ? 'Volver a activos'
+      : 'Ver archivados';
+  }
+
+  /*
+   * Al ver archivados, el filtro de estado deja
+   * de ser necesario.
+   */
+  if (filtroEstado) {
+    filtroEstado.disabled = MOSTRAR_ARCHIVADOS;
+
+    if (MOSTRAR_ARCHIVADOS) {
+      filtroEstado.value = '';
+    }
+  }
+
+  LIMITE_ABONOS = 10;
+
+  if (el('limiteAbonos')) {
+    el('limiteAbonos').value = '10';
+  }
+
+  renderAbonos();
 }
 
 function renderAbonos() {
@@ -1936,7 +2024,7 @@ function limpiarFiltros() {
   el('filtroTipo').value = '';
   el('filtroDestino').value = '';
   el('filtroEstado').value = '';
-  el('filtroUsuario').value = '';
+  if (el('filtroUsuario')) el('filtroUsuario').value = '';
   el('filtroBuscar').value = '';
 
   LIMITE_ABONOS = 10;
@@ -2311,6 +2399,11 @@ function conectarEventos() {
     el('btnExportarExcel')?.addEventListener(
       'click',
       exportarAbonosExcel
+    );
+
+    el('btnVerArchivados')?.addEventListener(
+      'click',
+      alternarVistaArchivados
     );
   }
   
