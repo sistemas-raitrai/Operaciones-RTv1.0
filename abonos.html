@@ -10,7 +10,15 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <style>
-    .page { padding: 1rem 1.2rem; }
+    #abonosRoot.page {
+      width:100%;
+      max-width:none;
+      min-width:0;
+      margin:0;
+      padding:1rem 1.2rem;
+      display:block;
+      box-sizing:border-box;
+    }
 
     .toolbar {
       display:flex;
@@ -373,6 +381,171 @@
 
       .btn-accion {
         width:100%;
+      }
+    }
+
+    /* =========================================================
+   AISLAMIENTO VISUAL DE ABONOS.HTML
+   Evita que estilos.css altere las tarjetas de esta página
+   ========================================================= */
+
+    #abonosRoot {
+      display:block !important;
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      margin:0 !important;
+      padding:1rem 1.2rem !important;
+      box-sizing:border-box !important;
+    }
+    
+    #abonosRoot,
+    #abonosRoot * {
+      box-sizing:border-box;
+    }
+    
+    /* Las tarjetas de abonos siempre ocupan todo el ancho */
+    #abonosRoot > .card,
+    #abonosRoot .card {
+      display:block !important;
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      height:auto !important;
+      margin:0 0 1rem 0 !important;
+      padding:1.3rem 1.5rem !important;
+    
+      border:1px solid #e5e7eb !important;
+      border-radius:16px !important;
+      background:#ffffff !important;
+      box-shadow:0 2px 8px rgba(0,0,0,.06) !important;
+    
+      float:none !important;
+      position:relative !important;
+      overflow:visible !important;
+    }
+    
+    /* Título de cada tarjeta */
+    #abonosRoot .card > h3 {
+      display:block !important;
+      width:100% !important;
+      max-width:none !important;
+      margin:0 0 .8rem 0 !important;
+      padding:0 0 .5rem 0 !important;
+    
+      border-bottom:1px solid #e5e7eb !important;
+      font-size:1.3rem !important;
+      color:#111827 !important;
+      text-align:left !important;
+    }
+    
+    /* Formulario a todo el ancho */
+    #abonosRoot .form-grid {
+      display:grid !important;
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+    
+      grid-template-columns:repeat(
+        auto-fit,
+        minmax(min(220px, 100%), 1fr)
+      ) !important;
+    
+      gap:.8rem !important;
+    }
+    
+    /* Cada campo puede crecer correctamente */
+    #abonosRoot .form-item {
+      display:flex !important;
+      flex-direction:column !important;
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      gap:.25rem !important;
+    }
+    
+    #abonosRoot .form-item.full {
+      grid-column:1 / -1 !important;
+    }
+    
+    /* Inputs y selects dentro de esta página */
+    #abonosRoot .input-field,
+    #abonosRoot input,
+    #abonosRoot select,
+    #abonosRoot textarea {
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+    }
+    
+    /* Filtros a todo el ancho */
+    #abonosRoot .toolbar {
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+    }
+    
+    /* Resumen financiero a todo el ancho */
+    #abonosRoot .resumen-financiero {
+      display:grid !important;
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+    
+      grid-template-columns:repeat(
+        auto-fit,
+        minmax(min(180px, 100%), 1fr)
+      ) !important;
+    
+      gap:1rem !important;
+    }
+    
+    /* Tabla */
+    #abonosRoot .table-wrap {
+      display:block !important;
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      overflow-x:auto !important;
+    }
+    
+    #abonosRoot table.finanzas {
+      width:100% !important;
+      max-width:none !important;
+    }
+    
+    /* Escritorio */
+    @media (min-width:900px) {
+      #abonosRoot .form-grid {
+        grid-template-columns:repeat(5, minmax(0, 1fr)) !important;
+      }
+    
+      #abonosRoot .form-item.full {
+        grid-column:1 / -1 !important;
+      }
+    }
+    
+    /* Tablet */
+    @media (min-width:650px) and (max-width:899px) {
+      #abonosRoot .form-grid {
+        grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+      }
+    }
+    
+    /* Celular */
+    @media (max-width:649px) {
+      #abonosRoot {
+        padding:.8rem !important;
+      }
+    
+      #abonosRoot > .card,
+      #abonosRoot .card {
+        padding:1rem !important;
+      }
+    
+      #abonosRoot .form-grid,
+      #abonosRoot .resumen-financiero {
+        grid-template-columns:1fr !important;
       }
     }
   </style>
