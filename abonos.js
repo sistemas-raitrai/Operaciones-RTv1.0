@@ -26,6 +26,11 @@ import {
 const auth = getAuth(app);
 const storage = getStorage(app);
 
+const ES_VISTA_MOVIL =
+  document.documentElement.classList.contains(
+    'abonos-mobile'
+  );
+
 const RUTA_ABONOS = 'AbonosOperaciones';
 const RUTA_SERVICIOS_ANO = 'ServiciosPorAno';
 const RUTA_GRUPOS = 'grupos';
@@ -97,7 +102,7 @@ function getAnoComercialActual() {
 }
 
 function esVistaMovil() {
-  return window.matchMedia('(max-width: 560px)').matches;
+  return ES_VISTA_MOVIL;
 }
 
 function fmtNumero(valor) {
@@ -207,20 +212,41 @@ function abrirModalAbono() {
   }
 
   modal.classList.add('open');
-  document.body.style.overflow = 'hidden';
+
+  if (!ES_VISTA_MOVIL) {
+    document.body.style.overflow = 'hidden';
+  } else {
+    document.body.style.overflow = '';
+  }
 }
 
 function cerrarModalAbono({
-  limpiar = true
+  limpiar = true,
+  forzar = false
 } = {}) {
   const modal = el('abonoModal');
 
-  if (!modal) return;
+  if (!modal) {
+    return;
+  }
+
+  /*
+   * En móvil el formulario es la página principal.
+   * No se cierra salvo que se indique forzar=true.
+   */
+  if (ES_VISTA_MOVIL && !forzar) {
+    if (limpiar) {
+      limpiarFormulario();
+    }
+
+    return;
+  }
 
   modal.classList.remove('open');
   document.body.style.overflow = '';
 
-  el('abResultadosBusqueda')?.classList.add('hidden');
+  el('abResultadosBusqueda')
+    ?.classList.add('hidden');
 
   if (limpiar) {
     limpiarFormulario();
@@ -1277,9 +1303,11 @@ async function guardarAbono() {
 
     }
 
-    await cargarAbonos();
-    poblarFiltrosGenerales();
-    renderAbonos();
+    if (!ES_VISTA_MOVIL) {
+      await cargarAbonos();
+      poblarFiltrosGenerales();
+      renderAbonos();
+    }
     
     const datosConfirmacion = {
       ...ULTIMO_ABONO_GUARDADO
@@ -1287,9 +1315,12 @@ async function guardarAbono() {
     
     limpiarFormulario();
     
-    cerrarModalAbono({
-      limpiar: false
-    });
+    if (!ES_VISTA_MOVIL) {
+      cerrarModalAbono({
+        limpiar: false,
+        forzar: true
+      });
+    }
     
     if (esVistaMovil()) {
       mostrarConfirmacionAbono(
@@ -2025,6 +2056,61 @@ function exportarAbonosExcel() {
   );
 }
 
+async function mostrarHistorialMovil() {
+  try {
+    setEstadoFormulario(
+      'Cargando historial...'
+    );
+
+    await cargarAbonos();
+
+    poblarFiltrosGenerales();
+
+    if (el('filtroAno')) {
+      el('filtroAno').value =
+        getAnoComercialActual();
+    }
+
+    LIMITE_ABONOS = 10;
+
+    if (el('limiteAbonos')) {
+      el('limiteAbonos').value = '10';
+    }
+
+    renderAbonos();
+
+    /*
+     * Salimos visualmente del formulario móvil
+     * y mostramos la vista de historial.
+     */
+    document.documentElement.classList.remove(
+      'abonos-mobile'
+    );
+
+    document.documentElement.classList.add(
+      'abonos-mobile-historial'
+    );
+
+    el('abonoModal').classList.remove('open');
+    el('abonosRoot').style.display = 'block';
+
+    document.body.style.overflow = '';
+
+    setEstadoFormulario('');
+  } catch (error) {
+    console.error(
+      'No se pudo cargar el historial móvil:',
+      error
+    );
+
+    alert(
+      `No se pudo cargar el historial: ${
+        error.message || error
+      }`
+    );
+  }
+}
+
 function conectarEventos() {
   document
     .querySelectorAll('input[name="abTipo"]')
@@ -2117,111 +2203,115 @@ function conectarEventos() {
     }
   );
 
-  /* AGREGAR ABONO */
-
-  el('btnAgregarAbono').addEventListener(
-    'click',
-    () => {
-      limpiarFormulario();
-      abrirModalAbono();
-
-      setTimeout(() => {
-        el('abAno')?.focus();
-      }, 50);
-    }
-  );
-
-  /* CERRAR MODAL */
-
-  el('btnCerrarModalAbono').addEventListener(
-    'click',
-    () => {
-      cerrarModalAbono({
-        limpiar: true
-      });
-    }
-  );
-
-  /* CERRAR AL TOCAR FONDO */
-
-  el('abonoModal').addEventListener(
-    'click',
-    event => {
-      if (
-        event.target ===
-        el('abonoModal')
-      ) {
+  /* AGREGAR ABONO EN ESCRITORIO */
+  
+  if (!ES_VISTA_MOVIL) {
+    el('btnAgregarAbono')?.addEventListener(
+      'click',
+      () => {
+        limpiarFormulario();
+        abrirModalAbono();
+  
+        setTimeout(() => {
+          el('abAno')?.focus();
+        }, 50);
+      }
+    );
+  
+    el('btnCerrarModalAbono')?.addEventListener(
+      'click',
+      () => {
         cerrarModalAbono({
-          limpiar: true
+          limpiar: true,
+          forzar: true
         });
       }
-    }
-  );
-
+    );
+  
+    el('abonoModal')?.addEventListener(
+      'click',
+      event => {
+        if (
+          event.target ===
+          el('abonoModal')
+        ) {
+          cerrarModalAbono({
+            limpiar: true,
+            forzar: true
+          });
+        }
+      }
+    );
+  }
+  
   /* GUARDAR */
-
-  el('btnGuardarAbono').addEventListener(
+  
+  el('btnGuardarAbono')?.addEventListener(
     'click',
     guardarAbono
   );
-
+  
   /* CANCELAR EDICIÓN */
-
-  el('btnCancelarEdicion').addEventListener(
+  
+  el('btnCancelarEdicion')?.addEventListener(
     'click',
     () => {
+      if (ES_VISTA_MOVIL) {
+        limpiarFormulario();
+        return;
+      }
+  
       cerrarModalAbono({
-        limpiar: true
+        limpiar: true,
+        forzar: true
       });
     }
   );
-
-  /* FILTROS */
-
-  el('btnAplicarFiltros').addEventListener(
-    'click',
-    renderAbonos
-  );
-
-  el('btnLimpiarFiltros').addEventListener(
-    'click',
-    limpiarFiltros
-  );
-
-  el('filtroBuscar').addEventListener(
-    'input',
-    renderAbonos
-  );
-
-  el('filtroUsuario').addEventListener(
-    'input',
-    renderAbonos
-  );
-
-  /* CANTIDAD VISIBLE */
-
-  el('limiteAbonos').addEventListener(
-    'change',
-    event => {
-      LIMITE_ABONOS =
-        event.target.value === 'todos'
-          ? 'todos'
-          : Number(event.target.value);
   
-      renderAbonos();
-    }
-  );
+  /* CONTROLES SOLO DE ESCRITORIO */
   
-  /* EXPORTAR EXCEL */
+  if (!ES_VISTA_MOVIL) {
+    el('btnAplicarFiltros')?.addEventListener(
+      'click',
+      renderAbonos
+    );
   
-  el('btnExportarExcel').addEventListener(
-    'click',
-    exportarAbonosExcel
-  );
+    el('btnLimpiarFiltros')?.addEventListener(
+      'click',
+      limpiarFiltros
+    );
+  
+    el('filtroBuscar')?.addEventListener(
+      'input',
+      renderAbonos
+    );
+  
+    el('filtroUsuario')?.addEventListener(
+      'input',
+      renderAbonos
+    );
+  
+    el('limiteAbonos')?.addEventListener(
+      'change',
+      event => {
+        LIMITE_ABONOS =
+          event.target.value === 'todos'
+            ? 'todos'
+            : Number(event.target.value);
+  
+        renderAbonos();
+      }
+    );
+  
+    el('btnExportarExcel')?.addEventListener(
+      'click',
+      exportarAbonosExcel
+    );
+  }
   
   /* CONFIRMACIÓN MÓVIL */
   
-  el('btnAgregarOtroAbono').addEventListener(
+  el('btnAgregarOtroAbono')?.addEventListener(
     'click',
     () => {
       cerrarConfirmacionAbono();
@@ -2230,13 +2320,20 @@ function conectarEventos() {
     }
   );
   
-  el('btnCerrarConfirmacion').addEventListener(
+  el('btnCerrarConfirmacion')?.addEventListener(
     'click',
-    () => {
+    async () => {
       cerrarConfirmacionAbono();
+  
+      /*
+       * Recién cuando el usuario pide ver el historial
+       * cargamos los abonos.
+       */
+      if (ES_VISTA_MOVIL) {
+        await mostrarHistorialMovil();
+      }
     }
   );
-
   /* HISTORIAL */
 
   el('btnCerrarHistorial').addEventListener(
@@ -2280,18 +2377,42 @@ function conectarEventos() {
       }
 
       if (
+        !ES_VISTA_MOVIL &&
         el('abonoModal')
           .classList.contains('open')
       ) {
         cerrarModalAbono({
-          limpiar: true
+          limpiar: true,
+          forzar: true
         });
       }
     }
   );
 }
 
-async function inicializar() {
+async function cargarCatalogosFormulario() {
+  await cargarGrupos();
+
+  await Promise.all([
+    cargarServicios(),
+    cargarHoteles()
+  ]);
+
+  poblarAnos();
+
+  el('abTipoActividad').checked = true;
+  el('abTipoHotel').checked = false;
+  el('abTipoOtro').checked = false;
+
+  poblarDestinosFormulario({
+    conservarDestino: false,
+    conservarSeleccion: false
+  });
+
+  actualizarVistaTipo();
+}
+
+async function inicializarEscritorio() {
   el('abFechaPago').value = nowISODate();
 
   setEstadoFormulario(
@@ -2321,30 +2442,28 @@ async function inicializar() {
     poblarFiltrosGenerales();
     conectarEventos();
     actualizarVistaTipo();
+
+    LIMITE_ABONOS = 10;
+
+    if (el('limiteAbonos')) {
+      el('limiteAbonos').value = '10';
+    }
+
     renderAbonos();
 
     setEstadoFormulario('');
 
-    el('abonoModal').classList.remove('open');
+    el('abonoModal')
+      .classList.remove('open');
+
     document.body.style.overflow = '';
-    
-    if (el('limiteAbonos')) {
-      el('limiteAbonos').value = '10';
-    }
-    
-    LIMITE_ABONOS = 10;
-    
-    if (esVistaMovil()) {
-      limpiarFormulario();
-      abrirModalAbono();
-    }
-    
+
     console.log(
-      '✅ Página de abonos inicializada'
+      '✅ Abonos escritorio inicializado'
     );
   } catch (error) {
     console.error(
-      'Error inicializando abonos:',
+      'Error inicializando escritorio:',
       error
     );
 
@@ -2355,6 +2474,71 @@ async function inicializar() {
       true
     );
   }
+}
+
+async function inicializarMovil() {
+  el('abFechaPago').value = nowISODate();
+
+  /*
+   * El formulario ya está visible por CSS desde antes
+   * de cargar Firebase.
+   */
+  el('abonoModal').classList.add('open');
+
+  if (el('abonoModalTitulo')) {
+    el('abonoModalTitulo').textContent =
+      'Registrar abono';
+  }
+
+  setEstadoFormulario(
+    'Cargando proveedores y servicios...'
+  );
+
+  try {
+    /*
+     * En móvil NO cargamos:
+     * - AbonosOperaciones
+     * - Historial
+     * - Tabla
+     * - Resumen
+     * - Filtros
+     */
+    await cargarCatalogosFormulario();
+
+    conectarEventos();
+
+    limpiarFormulario();
+
+    el('abonoModal').classList.add('open');
+    document.body.style.overflow = '';
+
+    setEstadoFormulario('');
+
+    console.log(
+      '✅ Abonos móvil inicializado'
+    );
+  } catch (error) {
+    console.error(
+      'Error inicializando móvil:',
+      error
+    );
+
+    setEstadoFormulario(
+      `No se pudieron cargar los datos: ${
+        error.message || error
+      }`,
+      true
+    );
+  }
+}
+
+async function inicializar() {
+  if (ES_VISTA_MOVIL) {
+    await inicializarMovil();
+    return;
+  }
+
+  await inicializarEscritorio();
 }
 
 onAuthStateChanged(auth, user => {
