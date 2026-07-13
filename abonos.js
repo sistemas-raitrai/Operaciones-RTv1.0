@@ -1919,6 +1919,23 @@ function alternarVistaArchivados() {
   renderAbonos();
 }
 
+function formatearVersionAbono(version) {
+  const numeroVersion = Math.max(
+    1,
+    Number(version || 1)
+  );
+
+  if (numeroVersion === 1) {
+    return 'Original';
+  }
+
+  const cantidadCambios = numeroVersion - 1;
+
+  return cantidadCambios === 1
+    ? 'Modificado 1 vez'
+    : `Modificado ${cantidadCambios} veces`;
+}
+
 function renderAbonos() {
   const listaFiltrada = abonosFiltrados();
   const listaVisible = aplicarLimiteAbonos(
@@ -1975,7 +1992,9 @@ function renderAbonos() {
           ${escapeHTML(abono.estado || 'REGISTRADO')}
         </span>
       </td>
-      <td class="right">${escapeHTML(abono.version || 1)}</td>
+      <td class="right">
+        ${escapeHTML(formatearVersionAbono(abono.version))}
+      </td>
       <td>
         <div class="acciones">
           <button class="icon-btn btn-editar" type="button" title="Editar">
