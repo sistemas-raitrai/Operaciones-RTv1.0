@@ -132,6 +132,79 @@
       text-align: left !important;
     }
 
+    /* Cabecera del historial: título + cantidad visible */
+    #abonosRoot .historial-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    
+      width: 100%;
+      margin: 0 0 .8rem;
+      padding: 0 0 .5rem;
+    
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    #abonosRoot .historial-head h3 {
+      width: auto !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      border-bottom: none !important;
+    }
+    
+    #abonosRoot .historial-controles {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: .6rem;
+      flex-wrap: wrap;
+    }
+    
+    #abonosRoot #limiteAbonos {
+      width: auto !important;
+      min-width: 105px;
+      padding: .42rem .55rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      font-size: .8rem;
+    }
+    
+    #abonosRoot #pagInfo {
+      font-weight: 700;
+      color: #64748b;
+    }
+    
+    #abonosRoot .btn.archivados {
+      background: #64748b !important;
+      color: #fff !important;
+      border-color: #64748b !important;
+    }
+    
+    #abonosRoot .btn.archivados:hover {
+      background: #475569 !important;
+      border-color: #475569 !important;
+    }
+    
+    #abonosRoot .btn.archivados.activo {
+      background: #f59e0b !important;
+      border-color: #f59e0b !important;
+      color: #fff !important;
+    }
+    
+    @media (max-width: 700px) {
+      #abonosRoot .historial-head {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    
+      #abonosRoot .historial-controles {
+        width: 100%;
+        justify-content: space-between;
+      }
+    }
+
     /* =========================================================
        BOTONES
        ========================================================= */
@@ -1319,6 +1392,17 @@
       
           Exportar Excel
         </button>
+        <button
+          id="btnVerArchivados"
+          class="btn archivados"
+          type="button"
+        >
+          <span class="material-symbols-outlined">
+            inventory_2
+          </span>
+        
+          <span id="textoBtnArchivados">Ver archivados</span>
+        </button>
       </div>
     </div>
 
@@ -1375,18 +1459,23 @@
     <!-- HISTORIAL -->
 
     <section class="card">
-      <h3>
-        Historial de abonos
-      </h3>
+      <div class="historial-head">
+        <h3>
+          Historial de abonos
+        </h3>
+    
+        <div class="historial-controles">
+   
+          <select id="limiteAbonos" title="Cantidad de registros visibles">
+            <option value="10" selected>Ver 10</option>
+            <option value="50">Ver 50</option>
+            <option value="100">Ver 100</option>
+            <option value="todos">Ver todos</option>
+          </select>
 
-      <select id="limiteAbonos" title="Cantidad de registros visibles">
-          <option value="10" selected>Ver 10</option>
-          <option value="50">Ver 50</option>
-          <option value="100">Ver 100</option>
-          <option value="todos">Ver todos</option>
-      </select>
-                
-      <span id="pagInfo" class="tag"></span>
+          <span id="pagInfo" class="tag"></span>
+        </div>
+      </div>
 
       <div class="toolbar">
         <select id="filtroAno">
