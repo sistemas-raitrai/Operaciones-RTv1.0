@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Abonos a Proveedores | RT</title>
+  <title>Abonos | RT</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
   <link rel="stylesheet" href="estilos.css" />
@@ -127,17 +127,18 @@
     }
 
     #abonosRoot textarea {
-      min-height:90px;
+      min-height:58px !important;
       resize:vertical;
     }
 
     /* ===== BLOQUE 1: RESOLVER DESTINO DEL ABONO ===== */
 
     #abonosRoot .resolver-grid {
-      display:grid;
-      grid-template-columns:170px 1fr;
-      gap:.9rem 1rem;
-      align-items:end;
+      display:grid !important;
+      grid-template-columns:120px 240px 180px minmax(320px,1fr) !important;
+      gap:.7rem !important;
+      align-items:end !important;
+      width:100% !important;
     }
 
     #abonosRoot .type-row {
@@ -183,9 +184,9 @@
     }
 
     #abonosRoot .search-zone {
-      margin-top:1rem;
-      border-top:1px dashed #e5e7eb;
-      padding-top:1rem;
+      margin-top:0 !important;
+      border-top:none !important;
+      padding-top:0 !important;
     }
 
     #abonosRoot .search-wrap {
@@ -250,21 +251,32 @@
     }
 
     #abonosRoot .selected-card {
-      display:grid;
-      grid-template-columns:1fr auto;
-      gap:1rem;
-      align-items:center;
-      margin-top:.85rem;
-      padding:.9rem 1rem;
+      display:grid !important;
+      grid-template-columns:minmax(0,1fr) auto !important;
+      gap:.7rem !important;
+      align-items:center !important;
+    
+      width:100% !important;
+    
+      margin-top:.7rem !important;
+      padding:.65rem .8rem !important;
+    
       border:1px solid #bae6fd;
-      border-radius:12px;
+      border-radius:9px;
       background:#f0f9ff;
     }
 
     #abonosRoot .selected-main {
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-      gap:.65rem 1rem;
+      display:grid !important;
+      grid-template-columns:
+        100px
+        minmax(180px,1.2fr)
+        minmax(200px,1.4fr)
+        minmax(120px,.8fr)
+        130px !important;
+    
+      gap:.5rem .8rem !important;
+      align-items:center !important;
     }
 
     #abonosRoot .selected-item span {
@@ -302,10 +314,17 @@
     /* ===== BLOQUE 2: MOVIMIENTO TIPO BANCO ===== */
 
     #abonosRoot .bank-grid {
-      display:grid;
-      grid-template-columns:repeat(5,minmax(0,1fr));
-      gap:.85rem;
-      align-items:end;
+      display:grid !important;
+      grid-template-columns:
+        150px
+        120px
+        160px
+        190px
+        minmax(260px,1fr) !important;
+    
+      gap:.7rem !important;
+      align-items:end !important;
+      width:100% !important;
     }
 
     #abonosRoot .bank-grid .span-2 {
@@ -333,6 +352,35 @@
       gap:.7rem;
       flex-wrap:wrap;
       margin-top:1rem;
+    }
+
+    #abonosRoot .payment-footer {
+      display:grid !important;
+      grid-template-columns:minmax(320px,1fr) auto !important;
+      gap:1rem !important;
+      align-items:end !important;
+    
+      width:100% !important;
+      margin-top:.8rem !important;
+      padding-top:.8rem !important;
+    
+      border-top:1px dashed #e5e7eb;
+    }
+    
+    #abonosRoot .payment-file {
+      max-width:520px;
+    }
+    
+    #abonosRoot .payment-actions {
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:.6rem;
+      flex-wrap:wrap;
+    }
+    
+    #abonosRoot #btnGuardarAbono {
+      min-width:140px !important;
     }
 
     #abonosRoot .btn {
@@ -383,16 +431,18 @@
     /* ===== RESUMEN ===== */
 
     #abonosRoot .summary-grid {
-      display:grid;
-      grid-template-columns:repeat(4,minmax(0,1fr));
-      gap:.8rem;
+      display:grid !important;
+      grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+      gap:.7rem !important;
+      width:100% !important;
     }
 
     #abonosRoot .summary-card {
       background:#f8fafc;
       border:1px solid #e5e7eb;
-      border-radius:10px;
-      padding:.8rem 1rem;
+      border-radius:8px;
+    
+      padding:.55rem .75rem !important;
       text-align:center;
     }
 
@@ -665,8 +715,27 @@
 
       #abonosRoot .type-option,
       #abonosRoot .type-option label {
-        width:100%;
-        min-width:0;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+      
+        min-width:68px !important;
+        height:38px !important;
+      
+        padding:.45rem .7rem !important;
+      
+        border:1px solid #d1d5db;
+        border-radius:8px;
+      
+        background:#fff;
+        color:#374151;
+      
+        font-size:.82rem;
+        font-weight:700;
+        text-transform:none;
+      
+        cursor:pointer;
+        transition:.15s ease;
       }
 
       #abonosRoot .bank-grid {
@@ -695,6 +764,98 @@
         width:100% !important;
       }
     }
+
+    /* =========================================================
+       RESPONSIVE COMPACTO
+       ========================================================= */
+    
+    @media (max-width:1100px) {
+      #abonosRoot .resolver-grid {
+        grid-template-columns:
+          120px
+          230px
+          160px
+          minmax(240px,1fr) !important;
+      }
+    
+      #abonosRoot .bank-grid {
+        grid-template-columns:
+          140px
+          110px
+          140px
+          170px
+          minmax(220px,1fr) !important;
+      }
+    }
+    
+    @media (max-width:850px) {
+      #abonosRoot .resolver-grid {
+        grid-template-columns:1fr 1fr !important;
+      }
+    
+      #abonosRoot .resolver-grid > .field:last-child {
+        grid-column:1 / -1 !important;
+      }
+    
+      #abonosRoot .bank-grid {
+        grid-template-columns:1fr 1fr !important;
+      }
+    
+      #abonosRoot .bank-grid .field.full {
+        grid-column:1 / -1 !important;
+      }
+    
+      #abonosRoot .selected-main {
+        grid-template-columns:1fr 1fr !important;
+      }
+    
+      #abonosRoot .payment-footer {
+        grid-template-columns:1fr !important;
+      }
+    
+      #abonosRoot .payment-file {
+        max-width:none;
+      }
+    
+      #abonosRoot .payment-actions {
+        justify-content:flex-start;
+      }
+    }
+    
+    @media (max-width:560px) {
+      #abonosRoot .resolver-grid {
+        grid-template-columns:1fr !important;
+      }
+    
+      #abonosRoot .resolver-grid > .field:last-child {
+        grid-column:1 !important;
+      }
+    
+      #abonosRoot .type-row {
+        grid-template-columns:repeat(3,1fr) !important;
+      }
+    
+      #abonosRoot .bank-grid {
+        grid-template-columns:1fr !important;
+      }
+    
+      #abonosRoot .selected-main {
+        grid-template-columns:1fr !important;
+      }
+    
+      #abonosRoot .summary-grid {
+        grid-template-columns:1fr 1fr !important;
+      }
+    
+      #abonosRoot .payment-actions {
+        flex-direction:column;
+        align-items:stretch;
+      }
+    
+      #abonosRoot .payment-actions .btn {
+        width:100% !important;
+      }
+    }
   </style>
 </head>
 
@@ -717,36 +878,119 @@
       </p>
 
       <div class="resolver-grid">
+        <!-- AÑO -->
         <div class="field">
           <label for="abAno">Año</label>
           <select id="abAno" class="input"></select>
         </div>
-
+      
+        <!-- TIPO -->
         <div class="field">
           <label>Tipo</label>
-
+      
           <div class="type-row" role="radiogroup" aria-label="Tipo de abono">
             <div class="type-option">
-              <input id="abTipoActividad" type="radio" name="abTipo" value="actividad" checked />
+              <input
+                id="abTipoActividad"
+                type="radio"
+                name="abTipo"
+                value="actividad"
+                checked
+              />
               <label for="abTipoActividad">Actividad</label>
             </div>
-
+      
             <div class="type-option">
-              <input id="abTipoHotel" type="radio" name="abTipo" value="hotel" />
+              <input
+                id="abTipoHotel"
+                type="radio"
+                name="abTipo"
+                value="hotel"
+              />
               <label for="abTipoHotel">Hotel</label>
             </div>
-
+      
             <div class="type-option">
-              <input id="abTipoOtro" type="radio" name="abTipo" value="otro" />
+              <input
+                id="abTipoOtro"
+                type="radio"
+                name="abTipo"
+                value="otro"
+              />
               <label for="abTipoOtro">Otro</label>
             </div>
           </div>
         </div>
-
+      
+        <!-- DESTINO -->
         <div class="field">
           <label for="abDestino">Destino</label>
           <select id="abDestino" class="input"></select>
         </div>
+      
+        <!-- BUSCADOR -->
+        <div id="busquedaCatalogoWrap" class="field">
+          <label for="abBuscarEntidad">
+            Buscar proveedor, servicio, actividad u hotel
+          </label>
+      
+          <div class="search-wrap">
+            <input
+              id="abBuscarEntidad"
+              class="input"
+              type="search"
+              autocomplete="off"
+              placeholder="Ej.: Alliance, Disco BR, Floating, Pioneros..."
+            />
+      
+            <span class="material-symbols-outlined search-icon">
+              search
+            </span>
+      
+            <div
+              id="abResultadosBusqueda"
+              class="search-results hidden"
+            ></div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- SELECCIÓN RESUELTA -->
+      <div id="abSeleccionWrap" class="selected-card hidden">
+        <div class="selected-main">
+          <div class="selected-item">
+            <span>Tipo</span>
+            <strong id="selTipo">—</strong>
+          </div>
+      
+          <div class="selected-item">
+            <span>Proveedor / hotel</span>
+            <strong id="selProveedorHotel">—</strong>
+          </div>
+      
+          <div class="selected-item">
+            <span>Servicio / actividad</span>
+            <strong id="selServicio">—</strong>
+          </div>
+      
+          <div class="selected-item">
+            <span>Destino</span>
+            <strong id="selDestino">—</strong>
+          </div>
+      
+          <div class="selected-item">
+            <span>Moneda sugerida</span>
+            <strong id="selMoneda">—</strong>
+          </div>
+        </div>
+      
+        <button
+          id="btnCambiarSeleccion"
+          class="btn-link"
+          type="button"
+        >
+          Cambiar
+        </button>
       </div>
 
       <!-- BUSCADOR PARA ACTIVIDAD/HOTEL -->
@@ -849,11 +1093,16 @@
       </p>
 
       <div class="bank-grid">
+        <!-- FILA 1 -->
         <div class="field">
           <label for="abFechaPago">Fecha del pago</label>
-          <input id="abFechaPago" class="input" type="date" />
+          <input
+            id="abFechaPago"
+            class="input"
+            type="date"
+          />
         </div>
-
+      
         <div class="field">
           <label for="abMoneda">Moneda</label>
           <select id="abMoneda" class="input">
@@ -863,12 +1112,18 @@
             <option value="ARS">ARS</option>
           </select>
         </div>
-
+      
         <div class="field">
           <label for="abMonto">Monto</label>
-          <input id="abMonto" class="input" type="number" min="0" step="0.01" />
+          <input
+            id="abMonto"
+            class="input"
+            type="number"
+            min="0"
+            step="0.01"
+          />
         </div>
-
+      
         <div class="field">
           <label for="abFormaPago">Forma de pago</label>
           <select id="abFormaPago" class="input">
@@ -880,31 +1135,43 @@
             <option value="otro">Otro</option>
           </select>
         </div>
-
+      
         <div class="field">
-          <label for="abReferencia">N° operación / referencia</label>
-          <input id="abReferencia" class="input" type="text" />
+          <label for="abReferencia">
+            Referencia / asunto
+          </label>
+      
+          <input
+            id="abReferencia"
+            class="input"
+            type="text"
+            placeholder="Ej.: Reserva temporada 2026"
+          />
         </div>
-
-        <div class="field span-2">
-          <label for="abComprobante">Comprobante</label>
-          <div class="file-box">
-            <input id="abComprobante" class="input" type="file" accept="image/*,.pdf" />
-            <span class="file-hint">Imagen o PDF.</span>
-          </div>
-        </div>
-
-        <div class="field span-5">
-          <label for="abNota">Asunto / nota</label>
+      
+        <!-- NOTA OPCIONAL -->
+        <div class="field full">
+          <label for="abNota">
+            Nota adicional
+          </label>
+      
           <textarea
             id="abNota"
             class="input"
-            placeholder="Ej.: Primer abono reserva, saldo actividad, anticipo hotel, etc."
+            rows="2"
+            placeholder="Detalle adicional opcional"
           ></textarea>
         </div>
-
-        <div id="motivoCambioWrap" class="field span-5 hidden">
-          <label for="abMotivoCambio">Motivo del cambio</label>
+      
+        <!-- MOTIVO CAMBIO: SOLO EDICIÓN -->
+        <div
+          id="motivoCambioWrap"
+          class="field full hidden"
+        >
+          <label for="abMotivoCambio">
+            Motivo del cambio
+          </label>
+      
           <input
             id="abMotivoCambio"
             class="input"
@@ -913,19 +1180,7 @@
           />
         </div>
       </div>
-
-      <div class="actions-row">
-        <button id="btnGuardarAbono" class="btn primary" type="button">
-          <span class="material-symbols-outlined">save</span>
-          Guardar abono
-        </button>
-
-        <button id="btnCancelarEdicion" class="btn secondary hidden" type="button">
-          Cancelar edición
-        </button>
-
-        <span id="formEstado" class="form-state"></span>
-      </div>
+      
     </section>
 
     <!-- ======================================================
