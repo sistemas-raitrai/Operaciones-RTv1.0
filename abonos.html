@@ -237,20 +237,54 @@
     #abonosRoot table.finanzas th,
     #abonosRoot table.finanzas td {
       padding: .55rem .6rem;
-      border-bottom: 1px solid #f1f5f9;
+      border-bottom: 1px solid #e5e7eb;
+      border-right: 1px solid #eef2f7;
       vertical-align: middle;
       white-space: nowrap;
       font-size: .82rem;
+    }
+    
+    #abonosRoot table.finanzas th:last-child,
+    #abonosRoot table.finanzas td:last-child {
+      border-right: none;
+    }
+
+    /* Filas alternadas */
+    #abonosRoot table.finanzas tbody tr:nth-child(odd) td {
+      background: #ffffff;
+    }
+    
+    #abonosRoot table.finanzas tbody tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+    
+    /* Resalte al pasar el mouse */
+    #abonosRoot table.finanzas tbody tr:hover td {
+      background: #e0f2fe !important;
+    }
+
+    /* Columnas alternadas suaves */
+    #abonosRoot table.finanzas tbody td:nth-child(odd) {
+      box-shadow: inset 0 0 0 9999px rgba(15, 23, 42, .012);
+    }
+    
+    #abonosRoot table.finanzas tbody td:nth-child(even) {
+      box-shadow: inset 0 0 0 9999px rgba(14, 165, 233, .018);
     }
 
     #abonosRoot table.finanzas thead th {
       position: sticky;
       top: 0;
       z-index: 2;
-      background: #f8fafc;
+    
+      background: #e2e8f0;
+    
+      color: #0f172a;
       text-align: left;
       text-transform: uppercase;
       font-weight: 800;
+    
+      border-bottom: 2px solid #cbd5e1;
     }
 
     #abonosRoot table.finanzas th.right,
