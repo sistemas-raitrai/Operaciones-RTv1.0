@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Abonos a Proveedores | RT</title>
+
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+
+  <style>
+    .page { padding: 1rem 1.2rem; }
+
+    .toolbar {
+      display:flex;
+      flex-direction:column;
+      gap:.6rem;
+      align-items:stretch;
+      margin:.8rem 0 1rem;
+    }
+
+    .toolbar .tag { font-size:.85rem; opacity:.8; }
+
+    .toolbar input,
+    .toolbar select,
+    .toolbar button {
+      padding:.45rem .55rem;
+      border:1px solid #ddd;
+      border-radius:8px;
+      font-size:.9rem;
+      width:100%;
+      max-width:100%;
+      box-sizing:border-box;
+    }
+
+    .toolbar button.primary {
+      background:#0ea5e9;
+      color:#fff;
+      border-color:#0ea5e9;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    .toolbar button.secondary {
+      background:#fff;
+      color:#111827;
+      border-color:#d1d5db;
+      font-weight:700;
+      cursor:pointer;
+    }
+
+    @media (min-width: 900px) {
+      .toolbar {
+        flex-direction:row;
+        align-items:center;
+      }
+
+      .toolbar input,
+      .toolbar select {
+        flex:1 1 0;
+      }
+
+      .toolbar button,
+      .toolbar .tag {
+        flex:0 0 auto;
+        width:auto;
+      }
+    }
+
+    .card {
+      border:1px solid #e5e7eb;
+      border-radius:16px;
+      padding:1.3rem 1.5rem;
+      background:#fff;
+      box-shadow:0 2px 8px rgba(0,0,0,0.06);
+      margin-bottom:1rem;
+    }
+
+    .card h3 {
+      margin:0 0 .8rem;
+      font-size:1.3rem;
+      color:#111827;
+      border-bottom:1px solid #e5e7eb;
+      padding-bottom:.5rem;
+    }
+
+    .form-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+      gap:.8rem;
+    }
+
+    .form-item {
+      display:flex;
+      flex-direction:column;
+      gap:.25rem;
+    }
+
+    .form-item.full {
+      grid-column:1 / -1;
+    }
+
+    .form-item label {
+      font-size:.78rem;
+      text-transform:uppercase;
+      color:#4b5563;
+      font-weight:600;
+    }
+
+    .input-field {
+      padding:.48rem .58rem;
+      border-radius:8px;
+      border:1px solid #d1d5db;
+      font-size:.9rem;
+      background:#fff;
+      box-sizing:border-box;
+      width:100%;
+    }
+
+    .input-field:focus {
+      outline:none;
+      border-color:#0ea5e9;
+      box-shadow:0 0 0 2px rgba(14,165,233,0.2);
+    }
+
+    textarea.input-field {
+      min-height:88px;
+      resize:vertical;
+    }
+
+    .btn-row {
+      display:flex;
+      gap:.6rem;
+      flex-wrap:wrap;
+      margin-top:1rem;
+    }
+
+    .btn-accion {
+      padding:.6rem 1.2rem;
+      border-radius:8px;
+      border:1px solid #d1d5db;
+      background:#fff;
+      cursor:pointer;
+      font-size:.9rem;
+      font-weight:700;
+      color:#111827;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:.35rem;
+    }
+
+    .btn-accion.primary {
+      background:#0ea5e9;
+      color:#fff;
+      border-color:#0ea5e9;
+    }
+
+    .btn-accion.primary:hover {
+      background:#0369a1;
+      border-color:#0369a1;
+    }
+
+    .btn-accion.danger {
+      background:#fff;
+      color:#b91c1c;
+      border-color:#fecaca;
+    }
+
+    .btn-accion:disabled {
+      opacity:.55;
+      cursor:not-allowed;
+    }
+
+    .resumen-financiero {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+      gap:1rem;
+      margin-top:.5rem;
+    }
+
+    .stat-card {
+      background:#f9fafb;
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      padding:.8rem 1rem;
+      text-align:center;
+    }
+
+    .stat-label {
+      font-size:.8rem;
+      text-transform:uppercase;
+      color:#6b7280;
+      margin-bottom:.3rem;
+      font-weight:600;
+    }
+
+    .stat-value {
+      font-size:1.3rem;
+      font-weight:700;
+      font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace;
+    }
+
+    .stat-value.clp { color:#dc2626; }
+    .stat-value.usd { color:#059669; }
+    .stat-value.brl { color:#ca8a04; }
+    .stat-value.ars { color:#2563eb; }
+
+    .muted { color:#6b7280; }
+
+    .mono {
+      font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace;
+      text-transform:none;
+    }
+
+    .table-wrap {
+      width:100%;
+      overflow:auto;
+      border:1px solid #eee;
+      border-radius:10px;
+    }
+
+    table.finanzas {
+      width:100%;
+      min-width:1280px;
+      border-collapse:collapse;
+      background:#fff;
+    }
+
+    table.finanzas th,
+    table.finanzas td {
+      padding:.55rem .6rem;
+      border-bottom:1px solid #f1f1f1;
+      vertical-align:middle;
+      font-size:.88rem;
+      white-space:nowrap;
+    }
+
+    table.finanzas thead th {
+      background:#fafafa;
+      text-align:left;
+      font-weight:700;
+      text-transform:uppercase;
+      position:sticky;
+      top:0;
+      z-index:2;
+    }
+
+    table.finanzas td.right,
+    table.finanzas th.right {
+      text-align:right;
+    }
+
+    .estado {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:.2rem .5rem;
+      border-radius:999px;
+      font-size:.75rem;
+      font-weight:700;
+    }
+
+    .estado.registrado { background:#dbeafe; color:#1d4ed8; }
+    .estado.editado { background:#fef3c7; color:#92400e; }
+    .estado.validado { background:#dcfce7; color:#166534; }
+    .estado.observado { background:#ffedd5; color:#9a3412; }
+    .estado.archivado { background:#e5e7eb; color:#4b5563; }
+
+    .acciones {
+      display:flex;
+      gap:.35rem;
+      align-items:center;
+    }
+
+    .icon-btn {
+      width:34px;
+      height:34px;
+      border-radius:8px;
+      border:1px solid #e5e7eb;
+      background:#fff;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    .icon-btn:hover { background:#f3f4f6; }
+    .icon-btn.danger { color:#b91c1c; }
+
+    .link-doc {
+      color:#0ea5e9;
+      text-decoration:none;
+      font-weight:700;
+    }
+
+    .link-doc:hover { text-decoration:underline; }
+
+    .hidden { display:none !important; }
+
+    .modal-backdrop {
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,.45);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index:2500;
+      padding:1rem;
+    }
+
+    .modal-backdrop.open { display:flex; }
+
+    .modal-card {
+      width:min(900px,96vw);
+      max-height:90vh;
+      overflow:auto;
+      background:#fff;
+      border-radius:14px;
+      padding:1rem;
+      box-shadow:0 20px 60px rgba(0,0,0,.3);
+    }
+
+    .modal-card header {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:1rem;
+      border-bottom:1px solid #e5e7eb;
+      padding-bottom:.6rem;
+      margin-bottom:.8rem;
+    }
+
+    .modal-card header h3 {
+      margin:0;
+      border:0;
+      padding:0;
+    }
+
+    .history-item {
+      border:1px solid #e5e7eb;
+      border-radius:10px;
+      padding:.75rem;
+      margin-bottom:.65rem;
+      background:#fafafa;
+    }
+
+    .history-grid {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+      gap:.4rem .8rem;
+      margin-top:.5rem;
+    }
+
+    .history-grid span {
+      display:block;
+      font-size:.74rem;
+      text-transform:uppercase;
+      color:#6b7280;
+      font-weight:700;
+    }
+
+    @media (max-width:768px) {
+      .form-grid,
+      .resumen-financiero {
+        grid-template-columns:1fr;
+      }
+
+      .btn-row {
+        flex-direction:column;
+      }
+
+      .btn-accion {
+        width:100%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="encabezado"></div>
+
+  <div id="abonosRoot" class="page" data-mode="sistema">
+    <h2 style="margin:.4rem 0 0;">ABONOS A PROVEEDORES</h2>
+    <p class="muted" style="margin:.35rem 0 1rem;">
+      Registro operativo de pagos realizados a proveedores de actividades y hoteles.
+    </p>
+
+    <div class="card">
+      <h3 id="formTitulo">Registrar abono</h3>
+
+      <div class="form-grid">
+        <div class="form-item">
+          <label for="abTipo">Tipo</label>
+          <select id="abTipo" class="input-field">
+            <option value="actividad">Actividad</option>
+            <option value="hotel">Hotel</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label for="abAno">Año</label>
+          <select id="abAno" class="input-field"></select>
+        </div>
+
+        <div class="form-item">
+          <label for="abDestino">Destino</label>
+          <select id="abDestino" class="input-field"></select>
+        </div>
+
+        <div class="form-item">
+          <label id="abProveedorLabel" for="abProveedor">Proveedor</label>
+          <select id="abProveedor" class="input-field"></select>
+        </div>
+
+        <div class="form-item" id="servicioWrap">
+          <label for="abServicio">Servicio / actividad</label>
+          <select id="abServicio" class="input-field"></select>
+        </div>
+
+        <div class="form-item">
+          <label for="abFechaPago">Fecha del pago</label>
+          <input id="abFechaPago" class="input-field" type="date" />
+        </div>
+
+        <div class="form-item">
+          <label for="abMoneda">Moneda</label>
+          <select id="abMoneda" class="input-field">
+            <option value="CLP">CLP</option>
+            <option value="USD">USD</option>
+            <option value="BRL">BRL</option>
+            <option value="ARS">ARS</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label for="abMonto">Monto</label>
+          <input id="abMonto" class="input-field mono" type="number" min="0" step="0.01" />
+        </div>
+
+        <div class="form-item">
+          <label for="abFormaPago">Forma de pago</label>
+          <select id="abFormaPago" class="input-field">
+            <option value="transferencia">Transferencia</option>
+            <option value="deposito">Depósito</option>
+            <option value="efectivo">Efectivo</option>
+            <option value="tarjeta">Tarjeta</option>
+            <option value="cheque">Cheque</option>
+            <option value="otro">Otro</option>
+          </select>
+        </div>
+
+        <div class="form-item">
+          <label for="abReferencia">N° operación / referencia</label>
+          <input id="abReferencia" class="input-field" type="text" />
+        </div>
+
+        <div class="form-item">
+          <label for="abComprobante">Comprobante</label>
+          <input id="abComprobante" class="input-field" type="file" accept="image/*,.pdf" />
+        </div>
+
+        <div class="form-item full">
+          <label for="abNota">Asunto / nota</label>
+          <textarea id="abNota" class="input-field" placeholder="Ej.: Primer abono reserva, saldo actividad, anticipo hotel, etc."></textarea>
+        </div>
+
+        <div class="form-item full hidden" id="motivoCambioWrap">
+          <label for="abMotivoCambio">Motivo del cambio</label>
+          <input id="abMotivoCambio" class="input-field" type="text" placeholder="Obligatorio al editar un abono existente" />
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button id="btnGuardarAbono" class="btn-accion primary" type="button">
+          <span class="material-symbols-outlined">save</span>
+          Guardar abono
+        </button>
+
+        <button id="btnCancelarEdicion" class="btn-accion hidden" type="button">
+          Cancelar edición
+        </button>
+
+        <span id="formEstado" class="muted"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Resumen de abonos visibles</h3>
+      <div class="resumen-financiero">
+        <div class="stat-card">
+          <div class="stat-label">Total CLP</div>
+          <div class="stat-value clp" id="sumCLP">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total USD</div>
+          <div class="stat-value usd" id="sumUSD">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total BRL</div>
+          <div class="stat-value brl" id="sumBRL">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total ARS</div>
+          <div class="stat-value ars" id="sumARS">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Historial de abonos</h3>
+
+      <div class="toolbar">
+        <select id="filtroAno">
+          <option value="">Todos los años</option>
+        </select>
+
+        <select id="filtroTipo">
+          <option value="">Todos los tipos</option>
+          <option value="actividad">Actividades</option>
+          <option value="hotel">Hoteles</option>
+        </select>
+
+        <select id="filtroDestino">
+          <option value="">Todos los destinos</option>
+        </select>
+
+        <select id="filtroEstado">
+          <option value="">Todos los estados</option>
+          <option value="REGISTRADO">Registrado</option>
+          <option value="EDITADO">Editado</option>
+          <option value="VALIDADO">Validado</option>
+          <option value="OBSERVADO">Observado</option>
+          <option value="ARCHIVADO">Archivado</option>
+        </select>
+
+        <input id="filtroUsuario" type="text" placeholder="Usuario" />
+        <input id="filtroBuscar" type="search" placeholder="Proveedor, hotel, servicio, nota o referencia" />
+
+        <button id="btnAplicarFiltros" class="primary" type="button">FILTRAR</button>
+        <button id="btnLimpiarFiltros" class="secondary" type="button">LIMPIAR</button>
+
+        <span class="tag" id="pagInfo"></span>
+      </div>
+
+      <div class="table-wrap">
+        <table class="finanzas" id="tblAbonos">
+          <thead>
+            <tr>
+              <th>Fecha pago</th>
+              <th>Tipo</th>
+              <th>Proveedor / hotel</th>
+              <th>Servicio / asunto</th>
+              <th>Destino</th>
+              <th>Año</th>
+              <th>Moneda</th>
+              <th class="right">Monto</th>
+              <th>Forma</th>
+              <th>Referencia</th>
+              <th>Comprobante</th>
+              <th>Registrado por</th>
+              <th>Registrado el</th>
+              <th>Estado</th>
+              <th>Versión</th>
+              <th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="historialModal" class="modal-backdrop">
+    <div class="modal-card">
+      <header>
+        <h3>Historial de cambios</h3>
+        <button id="btnCerrarHistorial" class="btn-accion" type="button">Cerrar</button>
+      </header>
+      <div id="historialContenido"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    (async () => {
+      try {
+        const html = await (await fetch('encabezado.html')).text().catch(() => '');
+        document.getElementById('encabezado').innerHTML = html || '';
+      } catch (_) {}
+
+      await import('./firebase-init.js');
+      await import('./script.js');
+      await import('./abonos.js');
+      console.log('✅ abonos.js cargado');
+    })();
+  </script>
+</body>
+</html>
