@@ -79,6 +79,14 @@
       margin-bottom: 1rem;
     }
 
+    #abonosRoot .page-actions {
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:.6rem;
+      flex-wrap:wrap;
+    }
+
     #abonosRoot .page-title {
       margin: .25rem 0 0;
       font-size: 1.35rem;
@@ -153,6 +161,17 @@
       background: #0ea5e9;
       color: #fff;
       border-color: #0ea5e9;
+    }
+
+    #abonosRoot .btn.excel {
+      background:#16a34a !important;
+      color:#ffffff !important;
+      border-color:#16a34a !important;
+    }
+    
+    #abonosRoot .btn.excel:hover {
+      background:#15803d !important;
+      border-color:#15803d !important;
     }
 
     #abonosRoot .btn.primary:hover,
@@ -1028,8 +1047,21 @@
         flex-direction: column;
       }
 
+      #abonosRoot #btnExportarExcel {
+        display:none !important;
+      }
+
       #abonosRoot #btnAgregarAbono {
         width: 100% !important;
+      }
+
+      #abonosRoot .page-actions {
+        width:100%;
+        display:block;
+      }
+      
+      #abonosRoot .page-actions #btnAgregarAbono {
+        width:100% !important;
       }
 
       #abonoModal {
@@ -1263,29 +1295,31 @@
         </p>
       </div>
 
-      <button
-        id="btnAgregarAbono"
-        class="btn primary"
-        type="button"
-      >
-        <span class="material-symbols-outlined">
-          add
-        </span>
-
-        Agregar abono
-      </button>
-
+      <div class="page-actions">
+        <button
+          id="btnAgregarAbono"
+          class="btn primary"
+          type="button"
+        >
+          <span class="material-symbols-outlined">
+            add
+          </span>
+      
+          Agregar abono
+        </button>
+      
         <button
           id="btnExportarExcel"
-          class="btn secondary"
+          class="btn excel"
           type="button"
         >
           <span class="material-symbols-outlined">
             download
           </span>
-        
+      
           Exportar Excel
         </button>
+      </div>
     </div>
 
     <!-- RESUMEN -->
