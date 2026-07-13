@@ -787,6 +787,124 @@
     }
 
     /* =========================================================
+     RESUMEN COMPACTO
+     ========================================================= */
+
+    #abonosRoot .resumen-compacto {
+      display:grid;
+      grid-template-columns:repeat(4, minmax(0, 1fr));
+      gap:.55rem;
+      margin:0 0 .8rem;
+    }
+    
+    #abonosRoot .resumen-compacto > div {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:.45rem;
+    
+      min-height:38px;
+      padding:.4rem .6rem;
+    
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      border-radius:8px;
+    }
+    
+    #abonosRoot .resumen-compacto span {
+      color:#64748b;
+      font-size:.72rem;
+      font-weight:800;
+    }
+    
+    #abonosRoot .resumen-compacto strong {
+      font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace;
+      font-size:.9rem;
+    }
+    
+    /* =========================================================
+       CONFIRMACIÓN DE ABONO
+       ========================================================= */
+    
+    #confirmacionAbonoModal {
+      position:fixed;
+      inset:0;
+      z-index:3200;
+    
+      display:none;
+      align-items:center;
+      justify-content:center;
+    
+      padding:1rem;
+    
+      background:rgba(0,0,0,.48);
+    }
+    
+    #confirmacionAbonoModal.open {
+      display:flex;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-card {
+      width:min(430px, 94vw);
+      padding:1.3rem;
+    
+      background:#fff;
+      border-radius:14px;
+      box-shadow:0 20px 65px rgba(0,0,0,.30);
+    
+      text-align:center;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-icono {
+      color:#16a34a;
+      font-size:54px !important;
+    }
+    
+    #confirmacionAbonoModal h2 {
+      margin:.25rem 0 1rem;
+      font-size:1.2rem;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-detalle {
+      display:grid;
+      gap:.6rem;
+      text-align:left;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-detalle > div {
+      padding:.65rem .75rem;
+      background:#f8fafc;
+      border:1px solid #e5e7eb;
+      border-radius:8px;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-detalle span {
+      display:block;
+      margin-bottom:.15rem;
+    
+      color:#64748b;
+      font-size:.7rem;
+      font-weight:800;
+      text-transform:uppercase;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-detalle strong {
+      display:block;
+      color:#111827;
+      font-size:.92rem;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-acciones {
+      display:flex;
+      gap:.6rem;
+      margin-top:1rem;
+    }
+    
+    #confirmacionAbonoModal .confirmacion-acciones .btn {
+      flex:1;
+    }
+
+    /* =========================================================
        RESPONSIVE
        ========================================================= */
 
@@ -933,6 +1051,43 @@
 
       #abonosRoot .toolbar .btn {
         width: 100% !important;
+      }
+
+      #abonoModal {
+        padding:0;
+      }
+      
+      #abonoModal .modal-card {
+        width:100%;
+        height:100%;
+        max-height:100%;
+        border-radius:0;
+      }
+      
+      #abonoModal .modal-body {
+        min-height:calc(100vh - 58px);
+      }
+      
+      #abonosRoot .resumen-compacto {
+        grid-template-columns:1fr 1fr;
+      }
+      
+      #confirmacionAbonoModal {
+        padding:0;
+      }
+      
+      #confirmacionAbonoModal .confirmacion-card {
+        width:100%;
+        height:100%;
+        border-radius:0;
+      
+        display:flex;
+        flex-direction:column;
+        justify-content:center;
+      }
+      
+      #confirmacionAbonoModal .confirmacion-acciones {
+        flex-direction:column;
       }
     }
   </style>
@@ -1109,8 +1264,50 @@
         >
           Limpiar
         </button>
-
+        
+        <select id="limiteAbonos" title="Cantidad de registros visibles">
+          <option value="10" selected>Ver 10</option>
+          <option value="50">Ver 50</option>
+          <option value="100">Ver 100</option>
+          <option value="todos">Ver todos</option>
+        </select>
+        
+        <button
+          id="btnExportarExcel"
+          class="btn secondary"
+          type="button"
+        >
+          <span class="material-symbols-outlined">
+            download
+          </span>
+        
+          Exportar Excel
+        </button>
+        
         <span id="pagInfo" class="tag"></span>
+      </div>
+
+      <!-- RESUMEN COMPACTO SEGÚN LOS FILTROS -->
+      <div class="resumen-compacto">
+        <div>
+          <span>CLP</span>
+          <strong id="sumCLP">$0</strong>
+        </div>
+      
+        <div>
+          <span>USD</span>
+          <strong id="sumUSD">0</strong>
+        </div>
+      
+        <div>
+          <span>BRL</span>
+          <strong id="sumBRL">0</strong>
+        </div>
+      
+        <div>
+          <span>ARS</span>
+          <strong id="sumARS">0</strong>
+        </div>
       </div>
 
       <div class="table-wrap">
@@ -1541,9 +1738,59 @@
   </div>
 
   <!-- ========================================================
+       CONFIRMACIÓN MÓVIL
+       ======================================================== -->
+  
+  <div id="confirmacionAbonoModal">
+    <div class="confirmacion-card">
+      <span class="material-symbols-outlined confirmacion-icono">
+        check_circle
+      </span>
+  
+      <h2>Abono registrado</h2>
+  
+      <div class="confirmacion-detalle">
+        <div>
+          <span>Proveedor / hotel</span>
+          <strong id="confirmacionProveedor">—</strong>
+        </div>
+  
+        <div>
+          <span>Servicio / asunto</span>
+          <strong id="confirmacionServicio">—</strong>
+        </div>
+  
+        <div>
+          <span>Monto</span>
+          <strong id="confirmacionMonto">—</strong>
+        </div>
+      </div>
+  
+      <div class="confirmacion-acciones">
+        <button
+          id="btnAgregarOtroAbono"
+          class="btn primary"
+          type="button"
+        >
+          Agregar otro abono
+        </button>
+  
+        <button
+          id="btnCerrarConfirmacion"
+          class="btn secondary"
+          type="button"
+        >
+          Ver historial
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
        CARGA DEL SISTEMA
        ======================================================== -->
-
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
   <script type="module">
     (async () => {
       try {
