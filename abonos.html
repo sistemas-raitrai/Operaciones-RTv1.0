@@ -1,3 +1,590 @@
+ChatGPT Plus
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pasted text.txt
+Documento
+entiendo q actrividades, el calculo viene de otra pagina (proovedores y sericios)
+opero en el caso de los hoteles es mejora manejarlo aca pq la persona q maneje esta paginba hará los calculos
+
+
+Pasted text.txt
+Documento
+
+Pasted text (2).txt
+Documento
+dime lo q haya que cambiar en estos codigos
+ubicame literalmente en el codigo, se explicito
+dame funciones completas o fragmentos importantes para coipiar y pegar
+me dices si hay que reeempalzar o adicionar
+
+preguinta antes: los abonos, el camino está determinado tanto para actividades como apra hoteles ciuerto?
+
+
+Pasted text.txt
+Documento
+construyamos la nueva abonos.html y abonos.js que sean del ecossitema de sistma de operaciones (no venmtas) te dejo wl html q me gusta q fuinciona bien para la estetica
+
+entonces damelo para descargar en txt cosa q poued verlo en bloc de notas y luego copiar y pegar
+
+Perfecto. Te lo preparé en formato .txt para que puedas abrirlo cómodamente con Bloc de notas y luego copiar y pegar al proyecto.
+
+Descargar aquí:
+
+abonos.txt
+
+En adelante, cuando el código sea demasiado grande para pegarlo completo en el chat, te lo entregaré así en .txt. Si cabe dentro del límite del chat, te lo pegaré directamente aquí, como prefieres. 
+
+
+7443b2b6-0cdf-4970-9a90-97e4ae22797e.png
+quedo mal el html, está tomando las cards de el css estilos, por ello quedan angostyo, hay q confirgurar el style u hacerlo aprtivular al codigo
+
+Sí, quedó angosto porque estilos.css está aplicando reglas globales sobre .card. La solución correcta es encapsular los estilos de esta página bajo #abonosRoot y reforzar el ancho de sus tarjetas.
+
+Archivo: abonos.html
+Ubicación
+Busca dentro del <style> el último bloque responsive:
+
+@media (max-width:768px) {
+  .form-grid,
+  .resumen-financiero {
+    grid-template-columns:1fr;
+  }
+
+  .btn-row {
+    flex-direction:column;
+  }
+
+  .btn-accion {
+    width:100%;
+  }
+}
+Acción: AGREGAR
+Inmediatamente después de ese bloque y antes de </style>, pega esto:
+
+/* =========================================================
+   AISLAMIENTO VISUAL DE ABONOS.HTML
+   Evita que estilos.css altere las tarjetas de esta página
+   ========================================================= */
+
+#abonosRoot {
+  display:block !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  margin:0 !important;
+  padding:1rem 1.2rem !important;
+  box-sizing:border-box !important;
+}
+
+#abonosRoot,
+#abonosRoot * {
+  box-sizing:border-box;
+}
+
+/* Las tarjetas de abonos siempre ocupan todo el ancho */
+#abonosRoot > .card,
+#abonosRoot .card {
+  display:block !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  height:auto !important;
+  margin:0 0 1rem 0 !important;
+  padding:1.3rem 1.5rem !important;
+
+  border:1px solid #e5e7eb !important;
+  border-radius:16px !important;
+  background:#ffffff !important;
+  box-shadow:0 2px 8px rgba(0,0,0,.06) !important;
+
+  float:none !important;
+  position:relative !important;
+  overflow:visible !important;
+}
+
+/* Título de cada tarjeta */
+#abonosRoot .card > h3 {
+  display:block !important;
+  width:100% !important;
+  max-width:none !important;
+  margin:0 0 .8rem 0 !important;
+  padding:0 0 .5rem 0 !important;
+
+  border-bottom:1px solid #e5e7eb !important;
+  font-size:1.3rem !important;
+  color:#111827 !important;
+  text-align:left !important;
+}
+
+/* Formulario a todo el ancho */
+#abonosRoot .form-grid {
+  display:grid !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+
+  grid-template-columns:repeat(
+    auto-fit,
+    minmax(min(220px, 100%), 1fr)
+  ) !important;
+
+  gap:.8rem !important;
+}
+
+/* Cada campo puede crecer correctamente */
+#abonosRoot .form-item {
+  display:flex !important;
+  flex-direction:column !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  gap:.25rem !important;
+}
+
+#abonosRoot .form-item.full {
+  grid-column:1 / -1 !important;
+}
+
+/* Inputs y selects dentro de esta página */
+#abonosRoot .input-field,
+#abonosRoot input,
+#abonosRoot select,
+#abonosRoot textarea {
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+}
+
+/* Filtros a todo el ancho */
+#abonosRoot .toolbar {
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+}
+
+/* Resumen financiero a todo el ancho */
+#abonosRoot .resumen-financiero {
+  display:grid !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+
+  grid-template-columns:repeat(
+    auto-fit,
+    minmax(min(180px, 100%), 1fr)
+  ) !important;
+
+  gap:1rem !important;
+}
+
+/* Tabla */
+#abonosRoot .table-wrap {
+  display:block !important;
+  width:100% !important;
+  max-width:none !important;
+  min-width:0 !important;
+  overflow-x:auto !important;
+}
+
+#abonosRoot table.finanzas {
+  width:100% !important;
+  max-width:none !important;
+}
+
+/* Escritorio */
+@media (min-width:900px) {
+  #abonosRoot .form-grid {
+    grid-template-columns:repeat(5, minmax(0, 1fr)) !important;
+  }
+
+  #abonosRoot .form-item.full {
+    grid-column:1 / -1 !important;
+  }
+}
+
+/* Tablet */
+@media (min-width:650px) and (max-width:899px) {
+  #abonosRoot .form-grid {
+    grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Celular */
+@media (max-width:649px) {
+  #abonosRoot {
+    padding:.8rem !important;
+  }
+
+  #abonosRoot > .card,
+  #abonosRoot .card {
+    padding:1rem !important;
+  }
+
+  #abonosRoot .form-grid,
+  #abonosRoot .resumen-financiero {
+    grid-template-columns:1fr !important;
+  }
+}
+También cambia el estilo inicial de .page
+Al principio del <style> tienes:
+
+.page { padding: 1rem 1.2rem; }
+Acción: REEMPLAZAR
+Reemplázalo por:
+
+#abonosRoot.page {
+  width:100%;
+  max-width:none;
+  min-width:0;
+  margin:0;
+  padding:1rem 1.2rem;
+  display:block;
+  box-sizing:border-box;
+}
+Resultado esperado
+La tarjeta Registrar abono pasará de verse como una columna angosta a ocupar todo el ancho disponible.
+
+En escritorio, el formulario se distribuirá aproximadamente así:
+
+Tipo | Año | Destino | Proveedor | Servicio
+Fecha | Moneda | Monto | Forma de pago | Referencia
+Comprobante
+Asunto / nota a todo el ancho
+No tienes que modificar abonos.js para corregir este problema. Es exclusivamente un ajuste de estilos en abonos.html.
+
+
+f24b6c75-c537-4e4f-a1b3-e50c54e3bf9d.png
+06d207cd-3481-4341-8652-497447434e33.png
+8c196d0e-350a-4d09-894d-a472b158094e.png
+yo creo q el tipo deberia ser un cheq box
+y agregar Otro, pq podria haber otro que habria q ser manual y correpsonderia a otra cosa
+año deberia ser lo primero a definir y está correcto q sea un selector y que pred eterminado cvargue 2026
+destino tb un selector, pero entendamos esta parte casi q sea como un registro facvil de banco entocnes tb deberia ser responsivo para movil
+una vezz seleccionado el destino
+tienen q haber un selector de proovedor o de servicio / actividad u hotel, y este deberia funcionar como buscaddor, es deicr si escribo alliance, me muestra el provedor y luego elijo el servicio
+pero si me acuerdo del sertvicio y escrivo el servicioi despue me sale el provedor, o si escribvo el nombre del hotel o del provedor (se entiende?)
+
+UNA EVZ Q RESUELVO ESO DEBE VENIR LA PARTE FACIL TIPO BANCO
+FECHAM MONTO, FORMA DE PAGO, MUE,ROP DE OPERACION REFERNECIA, COMPROBVANT4E
+ ASUNTO Y EL BOTON GUARDAR (ALGO PIOLA) Y EL HISTORIAL REFLEJA BIEN, SE VE BIEN
+
+LO DEMAS SE PUEDE MJORAR
+
+Sí, me parece el mejor orden.
+
+Primero te doy abonos.html completo de nuevo, ya corregido visualmente y preparado para el nuevo flujo:
+
+año primero;
+
+tipo como selector visual exclusivo;
+
+actividad, hotel u otro;
+
+destino;
+
+buscador único de proveedor, servicio o hotel;
+
+resultado seleccionado;
+
+formulario simple tipo banco;
+
+motivo de cambio oculto;
+
+botón guardar más discreto;
+
+diseño responsivo para móvil;
+
+historial y resumen mantenidos.
+
+Después tomamos abonos.js y lo corregimos para que funcione con esta nueva estructura del HTML.
+
+Como el HTML completo es largo, te lo entregaré en .txt descargable para que lo abras en Bloc de notas y reemplaces tu archivo completo. También puedo pegarte después los bloques críticos directamente en el chat para revisarlos.
+
+
+PERFECTO
+
+Perfecto. Además, creo que podemos dejar esta página a un nivel mucho mejor que la primera versión.
+
+Lo que haré en este nuevo abonos.html
+No será solo una corrección, sino un rediseño pensando en la operación diaria.
+
+1. Encabezado
+Igual al resto del sistema.
+
+ABONOS A PROVEEDORES
+
+Registro de pagos realizados a proveedores y hoteles.
+2. Resolver el destinatario del pago (la parte importante)
+En vez del formulario actual, quedará algo así:
+
+AÑO
+[ 2026 ▼ ]
+
+TIPO
+
+(●) Actividad     ( ) Hotel     ( ) Otro
+
+DESTINO
+[ BARILOCHE ▼ ]
+
+BUSCAR
+
+[ Escriba proveedor, actividad o hotel............. ]
+Mientras escribe:
+
+alli
+aparece
+
+Alliance
+Proveedor
+
+   Disco BR
+   Cena Show
+   Paintball
+Si escribe
+
+disco
+aparece
+
+Disco BR
+
+Proveedor:
+Alliance
+
+Destino:
+Bariloche
+Y si escribe
+
+pioneros
+aparece
+
+Hotel Pioneros Villa Huinid
+No importará si recuerda el proveedor o el servicio.
+
+Eso será responsabilidad del sistema.
+
+3. Tarjeta resumen
+Cuando selecciona un resultado aparecerá una tarjeta como esta.
+
+──────────────────────────────────
+
+✓ DESTINO DEL ABONO
+
+Proveedor:
+ALLIANCE
+
+Servicio:
+DISCO BR
+
+Destino:
+BARILOCHE
+
+Moneda sugerida:
+USD
+
+                [ Cambiar ]
+
+──────────────────────────────────
+o bien
+
+✓ DESTINO DEL ABONO
+
+Hotel
+
+HOTEL PIONEROS VILLA HUINID
+
+Destino:
+BARILOCHE
+
+Moneda:
+USD
+4. Registro tipo banco
+Después viene solamente registrar el pago.
+
+Fecha del pago
+Monto
+Moneda
+
+Forma de pago
+N° operación
+
+Comprobante
+
+Asunto
+
+Guardar
+Nada más.
+
+Muy parecido al ingreso de una transferencia bancaria.
+
+5. Otro
+Si elige
+
+Otro
+el buscador desaparece.
+
+Y aparece
+
+Proveedor / destinatario
+
+Asunto
+
+Categoría
+
+Destino (opcional)
+Para casos especiales.
+
+6. Historial
+Mantendremos el historial actual.
+
+Pero visualmente mucho mejor.
+
+En escritorio:
+
+Filtros
+
+Resumen
+
+Tabla
+En móvil:
+
+cada abono será una tarjeta.
+
+7. Responsivo
+No quiero hacer simplemente un formulario que "se adapte".
+
+Quiero hacer un formulario pensado para celular.
+
+Porque muchas veces quien paga puede abrir esta página desde el teléfono.
+
+8. Algo que quiero agregar
+Creo que esta página puede ser muchísimo mejor si arriba mostramos el contexto.
+
+Por ejemplo.
+
+Hoy
+
+Abonos registrados:
+18
+
+USD
+6
+
+CLP
+9
+
+BRL
+2
+
+ARS
+1
+Y al lado
+
+Pendientes de validar
+3
+
+Observados
+1
+
+Archivados
+12
+Así el usuario sabe inmediatamente qué está pasando.
+
+9. El historial
+Me gustaría que se pareciera a Gmail.
+
+Es decir.
+
+En vez de una tabla fría.
+
+13 julio
+
+Alliance
+
+USD 2.500
+
+Transferencia
+
+Registró:
+Ignacio Pastor
+
+Estado
+VALIDADO
+Y al hacer clic:
+
+abre el detalle.
+
+Creo que eso es mucho más agradable de usar.
+
+Mi objetivo
+Quiero que esta página se sienta como una aplicación moderna, no como un formulario de administración.
+
+Algo que cualquier persona de Operaciones pueda aprender a usar en 2 minutos.
+
+Yo diría que podemos dejarla incluso mejor que finanzas.html, porque será una de las páginas más utilizadas del sistema.
+
+
+OK, DAME ABONOS.HTML
+
+Aquí tienes el abonos.html completo corregido.
+
+Puedes descargarlo directamente como HTML:
+
+abonos.html
+
+O abrirlo como texto en Bloc de notas para copiar y pegar:
+
+abonos_html.txt
+
+Este HTML ya deja preparado el nuevo flujo:
+
+año primero;
+
+tipo como opciones exclusivas: Actividad / Hotel / Otro;
+
+destino;
+
+buscador único;
+
+tarjeta de selección resuelta;
+
+ingreso manual para “Otro”;
+
+formulario simple tipo banco;
+
+motivo del cambio oculto;
+
+botón guardar discreto;
+
+diseño responsivo;
+
+historial mantenido.
+
+Ahora corresponde corregir abonos.js para que funcione con estos nuevos IDs y con el buscador inteligente. 
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -10,317 +597,551 @@
   <link rel="icon" type="image/png" href="Logo Raitrai.png" />
 
   <style>
-    #abonosRoot.page {
-      width:100%;
-      max-width:none;
+    /* =========================================================
+       ABONOS.HTML — ESTILOS AISLADOS DEL RESTO DEL SISTEMA
+       ========================================================= */
+
+    #abonosRoot {
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      margin:0 !important;
+      padding:1rem 1.2rem 2rem !important;
+      display:block !important;
+      box-sizing:border-box !important;
+      color:#111827;
+    }
+
+    #abonosRoot,
+    #abonosRoot * {
+      box-sizing:border-box;
+    }
+
+    #abonosRoot .page-title {
+      margin:.4rem 0 0;
+      font-size:1.35rem;
+      font-weight:800;
+      color:#111827;
+    }
+
+    #abonosRoot .page-subtitle {
+      margin:.3rem 0 1rem;
+      color:#6b7280;
+      font-size:.92rem;
+    }
+
+    #abonosRoot .card {
+      display:block !important;
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      height:auto !important;
+      float:none !important;
+      position:relative !important;
+      overflow:visible !important;
+
+      margin:0 0 1rem !important;
+      padding:1.15rem 1.25rem !important;
+      background:#fff !important;
+      border:1px solid #e5e7eb !important;
+      border-radius:14px !important;
+      box-shadow:0 2px 8px rgba(0,0,0,.05) !important;
+    }
+
+    #abonosRoot .card h3 {
+      display:block !important;
+      width:100% !important;
+      margin:0 0 .9rem !important;
+      padding:0 0 .55rem !important;
+      border-bottom:1px solid #e5e7eb !important;
+      color:#111827 !important;
+      font-size:1.08rem !important;
+      font-weight:800 !important;
+      text-align:left !important;
+    }
+
+    #abonosRoot .section-caption {
+      margin:-.35rem 0 .9rem;
+      color:#6b7280;
+      font-size:.84rem;
+    }
+
+    #abonosRoot .hidden {
+      display:none !important;
+    }
+
+    #abonosRoot .field {
+      display:flex;
+      flex-direction:column;
       min-width:0;
-      margin:0;
-      padding:1rem 1.2rem;
-      display:block;
-      box-sizing:border-box;
+      gap:.28rem;
     }
 
-    .toolbar {
-      display:flex;
-      flex-direction:column;
-      gap:.6rem;
-      align-items:stretch;
-      margin:.8rem 0 1rem;
-    }
-
-    .toolbar .tag { font-size:.85rem; opacity:.8; }
-
-    .toolbar input,
-    .toolbar select,
-    .toolbar button {
-      padding:.45rem .55rem;
-      border:1px solid #ddd;
-      border-radius:8px;
-      font-size:.9rem;
-      width:100%;
-      max-width:100%;
-      box-sizing:border-box;
-    }
-
-    .toolbar button.primary {
-      background:#0ea5e9;
-      color:#fff;
-      border-color:#0ea5e9;
-      font-weight:700;
-      cursor:pointer;
-    }
-
-    .toolbar button.secondary {
-      background:#fff;
-      color:#111827;
-      border-color:#d1d5db;
-      font-weight:700;
-      cursor:pointer;
-    }
-
-    @media (min-width: 900px) {
-      .toolbar {
-        flex-direction:row;
-        align-items:center;
-      }
-
-      .toolbar input,
-      .toolbar select {
-        flex:1 1 0;
-      }
-
-      .toolbar button,
-      .toolbar .tag {
-        flex:0 0 auto;
-        width:auto;
-      }
-    }
-
-    .card {
-      border:1px solid #e5e7eb;
-      border-radius:16px;
-      padding:1.3rem 1.5rem;
-      background:#fff;
-      box-shadow:0 2px 8px rgba(0,0,0,0.06);
-      margin-bottom:1rem;
-    }
-
-    .card h3 {
-      margin:0 0 .8rem;
-      font-size:1.3rem;
-      color:#111827;
-      border-bottom:1px solid #e5e7eb;
-      padding-bottom:.5rem;
-    }
-
-    .form-grid {
-      display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
-      gap:.8rem;
-    }
-
-    .form-item {
-      display:flex;
-      flex-direction:column;
-      gap:.25rem;
-    }
-
-    .form-item.full {
+    #abonosRoot .field.full {
       grid-column:1 / -1;
     }
 
-    .form-item label {
-      font-size:.78rem;
+    #abonosRoot .field label {
+      font-size:.76rem;
       text-transform:uppercase;
       color:#4b5563;
-      font-weight:600;
+      font-weight:700;
+      letter-spacing:.02em;
     }
 
-    .input-field {
-      padding:.48rem .58rem;
-      border-radius:8px;
+    #abonosRoot .input,
+    #abonosRoot input,
+    #abonosRoot select,
+    #abonosRoot textarea {
+      width:100% !important;
+      max-width:none !important;
+      min-width:0 !important;
+      padding:.55rem .65rem;
       border:1px solid #d1d5db;
-      font-size:.9rem;
+      border-radius:8px;
       background:#fff;
-      box-sizing:border-box;
-      width:100%;
-    }
-
-    .input-field:focus {
+      color:#111827;
+      font-size:.92rem;
       outline:none;
-      border-color:#0ea5e9;
-      box-shadow:0 0 0 2px rgba(14,165,233,0.2);
     }
 
-    textarea.input-field {
-      min-height:88px;
+    #abonosRoot .input:focus,
+    #abonosRoot input:focus,
+    #abonosRoot select:focus,
+    #abonosRoot textarea:focus {
+      border-color:#0ea5e9;
+      box-shadow:0 0 0 2px rgba(14,165,233,.16);
+    }
+
+    #abonosRoot textarea {
+      min-height:90px;
       resize:vertical;
     }
 
-    .btn-row {
+    /* ===== BLOQUE 1: RESOLVER DESTINO DEL ABONO ===== */
+
+    #abonosRoot .resolver-grid {
+      display:grid;
+      grid-template-columns:170px 1fr;
+      gap:.9rem 1rem;
+      align-items:end;
+    }
+
+    #abonosRoot .type-row {
       display:flex;
-      gap:.6rem;
+      flex-wrap:wrap;
+      gap:.5rem;
+    }
+
+    #abonosRoot .type-option {
+      position:relative;
+      display:inline-flex;
+      align-items:center;
+    }
+
+    #abonosRoot .type-option input {
+      position:absolute;
+      opacity:0;
+      pointer-events:none;
+    }
+
+    #abonosRoot .type-option label {
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-width:110px;
+      padding:.55rem .8rem;
+      border:1px solid #d1d5db;
+      border-radius:9px;
+      background:#fff;
+      color:#374151;
+      font-size:.86rem;
+      font-weight:700;
+      text-transform:none;
+      cursor:pointer;
+      transition:.15s ease;
+    }
+
+    #abonosRoot .type-option input:checked + label {
+      background:#0ea5e9;
+      color:#fff;
+      border-color:#0ea5e9;
+      box-shadow:0 0 0 2px rgba(14,165,233,.14);
+    }
+
+    #abonosRoot .search-zone {
+      margin-top:1rem;
+      border-top:1px dashed #e5e7eb;
+      padding-top:1rem;
+    }
+
+    #abonosRoot .search-wrap {
+      position:relative;
+    }
+
+    #abonosRoot #abBuscarEntidad {
+      padding-right:2.5rem;
+    }
+
+    #abonosRoot .search-icon {
+      position:absolute;
+      right:.7rem;
+      top:50%;
+      transform:translateY(-50%);
+      color:#6b7280;
+      pointer-events:none;
+      font-size:20px !important;
+      width:auto !important;
+      height:auto !important;
+    }
+
+    #abonosRoot .search-results {
+      position:absolute;
+      left:0;
+      right:0;
+      top:calc(100% + 4px);
+      z-index:50;
+      background:#fff;
+      border:1px solid #d1d5db;
+      border-radius:10px;
+      box-shadow:0 12px 30px rgba(0,0,0,.14);
+      max-height:340px;
+      overflow:auto;
+    }
+
+    #abonosRoot .search-result {
+      display:flex;
+      flex-direction:column;
+      gap:.18rem;
+      padding:.75rem .85rem;
+      border-bottom:1px solid #f1f5f9;
+      cursor:pointer;
+    }
+
+    #abonosRoot .search-result:last-child {
+      border-bottom:none;
+    }
+
+    #abonosRoot .search-result:hover {
+      background:#f8fafc;
+    }
+
+    #abonosRoot .search-result strong {
+      font-size:.92rem;
+      color:#111827;
+    }
+
+    #abonosRoot .search-result small {
+      color:#6b7280;
+      font-size:.78rem;
+    }
+
+    #abonosRoot .selected-card {
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:1rem;
+      align-items:center;
+      margin-top:.85rem;
+      padding:.9rem 1rem;
+      border:1px solid #bae6fd;
+      border-radius:12px;
+      background:#f0f9ff;
+    }
+
+    #abonosRoot .selected-main {
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+      gap:.65rem 1rem;
+    }
+
+    #abonosRoot .selected-item span {
+      display:block;
+      font-size:.72rem;
+      text-transform:uppercase;
+      color:#64748b;
+      font-weight:700;
+      margin-bottom:.15rem;
+    }
+
+    #abonosRoot .selected-item strong {
+      font-size:.92rem;
+      color:#0f172a;
+    }
+
+    #abonosRoot .btn-link {
+      border:none;
+      background:transparent;
+      color:#0369a1;
+      font-weight:700;
+      cursor:pointer;
+      padding:.35rem .4rem;
+    }
+
+    #abonosRoot .manual-grid {
+      display:grid;
+      grid-template-columns:repeat(3,minmax(0,1fr));
+      gap:.8rem;
+      margin-top:1rem;
+      padding-top:1rem;
+      border-top:1px dashed #e5e7eb;
+    }
+
+    /* ===== BLOQUE 2: MOVIMIENTO TIPO BANCO ===== */
+
+    #abonosRoot .bank-grid {
+      display:grid;
+      grid-template-columns:repeat(5,minmax(0,1fr));
+      gap:.85rem;
+      align-items:end;
+    }
+
+    #abonosRoot .bank-grid .span-2 {
+      grid-column:span 2;
+    }
+
+    #abonosRoot .bank-grid .span-5 {
+      grid-column:1 / -1;
+    }
+
+    #abonosRoot .file-box {
+      display:flex;
+      flex-direction:column;
+      gap:.35rem;
+    }
+
+    #abonosRoot .file-hint {
+      color:#6b7280;
+      font-size:.76rem;
+    }
+
+    #abonosRoot .actions-row {
+      display:flex;
+      align-items:center;
+      gap:.7rem;
       flex-wrap:wrap;
       margin-top:1rem;
     }
 
-    .btn-accion {
-      padding:.6rem 1.2rem;
+    #abonosRoot .btn {
+      width:auto !important;
+      min-width:0 !important;
+      height:40px;
+      padding:.5rem .9rem;
       border-radius:8px;
       border:1px solid #d1d5db;
       background:#fff;
-      cursor:pointer;
-      font-size:.9rem;
-      font-weight:700;
       color:#111827;
+      font-size:.88rem;
+      font-weight:700;
+      cursor:pointer;
       display:inline-flex;
       align-items:center;
       justify-content:center;
       gap:.35rem;
     }
 
-    .btn-accion.primary {
+    #abonosRoot .btn.primary {
       background:#0ea5e9;
       color:#fff;
       border-color:#0ea5e9;
     }
 
-    .btn-accion.primary:hover {
+    #abonosRoot .btn.primary:hover {
       background:#0369a1;
       border-color:#0369a1;
     }
 
-    .btn-accion.danger {
-      background:#fff;
-      color:#b91c1c;
-      border-color:#fecaca;
+    #abonosRoot .btn.secondary:hover {
+      background:#f3f4f6;
     }
 
-    .btn-accion:disabled {
-      opacity:.55;
-      cursor:not-allowed;
+    #abonosRoot .btn .material-symbols-outlined {
+      font-size:18px !important;
+      width:auto !important;
+      height:auto !important;
+      line-height:1 !important;
     }
 
-    .resumen-financiero {
+    #abonosRoot .form-state {
+      font-size:.84rem;
+      color:#6b7280;
+    }
+
+    /* ===== RESUMEN ===== */
+
+    #abonosRoot .summary-grid {
       display:grid;
-      grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-      gap:1rem;
-      margin-top:.5rem;
+      grid-template-columns:repeat(4,minmax(0,1fr));
+      gap:.8rem;
     }
 
-    .stat-card {
-      background:#f9fafb;
+    #abonosRoot .summary-card {
+      background:#f8fafc;
       border:1px solid #e5e7eb;
       border-radius:10px;
       padding:.8rem 1rem;
       text-align:center;
     }
 
-    .stat-label {
-      font-size:.8rem;
+    #abonosRoot .summary-label {
+      font-size:.75rem;
       text-transform:uppercase;
       color:#6b7280;
-      margin-bottom:.3rem;
-      font-weight:600;
-    }
-
-    .stat-value {
-      font-size:1.3rem;
       font-weight:700;
-      font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace;
+      margin-bottom:.25rem;
     }
 
-    .stat-value.clp { color:#dc2626; }
-    .stat-value.usd { color:#059669; }
-    .stat-value.brl { color:#ca8a04; }
-    .stat-value.ars { color:#2563eb; }
-
-    .muted { color:#6b7280; }
-
-    .mono {
-      font-family:ui-monospace, Menlo, Consolas, "Courier New", monospace;
-      text-transform:none;
+    #abonosRoot .summary-value {
+      font-family:ui-monospace,Menlo,Consolas,"Courier New",monospace;
+      font-size:1.15rem;
+      font-weight:800;
     }
 
-    .table-wrap {
-      width:100%;
-      overflow:auto;
-      border:1px solid #eee;
+    #abonosRoot .summary-value.clp { color:#dc2626; }
+    #abonosRoot .summary-value.usd { color:#059669; }
+    #abonosRoot .summary-value.brl { color:#ca8a04; }
+    #abonosRoot .summary-value.ars { color:#2563eb; }
+
+    /* ===== FILTROS E HISTORIAL ===== */
+
+    #abonosRoot .toolbar {
+      display:grid;
+      grid-template-columns:repeat(6,minmax(0,1fr)) auto auto auto;
+      gap:.55rem;
+      align-items:center;
+      margin:.7rem 0 .85rem;
+      width:100% !important;
+      max-width:none !important;
+    }
+
+    #abonosRoot .toolbar button {
+      width:auto !important;
+      white-space:nowrap;
+    }
+
+    #abonosRoot .tag {
+      font-size:.8rem;
+      color:#6b7280;
+      white-space:nowrap;
+    }
+
+    #abonosRoot .table-wrap {
+      width:100% !important;
+      max-width:none !important;
+      overflow-x:auto;
+      border:1px solid #e5e7eb;
       border-radius:10px;
     }
 
-    table.finanzas {
-      width:100%;
+    #abonosRoot table.finanzas {
+      width:100% !important;
       min-width:1280px;
+      max-width:none !important;
       border-collapse:collapse;
       background:#fff;
     }
 
-    table.finanzas th,
-    table.finanzas td {
+    #abonosRoot table.finanzas th,
+    #abonosRoot table.finanzas td {
       padding:.55rem .6rem;
-      border-bottom:1px solid #f1f1f1;
+      border-bottom:1px solid #f1f5f9;
       vertical-align:middle;
-      font-size:.88rem;
       white-space:nowrap;
+      font-size:.82rem;
     }
 
-    table.finanzas thead th {
-      background:#fafafa;
+    #abonosRoot table.finanzas thead th {
+      background:#f8fafc;
       text-align:left;
-      font-weight:700;
       text-transform:uppercase;
+      font-weight:800;
       position:sticky;
       top:0;
       z-index:2;
     }
 
-    table.finanzas td.right,
-    table.finanzas th.right {
+    #abonosRoot table.finanzas th.right,
+    #abonosRoot table.finanzas td.right {
       text-align:right;
     }
 
-    .estado {
+    #abonosRoot .estado {
       display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      padding:.2rem .5rem;
+      padding:.22rem .48rem;
       border-radius:999px;
-      font-size:.75rem;
-      font-weight:700;
+      font-size:.72rem;
+      font-weight:800;
     }
 
-    .estado.registrado { background:#dbeafe; color:#1d4ed8; }
-    .estado.editado { background:#fef3c7; color:#92400e; }
-    .estado.validado { background:#dcfce7; color:#166534; }
-    .estado.observado { background:#ffedd5; color:#9a3412; }
-    .estado.archivado { background:#e5e7eb; color:#4b5563; }
+    #abonosRoot .estado.registrado { background:#dbeafe; color:#1d4ed8; }
+    #abonosRoot .estado.editado { background:#fef3c7; color:#92400e; }
+    #abonosRoot .estado.validado { background:#dcfce7; color:#166534; }
+    #abonosRoot .estado.observado { background:#ffedd5; color:#9a3412; }
+    #abonosRoot .estado.archivado { background:#e5e7eb; color:#4b5563; }
 
-    .acciones {
+    #abonosRoot .acciones {
       display:flex;
-      gap:.35rem;
+      gap:.3rem;
       align-items:center;
     }
 
-    .icon-btn {
-      width:34px;
-      height:34px;
-      border-radius:8px;
+    #abonosRoot .icon-btn {
+      width:32px !important;
+      height:32px !important;
+      min-width:32px !important;
+      padding:0 !important;
+      border-radius:7px;
       border:1px solid #e5e7eb;
       background:#fff;
+      color:#111827;
       cursor:pointer;
       display:inline-flex;
       align-items:center;
       justify-content:center;
     }
 
-    .icon-btn:hover { background:#f3f4f6; }
-    .icon-btn.danger { color:#b91c1c; }
+    #abonosRoot .icon-btn:hover {
+      background:#f3f4f6;
+    }
 
-    .link-doc {
-      color:#0ea5e9;
+    #abonosRoot .icon-btn.danger {
+      color:#b91c1c;
+    }
+
+    #abonosRoot .icon-btn .material-symbols-outlined {
+      font-size:18px !important;
+      width:auto !important;
+      height:auto !important;
+    }
+
+    #abonosRoot .link-doc {
+      color:#0284c7;
       text-decoration:none;
       font-weight:700;
     }
 
-    .link-doc:hover { text-decoration:underline; }
+    #abonosRoot .link-doc:hover {
+      text-decoration:underline;
+    }
 
-    .hidden { display:none !important; }
+    /* ===== MODAL HISTORIAL ===== */
 
-    .modal-backdrop {
+    #historialModal {
       position:fixed;
       inset:0;
-      background:rgba(0,0,0,.45);
+      z-index:3000;
       display:none;
       align-items:center;
       justify-content:center;
-      z-index:2500;
       padding:1rem;
+      background:rgba(0,0,0,.45);
     }
 
-    .modal-backdrop.open { display:flex; }
+    #historialModal.open {
+      display:flex;
+    }
 
-    .modal-card {
+    #historialModal .modal-card {
       width:min(900px,96vw);
       max-height:90vh;
       overflow:auto;
@@ -330,23 +1151,22 @@
       box-shadow:0 20px 60px rgba(0,0,0,.3);
     }
 
-    .modal-card header {
+    #historialModal .modal-header {
       display:flex;
-      justify-content:space-between;
       align-items:center;
+      justify-content:space-between;
       gap:1rem;
-      border-bottom:1px solid #e5e7eb;
-      padding-bottom:.6rem;
       margin-bottom:.8rem;
+      padding-bottom:.6rem;
+      border-bottom:1px solid #e5e7eb;
     }
 
-    .modal-card header h3 {
+    #historialModal .modal-header h3 {
       margin:0;
-      border:0;
-      padding:0;
+      font-size:1.05rem;
     }
 
-    .history-item {
+    #historialModal .history-item {
       border:1px solid #e5e7eb;
       border-radius:10px;
       padding:.75rem;
@@ -354,198 +1174,112 @@
       background:#fafafa;
     }
 
-    .history-grid {
+    #historialModal .history-grid {
       display:grid;
       grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-      gap:.4rem .8rem;
-      margin-top:.5rem;
+      gap:.45rem .8rem;
+      margin-top:.55rem;
     }
 
-    .history-grid span {
+    #historialModal .history-grid span {
       display:block;
-      font-size:.74rem;
+      font-size:.72rem;
       text-transform:uppercase;
       color:#6b7280;
       font-weight:700;
+      margin-bottom:.12rem;
     }
 
-    @media (max-width:768px) {
-      .form-grid,
-      .resumen-financiero {
-        grid-template-columns:1fr;
+    /* ===== RESPONSIVE ===== */
+
+    @media (max-width:1100px) {
+      #abonosRoot .bank-grid {
+        grid-template-columns:repeat(3,minmax(0,1fr));
       }
 
-      .btn-row {
-        flex-direction:column;
+      #abonosRoot .bank-grid .span-5 {
+        grid-column:1 / -1;
       }
 
-      .btn-accion {
-        width:100%;
+      #abonosRoot .toolbar {
+        grid-template-columns:repeat(3,minmax(0,1fr));
+      }
+
+      #abonosRoot .toolbar .tag {
+        grid-column:1 / -1;
       }
     }
 
-    /* =========================================================
-   AISLAMIENTO VISUAL DE ABONOS.HTML
-   Evita que estilos.css altere las tarjetas de esta página
-   ========================================================= */
-
-    #abonosRoot {
-      display:block !important;
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-      margin:0 !important;
-      padding:1rem 1.2rem !important;
-      box-sizing:border-box !important;
-    }
-    
-    #abonosRoot,
-    #abonosRoot * {
-      box-sizing:border-box;
-    }
-    
-    /* Las tarjetas de abonos siempre ocupan todo el ancho */
-    #abonosRoot > .card,
-    #abonosRoot .card {
-      display:block !important;
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-      height:auto !important;
-      margin:0 0 1rem 0 !important;
-      padding:1.3rem 1.5rem !important;
-    
-      border:1px solid #e5e7eb !important;
-      border-radius:16px !important;
-      background:#ffffff !important;
-      box-shadow:0 2px 8px rgba(0,0,0,.06) !important;
-    
-      float:none !important;
-      position:relative !important;
-      overflow:visible !important;
-    }
-    
-    /* Título de cada tarjeta */
-    #abonosRoot .card > h3 {
-      display:block !important;
-      width:100% !important;
-      max-width:none !important;
-      margin:0 0 .8rem 0 !important;
-      padding:0 0 .5rem 0 !important;
-    
-      border-bottom:1px solid #e5e7eb !important;
-      font-size:1.3rem !important;
-      color:#111827 !important;
-      text-align:left !important;
-    }
-    
-    /* Formulario a todo el ancho */
-    #abonosRoot .form-grid {
-      display:grid !important;
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-    
-      grid-template-columns:repeat(
-        auto-fit,
-        minmax(min(220px, 100%), 1fr)
-      ) !important;
-    
-      gap:.8rem !important;
-    }
-    
-    /* Cada campo puede crecer correctamente */
-    #abonosRoot .form-item {
-      display:flex !important;
-      flex-direction:column !important;
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-      gap:.25rem !important;
-    }
-    
-    #abonosRoot .form-item.full {
-      grid-column:1 / -1 !important;
-    }
-    
-    /* Inputs y selects dentro de esta página */
-    #abonosRoot .input-field,
-    #abonosRoot input,
-    #abonosRoot select,
-    #abonosRoot textarea {
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-    }
-    
-    /* Filtros a todo el ancho */
-    #abonosRoot .toolbar {
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-    }
-    
-    /* Resumen financiero a todo el ancho */
-    #abonosRoot .resumen-financiero {
-      display:grid !important;
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-    
-      grid-template-columns:repeat(
-        auto-fit,
-        minmax(min(180px, 100%), 1fr)
-      ) !important;
-    
-      gap:1rem !important;
-    }
-    
-    /* Tabla */
-    #abonosRoot .table-wrap {
-      display:block !important;
-      width:100% !important;
-      max-width:none !important;
-      min-width:0 !important;
-      overflow-x:auto !important;
-    }
-    
-    #abonosRoot table.finanzas {
-      width:100% !important;
-      max-width:none !important;
-    }
-    
-    /* Escritorio */
-    @media (min-width:900px) {
-      #abonosRoot .form-grid {
-        grid-template-columns:repeat(5, minmax(0, 1fr)) !important;
-      }
-    
-      #abonosRoot .form-item.full {
-        grid-column:1 / -1 !important;
-      }
-    }
-    
-    /* Tablet */
-    @media (min-width:650px) and (max-width:899px) {
-      #abonosRoot .form-grid {
-        grid-template-columns:repeat(2, minmax(0, 1fr)) !important;
-      }
-    }
-    
-    /* Celular */
-    @media (max-width:649px) {
+    @media (max-width:780px) {
       #abonosRoot {
         padding:.8rem !important;
       }
-    
-      #abonosRoot > .card,
+
       #abonosRoot .card {
         padding:1rem !important;
       }
-    
-      #abonosRoot .form-grid,
-      #abonosRoot .resumen-financiero {
-        grid-template-columns:1fr !important;
+
+      #abonosRoot .resolver-grid {
+        grid-template-columns:1fr;
+      }
+
+      #abonosRoot .manual-grid {
+        grid-template-columns:1fr;
+      }
+
+      #abonosRoot .selected-card {
+        grid-template-columns:1fr;
+      }
+
+      #abonosRoot .summary-grid {
+        grid-template-columns:repeat(2,minmax(0,1fr));
+      }
+
+      #abonosRoot .toolbar {
+        grid-template-columns:1fr 1fr;
+      }
+    }
+
+    @media (max-width:560px) {
+      #abonosRoot .page-title {
+        font-size:1.18rem;
+      }
+
+      #abonosRoot .type-row {
+        display:grid;
+        grid-template-columns:1fr 1fr 1fr;
+      }
+
+      #abonosRoot .type-option,
+      #abonosRoot .type-option label {
+        width:100%;
+        min-width:0;
+      }
+
+      #abonosRoot .bank-grid {
+        grid-template-columns:1fr;
+      }
+
+      #abonosRoot .bank-grid .span-2,
+      #abonosRoot .bank-grid .span-5 {
+        grid-column:1;
+      }
+
+      #abonosRoot .summary-grid {
+        grid-template-columns:1fr 1fr;
+      }
+
+      #abonosRoot .toolbar {
+        grid-template-columns:1fr;
+      }
+
+      #abonosRoot .actions-row {
+        flex-direction:column;
+        align-items:stretch;
+      }
+
+      #abonosRoot .btn {
+        width:100% !important;
       }
     }
   </style>
@@ -554,52 +1288,162 @@
 <body>
   <div id="encabezado"></div>
 
-  <div id="abonosRoot" class="page" data-mode="sistema">
-    <h2 style="margin:.4rem 0 0;">ABONOS A PROVEEDORES</h2>
-    <p class="muted" style="margin:.35rem 0 1rem;">
-      Registro operativo de pagos realizados a proveedores de actividades y hoteles.
+  <main id="abonosRoot" data-mode="sistema">
+    <h1 class="page-title">ABONOS A PROVEEDORES</h1>
+    <p class="page-subtitle">
+      Registro operativo de pagos realizados a proveedores, servicios y hoteles.
     </p>
 
-    <div class="card">
-      <h3 id="formTitulo">Registrar abono</h3>
+    <!-- ======================================================
+         BLOQUE 1 — RESOLVER A QUIÉN CORRESPONDE EL ABONO
+         ====================================================== -->
+    <section class="card">
+      <h3>1. Identificar el abono</h3>
+      <p class="section-caption">
+        Selecciona el año, el tipo y el destino. Después busca por proveedor, actividad, servicio u hotel.
+      </p>
 
-      <div class="form-grid">
-        <div class="form-item">
-          <label for="abTipo">Tipo</label>
-          <select id="abTipo" class="input-field">
-            <option value="actividad">Actividad</option>
-            <option value="hotel">Hotel</option>
+      <div class="resolver-grid">
+        <div class="field">
+          <label for="abAno">Año</label>
+          <select id="abAno" class="input"></select>
+        </div>
+
+        <div class="field">
+          <label>Tipo</label>
+
+          <div class="type-row" role="radiogroup" aria-label="Tipo de abono">
+            <div class="type-option">
+              <input id="abTipoActividad" type="radio" name="abTipo" value="actividad" checked />
+              <label for="abTipoActividad">Actividad</label>
+            </div>
+
+            <div class="type-option">
+              <input id="abTipoHotel" type="radio" name="abTipo" value="hotel" />
+              <label for="abTipoHotel">Hotel</label>
+            </div>
+
+            <div class="type-option">
+              <input id="abTipoOtro" type="radio" name="abTipo" value="otro" />
+              <label for="abTipoOtro">Otro</label>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="abDestino">Destino</label>
+          <select id="abDestino" class="input"></select>
+        </div>
+      </div>
+
+      <!-- BUSCADOR PARA ACTIVIDAD/HOTEL -->
+      <div id="busquedaCatalogoWrap" class="search-zone">
+        <div class="field full">
+          <label for="abBuscarEntidad">Buscar proveedor, servicio, actividad u hotel</label>
+
+          <div class="search-wrap">
+            <input
+              id="abBuscarEntidad"
+              class="input"
+              type="search"
+              autocomplete="off"
+              placeholder="Ej.: Alliance, Disco BR, Floating, Pioneros, Novotel..."
+            />
+            <span class="material-symbols-outlined search-icon">search</span>
+
+            <div id="abResultadosBusqueda" class="search-results hidden"></div>
+          </div>
+        </div>
+
+        <div id="abSeleccionWrap" class="selected-card hidden">
+          <div class="selected-main">
+            <div class="selected-item">
+              <span>Tipo</span>
+              <strong id="selTipo">—</strong>
+            </div>
+
+            <div class="selected-item">
+              <span>Proveedor / hotel</span>
+              <strong id="selProveedorHotel">—</strong>
+            </div>
+
+            <div class="selected-item">
+              <span>Servicio / actividad</span>
+              <strong id="selServicio">—</strong>
+            </div>
+
+            <div class="selected-item">
+              <span>Destino</span>
+              <strong id="selDestino">—</strong>
+            </div>
+
+            <div class="selected-item">
+              <span>Moneda sugerida</span>
+              <strong id="selMoneda">—</strong>
+            </div>
+          </div>
+
+          <button id="btnCambiarSeleccion" class="btn-link" type="button">
+            Cambiar
+          </button>
+        </div>
+      </div>
+
+      <!-- INGRESO MANUAL PARA OTRO -->
+      <div id="otroManualWrap" class="manual-grid hidden">
+        <div class="field">
+          <label for="abOtroDestinatario">Proveedor / destinatario</label>
+          <input
+            id="abOtroDestinatario"
+            class="input"
+            type="text"
+            placeholder="Ej.: Transporte externo"
+          />
+        </div>
+
+        <div class="field">
+          <label for="abOtroCategoria">Categoría</label>
+          <select id="abOtroCategoria" class="input">
+            <option value="transporte">Transporte</option>
+            <option value="alimentacion">Alimentación</option>
+            <option value="actividad_no_registrada">Actividad no registrada</option>
+            <option value="hotel_no_registrado">Hotel no registrado</option>
+            <option value="anticipo">Anticipo</option>
+            <option value="reembolso">Reembolso</option>
+            <option value="otro">Otro</option>
           </select>
         </div>
 
-        <div class="form-item">
-          <label for="abAno">Año</label>
-          <select id="abAno" class="input-field"></select>
+        <div class="field">
+          <label for="abOtroConcepto">Concepto</label>
+          <input
+            id="abOtroConcepto"
+            class="input"
+            type="text"
+            placeholder="Ej.: Abono extraordinario"
+          />
         </div>
+      </div>
+    </section>
 
-        <div class="form-item">
-          <label for="abDestino">Destino</label>
-          <select id="abDestino" class="input-field"></select>
-        </div>
+    <!-- ======================================================
+         BLOQUE 2 — REGISTRO SIMPLE TIPO BANCO
+         ====================================================== -->
+    <section class="card">
+      <h3>2. Registrar el movimiento</h3>
+      <p class="section-caption">
+        Completa los datos del pago tal como aparecen en el banco o comprobante.
+      </p>
 
-        <div class="form-item">
-          <label id="abProveedorLabel" for="abProveedor">Proveedor</label>
-          <select id="abProveedor" class="input-field"></select>
-        </div>
-
-        <div class="form-item" id="servicioWrap">
-          <label for="abServicio">Servicio / actividad</label>
-          <select id="abServicio" class="input-field"></select>
-        </div>
-
-        <div class="form-item">
+      <div class="bank-grid">
+        <div class="field">
           <label for="abFechaPago">Fecha del pago</label>
-          <input id="abFechaPago" class="input-field" type="date" />
+          <input id="abFechaPago" class="input" type="date" />
         </div>
 
-        <div class="form-item">
+        <div class="field">
           <label for="abMoneda">Moneda</label>
-          <select id="abMoneda" class="input-field">
+          <select id="abMoneda" class="input">
             <option value="CLP">CLP</option>
             <option value="USD">USD</option>
             <option value="BRL">BRL</option>
@@ -607,14 +1451,14 @@
           </select>
         </div>
 
-        <div class="form-item">
+        <div class="field">
           <label for="abMonto">Monto</label>
-          <input id="abMonto" class="input-field mono" type="number" min="0" step="0.01" />
+          <input id="abMonto" class="input" type="number" min="0" step="0.01" />
         </div>
 
-        <div class="form-item">
+        <div class="field">
           <label for="abFormaPago">Forma de pago</label>
-          <select id="abFormaPago" class="input-field">
+          <select id="abFormaPago" class="input">
             <option value="transferencia">Transferencia</option>
             <option value="deposito">Depósito</option>
             <option value="efectivo">Efectivo</option>
@@ -624,64 +1468,86 @@
           </select>
         </div>
 
-        <div class="form-item">
+        <div class="field">
           <label for="abReferencia">N° operación / referencia</label>
-          <input id="abReferencia" class="input-field" type="text" />
+          <input id="abReferencia" class="input" type="text" />
         </div>
 
-        <div class="form-item">
+        <div class="field span-2">
           <label for="abComprobante">Comprobante</label>
-          <input id="abComprobante" class="input-field" type="file" accept="image/*,.pdf" />
+          <div class="file-box">
+            <input id="abComprobante" class="input" type="file" accept="image/*,.pdf" />
+            <span class="file-hint">Imagen o PDF.</span>
+          </div>
         </div>
 
-        <div class="form-item full">
+        <div class="field span-5">
           <label for="abNota">Asunto / nota</label>
-          <textarea id="abNota" class="input-field" placeholder="Ej.: Primer abono reserva, saldo actividad, anticipo hotel, etc."></textarea>
+          <textarea
+            id="abNota"
+            class="input"
+            placeholder="Ej.: Primer abono reserva, saldo actividad, anticipo hotel, etc."
+          ></textarea>
         </div>
 
-        <div class="form-item full hidden" id="motivoCambioWrap">
+        <div id="motivoCambioWrap" class="field span-5 hidden">
           <label for="abMotivoCambio">Motivo del cambio</label>
-          <input id="abMotivoCambio" class="input-field" type="text" placeholder="Obligatorio al editar un abono existente" />
+          <input
+            id="abMotivoCambio"
+            class="input"
+            type="text"
+            placeholder="Obligatorio al editar un abono existente"
+          />
         </div>
       </div>
 
-      <div class="btn-row">
-        <button id="btnGuardarAbono" class="btn-accion primary" type="button">
+      <div class="actions-row">
+        <button id="btnGuardarAbono" class="btn primary" type="button">
           <span class="material-symbols-outlined">save</span>
           Guardar abono
         </button>
 
-        <button id="btnCancelarEdicion" class="btn-accion hidden" type="button">
+        <button id="btnCancelarEdicion" class="btn secondary hidden" type="button">
           Cancelar edición
         </button>
 
-        <span id="formEstado" class="muted"></span>
+        <span id="formEstado" class="form-state"></span>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
+    <!-- ======================================================
+         RESUMEN
+         ====================================================== -->
+    <section class="card">
       <h3>Resumen de abonos visibles</h3>
-      <div class="resumen-financiero">
-        <div class="stat-card">
-          <div class="stat-label">Total CLP</div>
-          <div class="stat-value clp" id="sumCLP">0</div>
+
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-label">Total CLP</div>
+          <div id="sumCLP" class="summary-value clp">0</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Total USD</div>
-          <div class="stat-value usd" id="sumUSD">0</div>
+
+        <div class="summary-card">
+          <div class="summary-label">Total USD</div>
+          <div id="sumUSD" class="summary-value usd">0</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Total BRL</div>
-          <div class="stat-value brl" id="sumBRL">0</div>
+
+        <div class="summary-card">
+          <div class="summary-label">Total BRL</div>
+          <div id="sumBRL" class="summary-value brl">0</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Total ARS</div>
-          <div class="stat-value ars" id="sumARS">0</div>
+
+        <div class="summary-card">
+          <div class="summary-label">Total ARS</div>
+          <div id="sumARS" class="summary-value ars">0</div>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div class="card">
+    <!-- ======================================================
+         HISTORIAL
+         ====================================================== -->
+    <section class="card">
       <h3>Historial de abonos</h3>
 
       <div class="toolbar">
@@ -693,6 +1559,7 @@
           <option value="">Todos los tipos</option>
           <option value="actividad">Actividades</option>
           <option value="hotel">Hoteles</option>
+          <option value="otro">Otros</option>
         </select>
 
         <select id="filtroDestino">
@@ -709,12 +1576,22 @@
         </select>
 
         <input id="filtroUsuario" type="text" placeholder="Usuario" />
-        <input id="filtroBuscar" type="search" placeholder="Proveedor, hotel, servicio, nota o referencia" />
 
-        <button id="btnAplicarFiltros" class="primary" type="button">FILTRAR</button>
-        <button id="btnLimpiarFiltros" class="secondary" type="button">LIMPIAR</button>
+        <input
+          id="filtroBuscar"
+          type="search"
+          placeholder="Proveedor, hotel, servicio, nota o referencia"
+        />
 
-        <span class="tag" id="pagInfo"></span>
+        <button id="btnAplicarFiltros" class="btn primary" type="button">
+          Filtrar
+        </button>
+
+        <button id="btnLimpiarFiltros" class="btn secondary" type="button">
+          Limpiar
+        </button>
+
+        <span id="pagInfo" class="tag"></span>
       </div>
 
       <div class="table-wrap">
@@ -739,22 +1616,33 @@
               <th>Acciones</th>
             </tr>
           </thead>
+
           <tbody></tbody>
         </table>
       </div>
-    </div>
-  </div>
+    </section>
+  </main>
 
-  <div id="historialModal" class="modal-backdrop">
+  <!-- ========================================================
+       MODAL HISTORIAL
+       ======================================================== -->
+  <div id="historialModal">
     <div class="modal-card">
-      <header>
+      <div class="modal-header">
         <h3>Historial de cambios</h3>
-        <button id="btnCerrarHistorial" class="btn-accion" type="button">Cerrar</button>
-      </header>
+
+        <button id="btnCerrarHistorial" class="btn secondary" type="button">
+          Cerrar
+        </button>
+      </div>
+
       <div id="historialContenido"></div>
     </div>
   </div>
 
+  <!-- ========================================================
+       CARGA DEL ECOSISTEMA DE OPERACIONES
+       ======================================================== -->
   <script type="module">
     (async () => {
       try {
@@ -765,8 +1653,10 @@
       await import('./firebase-init.js');
       await import('./script.js');
       await import('./abonos.js');
+
       console.log('✅ abonos.js cargado');
     })();
   </script>
 </body>
 </html>
+
