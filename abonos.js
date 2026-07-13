@@ -44,6 +44,8 @@ let ABONOS = [];
 let abonoEditandoId = null;
 let comprobanteActualURL = '';
 let ENTIDAD_SELECCIONADA = null;
+let LIMITE_ABONOS = 10;
+let ULTIMO_ABONO_GUARDADO = null;
 
 const el = id => document.getElementById(id);
 
@@ -81,6 +83,21 @@ function normalizarMoneda(moneda = 'CLP') {
 
 function nowISODate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getAnoComercialActual() {
+  const hoy = new Date();
+  const anoCalendario = hoy.getFullYear();
+  const mes = hoy.getMonth() + 1;
+
+  // Del 1 de marzo al último día de febrero siguiente.
+  return mes >= 3
+    ? String(anoCalendario)
+    : String(anoCalendario - 1);
+}
+
+function esVistaMovil() {
+  return window.matchMedia('(max-width: 560px)').matches;
 }
 
 function fmtNumero(valor) {
@@ -169,8 +186,16 @@ function getDestinoHotel(hotel = {}, asignacion = {}, grupo = {}) {
 }
 
 function setEstadoFormulario(texto = '', esError = false) {
-  el('formEstado').textContent = texto;
-  el('formEstado').style.color = esError ? '#b91c1c' : '#166534';
+  const estado = el('formEstado');
+
+  if (!estado) {
+    return;
+  }
+
+  estado.textContent = texto;
+  estado.style.color = esError
+    ? '#b91c1c'
+    : '#166534';
 }
 
 function abrirModalAbono() {
@@ -367,6 +392,12 @@ function obtenerAnosDisponibles() {
 
 function poblarAnos() {
   const anos = obtenerAnosDisponibles();
+  const anoComercial = getAnoComercialActual();
+
+  if (!anos.includes(anoComercial)) {
+    anos.push(anoComercial);
+    anos.sort((a, b) => Number(a) - Number(b));
+  }
 
   el('abAno').innerHTML = anos
     .map(ano => `
@@ -376,17 +407,7 @@ function poblarAnos() {
     `)
     .join('');
 
-  const anoPredeterminado = '2026';
-
-  if (anos.includes(anoPredeterminado)) {
-    el('abAno').value = anoPredeterminado;
-  } else {
-    const anoActual = String(new Date().getFullYear());
-
-    el('abAno').value = anos.includes(anoActual)
-      ? anoActual
-      : (anos[0] || '');
-  }
+  el('abAno').value = anoComercial;
 
   el('filtroAno').innerHTML = `
     <option value="">Todos los años</option>
@@ -399,6 +420,8 @@ function poblarAnos() {
       `)
       .join('')}
   `;
+
+  el('filtroAno').value = anoComercial;
 }
 
 function obtenerDestinosFormulario() {
@@ -1119,6 +1142,36 @@ async function guardarEspejo(
   );
 }
 
+function mostrarConfirmacionAbono(datos = {}) {
+  const proveedor =
+    datos.tipo === 'hotel'
+      ? datos.hotelNombre
+      : datos.proveedorNombre;
+
+  el('confirmacionProveedor').textContent =
+    proveedor || '—';
+
+  el('confirmacionServicio').textContent =
+    datos.servicioNombre ||
+    datos.nota ||
+    '—';
+
+  el('confirmacionMonto').textContent =
+    `${datos.moneda || 'CLP'} ${fmtNumero(datos.monto || 0)}`;
+
+  el('confirmacionAbonoModal')
+    .classList.add('open');
+
+  document.body.style.overflow = 'hidden';
+}
+
+function cerrarConfirmacionAbono() {
+  el('confirmacionAbonoModal')
+    .classList.remove('open');
+
+  document.body.style.overflow = '';
+}
+
 async function guardarAbono() {
   const error = validarFormulario();
 
@@ -1128,11 +1181,15 @@ async function guardarAbono() {
   }
 
   const btn = el('btnGuardarAbono');
+  const eraEdicion = Boolean(abonoEditandoId);
   btn.disabled = true;
   setEstadoFormulario('Guardando...');
 
   try {
     const datos = obtenerDatosFormulario();
+    ULTIMO_ABONO_GUARDADO = {
+      ...datos
+    };
     const email = (auth.currentUser?.email || '').toLowerCase();
     const file = el('abComprobante').files[0] || null;
 
@@ -1169,7 +1226,6 @@ async function guardarAbono() {
         1
       );
 
-      alert('✅ Abono registrado correctamente.');
     } else {
       const refCentral = doc(db, RUTA_ABONOS, abonoEditandoId);
       const snapActual = await getDoc(refCentral);
@@ -1219,18 +1275,33 @@ async function guardarAbono() {
         nuevaVersion
       );
 
-      alert('✅ Abono actualizado y cambio registrado en el historial.');
     }
 
     await cargarAbonos();
     poblarFiltrosGenerales();
     renderAbonos();
     
+    const datosConfirmacion = {
+      ...ULTIMO_ABONO_GUARDADO
+    };
+    
     limpiarFormulario();
     
     cerrarModalAbono({
       limpiar: false
     });
+    
+    if (esVistaMovil()) {
+      mostrarConfirmacionAbono(
+        datosConfirmacion
+      );
+    } else {
+      alert(
+        abonoEditandoId
+          ? '✅ Abono actualizado correctamente.'
+          : '✅ Abono registrado correctamente.'
+      );
+    }
   } catch (error) {
     console.error(error);
     setEstadoFormulario(error.message || 'No se pudo guardar.', true);
@@ -1261,12 +1332,15 @@ function limpiarFormulario() {
   el('abTipoHotel').checked = false;
   el('abTipoOtro').checked = false;
 
+  const anoComercial = getAnoComercialActual();
   const opcionesAno = [...el('abAno').options];
-
+  
   if (
-    opcionesAno.some(opcion => opcion.value === '2026')
+    opcionesAno.some(
+      opcion => opcion.value === anoComercial
+    )
   ) {
-    el('abAno').value = '2026';
+    el('abAno').value = anoComercial;
   }
 
   el('abFechaPago').value = nowISODate();
@@ -1662,29 +1736,77 @@ function abonosFiltrados() {
   });
 }
 
-function renderResumen(lista) {
-  const totales = { CLP: 0, USD: 0, BRL: 0, ARS: 0 };
+function aplicarLimiteAbonos(lista = []) {
+  if (LIMITE_ABONOS === 'todos') {
+    return lista;
+  }
+
+  const limite = Number(LIMITE_ABONOS || 10);
+
+  return lista.slice(0, limite);
+}
+
+function renderResumen(lista = []) {
+  const elementos = {
+    CLP: el('sumCLP'),
+    USD: el('sumUSD'),
+    BRL: el('sumBRL'),
+    ARS: el('sumARS')
+  };
+
+  if (
+    !elementos.CLP ||
+    !elementos.USD ||
+    !elementos.BRL ||
+    !elementos.ARS
+  ) {
+    return;
+  }
+
+  const totales = {
+    CLP: 0,
+    USD: 0,
+    BRL: 0,
+    ARS: 0
+  };
 
   lista
-    .filter(a => norm(a.estado) !== 'ARCHIVADO')
-    .forEach(a => {
-      const moneda = normalizarMoneda(a.moneda);
-      totales[moneda] += Number(a.monto || 0);
+    .filter(abono =>
+      norm(abono.estado) !== 'ARCHIVADO'
+    )
+    .forEach(abono => {
+      const moneda =
+        normalizarMoneda(abono.moneda);
+
+      totales[moneda] +=
+        Number(abono.monto || 0);
     });
 
-  el('sumCLP').textContent = fmtNumero(totales.CLP);
-  el('sumUSD').textContent = fmtNumero(totales.USD);
-  el('sumBRL').textContent = fmtNumero(totales.BRL);
-  el('sumARS').textContent = fmtNumero(totales.ARS);
+  elementos.CLP.textContent =
+    `$${fmtNumero(totales.CLP)}`;
+
+  elementos.USD.textContent =
+    fmtNumero(totales.USD);
+
+  elementos.BRL.textContent =
+    fmtNumero(totales.BRL);
+
+  elementos.ARS.textContent =
+    fmtNumero(totales.ARS);
 }
 
 function renderAbonos() {
-  const lista = abonosFiltrados();
-  const tbody = el('tblAbonos').querySelector('tbody');
+  const listaFiltrada = abonosFiltrados();
+  const listaVisible = aplicarLimiteAbonos(
+    listaFiltrada
+  );
+
+  const tbody =
+    el('tblAbonos').querySelector('tbody');
 
   tbody.innerHTML = '';
 
-  for (const abono of lista) {
+  for (const abono of listaVisible) {
 
     let proveedorHotel = '';
     
@@ -1763,18 +1885,144 @@ function renderAbonos() {
     }
   }
 
-  el('pagInfo').textContent = `${lista.length} abono(s)`;
-  renderResumen(lista);
+  el('pagInfo').textContent =
+    listaVisible.length === listaFiltrada.length
+      ? `${listaFiltrada.length} abono(s)`
+      : `Mostrando ${listaVisible.length} de ${listaFiltrada.length}`;
+  
+  renderResumen(listaFiltrada);
 }
 
 function limpiarFiltros() {
-  el('filtroAno').value = '';
+  el('filtroAno').value =
+    getAnoComercialActual();
+
   el('filtroTipo').value = '';
   el('filtroDestino').value = '';
   el('filtroEstado').value = '';
   el('filtroUsuario').value = '';
   el('filtroBuscar').value = '';
+
+  LIMITE_ABONOS = 10;
+
+  if (el('limiteAbonos')) {
+    el('limiteAbonos').value = '10';
+  }
+
   renderAbonos();
+}
+
+function exportarAbonosExcel() {
+  const lista = abonosFiltrados();
+
+  if (!lista.length) {
+    alert(
+      'No hay abonos para exportar con los filtros seleccionados.'
+    );
+    return;
+  }
+
+  if (!window.XLSX) {
+    alert(
+      'No se pudo cargar la herramienta de exportación Excel.'
+    );
+    return;
+  }
+
+  const filas = lista.map(abono => {
+    const proveedorHotel =
+      abono.tipo === 'hotel'
+        ? abono.hotelNombre || ''
+        : abono.proveedorNombre || '';
+
+    return {
+      'Fecha pago':
+        abono.fechaPago ||
+        abono.fecha ||
+        '',
+
+      'Tipo':
+        abono.tipo || '',
+
+      'Proveedor / Hotel':
+        proveedorHotel,
+
+      'Servicio / Asunto':
+        abono.servicioNombre || '',
+
+      'Nota':
+        abono.nota || '',
+
+      'Destino':
+        abono.destino || '',
+
+      'Año':
+        abono.ano || '',
+
+      'Moneda':
+        abono.moneda || 'CLP',
+
+      'Monto':
+        Number(abono.monto || 0),
+
+      'Forma de pago':
+        abono.formaPago || '',
+
+      'Referencia':
+        abono.referencia || '',
+
+      'Comprobante':
+        abono.comprobanteURL || '',
+
+      'Registrado por':
+        abono.createdByEmail || '',
+
+      'Fecha de registro':
+        formatTimestamp(
+          abono.createdAt ||
+          abono.fechaRegistro
+        ),
+
+      'Última modificación por':
+        abono.updatedByEmail || '',
+
+      'Estado':
+        abono.estado || 'REGISTRADO',
+
+      'Versión':
+        Number(abono.version || 1)
+    };
+  });
+
+  const hoja =
+    window.XLSX.utils.json_to_sheet(filas);
+
+  const libro =
+    window.XLSX.utils.book_new();
+
+  window.XLSX.utils.book_append_sheet(
+    libro,
+    hoja,
+    'Abonos'
+  );
+
+  const ano =
+    el('filtroAno').value ||
+    'todos';
+
+  const tipo =
+    el('filtroTipo').value ||
+    'todos';
+
+  const fecha =
+    new Date()
+      .toISOString()
+      .slice(0, 10);
+
+  window.XLSX.writeFile(
+    libro,
+    `abonos_${ano}_${tipo}_${fecha}.xlsx`
+  );
 }
 
 function conectarEventos() {
@@ -1950,6 +2198,45 @@ function conectarEventos() {
     renderAbonos
   );
 
+  /* CANTIDAD VISIBLE */
+
+  el('limiteAbonos').addEventListener(
+    'change',
+    event => {
+      LIMITE_ABONOS =
+        event.target.value === 'todos'
+          ? 'todos'
+          : Number(event.target.value);
+  
+      renderAbonos();
+    }
+  );
+  
+  /* EXPORTAR EXCEL */
+  
+  el('btnExportarExcel').addEventListener(
+    'click',
+    exportarAbonosExcel
+  );
+  
+  /* CONFIRMACIÓN MÓVIL */
+  
+  el('btnAgregarOtroAbono').addEventListener(
+    'click',
+    () => {
+      cerrarConfirmacionAbono();
+      limpiarFormulario();
+      abrirModalAbono();
+    }
+  );
+  
+  el('btnCerrarConfirmacion').addEventListener(
+    'click',
+    () => {
+      cerrarConfirmacionAbono();
+    }
+  );
+
   /* HISTORIAL */
 
   el('btnCerrarHistorial').addEventListener(
@@ -2040,7 +2327,18 @@ async function inicializar() {
 
     el('abonoModal').classList.remove('open');
     document.body.style.overflow = '';
-
+    
+    if (el('limiteAbonos')) {
+      el('limiteAbonos').value = '10';
+    }
+    
+    LIMITE_ABONOS = 10;
+    
+    if (esVistaMovil()) {
+      limpiarFormulario();
+      abrirModalAbono();
+    }
+    
     console.log(
       '✅ Página de abonos inicializada'
     );
