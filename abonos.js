@@ -43,8 +43,13 @@ let ABONOS = [];
 
 let abonoEditandoId = null;
 let comprobanteActualURL = '';
+let ENTIDAD_SELECCIONADA = null;
 
 const el = id => document.getElementById(id);
+
+function getTipoSeleccionado() {
+  return document.querySelector('input[name="abTipo"]:checked')?.value || 'actividad';
+}
 
 function slug(valor = '') {
   return String(valor || '')
@@ -335,31 +340,93 @@ function poblarAnos() {
   const anos = obtenerAnosDisponibles();
 
   el('abAno').innerHTML = anos
-    .map(ano => `<option value="${escapeHTML(ano)}">${escapeHTML(ano)}</option>`)
+    .map(ano => `
+      <option value="${escapeHTML(ano)}">
+        ${escapeHTML(ano)}
+      </option>
+    `)
     .join('');
 
-  const anoActual = String(new Date().getFullYear());
-  el('abAno').value = anos.includes(anoActual) ? anoActual : (anos[0] || '');
+  const anoPredeterminado = '2026';
+
+  if (anos.includes(anoPredeterminado)) {
+    el('abAno').value = anoPredeterminado;
+  } else {
+    const anoActual = String(new Date().getFullYear());
+
+    el('abAno').value = anos.includes(anoActual)
+      ? anoActual
+      : (anos[0] || '');
+  }
 
   el('filtroAno').innerHTML = `
     <option value="">Todos los años</option>
-    ${anos.map(ano => `<option value="${escapeHTML(ano)}">${escapeHTML(ano)}</option>`).join('')}
+
+    ${anos
+      .map(ano => `
+        <option value="${escapeHTML(ano)}">
+          ${escapeHTML(ano)}
+        </option>
+      `)
+      .join('')}
   `;
 }
 
 function obtenerDestinosFormulario() {
-  const tipo = el('abTipo').value;
+  const tipo = getTipoSeleccionado();
   const ano = el('abAno').value;
   const destinos = new Set();
 
   if (tipo === 'actividad') {
     SERVICIOS
-      .filter(s => String(s.ano) === String(ano))
-      .forEach(s => destinos.add(getDestinoServicio(s)));
-  } else {
+      .filter(servicio =>
+        String(servicio.ano) === String(ano)
+      )
+      .forEach(servicio => {
+        const destino = getDestinoServicio(servicio);
+
+        if (destino) {
+          destinos.add(destino);
+        }
+      });
+  }
+
+  if (tipo === 'hotel') {
     construirCatalogoHoteles()
-      .filter(h => String(h.ano) === String(ano))
-      .forEach(h => destinos.add(h.destino));
+      .filter(hotel =>
+        String(hotel.ano) === String(ano)
+      )
+      .forEach(hotel => {
+        if (hotel.destino) {
+          destinos.add(hotel.destino);
+        }
+      });
+  }
+
+  if (tipo === 'otro') {
+    SERVICIOS
+      .filter(servicio =>
+        String(servicio.ano) === String(ano)
+      )
+      .forEach(servicio => {
+        const destino = getDestinoServicio(servicio);
+
+        if (destino) {
+          destinos.add(destino);
+        }
+      });
+
+    construirCatalogoHoteles()
+      .filter(hotel =>
+        String(hotel.ano) === String(ano)
+      )
+      .forEach(hotel => {
+        if (hotel.destino) {
+          destinos.add(hotel.destino);
+        }
+      });
+
+    destinos.add('GENERAL / SIN DESTINO');
   }
 
   return [...destinos]
@@ -367,150 +434,314 @@ function obtenerDestinosFormulario() {
     .sort((a, b) => a.localeCompare(b, 'es'));
 }
 
-function poblarDestinosFormulario() {
-  const valorPrevio = el('abDestino').value;
+function poblarDestinosFormulario({
+  conservarDestino = true,
+  conservarSeleccion = false
+} = {}) {
+  const valorAnterior = conservarDestino
+    ? el('abDestino').value
+    : '';
+
   const destinos = obtenerDestinosFormulario();
 
   el('abDestino').innerHTML = destinos
-    .map(destino => `<option value="${escapeHTML(destino)}">${escapeHTML(destino)}</option>`)
-    .join('');
-
-  if (destinos.includes(valorPrevio)) {
-    el('abDestino').value = valorPrevio;
-  }
-
-  poblarProveedoresFormulario();
-}
-
-function obtenerProveedoresFormulario() {
-  const tipo = el('abTipo').value;
-  const ano = el('abAno').value;
-  const destino = el('abDestino').value;
-
-  if (tipo === 'actividad') {
-    const mapa = new Map();
-
-    SERVICIOS
-      .filter(s =>
-        String(s.ano) === String(ano) &&
-        norm(getDestinoServicio(s)) === norm(destino)
-      )
-      .forEach(s => {
-        const nombre = getNombreProveedor(s);
-        mapa.set(slug(nombre), {
-          id: slug(nombre),
-          nombre
-        });
-      });
-
-    return [...mapa.values()].sort((a, b) =>
-      a.nombre.localeCompare(b.nombre, 'es')
-    );
-  }
-
-  return construirCatalogoHoteles()
-    .filter(h =>
-      String(h.ano) === String(ano) &&
-      norm(h.destino) === norm(destino)
-    )
-    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
-    .map(h => ({
-      id: h.hotelKey,
-      nombre: h.nombre,
-      hotelId: h.hotelId,
-      moneda: h.moneda
-    }));
-}
-
-function poblarProveedoresFormulario() {
-  const valorPrevio = el('abProveedor').value;
-  const opciones = obtenerProveedoresFormulario();
-
-  el('abProveedor').innerHTML = opciones
-    .map(op => `<option value="${escapeHTML(op.id)}">${escapeHTML(op.nombre)}</option>`)
-    .join('');
-
-  if (opciones.some(op => op.id === valorPrevio)) {
-    el('abProveedor').value = valorPrevio;
-  }
-
-  poblarServiciosFormulario();
-  sugerirMoneda();
-}
-
-function obtenerServiciosFormulario() {
-  if (el('abTipo').value !== 'actividad') return [];
-
-  const ano = el('abAno').value;
-  const destino = el('abDestino').value;
-  const proveedorSlug = el('abProveedor').value;
-
-  return SERVICIOS
-    .filter(s =>
-      String(s.ano) === String(ano) &&
-      norm(getDestinoServicio(s)) === norm(destino) &&
-      slug(getNombreProveedor(s)) === proveedorSlug
-    )
-    .sort((a, b) =>
-      getNombreServicio(a).localeCompare(getNombreServicio(b), 'es')
-    );
-}
-
-function poblarServiciosFormulario() {
-  const esActividad = el('abTipo').value === 'actividad';
-  el('servicioWrap').classList.toggle('hidden', !esActividad);
-  el('abProveedorLabel').textContent = esActividad ? 'Proveedor' : 'Hotel';
-
-  if (!esActividad) {
-    el('abServicio').innerHTML = '';
-    return;
-  }
-
-  const valorPrevio = el('abServicio').value;
-  const servicios = obtenerServiciosFormulario();
-
-  el('abServicio').innerHTML = servicios
-    .map(s => `
-      <option value="${escapeHTML(s.id)}">
-        ${escapeHTML(getNombreServicio(s))}
+    .map(destino => `
+      <option value="${escapeHTML(destino)}">
+        ${escapeHTML(destino)}
       </option>
     `)
     .join('');
 
-  if (servicios.some(s => s.id === valorPrevio)) {
-    el('abServicio').value = valorPrevio;
+  if (
+    valorAnterior &&
+    destinos.some(destino => norm(destino) === norm(valorAnterior))
+  ) {
+    const destinoEncontrado = destinos.find(
+      destino => norm(destino) === norm(valorAnterior)
+    );
+
+    el('abDestino').value = destinoEncontrado;
   }
 
-  sugerirMoneda();
+  if (!conservarSeleccion) {
+    limpiarSeleccionEntidad();
+  }
+
+  actualizarVistaTipo();
 }
 
-function sugerirMoneda() {
-  const tipo = el('abTipo').value;
+function limpiarSeleccionEntidad() {
+  ENTIDAD_SELECCIONADA = null;
+
+  el('abBuscarEntidad').value = '';
+  el('abResultadosBusqueda').innerHTML = '';
+  el('abResultadosBusqueda').classList.add('hidden');
+  el('abSeleccionWrap').classList.add('hidden');
+
+  el('selTipo').textContent = '—';
+  el('selProveedorHotel').textContent = '—';
+  el('selServicio').textContent = '—';
+  el('selDestino').textContent = '—';
+  el('selMoneda').textContent = '—';
+}
+
+function actualizarVistaTipo() {
+  const tipo = getTipoSeleccionado();
+  const esOtro = tipo === 'otro';
+
+  el('busquedaCatalogoWrap').classList.toggle(
+    'hidden',
+    esOtro
+  );
+
+  el('otroManualWrap').classList.toggle(
+    'hidden',
+    !esOtro
+  );
+
+  if (esOtro) {
+    limpiarSeleccionEntidad();
+  }
+}
+
+function obtenerResultadosBusqueda(texto = '') {
+  const tipo = getTipoSeleccionado();
+  const ano = el('abAno').value;
+  const destino = el('abDestino').value;
+  const termino = norm(texto);
+
+  if (!termino || termino.length < 2) {
+    return [];
+  }
 
   if (tipo === 'actividad') {
-    const servicio = obtenerServiciosFormulario()
-      .find(s => s.id === el('abServicio').value);
+    return SERVICIOS
+      .filter(servicio => {
+        if (String(servicio.ano) !== String(ano)) {
+          return false;
+        }
 
-    if (servicio) {
-      el('abMoneda').value = normalizarMoneda(
-        servicio.moneda ||
-        servicio.MONEDA ||
-        'CLP'
-      );
-    }
+        if (
+          destino &&
+          norm(getDestinoServicio(servicio)) !== norm(destino)
+        ) {
+          return false;
+        }
 
+        const proveedor = getNombreProveedor(servicio);
+        const nombreServicio = getNombreServicio(servicio);
+
+        const bolsaBusqueda = norm([
+          proveedor,
+          nombreServicio,
+          getDestinoServicio(servicio)
+        ].join(' '));
+
+        return bolsaBusqueda.includes(termino);
+      })
+      .map(servicio => ({
+        tipo: 'actividad',
+
+        ano: String(servicio.ano),
+        destino: getDestinoServicio(servicio),
+
+        proveedorId: slug(getNombreProveedor(servicio)),
+        proveedorNombre: getNombreProveedor(servicio),
+
+        servicioId: servicio.id,
+        servicioNombre: getNombreServicio(servicio),
+
+        hotelId: '',
+        hotelKey: '',
+        hotelNombre: '',
+
+        moneda: normalizarMoneda(
+          servicio.moneda ||
+          servicio.MONEDA ||
+          'CLP'
+        )
+      }))
+      .sort((a, b) => {
+        const porProveedor = a.proveedorNombre.localeCompare(
+          b.proveedorNombre,
+          'es'
+        );
+
+        if (porProveedor !== 0) {
+          return porProveedor;
+        }
+
+        return a.servicioNombre.localeCompare(
+          b.servicioNombre,
+          'es'
+        );
+      })
+      .slice(0, 40);
+  }
+
+  if (tipo === 'hotel') {
+    return construirCatalogoHoteles()
+      .filter(hotel => {
+        if (String(hotel.ano) !== String(ano)) {
+          return false;
+        }
+
+        if (
+          destino &&
+          norm(hotel.destino) !== norm(destino)
+        ) {
+          return false;
+        }
+
+        const bolsaBusqueda = norm([
+          hotel.nombre,
+          hotel.destino
+        ].join(' '));
+
+        return bolsaBusqueda.includes(termino);
+      })
+      .map(hotel => ({
+        tipo: 'hotel',
+
+        ano: String(hotel.ano),
+        destino: hotel.destino,
+
+        proveedorId: '',
+        proveedorNombre: '',
+
+        servicioId: '',
+        servicioNombre: 'ALOJAMIENTO',
+
+        hotelId: hotel.hotelId || '',
+        hotelKey: hotel.hotelKey,
+        hotelNombre: hotel.nombre,
+
+        moneda: normalizarMoneda(
+          hotel.moneda ||
+          'CLP'
+        )
+      }))
+      .sort((a, b) =>
+        a.hotelNombre.localeCompare(
+          b.hotelNombre,
+          'es'
+        )
+      )
+      .slice(0, 40);
+  }
+
+  return [];
+}
+
+function pintarResultadosBusqueda(resultados = []) {
+  const contenedor = el('abResultadosBusqueda');
+
+  contenedor.innerHTML = '';
+
+  if (!resultados.length) {
+    contenedor.innerHTML = `
+      <div class="search-result" style="cursor:default;">
+        <strong>Sin resultados</strong>
+        <small>
+          Prueba escribiendo el proveedor, servicio, actividad o hotel.
+        </small>
+      </div>
+    `;
+
+    contenedor.classList.remove('hidden');
     return;
   }
 
-  const hotel = construirCatalogoHoteles().find(h =>
-    String(h.ano) === String(el('abAno').value) &&
-    norm(h.destino) === norm(el('abDestino').value) &&
-    h.hotelKey === el('abProveedor').value
-  );
+  resultados.forEach(resultado => {
+    const div = document.createElement('div');
 
-  if (hotel) {
-    el('abMoneda').value = normalizarMoneda(hotel.moneda || 'CLP');
-  }
+    div.className = 'search-result';
+
+    if (resultado.tipo === 'actividad') {
+      div.innerHTML = `
+        <strong>
+          ${escapeHTML(resultado.servicioNombre)}
+        </strong>
+
+        <small>
+          Proveedor: ${escapeHTML(resultado.proveedorNombre)}
+          · Destino: ${escapeHTML(resultado.destino)}
+          · ${escapeHTML(resultado.moneda)}
+        </small>
+      `;
+    } else {
+      div.innerHTML = `
+        <strong>
+          ${escapeHTML(resultado.hotelNombre)}
+        </strong>
+
+        <small>
+          Hotel
+          · Destino: ${escapeHTML(resultado.destino)}
+          · ${escapeHTML(resultado.moneda)}
+        </small>
+      `;
+    }
+
+    div.addEventListener('click', () => {
+      seleccionarEntidad(resultado);
+    });
+
+    contenedor.appendChild(div);
+  });
+
+  contenedor.classList.remove('hidden');
+}
+
+function seleccionarEntidad(resultado) {
+  ENTIDAD_SELECCIONADA = {
+    ...resultado
+  };
+
+  el('abResultadosBusqueda').classList.add('hidden');
+
+  el('abBuscarEntidad').value =
+    resultado.tipo === 'actividad'
+      ? `${resultado.servicioNombre} — ${resultado.proveedorNombre}`
+      : resultado.hotelNombre;
+
+  el('selTipo').textContent =
+    resultado.tipo === 'actividad'
+      ? 'ACTIVIDAD'
+      : 'HOTEL';
+
+  el('selProveedorHotel').textContent =
+    resultado.tipo === 'actividad'
+      ? resultado.proveedorNombre
+      : resultado.hotelNombre;
+
+  el('selServicio').textContent =
+    resultado.tipo === 'actividad'
+      ? resultado.servicioNombre
+      : 'ALOJAMIENTO';
+
+  el('selDestino').textContent =
+    resultado.destino ||
+    el('abDestino').value ||
+    '—';
+
+  el('selMoneda').textContent =
+    resultado.moneda ||
+    'CLP';
+
+  el('abMoneda').value =
+    normalizarMoneda(resultado.moneda || 'CLP');
+
+  el('abSeleccionWrap').classList.remove('hidden');
+}
+
+function cambiarTipoFormulario() {
+  poblarDestinosFormulario({
+    conservarDestino: true,
+    conservarSeleccion: false
+  });
+
+  actualizarVistaTipo();
 }
 
 function poblarFiltrosGenerales() {
@@ -531,32 +762,92 @@ function poblarFiltrosGenerales() {
 }
 
 function validarFormulario() {
-  const tipo = el('abTipo').value;
+  const tipo = getTipoSeleccionado();
   const ano = el('abAno').value;
   const destino = el('abDestino').value;
-  const proveedor = el('abProveedor').value;
+
   const fechaPago = el('abFechaPago').value;
-  const moneda = el('abMoneda').value;
+  const moneda = normalizarMoneda(el('abMoneda').value);
   const monto = Number(el('abMonto').value || 0);
   const formaPago = el('abFormaPago').value;
 
-  if (!tipo) return 'Debe indicar el tipo de abono.';
-  if (!ano) return 'Debe seleccionar el año.';
-  if (!destino) return 'Debe seleccionar el destino.';
-  if (!proveedor) return tipo === 'actividad'
-    ? 'Debe seleccionar el proveedor.'
-    : 'Debe seleccionar el hotel.';
-
-  if (tipo === 'actividad' && !el('abServicio').value) {
-    return 'Debe seleccionar el servicio o actividad.';
+  if (!ano) {
+    return 'Debe seleccionar el año.';
   }
 
-  if (!fechaPago) return 'Debe indicar la fecha en que se realizó el pago.';
-  if (!MONEDAS.includes(moneda)) return 'La moneda seleccionada no es válida.';
-  if (!(monto > 0)) return 'El monto debe ser mayor que cero.';
-  if (!formaPago) return 'Debe indicar la forma de pago.';
+  if (!tipo) {
+    return 'Debe indicar el tipo de abono.';
+  }
 
-  if (abonoEditandoId && !el('abMotivoCambio').value.trim()) {
+  if (!destino) {
+    return 'Debe seleccionar el destino.';
+  }
+
+  if (
+    (tipo === 'actividad' || tipo === 'hotel') &&
+    !ENTIDAD_SELECCIONADA
+  ) {
+    return tipo === 'actividad'
+      ? 'Debe buscar y seleccionar un proveedor o servicio.'
+      : 'Debe buscar y seleccionar un hotel.';
+  }
+
+  if (tipo === 'actividad') {
+    if (ENTIDAD_SELECCIONADA?.tipo !== 'actividad') {
+      return 'La selección no corresponde a una actividad.';
+    }
+
+    if (!ENTIDAD_SELECCIONADA?.servicioId) {
+      return 'Debe seleccionar el servicio o actividad.';
+    }
+  }
+
+  if (tipo === 'hotel') {
+    if (ENTIDAD_SELECCIONADA?.tipo !== 'hotel') {
+      return 'La selección no corresponde a un hotel.';
+    }
+
+    if (!ENTIDAD_SELECCIONADA?.hotelKey) {
+      return 'Debe seleccionar el hotel.';
+    }
+  }
+
+  if (tipo === 'otro') {
+    const destinatario =
+      el('abOtroDestinatario').value.trim();
+
+    const concepto =
+      el('abOtroConcepto').value.trim();
+
+    if (!destinatario) {
+      return 'Debe indicar el proveedor o destinatario.';
+    }
+
+    if (!concepto) {
+      return 'Debe indicar el concepto del abono.';
+    }
+  }
+
+  if (!fechaPago) {
+    return 'Debe indicar la fecha en que se realizó el pago.';
+  }
+
+  if (!MONEDAS.includes(moneda)) {
+    return 'La moneda seleccionada no es válida.';
+  }
+
+  if (!(monto > 0)) {
+    return 'El monto debe ser mayor que cero.';
+  }
+
+  if (!formaPago) {
+    return 'Debe indicar la forma de pago.';
+  }
+
+  if (
+    abonoEditandoId &&
+    !el('abMotivoCambio').value.trim()
+  ) {
     return 'Debe indicar el motivo del cambio.';
   }
 
@@ -564,74 +855,126 @@ function validarFormulario() {
 }
 
 function obtenerDatosFormulario() {
-  const tipo = el('abTipo').value;
+  const tipo = getTipoSeleccionado();
   const ano = el('abAno').value;
   const destino = el('abDestino').value;
-  const moneda = normalizarMoneda(el('abMoneda').value);
-
-  if (tipo === 'actividad') {
-    const servicio = obtenerServiciosFormulario()
-      .find(s => s.id === el('abServicio').value);
-
-    if (!servicio) {
-      throw new Error('No se encontró el servicio seleccionado.');
-    }
-
-    return {
-      tipo,
-      ano,
-      destino,
-      proveedorId: slug(getNombreProveedor(servicio)),
-      proveedorNombre: getNombreProveedor(servicio),
-      servicioId: servicio.id,
-      servicioNombre: getNombreServicio(servicio),
-      hotelId: '',
-      hotelKey: '',
-      hotelNombre: '',
-      fechaPago: el('abFechaPago').value,
-      moneda,
-      monto: Number(el('abMonto').value || 0),
-      formaPago: el('abFormaPago').value,
-      referencia: el('abReferencia').value.trim(),
-      nota: el('abNota').value.trim(),
-      estado: abonoEditandoId ? 'EDITADO' : 'REGISTRADO',
-      rutaDestino: `ServiciosPorAno/${ano}/Destinos/${destino}/Listado/${servicio.id}/Abonos`
-    };
-  }
-
-  const hotel = construirCatalogoHoteles().find(h =>
-    String(h.ano) === String(ano) &&
-    norm(h.destino) === norm(destino) &&
-    h.hotelKey === el('abProveedor').value
+  const moneda = normalizarMoneda(
+    el('abMoneda').value
   );
 
-  if (!hotel) {
-    throw new Error('No se encontró el hotel seleccionado.');
-  }
-
-  return {
+  const datosComunes = {
     tipo,
     ano,
     destino,
-    proveedorId: '',
-    proveedorNombre: '',
-    servicioId: '',
-    servicioNombre: 'ALOJAMIENTO',
-    hotelId: hotel.hotelId || '',
-    hotelKey: hotel.hotelKey,
-    hotelNombre: hotel.nombre,
+
     fechaPago: el('abFechaPago').value,
     moneda,
     monto: Number(el('abMonto').value || 0),
+
     formaPago: el('abFormaPago').value,
     referencia: el('abReferencia').value.trim(),
     nota: el('abNota').value.trim(),
-    estado: abonoEditandoId ? 'EDITADO' : 'REGISTRADO',
-    rutaDestino: `FinanzasHotelesAbonos/${hotelFinKey({
-      ano,
-      destino,
-      hotelKey: hotel.hotelKey
-    })}/Abonos`
+
+    estado: abonoEditandoId
+      ? 'EDITADO'
+      : 'REGISTRADO'
+  };
+
+  if (tipo === 'actividad') {
+    const seleccion = ENTIDAD_SELECCIONADA;
+
+    if (!seleccion || seleccion.tipo !== 'actividad') {
+      throw new Error(
+        'No se encontró la actividad seleccionada.'
+      );
+    }
+
+    return {
+      ...datosComunes,
+
+      proveedorId: seleccion.proveedorId,
+      proveedorNombre: seleccion.proveedorNombre,
+
+      servicioId: seleccion.servicioId,
+      servicioNombre: seleccion.servicioNombre,
+
+      hotelId: '',
+      hotelKey: '',
+      hotelNombre: '',
+
+      categoriaOtro: '',
+      ingresoManual: false,
+
+      rutaDestino:
+        `ServiciosPorAno/${ano}` +
+        `/Destinos/${destino}` +
+        `/Listado/${seleccion.servicioId}` +
+        `/Abonos`
+    };
+  }
+
+  if (tipo === 'hotel') {
+    const seleccion = ENTIDAD_SELECCIONADA;
+
+    if (!seleccion || seleccion.tipo !== 'hotel') {
+      throw new Error(
+        'No se encontró el hotel seleccionado.'
+      );
+    }
+
+    return {
+      ...datosComunes,
+
+      proveedorId: '',
+      proveedorNombre: '',
+
+      servicioId: '',
+      servicioNombre: 'ALOJAMIENTO',
+
+      hotelId: seleccion.hotelId || '',
+      hotelKey: seleccion.hotelKey,
+      hotelNombre: seleccion.hotelNombre,
+
+      categoriaOtro: '',
+      ingresoManual: false,
+
+      rutaDestino:
+        `FinanzasHotelesAbonos/` +
+        `${hotelFinKey({
+          ano,
+          destino,
+          hotelKey: seleccion.hotelKey
+        })}` +
+        `/Abonos`
+    };
+  }
+
+  const destinatario =
+    el('abOtroDestinatario').value.trim();
+
+  const categoria =
+    el('abOtroCategoria').value;
+
+  const concepto =
+    el('abOtroConcepto').value.trim();
+
+  return {
+    ...datosComunes,
+
+    proveedorId: slug(destinatario),
+    proveedorNombre: destinatario,
+
+    servicioId: '',
+    servicioNombre: concepto,
+
+    hotelId: '',
+    hotelKey: '',
+    hotelNombre: '',
+
+    categoriaOtro: categoria,
+    ingresoManual: true,
+
+    rutaDestino: ''
   };
 }
 
@@ -705,8 +1048,30 @@ function limpiarNulosObjeto(objeto) {
   );
 }
 
-async function guardarEspejo(datos, abonoId, comprobanteURL, email, esEdicion, version) {
-  const refEspejo = doc(db, `${datos.rutaDestino}/${abonoId}`);
+async function guardarEspejo(
+  datos,
+  abonoId,
+  comprobanteURL,
+  email,
+  esEdicion,
+  version
+) {
+  if (!datos.rutaDestino) {
+    return;
+  }
+
+  if (
+    datos.tipo !== 'actividad' &&
+    datos.tipo !== 'hotel'
+  ) {
+    return;
+  }
+
+  const refEspejo = doc(
+    db,
+    `${datos.rutaDestino}/${abonoId}`
+  );
+
   const espejo = limpiarNulosObjeto(
     datosParaEspejo(
       datos,
@@ -718,7 +1083,11 @@ async function guardarEspejo(datos, abonoId, comprobanteURL, email, esEdicion, v
     )
   );
 
-  await setDoc(refEspejo, espejo, { merge: true });
+  await setDoc(
+    refEspejo,
+    espejo,
+    { merge: true }
+  );
 }
 
 async function guardarAbono() {
@@ -840,8 +1209,8 @@ async function guardarAbono() {
 function limpiarFormulario() {
   abonoEditandoId = null;
   comprobanteActualURL = '';
+  ENTIDAD_SELECCIONADA = null;
 
-  el('formTitulo').textContent = 'Registrar abono';
   el('btnGuardarAbono').innerHTML = `
     <span class="material-symbols-outlined">save</span>
     Guardar abono
@@ -850,7 +1219,20 @@ function limpiarFormulario() {
   el('btnCancelarEdicion').classList.add('hidden');
   el('motivoCambioWrap').classList.add('hidden');
 
+  el('abTipoActividad').checked = true;
+  el('abTipoHotel').checked = false;
+  el('abTipoOtro').checked = false;
+
+  const opcionesAno = [...el('abAno').options];
+
+  if (
+    opcionesAno.some(opcion => opcion.value === '2026')
+  ) {
+    el('abAno').value = '2026';
+  }
+
   el('abFechaPago').value = nowISODate();
+  el('abMoneda').value = 'CLP';
   el('abMonto').value = '';
   el('abFormaPago').value = 'transferencia';
   el('abReferencia').value = '';
@@ -858,15 +1240,24 @@ function limpiarFormulario() {
   el('abMotivoCambio').value = '';
   el('abComprobante').value = '';
 
+  el('abOtroDestinatario').value = '';
+  el('abOtroCategoria').value = 'transporte';
+  el('abOtroConcepto').value = '';
+
+  poblarDestinosFormulario({
+    conservarDestino: false,
+    conservarSeleccion: false
+  });
+
+  actualizarVistaTipo();
   setEstadoFormulario('');
-  sugerirMoneda();
 }
 
 function iniciarEdicion(abono) {
   abonoEditandoId = abono.id;
-  comprobanteActualURL = abono.comprobanteURL || '';
+  comprobanteActualURL =
+    abono.comprobanteURL || '';
 
-  el('formTitulo').textContent = `Editar abono — versión ${Number(abono.version || 1)}`;
   el('btnGuardarAbono').innerHTML = `
     <span class="material-symbols-outlined">save_as</span>
     Guardar cambios
@@ -875,47 +1266,155 @@ function iniciarEdicion(abono) {
   el('btnCancelarEdicion').classList.remove('hidden');
   el('motivoCambioWrap').classList.remove('hidden');
 
-  el('abTipo').value = abono.tipo || 'actividad';
-  poblarAnos();
+  const tipo = abono.tipo || 'actividad';
 
-  if ([...el('abAno').options].some(o => o.value === String(abono.ano))) {
+  el('abTipoActividad').checked =
+    tipo === 'actividad';
+
+  el('abTipoHotel').checked =
+    tipo === 'hotel';
+
+  el('abTipoOtro').checked =
+    tipo === 'otro';
+
+  if (
+    [...el('abAno').options].some(
+      opcion =>
+        opcion.value === String(abono.ano)
+    )
+  ) {
     el('abAno').value = String(abono.ano);
   }
 
-  poblarDestinosFormulario();
+  poblarDestinosFormulario({
+    conservarDestino: false,
+    conservarSeleccion: true
+  });
 
-  if ([...el('abDestino').options].some(o => norm(o.value) === norm(abono.destino))) {
-    el('abDestino').value = [...el('abDestino').options]
-      .find(o => norm(o.value) === norm(abono.destino)).value;
+  const opcionDestino =
+    [...el('abDestino').options].find(
+      opcion =>
+        norm(opcion.value) === norm(abono.destino)
+    );
+
+  if (opcionDestino) {
+    el('abDestino').value =
+      opcionDestino.value;
   }
 
-  poblarProveedoresFormulario();
+  if (tipo === 'actividad') {
+    ENTIDAD_SELECCIONADA = {
+      tipo: 'actividad',
 
-  const proveedorValor = abono.tipo === 'actividad'
-    ? slug(abono.proveedorNombre)
-    : abono.hotelKey;
+      ano: String(abono.ano || ''),
+      destino: abono.destino || '',
 
-  if ([...el('abProveedor').options].some(o => o.value === proveedorValor)) {
-    el('abProveedor').value = proveedorValor;
+      proveedorId:
+        abono.proveedorId ||
+        slug(abono.proveedorNombre),
+
+      proveedorNombre:
+        abono.proveedorNombre || '',
+
+      servicioId:
+        abono.servicioId || '',
+
+      servicioNombre:
+        abono.servicioNombre || '',
+
+      hotelId: '',
+      hotelKey: '',
+      hotelNombre: '',
+
+      moneda: normalizarMoneda(
+        abono.moneda || 'CLP'
+      )
+    };
+
+    seleccionarEntidad(
+      ENTIDAD_SELECCIONADA
+    );
   }
 
-  poblarServiciosFormulario();
+  if (tipo === 'hotel') {
+    ENTIDAD_SELECCIONADA = {
+      tipo: 'hotel',
 
-  if (abono.tipo === 'actividad' &&
-      [...el('abServicio').options].some(o => o.value === abono.servicioId)) {
-    el('abServicio').value = abono.servicioId;
+      ano: String(abono.ano || ''),
+      destino: abono.destino || '',
+
+      proveedorId: '',
+      proveedorNombre: '',
+
+      servicioId: '',
+      servicioNombre: 'ALOJAMIENTO',
+
+      hotelId:
+        abono.hotelId || '',
+
+      hotelKey:
+        abono.hotelKey ||
+        hotelKeyNormalizado(
+          abono.hotelNombre
+        ),
+
+      hotelNombre:
+        abono.hotelNombre || '',
+
+      moneda: normalizarMoneda(
+        abono.moneda || 'CLP'
+      )
+    };
+
+    seleccionarEntidad(
+      ENTIDAD_SELECCIONADA
+    );
   }
 
-  el('abFechaPago').value = abono.fechaPago || abono.fecha || nowISODate();
-  el('abMoneda').value = normalizarMoneda(abono.moneda || 'CLP');
-  el('abMonto').value = Number(abono.monto || 0);
-  el('abFormaPago').value = abono.formaPago || 'transferencia';
-  el('abReferencia').value = abono.referencia || '';
-  el('abNota').value = abono.nota || '';
+  if (tipo === 'otro') {
+    limpiarSeleccionEntidad();
+
+    el('abOtroDestinatario').value =
+      abono.proveedorNombre || '';
+
+    el('abOtroCategoria').value =
+      abono.categoriaOtro || 'otro';
+
+    el('abOtroConcepto').value =
+      abono.servicioNombre || '';
+  }
+
+  actualizarVistaTipo();
+
+  el('abFechaPago').value =
+    abono.fechaPago ||
+    abono.fecha ||
+    nowISODate();
+
+  el('abMoneda').value =
+    normalizarMoneda(
+      abono.moneda || 'CLP'
+    );
+
+  el('abMonto').value =
+    Number(abono.monto || 0);
+
+  el('abFormaPago').value =
+    abono.formaPago || 'transferencia';
+
+  el('abReferencia').value =
+    abono.referencia || '';
+
+  el('abNota').value =
+    abono.nota || '';
+
   el('abMotivoCambio').value = '';
   el('abComprobante').value = '';
 
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  window.scrollTo({
+    top: 0,
+    behavior: 'smooth'
+  });
 }
 
 async function archivarAbono(abono) {
@@ -1142,9 +1641,16 @@ function renderAbonos() {
   tbody.innerHTML = '';
 
   for (const abono of lista) {
-    const proveedorHotel = abono.tipo === 'hotel'
-      ? abono.hotelNombre
-      : abono.proveedorNombre;
+
+    let proveedorHotel = '';
+    
+    if (abono.tipo === 'hotel') {
+      proveedorHotel =
+        abono.hotelNombre || '';
+    } else {
+      proveedorHotel =
+        abono.proveedorNombre || '';
+    }
 
     const servicioAsunto = [
       abono.servicioNombre,
@@ -1228,35 +1734,155 @@ function limpiarFiltros() {
 }
 
 function conectarEventos() {
-  el('abTipo').addEventListener('change', poblarDestinosFormulario);
-  el('abAno').addEventListener('change', poblarDestinosFormulario);
-  el('abDestino').addEventListener('change', poblarProveedoresFormulario);
-  el('abProveedor').addEventListener('change', poblarServiciosFormulario);
-  el('abServicio').addEventListener('change', sugerirMoneda);
+  document
+    .querySelectorAll('input[name="abTipo"]')
+    .forEach(radio => {
+      radio.addEventListener(
+        'change',
+        cambiarTipoFormulario
+      );
+    });
 
-  el('btnGuardarAbono').addEventListener('click', guardarAbono);
-  el('btnCancelarEdicion').addEventListener('click', limpiarFormulario);
-
-  el('btnAplicarFiltros').addEventListener('click', renderAbonos);
-  el('btnLimpiarFiltros').addEventListener('click', limpiarFiltros);
-
-  el('filtroBuscar').addEventListener('input', renderAbonos);
-  el('filtroUsuario').addEventListener('input', renderAbonos);
-
-  el('btnCerrarHistorial').addEventListener('click', () => {
-    el('historialModal').classList.remove('open');
-  });
-
-  el('historialModal').addEventListener('click', event => {
-    if (event.target === el('historialModal')) {
-      el('historialModal').classList.remove('open');
+  el('abAno').addEventListener(
+    'change',
+    () => {
+      poblarDestinosFormulario({
+        conservarDestino: false,
+        conservarSeleccion: false
+      });
     }
-  });
+  );
+
+  el('abDestino').addEventListener(
+    'change',
+    () => {
+      limpiarSeleccionEntidad();
+    }
+  );
+
+  el('abBuscarEntidad').addEventListener(
+    'input',
+    event => {
+      const texto =
+        event.target.value.trim();
+
+      if (texto.length < 2) {
+        el('abResultadosBusqueda')
+          .classList.add('hidden');
+
+        el('abResultadosBusqueda')
+          .innerHTML = '';
+
+        return;
+      }
+
+      const resultados =
+        obtenerResultadosBusqueda(texto);
+
+      pintarResultadosBusqueda(resultados);
+    }
+  );
+
+  el('abBuscarEntidad').addEventListener(
+    'focus',
+    () => {
+      const texto =
+        el('abBuscarEntidad').value.trim();
+
+      if (
+        texto.length >= 2 &&
+        !ENTIDAD_SELECCIONADA
+      ) {
+        pintarResultadosBusqueda(
+          obtenerResultadosBusqueda(texto)
+        );
+      }
+    }
+  );
+
+  el('btnCambiarSeleccion').addEventListener(
+    'click',
+    () => {
+      limpiarSeleccionEntidad();
+      el('abBuscarEntidad').focus();
+    }
+  );
+
+  document.addEventListener(
+    'click',
+    event => {
+      const searchWrap =
+        el('abBuscarEntidad')
+          .closest('.search-wrap');
+
+      if (
+        searchWrap &&
+        !searchWrap.contains(event.target)
+      ) {
+        el('abResultadosBusqueda')
+          .classList.add('hidden');
+      }
+    }
+  );
+
+  el('btnGuardarAbono').addEventListener(
+    'click',
+    guardarAbono
+  );
+
+  el('btnCancelarEdicion').addEventListener(
+    'click',
+    limpiarFormulario
+  );
+
+  el('btnAplicarFiltros').addEventListener(
+    'click',
+    renderAbonos
+  );
+
+  el('btnLimpiarFiltros').addEventListener(
+    'click',
+    limpiarFiltros
+  );
+
+  el('filtroBuscar').addEventListener(
+    'input',
+    renderAbonos
+  );
+
+  el('filtroUsuario').addEventListener(
+    'input',
+    renderAbonos
+  );
+
+  el('btnCerrarHistorial').addEventListener(
+    'click',
+    () => {
+      el('historialModal')
+        .classList.remove('open');
+    }
+  );
+
+  el('historialModal').addEventListener(
+    'click',
+    event => {
+      if (
+        event.target ===
+        el('historialModal')
+      ) {
+        el('historialModal')
+          .classList.remove('open');
+      }
+    }
+  );
 }
 
 async function inicializar() {
   el('abFechaPago').value = nowISODate();
-  setEstadoFormulario('Cargando datos del sistema...');
+
+  setEstadoFormulario(
+    'Cargando datos del sistema...'
+  );
 
   try {
     await cargarGrupos();
@@ -1268,17 +1894,36 @@ async function inicializar() {
     ]);
 
     poblarAnos();
-    poblarDestinosFormulario();
+
+    el('abTipoActividad').checked = true;
+    el('abTipoHotel').checked = false;
+    el('abTipoOtro').checked = false;
+
+    poblarDestinosFormulario({
+      conservarDestino: false,
+      conservarSeleccion: false
+    });
+
     poblarFiltrosGenerales();
     conectarEventos();
+    actualizarVistaTipo();
     renderAbonos();
 
     setEstadoFormulario('');
-    console.log('✅ Página de abonos inicializada');
+
+    console.log(
+      '✅ Página de abonos inicializada'
+    );
   } catch (error) {
-    console.error('Error inicializando abonos:', error);
+    console.error(
+      'Error inicializando abonos:',
+      error
+    );
+
     setEstadoFormulario(
-      `No se pudo cargar la página: ${error.message || error}`,
+      `No se pudo cargar la página: ${
+        error.message || error
+      }`,
       true
     );
   }
