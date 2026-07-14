@@ -3623,7 +3623,7 @@ async function recalcular() {
         filtro.all ||
         filtro.tokens.size === 0 ||
         filtro.tokens.has(destino),
-      inclHot
+      true
     );
 
     logDiagnostico(LINE_ITEMS);
@@ -3785,12 +3785,9 @@ async function recalcular() {
      */
 
     const secHoteles = el('secHoteles');
-
+    
     if (secHoteles) {
-      secHoteles.style.display =
-        inclHot
-          ? ''
-          : 'none';
+      secHoteles.style.display = '';
     }
 
     const mapHoteles =
