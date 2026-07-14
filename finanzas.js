@@ -3574,96 +3574,249 @@ function logDiagnostico(items){
   }
 }
 
-function recalcular() {
-  const fechaDesde = el('fechaDesde').value || null;
-  const fechaHasta = el('fechaHasta').value || null;
+async function recalcular() {
+  try {
+    /*
+     * Actualiza nuevamente los abonos hoteleros desde Firestore.
+     * Esto permite que Finanzas refleje los abonos ingresados
+     * recientemente desde abonos.js sin tener que recargar la página.
+     */
+    await loadAbonosHoteles();
 
-  const filtro = getDestinoFilter();                 // selector visual de destinos
-  const inclAct = el('inclActividades').checked;     // check Actividades
-  const inclHot = el('inclHoteles').checked;         // check Hoteles
+    const fechaDesde = el('fechaDesde').value || null;
+    const fechaHasta = el('fechaHasta').value || null;
 
-  // ==== IMPORTANTE: los datos (KPIs, totales, etc.) NO se recortan por destino.
-  // Solo se filtran por fechas/año/checkboxes.
-  const includeAnyFn = () => true;
+    const filtro = getDestinoFilter();             // selector visual de destinos
+    const inclAct = el('inclActividades').checked; // check Actividades
+    const inclHot = el('inclHoteles').checked;     // check Hoteles
 
-  // Line items y hoteles SIN filtrar por destino (sí por fechas/año)
-  LINE_ITEMS = construirLineItems(fechaDesde, fechaHasta, includeAnyFn, inclAct);
-  LINE_HOTEL = construirLineItemsHotel(
-    fechaDesde,
-    fechaHasta,
-    destino => filtro.all || filtro.tokens.size === 0 || filtro.tokens.has(destino),
-    true
-  );
+    /*
+     * Los KPIs y totales generales no se recortan por el selector
+     * visual de destino. Solamente se filtran por fechas, año
+     * y los checkbox de actividades/hoteles.
+     */
+    const includeAnyFn = () => true;
 
-  logDiagnostico(LINE_ITEMS);
+    /*
+     * ACTIVIDADES
+     */
+    LINE_ITEMS = construirLineItems(
+      fechaDesde,
+      fechaHasta,
+      includeAnyFn,
+      inclAct
+    );
 
-  // KPIs
-  renderKPIs(LINE_ITEMS, LINE_HOTEL);
+    /*
+     * HOTELES
+     *
+     * Aquí sí se respeta el selector visual de destino para construir
+     * las filas hoteleras que se mostrarán en la sección Hoteles.
+     *
+     * También corregimos el último parámetro: antes estaba siempre
+     * en true; ahora utiliza realmente el checkbox inclHoteles.
+     */
+    LINE_HOTEL = construirLineItemsHotel(
+      fechaDesde,
+      fechaHasta,
+      destino =>
+        filtro.all ||
+        filtro.tokens.size === 0 ||
+        filtro.tokens.has(destino),
+      inclHot
+    );
 
-  // Totales por destino (con conversiones) — sin recorte por selector de destino
-  const mapDest = agruparPorDestino([...LINE_ITEMS, ...LINE_HOTEL]);
-  renderTablaDestinos(mapDest);
+    logDiagnostico(LINE_ITEMS);
 
-  // ======== PROVEEDORES (tabla derecha)
-  // 1) Índice proveedor->destinos/actividades según "Servicios"
-  const idxServ = indexProveedoresPorServicios();
+    /*
+     * KPIs generales
+     */
+    renderKPIs(
+      LINE_ITEMS,
+      LINE_HOTEL
+    );
 
-  // 2) Items de proveedores sin recorte por destino
-  const itemsProvAll = construirLineItems(fechaDesde, fechaHasta, includeAnyFn, inclAct);
+    /*
+     * Totales por destino
+     */
+    const mapDest = agruparPorDestino([
+      ...LINE_ITEMS,
+      ...LINE_HOTEL
+    ]);
 
-  // 3) Agregación nativa por proveedor (totales completos)
-  const mapProvNativeAll = agruparPorProveedorMonedaNativa(itemsProvAll);
+    renderTablaDestinos(mapDest);
 
-  // 4) Función: ¿este proveedor debe verse según el selector de destino?
-  function provVisible(slug){
-    if (filtro.all || filtro.tokens.size === 0) return true;  // “Todos los destinos”
-    const e = idxServ.get(slug);
-    if (!e) return false;
-    for (const d of e.destinos) if (filtro.tokens.has(d)) return true;
-    return false;
-  }
+    /*
+     * =========================================================
+     * PROVEEDORES
+     * =========================================================
+     */
 
-  // 5) Construir el mapa “visual” (solo proveedores visibles),
-  //    pero manteniendo sus TOTALES COMPLETOS (todas sus filas).
-  const mapProvVisual = new Map();
-  for (const [slug, data] of mapProvNativeAll.entries()){
-    if (!provVisible(slug)) continue;
-    const e = idxServ.get(slug);
+    /*
+     * Índice proveedor -> destinos/actividades según Servicios.
+     */
+    const idxServ = indexProveedoresPorServicios();
 
-    // Destinos del proveedor según Servicios (para mostrar en columna)
-    const destServicios = e ? [...e.destinos].sort((a,b)=>a.localeCompare(b)) : [];
+    /*
+     * Items de proveedores sin recortar sus totales por destino.
+     */
+    const itemsProvAll = construirLineItems(
+      fechaDesde,
+      fechaHasta,
+      includeAnyFn,
+      inclAct
+    );
 
-    // Actividades visibles: solo de los destinos seleccionados (o todas si está en “Todos”)
-    const acts = [];
-    if (e){
-      const considerar = (filtro.all || filtro.tokens.size===0)
-        ? destServicios
-        : destServicios.filter(d => filtro.tokens.has(d));
-      const set = new Set();
-      considerar.forEach(d => (e.actsByDest.get(d) || new Set()).forEach(a => set.add(a)));
-      acts.push(...[...set].sort((a,b)=>a.localeCompare(b)));
+    /*
+     * Totales completos por proveedor y moneda.
+     */
+    const mapProvNativeAll =
+      agruparPorProveedorMonedaNativa(itemsProvAll);
+
+    /*
+     * Determina si el proveedor debe mostrarse de acuerdo
+     * con el selector visual de destino.
+     */
+    function provVisible(proveedorSlug) {
+      if (
+        filtro.all ||
+        filtro.tokens.size === 0
+      ) {
+        return true;
+      }
+
+      const informacionProveedor =
+        idxServ.get(proveedorSlug);
+
+      if (!informacionProveedor) {
+        return false;
+      }
+
+      for (
+        const destino of informacionProveedor.destinos
+      ) {
+        if (filtro.tokens.has(destino)) {
+          return true;
+        }
+      }
+
+      return false;
     }
 
-    data.destinosServicios   = destServicios;  // para columna “Destino(s)”
-    data.actividadesVisibles = acts;           // para columna “Actividades”
-    mapProvVisual.set(slug, data);
-  }
+    /*
+     * Mapa visual:
+     * muestra solamente los proveedores correspondientes al destino,
+     * pero conserva los totales completos de cada proveedor.
+     */
+    const mapProvVisual = new Map();
 
-  // Monedas visibles según los destinos elegidos (como antes)
-  const visibles = monedasVisiblesFromFilter(filtro);
+    for (
+      const [proveedorSlug, data]
+      of mapProvNativeAll.entries()
+    ) {
+      if (!provVisible(proveedorSlug)) {
+        continue;
+      }
 
-  // Render de la tabla de proveedores (solo filtra visualmente, no los totales)
-  renderTablaProveedoresMonedaNativa(mapProvVisual, visibles);
+      const informacionProveedor =
+        idxServ.get(proveedorSlug);
 
-  // ======== SECCIÓN HOTELES
-  const secH = el('secHoteles');
-  secH.style.display = '';
-  
-  const mapHot = agruparPorHotel(LINE_HOTEL);
-  renderTablaHoteles(mapHot);
-  
-  if (!LINE_HOTEL.length) {
-    console.warn('⚠️ No se encontraron consumos hoteleros para el filtro actual.');
+      const destinosServicios =
+        informacionProveedor
+          ? [...informacionProveedor.destinos].sort(
+              (a, b) => a.localeCompare(b)
+            )
+          : [];
+
+      const actividadesVisibles = [];
+
+      if (informacionProveedor) {
+        const destinosAConsiderar =
+          filtro.all ||
+          filtro.tokens.size === 0
+            ? destinosServicios
+            : destinosServicios.filter(destino =>
+                filtro.tokens.has(destino)
+              );
+
+        const actividadesSet = new Set();
+
+        destinosAConsiderar.forEach(destino => {
+          const actividadesDestino =
+            informacionProveedor.actsByDest.get(destino) ||
+            new Set();
+
+          actividadesDestino.forEach(actividad =>
+            actividadesSet.add(actividad)
+          );
+        });
+
+        actividadesVisibles.push(
+          ...[...actividadesSet].sort(
+            (a, b) => a.localeCompare(b)
+          )
+        );
+      }
+
+      data.destinosServicios = destinosServicios;
+      data.actividadesVisibles = actividadesVisibles;
+
+      mapProvVisual.set(
+        proveedorSlug,
+        data
+      );
+    }
+
+    /*
+     * Monedas visibles según los destinos seleccionados.
+     */
+    const monedasVisibles =
+      monedasVisiblesFromFilter(filtro);
+
+    renderTablaProveedoresMonedaNativa(
+      mapProvVisual,
+      monedasVisibles
+    );
+
+    /*
+     * =========================================================
+     * HOTELES
+     * =========================================================
+     */
+
+    const secHoteles = el('secHoteles');
+
+    if (secHoteles) {
+      secHoteles.style.display =
+        inclHot
+          ? ''
+          : 'none';
+    }
+
+    const mapHoteles =
+      agruparPorHotel(LINE_HOTEL);
+
+    renderTablaHoteles(mapHoteles);
+
+    if (
+      inclHot &&
+      !LINE_HOTEL.length
+    ) {
+      console.warn(
+        '⚠️ No se encontraron consumos hoteleros para el filtro actual.'
+      );
+    }
+  } catch (error) {
+    console.error(
+      '❌ Error actualizando la información financiera:',
+      error
+    );
+
+    alert(
+      `No fue posible actualizar los datos financieros.\n\n${
+        error?.message || error
+      }`
+    );
   }
 }
 
