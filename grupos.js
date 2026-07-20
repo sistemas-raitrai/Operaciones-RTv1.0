@@ -201,47 +201,121 @@ function ordenarDiasRelativos(a, b) {
 async function sincronizarFechasEItinerarioGrupo(docId) {
   const ref = doc(db, 'grupos', docId);
   const snap = await getDoc(ref);
-  if (!snap.exists()) return false;
+
+  if (!snap.exists()) {
+    throw new Error(`No existe el grupo ${docId}.`);
+  }
 
   const g = snap.data() || {};
-  const fechas = crearRangoFechasISO(g.fechaInicio, g.fechaFin);
-  if (!fechas.length) return false;
 
-  const IT = g.itinerario || {};
-  const keys = Object.keys(IT);
+  const fechasNuevas = crearRangoFechasISO(
+    g.fechaInicio,
+    g.fechaFin
+  );
 
-  const keysOrdenadas = keys.length
-    ? keys.sort((a, b) => {
-        const aReal = /^\d{4}-\d{2}-\d{2}$/.test(String(a));
-        const bReal = /^\d{4}-\d{2}-\d{2}$/.test(String(b));
+  if (!fechasNuevas.length) {
+    throw new Error(
+      `El grupo ${g.numeroNegocio || docId} tiene un rango de fechas inválido.`
+    );
+  }
 
-        if (aReal && bReal) return new Date(a) - new Date(b);
-        if (aReal) return -1;
-        if (bReal) return 1;
+  const itinerarioAnterior = g.itinerario || {};
 
-        const na = parseInt(String(a).replace(/\D/g, ''), 10) || 0;
-        const nb = parseInt(String(b).replace(/\D/g, ''), 10) || 0;
-        return na - nb;
-      })
-    : [];
+  const keysAnteriores = Object.keys(itinerarioAnterior)
+    .sort((a, b) => {
+      const aReal = /^\d{4}-\d{2}-\d{2}$/.test(String(a));
+      const bReal = /^\d{4}-\d{2}-\d{2}$/.test(String(b));
+
+      if (aReal && bReal) {
+        return new Date(a) - new Date(b);
+      }
+
+      if (aReal) return -1;
+      if (bReal) return 1;
+
+      const na =
+        parseInt(String(a).replace(/\D/g, ''), 10) || 0;
+
+      const nb =
+        parseInt(String(b).replace(/\D/g, ''), 10) || 0;
+
+      return na - nb;
+    });
+
+  // =====================================================
+  // PROTECCIÓN:
+  // no permitir que una sincronización elimine días
+  // =====================================================
+  if (
+    keysAnteriores.length > 0 &&
+    fechasNuevas.length < keysAnteriores.length
+  ) {
+    await addDoc(collection(db, 'historial'), {
+      numeroNegocio: g.numeroNegocio || docId,
+      nombreGrupo: g.nombreGrupo || '',
+
+      accion: 'SINCRONIZACIÓN FECHAS BLOQUEADA',
+
+      motivo:
+        'El nuevo rango tenía menos días que el itinerario existente.',
+
+      anterior: {
+        fechaInicio: _toISO(g.fechaInicio),
+        fechaFin: _toISO(g.fechaFin),
+        cantidadDias: keysAnteriores.length,
+        itinerarioKeys: keysAnteriores,
+        itinerario: itinerarioAnterior
+      },
+
+      intento: {
+        cantidadDias: fechasNuevas.length,
+        itinerarioKeys: fechasNuevas
+      },
+
+      usuario: auth.currentUser?.email || '',
+      timestamp: new Date()
+    });
+
+    throw new Error(
+      `No se sincronizó el itinerario del grupo ${g.numeroNegocio || docId}. ` +
+      `Actualmente tiene ${keysAnteriores.length} días y el nuevo rango solamente tiene ${fechasNuevas.length}. ` +
+      `La operación fue bloqueada para evitar eliminar actividades.`
+    );
+  }
 
   const nuevoItinerario = {};
 
-  fechas.forEach((fechaReal, idx) => {
-    const keyAnterior = keysOrdenadas[idx];
-    nuevoItinerario[fechaReal] = keyAnterior ? (IT[keyAnterior] || []) : [];
+  fechasNuevas.forEach((fechaReal, idx) => {
+    const keyAnterior = keysAnteriores[idx];
+
+    nuevoItinerario[fechaReal] = keyAnterior
+      ? (itinerarioAnterior[keyAnterior] || [])
+      : [];
   });
 
   await updateDoc(ref, {
-    itinerario: nuevoItinerario
+    itinerario: nuevoItinerario,
+    updatedAt: serverTimestamp()
   });
 
   await addDoc(collection(db, 'historial'), {
     numeroNegocio: g.numeroNegocio || docId,
     nombreGrupo: g.nombreGrupo || '',
+
     accion: 'SINCRONIZAR FECHAS E ITINERARIO',
-    anterior: keysOrdenadas.join(', '),
-    nuevo: fechas.join(', '),
+
+    anterior: {
+      cantidadDias: keysAnteriores.length,
+      itinerarioKeys: keysAnteriores,
+      itinerario: itinerarioAnterior
+    },
+
+    nuevo: {
+      cantidadDias: fechasNuevas.length,
+      itinerarioKeys: fechasNuevas,
+      itinerario: nuevoItinerario
+    },
+
     usuario: auth.currentUser?.email || '',
     timestamp: new Date()
   });
@@ -620,7 +694,10 @@ async function guardarCambiosPendientes() {
   const paxOk = validarTodasLasFilasPax();
 
   if (!paxOk) {
-    throw new Error('Hay filas donde PAX no coincide con Adultos + Estudiantes. Corrige esas filas antes de guardar.');
+    throw new Error(
+      'Hay filas donde PAX no coincide con Adultos + Estudiantes. ' +
+      'Corrige esas filas antes de guardar.'
+    );
   }
 
   const hayCambiosPax = cambiosPendientes.some(c =>
@@ -631,14 +708,102 @@ async function guardarCambiosPendientes() {
 
   if (hayCambiosPax) {
     const clave = window.prompt(
-      '⚠️ Hay cambios en PAX / ADULTOS / ESTUDIANTES. Ingresa la clave para guardar:'
+      '⚠️ Hay cambios en PAX / ADULTOS / ESTUDIANTES. ' +
+      'Ingresa la clave para guardar:'
     );
 
     if (clave !== PAX_PASSWORD) {
-      throw new Error('Clave incorrecta. No se guardaron los cambios.');
+      throw new Error(
+        'Clave incorrecta. No se guardaron los cambios.'
+      );
     }
   }
 
+  // =====================================================
+  // 1. Agrupar cambios por documento
+  // =====================================================
+  const cambiosPorGrupo = new Map();
+
+  cambiosPendientes.forEach(c => {
+    if (!cambiosPorGrupo.has(c.docId)) {
+      cambiosPorGrupo.set(c.docId, []);
+    }
+
+    cambiosPorGrupo.get(c.docId).push(c);
+  });
+
+  // =====================================================
+  // 2. Validar ANTES de escribir en Firestore
+  // =====================================================
+  for (const [docId, cambiosGrupo] of cambiosPorGrupo.entries()) {
+    const cambiaInicio = cambiosGrupo.some(
+      c => c.campo === 'fechaInicio'
+    );
+
+    const cambiaFin = cambiosGrupo.some(
+      c => c.campo === 'fechaFin'
+    );
+
+    if (!cambiaInicio && !cambiaFin) continue;
+
+    const ref = doc(db, 'grupos', docId);
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      throw new Error(`No existe el grupo ${docId}.`);
+    }
+
+    const g = snap.data() || {};
+
+    let fechaInicioFinal = g.fechaInicio;
+    let fechaFinFinal = g.fechaFin;
+
+    const cambioInicio = cambiosGrupo.find(
+      c => c.campo === 'fechaInicio'
+    );
+
+    const cambioFin = cambiosGrupo.find(
+      c => c.campo === 'fechaFin'
+    );
+
+    if (cambioInicio) {
+      fechaInicioFinal = cambioInicio.nuevoValorFirestore;
+    }
+
+    if (cambioFin) {
+      fechaFinFinal = cambioFin.nuevoValorFirestore;
+    }
+
+    const fechasEsperadas = crearRangoFechasISO(
+      fechaInicioFinal,
+      fechaFinFinal
+    );
+
+    if (!fechasEsperadas.length) {
+      throw new Error(
+        `El nuevo rango de fechas del grupo ${g.numeroNegocio || docId} no es válido.`
+      );
+    }
+
+    const itinerarioActual = g.itinerario || {};
+    const cantidadDiasActual =
+      Object.keys(itinerarioActual).length;
+
+    if (
+      cantidadDiasActual > 0 &&
+      fechasEsperadas.length < cantidadDiasActual
+    ) {
+      throw new Error(
+        `No se guardaron los cambios del grupo ${g.numeroNegocio || docId}.\n\n` +
+        `El itinerario tiene ${cantidadDiasActual} días, pero las nuevas fechas solamente cubren ${fechasEsperadas.length} días.\n\n` +
+        'La operación fue bloqueada para evitar eliminar actividades.'
+      );
+    }
+  }
+
+  // =====================================================
+  // 3. Después de validar todo, guardar cambios
+  // =====================================================
   const gruposConFechaEditada = new Set();
 
   for (const c of cambiosPendientes) {
@@ -646,16 +811,20 @@ async function guardarCambiosPendientes() {
       [c.campo]: c.nuevoValorFirestore
     });
 
-    if (c.campo === 'fechaInicio' || c.campo === 'fechaFin') {
+    if (
+      c.campo === 'fechaInicio' ||
+      c.campo === 'fechaFin'
+    ) {
       gruposConFechaEditada.add(c.docId);
     }
 
     await addDoc(collection(db, 'historial'), {
       numeroNegocio: c.numeroNegocio,
+      nombreGrupo: c.nombreGrupo || '',
       campo: c.campo,
       anterior: c.anteriorDisplay ?? '',
       nuevo: c.nuevoDisplay ?? '',
-      modificadoPor: auth.currentUser.email,
+      modificadoPor: auth.currentUser?.email || '',
       timestamp: new Date()
     });
 
@@ -666,6 +835,9 @@ async function guardarCambiosPendientes() {
     }
   }
 
+  // =====================================================
+  // 4. Sincronizar solamente después de guardar
+  // =====================================================
   for (const docId of gruposConFechaEditada) {
     await sincronizarFechasEItinerarioGrupo(docId);
   }
