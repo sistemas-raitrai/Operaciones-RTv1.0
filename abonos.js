@@ -2496,24 +2496,132 @@ async function mostrarHistorial(abono) {
 
     if (!cambios.length) {
       contenido.innerHTML = `
-        <p>No hay cambios anteriores. Este abono se encuentra en su versión original.</p>
+        <div class="history-item">
+          <strong>Creación del abono</strong>
+    
+          <div class="muted" style="margin-top:.25rem;">
+            ${escapeHTML(
+              formatTimestamp(
+                abono.createdAt ||
+                abono.fechaRegistro
+              )
+            )}
+            ·
+            ${escapeHTML(
+              abono.createdByEmail ||
+              'Usuario no identificado'
+            )}
+          </div>
+    
+          <div style="margin-top:.5rem;">
+            Este abono no registra modificaciones posteriores.
+          </div>
+        </div>
       `;
+    
       return;
     }
 
-    contenido.innerHTML = cambios.map(cambio => {
+    const bloqueCreacion = `
+      <div class="history-item">
+        <strong>Creación del abono</strong>
+    
+        <div class="muted" style="margin-top:.25rem;">
+          ${escapeHTML(
+            formatTimestamp(
+              abono.createdAt ||
+              abono.fechaRegistro
+            )
+          )}
+          ·
+          ${escapeHTML(
+            abono.createdByEmail ||
+            'Usuario no identificado'
+          )}
+        </div>
+    
+        <div class="history-grid">
+          <div>
+            <span>Fecha pago</span>
+            ${escapeHTML(
+              abono.fechaPago ||
+              abono.fecha ||
+              '—'
+            )}
+          </div>
+    
+          <div>
+            <span>Proveedor / hotel</span>
+            ${escapeHTML(
+              abono.proveedorNombre ||
+              abono.hotelNombre ||
+              '—'
+            )}
+          </div>
+    
+          <div>
+            <span>Servicio</span>
+            ${escapeHTML(
+              abono.servicioNombre ||
+              '—'
+            )}
+          </div>
+    
+          <div>
+            <span>Moneda</span>
+            ${escapeHTML(
+              abono.moneda ||
+              '—'
+            )}
+          </div>
+    
+          <div>
+            <span>Monto</span>
+            ${escapeHTML(
+              fmtNumero(abono.monto || 0)
+            )}
+          </div>
+    
+          <div>
+            <span>Forma de pago</span>
+            ${escapeHTML(
+              abono.formaPago ||
+              '—'
+            )}
+          </div>
+        </div>
+      </div>
+    `;
+
+    contenido.innerHTML =
+      bloqueCreacion +
+      cambios.map(cambio => {
       const ant = cambio.datosAnteriores || {};
 
       return `
         <div class="history-item">
           <strong>
-            Versión ${escapeHTML(cambio.versionAnterior || '')}
-            ${cambio.tipoCambio ? `· ${escapeHTML(cambio.tipoCambio)}` : ''}
+            Modificación posterior a la versión
+            ${escapeHTML(cambio.versionAnterior || '')}
+          
+            ${
+              cambio.tipoCambio
+                ? `· ${escapeHTML(cambio.tipoCambio)}`
+                : ''
+            }
           </strong>
 
           <div class="muted" style="margin-top:.25rem;">
-            ${escapeHTML(formatTimestamp(cambio.changedAt))}
-            · ${escapeHTML(cambio.changedByEmail || '')}
+            Modificado el
+            ${escapeHTML(
+              formatTimestamp(cambio.changedAt)
+            )}
+          
+            · por
+            ${escapeHTML(
+              cambio.changedByEmail ||
+              'Usuario no identificado'
+            )}
           </div>
 
           <div style="margin-top:.45rem;">
@@ -2805,10 +2913,24 @@ function renderAbonos() {
       .filter(Boolean)
       .join(' · ');
 
-    const usuario =
-      abono.updatedByEmail ||
+    const registradoPor =
       abono.createdByEmail ||
-      '';
+      '—';
+    
+    const registradoEl =
+      formatTimestamp(
+        abono.createdAt ||
+        abono.fechaRegistro
+      );
+    
+    const editadoPor =
+      abono.updatedByEmail ||
+      '—';
+    
+    const editadoEl =
+      abono.updatedAt
+        ? formatTimestamp(abono.updatedAt)
+        : '—';
 
     const archivos =
       obtenerArchivosAbono(abono);
@@ -2938,16 +3060,19 @@ function renderAbonos() {
       </td>
 
       <td>
-        ${escapeHTML(usuario)}
+        ${escapeHTML(registradoPor)}
       </td>
-
+      
       <td>
-        ${escapeHTML(
-          formatTimestamp(
-            abono.createdAt ||
-            abono.fechaRegistro
-          )
-        )}
+        ${escapeHTML(registradoEl)}
+      </td>
+      
+      <td>
+        ${escapeHTML(editadoPor)}
+      </td>
+      
+      <td>
+        ${escapeHTML(editadoEl)}
       </td>
 
       <td>
@@ -3930,6 +4055,232 @@ migrarAbonosAntiguos({ confirmar: true })
 
     alert(
       `No se pudo ejecutar la migración: ${
+        error.message || error
+      }`
+    );
+  }
+};
+
+window.repararAuditoriaAbonos = async function ({
+  confirmar = false
+} = {}) {
+  if (!confirmar) {
+    console.warn(`
+Esta función revisará todos los abonos y completará
+los campos de auditoría que puedan recuperarse.
+
+Para ejecutarla realmente usa:
+
+repararAuditoriaAbonos({ confirmar: true })
+    `);
+
+    return;
+  }
+
+  try {
+    const snap = await getDocs(
+      collection(db, RUTA_ABONOS)
+    );
+
+    let revisados = 0;
+    let actualizados = 0;
+    let sinCambios = 0;
+    let noIdentificados = 0;
+    let errores = 0;
+
+    console.log(
+      `🔎 Revisando ${snap.size} abono(s)...`
+    );
+
+    for (const documento of snap.docs) {
+      revisados++;
+
+      try {
+        const abono =
+          documento.data() || {};
+
+        const cambios = {};
+
+        /*
+         * Fecha original.
+         */
+        if (
+          !abono.createdAt &&
+          abono.fechaRegistro
+        ) {
+          cambios.createdAt =
+            abono.fechaRegistro;
+        }
+
+        /*
+         * Recuperar creador desde campos alternativos,
+         * solamente si existen realmente.
+         */
+        if (!abono.createdByEmail) {
+          const creadorAlternativo =
+            abono.registradoPor ||
+            abono.usuarioRegistro ||
+            abono.createdBy ||
+            abono.emailUsuario ||
+            '';
+
+          if (creadorAlternativo) {
+            cambios.createdByEmail =
+              String(
+                creadorAlternativo
+              ).toLowerCase();
+          } else {
+            noIdentificados++;
+          }
+        }
+
+        /*
+         * Revisar historial para recuperar
+         * la última modificación.
+         */
+        const snapHistorial =
+          await getDocs(
+            collection(
+              db,
+              RUTA_ABONOS,
+              documento.id,
+              'Historial'
+            )
+          );
+
+        const historial =
+          snapHistorial.docs
+            .map(d => d.data() || {})
+            .filter(item => item.changedAt)
+            .sort((a, b) => {
+              const fa =
+                a.changedAt
+                  ?.toMillis?.() ||
+                0;
+
+              const fb =
+                b.changedAt
+                  ?.toMillis?.() ||
+                0;
+
+              return fb - fa;
+            });
+
+        const ultimoCambio =
+          historial[0] || null;
+
+        if (
+          ultimoCambio &&
+          !abono.updatedAt
+        ) {
+          cambios.updatedAt =
+            ultimoCambio.changedAt;
+        }
+
+        if (
+          ultimoCambio &&
+          !abono.updatedByEmail &&
+          ultimoCambio.changedByEmail
+        ) {
+          cambios.updatedByEmail =
+            String(
+              ultimoCambio.changedByEmail
+            ).toLowerCase();
+        }
+
+        /*
+         * Si nunca fue editado, se dejan explícitamente
+         * vacíos los datos de edición.
+         */
+        if (
+          !ultimoCambio &&
+          abono.updatedByEmail === undefined
+        ) {
+          cambios.updatedByEmail = '';
+        }
+
+        if (
+          !ultimoCambio &&
+          abono.updatedAt === undefined
+        ) {
+          cambios.updatedAt = null;
+        }
+
+        if (!Object.keys(cambios).length) {
+          sinCambios++;
+
+          console.log(
+            `✓ ${documento.id}: sin cambios`
+          );
+
+          continue;
+        }
+
+        await updateDoc(
+          doc(
+            db,
+            RUTA_ABONOS,
+            documento.id
+          ),
+          {
+            ...cambios,
+
+            auditoriaReparadaAt:
+              serverTimestamp(),
+
+            auditoriaReparadaByEmail:
+              (
+                auth.currentUser?.email ||
+                ''
+              ).toLowerCase()
+          }
+        );
+
+        actualizados++;
+
+        console.log(
+          `✅ ${documento.id}`,
+          cambios
+        );
+
+      } catch (error) {
+        errores++;
+
+        console.error(
+          `❌ Error en ${documento.id}`,
+          error
+        );
+      }
+    }
+
+    console.table({
+      revisados,
+      actualizados,
+      sinCambios,
+      noIdentificados,
+      errores
+    });
+
+    await cargarAbonos();
+    renderAbonos();
+
+    alert(
+      `Reparación terminada.\n\n` +
+      `Revisados: ${revisados}\n` +
+      `Actualizados: ${actualizados}\n` +
+      `Sin cambios: ${sinCambios}\n` +
+      `Creadores no identificables: ${noIdentificados}\n` +
+      `Errores: ${errores}`
+    );
+
+  } catch (error) {
+    console.error(
+      'Error general reparando auditoría:',
+      error
+    );
+
+    alert(
+      `No se pudo ejecutar la reparación: ${
         error.message || error
       }`
     );
