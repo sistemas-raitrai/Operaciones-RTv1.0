@@ -3783,6 +3783,159 @@ async function inicializarMovil() {
   }
 }
 
+window.migrarAbonosAntiguos = async function ({
+  confirmar = false
+} = {}) {
+  if (!confirmar) {
+    console.warn(`
+Para ejecutar realmente la migración usa:
+
+migrarAbonosAntiguos({ confirmar: true })
+    `);
+
+    return;
+  }
+
+  try {
+    const email =
+      (auth.currentUser?.email || '')
+        .toLowerCase();
+
+    const snap = await getDocs(
+      collection(db, RUTA_ABONOS)
+    );
+
+    let revisados = 0;
+    let actualizados = 0;
+    let sinCambios = 0;
+    let errores = 0;
+
+    console.log(
+      `🔎 Revisando ${snap.size} abono(s)...`
+    );
+
+    for (const documento of snap.docs) {
+      revisados++;
+
+      const abono = documento.data() || {};
+      const cambios = {};
+
+      if (!Array.isArray(abono.archivos)) {
+        cambios.archivos =
+          abono.comprobanteURL
+            ? [
+                {
+                  nombre:
+                    'Comprobante anterior',
+
+                  url:
+                    abono.comprobanteURL,
+
+                  tipo:
+                    'comprobante',
+
+                  legado:
+                    true
+                }
+              ]
+            : [];
+      }
+
+      if (
+        typeof abono.pendienteFactura !==
+        'boolean'
+      ) {
+        cambios.pendienteFactura = false;
+      }
+
+      if (!abono.estadoSolicitudPago) {
+        cambios.estadoSolicitudPago =
+          'NO_SOLICITADO';
+      }
+
+      if (
+        abono.solicitudPago === undefined
+      ) {
+        cambios.solicitudPago = null;
+      }
+
+      if (!Object.keys(cambios).length) {
+        sinCambios++;
+
+        console.log(
+          `✓ ${documento.id}: sin cambios`
+        );
+
+        continue;
+      }
+
+      try {
+        await updateDoc(
+          doc(
+            db,
+            RUTA_ABONOS,
+            documento.id
+          ),
+          {
+            ...cambios,
+
+            migradoNuevaEstructuraAt:
+              serverTimestamp(),
+
+            migradoNuevaEstructuraByEmail:
+              email
+          }
+        );
+
+        actualizados++;
+
+        console.log(
+          `✅ ${documento.id}`,
+          cambios
+        );
+
+      } catch (error) {
+        errores++;
+
+        console.error(
+          `❌ ${documento.id}`,
+          error
+        );
+      }
+    }
+
+    console.table({
+      revisados,
+      actualizados,
+      sinCambios,
+      errores
+    });
+
+    await cargarAbonos();
+    renderAbonos();
+
+    alert(
+      `Migración terminada.\n\n` +
+      `Revisados: ${revisados}\n` +
+      `Actualizados: ${actualizados}\n` +
+      `Sin cambios: ${sinCambios}\n` +
+      `Errores: ${errores}`
+    );
+
+  } catch (error) {
+    console.error(
+      'Error general migrando abonos:',
+      error
+    );
+
+    alert(
+      `No se pudo ejecutar la migración: ${
+        error.message || error
+      }`
+    );
+  }
+};
+
 async function inicializar() {
   if (ES_VISTA_MOVIL) {
     await inicializarMovil();
