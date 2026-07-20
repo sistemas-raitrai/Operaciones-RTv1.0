@@ -180,75 +180,237 @@ function ordenarKeysItinerarioHotel(a, b) {
 }
 
 async function sincronizarFechasGrupoDesdeHotelesConfirmados(grupoId) {
-  const asignsGrupo = asignaciones
-    .filter(a =>
-      String(a.grupoId) === String(grupoId) &&
-      String(a.status || '').toLowerCase() === 'confirmado'
-    )
+  // =====================================================
+  // 1. Obtener TODAS las asignaciones hoteleras del grupo
+  // =====================================================
+  const asignacionesGrupo = asignaciones
+    .filter(a => String(a.grupoId) === String(grupoId))
     .map(a => ({
       ...a,
       checkIn: toISO(a.checkIn),
-      checkOut: toISO(a.checkOut)
+      checkOut: toISO(a.checkOut),
+      statusNormalizado: String(a.status || '').trim().toLowerCase()
     }))
     .filter(a => a.checkIn && a.checkOut);
 
-  if (!asignsGrupo.length) return false;
+  if (!asignacionesGrupo.length) {
+    console.warn(
+      'No hay asignaciones hoteleras válidas para sincronizar:',
+      grupoId
+    );
 
-  const fechaInicioNueva = asignsGrupo
+    return {
+      ok: false,
+      motivo: 'SIN_ASIGNACIONES'
+    };
+  }
+
+  // =====================================================
+  // 2. NO sincronizar mientras exista algún hotel pendiente
+  // =====================================================
+  const asignacionesPendientes = asignacionesGrupo.filter(
+    a => a.statusNormalizado !== 'confirmado'
+  );
+
+  if (asignacionesPendientes.length) {
+    console.warn(
+      `No se sincronizan fechas del grupo ${grupoId}: todavía hay ${asignacionesPendientes.length} asignación(es) pendiente(s).`
+    );
+
+    const gRef = doc(db, 'grupos', grupoId);
+
+    await updateDoc(gRef, {
+      fechasConfirmadasDesdeHoteles: false,
+      updatedAt: serverTimestamp()
+    });
+
+    return {
+      ok: false,
+      motivo: 'HOTELES_PENDIENTES',
+      pendientes: asignacionesPendientes.length
+    };
+  }
+
+  // =====================================================
+  // 3. Todas están confirmadas: calcular rango oficial
+  // =====================================================
+  const fechaInicioNueva = asignacionesGrupo
     .map(a => a.checkIn)
     .sort()[0];
 
-  const fechaFinNueva = asignsGrupo
+  const fechaFinNueva = asignacionesGrupo
     .map(a => a.checkOut)
     .sort()
     .at(-1);
 
-  if (!fechaInicioNueva || !fechaFinNueva) return false;
+  if (!fechaInicioNueva || !fechaFinNueva) {
+    return {
+      ok: false,
+      motivo: 'FECHAS_INVALIDAS'
+    };
+  }
 
+  const fechasNuevas = crearRangoFechasISOHotel(
+    fechaInicioNueva,
+    fechaFinNueva
+  );
+
+  if (!fechasNuevas.length) {
+    return {
+      ok: false,
+      motivo: 'RANGO_INVALIDO'
+    };
+  }
+
+  // =====================================================
+  // 4. Leer grupo actual
+  // =====================================================
   const gRef = doc(db, 'grupos', grupoId);
   const gSnap = await getDoc(gRef);
-  if (!gSnap.exists()) return false;
+
+  if (!gSnap.exists()) {
+    return {
+      ok: false,
+      motivo: 'GRUPO_NO_EXISTE'
+    };
+  }
 
   const g = gSnap.data() || {};
-  const IT = g.itinerario || {};
-  const keys = Object.keys(IT).sort(ordenarKeysItinerarioHotel);
-  const fechasNuevas = crearRangoFechasISOHotel(fechaInicioNueva, fechaFinNueva);
+  const itinerarioAnterior = g.itinerario || {};
 
+  const keysAnteriores = Object.keys(itinerarioAnterior)
+    .sort(ordenarKeysItinerarioHotel);
+
+  // =====================================================
+  // 5. PROTECCIÓN CRÍTICA:
+  //    nunca eliminar días automáticamente
+  // =====================================================
+  if (
+    keysAnteriores.length > 0 &&
+    fechasNuevas.length < keysAnteriores.length
+  ) {
+    await addDoc(collection(db, 'historial'), {
+      tipo: 'grupo-fechas-hoteles-bloqueadas',
+      grupoId,
+      numeroNegocio: g.numeroNegocio || '',
+      nombreGrupo: g.nombreGrupo || '',
+
+      motivo:
+        'El rango hotelero tenía menos días que el itinerario existente. Se bloqueó la sincronización para evitar pérdida de información.',
+
+      antes: {
+        fechaInicio: toISO(g.fechaInicio),
+        fechaFin: toISO(g.fechaFin),
+        cantidadDias: keysAnteriores.length,
+        itinerarioKeys: keysAnteriores,
+
+        // Snapshot completo para posible recuperación
+        itinerario: itinerarioAnterior
+      },
+
+      intento: {
+        fechaInicio: fechaInicioNueva,
+        fechaFin: fechaFinNueva,
+        cantidadDias: fechasNuevas.length,
+        itinerarioKeys: fechasNuevas
+      },
+
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
+
+    await updateDoc(gRef, {
+      fechasConfirmadasDesdeHoteles: false,
+      updatedAt: serverTimestamp()
+    });
+
+    throw new Error(
+      `No se actualizaron las fechas del grupo ${g.numeroNegocio || grupoId}. ` +
+      `El itinerario tiene ${keysAnteriores.length} días, pero el rango hotelero solamente tiene ${fechasNuevas.length}. ` +
+      `La sincronización fue bloqueada para evitar borrar actividades.`
+    );
+  }
+
+  // =====================================================
+  // 6. Reconstruir itinerario conservando actividades
+  // =====================================================
   const nuevoItinerario = {};
 
   fechasNuevas.forEach((fechaReal, idx) => {
-    const keyAnterior = keys[idx];
-    nuevoItinerario[fechaReal] = keyAnterior ? (IT[keyAnterior] || []) : [];
+    const keyAnterior = keysAnteriores[idx];
+
+    nuevoItinerario[fechaReal] = keyAnterior
+      ? (itinerarioAnterior[keyAnterior] || [])
+      : [];
   });
 
+  // =====================================================
+  // 7. Guardar fechas oficiales e itinerario
+  // =====================================================
   await updateDoc(gRef, {
-    fechaInicio: Timestamp.fromDate(new Date(fechaInicioNueva + 'T00:00:00')),
-    fechaFin: Timestamp.fromDate(new Date(fechaFinNueva + 'T00:00:00')),
+    fechaInicio: Timestamp.fromDate(
+      new Date(fechaInicioNueva + 'T00:00:00')
+    ),
+
+    fechaFin: Timestamp.fromDate(
+      new Date(fechaFinNueva + 'T00:00:00')
+    ),
+
     itinerario: nuevoItinerario,
+
     fechasConfirmadasDesdeHoteles: true,
+    fechasConfirmadasDesdeHotelesEn: serverTimestamp(),
+    fechasConfirmadasDesdeHotelesPor: currentUserEmail || '',
+
     updatedAt: serverTimestamp()
   });
 
+  // =====================================================
+  // 8. Historial completo
+  // =====================================================
   await addDoc(collection(db, 'historial'), {
     tipo: 'grupo-fechas-confirmadas-desde-hoteles',
     grupoId,
     numeroNegocio: g.numeroNegocio || '',
     nombreGrupo: g.nombreGrupo || '',
+
     antes: {
       fechaInicio: toISO(g.fechaInicio),
       fechaFin: toISO(g.fechaFin),
-      itinerarioKeys: keys
+      cantidadDias: keysAnteriores.length,
+      itinerarioKeys: keysAnteriores,
+
+      // Snapshot completo para poder restaurar
+      itinerario: itinerarioAnterior
     },
+
     despues: {
       fechaInicio: fechaInicioNueva,
       fechaFin: fechaFinNueva,
-      itinerarioKeys: fechasNuevas
+      cantidadDias: fechasNuevas.length,
+      itinerarioKeys: fechasNuevas,
+      itinerario: nuevoItinerario
     },
+
+    asignacionesConsideradas: asignacionesGrupo.map(a => ({
+      id: a.id,
+      hotelId: a.hotelId || '',
+      checkIn: a.checkIn,
+      checkOut: a.checkOut,
+      status: a.statusNormalizado
+    })),
+
     usuario: currentUserEmail,
     ts: serverTimestamp()
   });
 
-  return true;
+  return {
+    ok: true,
+    motivo: 'SINCRONIZADO',
+    fechaInicio: fechaInicioNueva,
+    fechaFin: fechaFinNueva,
+    cantidadDias: fechasNuevas.length
+  };
 }
 
 function sumarUnAnoISO(iso) {
@@ -742,48 +904,130 @@ async function swapAssignments(a1, a2) {
 // Toggle estado asignación
 async function toggleAssignStatus(assignId) {
   const a = asignaciones.find(x => x.id === assignId);
-  if (!a) return;
 
-  const nuevo = a.status === 'pendiente' ? 'confirmado' : 'pendiente';
+  if (!a) {
+    alert('No se encontró la asignación hotelera.');
+    return;
+  }
+
+  const estadoActual = String(a.status || 'pendiente')
+    .trim()
+    .toLowerCase();
+
+  const nuevo = estadoActual === 'pendiente'
+    ? 'confirmado'
+    : 'pendiente';
 
   const confirmarTexto = nuevo === 'confirmado'
-    ? 'Al confirmar, las fechas hoteleras pasarán a ser las fechas oficiales del grupo.\n\n¿Confirmar asignación?'
-    : '¿Volver esta asignación a pendiente?';
+    ? (
+        'Esta asignación quedará CONFIRMADA.\n\n' +
+        'Las fechas del grupo solamente pasarán a ser oficiales cuando todas las asignaciones hoteleras del grupo estén confirmadas.\n\n' +
+        '¿Confirmar asignación?'
+      )
+    : (
+        'Esta asignación volverá a PENDIENTE.\n\n' +
+        'Las fechas oficiales actuales del grupo no serán reemplazadas ni acortadas automáticamente.\n\n' +
+        '¿Continuar?'
+      );
 
   if (!confirm(confirmarTexto)) return;
 
-  await updateDoc(doc(db, 'hotelAssignments', assignId), {
-    status: nuevo,
-    fechasAutoDesdeGrupo: false,
-    changedBy: currentUserEmail,
-    updatedAt: serverTimestamp()
-  });
-
-  await addDoc(collection(db, 'historial'), {
-    tipo: 'assign-status',
-    docId: assignId,
-    grupoId: a.grupoId,
-    antes: a,
-    despues: {
-      ...a,
+  try {
+    // =====================================================
+    // 1. Cambiar estado de la asignación
+    // =====================================================
+    await updateDoc(doc(db, 'hotelAssignments', assignId), {
       status: nuevo,
-      fechasAutoDesdeGrupo: false
-    },
-    usuario: currentUserEmail,
-    ts: serverTimestamp()
-  });
+      fechasAutoDesdeGrupo: false,
+      changedBy: currentUserEmail,
+      updatedAt: serverTimestamp()
+    });
 
-  await loadAsignaciones();
+    // =====================================================
+    // 2. Registrar cambio de estado
+    // =====================================================
+    await addDoc(collection(db, 'historial'), {
+      tipo: 'assign-status',
+      docId: assignId,
+      grupoId: a.grupoId,
 
-  if (nuevo === 'confirmado') {
-    await sincronizarFechasGrupoDesdeHotelesConfirmados(a.grupoId);
-  } else {
-    await sincronizarFechasGrupoDesdeHotelesConfirmados(a.grupoId);
+      antes: a,
+
+      despues: {
+        ...a,
+        status: nuevo,
+        fechasAutoDesdeGrupo: false
+      },
+
+      usuario: currentUserEmail,
+      ts: serverTimestamp()
+    });
+
+    // Recargar para que sincronizarFechas... lea estados actuales
+    await loadAsignaciones();
+
+    // =====================================================
+    // 3. Si se confirmó, intentar oficializar fechas
+    // =====================================================
+    if (nuevo === 'confirmado') {
+      const resultado =
+        await sincronizarFechasGrupoDesdeHotelesConfirmados(a.grupoId);
+
+      if (resultado?.ok) {
+        alert(
+          'Asignación confirmada.\n\n' +
+          'Todas las asignaciones hoteleras del grupo están confirmadas, ' +
+          'por lo que las fechas del grupo fueron actualizadas correctamente.'
+        );
+      } else if (resultado?.motivo === 'HOTELES_PENDIENTES') {
+        alert(
+          'Asignación confirmada correctamente.\n\n' +
+          `Todavía existen ${resultado.pendientes} asignación(es) pendiente(s) para este grupo.\n\n` +
+          'Por seguridad, las fechas oficiales y el itinerario todavía no fueron modificados.'
+        );
+      } else {
+        alert(
+          'Asignación confirmada, pero las fechas del grupo no pudieron sincronizarse.\n\n' +
+          `Motivo: ${resultado?.motivo || 'desconocido'}.`
+        );
+      }
+    }
+
+    // =====================================================
+    // 4. Si vuelve a pendiente:
+    //    NO reconstruir ni acortar itinerario
+    // =====================================================
+    if (nuevo === 'pendiente') {
+      await updateDoc(doc(db, 'grupos', a.grupoId), {
+        fechasConfirmadasDesdeHoteles: false,
+        updatedAt: serverTimestamp()
+      });
+
+      alert(
+        'La asignación volvió a estado PENDIENTE.\n\n' +
+        'Las fechas y actividades existentes del grupo se conservaron sin cambios.'
+      );
+    }
+
+    await loadGrupos();
+    await loadAsignaciones();
+    await renderHoteles();
+
+  } catch (error) {
+    console.error(
+      'Error cambiando estado de asignación hotelera:',
+      error
+    );
+
+    alert(
+      error?.message ||
+      'No se pudo cambiar el estado de la asignación.'
+    );
+
+    await loadGrupos();
+    await loadAsignaciones();
+    await renderHoteles();
   }
-
-  await loadGrupos();
-  await loadAsignaciones();
-  await renderHoteles();
 }
 
 // ===== Modal Asignar Grupo =====
