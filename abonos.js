@@ -37,6 +37,7 @@ const RUTA_GRUPOS = 'grupos';
 const RUTA_HOTELES = 'hoteles';
 const RUTA_HOTEL_ASSIGNMENTS = 'hotelAssignments';
 const RUTA_HOTEL_ABONOS = 'FinanzasHotelesAbonos';
+const RUTA_PROVEEDORES_PAGO = 'ProveedoresPago';
 
 const MONEDAS = ['CLP', 'USD', 'BRL', 'ARS'];
 
@@ -48,6 +49,10 @@ let ABONOS = [];
 
 let abonoEditandoId = null;
 let comprobanteActualURL = '';
+
+let ARCHIVOS_ACTUALES = [];
+let ABONO_SOLICITUD_ACTUAL = null;
+
 let ENTIDAD_SELECCIONADA = null;
 let LIMITE_ABONOS = 10;
 let ULTIMO_ABONO_GUARDADO = null;
@@ -135,6 +140,76 @@ function escapeHTML(valor = '') {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function obtenerArchivosAbono(abono = {}) {
+  const archivos = Array.isArray(abono.archivos)
+    ? abono.archivos.filter(archivo => archivo?.url)
+    : [];
+
+  if (archivos.length) {
+    return archivos;
+  }
+
+  /*
+   * Compatibilidad con abonos antiguos que solamente
+   * tienen comprobanteURL.
+   */
+  if (abono.comprobanteURL) {
+    return [
+      {
+        nombre: 'Comprobante anterior',
+        url: abono.comprobanteURL,
+        tipo: 'comprobante',
+        legado: true
+      }
+    ];
+  }
+
+  return [];
+}
+
+function pintarArchivosFormulario() {
+  const contenedor = el('abArchivosLista');
+
+  if (!contenedor) {
+    return;
+  }
+
+  const nuevos = [
+    ...(el('abComprobantes')?.files || [])
+  ];
+
+  const existentesHTML = ARCHIVOS_ACTUALES.map(
+    (archivo, index) => `
+      <div class="archivo-item">
+        <a
+          href="${escapeHTML(archivo.url || '')}"
+          target="_blank"
+          rel="noopener"
+        >
+          ${escapeHTML(archivo.nombre || `Archivo ${index + 1}`)}
+        </a>
+
+        <span>Guardado</span>
+      </div>
+    `
+  ).join('');
+
+  const nuevosHTML = nuevos.map(
+    file => `
+      <div class="archivo-item nuevo">
+        <span>${escapeHTML(file.name)}</span>
+        <span>Nuevo</span>
+      </div>
+    `
+  ).join('');
+
+  contenedor.innerHTML =
+    existentesHTML ||
+    nuevosHTML
+      ? `${existentesHTML}${nuevosHTML}`
+      : '<span class="form-state">Sin archivos adjuntos.</span>';
 }
 
 function normalizarNombreHotel(nombre = '') {
@@ -953,6 +1028,9 @@ function obtenerDatosFormulario() {
     formaPago: el('abFormaPago').value,
     referencia: el('abReferencia').value.trim(),
     nota: el('abNota').value.trim(),
+    
+    pendienteFactura:
+      Boolean(el('abPendienteFactura')?.checked),
 
     estado: abonoEditandoId
       ? 'EDITADO'
@@ -1057,67 +1135,126 @@ function obtenerDatosFormulario() {
   };
 }
 
-async function subirComprobante(file, datos, abonoId) {
-  if (!file) return comprobanteActualURL || '';
+async function subirArchivosAbono(
+  files,
+  datos,
+  abonoId,
+  archivosExistentes = []
+) {
+  const archivosFinales = [
+    ...archivosExistentes
+  ];
 
-  const nombreSeguro = file.name.replace(/[^\w.\-]+/g, '_');
+  for (const file of files) {
+    const nombreSeguro = file.name.replace(
+      /[^\w.\-]+/g,
+      '_'
+    );
 
-  const ref = storageRef(
-    storage,
-    `abonos_operaciones/${datos.ano}/${datos.tipo}/${slug(datos.destino)}/${abonoId}/${Date.now()}_${nombreSeguro}`
-  );
+    const ruta = storageRef(
+      storage,
+      `abonos_operaciones/${datos.ano}/${datos.tipo}/${slug(datos.destino)}/${abonoId}/${Date.now()}_${nombreSeguro}`
+    );
 
-  await uploadBytes(ref, file);
-  return getDownloadURL(ref);
+    await uploadBytes(ruta, file);
+
+    const url = await getDownloadURL(ruta);
+
+    archivosFinales.push({
+      nombre: file.name,
+      nombreStorage: nombreSeguro,
+      url,
+      mimeType: file.type || '',
+      size: Number(file.size || 0),
+      tipo: 'respaldo',
+      uploadedAtISO: new Date().toISOString(),
+      uploadedByEmail:
+        (auth.currentUser?.email || '').toLowerCase()
+    });
+  }
+
+  return archivosFinales;
 }
 
-function datosParaEspejo(datos, abonoId, comprobanteURL, email, esEdicion, version) {
+function datosParaEspejo(
+  datos,
+  abonoId,
+  archivos,
+  email,
+  esEdicion,
+  version
+) {
+  const comprobanteURL =
+    archivos[0]?.url || '';
+
+  const datosBase = {
+    abonoOperacionId: abonoId,
+
+    fecha: datos.fechaPago,
+    fechaPago: datos.fechaPago,
+
+    moneda: datos.moneda,
+    monto: datos.monto,
+    formaPago: datos.formaPago,
+
+    referencia: datos.referencia,
+    nota: datos.nota,
+
+    pendienteFactura:
+      Boolean(datos.pendienteFactura),
+
+    archivos,
+    comprobanteURL,
+
+    estadoSolicitudPago:
+      datos.estadoSolicitudPago ||
+      'NO_SOLICITADO',
+
+    estado: esEdicion
+      ? 'EDITADO'
+      : 'ORIGINAL',
+
+    version,
+
+    updatedAt: esEdicion
+      ? serverTimestamp()
+      : null,
+
+    updatedByEmail: esEdicion
+      ? email
+      : '',
+
+    createdAt: esEdicion
+      ? null
+      : serverTimestamp(),
+
+    createdByEmail: esEdicion
+      ? ''
+      : email
+  };
+
   if (datos.tipo === 'actividad') {
     return {
-      abonoOperacionId: abonoId,
+      ...datosBase,
+
       anoTarifa: String(datos.ano),
       destinoId: datos.destino,
+
       servicioId: datos.servicioId,
       proveedorNombre: datos.proveedorNombre,
-      servicioNombre: datos.servicioNombre,
-      fecha: datos.fechaPago,
-      fechaPago: datos.fechaPago,
-      moneda: datos.moneda,
-      monto: datos.monto,
-      formaPago: datos.formaPago,
-      referencia: datos.referencia,
-      nota: datos.nota,
-      comprobanteURL,
-      estado: esEdicion ? 'EDITADO' : 'ORIGINAL',
-      version,
-      updatedAt: esEdicion ? serverTimestamp() : null,
-      updatedByEmail: esEdicion ? email : '',
-      createdAt: esEdicion ? null : serverTimestamp(),
-      createdByEmail: esEdicion ? '' : email
+      servicioNombre: datos.servicioNombre
     };
   }
 
   return {
-    abonoOperacionId: abonoId,
+    ...datosBase,
+
     anoTarifa: String(datos.ano),
     destino: datos.destino,
+
     hotelId: datos.hotelId,
     hotelKey: datos.hotelKey,
-    hotelNombre: datos.hotelNombre,
-    fecha: datos.fechaPago,
-    fechaPago: datos.fechaPago,
-    moneda: datos.moneda,
-    monto: datos.monto,
-    formaPago: datos.formaPago,
-    referencia: datos.referencia,
-    nota: datos.nota,
-    comprobanteURL,
-    estado: esEdicion ? 'EDITADO' : 'ORIGINAL',
-    version,
-    updatedAt: esEdicion ? serverTimestamp() : null,
-    updatedByEmail: esEdicion ? email : '',
-    createdAt: esEdicion ? null : serverTimestamp(),
-    createdByEmail: esEdicion ? '' : email
+    hotelNombre: datos.hotelNombre
   };
 }
 
@@ -1130,7 +1267,7 @@ function limpiarNulosObjeto(objeto) {
 async function guardarEspejo(
   datos,
   abonoId,
-  comprobanteURL,
+  archivos,
   email,
   esEdicion,
   version
@@ -1155,7 +1292,7 @@ async function guardarEspejo(
     datosParaEspejo(
       datos,
       abonoId,
-      comprobanteURL,
+      archivos,
       email,
       esEdicion,
       version
@@ -1167,6 +1304,591 @@ async function guardarEspejo(
     espejo,
     { merge: true }
   );
+}
+
+function obtenerNombreEntidadAbono(abono = {}) {
+  if (abono.tipo === 'hotel') {
+    return abono.hotelNombre || '';
+  }
+
+  return abono.proveedorNombre || '';
+}
+
+function obtenerProveedorPagoId(abono = {}) {
+  if (abono.tipo === 'hotel') {
+    return `hotel__${slug(
+      abono.hotelKey ||
+      abono.hotelNombre
+    )}`;
+  }
+
+  return `proveedor__${slug(
+    abono.proveedorId ||
+    abono.proveedorNombre
+  )}`;
+}
+
+function cerrarSolicitudPago() {
+  el('solicitudPagoModal')
+    ?.classList
+    .remove('open');
+
+  ABONO_SOLICITUD_ACTUAL = null;
+
+  document.body.style.overflow = '';
+}
+
+async function abrirSolicitudPago(abono) {
+  if (!abono?.id) {
+    alert(
+      'Primero debe guardar el abono. Después podrá solicitar la ejecución del pago.'
+    );
+
+    return;
+  }
+
+  ABONO_SOLICITUD_ACTUAL = abono;
+
+  const proveedorPagoId =
+    obtenerProveedorPagoId(abono);
+
+  let datosProveedor = {};
+
+  try {
+    const snap = await getDoc(
+      doc(
+        db,
+        RUTA_PROVEEDORES_PAGO,
+        proveedorPagoId
+      )
+    );
+
+    if (snap.exists()) {
+      datosProveedor =
+        snap.data() || {};
+    }
+  } catch (error) {
+    console.warn(
+      'No se pudieron cargar datos bancarios anteriores:',
+      error
+    );
+  }
+
+  /*
+   * Si este abono ya tenía solicitud, se muestran
+   * los datos usados en esa solicitud.
+   *
+   * Si aún no tenía, se usan los últimos datos
+   * guardados del proveedor.
+   */
+  const datosSolicitud =
+    abono.solicitudPago ||
+    datosProveedor ||
+    {};
+
+  const monedaAbono =
+    normalizarMoneda(
+      abono.moneda || 'CLP'
+    );
+
+  el('solicitudPagoResumen').textContent =
+    `${obtenerNombreEntidadAbono(abono)} · ` +
+    `${abono.servicioNombre || 'Pago'} · ` +
+    `${monedaAbono} ${fmtNumero(abono.monto)}`;
+
+  el('spCuentaOrigen').value =
+    datosSolicitud.cuentaOrigen || '';
+
+  el('spMonedaOrigen').value =
+    normalizarMoneda(
+      datosSolicitud.monedaOrigen ||
+      monedaAbono
+    );
+
+  el('spCuentaDestino').value =
+    datosSolicitud.cuentaDestino || '';
+
+  el('spMonedaDestino').value =
+    normalizarMoneda(
+      datosSolicitud.monedaDestino ||
+      monedaAbono
+    );
+
+  el('spCodigoBanco').value =
+    datosSolicitud.codigoBanco || '';
+
+  el('spRutBeneficiario').value =
+    datosSolicitud.rutBeneficiario || '';
+
+  el('spNombreBeneficiario').value =
+    datosSolicitud.nombreBeneficiario ||
+    obtenerNombreEntidadAbono(abono);
+
+  el('spMontoTotal').value =
+    Number(
+      datosSolicitud.montoTotal ||
+      abono.monto ||
+      0
+    );
+
+  el('spGlosaTef').value =
+    datosSolicitud.glosaTef ||
+    abono.referencia ||
+    '';
+
+  el('spCorreo').value =
+    datosSolicitud.correo || '';
+
+  el('spGlosaCorreo').value =
+    datosSolicitud.glosaCorreo ||
+    abono.nota ||
+    '';
+
+  el('solicitudPagoModal')
+    .classList
+    .add('open');
+
+  document.body.style.overflow = 'hidden';
+}
+
+function obtenerDatosSolicitudPago() {
+  return {
+    cuentaOrigen:
+      el('spCuentaOrigen').value.trim(),
+
+    monedaOrigen:
+      normalizarMoneda(
+        el('spMonedaOrigen').value
+      ),
+
+    cuentaDestino:
+      el('spCuentaDestino').value.trim(),
+
+    monedaDestino:
+      normalizarMoneda(
+        el('spMonedaDestino').value
+      ),
+
+    codigoBanco:
+      el('spCodigoBanco').value.trim(),
+
+    rutBeneficiario:
+      el('spRutBeneficiario').value.trim(),
+
+    nombreBeneficiario:
+      el('spNombreBeneficiario').value.trim(),
+
+    montoTotal:
+      Number(
+        el('spMontoTotal').value || 0
+      ),
+
+    glosaTef:
+      el('spGlosaTef').value.trim(),
+
+    correo:
+      el('spCorreo').value.trim(),
+
+    glosaCorreo:
+      el('spGlosaCorreo').value.trim()
+  };
+}
+
+function validarSolicitudPago(datos) {
+  if (!datos.cuentaOrigen) {
+    return 'Debe indicar la cuenta de origen.';
+  }
+
+  if (!datos.cuentaDestino) {
+    return 'Debe indicar la cuenta de destino.';
+  }
+
+  if (!datos.codigoBanco) {
+    return 'Debe indicar el código del banco.';
+  }
+
+  if (!datos.rutBeneficiario) {
+    return 'Debe indicar el RUT del beneficiario.';
+  }
+
+  if (!datos.nombreBeneficiario) {
+    return 'Debe indicar el nombre del beneficiario.';
+  }
+
+  if (!(datos.montoTotal > 0)) {
+    return 'El monto total debe ser mayor que cero.';
+  }
+
+  if (!datos.glosaTef) {
+    return 'Debe indicar la glosa TEF.';
+  }
+
+  if (!datos.correo) {
+    return 'Debe indicar el correo.';
+  }
+
+  if (!datos.glosaCorreo) {
+    return 'Debe indicar la glosa del correo.';
+  }
+
+  return '';
+}
+
+async function guardarSolicitudPago() {
+  const abono = ABONO_SOLICITUD_ACTUAL;
+
+  if (!abono?.id) {
+    alert('No se encontró el abono seleccionado.');
+    return;
+  }
+
+  const solicitud =
+    obtenerDatosSolicitudPago();
+
+  const error =
+    validarSolicitudPago(solicitud);
+
+  if (error) {
+    alert(error);
+    return;
+  }
+
+  const btn =
+    el('btnGuardarSolicitudPago');
+
+  btn.disabled = true;
+
+  try {
+    const email =
+      (auth.currentUser?.email || '')
+        .toLowerCase();
+
+    const proveedorPagoId =
+      obtenerProveedorPagoId(abono);
+
+    const nombreEntidad =
+      obtenerNombreEntidadAbono(abono);
+
+    const solicitudCompleta = {
+      ...solicitud,
+
+      proveedorPagoId,
+      proveedorNombre: nombreEntidad,
+
+      estado: 'SOLICITADO',
+
+      solicitadoAt:
+        serverTimestamp(),
+
+      solicitadoByEmail:
+        email
+    };
+
+    /*
+     * Copia exacta de la solicitud dentro del abono.
+     */
+    await updateDoc(
+      doc(
+        db,
+        RUTA_ABONOS,
+        abono.id
+      ),
+      {
+        solicitudPago:
+          solicitudCompleta,
+
+        estadoSolicitudPago:
+          'SOLICITADO',
+
+        updatedAt:
+          serverTimestamp(),
+
+        updatedByEmail:
+          email
+      }
+    );
+
+    /*
+     * Últimos datos bancarios conocidos del proveedor.
+     */
+    await setDoc(
+      doc(
+        db,
+        RUTA_PROVEEDORES_PAGO,
+        proveedorPagoId
+      ),
+      {
+        proveedorPagoId,
+        proveedorNombre:
+          nombreEntidad,
+
+        tipo:
+          abono.tipo || '',
+
+        proveedorId:
+          abono.proveedorId || '',
+
+        servicioId:
+          abono.servicioId || '',
+
+        hotelId:
+          abono.hotelId || '',
+
+        hotelKey:
+          abono.hotelKey || '',
+
+        ...solicitud,
+
+        updatedAt:
+          serverTimestamp(),
+
+        updatedByEmail:
+          email
+      },
+      {
+        merge: true
+      }
+    );
+
+    await cargarAbonos();
+    renderAbonos();
+
+    const abonoActualizado =
+      ABONOS.find(
+        item => item.id === abono.id
+      );
+
+    if (abonoActualizado) {
+      ABONO_SOLICITUD_ACTUAL =
+        abonoActualizado;
+    }
+
+    alert(
+      '✅ Solicitud de ejecución guardada correctamente.'
+    );
+
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      `No se pudo guardar la solicitud: ${
+        error.message || error
+      }`
+    );
+
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function construirFilaSolicitudExcel(abono) {
+  const solicitud =
+    abono.solicitudPago || {};
+
+  return {
+    'Cta_origen':
+      solicitud.cuentaOrigen || '',
+
+    'moneda_origen':
+      solicitud.monedaOrigen || '',
+
+    'Cta_destino':
+      solicitud.cuentaDestino || '',
+
+    'moneda_destino':
+      solicitud.monedaDestino || '',
+
+    'Cod_banco':
+      solicitud.codigoBanco || '',
+
+    'RUT benef':
+      solicitud.rutBeneficiario || '',
+
+    'Nombre benef':
+      solicitud.nombreBeneficiario || '',
+
+    'Mto Total':
+      Number(solicitud.montoTotal || 0),
+
+    'Glosa TEF':
+      solicitud.glosaTef || '',
+
+    'Correo':
+      solicitud.correo || '',
+
+    'Glosa correo':
+      solicitud.glosaCorreo || ''
+  };
+}
+
+function descargarArchivoSolicitudes(
+  lista,
+  nombreArchivo
+) {
+  if (!window.XLSX) {
+    alert(
+      'No se pudo cargar la herramienta de exportación Excel.'
+    );
+
+    return;
+  }
+
+  const filas =
+    lista.map(construirFilaSolicitudExcel);
+
+  const hoja =
+    window.XLSX.utils.json_to_sheet(
+      filas,
+      {
+        header: [
+          'Cta_origen',
+          'moneda_origen',
+          'Cta_destino',
+          'moneda_destino',
+          'Cod_banco',
+          'RUT benef',
+          'Nombre benef',
+          'Mto Total',
+          'Glosa TEF',
+          'Correo',
+          'Glosa correo'
+        ]
+      }
+    );
+
+  const libro =
+    window.XLSX.utils.book_new();
+
+  window.XLSX.utils.book_append_sheet(
+    libro,
+    hoja,
+    'Pagos'
+  );
+
+  window.XLSX.writeFile(
+    libro,
+    nombreArchivo
+  );
+}
+
+async function descargarSolicitudActual() {
+  const abono =
+    ABONO_SOLICITUD_ACTUAL;
+
+  if (!abono?.solicitudPago) {
+    alert(
+      'Primero debe guardar la solicitud de ejecución.'
+    );
+
+    return;
+  }
+
+  descargarArchivoSolicitudes(
+    [abono],
+    `solicitud_pago_${abono.id}.xlsx`
+  );
+
+  try {
+    await updateDoc(
+      doc(
+        db,
+        RUTA_ABONOS,
+        abono.id
+      ),
+      {
+        estadoSolicitudPago:
+          'EXPORTADO',
+
+        'solicitudPago.estado':
+          'EXPORTADO',
+
+        'solicitudPago.exportadoAt':
+          serverTimestamp(),
+
+        'solicitudPago.exportadoByEmail':
+          (
+            auth.currentUser?.email ||
+            ''
+          ).toLowerCase()
+      }
+    );
+
+    await cargarAbonos();
+    renderAbonos();
+
+  } catch (error) {
+    console.warn(
+      'El Excel se descargó, pero no se pudo actualizar el estado:',
+      error
+    );
+  }
+}
+
+async function exportarSolicitudesPago() {
+  const lista = abonosFiltrados()
+    .filter(abono =>
+      Boolean(abono.solicitudPago) &&
+      norm(abono.estadoSolicitudPago) ===
+        'SOLICITADO'
+    );
+
+  if (!lista.length) {
+    alert(
+      'No hay solicitudes pendientes de exportar con los filtros seleccionados.'
+    );
+
+    return;
+  }
+
+  const fecha =
+    new Date()
+      .toISOString()
+      .slice(0, 10);
+
+  descargarArchivoSolicitudes(
+    lista,
+    `solicitudes_pago_${fecha}.xlsx`
+  );
+
+  const email =
+    (auth.currentUser?.email || '')
+      .toLowerCase();
+
+  try {
+    await Promise.all(
+      lista.map(abono =>
+        updateDoc(
+          doc(
+            db,
+            RUTA_ABONOS,
+            abono.id
+          ),
+          {
+            estadoSolicitudPago:
+              'EXPORTADO',
+
+            'solicitudPago.estado':
+              'EXPORTADO',
+
+            'solicitudPago.exportadoAt':
+              serverTimestamp(),
+
+            'solicitudPago.exportadoByEmail':
+              email
+          }
+        )
+      )
+    );
+
+    await cargarAbonos();
+    renderAbonos();
+
+  } catch (error) {
+    console.warn(
+      'El archivo se descargó, pero algunos estados no se actualizaron:',
+      error
+    );
+  }
 }
 
 function mostrarConfirmacionAbono(datos = {}) {
@@ -1209,65 +1931,126 @@ async function guardarAbono() {
 
   const btn = el('btnGuardarAbono');
   const eraEdicion = Boolean(abonoEditandoId);
+
   btn.disabled = true;
   setEstadoFormulario('Guardando...');
 
   try {
     const datos = obtenerDatosFormulario();
-    ULTIMO_ABONO_GUARDADO = {
-      ...datos
-    };
-    const email = (auth.currentUser?.email || '').toLowerCase();
-    const file = el('abComprobante').files[0] || null;
+
+    const email =
+      (auth.currentUser?.email || '')
+        .toLowerCase();
+
+    const files = [
+      ...(el('abComprobantes')?.files || [])
+    ];
 
     if (!email) {
-      throw new Error('No se pudo identificar al usuario conectado.');
+      throw new Error(
+        'No se pudo identificar al usuario conectado.'
+      );
     }
 
     if (!abonoEditandoId) {
-      const refCentral = doc(collection(db, RUTA_ABONOS));
+      const refCentral = doc(
+        collection(db, RUTA_ABONOS)
+      );
+
       const abonoId = refCentral.id;
-      const comprobanteURL = await subirComprobante(file, datos, abonoId);
+
+      const archivos = await subirArchivosAbono(
+        files,
+        datos,
+        abonoId,
+        []
+      );
+
+      const comprobanteURL =
+        archivos[0]?.url || '';
 
       const documento = {
         ...datos,
+
+        archivos,
         comprobanteURL,
+
+        estadoSolicitudPago:
+          'NO_SOLICITADO',
+
+        solicitudPago: null,
+
         fechaRegistro: serverTimestamp(),
         createdAt: serverTimestamp(),
         createdByEmail: email,
+
         updatedAt: null,
         updatedByEmail: '',
+
         archivedAt: null,
         archivedByEmail: '',
+
         version: 1
       };
 
-      await setDoc(refCentral, documento);
+      await setDoc(
+        refCentral,
+        documento
+      );
 
       await guardarEspejo(
-        datos,
+        documento,
         abonoId,
-        comprobanteURL,
+        archivos,
         email,
         false,
         1
       );
 
+      ULTIMO_ABONO_GUARDADO = {
+        id: abonoId,
+        ...documento
+      };
+
     } else {
-      const refCentral = doc(db, RUTA_ABONOS, abonoEditandoId);
-      const snapActual = await getDoc(refCentral);
+      const abonoId = abonoEditandoId;
+
+      const refCentral = doc(
+        db,
+        RUTA_ABONOS,
+        abonoId
+      );
+
+      const snapActual =
+        await getDoc(refCentral);
 
       if (!snapActual.exists()) {
-        throw new Error('El abono que intenta editar ya no existe.');
+        throw new Error(
+          'El abono que intenta editar ya no existe.'
+        );
       }
 
-      const anterior = snapActual.data() || {};
-      const versionAnterior = Number(anterior.version || 1);
-      const nuevaVersion = versionAnterior + 1;
-      const motivoCambio = el('abMotivoCambio').value.trim();
+      const anterior =
+        snapActual.data() || {};
+
+      const versionAnterior =
+        Number(anterior.version || 1);
+
+      const nuevaVersion =
+        versionAnterior + 1;
+
+      const motivoCambio =
+        el('abMotivoCambio')
+          .value
+          .trim();
 
       await addDoc(
-        collection(db, RUTA_ABONOS, abonoEditandoId, 'Historial'),
+        collection(
+          db,
+          RUTA_ABONOS,
+          abonoId,
+          'Historial'
+        ),
         {
           versionAnterior,
           datosAnteriores: anterior,
@@ -1277,31 +2060,59 @@ async function guardarAbono() {
         }
       );
 
-      const comprobanteURL = await subirComprobante(
-        file,
+      const archivosExistentes =
+        obtenerArchivosAbono(anterior);
+
+      const archivos = await subirArchivosAbono(
+        files,
         datos,
-        abonoEditandoId
+        abonoId,
+        archivosExistentes
       );
 
-      await updateDoc(refCentral, {
+      const comprobanteURL =
+        archivos[0]?.url ||
+        anterior.comprobanteURL ||
+        '';
+
+      const documentoActualizado = {
         ...datos,
+
+        archivos,
         comprobanteURL,
+
         estado: 'EDITADO',
         version: nuevaVersion,
+
         updatedAt: serverTimestamp(),
         updatedByEmail: email,
-        motivoUltimoCambio: motivoCambio
-      });
+
+        motivoUltimoCambio:
+          motivoCambio
+      };
+
+      await updateDoc(
+        refCentral,
+        documentoActualizado
+      );
 
       await guardarEspejo(
-        datos,
-        abonoEditandoId,
-        comprobanteURL,
+        {
+          ...anterior,
+          ...documentoActualizado
+        },
+        abonoId,
+        archivos,
         email,
         true,
         nuevaVersion
       );
 
+      ULTIMO_ABONO_GUARDADO = {
+        id: abonoId,
+        ...anterior,
+        ...documentoActualizado
+      };
     }
 
     if (!ES_VISTA_MOVIL) {
@@ -1309,35 +2120,47 @@ async function guardarAbono() {
       poblarFiltrosGenerales();
       renderAbonos();
     }
-    
+
     const datosConfirmacion = {
       ...ULTIMO_ABONO_GUARDADO
     };
-    
+
     limpiarFormulario();
-    
+
     if (!ES_VISTA_MOVIL) {
       cerrarModalAbono({
         limpiar: false,
         forzar: true
       });
     }
-    
+
     if (esVistaMovil()) {
       mostrarConfirmacionAbono(
         datosConfirmacion
       );
     } else {
       alert(
-        abonoEditandoId
+        eraEdicion
           ? '✅ Abono actualizado correctamente.'
           : '✅ Abono registrado correctamente.'
       );
     }
+
   } catch (error) {
     console.error(error);
-    setEstadoFormulario(error.message || 'No se pudo guardar.', true);
-    alert(`No se pudo guardar el abono: ${error.message || error}`);
+
+    setEstadoFormulario(
+      error.message ||
+      'No se pudo guardar.',
+      true
+    );
+
+    alert(
+      `No se pudo guardar el abono: ${
+        error.message || error
+      }`
+    );
+
   } finally {
     btn.disabled = false;
   }
@@ -1346,6 +2169,10 @@ async function guardarAbono() {
 function limpiarFormulario() {
   abonoEditandoId = null;
   comprobanteActualURL = '';
+  
+  ARCHIVOS_ACTUALES = [];
+  ABONO_SOLICITUD_ACTUAL = null;
+  
   ENTIDAD_SELECCIONADA = null;
 
   if (el('abonoModalTitulo')) {
@@ -1382,7 +2209,10 @@ function limpiarFormulario() {
   el('abReferencia').value = '';
   el('abNota').value = '';
   el('abMotivoCambio').value = '';
-  el('abComprobante').value = '';
+  el('abComprobantes').value = '';
+  el('abPendienteFactura').checked = false;
+  
+  pintarArchivosFormulario();
 
   el('abOtroDestinatario').value = '';
   el('abOtroCategoria').value = 'transporte';
@@ -1402,6 +2232,11 @@ function iniciarEdicion(abono) {
 
   comprobanteActualURL =
     abono.comprobanteURL || '';
+
+  ARCHIVOS_ACTUALES =
+    obtenerArchivosAbono(abono);
+  
+  ABONO_SOLICITUD_ACTUAL = abono;
 
   if (el('abonoModalTitulo')) {
     el('abonoModalTitulo').textContent =
@@ -1562,8 +2397,14 @@ function iniciarEdicion(abono) {
     abono.nota || '';
 
   el('abMotivoCambio').value = '';
-  el('abComprobante').value = '';
-
+  
+  el('abComprobantes').value = '';
+  
+  el('abPendienteFactura').checked =
+    Boolean(abono.pendienteFactura);
+  
+  pintarArchivosFormulario();
+  
   abrirModalAbono();
 }
 
@@ -1937,81 +2778,257 @@ function formatearVersionAbono(version) {
 }
 
 function renderAbonos() {
-  const listaFiltrada = abonosFiltrados();
-  const listaVisible = aplicarLimiteAbonos(
-    listaFiltrada
-  );
+  const listaFiltrada =
+    abonosFiltrados();
+
+  const listaVisible =
+    aplicarLimiteAbonos(
+      listaFiltrada
+    );
 
   const tbody =
-    el('tblAbonos').querySelector('tbody');
+    el('tblAbonos')
+      .querySelector('tbody');
 
   tbody.innerHTML = '';
 
   for (const abono of listaVisible) {
-
-    let proveedorHotel = '';
-    
-    if (abono.tipo === 'hotel') {
-      proveedorHotel =
-        abono.hotelNombre || '';
-    } else {
-      proveedorHotel =
-        abono.proveedorNombre || '';
-    }
+    const proveedorHotel =
+      abono.tipo === 'hotel'
+        ? abono.hotelNombre || ''
+        : abono.proveedorNombre || '';
 
     const servicioAsunto = [
       abono.servicioNombre,
       abono.nota
-    ].filter(Boolean).join(' · ');
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
-    const usuario = abono.updatedByEmail || abono.createdByEmail || '';
+    const usuario =
+      abono.updatedByEmail ||
+      abono.createdByEmail ||
+      '';
 
-    const tr = document.createElement('tr');
+    const archivos =
+      obtenerArchivosAbono(abono);
+
+    const archivosHTML =
+      archivos.length
+        ? `
+          <div class="documentos-links">
+            ${archivos.map(
+              (archivo, index) => `
+                <a
+                  href="${escapeHTML(archivo.url)}"
+                  target="_blank"
+                  rel="noopener"
+                  title="${escapeHTML(archivo.nombre || '')}"
+                >
+                  ${index + 1}
+                </a>
+              `
+            ).join('')}
+          </div>
+        `
+        : '—';
+
+    const facturaHTML =
+      abono.pendienteFactura
+        ? `
+          <span class="badge-finanzas pendiente">
+            Pendiente
+          </span>
+        `
+        : `
+          <span class="badge-finanzas completo">
+            Completa
+          </span>
+        `;
+
+    const estadoSolicitud =
+      norm(
+        abono.estadoSolicitudPago ||
+        'NO_SOLICITADO'
+      );
+
+    let claseSolicitud =
+      'no-solicitado';
+
+    let textoSolicitud =
+      'No solicitada';
+
+    if (estadoSolicitud === 'SOLICITADO') {
+      claseSolicitud = 'solicitado';
+      textoSolicitud = 'Solicitada';
+    }
+
+    if (estadoSolicitud === 'EXPORTADO') {
+      claseSolicitud = 'exportado';
+      textoSolicitud = 'Exportada';
+    }
+
+    if (estadoSolicitud === 'PAGADO') {
+      claseSolicitud = 'pagado';
+      textoSolicitud = 'Pagada';
+    }
+
+    const tr =
+      document.createElement('tr');
 
     tr.innerHTML = `
-      <td>${escapeHTML(abono.fechaPago || abono.fecha || '')}</td>
-      <td>${escapeHTML(abono.tipo || '')}</td>
-      <td>${escapeHTML(proveedorHotel || '')}</td>
-      <td title="${escapeHTML(servicioAsunto)}">${escapeHTML(servicioAsunto || '—')}</td>
-      <td>${escapeHTML(abono.destino || '')}</td>
-      <td>${escapeHTML(abono.ano || '')}</td>
-      <td>${escapeHTML(abono.moneda || 'CLP')}</td>
-      <td class="right mono">${escapeHTML(fmtNumero(abono.monto || 0))}</td>
-      <td>${escapeHTML(abono.formaPago || '')}</td>
-      <td>${escapeHTML(abono.referencia || '—')}</td>
       <td>
-        ${abono.comprobanteURL
-          ? `<a class="link-doc" href="${escapeHTML(abono.comprobanteURL)}" target="_blank" rel="noopener">VER</a>`
-          : '—'
-        }
+        ${escapeHTML(
+          abono.fechaPago ||
+          abono.fecha ||
+          ''
+        )}
       </td>
-      <td>${escapeHTML(usuario)}</td>
-      <td>${escapeHTML(formatTimestamp(abono.createdAt || abono.fechaRegistro))}</td>
+
       <td>
-        <span class="estado ${estadoClase(abono.estado)}">
-          ${escapeHTML(abono.estado || 'REGISTRADO')}
+        ${escapeHTML(abono.tipo || '')}
+      </td>
+
+      <td>
+        ${escapeHTML(proveedorHotel)}
+      </td>
+
+      <td title="${escapeHTML(servicioAsunto)}">
+        ${escapeHTML(servicioAsunto || '—')}
+      </td>
+
+      <td>
+        ${escapeHTML(abono.destino || '')}
+      </td>
+
+      <td>
+        ${escapeHTML(abono.ano || '')}
+      </td>
+
+      <td>
+        ${escapeHTML(abono.moneda || 'CLP')}
+      </td>
+
+      <td class="right mono">
+        ${escapeHTML(
+          fmtNumero(abono.monto || 0)
+        )}
+      </td>
+
+      <td>
+        ${escapeHTML(abono.formaPago || '')}
+      </td>
+
+      <td>
+        ${escapeHTML(abono.referencia || '—')}
+      </td>
+
+      <td>
+        ${archivosHTML}
+      </td>
+
+      <td>
+        ${facturaHTML}
+      </td>
+
+      <td>
+        <span class="badge-finanzas ${claseSolicitud}">
+          ${textoSolicitud}
         </span>
       </td>
-      <td class="right">
-        ${escapeHTML(formatearVersionAbono(abono.version))}
+
+      <td>
+        ${escapeHTML(usuario)}
       </td>
+
+      <td>
+        ${escapeHTML(
+          formatTimestamp(
+            abono.createdAt ||
+            abono.fechaRegistro
+          )
+        )}
+      </td>
+
+      <td>
+        <span class="estado ${estadoClase(abono.estado)}">
+          ${escapeHTML(
+            abono.estado ||
+            'REGISTRADO'
+          )}
+        </span>
+      </td>
+
+      <td class="right">
+        ${escapeHTML(
+          formatearVersionAbono(
+            abono.version
+          )
+        )}
+      </td>
+
       <td>
         <div class="acciones">
-          <button class="icon-btn btn-editar" type="button" title="Editar">
-            <span class="material-symbols-outlined">edit</span>
+          <button
+            class="icon-btn btn-editar"
+            type="button"
+            title="Editar abono"
+          >
+            <span class="material-symbols-outlined">
+              edit
+            </span>
           </button>
 
-          <button class="icon-btn btn-historial" type="button" title="Ver historial">
-            <span class="material-symbols-outlined">history</span>
+          <button
+            class="icon-btn btn-solicitar-pago"
+            type="button"
+            title="Solicitar o revisar ejecución del pago"
+          >
+            <span class="material-symbols-outlined">
+              account_balance
+            </span>
           </button>
 
-          ${norm(abono.estado) !== 'ARCHIVADO'
-            ? `
-              <button class="icon-btn danger btn-archivar" type="button" title="Archivar">
-                <span class="material-symbols-outlined">archive</span>
-              </button>
-            `
-            : ''
+          ${
+            abono.solicitudPago
+              ? `
+                <button
+                  class="icon-btn btn-xls-pago"
+                  type="button"
+                  title="Descargar solicitud XLS"
+                >
+                  <span class="material-symbols-outlined">
+                    download
+                  </span>
+                </button>
+              `
+              : ''
+          }
+
+          <button
+            class="icon-btn btn-historial"
+            type="button"
+            title="Ver historial"
+          >
+            <span class="material-symbols-outlined">
+              history
+            </span>
+          </button>
+
+          ${
+            norm(abono.estado) !== 'ARCHIVADO'
+              ? `
+                <button
+                  class="icon-btn danger btn-archivar"
+                  type="button"
+                  title="Archivar"
+                >
+                  <span class="material-symbols-outlined">
+                    archive
+                  </span>
+                </button>
+              `
+              : ''
           }
         </div>
       </td>
@@ -2019,20 +3036,43 @@ function renderAbonos() {
 
     tbody.appendChild(tr);
 
-    tr.querySelector('.btn-editar').onclick = () => iniciarEdicion(abono);
-    tr.querySelector('.btn-historial').onclick = () => mostrarHistorial(abono);
+    tr.querySelector('.btn-editar')
+      .onclick = () =>
+        iniciarEdicion(abono);
 
-    const btnArchivar = tr.querySelector('.btn-archivar');
+    tr.querySelector('.btn-solicitar-pago')
+      .onclick = () =>
+        abrirSolicitudPago(abono);
+
+    tr.querySelector('.btn-historial')
+      .onclick = () =>
+        mostrarHistorial(abono);
+
+    const btnXls =
+      tr.querySelector('.btn-xls-pago');
+
+    if (btnXls) {
+      btnXls.onclick = async () => {
+        ABONO_SOLICITUD_ACTUAL = abono;
+        await descargarSolicitudActual();
+      };
+    }
+
+    const btnArchivar =
+      tr.querySelector('.btn-archivar');
+
     if (btnArchivar) {
-      btnArchivar.onclick = () => archivarAbono(abono);
+      btnArchivar.onclick = () =>
+        archivarAbono(abono);
     }
   }
 
   el('pagInfo').textContent =
-    listaVisible.length === listaFiltrada.length
+    listaVisible.length ===
+    listaFiltrada.length
       ? `${listaFiltrada.length} abono(s)`
       : `Mostrando ${listaVisible.length} de ${listaFiltrada.length}`;
-  
+
   renderResumen(listaFiltrada);
 }
 
@@ -2114,8 +3154,22 @@ function exportarAbonosExcel() {
       'Referencia':
         abono.referencia || '',
 
-      'Comprobante':
-        abono.comprobanteURL || '',
+      'Cantidad de documentos':
+        obtenerArchivosAbono(abono).length,
+      
+      'Documentos':
+        obtenerArchivosAbono(abono)
+          .map(archivo => archivo.url)
+          .join(' | '),
+      
+      'Pendiente factura':
+        abono.pendienteFactura
+          ? 'SÍ'
+          : 'NO',
+      
+      'Estado solicitud de pago':
+        abono.estadoSolicitudPago ||
+        'NO_SOLICITADO',
 
       'Registrado por':
         abono.createdByEmail || '',
@@ -2362,6 +3416,71 @@ function conectarEventos() {
     'click',
     guardarAbono
   );
+
+  el('abComprobantes')?.addEventListener(
+    'change',
+    pintarArchivosFormulario
+  );
+  
+  el('btnSolicitarPago')?.addEventListener(
+    'click',
+    async () => {
+      if (!abonoEditandoId) {
+        alert(
+          'Primero debe guardar el abono. Después podrá solicitar la ejecución del pago.'
+        );
+  
+        return;
+      }
+  
+      const abono =
+        ABONOS.find(
+          item =>
+            item.id === abonoEditandoId
+        );
+  
+      if (!abono) {
+        alert(
+          'No se encontró el abono actualizado.'
+        );
+  
+        return;
+      }
+  
+      await abrirSolicitudPago(abono);
+    }
+  );
+  
+  el('btnCerrarSolicitudPago')
+    ?.addEventListener(
+      'click',
+      cerrarSolicitudPago
+    );
+  
+  el('btnGuardarSolicitudPago')
+    ?.addEventListener(
+      'click',
+      guardarSolicitudPago
+    );
+  
+  el('btnDescargarSolicitud')
+    ?.addEventListener(
+      'click',
+      descargarSolicitudActual
+    );
+  
+  el('solicitudPagoModal')
+    ?.addEventListener(
+      'click',
+      event => {
+        if (
+          event.target ===
+          el('solicitudPagoModal')
+        ) {
+          cerrarSolicitudPago();
+        }
+      }
+    );
   
   /* CANCELAR EDICIÓN */
   
@@ -2419,6 +3538,12 @@ function conectarEventos() {
       'click',
       exportarAbonosExcel
     );
+
+    el('btnExportarSolicitudes')
+      ?.addEventListener(
+        'click',
+        exportarSolicitudesPago
+      );
 
     el('btnVerArchivados')?.addEventListener(
       'click',
@@ -2480,6 +3605,15 @@ function conectarEventos() {
     'keydown',
     event => {
       if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (
+        el('solicitudPagoModal')
+          ?.classList
+          .contains('open')
+      ) {
+        cerrarSolicitudPago();
         return;
       }
 
