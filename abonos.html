@@ -844,6 +844,312 @@
     }
 
     /* =========================================================
+       ARCHIVOS, FACTURA Y SOLICITUD DE PAGO
+       ========================================================= */
+    
+    #abonoModal .checkbox-line {
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      margin-top: .65rem;
+      padding: .7rem .8rem;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 9px;
+    }
+    
+    #abonoModal .checkbox-line input {
+      width: 18px !important;
+      height: 18px !important;
+      margin: 0;
+      flex: 0 0 auto;
+    }
+    
+    #abonoModal .checkbox-line label {
+      margin: 0;
+      color: #9a3412;
+      font-size: .84rem;
+      font-weight: 800;
+      text-transform: none;
+      cursor: pointer;
+    }
+    
+    #abonoModal .archivos-lista {
+      display: grid;
+      gap: .4rem;
+      margin-top: .55rem;
+    }
+    
+    #abonoModal .archivo-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .6rem;
+      padding: .45rem .6rem;
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 7px;
+      font-size: .78rem;
+    }
+    
+    #abonoModal .archivo-item a {
+      min-width: 0;
+      overflow: hidden;
+      color: #0284c7;
+      font-weight: 700;
+      text-decoration: none;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    #abonoModal .archivo-item a:hover {
+      text-decoration: underline;
+    }
+    
+    #abonoModal .archivo-item.nuevo {
+      color: #166534;
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+    }
+    
+    #abonosRoot .badge-finanzas {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: .22rem .48rem;
+      border-radius: 999px;
+      font-size: .7rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    
+    #abonosRoot .badge-finanzas.pendiente {
+      color: #9a3412;
+      background: #ffedd5;
+    }
+    
+    #abonosRoot .badge-finanzas.completo {
+      color: #166534;
+      background: #dcfce7;
+    }
+    
+    #abonosRoot .badge-finanzas.no-solicitado {
+      color: #475569;
+      background: #e2e8f0;
+    }
+    
+    #abonosRoot .badge-finanzas.solicitado {
+      color: #1d4ed8;
+      background: #dbeafe;
+    }
+    
+    #abonosRoot .badge-finanzas.exportado {
+      color: #7e22ce;
+      background: #f3e8ff;
+    }
+    
+    #abonosRoot .badge-finanzas.pagado {
+      color: #166534;
+      background: #dcfce7;
+    }
+    
+    #abonosRoot .documentos-links {
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    
+    #abonosRoot .documentos-links a {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 24px;
+      height: 24px;
+      padding: 0 .35rem;
+      border-radius: 6px;
+      background: #e0f2fe;
+      color: #0369a1;
+      font-size: .72rem;
+      font-weight: 800;
+      text-decoration: none;
+    }
+    
+    /* =========================================================
+       MODAL SOLICITUD DE EJECUCIÓN
+       ========================================================= */
+    
+    #solicitudPagoModal {
+      position: fixed;
+      inset: 0;
+      z-index: 3300;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background: rgba(0, 0, 0, .5);
+    }
+    
+    #solicitudPagoModal.open {
+      display: flex;
+    }
+    
+    #solicitudPagoModal,
+    #solicitudPagoModal * {
+      box-sizing: border-box;
+    }
+    
+    #solicitudPagoModal .modal-card {
+      width: min(930px, 97vw);
+      max-height: 92vh;
+      overflow-y: auto;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 20px 65px rgba(0, 0, 0, .32);
+    }
+    
+    #solicitudPagoModal .modal-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .9rem 1rem;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    #solicitudPagoModal .modal-header h2 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+    
+    #solicitudPagoModal .modal-body {
+      padding: 1rem;
+    }
+    
+    #solicitudPagoModal .solicitud-resumen {
+      margin-bottom: .9rem;
+      padding: .7rem .8rem;
+      color: #0c4a6e;
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 9px;
+      font-size: .84rem;
+    }
+    
+    #solicitudPagoModal .solicitud-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: .75rem;
+    }
+    
+    #solicitudPagoModal .field {
+      display: flex;
+      flex-direction: column;
+      gap: .28rem;
+      min-width: 0;
+    }
+    
+    #solicitudPagoModal .field.full {
+      grid-column: 1 / -1;
+    }
+    
+    #solicitudPagoModal label {
+      color: #4b5563;
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    
+    #solicitudPagoModal input,
+    #solicitudPagoModal select,
+    #solicitudPagoModal textarea {
+      width: 100%;
+      min-width: 0;
+      padding: .52rem .6rem;
+      color: #111827;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: .87rem;
+    }
+    
+    #solicitudPagoModal textarea {
+      min-height: 65px;
+      resize: vertical;
+    }
+    
+    #solicitudPagoModal .solicitud-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: .6rem;
+      margin-top: 1rem;
+      padding-top: .8rem;
+      border-top: 1px solid #e5e7eb;
+    }
+    
+    #solicitudPagoModal .btn {
+      width: auto !important;
+      min-height: 38px;
+      padding: .48rem .85rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      background: #fff;
+      color: #111827;
+      cursor: pointer;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: .35rem;
+    }
+    
+    #solicitudPagoModal .btn.primary {
+      color: #fff;
+      background: #0ea5e9;
+      border-color: #0ea5e9;
+    }
+    
+    #solicitudPagoModal .btn.excel {
+      color: #fff;
+      background: #16a34a;
+      border-color: #16a34a;
+    }
+    
+    @media (max-width: 700px) {
+      #solicitudPagoModal {
+        padding: 0;
+      }
+    
+      #solicitudPagoModal .modal-card {
+        width: 100%;
+        height: 100%;
+        max-height: none;
+        border-radius: 0;
+      }
+    
+      #solicitudPagoModal .solicitud-grid {
+        grid-template-columns: 1fr;
+      }
+    
+      #solicitudPagoModal .field.full {
+        grid-column: 1;
+      }
+    
+      #solicitudPagoModal .solicitud-actions {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    
+      #solicitudPagoModal .solicitud-actions .btn {
+        width: 100% !important;
+      }
+    }
+
+    /* =========================================================
        MODAL HISTORIAL
        ========================================================= */
 
@@ -1392,6 +1698,19 @@
       
           Exportar Excel
         </button>
+
+        <button
+          id="btnExportarSolicitudes"
+          class="btn excel"
+          type="button"
+        >
+          <span class="material-symbols-outlined">
+            account_balance
+          </span>
+        
+          Exportar solicitudes
+        </button>
+        
         <button
           id="btnVerArchivados"
           class="btn archivados"
@@ -1577,7 +1896,9 @@
               <th class="right">Monto</th>
               <th>Forma</th>
               <th>Referencia</th>
-              <th>Comprobante</th>
+              <th>Documentos</th>
+              <th>Factura</th>
+              <th>Ejecución</th>
               <th>Registrado por</th>
               <th>Registrado el</th>
               <th>Estado</th>
@@ -1922,16 +2243,33 @@
 
           <div class="payment-footer">
             <div class="field payment-file">
-              <label for="abComprobante">
-                Comprobante
+              <label for="abComprobantes">
+                Comprobantes, facturas y respaldos
               </label>
-
+          
               <input
-                id="abComprobante"
+                id="abComprobantes"
                 class="input"
                 type="file"
-                accept="image/*,.pdf"
+                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+                multiple
               />
+          
+              <div
+                id="abArchivosLista"
+                class="archivos-lista"
+              ></div>
+          
+              <div class="checkbox-line">
+                <input
+                  id="abPendienteFactura"
+                  type="checkbox"
+                />
+          
+                <label for="abPendienteFactura">
+                  Pendiente factura
+                </label>
+              </div>
             </div>
 
             <div class="payment-actions">
@@ -1945,6 +2283,18 @@
                 </span>
 
                 Guardar abono
+              </button>
+
+              <button
+                id="btnSolicitarPago"
+                class="btn secondary"
+                type="button"
+              >
+                <span class="material-symbols-outlined">
+                  account_balance
+                </span>
+              
+                Solicitar ejecución del pago
               </button>
 
               <button
@@ -1987,6 +2337,195 @@
       </div>
 
       <div id="historialContenido"></div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+     MODAL SOLICITUD DE EJECUCIÓN DEL PAGO
+     ======================================================== -->
+
+  <div
+    id="solicitudPagoModal"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="solicitudPagoTitulo"
+  >
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="solicitudPagoTitulo">
+          Solicitar ejecución del pago
+        </h2>
+  
+        <button
+          id="btnCerrarSolicitudPago"
+          class="btn secondary"
+          type="button"
+        >
+          Cerrar
+        </button>
+      </div>
+  
+      <div class="modal-body">
+        <div
+          id="solicitudPagoResumen"
+          class="solicitud-resumen"
+        ></div>
+  
+        <div class="solicitud-grid">
+          <div class="field">
+            <label for="spCuentaOrigen">
+              Cuenta origen
+            </label>
+  
+            <input
+              id="spCuentaOrigen"
+              type="text"
+            />
+          </div>
+  
+          <div class="field">
+            <label for="spMonedaOrigen">
+              Moneda origen
+            </label>
+  
+            <select id="spMonedaOrigen">
+              <option value="CLP">CLP</option>
+              <option value="USD">USD</option>
+              <option value="BRL">BRL</option>
+              <option value="ARS">ARS</option>
+            </select>
+          </div>
+  
+          <div class="field">
+            <label for="spCuentaDestino">
+              Cuenta destino
+            </label>
+  
+            <input
+              id="spCuentaDestino"
+              type="text"
+            />
+          </div>
+  
+          <div class="field">
+            <label for="spMonedaDestino">
+              Moneda destino
+            </label>
+  
+            <select id="spMonedaDestino">
+              <option value="CLP">CLP</option>
+              <option value="USD">USD</option>
+              <option value="BRL">BRL</option>
+              <option value="ARS">ARS</option>
+            </select>
+          </div>
+  
+          <div class="field">
+            <label for="spCodigoBanco">
+              Código banco
+            </label>
+  
+            <input
+              id="spCodigoBanco"
+              type="text"
+            />
+          </div>
+  
+          <div class="field">
+            <label for="spRutBeneficiario">
+              RUT beneficiario
+            </label>
+  
+            <input
+              id="spRutBeneficiario"
+              type="text"
+            />
+          </div>
+  
+          <div class="field">
+            <label for="spNombreBeneficiario">
+              Nombre beneficiario
+            </label>
+  
+            <input
+              id="spNombreBeneficiario"
+              type="text"
+            />
+          </div>
+  
+          <div class="field">
+            <label for="spMontoTotal">
+              Monto total
+            </label>
+  
+            <input
+              id="spMontoTotal"
+              type="number"
+              min="0"
+              step="0.01"
+            />
+          </div>
+  
+          <div class="field">
+            <label for="spCorreo">
+              Correo
+            </label>
+  
+            <input
+              id="spCorreo"
+              type="email"
+            />
+          </div>
+  
+          <div class="field full">
+            <label for="spGlosaTef">
+              Glosa TEF
+            </label>
+  
+            <input
+              id="spGlosaTef"
+              type="text"
+            />
+          </div>
+  
+          <div class="field full">
+            <label for="spGlosaCorreo">
+              Glosa correo
+            </label>
+  
+            <textarea
+              id="spGlosaCorreo"
+              rows="2"
+            ></textarea>
+          </div>
+        </div>
+  
+        <div class="solicitud-actions">
+          <button
+            id="btnDescargarSolicitud"
+            class="btn excel"
+            type="button"
+          >
+            <span class="material-symbols-outlined">
+              download
+            </span>
+  
+            Descargar XLS
+          </button>
+  
+          <button
+            id="btnGuardarSolicitudPago"
+            class="btn primary"
+            type="button"
+          >
+            <span class="material-symbols-outlined">
+              save
+            </span>
+  
+            Guardar solicitud
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
