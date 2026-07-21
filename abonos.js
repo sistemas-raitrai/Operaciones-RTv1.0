@@ -8,6 +8,7 @@ import {
   setDoc,
   updateDoc,
   addDoc,
+  writeBatch,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -40,7 +41,6 @@ const RUTA_HOTEL_ABONOS = 'FinanzasHotelesAbonos';
 const RUTA_PROVEEDORES_PAGO = 'ProveedoresPago';
 const RUTA_CONFIG_FINANZAS = 'ConfiguracionFinanzas';
 const DOC_CONFIG_SOLICITUD = 'solicitudPago';
-const RUTA_PROVEEDORES_PAGO = 'ProveedoresPago';
 
 const MONEDAS = ['CLP', 'USD', 'BRL', 'ARS'];
 
@@ -57,8 +57,6 @@ let ARCHIVOS_ACTUALES = [];
 let ARCHIVOS_NUEVOS_CONFIG = [];
 
 let ABONO_SOLICITUD_ACTUAL = null;
-
-let GUARDAR_Y_SOLICITAR = false;
 
 let ENTIDAD_SELECCIONADA = null;
 let LIMITE_ABONOS = 10;
@@ -563,14 +561,64 @@ async function cargarHoteles() {
 }
 
 async function cargarAbonos() {
-  const snap = await getDocs(collection(db, RUTA_ABONOS));
+  const snap = await getDocs(
+    collection(
+      db,
+      RUTA_ABONOS
+    )
+  );
+
+  const prioridadEstado = {
+    SOLICITADO: 1,
+    EXPORTADO: 2,
+    NO_SOLICITADO: 3,
+    PAGADO: 4,
+    ANULADO: 5
+  };
 
   ABONOS = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
+    .map(documento => ({
+      id: documento.id,
+      ...documento.data()
+    }))
     .sort((a, b) => {
-      const fa = a.createdAt?.toMillis?.() || 0;
-      const fb = b.createdAt?.toMillis?.() || 0;
-      return fb - fa;
+      const estadoA =
+        norm(
+          a.estadoSolicitudPago ||
+          'NO_SOLICITADO'
+        );
+
+      const estadoB =
+        norm(
+          b.estadoSolicitudPago ||
+          'NO_SOLICITADO'
+        );
+
+      const prioridadA =
+        prioridadEstado[estadoA] ||
+        99;
+
+      const prioridadB =
+        prioridadEstado[estadoB] ||
+        99;
+
+      if (
+        prioridadA !== prioridadB
+      ) {
+        return prioridadA - prioridadB;
+      }
+
+      const fechaA =
+        a.createdAt?.toMillis?.() ||
+        a.fechaRegistro?.toMillis?.() ||
+        0;
+
+      const fechaB =
+        b.createdAt?.toMillis?.() ||
+        b.fechaRegistro?.toMillis?.() ||
+        0;
+
+      return fechaB - fechaA;
     });
 }
 
@@ -1422,9 +1470,22 @@ function datosParaEspejo(
     referencia: datos.referencia,
     nota: datos.nota,
 
+    estadoFactura:
+      datos.estadoFactura ||
+      (
+        datos.facturaNoAplica
+          ? 'NO_APLICA'
+          : datos.pendienteFactura
+            ? 'PENDIENTE'
+            : 'COMPLETA'
+      ),
+    
     pendienteFactura:
       Boolean(datos.pendienteFactura),
-
+    
+    facturaNoAplica:
+      Boolean(datos.facturaNoAplica),
+    
     archivos,
     comprobanteURL,
 
@@ -1563,32 +1624,53 @@ function cerrarSolicitudPago() {
 async function abrirSolicitudPago(abono) {
   if (!abono?.id) {
     alert(
-      'Primero debe guardar el abono. Después podrá solicitar la ejecución del pago.'
+      'Primero debe guardar el abono.'
     );
 
     return;
   }
 
-  ABONO_SOLICITUD_ACTUAL = abono;
+  ABONO_SOLICITUD_ACTUAL =
+    abono;
 
   const proveedorPagoId =
     obtenerProveedorPagoId(abono);
 
   let datosProveedor = {};
+  let configuracion = {};
 
   try {
-    const snap = await getDoc(
-      doc(
-        db,
-        RUTA_PROVEEDORES_PAGO,
-        proveedorPagoId
-      )
-    );
+    const [
+      snapProveedor,
+      snapConfiguracion
+    ] = await Promise.all([
+      getDoc(
+        doc(
+          db,
+          RUTA_PROVEEDORES_PAGO,
+          proveedorPagoId
+        )
+      ),
 
-    if (snap.exists()) {
+      getDoc(
+        doc(
+          db,
+          RUTA_CONFIG_FINANZAS,
+          DOC_CONFIG_SOLICITUD
+        )
+      )
+    ]);
+
+    if (snapProveedor.exists()) {
       datosProveedor =
-        snap.data() || {};
+        snapProveedor.data() || {};
     }
+
+    if (snapConfiguracion.exists()) {
+      configuracion =
+        snapConfiguracion.data() || {};
+    }
+
   } catch (error) {
     console.warn(
       'No se pudieron cargar datos bancarios anteriores:',
@@ -1596,17 +1678,8 @@ async function abrirSolicitudPago(abono) {
     );
   }
 
-  /*
-   * Si este abono ya tenía solicitud, se muestran
-   * los datos usados en esa solicitud.
-   *
-   * Si aún no tenía, se usan los últimos datos
-   * guardados del proveedor.
-   */
-  const datosSolicitud =
-    abono.solicitudPago ||
-    datosProveedor ||
-    {};
+  const solicitudAbono =
+    abono.solicitudPago || {};
 
   const monedaAbono =
     normalizarMoneda(
@@ -1615,62 +1688,95 @@ async function abrirSolicitudPago(abono) {
 
   el('solicitudPagoResumen').textContent =
     `${obtenerNombreEntidadAbono(abono)} · ` +
-    `${abono.servicioNombre || 'Pago'} · ` +
+    `${abono.servicioNombre || 'PAGO'} · ` +
     `${monedaAbono} ${fmtNumero(abono.monto)}`;
 
   el('spCuentaOrigen').value =
-    datosSolicitud.cuentaOrigen || '';
+    solicitudAbono.cuentaOrigen ||
+    configuracion.cuentaOrigen ||
+    '4109651';
 
   el('spMonedaOrigen').value =
     normalizarMoneda(
-      datosSolicitud.monedaOrigen ||
+      solicitudAbono.monedaOrigen ||
+      configuracion.monedaOrigen ||
       monedaAbono
     );
 
   el('spCuentaDestino').value =
-    datosSolicitud.cuentaDestino || '';
+    solicitudAbono.cuentaDestino ||
+    datosProveedor.cuentaDestino ||
+    '';
 
   el('spMonedaDestino').value =
     normalizarMoneda(
-      datosSolicitud.monedaDestino ||
+      solicitudAbono.monedaDestino ||
+      datosProveedor.monedaDestino ||
       monedaAbono
     );
 
   el('spCodigoBanco').value =
-    datosSolicitud.codigoBanco || '';
+    solicitudAbono.codigoBanco ||
+    datosProveedor.codigoBanco ||
+    '';
 
   el('spRutBeneficiario').value =
-    datosSolicitud.rutBeneficiario || '';
+    solicitudAbono.rutBeneficiario ||
+    datosProveedor.rutBeneficiario ||
+    '';
 
   el('spNombreBeneficiario').value =
-    datosSolicitud.nombreBeneficiario ||
+    solicitudAbono.nombreBeneficiario ||
+    datosProveedor.nombreBeneficiario ||
     obtenerNombreEntidadAbono(abono);
 
+  /*
+   * Siempre usamos el monto actual del abono.
+   * Nunca el monto anterior del proveedor.
+   */
   el('spMontoTotal').value =
-    Number(
-      datosSolicitud.montoTotal ||
-      abono.monto ||
-      0
-    );
+    Number(abono.monto || 0);
 
   el('spGlosaTef').value =
-    datosSolicitud.glosaTef ||
+    solicitudAbono.glosaTef ||
+    datosProveedor.glosaTef ||
     abono.referencia ||
     '';
 
   el('spCorreo').value =
-    datosSolicitud.correo || '';
+    solicitudAbono.correo ||
+    datosProveedor.correo ||
+    '';
 
   el('spGlosaCorreo').value =
-    datosSolicitud.glosaCorreo ||
-    abono.nota ||
+    solicitudAbono.glosaCorreo ||
+    datosProveedor.glosaCorreo ||
+    abono.referencia ||
     '';
+
+  const estadoSolicitud =
+    norm(
+      abono.estadoSolicitudPago ||
+      'NO_SOLICITADO'
+    );
+
+  el('btnMarcarPagada')
+    .classList.toggle(
+      'hidden',
+      estadoSolicitud !== 'EXPORTADO'
+    );
+
+  el('btnGuardarSolicitudPago').textContent =
+    estadoSolicitud === 'NO_SOLICITADO'
+      ? 'Guardar solicitud'
+      : 'Guardar cambios';
 
   el('solicitudPagoModal')
     .classList
     .add('open');
 
-  document.body.style.overflow = 'hidden';
+  document.body.style.overflow =
+    'hidden';
 }
 
 function obtenerDatosSolicitudPago() {
@@ -1757,10 +1863,14 @@ function validarSolicitudPago(datos) {
 }
 
 async function guardarSolicitudPago() {
-  const abono = ABONO_SOLICITUD_ACTUAL;
+  const abono =
+    ABONO_SOLICITUD_ACTUAL;
 
   if (!abono?.id) {
-    alert('No se encontró el abono seleccionado.');
+    alert(
+      'No se encontró el abono seleccionado.'
+    );
+
     return;
   }
 
@@ -1782,84 +1892,196 @@ async function guardarSolicitudPago() {
 
   try {
     const email =
-      (auth.currentUser?.email || '')
-        .toLowerCase();
+      (
+        auth.currentUser?.email ||
+        ''
+      ).toLowerCase();
+
+    if (!email) {
+      throw new Error(
+        'No se pudo identificar al usuario conectado.'
+      );
+    }
+
+    /*
+     * Leemos nuevamente el abono para trabajar
+     * con la versión más reciente de Firestore.
+     */
+    const refAbono = doc(
+      db,
+      RUTA_ABONOS,
+      abono.id
+    );
+
+    const snapAbono =
+      await getDoc(refAbono);
+
+    if (!snapAbono.exists()) {
+      throw new Error(
+        'El abono ya no existe.'
+      );
+    }
+
+    const abonoActual =
+      snapAbono.data() || {};
 
     const proveedorPagoId =
-      obtenerProveedorPagoId(abono);
+      obtenerProveedorPagoId({
+        id: abono.id,
+        ...abonoActual
+      });
 
     const nombreEntidad =
-      obtenerNombreEntidadAbono(abono);
+      obtenerNombreEntidadAbono({
+        id: abono.id,
+        ...abonoActual
+      });
+
+    const estadoAnterior =
+      norm(
+        abonoActual.estadoSolicitudPago ||
+        'NO_SOLICITADO'
+      );
+
+    /*
+     * Si una solicitud ya había sido exportada y se
+     * modifican sus datos, vuelve a SOLICITADO para
+     * que se exporte nuevamente.
+     *
+     * Si ya fue pagada, conserva PAGADO.
+     */
+    const estadoNuevo =
+      estadoAnterior === 'PAGADO'
+        ? 'PAGADO'
+        : 'SOLICITADO';
+
+    const versionAnterior =
+      Number(
+        abonoActual.version || 1
+      );
+
+    const nuevaVersion =
+      versionAnterior + 1;
+
+    const solicitudAnterior =
+      abonoActual.solicitudPago ||
+      null;
 
     const solicitudCompleta = {
       ...solicitud,
 
       proveedorPagoId,
-      proveedorNombre: nombreEntidad,
 
-      estado: 'SOLICITADO',
+      proveedorNombre:
+        nombreEntidad,
 
+      estado:
+        estadoNuevo,
+
+      /*
+       * Conservamos la primera fecha de solicitud
+       * si ya existía.
+       */
       solicitadoAt:
+        solicitudAnterior?.solicitadoAt ||
         serverTimestamp(),
 
       solicitadoByEmail:
+        solicitudAnterior?.solicitadoByEmail ||
+        email,
+
+      updatedAt:
+        serverTimestamp(),
+
+      updatedByEmail:
         email
     };
 
+    const batch =
+      writeBatch(db);
+
     /*
-     * Copia exacta de la solicitud dentro del abono.
+     * 1. Actualizar el abono.
      */
-    await updateDoc(
-      doc(
-        db,
-        RUTA_ABONOS,
-        abono.id
-      ),
+    batch.update(
+      refAbono,
       {
         solicitudPago:
           solicitudCompleta,
 
         estadoSolicitudPago:
-          'SOLICITADO',
+          estadoNuevo,
 
         updatedAt:
           serverTimestamp(),
 
         updatedByEmail:
-          email
+          email,
+
+        version:
+          nuevaVersion
       }
     );
 
     /*
-     * Últimos datos bancarios conocidos del proveedor.
+     * 2. Guardar solamente los datos reutilizables
+     * del beneficiario/proveedor.
+     *
+     * La cuenta origen NO se guarda aquí porque
+     * corresponde a Rai Trai, no al proveedor.
      */
-    await setDoc(
-      doc(
-        db,
-        RUTA_PROVEEDORES_PAGO,
-        proveedorPagoId
-      ),
+    const refProveedor = doc(
+      db,
+      RUTA_PROVEEDORES_PAGO,
+      proveedorPagoId
+    );
+
+    batch.set(
+      refProveedor,
       {
         proveedorPagoId,
+
         proveedorNombre:
           nombreEntidad,
 
         tipo:
-          abono.tipo || '',
+          abonoActual.tipo || '',
 
         proveedorId:
-          abono.proveedorId || '',
+          abonoActual.proveedorId || '',
 
         servicioId:
-          abono.servicioId || '',
+          abonoActual.servicioId || '',
 
         hotelId:
-          abono.hotelId || '',
+          abonoActual.hotelId || '',
 
         hotelKey:
-          abono.hotelKey || '',
+          abonoActual.hotelKey || '',
 
-        ...solicitud,
+        cuentaDestino:
+          solicitud.cuentaDestino,
+
+        monedaDestino:
+          solicitud.monedaDestino,
+
+        codigoBanco:
+          solicitud.codigoBanco,
+
+        rutBeneficiario:
+          solicitud.rutBeneficiario,
+
+        nombreBeneficiario:
+          solicitud.nombreBeneficiario,
+
+        glosaTef:
+          solicitud.glosaTef,
+
+        correo:
+          solicitud.correo,
+
+        glosaCorreo:
+          solicitud.glosaCorreo,
 
         updatedAt:
           serverTimestamp(),
@@ -1872,12 +2094,98 @@ async function guardarSolicitudPago() {
       }
     );
 
+    /*
+     * 3. Guardar la última cuenta origen utilizada
+     * como configuración general.
+     *
+     * Inicialmente aparece 4109651, pero si alguien
+     * utiliza otra cuenta, esa será la predeterminada
+     * para las siguientes solicitudes.
+     */
+    const refConfiguracion = doc(
+      db,
+      RUTA_CONFIG_FINANZAS,
+      DOC_CONFIG_SOLICITUD
+    );
+
+    batch.set(
+      refConfiguracion,
+      {
+        cuentaOrigen:
+          solicitud.cuentaOrigen,
+
+        monedaOrigen:
+          solicitud.monedaOrigen,
+
+        updatedAt:
+          serverTimestamp(),
+
+        updatedByEmail:
+          email
+      },
+      {
+        merge: true
+      }
+    );
+
+    /*
+     * 4. Registrar el cambio en el historial.
+     */
+    const refHistorial = doc(
+      collection(
+        db,
+        RUTA_ABONOS,
+        abono.id,
+        'Historial'
+      )
+    );
+
+    batch.set(
+      refHistorial,
+      {
+        versionAnterior,
+
+        datosAnteriores:
+          abonoActual,
+
+        solicitudAnterior,
+
+        solicitudNueva:
+          solicitudCompleta,
+
+        tipoCambio:
+          solicitudAnterior
+            ? 'SOLICITUD_PAGO_EDITADA'
+            : 'SOLICITUD_PAGO_CREADA',
+
+        motivoCambio:
+          solicitudAnterior
+            ? 'Actualización de datos de solicitud de pago'
+            : 'Creación de solicitud de ejecución de pago',
+
+        changedAt:
+          serverTimestamp(),
+
+        changedByEmail:
+          email
+      }
+    );
+
+    /*
+     * Todos los cambios se guardan juntos.
+     */
+    await batch.commit();
+
     await cargarAbonos();
-    renderAbonos();
+
+    if (!ES_VISTA_MOVIL) {
+      renderAbonos();
+    }
 
     const abonoActualizado =
       ABONOS.find(
-        item => item.id === abono.id
+        item =>
+          item.id === abono.id
       );
 
     if (abonoActualizado) {
@@ -1885,12 +2193,28 @@ async function guardarSolicitudPago() {
         abonoActualizado;
     }
 
+    /*
+     * Actualizamos visualmente el botón del modal.
+     */
+    if (el('btnGuardarSolicitudPago')) {
+      el('btnGuardarSolicitudPago')
+        .textContent =
+          estadoNuevo === 'PAGADO'
+            ? 'Guardar cambios'
+            : 'Guardar cambios';
+    }
+
     alert(
-      '✅ Solicitud de ejecución guardada correctamente.'
+      solicitudAnterior
+        ? '✅ Solicitud de ejecución actualizada correctamente.'
+        : '✅ Solicitud de ejecución guardada correctamente.'
     );
 
   } catch (error) {
-    console.error(error);
+    console.error(
+      'Error guardando solicitud de pago:',
+      error
+    );
 
     alert(
       `No se pudo guardar la solicitud: ${
@@ -2110,6 +2434,258 @@ async function exportarSolicitudesPago() {
       'El archivo se descargó, pero algunos estados no se actualizaron:',
       error
     );
+  }
+}
+
+function abrirConfirmarPago() {
+  if (!ABONO_SOLICITUD_ACTUAL?.id) {
+    alert(
+      'No se encontró el abono seleccionado.'
+    );
+
+    return;
+  }
+
+  el('pagoTipoDocumento').value =
+    '';
+
+  el('pagoArchivo').value =
+    '';
+
+  el('confirmarPagoModal')
+    .classList
+    .add('open');
+}
+
+function cerrarConfirmarPago() {
+  el('confirmarPagoModal')
+    ?.classList
+    .remove('open');
+}
+
+async function confirmarPagoEjecutado() {
+  const abono =
+    ABONO_SOLICITUD_ACTUAL;
+
+  if (!abono?.id) {
+    alert(
+      'No se encontró el abono seleccionado.'
+    );
+
+    return;
+  }
+
+  const tipoDocumento =
+    el('pagoTipoDocumento').value;
+
+  const file =
+    el('pagoArchivo').files[0] ||
+    null;
+
+  if (
+    tipoDocumento &&
+    !file
+  ) {
+    alert(
+      'Debe seleccionar el archivo del documento.'
+    );
+
+    return;
+  }
+
+  if (
+    file &&
+    !tipoDocumento
+  ) {
+    alert(
+      'Debe indicar qué tipo de documento está adjuntando.'
+    );
+
+    return;
+  }
+
+  if (
+    !confirm(
+      '¿Confirma que el pago fue ejecutado?'
+    )
+  ) {
+    return;
+  }
+
+  const btn =
+    el('btnConfirmarPagoEjecutado');
+
+  btn.disabled = true;
+
+  try {
+    const email =
+      (
+        auth.currentUser?.email ||
+        ''
+      ).toLowerCase();
+
+    const refAbono = doc(
+      db,
+      RUTA_ABONOS,
+      abono.id
+    );
+
+    const snap =
+      await getDoc(refAbono);
+
+    if (!snap.exists()) {
+      throw new Error(
+        'El abono ya no existe.'
+      );
+    }
+
+    const actual =
+      snap.data() || {};
+
+    let archivos =
+      obtenerArchivosAbono(actual);
+
+    let estadoFactura =
+      actual.estadoFactura ||
+      (
+        actual.facturaNoAplica
+          ? 'NO_APLICA'
+          : actual.pendienteFactura
+            ? 'PENDIENTE'
+            : 'COMPLETA'
+      );
+
+    let documentoAdjuntado =
+      null;
+
+    if (file) {
+      const archivosNuevos =
+        await subirArchivosAbono(
+          [
+            {
+              file,
+              tipoDocumento
+            }
+          ],
+          actual,
+          abono.id,
+          archivos
+        );
+
+      archivos =
+        archivosNuevos;
+
+      documentoAdjuntado =
+        archivos[
+          archivos.length - 1
+        ];
+
+      if (
+        ['FACTURA', 'BOLETA'].includes(
+          normalizarTipoDocumento(
+            tipoDocumento
+          )
+        )
+      ) {
+        estadoFactura =
+          'COMPLETA';
+      }
+    }
+
+    await addDoc(
+      collection(
+        db,
+        RUTA_ABONOS,
+        abono.id,
+        'Historial'
+      ),
+      {
+        versionAnterior:
+          Number(actual.version || 1),
+
+        datosAnteriores:
+          actual,
+
+        tipoCambio:
+          'PAGO_CONFIRMADO',
+
+        motivoCambio:
+          'Pago marcado como ejecutado',
+
+        documentoAdjuntado,
+
+        changedAt:
+          serverTimestamp(),
+
+        changedByEmail:
+          email
+      }
+    );
+
+    await updateDoc(
+      refAbono,
+      {
+        archivos,
+
+        comprobanteURL:
+          archivos[0]?.url ||
+          actual.comprobanteURL ||
+          '',
+
+        estadoFactura,
+
+        pendienteFactura:
+          estadoFactura ===
+          'PENDIENTE',
+
+        facturaNoAplica:
+          estadoFactura ===
+          'NO_APLICA',
+
+        estadoSolicitudPago:
+          'PAGADO',
+
+        'solicitudPago.estado':
+          'PAGADO',
+
+        'solicitudPago.pagadoAt':
+          serverTimestamp(),
+
+        'solicitudPago.pagadoByEmail':
+          email,
+
+        updatedAt:
+          serverTimestamp(),
+
+        updatedByEmail:
+          email,
+
+        version:
+          Number(actual.version || 1) + 1
+      }
+    );
+
+    await cargarAbonos();
+    renderAbonos();
+
+    cerrarConfirmarPago();
+    cerrarSolicitudPago();
+
+    alert(
+      '✅ Pago confirmado como ejecutado.'
+    );
+
+  } catch (error) {
+    console.error(error);
+
+    alert(
+      `No se pudo confirmar el pago: ${
+        error.message || error
+      }`
+    );
+
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -2413,13 +2989,22 @@ async function guardarAbono({
           forzar: true
         });
       }
-
+    
       await abrirSolicitudPago(
         abonoGuardado
       );
-
-      limpiarFormulario();
-
+    
+      /*
+       * En escritorio limpiamos el formulario que quedó
+       * detrás del modal de solicitud.
+       *
+       * En móvil lo mantenemos estable hasta que termine
+       * el proceso de solicitud.
+       */
+      if (!ES_VISTA_MOVIL) {
+        limpiarFormulario();
+      }
+    
       return abonoGuardado;
     }
 
@@ -2482,6 +3067,7 @@ function limpiarFormulario() {
   comprobanteActualURL = '';
   
   ARCHIVOS_ACTUALES = [];
+  ARCHIVOS_NUEVOS_CONFIG = [];
   ABONO_SOLICITUD_ACTUAL = null;
   
   ENTIDAD_SELECCIONADA = null;
@@ -2491,8 +3077,19 @@ function limpiarFormulario() {
   }
 
   el('btnGuardarAbono').innerHTML = `
-    <span class="material-symbols-outlined">save</span>
+    <span class="material-symbols-outlined">
+      save
+    </span>
+  
     Guardar abono
+  `;
+  
+  el('btnGuardarYSolicitar').innerHTML = `
+    <span class="material-symbols-outlined">
+      account_balance
+    </span>
+  
+    Guardar y solicitar ejecución
   `;
 
   el('btnCancelarEdicion').classList.add('hidden');
@@ -2521,7 +3118,11 @@ function limpiarFormulario() {
   el('abNota').value = '';
   el('abMotivoCambio').value = '';
   el('abComprobantes').value = '';
-  el('abPendienteFactura').checked = false;
+  el('abPendienteFactura').checked =
+    false;
+  
+  el('abFacturaNoAplica').checked =
+    false;
   
   pintarArchivosFormulario();
 
@@ -2555,8 +3156,19 @@ function iniciarEdicion(abono) {
   }
 
   el('btnGuardarAbono').innerHTML = `
-    <span class="material-symbols-outlined">save_as</span>
+    <span class="material-symbols-outlined">
+      save_as
+    </span>
+  
     Guardar cambios
+  `;
+  
+  el('btnGuardarYSolicitar').innerHTML = `
+    <span class="material-symbols-outlined">
+      account_balance
+    </span>
+  
+    Guardar cambios y solicitar ejecución
   `;
 
   el('btnCancelarEdicion').classList.remove('hidden');
@@ -2711,8 +3323,21 @@ function iniciarEdicion(abono) {
   
   el('abComprobantes').value = '';
   
+  const estadoFactura =
+    abono.estadoFactura ||
+    (
+      abono.facturaNoAplica
+        ? 'NO_APLICA'
+        : abono.pendienteFactura
+          ? 'PENDIENTE'
+          : 'COMPLETA'
+    );
+  
   el('abPendienteFactura').checked =
-    Boolean(abono.pendienteFactura);
+    estadoFactura === 'PENDIENTE';
+  
+  el('abFacturaNoAplica').checked =
+    estadoFactura === 'NO_APLICA';
   
   pintarArchivosFormulario();
   
@@ -3246,38 +3871,93 @@ function renderAbonos() {
     const archivos =
       obtenerArchivosAbono(abono);
 
+    const archivosAgrupados =
+      archivos.reduce(
+        (acumulador, archivo) => {
+          const tipo =
+            normalizarTipoDocumento(
+              archivo.tipoDocumento
+            );
+    
+          if (!acumulador[tipo]) {
+            acumulador[tipo] = [];
+          }
+    
+          acumulador[tipo].push(
+            archivo
+          );
+    
+          return acumulador;
+        },
+        {}
+      );
+    
     const archivosHTML =
       archivos.length
         ? `
           <div class="documentos-links">
-            ${archivos.map(
-              (archivo, index) => `
-                <a
-                  href="${escapeHTML(archivo.url)}"
-                  target="_blank"
-                  rel="noopener"
-                  title="${escapeHTML(archivo.nombre || '')}"
-                >
-                  ${index + 1}
-                </a>
-              `
-            ).join('')}
+            ${
+              Object.entries(
+                archivosAgrupados
+              )
+                .map(
+                  ([tipo, lista]) => `
+                    <a
+                      href="${escapeHTML(lista[0].url)}"
+                      target="_blank"
+                      rel="noopener"
+                      title="${escapeHTML(
+                        lista
+                          .map(item => item.nombre)
+                          .join(' · ')
+                      )}"
+                    >
+                      ${escapeHTML(tipo)}
+                      ${
+                        lista.length > 1
+                          ? ` (${lista.length})`
+                          : ''
+                      }
+                    </a>
+                  `
+                )
+                .join('')
+            }
           </div>
         `
         : '—';
 
-    const facturaHTML =
-      abono.pendienteFactura
-        ? `
-          <span class="badge-finanzas pendiente">
-            Pendiente
-          </span>
-        `
-        : `
-          <span class="badge-finanzas completo">
-            Completa
-          </span>
-        `;
+    const estadoFactura =
+      abono.estadoFactura ||
+      (
+        abono.facturaNoAplica
+          ? 'NO_APLICA'
+          : abono.pendienteFactura
+            ? 'PENDIENTE'
+            : 'COMPLETA'
+      );
+    
+    let facturaHTML = `
+      <span class="badge-finanzas completo">
+        COMPLETA
+      </span>
+    `;
+    
+    if (estadoFactura === 'PENDIENTE') {
+      facturaHTML = `
+        <span class="badge-finanzas pendiente">
+          PENDIENTE
+        </span>
+      `;
+    }
+    
+    if (estadoFactura === 'NO_APLICA') {
+      facturaHTML = `
+        <span class="badge-finanzas no-solicitado">
+          NO APLICA
+        </span>
+      `;
+    }
 
     const estadoSolicitud =
       norm(
@@ -3370,7 +4050,7 @@ function renderAbonos() {
         </span>
       </td>
 
-      <td>
+      <td class="email-cell">
         ${escapeHTML(registradoPor)}
       </td>
       
@@ -3378,7 +4058,7 @@ function renderAbonos() {
         ${escapeHTML(registradoEl)}
       </td>
       
-      <td>
+      <td class="email-cell">
         ${escapeHTML(editadoPor)}
       </td>
       
@@ -3598,10 +4278,15 @@ function exportarAbonosExcel() {
           .map(archivo => archivo.url)
           .join(' | '),
       
-      'Pendiente factura':
-        abono.pendienteFactura
-          ? 'SÍ'
-          : 'NO',
+      'Estado factura':
+        abono.estadoFactura ||
+        (
+          abono.facturaNoAplica
+            ? 'NO_APLICA'
+            : abono.pendienteFactura
+              ? 'PENDIENTE'
+              : 'COMPLETA'
+        ),
       
       'Estado solicitud de pago':
         abono.estadoSolicitudPago ||
@@ -3618,6 +4303,11 @@ function exportarAbonosExcel() {
 
       'Última modificación por':
         abono.updatedByEmail || '',
+
+      'Última modificación el':
+        formatTimestamp(
+          abono.updatedAt
+        ),
 
       'Estado':
         abono.estado || 'REGISTRADO',
@@ -3848,44 +4538,87 @@ function conectarEventos() {
   
   /* GUARDAR */
   
-  el('btnGuardarAbono')?.addEventListener(
-    'click',
-    guardarAbono
-  );
+  el('btnGuardarAbono')
+    ?.addEventListener(
+      'click',
+      () => {
+        guardarAbono({
+          solicitarDespues: false
+        });
+      }
+    );
+  
+  el('btnGuardarYSolicitar')
+    ?.addEventListener(
+      'click',
+      () => {
+        guardarAbono({
+          solicitarDespues: true
+        });
+      }
+    );
 
-  el('abComprobantes')?.addEventListener(
-    'change',
-    pintarArchivosFormulario
-  );
-  
-  el('btnSolicitarPago')?.addEventListener(
-    'click',
-    async () => {
-      if (!abonoEditandoId) {
-        alert(
-          'Primero debe guardar el abono. Después podrá solicitar la ejecución del pago.'
-        );
-  
-        return;
+  el('abPendienteFactura')
+    ?.addEventListener(
+      'change',
+      event => {
+        if (event.target.checked) {
+          el('abFacturaNoAplica').checked =
+            false;
+        }
       }
+    );
   
-      const abono =
-        ABONOS.find(
-          item =>
-            item.id === abonoEditandoId
-        );
-  
-      if (!abono) {
-        alert(
-          'No se encontró el abono actualizado.'
-        );
-  
-        return;
+  el('abFacturaNoAplica')
+    ?.addEventListener(
+      'change',
+      event => {
+        if (event.target.checked) {
+          el('abPendienteFactura').checked =
+            false;
+        }
       }
+    );
   
-      await abrirSolicitudPago(abono);
-    }
-  );
+  el('abComprobantes')
+    ?.addEventListener(
+      'change',
+      () => {
+        pintarArchivosFormulario();
+        actualizarEstadoFacturaPorDocumentos();
+      }
+    );
+
+  el('btnMarcarPagada')
+    ?.addEventListener(
+      'click',
+      abrirConfirmarPago
+    );
+  
+  el('btnCerrarConfirmarPago')
+    ?.addEventListener(
+      'click',
+      cerrarConfirmarPago
+    );
+  
+  el('btnConfirmarPagoEjecutado')
+    ?.addEventListener(
+      'click',
+      confirmarPagoEjecutado
+    );
+  
+  el('confirmarPagoModal')
+    ?.addEventListener(
+      'click',
+      event => {
+        if (
+          event.target ===
+          el('confirmarPagoModal')
+        ) {
+          cerrarConfirmarPago();
+        }
+      }
+    );
   
   el('btnCerrarSolicitudPago')
     ?.addEventListener(
@@ -4041,6 +4774,15 @@ function conectarEventos() {
     'keydown',
     event => {
       if (event.key !== 'Escape') {
+        return;
+      }
+
+      if (
+        el('confirmarPagoModal')
+          ?.classList
+          .contains('open')
+      ) {
+        cerrarConfirmarPago();
         return;
       }
 
@@ -4268,7 +5010,7 @@ migrarAbonosAntiguos({ confirmar: true })
                     abono.comprobanteURL,
 
                   tipo:
-                    'comprobante',
+                    'COMPROBANTE',
 
                   legado:
                     true
@@ -4282,6 +5024,23 @@ migrarAbonosAntiguos({ confirmar: true })
         'boolean'
       ) {
         cambios.pendienteFactura = false;
+      }
+
+      if (!abono.estadoFactura) {
+        cambios.estadoFactura =
+          abono.facturaNoAplica
+            ? 'NO_APLICA'
+            : abono.pendienteFactura
+              ? 'PENDIENTE'
+              : 'COMPLETA';
+      }
+      
+      if (
+        typeof abono.facturaNoAplica !==
+        'boolean'
+      ) {
+        cambios.facturaNoAplica =
+          false;
       }
 
       if (!abono.estadoSolicitudPago) {
