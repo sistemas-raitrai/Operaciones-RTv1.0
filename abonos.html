@@ -1654,6 +1654,162 @@
         display:none !important;
       }
     }
+
+    #abonoModal .estado-factura-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .55rem;
+    }
+    
+    #abonoModal .checkbox-line.no-aplica {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+    
+    #abonoModal .checkbox-line.no-aplica label {
+      color: #475569;
+    }
+    
+    #abonoModal .archivo-item {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 150px;
+      gap: .6rem;
+      align-items: center;
+    }
+    
+    #abonoModal .archivo-item select {
+      width: 100% !important;
+    }
+    
+    #solicitudPagoModal .btn.pagada,
+    #confirmarPagoModal .btn.pagada {
+      color: #fff;
+      background: #16a34a;
+      border-color: #16a34a;
+    }
+    
+    #confirmarPagoModal {
+      position: fixed;
+      inset: 0;
+      z-index: 3400;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background: rgba(0, 0, 0, .5);
+    }
+    
+    #confirmarPagoModal.open {
+      display: flex;
+    }
+    
+    #confirmarPagoModal,
+    #confirmarPagoModal * {
+      box-sizing: border-box;
+    }
+    
+    #confirmarPagoModal .modal-card {
+      width: min(700px, 96vw);
+      max-height: 92vh;
+      overflow-y: auto;
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 20px 65px rgba(0, 0, 0, .32);
+    }
+    
+    #confirmarPagoModal .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .9rem 1rem;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    #confirmarPagoModal .modal-header h2 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+    
+    #confirmarPagoModal .modal-body {
+      padding: 1rem;
+    }
+    
+    #confirmarPagoModal .solicitud-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .75rem;
+    }
+    
+    #confirmarPagoModal .field {
+      display: flex;
+      flex-direction: column;
+      gap: .28rem;
+    }
+    
+    #confirmarPagoModal label {
+      color: #4b5563;
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    
+    #confirmarPagoModal input,
+    #confirmarPagoModal select {
+      width: 100%;
+      padding: .52rem .6rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+    }
+    
+    #confirmarPagoModal .solicitud-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 1rem;
+      padding-top: .8rem;
+      border-top: 1px solid #e5e7eb;
+    }
+    
+    #confirmarPagoModal .btn {
+      min-height: 38px;
+      padding: .48rem .85rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    
+    #confirmarPagoModal .btn.primary {
+      color: #fff;
+      background: #16a34a;
+      border-color: #16a34a;
+    }
+    
+    #tblAbonos tbody td {
+      text-transform: uppercase;
+    }
+    
+    #tblAbonos tbody td.email-cell {
+      text-transform: none;
+    }
+    
+    @media (max-width: 700px) {
+      #abonoModal .estado-factura-wrap,
+      #confirmarPagoModal .solicitud-grid {
+        grid-template-columns: 1fr;
+      }
+    
+      #confirmarPagoModal {
+        padding: 0;
+      }
+    
+      #confirmarPagoModal .modal-card {
+        width: 100%;
+        height: 100%;
+        max-height: none;
+        border-radius: 0;
+      }
+    }
   </style>
 </head>
 
@@ -1708,7 +1864,7 @@
             account_balance
           </span>
         
-          Exportar solicitudes
+          Exportar solicitudes 
         </button>
         
         <button
@@ -2250,7 +2406,7 @@
           <div class="payment-footer">
             <div class="field payment-file">
               <label for="abComprobantes">
-                Comprobantes, facturas y respaldos
+                Documentos adjuntos
               </label>
           
               <input
@@ -2266,18 +2422,31 @@
                 class="archivos-lista"
               ></div>
           
-              <div class="checkbox-line">
-                <input
-                  id="abPendienteFactura"
-                  type="checkbox"
-                />
+              <div class="estado-factura-wrap">
+                <div class="checkbox-line">
+                  <input
+                    id="abPendienteFactura"
+                    type="checkbox"
+                  />
           
-                <label for="abPendienteFactura">
-                  Pendiente factura
-                </label>
+                  <label for="abPendienteFactura">
+                    Pendiente factura
+                  </label>
+                </div>
+          
+                <div class="checkbox-line no-aplica">
+                  <input
+                    id="abFacturaNoAplica"
+                    type="checkbox"
+                  />
+          
+                  <label for="abFacturaNoAplica">
+                    Factura no aplica
+                  </label>
+                </div>
               </div>
             </div>
-
+          
             <div class="payment-actions">
               <button
                 id="btnGuardarAbono"
@@ -2287,22 +2456,22 @@
                 <span class="material-symbols-outlined">
                   save
                 </span>
-
+          
                 Guardar abono
               </button>
-
+          
               <button
-                id="btnSolicitarPago"
-                class="btn secondary"
+                id="btnGuardarYSolicitar"
+                class="btn excel"
                 type="button"
               >
                 <span class="material-symbols-outlined">
                   account_balance
                 </span>
-              
-                Solicitar ejecución del pago
+          
+                Guardar y solicitar ejecución
               </button>
-
+          
               <button
                 id="btnCancelarEdicion"
                 class="btn secondary hidden"
@@ -2310,7 +2479,7 @@
               >
                 Cancelar edición
               </button>
-
+          
               <span
                 id="formEstado"
                 class="form-state"
@@ -2483,7 +2652,7 @@
             />
           </div>
   
-          <div class="field full">
+          <div class="field">
             <label for="spGlosaTef">
               Glosa TEF
             </label>
@@ -2494,15 +2663,15 @@
             />
           </div>
   
-          <div class="field full">
+          <div class="field">
             <label for="spGlosaCorreo">
               Glosa correo
             </label>
   
-            <textarea
+            <input
               id="spGlosaCorreo"
-              rows="2"
-            ></textarea>
+              type="text"
+            />
           </div>
         </div>
   
@@ -2520,6 +2689,18 @@
           </button>
   
           <button
+            id="btnMarcarPagada"
+            class="btn pagada hidden"
+            type="button"
+          >
+            <span class="material-symbols-outlined">
+              task_alt
+            </span>
+  
+            Marcar como pagada
+          </button>
+  
+          <button
             id="btnGuardarSolicitudPago"
             class="btn primary"
             type="button"
@@ -2534,7 +2715,81 @@
       </div>
     </div>
   </div>
+  
+  <!-- ========================================================
+       CONFIRMACIÓN pago
+       ======================================================== -->
 
+  <div
+    id="confirmarPagoModal"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2>
+          Confirmar ejecución del pago
+        </h2>
+  
+        <button
+          id="btnCerrarConfirmarPago"
+          class="btn secondary"
+          type="button"
+        >
+          Cerrar
+        </button>
+      </div>
+  
+      <div class="modal-body">
+        <p class="solicitud-resumen">
+          Confirma que el pago fue ejecutado. Puedes adjuntar inmediatamente una factura, boleta, comprobante u otro respaldo.
+        </p>
+  
+        <div class="solicitud-grid">
+          <div class="field">
+            <label for="pagoTipoDocumento">
+              Documento de respaldo
+            </label>
+  
+            <select id="pagoTipoDocumento">
+              <option value="">No adjuntar ahora</option>
+              <option value="FACTURA">Factura</option>
+              <option value="BOLETA">Boleta</option>
+              <option value="COMPROBANTE">Comprobante</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+  
+          <div class="field">
+            <label for="pagoArchivo">
+              Archivo
+            </label>
+  
+            <input
+              id="pagoArchivo"
+              type="file"
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+            />
+          </div>
+        </div>
+  
+        <div class="solicitud-actions">
+          <button
+            id="btnConfirmarPagoEjecutado"
+            class="btn primary"
+            type="button"
+          >
+            <span class="material-symbols-outlined">
+              task_alt
+            </span>
+  
+            Confirmar como pagada
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
   <!-- ========================================================
        CONFIRMACIÓN MÓVIL
        ======================================================== -->
