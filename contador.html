@@ -30,6 +30,36 @@
     /* Evita que el ancho del thead se des-sincronice con el body cuando hay scroll X */
     .dataTables_scrollHeadInner table { width: 100% !important; }
 
+    /* La tabla mantiene su área desplazable dentro de la pantalla */
+    #tablaConteo_wrapper .dataTables_scroll {
+      width: 100%;
+    }
+    
+    #tablaConteo_wrapper .dataTables_scrollBody {
+      overflow-x: auto !important;
+      overflow-y: auto !important;
+    }
+    
+    /* Hace más visible la barra horizontal */
+    #tablaConteo_wrapper .dataTables_scrollBody::-webkit-scrollbar {
+      height: 14px;
+      width: 12px;
+    }
+    
+    #tablaConteo_wrapper .dataTables_scrollBody::-webkit-scrollbar-track {
+      background: #e5e7eb;
+    }
+    
+    #tablaConteo_wrapper .dataTables_scrollBody::-webkit-scrollbar-thumb {
+      background: #8793a1;
+      border-radius: 10px;
+      border: 2px solid #e5e7eb;
+    }
+    
+    #tablaConteo_wrapper .dataTables_scrollBody::-webkit-scrollbar-thumb:hover {
+      background: #5f6b78;
+    }
+
     /* Fila que requiere revisión de reserva */
     /* Fila que requiere revisión de reserva */
     #tablaConteo tbody tr.fila-revisar-cambios td,
