@@ -637,9 +637,17 @@ async function init() {
             fechasConPax
           );
 
+        const requiereRevisionInicial =
+          textoBtn === 'REVISAR CAMBIOS';
+        
         const claseFila =
-          textoBtn === 'REVISAR CAMBIOS'
+          requiereRevisionInicial
             ? 'fila-revisar-cambios'
+            : '';
+        
+        const claseCelda =
+          requiereRevisionInicial
+            ? 'celda-revisar-cambios'
             : '';
 
         const provInfo =
@@ -652,19 +660,19 @@ async function init() {
 
         let fila = `
           <tr class="${claseFila}">
-            <td class="sticky-col">
+            <td class="sticky-col ${claseCelda}">
               ${servicio.nombre}
             </td>
 
-            <td>
+            <td class="${claseCelda}">
               ${servicio.destino}
             </td>
 
-            <td>
+            <td class="${claseCelda}">
               ${proveedorStr}
             </td>
 
-            <td>
+            <td class="${claseCelda}">
               <button
                 class="btn-reserva"
                 data-destino="${servicio.destino}"
@@ -716,7 +724,7 @@ async function init() {
 
           fila += `
             <td
-              class="celda-interactiva"
+              class="celda-interactiva ${claseCelda}"
               data-info='${JSON.stringify({
                 actividad: servicio.nombre,
                 fecha
