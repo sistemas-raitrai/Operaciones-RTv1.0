@@ -38,6 +38,9 @@ const RUTA_HOTELES = 'hoteles';
 const RUTA_HOTEL_ASSIGNMENTS = 'hotelAssignments';
 const RUTA_HOTEL_ABONOS = 'FinanzasHotelesAbonos';
 const RUTA_PROVEEDORES_PAGO = 'ProveedoresPago';
+const RUTA_CONFIG_FINANZAS = 'ConfiguracionFinanzas';
+const DOC_CONFIG_SOLICITUD = 'solicitudPago';
+const RUTA_PROVEEDORES_PAGO = 'ProveedoresPago';
 
 const MONEDAS = ['CLP', 'USD', 'BRL', 'ARS'];
 
@@ -51,7 +54,11 @@ let abonoEditandoId = null;
 let comprobanteActualURL = '';
 
 let ARCHIVOS_ACTUALES = [];
+let ARCHIVOS_NUEVOS_CONFIG = [];
+
 let ABONO_SOLICITUD_ACTUAL = null;
+
+let GUARDAR_Y_SOLICITAR = false;
 
 let ENTIDAD_SELECCIONADA = null;
 let LIMITE_ABONOS = 10;
@@ -142,25 +149,42 @@ function escapeHTML(valor = '') {
     .replaceAll("'", '&#039;');
 }
 
+function normalizarTipoDocumento(tipo = '') {
+  const valor = norm(tipo);
+
+  if (valor === 'FACTURA') return 'FACTURA';
+  if (valor === 'BOLETA') return 'BOLETA';
+  if (valor === 'COMPROBANTE') return 'COMPROBANTE';
+
+  return 'OTRO';
+}
+
 function obtenerArchivosAbono(abono = {}) {
   const archivos = Array.isArray(abono.archivos)
-    ? abono.archivos.filter(archivo => archivo?.url)
+    ? abono.archivos
+        .filter(archivo => archivo?.url)
+        .map(archivo => ({
+          ...archivo,
+
+          tipoDocumento:
+            normalizarTipoDocumento(
+              archivo.tipoDocumento ||
+              archivo.tipo ||
+              'OTRO'
+            )
+        }))
     : [];
 
   if (archivos.length) {
     return archivos;
   }
 
-  /*
-   * Compatibilidad con abonos antiguos que solamente
-   * tienen comprobanteURL.
-   */
   if (abono.comprobanteURL) {
     return [
       {
         nombre: 'Comprobante anterior',
         url: abono.comprobanteURL,
-        tipo: 'comprobante',
+        tipoDocumento: 'COMPROBANTE',
         legado: true
       }
     ];
@@ -169,47 +193,191 @@ function obtenerArchivosAbono(abono = {}) {
   return [];
 }
 
+function sincronizarArchivosNuevos() {
+  const files = [
+    ...(el('abComprobantes')?.files || [])
+  ];
+
+  ARCHIVOS_NUEVOS_CONFIG =
+    files.map((file, index) => {
+      const anterior =
+        ARCHIVOS_NUEVOS_CONFIG[index];
+
+      return {
+        file,
+
+        tipoDocumento:
+          anterior?.tipoDocumento ||
+          'COMPROBANTE'
+      };
+    });
+}
+
+function cambiarTipoDocumentoNuevo(
+  index,
+  tipoDocumento
+) {
+  if (!ARCHIVOS_NUEVOS_CONFIG[index]) {
+    return;
+  }
+
+  ARCHIVOS_NUEVOS_CONFIG[index].tipoDocumento =
+    normalizarTipoDocumento(
+      tipoDocumento
+    );
+
+  actualizarEstadoFacturaPorDocumentos();
+}
+
 function pintarArchivosFormulario() {
-  const contenedor = el('abArchivosLista');
+  sincronizarArchivosNuevos();
+
+  const contenedor =
+    el('abArchivosLista');
 
   if (!contenedor) {
     return;
   }
 
-  const nuevos = [
-    ...(el('abComprobantes')?.files || [])
-  ];
+  const existentesHTML =
+    ARCHIVOS_ACTUALES.map(
+      (archivo, index) => `
+        <div class="archivo-item">
+          <a
+            href="${escapeHTML(archivo.url || '')}"
+            target="_blank"
+            rel="noopener"
+          >
+            ${escapeHTML(
+              archivo.nombre ||
+              `Archivo ${index + 1}`
+            )}
+          </a>
 
-  const existentesHTML = ARCHIVOS_ACTUALES.map(
-    (archivo, index) => `
-      <div class="archivo-item">
-        <a
-          href="${escapeHTML(archivo.url || '')}"
-          target="_blank"
-          rel="noopener"
-        >
-          ${escapeHTML(archivo.nombre || `Archivo ${index + 1}`)}
-        </a>
+          <strong>
+            ${escapeHTML(
+              normalizarTipoDocumento(
+                archivo.tipoDocumento
+              )
+            )}
+          </strong>
+        </div>
+      `
+    ).join('');
 
-        <span>Guardado</span>
-      </div>
-    `
-  ).join('');
+  const nuevosHTML =
+    ARCHIVOS_NUEVOS_CONFIG.map(
+      (config, index) => `
+        <div class="archivo-item nuevo">
+          <span>
+            ${escapeHTML(config.file.name)}
+          </span>
 
-  const nuevosHTML = nuevos.map(
-    file => `
-      <div class="archivo-item nuevo">
-        <span>${escapeHTML(file.name)}</span>
-        <span>Nuevo</span>
-      </div>
-    `
-  ).join('');
+          <select
+            class="tipo-documento-nuevo"
+            data-index="${index}"
+          >
+            <option
+              value="FACTURA"
+              ${
+                config.tipoDocumento === 'FACTURA'
+                  ? 'selected'
+                  : ''
+              }
+            >
+              Factura
+            </option>
+
+            <option
+              value="BOLETA"
+              ${
+                config.tipoDocumento === 'BOLETA'
+                  ? 'selected'
+                  : ''
+              }
+            >
+              Boleta
+            </option>
+
+            <option
+              value="COMPROBANTE"
+              ${
+                config.tipoDocumento === 'COMPROBANTE'
+                  ? 'selected'
+                  : ''
+              }
+            >
+              Comprobante
+            </option>
+
+            <option
+              value="OTRO"
+              ${
+                config.tipoDocumento === 'OTRO'
+                  ? 'selected'
+                  : ''
+              }
+            >
+              Otro
+            </option>
+          </select>
+        </div>
+      `
+    ).join('');
 
   contenedor.innerHTML =
     existentesHTML ||
     nuevosHTML
       ? `${existentesHTML}${nuevosHTML}`
-      : '<span class="form-state">Sin archivos adjuntos.</span>';
+      : `
+        <span class="form-state">
+          Sin archivos adjuntos.
+        </span>
+      `;
+
+  contenedor
+    .querySelectorAll(
+      '.tipo-documento-nuevo'
+    )
+    .forEach(select => {
+      select.addEventListener(
+        'change',
+        event => {
+          cambiarTipoDocumentoNuevo(
+            Number(
+              event.target.dataset.index
+            ),
+            event.target.value
+          );
+        }
+      );
+    });
+}
+
+function actualizarEstadoFacturaPorDocumentos() {
+  const tieneDocumentoTributario = [
+    ...ARCHIVOS_ACTUALES,
+    ...ARCHIVOS_NUEVOS_CONFIG.map(
+      item => ({
+        tipoDocumento:
+          item.tipoDocumento
+      })
+    )
+  ].some(archivo =>
+    ['FACTURA', 'BOLETA'].includes(
+      normalizarTipoDocumento(
+        archivo.tipoDocumento
+      )
+    )
+  );
+
+  if (
+    tieneDocumentoTributario &&
+    !el('abFacturaNoAplica')?.checked
+  ) {
+    el('abPendienteFactura').checked =
+      false;
+  }
 }
 
 function normalizarNombreHotel(nombre = '') {
@@ -1008,6 +1176,24 @@ function validarFormulario() {
   return '';
 }
 
+function obtenerEstadoFacturaFormulario() {
+  if (
+    el('abFacturaNoAplica')
+      ?.checked
+  ) {
+    return 'NO_APLICA';
+  }
+
+  if (
+    el('abPendienteFactura')
+      ?.checked
+  ) {
+    return 'PENDIENTE';
+  }
+
+  return 'COMPLETA';
+}
+
 function obtenerDatosFormulario() {
   const tipo = getTipoSeleccionado();
   const ano = el('abAno').value;
@@ -1029,8 +1215,16 @@ function obtenerDatosFormulario() {
     referencia: el('abReferencia').value.trim(),
     nota: el('abNota').value.trim(),
     
+    estadoFactura:
+      obtenerEstadoFacturaFormulario(),
+    
     pendienteFactura:
-      Boolean(el('abPendienteFactura')?.checked),
+      obtenerEstadoFacturaFormulario() ===
+      'PENDIENTE',
+    
+    facturaNoAplica:
+      obtenerEstadoFacturaFormulario() ===
+      'NO_APLICA',
 
     estado: abonoEditandoId
       ? 'EDITADO'
@@ -1136,7 +1330,7 @@ function obtenerDatosFormulario() {
 }
 
 async function subirArchivosAbono(
-  files,
+  configuraciones,
   datos,
   abonoId,
   archivosExistentes = []
@@ -1145,31 +1339,59 @@ async function subirArchivosAbono(
     ...archivosExistentes
   ];
 
-  for (const file of files) {
-    const nombreSeguro = file.name.replace(
-      /[^\w.\-]+/g,
-      '_'
-    );
+  for (const configuracion of configuraciones) {
+    const file = configuracion.file;
+
+    if (!file) {
+      continue;
+    }
+
+    const tipoDocumento =
+      normalizarTipoDocumento(
+        configuracion.tipoDocumento
+      );
+
+    const nombreSeguro =
+      file.name.replace(
+        /[^\w.\-]+/g,
+        '_'
+      );
 
     const ruta = storageRef(
       storage,
       `abonos_operaciones/${datos.ano}/${datos.tipo}/${slug(datos.destino)}/${abonoId}/${Date.now()}_${nombreSeguro}`
     );
 
-    await uploadBytes(ruta, file);
+    await uploadBytes(
+      ruta,
+      file
+    );
 
-    const url = await getDownloadURL(ruta);
+    const url =
+      await getDownloadURL(ruta);
 
     archivosFinales.push({
       nombre: file.name,
       nombreStorage: nombreSeguro,
+
+      tipoDocumento,
+
       url,
-      mimeType: file.type || '',
-      size: Number(file.size || 0),
-      tipo: 'respaldo',
-      uploadedAtISO: new Date().toISOString(),
+
+      mimeType:
+        file.type || '',
+
+      size:
+        Number(file.size || 0),
+
+      uploadedAtISO:
+        new Date().toISOString(),
+
       uploadedByEmail:
-        (auth.currentUser?.email || '').toLowerCase()
+        (
+          auth.currentUser?.email ||
+          ''
+        ).toLowerCase()
     });
   }
 
@@ -1921,30 +2143,47 @@ function cerrarConfirmacionAbono() {
   document.body.style.overflow = '';
 }
 
-async function guardarAbono() {
-  const error = validarFormulario();
+async function guardarAbono({
+  solicitarDespues = false
+} = {}) {
+  const error =
+    validarFormulario();
 
   if (error) {
     alert(error);
-    return;
+    return null;
   }
 
-  const btn = el('btnGuardarAbono');
-  const eraEdicion = Boolean(abonoEditandoId);
+  const btnGuardar =
+    el('btnGuardarAbono');
 
-  btn.disabled = true;
-  setEstadoFormulario('Guardando...');
+  const btnGuardarYSolicitar =
+    el('btnGuardarYSolicitar');
+
+  const eraEdicion =
+    Boolean(abonoEditandoId);
+
+  btnGuardar.disabled = true;
+
+  if (btnGuardarYSolicitar) {
+    btnGuardarYSolicitar.disabled = true;
+  }
+
+  setEstadoFormulario(
+    'Guardando...'
+  );
 
   try {
-    const datos = obtenerDatosFormulario();
+    const datos =
+      obtenerDatosFormulario();
 
     const email =
-      (auth.currentUser?.email || '')
-        .toLowerCase();
+      (
+        auth.currentUser?.email ||
+        ''
+      ).toLowerCase();
 
-    const files = [
-      ...(el('abComprobantes')?.files || [])
-    ];
+    sincronizarArchivosNuevos();
 
     if (!email) {
       throw new Error(
@@ -1952,45 +2191,64 @@ async function guardarAbono() {
       );
     }
 
-    if (!abonoEditandoId) {
+    let abonoId = abonoEditandoId;
+    let documentoFinal = null;
+
+    if (!abonoId) {
       const refCentral = doc(
-        collection(db, RUTA_ABONOS)
+        collection(
+          db,
+          RUTA_ABONOS
+        )
       );
 
-      const abonoId = refCentral.id;
+      abonoId = refCentral.id;
 
-      const archivos = await subirArchivosAbono(
-        files,
-        datos,
-        abonoId,
-        []
-      );
-
-      const comprobanteURL =
-        archivos[0]?.url || '';
+      const archivos =
+        await subirArchivosAbono(
+          ARCHIVOS_NUEVOS_CONFIG,
+          datos,
+          abonoId,
+          []
+        );
 
       const documento = {
         ...datos,
 
         archivos,
-        comprobanteURL,
+
+        comprobanteURL:
+          archivos[0]?.url || '',
 
         estadoSolicitudPago:
           'NO_SOLICITADO',
 
-        solicitudPago: null,
+        solicitudPago:
+          null,
 
-        fechaRegistro: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        createdByEmail: email,
+        fechaRegistro:
+          serverTimestamp(),
 
-        updatedAt: null,
-        updatedByEmail: '',
+        createdAt:
+          serverTimestamp(),
 
-        archivedAt: null,
-        archivedByEmail: '',
+        createdByEmail:
+          email,
 
-        version: 1
+        updatedAt:
+          null,
+
+        updatedByEmail:
+          '',
+
+        archivedAt:
+          null,
+
+        archivedByEmail:
+          '',
+
+        version:
+          1
       };
 
       await setDoc(
@@ -2007,14 +2265,12 @@ async function guardarAbono() {
         1
       );
 
-      ULTIMO_ABONO_GUARDADO = {
+      documentoFinal = {
         id: abonoId,
         ...documento
       };
 
     } else {
-      const abonoId = abonoEditandoId;
-
       const refCentral = doc(
         db,
         RUTA_ABONOS,
@@ -2053,39 +2309,56 @@ async function guardarAbono() {
         ),
         {
           versionAnterior,
-          datosAnteriores: anterior,
+          datosAnteriores:
+            anterior,
+
           motivoCambio,
-          changedAt: serverTimestamp(),
-          changedByEmail: email
+
+          tipoCambio:
+            'EDICION_ABONO',
+
+          changedAt:
+            serverTimestamp(),
+
+          changedByEmail:
+            email
         }
       );
 
       const archivosExistentes =
-        obtenerArchivosAbono(anterior);
+        obtenerArchivosAbono(
+          anterior
+        );
 
-      const archivos = await subirArchivosAbono(
-        files,
-        datos,
-        abonoId,
-        archivosExistentes
-      );
-
-      const comprobanteURL =
-        archivos[0]?.url ||
-        anterior.comprobanteURL ||
-        '';
+      const archivos =
+        await subirArchivosAbono(
+          ARCHIVOS_NUEVOS_CONFIG,
+          datos,
+          abonoId,
+          archivosExistentes
+        );
 
       const documentoActualizado = {
         ...datos,
 
         archivos,
-        comprobanteURL,
 
-        estado: 'EDITADO',
-        version: nuevaVersion,
+        comprobanteURL:
+          archivos[0]?.url ||
+          anterior.comprobanteURL ||
+          '',
 
-        updatedAt: serverTimestamp(),
-        updatedByEmail: email,
+        estado:
+          'EDITADO',
+
+        version:
+          nuevaVersion,
+
+        updatedAt:
+          serverTimestamp(),
+
+        updatedByEmail:
+          email,
 
         motivoUltimoCambio:
           motivoCambio
@@ -2108,21 +2381,50 @@ async function guardarAbono() {
         nuevaVersion
       );
 
-      ULTIMO_ABONO_GUARDADO = {
+      documentoFinal = {
         id: abonoId,
         ...anterior,
         ...documentoActualizado
       };
     }
 
-    if (!ES_VISTA_MOVIL) {
-      await cargarAbonos();
-      poblarFiltrosGenerales();
-      renderAbonos();
+    ULTIMO_ABONO_GUARDADO = {
+      ...documentoFinal
+    };
+
+    await cargarAbonos();
+
+    const abonoGuardado =
+      ABONOS.find(
+        item =>
+          item.id === abonoId
+      ) || {
+        ...documentoFinal,
+        id: abonoId
+      };
+
+    poblarFiltrosGenerales();
+    renderAbonos();
+
+    if (solicitarDespues) {
+      if (!ES_VISTA_MOVIL) {
+        cerrarModalAbono({
+          limpiar: false,
+          forzar: true
+        });
+      }
+
+      await abrirSolicitudPago(
+        abonoGuardado
+      );
+
+      limpiarFormulario();
+
+      return abonoGuardado;
     }
 
     const datosConfirmacion = {
-      ...ULTIMO_ABONO_GUARDADO
+      ...abonoGuardado
     };
 
     limpiarFormulario();
@@ -2146,6 +2448,8 @@ async function guardarAbono() {
       );
     }
 
+    return abonoGuardado;
+
   } catch (error) {
     console.error(error);
 
@@ -2161,8 +2465,15 @@ async function guardarAbono() {
       }`
     );
 
+    return null;
+
   } finally {
-    btn.disabled = false;
+    btnGuardar.disabled = false;
+
+    if (btnGuardarYSolicitar) {
+      btnGuardarYSolicitar.disabled =
+        false;
+    }
   }
 }
 
