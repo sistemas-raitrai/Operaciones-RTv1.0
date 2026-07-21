@@ -407,25 +407,6 @@ async function init() {
   
   console.timeEnd('7 reservas');
   
-  console.time('8 revisar cambios reservas');
-  
-  try {
-    // Es importante esperar la revisión antes de dibujar los botones.
-    await revisarCambiosReservasEnviadas(
-      servicios,
-      todosLosReservas
-    );
-  
-    console.log('Revisión de cambios de reservas terminada');
-  } catch (error) {
-    console.error(
-      'Error revisando cambios de reservas:',
-      error
-    );
-  } finally {
-    console.timeEnd('8 revisar cambios reservas');
-  }
-
   thead.innerHTML = `
     <tr>
       <th class="sticky-col sticky-header">Actividad</th>
@@ -434,8 +415,6 @@ async function init() {
       <th>Reserva</th>
       ${fechasOrdenadas.map(f => `<th data-fecha="${f}">${formatearFechaBonita(f)}</th>`).join('')}
     </tr>`;
-
-  console.time('8 revisar cambios reservas');
 
   console.time('9 construir HTML tabla');
   let rowsHTML = servicios.map((servicio, i) => {
@@ -490,6 +469,37 @@ async function init() {
   tbody.innerHTML = rowsHTML;
   console.timeEnd('9 construir HTML tabla');
 
+  /*
+   * La tabla se muestra inmediatamente.
+   * La revisión de cambios se ejecuta después, en segundo plano,
+   * para no bloquear la carga de contador.html.
+   */
+  console.time('8 revisar cambios reservas');
+  
+  revisarCambiosReservasEnviadas(
+    servicios,
+    todosLosReservas
+  )
+    .then(() => {
+      actualizarBotonesReservaTabla(
+        servicios,
+        todosLosReservas
+      );
+  
+      console.log(
+        'Revisión de cambios de reservas terminada'
+      );
+    })
+    .catch(error => {
+      console.error(
+        'Error revisando cambios de reservas:',
+        error
+      );
+    })
+    .finally(() => {
+      console.timeEnd('8 revisar cambios reservas');
+    });
+  
   console.time('10 DataTables');
 
   tbody.addEventListener('click', e => {
@@ -2223,6 +2233,47 @@ function renderTablaModal(dataRows) {
 // =====================================================
 // DETECTAR CAMBIOS POSTERIORES A RESERVAS ENVIADAS
 // =====================================================
+function actualizarBotonesReservaTabla(
+  servicios = [],
+  todosLosReservas = []
+) {
+  servicios.forEach((servicio, indice) => {
+    const reservas =
+      todosLosReservas[indice] || {};
+
+    const fechasConPax = fechasOrdenadas.filter(
+      fecha =>
+        grupos.some(grupo =>
+          (grupo.itinerario?.[fecha] || []).some(
+            actividad =>
+              actividadCoincideReserva(
+                actividad,
+                servicio.nombre
+              )
+          )
+        )
+    );
+
+    const texto =
+      obtenerTextoBotonReserva(
+        reservas,
+        fechasConPax
+      );
+
+    const botones = document.querySelectorAll(
+      '.btn-reserva'
+    );
+
+    const boton = Array.from(botones).find(item =>
+      item.dataset.destino === servicio.destino &&
+      item.dataset.actividad === servicio.nombre
+    );
+
+    if (boton) {
+      boton.textContent = texto;
+    }
+  });
+}
 
 function obtenerTextoBotonReserva(reservas = {}, fechasConPax = []) {
   const fechas = Array.isArray(fechasConPax)
@@ -2300,6 +2351,13 @@ async function revisarCambiosReservasEnviadas(
 
     const payload = {};
 
+    /*
+     * Evita consultar varias veces la misma fotografía.
+     * Una misma verificación normalmente está guardada
+     * en todas las fechas de la actividad.
+     */
+    const cacheRevisiones = new Map();
+
     for (const [fecha, reserva] of Object.entries(reservas)) {
       if (!reserva) continue;
 
@@ -2313,10 +2371,9 @@ async function revisarCambiosReservasEnviadas(
         continue;
       }
 
-      const verificacion = reserva.verificacionPagos;
+      const verificacion =
+        reserva.verificacionPagos;
 
-      // Las reservas antiguas que no tienen fotografía base
-      // no pueden compararse correctamente.
       if (
         !verificacion ||
         !Array.isArray(verificacion.grupos)
@@ -2324,36 +2381,74 @@ async function revisarCambiosReservasEnviadas(
         continue;
       }
 
-      const cambios =
-        await detectarCambiosEnVerificacionGuardada(
-          verificacion
-        );
+      /*
+       * Las fechas de una misma reserva suelen contener
+       * exactamente la misma verificación.
+       */
+      const claveRevision = [
+        verificacion.guardadoEn || '',
+        verificacion.fecha || '',
+        verificacion.destino || servicio.destino,
+        verificacion.actividad || servicio.nombre
+      ].join('__');
 
-      const fechaRevision = new Date().toISOString();
+      let cambios;
+
+      if (cacheRevisiones.has(claveRevision)) {
+        cambios =
+          cacheRevisiones.get(claveRevision);
+      } else {
+        cambios =
+          await detectarCambiosEnVerificacionGuardada(
+            verificacion
+          );
+
+        cacheRevisiones.set(
+          claveRevision,
+          cambios
+        );
+      }
+
+      const fechaRevision =
+        new Date().toISOString();
 
       if (!cambios.length) {
-        payload[`reservas.${fecha}.revisionCambios`] = {
+        payload[
+          `reservas.${fecha}.revisionCambios`
+        ] = {
           estado: 'SIN_CAMBIOS',
           ultimaRevision: fechaRevision,
           cambios: []
         };
 
-        // Si anteriormente estaba marcada para reenvío,
-        // pero los cambios fueron revertidos, vuelve a su
-        // estado anterior.
-        if (reserva.estado === 'REQUIERE_REENVIO') {
+        /*
+         * Si estaba marcada para reenvío pero el cambio
+         * ya fue revertido, restauramos el estado.
+         */
+        if (
+          reserva.estado === 'REQUIERE_REENVIO'
+        ) {
           const estadoRestaurado =
-            reserva.estadoAntesRevision || 'ENVIADA';
-
-          payload[`reservas.${fecha}.estado`] =
-            estadoRestaurado;
+            reserva.estadoAntesRevision ||
+            'ENVIADA';
 
           payload[
-            `reservas.${fecha}.estadoAntesRevision`
-          ] = null;
+            `reservas.${fecha}.estado`
+          ] = estadoRestaurado;
 
-          reserva.estado = estadoRestaurado;
-          reserva.estadoAntesRevision = null;
+          /*
+           * No escribimos null en Firestore.
+           * Dejamos el campo vacío para evitar errores
+           * o inconsistencias de actualización.
+           */
+          payload[
+            `reservas.${fecha}.estadoAntesRevision`
+          ] = '';
+
+          reserva.estado =
+            estadoRestaurado;
+
+          reserva.estadoAntesRevision = '';
         }
 
         reserva.revisionCambios = {
@@ -2365,28 +2460,39 @@ async function revisarCambiosReservasEnviadas(
         continue;
       }
 
-      // Guardamos el estado que tenía antes de pasar
-      // a REQUIERE_REENVIO.
-      if (reserva.estado !== 'REQUIERE_REENVIO') {
+      /*
+       * Conservamos el estado previo solamente cuando
+       * entra por primera vez a REQUIERE_REENVIO.
+       */
+      if (
+        reserva.estado !== 'REQUIERE_REENVIO'
+      ) {
         payload[
           `reservas.${fecha}.estadoAntesRevision`
         ] = reserva.estado;
 
-        reserva.estadoAntesRevision = reserva.estado;
+        reserva.estadoAntesRevision =
+          reserva.estado;
       }
 
-      payload[`reservas.${fecha}.estado`] =
-        'REQUIERE_REENVIO';
+      payload[
+        `reservas.${fecha}.estado`
+      ] = 'REQUIERE_REENVIO';
 
-      payload[`reservas.${fecha}.revisionCambios`] = {
+      payload[
+        `reservas.${fecha}.revisionCambios`
+      ] = {
         estado: 'CON_CAMBIOS',
         ultimaRevision: fechaRevision,
         cambios
       };
 
-      // Actualización local para que el botón se pinte
-      // correctamente en esta misma carga.
-      reserva.estado = 'REQUIERE_REENVIO';
+      /*
+       * También actualizamos el objeto local para que
+       * el botón cambie sin recargar la página.
+       */
+      reserva.estado =
+        'REQUIERE_REENVIO';
 
       reserva.revisionCambios = {
         estado: 'CON_CAMBIOS',
@@ -2401,7 +2507,18 @@ async function revisarCambiosReservasEnviadas(
         servicio.nombre
       );
 
-      await updateDoc(ref, payload);
+      try {
+        await updateDoc(ref, payload);
+      } catch (error) {
+        /*
+         * Un servicio con problemas no debe impedir que
+         * se revisen los siguientes.
+         */
+        console.error(
+          `Error guardando revisión de ${servicio.nombre} / ${servicio.destino}:`,
+          error
+        );
+      }
     }
   }
 }
