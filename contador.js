@@ -788,12 +788,19 @@ async function init() {
     const table =
       $('#tablaConteo').DataTable({
         scrollX: true,
+    
+        /*
+         * La tabla tendrá un alto interno.
+         * De esta manera la barra horizontal queda visible
+         * en la parte inferior de la pantalla y no después
+         * de todas las filas.
+         */
+        scrollY: 'calc(100vh - 255px)',
+        scrollCollapse: true,
+    
         paging: false,
-
-        fixedHeader: {
-          header: true,
-          headerOffset: 90
-        },
+    
+        fixedHeader: false,
 
         fixedColumns: {
           leftColumns: 1
