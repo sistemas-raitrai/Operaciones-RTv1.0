@@ -105,24 +105,75 @@ function mostrarErrorCargaContador(error) {
   const mensaje =
     error?.message || String(error);
 
-  actualizarProgresoContador(
-    100,
-    `No fue posible cargar el contador: ${mensaje}`
-  );
+  const contenedor =
+    document.getElementById(
+      'cargaContador'
+    );
 
   const barra =
-    document.getElementById('cargaContadorBarra');
+    document.getElementById(
+      'cargaContadorBarra'
+    );
 
   const texto =
-    document.getElementById('cargaContadorTexto');
+    document.getElementById(
+      'cargaContadorTexto'
+    );
 
-  if (barra) {
-    barra.style.background = '#b42318';
+  const porcentajeEl =
+    document.getElementById(
+      'cargaContadorPorcentaje'
+    );
+
+  if (!contenedor || !barra || !texto) {
+    return;
   }
 
-  if (texto) {
-    texto.style.color = '#9d1c13';
+  contenedor.style.display = 'block';
+
+  barra.style.width = '100%';
+  barra.style.background = '#b42318';
+
+  texto.style.color = '#9d1c13';
+
+  texto.innerHTML = `
+    <div>
+      <strong>No fue posible cargar el contador.</strong>
+    </div>
+
+    <div style="margin-top:6px; font-weight:400;">
+      ${escapeHtmlReserva(mensaje)}
+    </div>
+
+    <button
+      type="button"
+      id="btnReintentarCargaContador"
+      style="
+        margin-top:10px;
+        padding:7px 14px;
+        cursor:pointer;
+      "
+    >
+      Reintentar conexión
+    </button>
+  `;
+
+  if (porcentajeEl) {
+    porcentajeEl.textContent =
+      'Error de conexión';
   }
+
+  document.getElementById(
+    'btnReintentarCargaContador'
+  )?.addEventListener('click', () => {
+    /*
+     * Limpiamos únicamente la caché de grupos.
+     * Así la nueva carga consulta otra vez Firestore.
+     */
+    CACHE_GRUPOS_CONTADOR.clear();
+
+    init();
+  });
 }
 
 function restaurarEstiloProgresoContador() {
@@ -241,49 +292,156 @@ function grupoCoincideDestinoContador(
 }
 
 async function cargarGruposAnoContador(ano) {
-  const claveCache = String(ano);
+  const claveCache = String(ano).trim();
 
+  /*
+   * Solo utilizamos caché cuando contiene grupos.
+   * Nunca conservamos una carga vacía, porque puede
+   * deberse a una desconexión temporal de Firestore.
+   */
   if (CACHE_GRUPOS_CONTADOR.has(claveCache)) {
-    return CACHE_GRUPOS_CONTADOR.get(claveCache);
+    const cache = CACHE_GRUPOS_CONTADOR.get(
+      claveCache
+    );
+
+    if (Array.isArray(cache) && cache.length > 0) {
+      console.log(
+        `[CONTADOR] Usando caché de grupos ${claveCache}:`,
+        cache.length
+      );
+
+      return cache;
+    }
+
+    CACHE_GRUPOS_CONTADOR.delete(claveCache);
   }
 
-  const anoNumero = Number(ano);
-  const anoTexto = String(ano);
+  const anoNumero = Number(claveCache);
+  const anoTexto = claveCache;
 
-  const consultas = [
-    getDocs(
-      query(
-        collection(db, 'grupos'),
-        where('anoViaje', '==', anoNumero)
-      )
-    ),
+  let resultado = [];
 
-    getDocs(
-      query(
-        collection(db, 'grupos'),
-        where('anoViaje', '==', anoTexto)
-      )
-    )
-  ];
+  /*
+   * Camino principal:
+   * consultar solamente el año solicitado.
+   */
+  try {
+    const [snapNumero, snapTexto] =
+      await Promise.all([
+        getDocs(
+          query(
+            collection(db, 'grupos'),
+            where(
+              'anoViaje',
+              '==',
+              anoNumero
+            )
+          )
+        ),
 
-  const [snapNumero, snapTexto] =
-    await Promise.all(consultas);
+        getDocs(
+          query(
+            collection(db, 'grupos'),
+            where(
+              'anoViaje',
+              '==',
+              anoTexto
+            )
+          )
+        )
+      ]);
 
-  const mapa = new Map();
+    const mapa = new Map();
 
-  [...snapNumero.docs, ...snapTexto.docs].forEach(docSnap => {
-    mapa.set(docSnap.id, {
-      id: docSnap.id,
-      ...docSnap.data()
+    [
+      ...snapNumero.docs,
+      ...snapTexto.docs
+    ].forEach(docSnap => {
+      mapa.set(docSnap.id, {
+        id: docSnap.id,
+        ...docSnap.data()
+      });
     });
-  });
 
-  const resultado = Array.from(mapa.values());
+    resultado = Array.from(
+      mapa.values()
+    );
 
-  CACHE_GRUPOS_CONTADOR.set(
-    claveCache,
-    resultado
-  );
+    console.log(
+      `[CONTADOR] Consulta directa año ${claveCache}:`,
+      resultado.length
+    );
+
+  } catch (error) {
+    console.warn(
+      `[CONTADOR] Falló consulta directa por año ${claveCache}:`,
+      error
+    );
+  }
+
+  /*
+   * Respaldo:
+   * si la consulta directa no entregó documentos,
+   * intentamos cargar la colección completa y filtrar
+   * localmente. Esto también ayuda cuando Firestore
+   * está usando una caché antigua.
+   */
+  if (!resultado.length) {
+    console.warn(
+      `[CONTADOR] Consulta por año sin resultados. Ejecutando respaldo para ${claveCache}.`
+    );
+
+    actualizarProgresoContador(
+      20,
+      `Reconectando y buscando grupos del año ${claveCache}...`
+    );
+
+    try {
+      const snapCompleto = await getDocs(
+        collection(db, 'grupos')
+      );
+
+      resultado = snapCompleto.docs
+        .map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }))
+        .filter(grupo =>
+          String(
+            grupo?.anoViaje ?? ''
+          ).trim() === claveCache
+        );
+
+      console.log(
+        `[CONTADOR] Respaldo colección completa año ${claveCache}:`,
+        resultado.length
+      );
+
+    } catch (errorRespaldo) {
+      console.error(
+        `[CONTADOR] También falló la carga de respaldo para ${claveCache}:`,
+        errorRespaldo
+      );
+
+      throw new Error(
+        'No fue posible conectarse con Firestore para cargar los grupos. Revisa la conexión y vuelve a intentar.'
+      );
+    }
+  }
+
+  /*
+   * Solamente guardamos caché cuando existen datos.
+   */
+  if (resultado.length > 0) {
+    CACHE_GRUPOS_CONTADOR.set(
+      claveCache,
+      resultado
+    );
+  } else {
+    CACHE_GRUPOS_CONTADOR.delete(
+      claveCache
+    );
+  }
 
   return resultado;
 }
@@ -549,6 +707,18 @@ async function init() {
       console.timeEnd(timerCarga);
       return;
     }
+
+    if (!gruposAno.length) {
+      CACHE_GRUPOS_CONTADOR.delete(
+        String(anoComercial)
+      );
+    
+      throw new Error(
+        `No se encontraron grupos para ${anoComercial}. ` +
+        'Esto puede deberse a una desconexión temporal de Firestore. ' +
+        'Recarga la página para volver a intentar.'
+      );
+    }
     
     /*
      * Por ahora conservamos todos los grupos del año.
@@ -569,15 +739,39 @@ async function init() {
      * Se ejecutan simultáneamente.
      */
     const [
-      serviciosCargados
+      serviciosCargados,
+      resultadoProveedores
     ] = await Promise.all([
       cargarServiciosContador(
         anoComercial,
         destinoSeleccionado
       ),
-
+    
       cargarProveedoresContador()
+        .then(data => ({
+          ok: true,
+          data
+        }))
+        .catch(error => {
+          console.warn(
+            '[CONTADOR] No fue posible cargar proveedores:',
+            error
+          );
+    
+          return {
+            ok: false,
+            data: {}
+          };
+        })
     ]);
+    
+    if (!resultadoProveedores.ok) {
+      /*
+       * La tabla seguirá funcionando.
+       * Solo faltarán temporalmente los correos/contactos.
+       */
+      proveedores = {};
+    }
 
     if (cargaActual !== idCargaContador) {
       console.timeEnd(timerCarga);
@@ -1070,57 +1264,64 @@ async function init() {
     /*
      * La revisión ocurre después de mostrar la tabla.
      */
-    revisarCambiosReservasEnviadas(
-      servicios,
-      todosLosReservas,
-      ({ actual, total }) => {
-        if (cargaActual !== idCargaContador) {
-          return;
-        }
-
-        const porcentajeRevision =
-          total > 0
-            ? Math.round(
-                (actual / total) * 100
-              )
-            : 100;
-
-        actualizarProgresoContador(
-          porcentajeRevision,
-          `Revisando reservas: ${actual} de ${total}...`
-        );
+    window.setTimeout(() => {
+      if (cargaActual !== idCargaContador) {
+        return;
       }
-    )
-      .then(() => {
-        if (cargaActual !== idCargaContador) {
-          return;
+    
+      revisarCambiosReservasEnviadas(
+        servicios,
+        todosLosReservas,
+        ({ actual, total }) => {
+          if (cargaActual !== idCargaContador) {
+            return;
+          }
+    
+          const porcentajeRevision =
+            total > 0
+              ? Math.round(
+                  (actual / total) * 100
+                )
+              : 100;
+    
+          actualizarProgresoContador(
+            porcentajeRevision,
+            `Revisando reservas: ${actual} de ${total}...`
+          );
         }
-
-        actualizarBotonesReservaTabla(
-          servicios,
-          todosLosReservas
-        );
-
-        actualizarProgresoContador(
-          100,
-          'Tabla y revisión de reservas listas.'
-        );
-
-        ocultarProgresoContador(1800);
-      })
-      .catch(error => {
-        console.error(
-          'Error revisando cambios de reservas:',
-          error
-        );
-
-        actualizarProgresoContador(
-          100,
-          'Tabla lista. Algunas reservas no pudieron revisarse.'
-        );
-
-        ocultarProgresoContador(3500);
-      });
+      )
+        .then(() => {
+          if (cargaActual !== idCargaContador) {
+            return;
+          }
+    
+          actualizarBotonesReservaTabla(
+            servicios,
+            todosLosReservas
+          );
+    
+          actualizarProgresoContador(
+            100,
+            'Tabla y revisión de reservas listas.'
+          );
+    
+          ocultarProgresoContador(1800);
+        })
+        .catch(error => {
+          console.error(
+            'Error revisando cambios de reservas:',
+            error
+          );
+    
+          actualizarProgresoContador(
+            100,
+            'Tabla lista. La revisión de reservas quedó pendiente por problemas de conexión.'
+          );
+    
+          ocultarProgresoContador(4500);
+        });
+    
+    }, 1000);
 
   } catch (error) {
     console.error(
