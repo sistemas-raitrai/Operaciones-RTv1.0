@@ -5,7 +5,14 @@
 // ———————————————————————————————
 import { app, db } from './firebase-init.js';
 import {
-  getDocs, getDoc, collection, doc, updateDoc, serverTimestamp
+  getDocs,
+  getDoc,
+  collection,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  query,
+  where
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged, signOut
@@ -24,6 +31,18 @@ let revisionCambiosReservaActiva = null;
 const API_PAGOS_URL = '/api/pagos';
 let anoContadorActivo = obtenerAnoComercialContador();
 
+const DESTINOS_CONTADOR = [
+  'BRASIL',
+  'BARILOCHE',
+  'SUR DE CHILE',
+  'NORTE DE CHILE'
+];
+
+const CACHE_GRUPOS_CONTADOR = new Map();
+
+let proveedoresCargadosContador = false;
+let idCargaContador = 0;
+
 function obtenerAnoComercialContador(fecha = new Date()) {
   const ano = fecha.getFullYear();
   const mes = fecha.getMonth() + 1; // enero = 1
@@ -35,6 +54,91 @@ function obtenerAnoComercialContador(fecha = new Date()) {
 function getAnoContadorActivo() {
   const sel = document.getElementById('filtroAnoContador');
   return String(sel?.value || anoContadorActivo || obtenerAnoComercialContador());
+}
+
+function actualizarProgresoContador(
+  porcentaje,
+  mensaje,
+  visible = true
+) {
+  const contenedor =
+    document.getElementById('cargaContador');
+
+  const barra =
+    document.getElementById('cargaContadorBarra');
+
+  const texto =
+    document.getElementById('cargaContadorTexto');
+
+  const porcentajeEl =
+    document.getElementById('cargaContadorPorcentaje');
+
+  if (!contenedor || !barra || !texto || !porcentajeEl) {
+    return;
+  }
+
+  const valor = Math.max(
+    0,
+    Math.min(100, Number(porcentaje) || 0)
+  );
+
+  contenedor.style.display =
+    visible ? 'block' : 'none';
+
+  barra.style.width = `${valor}%`;
+  texto.textContent = mensaje || '';
+  porcentajeEl.textContent = `${Math.round(valor)}%`;
+}
+
+function ocultarProgresoContador(demora = 0) {
+  window.setTimeout(() => {
+    const contenedor =
+      document.getElementById('cargaContador');
+
+    if (contenedor) {
+      contenedor.style.display = 'none';
+    }
+  }, demora);
+}
+
+function mostrarErrorCargaContador(error) {
+  const mensaje =
+    error?.message || String(error);
+
+  actualizarProgresoContador(
+    100,
+    `No fue posible cargar el contador: ${mensaje}`
+  );
+
+  const barra =
+    document.getElementById('cargaContadorBarra');
+
+  const texto =
+    document.getElementById('cargaContadorTexto');
+
+  if (barra) {
+    barra.style.background = '#b42318';
+  }
+
+  if (texto) {
+    texto.style.color = '#9d1c13';
+  }
+}
+
+function restaurarEstiloProgresoContador() {
+  const barra =
+    document.getElementById('cargaContadorBarra');
+
+  const texto =
+    document.getElementById('cargaContadorTexto');
+
+  if (barra) {
+    barra.style.background = '#2b73b9';
+  }
+
+  if (texto) {
+    texto.style.color = '#24496d';
+  }
 }
 
 function refServicioContador(destino, actividad) {
@@ -52,10 +156,7 @@ function limpiarTablaContadorSiExiste() {
   thead.innerHTML = '';
   tbody.innerHTML = '';
 
-  const filtroDestino = document.getElementById('filtroDestino');
-  if (filtroDestino) {
-    filtroDestino.innerHTML = '<option value="">Todos los destinos</option>';
-  }
+  $('#buscador').off('.contador');
 }
 
 function normalizarActividadReserva(txt = '') {
@@ -69,6 +170,200 @@ function normalizarActividadReserva(txt = '') {
 
 function actividadCoincideReserva(a, actividad) {
   return normalizarActividadReserva(a?.actividad) === normalizarActividadReserva(actividad);
+}
+
+function normalizarDestinoContador(valor = '') {
+  return String(valor || '')
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function grupoCoincideDestinoContador(
+  grupo,
+  destinoSeleccionado
+) {
+  if (
+    !destinoSeleccionado ||
+    destinoSeleccionado === '__TODOS__'
+  ) {
+    return true;
+  }
+
+  return (
+    normalizarDestinoContador(grupo?.destino) ===
+    normalizarDestinoContador(destinoSeleccionado)
+  );
+}
+
+async function cargarGruposAnoContador(ano) {
+  const claveCache = String(ano);
+
+  if (CACHE_GRUPOS_CONTADOR.has(claveCache)) {
+    return CACHE_GRUPOS_CONTADOR.get(claveCache);
+  }
+
+  const anoNumero = Number(ano);
+  const anoTexto = String(ano);
+
+  const consultas = [
+    getDocs(
+      query(
+        collection(db, 'grupos'),
+        where('anoViaje', '==', anoNumero)
+      )
+    ),
+
+    getDocs(
+      query(
+        collection(db, 'grupos'),
+        where('anoViaje', '==', anoTexto)
+      )
+    )
+  ];
+
+  const [snapNumero, snapTexto] =
+    await Promise.all(consultas);
+
+  const mapa = new Map();
+
+  [...snapNumero.docs, ...snapTexto.docs].forEach(docSnap => {
+    mapa.set(docSnap.id, {
+      id: docSnap.id,
+      ...docSnap.data()
+    });
+  });
+
+  const resultado = Array.from(mapa.values());
+
+  CACHE_GRUPOS_CONTADOR.set(
+    claveCache,
+    resultado
+  );
+
+  return resultado;
+}
+
+async function cargarProveedoresContador() {
+  if (proveedoresCargadosContador) {
+    return proveedores;
+  }
+
+  const proveedoresLocal = {};
+
+  const regionesSnap = await getDocs(
+    collection(db, 'Proveedores')
+  );
+
+  const resultadosRegiones = await Promise.all(
+    regionesSnap.docs.map(regionDoc =>
+      getDocs(
+        collection(
+          db,
+          'Proveedores',
+          regionDoc.id,
+          'Listado'
+        )
+      )
+    )
+  );
+
+  resultadosRegiones.forEach(listadoSnap => {
+    listadoSnap.docs.forEach(pSnap => {
+      const data = pSnap.data() || {};
+
+      if (!data.proveedor) return;
+
+      proveedoresLocal[data.proveedor] = {
+        contacto: data.contacto || '',
+        correo: data.correo || ''
+      };
+    });
+  });
+
+  proveedores = proveedoresLocal;
+  proveedoresCargadosContador = true;
+
+  return proveedores;
+}
+
+async function cargarServiciosContador(
+  ano,
+  destinoSeleccionado
+) {
+  const destinos = destinoSeleccionado === '__TODOS__'
+    ? [...DESTINOS_CONTADOR]
+    : [destinoSeleccionado];
+
+  const servicios = [];
+
+  const resultados = await Promise.all(
+    destinos.map(async destino => {
+      const [opSnap, listadoSnap] =
+        await Promise.all([
+          getDocs(
+            collection(
+              db,
+              'Servicios',
+              destino,
+              'Listado'
+            )
+          ),
+
+          getDocs(
+            collection(
+              db,
+              'ServiciosPorAno',
+              String(ano),
+              'Destinos',
+              destino,
+              'Listado'
+            )
+          )
+        ]);
+
+      const reservasDestino = new Map();
+
+      opSnap.docs.forEach(docSnap => {
+        const data = docSnap.data() || {};
+
+        reservasDestino.set(
+          docSnap.id,
+          data.reservas || {}
+        );
+      });
+
+      return listadoSnap.docs.map(sDoc => {
+        const data = sDoc.data() || {};
+
+        const nombreServicio =
+          data.servicio || sDoc.id;
+
+        const proveedorServicio =
+          data.proveedor ||
+          data.Proveedor ||
+          '';
+
+        return {
+          destino,
+          nombre: nombreServicio,
+          proveedor: proveedorServicio,
+          reservas:
+            reservasDestino.get(nombreServicio) ||
+            reservasDestino.get(sDoc.id) ||
+            {}
+        };
+      });
+    })
+  );
+
+  resultados.forEach(lista => {
+    servicios.push(...lista);
+  });
+
+  return servicios;
 }
 
 async function recargarGruposContador(ids) {
@@ -120,133 +415,6 @@ async function sincronizarGruposReservaConPagos(actividad) {
   return resultados;
 }
 
-// ===== [NUEVO] Índice de vuelos por grupo (root collection 'vuelos') =====
-let IDX_VUELOS_POR_GRUPO = new Map();
-
-// Helpers para leer campos con múltiples nombres posibles
-const _val = (o, k) => (o && o[k] != null && String(o[k]).trim() !== '') ? String(o[k]).trim() : '';
-function _pick(o, ...cands) {
-  for (const c of cands) {
-    if (typeof c === 'string') {
-      const v = _val(o, c); if (v) return v;
-    } else if (c instanceof RegExp) {
-      const k = Object.keys(o || {}).find(kk => c.test(kk));
-      if (k) { const v = _val(o, k); if (v) return v; }
-    }
-  }
-  return '';
-}
-const _join = (arr, sep=' · ') => arr.filter(Boolean).join(sep);
-
-// === REEMPLAZO ===
-function makeVueloLabel(v) {
-  // Identidad del vuelo
-  const aerolinea = _pick(v, 'aerolinea', 'proveedor');
-  const tipo      = _pick(v, 'tipo', 'tipoVuelo') || (v.isTransfer ? 'TRANSFER' : 'AÉREO');
-
-  // Número(s)
-  const numero    = _pick(v, 'numero');
-  const numIda    = _pick(v, 'numeroIda', /num.*ida/i);
-  const numVta    = _pick(v, 'numeroVuelta', /num.*vuel/i);
-  const numeroMix = numero || _join([numIda, numVta], ' // ');
-
-  // Tramo
-  const origen    = _pick(v, 'origen', 'origenIda', /origen.*/i, /desde/i);
-  const destino   = _pick(v, 'destino', 'destinoIda', /destino.*/i, /hasta/i);
-  const tramo     = (origen || destino) ? ` (${origen || '¿?'}→${destino || '¿?'})` : '';
-
-  // Fechas (para matching por día)
-  const fechaIda      = _pick(v, 'fechaIda', /fecha.*ida/i, 'idaFecha');
-  const fechaVuelta   = _pick(v, 'fechaVuelta', /fecha.*vuel/i, 'vueltaFecha');
-
-  // Horarios IDA
-  const presIda   = _pick(v, 'presentacionIdaHora', /presentaci.*ida/i);
-  const salIda    = _pick(v, 'salidaIdaHora', /salida.*ida/i, /despegue.*ida/i);
-  const arrIda    = _pick(v, 'arriboIdaHora', /arrib.*ida/i, /llegad.*ida/i);
-
-  // Horarios VUELTA
-  const presVta   = _pick(v, 'presentacionVueltaHora', /presentaci.*vuel/i);
-  const salVta    = _pick(v, 'salidaVueltaHora', /salida.*vuel/i, /despegue.*vuel/i);
-  const arrVta    = _pick(v, 'arriboVueltaHora', /arrib.*vuel/i, /llegad.*vuel/i);
-
-  // Cabecera y detalle compactos (una sola línea para la celda)
-  const head = _join([numeroMix, aerolinea, tipo]);
-  const ida  = _join([
-    'Ida:',
-    presIda ? `Pres ${presIda}` : '',
-    salIda  ? `Sal ${salIda}`   : '',
-    arrIda  ? `Arr ${arrIda}`   : '',
-    fechaIda
-  ], ' | ');
-  const vta  = _join([
-    'Vuelta:',
-    presVta ? `Pres ${presVta}` : '',
-    salVta  ? `Sal ${salVta}`   : '',
-    arrVta  ? `Arr ${arrVta}`   : '',
-    fechaVuelta
-  ], ' | ');
-
-  // Resultado final
-  return _join([ head + tramo, ida, vta ], '  ||  ');
-}
-
-/** Lee todos los vuelos y arma un Map: grupoId -> [ {label, v, idDoc} ] */
-// === REEMPLAZO ===
-async function buildIndexVuelosPorGrupo() {
-  IDX_VUELOS_POR_GRUPO.clear();
-
-  const snap = await getDocs(collection(db, 'vuelos'));
-  snap.forEach(ds => {
-    const v = ds.data() || {};
-    if (v.isTransfer) return; // no mezclar transfers en esta columna
-
-    const label = makeVueloLabel(v);
-
-    // A) grupoIds: ["1412-101", ...]
-    const a1 = Array.isArray(v.grupoIds) ? v.grupoIds : [];
-
-    // B) grupos: [{id:"1412-101"}, ...]
-    const a2 = Array.isArray(v.grupos) ? v.grupos.map(x => x && x.id).filter(Boolean) : [];
-
-    const todos = [...new Set([...a1, ...a2])]; // únicos
-
-    todos.forEach(keyRaw => {
-      const key = String(keyRaw || '').trim();
-      if (!key) return;
-      const list = IDX_VUELOS_POR_GRUPO.get(key) || [];
-      list.push({ idDoc: ds.id, label, v });
-      IDX_VUELOS_POR_GRUPO.set(key, list);
-    });
-  });
-}
-
-
-// === REEMPLAZO ===
-function getVuelosLabelForGrupo(grupoKey, fechaISO) {
-  const list = IDX_VUELOS_POR_GRUPO.get(String(grupoKey).trim()) || [];
-  if (!list.length) return '—';
-
-  const sameDay = (d) => {
-    if (!d) return false;
-    // d puede venir como "YYYY-MM-DD" o Date/string
-    const iso = new Date(d).toISOString().slice(0,10);
-    return iso === fechaISO;
-  };
-
-  // prioriza el que calza con la fecha del modal
-  const prefer = list.find(({ v }) =>
-    sameDay(_pick(v, 'fechaIda', /fecha.*ida/i, 'idaFecha')) ||
-    sameDay(_pick(v, 'fechaVuelta', /fecha.*vuel/i, 'vueltaFecha')) ||
-    sameDay(_pick(v, 'fecha', /date/i))
-  );
-
-  if (prefer) return prefer.label;
-
-  // si hay varios, concatenamos
-  return list.map(x => x.label).join(' • ');
-}
-
-
 // ———————————————————————————————
 // 3️⃣ Referencias DOM
 // ———————————————————————————————
@@ -267,353 +435,578 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(au
 // 5️⃣ Init: carga datos y arma tabla
 // —————————————————————————————————————————————————————
 async function init() {
+  const cargaActual = ++idCargaContador;
+
   console.time('CONTADOR carga total');
 
-  limpiarTablaContadorSiExiste();
+  restaurarEstiloProgresoContador();
 
-  const selectorAno = document.getElementById('filtroAnoContador');
-  if (selectorAno) {
-    selectorAno.value = anoContadorActivo;
+  try {
+    limpiarTablaContadorSiExiste();
 
-    selectorAno.onchange = () => {
-      anoContadorActivo = selectorAno.value;
-      init();
-    };
-  }
+    const selectorAno =
+      document.getElementById('filtroAnoContador');
 
-  console.time('1 grupos');
-  const gruposSnap = await getDocs(collection(db, 'grupos'));
-  console.timeEnd('1 grupos');
+    const selectorDestino =
+      document.getElementById('filtroDestino');
 
-  console.time('2 filtrar grupos');
-  const anoComercial = getAnoContadorActivo();
+    if (selectorAno) {
+      selectorAno.value = anoContadorActivo;
 
-  grupos = gruposSnap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(g => String(g.anoViaje || '').trim() === anoComercial);
+      selectorAno.onchange = () => {
+        anoContadorActivo = selectorAno.value;
+        init();
+      };
+    }
 
-  console.log('Año comercial contador:', anoComercial);
-  console.timeEnd('2 filtrar grupos');
+    if (selectorDestino) {
+      selectorDestino.onchange = () => {
+        init();
+      };
+    }
 
-  console.time('3 vuelos');
-  await buildIndexVuelosPorGrupo();
-  console.timeEnd('3 vuelos');
+    const anoComercial =
+      getAnoContadorActivo();
 
-  console.time('4 servicios');
-  const servicios = [];
-  const anoTarifaContador = anoComercial;
-  
-  const destinosServicios = ['BRASIL', 'BARILOCHE', 'SUR DE CHILE', 'NORTE DE CHILE'];
-  
-  // 1) Cargar reservas operacionales desde Servicios, una sola vez por destino
-  const reservasOperacionalesPorDestino = new Map();
-  
-  for (const destino of destinosServicios) {
-    const opSnap = await getDocs(
-      collection(db, 'Servicios', destino, 'Listado')
+    const destinoSeleccionado =
+      selectorDestino?.value || '';
+
+    if (!destinoSeleccionado) {
+      grupos = [];
+      fechasOrdenadas = [];
+
+      actualizarProgresoContador(
+        0,
+        `Año ${anoComercial}: selecciona un destino para cargar la información.`
+      );
+
+      return;
+    }
+
+    actualizarProgresoContador(
+      5,
+      `Preparando año ${anoComercial}...`
     );
-  
-    const mapaDestino = new Map();
-  
-    opSnap.docs.forEach(docSnap => {
-      const data = docSnap.data() || {};
-      mapaDestino.set(docSnap.id, data.reservas || {});
-    });
-  
-    reservasOperacionalesPorDestino.set(destino, mapaDestino);
-  }
-  
-  // 2) Cargar configuración anual desde ServiciosPorAno
-  for (const destino of destinosServicios) {
-    const listadoSnap = await getDocs(
-      collection(db, 'ServiciosPorAno', anoTarifaContador, 'Destinos', destino, 'Listado')
+
+    /*
+     * 1. Grupos del año.
+     * Se consultan tanto el número 2026 como el texto "2026".
+     */
+    actualizarProgresoContador(
+      15,
+      `Cargando grupos del año ${anoComercial}...`
     );
-  
-    const reservasDestino = reservasOperacionalesPorDestino.get(destino) || new Map();
-  
-    listadoSnap.docs.forEach(sDoc => {
-      const data = sDoc.data() || {};
-  
-      const nombreServicio = data.servicio || sDoc.id;
-      const proveedorServicio = data.proveedor || data.Proveedor || '';
-  
-      servicios.push({
-        destino,
-        nombre: nombreServicio,
-        proveedor: proveedorServicio,
-        reservas: reservasDestino.get(nombreServicio) || reservasDestino.get(sDoc.id) || {}
-      });
-    });
-  }
-  
-  console.log('Servicios configuración cargados desde año:', anoTarifaContador);
-  console.log('Reservas operacionales cargadas en bloque desde Servicios');
-  console.timeEnd('4 servicios');
 
-  console.time('5 proveedores');
-  const proveedoresLocal = {};
-  const regionesSnap = await getDocs(collection(db, 'Proveedores'));
+    const gruposAno =
+      await cargarGruposAnoContador(
+        anoComercial
+      );
 
-  for (const regionDoc of regionesSnap.docs) {
-    const listadoSnap = await getDocs(collection(db, 'Proveedores', regionDoc.id, 'Listado'));
+    if (cargaActual !== idCargaContador) return;
 
-    listadoSnap.docs.forEach(pSnap => {
-      const d = pSnap.data();
-
-      if (d.proveedor) {
-        proveedoresLocal[d.proveedor] = {
-          contacto: d.contacto || '',
-          correo: d.correo || ''
-        };
-      }
-    });
-  }
-
-  proveedores = proveedoresLocal;
-  console.timeEnd('5 proveedores');
-
-  console.time('6 fechas');
-  const fechasSet = new Set();
-
-  grupos.forEach(g => {
-    const itin = g.itinerario || {};
-
-    Object.entries(itin).forEach(([fecha, acts]) => {
-      if ((acts || []).some(a => (parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0) > 0)) {
-        fechasSet.add(fecha);
-      }
-    });
-  });
-
-  fechasOrdenadas = Array.from(fechasSet).sort();
-  console.timeEnd('6 fechas');
-
-  // Ordenar primero los servicios.
-  // Esto debe ocurrir ANTES de construir el arreglo de reservas.
-  servicios.sort((a, b) =>
-    `${a.destino} ${a.nombre}`.localeCompare(
-      `${b.destino} ${b.nombre}`,
-      'es',
-      { sensitivity: 'base' }
-    )
-  );
-  
-  console.time('7 reservas');
-  
-  // Ahora las reservas quedan en el mismo orden que los servicios.
-  const todosLosReservas = servicios.map(servicio =>
-    servicio.reservas || {}
-  );
-  
-  console.timeEnd('7 reservas');
-  
-  thead.innerHTML = `
-    <tr>
-      <th class="sticky-col sticky-header">Actividad</th>
-      <th>Destino</th>
-      <th>Proveedor</th>
-      <th>Reserva</th>
-      ${fechasOrdenadas.map(f => `<th data-fecha="${f}">${formatearFechaBonita(f)}</th>`).join('')}
-    </tr>`;
-
-  console.time('9 construir HTML tabla');
-  let rowsHTML = servicios.map((servicio, i) => {
-    const reservas = todosLosReservas[i];
-
-    const fechasConPax = fechasOrdenadas.filter(fecha =>
-      grupos.some(g =>
-        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, servicio.nombre))
+    grupos = gruposAno.filter(grupo =>
+      grupoCoincideDestinoContador(
+        grupo,
+        destinoSeleccionado
       )
     );
 
-    const textoBtn = obtenerTextoBotonReserva(reservas, fechasConPax);
-    const provInfo = proveedores[servicio.proveedor] || {};
-    const proveedorStr = provInfo.contacto ? servicio.proveedor : '-';
+    actualizarProgresoContador(
+      35,
+      destinoSeleccionado === '__TODOS__'
+        ? `Grupos cargados. Cargando todos los destinos...`
+        : `Grupos cargados. Cargando ${destinoSeleccionado}...`
+    );
 
-    let fila = `
+    /*
+     * 2. Servicios y proveedores.
+     * Se ejecutan simultáneamente.
+     */
+    const [
+      serviciosCargados
+    ] = await Promise.all([
+      cargarServiciosContador(
+        anoComercial,
+        destinoSeleccionado
+      ),
+
+      cargarProveedoresContador()
+    ]);
+
+    if (cargaActual !== idCargaContador) return;
+
+    const servicios = serviciosCargados;
+
+    actualizarProgresoContador(
+      60,
+      'Calculando fechas y actividades...'
+    );
+
+    /*
+     * 3. Fechas vigentes según los grupos cargados.
+     */
+    const fechasSet = new Set();
+
+    grupos.forEach(grupo => {
+      const itinerario =
+        grupo.itinerario || {};
+
+      Object.entries(itinerario).forEach(
+        ([fecha, actividades]) => {
+          const tienePax = (actividades || []).some(
+            actividad =>
+              (parseInt(actividad.adultos) || 0) +
+              (parseInt(actividad.estudiantes) || 0) >
+              0
+          );
+
+          if (tienePax) {
+            fechasSet.add(fecha);
+          }
+        }
+      );
+    });
+
+    fechasOrdenadas =
+      Array.from(fechasSet).sort();
+
+    servicios.sort((a, b) =>
+      `${a.destino} ${a.nombre}`.localeCompare(
+        `${b.destino} ${b.nombre}`,
+        'es',
+        { sensitivity: 'base' }
+      )
+    );
+
+    const todosLosReservas =
+      servicios.map(servicio =>
+        servicio.reservas || {}
+      );
+
+    actualizarProgresoContador(
+      75,
+      `Construyendo tabla de ${servicios.length} actividades...`
+    );
+
+    thead.innerHTML = `
       <tr>
-        <td class="sticky-col">${servicio.nombre}</td>
-        <td>${servicio.destino}</td>
-        <td>${proveedorStr}</td>
-        <td>
-          <button class="btn-reserva"
-                  data-destino="${servicio.destino}"
-                  data-actividad="${servicio.nombre}"
-                  data-proveedor="${servicio.proveedor}">
-            ${textoBtn}
-          </button>
-        </td>`;
+        <th class="sticky-col sticky-header">
+          Actividad
+        </th>
+        <th>Destino</th>
+        <th>Proveedor</th>
+        <th>Reserva</th>
+        ${fechasOrdenadas
+          .map(fecha => `
+            <th data-fecha="${fecha}">
+              ${formatearFechaBonita(fecha)}
+            </th>
+          `)
+          .join('')}
+      </tr>
+    `;
 
-    fechasOrdenadas.forEach(fecha => {
-      const totalPax = grupos.reduce((sum, g) => {
-        return sum + (g.itinerario?.[fecha] || [])
-          .filter(a => actividadCoincideReserva(a, servicio.nombre))
-          .reduce((s2, a) => s2 + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
-      }, 0);
+    const rowsHTML = servicios
+      .map((servicio, indice) => {
+        const reservas =
+          todosLosReservas[indice];
 
-      const groupCount = grupos.filter(g =>
-        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, servicio.nombre))
-      ).length;
+        const fechasConPax =
+          fechasOrdenadas.filter(fecha =>
+            grupos.some(grupo =>
+              (grupo.itinerario?.[fecha] || [])
+                .some(actividad =>
+                  actividadCoincideReserva(
+                    actividad,
+                    servicio.nombre
+                  )
+                )
+            )
+          );
 
-      fila += `
-        <td class="celda-interactiva"
-            data-info='${JSON.stringify({ actividad: servicio.nombre, fecha })}'
-            style="cursor:pointer;color:#0055a4;text-decoration:underline;">
-          ${totalPax} (${groupCount})
-        </td>`;
-    });
+        const textoBtn =
+          obtenerTextoBotonReserva(
+            reservas,
+            fechasConPax
+          );
 
-    return fila + '</tr>';
-  }).join('');
+        const claseFila =
+          textoBtn === 'REVISAR CAMBIOS'
+            ? 'fila-revisar-cambios'
+            : '';
 
-  tbody.innerHTML = rowsHTML;
-  console.timeEnd('9 construir HTML tabla');
+        const provInfo =
+          proveedores[servicio.proveedor] || {};
 
-  /*
-   * La tabla se muestra inmediatamente.
-   * La revisión de cambios se ejecuta después, en segundo plano,
-   * para no bloquear la carga de contador.html.
-   */
-  console.time('8 revisar cambios reservas');
-  
-  revisarCambiosReservasEnviadas(
-    servicios,
-    todosLosReservas
-  )
-    .then(() => {
-      actualizarBotonesReservaTabla(
-        servicios,
-        todosLosReservas
-      );
-  
-      console.log(
-        'Revisión de cambios de reservas terminada'
-      );
-    })
-    .catch(error => {
-      console.error(
-        'Error revisando cambios de reservas:',
-        error
-      );
-    })
-    .finally(() => {
-      console.timeEnd('8 revisar cambios reservas');
-    });
-  
-  console.time('10 DataTables');
+        const proveedorStr =
+          provInfo.contacto
+            ? servicio.proveedor
+            : '-';
 
-  tbody.addEventListener('click', e => {
-    if (e.target.matches('.btn-reserva')) {
-      abrirModalReserva({ currentTarget: e.target });
+        let fila = `
+          <tr class="${claseFila}">
+            <td class="sticky-col">
+              ${servicio.nombre}
+            </td>
+
+            <td>
+              ${servicio.destino}
+            </td>
+
+            <td>
+              ${proveedorStr}
+            </td>
+
+            <td>
+              <button
+                class="btn-reserva"
+                data-destino="${servicio.destino}"
+                data-actividad="${servicio.nombre}"
+                data-proveedor="${servicio.proveedor}"
+              >
+                ${textoBtn}
+              </button>
+            </td>
+        `;
+
+        fechasOrdenadas.forEach(fecha => {
+          const totalPax = grupos.reduce(
+            (suma, grupo) => {
+              const actividades =
+                grupo.itinerario?.[fecha] || [];
+
+              const totalActividad =
+                actividades
+                  .filter(actividad =>
+                    actividadCoincideReserva(
+                      actividad,
+                      servicio.nombre
+                    )
+                  )
+                  .reduce(
+                    (subtotal, actividad) =>
+                      subtotal +
+                      (parseInt(actividad.adultos) || 0) +
+                      (parseInt(actividad.estudiantes) || 0),
+                    0
+                  );
+
+              return suma + totalActividad;
+            },
+            0
+          );
+
+          const cantidadGrupos =
+            grupos.filter(grupo =>
+              (grupo.itinerario?.[fecha] || [])
+                .some(actividad =>
+                  actividadCoincideReserva(
+                    actividad,
+                    servicio.nombre
+                  )
+                )
+            ).length;
+
+          fila += `
+            <td
+              class="celda-interactiva"
+              data-info='${JSON.stringify({
+                actividad: servicio.nombre,
+                fecha
+              })}'
+              style="
+                cursor:pointer;
+                color:#0055a4;
+                text-decoration:underline;
+              "
+            >
+              ${totalPax} (${cantidadGrupos})
+            </td>
+          `;
+        });
+
+        return `${fila}</tr>`;
+      })
+      .join('');
+
+    tbody.innerHTML = rowsHTML;
+
+    actualizarProgresoContador(
+      88,
+      'Preparando filtros y tabla...'
+    );
+
+    /*
+     * Se usa onclick para no acumular listeners
+     * cada vez que cambia el año o el destino.
+     */
+    tbody.onclick = event => {
+      if (event.target.matches('.btn-reserva')) {
+        abrirModalReserva({
+          currentTarget: event.target
+        });
+      }
+
+      const celda =
+        event.target.closest('.celda-interactiva');
+
+      if (celda) {
+        const { actividad, fecha } =
+          JSON.parse(celda.dataset.info);
+
+        mostrarGruposCoincidentes(
+          actividad,
+          fecha
+        );
+      }
+    };
+
+    function stripAccents(texto) {
+      return String(texto || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
     }
 
-    const celda = e.target.closest('.celda-interactiva');
+    $.fn.dataTable.ext.type.search.string =
+      data => stripAccents(data);
 
-    if (celda) {
-      const { actividad, fecha } = JSON.parse(celda.dataset.info);
-      mostrarGruposCoincidentes(actividad, fecha);
-    }
-  });
+    const table =
+      $('#tablaConteo').DataTable({
+        scrollX: true,
+        paging: false,
 
-  function stripAccents(s) {
-    return (s || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  }
+        fixedHeader: {
+          header: true,
+          headerOffset: 90
+        },
 
-  $.fn.dataTable.ext.type.search.string = d => stripAccents(d);
+        fixedColumns: {
+          leftColumns: 1
+        },
 
-  const table = $('#tablaConteo').DataTable({
-    scrollX: true,
-    paging: false,
-    fixedHeader: { header: true, headerOffset: 90 },
-    fixedColumns: { leftColumns: 1 },
-    dom: 'Bfrtip',
-    language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    buttons: [
-      { extend: 'colvis', text: 'Ver columnas' },
-      {
-        extend: 'excelHtml5',
-        text: 'Descargar Excel',
-        exportOptions: { columns: ':visible', modifier: { search: 'applied' } }
-      },
-      { text: 'Estadísticas', action: () => abrirModalEstadisticas(table) }
-    ],
-    initComplete: function () {
-      const api = this.api();
+        dom: 'Bfrtip',
 
-      const destinos = new Set(api.column(1).data().toArray());
-      destinos.forEach(d => $('#filtroDestino').append(new Option(d, d)));
+        language: {
+          url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+        },
 
-      $('#buscador').on('keyup', () => {
-        const val = stripAccents($('#buscador').val());
-        const terms = val.split(/[,;]+/).map(t => t.trim()).filter(Boolean);
+        buttons: [
+          {
+            extend: 'colvis',
+            text: 'Ver columnas'
+          },
+          {
+            extend: 'excelHtml5',
+            text: 'Descargar Excel',
+            exportOptions: {
+              columns: ':visible',
+              modifier: {
+                search: 'applied'
+              }
+            }
+          },
+          {
+            text: 'Estadísticas',
+            action: () =>
+              abrirModalEstadisticas(table)
+          }
+        ]
+      });
 
-        if (!terms.length) {
-          api.search('').draw();
+    $('#buscador')
+      .off('.contador')
+      .on('keyup.contador', () => {
+        const valor =
+          stripAccents(
+            $('#buscador').val()
+          );
+
+        const terminos = valor
+          .split(/[,;]+/)
+          .map(item => item.trim())
+          .filter(Boolean);
+
+        if (!terminos.length) {
+          table.search('').draw();
           return;
         }
 
-        const rex = '(' + terms.map(t => t.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')).join('|') + ')';
-        api.search(rex, true, false).draw();
+        const expresion =
+          '(' +
+          terminos
+            .map(termino =>
+              termino.replace(
+                /[-[\]{}()*+?.,\\^$|#\s]/g,
+                '\\$&'
+              )
+            )
+            .join('|') +
+          ')';
+
+        table
+          .search(expresion, true, false)
+          .draw();
       });
 
-      $('#filtroDestino').on('change', () => {
-        const v = $('#filtroDestino').val();
+    /*
+     * Eventos de los modales.
+     */
+    document.getElementById(
+      'btnCerrarReserva'
+    ).onclick = () => {
+      document.getElementById(
+        'modalReserva'
+      ).style.display = 'none';
+    };
 
-        if (!v) {
-          api.column(1).search('').draw();
-        } else {
-          const vEsc = v.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
-          api.column(1).search(`^${vEsc}$`, true, false).draw();
-        }
-      });
+    document.getElementById(
+      'btnGuardarPendiente'
+    ).onclick = guardarPendiente;
+
+    document.getElementById(
+      'btnEnviarReserva'
+    ).onclick = enviarReserva;
+
+    const btnSincronizarPaxReserva =
+      document.getElementById(
+        'btnSincronizarPaxReserva'
+      );
+
+    if (btnSincronizarPaxReserva) {
+      btnSincronizarPaxReserva.onclick =
+        sincronizarPaxReservaManual;
     }
-  });
 
-  document.getElementById('btnCerrarReserva').onclick = () =>
-    document.getElementById('modalReserva').style.display = 'none';
+    document.getElementById(
+      'btnVerificarPaxPagos'
+    ).onclick = verificarPaxReservaConPagos;
 
-  document.getElementById('btnGuardarPendiente').onclick = guardarPendiente;
-  document.getElementById('btnEnviarReserva').onclick = enviarReserva;
+    document.getElementById(
+      'btnCerrarVerificacionPagos'
+    ).onclick = () => {
+      document.getElementById(
+        'modalVerificacionPagos'
+      ).style.display = 'none';
+    };
 
-  const btnSincronizarPaxReserva = document.getElementById('btnSincronizarPaxReserva');
-  if (btnSincronizarPaxReserva) {
-    btnSincronizarPaxReserva.onclick = sincronizarPaxReservaManual;
-  }
+    document.getElementById(
+      'btnCerrarDetalleDiferenciaPagos'
+    ).onclick = () => {
+      document.getElementById(
+        'modalDetalleDiferenciaPagos'
+      ).style.display = 'none';
+    };
 
-  document.getElementById('btnVerificarPaxPagos').onclick = verificarPaxReservaConPagos;
+    document.getElementById(
+      'btnGuardarVerificacionPagos'
+    ).onclick =
+      abrirModalGuardarVerificacionPagos;
 
-  document.getElementById('btnCerrarVerificacionPagos').onclick = () => {
-    document.getElementById('modalVerificacionPagos').style.display = 'none';
-  };
+    document.getElementById(
+      'btnCancelarGuardarVerificacion'
+    ).onclick = () => {
+      document.getElementById(
+        'modalGuardarVerificacionPagos'
+      ).style.display = 'none';
+    };
 
-  document.getElementById('btnCerrarDetalleDiferenciaPagos').onclick = () => {
-    document.getElementById('modalDetalleDiferenciaPagos').style.display = 'none';
-  };
+    document.getElementById(
+      'btnConfirmarGuardarVerificacion'
+    ).onclick =
+      guardarVerificacionPagosEnReserva;
 
-  document.getElementById('btnGuardarVerificacionPagos').onclick = abrirModalGuardarVerificacionPagos;
+    const btnActualizarModal =
+      document.getElementById(
+        'btnActualizarModal'
+      );
 
-  document.getElementById('btnCancelarGuardarVerificacion').onclick = () => {
-    document.getElementById('modalGuardarVerificacionPagos').style.display = 'none';
-  };
+    if (btnActualizarModal) {
+      btnActualizarModal.onclick = () => {
+        const estado =
+          window.__ULTIMO_DETALLE_MODAL__;
 
-  document.getElementById('btnConfirmarGuardarVerificacion').onclick = guardarVerificacionPagosEnReserva;
+        if (estado) {
+          mostrarListaDeGrupos(
+            estado.ids,
+            estado.titulo,
+            estado.dataset
+          );
+        }
+      };
+    }
 
-  const btnAct = document.getElementById('btnActualizarModal');
-  if (btnAct) {
-    btnAct.addEventListener('click', async () => {
-      await buildIndexVuelosPorGrupo();
+    actualizarProgresoContador(
+      100,
+      `Tabla lista: ${servicios.length} actividades. Revisando cambios en segundo plano...`
+    );
 
-      const S = window.__ULTIMO_DETALLE_MODAL__;
-      if (S) {
-        mostrarListaDeGrupos(S.ids, S.titulo, S.dataset);
-      } else if ($.fn.DataTable.isDataTable('#tablaModal')) {
-        $('#tablaModal').DataTable().columns.adjust().draw(false);
+    console.timeEnd('CONTADOR carga total');
+
+    /*
+     * La revisión ocurre después de mostrar la tabla.
+     */
+    revisarCambiosReservasEnviadas(
+      servicios,
+      todosLosReservas,
+      ({ actual, total }) => {
+        if (cargaActual !== idCargaContador) {
+          return;
+        }
+
+        const porcentajeRevision =
+          total > 0
+            ? Math.round(
+                (actual / total) * 100
+              )
+            : 100;
+
+        actualizarProgresoContador(
+          porcentajeRevision,
+          `Revisando reservas: ${actual} de ${total}...`
+        );
       }
-    });
-  }
+    )
+      .then(() => {
+        if (cargaActual !== idCargaContador) {
+          return;
+        }
 
-  console.timeEnd('10 DataTables');
-  console.timeEnd('CONTADOR carga total');
+        actualizarBotonesReservaTabla(
+          servicios,
+          todosLosReservas
+        );
+
+        actualizarProgresoContador(
+          100,
+          'Tabla y revisión de reservas listas.'
+        );
+
+        ocultarProgresoContador(1800);
+      })
+      .catch(error => {
+        console.error(
+          'Error revisando cambios de reservas:',
+          error
+        );
+
+        actualizarProgresoContador(
+          100,
+          'Tabla lista. Algunas reservas no pudieron revisarse.'
+        );
+
+        ocultarProgresoContador(3500);
+      });
+
+  } catch (error) {
+    console.error(
+      'Error cargando contador:',
+      error
+    );
+
+    console.timeEnd('CONTADOR carga total');
+
+    mostrarErrorCargaContador(error);
+  }
 }
 
 // —————————————————————————————————————————————
@@ -1452,6 +1845,11 @@ async function guardarPendiente() {
 
     if (botonTabla) {
       botonTabla.textContent = 'PENDIENTE';
+    
+      botonTabla
+        .closest('tr')
+        ?.classList
+        .remove('fila-revisar-cambios');
     }
 
     document.getElementById('modalReserva').style.display =
@@ -1700,6 +2098,11 @@ async function enviarReserva() {
 
     if (botonTabla) {
       botonTabla.textContent = 'ENVIADA';
+    
+      botonTabla
+        .closest('tr')
+        ?.classList
+        .remove('fila-revisar-cambios');
     }
 
     revisionCambiosReservaActiva = null;
@@ -2103,16 +2506,18 @@ function mostrarListaDeGrupos(ids, titulo, dataset = {}) {
     `${titulo} — Total grupos: ${lista.length} — Total PAX: ${totalPaxSeleccion}`;
 
   // Filas para DataTables (agregamos "Vuelo" SOLO si el contexto es por fecha)
-  const dataRows = (!lista.length)
+  const dataRows = !lista.length
     ? []
-    : lista.map(g => {
-        const pax = paxSegunContexto(g);
-        const base = [g.id, g.nombreGrupo || '', pax, g.programa || ''];
-        if ((dataset.context || '') === 'fecha') {
-          const vuelo = getVuelosLabelForGrupo(g.id, dataset.fecha); // ← usa el índice
-          base.push(vuelo); // 5ª columna
-        }
-        return base;
+    : lista.map(grupo => {
+        const pax =
+          paxSegunContexto(grupo);
+  
+        return [
+          grupo.id,
+          grupo.nombreGrupo || '',
+          pax,
+          grupo.programa || ''
+        ];
       });
 
   renderTablaModal(dataRows);  // DataTables pinta y permite ordenar
@@ -2178,56 +2583,57 @@ function exportarEstadisticasExcel() {
 //     - Soporta orden por click en encabezados.
 // —————————————————————————————————————————————
 function renderTablaModal(dataRows) {
-  const sel = '#tablaModal';
-  const colCount = dataRows[0]?.length || 4;
+  const selector = '#tablaModal';
 
-  const baseCols = [
-    { data: 0, title: 'N° Negocio' },
-    { data: 1, title: 'Nombre Grupo' },
-    { data: 2, title: 'PAX' },
-    { data: 3, title: 'Programa' }
-  ];
-  const columns = (colCount === 5)
-    ? [...baseCols, { data: 4, title: 'Vuelo' }]
-    : baseCols;
-
-  if ($.fn.DataTable.isDataTable(sel)) {
-    const dt = $(sel).DataTable();
-    const currentCols = dt.columns().count();
-    if (currentCols !== colCount) {
-      dt.destroy();
-      $(sel).empty(); // limpia thead/tbody para que DataTables reconstruya los headers
-      $(sel).DataTable({
-        data: dataRows,
-        columns,
-        paging: false,
-        searching: false,
-        info: false,
-        order: [],
-        columnDefs: [
-          { targets: 2, type: 'num' }
-        ],
-        language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' }
-      });
-    } else {
-      dt.clear();
-      dt.rows.add(dataRows);
-      dt.draw();
+  const columns = [
+    {
+      data: 0,
+      title: 'N° Negocio'
+    },
+    {
+      data: 1,
+      title: 'Nombre Grupo'
+    },
+    {
+      data: 2,
+      title: 'PAX'
+    },
+    {
+      data: 3,
+      title: 'Programa'
     }
-  } else {
-    $(sel).DataTable({
-      data: dataRows,
-      columns,
-      paging: false,
-      searching: false,
-      info: false,
-      order: [],
-      columnDefs: [
-        { targets: 2, type: 'num' }
-      ],
-      language: { url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' }
-    });
+  ];
+
+  if ($.fn.DataTable.isDataTable(selector)) {
+    const tabla =
+      $(selector).DataTable();
+
+    tabla.clear();
+    tabla.rows.add(dataRows);
+    tabla.draw();
+
+    return;
   }
+
+  $(selector).DataTable({
+    data: dataRows,
+    columns,
+    paging: false,
+    searching: false,
+    info: false,
+    order: [],
+
+    columnDefs: [
+      {
+        targets: 2,
+        type: 'num'
+      }
+    ],
+
+    language: {
+      url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+    }
+  });
 }
 
 // =====================================================
@@ -2237,22 +2643,26 @@ function actualizarBotonesReservaTabla(
   servicios = [],
   todosLosReservas = []
 ) {
+  const botones = Array.from(
+    document.querySelectorAll('.btn-reserva')
+  );
+
   servicios.forEach((servicio, indice) => {
     const reservas =
       todosLosReservas[indice] || {};
 
-    const fechasConPax = fechasOrdenadas.filter(
-      fecha =>
+    const fechasConPax =
+      fechasOrdenadas.filter(fecha =>
         grupos.some(grupo =>
-          (grupo.itinerario?.[fecha] || []).some(
-            actividad =>
+          (grupo.itinerario?.[fecha] || [])
+            .some(actividad =>
               actividadCoincideReserva(
                 actividad,
                 servicio.nombre
               )
-          )
+            )
         )
-    );
+      );
 
     const texto =
       obtenerTextoBotonReserva(
@@ -2260,19 +2670,36 @@ function actualizarBotonesReservaTabla(
         fechasConPax
       );
 
-    const botones = document.querySelectorAll(
-      '.btn-reserva'
-    );
-
-    const boton = Array.from(botones).find(item =>
+    const boton = botones.find(item =>
       item.dataset.destino === servicio.destino &&
       item.dataset.actividad === servicio.nombre
     );
 
-    if (boton) {
-      boton.textContent = texto;
-    }
+    if (!boton) return;
+
+    boton.textContent = texto;
+
+    const fila =
+      boton.closest('tr');
+
+    if (!fila) return;
+
+    fila.classList.toggle(
+      'fila-revisar-cambios',
+      texto === 'REVISAR CAMBIOS'
+    );
   });
+
+  /*
+   * FixedColumns puede crear copias visuales.
+   * Se fuerza el ajuste para reflejar los cambios.
+   */
+  if ($.fn.DataTable.isDataTable('#tablaConteo')) {
+    $('#tablaConteo')
+      .DataTable()
+      .columns
+      .adjust();
+  }
 }
 
 function obtenerTextoBotonReserva(reservas = {}, fechasConPax = []) {
@@ -2343,7 +2770,8 @@ function obtenerTextoBotonReserva(reservas = {}, fechasConPax = []) {
 
 async function revisarCambiosReservasEnviadas(
   servicios,
-  todosLosReservas
+  todosLosReservas,
+  onProgreso = null
 ) {
   for (let i = 0; i < servicios.length; i++) {
     const servicio = servicios[i];
@@ -2519,6 +2947,14 @@ async function revisarCambiosReservasEnviadas(
           error
         );
       }
+    }
+
+    if (typeof onProgreso === 'function') {
+      onProgreso({
+        actual: i + 1,
+        total: servicios.length,
+        servicio
+      });
     }
   }
 }
