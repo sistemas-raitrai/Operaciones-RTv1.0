@@ -31,19 +31,23 @@
     .dataTables_scrollHeadInner table { width: 100% !important; }
 
     /* Fila que requiere revisión de reserva */
-    #tablaConteo tbody tr.fila-revisar-cambios td {
+    /* Fila que requiere revisión de reserva */
+    #tablaConteo tbody tr.fila-revisar-cambios td,
+    #tablaConteo tbody td.celda-revisar-cambios {
       background-color: #fff3cd !important;
     }
     
-    #tablaConteo tbody tr.fila-revisar-cambios td:first-child {
-      border-left: 5px solid #d79200;
+    #tablaConteo tbody tr.fila-revisar-cambios td:first-child,
+    #tablaConteo tbody td.celda-revisar-cambios:first-child {
+      border-left: 5px solid #d79200 !important;
       font-weight: 700;
     }
     
-    #tablaConteo tbody tr.fila-revisar-cambios .btn-reserva {
-      background: #d79200;
-      color: #fff;
-      border: 1px solid #b87900;
+    #tablaConteo tbody tr.fila-revisar-cambios .btn-reserva,
+    #tablaConteo tbody td.celda-revisar-cambios .btn-reserva {
+      background: #d79200 !important;
+      color: #fff !important;
+      border: 1px solid #b87900 !important;
       font-weight: 700;
     }
   </style>
