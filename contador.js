@@ -436,11 +436,11 @@ document.getElementById('logoutBtn')?.addEventListener('click', () => signOut(au
 // —————————————————————————————————————————————————————
 async function init() {
   const cargaActual = ++idCargaContador;
+  const timerCarga = `CONTADOR carga total ${cargaActual}`;
 
-  console.time('CONTADOR carga total');
+  console.time(timerCarga);
 
   restaurarEstiloProgresoContador();
-
   try {
     limpiarTablaContadorSiExiste();
 
@@ -474,12 +474,13 @@ async function init() {
     if (!destinoSeleccionado) {
       grupos = [];
       fechasOrdenadas = [];
-
+    
       actualizarProgresoContador(
         0,
         `Año ${anoComercial}: selecciona un destino para cargar la información.`
       );
-
+    
+      console.timeEnd(timerCarga);
       return;
     }
 
@@ -502,7 +503,10 @@ async function init() {
         anoComercial
       );
 
-    if (cargaActual !== idCargaContador) return;
+    if (cargaActual !== idCargaContador) {
+      console.timeEnd(timerCarga);
+      return;
+    }
 
     grupos = gruposAno.filter(grupo =>
       grupoCoincideDestinoContador(
@@ -533,7 +537,10 @@ async function init() {
       cargarProveedoresContador()
     ]);
 
-    if (cargaActual !== idCargaContador) return;
+    if (cargaActual !== idCargaContador) {
+      console.timeEnd(timerCarga);
+      return;
+    }
 
     const servicios = serviciosCargados;
 
@@ -940,7 +947,7 @@ async function init() {
       `Tabla lista: ${servicios.length} actividades. Revisando cambios en segundo plano...`
     );
 
-    console.timeEnd('CONTADOR carga total');
+    console.timeEnd(timerCarga);
 
     /*
      * La revisión ocurre después de mostrar la tabla.
@@ -1003,7 +1010,7 @@ async function init() {
       error
     );
 
-    console.timeEnd('CONTADOR carga total');
+    console.timeEnd(timerCarga);
 
     mostrarErrorCargaContador(error);
   }
@@ -2679,27 +2686,25 @@ function actualizarBotonesReservaTabla(
 
     boton.textContent = texto;
 
-    const fila =
-      boton.closest('tr');
+    const fila = boton.closest('tr');
 
     if (!fila) return;
 
+    const requiereRevision =
+      texto === 'REVISAR CAMBIOS';
+    
     fila.classList.toggle(
       'fila-revisar-cambios',
-      texto === 'REVISAR CAMBIOS'
+      requiereRevision
     );
+    
+    fila.querySelectorAll('td').forEach(celda => {
+      celda.classList.toggle(
+        'celda-revisar-cambios',
+        requiereRevision
+      );
+    });
   });
-
-  /*
-   * FixedColumns puede crear copias visuales.
-   * Se fuerza el ajuste para reflejar los cambios.
-   */
-  if ($.fn.DataTable.isDataTable('#tablaConteo')) {
-    $('#tablaConteo')
-      .DataTable()
-      .columns
-      .adjust();
-  }
 }
 
 function obtenerTextoBotonReserva(reservas = {}, fechasConPax = []) {
