@@ -181,6 +181,37 @@ function normalizarDestinoContador(valor = '') {
     .trim();
 }
 
+function obtenerValoresDestinoGrupoContador(grupo = {}) {
+  const valores = [
+    grupo.destino,
+    grupo.destinoViaje,
+    grupo.ciudad,
+    grupo.ciudades,
+    grupo.destinos,
+    grupo.programaDestino
+  ];
+
+  return valores
+    .flatMap(valor => {
+      if (Array.isArray(valor)) {
+        return valor;
+      }
+
+      if (
+        valor &&
+        typeof valor === 'object'
+      ) {
+        return Object.values(valor);
+      }
+
+      return [valor];
+    })
+    .map(valor =>
+      normalizarDestinoContador(valor)
+    )
+    .filter(Boolean);
+}
+
 function grupoCoincideDestinoContador(
   grupo,
   destinoSeleccionado
@@ -192,10 +223,21 @@ function grupoCoincideDestinoContador(
     return true;
   }
 
-  return (
-    normalizarDestinoContador(grupo?.destino) ===
-    normalizarDestinoContador(destinoSeleccionado)
-  );
+  const destinoBuscado =
+    normalizarDestinoContador(
+      destinoSeleccionado
+    );
+
+  const valoresGrupo =
+    obtenerValoresDestinoGrupoContador(grupo);
+
+  return valoresGrupo.some(valor => {
+    return (
+      valor === destinoBuscado ||
+      valor.includes(destinoBuscado) ||
+      destinoBuscado.includes(valor)
+    );
+  });
 }
 
 async function cargarGruposAnoContador(ano) {
@@ -507,13 +549,13 @@ async function init() {
       console.timeEnd(timerCarga);
       return;
     }
-
-    grupos = gruposAno.filter(grupo =>
-      grupoCoincideDestinoContador(
-        grupo,
-        destinoSeleccionado
-      )
-    );
+    
+    /*
+     * Por ahora conservamos todos los grupos del año.
+     * El filtro definitivo se hará después de cargar
+     * los servicios del destino.
+     */
+    grupos = [...gruposAno];
 
     actualizarProgresoContador(
       35,
@@ -543,6 +585,67 @@ async function init() {
     }
 
     const servicios = serviciosCargados;
+
+    /*
+     * Se filtran los grupos después de conocer las actividades
+     * configuradas para el destino.
+     *
+     * 1. Si el grupo tiene destino informado, se usa ese destino.
+     * 2. Si no tiene destino informado, se intenta reconocerlo por
+     *    las actividades que aparecen en su itinerario.
+     */
+    if (destinoSeleccionado !== '__TODOS__') {
+      const actividadesDestino = new Set(
+        servicios.map(servicio =>
+          normalizarActividadReserva(
+            servicio.nombre
+          )
+        )
+      );
+    
+      grupos = gruposAno.filter(grupo => {
+        const valoresDestino =
+          obtenerValoresDestinoGrupoContador(grupo);
+    
+        /*
+         * Si tiene algún campo de destino informado,
+         * debe coincidir con el destino seleccionado.
+         */
+        if (valoresDestino.length) {
+          return grupoCoincideDestinoContador(
+            grupo,
+            destinoSeleccionado
+          );
+        }
+    
+        /*
+         * Si el grupo no tiene destino informado,
+         * buscamos una actividad perteneciente al destino.
+         */
+        return Object.values(
+          grupo.itinerario || {}
+        ).some(actividades =>
+          (actividades || []).some(actividad =>
+            actividadesDestino.has(
+              normalizarActividadReserva(
+                actividad?.actividad
+              )
+            )
+          )
+        );
+      });
+    } else {
+      grupos = [...gruposAno];
+    }
+    
+    console.log(
+      '[CONTADOR] Grupos del año:',
+      gruposAno.length,
+      '| grupos usados para destino:',
+      grupos.length,
+      '| destino:',
+      destinoSeleccionado
+    );
 
     actualizarProgresoContador(
       60,
@@ -2155,26 +2258,85 @@ async function enviarReserva() {
 // 7️⃣ Modal “Detalle de grupos” (click en celda)
 //     → usa el mismo renderer DataTables que el de estadísticas
 // —————————————————————————————————————————————
-function mostrarGruposCoincidentes(actividad, fecha) {
+function mostrarGruposCoincidentes(
+  actividad,
+  fecha
+) {
   const lista = grupos
-    .filter(g => (g.itinerario?.[fecha] || []).some(a => a.actividad === actividad))
-    .map(g => ({ numeroNegocio: g.id, nombreGrupo: g.nombreGrupo, cantidadgrupo: g.cantidadgrupo, programa: g.programa }));
+    .filter(grupo =>
+      (grupo.itinerario?.[fecha] || [])
+        .some(item =>
+          actividadCoincideReserva(
+            item,
+            actividad
+          )
+        )
+    )
+    .map(grupo => {
+      const actividadesFecha =
+        grupo.itinerario?.[fecha] || [];
 
-  const totalGrupos = lista.length;
-  const totalPAX = lista.reduce((sum, g) => sum + (parseInt(g.cantidadgrupo, 10) || 0), 0);
+      const paxActividad =
+        actividadesFecha
+          .filter(item =>
+            actividadCoincideReserva(
+              item,
+              actividad
+            )
+          )
+          .reduce(
+            (total, item) =>
+              total +
+              (parseInt(item.adultos) || 0) +
+              (parseInt(item.estudiantes) || 0),
+            0
+          );
 
-  document.querySelector('#modalDetalle h3').textContent =
+      return {
+        numeroNegocio:
+          grupo.numeroNegocio || grupo.id,
+
+        nombreGrupo:
+          grupo.nombreGrupo || '',
+
+        cantidadgrupo:
+          paxActividad,
+
+        programa:
+          grupo.programa || ''
+      };
+    });
+
+  const totalGrupos =
+    lista.length;
+
+  const totalPAX =
+    lista.reduce(
+      (total, grupo) =>
+        total +
+        Number(grupo.cantidadgrupo || 0),
+      0
+    );
+
+  document.querySelector(
+    '#modalDetalle h3'
+  ).textContent =
     `Detalle de grupos para el día ${formatearFechaBonita(fecha)} — Total PAX: ${totalPAX} — Total Grupos: ${totalGrupos}`;
 
-  // Prepara rows para DataTables
-  const dataRows = (!lista.length)
-    ? []
-    : lista.map(g => [g.numeroNegocio, g.nombreGrupo || '', parseInt(g.cantidadgrupo,10)||0, g.programa || '']);
+  const dataRows = lista.map(grupo => [
+    grupo.numeroNegocio,
+    grupo.nombreGrupo,
+    grupo.cantidadgrupo,
+    grupo.programa
+  ]);
 
-  renderTablaModal(dataRows);            // ← DataTables renderiza/ordena
-  const modalDet = document.getElementById('modalDetalle');
-  modalDet.style.zIndex = '11000';
-  modalDet.style.display = 'block';
+  renderTablaModal(dataRows);
+
+  const modalDetalle =
+    document.getElementById('modalDetalle');
+
+  modalDetalle.style.zIndex = '11000';
+  modalDetalle.style.display = 'block';
 }
 
 // ————————————————————————————————————————
@@ -2215,14 +2377,33 @@ function getContextoVisible(table) {
   };
 }
 
-function sumarPaxDeActividadEnFechas(g, actividad, fechas) {
+function sumarPaxDeActividadEnFechas(
+  grupo,
+  actividad,
+  fechas
+) {
   let total = 0;
-  for (const f of fechas) {
-    const acts = g.itinerario?.[f] || [];
-    total += acts
-      .filter(a => a.actividad === actividad)
-      .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
+
+  for (const fecha of fechas) {
+    const actividades =
+      grupo.itinerario?.[fecha] || [];
+
+    total += actividades
+      .filter(item =>
+        actividadCoincideReserva(
+          item,
+          actividad
+        )
+      )
+      .reduce(
+        (suma, item) =>
+          suma +
+          (parseInt(item.adultos) || 0) +
+          (parseInt(item.estudiantes) || 0),
+        0
+      );
   }
+
   return total;
 }
 
