@@ -2934,6 +2934,10 @@ async function confirmarPagoEjecutado() {
 }
 
 function mostrarConfirmacionAbono(datos = {}) {
+  el('confirmacionIdRegistro').textContent =
+    datos.idRegistro ||
+    '—';
+
   const proveedor =
     datos.tipo === 'hotel'
       ? datos.hotelNombre
