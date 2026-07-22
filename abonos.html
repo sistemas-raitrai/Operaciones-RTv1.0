@@ -1672,9 +1672,29 @@
     
     #abonoModal .archivo-item {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 150px;
+      grid-template-columns:
+        minmax(0, 1fr)
+        150px
+        minmax(120px, 160px);
       gap: .6rem;
       align-items: center;
+    }
+    
+    #abonoModal .archivo-item .numero-documento {
+      width: 100% !important;
+    }
+    
+    #abonoModal .archivo-item .numero-documento-existente {
+      color: #475569;
+      font-size: .76rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    
+    @media (max-width: 700px) {
+      #abonoModal .archivo-item {
+        grid-template-columns: 1fr;
+      }
     }
     
     #abonoModal .archivo-item select {
@@ -2042,6 +2062,7 @@
         <table id="tblAbonos" class="finanzas">
           <thead>
             <tr>
+              <th>ID registro</th>
               <th>Fecha pago</th>
               <th>Tipo</th>
               <th>Proveedor / hotel</th>
@@ -2306,6 +2327,20 @@
           </h3>
 
           <div class="bank-grid">
+            <div class="field">
+              <label for="abIdRegistro">
+                ID registro
+              </label>
+            
+              <input
+                id="abIdRegistro"
+                class="input"
+                type="text"
+                value="Se asignará al guardar"
+                readonly
+              />
+            </div>
+            
             <div class="field">
               <label for="abFechaPago">
                 Fecha del pago
@@ -2750,7 +2785,7 @@
             <label for="pagoTipoDocumento">
               Documento de respaldo
             </label>
-  
+          
             <select id="pagoTipoDocumento">
               <option value="">No adjuntar ahora</option>
               <option value="FACTURA">Factura</option>
@@ -2759,11 +2794,30 @@
               <option value="OTRO">Otro</option>
             </select>
           </div>
-  
+          
+          <div class="field">
+            <label for="pagoNumeroDocumento">
+              Número de documento
+            </label>
+          
+            <input
+              id="pagoNumeroDocumento"
+              type="text"
+              placeholder="Ej.: 1458"
+            />
+          </div>
+          
           <div class="field">
             <label for="pagoArchivo">
               Archivo
             </label>
+          
+            <input
+              id="pagoArchivo"
+              type="file"
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+            />
+          </div>
   
             <input
               id="pagoArchivo"
