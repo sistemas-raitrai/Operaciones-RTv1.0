@@ -964,7 +964,7 @@ function obtenerDestinosFormulario() {
         }
       });
 
-    destinos.add('GENERAL / SIN DESTINO');
+    destinos.add('OTRO');
   }
 
   return [...destinos]
