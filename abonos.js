@@ -9,6 +9,7 @@ import {
   updateDoc,
   addDoc,
   writeBatch,
+  runTransaction,
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
@@ -41,6 +42,7 @@ const RUTA_HOTEL_ABONOS = 'FinanzasHotelesAbonos';
 const RUTA_PROVEEDORES_PAGO = 'ProveedoresPago';
 const RUTA_CONFIG_FINANZAS = 'ConfiguracionFinanzas';
 const DOC_CONFIG_SOLICITUD = 'solicitudPago';
+const RUTA_CONTADORES_ABONOS = 'ContadoresAbonos';
 
 const MONEDAS = ['CLP', 'USD', 'BRL', 'ARS'];
 
@@ -97,8 +99,107 @@ function normalizarMoneda(moneda = 'CLP') {
   return 'CLP';
 }
 
+function obtenerFechaLocalPartes(fecha = new Date()) {
+  const ano = fecha.getFullYear();
+
+  const mes = String(
+    fecha.getMonth() + 1
+  ).padStart(2, '0');
+
+  const dia = String(
+    fecha.getDate()
+  ).padStart(2, '0');
+
+  return {
+    ano,
+    mes,
+    dia,
+
+    fechaISO:
+      `${ano}-${mes}-${dia}`,
+
+    codigoAAMMDD:
+      `${String(ano).slice(-2)}${mes}${dia}`
+  };
+}
+
 function nowISODate() {
-  return new Date().toISOString().slice(0, 10);
+  return obtenerFechaLocalPartes()
+    .fechaISO;
+}
+
+async function reservarIdRegistroAbono() {
+  const fecha =
+    obtenerFechaLocalPartes();
+
+  const refContador = doc(
+    db,
+    RUTA_CONTADORES_ABONOS,
+    fecha.codigoAAMMDD
+  );
+
+  const resultado =
+    await runTransaction(
+      db,
+      async transaction => {
+        const snap =
+          await transaction.get(
+            refContador
+          );
+
+        const ultimoNumero =
+          snap.exists()
+            ? Number(
+                snap.data()?.ultimoNumero ||
+                0
+              )
+            : 0;
+
+        const correlativo =
+          ultimoNumero + 1;
+
+        transaction.set(
+          refContador,
+          {
+            fechaIngresoContable:
+              fecha.fechaISO,
+
+            codigoFecha:
+              fecha.codigoAAMMDD,
+
+            ultimoNumero:
+              correlativo,
+
+            updatedAt:
+              serverTimestamp(),
+
+            updatedByEmail:
+              (
+                auth.currentUser?.email ||
+                ''
+              ).toLowerCase()
+          },
+          {
+            merge: true
+          }
+        );
+
+        return {
+          correlativo,
+
+          idRegistro:
+            `RT${String(correlativo).padStart(3, '0')}-${fecha.codigoAAMMDD}`,
+
+          fechaIngresoContable:
+            fecha.fechaISO,
+
+          fechaIngresoContableCodigo:
+            fecha.codigoAAMMDD
+        };
+      }
+    );
+
+  return resultado;
 }
 
 function getAnoComercialActual() {
@@ -206,7 +307,11 @@ function sincronizarArchivosNuevos() {
 
         tipoDocumento:
           anterior?.tipoDocumento ||
-          'COMPROBANTE'
+          'COMPROBANTE',
+
+        numeroDocumento:
+          anterior?.numeroDocumento ||
+          ''
       };
     });
 }
@@ -227,6 +332,20 @@ function cambiarTipoDocumentoNuevo(
   actualizarEstadoFacturaPorDocumentos();
 }
 
+function cambiarNumeroDocumentoNuevo(
+  index,
+  numeroDocumento
+) {
+  if (!ARCHIVOS_NUEVOS_CONFIG[index]) {
+    return;
+  }
+
+  ARCHIVOS_NUEVOS_CONFIG[index]
+    .numeroDocumento =
+      String(numeroDocumento || '')
+        .trim();
+}
+
 function pintarArchivosFormulario() {
   sincronizarArchivosNuevos();
 
@@ -239,28 +358,45 @@ function pintarArchivosFormulario() {
 
   const existentesHTML =
     ARCHIVOS_ACTUALES.map(
-      (archivo, index) => `
-        <div class="archivo-item">
-          <a
-            href="${escapeHTML(archivo.url || '')}"
-            target="_blank"
-            rel="noopener"
-          >
-            ${escapeHTML(
-              archivo.nombre ||
-              `Archivo ${index + 1}`
-            )}
-          </a>
+      (archivo, index) => {
+        const tipo =
+          normalizarTipoDocumento(
+            archivo.tipoDocumento
+          );
 
-          <strong>
-            ${escapeHTML(
-              normalizarTipoDocumento(
-                archivo.tipoDocumento
-              )
-            )}
-          </strong>
-        </div>
-      `
+        const numero =
+          String(
+            archivo.numeroDocumento ||
+            ''
+          ).trim();
+
+        return `
+          <div class="archivo-item">
+            <a
+              href="${escapeHTML(archivo.url || '')}"
+              target="_blank"
+              rel="noopener"
+            >
+              ${escapeHTML(
+                archivo.nombre ||
+                `Archivo ${index + 1}`
+              )}
+            </a>
+
+            <strong>
+              ${escapeHTML(tipo)}
+            </strong>
+
+            <span class="numero-documento-existente">
+              ${
+                numero
+                  ? `N.º ${escapeHTML(numero)}`
+                  : 'SIN N.º'
+              }
+            </span>
+          </div>
+        `;
+      }
     ).join('');
 
   const nuevosHTML =
@@ -278,7 +414,8 @@ function pintarArchivosFormulario() {
             <option
               value="FACTURA"
               ${
-                config.tipoDocumento === 'FACTURA'
+                config.tipoDocumento ===
+                'FACTURA'
                   ? 'selected'
                   : ''
               }
@@ -289,7 +426,8 @@ function pintarArchivosFormulario() {
             <option
               value="BOLETA"
               ${
-                config.tipoDocumento === 'BOLETA'
+                config.tipoDocumento ===
+                'BOLETA'
                   ? 'selected'
                   : ''
               }
@@ -300,7 +438,8 @@ function pintarArchivosFormulario() {
             <option
               value="COMPROBANTE"
               ${
-                config.tipoDocumento === 'COMPROBANTE'
+                config.tipoDocumento ===
+                'COMPROBANTE'
                   ? 'selected'
                   : ''
               }
@@ -311,7 +450,8 @@ function pintarArchivosFormulario() {
             <option
               value="OTRO"
               ${
-                config.tipoDocumento === 'OTRO'
+                config.tipoDocumento ===
+                'OTRO'
                   ? 'selected'
                   : ''
               }
@@ -319,6 +459,16 @@ function pintarArchivosFormulario() {
               Otro
             </option>
           </select>
+
+          <input
+            class="numero-documento"
+            data-index="${index}"
+            type="text"
+            value="${escapeHTML(
+              config.numeroDocumento || ''
+            )}"
+            placeholder="N.º documento"
+          />
         </div>
       `
     ).join('');
@@ -342,6 +492,24 @@ function pintarArchivosFormulario() {
         'change',
         event => {
           cambiarTipoDocumentoNuevo(
+            Number(
+              event.target.dataset.index
+            ),
+            event.target.value
+          );
+        }
+      );
+    });
+
+  contenedor
+    .querySelectorAll(
+      '.numero-documento'
+    )
+    .forEach(input => {
+      input.addEventListener(
+        'input',
+        event => {
+          cambiarNumeroDocumentoNuevo(
             Number(
               event.target.dataset.index
             ),
@@ -1214,6 +1382,35 @@ function validarFormulario() {
     return 'Debe indicar la forma de pago.';
   }
 
+  sincronizarArchivosNuevos();
+
+  for (
+    const configuracion
+    of ARCHIVOS_NUEVOS_CONFIG
+  ) {
+    const tipo =
+      normalizarTipoDocumento(
+        configuracion.tipoDocumento
+      );
+  
+    const numero =
+      String(
+        configuracion.numeroDocumento ||
+        ''
+      ).trim();
+  
+    if (
+      ['FACTURA', 'BOLETA', 'COMPROBANTE']
+        .includes(tipo) &&
+      !numero
+    ) {
+      return (
+        `Debe indicar el número del documento ` +
+        `${tipo}: ${configuracion.file.name}`
+      );
+    }
+  }
+
   if (
     abonoEditandoId &&
     !el('abMotivoCambio').value.trim()
@@ -1399,6 +1596,12 @@ async function subirArchivosAbono(
         configuracion.tipoDocumento
       );
 
+    const numeroDocumento =
+      String(
+        configuracion.numeroDocumento ||
+        ''
+      ).trim();
+
     const nombreSeguro =
       file.name.replace(
         /[^\w.\-]+/g,
@@ -1423,6 +1626,7 @@ async function subirArchivosAbono(
       nombreStorage: nombreSeguro,
 
       tipoDocumento,
+      numeroDocumento,
 
       url,
 
@@ -1459,6 +1663,20 @@ function datosParaEspejo(
 
   const datosBase = {
     abonoOperacionId: abonoId,
+  
+    idRegistro:
+      datos.idRegistro || '',
+  
+    correlativoRegistro:
+      Number(
+        datos.correlativoRegistro || 0
+      ),
+  
+    fechaIngresoContable:
+      datos.fechaIngresoContable || '',
+  
+    fechaIngresoContableCodigo:
+      datos.fechaIngresoContableCodigo || '',
 
     fecha: datos.fechaPago,
     fechaPago: datos.fechaPago,
@@ -2448,7 +2666,10 @@ function abrirConfirmarPago() {
 
   el('pagoTipoDocumento').value =
     '';
-
+  
+  el('pagoNumeroDocumento').value =
+    '';
+  
   el('pagoArchivo').value =
     '';
 
@@ -2477,7 +2698,12 @@ async function confirmarPagoEjecutado() {
 
   const tipoDocumento =
     el('pagoTipoDocumento').value;
-
+  
+  const numeroDocumento =
+    el('pagoNumeroDocumento')
+      .value
+      .trim();
+  
   const file =
     el('pagoArchivo').files[0] ||
     null;
@@ -2501,6 +2727,23 @@ async function confirmarPagoEjecutado() {
       'Debe indicar qué tipo de documento está adjuntando.'
     );
 
+    return;
+  }
+  
+  if (
+    file &&
+    ['FACTURA', 'BOLETA', 'COMPROBANTE']
+      .includes(
+        normalizarTipoDocumento(
+          tipoDocumento
+        )
+      ) &&
+    !numeroDocumento
+  ) {
+    alert(
+      'Debe indicar el número del documento.'
+    );
+  
     return;
   }
 
@@ -2564,7 +2807,8 @@ async function confirmarPagoEjecutado() {
           [
             {
               file,
-              tipoDocumento
+              tipoDocumento,
+              numeroDocumento
             }
           ],
           actual,
@@ -2771,15 +3015,26 @@ async function guardarAbono({
     let documentoFinal = null;
 
     if (!abonoId) {
+      setEstadoFormulario(
+        'Asignando ID de registro...'
+      );
+    
+      const datosRegistro =
+        await reservarIdRegistroAbono();
+    
       const refCentral = doc(
         collection(
           db,
           RUTA_ABONOS
         )
       );
-
+    
       abonoId = refCentral.id;
-
+    
+      setEstadoFormulario(
+        `Subiendo documentos · ${datosRegistro.idRegistro}...`
+      );
+    
       const archivos =
         await subirArchivosAbono(
           ARCHIVOS_NUEVOS_CONFIG,
@@ -2790,7 +3045,19 @@ async function guardarAbono({
 
       const documento = {
         ...datos,
-
+      
+        idRegistro:
+          datosRegistro.idRegistro,
+      
+        correlativoRegistro:
+          datosRegistro.correlativo,
+      
+        fechaIngresoContable:
+          datosRegistro.fechaIngresoContable,
+      
+        fechaIngresoContableCodigo:
+          datosRegistro.fechaIngresoContableCodigo,
+      
         archivos,
 
         comprobanteURL:
@@ -3110,6 +3377,8 @@ function limpiarFormulario() {
     el('abAno').value = anoComercial;
   }
 
+  el('abIdRegistro').value =
+    'Se asignará al guardar';
   el('abFechaPago').value = nowISODate();
   el('abMoneda').value = 'CLP';
   el('abMonto').value = '';
@@ -3296,6 +3565,10 @@ function iniciarEdicion(abono) {
 
   actualizarVistaTipo();
 
+  el('abIdRegistro').value =
+    abono.idRegistro ||
+    'SIN ID REGISTRO';
+  
   el('abFechaPago').value =
     abono.fechaPago ||
     abono.fecha ||
@@ -3477,6 +3750,22 @@ async function mostrarHistorial(abono) {
         </div>
     
         <div class="history-grid">
+          <div>
+            <span>ID registro</span>
+            ${escapeHTML(
+              abono.idRegistro ||
+              'SIN ID'
+            )}
+          </div>
+          
+          <div>
+            <span>Fecha ingreso contable</span>
+            ${escapeHTML(
+              abono.fechaIngresoContable ||
+              '—'
+            )}
+          </div>
+          
           <div>
             <span>Fecha pago</span>
             ${escapeHTML(
@@ -3908,14 +4197,30 @@ function renderAbonos() {
                       rel="noopener"
                       title="${escapeHTML(
                         lista
-                          .map(item => item.nombre)
+                          .map(item => {
+                            const numero =
+                              item.numeroDocumento
+                                ? ` N.º ${item.numeroDocumento}`
+                                : ' SIN N.º';
+                          
+                            return `${item.nombre}${numero}`;
+                          })
                           .join(' · ')
                       )}"
                     >
                       ${escapeHTML(tipo)}
+                      
+                      ${
+                        lista[0]?.numeroDocumento
+                          ? ` N.º ${escapeHTML(
+                              lista[0].numeroDocumento
+                            )}`
+                          : ' · SIN N.º'
+                      }
+                      
                       ${
                         lista.length > 1
-                          ? ` (${lista.length})`
+                          ? ` (+${lista.length - 1})`
                           : ''
                       }
                     </a>
@@ -3990,6 +4295,13 @@ function renderAbonos() {
       document.createElement('tr');
 
     tr.innerHTML = `
+      <td>
+        ${escapeHTML(
+          abono.idRegistro ||
+          'SIN ID'
+        )}
+      </td>
+    
       <td>
         ${escapeHTML(
           abono.fechaPago ||
@@ -4235,6 +4547,12 @@ function exportarAbonosExcel() {
         : abono.proveedorNombre || '';
 
     return {
+      'ID registro':
+        abono.idRegistro || '',
+      
+      'Fecha ingreso contable':
+        abono.fechaIngresoContable || '',
+      
       'Fecha pago':
         abono.fechaPago ||
         abono.fecha ||
@@ -4276,6 +4594,22 @@ function exportarAbonosExcel() {
       'Documentos':
         obtenerArchivosAbono(abono)
           .map(archivo => archivo.url)
+          .join(' | '),
+      
+      'Números de documentos':
+        obtenerArchivosAbono(abono)
+          .map(archivo => {
+            const tipo =
+              normalizarTipoDocumento(
+                archivo.tipoDocumento
+              );
+      
+            const numero =
+              archivo.numeroDocumento ||
+              'SIN N.º';
+      
+            return `${tipo}: ${numero}`;
+          })
           .join(' | '),
       
       'Estado factura':
