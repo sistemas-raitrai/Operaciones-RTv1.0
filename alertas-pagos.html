@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alertas de pagos | Sistema Ventas RT</title>
+
+  <link rel="stylesheet" href="estilos.css" />
+  <link rel="icon" type="image/png" href="IMG/logo-raitrai.png" />
+
+  <style>
+    body[data-page="alertas-pagos"]{
+      background:#f5f3f8;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-main{
+      width:min(1500px, calc(100% - 28px));
+      margin:26px auto 44px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-shell{
+      background:rgba(255,255,255,.9);
+      border:1px solid rgba(49,25,75,.10);
+      border-radius:28px;
+      box-shadow:0 18px 50px rgba(35,18,56,.10);
+      padding:24px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:18px;
+      margin-bottom:18px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-title{
+      margin:0;
+      color:#26133d;
+      font-size:26px;
+      font-weight:900;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-subtitle{
+      margin:6px 0 0;
+      color:#766b84;
+      font-size:14px;
+      line-height:1.45;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-actions{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-btn{
+      border:0;
+      border-radius:999px;
+      padding:10px 15px;
+      background:#32184f;
+      color:#fff;
+      font-weight:900;
+      text-decoration:none;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-btn.is-soft{
+      background:#ebe5f4;
+      color:#351a55;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-btn.is-green{
+      background:#1f7a3b;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-card{
+      background:#fff;
+      border:1px solid rgba(49,25,75,.10);
+      border-radius:22px;
+      padding:18px;
+      box-shadow:0 10px 28px rgba(35,18,56,.05);
+    }
+
+    body[data-page="alertas-pagos"] .pagos-loading{
+      padding:22px;
+      text-align:center;
+      color:#766b84;
+      font-weight:800;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-filter-grid{
+      display:grid;
+      grid-template-columns:minmax(90px,120px) minmax(180px,1.3fr) minmax(130px,.85fr) minmax(140px,.95fr) minmax(150px,.95fr);
+      gap:10px;
+      margin-bottom:10px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-control{
+      width:100%;
+      min-width:0;
+      min-height:40px;
+      padding:9px 12px;
+      border:1px solid rgba(49,25,75,.22);
+      border-radius:14px;
+      background:#fff;
+      color:#32184f;
+      font-size:13px;
+      font-weight:700;
+      outline:none;
+      box-sizing:border-box;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chips{
+      display:grid;
+      gap:12px;
+      margin:16px 0;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip-box{
+      padding:12px 14px;
+      border-radius:16px;
+      background:#fbf9fd;
+      border:1px solid rgba(49,25,75,.10);
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip-box.is-group{
+      background:#f7f1fb;
+      border-color:rgba(109,74,146,.18);
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip-title{
+      margin-bottom:9px;
+      color:#32184f;
+      font-size:12px;
+      font-weight:900;
+      text-transform:uppercase;
+      letter-spacing:.35px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip-list{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip{
+      border:1px solid rgba(49,25,75,.18);
+      background:#fff;
+      color:#654d78;
+      border-radius:999px;
+      padding:8px 12px;
+      font-weight:900;
+      cursor:pointer;
+      font-size:12px;
+      white-space:nowrap;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip.is-group{
+      background:#f6f0fb;
+      color:#694583;
+      border-color:rgba(109,74,146,.28);
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip.is-active{
+      background:#eadff7;
+      color:#32184f;
+      border:2px solid #32184f;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-chip.is-group.is-active{
+      background:#e4d3f1;
+      color:#4d216e;
+      border-color:#6d4a92;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-summary{
+      display:grid;
+      grid-template-columns:repeat(4,minmax(120px,1fr));
+      gap:10px;
+      margin:14px 0;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-summary-card{
+      padding:12px;
+      border-radius:14px;
+      background:#faf8fd;
+      border:1px solid rgba(49,25,75,.10);
+    }
+
+    body[data-page="alertas-pagos"] .pagos-summary-card.is-green{
+      background:#eef8ef;
+      border-color:#b9dfc0;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-summary-card strong{
+      font-size:20px;
+      color:#26133d;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-summary-card.is-green strong,
+    body[data-page="alertas-pagos"] .pagos-summary-card.is-green span{
+      color:#1d6a2b;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-summary-card span{
+      font-size:12px;
+      color:#766b84;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-table-wrap{
+      overflow:auto;
+      border:1px solid rgba(49,25,75,.10);
+      border-radius:16px;
+      max-height:68vh;
+    }
+
+    body[data-page="alertas-pagos"] table{
+      width:100%;
+      border-collapse:collapse;
+      font-size:12px;
+      min-width:1450px;
+    }
+
+    body[data-page="alertas-pagos"] thead{
+      background:#32184f;
+      color:#fff;
+      position:sticky;
+      top:0;
+      z-index:2;
+    }
+
+    body[data-page="alertas-pagos"] th,
+    body[data-page="alertas-pagos"] td{
+      padding:9px 10px;
+      text-align:left;
+      border-bottom:1px solid rgba(49,25,75,.08);
+      vertical-align:top;
+    }
+
+    body[data-page="alertas-pagos"] th[data-sort]{
+      cursor:pointer;
+      user-select:none;
+      white-space:nowrap;
+    }
+
+    body[data-page="alertas-pagos"] tbody tr{
+      cursor:pointer;
+      background:#fff;
+    }
+
+    body[data-page="alertas-pagos"] tbody tr:hover{
+      background:#faf8fd;
+    }
+
+    body[data-page="alertas-pagos"] tbody tr.is-contacted{
+      background:#eef8ef;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-empty{
+      padding:20px;
+      border-radius:16px;
+      background:#faf8fd;
+      color:#766b84;
+      text-align:center;
+      font-weight:800;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-dialog{
+      width:min(1180px, calc(100vw - 20px));
+      max-width:none;
+      max-height:94vh;
+      border:0;
+      border-radius:24px;
+      padding:0;
+      overflow:hidden;
+      box-shadow:0 24px 64px rgba(24,16,36,.28);
+    }
+
+    body[data-page="alertas-pagos"] .pagos-dialog::backdrop{
+      background:rgba(22,10,34,.42);
+      backdrop-filter:blur(4px);
+    }
+
+    body[data-page="alertas-pagos"] .pagos-dialog-head{
+      padding:20px 22px 16px;
+      border-bottom:1px solid rgba(60,40,90,.10);
+      display:flex;
+      justify-content:space-between;
+      gap:16px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-dialog-head h3{
+      margin:0;
+      color:#26133d;
+      font-size:22px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-dialog-head p{
+      margin:6px 0 0;
+      color:#766b84;
+      font-size:14px;
+    }
+
+    body[data-page="alertas-pagos"] .pagos-dialog-body{
+      padding:18px 22px 22px;
+      max-height:calc(94vh - 92px);
+      overflow:auto;
+    }
+
+    body[data-page="alertas-pagos"] .detalle-grid{
+      display:grid;
+      grid-template-columns:minmax(0,1fr) auto;
+      gap:16px;
+      align-items:start;
+    }
+
+    body[data-page="alertas-pagos"] .detalle-actions{
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+
+    @media (max-width:1000px){
+      body[data-page="alertas-pagos"] .pagos-filter-grid{
+        grid-template-columns:1fr 1fr;
+      }
+
+      body[data-page="alertas-pagos"] .pagos-summary{
+        grid-template-columns:1fr 1fr;
+      }
+
+      body[data-page="alertas-pagos"] .detalle-grid{
+        grid-template-columns:1fr;
+      }
+
+      body[data-page="alertas-pagos"] .detalle-actions{
+        flex-direction:row;
+        flex-wrap:wrap;
+      }
+    }
+
+    @media (max-width:650px){
+      body[data-page="alertas-pagos"] .pagos-main{
+        width:min(100% - 14px, 1500px);
+        margin-top:12px;
+      }
+
+      body[data-page="alertas-pagos"] .pagos-shell{
+        padding:14px;
+        border-radius:20px;
+      }
+
+      body[data-page="alertas-pagos"] .pagos-top{
+        flex-direction:column;
+      }
+
+      body[data-page="alertas-pagos"] .pagos-filter-grid,
+      body[data-page="alertas-pagos"] .pagos-summary{
+        grid-template-columns:1fr;
+      }
+    }
+  </style>
+</head>
+
+<body class="ventas-body" data-page="alertas-pagos">
+  <div id="layout-top"></div>
+
+  <main class="pagos-main">
+    <section class="pagos-shell">
+      <div class="pagos-top">
+        <div>
+          <h1 class="pagos-title">Alertas de pagos</h1>
+          <p class="pagos-subtitle">
+            Alertas generadas desde el Sistema de Pagos y ordenadas por fecha de viaje confirmada.
+          </p>
+          <p class="pagos-subtitle" id="alertas-pagos-actualizado">
+            Última actualización: cargando...
+          </p>
+        </div>
+
+        <div class="pagos-actions">
+          <a href="home.html" class="pagos-btn is-soft">Volver al inicio</a>
+          <button type="button" id="btn-exportar-alertas" class="pagos-btn">Exportar XLSX</button>
+        </div>
+      </div>
+
+      <div class="pagos-card">
+        <div id="alertas-pagos-loading" class="pagos-loading">
+          Cargando alertas de pagos...
+        </div>
+
+        <div id="alertas-pagos-app" hidden>
+          <div class="pagos-filter-grid">
+            <select id="filtro-alerta-pago-ano" class="pagos-control"></select>
+            <select id="filtro-alerta-pago-vendedor" class="pagos-control"></select>
+            <select id="filtro-alerta-pago-moneda" class="pagos-control"></select>
+            <select id="filtro-alerta-pago-destino" class="pagos-control"></select>
+            <select id="filtro-alerta-pago-prioridad" class="pagos-control">
+              <option value="">Todas las prioridades</option>
+              <option value="critica">Crítica</option>
+              <option value="alta">Alta</option>
+              <option value="media">Media</option>
+              <option value="baja">Baja</option>
+            </select>
+          </div>
+
+          <input
+            id="filtro-alerta-pago-buscar"
+            class="pagos-control"
+            type="search"
+            placeholder="Buscar participante, responsable, grupo, correo, RUT o vendedor..."
+          />
+
+          <div id="chips-alertas-pagos" class="pagos-chips"></div>
+          <div id="resumen-alertas-pagos" class="pagos-summary"></div>
+          <div id="contenedor-alertas-pagos-listado"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="modal-detalle-alerta-pago" class="pagos-dialog">
+    <div class="pagos-dialog-head">
+      <div>
+        <h3 id="modal-alerta-pago-titulo">Detalle</h3>
+        <p id="modal-alerta-pago-subtitulo"></p>
+      </div>
+
+      <button type="button" id="btn-cerrar-alerta-pago" class="pagos-btn is-soft">
+        Cerrar
+      </button>
+    </div>
+
+    <div class="pagos-dialog-body">
+      <div id="modal-alerta-pago-contenido"></div>
+    </div>
+  </dialog>
+
+  <script type="module" src="layout.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script type="module" src="alertas-pagos.js"></script>
+</body>
+</html>
