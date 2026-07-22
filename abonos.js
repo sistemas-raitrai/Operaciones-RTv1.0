@@ -5691,6 +5691,287 @@ repararAuditoriaAbonos({ confirmar: true })
   }
 };
 
+window.migrarIdsRegistroAbonos = async function ({
+  confirmar = false
+} = {}) {
+  if (!confirmar) {
+    console.warn(`
+Esta función asignará ID registro a los abonos antiguos
+que todavía no lo tengan.
+
+Para ejecutarla realmente usa:
+
+migrarIdsRegistroAbonos({ confirmar: true })
+    `);
+
+    return;
+  }
+
+  const obtenerFechaDocumento = abono => {
+    const valor =
+      abono.createdAt ||
+      abono.fechaRegistro ||
+      null;
+
+    if (!valor) {
+      return null;
+    }
+
+    try {
+      const fecha =
+        typeof valor.toDate === 'function'
+          ? valor.toDate()
+          : new Date(valor);
+
+      if (
+        Number.isNaN(fecha.getTime())
+      ) {
+        return null;
+      }
+
+      return fecha;
+
+    } catch (_) {
+      return null;
+    }
+  };
+
+  try {
+    const email =
+      (
+        auth.currentUser?.email ||
+        ''
+      ).toLowerCase();
+
+    const snap =
+      await getDocs(
+        collection(
+          db,
+          RUTA_ABONOS
+        )
+      );
+
+    const documentos =
+      snap.docs
+        .map(documento => ({
+          ref: documento.ref,
+          id: documento.id,
+          ...documento.data()
+        }))
+        .sort((a, b) => {
+          const fechaA =
+            obtenerFechaDocumento(a)
+              ?.getTime() || 0;
+
+          const fechaB =
+            obtenerFechaDocumento(b)
+              ?.getTime() || 0;
+
+          return fechaA - fechaB;
+        });
+
+    const maximosPorFecha =
+      new Map();
+
+    /*
+     * Primero detectamos IDs que ya existen.
+     */
+    for (const abono of documentos) {
+      const coincidencia =
+        String(
+          abono.idRegistro || ''
+        ).match(
+          /^RT(\d+)-(\d{6})$/
+        );
+
+      if (!coincidencia) {
+        continue;
+      }
+
+      const numero =
+        Number(coincidencia[1]);
+
+      const codigoFecha =
+        coincidencia[2];
+
+      maximosPorFecha.set(
+        codigoFecha,
+        Math.max(
+          maximosPorFecha.get(
+            codigoFecha
+          ) || 0,
+          numero
+        )
+      );
+    }
+
+    let revisados = 0;
+    let actualizados = 0;
+    let sinFecha = 0;
+    let yaTenianId = 0;
+    let errores = 0;
+
+    for (const abono of documentos) {
+      revisados++;
+
+      if (abono.idRegistro) {
+        yaTenianId++;
+        continue;
+      }
+
+      const fecha =
+        obtenerFechaDocumento(abono);
+
+      if (!fecha) {
+        sinFecha++;
+
+        console.warn(
+          `⚠️ ${abono.id}: no tiene fecha recuperable`
+        );
+
+        continue;
+      }
+
+      const partes =
+        obtenerFechaLocalPartes(fecha);
+
+      const ultimo =
+        maximosPorFecha.get(
+          partes.codigoAAMMDD
+        ) || 0;
+
+      const correlativo =
+        ultimo + 1;
+
+      const idRegistro =
+        `RT${String(correlativo).padStart(3, '0')}-${partes.codigoAAMMDD}`;
+
+      try {
+        await updateDoc(
+          abono.ref,
+          {
+            idRegistro,
+
+            correlativoRegistro:
+              correlativo,
+
+            fechaIngresoContable:
+              partes.fechaISO,
+
+            fechaIngresoContableCodigo:
+              partes.codigoAAMMDD,
+
+            idRegistroMigradoAt:
+              serverTimestamp(),
+
+            idRegistroMigradoByEmail:
+              email
+          }
+        );
+
+        maximosPorFecha.set(
+          partes.codigoAAMMDD,
+          correlativo
+        );
+
+        actualizados++;
+
+        console.log(
+          `✅ ${abono.id} → ${idRegistro}`
+        );
+
+      } catch (error) {
+        errores++;
+
+        console.error(
+          `❌ ${abono.id}`,
+          error
+        );
+      }
+    }
+
+    /*
+     * Dejamos sincronizado el contador de cada fecha
+     * para evitar que un nuevo abono repita un ID.
+     */
+    for (
+      const [
+        codigoFecha,
+        ultimoNumero
+      ]
+      of maximosPorFecha.entries()
+    ) {
+      const ano =
+        Number(
+          `20${codigoFecha.slice(0, 2)}`
+        );
+
+      const mes =
+        codigoFecha.slice(2, 4);
+
+      const dia =
+        codigoFecha.slice(4, 6);
+
+      await setDoc(
+        doc(
+          db,
+          RUTA_CONTADORES_ABONOS,
+          codigoFecha
+        ),
+        {
+          codigoFecha,
+
+          fechaIngresoContable:
+            `${ano}-${mes}-${dia}`,
+
+          ultimoNumero,
+
+          updatedAt:
+            serverTimestamp(),
+
+          updatedByEmail:
+            email
+        },
+        {
+          merge: true
+        }
+      );
+    }
+
+    console.table({
+      revisados,
+      actualizados,
+      yaTenianId,
+      sinFecha,
+      errores
+    });
+
+    await cargarAbonos();
+    renderAbonos();
+
+    alert(
+      `Migración de ID terminada.\n\n` +
+      `Revisados: ${revisados}\n` +
+      `Actualizados: ${actualizados}\n` +
+      `Ya tenían ID: ${yaTenianId}\n` +
+      `Sin fecha recuperable: ${sinFecha}\n` +
+      `Errores: ${errores}`
+    );
+
+  } catch (error) {
+    console.error(
+      'Error migrando ID registro:',
+      error
+    );
+
+    alert(
+      `No se pudo ejecutar la migración: ${
+        error.message || error
+      }`
+    );
+  }
+};
+
 async function inicializar() {
   if (ES_VISTA_MOVIL) {
     await inicializarMovil();
