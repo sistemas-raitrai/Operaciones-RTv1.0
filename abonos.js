@@ -3382,7 +3382,7 @@ function limpiarFormulario() {
   }
 
   el('abIdRegistro').value =
-    'Se asignará al guardar';
+    '---';
   el('abFechaPago').value = nowISODate();
   el('abMoneda').value = 'CLP';
   el('abMonto').value = '';
