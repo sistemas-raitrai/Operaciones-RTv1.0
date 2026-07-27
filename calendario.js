@@ -2140,6 +2140,10 @@ function registrarEventosEdicion(
             editMode
               ? '🔒 Desactivar Edición'
               : '🔓 Activar Edición'
+          )
+          .toggleClass(
+            'activo',
+            editMode
           );
 
         $('#tablaCalendario tbody td')
