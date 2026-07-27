@@ -1,146 +1,593 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
   <title>Calendario de Actividades</title>
-  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" />
-  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css"/>
-  <link rel="stylesheet" href="https://cdn.datatables.net/fixedcolumns/4.2.2/css/fixedColumns.dataTables.min.css"/>
-  <link rel="stylesheet" href="estilos.css" />
-  <link rel="icon" type="image/png" href="Logo Raitrai.png" />
+
+  <!-- DataTables -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
+  />
+
+  <!-- Botones DataTables -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css"
+  />
+
+  <!-- Fixed Header -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css"
+  />
+
+  <!-- Estilos generales Rai Trai -->
+  <link
+    rel="stylesheet"
+    href="estilos.css"
+  />
+
+  <link
+    rel="icon"
+    type="image/png"
+    href="Logo Raitrai.png"
+  />
+
+  <style>
+    /* ==================================================
+       CONTENEDOR DE CARGA
+    ================================================== */
+
+    .load-box {
+      margin: 12px 0 18px;
+      padding: 12px 14px;
+      border: 1px solid #d7dbe3;
+      border-radius: 8px;
+      background: #f8fafc;
+      max-width: 720px;
+    }
+
+    #loadTitle {
+      margin-bottom: 4px;
+      font-weight: 700;
+    }
+
+    #loadDetail {
+      margin-bottom: 8px;
+      color: #555;
+      font-size: 13px;
+    }
+
+    .load-track {
+      width: 100%;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5e7eb;
+    }
+
+    .load-progress {
+      width: 0%;
+      height: 100%;
+      background: #005baa;
+      transition: width 0.25s ease;
+    }
+
+    .load-box.ok .load-progress {
+      background: #16a34a;
+    }
+
+    .load-box.error .load-progress {
+      background: #dc2626;
+    }
+
+
+    /* ==================================================
+       INFORMACIÓN DEL RESUMEN
+    ================================================== */
+
+    .calendar-source-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -6px 0 14px;
+      color: #64748b;
+      font-size: 13px;
+    }
+
+    .calendar-source-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #16a34a;
+    }
+
+
+    /* ==================================================
+       TOOLBAR
+    ================================================== */
+
+    #toolbar .row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #toolbar input,
+    #toolbar select,
+    #toolbar button {
+      min-height: 38px;
+    }
+
+    #buscador {
+      width: 100%;
+      min-width: 230px;
+    }
+
+    #filtroDestino,
+    #filtroAno,
+    #filtroFechaDesde {
+      min-width: 150px;
+    }
+
+    #btn-toggle-edit.activo {
+      color: #fff;
+      border-color: #b45309;
+      background: #d97706;
+    }
+
+
+    /* ==================================================
+       TABLA CALENDARIO
+    ================================================== */
+
+    .tabla-calendario-wrapper {
+      width: 100%;
+      margin-top: 16px;
+      overflow-x: auto;
+      overflow-y: visible;
+    }
+
+    #tablaCalendario {
+      width: 100% !important;
+      min-width: 1500px;
+    }
+
+    #tablaCalendario th,
+    #tablaCalendario td {
+      vertical-align: top;
+    }
+
+    #tablaCalendario td {
+      white-space: pre-line;
+    }
+
+    #tablaCalendario td[data-fecha] {
+      min-width: 165px;
+      line-height: 1.35;
+    }
+
+    #tablaCalendario td[contenteditable="true"] {
+      cursor: text;
+      outline: 2px dashed #f59e0b;
+      outline-offset: -3px;
+      background: #fffbea;
+    }
+
+    #tablaCalendario td.guardando {
+      opacity: 0.6;
+      background: #fef3c7 !important;
+    }
+
+    #tablaCalendario td.guardado {
+      background: #dcfce7 !important;
+    }
+
+    #tablaCalendario td.error-guardado {
+      background: #fee2e2 !important;
+    }
+
+    #tablaCalendario .domingo {
+      background: #f8fafc;
+    }
+
+    #tablaCalendario .inicio-fin {
+      background: #eff6ff;
+    }
+
+
+    /* ==================================================
+       MODAL HISTORIAL
+    ================================================== */
+
+    #modalHistorial {
+      position: fixed;
+      z-index: 9999;
+      top: 5%;
+      right: 4%;
+      bottom: 5%;
+      left: 4%;
+      overflow: auto;
+      padding: 22px;
+      border: 1px solid #cbd5e1;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow:
+        0 24px 60px rgba(15, 23, 42, 0.25);
+    }
+
+    .historial-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .historial-toolbar input,
+    .historial-toolbar button {
+      min-height: 38px;
+    }
+
+
+    /* ==================================================
+       RESPONSIVE
+    ================================================== */
+
+    @media (max-width: 900px) {
+      #toolbar .column {
+        width: 100%;
+      }
+
+      #toolbar input,
+      #toolbar select,
+      #toolbar button {
+        width: 100%;
+      }
+
+      #modalHistorial {
+        top: 2%;
+        right: 2%;
+        bottom: 2%;
+        left: 2%;
+        padding: 14px;
+      }
+    }
+  </style>
 </head>
-<style>
-.load-box {
-  margin: 12px 0 18px;
-  padding: 12px 14px;
-  border: 1px solid #d7dbe3;
-  border-radius: 8px;
-  background: #f8fafc;
-  max-width: 720px;
-}
 
-#loadTitle {
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-
-#loadDetail {
-  font-size: 13px;
-  color: #555;
-  margin-bottom: 8px;
-}
-
-.load-track {
-  width: 100%;
-  height: 10px;
-  background: #e5e7eb;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.load-progress {
-  width: 0%;
-  height: 100%;
-  background: #005baa;
-  transition: width .25s ease;
-}
-
-.load-box.ok .load-progress {
-  background: #16a34a;
-}
-
-.load-box.error .load-progress {
-  background: #dc2626;
-}
-</style>
 <body>
 
-  <!-- 🔺 Encabezado común -->
+  <!-- Encabezado común -->
   <div id="encabezado"></div>
 
   <main>
+
     <h1>CALENDARIO DE ACTIVIDADES</h1>
 
-    <!-- Barra de carga -->
-    <div id="loadBox" class="load-box" style="display:none;">
-      <div id="loadTitle">Cargando...</div>
-      <div id="loadDetail">Preparando datos</div>
+    <div class="calendar-source-info">
+      <span class="calendar-source-dot"></span>
+
+      <span>
+        Calendario conectado al resumen operativo de grupos,
+        hoteles, vuelos e itinerarios.
+      </span>
+    </div>
+
+
+    <!-- ==================================================
+         BARRA DE CARGA
+    ================================================== -->
+
+    <div
+      id="loadBox"
+      class="load-box"
+      style="display:none;"
+    >
+      <div id="loadTitle">
+        Cargando...
+      </div>
+
+      <div id="loadDetail">
+        Preparando calendario
+      </div>
+
       <div class="load-track">
-        <div id="loadProgress" class="load-progress"></div>
+        <div
+          id="loadProgress"
+          class="load-progress"
+        ></div>
       </div>
     </div>
 
-    <div id="toolbar" class="toolbar">
+
+    <!-- ==================================================
+         FILTROS Y ACCIONES
+    ================================================== -->
+
+    <div
+      id="toolbar"
+      class="toolbar"
+    >
       <div class="row">
+
         <div class="column long">
-          <input type="text" id="buscador" placeholder="🔍 Buscar..." />
-        </div>
-        <div class="column medium">
-          <select id="filtroDestino"></select>
-        </div>
-        <div class="column medium">
-           <select id="filtroAno"></select>
-        </div>
-        <div class="column medium">
-          <input type="date" id="filtroFechaDesde" title="Mostrar actividades desde esta fecha" />
+          <input
+            type="text"
+            id="buscador"
+            placeholder="🔍 Buscar grupo, negocio, hotel, vuelo o actividad..."
+            autocomplete="off"
+          />
         </div>
 
-        <button id="btn-view-history">📜 Ver Historial</button>
-        <button id="btn-export-excel">📤 Exportar Excel</button>
+        <div class="column medium">
+          <select
+            id="filtroDestino"
+            aria-label="Filtrar por destino"
+          >
+            <option value="">
+              Todos los destinos
+            </option>
+          </select>
+        </div>
+
+        <div class="column medium">
+          <select
+            id="filtroAno"
+            aria-label="Filtrar por año"
+          >
+            <option value="">
+              Todos los años
+            </option>
+          </select>
+        </div>
+
+        <div class="column medium">
+          <input
+            type="date"
+            id="filtroFechaDesde"
+            title="Mostrar columnas de actividades desde esta fecha"
+          />
+        </div>
+
+        <!-- Este botón faltaba en el HTML anterior -->
+        <button
+          type="button"
+          id="btn-toggle-edit"
+          title="Permite editar las actividades del itinerario directamente en la tabla"
+        >
+          🔓 Activar Edición
+        </button>
+
+        <button
+          type="button"
+          id="btn-view-history"
+        >
+          📜 Ver Historial
+        </button>
+
+        <button
+          type="button"
+          id="btn-export-excel"
+        >
+          📤 Exportar Excel
+        </button>
+
       </div>
-    </div>  
+    </div>
 
-    <table id="tablaCalendario" class="display nowrap" style="width:100%">
-      <thead><tr id="encabezadoCalendario"></tr></thead>
-      <tbody id="cuerpoCalendario"></tbody>
-    </table>
+
+    <!-- ==================================================
+         TABLA CALENDARIO
+    ================================================== -->
+
+    <div class="tabla-calendario-wrapper">
+
+      <table
+        id="tablaCalendario"
+        class="display nowrap"
+      >
+        <thead>
+          <tr id="encabezadoCalendario"></tr>
+        </thead>
+
+        <tbody id="cuerpoCalendario"></tbody>
+      </table>
+
+    </div>
+
   </main>
 
-  <!-- Modal de historial -->
-  <div id="modalHistorial" class="modal" style="display:none;">
+
+  <!-- ==================================================
+       MODAL HISTORIAL
+  ================================================== -->
+
+  <div
+    id="modalHistorial"
+    class="modal"
+    style="display:none;"
+  >
+
     <h2>Historial de cambios</h2>
-    <input type="text" id="buscadorHistorial" placeholder="🔍 Buscar en historial..." />
-    <input type="date" id="histInicio" />
-    <input type="date" id="histFin" />
-    <button id="btn-refresh-history">🔁 Actualizar</button>
-    <button id="btn-close-history">❌ Cerrar</button>
-    <table id="tablaHistorial" class="display" style="width:100%">
+
+    <div class="historial-toolbar">
+
+      <input
+        type="text"
+        id="buscadorHistorial"
+        placeholder="🔍 Buscar en historial..."
+        autocomplete="off"
+      />
+
+      <input
+        type="date"
+        id="histInicio"
+        title="Fecha inicial"
+      />
+
+      <input
+        type="date"
+        id="histFin"
+        title="Fecha final"
+      />
+
+      <button
+        type="button"
+        id="btn-refresh-history"
+      >
+        🔁 Actualizar
+      </button>
+
+      <button
+        type="button"
+        id="btn-close-history"
+      >
+        ❌ Cerrar
+      </button>
+
+    </div>
+
+    <table
+      id="tablaHistorial"
+      class="display"
+      style="width:100%"
+    >
       <thead>
-        <tr><th>Fecha</th><th>Usuario</th><th>N° Negocio</th><th>Campo</th><th>Antes</th><th>Ahora</th></tr>
+        <tr>
+          <th>Fecha</th>
+          <th>Usuario</th>
+          <th>N° Negocio</th>
+          <th>Campo</th>
+          <th>Antes</th>
+          <th>Ahora</th>
+        </tr>
       </thead>
+
       <tbody></tbody>
     </table>
+
   </div>
 
 
-  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
-  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
-  <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
+  <!-- ==================================================
+       LIBRERÍAS
+  ================================================== -->
+
+  <script
+    src="https://code.jquery.com/jquery-3.6.4.min.js"
+  ></script>
+
+  <script
+    src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"
+  ></script>
+
+  <script
+    src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"
+  ></script>
+
+  <script
+    src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"
+  ></script>
+
+  <script
+    src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
+  ></script>
+
+  <script
+    src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"
+  ></script>
+
+
+  <!-- ==================================================
+       ENCABEZADO + MÓDULOS
+  ================================================== -->
 
   <script>
     fetch('encabezado.html')
-      .then(res => res.text())
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(
+            `No se pudo cargar encabezado.html: ${response.status}`
+          );
+        }
+
+        return response.text();
+      })
       .then(html => {
-        document.getElementById('encabezado').innerHTML = html;
+        document.getElementById(
+          'encabezado'
+        ).innerHTML = html;
       })
       .then(() => {
-        // Aquí creamos un único <script type="module"> que arrancará
-        // TODO tu flujo: importa firebase-init.js y luego calendario.js
-        const s = document.createElement('script');
-        s.type = 'module';
-        s.textContent = `
-          import './firebase-init.js';
-          import './script.js'; 
+        const scriptModule =
+          document.createElement(
+            'script'
+          );
+
+        scriptModule.type =
+          'module';
+
+        scriptModule.textContent = `
+          import './script.js';
           import './calendario.js';
         `;
-        document.body.appendChild(s);
+
+        document.body.appendChild(
+          scriptModule
+        );
+      })
+      .catch(error => {
+        console.error(
+          'Error inicializando calendario:',
+          error
+        );
+
+        const loadBox =
+          document.getElementById(
+            'loadBox'
+          );
+
+        const loadTitle =
+          document.getElementById(
+            'loadTitle'
+          );
+
+        const loadDetail =
+          document.getElementById(
+            'loadDetail'
+          );
+
+        if (loadBox) {
+          loadBox.style.display =
+            'block';
+
+          loadBox.classList.add(
+            'error'
+          );
+        }
+
+        if (loadTitle) {
+          loadTitle.textContent =
+            'Error al iniciar';
+        }
+
+        if (loadDetail) {
+          loadDetail.textContent =
+            error.message;
+        }
       });
   </script>
+
 </body>
 </html>
