@@ -254,10 +254,21 @@
     ================================================== */
 
     #tablaCalendario {
-      width: max-content !important;
-      min-width: 100%;
+      width: 100% !important;
       border-collapse: separate !important;
       border-spacing: 0;
+      table-layout: fixed !important;
+    }
+    
+    /*
+      DataTables crea una tabla para el encabezado
+      y otra para el cuerpo. Ambas deben usar
+      exactamente el mismo sistema de anchos.
+    */
+    #tablaCalendario_wrapper .dataTables_scrollHeadInner,
+    #tablaCalendario_wrapper .dataTables_scrollHeadInner table,
+    #tablaCalendario_wrapper .dataTables_scrollBody table {
+      table-layout: fixed !important;
     }
 
     #tablaCalendario thead th {
@@ -368,40 +379,60 @@
        ANCHOS DE COLUMNAS FIJAS
     ================================================== */
 
+    /* N° Negocio */
     #tablaCalendario th:nth-child(1),
     #tablaCalendario td:nth-child(1) {
-      min-width: 90px;
-      max-width: 90px;
+      width: 90px !important;
+      min-width: 90px !important;
+      max-width: 90px !important;
     }
-
+    
+    /* Grupo */
     #tablaCalendario th:nth-child(2),
     #tablaCalendario td:nth-child(2) {
-      min-width: 225px;
-      max-width: 225px;
+      width: 225px !important;
+      min-width: 225px !important;
+      max-width: 225px !important;
     }
-
+    
+    /* Pax */
     #tablaCalendario th:nth-child(3),
     #tablaCalendario td:nth-child(3) {
-      min-width: 100px;
-      max-width: 100px;
+      width: 100px !important;
+      min-width: 100px !important;
+      max-width: 100px !important;
     }
-
+    
+    /* Destino / Programa */
     #tablaCalendario th:nth-child(4),
     #tablaCalendario td:nth-child(4) {
-      min-width: 190px;
-      max-width: 190px;
+      width: 190px !important;
+      min-width: 190px !important;
+      max-width: 190px !important;
     }
-
+    
+    /* Hoteles */
     #tablaCalendario th:nth-child(5),
     #tablaCalendario td:nth-child(5) {
-      min-width: 225px;
-      max-width: 225px;
+      width: 225px !important;
+      min-width: 225px !important;
+      max-width: 225px !important;
     }
-
+    
+    /* Vuelos */
     #tablaCalendario th:nth-child(6),
     #tablaCalendario td:nth-child(6) {
-      min-width: 320px;
-      max-width: 320px;
+      width: 320px !important;
+      min-width: 320px !important;
+      max-width: 320px !important;
+    }
+    
+    /* Fechas */
+    #tablaCalendario th[data-fechaiso],
+    #tablaCalendario td[data-fecha] {
+      width: 210px !important;
+      min-width: 210px !important;
+      max-width: 210px !important;
     }
 
 
