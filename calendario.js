@@ -17,6 +17,7 @@ import {
   onAuthStateChanged
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 
+
 const auth = getAuth(app);
 
 const COLECCION_RESUMEN =
@@ -25,17 +26,19 @@ const COLECCION_RESUMEN =
 const COLECCION_GRUPOS =
   'grupos';
 
+const COLUMNAS_FIJAS = 6;
+const INDICE_COLUMNA_ANO = 6;
+
 let dtHist = null;
 let editMode = false;
-
 let unsubscribeCalendario = null;
 let refrescandoCalendario = false;
 let cargaInicialRealizada = false;
+let sincronizandoScroll = false;
 
 
 // ======================================================
 // AÑO COMERCIAL
-// Marzo del año actual a febrero del siguiente
 // ======================================================
 
 function getAnoComercialActual() {
@@ -74,20 +77,11 @@ function setCarga(
   const detail =
     document.getElementById('loadDetail');
 
-  if (
-    !box ||
-    !bar ||
-    !title ||
-    !detail
-  ) {
+  if (!box || !bar || !title || !detail) {
     return;
   }
 
-  box.classList.remove(
-    'ok',
-    'error'
-  );
-
+  box.classList.remove('ok', 'error');
   box.style.display = 'block';
 
   bar.style.width =
@@ -116,12 +110,7 @@ function setCargaOk(
   const detail =
     document.getElementById('loadDetail');
 
-  if (
-    !box ||
-    !bar ||
-    !title ||
-    !detail
-  ) {
+  if (!box || !bar || !title || !detail) {
     return;
   }
 
@@ -148,12 +137,7 @@ function setCargaError(error) {
   const detail =
     document.getElementById('loadDetail');
 
-  if (
-    !box ||
-    !bar ||
-    !title ||
-    !detail
-  ) {
+  if (!box || !bar || !title || !detail) {
     return;
   }
 
@@ -167,23 +151,20 @@ function setCargaError(error) {
   detail.textContent =
     error?.message ||
     String(error) ||
-    'Error desconocido. Revisa consola.';
+    'Error desconocido.';
 }
 
 
 // ======================================================
-// NORMALIZACIÓN GENERAL
+// HELPERS GENERALES
 // ======================================================
 
 function normalizarTexto(valor = '') {
   return String(valor)
     .normalize('NFD')
-    .replace(
-      /[\u0300-\u036f]/g,
-      ''
-    )
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/\s+/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -193,21 +174,15 @@ function fechaAISO(valor) {
     return '';
   }
 
-  if (
-    typeof valor?.toDate === 'function'
-  ) {
+  if (typeof valor?.toDate === 'function') {
     return valor
       .toDate()
       .toISOString()
       .slice(0, 10);
   }
 
-  if (
-    valor?.seconds !== undefined
-  ) {
-    return new Date(
-      valor.seconds * 1000
-    )
+  if (valor?.seconds !== undefined) {
+    return new Date(valor.seconds * 1000)
       .toISOString()
       .slice(0, 10);
   }
@@ -225,11 +200,7 @@ function fechaAISO(valor) {
     return '';
   }
 
-  if (
-    /^\d{4}-\d{2}-\d{2}$/.test(
-      texto
-    )
-  ) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) {
     return texto;
   }
 
@@ -256,9 +227,7 @@ function fechaAISO(valor) {
   const fecha =
     new Date(texto);
 
-  if (
-    Number.isNaN(fecha.getTime())
-  ) {
+  if (Number.isNaN(fecha.getTime())) {
     return '';
   }
 
@@ -268,9 +237,7 @@ function fechaAISO(valor) {
 }
 
 
-function formatearFechaBonita(
-  fechaISO
-) {
+function formatearFechaBonita(fechaISO) {
   if (!fechaISO) {
     return '';
   }
@@ -284,18 +251,10 @@ function formatearFechaBonita(
     return fechaISO;
   }
 
-  const [
-    ano,
-    mes,
-    dia
-  ] = partes;
+  const [ano, mes, dia] = partes;
 
   const fecha =
-    new Date(
-      ano,
-      mes - 1,
-      dia
-    );
+    new Date(ano, mes - 1, dia);
 
   return fecha.toLocaleDateString(
     'es-CL',
@@ -317,59 +276,173 @@ function esDomingo(fechaISO) {
     return false;
   }
 
-  const [
-    ano,
-    mes,
-    dia
-  ] = partes;
+  const [ano, mes, dia] = partes;
 
   const fecha =
-    new Date(
-      ano,
-      mes - 1,
-      dia
-    );
+    new Date(ano, mes - 1, dia);
 
   return fecha.getDay() === 0;
 }
 
 
+function escaparRegex(texto = '') {
+  return String(texto)
+    .replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+
 // ======================================================
-// FILTRO DESTINO
-// Incluye SUR DE CHILE Y BARILOCHE
-// en ambos filtros
+// FILTRO DE DESTINOS
 // ======================================================
+
+const DESTINOS_FILTRO = [
+  {
+    value: '',
+    label: 'Todos los destinos'
+  },
+  {
+    value: 'brasil',
+    label: 'Brasil'
+  },
+  {
+    value: 'sur_bariloche',
+    label: 'Sur de Chile y Bariloche'
+  },
+  {
+    value: 'bariloche',
+    label: 'Bariloche'
+  },
+  {
+    value: 'sur_chile',
+    label: 'Sur de Chile'
+  },
+  {
+    value: 'norte_chile',
+    label: 'Norte de Chile'
+  },
+  {
+    value: 'otros',
+    label: 'Otros'
+  }
+];
+
 
 const FLT_DESTINO = {
   value: ''
 };
 
 
-function esDestinoMixtoSurBariloche(
-  destino = ''
-) {
-  const clave =
-    normalizarTexto(destino);
+function contieneBrasil(destino, programa) {
+  const texto =
+    normalizarTexto(
+      `${destino} ${programa}`
+    );
 
   return (
-    clave.includes('surdechile') &&
-    clave.includes('bariloche')
+    texto.includes('brasil') ||
+    texto.includes('camboriu') ||
+    texto.includes('florianopolis')
   );
 }
 
 
-function destinoBaseDesdeCelda(
-  texto = ''
+function contieneBariloche(destino) {
+  return normalizarTexto(destino)
+    .includes('bariloche');
+}
+
+
+function contieneSurChile(destino) {
+  const texto =
+    normalizarTexto(destino);
+
+  return (
+    texto.includes('sur de chile') ||
+    texto.includes('sur chile')
+  );
+}
+
+
+function contieneNorteChile(destino) {
+  const texto =
+    normalizarTexto(destino);
+
+  return (
+    texto.includes('norte de chile') ||
+    texto.includes('norte chile')
+  );
+}
+
+
+function esSurChileYBariloche(destino) {
+  return (
+    contieneSurChile(destino) &&
+    contieneBariloche(destino)
+  );
+}
+
+
+function perteneceFiltroDestino(
+  destino,
+  programa,
+  filtro
 ) {
-  return String(texto)
-    .split('//')[0]
-    .trim();
+  if (!filtro) {
+    return true;
+  }
+
+  const esBrasil =
+    contieneBrasil(
+      destino,
+      programa
+    );
+
+  const esBariloche =
+    contieneBariloche(destino);
+
+  const esSur =
+    contieneSurChile(destino);
+
+  const esNorte =
+    contieneNorteChile(destino);
+
+  const esMixto =
+    esSurChileYBariloche(destino);
+
+  switch (filtro) {
+    case 'brasil':
+      return esBrasil;
+
+    case 'sur_bariloche':
+      return esMixto;
+
+    case 'bariloche':
+      return esBariloche;
+
+    case 'sur_chile':
+      return esSur;
+
+    case 'norte_chile':
+      return esNorte;
+
+    case 'otros':
+      return (
+        !esBrasil &&
+        !esBariloche &&
+        !esSur &&
+        !esNorte
+      );
+
+    default:
+      return true;
+  }
 }
 
 
 function filtroDestinoCalendario(
   settings,
-  rowData
+  rowData,
+  rowIndex
 ) {
   if (
     settings.nTable.id !==
@@ -378,60 +451,51 @@ function filtroDestinoCalendario(
     return true;
   }
 
-  const seleccionado =
+  const filtro =
     String(
       FLT_DESTINO.value || ''
     ).trim();
 
-  if (!seleccionado) {
+  if (!filtro) {
     return true;
   }
 
-  const claveSeleccionada =
-    normalizarTexto(seleccionado);
-
-  const textoCelda =
-    rowData?.[3] || '';
-
-  const destinoBase =
-    destinoBaseDesdeCelda(
-      textoCelda
+  const api =
+    new $.fn.dataTable.Api(
+      settings
     );
 
-  const claveDestino =
-    normalizarTexto(
-      destinoBase
-    );
+  const nodoFila =
+    api
+      .row(rowIndex)
+      .node();
 
-  const esMixto =
-    esDestinoMixtoSurBariloche(
-      destinoBase
-    );
+  const destino =
+    nodoFila
+      ? String(
+          nodoFila.dataset.destino ||
+          ''
+        )
+      : '';
 
-  if (
-    claveSeleccionada ===
-      'bariloche' ||
-    claveSeleccionada ===
-      'surdechile'
-  ) {
-    return (
-      claveDestino ===
-        claveSeleccionada ||
-      esMixto
-    );
-  }
+  const programa =
+    nodoFila
+      ? String(
+          nodoFila.dataset.programa ||
+          ''
+        )
+      : '';
 
-  return (
-    claveDestino ===
-    claveSeleccionada
+  return perteneceFiltroDestino(
+    destino,
+    programa,
+    filtro
   );
 }
 
 
 // ======================================================
-// BUSCADOR CON COMAS
-// Ejemplo: 1422, 1500
-// Busca 1422 O 1500
+// BUSCADOR POR COMAS
 // ======================================================
 
 const BUSQ_COMA = {
@@ -464,20 +528,16 @@ function filtroBusquedaPorComa(
     .terminos
     .some(
       termino =>
-        textoFila.includes(
-          termino
-        )
+        textoFila.includes(termino)
     );
 }
 
 
 // ======================================================
-// ORDEN DE ACTIVIDADES
+// ACTIVIDADES
 // ======================================================
 
-function horaAMinutos(
-  hora
-) {
+function horaAMinutos(hora) {
   if (
     !hora ||
     typeof hora !== 'string'
@@ -495,17 +555,11 @@ function horaAMinutos(
   }
 
   const horas =
-    parseInt(
-      match[1],
-      10
-    );
+    parseInt(match[1], 10);
 
   const minutos =
     match[2]
-      ? parseInt(
-          match[2],
-          10
-        )
+      ? parseInt(match[2], 10)
       : 0;
 
   if (
@@ -519,10 +573,7 @@ function horaAMinutos(
     return Number.POSITIVE_INFINITY;
   }
 
-  return (
-    horas * 60 +
-    minutos
-  );
+  return horas * 60 + minutos;
 }
 
 
@@ -563,26 +614,20 @@ function actividadATexto(
 ) {
   const inicio =
     String(
-      actividad.horaInicio ||
-      ''
+      actividad.horaInicio || ''
     ).trim();
 
   const fin =
     String(
-      actividad.horaFin ||
-      ''
+      actividad.horaFin || ''
     ).trim();
 
   const nombre =
     String(
-      actividad.actividad ||
-      ''
+      actividad.actividad || ''
     ).trim();
 
-  if (
-    inicio &&
-    fin
-  ) {
+  if (inicio && fin) {
     return (
       `${inicio}–${fin} ${nombre}`
     ).trim();
@@ -601,9 +646,7 @@ function actividadATexto(
 function actividadesATexto(
   actividades = []
 ) {
-  if (
-    !Array.isArray(actividades)
-  ) {
+  if (!Array.isArray(actividades)) {
     return '';
   }
 
@@ -611,31 +654,23 @@ function actividadesATexto(
     .sort(compararActividades)
     .map(actividadATexto)
     .filter(Boolean)
-    .join('\n');
+    .join('\n\n');
 }
 
 
 // ======================================================
-// FORMATO PAX, HOTELES Y VUELOS
+// PAX, HOTELES Y VUELOS
 // ======================================================
 
-function prepararPax(
-  pax = {}
-) {
+function prepararPax(pax = {}) {
   const adultos =
-    Number(
-      pax.adultos || 0
-    );
+    Number(pax.adultos || 0);
 
   const estudiantes =
-    Number(
-      pax.estudiantes || 0
-    );
+    Number(pax.estudiantes || 0);
 
   const totalInformado =
-    Number(
-      pax.total || 0
-    );
+    Number(pax.total || 0);
 
   const total =
     totalInformado ||
@@ -650,26 +685,20 @@ function prepararPax(
 }
 
 
-function formatearPax(
-  pax = {}
-) {
+function formatearPax(pax = {}) {
   const datos =
     prepararPax(pax);
 
   return (
-    `${datos.total} ` +
-    `(A: ${datos.adultos} ` +
-    `E: ${datos.estudiantes})`
+    `${datos.total}\n` +
+    `A: ${datos.adultos} · ` +
+    `E: ${datos.estudiantes}`
   );
 }
 
 
-function formatearHoteles(
-  hoteles = []
-) {
-  if (
-    !Array.isArray(hoteles)
-  ) {
+function formatearHoteles(hoteles = []) {
+  if (!Array.isArray(hoteles)) {
     return '';
   }
 
@@ -678,42 +707,28 @@ function formatearHoteles(
       .map(hotel => {
         const nombre =
           String(
-            hotel?.nombre ||
-            ''
+            hotel?.nombre || ''
           )
             .trim()
             .toUpperCase();
 
         const checkIn =
-          fechaAISO(
-            hotel?.checkIn
-          );
+          fechaAISO(hotel?.checkIn);
 
         const checkOut =
-          fechaAISO(
-            hotel?.checkOut
-          );
+          fechaAISO(hotel?.checkOut);
 
         let rango = '';
 
-        if (
-          checkIn ||
-          checkOut
-        ) {
+        if (checkIn || checkOut) {
           rango =
-            ` (` +
-            `${checkIn
-              ? formatearFechaBonita(
-                  checkIn
-                )
-              : '—'}` +
-            ` → ` +
-            `${checkOut
-              ? formatearFechaBonita(
-                  checkOut
-                )
-              : '—'}` +
-            `)`;
+            `\n${checkIn
+              ? formatearFechaBonita(checkIn)
+              : '—'
+            } → ${checkOut
+              ? formatearFechaBonita(checkOut)
+              : '—'
+            }`;
         }
 
         return (
@@ -722,9 +737,8 @@ function formatearHoteles(
       })
       .filter(Boolean);
 
-  return [
-    ...new Set(lineas)
-  ].join('\n');
+  return [...new Set(lineas)]
+    .join('\n\n');
 }
 
 
@@ -757,9 +771,7 @@ function obtenerFechaOrdenVuelo(
     fechaHora.getTime();
 
   if (
-    Number.isNaN(
-      milisegundos
-    )
+    Number.isNaN(milisegundos)
   ) {
     return Number.MAX_SAFE_INTEGER;
   }
@@ -768,12 +780,8 @@ function obtenerFechaOrdenVuelo(
 }
 
 
-function formatearVuelos(
-  vuelos = []
-) {
-  if (
-    !Array.isArray(vuelos)
-  ) {
+function formatearVuelos(vuelos = []) {
+  if (!Array.isArray(vuelos)) {
     return {
       texto: '',
       orden:
@@ -786,8 +794,7 @@ function formatearVuelos(
       .map(vuelo => {
         const resumen =
           String(
-            vuelo?.resumen ||
-            ''
+            vuelo?.resumen || ''
           ).trim();
 
         if (resumen) {
@@ -802,65 +809,54 @@ function formatearVuelos(
 
         const tipo =
           String(
-            vuelo?.tipo ||
-            'AÉREO'
+            vuelo?.tipo || 'AÉREO'
           ).trim();
 
         const proveedor =
           String(
-            vuelo?.proveedor ||
-            ''
+            vuelo?.proveedor || ''
           ).trim();
 
         const numero =
           String(
-            vuelo?.numero ||
-            ''
+            vuelo?.numero || ''
           ).trim();
 
         const origen =
           String(
-            vuelo?.origen ||
-            ''
+            vuelo?.origen || ''
           ).trim();
 
         const destino =
           String(
-            vuelo?.destino ||
-            ''
+            vuelo?.destino || ''
           ).trim();
 
         const fecha =
-          fechaAISO(
-            vuelo?.fecha
-          );
+          fechaAISO(vuelo?.fecha);
 
-        const partes = [
+        let texto = [
           tipo,
           proveedor,
           numero
-        ].filter(Boolean);
+        ]
+          .filter(Boolean)
+          .join(' ');
 
-        let texto =
-          partes.join(' ');
-
-        if (
-          origen ||
-          destino
-        ) {
+        if (origen || destino) {
           texto +=
-            ` · ${origen}` +
-            ` → ${destino}`;
+            `\n${origen} → ${destino}`;
         }
 
         if (fecha) {
           texto +=
-            ` · ${fecha}`;
+            `\n${fecha}`;
         }
 
         return {
           texto:
             texto.trim(),
+
           orden:
             obtenerFechaOrdenVuelo(
               vuelo
@@ -873,11 +869,7 @@ function formatearVuelos(
     new Map();
 
   preparados.forEach(item => {
-    if (
-      !unicos.has(
-        item.texto
-      )
-    ) {
+    if (!unicos.has(item.texto)) {
       unicos.set(
         item.texto,
         item
@@ -899,10 +891,8 @@ function formatearVuelos(
   return {
     texto:
       ordenados
-        .map(
-          item => item.texto
-        )
-        .join('\n'),
+        .map(item => item.texto)
+        .join('\n\n'),
 
     orden:
       ordenados.length
@@ -913,7 +903,7 @@ function formatearVuelos(
 
 
 // ======================================================
-// NORMALIZAR DOCUMENTO DEL RESUMEN
+// PREPARAR DOCUMENTO RESUMEN
 // ======================================================
 
 function prepararGrupoResumen(
@@ -934,16 +924,6 @@ function prepararGrupoResumen(
       grupoId
     ).trim();
 
-  const fechaInicio =
-    fechaAISO(
-      datos.fechaInicio
-    );
-
-  const fechaFin =
-    fechaAISO(
-      datos.fechaFin
-    );
-
   const itinerario =
     datos.itinerario &&
     typeof datos.itinerario ===
@@ -960,9 +940,7 @@ function prepararGrupoResumen(
           .filter(Boolean)
       : [];
 
-  if (
-    !fechasItinerario.length
-  ) {
+  if (!fechasItinerario.length) {
     fechasItinerario =
       Object.keys(itinerario)
         .map(fechaAISO)
@@ -981,30 +959,33 @@ function prepararGrupoResumen(
 
     nombreGrupo:
       String(
-        datos.nombreGrupo ||
-        ''
+        datos.nombreGrupo || ''
       ).trim(),
 
     destino:
       String(
-        datos.destino ||
-        ''
+        datos.destino || ''
       ).trim(),
 
     programa:
       String(
-        datos.programa ||
-        ''
+        datos.programa || ''
       ).trim(),
 
     anoViaje:
       String(
-        datos.anoViaje ||
-        ''
+        datos.anoViaje || ''
       ).trim(),
 
-    fechaInicio,
-    fechaFin,
+    fechaInicio:
+      fechaAISO(
+        datos.fechaInicio
+      ),
+
+    fechaFin:
+      fechaAISO(
+        datos.fechaFin
+      ),
 
     pax:
       prepararPax(
@@ -1012,46 +993,32 @@ function prepararGrupoResumen(
       ),
 
     hoteles:
-      Array.isArray(
-        datos.hoteles
-      )
+      Array.isArray(datos.hoteles)
         ? datos.hoteles
         : [],
 
     vuelos:
-      Array.isArray(
-        datos.vuelos
-      )
+      Array.isArray(datos.vuelos)
         ? datos.vuelos
         : [],
 
     itinerario,
-    fechasItinerario,
-
-    busquedaTexto:
-      String(
-        datos.busquedaTexto ||
-        ''
-      ).trim()
+    fechasItinerario
   };
 }
 
 
 // ======================================================
-// PARÁMETRO URL
+// URL
 // ======================================================
 
-function getParametroURL(
-  nombre
-) {
+function getParametroURL(nombre) {
   const parametros =
     new URLSearchParams(
       window.location.search
     );
 
-  return parametros.get(
-    nombre
-  );
+  return parametros.get(nombre);
 }
 
 const numeroNegocioInicial =
@@ -1061,52 +1028,7 @@ const numeroNegocioInicial =
 
 
 // ======================================================
-// AJUSTE VISUAL DATATABLE
-// ======================================================
-
-function ajustarVistaCalendario(
-  tabla
-) {
-  window.setTimeout(
-    () => {
-      try {
-        if (
-          !$.fn.DataTable
-            .isDataTable(
-              '#tablaCalendario'
-            )
-        ) {
-          return;
-        }
-
-        tabla.draw(false);
-
-        try {
-          tabla.columns.adjust();
-        } catch (error) {
-          console.warn(
-            'columns.adjust omitido:',
-            error
-          );
-        }
-
-        $(window).trigger(
-          'resize'
-        );
-      } catch (error) {
-        console.warn(
-          'Ajuste visual omitido:',
-          error
-        );
-      }
-    },
-    200
-  );
-}
-
-
-// ======================================================
-// INICIO CON AUTENTICACIÓN
+// AUTENTICACIÓN
 // ======================================================
 
 $(function () {
@@ -1114,9 +1036,7 @@ $(function () {
     auth,
     user => {
       if (!user) {
-        location =
-          'login.html';
-
+        location = 'login.html';
         return;
       }
 
@@ -1129,22 +1049,20 @@ $(function () {
 
 
 // ======================================================
-// ESCUCHAR SOLO LA COLECCIÓN LIVIANA
+// ESCUCHAR RESUMEN
 // ======================================================
 
 function escucharCambiosCalendario(
   userEmail
 ) {
-  if (
-    unsubscribeCalendario
-  ) {
+  if (unsubscribeCalendario) {
     unsubscribeCalendario();
   }
 
   setCarga(
     10,
     'Cargando calendario...',
-    'Leyendo resumen de operaciones'
+    'Leyendo resumen operativo'
   );
 
   unsubscribeCalendario =
@@ -1155,14 +1073,11 @@ function escucharCambiosCalendario(
       ),
 
       async snapshot => {
-        if (
-          refrescandoCalendario
-        ) {
+        if (refrescandoCalendario) {
           return;
         }
 
-        refrescandoCalendario =
-          true;
+        refrescandoCalendario = true;
 
         try {
           await generarTablaCalendario(
@@ -1170,17 +1085,15 @@ function escucharCambiosCalendario(
             snapshot
           );
 
-          cargaInicialRealizada =
-            true;
+          cargaInicialRealizada = true;
         } finally {
-          refrescandoCalendario =
-            false;
+          refrescandoCalendario = false;
         }
       },
 
       error => {
         console.error(
-          'Error escuchando resumen del calendario:',
+          'Error escuchando calendario:',
           error
         );
 
@@ -1199,21 +1112,26 @@ async function generarTablaCalendario(
   snapshotResumen
 ) {
   try {
-    const filtroBuscadorActual =
-      $('#buscador').val() ||
-      '';
+    const filtrosActuales = {
+      buscador:
+        $('#buscador').val() ||
+        '',
 
-    const filtroDestinoActual =
-      $('#filtroDestino').val() ||
-      '';
+      destino:
+        $('#filtroDestino').val() ||
+        '',
 
-    const filtroAnoActual =
-      $('#filtroAno').val() ||
-      ANO_COMERCIAL_ACTUAL;
+      ano:
+        $('#filtroAno').val() ||
+        ANO_COMERCIAL_ACTUAL,
 
-    const filtroFechaActual =
-      $('#filtroFechaDesde').val() ||
-      '';
+      fechaDesde:
+        $('#filtroFechaDesde').val() ||
+        ''
+    };
+
+    const scrollHorizontalActual =
+      obtenerScrollHorizontalActual();
 
     setCarga(
       25,
@@ -1221,16 +1139,7 @@ async function generarTablaCalendario(
       `${snapshotResumen.size} documentos encontrados`
     );
 
-    if (
-      $.fn.DataTable
-        .isDataTable(
-          '#tablaCalendario'
-        )
-    ) {
-      $('#tablaCalendario')
-        .DataTable()
-        .destroy();
-    }
+    destruirDataTableCalendario();
 
     $('#encabezadoCalendario')
       .empty();
@@ -1240,9 +1149,6 @@ async function generarTablaCalendario(
 
     const grupos = [];
     const fechasUnicas =
-      new Set();
-
-    const destinosSet =
       new Set();
 
     const aniosSet =
@@ -1259,36 +1165,10 @@ async function generarTablaCalendario(
           return;
         }
 
-        grupo
-          .fechasItinerario
+        grupo.fechasItinerario
           .forEach(fecha => {
-            fechasUnicas.add(
-              fecha
-            );
+            fechasUnicas.add(fecha);
           });
-
-        const destino =
-          grupo.destino.trim();
-
-        if (destino) {
-          if (
-            esDestinoMixtoSurBariloche(
-              destino
-            )
-          ) {
-            destinosSet.add(
-              'SUR DE CHILE'
-            );
-
-            destinosSet.add(
-              'BARILOCHE'
-            );
-          } else {
-            destinosSet.add(
-              destino.toUpperCase()
-            );
-          }
-        }
 
         if (grupo.anoViaje) {
           aniosSet.add(
@@ -1328,23 +1208,8 @@ async function generarTablaCalendario(
       }
     );
 
-    setCarga(
-      45,
-      'Preparando calendario...',
-      `${grupos.length} grupos listos`
-    );
-
     const fechasOrdenadas =
       [...fechasUnicas].sort();
-
-    const destinos =
-      [...destinosSet].sort(
-        (a, b) =>
-          a.localeCompare(
-            b,
-            'es'
-          )
-      );
 
     const anios =
       [...aniosSet].sort(
@@ -1353,11 +1218,19 @@ async function generarTablaCalendario(
           Number(b)
       );
 
-    prepararFiltros(
-      destinos,
+    setCarga(
+      45,
+      'Preparando calendario...',
+      `${grupos.length} grupos listos`
+    );
+
+    prepararFiltrosDestino(
+      filtrosActuales.destino
+    );
+
+    prepararFiltroAno(
       anios,
-      filtroDestinoActual,
-      filtroAnoActual
+      filtrosActuales.ano
     );
 
     construirEncabezado(
@@ -1370,9 +1243,9 @@ async function generarTablaCalendario(
     );
 
     setCarga(
-      80,
+      75,
       'Construyendo tabla...',
-      'Inicializando filtros y columnas'
+      'Aplicando columnas fijas y desplazamiento'
     );
 
     const tabla =
@@ -1384,12 +1257,7 @@ async function generarTablaCalendario(
 
     restaurarFiltros(
       tabla,
-      {
-        filtroBuscadorActual,
-        filtroDestinoActual,
-        filtroAnoActual,
-        filtroFechaActual
-      }
+      filtrosActuales
     );
 
     registrarEventosFiltros(
@@ -1397,7 +1265,6 @@ async function generarTablaCalendario(
     );
 
     registrarEventosEdicion(
-      tabla,
       userEmail
     );
 
@@ -1407,12 +1274,23 @@ async function generarTablaCalendario(
       tabla
     );
 
-    ajustarVistaCalendario(
-      tabla
+    aplicarModoEdicionVisual();
+
+    window.setTimeout(
+      () => {
+        configurarScrollSuperior(
+          scrollHorizontalActual
+        );
+
+        ajustarVistaCalendario(
+          tabla
+        );
+      },
+      250
     );
 
     setCargaOk(
-      `Calendario cargado con ${grupos.length} grupos desde el resumen operativo.`
+      `Calendario cargado con ${grupos.length} grupos.`
     );
 
     console.log(
@@ -1430,7 +1308,7 @@ async function generarTablaCalendario(
     );
   } catch (error) {
     console.error(
-      'Error general generando calendario:',
+      'Error generando calendario:',
       error
     );
 
@@ -1440,40 +1318,71 @@ async function generarTablaCalendario(
 
 
 // ======================================================
-// PREPARAR FILTROS
+// DESTRUIR TABLA
 // ======================================================
 
-function prepararFiltros(
-  destinos,
-  anios,
-  destinoSeleccionado,
-  anoSeleccionado
+function destruirDataTableCalendario() {
+  desconectarScrollSuperior();
+
+  if (
+    $.fn.DataTable.isDataTable(
+      '#tablaCalendario'
+    )
+  ) {
+    $('#tablaCalendario')
+      .DataTable()
+      .destroy();
+  }
+}
+
+
+// ======================================================
+// FILTROS
+// ======================================================
+
+function prepararFiltrosDestino(
+  valorActual
 ) {
-  const $destino =
+  const $select =
     $('#filtroDestino');
 
-  $destino
-    .empty()
-    .append(
-      '<option value="">Todos</option>'
-    );
+  $select.empty();
 
-  destinos.forEach(
-    destino => {
+  DESTINOS_FILTRO.forEach(
+    opcion => {
       $('<option>')
-        .val(destino)
-        .text(destino)
-        .appendTo($destino);
+        .val(opcion.value)
+        .text(opcion.label)
+        .appendTo($select);
     }
   );
 
-  const $ano =
+  const existe =
+    DESTINOS_FILTRO.some(
+      opcion =>
+        opcion.value ===
+        valorActual
+    );
+
+  $select.val(
+    existe
+      ? valorActual
+      : ''
+  );
+}
+
+
+function prepararFiltroAno(
+  anios,
+  valorActual
+) {
+  const $select =
     $('#filtroAno');
 
-  $ano
+  $select
     .empty()
     .append(
-      '<option value="">Todos</option>'
+      '<option value="">Todos los años</option>'
     );
 
   anios.forEach(
@@ -1481,41 +1390,27 @@ function prepararFiltros(
       $('<option>')
         .val(ano)
         .text(ano)
-        .appendTo($ano);
+        .appendTo($select);
     }
   );
 
-  if (
-    destinoSeleccionado &&
-    destinos.includes(
-      destinoSeleccionado
-    )
-  ) {
-    $destino.val(
-      destinoSeleccionado
-    );
-  }
-
   const anoFinal =
-    anoSeleccionado &&
     anios.includes(
-      String(anoSeleccionado)
+      String(valorActual)
     )
-      ? String(
-          anoSeleccionado
-        )
+      ? String(valorActual)
       : anios.includes(
           ANO_COMERCIAL_ACTUAL
         )
         ? ANO_COMERCIAL_ACTUAL
         : '';
 
-  $ano.val(anoFinal);
+  $select.val(anoFinal);
 }
 
 
 // ======================================================
-// CONSTRUIR ENCABEZADO
+// ENCABEZADO
 // ======================================================
 
 function construirEncabezado(
@@ -1537,13 +1432,12 @@ function construirEncabezado(
 
   fechasOrdenadas.forEach(
     fecha => {
-      const clase =
-        esDomingo(fecha)
-          ? 'domingo'
-          : '';
-
       $('<th>')
-        .addClass(clase)
+        .addClass(
+          esDomingo(fecha)
+            ? 'domingo'
+            : ''
+        )
         .attr(
           'data-fechaiso',
           fecha
@@ -1562,7 +1456,7 @@ function construirEncabezado(
 
 
 // ======================================================
-// CONSTRUIR CUERPO
+// CUERPO
 // ======================================================
 
 function construirCuerpo(
@@ -1576,7 +1470,19 @@ function construirCuerpo(
   grupos.forEach(
     grupo => {
       const $fila =
-        $('<tr>');
+        $('<tr>')
+          .attr(
+            'data-destino',
+            grupo.destino
+          )
+          .attr(
+            'data-programa',
+            grupo.programa
+          )
+          .attr(
+            'data-grupo-id',
+            grupo.id
+          );
 
       const hotelesTexto =
         formatearHoteles(
@@ -1588,16 +1494,17 @@ function construirCuerpo(
           grupo.vuelos
         );
 
-      const destinoPrograma = [
-        grupo.destino,
-        grupo.programa
-      ]
-        .filter(
-          valor =>
-            String(valor)
-              .trim()
-        )
-        .join(' // ');
+      const destinoPrograma =
+        [
+          grupo.destino,
+          grupo.programa
+        ]
+          .filter(
+            valor =>
+              String(valor)
+                .trim()
+          )
+          .join(' // ');
 
       $fila.append(
         $('<td>')
@@ -1645,10 +1552,6 @@ function construirCuerpo(
           .attr(
             'data-doc-id',
             grupo.id
-          )
-          .css(
-            'white-space',
-            'pre-line'
           ),
 
         $('<td>')
@@ -1661,13 +1564,7 @@ function construirCuerpo(
           )
           .attr(
             'data-order',
-            String(
-              vuelos.orden
-            )
-          )
-          .css(
-            'white-space',
-            'pre-line'
+            String(vuelos.orden)
           ),
 
         $('<td>')
@@ -1684,13 +1581,9 @@ function construirCuerpo(
         fecha => {
           const actividades =
             Array.isArray(
-              grupo.itinerario?.[
-                fecha
-              ]
+              grupo.itinerario?.[fecha]
             )
-              ? grupo.itinerario[
-                  fecha
-                ]
+              ? grupo.itinerario[fecha]
               : [];
 
           const texto =
@@ -1701,19 +1594,15 @@ function construirCuerpo(
           const clases = [];
 
           if (
-            fecha ===
-              grupo.fechaInicio ||
-            fecha ===
-              grupo.fechaFin
+            fecha === grupo.fechaInicio ||
+            fecha === grupo.fechaFin
           ) {
             clases.push(
               'inicio-fin'
             );
           }
 
-          if (
-            esDomingo(fecha)
-          ) {
+          if (esDomingo(fecha)) {
             clases.push(
               'domingo'
             );
@@ -1742,9 +1631,7 @@ function construirCuerpo(
         }
       );
 
-      $tbody.append(
-        $fila
-      );
+      $tbody.append($fila);
     }
   );
 }
@@ -1757,48 +1644,113 @@ function construirCuerpo(
 function inicializarDataTable(
   grupos
 ) {
+  const altoDisponible =
+    Math.max(
+      420,
+      window.innerHeight - 305
+    );
+
   return $('#tablaCalendario')
     .DataTable({
-      scrollX: false,
-      autoWidth: false,
-      dom: 'Brtip',
+      scrollX: true,
 
-      pageLength:
-        Math.max(
-          grupos.length,
-          10
-        ),
+      scrollY:
+        `${altoDisponible}px`,
+
+      scrollCollapse: true,
+      autoWidth: false,
+      deferRender: true,
+
+      paging: false,
+      info: true,
+      searching: true,
+
+      dom: 'Brt',
 
       order: [
         [5, 'asc']
       ],
 
+      fixedColumns: {
+        leftColumns:
+          COLUMNAS_FIJAS
+      },
+
       buttons: [
         {
           extend: 'colvis',
-          text: 'Ver columnas',
+
+          text:
+            'Ver columnas',
+
           className:
             'dt-button',
 
-          columns: ':gt(2)'
+          columns:
+            ':gt(5)'
         }
       ],
 
       columnDefs: [
         {
-          targets: [5],
-          type: 'num'
+          targets: [0],
+          width: '90px'
         },
         {
-          targets: [6],
+          targets: [1],
+          width: '225px'
+        },
+        {
+          targets: [2],
+          width: '100px'
+        },
+        {
+          targets: [3],
+          width: '190px'
+        },
+        {
+          targets: [4],
+          width: '225px'
+        },
+        {
+          targets: [5],
+          width: '320px'
+        },
+        {
+          targets: [
+            INDICE_COLUMNA_ANO
+          ],
           visible: false,
           searchable: true
+        },
+        {
+          targets:
+            '_all',
+
+          defaultContent:
+            ''
         }
       ],
 
       language: {
         url:
           '//cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+      },
+
+      drawCallback: function () {
+        aplicarModoEdicionVisual();
+
+        window.setTimeout(
+          actualizarAnchoScrollSuperior,
+          20
+        );
+      },
+
+      initComplete: function () {
+        window.setTimeout(
+          configurarScrollSuperior,
+          80
+        );
       }
     });
 }
@@ -1839,67 +1791,44 @@ function restaurarFiltros(
   tabla,
   filtros
 ) {
-  const {
-    filtroBuscadorActual,
-    filtroDestinoActual,
-    filtroAnoActual,
-    filtroFechaActual
-  } = filtros;
-
   $('#buscador').val(
-    filtroBuscadorActual
+    filtros.buscador
   );
 
   $('#filtroDestino').val(
-    filtroDestinoActual
-  );
-
-  const anoDisponible =
-    $('#filtroAno option')
-      .toArray()
-      .some(
-        option =>
-          option.value ===
-          String(
-            filtroAnoActual
-          )
-      );
-
-  const anoFinal =
-    anoDisponible
-      ? String(
-          filtroAnoActual
-        )
-      : $('#filtroAno').val() ||
-        '';
-
-  $('#filtroAno').val(
-    anoFinal
+    filtros.destino
   );
 
   $('#filtroFechaDesde').val(
-    filtroFechaActual
+    filtros.fechaDesde
   );
 
   FLT_DESTINO.value =
-    filtroDestinoActual;
+    filtros.destino;
+
+  const anoSeleccionado =
+    $('#filtroAno').val() ||
+    '';
 
   tabla
-    .column(6)
+    .column(
+      INDICE_COLUMNA_ANO
+    )
     .search(
-      anoFinal
-        ? `^${anoFinal}$`
+      anoSeleccionado
+        ? `^${escaparRegex(
+            anoSeleccionado
+          )}$`
         : '',
       true,
       false
     );
 
   if (
-    filtroBuscadorActual
-      .includes(',')
+    filtros.buscador.includes(',')
   ) {
     const terminos =
-      filtroBuscadorActual
+      filtros.buscador
         .split(',')
         .map(
           texto =>
@@ -1917,28 +1846,25 @@ function restaurarFiltros(
 
     tabla.search('');
   } else {
-    BUSQ_COMA.activo =
-      false;
-
-    BUSQ_COMA.terminos =
-      [];
+    BUSQ_COMA.activo = false;
+    BUSQ_COMA.terminos = [];
 
     tabla.search(
-      filtroBuscadorActual
+      filtros.buscador
     );
   }
 
   aplicarFiltroFechaColumnas(
     tabla,
-    filtroFechaActual
+    filtros.fechaDesde
   );
 
-  tabla.draw();
+  tabla.draw(false);
 }
 
 
 // ======================================================
-// EVENTOS DE FILTROS
+// EVENTOS FILTROS
 // ======================================================
 
 function registrarEventosFiltros(
@@ -1951,13 +1877,10 @@ function registrarEventosFiltros(
       function () {
         const texto =
           String(
-            this.value ||
-            ''
+            this.value || ''
           );
 
-        if (
-          texto.includes(',')
-        ) {
+        if (texto.includes(',')) {
           const terminos =
             texto
               .split(',')
@@ -1978,11 +1901,8 @@ function registrarEventosFiltros(
           tabla.search('');
           tabla.draw();
         } else {
-          BUSQ_COMA.activo =
-            false;
-
-          BUSQ_COMA.terminos =
-            [];
+          BUSQ_COMA.activo = false;
+          BUSQ_COMA.terminos = [];
 
           tabla
             .search(texto)
@@ -1998,8 +1918,7 @@ function registrarEventosFiltros(
       function () {
         FLT_DESTINO.value =
           String(
-            this.value ||
-            ''
+            this.value || ''
           ).trim();
 
         tabla.draw();
@@ -2013,15 +1932,18 @@ function registrarEventosFiltros(
       function () {
         const valor =
           String(
-            this.value ||
-            ''
+            this.value || ''
           );
 
         tabla
-          .column(6)
+          .column(
+            INDICE_COLUMNA_ANO
+          )
           .search(
             valor
-              ? `^${valor}$`
+              ? `^${escaparRegex(
+                  valor
+                )}$`
               : '',
             true,
             false
@@ -2071,8 +1993,7 @@ function aplicarFiltroFechaColumnas(
 
         const mostrar =
           !fechaDesde ||
-          fechaColumna >=
-            fechaDesde;
+          fechaColumna >= fechaDesde;
 
         this.visible(
           mostrar,
@@ -2080,32 +2001,220 @@ function aplicarFiltroFechaColumnas(
         );
       }
     );
+
+  window.setTimeout(
+    actualizarAnchoScrollSuperior,
+    60
+  );
 }
 
 
 // ======================================================
-// NÚMERO DE NEGOCIO DESDE URL
+// AJUSTE VISUAL
+// ======================================================
+
+function ajustarVistaCalendario(
+  tabla
+) {
+  window.setTimeout(
+    () => {
+      try {
+        tabla.columns.adjust();
+
+        if (tabla.fixedColumns) {
+          tabla.fixedColumns().relayout();
+        }
+
+        actualizarAnchoScrollSuperior();
+
+        $(window).trigger('resize');
+      } catch (error) {
+        console.warn(
+          'Ajuste visual omitido:',
+          error
+        );
+      }
+    },
+    200
+  );
+}
+
+
+// ======================================================
+// DOBLE SCROLL HORIZONTAL
+// ======================================================
+
+function obtenerScrollBody() {
+  return document.querySelector(
+    '#tablaCalendario_wrapper .dataTables_scrollBody'
+  );
+}
+
+
+function obtenerScrollSuperior() {
+  return document.getElementById(
+    'scrollCalendarioSuperior'
+  );
+}
+
+
+function obtenerScrollHorizontalActual() {
+  const scrollBody =
+    obtenerScrollBody();
+
+  return scrollBody
+    ? scrollBody.scrollLeft
+    : 0;
+}
+
+
+function desconectarScrollSuperior() {
+  const superior =
+    obtenerScrollSuperior();
+
+  const inferior =
+    obtenerScrollBody();
+
+  if (superior) {
+    superior.onscroll = null;
+  }
+
+  if (inferior) {
+    inferior.onscroll = null;
+  }
+
+  window.removeEventListener(
+    'resize',
+    actualizarAnchoScrollSuperior
+  );
+}
+
+
+function configurarScrollSuperior(
+  scrollInicial = 0
+) {
+  const superior =
+    obtenerScrollSuperior();
+
+  const contenido =
+    document.getElementById(
+      'scrollCalendarioSuperiorContenido'
+    );
+
+  const inferior =
+    obtenerScrollBody();
+
+  if (!superior || !contenido || !inferior) {
+    return;
+  }
+
+  actualizarAnchoScrollSuperior();
+
+  superior.style.display = 'block';
+
+  superior.onscroll = () => {
+    if (sincronizandoScroll) {
+      return;
+    }
+
+    sincronizandoScroll = true;
+
+    inferior.scrollLeft =
+      superior.scrollLeft;
+
+    sincronizandoScroll = false;
+  };
+
+  inferior.onscroll = () => {
+    if (sincronizandoScroll) {
+      return;
+    }
+
+    sincronizandoScroll = true;
+
+    superior.scrollLeft =
+      inferior.scrollLeft;
+
+    sincronizandoScroll = false;
+  };
+
+  const limite =
+    Math.max(
+      0,
+      inferior.scrollWidth -
+      inferior.clientWidth
+    );
+
+  const posicion =
+    Math.min(
+      Number(scrollInicial) || 0,
+      limite
+    );
+
+  inferior.scrollLeft =
+    posicion;
+
+  superior.scrollLeft =
+    posicion;
+
+  window.removeEventListener(
+    'resize',
+    actualizarAnchoScrollSuperior
+  );
+
+  window.addEventListener(
+    'resize',
+    actualizarAnchoScrollSuperior
+  );
+}
+
+
+function actualizarAnchoScrollSuperior() {
+  const superior =
+    obtenerScrollSuperior();
+
+  const contenido =
+    document.getElementById(
+      'scrollCalendarioSuperiorContenido'
+    );
+
+  const inferior =
+    obtenerScrollBody();
+
+  if (!superior || !contenido || !inferior) {
+    return;
+  }
+
+  contenido.style.width =
+    `${inferior.scrollWidth}px`;
+
+  superior.style.display =
+    inferior.scrollWidth >
+    inferior.clientWidth
+      ? 'block'
+      : 'none';
+}
+
+
+// ======================================================
+// NÚMERO DE NEGOCIO POR URL
 // ======================================================
 
 function aplicarNumeroNegocioInicial(
   tabla
 ) {
-  if (
-    !numeroNegocioInicial
-  ) {
+  if (!numeroNegocioInicial) {
     return;
   }
 
-  const buscador =
+  const $buscador =
     $('#buscador');
 
-  if (
-    buscador.val()
-  ) {
+  if ($buscador.val()) {
     return;
   }
 
-  buscador.val(
+  $buscador.val(
     numeroNegocioInicial
   );
 
@@ -2119,12 +2228,9 @@ function aplicarNumeroNegocioInicial(
 
 // ======================================================
 // EDICIÓN
-// Sigue guardando en colección grupos.
-// La Cloud Function actualizará el resumen.
 // ======================================================
 
 function registrarEventosEdicion(
-  tabla,
   userEmail
 ) {
   $('#btn-toggle-edit')
@@ -2132,70 +2238,73 @@ function registrarEventosEdicion(
     .on(
       'click.calendario',
       async () => {
-        editMode =
-          !editMode;
+        editMode = !editMode;
 
-        $('#btn-toggle-edit')
-          .text(
-            editMode
-              ? '🔒 Desactivar Edición'
-              : '🔓 Activar Edición'
-          )
-          .toggleClass(
-            'activo',
-            editMode
-          );
+        aplicarModoEdicionVisual();
 
-        $('#tablaCalendario tbody td')
-          .each(
-            function () {
-              const fecha =
-                $(this).attr(
-                  'data-fecha'
-                );
+        try {
+          await addDoc(
+            collection(
+              db,
+              'historial'
+            ),
+            {
+              accion:
+                editMode
+                  ? 'ACTIVÓ MODO EDICIÓN'
+                  : 'DESACTIVÓ MODO EDICIÓN',
 
-              $(this).attr(
-                'contenteditable',
-                editMode &&
-                  Boolean(fecha)
-              );
+              usuario:
+                userEmail,
+
+              timestamp:
+                new Date()
             }
           );
-
-        await addDoc(
-          collection(
-            db,
-            'historial'
-          ),
-          {
-            accion:
-              editMode
-                ? 'ACTIVÓ MODO EDICIÓN'
-                : 'DESACTIVÓ MODO EDICIÓN',
-
-            usuario:
-              userEmail,
-
-            timestamp:
-              new Date()
-          }
-        );
+        } catch (error) {
+          console.warn(
+            'No se pudo registrar cambio de modo:',
+            error
+          );
+        }
       }
     );
 
   $('#tablaCalendario tbody')
     .off(
       'focusout.calendario',
-      'td[contenteditable="true"]'
+      'td[data-fecha][contenteditable="true"]'
     )
     .on(
       'focusout.calendario',
-      'td[contenteditable="true"]',
+      'td[data-fecha][contenteditable="true"]',
       async function () {
         await guardarCeldaItinerario(
           this
         );
       }
+    );
+}
+
+
+function aplicarModoEdicionVisual() {
+  $('#btn-toggle-edit')
+    .text(
+      editMode
+        ? '🔒 Desactivar Edición'
+        : '🔓 Activar Edición'
+    )
+    .toggleClass(
+      'activo',
+      editMode
+    );
+
+  $('#tablaCalendario tbody td[data-fecha]')
+    .attr(
+      'contenteditable',
+      editMode
+        ? 'true'
+        : 'false'
     );
 }
 
@@ -2227,16 +2336,17 @@ async function guardarCeldaItinerario(
   if (
     !grupoId ||
     !fecha ||
-    textoNuevo ===
-      textoAnterior
+    textoNuevo === textoAnterior
   ) {
     return;
   }
 
   try {
-    $celda.addClass(
-      'guardando'
-    );
+    $celda
+      .removeClass(
+        'error-guardado guardado'
+      )
+      .addClass('guardando');
 
     const referenciaGrupo =
       doc(
@@ -2250,17 +2360,14 @@ async function guardarCeldaItinerario(
         referenciaGrupo
       );
 
-    if (
-      !snapshotGrupo.exists()
-    ) {
+    if (!snapshotGrupo.exists()) {
       throw new Error(
         `No se encontró el grupo ${grupoId}.`
       );
     }
 
     const datosGrupo =
-      snapshotGrupo.data() ||
-      {};
+      snapshotGrupo.data() || {};
 
     const actividadesAnteriores =
       Array.isArray(
@@ -2268,10 +2375,7 @@ async function guardarCeldaItinerario(
           ?.itinerario
           ?.[fecha]
       )
-        ? datosGrupo
-            .itinerario[
-              fecha
-            ]
+        ? datosGrupo.itinerario[fecha]
         : [];
 
     const actividadesNuevas =
@@ -2282,9 +2386,7 @@ async function guardarCeldaItinerario(
 
     const actividadesOrdenadas =
       [...actividadesNuevas]
-        .sort(
-          compararActividades
-        );
+        .sort(compararActividades);
 
     await updateDoc(
       referenciaGrupo,
@@ -2318,8 +2420,7 @@ async function guardarCeldaItinerario(
           textoOrdenado,
 
         modificadoPor:
-          auth.currentUser
-            ?.email ||
+          auth.currentUser?.email ||
           '',
 
         timestamp:
@@ -2328,9 +2429,7 @@ async function guardarCeldaItinerario(
     );
 
     $celda
-      .text(
-        textoOrdenado
-      )
+      .text(textoOrdenado)
       .attr(
         'data-original',
         textoOrdenado
@@ -2348,7 +2447,7 @@ async function guardarCeldaItinerario(
           'guardado'
         );
       },
-      1200
+      1300
     );
   } catch (error) {
     console.error(
@@ -2357,11 +2456,9 @@ async function guardarCeldaItinerario(
     );
 
     $celda
+      .text(textoAnterior)
       .addClass(
         'error-guardado'
-      )
-      .text(
-        textoAnterior
       );
 
     alert(
@@ -2391,37 +2488,31 @@ function parsearTextoActividades(
   return lineas.map(
     (linea, indice) => {
       const original =
-        originales[
-          indice
-        ] || {};
+        originales[indice] ||
+        {};
 
-      const match =
+      const matchCompleto =
         linea.match(
           /^(\d{1,2}[:h.]\d{2})\s*[–—-]\s*(\d{1,2}[:h.]\d{2})\s+(.*)$/
         );
 
-      if (match) {
+      if (matchCompleto) {
         return {
           ...original,
 
           horaInicio:
-            match[1]
-              .replace(
-                /[h.]/,
-                ':'
-              )
+            matchCompleto[1]
+              .replace(/[h.]/, ':')
               .trim(),
 
           horaFin:
-            match[2]
-              .replace(
-                /[h.]/,
-                ':'
-              )
+            matchCompleto[2]
+              .replace(/[h.]/, ':')
               .trim(),
 
           actividad:
-            match[3].trim()
+            matchCompleto[3]
+              .trim()
         };
       }
 
@@ -2436,10 +2527,7 @@ function parsearTextoActividades(
 
           horaInicio:
             soloInicio[1]
-              .replace(
-                /[h.]/,
-                ':'
-              )
+              .replace(/[h.]/, ':')
               .trim(),
 
           horaFin:
@@ -2504,6 +2592,20 @@ function registrarEventosHistorial() {
       'click.calendario',
       recargarHistorial
     );
+
+  $('#buscadorHistorial')
+    .off('input.calendario')
+    .on(
+      'input.calendario',
+      aplicarFiltrosHistorial
+    );
+
+  $('#histInicio, #histFin')
+    .off('change.calendario')
+    .on(
+      'change.calendario',
+      aplicarFiltrosHistorial
+    );
 }
 
 
@@ -2533,8 +2635,7 @@ async function recargarHistorial() {
   snapshot.forEach(
     docSnap => {
       const datos =
-        docSnap.data() ||
-        {};
+        docSnap.data() || {};
 
       const fecha =
         datos.timestamp
@@ -2544,8 +2645,15 @@ async function recargarHistorial() {
         return;
       }
 
+      const fechaISO =
+        fechaAISO(fecha);
+
       const $fila =
-        $('<tr>');
+        $('<tr>')
+          .attr(
+            'data-fecha',
+            fechaISO
+          );
 
       $('<td>')
         .text(
@@ -2592,17 +2700,14 @@ async function recargarHistorial() {
         )
         .appendTo($fila);
 
-      $tbody.append(
-        $fila
-      );
+      $tbody.append($fila);
     }
   );
 
   if (
-    $.fn.DataTable
-      .isDataTable(
-        '#tablaHistorial'
-      )
+    $.fn.DataTable.isDataTable(
+      '#tablaHistorial'
+    )
   ) {
     $('#tablaHistorial')
       .DataTable()
@@ -2624,12 +2729,99 @@ async function recargarHistorial() {
         dom: 'ltip',
         pageLength: 15
       });
+
+  aplicarFiltrosHistorial();
 }
 
 
+function aplicarFiltrosHistorial() {
+  if (!dtHist) {
+    return;
+  }
+
+  const texto =
+    String(
+      $('#buscadorHistorial').val() ||
+      ''
+    );
+
+  const inicio =
+    $('#histInicio').val() ||
+    '';
+
+  const fin =
+    $('#histFin').val() ||
+    '';
+
+  dtHist.search(texto);
+
+  $.fn.dataTable.ext.search =
+    $.fn.dataTable.ext.search
+      .filter(
+        filtro =>
+          filtro !== filtroFechaHistorial
+      );
+
+  filtroFechaHistorial.inicio =
+    inicio;
+
+  filtroFechaHistorial.fin =
+    fin;
+
+  $.fn.dataTable.ext.search.push(
+    filtroFechaHistorial
+  );
+
+  dtHist.draw();
+}
+
+
+function filtroFechaHistorial(
+  settings,
+  data,
+  dataIndex
+) {
+  if (
+    settings.nTable.id !==
+    'tablaHistorial'
+  ) {
+    return true;
+  }
+
+  const fila =
+    settings.aoData[
+      dataIndex
+    ]?.nTr;
+
+  const fecha =
+    fila?.dataset?.fecha ||
+    '';
+
+  if (
+    filtroFechaHistorial.inicio &&
+    fecha <
+      filtroFechaHistorial.inicio
+  ) {
+    return false;
+  }
+
+  if (
+    filtroFechaHistorial.fin &&
+    fecha >
+      filtroFechaHistorial.fin
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+filtroFechaHistorial.inicio = '';
+filtroFechaHistorial.fin = '';
+
+
 // ======================================================
-// EXPORTAR EXCEL
-// Respeta filtros, orden y columnas visibles
+// EXPORTACIÓN EXCELJS
 // ======================================================
 
 const botonExportar =
@@ -2645,12 +2837,11 @@ if (botonExportar) {
 }
 
 
-function exportarCalendarioExcel() {
+async function exportarCalendarioExcel() {
   if (
-    !$.fn.DataTable
-      .isDataTable(
-        '#tablaCalendario'
-      )
+    !$.fn.DataTable.isDataTable(
+      '#tablaCalendario'
+    )
   ) {
     alert(
       'El calendario todavía no está listo.'
@@ -2659,114 +2850,606 @@ function exportarCalendarioExcel() {
     return;
   }
 
-  const tabla =
-    $('#tablaCalendario')
-      .DataTable();
-
-  const columnasVisibles = [];
-
-  tabla
-    .columns(':visible')
-    .every(
-      function () {
-        const indice =
-          this.index();
-
-        const encabezado =
-          this.header();
-
-        const fechaISO =
-          encabezado
-            ?.getAttribute?.(
-              'data-fechaiso'
-            );
-
-        columnasVisibles.push({
-          indice,
-
-          nombre:
-            fechaISO ||
-            encabezado
-              ?.innerText
-              ?.trim() ||
-            `Col_${indice + 1}`
-        });
-      }
+  if (
+    typeof ExcelJS === 'undefined'
+  ) {
+    alert(
+      'No se pudo cargar ExcelJS.'
     );
 
-  const headers =
-    columnasVisibles.map(
-      columna =>
-        columna.nombre
-    );
+    return;
+  }
 
-  const datos = [];
+  try {
+    const $boton =
+      $('#btn-export-excel');
 
-  tabla
-    .rows({
-      search: 'applied',
-      order: 'applied'
-    })
-    .every(
-      function () {
-        const nodoFila =
-          this.node();
+    const textoOriginal =
+      $boton.text();
 
-        const celdas =
-          $(nodoFila)
-            .find('td')
-            .toArray();
+    $boton
+      .prop('disabled', true)
+      .text(
+        '⏳ Generando Excel...'
+      );
 
-        const fila = {};
+    const tabla =
+      $('#tablaCalendario')
+        .DataTable();
 
-        columnasVisibles.forEach(
-          columna => {
-            const celda =
-              celdas[
-                columna.indice
-              ];
+    const columnasVisibles =
+      tabla
+        .columns(':visible')
+        .indexes()
+        .toArray();
 
-            fila[
-              columna.nombre
-            ] =
-              celda
-                ? $(celda)
-                    .text()
-                    .trim()
-                : '';
-          }
-        );
+    const filasVisibles =
+      tabla
+        .rows({
+          search: 'applied',
+          order: 'applied'
+        })
+        .indexes()
+        .toArray();
 
-        datos.push(fila);
-      }
-    );
+    const workbook =
+      new ExcelJS.Workbook();
 
-  const hoja =
-    XLSX.utils
-      .json_to_sheet(
-        datos,
+    workbook.creator =
+      'Operaciones RaiTrai';
+
+    workbook.created =
+      new Date();
+
+    const worksheet =
+      workbook.addWorksheet(
+        'Calendario',
         {
-          header: headers
+          views: [
+            {
+              state: 'frozen',
+              xSplit:
+                COLUMNAS_FIJAS,
+              ySplit: 1
+            }
+          ],
+
+          pageSetup: {
+            orientation:
+              'landscape',
+
+            fitToPage: true,
+
+            fitToWidth: 1,
+
+            fitToHeight: 0,
+
+            paperSize: 9,
+
+            margins: {
+              left: 0.25,
+              right: 0.25,
+              top: 0.4,
+              bottom: 0.4,
+              header: 0.2,
+              footer: 0.2
+            }
+          }
         }
       );
 
-  const libro =
-    XLSX.utils
-      .book_new();
+    worksheet.properties.defaultRowHeight =
+      22;
 
-  XLSX.utils
-    .book_append_sheet(
-      libro,
-      hoja,
-      'Calendario'
+    worksheet.autoFilter = {
+      from: {
+        row: 1,
+        column: 1
+      },
+
+      to: {
+        row: 1,
+        column:
+          columnasVisibles.length
+      }
+    };
+
+    const encabezados =
+      columnasVisibles.map(
+        indiceColumna => {
+          const th =
+            tabla
+              .column(
+                indiceColumna
+              )
+              .header();
+
+          const fechaISO =
+            th?.getAttribute?.(
+              'data-fechaiso'
+            );
+
+          return {
+            indice:
+              indiceColumna,
+
+            texto:
+              fechaISO
+                ? formatearFechaBonita(
+                    fechaISO
+                  )
+                : th?.innerText
+                    ?.trim() ||
+                  '',
+
+            fechaISO:
+              fechaISO || '',
+
+            domingo:
+              fechaISO
+                ? esDomingo(
+                    fechaISO
+                  )
+                : false
+          };
+        }
+      );
+
+    worksheet.addRow(
+      encabezados.map(
+        encabezado =>
+          encabezado.texto
+      )
     );
 
-  const ano =
-    $('#filtroAno').val() ||
-    'todos';
+    aplicarEstiloEncabezadoExcel(
+      worksheet,
+      encabezados
+    );
 
-  XLSX.writeFile(
-    libro,
-    `calendario_operaciones_${ano}.xlsx`
+    filasVisibles.forEach(
+      (indiceFila, posicion) => {
+        const valores = [];
+
+        columnasVisibles.forEach(
+          indiceColumna => {
+            const nodo =
+              tabla
+                .cell(
+                  indiceFila,
+                  indiceColumna
+                )
+                .node();
+
+            valores.push(
+              nodo
+                ? $(nodo)
+                    .text()
+                    .trim()
+                : ''
+            );
+          }
+        );
+
+        const filaExcel =
+          worksheet.addRow(
+            valores
+          );
+
+        aplicarEstiloFilaExcel(
+          filaExcel,
+          {
+            posicion,
+            indiceFila,
+            columnasVisibles,
+            tabla
+          }
+        );
+      }
+    );
+
+    aplicarAnchosExcel(
+      worksheet,
+      encabezados
+    );
+
+    worksheet.eachRow(
+      {
+        includeEmpty: true
+      },
+      row => {
+        row.eachCell(
+          {
+            includeEmpty: true
+          },
+          cell => {
+            cell.alignment = {
+              ...cell.alignment,
+
+              vertical: 'top',
+              wrapText: true
+            };
+          }
+        );
+      }
+    );
+
+    const buffer =
+      await workbook.xlsx
+        .writeBuffer();
+
+    const ano =
+      $('#filtroAno').val() ||
+      'todos';
+
+    const fechaArchivo =
+      new Date()
+        .toISOString()
+        .slice(0, 10);
+
+    saveAs(
+      new Blob(
+        [buffer],
+        {
+          type:
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        }
+      ),
+
+      `calendario_operaciones_${ano}_${fechaArchivo}.xlsx`
+    );
+
+    $boton
+      .prop('disabled', false)
+      .text(textoOriginal);
+  } catch (error) {
+    console.error(
+      'Error exportando Excel:',
+      error
+    );
+
+    $('#btn-export-excel')
+      .prop('disabled', false)
+      .text(
+        '📤 Exportar Excel'
+      );
+
+    alert(
+      `No se pudo generar el Excel: ${error.message}`
+    );
+  }
+}
+
+
+function aplicarEstiloEncabezadoExcel(
+  worksheet,
+  encabezados
+) {
+  const fila =
+    worksheet.getRow(1);
+
+  fila.height = 32;
+
+  encabezados.forEach(
+    (encabezado, posicion) => {
+      const cell =
+        fila.getCell(
+          posicion + 1
+        );
+
+      const esColumnaFija =
+        posicion <
+        COLUMNAS_FIJAS;
+
+      cell.font = {
+        bold: true,
+        size: 10,
+        color: {
+          argb: 'FF18334F'
+        }
+      };
+
+      cell.alignment = {
+        horizontal: 'center',
+        vertical: 'middle',
+        wrapText: true
+      };
+
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: {
+          argb:
+            encabezado.domingo
+              ? 'FFD8DEE6'
+              : esColumnaFija
+                ? 'FFDCE9F5'
+                : 'FFEAF1F8'
+        }
+      };
+
+      cell.border = {
+        top: {
+          style: 'thin',
+          color: {
+            argb: 'FF94A3B8'
+          }
+        },
+        left: {
+          style: 'thin',
+          color: {
+            argb: 'FFB8C4D0'
+          }
+        },
+        bottom: {
+          style: 'medium',
+          color: {
+            argb: 'FF7D97B0'
+          }
+        },
+        right: {
+          style:
+            posicion ===
+            COLUMNAS_FIJAS - 1
+              ? 'medium'
+              : 'thin',
+
+          color: {
+            argb:
+              posicion ===
+              COLUMNAS_FIJAS - 1
+                ? 'FF7D97B0'
+                : 'FFB8C4D0'
+          }
+        }
+      };
+    }
+  );
+}
+
+
+function aplicarEstiloFilaExcel(
+  filaExcel,
+  {
+    posicion,
+    indiceFila,
+    columnasVisibles,
+    tabla
+  }
+) {
+  const fondoFila =
+    posicion % 2 === 0
+      ? 'FFFFFFFF'
+      : 'FFF5F8FB';
+
+  const fondoFijo =
+    posicion % 2 === 0
+      ? 'FFF1F6FB'
+      : 'FFE8F0F7';
+
+  let maxLineas = 1;
+
+  columnasVisibles.forEach(
+    (indiceColumna, posicionColumna) => {
+      const cell =
+        filaExcel.getCell(
+          posicionColumna + 1
+        );
+
+      const nodo =
+        tabla
+          .cell(
+            indiceFila,
+            indiceColumna
+          )
+          .node();
+
+      const esColumnaFija =
+        posicionColumna <
+        COLUMNAS_FIJAS;
+
+      const esInicioFin =
+        nodo?.classList
+          ?.contains(
+            'inicio-fin'
+          );
+
+      const esDomingoCelda =
+        nodo?.classList
+          ?.contains(
+            'domingo'
+          );
+
+      let colorFondo =
+        esColumnaFija
+          ? fondoFijo
+          : fondoFila;
+
+      if (esDomingoCelda) {
+        colorFondo =
+          'FFEDF1F5';
+      }
+
+      if (esInicioFin) {
+        colorFondo =
+          'FFE1EFFF';
+      }
+
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+
+        fgColor: {
+          argb: colorFondo
+        }
+      };
+
+      cell.font = {
+        size: 9,
+        color: {
+          argb: 'FF263746'
+        }
+      };
+
+      cell.alignment = {
+        vertical: 'top',
+        horizontal:
+          posicionColumna === 0 ||
+          posicionColumna === 2
+            ? 'center'
+            : 'left',
+
+        wrapText: true,
+        indent:
+          posicionColumna === 0 ||
+          posicionColumna === 2
+            ? 0
+            : 1
+      };
+
+      cell.border = {
+        top: {
+          style: 'thin',
+          color: {
+            argb: 'FFD9E0E7'
+          }
+        },
+        left: {
+          style: 'thin',
+          color: {
+            argb: 'FFD9E0E7'
+          }
+        },
+        bottom: {
+          style: 'thin',
+          color: {
+            argb: 'FFD9E0E7'
+          }
+        },
+        right: {
+          style:
+            posicionColumna ===
+            COLUMNAS_FIJAS - 1
+              ? 'medium'
+              : 'thin',
+
+          color: {
+            argb:
+              posicionColumna ===
+              COLUMNAS_FIJAS - 1
+                ? 'FF7D97B0'
+                : 'FFD9E0E7'
+          }
+        }
+      };
+
+      const texto =
+        String(
+          cell.value || ''
+        );
+
+      const lineas =
+        estimarLineasExcel(
+          texto,
+          obtenerAnchoExcel(
+            posicionColumna
+          )
+        );
+
+      maxLineas =
+        Math.max(
+          maxLineas,
+          lineas
+        );
+    }
+  );
+
+  filaExcel.height =
+    Math.min(
+      230,
+      Math.max(
+        28,
+        maxLineas * 13
+      )
+    );
+}
+
+
+function estimarLineasExcel(
+  texto,
+  anchoColumna
+) {
+  if (!texto) {
+    return 1;
+  }
+
+  const lineasReales =
+    String(texto)
+      .split('\n');
+
+  let total = 0;
+
+  const caracteresPorLinea =
+    Math.max(
+      8,
+      Math.floor(
+        anchoColumna * 1.45
+      )
+    );
+
+  lineasReales.forEach(
+    linea => {
+      total += Math.max(
+        1,
+        Math.ceil(
+          linea.length /
+          caracteresPorLinea
+        )
+      );
+    }
+  );
+
+  return total;
+}
+
+
+function obtenerAnchoExcel(
+  posicionColumna
+) {
+  const anchos = [
+    14,
+    34,
+    15,
+    29,
+    34,
+    48
+  ];
+
+  if (
+    posicionColumna <
+    anchos.length
+  ) {
+    return anchos[
+      posicionColumna
+    ];
+  }
+
+  return 31;
+}
+
+
+function aplicarAnchosExcel(
+  worksheet,
+  encabezados
+) {
+  encabezados.forEach(
+    (encabezado, posicion) => {
+      worksheet.getColumn(
+        posicion + 1
+      ).width =
+        obtenerAnchoExcel(
+          posicion
+        );
+    }
   );
 }
