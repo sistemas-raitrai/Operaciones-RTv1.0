@@ -206,7 +206,8 @@
     }
 
     #tablaCalendario {
-      width: 100% !important;
+      width: max-content !important;
+      min-width: 100%;
     }
 
     div.dataTables_wrapper {
@@ -253,6 +254,8 @@
     ================================================== */
 
     #tablaCalendario {
+      width: max-content !important;
+      min-width: 100%;
       border-collapse: separate !important;
       border-spacing: 0;
     }
@@ -307,19 +310,29 @@
       background: #e8f0f7;
     }
 
+    #tablaCalendario thead th:nth-child(-n+6) {
+      background: #dce9f5 !important;
+    }
+    
+    #tablaCalendario tbody tr:nth-child(odd) td:nth-child(-n+6) {
+      background: #f1f6fb !important;
+    }
+    
+    #tablaCalendario tbody tr:nth-child(even) td:nth-child(-n+6) {
+      background: #e8f0f7 !important;
+    }
+
     #tablaCalendario th:nth-child(6),
     #tablaCalendario td:nth-child(6) {
       border-right: 3px solid #7d97b0 !important;
       box-shadow: 7px 0 10px -9px rgba(15, 23, 42, 0.75);
     }
 
-    #tablaCalendario td[data-fecha] {
-      min-width: 205px;
-      max-width: 240px;
-    }
-
+    #tablaCalendario td[data-fecha],
     #tablaCalendario th[data-fechaiso] {
-      min-width: 205px;
+      width: 210px;
+      min-width: 210px;
+      max-width: 210px;
     }
 
     #tablaCalendario .domingo {
