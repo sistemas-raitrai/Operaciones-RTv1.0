@@ -1750,6 +1750,136 @@ function inicializarDataTable(
     });
 }
 
+function sincronizarAnchosEncabezadoYCuerpo() {
+  const wrapper =
+    document.getElementById(
+      'tablaCalendario_wrapper'
+    );
+
+  if (!wrapper) {
+    return;
+  }
+
+  const tablaEncabezado =
+    wrapper.querySelector(
+      '.dataTables_scrollHead table'
+    );
+
+  const tablaCuerpo =
+    wrapper.querySelector(
+      '.dataTables_scrollBody table'
+    );
+
+  const encabezados =
+    tablaEncabezado
+      ? Array.from(
+          tablaEncabezado.querySelectorAll(
+            'thead th'
+          )
+        )
+      : [];
+
+  const primeraFila =
+    tablaCuerpo
+      ?.querySelector(
+        'tbody tr'
+      );
+
+  const celdas =
+    primeraFila
+      ? Array.from(
+          primeraFila.children
+        )
+      : [];
+
+  if (
+    !encabezados.length ||
+    !celdas.length
+  ) {
+    return;
+  }
+
+  /*
+    Año está oculto, por lo que recorremos
+    solamente columnas visibles.
+  */
+  encabezados.forEach(
+    (encabezado, posicionVisible) => {
+      const celda =
+        celdas.filter(
+          elemento =>
+            getComputedStyle(
+              elemento
+            ).display !== 'none'
+        )[posicionVisible];
+
+      if (!celda) {
+        return;
+      }
+
+      let ancho = 210;
+
+      if (posicionVisible === 0) {
+        ancho = 90;
+      } else if (
+        posicionVisible === 1
+      ) {
+        ancho = 225;
+      } else if (
+        posicionVisible === 2
+      ) {
+        ancho = 100;
+      } else if (
+        posicionVisible === 3
+      ) {
+        ancho = 190;
+      } else if (
+        posicionVisible === 4
+      ) {
+        ancho = 225;
+      } else if (
+        posicionVisible === 5
+      ) {
+        ancho = 320;
+      }
+
+      encabezado.style.width =
+        `${ancho}px`;
+
+      encabezado.style.minWidth =
+        `${ancho}px`;
+
+      encabezado.style.maxWidth =
+        `${ancho}px`;
+
+      celda.style.width =
+        `${ancho}px`;
+
+      celda.style.minWidth =
+        `${ancho}px`;
+
+      celda.style.maxWidth =
+        `${ancho}px`;
+    }
+  );
+
+  const anchoCuerpo =
+    tablaCuerpo.scrollWidth;
+
+  tablaEncabezado.style.width =
+    `${anchoCuerpo}px`;
+
+  const inner =
+    wrapper.querySelector(
+      '.dataTables_scrollHeadInner'
+    );
+
+  if (inner) {
+    inner.style.width =
+      `${anchoCuerpo}px`;
+  }
+}
+
 
 function registrarFiltrosDataTable() {
   if (
@@ -2024,9 +2154,13 @@ function ajustarVistaCalendario(
 
         tabla.columns.adjust();
 
+        sincronizarAnchosEncabezadoYCuerpo();
+
         actualizarAnchoScrollSuperior();
 
-        $(window).trigger('resize');
+        $(window).trigger(
+          'resize'
+        );
       } catch (error) {
         console.warn(
           'Ajuste visual omitido:',
@@ -2037,7 +2171,6 @@ function ajustarVistaCalendario(
     200
   );
 }
-
 
 // ======================================================
 // DOBLE SCROLL HORIZONTAL
