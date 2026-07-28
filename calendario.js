@@ -1658,7 +1658,7 @@ function inicializarDataTable(
         `${altoDisponible}px`,
 
       scrollCollapse: true,
-      autoWidth: false,
+      autoWidth: true,
       deferRender: true,
 
       paging: false,
@@ -1670,11 +1670,6 @@ function inicializarDataTable(
       order: [
         [5, 'asc']
       ],
-
-      fixedColumns: {
-        leftColumns:
-          COLUMNAS_FIJAS
-      },
 
       buttons: [
         {
@@ -2019,11 +2014,15 @@ function ajustarVistaCalendario(
   window.setTimeout(
     () => {
       try {
-        tabla.columns.adjust();
-
-        if (tabla.fixedColumns) {
-          tabla.fixedColumns().relayout();
+        if (
+          !$.fn.DataTable.isDataTable(
+            '#tablaCalendario'
+          )
+        ) {
+          return;
         }
+
+        tabla.columns.adjust();
 
         actualizarAnchoScrollSuperior();
 
