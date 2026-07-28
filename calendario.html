@@ -2,12 +2,12 @@
 <html lang="es">
 
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
 
   <meta
     name="viewport"
     content="width=device-width, initial-scale=1.0"
-  />
+  >
 
   <title>Calendario de Actividades</title>
 
@@ -15,44 +15,82 @@
   <link
     rel="stylesheet"
     href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css"
-  />
+  >
 
   <!-- Botones DataTables -->
   <link
     rel="stylesheet"
     href="https://cdn.datatables.net/buttons/2.3.6/css/buttons.dataTables.min.css"
-  />
+  >
 
-  <!-- Fixed Header -->
+  <!-- FixedHeader -->
   <link
     rel="stylesheet"
     href="https://cdn.datatables.net/fixedheader/3.3.2/css/fixedHeader.dataTables.min.css"
-  />
+  >
 
-  <!-- Estilos generales Rai Trai -->
+  <!-- FixedColumns -->
+  <link
+    rel="stylesheet"
+    href="https://cdn.datatables.net/fixedcolumns/4.2.2/css/fixedColumns.dataTables.min.css"
+  >
+
+  <!-- Estilos generales -->
   <link
     rel="stylesheet"
     href="estilos.css"
-  />
+  >
 
   <link
     rel="icon"
     type="image/png"
     href="Logo Raitrai.png"
-  />
+  >
 
   <style>
     /* ==================================================
-       CONTENEDOR DE CARGA
+       ESTRUCTURA GENERAL
+    ================================================== */
+
+    main {
+      width: 100%;
+      max-width: none;
+      padding-right: 18px;
+      padding-left: 18px;
+      box-sizing: border-box;
+    }
+
+    .calendar-source-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: -5px 0 15px;
+      color: #64748b;
+      font-size: 13px;
+    }
+
+    .calendar-source-dot {
+      width: 8px;
+      height: 8px;
+      flex: 0 0 auto;
+      border-radius: 50%;
+      background: #16a34a;
+    }
+
+
+    /* ==================================================
+       BARRA DE CARGA
     ================================================== */
 
     .load-box {
+      width: 100%;
+      max-width: 720px;
       margin: 12px 0 18px;
       padding: 12px 14px;
       border: 1px solid #d7dbe3;
       border-radius: 8px;
       background: #f8fafc;
-      max-width: 720px;
+      box-sizing: border-box;
     }
 
     #loadTitle {
@@ -91,30 +129,12 @@
 
 
     /* ==================================================
-       INFORMACIÓN DEL RESUMEN
-    ================================================== */
-
-    .calendar-source-info {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: -6px 0 14px;
-      color: #64748b;
-      font-size: 13px;
-    }
-
-    .calendar-source-dot {
-      width: 8px;
-      height: 8px;
-      flex: 0 0 auto;
-      border-radius: 50%;
-      background: #16a34a;
-    }
-
-
-    /* ==================================================
        TOOLBAR
     ================================================== */
+
+    #toolbar {
+      margin-bottom: 14px;
+    }
 
     #toolbar .row {
       display: flex;
@@ -123,21 +143,33 @@
       gap: 10px;
     }
 
+    #toolbar .column {
+      margin: 0;
+    }
+
+    #toolbar .column.long {
+      min-width: 260px;
+      flex: 1 1 340px;
+    }
+
+    #toolbar .column.medium {
+      flex: 0 1 190px;
+    }
+
     #toolbar input,
     #toolbar select,
     #toolbar button {
-      min-height: 38px;
+      min-height: 40px;
+      box-sizing: border-box;
     }
 
-    #buscador {
+    #toolbar input,
+    #toolbar select {
       width: 100%;
-      min-width: 230px;
     }
 
-    #filtroDestino,
-    #filtroAno,
-    #filtroFechaDesde {
-      min-width: 150px;
+    #toolbar button {
+      white-space: nowrap;
     }
 
     #btn-toggle-edit.activo {
@@ -148,44 +180,170 @@
 
 
     /* ==================================================
-       TABLA CALENDARIO
+       SCROLL HORIZONTAL SUPERIOR
+    ================================================== */
+
+    #scrollCalendarioSuperior {
+      display: none;
+      width: 100%;
+      height: 18px;
+      margin: 4px 0 5px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      border: 1px solid #dbe1e8;
+      border-radius: 5px;
+      background: #f8fafc;
+      box-sizing: border-box;
+    }
+
+    #scrollCalendarioSuperiorContenido {
+      height: 1px;
+    }
+
+
+    /* ==================================================
+       CONTENEDOR DATATABLE
     ================================================== */
 
     .tabla-calendario-wrapper {
+      position: relative;
       width: 100%;
-      margin-top: 16px;
-      overflow-x: auto;
-      overflow-y: visible;
     }
 
     #tablaCalendario {
       width: 100% !important;
-      min-width: 1500px;
     }
 
-    #tablaCalendario th,
-    #tablaCalendario td {
+    div.dataTables_wrapper {
+      width: 100%;
+    }
+
+    div.dataTables_scroll {
+      border: 1px solid #d7dde5;
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    div.dataTables_scrollHead {
+      position: relative;
+      z-index: 20;
+      background: #eef4fa;
+    }
+
+    div.dataTables_scrollBody {
+      background: #fff;
+    }
+
+    div.dataTables_scrollBody::-webkit-scrollbar,
+    #scrollCalendarioSuperior::-webkit-scrollbar {
+      height: 14px;
+    }
+
+    div.dataTables_scrollBody::-webkit-scrollbar-thumb,
+    #scrollCalendarioSuperior::-webkit-scrollbar-thumb {
+      border: 3px solid transparent;
+      border-radius: 999px;
+      background: #8493a6;
+      background-clip: padding-box;
+    }
+
+    div.dataTables_scrollBody::-webkit-scrollbar-track,
+    #scrollCalendarioSuperior::-webkit-scrollbar-track {
+      background: #edf1f5;
+    }
+
+
+    /* ==================================================
+       TABLA
+    ================================================== */
+
+    #tablaCalendario {
+      border-collapse: separate !important;
+      border-spacing: 0;
+    }
+
+    #tablaCalendario thead th {
+      padding: 10px 9px;
+      border-right: 1px solid #cbd5e1;
+      border-bottom: 2px solid #94a3b8;
+      color: #18334f;
+      background: #eaf1f8;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.25;
+      vertical-align: middle;
+      white-space: normal;
+    }
+
+    #tablaCalendario tbody td {
+      padding: 10px 9px;
+      border-right: 1px solid #dde3ea;
+      border-bottom: 1px solid #d9e0e7;
+      color: #263746;
+      font-size: 12px;
+      line-height: 1.42;
       vertical-align: top;
+      white-space: pre-line;
+      overflow-wrap: anywhere;
     }
 
-    #tablaCalendario td {
-      white-space: pre-line;
+    #tablaCalendario tbody tr:nth-child(odd) td {
+      background: #ffffff;
+    }
+
+    #tablaCalendario tbody tr:nth-child(even) td {
+      background: #f5f8fb;
+    }
+
+    /*
+      Las primeras seis columnas corresponden a:
+      N° Negocio, Grupo, Pax, Destino, Hoteles y Vuelos.
+    */
+
+    #tablaCalendario thead th:nth-child(-n+6) {
+      background: #dce9f5;
+    }
+
+    #tablaCalendario tbody tr:nth-child(odd) td:nth-child(-n+6) {
+      background: #f1f6fb;
+    }
+
+    #tablaCalendario tbody tr:nth-child(even) td:nth-child(-n+6) {
+      background: #e8f0f7;
+    }
+
+    #tablaCalendario th:nth-child(6),
+    #tablaCalendario td:nth-child(6) {
+      border-right: 3px solid #7d97b0 !important;
+      box-shadow: 7px 0 10px -9px rgba(15, 23, 42, 0.75);
     }
 
     #tablaCalendario td[data-fecha] {
-      min-width: 165px;
-      line-height: 1.35;
+      min-width: 205px;
+      max-width: 240px;
+    }
+
+    #tablaCalendario th[data-fechaiso] {
+      min-width: 205px;
+    }
+
+    #tablaCalendario .domingo {
+      background: #edf1f5 !important;
+    }
+
+    #tablaCalendario .inicio-fin {
+      background: #e1efff !important;
     }
 
     #tablaCalendario td[contenteditable="true"] {
       cursor: text;
       outline: 2px dashed #f59e0b;
-      outline-offset: -3px;
-      background: #fffbea;
+      outline-offset: -4px;
+      background: #fff8d8 !important;
     }
 
     #tablaCalendario td.guardando {
-      opacity: 0.6;
+      opacity: 0.65;
       background: #fef3c7 !important;
     }
 
@@ -197,12 +355,62 @@
       background: #fee2e2 !important;
     }
 
-    #tablaCalendario .domingo {
-      background: #f8fafc;
+
+    /* ==================================================
+       ANCHOS DE COLUMNAS FIJAS
+    ================================================== */
+
+    #tablaCalendario th:nth-child(1),
+    #tablaCalendario td:nth-child(1) {
+      min-width: 90px;
+      max-width: 90px;
     }
 
-    #tablaCalendario .inicio-fin {
-      background: #eff6ff;
+    #tablaCalendario th:nth-child(2),
+    #tablaCalendario td:nth-child(2) {
+      min-width: 225px;
+      max-width: 225px;
+    }
+
+    #tablaCalendario th:nth-child(3),
+    #tablaCalendario td:nth-child(3) {
+      min-width: 100px;
+      max-width: 100px;
+    }
+
+    #tablaCalendario th:nth-child(4),
+    #tablaCalendario td:nth-child(4) {
+      min-width: 190px;
+      max-width: 190px;
+    }
+
+    #tablaCalendario th:nth-child(5),
+    #tablaCalendario td:nth-child(5) {
+      min-width: 225px;
+      max-width: 225px;
+    }
+
+    #tablaCalendario th:nth-child(6),
+    #tablaCalendario td:nth-child(6) {
+      min-width: 320px;
+      max-width: 320px;
+    }
+
+
+    /* ==================================================
+       FIXED COLUMNS
+    ================================================== */
+
+    table.dataTable tbody tr > .dtfc-fixed-left {
+      z-index: 5;
+    }
+
+    table.dataTable thead tr > .dtfc-fixed-left {
+      z-index: 25;
+    }
+
+    .dtfc-fixed-left {
+      background-clip: padding-box !important;
     }
 
 
@@ -213,17 +421,18 @@
     #modalHistorial {
       position: fixed;
       z-index: 9999;
-      top: 5%;
-      right: 4%;
-      bottom: 5%;
-      left: 4%;
+      top: 4%;
+      right: 3%;
+      bottom: 4%;
+      left: 3%;
       overflow: auto;
       padding: 22px;
       border: 1px solid #cbd5e1;
       border-radius: 12px;
       background: #fff;
       box-shadow:
-        0 24px 60px rgba(15, 23, 42, 0.25);
+        0 24px 60px rgba(15, 23, 42, 0.28);
+      box-sizing: border-box;
     }
 
     .historial-toolbar {
@@ -239,18 +448,27 @@
       min-height: 38px;
     }
 
+    #buscadorHistorial {
+      min-width: 260px;
+      flex: 1 1 300px;
+    }
+
 
     /* ==================================================
        RESPONSIVE
     ================================================== */
 
     @media (max-width: 900px) {
-      #toolbar .column {
-        width: 100%;
+      main {
+        padding-right: 8px;
+        padding-left: 8px;
       }
 
-      #toolbar input,
-      #toolbar select,
+      #toolbar .column {
+        width: 100%;
+        flex: 1 1 100%;
+      }
+
       #toolbar button {
         width: 100%;
       }
@@ -279,16 +497,12 @@
       <span class="calendar-source-dot"></span>
 
       <span>
-        Calendario conectado al resumen operativo de grupos,
-        hoteles, vuelos e itinerarios.
+        Calendario conectado al resumen operativo.
       </span>
     </div>
 
 
-    <!-- ==================================================
-         BARRA DE CARGA
-    ================================================== -->
-
+    <!-- Barra de carga -->
     <div
       id="loadBox"
       class="load-box"
@@ -311,10 +525,7 @@
     </div>
 
 
-    <!-- ==================================================
-         FILTROS Y ACCIONES
-    ================================================== -->
-
+    <!-- Filtros y acciones -->
     <div
       id="toolbar"
       class="toolbar"
@@ -327,7 +538,7 @@
             id="buscador"
             placeholder="🔍 Buscar grupo, negocio, hotel, vuelo o actividad..."
             autocomplete="off"
-          />
+          >
         </div>
 
         <div class="column medium">
@@ -356,15 +567,14 @@
           <input
             type="date"
             id="filtroFechaDesde"
-            title="Mostrar columnas de actividades desde esta fecha"
-          />
+            title="Mostrar actividades desde esta fecha"
+          >
         </div>
 
-        <!-- Este botón faltaba en el HTML anterior -->
         <button
           type="button"
           id="btn-toggle-edit"
-          title="Permite editar las actividades del itinerario directamente en la tabla"
+          title="Editar actividades del itinerario"
         >
           🔓 Activar Edición
         </button>
@@ -387,15 +597,19 @@
     </div>
 
 
-    <!-- ==================================================
-         TABLA CALENDARIO
-    ================================================== -->
+    <!-- Barra horizontal superior -->
+    <div id="scrollCalendarioSuperior">
+      <div id="scrollCalendarioSuperiorContenido"></div>
+    </div>
 
+
+    <!-- Tabla -->
     <div class="tabla-calendario-wrapper">
 
       <table
         id="tablaCalendario"
         class="display nowrap"
+        style="width:100%"
       >
         <thead>
           <tr id="encabezadoCalendario"></tr>
@@ -409,10 +623,7 @@
   </main>
 
 
-  <!-- ==================================================
-       MODAL HISTORIAL
-  ================================================== -->
-
+  <!-- Modal historial -->
   <div
     id="modalHistorial"
     class="modal"
@@ -428,19 +639,19 @@
         id="buscadorHistorial"
         placeholder="🔍 Buscar en historial..."
         autocomplete="off"
-      />
+      >
 
       <input
         type="date"
         id="histInicio"
         title="Fecha inicial"
-      />
+      >
 
       <input
         type="date"
         id="histFin"
         title="Fecha final"
-      />
+      >
 
       <button
         type="button"
@@ -480,39 +691,30 @@
   </div>
 
 
-  <!-- ==================================================
-       LIBRERÍAS
-  ================================================== -->
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
 
-  <script
-    src="https://code.jquery.com/jquery-3.6.4.min.js"
-  ></script>
+  <!-- DataTables -->
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
 
-  <script
-    src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"
-  ></script>
+  <!-- Botones DataTables -->
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"></script>
 
-  <script
-    src="https://cdn.datatables.net/buttons/2.3.6/js/dataTables.buttons.min.js"
-  ></script>
+  <!-- FixedHeader -->
+  <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
 
-  <script
-    src="https://cdn.datatables.net/buttons/2.3.6/js/buttons.colVis.min.js"
-  ></script>
+  <!-- FixedColumns -->
+  <script src="https://cdn.datatables.net/fixedcolumns/4.2.2/js/dataTables.fixedColumns.min.js"></script>
 
-  <script
-    src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"
-  ></script>
+  <!-- ExcelJS -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 
-  <script
-    src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"
-  ></script>
+  <!-- FileSaver para descargar ExcelJS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
 
-  <!-- ==================================================
-       ENCABEZADO + MÓDULOS
-  ================================================== -->
-
+  <!-- Encabezado y módulos -->
   <script>
     fetch('encabezado.html')
       .then(response => {
@@ -525,27 +727,19 @@
         return response.text();
       })
       .then(html => {
-        document.getElementById(
-          'encabezado'
-        ).innerHTML = html;
+        document.getElementById('encabezado').innerHTML = html;
       })
       .then(() => {
-        const scriptModule =
-          document.createElement(
-            'script'
-          );
+        const scriptModule = document.createElement('script');
 
-        scriptModule.type =
-          'module';
+        scriptModule.type = 'module';
 
         scriptModule.textContent = `
           import './script.js';
           import './calendario.js';
         `;
 
-        document.body.appendChild(
-          scriptModule
-        );
+        document.body.appendChild(scriptModule);
       })
       .catch(error => {
         console.error(
@@ -553,38 +747,21 @@
           error
         );
 
-        const loadBox =
-          document.getElementById(
-            'loadBox'
-          );
-
-        const loadTitle =
-          document.getElementById(
-            'loadTitle'
-          );
-
-        const loadDetail =
-          document.getElementById(
-            'loadDetail'
-          );
+        const loadBox = document.getElementById('loadBox');
+        const loadTitle = document.getElementById('loadTitle');
+        const loadDetail = document.getElementById('loadDetail');
 
         if (loadBox) {
-          loadBox.style.display =
-            'block';
-
-          loadBox.classList.add(
-            'error'
-          );
+          loadBox.style.display = 'block';
+          loadBox.classList.add('error');
         }
 
         if (loadTitle) {
-          loadTitle.textContent =
-            'Error al iniciar';
+          loadTitle.textContent = 'Error al iniciar';
         }
 
         if (loadDetail) {
-          loadDetail.textContent =
-            error.message;
+          loadDetail.textContent = error.message;
         }
       });
   </script>
