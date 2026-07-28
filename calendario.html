@@ -30,11 +30,6 @@
   >
 
   <!-- FixedColumns -->
-  <link
-    rel="stylesheet"
-    href="https://cdn.datatables.net/fixedcolumns/4.2.2/css/fixedColumns.dataTables.min.css"
-  >
-
   <!-- Estilos generales -->
   <link
     rel="stylesheet"
@@ -398,19 +393,73 @@
 
 
     /* ==================================================
-       FIXED COLUMNS
+       COLUMNAS FIJAS CON CSS STICKY
+       No usamos el plugin FixedColumns.
     ================================================== */
-
-    table.dataTable tbody tr > .dtfc-fixed-left {
-      z-index: 5;
+    
+    #tablaCalendario th,
+    #tablaCalendario td {
+      box-sizing: border-box;
     }
-
-    table.dataTable thead tr > .dtfc-fixed-left {
-      z-index: 25;
+    
+    /* Columna 1: N° Negocio */
+    #tablaCalendario th:nth-child(1),
+    #tablaCalendario td:nth-child(1) {
+      position: sticky;
+      left: 0;
     }
-
-    .dtfc-fixed-left {
-      background-clip: padding-box !important;
+    
+    /* Columna 2: Grupo */
+    #tablaCalendario th:nth-child(2),
+    #tablaCalendario td:nth-child(2) {
+      position: sticky;
+      left: 90px;
+    }
+    
+    /* Columna 3: Pax */
+    #tablaCalendario th:nth-child(3),
+    #tablaCalendario td:nth-child(3) {
+      position: sticky;
+      left: 315px;
+    }
+    
+    /* Columna 4: Destino / Programa */
+    #tablaCalendario th:nth-child(4),
+    #tablaCalendario td:nth-child(4) {
+      position: sticky;
+      left: 415px;
+    }
+    
+    /* Columna 5: Hoteles */
+    #tablaCalendario th:nth-child(5),
+    #tablaCalendario td:nth-child(5) {
+      position: sticky;
+      left: 605px;
+    }
+    
+    /* Columna 6: Vuelos */
+    #tablaCalendario th:nth-child(6),
+    #tablaCalendario td:nth-child(6) {
+      position: sticky;
+      left: 830px;
+    }
+    
+    /* Encabezados fijos por encima de las celdas */
+    #tablaCalendario thead th:nth-child(-n+6) {
+      z-index: 40;
+    }
+    
+    /* Celdas fijas por encima de las fechas */
+    #tablaCalendario tbody td:nth-child(-n+6) {
+      z-index: 12;
+    }
+    
+    /* Separación visual después de Vuelos */
+    #tablaCalendario th:nth-child(6),
+    #tablaCalendario td:nth-child(6) {
+      border-right: 3px solid #7d97b0 !important;
+      box-shadow:
+        8px 0 12px -10px rgba(15, 23, 42, 0.9);
     }
 
 
@@ -705,7 +754,6 @@
   <script src="https://cdn.datatables.net/fixedheader/3.3.2/js/dataTables.fixedHeader.min.js"></script>
 
   <!-- FixedColumns -->
-  <script src="https://cdn.datatables.net/fixedcolumns/4.2.2/js/dataTables.fixedColumns.min.js"></script>
 
   <!-- ExcelJS -->
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
