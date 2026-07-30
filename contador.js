@@ -235,6 +235,65 @@ function actividadCoincideReserva(a, actividad) {
   return normalizarActividadReserva(a?.actividad) === normalizarActividadReserva(actividad);
 }
 
+function obtenerAdultosActividadContador(actividad = {}) {
+  return Number(
+    actividad.adultos ??
+    actividad.paxAdultos ??
+    actividad.totalAdultos ??
+    actividad.pax?.adultos ??
+    actividad.pax?.totalAdultos ??
+    0
+  ) || 0;
+}
+
+function obtenerEstudiantesActividadContador(actividad = {}) {
+  return Number(
+    actividad.estudiantes ??
+    actividad.paxEstudiantes ??
+    actividad.totalEstudiantes ??
+    actividad.pax?.estudiantes ??
+    actividad.pax?.totalEstudiantes ??
+    0
+  ) || 0;
+}
+
+function obtenerPaxActividadContador(actividad = {}) {
+  const adultos =
+    obtenerAdultosActividadContador(
+      actividad
+    );
+
+  const estudiantes =
+    obtenerEstudiantesActividadContador(
+      actividad
+    );
+
+  const totalCalculado =
+    adultos + estudiantes;
+
+  /*
+   * Primero se privilegia adultos + estudiantes,
+   * porque es el formato original del contador.
+   *
+   * Si ambos vienen vacíos, se utilizan posibles
+   * campos totales de la colección ligera.
+   */
+  if (totalCalculado > 0) {
+    return totalCalculado;
+  }
+
+  return Number(
+    actividad.totalPax ??
+    actividad.cantidadPax ??
+    actividad.cantidadgrupo ??
+    actividad.paxTotal ??
+    actividad.pax?.total ??
+    actividad.pax?.cantidadgrupo ??
+    actividad.pax ??
+    0
+  ) || 0;
+}
+
 function normalizarDestinoContador(valor = '') {
   return String(valor || '')
     .toUpperCase()
@@ -309,45 +368,144 @@ function convertirResumenAGrupoContador(
   const data =
     docSnap.data() || {};
 
+  /*
+   * Algunas versiones del resumen guardan los datos
+   * directamente y otras dentro de "grupo".
+   */
+  const datosGrupo =
+    data.grupo &&
+    typeof data.grupo === 'object'
+      ? {
+          ...data,
+          ...data.grupo
+        }
+      : data;
+
   const grupoId =
     String(
-      data.grupoId ||
+      datosGrupo.grupoId ||
+      datosGrupo.numeroNegocio ||
       docSnap.id
     ).trim();
 
   const pax =
-    data.pax &&
-    typeof data.pax === 'object'
-      ? data.pax
+    datosGrupo.pax &&
+    typeof datosGrupo.pax === 'object'
+      ? datosGrupo.pax
       : {};
 
   const adultos =
     Number(
       pax.adultos ??
-      data.adultos ??
+      pax.totalAdultos ??
+      datosGrupo.adultos ??
+      datosGrupo.totalAdultos ??
       0
-    );
+    ) || 0;
 
   const estudiantes =
     Number(
       pax.estudiantes ??
-      data.estudiantes ??
+      pax.totalEstudiantes ??
+      datosGrupo.estudiantes ??
+      datosGrupo.totalEstudiantes ??
       0
-    );
+    ) || 0;
 
   const cantidadgrupo =
     Number(
       pax.total ??
       pax.cantidadgrupo ??
-      data.cantidadgrupo ??
+      datosGrupo.cantidadgrupo ??
+      datosGrupo.totalPax ??
       adultos + estudiantes
-    );
+    ) || 0;
 
-  const itinerario =
-    data.itinerario &&
-    typeof data.itinerario === 'object'
-      ? data.itinerario
-      : {};
+  /*
+   * Compatibilidad con distintas estructuras posibles
+   * de operaciones_calendario_resumen.
+   */
+  const itinerarioOrigen =
+    datosGrupo.itinerario ||
+    datosGrupo.itinerarioPorFecha ||
+    datosGrupo.itinerarioFechas ||
+    datosGrupo.calendario ||
+    datosGrupo.dias ||
+    {};
+
+  const itinerario = {};
+
+  /*
+   * Caso normal:
+   *
+   * {
+   *   "2026-12-01": [ ...actividades ]
+   * }
+   */
+  if (
+    itinerarioOrigen &&
+    typeof itinerarioOrigen === 'object' &&
+    !Array.isArray(itinerarioOrigen)
+  ) {
+    Object.entries(
+      itinerarioOrigen
+    ).forEach(([fecha, valor]) => {
+      if (Array.isArray(valor)) {
+        itinerario[fecha] = valor;
+        return;
+      }
+
+      /*
+       * También acepta:
+       *
+       * "2026-12-01": {
+       *   actividades: [...]
+       * }
+       */
+      if (
+        valor &&
+        typeof valor === 'object'
+      ) {
+        itinerario[fecha] =
+          Array.isArray(valor.actividades)
+            ? valor.actividades
+            : Array.isArray(valor.itinerario)
+              ? valor.itinerario
+              : [];
+      }
+    });
+  }
+
+  /*
+   * Caso alternativo:
+   *
+   * [
+   *   {
+   *     fecha: "2026-12-01",
+   *     actividades: [...]
+   *   }
+   * ]
+   */
+  if (Array.isArray(itinerarioOrigen)) {
+    itinerarioOrigen.forEach(dia => {
+      const fecha =
+        String(
+          dia?.fecha ||
+          dia?.date ||
+          dia?.dia ||
+          ''
+        ).trim();
+
+      if (!fecha) return;
+
+      itinerario[fecha] =
+        Array.isArray(dia.actividades)
+          ? dia.actividades
+          : Array.isArray(dia.itinerario)
+            ? dia.itinerario
+            : [];
+    });
+  }
 
   return {
     id: grupoId,
@@ -356,45 +514,47 @@ function convertirResumenAGrupoContador(
 
     numeroNegocio:
       String(
-        data.numeroNegocio ||
+        datosGrupo.numeroNegocio ||
         grupoId
       ).trim(),
 
     nombreGrupo:
       String(
-        data.nombreGrupo ||
+        datosGrupo.nombreGrupo ||
+        datosGrupo.grupo ||
+        datosGrupo.nombre ||
         ''
       ).trim(),
 
     destino:
-      data.destino || '',
+      datosGrupo.destino || '',
 
     destinoViaje:
-      data.destinoViaje || '',
+      datosGrupo.destinoViaje || '',
 
     ciudad:
-      data.ciudad || '',
+      datosGrupo.ciudad || '',
 
     ciudades:
-      data.ciudades || [],
+      datosGrupo.ciudades || [],
 
     destinos:
-      data.destinos || [],
+      datosGrupo.destinos || [],
 
     programaDestino:
-      data.programaDestino || '',
+      datosGrupo.programaDestino || '',
 
     programa:
-      data.programa || '',
+      datosGrupo.programa || '',
 
     anoViaje:
-      data.anoViaje ?? '',
+      datosGrupo.anoViaje ?? '',
 
     fechaInicio:
-      data.fechaInicio || '',
+      datosGrupo.fechaInicio || '',
 
     fechaFin:
-      data.fechaFin || '',
+      datosGrupo.fechaFin || '',
 
     cantidadgrupo,
     adultos,
@@ -409,15 +569,15 @@ function convertirResumenAGrupoContador(
     itinerario,
 
     paxActualizadoEn:
-      data.paxActualizadoEn ||
+      datosGrupo.paxActualizadoEn ||
       null,
 
     actualizadoAt:
-      data.actualizadoAt ||
+      datosGrupo.actualizadoAt ||
       null,
 
     actualizadoAtOrigen:
-      data.actualizadoAtOrigen ||
+      datosGrupo.actualizadoAtOrigen ||
       null,
 
     origenResumenContador:
@@ -502,6 +662,24 @@ async function cargarGruposAnoContador(
       snapshot.docs.map(
         convertirResumenAGrupoContador
       );
+
+    if (resultado.length) {
+      console.log(
+        '[CONTADOR] Primer grupo convertido:',
+        {
+          id: resultado[0].id,
+          anoViaje: resultado[0].anoViaje,
+          destino: resultado[0].destino,
+          fechasItinerario: Object.keys(
+            resultado[0].itinerario || {}
+          ),
+          primeraFecha:
+            Object.entries(
+              resultado[0].itinerario || {}
+            )[0] || null
+        }
+      );
+    }
 
     console.log(
       `[CONTADOR] Resumen directo año ${claveCache}:`,
@@ -1072,12 +1250,12 @@ async function init() {
 
       Object.entries(itinerario).forEach(
         ([fecha, actividades]) => {
-          const tienePax = (actividades || []).some(
-            actividad =>
-              (parseInt(actividad.adultos) || 0) +
-              (parseInt(actividad.estudiantes) || 0) >
-              0
-          );
+            const tienePax = (actividades || []).some(
+              actividad =>
+                obtenerPaxActividadContador(
+                  actividad
+                ) > 0
+            );
 
           if (tienePax) {
             fechasSet.add(fecha);
@@ -1213,8 +1391,9 @@ async function init() {
                   .reduce(
                     (subtotal, actividad) =>
                       subtotal +
-                      (parseInt(actividad.adultos) || 0) +
-                      (parseInt(actividad.estudiantes) || 0),
+                      obtenerPaxActividadContador(
+                        actividad
+                      ),
                     0
                   );
 
@@ -1559,17 +1738,41 @@ function construirSnapshotReservaPorFecha(destino, actividad, perDateData) {
       const acts = g.itinerario?.[fecha] || [];
       const actsActividad = acts.filter(a => actividadCoincideReserva(a, actividad));
 
-      const adultosActividad = actsActividad.reduce(
-        (s, a) => s + (parseInt(a.adultos) || 0),
-        0
-      );
-
-      const estudiantesActividad = actsActividad.reduce(
-        (s, a) => s + (parseInt(a.estudiantes) || 0),
-        0
-      );
-
-      const paxActividad = adultosActividad + estudiantesActividad;
+      const adultosActividad =
+        actsActividad.reduce(
+          (suma, actividad) =>
+            suma +
+            obtenerAdultosActividadContador(
+              actividad
+            ),
+          0
+        );
+      
+      const estudiantesActividad =
+        actsActividad.reduce(
+          (suma, actividad) =>
+            suma +
+            obtenerEstudiantesActividadContador(
+              actividad
+            ),
+          0
+        );
+      
+      const totalPorCategorias =
+        adultosActividad +
+        estudiantesActividad;
+      
+      const paxActividad =
+        totalPorCategorias > 0
+          ? totalPorCategorias
+          : actsActividad.reduce(
+              (suma, actividad) =>
+                suma +
+                obtenerPaxActividadContador(
+                  actividad
+                ),
+              0
+            );
 
       return {
         id: g.id,
@@ -2188,7 +2391,14 @@ function reconstruirCorreoReserva(destino, actividad, proveedor, opciones = {}) 
         const acts = g.itinerario?.[fecha] || [];
         return sum + acts
           .filter(a => actividadCoincideReserva(a, actividad))
-          .reduce((s, a) => s + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
+          .reduce(
+            (suma, actividadActual) =>
+              suma +
+              obtenerPaxActividadContador(
+                actividadActual
+              ),
+            0
+          );
       }, 0);
 
       return { fecha, lista, paxTotal };
@@ -2703,8 +2913,9 @@ function mostrarGruposCoincidentes(
           .reduce(
             (total, item) =>
               total +
-              (parseInt(item.adultos) || 0) +
-              (parseInt(item.estudiantes) || 0),
+              obtenerPaxActividadContador(
+                item
+              ),
             0
           );
 
@@ -2814,8 +3025,9 @@ function sumarPaxDeActividadEnFechas(
       .reduce(
         (suma, item) =>
           suma +
-          (parseInt(item.adultos) || 0) +
-          (parseInt(item.estudiantes) || 0),
+          obtenerPaxActividadContador(
+            item
+          ),
         0
       );
   }
