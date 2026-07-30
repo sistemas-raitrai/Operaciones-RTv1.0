@@ -29,19 +29,7 @@ let reservaActualSnapshot = null;
 let ultimaVerificacionPagos = null;
 let revisionCambiosReservaActiva = null;
 const API_PAGOS_URL = '/api/pagos';
-
-/*
- * Colección ligera generada por Cloud Functions.
- *
- * Se utiliza únicamente para la carga inicial del contador.
- * Las escrituras y sincronizaciones siguen realizándose
- * sobre las colecciones originales.
- */
-const COLECCION_RESUMEN_CONTADOR =
-  'operaciones_calendario_resumen';
-
-let anoContadorActivo =
-  obtenerAnoComercialContador();
+let anoContadorActivo = obtenerAnoComercialContador();
 
 const DESTINOS_CONTADOR = [
   'BRASIL',
@@ -235,65 +223,6 @@ function actividadCoincideReserva(a, actividad) {
   return normalizarActividadReserva(a?.actividad) === normalizarActividadReserva(actividad);
 }
 
-function obtenerAdultosActividadContador(actividad = {}) {
-  return Number(
-    actividad.adultos ??
-    actividad.paxAdultos ??
-    actividad.totalAdultos ??
-    actividad.pax?.adultos ??
-    actividad.pax?.totalAdultos ??
-    0
-  ) || 0;
-}
-
-function obtenerEstudiantesActividadContador(actividad = {}) {
-  return Number(
-    actividad.estudiantes ??
-    actividad.paxEstudiantes ??
-    actividad.totalEstudiantes ??
-    actividad.pax?.estudiantes ??
-    actividad.pax?.totalEstudiantes ??
-    0
-  ) || 0;
-}
-
-function obtenerPaxActividadContador(actividad = {}) {
-  const adultos =
-    obtenerAdultosActividadContador(
-      actividad
-    );
-
-  const estudiantes =
-    obtenerEstudiantesActividadContador(
-      actividad
-    );
-
-  const totalCalculado =
-    adultos + estudiantes;
-
-  /*
-   * Primero se privilegia adultos + estudiantes,
-   * porque es el formato original del contador.
-   *
-   * Si ambos vienen vacíos, se utilizan posibles
-   * campos totales de la colección ligera.
-   */
-  if (totalCalculado > 0) {
-    return totalCalculado;
-  }
-
-  return Number(
-    actividad.totalPax ??
-    actividad.cantidadPax ??
-    actividad.cantidadgrupo ??
-    actividad.paxTotal ??
-    actividad.pax?.total ??
-    actividad.pax?.cantidadgrupo ??
-    actividad.pax ??
-    0
-  ) || 0;
-}
-
 function normalizarDestinoContador(valor = '') {
   return String(valor || '')
     .toUpperCase()
@@ -362,391 +291,147 @@ function grupoCoincideDestinoContador(
   });
 }
 
-function convertirResumenAGrupoContador(
-  docSnap
-) {
-  const data =
-    docSnap.data() || {};
+async function cargarGruposAnoContador(ano) {
+  const claveCache = String(ano).trim();
 
   /*
-   * Algunas versiones del resumen guardan los datos
-   * directamente y otras dentro de "grupo".
+   * Solo utilizamos caché cuando contiene grupos.
+   * Nunca conservamos una carga vacía, porque puede
+   * deberse a una desconexión temporal de Firestore.
    */
-  const datosGrupo =
-    data.grupo &&
-    typeof data.grupo === 'object'
-      ? {
-          ...data,
-          ...data.grupo
-        }
-      : data;
-
-  const grupoId =
-    String(
-      datosGrupo.grupoId ||
-      datosGrupo.numeroNegocio ||
-      docSnap.id
-    ).trim();
-
-  const pax =
-    datosGrupo.pax &&
-    typeof datosGrupo.pax === 'object'
-      ? datosGrupo.pax
-      : {};
-
-  const adultos =
-    Number(
-      pax.adultos ??
-      pax.totalAdultos ??
-      datosGrupo.adultos ??
-      datosGrupo.totalAdultos ??
-      0
-    ) || 0;
-
-  const estudiantes =
-    Number(
-      pax.estudiantes ??
-      pax.totalEstudiantes ??
-      datosGrupo.estudiantes ??
-      datosGrupo.totalEstudiantes ??
-      0
-    ) || 0;
-
-  const cantidadgrupo =
-    Number(
-      pax.total ??
-      pax.cantidadgrupo ??
-      datosGrupo.cantidadgrupo ??
-      datosGrupo.totalPax ??
-      adultos + estudiantes
-    ) || 0;
-
-  /*
-   * Compatibilidad con distintas estructuras posibles
-   * de operaciones_calendario_resumen.
-   */
-  const itinerarioOrigen =
-    datosGrupo.itinerario ||
-    datosGrupo.itinerarioPorFecha ||
-    datosGrupo.itinerarioFechas ||
-    datosGrupo.calendario ||
-    datosGrupo.dias ||
-    {};
-
-  const itinerario = {};
-
-  /*
-   * Caso normal:
-   *
-   * {
-   *   "2026-12-01": [ ...actividades ]
-   * }
-   */
-  if (
-    itinerarioOrigen &&
-    typeof itinerarioOrigen === 'object' &&
-    !Array.isArray(itinerarioOrigen)
-  ) {
-    Object.entries(
-      itinerarioOrigen
-    ).forEach(([fecha, valor]) => {
-      if (Array.isArray(valor)) {
-        itinerario[fecha] = valor;
-        return;
-      }
-
-      /*
-       * También acepta:
-       *
-       * "2026-12-01": {
-       *   actividades: [...]
-       * }
-       */
-      if (
-        valor &&
-        typeof valor === 'object'
-      ) {
-        itinerario[fecha] =
-          Array.isArray(valor.actividades)
-            ? valor.actividades
-            : Array.isArray(valor.itinerario)
-              ? valor.itinerario
-              : [];
-      }
-    });
-  }
-
-  /*
-   * Caso alternativo:
-   *
-   * [
-   *   {
-   *     fecha: "2026-12-01",
-   *     actividades: [...]
-   *   }
-   * ]
-   */
-  if (Array.isArray(itinerarioOrigen)) {
-    itinerarioOrigen.forEach(dia => {
-      const fecha =
-        String(
-          dia?.fecha ||
-          dia?.date ||
-          dia?.dia ||
-          ''
-        ).trim();
-
-      if (!fecha) return;
-
-      itinerario[fecha] =
-        Array.isArray(dia.actividades)
-          ? dia.actividades
-          : Array.isArray(dia.itinerario)
-            ? dia.itinerario
-            : [];
-    });
-  }
-
-  return {
-    id: grupoId,
-
-    grupoId,
-
-    numeroNegocio:
-      String(
-        datosGrupo.numeroNegocio ||
-        grupoId
-      ).trim(),
-
-    nombreGrupo:
-      String(
-        datosGrupo.nombreGrupo ||
-        datosGrupo.grupo ||
-        datosGrupo.nombre ||
-        ''
-      ).trim(),
-
-    destino:
-      datosGrupo.destino || '',
-
-    destinoViaje:
-      datosGrupo.destinoViaje || '',
-
-    ciudad:
-      datosGrupo.ciudad || '',
-
-    ciudades:
-      datosGrupo.ciudades || [],
-
-    destinos:
-      datosGrupo.destinos || [],
-
-    programaDestino:
-      datosGrupo.programaDestino || '',
-
-    programa:
-      datosGrupo.programa || '',
-
-    anoViaje:
-      datosGrupo.anoViaje ?? '',
-
-    fechaInicio:
-      datosGrupo.fechaInicio || '',
-
-    fechaFin:
-      datosGrupo.fechaFin || '',
-
-    cantidadgrupo,
-    adultos,
-    estudiantes,
-
-    pax: {
-      total: cantidadgrupo,
-      adultos,
-      estudiantes
-    },
-
-    itinerario,
-
-    paxActualizadoEn:
-      datosGrupo.paxActualizadoEn ||
-      null,
-
-    actualizadoAt:
-      datosGrupo.actualizadoAt ||
-      null,
-
-    actualizadoAtOrigen:
-      datosGrupo.actualizadoAtOrigen ||
-      null,
-
-    origenResumenContador:
-      true
-  };
-}
-
-
-/*
- * Carga inicial del contador desde la colección ligera.
- *
- * Ya no lee la colección completa grupos.
- */
-async function cargarGruposAnoContador(
-  ano
-) {
-  const claveCache =
-    String(ano || '').trim();
-
-  if (!claveCache) {
-    return [];
-  }
-
-  if (
-    CACHE_GRUPOS_CONTADOR.has(
+  if (CACHE_GRUPOS_CONTADOR.has(claveCache)) {
+    const cache = CACHE_GRUPOS_CONTADOR.get(
       claveCache
-    )
-  ) {
-    const cache =
-      CACHE_GRUPOS_CONTADOR.get(
-        claveCache
-      );
+    );
 
-    if (
-      Array.isArray(cache) &&
-      cache.length > 0
-    ) {
+    if (Array.isArray(cache) && cache.length > 0) {
       console.log(
-        `[CONTADOR] Usando caché resumen ${claveCache}:`,
+        `[CONTADOR] Usando caché de grupos ${claveCache}:`,
         cache.length
       );
 
       return cache;
     }
 
-    CACHE_GRUPOS_CONTADOR.delete(
-      claveCache
-    );
+    CACHE_GRUPOS_CONTADOR.delete(claveCache);
   }
 
-  const timer =
-    `[CONTADOR] Resumen grupos ${claveCache}`;
-
-  console.time(timer);
-
-  const anoNumero =
-    Number(claveCache);
+  const anoNumero = Number(claveCache);
+  const anoTexto = claveCache;
 
   let resultado = [];
 
   /*
-   * CAMINO PRINCIPAL:
-   * anoViaje guardado como número.
+   * Camino principal:
+   * consultar solamente el año solicitado.
    */
   try {
-    const snapshot =
-      await getDocs(
-        query(
-          collection(
-            db,
-            COLECCION_RESUMEN_CONTADOR
-          ),
-          where(
-            'anoViaje',
-            '==',
-            anoNumero
+    const [snapNumero, snapTexto] =
+      await Promise.all([
+        getDocs(
+          query(
+            collection(db, 'grupos'),
+            where(
+              'anoViaje',
+              '==',
+              anoNumero
+            )
+          )
+        ),
+
+        getDocs(
+          query(
+            collection(db, 'grupos'),
+            where(
+              'anoViaje',
+              '==',
+              anoTexto
+            )
           )
         )
-      );
+      ]);
 
-    resultado =
-      snapshot.docs.map(
-        convertirResumenAGrupoContador
-      );
+    const mapa = new Map();
 
-    if (resultado.length) {
-      console.log(
-        '[CONTADOR] Primer grupo convertido:',
-        {
-          id: resultado[0].id,
-          anoViaje: resultado[0].anoViaje,
-          destino: resultado[0].destino,
-          fechasItinerario: Object.keys(
-            resultado[0].itinerario || {}
-          ),
-          primeraFecha:
-            Object.entries(
-              resultado[0].itinerario || {}
-            )[0] || null
-        }
-      );
-    }
+    [
+      ...snapNumero.docs,
+      ...snapTexto.docs
+    ].forEach(docSnap => {
+      mapa.set(docSnap.id, {
+        id: docSnap.id,
+        ...docSnap.data()
+      });
+    });
+
+    resultado = Array.from(
+      mapa.values()
+    );
 
     console.log(
-      `[CONTADOR] Resumen directo año ${claveCache}:`,
+      `[CONTADOR] Consulta directa año ${claveCache}:`,
       resultado.length
     );
 
   } catch (error) {
     console.warn(
-      `[CONTADOR] Falló consulta directa del resumen para ${claveCache}:`,
+      `[CONTADOR] Falló consulta directa por año ${claveCache}:`,
       error
     );
   }
 
   /*
-   * RESPALDO:
-   * si no encontró por número, revisa la colección ligera
-   * y compara el año como texto.
+   * Respaldo:
+   * si la consulta directa no entregó documentos,
+   * intentamos cargar la colección completa y filtrar
+   * localmente. Esto también ayuda cuando Firestore
+   * está usando una caché antigua.
    */
   if (!resultado.length) {
+    console.warn(
+      `[CONTADOR] Consulta por año sin resultados. Ejecutando respaldo para ${claveCache}.`
+    );
+
     actualizarProgresoContador(
       20,
-      `Buscando grupos ${claveCache} en el resumen operativo...`
+      `Reconectando y buscando grupos del año ${claveCache}...`
     );
 
     try {
-      const snapshotCompleto =
-        await getDocs(
-          collection(
-            db,
-            COLECCION_RESUMEN_CONTADOR
-          )
+      const snapCompleto = await getDocs(
+        collection(db, 'grupos')
+      );
+
+      resultado = snapCompleto.docs
+        .map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data()
+        }))
+        .filter(grupo =>
+          String(
+            grupo?.anoViaje ?? ''
+          ).trim() === claveCache
         );
 
-      resultado =
-        snapshotCompleto.docs
-          .map(
-            convertirResumenAGrupoContador
-          )
-          .filter(grupo =>
-            String(
-              grupo.anoViaje ?? ''
-            ).trim() ===
-            claveCache
-          );
-
       console.log(
-        `[CONTADOR] Respaldo resumen año ${claveCache}:`,
+        `[CONTADOR] Respaldo colección completa año ${claveCache}:`,
         resultado.length
       );
 
     } catch (errorRespaldo) {
       console.error(
-        `[CONTADOR] Falló respaldo del resumen ${claveCache}:`,
+        `[CONTADOR] También falló la carga de respaldo para ${claveCache}:`,
         errorRespaldo
       );
 
-      console.timeEnd(timer);
-
       throw new Error(
-        'No fue posible cargar el resumen operativo de grupos. ' +
-        'Revisa la conexión y vuelve a intentar.'
+        'No fue posible conectarse con Firestore para cargar los grupos. Revisa la conexión y vuelve a intentar.'
       );
     }
   }
 
-  console.timeEnd(timer);
-
+  /*
+   * Solamente guardamos caché cuando existen datos.
+   */
   if (resultado.length > 0) {
     CACHE_GRUPOS_CONTADOR.set(
       claveCache,
@@ -881,91 +566,21 @@ async function cargarServiciosContador(
   return servicios;
 }
 
-async function recargarGruposContador(
-  ids
-) {
-  const setIds =
-    new Set(
-      (ids || [])
-        .map(String)
-        .map(id => id.trim())
-        .filter(Boolean)
-    );
+async function recargarGruposContador(ids) {
+  const setIds = new Set(ids.map(String));
 
-  if (!setIds.size) {
-    return;
-  }
-
-  /*
-   * Esta lectura puntual sigue usando grupos,
-   * porque ocurre inmediatamente después de
-   * sincronizar PAX.
-   */
-  const actualizados =
-    await Promise.all(
-      Array.from(setIds)
-        .map(async id => {
-          const snapshot =
-            await getDoc(
-              doc(
-                db,
-                'grupos',
-                id
-              )
-            );
-
-          if (!snapshot.exists()) {
-            return null;
-          }
-
-          return {
-            id: snapshot.id,
-            ...snapshot.data(),
-            origenResumenContador:
-              false
-          };
-        })
-    );
-
-  const mapaActualizados =
-    new Map(
-      actualizados
-        .filter(Boolean)
-        .map(grupo => [
-          String(grupo.id),
-          grupo
-        ])
-    );
-
-  grupos =
-    grupos.map(grupo => {
-      const actualizado =
-        mapaActualizados.get(
-          String(grupo.id)
-        );
-
-      if (!actualizado) {
-        return grupo;
-      }
-
-      return {
-        ...grupo,
-        ...actualizado,
-
-        itinerario:
-          actualizado.itinerario ||
-          grupo.itinerario ||
-          {}
-      };
-    });
-
-  /*
-   * La próxima carga volverá a consultar
-   * la colección ligera.
-   */
-  CACHE_GRUPOS_CONTADOR.delete(
-    getAnoContadorActivo()
+  const actualizados = await Promise.all(
+    Array.from(setIds).map(async id => {
+      const snap = await getDoc(doc(db, 'grupos', id));
+      return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+    })
   );
+
+  const mapActualizados = new Map(
+    actualizados.filter(Boolean).map(g => [String(g.id), g])
+  );
+
+  grupos = grupos.map(g => mapActualizados.get(String(g.id)) || g);
 }
 
 async function sincronizarGruposReservaConPagos(actividad) {
@@ -1119,10 +734,6 @@ async function init() {
         : `Grupos cargados. Cargando ${destinoSeleccionado}...`
     );
 
-    console.time(
-      '[CONTADOR] Servicios y proveedores'
-    );
-
     /*
      * 2. Servicios y proveedores.
      * Se ejecutan simultáneamente.
@@ -1153,10 +764,6 @@ async function init() {
           };
         })
     ]);
-
-    console.timeEnd(
-      '[CONTADOR] Servicios y proveedores'
-    );
     
     if (!resultadoProveedores.ok) {
       /*
@@ -1250,12 +857,12 @@ async function init() {
 
       Object.entries(itinerario).forEach(
         ([fecha, actividades]) => {
-            const tienePax = (actividades || []).some(
-              actividad =>
-                obtenerPaxActividadContador(
-                  actividad
-                ) > 0
-            );
+          const tienePax = (actividades || []).some(
+            actividad =>
+              (parseInt(actividad.adultos) || 0) +
+              (parseInt(actividad.estudiantes) || 0) >
+              0
+          );
 
           if (tienePax) {
             fechasSet.add(fecha);
@@ -1391,9 +998,8 @@ async function init() {
                   .reduce(
                     (subtotal, actividad) =>
                       subtotal +
-                      obtenerPaxActividadContador(
-                        actividad
-                      ),
+                      (parseInt(actividad.adultos) || 0) +
+                      (parseInt(actividad.estudiantes) || 0),
                     0
                   );
 
@@ -1738,41 +1344,17 @@ function construirSnapshotReservaPorFecha(destino, actividad, perDateData) {
       const acts = g.itinerario?.[fecha] || [];
       const actsActividad = acts.filter(a => actividadCoincideReserva(a, actividad));
 
-      const adultosActividad =
-        actsActividad.reduce(
-          (suma, actividad) =>
-            suma +
-            obtenerAdultosActividadContador(
-              actividad
-            ),
-          0
-        );
-      
-      const estudiantesActividad =
-        actsActividad.reduce(
-          (suma, actividad) =>
-            suma +
-            obtenerEstudiantesActividadContador(
-              actividad
-            ),
-          0
-        );
-      
-      const totalPorCategorias =
-        adultosActividad +
-        estudiantesActividad;
-      
-      const paxActividad =
-        totalPorCategorias > 0
-          ? totalPorCategorias
-          : actsActividad.reduce(
-              (suma, actividad) =>
-                suma +
-                obtenerPaxActividadContador(
-                  actividad
-                ),
-              0
-            );
+      const adultosActividad = actsActividad.reduce(
+        (s, a) => s + (parseInt(a.adultos) || 0),
+        0
+      );
+
+      const estudiantesActividad = actsActividad.reduce(
+        (s, a) => s + (parseInt(a.estudiantes) || 0),
+        0
+      );
+
+      const paxActividad = adultosActividad + estudiantesActividad;
 
       return {
         id: g.id,
@@ -2391,14 +1973,7 @@ function reconstruirCorreoReserva(destino, actividad, proveedor, opciones = {}) 
         const acts = g.itinerario?.[fecha] || [];
         return sum + acts
           .filter(a => actividadCoincideReserva(a, actividad))
-          .reduce(
-            (suma, actividadActual) =>
-              suma +
-              obtenerPaxActividadContador(
-                actividadActual
-              ),
-            0
-          );
+          .reduce((s, a) => s + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
       }, 0);
 
       return { fecha, lista, paxTotal };
@@ -2913,9 +2488,8 @@ function mostrarGruposCoincidentes(
           .reduce(
             (total, item) =>
               total +
-              obtenerPaxActividadContador(
-                item
-              ),
+              (parseInt(item.adultos) || 0) +
+              (parseInt(item.estudiantes) || 0),
             0
           );
 
@@ -3025,9 +2599,8 @@ function sumarPaxDeActividadEnFechas(
       .reduce(
         (suma, item) =>
           suma +
-          obtenerPaxActividadContador(
-            item
-          ),
+          (parseInt(item.adultos) || 0) +
+          (parseInt(item.estudiantes) || 0),
         0
       );
   }
