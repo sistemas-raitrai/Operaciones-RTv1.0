@@ -677,7 +677,12 @@ function normalizeVuelo(v){
   const destino     = String(get('destino','hasta','to','llegada.destino','llegada.iata','destinoIATA','destinoSigla','destinoCiudad')||'').toUpperCase();
   const fechaIda    = toISO(get('fechaIda','ida','salida.fecha','fechaSalida','fecha_ida','fecha'));
   const fechaVuelta = toISO(get('fechaVuelta','vuelta','regreso.fecha','fechaRegreso','fecha_vuelta'));
-  const isTransfer  = !!get('isTransfer');
+  const isTransferRaw = get('isTransfer');
+
+  const isTransfer =
+    isTransferRaw === true ||
+    isTransferRaw === 1 ||
+    String(isTransferRaw || '').trim().toLowerCase() === 'true';
   const transferLeg = String(get('transferLeg')||'').toLowerCase();
   const encontro    = String(get('encuentroAeropuerto')||'').toUpperCase();
   const tr = Array.isArray(v.tramos) ? v.tramos : [];
@@ -1919,11 +1924,30 @@ function renderTransportesPreconfirmacion(vuelosNorm){
   const vistos = new Set();
 
   const empresaAerea = (v, t = {}) =>
-    String(t.aerolinea || v.proveedor || v.aerolinea || '').toUpperCase();
+    String(
+      t.aerolinea ||
+      v.proveedor ||
+      v.aerolinea ||
+      ''
+    ).toUpperCase();
 
-  const addRow = ({ tipo, tramo, empresa, ruta, fecha }) => {
-    const key = [tipo, tramo, empresa, ruta, fecha].join('__');
+  const addRow = ({
+    tipo,
+    tramo,
+    empresa,
+    ruta,
+    fecha
+  }) => {
+    const key = [
+      tipo,
+      tramo,
+      empresa,
+      ruta,
+      fecha
+    ].join('__');
+
     if (vistos.has(key)) return;
+
     vistos.add(key);
 
     rows.push(`
@@ -1937,63 +1961,163 @@ function renderTransportesPreconfirmacion(vuelosNorm){
     `);
   };
 
+  console.log(
+    '[DOCUMENTOS][PRECONFIRMACION_VUELOS_NORMALIZADOS]',
+    vuelosNorm
+  );
+
   (vuelosNorm || []).forEach(v => {
-    const tipoTransporte = norm(v.tipoTransporte || 'aereo');
+    const tipoTransporte =
+      norm(v.tipoTransporte || 'aereo');
 
-    // Los transfer reales van fuera de la tabla
-    if (esTransferReal(v)) return;
-
-    // Si estaba mal marcado como transfer pero es aerolínea, lo ignoramos como transfer
-    if (v.isTransfer && !esTransferReal(v)) return;
+    /*
+      Solamente los transfer terrestres/locales reales
+      quedan fuera de la tabla principal.
+    */
+    if (esTransferReal(v)) {
+      return;
+    }
 
     if (tipoTransporte === 'terrestre') {
       addRow({
         tipo: 'TERRESTRE',
-        tramo: v.fechaIda && v.fechaVuelta ? 'IDA Y VUELTA' : (v.fechaIda ? 'IDA' : 'VUELTA'),
-        empresa: v.proveedor || '—',
-        ruta: [v.origen, v.destino].filter(Boolean).join(' → '),
-        fecha: [
-          v.fechaIda ? formatShortDate(v.fechaIda) : '',
-          v.fechaVuelta ? formatShortDate(v.fechaVuelta) : ''
-        ].filter(Boolean).join(' / ')
+
+        tramo:
+          v.fechaIda && v.fechaVuelta
+            ? 'IDA Y VUELTA'
+            : v.fechaIda
+              ? 'IDA'
+              : 'VUELTA',
+
+        empresa:
+          v.proveedor ||
+          '—',
+
+        ruta:
+          [
+            v.origen,
+            v.destino
+          ]
+            .filter(Boolean)
+            .join(' → '),
+
+        fecha:
+          [
+            v.fechaIda
+              ? formatShortDate(v.fechaIda)
+              : '',
+
+            v.fechaVuelta
+              ? formatShortDate(v.fechaVuelta)
+              : ''
+          ]
+            .filter(Boolean)
+            .join(' / ')
       });
+
       return;
     }
 
-    if (Array.isArray(v.tramos) && v.tramos.length) {
+    /*
+      Vuelo aéreo con tramos.
+    */
+    if (
+      Array.isArray(v.tramos) &&
+      v.tramos.length
+    ) {
       v.tramos.forEach(t => {
-        const tipoTramo = String(t.tipoTramo || '').toLowerCase();
+        const tipoTramo =
+          String(
+            t.tipoTramo || ''
+          ).toLowerCase();
 
-        if ((tipoTramo === 'ida' || tipoTramo === 'ida+vuelta' || (!tipoTramo && t.fechaIda)) && t.fechaIda) {
+        if (
+          (
+            tipoTramo === 'ida' ||
+            tipoTramo === 'ida+vuelta' ||
+            (!tipoTramo && t.fechaIda)
+          ) &&
+          t.fechaIda
+        ) {
           addRow({
             tipo: 'AÉREO',
             tramo: 'IDA',
-            empresa: empresaAerea(v, t),
-            ruta: [t.origen || v.origen, t.destino || v.destino].filter(Boolean).join(' → '),
-            fecha: formatShortDate(t.fechaIda)
+
+            empresa:
+              empresaAerea(v, t),
+
+            ruta:
+              [
+                t.origen || v.origen,
+                t.destino || v.destino
+              ]
+                .filter(Boolean)
+                .join(' → '),
+
+            fecha:
+              formatShortDate(
+                t.fechaIda
+              )
           });
         }
 
-        if ((tipoTramo === 'vuelta' || tipoTramo === 'ida+vuelta' || (!tipoTramo && t.fechaVuelta)) && t.fechaVuelta) {
+        if (
+          (
+            tipoTramo === 'vuelta' ||
+            tipoTramo === 'ida+vuelta' ||
+            (!tipoTramo && t.fechaVuelta)
+          ) &&
+          t.fechaVuelta
+        ) {
           addRow({
             tipo: 'AÉREO',
             tramo: 'VUELTA',
-            empresa: empresaAerea(v, t),
-            ruta: [t.origen || v.origen, t.destino || v.destino].filter(Boolean).join(' → '),
-            fecha: formatShortDate(t.fechaVuelta)
+
+            empresa:
+              empresaAerea(v, t),
+
+            ruta:
+              [
+                t.origen || v.origen,
+                t.destino || v.destino
+              ]
+                .filter(Boolean)
+                .join(' → '),
+
+            fecha:
+              formatShortDate(
+                t.fechaVuelta
+              )
           });
         }
       });
+
       return;
     }
 
+    /*
+      Vuelo aéreo simple, sin tramos.
+    */
     if (v.fechaIda) {
       addRow({
         tipo: 'AÉREO',
         tramo: 'IDA',
-        empresa: empresaAerea(v),
-        ruta: [v.origen, v.destino].filter(Boolean).join(' → '),
-        fecha: formatShortDate(v.fechaIda)
+
+        empresa:
+          empresaAerea(v),
+
+        ruta:
+          [
+            v.origen,
+            v.destino
+          ]
+            .filter(Boolean)
+            .join(' → '),
+
+        fecha:
+          formatShortDate(
+            v.fechaIda
+          )
       });
     }
 
@@ -2001,12 +2125,38 @@ function renderTransportesPreconfirmacion(vuelosNorm){
       addRow({
         tipo: 'AÉREO',
         tramo: 'VUELTA',
-        empresa: empresaAerea(v),
-        ruta: [v.destino, v.origen].filter(Boolean).join(' → '),
-        fecha: formatShortDate(v.fechaVuelta)
+
+        empresa:
+          empresaAerea(v),
+
+        ruta:
+          [
+            v.destino,
+            v.origen
+          ]
+            .filter(Boolean)
+            .join(' → '),
+
+        fecha:
+          formatShortDate(
+            v.fechaVuelta
+          )
       });
     }
   });
+
+  console.log(
+    '[DOCUMENTOS][PRECONFIRMACION_FILAS_TRANSPORTE]',
+    {
+      vuelosRecibidos:
+        Array.isArray(vuelosNorm)
+          ? vuelosNorm.length
+          : 0,
+
+      filasGeneradas:
+        rows.length
+    }
+  );
 
   const tabla = rows.length
     ? `
@@ -2020,16 +2170,25 @@ function renderTransportesPreconfirmacion(vuelosNorm){
             <th>Fecha</th>
           </tr>
         </thead>
-        <tbody>${rows.join('')}</tbody>
+
+        <tbody>
+          ${rows.join('')}
+        </tbody>
       </table>
     `
-    : `<div class="note">Transportes por informar.</div>`;
+    : `
+      <div class="note">
+        Transportes por informar.
+      </div>
+    `;
 
   return `
     <p class="note">
       Los horarios, terminales, puntos de encuentro y detalles finales serán informados en la confirmación final.
     </p>
+
     ${tabla}
+
     ${renderTransfersPreconfirmacion(vuelosNorm)}
   `;
 }
