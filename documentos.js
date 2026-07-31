@@ -55,73 +55,230 @@ function limpiarCursoPorAno(texto = '', anoViaje = ''){
   return s;
 }
 
-function getCursoOperacional(grupo){
-  const ano = String(grupo.anoViaje || '').trim();
-
-  const nombreBase = (
-    grupo.nombreGrupo ||
-    grupo.aliasGrupo ||
-    ''
-  ).toString().trim();
-
-  // Prioridad: si nombreGrupo trae el año de viaje,
-  // extraemos el curso asociado a ese año.
-  if (ano && nombreBase.includes(ano)){
-    const re = new RegExp(`([^()\\-–—,/]+)\\s*\\(\\s*${ano}\\s*\\)`, 'gi');
-    const matches = [...nombreBase.matchAll(re)];
-
-    if (matches.length){
-      let curso = matches[matches.length - 1][1] || '';
-
-      curso = curso
-        .replace(new RegExp(`\\b20\\d{2}\\b`, 'g'), '')
-        .replace(/[()]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-
-      // Si viene "PUMAHUE PUERTO MONTT 3C", nos quedamos con "3C"
-      const mCurso = curso.match(/([0-9]{1,2}\s*[A-ZÁÉÍÓÚÑ]|[A-Z]{1,3}\s*MEDIO|[IVX]+\s*[A-ZÁÉÍÓÚÑ]?|KINDER|PREKINDER)$/i);
-      if (mCurso) return mCurso[1].replace(/\s+/g, '').toUpperCase();
-
-      return curso.toUpperCase();
-    }
-  }
-
-  // Respaldo: si no se pudo extraer desde nombreGrupo,
-  // usamos curso/subgrupo.
-  const cursoBase = (
-    grupo.curso ||
-    grupo.subgrupo ||
-    ''
-  ).toString().trim();
-
-  if (cursoBase){
-    return limpiarCursoPorAno(cursoBase, ano).toUpperCase();
-  }
-
-  return limpiarCursoPorAno(nombreBase, ano).toUpperCase();
-}
-
-function getNombreGrupoOperacional(grupo){
-  const colegio = (
-    grupo.colegio ||
-    grupo.cliente ||
-    ''
-  ).toString().trim();
-
-  const curso = getCursoOperacional(grupo);
-
-  const nombre = [colegio, curso]
-    .filter(Boolean)
-    .join(' ')
+function quitarPrefijoColegio(texto = '', colegio = ''){
+  const valor = String(texto || '')
     .replace(/\s+/g, ' ')
     .trim();
 
-  return nombre ||
+  const nombreColegio = String(colegio || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!valor || !nombreColegio) {
+    return valor;
+  }
+
+  const valorNormalizado = norm(valor);
+  const colegioNormalizado = norm(nombreColegio);
+
+  /*
+    Caso exacto:
+
+    "NEW LITTLE COLLEGE"
+    contra
+    "NEW LITTLE COLLEGE"
+  */
+  if (valorNormalizado === colegioNormalizado) {
+    return '';
+  }
+
+  /*
+    Caso con el colegio repetido al comienzo:
+
+    "NEW LITTLE COLLEGE 3AB"
+    pasa a:
+    "3AB"
+  */
+  if (
+    valorNormalizado.startsWith(
+      `${colegioNormalizado} `
+    )
+  ) {
+    return valor
+      .slice(nombreColegio.length)
+      .replace(/^[-–—,/|:\s]+/, '')
+      .trim();
+  }
+
+  return valor;
+}
+
+
+function getCursoOperacional(grupo){
+  const ano = String(
+    grupo.anoViaje ||
+    ''
+  ).trim();
+
+  const colegio = String(
+    grupo.colegio ||
+    grupo.cliente ||
+    ''
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  /*
+    Primero usamos los campos específicos de curso.
+    Después dejamos nombreGrupo y aliasGrupo como respaldo.
+  */
+  const candidatos = [
+    grupo.curso,
+    grupo.subgrupo,
+    grupo.nombreGrupo,
+    grupo.aliasGrupo
+  ];
+
+  for (const candidato of candidatos) {
+    let texto = String(
+      candidato ||
+      ''
+    )
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!texto) {
+      continue;
+    }
+
+    /*
+      Quitamos el año, tanto si viene:
+
+      3AB (2026)
+      3AB 2026
+      NEW LITTLE COLLEGE (2026) 3AB
+    */
+    if (ano) {
+      texto = texto
+        .replace(
+          new RegExp(
+            `\\(\\s*${ano}\\s*\\)`,
+            'gi'
+          ),
+          ' '
+        )
+        .replace(
+          new RegExp(
+            `\\b${ano}\\b`,
+            'gi'
+          ),
+          ' '
+        );
+    }
+
+    texto = texto
+      .replace(/\b20\d{2}\b/g, ' ')
+      .replace(/[()]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    /*
+      Si el candidato trae el colegio al inicio,
+      lo eliminamos.
+
+      "NEW LITTLE COLLEGE 3AB"
+      pasa a:
+      "3AB"
+    */
+    texto = quitarPrefijoColegio(
+      texto,
+      colegio
+    );
+
+    texto = texto
+      .replace(/^[-–—,/|:\s]+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!texto) {
+      continue;
+    }
+
+    /*
+      Detecta cursos al final, incluyendo:
+
+      3A
+      3AB
+      4ºA
+      4°B
+      3 MEDIO
+      III A
+      KINDER
+      PREKINDER
+    */
+    const matchCurso = texto.match(
+      /((?:\d{1,2}\s*[°º]?\s*[A-ZÁÉÍÓÚÑ]{1,3})|(?:\d{1,2}\s*(?:BÁSICO|BASICO|MEDIO))|(?:[IVX]+\s*[A-ZÁÉÍÓÚÑ]{0,3})|(?:PREKINDER|KINDER))$/i
+    );
+
+    if (matchCurso) {
+      return matchCurso[1]
+        .replace(/\s+/g, '')
+        .toUpperCase();
+    }
+
+    /*
+      Si viene directamente desde grupo.curso o grupo.subgrupo,
+      aceptamos el contenido limpio aunque no coincida
+      con los formatos anteriores.
+    */
+    if (
+      candidato === grupo.curso ||
+      candidato === grupo.subgrupo
+    ) {
+      return texto.toUpperCase();
+    }
+  }
+
+  return '';
+}
+
+
+function getNombreGrupoOperacional(grupo){
+  const colegio = String(
+    grupo.colegio ||
+    grupo.cliente ||
+    ''
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const curso = getCursoOperacional(
+    grupo
+  );
+
+  /*
+    Caso normal:
+
+    colegio = NEW LITTLE COLLEGE
+    curso   = 3AB
+
+    resultado:
+    NEW LITTLE COLLEGE 3AB
+  */
+  if (colegio && curso) {
+    return `${colegio} ${curso}`
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  if (colegio) {
+    return colegio;
+  }
+
+  /*
+    Respaldo para registros que no tienen
+    el campo colegio separado.
+  */
+  const nombreRespaldo = String(
     grupo.nombreGrupo ||
     grupo.aliasGrupo ||
     grupo.numeroNegocio ||
-    '—';
+    '—'
+  )
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return nombreRespaldo;
 }
 
 function getTextoBusquedaGrupo(grupo){
