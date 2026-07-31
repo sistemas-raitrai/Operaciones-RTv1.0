@@ -2509,16 +2509,52 @@ function buildPreconfirmacionDoc(grupo, vuelosNorm, hoteles){
 }
 
 async function buildPreconfirmacionHTML(grupoId){
-  const d = await getDoc(doc(db,'grupos', grupoId));
-  if (!d.exists()) return '';
+  const d = await getDoc(doc(db, 'grupos', grupoId));
 
-  const g = { id:d.id, ...d.data() };
+  if (!d.exists()) {
+    console.error('[DOCUMENTOS][PRECONFIRMACION] Grupo no encontrado:', grupoId);
+    return '';
+  }
+
+  const g = {
+    id: d.id,
+    ...d.data()
+  };
+
+  // IMPORTANTE:
+  // Fuerza una lectura nueva de vuelos.
+  // Evita usar un resultado vacío o antiguo guardado en caché.
+  const cacheKey = `vuelos:${String(g.id || g.numeroNegocio || '').trim()}`;
+  cache.vuelosByGroup.delete(cacheKey);
+
+  console.log('[DOCUMENTOS][PRECONFIRMACION_INICIO]', {
+    grupoId: g.id,
+    numeroNegocio: g.numeroNegocio,
+    cacheEliminado: cacheKey
+  });
 
   const vuelosDocs = await loadVuelosInfo(g);
   const vuelosNorm = (vuelosDocs || []).map(normalizeVuelo);
-  const hoteles    = await loadHotelesInfo(g);
+  const hoteles = await loadHotelesInfo(g);
 
-  return buildPreconfirmacionDoc(g, vuelosNorm, hoteles);
+  console.log('[DOCUMENTOS][PRECONFIRMACION_DATOS]', {
+    grupoId: g.id,
+    vuelosEncontrados: vuelosDocs.length,
+    vuelos: vuelosDocs.map(v => ({
+      vueloId: v.id,
+      numero: v.numero,
+      fechaIda: v.fechaIda,
+      fechaVuelta: v.fechaVuelta,
+      grupoIds: v.grupoIds,
+      grupos: v.grupos
+    }))
+  });
+
+  return buildPreconfirmacionDoc(
+    g,
+    vuelosNorm,
+    hoteles
+  );
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -2528,10 +2564,34 @@ async function buildConfirmacionHTML(grupoId){
   // 1) Traer el grupo
   const d = await getDoc(doc(db,'grupos', grupoId));
   if (!d.exists()) return '';
-  const g = { id:d.id, ...d.data() };
-
-  // 2) Datos necesarios para render local (igual que antes en descargarUno)
+  const g = {
+    id: d.id,
+    ...d.data()
+  };
+  
+  // Fuerza una lectura nueva para no usar vuelos antiguos del caché.
+  const cacheKey = `vuelos:${String(g.id || g.numeroNegocio || '').trim()}`;
+  cache.vuelosByGroup.delete(cacheKey);
+  
+  console.log('[DOCUMENTOS][CONFIRMACION_INICIO]', {
+    grupoId: g.id,
+    numeroNegocio: g.numeroNegocio,
+    cacheEliminado: cacheKey
+  });
+  
+  // 2) Datos necesarios para render local
   const vuelosDocs = await loadVuelosInfo(g);
+  
+  console.log('[DOCUMENTOS][CONFIRMACION_VUELOS]', {
+    grupoId: g.id,
+    vuelosEncontrados: vuelosDocs.length,
+    vuelos: vuelosDocs.map(v => ({
+      vueloId: v.id,
+      numero: v.numero,
+      fechaIda: v.fechaIda,
+      fechaVuelta: v.fechaVuelta
+    }))
+  });
   const vuelosNorm = (vuelosDocs || []).map(normalizeVuelo);
   const hoteles    = await loadHotelesInfo(g);
 
@@ -3500,6 +3560,16 @@ function fillSelect(sel, values, placeholder='(Todos)'){
 ────────────────────────────────────────────────────────────────────── */
 async function buscar(){
   const t0 = performance.now();
+
+  // Cada búsqueda debe revisar nuevamente vuelos y hoteles.
+  // Evita mostrar asociaciones antiguas guardadas en memoria.
+  cache.vuelosByGroup.clear();
+  cache.hotelesByGroup.clear();
+  
+  rtLog('CACHE_LIMPIADO', {
+    vuelos: true,
+    hoteles: true
+  });
 
   try {
     progressSet(10, 'Cargando documentos...', 'Leyendo filtros seleccionados');
