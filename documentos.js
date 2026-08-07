@@ -1337,48 +1337,495 @@ function normalizeVuelo(v){
 
 // Particionar y devolver SOLO aéreos de plan (sin transfers)
 function particionarVuelos(vuelosNorm) {
+
   const aereos = [];
-  const esTerrestre = (v) => norm(v.tipoTransporte || '') !== 'aereo';
-  const legFrom = (v, t = {}) => {
-    const aerolinea = String(t.aerolinea || v.proveedor || '').toUpperCase();
-    const numero    = String(t.numero    || v.numero    || '').toUpperCase();
-    const origen    = String(t.origen    || v.origen    || '').toUpperCase();
-    const destino   = String(t.destino   || v.destino   || '').toUpperCase();
-    const fechaIda    = toISO(t.fechaIda    || v.fechaIda    || '');
-    const fechaVuelta = toISO(t.fechaVuelta || v.fechaVuelta || '');
-    const presentacionIda    = normTime(t.presentacionIdaHora    || v.presentacionIdaHora);
-    const presentacionVuelta = normTime(t.presentacionVueltaHora || v.presentacionVueltaHora);
-    const salidaIda          = normTime(t.vueloIdaHora           || v.vueloIdaHora);
-    const salidaVuelta       = normTime(t.vueloVueltaHora        || v.vueloVueltaHora);
-    const arriboIda          = normTime(t.arriboIdaHora || t.llegadaIdaHora || v.llegadaIdaHora);
-    const arriboVuelta       = normTime(t.arriboVueltaHora || t.llegadaVueltaHora || v.llegadaVueltaHora);
-    const fecha = toISO(fechaIda || fechaVuelta || '');
-    const tipoVuelo = String(v.tipoVuelo || '').toLowerCase();
-    const isTransfer = !!v.isTransfer || /^(ida|vuelta|ida\+vuelta)$/.test(String(v.transferLeg||'').toLowerCase());
+
+  const esTerrestre = (v) =>
+    norm(
+      v.tipoTransporte || ''
+    ) !== 'aereo';
+
+
+  /*
+    Construye UNA pierna aérea respetando
+    estrictamente tipoTramo.
+
+    IMPORTANTE:
+
+    Si estamos procesando un tramo:
+      - NO heredamos fechaIda desde el vuelo padre
+        cuando el tramo es sólo VUELTA.
+      - NO heredamos fechaVuelta desde el vuelo padre
+        cuando el tramo es sólo IDA.
+
+    Esto mantiene coherencia con viajes.js.
+  */
+  const legFrom = (
+    v,
+    t = null
+  ) => {
+
+    const tieneTramo =
+      !!t &&
+      typeof t === 'object';
+
+
+    const tipoTramo =
+      tieneTramo
+        ? String(
+            t.tipoTramo ||
+            ''
+          ).toLowerCase()
+        : '';
+
+
+    const aerolinea =
+      String(
+        (
+          tieneTramo
+            ? t.aerolinea
+            : ''
+        ) ||
+        v.proveedor ||
+        ''
+      ).toUpperCase();
+
+
+    const numero =
+      String(
+        (
+          tieneTramo
+            ? t.numero
+            : ''
+        ) ||
+        v.numero ||
+        ''
+      ).toUpperCase();
+
+
+    const origen =
+      String(
+        (
+          tieneTramo
+            ? t.origen
+            : ''
+        ) ||
+        v.origen ||
+        ''
+      ).toUpperCase();
+
+
+    const destino =
+      String(
+        (
+          tieneTramo
+            ? t.destino
+            : ''
+        ) ||
+        v.destino ||
+        ''
+      ).toUpperCase();
+
+
+    // ==========================================================
+    // FECHAS
+    // ==========================================================
+
+    let fechaIda = '';
+    let fechaVuelta = '';
+
+
+    if (tieneTramo) {
+
+      /*
+        En multitramos manda EXCLUSIVAMENTE
+        la información del tramo.
+      */
+
+      if (
+        tipoTramo === 'ida' ||
+        tipoTramo === 'ida+vuelta' ||
+        (
+          !tipoTramo &&
+          t.fechaIda
+        )
+      ){
+        fechaIda =
+          toISO(
+            t.fechaIda ||
+            ''
+          );
+      }
+
+
+      if (
+        tipoTramo === 'vuelta' ||
+        tipoTramo === 'ida+vuelta' ||
+        (
+          !tipoTramo &&
+          t.fechaVuelta
+        )
+      ){
+        fechaVuelta =
+          toISO(
+            t.fechaVuelta ||
+            ''
+          );
+      }
+
+    } else {
+
+      /*
+        Vuelo simple / charter:
+        aquí sí corresponden las fechas
+        top-level del documento.
+      */
+
+      fechaIda =
+        toISO(
+          v.fechaIda ||
+          ''
+        );
+
+      fechaVuelta =
+        toISO(
+          v.fechaVuelta ||
+          ''
+        );
+    }
+
+
+    // ==========================================================
+    // HORARIOS IDA
+    // ==========================================================
+
+    const presentacionIda =
+      fechaIda
+        ? normTime(
+            (
+              tieneTramo
+                ? t.presentacionIdaHora
+                : ''
+            ) ||
+            v.presentacionIdaHora ||
+            ''
+          )
+        : '';
+
+
+    const salidaIda =
+      fechaIda
+        ? normTime(
+            (
+              tieneTramo
+                ? t.vueloIdaHora
+                : ''
+            ) ||
+            v.vueloIdaHora ||
+            ''
+          )
+        : '';
+
+
+    const arriboIda =
+      fechaIda
+        ? normTime(
+            (
+              tieneTramo
+                ? (
+                    t.arriboIdaHora ||
+                    t.llegadaIdaHora
+                  )
+                : ''
+            ) ||
+            v.llegadaIdaHora ||
+            ''
+          )
+        : '';
+
+
+    // ==========================================================
+    // HORARIOS VUELTA
+    // ==========================================================
+
+    const presentacionVuelta =
+      fechaVuelta
+        ? normTime(
+            (
+              tieneTramo
+                ? t.presentacionVueltaHora
+                : ''
+            ) ||
+            v.presentacionVueltaHora ||
+            ''
+          )
+        : '';
+
+
+    const salidaVuelta =
+      fechaVuelta
+        ? normTime(
+            (
+              tieneTramo
+                ? t.vueloVueltaHora
+                : ''
+            ) ||
+            v.vueloVueltaHora ||
+            ''
+          )
+        : '';
+
+
+    const arriboVuelta =
+      fechaVuelta
+        ? normTime(
+            (
+              tieneTramo
+                ? (
+                    t.arriboVueltaHora ||
+                    t.llegadaVueltaHora
+                  )
+                : ''
+            ) ||
+            v.llegadaVueltaHora ||
+            ''
+          )
+        : '';
+
+
+    const fecha =
+      fechaIda ||
+      fechaVuelta ||
+      '';
+
+
+    const tipoVuelo =
+      String(
+        v.tipoVuelo ||
+        ''
+      ).toLowerCase();
+
+
+    const isTransfer =
+      !!v.isTransfer ||
+      /^(ida|vuelta|ida\+vuelta)$/.test(
+        String(
+          v.transferLeg ||
+          ''
+        ).toLowerCase()
+      );
+
+
     return {
-      fecha, fechaIda, fechaVuelta,
-      aerolinea, numero, origen, destino,
-      presentacionIda, presentacionVuelta,
-      salidaIda, salidaVuelta, arriboIda, arriboVuelta,
-      tipoTransporte: v.tipoTransporte || 'aereo',
-      tipoVuelo, isTransfer
+      fecha,
+
+      fechaIda,
+      fechaVuelta,
+
+      aerolinea,
+      numero,
+      origen,
+      destino,
+
+      presentacionIda,
+      presentacionVuelta,
+
+      salidaIda,
+      salidaVuelta,
+
+      arriboIda,
+      arriboVuelta,
+
+      tipoTransporte:
+        v.tipoTransporte ||
+        'aereo',
+
+      tipoVuelo,
+
+      tipoTramo,
+
+      isTransfer
     };
   };
 
-  for (const v of (vuelosNorm || [])) {
-    if (esTerrestre(v)) continue; // sólo aéreos
-    if (Array.isArray(v.tramos) && v.tramos.length) v.tramos.forEach(t => aereos.push(legFrom(v, t)));
-    else aereos.push(legFrom(v));
+
+  // ============================================================
+  // CONSTRUIR PIERNAS AÉREAS
+  // ============================================================
+
+  for (
+    const v of (
+      vuelosNorm ||
+      []
+    )
+  ) {
+
+    /*
+      Esta función sólo particiona vuelos aéreos.
+    */
+    if (
+      esTerrestre(v)
+    ){
+      continue;
+    }
+
+
+    /*
+      REGULAR MULTITRAMO
+
+      Cada tramo se interpreta por separado
+      respetando tipoTramo.
+    */
+    if (
+      Array.isArray(v.tramos) &&
+      v.tramos.length
+    ){
+
+      v.tramos.forEach(t => {
+
+        const leg =
+          legFrom(
+            v,
+            t
+          );
+
+        /*
+          Sólo agregamos el tramo si realmente
+          tiene IDA o VUELTA.
+        */
+        if (
+          leg.fechaIda ||
+          leg.fechaVuelta
+        ){
+          aereos.push(
+            leg
+          );
+        }
+      });
+
+    } else {
+
+      /*
+        Vuelo simple / charter.
+      */
+      const leg =
+        legFrom(
+          v,
+          null
+        );
+
+      if (
+        leg.fechaIda ||
+        leg.fechaVuelta
+      ){
+        aereos.push(
+          leg
+        );
+      }
+    }
   }
 
-  aereos.sort((x, y) => (x.fecha || '').localeCompare(y.fecha || ''));
 
-  const idaLegsAll    = aereos.filter(l => l.fechaIda);
-  const vueltaLegsAll = aereos.filter(l => l.fechaVuelta);
-  const idaLegsPlan    = idaLegsAll.filter(l => !l.isTransfer);
-  const vueltaLegsPlan = vueltaLegsAll.filter(l => !l.isTransfer);
+  // ============================================================
+  // ORDEN CRONOLÓGICO
+  // ============================================================
 
-  return { idaLegsPlan, vueltaLegsPlan };
+  aereos.sort(
+    (x, y) =>
+      (
+        x.fecha ||
+        ''
+      ).localeCompare(
+        y.fecha ||
+        ''
+      )
+  );
+
+
+  // ============================================================
+  // SEPARAR IDA / VUELTA
+  // ============================================================
+
+  const idaLegsAll =
+    aereos.filter(
+      l =>
+        !!l.fechaIda
+    );
+
+
+  const vueltaLegsAll =
+    aereos.filter(
+      l =>
+        !!l.fechaVuelta
+    );
+
+
+  /*
+    Quitamos transfers del plan aéreo principal.
+  */
+  const idaLegsPlan =
+    idaLegsAll.filter(
+      l =>
+        !l.isTransfer
+    );
+
+
+  const vueltaLegsPlan =
+    vueltaLegsAll.filter(
+      l =>
+        !l.isTransfer
+    );
+
+
+  console.log(
+    '[DOCUMENTOS][PARTICION_VUELOS]',
+    {
+      totalAereos:
+        aereos.length,
+
+      ida:
+        idaLegsPlan.map(x => ({
+          aerolinea:
+            x.aerolinea,
+
+          numero:
+            x.numero,
+
+          tipoTramo:
+            x.tipoTramo,
+
+          fecha:
+            x.fechaIda,
+
+          ruta:
+            `${x.origen} → ${x.destino}`
+        })),
+
+      vuelta:
+        vueltaLegsPlan.map(x => ({
+          aerolinea:
+            x.aerolinea,
+
+          numero:
+            x.numero,
+
+          tipoTramo:
+            x.tipoTramo,
+
+          fecha:
+            x.fechaVuelta,
+
+          ruta:
+            `${x.origen} → ${x.destino}`
+        }))
+    }
+  );
+
+
+  return {
+    idaLegsPlan,
+    vueltaLegsPlan
+  };
 }
 
 // *** Regla solicitada: SOLO primer vuelo de ida ***
