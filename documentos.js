@@ -345,7 +345,8 @@ function injectPageLightStyles(){
       font-size:17px !important;
       cursor:pointer;
     }
-    
+
+      
     .print-doc{ margin:0 auto !important; }
 
     @media (min-width: 1000px){
@@ -2015,6 +2016,19 @@ function injectPdfStyles(){
     display:block;
     object-fit:contain;
     filter:none !important;
+  }
+
+  .confirm-doc .hoteles-list{
+    margin-top:1.5mm;
+    padding-left:5mm;
+  }
+  
+  .confirm-doc .hotel-item{
+    margin-bottom:3mm;
+  }
+  
+  .confirm-doc .hotel-item:last-child{
+    margin-bottom:0;
   }
 
   /* ===== AJUSTE EQUILIBRADO SOLO PARA PRECONFIRMACIÓN (P) ===== */
