@@ -508,6 +508,471 @@ function computeRangoViaje(grupo, abonos){
   };
 }
 
+/* ======================================================================
+   PROTECCIÓN DE DATOS PARA CONFIRMACIÓN "C"
+
+   El rango oficial de la Confirmación se obtiene EXCLUSIVAMENTE desde:
+
+   grupo.fechaInicio
+   grupo.fechaFin
+
+   NO usamos grupo.itinerario para decidir el rango,
+   porque justamente el itinerario podría traer fechas antiguas.
+====================================================================== */
+
+function getRangoOficialGrupo(grupo){
+  const inicio = toISO(
+    grupo?.fechaInicio ||
+    grupo?.fechaViaje ||
+    ''
+  );
+
+  const fin = toISO(
+    grupo?.fechaFin ||
+    grupo?.fechaRegreso ||
+    ''
+  );
+
+  return {
+    inicio: inicio || '',
+    fin: fin || ''
+  };
+}
+
+
+function crearRangoFechasISO(inicioRaw, finRaw){
+  const inicio = toISO(inicioRaw);
+  const fin = toISO(finRaw);
+
+  if (!inicio || !fin) return [];
+
+  const a = new Date(`${inicio}T00:00:00`);
+  const b = new Date(`${fin}T00:00:00`);
+
+  if (
+    Number.isNaN(a.getTime()) ||
+    Number.isNaN(b.getTime()) ||
+    b < a
+  ){
+    return [];
+  }
+
+  const out = [];
+
+  for (
+    let d = new Date(a);
+    d <= b;
+    d.setDate(d.getDate() + 1)
+  ){
+    out.push(
+      d.toISOString().slice(0, 10)
+    );
+  }
+
+  return out;
+}
+
+
+function sumarDiasISO(fechaRaw, dias){
+  const fecha = toISO(fechaRaw);
+
+  if (!fecha) return '';
+
+  const d = new Date(`${fecha}T00:00:00`);
+
+  if (Number.isNaN(d.getTime())) return '';
+
+  d.setDate(d.getDate() + Number(dias || 0));
+
+  return d.toISOString().slice(0, 10);
+}
+
+
+function fechaDentroRango(
+  fechaRaw,
+  inicioRaw,
+  finRaw,
+  margenAntes = 0,
+  margenDespues = 0
+){
+  const fecha = toISO(fechaRaw);
+  const inicio = toISO(inicioRaw);
+  const fin = toISO(finRaw);
+
+  if (!fecha) return false;
+
+  /*
+    Si por alguna razón el grupo todavía no tiene
+    fechaInicio / fechaFin, no descartamos automáticamente.
+  */
+  if (!inicio || !fin) return true;
+
+  const desde = sumarDiasISO(
+    inicio,
+    -Math.abs(margenAntes)
+  );
+
+  const hasta = sumarDiasISO(
+    fin,
+    Math.abs(margenDespues)
+  );
+
+  return fecha >= desde && fecha <= hasta;
+}
+
+
+/*
+  Convierte el itinerario guardado a las fechas oficiales
+  del viaje SIN modificar Firestore.
+
+  Ejemplo:
+
+  grupo:
+    fechaInicio = 2026-12-14
+    fechaFin    = 2026-12-21
+
+  itinerario guardado:
+    2025-12-14
+    2025-12-15
+    ...
+
+  Para C lo transformamos temporalmente en:
+
+    2026-12-14
+    2026-12-15
+    ...
+
+  conservando las actividades por posición de día.
+*/
+function getItinerarioConfirmacion(grupo){
+  const it = (
+    grupo?.itinerario &&
+    typeof grupo.itinerario === 'object'
+  )
+    ? grupo.itinerario
+    : {};
+
+  const keysOriginales = Object.keys(it)
+    .map(key => ({
+      original: key,
+      iso: toISO(key)
+    }))
+    .filter(x => x.iso)
+    .sort((a,b) => a.iso.localeCompare(b.iso));
+
+  const {
+    inicio,
+    fin
+  } = getRangoOficialGrupo(grupo);
+
+  /*
+    Si no tenemos rango oficial,
+    utilizamos el itinerario tal como está.
+  */
+  if (!inicio || !fin){
+    const itinerario = {};
+
+    keysOriginales.forEach(({ original, iso }) => {
+      itinerario[iso] = it[original];
+    });
+
+    return {
+      itinerario,
+      fechas: Object.keys(itinerario).sort(),
+      realineado: false,
+      fechasOriginales: keysOriginales.map(x => x.iso)
+    };
+  }
+
+  const fechasOficiales =
+    crearRangoFechasISO(
+      inicio,
+      fin
+    );
+
+  if (!fechasOficiales.length){
+    return {
+      itinerario: {},
+      fechas: [],
+      realineado: false,
+      fechasOriginales: keysOriginales.map(x => x.iso)
+    };
+  }
+
+  /*
+    Si las fechas actuales ya corresponden exactamente
+    al rango oficial, NO hacemos nada.
+  */
+  const actuales =
+    keysOriginales.map(x => x.iso);
+
+  const yaCoincide =
+    actuales.length === fechasOficiales.length &&
+    actuales.every(
+      (fecha, idx) =>
+        fecha === fechasOficiales[idx]
+    );
+
+  if (yaCoincide){
+    const itinerario = {};
+
+    keysOriginales.forEach(({ original, iso }) => {
+      itinerario[iso] = it[original];
+    });
+
+    return {
+      itinerario,
+      fechas: fechasOficiales,
+      realineado: false,
+      fechasOriginales: actuales
+    };
+  }
+
+  /*
+    IMPORTANTE:
+
+    Si las fechas están antiguas, conservamos
+    la secuencia de actividades:
+
+    Día 1 antiguo → Día 1 nuevo
+    Día 2 antiguo → Día 2 nuevo
+    etc.
+  */
+  const itinerarioRealineado = {};
+
+  fechasOficiales.forEach(
+    (fechaNueva, idx) => {
+
+      const original =
+        keysOriginales[idx];
+
+      itinerarioRealineado[fechaNueva] =
+        original
+          ? it[original.original]
+          : [];
+    }
+  );
+
+  console.warn(
+    '[DOCUMENTOS][CONFIRMACION_ITINERARIO_REALINEADO]',
+    {
+      grupoId: grupo?.id,
+      numeroNegocio: grupo?.numeroNegocio,
+      anoViaje: grupo?.anoViaje,
+      fechaInicio: inicio,
+      fechaFin: fin,
+      fechasOriginales: actuales,
+      fechasUsadasEnC: fechasOficiales
+    }
+  );
+
+  return {
+    itinerario: itinerarioRealineado,
+    fechas: fechasOficiales,
+    realineado: true,
+    fechasOriginales: actuales
+  };
+}
+
+
+function getFechasVueloNormalizado(vuelo){
+  const fechas = [];
+
+  const add = value => {
+    const iso = toISO(value);
+
+    if (
+      iso &&
+      !fechas.includes(iso)
+    ){
+      fechas.push(iso);
+    }
+  };
+
+  add(vuelo?.fechaIda);
+  add(vuelo?.fechaVuelta);
+
+  if (
+    Array.isArray(vuelo?.tramos)
+  ){
+    vuelo.tramos.forEach(t => {
+      add(t?.fechaIda);
+      add(t?.fechaVuelta);
+    });
+  }
+
+  return fechas;
+}
+
+
+function filtrarVuelosParaConfirmacion(
+  grupo,
+  vuelosNorm
+){
+  const lista =
+    Array.isArray(vuelosNorm)
+      ? vuelosNorm
+      : [];
+
+  const {
+    inicio,
+    fin
+  } = getRangoOficialGrupo(grupo);
+
+  /*
+    Sin fechas oficiales no arriesgamos eliminar información.
+  */
+  if (!inicio || !fin){
+    return lista;
+  }
+
+  /*
+    Damos un margen de 2 días.
+
+    Esto permite:
+    - presentación previa
+    - traslado previo/posterior
+    - vuelos que crucen medianoche
+
+    pero elimina vuelos del año anterior.
+  */
+  const filtrados = lista.filter(v => {
+
+    const fechas =
+      getFechasVueloNormalizado(v);
+
+    if (!fechas.length){
+      return false;
+    }
+
+    return fechas.some(fecha =>
+      fechaDentroRango(
+        fecha,
+        inicio,
+        fin,
+        2,
+        2
+      )
+    );
+  });
+
+  const descartados =
+    lista.filter(
+      v => !filtrados.includes(v)
+    );
+
+  if (descartados.length){
+    console.warn(
+      '[DOCUMENTOS][CONFIRMACION_VUELOS_DESCARTADOS]',
+      {
+        grupoId: grupo?.id,
+        numeroNegocio: grupo?.numeroNegocio,
+        rango: {
+          inicio,
+          fin
+        },
+        descartados
+      }
+    );
+  }
+
+  return filtrados;
+}
+
+
+function filtrarHotelesParaConfirmacion(
+  grupo,
+  hoteles
+){
+  const lista =
+    Array.isArray(hoteles)
+      ? hoteles
+      : [];
+
+  const {
+    inicio,
+    fin
+  } = getRangoOficialGrupo(grupo);
+
+  if (!inicio || !fin){
+    return lista;
+  }
+
+  const filtrados = lista.filter(h => {
+
+    const checkIn =
+      toISO(h?.checkIn);
+
+    const checkOut =
+      toISO(h?.checkOut);
+
+    /*
+      Una asignación hotelera es válida si
+      su rango se cruza con el rango del viaje.
+
+      Ejemplo:
+
+      viaje:
+      14 dic → 21 dic
+
+      hotel:
+      15 dic → 20 dic
+
+      => válido.
+    */
+    if (checkIn && checkOut){
+      return (
+        checkIn <= fin &&
+        checkOut >= inicio
+      );
+    }
+
+    if (checkIn){
+      return fechaDentroRango(
+        checkIn,
+        inicio,
+        fin,
+        1,
+        1
+      );
+    }
+
+    if (checkOut){
+      return fechaDentroRango(
+        checkOut,
+        inicio,
+        fin,
+        1,
+        1
+      );
+    }
+
+    return false;
+  });
+
+  const descartados =
+    lista.filter(
+      h => !filtrados.includes(h)
+    );
+
+  if (descartados.length){
+    console.warn(
+      '[DOCUMENTOS][CONFIRMACION_HOTELES_DESCARTADOS]',
+      {
+        grupoId: grupo?.id,
+        numeroNegocio: grupo?.numeroNegocio,
+        rango: {
+          inicio,
+          fin
+        },
+        descartados
+      }
+    );
+  }
+
+  return filtrados;
+}
+
 function formatMoney(value, moneda='CLP'){
   if (value === null || value === undefined || value === '') return '';
   const num = Number(value);
@@ -1625,9 +2090,35 @@ function imprimirHtml(html){
 }
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
-  const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
-  const fechaInicioViajeISO = computeInicioSoloPrimerVueloIda(vuelosNorm); // solo primer vuelo de ida
-  const fechaInicioViajeTxt = fechaInicioViajeISO ? formatShortDate(fechaInicioViajeISO) : '—';
+  const {
+    idaLegsPlan,
+    vueltaLegsPlan
+  } = particionarVuelos(
+    vuelosNorm
+  );
+
+  /*
+    La fecha oficial del viaje manda.
+
+    Sólo si el grupo no tiene fechaInicio,
+    usamos el primer vuelo de ida como respaldo.
+  */
+  const fechaInicioViajeISO =
+    toISO(
+      grupo.fechaInicio ||
+      grupo.fechaViaje ||
+      ''
+    ) ||
+    computeInicioSoloPrimerVueloIda(
+      vuelosNorm
+    );
+
+  const fechaInicioViajeTxt =
+    fechaInicioViajeISO
+      ? formatShortDate(
+          fechaInicioViajeISO
+        )
+      : '—';
 
   const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
@@ -1739,27 +2230,157 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
   const titulo  = `Viaje de Estudios ${nombreOperacional}`.trim();
 
-  // Itinerario compacto (para sección 7)
-  const itinHTML = (() => {
-    const fechas = (() => {
-      if (grupo.itinerario && typeof grupo.itinerario==='object'){
-        return Object.keys(grupo.itinerario)
-          .sort((a,b)=> new Date(a)-new Date(b));
-      }
-      if (grupo.fechaInicio && grupo.fechaFin) {
-        const out=[];
-        const A=toISO(grupo.fechaInicio), B=toISO(grupo.fechaFin);
-        if(A&&B){
-          const a=new Date(A), b=new Date(B);
-          for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){
-            out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
-          }
-        }
-        return out;
-      }
-      return [];
-    })();
+  // ============================================================
+  // ITINERARIO COMPACTO PARA CONFIRMACIÓN C
+  // ============================================================
 
+  const itinHTML = (() => {
+
+    /*
+      PRIORIDAD:
+
+      1. fechas que llegan desde buildConfirmacionHTML()
+      2. como respaldo, claves del itinerario recibido
+
+      Ya NO calculamos un rango nuevo aquí.
+    */
+
+    const fechasUsar =
+      Array.isArray(fechas) &&
+      fechas.length
+        ? [...fechas]
+        : Object.keys(
+            grupo.itinerario || {}
+          )
+          .map(toISO)
+          .filter(Boolean)
+          .sort();
+
+    if (!fechasUsar.length){
+      return `
+        <div class="note">
+          — Sin actividades —
+        </div>
+      `;
+    }
+
+
+    const days =
+      fechasUsar.map(
+        (f, i) => {
+
+          const src =
+            grupo.itinerario?.[f];
+
+          const arr =
+            (
+              Array.isArray(src)
+                ? [...src]
+                : (
+                    src &&
+                    typeof src === 'object'
+                      ? Object.values(src)
+                      : []
+                  )
+            )
+            .sort(
+              (a,b) =>
+                (
+                  normTime(
+                    a?.horaInicio
+                  ) ||
+                  '99:99'
+                )
+                .localeCompare(
+                  normTime(
+                    b?.horaInicio
+                  ) ||
+                  '99:99'
+                )
+            );
+
+
+          const acts =
+            arr
+              .map(a =>
+                (
+                  a?.actividad ||
+                  a?.servicio ||
+                  a?.nombre ||
+                  ''
+                )
+                .toString()
+                .trim()
+                .toUpperCase()
+              )
+              .filter(Boolean);
+
+
+          /*
+            Evitamos:
+
+            new Date("2026-12-14")
+
+            porque puede introducir desfases de timezone.
+          */
+          const [
+            yyyy,
+            mm,
+            dd
+          ] = f.split('-').map(Number);
+
+          const fechaLocal =
+            new Date(
+              yyyy,
+              mm - 1,
+              dd
+            );
+
+          const fechaTxt =
+            fechaLocal
+              .toLocaleDateString(
+                'es-CL',
+                {
+                  weekday: 'long',
+                  day: '2-digit',
+                  month: '2-digit'
+                }
+              )
+              .toUpperCase();
+
+
+          const head =
+            `DÍA ${i + 1} - ${fechaTxt}:`;
+
+          const body =
+            acts.length
+              ? acts.join(' — ')
+              : '—';
+
+
+          return `
+            <li class="it-day">
+              <div class="day-head">
+                <strong>
+                  ${head}
+                </strong>
+              </div>
+
+              <div>
+                ${body}
+              </div>
+            </li>
+          `;
+        }
+      );
+
+
+    return `
+      <ul class="itinerario">
+        ${days.join('')}
+      </ul>
+    `;
+  })();
     if (!fechas.length) return '<div class="note">— Sin actividades —</div>';
 
     const days = fechas.map((f, i) => {
@@ -2877,60 +3498,211 @@ async function buildPreconfirmacionHTML(grupoId){
 // Helper: construir HTML de confirmación para un grupo
 // ──────────────────────────────────────────────────────────────
 async function buildConfirmacionHTML(grupoId){
-  // 1) Traer el grupo
-  const d = await getDoc(doc(db,'grupos', grupoId));
-  if (!d.exists()) return '';
-  const g = {
+
+  // ============================================================
+  // 1. LEER GRUPO EXACTO
+  // ============================================================
+
+  const d = await getDoc(
+    doc(
+      db,
+      'grupos',
+      grupoId
+    )
+  );
+
+  if (!d.exists()){
+    console.error(
+      '[DOCUMENTOS][CONFIRMACION_GRUPO_NO_ENCONTRADO]',
+      grupoId
+    );
+
+    return '';
+  }
+
+  const gOriginal = {
     id: d.id,
     ...d.data()
   };
-  
-  // Fuerza una lectura nueva para no usar vuelos antiguos del caché.
-  const cacheKey = `vuelos:${String(g.id || g.numeroNegocio || '').trim()}`;
-  cache.vuelosByGroup.delete(cacheKey);
-  
-  console.log('[DOCUMENTOS][CONFIRMACION_INICIO]', {
-    grupoId: g.id,
-    numeroNegocio: g.numeroNegocio,
-    cacheEliminado: cacheKey
-  });
-  
-  // 2) Datos necesarios para render local
-  const vuelosDocs = await loadVuelosInfo(g);
-  
-  console.log('[DOCUMENTOS][CONFIRMACION_VUELOS]', {
-    grupoId: g.id,
-    vuelosEncontrados: vuelosDocs.length,
-    vuelos: vuelosDocs.map(v => ({
-      vueloId: v.id,
-      numero: v.numero,
-      fechaIda: v.fechaIda,
-      fechaVuelta: v.fechaVuelta
-    }))
-  });
-  const vuelosNorm = (vuelosDocs || []).map(normalizeVuelo);
-  const hoteles    = await loadHotelesInfo(g);
 
-  // 3) Fechas para el itinerario (si aplica)
-  const fechas = (() => {
-    if (g.itinerario && typeof g.itinerario==='object') {
-      return Object.keys(g.itinerario).sort((a,b)=> new Date(a)-new Date(b));
-    }
-    if (g.fechaInicio && g.fechaFin) {
-      const out=[]; const A=toISO(g.fechaInicio), B=toISO(g.fechaFin);
-      if(A&&B){
-        const a=new Date(A), b=new Date(B);
-        for(let d=new Date(a); d<=b; d.setDate(d.getDate()+1)){
-          out.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`);
-        }
-      }
-      return out;
-    }
-    return [];
-  })();
 
-  // 4) Devuelve el HTML que antes se mandaba a html2pdf
-  return buildPrintDoc(g, vuelosNorm, hoteles, fechas);
+  // ============================================================
+  // 2. RANGO OFICIAL DEL VIAJE
+  // ============================================================
+
+  const rango =
+    getRangoOficialGrupo(
+      gOriginal
+    );
+
+  console.log(
+    '[DOCUMENTOS][CONFIRMACION_INICIO]',
+    {
+      grupoId: gOriginal.id,
+      numeroNegocio:
+        gOriginal.numeroNegocio,
+
+      anoViaje:
+        gOriginal.anoViaje,
+
+      fechaInicio:
+        rango.inicio,
+
+      fechaFin:
+        rango.fin
+    }
+  );
+
+
+  // ============================================================
+  // 3. REALINEAR ITINERARIO PARA C
+  // ============================================================
+
+  const itinResultado =
+    getItinerarioConfirmacion(
+      gOriginal
+    );
+
+  /*
+    Creamos una copia del grupo solamente para
+    generar C.
+
+    NO modificamos Firestore.
+  */
+  const gConfirmacion = {
+    ...gOriginal,
+
+    itinerario:
+      itinResultado.itinerario
+  };
+
+
+  // ============================================================
+  // 4. LIMPIAR CACHE
+  // ============================================================
+
+  const cacheKeyVuelos =
+    `vuelos:${String(
+      gOriginal.id ||
+      gOriginal.numeroNegocio ||
+      ''
+    ).trim()}`;
+
+  const cacheKeyHoteles =
+    `hoteles:${String(
+      gOriginal.id ||
+      gOriginal.numeroNegocio ||
+      ''
+    ).trim()}`;
+
+  cache.vuelosByGroup.delete(
+    cacheKeyVuelos
+  );
+
+  cache.hotelesByGroup.delete(
+    cacheKeyHoteles
+  );
+
+
+  // ============================================================
+  // 5. CARGAR VUELOS
+  // ============================================================
+
+  const vuelosDocs =
+    await loadVuelosInfo(
+      gOriginal
+    );
+
+  const vuelosNormTodos =
+    (vuelosDocs || [])
+      .map(normalizeVuelo);
+
+  /*
+    MUY IMPORTANTE:
+    sólo dejamos vuelos relacionados temporalmente
+    al viaje actual.
+  */
+  const vuelosNorm =
+    filtrarVuelosParaConfirmacion(
+      gOriginal,
+      vuelosNormTodos
+    );
+
+
+  // ============================================================
+  // 6. CARGAR HOTELES
+  // ============================================================
+
+  const hotelesTodos =
+    await loadHotelesInfo(
+      gOriginal
+    );
+
+  /*
+    Igual que vuelos:
+    sólo dejamos asignaciones hoteleras que se crucen
+    con las fechas actuales del grupo.
+  */
+  const hoteles =
+    filtrarHotelesParaConfirmacion(
+      gOriginal,
+      hotelesTodos
+    );
+
+
+  // ============================================================
+  // 7. LOG DE CONTROL
+  // ============================================================
+
+  console.log(
+    '[DOCUMENTOS][CONFIRMACION_DATOS_FINALES]',
+    {
+      grupoId:
+        gOriginal.id,
+
+      numeroNegocio:
+        gOriginal.numeroNegocio,
+
+      anoViaje:
+        gOriginal.anoViaje,
+
+      rangoViaje:
+        rango,
+
+      itinerarioRealineado:
+        itinResultado.realineado,
+
+      fechasItinerarioOriginal:
+        itinResultado.fechasOriginales,
+
+      fechasItinerarioC:
+        itinResultado.fechas,
+
+      vuelosEncontrados:
+        vuelosNormTodos.length,
+
+      vuelosUsados:
+        vuelosNorm.length,
+
+      hotelesEncontrados:
+        hotelesTodos.length,
+
+      hotelesUsados:
+        hoteles.length
+    }
+  );
+
+
+  // ============================================================
+  // 8. CONSTRUIR CONFIRMACIÓN
+  // ============================================================
+
+  return buildPrintDoc(
+    gConfirmacion,
+    vuelosNorm,
+    hoteles,
+    itinResultado.fechas
+  );
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -5152,10 +5924,58 @@ async function descargarPreconfirmacion(grupoId){
 }
 
 async function descargarUno(grupoId){
-  const htmlAuto = await buildConfirmacionHTML(grupoId);
+
+  const htmlAuto =
+    await buildConfirmacionHTML(
+      grupoId
+    );
+
   if (!htmlAuto) return;
 
-  const html = await aplicarDocumentoManualSiExiste(grupoId, 'C', htmlAuto);
+
+  /*
+    Revisamos antes si existe una C manual.
+  */
+  const d =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
+
+
+  if (d.exists()){
+
+    const g = d.data() || {};
+
+    const configManual =
+      g.documentosManual?.C;
+
+    if (
+      configManual?.modo === 'manual' &&
+      configManual?.htmlCuerpo
+    ){
+      console.warn(
+        '[DOCUMENTOS][CONFIRMACION_MODO_MANUAL]',
+        {
+          grupoId,
+          mensaje:
+            'La Confirmación C está en modo manual. Se imprimirá el contenido manual guardado.'
+        }
+      );
+    }
+  }
+
+
+  const html =
+    await aplicarDocumentoManualSiExiste(
+      grupoId,
+      'C',
+      htmlAuto
+    );
+
   imprimirHtml(html);
 }
 
