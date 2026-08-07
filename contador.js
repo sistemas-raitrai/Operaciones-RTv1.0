@@ -10,6 +10,7 @@ import {
   collection,
   doc,
   updateDoc,
+  setDoc,
   serverTimestamp,
   query,
   where
@@ -197,6 +198,69 @@ function refServicioContador(destino, actividad) {
   // Las reservas, snapshots, verificaciones e historial operacional
   // siguen viviendo en la colección antigua Servicios.
   return doc(db, 'Servicios', destino, 'Listado', actividad);
+}
+
+async function asegurarDocumentoServicioContador(
+  destino,
+  actividad,
+  proveedor = ''
+) {
+  if (!destino || !actividad) {
+    throw new Error(
+      'No se puede crear el documento operacional sin destino y actividad.'
+    );
+  }
+
+  const ref = refServicioContador(
+    destino,
+    actividad
+  );
+
+  const snap = await getDoc(ref);
+
+  /*
+   * Si ya existe, no hacemos absolutamente nada.
+   */
+  if (snap.exists()) {
+    return ref;
+  }
+
+  console.warn(
+    '[CONTADOR] Documento operacional inexistente. Se creará:',
+    destino,
+    actividad
+  );
+
+  /*
+   * Creamos únicamente la estructura mínima.
+   *
+   * Desde este momento updateDoc() podrá utilizar
+   * campos como:
+   *
+   * reservas.2026-12-07.estado
+   */
+  await setDoc(
+    ref,
+    {
+      servicio: actividad,
+      proveedor: proveedor || '',
+      reservas: {},
+      creadoAutomaticamente: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    },
+    {
+      merge: true
+    }
+  );
+
+  console.log(
+    '[CONTADOR] Documento operacional creado:',
+    destino,
+    actividad
+  );
+
+  return ref;
 }
 
 function limpiarTablaContadorSiExiste() {
@@ -2028,158 +2092,323 @@ function reconstruirCorreoReserva(destino, actividad, proveedor, opciones = {}) 
 }
 
 async function sincronizarPaxReservaManual() {
-  const btnSync = document.getElementById('btnSincronizarPaxReserva');
-  if (!btnSync) return;
+  const btnSync =
+    document.getElementById(
+      'btnSincronizarPaxReserva'
+    );
 
-  const destino = btnSync.dataset.destino;
-  const actividad = btnSync.dataset.actividad;
-  const proveedor = btnSync.dataset.proveedor;
+  if (!btnSync) {
+    return;
+  }
+
+  const destino =
+    btnSync.dataset.destino;
+
+  const actividad =
+    btnSync.dataset.actividad;
+
+  const proveedor =
+    btnSync.dataset.proveedor;
 
   btnSync.disabled = true;
-  btnSync.textContent = 'Sincronizando...';
+  btnSync.textContent =
+    'Sincronizando...';
 
   try {
-    await sincronizarGruposReservaConPagos(actividad);
+    await sincronizarGruposReservaConPagos(
+      actividad
+    );
 
-    const revisionNueva = await obtenerRevisionCambiosReserva(destino, actividad);
+    /*
+     * IMPORTANTE:
+     * Como acabamos de modificar / actualizar los PAX,
+     * una eventual verificación anterior deja de ser válida.
+     */
+    ultimaVerificacionPagos = null;
+
+    const revisionNueva =
+      await obtenerRevisionCambiosReserva(
+        destino,
+        actividad
+      );
 
     const revisionCambios =
-      revisionCambiosReservaActiva?.requiereReenvio
+      revisionCambiosReservaActiva
+        ?.requiereReenvio
         ? revisionCambiosReservaActiva
         : revisionNueva;
 
-    revisionCambiosReservaActiva = revisionCambios;
+    revisionCambiosReservaActiva =
+      revisionCambios;
 
-    pintarAlertaRevisionCambiosReserva(revisionCambios);
-    reconstruirCorreoReserva(destino, actividad, proveedor, { revisionCambios });
+    pintarAlertaRevisionCambiosReserva(
+      revisionCambios
+    );
 
-    const btnEnv = document.getElementById('btnEnviarReserva');
+    reconstruirCorreoReserva(
+      destino,
+      actividad,
+      proveedor,
+      {
+        revisionCambios
+      }
+    );
+
+    const btnEnv =
+      document.getElementById(
+        'btnEnviarReserva'
+      );
+
     if (btnEnv) {
-      btnEnv.dataset.destino = destino;
-      btnEnv.dataset.actividad = actividad;
-      btnEnv.dataset.proveedor = proveedor;
-      btnEnv.dataset.requiereReenvio = revisionCambios.requiereReenvio ? '1' : '0';
+      btnEnv.dataset.destino =
+        destino;
+
+      btnEnv.dataset.actividad =
+        actividad;
+
+      btnEnv.dataset.proveedor =
+        proveedor;
+
+      btnEnv.dataset.requiereReenvio =
+        revisionCambios.requiereReenvio
+          ? '1'
+          : '0';
     }
 
-    document.getElementById('modalAsunto').value = revisionCambios.requiereReenvio
-      ? `Reenvío de confirmación: ${actividad} en ${destino}`
-      : `Reserva: ${actividad} en ${destino}`;
+    document.getElementById(
+      'modalAsunto'
+    ).value =
+      revisionCambios.requiereReenvio
+        ? `Reenvío de confirmación: ${actividad} en ${destino}`
+        : `Reserva: ${actividad} en ${destino}`;
 
-    mostrarEstadoSyncPaxReserva(actividad);
+    mostrarEstadoSyncPaxReserva(
+      actividad
+    );
 
-    alert('PAX sincronizado con pagos y correo actualizado.');
+    alert(
+      'PAX sincronizado con pagos y correo actualizado. Debes verificar PAX nuevamente antes de enviar.'
+    );
+
   } catch (error) {
-    console.error('Error sincronizando PAX manualmente:', error);
-    alert('No se pudo sincronizar PAX con pagos. Revisa la consola.');
+    console.error(
+      'Error sincronizando PAX manualmente:',
+      error
+    );
+
+    alert(
+      'No se pudo sincronizar PAX con pagos. Revisa la consola.'
+    );
+
   } finally {
     btnSync.disabled = false;
-  
-    // Vuelve a calcular el texto según el estado actual
-    // de sincronización de los grupos.
-    mostrarEstadoSyncPaxReserva(actividad);
+
+    mostrarEstadoSyncPaxReserva(
+      actividad
+    );
   }
 }
 
 async function abrirModalReserva(event) {
-  const btn       = event.currentTarget;
-  const destino   = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-  const proveedor = btn.dataset.proveedor;
+  const btn =
+    event.currentTarget;
 
-  const provInfo = proveedores[proveedor] || { contacto: '', correo: '' };
+  const destino =
+    btn.dataset.destino;
 
-  const revisionCambios = await obtenerRevisionCambiosReserva(destino, actividad);
-  revisionCambiosReservaActiva = revisionCambios;
+  const actividad =
+    btn.dataset.actividad;
 
-  document.getElementById('modalPara').value = provInfo.correo;
+  const proveedor =
+    btn.dataset.proveedor;
 
-  document.getElementById('modalAsunto').value = revisionCambios.requiereReenvio
-    ? `Reenvío de confirmación: ${actividad} en ${destino}`
-    : `Reserva: ${actividad} en ${destino}`;
+  /*
+   * Cada vez que abrimos una reserva nueva,
+   * anulamos cualquier verificación anterior.
+   *
+   * De esta forma ENVIAR obligará a verificar
+   * nuevamente esta reserva.
+   */
+  ultimaVerificacionPagos = null;
 
-  pintarAlertaRevisionCambiosReserva(revisionCambios);
-  reconstruirCorreoReserva(destino, actividad, proveedor, { revisionCambios });
+  const provInfo =
+    proveedores[proveedor] || {
+      contacto: '',
+      correo: ''
+    };
 
-  const btnPend = document.getElementById(
-    'btnGuardarPendiente'
+  const revisionCambios =
+    await obtenerRevisionCambiosReserva(
+      destino,
+      actividad
+    );
+
+  revisionCambiosReservaActiva =
+    revisionCambios;
+
+  document.getElementById(
+    'modalPara'
+  ).value = provInfo.correo;
+
+  document.getElementById(
+    'modalAsunto'
+  ).value =
+    revisionCambios.requiereReenvio
+      ? `Reenvío de confirmación: ${actividad} en ${destino}`
+      : `Reserva: ${actividad} en ${destino}`;
+
+  pintarAlertaRevisionCambiosReserva(
+    revisionCambios
   );
-  
-  btnPend.dataset.destino = destino;
-  btnPend.dataset.actividad = actividad;
 
-  const btnEnv = document.getElementById('btnEnviarReserva');
-  btnEnv.dataset.destino = destino;
-  btnEnv.dataset.actividad = actividad;
-  btnEnv.dataset.proveedor = proveedor;
-  btnEnv.dataset.requiereReenvio = revisionCambios.requiereReenvio ? '1' : '0';
+  reconstruirCorreoReserva(
+    destino,
+    actividad,
+    proveedor,
+    {
+      revisionCambios
+    }
+  );
 
-  const btnSync = document.getElementById('btnSincronizarPaxReserva');
+  const btnPend =
+    document.getElementById(
+      'btnGuardarPendiente'
+    );
+
+  btnPend.dataset.destino =
+    destino;
+
+  btnPend.dataset.actividad =
+    actividad;
+
+  const btnEnv =
+    document.getElementById(
+      'btnEnviarReserva'
+    );
+
+  btnEnv.dataset.destino =
+    destino;
+
+  btnEnv.dataset.actividad =
+    actividad;
+
+  btnEnv.dataset.proveedor =
+    proveedor;
+
+  btnEnv.dataset.requiereReenvio =
+    revisionCambios.requiereReenvio
+      ? '1'
+      : '0';
+
+  const btnSync =
+    document.getElementById(
+      'btnSincronizarPaxReserva'
+    );
+
   if (btnSync) {
-    btnSync.dataset.destino = destino;
-    btnSync.dataset.actividad = actividad;
-    btnSync.dataset.proveedor = proveedor;
+    btnSync.dataset.destino =
+      destino;
+
+    btnSync.dataset.actividad =
+      actividad;
+
+    btnSync.dataset.proveedor =
+      proveedor;
   }
 
-  mostrarEstadoSyncPaxReserva(actividad);
+  mostrarEstadoSyncPaxReserva(
+    actividad
+  );
 
-  document.getElementById('modalReserva').style.display = 'block';
+  document.getElementById(
+    'modalReserva'
+  ).style.display = 'block';
 }
 
 async function guardarPendiente() {
-  const btn = document.getElementById('btnGuardarPendiente');
+  const btn = document.getElementById(
+    'btnGuardarPendiente'
+  );
 
   const destino = btn.dataset.destino;
   const actividad = btn.dataset.actividad;
-  const cuerpo = document.getElementById('modalCuerpo').value;
+
+  const cuerpo = document
+    .getElementById('modalCuerpo')
+    .value;
 
   if (!destino || !actividad) {
-    alert('No se pudo identificar la reserva.');
+    alert(
+      'No se pudo identificar la reserva.'
+    );
     return;
   }
 
-  const fechasActividad = obtenerFechasConPaxActividad(
-    actividad
-  );
-
-  if (!fechasActividad.length) {
-    alert('Esta actividad no tiene fechas con grupos.');
-    return;
-  }
-
-  const ref = refServicioContador(
-    destino,
-    actividad
-  );
-
-  const payload = {};
-
-  fechasActividad.forEach(fecha => {
-    // Se usan campos separados para no borrar
-    // verificaciones o historiales que ya existan.
-    payload[`reservas.${fecha}.estado`] = 'PENDIENTE';
-    payload[`reservas.${fecha}.cuerpo`] = cuerpo;
-    payload[`reservas.${fecha}.updatedAt`] =
-      serverTimestamp();
-  });
-
-  try {
-    await updateDoc(ref, payload);
-
-    const botonTabla = document.querySelector(
-      `.btn-reserva[data-actividad="${CSS.escape(actividad)}"][data-destino="${CSS.escape(destino)}"]`
+  const fechasActividad =
+    obtenerFechasConPaxActividad(
+      actividad
     );
 
+  if (!fechasActividad.length) {
+    alert(
+      'Esta actividad no tiene fechas con grupos.'
+    );
+    return;
+  }
+
+  try {
+    /*
+     * IMPORTANTE:
+     * Si el documento operacional todavía no existe,
+     * lo creamos antes de usar updateDoc().
+     */
+    const ref =
+      await asegurarDocumentoServicioContador(
+        destino,
+        actividad
+      );
+
+    const payload = {};
+
+    fechasActividad.forEach(fecha => {
+      payload[
+        `reservas.${fecha}.estado`
+      ] = 'PENDIENTE';
+
+      payload[
+        `reservas.${fecha}.cuerpo`
+      ] = cuerpo;
+
+      payload[
+        `reservas.${fecha}.updatedAt`
+      ] = serverTimestamp();
+    });
+
+    await updateDoc(
+      ref,
+      payload
+    );
+
+    const botonTabla =
+      document.querySelector(
+        `.btn-reserva[data-actividad="${CSS.escape(actividad)}"][data-destino="${CSS.escape(destino)}"]`
+      );
+
     if (botonTabla) {
-      botonTabla.textContent = 'PENDIENTE';
-    
+      botonTabla.textContent =
+        'PENDIENTE';
+
       botonTabla
         .closest('tr')
         ?.classList
-        .remove('fila-revisar-cambios');
+        .remove(
+          'fila-revisar-cambios'
+        );
     }
 
-    document.getElementById('modalReserva').style.display =
-      'none';
+    document.getElementById(
+      'modalReserva'
+    ).style.display = 'none';
 
   } catch (error) {
     console.error(
@@ -2194,74 +2423,199 @@ async function guardarPendiente() {
 }
 
 async function enviarReserva() {
-  const btn = document.getElementById(
-    'btnEnviarReserva'
-  );
+  const btn =
+    document.getElementById(
+      'btnEnviarReserva'
+    );
 
-  const destino = btn.dataset.destino;
-  const actividad = btn.dataset.actividad;
-  const proveedor = btn.dataset.proveedor;
+  const destino =
+    btn.dataset.destino;
+
+  const actividad =
+    btn.dataset.actividad;
+
+  const proveedor =
+    btn.dataset.proveedor;
 
   const requiereReenvio =
     btn.dataset.requiereReenvio === '1';
 
-  const para = document
-    .getElementById('modalPara')
-    .value
-    .trim();
+  const para =
+    document
+      .getElementById('modalPara')
+      .value
+      .trim();
 
-  const asunto = document
-    .getElementById('modalAsunto')
-    .value
-    .trim();
+  const asunto =
+    document
+      .getElementById('modalAsunto')
+      .value
+      .trim();
 
-  const cuerpo = document
-    .getElementById('modalCuerpo')
-    .value;
+  const cuerpo =
+    document
+      .getElementById('modalCuerpo')
+      .value;
+
+  /*
+   * =====================================================
+   * 1. VALIDACIONES BÁSICAS
+   * =====================================================
+   */
 
   if (!destino || !actividad) {
-    alert('No se pudo identificar la reserva.');
+    alert(
+      'No se pudo identificar la reserva.'
+    );
     return;
   }
 
   if (!para) {
-    alert('Debes indicar el correo del proveedor.');
+    alert(
+      'Debes indicar el correo del proveedor.'
+    );
     return;
   }
 
   if (!asunto) {
-    alert('Debes indicar el asunto del correo.');
+    alert(
+      'Debes indicar el asunto del correo.'
+    );
     return;
   }
 
+  /*
+   * =====================================================
+   * 2. OBLIGAR A VERIFICAR PAX ANTES DE ENVIAR
+   * =====================================================
+   */
+
+  if (!ultimaVerificacionPagos) {
+    alert(
+      'Antes de enviar debes presionar "Verificar PAX con pagos".'
+    );
+    return;
+  }
+
+  if (
+    ultimaVerificacionPagos.destino !== destino ||
+    ultimaVerificacionPagos.actividad !== actividad
+  ) {
+    ultimaVerificacionPagos = null;
+
+    alert(
+      'La verificación de PAX no corresponde a esta reserva. Verifica PAX nuevamente antes de enviar.'
+    );
+
+    return;
+  }
+
+  /*
+   * Si hubo errores consultando el sistema de pagos,
+   * no permitimos enviar una fotografía incompleta.
+   */
+  if (
+    Number(
+      ultimaVerificacionPagos
+        ?.resumen
+        ?.gruposError || 0
+    ) > 0
+  ) {
+    alert(
+      'La verificación de PAX tiene errores de consulta. Debes verificar nuevamente antes de enviar.'
+    );
+
+    return;
+  }
+
+  /*
+   * =====================================================
+   * 3. ABRIR PESTAÑA DESDE EL CLIC DEL USUARIO
+   * =====================================================
+   *
+   * Esto ocurre ANTES de cualquier await.
+   *
+   * De esta forma Chrome reconoce que la pestaña fue
+   * solicitada directamente por el usuario y no bloquea
+   * Gmail como popup.
+   */
+
+  const ventanaGmail =
+    window.open(
+      'about:blank',
+      '_blank'
+    );
+
+  if (!ventanaGmail) {
+    alert(
+      'El navegador bloqueó la nueva pestaña. Debes permitir ventanas emergentes para este sitio.'
+    );
+
+    return;
+  }
+
+  ventanaGmail.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>Preparando Gmail...</title>
+      </head>
+      <body style="
+        font-family:Arial,sans-serif;
+        padding:30px;
+      ">
+        <h3>Preparando correo...</h3>
+        <p>
+          Estamos guardando la reserva antes de abrir Gmail.
+        </p>
+      </body>
+    </html>
+  `);
+
   btn.disabled = true;
-  btn.textContent = requiereReenvio
-    ? 'Preparando reenvío...'
-    : 'Preparando envío...';
+
+  btn.textContent =
+    requiereReenvio
+      ? 'Preparando reenvío...'
+      : 'Preparando envío...';
 
   try {
     /*
-     * Siempre construimos una fotografía nueva.
-     *
-     * En el primer envío será la base inicial.
-     * En un reenvío reemplazará la base antigua.
+     * =====================================================
+     * 4. USAR LA VERIFICACIÓN QUE EL USUARIO ACABA DE HACER
+     * =====================================================
      */
-    const verificacionActualizada =
-      await construirVerificacionActualParaReenvio(
+
+    const verificacionActualizada = {
+      ...ultimaVerificacionPagos,
+
+      usuario:
+        auth.currentUser?.email || '',
+
+      guardadoEn:
+        new Date().toISOString()
+    };
+
+    /*
+     * =====================================================
+     * 5. ASEGURAR QUE EXISTA EL DOCUMENTO OPERACIONAL
+     * =====================================================
+     */
+
+    const ref =
+      await asegurarDocumentoServicioContador(
         destino,
-        actividad
+        actividad,
+        proveedor
       );
 
-    const ref = refServicioContador(
-      destino,
-      actividad
-    );
+    const snap =
+      await getDoc(ref);
 
-    const snap = await getDoc(ref);
-
-    const reservasActuales = snap.exists()
-      ? snap.data()?.reservas || {}
-      : {};
+    const reservasActuales =
+      snap.exists()
+        ? snap.data()?.reservas || {}
+        : {};
 
     let revisionActual = null;
 
@@ -2275,68 +2629,105 @@ async function enviarReserva() {
     }
 
     const fechasActividad =
-      obtenerFechasConPaxActividad(actividad);
+      obtenerFechasConPaxActividad(
+        actividad
+      );
 
     if (!fechasActividad.length) {
+      ventanaGmail.close();
+
       alert(
         'Esta actividad no tiene fechas con grupos.'
       );
+
       return;
     }
 
+    /*
+     * =====================================================
+     * 6. CONSTRUIR ACTUALIZACIÓN FIRESTORE
+     * =====================================================
+     */
+
     const payload = {};
 
-    for (const fecha of fechasActividad) {
-      const totalEnviado = grupos.reduce(
-        (sum, grupo) => {
-          const actividadesFecha =
-            grupo.itinerario?.[fecha] || [];
+    for (
+      const fecha of fechasActividad
+    ) {
+      const totalEnviado =
+        grupos.reduce(
+          (sum, grupo) => {
+            const actividadesFecha =
+              grupo.itinerario?.[fecha] ||
+              [];
 
-          const totalGrupo = actividadesFecha
-            .filter(item =>
-              actividadCoincideReserva(
-                item,
-                actividad
-              )
-            )
-            .reduce(
-              (subtotal, item) =>
-                subtotal +
-                (parseInt(item.adultos) || 0) +
-                (parseInt(item.estudiantes) || 0),
-              0
+            const totalGrupo =
+              actividadesFecha
+                .filter(item =>
+                  actividadCoincideReserva(
+                    item,
+                    actividad
+                  )
+                )
+                .reduce(
+                  (
+                    subtotal,
+                    item
+                  ) =>
+                    subtotal +
+                    (
+                      parseInt(
+                        item.adultos
+                      ) || 0
+                    ) +
+                    (
+                      parseInt(
+                        item.estudiantes
+                      ) || 0
+                    ),
+                  0
+                );
+
+            return (
+              sum +
+              totalGrupo
             );
-
-          return sum + totalGrupo;
-        },
-        0
-      );
+          },
+          0
+        );
 
       if (totalEnviado <= 0) {
         continue;
       }
 
-      payload[`reservas.${fecha}.estado`] =
-        'ENVIADA';
+      payload[
+        `reservas.${fecha}.estado`
+      ] = 'ENVIADA';
 
-      payload[`reservas.${fecha}.cuerpo`] =
-        cuerpo;
+      payload[
+        `reservas.${fecha}.cuerpo`
+      ] = cuerpo;
 
-      payload[`reservas.${fecha}.totalEnviado`] =
-        totalEnviado;
+      payload[
+        `reservas.${fecha}.totalEnviado`
+      ] = totalEnviado;
 
-      payload[`reservas.${fecha}.updatedAt`] =
-        serverTimestamp();
+      payload[
+        `reservas.${fecha}.updatedAt`
+      ] = serverTimestamp();
 
-      payload[`reservas.${fecha}.enviadaEn`] =
-        serverTimestamp();
+      payload[
+        `reservas.${fecha}.enviadaEn`
+      ] = serverTimestamp();
 
-      payload[`reservas.${fecha}.enviadaPor`] =
+      payload[
+        `reservas.${fecha}.enviadaPor`
+      ] =
         auth.currentUser?.email || '';
 
       /*
-       * Esta es la fotografía base que posteriormente
-       * usa revisarCambiosReservasEnviadas().
+       * Guardamos EXACTAMENTE la verificación
+       * realizada antes de presionar Enviar.
        */
       payload[
         `reservas.${fecha}.verificacionPagos`
@@ -2345,14 +2736,18 @@ async function enviarReserva() {
       payload[
         `reservas.${fecha}.revisionCambios`
       ] = {
-        estado: requiereReenvio
-          ? 'REENVIO_ENVIADO'
-          : 'SIN_CAMBIOS',
+        estado:
+          requiereReenvio
+            ? 'REENVIO_ENVIADO'
+            : 'SIN_CAMBIOS',
 
-        ultimaRevision: new Date().toISOString(),
-        reenviadoEn: requiereReenvio
-          ? new Date().toISOString()
-          : null,
+        ultimaRevision:
+          new Date().toISOString(),
+
+        reenviadoEn:
+          requiereReenvio
+            ? new Date().toISOString()
+            : null,
 
         cambios: []
       };
@@ -2362,24 +2757,38 @@ async function enviarReserva() {
       ] = null;
 
       /*
-       * Solo agregamos historial cuando era un
-       * reenvío por cambios.
+       * ===================================================
+       * HISTORIAL DE REENVÍOS
+       * ===================================================
        */
+
       if (requiereReenvio) {
-        const historialAnterior = Array.isArray(
-          reservasActuales?.[fecha]
-            ?.revisionCambiosHistorial
-        )
-          ? reservasActuales[fecha]
-              .revisionCambiosHistorial
-          : [];
+        const historialAnterior =
+          Array.isArray(
+            reservasActuales?.[fecha]
+              ?.revisionCambiosHistorial
+          )
+            ? reservasActuales[
+                fecha
+              ].revisionCambiosHistorial
+            : [];
 
         const nuevoItemHistorial = {
-          fecha: new Date().toISOString(),
-          usuario: auth.currentUser?.email || '',
+          fecha:
+            new Date().toISOString(),
+
+          usuario:
+            auth.currentUser?.email ||
+            '',
+
           asunto,
-          proveedor: proveedor || '',
-          cambios: revisionActual?.cambios || []
+
+          proveedor:
+            proveedor || '',
+
+          cambios:
+            revisionActual?.cambios ||
+            []
         };
 
         payload[
@@ -2392,18 +2801,32 @@ async function enviarReserva() {
     }
 
     if (!Object.keys(payload).length) {
+      ventanaGmail.close();
+
       alert(
         'No hay fechas con PAX para guardar el envío.'
       );
+
       return;
     }
 
-    await updateDoc(ref, payload);
+    /*
+     * =====================================================
+     * 7. GUARDAR RESERVA
+     * =====================================================
+     */
+
+    await updateDoc(
+      ref,
+      payload
+    );
 
     /*
-     * Se abre Gmail después de dejar guardada
-     * correctamente la fotografía de la reserva.
+     * =====================================================
+     * 8. ABRIR GMAIL
+     * =====================================================
      */
+
     const baseUrl =
       'https://mail.google.com/mail/u/0/?view=cm&fs=1';
 
@@ -2413,27 +2836,40 @@ async function enviarReserva() {
       `body=${encodeURIComponent(cuerpo)}`
     ].join('&');
 
-    window.open(
-      `${baseUrl}&${params}`,
-      '_blank'
-    );
+    ventanaGmail.location.href =
+      `${baseUrl}&${params}`;
 
-    const botonTabla = document.querySelector(
-      `.btn-reserva[data-actividad="${CSS.escape(actividad)}"][data-destino="${CSS.escape(destino)}"]`
-    );
+    /*
+     * =====================================================
+     * 9. ACTUALIZAR INTERFAZ
+     * =====================================================
+     */
+
+    const botonTabla =
+      document.querySelector(
+        `.btn-reserva[data-actividad="${CSS.escape(actividad)}"][data-destino="${CSS.escape(destino)}"]`
+      );
 
     if (botonTabla) {
-      botonTabla.textContent = 'ENVIADA';
-    
+      botonTabla.textContent =
+        'ENVIADA';
+
       botonTabla
         .closest('tr')
         ?.classList
-        .remove('fila-revisar-cambios');
+        .remove(
+          'fila-revisar-cambios'
+        );
     }
 
-    revisionCambiosReservaActiva = null;
+    revisionCambiosReservaActiva =
+      null;
 
-    btn.dataset.requiereReenvio = '0';
+    ultimaVerificacionPagos =
+      null;
+
+    btn.dataset.requiereReenvio =
+      '0';
 
     document.getElementById(
       'modalReserva'
@@ -2445,13 +2881,24 @@ async function enviarReserva() {
       error
     );
 
+    /*
+     * Como Firestore falló, cerramos la pestaña
+     * que habíamos reservado para Gmail.
+     */
+    try {
+      ventanaGmail.close();
+    } catch (_) {}
+
     alert(
       'No se pudo preparar y guardar la reserva. ' +
-      'No se marcó como enviada.'
+      'No se marcó como enviada y Gmail no fue abierto.'
     );
+
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Enviar';
+
+    btn.textContent =
+      'Enviar';
   }
 }
 
@@ -3332,13 +3779,19 @@ async function revisarCambiosReservasEnviadas(
     }
 
     if (Object.keys(payload).length) {
-      const ref = refServicioContador(
-        servicio.destino,
-        servicio.nombre
-      );
-
       try {
-        await updateDoc(ref, payload);
+        const ref =
+          await asegurarDocumentoServicioContador(
+            servicio.destino,
+            servicio.nombre,
+            servicio.proveedor
+          );
+    
+        await updateDoc(
+          ref,
+          payload
+        );
+    
       } catch (error) {
         /*
          * Un servicio con problemas no debe impedir que
@@ -4030,8 +4483,12 @@ async function guardarVerificacionPagosEnReserva() {
   const actividad = reservaActualSnapshot.actividad;
   const cuerpo = document.getElementById('modalCuerpo').value;
 
-  const ref = refServicioContador(destino, actividad);
-
+  const ref =
+    await asegurarDocumentoServicioContador(
+      destino,
+      actividad
+    );
+  
   const payload = {};
   const verificacionGuardada = {
     ...ultimaVerificacionPagos,
