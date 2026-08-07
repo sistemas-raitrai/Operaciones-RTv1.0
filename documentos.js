@@ -2731,6 +2731,116 @@ function imprimirHtml(html){
   });
 }
 
+function getPuntoEncuentroConfirmacion(vuelosNorm){
+
+  const lista =
+    Array.isArray(vuelosNorm)
+      ? vuelosNorm
+      : [];
+
+  /*
+    1. Primero buscamos vuelos NO transfer.
+
+    El punto de encuentro debe venir del viaje principal,
+    no de un traslado adicional.
+  */
+  const principales =
+    lista.filter(v =>
+      !v?.isTransfer
+    );
+
+
+  /*
+    2. PRIORIDAD:
+       vuelo/trayecto que tenga una IDA real
+       y además tenga encuentroAeropuerto.
+  */
+  for (const v of principales){
+
+    const encuentro =
+      String(
+        v?.encuentroAeropuerto ||
+        ''
+      ).trim();
+
+    if (!encuentro){
+      continue;
+    }
+
+
+    /*
+      Vuelo simple / charter con IDA.
+    */
+    if (
+      toISO(v?.fechaIda)
+    ){
+      return encuentro;
+    }
+
+
+    /*
+      Vuelo regular multitramos.
+
+      Verificamos que realmente tenga
+      algún tramo correspondiente a IDA.
+    */
+    if (
+      Array.isArray(v?.tramos) &&
+      v.tramos.some(t => {
+
+        const tipoTramo =
+          String(
+            t?.tipoTramo ||
+            ''
+          ).toLowerCase();
+
+        return (
+          tipoTramo === 'ida' ||
+          tipoTramo === 'ida+vuelta' ||
+          (
+            !tipoTramo &&
+            !!toISO(t?.fechaIda)
+          )
+        ) &&
+        !!toISO(t?.fechaIda);
+
+      })
+    ){
+      return encuentro;
+    }
+  }
+
+
+  /*
+    3. RESPALDO:
+
+    Si existe encuentroAeropuerto pero el documento
+    antiguo no permite determinar claramente la IDA,
+    usamos el primer encuentro válido encontrado.
+  */
+  for (const v of principales){
+
+    const encuentro =
+      String(
+        v?.encuentroAeropuerto ||
+        ''
+      ).trim();
+
+    if (encuentro){
+      return encuentro;
+    }
+  }
+
+
+  /*
+    4. Si no se registró punto de encuentro
+    en viajes.js, no inventamos "Aeropuerto SCL".
+
+    Queda vacío.
+  */
+  return '';
+}
+
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
   const {
@@ -2806,18 +2916,10 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
   // PUNTO DE ENCUENTRO
   // ============================================================
 
-  const puntoEncuentroTexto = (() => {
-
-    if (idaLegsPlan.length){
-
-      return idaLegsPlan[0]?.origen
-        ? `Encuentro en Aeropuerto ${idaLegsPlan[0].origen}`
-        : '';
-    }
-
-    return '';
-
-  })();
+  const puntoEncuentroTexto =
+    getPuntoEncuentroConfirmacion(
+      vuelosNorm
+    );
 
 
   const withHrs = t =>
