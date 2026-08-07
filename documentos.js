@@ -2090,6 +2090,7 @@ function imprimirHtml(html){
 }
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
+
   const {
     idaLegsPlan,
     vueltaLegsPlan
@@ -2120,52 +2121,164 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         )
       : '—';
 
-  const nombreOperacional = getNombreGrupoOperacional(grupo);
-  const colegio = grupo.colegio || grupo.cliente || '';
-  const curso   = getCursoOperacional(grupo);
-  const destino = grupo.destino || '';
-  const programa= grupo.programa || '';
-  const ano     = grupo.anoViaje || '';
 
-  const lineaPrincipal = [colegio, curso, destino].filter(Boolean).join(' · ');
+  const nombreOperacional =
+    getNombreGrupoOperacional(
+      grupo
+    );
 
-  // Punto de encuentro: si hay ida, usa origen del primer aéreo ida
+  const colegio =
+    grupo.colegio ||
+    grupo.cliente ||
+    '';
+
+  const curso =
+    getCursoOperacional(
+      grupo
+    );
+
+  const destino =
+    grupo.destino ||
+    '';
+
+  const programa =
+    grupo.programa ||
+    '';
+
+  const ano =
+    grupo.anoViaje ||
+    '';
+
+
+  const lineaPrincipal =
+    [
+      colegio,
+      curso,
+      destino
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+
+  // ============================================================
+  // PUNTO DE ENCUENTRO
+  // ============================================================
+
   const puntoEncuentroTexto = (() => {
+
     if (idaLegsPlan.length){
+
       return idaLegsPlan[0]?.origen
         ? `Encuentro en Aeropuerto ${idaLegsPlan[0].origen}`
         : '';
     }
+
     return '';
+
   })();
 
-  const withHrs = t => t ? `${t} HRS` : '—';
-  const U = s => String(s||'').toUpperCase();
 
-  // NUEVO: tabla de vuelos (IDA / VUELTA) con formato de tabla
-  const flightsBlock = (legs, modo) => {
-    if (!legs || !legs.length) return '';
+  const withHrs = t =>
+    t
+      ? `${t} HRS`
+      : '—';
 
-    const tramoLabel = (modo === 'ida') ? 'IDA' : 'VUELTA';
 
-    const rows = legs.map(l => {
-      const fecha = (modo==='ida') ? (l.fechaIda || l.fecha) : (l.fechaVuelta || l.fecha);
-      const pres  = (modo==='ida') ? l.presentacionIda : l.presentacionVuelta;
-      const sal   = (modo==='ida') ? l.salidaIda       : l.salidaVuelta;
-      const arr   = (modo==='ida') ? l.arriboIda       : l.arriboVuelta;
+  const U = s =>
+    String(
+      s || ''
+    ).toUpperCase();
 
-      return `
-        <tr>
-          <td class="nowrap">${tramoLabel}</td>
-          <td class="nowrap">${formatShortDate(fecha)}</td>
-          <td class="nowrap">${U(l.origen)}</td>
-          <td class="nowrap">${withHrs(pres)}</td>
-          <td class="nowrap">${withHrs(sal)}</td>
-          <td class="nowrap">${U(l.destino)}</td>
-          <td class="nowrap">${withHrs(arr)}</td>
-        </tr>
-      `;
-    }).join('');
+
+  // ============================================================
+  // HELPER TABLA VUELOS
+  // ============================================================
+
+  const flightsBlock = (
+    legs,
+    modo
+  ) => {
+
+    if (
+      !legs ||
+      !legs.length
+    ){
+      return '';
+    }
+
+    const tramoLabel =
+      modo === 'ida'
+        ? 'IDA'
+        : 'VUELTA';
+
+
+    const rows = legs
+      .map(l => {
+
+        const fecha =
+          modo === 'ida'
+            ? (
+                l.fechaIda ||
+                l.fecha
+              )
+            : (
+                l.fechaVuelta ||
+                l.fecha
+              );
+
+
+        const pres =
+          modo === 'ida'
+            ? l.presentacionIda
+            : l.presentacionVuelta;
+
+
+        const sal =
+          modo === 'ida'
+            ? l.salidaIda
+            : l.salidaVuelta;
+
+
+        const arr =
+          modo === 'ida'
+            ? l.arriboIda
+            : l.arriboVuelta;
+
+
+        return `
+          <tr>
+            <td class="nowrap">
+              ${tramoLabel}
+            </td>
+
+            <td class="nowrap">
+              ${formatShortDate(fecha)}
+            </td>
+
+            <td class="nowrap">
+              ${U(l.origen)}
+            </td>
+
+            <td class="nowrap">
+              ${withHrs(pres)}
+            </td>
+
+            <td class="nowrap">
+              ${withHrs(sal)}
+            </td>
+
+            <td class="nowrap">
+              ${U(l.destino)}
+            </td>
+
+            <td class="nowrap">
+              ${withHrs(arr)}
+            </td>
+          </tr>
+        `;
+      })
+      .join('');
+
 
     return `
       <table class="confirm-flight-table">
@@ -2180,6 +2293,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
             <th class="nowrap">Arribo</th>
           </tr>
         </thead>
+
         <tbody>
           ${rows}
         </tbody>
@@ -2187,48 +2301,216 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     `;
   };
 
-  const dmy = (s) => {
-    const iso = toISO(s);
-    if (!iso) return '—';
-    const [y,m,d] = iso.split('-');
+
+  // ============================================================
+  // HELPER FECHA HOTEL DD-MM-YYYY
+  // ============================================================
+
+  const dmy = s => {
+
+    const iso =
+      toISO(s);
+
+    if (!iso){
+      return '—';
+    }
+
+    const [
+      y,
+      m,
+      d
+    ] = iso.split('-');
+
     return `${d}-${m}-${y}`;
   };
 
+
+  // ============================================================
+  // HOTELES
+  // ============================================================
+
   const hotelesHtml = `
     <ul class="hoteles-list">
-      ${(hoteles||[]).map(h=>{
-        const H = h.hotel || {};
-        const ciudad = (H.ciudad || h.ciudad || H.destino || h.destino || '').toString().toUpperCase();
-        const hotel  = (h.hotelNombre || H.nombre || '—').toString().toUpperCase();
-        const dir    = (H.direccion || h.direccion || '').toString();
-        const tel1   = (H.contactoTelefono || '').toString().trim();
-        const tel2   = (H.telefono || H.phone || H.contactoFono || '').toString().trim();
-        const tels   = [tel1, tel2].filter(Boolean).join(' ');
-        return `
-          <li class="hotel-item">
-            <div class="hotel-grid">
-              <div class="hotel-left"><strong>${ciudad ? ciudad + ':' : '—'}</strong></div>
-              <div class="hotel-right">
-                <div><strong>${hotel}</strong></div>
-                <div>In : ${dmy(h.checkIn)}</div>
-                <div>Out: ${dmy(h.checkOut)}</div>
-                ${dir  ? `<div>Dirección: ${dir}</div>` : ``}
-                ${tels ? `<div>Fono: ${tels}</div>`     : ``}
-                ${H.web ? `<div>Web: <a href="${H.web}" target="_blank" rel="noopener">${H.web}</a></div>` : ``}
+
+      ${(hoteles || [])
+        .map(h => {
+
+          const H =
+            h.hotel ||
+            {};
+
+          const ciudad =
+            (
+              H.ciudad ||
+              h.ciudad ||
+              H.destino ||
+              h.destino ||
+              ''
+            )
+              .toString()
+              .toUpperCase();
+
+
+          const hotel =
+            (
+              h.hotelNombre ||
+              H.nombre ||
+              '—'
+            )
+              .toString()
+              .toUpperCase();
+
+
+          const dir =
+            (
+              H.direccion ||
+              h.direccion ||
+              ''
+            )
+              .toString();
+
+
+          const tel1 =
+            (
+              H.contactoTelefono ||
+              ''
+            )
+              .toString()
+              .trim();
+
+
+          const tel2 =
+            (
+              H.telefono ||
+              H.phone ||
+              H.contactoFono ||
+              ''
+            )
+              .toString()
+              .trim();
+
+
+          const tels =
+            [
+              tel1,
+              tel2
+            ]
+              .filter(Boolean)
+              .join(' ');
+
+
+          return `
+            <li class="hotel-item">
+
+              <div class="hotel-grid">
+
+                <div class="hotel-left">
+                  <strong>
+                    ${ciudad ? ciudad + ':' : '—'}
+                  </strong>
+                </div>
+
+                <div class="hotel-right">
+
+                  <div>
+                    <strong>
+                      ${hotel}
+                    </strong>
+                  </div>
+
+                  <div>
+                    In : ${dmy(h.checkIn)}
+                  </div>
+
+                  <div>
+                    Out: ${dmy(h.checkOut)}
+                  </div>
+
+                  ${
+                    dir
+                      ? `<div>Dirección: ${dir}</div>`
+                      : ''
+                  }
+
+                  ${
+                    tels
+                      ? `<div>Fono: ${tels}</div>`
+                      : ''
+                  }
+
+                  ${
+                    H.web
+                      ? `
+                        <div>
+                          Web:
+                          <a
+                            href="${H.web}"
+                            target="_blank"
+                            rel="noopener"
+                          >
+                            ${H.web}
+                          </a>
+                        </div>
+                      `
+                      : ''
+                  }
+
+                </div>
+
               </div>
-            </div>
-          </li>`;
-      }).join('')}
-    </ul>`;
 
-  const { docsText, equipajeText1, equipajeText2, recs } =
-    getDERTextos(`${grupo.programa || ''} ${grupo.destino || ''}`, grupo.textos || {});
-  const documentosHTML = renderDocsList(docsText);
-  const recomendacionesHTML = Array.isArray(recs)
-    ? recs.map(r => `<li>${r}</li>`).join('')
-    : `<li>${recs}</li>`;
+            </li>
+          `;
+        })
+        .join('')}
 
-  const titulo  = `Viaje de Estudios ${nombreOperacional}`.trim();
+    </ul>
+  `;
+
+
+  // ============================================================
+  // TEXTOS GENERALES
+  // ============================================================
+
+  const {
+    docsText,
+    equipajeText1,
+    equipajeText2,
+    recs
+  } =
+    getDERTextos(
+      `${
+        grupo.programa ||
+        ''
+      } ${
+        grupo.destino ||
+        ''
+      }`,
+      grupo.textos || {}
+    );
+
+
+  const documentosHTML =
+    renderDocsList(
+      docsText
+    );
+
+
+  const recomendacionesHTML =
+    Array.isArray(recs)
+      ? recs
+          .map(
+            r =>
+              `<li>${r}</li>`
+          )
+          .join('')
+      : `<li>${recs}</li>`;
+
+
+  const titulo =
+    `Viaje de Estudios ${nombreOperacional}`
+      .trim();
+
 
   // ============================================================
   // ITINERARIO COMPACTO PARA CONFIRMACIÓN C
@@ -2239,10 +2521,8 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
     /*
       PRIORIDAD:
 
-      1. fechas que llegan desde buildConfirmacionHTML()
-      2. como respaldo, claves del itinerario recibido
-
-      Ya NO calculamos un rango nuevo aquí.
+      1. fechas entregadas por buildConfirmacionHTML()
+      2. claves del itinerario del grupo como respaldo
     */
 
     const fechasUsar =
@@ -2250,13 +2530,16 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       fechas.length
         ? [...fechas]
         : Object.keys(
-            grupo.itinerario || {}
+            grupo.itinerario ||
+            {}
           )
-          .map(toISO)
-          .filter(Boolean)
-          .sort();
+            .map(toISO)
+            .filter(Boolean)
+            .sort();
+
 
     if (!fechasUsar.length){
+
       return `
         <div class="note">
           — Sin actividades —
@@ -2272,6 +2555,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
           const src =
             grupo.itinerario?.[f];
 
+
           const arr =
             (
               Array.isArray(src)
@@ -2283,21 +2567,28 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
                       : []
                   )
             )
-            .sort(
-              (a,b) =>
-                (
-                  normTime(
-                    a?.horaInicio
-                  ) ||
-                  '99:99'
-                )
-                .localeCompare(
-                  normTime(
-                    b?.horaInicio
-                  ) ||
-                  '99:99'
-                )
-            );
+              .sort(
+                (a, b) => {
+
+                  const ha =
+                    normTime(
+                      a?.horaInicio
+                    ) ||
+                    '99:99';
+
+
+                  const hb =
+                    normTime(
+                      b?.horaInicio
+                    ) ||
+                    '99:99';
+
+
+                  return ha.localeCompare(
+                    hb
+                  );
+                }
+              );
 
 
           const acts =
@@ -2309,25 +2600,26 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
                   a?.nombre ||
                   ''
                 )
-                .toString()
-                .trim()
-                .toUpperCase()
+                  .toString()
+                  .trim()
+                  .toUpperCase()
               )
               .filter(Boolean);
 
 
           /*
-            Evitamos:
-
-            new Date("2026-12-14")
-
-            porque puede introducir desfases de timezone.
+            Construcción local de fecha
+            para evitar desfases de timezone.
           */
           const [
             yyyy,
             mm,
             dd
-          ] = f.split('-').map(Number);
+          ] =
+            f
+              .split('-')
+              .map(Number);
+
 
           const fechaLocal =
             new Date(
@@ -2335,6 +2627,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
               mm - 1,
               dd
             );
+
 
           const fechaTxt =
             fechaLocal
@@ -2352,6 +2645,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
           const head =
             `DÍA ${i + 1} - ${fechaTxt}:`;
 
+
           const body =
             acts.length
               ? acts.join(' — ')
@@ -2360,6 +2654,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
 
           return `
             <li class="it-day">
+
               <div class="day-head">
                 <strong>
                   ${head}
@@ -2369,6 +2664,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
               <div>
                 ${body}
               </div>
+
             </li>
           `;
         }
@@ -2380,92 +2676,206 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
         ${days.join('')}
       </ul>
     `;
-  })();
-    if (!fechas.length) return '<div class="note">— Sin actividades —</div>';
 
-    const days = fechas.map((f, i) => {
-      const src = grupo.itinerario?.[f];
-      const arr = (Array.isArray(src)
-        ? src
-        : (src && typeof src==='object' ? Object.values(src) : []))
-        .sort((a,b)=>(normTime(a?.horaInicio)||'99:99').localeCompare(normTime(b?.horaInicio)||'99:99'));
-      const acts = arr
-        .map(a => (a?.actividad || '').toString().trim().toUpperCase())
-        .filter(Boolean);
-      const head = `DÍA ${i+1} - ${new Date(f).toLocaleDateString('es-CL',{weekday:'long', day:'2-digit', month:'2-digit'}).toUpperCase()}:`;
-      const body = acts.length ? (acts.join(' — ')) : '—';
-      return `
-        <li class="it-day">
-          <div class="day-head"><strong>${head}</strong></div>
-          <div>${body}</div>
-        </li>`;
-    });
-
-    return `<ul class="itinerario">${days.join('')}</ul>`;
   })();
+
+
+  // ============================================================
+  // HTML FINAL CONFIRMACIÓN
+  // ============================================================
 
   return `
     <div class="print-doc confirm-doc">
+
       <div class="confirm-header">
+
         <div class="confirm-title-block">
-          <div class="confirm-title">${titulo || ('Viaje de Estudios ' + (grupo.programa||''))}</div>
-          <div class="confirm-subtitle">${safe(lineaPrincipal, '')}</div>
-          <div class="confirm-meta">
-            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
-            ${fechaInicioViajeTxt !== '—' ? `<span>INICIO: ${fechaInicioViajeTxt}</span>` : ''}
-            ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
+
+          <div class="confirm-title">
+            ${
+              titulo ||
+              (
+                'Viaje de Estudios ' +
+                (
+                  grupo.programa ||
+                  ''
+                )
+              )
+            }
           </div>
+
+          <div class="confirm-subtitle">
+            ${safe(lineaPrincipal, '')}
+          </div>
+
+          <div class="confirm-meta">
+
+            ${
+              programa
+                ? `<span>PROGRAMA: ${programa}</span>`
+                : ''
+            }
+
+            ${
+              fechaInicioViajeTxt !== '—'
+                ? `<span>INICIO: ${fechaInicioViajeTxt}</span>`
+                : ''
+            }
+
+            ${
+              ano
+                ? `<span>AÑO VIAJE: ${ano}</span>`
+                : ''
+            }
+
+          </div>
+
         </div>
+
+
         <div class="confirm-logo">
-          <img src="Logo Raitrai.png" alt="Turismo RaiTrai">
+          <img
+            src="Logo Raitrai.png"
+            alt="Turismo RaiTrai"
+          >
         </div>
+
       </div>
 
-      <div class="sec">
-        <div class="sec-title">1. INFORMACIÓN GENERAL</div>
-        ${puntoEncuentroTexto ? `<p><strong>Punto de encuentro con coordinador(a):</strong> ${puntoEncuentroTexto}.</p>` : ''}
-        <p><strong>Fecha de inicio del viaje:</strong> ${fechaInicioViajeTxt}</p>
-      </div>
 
       <div class="sec">
-        <div class="sec-title">2. INFORMACIÓN DEL PLAN DE VIAJE</div>
-        ${renderTransportesConfirmacion(vuelosNorm)}
+
+        <div class="sec-title">
+          1. INFORMACIÓN GENERAL
+        </div>
+
+        ${
+          puntoEncuentroTexto
+            ? `
+              <p>
+                <strong>
+                  Punto de encuentro con coordinador(a):
+                </strong>
+
+                ${puntoEncuentroTexto}.
+              </p>
+            `
+            : ''
+        }
+
+        <p>
+          <strong>
+            Fecha de inicio del viaje:
+          </strong>
+
+          ${fechaInicioViajeTxt}
+        </p>
+
       </div>
-      
+
+
       <div class="sec">
-        <div class="sec-title">3. HOTELERÍA CONFIRMADA</div>
+
+        <div class="sec-title">
+          2. INFORMACIÓN DEL PLAN DE VIAJE
+        </div>
+
+        ${
+          renderTransportesConfirmacion(
+            vuelosNorm
+          )
+        }
+
+      </div>
+
+
+      <div class="sec">
+
+        <div class="sec-title">
+          3. HOTELERÍA CONFIRMADA
+        </div>
+
         ${hotelesHtml}
+
       </div>
 
-      <div class="sec">
-        <div class="sec-title">4. DOCUMENTOS PARA EL VIAJE</div>
-        <ul>${documentosHTML}</ul>
-      </div>
 
       <div class="sec">
-        <div class="sec-title">5. EQUIPAJE</div>
+
+        <div class="sec-title">
+          4. DOCUMENTOS PARA EL VIAJE
+        </div>
+
         <ul>
-          <li>${equipajeText1}</li>
-          <li>${equipajeText2}</li>
+          ${documentosHTML}
         </ul>
+
       </div>
 
-      <div class="sec">
-        <div class="sec-title">6. RECOMENDACIONES GENERALES</div>
-        <ul>${recomendacionesHTML}</ul>
-      </div>
 
       <div class="sec">
-        <div class="sec-title">7. ITINERARIO DE VIAJE</div>
-        <div class="note">El orden de las actividades podría ser modificado por razones de coordinación.</div>
+
+        <div class="sec-title">
+          5. EQUIPAJE
+        </div>
+
+        <ul>
+
+          <li>
+            ${equipajeText1}
+          </li>
+
+          <li>
+            ${equipajeText2}
+          </li>
+
+        </ul>
+
+      </div>
+
+
+      <div class="sec">
+
+        <div class="sec-title">
+          6. RECOMENDACIONES GENERALES
+        </div>
+
+        <ul>
+          ${recomendacionesHTML}
+        </ul>
+
+      </div>
+
+
+      <div class="sec">
+
+        <div class="sec-title">
+          7. ITINERARIO DE VIAJE
+        </div>
+
+        <div class="note">
+          El orden de las actividades podría ser modificado por razones de coordinación.
+        </div>
+
         ${itinHTML}
+
       </div>
-      
-      ${getNotasDocumentoHTML(grupo, 'C')}
-      
-      <div class="closing">¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!</div>
+
+
+      ${
+        getNotasDocumentoHTML(
+          grupo,
+          'C'
+        )
+      }
+
+
+      <div class="closing">
+        ¡¡ TURISMO RAITRAI LES DESEA UN VIAJE INOLVIDABLE !!
       </div>
-      `;
+
+    </div>
+  `;
 }
 
 function uniqueClean(arr){
