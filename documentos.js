@@ -2461,6 +2461,11 @@ function injectPdfStyles(){
     width:auto;
   }
 
+  .confirm-doc .confirm-recomendaciones.force-page-break{
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
   `;
   const s = document.createElement('style');
   s.id = 'pdf-styles';
@@ -2517,23 +2522,213 @@ function injectNativePrintStyles(){
   document.head.appendChild(s);
 }
 
+function ajustarSaltosConfirmacion(work){
 
-/**
- * Recibe HTML con uno o varios <div class="print-doc"> y abre el
- * diálogo de impresión del navegador usando #pdf-work como contenedor.
- */
+  if (!work) return;
+
+  /*
+    Altura útil aproximada de una hoja A4.
+
+    A4 = 297 mm
+    @page usa 10 mm arriba y 10 mm abajo.
+
+    Área útil:
+    297 - 20 = 277 mm
+  */
+  const MM_TO_PX = 96 / 25.4;
+
+  const ALTO_UTIL_PAGINA_PX =
+    277 * MM_TO_PX;
+
+  /*
+    Margen de seguridad para evitar que Chrome
+    considere que algo cabe por apenas unos píxeles.
+  */
+  const MARGEN_SEGURIDAD_PX =
+    4 * MM_TO_PX;
+
+
+  /*
+    Sólo Confirmación C.
+
+    La Preconfirmación P también usa confirm-doc,
+    pero además tiene preconfirm-doc,
+    por eso la excluimos.
+  */
+  const confirmaciones =
+    work.querySelectorAll(
+      '.print-doc.confirm-doc:not(.preconfirm-doc)'
+    );
+
+
+  confirmaciones.forEach(docEl => {
+
+    const equipaje =
+      docEl.querySelector(
+        '.confirm-equipaje'
+      );
+
+    const recomendaciones =
+      docEl.querySelector(
+        '.confirm-recomendaciones'
+      );
+
+
+    /*
+      Si por alguna razón no están estas secciones,
+      no hacemos nada.
+    */
+    if (
+      !equipaje ||
+      !recomendaciones
+    ){
+      return;
+    }
+
+
+    /*
+      Limpiamos una posible decisión anterior.
+    */
+    recomendaciones.classList.remove(
+      'force-page-break'
+    );
+
+
+    const docRect =
+      docEl.getBoundingClientRect();
+
+    const equipajeRect =
+      equipaje.getBoundingClientRect();
+
+
+    /*
+      Calculamos dónde TERMINA la sección EQUIPAJE
+      en relación con el inicio del documento C.
+    */
+    const finEquipaje =
+      equipajeRect.bottom -
+      docRect.top;
+
+
+    const limitePrimeraPagina =
+      ALTO_UTIL_PAGINA_PX -
+      MARGEN_SEGURIDAD_PX;
+
+
+    /*
+      REGLA:
+
+      Si Equipaje termina todavía dentro de la
+      primera página, Recomendaciones debe comenzar
+      obligatoriamente en la segunda.
+
+      Si Equipaje ya llegó a página 2,
+      no agregamos un salto adicional.
+    */
+    const equipajeCompletoEnPagina1 =
+      finEquipaje <=
+      limitePrimeraPagina;
+
+
+    if (
+      equipajeCompletoEnPagina1
+    ){
+
+      recomendaciones.classList.add(
+        'force-page-break'
+      );
+
+      console.log(
+        '[DOCUMENTOS][CONFIRMACION_SALTO_PAGINA]',
+        {
+          accion:
+            'RECOMENDACIONES_EN_PAGINA_2',
+
+          finEquipajePx:
+            Math.round(
+              finEquipaje
+            ),
+
+          limitePagina1Px:
+            Math.round(
+              limitePrimeraPagina
+            )
+        }
+      );
+
+    }else{
+
+      console.log(
+        '[DOCUMENTOS][CONFIRMACION_SALTO_PAGINA]',
+        {
+          accion:
+            'SIN_SALTO_EXTRA',
+
+          motivo:
+            'EQUIPAJE_YA_ALCANZA_PAGINA_2',
+
+          finEquipajePx:
+            Math.round(
+              finEquipaje
+            ),
+
+          limitePagina1Px:
+            Math.round(
+              limitePrimeraPagina
+            )
+        }
+      );
+
+    }
+
+  });
+}
+
 function imprimirHtml(html){
-  injectPdfStyles();          // estilos A4 de .print-doc y finanzas
+
+  injectPdfStyles();
   injectNativePrintStyles();
 
-  const work = ensurePdfWork();
-  work.innerHTML = html;
+  const work =
+    ensurePdfWork();
 
-  // pequeño delay para que el layout se calcule antes de imprimir
-  setTimeout(() => {
-    window.focus();
-    window.print();
-  }, 150);
+  work.innerHTML =
+    html;
+
+
+  /*
+    Dejamos que el navegador calcule primero
+    el layout completo.
+  */
+  requestAnimationFrame(() => {
+
+    requestAnimationFrame(() => {
+
+      /*
+        Decide si Recomendaciones debe saltar
+        a la segunda página.
+      */
+      ajustarSaltosConfirmacion(
+        work
+      );
+
+
+      /*
+        Después del posible salto,
+        esperamos un ciclo más de render
+        antes de abrir imprimir.
+      */
+      requestAnimationFrame(() => {
+
+        window.focus();
+
+        window.print();
+
+      });
+
+    });
+
+  });
 }
 
 function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
@@ -3260,7 +3455,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       </div>
 
 
-      <div class="sec">
+      <div class="sec confirm-equipaje">
 
         <div class="sec-title">
           5. EQUIPAJE
@@ -3281,7 +3476,7 @@ function buildPrintDoc(grupo, vuelosNorm, hoteles, fechas){
       </div>
 
 
-      <div class="sec">
+      <div class="sec confirm-recomendaciones">
 
         <div class="sec-title">
           6. RECOMENDACIONES GENERALES
