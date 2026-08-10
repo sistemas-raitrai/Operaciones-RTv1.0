@@ -5542,3 +5542,665 @@ async function diagnosticarReservasHistoricasContador() {
  */
 window.diagnosticarReservasHistoricasContador =
   diagnosticarReservasHistoricasContador;
+
+// =====================================================
+// DIAGNÓSTICO 2 — REVISIONCAMBIOS HISTÓRICOS
+// SOLO LECTURA — NO MODIFICA FIRESTORE
+// =====================================================
+
+async function diagnosticarRevisionCambiosContador() {
+  console.clear();
+
+  console.log(
+    '%c[CONTADOR] Iniciando diagnóstico de revisionCambios...',
+    'font-weight:bold; color:#0055a4;'
+  );
+
+  const resultados = [];
+
+  const gruposPorAno = new Map();
+
+  async function obtenerGruposAnoDiagnostico(ano) {
+    const key = String(ano || '').trim();
+
+    if (!key) {
+      return [];
+    }
+
+    if (gruposPorAno.has(key)) {
+      return gruposPorAno.get(key);
+    }
+
+    console.log(
+      `[DIAGNÓSTICO REVISION] Cargando grupos del año ${key}...`
+    );
+
+    let lista = [];
+
+    try {
+      lista =
+        await cargarGruposAnoContador(
+          key
+        );
+    } catch (error) {
+      console.error(
+        `[DIAGNÓSTICO REVISION] Error cargando grupos ${key}:`,
+        error
+      );
+
+      lista = [];
+    }
+
+    gruposPorAno.set(
+      key,
+      lista
+    );
+
+    return lista;
+  }
+
+  function obtenerAnoDesdeFechaReserva(fecha) {
+    const match =
+      String(fecha || '')
+        .match(/^(\d{4})-\d{2}-\d{2}$/);
+
+    return match
+      ? match[1]
+      : '';
+  }
+
+  function buscarGrupoDiagnostico(
+    listaGrupos,
+    cambio
+  ) {
+    const numero =
+      String(
+        cambio?.numeroNegocio ||
+        cambio?.id ||
+        ''
+      ).trim();
+
+    if (!numero) {
+      return null;
+    }
+
+    /*
+     * 1. Por numeroNegocio exacto.
+     */
+    let encontrado =
+      listaGrupos.find(grupo =>
+        String(
+          grupo.numeroNegocio || ''
+        ).trim() === numero
+      );
+
+    if (encontrado) {
+      return encontrado;
+    }
+
+    /*
+     * 2. Por ID exacto.
+     */
+    encontrado =
+      listaGrupos.find(grupo =>
+        String(
+          grupo.id || ''
+        ).trim() === numero
+      );
+
+    if (encontrado) {
+      return encontrado;
+    }
+
+    /*
+     * 3. Por prefijo documental:
+     * 1514 -> 1514-101
+     */
+    encontrado =
+      listaGrupos.find(grupo => {
+        const id =
+          String(
+            grupo.id || ''
+          ).trim();
+
+        return (
+          id === `${numero}-101` ||
+          id.startsWith(
+            `${numero}-`
+          )
+        );
+      });
+
+    return encontrado || null;
+  }
+
+  function grupoTieneActividadAlgunaFecha(
+    grupo,
+    destino,
+    actividad
+  ) {
+    if (!grupo) {
+      return false;
+    }
+
+    if (
+      !grupoCoincideDestinoContador(
+        grupo,
+        destino
+      )
+    ) {
+      return false;
+    }
+
+    return Object.values(
+      grupo.itinerario || {}
+    ).some(actividades =>
+      (actividades || []).some(item =>
+        actividadCoincideReserva(
+          item,
+          actividad
+        )
+      )
+    );
+  }
+
+  function grupoTieneActividadEnFecha(
+    grupo,
+    destino,
+    actividad,
+    fecha
+  ) {
+    if (!grupo) {
+      return false;
+    }
+
+    if (
+      !grupoCoincideDestinoContador(
+        grupo,
+        destino
+      )
+    ) {
+      return false;
+    }
+
+    return (
+      grupo.itinerario?.[fecha] || []
+    ).some(item =>
+      actividadCoincideReserva(
+        item,
+        actividad
+      )
+    );
+  }
+
+  /*
+   * =====================================================
+   * RECORRER SERVICIOS
+   * =====================================================
+   */
+
+  for (
+    const destino of DESTINOS_CONTADOR
+  ) {
+    console.log(
+      `[DIAGNÓSTICO REVISION] Revisando ${destino}...`
+    );
+
+    let serviciosSnap;
+
+    try {
+      serviciosSnap =
+        await getDocs(
+          collection(
+            db,
+            'Servicios',
+            destino,
+            'Listado'
+          )
+        );
+    } catch (error) {
+      console.error(
+        `[DIAGNÓSTICO REVISION] Error leyendo Servicios/${destino}/Listado:`,
+        error
+      );
+
+      continue;
+    }
+
+    for (
+      const servicioDoc of serviciosSnap.docs
+    ) {
+      const data =
+        servicioDoc.data() || {};
+
+      const actividad =
+        data.servicio ||
+        servicioDoc.id;
+
+      const reservas =
+        data.reservas || {};
+
+      for (
+        const [
+          fecha,
+          reserva
+        ] of Object.entries(reservas)
+      ) {
+        if (!reserva) {
+          continue;
+        }
+
+        const revision =
+          reserva.revisionCambios;
+
+        if (
+          !revision ||
+          !Array.isArray(
+            revision.cambios
+          ) ||
+          !revision.cambios.length
+        ) {
+          continue;
+        }
+
+        const ano =
+          obtenerAnoDesdeFechaReserva(
+            fecha
+          );
+
+        const gruposAno =
+          await obtenerGruposAnoDiagnostico(
+            ano
+          );
+
+        for (
+          const cambio of revision.cambios
+        ) {
+          const numeroNegocio =
+            String(
+              cambio?.numeroNegocio ||
+              ''
+            ).trim();
+
+          const nombreGrupo =
+            cambio?.nombreGrupo ||
+            '';
+
+          const grupoActual =
+            buscarGrupoDiagnostico(
+              gruposAno,
+              cambio
+            );
+
+          /*
+           * =================================================
+           * CASO 1 — NO SE ENCUENTRA EL GRUPO
+           * =================================================
+           */
+
+          if (!grupoActual) {
+            resultados.push({
+              nivel:
+                '❌ GRUPO NO ENCONTRADO',
+
+              destino,
+              actividad,
+              fecha,
+
+              estadoReserva:
+                reserva.estado || '',
+
+              estadoRevision:
+                revision.estado || '',
+
+              ultimaRevision:
+                revision.ultimaRevision || '',
+
+              tipoCambio:
+                cambio.tipo || '',
+
+              numeroNegocio,
+
+              grupo:
+                nombreGrupo,
+
+              destinoActualGrupo:
+                '',
+
+              perteneceActividad:
+                false,
+
+              perteneceFecha:
+                false,
+
+              detalle:
+                `No se encontró el grupo ${numeroNegocio} entre los grupos del año ${ano}.`
+            });
+
+            continue;
+          }
+
+          const destinoActualGrupo =
+            obtenerValoresDestinoGrupoContador(
+              grupoActual
+            ).join(' | ');
+
+          const coincideDestino =
+            grupoCoincideDestinoContador(
+              grupoActual,
+              destino
+            );
+
+          const perteneceActividad =
+            grupoTieneActividadAlgunaFecha(
+              grupoActual,
+              destino,
+              actividad
+            );
+
+          const perteneceFecha =
+            grupoTieneActividadEnFecha(
+              grupoActual,
+              destino,
+              actividad,
+              fecha
+            );
+
+          /*
+           * =================================================
+           * CASO 2 — CONTAMINACIÓN POR DESTINO
+           * =================================================
+           */
+
+          if (!coincideDestino) {
+            resultados.push({
+              nivel:
+                '❌ DESTINO INCOMPATIBLE',
+
+              destino,
+              actividad,
+              fecha,
+
+              estadoReserva:
+                reserva.estado || '',
+
+              estadoRevision:
+                revision.estado || '',
+
+              ultimaRevision:
+                revision.ultimaRevision || '',
+
+              tipoCambio:
+                cambio.tipo || '',
+
+              numeroNegocio,
+
+              grupo:
+                grupoActual.nombreGrupo ||
+                nombreGrupo,
+
+              destinoActualGrupo,
+
+              perteneceActividad,
+
+              perteneceFecha,
+
+              detalle:
+                `El cambio está guardado en ${destino}/${actividad}, pero el grupo actualmente pertenece a ${destinoActualGrupo || 'destino no informado'}.`
+            });
+
+            continue;
+          }
+
+          /*
+           * =================================================
+           * CASO 3 — MISMO DESTINO, PERO ACTIVIDAD AJENA
+           * =================================================
+           */
+
+          if (!perteneceActividad) {
+            resultados.push({
+              nivel:
+                '❌ ACTIVIDAD INCOMPATIBLE',
+
+              destino,
+              actividad,
+              fecha,
+
+              estadoReserva:
+                reserva.estado || '',
+
+              estadoRevision:
+                revision.estado || '',
+
+              ultimaRevision:
+                revision.ultimaRevision || '',
+
+              tipoCambio:
+                cambio.tipo || '',
+
+              numeroNegocio,
+
+              grupo:
+                grupoActual.nombreGrupo ||
+                nombreGrupo,
+
+              destinoActualGrupo,
+
+              perteneceActividad,
+
+              perteneceFecha,
+
+              detalle:
+                `El grupo pertenece al destino ${destino}, pero actualmente no tiene la actividad "${actividad}" en ninguna fecha.`
+            });
+
+            continue;
+          }
+
+          /*
+           * =================================================
+           * CASO 4 — ACTIVIDAD CORRECTA, FECHA DISTINTA
+           * =================================================
+           */
+
+          if (!perteneceFecha) {
+            resultados.push({
+              nivel:
+                '⚠️ ACTIVIDAD OK / FECHA DISTINTA',
+
+              destino,
+              actividad,
+              fecha,
+
+              estadoReserva:
+                reserva.estado || '',
+
+              estadoRevision:
+                revision.estado || '',
+
+              ultimaRevision:
+                revision.ultimaRevision || '',
+
+              tipoCambio:
+                cambio.tipo || '',
+
+              numeroNegocio,
+
+              grupo:
+                grupoActual.nombreGrupo ||
+                nombreGrupo,
+
+              destinoActualGrupo,
+
+              perteneceActividad,
+
+              perteneceFecha,
+
+              detalle:
+                'El grupo pertenece al destino y a la actividad, pero actualmente no en esta fecha.'
+            });
+
+            continue;
+          }
+
+          /*
+           * =================================================
+           * CASO 5 — TODO COINCIDE
+           * =================================================
+           */
+
+          resultados.push({
+            nivel:
+              '✅ COINCIDE ACTUALMENTE',
+
+            destino,
+            actividad,
+            fecha,
+
+            estadoReserva:
+              reserva.estado || '',
+
+            estadoRevision:
+              revision.estado || '',
+
+            ultimaRevision:
+              revision.ultimaRevision || '',
+
+            tipoCambio:
+              cambio.tipo || '',
+
+            numeroNegocio,
+
+            grupo:
+              grupoActual.nombreGrupo ||
+              nombreGrupo,
+
+            destinoActualGrupo,
+
+            perteneceActividad,
+
+            perteneceFecha,
+
+            detalle:
+              'Destino, actividad y fecha coinciden actualmente.'
+          });
+        }
+      }
+    }
+  }
+
+  /*
+   * =====================================================
+   * RESUMEN
+   * =====================================================
+   */
+
+  const conteo = {};
+
+  resultados.forEach(item => {
+    conteo[item.nivel] =
+      (conteo[item.nivel] || 0) +
+      1;
+  });
+
+  console.log(
+    '%c[CONTADOR] Diagnóstico revisionCambios terminado',
+    'font-weight:bold; color:#0055a4;'
+  );
+
+  console.table(
+    Object.entries(conteo).map(
+      ([tipo, cantidad]) => ({
+        tipo,
+        cantidad
+      })
+    )
+  );
+
+  /*
+   * Solo problemas fuertes.
+   */
+  const contaminados =
+    resultados.filter(item =>
+      item.nivel.startsWith('❌')
+    );
+
+  console.log(
+    `%cContaminaciones detectadas: ${contaminados.length}`,
+    contaminados.length
+      ? 'font-weight:bold; color:#b42318;'
+      : 'font-weight:bold; color:#09832e;'
+  );
+
+  console.table(
+    contaminados
+  );
+
+  /*
+   * Caso NAZARET.
+   */
+  const caso1514 =
+    resultados.filter(item =>
+      String(
+        item.numeroNegocio || ''
+      ) === '1514'
+    );
+
+  if (caso1514.length) {
+    console.log(
+      '%cCASO 1514 / NAZARET EN revisionCambios',
+      'font-weight:bold; color:#b26b00;'
+    );
+
+    console.table(
+      caso1514
+    );
+  }
+
+  /*
+   * Revisiones creadas específicamente
+   * el 21 de julio de 2026.
+   */
+  const revisiones21Julio =
+    resultados.filter(item =>
+      String(
+        item.ultimaRevision || ''
+      ).startsWith(
+        '2026-07-21'
+      )
+    );
+
+  console.log(
+    `%cRevisiones del 21/07/2026: ${revisiones21Julio.length}`,
+    'font-weight:bold; color:#7a4b00;'
+  );
+
+  console.table(
+    revisiones21Julio
+  );
+
+  window.__DIAGNOSTICO_REVISION_CAMBIOS__ = {
+    fecha:
+      new Date().toISOString(),
+
+    total:
+      resultados.length,
+
+    conteo,
+
+    resultados,
+
+    contaminados,
+
+    caso1514,
+
+    revisiones21Julio
+  };
+
+  return window
+    .__DIAGNOSTICO_REVISION_CAMBIOS__;
+}
+
+window.diagnosticarRevisionCambiosContador =
+  diagnosticarRevisionCambiosContador;
