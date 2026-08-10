@@ -355,6 +355,64 @@ function grupoCoincideDestinoContador(
   });
 }
 
+function grupoPerteneceReservaContador(
+  grupo,
+  destino,
+  actividad,
+  fecha = null
+) {
+  if (!grupo) {
+    return false;
+  }
+
+  /*
+   * REGLA 1:
+   * El grupo debe pertenecer al mismo destino
+   * de la reserva.
+   */
+  if (
+    !grupoCoincideDestinoContador(
+      grupo,
+      destino
+    )
+  ) {
+    return false;
+  }
+
+  /*
+   * REGLA 2:
+   * Si se indica una fecha concreta,
+   * buscamos la actividad únicamente en esa fecha.
+   */
+  if (fecha) {
+    return (
+      grupo.itinerario?.[fecha] || []
+    ).some(item =>
+      actividadCoincideReserva(
+        item,
+        actividad
+      )
+    );
+  }
+
+  /*
+   * REGLA 3:
+   * Si no se indica fecha,
+   * basta con que tenga la actividad en alguna
+   * fecha de su itinerario.
+   */
+  return Object.values(
+    grupo.itinerario || {}
+  ).some(actividades =>
+    (actividades || []).some(item =>
+      actividadCoincideReserva(
+        item,
+        actividad
+      )
+    )
+  );
+}
+
 async function cargarGruposAnoContador(ano) {
   const claveCache = String(ano).trim();
 
@@ -647,34 +705,57 @@ async function recargarGruposContador(ids) {
   grupos = grupos.map(g => mapActualizados.get(String(g.id)) || g);
 }
 
-async function sincronizarGruposReservaConPagos(actividad) {
+async function sincronizarGruposReservaConPagos(
+  destino,
+  actividad
+) {
   const ids = grupos
-    .filter(g =>
-      Object.values(g.itinerario || {}).some(acts =>
-        (acts || []).some(a => actividadCoincideReserva(a, actividad))
+    .filter(grupo =>
+      grupoPerteneceReservaContador(
+        grupo,
+        destino,
+        actividad
       )
     )
-    .map(g => g.id);
+    .map(grupo => grupo.id);
 
-  if (!ids.length) return [];
+  if (!ids.length) {
+    return [];
+  }
 
   const resultados = [];
 
   for (const grupoId of ids) {
     try {
-      const r = await sincronizarPaxGrupoDesdePagos(grupoId);
-      resultados.push(r);
+      const resultado =
+        await sincronizarPaxGrupoDesdePagos(
+          grupoId
+        );
+
+      resultados.push(
+        resultado
+      );
+
     } catch (error) {
-      console.error('Error sincronizando PAX con pagos:', grupoId, error);
+      console.error(
+        'Error sincronizando PAX con pagos:',
+        grupoId,
+        error
+      );
+
       resultados.push({
         ok: false,
         grupoId,
-        error: error.message || String(error)
+        error:
+          error.message ||
+          String(error)
       });
     }
   }
 
-  await recargarGruposContador(ids);
+  await recargarGruposContador(
+    ids
+  );
 
   return resultados;
 }
@@ -980,16 +1061,9 @@ async function init() {
           todosLosReservas[indice];
 
         const fechasConPax =
-          fechasOrdenadas.filter(fecha =>
-            grupos.some(grupo =>
-              (grupo.itinerario?.[fecha] || [])
-                .some(actividad =>
-                  actividadCoincideReserva(
-                    actividad,
-                    servicio.nombre
-                  )
-                )
-            )
+          obtenerFechasConPaxActividad(
+            servicio.destino,
+            servicio.nombre
           );
 
         const textoBtn =
@@ -1479,21 +1553,37 @@ function construirSnapshotReservaPorFecha(destino, actividad, perDateData) {
   };
 }
 
-function construirSnapshotReservaActual(destino, actividad) {
-  const perDateData = fechasOrdenadas
-    .map(fecha => {
-      const lista = grupos.filter(g =>
-        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, actividad))
+function construirSnapshotReservaActual(
+  destino,
+  actividad
+) {
+  const perDateData =
+    fechasOrdenadas
+      .map(fecha => {
+        const lista =
+          grupos.filter(grupo =>
+            grupoPerteneceReservaContador(
+              grupo,
+              destino,
+              actividad,
+              fecha
+            )
+          );
+
+        return {
+          fecha,
+          lista
+        };
+      })
+      .filter(item =>
+        item.lista.length > 0
       );
 
-      return {
-        fecha,
-        lista
-      };
-    })
-    .filter(d => d.lista.length > 0);
-
-  return construirSnapshotReservaPorFecha(destino, actividad, perDateData);
+  return construirSnapshotReservaPorFecha(
+    destino,
+    actividad,
+    perDateData
+  );
 }
 
 function escapeHtmlReserva(txt = '') {
@@ -1505,10 +1595,18 @@ function escapeHtmlReserva(txt = '') {
     .replaceAll("'", '&#039;');
 }
 
-function obtenerFechasConPaxActividad(actividad) {
+function obtenerFechasConPaxActividad(
+  destino,
+  actividad
+) {
   return fechasOrdenadas.filter(fecha =>
-    grupos.some(g =>
-      (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, actividad))
+    grupos.some(grupo =>
+      grupoPerteneceReservaContador(
+        grupo,
+        destino,
+        actividad,
+        fecha
+      )
     )
   );
 }
@@ -1681,7 +1779,11 @@ async function obtenerRevisionCambiosReserva(destino, actividad) {
   }
 
   const reservas = snap.data()?.reservas || {};
-  const fechasActividad = obtenerFechasConPaxActividad(actividad);
+  const fechasActividad =
+    obtenerFechasConPaxActividad(
+      destino,
+      actividad
+    );
 
   let cambios = [];
   let historial = [];
@@ -1973,52 +2075,118 @@ function formatearFechaHoraSync(valor) {
   });
 }
 
-function obtenerGruposActividadReserva(actividad) {
-  return grupos.filter(g =>
-    Object.values(g.itinerario || {}).some(acts =>
-      (acts || []).some(a => actividadCoincideReserva(a, actividad))
+function obtenerGruposActividadReserva(
+  destino,
+  actividad
+) {
+  return grupos.filter(grupo =>
+    grupoPerteneceReservaContador(
+      grupo,
+      destino,
+      actividad
     )
   );
 }
 
-function mostrarEstadoSyncPaxReserva(actividad) {
-  const box = document.getElementById('estadoSyncPaxReserva');
-  const btnSync = document.getElementById('btnSincronizarPaxReserva');
+function mostrarEstadoSyncPaxReserva(
+  destino,
+  actividad
+) {
+  const box =
+    document.getElementById(
+      'estadoSyncPaxReserva'
+    );
 
-  if (!box) return;
+  const btnSync =
+    document.getElementById(
+      'btnSincronizarPaxReserva'
+    );
 
-  const lista = obtenerGruposActividadReserva(actividad);
+  if (!box) {
+    return;
+  }
 
-  const sincronizadosHoy = lista.filter(g => esFechaSyncHoy(g.paxActualizadoEn));
-  const pendientes = lista.filter(g => !esFechaSyncHoy(g.paxActualizadoEn));
+  const lista =
+    obtenerGruposActividadReserva(
+      destino,
+      actividad
+    );
+
+  const sincronizadosHoy =
+    lista.filter(grupo =>
+      esFechaSyncHoy(
+        grupo.paxActualizadoEn
+      )
+    );
+
+  const pendientes =
+    lista.filter(grupo =>
+      !esFechaSyncHoy(
+        grupo.paxActualizadoEn
+      )
+    );
 
   box.innerHTML = `
-    <div style="margin:.75rem 0; padding:.75rem; background:#f7f7f7; border:1px solid #ddd; border-radius:8px;">
+    <div style="
+      margin:.75rem 0;
+      padding:.75rem;
+      background:#f7f7f7;
+      border:1px solid #ddd;
+      border-radius:8px;
+    ">
       <strong>Estado PAX pagos:</strong><br>
-      Grupos de esta reserva: <strong>${lista.length}</strong><br>
-      Sincronizados hoy: <strong>${sincronizadosHoy.length}</strong><br>
-      Pendientes/no sincronizados hoy: <strong>${pendientes.length}</strong>
+
+      Grupos de esta reserva:
+      <strong>${lista.length}</strong><br>
+
+      Sincronizados hoy:
+      <strong>${sincronizadosHoy.length}</strong><br>
+
+      Pendientes/no sincronizados hoy:
+      <strong>${pendientes.length}</strong>
+
       ${
         lista.length
-          ? `<div style="margin-top:.5rem; font-size:.9em;">
-              ${lista.map(g => `
+          ? `
+            <div style="
+              margin-top:.5rem;
+              font-size:.9em;
+            ">
+              ${lista.map(grupo => `
                 <div>
-                  ${g.numeroNegocio || g.id} — ${g.nombreGrupo || ''}:
-                  ${esFechaSyncHoy(g.paxActualizadoEn) ? '✅' : '⚠️'}
-                  ${formatearFechaHoraSync(g.paxActualizadoEn)}
+                  ${grupo.numeroNegocio || grupo.id}
+                  —
+                  ${grupo.nombreGrupo || ''}:
+                  ${
+                    esFechaSyncHoy(
+                      grupo.paxActualizadoEn
+                    )
+                      ? '✅'
+                      : '⚠️'
+                  }
+
+                  ${formatearFechaHoraSync(
+                    grupo.paxActualizadoEn
+                  )}
                 </div>
               `).join('')}
-            </div>`
+            </div>
+          `
           : ''
       }
     </div>
   `;
 
   if (btnSync) {
-    btnSync.style.display = lista.length ? 'inline-block' : 'none';
-    btnSync.textContent = pendientes.length
-      ? `Sincronizar PAX pendientes (${pendientes.length})`
-      : 'Forzar sincronización PAX';
+    btnSync.style.display =
+      lista.length
+        ? 'inline-block'
+        : 'none';
+
+    btnSync.textContent =
+      pendientes.length
+        ? `Sincronizar PAX pendientes (${pendientes.length})`
+        : 'Forzar sincronización PAX';
   }
 }
 
@@ -2029,8 +2197,13 @@ function reconstruirCorreoReserva(destino, actividad, proveedor, opciones = {}) 
 
   const perDateData = fechasOrdenadas
     .map(fecha => {
-      const lista = grupos.filter(g =>
-        (g.itinerario?.[fecha] || []).some(a => actividadCoincideReserva(a, actividad))
+      const lista = grupos.filter(grupo =>
+        grupoPerteneceReservaContador(
+          grupo,
+          destino,
+          actividad,
+          fecha
+        )
       );
 
       const paxTotal = lista.reduce((sum, g) => {
@@ -2116,6 +2289,7 @@ async function sincronizarPaxReservaManual() {
 
   try {
     await sincronizarGruposReservaConPagos(
+      destino,
       actividad
     );
 
@@ -2183,6 +2357,7 @@ async function sincronizarPaxReservaManual() {
         : `Reserva: ${actividad} en ${destino}`;
 
     mostrarEstadoSyncPaxReserva(
+      destino,
       actividad
     );
 
@@ -2317,6 +2492,7 @@ async function abrirModalReserva(event) {
   }
 
   mostrarEstadoSyncPaxReserva(
+    destino,
     actividad
   );
 
@@ -2346,6 +2522,7 @@ async function guardarPendiente() {
 
   const fechasActividad =
     obtenerFechasConPaxActividad(
+      destino,
       actividad
     );
 
@@ -2628,111 +2805,84 @@ async function enviarReserva() {
         );
     }
 
-    const fechasActividad =
-      obtenerFechasConPaxActividad(
-        actividad
-      );
-
-    if (!fechasActividad.length) {
-      ventanaGmail.close();
-
-      alert(
-        'Esta actividad no tiene fechas con grupos.'
-      );
-
-      return;
-    }
-
     /*
      * =====================================================
-     * 6. CONSTRUIR ACTUALIZACIÓN FIRESTORE
+     * 6. USAR EXACTAMENTE EL SNAPSHOT VERIFICADO
      * =====================================================
      */
-
+    
+    const fechasSnapshot =
+      Array.isArray(
+        reservaActualSnapshot?.fechas
+      )
+        ? reservaActualSnapshot.fechas
+        : [];
+    
+    if (!fechasSnapshot.length) {
+      ventanaGmail.close();
+    
+      alert(
+        'La reserva verificada no contiene fechas con grupos.'
+      );
+    
+      return;
+    }
+    
     const payload = {};
-
+    
     for (
-      const fecha of fechasActividad
+      const datosFecha of fechasSnapshot
     ) {
+      const fecha =
+        datosFecha.fecha;
+    
       const totalEnviado =
-        grupos.reduce(
-          (sum, grupo) => {
-            const actividadesFecha =
-              grupo.itinerario?.[fecha] ||
-              [];
-
-            const totalGrupo =
-              actividadesFecha
-                .filter(item =>
-                  actividadCoincideReserva(
-                    item,
-                    actividad
-                  )
-                )
-                .reduce(
-                  (
-                    subtotal,
-                    item
-                  ) =>
-                    subtotal +
-                    (
-                      parseInt(
-                        item.adultos
-                      ) || 0
-                    ) +
-                    (
-                      parseInt(
-                        item.estudiantes
-                      ) || 0
-                    ),
-                  0
-                );
-
-            return (
-              sum +
-              totalGrupo
-            );
-          },
-          0
+        Number(
+          datosFecha.totalPax || 0
         );
-
-      if (totalEnviado <= 0) {
+    
+      if (
+        !fecha ||
+        totalEnviado <= 0
+      ) {
         continue;
       }
-
+    
       payload[
         `reservas.${fecha}.estado`
       ] = 'ENVIADA';
-
+    
       payload[
         `reservas.${fecha}.cuerpo`
       ] = cuerpo;
-
+    
       payload[
         `reservas.${fecha}.totalEnviado`
       ] = totalEnviado;
-
+    
       payload[
         `reservas.${fecha}.updatedAt`
       ] = serverTimestamp();
-
+    
       payload[
         `reservas.${fecha}.enviadaEn`
       ] = serverTimestamp();
-
+    
       payload[
         `reservas.${fecha}.enviadaPor`
       ] =
-        auth.currentUser?.email || '';
-
+        auth.currentUser?.email ||
+        '';
+    
       /*
-       * Guardamos EXACTAMENTE la verificación
-       * realizada antes de presionar Enviar.
+       * Se guarda exactamente la verificación
+       * realizada por el usuario.
        */
       payload[
         `reservas.${fecha}.verificacionPagos`
-      ] = verificacionActualizada;
-
+      ] =
+        verificacionActualizada;
+    
       payload[
         `reservas.${fecha}.revisionCambios`
       ] = {
@@ -2740,21 +2890,70 @@ async function enviarReserva() {
           requiereReenvio
             ? 'REENVIO_ENVIADO'
             : 'SIN_CAMBIOS',
-
+    
         ultimaRevision:
           new Date().toISOString(),
-
+    
         reenviadoEn:
           requiereReenvio
             ? new Date().toISOString()
             : null,
-
+    
         cambios: []
       };
-
+    
       payload[
         `reservas.${fecha}.estadoAntesRevision`
-      ] = null;
+      ] = '';
+    
+      if (requiereReenvio) {
+        const historialAnterior =
+          Array.isArray(
+            reservasActuales
+              ?.[fecha]
+              ?.revisionCambiosHistorial
+          )
+            ? reservasActuales[
+                fecha
+              ].revisionCambiosHistorial
+            : [];
+    
+        const nuevoItemHistorial = {
+          fecha:
+            new Date().toISOString(),
+    
+          usuario:
+            auth.currentUser?.email ||
+            '',
+    
+          asunto,
+    
+          proveedor:
+            proveedor || '',
+    
+          cambios:
+            revisionActual?.cambios ||
+            []
+        };
+    
+        payload[
+          `reservas.${fecha}.revisionCambiosHistorial`
+        ] = [
+          ...historialAnterior,
+          nuevoItemHistorial
+        ];
+      }
+    }
+    
+    if (!Object.keys(payload).length) {
+      ventanaGmail.close();
+    
+      alert(
+        'No hay fechas con PAX para guardar el envío.'
+      );
+    
+      return;
+    }
 
       /*
        * ===================================================
@@ -3503,16 +3702,9 @@ function actualizarBotonesReservaTabla(
       todosLosReservas[indice] || {};
 
     const fechasConPax =
-      fechasOrdenadas.filter(fecha =>
-        grupos.some(grupo =>
-          (grupo.itinerario?.[fecha] || [])
-            .some(actividad =>
-              actividadCoincideReserva(
-                actividad,
-                servicio.nombre
-              )
-            )
-        )
+      obtenerFechasConPaxActividad(
+        servicio.destino,
+        servicio.nombre
       );
 
     const texto =
@@ -3629,6 +3821,22 @@ async function revisarCambiosReservasEnviadas(
     const payload = {};
 
     /*
+     * Solamente revisamos fechas que actualmente
+     * siguen perteneciendo a esta actividad/destino.
+     *
+     * Así una antigua reserva del 05/12 o 21/12
+     * no continúa generando alertas si POOL PARTY
+     * ya no ocurre esos días.
+     */
+    const fechasVigentes =
+      new Set(
+        obtenerFechasConPaxActividad(
+          servicio.destino,
+          servicio.nombre
+        )
+      );
+
+    /*
      * Evita consultar varias veces la misma fotografía.
      * Una misma verificación normalmente está guardada
      * en todas las fechas de la actividad.
@@ -3637,6 +3845,10 @@ async function revisarCambiosReservasEnviadas(
 
     for (const [fecha, reserva] of Object.entries(reservas)) {
       if (!reserva) continue;
+
+      if (!fechasVigentes.has(fecha)) {
+        continue;
+      }
 
       const estadosRevisables = [
         'ENVIADA',
@@ -3655,6 +3867,57 @@ async function revisarCambiosReservasEnviadas(
         !verificacion ||
         !Array.isArray(verificacion.grupos)
       ) {
+        continue;
+      }
+      /*
+       * =====================================================
+       * PROTECCIÓN CONTRA FOTOGRAFÍAS HISTÓRICAS CONTAMINADAS
+       * =====================================================
+       *
+       * Una verificación guardada dentro de:
+       *
+       * Servicios/BRASIL/Listado/POOL PARTY
+       *
+       * debe decir también:
+       *
+       * destino = BRASIL
+       * actividad = POOL PARTY
+       *
+       * Si dice otra cosa, no se vuelve a utilizar.
+       */
+      if (
+        normalizarDestinoContador(
+          verificacion.destino
+        ) !==
+          normalizarDestinoContador(
+            servicio.destino
+          ) ||
+        normalizarActividadReserva(
+          verificacion.actividad
+        ) !==
+          normalizarActividadReserva(
+            servicio.nombre
+          )
+      ) {
+        console.warn(
+          '[CONTADOR] Verificación histórica incompatible ignorada:',
+          {
+            servicioDestino:
+              servicio.destino,
+      
+            servicioActividad:
+              servicio.nombre,
+      
+            verificacionDestino:
+              verificacion.destino,
+      
+            verificacionActividad:
+              verificacion.actividad,
+      
+            fecha
+          }
+        );
+      
         continue;
       }
 
@@ -4466,74 +4729,197 @@ function abrirModalGuardarVerificacionPagos() {
 }
 
 async function guardarVerificacionPagosEnReserva() {
-  if (!ultimaVerificacionPagos || !reservaActualSnapshot) {
-    alert('No hay verificación para guardar.');
+  if (
+    !ultimaVerificacionPagos ||
+    !reservaActualSnapshot
+  ) {
+    alert(
+      'No hay verificación para guardar.'
+    );
     return;
   }
 
-  const comentario = document.getElementById('guardarVerificacionComentario').value.trim();
-  const resumen = ultimaVerificacionPagos.resumen;
+  const destino =
+    reservaActualSnapshot.destino;
 
-  if (resumen.estadoGeneral !== 'OK' && !comentario) {
-    alert('Hay diferencias o redistribución entre grupos. Debes escribir una justificación antes de guardar.');
+  const actividad =
+    reservaActualSnapshot.actividad;
+
+  /*
+   * =====================================================
+   * PROTECCIÓN CRÍTICA
+   * =====================================================
+   *
+   * La verificación que vamos a guardar debe pertenecer
+   * EXACTAMENTE a la reserva actualmente abierta.
+   *
+   * Esto evita repetir el antiguo problema donde una
+   * verificación de BARILOCHE podía terminar guardada
+   * en una reserva de BRASIL.
+   */
+  if (
+    ultimaVerificacionPagos.destino !==
+      destino ||
+    ultimaVerificacionPagos.actividad !==
+      actividad
+  ) {
+    ultimaVerificacionPagos = null;
+
+    alert(
+      'La verificación de PAX pertenece a otra reserva. ' +
+      'Debes verificar PAX nuevamente.'
+    );
+
     return;
   }
 
-  const destino = reservaActualSnapshot.destino;
-  const actividad = reservaActualSnapshot.actividad;
-  const cuerpo = document.getElementById('modalCuerpo').value;
+  const comentario =
+    document
+      .getElementById(
+        'guardarVerificacionComentario'
+      )
+      .value
+      .trim();
+
+  const resumen =
+    ultimaVerificacionPagos.resumen;
+
+  if (
+    resumen.estadoGeneral !== 'OK' &&
+    !comentario
+  ) {
+    alert(
+      'Hay diferencias o redistribución entre grupos. ' +
+      'Debes escribir una justificación antes de guardar.'
+    );
+
+    return;
+  }
+
+  /*
+   * No trabajamos nuevamente con fechasOrdenadas.
+   *
+   * Usamos exactamente las fechas que pertenecen al
+   * snapshot que el usuario acaba de verificar.
+   */
+  const fechasSnapshot =
+    Array.isArray(
+      reservaActualSnapshot.fechas
+    )
+      ? reservaActualSnapshot.fechas
+      : [];
+
+  if (!fechasSnapshot.length) {
+    alert(
+      'La reserva verificada no contiene fechas con grupos.'
+    );
+    return;
+  }
+
+  const cuerpo =
+    document
+      .getElementById(
+        'modalCuerpo'
+      )
+      .value;
 
   const ref =
     await asegurarDocumentoServicioContador(
       destino,
       actividad
     );
-  
-  const payload = {};
+
   const verificacionGuardada = {
     ...ultimaVerificacionPagos,
+
     comentario,
-    usuario: auth.currentUser?.email || '',
-    guardadoEn: new Date().toISOString(),
-  
-    snapshotLogistico: ultimaVerificacionPagos.snapshotLogistico || {
-      destino: reservaActualSnapshot.destino,
-      actividad: reservaActualSnapshot.actividad,
-      fechas: reservaActualSnapshot.fechas || [],
-      resumenLogistico: reservaActualSnapshot.resumenLogistico || {}
-    }
+
+    usuario:
+      auth.currentUser?.email ||
+      '',
+
+    guardadoEn:
+      new Date().toISOString(),
+
+    snapshotLogistico:
+      ultimaVerificacionPagos
+        .snapshotLogistico || {
+        destino,
+        actividad,
+        fechas:
+          reservaActualSnapshot.fechas ||
+          [],
+
+        resumenLogistico:
+          reservaActualSnapshot
+            .resumenLogistico ||
+          {}
+      }
   };
 
-  for (const f of fechasOrdenadas) {
-    const totalEnviado = grupos.reduce((sum, g) => {
-      const acts = g.itinerario?.[f] || [];
-      const t = acts
-        .filter(a => actividadCoincideReserva(a, actividad))
-        .reduce((acc, a) => acc + ((parseInt(a.adultos) || 0) + (parseInt(a.estudiantes) || 0)), 0);
-      return sum + t;
-    }, 0);
+  const payload = {};
 
-    if (totalEnviado > 0) {
-      payload[`reservas.${f}.estado`] =
+  fechasSnapshot.forEach(
+    datosFecha => {
+      const fecha =
+        datosFecha.fecha;
+
+      const totalEnviado =
+        Number(
+          datosFecha.totalPax || 0
+        );
+
+      if (
+        !fecha ||
+        totalEnviado <= 0
+      ) {
+        return;
+      }
+
+      payload[
+        `reservas.${fecha}.estado`
+      ] =
         resumen.estadoGeneral === 'OK'
           ? 'VERIFICADA'
           : 'PENDIENTE_VERIFICADA';
 
-      payload[`reservas.${f}.cuerpo`] = cuerpo;
-      payload[`reservas.${f}.totalEnviado`] = totalEnviado;
-      payload[`reservas.${f}.verificacionPagos`] = verificacionGuardada;
-      payload[`reservas.${f}.updatedAt`] = serverTimestamp();
+      payload[
+        `reservas.${fecha}.cuerpo`
+      ] = cuerpo;
+
+      payload[
+        `reservas.${fecha}.totalEnviado`
+      ] = totalEnviado;
+
+      payload[
+        `reservas.${fecha}.verificacionPagos`
+      ] =
+        verificacionGuardada;
+
+      payload[
+        `reservas.${fecha}.updatedAt`
+      ] =
+        serverTimestamp();
     }
-  }
+  );
 
   if (!Object.keys(payload).length) {
-    alert('No hay fechas con PAX para guardar esta verificación.');
+    alert(
+      'No hay fechas con PAX para guardar esta verificación.'
+    );
     return;
   }
 
-  await updateDoc(ref, payload);
+  await updateDoc(
+    ref,
+    payload
+  );
 
-  document.getElementById('modalGuardarVerificacionPagos').style.display = 'none';
+  document.getElementById(
+    'modalGuardarVerificacionPagos'
+  ).style.display = 'none';
 
-  alert('Verificación guardada como historial de la reserva.');
+  alert(
+    'Verificación guardada como historial de la reserva.'
+  );
 }
