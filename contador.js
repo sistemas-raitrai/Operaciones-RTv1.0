@@ -2377,8 +2377,9 @@ async function sincronizarPaxReservaManual() {
 
   } finally {
     btnSync.disabled = false;
-
+  
     mostrarEstadoSyncPaxReserva(
+      destino,
       actividad
     );
   }
@@ -2952,60 +2953,6 @@ async function enviarReserva() {
         'No hay fechas con PAX para guardar el envío.'
       );
     
-      return;
-    }
-
-      /*
-       * ===================================================
-       * HISTORIAL DE REENVÍOS
-       * ===================================================
-       */
-
-      if (requiereReenvio) {
-        const historialAnterior =
-          Array.isArray(
-            reservasActuales?.[fecha]
-              ?.revisionCambiosHistorial
-          )
-            ? reservasActuales[
-                fecha
-              ].revisionCambiosHistorial
-            : [];
-
-        const nuevoItemHistorial = {
-          fecha:
-            new Date().toISOString(),
-
-          usuario:
-            auth.currentUser?.email ||
-            '',
-
-          asunto,
-
-          proveedor:
-            proveedor || '',
-
-          cambios:
-            revisionActual?.cambios ||
-            []
-        };
-
-        payload[
-          `reservas.${fecha}.revisionCambiosHistorial`
-        ] = [
-          ...historialAnterior,
-          nuevoItemHistorial
-        ];
-      }
-    }
-
-    if (!Object.keys(payload).length) {
-      ventanaGmail.close();
-
-      alert(
-        'No hay fechas con PAX para guardar el envío.'
-      );
-
       return;
     }
 
