@@ -6204,3 +6204,148 @@ async function diagnosticarRevisionCambiosContador() {
 
 window.diagnosticarRevisionCambiosContador =
   diagnosticarRevisionCambiosContador;
+
+// =====================================================
+// INSPECCIÓN DIRECTA DE UNA RESERVA OPERACIONAL
+// SOLO LECTURA
+// =====================================================
+
+async function inspeccionarReservaContador(
+  destino,
+  actividad
+) {
+  console.log(
+    '[INSPECCIÓN] Leyendo:',
+    destino,
+    actividad
+  );
+
+  const ref = doc(
+    db,
+    'Servicios',
+    destino,
+    'Listado',
+    actividad
+  );
+
+  const snap = await getDoc(ref);
+
+  if (!snap.exists()) {
+    console.error(
+      '[INSPECCIÓN] El documento NO existe:',
+      destino,
+      actividad
+    );
+
+    return null;
+  }
+
+  const data = snap.data() || {};
+  const reservas = data.reservas || {};
+
+  console.log(
+    '[INSPECCIÓN] Documento encontrado:',
+    snap.id
+  );
+
+  console.log(
+    '[INSPECCIÓN] Total fechas guardadas:',
+    Object.keys(reservas).length
+  );
+
+  console.log(
+    '[INSPECCIÓN] Reservas completas:',
+    reservas
+  );
+
+  const revisiones = [];
+
+  for (
+    const [fecha, reserva]
+    of Object.entries(reservas)
+  ) {
+    const revision =
+      reserva?.revisionCambios;
+
+    const cambios =
+      Array.isArray(revision?.cambios)
+        ? revision.cambios
+        : [];
+
+    console.log(
+      `[INSPECCIÓN] ${fecha}`,
+      {
+        estado:
+          reserva?.estado || '',
+
+        tieneRevisionCambios:
+          !!revision,
+
+        revisionEstado:
+          revision?.estado || '',
+
+        ultimaRevision:
+          revision?.ultimaRevision || '',
+
+        cantidadCambios:
+          cambios.length,
+
+        cambios
+      }
+    );
+
+    if (cambios.length) {
+      cambios.forEach(cambio => {
+        revisiones.push({
+          fecha,
+
+          estadoReserva:
+            reserva?.estado || '',
+
+          estadoRevision:
+            revision?.estado || '',
+
+          ultimaRevision:
+            revision?.ultimaRevision || '',
+
+          tipo:
+            cambio?.tipo || '',
+
+          numeroNegocio:
+            cambio?.numeroNegocio || '',
+
+          nombreGrupo:
+            cambio?.nombreGrupo || '',
+
+          detalle:
+            cambio?.detalle || ''
+        });
+      });
+    }
+  }
+
+  console.log(
+    `%c[INSPECCIÓN] Cambios encontrados: ${revisiones.length}`,
+    revisiones.length
+      ? 'font-weight:bold;color:#b42318'
+      : 'font-weight:bold;color:#09832e'
+  );
+
+  console.table(
+    revisiones
+  );
+
+  window.__INSPECCION_RESERVA_CONTADOR__ = {
+    destino,
+    actividad,
+    data,
+    reservas,
+    revisiones
+  };
+
+  return window
+    .__INSPECCION_RESERVA_CONTADOR__;
+}
+
+window.inspeccionarReservaContador =
+  inspeccionarReservaContador;
