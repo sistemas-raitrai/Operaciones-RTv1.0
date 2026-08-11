@@ -4190,6 +4190,18 @@ function pintarStatsFecha(ctx) {
         fecha
       );
 
+    /*
+     * =================================================
+     * NUEVA REGLA
+     * =================================================
+     *
+     * Si ese día no hay ningún grupo del destino,
+     * no mostramos la fecha.
+     */
+    if (!universo.length) {
+      return;
+    }
+
     const hacen = [];
     const noHacen = [];
 
@@ -4228,7 +4240,9 @@ function pintarStatsFecha(ctx) {
 
       if (tiene) {
         hacen.push(grupo);
-        paxActividades += paxVisible;
+
+        paxActividades +=
+          paxVisible;
       } else {
         noHacen.push(grupo);
       }
@@ -4270,7 +4284,9 @@ function pintarStatsFecha(ctx) {
       `
         <tr>
           <td>
-            ${formatearFechaBonita(fecha)}
+            ${formatearFechaBonita(
+              fecha
+            )}
           </td>
 
           <td>
@@ -4279,6 +4295,7 @@ function pintarStatsFecha(ctx) {
 
           <td>
             ${hacen.length}
+
             <div style="
               font-size:.82em;
               margin-top:3px;
@@ -4356,15 +4373,17 @@ function mostrarSituacionFechaGrupos(
       })
       .sort((a, b) => {
         /*
-         * Primero los que NO hacen.
-         *
-         * Operacionalmente son los que interesa
-         * revisar primero.
+         * Primero mostramos los que HACEN.
+         * Después los que NO hacen.
          */
-        if (a.hace !== b.hace) {
-          return a.hace ? 1 : -1;
+        if (
+          a.hace !== b.hace
+        ) {
+          return a.hace
+            ? -1
+            : 1;
         }
-
+      
         return String(
           a.grupo.numeroNegocio ||
           a.grupo.id
@@ -5287,17 +5306,17 @@ function mostrarSituacionCombinacionGrupos(
       })
       .sort((a, b) => {
         /*
-         * Primero mostramos los que NO cumplen.
-         * Así las posibles anomalías quedan arriba.
+         * Primero mostramos los que CUMPLEN.
+         * Después los que NO cumplen.
          */
         if (
           a.cumple !== b.cumple
         ) {
           return a.cumple
-            ? 1
-            : -1;
+            ? -1
+            : 1;
         }
-
+      
         return String(
           a.grupo.numeroNegocio ||
           a.grupo.id
@@ -5312,7 +5331,6 @@ function mostrarSituacionCombinacionGrupos(
           }
         );
       });
-
   const cumplen =
     evaluaciones.filter(
       item => item.cumple
