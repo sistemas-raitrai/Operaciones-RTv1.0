@@ -3201,6 +3201,265 @@ function sumarPaxDeActividadEnFechas(
   return total;
 }
 
+// =====================================================
+// ESTADÍSTICAS — SITUACIÓN DE ACTIVIDAD POR GRUPO
+// =====================================================
+
+function obtenerPaxGrupoContador(
+  grupo,
+  fechas = []
+) {
+  /*
+   * Preferimos el PAX general vigente del grupo.
+   */
+  const candidatos = [
+    grupo?.pax,
+    grupo?.cantidadGrupo,
+    grupo?.cantidadgrupo,
+    (
+      (parseInt(grupo?.adultos) || 0) +
+      (parseInt(grupo?.estudiantes) || 0)
+    )
+  ];
+
+  for (const valor of candidatos) {
+    const numero = Number(valor);
+
+    if (
+      Number.isFinite(numero) &&
+      numero > 0
+    ) {
+      return numero;
+    }
+  }
+
+  /*
+   * Respaldo:
+   * buscamos el mayor PAX registrado en alguna
+   * actividad del itinerario.
+   *
+   * Usamos MAX y no SUMA porque normalmente cada
+   * actividad lleva el PAX completo del grupo.
+   */
+  let paxMaximo = 0;
+
+  const fechasRevisar =
+    Array.isArray(fechas) && fechas.length
+      ? fechas
+      : Object.keys(
+          grupo?.itinerario || {}
+        );
+
+  fechasRevisar.forEach(fecha => {
+    const actividades =
+      grupo?.itinerario?.[fecha] || [];
+
+    actividades.forEach(item => {
+      const pax =
+        (parseInt(item?.adultos) || 0) +
+        (parseInt(item?.estudiantes) || 0);
+
+      paxMaximo =
+        Math.max(
+          paxMaximo,
+          pax
+        );
+    });
+  });
+
+  return paxMaximo;
+}
+
+
+function grupoPresenteEnFechaEstadisticas(
+  grupo,
+  fecha,
+  destino
+) {
+  if (!grupo) {
+    return false;
+  }
+
+  /*
+   * Primero debe pertenecer al destino.
+   */
+  if (
+    !grupoCoincideDestinoContador(
+      grupo,
+      destino
+    )
+  ) {
+    return false;
+  }
+
+  const actividades =
+    grupo.itinerario?.[fecha] || [];
+
+  /*
+   * Consideramos que el grupo está operativo ese día
+   * si tiene al menos una actividad registrada.
+   */
+  return actividades.some(item => {
+    const pax =
+      (parseInt(item?.adultos) || 0) +
+      (parseInt(item?.estudiantes) || 0);
+
+    return (
+      pax > 0 ||
+      !!String(
+        item?.actividad || ''
+      ).trim()
+    );
+  });
+}
+
+
+function grupoPresenteEnFechasEstadisticas(
+  grupo,
+  fechas,
+  destino
+) {
+  return (fechas || []).some(fecha =>
+    grupoPresenteEnFechaEstadisticas(
+      grupo,
+      fecha,
+      destino
+    )
+  );
+}
+
+
+function grupoTieneActividadEnFechaEstadisticas(
+  grupo,
+  actividad,
+  fecha
+) {
+  return (
+    grupo?.itinerario?.[fecha] || []
+  ).some(item =>
+    actividadCoincideReserva(
+      item,
+      actividad
+    )
+  );
+}
+
+
+function grupoTieneActividadEnFechasEstadisticas(
+  grupo,
+  actividad,
+  fechas
+) {
+  return (fechas || []).some(fecha =>
+    grupoTieneActividadEnFechaEstadisticas(
+      grupo,
+      actividad,
+      fecha
+    )
+  );
+}
+
+
+function obtenerFechasActividadGrupoEstadisticas(
+  grupo,
+  actividad
+) {
+  return Object.entries(
+    grupo?.itinerario || {}
+  )
+    .filter(([, actividades]) =>
+      (actividades || []).some(item =>
+        actividadCoincideReserva(
+          item,
+          actividad
+        )
+      )
+    )
+    .map(([fecha]) => fecha)
+    .sort();
+}
+
+
+function analizarSituacionActividadGrupo(
+  grupo,
+  actividad,
+  destino,
+  fechasVisibles
+) {
+  const presente =
+    grupoPresenteEnFechasEstadisticas(
+      grupo,
+      fechasVisibles,
+      destino
+    );
+
+  if (!presente) {
+    return null;
+  }
+
+  const fechasActividad =
+    obtenerFechasActividadGrupoEstadisticas(
+      grupo,
+      actividad
+    );
+
+  const tieneActividadEnViaje =
+    fechasActividad.length > 0;
+
+  const tieneActividadPeriodo =
+    grupoTieneActividadEnFechasEstadisticas(
+      grupo,
+      actividad,
+      fechasVisibles
+    );
+
+  let estado;
+  let corresponde;
+
+  if (tieneActividadPeriodo) {
+    estado =
+      '✅ LA HACE';
+
+    corresponde =
+      'SÍ';
+  } else if (tieneActividadEnViaje) {
+    estado =
+      '🗓️ OTRA FECHA';
+
+    corresponde =
+      'SÍ';
+  } else {
+    estado =
+      '➖ NO FIGURA';
+
+    /*
+     * IMPORTANTE:
+     * Esto NO significa todavía que contractualmente
+     * no corresponda.
+     *
+     * Solo significa que no detectamos esta actividad
+     * en el itinerario actual del grupo.
+     */
+    corresponde =
+      'NO DETECTADO';
+  }
+
+  return {
+    grupo,
+    tieneActividadPeriodo,
+    tieneActividadEnViaje,
+    fechasActividad,
+    estado,
+    corresponde,
+
+    pax:
+      obtenerPaxGrupoContador(
+        grupo,
+        fechasVisibles
+      )
+  };
+}
+
 function abrirModalEstadisticas(table) {
   const ctx = getContextoVisible(table);
   window.__ctxStats = ctx;
@@ -3232,47 +3491,483 @@ function abrirModalEstadisticas(table) {
 }
 
 function pintarStatsActividad(ctx) {
-  const tbody = document.getElementById('statsActividadBody');
+  const tbody =
+    document.getElementById(
+      'statsActividadBody'
+    );
+
   tbody.innerHTML = '';
+
   let totalPax = 0;
-  const gruposUnicos = new Set();
 
-  ctx.paresVisibles.forEach(({ actividad, destino }) => {
-    let pax = 0;
-    const gSet = new Set();
-    for (const g of grupos) {
-      const t = sumarPaxDeActividadEnFechas(g, actividad, ctx.fechasVisibles);
-      if (t > 0) { pax += t; gSet.add(g.id); }
+  const gruposUnicos =
+    new Set();
+
+  ctx.paresVisibles.forEach(
+    ({
+      actividad,
+      destino
+    }) => {
+      /*
+       * =================================================
+       * 1. TODOS LOS GRUPOS PRESENTES
+       * =================================================
+       *
+       * Este es el cambio importante:
+       *
+       * antes partíamos solamente de los grupos que
+       * tenían la actividad.
+       *
+       * ahora primero obtenemos TODOS los grupos que
+       * están operando en ese destino dentro de las
+       * fechas visibles.
+       */
+      const situaciones =
+        grupos
+          .map(grupo =>
+            analizarSituacionActividadGrupo(
+              grupo,
+              actividad,
+              destino,
+              ctx.fechasVisibles
+            )
+          )
+          .filter(Boolean);
+
+      /*
+       * Grupos que efectivamente hacen esta actividad
+       * dentro del período visible.
+       */
+      const gruposHacen =
+        situaciones.filter(
+          item =>
+            item.tieneActividadPeriodo
+        );
+
+      /*
+       * Grupos presentes que NO hacen la actividad
+       * dentro del período visible.
+       */
+      const gruposNoHacen =
+        situaciones.filter(
+          item =>
+            !item.tieneActividadPeriodo
+        );
+
+      /*
+       * Dentro de los que no la hacen ahora,
+       * algunos sí la tienen en otra fecha.
+       */
+      const gruposOtraFecha =
+        gruposNoHacen.filter(
+          item =>
+            item.tieneActividadEnViaje
+        );
+
+      /*
+       * Y estos no tienen la actividad en ninguna
+       * parte de su itinerario.
+       */
+      const gruposNoFigura =
+        gruposNoHacen.filter(
+          item =>
+            !item.tieneActividadEnViaje
+        );
+
+      let paxActividad = 0;
+
+      gruposHacen.forEach(item => {
+        const grupo =
+          item.grupo;
+
+        const pax =
+          sumarPaxDeActividadEnFechas(
+            grupo,
+            actividad,
+            ctx.fechasVisibles
+          );
+
+        paxActividad += pax;
+
+        gruposUnicos.add(
+          grupo.id
+        );
+      });
+
+      totalPax +=
+        paxActividad;
+
+      /*
+       * El botón ahora abre la situación COMPLETA,
+       * no solamente los grupos que hacen la actividad.
+       */
+      const btn = `
+        <button
+          class="ver-situacion-actividad"
+          data-actividad="${encodeURIComponent(
+            actividad
+          )}"
+          data-destino="${encodeURIComponent(
+            destino
+          )}"
+        >
+          Ver situación
+          (${situaciones.length})
+        </button>
+
+        <div style="
+          margin-top:4px;
+          font-size:.82em;
+          line-height:1.35;
+        ">
+          <span style="color:#09832e;">
+            Hacen: ${gruposHacen.length}
+          </span>
+
+          ·
+
+          <span style="color:#b26b00;">
+            Otra fecha: ${gruposOtraFecha.length}
+          </span>
+
+          ·
+
+          <span style="color:#666;">
+            No figura: ${gruposNoFigura.length}
+          </span>
+        </div>
+      `;
+
+      tbody.insertAdjacentHTML(
+        'beforeend',
+        `
+          <tr>
+            <td>
+              ${escapeHtmlReserva(
+                actividad
+              )}
+            </td>
+
+            <td>
+              ${escapeHtmlReserva(
+                destino
+              )}
+            </td>
+
+            <td>
+              ${paxActividad}
+            </td>
+
+            <td>
+              ${gruposHacen.length}
+            </td>
+
+            <td>
+              ${btn}
+            </td>
+          </tr>
+        `
+      );
     }
-    totalPax += pax;
-    gSet.forEach(id => gruposUnicos.add(id));
+  );
 
-    const btn = `<button class="ver-grupos"
-      data-ids="${Array.from(gSet).join(',')}"
-      data-titulo="Grupos — ${actividad} (${destino})"
-      data-context="actividad"
-      data-actividad="${encodeURIComponent(actividad)}"
-    >Ver grupos</button>`;
+  document.getElementById(
+    'statsActividadTotalPax'
+  ).textContent =
+    totalPax;
 
-    tbody.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td>${actividad}</td>
-        <td>${destino}</td>
-        <td>${pax}</td>
-        <td>${gSet.size}</td>
-        <td>${btn}</td>
-      </tr>`);
-  });
+  document.getElementById(
+    'statsActividadTotalGrupos'
+  ).textContent =
+    gruposUnicos.size;
 
-  document.getElementById('statsActividadTotalPax').textContent = totalPax;
-  document.getElementById('statsActividadTotalGrupos').textContent = gruposUnicos.size;
+  /*
+   * Un solo listener para todos los botones.
+   */
+  tbody.onclick = event => {
+    const boton =
+      event.target.closest(
+        '.ver-situacion-actividad'
+      );
 
-  tbody.onclick = (e) => {
-    const b = e.target.closest('.ver-grupos');
-    if (!b) return;
-    const ids = (b.dataset.ids || '').split(',').filter(Boolean);
-    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos', b.dataset);
+    if (!boton) {
+      return;
+    }
+
+    const actividad =
+      decodeURIComponent(
+        boton.dataset.actividad || ''
+      );
+
+    const destino =
+      decodeURIComponent(
+        boton.dataset.destino || ''
+      );
+
+    mostrarSituacionActividadGrupos(
+      actividad,
+      destino,
+      ctx
+    );
   };
+}
+
+function mostrarSituacionActividadGrupos(
+  actividad,
+  destino,
+  ctx
+) {
+  const fechasVisibles =
+    ctx?.fechasVisibles || [];
+
+  const situaciones =
+    grupos
+      .map(grupo =>
+        analizarSituacionActividadGrupo(
+          grupo,
+          actividad,
+          destino,
+          fechasVisibles
+        )
+      )
+      .filter(Boolean)
+      .sort((a, b) => {
+        /*
+         * Orden operacional:
+         *
+         * 1. LA HACE
+         * 2. OTRA FECHA
+         * 3. NO FIGURA
+         */
+
+        const prioridad = item => {
+          if (
+            item.tieneActividadPeriodo
+          ) {
+            return 1;
+          }
+
+          if (
+            item.tieneActividadEnViaje
+          ) {
+            return 2;
+          }
+
+          return 3;
+        };
+
+        const pa =
+          prioridad(a);
+
+        const pb =
+          prioridad(b);
+
+        if (pa !== pb) {
+          return pa - pb;
+        }
+
+        return String(
+          a.grupo?.numeroNegocio ||
+          a.grupo?.id ||
+          ''
+        ).localeCompare(
+          String(
+            b.grupo?.numeroNegocio ||
+            b.grupo?.id ||
+            ''
+          ),
+          'es',
+          {
+            numeric: true
+          }
+        );
+      });
+
+  const hacen =
+    situaciones.filter(
+      item =>
+        item.tieneActividadPeriodo
+    );
+
+  const otraFecha =
+    situaciones.filter(
+      item =>
+        !item.tieneActividadPeriodo &&
+        item.tieneActividadEnViaje
+    );
+
+  const noFigura =
+    situaciones.filter(
+      item =>
+        !item.tieneActividadEnViaje
+    );
+
+  const totalPax =
+    situaciones.reduce(
+      (total, item) =>
+        total +
+        Number(item.pax || 0),
+      0
+    );
+
+  const titulo =
+    document.querySelector(
+      '#modalDetalle h3'
+    );
+
+  if (titulo) {
+    titulo.innerHTML = `
+      ${escapeHtmlReserva(
+        actividad
+      )}
+      —
+      ${escapeHtmlReserva(
+        destino
+      )}
+
+      <div style="
+        margin-top:6px;
+        font-size:.78em;
+        font-weight:400;
+        line-height:1.5;
+      ">
+        Grupos presentes:
+        <strong>
+          ${situaciones.length}
+        </strong>
+
+        ·
+
+        Hacen:
+        <strong style="color:#09832e;">
+          ${hacen.length}
+        </strong>
+
+        ·
+
+        Otra fecha:
+        <strong style="color:#b26b00;">
+          ${otraFecha.length}
+        </strong>
+
+        ·
+
+        No figura:
+        <strong style="color:#666;">
+          ${noFigura.length}
+        </strong>
+
+        ·
+
+        PAX grupos presentes:
+        <strong>
+          ${totalPax}
+        </strong>
+
+        <div style="
+          margin-top:5px;
+          color:#666;
+          font-size:.92em;
+        ">
+          “Le corresponde” se infiere desde el
+          itinerario actual: si la actividad aparece
+          en algún día del viaje, se considera
+          correspondiente.
+        </div>
+      </div>
+    `;
+  }
+
+  const dataRows =
+    situaciones.map(item => {
+      const grupo =
+        item.grupo;
+
+      const fechasTexto =
+        item.fechasActividad.length
+          ? item.fechasActividad
+              .map(fecha =>
+                formatearFechaBonita(
+                  fecha
+                )
+              )
+              .join(', ')
+          : '—';
+
+      return [
+        grupo.numeroNegocio ||
+          grupo.id,
+
+        grupo.nombreGrupo ||
+          '',
+
+        item.pax,
+
+        grupo.programa ||
+          '',
+
+        item.tieneActividadPeriodo
+          ? 'SÍ'
+          : 'NO',
+
+        item.corresponde,
+
+        item.estado,
+
+        fechasTexto
+      ];
+    });
+
+  const columnas = [
+    {
+      data: 0,
+      title: 'N° Negocio'
+    },
+    {
+      data: 1,
+      title: 'Nombre Grupo'
+    },
+    {
+      data: 2,
+      title: 'PAX'
+    },
+    {
+      data: 3,
+      title: 'Programa'
+    },
+    {
+      data: 4,
+      title: '¿La hace ahora?'
+    },
+    {
+      data: 5,
+      title: '¿Le corresponde?'
+    },
+    {
+      data: 6,
+      title: 'Situación'
+    },
+    {
+      data: 7,
+      title: 'Fecha actividad'
+    }
+  ];
+
+  renderTablaModal(
+    dataRows,
+    columnas
+  );
+
+  const modalDetalle =
+    document.getElementById(
+      'modalDetalle'
+    );
+
+  modalDetalle.style.zIndex =
+    '11000';
+
+  modalDetalle.style.display =
+    'block';
 }
 
 function pintarStatsFecha(ctx) {
@@ -3579,10 +4274,14 @@ function exportarEstadisticasExcel() {
 //     - Evita manipular <tbody> manualmente.
 //     - Soporta orden por click en encabezados.
 // —————————————————————————————————————————————
-function renderTablaModal(dataRows) {
-  const selector = '#tablaModal';
+function renderTablaModal(
+  dataRows,
+  columnasPersonalizadas = null
+) {
+  const selector =
+    '#tablaModal';
 
-  const columns = [
+  const columnasDefault = [
     {
       data: 0,
       title: 'N° Negocio'
@@ -3601,24 +4300,67 @@ function renderTablaModal(dataRows) {
     }
   ];
 
-  if ($.fn.DataTable.isDataTable(selector)) {
-    const tabla =
-      $(selector).DataTable();
+  const columns =
+    Array.isArray(
+      columnasPersonalizadas
+    ) &&
+    columnasPersonalizadas.length
+      ? columnasPersonalizadas
+      : columnasDefault;
 
-    tabla.clear();
-    tabla.rows.add(dataRows);
-    tabla.draw();
+  /*
+   * IMPORTANTE:
+   *
+   * Como ahora el mismo modal puede tener
+   * 4 columnas u 8 columnas, destruimos la
+   * instancia anterior antes de reconstruirla.
+   *
+   * Esto evita que DataTables conserve la
+   * estructura anterior.
+   */
+  if (
+    $.fn.DataTable.isDataTable(
+      selector
+    )
+  ) {
+    $(selector)
+      .DataTable()
+      .destroy();
+  }
 
+  /*
+   * Limpiamos completamente encabezado y cuerpo.
+   */
+  const tabla =
+    document.querySelector(
+      selector
+    );
+
+  if (!tabla) {
     return;
   }
 
+  tabla.innerHTML = '';
+
   $(selector).DataTable({
-    data: dataRows,
+    data:
+      Array.isArray(dataRows)
+        ? dataRows
+        : [],
+
     columns,
+
     paging: false,
-    searching: false,
+
+    searching: true,
+
     info: false,
+
     order: [],
+
+    scrollX: true,
+
+    autoWidth: false,
 
     columnDefs: [
       {
@@ -3628,7 +4370,8 @@ function renderTablaModal(dataRows) {
     ],
 
     language: {
-      url: 'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+      url:
+        'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
     }
   });
 }
