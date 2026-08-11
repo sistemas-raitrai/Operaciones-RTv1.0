@@ -3970,164 +3970,1496 @@ function mostrarSituacionActividadGrupos(
     'block';
 }
 
-function pintarStatsFecha(ctx) {
-  const tbody = document.getElementById('statsFechaBody');
-  tbody.innerHTML = '';
-  const actsVisibles = ctx.actividadesSet;
+// =====================================================
+// ESTADÍSTICAS — UNIVERSO DE GRUPOS / HACEN - NO HACEN
+// =====================================================
 
-  ctx.fechasVisibles.forEach(fecha => {
-    let pax = 0;
-    const gSet = new Set();
+function fechaISOValidaEstadisticas(valor) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(
+    String(valor || '').trim()
+  );
+}
 
-    for (const g of grupos) {
-      const acts = g.itinerario?.[fecha] || [];
-      const t = acts
-        .filter(a => actsVisibles.has(a.actividad))
-        .reduce((s, a) => s + ((parseInt(a.adultos)||0) + (parseInt(a.estudiantes)||0)), 0);
-      if (t > 0) { pax += t; gSet.add(g.id); }
+
+function grupoEstaDeViajeEnFechaEstadisticas(
+  grupo,
+  fecha
+) {
+  if (
+    !grupo ||
+    !fechaISOValidaEstadisticas(fecha)
+  ) {
+    return false;
+  }
+
+  const inicio =
+    String(
+      grupo.fechaInicio || ''
+    ).trim();
+
+  const fin =
+    String(
+      grupo.fechaFin || ''
+    ).trim();
+
+  /*
+   * Camino principal:
+   * fechaInicio / fechaFin del grupo.
+   *
+   * Esto es importante porque permite detectar
+   * un grupo que está viajando ese día aunque
+   * justamente tenga el itinerario vacío.
+   */
+  if (
+    fechaISOValidaEstadisticas(inicio) &&
+    fechaISOValidaEstadisticas(fin)
+  ) {
+    return (
+      fecha >= inicio &&
+      fecha <= fin
+    );
+  }
+
+  /*
+   * Si tenemos solamente una de las fechas,
+   * usamos el dato disponible.
+   */
+  if (
+    fechaISOValidaEstadisticas(inicio) &&
+    !fechaISOValidaEstadisticas(fin)
+  ) {
+    return fecha >= inicio;
+  }
+
+  if (
+    !fechaISOValidaEstadisticas(inicio) &&
+    fechaISOValidaEstadisticas(fin)
+  ) {
+    return fecha <= fin;
+  }
+
+  /*
+   * Respaldo para grupos antiguos:
+   * si no hay fechaInicio / fechaFin,
+   * consideramos presente al grupo si existe
+   * ese día dentro del itinerario.
+   */
+  return Object.prototype.hasOwnProperty.call(
+    grupo.itinerario || {},
+    fecha
+  );
+}
+
+
+function obtenerDestinosContextoEstadisticas(ctx) {
+  return Array.from(
+    new Set(
+      (ctx?.paresVisibles || [])
+        .map(item =>
+          normalizarDestinoContador(
+            item.destino
+          )
+        )
+        .filter(Boolean)
+    )
+  );
+}
+
+
+function grupoCoincideDestinosContextoEstadisticas(
+  grupo,
+  destinos
+) {
+  if (
+    !Array.isArray(destinos) ||
+    !destinos.length
+  ) {
+    return true;
+  }
+
+  return destinos.some(destino =>
+    grupoCoincideDestinoContador(
+      grupo,
+      destino
+    )
+  );
+}
+
+
+function obtenerGruposDestinoEnFechaEstadisticas(
+  ctx,
+  fecha
+) {
+  const destinos =
+    obtenerDestinosContextoEstadisticas(
+      ctx
+    );
+
+  return grupos.filter(grupo => {
+    if (
+      !grupoCoincideDestinosContextoEstadisticas(
+        grupo,
+        destinos
+      )
+    ) {
+      return false;
     }
 
-    const btn = `<button class="ver-grupos"
-      data-ids="${Array.from(gSet).join(',')}"
-      data-titulo="Grupos — ${formatearFechaBonita(fecha)}"
-      data-context="fecha"
-      data-fecha="${fecha}"
-    >Ver grupos</button>`;
+    return grupoEstaDeViajeEnFechaEstadisticas(
+      grupo,
+      fecha
+    );
+  });
+}
 
-    tbody.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td>${formatearFechaBonita(fecha)}</td>
-        <td>${pax}</td>
-        <td>${gSet.size}</td>
-        <td>${btn}</td>
-      </tr>`);
+
+function grupoTieneAlgunaActividadVisibleEnFecha(
+  grupo,
+  fecha,
+  actividadesVisibles
+) {
+  const actividades =
+    grupo.itinerario?.[fecha] || [];
+
+  return actividades.some(item => {
+    return Array.from(
+      actividadesVisibles || []
+    ).some(actividad =>
+      actividadCoincideReserva(
+        item,
+        actividad
+      )
+    );
+  });
+}
+
+
+function obtenerActividadesVisiblesGrupoEnFecha(
+  grupo,
+  fecha,
+  actividadesVisibles
+) {
+  const resultado =
+    new Set();
+
+  const actividades =
+    grupo.itinerario?.[fecha] || [];
+
+  actividades.forEach(item => {
+    Array.from(
+      actividadesVisibles || []
+    ).forEach(actividad => {
+      if (
+        actividadCoincideReserva(
+          item,
+          actividad
+        )
+      ) {
+        resultado.add(
+          actividad
+        );
+      }
+    });
   });
 
-  tbody.onclick = (e) => {
-    const b = e.target.closest('.ver-grupos');
-    if (!b) return;
-    const ids = (b.dataset.ids || '').split(',').filter(Boolean);
-    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos', b.dataset);
+  return Array.from(resultado);
+}
+
+function pintarStatsFecha(ctx) {
+  const tbody =
+    document.getElementById(
+      'statsFechaBody'
+    );
+
+  tbody.innerHTML = '';
+
+  const actividadesVisibles =
+    ctx.actividadesSet;
+
+  ctx.fechasVisibles.forEach(fecha => {
+    /*
+     * =================================================
+     * UNIVERSO:
+     * todos los grupos del destino que están viajando
+     * ese día.
+     * =================================================
+     */
+    const universo =
+      obtenerGruposDestinoEnFechaEstadisticas(
+        ctx,
+        fecha
+      );
+
+    const hacen = [];
+    const noHacen = [];
+
+    let paxActividades = 0;
+
+    universo.forEach(grupo => {
+      const actividadesGrupo =
+        grupo.itinerario?.[fecha] || [];
+
+      const paxVisible =
+        actividadesGrupo
+          .filter(item =>
+            Array.from(
+              actividadesVisibles
+            ).some(actividad =>
+              actividadCoincideReserva(
+                item,
+                actividad
+              )
+            )
+          )
+          .reduce(
+            (total, item) =>
+              total +
+              (parseInt(item.adultos) || 0) +
+              (parseInt(item.estudiantes) || 0),
+            0
+          );
+
+      const tiene =
+        grupoTieneAlgunaActividadVisibleEnFecha(
+          grupo,
+          fecha,
+          actividadesVisibles
+        );
+
+      if (tiene) {
+        hacen.push(grupo);
+        paxActividades += paxVisible;
+      } else {
+        noHacen.push(grupo);
+      }
+    });
+
+    const boton = `
+      <button
+        class="ver-situacion-fecha"
+        data-fecha="${fecha}"
+      >
+        Ver situación
+      </button>
+
+      <div style="
+        margin-top:4px;
+        font-size:.82em;
+        line-height:1.35;
+      ">
+        <span style="color:#09832e;">
+          Hacen: ${hacen.length}
+        </span>
+
+        ·
+
+        <span style="color:#b42318;">
+          No hacen: ${noHacen.length}
+        </span>
+
+        ·
+
+        <span style="color:#555;">
+          Total destino: ${universo.length}
+        </span>
+      </div>
+    `;
+
+    tbody.insertAdjacentHTML(
+      'beforeend',
+      `
+        <tr>
+          <td>
+            ${formatearFechaBonita(fecha)}
+          </td>
+
+          <td>
+            ${paxActividades}
+          </td>
+
+          <td>
+            ${hacen.length}
+            <div style="
+              font-size:.82em;
+              margin-top:3px;
+            ">
+              No hacen:
+              <strong>
+                ${noHacen.length}
+              </strong>
+            </div>
+          </td>
+
+          <td>
+            ${boton}
+          </td>
+        </tr>
+      `
+    );
+  });
+
+  tbody.onclick = event => {
+    const boton =
+      event.target.closest(
+        '.ver-situacion-fecha'
+      );
+
+    if (!boton) {
+      return;
+    }
+
+    mostrarSituacionFechaGrupos(
+      boton.dataset.fecha,
+      ctx
+    );
   };
+}
+
+function mostrarSituacionFechaGrupos(
+  fecha,
+  ctx
+) {
+  const actividadesVisibles =
+    ctx.actividadesSet;
+
+  const universo =
+    obtenerGruposDestinoEnFechaEstadisticas(
+      ctx,
+      fecha
+    );
+
+  const situaciones =
+    universo
+      .map(grupo => {
+        const actividadesTiene =
+          obtenerActividadesVisiblesGrupoEnFecha(
+            grupo,
+            fecha,
+            actividadesVisibles
+          );
+
+        const hace =
+          actividadesTiene.length > 0;
+
+        const pax =
+          obtenerPaxGrupoContador(
+            grupo,
+            [fecha]
+          );
+
+        return {
+          grupo,
+          hace,
+          actividadesTiene,
+          pax
+        };
+      })
+      .sort((a, b) => {
+        /*
+         * Primero los que NO hacen.
+         *
+         * Operacionalmente son los que interesa
+         * revisar primero.
+         */
+        if (a.hace !== b.hace) {
+          return a.hace ? 1 : -1;
+        }
+
+        return String(
+          a.grupo.numeroNegocio ||
+          a.grupo.id
+        ).localeCompare(
+          String(
+            b.grupo.numeroNegocio ||
+            b.grupo.id
+          ),
+          'es',
+          {
+            numeric: true
+          }
+        );
+      });
+
+  const hacen =
+    situaciones.filter(
+      item => item.hace
+    );
+
+  const noHacen =
+    situaciones.filter(
+      item => !item.hace
+    );
+
+  const titulo =
+    document.querySelector(
+      '#modalDetalle h3'
+    );
+
+  if (titulo) {
+    titulo.innerHTML = `
+      Situación del
+      ${formatearFechaBonita(fecha)}
+
+      <div style="
+        margin-top:6px;
+        font-size:.8em;
+        font-weight:400;
+      ">
+        Grupos en destino:
+        <strong>${universo.length}</strong>
+
+        ·
+
+        <span style="color:#09832e;">
+          Hacen alguna actividad visible:
+          <strong>${hacen.length}</strong>
+        </span>
+
+        ·
+
+        <span style="color:#b42318;">
+          No hacen ninguna:
+          <strong>${noHacen.length}</strong>
+        </span>
+      </div>
+    `;
+  }
+
+  const dataRows =
+    situaciones.map(item => [
+      item.grupo.numeroNegocio ||
+        item.grupo.id,
+
+      item.grupo.nombreGrupo ||
+        '',
+
+      item.pax,
+
+      item.grupo.programa ||
+        '',
+
+      item.hace
+        ? '✅ HACE'
+        : '⚠️ NO HACE',
+
+      item.actividadesTiene.length
+        ? item.actividadesTiene.join(
+            ' + '
+          )
+        : 'NINGUNA ACTIVIDAD VISIBLE'
+    ]);
+
+  const columnas = [
+    {
+      data: 0,
+      title: 'N° Negocio'
+    },
+    {
+      data: 1,
+      title: 'Nombre Grupo'
+    },
+    {
+      data: 2,
+      title: 'PAX'
+    },
+    {
+      data: 3,
+      title: 'Programa'
+    },
+    {
+      data: 4,
+      title: 'Situación'
+    },
+    {
+      data: 5,
+      title: 'Actividades que tiene'
+    }
+  ];
+
+  renderTablaModal(
+    dataRows,
+    columnas
+  );
+
+  const modal =
+    document.getElementById(
+      'modalDetalle'
+    );
+
+  modal.style.zIndex =
+    '11000';
+
+  modal.style.display =
+    'block';
+}
+
+// =====================================================
+// ESTADÍSTICAS — ANÁLISIS DE COMBINACIONES
+// =====================================================
+
+function obtenerSetActividadesVisiblesGrupoViaje(
+  grupo,
+  ctx
+) {
+  const resultado =
+    new Set();
+
+  for (
+    const fecha of
+    ctx.fechasVisibles || []
+  ) {
+    const actividades =
+      grupo.itinerario?.[fecha] || [];
+
+    actividades.forEach(item => {
+      Array.from(
+        ctx.actividadesSet || []
+      ).forEach(actividad => {
+        if (
+          actividadCoincideReserva(
+            item,
+            actividad
+          )
+        ) {
+          resultado.add(
+            actividad
+          );
+        }
+      });
+    });
+  }
+
+  return resultado;
+}
+
+
+function conjuntosExactamenteIguales(
+  a,
+  b
+) {
+  if (a.size !== b.size) {
+    return false;
+  }
+
+  return Array.from(a).every(
+    item => b.has(item)
+  );
+}
+
+
+function conjuntoIncluyeOtro(
+  grande,
+  requerido
+) {
+  return Array.from(
+    requerido
+  ).every(item =>
+    grande.has(item)
+  );
+}
+
+
+function analizarGrupoContraCombinacion(
+  grupo,
+  comboActs,
+  ctx,
+  alcance,
+  modo
+) {
+  const comboSet =
+    new Set(comboActs);
+
+  /*
+   * =================================================
+   * VIAJE COMPLETO
+   * =================================================
+   */
+  if (alcance === 'viaje') {
+    const tieneSet =
+      obtenerSetActividadesVisiblesGrupoViaje(
+        grupo,
+        ctx
+      );
+
+    const cumple =
+      modo === 'exacto'
+        ? conjuntosExactamenteIguales(
+            tieneSet,
+            comboSet
+          )
+        : conjuntoIncluyeOtro(
+            tieneSet,
+            comboSet
+          );
+
+    const faltan =
+      comboActs.filter(
+        actividad =>
+          !tieneSet.has(actividad)
+      );
+
+    const extras =
+      Array.from(tieneSet)
+        .filter(
+          actividad =>
+            !comboSet.has(actividad)
+        );
+
+    let motivo =
+      'Cumple combinación';
+
+    if (!cumple) {
+      if (faltan.length) {
+        motivo =
+          `Falta: ${faltan.join(
+            ' + '
+          )}`;
+      } else if (
+        modo === 'exacto' &&
+        extras.length
+      ) {
+        motivo =
+          `Tiene además: ${extras.join(
+            ' + '
+          )}`;
+      } else {
+        motivo =
+          'No cumple combinación';
+      }
+    }
+
+    return {
+      cumple,
+      tiene:
+        Array.from(tieneSet),
+
+      faltan,
+      extras,
+      motivo
+    };
+  }
+
+  /*
+   * =================================================
+   * MISMO DÍA
+   * =================================================
+   */
+
+  let mejorResultado = null;
+
+  for (
+    const fecha of
+    ctx.fechasVisibles || []
+  ) {
+    if (
+      !grupoEstaDeViajeEnFechaEstadisticas(
+        grupo,
+        fecha
+      )
+    ) {
+      continue;
+    }
+
+    const tiene =
+      obtenerActividadesVisiblesGrupoEnFecha(
+        grupo,
+        fecha,
+        ctx.actividadesSet
+      );
+
+    const tieneSet =
+      new Set(tiene);
+
+    const cumple =
+      modo === 'exacto'
+        ? conjuntosExactamenteIguales(
+            tieneSet,
+            comboSet
+          )
+        : conjuntoIncluyeOtro(
+            tieneSet,
+            comboSet
+          );
+
+    const faltan =
+      comboActs.filter(
+        actividad =>
+          !tieneSet.has(actividad)
+      );
+
+    const extras =
+      tiene.filter(
+        actividad =>
+          !comboSet.has(actividad)
+      );
+
+    if (cumple) {
+      return {
+        cumple: true,
+        tiene,
+        faltan: [],
+        extras,
+        fecha,
+        motivo:
+          `Cumple el ${formatearFechaBonita(
+            fecha
+          )}`
+      };
+    }
+
+    /*
+     * Para un grupo que no cumple guardamos
+     * el día que estuvo más cerca de completar
+     * la combinación.
+     */
+    const cantidadCoincidencias =
+      comboActs.filter(
+        actividad =>
+          tieneSet.has(actividad)
+      ).length;
+
+    if (
+      !mejorResultado ||
+      cantidadCoincidencias >
+        mejorResultado.cantidadCoincidencias
+    ) {
+      mejorResultado = {
+        cumple: false,
+        tiene,
+        faltan,
+        extras,
+        fecha,
+        cantidadCoincidencias
+      };
+    }
+  }
+
+  if (!mejorResultado) {
+    return {
+      cumple: false,
+      tiene: [],
+      faltan: [...comboActs],
+      extras: [],
+      fecha: '',
+      motivo:
+        'Sin actividades visibles'
+    };
+  }
+
+  let motivo;
+
+  if (
+    mejorResultado.faltan.length
+  ) {
+    motivo =
+      `Falta: ${mejorResultado.faltan.join(
+        ' + '
+      )}`;
+  } else if (
+    modo === 'exacto' &&
+    mejorResultado.extras.length
+  ) {
+    motivo =
+      `Tiene además: ${mejorResultado.extras.join(
+        ' + '
+      )}`;
+  } else {
+    motivo =
+      'No coincide en un mismo día';
+  }
+
+  return {
+    ...mejorResultado,
+    motivo
+  };
+}
+
+
+function obtenerUniversoCombinaciones(
+  ctx
+) {
+  const destinos =
+    obtenerDestinosContextoEstadisticas(
+      ctx
+    );
+
+  return grupos.filter(grupo => {
+    if (
+      !grupoCoincideDestinosContextoEstadisticas(
+        grupo,
+        destinos
+      )
+    ) {
+      return false;
+    }
+
+    return (
+      ctx.fechasVisibles || []
+    ).some(fecha =>
+      grupoEstaDeViajeEnFechaEstadisticas(
+        grupo,
+        fecha
+      )
+    );
+  });
 }
 
 // ———  Combinaciones observadas (EXACTO por defecto)
 function recalcularCombinaciones(ctx) {
-  const modoEl    = document.getElementById('modoCombinacion');
-  const alcanceEl = document.getElementById('alcanceCombinacion');
-  const kMaxEl    = document.getElementById('nivelMax');
-  const soloMaxEl = document.getElementById('soloTamMax');
+  const modoEl =
+    document.getElementById(
+      'modoCombinacion'
+    );
 
-  const modo     = (modoEl?.value || 'exacto');   // exacto | incluye
-  const alcance  = (alcanceEl?.value || 'viaje'); // viaje | dia
-  const kMax     = parseInt(kMaxEl?.value || '999', 10);
-  const soloMax  = !!(soloMaxEl?.checked);
+  const alcanceEl =
+    document.getElementById(
+      'alcanceCombinacion'
+    );
 
-  const actsVisibles = new Set(ctx.actividadesSet);
-  const nVisibles    = actsVisibles.size;
+  const kMaxEl =
+    document.getElementById(
+      'nivelMax'
+    );
 
-  const cuerpo = document.getElementById('statsCombosBody');
+  const soloMaxEl =
+    document.getElementById(
+      'soloTamMax'
+    );
+
+  const modo =
+    modoEl?.value || 'exacto';
+
+  const alcance =
+    alcanceEl?.value || 'viaje';
+
+  const kMax =
+    parseInt(
+      kMaxEl?.value || '999',
+      10
+    );
+
+  const soloMax =
+    !!soloMaxEl?.checked;
+
+  const actividadesVisibles =
+    new Set(
+      ctx.actividadesSet
+    );
+
+  const nVisibles =
+    actividadesVisibles.size;
+
+  const cuerpo =
+    document.getElementById(
+      'statsCombosBody'
+    );
+
   cuerpo.innerHTML = '';
 
-  const combosMap = new Map(); // key -> Set(ids)
+  const combosMap =
+    new Map();
 
-  const keyFromSet = (set) => Array.from(set).sort((a,b)=>a.localeCompare(b)).join(' + ');
-  const addCombo = (key, id) => {
-    if (!combosMap.has(key)) combosMap.set(key, new Set());
-    combosMap.get(key).add(id);
+  const keyFromSet = set =>
+    Array.from(set)
+      .sort((a, b) =>
+        a.localeCompare(b)
+      )
+      .join(' + ');
+
+  const addCombo = (
+    key,
+    id
+  ) => {
+    if (
+      !combosMap.has(key)
+    ) {
+      combosMap.set(
+        key,
+        new Set()
+      );
+    }
+
+    combosMap
+      .get(key)
+      .add(id);
   };
-  const genSubsetsK = (arr, k, cb) => {
-    const n = arr.length, idx = [];
-    const back = (start, depth) => {
-      if (depth === k) { cb(idx.map(i => arr[i]).sort().join(' + ')); return; }
-      for (let i = start; i < n; i++) { idx.push(i); back(i+1, depth+1); idx.pop(); }
+
+  const genSubsetsK = (
+    arr,
+    k,
+    callback
+  ) => {
+    const n =
+      arr.length;
+
+    const idx = [];
+
+    const back = (
+      start,
+      depth
+    ) => {
+      if (depth === k) {
+        callback(
+          idx
+            .map(i => arr[i])
+            .sort()
+            .join(' + ')
+        );
+
+        return;
+      }
+
+      for (
+        let i = start;
+        i < n;
+        i++
+      ) {
+        idx.push(i);
+
+        back(
+          i + 1,
+          depth + 1
+        );
+
+        idx.pop();
+      }
     };
+
     back(0, 0);
   };
 
-  for (const g of grupos) {
+  /*
+   * =================================================
+   * 1. CONSTRUIMOS LAS COMBINACIONES EXISTENTES
+   * =================================================
+   */
+  for (const grupo of grupos) {
     if (alcance === 'viaje') {
-      const setViaje = new Set();
-      for (const f of ctx.fechasVisibles) {
-        const acts = g.itinerario?.[f] || [];
-        for (const a of acts) if (actsVisibles.has(a.actividad)) setViaje.add(a.actividad);
+      const setViaje =
+        obtenerSetActividadesVisiblesGrupoViaje(
+          grupo,
+          ctx
+        );
+
+      if (!setViaje.size) {
+        continue;
       }
-      if (setViaje.size === 0) continue;
 
       if (modo === 'exacto') {
-        if (setViaje.size <= kMax) addCombo(keyFromSet(setViaje), g.id);
+        if (
+          setViaje.size <= kMax
+        ) {
+          addCombo(
+            keyFromSet(
+              setViaje
+            ),
+            grupo.id
+          );
+        }
       } else {
-        const arr = Array.from(setViaje);
-        const maxK = Math.min(kMax, arr.length);
-        const minK = soloMax ? nVisibles : 1;
+        const arr =
+          Array.from(setViaje);
+
+        const maxK =
+          Math.min(
+            kMax,
+            arr.length
+          );
+
+        const minK =
+          soloMax
+            ? nVisibles
+            : 1;
+
         if (minK <= maxK) {
-          for (let k = minK; k <= maxK; k++) genSubsetsK(arr, k, (key) => addCombo(key, g.id));
+          for (
+            let k = minK;
+            k <= maxK;
+            k++
+          ) {
+            genSubsetsK(
+              arr,
+              k,
+              key =>
+                addCombo(
+                  key,
+                  grupo.id
+                )
+            );
+          }
         }
       }
 
-    } else { // mismo día
-      for (const f of ctx.fechasVisibles) {
-        const setDia = new Set(
-          (g.itinerario?.[f] || [])
-            .filter(a => actsVisibles.has(a.actividad))
-            .map(a => a.actividad)
-        );
-        if (setDia.size === 0) continue;
+    } else {
+      /*
+       * MISMO DÍA
+       */
+      for (
+        const fecha of
+        ctx.fechasVisibles
+      ) {
+        const setDia =
+          new Set(
+            obtenerActividadesVisiblesGrupoEnFecha(
+              grupo,
+              fecha,
+              actividadesVisibles
+            )
+          );
+
+        if (!setDia.size) {
+          continue;
+        }
 
         if (modo === 'exacto') {
-          if (setDia.size <= kMax) addCombo(keyFromSet(setDia), g.id);
+          if (
+            setDia.size <= kMax
+          ) {
+            addCombo(
+              keyFromSet(
+                setDia
+              ),
+              grupo.id
+            );
+          }
+
         } else {
-          const arr = Array.from(setDia);
-          const maxK = Math.min(kMax, arr.length);
-          const minK = soloMax ? nVisibles : 1;
-          if (minK <= maxK) {
-            for (let k = minK; k <= maxK; k++) genSubsetsK(arr, k, (key) => addCombo(key, g.id));
+          const arr =
+            Array.from(setDia);
+
+          const maxK =
+            Math.min(
+              kMax,
+              arr.length
+            );
+
+          const minK =
+            soloMax
+              ? nVisibles
+              : 1;
+
+          if (
+            minK <= maxK
+          ) {
+            for (
+              let k = minK;
+              k <= maxK;
+              k++
+            ) {
+              genSubsetsK(
+                arr,
+                k,
+                key =>
+                  addCombo(
+                    key,
+                    grupo.id
+                  )
+              );
+            }
           }
         }
       }
     }
   }
 
-  // Filtro "solo tamaño máximo" para EXACTO
-  if (soloMax && modo === 'exacto') {
-    for (const key of Array.from(combosMap.keys())) {
-      const size = key.split(' + ').length;
-      if (size !== nVisibles) combosMap.delete(key);
+  /*
+   * Solo combinaciones del tamaño máximo,
+   * igual que antes.
+   */
+  if (
+    soloMax &&
+    modo === 'exacto'
+  ) {
+    for (
+      const key of
+      Array.from(
+        combosMap.keys()
+      )
+    ) {
+      const size =
+        key
+          .split(' + ')
+          .length;
+
+      if (
+        size !== nVisibles
+      ) {
+        combosMap.delete(
+          key
+        );
+      }
     }
   }
 
-  // Ordena por tamaño y alfabético
-  const sorted = Array.from(combosMap.entries()).sort((a, b) => {
-    const sa = a[0].split(' + ').length, sb = b[0].split(' + ').length;
-    if (sa !== sb) return sa - sb;
-    return a[0].localeCompare(b[0]);
-  });
+  const sorted =
+    Array.from(
+      combosMap.entries()
+    ).sort(
+      (a, b) => {
+        const sa =
+          a[0]
+            .split(' + ')
+            .length;
 
-  sorted.forEach(([key, idSet]) => {
-    const idsCsv = Array.from(idSet).join(',');
-    const btn = `<button class="ver-grupos"
-      data-ids="${idsCsv}"
-      data-titulo="Grupos — ${key}"
-      data-context="combo"
-      data-combo="${key.split(' + ').map(encodeURIComponent).join(',')}"
-      data-alcance="${alcance}"
-      data-modo="${modo}"
-    >Ver grupos</button>`;
+        const sb =
+          b[0]
+            .split(' + ')
+            .length;
 
-    cuerpo.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td>${key}</td>
-        <td>${idSet.size}</td>
-        <td>${btn}</td>
-      </tr>`);
-  });
+        if (sa !== sb) {
+          return sa - sb;
+        }
 
-  cuerpo.onclick = (e) => {
-    const b = e.target.closest('.ver-grupos');
-    if (!b) return;
-    const ids = (b.dataset.ids || '').split(',').filter(Boolean);
-    mostrarListaDeGrupos(ids, b.dataset.titulo || 'Grupos', b.dataset);
+        return a[0]
+          .localeCompare(
+            b[0]
+          );
+      }
+    );
+
+  /*
+   * =================================================
+   * 2. UNIVERSO COMPLETO DEL DESTINO
+   * =================================================
+   */
+  const universo =
+    obtenerUniversoCombinaciones(
+      ctx
+    );
+
+  /*
+   * =================================================
+   * 3. PINTAMOS CUMPLEN / NO CUMPLEN
+   * =================================================
+   */
+  sorted.forEach(
+    ([key]) => {
+      const comboActs =
+        key
+          .split(' + ')
+          .filter(Boolean);
+
+      const evaluaciones =
+        universo.map(grupo => {
+          const analisis =
+            analizarGrupoContraCombinacion(
+              grupo,
+              comboActs,
+              ctx,
+              alcance,
+              modo
+            );
+
+          return {
+            grupo,
+            ...analisis
+          };
+        });
+
+      const cumplen =
+        evaluaciones.filter(
+          item => item.cumple
+        );
+
+      const noCumplen =
+        evaluaciones.filter(
+          item => !item.cumple
+        );
+
+      const boton = `
+        <button
+          class="ver-situacion-combo"
+          data-combo="${comboActs
+            .map(encodeURIComponent)
+            .join(',')}"
+          data-alcance="${alcance}"
+          data-modo="${modo}"
+        >
+          Ver situación
+        </button>
+
+        <div style="
+          margin-top:4px;
+          font-size:.82em;
+          line-height:1.35;
+        ">
+          <span style="color:#09832e;">
+            Cumplen: ${cumplen.length}
+          </span>
+
+          ·
+
+          <span style="color:#b42318;">
+            No cumplen: ${noCumplen.length}
+          </span>
+        </div>
+      `;
+
+      cuerpo.insertAdjacentHTML(
+        'beforeend',
+        `
+          <tr>
+            <td>
+              ${escapeHtmlReserva(
+                key
+              )}
+            </td>
+
+            <td>
+              ${cumplen.length}
+
+              <div style="
+                margin-top:3px;
+                font-size:.82em;
+              ">
+                No cumplen:
+                <strong>
+                  ${noCumplen.length}
+                </strong>
+              </div>
+            </td>
+
+            <td>
+              ${boton}
+            </td>
+          </tr>
+        `
+      );
+    }
+  );
+
+  cuerpo.onclick = event => {
+    const boton =
+      event.target.closest(
+        '.ver-situacion-combo'
+      );
+
+    if (!boton) {
+      return;
+    }
+
+    const comboActs =
+      (boton.dataset.combo || '')
+        .split(',')
+        .map(item =>
+          decodeURIComponent(item)
+        )
+        .filter(Boolean);
+
+    mostrarSituacionCombinacionGrupos(
+      comboActs,
+      ctx,
+      boton.dataset.alcance ||
+        'viaje',
+      boton.dataset.modo ||
+        'exacto'
+    );
   };
+}
+
+function mostrarSituacionCombinacionGrupos(
+  comboActs,
+  ctx,
+  alcance,
+  modo
+) {
+  const universo =
+    obtenerUniversoCombinaciones(
+      ctx
+    );
+
+  const evaluaciones =
+    universo
+      .map(grupo => {
+        const analisis =
+          analizarGrupoContraCombinacion(
+            grupo,
+            comboActs,
+            ctx,
+            alcance,
+            modo
+          );
+
+        return {
+          grupo,
+          ...analisis
+        };
+      })
+      .sort((a, b) => {
+        /*
+         * Primero mostramos los que NO cumplen.
+         * Así las posibles anomalías quedan arriba.
+         */
+        if (
+          a.cumple !== b.cumple
+        ) {
+          return a.cumple
+            ? 1
+            : -1;
+        }
+
+        return String(
+          a.grupo.numeroNegocio ||
+          a.grupo.id
+        ).localeCompare(
+          String(
+            b.grupo.numeroNegocio ||
+            b.grupo.id
+          ),
+          'es',
+          {
+            numeric: true
+          }
+        );
+      });
+
+  const cumplen =
+    evaluaciones.filter(
+      item => item.cumple
+    );
+
+  const noCumplen =
+    evaluaciones.filter(
+      item => !item.cumple
+    );
+
+  const titulo =
+    document.querySelector(
+      '#modalDetalle h3'
+    );
+
+  if (titulo) {
+    titulo.innerHTML = `
+      Combinación:
+      ${escapeHtmlReserva(
+        comboActs.join(' + ')
+      )}
+
+      <div style="
+        margin-top:6px;
+        font-size:.8em;
+        font-weight:400;
+      ">
+        Modo:
+        <strong>
+          ${
+            modo === 'exacto'
+              ? 'EXACTO'
+              : 'INCLUYE'
+          }
+        </strong>
+
+        ·
+
+        Alcance:
+        <strong>
+          ${
+            alcance === 'viaje'
+              ? 'VIAJE'
+              : 'MISMO DÍA'
+          }
+        </strong>
+
+        ·
+
+        <span style="color:#09832e;">
+          Cumplen:
+          <strong>
+            ${cumplen.length}
+          </strong>
+        </span>
+
+        ·
+
+        <span style="color:#b42318;">
+          No cumplen:
+          <strong>
+            ${noCumplen.length}
+          </strong>
+        </span>
+      </div>
+    `;
+  }
+
+  const dataRows =
+    evaluaciones.map(item => [
+      item.grupo.numeroNegocio ||
+        item.grupo.id,
+
+      item.grupo.nombreGrupo ||
+        '',
+
+      obtenerPaxGrupoContador(
+        item.grupo,
+        ctx.fechasVisibles
+      ),
+
+      item.grupo.programa ||
+        '',
+
+      item.cumple
+        ? '✅ CUMPLE'
+        : '⚠️ NO CUMPLE',
+
+      item.tiene.length
+        ? item.tiene.join(' + ')
+        : 'NINGUNA',
+
+      item.motivo ||
+
+        (
+          item.cumple
+            ? 'Cumple combinación'
+            : 'No cumple'
+        )
+    ]);
+
+  const columnas = [
+    {
+      data: 0,
+      title: 'N° Negocio'
+    },
+    {
+      data: 1,
+      title: 'Nombre Grupo'
+    },
+    {
+      data: 2,
+      title: 'PAX'
+    },
+    {
+      data: 3,
+      title: 'Programa'
+    },
+    {
+      data: 4,
+      title: 'Situación'
+    },
+    {
+      data: 5,
+      title: 'Actividades que tiene'
+    },
+    {
+      data: 6,
+      title: 'Motivo'
+    }
+  ];
+
+  renderTablaModal(
+    dataRows,
+    columnas
+  );
+
+  const modal =
+    document.getElementById(
+      'modalDetalle'
+    );
+
+  modal.style.zIndex =
+    '11000';
+
+  modal.style.display =
+    'block';
 }
 
 // ———  Modal “Ver grupos” reutilizable desde Estadísticas
