@@ -5999,3 +5999,365 @@ async function inspeccionarReservaContador(
 
 window.inspeccionarReservaContador =
   inspeccionarReservaContador;
+
+// =====================================================
+// REPARACIÓN HISTÓRICA
+// NAZARET 1514 CONTAMINADO EN SERVICIOS DE BRASIL
+// 21 DE JULIO DE 2026
+// =====================================================
+
+async function repararContaminacionNazaret1514() {
+  const DESTINO_OBJETIVO = 'BRASIL';
+  const NEGOCIO_OBJETIVO = '1514';
+  const DIA_OBJETIVO = '2026-07-21';
+
+  console.clear();
+
+  console.log(
+    '%c[REPARACIÓN] Iniciando limpieza NAZARET 1514 / BRASIL...',
+    'font-weight:bold;color:#b42318;'
+  );
+
+  const snapServicios =
+    await getDocs(
+      collection(
+        db,
+        'Servicios',
+        DESTINO_OBJETIVO,
+        'Listado'
+      )
+    );
+
+  let serviciosRevisados = 0;
+  let documentosModificados = 0;
+  let reservasReparadas = 0;
+  let cambiosEliminados = 0;
+
+  const detalle = [];
+
+  for (const servicioDoc of snapServicios.docs) {
+    serviciosRevisados++;
+
+    /*
+     * Leemos nuevamente el documento completo.
+     */
+    const ref = doc(
+      db,
+      'Servicios',
+      DESTINO_OBJETIVO,
+      'Listado',
+      servicioDoc.id
+    );
+
+    const snap = await getDoc(ref);
+
+    if (!snap.exists()) {
+      continue;
+    }
+
+    const data =
+      snap.data() || {};
+
+    const actividad =
+      data.servicio ||
+      servicioDoc.id;
+
+    const reservas =
+      data.reservas || {};
+
+    const payload = {};
+
+    let documentoTieneCambios = false;
+
+    for (
+      const [fecha, reserva]
+      of Object.entries(reservas)
+    ) {
+      if (!reserva) {
+        continue;
+      }
+
+      const revision =
+        reserva.revisionCambios;
+
+      if (
+        !revision ||
+        !Array.isArray(revision.cambios) ||
+        !revision.cambios.length
+      ) {
+        continue;
+      }
+
+      /*
+       * Esta reparación SOLO puede tocar revisiones
+       * generadas el 21 de julio de 2026.
+       */
+      const revisionEsDiaObjetivo =
+        String(
+          revision.ultimaRevision || ''
+        ).startsWith(
+          DIA_OBJETIVO
+        );
+
+      if (!revisionEsDiaObjetivo) {
+        continue;
+      }
+
+      /*
+       * Separamos los cambios falsos del 1514
+       * de cualquier otro cambio que pudiera existir.
+       */
+      const cambiosEliminar =
+        revision.cambios.filter(cambio =>
+          String(
+            cambio?.numeroNegocio || ''
+          ).trim() ===
+            NEGOCIO_OBJETIVO
+        );
+
+      if (!cambiosEliminar.length) {
+        continue;
+      }
+
+      const cambiosConservar =
+        revision.cambios.filter(cambio =>
+          String(
+            cambio?.numeroNegocio || ''
+          ).trim() !==
+            NEGOCIO_OBJETIVO
+        );
+
+      cambiosEliminados +=
+        cambiosEliminar.length;
+
+      reservasReparadas++;
+
+      documentoTieneCambios = true;
+
+      /*
+       * =================================================
+       * GUARDAR AUDITORÍA DE LA REPARACIÓN
+       * =================================================
+       */
+
+      payload[
+        `reservas.${fecha}.reparacionContaminacion1514`
+      ] = {
+        ejecutadaEn:
+          new Date().toISOString(),
+
+        ejecutadaPor:
+          auth.currentUser?.email ||
+          '',
+
+        motivo:
+          'Se elimina revisionCambios contaminada del negocio 1514 NAZARET en servicios BRASIL, generada el 21/07/2026.',
+
+        revisionOriginal:
+          {
+            estado:
+              revision.estado || '',
+
+            ultimaRevision:
+              revision.ultimaRevision || '',
+
+            cambios:
+              cambiosEliminar
+          }
+      };
+
+      /*
+       * =================================================
+       * SI TODAVÍA QUEDAN OTROS CAMBIOS REALES
+       * =================================================
+       */
+
+      if (cambiosConservar.length) {
+        payload[
+          `reservas.${fecha}.revisionCambios`
+        ] = {
+          ...revision,
+
+          estado:
+            'CON_CAMBIOS',
+
+          cambios:
+            cambiosConservar,
+
+          reparadoEn:
+            new Date().toISOString(),
+
+          reparadoPor:
+            auth.currentUser?.email ||
+            ''
+        };
+
+        /*
+         * Sigue necesitando revisión porque
+         * hay otros cambios reales.
+         */
+        payload[
+          `reservas.${fecha}.estado`
+        ] = 'REQUIERE_REENVIO';
+      }
+
+      /*
+       * =================================================
+       * SI NAZARET ERA EL ÚNICO CAMBIO
+       * =================================================
+       */
+      else {
+        payload[
+          `reservas.${fecha}.revisionCambios`
+        ] = {
+          estado:
+            'SIN_CAMBIOS',
+
+          ultimaRevision:
+            new Date().toISOString(),
+
+          cambios: [],
+
+          reparadoEn:
+            new Date().toISOString(),
+
+          reparadoPor:
+            auth.currentUser?.email ||
+            '',
+
+          motivoReparacion:
+            'Eliminada contaminación histórica NAZARET 1514 / BRASIL del 21/07/2026.'
+        };
+
+        /*
+         * Restauramos un estado operacional seguro.
+         *
+         * 1. Si existe estadoAntesRevision, usamos ese.
+         * 2. Si sabemos que fue enviado, volvemos a ENVIADA.
+         * 3. Si existe verificación PAX, volvemos a VERIFICADA.
+         * 4. Último fallback: PENDIENTE.
+         */
+
+        let estadoRestaurado = '';
+
+        if (
+          reserva.estadoAntesRevision &&
+          reserva.estadoAntesRevision !==
+            'REQUIERE_REENVIO'
+        ) {
+          estadoRestaurado =
+            reserva.estadoAntesRevision;
+        }
+
+        else if (
+          reserva.enviadaEn ||
+          reserva.enviadaPor
+        ) {
+          estadoRestaurado =
+            'ENVIADA';
+        }
+
+        else if (
+          reserva.verificacionPagos
+        ) {
+          estadoRestaurado =
+            'VERIFICADA';
+        }
+
+        else {
+          estadoRestaurado =
+            'PENDIENTE';
+        }
+
+        payload[
+          `reservas.${fecha}.estado`
+        ] =
+          estadoRestaurado;
+
+        payload[
+          `reservas.${fecha}.estadoAntesRevision`
+        ] = '';
+
+        detalle.push({
+          destino:
+            DESTINO_OBJETIVO,
+
+          actividad,
+
+          fecha,
+
+          negocio:
+            NEGOCIO_OBJETIVO,
+
+          eliminados:
+            cambiosEliminar.length,
+
+          estadoAnterior:
+            reserva.estado || '',
+
+          estadoRestaurado
+        });
+      }
+    }
+
+    if (
+      documentoTieneCambios &&
+      Object.keys(payload).length
+    ) {
+      await updateDoc(
+        ref,
+        payload
+      );
+
+      documentosModificados++;
+
+      console.log(
+        `[REPARACIÓN] ${actividad}: actualizado`
+      );
+    }
+  }
+
+  const resultado = {
+    ok: true,
+
+    destino:
+      DESTINO_OBJETIVO,
+
+    negocio:
+      NEGOCIO_OBJETIVO,
+
+    dia:
+      DIA_OBJETIVO,
+
+    serviciosRevisados,
+
+    documentosModificados,
+
+    reservasReparadas,
+
+    cambiosEliminados,
+
+    detalle
+  };
+
+  console.log(
+    '%c[REPARACIÓN] TERMINADA',
+    'font-weight:bold;color:#09832e;'
+  );
+
+  console.table(
+    detalle
+  );
+
+  console.log(
+    resultado
+  );
+
+  window.__REPARACION_NAZARET_1514__ =
+    resultado;
+
+  return resultado;
+}
+
+window.repararContaminacionNazaret1514 =
+  repararContaminacionNazaret1514;
