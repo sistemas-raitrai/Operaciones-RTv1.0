@@ -379,25 +379,72 @@ async function loadBodegasIntoSelect(){
   const sel = $('selBodega');
   sel.innerHTML = '';
 
-  const snap = await getDocs(query(bodegasCol(), orderBy('nombre','asc')));
-  state.bodegas = snap.docs.map(d=>({ id:d.id, ...(d.data()||{}) }));
+  const snap = await getDocs(
+    query(
+      bodegasCol(),
+      orderBy('nombre', 'asc')
+    )
+  );
 
+  state.bodegas = snap.docs.map(d => ({
+    id: d.id,
+    ...(d.data() || {})
+  }));
+
+  /*
+   * Bodega preferida del sistema.
+   *
+   * No dependemos del orden alfabético.
+   */
+  const bodegaPrincipal = state.bodegas.find(b => {
+    return U(b.nombre) === 'BODEGAS';
+  });
+
+  /*
+   * Si todavía no existe una selección:
+   * 1. Preferimos BODEGAS.
+   * 2. Si no existe, usamos la primera.
+   */
   if(!state.bodegaId){
-    state.bodegaId = state.bodegas[0]?.id || null;
-  }else if(!state.bodegas.some(b=>b.id===state.bodegaId)){
-    state.bodegaId = state.bodegas[0]?.id || null;
+    state.bodegaId =
+      bodegaPrincipal?.id ||
+      state.bodegas[0]?.id ||
+      null;
+  }
+
+  /*
+   * Si la bodega que estaba seleccionada ya no existe,
+   * volvemos a BODEGAS.
+   */
+  else if(
+    !state.bodegas.some(
+      b => b.id === state.bodegaId
+    )
+  ){
+    state.bodegaId =
+      bodegaPrincipal?.id ||
+      state.bodegas[0]?.id ||
+      null;
   }
 
   for(const b of state.bodegas){
     const opt = document.createElement('option');
+
     opt.value = b.id;
-    opt.textContent = b.nombre || '(sin nombre)';
+    opt.textContent =
+      b.nombre ||
+      '(sin nombre)';
+
     sel.appendChild(opt);
   }
-  sel.value = state.bodegaId || '';
+
+  sel.value =
+    state.bodegaId ||
+    '';
 
   sel.onchange = async ()=>{
     state.bodegaId = sel.value;
+
     await loadCajas();
     await loadItems();
   };
@@ -686,83 +733,187 @@ async function loadItems(){
 
 /* UI filters */
 function wireFilters(){
+
   $('btnRefrescar').onclick = async ()=>{
     await loadCajas();
     await loadItems();
   };
-  $('txtSearch').oninput = renderItems;
-  $('selFiltroStock').onchange = renderItems;
 
+
+  $('txtSearch').oninput =
+    renderItems;
+
+
+  $('selFiltroStock').onchange =
+    renderItems;
+
+
+  /*
+   * MODAL MOVIMIENTOS
+   */
   $('btnVerMovimientos').onclick = async ()=>{
-    if(!state.bodegaId) return;
-  
-    $('movBackdrop').style.display = 'flex';
-  
-    // reset paginación
+
+    if(!state.bodegaId){
+      return;
+    }
+
+    $('movBackdrop').style.display =
+      'flex';
+
+
+    /*
+     * Reset paginación.
+     */
     state.mov.lastDoc = null;
     state.mov.done = false;
+
     $('movTbody').innerHTML = '';
-    $('movEstado').textContent = 'Cargando...';
-  
-    // carga inicial rápida: 10
-    await cargarMasMovimientos({ pageSize: 10, reset: true });
+
+    $('movEstado').textContent =
+      'Cargando...';
+
+
+    /*
+     * Carga inicial rápida.
+     */
+    await cargarMasMovimientos({
+      pageSize: 10,
+      reset: true
+    });
   };
 
 
-  $('btnCerrarMov').onclick = ()=> $('movBackdrop').style.display = 'none';
-  $('movBackdrop').addEventListener('click', (ev)=>{
-    if(ev.target === $('movBackdrop')) $('movBackdrop').style.display = 'none';
-  });
+  /*
+   * IMPORTANTE:
+   *
+   * El modal se cierra SOLAMENTE
+   * con este botón.
+   *
+   * Ya no cerramos haciendo clic
+   * en el backdrop.
+   */
+  $('btnCerrarMov').onclick = ()=>{
+    $('movBackdrop').style.display =
+      'none';
+  };
+
+
+  /*
+   * VER MÁS MOVIMIENTOS
+   */
   $('btnMovMas').onclick = async ()=>{
-    if(!state.bodegaId) return;
-    await cargarMasMovimientos({ pageSize: 50, reset: false });
+
+    if(!state.bodegaId){
+      return;
+    }
+
+    await cargarMasMovimientos({
+      pageSize: 50,
+      reset: false
+    });
   };
 
-    // ✅ Exportar inventario (lo que está filtrado/buscado en cards)
-    $('btnExportInv').onclick = async ()=>{
-      try{
-        if(!state.bodegaId) return;
-  
-        // Asegura que variantes/ubicaciones estén listas
-        // (si ya cargaste items recién, esto será rápido)
-        setEstado('Preparando exportación...');
-        toast('Generando Excel...');
-  
-        exportarInventarioExcelFiltrado();
-  
-        setEstado('Listo.');
-        toast('Excel descargado ✅');
-      }catch(e){
-        console.error(e);
-        setEstado('Error exportando.');
-        toast('Error exportando inventario.');
-      }
-    };
 
-
-    $('btnExportMov').onclick = async ()=>{
-    if(!state.bodegaId) return;
+  /*
+   * EXPORTAR INVENTARIO
+   */
+  $('btnExportInv').onclick = async ()=>{
 
     try{
-      // feedback UI
-      setEstado('Exportando movimientos...');
-      toast('Preparando Excel...');
+
+      if(!state.bodegaId){
+        return;
+      }
+
+
+      setEstado(
+        'Preparando exportación...'
+      );
+
+      toast(
+        'Generando Excel...'
+      );
+
+
+      exportarInventarioExcelFiltrado();
+
+
+      setEstado(
+        'Listo.'
+      );
+
+      toast(
+        'Excel descargado ✅'
+      );
+
+
+    }catch(e){
+
+      console.error(e);
+
+      setEstado(
+        'Error exportando.'
+      );
+
+      toast(
+        'Error exportando inventario.'
+      );
+    }
+  };
+
+
+  /*
+   * EXPORTAR MOVIMIENTOS
+   */
+  $('btnExportMov').onclick = async ()=>{
+
+    if(!state.bodegaId){
+      return;
+    }
+
+    try{
+
+      setEstado(
+        'Exportando movimientos...'
+      );
+
+      toast(
+        'Preparando Excel...'
+      );
+
 
       await exportarMovimientosExcel({
-        bodegaId: state.bodegaId,
-        pageSize: 800 // puedes subir/bajar
+        bodegaId:
+          state.bodegaId,
+
+        pageSize:
+          800
       });
 
-      setEstado('Listo.');
-      toast('Excel descargado ✅');
+
+      setEstado(
+        'Listo.'
+      );
+
+      toast(
+        'Excel descargado ✅'
+      );
+
+
     }catch(e){
+
       console.error(e);
-      setEstado('Error exportando.');
-      toast('Error exportando Excel.');
+
+      setEstado(
+        'Error exportando.'
+      );
+
+      toast(
+        'Error exportando Excel.'
+      );
     }
   };
 }
-
 
 
 // ======================
@@ -1032,115 +1183,435 @@ async function deleteItem(it){
 }
 
 function wireCajasModal(){
-  $('btnCajasCerrar').onclick = ()=> $('cajasBackdrop').style.display = 'none';
-  $('cajasBackdrop').addEventListener('click', (ev)=>{
-    if(ev.target === $('cajasBackdrop')) $('cajasBackdrop').style.display = 'none';
-  });
 
-  // ✅ CREACIÓN MASIVA + STOCK INICIAL (por ítem del modal)
+  /*
+   * CERRAR MODAL
+   *
+   * IMPORTANTE:
+   * Ya NO cerramos el modal haciendo clic
+   * sobre el fondo/backdrop.
+   *
+   * Solo se cierra con el botón "Cerrar".
+   */
+  $('btnCajasCerrar').onclick = ()=>{
+    $('cajasBackdrop').style.display = 'none';
+  };
+
+
+  /*
+   * CREACIÓN DE CAJAS
+   *
+   * Hasta:
+   *
+   * 0     => crea solamente "Desde"
+   * vacío => crea solamente "Desde"
+   * >=Desde => crea rango
+   */
   $('btnCxCrearMasivo').onclick = async ()=>{
-    if(!state.bodegaId) return;
+
+    if(!state.bodegaId){
+      return;
+    }
 
     const it = state.modal.item;
+
     if(!it){
       toast('Abre el modal desde un ítem.');
       return;
     }
 
-    const prefijo = ( $('cxPrefijo').value || '' ).trim();
-    const desde = safeNum($('cxDesde').value, 0);
-    const hasta = safeNum($('cxHasta').value, 0);
-    const ubic = normalizeUbic($('cxUbicMasivo')?.value || '');
-    const stockInicial = Math.max(0, safeNum($('cxStockInicial').value, 0));
 
-    if(!prefijo){ toast('Falta prefijo'); return; }
-    if(desde <= 0 || hasta <= 0 || hasta < desde){
-      toast('Rango inválido (Desde/Hasta)');
+    const prefijo =
+      ($('cxPrefijo').value || '')
+        .trim();
+
+
+    const desde =
+      Math.floor(
+        safeNum(
+          $('cxDesde').value,
+          0
+        )
+      );
+
+
+    const hastaIngresado =
+      Math.floor(
+        safeNum(
+          $('cxHasta').value,
+          0
+        )
+      );
+
+
+    const ubic =
+      normalizeUbic(
+        $('cxUbicMasivo')?.value || ''
+      );
+
+
+    const stockInicial =
+      Math.max(
+        0,
+        Math.floor(
+          safeNum(
+            $('cxStockInicial').value,
+            0
+          )
+        )
+      );
+
+
+    /*
+     * VALIDACIONES
+     */
+
+    if(!prefijo){
+      toast('Falta prefijo');
       return;
     }
 
+
+    if(desde <= 0){
+      toast('Desde debe ser mayor a 0');
+      return;
+    }
+
+
+    /*
+     * Si Hasta es:
+     *
+     * 0
+     * vacío
+     *
+     * entendemos:
+     *
+     * "crear solamente la caja Desde"
+     */
+    const hasta =
+      hastaIngresado <= 0
+        ? desde
+        : hastaIngresado;
+
+
+    if(hasta < desde){
+      toast('Hasta no puede ser menor que Desde');
+      return;
+    }
+
+
     try{
-      setEstado('Creando cajas...');
-      await loadCajas(); // asegura state.cajas actualizado
-      const existentes = new Set(state.cajas.map(c => U(c.nombre || '')));
 
-      let creadas = 0;
-      let stockAplicado = 0;
+      /*
+       * MENSAJE DE CARGA
+       */
 
-      // ✅ Si hay stock inicial, preguntamos UNA VEZ si es por talla
-      let varianteMasiva = null;
-      if(stockInicial > 0){
-        const v = ($('cxVarianteMasiva')?.value || '').trim(); // '' => general
-        varianteMasiva = v ? U(v) : null;
+      if(desde === hasta){
+
+        setEstado(
+          `Creando caja ${prefijo}${desde}...`
+        );
+
+      }else{
+
+        setEstado(
+          `Creando cajas ${prefijo}${desde} a ${prefijo}${hasta}...`
+        );
+
       }
 
 
+      /*
+       * Aseguramos que state.cajas
+       * esté actualizado.
+       */
+      await loadCajas();
 
-      for(let i=desde; i<=hasta; i++){
-        const nombre = `${prefijo}${i}`.trim();
-        const key = U(nombre);
-        if(existentes.has(key)) continue;
 
-        const cRef = await addDoc(cajasCol(state.bodegaId), {
-          nombre,
-          ubicacion: ubic || '',
-          creadoEn: serverTimestamp(),
-          creadoPor: state.user?.email || null,
-          actualizadoEn: serverTimestamp()
-        });
+      const existentes =
+        new Set(
+          state.cajas.map(
+            c => U(c.nombre || '')
+          )
+        );
+
+
+      let creadas = 0;
+      let existentesOmitidas = 0;
+      let stockAplicado = 0;
+
+
+      /*
+       * TALLA / VARIANTE
+       *
+       * Se lee UNA VEZ.
+       *
+       * Ej:
+       * M
+       * L
+       * XL
+       *
+       * vacío = stock general
+       */
+      let varianteMasiva = null;
+
+      if(stockInicial > 0){
+
+        const v =
+          (
+            $('cxVarianteMasiva')?.value ||
+            ''
+          ).trim();
+
+        varianteMasiva =
+          v
+            ? U(v)
+            : null;
+      }
+
+
+      /*
+       * CREACIÓN
+       */
+
+      for(
+        let i = desde;
+        i <= hasta;
+        i++
+      ){
+
+        const nombre =
+          `${prefijo}${i}`.trim();
+
+
+        const key =
+          U(nombre);
+
+
+        /*
+         * No duplicamos cajas.
+         */
+        if(existentes.has(key)){
+          existentesOmitidas++;
+          continue;
+        }
+
+
+        /*
+         * Crear caja.
+         */
+        const cRef =
+          await addDoc(
+            cajasCol(state.bodegaId),
+            {
+              nombre,
+
+              ubicacion:
+                ubic || '',
+
+              creadoEn:
+                serverTimestamp(),
+
+              creadoPor:
+                state.user?.email || null,
+
+              actualizadoEn:
+                serverTimestamp()
+            }
+          );
+
 
         existentes.add(key);
+
         creadas++;
 
-        // ✅ Si hay stock inicial, lo asignamos a este ítem en esa caja (movimiento "Carga inicial masiva")
+
+        /*
+         * STOCK INICIAL
+         *
+         * Solo si es > 0.
+         *
+         * Aquí se mantiene exactamente
+         * la lógica actual de variantes.
+         */
         if(stockInicial > 0){
+
           await applyDeltaToItemCaja({
-            bodegaId: state.bodegaId,
-            itemId: it.id,
-            cajaId: cRef.id,
-            delta: +stockInicial,
-            nota: varianteMasiva
-              ? `Carga inicial masiva (${nombre}) (${varianteMasiva})`
-              : `Carga inicial masiva (${nombre})`,
-            variante: varianteMasiva
+            bodegaId:
+              state.bodegaId,
+
+            itemId:
+              it.id,
+
+            cajaId:
+              cRef.id,
+
+            delta:
+              +stockInicial,
+
+            nota:
+              varianteMasiva
+                ? `Carga inicial (${nombre}) (${varianteMasiva})`
+                : `Carga inicial (${nombre})`,
+
+            variante:
+              varianteMasiva
           });
+
+
           stockAplicado++;
+        }
+      }
+
+
+      /*
+       * MENSAJE FINAL
+       */
+
+      if(creadas === 0){
+
+        if(existentesOmitidas > 0){
+          toast(
+            'La caja o cajas indicadas ya existen.'
+          );
+        }else{
+          toast(
+            'No se crearon cajas.'
+          );
         }
 
       }
 
-      toast(`Cajas creadas: ${creadas} ✅ · Stock aplicado: ${stockAplicado}`);
+      else if(creadas === 1){
+
+        toast(
+          `Caja creada ✅${
+            stockInicial > 0
+              ? ` · Stock: ${stockInicial}`
+              : ''
+          }${
+            varianteMasiva
+              ? ` · ${varianteMasiva}`
+              : ''
+          }`
+        );
+
+      }
+
+      else{
+
+        toast(
+          `Cajas creadas: ${creadas} ✅ · Stock aplicado: ${stockAplicado}`
+        );
+
+      }
+
+
       setEstado('Listo.');
 
-      // refrescar UI
+
+      /*
+       * Refrescamos información.
+       */
+
       await loadCajas();
+
       await loadItems();
-      await openCajasModal(it, true);
+
+      await openCajasModal(
+        it,
+        true
+      );
+
+
     }catch(e){
+
       console.error(e);
-      toast('Error en creación masiva');
-      setEstado('Error.');
+
+      toast(
+        'Error creando caja(s)'
+      );
+
+      setEstado(
+        'Error.'
+      );
     }
   };
 }
 
-
-async function openCajasModal(it, keepOpen=false){
-  if(!state.bodegaId) return;
+async function openCajasModal(
+  it,
+  keepOpen = false
+){
+  if(!state.bodegaId){
+    return;
+  }
 
   state.modal.item = it;
-  $('cajasTitle').textContent = `Cajas · ${it.nombre || ''}`;
 
-  $('cxPrefijo').value = 'A';
-  $('cxDesde').value = '1';
-  $('cxHasta').value = '30';
-  $('cxUbicMasivo').value = 'HUECHURABA';
-  $('cxStockInicial').value = '50';
+  $('cajasTitle').textContent =
+    `Cajas · ${it.nombre || ''}`;
 
-  if(!keepOpen) $('cajasBackdrop').style.display = 'flex';
+
+  /*
+   * Solo reseteamos el formulario
+   * cuando el usuario ABRE realmente el modal.
+   *
+   * Si keepOpen=true significa que estamos
+   * refrescando después de una operación.
+   *
+   * En ese caso NO borramos lo que el usuario
+   * tenía escrito.
+   */
+  if(!keepOpen){
+
+    $('cxPrefijo').value =
+      'A';
+
+    $('cxDesde').value =
+      '1';
+
+    /*
+     * 0 = una sola caja
+     */
+    $('cxHasta').value =
+      '0';
+
+
+    /*
+     * Ubicación predeterminada.
+     */
+    $('cxUbicMasivo').value =
+      'HUECHURABA';
+
+
+    /*
+     * Evitamos crear stock accidentalmente.
+     */
+    $('cxStockInicial').value =
+      '0';
+
+
+    /*
+     * Sin talla predeterminada.
+     */
+    if($('cxVarianteMasiva')){
+      $('cxVarianteMasiva').value =
+        '';
+    }
+
+
+    $('cajasBackdrop').style.display =
+      'flex';
+  }
+
 
   await loadCajas();
-  await loadStocksForItem(it.id);
+
+  await loadStocksForItem(
+    it.id
+  );
+
   await refreshCajasModalTable();
 }
 
