@@ -348,17 +348,30 @@ async function boot(){
 }
 
 async function ensureDefaultBodegasIfEmpty(){
-  const snap = await getDocs(query(bodegasCol(), orderBy('nombre','asc'), limit(5)));
-  if(snap.empty){
-    const defaults = ['Bodega Externa', 'Oficina'];
-    for(const nombre of defaults){
-      await addDoc(bodegasCol(), {
-        nombre,
-        creadoEn: serverTimestamp(),
-        creadoPor: state.user?.email || null,
-        activo: true
-      });
-    }
+  const snap = await getDocs(
+    query(
+      bodegasCol(),
+      orderBy('nombre', 'asc'),
+      limit(5)
+    )
+  );
+
+  if(!snap.empty){
+    return;
+  }
+
+  const defaults = [
+    'BODEGAS',
+    'Oficina'
+  ];
+
+  for(const nombre of defaults){
+    await addDoc(bodegasCol(), {
+      nombre,
+      creadoEn: serverTimestamp(),
+      creadoPor: state.user?.email || null,
+      activo: true
+    });
   }
 }
 
