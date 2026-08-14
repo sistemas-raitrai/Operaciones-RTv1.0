@@ -13,7 +13,8 @@ import {
   setDoc,
   serverTimestamp,
   query,
-  where
+  where,
+  deleteField
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 import {
   getAuth, onAuthStateChanged, signOut
@@ -198,6 +199,210 @@ function refServicioContador(destino, actividad) {
   // Las reservas, snapshots, verificaciones e historial operacional
   // siguen viviendo en la colección antigua Servicios.
   return doc(db, 'Servicios', destino, 'Listado', actividad);
+}
+
+async function guardarVerificacionPagosSeparada(
+  refServicio,
+  verificacion
+) {
+  if (
+    !refServicio ||
+    !verificacion
+  ) {
+    throw new Error(
+      'No se puede guardar la verificación de pagos sin reserva o datos.'
+    );
+  }
+
+  /*
+   * =====================================================
+   * NUEVA ESTRUCTURA
+   * =====================================================
+   *
+   * La fotografía completa de la verificación NO se
+   * guarda nuevamente dentro de cada fecha de reservas.
+   *
+   * Se guarda UNA SOLA VEZ en:
+   *
+   * Servicios/{DESTINO}/Listado/{ACTIVIDAD}/
+   * VerificacionesPagos/{ID}
+   *
+   * Luego cada fecha conserva solamente el ID.
+   */
+  const coleccionVerificaciones =
+    collection(
+      refServicio,
+      'VerificacionesPagos'
+    );
+
+  /*
+   * doc(collection(...)) genera automáticamente
+   * un ID único sin necesidad de addDoc().
+   */
+  const refVerificacion =
+    doc(
+      coleccionVerificaciones
+    );
+
+  const guardadoEn =
+    verificacion.guardadoEn ||
+    new Date().toISOString();
+
+  await setDoc(
+    refVerificacion,
+    {
+      ...verificacion,
+
+      guardadoEn,
+
+      createdAt:
+        serverTimestamp()
+    }
+  );
+
+  console.log(
+    '[CONTADOR] Verificación de pagos guardada separadamente:',
+    {
+      id:
+        refVerificacion.id,
+
+      destino:
+        verificacion.destino || '',
+
+      actividad:
+        verificacion.actividad || '',
+
+      grupos:
+        Array.isArray(
+          verificacion.grupos
+        )
+          ? verificacion.grupos.length
+          : 0
+    }
+  );
+
+  return {
+    id:
+      refVerificacion.id,
+
+    guardadoEn
+  };
+}
+
+
+async function obtenerVerificacionPagosReserva(
+  refServicio,
+  reserva,
+  cache = null
+) {
+  if (!reserva) {
+    return null;
+  }
+
+  /*
+   * =====================================================
+   * CAMINO NUEVO
+   * =====================================================
+   *
+   * Las reservas nuevas solamente tendrán:
+   *
+   * verificacionPagosId
+   *
+   * La fotografía completa vive en la subcolección.
+   */
+  const verificacionId =
+    String(
+      reserva.verificacionPagosId ||
+      ''
+    ).trim();
+
+  if (verificacionId) {
+    const claveCache =
+      `NUEVA__${verificacionId}`;
+
+    if (
+      cache instanceof Map &&
+      cache.has(claveCache)
+    ) {
+      return cache.get(
+        claveCache
+      );
+    }
+
+    try {
+      const refVerificacion =
+        doc(
+          collection(
+            refServicio,
+            'VerificacionesPagos'
+          ),
+          verificacionId
+        );
+
+      const snapVerificacion =
+        await getDoc(
+          refVerificacion
+        );
+
+      if (
+        snapVerificacion.exists()
+      ) {
+        const data = {
+          id:
+            snapVerificacion.id,
+
+          ...snapVerificacion.data()
+        };
+
+        if (
+          cache instanceof Map
+        ) {
+          cache.set(
+            claveCache,
+            data
+          );
+        }
+
+        return data;
+      }
+
+      console.warn(
+        '[CONTADOR] No existe la verificación referenciada:',
+        verificacionId
+      );
+
+    } catch (error) {
+      console.error(
+        '[CONTADOR] Error cargando verificación separada:',
+        verificacionId,
+        error
+      );
+    }
+  }
+
+  /*
+   * =====================================================
+   * COMPATIBILIDAD CON RESERVAS ANTIGUAS
+   * =====================================================
+   *
+   * Antes guardábamos:
+   *
+   * reservas.FECHA.verificacionPagos = { fotografía completa }
+   *
+   * No eliminamos esa compatibilidad.
+   *
+   * Por lo tanto todo lo antiguo continúa funcionando.
+   */
+  if (
+    reserva.verificacionPagos &&
+    Array.isArray(
+      reserva.verificacionPagos.grupos
+    )
+  ) {
+    return reserva.verificacionPagos;
+  }
+
+  return null;
 }
 
 async function asegurarDocumentoServicioContador(
@@ -2828,6 +3033,22 @@ async function enviarReserva() {
     
       return;
     }
+
+    /*
+     * =====================================================
+     * GUARDAR FOTOGRAFÍA DE PAGOS UNA SOLA VEZ
+     * =====================================================
+     *
+     * Antes esta misma fotografía se copiaba dentro de
+     * todas las fechas de la reserva.
+     *
+     * Ahora queda una sola vez en VerificacionesPagos.
+     */
+    const verificacionSeparada =
+      await guardarVerificacionPagosSeparada(
+        ref,
+        verificacionActualizada
+      );
     
     const payload = {};
     
@@ -2876,13 +3097,38 @@ async function enviarReserva() {
         '';
     
       /*
-       * Se guarda exactamente la verificación
-       * realizada por el usuario.
+       * =====================================================
+       * REFERENCIA LIVIANA A LA VERIFICACIÓN
+       * =====================================================
+       *
+       * La fotografía completa ya vive en:
+       *
+       * VerificacionesPagos/{ID}
+       *
+       * Dentro de cada fecha guardamos solamente su referencia.
+       */
+      payload[
+        `reservas.${fecha}.verificacionPagosId`
+      ] =
+        verificacionSeparada.id;
+      
+      payload[
+        `reservas.${fecha}.verificacionPagosGuardadaEn`
+      ] =
+        verificacionSeparada.guardadoEn;
+      
+      /*
+       * Si esta fecha todavía utiliza el formato antiguo,
+       * eliminamos la fotografía duplicada.
+       *
+       * Esto además hará que el documento Servicios se vaya
+       * ACHICANDO automáticamente a medida que se vuelvan
+       * a verificar/enviar las reservas.
        */
       payload[
         `reservas.${fecha}.verificacionPagos`
       ] =
-        verificacionActualizada;
+        deleteField();
     
       payload[
         `reservas.${fecha}.revisionCambios`
@@ -5854,19 +6100,33 @@ async function revisarCambiosReservasEnviadas(
   todosLosReservas,
   onProgreso = null
 ) {
-  for (let i = 0; i < servicios.length; i++) {
-    const servicio = servicios[i];
-    const reservas = todosLosReservas[i] || {};
+  for (
+    let i = 0;
+    i < servicios.length;
+    i++
+  ) {
+    const servicio =
+      servicios[i];
+
+    const reservas =
+      todosLosReservas[i] || {};
 
     const payload = {};
 
     /*
-     * Solamente revisamos fechas que actualmente
-     * siguen perteneciendo a esta actividad/destino.
+     * Referencia al documento del servicio.
      *
-     * Así una antigua reserva del 05/12 o 21/12
-     * no continúa generando alertas si POOL PARTY
-     * ya no ocurre esos días.
+     * También nos permitirá leer su subcolección
+     * VerificacionesPagos.
+     */
+    const refServicio =
+      refServicioContador(
+        servicio.destino,
+        servicio.nombre
+      );
+
+    /*
+     * Solamente revisamos fechas actualmente vigentes.
      */
     const fechasVigentes =
       new Set(
@@ -5877,16 +6137,33 @@ async function revisarCambiosReservasEnviadas(
       );
 
     /*
-     * Evita consultar varias veces la misma fotografía.
-     * Una misma verificación normalmente está guardada
-     * en todas las fechas de la actividad.
+     * Una misma fotografía puede estar referenciada
+     * por muchas fechas.
+     *
+     * Este caché evita volver a descargar el mismo
+     * documento desde Firestore.
      */
-    const cacheRevisiones = new Map();
+    const cacheVerificacionesPagos =
+      new Map();
 
-    for (const [fecha, reserva] of Object.entries(reservas)) {
-      if (!reserva) continue;
+    /*
+     * Este segundo caché evita volver a consultar
+     * Sistema de Pagos para una misma fotografía.
+     */
+    const cacheRevisiones =
+      new Map();
 
-      if (!fechasVigentes.has(fecha)) {
+    for (
+      const [fecha, reserva]
+      of Object.entries(reservas)
+    ) {
+      if (!reserva) {
+        continue;
+      }
+
+      if (
+        !fechasVigentes.has(fecha)
+      ) {
         continue;
       }
 
@@ -5896,34 +6173,49 @@ async function revisarCambiosReservasEnviadas(
         'REQUIERE_REENVIO'
       ];
 
-      if (!estadosRevisables.includes(reserva.estado)) {
-        continue;
-      }
-
-      const verificacion =
-        reserva.verificacionPagos;
-
       if (
-        !verificacion ||
-        !Array.isArray(verificacion.grupos)
+        !estadosRevisables.includes(
+          reserva.estado
+        )
       ) {
         continue;
       }
+
       /*
-       * =====================================================
-       * PROTECCIÓN CONTRA FOTOGRAFÍAS HISTÓRICAS CONTAMINADAS
-       * =====================================================
+       * =================================================
+       * OBTENER FOTOGRAFÍA
+       * =================================================
        *
-       * Una verificación guardada dentro de:
+       * La función intenta primero:
        *
-       * Servicios/BRASIL/Listado/POOL PARTY
+       * verificacionPagosId
        *
-       * debe decir también:
+       * y si no existe usa automáticamente:
        *
-       * destino = BRASIL
-       * actividad = POOL PARTY
+       * verificacionPagos
        *
-       * Si dice otra cosa, no se vuelve a utilizar.
+       * para mantener compatibilidad histórica.
+       */
+      const verificacion =
+        await obtenerVerificacionPagosReserva(
+          refServicio,
+          reserva,
+          cacheVerificacionesPagos
+        );
+
+      if (
+        !verificacion ||
+        !Array.isArray(
+          verificacion.grupos
+        )
+      ) {
+        continue;
+      }
+
+      /*
+       * =================================================
+       * PROTECCIÓN CONTRA FOTOGRAFÍAS CONTAMINADAS
+       * =================================================
        */
       if (
         normalizarDestinoContador(
@@ -5944,39 +6236,55 @@ async function revisarCambiosReservasEnviadas(
           {
             servicioDestino:
               servicio.destino,
-      
+
             servicioActividad:
               servicio.nombre,
-      
+
             verificacionDestino:
               verificacion.destino,
-      
+
             verificacionActividad:
               verificacion.actividad,
-      
+
             fecha
           }
         );
-      
+
         continue;
       }
 
       /*
-       * Las fechas de una misma reserva suelen contener
-       * exactamente la misma verificación.
+       * =================================================
+       * IDENTIFICAR LA FOTOGRAFÍA
+       * =================================================
+       *
+       * En las nuevas usamos preferentemente el ID.
+       * En las antiguas mantenemos la clave histórica.
        */
-      const claveRevision = [
-        verificacion.guardadoEn || '',
-        verificacion.fecha || '',
-        verificacion.destino || servicio.destino,
-        verificacion.actividad || servicio.nombre
-      ].join('__');
+      const claveRevision =
+        reserva.verificacionPagosId
+          ? `ID__${reserva.verificacionPagosId}`
+          : [
+              verificacion.guardadoEn || '',
+              verificacion.fecha || '',
+              verificacion.destino ||
+                servicio.destino,
+              verificacion.actividad ||
+                servicio.nombre
+            ].join('__');
 
       let cambios;
 
-      if (cacheRevisiones.has(claveRevision)) {
+      if (
+        cacheRevisiones.has(
+          claveRevision
+        )
+      ) {
         cambios =
-          cacheRevisiones.get(claveRevision);
+          cacheRevisiones.get(
+            claveRevision
+          );
+
       } else {
         cambios =
           await detectarCambiosEnVerificacionGuardada(
@@ -5992,21 +6300,31 @@ async function revisarCambiosReservasEnviadas(
       const fechaRevision =
         new Date().toISOString();
 
+      /*
+       * =================================================
+       * SIN CAMBIOS
+       * =================================================
+       */
       if (!cambios.length) {
         payload[
           `reservas.${fecha}.revisionCambios`
         ] = {
-          estado: 'SIN_CAMBIOS',
-          ultimaRevision: fechaRevision,
+          estado:
+            'SIN_CAMBIOS',
+
+          ultimaRevision:
+            fechaRevision,
+
           cambios: []
         };
 
         /*
-         * Si estaba marcada para reenvío pero el cambio
-         * ya fue revertido, restauramos el estado.
+         * Si estaba esperando reenvío pero el cambio
+         * desapareció, restauramos su estado anterior.
          */
         if (
-          reserva.estado === 'REQUIERE_REENVIO'
+          reserva.estado ===
+            'REQUIERE_REENVIO'
         ) {
           const estadoRestaurado =
             reserva.estadoAntesRevision ||
@@ -6014,13 +6332,9 @@ async function revisarCambiosReservasEnviadas(
 
           payload[
             `reservas.${fecha}.estado`
-          ] = estadoRestaurado;
+          ] =
+            estadoRestaurado;
 
-          /*
-           * No escribimos null en Firestore.
-           * Dejamos el campo vacío para evitar errores
-           * o inconsistencias de actualización.
-           */
           payload[
             `reservas.${fecha}.estadoAntesRevision`
           ] = '';
@@ -6028,12 +6342,17 @@ async function revisarCambiosReservasEnviadas(
           reserva.estado =
             estadoRestaurado;
 
-          reserva.estadoAntesRevision = '';
+          reserva.estadoAntesRevision =
+            '';
         }
 
         reserva.revisionCambios = {
-          estado: 'SIN_CAMBIOS',
-          ultimaRevision: fechaRevision,
+          estado:
+            'SIN_CAMBIOS',
+
+          ultimaRevision:
+            fechaRevision,
+
           cambios: []
         };
 
@@ -6041,15 +6360,18 @@ async function revisarCambiosReservasEnviadas(
       }
 
       /*
-       * Conservamos el estado previo solamente cuando
-       * entra por primera vez a REQUIERE_REENVIO.
+       * =================================================
+       * CON CAMBIOS
+       * =================================================
        */
       if (
-        reserva.estado !== 'REQUIERE_REENVIO'
+        reserva.estado !==
+          'REQUIERE_REENVIO'
       ) {
         payload[
           `reservas.${fecha}.estadoAntesRevision`
-        ] = reserva.estado;
+        ] =
+          reserva.estado;
 
         reserva.estadoAntesRevision =
           reserva.estado;
@@ -6057,31 +6379,46 @@ async function revisarCambiosReservasEnviadas(
 
       payload[
         `reservas.${fecha}.estado`
-      ] = 'REQUIERE_REENVIO';
+      ] =
+        'REQUIERE_REENVIO';
 
       payload[
         `reservas.${fecha}.revisionCambios`
       ] = {
-        estado: 'CON_CAMBIOS',
-        ultimaRevision: fechaRevision,
+        estado:
+          'CON_CAMBIOS',
+
+        ultimaRevision:
+          fechaRevision,
+
         cambios
       };
 
       /*
-       * También actualizamos el objeto local para que
-       * el botón cambie sin recargar la página.
+       * Actualizamos también memoria local.
        */
       reserva.estado =
         'REQUIERE_REENVIO';
 
       reserva.revisionCambios = {
-        estado: 'CON_CAMBIOS',
-        ultimaRevision: fechaRevision,
+        estado:
+          'CON_CAMBIOS',
+
+        ultimaRevision:
+          fechaRevision,
+
         cambios
       };
     }
 
-    if (Object.keys(payload).length) {
+    /*
+     * =====================================================
+     * GUARDAR RESULTADOS DE LA REVISIÓN
+     * =====================================================
+     */
+    if (
+      Object.keys(payload).length
+    ) {
       try {
         const ref =
           await asegurarDocumentoServicioContador(
@@ -6089,16 +6426,16 @@ async function revisarCambiosReservasEnviadas(
             servicio.nombre,
             servicio.proveedor
           );
-    
+
         await updateDoc(
           ref,
           payload
         );
-    
+
       } catch (error) {
         /*
-         * Un servicio con problemas no debe impedir que
-         * se revisen los siguientes.
+         * Un servicio con problemas no debe impedir
+         * revisar los siguientes.
          */
         console.error(
           `Error guardando revisión de ${servicio.nombre} / ${servicio.destino}:`,
@@ -6107,10 +6444,17 @@ async function revisarCambiosReservasEnviadas(
       }
     }
 
-    if (typeof onProgreso === 'function') {
+    if (
+      typeof onProgreso ===
+        'function'
+    ) {
       onProgreso({
-        actual: i + 1,
-        total: servicios.length,
+        actual:
+          i + 1,
+
+        total:
+          servicios.length,
+
         servicio
       });
     }
@@ -6790,12 +7134,8 @@ async function guardarVerificacionPagosEnReserva() {
    * PROTECCIÓN CRÍTICA
    * =====================================================
    *
-   * La verificación que vamos a guardar debe pertenecer
-   * EXACTAMENTE a la reserva actualmente abierta.
-   *
-   * Esto evita repetir el antiguo problema donde una
-   * verificación de BARILOCHE podía terminar guardada
-   * en una reserva de BRASIL.
+   * La verificación debe pertenecer exactamente
+   * a la reserva actualmente abierta.
    */
   if (
     ultimaVerificacionPagos.destino !==
@@ -6824,6 +7164,10 @@ async function guardarVerificacionPagosEnReserva() {
   const resumen =
     ultimaVerificacionPagos.resumen;
 
+  /*
+   * Si existen diferencias o redistribución,
+   * seguimos exigiendo justificación.
+   */
   if (
     resumen.estadoGeneral !== 'OK' &&
     !comentario
@@ -6837,10 +7181,8 @@ async function guardarVerificacionPagosEnReserva() {
   }
 
   /*
-   * No trabajamos nuevamente con fechasOrdenadas.
-   *
-   * Usamos exactamente las fechas que pertenecen al
-   * snapshot que el usuario acaba de verificar.
+   * Usamos exactamente las fechas incluidas
+   * en el snapshot que el usuario verificó.
    */
   const fechasSnapshot =
     Array.isArray(
@@ -6863,12 +7205,30 @@ async function guardarVerificacionPagosEnReserva() {
       )
       .value;
 
+  /*
+   * Nos aseguramos de que exista el documento
+   * operacional del servicio.
+   */
   const ref =
     await asegurarDocumentoServicioContador(
       destino,
       actividad
     );
 
+  const guardadoEn =
+    new Date().toISOString();
+
+  /*
+   * =====================================================
+   * FOTOGRAFÍA COMPLETA
+   * =====================================================
+   *
+   * Esta estructura contiene todos los grupos,
+   * sistema de pagos, resumen y snapshot logístico.
+   *
+   * IMPORTANTE:
+   * Ya NO se insertará repetidamente en cada fecha.
+   */
   const verificacionGuardada = {
     ...ultimaVerificacionPagos,
 
@@ -6878,14 +7238,14 @@ async function guardarVerificacionPagosEnReserva() {
       auth.currentUser?.email ||
       '',
 
-    guardadoEn:
-      new Date().toISOString(),
+    guardadoEn,
 
     snapshotLogistico:
       ultimaVerificacionPagos
         .snapshotLogistico || {
         destino,
         actividad,
+
         fechas:
           reservaActualSnapshot.fechas ||
           [],
@@ -6896,6 +7256,19 @@ async function guardarVerificacionPagosEnReserva() {
           {}
       }
   };
+
+  /*
+   * =====================================================
+   * GUARDAR HISTORIAL EN DOCUMENTO INDEPENDIENTE
+   * =====================================================
+   *
+   * Una verificación = un documento.
+   */
+  const verificacionSeparada =
+    await guardarVerificacionPagosSeparada(
+      ref,
+      verificacionGuardada
+    );
 
   const payload = {};
 
@@ -6931,10 +7304,31 @@ async function guardarVerificacionPagosEnReserva() {
         `reservas.${fecha}.totalEnviado`
       ] = totalEnviado;
 
+      /*
+       * =================================================
+       * NUEVA REFERENCIA LIVIANA
+       * =================================================
+       */
+      payload[
+        `reservas.${fecha}.verificacionPagosId`
+      ] =
+        verificacionSeparada.id;
+
+      payload[
+        `reservas.${fecha}.verificacionPagosGuardadaEn`
+      ] =
+        verificacionSeparada.guardadoEn;
+
+      /*
+       * Eliminamos la antigua fotografía completa
+       * solamente si existía.
+       *
+       * Esto achica progresivamente el documento.
+       */
       payload[
         `reservas.${fecha}.verificacionPagos`
       ] =
-        verificacionGuardada;
+        deleteField();
 
       payload[
         `reservas.${fecha}.updatedAt`
@@ -6950,6 +7344,10 @@ async function guardarVerificacionPagosEnReserva() {
     return;
   }
 
+  /*
+   * Esta escritura ahora contiene solamente información
+   * liviana por fecha.
+   */
   await updateDoc(
     ref,
     payload
@@ -6963,5 +7361,4 @@ async function guardarVerificacionPagosEnReserva() {
     'Verificación guardada como historial de la reserva.'
   );
 }
-
 
