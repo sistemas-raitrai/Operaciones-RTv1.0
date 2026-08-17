@@ -44,7 +44,13 @@ const RUTA_CONFIG_FINANZAS = 'ConfiguracionFinanzas';
 const DOC_CONFIG_SOLICITUD = 'solicitudPago';
 const RUTA_CONTADORES_ABONOS = 'ContadoresAbonos';
 
-const MONEDAS = ['CLP', 'USD', 'BRL', 'ARS'];
+const MONEDAS = [
+  'CLP',
+  'USD',
+  'BRL',
+  'ARS',
+  'EUR'
+];
 
 let SERVICIOS = [];
 let HOTELES = [];
@@ -90,11 +96,40 @@ function norm(valor = '') {
 }
 
 function normalizarMoneda(moneda = 'CLP') {
-  const m = norm(moneda);
+  const m =
+    norm(moneda);
 
-  if (['USD', 'US$', 'DOLAR', 'DOLLAR'].includes(m)) return 'USD';
-  if (['BRL', 'R$', 'REAL', 'REALES'].includes(m)) return 'BRL';
-  if (['ARS', 'AR$', 'PESO ARGENTINO', 'PESOS ARGENTINOS'].includes(m)) return 'ARS';
+  if (
+    ['USD', 'US$', 'DOLAR', 'DOLLAR']
+      .includes(m)
+  ) {
+    return 'USD';
+  }
+
+  if (
+    ['BRL', 'R$', 'REAL', 'REALES']
+      .includes(m)
+  ) {
+    return 'BRL';
+  }
+
+  if (
+    [
+      'ARS',
+      'AR$',
+      'PESO ARGENTINO',
+      'PESOS ARGENTINOS'
+    ].includes(m)
+  ) {
+    return 'ARS';
+  }
+
+  if (
+    ['EUR', 'EURO', 'EUROS']
+      .includes(m)
+  ) {
+    return 'EUR';
+  }
 
   return 'CLP';
 }
@@ -740,6 +775,7 @@ async function cargarAbonos() {
     SOLICITADO: 1,
     EXPORTADO: 2,
     NO_SOLICITADO: 3,
+    FINALIZADO: 4,
     PAGADO: 4,
     ANULADO: 5
   };
@@ -1829,6 +1865,65 @@ function obtenerProveedorPagoId(abono = {}) {
   )}`;
 }
 
+function obtenerTipoEjecucion(abono = {}) {
+  const guardado =
+    norm(
+      abono.solicitudPago?.tipoEjecucion ||
+      ''
+    );
+
+  if (
+    [
+      'TRANSFERENCIA',
+      'AFEX',
+      'EFECTIVO',
+      'CHEQUE'
+    ].includes(guardado)
+  ) {
+    return guardado;
+  }
+
+  const forma =
+    norm(abono.formaPago || '');
+
+  if (forma === 'AFEX') {
+    return 'AFEX';
+  }
+
+  if (forma === 'EFECTIVO') {
+    return 'EFECTIVO';
+  }
+
+  if (forma === 'CHEQUE') {
+    return 'CHEQUE';
+  }
+
+  /*
+   * Compatibilidad hacia atrás.
+   * Todo lo antiguo que ya utilizaba el formulario
+   * bancario se interpreta como transferencia.
+   */
+  return 'TRANSFERENCIA';
+}
+
+
+function normalizarEstadoEjecucion(estado = '') {
+  const valor =
+    norm(
+      estado ||
+      'NO_SOLICITADO'
+    );
+
+  /*
+   * Compatibilidad con registros antiguos.
+   */
+  if (valor === 'PAGADO') {
+    return 'FINALIZADO';
+  }
+
+  return valor;
+}
+
 function cerrarSolicitudPago() {
   el('solicitudPagoModal')
     ?.classList
@@ -1848,8 +1943,7 @@ async function abrirSolicitudPago(abono) {
     return;
   }
 
-  ABONO_SOLICITUD_ACTUAL =
-    abono;
+  ABONO_SOLICITUD_ACTUAL = abono;
 
   const proveedorPagoId =
     obtenerProveedorPagoId(abono);
@@ -1891,13 +1985,16 @@ async function abrirSolicitudPago(abono) {
 
   } catch (error) {
     console.warn(
-      'No se pudieron cargar datos bancarios anteriores:',
+      'No se pudieron cargar datos anteriores:',
       error
     );
   }
 
-  const solicitudAbono =
+  const solicitud =
     abono.solicitudPago || {};
+
+  const tipoEjecucion =
+    obtenerTipoEjecucion(abono);
 
   const monedaAbono =
     normalizarMoneda(
@@ -1909,79 +2006,228 @@ async function abrirSolicitudPago(abono) {
     `${abono.servicioNombre || 'PAGO'} · ` +
     `${monedaAbono} ${fmtNumero(abono.monto)}`;
 
-  el('spCuentaOrigen').value =
-    solicitudAbono.cuentaOrigen ||
-    configuracion.cuentaOrigen ||
-    '4109651';
+  el('solicitudTipoEjecucion').textContent =
+    `Forma de ejecución: ${tipoEjecucion}`;
 
-  el('spMonedaOrigen').value =
-    normalizarMoneda(
-      solicitudAbono.monedaOrigen ||
-      configuracion.monedaOrigen ||
-      monedaAbono
-    );
+  [
+    'solicitudTransferencia',
+    'solicitudAfex',
+    'solicitudEfectivo',
+    'solicitudCheque'
+  ].forEach(id => {
+    el(id)?.classList.add('hidden');
+  });
 
-  el('spCuentaDestino').value =
-    solicitudAbono.cuentaDestino ||
-    datosProveedor.cuentaDestino ||
-    '';
+  if (tipoEjecucion === 'TRANSFERENCIA') {
+    el('solicitudTransferencia')
+      ?.classList.remove('hidden');
 
-  el('spMonedaDestino').value =
-    normalizarMoneda(
-      solicitudAbono.monedaDestino ||
-      datosProveedor.monedaDestino ||
-      monedaAbono
-    );
+    el('spCuentaOrigen').value =
+      solicitud.cuentaOrigen ||
+      configuracion.cuentaOrigen ||
+      '4109651';
 
-  el('spCodigoBanco').value =
-    solicitudAbono.codigoBanco ||
-    datosProveedor.codigoBanco ||
-    '';
+    el('spMonedaOrigen').value =
+      normalizarMoneda(
+        solicitud.monedaOrigen ||
+        configuracion.monedaOrigen ||
+        monedaAbono
+      );
 
-  el('spRutBeneficiario').value =
-    solicitudAbono.rutBeneficiario ||
-    datosProveedor.rutBeneficiario ||
-    '';
+    el('spCuentaDestino').value =
+      solicitud.cuentaDestino ||
+      datosProveedor.cuentaDestino ||
+      '';
 
-  el('spNombreBeneficiario').value =
-    solicitudAbono.nombreBeneficiario ||
-    datosProveedor.nombreBeneficiario ||
-    obtenerNombreEntidadAbono(abono);
+    el('spMonedaDestino').value =
+      normalizarMoneda(
+        solicitud.monedaDestino ||
+        datosProveedor.monedaDestino ||
+        monedaAbono
+      );
 
-  /*
-   * Siempre usamos el monto actual del abono.
-   * Nunca el monto anterior del proveedor.
-   */
-  el('spMontoTotal').value =
-    Number(abono.monto || 0);
+    el('spCodigoBanco').value =
+      solicitud.codigoBanco ||
+      datosProveedor.codigoBanco ||
+      '';
 
-  el('spGlosaTef').value =
-    solicitudAbono.glosaTef ||
-    datosProveedor.glosaTef ||
-    abono.referencia ||
-    '';
+    el('spRutBeneficiario').value =
+      solicitud.rutBeneficiario ||
+      datosProveedor.rutBeneficiario ||
+      '';
 
-  el('spCorreo').value =
-    solicitudAbono.correo ||
-    datosProveedor.correo ||
-    '';
+    el('spNombreBeneficiario').value =
+      solicitud.nombreBeneficiario ||
+      datosProveedor.nombreBeneficiario ||
+      obtenerNombreEntidadAbono(abono);
 
-  el('spGlosaCorreo').value =
-    solicitudAbono.glosaCorreo ||
-    datosProveedor.glosaCorreo ||
-    abono.referencia ||
-    '';
+    el('spMontoTotal').value =
+      Number(abono.monto || 0);
+
+    el('spGlosaTef').value =
+      solicitud.glosaTef ||
+      datosProveedor.glosaTef ||
+      abono.referencia ||
+      '';
+
+    el('spCorreo').value =
+      solicitud.correo ||
+      datosProveedor.correo ||
+      '';
+
+    el('spGlosaCorreo').value =
+      solicitud.glosaCorreo ||
+      datosProveedor.glosaCorreo ||
+      abono.referencia ||
+      '';
+  }
+
+  if (tipoEjecucion === 'AFEX') {
+    el('solicitudAfex')
+      ?.classList.remove('hidden');
+
+    const afex =
+      solicitud.afex ||
+      datosProveedor.afex ||
+      {};
+
+    el('spAfexMoneda').value =
+      afex.moneda ||
+      monedaAbono ||
+      'USD';
+
+    el('spAfexMonto').value =
+      Number(abono.monto || 0);
+
+    el('spAfexPais').value =
+      afex.pais || '';
+
+    el('spAfexBancoIntermediario').value =
+      afex.bancoIntermediario || '';
+
+    el('spAfexSwiftIntermediario').value =
+      afex.swiftIntermediario || '';
+
+    el('spAfexCuentaIntermediario').value =
+      afex.cuentaIntermediario || '';
+
+    el('spAfexBancoBeneficiario').value =
+      afex.bancoBeneficiario || '';
+
+    el('spAfexSwiftBeneficiario').value =
+      afex.swiftBeneficiario || '';
+
+    el('spAfexNombreBeneficiario').value =
+      afex.nombreBeneficiario ||
+      obtenerNombreEntidadAbono(abono);
+
+    el('spAfexDireccionBeneficiario').value =
+      afex.direccionBeneficiario || '';
+
+    el('spAfexAgencia').value =
+      afex.agencia || '';
+
+    el('spAfexCuenta').value =
+      afex.cuenta || '';
+
+    el('spAfexIban').value =
+      afex.iban || '';
+
+    el('spAfexReferencia').value =
+      afex.referencia ||
+      abono.referencia ||
+      '';
+  }
+
+  if (tipoEjecucion === 'EFECTIVO') {
+    el('solicitudEfectivo')
+      ?.classList.remove('hidden');
+
+    const efectivo =
+      solicitud.efectivo || {};
+
+    el('spEfectivoResponsable').value =
+      efectivo.responsable || '';
+
+    el('spEfectivoMoneda').value =
+      efectivo.moneda ||
+      monedaAbono;
+
+    el('spEfectivoMonto').value =
+      Number(abono.monto || 0);
+
+    el('spEfectivoFecha').value =
+      efectivo.fechaRequerida ||
+      abono.fechaPago ||
+      nowISODate();
+
+    el('spEfectivoConcepto').value =
+      efectivo.concepto ||
+      abono.referencia ||
+      '';
+
+    el('spEfectivoObservacion').value =
+      efectivo.observacion ||
+      abono.nota ||
+      '';
+  }
+
+  if (tipoEjecucion === 'CHEQUE') {
+    el('solicitudCheque')
+      ?.classList.remove('hidden');
+
+    const cheque =
+      solicitud.cheque ||
+      datosProveedor.cheque ||
+      {};
+
+    el('spChequeCuentaOrigen').value =
+      cheque.cuentaOrigen ||
+      configuracion.cuentaOrigen ||
+      '';
+
+    el('spChequeNombreBeneficiario').value =
+      cheque.nombreBeneficiario ||
+      obtenerNombreEntidadAbono(abono);
+
+    el('spChequeRutBeneficiario').value =
+      cheque.rutBeneficiario || '';
+
+    el('spChequeMoneda').value =
+      cheque.moneda ||
+      monedaAbono;
+
+    el('spChequeMonto').value =
+      Number(abono.monto || 0);
+
+    el('spChequeFecha').value =
+      cheque.fechaRequerida ||
+      abono.fechaPago ||
+      nowISODate();
+
+    el('spChequeNominativo').value =
+      cheque.nominativo || 'SI';
+
+    el('spChequeCruzado').value =
+      cheque.cruzado || 'SI';
+
+    el('spChequeObservacion').value =
+      cheque.observacion || '';
+  }
 
   const estadoSolicitud =
-    norm(
-      abono.estadoSolicitudPago ||
-      'NO_SOLICITADO'
+    normalizarEstadoEjecucion(
+      abono.estadoSolicitudPago
     );
 
-  el('btnMarcarPagada')
-    .classList.toggle(
+  el('btnCambiarEstadoSolicitud')
+    ?.classList.toggle(
       'hidden',
-      estadoSolicitud !== 'EXPORTADO'
+      ![
+        'SOLICITADO',
+        'EXPORTADO',
+        'FINALIZADO'
+      ].includes(estadoSolicitud)
     );
 
   el('btnGuardarSolicitudPago').textContent =
@@ -1998,83 +2244,286 @@ async function abrirSolicitudPago(abono) {
 }
 
 function obtenerDatosSolicitudPago() {
-  return {
-    cuentaOrigen:
-      el('spCuentaOrigen').value.trim(),
+  const abono =
+    ABONO_SOLICITUD_ACTUAL || {};
 
-    monedaOrigen:
-      normalizarMoneda(
-        el('spMonedaOrigen').value
-      ),
+  const tipoEjecucion =
+    obtenerTipoEjecucion(abono);
 
-    cuentaDestino:
-      el('spCuentaDestino').value.trim(),
-
-    monedaDestino:
-      normalizarMoneda(
-        el('spMonedaDestino').value
-      ),
-
-    codigoBanco:
-      el('spCodigoBanco').value.trim(),
-
-    rutBeneficiario:
-      el('spRutBeneficiario').value.trim(),
-
-    nombreBeneficiario:
-      el('spNombreBeneficiario').value.trim(),
+  const base = {
+    tipoEjecucion,
 
     montoTotal:
-      Number(
-        el('spMontoTotal').value || 0
-      ),
+      Number(abono.monto || 0),
 
-    glosaTef:
-      el('spGlosaTef').value.trim(),
+    moneda:
+      normalizarMoneda(
+        abono.moneda || 'CLP'
+      )
+  };
 
-    correo:
-      el('spCorreo').value.trim(),
+  if (tipoEjecucion === 'TRANSFERENCIA') {
+    return {
+      ...base,
 
-    glosaCorreo:
-      el('spGlosaCorreo').value.trim()
+      cuentaOrigen:
+        el('spCuentaOrigen').value.trim(),
+
+      monedaOrigen:
+        normalizarMoneda(
+          el('spMonedaOrigen').value
+        ),
+
+      cuentaDestino:
+        el('spCuentaDestino').value.trim(),
+
+      monedaDestino:
+        normalizarMoneda(
+          el('spMonedaDestino').value
+        ),
+
+      codigoBanco:
+        el('spCodigoBanco').value.trim(),
+
+      rutBeneficiario:
+        el('spRutBeneficiario').value.trim(),
+
+      nombreBeneficiario:
+        el('spNombreBeneficiario').value.trim(),
+
+      glosaTef:
+        el('spGlosaTef').value.trim(),
+
+      correo:
+        el('spCorreo').value.trim(),
+
+      glosaCorreo:
+        el('spGlosaCorreo').value.trim()
+    };
+  }
+
+  if (tipoEjecucion === 'AFEX') {
+    return {
+      ...base,
+
+      afex: {
+        moneda:
+          el('spAfexMoneda').value,
+
+        monto:
+          Number(
+            el('spAfexMonto').value || 0
+          ),
+
+        pais:
+          el('spAfexPais').value.trim(),
+
+        bancoIntermediario:
+          el('spAfexBancoIntermediario').value.trim(),
+
+        swiftIntermediario:
+          el('spAfexSwiftIntermediario').value.trim(),
+
+        cuentaIntermediario:
+          el('spAfexCuentaIntermediario').value.trim(),
+
+        bancoBeneficiario:
+          el('spAfexBancoBeneficiario').value.trim(),
+
+        swiftBeneficiario:
+          el('spAfexSwiftBeneficiario').value.trim(),
+
+        nombreBeneficiario:
+          el('spAfexNombreBeneficiario').value.trim(),
+
+        direccionBeneficiario:
+          el('spAfexDireccionBeneficiario').value.trim(),
+
+        agencia:
+          el('spAfexAgencia').value.trim(),
+
+        cuenta:
+          el('spAfexCuenta').value.trim(),
+
+        iban:
+          el('spAfexIban').value.trim(),
+
+        referencia:
+          el('spAfexReferencia').value.trim()
+      }
+    };
+  }
+
+  if (tipoEjecucion === 'EFECTIVO') {
+    return {
+      ...base,
+
+      efectivo: {
+        responsable:
+          el('spEfectivoResponsable').value.trim(),
+
+        moneda:
+          el('spEfectivoMoneda').value,
+
+        monto:
+          Number(
+            el('spEfectivoMonto').value || 0
+          ),
+
+        fechaRequerida:
+          el('spEfectivoFecha').value,
+
+        concepto:
+          el('spEfectivoConcepto').value.trim(),
+
+        observacion:
+          el('spEfectivoObservacion').value.trim()
+      }
+    };
+  }
+
+  return {
+    ...base,
+
+    cheque: {
+      cuentaOrigen:
+        el('spChequeCuentaOrigen').value.trim(),
+
+      nombreBeneficiario:
+        el('spChequeNombreBeneficiario').value.trim(),
+
+      rutBeneficiario:
+        el('spChequeRutBeneficiario').value.trim(),
+
+      moneda:
+        el('spChequeMoneda').value,
+
+      monto:
+        Number(
+          el('spChequeMonto').value || 0
+        ),
+
+      fechaRequerida:
+        el('spChequeFecha').value,
+
+      nominativo:
+        el('spChequeNominativo').value,
+
+      cruzado:
+        el('spChequeCruzado').value,
+
+      observacion:
+        el('spChequeObservacion').value.trim()
+    }
   };
 }
 
 function validarSolicitudPago(datos) {
-  if (!datos.cuentaOrigen) {
-    return 'Debe indicar la cuenta de origen.';
+  if (!(Number(datos.montoTotal || 0) > 0)) {
+    return 'El monto debe ser mayor que cero.';
   }
 
-  if (!datos.cuentaDestino) {
-    return 'Debe indicar la cuenta de destino.';
+  if (
+    datos.tipoEjecucion ===
+    'TRANSFERENCIA'
+  ) {
+    if (!datos.cuentaOrigen) {
+      return 'Debe indicar la cuenta de origen.';
+    }
+
+    if (!datos.cuentaDestino) {
+      return 'Debe indicar la cuenta de destino.';
+    }
+
+    if (!datos.codigoBanco) {
+      return 'Debe indicar el código del banco.';
+    }
+
+    if (!datos.rutBeneficiario) {
+      return 'Debe indicar el RUT del beneficiario.';
+    }
+
+    if (!datos.nombreBeneficiario) {
+      return 'Debe indicar el nombre del beneficiario.';
+    }
+
+    if (!datos.glosaTef) {
+      return 'Debe indicar la glosa TEF.';
+    }
+
+    if (!datos.correo) {
+      return 'Debe indicar el correo.';
+    }
+
+    if (!datos.glosaCorreo) {
+      return 'Debe indicar la glosa del correo.';
+    }
   }
 
-  if (!datos.codigoBanco) {
-    return 'Debe indicar el código del banco.';
+  if (datos.tipoEjecucion === 'AFEX') {
+    const afex = datos.afex || {};
+
+    if (!(Number(afex.monto || 0) > 0)) {
+      return 'Debe indicar el monto AFEX.';
+    }
+
+    if (!afex.bancoBeneficiario) {
+      return 'Debe indicar el banco beneficiario.';
+    }
+
+    if (!afex.swiftBeneficiario) {
+      return 'Debe indicar el SWIFT del banco beneficiario.';
+    }
+
+    if (!afex.nombreBeneficiario) {
+      return 'Debe indicar el beneficiario.';
+    }
+
+    if (!afex.cuenta && !afex.iban) {
+      return 'Debe indicar la cuenta o el IBAN.';
+    }
   }
 
-  if (!datos.rutBeneficiario) {
-    return 'Debe indicar el RUT del beneficiario.';
+  if (datos.tipoEjecucion === 'EFECTIVO') {
+    const efectivo =
+      datos.efectivo || {};
+
+    if (!efectivo.responsable) {
+      return 'Debe indicar quién será responsable del efectivo.';
+    }
+
+    if (!(Number(efectivo.monto || 0) > 0)) {
+      return 'Debe indicar el monto.';
+    }
+
+    if (!efectivo.fechaRequerida) {
+      return 'Debe indicar la fecha requerida.';
+    }
+
+    if (!efectivo.concepto) {
+      return 'Debe indicar el concepto.';
+    }
   }
 
-  if (!datos.nombreBeneficiario) {
-    return 'Debe indicar el nombre del beneficiario.';
-  }
+  if (datos.tipoEjecucion === 'CHEQUE') {
+    const cheque =
+      datos.cheque || {};
 
-  if (!(datos.montoTotal > 0)) {
-    return 'El monto total debe ser mayor que cero.';
-  }
+    if (!cheque.nombreBeneficiario) {
+      return 'Debe indicar el beneficiario.';
+    }
 
-  if (!datos.glosaTef) {
-    return 'Debe indicar la glosa TEF.';
-  }
+    if (!cheque.rutBeneficiario) {
+      return 'Debe indicar el RUT del beneficiario.';
+    }
 
-  if (!datos.correo) {
-    return 'Debe indicar el correo.';
-  }
+    if (!(Number(cheque.monto || 0) > 0)) {
+      return 'Debe indicar el monto.';
+    }
 
-  if (!datos.glosaCorreo) {
-    return 'Debe indicar la glosa del correo.';
+    if (!cheque.fechaRequerida) {
+      return 'Debe indicar la fecha requerida.';
+    }
   }
 
   return '';
@@ -2168,9 +2617,15 @@ async function guardarSolicitudPago() {
      *
      * Si ya fue pagada, conserva PAGADO.
      */
+    const estadoNormalizadoAnterior =
+      normalizarEstadoEjecucion(
+        estadoAnterior
+      );
+    
     const estadoNuevo =
-      estadoAnterior === 'PAGADO'
-        ? 'PAGADO'
+      estadoNormalizadoAnterior ===
+      'FINALIZADO'
+        ? 'FINALIZADO'
         : 'SOLICITADO';
 
     const versionAnterior =
@@ -2245,106 +2700,182 @@ async function guardarSolicitudPago() {
      * 2. Guardar solamente los datos reutilizables
      * del beneficiario/proveedor.
      *
-     * La cuenta origen NO se guarda aquí porque
-     * corresponde a Rai Trai, no al proveedor.
+     * Cada forma de ejecución tiene sus propios datos.
      */
     const refProveedor = doc(
       db,
       RUTA_PROVEEDORES_PAGO,
       proveedorPagoId
     );
-
+    
+    const datosProveedorGuardar = {
+      proveedorPagoId,
+    
+      proveedorNombre:
+        nombreEntidad,
+    
+      tipo:
+        abonoActual.tipo || '',
+    
+      proveedorId:
+        abonoActual.proveedorId || '',
+    
+      servicioId:
+        abonoActual.servicioId || '',
+    
+      hotelId:
+        abonoActual.hotelId || '',
+    
+      hotelKey:
+        abonoActual.hotelKey || '',
+    
+      updatedAt:
+        serverTimestamp(),
+    
+      updatedByEmail:
+        email
+    };
+    
+    
+    /*
+     * TRANSFERENCIA
+     *
+     * Conservamos exactamente los mismos datos que
+     * ya utilizaba el sistema anterior.
+     */
+    if (
+      solicitud.tipoEjecucion ===
+      'TRANSFERENCIA'
+    ) {
+      Object.assign(
+        datosProveedorGuardar,
+        {
+          cuentaDestino:
+            solicitud.cuentaDestino,
+    
+          monedaDestino:
+            solicitud.monedaDestino,
+    
+          codigoBanco:
+            solicitud.codigoBanco,
+    
+          rutBeneficiario:
+            solicitud.rutBeneficiario,
+    
+          nombreBeneficiario:
+            solicitud.nombreBeneficiario,
+    
+          glosaTef:
+            solicitud.glosaTef,
+    
+          correo:
+            solicitud.correo,
+    
+          glosaCorreo:
+            solicitud.glosaCorreo
+        }
+      );
+    }
+    
+    
+    /*
+     * AFEX
+     *
+     * Guardamos los datos internacionales completos
+     * para reutilizarlos la próxima vez que se pague
+     * al mismo proveedor.
+     */
+    if (
+      solicitud.tipoEjecucion ===
+      'AFEX'
+    ) {
+      datosProveedorGuardar.afex = {
+        ...(solicitud.afex || {})
+      };
+    }
+    
+    
+    /*
+     * CHEQUE
+     *
+     * Del proveedor solamente conservamos los datos
+     * estables del beneficiario.
+     *
+     * El número de cheque NO se guarda aquí porque
+     * corresponde a una ejecución concreta.
+     */
+    if (
+      solicitud.tipoEjecucion ===
+      'CHEQUE'
+    ) {
+      datosProveedorGuardar.cheque = {
+        nombreBeneficiario:
+          solicitud.cheque
+            ?.nombreBeneficiario || '',
+    
+        rutBeneficiario:
+          solicitud.cheque
+            ?.rutBeneficiario || ''
+      };
+    }
+    
+    
+    /*
+     * EFECTIVO
+     *
+     * No guardamos el responsable en ProveedoresPago
+     * porque puede cambiar en cada solicitud.
+     */
+    
+    
+    /*
+     * Guardar datos reutilizables del proveedor.
+     */
     batch.set(
       refProveedor,
-      {
-        proveedorPagoId,
-
-        proveedorNombre:
-          nombreEntidad,
-
-        tipo:
-          abonoActual.tipo || '',
-
-        proveedorId:
-          abonoActual.proveedorId || '',
-
-        servicioId:
-          abonoActual.servicioId || '',
-
-        hotelId:
-          abonoActual.hotelId || '',
-
-        hotelKey:
-          abonoActual.hotelKey || '',
-
-        cuentaDestino:
-          solicitud.cuentaDestino,
-
-        monedaDestino:
-          solicitud.monedaDestino,
-
-        codigoBanco:
-          solicitud.codigoBanco,
-
-        rutBeneficiario:
-          solicitud.rutBeneficiario,
-
-        nombreBeneficiario:
-          solicitud.nombreBeneficiario,
-
-        glosaTef:
-          solicitud.glosaTef,
-
-        correo:
-          solicitud.correo,
-
-        glosaCorreo:
-          solicitud.glosaCorreo,
-
-        updatedAt:
-          serverTimestamp(),
-
-        updatedByEmail:
-          email
-      },
+      datosProveedorGuardar,
       {
         merge: true
       }
     );
-
+    
+    
     /*
-     * 3. Guardar la última cuenta origen utilizada
-     * como configuración general.
+     * 3. Guardar configuración general de Rai Trai.
      *
-     * Inicialmente aparece 4109651, pero si alguien
-     * utiliza otra cuenta, esa será la predeterminada
-     * para las siguientes solicitudes.
+     * La cuenta origen solamente corresponde a
+     * transferencias.
      */
-    const refConfiguracion = doc(
-      db,
-      RUTA_CONFIG_FINANZAS,
-      DOC_CONFIG_SOLICITUD
-    );
-
-    batch.set(
-      refConfiguracion,
-      {
-        cuentaOrigen:
-          solicitud.cuentaOrigen,
-
-        monedaOrigen:
-          solicitud.monedaOrigen,
-
-        updatedAt:
-          serverTimestamp(),
-
-        updatedByEmail:
-          email
-      },
-      {
-        merge: true
-      }
-    );
+    if (
+      solicitud.tipoEjecucion ===
+      'TRANSFERENCIA'
+    ) {
+      const refConfiguracion = doc(
+        db,
+        RUTA_CONFIG_FINANZAS,
+        DOC_CONFIG_SOLICITUD
+      );
+    
+      batch.set(
+        refConfiguracion,
+        {
+          cuentaOrigen:
+            solicitud.cuentaOrigen,
+    
+          monedaOrigen:
+            solicitud.monedaOrigen,
+    
+          updatedAt:
+            serverTimestamp(),
+    
+          updatedByEmail:
+            email
+        },
+        {
+          merge: true
+        }
+      );
+    }
 
     /*
      * 4. Registrar el cambio en el historial.
@@ -2445,49 +2976,187 @@ async function guardarSolicitudPago() {
   }
 }
 
-function construirFilaSolicitudExcel(abono) {
+function construirFilaSolicitudExcel(
+  abono,
+  tipoEjecucion
+) {
   const solicitud =
     abono.solicitudPago || {};
 
+  if (tipoEjecucion === 'TRANSFERENCIA') {
+    return {
+      'Cta_origen':
+        solicitud.cuentaOrigen || '',
+
+      'moneda_origen':
+        solicitud.monedaOrigen || '',
+
+      'Cta_destino':
+        solicitud.cuentaDestino || '',
+
+      'moneda_destino':
+        solicitud.monedaDestino || '',
+
+      'Cod_banco':
+        solicitud.codigoBanco || '',
+
+      'RUT benef':
+        solicitud.rutBeneficiario || '',
+
+      'Nombre benef':
+        solicitud.nombreBeneficiario || '',
+
+      'Mto Total':
+        Number(
+          solicitud.montoTotal ||
+          abono.monto ||
+          0
+        ),
+
+      'Glosa TEF':
+        solicitud.glosaTef || '',
+
+      'Correo':
+        solicitud.correo || '',
+
+      'Glosa correo':
+        solicitud.glosaCorreo || ''
+    };
+  }
+
+  if (tipoEjecucion === 'AFEX') {
+    const afex =
+      solicitud.afex || {};
+
+    return {
+      'Proveedor':
+        obtenerNombreEntidadAbono(abono),
+
+      'Moneda':
+        afex.moneda ||
+        abono.moneda ||
+        '',
+
+      'Monto':
+        Number(
+          afex.monto ||
+          abono.monto ||
+          0
+        ),
+
+      'País':
+        afex.pais || '',
+
+      'Banco intermediario':
+        afex.bancoIntermediario || '',
+
+      'SWIFT intermediario':
+        afex.swiftIntermediario || '',
+
+      'Cuenta intermediario':
+        afex.cuentaIntermediario || '',
+
+      'Banco beneficiario':
+        afex.bancoBeneficiario || '',
+
+      'SWIFT beneficiario':
+        afex.swiftBeneficiario || '',
+
+      'Beneficiario':
+        afex.nombreBeneficiario || '',
+
+      'Dirección':
+        afex.direccionBeneficiario || '',
+
+      'Agencia':
+        afex.agencia || '',
+
+      'Cuenta':
+        afex.cuenta || '',
+
+      'IBAN':
+        afex.iban || '',
+
+      'Referencia':
+        afex.referencia || ''
+    };
+  }
+
+  if (tipoEjecucion === 'EFECTIVO') {
+    const efectivo =
+      solicitud.efectivo || {};
+
+    return {
+      'Responsable':
+        efectivo.responsable || '',
+
+      'Moneda':
+        efectivo.moneda ||
+        abono.moneda ||
+        '',
+
+      'Monto':
+        Number(
+          efectivo.monto ||
+          abono.monto ||
+          0
+        ),
+
+      'Fecha requerida':
+        efectivo.fechaRequerida || '',
+
+      'Concepto':
+        efectivo.concepto || '',
+
+      'Observación':
+        efectivo.observacion || ''
+    };
+  }
+
+  const cheque =
+    solicitud.cheque || {};
+
   return {
-    'Cta_origen':
-      solicitud.cuentaOrigen || '',
+    'Cuenta / banco':
+      cheque.cuentaOrigen || '',
 
-    'moneda_origen':
-      solicitud.monedaOrigen || '',
+    'Beneficiario':
+      cheque.nombreBeneficiario || '',
 
-    'Cta_destino':
-      solicitud.cuentaDestino || '',
+    'RUT beneficiario':
+      cheque.rutBeneficiario || '',
 
-    'moneda_destino':
-      solicitud.monedaDestino || '',
+    'Moneda':
+      cheque.moneda ||
+      abono.moneda ||
+      '',
 
-    'Cod_banco':
-      solicitud.codigoBanco || '',
+    'Monto':
+      Number(
+        cheque.monto ||
+        abono.monto ||
+        0
+      ),
 
-    'RUT benef':
-      solicitud.rutBeneficiario || '',
+    'Fecha requerida':
+      cheque.fechaRequerida || '',
 
-    'Nombre benef':
-      solicitud.nombreBeneficiario || '',
+    'Nominativo':
+      cheque.nominativo || '',
 
-    'Mto Total':
-      Number(solicitud.montoTotal || 0),
+    'Cruzado':
+      cheque.cruzado || '',
 
-    'Glosa TEF':
-      solicitud.glosaTef || '',
-
-    'Correo':
-      solicitud.correo || '',
-
-    'Glosa correo':
-      solicitud.glosaCorreo || ''
+    'Observación':
+      cheque.observacion || ''
   };
 }
 
+
 function descargarArchivoSolicitudes(
   lista,
-  nombreArchivo
+  nombreArchivo,
+  tipoEjecucion
 ) {
   if (!window.XLSX) {
     alert(
@@ -2498,26 +3167,17 @@ function descargarArchivoSolicitudes(
   }
 
   const filas =
-    lista.map(construirFilaSolicitudExcel);
+    lista.map(
+      abono =>
+        construirFilaSolicitudExcel(
+          abono,
+          tipoEjecucion
+        )
+    );
 
   const hoja =
     window.XLSX.utils.json_to_sheet(
-      filas,
-      {
-        header: [
-          'Cta_origen',
-          'moneda_origen',
-          'Cta_destino',
-          'moneda_destino',
-          'Cod_banco',
-          'RUT benef',
-          'Nombre benef',
-          'Mto Total',
-          'Glosa TEF',
-          'Correo',
-          'Glosa correo'
-        ]
-      }
+      filas
     );
 
   const libro =
@@ -2526,7 +3186,7 @@ function descargarArchivoSolicitudes(
   window.XLSX.utils.book_append_sheet(
     libro,
     hoja,
-    'Pagos'
+    tipoEjecucion
   );
 
   window.XLSX.writeFile(
@@ -2534,6 +3194,32 @@ function descargarArchivoSolicitudes(
     nombreArchivo
   );
 }
+
+
+function abrirExportarSolicitudes() {
+  if (
+    el('tipoSolicitudExportar')
+  ) {
+    el('tipoSolicitudExportar').value =
+      'TRANSFERENCIA';
+  }
+
+  el('exportarSolicitudesModal')
+    ?.classList.add('open');
+
+  document.body.style.overflow =
+    'hidden';
+}
+
+
+function cerrarExportarSolicitudes() {
+  el('exportarSolicitudesModal')
+    ?.classList.remove('open');
+
+  document.body.style.overflow =
+    '';
+}
+
 
 async function descargarSolicitudActual() {
   const abono =
@@ -2547,18 +3233,34 @@ async function descargarSolicitudActual() {
     return;
   }
 
+  const tipoEjecucion =
+    obtenerTipoEjecucion(abono);
+
   descargarArchivoSolicitudes(
     [abono],
-    `solicitud_pago_${abono.id}.xlsx`
+    `solicitud_${tipoEjecucion.toLowerCase()}_${abono.id}.xlsx`,
+    tipoEjecucion
   );
 
+  const email =
+    (
+      auth.currentUser?.email ||
+      ''
+    ).toLowerCase();
+
   try {
-    await updateDoc(
+    const refAbono =
       doc(
         db,
         RUTA_ABONOS,
         abono.id
-      ),
+      );
+
+    const batch =
+      writeBatch(db);
+
+    batch.update(
+      refAbono,
       {
         estadoSolicitudPago:
           'EXPORTADO',
@@ -2570,15 +3272,60 @@ async function descargarSolicitudActual() {
           serverTimestamp(),
 
         'solicitudPago.exportadoByEmail':
-          (
-            auth.currentUser?.email ||
-            ''
-          ).toLowerCase()
+          email,
+
+        updatedAt:
+          serverTimestamp(),
+
+        updatedByEmail:
+          email
       }
     );
 
+    const refHistorial =
+      doc(
+        collection(
+          db,
+          RUTA_ABONOS,
+          abono.id,
+          'Historial'
+        )
+      );
+
+    batch.set(
+      refHistorial,
+      {
+        tipoCambio:
+          'SOLICITUD_PAGO_EXPORTADA',
+
+        motivoCambio:
+          `Solicitud ${tipoEjecucion} exportada individualmente`,
+
+        estadoAnterior:
+          normalizarEstadoEjecucion(
+            abono.estadoSolicitudPago
+          ),
+
+        estadoNuevo:
+          'EXPORTADO',
+
+        tipoEjecucion,
+
+        changedAt:
+          serverTimestamp(),
+
+        changedByEmail:
+          email
+      }
+    );
+
+    await batch.commit();
+
     await cargarAbonos();
-    renderAbonos();
+
+    if (!ES_VISTA_MOVIL) {
+      renderAbonos();
+    }
 
   } catch (error) {
     console.warn(
@@ -2588,17 +3335,33 @@ async function descargarSolicitudActual() {
   }
 }
 
+
 async function exportarSolicitudesPago() {
-  const lista = abonosFiltrados()
-    .filter(abono =>
-      Boolean(abono.solicitudPago) &&
-      norm(abono.estadoSolicitudPago) ===
-        'SOLICITADO'
+  const tipoEjecucion =
+    el('tipoSolicitudExportar')?.value;
+
+  if (!tipoEjecucion) {
+    alert(
+      'Debe seleccionar el tipo de solicitudes.'
     );
+
+    return;
+  }
+
+  const lista =
+    abonosFiltrados()
+      .filter(abono =>
+        Boolean(abono.solicitudPago) &&
+        normalizarEstadoEjecucion(
+          abono.estadoSolicitudPago
+        ) === 'SOLICITADO' &&
+        obtenerTipoEjecucion(abono) ===
+          tipoEjecucion
+      );
 
   if (!lista.length) {
     alert(
-      'No hay solicitudes pendientes de exportar con los filtros seleccionados.'
+      `No hay solicitudes ${tipoEjecucion} pendientes de exportar con los filtros seleccionados.`
     );
 
     return;
@@ -2611,52 +3374,117 @@ async function exportarSolicitudesPago() {
 
   descargarArchivoSolicitudes(
     lista,
-    `solicitudes_pago_${fecha}.xlsx`
+    `solicitudes_${tipoEjecucion.toLowerCase()}_${fecha}.xlsx`,
+    tipoEjecucion
   );
 
   const email =
-    (auth.currentUser?.email || '')
-      .toLowerCase();
+    (
+      auth.currentUser?.email ||
+      ''
+    ).toLowerCase();
 
   try {
-    await Promise.all(
-      lista.map(abono =>
-        updateDoc(
-          doc(
+    const batch =
+      writeBatch(db);
+
+    lista.forEach(abono => {
+      const refAbono =
+        doc(
+          db,
+          RUTA_ABONOS,
+          abono.id
+        );
+
+      batch.update(
+        refAbono,
+        {
+          estadoSolicitudPago:
+            'EXPORTADO',
+
+          'solicitudPago.estado':
+            'EXPORTADO',
+
+          'solicitudPago.exportadoAt':
+            serverTimestamp(),
+
+          'solicitudPago.exportadoByEmail':
+            email,
+
+          updatedAt:
+            serverTimestamp(),
+
+          updatedByEmail:
+            email
+        }
+      );
+
+      const refHistorial =
+        doc(
+          collection(
             db,
             RUTA_ABONOS,
-            abono.id
-          ),
-          {
-            estadoSolicitudPago:
-              'EXPORTADO',
+            abono.id,
+            'Historial'
+          )
+        );
 
-            'solicitudPago.estado':
-              'EXPORTADO',
+      batch.set(
+        refHistorial,
+        {
+          tipoCambio:
+            'SOLICITUD_PAGO_EXPORTADA',
 
-            'solicitudPago.exportadoAt':
-              serverTimestamp(),
+          motivoCambio:
+            `Solicitud ${tipoEjecucion} exportada`,
 
-            'solicitudPago.exportadoByEmail':
-              email
-          }
-        )
-      )
-    );
+          estadoAnterior:
+            'SOLICITADO',
+
+          estadoNuevo:
+            'EXPORTADO',
+
+          tipoEjecucion,
+
+          changedAt:
+            serverTimestamp(),
+
+          changedByEmail:
+            email
+        }
+      );
+    });
+
+    await batch.commit();
 
     await cargarAbonos();
-    renderAbonos();
+
+    if (!ES_VISTA_MOVIL) {
+      renderAbonos();
+    }
+
+    cerrarExportarSolicitudes();
+
+    alert(
+      `✅ ${lista.length} solicitud(es) ${tipoEjecucion} exportada(s).`
+    );
 
   } catch (error) {
-    console.warn(
-      'El archivo se descargó, pero algunos estados no se actualizaron:',
-      error
+    console.error(error);
+
+    alert(
+      `El archivo fue generado, pero no se pudieron actualizar todos los estados: ${
+        error.message || error
+      }`
     );
   }
 }
 
 function abrirConfirmarPago() {
-  if (!ABONO_SOLICITUD_ACTUAL?.id) {
+  const abono =
+    ABONO_SOLICITUD_ACTUAL;
+
+  if (!abono?.id) {
     alert(
       'No se encontró el abono seleccionado.'
     );
@@ -2664,25 +3492,90 @@ function abrirConfirmarPago() {
     return;
   }
 
+  const estadoActual =
+    normalizarEstadoEjecucion(
+      abono.estadoSolicitudPago
+    );
+
+  if (el('estadoSolicitudResumen')) {
+    el('estadoSolicitudResumen').textContent =
+      `Estado actual: ${
+        estadoActual === 'SOLICITADO'
+          ? 'PENDIENTE DE EXPORTAR'
+          : estadoActual
+      }`;
+  }
+
+  el('pagoNuevoEstado').value =
+    estadoActual === 'NO_SOLICITADO'
+      ? 'SOLICITADO'
+      : estadoActual;
+
+  el('pagoFechaEjecucion').value =
+    nowISODate();
+
+  el('pagoObservacionEstado').value =
+    '';
+
   el('pagoTipoDocumento').value =
     '';
-  
+
   el('pagoNumeroDocumento').value =
     '';
-  
+
   el('pagoArchivo').value =
     '';
+
+  if (el('pagoNumeroCheque')) {
+    el('pagoNumeroCheque').value =
+      abono.solicitudPago
+        ?.cheque
+        ?.numeroCheque ||
+      '';
+  }
+
+  if (el('pagoFechaCheque')) {
+    el('pagoFechaCheque').value =
+      abono.solicitudPago
+        ?.cheque
+        ?.fechaEmision ||
+      nowISODate();
+  }
+
+  actualizarCamposEstadoEjecucion();
 
   el('confirmarPagoModal')
     .classList
     .add('open');
 }
 
+
+function actualizarCamposEstadoEjecucion() {
+  const nuevoEstado =
+    el('pagoNuevoEstado')?.value;
+
+  const tipoEjecucion =
+    obtenerTipoEjecucion(
+      ABONO_SOLICITUD_ACTUAL || {}
+    );
+
+  el('datosChequeEjecutado')
+    ?.classList.toggle(
+      'hidden',
+      !(
+        tipoEjecucion === 'CHEQUE' &&
+        nuevoEstado === 'FINALIZADO'
+      )
+    );
+}
+
+
 function cerrarConfirmarPago() {
   el('confirmarPagoModal')
     ?.classList
     .remove('open');
 }
+
 
 async function confirmarPagoEjecutado() {
   const abono =
@@ -2696,14 +3589,25 @@ async function confirmarPagoEjecutado() {
     return;
   }
 
+  const nuevoEstado =
+    el('pagoNuevoEstado').value;
+
+  const observacion =
+    el('pagoObservacionEstado')
+      .value
+      .trim();
+
+  const fechaEjecucion =
+    el('pagoFechaEjecucion').value;
+
   const tipoDocumento =
     el('pagoTipoDocumento').value;
-  
+
   const numeroDocumento =
     el('pagoNumeroDocumento')
       .value
       .trim();
-  
+
   const file =
     el('pagoArchivo').files[0] ||
     null;
@@ -2729,27 +3633,79 @@ async function confirmarPagoEjecutado() {
 
     return;
   }
-  
+
   if (
     file &&
-    ['FACTURA', 'BOLETA', 'COMPROBANTE']
-      .includes(
-        normalizarTipoDocumento(
-          tipoDocumento
-        )
-      ) &&
+    [
+      'FACTURA',
+      'BOLETA',
+      'COMPROBANTE'
+    ].includes(
+      normalizarTipoDocumento(
+        tipoDocumento
+      )
+    ) &&
     !numeroDocumento
   ) {
     alert(
       'Debe indicar el número del documento.'
     );
-  
+
+    return;
+  }
+
+  const tipoEjecucion =
+    obtenerTipoEjecucion(abono);
+
+  if (
+    tipoEjecucion === 'CHEQUE' &&
+    nuevoEstado === 'FINALIZADO' &&
+    !el('pagoNumeroCheque')
+      .value
+      .trim()
+  ) {
+    alert(
+      'Debe indicar el número del cheque.'
+    );
+
+    return;
+  }
+
+  if (
+    nuevoEstado === 'ANULADO' &&
+    !observacion
+  ) {
+    alert(
+      'Debe indicar el motivo de la anulación.'
+    );
+
+    return;
+  }
+
+  const estadoActual =
+    normalizarEstadoEjecucion(
+      abono.estadoSolicitudPago
+    );
+
+  if (
+    estadoActual === nuevoEstado &&
+    !file &&
+    !observacion &&
+    !(
+      tipoEjecucion === 'CHEQUE' &&
+      nuevoEstado === 'FINALIZADO'
+    )
+  ) {
+    alert(
+      'No hay cambios para guardar.'
+    );
+
     return;
   }
 
   if (
     !confirm(
-      '¿Confirma que el pago fue ejecutado?'
+      `¿Confirma cambiar el estado de ${estadoActual} a ${nuevoEstado}?`
     )
   ) {
     return;
@@ -2767,11 +3723,18 @@ async function confirmarPagoEjecutado() {
         ''
       ).toLowerCase();
 
-    const refAbono = doc(
-      db,
-      RUTA_ABONOS,
-      abono.id
-    );
+    if (!email) {
+      throw new Error(
+        'No se pudo identificar al usuario conectado.'
+      );
+    }
+
+    const refAbono =
+      doc(
+        db,
+        RUTA_ABONOS,
+        abono.id
+      );
 
     const snap =
       await getDoc(refAbono);
@@ -2784,6 +3747,11 @@ async function confirmarPagoEjecutado() {
 
     const actual =
       snap.data() || {};
+
+    const estadoAnterior =
+      normalizarEstadoEjecucion(
+        actual.estadoSolicitudPago
+      );
 
     let archivos =
       obtenerArchivosAbono(actual);
@@ -2802,7 +3770,7 @@ async function confirmarPagoEjecutado() {
       null;
 
     if (file) {
-      const archivosNuevos =
+      archivos =
         await subirArchivosAbono(
           [
             {
@@ -2816,33 +3784,145 @@ async function confirmarPagoEjecutado() {
           archivos
         );
 
-      archivos =
-        archivosNuevos;
-
       documentoAdjuntado =
         archivos[
           archivos.length - 1
         ];
 
       if (
-        ['FACTURA', 'BOLETA'].includes(
-          normalizarTipoDocumento(
-            tipoDocumento
+        ['FACTURA', 'BOLETA']
+          .includes(
+            normalizarTipoDocumento(
+              tipoDocumento
+            )
           )
-        )
       ) {
         estadoFactura =
           'COMPLETA';
       }
     }
 
-    await addDoc(
-      collection(
-        db,
-        RUTA_ABONOS,
-        abono.id,
-        'Historial'
-      ),
+    const actualizacion = {
+      archivos,
+
+      comprobanteURL:
+        archivos[0]?.url ||
+        actual.comprobanteURL ||
+        '',
+
+      estadoFactura,
+
+      pendienteFactura:
+        estadoFactura ===
+        'PENDIENTE',
+
+      facturaNoAplica:
+        estadoFactura ===
+        'NO_APLICA',
+
+      estadoSolicitudPago:
+        nuevoEstado,
+
+      'solicitudPago.estado':
+        nuevoEstado,
+
+      updatedAt:
+        serverTimestamp(),
+
+      updatedByEmail:
+        email,
+
+      version:
+        Number(actual.version || 1) + 1
+    };
+
+    if (nuevoEstado === 'SOLICITADO') {
+      actualizacion[
+        'solicitudPago.reabiertoAt'
+      ] = serverTimestamp();
+
+      actualizacion[
+        'solicitudPago.reabiertoByEmail'
+      ] = email;
+    }
+
+    if (nuevoEstado === 'EXPORTADO') {
+      actualizacion[
+        'solicitudPago.exportadoAt'
+      ] = serverTimestamp();
+
+      actualizacion[
+        'solicitudPago.exportadoByEmail'
+      ] = email;
+    }
+
+    if (nuevoEstado === 'FINALIZADO') {
+      actualizacion[
+        'solicitudPago.finalizadoAt'
+      ] = serverTimestamp();
+
+      actualizacion[
+        'solicitudPago.finalizadoByEmail'
+      ] = email;
+
+      actualizacion[
+        'solicitudPago.fechaEjecucion'
+      ] =
+        fechaEjecucion ||
+        nowISODate();
+    }
+
+    if (nuevoEstado === 'ANULADO') {
+      actualizacion[
+        'solicitudPago.anuladoAt'
+      ] = serverTimestamp();
+
+      actualizacion[
+        'solicitudPago.anuladoByEmail'
+      ] = email;
+
+      actualizacion[
+        'solicitudPago.motivoAnulacion'
+      ] = observacion;
+    }
+
+    if (
+      tipoEjecucion === 'CHEQUE' &&
+      nuevoEstado === 'FINALIZADO'
+    ) {
+      actualizacion[
+        'solicitudPago.cheque.numeroCheque'
+      ] =
+        el('pagoNumeroCheque')
+          .value
+          .trim();
+
+      actualizacion[
+        'solicitudPago.cheque.fechaEmision'
+      ] =
+        el('pagoFechaCheque').value;
+    }
+
+    const batch =
+      writeBatch(db);
+
+    batch.update(
+      refAbono,
+      actualizacion
+    );
+
+    const refHistorial =
+      doc(
+        collection(
+          db,
+          RUTA_ABONOS,
+          abono.id,
+          'Historial'
+        )
+      );
+
+    batch.set(
+      refHistorial,
       {
         versionAnterior:
           Number(actual.version || 1),
@@ -2851,12 +3931,23 @@ async function confirmarPagoEjecutado() {
           actual,
 
         tipoCambio:
-          'PAGO_CONFIRMADO',
+          'ESTADO_EJECUCION_CAMBIADO',
 
         motivoCambio:
-          'Pago marcado como ejecutado',
+          observacion ||
+          `Estado de ejecución cambiado de ${estadoAnterior} a ${nuevoEstado}`,
+
+        estadoAnterior,
+
+        estadoNuevo:
+          nuevoEstado,
+
+        tipoEjecucion,
 
         documentoAdjuntado,
+
+        fechaEjecucion:
+          fechaEjecucion || '',
 
         changedAt:
           serverTimestamp(),
@@ -2866,64 +3957,29 @@ async function confirmarPagoEjecutado() {
       }
     );
 
-    await updateDoc(
-      refAbono,
-      {
-        archivos,
-
-        comprobanteURL:
-          archivos[0]?.url ||
-          actual.comprobanteURL ||
-          '',
-
-        estadoFactura,
-
-        pendienteFactura:
-          estadoFactura ===
-          'PENDIENTE',
-
-        facturaNoAplica:
-          estadoFactura ===
-          'NO_APLICA',
-
-        estadoSolicitudPago:
-          'PAGADO',
-
-        'solicitudPago.estado':
-          'PAGADO',
-
-        'solicitudPago.pagadoAt':
-          serverTimestamp(),
-
-        'solicitudPago.pagadoByEmail':
-          email,
-
-        updatedAt:
-          serverTimestamp(),
-
-        updatedByEmail:
-          email,
-
-        version:
-          Number(actual.version || 1) + 1
-      }
-    );
+    await batch.commit();
 
     await cargarAbonos();
-    renderAbonos();
+
+    if (!ES_VISTA_MOVIL) {
+      renderAbonos();
+    }
 
     cerrarConfirmarPago();
     cerrarSolicitudPago();
 
     alert(
-      '✅ Pago confirmado como ejecutado.'
+      '✅ Estado de ejecución actualizado correctamente.'
     );
 
   } catch (error) {
-    console.error(error);
+    console.error(
+      'Error cambiando estado de ejecución:',
+      error
+    );
 
     alert(
-      `No se pudo confirmar el pago: ${
+      `No se pudo cambiar el estado: ${
         error.message || error
       }`
     );
@@ -3412,6 +4468,61 @@ function limpiarFormulario() {
   setEstadoFormulario('');
 }
 
+function asegurarFormaPagoDisponible(
+  formaPago = ''
+) {
+  const select =
+    el('abFormaPago');
+
+  if (
+    !select ||
+    !formaPago
+  ) {
+    return;
+  }
+
+  /*
+   * Quitamos opciones legacy agregadas durante
+   * una edición anterior.
+   */
+  [...select.options]
+    .filter(
+      option =>
+        option.dataset.legacy === 'true'
+    )
+    .forEach(
+      option =>
+        option.remove()
+    );
+
+  const existe =
+    [...select.options]
+      .some(
+        option =>
+          option.value === formaPago
+      );
+
+  if (existe) {
+    return;
+  }
+
+  const option =
+    document.createElement(
+      'option'
+    );
+
+  option.value =
+    formaPago;
+
+  option.textContent =
+    `${formaPago} (registro anterior)`;
+
+  option.dataset.legacy =
+    'true';
+
+  select.appendChild(option);
+}
+
 function iniciarEdicion(abono) {
   abonoEditandoId = abono.id;
 
@@ -3586,9 +4697,16 @@ function iniciarEdicion(abono) {
   el('abMonto').value =
     Number(abono.monto || 0);
 
-  el('abFormaPago').value =
+  const formaPagoActual =
     abono.formaPago ||
     'transferencia';
+  
+  asegurarFormaPagoDisponible(
+    formaPagoActual
+  );
+  
+  el('abFormaPago').value =
+    formaPagoActual;
 
   el('abReferencia').value =
     abono.referencia || '';
@@ -4269,30 +5387,47 @@ function renderAbonos() {
     }
 
     const estadoSolicitud =
-      norm(
+      normalizarEstadoEjecucion(
         abono.estadoSolicitudPago ||
         'NO_SOLICITADO'
       );
-
+    
     let claseSolicitud =
       'no-solicitado';
-
+    
     let textoSolicitud =
       'No solicitada';
-
+    
     if (estadoSolicitud === 'SOLICITADO') {
-      claseSolicitud = 'solicitado';
-      textoSolicitud = 'Solicitada';
+      claseSolicitud =
+        'solicitado';
+    
+      textoSolicitud =
+        'Pendiente exportar';
     }
-
+    
     if (estadoSolicitud === 'EXPORTADO') {
-      claseSolicitud = 'exportado';
-      textoSolicitud = 'Exportada';
+      claseSolicitud =
+        'exportado';
+    
+      textoSolicitud =
+        'Exportada';
     }
-
-    if (estadoSolicitud === 'PAGADO') {
-      claseSolicitud = 'pagado';
-      textoSolicitud = 'Pagada';
+    
+    if (estadoSolicitud === 'FINALIZADO') {
+      claseSolicitud =
+        'pagado';
+    
+      textoSolicitud =
+        'Finalizada';
+    }
+    
+    if (estadoSolicitud === 'ANULADO') {
+      claseSolicitud =
+        'no-solicitado';
+    
+      textoSolicitud =
+        'Anulada';
     }
 
     const tr =
@@ -4927,10 +6062,16 @@ function conectarEventos() {
       }
     );
 
-  el('btnMarcarPagada')
+  el('btnCambiarEstadoSolicitud')
     ?.addEventListener(
       'click',
       abrirConfirmarPago
+    );
+  
+  el('pagoNuevoEstado')
+    ?.addEventListener(
+      'change',
+      actualizarCamposEstadoEjecucion
     );
   
   el('btnCerrarConfirmarPago')
@@ -5049,7 +6190,32 @@ function conectarEventos() {
     el('btnExportarSolicitudes')
       ?.addEventListener(
         'click',
+        abrirExportarSolicitudes
+      );
+    
+    el('btnCerrarExportarSolicitudes')
+      ?.addEventListener(
+        'click',
+        cerrarExportarSolicitudes
+      );
+    
+    el('btnConfirmarExportarSolicitudes')
+      ?.addEventListener(
+        'click',
         exportarSolicitudesPago
+      );
+    
+    el('exportarSolicitudesModal')
+      ?.addEventListener(
+        'click',
+        event => {
+          if (
+            event.target ===
+            el('exportarSolicitudesModal')
+          ) {
+            cerrarExportarSolicitudes();
+          }
+        }
       );
 
     el('btnVerArchivados')?.addEventListener(
