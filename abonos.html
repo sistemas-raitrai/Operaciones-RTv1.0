@@ -1149,6 +1149,75 @@
       }
     }
 
+    #solicitudPagoModal .solicitud-tipo {
+      margin: 0 0 .9rem;
+      padding: .55rem .75rem;
+      border-radius: 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      color: #334155;
+      font-size: .8rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    
+    #solicitudPagoModal .solicitud-tipo-wrap.hidden {
+      display: none !important;
+    }
+    
+    #exportarSolicitudesModal {
+      position: fixed;
+      inset: 0;
+      z-index: 3450;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background: rgba(0,0,0,.5);
+    }
+    
+    #exportarSolicitudesModal.open {
+      display: flex;
+    }
+    
+    #exportarSolicitudesModal .modal-card {
+      width: min(520px, 96vw);
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 20px 65px rgba(0,0,0,.32);
+    }
+    
+    #exportarSolicitudesModal .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      padding: .9rem 1rem;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    #exportarSolicitudesModal .modal-header h2 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+    
+    #exportarSolicitudesModal .modal-body {
+      padding: 1rem;
+    }
+    
+    #exportarSolicitudesModal select {
+      width: 100%;
+      padding: .5rem .6rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+    }
+    
+    #exportarSolicitudesModal .solicitud-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 1rem;
+    }
+
     /* =========================================================
        MODAL HISTORIAL
        ========================================================= */
@@ -2389,9 +2458,7 @@
                 <option value="transferencia">Transferencia</option>
                 <option value="afex">AFEX</option>
                 <option value="efectivo">Efectivo</option>
-                <option value="deposito">Depósito</option>
-                <option value="envio">Envío</option>
-                <option value="otro">Otro</option>
+                <option value="cheque">Cheque</option>
               </select>
             </div>
 
@@ -2551,9 +2618,9 @@
   </div>
 
   <!-- ========================================================
-     MODAL SOLICITUD DE EJECUCIÓN DEL PAGO
-     ======================================================== -->
-
+       MODAL SOLICITUD DE EJECUCIÓN DEL PAGO
+       ======================================================== -->
+  
   <div
     id="solicitudPagoModal"
     role="dialog"
@@ -2561,6 +2628,7 @@
     aria-labelledby="solicitudPagoTitulo"
   >
     <div class="modal-card">
+  
       <div class="modal-header">
         <h2 id="solicitudPagoTitulo">
           Solicitar ejecución del pago
@@ -2576,142 +2644,535 @@
       </div>
   
       <div class="modal-body">
+  
         <div
           id="solicitudPagoResumen"
           class="solicitud-resumen"
         ></div>
   
-        <div class="solicitud-grid">
-          <div class="field">
-            <label for="spCuentaOrigen">
-              Cuenta origen
-            </label>
+        <div
+          id="solicitudTipoEjecucion"
+          class="solicitud-tipo"
+        ></div>
   
-            <input
-              id="spCuentaOrigen"
-              type="text"
-            />
-          </div>
+        <!-- ==========================================
+             TRANSFERENCIA
+             ========================================== -->
   
-          <div class="field">
-            <label for="spMonedaOrigen">
-              Moneda origen
-            </label>
+        <div
+          id="solicitudTransferencia"
+          class="solicitud-tipo-wrap hidden"
+        >
+          <div class="solicitud-grid">
   
-            <select id="spMonedaOrigen">
-              <option value="CLP">CLP</option>
-              <option value="USD">USD</option>
-              <option value="BRL">BRL</option>
-              <option value="ARS">ARS</option>
-              <option value="ARS">EUR</option>
-            </select>
-          </div>
+            <div class="field">
+              <label for="spCuentaOrigen">
+                Cuenta origen
+              </label>
   
-          <div class="field">
-            <label for="spCuentaDestino">
-              Cuenta destino
-            </label>
+              <input
+                id="spCuentaOrigen"
+                type="text"
+              />
+            </div>
   
-            <input
-              id="spCuentaDestino"
-              type="text"
-            />
-          </div>
+            <div class="field">
+              <label for="spMonedaOrigen">
+                Moneda origen
+              </label>
   
-          <div class="field">
-            <label for="spMonedaDestino">
-              Moneda destino
-            </label>
+              <select id="spMonedaOrigen">
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+                <option value="BRL">BRL</option>
+                <option value="ARS">ARS</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
   
-            <select id="spMonedaDestino">
-              <option value="CLP">CLP</option>
-              <option value="USD">USD</option>
-              <option value="BRL">BRL</option>
-              <option value="ARS">ARS</option>
-            </select>
-          </div>
+            <div class="field">
+              <label for="spCuentaDestino">
+                Cuenta destino
+              </label>
   
-          <div class="field">
-            <label for="spCodigoBanco">
-              Código banco
-            </label>
+              <input
+                id="spCuentaDestino"
+                type="text"
+              />
+            </div>
   
-            <input
-              id="spCodigoBanco"
-              type="text"
-            />
-          </div>
+            <div class="field">
+              <label for="spMonedaDestino">
+                Moneda destino
+              </label>
   
-          <div class="field">
-            <label for="spRutBeneficiario">
-              RUT beneficiario
-            </label>
+              <select id="spMonedaDestino">
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+                <option value="BRL">BRL</option>
+                <option value="ARS">ARS</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
   
-            <input
-              id="spRutBeneficiario"
-              type="text"
-            />
-          </div>
+            <div class="field">
+              <label for="spCodigoBanco">
+                Código banco
+              </label>
   
-          <div class="field">
-            <label for="spNombreBeneficiario">
-              Nombre beneficiario
-            </label>
+              <input
+                id="spCodigoBanco"
+                type="text"
+              />
+            </div>
   
-            <input
-              id="spNombreBeneficiario"
-              type="text"
-            />
-          </div>
+            <div class="field">
+              <label for="spRutBeneficiario">
+                RUT beneficiario
+              </label>
   
-          <div class="field">
-            <label for="spMontoTotal">
-              Monto total
-            </label>
+              <input
+                id="spRutBeneficiario"
+                type="text"
+              />
+            </div>
   
-            <input
-              id="spMontoTotal"
-              type="number"
-              min="0"
-              step="0.01"
-            />
-          </div>
+            <div class="field">
+              <label for="spNombreBeneficiario">
+                Nombre beneficiario
+              </label>
   
-          <div class="field">
-            <label for="spCorreo">
-              Correo
-            </label>
+              <input
+                id="spNombreBeneficiario"
+                type="text"
+              />
+            </div>
   
-            <input
-              id="spCorreo"
-              type="email"
-            />
-          </div>
+            <div class="field">
+              <label for="spMontoTotal">
+                Monto total
+              </label>
   
-          <div class="field">
-            <label for="spGlosaTef">
-              Glosa TEF
-            </label>
+              <input
+                id="spMontoTotal"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </div>
   
-            <input
-              id="spGlosaTef"
-              type="text"
-            />
-          </div>
+            <div class="field">
+              <label for="spCorreo">
+                Correo
+              </label>
   
-          <div class="field">
-            <label for="spGlosaCorreo">
-              Glosa correo
-            </label>
+              <input
+                id="spCorreo"
+                type="email"
+              />
+            </div>
   
-            <input
-              id="spGlosaCorreo"
-              type="text"
-            />
+            <div class="field">
+              <label for="spGlosaTef">
+                Glosa TEF
+              </label>
+  
+              <input
+                id="spGlosaTef"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spGlosaCorreo">
+                Glosa correo
+              </label>
+  
+              <input
+                id="spGlosaCorreo"
+                type="text"
+              />
+            </div>
+  
           </div>
         </div>
   
+  
+        <!-- ==========================================
+             AFEX
+             ========================================== -->
+  
+        <div
+          id="solicitudAfex"
+          class="solicitud-tipo-wrap hidden"
+        >
+          <div class="solicitud-grid">
+  
+            <div class="field">
+              <label for="spAfexMoneda">
+                Moneda
+              </label>
+  
+              <select id="spAfexMoneda">
+                <option value="USD">USD</option>
+                <option value="BRL">BRL</option>
+                <option value="EUR">EUR</option>
+                <option value="ARS">ARS</option>
+              </select>
+            </div>
+  
+            <div class="field">
+              <label for="spAfexMonto">
+                Monto
+              </label>
+  
+              <input
+                id="spAfexMonto"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spAfexPais">
+                País beneficiario
+              </label>
+  
+              <input
+                id="spAfexPais"
+                type="text"
+              />
+            </div>
+  
+            <div class="field full">
+              <label for="spAfexBancoIntermediario">
+                Banco intermediario
+              </label>
+  
+              <input
+                id="spAfexBancoIntermediario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spAfexSwiftIntermediario">
+                SWIFT banco intermediario
+              </label>
+  
+              <input
+                id="spAfexSwiftIntermediario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spAfexCuentaIntermediario">
+                Cuenta banco intermediario
+              </label>
+  
+              <input
+                id="spAfexCuentaIntermediario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field full">
+              <label for="spAfexBancoBeneficiario">
+                Banco beneficiario
+              </label>
+  
+              <input
+                id="spAfexBancoBeneficiario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spAfexSwiftBeneficiario">
+                SWIFT banco beneficiario
+              </label>
+  
+              <input
+                id="spAfexSwiftBeneficiario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spAfexNombreBeneficiario">
+                Beneficiario
+              </label>
+  
+              <input
+                id="spAfexNombreBeneficiario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field full">
+              <label for="spAfexDireccionBeneficiario">
+                Dirección beneficiario
+              </label>
+  
+              <input
+                id="spAfexDireccionBeneficiario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spAfexAgencia">
+                Agencia
+              </label>
+  
+              <input
+                id="spAfexAgencia"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spAfexCuenta">
+                Cuenta corriente
+              </label>
+  
+              <input
+                id="spAfexCuenta"
+                type="text"
+              />
+            </div>
+  
+            <div class="field full">
+              <label for="spAfexIban">
+                IBAN
+              </label>
+  
+              <input
+                id="spAfexIban"
+                type="text"
+              />
+            </div>
+  
+            <div class="field full">
+              <label for="spAfexReferencia">
+                Referencia / instrucciones adicionales
+              </label>
+  
+              <textarea
+                id="spAfexReferencia"
+                rows="3"
+              ></textarea>
+            </div>
+  
+          </div>
+        </div>
+  
+  
+        <!-- ==========================================
+             EFECTIVO
+             ========================================== -->
+  
+        <div
+          id="solicitudEfectivo"
+          class="solicitud-tipo-wrap hidden"
+        >
+          <div class="solicitud-grid">
+  
+            <div class="field">
+              <label for="spEfectivoResponsable">
+                Responsable
+              </label>
+  
+              <input
+                id="spEfectivoResponsable"
+                type="text"
+                placeholder="Persona que recibirá el efectivo"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spEfectivoMoneda">
+                Moneda
+              </label>
+  
+              <select id="spEfectivoMoneda">
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+                <option value="BRL">BRL</option>
+                <option value="ARS">ARS</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+  
+            <div class="field">
+              <label for="spEfectivoMonto">
+                Monto
+              </label>
+  
+              <input
+                id="spEfectivoMonto"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spEfectivoFecha">
+                Fecha requerida
+              </label>
+  
+              <input
+                id="spEfectivoFecha"
+                type="date"
+              />
+            </div>
+  
+            <div class="field full">
+              <label for="spEfectivoConcepto">
+                Concepto / motivo
+              </label>
+  
+              <input
+                id="spEfectivoConcepto"
+                type="text"
+              />
+            </div>
+  
+            <div class="field full">
+              <label for="spEfectivoObservacion">
+                Observaciones
+              </label>
+  
+              <textarea
+                id="spEfectivoObservacion"
+                rows="3"
+              ></textarea>
+            </div>
+  
+          </div>
+        </div>
+  
+  
+        <!-- ==========================================
+             CHEQUE
+             ========================================== -->
+  
+        <div
+          id="solicitudCheque"
+          class="solicitud-tipo-wrap hidden"
+        >
+          <div class="solicitud-grid">
+  
+            <div class="field">
+              <label for="spChequeCuentaOrigen">
+                Cuenta corriente / banco
+              </label>
+  
+              <input
+                id="spChequeCuentaOrigen"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spChequeNombreBeneficiario">
+                Beneficiario
+              </label>
+  
+              <input
+                id="spChequeNombreBeneficiario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spChequeRutBeneficiario">
+                RUT beneficiario
+              </label>
+  
+              <input
+                id="spChequeRutBeneficiario"
+                type="text"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spChequeMoneda">
+                Moneda
+              </label>
+  
+              <select id="spChequeMoneda">
+                <option value="CLP">CLP</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+  
+            <div class="field">
+              <label for="spChequeMonto">
+                Monto
+              </label>
+  
+              <input
+                id="spChequeMonto"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </div>
+  
+            <div class="field">
+              <label for="spChequeFecha">
+                Fecha requerida
+              </label>
+  
+              <input
+                id="spChequeFecha"
+                type="date"
+              />
+            </div>
+  
+            <div class="field">
+              <label>
+                Tipo
+              </label>
+  
+              <select id="spChequeNominativo">
+                <option value="SI">Nominativo</option>
+                <option value="NO">No nominativo</option>
+              </select>
+            </div>
+  
+            <div class="field">
+              <label>
+                Cruzado
+              </label>
+  
+              <select id="spChequeCruzado">
+                <option value="SI">Sí</option>
+                <option value="NO">No</option>
+              </select>
+            </div>
+  
+            <div class="field full">
+              <label for="spChequeObservacion">
+                Observaciones
+              </label>
+  
+              <textarea
+                id="spChequeObservacion"
+                rows="3"
+              ></textarea>
+            </div>
+  
+          </div>
+        </div>
+  
+  
         <div class="solicitud-actions">
+  
           <button
             id="btnDescargarSolicitud"
             class="btn excel"
@@ -2725,7 +3186,7 @@
           </button>
   
           <button
-            id="btnMarcarPagada"
+            id="btnCambiarEstadoSolicitud"
             class="btn pagada hidden"
             type="button"
           >
@@ -2733,7 +3194,7 @@
               task_alt
             </span>
   
-            Marcar como pagada
+            Cambiar estado
           </button>
   
           <button
@@ -2747,24 +3208,27 @@
   
             Guardar solicitud
           </button>
+  
         </div>
+  
       </div>
     </div>
   </div>
   
   <!-- ========================================================
-       CONFIRMACIÓN pago
+       CAMBIAR ESTADO DE EJECUCIÓN
        ======================================================== -->
-
+  
   <div
     id="confirmarPagoModal"
     role="dialog"
     aria-modal="true"
   >
     <div class="modal-card">
+  
       <div class="modal-header">
         <h2>
-          Confirmar ejecución del pago
+          Cambiar estado de ejecución
         </h2>
   
         <button
@@ -2777,16 +3241,66 @@
       </div>
   
       <div class="modal-body">
-        <p class="solicitud-resumen">
-          Confirma que el pago fue ejecutado. Puedes adjuntar inmediatamente una factura, boleta, comprobante u otro respaldo.
-        </p>
+  
+        <p
+          id="estadoSolicitudResumen"
+          class="solicitud-resumen"
+        ></p>
   
         <div class="solicitud-grid">
+  
+          <div class="field">
+            <label for="pagoNuevoEstado">
+              Nuevo estado
+            </label>
+  
+            <select id="pagoNuevoEstado">
+              <option value="SOLICITADO">
+                Pendiente de exportar
+              </option>
+  
+              <option value="EXPORTADO">
+                Exportada
+              </option>
+  
+              <option value="FINALIZADO">
+                Finalizada
+              </option>
+  
+              <option value="ANULADO">
+                Anulada
+              </option>
+            </select>
+          </div>
+  
+          <div class="field">
+            <label for="pagoFechaEjecucion">
+              Fecha
+            </label>
+  
+            <input
+              id="pagoFechaEjecucion"
+              type="date"
+            />
+          </div>
+  
+          <div class="field full">
+            <label for="pagoObservacionEstado">
+              Observación
+            </label>
+  
+            <textarea
+              id="pagoObservacionEstado"
+              rows="2"
+              placeholder="Opcional"
+            ></textarea>
+          </div>
+  
           <div class="field">
             <label for="pagoTipoDocumento">
               Documento de respaldo
             </label>
-          
+  
             <select id="pagoTipoDocumento">
               <option value="">No adjuntar ahora</option>
               <option value="FACTURA">Factura</option>
@@ -2795,30 +3309,22 @@
               <option value="OTRO">Otro</option>
             </select>
           </div>
-          
+  
           <div class="field">
             <label for="pagoNumeroDocumento">
               Número de documento
             </label>
-          
+  
             <input
               id="pagoNumeroDocumento"
               type="text"
-              placeholder="Ej.: 1458"
             />
           </div>
-          
+  
           <div class="field">
             <label for="pagoArchivo">
               Archivo
             </label>
-          
-            <input
-              id="pagoArchivo"
-              type="file"
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
-            />
-          </div>
   
             <input
               id="pagoArchivo"
@@ -2826,21 +3332,132 @@
               accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
             />
           </div>
+  
+          <div
+            id="datosChequeEjecutado"
+            class="field full hidden"
+          >
+            <div class="solicitud-grid">
+  
+              <div class="field">
+                <label for="pagoNumeroCheque">
+                  Número cheque
+                </label>
+  
+                <input
+                  id="pagoNumeroCheque"
+                  type="text"
+                />
+              </div>
+  
+              <div class="field">
+                <label for="pagoFechaCheque">
+                  Fecha emisión cheque
+                </label>
+  
+                <input
+                  id="pagoFechaCheque"
+                  type="date"
+                />
+              </div>
+  
+            </div>
+          </div>
+  
         </div>
   
         <div class="solicitud-actions">
+  
           <button
             id="btnConfirmarPagoEjecutado"
             class="btn primary"
             type="button"
           >
             <span class="material-symbols-outlined">
-              task_alt
+              save
             </span>
   
-            Confirmar como pagada
+            Guardar estado
           </button>
+  
         </div>
+  
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+     EXPORTAR SOLICITUDES POR TIPO
+     ======================================================== -->
+
+  <div
+    id="exportarSolicitudesModal"
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="modal-card">
+  
+      <div class="modal-header">
+        <h2>
+          Exportar solicitudes
+        </h2>
+  
+        <button
+          id="btnCerrarExportarSolicitudes"
+          class="btn secondary"
+          type="button"
+        >
+          Cerrar
+        </button>
+      </div>
+  
+      <div class="modal-body">
+  
+        <p class="solicitud-resumen">
+          Selecciona qué tipo de solicitudes deseas exportar.
+          Cada tipo se exporta por separado.
+        </p>
+  
+        <div class="field">
+          <label for="tipoSolicitudExportar">
+            Tipo de ejecución
+          </label>
+  
+          <select id="tipoSolicitudExportar">
+            <option value="TRANSFERENCIA">
+              Transferencias
+            </option>
+  
+            <option value="AFEX">
+              AFEX
+            </option>
+  
+            <option value="CHEQUE">
+              Cheques
+            </option>
+  
+            <option value="EFECTIVO">
+              Efectivo
+            </option>
+          </select>
+        </div>
+  
+        <div class="solicitud-actions">
+  
+          <button
+            id="btnConfirmarExportarSolicitudes"
+            class="btn excel"
+            type="button"
+          >
+            <span class="material-symbols-outlined">
+              download
+            </span>
+  
+            Exportar
+          </button>
+  
+        </div>
+  
       </div>
     </div>
   </div>
