@@ -130,8 +130,19 @@ const btnCloseHistorial   = document.getElementById("historial-close");
 const listHistorial       = document.getElementById("historial-list");
 const filtroHistorial     = document.getElementById("historial-filter");
 
-// cache en memoria para filtrar sin reconsultar
+// —————————————————————————————————
+// Estado del historial
+// —————————————————————————————————
 let historialCache = [];
+let historialGeneralCache = [];
+
+let historialModo = 'grupo'; // 'grupo' | 'general'
+
+let historialUIReady = false;
+
+let btnHistGrupoUI = null;
+let btnHistGeneralUI = null;
+let encabezadoHistorialUI = null;
 
 // —— Estado revisión (banda)
 const estadoBadge    = document.getElementById("estado-badge");
@@ -254,28 +265,225 @@ async function setRevisionDia(grupoId, fecha, estado, motivo = '') {
 }
 
 // —————————————————————————————————
+// HISTORIAL — clasificación de eventos
+// —————————————————————————————————
+function inferirCategoriaHistorial(accion = '') {
+  const a = K(accion);
+
+  if (
+    a.includes('REVISION') ||
+    a.includes('RECHAZAR') ||
+    a.includes('APROBAR') ||
+    a.includes('PENDIENTE') ||
+    a.includes('ESTADO DEL GRUPO')
+  ) {
+    return 'REVISION';
+  }
+
+  if (
+    a.includes('PLANTILLA')
+  ) {
+    return 'PLANTILLA';
+  }
+
+  if (
+    a.includes('FECHA') ||
+    a.includes('CONVERTIR ITINERARIO')
+  ) {
+    return 'FECHAS';
+  }
+
+  return 'ITINERARIO';
+}
+
+
+// —————————————————————————————————
+// Etiqueta humana de estados de revisión
+// —————————————————————————————————
+function labelEstadoRevision(value) {
+  const v = (value || 'pendiente')
+    .toString()
+    .toLowerCase();
+
+  if (v === 'ok') return 'OK';
+  if (v === 'rechazado') return 'RECHAZADO';
+
+  return 'PENDIENTE';
+}
+
+
+// —————————————————————————————————
+// Devuelve diferencias reales entre antesObj/despuesObj.
+//
+// Esto permite interpretar también registros ANTIGUOS que
+// ya tienen estos objetos guardados.
+// —————————————————————————————————
+function obtenerCambiosActividadHistorial(antes, despues) {
+  if (!antes && !despues) return [];
+
+  const out = [];
+
+  const campos = [
+    {
+      key: 'actividad',
+      label: 'Actividad'
+    },
+    {
+      key: 'horaInicio',
+      label: 'Hora inicio'
+    },
+    {
+      key: 'horaFin',
+      label: 'Hora fin'
+    },
+    {
+      key: 'adultos',
+      label: 'Adultos'
+    },
+    {
+      key: 'estudiantes',
+      label: 'Estudiantes'
+    },
+    {
+      key: 'pasajeros',
+      label: 'PAX'
+    },
+    {
+      key: 'notas',
+      label: 'Notas'
+    },
+    {
+      key: 'revision',
+      label: 'Revisión',
+      formatter: labelEstadoRevision
+    }
+  ];
+
+  campos.forEach(campo => {
+    const oldRaw = antes?.[campo.key];
+    const newRaw = despues?.[campo.key];
+
+    const oldValue =
+      campo.formatter
+        ? campo.formatter(oldRaw)
+        : (oldRaw ?? '').toString();
+
+    const newValue =
+      campo.formatter
+        ? campo.formatter(newRaw)
+        : (newRaw ?? '').toString();
+
+    if (oldValue !== newValue) {
+      out.push({
+        campo: campo.label,
+        anterior: oldValue || '—',
+        nuevo: newValue || '—'
+      });
+    }
+  });
+
+  return out;
+}
+
+// —————————————————————————————————
 /** Helper unificado para HISTORIAL **/
 // —————————————————————————————————
 async function logHist(grupoId, accion, extra = {}) {
   try {
     let g = extra._group;
+
     if (!g) {
-      const s = await getDoc(doc(db,'grupos',grupoId));
-      g = s.exists() ? s.data() : {};
+      const s = await getDoc(
+        doc(db, 'grupos', grupoId)
+      );
+
+      g = s.exists()
+        ? s.data()
+        : {};
     }
+
+    const antesObj =
+      extra.antesObj || null;
+
+    const despuesObj =
+      extra.despuesObj || null;
+
+    const actividad =
+      extra.actividad ||
+      despuesObj?.actividad ||
+      antesObj?.actividad ||
+      '';
+
+    const estadoAnterior =
+      extra.estadoAnterior ||
+      antesObj?.revision ||
+      '';
+
+    const estadoNuevo =
+      extra.estadoNuevo ||
+      despuesObj?.revision ||
+      '';
+
     const base = {
       grupoId,
-      numeroNegocio: g.numeroNegocio || grupoId,
-      nombreGrupo: (g.nombreGrupo || '').toString(),
+
+      numeroNegocio:
+        g.numeroNegocio ||
+        grupoId,
+
+      nombreGrupo:
+        (g.nombreGrupo || '')
+          .toString(),
+
+      anoViaje:
+        g.anoViaje ??
+        '',
+
+      categoria:
+        extra.categoria ||
+        inferirCategoriaHistorial(
+          accion
+        ),
+
       accion,
-      usuario: (auth.currentUser && auth.currentUser.email) || '',
-      timestamp: new Date()
+
+      fechaActividad:
+        extra.fechaActividad ||
+        extra.fecha ||
+        '',
+
+      actividad,
+
+      estadoAnterior,
+
+      estadoNuevo,
+
+      usuario:
+        auth.currentUser?.email ||
+        '',
+
+      timestamp:
+        new Date()
     };
-    const payload = { ...base, ...extra };
-    delete payload._group; // no persistir helper
-    await addDoc(collection(db,'historial'), payload);
+
+    const payload = {
+      ...base,
+      ...extra
+    };
+
+    // Helpers internos: no se guardan como datos.
+    delete payload._group;
+
+    await addDoc(
+      collection(db, 'historial'),
+      payload
+    );
+
   } catch (e) {
-    console.warn('Historial no registrado:', e);
+    console.warn(
+      'Historial no registrado:',
+      e
+    );
   }
 }
 
@@ -366,16 +574,7 @@ async function initItinerario() {
   // filtro en vivo
   if (filtroHistorial) {
     filtroHistorial.oninput = () => {
-      const q = (filtroHistorial.value || '').trim().toLowerCase();
-      const data = !q ? historialCache : historialCache.filter(it => {
-        const campos = [
-          it.accion, it.usuario, it.motivo, it.detalle,
-          it.anterior, it.nuevo, it.path, it.nombreGrupo,
-          it.numeroNegocio
-        ].map(x => (x ?? '').toString().toLowerCase());
-        return campos.some(c => c.includes(q));
-      });
-      renderHistorialList(data);
+      aplicarFiltroHistorial();
     };
   }
 
@@ -468,6 +667,58 @@ async function prepararCampoActividad(inputId, destino, grupo = null) {
 
   document.body.appendChild(dl);
   input.setAttribute("list", "lista-" + inputId);
+}
+
+
+function aplicarFiltroHistorial() {
+  const q =
+    (filtroHistorial?.value || '')
+      .trim()
+      .toLowerCase();
+
+  const source =
+    historialModo === 'general'
+      ? historialGeneralCache
+      : historialCache;
+
+  if (!q) {
+    renderHistorialList(
+      source
+    );
+    return;
+  }
+
+  const filtrados =
+    source.filter(h => {
+      const campos = [
+        h.numeroNegocio,
+        h.nombreGrupo,
+        h.categoria,
+        h.accion,
+        h.actividad,
+        h.usuario,
+        h.motivo,
+        h.detalle,
+        h.anterior,
+        h.nuevo,
+        h.fechaActividad,
+        h.path
+      ]
+        .map(v =>
+          (v ?? '')
+            .toString()
+            .toLowerCase()
+        );
+
+      return campos.some(
+        value =>
+          value.includes(q)
+      );
+    });
+
+  renderHistorialList(
+    filtrados
+  );
 }
 
 // ======================================================
@@ -688,26 +939,76 @@ function upsertResumenOK(count){
   bar.innerHTML = `<span class="pill pill-ok">Grupos OK: <b>${count}</b></span>`;
 }
 
-async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
-  const gSnap = await getDoc(doc(db, 'grupos', grupoId));
-  const g     = gSnap.data() || {};
+async function updateEstadoRevisionAndBadge(
+  grupoId,
+  ITopt = null
+) {
+  const refGrupo =
+    doc(db, 'grupos', grupoId);
 
-  const IT = ITopt || g.itinerario || {};
+  const gSnap =
+    await getDoc(refGrupo);
 
-  const nuevoEstado = computeEstadoFromItinerario(IT);
+  const g =
+    gSnap.data() || {};
 
-  if (g.estadoRevisionItinerario !== nuevoEstado) {
+  const IT =
+    ITopt ||
+    g.itinerario ||
+    {};
+
+  const estadoAnterior =
+    g.estadoRevisionItinerario ||
+    'PENDIENTE';
+
+  const nuevoEstado =
+    computeEstadoFromItinerario(IT);
+
+  if (
+    estadoAnterior !==
+    nuevoEstado
+  ) {
     await updateDoc(
-      doc(db, 'grupos', grupoId),
+      refGrupo,
       {
-        estadoRevisionItinerario: nuevoEstado
+        estadoRevisionItinerario:
+          nuevoEstado
+      }
+    );
+
+    // Registrar también el cambio GLOBAL.
+    await logHist(
+      grupoId,
+      'CAMBIAR ESTADO REVISION GRUPO',
+      {
+        _group: g,
+
+        categoria:
+          'REVISION',
+
+        anterior:
+          estadoAnterior,
+
+        nuevo:
+          nuevoEstado,
+
+        estadoAnterior,
+        estadoNuevo:
+          nuevoEstado,
+
+        detalle:
+          `Estado general de revisión del itinerario`
       }
     );
   }
 
-  setEstadoBadge(nuevoEstado);
+  setEstadoBadge(
+    nuevoEstado
+  );
 
-  await refreshAlertasCounts(grupoId);
+  await refreshAlertasCounts(
+    grupoId
+  );
 }
 
 // —————————————————————————————————
@@ -1565,15 +1866,46 @@ async function quickAddActivity() {
     };
 
     const newIdx = arr.length;
-    await logHist(grupoId, 'CREAR ACTIVIDAD', {
-      _group: g,
-      fecha: f, idx: newIdx,
-      anterior: '',
-      nuevo: item.actividad,
-      antesObj: null,
-      despuesObj: item,
-      path: `itinerario.${f}[${newIdx}]`
-    });
+    await logHist(
+      grupoId,
+      'CREAR ACTIVIDAD',
+      {
+        _group: g,
+    
+        categoria:
+          'ITINERARIO',
+    
+        fecha: f,
+        fechaActividad: f,
+    
+        idx:
+          newIdx,
+    
+        actividad:
+          item.actividad,
+    
+        anterior:
+          '',
+    
+        nuevo:
+          item.actividad,
+    
+        estadoAnterior:
+          '',
+    
+        estadoNuevo:
+          'pendiente',
+    
+        antesObj:
+          null,
+    
+        despuesObj:
+          item,
+    
+        path:
+          `itinerario.${f}[${newIdx}]`
+      }
+    );
 
     arr.push(item);
     await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${f}`]: arr });
@@ -1838,22 +2170,50 @@ async function onSubmitModal(evt) {
     };
   
     arr[editData.idx] = afterObj;
-  
+
     await logHist(
       grupoId,
       'MODIFICAR ACTIVIDAD',
       {
         _group: g,
+    
+        categoria:
+          'ITINERARIO',
+    
         fecha,
-        idx: editData.idx,
+        fechaActividad:
+          fecha,
+    
+        idx:
+          editData.idx,
+    
+        actividad:
+          afterObj.actividad ||
+          beforeObj?.actividad ||
+          '',
+    
         anterior:
-          beforeObj?.actividad || '',
+          beforeObj?.actividad ||
+          '',
+    
         nuevo:
-          afterObj.actividad || '',
+          afterObj.actividad ||
+          '',
+    
+        estadoAnterior:
+          beforeObj?.revision ||
+          'pendiente',
+    
+        estadoNuevo:
+          afterObj.revision ||
+          'pendiente',
+    
         antesObj:
           beforeObj || null,
+    
         despuesObj:
           afterObj || null,
+    
         path:
           `itinerario.${fecha}[${editData.idx}]`
       }
@@ -1871,26 +2231,66 @@ async function onSubmitModal(evt) {
       );
     }
   } else {
+  } else {
     const newIdx = arr.length;
-    const afterObj = { ...payloadBase, revision: 'pendiente' };
+
+    const afterObj = {
+      ...payloadBase,
+      revision: 'pendiente'
+    };
+
     arr.push(afterObj);
-    await logHist(grupoId, 'CREAR ACTIVIDAD', {
-      _group: g,
-      fecha, idx: newIdx,
-      anterior: '',
-      nuevo: afterObj.actividad || '',
-      antesObj: null,
-      despuesObj: afterObj,
-      path: `itinerario.${fecha}[${newIdx}]`
-    });
-  }
 
-  await updateDoc(doc(db,'grupos',grupoId), {
-    adultos: a, estudiantes: e, cantidadgrupo: pax,
-    [`itinerario.${fecha}`]: arr
-  });
+    await logHist(
+      grupoId,
+      'CREAR ACTIVIDAD',
+      {
+        _group: g,
 
-  await updateEstadoRevisionAndBadge(grupoId, { ...(g.itinerario||{}), [fecha]: arr });
+        categoria: 'ITINERARIO',
+
+        fecha,
+        fechaActividad: fecha,
+
+        idx: newIdx,
+
+        actividad:
+          afterObj.actividad || '',
+
+        anterior: '',
+        nuevo:
+          afterObj.actividad || '',
+
+        estadoAnterior: '',
+        estadoNuevo: 'pendiente',
+
+        antesObj: null,
+        despuesObj: afterObj,
+
+        path:
+          `itinerario.${fecha}[${newIdx}]`
+      }
+    );
+  } // ← ESTA LLAVE TE FALTA
+
+  await updateDoc(
+    doc(db, 'grupos', grupoId),
+    {
+      adultos: a,
+      estudiantes: e,
+      cantidadgrupo: pax,
+      [`itinerario.${fecha}`]: arr
+    }
+  );
+
+  await updateEstadoRevisionAndBadge(
+    grupoId,
+    {
+      ...(g.itinerario || {}),
+      [fecha]: arr
+    }
+  );
+
   closeModal();
   renderItinerario();
 }
@@ -1990,17 +2390,53 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
   arr[idx] = updated;
 
   // Historial
-  await logHist(grupoId, 'CAMBIAR REVISION ACTIVIDAD', {
-    _group: g,
-    fecha, idx,
-    anterior: old,
-    nuevo: next,
-    motivo: updated.rechazoMotivo || '',
-    detalle: `${visibleName} (${fecha})`,
-    antesObj: beforeObj || null,
-    despuesObj: updated || null,
-    path: `itinerario.${fecha}[${idx}]`
-  });
+  await logHist(
+    grupoId,
+    'CAMBIAR REVISION ACTIVIDAD',
+    {
+      _group: g,
+  
+      categoria:
+        'REVISION',
+  
+      fecha,
+      fechaActividad:
+        fecha,
+  
+      idx,
+  
+      actividad:
+        visibleName,
+  
+      anterior:
+        old,
+  
+      nuevo:
+        next,
+  
+      estadoAnterior:
+        old,
+  
+      estadoNuevo:
+        next,
+  
+      motivo:
+        updated.rechazoMotivo ||
+        '',
+  
+      detalle:
+        `${visibleName} (${fecha})`,
+  
+      antesObj:
+        beforeObj || null,
+  
+      despuesObj:
+        updated || null,
+  
+      path:
+        `itinerario.${fecha}[${idx}]`
+    }
+  );
 
   // Persistir cambio
   await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${fecha}`]: arr });
@@ -2616,12 +3052,30 @@ async function handleRejectDayCompleto(fecha) {
     'RECHAZAR DÍA COMPLETO',
     {
       _group: g,
+  
+      categoria:
+        'REVISION',
+  
       fecha,
+      fechaActividad:
+        fecha,
+  
       anterior:
-        `Actividades: ${arrAnterior.length}`,
+        `Actividades afectadas: ${arrAnterior.length}`,
+  
       nuevo:
         `Todas las actividades quedaron RECHAZADAS`,
-      motivo
+  
+      estadoAnterior:
+        '',
+  
+      estadoNuevo:
+        'rechazado',
+  
+      motivo,
+  
+      detalle:
+        `${arrAnterior.length} actividades rechazadas`
     }
   );
 
@@ -2963,70 +3417,462 @@ function fmtTS(ts) {
 
 /** Renderiza la lista del historial */
 function renderHistorialList(arr) {
-  if (!listHistorial) return;
-  if (!arr?.length) {
-    listHistorial.innerHTML = `<li class="hist-item"><div class="meta">— Sin eventos —</div></li>`;
+  if (!listHistorial) {
     return;
   }
-  listHistorial.innerHTML = arr.map(h => {
-    const ts = fmtTS(h.timestamp);
-    const anterior = (h.anterior ?? '').toString();
-    const nuevo    = (h.nuevo ?? '').toString();
-    const tieneDiff = anterior || nuevo;
-    const motivo   = (h.motivo ?? '').toString();
-    const detalle  = (h.detalle ?? '').toString();
-    const path     = (h.path ?? '').toString();
 
-    return `
+  if (!arr?.length) {
+    listHistorial.innerHTML = `
       <li class="hist-item">
-        <div class="line1">
-          <strong>${(h.accion || '').toString().toUpperCase()}</strong>
-          <span class="meta">· ${h.usuario || ''}</span>
-          <span class="meta">· ${ts}</span>
-        </div>
-        <div class="line2">
-          ${tieneDiff ? `<div><span class="meta">Cambio:</span> <code>${anterior || '—'}</code> → <code>${nuevo || '—'}</code></div>` : ''}
-          ${motivo ? `<div><span class="meta">Motivo:</span> ${motivo}</div>` : ''}
-          ${detalle ? `<div><span class="meta">Detalle:</span> ${detalle}</div>` : ''}
-          ${path ? `<div class="meta">Path: ${path}</div>` : ''}
+        <div class="meta">
+          — Sin eventos —
         </div>
       </li>
     `;
-  }).join('');
-}
 
+    return;
+  }
+
+  // Agrupación por día
+  const gruposDia = new Map();
+
+  arr.forEach(h => {
+    let d;
+
+    try {
+      d =
+        h.timestamp?.toDate
+          ? h.timestamp.toDate()
+          : new Date(
+              h.timestamp || 0
+            );
+    } catch (_) {
+      d = null;
+    }
+
+    const key =
+      d &&
+      !Number.isNaN(
+        d.getTime()
+      )
+        ? `${d.getFullYear()}-${String(
+            d.getMonth() + 1
+          ).padStart(2, '0')}-${String(
+            d.getDate()
+          ).padStart(2, '0')}`
+        : 'SIN_FECHA';
+
+    if (!gruposDia.has(key)) {
+      gruposDia.set(
+        key,
+        []
+      );
+    }
+
+    gruposDia
+      .get(key)
+      .push(h);
+  });
+
+  function tituloFecha(key) {
+    if (key === 'SIN_FECHA') {
+      return 'SIN FECHA';
+    }
+
+    const [y, m, d] =
+      key.split('-')
+        .map(Number);
+
+    const fecha =
+      new Date(
+        y,
+        m - 1,
+        d
+      );
+
+    return fecha
+      .toLocaleDateString(
+        'es-CL',
+        {
+          weekday: 'long',
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric'
+        }
+      )
+      .toUpperCase();
+  }
+
+  function iconoCategoria(cat) {
+    const c =
+      (cat || '')
+        .toUpperCase();
+
+    if (c === 'REVISION') {
+      return '🔎';
+    }
+
+    if (c === 'PLANTILLA') {
+      return '📋';
+    }
+
+    if (c === 'FECHAS') {
+      return '📅';
+    }
+
+    return '✏️';
+  }
+
+  function construirDetalleEvento(h) {
+    const bloques = [];
+
+    // Para MODIFICAR ACTIVIDAD y registros antiguos
+    // con antesObj/despuesObj mostramos cambios REALES.
+    const cambios =
+      obtenerCambiosActividadHistorial(
+        h.antesObj,
+        h.despuesObj
+      );
+
+    if (cambios.length) {
+      bloques.push(
+        cambios.map(c => `
+          <div>
+            <span class="meta">
+              ${c.campo}:
+            </span>
+            <code>
+              ${c.anterior}
+            </code>
+            →
+            <code>
+              ${c.nuevo}
+            </code>
+          </div>
+        `).join('')
+      );
+    } else {
+      const anterior =
+        (h.anterior ?? '')
+          .toString();
+
+      const nuevo =
+        (h.nuevo ?? '')
+          .toString();
+
+      if (
+        anterior ||
+        nuevo
+      ) {
+        bloques.push(`
+          <div>
+            <span class="meta">
+              Cambio:
+            </span>
+            <code>
+              ${anterior || '—'}
+            </code>
+            →
+            <code>
+              ${nuevo || '—'}
+            </code>
+          </div>
+        `);
+      }
+    }
+
+    if (h.motivo) {
+      bloques.push(`
+        <div>
+          <span class="meta">
+            Motivo:
+          </span>
+          ${h.motivo}
+        </div>
+      `);
+    }
+
+    if (
+      h.detalle &&
+      !cambios.length
+    ) {
+      bloques.push(`
+        <div>
+          <span class="meta">
+            Detalle:
+          </span>
+          ${h.detalle}
+        </div>
+      `);
+    }
+
+    return bloques.join('');
+  }
+
+  let html = '';
+
+  gruposDia.forEach(
+    (items, key) => {
+
+      html += `
+        <li
+          class="hist-day-title"
+          style="
+            list-style:none;
+            margin:14px 0 6px;
+            font-weight:700;
+          "
+        >
+          ${tituloFecha(key)}
+        </li>
+      `;
+
+      items.forEach(h => {
+        const categoria =
+          h.categoria ||
+          inferirCategoriaHistorial(
+            h.accion
+          );
+
+        const actividad =
+          h.actividad ||
+          h.despuesObj?.actividad ||
+          h.antesObj?.actividad ||
+          '';
+
+        const grupoHtml =
+          historialModo === 'general'
+            ? `
+                <div
+                  style="
+                    margin-bottom:3px;
+                    font-weight:600;
+                  "
+                >
+                  #${h.numeroNegocio || '—'}
+                  ·
+                  ${(
+                    h.nombreGrupo ||
+                    ''
+                  )
+                    .toString()
+                    .toUpperCase()}
+                </div>
+              `
+            : '';
+
+        html += `
+          <li
+            class="hist-item"
+            style="
+              margin-bottom:10px;
+            "
+          >
+            ${grupoHtml}
+
+            <div class="line1">
+              <strong>
+                ${iconoCategoria(categoria)}
+                ${(h.accion || '')
+                  .toString()
+                  .toUpperCase()}
+              </strong>
+
+              ${
+                actividad
+                  ? `
+                      <span class="meta">
+                        · ${actividad}
+                      </span>
+                    `
+                  : ''
+              }
+
+              <span class="meta">
+                · ${h.usuario || ''}
+              </span>
+
+              <span class="meta">
+                · ${fmtTS(
+                  h.timestamp
+                )}
+              </span>
+            </div>
+
+            <div class="line2">
+              ${construirDetalleEvento(h)}
+
+              ${
+                h.fechaActividad
+                  ? `
+                      <div class="meta">
+                        Fecha itinerario:
+                        ${h.fechaActividad}
+                      </div>
+                    `
+                  : ''
+              }
+            </div>
+          </li>
+        `;
+      });
+    }
+  );
+
+  listHistorial.innerHTML =
+    html;
+}
 /** Abre el modal y consulta la colección 'historial' para el grupo actual */
 async function openHistorialPanel() {
-  const grupoId = selectNum?.value;
-  if (!grupoId || !modalHistorial) return;
+  const grupoId =
+    selectNum?.value;
 
-  modalHistorial.style.display = "block";
-  if (modalBg) modalBg.style.display = "block";
-  document.body.classList.add('modal-open');   // <- importante
-
-  // Estado de carga
-  if (listHistorial) listHistorial.innerHTML = `<li class="hist-item"><div class="meta">Cargando…</div></li>`;
-
-  try {
-    // Trae TODO el historial del grupo y ordena por timestamp desc en cliente
-    const qs = await getDocs(query(
-      collection(db, 'historial'),
-      where('grupoId','==', grupoId)
-    ));
-    historialCache = qs.docs.map(d => ({ id: d.id, ...(d.data()||{}) }))
-      .sort((a,b) => {
-        const ta = (a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0)).getTime();
-        const tb = (b.timestamp?.toDate ? b.timestamp.toDate() : new Date(b.timestamp || 0)).getTime();
-        return tb - ta;
-      });
-
-    // Render inicial y reset de filtro
-    if (filtroHistorial) filtroHistorial.value = '';
-    renderHistorialList(historialCache);
-  } catch (e) {
-    console.warn('Error cargando historial:', e);
-    if (listHistorial) listHistorial.innerHTML = `<li class="hist-item"><div class="meta">Error al cargar el historial.</div></li>`;
+  if (
+    !grupoId ||
+    !modalHistorial
+  ) {
+    return;
   }
+
+  modalHistorial.style.display =
+    "block";
+
+  if (modalBg) {
+    modalBg.style.display =
+      "block";
+  }
+
+  document.body.classList.add(
+    'modal-open'
+  );
+
+  ensureHistorialUI();
+
+  // Cada vez que abrimos desde un grupo,
+  // comenzamos mostrando ESE grupo.
+  historialModo =
+    'grupo';
+
+  await cargarHistorialGrupoActual();
+}
+  
+// —————————————————————————————————
+// Construye controles del Historial.
+// No requiere cambios en el HTML.
+// —————————————————————————————————
+function ensureHistorialUI() {
+  if (
+    historialUIReady ||
+    !modalHistorial
+  ) {
+    return;
+  }
+
+  const wrapper =
+    document.createElement('div');
+
+  wrapper.className =
+    'historial-modos';
+
+  wrapper.style.display =
+    'flex';
+
+  wrapper.style.gap =
+    '8px';
+
+  wrapper.style.margin =
+    '8px 0';
+
+  btnHistGrupoUI =
+    document.createElement('button');
+
+  btnHistGrupoUI.type =
+    'button';
+
+  btnHistGrupoUI.textContent =
+    'Historial del grupo';
+
+  btnHistGeneralUI =
+    document.createElement('button');
+
+  btnHistGeneralUI.type =
+    'button';
+
+  btnHistGeneralUI.textContent =
+    `Historial general ${getAnoViajeOperativoActual()}`;
+
+  wrapper.appendChild(
+    btnHistGrupoUI
+  );
+
+  wrapper.appendChild(
+    btnHistGeneralUI
+  );
+
+  encabezadoHistorialUI =
+    document.createElement('div');
+
+  encabezadoHistorialUI.className =
+    'historial-encabezado';
+
+  encabezadoHistorialUI.style.margin =
+    '8px 0 12px';
+
+  encabezadoHistorialUI.style.padding =
+    '8px';
+
+  encabezadoHistorialUI.style.border =
+    '1px solid #ddd';
+
+  encabezadoHistorialUI.style.borderRadius =
+    '6px';
+
+  // Insertar antes del filtro actual.
+  if (filtroHistorial) {
+    filtroHistorial
+      .parentNode
+      .insertBefore(
+        wrapper,
+        filtroHistorial
+      );
+
+    filtroHistorial
+      .parentNode
+      .insertBefore(
+        encabezadoHistorialUI,
+        filtroHistorial
+      );
+  } else {
+    modalHistorial.appendChild(
+      wrapper
+    );
+
+    modalHistorial.appendChild(
+      encabezadoHistorialUI
+    );
+  }
+
+  btnHistGrupoUI.onclick =
+    async e => {
+      stopAll(e);
+
+      historialModo =
+        'grupo';
+
+      await cargarHistorialGrupoActual();
+    };
+
+  btnHistGeneralUI.onclick =
+    async e => {
+      stopAll(e);
+
+      historialModo =
+        'general';
+
+      await cargarHistorialGeneral();
+    };
+
+  historialUIReady = true;
 }
 
 /* ===========================================================
@@ -3726,3 +4572,478 @@ async function runStats(){
     </table>
   `;
   }
+
+  async function cargarHistorialGrupoActual() {
+  const grupoId =
+    selectNum?.value;
+
+  if (!grupoId) {
+    return;
+  }
+
+  if (listHistorial) {
+    listHistorial.innerHTML =
+      `<li class="hist-item">
+        <div class="meta">
+          Cargando…
+        </div>
+      </li>`;
+  }
+
+  const grupoSnap =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
+
+  const g =
+    grupoSnap.data() || {};
+
+  if (encabezadoHistorialUI) {
+    encabezadoHistorialUI.innerHTML = `
+      <strong>
+        #${g.numeroNegocio || grupoId}
+        ·
+        ${(
+          g.nombreGrupo || ''
+        )
+          .toString()
+          .toUpperCase()}
+      </strong>
+
+      <div>
+        Año:
+        ${g.anoViaje || '—'}
+        · Estado revisión:
+        <b>
+          ${
+            g.estadoRevisionItinerario ||
+            'PENDIENTE'
+          }
+        </b>
+      </div>
+    `;
+  }
+
+  const qs = await getDocs(
+    query(
+      collection(
+        db,
+        'historial'
+      ),
+      where(
+        'grupoId',
+        '==',
+        grupoId
+      )
+    )
+  );
+
+  historialCache =
+    qs.docs
+      .map(d => ({
+        id: d.id,
+        ...d.data()
+      }))
+      .sort(
+        ordenarHistorialDesc
+      );
+
+  if (filtroHistorial) {
+    filtroHistorial.value =
+      '';
+  }
+
+  renderHistorialList(
+    historialCache
+  );
+}
+
+  function ordenarHistorialDesc(a, b) {
+  const getTime = value => {
+    try {
+      const d =
+        value?.toDate
+          ? value.toDate()
+          : new Date(
+              value || 0
+            );
+
+      return Number.isNaN(
+        d.getTime()
+      )
+        ? 0
+        : d.getTime();
+
+    } catch (_) {
+      return 0;
+    }
+  };
+
+  return (
+    getTime(b.timestamp) -
+    getTime(a.timestamp)
+  );
+}
+
+async function cargarHistorialGeneral() {
+  const ano =
+    getAnoViajeOperativoActual();
+
+  if (listHistorial) {
+    listHistorial.innerHTML = `
+      <li class="hist-item">
+        <div class="meta">
+          Cargando historial general ${ano}…
+        </div>
+      </li>
+    `;
+  }
+
+  if (encabezadoHistorialUI) {
+    encabezadoHistorialUI.innerHTML = `
+      <strong>
+        HISTORIAL GENERAL ${ano}
+      </strong>
+
+      <div>
+        Todos los grupos del año operativo vigente.
+      </div>
+    `;
+  }
+
+  try {
+    const [snapNumero, snapTexto] =
+      await Promise.all([
+        getDocs(
+          query(
+            collection(
+              db,
+              'historial'
+            ),
+            where(
+              'anoViaje',
+              '==',
+              ano
+            )
+          )
+        ),
+
+        getDocs(
+          query(
+            collection(
+              db,
+              'historial'
+            ),
+            where(
+              'anoViaje',
+              '==',
+              String(ano)
+            )
+          )
+        )
+      ]);
+
+    const map =
+      new Map();
+
+    [
+      ...snapNumero.docs,
+      ...snapTexto.docs
+    ].forEach(d => {
+      map.set(
+        d.id,
+        {
+          id: d.id,
+          ...d.data()
+        }
+      );
+    });
+
+    historialGeneralCache =
+      [...map.values()]
+        .sort(
+          ordenarHistorialDesc
+        );
+
+    if (filtroHistorial) {
+      filtroHistorial.value =
+        '';
+    }
+
+    renderHistorialList(
+      historialGeneralCache
+    );
+
+  } catch (e) {
+    console.warn(
+      'Error cargando historial general:',
+      e
+    );
+
+    if (listHistorial) {
+      listHistorial.innerHTML = `
+        <li class="hist-item">
+          Error al cargar el historial general.
+        </li>
+      `;
+    }
+  }
+}
+
+  // ==========================================================
+// MIGRACIÓN HISTORIAL EXISTENTE
+//
+// NO elimina ni reemplaza eventos.
+// Solo completa metadatos faltantes:
+//
+// - grupoId
+// - numeroNegocio
+// - nombreGrupo
+// - anoViaje
+// - categoria
+// - actividad
+// - fechaActividad
+// - estadoAnterior
+// - estadoNuevo
+//
+// Uso:
+//
+// PRUEBA:
+// await normalizarHistorialItinerario({ dryRun:true })
+//
+// APLICAR:
+// await normalizarHistorialItinerario({ dryRun:false })
+// ==========================================================
+window.normalizarHistorialItinerario =
+async function(opts = {}) {
+  const dryRun =
+    opts.dryRun !== undefined
+      ? !!opts.dryRun
+      : true;
+
+  const gruposSnap =
+    await getDocs(
+      collection(db, 'grupos')
+    );
+
+  const byId =
+    new Map();
+
+  const byNumero =
+    new Map();
+
+  gruposSnap.docs.forEach(d => {
+    const g = {
+      id: d.id,
+      ...d.data()
+    };
+
+    byId.set(
+      d.id,
+      g
+    );
+
+    const numero =
+      String(
+        g.numeroNegocio || ''
+      ).trim();
+
+    if (numero) {
+      byNumero.set(
+        numero,
+        g
+      );
+    }
+  });
+
+  const histSnap =
+    await getDocs(
+      collection(
+        db,
+        'historial'
+      )
+    );
+
+  let revisados = 0;
+  let detectados = 0;
+  let actualizados = 0;
+  let sinGrupo = 0;
+
+  const reporte = [];
+
+  for (const d of histSnap.docs) {
+    revisados++;
+
+    const h =
+      d.data() || {};
+
+    let g = null;
+
+    if (
+      h.grupoId &&
+      byId.has(h.grupoId)
+    ) {
+      g =
+        byId.get(h.grupoId);
+    }
+
+    if (
+      !g &&
+      h.numeroNegocio
+    ) {
+      g =
+        byNumero.get(
+          String(
+            h.numeroNegocio
+          ).trim()
+        ) || null;
+    }
+
+    if (!g) {
+      sinGrupo++;
+      continue;
+    }
+
+    const cambios = {};
+
+    if (!h.grupoId) {
+      cambios.grupoId =
+        g.id;
+    }
+
+    if (!h.numeroNegocio) {
+      cambios.numeroNegocio =
+        g.numeroNegocio ||
+        g.id;
+    }
+
+    if (!h.nombreGrupo) {
+      cambios.nombreGrupo =
+        g.nombreGrupo ||
+        '';
+    }
+
+    if (
+      h.anoViaje === undefined ||
+      h.anoViaje === null ||
+      h.anoViaje === ''
+    ) {
+      cambios.anoViaje =
+        g.anoViaje || '';
+    }
+
+    if (!h.categoria) {
+      cambios.categoria =
+        inferirCategoriaHistorial(
+          h.accion ||
+          h.tipo ||
+          h.campo ||
+          ''
+        );
+    }
+
+    if (!h.fechaActividad) {
+      cambios.fechaActividad =
+        h.fecha || '';
+    }
+
+    if (!h.actividad) {
+      cambios.actividad =
+        h.despuesObj?.actividad ||
+        h.antesObj?.actividad ||
+        '';
+    }
+
+    if (
+      !h.estadoAnterior &&
+      h.antesObj?.revision
+    ) {
+      cambios.estadoAnterior =
+        h.antesObj.revision;
+    }
+
+    if (
+      !h.estadoNuevo &&
+      h.despuesObj?.revision
+    ) {
+      cambios.estadoNuevo =
+        h.despuesObj.revision;
+    }
+
+    if (
+      !Object.keys(cambios).length
+    ) {
+      continue;
+    }
+
+    detectados++;
+
+    reporte.push({
+      historialId:
+        d.id,
+
+      numeroNegocio:
+        g.numeroNegocio ||
+        g.id,
+
+      nombreGrupo:
+        g.nombreGrupo ||
+        '',
+
+      accion:
+        h.accion ||
+        '',
+
+      cambios:
+        Object.keys(cambios)
+          .join(', ')
+    });
+
+    if (!dryRun) {
+      await updateDoc(
+        doc(
+          db,
+          'historial',
+          d.id
+        ),
+        cambios
+      );
+
+      actualizados++;
+    }
+  }
+
+  console.table(
+    reporte
+  );
+
+  console.log({
+    modo:
+      dryRun
+        ? 'PRUEBA / NO GUARDA'
+        : 'REAL / GUARDA',
+
+    revisados,
+    detectados,
+    actualizados,
+    sinGrupo
+  });
+
+  return {
+    modo:
+      dryRun
+        ? 'PRUEBA / NO GUARDA'
+        : 'REAL / GUARDA',
+
+    revisados,
+    detectados,
+    actualizados,
+    sinGrupo,
+
+    reporte
+  };
+};
