@@ -33,6 +33,80 @@ function getAnoTarifaGrupo(g) {
 }
 
 // —————————————————————————————————
+// Año operativo vigente
+//
+// Regla:
+// 01 marzo YYYY → 28/29 febrero YYYY+1 = anoViaje YYYY
+//
+// Ejemplos:
+// agosto 2026   -> 2026
+// enero 2027    -> 2026
+// febrero 2027  -> 2026
+// marzo 2027    -> 2027
+// —————————————————————————————————
+function getAnoViajeOperativoActual() {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit'
+  }).formatToParts(new Date());
+
+  const ano = Number(
+    partes.find(p => p.type === 'year')?.value
+  );
+
+  const mes = Number(
+    partes.find(p => p.type === 'month')?.value
+  );
+
+  return mes >= 3 ? ano : ano - 1;
+}
+
+
+// —————————————————————————————————
+// Trae solamente grupos del año operativo.
+//
+// Se consulta tanto número como string porque pueden existir
+// documentos antiguos con anoViaje: 2026 y otros con "2026".
+// —————————————————————————————————
+async function getGruposAnoOperativo() {
+  const anoOperativo = getAnoViajeOperativoActual();
+  const ref = collection(db, 'grupos');
+
+  const [snapNumero, snapTexto] = await Promise.all([
+    getDocs(
+      query(
+        ref,
+        where('anoViaje', '==', anoOperativo)
+      )
+    ),
+    getDocs(
+      query(
+        ref,
+        where('anoViaje', '==', String(anoOperativo))
+      )
+    )
+  ]);
+
+  const gruposMap = new Map();
+
+  [...snapNumero.docs, ...snapTexto.docs].forEach(d => {
+    gruposMap.set(d.id, {
+      id: d.id,
+      ...d.data()
+    });
+  });
+
+  return [...gruposMap.values()].sort((a, b) =>
+    String(a.numeroNegocio || '').localeCompare(
+      String(b.numeroNegocio || ''),
+      'es',
+      { numeric: true }
+    )
+  );
+}
+
+// —————————————————————————————————
 // 1) Referencias DOM + estado
 // —————————————————————————————————
 const selectNum      = document.getElementById("grupo-select-num");
@@ -214,9 +288,8 @@ onAuthStateChanged(auth, user => {
 });
 
 async function initItinerario() {
-  // 2.1) Cargo todos los grupos
-  const snap   = await getDocs(collection(db,'grupos'));
-  const grupos = snap.docs.map(d=>({ id:d.id, ...d.data() }));
+  // 2.1) Cargo solamente los grupos del año operativo vigente
+  const grupos = await getGruposAnoOperativo();
   
   // 2.2) Poblamos selects
   selectNum.innerHTML  = grupos.map(g=>
@@ -504,31 +577,42 @@ async function syncItinerarioServicios(grupoId, g, svcMaps) {
 // —————————————————————————————————
 // Estado Revisión + Alertas (helpers)
 // —————————————————————————————————
-function computeEstadoFromItinerario(IT, revDias = {}) {
-  let anyAct = false, anyX = false, allOK = true;
+function computeEstadoFromItinerario(IT) {
+  let hayActividades = false;
+  let hayRechazadas = false;
+  let hayPendientes = false;
 
-  // 2.1) Estado por actividad
-  for (const f of Object.keys(IT || {})) {
-    for (const act of (IT[f] || [])) {
-      anyAct = true;
-      const r = act.revision || 'pendiente';
-      if (r === 'rechazado') anyX = true;
-      if (r !== 'ok') allOK = false;
+  for (const fecha of Object.keys(IT || {})) {
+    for (const act of (IT[fecha] || [])) {
+      hayActividades = true;
+
+      const revision = act.revision || 'pendiente';
+
+      if (revision === 'rechazado') {
+        hayRechazadas = true;
+      } else if (revision !== 'ok') {
+        hayPendientes = true;
+      }
     }
   }
 
-  // 2.2) Estado por DÍA (independiente de actividades)
-  const dias = Object.keys(revDias || {});
-  for (const f of dias) {
-    const st = (revDias[f] && revDias[f].estado) || 'pendiente';
-    if (st === 'rechazado') anyX = true;
-    if (st !== 'ok') allOK = false;
+  // Un itinerario sin actividades todavía no está revisado.
+  if (!hayActividades) {
+    return 'PENDIENTE';
   }
 
-  // 2.3) Resolución final
-  if (!anyAct && dias.length === 0) return 'PENDIENTE';
-  if (anyX)  return 'RECHAZADO';
-  return allOK ? 'OK' : 'PENDIENTE';
+  // Basta una actividad rechazada para rechazar el grupo.
+  if (hayRechazadas) {
+    return 'RECHAZADO';
+  }
+
+  // Si no existen rechazadas, pero falta revisar alguna.
+  if (hayPendientes) {
+    return 'PENDIENTE';
+  }
+
+  // Todas las actividades están revisadas.
+  return 'OK';
 }
 
 function setEstadoBadge(estado) {
@@ -542,32 +626,53 @@ function setEstadoBadge(estado) {
 
 // Reemplazo total de refreshAlertasBadge(...)
 async function refreshAlertasCounts(grupoId) {
-  let noVistasActual = 0; // (Y) no leídas del grupo en foco
-  let totalRech = 0;      // (X) total de grupos con revisión RECHAZADA
+  let noVistasActual = 0;
+  let totalRech = 0;
 
-  // No leídas del grupo actual
+  // Alertas no leídas del grupo actual
   try {
-    const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
-    noVistasActual = qs.docs.filter(d => !((d.data()||{}).visto)).length;
-  } catch(_) {}
+    const qs = await getDocs(
+      collection(
+        db,
+        'grupos',
+        grupoId,
+        'alertas'
+      )
+    );
 
-  // Total de grupos RECHAZADOS
+    noVistasActual = qs.docs.filter(
+      d => !(d.data() || {}).visto
+    ).length;
+  } catch (_) {}
+
+  // Solamente grupos del año operativo vigente
   try {
-    const qsRech = await getDocs(query(
-      collection(db,'grupos'),
-      where('estadoRevisionItinerario','==','RECHAZADO')
-    ));
-    totalRech = qsRech.size;
-  } catch(_) {}
+    const grupos =
+      await getGruposAnoOperativo();
 
-  // Actualiza el texto del botón: "⚠️ Alertas | X (Y)"
-  const label = `⚠️ Alertas | ${totalRech} (${noVistasActual})`;
-  if (btnAlertas) btnAlertas.textContent = label;
+    totalRech = grupos.filter(
+      g =>
+        g.estadoRevisionItinerario ===
+        'RECHAZADO'
+    ).length;
+  } catch (_) {}
 
-  // Compatibilidad con el badge antiguo (si existe en el HTML)
-  if (alertasBadge) alertasBadge.textContent = String(noVistasActual);
+  const label =
+    `⚠️ Alertas | ${totalRech} (${noVistasActual})`;
 
-  return { totalRech, noVistasActual };
+  if (btnAlertas) {
+    btnAlertas.textContent = label;
+  }
+
+  if (alertasBadge) {
+    alertasBadge.textContent =
+      String(noVistasActual);
+  }
+
+  return {
+    totalRech,
+    noVistasActual
+  };
 }
 
 // Crea/actualiza una barrita de resumen dentro del modal
@@ -586,14 +691,22 @@ function upsertResumenOK(count){
 async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
   const gSnap = await getDoc(doc(db, 'grupos', grupoId));
   const g     = gSnap.data() || {};
-  const IT    = ITopt || g.itinerario || {};
-  const rev   = g.revisionDias || {};
 
-  const nuevoEstado = computeEstadoFromItinerario(IT, rev);
+  const IT = ITopt || g.itinerario || {};
+
+  const nuevoEstado = computeEstadoFromItinerario(IT);
+
   if (g.estadoRevisionItinerario !== nuevoEstado) {
-    await updateDoc(doc(db,'grupos',grupoId), { estadoRevisionItinerario: nuevoEstado });
+    await updateDoc(
+      doc(db, 'grupos', grupoId),
+      {
+        estadoRevisionItinerario: nuevoEstado
+      }
+    );
   }
+
   setEstadoBadge(nuevoEstado);
+
   await refreshAlertasCounts(grupoId);
 }
 
@@ -602,171 +715,464 @@ async function updateEstadoRevisionAndBadge(grupoId, ITopt = null) {
 // —————————————————————————————————
 async function openAlertasPanel() {
   const grupoId = selectNum.value;
-  if (!grupoId) return alert("Selecciona un grupo");
 
-  if (!modalAlertas) return; // por si no existe en el HTML actual
+  if (!grupoId) {
+    return alert("Selecciona un grupo");
+  }
+
+  if (!modalAlertas) {
+    return;
+  }
 
   modalAlertas.style.display = "block";
-  document.getElementById("modal-backdrop").style.display = "block";
-  modalAlertas.style.display = "block";
-  document.getElementById("modal-backdrop").style.display = "block";
-  document.body.classList.add('modal-open'); // (si ya lo tienes, déjalo)
-  
-  /* ——— NUEVO: contar grupos en estado OK y mostrarlo ——— */
-  let okCount = 0;
+
+  if (modalBg) {
+    modalBg.style.display = "block";
+  }
+
+  document.body.classList.add(
+    'modal-open'
+  );
+
+  // ------------------------------------------------
+  // Todos los grupos del año operativo vigente
+  // ------------------------------------------------
+  let gruposAno = [];
+
   try {
-    const qsOK = await getDocs(query(
-      collection(db,'grupos'),
-      where('estadoRevisionItinerario','==','OK')
-    ));
-    okCount = qsOK.size;
-  } catch(_) {}
+    gruposAno =
+      await getGruposAnoOperativo();
+  } catch (e) {
+    console.warn(
+      'Error cargando grupos del año operativo:',
+      e
+    );
+  }
+
+  // ------------------------------------------------
+  // Resumen OK
+  // ------------------------------------------------
+  const okCount = gruposAno.filter(
+    g =>
+      g.estadoRevisionItinerario === 'OK'
+  ).length;
+
   upsertResumenOK(okCount);
 
-  document.body.classList.add('modal-open');
-
-  // 1) Alertas del grupo (separadas)
-  if (listAlertasActual) listAlertasActual.innerHTML = "Cargando…";
-  if (listAlertasLeidas) listAlertasLeidas.innerHTML = "";
-  
-  try {
-    const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
-    const arr = qs.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .sort((a,b) => new Date(b.creadoEn || 0) - new Date(a.creadoEn || 0));
-  
-    const noVistas = arr.filter(a => !a.visto);
-    const vistas   = arr.filter(a =>  a.visto);
-  
-    // No leídas
-    listAlertasActual.innerHTML = noVistas.length
-      ? noVistas.map(a => `
-          <li class="alert-item">
-            <div>
-              <strong>${a.actividad || '(actividad)'}</strong>
-              <small> · ${a.fecha || ''} ${a.horaInicio ? `· ${a.horaInicio}${a.horaFin ? '–'+a.horaFin : ''}` : ''}</small>
-              ${a.motivo ? `<div class="motivo">Motivo: ${a.motivo}</div>`:''}
-              ${a.creadoPor ? `<div class="meta" style="opacity:.7;">Rechazado por: ${a.creadoPor}</div>`:''}
-            </div>
-            <div class="actions">
-              <button type="button" data-id="${a.id}" class="btn-ver-alerta">Marcar visto</button>
-            </div>
-          </li>
-        `).join('')
-      : `<li class="alert-item"><div>— Sin alertas —</div></li>`;
-  
-    // Leídas
-    listAlertasLeidas.innerHTML = vistas.length
-      ? vistas.map(a => `
-          <li class="alert-item visto">
-            <div>
-              <strong>${a.actividad || '(actividad)'}</strong>
-              <small> · ${a.fecha || ''} ${a.horaInicio ? `· ${a.horaInicio}${a.horaFin ? '–'+a.horaFin : ''}` : ''}</small>
-              ${a.motivo ? `<div class="motivo">Motivo: ${a.motivo}</div>`:''}
-              ${a.creadoPor ? `<div class="meta" style="opacity:.7;">Rechazado por: ${a.creadoPor}</div>`:''}
-              ${(a.leidoPor || a.leidoEn) ? `<div class="meta" style="opacity:.7;">Leído por: ${a.leidoPor || '—'} · ${a.leidoEn ? new Date(a.leidoEn.seconds ? a.leidoEn.seconds*1000 : a.leidoEn).toLocaleString('es-CL') : ''}</div>` : ''}
-            </div>
-            <div class="actions"></div>
-          </li>
-        `).join('')
-      : `<li class="alert-item"><div>— No hay alertas leídas —</div></li>`;
-  
-    // Handler "Marcar visto" (guarda quién la leyó + cuándo)
-    listAlertasActual.querySelectorAll('.btn-ver-alerta').forEach(btn=>{
-      btn.onclick = async (e) => {
-        stopAll(e);
-        const id = btn.getAttribute('data-id');
-        await updateDoc(doc(db,'grupos',grupoId,'alertas',id), {
-          visto: true,
-          leidoPor: auth.currentUser.email,
-          leidoEn: new Date()
-        });
-        await refreshAlertasCounts(grupoId);
-        openAlertasPanel(); // recarga
-      };
-    });
-  } catch (e) {
-    if (listAlertasActual) listAlertasActual.innerHTML = `<li class="empty">Error al cargar alertas.</li>`;
-    if (listAlertasLeidas) listAlertasLeidas.innerHTML = ``;
+  // ------------------------------------------------
+  // 1. Alertas del grupo actualmente abierto
+  // ------------------------------------------------
+  if (listAlertasActual) {
+    listAlertasActual.innerHTML =
+      "Cargando…";
   }
 
+  if (listAlertasLeidas) {
+    listAlertasLeidas.innerHTML = "";
+  }
 
-  // 2) Otros grupos con estado RECHAZADO
-  if (listAlertasOtros) listAlertasOtros.innerHTML = "Cargando…";
   try {
-    const qsRech = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','RECHAZADO')));
-    const otros = qsRech.docs
-      .filter(d => d.id !== grupoId)
-      .map(d => ({ id: d.id, ...(d.data()||{}) }));
-    if (!otros.length) {
-      if (listAlertasOtros) listAlertasOtros.innerHTML = `<li class="empty">— No hay otros grupos con revisión rechazada —</li>`;
-    } else {
-      if (listAlertasOtros) {
-        listAlertasOtros.innerHTML = otros.map(g=>`
-          <li class="alert-item">
-            <div>
-              <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
-              <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
-            </div>
-            <div class="actions">
-              <button type="button" class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
-            </div>
-          </li>
-        `).join('');
-        listAlertasOtros.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
-          btn.onclick = (e) => {
+    const qs = await getDocs(
+      collection(
+        db,
+        'grupos',
+        grupoId,
+        'alertas'
+      )
+    );
+
+    const toMillis = value => {
+      if (!value) return 0;
+
+      if (
+        value?.toDate &&
+        typeof value.toDate === 'function'
+      ) {
+        return value.toDate().getTime();
+      }
+
+      const d = new Date(value);
+
+      return Number.isNaN(d.getTime())
+        ? 0
+        : d.getTime();
+    };
+
+    const arr = qs.docs
+      .map(d => ({
+        id: d.id,
+        ...d.data()
+      }))
+      .sort(
+        (a, b) =>
+          toMillis(b.creadoEn) -
+          toMillis(a.creadoEn)
+      );
+
+    const noVistas = arr.filter(
+      a => !a.visto
+    );
+
+    const vistas = arr.filter(
+      a => a.visto
+    );
+
+    if (listAlertasActual) {
+      listAlertasActual.innerHTML =
+        noVistas.length
+          ? noVistas.map(a => `
+              <li class="alert-item">
+                <div>
+                  <strong>
+                    ${a.actividad || '(actividad)'}
+                  </strong>
+
+                  <small>
+                    · ${a.fecha || ''}
+                    ${
+                      a.horaInicio
+                        ? `· ${a.horaInicio}${
+                            a.horaFin
+                              ? '–' + a.horaFin
+                              : ''
+                          }`
+                        : ''
+                    }
+                  </small>
+
+                  ${
+                    a.motivo
+                      ? `<div class="motivo">
+                          Motivo: ${a.motivo}
+                        </div>`
+                      : ''
+                  }
+
+                  ${
+                    a.creadoPor
+                      ? `<div
+                           class="meta"
+                           style="opacity:.7;"
+                         >
+                           Rechazado por:
+                           ${a.creadoPor}
+                         </div>`
+                      : ''
+                  }
+                </div>
+
+                <div class="actions">
+                  <button
+                    type="button"
+                    data-id="${a.id}"
+                    class="btn-ver-alerta"
+                  >
+                    Marcar visto
+                  </button>
+                </div>
+              </li>
+            `).join('')
+          : `
+              <li class="alert-item">
+                <div>
+                  — Sin alertas —
+                </div>
+              </li>
+            `;
+
+      listAlertasActual
+        .querySelectorAll(
+          '.btn-ver-alerta'
+        )
+        .forEach(btn => {
+          btn.onclick = async e => {
             stopAll(e);
-            const id = btn.getAttribute('data-id');
-            choicesGrupoNum.setChoiceByValue(id);
-            choicesGrupoNom.setChoiceByValue(id);
-            modalAlertas.style.display = "none";
-            document.getElementById("modal-backdrop").style.display = "none";
-            document.body.classList.remove('modal-open');
-            renderItinerario();
+
+            const id =
+              btn.getAttribute(
+                'data-id'
+              );
+
+            await updateDoc(
+              doc(
+                db,
+                'grupos',
+                grupoId,
+                'alertas',
+                id
+              ),
+              {
+                visto: true,
+                leidoPor:
+                  auth.currentUser?.email ||
+                  '',
+                leidoEn: new Date()
+              }
+            );
+
+            await refreshAlertasCounts(
+              grupoId
+            );
+
+            await openAlertasPanel();
           };
         });
-      }
     }
+
+    if (listAlertasLeidas) {
+      listAlertasLeidas.innerHTML =
+        vistas.length
+          ? vistas.map(a => `
+              <li class="alert-item visto">
+                <div>
+                  <strong>
+                    ${a.actividad || '(actividad)'}
+                  </strong>
+
+                  <small>
+                    · ${a.fecha || ''}
+                    ${
+                      a.horaInicio
+                        ? `· ${a.horaInicio}${
+                            a.horaFin
+                              ? '–' + a.horaFin
+                              : ''
+                          }`
+                        : ''
+                    }
+                  </small>
+
+                  ${
+                    a.motivo
+                      ? `<div class="motivo">
+                          Motivo: ${a.motivo}
+                        </div>`
+                      : ''
+                  }
+
+                  ${
+                    a.creadoPor
+                      ? `<div
+                           class="meta"
+                           style="opacity:.7;"
+                         >
+                           Rechazado por:
+                           ${a.creadoPor}
+                         </div>`
+                      : ''
+                  }
+
+                  ${
+                    a.leidoPor ||
+                    a.leidoEn
+                      ? `<div
+                           class="meta"
+                           style="opacity:.7;"
+                         >
+                           Leído por:
+                           ${a.leidoPor || '—'}
+                           ${
+                             a.leidoEn
+                               ? ' · ' +
+                                 fmtTS(
+                                   a.leidoEn
+                                 )
+                               : ''
+                           }
+                         </div>`
+                      : ''
+                  }
+                </div>
+              </li>
+            `).join('')
+          : `
+              <li class="alert-item">
+                <div>
+                  — No hay alertas leídas —
+                </div>
+              </li>
+            `;
+    }
+
   } catch (e) {
-    if (listAlertasOtros) listAlertasOtros.innerHTML = `<li class="empty">Error al cargar otros grupos.</li>`;
+    console.warn(
+      'Error cargando alertas:',
+      e
+    );
+
+    if (listAlertasActual) {
+      listAlertasActual.innerHTML =
+        `<li class="empty">
+          Error al cargar alertas.
+        </li>`;
+    }
+
+    if (listAlertasLeidas) {
+      listAlertasLeidas.innerHTML = "";
+    }
   }
-}
 
-// 3) Otros grupos con estado PENDIENTE
-if (listAlertasPend) listAlertasPend.innerHTML = "Cargando…";
-try {
-  const qsPend = await getDocs(query(collection(db,'grupos'), where('estadoRevisionItinerario','==','PENDIENTE')));
-  const otrosP = qsPend.docs
-    .filter(d => d.id !== grupoId)
-    .map(d => ({ id: d.id, ...(d.data()||{}) }));
-  listAlertasPend.innerHTML = otrosP.length
-    ? otrosP.map(g=>`
-        <li class="alert-item">
-          <div>
-            <strong>${(g.nombreGrupo||'').toString().toUpperCase()}</strong>
-            <small> · #${g.numeroNegocio||g.id} · ${g.estadoRevisionItinerario||''}</small>
-          </div>
-          <div class="actions">
-            <button type="button" class="btn-ir-grupo" data-id="${g.id}">Ir al itinerario</button>
-          </div>
-        </li>
-      `).join('')
-    : `<li class="alert-item"><div>— No hay otros grupos pendientes —</div></li>`;
+  // ------------------------------------------------
+  // Helper para ir a otro grupo
+  // ------------------------------------------------
+  function conectarBotonesIrGrupo(
+    contenedor
+  ) {
+    if (!contenedor) {
+      return;
+    }
 
-  listAlertasPend.querySelectorAll('.btn-ir-grupo').forEach(btn=>{
-    btn.onclick = (e) => {
-      stopAll(e);
-      const id = btn.getAttribute('data-id');
-      choicesGrupoNum.setChoiceByValue(id);
-      choicesGrupoNom.setChoiceByValue(id);
-      modalAlertas.style.display = "none";
-      document.getElementById("modal-backdrop").style.display = "none";
-      document.body.classList.remove('modal-open');
-      renderItinerario();
-    };
-  });
-} catch (e) {
-  if (listAlertasPend) listAlertasPend.innerHTML = `<li class="empty">Error al cargar grupos pendientes.</li>`;
+    contenedor
+      .querySelectorAll(
+        '.btn-ir-grupo'
+      )
+      .forEach(btn => {
+        btn.onclick = e => {
+          stopAll(e);
+
+          const id =
+            btn.getAttribute(
+              'data-id'
+            );
+
+          choicesGrupoNum
+            .setChoiceByValue(id);
+
+          choicesGrupoNom
+            .setChoiceByValue(id);
+
+          modalAlertas.style.display =
+            "none";
+
+          if (modalBg) {
+            modalBg.style.display =
+              "none";
+          }
+
+          document.body.classList.remove(
+            'modal-open'
+          );
+
+          renderItinerario();
+        };
+      });
+  }
+
+  // ------------------------------------------------
+  // 2. Grupos RECHAZADOS
+  // ------------------------------------------------
+  if (listAlertasOtros) {
+    const rechazados =
+      gruposAno.filter(g =>
+        g.id !== grupoId &&
+        g.estadoRevisionItinerario ===
+          'RECHAZADO'
+      );
+
+    listAlertasOtros.innerHTML =
+      rechazados.length
+        ? rechazados.map(g => `
+            <li class="alert-item">
+              <div>
+                <strong>
+                  ${(
+                    g.nombreGrupo || ''
+                  )
+                    .toString()
+                    .toUpperCase()}
+                </strong>
+
+                <small>
+                  · #${
+                    g.numeroNegocio ||
+                    g.id
+                  }
+                  · RECHAZADO
+                </small>
+              </div>
+
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn-ir-grupo"
+                  data-id="${g.id}"
+                >
+                  Ir al itinerario
+                </button>
+              </div>
+            </li>
+          `).join('')
+        : `
+            <li class="empty">
+              — No hay otros grupos
+              rechazados —
+            </li>
+          `;
+
+    conectarBotonesIrGrupo(
+      listAlertasOtros
+    );
+  }
+
+  // ------------------------------------------------
+  // 3. Grupos PENDIENTES
+  // ------------------------------------------------
+  if (listAlertasPend) {
+    const pendientes =
+      gruposAno.filter(g =>
+        g.id !== grupoId &&
+        (
+          g.estadoRevisionItinerario ||
+          'PENDIENTE'
+        ) === 'PENDIENTE'
+      );
+
+    listAlertasPend.innerHTML =
+      pendientes.length
+        ? pendientes.map(g => `
+            <li class="alert-item">
+              <div>
+                <strong>
+                  ${(
+                    g.nombreGrupo || ''
+                  )
+                    .toString()
+                    .toUpperCase()}
+                </strong>
+
+                <small>
+                  · #${
+                    g.numeroNegocio ||
+                    g.id
+                  }
+                  · PENDIENTE
+                </small>
+              </div>
+
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn-ir-grupo"
+                  data-id="${g.id}"
+                >
+                  Ir al itinerario
+                </button>
+              </div>
+            </li>
+          `).join('')
+        : `
+            <li class="alert-item">
+              <div>
+                — No hay otros grupos
+                pendientes —
+              </div>
+            </li>
+          `;
+
+    conectarBotonesIrGrupo(
+      listAlertasPend
+    );
+  }
 }
 
 // —————————————————————————————————
@@ -901,51 +1307,70 @@ async function renderItinerario() {
     if (editMode) {
       const h3 = sec.querySelector("h3");
     
-      // Badge de estado del DÍA (independiente de actividades)
-      const revDia = getRevisionDia(g, fecha);
+      // El estado visual del día se calcula desde SUS ACTIVIDADES.
+      // No existe una revisión independiente del día.
+      const estadoDia = computeEstadoFromItinerario({
+        [fecha]: IT[fecha] || []
+      });
+    
       const badge = document.createElement('span');
       badge.style.marginLeft = '8px';
-      badge.className = 'badge ' + (
-        revDia?.estado === 'rechazado' ? 'badge-rechazado' :
-        revDia?.estado === 'ok'        ? 'badge-ok' :
-                                         'badge-pendiente'
-      );
-      badge.textContent = (revDia?.estado || 'pendiente').toUpperCase();
+    
+      badge.className =
+        'badge ' +
+        (
+          estadoDia === 'RECHAZADO'
+            ? 'badge-rechazado'
+            : estadoDia === 'OK'
+              ? 'badge-ok'
+              : 'badge-pendiente'
+        );
+    
+      badge.textContent = estadoDia;
+    
       h3.appendChild(badge);
     
-      // Si está rechazado, mostrar motivo debajo del título
-      if (revDia?.estado === 'rechazado' && revDia?.motivo) {
-        const p = document.createElement('p');
-        p.className = 'rechazo-motivo';
-        p.style.margin = '.25rem 0 0';
-        p.textContent = `❌ Día rechazado: ${revDia.motivo}`;
-        h3.appendChild(p);
-      }
+      // Acciones del día
+      const btnSwapDay = createBtn(
+        "🔄",
+        "btn-swap-day",
+        "Intercambiar día"
+      );
     
-      // Botones
-      const btnSwapDay   = createBtn("🔄", "btn-swap-day", "Intercambiar día");
-      const btnEditDate  = createBtn("✏️", "btn-edit-date", "Editar fecha base");
-      const btnRejectDay = createBtn("❌", "btn-reject-day", "Rechazar DÍA (sin tocar actividades)");
-      const btnClearDay  = createBtn("🧹", "btn-clear-day", "Quitar rechazo de DÍA");
-      const btnHardDay   = createBtn("⛔", "btn-reject-hard", "Rechazar DÍA + marcar TODAS ❌");
+      const btnEditDate = createBtn(
+        "✏️",
+        "btn-edit-date",
+        "Editar fecha base"
+      );
     
-      btnSwapDay.dataset.fecha   = fecha;
-      btnEditDate.dataset.fecha  = fecha;
+      const btnRejectDay = createBtn(
+        "❌",
+        "btn-reject-day",
+        "Rechazar todas las actividades del día"
+      );
+    
+      btnSwapDay.dataset.fecha = fecha;
+      btnEditDate.dataset.fecha = fecha;
       btnRejectDay.dataset.fecha = fecha;
-      btnClearDay.dataset.fecha  = fecha;
-      btnHardDay.dataset.fecha   = fecha;
     
       h3.appendChild(btnSwapDay);
       h3.appendChild(btnEditDate);
       h3.appendChild(btnRejectDay);
-      h3.appendChild(btnClearDay);
-      h3.appendChild(btnHardDay);
     
-      btnSwapDay.onclick   = (e) => { stopAll(e); handleSwapClick("dia", fecha); };
-      btnEditDate.onclick  = (e) => { stopAll(e); handleDateEdit(fecha); };
-      btnRejectDay.onclick = (e) => { stopAll(e); handleRejectDayFlag(fecha); };
-      btnClearDay.onclick  = (e) => { stopAll(e); handleClearRejectDay(fecha); };
-      btnHardDay.onclick   = (e) => { stopAll(e); handleRejectDayHard(fecha); };
+      btnSwapDay.onclick = (e) => {
+        stopAll(e);
+        handleSwapClick("dia", fecha);
+      };
+    
+      btnEditDate.onclick = (e) => {
+        stopAll(e);
+        handleDateEdit(fecha);
+      };
+    
+      btnRejectDay.onclick = (e) => {
+        stopAll(e);
+        handleRejectDayCompleto(fecha);
+      };
     }
 
     // —— Caja ALOJAMIENTO (bajo el título del día) ——
@@ -1404,18 +1829,47 @@ async function onSubmitModal(evt) {
 
   if (editData) {
     const beforeObj = arr[editData.idx];
-    const afterObj  = { ...payloadBase, revision: editData.revision || 'pendiente', rechazoMotivo: (beforeObj?.rechazoMotivo || '') };
+  
+    // Cualquier modificación obliga a revisar nuevamente.
+    const afterObj = {
+      ...payloadBase,
+      revision: 'pendiente',
+      rechazoMotivo: ''
+    };
+  
     arr[editData.idx] = afterObj;
-
-    await logHist(grupoId, 'MODIFICAR ACTIVIDAD', {
-      _group: g,
-      fecha, idx: editData.idx,
-      anterior: beforeObj?.actividad || '',
-      nuevo: afterObj.actividad || '',
-      antesObj: beforeObj || null,
-      despuesObj: afterObj || null,
-      path: `itinerario.${fecha}[${editData.idx}]`
-    });
+  
+    await logHist(
+      grupoId,
+      'MODIFICAR ACTIVIDAD',
+      {
+        _group: g,
+        fecha,
+        idx: editData.idx,
+        anterior:
+          beforeObj?.actividad || '',
+        nuevo:
+          afterObj.actividad || '',
+        antesObj:
+          beforeObj || null,
+        despuesObj:
+          afterObj || null,
+        path:
+          `itinerario.${fecha}[${editData.idx}]`
+      }
+    );
+  
+    // Si estaba rechazada, la corrección cierra su alerta.
+    if (
+      (beforeObj?.revision || 'pendiente') ===
+      'rechazado'
+    ) {
+      await cerrarAlertasPendientesActividad(
+        grupoId,
+        fecha,
+        beforeObj?.actividad || ''
+      );
+    }
   } else {
     const newIdx = arr.length;
     const afterObj = { ...payloadBase, revision: 'pendiente' };
@@ -1439,6 +1893,69 @@ async function onSubmitModal(evt) {
   await updateEstadoRevisionAndBadge(grupoId, { ...(g.itinerario||{}), [fecha]: arr });
   closeModal();
   renderItinerario();
+}
+
+// —————————————————————————————————
+// Cierra alertas abiertas de una actividad.
+//
+// Se usa cuando una actividad rechazada:
+// - se corrige/editada
+// - sale del estado RECHAZADO
+// —————————————————————————————————
+async function cerrarAlertasPendientesActividad(
+  grupoId,
+  fecha,
+  actividad
+) {
+  try {
+    const qs = await getDocs(
+      collection(
+        db,
+        'grupos',
+        grupoId,
+        'alertas'
+      )
+    );
+
+    const pendientes = qs.docs.filter(d => {
+      const a = d.data() || {};
+
+      return (
+        !a.visto &&
+        a.fecha === fecha &&
+        (a.actividad || '') === actividad
+      );
+    });
+
+    if (!pendientes.length) {
+      return;
+    }
+
+    await Promise.all(
+      pendientes.map(d =>
+        updateDoc(
+          doc(
+            db,
+            'grupos',
+            grupoId,
+            'alertas',
+            d.id
+          ),
+          {
+            visto: true,
+            leidoPor:
+              auth.currentUser?.email || '',
+            leidoEn: new Date()
+          }
+        )
+      )
+    );
+  } catch (e) {
+    console.warn(
+      'No se pudieron cerrar las alertas:',
+      e
+    );
+  }
 }
 
 // —————————————————————————————————
@@ -1500,16 +2017,15 @@ async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITful
       creadoEn:   new Date(),
       visto:      false
     });
-  } else if (old === 'rechazado' && next !== 'rechazado') {
-    // marcar alertas relacionadas como vistas
-    try {
-      const qs = await getDocs(collection(db,'grupos',grupoId,'alertas'));
-      const toClose = qs.docs.filter(d => {
-        const a = d.data()||{};
-        return (a.fecha===fecha && (a.actividad||'')===visibleName && !a.visto);
-      });
-      await Promise.all(toClose.map(d => updateDoc(doc(db,'grupos',grupoId,'alertas',d.id), { visto: true, leidoPor: auth.currentUser.email, leidoEn: new Date() })));
-    } catch(_) {}
+  } else if (
+    old === 'rechazado' &&
+    next !== 'rechazado'
+  ) {
+    await cerrarAlertasPendientesActividad(
+      grupoId,
+      fecha,
+      visibleName
+    );
   }
 
   // Recalcular estado + badge (sin re-render de cards)
@@ -2000,106 +2516,125 @@ async function handleDateEdit(oldFecha) {
 }
 
 // —————————————————————————————————
-// (A) Rechazar DÍA (solo bandera de día, NO toca actividades)
+// Rechazar DÍA COMPLETO
+//
+// La revisión sigue siendo por ACTIVIDAD.
+//
+// Este botón solamente permite aplicar el mismo rechazo
+// a todas las actividades de un día de una sola vez.
 // —————————————————————————————————
-async function handleRejectDayFlag(fecha) {
+async function handleRejectDayCompleto(fecha) {
   const grupoId = selectNum.value;
-  if (!grupoId) return alert("Selecciona un grupo");
-  const motivo = (prompt("Motivo del rechazo del DÍA (obligatorio):", "") || "").trim();
-  if (!motivo) return;
 
-  // Guardar bandera de día
-  await setRevisionDia(grupoId, fecha, 'rechazado', motivo);
+  if (!grupoId) {
+    return alert("Selecciona un grupo");
+  }
 
-  // Una alerta breve solo de "día"
-  await addDoc(collection(db,'grupos',grupoId,'alertas'), {
-    fecha,
-    horaInicio: '',
-    horaFin:    '',
-    actividad:  '(DÍA)',
-    motivo,
-    creadoPor:  auth.currentUser.email,
-    creadoEn:   new Date(),
-    visto:      false
-  });
+  const motivo = (
+    prompt(
+      "Motivo del rechazo del día completo (obligatorio):",
+      ""
+    ) || ""
+  ).trim();
 
-  // Historial
-  const gSnap = await getDoc(doc(db,'grupos',grupoId));
-  const g     = gSnap.data() || {};
-  await logHist(grupoId, 'RECHAZAR DÍA (BANDERA)', {
-    _group: g, fecha, anterior: '', nuevo: 'RECHAZADO', motivo
-  });
+  if (!motivo) {
+    return;
+  }
 
-  await updateEstadoRevisionAndBadge(grupoId);
-  renderItinerario(); // refresco moderado del día
-}
-
-// —————————————————————————————————
-// (B) Quitar rechazo del DÍA (vuelve a 'pendiente' eliminando la bandera)
-// —————————————————————————————————
-async function handleClearRejectDay(fecha) {
-  const grupoId = selectNum.value;
-  if (!grupoId) return alert("Selecciona un grupo");
-
-  const gSnap = await getDoc(doc(db,'grupos',grupoId));
-  const g     = gSnap.data() || {};
-  const rev   = getRevisionDia(g, fecha);
-  if (!rev || rev.estado !== 'rechazado') return; // nada que limpiar
-
-  await setRevisionDia(grupoId, fecha, null); // elimina el registro
-
-  await logHist(grupoId, 'LIMPIAR RECHAZO DÍA', {
-    _group: g, fecha, anterior: 'RECHAZADO', nuevo: 'PENDIENTE'
-  });
-
-  await updateEstadoRevisionAndBadge(grupoId);
-  renderItinerario();
-}
-
-// —————————————————————————————————
-// (C) Rechazar DÍA + marcar TODAS las actividades en ❌
-// (usa el mismo motivo para cada actividad) — opción "dura"
-// —————————————————————————————————
-async function handleRejectDayHard(fecha) {
-  const grupoId = selectNum.value;
-  if (!grupoId) return alert("Selecciona un grupo");
-  const motivo = (prompt("Motivo del rechazo del DÍA (obligatorio):", "") || "").trim();
-  if (!motivo) return;
-
-  const gSnap = await getDoc(doc(db,'grupos',grupoId));
-  const g     = gSnap.data() || {};
-  const arr   = (g.itinerario?.[fecha] || []).slice();
-
-  // 1) Bandera de día
-  await setRevisionDia(grupoId, fecha, 'rechazado', motivo);
-
-  // 2) Todas las actividades a ❌
-  const nuevoArr = arr.map(a => ({ ...a, revision: 'rechazado', rechazoMotivo: motivo }));
-  await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${fecha}`]: nuevoArr });
-
-  // 3) Alertas por actividad
-  await Promise.all(
-    nuevoArr.map(a => addDoc(collection(db,'grupos',grupoId,'alertas'), {
-      fecha,
-      horaInicio: a.horaInicio || '',
-      horaFin:    a.horaFin    || '',
-      actividad:  a.actividad  || '',
-      motivo,
-      creadoPor:  auth.currentUser.email,
-      creadoEn:   new Date(),
-      visto:      false
-    }))
+  const gSnap = await getDoc(
+    doc(db, 'grupos', grupoId)
   );
 
-  // 4) Historial
-  await logHist(grupoId, 'RECHAZAR DÍA (DURO)', {
-    _group: g, fecha,
-    anterior: `Actividades afectadas: ${arr.length}`,
-    nuevo:    `DÍA y TODAS en RECHAZADO`,
-    motivo
+  const g = gSnap.data() || {};
+
+  const arrAnterior =
+    (g.itinerario?.[fecha] || []).slice();
+
+  if (!arrAnterior.length) {
+    return alert(
+      "Este día no tiene actividades para rechazar."
+    );
+  }
+
+  const nuevoArr = arrAnterior.map(act => ({
+    ...act,
+    revision: 'rechazado',
+    rechazoMotivo: motivo
+  }));
+
+  // Guardar todas las actividades rechazadas
+  await updateDoc(
+    doc(db, 'grupos', grupoId),
+    {
+      [`itinerario.${fecha}`]: nuevoArr
+    }
+  );
+
+  // Crear alerta solamente para actividades que
+  // NO estaban previamente rechazadas.
+  const alertas = [];
+
+  nuevoArr.forEach((act, idx) => {
+    const anterior = arrAnterior[idx] || {};
+    const estadoAnterior =
+      anterior.revision || 'pendiente';
+
+    if (estadoAnterior === 'rechazado') {
+      return;
+    }
+
+    alertas.push(
+      addDoc(
+        collection(
+          db,
+          'grupos',
+          grupoId,
+          'alertas'
+        ),
+        {
+          fecha,
+          horaInicio: act.horaInicio || '',
+          horaFin: act.horaFin || '',
+          actividad: act.actividad || '',
+          motivo,
+          creadoPor:
+            auth.currentUser?.email || '',
+          creadoEn: new Date(),
+          visto: false
+        }
+      )
+    );
   });
 
-  await updateEstadoRevisionAndBadge(grupoId, { ...(g.itinerario||{}), [fecha]: nuevoArr });
+  if (alertas.length) {
+    await Promise.all(alertas);
+  }
+
+  // Historial
+  await logHist(
+    grupoId,
+    'RECHAZAR DÍA COMPLETO',
+    {
+      _group: g,
+      fecha,
+      anterior:
+        `Actividades: ${arrAnterior.length}`,
+      nuevo:
+        `Todas las actividades quedaron RECHAZADAS`,
+      motivo
+    }
+  );
+
+  const nuevoIT = {
+    ...(g.itinerario || {}),
+    [fecha]: nuevoArr
+  };
+
+  await updateEstadoRevisionAndBadge(
+    grupoId,
+    nuevoIT
+  );
+
   renderItinerario();
 }
 
@@ -2517,10 +3052,14 @@ function closeStatsModal(){
 }
 
 /* --- Lectura de grupos y armado de opciones --- */
-async function getAllGroupsForStats(){
-  if (STATS_GROUPS_CACHE) return STATS_GROUPS_CACHE;
-  const qs = await getDocs(collection(db,'grupos'));
-  STATS_GROUPS_CACHE = qs.docs.map(d => ({ id:d.id, ...(d.data()||{}) }));
+async function getAllGroupsForStats() {
+  if (STATS_GROUPS_CACHE) {
+    return STATS_GROUPS_CACHE;
+  }
+
+  STATS_GROUPS_CACHE =
+    await getGruposAnoOperativo();
+
   return STATS_GROUPS_CACHE;
 }
 
