@@ -2106,140 +2106,249 @@ function closeModal() {
 // —————————————————————————————————
 async function onSubmitModal(evt) {
   evt.preventDefault();
+
   const grupoId = selectNum.value;
   const fecha   = fldFecha.value;
-  const a       = parseInt(fldAdultos.value,10) || 0;
-  const e       = parseInt(fldEstudiantes.value,10) || 0;
-  const pax     = parseInt(fldPax.value,10)       || 0;
 
-  const snapG = await getDoc(doc(db,'grupos',grupoId));
-  const g     = snapG.data()||{};
+  const a   = parseInt(fldAdultos.value, 10) || 0;
+  const e   = parseInt(fldEstudiantes.value, 10) || 0;
+  const pax = parseInt(fldPax.value, 10) || 0;
 
+  const snapG = await getDoc(
+    doc(db, 'grupos', grupoId)
+  );
+
+  const g = snapG.data() || {};
+
+  // ------------------------------------------------
+  // Validación pasajeros
+  // ------------------------------------------------
   const suma = a + e;
-  if (pax !== suma) return alert(`La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`);
-  if (a < 0 || e < 0 || pax < 0) return alert("Los valores no pueden ser negativos.");
 
-  const svcMaps = await getServiciosMaps(g.destino || '', g);
-  const typedUpper = (fldAct.value || '').trim().toUpperCase();
+  if (pax !== suma) {
+    return alert(
+      `La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`
+    );
+  }
+
+  if (a < 0 || e < 0 || pax < 0) {
+    return alert(
+      "Los valores no pueden ser negativos."
+    );
+  }
+
+  // ------------------------------------------------
+  // Resolver actividad contra catálogo de servicios
+  // ------------------------------------------------
+  const svcMaps = await getServiciosMaps(
+    g.destino || '',
+    g
+  );
+
+  const typedUpper =
+    (fldAct.value || '')
+      .trim()
+      .toUpperCase();
+
   const key = K(typedUpper);
-  const sv = svcMaps.byName.get(key) || null;
 
-  // === NUEVO: determinar notas teniendo en cuenta el select especial de TICKETS ===
+  const sv =
+    svcMaps.byName.get(key) || null;
+
+  // ------------------------------------------------
+  // Notas / TICKETS
+  // ------------------------------------------------
   let notasValor = '';
-  if (notasTicketSelect && notasTicketSelect.style.display !== 'none') {
-    // Estamos en modo "voucher TICKET": usar el valor del <select>
-    const selVal = (notasTicketSelect.value || '').toString().toUpperCase();
+
+  if (
+    notasTicketSelect &&
+    notasTicketSelect.style.display !== 'none'
+  ) {
+    const selVal =
+      (notasTicketSelect.value || '')
+        .toString()
+        .toUpperCase();
+
     if (selVal === 'OTRO') {
-      // Si elige OTRO, usamos lo que haya escrito en el input (si hay), o la palabra OTRO
-      const libre = (fldNotas.value || '').trim().toUpperCase();
-      notasValor = libre || 'OTRO';
+      const libre =
+        (fldNotas.value || '')
+          .trim()
+          .toUpperCase();
+
+      notasValor =
+        libre || 'OTRO';
+
     } else {
       notasValor = selVal;
-      // Sincroniza el input oculto para que el objeto actividad también tenga ese texto
-      fldNotas.value = selVal;
-    }
-  } else {
-    // Modo normal: se guarda lo que haya escrito en el input de notas
-    notasValor = (fldNotas.value || '').trim().toUpperCase();
-  }
-  // ================================================================================
 
+      fldNotas.value =
+        selVal;
+    }
+
+  } else {
+    notasValor =
+      (fldNotas.value || '')
+        .trim()
+        .toUpperCase();
+  }
+
+  // ------------------------------------------------
+  // Objeto base actividad
+  // ------------------------------------------------
   const payloadBase = {
-    horaInicio: fldHi.value,
-    horaFin:    fldHf.value,
-    actividad:  sv ? sv.nombre : typedUpper,
-    pasajeros:  pax,
-    adultos:    a,
-    estudiantes:e,
-    notas:      notasValor,
-    servicioId:       sv ? sv.id : (editData?.servicioId || null),
-    servicioNombre:   sv ? sv.nombre : (editData?.servicioNombre || null),
-    servicioDestino:  sv ? sv.destino : (editData?.servicioDestino || null)
+    horaInicio:
+      fldHi.value,
+
+    horaFin:
+      fldHf.value,
+
+    actividad:
+      sv
+        ? sv.nombre
+        : typedUpper,
+
+    pasajeros:
+      pax,
+
+    adultos:
+      a,
+
+    estudiantes:
+      e,
+
+    notas:
+      notasValor,
+
+    servicioId:
+      sv
+        ? sv.id
+        : (editData?.servicioId || null),
+
+    servicioNombre:
+      sv
+        ? sv.nombre
+        : (editData?.servicioNombre || null),
+
+    servicioDestino:
+      sv
+        ? sv.destino
+        : (editData?.servicioDestino || null)
   };
 
-  const arr = (g.itinerario?.[fecha]||[]).slice();
+  // ------------------------------------------------
+  // Actividades del día
+  // ------------------------------------------------
+  const arr =
+    (g.itinerario?.[fecha] || [])
+      .slice();
 
+  // =================================================
+  // EDITAR ACTIVIDAD
+  // =================================================
   if (editData) {
-    const beforeObj = arr[editData.idx];
-  
+    const beforeObj =
+      arr[editData.idx];
+
+    if (!beforeObj) {
+      return alert(
+        "No se encontró la actividad que intentas editar."
+      );
+    }
+
     // Cualquier modificación obliga a revisar nuevamente.
     const afterObj = {
       ...payloadBase,
-      revision: 'pendiente',
-      rechazoMotivo: ''
-    };
-  
-    arr[editData.idx] = afterObj;
 
+      revision:
+        'pendiente',
+
+      rechazoMotivo:
+        ''
+    };
+
+    arr[editData.idx] =
+      afterObj;
+
+    // -----------------------------------------------
+    // Historial
+    // -----------------------------------------------
     await logHist(
       grupoId,
       'MODIFICAR ACTIVIDAD',
       {
         _group: g,
-    
+
         categoria:
           'ITINERARIO',
-    
+
         fecha,
         fechaActividad:
           fecha,
-    
+
         idx:
           editData.idx,
-    
+
         actividad:
           afterObj.actividad ||
-          beforeObj?.actividad ||
+          beforeObj.actividad ||
           '',
-    
+
         anterior:
-          beforeObj?.actividad ||
+          beforeObj.actividad ||
           '',
-    
+
         nuevo:
           afterObj.actividad ||
           '',
-    
+
         estadoAnterior:
-          beforeObj?.revision ||
+          beforeObj.revision ||
           'pendiente',
-    
+
         estadoNuevo:
-          afterObj.revision ||
           'pendiente',
-    
+
         antesObj:
-          beforeObj || null,
-    
+          beforeObj,
+
         despuesObj:
-          afterObj || null,
-    
+          afterObj,
+
         path:
           `itinerario.${fecha}[${editData.idx}]`
       }
     );
-  
-    // Si estaba rechazada, la corrección cierra su alerta.
+
+    // Si estaba rechazada, la corrección cierra
+    // la alerta pendiente asociada.
     if (
-      (beforeObj?.revision || 'pendiente') ===
+      (beforeObj.revision || 'pendiente') ===
       'rechazado'
     ) {
       await cerrarAlertasPendientesActividad(
         grupoId,
         fecha,
-        beforeObj?.actividad || ''
+        beforeObj.actividad || ''
       );
     }
+
+  // =================================================
+  // CREAR ACTIVIDAD
+  // =================================================
   } else {
-  } else {
-    const newIdx = arr.length;
+    const newIdx =
+      arr.length;
 
     const afterObj = {
       ...payloadBase,
-      revision: 'pendiente'
+
+      revision:
+        'pendiente'
     };
 
-    arr.push(afterObj);
+    arr.push(
+      afterObj
+    );
 
     await logHist(
       grupoId,
@@ -2247,52 +2356,89 @@ async function onSubmitModal(evt) {
       {
         _group: g,
 
-        categoria: 'ITINERARIO',
+        categoria:
+          'ITINERARIO',
 
         fecha,
-        fechaActividad: fecha,
+        fechaActividad:
+          fecha,
 
-        idx: newIdx,
+        idx:
+          newIdx,
 
         actividad:
-          afterObj.actividad || '',
+          afterObj.actividad ||
+          '',
 
-        anterior: '',
+        anterior:
+          '',
+
         nuevo:
-          afterObj.actividad || '',
+          afterObj.actividad ||
+          '',
 
-        estadoAnterior: '',
-        estadoNuevo: 'pendiente',
+        estadoAnterior:
+          '',
 
-        antesObj: null,
-        despuesObj: afterObj,
+        estadoNuevo:
+          'pendiente',
+
+        antesObj:
+          null,
+
+        despuesObj:
+          afterObj,
 
         path:
           `itinerario.${fecha}[${newIdx}]`
       }
     );
-  } // ← ESTA LLAVE TE FALTA
+  }
 
+  // ------------------------------------------------
+  // Guardar cambios
+  // ------------------------------------------------
   await updateDoc(
-    doc(db, 'grupos', grupoId),
+    doc(
+      db,
+      'grupos',
+      grupoId
+    ),
     {
-      adultos: a,
-      estudiantes: e,
-      cantidadgrupo: pax,
-      [`itinerario.${fecha}`]: arr
+      adultos:
+        a,
+
+      estudiantes:
+        e,
+
+      cantidadgrupo:
+        pax,
+
+      [`itinerario.${fecha}`]:
+        arr
     }
   );
+
+  // ------------------------------------------------
+  // Recalcular estado general del grupo
+  // ------------------------------------------------
+  const nuevoIT = {
+    ...(g.itinerario || {}),
+    [fecha]:
+      arr
+  };
 
   await updateEstadoRevisionAndBadge(
     grupoId,
-    {
-      ...(g.itinerario || {}),
-      [fecha]: arr
-    }
+    nuevoIT
   );
 
+  // ------------------------------------------------
+  // Cerrar modal + refrescar
+  // ------------------------------------------------
   closeModal();
-  renderItinerario();
+
+  await renderItinerario();
 }
 
 // —————————————————————————————————
