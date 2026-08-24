@@ -429,26 +429,60 @@
       </div>
     </div>
     <!-- Quick-Add -->
-    <section id="quick-add" class="quick-add">
-      <h3>EDICIÓN DE ITINERARIOS</h3>
-      <div class="column">
-        <label for="qa-dia">Día(s)</label>
-        <select id="qa-dia" multiple></select>
+    <section id="quick-add" class="quick-add editor-itinerario-box">
+    
+      <div class="editor-itinerario-header">
+        <h3>EDICIÓN DE ITINERARIOS</h3>
+    
+        <div class="editor-itinerario-estado">
+          Estado revisión:
+          <span
+            id="estado-badge"
+            class="badge badge-pendiente"
+          >
+            PENDIENTE
+          </span>
+        </div>
       </div>
-      <div class="row">
-        <div class="column short">
+    
+      <div class="editor-itinerario-grid">
+    
+        <div class="editor-campo editor-dia">
+          <label for="qa-dia">Día(s)</label>
+          <select id="qa-dia" multiple></select>
+        </div>
+    
+        <div class="editor-campo editor-hora">
           <label for="qa-horaInicio">Hora inicio</label>
-          <input type="time" id="qa-horaInicio" value="07:00" />
+          <input
+            type="time"
+            id="qa-horaInicio"
+            value="07:00"
+          />
         </div>
-        <div class="column medium">
-          <label for="qa-actividad">Servicio o Actividad</label>
-          <input type="text" id="qa-actividad" placeholder="Nombre de la actividad o servicio" />
+    
+        <div class="editor-campo editor-actividad">
+          <label for="qa-actividad">Servicio o actividad</label>
+          <input
+            type="text"
+            id="qa-actividad"
+            placeholder="Nombre de la actividad o servicio"
+          />
         </div>
-        <div class="column short">
+    
+        <div class="editor-campo editor-boton">
           <label>&nbsp;</label>
-          <button type="button" id="qa-add" class="btn-add">Añadir</button>
+          <button
+            type="button"
+            id="qa-add"
+            class="btn-add"
+          >
+            Añadir
+          </button>
         </div>
+    
       </div>
+    
     </section>
 
     <!-- Banda Estado Revisión (ubicada debajo del editor y antes de las cards) -->
