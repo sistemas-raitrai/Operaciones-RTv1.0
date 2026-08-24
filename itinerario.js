@@ -1564,12 +1564,10 @@ function actualizarUIEstadoModos() {
     );
 
   if (quickAdd) {
-    // Edición normal:
-    // quick-add visible solamente cuando NO estamos revisando.
     quickAdd.style.display =
-      revisionMode
-        ? "none"
-        : "";
+      editMode
+        ? ""
+        : "none";
   }
 
   if (btnGuardarTpl) {
