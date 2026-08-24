@@ -438,6 +438,7 @@ async function guardarRevisionDia(
         'REVISION',
 
       fecha,
+
       fechaActividad:
         fecha,
 
@@ -464,13 +465,16 @@ async function guardarRevisionDia(
     }
   );
 
-  // -----------------------------------------------
-  // ALERTA
-  // -----------------------------------------------
+  // ==================================================
+  // ALERTA DEL DÍA
+  // ==================================================
+
   if (
     nuevoEstado ===
     'rechazado'
   ) {
+    // Si existía un rechazo anterior de ESTE día,
+    // cerramos solamente esa versión anterior.
     await resolverAlertasRevision(
       grupoId,
       {
@@ -482,6 +486,7 @@ async function guardarRevisionDia(
       'Nueva revisión del día'
     );
 
+    // Creamos el nuevo rechazo.
     await crearAlertaRevision(
       grupoId,
       {
@@ -498,10 +503,13 @@ async function guardarRevisionDia(
       }
     );
 
-  } else if (
-    anterior.estado ===
-      'rechazado'
-  ) {
+  } else {
+    // IMPORTANTE:
+    // aquí sí estamos guardando una revisión explícita
+    // de ESTE día.
+    //
+    // Por eso ahora sí corresponde resolver
+    // cualquier rechazo activo del mismo día.
     await resolverAlertasRevision(
       grupoId,
       {
@@ -512,16 +520,22 @@ async function guardarRevisionDia(
       },
       nuevoEstado ===
         'ok'
-          ? 'Día aprobado'
-          : 'Día vuelve a pendiente'
+          ? 'Día revisado y aprobado'
+          : 'Día revisado y dejado pendiente'
     );
   }
 
-  // Cualquier cambio del día invalida
-  // una aprobación/rechazo general anterior.
+  // Cambiar la revisión de un día invalida
+  // cualquier cierre general previo.
+  //
+  // Esto NO resuelve la alerta general.
   await marcarGrupoPendientePorCambio(
     grupoId,
     `Se modificó la revisión del día ${fecha}.`
+  );
+
+  await refreshAlertasCounts(
+    grupoId
   );
 
   return true;
@@ -625,7 +639,9 @@ async function resolverAlertasRevision(
         const a =
           d.data() || {};
 
-        // Ya resuelta.
+        // ==========================================
+        // 1. YA ESTÁ RESUELTA
+        // ==========================================
         if (
           a.resuelta ===
           true
@@ -633,16 +649,24 @@ async function resolverAlertasRevision(
           return false;
         }
 
+        // ==========================================
+        // 2. TIPO
+        // ==========================================
+        const tipoAlerta =
+          a.tipo ||
+          'actividad';
+
         if (
           filtro.tipo &&
-          (
-            a.tipo ||
-            'actividad'
-          ) !== filtro.tipo
+          tipoAlerta !==
+            filtro.tipo
         ) {
           return false;
         }
 
+        // ==========================================
+        // 3. FECHA
+        // ==========================================
         if (
           filtro.fecha &&
           a.fecha !==
@@ -651,39 +675,72 @@ async function resolverAlertasRevision(
           return false;
         }
 
+        // ==========================================
+        // 4. ACTIVIDAD
+        //
+        // Para registros NUEVOS usamos idx.
+        //
+        // Para registros antiguos que no tengan idx,
+        // usamos nombre de actividad como respaldo.
+        // ==========================================
         if (
-          Number.isInteger(
-            filtro.idx
-          ) &&
-          Number.isInteger(
-            a.idx
-          ) &&
-          a.idx !==
-            filtro.idx
+          filtro.tipo ===
+          'actividad'
         ) {
-          return false;
-        }
+          if (
+            Number.isInteger(
+              filtro.idx
+            )
+          ) {
+            if (
+              Number.isInteger(
+                a.idx
+              )
+            ) {
+              if (
+                a.idx !==
+                filtro.idx
+              ) {
+                return false;
+              }
 
-        if (
-          filtro.actividad &&
-          !Number.isInteger(
-            filtro.idx
-          ) &&
-          (
-            a.actividad ||
-            ''
-          ) !==
-            filtro.actividad
-        ) {
-          return false;
+            } else {
+              // Alerta antigua sin idx:
+              // sólo aceptamos si además coincide
+              // exactamente la actividad.
+              if (
+                filtro.actividad &&
+                (
+                  a.actividad ||
+                  ''
+                ) !==
+                  filtro.actividad
+              ) {
+                return false;
+              }
+            }
+
+          } else if (
+            filtro.actividad &&
+            (
+              a.actividad ||
+              ''
+            ) !==
+              filtro.actividad
+          ) {
+            return false;
+          }
         }
 
         return true;
       });
 
     if (!docs.length) {
-      return;
+      return 0;
     }
+
+    const ahora =
+      new Date();
 
     await Promise.all(
       docs.map(d =>
@@ -704,13 +761,13 @@ async function resolverAlertasRevision(
               '',
 
             resueltaEn:
-              new Date(),
+              ahora,
 
             resueltaMotivo:
               motivoResolucion ||
-              'Cambio de estado',
+              'Revisión resuelta',
 
-            // Compatibilidad
+            // Compatibilidad antigua
             visto:
               true,
 
@@ -719,17 +776,21 @@ async function resolverAlertasRevision(
               '',
 
             leidoEn:
-              new Date()
+              ahora
           }
         )
       )
     );
+
+    return docs.length;
 
   } catch (e) {
     console.warn(
       'No se pudieron resolver alertas:',
       e
     );
+
+    return 0;
   }
 }
 
@@ -948,8 +1009,6 @@ async function guardarRevisionGrupo(
     {
       revisionGrupo,
 
-      // Conservamos este campo porque ya lo utiliza
-      // el resto de tu sistema.
       estadoRevisionItinerario:
         estadoCompat
     }
@@ -988,10 +1047,16 @@ async function guardarRevisionGrupo(
     }
   );
 
+  // ==================================================
+  // ALERTA GENERAL
+  // ==================================================
+
   if (
     nuevoEstado ===
     'rechazado'
   ) {
+    // Si existía un rechazo general anterior activo,
+    // cerramos solamente esa versión.
     await resolverAlertasRevision(
       grupoId,
       {
@@ -1001,6 +1066,7 @@ async function guardarRevisionGrupo(
       'Nueva revisión general'
     );
 
+    // Creamos el nuevo rechazo general.
     await crearAlertaRevision(
       grupoId,
       {
@@ -1015,10 +1081,14 @@ async function guardarRevisionGrupo(
       }
     );
 
-  } else if (
-    anterior.estado ===
-    'rechazado'
-  ) {
+  } else {
+    // IMPORTANTE:
+    //
+    // El rechazo general solamente se resuelve aquí,
+    // porque alguien está guardando explícitamente
+    // una nueva REVISIÓN GENERAL.
+    //
+    // Una edición previa del itinerario NO lo resolvió.
     await resolverAlertasRevision(
       grupoId,
       {
@@ -1027,8 +1097,8 @@ async function guardarRevisionGrupo(
       },
       nuevoEstado ===
         'ok'
-          ? 'Grupo aprobado'
-          : 'Grupo vuelve a pendiente'
+          ? 'Revisión general aprobada'
+          : 'Revisión general dejada pendiente'
     );
   }
 
@@ -1069,6 +1139,11 @@ async function marcarGrupoPendientePorCambio(
   const rev =
     getRevisionGrupo(g);
 
+  // Si ya está pendiente, no necesitamos cambiar
+  // nuevamente el estado general.
+  //
+  // IMPORTANTE:
+  // esto NO toca las alertas/rechazos existentes.
   if (
     rev.estado ===
     'pendiente'
@@ -1103,19 +1178,18 @@ async function marcarGrupoPendientePorCambio(
     }
   );
 
-  if (
-    rev.estado ===
-    'rechazado'
-  ) {
-    await resolverAlertasRevision(
-      grupoId,
-      {
-        tipo:
-          'grupo'
-      },
-      'El grupo volvió a pendiente debido a cambios'
-    );
-  }
+  // ==================================================
+  // IMPORTANTE
+  //
+  // NO resolvemos aquí ninguna alerta del grupo.
+  //
+  // Una modificación del itinerario solamente hace que
+  // el grupo vuelva a PENDIENTE.
+  //
+  // Si existía un rechazo general, ese rechazo continúa
+  // ACTIVO hasta que alguien vuelva a revisar
+  // explícitamente la revisión general.
+  // ==================================================
 
   await logHist(
     grupoId,
@@ -4292,32 +4366,6 @@ async function renderItinerario() {
                     }
                   );
 
-                  if (
-                    (
-                      beforeObj?.revision ||
-                      'pendiente'
-                    ) ===
-                    'rechazado'
-                  ) {
-                    await resolverAlertasRevision(
-                      grupoId,
-                      {
-                        tipo:
-                          'actividad',
-
-                        fecha,
-
-                        idx:
-                          originalIdx,
-
-                        actividad:
-                          beforeObj.actividad ||
-                          ''
-                      },
-                      'Actividad eliminada'
-                    );
-                  }
-
                   await updateDoc(
                     doc(
                       db,
@@ -4729,79 +4777,135 @@ function closeModal() {
 async function onSubmitModal(evt) {
   evt.preventDefault();
 
-  const grupoId = selectNum.value;
-  const fecha   = fldFecha.value;
+  const grupoId =
+    selectNum.value;
 
-  const a   = parseInt(fldAdultos.value, 10) || 0;
-  const e   = parseInt(fldEstudiantes.value, 10) || 0;
-  const pax = parseInt(fldPax.value, 10) || 0;
+  const fecha =
+    fldFecha.value;
 
-  const snapG = await getDoc(
-    doc(db, 'grupos', grupoId)
-  );
+  const a =
+    parseInt(
+      fldAdultos.value,
+      10
+    ) || 0;
 
-  const g = snapG.data() || {};
+  const e =
+    parseInt(
+      fldEstudiantes.value,
+      10
+    ) || 0;
 
-  // ------------------------------------------------
-  // Validación pasajeros
-  // ------------------------------------------------
-  const suma = a + e;
+  const pax =
+    parseInt(
+      fldPax.value,
+      10
+    ) || 0;
 
-  if (pax !== suma) {
+  const snapG =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
+
+  const g =
+    snapG.data() || {};
+
+  // ==================================================
+  // VALIDACIÓN PASAJEROS
+  // ==================================================
+
+  const suma =
+    a + e;
+
+  if (
+    pax !==
+    suma
+  ) {
     return alert(
       `La suma Adultos (${a}) + Estudiantes (${e}) = ${suma} debe ser igual a Total (${pax}).`
     );
   }
 
-  if (a < 0 || e < 0 || pax < 0) {
+  if (
+    a < 0 ||
+    e < 0 ||
+    pax < 0
+  ) {
     return alert(
       "Los valores no pueden ser negativos."
     );
   }
 
-  // ------------------------------------------------
-  // Resolver actividad contra catálogo de servicios
-  // ------------------------------------------------
-  const svcMaps = await getServiciosMaps(
-    g.destino || '',
-    g
-  );
+  // ==================================================
+  // RESOLVER ACTIVIDAD CONTRA SERVICIOS
+  // ==================================================
+
+  const svcMaps =
+    await getServiciosMaps(
+      g.destino || '',
+      g
+    );
 
   const typedUpper =
-    (fldAct.value || '')
+    (
+      fldAct.value ||
+      ''
+    )
       .trim()
       .toUpperCase();
 
-  const key = K(typedUpper);
+  const key =
+    K(
+      typedUpper
+    );
 
   const sv =
-    svcMaps.byName.get(key) || null;
+    svcMaps.byName.get(
+      key
+    ) || null;
 
-  // ------------------------------------------------
-  // Notas / TICKETS
-  // ------------------------------------------------
-  let notasValor = '';
+  // ==================================================
+  // NOTAS / TICKETS
+  // ==================================================
+
+  let notasValor =
+    '';
 
   if (
     notasTicketSelect &&
-    notasTicketSelect.style.display !== 'none'
+    notasTicketSelect.style.display !==
+      'none'
   ) {
     const selVal =
-      (notasTicketSelect.value || '')
+      (
+        notasTicketSelect.value ||
+        ''
+      )
         .toString()
         .toUpperCase();
 
-    if (selVal === 'OTRO') {
+    if (
+      selVal ===
+      'OTRO'
+    ) {
       const libre =
-        (fldNotas.value || '')
+        (
+          fldNotas.value ||
+          ''
+        )
           .trim()
           .toUpperCase();
 
       notasValor =
-        libre || 'OTRO';
+        libre ||
+        'OTRO';
 
     } else {
-      notasValor = selVal;
+      notasValor =
+        selVal;
 
       fldNotas.value =
         selVal;
@@ -4809,14 +4913,18 @@ async function onSubmitModal(evt) {
 
   } else {
     notasValor =
-      (fldNotas.value || '')
+      (
+        fldNotas.value ||
+        ''
+      )
         .trim()
         .toUpperCase();
   }
 
-  // ------------------------------------------------
-  // Objeto base actividad
-  // ------------------------------------------------
+  // ==================================================
+  // DATOS BASE
+  // ==================================================
+
   const payloadBase = {
     horaInicio:
       fldHi.value,
@@ -4844,77 +4952,94 @@ async function onSubmitModal(evt) {
     servicioId:
       sv
         ? sv.id
-        : (editData?.servicioId || null),
+        : (
+            editData?.servicioId ||
+            null
+          ),
 
     servicioNombre:
       sv
         ? sv.nombre
-        : (editData?.servicioNombre || null),
+        : (
+            editData?.servicioNombre ||
+            null
+          ),
 
     servicioDestino:
       sv
         ? sv.destino
-        : (editData?.servicioDestino || null)
+        : (
+            editData?.servicioDestino ||
+            null
+          )
   };
 
-  // ------------------------------------------------
-  // Actividades del día
-  // ------------------------------------------------
   const arr =
-    (g.itinerario?.[fecha] || [])
-      .slice();
+    (
+      g.itinerario?.[fecha] ||
+      []
+    ).slice();
 
-  // =================================================
+  // ==================================================
   // EDITAR ACTIVIDAD
-  // =================================================
-  if (editData) {
-    const beforeObj =
-      arr[editData.idx];
+  // ==================================================
 
-    if (!beforeObj) {
+  if (
+    editData
+  ) {
+    const beforeObj =
+      arr[
+        editData.idx
+      ];
+
+    if (
+      !beforeObj
+    ) {
       return alert(
         "No se encontró la actividad que intentas editar."
       );
     }
 
-    // Cualquier modificación obliga a revisar nuevamente.
+    // Una edición del contenido deja nuevamente
+    // la actividad pendiente de revisión.
     const afterObj = {
       ...payloadBase,
-    
+
       revision:
         'pendiente',
-    
+
       revisionObservacion:
         'Actividad modificada después de revisión. Requiere nueva revisión.',
-    
+
       revisionUsuario:
         auth.currentUser?.email ||
         '',
-    
+
       revisionTimestamp:
         new Date(),
-    
-      // Compatibilidad antigua
+
       rechazoMotivo:
         ''
     };
 
-    arr[editData.idx] =
+    arr[
+      editData.idx
+    ] =
       afterObj;
 
-    // -----------------------------------------------
-    // Historial
-    // -----------------------------------------------
+    // Historial UNA sola vez.
     await logHist(
       grupoId,
       'MODIFICAR ACTIVIDAD',
       {
-        _group: g,
+        _group:
+          g,
 
         categoria:
           'ITINERARIO',
 
         fecha,
+
         fechaActividad:
           fecha,
 
@@ -4952,40 +5077,26 @@ async function onSubmitModal(evt) {
       }
     );
 
-    // Si estaba rechazada, la corrección cierra
-    if (
-      (beforeObj.revision || 'pendiente') ===
-      'rechazado'
-    ) {
-      await resolverAlertasRevision(
-        grupoId,
-        {
-          tipo:
-            'actividad',
-    
-          fecha,
-    
-          idx:
-            editData.idx,
-    
-          actividad:
-            beforeObj.actividad ||
-            ''
-        },
-        'Actividad modificada; vuelve a pendiente'
-      );
-    }
-    
-    // CUALQUIER modificación invalida una revisión
-    // general previa, haya estado APROBADA o RECHAZADA.
+    // ==================================================
+    // MUY IMPORTANTE
+    //
+    // NO llamamos resolverAlertasRevision().
+    //
+    // Editar una actividad NO significa que el rechazo
+    // haya sido revisado ni aprobado.
+    //
+    // La alerta sigue activa.
+    // ==================================================
+
     await marcarGrupoPendientePorCambio(
       grupoId,
       `Se modificó la actividad "${afterObj.actividad || ''}".`
     );
 
-  // =================================================
+  // ==================================================
   // CREAR ACTIVIDAD
-  // =================================================
+  // ==================================================
+
   } else {
     const newIdx =
       arr.length;
@@ -5005,12 +5116,14 @@ async function onSubmitModal(evt) {
       grupoId,
       'CREAR ACTIVIDAD',
       {
-        _group: g,
+        _group:
+          g,
 
         categoria:
           'ITINERARIO',
 
         fecha,
+
         fechaActividad:
           fecha,
 
@@ -5044,11 +5157,19 @@ async function onSubmitModal(evt) {
           `itinerario.${fecha}[${newIdx}]`
       }
     );
+
+    // Crear contenido nuevo también obliga
+    // a revisar nuevamente el grupo.
+    await marcarGrupoPendientePorCambio(
+      grupoId,
+      `Se agregó la actividad "${afterObj.actividad || ''}".`
+    );
   }
 
-  // ------------------------------------------------
-  // Guardar cambios
-  // ------------------------------------------------
+  // ==================================================
+  // GUARDAR
+  // ==================================================
+
   await updateDoc(
     doc(
       db,
@@ -5070,28 +5191,14 @@ async function onSubmitModal(evt) {
     }
   );
 
-  // ------------------------------------------------
-  // Recalcular estado general del grupo
-  // ------------------------------------------------
-  const nuevoIT = {
-    ...(g.itinerario || {}),
-    [fecha]:
-      arr
-  };
-
   await updateEstadoRevisionAndBadge(
-    grupoId,
-    nuevoIT
+    grupoId
   );
 
-  // ------------------------------------------------
-  // Cerrar modal + refrescar
-  // ------------------------------------------------
   closeModal();
 
   await renderItinerario();
 }
-
 // —————————————————————————————————
 // Cierra alertas abiertas de una actividad.
 //
@@ -5213,7 +5320,9 @@ async function guardarRevisionActividad(
   const beforeObj =
     arr[idx];
 
-  if (!beforeObj) {
+  if (
+    !beforeObj
+  ) {
     alert(
       "No se encontró la actividad."
     );
@@ -5224,11 +5333,6 @@ async function guardarRevisionActividad(
   const oldEstado =
     beforeObj.revision ||
     'pendiente';
-
-  const oldObservacion =
-    beforeObj.revisionObservacion ||
-    beforeObj.rechazoMotivo ||
-    '';
 
   const updated = {
     ...beforeObj,
@@ -5247,7 +5351,6 @@ async function guardarRevisionActividad(
       new Date()
   };
 
-  // Compatibilidad con tu estructura antigua.
   updated.rechazoMotivo =
     nuevoEstado ===
       'rechazado'
@@ -5257,6 +5360,10 @@ async function guardarRevisionActividad(
   arr[idx] =
     updated;
 
+  // ==================================================
+  // GUARDAR ESTADO DE LA ACTIVIDAD
+  // ==================================================
+
   await updateDoc(
     ref,
     {
@@ -5264,6 +5371,10 @@ async function guardarRevisionActividad(
         arr
     }
   );
+
+  // ==================================================
+  // HISTORIAL
+  // ==================================================
 
   await logHist(
     grupoId,
@@ -5285,6 +5396,7 @@ async function guardarRevisionActividad(
         'actividad',
 
       fecha,
+
       fechaActividad:
         fecha,
 
@@ -5320,15 +5432,16 @@ async function guardarRevisionActividad(
     }
   );
 
-  // ==========================================
-  // ALERTAS
-  // ==========================================
+  // ==================================================
+  // ALERTA
+  // ==================================================
 
   if (
     nuevoEstado ===
     'rechazado'
   ) {
-    // Evitamos duplicados.
+    // Si existe un rechazo anterior para ESTA actividad,
+    // cerramos solamente la versión anterior.
     await resolverAlertasRevision(
       grupoId,
       {
@@ -5341,11 +5454,13 @@ async function guardarRevisionActividad(
 
         actividad:
           beforeObj.actividad ||
+          updated.actividad ||
           ''
       },
       'Nueva revisión de la actividad'
     );
 
+    // Creamos el nuevo rechazo.
     await crearAlertaRevision(
       grupoId,
       {
@@ -5373,10 +5488,28 @@ async function guardarRevisionActividad(
       }
     );
 
-  } else if (
-    oldEstado ===
-    'rechazado'
-  ) {
+  } else {
+    // ==================================================
+    // RESOLUCIÓN EXPLÍCITA
+    //
+    // Estamos guardando una revisión concreta de ESTA
+    // actividad. Solamente ahora se resuelve la alerta.
+    //
+    // Puede venir de:
+    //
+    // RECHAZADA -> OK
+    //
+    // o:
+    //
+    // RECHAZADA
+    // -> actividad editada
+    // -> PENDIENTE
+    // -> revisión explícita
+    // -> OK
+    //
+    // En ambos casos corresponde cerrar el rechazo.
+    // ==================================================
+
     await resolverAlertasRevision(
       grupoId,
       {
@@ -5389,17 +5522,20 @@ async function guardarRevisionActividad(
 
         actividad:
           beforeObj.actividad ||
+          updated.actividad ||
           ''
       },
       nuevoEstado ===
         'ok'
-          ? 'Actividad aprobada'
-          : 'Actividad vuelve a pendiente'
+          ? 'Actividad revisada y aprobada'
+          : 'Actividad revisada y dejada pendiente'
     );
   }
 
-  // Cualquier cambio de una actividad invalida
-  // una revisión general previa.
+  // Cambiar la revisión inferior deja
+  // la revisión general pendiente.
+  //
+  // NO resuelve la alerta general.
   await marcarGrupoPendientePorCambio(
     grupoId,
     `Cambió la revisión de la actividad "${updated.actividad || ''}".`
@@ -5411,7 +5547,6 @@ async function guardarRevisionActividad(
 
   return true;
 }
-
 // ======================================================
 // CONTROLES VISUALES DE REVISIÓN
 // ======================================================
