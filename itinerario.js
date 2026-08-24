@@ -1567,98 +1567,137 @@ const btnToggleRevision =
 
 function actualizarUIEstadoModos() {
   if (btnToggleEdit) {
-    btnToggleEdit.onclick =
-      async e => {
-        stopAll(e);
-  
-        // Si estamos revisando y existen cambios
-        // sin guardar, advertir antes de perderlos.
+    btnToggleEdit.textContent =
+      editMode
+        ? "🔒 Desactivar edición"
+        : "🔓 Activar edición";
+  }
+
+  if (btnToggleRevision) {
+    btnToggleRevision.textContent =
+      revisionMode
+        ? "🔒 Desactivar revisión"
+        : "🔎 Activar revisión";
+  }
+
+  const quickAdd =
+    document.getElementById(
+      "quick-add"
+    );
+
+  if (quickAdd) {
+    quickAdd.style.display =
+      editMode
+        ? ""
+        : "none";
+  }
+
+  if (btnGuardarTpl) {
+    btnGuardarTpl.disabled =
+      editMode ||
+      revisionMode;
+  }
+
+  if (btnCargarTpl) {
+    btnCargarTpl.disabled =
+      editMode ||
+      revisionMode;
+  }
+
+  if (revisionGrupoContainer) {
+    revisionGrupoContainer.style.display =
+      revisionMode
+        ? ""
+        : "none";
+  }
+}
+
+actualizarUIEstadoModos();
+
+if (btnToggleEdit) {
+  btnToggleEdit.onclick =
+    async e => {
+      stopAll(e);
+
+      if (
+        revisionMode &&
+        contarCambiosRevisionDraft() > 0
+      ) {
+        const confirmar =
+          confirm(
+            "Hay cambios de revisión sin guardar.\n\n" +
+            "¿Quieres descartarlos y entrar a edición?"
+          );
+
+        if (!confirmar) {
+          return;
+        }
+
+        resetRevisionDraft();
+      }
+
+      editMode =
+        !editMode;
+
+      if (editMode) {
+        revisionMode =
+          false;
+      }
+
+      resetSwap();
+
+      actualizarUIEstadoModos();
+
+      await renderItinerario();
+    };
+}
+
+
+if (btnToggleRevision) {
+  btnToggleRevision.onclick =
+    async e => {
+      stopAll(e);
+
+      // SALIR DE REVISIÓN
+      if (revisionMode) {
         if (
-          revisionMode &&
-          contarCambiosRevisionDraft() >
-            0
+          contarCambiosRevisionDraft() > 0
         ) {
           const confirmar =
             confirm(
               "Hay cambios de revisión sin guardar.\n\n" +
-              "¿Quieres descartarlos y entrar a edición?"
+              "¿Quieres descartarlos y salir de revisión?"
             );
-  
+
           if (!confirmar) {
             return;
           }
-  
-          resetRevisionDraft();
         }
-  
+
+        resetRevisionDraft();
+
+        revisionMode =
+          false;
+
+      // ENTRAR A REVISIÓN
+      } else {
+        resetRevisionDraft();
+
+        revisionMode =
+          true;
+
         editMode =
-          !editMode;
-  
-        if (editMode) {
-          revisionMode =
-            false;
-        }
-  
-        resetSwap();
-  
-        actualizarUIEstadoModos();
-  
-        await renderItinerario();
-      };
-  }
-  
-  
-  if (btnToggleRevision) {
-    btnToggleRevision.onclick =
-      async e => {
-        stopAll(e);
-  
-        // -----------------------------------------------
-        // SALIR DE REVISIÓN
-        // -----------------------------------------------
-        if (revisionMode) {
-  
-          if (
-            contarCambiosRevisionDraft() >
-            0
-          ) {
-            const confirmar =
-              confirm(
-                "Hay cambios de revisión sin guardar.\n\n" +
-                "¿Quieres descartarlos y salir de revisión?"
-              );
-  
-            if (!confirmar) {
-              return;
-            }
-          }
-  
-          resetRevisionDraft();
-  
-          revisionMode =
-            false;
-  
-        // -----------------------------------------------
-        // ENTRAR A REVISIÓN
-        // -----------------------------------------------
-        } else {
-          resetRevisionDraft();
-  
-          revisionMode =
-            true;
-  
-          editMode =
-            false;
-        }
-  
-        resetSwap();
-  
-        actualizarUIEstadoModos();
-  
-        await renderItinerario();
-      };
-  }
+          false;
+      }
+
+      resetSwap();
+
+      actualizarUIEstadoModos();
+
+      await renderItinerario();
+    };
 }
+
 
 actualizarUIEstadoModos();
 
@@ -4601,7 +4640,6 @@ async function onSubmitModal(evt) {
     );
 
     // Si estaba rechazada, la corrección cierra
-    // la alerta pendiente asociada.
     if (
       (beforeObj.revision || 'pendiente') ===
       'rechazado'
@@ -4611,24 +4649,26 @@ async function onSubmitModal(evt) {
         {
           tipo:
             'actividad',
-      
+    
           fecha,
-      
+    
           idx:
             editData.idx,
-      
+    
           actividad:
             beforeObj.actividad ||
             ''
         },
         'Actividad modificada; vuelve a pendiente'
       );
-
-      await marcarGrupoPendientePorCambio(
-        grupoId,
-        `Se modificó la actividad "${afterObj.actividad || ''}".`
-      );
     }
+    
+    // CUALQUIER modificación invalida una revisión
+    // general previa, haya estado APROBADA o RECHAZADA.
+    await marcarGrupoPendientePorCambio(
+      grupoId,
+      `Se modificó la actividad "${afterObj.actividad || ''}".`
+    );
 
   // =================================================
   // CREAR ACTIVIDAD
