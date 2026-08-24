@@ -185,6 +185,109 @@
     .modal-backdrop { position: fixed; inset:0; background: rgba(0,0,0,.35); }
     .modal .close { font-size: 22px; line-height: 1; border:none; background:transparent; cursor:pointer; }
 
+    /* =====================================================
+     MODO REVISIÓN
+     ===================================================== */
+
+    .revision-box{
+      border:1px solid #dbe3ef;
+      border-radius:10px;
+      padding:10px;
+      margin:8px 0;
+      background:#f8fafc;
+    }
+    
+    .revision-box.revision-rechazado{
+      border-color:#fecaca;
+      background:#fff7f7;
+    }
+    
+    .revision-box.revision-ok{
+      border-color:#bbf7d0;
+      background:#f0fdf4;
+    }
+    
+    .revision-box.revision-pendiente{
+      border-color:#fde68a;
+      background:#fffbeb;
+    }
+    
+    .revision-estados{
+      display:flex;
+      flex-wrap:wrap;
+      gap:6px;
+      margin:8px 0;
+    }
+    
+    .revision-estados button{
+      border:1px solid #d1d5db;
+      border-radius:7px;
+      padding:6px 10px;
+      cursor:pointer;
+      background:white;
+    }
+    
+    .revision-estados button.activo-pendiente{
+      background:#f59e0b;
+      color:white;
+      border-color:#f59e0b;
+    }
+    
+    .revision-estados button.activo-ok{
+      background:#16a34a;
+      color:white;
+      border-color:#16a34a;
+    }
+    
+    .revision-estados button.activo-rechazado{
+      background:#dc2626;
+      color:white;
+      border-color:#dc2626;
+    }
+    
+    .revision-observacion{
+      width:100%;
+      min-height:58px;
+      resize:vertical;
+      box-sizing:border-box;
+      margin-top:6px;
+    }
+    
+    .revision-motivo-visible{
+      margin:6px 0;
+      padding:7px 9px;
+      border-radius:7px;
+      background:#fff7ed;
+      border-left:4px solid #f97316;
+      font-size:.92rem;
+    }
+    
+    .revision-motivo-visible.rechazado{
+      background:#fef2f2;
+      border-left-color:#dc2626;
+      color:#991b1b;
+    }
+    
+    .revision-dia{
+      margin:8px 0 12px;
+    }
+    
+    .revision-dia-acciones{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:8px;
+    }
+    
+    .btn-rechazar-todo-dia{
+      background:#7f1d1d !important;
+      color:white !important;
+    }
+    
+    .activity-card .revision-box{
+      margin-top:8px;
+    }
+
   </style>
 </head>
 <body class="itinerario-page">
@@ -216,24 +319,70 @@
         <label>&nbsp;</label>
         <button type="button" id="btnEstadisticas" class="btn-add" style="background-color: black; color: white;">📊 Estadísticas</button>
       </div>
-      <!-- Botón Alertas entre calendario y edición -->
+      <!-- Alertas -->
       <div class="column medium">
         <label>&nbsp;</label>
-        <button type="button" id="btnAlertas" class="btn-add" style="background-color:#f59e0b; color:white;">
-          ⚠️ Alertas (<span id="alertasBadge">0</span>)
+        <button
+          type="button"
+          id="btnAlertas"
+          class="btn-add"
+          style="background-color:#dc2626; color:white;"
+        >
+          ⚠️ Alertas
         </button>
       </div>
-            <!-- NUEVO: botón Historial -->
+      
+      <!-- Pendientes -->
       <div class="column medium">
         <label>&nbsp;</label>
-        <button type="button" id="btnHistorial" class="btn-add" style="background:#334155; color:white;">🕘 Historial</button>
+        <button
+          type="button"
+          id="btnPendientes"
+          class="btn-add"
+          style="background-color:#f59e0b; color:white;"
+        >
+          🕒 Pendientes
+        </button>
       </div>
-
+      
+      <!-- Historial -->
       <div class="column medium">
         <label>&nbsp;</label>
-        <button type="button" id="btnToggleEdit" class="btn-add" style="background-color: red; color: white;">🔓 Activar edición</button>
+        <button
+          type="button"
+          id="btnHistorial"
+          class="btn-add"
+          style="background:#334155; color:white;"
+        >
+          🕘 Historial
+        </button>
       </div>
-    </div>
+      
+      <!-- Revisión -->
+      <div class="column medium">
+        <label>&nbsp;</label>
+        <button
+          type="button"
+          id="btnToggleRevision"
+          class="btn-add"
+          style="background:#2563eb; color:white;"
+        >
+          🔎 Activar revisión
+        </button>
+      </div>
+      
+      <!-- Edición -->
+      <div class="column medium">
+        <label>&nbsp;</label>
+        <button
+          type="button"
+          id="btnToggleEdit"
+          class="btn-add"
+          style="background-color:red; color:white;"
+        >
+          🔓 Activar edición
+        </button>
+      </div>
 
     <!-- Plantillas -->
     <div class="row" style="margin-top:1rem;">
@@ -250,7 +399,7 @@
 
     <!-- Quick-Add -->
     <section id="quick-add" class="quick-add">
-      <h3>EDICIÓN Y REVISIÓN DE ITINERARIOS</h3>
+      <h3>EDICIÓN ITINERARIOS</h3>
       <div class="column">
         <label for="qa-dia">Día(s)</label>
         <select id="qa-dia" multiple></select>
@@ -273,9 +422,14 @@
 
     <!-- Banda Estado Revisión (ubicada debajo del editor y antes de las cards) -->
     <div id="estado-revision" class="estado-revision">
-      Estado revisión: <span id="estado-badge" class="badge badge-pendiente">PENDIENTE</span>
+      Estado revisión:
+      <span id="estado-badge" class="badge badge-pendiente">PENDIENTE</span>
     </div>
-
+    
+    <div
+      id="revision-grupo-container"
+      style="display:none; margin:12px 0 18px;"
+    ></div>
     <!-- Cards de Itinerario -->
     <div id="itinerario-container" class="grid"></div>
   </main>
@@ -333,6 +487,52 @@
   
       <h4 style="margin-top:.8rem;">Otros grupos con revisión pendiente</h4>
       <ul id="alertas-pendientes" class="alert-list"></ul>
+    </div>
+  </div>
+
+  <!-- Modal Pendientes -->
+  <div id="modal-pendientes" class="modal" style="display:none;">
+    <div class="modal-header">
+      <h3>Pendientes de revisión</h3>
+      <button id="pendientes-close" type="button">✖</button>
+    </div>
+  
+    <div class="modal-body">
+  
+      <div
+        id="pendientes-modos"
+        style="display:flex; gap:8px; margin-bottom:12px;"
+      >
+        <button
+          type="button"
+          id="btnPendientesGrupo"
+        >
+          Este grupo
+        </button>
+  
+        <button
+          type="button"
+          id="btnPendientesGeneral"
+        >
+          General
+        </button>
+      </div>
+  
+      <div
+        id="pendientes-encabezado"
+        style="
+          border:1px solid #ddd;
+          border-radius:8px;
+          padding:8px;
+          margin-bottom:12px;
+        "
+      ></div>
+  
+      <ul
+        id="pendientes-list"
+        class="alert-list"
+      ></ul>
+  
     </div>
   </div>
 
