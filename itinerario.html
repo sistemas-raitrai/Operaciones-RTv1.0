@@ -392,6 +392,117 @@
       }
     }
 
+    /* =====================================================
+       REVISIÓN COMPACTA
+       ===================================================== */
+    
+    .revision-box{
+      padding:8px 9px;
+      margin:6px 0;
+      border-radius:9px;
+    }
+    
+    .revision-box > strong{
+      display:block;
+      margin-bottom:6px;
+      font-size:.9rem;
+    }
+    
+    .revision-estados{
+      display:flex;
+      gap:7px;
+      margin:5px 0 7px;
+    }
+    
+    .revision-icon-btn{
+      width:38px;
+      height:34px;
+      min-width:38px;
+      padding:0 !important;
+    
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    
+      font-size:17px;
+    
+      border:1px solid #d1d5db !important;
+      border-radius:8px !important;
+    
+      background:#fff !important;
+      cursor:pointer;
+    
+      transition:
+        transform .1s ease,
+        box-shadow .1s ease,
+        background .1s ease;
+    }
+    
+    .revision-icon-btn:hover{
+      transform:translateY(-1px);
+      box-shadow:0 2px 5px rgba(0,0,0,.10);
+    }
+    
+    .revision-icon-btn.activo-pendiente{
+      background:#fff7ed !important;
+      border:2px solid #f59e0b !important;
+    }
+    
+    .revision-icon-btn.activo-ok{
+      background:#ecfdf5 !important;
+      border:2px solid #16a34a !important;
+    }
+    
+    .revision-icon-btn.activo-rechazado{
+      background:#fef2f2 !important;
+      border:2px solid #dc2626 !important;
+    }
+    
+    .revision-observacion{
+      width:100%;
+      min-height:42px;
+      max-height:110px;
+    
+      padding:7px 9px;
+    
+      border:1px solid #d1d5db;
+      border-radius:8px;
+    
+      background:#fff;
+    
+      font-family:inherit;
+      font-size:.85rem;
+      line-height:1.3;
+    
+      resize:vertical;
+      box-sizing:border-box;
+    
+      transition:
+        border-color .15s ease,
+        box-shadow .15s ease;
+    }
+    
+    .revision-observacion:focus{
+      outline:none;
+      border-color:#2563eb;
+      box-shadow:0 0 0 2px rgba(37,99,235,.10);
+    }
+    
+    .revision-observacion::placeholder{
+      color:#9ca3af;
+    }
+    
+    .revision-box > button:last-child{
+      margin-top:6px !important;
+      padding:5px 9px;
+      border:0;
+      border-radius:7px;
+      background:#0f4c81;
+      color:#fff;
+      font-size:.82rem;
+      cursor:pointer;
+    }
+
   </style>
 </head>
 <body class="itinerario-page">
