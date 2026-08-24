@@ -5011,7 +5011,10 @@ function crearControlesRevision({
     'revision-observacion';
 
   textarea.placeholder =
-    'Observación / justificación de la revisión...';
+    'Observación de revisión...';
+
+  textarea.rows =
+    2;
 
   textarea.value =
     observacionActual ||
@@ -5045,27 +5048,19 @@ function crearControlesRevision({
 
   [
     {
-      estado:
-        'pendiente',
-
-      texto:
-        '🕒 PENDIENTE'
+      estado: 'pendiente',
+      texto: '🕒',
+      title: 'Pendiente'
     },
-
     {
-      estado:
-        'ok',
-
-      texto:
-        '✅ APROBADO'
+      estado: 'ok',
+      texto: '🎟️',
+      title: 'Aprobado'
     },
-
     {
-      estado:
-        'rechazado',
-
-      texto:
-        '❌ RECHAZADO'
+      estado: 'rechazado',
+      texto: '❌',
+      title: 'Rechazado'
     }
   ].forEach(item => {
     const btn =
@@ -5081,6 +5076,12 @@ function crearControlesRevision({
 
     btn.textContent =
       item.texto;
+
+    btn.title =
+      item.title;
+
+    btn.className =
+      'revision-icon-btn';
 
     btn.onclick =
       e => {
@@ -5108,20 +5109,37 @@ function crearControlesRevision({
   btnGuardar.textContent =
     'Guardar revisión';
 
-  btnGuardar.style.marginTop =
-    '7px';
-
   btnGuardar.onclick =
     async e => {
       stopAll(e);
 
+      const observacion =
+        textarea.value
+          .trim();
+
+      if (
+        seleccionado ===
+          'rechazado' &&
+        !observacion
+      ) {
+        alert(
+          'Debes escribir una justificación para rechazar.'
+        );
+
+        textarea.focus();
+
+        return;
+      }
+
       const ok =
         await onGuardar(
           seleccionado,
-          textarea.value
+          observacion
         );
 
-      if (ok !== false) {
+      if (
+        ok !== false
+      ) {
         await renderItinerario();
       }
     };
@@ -5142,7 +5160,6 @@ function crearControlesRevision({
 
   return wrapper;
 }
-
 
 function renderRevisionGrupo(
   grupoId,
