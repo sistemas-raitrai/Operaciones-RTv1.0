@@ -766,24 +766,92 @@
   </div>
 
   <!-- Modal Alertas -->
+  <!-- Modal Alertas -->
   <div id="modal-alertas" class="modal" style="display:none;">
+  
     <div class="modal-header">
-      <h3>Alertas</h3>
-      <button id="alertas-close" type="button">✖</button>
+      <h3>⚠️ Alertas de revisión</h3>
+  
+      <button
+        id="alertas-close"
+        type="button"
+      >
+        ✖
+      </button>
     </div>
+  
     <div class="modal-body">
-      <h4>Este grupo — No leídas</h4>
-      <ul id="alertas-actual" class="alert-list"></ul>
   
-      <h4 style="margin-top:.8rem;">Este grupo — Leídas</h4>
-      <ul id="alertas-actual-leidas" class="alert-list"></ul>
+      <!-- Grupo / General -->
+      <div
+        style="
+          display:flex;
+          gap:8px;
+          margin-bottom:12px;
+        "
+      >
+        <button
+          type="button"
+          id="btnAlertasGrupo"
+        >
+          Este grupo
+        </button>
   
-      <hr/>
-      <h4>Otros grupos con revisión rechazada</h4>
-      <ul id="alertas-otros" class="alert-list"></ul>
+        <button
+          type="button"
+          id="btnAlertasGeneral"
+        >
+          General
+        </button>
+      </div>
   
-      <h4 style="margin-top:.8rem;">Otros grupos con revisión pendiente</h4>
-      <ul id="alertas-pendientes" class="alert-list"></ul>
+      <!-- Encabezado -->
+      <div
+        id="alertas-encabezado"
+        style="
+          border:1px solid #ddd;
+          border-radius:8px;
+          padding:9px;
+          margin-bottom:12px;
+        "
+      ></div>
+  
+      <!-- Rechazos activos -->
+      <h4>
+        ❌ Rechazos activos
+      </h4>
+  
+      <ul
+        id="alertas-actual"
+        class="alert-list"
+      ></ul>
+  
+      <!-- Resueltos -->
+      <h4
+        style="margin-top:18px;"
+      >
+        ✅ Rechazos resueltos
+      </h4>
+  
+      <ul
+        id="alertas-actual-leidas"
+        class="alert-list"
+      ></ul>
+  
+      <!--
+        Se mantienen estos IDs ocultos solamente
+        para compatibilidad con el JS antiguo.
+      -->
+      <ul
+        id="alertas-otros"
+        style="display:none;"
+      ></ul>
+  
+      <ul
+        id="alertas-pendientes"
+        style="display:none;"
+      ></ul>
+  
     </div>
   </div>
 
