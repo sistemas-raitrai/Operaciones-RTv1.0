@@ -148,8 +148,40 @@ let encabezadoHistorialUI = null;
 const estadoBadge    = document.getElementById("estado-badge");
 
 // —— Botón Alertas y badge
-const btnAlertas     = document.getElementById("btnAlertas");
-const alertasBadge   = document.getElementById("alertasBadge");
+// —— Alertas
+const btnAlertas =
+  document.getElementById("btnAlertas");
+
+const alertasBadge =
+  document.getElementById("alertasBadge");
+
+// —— Pendientes
+const btnPendientes =
+  document.getElementById("btnPendientes");
+
+const modalPendientes =
+  document.getElementById("modal-pendientes");
+
+const btnClosePendientes =
+  document.getElementById("pendientes-close");
+
+const btnPendientesGrupo =
+  document.getElementById("btnPendientesGrupo");
+
+const btnPendientesGeneral =
+  document.getElementById("btnPendientesGeneral");
+
+const pendientesEncabezado =
+  document.getElementById("pendientes-encabezado");
+
+const pendientesList =
+  document.getElementById("pendientes-list");
+
+// —— Revisión del grupo
+const revisionGrupoContainer =
+  document.getElementById(
+    "revision-grupo-container"
+  );
 
 // —— Modal actividad
 const modalBg        = document.getElementById("modal-backdrop");
@@ -216,8 +248,10 @@ let editData    = null;    // { fecha, idx, ...act }
 let choicesDias = null;    // Choices.js instance
 let choicesGrupoNum = null;
 let choicesGrupoNom = null;
-let editMode    = false;
-let swapOrigin  = null;    // selección inicial para intercambio
+let editMode = false;
+let revisionMode = false;
+
+let swapOrigin = null;
 const hotelCache = new Map(); // hotelId -> { nombre, destino }
 
 // —————————————————————————————————
@@ -236,32 +270,856 @@ function stopAll(e) {
   if (e) { e.preventDefault?.(); e.stopPropagation?.(); }
 }
 
-// —————————————————————————————————
-// Revisión a nivel de DÍA (bandera independiente de las actividades)
-// guarda en grupos.revisionDias[fecha] = { estado, motivo, usuario, timestamp }
-// —————————————————————————————————
-function getRevisionDia(g, fecha) {
-  return (g.revisionDias && g.revisionDias[fecha]) || null;
-}
+// ======================================================
+// REVISIÓN A NIVEL DE DÍA
+//
+// grupos.revisionDias[fecha] = {
+//   estado,
+//   observacion,
+//   usuario,
+//   timestamp
+// }
+// ======================================================
 
-async function setRevisionDia(grupoId, fecha, estado, motivo = '') {
-  const ref  = doc(db, 'grupos', grupoId);
-  const snap = await getDoc(ref);
-  const g    = snap.data() || {};
-  const rev  = { ...(g.revisionDias || {}) };
+function getRevisionDia(
+  g,
+  fecha
+) {
+  const rev =
+    g?.revisionDias?.[fecha];
 
-  if (!estado) {
-    delete rev[fecha]; // limpiar
-  } else {
-    rev[fecha] = {
-      estado,                 // 'pendiente' | 'ok' | 'rechazado'
-      motivo: (motivo || '').trim(),
-      usuario: (auth.currentUser && auth.currentUser.email) || '',
-      timestamp: new Date()
+  if (!rev) {
+    return {
+      estado:
+        'pendiente',
+
+      observacion:
+        '',
+
+      usuario:
+        '',
+
+      timestamp:
+        null
     };
   }
-  await updateDoc(ref, { revisionDias: rev });
-  return rev; // mapa actualizado
+
+  return {
+    estado:
+      rev.estado ||
+      'pendiente',
+
+    observacion:
+      rev.observacion ||
+      rev.motivo ||
+      '',
+
+    usuario:
+      rev.usuario ||
+      '',
+
+    timestamp:
+      rev.timestamp ||
+      null
+  };
+}
+
+
+async function guardarRevisionDia(
+  grupoId,
+  fecha,
+  nuevoEstado,
+  observacion = ''
+) {
+  nuevoEstado =
+    (
+      nuevoEstado ||
+      'pendiente'
+    )
+      .toString()
+      .toLowerCase();
+
+  observacion =
+    (
+      observacion ||
+      ''
+    ).trim();
+
+  if (
+    nuevoEstado ===
+      'rechazado' &&
+    !observacion
+  ) {
+    alert(
+      "Debes escribir la justificación del rechazo del día."
+    );
+
+    return false;
+  }
+
+  const ref =
+    doc(
+      db,
+      'grupos',
+      grupoId
+    );
+
+  const snap =
+    await getDoc(ref);
+
+  const g =
+    snap.data() || {};
+
+  const anterior =
+    getRevisionDia(
+      g,
+      fecha
+    );
+
+  const revisionDias = {
+    ...(g.revisionDias || {})
+  };
+
+  revisionDias[fecha] = {
+    estado:
+      nuevoEstado,
+
+    observacion,
+
+    usuario:
+      auth.currentUser?.email ||
+      '',
+
+    timestamp:
+      new Date()
+  };
+
+  await updateDoc(
+    ref,
+    {
+      revisionDias
+    }
+  );
+
+  await logHist(
+    grupoId,
+    'CAMBIAR REVISION DIA',
+    {
+      _group:
+        g,
+
+      categoria:
+        'REVISION',
+
+      fecha,
+      fechaActividad:
+        fecha,
+
+      tipoRevision:
+        'dia',
+
+      anterior:
+        anterior.estado,
+
+      nuevo:
+        nuevoEstado,
+
+      estadoAnterior:
+        anterior.estado,
+
+      estadoNuevo:
+        nuevoEstado,
+
+      motivo:
+        observacion,
+
+      detalle:
+        `Revisión del día ${fecha}`
+    }
+  );
+
+  // -----------------------------------------------
+  // ALERTA
+  // -----------------------------------------------
+  if (
+    nuevoEstado ===
+    'rechazado'
+  ) {
+    await resolverAlertasRevision(
+      grupoId,
+      {
+        tipo:
+          'dia',
+
+        fecha
+      },
+      'Nueva revisión del día'
+    );
+
+    await crearAlertaRevision(
+      grupoId,
+      {
+        tipo:
+          'dia',
+
+        fecha,
+
+        actividad:
+          `DÍA ${fecha}`,
+
+        motivo:
+          observacion
+      }
+    );
+
+  } else if (
+    anterior.estado ===
+      'rechazado'
+  ) {
+    await resolverAlertasRevision(
+      grupoId,
+      {
+        tipo:
+          'dia',
+
+        fecha
+      },
+      nuevoEstado ===
+        'ok'
+          ? 'Día aprobado'
+          : 'Día vuelve a pendiente'
+    );
+  }
+
+  // Cualquier cambio del día invalida
+  // una aprobación/rechazo general anterior.
+  await marcarGrupoPendientePorCambio(
+    grupoId,
+    `Se modificó la revisión del día ${fecha}.`
+  );
+
+  return true;
+}
+
+// ======================================================
+// ALERTAS DE REVISIÓN
+// ======================================================
+
+async function crearAlertaRevision(
+  grupoId,
+  datos
+) {
+  await addDoc(
+    collection(
+      db,
+      'grupos',
+      grupoId,
+      'alertas'
+    ),
+    {
+      tipo:
+        datos.tipo ||
+        'actividad',
+
+      fecha:
+        datos.fecha ||
+        '',
+
+      idx:
+        Number.isInteger(
+          datos.idx
+        )
+          ? datos.idx
+          : null,
+
+      actividad:
+        datos.actividad ||
+        '',
+
+      horaInicio:
+        datos.horaInicio ||
+        '',
+
+      horaFin:
+        datos.horaFin ||
+        '',
+
+      motivo:
+        (
+          datos.motivo ||
+          ''
+        ).trim(),
+
+      creadoPor:
+        auth.currentUser?.email ||
+        '',
+
+      creadoEn:
+        new Date(),
+
+      // NUEVO MODELO
+      resuelta:
+        false,
+
+      resueltaPor:
+        '',
+
+      resueltaEn:
+        null,
+
+      resueltaMotivo:
+        '',
+
+      // Compatibilidad con registros anteriores
+      visto:
+        false
+    }
+  );
+}
+
+
+async function resolverAlertasRevision(
+  grupoId,
+  filtro,
+  motivoResolucion = ''
+) {
+  try {
+    const qs =
+      await getDocs(
+        collection(
+          db,
+          'grupos',
+          grupoId,
+          'alertas'
+        )
+      );
+
+    const docs =
+      qs.docs.filter(d => {
+        const a =
+          d.data() || {};
+
+        // Ya resuelta.
+        if (
+          a.resuelta ===
+          true
+        ) {
+          return false;
+        }
+
+        if (
+          filtro.tipo &&
+          (
+            a.tipo ||
+            'actividad'
+          ) !== filtro.tipo
+        ) {
+          return false;
+        }
+
+        if (
+          filtro.fecha &&
+          a.fecha !==
+            filtro.fecha
+        ) {
+          return false;
+        }
+
+        if (
+          Number.isInteger(
+            filtro.idx
+          ) &&
+          Number.isInteger(
+            a.idx
+          ) &&
+          a.idx !==
+            filtro.idx
+        ) {
+          return false;
+        }
+
+        if (
+          filtro.actividad &&
+          !Number.isInteger(
+            filtro.idx
+          ) &&
+          (
+            a.actividad ||
+            ''
+          ) !==
+            filtro.actividad
+        ) {
+          return false;
+        }
+
+        return true;
+      });
+
+    if (!docs.length) {
+      return;
+    }
+
+    await Promise.all(
+      docs.map(d =>
+        updateDoc(
+          doc(
+            db,
+            'grupos',
+            grupoId,
+            'alertas',
+            d.id
+          ),
+          {
+            resuelta:
+              true,
+
+            resueltaPor:
+              auth.currentUser?.email ||
+              '',
+
+            resueltaEn:
+              new Date(),
+
+            resueltaMotivo:
+              motivoResolucion ||
+              'Cambio de estado',
+
+            // Compatibilidad
+            visto:
+              true,
+
+            leidoPor:
+              auth.currentUser?.email ||
+              '',
+
+            leidoEn:
+              new Date()
+          }
+        )
+      )
+    );
+
+  } catch (e) {
+    console.warn(
+      'No se pudieron resolver alertas:',
+      e
+    );
+  }
+}
+
+// ======================================================
+// REVISIÓN GENERAL DEL GRUPO
+// ======================================================
+
+function getRevisionGrupo(g) {
+  const rev =
+    g?.revisionGrupo ||
+    {};
+
+  const estadoLegacy =
+    (
+      g?.estadoRevisionItinerario ||
+      ''
+    )
+      .toString()
+      .toUpperCase();
+
+  let estado =
+    rev.estado ||
+    '';
+
+  if (!estado) {
+    if (
+      estadoLegacy ===
+      'OK'
+    ) {
+      estado =
+        'ok';
+
+    } else if (
+      estadoLegacy ===
+      'RECHAZADO'
+    ) {
+      estado =
+        'rechazado';
+
+    } else {
+      estado =
+        'pendiente';
+    }
+  }
+
+  return {
+    estado,
+
+    observacion:
+      rev.observacion ||
+      '',
+
+    usuario:
+      rev.usuario ||
+      '',
+
+    timestamp:
+      rev.timestamp ||
+      null
+  };
+}
+
+
+function validarGrupoPuedeAprobar(g) {
+  const IT =
+    g.itinerario ||
+    {};
+
+  for (
+    const fecha
+    of Object.keys(IT)
+  ) {
+    const revDia =
+      getRevisionDia(
+        g,
+        fecha
+      );
+
+    if (
+      revDia.estado !==
+      'ok'
+    ) {
+      return {
+        ok:
+          false,
+
+        motivo:
+          `El día ${fecha} todavía no está aprobado.`
+      };
+    }
+
+    for (
+      const act
+      of (IT[fecha] || [])
+    ) {
+      if (
+        (
+          act.revision ||
+          'pendiente'
+        ) !==
+          'ok'
+      ) {
+        return {
+          ok:
+            false,
+
+          motivo:
+            `Todavía existen actividades sin aprobar en ${fecha}.`
+        };
+      }
+    }
+  }
+
+  return {
+    ok:
+      true,
+
+    motivo:
+      ''
+  };
+}
+
+
+async function guardarRevisionGrupo(
+  grupoId,
+  nuevoEstado,
+  observacion = ''
+) {
+  nuevoEstado =
+    (
+      nuevoEstado ||
+      'pendiente'
+    )
+      .toLowerCase();
+
+  observacion =
+    (
+      observacion ||
+      ''
+    ).trim();
+
+  const ref =
+    doc(
+      db,
+      'grupos',
+      grupoId
+    );
+
+  const snap =
+    await getDoc(ref);
+
+  const g =
+    snap.data() || {};
+
+  const anterior =
+    getRevisionGrupo(g);
+
+  if (
+    nuevoEstado ===
+      'rechazado' &&
+    !observacion
+  ) {
+    alert(
+      "Debes escribir la justificación del rechazo general."
+    );
+
+    return false;
+  }
+
+  if (
+    nuevoEstado ===
+    'ok'
+  ) {
+    const validacion =
+      validarGrupoPuedeAprobar(
+        g
+      );
+
+    if (
+      !validacion.ok
+    ) {
+      alert(
+        "No se puede aprobar todavía el itinerario.\n\n" +
+        validacion.motivo
+      );
+
+      return false;
+    }
+  }
+
+  const revisionGrupo = {
+    estado:
+      nuevoEstado,
+
+    observacion,
+
+    usuario:
+      auth.currentUser?.email ||
+      '',
+
+    timestamp:
+      new Date()
+  };
+
+  const estadoCompat =
+    nuevoEstado ===
+      'ok'
+      ? 'OK'
+      : nuevoEstado ===
+          'rechazado'
+        ? 'RECHAZADO'
+        : 'PENDIENTE';
+
+  await updateDoc(
+    ref,
+    {
+      revisionGrupo,
+
+      // Conservamos este campo porque ya lo utiliza
+      // el resto de tu sistema.
+      estadoRevisionItinerario:
+        estadoCompat
+    }
+  );
+
+  await logHist(
+    grupoId,
+    'CAMBIAR ESTADO REVISION GRUPO',
+    {
+      _group:
+        g,
+
+      categoria:
+        'REVISION',
+
+      tipoRevision:
+        'grupo',
+
+      anterior:
+        anterior.estado,
+
+      nuevo:
+        nuevoEstado,
+
+      estadoAnterior:
+        anterior.estado,
+
+      estadoNuevo:
+        nuevoEstado,
+
+      motivo:
+        observacion,
+
+      detalle:
+        'Revisión general del itinerario'
+    }
+  );
+
+  if (
+    nuevoEstado ===
+    'rechazado'
+  ) {
+    await resolverAlertasRevision(
+      grupoId,
+      {
+        tipo:
+          'grupo'
+      },
+      'Nueva revisión general'
+    );
+
+    await crearAlertaRevision(
+      grupoId,
+      {
+        tipo:
+          'grupo',
+
+        actividad:
+          'REVISIÓN GENERAL DEL GRUPO',
+
+        motivo:
+          observacion
+      }
+    );
+
+  } else if (
+    anterior.estado ===
+    'rechazado'
+  ) {
+    await resolverAlertasRevision(
+      grupoId,
+      {
+        tipo:
+          'grupo'
+      },
+      nuevoEstado ===
+        'ok'
+          ? 'Grupo aprobado'
+          : 'Grupo vuelve a pendiente'
+    );
+  }
+
+  setEstadoBadge(
+    estadoCompat
+  );
+
+  await refreshAlertasCounts(
+    grupoId
+  );
+
+  return true;
+}
+
+
+// ======================================================
+// Si cambia contenido/revisión inferior,
+// cualquier cierre general anterior vuelve a PENDIENTE.
+// ======================================================
+
+async function marcarGrupoPendientePorCambio(
+  grupoId,
+  observacion
+) {
+  const ref =
+    doc(
+      db,
+      'grupos',
+      grupoId
+    );
+
+  const snap =
+    await getDoc(ref);
+
+  const g =
+    snap.data() || {};
+
+  const rev =
+    getRevisionGrupo(g);
+
+  if (
+    rev.estado ===
+    'pendiente'
+  ) {
+    return;
+  }
+
+  const nuevaRevision = {
+    estado:
+      'pendiente',
+
+    observacion:
+      observacion ||
+      'El itinerario fue modificado y requiere nueva revisión.',
+
+    usuario:
+      auth.currentUser?.email ||
+      '',
+
+    timestamp:
+      new Date()
+  };
+
+  await updateDoc(
+    ref,
+    {
+      revisionGrupo:
+        nuevaRevision,
+
+      estadoRevisionItinerario:
+        'PENDIENTE'
+    }
+  );
+
+  if (
+    rev.estado ===
+    'rechazado'
+  ) {
+    await resolverAlertasRevision(
+      grupoId,
+      {
+        tipo:
+          'grupo'
+      },
+      'El grupo volvió a pendiente debido a cambios'
+    );
+  }
+
+  await logHist(
+    grupoId,
+    'GRUPO VUELVE A PENDIENTE',
+    {
+      _group:
+        g,
+
+      categoria:
+        'REVISION',
+
+      tipoRevision:
+        'grupo',
+
+      anterior:
+        rev.estado,
+
+      nuevo:
+        'pendiente',
+
+      estadoAnterior:
+        rev.estado,
+
+      estadoNuevo:
+        'pendiente',
+
+      motivo:
+        nuevaRevision.observacion
+    }
+  );
 }
 
 // —————————————————————————————————
@@ -301,12 +1159,26 @@ function inferirCategoriaHistorial(accion = '') {
 // Etiqueta humana de estados de revisión
 // —————————————————————————————————
 function labelEstadoRevision(value) {
-  const v = (value || 'pendiente')
-    .toString()
-    .toLowerCase();
+  const v =
+    (
+      value ||
+      'pendiente'
+    )
+      .toString()
+      .toLowerCase();
 
-  if (v === 'ok') return 'OK';
-  if (v === 'rechazado') return 'RECHAZADO';
+  if (
+    v === 'ok' ||
+    v === 'aprobado'
+  ) {
+    return 'APROBADO';
+  }
+
+  if (
+    v === 'rechazado'
+  ) {
+    return 'RECHAZADO';
+  }
 
   return 'PENDIENTE';
 }
@@ -550,6 +1422,60 @@ async function initItinerario() {
   if (btnAlertas) {
     btnAlertas.onclick      = (e)=>{ stopAll(e); openAlertasPanel(); };
   }
+  // Pendientes
+  if (btnPendientes) {
+    btnPendientes.onclick =
+      e => {
+        stopAll(e);
+  
+        openPendientesPanel(
+          'grupo'
+        );
+      };
+  }
+  
+  if (btnClosePendientes) {
+    btnClosePendientes.onclick =
+      e => {
+        stopAll(e);
+  
+        if (modalPendientes) {
+          modalPendientes.style.display =
+            'none';
+        }
+  
+        if (modalBg) {
+          modalBg.style.display =
+            'none';
+        }
+  
+        document.body.classList.remove(
+          'modal-open'
+        );
+      };
+  }
+  
+  if (btnPendientesGrupo) {
+    btnPendientesGrupo.onclick =
+      e => {
+        stopAll(e);
+  
+        openPendientesPanel(
+          'grupo'
+        );
+      };
+  }
+  
+  if (btnPendientesGeneral) {
+    btnPendientesGeneral.onclick =
+      e => {
+        stopAll(e);
+  
+        openPendientesPanel(
+          'general'
+        );
+      };
+  }
   if (btnCloseAlertas) {
     btnCloseAlertas.onclick = (e)=>{ 
       stopAll(e);
@@ -602,17 +1528,113 @@ async function initItinerario() {
   selectNum.dispatchEvent(new Event('change'));
 }
 
-// ————— Botón Activar/Desactivar edición —————
-const btnToggleEdit = document.getElementById("btnToggleEdit");
-btnToggleEdit.onclick = (e) => {
-  stopAll(e);
-  editMode = !editMode;
-  btnToggleEdit.textContent = editMode ? "🔒 Desactivar edición" : "🔓 Activar edición";
-  document.getElementById("quick-add").style.display = editMode ? "none" : "";
-  btnGuardarTpl.disabled = editMode;
-  btnCargarTpl.disabled  = editMode;
-  renderItinerario();
-};
+// ======================================================
+// MODOS EDICIÓN / REVISIÓN
+// Solo puede haber uno activo a la vez.
+// ======================================================
+
+const btnToggleEdit =
+  document.getElementById(
+    "btnToggleEdit"
+  );
+
+const btnToggleRevision =
+  document.getElementById(
+    "btnToggleRevision"
+  );
+
+function actualizarUIEstadoModos() {
+  if (btnToggleEdit) {
+    btnToggleEdit.textContent =
+      editMode
+        ? "🔒 Desactivar edición"
+        : "🔓 Activar edición";
+  }
+
+  if (btnToggleRevision) {
+    btnToggleRevision.textContent =
+      revisionMode
+        ? "🔒 Desactivar revisión"
+        : "🔎 Activar revisión";
+  }
+
+  const quickAdd =
+    document.getElementById(
+      "quick-add"
+    );
+
+  if (quickAdd) {
+    // Edición normal:
+    // quick-add visible solamente cuando NO estamos revisando.
+    quickAdd.style.display =
+      revisionMode
+        ? "none"
+        : "";
+  }
+
+  if (btnGuardarTpl) {
+    btnGuardarTpl.disabled =
+      editMode ||
+      revisionMode;
+  }
+
+  if (btnCargarTpl) {
+    btnCargarTpl.disabled =
+      editMode ||
+      revisionMode;
+  }
+
+  if (revisionGrupoContainer) {
+    revisionGrupoContainer.style.display =
+      revisionMode
+        ? ""
+        : "none";
+  }
+}
+
+if (btnToggleEdit) {
+  btnToggleEdit.onclick =
+    async e => {
+      stopAll(e);
+
+      editMode =
+        !editMode;
+
+      if (editMode) {
+        revisionMode =
+          false;
+      }
+
+      resetSwap();
+
+      actualizarUIEstadoModos();
+
+      await renderItinerario();
+    };
+}
+
+if (btnToggleRevision) {
+  btnToggleRevision.onclick =
+    async e => {
+      stopAll(e);
+
+      revisionMode =
+        !revisionMode;
+
+      if (revisionMode) {
+        editMode =
+          false;
+      }
+
+      resetSwap();
+
+      actualizarUIEstadoModos();
+
+      await renderItinerario();
+    };
+}
+
+actualizarUIEstadoModos();
 
 // —————————————————————————————————
 // Autocomplete de actividades
@@ -866,63 +1888,112 @@ function computeEstadoFromItinerario(IT) {
   return 'OK';
 }
 
-function setEstadoBadge(estado) {
-  if (!estadoBadge) return;
-  estadoBadge.textContent = estado;
-  estadoBadge.classList.remove('badge-ok','badge-pendiente','badge-rechazado');
-  if (estado === 'OK') estadoBadge.classList.add('badge-ok');
-  else if (estado === 'RECHAZADO') estadoBadge.classList.add('badge-rechazado');
-  else estadoBadge.classList.add('badge-pendiente');
+function setEstadoBadge(
+  estado
+) {
+  if (!estadoBadge) {
+    return;
+  }
+
+  const e =
+    (
+      estado ||
+      'PENDIENTE'
+    )
+      .toString()
+      .toUpperCase();
+
+  estadoBadge.textContent =
+    e === 'OK'
+      ? 'APROBADO'
+      : e;
+
+  estadoBadge.classList.remove(
+    'badge-ok',
+    'badge-pendiente',
+    'badge-rechazado'
+  );
+
+  if (
+    e === 'OK'
+  ) {
+    estadoBadge.classList.add(
+      'badge-ok'
+    );
+
+  } else if (
+    e === 'RECHAZADO'
+  ) {
+    estadoBadge.classList.add(
+      'badge-rechazado'
+    );
+
+  } else {
+    estadoBadge.classList.add(
+      'badge-pendiente'
+    );
+  }
 }
 
 // Reemplazo total de refreshAlertasBadge(...)
-async function refreshAlertasCounts(grupoId) {
-  let noVistasActual = 0;
-  let totalRech = 0;
+async function refreshAlertasCounts(
+  grupoId
+) {
+  let activasGrupo =
+    0;
 
-  // Alertas no leídas del grupo actual
   try {
-    const qs = await getDocs(
-      collection(
-        db,
-        'grupos',
-        grupoId,
-        'alertas'
-      )
-    );
+    const qs =
+      await getDocs(
+        collection(
+          db,
+          'grupos',
+          grupoId,
+          'alertas'
+        )
+      );
 
-    noVistasActual = qs.docs.filter(
-      d => !(d.data() || {}).visto
-    ).length;
+    activasGrupo =
+      qs.docs.filter(
+        d => {
+          const a =
+            d.data() ||
+            {};
+
+          // Registro nuevo:
+          if (
+            a.resuelta !==
+            undefined
+          ) {
+            return (
+              a.resuelta !==
+              true
+            );
+          }
+
+          // Registro antiguo:
+          return !a.visto;
+        }
+      ).length;
+
   } catch (_) {}
-
-  // Solamente grupos del año operativo vigente
-  try {
-    const grupos =
-      await getGruposAnoOperativo();
-
-    totalRech = grupos.filter(
-      g =>
-        g.estadoRevisionItinerario ===
-        'RECHAZADO'
-    ).length;
-  } catch (_) {}
-
-  const label =
-    `⚠️ Alertas | ${totalRech} (${noVistasActual})`;
 
   if (btnAlertas) {
-    btnAlertas.textContent = label;
+    btnAlertas.textContent =
+      activasGrupo
+        ? `⚠️ Alertas (${activasGrupo})`
+        : '⚠️ Alertas';
   }
 
   if (alertasBadge) {
     alertasBadge.textContent =
-      String(noVistasActual);
+      String(
+        activasGrupo
+      );
   }
 
   return {
-    totalRech,
-    noVistasActual
+    activasGrupo
   };
 }
 
@@ -940,74 +2011,422 @@ function upsertResumenOK(count){
 }
 
 async function updateEstadoRevisionAndBadge(
-  grupoId,
-  ITopt = null
+  grupoId
 ) {
-  const refGrupo =
-    doc(db, 'grupos', grupoId);
-
-  const gSnap =
-    await getDoc(refGrupo);
+  const snap =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
 
   const g =
-    gSnap.data() || {};
+    snap.data() || {};
 
-  const IT =
-    ITopt ||
-    g.itinerario ||
-    {};
+  const revision =
+    getRevisionGrupo(g);
 
-  const estadoAnterior =
-    g.estadoRevisionItinerario ||
-    'PENDIENTE';
-
-  const nuevoEstado =
-    computeEstadoFromItinerario(IT);
-
-  if (
-    estadoAnterior !==
-    nuevoEstado
-  ) {
-    await updateDoc(
-      refGrupo,
-      {
-        estadoRevisionItinerario:
-          nuevoEstado
-      }
-    );
-
-    // Registrar también el cambio GLOBAL.
-    await logHist(
-      grupoId,
-      'CAMBIAR ESTADO REVISION GRUPO',
-      {
-        _group: g,
-
-        categoria:
-          'REVISION',
-
-        anterior:
-          estadoAnterior,
-
-        nuevo:
-          nuevoEstado,
-
-        estadoAnterior,
-        estadoNuevo:
-          nuevoEstado,
-
-        detalle:
-          `Estado general de revisión del itinerario`
-      }
-    );
-  }
+  const estadoCompat =
+    revision.estado ===
+      'ok'
+      ? 'OK'
+      : revision.estado ===
+          'rechazado'
+        ? 'RECHAZADO'
+        : 'PENDIENTE';
 
   setEstadoBadge(
-    nuevoEstado
+    estadoCompat
   );
 
   await refreshAlertasCounts(
     grupoId
+  );
+
+  return estadoCompat;
+}
+
+// ======================================================
+// PENDIENTES
+// ======================================================
+
+function obtenerPendientesGrupo(
+  g
+) {
+  const out =
+    [];
+
+  const revGrupo =
+    getRevisionGrupo(g);
+
+  if (
+    revGrupo.estado ===
+    'pendiente'
+  ) {
+    out.push({
+      tipo:
+        'GRUPO',
+
+      fecha:
+        '',
+
+      actividad:
+        'REVISIÓN GENERAL',
+
+      observacion:
+        revGrupo.observacion ||
+        '',
+
+      usuario:
+        revGrupo.usuario ||
+        '',
+
+      timestamp:
+        revGrupo.timestamp ||
+        null
+    });
+  }
+
+  const IT =
+    g.itinerario ||
+    {};
+
+  Object.keys(IT)
+    .sort(
+      sortDiasItinerario
+    )
+    .forEach(fecha => {
+
+      const revDia =
+        getRevisionDia(
+          g,
+          fecha
+        );
+
+      if (
+        revDia.estado ===
+        'pendiente'
+      ) {
+        out.push({
+          tipo:
+            'DÍA',
+
+          fecha,
+
+          actividad:
+            `Día ${fecha}`,
+
+          observacion:
+            revDia.observacion ||
+            '',
+
+          usuario:
+            revDia.usuario ||
+            '',
+
+          timestamp:
+            revDia.timestamp ||
+            null
+        });
+      }
+
+      (
+        IT[fecha] ||
+        []
+      ).forEach(
+        (
+          act,
+          idx
+        ) => {
+          const estado =
+            act.revision ||
+            'pendiente';
+
+          if (
+            estado !==
+            'pendiente'
+          ) {
+            return;
+          }
+
+          out.push({
+            tipo:
+              'ACTIVIDAD',
+
+            fecha,
+
+            idx,
+
+            actividad:
+              act.actividad ||
+              '(actividad)',
+
+            observacion:
+              act.revisionObservacion ||
+              '',
+
+            usuario:
+              act.revisionUsuario ||
+              '',
+
+            timestamp:
+              act.revisionTimestamp ||
+              null
+          });
+        }
+      );
+    });
+
+  return out;
+}
+
+
+function renderPendientes(
+  rows,
+  mostrarGrupo = false
+) {
+  if (!pendientesList) {
+    return;
+  }
+
+  if (!rows.length) {
+    pendientesList.innerHTML = `
+      <li class="alert-item">
+        — No existen pendientes —
+      </li>
+    `;
+
+    return;
+  }
+
+  pendientesList.innerHTML =
+    rows.map(item => `
+      <li class="alert-item">
+        <div>
+
+          ${
+            mostrarGrupo
+              ? `
+                  <div>
+                    <strong>
+                      #${item.numeroNegocio || '—'}
+                      ·
+                      ${
+                        (
+                          item.nombreGrupo ||
+                          ''
+                        )
+                          .toString()
+                          .toUpperCase()
+                      }
+                    </strong>
+                  </div>
+                `
+              : ''
+          }
+
+          <div>
+            <strong>
+              🕒 ${item.tipo}
+              ·
+              ${item.actividad}
+            </strong>
+          </div>
+
+          ${
+            item.fecha
+              ? `
+                  <small>
+                    ${item.fecha}
+                  </small>
+                `
+              : ''
+          }
+
+          ${
+            item.observacion
+              ? `
+                  <div class="motivo">
+                    Observación:
+                    ${item.observacion}
+                  </div>
+                `
+              : `
+                  <div
+                    class="meta"
+                    style="opacity:.65;"
+                  >
+                    Sin observación.
+                  </div>
+                `
+          }
+
+          ${
+            item.usuario
+              ? `
+                  <div
+                    class="meta"
+                    style="opacity:.7;"
+                  >
+                    ${item.usuario}
+                    ${
+                      item.timestamp
+                        ? ` · ${fmtTS(item.timestamp)}`
+                        : ''
+                    }
+                  </div>
+                `
+              : ''
+          }
+
+        </div>
+      </li>
+    `).join('');
+}
+
+
+async function openPendientesPanel(
+  modo = 'grupo'
+) {
+  const grupoId =
+    selectNum.value;
+
+  if (!grupoId) {
+    return alert(
+      'Selecciona un grupo'
+    );
+  }
+
+  if (!modalPendientes) {
+    return;
+  }
+
+  modalPendientes.style.display =
+    'block';
+
+  if (modalBg) {
+    modalBg.style.display =
+      'block';
+  }
+
+  document.body.classList.add(
+    'modal-open'
+  );
+
+  pendientesList.innerHTML =
+    `<li class="alert-item">
+      Cargando…
+    </li>`;
+
+  // ==============================================
+  // ESTE GRUPO
+  // ==============================================
+  if (
+    modo ===
+    'grupo'
+  ) {
+    const snap =
+      await getDoc(
+        doc(
+          db,
+          'grupos',
+          grupoId
+        )
+      );
+
+    const g =
+      snap.data() ||
+      {};
+
+    if (
+      pendientesEncabezado
+    ) {
+      pendientesEncabezado.innerHTML = `
+        <strong>
+          #${g.numeroNegocio || grupoId}
+          ·
+          ${
+            (
+              g.nombreGrupo ||
+              ''
+            )
+              .toString()
+              .toUpperCase()
+          }
+        </strong>
+
+        <div>
+          Pendientes actuales del grupo.
+        </div>
+      `;
+    }
+
+    const rows =
+      obtenerPendientesGrupo(
+        g
+      );
+
+    renderPendientes(
+      rows,
+      false
+    );
+
+    return;
+  }
+
+  // ==============================================
+  // GENERAL
+  // ==============================================
+  const grupos =
+    await getGruposAnoOperativo();
+
+  const rows =
+    [];
+
+  grupos.forEach(g => {
+    const pendientes =
+      obtenerPendientesGrupo(g);
+
+    pendientes.forEach(
+      item => {
+        rows.push({
+          ...item,
+
+          grupoId:
+            g.id,
+
+          numeroNegocio:
+            g.numeroNegocio ||
+            g.id,
+
+          nombreGrupo:
+            g.nombreGrupo ||
+            ''
+        });
+      }
+    );
+  });
+
+  if (
+    pendientesEncabezado
+  ) {
+    pendientesEncabezado.innerHTML = `
+      <strong>
+        PENDIENTES GENERALES
+        ${getAnoViajeOperativoActual()}
+      </strong>
+
+      <div>
+        Pendientes actuales de todos los grupos.
+      </div>
+    `;
+  }
+
+  renderPendientes(
+    rows,
+    true
   );
 }
 
@@ -1533,282 +2952,1036 @@ async function buildHotelDayMapForGroup(grupoId) {
 }
 
 async function renderItinerario() {
-  contItinerario.innerHTML = "";
-  const grupoId = selectNum.value;
-  const snapG   = await getDoc(doc(db,'grupos',grupoId));
-  const g       = snapG.data() || {};
+  contItinerario.innerHTML =
+    "";
 
-  // Título
-  titleGrupo.textContent = (g.programa||"–").toUpperCase();
+  const grupoId =
+    selectNum.value;
 
-  // Autocomplete
-  await prepararCampoActividad("qa-actividad", g.destino, g);
-
-  // Inicializar itinerario si no existe O si existe vacío
-  if (!g.itinerario || Object.keys(g.itinerario || {}).length === 0) {
-    let rango = getDateRange(g.fechaInicio, g.fechaFin);
-  
-    // Si no hay fechas reales, usar cantidad de días/noches
-    if (!rango.length) {
-      rango = getDiasRelativos(g);
-    }
-  
-    const init = {};
-    rango.forEach(d => init[d] = []);
-  
-    await updateDoc(doc(db, 'grupos', grupoId), { itinerario: init });
-    g.itinerario = init;
+  if (!grupoId) {
+    return;
   }
 
-  // Si el itinerario tenía días relativos y ahora el grupo tiene fechas,
-  // convertir DIA_1, DIA_2, etc. a fechas reales.
-  g.itinerario = await convertirDiasRelativosAFechasSiCorresponde(grupoId, g);
-  
-  // Sincronizar con Servicios
-  const svcMaps = await getServiciosMaps(g.destino || '', g);
-  const syncRes = await syncItinerarioServicios(grupoId, g, svcMaps);
-  const IT = syncRes.it;
+  const snapG =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
 
-  // Estado + alertas badge
-  await updateEstadoRevisionAndBadge(grupoId, IT);
+  const g =
+    snapG.data() || {};
 
-  // Fechas ordenadas
-  const fechas = Object.keys(IT).sort(sortDiasItinerario);
+  // ------------------------------------------------
+  // Título
+  // ------------------------------------------------
+  titleGrupo.textContent =
+    (
+      g.programa ||
+      "–"
+    ).toUpperCase();
 
-  // —— Hoteles por día para este grupo ——
-  const hotelByDay = await buildHotelDayMapForGroup(grupoId);
-  const lastFecha = fechas[fechas.length - 1] || null;
+  // ------------------------------------------------
+  // Autocomplete
+  // ------------------------------------------------
+  await prepararCampoActividad(
+    "qa-actividad",
+    g.destino,
+    g
+  );
 
-  // Choices días
-  const opts = fechas.map((d,i)=>({ value: i, label: `Día ${i+1} – ${formatDiaItinerario(d)}` }));
-  if (choicesDias) { choicesDias.clearChoices(); choicesDias.setChoices(opts,'value','label',false); }
-  else { choicesDias = new Choices(qaDia, { removeItemButton: true, placeholderValue: 'Selecciona día(s)', choices: opts }); }
+  // ------------------------------------------------
+  // Inicializar itinerario
+  // ------------------------------------------------
+  if (
+    !g.itinerario ||
+    Object.keys(
+      g.itinerario ||
+      {}
+    ).length === 0
+  ) {
+    let rango =
+      getDateRange(
+        g.fechaInicio,
+        g.fechaFin
+      );
 
-  // Select fecha del modal
-  fldFecha.innerHTML = fechas.map((d,i)=>`<option value="${d}">Día ${i+1} – ${formatDiaItinerario(d)}</option>`).join('');
+    if (!rango.length) {
+      rango =
+        getDiasRelativos(g);
+    }
 
+    const init = {};
+
+    rango.forEach(
+      d => {
+        init[d] = [];
+      }
+    );
+
+    await updateDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      ),
+      {
+        itinerario:
+          init
+      }
+    );
+
+    g.itinerario =
+      init;
+  }
+
+  g.itinerario =
+    await convertirDiasRelativosAFechasSiCorresponde(
+      grupoId,
+      g
+    );
+
+  // ------------------------------------------------
+  // Servicios
+  // ------------------------------------------------
+  const svcMaps =
+    await getServiciosMaps(
+      g.destino ||
+      '',
+      g
+    );
+
+  const syncRes =
+    await syncItinerarioServicios(
+      grupoId,
+      g,
+      svcMaps
+    );
+
+  const IT =
+    syncRes.it;
+
+  g.itinerario =
+    IT;
+
+  // ------------------------------------------------
+  // Estado general
+  // ------------------------------------------------
+  await updateEstadoRevisionAndBadge(
+    grupoId
+  );
+
+  renderRevisionGrupo(
+    grupoId,
+    g
+  );
+
+  // ------------------------------------------------
+  // Fechas
+  // ------------------------------------------------
+  const fechas =
+    Object.keys(IT)
+      .sort(
+        sortDiasItinerario
+      );
+
+  const hotelByDay =
+    await buildHotelDayMapForGroup(
+      grupoId
+    );
+
+  const lastFecha =
+    fechas[
+      fechas.length - 1
+    ] || null;
+
+  // ------------------------------------------------
+  // Choices quick-add
+  // ------------------------------------------------
+  const opts =
+    fechas.map(
+      (d, i) => ({
+        value:
+          i,
+
+        label:
+          `Día ${i + 1} – ${formatDiaItinerario(d)}`
+      })
+    );
+
+  if (choicesDias) {
+    choicesDias.clearChoices();
+
+    choicesDias.setChoices(
+      opts,
+      'value',
+      'label',
+      false
+    );
+
+  } else {
+    choicesDias =
+      new Choices(
+        qaDia,
+        {
+          removeItemButton:
+            true,
+
+          placeholderValue:
+            'Selecciona día(s)',
+
+          choices:
+            opts
+        }
+      );
+  }
+
+  fldFecha.innerHTML =
+    fechas.map(
+      (d, i) =>
+        `<option value="${d}">
+          Día ${i + 1} – ${formatDiaItinerario(d)}
+        </option>`
+    ).join('');
+
+  // ------------------------------------------------
   // Helper botón
-  function createBtn(icon, cls, title='') { const b = document.createElement("span"); b.className = cls; b.textContent = icon; b.title = title; b.style.cursor = "pointer"; return b; }
+  // ------------------------------------------------
+  function createBtn(
+    icon,
+    cls,
+    title = ''
+  ) {
+    const b =
+      document.createElement(
+        "span"
+      );
 
-  // Pintar días
-  fechas.forEach((fecha, idx) => {
-    const sec = document.createElement("section");
-    sec.className     = "dia-seccion";
-    sec.dataset.fecha = fecha;
-    const [yyyy, mm, dd] = fecha.split('-').map(Number);
-    const d = new Date(yyyy, mm - 1, dd);
-    if (d.getDay() === 0) sec.classList.add('domingo');
+    b.className =
+      cls;
 
-    sec.innerHTML = `
-      <h3>Día ${idx+1} – ${formatDiaItinerario(fecha)}</h3>
-      <ul class="activity-list"></ul>
-      <button type="button" class="btn-add" data-fecha="${fecha}">+ Añadir actividad</button>
-    `;
-    
-    if (editMode) {
-      const h3 = sec.querySelector("h3");
-    
-      // El estado visual del día se calcula desde SUS ACTIVIDADES.
-      // No existe una revisión independiente del día.
-      const estadoDia = computeEstadoFromItinerario({
-        [fecha]: IT[fecha] || []
-      });
-    
-      const badge = document.createElement('span');
-      badge.style.marginLeft = '8px';
-    
+    b.textContent =
+      icon;
+
+    b.title =
+      title;
+
+    b.style.cursor =
+      "pointer";
+
+    return b;
+  }
+
+  // =================================================
+  // DÍAS
+  // =================================================
+  fechas.forEach(
+    (fecha, idx) => {
+
+      const sec =
+        document.createElement(
+          "section"
+        );
+
+      sec.className =
+        "dia-seccion";
+
+      sec.dataset.fecha =
+        fecha;
+
+      if (
+        isFechaReal(fecha)
+      ) {
+        const [
+          yyyy,
+          mm,
+          dd
+        ] =
+          fecha
+            .split('-')
+            .map(Number);
+
+        const d =
+          new Date(
+            yyyy,
+            mm - 1,
+            dd
+          );
+
+        if (
+          d.getDay() === 0
+        ) {
+          sec.classList.add(
+            'domingo'
+          );
+        }
+      }
+
+      sec.innerHTML = `
+        <h3>
+          Día ${idx + 1}
+          –
+          ${formatDiaItinerario(fecha)}
+        </h3>
+
+        <div class="revision-dia-slot"></div>
+
+        <ul class="activity-list"></ul>
+
+        <button
+          type="button"
+          class="btn-add"
+          data-fecha="${fecha}"
+        >
+          + Añadir actividad
+        </button>
+      `;
+
+      const h3 =
+        sec.querySelector(
+          "h3"
+        );
+
+      const revisionDia =
+        getRevisionDia(
+          g,
+          fecha
+        );
+
+      // ------------------------------------------------
+      // BADGE DÍA
+      // ------------------------------------------------
+      const badge =
+        document.createElement(
+          'span'
+        );
+
+      badge.style.marginLeft =
+        '8px';
+
       badge.className =
         'badge ' +
         (
-          estadoDia === 'RECHAZADO'
+          revisionDia.estado ===
+            'rechazado'
             ? 'badge-rechazado'
-            : estadoDia === 'OK'
+            : revisionDia.estado ===
+                'ok'
               ? 'badge-ok'
               : 'badge-pendiente'
         );
-    
-      badge.textContent = estadoDia;
-    
-      h3.appendChild(badge);
-    
-      // Acciones del día
-      const btnSwapDay = createBtn(
-        "🔄",
-        "btn-swap-day",
-        "Intercambiar día"
+
+      badge.textContent =
+        labelEstadoRevision(
+          revisionDia.estado
+        );
+
+      h3.appendChild(
+        badge
       );
-    
-      const btnEditDate = createBtn(
-        "✏️",
-        "btn-edit-date",
-        "Editar fecha base"
-      );
-    
-      const btnRejectDay = createBtn(
-        "❌",
-        "btn-reject-day",
-        "Rechazar todas las actividades del día"
-      );
-    
-      btnSwapDay.dataset.fecha = fecha;
-      btnEditDate.dataset.fecha = fecha;
-      btnRejectDay.dataset.fecha = fecha;
-    
-      h3.appendChild(btnSwapDay);
-      h3.appendChild(btnEditDate);
-      h3.appendChild(btnRejectDay);
-    
-      btnSwapDay.onclick = (e) => {
-        stopAll(e);
-        handleSwapClick("dia", fecha);
-      };
-    
-      btnEditDate.onclick = (e) => {
-        stopAll(e);
-        handleDateEdit(fecha);
-      };
-    
-      btnRejectDay.onclick = (e) => {
-        stopAll(e);
-        handleRejectDayCompleto(fecha);
-      };
-    }
 
-    // —— Caja ALOJAMIENTO (bajo el título del día) ——
-    {
-      const ulAnchor = sec.querySelector(".activity-list");
-    
-      const asigns = hotelByDay[fecha] || [];
-      const prefer = asigns.filter(a => (a.status || '').toLowerCase() === 'confirmado');
-      const use    = prefer.length ? prefer : asigns;
-    
-      const names = [...new Set(use.map(a => {
-        const h  = hotelCache.get(a.hotelId) || {};
-        const nm = (h.nombre || '').toString().toUpperCase() || '(SIN NOMBRE)';
-        return (a.status && a.status.toLowerCase() !== 'confirmado') ? `${nm} (PENDIENTE)` : nm;
-      }))];
-    
-      const box = document.createElement('div');
-      box.className = 'hotel-box';
-      box.innerHTML = `
-        <div><strong>ALOJAMIENTO:</strong></div>
-        ${
-          names.length
-            ? names.map(n => `<div>– ${n}</div>`).join('')
-            : (fecha === lastFecha
-                ? `<div>– ÚLTIMO DÍA DEL VIAJE</div>`
-                : `<div>– (SIN ASIGNACIÓN)</div>`
-              )
-        }
-      `;
-    
-      // Insertar inmediatamente debajo del título, antes de la lista
-      sec.insertBefore(box, ulAnchor);
-    }
+      // =================================================
+      // EDICIÓN DEL DÍA
+      // =================================================
+      if (editMode) {
+        const btnSwapDay =
+          createBtn(
+            "🔄",
+            "btn-swap-day",
+            "Intercambiar día"
+          );
 
-    contItinerario.appendChild(sec);
-    sec.querySelector(".btn-add").onclick = (e)=> { stopAll(e); openModal({ fecha }, false); };
+        const btnEditDate =
+          createBtn(
+            "✏️",
+            "btn-edit-date",
+            "Editar fecha base"
+          );
 
-    const ul  = sec.querySelector(".activity-list");
-    const original = IT[fecha] || [];
-    const withIndex = original.map((act, originalIdx) => ({ act, originalIdx }));
+        btnSwapDay.dataset.fecha =
+          fecha;
 
-    // Ordenar visualmente por hora
-    const sorted = withIndex.slice().sort((a, b) => ((a.act.horaInicio||'').localeCompare(b.act.horaInicio||'')));
+        btnEditDate.dataset.fecha =
+          fecha;
 
-    // Pax centrales
-    const A = parseInt(g.adultos, 10) || 0;
-    const E = parseInt(g.estudiantes, 10) || 0;
-    const totalGrupo = (() => { const t = parseInt(g.cantidadgrupo, 10); return Number.isFinite(t) ? t : (A + E); })();
+        h3.appendChild(
+          btnSwapDay
+        );
 
-    if (!sorted.length) {
-      ul.innerHTML = `<li class="empty">— Sin actividades —</li>`;
-    } else {
-      sorted.forEach(({ act, originalIdx }) => {
-        // Nombre visible
-        let visibleName = act.actividad || '';
-        if (act.servicioId && svcMaps.byId.has(act.servicioId)) {
-          visibleName = svcMaps.byId.get(act.servicioId).nombre;
-        } else {
-          const key = K(act.actividad || ''); if (svcMaps.byName.has(key)) visibleName = svcMaps.byName.get(key).nombre;
-        }
+        h3.appendChild(
+          btnEditDate
+        );
 
-        const revision = act.revision || 'pendiente';
-        const iconRev  = revision === 'ok' ? '✅' : (revision === 'rechazado' ? '❌' : '⭕');
-        const motivoHTML = (revision === 'rechazado' && (act.rechazoMotivo || '').trim())
-          ? `<p class="rechazo-motivo">❌ Motivo: ${(act.rechazoMotivo || '').trim()}</p>`
-          : '';
-        const titleRev = revision === 'ok' ? 'Revisado (OK)' : (revision === 'rechazado' ? 'Rechazado' : 'Pendiente');
+        btnSwapDay.onclick =
+          e => {
+            stopAll(e);
 
-        const li = document.createElement("li");
-        li.className = "activity-card";
-        li.innerHTML = `
-          <h4>${act.horaInicio || '--:--'} – ${act.horaFin || '--:--'}</h4>
-          <p><strong>${visibleName}</strong></p>
-          <p>👥 ${totalGrupo} pax (A:${A} E:${E})</p>
-          ${motivoHTML}
-          <div class="actions">
-            ${editMode
-              ? `<button type="button" class="btn-edit">✏️</button>
-                 <button type="button" class="btn-del">🗑️</button>`
-              : `<span class="rev-static" title="${titleRev}">${iconRev}</span>`}
+            handleSwapClick(
+              "dia",
+              fecha
+            );
+          };
+
+        btnEditDate.onclick =
+          e => {
+            stopAll(e);
+
+            handleDateEdit(
+              fecha
+            );
+          };
+      }
+
+      // =================================================
+      // REVISIÓN DEL DÍA
+      // =================================================
+      if (revisionMode) {
+        const slot =
+          sec.querySelector(
+            '.revision-dia-slot'
+          );
+
+        const controles =
+          crearControlesRevision({
+            estadoActual:
+              revisionDia.estado,
+
+            observacionActual:
+              revisionDia.observacion,
+
+            titulo:
+              `Revisión Día ${idx + 1}`,
+
+            onGuardar:
+              async (
+                estado,
+                observacion
+              ) =>
+                guardarRevisionDia(
+                  grupoId,
+                  fecha,
+                  estado,
+                  observacion
+                )
+          });
+
+        controles.classList.add(
+          'revision-dia'
+        );
+
+        const extra =
+          document.createElement(
+            'div'
+          );
+
+        extra.className =
+          'revision-dia-acciones';
+
+        const btnRejectAll =
+          document.createElement(
+            'button'
+          );
+
+        btnRejectAll.type =
+          'button';
+
+        btnRejectAll.className =
+          'btn-rechazar-todo-dia';
+
+        btnRejectAll.textContent =
+          '❌ Rechazar todas las actividades del día';
+
+        btnRejectAll.onclick =
+          async e => {
+            stopAll(e);
+
+            await handleRejectDayCompleto(
+              fecha
+            );
+          };
+
+        extra.appendChild(
+          btnRejectAll
+        );
+
+        controles.appendChild(
+          extra
+        );
+
+        slot.appendChild(
+          controles
+        );
+      }
+
+      // ------------------------------------------------
+      // ALOJAMIENTO
+      // ------------------------------------------------
+      {
+        const ulAnchor =
+          sec.querySelector(
+            ".activity-list"
+          );
+
+        const asigns =
+          hotelByDay[fecha] ||
+          [];
+
+        const prefer =
+          asigns.filter(
+            a =>
+              (
+                a.status ||
+                ''
+              ).toLowerCase() ===
+              'confirmado'
+          );
+
+        const use =
+          prefer.length
+            ? prefer
+            : asigns;
+
+        const names =
+          [
+            ...new Set(
+              use.map(a => {
+                const h =
+                  hotelCache.get(
+                    a.hotelId
+                  ) || {};
+
+                const nm =
+                  (
+                    h.nombre ||
+                    ''
+                  )
+                    .toString()
+                    .toUpperCase() ||
+                  '(SIN NOMBRE)';
+
+                return (
+                  a.status &&
+                  a.status.toLowerCase() !==
+                    'confirmado'
+                )
+                  ? `${nm} (PENDIENTE)`
+                  : nm;
+              })
+            )
+          ];
+
+        const box =
+          document.createElement(
+            'div'
+          );
+
+        box.className =
+          'hotel-box';
+
+        box.innerHTML = `
+          <div>
+            <strong>
+              ALOJAMIENTO:
+            </strong>
           </div>
+
+          ${
+            names.length
+              ? names
+                  .map(
+                    n =>
+                      `<div>– ${n}</div>`
+                  )
+                  .join('')
+              : (
+                  fecha ===
+                  lastFecha
+                    ? `<div>
+                        – ÚLTIMO DÍA DEL VIAJE
+                       </div>`
+                    : `<div>
+                        – (SIN ASIGNACIÓN)
+                       </div>`
+                )
+          }
         `;
 
-        if (editMode) {
-          // Editar
-          li.querySelector(".btn-edit").onclick = (e) => {
-            stopAll(e);
-            openModal({ ...act, fecha, idx: originalIdx }, true);
-          };
+        sec.insertBefore(
+          box,
+          ulAnchor
+        );
+      }
 
-          // Borrar
-          li.querySelector(".btn-del").onclick  = async (e) => {
-            stopAll(e);
-            if (!confirm("¿Eliminar actividad?")) return;
-            const beforeObj = original[originalIdx];
-            const arr = original.slice();
-            arr.splice(originalIdx, 1);
+      contItinerario.appendChild(
+        sec
+      );
 
-            await logHist(grupoId, 'BORRAR ACTIVIDAD', {
-              _group: g,
-              fecha, idx: originalIdx,
-              anterior: beforeObj?.actividad || '',
-              nuevo: '',
-              antesObj: beforeObj || null,
-              despuesObj: null,
-              path: `itinerario.${fecha}[${originalIdx}]`
-            });
+      // ------------------------------------------------
+      // Añadir actividad:
+      // solamente durante edición / modo normal,
+      // nunca en revisión.
+      // ------------------------------------------------
+      const btnAdd =
+        sec.querySelector(
+          ".btn-add"
+        );
 
-            await updateDoc(doc(db, 'grupos', grupoId), { [`itinerario.${fecha}`]: arr });
-            await updateEstadoRevisionAndBadge(grupoId, { ...IT, [fecha]: arr });
-            renderItinerario();
-          };
+      btnAdd.style.display =
+        revisionMode
+          ? 'none'
+          : '';
 
-          // Botón tri-estado (⭕/✅/❌)
-          const btnRev = createBtn(iconRev, "btn-revision", `Cambiar estado: ${titleRev}`);
-          li.querySelector(".actions").appendChild(btnRev);
-          btnRev.onclick = async (e) => {
-            stopAll(e);
-            // Pasamos referencias UI para actualizar SOLO esta tarjeta, sin re-render global.
-            await toggleRevisionEstado(grupoId, fecha, originalIdx, act, visibleName, IT, { li, btn: btnRev });
-          };
+      btnAdd.onclick =
+        e => {
+          stopAll(e);
 
-          // Swap de actividad
-          const btnSwapAct = createBtn("🔄", "btn-swap-act", "Intercambiar actividad");
-          btnSwapAct.dataset.fecha = fecha;
-          btnSwapAct.dataset.idx   = originalIdx;
-          li.querySelector(".actions").appendChild(btnSwapAct);
-          btnSwapAct.onclick = (e) => {
-            stopAll(e);
-            handleSwapClick("actividad", { fecha, idx: originalIdx });
-          };
-        }
+          openModal(
+            {
+              fecha
+            },
+            false
+          );
+        };
 
-        ul.appendChild(li);
-      });
+      // =================================================
+      // ACTIVIDADES
+      // =================================================
+      const ul =
+        sec.querySelector(
+          ".activity-list"
+        );
+
+      const original =
+        IT[fecha] ||
+        [];
+
+      const withIndex =
+        original.map(
+          (
+            act,
+            originalIdx
+          ) => ({
+            act,
+            originalIdx
+          })
+        );
+
+      const sorted =
+        withIndex
+          .slice()
+          .sort(
+            (a, b) =>
+              (
+                a.act.horaInicio ||
+                ''
+              ).localeCompare(
+                b.act.horaInicio ||
+                ''
+              )
+          );
+
+      const A =
+        parseInt(
+          g.adultos,
+          10
+        ) || 0;
+
+      const E =
+        parseInt(
+          g.estudiantes,
+          10
+        ) || 0;
+
+      const totalGrupo =
+        (() => {
+          const t =
+            parseInt(
+              g.cantidadgrupo,
+              10
+            );
+
+          return Number.isFinite(t)
+            ? t
+            : A + E;
+        })();
+
+      if (!sorted.length) {
+        ul.innerHTML =
+          `<li class="empty">
+            — Sin actividades —
+          </li>`;
+
+      } else {
+        sorted.forEach(
+          ({
+            act,
+            originalIdx
+          }) => {
+
+            let visibleName =
+              act.actividad ||
+              '';
+
+            if (
+              act.servicioId &&
+              svcMaps.byId.has(
+                act.servicioId
+              )
+            ) {
+              visibleName =
+                svcMaps
+                  .byId
+                  .get(
+                    act.servicioId
+                  )
+                  .nombre;
+
+            } else {
+              const key =
+                K(
+                  act.actividad ||
+                  ''
+                );
+
+              if (
+                svcMaps.byName.has(
+                  key
+                )
+              ) {
+                visibleName =
+                  svcMaps
+                    .byName
+                    .get(key)
+                    .nombre;
+              }
+            }
+
+            const revision =
+              act.revision ||
+              'pendiente';
+
+            const observacion =
+              act.revisionObservacion ||
+              act.rechazoMotivo ||
+              '';
+
+            const li =
+              document.createElement(
+                "li"
+              );
+
+            li.className =
+              "activity-card";
+
+            li.innerHTML = `
+              <h4>
+                ${act.horaInicio || '--:--'}
+                –
+                ${act.horaFin || '--:--'}
+              </h4>
+
+              <p>
+                <strong>
+                  ${visibleName}
+                </strong>
+              </p>
+
+              <p>
+                👥 ${totalGrupo} pax
+                (A:${A} E:${E})
+              </p>
+
+              <div
+                class="estado-actividad"
+              >
+                <span
+                  class="badge ${
+                    revision ===
+                      'rechazado'
+                      ? 'badge-rechazado'
+                      : revision ===
+                          'ok'
+                        ? 'badge-ok'
+                        : 'badge-pendiente'
+                  }"
+                >
+                  ${labelEstadoRevision(
+                    revision
+                  )}
+                </span>
+              </div>
+
+              ${
+                observacion
+                  ? `
+                      <div
+                        class="
+                          revision-motivo-visible
+                          ${
+                            revision ===
+                              'rechazado'
+                              ? 'rechazado'
+                              : ''
+                          }
+                        "
+                      >
+                        <strong>
+                          Observación:
+                        </strong>
+                        ${observacion}
+                      </div>
+                    `
+                  : ''
+              }
+
+              <div class="actions"></div>
+
+              <div class="revision-actividad-slot"></div>
+            `;
+
+            // ==========================================
+            // EDICIÓN
+            // ==========================================
+            if (editMode) {
+              const actions =
+                li.querySelector(
+                  '.actions'
+                );
+
+              const btnEdit =
+                document.createElement(
+                  'button'
+                );
+
+              btnEdit.type =
+                'button';
+
+              btnEdit.className =
+                'btn-edit';
+
+              btnEdit.textContent =
+                '✏️';
+
+              const btnDel =
+                document.createElement(
+                  'button'
+                );
+
+              btnDel.type =
+                'button';
+
+              btnDel.className =
+                'btn-del';
+
+              btnDel.textContent =
+                '🗑️';
+
+              actions.appendChild(
+                btnDel
+              );
+
+              actions.appendChild(
+                btnEdit
+              );
+
+              btnEdit.onclick =
+                e => {
+                  stopAll(e);
+
+                  openModal(
+                    {
+                      ...act,
+                      fecha,
+                      idx:
+                        originalIdx
+                    },
+                    true
+                  );
+                };
+
+              btnDel.onclick =
+                async e => {
+                  stopAll(e);
+
+                  if (
+                    !confirm(
+                      "¿Eliminar actividad?"
+                    )
+                  ) {
+                    return;
+                  }
+
+                  const beforeObj =
+                    original[
+                      originalIdx
+                    ];
+
+                  const arr =
+                    original.slice();
+
+                  arr.splice(
+                    originalIdx,
+                    1
+                  );
+
+                  await logHist(
+                    grupoId,
+                    'BORRAR ACTIVIDAD',
+                    {
+                      _group:
+                        g,
+
+                      fecha,
+
+                      idx:
+                        originalIdx,
+
+                      anterior:
+                        beforeObj?.actividad ||
+                        '',
+
+                      nuevo:
+                        '',
+
+                      antesObj:
+                        beforeObj ||
+                        null,
+
+                      despuesObj:
+                        null,
+
+                      path:
+                        `itinerario.${fecha}[${originalIdx}]`
+                    }
+                  );
+
+                  if (
+                    (
+                      beforeObj?.revision ||
+                      'pendiente'
+                    ) ===
+                    'rechazado'
+                  ) {
+                    await resolverAlertasRevision(
+                      grupoId,
+                      {
+                        tipo:
+                          'actividad',
+
+                        fecha,
+
+                        idx:
+                          originalIdx,
+
+                        actividad:
+                          beforeObj.actividad ||
+                          ''
+                      },
+                      'Actividad eliminada'
+                    );
+                  }
+
+                  await updateDoc(
+                    doc(
+                      db,
+                      'grupos',
+                      grupoId
+                    ),
+                    {
+                      [`itinerario.${fecha}`]:
+                        arr
+                    }
+                  );
+
+                  await marcarGrupoPendientePorCambio(
+                    grupoId,
+                    `Se eliminó una actividad del día ${fecha}.`
+                  );
+
+                  await renderItinerario();
+                };
+
+              const btnSwapAct =
+                createBtn(
+                  "🔄",
+                  "btn-swap-act",
+                  "Intercambiar actividad"
+                );
+
+              btnSwapAct.dataset.fecha =
+                fecha;
+
+              btnSwapAct.dataset.idx =
+                originalIdx;
+
+              actions.appendChild(
+                btnSwapAct
+              );
+
+              btnSwapAct.onclick =
+                e => {
+                  stopAll(e);
+
+                  handleSwapClick(
+                    "actividad",
+                    {
+                      fecha,
+                      idx:
+                        originalIdx
+                    }
+                  );
+                };
+            }
+
+            // ==========================================
+            // REVISIÓN
+            // ==========================================
+            if (revisionMode) {
+              const slot =
+                li.querySelector(
+                  '.revision-actividad-slot'
+                );
+
+              const controles =
+                crearControlesRevision({
+                  estadoActual:
+                    revision,
+
+                  observacionActual:
+                    observacion,
+
+                  titulo:
+                    'Revisión de actividad',
+
+                  onGuardar:
+                    async (
+                      estado,
+                      observacionNueva
+                    ) =>
+                      guardarRevisionActividad(
+                        grupoId,
+                        fecha,
+                        originalIdx,
+                        estado,
+                        observacionNueva
+                      )
+                });
+
+              slot.appendChild(
+                controles
+              );
+            }
+
+            ul.appendChild(
+              li
+            );
+          }
+        );
+      }
     }
-  });
+  );
 }
 
 // —————————————————————————————————
@@ -2258,10 +4431,21 @@ async function onSubmitModal(evt) {
     // Cualquier modificación obliga a revisar nuevamente.
     const afterObj = {
       ...payloadBase,
-
+    
       revision:
         'pendiente',
-
+    
+      revisionObservacion:
+        'Actividad modificada después de revisión. Requiere nueva revisión.',
+    
+      revisionUsuario:
+        auth.currentUser?.email ||
+        '',
+    
+      revisionTimestamp:
+        new Date(),
+    
+      // Compatibilidad antigua
       rechazoMotivo:
         ''
     };
@@ -2325,10 +4509,27 @@ async function onSubmitModal(evt) {
       (beforeObj.revision || 'pendiente') ===
       'rechazado'
     ) {
-      await cerrarAlertasPendientesActividad(
+      await resolverAlertasRevision(
         grupoId,
-        fecha,
-        beforeObj.actividad || ''
+        {
+          tipo:
+            'actividad',
+      
+          fecha,
+      
+          idx:
+            editData.idx,
+      
+          actividad:
+            beforeObj.actividad ||
+            ''
+        },
+        'Actividad modificada; vuelve a pendiente'
+      );
+
+      await marcarGrupoPendientePorCambio(
+        grupoId,
+        `Se modificó la actividad "${afterObj.actividad || ''}".`
       );
     }
 
@@ -2504,141 +4705,499 @@ async function cerrarAlertasPendientesActividad(
   }
 }
 
-// —————————————————————————————————
-// NUEVO — Toggle tri-estado revisión (⭕→✅→❌→⭕)
-// con motivo obligatorio al pasar a ❌ y escritura en historial + alertas
-// —————————————————————————————————
-// —————————————————————————————————
-// Toggle tri-estado revisión (⭕→✅→❌→⭕) SIN re-render global
-// Actualiza solo la tarjeta tocada; mantiene alertas e historial.
-// —————————————————————————————————
-async function toggleRevisionEstado(grupoId, fecha, idx, act, visibleName, ITfull, ui = null) {
-  const old  = act.revision || 'pendiente';
-  const next = (old === 'pendiente') ? 'ok' : (old === 'ok' ? 'rechazado' : 'pendiente');
+// ======================================================
+// GUARDAR REVISIÓN DE UNA ACTIVIDAD
+// ======================================================
 
-  const gSnap = await getDoc(doc(db,'grupos',grupoId));
-  const g     = gSnap.data() || {};
-  const arr   = (g.itinerario?.[fecha]||[]).slice();
+async function guardarRevisionActividad(
+  grupoId,
+  fecha,
+  idx,
+  nuevoEstado,
+  observacion = ''
+) {
+  nuevoEstado =
+    (
+      nuevoEstado ||
+      'pendiente'
+    )
+      .toLowerCase();
 
-  // Si vamos a RECHAZADO, pedir motivo (obligatorio)
-  let motivo = act.rechazoMotivo || '';
-  if (next === 'rechazado') {
-    motivo = prompt("Motivo del rechazo (obligatorio):", motivo || '') || '';
-    motivo = motivo.trim();
-    if (!motivo) return; // cancelar cambio si no hay motivo
+  observacion =
+    (
+      observacion ||
+      ''
+    ).trim();
+
+  if (
+    nuevoEstado ===
+      'rechazado' &&
+    !observacion
+  ) {
+    alert(
+      "Debes escribir la justificación del rechazo."
+    );
+
+    return false;
   }
 
-  // Construir objetos antes/después
-  const beforeObj = arr[idx] || {};
-  const updated   = { ...beforeObj, revision: next };
-  if (next === 'rechazado') updated.rechazoMotivo = motivo;
-  else if (old === 'rechazado') updated.rechazoMotivo = ''; // limpiar motivo al salir de ❌
-  arr[idx] = updated;
+  const ref =
+    doc(
+      db,
+      'grupos',
+      grupoId
+    );
 
-  // Historial
+  const snap =
+    await getDoc(ref);
+
+  const g =
+    snap.data() || {};
+
+  const arr =
+    (
+      g.itinerario?.[fecha] ||
+      []
+    ).slice();
+
+  const beforeObj =
+    arr[idx];
+
+  if (!beforeObj) {
+    alert(
+      "No se encontró la actividad."
+    );
+
+    return false;
+  }
+
+  const oldEstado =
+    beforeObj.revision ||
+    'pendiente';
+
+  const oldObservacion =
+    beforeObj.revisionObservacion ||
+    beforeObj.rechazoMotivo ||
+    '';
+
+  const updated = {
+    ...beforeObj,
+
+    revision:
+      nuevoEstado,
+
+    revisionObservacion:
+      observacion,
+
+    revisionUsuario:
+      auth.currentUser?.email ||
+      '',
+
+    revisionTimestamp:
+      new Date()
+  };
+
+  // Compatibilidad con tu estructura antigua.
+  updated.rechazoMotivo =
+    nuevoEstado ===
+      'rechazado'
+      ? observacion
+      : '';
+
+  arr[idx] =
+    updated;
+
+  await updateDoc(
+    ref,
+    {
+      [`itinerario.${fecha}`]:
+        arr
+    }
+  );
+
   await logHist(
     grupoId,
-    'CAMBIAR REVISION ACTIVIDAD',
+    nuevoEstado ===
+      'ok'
+      ? 'APROBAR ACTIVIDAD'
+      : nuevoEstado ===
+          'rechazado'
+        ? 'RECHAZAR ACTIVIDAD'
+        : 'DEJAR ACTIVIDAD PENDIENTE',
     {
-      _group: g,
-  
+      _group:
+        g,
+
       categoria:
         'REVISION',
-  
+
+      tipoRevision:
+        'actividad',
+
       fecha,
       fechaActividad:
         fecha,
-  
+
       idx,
-  
+
       actividad:
-        visibleName,
-  
-      anterior:
-        old,
-  
-      nuevo:
-        next,
-  
-      estadoAnterior:
-        old,
-  
-      estadoNuevo:
-        next,
-  
-      motivo:
-        updated.rechazoMotivo ||
+        updated.actividad ||
         '',
-  
-      detalle:
-        `${visibleName} (${fecha})`,
-  
+
+      anterior:
+        oldEstado,
+
+      nuevo:
+        nuevoEstado,
+
+      estadoAnterior:
+        oldEstado,
+
+      estadoNuevo:
+        nuevoEstado,
+
+      motivo:
+        observacion,
+
       antesObj:
-        beforeObj || null,
-  
+        beforeObj,
+
       despuesObj:
-        updated || null,
-  
+        updated,
+
       path:
         `itinerario.${fecha}[${idx}]`
     }
   );
 
-  // Persistir cambio
-  await updateDoc(doc(db,'grupos',grupoId), { [`itinerario.${fecha}`]: arr });
+  // ==========================================
+  // ALERTAS
+  // ==========================================
 
-  // Alertas on/off
-  if (next === 'rechazado' && old !== 'rechazado') {
-    await addDoc(collection(db,'grupos',grupoId,'alertas'), {
-      fecha,
-      horaInicio: beforeObj?.horaInicio || act?.horaInicio || '',
-      horaFin:    beforeObj?.horaFin    || act?.horaFin    || '',
-      actividad:  visibleName,
-      motivo,
-      creadoPor:  auth.currentUser.email,
-      creadoEn:   new Date(),
-      visto:      false
-    });
-  } else if (
-    old === 'rechazado' &&
-    next !== 'rechazado'
+  if (
+    nuevoEstado ===
+    'rechazado'
   ) {
-    await cerrarAlertasPendientesActividad(
+    // Evitamos duplicados.
+    await resolverAlertasRevision(
       grupoId,
-      fecha,
-      visibleName
+      {
+        tipo:
+          'actividad',
+
+        fecha,
+
+        idx,
+
+        actividad:
+          beforeObj.actividad ||
+          ''
+      },
+      'Nueva revisión de la actividad'
+    );
+
+    await crearAlertaRevision(
+      grupoId,
+      {
+        tipo:
+          'actividad',
+
+        fecha,
+
+        idx,
+
+        actividad:
+          updated.actividad ||
+          '',
+
+        horaInicio:
+          updated.horaInicio ||
+          '',
+
+        horaFin:
+          updated.horaFin ||
+          '',
+
+        motivo:
+          observacion
+      }
+    );
+
+  } else if (
+    oldEstado ===
+    'rechazado'
+  ) {
+    await resolverAlertasRevision(
+      grupoId,
+      {
+        tipo:
+          'actividad',
+
+        fecha,
+
+        idx,
+
+        actividad:
+          beforeObj.actividad ||
+          ''
+      },
+      nuevoEstado ===
+        'ok'
+          ? 'Actividad aprobada'
+          : 'Actividad vuelve a pendiente'
     );
   }
 
-  // Recalcular estado + badge (sin re-render de cards)
-  const ITnext = { ...(ITfull||{}), [fecha]: arr };
-  await updateEstadoRevisionAndBadge(grupoId, ITnext);
+  // Cualquier cambio de una actividad invalida
+  // una revisión general previa.
+  await marcarGrupoPendientePorCambio(
+    grupoId,
+    `Cambió la revisión de la actividad "${updated.actividad || ''}".`
+  );
 
-  // ——— Actualización UI puntual (sin "parpadeo") ———
-  if (ui && ui.li && ui.btn) {
-    // icono + title del botón
-    ui.btn.textContent = (next === 'ok') ? '✅' : (next === 'rechazado' ? '❌' : '⭕');
-    ui.btn.title       = (next === 'ok') ? 'Revisado (OK)' : (next === 'rechazado' ? 'Rechazado' : 'Pendiente');
+  await refreshAlertasCounts(
+    grupoId
+  );
 
-    // motivo (crear/actualizar/eliminar)
-    const existing = ui.li.querySelector('.rechazo-motivo');
-    if (next === 'rechazado') {
-      if (existing) {
-        existing.textContent = `❌ Motivo: ${motivo}`;
-      } else {
-        const p = document.createElement('p');
-        p.className = 'rechazo-motivo';
-        p.textContent = `❌ Motivo: ${motivo}`;
-        const actions = ui.li.querySelector('.actions');
-        ui.li.insertBefore(p, actions || null);
-      }
-    } else if (existing) {
-      existing.remove();
-    }
-  } else {
-    // fallback (no UI pasada): refresco completo
-    renderItinerario();
+  return true;
+}
+
+// ======================================================
+// CONTROLES VISUALES DE REVISIÓN
+// ======================================================
+
+function crearControlesRevision({
+  estadoActual,
+  observacionActual,
+  onGuardar,
+  titulo = 'Revisión'
+}) {
+  const estado =
+    estadoActual ||
+    'pendiente';
+
+  const wrapper =
+    document.createElement(
+      'div'
+    );
+
+  wrapper.className =
+    `revision-box revision-${estado}`;
+
+  const title =
+    document.createElement(
+      'strong'
+    );
+
+  title.textContent =
+    titulo;
+
+  wrapper.appendChild(
+    title
+  );
+
+  const estados =
+    document.createElement(
+      'div'
+    );
+
+  estados.className =
+    'revision-estados';
+
+  const textarea =
+    document.createElement(
+      'textarea'
+    );
+
+  textarea.className =
+    'revision-observacion';
+
+  textarea.placeholder =
+    'Observación / justificación de la revisión...';
+
+  textarea.value =
+    observacionActual ||
+    '';
+
+  let seleccionado =
+    estado;
+
+  function actualizarSeleccion() {
+    estados
+      .querySelectorAll(
+        'button'
+      )
+      .forEach(btn => {
+        btn.classList.remove(
+          'activo-pendiente',
+          'activo-ok',
+          'activo-rechazado'
+        );
+
+        if (
+          btn.dataset.estado ===
+          seleccionado
+        ) {
+          btn.classList.add(
+            `activo-${seleccionado}`
+          );
+        }
+      });
   }
+
+  [
+    {
+      estado:
+        'pendiente',
+
+      texto:
+        '🕒 PENDIENTE'
+    },
+
+    {
+      estado:
+        'ok',
+
+      texto:
+        '✅ APROBADO'
+    },
+
+    {
+      estado:
+        'rechazado',
+
+      texto:
+        '❌ RECHAZADO'
+    }
+  ].forEach(item => {
+    const btn =
+      document.createElement(
+        'button'
+      );
+
+    btn.type =
+      'button';
+
+    btn.dataset.estado =
+      item.estado;
+
+    btn.textContent =
+      item.texto;
+
+    btn.onclick =
+      e => {
+        stopAll(e);
+
+        seleccionado =
+          item.estado;
+
+        actualizarSeleccion();
+      };
+
+    estados.appendChild(
+      btn
+    );
+  });
+
+  const btnGuardar =
+    document.createElement(
+      'button'
+    );
+
+  btnGuardar.type =
+    'button';
+
+  btnGuardar.textContent =
+    'Guardar revisión';
+
+  btnGuardar.style.marginTop =
+    '7px';
+
+  btnGuardar.onclick =
+    async e => {
+      stopAll(e);
+
+      const ok =
+        await onGuardar(
+          seleccionado,
+          textarea.value
+        );
+
+      if (ok !== false) {
+        await renderItinerario();
+      }
+    };
+
+  wrapper.appendChild(
+    estados
+  );
+
+  wrapper.appendChild(
+    textarea
+  );
+
+  wrapper.appendChild(
+    btnGuardar
+  );
+
+  actualizarSeleccion();
+
+  return wrapper;
+}
+
+
+function renderRevisionGrupo(
+  grupoId,
+  g
+) {
+  if (
+    !revisionGrupoContainer
+  ) {
+    return;
+  }
+
+  revisionGrupoContainer.innerHTML =
+    '';
+
+  if (!revisionMode) {
+    revisionGrupoContainer.style.display =
+      'none';
+
+    return;
+  }
+
+  revisionGrupoContainer.style.display =
+    '';
+
+  const rev =
+    getRevisionGrupo(g);
+
+  const controles =
+    crearControlesRevision({
+      estadoActual:
+        rev.estado,
+
+      observacionActual:
+        rev.observacion,
+
+      titulo:
+        'REVISIÓN GENERAL DEL ITINERARIO',
+
+      onGuardar:
+        async (
+          estado,
+          observacion
+        ) =>
+          guardarRevisionGrupo(
+            grupoId,
+            estado,
+            observacion
+          )
+    });
+
+  revisionGrupoContainer.appendChild(
+    controles
+  );
 }
 
 // —————————————————————————————————
@@ -3105,137 +5664,196 @@ async function handleDateEdit(oldFecha) {
 // Este botón solamente permite aplicar el mismo rechazo
 // a todas las actividades de un día de una sola vez.
 // —————————————————————————————————
-async function handleRejectDayCompleto(fecha) {
-  const grupoId = selectNum.value;
+async function handleRejectDayCompleto(
+  fecha
+) {
+  const grupoId =
+    selectNum.value;
 
   if (!grupoId) {
-    return alert("Selecciona un grupo");
+    return alert(
+      "Selecciona un grupo"
+    );
   }
 
-  const motivo = (
-    prompt(
-      "Motivo del rechazo del día completo (obligatorio):",
+  const motivo =
+    (
+      prompt(
+        "Justificación para rechazar TODAS las actividades del día:",
+        ""
+      ) ||
       ""
-    ) || ""
-  ).trim();
+    ).trim();
 
   if (!motivo) {
-    return;
+    return alert(
+      "La justificación es obligatoria."
+    );
   }
 
-  const gSnap = await getDoc(
-    doc(db, 'grupos', grupoId)
-  );
+  const gSnap =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
 
-  const g = gSnap.data() || {};
+  const g =
+    gSnap.data() || {};
 
   const arrAnterior =
-    (g.itinerario?.[fecha] || []).slice();
+    (
+      g.itinerario?.[fecha] ||
+      []
+    ).slice();
 
   if (!arrAnterior.length) {
     return alert(
-      "Este día no tiene actividades para rechazar."
+      "Este día no tiene actividades."
     );
   }
 
-  const nuevoArr = arrAnterior.map(act => ({
-    ...act,
-    revision: 'rechazado',
-    rechazoMotivo: motivo
-  }));
+  const nuevoArr =
+    arrAnterior.map(
+      act => ({
+        ...act,
 
-  // Guardar todas las actividades rechazadas
+        revision:
+          'rechazado',
+
+        revisionObservacion:
+          motivo,
+
+        revisionUsuario:
+          auth.currentUser?.email ||
+          '',
+
+        revisionTimestamp:
+          new Date(),
+
+        rechazoMotivo:
+          motivo
+      })
+    );
+
   await updateDoc(
-    doc(db, 'grupos', grupoId),
+    doc(
+      db,
+      'grupos',
+      grupoId
+    ),
     {
-      [`itinerario.${fecha}`]: nuevoArr
+      [`itinerario.${fecha}`]:
+        nuevoArr
     }
   );
 
-  // Crear alerta solamente para actividades que
-  // NO estaban previamente rechazadas.
-  const alertas = [];
-
-  nuevoArr.forEach((act, idx) => {
-    const anterior = arrAnterior[idx] || {};
-    const estadoAnterior =
-      anterior.revision || 'pendiente';
-
-    if (estadoAnterior === 'rechazado') {
-      return;
-    }
-
-    alertas.push(
-      addDoc(
-        collection(
-          db,
-          'grupos',
+  // Resolver alertas anteriores de esas actividades.
+  await Promise.all(
+    arrAnterior.map(
+      (
+        act,
+        idx
+      ) =>
+        resolverAlertasRevision(
           grupoId,
-          'alertas'
-        ),
-        {
-          fecha,
-          horaInicio: act.horaInicio || '',
-          horaFin: act.horaFin || '',
-          actividad: act.actividad || '',
-          motivo,
-          creadoPor:
-            auth.currentUser?.email || '',
-          creadoEn: new Date(),
-          visto: false
-        }
-      )
-    );
-  });
+          {
+            tipo:
+              'actividad',
 
-  if (alertas.length) {
-    await Promise.all(alertas);
-  }
+            fecha,
 
-  // Historial
+            idx,
+
+            actividad:
+              act.actividad ||
+              ''
+          },
+          'Rechazo completo del día'
+        )
+    )
+  );
+
+  // Crear nueva alerta por actividad.
+  await Promise.all(
+    nuevoArr.map(
+      (
+        act,
+        idx
+      ) =>
+        crearAlertaRevision(
+          grupoId,
+          {
+            tipo:
+              'actividad',
+
+            fecha,
+
+            idx,
+
+            actividad:
+              act.actividad ||
+              '',
+
+            horaInicio:
+              act.horaInicio ||
+              '',
+
+            horaFin:
+              act.horaFin ||
+              '',
+
+            motivo
+          }
+        )
+    )
+  );
+
   await logHist(
     grupoId,
-    'RECHAZAR DÍA COMPLETO',
+    'RECHAZAR TODAS LAS ACTIVIDADES DEL DÍA',
     {
-      _group: g,
-  
+      _group:
+        g,
+
       categoria:
         'REVISION',
-  
+
+      tipoRevision:
+        'dia_actividades',
+
       fecha,
       fechaActividad:
         fecha,
-  
+
       anterior:
-        `Actividades afectadas: ${arrAnterior.length}`,
-  
+        `Actividades: ${arrAnterior.length}`,
+
       nuevo:
-        `Todas las actividades quedaron RECHAZADAS`,
-  
-      estadoAnterior:
-        '',
-  
+        `Todas quedaron RECHAZADAS`,
+
       estadoNuevo:
         'rechazado',
-  
+
       motivo,
-  
+
       detalle:
         `${arrAnterior.length} actividades rechazadas`
     }
   );
 
-  const nuevoIT = {
-    ...(g.itinerario || {}),
-    [fecha]: nuevoArr
-  };
-
-  await updateEstadoRevisionAndBadge(
+  await marcarGrupoPendientePorCambio(
     grupoId,
-    nuevoIT
+    `Se rechazaron actividades del día ${fecha}.`
   );
 
-  renderItinerario();
+  await refreshAlertasCounts(
+    grupoId
+  );
+
+  await renderItinerario();
 }
 
 // ===== MIGRACIÓN/UTILIDADES (se mantienen) =====
