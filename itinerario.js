@@ -251,6 +251,14 @@ let choicesGrupoNom = null;
 let editMode = false;
 let revisionMode = false;
 
+// Cambios temporales mientras el usuario revisa.
+// No se escriben en Firestore hasta guardar al final.
+let revisionDraft = {
+  grupo: null,
+  dias: new Map(),
+  actividades: new Map()
+};
+
 let swapOrigin = null;
 const hotelCache = new Map(); // hotelId -> { nombre, destino }
 
@@ -1403,14 +1411,28 @@ async function initItinerario() {
   }
   
   // 2.3) Sincronizo ambos selects
-  choicesGrupoNum.passedElement.element.onchange = () => {
-    choicesGrupoNom.setChoiceByValue(selectNum.value);
-    renderItinerario();
-  };
-  choicesGrupoNom.passedElement.element.onchange = () => {
-    choicesGrupoNum.setChoiceByValue(selectName.value);
-    renderItinerario();
-  };
+  choicesGrupoNum.passedElement.element.onchange =
+    async () => {
+      resetRevisionDraft();
+  
+      choicesGrupoNom.setChoiceByValue(
+        selectNum.value
+      );
+  
+      await renderItinerario();
+    };
+  
+  
+  choicesGrupoNom.passedElement.element.onchange =
+    async () => {
+      resetRevisionDraft();
+  
+      choicesGrupoNum.setChoiceByValue(
+        selectName.value
+      );
+  
+      await renderItinerario();
+    };
   
   // 2.4) Quick-Add, Modal, Plantillas, Alertas
   qaAddBtn.onclick        = (e)=>{ stopAll(e); quickAddActivity(); };
@@ -1545,91 +1567,97 @@ const btnToggleRevision =
 
 function actualizarUIEstadoModos() {
   if (btnToggleEdit) {
-    btnToggleEdit.textContent =
-      editMode
-        ? "🔒 Desactivar edición"
-        : "🔓 Activar edición";
-  }
-
-  if (btnToggleRevision) {
-    btnToggleRevision.textContent =
-      revisionMode
-        ? "🔒 Desactivar revisión"
-        : "🔎 Activar revisión";
-  }
-
-  const quickAdd =
-    document.getElementById(
-      "quick-add"
-    );
-
-  if (quickAdd) {
-    quickAdd.style.display =
-      editMode
-        ? ""
-        : "none";
-  }
-
-  if (btnGuardarTpl) {
-    btnGuardarTpl.disabled =
-      editMode ||
-      revisionMode;
-  }
-
-  if (btnCargarTpl) {
-    btnCargarTpl.disabled =
-      editMode ||
-      revisionMode;
-  }
-
-  if (revisionGrupoContainer) {
-    revisionGrupoContainer.style.display =
-      revisionMode
-        ? ""
-        : "none";
-  }
-}
-
-if (btnToggleEdit) {
-  btnToggleEdit.onclick =
-    async e => {
-      stopAll(e);
-
-      editMode =
-        !editMode;
-
-      if (editMode) {
-        revisionMode =
-          false;
-      }
-
-      resetSwap();
-
-      actualizarUIEstadoModos();
-
-      await renderItinerario();
-    };
-}
-
-if (btnToggleRevision) {
-  btnToggleRevision.onclick =
-    async e => {
-      stopAll(e);
-
-      revisionMode =
-        !revisionMode;
-
-      if (revisionMode) {
+    btnToggleEdit.onclick =
+      async e => {
+        stopAll(e);
+  
+        // Si estamos revisando y existen cambios
+        // sin guardar, advertir antes de perderlos.
+        if (
+          revisionMode &&
+          contarCambiosRevisionDraft() >
+            0
+        ) {
+          const confirmar =
+            confirm(
+              "Hay cambios de revisión sin guardar.\n\n" +
+              "¿Quieres descartarlos y entrar a edición?"
+            );
+  
+          if (!confirmar) {
+            return;
+          }
+  
+          resetRevisionDraft();
+        }
+  
         editMode =
-          false;
-      }
-
-      resetSwap();
-
-      actualizarUIEstadoModos();
-
-      await renderItinerario();
-    };
+          !editMode;
+  
+        if (editMode) {
+          revisionMode =
+            false;
+        }
+  
+        resetSwap();
+  
+        actualizarUIEstadoModos();
+  
+        await renderItinerario();
+      };
+  }
+  
+  
+  if (btnToggleRevision) {
+    btnToggleRevision.onclick =
+      async e => {
+        stopAll(e);
+  
+        // -----------------------------------------------
+        // SALIR DE REVISIÓN
+        // -----------------------------------------------
+        if (revisionMode) {
+  
+          if (
+            contarCambiosRevisionDraft() >
+            0
+          ) {
+            const confirmar =
+              confirm(
+                "Hay cambios de revisión sin guardar.\n\n" +
+                "¿Quieres descartarlos y salir de revisión?"
+              );
+  
+            if (!confirmar) {
+              return;
+            }
+          }
+  
+          resetRevisionDraft();
+  
+          revisionMode =
+            false;
+  
+        // -----------------------------------------------
+        // ENTRAR A REVISIÓN
+        // -----------------------------------------------
+        } else {
+          resetRevisionDraft();
+  
+          revisionMode =
+            true;
+  
+          editMode =
+            false;
+        }
+  
+        resetSwap();
+  
+        actualizarUIEstadoModos();
+  
+        await renderItinerario();
+      };
+  }
 }
 
 actualizarUIEstadoModos();
@@ -2950,8 +2978,7 @@ async function buildHotelDayMapForGroup(grupoId) {
 }
 
 async function renderItinerario() {
-  contItinerario.innerHTML =
-    "";
+  contItinerario.innerHTML = "";
 
   const grupoId =
     selectNum.value;
@@ -2972,27 +2999,27 @@ async function renderItinerario() {
   const g =
     snapG.data() || {};
 
-  // ------------------------------------------------
-  // Título
-  // ------------------------------------------------
+  // =================================================
+  // TÍTULO
+  // =================================================
   titleGrupo.textContent =
     (
       g.programa ||
       "–"
     ).toUpperCase();
 
-  // ------------------------------------------------
-  // Autocomplete
-  // ------------------------------------------------
+  // =================================================
+  // AUTOCOMPLETE
+  // =================================================
   await prepararCampoActividad(
     "qa-actividad",
     g.destino,
     g
   );
 
-  // ------------------------------------------------
-  // Inicializar itinerario
-  // ------------------------------------------------
+  // =================================================
+  // INICIALIZAR ITINERARIO
+  // =================================================
   if (
     !g.itinerario ||
     Object.keys(
@@ -3041,9 +3068,9 @@ async function renderItinerario() {
       g
     );
 
-  // ------------------------------------------------
-  // Servicios
-  // ------------------------------------------------
+  // =================================================
+  // SERVICIOS
+  // =================================================
   const svcMaps =
     await getServiciosMaps(
       g.destino ||
@@ -3064,27 +3091,33 @@ async function renderItinerario() {
   g.itinerario =
     IT;
 
-  // ------------------------------------------------
-  // Estado general
-  // ------------------------------------------------
+  // =================================================
+  // ESTADO GENERAL GUARDADO
+  // =================================================
   await updateEstadoRevisionAndBadge(
     grupoId
   );
 
+  // =================================================
+  // REVISIÓN GENERAL + GUARDADO ÚNICO
+  // =================================================
   renderRevisionGrupo(
     grupoId,
     g
   );
 
-  // ------------------------------------------------
-  // Fechas
-  // ------------------------------------------------
+  // =================================================
+  // FECHAS
+  // =================================================
   const fechas =
     Object.keys(IT)
       .sort(
         sortDiasItinerario
       );
 
+  // =================================================
+  // HOTELES
+  // =================================================
   const hotelByDay =
     await buildHotelDayMapForGroup(
       grupoId
@@ -3095,9 +3128,9 @@ async function renderItinerario() {
       fechas.length - 1
     ] || null;
 
-  // ------------------------------------------------
-  // Choices quick-add
-  // ------------------------------------------------
+  // =================================================
+  // CHOICES — QUICK ADD
+  // =================================================
   const opts =
     fechas.map(
       (d, i) => ({
@@ -3136,6 +3169,9 @@ async function renderItinerario() {
       );
   }
 
+  // =================================================
+  // SELECT FECHA MODAL
+  // =================================================
   fldFecha.innerHTML =
     fechas.map(
       (d, i) =>
@@ -3144,9 +3180,9 @@ async function renderItinerario() {
         </option>`
     ).join('');
 
-  // ------------------------------------------------
-  // Helper botón
-  // ------------------------------------------------
+  // =================================================
+  // HELPER BOTÓN EDICIÓN
+  // =================================================
   function createBtn(
     icon,
     cls,
@@ -3176,7 +3212,7 @@ async function renderItinerario() {
   // DÍAS
   // =================================================
   fechas.forEach(
-    (fecha, idx) => {
+    (fecha, idxDia) => {
 
       const sec =
         document.createElement(
@@ -3189,9 +3225,7 @@ async function renderItinerario() {
       sec.dataset.fecha =
         fecha;
 
-      if (
-        isFechaReal(fecha)
-      ) {
+      if (isFechaReal(fecha)) {
         const [
           yyyy,
           mm,
@@ -3209,7 +3243,8 @@ async function renderItinerario() {
           );
 
         if (
-          d.getDay() === 0
+          d.getDay() ===
+          0
         ) {
           sec.classList.add(
             'domingo'
@@ -3219,7 +3254,7 @@ async function renderItinerario() {
 
       sec.innerHTML = `
         <h3>
-          Día ${idx + 1}
+          Día ${idxDia + 1}
           –
           ${formatDiaItinerario(fecha)}
         </h3>
@@ -3242,15 +3277,34 @@ async function renderItinerario() {
           "h3"
         );
 
-      const revisionDia =
+      // =================================================
+      // REVISIÓN DÍA — GUARDADA + BORRADOR
+      // =================================================
+      const revisionDiaGuardada =
         getRevisionDia(
           g,
           fecha
         );
 
-      // ------------------------------------------------
+      const revisionDiaDraft =
+        revisionDraft.dias.get(
+          fecha
+        );
+
+      const revisionDiaActual = {
+        estado:
+          revisionDiaDraft?.estado ||
+          revisionDiaGuardada.estado,
+
+        observacion:
+          revisionDiaDraft?.observacion ??
+          revisionDiaGuardada.observacion ??
+          ''
+      };
+
+      // =================================================
       // BADGE DÍA
-      // ------------------------------------------------
+      // =================================================
       const badge =
         document.createElement(
           'span'
@@ -3262,10 +3316,10 @@ async function renderItinerario() {
       badge.className =
         'badge ' +
         (
-          revisionDia.estado ===
+          revisionDiaActual.estado ===
             'rechazado'
             ? 'badge-rechazado'
-            : revisionDia.estado ===
+            : revisionDiaActual.estado ===
                 'ok'
               ? 'badge-ok'
               : 'badge-pendiente'
@@ -3273,7 +3327,7 @@ async function renderItinerario() {
 
       badge.textContent =
         labelEstadoRevision(
-          revisionDia.estado
+          revisionDiaActual.estado
         );
 
       h3.appendChild(
@@ -3333,7 +3387,7 @@ async function renderItinerario() {
       }
 
       // =================================================
-      // REVISIÓN DEL DÍA
+      // REVISIÓN DEL DÍA — SOLO BORRADOR
       // =================================================
       if (revisionMode) {
         const slot =
@@ -3344,31 +3398,38 @@ async function renderItinerario() {
         const controles =
           crearControlesRevision({
             estadoActual:
-              revisionDia.estado,
+              revisionDiaActual.estado,
 
             observacionActual:
-              revisionDia.observacion,
+              revisionDiaActual.observacion,
 
             titulo:
-              `Revisión Día ${idx + 1}`,
+              `Revisión Día ${idxDia + 1}`,
 
-            onGuardar:
-              async (
-                estado,
-                observacion
-              ) =>
-                guardarRevisionDia(
-                  grupoId,
+            onChange:
+              data => {
+                revisionDraft.dias.set(
                   fecha,
-                  estado,
-                  observacion
-                )
+                  {
+                    estado:
+                      data.estado,
+
+                    observacion:
+                      data.observacion
+                  }
+                );
+
+                actualizarTextoGuardarRevision();
+              }
           });
 
         controles.classList.add(
           'revision-dia'
         );
 
+        // ===============================================
+        // RECHAZO COMPLETO
+        // ===============================================
         const extra =
           document.createElement(
             'div'
@@ -3389,7 +3450,10 @@ async function renderItinerario() {
           'btn-rechazar-todo-dia';
 
         btnRejectAll.textContent =
-          '❌ Rechazar todas las actividades del día';
+          '❌ Rechazar todas las actividades';
+
+        btnRejectAll.title =
+          'Rechaza el día y todas sus actividades';
 
         btnRejectAll.onclick =
           async e => {
@@ -3413,9 +3477,9 @@ async function renderItinerario() {
         );
       }
 
-      // ------------------------------------------------
+      // =================================================
       // ALOJAMIENTO
-      // ------------------------------------------------
+      // =================================================
       {
         const ulAnchor =
           sec.querySelector(
@@ -3480,9 +3544,7 @@ async function renderItinerario() {
 
         box.innerHTML = `
           <div>
-            <strong>
-              ALOJAMIENTO:
-            </strong>
+            <strong>ALOJAMIENTO:</strong>
           </div>
 
           ${
@@ -3496,12 +3558,8 @@ async function renderItinerario() {
               : (
                   fecha ===
                   lastFecha
-                    ? `<div>
-                        – ÚLTIMO DÍA DEL VIAJE
-                       </div>`
-                    : `<div>
-                        – (SIN ASIGNACIÓN)
-                       </div>`
+                    ? `<div>– ÚLTIMO DÍA DEL VIAJE</div>`
+                    : `<div>– (SIN ASIGNACIÓN)</div>`
                 )
           }
         `;
@@ -3516,20 +3574,19 @@ async function renderItinerario() {
         sec
       );
 
-      // ------------------------------------------------
-      // Añadir actividad:
-      // solamente durante edición / modo normal,
-      // nunca en revisión.
-      // ------------------------------------------------
+      // =================================================
+      // AÑADIR ACTIVIDAD
+      // SOLO EN MODO EDICIÓN
+      // =================================================
       const btnAdd =
         sec.querySelector(
           ".btn-add"
         );
 
       btnAdd.style.display =
-        revisionMode
-          ? 'none'
-          : '';
+        editMode
+          ? ''
+          : 'none';
 
       btnAdd.onclick =
         e => {
@@ -3612,6 +3669,7 @@ async function renderItinerario() {
           </li>`;
 
       } else {
+
         sorted.forEach(
           ({
             act,
@@ -3656,14 +3714,36 @@ async function renderItinerario() {
               }
             }
 
-            const revision =
+            // ===========================================
+            // REVISIÓN GUARDADA + BORRADOR
+            // ===========================================
+            const revisionGuardada =
               act.revision ||
               'pendiente';
 
-            const observacion =
+            const observacionGuardada =
               act.revisionObservacion ||
               act.rechazoMotivo ||
               '';
+
+            const keyDraft =
+              keyRevisionActividad(
+                fecha,
+                originalIdx
+              );
+
+            const draftActividad =
+              revisionDraft.actividades.get(
+                keyDraft
+              );
+
+            const revisionActual =
+              draftActividad?.estado ||
+              revisionGuardada;
+
+            const observacionActual =
+              draftActividad?.observacion ??
+              observacionGuardada;
 
             const li =
               document.createElement(
@@ -3691,34 +3771,32 @@ async function renderItinerario() {
                 (A:${A} E:${E})
               </p>
 
-              <div
-                class="estado-actividad"
-              >
+              <div class="estado-actividad">
                 <span
                   class="badge ${
-                    revision ===
+                    revisionActual ===
                       'rechazado'
                       ? 'badge-rechazado'
-                      : revision ===
+                      : revisionActual ===
                           'ok'
                         ? 'badge-ok'
                         : 'badge-pendiente'
                   }"
                 >
                   ${labelEstadoRevision(
-                    revision
+                    revisionActual
                   )}
                 </span>
               </div>
 
               ${
-                observacion
+                observacionActual
                   ? `
                       <div
                         class="
                           revision-motivo-visible
                           ${
-                            revision ===
+                            revisionActual ===
                               'rechazado'
                               ? 'rechazado'
                               : ''
@@ -3728,7 +3806,8 @@ async function renderItinerario() {
                         <strong>
                           Observación:
                         </strong>
-                        ${observacion}
+
+                        ${observacionActual}
                       </div>
                     `
                   : ''
@@ -3791,7 +3870,9 @@ async function renderItinerario() {
                   openModal(
                     {
                       ...act,
+
                       fecha,
+
                       idx:
                         originalIdx
                     },
@@ -3835,6 +3916,10 @@ async function renderItinerario() {
 
                       idx:
                         originalIdx,
+
+                      actividad:
+                        beforeObj?.actividad ||
+                        '',
 
                       anterior:
                         beforeObj?.actividad ||
@@ -3926,6 +4011,7 @@ async function renderItinerario() {
                     "actividad",
                     {
                       fecha,
+
                       idx:
                         originalIdx
                     }
@@ -3934,7 +4020,7 @@ async function renderItinerario() {
             }
 
             // ==========================================
-            // REVISIÓN
+            // REVISIÓN — SOLO BORRADOR
             // ==========================================
             if (revisionMode) {
               const slot =
@@ -3945,26 +4031,37 @@ async function renderItinerario() {
               const controles =
                 crearControlesRevision({
                   estadoActual:
-                    revision,
+                    revisionActual,
 
                   observacionActual:
-                    observacion,
+                    observacionActual,
 
                   titulo:
                     'Revisión de actividad',
 
-                  onGuardar:
-                    async (
-                      estado,
-                      observacionNueva
-                    ) =>
-                      guardarRevisionActividad(
-                        grupoId,
-                        fecha,
-                        originalIdx,
-                        estado,
-                        observacionNueva
-                      )
+                  onChange:
+                    data => {
+                      revisionDraft.actividades.set(
+                        keyDraft,
+                        {
+                          fecha,
+
+                          idx:
+                            originalIdx,
+
+                          estado:
+                            data.estado,
+
+                          observacion:
+                            data.observacion,
+
+                          actividad:
+                            visibleName
+                        }
+                      );
+
+                      actualizarTextoGuardarRevision();
+                    }
                 });
 
               slot.appendChild(
@@ -3980,6 +4077,8 @@ async function renderItinerario() {
       }
     }
   );
+
+  actualizarTextoGuardarRevision();
 }
 
 // —————————————————————————————————
@@ -4964,10 +5063,22 @@ async function guardarRevisionActividad(
 // CONTROLES VISUALES DE REVISIÓN
 // ======================================================
 
+function resetRevisionDraft() {
+  revisionDraft = {
+    grupo: null,
+    dias: new Map(),
+    actividades: new Map()
+  };
+}
+
+function keyRevisionActividad(fecha, idx) {
+  return `${fecha}__${idx}`;
+}
+
 function crearControlesRevision({
   estadoActual,
   observacionActual,
-  onGuardar,
+  onChange,
   titulo = 'Revisión'
 }) {
   const estado =
@@ -5044,6 +5155,31 @@ function crearControlesRevision({
           );
         }
       });
+
+    wrapper.classList.remove(
+      'revision-pendiente',
+      'revision-ok',
+      'revision-rechazado'
+    );
+
+    wrapper.classList.add(
+      `revision-${seleccionado}`
+    );
+  }
+
+  function notificarCambio() {
+    if (
+      typeof onChange ===
+      'function'
+    ) {
+      onChange({
+        estado:
+          seleccionado,
+
+        observacion:
+          textarea.value.trim()
+      });
+    }
   }
 
   [
@@ -5091,6 +5227,8 @@ function crearControlesRevision({
           item.estado;
 
         actualizarSeleccion();
+
+        notificarCambio();
       };
 
     estados.appendChild(
@@ -5098,51 +5236,12 @@ function crearControlesRevision({
     );
   });
 
-  const btnGuardar =
-    document.createElement(
-      'button'
-    );
-
-  btnGuardar.type =
-    'button';
-
-  btnGuardar.textContent =
-    'Guardar revisión';
-
-  btnGuardar.onclick =
-    async e => {
-      stopAll(e);
-
-      const observacion =
-        textarea.value
-          .trim();
-
-      if (
-        seleccionado ===
-          'rechazado' &&
-        !observacion
-      ) {
-        alert(
-          'Debes escribir una justificación para rechazar.'
-        );
-
-        textarea.focus();
-
-        return;
-      }
-
-      const ok =
-        await onGuardar(
-          seleccionado,
-          observacion
-        );
-
-      if (
-        ok !== false
-      ) {
-        await renderItinerario();
-      }
-    };
+  textarea.addEventListener(
+    'input',
+    () => {
+      notificarCambio();
+    }
+  );
 
   wrapper.appendChild(
     estados
@@ -5150,10 +5249,6 @@ function crearControlesRevision({
 
   wrapper.appendChild(
     textarea
-  );
-
-  wrapper.appendChild(
-    btnGuardar
   );
 
   actualizarSeleccion();
@@ -5165,54 +5260,376 @@ function renderRevisionGrupo(
   grupoId,
   g
 ) {
-  if (
-    !revisionGrupoContainer
-  ) {
+  if (!revisionGrupoContainer) {
     return;
   }
 
-  revisionGrupoContainer.innerHTML =
-    '';
+  revisionGrupoContainer.innerHTML = '';
 
   if (!revisionMode) {
-    revisionGrupoContainer.style.display =
-      'none';
-
+    revisionGrupoContainer.style.display = 'none';
     return;
   }
 
-  revisionGrupoContainer.style.display =
-    '';
+  revisionGrupoContainer.style.display = '';
 
-  const rev =
+  const revGuardada =
     getRevisionGrupo(g);
 
+  const draft =
+    revisionDraft.grupo;
+
+  const estadoActual =
+    draft?.estado ||
+    revGuardada.estado;
+
+  const observacionActual =
+    draft?.observacion ??
+    revGuardada.observacion ??
+    '';
+
+  // ==========================================
+  // CONTROLES REVISIÓN GENERAL
+  // ==========================================
   const controles =
     crearControlesRevision({
-      estadoActual:
-        rev.estado,
-
-      observacionActual:
-        rev.observacion,
+      estadoActual,
+      observacionActual,
 
       titulo:
         'REVISIÓN GENERAL DEL ITINERARIO',
 
-      onGuardar:
-        async (
-          estado,
-          observacion
-        ) =>
-          guardarRevisionGrupo(
-            grupoId,
-            estado,
-            observacion
-          )
+      onChange:
+        data => {
+          revisionDraft.grupo = {
+            estado:
+              data.estado,
+
+            observacion:
+              data.observacion
+          };
+
+          actualizarTextoGuardarRevision();
+        }
     });
 
   revisionGrupoContainer.appendChild(
     controles
   );
+
+  // ==========================================
+  // BOTÓN ÚNICO DE GUARDADO
+  // ==========================================
+  const barra =
+    document.createElement(
+      'div'
+    );
+
+  barra.className =
+    'revision-guardar-general';
+
+  const btnGuardar =
+    document.createElement(
+      'button'
+    );
+
+  btnGuardar.type =
+    'button';
+
+  btnGuardar.id =
+    'btnGuardarRevisionCompleta';
+
+  btnGuardar.textContent =
+    '💾 Guardar revisión';
+
+  btnGuardar.onclick =
+    async e => {
+      stopAll(e);
+
+      await guardarRevisionCompleta(
+        grupoId
+      );
+    };
+
+  barra.appendChild(
+    btnGuardar
+  );
+
+  revisionGrupoContainer.appendChild(
+    barra
+  );
+
+  actualizarTextoGuardarRevision();
+}
+
+function contarCambiosRevisionDraft() {
+  let total = 0;
+
+  if (revisionDraft.grupo) {
+    total++;
+  }
+
+  total +=
+    revisionDraft.dias.size;
+
+  total +=
+    revisionDraft.actividades.size;
+
+  return total;
+}
+
+
+function actualizarTextoGuardarRevision() {
+  const btn =
+    document.getElementById(
+      'btnGuardarRevisionCompleta'
+    );
+
+  if (!btn) {
+    return;
+  }
+
+  const total =
+    contarCambiosRevisionDraft();
+
+  btn.textContent =
+    total
+      ? `💾 Guardar revisión (${total} cambios)`
+      : '💾 Guardar revisión';
+
+  btn.disabled =
+    total === 0;
+}
+
+async function guardarRevisionCompleta(
+  grupoId
+) {
+  if (!grupoId) {
+    return;
+  }
+
+  const cambiosActividad =
+    [
+      ...revisionDraft.actividades.values()
+    ];
+
+  const cambiosDias =
+    [
+      ...revisionDraft.dias.entries()
+    ];
+
+  const cambioGrupo =
+    revisionDraft.grupo;
+
+  const totalCambios =
+    cambiosActividad.length +
+    cambiosDias.length +
+    (
+      cambioGrupo
+        ? 1
+        : 0
+    );
+
+  if (!totalCambios) {
+    return alert(
+      'No hay cambios de revisión para guardar.'
+    );
+  }
+
+  // ==========================================
+  // 1. VALIDAR ACTIVIDADES RECHAZADAS
+  // ==========================================
+  for (
+    const item
+    of cambiosActividad
+  ) {
+    const observacion =
+      (
+        item.observacion ||
+        ''
+      ).trim();
+
+    if (
+      item.estado ===
+        'rechazado' &&
+      !observacion
+    ) {
+      return alert(
+        `Debes escribir la justificación del rechazo de:\n\n${item.actividad || 'Actividad'}`
+      );
+    }
+  }
+
+  // ==========================================
+  // 2. VALIDAR DÍAS RECHAZADOS
+  // ==========================================
+  for (
+    const [
+      fecha,
+      item
+    ]
+    of cambiosDias
+  ) {
+    const observacion =
+      (
+        item.observacion ||
+        ''
+      ).trim();
+
+    if (
+      item.estado ===
+        'rechazado' &&
+      !observacion
+    ) {
+      return alert(
+        `Debes escribir la justificación del rechazo del día ${fecha}.`
+      );
+    }
+  }
+
+  // ==========================================
+  // 3. VALIDAR REVISIÓN GENERAL
+  // ==========================================
+  if (
+    cambioGrupo?.estado ===
+      'rechazado' &&
+    !(
+      cambioGrupo.observacion ||
+      ''
+    ).trim()
+  ) {
+    return alert(
+      'Debes escribir la justificación del rechazo general del itinerario.'
+    );
+  }
+
+  const btnGuardar =
+    document.getElementById(
+      'btnGuardarRevisionCompleta'
+    );
+
+  if (btnGuardar) {
+    btnGuardar.disabled =
+      true;
+
+    btnGuardar.textContent =
+      'Guardando revisión...';
+  }
+
+  try {
+
+    // ==========================================
+    // 4. GUARDAR ACTIVIDADES
+    // ==========================================
+    for (
+      const item
+      of cambiosActividad
+    ) {
+      const ok =
+        await guardarRevisionActividad(
+          grupoId,
+          item.fecha,
+          item.idx,
+          item.estado,
+          item.observacion
+        );
+
+      if (
+        ok === false
+      ) {
+        throw new Error(
+          `No se pudo guardar la actividad ${item.actividad || ''}`
+        );
+      }
+    }
+
+    // ==========================================
+    // 5. GUARDAR DÍAS
+    // ==========================================
+    for (
+      const [
+        fecha,
+        item
+      ]
+      of cambiosDias
+    ) {
+      const ok =
+        await guardarRevisionDia(
+          grupoId,
+          fecha,
+          item.estado,
+          item.observacion
+        );
+
+      if (
+        ok === false
+      ) {
+        throw new Error(
+          `No se pudo guardar la revisión del día ${fecha}`
+        );
+      }
+    }
+
+    // ==========================================
+    // 6. GUARDAR REVISIÓN GENERAL
+    //
+    // Se hace AL FINAL porque así, si el usuario
+    // quiere dejar el grupo APROBADO, las
+    // actividades y días ya están guardados.
+    // ==========================================
+    if (cambioGrupo) {
+      const ok =
+        await guardarRevisionGrupo(
+          grupoId,
+          cambioGrupo.estado,
+          cambioGrupo.observacion
+        );
+
+      if (
+        ok === false
+      ) {
+        throw new Error(
+          'La revisión general no pudo guardarse.'
+        );
+      }
+    }
+
+    // ==========================================
+    // 7. LIMPIAR BORRADOR
+    // ==========================================
+    resetRevisionDraft();
+
+    await refreshAlertasCounts(
+      grupoId
+    );
+
+    await renderItinerario();
+
+    alert(
+      'Revisión guardada correctamente.'
+    );
+
+  } catch (error) {
+    console.error(
+      'Error guardando revisión completa:',
+      error
+    );
+
+    alert(
+      'No se pudo completar el guardado de la revisión.\n\n' +
+      (
+        error?.message ||
+        'Revisa la consola.'
+      )
+    );
+
+    if (btnGuardar) {
+      btnGuardar.disabled =
+        false;
+
+      actualizarTextoGuardarRevision();
+    }
+  }
 }
 
 // —————————————————————————————————
@@ -5687,14 +6104,14 @@ async function handleRejectDayCompleto(
 
   if (!grupoId) {
     return alert(
-      "Selecciona un grupo"
+      "Selecciona un grupo."
     );
   }
 
   const motivo =
     (
       prompt(
-        "Justificación para rechazar TODAS las actividades del día:",
+        "Justificación para rechazar el día completo y TODAS sus actividades:",
         ""
       ) ||
       ""
@@ -5706,7 +6123,7 @@ async function handleRejectDayCompleto(
     );
   }
 
-  const gSnap =
+  const snap =
     await getDoc(
       doc(
         db,
@@ -5716,161 +6133,74 @@ async function handleRejectDayCompleto(
     );
 
   const g =
-    gSnap.data() || {};
+    snap.data() || {};
 
-  const arrAnterior =
-    (
-      g.itinerario?.[fecha] ||
-      []
-    ).slice();
+  const actividades =
+    g.itinerario?.[fecha] ||
+    [];
 
-  if (!arrAnterior.length) {
+  if (!actividades.length) {
     return alert(
       "Este día no tiene actividades."
     );
   }
 
-  const nuevoArr =
-    arrAnterior.map(
-      act => ({
-        ...act,
-
-        revision:
-          'rechazado',
-
-        revisionObservacion:
-          motivo,
-
-        revisionUsuario:
-          auth.currentUser?.email ||
-          '',
-
-        revisionTimestamp:
-          new Date(),
-
-        rechazoMotivo:
-          motivo
-      })
-    );
-
-  await updateDoc(
-    doc(
-      db,
-      'grupos',
-      grupoId
-    ),
+  // ===============================================
+  // EL DÍA TAMBIÉN QUEDA RECHAZADO
+  // ===============================================
+  revisionDraft.dias.set(
+    fecha,
     {
-      [`itinerario.${fecha}`]:
-        nuevoArr
-    }
-  );
-
-  // Resolver alertas anteriores de esas actividades.
-  await Promise.all(
-    arrAnterior.map(
-      (
-        act,
-        idx
-      ) =>
-        resolverAlertasRevision(
-          grupoId,
-          {
-            tipo:
-              'actividad',
-
-            fecha,
-
-            idx,
-
-            actividad:
-              act.actividad ||
-              ''
-          },
-          'Rechazo completo del día'
-        )
-    )
-  );
-
-  // Crear nueva alerta por actividad.
-  await Promise.all(
-    nuevoArr.map(
-      (
-        act,
-        idx
-      ) =>
-        crearAlertaRevision(
-          grupoId,
-          {
-            tipo:
-              'actividad',
-
-            fecha,
-
-            idx,
-
-            actividad:
-              act.actividad ||
-              '',
-
-            horaInicio:
-              act.horaInicio ||
-              '',
-
-            horaFin:
-              act.horaFin ||
-              '',
-
-            motivo
-          }
-        )
-    )
-  );
-
-  await logHist(
-    grupoId,
-    'RECHAZAR TODAS LAS ACTIVIDADES DEL DÍA',
-    {
-      _group:
-        g,
-
-      categoria:
-        'REVISION',
-
-      tipoRevision:
-        'dia_actividades',
-
-      fecha,
-      fechaActividad:
-        fecha,
-
-      anterior:
-        `Actividades: ${arrAnterior.length}`,
-
-      nuevo:
-        `Todas quedaron RECHAZADAS`,
-
-      estadoNuevo:
+      estado:
         'rechazado',
 
-      motivo,
-
-      detalle:
-        `${arrAnterior.length} actividades rechazadas`
+      observacion:
+        motivo
     }
   );
 
-  await marcarGrupoPendientePorCambio(
-    grupoId,
-    `Se rechazaron actividades del día ${fecha}.`
+  // ===============================================
+  // TODAS SUS ACTIVIDADES QUEDAN RECHAZADAS
+  // EN BORRADOR
+  // ===============================================
+  actividades.forEach(
+    (
+      act,
+      idx
+    ) => {
+      const key =
+        keyRevisionActividad(
+          fecha,
+          idx
+        );
+
+      revisionDraft.actividades.set(
+        key,
+        {
+          fecha,
+
+          idx,
+
+          estado:
+            'rechazado',
+
+          observacion:
+            motivo,
+
+          actividad:
+            act.actividad ||
+            '(actividad)'
+        }
+      );
+    }
   );
 
-  await refreshAlertasCounts(
-    grupoId
-  );
+  actualizarTextoGuardarRevision();
 
+  // Solo vuelve a dibujar usando el borrador.
+  // NO guarda todavía en Firestore.
   await renderItinerario();
 }
-
 // ===== MIGRACIÓN/UTILIDADES (se mantienen) =====
 
 // Índices de reparación global (sin cambios de lógica principal)
