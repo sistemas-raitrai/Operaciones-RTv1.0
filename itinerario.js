@@ -5054,7 +5054,7 @@ function crearControlesRevision({
     },
     {
       estado: 'ok',
-      texto: '🎟️',
+      texto: '✅',
       title: 'Aprobado'
     },
     {
