@@ -215,6 +215,24 @@ const listAlertasOtros   = document.getElementById("alertas-otros");
 const listAlertasLeidas   = document.getElementById("alertas-actual-leidas");
 const listAlertasPend     = document.getElementById("alertas-pendientes");
 
+const btnAlertasGrupo =
+  document.getElementById(
+    "btnAlertasGrupo"
+  );
+
+const btnAlertasGeneral =
+  document.getElementById(
+    "btnAlertasGeneral"
+  );
+
+const alertasEncabezado =
+  document.getElementById(
+    "alertas-encabezado"
+  );
+
+let alertasModo =
+  'grupo';
+
 /* [ADD] Refs Modal Estadísticas */
 const modalStats   = document.getElementById("modal-estadisticas");
 const bgStats      = document.getElementById("modal-backdrop-stats");
@@ -1442,7 +1460,38 @@ async function initItinerario() {
   btnCargarTpl.onclick    = (e)=>{ stopAll(e); cargarPlantilla(); };
 
   if (btnAlertas) {
-    btnAlertas.onclick      = (e)=>{ stopAll(e); openAlertasPanel(); };
+    btnAlertas.onclick =
+      e => {
+        stopAll(e);
+  
+        openAlertasPanel(
+          'grupo'
+        );
+      };
+  }
+  
+  
+  if (btnAlertasGrupo) {
+    btnAlertasGrupo.onclick =
+      e => {
+        stopAll(e);
+  
+        openAlertasPanel(
+          'grupo'
+        );
+      };
+  }
+  
+  
+  if (btnAlertasGeneral) {
+    btnAlertasGeneral.onclick =
+      e => {
+        stopAll(e);
+  
+        openAlertasPanel(
+          'general'
+        );
+      };
   }
   // Pendientes
   if (btnPendientes) {
@@ -2498,468 +2547,732 @@ async function openPendientesPanel(
 // —————————————————————————————————
 // Panel de Alertas
 // —————————————————————————————————
-async function openAlertasPanel() {
-  const grupoId = selectNum.value;
+function alertaRevisionEstaActiva(
+  alerta,
+  grupo
+) {
+  // ----------------------------------------------
+  // Registros nuevos:
+  // resuelta manda.
+  // ----------------------------------------------
+  if (
+    alerta.resuelta !==
+    undefined
+  ) {
+    return (
+      alerta.resuelta !==
+      true
+    );
+  }
+
+  // ----------------------------------------------
+  // Registros antiguos:
+  // determinamos su estado mirando la revisión
+  // REAL actual del elemento.
+  // ----------------------------------------------
+  const tipo =
+    alerta.tipo ||
+    'actividad';
+
+  if (
+    tipo ===
+    'grupo'
+  ) {
+    return (
+      getRevisionGrupo(grupo)
+        .estado ===
+      'rechazado'
+    );
+  }
+
+  if (
+    tipo ===
+    'dia'
+  ) {
+    return (
+      getRevisionDia(
+        grupo,
+        alerta.fecha
+      ).estado ===
+      'rechazado'
+    );
+  }
+
+  const actividades =
+    grupo.itinerario?.[
+      alerta.fecha
+    ] ||
+    [];
+
+  // Preferimos idx.
+  if (
+    Number.isInteger(
+      alerta.idx
+    ) &&
+    actividades[
+      alerta.idx
+    ]
+  ) {
+    return (
+      (
+        actividades[
+          alerta.idx
+        ].revision ||
+        'pendiente'
+      ) ===
+      'rechazado'
+    );
+  }
+
+  // Compatibilidad alertas antiguas:
+  // buscar por nombre.
+  const encontrada =
+    actividades.find(
+      act =>
+        (
+          act.actividad ||
+          ''
+        ) ===
+        (
+          alerta.actividad ||
+          ''
+        )
+    );
+
+  return (
+    (
+      encontrada?.revision ||
+      ''
+    ) ===
+    'rechazado'
+  );
+}
+
+
+function etiquetaTipoAlerta(
+  tipo
+) {
+  if (
+    tipo ===
+    'grupo'
+  ) {
+    return 'GRUPO';
+  }
+
+  if (
+    tipo ===
+    'dia'
+  ) {
+    return 'DÍA';
+  }
+
+  return 'ACTIVIDAD';
+}
+
+
+function ordenarAlertasDesc(
+  a,
+  b
+) {
+  const getTime =
+    value => {
+      try {
+        if (
+          value?.toDate &&
+          typeof value.toDate ===
+          'function'
+        ) {
+          return value
+            .toDate()
+            .getTime();
+        }
+
+        const d =
+          new Date(
+            value || 0
+          );
+
+        return Number.isNaN(
+          d.getTime()
+        )
+          ? 0
+          : d.getTime();
+
+      } catch (_) {
+        return 0;
+      }
+    };
+
+  return (
+    getTime(
+      b.creadoEn
+    ) -
+    getTime(
+      a.creadoEn
+    )
+  );
+}
+
+
+function renderListaAlertasRevision(
+  lista,
+  rows,
+  {
+    mostrarGrupo = false,
+    resueltas = false
+  } = {}
+) {
+  if (!lista) {
+    return;
+  }
+
+  if (!rows.length) {
+    lista.innerHTML = `
+      <li class="alert-item">
+        <div>
+          ${
+            resueltas
+              ? '— No hay rechazos resueltos —'
+              : '— No hay rechazos activos —'
+          }
+        </div>
+      </li>
+    `;
+
+    return;
+  }
+
+  lista.innerHTML =
+    rows.map(a => {
+
+      const tipo =
+        etiquetaTipoAlerta(
+          a.tipo
+        );
+
+      const titulo =
+        a.tipo === 'grupo'
+          ? 'REVISIÓN GENERAL DEL ITINERARIO'
+          : a.tipo === 'dia'
+            ? (
+                a.actividad ||
+                `DÍA ${a.fecha || ''}`
+              )
+            : (
+                a.actividad ||
+                '(actividad)'
+              );
+
+      return `
+        <li
+          class="alert-item ${
+            resueltas
+              ? 'visto'
+              : ''
+          }"
+        >
+          <div>
+
+            ${
+              mostrarGrupo
+                ? `
+                    <div
+                      style="
+                        margin-bottom:5px;
+                      "
+                    >
+                      <strong>
+                        #${a.numeroNegocio || '—'}
+                        ·
+                        ${
+                          (
+                            a.nombreGrupo ||
+                            ''
+                          )
+                            .toString()
+                            .toUpperCase()
+                        }
+                      </strong>
+                    </div>
+                  `
+                : ''
+            }
+
+            <div>
+              <strong>
+                ${
+                  resueltas
+                    ? '✅'
+                    : '❌'
+                }
+                ${tipo}
+                ·
+                ${titulo}
+              </strong>
+            </div>
+
+            ${
+              a.fecha
+                ? `
+                    <div class="meta">
+                      ${formatDiaItinerario(
+                        a.fecha
+                      )}
+                      ${
+                        a.horaInicio
+                          ? ` · ${a.horaInicio}${
+                              a.horaFin
+                                ? '–' + a.horaFin
+                                : ''
+                            }`
+                          : ''
+                      }
+                    </div>
+                  `
+                : ''
+            }
+
+            ${
+              a.motivo
+                ? `
+                    <div class="motivo">
+                      <strong>
+                        Justificación:
+                      </strong>
+                      ${a.motivo}
+                    </div>
+                  `
+                : ''
+            }
+
+            ${
+              a.creadoPor ||
+              a.creadoEn
+                ? `
+                    <div
+                      class="meta"
+                      style="
+                        opacity:.72;
+                        margin-top:4px;
+                      "
+                    >
+                      Rechazado por:
+                      ${a.creadoPor || '—'}
+
+                      ${
+                        a.creadoEn
+                          ? ` · ${fmtTS(
+                              a.creadoEn
+                            )}`
+                          : ''
+                      }
+                    </div>
+                  `
+                : ''
+            }
+
+            ${
+              resueltas
+                ? `
+                    <div
+                      class="meta"
+                      style="
+                        margin-top:6px;
+                        padding-top:5px;
+                        border-top:1px solid #e5e7eb;
+                      "
+                    >
+                      <strong>
+                        Resuelta:
+                      </strong>
+
+                      ${
+                        a.resueltaMotivo ||
+                        (
+                          a.visto &&
+                          a.resuelta ===
+                            undefined
+                            ? 'Registro anterior'
+                            : 'Cambio de estado'
+                        )
+                      }
+
+                      ${
+                        a.resueltaPor
+                          ? ` · ${a.resueltaPor}`
+                          : ''
+                      }
+
+                      ${
+                        a.resueltaEn
+                          ? ` · ${fmtTS(
+                              a.resueltaEn
+                            )}`
+                          : ''
+                      }
+                    </div>
+                  `
+                : ''
+            }
+
+          </div>
+        </li>
+      `;
+    }).join('');
+}
+
+async function openAlertasPanel(
+  modo = 'grupo'
+) {
+  const grupoId =
+    selectNum.value;
 
   if (!grupoId) {
-    return alert("Selecciona un grupo");
+    return alert(
+      "Selecciona un grupo"
+    );
   }
 
   if (!modalAlertas) {
     return;
   }
 
-  modalAlertas.style.display = "block";
+  alertasModo =
+    modo;
+
+  modalAlertas.style.display =
+    "block";
 
   if (modalBg) {
-    modalBg.style.display = "block";
+    modalBg.style.display =
+      "block";
   }
 
   document.body.classList.add(
     'modal-open'
   );
 
-  // ------------------------------------------------
-  // Todos los grupos del año operativo vigente
-  // ------------------------------------------------
-  let gruposAno = [];
-
-  try {
-    gruposAno =
-      await getGruposAnoOperativo();
-  } catch (e) {
-    console.warn(
-      'Error cargando grupos del año operativo:',
-      e
-    );
+  // Las secciones antiguas ya no participan.
+  if (listAlertasOtros) {
+    listAlertasOtros.style.display =
+      'none';
   }
 
-  // ------------------------------------------------
-  // Resumen OK
-  // ------------------------------------------------
-  const okCount = gruposAno.filter(
-    g =>
-      g.estadoRevisionItinerario === 'OK'
-  ).length;
+  if (listAlertasPend) {
+    listAlertasPend.style.display =
+      'none';
+  }
 
-  upsertResumenOK(okCount);
-
-  // ------------------------------------------------
-  // 1. Alertas del grupo actualmente abierto
-  // ------------------------------------------------
   if (listAlertasActual) {
     listAlertasActual.innerHTML =
-      "Cargando…";
+      `<li class="alert-item">
+        Cargando…
+      </li>`;
   }
 
   if (listAlertasLeidas) {
-    listAlertasLeidas.innerHTML = "";
+    listAlertasLeidas.innerHTML =
+      '';
   }
 
-  try {
-    const qs = await getDocs(
-      collection(
-        db,
-        'grupos',
-        grupoId,
-        'alertas'
-      )
-    );
+  // ==================================================
+  // ESTE GRUPO
+  // ==================================================
+  if (
+    modo ===
+    'grupo'
+  ) {
+    try {
+      const [
+        grupoSnap,
+        alertasSnap
+      ] =
+        await Promise.all([
+          getDoc(
+            doc(
+              db,
+              'grupos',
+              grupoId
+            )
+          ),
 
-    const toMillis = value => {
-      if (!value) return 0;
+          getDocs(
+            collection(
+              db,
+              'grupos',
+              grupoId,
+              'alertas'
+            )
+          )
+        ]);
+
+      const g =
+        grupoSnap.data() ||
+        {};
+
+      const todas =
+        alertasSnap.docs
+          .map(d => ({
+            id:
+              d.id,
+
+            ...d.data()
+          }))
+          .sort(
+            ordenarAlertasDesc
+          );
+
+      const activas =
+        [];
+
+      const resueltas =
+        [];
+
+      todas.forEach(a => {
+        if (
+          alertaRevisionEstaActiva(
+            a,
+            g
+          )
+        ) {
+          activas.push(a);
+
+        } else {
+          resueltas.push(a);
+        }
+      });
 
       if (
-        value?.toDate &&
-        typeof value.toDate === 'function'
+        alertasEncabezado
       ) {
-        return value.toDate().getTime();
+        alertasEncabezado.innerHTML = `
+          <strong>
+            #${g.numeroNegocio || grupoId}
+            ·
+            ${
+              (
+                g.nombreGrupo ||
+                ''
+              )
+                .toString()
+                .toUpperCase()
+            }
+          </strong>
+
+          <div
+            style="
+              margin-top:4px;
+            "
+          >
+            ❌ Rechazos activos:
+            <b>${activas.length}</b>
+
+            ·
+
+            ✅ Resueltos:
+            <b>${resueltas.length}</b>
+          </div>
+        `;
       }
 
-      const d = new Date(value);
+      renderListaAlertasRevision(
+        listAlertasActual,
+        activas,
+        {
+          mostrarGrupo:
+            false,
 
-      return Number.isNaN(d.getTime())
-        ? 0
-        : d.getTime();
-    };
-
-    const arr = qs.docs
-      .map(d => ({
-        id: d.id,
-        ...d.data()
-      }))
-      .sort(
-        (a, b) =>
-          toMillis(b.creadoEn) -
-          toMillis(a.creadoEn)
+          resueltas:
+            false
+        }
       );
 
-    const noVistas = arr.filter(
-      a => !a.visto
-    );
+      renderListaAlertasRevision(
+        listAlertasLeidas,
+        resueltas,
+        {
+          mostrarGrupo:
+            false,
 
-    const vistas = arr.filter(
-      a => a.visto
-    );
+          resueltas:
+            true
+        }
+      );
 
-    if (listAlertasActual) {
-      listAlertasActual.innerHTML =
-        noVistas.length
-          ? noVistas.map(a => `
-              <li class="alert-item">
-                <div>
-                  <strong>
-                    ${a.actividad || '(actividad)'}
-                  </strong>
+      await refreshAlertasCounts(
+        grupoId
+      );
 
-                  <small>
-                    · ${a.fecha || ''}
-                    ${
-                      a.horaInicio
-                        ? `· ${a.horaInicio}${
-                            a.horaFin
-                              ? '–' + a.horaFin
-                              : ''
-                          }`
-                        : ''
-                    }
-                  </small>
+    } catch (e) {
+      console.error(
+        'Error cargando alertas del grupo:',
+        e
+      );
 
-                  ${
-                    a.motivo
-                      ? `<div class="motivo">
-                          Motivo: ${a.motivo}
-                        </div>`
-                      : ''
-                  }
+      if (
+        listAlertasActual
+      ) {
+        listAlertasActual.innerHTML = `
+          <li class="alert-item">
+            Error al cargar las alertas.
+          </li>
+        `;
+      }
+    }
 
-                  ${
-                    a.creadoPor
-                      ? `<div
-                           class="meta"
-                           style="opacity:.7;"
-                         >
-                           Rechazado por:
-                           ${a.creadoPor}
-                         </div>`
-                      : ''
-                  }
-                </div>
+    return;
+  }
 
-                <div class="actions">
-                  <button
-                    type="button"
-                    data-id="${a.id}"
-                    class="btn-ver-alerta"
-                  >
-                    Marcar visto
-                  </button>
-                </div>
-              </li>
-            `).join('')
-          : `
-              <li class="alert-item">
-                <div>
-                  — Sin alertas —
-                </div>
-              </li>
-            `;
+  // ==================================================
+  // GENERAL DEL AÑO OPERATIVO
+  // ==================================================
+  try {
+    const grupos =
+      await getGruposAnoOperativo();
 
-      listAlertasActual
-        .querySelectorAll(
-          '.btn-ver-alerta'
-        )
-        .forEach(btn => {
-          btn.onclick = async e => {
-            stopAll(e);
+    const resultados =
+      await Promise.all(
+        grupos.map(
+          async g => {
+            try {
+              const snap =
+                await getDocs(
+                  collection(
+                    db,
+                    'grupos',
+                    g.id,
+                    'alertas'
+                  )
+                );
 
-            const id =
-              btn.getAttribute(
-                'data-id'
+              return snap.docs.map(
+                d => ({
+                  id:
+                    d.id,
+
+                  ...d.data(),
+
+                  grupoId:
+                    g.id,
+
+                  numeroNegocio:
+                    g.numeroNegocio ||
+                    g.id,
+
+                  nombreGrupo:
+                    g.nombreGrupo ||
+                    '',
+
+                  _grupo:
+                    g
+                })
               );
 
-            await updateDoc(
-              doc(
-                db,
-                'grupos',
-                grupoId,
-                'alertas',
-                id
-              ),
-              {
-                visto: true,
-                leidoPor:
-                  auth.currentUser?.email ||
-                  '',
-                leidoEn: new Date()
-              }
-            );
+            } catch (_) {
+              return [];
+            }
+          }
+        )
+      );
 
-            await refreshAlertasCounts(
-              grupoId
-            );
+    const todas =
+      resultados
+        .flat()
+        .sort(
+          ordenarAlertasDesc
+        );
 
-            await openAlertasPanel();
-          };
-        });
+    const activas =
+      [];
+
+    const resueltas =
+      [];
+
+    todas.forEach(a => {
+      if (
+        alertaRevisionEstaActiva(
+          a,
+          a._grupo
+        )
+      ) {
+        activas.push(a);
+
+      } else {
+        resueltas.push(a);
+      }
+    });
+
+    if (
+      alertasEncabezado
+    ) {
+      alertasEncabezado.innerHTML = `
+        <strong>
+          ALERTAS GENERALES
+          ${getAnoViajeOperativoActual()}
+        </strong>
+
+        <div
+          style="
+            margin-top:4px;
+          "
+        >
+          Grupos revisados:
+          <b>${grupos.length}</b>
+
+          ·
+
+          ❌ Rechazos activos:
+          <b>${activas.length}</b>
+
+          ·
+
+          ✅ Rechazos resueltos:
+          <b>${resueltas.length}</b>
+        </div>
+      `;
     }
 
-    if (listAlertasLeidas) {
-      listAlertasLeidas.innerHTML =
-        vistas.length
-          ? vistas.map(a => `
-              <li class="alert-item visto">
-                <div>
-                  <strong>
-                    ${a.actividad || '(actividad)'}
-                  </strong>
+    renderListaAlertasRevision(
+      listAlertasActual,
+      activas,
+      {
+        mostrarGrupo:
+          true,
 
-                  <small>
-                    · ${a.fecha || ''}
-                    ${
-                      a.horaInicio
-                        ? `· ${a.horaInicio}${
-                            a.horaFin
-                              ? '–' + a.horaFin
-                              : ''
-                          }`
-                        : ''
-                    }
-                  </small>
+        resueltas:
+          false
+      }
+    );
 
-                  ${
-                    a.motivo
-                      ? `<div class="motivo">
-                          Motivo: ${a.motivo}
-                        </div>`
-                      : ''
-                  }
+    renderListaAlertasRevision(
+      listAlertasLeidas,
+      resueltas,
+      {
+        mostrarGrupo:
+          true,
 
-                  ${
-                    a.creadoPor
-                      ? `<div
-                           class="meta"
-                           style="opacity:.7;"
-                         >
-                           Rechazado por:
-                           ${a.creadoPor}
-                         </div>`
-                      : ''
-                  }
-
-                  ${
-                    a.leidoPor ||
-                    a.leidoEn
-                      ? `<div
-                           class="meta"
-                           style="opacity:.7;"
-                         >
-                           Leído por:
-                           ${a.leidoPor || '—'}
-                           ${
-                             a.leidoEn
-                               ? ' · ' +
-                                 fmtTS(
-                                   a.leidoEn
-                                 )
-                               : ''
-                           }
-                         </div>`
-                      : ''
-                  }
-                </div>
-              </li>
-            `).join('')
-          : `
-              <li class="alert-item">
-                <div>
-                  — No hay alertas leídas —
-                </div>
-              </li>
-            `;
-    }
+        resueltas:
+          true
+      }
+    );
 
   } catch (e) {
-    console.warn(
-      'Error cargando alertas:',
+    console.error(
+      'Error cargando alertas generales:',
       e
     );
 
-    if (listAlertasActual) {
-      listAlertasActual.innerHTML =
-        `<li class="empty">
-          Error al cargar alertas.
-        </li>`;
+    if (
+      listAlertasActual
+    ) {
+      listAlertasActual.innerHTML = `
+        <li class="alert-item">
+          Error al cargar las alertas generales.
+        </li>
+      `;
     }
-
-    if (listAlertasLeidas) {
-      listAlertasLeidas.innerHTML = "";
-    }
-  }
-
-  // ------------------------------------------------
-  // Helper para ir a otro grupo
-  // ------------------------------------------------
-  function conectarBotonesIrGrupo(
-    contenedor
-  ) {
-    if (!contenedor) {
-      return;
-    }
-
-    contenedor
-      .querySelectorAll(
-        '.btn-ir-grupo'
-      )
-      .forEach(btn => {
-        btn.onclick = e => {
-          stopAll(e);
-
-          const id =
-            btn.getAttribute(
-              'data-id'
-            );
-
-          choicesGrupoNum
-            .setChoiceByValue(id);
-
-          choicesGrupoNom
-            .setChoiceByValue(id);
-
-          modalAlertas.style.display =
-            "none";
-
-          if (modalBg) {
-            modalBg.style.display =
-              "none";
-          }
-
-          document.body.classList.remove(
-            'modal-open'
-          );
-
-          renderItinerario();
-        };
-      });
-  }
-
-  // ------------------------------------------------
-  // 2. Grupos RECHAZADOS
-  // ------------------------------------------------
-  if (listAlertasOtros) {
-    const rechazados =
-      gruposAno.filter(g =>
-        g.id !== grupoId &&
-        g.estadoRevisionItinerario ===
-          'RECHAZADO'
-      );
-
-    listAlertasOtros.innerHTML =
-      rechazados.length
-        ? rechazados.map(g => `
-            <li class="alert-item">
-              <div>
-                <strong>
-                  ${(
-                    g.nombreGrupo || ''
-                  )
-                    .toString()
-                    .toUpperCase()}
-                </strong>
-
-                <small>
-                  · #${
-                    g.numeroNegocio ||
-                    g.id
-                  }
-                  · RECHAZADO
-                </small>
-              </div>
-
-              <div class="actions">
-                <button
-                  type="button"
-                  class="btn-ir-grupo"
-                  data-id="${g.id}"
-                >
-                  Ir al itinerario
-                </button>
-              </div>
-            </li>
-          `).join('')
-        : `
-            <li class="empty">
-              — No hay otros grupos
-              rechazados —
-            </li>
-          `;
-
-    conectarBotonesIrGrupo(
-      listAlertasOtros
-    );
-  }
-
-  // ------------------------------------------------
-  // 3. Grupos PENDIENTES
-  // ------------------------------------------------
-  if (listAlertasPend) {
-    const pendientes =
-      gruposAno.filter(g =>
-        g.id !== grupoId &&
-        (
-          g.estadoRevisionItinerario ||
-          'PENDIENTE'
-        ) === 'PENDIENTE'
-      );
-
-    listAlertasPend.innerHTML =
-      pendientes.length
-        ? pendientes.map(g => `
-            <li class="alert-item">
-              <div>
-                <strong>
-                  ${(
-                    g.nombreGrupo || ''
-                  )
-                    .toString()
-                    .toUpperCase()}
-                </strong>
-
-                <small>
-                  · #${
-                    g.numeroNegocio ||
-                    g.id
-                  }
-                  · PENDIENTE
-                </small>
-              </div>
-
-              <div class="actions">
-                <button
-                  type="button"
-                  class="btn-ir-grupo"
-                  data-id="${g.id}"
-                >
-                  Ir al itinerario
-                </button>
-              </div>
-            </li>
-          `).join('')
-        : `
-            <li class="alert-item">
-              <div>
-                — No hay otros grupos
-                pendientes —
-              </div>
-            </li>
-          `;
-
-    conectarBotonesIrGrupo(
-      listAlertasPend
-    );
   }
 }
-
 // —————————————————————————————————
 /** 3) renderItinerario(): dibuja grilla (sincronizado) **/
 // —————————————————————————————————
