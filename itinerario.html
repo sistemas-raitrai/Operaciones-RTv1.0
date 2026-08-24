@@ -288,6 +288,110 @@
       margin-top:8px;
     }
 
+    /* =====================================================
+       EDITOR ITINERARIO — NUEVA DIAGRAMACIÓN
+       ===================================================== */
+    
+    .editor-itinerario-box{
+      width:100%;
+      box-sizing:border-box;
+      border:1px solid #d8dee8;
+      border-radius:10px;
+      background:#fff;
+      padding:14px 16px;
+      margin:14px 0 18px;
+    }
+    
+    .editor-itinerario-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      margin-bottom:12px;
+      padding-bottom:10px;
+      border-bottom:1px solid #e5e7eb;
+    }
+    
+    .editor-itinerario-header h3{
+      margin:0;
+      font-size:1rem;
+    }
+    
+    .editor-itinerario-estado{
+      display:flex;
+      align-items:center;
+      gap:7px;
+      font-weight:600;
+      white-space:nowrap;
+    }
+    
+    .editor-itinerario-grid{
+      display:grid;
+      grid-template-columns:
+        minmax(220px, 1.2fr)
+        110px
+        minmax(260px, 2fr)
+        100px;
+      gap:12px;
+      align-items:end;
+    }
+    
+    .editor-campo{
+      min-width:0;
+    }
+    
+    .editor-campo label{
+      display:block;
+      margin-bottom:5px;
+      font-weight:600;
+    }
+    
+    .editor-campo input,
+    .editor-campo select,
+    .editor-campo .choices{
+      width:100%;
+      box-sizing:border-box;
+    }
+    
+    .editor-boton .btn-add{
+      width:100%;
+      height:36px;
+    }
+    
+    .editor-dia .choices{
+      margin-bottom:0;
+    }
+    
+    @media (max-width: 900px){
+      .editor-itinerario-grid{
+        grid-template-columns:1fr 1fr;
+      }
+    
+      .editor-actividad{
+        grid-column:1 / span 1;
+      }
+    
+      .editor-boton{
+        grid-column:2;
+      }
+    }
+    
+    @media (max-width: 600px){
+      .editor-itinerario-header{
+        flex-direction:column;
+        align-items:flex-start;
+      }
+    
+      .editor-itinerario-grid{
+        grid-template-columns:1fr;
+      }
+    
+      .editor-actividad,
+      .editor-boton{
+        grid-column:auto;
+      }
+    }
+
   </style>
 </head>
 <body class="itinerario-page">
@@ -485,12 +589,7 @@
     
     </section>
 
-    <!-- Banda Estado Revisión (ubicada debajo del editor y antes de las cards) -->
-    <div id="estado-revision" class="estado-revision">
-      Estado revisión:
-      <span id="estado-badge" class="badge badge-pendiente">PENDIENTE</span>
-    </div>
-    
+    <!-- Banda Estado Revisión (ubicada debajo del editor y antes de las cards) -->  
     <div
       id="revision-grupo-container"
       style="display:none; margin:12px 0 18px;"
