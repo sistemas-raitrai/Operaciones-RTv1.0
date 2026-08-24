@@ -1699,8 +1699,8 @@ function actualizarUIEstadoModos() {
   if (btnToggleRevision) {
     btnToggleRevision.textContent =
       revisionMode
-        ? "🔒 Desactivar revisión"
-        : "🔎 Activar revisión";
+        ? "🔒 Desactivar Revisión"
+        : "🔎 Activar Revisión";
   }
 
   const quickAdd =
