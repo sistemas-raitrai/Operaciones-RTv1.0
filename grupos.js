@@ -1207,19 +1207,6 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
         )
     )
   );
-    anoResuelto === 'todos'
-      ? null
-      : Number(
-          anoResuelto
-        ),
-  
-    docsGrupos.map(
-      d =>
-        String(
-          d.id
-        )
-    )
-  );
   setCarga(35, 'Coordinadores cargados', 'Preparando tabla principal');
 
   // 2) Mapear docs → {id,fila:[], coordTexto} PARA LA TABLA
@@ -1407,6 +1394,10 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       nombreGrupo: d.nombreGrupo ?? '',
       anoViaje: d.anoViaje ?? '',
       vendedora: d.vendedora ?? '',
+      cantidadCoordinadores:
+        normalizarCantidadCoordinadores(
+          d.cantidadCoordinadores
+        ),
       cantidadgrupo: toNum(d.cantidadgrupo),
       adultos: toNum(d.adultos),
       estudiantes: toNum(d.estudiantes),
@@ -1466,7 +1457,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
             const co = _dmy(_toISO(h.checkOut));
             return `${name}${ci||co ? ` (${ci} → ${co})` : ''}`;
           }).join(' · ');
-          fila[16] = txt || fila[16]; // Columna "hoteles"
+          fila[17] = txt || fila[17]; // Columna "hoteles"
           // Mantener también en GRUPOS_RAW para Totales por "Hoteles"
           const graw = GRUPOS_RAW[idx]; if (graw) graw.hoteles = txt;
         }
@@ -1490,16 +1481,16 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
             const lVta = (v0.presentacionVueltaHora || v0.vueloVueltaHora)
               ? ` · VUELTA: ${v0.presentacionVueltaHora?('PRES '+v0.presentacionVueltaHora):''}${v0.vueloVueltaHora?(v0.presentacionVueltaHora?' · ':'')+'VUELO '+v0.vueloVueltaHora:''}`
               : '';
-            fila[18] = `AÉREO${tipo?(' · '+tipo):''}${nro?(' · '+nro):''} · ${ida||'—'} → ${vta||'—'}${lIda}${lVta}`.trim();
-            fila[19] = Array.isArray(v0.tramos) && v0.tramos.length
+            fila[19] = `AÉREO${tipo?(' · '+tipo):''}${nro?(' · '+nro):''} · ${ida||'—'} → ${vta||'—'}${lIda}${lVta}`.trim();
+            fila[20] = Array.isArray(v0.tramos) && v0.tramos.length
               ? `${v0.tramos.length} TRAMO(S)`
-              : (fila[19] || '');
+              : (fila[20] || '');
           } else {
             // BUS
             const idaH = v0.idaHora || '';
             const vtaH = v0.vueltaHora || '';
-            fila[18] = `TERRESTRE (BUS)${idaH||vtaH?` · SALIDA: ${idaH||'—'} · REGRESO: ${vtaH||'—'}`:''}`;
-            fila[19] = fila[19] || ''; // puedes usarlo para #buses si lo deseas
+            fila[19] = `TERRESTRE (BUS)${idaH||vtaH?` · SALIDA: ${idaH||'—'} · REGRESO: ${vtaH||'—'}`:''}`;
+            fila[20] = fila[20] || ''; // puedes usarlo para #buses si lo deseas
           }
           // Mantener para Totales por "Transporte"
           const graw = GRUPOS_RAW[idx]; if (graw) graw.transporte = fila[18];
@@ -1523,9 +1514,9 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
   valores.forEach(item => {
     const fila = item.fila;
-    destinosUnicos.add(fila[10]);          // Destino
+    destinosUnicos.add(fila[11);          // Destino
     aniosUnicos.add(fila[3]);              // Año
-    if (fila[18]) transportesUnicos.add(fila[18]); // Texto de TRANSPORTE (vuelo/bus) ya enriquecido
+    if (fila[19]) transportesUnicos.add(fila[19]); // Texto de TRANSPORTE (vuelo/bus) ya enriquecido
   });
 
   const destinos    = Array.from(destinosUnicos).sort();
@@ -1695,7 +1686,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     if (settings.nTable.id !== 'tablaGrupos') return true;
 
     // 1) FILTRO DE VUELOS → usamos la columna Transporte (índice 20)
-    const trans = (rowData[20] || '').toString();
+    const trans = (rowData[21] || '').toString();
 
     // Tipo vuelo: 'charter' | 'regular' | 'all'
     if (FLT_FILTER.tipo === 'charter' || FLT_FILTER.tipo === 'regular') {
@@ -1803,11 +1794,11 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     const val = this.value || '';
     if (!val) {
       // Limpia filtro de columna
-      tabla.column(20).search('', true, false).draw();
+      tabla.column(21).search('', true, false).draw();
     } else {
       const escaped = $.fn.dataTable.util.escapeRegex(val);
       // ^...$ para coincidencia EXACTA del texto de Transporte
-      tabla.column(20).search('^' + escaped + '$', true, false).draw();
+      tabla.column(21).search('^' + escaped + '$', true, false).draw();
     }
   });
 
@@ -1940,31 +1931,103 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
       let nuevoValor;   // lo que enviaremos a Firestore
       let displayText;  // lo que dejamos visible en la celda
 
-      if (NUMERIC_FIELDS.has(campo)) {
-        // Validación/normalización numérica (solo enteros)
-        if (raw === '') {
-          nuevoValor  = 0;
-          displayText = '0';
-        } else {
-          const n = Number(raw.replace(/[^\d.-]/g, ''));
-          if (!Number.isFinite(n)) {
-            // inválido -> revertimos visualmente
-            $td.text(String(orig ?? ''));
-            return;
-          }
-          const entero = Math.trunc(n);
-          nuevoValor  = entero;           // Firestore: Number
-          displayText = String(entero);   // UI
-        }
-
+      if (
+        NUMERIC_FIELDS.has(
+          campo
+        )
+      ) {
+        // =====================================================
+        // CANTIDAD DE COORDINADORES
+        // =====================================================
+      
         if (
           campo ===
           'cantidadCoordinadores'
         ) {
+          const n =
+            Number.parseInt(
+              raw,
+              10
+            );
+      
           if (
-            entero < 1 ||
-            entero > 3
+            !Number.isFinite(n) ||
+            n < 1 ||
+            n > 3
           ) {
+            alert(
+              'La cantidad de coordinadores debe ser 1, 2 o 3.'
+            );
+      
+            $td.text(
+              String(
+                orig ||
+                1
+              )
+            );
+      
+            return;
+          }
+      
+          nuevoValor =
+            n;
+      
+          displayText =
+            String(n);
+      
+      
+        // =====================================================
+        // RESTO DE CAMPOS NUMÉRICOS
+        // =====================================================
+      
+        } else {
+          if (
+            raw === ''
+          ) {
+            nuevoValor =
+              0;
+      
+            displayText =
+              '0';
+      
+          } else {
+            const n =
+              Number(
+                raw.replace(
+                  /[^\d.-]/g,
+                  ''
+                )
+              );
+      
+            if (
+              !Number.isFinite(
+                n
+              )
+            ) {
+              $td.text(
+                String(
+                  orig ??
+                  ''
+                )
+              );
+      
+              return;
+            }
+      
+            const entero =
+              Math.trunc(
+                n
+              );
+      
+            nuevoValor =
+              entero;
+      
+            displayText =
+              String(
+                entero
+              );
+          }
+        }
             alert(
               'La cantidad de coordinadores debe ser 1, 2 o 3.'
             );
@@ -2811,9 +2874,20 @@ async function revisarPaxGruposContraPagos() {
     const numeroNegocio = String(row[0] || '').trim();
     const nombreGrupo = String(row[2] || '').trim();
 
-    const paxSistema = toNum(row[7]);
-    const adultosSistema = toNum(row[8]);
-    const estudiantesSistema = toNum(row[9]);
+    const paxSistema =
+      toNum(
+        row[8]
+      );
+    
+    const adultosSistema =
+      toNum(
+        row[9]
+      );
+    
+    const estudiantesSistema =
+      toNum(
+        row[10]
+      );
 
     try {
       const numerosPago = obtenerNumerosNegocioPagoGrupos(numeroNegocio);
