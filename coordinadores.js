@@ -1792,7 +1792,6 @@ function renderSets(){
    ========================================================= */
 
 function abrirSelectorSugerencia(){
-  // Evitar abrir dos veces.
   document
     .getElementById(
       'modal-estrategia-sugerencia'
@@ -1845,7 +1844,7 @@ function abrirSelectorSugerencia(){
           line-height:1.4;
         "
       >
-        Selecciona cómo quieres organizar los viajes que todavía no están confirmados.
+        Selecciona la estrategia que quieres usar para los viajes todavía no confirmados.
       </div>
 
       <div
@@ -1879,7 +1878,7 @@ function abrirSelectorSugerencia(){
               line-height:1.4;
             "
           >
-            Usa la lógica actual: encadena viajes cronológicamente y aprovecha al máximo cada grupo de viajes.
+            Mantiene la lógica original: encadena cronológicamente los viajes y aprovecha al máximo cada grupo de viajes.
           </div>
         </button>
 
@@ -1896,7 +1895,7 @@ function abrirSelectorSugerencia(){
           "
         >
           <strong>
-            Optimizar por temporada y equilibrio
+            Optimizar temporada y cantidad de grupos
           </strong>
 
           <div
@@ -1907,7 +1906,9 @@ function abrirSelectorSugerencia(){
               line-height:1.4;
             "
           >
-            Separa septiembre, octubre y temporada alta noviembre-diciembre; prioriza grupos de 2 viajes, menor cantidad de coordinadores y luego mejor descanso.
+            Busca primero generar la menor cantidad posible de grupos de viaje,
+            prioriza que la mayoría tenga 2 viajes, respeta las reglas especiales
+            de septiembre, octubre, noviembre y OTRO, y después optimiza los días de descanso.
           </div>
         </button>
 
@@ -1985,7 +1986,6 @@ function abrirSelectorSugerencia(){
       }
     );
 }
-
 
 /* =========================================================
    OBTENER SETS FIJOS
@@ -2323,15 +2323,32 @@ function sugerirConjuntosContinuidad(){
    CLASIFICACIÓN POR TEMPORADA
    ========================================================= */
 
-function obtenerBloqueTemporada(g){
+/* =========================================================
+   ESTRATEGIA TEMPORADA
+   ========================================================= */
+
+
+/* =========================================================
+   CLASIFICAR TIPO DE VIAJE
+   ========================================================= */
+
+function clasificarTipoViajeTemporada(g){
   if (!g) {
-    return null;
+    return {
+      tipo:
+        'UNIDAD',
+
+      individual:
+        true
+    };
   }
 
   // =====================================================
-  // DESTINO OTRO
+  // OTRO
   //
-  // Siempre debe ser una unidad independiente.
+  // Siempre es grupo de viaje independiente.
+  // Puede después compartir coordinador con otro SET,
+  // pero nunca comparte este mismo SET.
   // =====================================================
 
   if (
@@ -2339,7 +2356,13 @@ function obtenerBloqueTemporada(g){
       g.destino
     ) === 'OTRO'
   ) {
-    return `OTRO:${g.id}`;
+    return {
+      tipo:
+        'OTRO',
+
+      individual:
+        true
+    };
   }
 
   const ini =
@@ -2371,92 +2394,255 @@ function obtenerBloqueTemporada(g){
     );
 
   // =====================================================
-  // SEPTIEMBRE
+  // SEPTIEMBRE ESPECIAL
+  //
+  // Cualquier viaje que EMPIEZA O TERMINA en septiembre.
+  //
+  // Puede combinarse con TEMPORADA.
+  // No puede combinarse con:
+  // - otro septiembre
+  // - octubre puro
+  // - noviembre puro
   // =====================================================
 
   if (
-    mesIni === 9 &&
+    mesIni === 9 ||
     mesFin === 9
   ) {
-    return 'SEPTIEMBRE';
+    return {
+      tipo:
+        'SEPTIEMBRE',
+
+      individual:
+        false
+    };
   }
 
   // =====================================================
-  // OCTUBRE
+  // OCTUBRE PURO
+  //
+  // Empieza Y termina en octubre.
   // =====================================================
 
   if (
     mesIni === 10 &&
     mesFin === 10
   ) {
-    return 'OCTUBRE';
+    return {
+      tipo:
+        'OCTUBRE',
+
+      individual:
+        false
+    };
   }
 
   // =====================================================
-  // TEMPORADA ALTA
-  // NOVIEMBRE + DICIEMBRE
+  // NOVIEMBRE PURO
   //
-  // Permite:
-  // noviembre → noviembre
-  // noviembre → diciembre
-  // diciembre → diciembre
+  // Empieza Y termina en noviembre.
   // =====================================================
 
   if (
-    [11, 12].includes(
-      mesIni
-    ) &&
-    [11, 12].includes(
-      mesFin
+    mesIni === 11 &&
+    mesFin === 11
+  ) {
+    return {
+      tipo:
+        'NOVIEMBRE',
+
+      individual:
+        false
+    };
+  }
+
+  // =====================================================
+  // TEMPORADA
+  //
+  // CASO 1:
+  // empieza en noviembre y termina en diciembre.
+  //
+  // CASO 2:
+  // empieza y termina en diciembre.
+  // =====================================================
+
+  if (
+    (
+      mesIni === 11 &&
+      mesFin === 12
+    ) ||
+    (
+      mesIni === 12 &&
+      mesFin === 12
     )
   ) {
-    return 'NOV_DIC';
+    return {
+      tipo:
+        'TEMPORADA',
+
+      individual:
+        false
+    };
   }
 
   // =====================================================
   // CUALQUIER OTRO CASO
   //
-  // Por seguridad queda como unidad propia.
-  // Ejemplo:
-  // septiembre → octubre
-  // agosto → septiembre
-  // enero, etc.
+  // Por seguridad queda como unidad independiente.
   // =====================================================
 
-  return `UNIDAD:${g.id}`;
+  return {
+    tipo:
+      'UNIDAD',
+
+    individual:
+      true
+  };
 }
 
 
 /* =========================================================
-   ¿DOS VIAJES PUEDEN IR EN EL MISMO SET?
+   COMPATIBILIDAD ENTRE TIPOS
    ========================================================= */
 
-function puedenEncadenarseViajes(
+function sonTiposCompatiblesTemporada(
+  tipoA,
+  tipoB
+){
+  if (
+    !tipoA ||
+    !tipoB
+  ) {
+    return false;
+  }
+
+  // OTRO / UNIDAD:
+  // nunca comparten grupo de viajes.
+  if (
+    tipoA === 'OTRO' ||
+    tipoB === 'OTRO' ||
+    tipoA === 'UNIDAD' ||
+    tipoB === 'UNIDAD'
+  ) {
+    return false;
+  }
+
+  // =====================================================
+  // TEMPORADA + TEMPORADA
+  // =====================================================
+
+  if (
+    tipoA === 'TEMPORADA' &&
+    tipoB === 'TEMPORADA'
+  ) {
+    return true;
+  }
+
+  // =====================================================
+  // ESPECIALES + TEMPORADA
+  //
+  // Septiembre + temporada
+  // Octubre puro + temporada
+  // Noviembre puro + temporada
+  // =====================================================
+
+  const especiales =
+    new Set([
+      'SEPTIEMBRE',
+      'OCTUBRE',
+      'NOVIEMBRE'
+    ]);
+
+  if (
+    tipoA === 'TEMPORADA' &&
+    especiales.has(
+      tipoB
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    tipoB === 'TEMPORADA' &&
+    especiales.has(
+      tipoA
+    )
+  ) {
+    return true;
+  }
+
+  // =====================================================
+  // ENTRE ESPECIALES NO SE COMBINAN
+  // =====================================================
+
+  return false;
+}
+
+
+/* =========================================================
+   COMPATIBILIDAD REAL ENTRE DOS VIAJES
+   ========================================================= */
+
+function sonViajesCompatiblesTemporada(
   A,
   B
 ){
   if (
     !A ||
-    !B
+    !B ||
+    A.id === B.id
   ) {
     return false;
   }
 
+  const tipoA =
+    clasificarTipoViajeTemporada(
+      A
+    );
+
+  const tipoB =
+    clasificarTipoViajeTemporada(
+      B
+    );
+
+  if (
+    tipoA.individual ||
+    tipoB.individual
+  ) {
+    return false;
+  }
+
+  if (
+    !sonTiposCompatiblesTemporada(
+      tipoA.tipo,
+      tipoB.tipo
+    )
+  ) {
+    return false;
+  }
+
+  const ordenados =
+    [A, B]
+      .slice()
+      .sort(
+        (a, b) =>
+          cmpISO(
+            a.fechaInicio,
+            b.fechaInicio
+          )
+      );
+
   const primero =
-    cmpISO(
-      A.fechaInicio,
-      B.fechaInicio
-    ) <= 0
-      ? A
-      : B;
+    ordenados[0];
 
   const segundo =
-    primero === A
-      ? B
-      : A;
+    ordenados[1];
 
-  // Solape real:
-  // prohibido.
+  // =====================================================
+  // SOLAPE REAL:
+  // PROHIBIDO.
+  // =====================================================
+
   if (
     overlap(
       primero.fechaInicio,
@@ -2468,17 +2654,18 @@ function puedenEncadenarseViajes(
     return false;
   }
 
-  return (
+  const gap =
     gapDays(
       primero.fechaFin,
       segundo.fechaInicio
-    ) >= 0
-  );
+    );
+
+  return gap >= 0;
 }
 
 
 /* =========================================================
-   PUNTUACIÓN DE UNA PAREJA
+   INFORMACIÓN / PUNTAJE DE UNA PAREJA
    ========================================================= */
 
 function puntuarParejaViajes(
@@ -2486,7 +2673,7 @@ function puntuarParejaViajes(
   B
 ){
   if (
-    !puedenEncadenarseViajes(
+    !sonViajesCompatiblesTemporada(
       A,
       B
     )
@@ -2516,32 +2703,99 @@ function puntuarParejaViajes(
 
     gap,
 
-    // Primero preferimos tener
-    // al menos un día completo.
     descansoCompleto:
       gap >= 1
         ? 1
         : 0,
 
-    // Después preferimos
-    // mayor descanso.
+    // El descanso es un desempate.
+    // No debe ganarle a formar más parejas.
     scoreDescanso:
       Math.min(
         Math.max(
           gap,
           0
         ),
-        15
+        60
       )
   };
 }
 
 
 /* =========================================================
-   EMPAREJAR VIAJES DE UN BLOQUE
+   CALIDAD DE UNA PAREJA
    ========================================================= */
 
-function emparejarBloqueTemporada(
+function scoreCalidadPareja(
+  A,
+  B
+){
+  const p =
+    puntuarParejaViajes(
+      A,
+      B
+    );
+
+  if (!p) {
+    return -Infinity;
+  }
+
+  // Tener al menos 1 día completo
+  // pesa más que tener simplemente más días.
+  return (
+    (
+      p.descansoCompleto
+        ? 1000
+        : 0
+    ) +
+    p.scoreDescanso
+  );
+}
+
+
+/* =========================================================
+   CONTAR CUÁNTOS VIAJES TODAVÍA TIENEN OPCIÓN
+   DE SER EMPAREJADOS
+   ========================================================= */
+
+function contarViajesConParejaPosible(
+  grupos
+){
+  let total =
+    0;
+
+  for (
+    let i = 0;
+    i < grupos.length;
+    i++
+  ) {
+    const g =
+      grupos[i];
+
+    const tiene =
+      grupos.some(
+        (otro, j) =>
+          i !== j &&
+          sonViajesCompatiblesTemporada(
+            g,
+            otro
+          )
+      );
+
+    if (tiene) {
+      total++;
+    }
+  }
+
+  return total;
+}
+
+
+/* =========================================================
+   EMPAREJAMIENTO BASE
+   ========================================================= */
+
+function construirEmparejamientoBase(
   grupos
 ){
   const pendientes =
@@ -2558,115 +2812,189 @@ function emparejarBloqueTemporada(
   const parejas =
     [];
 
-  // =====================================================
-  // GREEDY POR MEJOR COMPAÑERO
-  //
-  // Prioridad:
-  // 1. formar pareja
-  // 2. tener 1+ día descanso
-  // 3. mayor descanso
-  // =====================================================
-
   while (
     pendientes.length >= 2
   ) {
-    let bestI =
+    // ===================================================
+    // PRIMERO ELEGIMOS EL VIAJE MÁS DIFÍCIL
+    //
+    // Es decir:
+    // el que tenga menos compañeros posibles.
+    //
+    // Esto evita "gastarse" un viaje flexible y dejar
+    // otro sin pareja.
+    // ===================================================
+
+    let idxBase =
       -1;
 
-    let bestJ =
-      -1;
-
-    let bestScore =
+    let candidatosBase =
       null;
 
     for (
       let i = 0;
-      i < pendientes.length - 1;
+      i < pendientes.length;
       i++
     ) {
+      const candidatos =
+        [];
+
       for (
-        let j = i + 1;
+        let j = 0;
         j < pendientes.length;
         j++
       ) {
-        const score =
-          puntuarParejaViajes(
-            pendientes[i],
-            pendientes[j]
-          );
-
-        if (!score) {
+        if (
+          i === j
+        ) {
           continue;
         }
 
         if (
-          !bestScore ||
-          score.descansoCompleto >
-            bestScore.descansoCompleto ||
-          (
-            score.descansoCompleto ===
-              bestScore.descansoCompleto &&
-            score.scoreDescanso >
-              bestScore.scoreDescanso
+          sonViajesCompatiblesTemporada(
+            pendientes[i],
+            pendientes[j]
           )
         ) {
-          bestScore =
-            score;
-
-          bestI =
-            i;
-
-          bestJ =
-            j;
+          candidatos.push(
+            j
+          );
         }
+      }
+
+      if (
+        !candidatos.length
+      ) {
+        continue;
+      }
+
+      if (
+        idxBase === -1 ||
+        candidatos.length <
+          candidatosBase.length
+      ) {
+        idxBase =
+          i;
+
+        candidatosBase =
+          candidatos;
       }
     }
 
-    // No se puede formar ninguna pareja más.
+    // Ningún viaje restante puede emparejarse.
     if (
-      bestI === -1 ||
-      bestJ === -1
+      idxBase === -1
     ) {
       break;
     }
 
-    const A =
-      pendientes[bestI];
+    const base =
+      pendientes[
+        idxBase
+      ];
 
-    const B =
-      pendientes[bestJ];
+    let mejor =
+      null;
+
+    // ===================================================
+    // ELEGIR COMPAÑERO
+    //
+    // PRIORIDAD:
+    //
+    // 1. dejar la mayor cantidad de viajes restantes
+    //    todavía emparejables.
+    //
+    // 2. recién después mejorar el descanso.
+    // ===================================================
+
+    for (
+      const idxComp
+      of candidatosBase
+    ) {
+      const comp =
+        pendientes[
+          idxComp
+        ];
+
+      const restantes =
+        pendientes.filter(
+          (_, idx) =>
+            idx !== idxBase &&
+            idx !== idxComp
+        );
+
+      const emparejablesDespues =
+        contarViajesConParejaPosible(
+          restantes
+        );
+
+      const calidad =
+        scoreCalidadPareja(
+          base,
+          comp
+        );
+
+      if (
+        !mejor ||
+        emparejablesDespues >
+          mejor.emparejablesDespues ||
+        (
+          emparejablesDespues ===
+            mejor.emparejablesDespues &&
+          calidad >
+            mejor.calidad
+        )
+      ) {
+        mejor = {
+          idxComp,
+          comp,
+          emparejablesDespues,
+          calidad
+        };
+      }
+    }
+
+    if (!mejor) {
+      break;
+    }
 
     parejas.push(
       {
         viajes:
-          [A, B]
+          [base, mejor.comp]
             .sort(
               (a, b) =>
                 cmpISO(
                   a.fechaInicio,
                   b.fechaInicio
                 )
-            ),
-
-        gap:
-          bestScore.gap
+            )
       }
     );
 
-    // Borrar de mayor índice a menor.
-    pendientes.splice(
-      bestJ,
-      1
-    );
+    // Borrar índices de mayor a menor.
+    const borrar =
+      [
+        idxBase,
+        mejor.idxComp
+      ]
+        .sort(
+          (a, b) =>
+            b - a
+        );
 
-    pendientes.splice(
-      bestI,
-      1
+    borrar.forEach(
+      idx =>
+        pendientes.splice(
+          idx,
+          1
+        )
     );
   }
 
   return {
     parejas,
+
     sueltos:
       pendientes
   };
@@ -2674,13 +3002,481 @@ function emparejarBloqueTemporada(
 
 
 /* =========================================================
-   VALIDAR UN SET DE 3 VIAJES
+   REPARAR EMPAREJAMIENTO
+   ========================================================= */
+
+function repararEmparejamientoTemporada(
+  parejas,
+  sueltos
+){
+  let P =
+    parejas.map(
+      p => ({
+        viajes:
+          p.viajes.slice()
+      })
+    );
+
+  let S =
+    sueltos.slice();
+
+  let cambio =
+    true;
+
+  while (cambio) {
+    cambio =
+      false;
+
+    // ===================================================
+    // A) DOS SUELTOS QUE PUEDAN FORMAR UNA PAREJA
+    // ===================================================
+
+    outerDirecto:
+    for (
+      let i = 0;
+      i < S.length - 1;
+      i++
+    ) {
+      for (
+        let j = i + 1;
+        j < S.length;
+        j++
+      ) {
+        if (
+          sonViajesCompatiblesTemporada(
+            S[i],
+            S[j]
+          )
+        ) {
+          P.push(
+            {
+              viajes:
+                [S[i], S[j]]
+                  .sort(
+                    (a, b) =>
+                      cmpISO(
+                        a.fechaInicio,
+                        b.fechaInicio
+                      )
+                  )
+            }
+          );
+
+          S.splice(
+            j,
+            1
+          );
+
+          S.splice(
+            i,
+            1
+          );
+
+          cambio =
+            true;
+
+          break outerDirecto;
+        }
+      }
+    }
+
+    if (cambio) {
+      continue;
+    }
+
+    // ===================================================
+    // B) REPARACIÓN 2x2
+    //
+    // Tenemos:
+    //
+    // pareja A+B
+    // suelto C
+    // suelto D
+    //
+    // buscamos:
+    //
+    // A+C
+    // B+D
+    //
+    // o:
+    //
+    // A+D
+    // B+C
+    //
+    // Esto reduce:
+    //
+    // 3 grupos → 2 grupos.
+    //
+    // Es exactamente el tipo de caso:
+    //
+    // 04-09 + 13-20
+    // y quedan solos 05-12 / 10-16
+    //
+    // que queremos corregir.
+    // ===================================================
+
+    let mejorReparacion =
+      null;
+
+    for (
+      let pIdx = 0;
+      pIdx < P.length;
+      pIdx++
+    ) {
+      const [
+        A,
+        B
+      ] =
+        P[pIdx].viajes;
+
+      for (
+        let i = 0;
+        i < S.length - 1;
+        i++
+      ) {
+        for (
+          let j = i + 1;
+          j < S.length;
+          j++
+        ) {
+          const C =
+            S[i];
+
+          const D =
+            S[j];
+
+          const alternativas =
+            [
+              [
+                [A, C],
+                [B, D]
+              ],
+
+              [
+                [A, D],
+                [B, C]
+              ]
+            ];
+
+          for (
+            const alt
+            of alternativas
+          ) {
+            const [
+              par1,
+              par2
+            ] =
+              alt;
+
+            if (
+              !sonViajesCompatiblesTemporada(
+                par1[0],
+                par1[1]
+              ) ||
+              !sonViajesCompatiblesTemporada(
+                par2[0],
+                par2[1]
+              )
+            ) {
+              continue;
+            }
+
+            const score =
+              scoreCalidadPareja(
+                par1[0],
+                par1[1]
+              ) +
+              scoreCalidadPareja(
+                par2[0],
+                par2[1]
+              );
+
+            if (
+              !mejorReparacion ||
+              score >
+                mejorReparacion.score
+            ) {
+              mejorReparacion = {
+                pIdx,
+                i,
+                j,
+                par1,
+                par2,
+                score
+              };
+            }
+          }
+        }
+      }
+    }
+
+    if (
+      mejorReparacion
+    ) {
+      const r =
+        mejorReparacion;
+
+      P[r.pIdx] = {
+        viajes:
+          r.par1
+            .slice()
+            .sort(
+              (a, b) =>
+                cmpISO(
+                  a.fechaInicio,
+                  b.fechaInicio
+                )
+            )
+      };
+
+      P.push(
+        {
+          viajes:
+            r.par2
+              .slice()
+              .sort(
+                (a, b) =>
+                  cmpISO(
+                    a.fechaInicio,
+                    b.fechaInicio
+                  )
+              )
+        }
+      );
+
+      S.splice(
+        r.j,
+        1
+      );
+
+      S.splice(
+        r.i,
+        1
+      );
+
+      cambio =
+        true;
+    }
+  }
+
+  return {
+    parejas:
+      P,
+
+    sueltos:
+      S
+  };
+}
+
+
+/* =========================================================
+   MEJORAR DESCANSOS SIN CAMBIAR CANTIDAD DE PAREJAS
+   ========================================================= */
+
+function mejorarDescansoParejas(
+  parejas
+){
+  const P =
+    parejas.map(
+      p => ({
+        viajes:
+          p.viajes.slice()
+      })
+    );
+
+  let cambio =
+    true;
+
+  let vueltas =
+    0;
+
+  while (
+    cambio &&
+    vueltas < 20
+  ) {
+    cambio =
+      false;
+
+    vueltas++;
+
+    outer:
+    for (
+      let i = 0;
+      i < P.length - 1;
+      i++
+    ) {
+      for (
+        let j = i + 1;
+        j < P.length;
+        j++
+      ) {
+        const [
+          A,
+          B
+        ] =
+          P[i].viajes;
+
+        const [
+          C,
+          D
+        ] =
+          P[j].viajes;
+
+        const actual =
+          scoreCalidadPareja(
+            A,
+            B
+          ) +
+          scoreCalidadPareja(
+            C,
+            D
+          );
+
+        const alternativas =
+          [
+            [
+              [A, C],
+              [B, D]
+            ],
+
+            [
+              [A, D],
+              [B, C]
+            ]
+          ];
+
+        for (
+          const alt
+          of alternativas
+        ) {
+          const [
+            p1,
+            p2
+          ] =
+            alt;
+
+          if (
+            !sonViajesCompatiblesTemporada(
+              p1[0],
+              p1[1]
+            ) ||
+            !sonViajesCompatiblesTemporada(
+              p2[0],
+              p2[1]
+            )
+          ) {
+            continue;
+          }
+
+          const nuevo =
+            scoreCalidadPareja(
+              p1[0],
+              p1[1]
+            ) +
+            scoreCalidadPareja(
+              p2[0],
+              p2[1]
+            );
+
+          if (
+            nuevo >
+            actual
+          ) {
+            P[i].viajes =
+              p1
+                .slice()
+                .sort(
+                  (a, b) =>
+                    cmpISO(
+                      a.fechaInicio,
+                      b.fechaInicio
+                    )
+                );
+
+            P[j].viajes =
+              p2
+                .slice()
+                .sort(
+                  (a, b) =>
+                    cmpISO(
+                      a.fechaInicio,
+                      b.fechaInicio
+                    )
+                );
+
+            cambio =
+              true;
+
+            break outer;
+          }
+        }
+      }
+    }
+  }
+
+  return P;
+}
+
+
+/* =========================================================
+   EMPAREJAR TEMPORADA
+   ========================================================= */
+
+function emparejarViajesTemporada(
+  grupos
+){
+  // =====================================================
+  // 1) EMPAREJAMIENTO BASE
+  // =====================================================
+
+  const base =
+    construirEmparejamientoBase(
+      grupos
+    );
+
+  // =====================================================
+  // 2) REPARAR SUELTOS
+  //
+  // Acá priorizamos reducir la cantidad total de SETS.
+  // =====================================================
+
+  const reparado =
+    repararEmparejamientoTemporada(
+      base.parejas,
+      base.sueltos
+    );
+
+  // =====================================================
+  // 3) CON LA CANTIDAD DE PAREJAS YA RESUELTA,
+  //    OPTIMIZAMOS DESCANSO.
+  // =====================================================
+
+  const parejasMejoradas =
+    mejorarDescansoParejas(
+      reparado.parejas
+    );
+
+  return {
+    parejas:
+      parejasMejoradas,
+
+    sueltos:
+      reparado.sueltos
+  };
+}
+
+
+/* =========================================================
+   VALIDAR TRÍO
    ========================================================= */
 
 function evaluarTrioTemporada(
   viajes
 ){
   if (
+    !Array.isArray(
+      viajes
+    ) ||
     viajes.length !== 3
   ) {
     return null;
@@ -2712,11 +3508,9 @@ function evaluarTrioTemporada(
       arr[i + 1];
 
     if (
-      overlap(
-        A.fechaInicio,
-        A.fechaFin,
-        B.fechaInicio,
-        B.fechaFin
+      !sonViajesCompatiblesTemporada(
+        A,
+        B
       )
     ) {
       return null;
@@ -2739,9 +3533,11 @@ function evaluarTrioTemporada(
     );
   }
 
-  // Protección:
-  // no dejamos los DOS cambios
-  // consecutivos sin ningún día completo.
+  // =====================================================
+  // Evitar tres viajes seguidos con ambos cambios
+  // sin ningún día completo.
+  // =====================================================
+
   const cambiosSinDescanso =
     gaps.filter(
       g =>
@@ -2781,15 +3577,14 @@ function evaluarTrioTemporada(
 
 
 /* =========================================================
-   REDUCIR COORDINADORES SIN ROMPER
-   LA MAYORÍA DE GRUPOS DE 2
+   ABSORBER ALGUNOS SUELTOS EN TRÍOS
    ========================================================= */
 
 function optimizarSueltosEnParejas(
   parejas,
   sueltos
 ){
-  let sets =
+  const sets =
     parejas.map(
       p => ({
         viajes:
@@ -2797,25 +3592,17 @@ function optimizarSueltosEnParejas(
       })
     );
 
-  let restantes =
+  const restantes =
     sueltos.slice();
 
-  // =====================================================
-  // INTENTAR ABSORBER ALGÚN SUELTO
-  //
-  // Sólo lo hacemos si después de convertir
-  // una pareja en trío SIGUE HABIENDO MAYORÍA
-  // de grupos con exactamente 2 viajes.
-  // =====================================================
-
-  let huboCambio =
+  let cambio =
     true;
 
   while (
-    huboCambio &&
+    cambio &&
     restantes.length
   ) {
-    huboCambio =
+    cambio =
       false;
 
     let mejor =
@@ -2827,7 +3614,9 @@ function optimizarSueltosEnParejas(
       sIdx++
     ) {
       const suelto =
-        restantes[sIdx];
+        restantes[
+          sIdx
+        ];
 
       for (
         let setIdx = 0;
@@ -2835,7 +3624,9 @@ function optimizarSueltosEnParejas(
         setIdx++
       ) {
         const set =
-          sets[setIdx];
+          sets[
+            setIdx
+          ];
 
         if (
           set.viajes.length !== 2
@@ -2855,25 +3646,32 @@ function optimizarSueltosEnParejas(
           continue;
         }
 
-        // -----------------------------------------------
-        // ¿SE MANTIENE LA MAYORÍA DE SETS CON 2 VIAJES?
-        // -----------------------------------------------
+        // =================================================
+        // Mantener la mayoría de los SETS con 2 viajes.
+        //
+        // Si absorbemos este suelto:
+        //
+        // - desaparece 1 grupo individual
+        // - una pareja pasa a ser trío
+        // =================================================
 
-        const actualesDos =
+        const paresActuales =
           sets.filter(
             x =>
               x.viajes.length === 2
           ).length;
 
-        const setsDespues =
-          sets.length;
-
         const paresDespues =
-          actualesDos - 1;
+          paresActuales - 1;
+
+        const totalSetsDespues =
+          sets.length +
+          restantes.length -
+          1;
 
         if (
           paresDespues <=
-          setsDespues / 2
+          totalSetsDespues / 2
         ) {
           continue;
         }
@@ -2911,13 +3709,15 @@ function optimizarSueltosEnParejas(
         1
       );
 
-      huboCambio =
+      cambio =
         true;
     }
   }
 
-  // Los sueltos que quedaron
-  // pasan a sets individuales.
+  // =====================================================
+  // LOS QUE SIGUEN SUELTOS
+  // =====================================================
+
   restantes.forEach(
     g => {
       sets.push(
@@ -2934,8 +3734,7 @@ function optimizarSueltosEnParejas(
 
 
 /* =========================================================
-   ESTRATEGIA 2
-   TEMPORADA + EQUILIBRIO
+   SUGERIR POR TEMPORADA
    ========================================================= */
 
 function sugerirConjuntosTemporada(){
@@ -2957,130 +3756,98 @@ function sugerirConjuntosTemporada(){
     );
 
     // =====================================================
-    // 1) SEPARAR POR BLOQUES
+    // 1) SEPARAR LOS QUE OBLIGATORIAMENTE VAN SOLOS
     // =====================================================
 
-    const bloques =
-      new Map();
+    const individuales =
+      [];
+
+    const combinables =
+      [];
 
     for (
       const g
       of pool
     ) {
-      const bloque =
-        obtenerBloqueTemporada(
+      const clasificacion =
+        clasificarTipoViajeTemporada(
           g
         );
 
       if (
-        !bloques.has(
-          bloque
-        )
+        clasificacion.individual
       ) {
-        bloques.set(
-          bloque,
-          []
-        );
-      }
-
-      bloques
-        .get(
-          bloque
-        )
-        .push(
+        individuales.push(
           g
         );
+
+      } else {
+        combinables.push(
+          g
+        );
+      }
     }
 
-    const nuevosSets =
-      [];
+    L(
+      'Temporada clasificación:',
+      {
+        combinables:
+          combinables.length,
 
-    // =====================================================
-    // 2) PROCESAR CADA BLOQUE
-    // =====================================================
-
-    for (
-      const [
-        bloque,
-        grupos
-      ]
-      of bloques.entries()
-    ) {
-      // -----------------------------------------------
-      // OTRO / UNIDAD
-      //
-      // Siempre individual.
-      // -----------------------------------------------
-
-      if (
-        bloque.startsWith(
-          'OTRO:'
-        ) ||
-        bloque.startsWith(
-          'UNIDAD:'
-        )
-      ) {
-        grupos.forEach(
-          g => {
-            nuevosSets.push(
-              {
-                viajes:
-                  [g],
-
-                bloque
-              }
-            );
-          }
-        );
-
-        continue;
+        individuales:
+          individuales.length
       }
+    );
 
-      // -----------------------------------------------
-      // SEPTIEMBRE / OCTUBRE / NOV-DIC
-      // -----------------------------------------------
+    // =====================================================
+    // 2) BUSCAR LA MAYOR CANTIDAD POSIBLE DE PAREJAS
+    // =====================================================
 
-      const {
+    const {
+      parejas,
+      sueltos
+    } =
+      emparejarViajesTemporada(
+        combinables
+      );
+
+    // =====================================================
+    // 3) REDUCIR AÚN MÁS LA CANTIDAD DE SETS,
+    //    PERMITIENDO ALGUNOS TRÍOS,
+    //    SIN PERDER LA MAYORÍA DE SETS DOBLES.
+    // =====================================================
+
+    const optimizados =
+      optimizarSueltosEnParejas(
         parejas,
         sueltos
-      } =
-        emparejarBloqueTemporada(
-          grupos
-        );
-
-      const optimizados =
-        optimizarSueltosEnParejas(
-          parejas,
-          sueltos
-        );
-
-      optimizados.forEach(
-        s => {
-          nuevosSets.push(
-            {
-              viajes:
-                s.viajes,
-
-              bloque
-            }
-          );
-        }
       );
-    }
 
     // =====================================================
-    // 3) CONVERTIR A ESTRUCTURA SETS
+    // 4) AGREGAR LOS INDIVIDUALES OBLIGATORIOS
+    //
+    // OTRO y casos fuera de regla.
+    // =====================================================
+
+    individuales.forEach(
+      g => {
+        optimizados.push(
+          {
+            viajes:
+              [g]
+          }
+        );
+      }
+    );
+
+    // =====================================================
+    // 5) CREAR SETS
     // =====================================================
 
     const suggested =
-      nuevosSets.map(
-        s => ({
-          anoViaje:
-            Number(
-              ANO_COORDINADORES
-            ),
-
-          viajes:
+      optimizados.map(
+        s => {
+          const viajesOrdenados =
             s.viajes
               .slice()
               .sort(
@@ -3089,37 +3856,43 @@ function sugerirConjuntosTemporada(){
                     a.fechaInicio,
                     b.fechaInicio
                   )
-              )
-              .map(
+              );
+
+          return {
+            anoViaje:
+              Number(
+                ANO_COORDINADORES
+              ),
+
+            viajes:
+              viajesOrdenados.map(
                 g =>
                   g.id
               ),
 
-          coordinadorId:
-            null,
+            coordinadorId:
+              null,
 
-          confirmado:
-            false,
+            confirmado:
+              false,
 
-          estadoCoord:
-            'pendiente',
+            estadoCoord:
+              'pendiente',
 
-          alertas:
-            [],
+            alertas:
+              [],
 
-          _isNew:
-            true,
+            _isNew:
+              true,
 
-          estrategiaSugerencia:
-            'temporada',
-
-          bloqueTemporada:
-            s.bloque
-        })
+            estrategiaSugerencia:
+              'temporada'
+          };
+        }
       );
 
     // =====================================================
-    // 4) CONSERVAR CONFIRMADOS + NUEVA PROPUESTA
+    // 6) CONSERVAR LO YA CONFIRMADO
     // =====================================================
 
     SETS =
@@ -3137,7 +3910,7 @@ function sugerirConjuntosTemporada(){
     render();
 
     // =====================================================
-    // 5) LOG DE RESULTADO
+    // 7) ESTADÍSTICAS DE LA PROPUESTA
     // =====================================================
 
     const deUno =
@@ -3158,10 +3931,21 @@ function sugerirConjuntosTemporada(){
           s.viajes.length === 3
       ).length;
 
+    const totalViajes =
+      suggested.reduce(
+        (n, s) =>
+          n +
+          s.viajes.length,
+        0
+      );
+
     L(
-      'Temporada resultado:',
+      'Temporada resultado FINAL:',
       {
-        total:
+        viajes:
+          totalViajes,
+
+        gruposViaje:
           suggested.length,
 
         uno:
