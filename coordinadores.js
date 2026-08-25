@@ -1206,6 +1206,61 @@ btnAddCoord?.addEventListener('click', ()=>{
 btnAddLote?.addEventListener('click', ()=> inputExcel.click());
 inputExcel?.addEventListener('change', handleExcel);
 
+/* =========================================================
+   EXCEL COORDINADORES
+   ========================================================= */
+
+function asegurarBotonExportExcelCoordinadores(){
+  if (
+    document.getElementById(
+      'btn-exportar-coordinadores-excel'
+    )
+  ) {
+    return;
+  }
+
+  if (!btnAddLote) {
+    W(
+      'No se encontró btn-add-lote para ubicar el botón Excel.'
+    );
+
+    return;
+  }
+
+  const btn =
+    document.createElement(
+      'button'
+    );
+
+  btn.id =
+    'btn-exportar-coordinadores-excel';
+
+  btn.type =
+    'button';
+
+  btn.className =
+    'btn';
+
+  btn.textContent =
+    '📥 Descargar Excel';
+
+  btn.title =
+    'Descargar coordinadores, planificación, viajes y resumen';
+
+  btn.addEventListener(
+    'click',
+    exportarGestionCoordinadoresExcel
+  );
+
+  btnAddLote.insertAdjacentElement(
+    'afterend',
+    btn
+  );
+}
+
+
+asegurarBotonExportExcelCoordinadores();
+
 // Filtros (catálogo)
 function populateFilterOptions(){
   console.time('populateFilterOptions');
@@ -8063,70 +8118,1716 @@ async function guardarSet(i){
     );
   }
 }
+
+/* =========================================================
+   EXCEL GESTIÓN COORDINADORES
+   ========================================================= */
+
+
+/* =========================================================
+   HELPERS EXCEL
+   ========================================================= */
+
+function excelTexto(v){
+  if (
+    v === null ||
+    v === undefined
+  ) {
+    return '';
+  }
+
+  return String(v).trim();
+}
+
+
+function normalizarRutExcel(v){
+  return excelTexto(v)
+    .replace(/\s+/g, '')
+    .toUpperCase();
+}
+
+
+function disponibilidadAExcel(
+  disponibilidad
+){
+  return (
+    disponibilidad ||
+    []
+  )
+    .map(r => {
+      const ini =
+        asISO(
+          r?.inicio
+        );
+
+      const fin =
+        asISO(
+          r?.fin
+        );
+
+      if (
+        !ini ||
+        !fin
+      ) {
+        return '';
+      }
+
+      return `${ini}/${fin}`;
+    })
+    .filter(Boolean)
+    .join('; ');
+}
+
+
+function disponibilidadDesdeExcel(
+  valor
+){
+  const texto =
+    excelTexto(
+      valor
+    );
+
+  if (!texto) {
+    return [];
+  }
+
+  return texto
+    .split(/[;\n]+/)
+    .map(
+      parte =>
+        parte.trim()
+    )
+    .filter(Boolean)
+    .map(parte => {
+      // Formato recomendado:
+      //
+      // 2026-09-01/2026-09-30
+
+      let m =
+        parte.match(
+          /^(\d{4}-\d{2}-\d{2})\s*\/\s*(\d{4}-\d{2}-\d{2})$/
+        );
+
+      if (m) {
+        return {
+          inicio:
+            m[1],
+
+          fin:
+            m[2]
+        };
+      }
+
+      // También aceptamos:
+      //
+      // 01/09/2026 a 30/09/2026
+
+      m =
+        parte.match(
+          /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(?:a|al|-)\s+(\d{1,2})\/(\d{1,2})\/(\d{4})$/i
+        );
+
+      if (m) {
+        const ini =
+          `${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+
+        const fin =
+          `${m[6]}-${String(m[5]).padStart(2,'0')}-${String(m[4]).padStart(2,'0')}`;
+
+        return {
+          inicio:
+            ini,
+
+          fin:
+            fin
+        };
+      }
+
+      return null;
+    })
+    .filter(
+      r =>
+        r &&
+        r.inicio &&
+        r.fin &&
+        r.inicio <= r.fin
+    );
+}
+
+
+function booleanDesdeExcel(
+  valor,
+  defaultValue = true
+){
+  const texto =
+    norm(
+      valor
+    );
+
+  if (!texto) {
+    return defaultValue;
+  }
+
+  if (
+    [
+      'si',
+      'sí',
+      'true',
+      '1',
+      'activo',
+      'activa',
+      'ok'
+    ].includes(
+      texto
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    [
+      'no',
+      'false',
+      '0',
+      'inactivo',
+      'inactiva'
+    ].includes(
+      texto
+    )
+  ) {
+    return false;
+  }
+
+  return defaultValue;
+}
+
+
+function getCampoExcel(
+  fila,
+  nombres
+){
+  for (
+    const nombre
+    of nombres
+  ) {
+    if (
+      fila[nombre] !==
+        undefined &&
+      fila[nombre] !==
+        null
+    ) {
+      return fila[nombre];
+    }
+  }
+
+  // Fallback:
+  // comparación sin tildes/mayúsculas.
+  const buscados =
+    nombres.map(
+      n =>
+        norm(n)
+    );
+
+  for (
+    const [
+      key,
+      value
+    ]
+    of Object.entries(
+      fila
+    )
+  ) {
+    if (
+      buscados.includes(
+        norm(key)
+      )
+    ) {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+
+/* =========================================================
+   DATOS DE COORDINADOR PARA XLS
+   ========================================================= */
+
+function construirFilasExcelCoordinadores(){
+  return COORDS
+    .slice()
+    .sort(
+      (a, b) =>
+        (
+          a.nombre ||
+          ''
+        ).localeCompare(
+          b.nombre ||
+          '',
+          'es',
+          {
+            sensitivity:
+              'base'
+          }
+        )
+    )
+    .map(c => {
+      const setsCoord =
+        SETS.filter(
+          s =>
+            s.coordinadorId ===
+              c.id
+        );
+
+      const viajesIds =
+        new Set();
+
+      setsCoord.forEach(
+        s =>
+          (
+            s.viajes ||
+            []
+          ).forEach(
+            gid =>
+              viajesIds.add(
+                gid
+              )
+          )
+      );
+
+      return {
+        ID_COORDINADOR:
+          c.id ||
+          '',
+
+        NOMBRE:
+          c.nombre ||
+          '',
+
+        RUT:
+          c.rut ||
+          '',
+
+        FECHA_NACIMIENTO:
+          c.fechaNacimiento ||
+          '',
+
+        TELEFONO:
+          c.telefono ||
+          '',
+
+        CORREO:
+          c.correo ||
+          '',
+
+        DATOS_PARA_TRANSFERIR:
+          c.datosTransferir ||
+          '',
+
+        DESTINOS:
+          (
+            c.destinos ||
+            []
+          ).join(
+            ', '
+          ),
+
+        DISPONIBILIDAD:
+          disponibilidadAExcel(
+            c.disponibilidad
+          ),
+
+        ACTIVO:
+          c.activo !== false
+            ? 'SI'
+            : 'NO',
+
+        NOTAS:
+          c.notas ||
+          '',
+
+        GRUPOS_DE_VIAJE:
+          setsCoord.length,
+
+        VIAJES_ASIGNADOS:
+          viajesIds.size
+      };
+    });
+}
+
+
+/* =========================================================
+   PLANIFICACIÓN
+   Una fila = un grupo de viajes / SET
+   ========================================================= */
+
+function construirFilasExcelPlanificacion(){
+  return SETS.map(
+    (
+      s,
+      idx
+    ) => {
+      const coord =
+        COORDS.find(
+          c =>
+            c.id ===
+            s.coordinadorId
+        );
+
+      const viajes =
+        (
+          s.viajes ||
+          []
+        )
+          .map(
+            gid =>
+              ID2GRUPO.get(
+                gid
+              )
+          )
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              cmpISO(
+                a.fechaInicio,
+                b.fechaInicio
+              )
+          );
+
+      const row = {
+        ANO:
+          Number(
+            s.anoViaje ||
+            ANO_COORDINADORES
+          ),
+
+        N_GRUPO_VIAJES:
+          idx + 1,
+
+        ID_CONJUNTO:
+          s.id ||
+          '',
+
+        ID_COORDINADOR:
+          s.coordinadorId ||
+          '',
+
+        COORDINADOR:
+          coord?.nombre ||
+          '',
+
+        CONFIRMADO:
+          s.confirmado
+            ? 'SI'
+            : 'NO',
+
+        ESTADO:
+          normalizeEstado(
+            s.estadoCoord
+          ).toUpperCase(),
+
+        CANTIDAD_VIAJES:
+          viajes.length,
+
+        ALERTAS:
+          (
+            s.alertas ||
+            []
+          )
+            .map(
+              a =>
+                a.msg ||
+                ''
+            )
+            .filter(Boolean)
+            .join(
+              ' | '
+            )
+      };
+
+      // Actualmente tu sistema admite grupos de 1, 2 o 3
+      // según la estrategia.
+      //
+      // Dejamos 3 bloques disponibles.
+
+      for (
+        let i = 0;
+        i < 3;
+        i++
+      ) {
+        const v =
+          viajes[i];
+
+        const n =
+          i + 1;
+
+        row[
+          `VIAJE_${n}_ID`
+        ] =
+          v?.id ||
+          '';
+
+        row[
+          `VIAJE_${n}_NEGOCIO`
+        ] =
+          v?.numeroNegocio ||
+          '';
+
+        row[
+          `VIAJE_${n}_ALIAS`
+        ] =
+          v?.aliasGrupo ||
+          v?.nombreGrupo ||
+          '';
+
+        row[
+          `VIAJE_${n}_INICIO`
+        ] =
+          v?.fechaInicio ||
+          '';
+
+        row[
+          `VIAJE_${n}_FIN`
+        ] =
+          v?.fechaFin ||
+          '';
+
+        row[
+          `VIAJE_${n}_DESTINO`
+        ] =
+          v?.destino ||
+          '';
+
+        row[
+          `VIAJE_${n}_PROGRAMA`
+        ] =
+          v?.programa ||
+          '';
+      }
+
+      return row;
+    }
+  );
+}
+
+
+/* =========================================================
+   VIAJES
+   Una fila = un grupo real
+   ========================================================= */
+
+function construirFilasExcelViajes(){
+  return GRUPOS
+    .slice()
+    .sort(
+      (a, b) =>
+        cmpISO(
+          a.fechaInicio,
+          b.fechaInicio
+        )
+    )
+    .map(g => {
+      const setsGrupo =
+        SETS.filter(
+          s =>
+            (
+              s.viajes ||
+              []
+            ).includes(
+              g.id
+            )
+        );
+
+      const coordinadores =
+        setsGrupo
+          .map(
+            s =>
+              COORDS.find(
+                c =>
+                  c.id ===
+                  s.coordinadorId
+              )?.nombre ||
+              ''
+          )
+          .filter(Boolean);
+
+      const estados =
+        setsGrupo
+          .map(
+            s =>
+              normalizeEstado(
+                s.estadoCoord
+              )
+          )
+          .filter(Boolean);
+
+      const conjuntoIds =
+        setsGrupo
+          .map(
+            s =>
+              s.id ||
+              ''
+          )
+          .filter(Boolean);
+
+      const cobertura =
+        getCoberturaGrupo(
+          g.id
+        );
+
+      return {
+        ANO:
+          Number(
+            g.anoViaje ||
+            ANO_COORDINADORES
+          ),
+
+        ID_GRUPO:
+          g.id ||
+          '',
+
+        NUMERO_NEGOCIO:
+          g.numeroNegocio ||
+          '',
+
+        ALIAS:
+          g.aliasGrupo ||
+          '',
+
+        NOMBRE_GRUPO:
+          g.nombreGrupo ||
+          '',
+
+        FECHA_INICIO:
+          g.fechaInicio ||
+          '',
+
+        FECHA_FIN:
+          g.fechaFin ||
+          '',
+
+        DESTINO:
+          g.destino ||
+          '',
+
+        PROGRAMA:
+          g.programa ||
+          '',
+
+        COORDINADORES_REQUERIDOS:
+          cobertura.requeridos,
+
+        CUPOS_USADOS:
+          cobertura.usados,
+
+        CUPOS_CONFIRMADOS:
+          cobertura.confirmados,
+
+        COORDINADORES:
+          coordinadores.join(
+            ' | '
+          ),
+
+        ID_CONJUNTOS:
+          conjuntoIds.join(
+            ' | '
+          ),
+
+        ESTADOS:
+          estados
+            .map(
+              e =>
+                e.toUpperCase()
+            )
+            .join(
+              ' | '
+            )
+      };
+    });
+}
+
+
+/* =========================================================
+   RESUMEN
+   ========================================================= */
+
+function construirFilasExcelResumen(){
+  const stats =
+    computeViajesStats();
+
+  const viajesAsignados =
+    new Set();
+
+  SETS.forEach(
+    s =>
+      (
+        s.viajes ||
+        []
+      ).forEach(
+        gid =>
+          viajesAsignados.add(
+            gid
+          )
+      )
+  );
+
+  const activos =
+    COORDS.filter(
+      c =>
+        c.activo !==
+        false
+    ).length;
+
+  const usados =
+    new Set(
+      SETS
+        .map(
+          s =>
+            s.coordinadorId
+        )
+        .filter(Boolean)
+    ).size;
+
+  return [
+    {
+      INDICADOR:
+        'AÑO',
+
+      VALOR:
+        ANO_COORDINADORES
+    },
+    {
+      INDICADOR:
+        'COORDINADORES TOTALES',
+
+      VALOR:
+        COORDS.length
+    },
+    {
+      INDICADOR:
+        'COORDINADORES ACTIVOS',
+
+      VALOR:
+        activos
+    },
+    {
+      INDICADOR:
+        'COORDINADORES UTILIZADOS',
+
+      VALOR:
+        usados
+    },
+    {
+      INDICADOR:
+        'VIAJES / GRUPOS OPERATIVOS',
+
+      VALOR:
+        GRUPOS.length
+    },
+    {
+      INDICADOR:
+        'VIAJES CON AL MENOS UN CUPO ASIGNADO',
+
+      VALOR:
+        viajesAsignados.size
+    },
+    {
+      INDICADOR:
+        'VIAJES SIN ASIGNACIÓN',
+
+      VALOR:
+        Math.max(
+          0,
+          GRUPOS.length -
+          viajesAsignados.size
+        )
+    },
+    {
+      INDICADOR:
+        'GRUPOS DE VIAJE / SETS',
+
+      VALOR:
+        SETS.length
+    },
+    {
+      INDICADOR:
+        'SETS DE 1 VIAJE',
+
+      VALOR:
+        stats.dist?.[1] ||
+        0
+    },
+    {
+      INDICADOR:
+        'SETS DE 2 VIAJES',
+
+      VALOR:
+        stats.dist?.[2] ||
+        0
+    },
+    {
+      INDICADOR:
+        'SETS DE 3 VIAJES',
+
+      VALOR:
+        stats.dist?.[3] ||
+        0
+    },
+    {
+      INDICADOR:
+        'SETS CONFIRMADOS',
+
+      VALOR:
+        stats.confirmados
+    },
+    {
+      INDICADOR:
+        'SETS CON COORDINADOR',
+
+      VALOR:
+        stats.conCoordinador
+    },
+    {
+      INDICADOR:
+        'CAMBIOS SIN DÍA LIBRE',
+
+      VALOR:
+        stats.paresSinDescanso
+    },
+    {
+      INDICADOR:
+        'SOLAPES DETECTADOS',
+
+      VALOR:
+        stats.paresSolapados
+    },
+    {
+      INDICADOR:
+        'ERRORES',
+
+      VALOR:
+        stats.totalErr
+    },
+    {
+      INDICADOR:
+        'AVISOS',
+
+      VALOR:
+        stats.totalWarn
+    }
+  ];
+}
+
+
+/* =========================================================
+   FORMATO BÁSICO DE HOJA
+   ========================================================= */
+
+function prepararHojaExcel(
+  ws,
+  {
+    freeze = true,
+    autofilter = true
+  } = {}
+){
+  const range =
+    XLSX.utils.decode_range(
+      ws['!ref'] ||
+      'A1:A1'
+    );
+
+  if (freeze) {
+    ws['!freeze'] = {
+      xSplit:
+        0,
+
+      ySplit:
+        1,
+
+      topLeftCell:
+        'A2',
+
+      activePane:
+        'bottomLeft',
+
+      state:
+        'frozen'
+    };
+  }
+
+  if (autofilter) {
+    ws['!autofilter'] = {
+      ref:
+        XLSX.utils.encode_range(
+          {
+            s: {
+              r:
+                0,
+
+              c:
+                range.s.c
+            },
+
+            e: {
+              r:
+                range.e.r,
+
+              c:
+                range.e.c
+            }
+          }
+        )
+    };
+  }
+
+  const widths =
+    [];
+
+  for (
+    let c = range.s.c;
+    c <= range.e.c;
+    c++
+  ) {
+    let max =
+      10;
+
+    for (
+      let r = range.s.r;
+      r <= Math.min(
+        range.e.r,
+        200
+      );
+      r++
+    ) {
+      const ref =
+        XLSX.utils.encode_cell(
+          {
+            r,
+            c
+          }
+        );
+
+      const val =
+        ws[ref]?.v;
+
+      if (
+        val === undefined ||
+        val === null
+      ) {
+        continue;
+      }
+
+      max =
+        Math.max(
+          max,
+          String(
+            val
+          ).length +
+          2
+        );
+    }
+
+    widths.push({
+      wch:
+        Math.min(
+          max,
+          40
+        )
+    });
+  }
+
+  ws['!cols'] =
+    widths;
+}
+
+
+/* =========================================================
+   EXPORTAR XLSX COMPLETO
+   ========================================================= */
+
+function exportarGestionCoordinadoresExcel(){
+  try{
+    if (
+      typeof XLSX ===
+      'undefined'
+    ) {
+      alert(
+        'No está disponible la librería XLSX.'
+      );
+
+      return;
+    }
+
+    evaluarAlertas();
+
+    const wb =
+      XLSX.utils.book_new();
+
+    // ===================================================
+    // 1) COORDINADORES
+    //
+    // ESTA ES LA HOJA DE IDA/VUELTA.
+    // ===================================================
+
+    const rowsCoords =
+      construirFilasExcelCoordinadores();
+
+    const wsCoords =
+      XLSX.utils.json_to_sheet(
+        rowsCoords,
+        {
+          header: [
+            'ID_COORDINADOR',
+            'NOMBRE',
+            'RUT',
+            'FECHA_NACIMIENTO',
+            'TELEFONO',
+            'CORREO',
+            'DATOS_PARA_TRANSFERIR',
+            'DESTINOS',
+            'DISPONIBILIDAD',
+            'ACTIVO',
+            'NOTAS',
+            'GRUPOS_DE_VIAJE',
+            'VIAJES_ASIGNADOS'
+          ]
+        }
+      );
+
+    prepararHojaExcel(
+      wsCoords
+    );
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      wsCoords,
+      'COORDINADORES'
+    );
+
+
+    // ===================================================
+    // 2) PLANIFICACIÓN
+    // ===================================================
+
+    const rowsPlan =
+      construirFilasExcelPlanificacion();
+
+    const wsPlan =
+      XLSX.utils.json_to_sheet(
+        rowsPlan
+      );
+
+    prepararHojaExcel(
+      wsPlan
+    );
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      wsPlan,
+      'PLANIFICACION'
+    );
+
+
+    // ===================================================
+    // 3) VIAJES
+    // ===================================================
+
+    const rowsViajes =
+      construirFilasExcelViajes();
+
+    const wsViajes =
+      XLSX.utils.json_to_sheet(
+        rowsViajes
+      );
+
+    prepararHojaExcel(
+      wsViajes
+    );
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      wsViajes,
+      'VIAJES'
+    );
+
+
+    // ===================================================
+    // 4) RESUMEN
+    // ===================================================
+
+    const rowsResumen =
+      construirFilasExcelResumen();
+
+    const wsResumen =
+      XLSX.utils.json_to_sheet(
+        rowsResumen
+      );
+
+    prepararHojaExcel(
+      wsResumen,
+      {
+        freeze:
+          false,
+
+        autofilter:
+          false
+      }
+    );
+
+    wsResumen['!cols'] = [
+      {
+        wch:
+          42
+      },
+      {
+        wch:
+          16
+      }
+    ];
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      wsResumen,
+      'RESUMEN'
+    );
+
+
+    // ===================================================
+    // DESCARGAR
+    // ===================================================
+
+    const fecha =
+      new Intl.DateTimeFormat(
+        'en-CA',
+        {
+          timeZone:
+            'America/Santiago'
+        }
+      ).format(
+        new Date()
+      );
+
+    const nombre =
+      `gestion-coordinadores-${ANO_COORDINADORES}-${fecha}.xlsx`;
+
+    XLSX.writeFile(
+      wb,
+      nombre
+    );
+
+    L(
+      'Excel coordinadores exportado:',
+      {
+        nombre,
+        coordinadores:
+          rowsCoords.length,
+
+        sets:
+          rowsPlan.length,
+
+        viajes:
+          rowsViajes.length
+      }
+    );
+
+  }catch(err){
+    E(
+      'exportarGestionCoordinadoresExcel error:',
+      err
+    );
+
+    alert(
+      'No se pudo generar el Excel. Revisa la consola.'
+    );
+  }
+}
 /* =========================================================
    Carga por Excel (coordinadores)
    ========================================================= */
 function handleExcel(evt){
-  const file = evt.target.files?.[0];
-  if(!file) return;
+  const file =
+    evt.target.files?.[0];
 
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    try{
-      const wb = XLSX.read(e.target.result, { type:'binary' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { defval:'', raw:false, blankrows:false });
+  if (!file) {
+    return;
+  }
 
-      const byName = new Map(COORDS.map(c => [ (c.nombre||'').trim().toUpperCase(), c ]));
-      const byRut  = new Map(COORDS.filter(c=>c.rut).map(c => [ c.rut.replace(/\s+/g,'').toUpperCase(), c ]));
+  const reader =
+    new FileReader();
 
-      L('Excel filas:', rows.length);
 
-      for(const r of rows){
-        const nombre   = (r.Nombre || r.NOMBRE || r.nombre || '').toString().trim();
-        if(!nombre) continue;
-        const rut      = (r.RUT || r.rut || '').toString().replace(/\s+/g,'').toUpperCase();
-        const telefono = (r.TELEFONO || r['TELÉFONO'] || r.tel || r.Tel || r.telefono || '').toString().trim();
-        const correo   = (r.Correo || r.CORREO || r.Email || r.EMAIL || r.email || '').toString().trim().toLowerCase();
-        const destinosCell = (r.Destinos || r.DESTINOS || r.destinos || '').toString();
-        const destinosXLS  = cleanDestinos(destinosCell.split(','));
+  reader.onload =
+    e => {
+      try{
+        const wb =
+          XLSX.read(
+            e.target.result,
+            {
+              type:
+                'array',
 
-        let c = (rut && byRut.get(rut)) || byName.get(nombre.toUpperCase());
-        if (c){
-          c.nombre = nombre; c.rut = rut; c.telefono = telefono; c.correo = correo;
-          if (destinosXLS.length){
-            c.destinos = cleanDestinos([...(c.destinos||[]), ...destinosXLS]);
-         const transfer = (r['DATOS PARA TRANSFERIR'] || r['Datos para transferir'] || r['datosTransferir'] || r['datos_para_transferir'] || '').toString().trim();
-         if (transfer) c.datosTransferir = transfer;
-          }
-        } else {
-         c = {
-           nombre, rut, telefono, correo,
-           fechaNacimiento: asISO(r['Fecha Nacimiento'] || r['Fecha_nacimiento'] || r['fechaNacimiento']) || null,
-         
-           // ← NUEVO: DATOS PARA TRANSFERIR
-           datosTransferir: (r['DATOS PARA TRANSFERIR'] || r['Datos para transferir'] || r['datosTransferir'] || r['datos_para_transferir'] || '').toString().trim(),
-         
-           destinos:destinosXLS, disponibilidad:[], _isNew:true
-         };
-          COORDS.unshift(c);
-          byName.set(nombre.toUpperCase(), c);
-          if (rut) byRut.set(rut, c);
+              cellDates:
+                false
+            }
+          );
+
+
+        // =================================================
+        // HOJA A IMPORTAR
+        //
+        // Si viene del exportador nuevo usamos
+        // COORDINADORES.
+        //
+        // Para Excels antiguos mantenemos compatibilidad
+        // tomando la primera hoja.
+        // =================================================
+
+        const sheetName =
+          wb.SheetNames.find(
+            n =>
+              norm(n) ===
+              'coordinadores'
+          ) ||
+          wb.SheetNames[0];
+
+
+        if (!sheetName) {
+          throw new Error(
+            'El archivo no contiene hojas.'
+          );
         }
+
+
+        const ws =
+          wb.Sheets[
+            sheetName
+          ];
+
+
+        const rows =
+          XLSX.utils.sheet_to_json(
+            ws,
+            {
+              defval:
+                '',
+
+              raw:
+                false,
+
+              blankrows:
+                false
+            }
+          );
+
+
+        // =================================================
+        // ÍNDICES ACTUALES
+        //
+        // PRIORIDAD:
+        //
+        // 1. ID
+        // 2. RUT
+        // 3. NOMBRE
+        // =================================================
+
+        const byId =
+          new Map(
+            COORDS
+              .filter(
+                c =>
+                  c.id
+              )
+              .map(
+                c => [
+                  String(
+                    c.id
+                  ),
+                  c
+                ]
+              )
+          );
+
+
+        const byRut =
+          new Map(
+            COORDS
+              .filter(
+                c =>
+                  c.rut
+              )
+              .map(
+                c => [
+                  normalizarRutExcel(
+                    c.rut
+                  ),
+                  c
+                ]
+              )
+          );
+
+
+        const byName =
+          new Map(
+            COORDS
+              .filter(
+                c =>
+                  c.nombre
+              )
+              .map(
+                c => [
+                  norm(
+                    c.nombre
+                  ),
+                  c
+                ]
+              )
+          );
+
+
+        let actualizados =
+          0;
+
+        let nuevos =
+          0;
+
+        let omitidos =
+          0;
+
+
+        L(
+          'Excel coordinadores:',
+          {
+            hoja:
+              sheetName,
+
+            filas:
+              rows.length
+          }
+        );
+
+
+        for (
+          const r
+          of rows
+        ) {
+          // ===============================================
+          // IDENTIFICADORES
+          // ===============================================
+
+          const idExcel =
+            excelTexto(
+              getCampoExcel(
+                r,
+                [
+                  'ID_COORDINADOR',
+                  'ID COORDINADOR',
+                  'idCoordinador',
+                  'id'
+                ]
+              )
+            );
+
+
+          const nombre =
+            excelTexto(
+              getCampoExcel(
+                r,
+                [
+                  'NOMBRE',
+                  'Nombre',
+                  'nombre'
+                ]
+              )
+            );
+
+
+          if (!nombre) {
+            omitidos++;
+            continue;
+          }
+
+
+          const rut =
+            normalizarRutExcel(
+              getCampoExcel(
+                r,
+                [
+                  'RUT',
+                  'rut'
+                ]
+              )
+            );
+
+
+          // ===============================================
+          // DATOS
+          // ===============================================
+
+          const fechaNacimientoRaw =
+            getCampoExcel(
+              r,
+              [
+                'FECHA_NACIMIENTO',
+                'FECHA NACIMIENTO',
+                'Fecha Nacimiento',
+                'Fecha_nacimiento',
+                'fechaNacimiento'
+              ]
+            );
+
+
+          const fechaNacimiento =
+            asISO(
+              fechaNacimientoRaw
+            ) ||
+            (
+              /^\d{4}-\d{2}-\d{2}$/.test(
+                excelTexto(
+                  fechaNacimientoRaw
+                )
+              )
+                ? excelTexto(
+                    fechaNacimientoRaw
+                  )
+                : null
+            );
+
+
+          const telefono =
+            excelTexto(
+              getCampoExcel(
+                r,
+                [
+                  'TELEFONO',
+                  'TELÉFONO',
+                  'Telefono',
+                  'Teléfono',
+                  'telefono',
+                  'tel',
+                  'Tel'
+                ]
+              )
+            );
+
+
+          const correo =
+            excelTexto(
+              getCampoExcel(
+                r,
+                [
+                  'CORREO',
+                  'Correo',
+                  'correo',
+                  'EMAIL',
+                  'Email',
+                  'email'
+                ]
+              )
+            )
+              .toLowerCase();
+
+
+          const transfer =
+            excelTexto(
+              getCampoExcel(
+                r,
+                [
+                  'DATOS_PARA_TRANSFERIR',
+                  'DATOS PARA TRANSFERIR',
+                  'Datos para transferir',
+                  'datosTransferir',
+                  'datos_para_transferir'
+                ]
+              )
+            );
+
+
+          const destinosCell =
+            excelTexto(
+              getCampoExcel(
+                r,
+                [
+                  'DESTINOS',
+                  'Destinos',
+                  'destinos'
+                ]
+              )
+            );
+
+
+          const destinos =
+            cleanDestinos(
+              destinosCell
+                .split(
+                  /[,;\n]+/
+                )
+            );
+
+
+          const disponibilidadCell =
+            getCampoExcel(
+              r,
+              [
+                'DISPONIBILIDAD',
+                'Disponibilidad',
+                'disponibilidad'
+              ]
+            );
+
+
+          const disponibilidad =
+            disponibilidadDesdeExcel(
+              disponibilidadCell
+            );
+
+
+          const activoRaw =
+            getCampoExcel(
+              r,
+              [
+                'ACTIVO',
+                'Activo',
+                'activo'
+              ]
+            );
+
+
+          const notas =
+            excelTexto(
+              getCampoExcel(
+                r,
+                [
+                  'NOTAS',
+                  'Notas',
+                  'notas'
+                ]
+              )
+            );
+
+
+          // ===============================================
+          // ENCONTRAR REGISTRO
+          // ===============================================
+
+          let c =
+            (
+              idExcel &&
+              byId.get(
+                idExcel
+              )
+            ) ||
+            (
+              rut &&
+              byRut.get(
+                rut
+              )
+            ) ||
+            byName.get(
+              norm(
+                nombre
+              )
+            ) ||
+            null;
+
+
+          // ===============================================
+          // ACTUALIZAR EXISTENTE
+          // ===============================================
+
+          if (c) {
+            c.nombre =
+              nombre;
+
+            c.rut =
+              rut;
+
+            c.telefono =
+              telefono;
+
+            c.correo =
+              correo;
+
+            c.fechaNacimiento =
+              fechaNacimiento;
+
+            c.datosTransferir =
+              transfer;
+
+            // IMPORTANTE:
+            //
+            // Como este nuevo Excel es realmente
+            // ida/vuelta, el valor de la celda manda.
+            //
+            // Si DESTINOS está vacío:
+            // queda [] = apto para todos.
+            c.destinos =
+              destinos;
+
+            c.disponibilidad =
+              disponibilidad;
+
+            c.activo =
+              booleanDesdeExcel(
+                activoRaw,
+                c.activo !== false
+              );
+
+            c.notas =
+              notas;
+
+
+            actualizados++;
+
+
+          // ===============================================
+          // NUEVO COORDINADOR
+          // ===============================================
+
+          } else {
+            c = {
+              id:
+                null,
+
+              nombre,
+
+              rut,
+
+              fechaNacimiento,
+
+              datosTransferir:
+                transfer,
+
+              telefono,
+
+              correo,
+
+              destinos,
+
+              disponibilidad,
+
+              activo:
+                booleanDesdeExcel(
+                  activoRaw,
+                  true
+                ),
+
+              notas,
+
+              _isNew:
+                true
+            };
+
+
+            COORDS.unshift(
+              c
+            );
+
+
+            nuevos++;
+          }
+
+
+          // ===============================================
+          // ACTUALIZAR ÍNDICES
+          // ===============================================
+
+          if (c.id) {
+            byId.set(
+              String(
+                c.id
+              ),
+              c
+            );
+          }
+
+
+          if (c.rut) {
+            byRut.set(
+              normalizarRutExcel(
+                c.rut
+              ),
+              c
+            );
+          }
+
+
+          if (c.nombre) {
+            byName.set(
+              norm(
+                c.nombre
+              ),
+              c
+            );
+          }
+        }
+
+
+        // =================================================
+        // REFRESCAR PANTALLA
+        //
+        // NO GUARDAMOS TODAVÍA EN FIRESTORE.
+        //
+        // El usuario revisa y luego usa:
+        // "Guardar coordinadores".
+        // =================================================
+
+        renderCoordsTable();
+
+        setTimeout(
+          initPickers,
+          10
+        );
+
+
+        alert(
+          `Excel cargado correctamente.\n\n` +
+          `Actualizados: ${actualizados}\n` +
+          `Nuevos: ${nuevos}\n` +
+          `Filas omitidas: ${omitidos}\n\n` +
+          `Revisa los datos y luego presiona "Guardar coordinadores".`
+        );
+
+
+        L(
+          'handleExcel resultado:',
+          {
+            actualizados,
+            nuevos,
+            omitidos
+          }
+        );
+
+
+      }catch(err){
+        E(
+          'handleExcel error:',
+          err
+        );
+
+
+        alert(
+          'No se pudo leer el Excel.\n\n' +
+          'Puedes cargar el mismo archivo descargado desde Gestión Coordinadores ' +
+          'o un Excel antiguo que tenga al menos la columna NOMBRE.'
+        );
+
+
+      }finally{
+        evt.target.value =
+          '';
       }
+    };
 
-      renderCoordsTable();
-      setTimeout(initPickers,10);
-    } catch (err){
-      E('handleExcel error:', err);
-      alert('No se pudo leer el Excel. Asegúrate de que sea .xlsx/.xls y que tenga la columna "Nombre".');
-    } finally {
-      evt.target.value = '';
-    }
-  };
-  reader.readAsBinaryString(file);
+
+  // =====================================================
+  // CAMBIAMOS DE binary A ArrayBuffer
+  // =====================================================
+
+  reader.readAsArrayBuffer(
+    file
+  );
 }
-
 
 /* =========================================================
    Boot
