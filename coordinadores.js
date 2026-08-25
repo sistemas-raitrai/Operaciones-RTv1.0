@@ -1912,13 +1912,14 @@ function abrirSelectorSugerencia(){
   overlay.innerHTML = `
     <div
       style="
-        width:min(620px, 100%);
+        width:min(680px, 100%);
         background:#fff;
         border-radius:14px;
         box-shadow:0 20px 60px rgba(0,0,0,.25);
         padding:20px;
       "
     >
+
       <div
         style="
           font-size:20px;
@@ -1926,7 +1927,7 @@ function abrirSelectorSugerencia(){
           margin-bottom:6px;
         "
       >
-        Sugerir grupos de viajes
+        ¿Cómo quieres organizar los viajes?
       </div>
 
       <div
@@ -1936,7 +1937,7 @@ function abrirSelectorSugerencia(){
           line-height:1.4;
         "
       >
-        Selecciona la estrategia que quieres usar para los viajes todavía no confirmados.
+        Elige la forma en que quieres que el sistema arme los grupos de viaje.
       </div>
 
       <div
@@ -1945,6 +1946,10 @@ function abrirSelectorSugerencia(){
           gap:12px;
         "
       >
+
+        <!-- ===========================================
+             OPCIÓN 1
+             =========================================== -->
 
         <button
           type="button"
@@ -1959,7 +1964,7 @@ function abrirSelectorSugerencia(){
           "
         >
           <strong>
-            Optimizar continuidad
+            Continuidad
           </strong>
 
           <div
@@ -1970,9 +1975,14 @@ function abrirSelectorSugerencia(){
               line-height:1.4;
             "
           >
-            Encadena cronológicamente los viajes. Los viajes especiales de septiembre, octubre o noviembre pueden completar hasta 3 viajes usando dos viajes de temporada.
+            Agrupa viajes según las fechas para aprovechar al máximo cada coordinador.
           </div>
         </button>
+
+
+        <!-- ===========================================
+             OPCIÓN 2
+             =========================================== -->
 
         <button
           type="button"
@@ -1987,7 +1997,7 @@ function abrirSelectorSugerencia(){
           "
         >
           <strong>
-            Optimizar temporada y cantidad de grupos
+            Menos grupos
           </strong>
 
           <div
@@ -1998,13 +2008,45 @@ function abrirSelectorSugerencia(){
               line-height:1.4;
             "
           >
-            Minimiza la cantidad de grupos de viaje. Prioriza grupos especiales de hasta
-            3 viajes (especial + temporada + temporada), luego grupos de 2 y finalmente
-            el mejor descanso posible.
+            Busca usar la menor cantidad posible de grupos de viaje. Puede asignar hasta 3 viajes cuando conviene.
+          </div>
+        </button>
+
+
+        <!-- ===========================================
+             OPCIÓN 3
+             =========================================== -->
+
+        <button
+          type="button"
+          data-estrategia="temporada-pares"
+          style="
+            text-align:left;
+            padding:15px;
+            border:1px solid #cbd5e1;
+            border-radius:10px;
+            background:#fff;
+            cursor:pointer;
+          "
+        >
+          <strong>
+            Grupos de 2
+          </strong>
+
+          <div
+            style="
+              margin-top:4px;
+              color:#64748b;
+              font-size:13px;
+              line-height:1.4;
+            "
+          >
+            Busca formar la mayor cantidad posible de grupos con 2 viajes. No crea grupos de 3.
           </div>
         </button>
 
       </div>
+
 
       <div
         style="
@@ -2021,16 +2063,24 @@ function abrirSelectorSugerencia(){
           Cancelar
         </button>
       </div>
+
     </div>
   `;
+
 
   document.body.appendChild(
     overlay
   );
 
+
   const cerrar = () => {
     overlay.remove();
   };
+
+
+  // =====================================================
+  // CERRAR
+  // =====================================================
 
   overlay
     .querySelector(
@@ -2040,6 +2090,7 @@ function abrirSelectorSugerencia(){
       'click',
       cerrar
     );
+
 
   overlay.addEventListener(
     'click',
@@ -2051,6 +2102,11 @@ function abrirSelectorSugerencia(){
       }
     }
   );
+
+
+  // =====================================================
+  // CONTINUIDAD
+  // =====================================================
 
   overlay
     .querySelector(
@@ -2065,6 +2121,11 @@ function abrirSelectorSugerencia(){
       }
     );
 
+
+  // =====================================================
+  // MENOS GRUPOS
+  // =====================================================
+
   overlay
     .querySelector(
       '[data-estrategia="temporada"]'
@@ -2077,165 +2138,25 @@ function abrirSelectorSugerencia(){
         sugerirConjuntosTemporada();
       }
     );
-}
-
-/* =========================================================
-   OBTENER SETS FIJOS
-   ========================================================= */
-
-function obtenerBaseSugerencia(){
-  // =====================================================
-  // 1) CONSERVAR SETS CONFIRMADOS
-  // =====================================================
-
-  const fixedSetsMem =
-    SETS.filter(
-      s =>
-        s.confirmado &&
-        !!s.coordinadorId
-    );
 
 
   // =====================================================
-  // 2) CUÁNTOS CUPOS YA ESTÁN CONFIRMADOS
+  // GRUPOS DE 2
   // =====================================================
 
-  const confirmadosPorGrupo =
-    new Map();
+  overlay
+    .querySelector(
+      '[data-estrategia="temporada-pares"]'
+    )
+    ?.addEventListener(
+      'click',
+      () => {
+        cerrar();
 
-
-  fixedSetsMem.forEach(s => {
-    const vistos =
-      new Set();
-
-    (
-      s.viajes ||
-      []
-    ).forEach(gid => {
-      if (
-        vistos.has(
-          gid
-        )
-      ) {
-        return;
+        sugerirConjuntosTemporadaPares();
       }
-
-      vistos.add(
-        gid
-      );
-
-      confirmadosPorGrupo.set(
-        gid,
-        (
-          confirmadosPorGrupo.get(
-            gid
-          ) ||
-          0
-        ) + 1
-      );
-    });
-  });
-
-
-  // =====================================================
-  // 3) CREAR UN ELEMENTO POR CADA CUPO PENDIENTE
-  //
-  // Ejemplo:
-  //
-  // grupo A necesita 3
-  // ya tiene 1 confirmado
-  //
-  // pool recibe:
-  // A-cupo-2
-  // A-cupo-3
-  //
-  // Los dos objetos siguen teniendo id=A,
-  // porque el SET finalmente guarda el ID real del grupo.
-  // =====================================================
-
-  const pool =
-    [];
-
-
-  for (
-    const g
-    of GRUPOS
-  ) {
-    const requeridos =
-      getCantidadCoordinadoresGrupo(
-        g
-      );
-
-    const confirmados =
-      confirmadosPorGrupo.get(
-        g.id
-      ) ||
-      0;
-
-    const faltan =
-      Math.max(
-        0,
-        requeridos -
-        confirmados
-      );
-
-
-    for (
-      let cupo = 0;
-      cupo < faltan;
-      cupo++
-    ) {
-      pool.push({
-        ...g,
-
-        _cupoCoordinador:
-          confirmados +
-          cupo +
-          1,
-
-        _slotKey:
-          `${g.id}__${confirmados + cupo + 1}`
-      });
-    }
-  }
-
-
-  pool.sort(
-    (a, b) =>
-      cmpISO(
-        a.fechaInicio,
-        b.fechaInicio
-      )
-  );
-
-
-  L(
-    'obtenerBaseSugerencia:',
-    {
-      grupos:
-        GRUPOS.length,
-
-      cuposPendientes:
-        pool.length,
-
-      confirmados:
-        fixedSetsMem.length
-    }
-  );
-
-
-  return {
-    fixedSetsMem,
-
-    // Lo dejamos por compatibilidad
-    // con las funciones sugeridoras actuales.
-    fixedFromGruposFiltered:
-      [],
-
-    pool
-  };
+    );
 }
-
 
 /* =========================================================
    ESTRATEGIA 1
@@ -4900,6 +4821,332 @@ function sugerirConjuntosTemporada(){
           trios.length
       }
     );
+
+
+  }finally{
+    console.groupEnd();
+  }
+}
+
+/* =========================================================
+   ESTRATEGIA 3
+   TEMPORADA — GRUPOS DE 2
+   ========================================================= */
+
+function sugerirConjuntosTemporadaPares(){
+  console.groupCollapsed(
+    'sugerirConjuntosTemporadaPares'
+  );
+
+
+  try{
+    const {
+      fixedSetsMem,
+      fixedFromGruposFiltered,
+      pool
+    } =
+      obtenerBaseSugerencia();
+
+
+    L(
+      'Pool temporada pares:',
+      pool.length
+    );
+
+
+    // =====================================================
+    // 1) SEPARAR INDIVIDUALES OBLIGATORIOS
+    //
+    // OTRO
+    // UNIDAD
+    // =====================================================
+
+    const individuales =
+      [];
+
+    const combinables =
+      [];
+
+
+    for (
+      const g
+      of pool
+    ) {
+      const clasificacion =
+        clasificarTipoViajeTemporada(
+          g
+        );
+
+
+      if (
+        clasificacion.individual
+      ) {
+        individuales.push(
+          g
+        );
+
+      } else {
+        combinables.push(
+          g
+        );
+      }
+    }
+
+
+    L(
+      'Temporada pares clasificación:',
+      {
+        combinables:
+          combinables.length,
+
+        individuales:
+          individuales.length
+      }
+    );
+
+
+    // =====================================================
+    // 2) MAXIMIZAR PAREJAS
+    //
+    // Esta función ya:
+    //
+    // - prioriza mantener viajes emparejables
+    // - repara configuraciones malas
+    // - mejora descanso después
+    //
+    // NO crea tríos.
+    // =====================================================
+
+    const {
+      parejas,
+      sueltos
+    } =
+      emparejarViajesTemporada(
+        combinables
+      );
+
+
+    // =====================================================
+    // 3) CONVERTIR PAREJAS EN SETS
+    // =====================================================
+
+    const organizados =
+      parejas.map(
+        p => ({
+          viajes:
+            p.viajes
+              .slice()
+        })
+      );
+
+
+    // =====================================================
+    // 4) LOS SUELTOS QUEDAN INDIVIDUALES
+    //
+    // MUY IMPORTANTE:
+    //
+    // Aquí NO llamamos:
+    //
+    // optimizarSueltosEnParejas()
+    //
+    // porque esa función intenta crear tríos.
+    // =====================================================
+
+    sueltos.forEach(
+      g => {
+        organizados.push({
+          viajes:
+            [g]
+        });
+      }
+    );
+
+
+    // =====================================================
+    // 5) AGREGAR OTRO / UNIDADES
+    // =====================================================
+
+    individuales.forEach(
+      g => {
+        organizados.push({
+          viajes:
+            [g]
+        });
+      }
+    );
+
+
+    // =====================================================
+    // 6) CONVERTIR A SETS DEL SISTEMA
+    // =====================================================
+
+    const suggested =
+      organizados.map(
+        s => {
+          const viajesOrdenados =
+            s.viajes
+              .slice()
+              .sort(
+                (
+                  a,
+                  b
+                ) =>
+                  cmpISO(
+                    a.fechaInicio,
+                    b.fechaInicio
+                  )
+              );
+
+
+          return {
+            anoViaje:
+              Number(
+                ANO_COORDINADORES
+              ),
+
+            viajes:
+              viajesOrdenados.map(
+                g =>
+                  g.id
+              ),
+
+            coordinadorId:
+              null,
+
+            confirmado:
+              false,
+
+            estadoCoord:
+              'pendiente',
+
+            alertas:
+              [],
+
+            _isNew:
+              true,
+
+            estrategiaSugerencia:
+              'temporada-pares'
+          };
+        }
+      );
+
+
+    // =====================================================
+    // 7) CONSERVAR CONFIRMADOS
+    // =====================================================
+
+    SETS =
+      fixedSetsMem
+        .concat(
+          fixedFromGruposFiltered
+        )
+        .concat(
+          suggested
+        );
+
+
+    // =====================================================
+    // 8) SEGURIDAD MULTI-COORDINADOR
+    // =====================================================
+
+    dedupeSetsInPlace();
+
+    sortSetsInPlace();
+
+    evaluarAlertas();
+
+    render();
+
+
+    // =====================================================
+    // 9) ESTADÍSTICAS
+    // =====================================================
+
+    const deUno =
+      suggested.filter(
+        s =>
+          s.viajes.length ===
+          1
+      ).length;
+
+
+    const deDos =
+      suggested.filter(
+        s =>
+          s.viajes.length ===
+          2
+      ).length;
+
+
+    const deTres =
+      suggested.filter(
+        s =>
+          s.viajes.length >=
+          3
+      ).length;
+
+
+    const totalViajes =
+      suggested.reduce(
+        (
+          total,
+          s
+        ) =>
+          total +
+          s.viajes.length,
+        0
+      );
+
+
+    L(
+      'Temporada PARES resultado FINAL:',
+      {
+        viajes:
+          totalViajes,
+
+        gruposViaje:
+          suggested.length,
+
+        uno:
+          deUno,
+
+        dos:
+          deDos,
+
+        tresOMas:
+          deTres,
+
+        cuposProcesados:
+          pool.length
+      }
+    );
+
+
+    // =====================================================
+    // CONTROL:
+    //
+    // Esta modalidad NUNCA debería generar 3+
+    // =====================================================
+
+    if (
+      deTres >
+      0
+    ) {
+      W(
+        'ATENCIÓN: temporada-pares generó un set con 3+ viajes. Revisar lógica.',
+        suggested
+          .filter(
+            s =>
+              s.viajes.length >=
+              3
+          )
+          .map(
+            s =>
+              s.viajes
+          )
+      );
+    }
 
 
   }finally{
