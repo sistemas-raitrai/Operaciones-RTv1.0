@@ -43,7 +43,38 @@ let HOTELES_POR_GRUPO = new Map(); // groupId -> [{ nombre, ini, fin }]
 // Catálogo de hoteles: id → nombre (y otros datos si quisieras después)
 let HOTELS_BY_ID = new Map(); // hotelId -> nombreHotel
 
+/* =========================================================
+   Año operativo de coordinadores
+   ========================================================= */
 
+function getAnoOperativoCoordinadores() {
+  const partes = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Santiago',
+    year: 'numeric',
+    month: '2-digit'
+  }).formatToParts(new Date());
+
+  const ano = Number(
+    partes.find(p => p.type === 'year')?.value
+  );
+
+  const mes = Number(
+    partes.find(p => p.type === 'month')?.value
+  );
+
+  return mes >= 3 ? ano : ano - 1;
+}
+
+let ANO_COORDINADORES = getAnoOperativoCoordinadores();
+
+function getAnoGrupo(g) {
+  return Number(
+    g?.anoViaje ??
+    g?.anio ??
+    g?.year ??
+    0
+  ) || null;
+}
 
 let DESTINOS = []; // catálogo (normalizado) desde GRUPOS
 // ===== Snapshot para diffs en guardado =====
@@ -205,70 +236,176 @@ async function loadCoordinadores(){
 
 async function loadGrupos(){
   console.time('loadGrupos');
+
   GRUPOS = [];
   ID2GRUPO.clear();
 
   try{
-    const ref = collection(db,'grupos');
-    const snap = await getDocs(ref);
-    if (!snap || snap.empty){
-      W('loadGrupos: snapshot vacío (¿colección "grupos" sin lectura o sin docs?)');
-    } else {
-      L('Grupos: snap.size =', snap.size);
-    }
+    const ref = collection(db, 'grupos');
+
+    // Hay registros donde anoViaje puede estar guardado
+    // como número o como texto.
+    const [snapNumero, snapTexto] = await Promise.all([
+      getDocs(
+        query(
+          ref,
+          where(
+            'anoViaje',
+            '==',
+            Number(ANO_COORDINADORES)
+          )
+        )
+      ),
+
+      getDocs(
+        query(
+          ref,
+          where(
+            'anoViaje',
+            '==',
+            String(ANO_COORDINADORES)
+          )
+        )
+      )
+    ]);
+
+    // Evitar duplicados si por cualquier razón
+    // ambos resultados contienen el mismo documento.
+    const docsMap = new Map();
+
+    snapNumero.docs.forEach(d => {
+      docsMap.set(d.id, d);
+    });
+
+    snapTexto.docs.forEach(d => {
+      docsMap.set(d.id, d);
+    });
+
+    const docs = Array.from(
+      docsMap.values()
+    );
+
+    L(
+      'Grupos año',
+      ANO_COORDINADORES,
+      '=',
+      docs.length
+    );
 
     let omitidosSinFecha = 0;
     let tomados = 0;
 
     const primerosIds = [];
-    snap.forEach(d=>{
-      if (primerosIds.length < 8) primerosIds.push(d.id);
 
-      const x = d.data();
+    docs.forEach(d => {
+      if (primerosIds.length < 8) {
+        primerosIds.push(d.id);
+      }
+
+      const x = d.data() || {};
+
       x.id = d.id;
 
-      // Fallbacks comunes de tus datos
-      x.numeroNegocio = x.numeroNegocio || d.id;
-      x.aliasGrupo    = x.aliasGrupo || limpiarAlias(x.nombreGrupo || String(d.id));
+      x.numeroNegocio =
+        x.numeroNegocio ||
+        d.id;
 
-      const { ini, fin } = normalizarFechasGrupo(x);
-      if (!ini || !fin){
+      x.aliasGrupo =
+        x.aliasGrupo ||
+        limpiarAlias(
+          x.nombreGrupo ||
+          String(d.id)
+        );
+
+      const { ini, fin } =
+        normalizarFechasGrupo(x);
+
+      if (!ini || !fin) {
         omitidosSinFecha++;
-        return; // no lo incluimos si no hay fechas válidas
+        return;
       }
 
       const g = {
         ...x,
-        fechaInicio : ini,
-        fechaFin    : fin,
-        identificador: x.identificador || x.identificadorGrupo || x.codigoGrupo || x.codigo || '',
-        programa    : x.programa || x.nombrePrograma || x.programaNombre || '',
-        destino     : x.destino  || x.destinoPrincipal || x.ciudadDestino || x.ciudad || x.paisDestino || ''
+
+        id: d.id,
+
+        anoViaje:
+          Number(x.anoViaje) ||
+          ANO_COORDINADORES,
+
+        fechaInicio: ini,
+        fechaFin: fin,
+
+        identificador:
+          x.identificador ||
+          x.identificadorGrupo ||
+          x.codigoGrupo ||
+          x.codigo ||
+          '',
+
+        programa:
+          x.programa ||
+          x.nombrePrograma ||
+          x.programaNombre ||
+          '',
+
+        destino:
+          x.destino ||
+          x.destinoPrincipal ||
+          x.ciudadDestino ||
+          x.ciudad ||
+          x.paisDestino ||
+          ''
       };
 
       GRUPOS.push(g);
-      ID2GRUPO.set(g.id, g);
+
+      ID2GRUPO.set(
+        g.id,
+        g
+      );
+
       tomados++;
     });
 
-    // Orden por fecha de inicio
-    GRUPOS.sort((a,b)=> (new Date(a.fechaInicio) - new Date(b.fechaInicio)));
+    GRUPOS.sort(
+      (a, b) =>
+        new Date(a.fechaInicio) -
+        new Date(b.fechaInicio)
+    );
 
-    // Resumen de diagnóstico
-    L('loadGrupos => tomados:', tomados,
-      '| omitidosSinFecha:', omitidosSinFecha,
-      '| ID2GRUPO size:', ID2GRUPO.size,
-      '| primeros ids:', primerosIds);
+    L(
+      'loadGrupos año',
+      ANO_COORDINADORES,
+      '=> tomados:',
+      tomados,
+      '| omitidosSinFecha:',
+      omitidosSinFecha,
+      '| ID2GRUPO:',
+      ID2GRUPO.size,
+      '| primeros:',
+      primerosIds
+    );
 
-    // Si al final quedó vacío, avisa
-    if (!GRUPOS.length){
-      W('loadGrupos: No se cargó ningún grupo. Revisa reglas/permiso y campos de fecha.');
+    if (!GRUPOS.length) {
+      W(
+        `No existen grupos válidos para el año ${ANO_COORDINADORES}.`
+      );
     }
+
   }catch(err){
-    E('loadGrupos error:', err);
+    E(
+      'loadGrupos error:',
+      err
+    );
+
     throw err;
+
   }finally{
-    console.timeEnd('loadGrupos');
+    console.timeEnd(
+      'loadGrupos'
+    );
   }
 }
 
@@ -471,125 +608,436 @@ async function loadHotelAssignments(){
 
 async function loadSets(){
   console.time('loadSets');
+
   SETS = [];
 
-  // Seguridad: asegúrate de tener catálogo
-  if (!GRUPOS.length || !ID2GRUPO.size){
-    W('loadSets: GRUPOS vacío; reintentando loadGrupos() antes de continuar.');
+  if (
+    !GRUPOS.length ||
+    !ID2GRUPO.size
+  ) {
+    W(
+      'loadSets: GRUPOS vacío; reintentando loadGrupos().'
+    );
+
     await loadGrupos();
   }
 
   try{
-    console.groupCollapsed('[SETS] A) collectionGroup("conjuntos")');
-    const mapByConj = new Map(); // conjuntoId -> {id, viajes, coordinadorId, confirmado, alertas, _ownerCoordId}
-    const snap = await getDocs(collectionGroup(db, 'conjuntos'));
-    L('Conjuntos (collectionGroup) snap.size =', snap.size);
+    console.groupCollapsed(
+      `[SETS ${ANO_COORDINADORES}] A) collectionGroup("conjuntos")`
+    );
+
+    const mapByConj =
+      new Map();
+
+    const snap =
+      await getDocs(
+        collectionGroup(
+          db,
+          'conjuntos'
+        )
+      );
+
+    L(
+      'Conjuntos totales encontrados:',
+      snap.size
+    );
+
+    let conjuntosAno = 0;
+    let legacyUsados = 0;
+
     snap.forEach(d => {
-      const x = d.data();
-      const conjuntoId    = d.id;
-      const coordinadorId = d.ref.parent.parent.id; // doc del coordinador
-      const viajes        = (x.viajes || []).filter(id => ID2GRUPO.has(id));
+      const x =
+        d.data() ||
+        {};
 
-      mapByConj.set(conjuntoId, {
-        id: conjuntoId,
-        viajes: viajes.slice(),
-        coordinadorId,
-        confirmado: !!x.confirmado,
-        estadoCoord: normalizeEstado(x.estadoCoord || 'pendiente'),
-        alertas: [],
-        _ownerCoordId: coordinadorId
-      });
+      const conjuntoId =
+        d.id;
 
+      const coordinadorId =
+        d.ref.parent.parent.id;
+
+      const viajes =
+        (x.viajes || [])
+          .filter(
+            id =>
+              ID2GRUPO.has(id)
+          );
+
+      // ------------------------------------------
+      // DETERMINAR AÑO DEL CONJUNTO
+      // ------------------------------------------
+
+      let anoConjunto =
+        Number(
+          x.anoViaje
+        ) ||
+        null;
+
+      // Compatibilidad con conjuntos antiguos:
+      //
+      // si todavía no tienen anoViaje,
+      // inferimos el año mirando los grupos que contiene.
+      if (!anoConjunto) {
+        const anosViajes =
+          viajes
+            .map(id =>
+              getAnoGrupo(
+                ID2GRUPO.get(id)
+              )
+            )
+            .filter(Boolean);
+
+        if (anosViajes.length) {
+          anoConjunto =
+            anosViajes[0];
+
+          legacyUsados++;
+        }
+      }
+
+      // Si tiene anoViaje explícito y corresponde
+      // a otro año, no entra.
+      if (
+        anoConjunto &&
+        Number(anoConjunto) !==
+          Number(ANO_COORDINADORES)
+      ) {
+        return;
+      }
+
+      // Si después del filtro de GRUPOS no queda ningún
+      // viaje de este año, tampoco necesitamos mostrarlo.
+      if (!viajes.length) {
+        return;
+      }
+
+      mapByConj.set(
+        conjuntoId,
+        {
+          id:
+            conjuntoId,
+
+          anoViaje:
+            Number(
+              anoConjunto ||
+              ANO_COORDINADORES
+            ),
+
+          viajes:
+            viajes.slice(),
+
+          coordinadorId,
+
+          confirmado:
+            !!x.confirmado,
+
+          estadoCoord:
+            normalizeEstado(
+              x.estadoCoord ||
+              'pendiente'
+            ),
+
+          alertas:
+            [],
+
+          _ownerCoordId:
+            coordinadorId
+        }
+      );
+
+      conjuntosAno++;
     });
-    L('A) conjuntos mapeados:', mapByConj.size);
+
+    L(
+      `Conjuntos usados año ${ANO_COORDINADORES}:`,
+      conjuntosAno,
+      '| legacy inferidos:',
+      legacyUsados
+    );
+
     console.groupEnd();
 
-    console.groupCollapsed('[SETS] B) Reconstruir desde grupos{conjuntoId}');
-    let adds = 0;
-    for (const g of GRUPOS){
-      if (!g.conjuntoId) continue;
-      const k = g.conjuntoId;
+    // =====================================================
+    // B) Reconstrucción desde grupos
+    // =====================================================
 
-      if (!mapByConj.has(k)){
-        let coordId = g.coordinadorId || null;
-        if (!coordId && g.coordinador){
-          const wanted = (g.coordinador||'').trim().toLowerCase();
-          const hit = COORDS.find(c => (c.nombre||'').trim().toLowerCase() === wanted);
-          if (hit) coordId = hit.id;
+    console.groupCollapsed(
+      `[SETS ${ANO_COORDINADORES}] B) reconstruir desde grupos`
+    );
+
+    let adds = 0;
+
+    for (const g of GRUPOS) {
+      if (!g.conjuntoId) {
+        continue;
+      }
+
+      const k =
+        g.conjuntoId;
+
+      if (!mapByConj.has(k)) {
+        let coordId =
+          g.coordinadorId ||
+          null;
+
+        if (
+          !coordId &&
+          g.coordinador
+        ) {
+          const wanted =
+            (
+              g.coordinador ||
+              ''
+            )
+              .trim()
+              .toLowerCase();
+
+          const hit =
+            COORDS.find(
+              c =>
+                (
+                  c.nombre ||
+                  ''
+                )
+                  .trim()
+                  .toLowerCase() ===
+                wanted
+            );
+
+          if (hit) {
+            coordId =
+              hit.id;
+          }
         }
-         mapByConj.set(k, {
-           id: k,
-           viajes: [],
-           coordinadorId: coordId,
-           confirmado: true,
-           estadoCoord: 'pendiente', // default al reconstruir
-           alertas: [],
-           _ownerCoordId: coordId || null
-         });
+
+        mapByConj.set(
+          k,
+          {
+            id:
+              k,
+
+            anoViaje:
+              Number(
+                g.anoViaje ||
+                ANO_COORDINADORES
+              ),
+
+            viajes:
+              [],
+
+            coordinadorId:
+              coordId,
+
+            confirmado:
+              true,
+
+            estadoCoord:
+              normalizeEstado(
+                g.coordEstado ||
+                'pendiente'
+              ),
+
+            alertas:
+              [],
+
+            _ownerCoordId:
+              coordId ||
+              null
+          }
+        );
+
         adds++;
       }
-      const S = mapByConj.get(k);
-      if (!S.coordinadorId && g.coordinadorId){
-        S.coordinadorId = g.coordinadorId;
-        S._ownerCoordId = g.coordinadorId;
+
+      const S =
+        mapByConj.get(k);
+
+      if (
+        !S.coordinadorId &&
+        g.coordinadorId
+      ) {
+        S.coordinadorId =
+          g.coordinadorId;
+
+        S._ownerCoordId =
+          g.coordinadorId;
       }
-      if (ID2GRUPO.has(g.id) && !S.viajes.includes(g.id)){
-        S.viajes.push(g.id);
+
+      if (
+        ID2GRUPO.has(g.id) &&
+        !S.viajes.includes(g.id)
+      ) {
+        S.viajes.push(
+          g.id
+        );
       }
     }
-    L('B) conjuntos agregados desde grupos:', adds);
+
+    L(
+      'Conjuntos reconstruidos desde grupos:',
+      adds
+    );
+
     console.groupEnd();
 
+    // =====================================================
     // C) Volcar
-    SETS = Array.from(mapByConj.values()).map(S => ({
-      ...S,
-      viajes: (S.viajes || []).filter(id => ID2GRUPO.has(id))
-    }));
-    L('C) SETS preliminares:', SETS.length, 'Tot viajes:',
-      SETS.reduce((n,s)=>n+(s.viajes?.length||0),0));
+    // =====================================================
 
-    // D) Post
+    SETS =
+      Array.from(
+        mapByConj.values()
+      )
+        .map(S => ({
+          ...S,
+
+          anoViaje:
+            Number(
+              S.anoViaje ||
+              ANO_COORDINADORES
+            ),
+
+          viajes:
+            (
+              S.viajes ||
+              []
+            )
+              .filter(
+                id =>
+                  ID2GRUPO.has(id)
+              )
+        }))
+        .filter(
+          S =>
+            S.viajes.length > 0
+        );
+
+    L(
+      `SETS preliminares ${ANO_COORDINADORES}:`,
+      SETS.length,
+      'Viajes:',
+      SETS.reduce(
+        (n, s) =>
+          n +
+          (
+            s.viajes?.length ||
+            0
+          ),
+        0
+      )
+    );
+
+    // =====================================================
+    // D) Post proceso
+    // =====================================================
+
     dedupeSetsInPlace();
     sortSetsInPlace();
     populateFilterOptions();
     evaluarAlertas();
     render();
 
-    L('D) SETS finales:', SETS.length, 'Tot viajes:',
-      SETS.reduce((n,s)=>n+(s.viajes?.length||0),0));
-     // --- Construye snapshot PREV (para guardado por diffs) ---
-      PREV.grupos.clear();
-      GRUPOS.forEach(g=>{
-        PREV.grupos.set(g.id, {
-          aliasGrupo   : g.aliasGrupo || null,
-          conjuntoId   : g.conjuntoId || null,
-          coordinadorId: g.coordinadorId || null,
-          coordinador  : g.coordinador || null,
-        });
-      });
-      
-      PREV.sets.clear();
-      SETS.forEach(s=>{
-        const owner = s._ownerCoordId || s.coordinadorId || null;
-        const sid   = s.id || null;
-        if (owner && sid) {
-            PREV.sets.set(`${owner}/${sid}`, {
-              viajes    : (s.viajes||[]).slice(),
-              confirmado: !!s.confirmado,
-              estadoCoord: normalizeEstado(s.estadoCoord || 'pendiente'),
-              owner
-            });
+    // =====================================================
+    // SNAPSHOT PREV
+    // =====================================================
+
+    PREV.grupos.clear();
+
+    GRUPOS.forEach(g => {
+      PREV.grupos.set(
+        g.id,
+        {
+          aliasGrupo:
+            g.aliasGrupo ||
+            null,
+
+          conjuntoId:
+            g.conjuntoId ||
+            null,
+
+          coordinadorId:
+            g.coordinadorId ||
+            null,
+
+          coordinador:
+            g.coordinador ||
+            null,
+
+          anoViaje:
+            Number(
+              g.anoViaje ||
+              ANO_COORDINADORES
+            )
         }
-      });
+      );
+    });
+
+    PREV.sets.clear();
+
+    SETS.forEach(s => {
+      const owner =
+        s._ownerCoordId ||
+        s.coordinadorId ||
+        null;
+
+      const sid =
+        s.id ||
+        null;
+
+      if (
+        owner &&
+        sid
+      ) {
+        PREV.sets.set(
+          `${owner}/${sid}`,
+          {
+            viajes:
+              (
+                s.viajes ||
+                []
+              ).slice(),
+
+            confirmado:
+              !!s.confirmado,
+
+            estadoCoord:
+              normalizeEstado(
+                s.estadoCoord ||
+                'pendiente'
+              ),
+
+            anoViaje:
+              Number(
+                s.anoViaje ||
+                ANO_COORDINADORES
+              ),
+
+            owner
+          }
+        );
+      }
+    });
+
+    L(
+      `SETS finales año ${ANO_COORDINADORES}:`,
+      SETS.length
+    );
 
   }catch(err){
-    E('loadSets error:', err);
+    E(
+      'loadSets error:',
+      err
+    );
+
     throw err;
+
   }finally{
-    console.timeEnd('loadSets');
+    console.timeEnd(
+      'loadSets'
+    );
   }
 }
-
 
 /* =========================================================
    DOM refs
@@ -634,11 +1082,42 @@ if (!elWrapLibres || !elWrapSets){
 
 // Toolbar
 $('#btn-sugerir')?.addEventListener('click', sugerirConjuntos);
-$('#btn-nuevo-conjunto')?.addEventListener('click', ()=>{
-  L('Nuevo conjunto (borrador)');
-  SETS.unshift({viajes:[], coordinadorId:null, confirmado:false, alertas:[], _isNew:true});
-  render();
-});
+$('#btn-nuevo-conjunto')?.addEventListener(
+  'click',
+  () => {
+    L(
+      'Nuevo conjunto',
+      ANO_COORDINADORES
+    );
+
+    SETS.unshift({
+      anoViaje:
+        Number(
+          ANO_COORDINADORES
+        ),
+
+      viajes:
+        [],
+
+      coordinadorId:
+        null,
+
+      confirmado:
+        false,
+
+      estadoCoord:
+        'pendiente',
+
+      alertas:
+        [],
+
+      _isNew:
+        true
+    });
+
+    render();
+  }
+);
 $('#btn-guardar')?.addEventListener('click', ()=>withBusy($('#btn-guardar'), 'Guardando…', guardarTodo, 'Guardar cambios', '✅ Guardado'));
 
 // Modal handlers
@@ -1173,7 +1652,37 @@ function sugerirConjuntos(){
   for (const g of GRUPOS){
     if (g.conjuntoId && g.coordinadorId){
       if (!mapConjunto.has(g.conjuntoId)){
-        mapConjunto.set(g.conjuntoId, { id:g.conjuntoId, viajes:[], coordinadorId:g.coordinadorId, confirmado:true, alertas:[] });
+        mapConjunto.set(
+           g.conjuntoId,
+           {
+             id:
+               g.conjuntoId,
+         
+             anoViaje:
+               Number(
+                 g.anoViaje ||
+                 ANO_COORDINADORES
+               ),
+         
+             viajes:
+               [],
+         
+             coordinadorId:
+               g.coordinadorId,
+         
+             confirmado:
+               true,
+         
+             estadoCoord:
+               normalizeEstado(
+                 g.coordEstado ||
+                 'pendiente'
+               ),
+         
+             alertas:
+               []
+           }
+         );
       }
       mapConjunto.get(g.conjuntoId).viajes.push(g.id);
     }
@@ -1211,7 +1720,33 @@ function sugerirConjuntos(){
     }
   }
 
-  const suggested = work.map(() => ({ viajes:[], coordinadorId:null, confirmado:false, alertas:[], _isNew:true }));
+  const suggested =
+     work.map(
+       () => ({
+         anoViaje:
+           Number(
+             ANO_COORDINADORES
+           ),
+   
+         viajes:
+           [],
+   
+         coordinadorId:
+           null,
+   
+         confirmado:
+           false,
+   
+         estadoCoord:
+           'pendiente',
+   
+         alertas:
+           [],
+   
+         _isNew:
+           true
+       })
+     );
   for (let i=0;i<work.length;i++){ suggested[i].viajes = work[i].viajes.slice(); }
   SETS = fixedSetsMem.concat(fixedFromGruposFiltered).concat(suggested);
 
@@ -1803,14 +2338,61 @@ async function guardarTodo(){
         const viajes = (s.viajes||[]).slice();
         const conjRef = doc(db,'coordinadores', s._ownerCoordId, 'conjuntos', s.id);
 
-         const est = normalizeEstado(s.estadoCoord);
-         if (!prev || !sameArr(prev.viajes, viajes) || !prev.confirmado || prev.estadoCoord !== est){
-           ops.push(b=> b.set(conjRef, {
-             viajes,
-             confirmado: true,
-             estadoCoord: est,
-             meta: { actualizadoEn: nowTS, ...(s._isNew ? { creadoEn: nowTS } : {}) }
-           }, { merge:true }));
+         const est =
+           normalizeEstado(
+             s.estadoCoord
+           );
+         
+         const anoSet =
+           Number(
+             s.anoViaje ||
+             ANO_COORDINADORES
+           );
+         
+         if (
+           !prev ||
+           !sameArr(
+             prev.viajes,
+             viajes
+           ) ||
+           !prev.confirmado ||
+           prev.estadoCoord !== est ||
+           Number(prev.anoViaje || 0) !== anoSet
+         ) {
+           ops.push(
+             b =>
+               b.set(
+                 conjRef,
+                 {
+                   anoViaje:
+                     anoSet,
+         
+                   viajes,
+         
+                   confirmado:
+                     true,
+         
+                   estadoCoord:
+                     est,
+         
+                   meta: {
+                     actualizadoEn:
+                       nowTS,
+         
+                     ...(s._isNew
+                       ? {
+                           creadoEn:
+                             nowTS
+                         }
+                       : {})
+                   }
+                 },
+                 {
+                   merge:
+                     true
+                 }
+               )
+           );
          }
 
         const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
@@ -1883,18 +2465,46 @@ async function guardarTodo(){
         coordinador  : g.coordinador || null,
       });
     });
-    PREV.sets.clear();
-    SETS.forEach(s=>{
-      const owner = s._ownerCoordId || s.coordinadorId || null;
-      if (owner && s.id){
-         PREV.sets.set(`${owner}/${s.id}`, {
-           viajes:(s.viajes||[]).slice(),
-           confirmado:!!s.confirmado,
-           estadoCoord: normalizeEstado(s.estadoCoord),
-           owner
-         });
-      }
-    });
+      PREV.sets.clear();
+      
+      SETS.forEach(s => {
+        const owner =
+          s._ownerCoordId ||
+          s.coordinadorId ||
+          null;
+      
+        if (
+          owner &&
+          s.id
+        ) {
+          PREV.sets.set(
+            `${owner}/${s.id}`,
+            {
+              viajes:
+                (
+                  s.viajes ||
+                  []
+                ).slice(),
+      
+              confirmado:
+                !!s.confirmado,
+      
+              estadoCoord:
+                normalizeEstado(
+                  s.estadoCoord
+                ),
+      
+              anoViaje:
+                Number(
+                  s.anoViaje ||
+                  ANO_COORDINADORES
+                ),
+      
+              owner
+            }
+          );
+        }
+      });
 
     L('guardarTodo[DIFF] OK');
   }catch(err){
@@ -1943,14 +2553,57 @@ async function guardarSet(i){
       const keyNow  = `${s._ownerCoordId}/${s.id}`;
       const prevSet = PREV.sets.get(keyNow);
 
-      const est = normalizeEstado(s.estadoCoord);
-      if (!prevSet || !sameArr(prevSet.viajes, viajes) || !prevSet.confirmado || prevSet.estadoCoord !== est){
-        ops.push(b=> b.set(conjRef, {
-          viajes,
-          confirmado: true,
-          estadoCoord: est,
-          meta:{ actualizadoEn:nowTS }
-        }, { merge:true }));
+      const est =
+        normalizeEstado(
+          s.estadoCoord
+        );
+      
+      const anoSet =
+        Number(
+          s.anoViaje ||
+          ANO_COORDINADORES
+        );
+      
+      if (
+        !prevSet ||
+        !sameArr(
+          prevSet.viajes,
+          viajes
+        ) ||
+        !prevSet.confirmado ||
+        prevSet.estadoCoord !== est ||
+        Number(
+          prevSet.anoViaje ||
+          0
+        ) !== anoSet
+      ) {
+        ops.push(
+          b =>
+            b.set(
+              conjRef,
+              {
+                anoViaje:
+                  anoSet,
+      
+                viajes,
+      
+                confirmado:
+                  true,
+      
+                estadoCoord:
+                  est,
+      
+                meta: {
+                  actualizadoEn:
+                    nowTS
+                }
+              },
+              {
+                merge:
+                  true
+              }
+            )
+        );
       }
 
       const coordNombre = COORDS.find(c=>c.id===s.coordinadorId)?.nombre || null;
@@ -2010,14 +2663,38 @@ async function guardarSet(i){
         coordEstado: (s.confirmado && s.coordinadorId) ? normalizeEstado(s.estadoCoord) : (prev.conjuntoId === s.id ? null : prev.coordEstado),
       });
     });
-    if (s._ownerCoordId && s.id){
-      PREV.sets.set(`${s._ownerCoordId}/${s.id}`, {
-        viajes: (s.viajes||[]).slice(),
-        confirmado: !!s.confirmado,
-        estadoCoord: normalizeEstado(s.estadoCoord),
-        owner: s._ownerCoordId
-      });
-    }
+      if (
+        s._ownerCoordId &&
+        s.id
+      ) {
+        PREV.sets.set(
+          `${s._ownerCoordId}/${s.id}`,
+          {
+            viajes:
+              (
+                s.viajes ||
+                []
+              ).slice(),
+      
+            confirmado:
+              !!s.confirmado,
+      
+            estadoCoord:
+              normalizeEstado(
+                s.estadoCoord
+              ),
+      
+            anoViaje:
+              Number(
+                s.anoViaje ||
+                ANO_COORDINADORES
+              ),
+      
+            owner:
+              s._ownerCoordId
+          }
+        );
+      }
 
     console.log(`guardarSet[${i}] OK · ops=${ops.length}`);
   }catch(e){
