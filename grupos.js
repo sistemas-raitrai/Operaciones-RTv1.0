@@ -572,49 +572,246 @@ async function _loadVuelosInfo(db, g){
 }
 
 // ------------ ÍNDICES RÁPIDOS PARA COORDINADORES ------------
-async function _buildCoordIndexes() {
-  // 1) coordinadorId -> { nombre, correo, telefono }
-  const coordById = new Map();
-  try {
-    const snapC = await getDocs(collection(db, 'coordinadores'));
-    snapC.forEach(d => {
-      const x = d.data() || {};
-      const nombre   = (x.nombre || '').trim();
-      const correo   = (x.correo || '').trim().toLowerCase();
-      const telefono =
-        (x.telefono || x.fono || x.celular || (x.meta && (x.meta.telefono || x.meta.celular)) || '')
-        .toString()
-        .trim();
+async function _buildCoordIndexes(
+  anoViaje = null,
+  gruposPermitidos = []
+) {
+  // ============================================================
+  // 1) CATÁLOGO MAESTRO DE COORDINADORES
+  //
+  // coordinadorId -> {
+  //   nombre,
+  //   correo,
+  //   telefono
+  // }
+  // ============================================================
 
-      coordById.set(d.id, { nombre, correo, telefono });
+  const coordById =
+    new Map();
+
+  try {
+    const snapC =
+      await getDocs(
+        collection(
+          db,
+          'coordinadores'
+        )
+      );
+
+    snapC.forEach(d => {
+      const x =
+        d.data() ||
+        {};
+
+      const nombre =
+        (
+          x.nombre ||
+          ''
+        ).trim();
+
+      const correo =
+        (
+          x.correo ||
+          ''
+        )
+          .trim()
+          .toLowerCase();
+
+      const telefono =
+        (
+          x.telefono ||
+          x.fono ||
+          x.celular ||
+          (
+            x.meta &&
+            (
+              x.meta.telefono ||
+              x.meta.celular
+            )
+          ) ||
+          ''
+        )
+          .toString()
+          .trim();
+
+      coordById.set(
+        d.id,
+        {
+          nombre,
+          correo,
+          telefono
+        }
+      );
     });
+
   } catch (e) {
-    console.warn('No pude leer coordinadores:', e);
+    console.warn(
+      'No pude leer coordinadores:',
+      e
+    );
   }
 
-  // 2) grupoId -> coordinadorId (desde collectionGroup('conjuntos'))
-  const coordIdByGrupo = new Map();
-  const estadoByGrupo  = new Map();
+
+  // ============================================================
+  // 2) GRUPOS QUE PERTENECEN A LA TABLA ACTUAL
+  //
+  // Esto es MUY importante.
+  //
+  // Si estamos viendo 2026:
+  // solamente permitimos IDs de grupos 2026.
+  //
+  // Además sirve para conjuntos antiguos que todavía
+  // no tengan anoViaje.
+  // ============================================================
+
+  const gruposValidos =
+    new Set(
+      (
+        gruposPermitidos ||
+        []
+      )
+        .map(String)
+        .filter(Boolean)
+    );
+
+
+  // ============================================================
+  // 3) ÍNDICES DE ASIGNACIONES
+  //
+  // grupoId -> coordinadorId
+  // grupoId -> estadoCoord
+  // ============================================================
+
+  const coordIdByGrupo =
+    new Map();
+
+  const estadoByGrupo =
+    new Map();
+
 
   try {
-    const snapSets = await getDocs(collectionGroup(db, 'conjuntos'));
+    const snapSets =
+      await getDocs(
+        collectionGroup(
+          db,
+          'conjuntos'
+        )
+      );
+
     snapSets.forEach(s => {
-      const coordId = s.ref.parent.parent.id;
-      const x = s.data() || {};
-      const est = String(x.estadoCoord || 'pendiente').toLowerCase();
-      (x.viajes || []).forEach(gid => {
-        const k = String(gid);
-        coordIdByGrupo.set(k, coordId);
-        estadoByGrupo.set(k, est);
+      const coordId =
+        s.ref.parent.parent.id;
+
+      const x =
+        s.data() ||
+        {};
+
+      const anoConjunto =
+        Number(
+          x.anoViaje
+        ) ||
+        null;
+
+      // ========================================================
+      // CONJUNTO NUEVO CON AÑO EXPLÍCITO
+      //
+      // Si estamos cargando 2026:
+      //
+      // conjunto 2027 -> ignorar
+      // conjunto 2026 -> usar
+      // ========================================================
+
+      if (
+        anoViaje !== null &&
+        anoViaje !== undefined &&
+        anoConjunto &&
+        Number(anoConjunto) !==
+          Number(anoViaje)
+      ) {
+        return;
+      }
+
+
+      const est =
+        String(
+          x.estadoCoord ||
+          'pendiente'
+        )
+          .trim()
+          .toLowerCase();
+
+
+      const viajes =
+        Array.isArray(
+          x.viajes
+        )
+          ? x.viajes
+          : [];
+
+
+      viajes.forEach(gid => {
+        const k =
+          String(
+            gid
+          );
+
+        // ======================================================
+        // SEGUNDA PROTECCIÓN
+        //
+        // Aunque el conjunto no tenga anoViaje porque es antiguo,
+        // únicamente dejamos entrar grupos que efectivamente
+        // pertenecen a la tabla/año actualmente cargado.
+        // ======================================================
+
+        if (
+          gruposValidos.size &&
+          !gruposValidos.has(k)
+        ) {
+          return;
+        }
+
+        coordIdByGrupo.set(
+          k,
+          coordId
+        );
+
+        estadoByGrupo.set(
+          k,
+          est
+        );
       });
     });
+
   } catch (e) {
-    console.warn('No pude leer conjuntos:', e);
+    console.warn(
+      'No pude leer conjuntos:',
+      e
+    );
   }
 
-  return { coordById, coordIdByGrupo, estadoByGrupo };
-}
 
+  console.log(
+    '[GRUPOS][COORDINADORES_INDEX]',
+    {
+      anoViaje,
+      gruposPermitidos:
+        gruposValidos.size,
+
+      coordinadores:
+        coordById.size,
+
+      gruposConCoordinadorViaConjunto:
+        coordIdByGrupo.size
+    }
+  );
+
+
+  return {
+    coordById,
+    coordIdByGrupo,
+    estadoByGrupo
+  };
+}
 function setCarga(porcentaje, titulo, detalle = '') {
   const box = document.getElementById('loadBox');
   const bar = document.getElementById('loadProgress');
@@ -923,7 +1120,24 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
   // Índices de coordinadores (1 sola vez)
   setCarga(25, 'Cargando coordinadores...', 'Leyendo coordinadores y conjuntos');
-  const { coordById, coordIdByGrupo, estadoByGrupo } = await _buildCoordIndexes();
+  const {
+    coordById,
+    coordIdByGrupo,
+    estadoByGrupo
+  } = await _buildCoordIndexes(
+    anoResuelto === 'todos'
+      ? null
+      : Number(
+          anoResuelto
+        ),
+  
+    docsGrupos.map(
+      d =>
+        String(
+          d.id
+        )
+    )
+  );
   setCarga(35, 'Coordinadores cargados', 'Preparando tabla principal');
 
   // 2) Mapear docs → {id,fila:[], coordTexto} PARA LA TABLA
