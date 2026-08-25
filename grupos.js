@@ -16,36 +16,67 @@ const API_PAGOS_URL = '/api/pagos';
 
 // Propiedades en el mismo orden que aparecen en la tabla
 const camposFire = [
-  "numeroNegocio",      // 0
-  "identificador",      // 1
-  "nombreGrupo",        // 2
-  "anoViaje",           // 3
-  "vendedora",          // 4 
-  "cantidadgrupo",      // 5
-  "adultos",            // 6
-  "estudiantes",        // 7
-  "colegio",            // 8
-  "curso",              // 9
-  "destino",            // 10
-  "programa",           // 11
-  "fechaInicio",        // 12
-  "fechaFin",           // 13
-  "asistenciaEnViajes", // 14
-  "autorizacion",       // 15
-  "hoteles",            // 16
-  "ciudades",           // 17
-  "transporte",         // 18
-  "tramos",             // 19
-  "fechaDeViaje",       // 20
-  "observaciones",      // 21
-  "creadoPor",          // 22
-  "fechaCreacion"       // 23
+  "numeroNegocio",          // 0
+  "identificador",          // 1
+  "nombreGrupo",            // 2
+  "anoViaje",               // 3
+  "vendedora",              // 4
+
+  // NUEVO
+  "cantidadCoordinadores",  // 5
+
+  "cantidadgrupo",          // 6
+  "adultos",                // 7
+  "estudiantes",            // 8
+  "colegio",                // 9
+  "curso",                  // 10
+  "destino",                // 11
+  "programa",               // 12
+  "fechaInicio",            // 13
+  "fechaFin",               // 14
+  "asistenciaEnViajes",     // 15
+  "autorizacion",           // 16
+  "hoteles",                // 17
+  "ciudades",               // 18
+  "transporte",             // 19
+  "tramos",                 // 20
+  "fechaDeViaje",           // 21
+  "observaciones",          // 22
+  "creadoPor",              // 23
+  "fechaCreacion"           // 24
 ];
 
 // Campos que deben ser numéricos en Firestore
-const NUMERIC_FIELDS = new Set(['cantidadgrupo','adultos','estudiantes']);
+const NUMERIC_FIELDS = new Set([
+  'cantidadCoordinadores',
+  'cantidadgrupo',
+  'adultos',
+  'estudiantes'
+]);
 
 const PAX_FIELDS = new Set(['cantidadgrupo', 'adultos', 'estudiantes']);
+
+function normalizarCantidadCoordinadores(valor) {
+  const n =
+    Number.parseInt(
+      String(
+        valor ?? 1
+      ),
+      10
+    );
+
+  if (!Number.isFinite(n)) {
+    return 1;
+  }
+
+  return Math.min(
+    3,
+    Math.max(
+      1,
+      n
+    )
+  );
+}
 
 function validarFilaPax($tr) {
   const $pax = $tr.find('td[data-campo="cantidadgrupo"]');
@@ -577,13 +608,7 @@ async function _buildCoordIndexes(
   gruposPermitidos = []
 ) {
   // ============================================================
-  // 1) CATÁLOGO MAESTRO DE COORDINADORES
-  //
-  // coordinadorId -> {
-  //   nombre,
-  //   correo,
-  //   telefono
-  // }
+  // CATÁLOGO COORDINADORES
   // ============================================================
 
   const coordById =
@@ -603,43 +628,30 @@ async function _buildCoordIndexes(
         d.data() ||
         {};
 
-      const nombre =
-        (
-          x.nombre ||
-          ''
-        ).trim();
-
-      const correo =
-        (
-          x.correo ||
-          ''
-        )
-          .trim()
-          .toLowerCase();
-
-      const telefono =
-        (
-          x.telefono ||
-          x.fono ||
-          x.celular ||
-          (
-            x.meta &&
-            (
-              x.meta.telefono ||
-              x.meta.celular
-            )
-          ) ||
-          ''
-        )
-          .toString()
-          .trim();
-
       coordById.set(
         d.id,
         {
-          nombre,
-          correo,
-          telefono
+          nombre:
+            String(
+              x.nombre ||
+              ''
+            ).trim(),
+
+          correo:
+            String(
+              x.correo ||
+              ''
+            )
+              .trim()
+              .toLowerCase(),
+
+          telefono:
+            String(
+              x.telefono ||
+              x.fono ||
+              x.celular ||
+              ''
+            ).trim()
         }
       );
     });
@@ -653,15 +665,7 @@ async function _buildCoordIndexes(
 
 
   // ============================================================
-  // 2) GRUPOS QUE PERTENECEN A LA TABLA ACTUAL
-  //
-  // Esto es MUY importante.
-  //
-  // Si estamos viendo 2026:
-  // solamente permitimos IDs de grupos 2026.
-  //
-  // Además sirve para conjuntos antiguos que todavía
-  // no tengan anoViaje.
+  // GRUPOS QUE CORRESPONDEN A LA TABLA ACTUAL
   // ============================================================
 
   const gruposValidos =
@@ -676,16 +680,16 @@ async function _buildCoordIndexes(
 
 
   // ============================================================
-  // 3) ÍNDICES DE ASIGNACIONES
-  //
-  // grupoId -> coordinadorId
-  // grupoId -> estadoCoord
+  // AHORA SON ARRAYS
   // ============================================================
 
-  const coordIdByGrupo =
+  const coordIdsByGrupo =
     new Map();
 
-  const estadoByGrupo =
+  const estadosByGrupo =
+    new Map();
+
+  const conjuntosByGrupo =
     new Map();
 
 
@@ -712,18 +716,8 @@ async function _buildCoordIndexes(
         ) ||
         null;
 
-      // ========================================================
-      // CONJUNTO NUEVO CON AÑO EXPLÍCITO
-      //
-      // Si estamos cargando 2026:
-      //
-      // conjunto 2027 -> ignorar
-      // conjunto 2026 -> usar
-      // ========================================================
-
       if (
         anoViaje !== null &&
-        anoViaje !== undefined &&
         anoConjunto &&
         Number(anoConjunto) !==
           Number(anoViaje)
@@ -732,7 +726,7 @@ async function _buildCoordIndexes(
       }
 
 
-      const est =
+      const estado =
         String(
           x.estadoCoord ||
           'pendiente'
@@ -741,44 +735,88 @@ async function _buildCoordIndexes(
           .toLowerCase();
 
 
-      const viajes =
-        Array.isArray(
-          x.viajes
-        )
+      (
+        Array.isArray(x.viajes)
           ? x.viajes
-          : [];
-
-
-      viajes.forEach(gid => {
-        const k =
+          : []
+      ).forEach(rawGid => {
+        const gid =
           String(
-            gid
+            rawGid
           );
-
-        // ======================================================
-        // SEGUNDA PROTECCIÓN
-        //
-        // Aunque el conjunto no tenga anoViaje porque es antiguo,
-        // únicamente dejamos entrar grupos que efectivamente
-        // pertenecen a la tabla/año actualmente cargado.
-        // ======================================================
 
         if (
           gruposValidos.size &&
-          !gruposValidos.has(k)
+          !gruposValidos.has(gid)
         ) {
           return;
         }
 
-        coordIdByGrupo.set(
-          k,
-          coordId
-        );
 
-        estadoByGrupo.set(
-          k,
-          est
-        );
+        if (
+          !coordIdsByGrupo.has(
+            gid
+          )
+        ) {
+          coordIdsByGrupo.set(
+            gid,
+            []
+          );
+        }
+
+
+        if (
+          !estadosByGrupo.has(
+            gid
+          )
+        ) {
+          estadosByGrupo.set(
+            gid,
+            []
+          );
+        }
+
+
+        if (
+          !conjuntosByGrupo.has(
+            gid
+          )
+        ) {
+          conjuntosByGrupo.set(
+            gid,
+            []
+          );
+        }
+
+
+        const ids =
+          coordIdsByGrupo.get(
+            gid
+          );
+
+        // Un mismo coordinador sólo puede
+        // cubrir un cupo del mismo grupo.
+        if (
+          !ids.includes(
+            coordId
+          )
+        ) {
+          ids.push(
+            coordId
+          );
+
+          estadosByGrupo
+            .get(gid)
+            .push(
+              estado
+            );
+
+          conjuntosByGrupo
+            .get(gid)
+            .push(
+              s.id
+            );
+        }
       });
     });
 
@@ -790,28 +828,58 @@ async function _buildCoordIndexes(
   }
 
 
-  console.log(
-    '[GRUPOS][COORDINADORES_INDEX]',
-    {
-      anoViaje,
-      gruposPermitidos:
-        gruposValidos.size,
-
-      coordinadores:
-        coordById.size,
-
-      gruposConCoordinadorViaConjunto:
-        coordIdByGrupo.size
-    }
-  );
-
-
   return {
     coordById,
-    coordIdByGrupo,
-    estadoByGrupo
+    coordIdsByGrupo,
+    estadosByGrupo,
+    conjuntosByGrupo
   };
 }
+
+function resolverEstadoCoordinadoresGrupo(
+  estados = []
+) {
+  const arr =
+    (
+      estados ||
+      []
+    )
+      .map(x =>
+        String(
+          x ||
+          'pendiente'
+        ).toLowerCase()
+      );
+
+
+  if (!arr.length) {
+    return 'pendiente';
+  }
+
+  // Si cualquiera fue rechazado,
+  // mostramos el grupo en rojo.
+  if (
+    arr.includes(
+      'rechazado'
+    )
+  ) {
+    return 'rechazado';
+  }
+
+  // Sólo queda completamente aprobado
+  // cuando TODOS aprobaron.
+  if (
+    arr.every(
+      x =>
+        x === 'aprobado'
+    )
+  ) {
+    return 'aprobado';
+  }
+
+  return 'pendiente';
+}
+
 function setCarga(porcentaje, titulo, detalle = '') {
   const box = document.getElementById('loadBox');
   const bar = document.getElementById('loadProgress');
@@ -1122,9 +1190,23 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
   setCarga(25, 'Cargando coordinadores...', 'Leyendo coordinadores y conjuntos');
   const {
     coordById,
-    coordIdByGrupo,
-    estadoByGrupo
+    coordIdsByGrupo,
+    estadosByGrupo,
+    conjuntosByGrupo
   } = await _buildCoordIndexes(
+    anoResuelto === 'todos'
+      ? null
+      : Number(
+          anoResuelto
+        ),
+  
+    docsGrupos.map(
+      d =>
+        String(
+          d.id
+        )
+    )
+  );
     anoResuelto === 'todos'
       ? null
       : Number(
@@ -1145,26 +1227,171 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     const d = docSnap.data();
   
     // Resolver coordinador visible: primero el que venga en el doc, si no, desde conjuntos
-    const coordIdDoc         = d.coordinadorId || null;
-    const coordIdViaConjunto = coordIdByGrupo.get(docSnap.id) || null;
-    const coordId            = coordIdDoc || coordIdViaConjunto || null;
-    const coordInfo          = coordId ? coordById.get(coordId) : null;
-  
+    // ==========================================================
+    // COORDINADORES DEL GRUPO
+    // ==========================================================
+    
+    const idsGuardados =
+      Array.isArray(
+        d.coordinadorIds
+      )
+        ? d.coordinadorIds
+            .map(String)
+            .filter(Boolean)
+        : (
+            d.coordinadorId
+              ? [
+                  String(
+                    d.coordinadorId
+                  )
+                ]
+              : []
+          );
+    
+    
+    const idsDesdeConjuntos =
+      coordIdsByGrupo.get(
+        docSnap.id
+      ) ||
+      [];
+    
+    
+    const coordIds =
+      [
+        ...new Set(
+          [
+            ...idsGuardados,
+            ...idsDesdeConjuntos
+          ]
+        )
+      ];
+    
+    
+    const coordInfos =
+      coordIds
+        .map(
+          id => ({
+            id,
+            ...(
+              coordById.get(id) ||
+              {}
+            )
+          })
+        );
+    
+    
+    const nombresGuardados =
+      Array.isArray(
+        d.coordinadores
+      )
+        ? d.coordinadores
+        : (
+            d.coordinador
+              ? [d.coordinador]
+              : []
+          );
+    
+    
+    const nombres =
+      coordInfos
+        .map(
+          c =>
+            String(
+              c.nombre ||
+              ''
+            ).trim()
+        )
+        .filter(Boolean);
+    
+    
     const coordTexto =
-      (coordInfo?.nombre || '').trim() ||
-      (d.coordinador || '').toString().trim() ||
-      (coordInfo?.correo || '').trim() || '';
-  
+      (
+        nombres.length
+          ? nombres
+          : nombresGuardados
+      )
+        .filter(Boolean)
+        .join(' / ');
+    
+    
     const coordTelefono =
-      (coordInfo?.telefono || '').toString().trim();
+      coordInfos
+        .map(
+          c =>
+            String(
+              c.telefono ||
+              ''
+            ).trim()
+        )
+        .filter(Boolean)
+        .join(' / ');
+    
+    
+    const estados =
+      Array.isArray(
+        d.coordinadoresAsignados
+      )
+        ? d.coordinadoresAsignados
+            .map(
+              x =>
+                x?.estadoCoord ||
+                'pendiente'
+            )
+        : (
+            estadosByGrupo.get(
+              docSnap.id
+            ) ||
+            (
+              d.coordEstado
+                ? [
+                    d.coordEstado
+                  ]
+                : []
+            )
+          );
+    
+    
+    const estadoCoord =
+      resolverEstadoCoordinadoresGrupo(
+        estados
+      );
+    
+    
+    const cantidadCoordinadores =
+      normalizarCantidadCoordinadores(
+        d.cantidadCoordinadores
+      );
   
     return {
-      id: docSnap.id,
-      fila: camposFire.map(c => d[c] || ''),
+      id:
+        docSnap.id,
+    
+      fila:
+        camposFire.map(c => {
+          if (
+            c === 'cantidadCoordinadores'
+          ) {
+            return cantidadCoordinadores;
+          }
+    
+          return d[c] ?? '';
+        }),
+    
       coordTexto,
+    
       coordTelefono,
-      estadoCoord: d.coordEstado || estadoByGrupo.get(docSnap.id) || 'pendiente',
-      fechasConfirmadasDesdeHoteles: !!d.fechasConfirmadasDesdeHoteles
+    
+      coordIds,
+    
+      estadoCoord,
+    
+      cantidadCoordinadores,
+    
+      coordinadoresAsignados:
+        coordIds.length,
+    
+      fechasConfirmadasDesdeHoteles:
+        !!d.fechasConfirmadasDesdeHoteles
     };
   });
 
