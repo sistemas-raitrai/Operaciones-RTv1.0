@@ -8132,54 +8132,442 @@ function handleExcel(evt){
    Boot
    ========================================================= */
 async function __bootCoordinadores(){
-  console.groupCollapsed('BOOT');
+  console.groupCollapsed(
+    'BOOT'
+  );
+
+  console.time(
+    'BOOT'
+  );
+
+
+  // =====================================================
+  // HELPER DE CARGA
+  //
+  // Nos permite saber EXACTAMENTE cuál etapa falla.
+  // =====================================================
+
+  const ejecutarPaso =
+    async (
+      nombre,
+      fn,
+      {
+        critico = false
+      } = {}
+    ) => {
+      console.groupCollapsed(
+        `BOOT → ${nombre}`
+      );
+
+
+      try{
+        console.time(
+          nombre
+        );
+
+
+        const resultado =
+          await fn();
+
+
+        console.log(
+          `✅ ${nombre} OK`
+        );
+
+
+        return {
+          ok:
+            true,
+
+          resultado
+        };
+
+
+      }catch(err){
+        console.error(
+          `🔥 ${nombre} FALLÓ`,
+          err
+        );
+
+
+        if (
+          err?.code
+        ) {
+          console.error(
+            'Firebase code:',
+            err.code
+          );
+        }
+
+
+        if (
+          err?.message
+        ) {
+          console.error(
+            'Firebase message:',
+            err.message
+          );
+        }
+
+
+        if (
+          critico
+        ) {
+          throw err;
+        }
+
+
+        return {
+          ok:
+            false,
+
+          error:
+            err
+        };
+
+
+      }finally{
+        try{
+          console.timeEnd(
+            nombre
+          );
+        }catch(_){}
+
+
+        console.groupEnd();
+      }
+    };
+
+
   try{
-    console.time('BOOT');
+    // =====================================================
+    // 1) COORDINADORES
+    //
+    // No lo hacemos crítico:
+    // aunque falle, queremos comprobar si grupos carga.
+    // =====================================================
 
-    await loadCoordinadores();
-    console.log('[RTV/coord] COORDS cargados =', COORDS.length);
-
-    await loadGrupos();
-    console.log('[RTV/coord] GRUPOS cargados =', GRUPOS.length,
-                '| primeros ids =', GRUPOS.slice(0,5).map(g=>g.id));
-
-    // NUEVO: Cargar horas por grupo desde 'vuelos'
-    await loadHorasViajes();
-
-    // NUEVO: Cargar hoteles por grupo desde "hotelAssignments"
-    await loadHotelAssignments();
-
-    await loadSets();
-    console.log('[RTV/coord] SETS construidos =', SETS.length);
+    await ejecutarPaso(
+      '1 · loadCoordinadores',
+      loadCoordinadores
+    );
 
 
-    populateFilterOptions();
-    render();
+    console.log(
+      '[RTV/coord] COORDS cargados =',
+      COORDS.length
+    );
+
+
+    // =====================================================
+    // 2) GRUPOS
+    //
+    // ESTE SÍ ES CRÍTICO.
+    //
+    // Sin grupos esta página no puede funcionar.
+    // =====================================================
+
+    await ejecutarPaso(
+      '2 · loadGrupos',
+      loadGrupos,
+      {
+        critico:
+          true
+      }
+    );
+
+
+    console.log(
+      '[RTV/coord] GRUPOS cargados =',
+      GRUPOS.length,
+      '| primeros ids =',
+      GRUPOS
+        .slice(
+          0,
+          5
+        )
+        .map(
+          g =>
+            g.id
+        )
+    );
+
+
+    // =====================================================
+    // 3) HORAS DE VIAJE
+    //
+    // Secundario.
+    // Si vuelos falla, igualmente mostramos los grupos.
+    // =====================================================
+
+    await ejecutarPaso(
+      '3 · loadHorasViajes',
+      loadHorasViajes
+    );
+
+
+    console.log(
+      '[RTV/coord] HORAS_INICIO =',
+      HORAS_INICIO.size
+    );
+
+
+    // =====================================================
+    // 4) HOTELES
+    //
+    // Secundario.
+    // =====================================================
+
+    await ejecutarPaso(
+      '4 · loadHotelAssignments',
+      loadHotelAssignments
+    );
+
+
+    console.log(
+      '[RTV/coord] HOTELES_POR_GRUPO =',
+      HOTELES_POR_GRUPO.size
+    );
+
+
+    // =====================================================
+    // 5) SETS
+    //
+    // Si falla collectionGroup/conjuntos,
+    // igualmente queremos que la página muestre
+    // los grupos libres.
+    // =====================================================
+
+    await ejecutarPaso(
+      '5 · loadSets',
+      loadSets
+    );
+
+
+    console.log(
+      '[RTV/coord] SETS construidos =',
+      SETS.length
+    );
+
+
+    // =====================================================
+    // 6) RENDER FINAL
+    // =====================================================
+
+    try{
+      populateFilterOptions();
+
+    }catch(err){
+      console.error(
+        '🔥 populateFilterOptions FALLÓ',
+        err
+      );
+    }
+
+
+    try{
+      evaluarAlertas();
+
+    }catch(err){
+      console.error(
+        '🔥 evaluarAlertas FALLÓ',
+        err
+      );
+    }
+
+
+    try{
+      render();
+
+    }catch(err){
+      console.error(
+        '🔥 render FALLÓ',
+        err
+      );
+    }
+
+
+    console.log(
+      '✅ BOOT TERMINADO',
+      {
+        ano:
+          ANO_COORDINADORES,
+
+        coordinadores:
+          COORDS.length,
+
+        grupos:
+          GRUPOS.length,
+
+        sets:
+          SETS.length,
+
+        horas:
+          HORAS_INICIO.size,
+
+        hoteles:
+          HOTELES_POR_GRUPO.size
+      }
+    );
+
 
   }catch(err){
-    console.error('[RTV/coord] BOOT error:', err);
+    console.error(
+      '[RTV/coord] 🔥 BOOT CRÍTICO',
+      err
+    );
+
+
+    console.error(
+      'Código:',
+      err?.code ||
+      '(sin código)'
+    );
+
+
+    console.error(
+      'Mensaje:',
+      err?.message ||
+      '(sin mensaje)'
+    );
+
+
+    // Aunque falle GRUPOS,
+    // dejamos la interfaz en un estado entendible.
+    try{
+      render();
+
+    }catch(_){}
+
+
   }finally{
-    console.timeEnd('BOOT');
+    try{
+      console.timeEnd(
+        'BOOT'
+      );
+    }catch(_){}
+
+
     console.groupEnd();
   }
 
-  // 🔧 Ganchos de depuración desde la consola
-  window.__dbg = {
-    get sizes(){ return { coords: COORDS.length, grupos: GRUPOS.length, sets: SETS.length }; },
-    COORDS, GRUPOS, SETS,
-    reloadAll: async ()=>{
-      await loadCoordinadores();
-      await loadGrupos();
-      await loadHorasViajes();
-      await loadHotelAssignments();
-      await loadSets();
-      render();
-      return { coords: COORDS.length, grupos: GRUPOS.length, sets: SETS.length };
-    }
 
+  // =====================================================
+  // DEBUG DESDE CONSOLA
+  // =====================================================
+
+  window.__dbg = {
+    get sizes(){
+      return {
+        coords:
+          COORDS.length,
+
+        grupos:
+          GRUPOS.length,
+
+        sets:
+          SETS.length,
+
+        horas:
+          HORAS_INICIO.size,
+
+        hoteles:
+          HOTELES_POR_GRUPO.size,
+
+        ano:
+          ANO_COORDINADORES
+      };
+    },
+
+
+    COORDS,
+    GRUPOS,
+    SETS,
+
+
+    reloadAll:
+      async () => {
+        await loadCoordinadores();
+
+        await loadGrupos();
+
+        await loadHorasViajes();
+
+        await loadHotelAssignments();
+
+        await loadSets();
+
+        render();
+
+
+        return {
+          coords:
+            COORDS.length,
+
+          grupos:
+            GRUPOS.length,
+
+          sets:
+            SETS.length
+        };
+      },
+
+
+    probarCoordinadores:
+      async () => {
+        await loadCoordinadores();
+
+        return COORDS.length;
+      },
+
+
+    probarGrupos:
+      async () => {
+        await loadGrupos();
+
+        return {
+          cantidad:
+            GRUPOS.length,
+
+          ano:
+            ANO_COORDINADORES,
+
+          primeros:
+            GRUPOS
+              .slice(
+                0,
+                10
+              )
+              .map(
+                g => ({
+                  id:
+                    g.id,
+
+                  negocio:
+                    g.numeroNegocio,
+
+                  ano:
+                    g.anoViaje,
+
+                  inicio:
+                    g.fechaInicio,
+
+                  fin:
+                    g.fechaFin
+                })
+              )
+        };
+      },
+
+
+    probarSets:
+      async () => {
+        await loadSets();
+
+        return SETS.length;
+      }
   };
 }
-
 // 🔁 Ejecuta el boot siempre (con o sin DOMContentLoaded)
 if (document.readyState === 'loading'){
   window.addEventListener('DOMContentLoaded', __bootCoordinadores, { once:true });
