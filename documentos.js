@@ -5082,53 +5082,417 @@ function slugCoordinadorName(name){
     .replace(/^-|-$/g, '');
 }
 
-async function fetchCoordinadorPrincipal(grupo){
+async function fetchCoordinadorPrincipal(
+  grupo
+){
   try{
-    const nombres = [];
-
-    if (Array.isArray(grupo.coordinadores) && grupo.coordinadores.length){
-      grupo.coordinadores.forEach(n => {
-        if (n) nombres.push(String(n));
-      });
-    }
-    if (grupo.coordinador){
-      nombres.push(String(grupo.coordinador));
+    if (!grupo) {
+      return null;
     }
 
-    if (!nombres.length) return null;
 
-    const baseName = nombres[0];
-    const slug = slugCoordinadorName(baseName);
+    // ==========================================================
+    // 1) PRIORIDAD ABSOLUTA:
+    // coordinadorId GUARDADO EN EL GRUPO
+    //
+    // Este dato viene directamente de coordinadores.js
+    // cuando se confirma la asignación.
+    //
+    // Como ESTE documento de grupo ya corresponde a un
+    // anoViaje concreto, no necesitamos volver a descubrir
+    // el año aquí.
+    // ==========================================================
 
-    // 1) Intento directo por ID (ej: "aldo-hip")
-    try{
-      const docRef = doc(db, 'coordinadores', slug);
-      const d = await getDoc(docRef);
-      if (d.exists()){
-        return { id: d.id, ...d.data() };
+    const coordinadorId =
+      String(
+        grupo.coordinadorId ||
+        ''
+      )
+        .trim();
+
+
+    if (coordinadorId) {
+      try{
+        const ref =
+          doc(
+            db,
+            'coordinadores',
+            coordinadorId
+          );
+
+        const snap =
+          await getDoc(
+            ref
+          );
+
+        if (
+          snap.exists()
+        ) {
+          const data =
+            {
+              id:
+                snap.id,
+
+              ...snap.data()
+            };
+
+
+          console.log(
+            '[DOCUMENTOS][COORDINADOR_POR_ID]',
+            {
+              grupoId:
+                grupo.id ||
+                null,
+
+              numeroNegocio:
+                grupo.numeroNegocio ||
+                null,
+
+              anoViaje:
+                grupo.anoViaje ||
+                null,
+
+              coordinadorId:
+                snap.id,
+
+              coordinador:
+                data.nombre ||
+                null
+            }
+          );
+
+
+          return data;
+        }
+
+
+        console.warn(
+          '[DOCUMENTOS][COORDINADOR_ID_NO_EXISTE]',
+          {
+            grupoId:
+              grupo.id ||
+              null,
+
+            numeroNegocio:
+              grupo.numeroNegocio ||
+              null,
+
+            anoViaje:
+              grupo.anoViaje ||
+              null,
+
+            coordinadorId
+          }
+        );
+
+      }catch(e){
+        console.warn(
+          '[DOCUMENTOS][ERROR_COORDINADOR_POR_ID]',
+          e
+        );
       }
-    }catch(e){ /* noop */ }
+    }
 
-    // 2) Fallback: recorrer colección y emparejar por nombre normalizado
-    const snap = await getDocs(collection(db, 'coordinadores'));
-    const targetNorm = norm(baseName);
-    let best = null;
+
+    // ==========================================================
+    // 2) COMPATIBILIDAD LEGACY
+    //
+    // Algunos grupos antiguos todavía pueden no tener:
+    //
+    // coordinadorId
+    //
+    // En esos casos conservamos la lógica anterior por nombre.
+    // ==========================================================
+
+    const nombres =
+      [];
+
+
+    if (
+      Array.isArray(
+        grupo.coordinadores
+      ) &&
+      grupo.coordinadores.length
+    ) {
+      grupo.coordinadores.forEach(
+        item => {
+          // Puede venir como texto.
+          if (
+            typeof item ===
+              'string' &&
+            item.trim()
+          ) {
+            nombres.push(
+              item.trim()
+            );
+
+            return;
+          }
+
+
+          // O eventualmente como objeto.
+          if (
+            item &&
+            typeof item ===
+              'object'
+          ) {
+            const nombre =
+              String(
+                item.nombre ||
+                item.name ||
+                ''
+              )
+                .trim();
+
+            if (nombre) {
+              nombres.push(
+                nombre
+              );
+            }
+          }
+        }
+      );
+    }
+
+
+    if (
+      grupo.coordinador
+    ) {
+      const nombre =
+        String(
+          grupo.coordinador
+        )
+          .trim();
+
+      if (
+        nombre &&
+        !nombres.includes(
+          nombre
+        )
+      ) {
+        nombres.push(
+          nombre
+        );
+      }
+    }
+
+
+    if (
+      !nombres.length
+    ) {
+      console.warn(
+        '[DOCUMENTOS][SIN_COORDINADOR]',
+        {
+          grupoId:
+            grupo.id ||
+            null,
+
+          numeroNegocio:
+            grupo.numeroNegocio ||
+            null,
+
+          anoViaje:
+            grupo.anoViaje ||
+            null
+        }
+      );
+
+      return null;
+    }
+
+
+    const baseName =
+      nombres[0];
+
+    const slug =
+      slugCoordinadorName(
+        baseName
+      );
+
+
+    // ==========================================================
+    // 3) LEGACY:
+    // intentar ID generado desde nombre
+    // ==========================================================
+
+    if (slug) {
+      try{
+        const docRef =
+          doc(
+            db,
+            'coordinadores',
+            slug
+          );
+
+        const d =
+          await getDoc(
+            docRef
+          );
+
+        if (
+          d.exists()
+        ) {
+          console.log(
+            '[DOCUMENTOS][COORDINADOR_LEGACY_SLUG]',
+            {
+              grupoId:
+                grupo.id ||
+                null,
+
+              anoViaje:
+                grupo.anoViaje ||
+                null,
+
+              coordinador:
+                baseName,
+
+              coordinadorId:
+                d.id
+            }
+          );
+
+
+          return {
+            id:
+              d.id,
+
+            ...d.data()
+          };
+        }
+
+      }catch(e){
+        console.warn(
+          '[DOCUMENTOS][ERROR_COORDINADOR_LEGACY_SLUG]',
+          e
+        );
+      }
+    }
+
+
+    // ==========================================================
+    // 4) ÚLTIMO RESPALDO:
+    // recorrer colección y comparar nombre normalizado
+    // ==========================================================
+
+    const snap =
+      await getDocs(
+        collection(
+          db,
+          'coordinadores'
+        )
+      );
+
+
+    const targetNorm =
+      norm(
+        baseName
+      );
+
+
+    let exacto =
+      null;
+
+    let parcial =
+      null;
+
 
     snap.forEach(dd => {
-      const x = dd.data() || {};
-      const n = norm(x.nombre || dd.id || '');
-      if (!n) return;
+      const x =
+        dd.data() ||
+        {};
 
-      if (n === targetNorm){
-        best = { id: dd.id, ...x };
-      } else if (!best && (n.includes(targetNorm) || targetNorm.includes(n))){
-        best = { id: dd.id, ...x };
+      const nombreNorm =
+        norm(
+          x.nombre ||
+          dd.id ||
+          ''
+        );
+
+
+      if (!nombreNorm) {
+        return;
+      }
+
+
+      if (
+        nombreNorm ===
+        targetNorm
+      ) {
+        exacto = {
+          id:
+            dd.id,
+
+          ...x
+        };
+
+        return;
+      }
+
+
+      if (
+        !parcial &&
+        (
+          nombreNorm.includes(
+            targetNorm
+          ) ||
+          targetNorm.includes(
+            nombreNorm
+          )
+        )
+      ) {
+        parcial = {
+          id:
+            dd.id,
+
+          ...x
+        };
       }
     });
 
-    return best;
+
+    const resultado =
+      exacto ||
+      parcial ||
+      null;
+
+
+    console.log(
+      '[DOCUMENTOS][COORDINADOR_LEGACY_NOMBRE]',
+      {
+        grupoId:
+          grupo.id ||
+          null,
+
+        numeroNegocio:
+          grupo.numeroNegocio ||
+          null,
+
+        anoViaje:
+          grupo.anoViaje ||
+          null,
+
+        buscado:
+          baseName,
+
+        encontrado:
+          resultado?.nombre ||
+          null,
+
+        coordinadorId:
+          resultado?.id ||
+          null
+      }
+    );
+
+
+    return resultado;
+
   }catch(e){
-    console.error('Error buscando coordinador principal', e);
+    console.error(
+      'Error buscando coordinador principal',
+      e
+    );
+
     return null;
   }
 }
