@@ -5497,6 +5497,110 @@ async function fetchCoordinadorPrincipal(
   }
 }
 
+async function fetchCoordinadoresGrupo(
+  grupo
+){
+  try{
+    if (!grupo) {
+      return [];
+    }
+
+
+    let ids =
+      Array.isArray(
+        grupo.coordinadorIds
+      )
+        ? grupo.coordinadorIds
+            .map(String)
+            .filter(Boolean)
+        : [];
+
+
+    if (
+      !ids.length &&
+      grupo.coordinadorId
+    ) {
+      ids = [
+        String(
+          grupo.coordinadorId
+        )
+      ];
+    }
+
+
+    const resultados =
+      [];
+
+
+    // =====================================================
+    // NUEVA ESTRUCTURA: ID EXACTO
+    // =====================================================
+
+    for (
+      const id
+      of ids
+    ) {
+      try{
+        const snap =
+          await getDoc(
+            doc(
+              db,
+              'coordinadores',
+              id
+            )
+          );
+
+        if (
+          snap.exists()
+        ) {
+          resultados.push({
+            id:
+              snap.id,
+
+            ...snap.data()
+          });
+        }
+      }catch(e){
+        console.warn(
+          'Error leyendo coordinador',
+          id,
+          e
+        );
+      }
+    }
+
+
+    if (
+      resultados.length
+    ) {
+      return resultados;
+    }
+
+
+    // =====================================================
+    // LEGACY
+    // =====================================================
+
+    const principal =
+      await fetchCoordinadorPrincipal(
+        grupo
+      );
+
+
+    return principal
+      ? [principal]
+      : [];
+
+  }catch(e){
+    console.error(
+      'Error buscando coordinadores del grupo',
+      e
+    );
+
+    return [];
+  }
+}
+
 async function collectVoucherActivities(grupo){
   const it = grupo && grupo.itinerario;
   const fisicos = [];
@@ -5631,7 +5735,12 @@ async function collectVoucherActivities(grupo){
 // ──────────────────────────────────────────────────────────────
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
 // ──────────────────────────────────────────────────────────────
-function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
+function buildFinanzasDoc(
+  grupo,
+  abonos,
+  coords,
+  vouchersData
+){
   const nombreOperacional = getNombreGrupoOperacional(grupo);
   const colegio = grupo.colegio || grupo.cliente || '';
   const curso   = getCursoOperacional(grupo);
@@ -5746,21 +5855,122 @@ function buildFinanzasDoc(grupo, abonos, coord, vouchersData){
 
   // ── Bloque con datos del coordinador(a)
   const coordBlock = (() => {
-    if (!coord) return '';
-    const nombreCoord = (coord.nombre || coord.nombreCompleto || '').toString().trim();
-    const rutCoord    = (coord.rut || coord.RUT || '').toString().trim();
-    const telCoord    = (coord.telefono || coord.fono || coord.celular || '').toString().trim();
-    const correoCoord = (coord.correo || '').toString().trim();
-
-    if (!nombreCoord && !rutCoord && !telCoord && !correoCoord) return '';
-
+    const lista =
+      Array.isArray(
+        coords
+      )
+        ? coords
+        : (
+            coords
+              ? [coords]
+              : []
+          );
+  
+  
+    if (
+      !lista.length
+    ) {
+      return '';
+    }
+  
+  
+    const filas =
+      lista
+        .map(
+          (coord, idx) => {
+            const nombreCoord =
+              String(
+                coord.nombre ||
+                coord.nombreCompleto ||
+                ''
+              ).trim();
+  
+            const rutCoord =
+              String(
+                coord.rut ||
+                coord.RUT ||
+                ''
+              ).trim();
+  
+            const telCoord =
+              String(
+                coord.telefono ||
+                coord.fono ||
+                coord.celular ||
+                ''
+              ).trim();
+  
+            const correoCoord =
+              String(
+                coord.correo ||
+                ''
+              ).trim();
+  
+  
+            if (
+              !nombreCoord &&
+              !rutCoord &&
+              !telCoord &&
+              !correoCoord
+            ) {
+              return '';
+            }
+  
+  
+            return `
+              <div
+                style="
+                  margin-bottom:2mm;
+                "
+              >
+                ${
+                  lista.length > 1
+                    ? `<strong>Coordinador ${idx + 1}</strong>`
+                    : ''
+                }
+  
+                ${
+                  nombreCoord
+                    ? `<div><strong>Nombre:</strong> ${nombreCoord.toUpperCase()}</div>`
+                    : ''
+                }
+  
+                ${
+                  telCoord
+                    ? `<div><strong>Teléfono:</strong> ${telCoord}</div>`
+                    : ''
+                }
+  
+                ${
+                  correoCoord
+                    ? `<div><strong>Correo:</strong> ${correoCoord}</div>`
+                    : ''
+                }
+              </div>
+            `;
+          }
+        )
+        .filter(Boolean)
+        .join('');
+  
+  
+    if (!filas) {
+      return '';
+    }
+  
+  
     return `
       <div class="sec finanzas-coord">
-        <div class="sec-title">COORDINADOR(A) A CARGO</div>
+        <div class="sec-title">
+          ${
+            lista.length > 1
+              ? 'COORDINADORES A CARGO'
+              : 'COORDINADOR(A) A CARGO'
+          }
+        </div>
+  
         <div class="note">
-          ${nombreCoord ? `<div><strong>Nombre:</strong> ${nombreCoord.toUpperCase()}</div>` : ''}
-          ${telCoord ? `<div><strong>Teléfono:</strong> ${telCoord}</div>` : ''}
-          ${correoCoord ? `<div><strong>Correo:</strong> ${correoCoord}</div>` : ''}
+          ${filas}
         </div>
       </div>
     `;
@@ -6043,26 +6253,70 @@ function buildVouchersDoc(grupo, vouchersData){
 // ──────────────────────────────────────────────────────────────
 // HELPERS: construir HTML de finanzas y vouchers sin imprimir
 // ──────────────────────────────────────────────────────────────
-async function buildFinanzasHTML(grupoId){
-  // 1) Traer datos del grupo
-  const d = await getDoc(doc(db,'grupos', grupoId));
-  if (!d.exists()) return '';
-  const g = { id:d.id, ...d.data() };
+async function buildFinanzasHTML(
+  grupoId
+){
+  // 1) GRUPO
+  const d =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
 
-  // 2) Traer abonos "crudos"
-  const abonosRaw = await fetchFinanzasAbonos(grupoId);
+  if (
+    !d.exists()
+  ) {
+    return '';
+  }
 
-  // 3) Enriquecer con FECHA DE ACTIVIDAD desde el itinerario del grupo
-  const abonos = enrichAbonosWithItinerario(g, abonosRaw);
 
-  // 4) Buscar datos del coordinador(a) principal en colección "coordinadores"
-  const coordData = await fetchCoordinadorPrincipal(g);
+  const g = {
+    id:
+      d.id,
 
-  // 5) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
-  const vouchersData = await collectVoucherActivities(g);
+    ...d.data()
+  };
 
-  // 6) Construir el HTML (NO imprimir aquí)
-  return buildFinanzasDoc(g, abonos, coordData, vouchersData);
+
+  // 2) ABONOS
+  const abonosRaw =
+    await fetchFinanzasAbonos(
+      grupoId
+    );
+
+
+  // 3) FECHAS ITINERARIO
+  const abonos =
+    enrichAbonosWithItinerario(
+      g,
+      abonosRaw
+    );
+
+
+  // 4) TODOS LOS COORDINADORES
+  const coords =
+    await fetchCoordinadoresGrupo(
+      g
+    );
+
+
+  // 5) VOUCHERS
+  const vouchersData =
+    await collectVoucherActivities(
+      g
+    );
+
+
+  // 6) DOCUMENTO
+  return buildFinanzasDoc(
+    g,
+    abonos,
+    coords,
+    vouchersData
+  );
 }
 
 async function buildVouchersHTML(grupoId){
