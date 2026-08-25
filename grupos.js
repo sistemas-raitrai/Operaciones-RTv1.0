@@ -1638,15 +1638,41 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
     ],
     pageLength: -1,
     lengthChange: false,
-    order: [[12, 'desc'], [13, 'desc'], [14, 'desc'], [1, 'desc']],
+    order: [
+      [13, 'desc'],
+      [14, 'desc'],
+      [15, 'desc'],
+      [1, 'desc']
+    ],
     scrollX: true,
     scrollY: 'calc(100vh - 360px)',
     scrollCollapse: false,
     autoWidth: true,
     fixedHeader: false,
     columnDefs: [
-      { targets: [10, 11, 16, 17, 19, 21, 24, 25], visible: false },
-      { targets: [7, 8, 9], type: 'num', className: 'dt-body-right' },
+      {
+        targets: [
+          11,
+          12,
+          17,
+          18,
+          20,
+          22,
+          25,
+          26
+        ],
+        visible: false
+      },
+      {
+        targets: [
+          7,
+          8,
+          9,
+          10
+        ],
+        type: 'num',
+        className: 'dt-body-right'
+      },
       { targets: '_all', className: 'dt-nowrap' }
     ]
   });
@@ -1733,7 +1759,7 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
 
   // Destino (columna 12 de la tabla)
   $('#filtroDestino').on('change', function(){
-    tabla.column(12).search(this.value).draw();
+    tabla.column(13).search(this.value).draw();
   });
 
   // Año de viaje: recarga desde Firestore, no solo filtra DataTable
@@ -1929,6 +1955,29 @@ async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
           const entero = Math.trunc(n);
           nuevoValor  = entero;           // Firestore: Number
           displayText = String(entero);   // UI
+        }
+
+        if (
+          campo ===
+          'cantidadCoordinadores'
+        ) {
+          if (
+            entero < 1 ||
+            entero > 3
+          ) {
+            alert(
+              'La cantidad de coordinadores debe ser 1, 2 o 3.'
+            );
+        
+            $td.text(
+              String(
+                orig ||
+                1
+              )
+            );
+        
+            return;
+          }
         }
 
       } else if (DATE_FIELDS.has(campo)) {
@@ -2364,10 +2413,33 @@ function exportarGrupos() {
 
   // Encabezados igual a las columnas definidas en el HTML (ordenado)
   const headers = [
-    "N° Negocio","Identificador","Nombre de Grupo","Año","Vendedor(a)","Coordinadores","Tel. Coord.",
-    "Pax","Adultos","Estudiantes","Colegio","Curso","Destino","Programa"," Fecha Inicio","Fecha Fin",
-    "Seguro Médico","Autoriz.","Hoteles","Ciudades","Transporte","Tramos","Indicaciones de la Fecha",
-    "Observaciones","Creado Por","Fecha Creación"
+    "N° Negocio",
+    "Identificador",
+    "Nombre de Grupo",
+    "Año",
+    "Vendedor(a)",
+    "Coordinadores",
+    "Tel. Coord.",
+    "Cant. Coord.",
+    "Pax",
+    "Adultos",
+    "Estudiantes",
+    "Colegio",
+    "Curso",
+    "Destino",
+    "Programa",
+    "Fecha Inicio",
+    "Fecha Fin",
+    "Seguro Médico",
+    "Autoriz.",
+    "Hoteles",
+    "Ciudades",
+    "Transporte",
+    "Tramos",
+    "Indicaciones de la Fecha",
+    "Observaciones",
+    "Creado Por",
+    "Fecha Creación"
   ];
 
   // Prepara un array de objetos (clave=header, valor=celda)
