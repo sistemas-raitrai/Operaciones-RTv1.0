@@ -4,8 +4,20 @@ import { app, db } from './firebase-init.js';
 import { getAuth, onAuthStateChanged, signOut }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
-  collection, collectionGroup, getDocs, getDoc, query, orderBy, where, limit,
-  doc, updateDoc, addDoc, Timestamp, writeBatch
+  collection,
+  collectionGroup,
+  getDocs,
+  getDoc,
+  query,
+  orderBy,
+  where,
+  limit,
+  doc,
+  updateDoc,
+  addDoc,
+  Timestamp,
+  writeBatch,
+  serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -1142,1331 +1154,3805 @@ function mostrarModalCambios() {
   $('#modalConfirmarCambios').css('display', 'flex');
 }
 
-async function cargarYMostrarTabla(filtroAnoCarga = 'actual') {
+async function cargarYMostrarTabla(
+  filtroAnoCarga = 'actual'
+) {
   try {
-    setCarga(5, 'Cargando grupos...', 'Leyendo colección grupos');
+    setCarga(
+      5,
+      'Cargando grupos...',
+      'Leyendo colección grupos'
+    );
 
-    // 1) Leer colección "grupos" filtrada por año para cargar más rápido
-    const anoResuelto = resolverAnoFiltro(filtroAnoCarga);
-    
-    let qGrupos;
-    
-    let docsGrupos = [];
-    
-    if (anoResuelto === 'todos') {
-      const snap = await getDocs(collection(db, 'grupos'));
-      docsGrupos = snap.docs;
+
+    // =====================================================
+    // 1) CARGAR GRUPOS POR AÑO
+    // =====================================================
+
+    const anoResuelto =
+      resolverAnoFiltro(
+        filtroAnoCarga
+      );
+
+
+    let docsGrupos =
+      [];
+
+
+    if (
+      anoResuelto ===
+      'todos'
+    ) {
+      const snap =
+        await getDocs(
+          collection(
+            db,
+            'grupos'
+          )
+        );
+
+      docsGrupos =
+        snap.docs;
+
     } else {
-      const snapTexto = await getDocs(query(
-        collection(db, 'grupos'),
-        where('anoViaje', '==', String(anoResuelto))
-      ));
-    
-      const snapNumero = await getDocs(query(
-        collection(db, 'grupos'),
-        where('anoViaje', '==', Number(anoResuelto))
-      ));
-    
-      const mapa = new Map();
-    
-      snapTexto.docs.forEach(d => mapa.set(d.id, d));
-      snapNumero.docs.forEach(d => mapa.set(d.id, d));
-    
-      docsGrupos = Array.from(mapa.values());
+      const [
+        snapTexto,
+        snapNumero
+      ] =
+        await Promise.all([
+          getDocs(
+            query(
+              collection(
+                db,
+                'grupos'
+              ),
+              where(
+                'anoViaje',
+                '==',
+                String(
+                  anoResuelto
+                )
+              )
+            )
+          ),
+
+          getDocs(
+            query(
+              collection(
+                db,
+                'grupos'
+              ),
+              where(
+                'anoViaje',
+                '==',
+                Number(
+                  anoResuelto
+                )
+              )
+            )
+          )
+        ]);
+
+
+      const mapa =
+        new Map();
+
+
+      snapTexto.docs.forEach(
+        d =>
+          mapa.set(
+            d.id,
+            d
+          )
+      );
+
+
+      snapNumero.docs.forEach(
+        d =>
+          mapa.set(
+            d.id,
+            d
+          )
+      );
+
+
+      docsGrupos =
+        Array.from(
+          mapa.values()
+        );
     }
-    
-    if (!docsGrupos.length) {
-      console.warn('No hay grupos para el filtro:', filtroAnoCarga);
-    
-      $('#tablaGrupos tbody').empty();
-      setCargaOk(`No hay grupos para el filtro seleccionado: ${filtroAnoCarga}`);
-    
+
+
+    if (
+      !docsGrupos.length
+    ) {
+      console.warn(
+        'No hay grupos para el filtro:',
+        filtroAnoCarga
+      );
+
+
+      $('#tablaGrupos tbody')
+        .empty();
+
+
+      setCargaOk(
+        `No hay grupos para el filtro seleccionado: ${filtroAnoCarga}`
+      );
+
+
       return;
     }
 
-    setCarga(15, 'Grupos cargados', `${docsGrupos.length} grupos encontrados`);
 
-  // Índices de coordinadores (1 sola vez)
-  setCarga(25, 'Cargando coordinadores...', 'Leyendo coordinadores y conjuntos');
-  const {
-    coordById,
-    coordIdsByGrupo,
-    estadosByGrupo,
-    conjuntosByGrupo
-  } = await _buildCoordIndexes(
-    anoResuelto === 'todos'
-      ? null
-      : Number(
-          anoResuelto
-        ),
-  
-    docsGrupos.map(
-      d =>
-        String(
-          d.id
-        )
-    )
-  );
-  setCarga(35, 'Coordinadores cargados', 'Preparando tabla principal');
+    setCarga(
+      15,
+      'Grupos cargados',
+      `${docsGrupos.length} grupos encontrados`
+    );
 
-  // 2) Mapear docs → {id,fila:[], coordTexto} PARA LA TABLA
-  const valores = docsGrupos.map(docSnap => {
-    const d = docSnap.data();
-  
-    // Resolver coordinador visible: primero el que venga en el doc, si no, desde conjuntos
-    // ==========================================================
-    // COORDINADORES DEL GRUPO
-    // ==========================================================
-    
-    const idsGuardados =
-      Array.isArray(
-        d.coordinadorIds
-      )
-        ? d.coordinadorIds
-            .map(String)
-            .filter(Boolean)
-        : (
-            d.coordinadorId
-              ? [
-                  String(
-                    d.coordinadorId
-                  )
-                ]
-              : []
-          );
-    
-    
-    const idsDesdeConjuntos =
-      coordIdsByGrupo.get(
-        docSnap.id
-      ) ||
-      [];
-    
-    
-    const coordIds =
-      [
-        ...new Set(
-          [
-            ...idsGuardados,
-            ...idsDesdeConjuntos
-          ]
-        )
-      ];
-    
-    
-    const coordInfos =
-      coordIds
-        .map(
-          id => ({
-            id,
-            ...(
-              coordById.get(id) ||
-              {}
-            )
-          })
-        );
-    
-    
-    const nombresGuardados =
-      Array.isArray(
-        d.coordinadores
-      )
-        ? d.coordinadores
-        : (
-            d.coordinador
-              ? [d.coordinador]
-              : []
-          );
-    
-    
-    const nombres =
-      coordInfos
-        .map(
-          c =>
+
+    // =====================================================
+    // 2) ÍNDICES COORDINADORES
+    // =====================================================
+
+    setCarga(
+      25,
+      'Cargando coordinadores...',
+      'Leyendo coordinadores y conjuntos'
+    );
+
+
+    const {
+      coordById,
+      coordIdsByGrupo,
+      estadosByGrupo,
+      conjuntosByGrupo
+    } =
+      await _buildCoordIndexes(
+        anoResuelto === 'todos'
+          ? null
+          : Number(
+              anoResuelto
+            ),
+
+        docsGrupos.map(
+          d =>
             String(
-              c.nombre ||
-              ''
-            ).trim()
-        )
-        .filter(Boolean);
-    
-    
-    const coordTexto =
-      (
-        nombres.length
-          ? nombres
-          : nombresGuardados
-      )
-        .filter(Boolean)
-        .join(' / ');
-    
-    
-    const coordTelefono =
-      coordInfos
-        .map(
-          c =>
-            String(
-              c.telefono ||
-              ''
-            ).trim()
-        )
-        .filter(Boolean)
-        .join(' / ');
-    
-    
-    const estados =
-      Array.isArray(
-        d.coordinadoresAsignados
-      )
-        ? d.coordinadoresAsignados
-            .map(
-              x =>
-                x?.estadoCoord ||
-                'pendiente'
+              d.id
             )
-        : (
-            estadosByGrupo.get(
+        )
+      );
+
+
+    setCarga(
+      35,
+      'Coordinadores cargados',
+      'Preparando tabla principal'
+    );
+
+
+    // =====================================================
+    // 3) MAPEAR DATOS DE TABLA
+    // =====================================================
+
+    const valores =
+      docsGrupos.map(
+        docSnap => {
+          const d =
+            docSnap.data() ||
+            {};
+
+
+          // =============================================
+          // COORDINADORES GUARDADOS EN EL GRUPO
+          // =============================================
+
+          const idsGuardados =
+            Array.isArray(
+              d.coordinadorIds
+            )
+              ? d.coordinadorIds
+                  .map(String)
+                  .filter(Boolean)
+              : (
+                  d.coordinadorId
+                    ? [
+                        String(
+                          d.coordinadorId
+                        )
+                      ]
+                    : []
+                );
+
+
+          // =============================================
+          // COORDINADORES DESDE CONJUNTOS
+          // =============================================
+
+          const idsDesdeConjuntos =
+            coordIdsByGrupo.get(
               docSnap.id
             ) ||
-            (
-              d.coordEstado
-                ? [
-                    d.coordEstado
-                  ]
-                : []
+            [];
+
+
+          const coordIds =
+            [
+              ...new Set([
+                ...idsGuardados,
+                ...idsDesdeConjuntos
+              ])
+            ];
+
+
+          const coordInfos =
+            coordIds.map(
+              id => ({
+                id,
+                ...(
+                  coordById.get(id) ||
+                  {}
+                )
+              })
+            );
+
+
+          const nombresGuardados =
+            Array.isArray(
+              d.coordinadores
             )
-          );
-    
-    
-    const estadoCoord =
-      resolverEstadoCoordinadoresGrupo(
-        estados
-      );
-    
-    
-    const cantidadCoordinadores =
-      normalizarCantidadCoordinadores(
-        d.cantidadCoordinadores
-      );
-  
-    return {
-      id:
-        docSnap.id,
-    
-      fila:
-        camposFire.map(c => {
-          if (
-            c === 'cantidadCoordinadores'
-          ) {
-            return cantidadCoordinadores;
-          }
-    
-          return d[c] ?? '';
-        }),
-    
-      coordTexto,
-    
-      coordTelefono,
-    
-      coordIds,
-    
-      estadoCoord,
-    
-      cantidadCoordinadores,
-    
-      coordinadoresAsignados:
-        coordIds.length,
-    
-      fechasConfirmadasDesdeHoteles:
-        !!d.fechasConfirmadasDesdeHoteles
-    };
-  });
-
-
-
-  // 2.b) Normalizar datos crudos → GRUPOS_RAW (para Totales)
-  GRUPOS_RAW = docsGrupos.map(s => {
-    const d = s.data();
-    return {
-      _id: s.id,
-      numeroNegocio: d.numeroNegocio ?? '',
-      identificador: d.identificador ?? '',
-      nombreGrupo: d.nombreGrupo ?? '',
-      anoViaje: d.anoViaje ?? '',
-      vendedora: d.vendedora ?? '',
-      cantidadCoordinadores:
-        normalizarCantidadCoordinadores(
-          d.cantidadCoordinadores
-        ),
-      cantidadgrupo: toNum(d.cantidadgrupo),
-      adultos: toNum(d.adultos),
-      estudiantes: toNum(d.estudiantes),
-      colegio: d.colegio ?? '',
-      curso: d.curso ?? '',
-      destino: d.destino ?? '',
-      programa: d.programa ?? '',
-      fechaInicio: parseFechaPosible(d.fechaInicio),
-      fechaFin: parseFechaPosible(d.fechaFin),
-      hoteles: d.hoteles ?? '',
-      transporte: d.transporte ?? ''
-    };
-  });
-
-    // ============ ENRIQUECIMIENTO: HOTELES + VUELOS + COORDINADORES ============
-  // Construimos un espejo mínimo del grupo para los loaders
-  const gruposParaLookup = docsGrupos.map(s => {
-    const d = s.data() || {};
-    return {
-      id: s.id,
-      numeroNegocio: String(d.numeroNegocio ?? d.numNegocio ?? d.idNegocio ?? s.id),
-      destino: d.destino ?? '',
-      fechaInicio: _toISO(d.fechaInicio),
-      fechaFin:    _toISO(d.fechaFin),
-      // campos crudos por si hay estructuras legacy
-      coordinadorEmail: d.coordinadorEmail,
-      coordinador: d.coordinador,
-      coordinadoresEmails: d.coordinadoresEmails,
-      coordinadoresEmailsObj: d.coordinadoresEmailsObj,
-      coordinadores: d.coordinadores
-    };
-  });
-
-  // Procesa en tandas para no saturar
-  const BATCH = 15;
-  for (let i=0; i<valores.length; i+=BATCH){
-    const avance = 40 + Math.round((i / Math.max(1, valores.length)) * 35);
-    setCarga(
-      avance,
-      'Enriqueciendo información...',
-      `Procesando hoteles, vuelos y coordinadores ${Math.min(i + BATCH, valores.length)} de ${valores.length}`
-    );
-    const sliceVals = valores.slice(i, i+BATCH);
-    const sliceGps  = gruposParaLookup.slice(i, i+BATCH);
-
-    const jobs = sliceGps.map(async (g, k) => {
-      const idx = i + k;
-      const fila = sliceVals[k].fila;
-
-      // --- Hoteles
-      try{
-        const hoteles = await _loadHotelesInfo(db, g);
-        if (hoteles && hoteles.length){
-          const txt = hoteles.map(h => {
-            const name = String(h.hotelNombre||'').toUpperCase();
-            const ci = _dmy(_toISO(h.checkIn));
-            const co = _dmy(_toISO(h.checkOut));
-            return `${name}${ci||co ? ` (${ci} → ${co})` : ''}`;
-          }).join(' · ');
-          fila[17] = txt || fila[17]; // Columna "hoteles"
-          // Mantener también en GRUPOS_RAW para Totales por "Hoteles"
-          const graw = GRUPOS_RAW[idx]; if (graw) graw.hoteles = txt;
-        }
-      }catch(e){ /* silencioso */ }
-
-      // --- Vuelos / Transporte
-      try{
-        const vuelos = await _loadVuelosInfo(db, g);
-        if (vuelos && vuelos.length){
-          // sumario simple: si hay aéreos, tomar primero; si no, bus
-          const v0 = vuelos[0]; // o mezcla si quieres
-          const isAereo = (v0.tipoTransporte || 'aereo') === 'aereo';
-          if (isAereo){
-            const tipo = (v0.tipoVuelo||'').toUpperCase(); // CHARTER/REGULAR
-            const nro  = (v0.numero||'').toString().toUpperCase();
-            const ida  = _dmy(_toISO(v0.fechaIda));
-            const vta  = _dmy(_toISO(v0.fechaVta));
-            const lIda = (v0.presentacionIdaHora || v0.vueloIdaHora)
-              ? ` · IDA: ${v0.presentacionIdaHora?('PRES '+v0.presentacionIdaHora):''}${v0.vueloIdaHora?(v0.presentacionIdaHora?' · ':'')+'VUELO '+v0.vueloIdaHora:''}`
-              : '';
-            const lVta = (v0.presentacionVueltaHora || v0.vueloVueltaHora)
-              ? ` · VUELTA: ${v0.presentacionVueltaHora?('PRES '+v0.presentacionVueltaHora):''}${v0.vueloVueltaHora?(v0.presentacionVueltaHora?' · ':'')+'VUELO '+v0.vueloVueltaHora:''}`
-              : '';
-            fila[19] = `AÉREO${tipo?(' · '+tipo):''}${nro?(' · '+nro):''} · ${ida||'—'} → ${vta||'—'}${lIda}${lVta}`.trim();
-            fila[20] = Array.isArray(v0.tramos) && v0.tramos.length
-              ? `${v0.tramos.length} TRAMO(S)`
-              : (fila[20] || '');
-          } else {
-            // BUS
-            const idaH = v0.idaHora || '';
-            const vtaH = v0.vueltaHora || '';
-            fila[19] = `TERRESTRE (BUS)${idaH||vtaH?` · SALIDA: ${idaH||'—'} · REGRESO: ${vtaH||'—'}`:''}`;
-            fila[20] = fila[20] || ''; // puedes usarlo para #buses si lo deseas
-          }
-          // Mantener para Totales por "Transporte"
-          const graw = GRUPOS_RAW[idx]; if (graw) graw.transporte = fila[18];
-        }
-      }catch(e){ /* silencioso */ }
-
-      // --- Coordinadores → NUEVA COLUMNA (col 24, no editable)
-      // --- Coordinadores → NUEVA COLUMNA (col 24, no editable)
-    // (no haces nada extra aquí por ahora)
-  }); // ← cierre de sliceGps.map(async (g, k) => { ... })
-    // Espera que terminen todas las tareas de este bloque
-    await Promise.allSettled(jobs);
-  } // ← cierre del for (i += BATCH)
-
-  setCarga(80, 'Construyendo filtros...', 'Preparando destino, año y transporte');
-
-  // Para filtros rápido (Destino / Año / Transporte)
-  const destinosUnicos     = new Set();
-  const aniosUnicos        = new Set();
-  const transportesUnicos  = new Set();
-
-  valores.forEach(item => {
-    const fila = item.fila;
-    destinosUnicos.add(fila[11);          // Destino
-    aniosUnicos.add(fila[3]);              // Año
-    if (fila[19]) transportesUnicos.add(fila[19]); // Texto de TRANSPORTE (vuelo/bus) ya enriquecido
-  });
-
-  const destinos    = Array.from(destinosUnicos).sort();
-  const anios       = Array.from(aniosUnicos).sort();
-  const transportes = Array.from(transportesUnicos).sort();
-
-  // Destinos
-  const $filtroDestino = $('#filtroDestino').empty().append('<option value="">Todos</option>');
-  destinos.forEach(d => $filtroDestino.append(`<option value="${d}">${d}</option>`));
-
-  // Año: se mantiene como selector de carga, no como filtro local
-  $('#filtroAno').val(filtroAnoCarga);
-
-  // 👇 NUEVO: selector de Vuelo / Transporte (columna Transporte)
-  const $filtroTransporte = $('#filter-transporte').empty().append('<option value="">Todos</option>');
-  transportes.forEach(t => {
-    $filtroTransporte.append(`<option value="${t}">${t}</option>`);
-  });
-
-  // 3) Renderizar <tbody>
-  const $tb = $('#tablaGrupos tbody').empty();
-  valores.forEach(item => {
-    const $tr = $('<tr>');
-
-    // columnas 0..4 (hasta Vendedor[a])
-    for (let idx = 0; idx <= 4; idx++) {
-      const campo = camposFire[idx];
-      const celda = item.fila[idx];
-      const $td = $('<td>')
-        .text(formatearCelda(celda, campo))
-        .attr('data-doc-id', item.id)
-        .attr('data-campo', campo)
-        .attr('data-original', celda);
-      if (NUMERIC_FIELDS.has(campo)) $td.attr('data-tipo', 'number');
-      $tr.append($td);
-    }
-
-    // 👉 COLUMNA 5: COORDINADORES (no editable) + color por estado
-    const coordText = (item.coordTexto || '').toString().toUpperCase();
-    const est = (item.estadoCoord || 'pendiente');
-    const $tdCoord = $('<td>')
-      .text(coordText)
-      .attr('data-doc-id', item.id)
-      .attr('data-fixed', '1')
-      .attr('data-campo', '')
-      .attr('data-original', coordText)
-      .attr('title', 'Estado: ' + est.toUpperCase())
-      .attr('style', _bgEstado(est)); // verde/amarillo/rojo
-    $tr.append($tdCoord);
-
-    // 👉 COLUMNA 6: TELÉFONO DEL COORDINADOR (no editable)
-    const telText = (item.coordTelefono || '').toString().trim();
-    const $tdTel = $('<td>')
-      .text(telText)
-      .attr('data-doc-id', item.id)
-      .attr('data-fixed', '1')
-      .attr('data-campo', '')
-      .attr('data-original', telText)
-      .attr('title', 'Teléfono coordinador');
-    $tr.append($tdTel);
-
-    // resto de columnas 5..23 (corren a 7..25)
-    for (let idx = 5; idx < camposFire.length; idx++) {
-      const campo = camposFire[idx];
-      const celda = item.fila[idx];
-    
-      const $td = $('<td>')
-        .text(formatearCelda(celda, campo))
-        .attr('data-doc-id', item.id)
-        .attr('data-campo', campo)
-        .attr('data-original', celda);
-    
-      if (NUMERIC_FIELDS.has(campo)) {
-        $td.attr('data-tipo', 'number');
-      }
-    
-      if (campo === 'fechaInicio' || campo === 'fechaFin') {
-        const estadoFechaHotel = item.fechasConfirmadasDesdeHoteles
-          ? 'aprobado'
-          : 'pendiente';
-    
-        $td
-          .attr('title', item.fechasConfirmadasDesdeHoteles
-            ? 'Fechas confirmadas desde hotelería'
-            : 'Fechas pendientes de confirmación hotelera')
-          .attr('style', _bgEstado(estadoFechaHotel));
-      }
-    
-      $tr.append($td);
-    }
-
-    $tb.append($tr);
-    validarFilaPax($tr);
-  });
-
-  setCarga(90, 'Renderizando tabla...', 'Inicializando DataTable');
-    
-  // 4) Iniciar DataTable principal
-  const tabla = $('#tablaGrupos').DataTable({
-    // (config actual igual)
-    language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-    dom:        'Brtip',
-    buttons: [
-      {
-        extend: 'colvis',
-        text:    'Ver columnas',
-        className: 'dt-button',
-        columns: ':gt(0)'
-      }
-    ],
-    pageLength: -1,
-    lengthChange: false,
-    order: [
-      [13, 'desc'],
-      [14, 'desc'],
-      [15, 'desc'],
-      [1, 'desc']
-    ],
-    scrollX: true,
-    scrollY: 'calc(100vh - 360px)',
-    scrollCollapse: false,
-    autoWidth: true,
-    fixedHeader: false,
-    columnDefs: [
-      {
-        targets: [
-          11,
-          12,
-          17,
-          18,
-          20,
-          22,
-          25,
-          26
-        ],
-        visible: false
-      },
-      {
-        targets: [
-          7,
-          8,
-          9,
-          10
-        ],
-        type: 'num',
-        className: 'dt-body-right'
-      },
-      { targets: '_all', className: 'dt-nowrap' }
-    ]
-  });
-  tablaGruposDT = tabla;
-  tabla.buttons().container().appendTo('#toolbar');
-
-  setTimeout(() => {
-    const $wrapper = $('#tablaGrupos').closest('.dataTables_wrapper');
-
-    tabla.columns.adjust().draw(false);
-
-    $wrapper.find('.dataTables_scrollBody').scrollLeft(0);
-  }, 300);
-
-  // ——— BÚSQUEDA ESPECIAL: "<texto>,..."  para incluir coordinadores en blanco ———
-  const BUSQ_ESPECIAL = { activo:false, termino:'' };
-  
-  // Filtro personalizado de DataTables (BUSQ_ESPECIAL + filtros de vuelo)
-  $.fn.dataTable.ext.search.push(function (settings, rowData) {
-    if (settings.nTable.id !== 'tablaGrupos') return true;
-
-    // 1) FILTRO DE VUELOS → usamos la columna Transporte (índice 20)
-    const trans = (rowData[21] || '').toString();
-
-    // Tipo vuelo: 'charter' | 'regular' | 'all'
-    if (FLT_FILTER.tipo === 'charter' || FLT_FILTER.tipo === 'regular') {
-      const target = FLT_FILTER.tipo.toUpperCase();
-      if (!trans.toUpperCase().includes(target)) {
-        return false; // no coincide tipo → excluimos fila
-      }
-    }
-
-    // Fecha ida: viene como YYYY-MM-DD desde el <input type="date">
-    if (FLT_FILTER.fechaIda) {
-      const [yyyy, mm, dd] = FLT_FILTER.fechaIda.split('-');
-      const dmy = `${dd}-${mm}-${yyyy}`; // así la escribimos en el texto de Transporte
-      if (!trans.includes(dmy)) {
-        return false; // no coincide fecha de ida → excluimos
-      }
-    }
-
-    // 2) MODO BUSQ_ESPECIAL (misma lógica que tenías)
-    if (!BUSQ_ESPECIAL.activo) return true;
-
-    const colCoord = 5;                                 // índice de "Coordinadores"
-    const coordTxt = (rowData[colCoord] || '').trim();  // texto en Coordinadores
-    const term     = BUSQ_ESPECIAL.termino.toLowerCase();
-  
-    // Si NO hay término (p.ej. escribiste solo ",") => mostrar SOLO los vacíos
-    if (!term) return coordTxt === '';
-  
-    // Hay término: incluir fila si:
-    //   (a) coincide el término en CUALQUIER columna,  OR
-    //   (b) la columna Coordinadores está vacía
-    const rowText = rowData.join(' ').toLowerCase();
-    const coincide = rowText.indexOf(term) !== -1;
-    return coincide || coordTxt === '';
-  });
-
-
-  
-  // Filtros con los nuevos índices
-  // Filtros con los nuevos índices
-  $('#buscador').on('input', function () {
-    const raw = String(this.value || '');
-    const tieneComa = raw.includes(',');
-
-    if (tieneComa) {
-      // Modo especial: término = lo que va antes de la primera coma
-      const termino = raw.split(',')[0].trim();
-      BUSQ_ESPECIAL.activo  = true;
-      BUSQ_ESPECIAL.termino = termino;
-
-      // Desactivamos la búsqueda global de DT y usamos SOLO nuestro filtro
-      tabla.search('');
-    } else {
-      // Modo normal: sin “OR con blancos”
-      BUSQ_ESPECIAL.activo  = false;
-      BUSQ_ESPECIAL.termino = '';
-      tabla.search(raw);   // búsqueda global normal de DataTables
-    }
-    tabla.draw();
-  });
-
-  // Destino (columna 12 de la tabla)
-  $('#filtroDestino').on('change', function(){
-    tabla.column(13).search(this.value).draw();
-  });
-
-  // Año de viaje: recarga desde Firestore, no solo filtra DataTable
-  $('#filtroAno').off('change').on('change', async function () {
-    const valor = this.value || 'actual';
-
-    try {
-      if ($.fn.DataTable.isDataTable('#tablaGrupos')) {
-        $('#tablaGrupos').DataTable().destroy();
-      }
-
-      $('#tablaGrupos tbody').empty();
-
-      await cargarYMostrarTabla(valor);
-
-    } catch (err) {
-      console.error('Error recargando por año:', err);
-      alert('Error al cargar grupos del año seleccionado.');
-    }
-  });
-
-  // 👇 NUEVO: Tipo de vuelo (usa FLT_FILTER.tipo y ext.search)
-  $('#filter-tipoVuelo').on('change', function () {
-    const v = this.value || 'all';
-    if (v === 'charter' || v === 'regular') {
-      FLT_FILTER.tipo = v;
-    } else {
-      FLT_FILTER.tipo = 'all';
-    }
-    tabla.draw();
-  });
-
-  // 👇 NUEVO: Fecha de ida (usa FLT_FILTER.fechaIda y ext.search)
-  $('#filter-fechaIda').on('change', function () {
-    FLT_FILTER.fechaIda = this.value || '';
-    tabla.draw();
-  });
-
-  // 👇 NUEVO: selector de Vuelo / Transporte → filtra por coincidencia exacta
-  $('#filter-transporte').on('change', function () {
-    const val = this.value || '';
-    if (!val) {
-      // Limpia filtro de columna
-      tabla.column(21).search('', true, false).draw();
-    } else {
-      const escaped = $.fn.dataTable.util.escapeRegex(val);
-      // ^...$ para coincidencia EXACTA del texto de Transporte
-      tabla.column(21).search('^' + escaped + '$', true, false).draw();
-    }
-  });
-
-  $('#btn-revisar-pax-pagos').off('click').on('click', async () => {
-    await revisarPaxGruposContraPagos();
-  });
-  
-  $('#btnCerrarRevisionPaxPagos').off('click').on('click', () => {
-    $('#modalRevisionPaxPagos').hide();
-  });
-
-  const DATE_FIELDS = new Set([
-    'fechaInicio',
-    'fechaFin',
-    'fechaDeViaje',
-    'fechaCreacion'
-  ]);
-
-  function timestampToInputDate(valor) {
-    if (!valor) return '';
-
-    if (valor instanceof Timestamp) {
-      return toInputDate(valor.toDate());
-    }
-
-    if (valor?.toDate) {
-      return toInputDate(valor.toDate());
-    }
-
-    if (valor instanceof Date) {
-      return toInputDate(valor);
-    }
-
-    const parsed = parseFechaPosible(valor);
-    return parsed ? toInputDate(parsed) : '';
-  }
-
-  function inputDateToDisplay(value) {
-    if (!value) return '';
-    const [yyyy, mm, dd] = value.split('-');
-    return `${dd}-${mm}-${yyyy}`;
-  }
-
-  function inputDateToTimestamp(value) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      throw new Error('Fecha inválida.');
-    }
-
-    return Timestamp.fromDate(new Date(value + 'T00:00:00'));
-  }
-
-  // Edición de fechas con calendario
-  $('#tablaGrupos tbody')
-    .off('click', 'td[data-campo]')
-    .on('click', 'td[data-campo]', function () {
-      if (!editMode) return;
-
-      const $td = $(this);
-      const campo = $td.attr('data-campo');
-
-      if (!DATE_FIELDS.has(campo)) return;
-      if ($td.find('input[type="date"]').length) return;
-
-      const valorOriginal = $td.attr('data-original');
-      const fechaInput = timestampToInputDate(valorOriginal || $td.text().trim());
-
-      const $input = $('<input type="date">')
-        .val(fechaInput)
-        .css({
-          width: '130px',
-          border: '1px solid #7c3aed',
-          padding: '4px',
-          borderRadius: '6px'
-        });
-
-      $td.empty().append($input);
-      $input.trigger('focus');
-
-      $input.on('change blur', async function () {
-        const value = this.value;
-
-        if (!value) {
-          $td.text(formatearCelda(valorOriginal, campo));
-          return;
-        }
-
-        const docId = $td.attr('data-doc-id');
-        const nuevoValor = inputDateToTimestamp(value);
-        const displayText = inputDateToDisplay(value);
-
-        const anteriorDisplay = formatearCelda(valorOriginal, campo);
-
-        registrarCambioPendiente({
-          docId,
-          numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
-          campo,
-          anteriorDisplay,
-          nuevoDisplay: displayText,
-          nuevoValorFirestore: nuevoValor,
-          identificador: $td.closest('tr').find('td').eq(1).text().trim(),
-          nombreGrupo: $td.closest('tr').find('td').eq(2).text().trim(),
-          td: $td[0]
-        });
-
-        $td.text(displayText);
-        if (PAX_FIELDS.has(campo)) {
-          validarFilaPax($td.closest('tr'));
-        }
-      });
-    });
-    
-  // 5) Edición inline en blur (numéricos -> número real en Firestore)
-  $('#tablaGrupos tbody')
-    .off('focusout', 'td[contenteditable]')
-    .on('focusout', 'td[contenteditable]', async function () {
-      const $td   = $(this);
-      const campo = $td.attr('data-campo');
-      const docId = $td.attr('data-doc-id');
-      const orig  = $td.attr('data-original');
-
-      // Si no hay campo o docId (ej. celda fija), salir
-      if (!campo || !docId) return;
-
-      // Las fechas se editan con calendario, no como texto libre
-      if (DATE_FIELDS.has(campo)) return;
-
-      // valor escrito por el usuario
-      const raw = $td.text().trim();
-
-      let nuevoValor;   // lo que enviaremos a Firestore
-      let displayText;  // lo que dejamos visible en la celda
-
-      if (
-        NUMERIC_FIELDS.has(
-          campo
-        )
-      ) {
-        // =====================================================
-        // CANTIDAD DE COORDINADORES
-        // =====================================================
-      
-        if (
-          campo ===
-          'cantidadCoordinadores'
-        ) {
-          const n =
-            Number.parseInt(
-              raw,
-              10
+              ? d.coordinadores
+              : (
+                  d.coordinador
+                    ? [
+                        d.coordinador
+                      ]
+                    : []
+                );
+
+
+          const nombres =
+            coordInfos
+              .map(
+                c =>
+                  String(
+                    c.nombre ||
+                    ''
+                  ).trim()
+              )
+              .filter(Boolean);
+
+
+          const coordTexto =
+            (
+              nombres.length
+                ? nombres
+                : nombresGuardados
+            )
+              .filter(Boolean)
+              .join(
+                ' / '
+              );
+
+
+          const coordTelefono =
+            coordInfos
+              .map(
+                c =>
+                  String(
+                    c.telefono ||
+                    ''
+                  ).trim()
+              )
+              .filter(Boolean)
+              .join(
+                ' / '
+              );
+
+
+          const estados =
+            Array.isArray(
+              d.coordinadoresAsignados
+            )
+              ? d.coordinadoresAsignados
+                  .map(
+                    x =>
+                      x?.estadoCoord ||
+                      'pendiente'
+                  )
+              : (
+                  estadosByGrupo.get(
+                    docSnap.id
+                  ) ||
+                  (
+                    d.coordEstado
+                      ? [
+                          d.coordEstado
+                        ]
+                      : []
+                  )
+                );
+
+
+          const estadoCoord =
+            resolverEstadoCoordinadoresGrupo(
+              estados
             );
-      
-          if (
-            !Number.isFinite(n) ||
-            n < 1 ||
-            n > 3
-          ) {
-            alert(
-              'La cantidad de coordinadores debe ser 1, 2 o 3.'
+
+
+          const cantidadCoordinadores =
+            normalizarCantidadCoordinadores(
+              d.cantidadCoordinadores
             );
-      
-            $td.text(
+
+
+          return {
+            id:
+              docSnap.id,
+
+            fila:
+              camposFire.map(
+                c => {
+                  if (
+                    c ===
+                    'cantidadCoordinadores'
+                  ) {
+                    return cantidadCoordinadores;
+                  }
+
+                  return (
+                    d[c] ??
+                    ''
+                  );
+                }
+              ),
+
+            coordTexto,
+
+            coordTelefono,
+
+            coordIds,
+
+            estadoCoord,
+
+            cantidadCoordinadores,
+
+            coordinadoresAsignados:
+              coordIds.length,
+
+            fechasConfirmadasDesdeHoteles:
+              !!d.fechasConfirmadasDesdeHoteles
+          };
+        }
+      );
+
+
+    // =====================================================
+    // 4) GRUPOS_RAW
+    // =====================================================
+
+    GRUPOS_RAW =
+      docsGrupos.map(
+        s => {
+          const d =
+            s.data() ||
+            {};
+
+
+          return {
+            _id:
+              s.id,
+
+            numeroNegocio:
+              d.numeroNegocio ??
+              '',
+
+            identificador:
+              d.identificador ??
+              '',
+
+            nombreGrupo:
+              d.nombreGrupo ??
+              '',
+
+            anoViaje:
+              d.anoViaje ??
+              '',
+
+            vendedora:
+              d.vendedora ??
+              '',
+
+            cantidadCoordinadores:
+              normalizarCantidadCoordinadores(
+                d.cantidadCoordinadores
+              ),
+
+            cantidadgrupo:
+              toNum(
+                d.cantidadgrupo
+              ),
+
+            adultos:
+              toNum(
+                d.adultos
+              ),
+
+            estudiantes:
+              toNum(
+                d.estudiantes
+              ),
+
+            colegio:
+              d.colegio ??
+              '',
+
+            curso:
+              d.curso ??
+              '',
+
+            destino:
+              d.destino ??
+              '',
+
+            programa:
+              d.programa ??
+              '',
+
+            fechaInicio:
+              parseFechaPosible(
+                d.fechaInicio
+              ),
+
+            fechaFin:
+              parseFechaPosible(
+                d.fechaFin
+              ),
+
+            hoteles:
+              d.hoteles ??
+              '',
+
+            transporte:
+              d.transporte ??
+              ''
+          };
+        }
+      );
+
+
+    // =====================================================
+    // 5) MIRROR PARA LOOKUPS
+    // =====================================================
+
+    const gruposParaLookup =
+      docsGrupos.map(
+        s => {
+          const d =
+            s.data() ||
+            {};
+
+
+          return {
+            id:
+              s.id,
+
+            numeroNegocio:
               String(
-                orig ||
-                1
+                d.numeroNegocio ??
+                d.numNegocio ??
+                d.idNegocio ??
+                s.id
+              ),
+
+            destino:
+              d.destino ??
+              '',
+
+            fechaInicio:
+              _toISO(
+                d.fechaInicio
+              ),
+
+            fechaFin:
+              _toISO(
+                d.fechaFin
+              ),
+
+            coordinadorEmail:
+              d.coordinadorEmail,
+
+            coordinador:
+              d.coordinador,
+
+            coordinadoresEmails:
+              d.coordinadoresEmails,
+
+            coordinadoresEmailsObj:
+              d.coordinadoresEmailsObj,
+
+            coordinadores:
+              d.coordinadores
+          };
+        }
+      );
+
+
+    // =====================================================
+    // 6) ENRIQUECER HOTELES / VUELOS
+    // =====================================================
+
+    const BATCH =
+      15;
+
+
+    for (
+      let i = 0;
+      i < valores.length;
+      i += BATCH
+    ) {
+      const avance =
+        40 +
+        Math.round(
+          (
+            i /
+            Math.max(
+              1,
+              valores.length
+            )
+          ) *
+          35
+        );
+
+
+      setCarga(
+        avance,
+        'Enriqueciendo información...',
+        `Procesando hoteles, vuelos y coordinadores ${Math.min(i + BATCH, valores.length)} de ${valores.length}`
+      );
+
+
+      const sliceVals =
+        valores.slice(
+          i,
+          i + BATCH
+        );
+
+
+      const sliceGps =
+        gruposParaLookup.slice(
+          i,
+          i + BATCH
+        );
+
+
+      const jobs =
+        sliceGps.map(
+          async (
+            g,
+            k
+          ) => {
+            const idx =
+              i + k;
+
+            const fila =
+              sliceVals[k].fila;
+
+
+            // ===========================================
+            // HOTELES
+            // fila[17]
+            // ===========================================
+
+            try{
+              const hoteles =
+                await _loadHotelesInfo(
+                  db,
+                  g
+                );
+
+
+              if (
+                hoteles &&
+                hoteles.length
+              ) {
+                const txt =
+                  hoteles
+                    .map(
+                      h => {
+                        const name =
+                          String(
+                            h.hotelNombre ||
+                            ''
+                          ).toUpperCase();
+
+                        const ci =
+                          _dmy(
+                            _toISO(
+                              h.checkIn
+                            )
+                          );
+
+                        const co =
+                          _dmy(
+                            _toISO(
+                              h.checkOut
+                            )
+                          );
+
+
+                        return (
+                          `${name}` +
+                          `${
+                            ci ||
+                            co
+                              ? ` (${ci} → ${co})`
+                              : ''
+                          }`
+                        );
+                      }
+                    )
+                    .join(
+                      ' · '
+                    );
+
+
+                fila[17] =
+                  txt ||
+                  fila[17];
+
+
+                const graw =
+                  GRUPOS_RAW[idx];
+
+
+                if (graw) {
+                  graw.hoteles =
+                    txt;
+                }
+              }
+
+            }catch(e){
+              console.warn(
+                'Error cargando hoteles:',
+                g.id,
+                e
+              );
+            }
+
+
+            // ===========================================
+            // VUELOS / TRANSPORTE
+            //
+            // transporte = fila[19]
+            // tramos     = fila[20]
+            // ===========================================
+
+            try{
+              const vuelos =
+                await _loadVuelosInfo(
+                  db,
+                  g
+                );
+
+
+              if (
+                vuelos &&
+                vuelos.length
+              ) {
+                const v0 =
+                  vuelos[0];
+
+
+                const isAereo =
+                  (
+                    v0.tipoTransporte ||
+                    'aereo'
+                  ) ===
+                  'aereo';
+
+
+                if (isAereo) {
+                  const tipo =
+                    (
+                      v0.tipoVuelo ||
+                      ''
+                    )
+                      .toUpperCase();
+
+
+                  const nro =
+                    (
+                      v0.numero ||
+                      ''
+                    )
+                      .toString()
+                      .toUpperCase();
+
+
+                  const ida =
+                    _dmy(
+                      _toISO(
+                        v0.fechaIda
+                      )
+                    );
+
+
+                  const vta =
+                    _dmy(
+                      _toISO(
+                        v0.fechaVta
+                      )
+                    );
+
+
+                  const lIda =
+                    (
+                      v0.presentacionIdaHora ||
+                      v0.vueloIdaHora
+                    )
+                      ? ` · IDA: ${
+                          v0.presentacionIdaHora
+                            ? (
+                                'PRES ' +
+                                v0.presentacionIdaHora
+                              )
+                            : ''
+                        }${
+                          v0.vueloIdaHora
+                            ? (
+                                (
+                                  v0.presentacionIdaHora
+                                    ? ' · '
+                                    : ''
+                                ) +
+                                'VUELO ' +
+                                v0.vueloIdaHora
+                              )
+                            : ''
+                        }`
+                      : '';
+
+
+                  const lVta =
+                    (
+                      v0.presentacionVueltaHora ||
+                      v0.vueloVueltaHora
+                    )
+                      ? ` · VUELTA: ${
+                          v0.presentacionVueltaHora
+                            ? (
+                                'PRES ' +
+                                v0.presentacionVueltaHora
+                              )
+                            : ''
+                        }${
+                          v0.vueloVueltaHora
+                            ? (
+                                (
+                                  v0.presentacionVueltaHora
+                                    ? ' · '
+                                    : ''
+                                ) +
+                                'VUELO ' +
+                                v0.vueloVueltaHora
+                              )
+                            : ''
+                        }`
+                      : '';
+
+
+                  fila[19] =
+                    (
+                      `AÉREO` +
+                      `${
+                        tipo
+                          ? (
+                              ' · ' +
+                              tipo
+                            )
+                          : ''
+                      }` +
+                      `${
+                        nro
+                          ? (
+                              ' · ' +
+                              nro
+                            )
+                          : ''
+                      }` +
+                      ` · ${ida || '—'} → ${vta || '—'}` +
+                      lIda +
+                      lVta
+                    ).trim();
+
+
+                  fila[20] =
+                    Array.isArray(
+                      v0.tramos
+                    ) &&
+                    v0.tramos.length
+                      ? `${v0.tramos.length} TRAMO(S)`
+                      : (
+                          fila[20] ||
+                          ''
+                        );
+
+
+                } else {
+                  const idaH =
+                    v0.idaHora ||
+                    '';
+
+                  const vtaH =
+                    v0.vueltaHora ||
+                    '';
+
+
+                  fila[19] =
+                    `TERRESTRE (BUS)` +
+                    `${
+                      idaH ||
+                      vtaH
+                        ? ` · SALIDA: ${idaH || '—'} · REGRESO: ${vtaH || '—'}`
+                        : ''
+                    }`;
+
+
+                  fila[20] =
+                    fila[20] ||
+                    '';
+                }
+
+
+                const graw =
+                  GRUPOS_RAW[idx];
+
+
+                if (graw) {
+                  graw.transporte =
+                    fila[19];
+                }
+              }
+
+            }catch(e){
+              console.warn(
+                'Error cargando vuelos:',
+                g.id,
+                e
+              );
+            }
+          }
+        );
+
+
+      await Promise.allSettled(
+        jobs
+      );
+    }
+
+
+    // =====================================================
+    // 7) FILTROS
+    // =====================================================
+
+    setCarga(
+      80,
+      'Construyendo filtros...',
+      'Preparando destino, año y transporte'
+    );
+
+
+    const destinosUnicos =
+      new Set();
+
+    const transportesUnicos =
+      new Set();
+
+
+    valores.forEach(
+      item => {
+        const fila =
+          item.fila;
+
+
+        if (
+          fila[11]
+        ) {
+          destinosUnicos.add(
+            fila[11]
+          );
+        }
+
+
+        if (
+          fila[19]
+        ) {
+          transportesUnicos.add(
+            fila[19]
+          );
+        }
+      }
+    );
+
+
+    const destinos =
+      Array.from(
+        destinosUnicos
+      ).sort();
+
+
+    const transportes =
+      Array.from(
+        transportesUnicos
+      ).sort();
+
+
+    const $filtroDestino =
+      $('#filtroDestino')
+        .empty()
+        .append(
+          '<option value="">Todos</option>'
+        );
+
+
+    destinos.forEach(
+      d =>
+        $filtroDestino.append(
+          `<option value="${d}">${d}</option>`
+        )
+    );
+
+
+    $('#filtroAno')
+      .val(
+        filtroAnoCarga
+      );
+
+
+    const $filtroTransporte =
+      $('#filter-transporte')
+        .empty()
+        .append(
+          '<option value="">Todos</option>'
+        );
+
+
+    transportes.forEach(
+      t =>
+        $filtroTransporte.append(
+          `<option value="${t}">${t}</option>`
+        )
+    );
+
+
+    // =====================================================
+    // 8) RENDER TABLA
+    // =====================================================
+
+    const $tb =
+      $('#tablaGrupos tbody')
+        .empty();
+
+
+    valores.forEach(
+      item => {
+        const $tr =
+          $('<tr>');
+
+
+        // columnas Firestore 0..4
+        for (
+          let idx = 0;
+          idx <= 4;
+          idx++
+        ) {
+          const campo =
+            camposFire[idx];
+
+          const celda =
+            item.fila[idx];
+
+
+          const $td =
+            $('<td>')
+              .text(
+                formatearCelda(
+                  celda,
+                  campo
+                )
+              )
+              .attr(
+                'data-doc-id',
+                item.id
+              )
+              .attr(
+                'data-campo',
+                campo
+              )
+              .attr(
+                'data-original',
+                celda
+              );
+
+
+          if (
+            NUMERIC_FIELDS.has(
+              campo
+            )
+          ) {
+            $td.attr(
+              'data-tipo',
+              'number'
+            );
+          }
+
+
+          $tr.append(
+            $td
+          );
+        }
+
+
+        // ===============================================
+        // COORDINADORES
+        // tabla col 5
+        // ===============================================
+
+        const coordText =
+          (
+            item.coordTexto ||
+            ''
+          )
+            .toString()
+            .toUpperCase();
+
+
+        const est =
+          item.estadoCoord ||
+          'pendiente';
+
+
+        const $tdCoord =
+          $('<td>')
+            .text(
+              coordText
+            )
+            .attr(
+              'data-doc-id',
+              item.id
+            )
+            .attr(
+              'data-fixed',
+              '1'
+            )
+            .attr(
+              'data-campo',
+              ''
+            )
+            .attr(
+              'data-original',
+              coordText
+            )
+            .attr(
+              'title',
+              'Estado: ' +
+              est.toUpperCase()
+            )
+            .attr(
+              'style',
+              _bgEstado(
+                est
               )
             );
-      
-            return;
-          }
-      
-          nuevoValor =
-            n;
-      
-          displayText =
-            String(n);
-      
-      
-        // =====================================================
-        // RESTO DE CAMPOS NUMÉRICOS
-        // =====================================================
-      
-        } else {
+
+
+        $tr.append(
+          $tdCoord
+        );
+
+
+        // ===============================================
+        // TELÉFONOS
+        // tabla col 6
+        // ===============================================
+
+        const telText =
+          (
+            item.coordTelefono ||
+            ''
+          )
+            .toString()
+            .trim();
+
+
+        const $tdTel =
+          $('<td>')
+            .text(
+              telText
+            )
+            .attr(
+              'data-doc-id',
+              item.id
+            )
+            .attr(
+              'data-fixed',
+              '1'
+            )
+            .attr(
+              'data-campo',
+              ''
+            )
+            .attr(
+              'data-original',
+              telText
+            )
+            .attr(
+              'title',
+              'Teléfono coordinador'
+            );
+
+
+        $tr.append(
+          $tdTel
+        );
+
+
+        // ===============================================
+        // resto campos Firestore 5..24
+        // ===============================================
+
+        for (
+          let idx = 5;
+          idx < camposFire.length;
+          idx++
+        ) {
+          const campo =
+            camposFire[idx];
+
+          const celda =
+            item.fila[idx];
+
+
+          const $td =
+            $('<td>')
+              .text(
+                formatearCelda(
+                  celda,
+                  campo
+                )
+              )
+              .attr(
+                'data-doc-id',
+                item.id
+              )
+              .attr(
+                'data-campo',
+                campo
+              )
+              .attr(
+                'data-original',
+                celda
+              );
+
+
           if (
-            raw === ''
+            NUMERIC_FIELDS.has(
+              campo
+            )
           ) {
-            nuevoValor =
-              0;
-      
-            displayText =
-              '0';
-      
-          } else {
-            const n =
-              Number(
-                raw.replace(
-                  /[^\d.-]/g,
-                  ''
+            $td.attr(
+              'data-tipo',
+              'number'
+            );
+          }
+
+
+          if (
+            campo ===
+              'fechaInicio' ||
+            campo ===
+              'fechaFin'
+          ) {
+            const estadoFechaHotel =
+              item.fechasConfirmadasDesdeHoteles
+                ? 'aprobado'
+                : 'pendiente';
+
+
+            $td
+              .attr(
+                'title',
+                item.fechasConfirmadasDesdeHoteles
+                  ? 'Fechas confirmadas desde hotelería'
+                  : 'Fechas pendientes de confirmación hotelera'
+              )
+              .attr(
+                'style',
+                _bgEstado(
+                  estadoFechaHotel
                 )
               );
-      
+          }
+
+
+          $tr.append(
+            $td
+          );
+        }
+
+
+        $tb.append(
+          $tr
+        );
+
+
+        validarFilaPax(
+          $tr
+        );
+      }
+    );
+
+
+    // =====================================================
+    // 9) DATATABLE
+    // =====================================================
+
+    setCarga(
+      90,
+      'Renderizando tabla...',
+      'Inicializando DataTable'
+    );
+
+
+    const tabla =
+      $('#tablaGrupos')
+        .DataTable({
+          language: {
+            url:
+              'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+          },
+
+          dom:
+            'Brtip',
+
+          buttons: [
+            {
+              extend:
+                'colvis',
+
+              text:
+                'Ver columnas',
+
+              className:
+                'dt-button',
+
+              columns:
+                ':gt(0)'
+            }
+          ],
+
+          pageLength:
+            -1,
+
+          lengthChange:
+            false,
+
+          order: [
+            [13, 'desc'],
+            [14, 'desc'],
+            [15, 'desc'],
+            [1, 'desc']
+          ],
+
+          scrollX:
+            true,
+
+          scrollY:
+            'calc(100vh - 360px)',
+
+          scrollCollapse:
+            false,
+
+          autoWidth:
+            true,
+
+          fixedHeader:
+            false,
+
+          columnDefs: [
+            {
+              targets: [
+                11,
+                12,
+                17,
+                18,
+                20,
+                22,
+                25,
+                26
+              ],
+
+              visible:
+                false
+            },
+
+            {
+              targets: [
+                7,
+                8,
+                9,
+                10
+              ],
+
+              type:
+                'num',
+
+              className:
+                'dt-body-right'
+            },
+
+            {
+              targets:
+                '_all',
+
+              className:
+                'dt-nowrap'
+            }
+          ]
+        });
+
+
+    tablaGruposDT =
+      tabla;
+
+
+    tabla
+      .buttons()
+      .container()
+      .appendTo(
+        '#toolbar'
+      );
+
+
+    setTimeout(
+      () => {
+        const $wrapper =
+          $('#tablaGrupos')
+            .closest(
+              '.dataTables_wrapper'
+            );
+
+
+        tabla
+          .columns
+          .adjust()
+          .draw(
+            false
+          );
+
+
+        $wrapper
+          .find(
+            '.dataTables_scrollBody'
+          )
+          .scrollLeft(
+            0
+          );
+      },
+      300
+    );
+
+
+    // =====================================================
+    // 10) FILTRO ESPECIAL
+    // =====================================================
+
+    const BUSQ_ESPECIAL = {
+      activo:
+        false,
+
+      termino:
+        ''
+    };
+
+
+    $.fn.dataTable.ext.search.push(
+      function (
+        settings,
+        rowData
+      ) {
+        if (
+          settings.nTable.id !==
+          'tablaGrupos'
+        ) {
+          return true;
+        }
+
+
+        // Transporte = columna 21
+        const trans =
+          (
+            rowData[21] ||
+            ''
+          ).toString();
+
+
+        if (
+          FLT_FILTER.tipo ===
+            'charter' ||
+          FLT_FILTER.tipo ===
+            'regular'
+        ) {
+          const target =
+            FLT_FILTER.tipo
+              .toUpperCase();
+
+
+          if (
+            !trans
+              .toUpperCase()
+              .includes(
+                target
+              )
+          ) {
+            return false;
+          }
+        }
+
+
+        if (
+          FLT_FILTER.fechaIda
+        ) {
+          const [
+            yyyy,
+            mm,
+            dd
+          ] =
+            FLT_FILTER.fechaIda
+              .split(
+                '-'
+              );
+
+
+          const dmy =
+            `${dd}-${mm}-${yyyy}`;
+
+
+          if (
+            !trans.includes(
+              dmy
+            )
+          ) {
+            return false;
+          }
+        }
+
+
+        if (
+          !BUSQ_ESPECIAL.activo
+        ) {
+          return true;
+        }
+
+
+        const coordTxt =
+          (
+            rowData[5] ||
+            ''
+          )
+            .trim();
+
+
+        const term =
+          BUSQ_ESPECIAL.termino
+            .toLowerCase();
+
+
+        if (!term) {
+          return (
+            coordTxt ===
+            ''
+          );
+        }
+
+
+        const rowText =
+          rowData
+            .join(
+              ' '
+            )
+            .toLowerCase();
+
+
+        return (
+          rowText.includes(
+            term
+          ) ||
+          coordTxt ===
+            ''
+        );
+      }
+    );
+
+
+    // =====================================================
+    // 11) BUSCADOR
+    // =====================================================
+
+    $('#buscador')
+      .off(
+        'input.grupos'
+      )
+      .on(
+        'input.grupos',
+        function () {
+          const raw =
+            String(
+              this.value ||
+              ''
+            );
+
+
+          if (
+            raw.includes(
+              ','
+            )
+          ) {
+            BUSQ_ESPECIAL.activo =
+              true;
+
+
+            BUSQ_ESPECIAL.termino =
+              raw
+                .split(
+                  ','
+                )[0]
+                .trim();
+
+
+            tabla.search(
+              ''
+            );
+
+          } else {
+            BUSQ_ESPECIAL.activo =
+              false;
+
+            BUSQ_ESPECIAL.termino =
+              '';
+
+            tabla.search(
+              raw
+            );
+          }
+
+
+          tabla.draw();
+        }
+      );
+
+
+    // =====================================================
+    // 12) FILTRO DESTINO
+    // columna DataTable 13
+    // =====================================================
+
+    $('#filtroDestino')
+      .off(
+        'change.grupos'
+      )
+      .on(
+        'change.grupos',
+        function () {
+          tabla
+            .column(
+              13
+            )
+            .search(
+              this.value
+            )
+            .draw();
+        }
+      );
+
+
+    // =====================================================
+    // 13) FILTRO AÑO
+    // =====================================================
+
+    $('#filtroAno')
+      .off(
+        'change.grupos'
+      )
+      .on(
+        'change.grupos',
+        async function () {
+          const valor =
+            this.value ||
+            'actual';
+
+
+          try{
             if (
-              !Number.isFinite(
-                n
+              $.fn.DataTable.isDataTable(
+                '#tablaGrupos'
               )
             ) {
-              $td.text(
-                String(
-                  orig ??
-                  ''
-                )
-              );
-      
-              return;
+              $('#tablaGrupos')
+                .DataTable()
+                .destroy();
             }
-      
-            const entero =
-              Math.trunc(
-                n
-              );
-      
-            nuevoValor =
-              entero;
-      
-            displayText =
-              String(
-                entero
-              );
+
+
+            $('#tablaGrupos tbody')
+              .empty();
+
+
+            await cargarYMostrarTabla(
+              valor
+            );
+
+          }catch(err){
+            console.error(
+              'Error recargando por año:',
+              err
+            );
+
+
+            alert(
+              'Error al cargar grupos del año seleccionado.'
+            );
           }
         }
-            alert(
-              'La cantidad de coordinadores debe ser 1, 2 o 3.'
-            );
-        
-            $td.text(
-              String(
-                orig ||
-                1
+      );
+
+
+    // =====================================================
+    // 14) FILTRO TIPO VUELO
+    // =====================================================
+
+    $('#filter-tipoVuelo')
+      .off(
+        'change.grupos'
+      )
+      .on(
+        'change.grupos',
+        function () {
+          const v =
+            this.value ||
+            'all';
+
+
+          FLT_FILTER.tipo =
+            (
+              v ===
+                'charter' ||
+              v ===
+                'regular'
+            )
+              ? v
+              : 'all';
+
+
+          tabla.draw();
+        }
+      );
+
+
+    // =====================================================
+    // 15) FILTRO FECHA IDA
+    // =====================================================
+
+    $('#filter-fechaIda')
+      .off(
+        'change.grupos'
+      )
+      .on(
+        'change.grupos',
+        function () {
+          FLT_FILTER.fechaIda =
+            this.value ||
+            '';
+
+
+          tabla.draw();
+        }
+      );
+
+
+    // =====================================================
+    // 16) FILTRO TRANSPORTE
+    // columna DataTable 21
+    // =====================================================
+
+    $('#filter-transporte')
+      .off(
+        'change.grupos'
+      )
+      .on(
+        'change.grupos',
+        function () {
+          const val =
+            this.value ||
+            '';
+
+
+          if (!val) {
+            tabla
+              .column(
+                21
               )
-            );
-        
+              .search(
+                '',
+                true,
+                false
+              )
+              .draw();
+
             return;
           }
+
+
+          const escaped =
+            $.fn.dataTable.util
+              .escapeRegex(
+                val
+              );
+
+
+          tabla
+            .column(
+              21
+            )
+            .search(
+              '^' +
+              escaped +
+              '$',
+              true,
+              false
+            )
+            .draw();
         }
+      );
 
-      } else if (DATE_FIELDS.has(campo)) {
-        nuevoValor = parseFechaParaFirestore(raw);
-        displayText = raw;
-      } else {
-        // texto normal
-        nuevoValor  = raw.toUpperCase();
-        displayText = nuevoValor;
+
+    // =====================================================
+    // 17) REVISIÓN PAX
+    // =====================================================
+
+    $('#btn-revisar-pax-pagos')
+      .off(
+        'click.grupos'
+      )
+      .on(
+        'click.grupos',
+        async () => {
+          await revisarPaxGruposContraPagos();
+        }
+      );
+
+
+    $('#btnCerrarRevisionPaxPagos')
+      .off(
+        'click.grupos'
+      )
+      .on(
+        'click.grupos',
+        () => {
+          $('#modalRevisionPaxPagos')
+            .hide();
+        }
+      );
+
+
+    // =====================================================
+    // 18) CAMPOS FECHA
+    // =====================================================
+
+    const DATE_FIELDS =
+      new Set([
+        'fechaInicio',
+        'fechaFin',
+        'fechaDeViaje',
+        'fechaCreacion'
+      ]);
+
+
+    function timestampToInputDate(
+      valor
+    ) {
+      if (!valor) {
+        return '';
       }
 
-      // Si no cambió realmente, salir
-      if (String(orig ?? '') === String(displayText)) return;
 
-
-      // ------------------------------------------------------------------------------
-
-      registrarCambioPendiente({
-        docId,
-        numeroNegocio: $td.closest('tr').find('td').eq(0).text().trim(),
-        campo,
-        anteriorDisplay: orig ?? '',
-        nuevoDisplay: displayText,
-        nuevoValorFirestore: nuevoValor,
-        identificador: $td.closest('tr').find('td').eq(1).text().trim(),
-        nombreGrupo: $td.closest('tr').find('td').eq(2).text().trim(),
-        td: $td[0]
-      });
-
-      // Solo cambia visualmente. Todavía NO guarda en Firebase.
-      $td.text(displayText);
-
-      if (PAX_FIELDS.has(campo)) {
-        validarFilaPax($td.closest('tr'));
+      if (
+        valor instanceof
+        Timestamp
+      ) {
+        return toInputDate(
+          valor.toDate()
+        );
       }
-    });
 
-      // Validación instantánea mientras escribes PAX / ADULTOS / ESTUDIANTES
+
+      if (
+        valor?.toDate
+      ) {
+        return toInputDate(
+          valor.toDate()
+        );
+      }
+
+
+      if (
+        valor instanceof
+        Date
+      ) {
+        return toInputDate(
+          valor
+        );
+      }
+
+
+      const parsed =
+        parseFechaPosible(
+          valor
+        );
+
+
+      return (
+        parsed
+          ? toInputDate(
+              parsed
+            )
+          : ''
+      );
+    }
+
+
+    function inputDateToDisplay(
+      value
+    ) {
+      if (!value) {
+        return '';
+      }
+
+
+      const [
+        yyyy,
+        mm,
+        dd
+      ] =
+        value.split(
+          '-'
+        );
+
+
+      return (
+        `${dd}-${mm}-${yyyy}`
+      );
+    }
+
+
+    function inputDateToTimestamp(
+      value
+    ) {
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(
+          value
+        )
+      ) {
+        throw new Error(
+          'Fecha inválida.'
+        );
+      }
+
+
+      return Timestamp.fromDate(
+        new Date(
+          value +
+          'T00:00:00'
+        )
+      );
+    }
+
+
+    // =====================================================
+    // 19) EDITAR FECHAS
+    // =====================================================
+
     $('#tablaGrupos tbody')
-    .off('input.paxLive', 'td[contenteditable][data-campo="cantidadgrupo"], td[contenteditable][data-campo="adultos"], td[contenteditable][data-campo="estudiantes"]')
-    .on('input.paxLive', 'td[contenteditable][data-campo="cantidadgrupo"], td[contenteditable][data-campo="adultos"], td[contenteditable][data-campo="estudiantes"]', function () {
-      validarFilaPax($(this).closest('tr'));
-    });
+      .off(
+        'click.fechaGrupo',
+        'td[data-campo]'
+      )
+      .on(
+        'click.fechaGrupo',
+        'td[data-campo]',
+        function () {
+          if (!editMode) {
+            return;
+          }
 
 
-  // 6) Toggle edición
-  $('#btn-toggle-edit').off('click').on('click', async () => {
+          const $td =
+            $(this);
 
-    // Si está en edición y se quiere desactivar, revisar cambios pendientes
-    if (editMode && cambiosPendientes.length > 0) {
-      const resumen = resumenCambiosPendientes();
 
-      mostrarModalCambios();
-      return;
+          const campo =
+            $td.attr(
+              'data-campo'
+            );
 
-      const op = String(decision || '').trim().toUpperCase();
 
-      if (op === 'C' || op === '') {
-        return;
+          if (
+            !DATE_FIELDS.has(
+              campo
+            )
+          ) {
+            return;
+          }
+
+
+          if (
+            $td.find(
+              'input[type="date"]'
+            ).length
+          ) {
+            return;
+          }
+
+
+          const valorOriginal =
+            $td.attr(
+              'data-original'
+            );
+
+
+          const fechaInput =
+            timestampToInputDate(
+              valorOriginal ||
+              $td.text().trim()
+            );
+
+
+          const $input =
+            $('<input type="date">')
+              .val(
+                fechaInput
+              )
+              .css({
+                width:
+                  '130px',
+
+                border:
+                  '1px solid #7c3aed',
+
+                padding:
+                  '4px',
+
+                borderRadius:
+                  '6px'
+              });
+
+
+          $td
+            .empty()
+            .append(
+              $input
+            );
+
+
+          $input.trigger(
+            'focus'
+          );
+
+
+          $input.on(
+            'change blur',
+            function () {
+              const value =
+                this.value;
+
+
+              if (!value) {
+                $td.text(
+                  formatearCelda(
+                    valorOriginal,
+                    campo
+                  )
+                );
+
+                return;
+              }
+
+
+              const docId =
+                $td.attr(
+                  'data-doc-id'
+                );
+
+
+              const nuevoValor =
+                inputDateToTimestamp(
+                  value
+                );
+
+
+              const displayText =
+                inputDateToDisplay(
+                  value
+                );
+
+
+              registrarCambioPendiente({
+                docId,
+
+                numeroNegocio:
+                  $td
+                    .closest('tr')
+                    .find('td')
+                    .eq(0)
+                    .text()
+                    .trim(),
+
+                campo,
+
+                anteriorDisplay:
+                  formatearCelda(
+                    valorOriginal,
+                    campo
+                  ),
+
+                nuevoDisplay:
+                  displayText,
+
+                nuevoValorFirestore:
+                  nuevoValor,
+
+                identificador:
+                  $td
+                    .closest('tr')
+                    .find('td')
+                    .eq(1)
+                    .text()
+                    .trim(),
+
+                nombreGrupo:
+                  $td
+                    .closest('tr')
+                    .find('td')
+                    .eq(2)
+                    .text()
+                    .trim(),
+
+                td:
+                  $td[0]
+              });
+
+
+              $td.text(
+                displayText
+              );
+            }
+          );
+        }
+      );
+
+
+    // =====================================================
+    // 20) EDICIÓN INLINE
+    // =====================================================
+
+    $('#tablaGrupos tbody')
+      .off(
+        'focusout.edicionGrupo',
+        'td[contenteditable]'
+      )
+      .on(
+        'focusout.edicionGrupo',
+        'td[contenteditable]',
+        function () {
+          const $td =
+            $(this);
+
+
+          const campo =
+            $td.attr(
+              'data-campo'
+            );
+
+
+          const docId =
+            $td.attr(
+              'data-doc-id'
+            );
+
+
+          const orig =
+            $td.attr(
+              'data-original'
+            );
+
+
+          if (
+            !campo ||
+            !docId
+          ) {
+            return;
+          }
+
+
+          if (
+            DATE_FIELDS.has(
+              campo
+            )
+          ) {
+            return;
+          }
+
+
+          const raw =
+            $td
+              .text()
+              .trim();
+
+
+          let nuevoValor;
+          let displayText;
+
+
+          if (
+            NUMERIC_FIELDS.has(
+              campo
+            )
+          ) {
+            // ===========================================
+            // CANTIDAD COORDINADORES
+            // ===========================================
+
+            if (
+              campo ===
+              'cantidadCoordinadores'
+            ) {
+              const n =
+                Number.parseInt(
+                  raw,
+                  10
+                );
+
+
+              if (
+                !Number.isFinite(
+                  n
+                ) ||
+                n < 1 ||
+                n > 3
+              ) {
+                alert(
+                  'La cantidad de coordinadores debe ser 1, 2 o 3.'
+                );
+
+
+                $td.text(
+                  String(
+                    orig ||
+                    1
+                  )
+                );
+
+
+                return;
+              }
+
+
+              nuevoValor =
+                n;
+
+              displayText =
+                String(n);
+
+
+            } else {
+              // =========================================
+              // OTROS NUMÉRICOS
+              // =========================================
+
+              if (
+                raw === ''
+              ) {
+                nuevoValor =
+                  0;
+
+                displayText =
+                  '0';
+
+              } else {
+                const n =
+                  Number(
+                    raw.replace(
+                      /[^\d.-]/g,
+                      ''
+                    )
+                  );
+
+
+                if (
+                  !Number.isFinite(
+                    n
+                  )
+                ) {
+                  $td.text(
+                    String(
+                      orig ??
+                      ''
+                    )
+                  );
+
+                  return;
+                }
+
+
+                const entero =
+                  Math.trunc(
+                    n
+                  );
+
+
+                nuevoValor =
+                  entero;
+
+                displayText =
+                  String(
+                    entero
+                  );
+              }
+            }
+
+
+          } else {
+            nuevoValor =
+              raw.toUpperCase();
+
+            displayText =
+              nuevoValor;
+          }
+
+
+          if (
+            String(
+              orig ??
+              ''
+            ) ===
+            String(
+              displayText
+            )
+          ) {
+            return;
+          }
+
+
+          registrarCambioPendiente({
+            docId,
+
+            numeroNegocio:
+              $td
+                .closest('tr')
+                .find('td')
+                .eq(0)
+                .text()
+                .trim(),
+
+            campo,
+
+            anteriorDisplay:
+              orig ??
+              '',
+
+            nuevoDisplay:
+              displayText,
+
+            nuevoValorFirestore:
+              nuevoValor,
+
+            identificador:
+              $td
+                .closest('tr')
+                .find('td')
+                .eq(1)
+                .text()
+                .trim(),
+
+            nombreGrupo:
+              $td
+                .closest('tr')
+                .find('td')
+                .eq(2)
+                .text()
+                .trim(),
+
+            td:
+              $td[0]
+          });
+
+
+          $td.text(
+            displayText
+          );
+
+
+          if (
+            PAX_FIELDS.has(
+              campo
+            )
+          ) {
+            validarFilaPax(
+              $td.closest(
+                'tr'
+              )
+            );
+          }
+        }
+      );
+
+
+    // =====================================================
+    // 21) VALIDACIÓN PAX EN VIVO
+    // =====================================================
+
+    $('#tablaGrupos tbody')
+      .off(
+        'input.paxLive'
+      )
+      .on(
+        'input.paxLive',
+        'td[contenteditable][data-campo="cantidadgrupo"], td[contenteditable][data-campo="adultos"], td[contenteditable][data-campo="estudiantes"]',
+        function () {
+          validarFilaPax(
+            $(this)
+              .closest(
+                'tr'
+              )
+          );
+        }
+      );
+
+
+    // =====================================================
+    // 22) TOGGLE EDICIÓN
+    // =====================================================
+
+    $('#btn-toggle-edit')
+      .off(
+        'click.grupos'
+      )
+      .on(
+        'click.grupos',
+        async () => {
+          if (
+            editMode &&
+            cambiosPendientes.length >
+              0
+          ) {
+            mostrarModalCambios();
+
+            return;
+          }
+
+
+          editMode =
+            !editMode;
+
+
+          $('#btn-toggle-edit')
+            .text(
+              editMode
+                ? '🔒 Desactivar Edición'
+                : '🔓 Activar Edición'
+            );
+
+
+          $('#tablaGrupos tbody tr')
+            .each(
+              (_, tr) => {
+                $(tr)
+                  .find('td')
+                  .each(
+                    (
+                      i,
+                      td
+                    ) => {
+                      const $td =
+                        $(td);
+
+
+                      const campo =
+                        $td.attr(
+                          'data-campo'
+                        );
+
+
+                      if (
+                        i > 1 &&
+                        !$td.attr(
+                          'data-fixed'
+                        ) &&
+                        !DATE_FIELDS.has(
+                          campo
+                        )
+                      ) {
+                        if (editMode) {
+                          $td.attr(
+                            'contenteditable',
+                            'true'
+                          );
+
+                        } else {
+                          $td.removeAttr(
+                            'contenteditable'
+                          );
+                        }
+
+                      } else {
+                        $td.removeAttr(
+                          'contenteditable'
+                        );
+                      }
+                    }
+                  );
+              }
+            );
+
+
+          await addDoc(
+            collection(
+              db,
+              'historial'
+            ),
+            {
+              accion:
+                editMode
+                  ? 'ACTIVÓ MODO EDICIÓN'
+                  : 'DESACTIVÓ MODO EDICIÓN',
+
+              usuario:
+                auth.currentUser
+                  ?.email ||
+                '',
+
+              timestamp:
+                new Date()
+            }
+          );
+        }
+      );
+
+
+    // =====================================================
+    // 23) ASEGURAR EDITABLE
+    // =====================================================
+
+    $('#tablaGrupos tbody')
+      .off(
+        'click.ensureEditable'
+      )
+      .on(
+        'click.ensureEditable',
+        'td[data-campo]',
+        function () {
+          if (!editMode) {
+            return;
+          }
+
+
+          const $td =
+            $(this);
+
+
+          if (
+            $td.attr(
+              'data-fixed'
+            )
+          ) {
+            return;
+          }
+
+
+          const campo =
+            $td.attr(
+              'data-campo'
+            );
+
+
+          if (!campo) {
+            return;
+          }
+
+
+          if (
+            $td.index() <=
+            1
+          ) {
+            return;
+          }
+
+
+          if (
+            DATE_FIELDS.has(
+              campo
+            )
+          ) {
+            return;
+          }
+
+
+          $td.attr(
+            'contenteditable',
+            'true'
+          );
+
+
+          $td.trigger(
+            'focus'
+          );
+        }
+      );
+
+
+    // =====================================================
+    // 24) HISTORIAL
+    // =====================================================
+
+    $('#btn-view-history')
+      .off(
+        'click.grupos'
+      )
+      .on(
+        'click.grupos',
+        async () => {
+          $('#modalHistorial')
+            .css(
+              'display',
+              'flex'
+            );
+
+
+          $('#tablaHistorial tbody')
+            .html(`
+              <tr>
+                <td colspan="6">
+                  Cargando historial...
+                </td>
+              </tr>
+            `);
+
+
+          try{
+            await recargarHistorial();
+
+          }catch(err){
+            console.error(
+              'Error al abrir historial:',
+              err
+            );
+
+
+            $('#tablaHistorial tbody')
+              .html(`
+                <tr>
+                  <td colspan="6">
+                    Error al cargar historial.
+                  </td>
+                </tr>
+              `);
+          }
+        }
+      );
+
+
+    // =====================================================
+    // 25) TOTALES
+    // =====================================================
+
+    const $modalTot =
+      $('#modalTotales');
+
+
+    const $popover =
+      $('#tot-popover');
+
+
+    function overlaps(
+      ini,
+      fin,
+      min,
+      max
+    ) {
+      if (
+        !ini &&
+        !fin
+      ) {
+        return false;
       }
 
-      if (op === 'D') {
-        descartarCambiosPendientes();
-      } else if (op === 'G') {
-        try {
-          await guardarCambiosPendientes();
-          alert('Cambios guardados correctamente.');
-        } catch (err) {
-          console.error('Error guardando cambios pendientes:', err);
-          alert('Error al guardar cambios. Se mantiene el modo edición.');
+
+      ini =
+        ini ||
+        fin;
+
+
+      fin =
+        fin ||
+        ini;
+
+
+      if (
+        min &&
+        fin <
+          min
+      ) {
+        return false;
+      }
+
+
+      if (
+        max &&
+        ini >
+          max
+      ) {
+        return false;
+      }
+
+
+      return true;
+    }
+
+
+    function openTotales() {
+      const conInicio =
+        GRUPOS_RAW.filter(
+          g =>
+            g.fechaInicio instanceof
+            Date
+        );
+
+
+      if (
+        conInicio.length
+      ) {
+        conInicio.sort(
+          (a, b) =>
+            a.fechaInicio -
+            b.fechaInicio
+        );
+
+
+        const primero =
+          conInicio[0];
+
+
+        const ultimo =
+          conInicio[
+            conInicio.length -
+            1
+          ];
+
+
+        $('#totInicio')
+          .val(
+            toInputDate(
+              primero.fechaInicio
+            )
+          );
+
+
+        $('#totFin')
+          .val(
+            toInputDate(
+              ultimo.fechaFin ||
+              ultimo.fechaInicio
+            )
+          );
+
+      } else {
+        $('#totInicio')
+          .val(
+            ''
+          );
+
+        $('#totFin')
+          .val(
+            ''
+          );
+      }
+
+
+      $('#tot-resumen')
+        .empty();
+
+
+      $('#tot-tablas')
+        .empty();
+
+
+      $popover.hide();
+
+      $modalTot.show();
+
+      renderTotales();
+    }
+
+
+    function renderTotales() {
+      const min =
+        $('#totInicio')
+          .val()
+          ? new Date(
+              $('#totInicio')
+                .val() +
+              'T00:00:00'
+            )
+          : null;
+
+
+      const max =
+        $('#totFin')
+          .val()
+          ? new Date(
+              $('#totFin')
+                .val() +
+              'T23:59:59'
+            )
+          : null;
+
+
+      const lista =
+        GRUPOS_RAW.filter(
+          g => {
+            if (
+              !min &&
+              !max
+            ) {
+              return true;
+            }
+
+
+            return overlaps(
+              g.fechaInicio,
+              g.fechaFin,
+              min,
+              max
+            );
+          }
+        );
+
+
+      const cats = {
+        '101':
+          [],
+
+        '201/202':
+          [],
+
+        '301/302/303':
+          []
+      };
+
+
+      for (
+        const g
+        of lista
+      ) {
+        const idn =
+          parseInt(
+            String(
+              g.identificador
+            ).replace(
+              /[^\d]/g,
+              ''
+            ),
+            10
+          );
+
+
+        if (
+          idn ===
+          101
+        ) {
+          cats['101']
+            .push(
+              g
+            );
+
+        } else if (
+          idn ===
+            201 ||
+          idn ===
+            202
+        ) {
+          cats['201/202']
+            .push(
+              g
+            );
+
+        } else if (
+          [
+            301,
+            302,
+            303
+          ].includes(
+            idn
+          )
+        ) {
+          cats['301/302/303']
+            .push(
+              g
+            );
+        }
+      }
+
+
+      const sum =
+        (
+          arr,
+          k
+        ) =>
+          arr.reduce(
+            (
+              acc,
+              x
+            ) =>
+              acc +
+              (
+                x[k] ||
+                0
+              ),
+            0
+          );
+
+
+      const totPax =
+        sum(
+          lista,
+          'cantidadgrupo'
+        );
+
+
+      const totAdul =
+        sum(
+          lista,
+          'adultos'
+        );
+
+
+      const totEst =
+        sum(
+          lista,
+          'estudiantes'
+        );
+
+
+      const fechasValidas =
+        lista
+          .flatMap(
+            g => [
+              g.fechaInicio,
+              g.fechaFin
+            ]
+          )
+          .filter(Boolean)
+          .sort(
+            (a, b) =>
+              a -
+              b
+          );
+
+
+      const minReal =
+        fechasValidas[0]
+          ? fechasValidas[0]
+              .toLocaleDateString(
+                'es-CL'
+              )
+          : '—';
+
+
+      const maxReal =
+        fechasValidas[
+          fechasValidas.length -
+          1
+        ]
+          ? fechasValidas[
+              fechasValidas.length -
+              1
+            ]
+              .toLocaleDateString(
+                'es-CL'
+              )
+          : '—';
+
+
+      const $res =
+        $('#tot-resumen')
+          .empty();
+
+
+      const PILL_INDEX =
+        [];
+
+
+      const $tbx =
+        $('#tot-tablas')
+          .empty();
+
+
+      const addPill =
+        (
+          label,
+          arr,
+          key
+        ) => {
+          const i =
+            PILL_INDEX.push({
+              key,
+              arr
+            }) -
+            1;
+
+
+          $('<div class="tot-pill"></div>')
+            .attr(
+              'data-pill',
+              i
+            )
+            .attr(
+              'title',
+              'Click para ver grupos'
+            )
+            .append(
+              `<span>${label}:</span>`
+            )
+            .append(
+              `<span>${arr.length}</span>`
+            )
+            .append(
+              '<small>grupos</small>'
+            )
+            .on(
+              'click',
+              ev =>
+                showPopover(
+                  ev,
+                  PILL_INDEX[i],
+                  label
+                )
+            )
+            .appendTo(
+              $res
+            );
+        };
+
+
+      addPill(
+        'Identificador 101',
+        cats['101'],
+        'id101'
+      );
+
+
+      addPill(
+        'Identificador 201/202',
+        cats['201/202'],
+        'id201_202'
+      );
+
+
+      addPill(
+        'Identificador 301/302/303',
+        cats['301/302/303'],
+        'id301_303'
+      );
+
+
+      $('<div class="tot-pill"></div>')
+        .append(
+          `<span>👥 Pax</span><span>${totPax}</span>`
+        )
+        .append(
+          `<small>(Adultos ${totAdul} / Estudiantes ${totEst})</small>`
+        )
+        .appendTo(
+          $res
+        );
+
+
+      $('<div class="tot-pill"></div>')
+        .append(
+          `<span>🗓️ Rango</span><span>${minReal} → ${maxReal}</span>`
+        )
+        .appendTo(
+          $res
+        );
+
+
+      const mkTabla =
+        (
+          titulo,
+          filas,
+          includePax = true
+        ) => {
+          const $wrap =
+            $('<div></div>')
+              .append(
+                `<h3 style="margin:.5rem 0;">${titulo}</h3>`
+              );
+
+
+          const $t =
+            $(`
+              <table>
+                <thead>
+                  <tr>
+                    <th>${titulo}</th>
+                    <th># Grupos</th>
+                    ${
+                      includePax
+                        ? '<th>Pax</th>'
+                        : ''
+                    }
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            `);
+
+
+          const $tb =
+            $t.find(
+              'tbody'
+            );
+
+
+          filas.forEach(
+            row => {
+              const i =
+                PILL_INDEX.push({
+                  key:
+                    `${titulo}:${row.clave}`,
+
+                  arr:
+                    row.grupos
+                }) -
+                1;
+
+
+              const paxTd =
+                includePax
+                  ? `<td>${row.pax}</td>`
+                  : '';
+
+
+              $tb.append(`
+                <tr>
+                  <td>${row.clave || '—'}</td>
+                  <td>
+                    <button
+                      class="mini-link"
+                      data-pill="${i}"
+                      type="button"
+                    >
+                      ${row.grupos.length}
+                    </button>
+                  </td>
+                  ${paxTd}
+                </tr>
+              `);
+            }
+          );
+
+
+          $t.on(
+            'click',
+            'button.mini-link',
+            ev => {
+              const idx =
+                parseInt(
+                  ev.currentTarget
+                    .getAttribute(
+                      'data-pill'
+                    ),
+                  10
+                );
+
+
+              showPopover(
+                ev,
+                PILL_INDEX[idx],
+                titulo
+              );
+            }
+          );
+
+
+          $wrap
+            .append(
+              $t
+            );
+
+
+          $tbx
+            .append(
+              $wrap
+            );
+        };
+
+
+      const groupBy =
+        (
+          arr,
+          key
+        ) => {
+          const map =
+            new Map();
+
+
+          for (
+            const g
+            of arr
+          ) {
+            const k =
+              (
+                g[key] ??
+                ''
+              )
+                .toString()
+                .trim();
+
+
+            if (
+              !map.has(
+                k
+              )
+            ) {
+              map.set(
+                k,
+                []
+              );
+            }
+
+
+            map
+              .get(
+                k
+              )
+              .push(
+                g
+              );
+          }
+
+
+          return [
+            ...map.entries()
+          ]
+            .map(
+              (
+                [
+                  clave,
+                  grupos
+                ]
+              ) => ({
+                clave,
+
+                grupos,
+
+                pax:
+                  sum(
+                    grupos,
+                    'cantidadgrupo'
+                  )
+              })
+            )
+            .sort(
+              (a, b) =>
+                b.grupos.length -
+                a.grupos.length
+            );
+        };
+
+
+      mkTabla(
+        'Año',
+        groupBy(
+          lista,
+          'anoViaje'
+        )
+      );
+
+
+      mkTabla(
+        'Vendedor(a)',
+        groupBy(
+          lista,
+          'vendedora'
+        )
+      );
+
+
+      mkTabla(
+        'Destino',
+        groupBy(
+          lista,
+          'destino'
+        )
+      );
+
+
+      mkTabla(
+        'Programa',
+        groupBy(
+          lista,
+          'programa'
+        )
+      );
+
+
+      mkTabla(
+        'Hoteles',
+        groupBy(
+          lista,
+          'hoteles'
+        )
+      );
+
+
+      mkTabla(
+        'Transporte',
+        groupBy(
+          lista,
+          'transporte'
+        )
+      );
+
+
+      function showPopover(
+        ev,
+        bucket,
+        titulo
+      ) {
+        const items =
+          bucket?.arr ||
+          [];
+
+
+        const html = `
+          <h4>${titulo}</h4>
+          <ul>
+            ${
+              items
+                .map(
+                  g => `
+                    <li>
+                      <a
+                        href="#"
+                        class="go-row"
+                        data-num="${g.numeroNegocio}"
+                      >
+                        ${g.numeroNegocio} — ${g.nombreGrupo}
+                      </a>
+                    </li>
+                  `
+                )
+                .join(
+                  ''
+                )
+            }
+          </ul>
+        `;
+
+
+        $popover
+          .html(
+            html
+          );
+
+
+        const vw =
+          $(window).width();
+
+
+        const vh =
+          $(window).height();
+
+
+        const w =
+          Math.min(
+            420,
+            vw -
+            24
+          );
+
+
+        $popover.css({
+          width:
+            w +
+            'px'
+        });
+
+
+        const left =
+          Math.min(
+            ev.pageX +
+            12,
+
+            window.scrollX +
+            vw -
+            w -
+            12
+          );
+
+
+        const top =
+          Math.min(
+            ev.pageY +
+            12,
+
+            window.scrollY +
+            vh -
+            24
+          );
+
+
+        $popover
+          .css({
+            left:
+              left +
+              'px',
+
+            top:
+              top +
+              'px'
+          })
+          .show();
+
+
+        $popover
+          .off(
+            'click',
+            'a.go-row'
+          )
+          .on(
+            'click',
+            'a.go-row',
+            e => {
+              e.preventDefault();
+
+
+              const num =
+                e.currentTarget
+                  .getAttribute(
+                    'data-num'
+                  ) ||
+                '';
+
+
+              let foundNode =
+                null;
+
+
+              tabla
+                .rows()
+                .every(
+                  function () {
+                    const data =
+                      this.data();
+
+
+                    if (
+                      (
+                        data?.[0] ||
+                        ''
+                      )
+                        .toString()
+                        .trim() ===
+                      num
+                        .toString()
+                        .trim()
+                    ) {
+                      foundNode =
+                        this.node();
+                    }
+                  }
+                );
+
+
+              if (
+                foundNode
+              ) {
+                $('#tablaGrupos tbody tr')
+                  .removeClass(
+                    'highlight-row'
+                  );
+
+
+                $(foundNode)
+                  .addClass(
+                    'highlight-row'
+                  )[0]
+                  .scrollIntoView({
+                    behavior:
+                      'smooth',
+
+                    block:
+                      'center'
+                  });
+
+              } else {
+                tabla
+                  .search(
+                    num
+                  )
+                  .draw();
+              }
+            }
+          );
+      }
+    }
+
+
+    window.__RT_totales = {
+      open:
+        openTotales,
+
+      render:
+        renderTotales
+    };
+
+
+    // =====================================================
+    // 26) HISTORIAL
+    // =====================================================
+
+    async function recargarHistorial() {
+      console.group(
+        '🔄 recargarHistorial()'
+      );
+
+
+      try{
+        const $tabla =
+          $('#tablaHistorial');
+
+
+        if (
+          !$tabla.length
+        ) {
+          console.error(
+            'No encontré #tablaHistorial'
+          );
+
+          console.groupEnd();
+
           return;
         }
-      } else {
-        alert('Opción no válida. Usa G, D o C.');
-        return;
-      }
-    }
 
-    editMode = !editMode;
 
-    $('#btn-toggle-edit').text(editMode ? '🔒 Desactivar Edición' : '🔓 Activar Edición');
+        const q =
+          query(
+            collection(
+              db,
+              'historial'
+            ),
+            orderBy(
+              'timestamp',
+              'desc'
+            ),
+            limit(
+              300
+            )
+          );
 
-    $('#tablaGrupos tbody tr').each((_, tr) => {
-      $(tr).find('td').each((i, td) => {
-        const $td = $(td);
 
-        const campo = $td.attr('data-campo');
-        
+        const snap =
+          await getDocs(
+            q
+          );
+
+
+        const $tbH =
+          $tabla
+            .find(
+              'tbody'
+            )
+            .empty();
+
+
         if (
-          i > 1 &&
-          !$td.attr('data-fixed') &&
-          !DATE_FIELDS.has(campo)
+          snap.empty
         ) {
-          $td.attr('contenteditable', editMode);
-        } else {
-          $td.removeAttr('contenteditable');
-        }
-      });
-    });
-
-    await addDoc(collection(db, 'historial'), {
-      accion: editMode ? 'ACTIVÓ MODO EDICIÓN' : 'DESACTIVÓ MODO EDICIÓN',
-      usuario: auth.currentUser.email,
-      timestamp: new Date()
-    });
-    // Asegura que cualquier celda editable quede editable al hacer clic,
-  // incluso si DataTables redibujó la fila después de activar edición.
-  $('#tablaGrupos tbody')
-    .off('click.ensureEditable', 'td[data-campo]')
-    .on('click.ensureEditable', 'td[data-campo]', function () {
-      if (!editMode) return;
-  
-      const $td = $(this);
-  
-      if ($td.attr('data-fixed')) return;
-  
-      const campo = $td.attr('data-campo');
-      if (!campo) return;
-  
-      // No permitir editar las dos primeras columnas
-      const index = $td.index();
-      if (index <= 1) return;
-      
-      // Las fechas NO deben ser contenteditable.
-      // Se editan solo con el calendario del input type="date".
-      if (DATE_FIELDS.has(campo)) return;
-      
-      $td.attr('contenteditable', 'true');
-      $td.trigger('focus');
-    });
-  });
-
-  // 7) Ver Historial
-  $('#btn-view-history').off('click').on('click', async () => {
-    console.log('📜 Click en Ver Historial');
-
-    // Abre el modal inmediatamente
-    $('#modalHistorial').css('display', 'flex');
-
-    // Mensaje visual mientras carga
-    $('#tablaHistorial tbody').html(`
-      <tr>
-        <td colspan="6">Cargando historial...</td>
-      </tr>
-    `);
-
-    try {
-      await recargarHistorial();
-    } catch (err) {
-      console.error('Error al abrir historial:', err);
-
-      $('#tablaHistorial tbody').html(`
-        <tr>
-          <td colspan="6">Error al cargar historial. Revisa la consola.</td>
-        </tr>
-      `);
-    }
-  });
-
-  // =========================================================
-  // 8) TOTALES — funciones locales y exposición global
-  // =========================================================
-  const $modalTot = $('#modalTotales');
-  const $popover  = $('#tot-popover');
-
-  function overlaps(ini, fin, min, max) {
-    if (!ini && !fin) return false;
-    ini = ini || fin; fin = fin || ini;
-    if (min && fin < min) return false;
-    if (max && ini > max) return false;
-    return true;
-  }
-
-  function openTotales() {
-    // Rango por defecto: primer inicio → fin del último que inicia
-    const conInicio = GRUPOS_RAW.filter(g => g.fechaInicio instanceof Date);
-    if (conInicio.length) {
-      conInicio.sort((a,b) => a.fechaInicio - b.fechaInicio);
-      const primero = conInicio[0];
-      const ultimo  = conInicio[conInicio.length-1];
-      const ini     = primero.fechaInicio;
-      const fin     = ultimo.fechaFin || ultimo.fechaInicio;
-      $('#totInicio').val(toInputDate(ini));
-      $('#totFin').val(toInputDate(fin));
-    } else {
-      $('#totInicio').val('');
-      $('#totFin').val('');
-    }
-
-    // Limpia UI y abre
-    $('#tot-resumen').empty();
-    $('#tot-tablas').empty();
-    $popover.hide();
-    $modalTot.show();
-
-    // Calcular automáticamente
-    renderTotales();
-  }
-
-  function renderTotales() {
-    const min = $('#totInicio').val() ? new Date($('#totInicio').val() + 'T00:00:00') : null;
-    const max = $('#totFin').val()    ? new Date($('#totFin').val()    + 'T23:59:59') : null;
-
-    const lista = GRUPOS_RAW.filter(g => {
-      if (!min && !max) return true;
-      return overlaps(g.fechaInicio, g.fechaFin, min, max);
-    });
-
-    const cats = { '101': [], '201/202': [], '301/302/303': [] };
-    for (const g of lista) {
-      const idn = parseInt(String(g.identificador).replace(/[^\d]/g,''), 10);
-      if (idn === 101) cats['101'].push(g);
-      else if (idn === 201 || idn === 202) cats['201/202'].push(g);
-      else if ([301,302,303].includes(idn)) cats['301/302/303'].push(g);
-    }
-
-    const sum = (arr, k) => arr.reduce((acc,x)=>acc+(x[k]||0),0);
-    const totPax  = sum(lista,'cantidadgrupo');
-    const totAdul = sum(lista,'adultos');
-    const totEst  = sum(lista,'estudiantes');
-
-    const fechasValidas = lista.flatMap(g => [g.fechaInicio, g.fechaFin]).filter(Boolean).sort((a,b)=>a-b);
-    const minReal = fechasValidas[0] ? fechasValidas[0].toLocaleDateString('es-CL') : '—';
-    const maxReal = fechasValidas[fechasValidas.length-1] ? fechasValidas[fechasValidas.length-1].toLocaleDateString('es-CL') : '—';
-
-    const $res = $('#tot-resumen').empty();
-    const PILL_INDEX = [];
-    const $tbx = $('#tot-tablas').empty();
-
-    const addPill = (label, arr, key) => {
-      const i = PILL_INDEX.push({ key, arr }) - 1;
-      $('<div class="tot-pill" data-pill="'+i+'" title="Click para ver grupos"></div>')
-        .append(`<span>${label}:</span>`)
-        .append(`<span>${arr.length}</span>`)
-        .append('<small>grupos</small>')
-        .on('click', (ev) => showPopover(ev, PILL_INDEX[i], label))
-        .appendTo($res);
-    };
-
-    addPill('Identificador 101', cats['101'], 'id101');
-    addPill('Identificador 201/202', cats['201/202'], 'id201_202');
-    addPill('Identificador 301/302/303', cats['301/302/303'], 'id301_303');
-
-    $('<div class="tot-pill" title="Totales de personas"></div>')
-      .append(`<span>👥 Pax</span><span>${totPax}</span>`)
-      .append(`<small>(Adultos ${totAdul} / Estudiantes ${totEst})</small>`)
-      .appendTo($res);
-
-    $('<div class="tot-pill" title="Rango efectivo"></div>')
-      .append(`<span>🗓️ Rango</span><span>${minReal} → ${maxReal}</span>`)
-      .appendTo($res);
-
-    const mkTabla = (titulo, filas, includePax=true) => {
-      const $wrap = $('<div></div>').append(`<h3 style="margin:.5rem 0;">${titulo}</h3>`);
-      const $t = $(`<table><thead><tr>
-        <th>${titulo}</th><th># Grupos</th>${includePax?'<th>Pax</th>':''}
-      </tr></thead><tbody></tbody></table>`);
-      const $tb = $t.find('tbody');
-      filas.forEach(row => {
-        const i = PILL_INDEX.push({ key: `${titulo}:${row.clave}`, arr: row.grupos }) - 1;
-        const paxTd = includePax ? `<td>${row.pax}</td>` : '';
-        $tb.append(`<tr>
-          <td>${row.clave || '—'}</td>
-          <td><button class="mini-link" data-pill="${i}" type="button">${row.grupos.length}</button></td>
-          ${paxTd}
-        </tr>`);
-      });
-      $t.on('click','button.mini-link', (ev) => {
-        const idx = parseInt(ev.currentTarget.getAttribute('data-pill'),10);
-        showPopover(ev, PILL_INDEX[idx], titulo);
-      });
-      $wrap.append($t);
-      $tbx.append($wrap);
-    };
-
-    const groupBy = (arr, key) => {
-      const map = new Map();
-      for (const g of arr) {
-        const k = (g[key] ?? '').toString().trim();
-        if (!map.has(k)) map.set(k, []);
-        map.get(k).push(g);
-      }
-      return [...map.entries()].map(([clave, grupos]) => ({
-        clave,
-        grupos,
-        pax: sum(grupos,'cantidadgrupo')
-      })).sort((a,b)=> b.grupos.length - a.grupos.length);
-    };
-
-    mkTabla('Año',        groupBy(lista, 'anoViaje'));
-    mkTabla('Vendedor(a)',groupBy(lista, 'vendedora'));
-    mkTabla('Destino',    groupBy(lista, 'destino'));
-    mkTabla('Programa',   groupBy(lista, 'programa'));
-    mkTabla('Hoteles',    groupBy(lista, 'hoteles'));
-    mkTabla('Transporte', groupBy(lista, 'transporte'));
-
-    function showPopover(ev, bucket, titulo) {
-      const items = (bucket?.arr || []);
-      const html = `
-        <h4>${titulo}</h4>
-        <ul>
-          ${items.map(g => `<li>
-            <a href="#" class="go-row" data-num="${g.numeroNegocio}">
-              ${g.numeroNegocio} — ${g.nombreGrupo}
-            </a>
-          </li>`).join('')}
-        </ul>`;
-      $popover.html(html);
-
-      const vw = $(window).width(), vh = $(window).height();
-      const w  = Math.min(420, vw - 24);
-      $popover.css({ width: w + 'px' });
-      const clickX = ev.pageX, clickY = ev.pageY;
-      const left = Math.min(clickX + 12, window.scrollX + vw - w - 12);
-      const top  = Math.min(clickY + 12, window.scrollY + vh - 24);
-      $popover.css({ left: left + 'px', top: top + 'px' }).show();
-
-      $popover.off('click', 'a.go-row').on('click', 'a.go-row', (e) => {
-        e.preventDefault();
-        const num = e.currentTarget.getAttribute('data-num') || '';
-        let foundNode = null;
-        tabla.rows().every(function(){
-          const data = this.data();
-          if ((data?.[0]||'').toString().trim() === num.toString().trim()) {
-            foundNode = this.node();
-          }
-        });
-        if (foundNode) {
-          $('#tablaGrupos tbody tr').removeClass('highlight-row');
-          $(foundNode).addClass('highlight-row')[0]
-            .scrollIntoView({ behavior:'smooth', block:'center' });
-        } else {
-          tabla.search(num).draw();
-        }
-      });
-    }
-  }
-
-  // Exponer funciones para handlers globales
-  window.__RT_totales = {
-    open: openTotales,
-    render: renderTotales
-  };
-
-  // 9) Función que carga y pivota historial
-  async function recargarHistorial() {
-    console.group('🔄 recargarHistorial()');
-    try {
-      const $tabla = $('#tablaHistorial');
-      if (!$tabla.length) { console.error('No encontré #tablaHistorial'); console.groupEnd(); return; }
-
-      const q = query(
-        collection(db, 'historial'),
-        orderBy('timestamp', 'desc'),
-        limit(300)
-      );
-      const snap = await getDocs(q);
-
-      const $tbH = $tabla.find('tbody').empty();
-      snap.forEach((s) => {
-        const d     = s.data();
-        const fecha = d.timestamp?.toDate?.();
-        if (!fecha) return;
-        const ts  = fecha.getTime();
-        $tbH.append(`
-          <tr>
-            <td data-timestamp="${ts}">${fecha.toLocaleString('es-CL')}</td>
-            <td>${d.modificadoPor || d.usuario || ''}</td>
-            <td>${d.numeroNegocio || ''}</td>
-            <td>${d.accion || d.campo || d.tipo || ''}</td>
-            <td>${d.anterior ?? d.valorAnterior ?? d.antes ?? ''}</td>
-            <td>${d.nuevo ?? d.valorNuevo ?? d.despues ?? d.nuevoDisplay ?? ''}</td>
-          </tr>
-        `);
-        if (snap.empty) {
           $tbH.html(`
             <tr>
-              <td colspan="6">No hay historial registrado.</td>
+              <td colspan="6">
+                No hay historial registrado.
+              </td>
             </tr>
           `);
         }
-      });
 
-      if ($.fn.DataTable.isDataTable('#tablaHistorial')) {
-        $('#tablaHistorial').DataTable().destroy();
+
+        snap.forEach(
+          s => {
+            const d =
+              s.data();
+
+
+            const fecha =
+              d.timestamp
+                ?.toDate
+                ?.();
+
+
+            if (!fecha) {
+              return;
+            }
+
+
+            const ts =
+              fecha.getTime();
+
+
+            $tbH.append(`
+              <tr>
+                <td data-timestamp="${ts}">
+                  ${fecha.toLocaleString('es-CL')}
+                </td>
+
+                <td>
+                  ${d.modificadoPor || d.usuario || ''}
+                </td>
+
+                <td>
+                  ${d.numeroNegocio || ''}
+                </td>
+
+                <td>
+                  ${d.accion || d.campo || d.tipo || ''}
+                </td>
+
+                <td>
+                  ${d.anterior ?? d.valorAnterior ?? d.antes ?? ''}
+                </td>
+
+                <td>
+                  ${d.nuevo ?? d.valorNuevo ?? d.despues ?? d.nuevoDisplay ?? ''}
+                </td>
+              </tr>
+            `);
+          }
+        );
+
+
+        if (
+          $.fn.DataTable.isDataTable(
+            '#tablaHistorial'
+          )
+        ) {
+          $('#tablaHistorial')
+            .DataTable()
+            .destroy();
+        }
+
+
+        dtHist =
+          $('#tablaHistorial')
+            .DataTable({
+              language: {
+                url:
+                  'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json'
+              },
+
+              pageLength:
+                15,
+
+              lengthMenu: [
+                [
+                  15,
+                  30,
+                  50,
+                  -1
+                ],
+
+                [
+                  15,
+                  30,
+                  50,
+                  'Todos'
+                ]
+              ],
+
+              order: [
+                [
+                  0,
+                  'desc'
+                ]
+              ],
+
+              dom:
+                'ltip'
+            });
+
+
+      }catch(err){
+        console.error(
+          '🔥 recargarHistorial() error:',
+          err
+        );
       }
-      dtHist = $('#tablaHistorial').DataTable({
-        language:   { url:'https://cdn.datatables.net/plug-ins/1.13.4/i18n/es-ES.json' },
-        pageLength: 15,
-        lengthMenu: [[15,30,50,-1],[15,30,50,'Todos']],
-        order:      [[0,'desc']],
-        dom:        'ltip'
-      });
-    } catch (err) {
-      console.error('🔥 recargarHistorial() error:', err);
+
+
+      console.groupEnd();
     }
-    console.groupEnd();
-  }
 
-  // 10) Botones del Historial
-  $('#btn-refresh-history').off('click').on('click', recargarHistorial);
-  $('#btn-close-history').off('click').on('click', () => {
-    $('#modalHistorial').hide();
-  });
-  $('#buscadorHistorial').off('input').on('input', () => dtHist.search($('#buscadorHistorial').val()).draw());
 
-  // 12) Filtro de fechas del Historial (ext.search)
-  $.fn.dataTable.ext.search.push((settings, rowData, rowIdx) => {
-    if (settings.nTable.id !== 'tablaHistorial') return true;
-    const cell = dtHist.row(rowIdx).node().querySelector('td[data-timestamp]');
-    if (!cell) return true;
-    const ts = parseInt(cell.getAttribute('data-timestamp'), 10);
-    const min = $('#histInicio').val() ? new Date($('#histInicio').val()).getTime() : -Infinity;
-    const max = $('#histFin').val()    ? new Date($('#histFin').val()).getTime()    : +Infinity;
-    return ts >= min && ts <= max;
-  });
-  $('#histInicio, #histFin').off('change').on('change', () => dtHist.draw());
-  
-  setCargaOk(`Tabla cargada correctamente con ${valores.length} grupos.`);
+    $('#btn-refresh-history')
+      .off(
+        'click.grupos'
+      )
+      .on(
+        'click.grupos',
+        recargarHistorial
+      );
+
+
+    $('#btn-close-history')
+      .off(
+        'click.grupos'
+      )
+      .on(
+        'click.grupos',
+        () => {
+          $('#modalHistorial')
+            .hide();
+        }
+      );
+
+
+    $('#buscadorHistorial')
+      .off(
+        'input.grupos'
+      )
+      .on(
+        'input.grupos',
+        () => {
+          if (
+            dtHist
+          ) {
+            dtHist
+              .search(
+                $('#buscadorHistorial')
+                  .val()
+              )
+              .draw();
+          }
+        }
+      );
+
+
+    // =====================================================
+    // 27) FILTRO HISTORIAL POR FECHA
+    // =====================================================
+
+    $.fn.dataTable.ext.search.push(
+      (
+        settings,
+        rowData,
+        rowIdx
+      ) => {
+        if (
+          settings.nTable.id !==
+          'tablaHistorial'
+        ) {
+          return true;
+        }
+
+
+        if (!dtHist) {
+          return true;
+        }
+
+
+        const node =
+          dtHist
+            .row(
+              rowIdx
+            )
+            .node();
+
+
+        const cell =
+          node
+            ?.querySelector(
+              'td[data-timestamp]'
+            );
+
+
+        if (!cell) {
+          return true;
+        }
+
+
+        const ts =
+          parseInt(
+            cell.getAttribute(
+              'data-timestamp'
+            ),
+            10
+          );
+
+
+        const min =
+          $('#histInicio')
+            .val()
+            ? new Date(
+                $('#histInicio')
+                  .val()
+              ).getTime()
+            : -Infinity;
+
+
+        const max =
+          $('#histFin')
+            .val()
+            ? new Date(
+                $('#histFin')
+                  .val()
+              ).getTime()
+            : +Infinity;
+
+
+        return (
+          ts >= min &&
+          ts <= max
+        );
+      }
+    );
+
+
+    $('#histInicio, #histFin')
+      .off(
+        'change.grupos'
+      )
+      .on(
+        'change.grupos',
+        () => {
+          if (
+            dtHist
+          ) {
+            dtHist.draw();
+          }
+        }
+      );
+
+
+    setCargaOk(
+      `Tabla cargada correctamente con ${valores.length} grupos.`
+    );
+
 
   } catch (err) {
-    console.error('🔥 Error general en cargarYMostrarTabla():', err);
-    setCargaError(err);
-  }
-} // ← cierre de cargarYMostrarTabla()
+    console.error(
+      '🔥 Error general en cargarYMostrarTabla():',
+      err
+    );
 
+
+    setCargaError(
+      err
+    );
+  }
+}
 // 1) Función que lee toda la tabla de DataTables y genera un Excel
 function exportarGrupos() {
   // Usamos DataTables API para obtener datos tal como se muestran (filtrados, ordenados)
