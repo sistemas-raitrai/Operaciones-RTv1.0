@@ -423,96 +423,354 @@ function _emailsOf(g){
   return [...out];
 }
 
-// =============== ÍNDICE DE HOTELES (caché) ===============
-const _hotelesCache = { loaded:false, byId:new Map(), bySlug:new Map(), all:[] };
+// ============================================================
+// HOTELES - CARGA MASIVA / ÍNDICES EN MEMORIA
+// ============================================================
 
-async function _ensureHotelesIndex(db){
-  if (_hotelesCache.loaded) return _hotelesCache;
-  const snap = await getDocs(collection(db,'hoteles'));
-  snap.forEach(d=>{
+const _hotelesCache = {
+  loaded: false,
+  byId: new Map(),
+  bySlug: new Map(),
+  all: []
+};
+
+function _pushMapArray(map, key, value) {
+  const k = String(key || '').trim();
+
+  if (!k) return;
+
+  if (!map.has(k)) {
+    map.set(k, []);
+  }
+
+  map.get(k).push(value);
+}
+
+async function _ensureHotelesIndex(db) {
+  if (_hotelesCache.loaded) {
+    return _hotelesCache;
+  }
+
+  const snap = await getDocs(
+    collection(db, 'hoteles')
+  );
+
+  snap.forEach(d => {
     const x = d.data() || {};
-    const docu = { id:d.id, ...x };
-    const s = _norm(x.slug || x.nombre || d.id);
-    _hotelesCache.byId.set(String(d.id), docu);
-    if (s) _hotelesCache.bySlug.set(s, docu);
-    _hotelesCache.all.push(docu);
+
+    const docu = {
+      id: d.id,
+      ...x
+    };
+
+    const slug = _norm(
+      x.slug ||
+      x.nombre ||
+      d.id
+    );
+
+    _hotelesCache.byId.set(
+      String(d.id),
+      docu
+    );
+
+    if (slug) {
+      _hotelesCache.bySlug.set(
+        slug,
+        docu
+      );
+    }
+
+    _hotelesCache.all.push(
+      docu
+    );
   });
+
   _hotelesCache.loaded = true;
+
   return _hotelesCache;
 }
 
-// =============== HOTELES POR GRUPO (multi-esquema) ===============
-const _cacheHotelesByGroup = new Map();
-async function _loadHotelesInfo(db, g){
-  const groupDocId = String(g.id || '').trim();
-  const groupNum   = String(g.numeroNegocio || '').trim();
-  const cacheKey   = `hoteles:${groupDocId || groupNum}`;
-  if (_cacheHotelesByGroup.has(cacheKey)) return _cacheHotelesByGroup.get(cacheKey);
+function _extraerClavesGrupoAsignacionHotel(a) {
+  const out = new Set();
 
-  let cand = [];
-  // esquemas frecuentes
-  if (groupDocId){
-    try{
-      const q1 = query(collection(db,'hotelAssignments'), where('grupoId','==', groupDocId));
-      const s1 = await getDocs(q1); s1.forEach(d=> cand.push({ id:d.id, ...(d.data()||{}) }));
-    }catch{}
-    if (!cand.length){
-      try{
-        const q2 = query(collection(db,'hotelAssignments'), where('grupoDocId','==', groupDocId));
-        const s2 = await getDocs(q2); s2.forEach(d=> cand.push({ id:d.id, ...(d.data()||{}) }));
-      }catch{}
+  const add = value => {
+    const v = String(value || '').trim();
+
+    if (v) {
+      out.add(v);
     }
-  }
-  if (!cand.length && groupNum){
-    try{
-      const q3 = query(collection(db,'hotelAssignments'), where('grupoNumero','==', groupNum));
-      const s3 = await getDocs(q3); s3.forEach(d=> cand.push({ id:d.id, ...(d.data()||{}) }));
-    }catch{}
-  }
-  if (!cand.length){ _cacheHotelesByGroup.set(cacheKey, []); return []; }
+  };
 
-  // resolver doc hotel
-  const { byId, bySlug, all } = await _ensureHotelesIndex(db);
-  function pickHotelDoc(asig){
-    const tryIds = [];
-    if (asig?.hotelId) tryIds.push(String(asig.hotelId));
-    if (asig?.hotelDocId) tryIds.push(String(asig.hotelDocId));
-    if (asig?.hotel?.id) tryIds.push(String(asig.hotel.id));
-    if (asig?.hotelRef?.id) tryIds.push(String(asig.hotelRef.id));
-    const m = (asig?.hotelPath||'').match(/hoteles\/([^/]+)/i);
-    if (m) tryIds.push(m[1]);
-    for (const id of tryIds){ if (byId.has(id)) return byId.get(id); }
+  add(a.grupoId);
+  add(a.grupoDocId);
+  add(a.grupoNumero);
+  add(a.numeroNegocio);
+  add(a.numNegocio);
 
-    const s = _norm(asig?.nombre || asig?.hotelNombre || '');
-    const dest = _norm(g.destino || '');
-    if (s){
-      if (bySlug.has(s)) return bySlug.get(s);
-      const cand = [];
-      for (const [slugName, docu] of bySlug){ if (slugName.includes(s) || s.includes(slugName)) cand.push(docu); }
-      if (cand.length === 1) return cand[0];
-      return cand.find(d => _norm(d.destino||d.ciudad||'') === dest) || cand[0] || null;
-    }
-    // fallback por destino
-    const sameDest = all.filter(h => _norm(h.destino||h.ciudad||'') === dest);
-    return sameDest[0] || null;
+  if (Array.isArray(a.grupoIds)) {
+    a.grupoIds.forEach(add);
   }
 
-  cand.sort((a,b)=> (_toISO(a.checkIn)||'').localeCompare(_toISO(b.checkIn)||''));
-  const out = cand.map(a=>{
-    const H = pickHotelDoc(a);
-    return {
-      ...a,
-      hotel: H,
-      hotelNombre: a?.hotelNombre || a?.nombre || H?.nombre || '',
-      checkIn: _toISO(a.checkIn),
-      checkOut: _toISO(a.checkOut)
-    };
-  });
+  if (Array.isArray(a.grupos)) {
+    a.grupos.forEach(x => {
+      if (typeof x === 'string') {
+        add(x);
+        return;
+      }
 
-  _cacheHotelesByGroup.set(cacheKey, out);
-  return out;
+      if (x && typeof x === 'object') {
+        add(x.id);
+        add(x.grupoId);
+        add(x.grupoDocId);
+        add(x.numeroNegocio);
+        add(x.numNegocio);
+        add(x.grupoNumero);
+      }
+    });
+  }
+
+  return [...out];
 }
 
+async function _buildHotelesAssignmentsIndex(db) {
+  const byGrupo = new Map();
+
+  const snap = await getDocs(
+    collection(
+      db,
+      'hotelAssignments'
+    )
+  );
+
+  snap.forEach(d => {
+    const a = {
+      id: d.id,
+      ...(d.data() || {})
+    };
+
+    const claves =
+      _extraerClavesGrupoAsignacionHotel(a);
+
+    claves.forEach(clave => {
+      _pushMapArray(
+        byGrupo,
+        clave,
+        a
+      );
+    });
+  });
+
+  return byGrupo;
+}
+
+function _resolverHotelDocDesdeAsignacion(
+  asig,
+  g,
+  hotelIndex
+) {
+  const {
+    byId,
+    bySlug,
+    all
+  } = hotelIndex;
+
+  const tryIds = [];
+
+  if (asig?.hotelId) {
+    tryIds.push(
+      String(asig.hotelId)
+    );
+  }
+
+  if (asig?.hotelDocId) {
+    tryIds.push(
+      String(asig.hotelDocId)
+    );
+  }
+
+  if (asig?.hotel?.id) {
+    tryIds.push(
+      String(asig.hotel.id)
+    );
+  }
+
+  if (asig?.hotelRef?.id) {
+    tryIds.push(
+      String(asig.hotelRef.id)
+    );
+  }
+
+  const m =
+    String(
+      asig?.hotelPath ||
+      ''
+    ).match(
+      /hoteles\/([^/]+)/i
+    );
+
+  if (m) {
+    tryIds.push(
+      m[1]
+    );
+  }
+
+  for (const id of tryIds) {
+    if (byId.has(id)) {
+      return byId.get(id);
+    }
+  }
+
+  const nombre =
+    _norm(
+      asig?.nombre ||
+      asig?.hotelNombre ||
+      ''
+    );
+
+  const destino =
+    _norm(
+      g?.destino ||
+      ''
+    );
+
+  if (nombre) {
+    if (bySlug.has(nombre)) {
+      return bySlug.get(nombre);
+    }
+
+    const candidatos = [];
+
+    for (
+      const [slugName, docu]
+      of bySlug
+    ) {
+      if (
+        slugName.includes(nombre) ||
+        nombre.includes(slugName)
+      ) {
+        candidatos.push(docu);
+      }
+    }
+
+    if (candidatos.length === 1) {
+      return candidatos[0];
+    }
+
+    const mismoDestino =
+      candidatos.find(h =>
+        _norm(
+          h.destino ||
+          h.ciudad ||
+          ''
+        ) === destino
+      );
+
+    return (
+      mismoDestino ||
+      candidatos[0] ||
+      null
+    );
+  }
+
+  const mismoDestino =
+    all.filter(h =>
+      _norm(
+        h.destino ||
+        h.ciudad ||
+        ''
+      ) === destino
+    );
+
+  return (
+    mismoDestino[0] ||
+    null
+  );
+}
+
+function _loadHotelesInfoDesdeIndice(
+  g,
+  assignmentsByGrupo,
+  hotelIndex
+) {
+  const docId =
+    String(
+      g.id ||
+      ''
+    ).trim();
+
+  const numero =
+    String(
+      g.numeroNegocio ||
+      ''
+    ).trim();
+
+  const encontrados = [
+    ...(assignmentsByGrupo.get(docId) || []),
+    ...(assignmentsByGrupo.get(numero) || [])
+  ];
+
+  const unicos =
+    new Map();
+
+  encontrados.forEach(a => {
+    const key =
+      String(
+        a.id ||
+        `${a.hotelId || ''}_${a.checkIn || ''}_${a.checkOut || ''}`
+      );
+
+    if (!unicos.has(key)) {
+      unicos.set(
+        key,
+        a
+      );
+    }
+  });
+
+  const cand =
+    [...unicos.values()];
+
+  cand.sort(
+    (a, b) =>
+      (_toISO(a.checkIn) || '')
+        .localeCompare(
+          _toISO(b.checkIn) || ''
+        )
+  );
+
+  return cand.map(a => {
+    const H =
+      _resolverHotelDocDesdeAsignacion(
+        a,
+        g,
+        hotelIndex
+      );
+
+    return {
+      ...a,
+
+      hotel:
+        H,
+
+      hotelNombre:
+        a?.hotelNombre ||
+        a?.nombre ||
+        H?.nombre ||
+        '',
+
+      checkIn:
+        _toISO(
+          a.checkIn
+        ),
+
+      checkOut:
+        _toISO(
+          a.checkOut
+        )
+    };
+  });
+}
 // =============== VUELOS POR GRUPO (multi-esquema) ===============
 const _cacheVuelosByGroup = new Map();
 function _normalizeVuelo(v){
@@ -566,52 +824,226 @@ function _normalizeVuelo(v){
   };
 }
 
-async function _loadVuelosInfo(db, g){
-  const docId = String(g.id || '').trim();
-  const num   = String(g.numeroNegocio || '').trim();
-  const cacheKey = `vuelos:${docId || num}`;
-  if (_cacheVuelosByGroup.has(cacheKey)) return _cacheVuelosByGroup.get(cacheKey);
+// ============================================================
+// VUELOS - CARGA MASIVA / ÍNDICE EN MEMORIA
+// ============================================================
 
-  const found = [];
-  // a) grupoIds array-contains docId / numero
-  if (docId){ try{
-    const q1 = query(collection(db,'vuelos'), where('grupoIds','array-contains', docId));
-    const s1 = await getDocs(q1); s1.forEach(d=> found.push({ id:d.id, ...(d.data()||{}) }));
-  }catch{} }
-  if (!found.length && num){ try{
-    const q2 = query(collection(db,'vuelos'), where('grupoIds','array-contains', num));
-    const s2 = await getDocs(q2); s2.forEach(d=> found.push({ id:d.id, ...(d.data()||{}) }));
-  }catch{} }
+function _extraerClavesGrupoVuelo(v) {
+  const out = new Set();
 
-  // b) barrido general (por si no están indexados)
-  if (!found.length){
-    const sAll = await getDocs(collection(db,'vuelos'));
-    sAll.forEach(d=>{
-      const v = d.data()||{};
-      let match = false;
-      if (Array.isArray(v.grupos)) {
-        match = v.grupos.some(x=>{
-          if (typeof x === 'string') return (docId && x===docId) || (num && x===num);
-          if (x && typeof x==='object'){
-            const xid  = String(x.id || x.grupoId || '').trim();
-            const xnum = String(x.numeroNegocio || x.numNegocio || '').trim();
-            return (docId && xid===docId) || (num && xnum===num);
-          }
-          return false;
-        });
+  const add = value => {
+    const x =
+      String(
+        value ||
+        ''
+      ).trim();
+
+    if (x) {
+      out.add(x);
+    }
+  };
+
+
+  // ========================================================
+  // grupoIds
+  // ========================================================
+
+  if (
+    Array.isArray(
+      v.grupoIds
+    )
+  ) {
+    v.grupoIds.forEach(
+      add
+    );
+  }
+
+
+  // ========================================================
+  // grupos
+  // ========================================================
+
+  if (
+    Array.isArray(
+      v.grupos
+    )
+  ) {
+    v.grupos.forEach(x => {
+      if (
+        typeof x ===
+        'string'
+      ) {
+        add(x);
+
+        return;
       }
-      if (!match){
-        const rootId  = String(v.grupoId || '').trim();
-        const rootNum = String(v.grupoNumero || v.numeroNegocio || '').trim();
-        match = (docId && rootId===docId) || (num && rootNum===num);
+
+
+      if (
+        x &&
+        typeof x ===
+        'object'
+      ) {
+        add(x.id);
+        add(x.grupoId);
+        add(x.grupoDocId);
+        add(x.numeroNegocio);
+        add(x.numNegocio);
+        add(x.grupoNumero);
       }
-      if (match) found.push({ id:d.id, ...v });
     });
   }
 
-  const out = found.map(_normalizeVuelo);
-  _cacheVuelosByGroup.set(cacheKey, out);
-  return out;
+
+  // ========================================================
+  // CAMPOS RAÍZ
+  // ========================================================
+
+  add(v.grupoId);
+  add(v.grupoDocId);
+  add(v.grupoNumero);
+  add(v.numeroNegocio);
+  add(v.numNegocio);
+
+
+  return [
+    ...out
+  ];
+}
+
+async function _buildVuelosIndex(db) {
+  const byGrupo =
+    new Map();
+
+
+  // ========================================================
+  // UNA SOLA LECTURA DE TODA LA COLECCIÓN
+  // ========================================================
+
+  const snap =
+    await getDocs(
+      collection(
+        db,
+        'vuelos'
+      )
+    );
+
+
+  snap.forEach(d => {
+    const raw = {
+      id:
+        d.id,
+
+      ...(
+        d.data() ||
+        {}
+      )
+    };
+
+
+    const vuelo = {
+      id:
+        d.id,
+
+      raw,
+
+      normalizado:
+        _normalizeVuelo(
+          raw
+        )
+    };
+
+
+    const claves =
+      _extraerClavesGrupoVuelo(
+        raw
+      );
+
+
+    claves.forEach(clave => {
+      _pushMapArray(
+        byGrupo,
+        clave,
+        vuelo
+      );
+    });
+  });
+
+
+  return byGrupo;
+}
+
+function _loadVuelosInfoDesdeIndice(
+  g,
+  vuelosByGrupo
+) {
+  const docId =
+    String(
+      g.id ||
+      ''
+    ).trim();
+
+  const numero =
+    String(
+      g.numeroNegocio ||
+      ''
+    ).trim();
+
+
+  const encontrados = [
+    ...(
+      vuelosByGrupo.get(
+        docId
+      ) ||
+      []
+    ),
+
+    ...(
+      vuelosByGrupo.get(
+        numero
+      ) ||
+      []
+    )
+  ];
+
+
+  // ========================================================
+  // EVITAR DUPLICADOS
+  // porque un vuelo puede estar indexado por ID y negocio
+  // ========================================================
+
+  const unicos =
+    new Map();
+
+
+  encontrados.forEach(item => {
+    const key =
+      String(
+        item.id ||
+        ''
+      );
+
+
+    if (
+      key &&
+      !unicos.has(
+        key
+      )
+    ) {
+      unicos.set(
+        key,
+        item
+      );
+    }
+  });
+
+
+  return [
+    ...unicos.values()
+  ].map(
+    item =>
+      item.normalizado
+  );
 }
 
 // ------------ ÍNDICES RÁPIDOS PARA COORDINADORES ------------
@@ -1680,356 +2112,386 @@ async function cargarYMostrarTabla(
 
 
     // =====================================================
+    // =====================================================
     // 6) ENRIQUECER HOTELES / VUELOS
+    //    CARGA MASIVA
     // =====================================================
 
-    const BATCH =
-      15;
+    setCarga(
+      40,
+      'Cargando información operacional...',
+      'Leyendo hoteles, asignaciones y vuelos una sola vez'
+    );
 
+
+    // =====================================================
+    // LEER COLECCIONES UNA SOLA VEZ
+    // =====================================================
+
+    const [
+      hotelIndex,
+      hotelAssignmentsByGrupo,
+      vuelosByGrupo
+    ] =
+      await Promise.all([
+        _ensureHotelesIndex(
+          db
+        ),
+
+        _buildHotelesAssignmentsIndex(
+          db
+        ),
+
+        _buildVuelosIndex(
+          db
+        )
+      ]);
+
+
+    setCarga(
+      60,
+      'Enriqueciendo información...',
+      `Procesando ${valores.length} grupos en memoria`
+    );
+
+
+    // =====================================================
+    // YA NO HAY CONSULTAS FIRESTORE DENTRO DE ESTE LOOP
+    // =====================================================
 
     for (
-      let i = 0;
-      i < valores.length;
-      i += BATCH
+      let idx = 0;
+      idx < valores.length;
+      idx++
     ) {
-      const avance =
-        40 +
-        Math.round(
-          (
-            i /
-            Math.max(
-              1,
-              valores.length
-            )
-          ) *
-          35
-        );
+      const item =
+        valores[idx];
 
 
-      setCarga(
-        avance,
-        'Enriqueciendo información...',
-        `Procesando hoteles, vuelos y coordinadores ${Math.min(i + BATCH, valores.length)} de ${valores.length}`
-      );
+      const fila =
+        item.fila;
 
 
-      const sliceVals =
-        valores.slice(
-          i,
-          i + BATCH
-        );
+      const g =
+        gruposParaLookup[idx];
 
 
-      const sliceGps =
-        gruposParaLookup.slice(
-          i,
-          i + BATCH
-        );
+      // ===================================================
+      // HOTELES
+      // fila[17]
+      // ===================================================
 
-
-      const jobs =
-        sliceGps.map(
-          async (
+      try {
+        const hoteles =
+          _loadHotelesInfoDesdeIndice(
             g,
-            k
-          ) => {
-            const idx =
-              i + k;
-
-            const fila =
-              sliceVals[k].fila;
+            hotelAssignmentsByGrupo,
+            hotelIndex
+          );
 
 
-            // ===========================================
-            // HOTELES
-            // fila[17]
-            // ===========================================
+        if (
+          hoteles &&
+          hoteles.length
+        ) {
+          const txt =
+            hoteles
+              .map(h => {
+                const name =
+                  String(
+                    h.hotelNombre ||
+                    ''
+                  )
+                    .toUpperCase();
 
-            try{
-              const hoteles =
-                await _loadHotelesInfo(
-                  db,
-                  g
+
+                const ci =
+                  _dmy(
+                    _toISO(
+                      h.checkIn
+                    )
+                  );
+
+
+                const co =
+                  _dmy(
+                    _toISO(
+                      h.checkOut
+                    )
+                  );
+
+
+                return (
+                  `${name}` +
+                  `${
+                    ci ||
+                    co
+                      ? ` (${ci} → ${co})`
+                      : ''
+                  }`
                 );
-
-
-              if (
-                hoteles &&
-                hoteles.length
-              ) {
-                const txt =
-                  hoteles
-                    .map(
-                      h => {
-                        const name =
-                          String(
-                            h.hotelNombre ||
-                            ''
-                          ).toUpperCase();
-
-                        const ci =
-                          _dmy(
-                            _toISO(
-                              h.checkIn
-                            )
-                          );
-
-                        const co =
-                          _dmy(
-                            _toISO(
-                              h.checkOut
-                            )
-                          );
-
-
-                        return (
-                          `${name}` +
-                          `${
-                            ci ||
-                            co
-                              ? ` (${ci} → ${co})`
-                              : ''
-                          }`
-                        );
-                      }
-                    )
-                    .join(
-                      ' · '
-                    );
-
-
-                fila[17] =
-                  txt ||
-                  fila[17];
-
-
-                const graw =
-                  GRUPOS_RAW[idx];
-
-
-                if (graw) {
-                  graw.hoteles =
-                    txt;
-                }
-              }
-
-            }catch(e){
-              console.warn(
-                'Error cargando hoteles:',
-                g.id,
-                e
+              })
+              .join(
+                ' · '
               );
-            }
 
 
-            // ===========================================
-            // VUELOS / TRANSPORTE
-            //
-            // transporte = fila[19]
-            // tramos     = fila[20]
-            // ===========================================
-
-            try{
-              const vuelos =
-                await _loadVuelosInfo(
-                  db,
-                  g
-                );
+          fila[17] =
+            txt ||
+            fila[17];
 
 
-              if (
-                vuelos &&
-                vuelos.length
-              ) {
-                const v0 =
-                  vuelos[0];
+          const graw =
+            GRUPOS_RAW[idx];
 
 
-                const isAereo =
-                  (
-                    v0.tipoTransporte ||
-                    'aereo'
-                  ) ===
-                  'aereo';
-
-
-                if (isAereo) {
-                  const tipo =
-                    (
-                      v0.tipoVuelo ||
-                      ''
-                    )
-                      .toUpperCase();
-
-
-                  const nro =
-                    (
-                      v0.numero ||
-                      ''
-                    )
-                      .toString()
-                      .toUpperCase();
-
-
-                  const ida =
-                    _dmy(
-                      _toISO(
-                        v0.fechaIda
-                      )
-                    );
-
-
-                  const vta =
-                    _dmy(
-                      _toISO(
-                        v0.fechaVta
-                      )
-                    );
-
-
-                  const lIda =
-                    (
-                      v0.presentacionIdaHora ||
-                      v0.vueloIdaHora
-                    )
-                      ? ` · IDA: ${
-                          v0.presentacionIdaHora
-                            ? (
-                                'PRES ' +
-                                v0.presentacionIdaHora
-                              )
-                            : ''
-                        }${
-                          v0.vueloIdaHora
-                            ? (
-                                (
-                                  v0.presentacionIdaHora
-                                    ? ' · '
-                                    : ''
-                                ) +
-                                'VUELO ' +
-                                v0.vueloIdaHora
-                              )
-                            : ''
-                        }`
-                      : '';
-
-
-                  const lVta =
-                    (
-                      v0.presentacionVueltaHora ||
-                      v0.vueloVueltaHora
-                    )
-                      ? ` · VUELTA: ${
-                          v0.presentacionVueltaHora
-                            ? (
-                                'PRES ' +
-                                v0.presentacionVueltaHora
-                              )
-                            : ''
-                        }${
-                          v0.vueloVueltaHora
-                            ? (
-                                (
-                                  v0.presentacionVueltaHora
-                                    ? ' · '
-                                    : ''
-                                ) +
-                                'VUELO ' +
-                                v0.vueloVueltaHora
-                              )
-                            : ''
-                        }`
-                      : '';
-
-
-                  fila[19] =
-                    (
-                      `AÉREO` +
-                      `${
-                        tipo
-                          ? (
-                              ' · ' +
-                              tipo
-                            )
-                          : ''
-                      }` +
-                      `${
-                        nro
-                          ? (
-                              ' · ' +
-                              nro
-                            )
-                          : ''
-                      }` +
-                      ` · ${ida || '—'} → ${vta || '—'}` +
-                      lIda +
-                      lVta
-                    ).trim();
-
-
-                  fila[20] =
-                    Array.isArray(
-                      v0.tramos
-                    ) &&
-                    v0.tramos.length
-                      ? `${v0.tramos.length} TRAMO(S)`
-                      : (
-                          fila[20] ||
-                          ''
-                        );
-
-
-                } else {
-                  const idaH =
-                    v0.idaHora ||
-                    '';
-
-                  const vtaH =
-                    v0.vueltaHora ||
-                    '';
-
-
-                  fila[19] =
-                    `TERRESTRE (BUS)` +
-                    `${
-                      idaH ||
-                      vtaH
-                        ? ` · SALIDA: ${idaH || '—'} · REGRESO: ${vtaH || '—'}`
-                        : ''
-                    }`;
-
-
-                  fila[20] =
-                    fila[20] ||
-                    '';
-                }
-
-
-                const graw =
-                  GRUPOS_RAW[idx];
-
-
-                if (graw) {
-                  graw.transporte =
-                    fila[19];
-                }
-              }
-
-            }catch(e){
-              console.warn(
-                'Error cargando vuelos:',
-                g.id,
-                e
-              );
-            }
+          if (graw) {
+            graw.hoteles =
+              txt;
           }
+        }
+
+      } catch (e) {
+        console.warn(
+          'Error procesando hoteles:',
+          g.id,
+          e
         );
+      }
 
 
-      await Promise.allSettled(
-        jobs
-      );
+      // ===================================================
+      // VUELOS / TRANSPORTE
+      //
+      // transporte = fila[19]
+      // tramos     = fila[20]
+      // ===================================================
+
+      try {
+        const vuelos =
+          _loadVuelosInfoDesdeIndice(
+            g,
+            vuelosByGrupo
+          );
+
+
+        if (
+          vuelos &&
+          vuelos.length
+        ) {
+          const v0 =
+            vuelos[0];
+
+
+          const isAereo =
+            (
+              v0.tipoTransporte ||
+              'aereo'
+            ) ===
+            'aereo';
+
+
+          if (isAereo) {
+            const tipo =
+              (
+                v0.tipoVuelo ||
+                ''
+              )
+                .toUpperCase();
+
+
+            const nro =
+              (
+                v0.numero ||
+                ''
+              )
+                .toString()
+                .toUpperCase();
+
+
+            const ida =
+              _dmy(
+                _toISO(
+                  v0.fechaIda
+                )
+              );
+
+
+            const vta =
+              _dmy(
+                _toISO(
+                  v0.fechaVta
+                )
+              );
+
+
+            const lIda =
+              (
+                v0.presentacionIdaHora ||
+                v0.vueloIdaHora
+              )
+                ? ` · IDA: ${
+                    v0.presentacionIdaHora
+                      ? (
+                          'PRES ' +
+                          v0.presentacionIdaHora
+                        )
+                      : ''
+                  }${
+                    v0.vueloIdaHora
+                      ? (
+                          (
+                            v0.presentacionIdaHora
+                              ? ' · '
+                              : ''
+                          ) +
+                          'VUELO ' +
+                          v0.vueloIdaHora
+                        )
+                      : ''
+                  }`
+                : '';
+
+
+            const lVta =
+              (
+                v0.presentacionVueltaHora ||
+                v0.vueloVueltaHora
+              )
+                ? ` · VUELTA: ${
+                    v0.presentacionVueltaHora
+                      ? (
+                          'PRES ' +
+                          v0.presentacionVueltaHora
+                        )
+                      : ''
+                  }${
+                    v0.vueloVueltaHora
+                      ? (
+                          (
+                            v0.presentacionVueltaHora
+                              ? ' · '
+                              : ''
+                          ) +
+                          'VUELO ' +
+                          v0.vueloVueltaHora
+                        )
+                      : ''
+                  }`
+                : '';
+
+
+            fila[19] =
+              (
+                `AÉREO` +
+                `${
+                  tipo
+                    ? (
+                        ' · ' +
+                        tipo
+                      )
+                    : ''
+                }` +
+                `${
+                  nro
+                    ? (
+                        ' · ' +
+                        nro
+                      )
+                    : ''
+                }` +
+                ` · ${ida || '—'} → ${vta || '—'}` +
+                lIda +
+                lVta
+              ).trim();
+
+
+            fila[20] =
+              Array.isArray(
+                v0.tramos
+              ) &&
+              v0.tramos.length
+                ? `${v0.tramos.length} TRAMO(S)`
+                : (
+                    fila[20] ||
+                    ''
+                  );
+
+
+          } else {
+            const idaH =
+              v0.idaHora ||
+              '';
+
+
+            const vtaH =
+              v0.vueltaHora ||
+              '';
+
+
+            fila[19] =
+              `TERRESTRE (BUS)` +
+              `${
+                idaH ||
+                vtaH
+                  ? ` · SALIDA: ${idaH || '—'} · REGRESO: ${vtaH || '—'}`
+                  : ''
+              }`;
+
+
+            fila[20] =
+              fila[20] ||
+              '';
+          }
+
+
+          const graw =
+            GRUPOS_RAW[idx];
+
+
+          if (graw) {
+            graw.transporte =
+              fila[19];
+          }
+        }
+
+      } catch (e) {
+        console.warn(
+          'Error procesando vuelos:',
+          g.id,
+          e
+        );
+      }
+
+
+      // ===================================================
+      // ACTUALIZAR BARRA VISUAL
+      // ===================================================
+
+      if (
+        idx % 20 === 0 ||
+        idx === valores.length - 1
+      ) {
+        const avance =
+          60 +
+          Math.round(
+            (
+              (idx + 1) /
+              Math.max(
+                valores.length,
+                1
+              )
+            ) *
+            15
+          );
+
+
+        setCarga(
+          avance,
+          'Enriqueciendo información...',
+          `Procesados ${idx + 1} de ${valores.length} grupos`
+        );
+      }
     }
 
 
