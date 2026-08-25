@@ -2159,6 +2159,251 @@ function abrirSelectorSugerencia(){
 }
 
 /* =========================================================
+   BASE PARA TODAS LAS SUGERENCIAS
+   ========================================================= */
+
+function obtenerBaseSugerencia(){
+  // =====================================================
+  // 1) SETS CONFIRMADOS QUE YA EXISTEN EN MEMORIA
+  //
+  // Estos se respetan y no se reorganizan.
+  // =====================================================
+
+  const fixedSetsMem =
+    SETS.filter(
+      s =>
+        s.confirmado &&
+        !!s.coordinadorId
+    );
+
+
+  // =====================================================
+  // 2) CONTAR CUÁNTOS CUPOS YA ESTÁN CONFIRMADOS
+  //    POR CADA GRUPO
+  //
+  // Ejemplo:
+  //
+  // Grupo A requiere 2 coordinadores.
+  //
+  // Si ya hay:
+  // Pedro → Grupo A
+  //
+  // entonces:
+  // confirmadosPorGrupo[A] = 1
+  // =====================================================
+
+  const confirmadosPorGrupo =
+    new Map();
+
+
+  fixedSetsMem.forEach(
+    s => {
+      const vistos =
+        new Set();
+
+
+      (
+        s.viajes ||
+        []
+      ).forEach(
+        rawGid => {
+          const gid =
+            String(
+              rawGid
+            );
+
+
+          // Un mismo SET nunca cuenta
+          // dos veces el mismo grupo.
+          if (
+            vistos.has(
+              gid
+            )
+          ) {
+            return;
+          }
+
+
+          vistos.add(
+            gid
+          );
+
+
+          confirmadosPorGrupo.set(
+            gid,
+            (
+              confirmadosPorGrupo.get(
+                gid
+              ) ||
+              0
+            ) +
+            1
+          );
+        }
+      );
+    }
+  );
+
+
+  // =====================================================
+  // 3) CREAR POOL DE CUPOS PENDIENTES
+  //
+  // Esta es la parte MULTI-COORDINADOR.
+  //
+  // cantidadCoordinadores = 1
+  // → 1 cupo
+  //
+  // cantidadCoordinadores = 2
+  // → 2 cupos
+  //
+  // cantidadCoordinadores = 3
+  // → 3 cupos
+  //
+  // Si alguno ya está confirmado, sólo creamos
+  // los cupos que faltan.
+  // =====================================================
+
+  const pool =
+    [];
+
+
+  for (
+    const g
+    of GRUPOS
+  ) {
+    const requeridos =
+      getCantidadCoordinadoresGrupo(
+        g
+      );
+
+
+    const confirmados =
+      confirmadosPorGrupo.get(
+        g.id
+      ) ||
+      0;
+
+
+    const faltan =
+      Math.max(
+        0,
+        requeridos -
+        confirmados
+      );
+
+
+    for (
+      let cupo = 0;
+      cupo < faltan;
+      cupo++
+    ) {
+      pool.push({
+        ...g,
+
+        // Número de cupo:
+        // sólo para control interno / debugging.
+        _cupoCoordinador:
+          confirmados +
+          cupo +
+          1,
+
+        // Identificador único del cupo.
+        //
+        // Importante:
+        // el id REAL del grupo sigue siendo g.id.
+        _slotKey:
+          `${g.id}__${confirmados + cupo + 1}`
+      });
+    }
+  }
+
+
+  // =====================================================
+  // 4) ORDEN CRONOLÓGICO
+  // =====================================================
+
+  pool.sort(
+    (
+      a,
+      b
+    ) =>
+      cmpISO(
+        a.fechaInicio,
+        b.fechaInicio
+      )
+  );
+
+
+  // =====================================================
+  // 5) COMPATIBILIDAD CON LAS FUNCIONES ACTUALES
+  //
+  // Antes existía una segunda fuente de sets persistidos.
+  // Ahora loadSets() ya los incorpora en SETS, por lo que
+  // no necesitamos reconstruir otra lista aquí.
+  // =====================================================
+
+  const fixedFromGruposFiltered =
+    [];
+
+
+  L(
+    'obtenerBaseSugerencia:',
+    {
+      grupos:
+        GRUPOS.length,
+
+      setsConfirmados:
+        fixedSetsMem.length,
+
+      cuposPendientes:
+        pool.length,
+
+      detalleCupos:
+        Object.fromEntries(
+          GRUPOS.map(
+            g => [
+              g.id,
+              {
+                requeridos:
+                  getCantidadCoordinadoresGrupo(
+                    g
+                  ),
+
+                confirmados:
+                  confirmadosPorGrupo.get(
+                    g.id
+                  ) ||
+                  0,
+
+                pendientes:
+                  Math.max(
+                    0,
+                    getCantidadCoordinadoresGrupo(
+                      g
+                    ) -
+                    (
+                      confirmadosPorGrupo.get(
+                        g.id
+                      ) ||
+                      0
+                    )
+                  )
+              }
+            ]
+          )
+        )
+    }
+  );
+
+
+  return {
+    fixedSetsMem,
+    fixedFromGruposFiltered,
+    pool
+  };
+}
+
+/* =========================================================
    ESTRATEGIA 1
    CONTINUIDAD
    = lógica que ya tenías
