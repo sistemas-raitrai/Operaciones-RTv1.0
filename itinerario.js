@@ -2185,6 +2185,34 @@ async function refreshAlertasCounts(
   };
 }
 
+function pintarAlertasCountLocal(
+  activasGrupo
+) {
+  activasGrupo =
+    Math.max(
+      0,
+      Number(activasGrupo) || 0
+    );
+
+  if (btnAlertas) {
+    btnAlertas.textContent =
+      activasGrupo
+        ? `⚠️ Alertas (${activasGrupo})`
+        : '⚠️ Alertas';
+  }
+
+  if (alertasBadge) {
+    alertasBadge.textContent =
+      String(
+        activasGrupo
+      );
+  }
+
+  return {
+    activasGrupo
+  };
+}
+
 // Crea/actualiza una barrita de resumen dentro del modal
 function upsertResumenOK(count){
   if (!modalAlertas) return;
@@ -5896,15 +5924,13 @@ async function guardarRevisionCompleta(
     return;
   }
 
-  const cambiosActividad =
-    [
-      ...revisionDraft.actividades.values()
-    ];
+  const cambiosActividad = [
+    ...revisionDraft.actividades.values()
+  ];
 
-  const cambiosDias =
-    [
-      ...revisionDraft.dias.entries()
-    ];
+  const cambiosDias = [
+    ...revisionDraft.dias.entries()
+  ];
 
   const cambioGrupo =
     revisionDraft.grupo;
@@ -5924,13 +5950,11 @@ async function guardarRevisionCompleta(
     );
   }
 
-  // ==========================================
-  // 1. VALIDAR ACTIVIDADES RECHAZADAS
-  // ==========================================
-  for (
-    const item
-    of cambiosActividad
-  ) {
+  // ==================================================
+  // 1. VALIDACIONES PREVIAS
+  // ==================================================
+
+  for (const item of cambiosActividad) {
     const observacion =
       (
         item.observacion ||
@@ -5938,8 +5962,7 @@ async function guardarRevisionCompleta(
       ).trim();
 
     if (
-      item.estado ===
-        'rechazado' &&
+      item.estado === 'rechazado' &&
       !observacion
     ) {
       return alert(
@@ -5948,15 +5971,11 @@ async function guardarRevisionCompleta(
     }
   }
 
-  // ==========================================
-  // 2. VALIDAR DÍAS RECHAZADOS
-  // ==========================================
   for (
     const [
       fecha,
       item
-    ]
-    of cambiosDias
+    ] of cambiosDias
   ) {
     const observacion =
       (
@@ -5965,8 +5984,7 @@ async function guardarRevisionCompleta(
       ).trim();
 
     if (
-      item.estado ===
-        'rechazado' &&
+      item.estado === 'rechazado' &&
       !observacion
     ) {
       return alert(
@@ -5975,12 +5993,8 @@ async function guardarRevisionCompleta(
     }
   }
 
-  // ==========================================
-  // 3. VALIDAR REVISIÓN GENERAL
-  // ==========================================
   if (
-    cambioGrupo?.estado ===
-      'rechazado' &&
+    cambioGrupo?.estado === 'rechazado' &&
     !(
       cambioGrupo.observacion ||
       ''
@@ -6006,34 +6020,487 @@ async function guardarRevisionCompleta(
 
   try {
 
-    // ==========================================
-    // 4. GUARDAR ACTIVIDADES
-    // ==========================================
+    const refGrupo =
+      doc(
+        db,
+        'grupos',
+        grupoId
+      );
+
+    // ==================================================
+    // 2. LEER FIRESTORE UNA SOLA VEZ
+    //
+    // Antes:
+    // cada actividad y cada día volvía a leer el grupo
+    // y las alertas.
+    //
+    // Ahora:
+    // grupo + alertas se leen una sola vez.
+    // ==================================================
+
+    const [
+      snapGrupo,
+      snapAlertas
+    ] = await Promise.all([
+      getDoc(
+        refGrupo
+      ),
+
+      getDocs(
+        collection(
+          db,
+          'grupos',
+          grupoId,
+          'alertas'
+        )
+      )
+    ]);
+
+    if (!snapGrupo.exists()) {
+      throw new Error(
+        'No se encontró el grupo.'
+      );
+    }
+
+    const g =
+      snapGrupo.data() || {};
+
+    const usuario =
+      auth.currentUser?.email ||
+      '';
+
+    const ahora =
+      new Date();
+
+    // ==================================================
+    // 3. COPIAS DE TRABAJO EN MEMORIA
+    // ==================================================
+
+    const itinerarioTrabajo = {
+      ...(g.itinerario || {})
+    };
+
+    const revisionDiasTrabajo = {
+      ...(g.revisionDias || {})
+    };
+
+    // Sólo copiamos los arrays de días que realmente
+    // vayamos modificando.
+    const fechasActividadModificadas =
+      new Set();
+
+    const historialPendiente =
+      [];
+
+    const alertasCrear =
+      [];
+
+    const alertasResolver =
+      new Map();
+
+    const alertasActivasIniciales =
+      new Set(
+        snapAlertas.docs
+          .filter(
+            alertaDoc => {
+              const alerta =
+                alertaDoc.data() ||
+                {};
+    
+              // Modelo nuevo
+              if (
+                alerta.resuelta !==
+                undefined
+              ) {
+                return (
+                  alerta.resuelta !==
+                  true
+                );
+              }
+    
+              // Compatibilidad con alertas antiguas
+              return !alerta.visto;
+            }
+          )
+          .map(
+            alertaDoc =>
+              alertaDoc.id
+          )
+      );
+
+    // ==================================================
+    // 4. HELPER LOCAL PARA ENCONTRAR ALERTAS
+    //
+    // Mantiene la misma lógica de
+    // resolverAlertasRevision(), pero usamos el snapshot
+    // que YA descargamos.
+    // ==================================================
+
+    const alertaCoincide =
+      (
+        alerta,
+        filtro
+      ) => {
+
+        if (
+          alerta.resuelta === true
+        ) {
+          return false;
+        }
+
+        const tipoAlerta =
+          alerta.tipo ||
+          'actividad';
+
+        if (
+          filtro.tipo &&
+          tipoAlerta !== filtro.tipo
+        ) {
+          return false;
+        }
+
+        if (
+          filtro.fecha &&
+          alerta.fecha !== filtro.fecha
+        ) {
+          return false;
+        }
+
+        if (
+          filtro.tipo === 'actividad'
+        ) {
+
+          if (
+            Number.isInteger(
+              filtro.idx
+            )
+          ) {
+
+            if (
+              Number.isInteger(
+                alerta.idx
+              )
+            ) {
+              if (
+                alerta.idx !== filtro.idx
+              ) {
+                return false;
+              }
+
+            } else if (
+              filtro.actividad &&
+              (
+                alerta.actividad ||
+                ''
+              ) !==
+                filtro.actividad
+            ) {
+              return false;
+            }
+
+          } else if (
+            filtro.actividad &&
+            (
+              alerta.actividad ||
+              ''
+            ) !==
+              filtro.actividad
+          ) {
+            return false;
+          }
+        }
+
+        return true;
+      };
+
+
+    const programarResolucionAlertas =
+      (
+        filtro,
+        motivo
+      ) => {
+
+        snapAlertas.docs.forEach(
+          alertaDoc => {
+
+            const alerta =
+              alertaDoc.data() ||
+              {};
+
+            if (
+              !alertaCoincide(
+                alerta,
+                filtro
+              )
+            ) {
+              return;
+            }
+
+            alertasResolver.set(
+              alertaDoc.id,
+              motivo ||
+              'Revisión resuelta'
+            );
+          }
+        );
+      };
+
+
+    const programarNuevaAlerta =
+      datos => {
+
+        alertasCrear.push({
+          tipo:
+            datos.tipo ||
+            'actividad',
+
+          fecha:
+            datos.fecha ||
+            '',
+
+          idx:
+            Number.isInteger(
+              datos.idx
+            )
+              ? datos.idx
+              : null,
+
+          actividad:
+            datos.actividad ||
+            '',
+
+          horaInicio:
+            datos.horaInicio ||
+            '',
+
+          horaFin:
+            datos.horaFin ||
+            '',
+
+          motivo:
+            (
+              datos.motivo ||
+              ''
+            ).trim()
+        });
+      };
+
+
+    // ==================================================
+    // 5. APLICAR CAMBIOS DE ACTIVIDADES EN MEMORIA
+    // ==================================================
+
     for (
       const item
       of cambiosActividad
     ) {
-      const ok =
-        await guardarRevisionActividad(
-          grupoId,
-          item.fecha,
-          item.idx,
-          item.estado,
-          item.observacion
-        );
+      const fecha =
+        item.fecha;
+
+      const idx =
+        Number(item.idx);
+
+      const nuevoEstado =
+        (
+          item.estado ||
+          'pendiente'
+        )
+          .toString()
+          .toLowerCase();
+
+      const observacion =
+        (
+          item.observacion ||
+          ''
+        ).trim();
 
       if (
-        ok === false
+        !fechasActividadModificadas.has(
+          fecha
+        )
       ) {
+        itinerarioTrabajo[fecha] =
+          (
+            g.itinerario?.[fecha] ||
+            []
+          ).map(
+            act => ({
+              ...act
+            })
+          );
+
+        fechasActividadModificadas.add(
+          fecha
+        );
+      }
+
+      const arr =
+        itinerarioTrabajo[fecha] ||
+        [];
+
+      const beforeObj =
+        arr[idx];
+
+      if (!beforeObj) {
         throw new Error(
-          `No se pudo guardar la actividad ${item.actividad || ''}`
+          `No se encontró la actividad ${item.actividad || ''} del día ${fecha}.`
+        );
+      }
+
+      const oldEstado =
+        beforeObj.revision ||
+        'pendiente';
+
+      const updated = {
+        ...beforeObj,
+
+        revision:
+          nuevoEstado,
+
+        revisionObservacion:
+          observacion,
+
+        revisionUsuario:
+          usuario,
+
+        revisionTimestamp:
+          ahora,
+
+        // Compatibilidad con la estructura antigua.
+        rechazoMotivo:
+          nuevoEstado ===
+            'rechazado'
+            ? observacion
+            : ''
+      };
+
+      arr[idx] =
+        updated;
+
+      // ----------------------------------------------
+      // HISTORIAL
+      // ----------------------------------------------
+
+      historialPendiente.push({
+        accion:
+          nuevoEstado === 'ok'
+            ? 'APROBAR ACTIVIDAD'
+            : nuevoEstado === 'rechazado'
+              ? 'RECHAZAR ACTIVIDAD'
+              : 'DEJAR ACTIVIDAD PENDIENTE',
+
+        extra: {
+          categoria:
+            'REVISION',
+
+          tipoRevision:
+            'actividad',
+
+          fecha,
+
+          fechaActividad:
+            fecha,
+
+          idx,
+
+          actividad:
+            updated.actividad ||
+            '',
+
+          anterior:
+            oldEstado,
+
+          nuevo:
+            nuevoEstado,
+
+          estadoAnterior:
+            oldEstado,
+
+          estadoNuevo:
+            nuevoEstado,
+
+          motivo:
+            observacion,
+
+          antesObj:
+            beforeObj,
+
+          despuesObj:
+            updated,
+
+          path:
+            `itinerario.${fecha}[${idx}]`
+        }
+      });
+
+      // ----------------------------------------------
+      // ALERTA ACTIVIDAD
+      // ----------------------------------------------
+
+      const filtroAlerta = {
+        tipo:
+          'actividad',
+
+        fecha,
+
+        idx,
+
+        actividad:
+          updated.actividad ||
+          ''
+      };
+
+      if (
+        nuevoEstado ===
+        'rechazado'
+      ) {
+        // Cierra cualquier versión previa
+        // de este mismo rechazo.
+        programarResolucionAlertas(
+          filtroAlerta,
+          'Nueva revisión de actividad'
+        );
+
+        programarNuevaAlerta({
+          tipo:
+            'actividad',
+
+          fecha,
+
+          idx,
+
+          actividad:
+            updated.actividad ||
+            '',
+
+          horaInicio:
+            updated.horaInicio ||
+            '',
+
+          horaFin:
+            updated.horaFin ||
+            '',
+
+          motivo:
+            observacion
+        });
+
+      } else {
+
+        programarResolucionAlertas(
+          filtroAlerta,
+          nuevoEstado === 'ok'
+            ? 'Actividad revisada y aprobada'
+            : 'Actividad revisada y dejada pendiente'
         );
       }
     }
 
-    // ==========================================
-    // 5. GUARDAR DÍAS
-    // ==========================================
+
+    // ==================================================
+    // 6. APLICAR CAMBIOS DE DÍA EN MEMORIA
+    // ==================================================
+
     for (
       const [
         fecha,
@@ -6041,63 +6508,734 @@ async function guardarRevisionCompleta(
       ]
       of cambiosDias
     ) {
-      const ok =
-        await guardarRevisionDia(
-          grupoId,
+      const nuevoEstado =
+        (
+          item.estado ||
+          'pendiente'
+        )
+          .toString()
+          .toLowerCase();
+
+      const observacion =
+        (
+          item.observacion ||
+          ''
+        ).trim();
+
+      const anterior =
+        getRevisionDia(
+          g,
+          fecha
+        );
+
+      revisionDiasTrabajo[fecha] = {
+        estado:
+          nuevoEstado,
+
+        observacion,
+
+        usuario,
+
+        timestamp:
+          ahora
+      };
+
+      historialPendiente.push({
+        accion:
+          'CAMBIAR REVISION DIA',
+
+        extra: {
+          categoria:
+            'REVISION',
+
           fecha,
-          item.estado,
-          item.observacion
-        );
+
+          fechaActividad:
+            fecha,
+
+          tipoRevision:
+            'dia',
+
+          anterior:
+            anterior.estado,
+
+          nuevo:
+            nuevoEstado,
+
+          estadoAnterior:
+            anterior.estado,
+
+          estadoNuevo:
+            nuevoEstado,
+
+          motivo:
+            observacion,
+
+          detalle:
+            `Revisión del día ${fecha}`
+        }
+      });
+
+      const filtroAlerta = {
+        tipo:
+          'dia',
+
+        fecha
+      };
 
       if (
-        ok === false
+        nuevoEstado ===
+        'rechazado'
       ) {
-        throw new Error(
-          `No se pudo guardar la revisión del día ${fecha}`
+        programarResolucionAlertas(
+          filtroAlerta,
+          'Nueva revisión del día'
+        );
+
+        programarNuevaAlerta({
+          tipo:
+            'dia',
+
+          fecha,
+
+          actividad:
+            `DÍA ${fecha}`,
+
+          motivo:
+            observacion
+        });
+
+      } else {
+
+        programarResolucionAlertas(
+          filtroAlerta,
+          nuevoEstado === 'ok'
+            ? 'Día revisado y aprobado'
+            : 'Día revisado y dejado pendiente'
         );
       }
     }
 
-    // ==========================================
-    // 6. GUARDAR REVISIÓN GENERAL
+
+    // ==================================================
+    // 7. REVISIÓN GENERAL
     //
-    // Se hace AL FINAL porque así, si el usuario
-    // quiere dejar el grupo APROBADO, las
-    // actividades y días ya están guardados.
-    // ==========================================
+    // Actividades/días modificados invalidan cualquier
+    // cierre general anterior.
+    //
+    // PERO:
+    // esto NO resuelve una alerta general.
+    // ==================================================
+
+    const hayCambioInferior =
+      cambiosActividad.length > 0 ||
+      cambiosDias.length > 0;
+
+    const revisionGrupoOriginal =
+      getRevisionGrupo(
+        g
+      );
+
+    let revisionGrupoFinal =
+      g.revisionGrupo
+        ? {
+            ...g.revisionGrupo
+          }
+        : null;
+
+    let estadoCompatFinal =
+      (
+        g.estadoRevisionItinerario ||
+        'PENDIENTE'
+      )
+        .toString()
+        .toUpperCase();
+
+    let estadoAnteriorGeneral =
+      revisionGrupoOriginal.estado;
+
+    let seModificaRevisionGeneral =
+      false;
+
+    // ----------------------------------------------
+    // Primero simulamos lo mismo que hacía
+    // marcarGrupoPendientePorCambio().
+    // ----------------------------------------------
+
+    if (
+      hayCambioInferior &&
+      revisionGrupoOriginal.estado !==
+        'pendiente'
+    ) {
+      revisionGrupoFinal = {
+        estado:
+          'pendiente',
+
+        observacion:
+          'Se modificó una revisión del itinerario y requiere nueva revisión general.',
+
+        usuario,
+
+        timestamp:
+          ahora
+      };
+
+      estadoCompatFinal =
+        'PENDIENTE';
+
+      seModificaRevisionGeneral =
+        true;
+
+      historialPendiente.push({
+        accion:
+          'GRUPO VUELVE A PENDIENTE',
+
+        extra: {
+          categoria:
+            'REVISION',
+
+          tipoRevision:
+            'grupo',
+
+          anterior:
+            revisionGrupoOriginal.estado,
+
+          nuevo:
+            'pendiente',
+
+          estadoAnterior:
+            revisionGrupoOriginal.estado,
+
+          estadoNuevo:
+            'pendiente',
+
+          motivo:
+            revisionGrupoFinal.observacion
+        }
+      });
+
+      estadoAnteriorGeneral =
+        'pendiente';
+    }
+
+
+    // ==================================================
+    // 8. SI HAY REVISIÓN GENERAL EXPLÍCITA,
+    // SE APLICA AL FINAL
+    // ==================================================
+
     if (cambioGrupo) {
-      const ok =
-        await guardarRevisionGrupo(
-          grupoId,
-          cambioGrupo.estado,
-          cambioGrupo.observacion
-        );
+
+      const nuevoEstado =
+        (
+          cambioGrupo.estado ||
+          'pendiente'
+        )
+          .toString()
+          .toLowerCase();
+
+      const observacion =
+        (
+          cambioGrupo.observacion ||
+          ''
+        ).trim();
+
+      // Construimos el grupo como quedaría finalmente
+      // para validar una aprobación.
+      const grupoParaValidar = {
+        ...g,
+
+        itinerario:
+          itinerarioTrabajo,
+
+        revisionDias:
+          revisionDiasTrabajo
+      };
 
       if (
-        ok === false
+        nuevoEstado ===
+        'ok'
       ) {
-        throw new Error(
-          'La revisión general no pudo guardarse.'
+        const validacion =
+          validarGrupoPuedeAprobar(
+            grupoParaValidar
+          );
+
+        if (
+          !validacion.ok
+        ) {
+          throw new Error(
+            "No se puede aprobar todavía el itinerario.\n\n" +
+            validacion.motivo
+          );
+        }
+      }
+
+      revisionGrupoFinal = {
+        estado:
+          nuevoEstado,
+
+        observacion,
+
+        usuario,
+
+        timestamp:
+          ahora
+      };
+
+      estadoCompatFinal =
+        nuevoEstado === 'ok'
+          ? 'OK'
+          : nuevoEstado === 'rechazado'
+            ? 'RECHAZADO'
+            : 'PENDIENTE';
+
+      seModificaRevisionGeneral =
+        true;
+
+      historialPendiente.push({
+        accion:
+          'CAMBIAR ESTADO REVISION GRUPO',
+
+        extra: {
+          categoria:
+            'REVISION',
+
+          tipoRevision:
+            'grupo',
+
+          anterior:
+            estadoAnteriorGeneral,
+
+          nuevo:
+            nuevoEstado,
+
+          estadoAnterior:
+            estadoAnteriorGeneral,
+
+          estadoNuevo:
+            nuevoEstado,
+
+          motivo:
+            observacion,
+
+          detalle:
+            'Revisión general del itinerario'
+        }
+      });
+
+
+      // ----------------------------------------------
+      // ALERTA GENERAL
+      //
+      // IMPORTANTE:
+      // solamente se toca porque existe una revisión
+      // general EXPLÍCITA.
+      //
+      // Un cambio de actividad/día por sí solo NO
+      // resuelve la alerta general.
+      // ----------------------------------------------
+
+      if (
+        nuevoEstado ===
+        'rechazado'
+      ) {
+        programarResolucionAlertas(
+          {
+            tipo:
+              'grupo'
+          },
+          'Nueva revisión general'
+        );
+
+        programarNuevaAlerta({
+          tipo:
+            'grupo',
+
+          actividad:
+            'REVISIÓN GENERAL DEL GRUPO',
+
+          motivo:
+            observacion
+        });
+
+      } else {
+
+        programarResolucionAlertas(
+          {
+            tipo:
+              'grupo'
+          },
+          nuevoEstado === 'ok'
+            ? 'Revisión general aprobada'
+            : 'Revisión general dejada pendiente'
         );
       }
     }
 
-    // ==========================================
-    // 7. LIMPIAR BORRADOR
-    // ==========================================
-    resetRevisionDraft();
 
-    await refreshAlertasCounts(
-      grupoId
+    // ==================================================
+    // 9. ARMAR UNA SOLA ACTUALIZACIÓN DEL GRUPO
+    //
+    // No escribimos todo el itinerario completo.
+    // Sólo las fechas que realmente cambiaron.
+    // ==================================================
+
+    const cambiosFirestore =
+      {};
+
+    for (
+      const fecha
+      of fechasActividadModificadas
+    ) {
+      cambiosFirestore[
+        `itinerario.${fecha}`
+      ] =
+        itinerarioTrabajo[fecha];
+    }
+
+    for (
+      const [
+        fecha
+      ]
+      of cambiosDias
+    ) {
+      cambiosFirestore[
+        `revisionDias.${fecha}`
+      ] =
+        revisionDiasTrabajo[fecha];
+    }
+
+    if (
+      seModificaRevisionGeneral
+    ) {
+      cambiosFirestore.revisionGrupo =
+        revisionGrupoFinal;
+
+      cambiosFirestore.estadoRevisionItinerario =
+        estadoCompatFinal;
+    }
+
+    if (
+      Object.keys(
+        cambiosFirestore
+      ).length
+    ) {
+      await updateDoc(
+        refGrupo,
+        cambiosFirestore
+      );
+    }
+
+
+    // ==================================================
+    // 10. HISTORIAL + ALERTAS EN PARALELO
+    //
+    // Aquí sí podemos usar Promise.all porque YA NO
+    // estamos haciendo escrituras simultáneas sobre
+    // el documento principal del grupo.
+    // ==================================================
+
+    const tareas =
+      [];
+
+    // ----------------------------------------------
+    // HISTORIAL
+    // ----------------------------------------------
+
+    historialPendiente.forEach(
+      item => {
+
+        tareas.push(
+          logHist(
+            grupoId,
+            item.accion,
+            {
+              _group:
+                g,
+
+              ...item.extra
+            }
+          )
+        );
+      }
     );
 
-    await renderItinerario();
 
+    // ----------------------------------------------
+    // RESOLVER ALERTAS EXISTENTES
+    // ----------------------------------------------
+
+    alertasResolver.forEach(
+      (
+        motivoResolucion,
+        alertaId
+      ) => {
+
+        tareas.push(
+          updateDoc(
+            doc(
+              db,
+              'grupos',
+              grupoId,
+              'alertas',
+              alertaId
+            ),
+            {
+              resuelta:
+                true,
+
+              resueltaPor:
+                usuario,
+
+              resueltaEn:
+                ahora,
+
+              resueltaMotivo:
+                motivoResolucion ||
+                'Revisión resuelta',
+
+              // Compatibilidad con modelo antiguo
+              visto:
+                true,
+
+              leidoPor:
+                usuario,
+
+              leidoEn:
+                ahora
+            }
+          )
+        );
+      }
+    );
+
+
+    // ----------------------------------------------
+    // CREAR NUEVAS ALERTAS
+    // ----------------------------------------------
+
+    alertasCrear.forEach(
+      alerta => {
+
+        tareas.push(
+          addDoc(
+            collection(
+              db,
+              'grupos',
+              grupoId,
+              'alertas'
+            ),
+            {
+              tipo:
+                alerta.tipo ||
+                'actividad',
+
+              fecha:
+                alerta.fecha ||
+                '',
+
+              idx:
+                Number.isInteger(
+                  alerta.idx
+                )
+                  ? alerta.idx
+                  : null,
+
+              actividad:
+                alerta.actividad ||
+                '',
+
+              horaInicio:
+                alerta.horaInicio ||
+                '',
+
+              horaFin:
+                alerta.horaFin ||
+                '',
+
+              motivo:
+                (
+                  alerta.motivo ||
+                  ''
+                ).trim(),
+
+              creadoPor:
+                usuario,
+
+              creadoEn:
+                ahora,
+
+              resuelta:
+                false,
+
+              resueltaPor:
+                '',
+
+              resueltaEn:
+                null,
+
+              resueltaMotivo:
+                '',
+
+              visto:
+                false
+            }
+          )
+        );
+      }
+    );
+
+
+    if (
+      tareas.length
+    ) {
+      await Promise.all(
+        tareas
+      );
+    }
+
+
+    // ==================================================
+    // 11. TERMINAR
+    // ==================================================
+    // ==================================================
+    // 11. TERMINAR — REFRESCO RÁPIDO
+    //
+    // IMPORTANTE:
+    // NO hacemos renderItinerario().
+    //
+    // La pantalla ya tiene visibles los estados que
+    // el usuario seleccionó.
+    //
+    // Sólo actualizamos:
+    // - estado general
+    // - badge superior
+    // - contador de alertas
+    // - botón Guardar revisión
+    // ==================================================
+    
+    
+    // --------------------------------------------------
+    // CALCULAR ALERTAS ACTIVAS FINALES EN MEMORIA
+    // --------------------------------------------------
+    
+    let activasGrupoFinal =
+      alertasActivasIniciales.size;
+    
+    
+    // Alertas existentes que acabamos de resolver.
+    alertasResolver.forEach(
+      (
+        motivo,
+        alertaId
+      ) => {
+    
+        if (
+          alertasActivasIniciales.has(
+            alertaId
+          )
+        ) {
+          activasGrupoFinal--;
+        }
+      }
+    );
+    
+    
+    // Cada nueva alerta creada queda activa.
+    activasGrupoFinal +=
+      alertasCrear.length;
+    
+    
+    // Seguridad.
+    activasGrupoFinal =
+      Math.max(
+        0,
+        activasGrupoFinal
+      );
+    
+    
+    // --------------------------------------------------
+    // ARMAR REPRESENTACIÓN FINAL DEL GRUPO
+    //
+    // No consultamos Firestore.
+    // Ya sabemos exactamente cómo quedó.
+    // --------------------------------------------------
+    
+    const grupoVisualFinal = {
+      ...g,
+    
+      itinerario:
+        itinerarioTrabajo,
+    
+      revisionDias:
+        revisionDiasTrabajo,
+    
+      revisionGrupo:
+        revisionGrupoFinal,
+    
+      estadoRevisionItinerario:
+        estadoCompatFinal
+    };
+    
+    
+    // --------------------------------------------------
+    // LIMPIAR BORRADOR
+    // --------------------------------------------------
+    
+    resetRevisionDraft();
+    
+    
+    // --------------------------------------------------
+    // BADGE SUPERIOR
+    // --------------------------------------------------
+    
+    setEstadoBadge(
+      estadoCompatFinal
+    );
+    
+    
+    // --------------------------------------------------
+    // CONTADOR ALERTAS
+    //
+    // Sin consultar nuevamente Firebase.
+    // --------------------------------------------------
+    
+    pintarAlertasCountLocal(
+      activasGrupoFinal
+    );
+    
+    
+    // --------------------------------------------------
+    // REVISIÓN GENERAL
+    //
+    // Ésta sí conviene reconstruir porque una modificación
+    // de actividad/día puede haber hecho que el grupo
+    // vuelva automáticamente a PENDIENTE.
+    //
+    // Esto sólo reconstruye el pequeño bloque de revisión
+    // general. NO reconstruye todo el itinerario.
+    // --------------------------------------------------
+    
+    renderRevisionGrupo(
+      grupoId,
+      grupoVisualFinal
+    );
+    
+    
+    // --------------------------------------------------
+    // BOTÓN GUARDAR
+    // --------------------------------------------------
+    
+    actualizarTextoGuardarRevision();
+    
+    
     alert(
       'Revisión guardada correctamente.'
     );
 
   } catch (error) {
+
     console.error(
       'Error guardando revisión completa:',
       error
