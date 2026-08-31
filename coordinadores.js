@@ -129,6 +129,136 @@ let swapMode  = false;
 let swapFirst = null;
 
 /* =========================================================
+   AJUSTES MANUALES DE SUGERENCIA
+   ========================================================= */
+
+let ULTIMA_ESTRATEGIA_SUGERENCIA =
+  null;
+
+
+function normalizarAjusteSugerencia(
+  valor
+){
+  const v =
+    String(
+      valor ||
+      'normal'
+    )
+      .trim()
+      .toLowerCase();
+
+
+  if (
+    [
+      'normal',
+      'cerrado',
+      'abierto',
+      'excluir'
+    ].includes(
+      v
+    )
+  ) {
+    return v;
+  }
+
+
+  return 'normal';
+}
+
+
+function normalizarMaxAdicionales(
+  valor
+){
+  const n =
+    Number.parseInt(
+      String(
+        valor ??
+        1
+      ),
+      10
+    );
+
+
+  if (
+    !Number.isFinite(
+      n
+    )
+  ) {
+    return 1;
+  }
+
+
+  return Math.min(
+    2,
+    Math.max(
+      1,
+      n
+    )
+  );
+}
+
+
+/* =========================================================
+   EJECUTAR UNA MODALIDAD
+   ========================================================= */
+
+function ejecutarEstrategiaSugerencia(
+  estrategia
+){
+  ULTIMA_ESTRATEGIA_SUGERENCIA =
+    estrategia;
+
+
+  switch (
+    estrategia
+  ) {
+
+    case 'continuidad':
+      sugerirConjuntosContinuidad();
+      break;
+
+
+    case 'temporada':
+      sugerirConjuntosTemporada();
+      break;
+
+
+    case 'temporada-pares':
+      sugerirConjuntosTemporadaPares();
+      break;
+
+
+    default:
+      W(
+        'Estrategia de sugerencia desconocida:',
+        estrategia
+      );
+  }
+}
+
+
+/* =========================================================
+   RECALCULAR RESPETANDO AJUSTES
+   ========================================================= */
+
+function recalcularSugerenciaConAjustes(){
+  if (
+    !ULTIMA_ESTRATEGIA_SUGERENCIA
+  ) {
+    alert(
+      'Primero genera una sugerencia para elegir la modalidad de trabajo.'
+    );
+
+    return;
+  }
+
+
+  ejecutarEstrategiaSugerencia(
+    ULTIMA_ESTRATEGIA_SUGERENCIA
+  );
+}
+
+/* =========================================================
    Helpers fecha/formato
    ========================================================= */
 const toISO = d => (new Date(d)).toISOString().slice(0,10);
@@ -1145,6 +1275,69 @@ $('#btn-sugerir')?.addEventListener(
   'click',
   abrirSelectorSugerencia
 );
+
+/* =========================================================
+   BOTÓN RECALCULAR RESPETANDO AJUSTES
+   ========================================================= */
+
+function asegurarBotonRecalcularAjustes(){
+  if (
+    document.getElementById(
+      'btn-recalcular-ajustes'
+    )
+  ) {
+    return;
+  }
+
+
+  const btnSugerir =
+    document.getElementById(
+      'btn-sugerir'
+    );
+
+
+  if (!btnSugerir) {
+    return;
+  }
+
+
+  const btn =
+    document.createElement(
+      'button'
+    );
+
+
+  btn.id =
+    'btn-recalcular-ajustes';
+
+  btn.type =
+    'button';
+
+  btn.className =
+    'btn';
+
+  btn.textContent =
+    '🔄 Recalcular ajustes';
+
+  btn.title =
+    'Vuelve a calcular respetando grupos cerrados, abiertos y excluidos';
+
+
+  btn.addEventListener(
+    'click',
+    recalcularSugerenciaConAjustes
+  );
+
+
+  btnSugerir.insertAdjacentElement(
+    'afterend',
+    btn
+  );
+}
+
+
+asegurarBotonRecalcularAjustes();
+
 $('#btn-nuevo-conjunto')?.addEventListener(
   'click',
   () => {
@@ -1725,204 +1918,1233 @@ function renderLibres(){
 }
 
 function renderSets(){
-  console.groupCollapsed('renderSets');
-  if (!elWrapSets){ W('elWrapSets no existe'); console.groupEnd(); return; }
-  const list = setsFiltrados(SETS);
-  L('SETS visibles:', list.length, 'SETS totales:', SETS.length);
-  if (!list.length){ elWrapSets.innerHTML='<div class="empty">Sin viajes asignados (sin resultados en la búsqueda).</div>'; console.groupEnd(); return; }
+  console.groupCollapsed(
+    'renderSets'
+  );
 
-  elWrapSets.innerHTML='';
-  list.forEach((s)=>{
-    const idx = SETS.indexOf(s);
-    const viajes=s.viajes.map(id=>ID2GRUPO.get(id)).filter(Boolean);
-    const setDestinos = [...new Set(viajes.map(v=>normDest(v.destino)).filter(Boolean))];
 
-      const rows = viajes.map(v => {
-        const cobertura =
-          getCoberturaGrupo(
-            v.id
+  if (
+    !elWrapSets
+  ) {
+    W(
+      'elWrapSets no existe'
+    );
+
+    console.groupEnd();
+
+    return;
+  }
+
+
+  const list =
+    setsFiltrados(
+      SETS
+    );
+
+
+  L(
+    'SETS visibles:',
+    list.length,
+    'SETS totales:',
+    SETS.length
+  );
+
+
+  if (
+    !list.length
+  ) {
+    elWrapSets.innerHTML =
+      '<div class="empty">Sin viajes asignados (sin resultados en la búsqueda).</div>';
+
+    console.groupEnd();
+
+    return;
+  }
+
+
+  elWrapSets.innerHTML =
+    '';
+
+
+  list.forEach(
+    s => {
+      const idx =
+        SETS.indexOf(
+          s
+        );
+
+
+      const viajes =
+        (
+          s.viajes ||
+          []
+        )
+          .map(
+            id =>
+              ID2GRUPO.get(
+                String(
+                  id
+                )
+              )
+          )
+          .filter(
+            Boolean
           );
-      
-        return `
-            <tr>
-              <td style="width:36%">
-                <input
-                  type="text"
-                  class="${estadoClass(s.estadoCoord)}"
-                  data-alias="${v.id}"
-                  value="${v.aliasGrupo||''}"
-                  title="${escapeHtml(v.nombreGrupo||'')}"
-                >
-              </td>
-              <td style="width:24%">
-                 ${fmtDMY(v.fechaInicio)} → ${fmtDMY(v.fechaFin)}
-                 ${v._horasInicio && (v._horasInicio.pres || v._horasInicio.inicio)
-                   ? `<div class="muted" style="margin-top:.2rem">
-                        ${v._horasInicio.pres ? 'Pres ' + v._horasInicio.pres : ''}
-                        ${(v._horasInicio.pres && v._horasInicio.inicio)?' · ':''}
-                        ${v._horasInicio.inicio ? 'Salida ' + v._horasInicio.inicio : ''}
-                      </div>`
-                   : ''}
-               </td>
-              <td style="width:40%">
-                <div class="muted">#${v.numeroNegocio}</div>
-                ${v.identificador?`<div class="muted">ID: ${escapeHtml(v.identificador)}</div>`:''}
-                ${v.programa?`<div class="muted">Programa: ${escapeHtml(v.programa)}</div>`:''}
-                  ${v.destino
-                    ? `<div class="muted">Destino: ${escapeHtml(v.destino)}</div>`
-                    : ''
-                  }
-                  
-                  <div
-                    class="muted"
-                    style="
-                      margin-top:.25rem;
-                      font-weight:600;
-                    "
-                  >
-                    Coordinadores:
-                    ${cobertura.usados}/${cobertura.requeridos}
-                  
+
+
+      const setDestinos =
+        [
+          ...new Set(
+            viajes
+              .map(
+                v =>
+                  normDest(
+                    v.destino
+                  )
+              )
+              .filter(
+                Boolean
+              )
+          )
+        ];
+
+
+      // ===================================================
+      // FILAS DE VIAJES
+      // ===================================================
+
+      const rows =
+        viajes
+          .map(
+            v => {
+              const cobertura =
+                getCoberturaGrupo(
+                  v.id
+                );
+
+
+              return `
+                <tr>
+
+                  <td style="width:36%">
+                    <input
+                      type="text"
+                      class="${estadoClass(s.estadoCoord)}"
+                      data-alias="${v.id}"
+                      value="${escapeHtml(v.aliasGrupo || '')}"
+                      title="${escapeHtml(v.nombreGrupo || '')}"
+                    >
+                  </td>
+
+
+                  <td style="width:24%">
+                    ${fmtDMY(v.fechaInicio)}
+                    →
+                    ${fmtDMY(v.fechaFin)}
+
                     ${
-                      cobertura.confirmados
-                        ? ` · ${cobertura.confirmados} confirmado${cobertura.confirmados === 1 ? '' : 's'}`
+                      v._horasInicio &&
+                      (
+                        v._horasInicio.pres ||
+                        v._horasInicio.inicio
+                      )
+                        ? `
+                          <div
+                            class="muted"
+                            style="margin-top:.2rem"
+                          >
+                            ${
+                              v._horasInicio.pres
+                                ? `Pres ${v._horasInicio.pres}`
+                                : ''
+                            }
+
+                            ${
+                              (
+                                v._horasInicio.pres &&
+                                v._horasInicio.inicio
+                              )
+                                ? ' · '
+                                : ''
+                            }
+
+                            ${
+                              v._horasInicio.inicio
+                                ? `Salida ${v._horasInicio.inicio}`
+                                : ''
+                            }
+                          </div>
+                        `
                         : ''
                     }
-                  </div>
-                  
-                  ${getHotelResumenHtmlForGroup(v)}
-              </td>
-            </tr>
+                  </td>
 
-            <tr><td colspan="3">
-              <div class="row">
-                <button class="btn small" data-swap="${v.id}" data-set="${idx}">Swap</button>
-                <button class="btn small" data-move="${v.id}" data-set="${idx}">Mover…</button>
-                <button class="btn small" data-del="${v.id}" data-set="${idx}">Quitar</button>
-              </div>
-            </td></tr>
+
+                  <td style="width:40%">
+
+                    <div class="muted">
+                      #${escapeHtml(v.numeroNegocio || '')}
+                    </div>
+
+                    ${
+                      v.identificador
+                        ? `
+                          <div class="muted">
+                            ID:
+                            ${escapeHtml(v.identificador)}
+                          </div>
+                        `
+                        : ''
+                    }
+
+                    ${
+                      v.programa
+                        ? `
+                          <div class="muted">
+                            Programa:
+                            ${escapeHtml(v.programa)}
+                          </div>
+                        `
+                        : ''
+                    }
+
+                    ${
+                      v.destino
+                        ? `
+                          <div class="muted">
+                            Destino:
+                            ${escapeHtml(v.destino)}
+                          </div>
+                        `
+                        : ''
+                    }
+
+
+                    <div
+                      class="muted"
+                      style="
+                        margin-top:.25rem;
+                        font-weight:600;
+                      "
+                    >
+                      Coordinadores:
+                      ${cobertura.usados}/${cobertura.requeridos}
+
+                      ${
+                        cobertura.confirmados
+                          ? `
+                            ·
+                            ${cobertura.confirmados}
+                            confirmado${
+                              cobertura.confirmados === 1
+                                ? ''
+                                : 's'
+                            }
+                          `
+                          : ''
+                      }
+                    </div>
+
+
+                    ${getHotelResumenHtmlForGroup(v)}
+
+                  </td>
+
+                </tr>
+
+
+                <tr>
+                  <td colspan="3">
+
+                    <div class="row">
+
+                      <button
+                        class="btn small"
+                        data-swap="${v.id}"
+                        data-set="${idx}"
+                      >
+                        Swap
+                      </button>
+
+
+                      <button
+                        class="btn small"
+                        data-move="${v.id}"
+                        data-set="${idx}"
+                      >
+                        Mover…
+                      </button>
+
+
+                      <button
+                        class="btn small"
+                        data-del="${v.id}"
+                        data-set="${idx}"
+                      >
+                        Quitar
+                      </button>
+
+                    </div>
+
+                  </td>
+                </tr>
+              `;
+            }
+          )
+          .join(
+            ''
+          );
+
+
+      // ===================================================
+      // COORDINADORES DISPONIBLES
+      // ===================================================
+
+      const blocked =
+        getBlockedCoordIds(
+          idx
+        );
+
+
+      const opts =
+        [
+          '<option value="">(Seleccionar)</option>'
+        ]
+          .concat(
+            COORDS
+              .slice()
+              .sort(
+                (
+                  a,
+                  b
+                ) =>
+                  (
+                    a.nombre ||
+                    ''
+                  )
+                    .localeCompare(
+                      b.nombre ||
+                      '',
+                      'es',
+                      {
+                        sensitivity:
+                          'base'
+                      }
+                    )
+              )
+              .filter(
+                c =>
+                  !blocked.has(
+                    c.id
+                  ) ||
+                  c.id ===
+                    s.coordinadorId
+              )
+              .map(
+                c => {
+                  const apto =
+                    setDestinos.every(
+                      d =>
+                        isAptoDestino(
+                          c,
+                          d
+                        )
+                    );
+
+
+                  const name =
+                    escapeHtml(
+                      c.nombre ||
+                      '(sin nombre)'
+                    ) +
+                    (
+                      apto
+                        ? ''
+                        : ' (NO APTO)'
+                    );
+
+
+                  const sel =
+                    s.coordinadorId ===
+                    c.id
+                      ? 'selected'
+                      : '';
+
+
+                  return `
+                    <option
+                      value="${c.id}"
+                      ${sel}
+                    >
+                      ${name}
+                    </option>
+                  `;
+                }
+              )
+          )
+          .join(
+            ''
+          );
+
+
+      // ===================================================
+      // ALERTAS
+      // ===================================================
+
+      const alertas =
+        s.alertas ||
+        [];
+
+
+      const alertHtml =
+        alertas.length
+          ? `
+            <div>
+              ${
+                alertas
+                  .map(
+                    a => `
+                      <div
+                        class="${
+                          a.tipo === 'err'
+                            ? 'err'
+                            : 'warn'
+                        }"
+                      >
+                        • ${escapeHtml(a.msg)}
+                      </div>
+                    `
+                  )
+                  .join(
+                    ''
+                  )
+              }
+            </div>
+          `
+          : `
+            <div class="muted">
+              Sin alertas.
+            </div>
           `;
-          }).join('');
 
-    const blocked = getBlockedCoordIds(idx);
-    const opts=['<option value="">(Seleccionar)</option>'].concat(
-      COORDS
-        .slice()
-        .sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'','es',{sensitivity:'base'}))
-        .filter(c => !blocked.has(c.id) || c.id===s.coordinadorId)
-        .map(c=>{
-          const apto = setDestinos.every(d => isAptoDestino(c, d));
-          const name = escapeHtml(c.nombre||'(sin nombre)') + (apto ? '' : ' (NO APTO)');
-          const sel  = (s.coordinadorId===c.id)?'selected':'';
-          return `<option value="${c.id}" ${sel}>${name}</option>`;
-        })
-    ).join('');
 
-    const alertas=s.alertas||[];
-    const alertHtml = alertas.length
-      ? `<div>${alertas.map(a=>`<div class="${a.tipo==='err'?'err':'warn'}">• ${a.msg}</div>`).join('')}</div>`
-      : '<div class="muted">Sin alertas.</div>';
+      // ===================================================
+      // AJUSTE DE SUGERENCIA
+      // ===================================================
 
-    elWrapSets.insertAdjacentHTML('beforeend',`
-      <div class="card">
-        <div class="hd">
-          <div class="row">
-            <span class="tag">VIAJES ${idx+1}</span>
-            ${s._isNew?'<span class="pill">Nuevo</span>':''}
-            ${s.confirmado?'<span class="pill">Confirmado</span>':''}
+      const ajuste =
+        normalizarAjusteSugerencia(
+          s.ajusteSugerencia
+        );
+
+
+      const maxAdicionales =
+        normalizarMaxAdicionales(
+          s.maxAdicionales
+        );
+
+
+      const controlesAjuste =
+        !s.confirmado
+          ? `
+            <div
+              class="row"
+              style="
+                margin-top:.35rem;
+                gap:.35rem;
+                align-items:center;
+              "
+            >
+
+              <span
+                class="muted"
+                style="font-weight:600"
+              >
+                Recalcular:
+              </span>
+
+
+              <select
+                data-ajuste-sugerencia="${idx}"
+                title="Cómo debe tratar este grupo de viajes el próximo recálculo"
+                style="
+                  padding:5px 7px;
+                  border:1px solid #cbd5e1;
+                  border-radius:6px;
+                  background:#fff;
+                "
+              >
+
+                <option
+                  value="normal"
+                  ${
+                    ajuste === 'normal'
+                      ? 'selected'
+                      : ''
+                  }
+                >
+                  Normal
+                </option>
+
+
+                <option
+                  value="cerrado"
+                  ${
+                    ajuste === 'cerrado'
+                      ? 'selected'
+                      : ''
+                  }
+                >
+                  🔒 Cerrado
+                </option>
+
+
+                <option
+                  value="abierto"
+                  ${
+                    ajuste === 'abierto'
+                      ? 'selected'
+                      : ''
+                  }
+                >
+                  🔓 Abierto
+                </option>
+
+
+                <option
+                  value="excluir"
+                  ${
+                    ajuste === 'excluir'
+                      ? 'selected'
+                      : ''
+                  }
+                >
+                  ⛔ Excluir
+                </option>
+
+              </select>
+
+
+              ${
+                ajuste === 'abierto'
+                  ? `
+                    <span class="muted">
+                      Puede sumar:
+                    </span>
+
+
+                    <select
+                      data-max-adicionales="${idx}"
+                      style="
+                        padding:5px 7px;
+                        border:1px solid #cbd5e1;
+                        border-radius:6px;
+                        background:#fff;
+                      "
+                    >
+
+                      <option
+                        value="1"
+                        ${
+                          maxAdicionales === 1
+                            ? 'selected'
+                            : ''
+                        }
+                      >
+                        +1
+                      </option>
+
+
+                      <option
+                        value="2"
+                        ${
+                          maxAdicionales === 2
+                            ? 'selected'
+                            : ''
+                        }
+                      >
+                        +2
+                      </option>
+
+                    </select>
+                  `
+                  : ''
+              }
+
+
+              ${
+                ajuste === 'cerrado'
+                  ? `
+                    <span class="muted">
+                      Esta combinación no se modifica.
+                    </span>
+                  `
+                  : ''
+              }
+
+
+              ${
+                ajuste === 'excluir'
+                  ? `
+                    <span class="muted">
+                      Estos viajes quedan fuera del próximo cálculo.
+                    </span>
+                  `
+                  : ''
+              }
+
+            </div>
+          `
+          : '';
+
+
+      // ===================================================
+      // TARJETA
+      // ===================================================
+
+      elWrapSets.insertAdjacentHTML(
+        'beforeend',
+        `
+          <div class="card">
+
+            <div class="hd">
+
+              <div>
+
+                <div class="row">
+
+                  <span class="tag">
+                    VIAJES ${idx + 1}
+                  </span>
+
+                  ${
+                    s._isNew
+                      ? '<span class="pill">Nuevo</span>'
+                      : ''
+                  }
+
+                  ${
+                    s.confirmado
+                      ? '<span class="pill">Confirmado</span>'
+                      : ''
+                  }
+
+                  ${
+                    ajuste === 'cerrado' &&
+                    !s.confirmado
+                      ? '<span class="pill">🔒 Cerrado</span>'
+                      : ''
+                  }
+
+                  ${
+                    ajuste === 'abierto' &&
+                    !s.confirmado
+                      ? '<span class="pill">🔓 Abierto</span>'
+                      : ''
+                  }
+
+                  ${
+                    ajuste === 'excluir' &&
+                    !s.confirmado
+                      ? '<span class="pill">⛔ Excluir</span>'
+                      : ''
+                  }
+
+                </div>
+
+
+                ${controlesAjuste}
+
+              </div>
+
+
+              <div class="row">
+
+                <select
+                  data-coord="${idx}"
+                  title="Coordinador del viaje"
+                  style="${estadoBgStyle(s.estadoCoord)}"
+                >
+                  ${opts}
+                </select>
+
+
+                <button
+                  class="btn small"
+                  data-addv="${idx}"
+                >
+                  Agregar viaje
+                </button>
+
+
+                <button
+                  class="btn small"
+                  data-sugerirc="${idx}"
+                >
+                  Sugerir coord
+                </button>
+
+
+                <button
+                  class="btn small ${
+                    s.confirmado
+                      ? 'secondary'
+                      : ''
+                  }"
+                  data-confirm="${idx}"
+                >
+                  ${
+                    s.confirmado
+                      ? 'Desconfirmar'
+                      : 'Confirmar'
+                  }
+                </button>
+
+
+                <button
+                  class="btn small"
+                  data-estado="${idx}"
+                  title="Estado: ${estadoLabel(s.estadoCoord || 'pendiente')}"
+                >
+                  ${estadoIcon(s.estadoCoord || 'pendiente')}
+                  ${estadoLabel(s.estadoCoord || 'pendiente')}
+                </button>
+
+
+                <button
+                  class="btn small"
+                  data-saveone="${idx}"
+                >
+                  💾 Guardar
+                </button>
+
+
+                <button
+                  class="btn small"
+                  data-delset="${idx}"
+                >
+                  Eliminar
+                </button>
+
+              </div>
+
+            </div>
+
+
+            <div class="bd">
+
+              ${
+                viajes.length
+                  ? `
+                    <table>
+
+                      <thead>
+                        <tr>
+                          <th>Alias</th>
+                          <th>Fechas</th>
+                          <th>Info</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        ${rows}
+                      </tbody>
+
+                    </table>
+                  `
+                  : `
+                    <div class="empty">
+                      Sin viajes en este grupo.
+                    </div>
+                  `
+              }
+
+
+              <div style="margin-top:.5rem">
+                ${alertHtml}
+              </div>
+
+            </div>
+
           </div>
-          <div class="row">
-            <select data-coord="${idx}" title="Coordinador del viaje" style="${estadoBgStyle(s.estadoCoord)}">${opts}</select>
-            <button class="btn small" data-addv="${idx}">Agregar viaje</button>
-            <button class="btn small" data-sugerirc="${idx}">Sugerir coord</button>
-            <button class="btn small ${s.confirmado?'secondary':''}" data-confirm="${idx}">${s.confirmado?'Desconfirmar':'Confirmar'}</button>
-            
-            <button class="btn small" data-estado="${idx}" title="Estado: ${estadoLabel(s.estadoCoord||'pendiente')}">
-              ${estadoIcon(s.estadoCoord||'pendiente')} ${estadoLabel(s.estadoCoord||'pendiente')}
-            </button>
-            
-            <button class="btn small" data-saveone="${idx}">💾 Guardar</button>
-            <button class="btn small" data-delset="${idx}">Eliminar</button>
-
-          </div>
-        </div>
-        <div class="bd">
-          ${viajes.length?`
-            <table>
-              <thead><tr><th>Alias</th><th>Fechas</th><th>Info</th></tr></thead>
-              <tbody>${rows}</tbody>
-            </table>`:`<div class="empty">Sin viajes en este grupo.</div>`}
-          <div style="margin-top:.5rem">${alertHtml}</div>
-        </div>
-      </div>`);
-  });
-
-  elWrapSets.querySelectorAll('input[data-alias]').forEach(inp=>{
-    inp.onchange=()=>{ const g=ID2GRUPO.get(inp.dataset.alias); if(g){ g.aliasGrupo=inp.value; } };
-  });
-  elWrapSets.querySelectorAll('button[data-del]').forEach(btn=>{
-    btn.onclick=()=>{ 
-     const i=+btn.dataset.set;   
-     SETS[i].viajes = SETS[i].viajes.filter(id => id !== btn.dataset.del); 
-     SETS[i].estadoCoord='pendiente';
-     refreshSets(); 
-   };
-  });
-  elWrapSets.querySelectorAll('button[data-move]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.set; moverViajeAotroConjunto(btn.dataset.move,i); };
-  });
-  elWrapSets.querySelectorAll('button[data-addv]').forEach(btn=>{
-    btn.onclick=()=>agregarViajeAConjunto(+btn.dataset.addv);
-  });
-  elWrapSets.querySelectorAll('button[data-delset]').forEach(btn=>{
-    btn.onclick=()=>{ const i=+btn.dataset.delset; if(!confirm('¿Eliminar este grupo de viajes?'))return; SETS.splice(i,1); refreshSets(); };
-  });
-  elWrapSets.querySelectorAll('button[data-sugerirc]').forEach(btn=>{
-    btn.onclick=()=>sugerirCoordinador(+btn.dataset.sugerirc);
-  });
-  elWrapSets.querySelectorAll('button[data-confirm]').forEach(btn=>{
-    btn.onclick=()=>{ 
-     const i=+btn.dataset.confirm; 
-     const newVal = !SETS[i].confirmado; 
-     SETS[i].confirmado = newVal; 
-     if (!newVal) SETS[i].estadoCoord = 'pendiente';
-     refreshSets(); 
-   };
-  });
-  elWrapSets.querySelectorAll('select[data-coord]').forEach(sel=>{
-    sel.onchange=()=>{ const i=+sel.dataset.coord; SETS[i].coordinadorId = sel.value||null; SETS[i].estadoCoord='pendiente'; refreshSets(); };
-  });
-
-  elWrapSets.querySelectorAll('button[data-swap]').forEach(btn=>{
-    btn.onclick=()=>{ const setIdx=+btn.dataset.set; const gid=btn.dataset.swap; handleSwapClick(setIdx,gid,btn); };
-  });
-
-   elWrapSets.querySelectorAll('button[data-saveone]').forEach(btn=>{
-     btn.onclick = () => withBusy(
-       btn,
-       'Guardando…',
-       () => guardarSet(+btn.dataset.saveone),
-       '💾 Guardar',
-       '✅ Guardado'
-     );
-   });
-
-   // Triestado: rotar Pendiente → Aprobado → Rechazado
-   elWrapSets.querySelectorAll('button[data-estado]').forEach(btn=>{
-     btn.onclick = () => {
-       const i = +btn.dataset.estado;
-       const s = SETS[i];
-       s.estadoCoord = nextEstado(s.estadoCoord);
-       refreshSets();
-     };
-   });
-
-  document.body.addEventListener('click', e=>{
-    if (!e.target.closest('button[data-swap]')){
-      swapMode=false; swapFirst=null;
-      elWrapSets.querySelectorAll('button[data-swap].selected-swap').forEach(b=>b.classList.remove('selected-swap'));
+        `
+      );
     }
-  }, true);
+  );
+
+
+  // =======================================================
+  // AJUSTES DE SUGERENCIA
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'select[data-ajuste-sugerencia]'
+    )
+    .forEach(
+      sel => {
+        sel.onchange =
+          () => {
+            const i =
+              Number(
+                sel.dataset.ajusteSugerencia
+              );
+
+
+            const s =
+              SETS[i];
+
+
+            if (!s) {
+              return;
+            }
+
+
+            s.ajusteSugerencia =
+              normalizarAjusteSugerencia(
+                sel.value
+              );
+
+
+            if (
+              s.ajusteSugerencia ===
+                'abierto'
+            ) {
+              s.maxAdicionales =
+                normalizarMaxAdicionales(
+                  s.maxAdicionales ||
+                  1
+                );
+            }
+
+
+            // Solo redibujar.
+            // NO recalcular todavía.
+            renderSets();
+          };
+      }
+    );
+
+
+  elWrapSets
+    .querySelectorAll(
+      'select[data-max-adicionales]'
+    )
+    .forEach(
+      sel => {
+        sel.onchange =
+          () => {
+            const i =
+              Number(
+                sel.dataset.maxAdicionales
+              );
+
+
+            const s =
+              SETS[i];
+
+
+            if (!s) {
+              return;
+            }
+
+
+            s.maxAdicionales =
+              normalizarMaxAdicionales(
+                sel.value
+              );
+
+
+            renderSets();
+          };
+      }
+    );
+
+
+  // =======================================================
+  // ALIAS
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'input[data-alias]'
+    )
+    .forEach(
+      inp => {
+        inp.onchange =
+          () => {
+            const g =
+              ID2GRUPO.get(
+                inp.dataset.alias
+              );
+
+
+            if (g) {
+              g.aliasGrupo =
+                inp.value;
+            }
+          };
+      }
+    );
+
+
+  // =======================================================
+  // QUITAR VIAJE
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-del]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () => {
+            const i =
+              Number(
+                btn.dataset.set
+              );
+
+
+            if (
+              !SETS[i]
+            ) {
+              return;
+            }
+
+
+            SETS[i].viajes =
+              (
+                SETS[i].viajes ||
+                []
+              ).filter(
+                id =>
+                  String(
+                    id
+                  ) !==
+                  String(
+                    btn.dataset.del
+                  )
+              );
+
+
+            SETS[i].estadoCoord =
+              'pendiente';
+
+
+            refreshSets();
+          };
+      }
+    );
+
+
+  // =======================================================
+  // MOVER
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-move]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () => {
+            const i =
+              Number(
+                btn.dataset.set
+              );
+
+
+            moverViajeAotroConjunto(
+              btn.dataset.move,
+              i
+            );
+          };
+      }
+    );
+
+
+  // =======================================================
+  // AGREGAR
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-addv]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () =>
+            agregarViajeAConjunto(
+              Number(
+                btn.dataset.addv
+              )
+            );
+      }
+    );
+
+
+  // =======================================================
+  // ELIMINAR SET
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-delset]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () => {
+            const i =
+              Number(
+                btn.dataset.delset
+              );
+
+
+            if (
+              !confirm(
+                '¿Eliminar este grupo de viajes?'
+              )
+            ) {
+              return;
+            }
+
+
+            SETS.splice(
+              i,
+              1
+            );
+
+
+            refreshSets();
+          };
+      }
+    );
+
+
+  // =======================================================
+  // SUGERIR COORDINADOR
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-sugerirc]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () =>
+            sugerirCoordinador(
+              Number(
+                btn.dataset.sugerirc
+              )
+            );
+      }
+    );
+
+
+  // =======================================================
+  // CONFIRMAR
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-confirm]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () => {
+            const i =
+              Number(
+                btn.dataset.confirm
+              );
+
+
+            const s =
+              SETS[i];
+
+
+            if (!s) {
+              return;
+            }
+
+
+            const newVal =
+              !s.confirmado;
+
+
+            s.confirmado =
+              newVal;
+
+
+            if (
+              !newVal
+            ) {
+              s.estadoCoord =
+                'pendiente';
+
+            } else {
+              // Una vez confirmado deja de ser
+              // un simple ajuste temporal.
+              s.ajusteSugerencia =
+                'normal';
+
+              s.maxAdicionales =
+                null;
+            }
+
+
+            refreshSets();
+          };
+      }
+    );
+
+
+  // =======================================================
+  // COORDINADOR
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'select[data-coord]'
+    )
+    .forEach(
+      sel => {
+        sel.onchange =
+          () => {
+            const i =
+              Number(
+                sel.dataset.coord
+              );
+
+
+            const s =
+              SETS[i];
+
+
+            if (!s) {
+              return;
+            }
+
+
+            s.coordinadorId =
+              sel.value ||
+              null;
+
+
+            s.estadoCoord =
+              'pendiente';
+
+
+            refreshSets();
+          };
+      }
+    );
+
+
+  // =======================================================
+  // SWAP
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-swap]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () => {
+            const setIdx =
+              Number(
+                btn.dataset.set
+              );
+
+
+            const gid =
+              btn.dataset.swap;
+
+
+            handleSwapClick(
+              setIdx,
+              gid,
+              btn
+            );
+          };
+      }
+    );
+
+
+  // =======================================================
+  // GUARDAR UNO
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-saveone]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () =>
+            withBusy(
+              btn,
+              'Guardando…',
+              () =>
+                guardarSet(
+                  Number(
+                    btn.dataset.saveone
+                  )
+                ),
+              '💾 Guardar',
+              '✅ Guardado'
+            );
+      }
+    );
+
+
+  // =======================================================
+  // ESTADO COORDINADOR
+  // =======================================================
+
+  elWrapSets
+    .querySelectorAll(
+      'button[data-estado]'
+    )
+    .forEach(
+      btn => {
+        btn.onclick =
+          () => {
+            const i =
+              Number(
+                btn.dataset.estado
+              );
+
+
+            const s =
+              SETS[i];
+
+
+            if (!s) {
+              return;
+            }
+
+
+            s.estadoCoord =
+              nextEstado(
+                s.estadoCoord
+              );
+
+
+            refreshSets();
+          };
+      }
+    );
+
+
   console.groupEnd();
 }
 
@@ -1945,13 +3167,16 @@ function abrirSelectorSugerencia(){
     )
     ?.remove();
 
+
   const overlay =
     document.createElement(
       'div'
     );
 
+
   overlay.id =
     'modal-estrategia-sugerencia';
+
 
   overlay.style.cssText = `
     position:fixed;
@@ -1963,6 +3188,7 @@ function abrirSelectorSugerencia(){
     justify-content:center;
     padding:20px;
   `;
+
 
   overlay.innerHTML = `
     <div
@@ -1985,6 +3211,7 @@ function abrirSelectorSugerencia(){
         ¿Cómo quieres organizar los viajes?
       </div>
 
+
       <div
         style="
           color:#64748b;
@@ -1995,16 +3222,13 @@ function abrirSelectorSugerencia(){
         Elige la forma en que quieres que el sistema arme los grupos de viaje.
       </div>
 
+
       <div
         style="
           display:grid;
           gap:12px;
         "
       >
-
-        <!-- ===========================================
-             OPCIÓN 1
-             =========================================== -->
 
         <button
           type="button"
@@ -2035,10 +3259,6 @@ function abrirSelectorSugerencia(){
         </button>
 
 
-        <!-- ===========================================
-             OPCIÓN 2
-             =========================================== -->
-
         <button
           type="button"
           data-estrategia="temporada"
@@ -2067,10 +3287,6 @@ function abrirSelectorSugerencia(){
           </div>
         </button>
 
-
-        <!-- ===========================================
-             OPCIÓN 3
-             =========================================== -->
 
         <button
           type="button"
@@ -2110,6 +3326,7 @@ function abrirSelectorSugerencia(){
           margin-top:16px;
         "
       >
+
         <button
           type="button"
           data-cerrar
@@ -2117,6 +3334,7 @@ function abrirSelectorSugerencia(){
         >
           Cancelar
         </button>
+
       </div>
 
     </div>
@@ -2128,9 +3346,10 @@ function abrirSelectorSugerencia(){
   );
 
 
-  const cerrar = () => {
-    overlay.remove();
-  };
+  const cerrar =
+    () => {
+      overlay.remove();
+    };
 
 
   // =====================================================
@@ -2172,7 +3391,9 @@ function abrirSelectorSugerencia(){
       () => {
         cerrar();
 
-        sugerirConjuntosContinuidad();
+        ejecutarEstrategiaSugerencia(
+          'continuidad'
+        );
       }
     );
 
@@ -2190,7 +3411,9 @@ function abrirSelectorSugerencia(){
       () => {
         cerrar();
 
-        sugerirConjuntosTemporada();
+        ejecutarEstrategiaSugerencia(
+          'temporada'
+        );
       }
     );
 
@@ -2208,7 +3431,9 @@ function abrirSelectorSugerencia(){
       () => {
         cerrar();
 
-        sugerirConjuntosTemporadaPares();
+        ejecutarEstrategiaSugerencia(
+          'temporada-pares'
+        );
       }
     );
 }
@@ -2218,10 +3443,9 @@ function abrirSelectorSugerencia(){
    ========================================================= */
 
 function obtenerBaseSugerencia(){
+
   // =====================================================
-  // 1) SETS CONFIRMADOS QUE YA EXISTEN EN MEMORIA
-  //
-  // Estos se respetan y no se reorganizan.
+  // 1) SETS REALMENTE CONFIRMADOS
   // =====================================================
 
   const fixedSetsMem =
@@ -2233,25 +3457,226 @@ function obtenerBaseSugerencia(){
 
 
   // =====================================================
-  // 2) CONTAR CUÁNTOS CUPOS YA ESTÁN CONFIRMADOS
-  //    POR CADA GRUPO
-  //
-  // Ejemplo:
-  //
-  // Grupo A requiere 2 coordinadores.
-  //
-  // Si ya hay:
-  // Pedro → Grupo A
-  //
-  // entonces:
-  // confirmadosPorGrupo[A] = 1
+  // 2) AJUSTES MANUALES
   // =====================================================
 
-  const confirmadosPorGrupo =
+  const ajustesCerrados =
+    [];
+
+  const ajustesAbiertos =
+    [];
+
+  const ajustesExcluidos =
+    [];
+
+  const gruposExcluidos =
+    new Set();
+
+
+  for (
+    const s
+    of SETS
+  ) {
+
+    // Los confirmados reales
+    // ya están protegidos arriba.
+    if (
+      s.confirmado &&
+      s.coordinadorId
+    ) {
+      continue;
+    }
+
+
+    const ajuste =
+      normalizarAjusteSugerencia(
+        s.ajusteSugerencia
+      );
+
+
+    // ===================================================
+    // EXCLUIR
+    //
+    // El SET permanece visible,
+    // pero sus viajes NO participan en el recálculo.
+    // ===================================================
+
+    if (
+      ajuste ===
+      'excluir'
+    ) {
+      const viajes =
+        [
+          ...new Set(
+            (
+              s.viajes ||
+              []
+            )
+              .map(String)
+              .filter(
+                gid =>
+                  ID2GRUPO.has(
+                    gid
+                  )
+              )
+          )
+        ];
+
+
+      if (
+        viajes.length
+      ) {
+        viajes.forEach(
+          gid => {
+            gruposExcluidos.add(
+              gid
+            );
+          }
+        );
+
+
+        ajustesExcluidos.push({
+          ...s,
+
+          viajes,
+
+          confirmado:
+            false,
+
+          ajusteSugerencia:
+            'excluir',
+
+          _ajusteManual:
+            true
+        });
+      }
+
+
+      continue;
+    }
+
+
+    // ===================================================
+    // CERRADO
+    // ===================================================
+
+    if (
+      ajuste ===
+      'cerrado'
+    ) {
+      const viajes =
+        [
+          ...new Set(
+            (
+              s.viajes ||
+              []
+            )
+              .map(String)
+              .filter(
+                gid =>
+                  ID2GRUPO.has(
+                    gid
+                  )
+              )
+          )
+        ];
+
+
+      if (
+        viajes.length
+      ) {
+        ajustesCerrados.push({
+          ...s,
+
+          viajes,
+
+          confirmado:
+            false,
+
+          ajusteSugerencia:
+            'cerrado',
+
+          _ajusteManual:
+            true
+        });
+      }
+
+
+      continue;
+    }
+
+
+    // ===================================================
+    // ABIERTO
+    // ===================================================
+
+    if (
+      ajuste ===
+      'abierto'
+    ) {
+      const viajes =
+        [
+          ...new Set(
+            (
+              s.viajes ||
+              []
+            )
+              .map(String)
+              .filter(
+                gid =>
+                  ID2GRUPO.has(
+                    gid
+                  )
+              )
+          )
+        ];
+
+
+      if (
+        viajes.length
+      ) {
+        ajustesAbiertos.push({
+          ...s,
+
+          viajes,
+
+          confirmado:
+            false,
+
+          ajusteSugerencia:
+            'abierto',
+
+          maxAdicionales:
+            normalizarMaxAdicionales(
+              s.maxAdicionales
+            ),
+
+          _ajusteManual:
+            true
+        });
+      }
+
+
+      continue;
+    }
+  }
+
+
+  // =====================================================
+  // 3) CONTAR CUPOS YA OCUPADOS
+  //
+  // Confirmados, cerrados y abiertos consumen cupos.
+  //
+  // Los excluidos NO necesitan entrar aquí,
+  // porque sus grupos directamente serán omitidos
+  // completamente del pool.
+  // =====================================================
+
+  const ocupadosPorGrupo =
     new Map();
 
 
-  fixedSetsMem.forEach(
+  const registrarSetOcupado =
     s => {
       const vistos =
         new Set();
@@ -2268,8 +3693,6 @@ function obtenerBaseSugerencia(){
             );
 
 
-          // Un mismo SET nunca cuenta
-          // dos veces el mismo grupo.
           if (
             vistos.has(
               gid
@@ -2284,10 +3707,10 @@ function obtenerBaseSugerencia(){
           );
 
 
-          confirmadosPorGrupo.set(
+          ocupadosPorGrupo.set(
             gid,
             (
-              confirmadosPorGrupo.get(
+              ocupadosPorGrupo.get(
                 gid
               ) ||
               0
@@ -2296,26 +3719,24 @@ function obtenerBaseSugerencia(){
           );
         }
       );
-    }
+    };
+
+
+  fixedSetsMem.forEach(
+    registrarSetOcupado
+  );
+
+  ajustesCerrados.forEach(
+    registrarSetOcupado
+  );
+
+  ajustesAbiertos.forEach(
+    registrarSetOcupado
   );
 
 
   // =====================================================
-  // 3) CREAR POOL DE CUPOS PENDIENTES
-  //
-  // Esta es la parte MULTI-COORDINADOR.
-  //
-  // cantidadCoordinadores = 1
-  // → 1 cupo
-  //
-  // cantidadCoordinadores = 2
-  // → 2 cupos
-  //
-  // cantidadCoordinadores = 3
-  // → 3 cupos
-  //
-  // Si alguno ya está confirmado, sólo creamos
-  // los cupos que faltan.
+  // 4) CREAR POOL DE CUPOS PENDIENTES
   // =====================================================
 
   const pool =
@@ -2326,55 +3747,64 @@ function obtenerBaseSugerencia(){
     const g
     of GRUPOS
   ) {
+    const gid =
+      String(
+        g.id
+      );
+
+
+    // ===================================================
+    // EXCLUIDOS
+    //
+    // Ningún cupo de este grupo participa.
+    // ===================================================
+
+    if (
+      gruposExcluidos.has(
+        gid
+      )
+    ) {
+      continue;
+    }
+
+
     const requeridos =
       getCantidadCoordinadoresGrupo(
         g
       );
 
 
-    const confirmados =
-      confirmadosPorGrupo.get(
-        g.id
-      ) ||
-      0;
-
-
-    const faltan =
-      Math.max(
-        0,
-        requeridos -
-        confirmados
+    const ocupados =
+      Math.min(
+        requeridos,
+        ocupadosPorGrupo.get(
+          gid
+        ) ||
+        0
       );
 
 
     for (
-      let cupo = 0;
-      cupo < faltan;
+      let cupo = ocupados;
+      cupo < requeridos;
       cupo++
     ) {
       pool.push({
         ...g,
 
-        // Número de cupo:
-        // sólo para control interno / debugging.
         _cupoCoordinador:
-          confirmados +
           cupo +
           1,
 
-        // Identificador único del cupo.
-        //
-        // Importante:
-        // el id REAL del grupo sigue siendo g.id.
         _slotKey:
-          `${g.id}__${confirmados + cupo + 1}`
+          `${gid}__${cupo + 1}`
       });
     }
   }
 
 
   // =====================================================
-  // 4) ORDEN CRONOLÓGICO
+  // 5) ORDEN CRONOLÓGICO
   // =====================================================
 
   pool.sort(
@@ -2389,72 +3819,654 @@ function obtenerBaseSugerencia(){
   );
 
 
-  // =====================================================
-  // 5) COMPATIBILIDAD CON LAS FUNCIONES ACTUALES
-  //
-  // Antes existía una segunda fuente de sets persistidos.
-  // Ahora loadSets() ya los incorpora en SETS, por lo que
-  // no necesitamos reconstruir otra lista aquí.
-  // =====================================================
-
+  // Por ahora se mantiene por compatibilidad
+  // con las tres estrategias.
   const fixedFromGruposFiltered =
     [];
 
 
-  L(
-    'obtenerBaseSugerencia:',
-    {
-      grupos:
-        GRUPOS.length,
+  // =====================================================
+  // LOG
+  // =====================================================
 
-      setsConfirmados:
+  L(
+    'obtenerBaseSugerencia AJUSTADA:',
+    {
+      confirmados:
         fixedSetsMem.length,
 
+      cerrados:
+        ajustesCerrados.length,
+
+      abiertos:
+        ajustesAbiertos.length,
+
+      setsExcluidos:
+        ajustesExcluidos.length,
+
+      gruposExcluidos:
+        gruposExcluidos.size,
+
       cuposPendientes:
-        pool.length,
-
-      detalleCupos:
-        Object.fromEntries(
-          GRUPOS.map(
-            g => [
-              g.id,
-              {
-                requeridos:
-                  getCantidadCoordinadoresGrupo(
-                    g
-                  ),
-
-                confirmados:
-                  confirmadosPorGrupo.get(
-                    g.id
-                  ) ||
-                  0,
-
-                pendientes:
-                  Math.max(
-                    0,
-                    getCantidadCoordinadoresGrupo(
-                      g
-                    ) -
-                    (
-                      confirmadosPorGrupo.get(
-                        g.id
-                      ) ||
-                      0
-                    )
-                  )
-              }
-            ]
-          )
-        )
+        pool.length
     }
   );
 
 
   return {
     fixedSetsMem,
+
     fixedFromGruposFiltered,
-    pool
+
+    pool,
+
+    ajustesCerrados,
+
+    ajustesAbiertos,
+
+    ajustesExcluidos,
+
+    gruposExcluidos
+  };
+}
+
+/* =========================================================
+   AJUSTES MANUALES → COMPLETAR GRUPOS ABIERTOS
+   ========================================================= */
+
+
+/* =========================================================
+   CONVERTIR IDS A OBJETOS DE GRUPO
+   ========================================================= */
+
+function getObjetosViajesPorIds(
+  ids
+){
+  return (
+    ids ||
+    []
+  )
+    .map(
+      gid =>
+        ID2GRUPO.get(
+          String(
+            gid
+          )
+        )
+    )
+    .filter(
+      Boolean
+    )
+    .sort(
+      (
+        a,
+        b
+      ) =>
+        cmpISO(
+          a.fechaInicio,
+          b.fechaInicio
+        )
+    );
+}
+
+
+/* =========================================================
+   VALIDAR UNA CADENA COMPLETA
+   ========================================================= */
+
+function esCadenaValidaParaAjuste(
+  idsViajes,
+  estrategia
+){
+  const viajes =
+    getObjetosViajesPorIds(
+      idsViajes
+    );
+
+
+  if (
+    viajes.length !==
+    (
+      idsViajes ||
+      []
+    ).length
+  ) {
+    return false;
+  }
+
+
+  // -----------------------------------------------------
+  // Un mismo grupo no puede aparecer dos veces
+  // dentro de la MISMA agenda.
+  // -----------------------------------------------------
+
+  const unicos =
+    new Set(
+      viajes.map(
+        g =>
+          String(
+            g.id
+          )
+      )
+    );
+
+
+  if (
+    unicos.size !==
+    viajes.length
+  ) {
+    return false;
+  }
+
+
+  // -----------------------------------------------------
+  // Modalidad "grupos de 2"
+  // -----------------------------------------------------
+
+  if (
+    estrategia ===
+      'temporada-pares' &&
+    viajes.length >
+      2
+  ) {
+    return false;
+  }
+
+
+  // -----------------------------------------------------
+  // Las otras modalidades no generan agendas
+  // de más de 3 viajes.
+  // -----------------------------------------------------
+
+  if (
+    estrategia !==
+      'temporada-pares' &&
+    viajes.length >
+      3
+  ) {
+    return false;
+  }
+
+
+  // -----------------------------------------------------
+  // Revisar consecutivos
+  // -----------------------------------------------------
+
+  for (
+    let i = 0;
+    i < viajes.length - 1;
+    i++
+  ) {
+    const A =
+      viajes[i];
+
+    const B =
+      viajes[
+        i + 1
+      ];
+
+
+    // Solape real jamás permitido.
+    if (
+      overlap(
+        A.fechaInicio,
+        A.fechaFin,
+        B.fechaInicio,
+        B.fechaFin
+      )
+    ) {
+      return false;
+    }
+
+
+    const gap =
+      gapDays(
+        A.fechaFin,
+        B.fechaInicio
+      );
+
+
+    if (
+      gap <
+      0
+    ) {
+      return false;
+    }
+
+
+    // Las modalidades basadas en temporada
+    // deben además respetar su compatibilidad.
+    if (
+      estrategia ===
+        'temporada' ||
+      estrategia ===
+        'temporada-pares'
+    ) {
+      if (
+        !sonViajesCompatiblesTemporada(
+          A,
+          B
+        )
+      ) {
+        return false;
+      }
+    }
+  }
+
+
+  return true;
+}
+
+
+/* =========================================================
+   PUNTAJE DE UNA CADENA
+   ========================================================= */
+
+function puntuarCadenaAjuste(
+  idsViajes
+){
+  const viajes =
+    getObjetosViajesPorIds(
+      idsViajes
+    );
+
+
+  if (
+    viajes.length <=
+    1
+  ) {
+    return 0;
+  }
+
+
+  let conDescanso =
+    0;
+
+  let totalGap =
+    0;
+
+  let gapsCero =
+    0;
+
+
+  for (
+    let i = 0;
+    i < viajes.length - 1;
+    i++
+  ) {
+    const gap =
+      gapDays(
+        viajes[i].fechaFin,
+        viajes[
+          i + 1
+        ].fechaInicio
+      );
+
+
+    if (
+      gap >=
+      1
+    ) {
+      conDescanso++;
+    }
+
+
+    if (
+      gap ===
+      0
+    ) {
+      gapsCero++;
+    }
+
+
+    totalGap +=
+      Math.max(
+        0,
+        gap
+      );
+  }
+
+
+  // Prioridad:
+  //
+  // 1. tener descanso
+  // 2. evitar cadenas pegadas
+  // 3. no dejar huecos absurdamente grandes
+  return (
+    conDescanso *
+      100000
+    -
+    gapsCero *
+      10000
+    -
+    totalGap
+  );
+}
+
+
+/* =========================================================
+   COMPLETAR UN SET ABIERTO
+   ========================================================= */
+
+function completarSetAbiertoDesdeSugeridos(
+  setAbierto,
+  suggested,
+  estrategia
+){
+  const abierto =
+    {
+      ...setAbierto,
+
+      viajes:
+        (
+          setAbierto.viajes ||
+          []
+        ).slice(),
+
+      ajusteSugerencia:
+        'abierto',
+
+      confirmado:
+        false,
+
+      _ajusteManual:
+        true
+    };
+
+
+  const limiteTotal =
+    estrategia ===
+      'temporada-pares'
+      ? 2
+      : 3;
+
+
+  const espacioFisico =
+    Math.max(
+      0,
+      limiteTotal -
+      abierto.viajes.length
+    );
+
+
+  const maxAdicionales =
+    Math.min(
+      normalizarMaxAdicionales(
+        abierto.maxAdicionales
+      ),
+      espacioFisico
+    );
+
+
+  let agregados =
+    0;
+
+
+  while (
+    agregados <
+    maxAdicionales
+  ) {
+    let mejor =
+      null;
+
+
+    for (
+      let setIdx = 0;
+      setIdx < suggested.length;
+      setIdx++
+    ) {
+      const origen =
+        suggested[
+          setIdx
+        ];
+
+
+      for (
+        let viajeIdx = 0;
+        viajeIdx < (
+          origen.viajes ||
+          []
+        ).length;
+        viajeIdx++
+      ) {
+        const gid =
+          String(
+            origen.viajes[
+              viajeIdx
+            ]
+          );
+
+
+        if (
+          abierto.viajes.includes(
+            gid
+          )
+        ) {
+          continue;
+        }
+
+
+        const prueba =
+          abierto.viajes
+            .concat(
+              gid
+            );
+
+
+        if (
+          !esCadenaValidaParaAjuste(
+            prueba,
+            estrategia
+          )
+        ) {
+          continue;
+        }
+
+
+        const score =
+          puntuarCadenaAjuste(
+            prueba
+          );
+
+
+        if (
+          !mejor ||
+          score >
+            mejor.score
+        ) {
+          mejor = {
+            setIdx,
+            viajeIdx,
+            gid,
+            score
+          };
+        }
+      }
+    }
+
+
+    if (
+      !mejor
+    ) {
+      break;
+    }
+
+
+    abierto.viajes.push(
+      mejor.gid
+    );
+
+
+    abierto.viajes =
+      getObjetosViajesPorIds(
+        abierto.viajes
+      ).map(
+        g =>
+          String(
+            g.id
+          )
+      );
+
+
+    suggested[
+      mejor.setIdx
+    ].viajes.splice(
+      mejor.viajeIdx,
+      1
+    );
+
+
+    agregados++;
+  }
+
+
+  return abierto;
+}
+
+
+/* =========================================================
+   APLICAR TODOS LOS AJUSTES A LA SUGERENCIA
+   ========================================================= */
+
+function aplicarAjustesManualesASugerencia({
+  ajustesCerrados = [],
+  ajustesAbiertos = [],
+  ajustesExcluidos = [],
+  suggested = [],
+  estrategia
+} = {}){
+
+  // =====================================================
+  // COPIA DE LOS SETS GENERADOS
+  // =====================================================
+
+  const restantesSuggested =
+    (
+      suggested ||
+      []
+    ).map(
+      s => ({
+        ...s,
+
+        viajes:
+          (
+            s.viajes ||
+            []
+          ).slice()
+      })
+    );
+
+
+  const manuales =
+    [];
+
+
+  // =====================================================
+  // 1) EXCLUIDOS
+  //
+  // Se mantienen exactamente como estaban.
+  // No absorben viajes.
+  // No participan en la sugerencia.
+  // =====================================================
+
+  ajustesExcluidos.forEach(
+    s => {
+      manuales.push({
+        ...s,
+
+        viajes:
+          (
+            s.viajes ||
+            []
+          ).slice(),
+
+        confirmado:
+          false,
+
+        ajusteSugerencia:
+          'excluir',
+
+        _ajusteManual:
+          true
+      });
+    }
+  );
+
+
+  // =====================================================
+  // 2) CERRADOS
+  //
+  // Se mantienen exactamente como están.
+  // =====================================================
+
+  ajustesCerrados.forEach(
+    s => {
+      manuales.push({
+        ...s,
+
+        viajes:
+          (
+            s.viajes ||
+            []
+          ).slice(),
+
+        confirmado:
+          false,
+
+        ajusteSugerencia:
+          'cerrado',
+
+        _ajusteManual:
+          true
+      });
+    }
+  );
+
+
+  // =====================================================
+  // 3) ABIERTOS
+  //
+  // Mantienen sus viajes actuales y pueden absorber
+  // +1 o +2 viajes dependiendo del ajuste.
+  // =====================================================
+
+  ajustesAbiertos.forEach(
+    s => {
+      const completado =
+        completarSetAbiertoDesdeSugeridos(
+          s,
+          restantesSuggested,
+          estrategia
+        );
+
+
+      manuales.push(
+        completado
+      );
+    }
+  );
+
+
+  // =====================================================
+  // 4) ELIMINAR SETS AUTOMÁTICOS VACÍOS
+  // =====================================================
+
+  const restantesLimpios =
+    restantesSuggested.filter(
+      s =>
+        (
+          s.viajes ||
+          []
+        ).length >
+        0
+    );
+
+
+  return {
+    manuales,
+
+    restantesSuggested:
+      restantesLimpios
   };
 }
 
@@ -2474,7 +4486,10 @@ function sugerirConjuntosContinuidad(){
     const {
       fixedSetsMem,
       fixedFromGruposFiltered,
-      pool
+      pool,
+      ajustesCerrados,
+      ajustesAbiertos,
+      ajustesExcluidos
     } =
       obtenerBaseSugerencia();
 
@@ -2486,15 +4501,11 @@ function sugerirConjuntosContinuidad(){
 
 
     // =====================================================
-    // 1) NUEVA REGLA COMÚN
-    //
-    // Antes de aplicar continuidad:
+    // 1) PRIORIDAD:
     //
     // ESPECIAL
     // + TEMPORADA
     // + TEMPORADA
-    //
-    // Estos tríos tienen prioridad.
     // =====================================================
 
     const {
@@ -2511,10 +4522,9 @@ function sugerirConjuntosContinuidad(){
 
 
     // =====================================================
-    // 2) INCORPORAR LOS TRÍOS YA ARMADOS
+    // 2) INCORPORAR TRÍOS ESPECIALES
     //
-    // Quedan CERRADOS en 3.
-    // No se les agregará un cuarto viaje.
+    // Quedan completos en 3.
     // =====================================================
 
     trios.forEach(
@@ -2552,7 +4562,9 @@ function sugerirConjuntosContinuidad(){
           viajes:
             viajes.map(
               g =>
-                g.id
+                String(
+                  g.id
+                )
             ),
 
           lastFin:
@@ -2578,24 +4590,82 @@ function sugerirConjuntosContinuidad(){
 
 
     // =====================================================
-    // 3) CONTINUIDAD NORMAL CON EL RESTO
+    // 3) CONTINUIDAD NORMAL
     // =====================================================
+
+    const ordenados =
+      restantes
+        .slice()
+        .sort(
+          (
+            a,
+            b
+          ) =>
+            cmpISO(
+              a.fechaInicio,
+              b.fechaInicio
+            )
+        );
+
 
     for (
       const g
-      of restantes
+      of ordenados
     ) {
-      let best =
-        -1;
-
-      let bestAvail =
-        null;
+      const gid =
+        String(
+          g.id
+        );
 
 
       const clasG =
         clasificarTipoViajeTemporada(
           g
         );
+
+
+      // ===================================================
+      // OTRO / UNIDAD:
+      //
+      // siempre quedan en un SET individual.
+      // ===================================================
+
+      if (
+        clasG.individual
+      ) {
+        work.push({
+          viajes:
+            [
+              gid
+            ],
+
+          lastFin:
+            g.fechaFin,
+
+          zeroChain:
+            0,
+
+          trioEspecial:
+            false
+        });
+
+
+        continue;
+      }
+
+
+      // ===================================================
+      // BUSCAR MEJOR SET
+      //
+      // PRIORIDAD:
+      // 1. completar parejas
+      // 2. tener al menos 1 día de descanso
+      // 3. usar huecos razonablemente cortos
+      // 4. trío sólo si no hay buena pareja
+      // ===================================================
+
+      let mejor =
+        null;
 
 
       for (
@@ -2607,11 +4677,6 @@ function sugerirConjuntosContinuidad(){
           work[i];
 
 
-        // =================================================
-        // TRÍO ESPECIAL YA COMPLETO:
-        // nunca recibe un cuarto viaje.
-        // =================================================
-
         if (
           s.trioEspecial
         ) {
@@ -2619,18 +4684,26 @@ function sugerirConjuntosContinuidad(){
         }
 
 
-        // =================================================
-        // MULTI COORDINADOR:
-        // mismo grupo no puede estar dos veces
-        // dentro de la misma agenda.
-        // =================================================
+        if (
+          (
+            s.viajes ||
+            []
+          ).length >=
+          3
+        ) {
+          continue;
+        }
 
+
+        // MULTI COORDINADOR:
+        // mismo grupo jamás dos veces dentro
+        // de la misma agenda.
         if (
           (
             s.viajes ||
             []
           ).includes(
-            g.id
+            gid
           )
         ) {
           continue;
@@ -2645,78 +4718,65 @@ function sugerirConjuntosContinuidad(){
             .map(
               id =>
                 ID2GRUPO.get(
-                  id
+                  String(
+                    id
+                  )
                 )
             )
-            .filter(Boolean);
+            .filter(
+              Boolean
+            )
+            .sort(
+              (
+                a,
+                b
+              ) =>
+                cmpISO(
+                  a.fechaInicio,
+                  b.fechaInicio
+                )
+            );
 
 
-        const especialSet =
-          getEspecialDeViajes(
-            viajesSet
-          );
+        if (
+          !viajesSet.length
+        ) {
+          continue;
+        }
+
+
+        const ultimo =
+          viajesSet[
+            viajesSet.length -
+            1
+          ];
 
 
         // =================================================
-        // SI EL SET YA TIENE UN ESPECIAL:
-        //
-        // sólo puede recibir TEMPORADA
-        // y como máximo llegar a 3 viajes.
+        // COMPATIBILIDAD DE TEMPORADA
         // =================================================
 
         if (
-          especialSet
+          !sonViajesCompatiblesTemporada(
+            ultimo,
+            g
+          )
         ) {
-          if (
-            clasG.tipo !==
-            'TEMPORADA'
-          ) {
-            continue;
-          }
-
-
-          if (
-            viajesSet.length >=
-            3
-          ) {
-            continue;
-          }
-
-
-          // Si al agregarlo llegamos a 3,
-          // validar la estructura completa.
-          if (
-            viajesSet.length ===
-            2
-          ) {
-            const prueba =
-              evaluarTrioTemporada(
-                [
-                  ...viajesSet,
-                  g
-                ]
-              );
-
-
-            if (!prueba) {
-              continue;
-            }
-          }
+          continue;
+        }
 
 
         // =================================================
-        // SI EL NUEVO VIAJE ES ESPECIAL:
-        //
-        // no lo metemos en una cadena ya existente.
-        // Debe comenzar su propia agenda para después
-        // recibir viajes TEMPORADA.
+        // NUNCA SOLAPAR
         // =================================================
 
-        } else if (
-          esTipoEspecialTemporada(
-            clasG.tipo
-          ) &&
-          viajesSet.length
+        if (
+          overlap(
+            ultimo.fechaInicio,
+            ultimo.fechaFin,
+            g.fechaInicio,
+            g.fechaFin
+          )
         ) {
           continue;
         }
@@ -2724,59 +4784,137 @@ function sugerirConjuntosContinuidad(){
 
         const gap =
           gapDays(
-            s.lastFin,
+            ultimo.fechaFin,
             g.fechaInicio
           );
 
 
-        const ok =
-          (
-            gap >= 1
-          ) ||
-          (
-            gap === 0 &&
-            s.zeroChain < 2
-          );
-
-
-        if (!ok) {
+        if (
+          gap <
+          0
+        ) {
           continue;
         }
 
 
-        const avail =
-          addDaysISO(
-            s.lastFin,
-            1
+        const nuevoZeroChain =
+          gap === 0
+            ? (
+                s.zeroChain ||
+                0
+              ) +
+              1
+            : 0;
+
+
+        // Evitar 3 viajes seguidos sin
+        // ningún día de descanso.
+        if (
+          nuevoZeroChain >=
+          2
+        ) {
+          continue;
+        }
+
+
+        const cantidadActual =
+          (
+            s.viajes ||
+            []
+          ).length;
+
+
+        // Una pareja tiene prioridad enorme
+        // por sobre convertir algo inmediatamente
+        // en trío.
+        let score =
+          0;
+
+
+        if (
+          cantidadActual ===
+          1
+        ) {
+          score +=
+            1000000;
+
+        } else {
+          score +=
+            100000;
+        }
+
+
+        if (
+          gap >=
+          1
+        ) {
+          score +=
+            10000;
+        }
+
+
+        // Entre alternativas similares:
+        // continuidad más cercana.
+        score -=
+          Math.min(
+            Math.max(
+              gap,
+              0
+            ),
+            365
           );
 
 
         if (
-          best === -1 ||
-          cmpISO(
-            avail,
-            bestAvail
-          ) < 0
+          !mejor ||
+          score >
+            mejor.score
         ) {
-          best =
-            i;
+          mejor = {
+            idx:
+              i,
 
-          bestAvail =
-            avail;
+            score,
+
+            gap,
+
+            nuevoZeroChain
+          };
         }
       }
 
 
       // ===================================================
-      // CREAR NUEVA AGENDA
+      // AGREGAR AL MEJOR O CREAR NUEVO
       // ===================================================
 
       if (
-        best === -1
+        mejor
       ) {
+        const destino =
+          work[
+            mejor.idx
+          ];
+
+
+        destino.viajes.push(
+          gid
+        );
+
+
+        destino.lastFin =
+          g.fechaFin;
+
+
+        destino.zeroChain =
+          mejor.nuevoZeroChain;
+
+      } else {
         work.push({
           viajes:
-            [g.id],
+            [
+              gid
+            ],
 
           lastFin:
             g.fechaFin,
@@ -2787,111 +4925,110 @@ function sugerirConjuntosContinuidad(){
           trioEspecial:
             false
         });
-
-
-      // ===================================================
-      // AGREGAR A AGENDA EXISTENTE
-      // ===================================================
-
-      } else {
-        const s =
-          work[
-            best
-          ];
-
-
-        const gap =
-          gapDays(
-            s.lastFin,
-            g.fechaInicio
-          );
-
-
-        s.viajes.push(
-          g.id
-        );
-
-
-        s.zeroChain =
-          gap === 0
-            ? s.zeroChain +
-              1
-            : 0;
-
-
-        s.lastFin =
-          g.fechaFin;
-
-
-        // Si acabamos de completar:
-        //
-        // ESPECIAL + TEMP + TEMP
-        //
-        // cerrar la agenda.
-        const viajesAhora =
-          s.viajes
-            .map(
-              id =>
-                ID2GRUPO.get(
-                  id
-                )
-            )
-            .filter(Boolean);
-
-
-        if (
-          viajesAhora.length ===
-          3 &&
-          evaluarTrioTemporada(
-            viajesAhora
-          )
-        ) {
-          s.trioEspecial =
-            true;
-        }
       }
     }
 
 
     // =====================================================
-    // 4) CONVERTIR A SETS
+    // 4) CONVERTIR A SETS DEL SISTEMA
     // =====================================================
 
     const suggested =
       work.map(
-        w => ({
-          anoViaje:
-            Number(
-              ANO_COORDINADORES
-            ),
-
-          viajes:
-            [
-              ...new Set(
-                w.viajes
+        w => {
+          const viajesOrdenados =
+            (
+              w.viajes ||
+              []
+            )
+              .map(
+                gid =>
+                  ID2GRUPO.get(
+                    String(
+                      gid
+                    )
+                  )
               )
-            ],
+              .filter(
+                Boolean
+              )
+              .sort(
+                (
+                  a,
+                  b
+                ) =>
+                  cmpISO(
+                    a.fechaInicio,
+                    b.fechaInicio
+                  )
+              );
 
-          coordinadorId:
-            null,
 
-          confirmado:
-            false,
+          return {
+            anoViaje:
+              Number(
+                ANO_COORDINADORES
+              ),
 
-          estadoCoord:
-            'pendiente',
+            viajes:
+              [
+                ...new Set(
+                  viajesOrdenados.map(
+                    g =>
+                      String(
+                        g.id
+                      )
+                  )
+                )
+              ],
 
-          alertas:
-            [],
+            coordinadorId:
+              null,
 
-          _isNew:
-            true,
+            confirmado:
+              false,
 
-          estrategiaSugerencia:
-            'continuidad'
-        })
+            estadoCoord:
+              'pendiente',
+
+            alertas:
+              [],
+
+            _isNew:
+              true,
+
+            estrategiaSugerencia:
+              'continuidad'
+          };
+        }
+      )
+      .filter(
+        s =>
+          s.viajes.length
       );
 
+
+    // =====================================================
+    // 5) APLICAR AJUSTES MANUALES
+    // =====================================================
+
+    const {
+      manuales,
+      restantesSuggested
+    } =
+      aplicarAjustesManualesASugerencia({
+        ajustesCerrados,
+        ajustesAbiertos,
+        ajustesExcluidos,
+        suggested,
+        estrategia:
+          'continuidad'
+      });
+
+
+    // =====================================================
+    // 6) RESULTADO
+    // =====================================================
 
     SETS =
       fixedSetsMem
@@ -2899,7 +5036,10 @@ function sugerirConjuntosContinuidad(){
           fixedFromGruposFiltered
         )
         .concat(
-          suggested
+          manuales
+        )
+        .concat(
+          restantesSuggested
         );
 
 
@@ -2912,18 +5052,44 @@ function sugerirConjuntosContinuidad(){
     render();
 
 
+    const resultadoNuevo =
+      manuales.concat(
+        restantesSuggested
+      );
+
+
     L(
       'Continuidad resultado:',
       {
         gruposViaje:
-          suggested.length,
+          resultadoNuevo.length,
 
-        triosEspeciales:
-          suggested.filter(
+        deUno:
+          resultadoNuevo.filter(
+            s =>
+              s.viajes.length ===
+              1
+          ).length,
+
+        deDos:
+          resultadoNuevo.filter(
+            s =>
+              s.viajes.length ===
+              2
+          ).length,
+
+        deTres:
+          resultadoNuevo.filter(
             s =>
               s.viajes.length ===
               3
           ).length,
+
+        ajustesCerrados:
+          ajustesCerrados.length,
+
+        ajustesAbiertos:
+          ajustesAbiertos.length,
 
         cuposProcesados:
           pool.length
@@ -4830,7 +6996,10 @@ function sugerirConjuntosTemporada(){
     const {
       fixedSetsMem,
       fixedFromGruposFiltered,
-      pool
+      pool,
+      ajustesCerrados,
+      ajustesAbiertos,
+      ajustesExcluidos
     } =
       obtenerBaseSugerencia();
 
@@ -4847,9 +7016,6 @@ function sugerirConjuntosTemporada(){
     // ESPECIAL
     // + TEMPORADA
     // + TEMPORADA
-    //
-    // Antes de gastar los viajes de temporada
-    // formando parejas normales.
     // =====================================================
 
     const {
@@ -4913,9 +7079,7 @@ function sugerirConjuntosTemporada(){
 
 
     // =====================================================
-    // 3) CON EL RESTO:
-    //
-    // maximizar parejas.
+    // 3) MAXIMIZAR PAREJAS
     // =====================================================
 
     const {
@@ -4928,17 +7092,9 @@ function sugerirConjuntosTemporada(){
 
 
     // =====================================================
-    // 4) ALGÚN ESPECIAL PUEDE HABER QUEDADO EN:
-    //
-    // ESPECIAL + TEMPORADA
-    //
-    // y puede existir un TEMPORADA suelto.
-    //
-    // Intentamos completar todavía:
+    // 4) INTENTAR COMPLETAR ALGUNOS TRÍOS
     //
     // ESPECIAL + TEMP + TEMP
-    //
-    // Esto también reduce grupos.
     // =====================================================
 
     const optimizados =
@@ -4949,8 +7105,7 @@ function sugerirConjuntosTemporada(){
 
 
     // =====================================================
-    // 5) RESULTADO BASE:
-    // primero los tríos prioritarios
+    // 5) RESULTADO BASE
     // =====================================================
 
     const todosSets =
@@ -4974,14 +7129,16 @@ function sugerirConjuntosTemporada(){
       g => {
         todosSets.push({
           viajes:
-            [g]
+            [
+              g
+            ]
         });
       }
     );
 
 
     // =====================================================
-    // 7) CREAR SETS DE SISTEMA
+    // 7) CONVERTIR A SETS DEL SISTEMA
     // =====================================================
 
     const suggested =
@@ -5011,7 +7168,9 @@ function sugerirConjuntosTemporada(){
             viajes:
               viajesOrdenados.map(
                 g =>
-                  g.id
+                  String(
+                    g.id
+                  )
               ),
 
             coordinadorId:
@@ -5037,7 +7196,25 @@ function sugerirConjuntosTemporada(){
 
 
     // =====================================================
-    // 8) CONSERVAR CONFIRMADOS
+    // 8) APLICAR AJUSTES MANUALES
+    // =====================================================
+
+    const {
+      manuales,
+      restantesSuggested
+    } =
+      aplicarAjustesManualesASugerencia({
+        ajustesCerrados,
+        ajustesAbiertos,
+        ajustesExcluidos,
+        suggested,
+        estrategia:
+          'temporada'
+      });
+
+
+    // =====================================================
+    // 9) CONSERVAR CONFIRMADOS + MANUALES + NUEVOS
     // =====================================================
 
     SETS =
@@ -5046,7 +7223,10 @@ function sugerirConjuntosTemporada(){
           fixedFromGruposFiltered
         )
         .concat(
-          suggested
+          manuales
+        )
+        .concat(
+          restantesSuggested
         );
 
 
@@ -5060,11 +7240,17 @@ function sugerirConjuntosTemporada(){
 
 
     // =====================================================
-    // 9) ESTADÍSTICAS
+    // 10) ESTADÍSTICAS DEL RESULTADO FINAL
     // =====================================================
 
+    const resultadoNuevo =
+      manuales.concat(
+        restantesSuggested
+      );
+
+
     const deUno =
-      suggested.filter(
+      resultadoNuevo.filter(
         s =>
           s.viajes.length ===
           1
@@ -5072,7 +7258,7 @@ function sugerirConjuntosTemporada(){
 
 
     const deDos =
-      suggested.filter(
+      resultadoNuevo.filter(
         s =>
           s.viajes.length ===
           2
@@ -5080,7 +7266,7 @@ function sugerirConjuntosTemporada(){
 
 
     const deTres =
-      suggested.filter(
+      resultadoNuevo.filter(
         s =>
           s.viajes.length ===
           3
@@ -5088,7 +7274,7 @@ function sugerirConjuntosTemporada(){
 
 
     const totalViajes =
-      suggested.reduce(
+      resultadoNuevo.reduce(
         (
           n,
           s
@@ -5106,7 +7292,7 @@ function sugerirConjuntosTemporada(){
           totalViajes,
 
         gruposViaje:
-          suggested.length,
+          resultadoNuevo.length,
 
         uno:
           deUno,
@@ -5118,7 +7304,13 @@ function sugerirConjuntosTemporada(){
           deTres,
 
         triosEspecialesPrioritarios:
-          trios.length
+          trios.length,
+
+        ajustesCerrados:
+          ajustesCerrados.length,
+
+        ajustesAbiertos:
+          ajustesAbiertos.length
       }
     );
 
@@ -5143,7 +7335,10 @@ function sugerirConjuntosTemporadaPares(){
     const {
       fixedSetsMem,
       fixedFromGruposFiltered,
-      pool
+      pool,
+      ajustesCerrados,
+      ajustesAbiertos,
+      ajustesExcluidos
     } =
       obtenerBaseSugerencia();
 
@@ -5208,12 +7403,6 @@ function sugerirConjuntosTemporadaPares(){
     // =====================================================
     // 2) MAXIMIZAR PAREJAS
     //
-    // Esta función ya:
-    //
-    // - prioriza mantener viajes emparejables
-    // - repara configuraciones malas
-    // - mejora descanso después
-    //
     // NO crea tríos.
     // =====================================================
 
@@ -5227,7 +7416,7 @@ function sugerirConjuntosTemporadaPares(){
 
 
     // =====================================================
-    // 3) CONVERTIR PAREJAS EN SETS
+    // 3) CONVERTIR PAREJAS
     // =====================================================
 
     const organizados =
@@ -5241,36 +7430,32 @@ function sugerirConjuntosTemporadaPares(){
 
 
     // =====================================================
-    // 4) LOS SUELTOS QUEDAN INDIVIDUALES
-    //
-    // MUY IMPORTANTE:
-    //
-    // Aquí NO llamamos:
-    //
-    // optimizarSueltosEnParejas()
-    //
-    // porque esa función intenta crear tríos.
+    // 4) SUELTOS
     // =====================================================
 
     sueltos.forEach(
       g => {
         organizados.push({
           viajes:
-            [g]
+            [
+              g
+            ]
         });
       }
     );
 
 
     // =====================================================
-    // 5) AGREGAR OTRO / UNIDADES
+    // 5) OTRO / UNIDADES
     // =====================================================
 
     individuales.forEach(
       g => {
         organizados.push({
           viajes:
-            [g]
+            [
+              g
+            ]
         });
       }
     );
@@ -5307,7 +7492,9 @@ function sugerirConjuntosTemporadaPares(){
             viajes:
               viajesOrdenados.map(
                 g =>
-                  g.id
+                  String(
+                    g.id
+                  )
               ),
 
             coordinadorId:
@@ -5333,7 +7520,29 @@ function sugerirConjuntosTemporadaPares(){
 
 
     // =====================================================
-    // 7) CONSERVAR CONFIRMADOS
+    // 7) APLICAR AJUSTES MANUALES
+    //
+    // IMPORTANTE:
+    // En esta modalidad el helper impedirá
+    // que un ABIERTO supere 2 viajes.
+    // =====================================================
+
+    const {
+      manuales,
+      restantesSuggested
+    } =
+      aplicarAjustesManualesASugerencia({
+        ajustesCerrados,
+        ajustesAbiertos,
+        ajustesExcluidos,
+        suggested,
+        estrategia:
+          'temporada-pares'
+      });
+
+
+    // =====================================================
+    // 8) CONSERVAR CONFIRMADOS
     // =====================================================
 
     SETS =
@@ -5342,12 +7551,15 @@ function sugerirConjuntosTemporadaPares(){
           fixedFromGruposFiltered
         )
         .concat(
-          suggested
+          manuales
+        )
+        .concat(
+          restantesSuggested
         );
 
 
     // =====================================================
-    // 8) SEGURIDAD MULTI-COORDINADOR
+    // 9) SEGURIDAD MULTI-COORDINADOR
     // =====================================================
 
     dedupeSetsInPlace();
@@ -5360,11 +7572,17 @@ function sugerirConjuntosTemporadaPares(){
 
 
     // =====================================================
-    // 9) ESTADÍSTICAS
+    // 10) ESTADÍSTICAS
     // =====================================================
 
+    const resultadoNuevo =
+      manuales.concat(
+        restantesSuggested
+      );
+
+
     const deUno =
-      suggested.filter(
+      resultadoNuevo.filter(
         s =>
           s.viajes.length ===
           1
@@ -5372,7 +7590,7 @@ function sugerirConjuntosTemporadaPares(){
 
 
     const deDos =
-      suggested.filter(
+      resultadoNuevo.filter(
         s =>
           s.viajes.length ===
           2
@@ -5380,7 +7598,7 @@ function sugerirConjuntosTemporadaPares(){
 
 
     const deTres =
-      suggested.filter(
+      resultadoNuevo.filter(
         s =>
           s.viajes.length >=
           3
@@ -5388,7 +7606,7 @@ function sugerirConjuntosTemporadaPares(){
 
 
     const totalViajes =
-      suggested.reduce(
+      resultadoNuevo.reduce(
         (
           total,
           s
@@ -5406,7 +7624,7 @@ function sugerirConjuntosTemporadaPares(){
           totalViajes,
 
         gruposViaje:
-          suggested.length,
+          resultadoNuevo.length,
 
         uno:
           deUno,
@@ -5417,6 +7635,12 @@ function sugerirConjuntosTemporadaPares(){
         tresOMas:
           deTres,
 
+        ajustesCerrados:
+          ajustesCerrados.length,
+
+        ajustesAbiertos:
+          ajustesAbiertos.length,
+
         cuposProcesados:
           pool.length
       }
@@ -5424,9 +7648,7 @@ function sugerirConjuntosTemporadaPares(){
 
 
     // =====================================================
-    // CONTROL:
-    //
-    // Esta modalidad NUNCA debería generar 3+
+    // CONTROL
     // =====================================================
 
     if (
@@ -5434,8 +7656,8 @@ function sugerirConjuntosTemporadaPares(){
       0
     ) {
       W(
-        'ATENCIÓN: temporada-pares generó un set con 3+ viajes. Revisar lógica.',
-        suggested
+        'ATENCIÓN: temporada-pares contiene un SET con 3+ viajes.',
+        resultadoNuevo
           .filter(
             s =>
               s.viajes.length >=
@@ -5443,7 +7665,14 @@ function sugerirConjuntosTemporadaPares(){
           )
           .map(
             s =>
-              s.viajes
+              ({
+                viajes:
+                  s.viajes,
+
+                ajuste:
+                  s.ajusteSugerencia ||
+                  'normal'
+              })
           )
       );
     }
@@ -5793,6 +8022,7 @@ function refreshSets() {
   L('refreshSets()');
   dedupeSetsInPlace();
   sortSetsInPlace();
+  evaluarAlertas();
   render();
 }
 
