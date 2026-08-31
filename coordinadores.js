@@ -9874,7 +9874,7 @@ async function guardarSet(i){
 
   try{
     // =====================================================
-    // DATOS ANTERIORES DEL SET
+    // 1) DATOS ANTERIORES DEL SET
     // =====================================================
 
     const oldOwner =
@@ -9903,13 +9903,13 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // GRUPOS AFECTADOS
+    // 2) GRUPOS AFECTADOS
     //
     // Incluye:
     // - viajes que tenía antes
     // - viajes que tiene ahora
     //
-    // Después reconstruiremos TODOS sus coordinadores.
+    // Esto es importante si quitaste o moviste un viaje.
     // =====================================================
 
     const afectados =
@@ -9927,7 +9927,7 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // AÑO
+    // 3) NORMALIZAR AÑO
     // =====================================================
 
     s.anoViaje =
@@ -9938,7 +9938,7 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // VIAJES ACTUALES DEL SET
+    // 4) NORMALIZAR VIAJES
     // =====================================================
 
     const viajes =
@@ -9968,15 +9968,22 @@ async function guardarSet(i){
       viajes.length > 0;
 
 
+    // =====================================================
+    // 5) PRIMER BATCH:
+    //
+    // - alias modificados
+    // - guardar/eliminar conjunto
+    // =====================================================
+
     const batch =
       writeBatch(
         db
       );
 
 
-    // =====================================================
-    // 1) GUARDAR CAMBIOS DE ALIAS
-    // =====================================================
+    // -----------------------------------------------------
+    // ALIAS
+    // -----------------------------------------------------
 
     for (
       const gid
@@ -10026,18 +10033,19 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // 2) SET CONFIRMADO
+    // 6) SET CONFIRMADO
     // =====================================================
 
     if (persistir) {
+
       // -------------------------------------------------
-      // CAMBIÓ EL COORDINADOR DEL SET
+      // CAMBIO DE COORDINADOR
       //
-      // Como el documento vive bajo:
+      // El documento vive bajo:
       //
       // coordinadores/{coordinadorId}/conjuntos/{setId}
       //
-      // tenemos que borrar el documento antiguo.
+      // Si cambió el coordinador, eliminamos el anterior.
       // -------------------------------------------------
 
       if (
@@ -10083,7 +10091,11 @@ async function guardarSet(i){
 
 
       // -------------------------------------------------
-      // GUARDAR SET
+      // GUARDAR CONJUNTO
+      //
+      // Los campos ajusteSugerencia, maxAdicionales,
+      // _ajusteManual, etc. NO se guardan.
+      // Son sólo de trabajo temporal.
       // -------------------------------------------------
 
       batch.set(
@@ -10100,7 +10112,8 @@ async function guardarSet(i){
               s.anoViaje
             ),
 
-          viajes,
+          viajes:
+            viajes.slice(),
 
           confirmado:
             true,
@@ -10132,10 +10145,11 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // 3) SET DESCONFIRMADO / ELIMINADO
+    // 7) SET DESCONFIRMADO / ELIMINADO
     // =====================================================
 
     } else {
+
       if (
         oldOwner &&
         oldId
@@ -10154,46 +10168,99 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // 4) COMMIT DEL SET
+    // 8) GUARDAR EL SET
     // =====================================================
 
     await batch.commit();
 
 
     // =====================================================
-    // 5) RECONSTRUIR COORDINADORES DE CADA GRUPO
+    // 9) RECONSTRUIR RESUMEN DE LOS GRUPOS AFECTADOS
     //
-    // MUY IMPORTANTE:
+    // IMPORTANTE:
     //
-    // No ponemos directamente:
+    // YA NO hacemos:
     //
-    // coordinadorId = este coordinador
+    // collectionGroup('conjuntos')
+    // where('viajes', 'array-contains', grupoId)
     //
-    // porque el grupo puede tener Pedro + María + Juan.
+    // Toda la información necesaria ya está en SETS.
     //
-    // Leemos TODOS los conjuntos confirmados que contienen
-    // el grupo y reconstruimos:
-    //
-    // coordinadorIds
-    // coordinadores
-    // conjuntoIds
-    // coordinadoresAsignados
-    //
-    // + campos legacy.
+    // Esto elimina:
+    // - el índice COLLECTION_GROUP_CONTAINS
+    // - una consulta global por cada grupo
+    // - la demora innecesaria
     // =====================================================
+
+    const batchGrupos =
+      writeBatch(
+        db
+      );
+
+
+    let gruposAActualizar =
+      0;
+
 
     for (
       const gid
       of afectados
     ) {
-      await reconstruirResumenGrupoDesdeFirestore(
-        gid
+      const g =
+        ID2GRUPO.get(
+          String(
+            gid
+          )
+        );
+
+
+      if (!g) {
+        continue;
+      }
+
+
+      const payload =
+        construirPayloadCoordinadoresGrupo(
+          String(
+            gid
+          )
+        );
+
+
+      batchGrupos.update(
+        doc(
+          db,
+          'grupos',
+          String(
+            gid
+          )
+        ),
+        payload
       );
+
+
+      aplicarPayloadCoordinadoresEnMemoria(
+        String(
+          gid
+        ),
+        payload
+      );
+
+
+      gruposAActualizar++;
+    }
+
+
+    if (
+      gruposAActualizar >
+      0
+    ) {
+      await batchGrupos.commit();
     }
 
 
     // =====================================================
-    // 6) QUITAR SNAPSHOT ANTIGUO DEL SET
+    // 10) QUITAR SNAPSHOT ANTERIOR DEL SET
     // =====================================================
 
     if (
@@ -10206,10 +10273,11 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // 7) CREAR SNAPSHOT NUEVO
+    // 11) CREAR SNAPSHOT NUEVO
     // =====================================================
 
     if (persistir) {
+
       PREV.sets.set(
         `${s.coordinadorId}/${s.id}`,
         {
@@ -10234,9 +10302,12 @@ async function guardarSet(i){
         }
       );
 
+
       delete s._isNew;
 
+
     } else {
+
       s._ownerCoordId =
         null;
 
@@ -10246,15 +10317,22 @@ async function guardarSet(i){
 
 
     // =====================================================
-    // 8) ACTUALIZAR PREV.GRUPOS
+    // 12) ACTUALIZAR PREV.GRUPOS
     // =====================================================
 
     afectados.forEach(
-      gid => {
+      rawGid => {
+        const gid =
+          String(
+            rawGid
+          );
+
+
         const g =
           ID2GRUPO.get(
             gid
           );
+
 
         if (!g) {
           return;
@@ -10313,6 +10391,15 @@ async function guardarSet(i){
     );
 
 
+    // =====================================================
+    // 13) REDIBUJAR
+    // =====================================================
+
+    evaluarAlertas();
+
+    render();
+
+
     L(
       `guardarSet[MULTI][${i}] OK`,
       {
@@ -10325,30 +10412,35 @@ async function guardarSet(i){
         viajes:
           viajes.length,
 
-        gruposReconstruidos:
-          afectados.size
+        gruposActualizados:
+          gruposAActualizar
       }
     );
 
+
   }catch(e){
+
     E(
       `guardarSet[MULTI][${i}] error:`,
       e
     );
 
+
     alert(
       'Error al guardar este grupo de viajes. Revisa la consola.'
     );
 
+
     throw e;
 
+
   }finally{
+
     console.timeEnd(
       `guardarSet[MULTI][${i}]`
     );
   }
 }
-
 /* =========================================================
    EXCEL GESTIÓN COORDINADORES
    ========================================================= */
