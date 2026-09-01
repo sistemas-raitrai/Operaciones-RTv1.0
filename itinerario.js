@@ -795,6 +795,296 @@ async function resolverAlertasRevision(
 }
 
 // ======================================================
+// REGISTRAR CORRECCIONES SOBRE UNA ALERTA ACTIVA
+//
+// La alerta NO se resuelve.
+//
+// Solamente vamos agregando:
+//
+// correcciones: [
+//   {
+//     numero: 1,
+//     usuario,
+//     timestamp,
+//     cambios: [
+//       {
+//         campo,
+//         anterior,
+//         nuevo
+//       }
+//     ]
+//   }
+// ]
+//
+// Esto permite mostrar:
+//
+// RECHAZO
+// ↓
+// CORRECCIÓN 1
+// ↓
+// CORRECCIÓN 2
+// ↓
+// PENDIENTE DE OK
+//
+// sin perder el motivo original.
+// ======================================================
+
+async function registrarCorreccionAlertaRevision(
+  grupoId,
+  filtro,
+  cambios = []
+) {
+  try {
+    if (
+      !grupoId ||
+      !Array.isArray(cambios) ||
+      !cambios.length
+    ) {
+      return 0;
+    }
+
+    const snap =
+      await getDocs(
+        collection(
+          db,
+          'grupos',
+          grupoId,
+          'alertas'
+        )
+      );
+
+    const candidatas =
+      snap.docs.filter(d => {
+        const a =
+          d.data() || {};
+
+        // Ya resuelta: no corresponde.
+        if (
+          a.resuelta ===
+          true
+        ) {
+          return false;
+        }
+
+        const tipo =
+          a.tipo ||
+          'actividad';
+
+        if (
+          filtro.tipo &&
+          tipo !==
+            filtro.tipo
+        ) {
+          return false;
+        }
+
+        if (
+          filtro.fecha &&
+          a.fecha !==
+            filtro.fecha
+        ) {
+          return false;
+        }
+
+        // ------------------------------------------
+        // ACTIVIDAD
+        // ------------------------------------------
+        if (
+          filtro.tipo ===
+          'actividad'
+        ) {
+          // Nuevas alertas:
+          // preferimos idx.
+          if (
+            Number.isInteger(
+              filtro.idx
+            ) &&
+            Number.isInteger(
+              a.idx
+            )
+          ) {
+            return (
+              a.idx ===
+              filtro.idx
+            );
+          }
+
+          // Alertas antiguas:
+          // respaldo por nombre.
+          if (
+            filtro.actividad
+          ) {
+            return (
+              (
+                a.actividad ||
+                ''
+              ) ===
+              filtro.actividad
+            );
+          }
+        }
+
+        return true;
+      });
+
+    if (
+      !candidatas.length
+    ) {
+      return 0;
+    }
+
+    // Si hubiera más de una alerta antigua coincidente,
+    // tomamos la más reciente.
+    const getTime =
+      value => {
+        try {
+          if (
+            value?.toDate
+          ) {
+            return value
+              .toDate()
+              .getTime();
+          }
+
+          const d =
+            new Date(value || 0);
+
+          return Number.isNaN(
+            d.getTime()
+          )
+            ? 0
+            : d.getTime();
+
+        } catch (_) {
+          return 0;
+        }
+      };
+
+    candidatas.sort(
+      (a, b) =>
+        getTime(
+          b.data()?.creadoEn
+        ) -
+        getTime(
+          a.data()?.creadoEn
+        )
+    );
+
+    const docAlerta =
+      candidatas[0];
+
+    const alerta =
+      docAlerta.data() ||
+      {};
+
+    const correccionesActuales =
+      Array.isArray(
+        alerta.correcciones
+      )
+        ? alerta.correcciones.slice()
+        : [];
+
+    const correccion = {
+      numero:
+        correccionesActuales.length +
+        1,
+
+      usuario:
+        auth.currentUser?.email ||
+        '',
+
+      timestamp:
+        new Date(),
+
+      cambios:
+        cambios.map(c => ({
+          campo:
+            c.campo ||
+            '',
+
+          anterior:
+            c.anterior ??
+            '—',
+
+          nuevo:
+            c.nuevo ??
+            '—'
+        }))
+    };
+
+    correccionesActuales.push(
+      correccion
+    );
+
+    await updateDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId,
+        'alertas',
+        docAlerta.id
+      ),
+      {
+        correcciones:
+          correccionesActuales,
+
+        // Estado visual de la alerta.
+        estadoCorreccion:
+          'corregido_pendiente_ok',
+
+        corregidaPor:
+          auth.currentUser?.email ||
+          '',
+
+        corregidaEn:
+          new Date()
+      }
+    );
+
+    return 1;
+
+  } catch (e) {
+    console.warn(
+      'No se pudo registrar la corrección de la alerta:',
+      e
+    );
+
+    return 0;
+  }
+}
+
+
+// ======================================================
+// OBTENER CAMBIOS REALES DE CONTENIDO
+//
+// Usa el helper que ya existe:
+// obtenerCambiosActividadHistorial()
+//
+// pero eliminamos "Revisión", porque para esta lista
+// queremos mostrar QUÉ se corrigió realmente.
+//
+// Ejemplo:
+//
+// 1. Hora inicio: 14:00 → 15:00
+// 2. PAX: 30 → 32
+// 3. Notas: — → PEDIR TICKETS...
+// ======================================================
+
+function obtenerCambiosCorreccionActividad(
+  antes,
+  despues
+) {
+  return obtenerCambiosActividadHistorial(
+    antes,
+    despues
+  ).filter(
+    c =>
+      c.campo !==
+      'Revisión'
+  );
+}
+
+// ======================================================
 // REVISIÓN GENERAL DEL GRUPO
 // ======================================================
 
@@ -2817,25 +3107,33 @@ function ordenarAlertasDesc(
 
 
 function renderListaAlertasRevision(
-  lista,
-  rows,
-  {
-    mostrarGrupo = false,
-    resueltas = false
-  } = {}
+  contenedor,
+  alertas,
+  opciones = {}
 ) {
-  if (!lista) {
+  if (
+    !contenedor
+  ) {
     return;
   }
 
-  if (!rows.length) {
-    lista.innerHTML = `
+  const mostrarGrupo =
+    !!opciones.mostrarGrupo;
+
+  const resueltas =
+    !!opciones.resueltas;
+
+  if (
+    !Array.isArray(alertas) ||
+    !alertas.length
+  ) {
+    contenedor.innerHTML = `
       <li class="alert-item">
-        <div>
+        <div class="meta">
           ${
             resueltas
-              ? '— No hay rechazos resueltos —'
-              : '— No hay rechazos activos —'
+              ? '— Sin alertas resueltas —'
+              : '— Sin alertas activas —'
           }
         </div>
       </li>
@@ -2844,183 +3142,472 @@ function renderListaAlertasRevision(
     return;
   }
 
-  lista.innerHTML =
-    rows.map(a => {
-
-      const tipo =
-        etiquetaTipoAlerta(
-          a.tipo
+  const escapeHTML =
+    value =>
+      (
+        value ??
+        ''
+      )
+        .toString()
+        .replaceAll(
+          '&',
+          '&amp;'
+        )
+        .replaceAll(
+          '<',
+          '&lt;'
+        )
+        .replaceAll(
+          '>',
+          '&gt;'
+        )
+        .replaceAll(
+          '"',
+          '&quot;'
+        )
+        .replaceAll(
+          "'",
+          '&#039;'
         );
 
-      const titulo =
-        a.tipo === 'grupo'
-          ? 'REVISIÓN GENERAL DEL ITINERARIO'
-          : a.tipo === 'dia'
-            ? (
-                a.actividad ||
-                `DÍA ${a.fecha || ''}`
-              )
-            : (
-                a.actividad ||
-                '(actividad)'
-              );
+  contenedor.innerHTML =
+    alertas.map(
+      (a, indexAlerta) => {
 
-      return `
-        <li
-          class="alert-item ${
-            resueltas
-              ? 'visto'
-              : ''
-          }"
-        >
-          <div>
+        const tipo =
+          etiquetaTipoAlerta(
+            a.tipo ||
+            'actividad'
+          );
 
-            ${
-              mostrarGrupo
-                ? `
-                    <div
-                      style="
-                        margin-bottom:5px;
-                      "
-                    >
-                      <strong>
-                        #${a.numeroNegocio || '—'}
-                        ·
-                        ${
-                          (
-                            a.nombreGrupo ||
-                            ''
-                          )
-                            .toString()
-                            .toUpperCase()
-                        }
-                      </strong>
-                    </div>
-                  `
-                : ''
-            }
+        const titulo =
+          a.tipo ===
+          'dia'
+            ? `DÍA ${a.fecha || ''}`
+            : a.tipo ===
+                'grupo'
+              ? 'REVISIÓN GENERAL'
+              : (
+                  a.actividad ||
+                  'ACTIVIDAD'
+                );
 
-            <div>
-              <strong>
-                ${
-                  resueltas
-                    ? '✅'
-                    : '❌'
-                }
-                ${tipo}
-                ·
-                ${titulo}
-              </strong>
+        const correcciones =
+          Array.isArray(
+            a.correcciones
+          )
+            ? a.correcciones
+            : [];
+
+        const tieneCorrecciones =
+          correcciones.length >
+          0;
+
+        // --------------------------------------------
+        // ESTADO VISUAL
+        // --------------------------------------------
+
+        let estadoHTML =
+          '';
+
+        if (
+          resueltas ||
+          a.resuelta ===
+          true
+        ) {
+          estadoHTML = `
+            <div
+              style="
+                display:inline-block;
+                margin-top:6px;
+                padding:4px 8px;
+                border-radius:999px;
+                background:#dcfce7;
+                color:#166534;
+                font-size:.82rem;
+                font-weight:700;
+              "
+            >
+              ✅ RESUELTO
             </div>
+          `;
 
-            ${
-              a.fecha
-                ? `
-                    <div class="meta">
-                      ${formatDiaItinerario(
-                        a.fecha
-                      )}
-                      ${
-                        a.horaInicio
-                          ? ` · ${a.horaInicio}${
-                              a.horaFin
-                                ? '–' + a.horaFin
-                                : ''
-                            }`
-                          : ''
-                      }
-                    </div>
-                  `
-                : ''
-            }
+        } else if (
+          tieneCorrecciones ||
+          a.estadoCorreccion ===
+            'corregido_pendiente_ok'
+        ) {
+          estadoHTML = `
+            <div
+              style="
+                display:inline-block;
+                margin-top:6px;
+                padding:4px 8px;
+                border-radius:999px;
+                background:#ffedd5;
+                color:#9a3412;
+                font-size:.82rem;
+                font-weight:700;
+              "
+            >
+              🟠 CORREGIDO · PENDIENTE DE OK
+            </div>
+          `;
 
-            ${
-              a.motivo
-                ? `
-                    <div class="motivo">
-                      <strong>
-                        Justificación:
-                      </strong>
-                      ${a.motivo}
-                    </div>
-                  `
-                : ''
-            }
+        } else {
+          estadoHTML = `
+            <div
+              style="
+                display:inline-block;
+                margin-top:6px;
+                padding:4px 8px;
+                border-radius:999px;
+                background:#fee2e2;
+                color:#991b1b;
+                font-size:.82rem;
+                font-weight:700;
+              "
+            >
+              🔴 REQUIERE CORRECCIÓN
+            </div>
+          `;
+        }
 
-            ${
-              a.creadoPor ||
-              a.creadoEn
-                ? `
-                    <div
-                      class="meta"
-                      style="
-                        opacity:.72;
-                        margin-top:4px;
-                      "
-                    >
-                      Rechazado por:
-                      ${a.creadoPor || '—'}
+        // --------------------------------------------
+        // CORRECCIONES ENUMERADAS
+        // --------------------------------------------
 
-                      ${
-                        a.creadoEn
-                          ? ` · ${fmtTS(
-                              a.creadoEn
-                            )}`
-                          : ''
-                      }
-                    </div>
-                  `
-                : ''
-            }
+        const correccionesHTML =
+          tieneCorrecciones
+            ? `
+                <div
+                  style="
+                    margin-top:10px;
+                    padding-top:8px;
+                    border-top:1px solid #e5e7eb;
+                  "
+                >
+                  <strong>
+                    Cambios realizados
+                  </strong>
 
-            ${
-              resueltas
-                ? `
-                    <div
-                      class="meta"
-                      style="
-                        margin-top:6px;
-                        padding-top:5px;
-                        border-top:1px solid #e5e7eb;
-                      "
-                    >
-                      <strong>
-                        Resuelta:
-                      </strong>
+                  ${correcciones.map(
+                    (correccion, idxCorreccion) => {
 
-                      ${
-                        a.resueltaMotivo ||
-                        (
-                          a.visto &&
-                          a.resuelta ===
-                            undefined
-                            ? 'Registro anterior'
-                            : 'Cambio de estado'
+                      const cambios =
+                        Array.isArray(
+                          correccion.cambios
                         )
-                      }
+                          ? correccion.cambios
+                          : [];
 
-                      ${
-                        a.resueltaPor
-                          ? ` · ${a.resueltaPor}`
-                          : ''
-                      }
+                      return `
+                        <div
+                          style="
+                            margin-top:8px;
+                            padding:8px;
+                            background:#fff7ed;
+                            border-radius:7px;
+                          "
+                        >
+                          <div>
+                            <strong>
+                              Corrección ${idxCorreccion + 1}
+                            </strong>
 
-                      ${
-                        a.resueltaEn
-                          ? ` · ${fmtTS(
-                              a.resueltaEn
-                            )}`
-                          : ''
-                      }
-                    </div>
-                  `
-                : ''
-            }
+                            ${
+                              correccion.usuario
+                                ? `
+                                    <span class="meta">
+                                      · ${escapeHTML(
+                                        correccion.usuario
+                                      )}
+                                    </span>
+                                  `
+                                : ''
+                            }
 
-          </div>
-        </li>
-      `;
-    }).join('');
+                            ${
+                              correccion.timestamp
+                                ? `
+                                    <span class="meta">
+                                      · ${fmtTS(
+                                        correccion.timestamp
+                                      )}
+                                    </span>
+                                  `
+                                : ''
+                            }
+                          </div>
+
+                          ${
+                            cambios.length
+                              ? `
+                                  <ol
+                                    style="
+                                      margin:6px 0 0 20px;
+                                      padding:0;
+                                    "
+                                  >
+                                    ${cambios.map(
+                                      c => `
+                                        <li
+                                          style="
+                                            margin:3px 0;
+                                          "
+                                        >
+                                          <strong>
+                                            ${escapeHTML(
+                                              c.campo
+                                            )}:
+                                          </strong>
+
+                                          ${escapeHTML(
+                                            c.anterior
+                                          )}
+
+                                          →
+
+                                          ${escapeHTML(
+                                            c.nuevo
+                                          )}
+                                        </li>
+                                      `
+                                    ).join('')}
+                                  </ol>
+                                `
+                              : `
+                                  <div class="meta">
+                                    Actividad modificada después del rechazo.
+                                  </div>
+                                `
+                          }
+                        </div>
+                      `;
+                    }
+                  ).join('')}
+                </div>
+              `
+            : '';
+
+        return `
+          <li
+            class="alert-item"
+            style="
+              margin-bottom:10px;
+            "
+          >
+            <div
+              style="
+                padding:10px;
+              "
+            >
+
+              ${
+                mostrarGrupo
+                  ? `
+                      <div
+                        class="meta"
+                        style="
+                          margin-bottom:5px;
+                        "
+                      >
+                        <strong>
+                          #${escapeHTML(
+                            a.numeroNegocio ||
+                            a.grupoId ||
+                            ''
+                          )}
+                        </strong>
+
+                        ${
+                          a.nombreGrupo
+                            ? `
+                                ·
+                                ${escapeHTML(
+                                  (
+                                    a.nombreGrupo ||
+                                    ''
+                                  )
+                                    .toString()
+                                    .toUpperCase()
+                                )}
+                              `
+                            : ''
+                        }
+                      </div>
+                    `
+                  : ''
+              }
+
+              <div>
+                <strong>
+                  ${
+                    resueltas
+                      ? '✅'
+                      : '❌'
+                  }
+
+                  ${escapeHTML(
+                    tipo
+                  )}
+
+                  ·
+
+                  ${escapeHTML(
+                    titulo
+                  )}
+                </strong>
+              </div>
+
+              ${
+                a.fecha
+                  ? `
+                      <div class="meta">
+                        ${escapeHTML(
+                          formatDiaItinerario(
+                            a.fecha
+                          )
+                        )}
+
+                        ${
+                          a.horaInicio
+                            ? `
+                                ·
+                                ${escapeHTML(
+                                  a.horaInicio
+                                )}${
+                                  a.horaFin
+                                    ? `–${escapeHTML(
+                                        a.horaFin
+                                      )}`
+                                    : ''
+                                }
+                              `
+                            : ''
+                        }
+                      </div>
+                    `
+                  : ''
+              }
+
+              ${estadoHTML}
+
+              ${
+                a.motivo
+                  ? `
+                      <div
+                        class="motivo"
+                        style="
+                          margin-top:8px;
+                        "
+                      >
+                        <strong>
+                          Motivo original del rechazo:
+                        </strong>
+
+                        ${escapeHTML(
+                          a.motivo
+                        )}
+                      </div>
+                    `
+                  : ''
+              }
+
+              ${
+                a.creadoPor ||
+                a.creadoEn
+                  ? `
+                      <div
+                        class="meta"
+                        style="
+                          opacity:.72;
+                          margin-top:5px;
+                        "
+                      >
+                        Rechazado por:
+                        ${escapeHTML(
+                          a.creadoPor ||
+                          '—'
+                        )}
+
+                        ${
+                          a.creadoEn
+                            ? `
+                                ·
+                                ${fmtTS(
+                                  a.creadoEn
+                                )}
+                              `
+                            : ''
+                        }
+                      </div>
+                    `
+                  : ''
+              }
+
+              ${correccionesHTML}
+
+              ${
+                resueltas
+                  ? `
+                      <div
+                        style="
+                          margin-top:10px;
+                          padding-top:8px;
+                          border-top:1px solid #d1d5db;
+                        "
+                      >
+                        <strong>
+                          Resolución
+                        </strong>
+
+                        <div class="meta">
+                          ${
+                            escapeHTML(
+                              a.resueltaMotivo ||
+                              (
+                                a.visto &&
+                                a.resuelta ===
+                                  undefined
+                                  ? 'Registro anterior'
+                                  : 'Revisión aprobada'
+                              )
+                            )
+                          }
+
+                          ${
+                            a.resueltaPor
+                              ? `
+                                  ·
+                                  ${escapeHTML(
+                                    a.resueltaPor
+                                  )}
+                                `
+                              : ''
+                          }
+
+                          ${
+                            a.resueltaEn
+                              ? `
+                                  ·
+                                  ${fmtTS(
+                                    a.resueltaEn
+                                  )}
+                                `
+                              : ''
+                          }
+                        </div>
+                      </div>
+                    `
+                  : ''
+              }
+
+            </div>
+          </li>
+        `;
+      }
+    ).join('');
 }
 
 async function openAlertasPanel(
@@ -3787,6 +4374,49 @@ async function renderItinerario() {
       h3.appendChild(
         badge
       );
+
+      // =================================================
+      // OBSERVACIÓN VISIBLE DE LA REVISIÓN DEL DÍA
+      // =================================================
+      
+      if (
+        revisionDiaActual.observacion &&
+        revisionDiaActual.observacion.trim()
+      ) {
+        const observacionDia =
+          document.createElement(
+            'div'
+          );
+      
+        observacionDia.className =
+          `revision-motivo-visible ${
+            revisionDiaActual.estado ===
+              'rechazado'
+              ? 'rechazado'
+              : ''
+          }`;
+      
+        observacionDia.style.margin =
+          '6px 0 10px';
+      
+        observacionDia.innerHTML = `
+          <strong>
+            ${
+              revisionDiaActual.estado ===
+                'rechazado'
+                ? '❌ Observación del rechazo del día:'
+                : 'Observación del día:'
+            }
+          </strong>
+      
+          ${revisionDiaActual.observacion}
+        `;
+      
+        h3.insertAdjacentElement(
+          'afterend',
+          observacionDia
+        );
+      }
 
       // =================================================
       // EDICIÓN DEL DÍA
@@ -5011,7 +5641,7 @@ async function onSubmitModal(evt) {
   // ==================================================
   // EDITAR ACTIVIDAD
   // ==================================================
-
+  
   if (
     editData
   ) {
@@ -5019,7 +5649,7 @@ async function onSubmitModal(evt) {
       arr[
         editData.idx
       ];
-
+  
     if (
       !beforeObj
     ) {
@@ -5027,100 +5657,191 @@ async function onSubmitModal(evt) {
         "No se encontró la actividad que intentas editar."
       );
     }
-
-    // Una edición del contenido deja nuevamente
-    // la actividad pendiente de revisión.
+  
+    // ==================================================
+    // CONSERVAR MOTIVO ORIGINAL
+    //
+    // Si venía rechazada, NO borramos el motivo.
+    //
+    // La actividad pasa a PENDIENTE porque fue corregida,
+    // pero el rechazo original continúa disponible
+    // hasta que el revisor entregue el OK.
+    // ==================================================
+  
+    const motivoOriginal =
+      (
+        beforeObj.revisionMotivoOriginal ||
+        beforeObj.revisionObservacion ||
+        beforeObj.rechazoMotivo ||
+        ''
+      )
+        .toString()
+        .trim();
+  
     const afterObj = {
       ...payloadBase,
-
+  
       revision:
         'pendiente',
-
+  
+      // Texto de estado actual.
       revisionObservacion:
-        'Actividad modificada después de revisión. Requiere nueva revisión.',
-
+        motivoOriginal,
+  
+      // Motivo histórico del rechazo.
+      revisionMotivoOriginal:
+        motivoOriginal,
+  
       revisionUsuario:
         auth.currentUser?.email ||
         '',
-
+  
       revisionTimestamp:
         new Date(),
-
+  
+      // Compatibilidad con estructura antigua.
+      //
+      // NO lo eliminamos porque puede ser necesario
+      // para reconstruir rechazos antiguos.
       rechazoMotivo:
-        ''
+        motivoOriginal
     };
-
+  
     arr[
       editData.idx
     ] =
       afterObj;
-
-    // Historial UNA sola vez.
+  
+    // ==================================================
+    // DETECTAR QUÉ CAMBIÓ REALMENTE
+    // ==================================================
+  
+    const cambiosCorreccion =
+      obtenerCambiosCorreccionActividad(
+        beforeObj,
+        afterObj
+      );
+  
+    // ==================================================
+    // HISTORIAL
+    // ==================================================
+  
     await logHist(
       grupoId,
       'MODIFICAR ACTIVIDAD',
       {
         _group:
           g,
-
+  
         categoria:
           'ITINERARIO',
-
+  
         fecha,
-
+  
         fechaActividad:
           fecha,
-
+  
         idx:
           editData.idx,
-
+  
         actividad:
           afterObj.actividad ||
           beforeObj.actividad ||
           '',
-
+  
         anterior:
           beforeObj.actividad ||
           '',
-
+  
         nuevo:
           afterObj.actividad ||
           '',
-
+  
         estadoAnterior:
           beforeObj.revision ||
           'pendiente',
-
+  
         estadoNuevo:
           'pendiente',
-
+  
         antesObj:
           beforeObj,
-
+  
         despuesObj:
           afterObj,
-
+  
+        // NUEVO:
+        // queda explícito que esta edición
+        // fue una corrección posterior al rechazo.
+        esCorreccionRevision:
+          (
+            beforeObj.revision ===
+            'rechazado'
+          ) ||
+          !!motivoOriginal,
+  
+        cambiosCorreccion,
+  
         path:
           `itinerario.${fecha}[${editData.idx}]`
       }
     );
-
+  
+    // ==================================================
+    // REGISTRAR CORRECCIÓN EN LA ALERTA
+    //
+    // IMPORTANTE:
+    // esto NO resuelve la alerta.
+    //
+    // Solamente agrega:
+    //
+    // Corrección 1
+    // Corrección 2
+    // Corrección 3...
+    // ==================================================
+  
+    if (
+      cambiosCorreccion.length
+    ) {
+      await registrarCorreccionAlertaRevision(
+        grupoId,
+        {
+          tipo:
+            'actividad',
+  
+          fecha,
+  
+          idx:
+            editData.idx,
+  
+          // Para alertas antiguas sin idx usamos
+          // el nombre ANTERIOR como respaldo.
+          actividad:
+            beforeObj.actividad ||
+            afterObj.actividad ||
+            ''
+        },
+        cambiosCorreccion
+      );
+    }
+  
     // ==================================================
     // MUY IMPORTANTE
     //
     // NO llamamos resolverAlertasRevision().
     //
-    // Editar una actividad NO significa que el rechazo
-    // haya sido revisado ni aprobado.
+    // Editar = corregir.
+    // Editar NO = aprobar.
     //
-    // La alerta sigue activa.
+    // La alerta continúa activa y queda visualmente como:
+    //
+    // 🟠 CORREGIDO · PENDIENTE DE OK
     // ==================================================
-
+  
     await marcarGrupoPendientePorCambio(
       grupoId,
       `Se modificó la actividad "${afterObj.actividad || ''}".`
     );
-
   // ==================================================
   // CREAR ACTIVIDAD
   // ==================================================
