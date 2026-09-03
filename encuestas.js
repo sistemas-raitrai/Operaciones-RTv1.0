@@ -32,6 +32,12 @@ const FUNCTION_URLS = Object.freeze({
   publicar:
     "https://publicarencuestaviaje-r3llfis4wa-tl.a.run.app",
 
+  actualizar:
+    "https://actualizarencuestaviaje-r3llfis4wa-tl.a.run.app",
+
+  reiniciar:
+    "https://reiniciarencuestaviaje-r3llfis4wa-tl.a.run.app",
+
   cambiarEstado:
     "https://cambiarestadoencuestaviaje-r3llfis4wa-tl.a.run.app",
 
@@ -2795,6 +2801,38 @@ function reemplazarEncuestaState(encuesta) {
   );
 }
 
+async function refrescarEncuestaActual() {
+  if (
+    !state.encuestaActual?.id
+  ) {
+    return null;
+  }
+
+  const snap =
+    await getDoc(
+      doc(
+        db,
+        "encuestas_viaje",
+        state.encuestaActual.id
+      )
+    );
+
+  if (!snap.exists()) {
+    return null;
+  }
+
+  state.encuestaActual = {
+    id: snap.id,
+    ...snap.data()
+  };
+
+  reemplazarEncuestaState(
+    state.encuestaActual
+  );
+
+  return state.encuestaActual;
+}
+
 /* =========================================================
    PUBLICAR
 ========================================================= */
@@ -2938,6 +2976,256 @@ async function publicarEncuesta() {
   }
 }
 
+async function guardarCambiosEncuesta() {
+  if (
+    !state.encuestaActual?.id
+  ) {
+    return;
+  }
+
+  try {
+    ocultarModalMensaje();
+
+    const disponibleDesdeRaw =
+      $("disponibleDesde")?.value ||
+      "";
+
+    const disponibleHastaRaw =
+      $("disponibleHasta")?.value ||
+      "";
+
+    if (
+      !disponibleDesdeRaw
+    ) {
+      mostrarModalMensaje(
+        "error",
+        "Debes indicar la fecha y hora de apertura."
+      );
+
+      return;
+    }
+
+    if (
+      disponibleHastaRaw &&
+      new Date(disponibleHastaRaw).getTime() <=
+      new Date(disponibleDesdeRaw).getTime()
+    ) {
+      mostrarModalMensaje(
+        "error",
+        "La fecha de cierre debe ser posterior a la fecha de apertura."
+      );
+
+      return;
+    }
+
+    const sinConfigurar =
+      state.actividades.filter(
+        item =>
+          item.modalidad ===
+          "sin_configurar"
+      );
+
+    if (sinConfigurar.length) {
+      mostrarModalMensaje(
+        "error",
+        `Existen ${sinConfigurar.length} actividades sin configurar.`
+      );
+
+      activarPanel(
+        "actividades"
+      );
+
+      return;
+    }
+
+    const aleatoriasDisponibles =
+      state.actividades.filter(
+        item =>
+          item.modalidad ===
+          "aleatoria"
+      ).length;
+
+    const cantidadAleatorias =
+      Math.max(
+        0,
+        Number(
+          $("cantidadAleatorias")?.value ||
+          0
+        )
+      );
+
+    if (
+      cantidadAleatorias >
+      aleatoriasDisponibles
+    ) {
+      mostrarModalMensaje(
+        "error",
+        `Solicitaste ${cantidadAleatorias} actividades aleatorias, pero solamente existen ${aleatoriasDisponibles}.`
+      );
+
+      return;
+    }
+
+    progressSet(
+      35,
+      "Guardando cambios...",
+      "Actualizando configuración de la encuesta"
+    );
+
+    await guardarReglasSeleccionadas();
+
+    const payload =
+      construirPayloadEncuesta();
+
+    const respuesta =
+      await postInterno(
+        FUNCTION_URLS.actualizar,
+        {
+          ...payload,
+
+          encuestaId:
+            state.encuestaActual.id,
+
+          disponibleDesde:
+            new Date(
+              disponibleDesdeRaw
+            ).toISOString(),
+
+          disponibleHasta:
+            disponibleHastaRaw
+              ? new Date(
+                  disponibleHastaRaw
+                ).toISOString()
+              : ""
+        }
+      );
+
+    await refrescarEncuestaActual();
+
+    configurarModalGrupo();
+
+    if (
+      respuesta.configuracionBloqueada ===
+      true
+    ) {
+      mostrarModalMensaje(
+        "ok",
+        "Las fechas fueron actualizadas. Las preguntas no se modificaron porque la encuesta ya tiene respuestas."
+      );
+    } else {
+      mostrarModalMensaje(
+        "ok",
+        respuesta.estado === "activa"
+          ? "Cambios guardados. La encuesta está activa."
+          : "Los cambios fueron guardados correctamente."
+      );
+    }
+
+    await cargarGestionActual();
+
+    progressOk(
+      "Cambios guardados."
+    );
+
+    buscar();
+
+  } catch (error) {
+    console.error(error);
+
+    progressError(error);
+
+    mostrarModalMensaje(
+      "error",
+      error.message ||
+      "No fue posible guardar los cambios."
+    );
+  }
+}
+
+async function reiniciarEncuesta() {
+  if (
+    !state.encuestaActual?.id
+  ) {
+    return;
+  }
+
+  const clave =
+    prompt(
+      "Esta acción eliminará todas las respuestas y dejará nuevamente a toda la nómina como pendiente.\n\nIngresa la clave para continuar:"
+    );
+
+  if (clave === null) {
+    return;
+  }
+
+  const confirmacion =
+    prompt(
+      "Para confirmar definitivamente, escribe REINICIAR:"
+    );
+
+  if (
+    cleanText(confirmacion)
+      .toUpperCase() !==
+    "REINICIAR"
+  ) {
+    mostrarModalMensaje(
+      "error",
+      "El reinicio fue cancelado porque la confirmación no coincide."
+    );
+
+    return;
+  }
+
+  try {
+    progressSet(
+      30,
+      "Reiniciando encuesta...",
+      "Eliminando respuestas y restaurando participantes"
+    );
+
+    const respuesta =
+      await postInterno(
+        FUNCTION_URLS.reiniciar,
+        {
+          encuestaId:
+            state.encuestaActual.id,
+
+          clave,
+
+          confirmacion:
+            "REINICIAR"
+        }
+      );
+
+    await refrescarEncuestaActual();
+    await cargarGestionActual();
+
+    configurarModalGrupo();
+
+    mostrarModalMensaje(
+      "ok",
+      `Encuesta reiniciada. Se eliminaron ${respuesta.respuestasEliminadas} respuestas y ${respuesta.participantesRestaurados} integrantes quedaron pendientes.`
+    );
+
+    progressOk(
+      "Encuesta reiniciada."
+    );
+
+    buscar();
+
+  } catch (error) {
+    console.error(error);
+
+    progressError(error);
+
+    mostrarModalMensaje(
+      "error",
+      error.message ||
+      "No fue posible reiniciar la encuesta."
+    );
+  }
+}
+
 /* =========================================================
    CERRAR / REABRIR
 ========================================================= */
@@ -3017,35 +3305,86 @@ function actualizarBotonesEstado() {
       state.encuestaActual
     );
 
-  const publicada =
-    ["activa", "programada"]
-      .includes(estado);
+  const existeEncuesta =
+    !!state.encuestaActual?.id;
+
+  const esBorrador =
+    estado === "borrador" ||
+    estado === "sin_crear";
+
+  const estaPublicada =
+    estado === "activa" ||
+    estado === "programada";
+
+  const estaCerrada =
+    estado === "cerrada";
+
+  const estaAnulada =
+    estado === "anulada";
 
   $("btnGuardarBorrador")
-    .classList.toggle(
+    ?.classList.toggle(
       "hidden",
-      publicada
+      !esBorrador
     );
 
   $("btnPublicarEncuesta")
-    .classList.toggle(
+    ?.classList.toggle(
       "hidden",
-      publicada
+      !esBorrador
+    );
+
+  $("btnGuardarCambios")
+    ?.classList.toggle(
+      "hidden",
+      !existeEncuesta ||
+      esBorrador ||
+      estaAnulada
     );
 
   $("btnCerrarEncuesta")
-    .classList.toggle(
+    ?.classList.toggle(
       "hidden",
-      !publicada
+      !estaPublicada
     );
 
   $("btnReabrirEncuesta")
-    .classList.toggle(
+    ?.classList.toggle(
       "hidden",
-      estado !== "cerrada"
+      !estaCerrada
     );
-}
 
+  $("btnReiniciarEncuesta")
+    ?.classList.toggle(
+      "hidden",
+      !existeEncuesta ||
+      esBorrador ||
+      estaAnulada
+    );
+
+  /*
+    Si ya existen respuestas, las fechas continúan
+    editables, pero el backend protegerá las preguntas.
+  */
+  const tieneRespuestas =
+    Number(
+      state.encuestaActual
+        ?.totalRespuestas ||
+      0
+    ) > 0;
+
+  $("cantidadAleatorias").disabled =
+    tieneRespuestas;
+
+  document
+    .querySelectorAll(
+      ".actividadModalidad, .actividadGuardarEn"
+    )
+    .forEach(element => {
+      element.disabled =
+        tieneRespuestas;
+    });
+}
 /* =========================================================
    SEGUIMIENTO Y RESULTADOS
 ========================================================= */
@@ -3862,6 +4201,18 @@ function conectarEventos() {
     ?.addEventListener(
       "click",
       publicarEncuesta
+    );
+
+  $("btnGuardarCambios")
+    ?.addEventListener(
+      "click",
+      guardarCambiosEncuesta
+    );
+
+  $("btnReiniciarEncuesta")
+    ?.addEventListener(
+      "click",
+      reiniciarEncuesta
     );
 
   $("btnCerrarEncuesta")
