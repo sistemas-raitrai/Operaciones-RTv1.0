@@ -2394,7 +2394,7 @@ function actualizarResumenPreguntas() {
   $("cantidadObligatorias").textContent =
     obligatorias;
 
-  $("cantidadAleatorias").textContent =
+  $("cantidadAleatoriasDetectadas").textContent =
     aleatorias;
 
   $("cantidadExcluidas").textContent =
@@ -2402,15 +2402,6 @@ function actualizarResumenPreguntas() {
 
   $("cantidadSinConfigurar").textContent =
     sinConfigurar;
-
-  const cantidadSolicitada =
-    Math.max(
-      0,
-      Number(
-        $("cantidadAleatorias")
-          ?.closest(".enc-follow-card")
-      )
-    );
 
   const cantidadPorPersona =
     Math.max(
