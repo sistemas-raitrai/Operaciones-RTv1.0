@@ -5745,10 +5745,44 @@ function buildFinanzasDoc(
   const colegio = grupo.colegio || grupo.cliente || '';
   const curso   = getCursoOperacional(grupo);
   const destino = grupo.destino || '';
-  const programa= grupo.programa || '';
-  const ano     = grupo.anoViaje || '';
+  const programa = grupo.programa || '';
+  const ano = grupo.anoViaje || '';
 
-  const lineaPrincipal = [nombreOperacional, destino].filter(Boolean).join(' · ');
+  const lineaPrincipal = [
+    nombreOperacional,
+    destino
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+
+  // ============================================================
+  // FECHAS OFICIALES DEL VIAJE
+  // ============================================================
+
+  const fechaInicioISO = toISO(
+    grupo.fechaInicio ||
+    grupo.fechaViaje ||
+    ''
+  );
+
+  const fechaFinISO = toISO(
+    grupo.fechaFin ||
+    grupo.fechaRegreso ||
+    ''
+  );
+
+
+  const fechaInicioTxt =
+    fechaInicioISO
+      ? formatShortDate(fechaInicioISO)
+      : '—';
+
+
+  const fechaFinTxt =
+    fechaFinISO
+      ? formatShortDate(fechaFinISO)
+      : '—';
 
   // ── RANGO DE VIAJE + DECORADO DE ABONOS (fechas y "IMPREVISTOS")
   const { inicio: inicioViajeISO, fin: finViajeISO } = computeRangoViaje(grupo, abonos || []);
@@ -6044,10 +6078,31 @@ function buildFinanzasDoc(
           <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
-            ${programa ? `<span>PROGRAMA: ${programa}</span>` : ''}
-            ${grupo.fechaInicio ? `<span>INICIO: ${grupo.fechaInicio}</span>` : ''}
-            ${grupo.fechaFin ? `<span>FIN: ${grupo.fechaFin}</span>` : ''}
-            ${ano ? `<span>AÑO VIAJE: ${ano}</span>` : ''}
+
+            ${
+              programa
+                ? `<span>PROGRAMA: ${programa}</span>`
+                : ''
+            }
+
+            ${
+              fechaInicioISO
+                ? `<span>INICIO: ${fechaInicioTxt}</span>`
+                : ''
+            }
+
+            ${
+              fechaFinISO
+                ? `<span>FIN: ${fechaFinTxt}</span>`
+                : ''
+            }
+
+            ${
+              ano
+                ? `<span>AÑO VIAJE: ${ano}</span>`
+                : ''
+            }
+
           </div>
           <div class="finanzas-meta">
             <span>CANTIDAD DE PASAJEROS:</span>
