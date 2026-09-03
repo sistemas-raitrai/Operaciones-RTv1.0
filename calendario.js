@@ -1667,9 +1667,7 @@ function inicializarDataTable(
 
       dom: 'Brt',
 
-      order: [
-        [5, 'asc']
-      ],
+      order: [],
 
       buttons: [
         {
