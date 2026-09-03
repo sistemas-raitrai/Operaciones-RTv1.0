@@ -1,0 +1,2011 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <title>
+    Encuestas de Viaje | RT v1.0
+  </title>
+
+  <link
+    rel="stylesheet"
+    href="estilos.css"
+  >
+
+  <link
+    rel="icon"
+    type="image/png"
+    href="Logo Raitrai.png"
+  >
+
+  <style>
+    :root {
+      color-scheme: light;
+
+      --enc-primary: #004080;
+      --enc-primary-light: #eaf2fb;
+      --enc-success: #198754;
+      --enc-warning: #b26a00;
+      --enc-danger: #c62828;
+      --enc-muted: #6b7280;
+      --enc-border: #d9dee7;
+      --enc-background: #f7f7f8;
+    }
+
+    html,
+    body {
+      background: var(--enc-background) !important;
+      color: #111 !important;
+    }
+
+    body.encuestas-page main.main.fullwidth {
+      display: block !important;
+      width: 100% !important;
+      max-width: none !important;
+      box-sizing: border-box;
+      margin: 12px 0 40px !important;
+      padding: 0 12px !important;
+    }
+
+    body.encuestas-page .main.fullwidth > .card {
+      display: block !important;
+      width: 100% !important;
+      max-width: none !important;
+      box-sizing: border-box;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      background: #fff;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .enc-muted {
+      color: var(--enc-muted);
+    }
+
+    .enc-page-title {
+      margin: 14px 0 12px;
+    }
+
+    .enc-alert {
+      display: none;
+      padding: 11px 13px;
+      margin-bottom: 12px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      line-height: 1.4;
+    }
+
+    .enc-alert.open {
+      display: block;
+    }
+
+    .enc-alert.info {
+      color: #16456f;
+      background: #eaf4ff;
+      border-color: #b8d9f6;
+    }
+
+    .enc-alert.ok {
+      color: #155c35;
+      background: #eaf8f0;
+      border-color: #b8e1c8;
+    }
+
+    .enc-alert.error {
+      color: #8c1d18;
+      background: #fff0ef;
+      border-color: #efc0bc;
+    }
+
+    .enc-filters {
+      padding: 13px;
+      margin-bottom: 12px;
+    }
+
+    .enc-filter-grid {
+      display: grid;
+      grid-template-columns:
+        minmax(220px, 2fr)
+        minmax(130px, 1fr)
+        minmax(120px, 1fr)
+        minmax(170px, 1.2fr)
+        minmax(170px, 1.2fr)
+        minmax(140px, 1fr);
+      gap: 12px;
+      align-items: end;
+    }
+
+    .enc-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .enc-field label {
+      font-size: .92rem;
+      font-weight: 700;
+    }
+
+    .enc-field input,
+    .enc-field select,
+    .enc-field textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 10px;
+      border: 1px solid #cfd5df;
+      border-radius: 8px;
+      background: #fff;
+      color: #111;
+      font: inherit;
+    }
+
+    .enc-field textarea {
+      min-height: 90px;
+      resize: vertical;
+    }
+
+    .enc-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .enc-toolbar .spacer {
+      flex: 1;
+    }
+
+    .enc-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 36px;
+      padding: 7px 13px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: .9rem;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .enc-btn:disabled {
+      cursor: not-allowed;
+      opacity: .55;
+    }
+
+    .enc-btn.primary {
+      color: #fff !important;
+      background: var(--enc-primary);
+      border-color: var(--enc-primary);
+    }
+
+    .enc-btn.secondary {
+      color: #111 !important;
+      background: #fff;
+      border-color: #cdd3dd;
+    }
+
+    .enc-btn.success {
+      color: #fff !important;
+      background: var(--enc-success);
+      border-color: var(--enc-success);
+    }
+
+    .enc-btn.warning {
+      color: #fff !important;
+      background: #ad6700;
+      border-color: #ad6700;
+    }
+
+    .enc-btn.danger {
+      color: #fff !important;
+      background: var(--enc-danger);
+      border-color: var(--enc-danger);
+    }
+
+    .enc-btn.small {
+      min-height: 31px;
+      padding: 5px 9px;
+      font-size: .82rem;
+    }
+
+    .enc-kpis {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .enc-kpi {
+      padding: 13px;
+      border: 1px solid var(--enc-border);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .enc-kpi-label {
+      margin-bottom: 5px;
+      color: var(--enc-muted);
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .enc-kpi-value {
+      font-size: 1.55rem;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .enc-table-card {
+      padding: 12px;
+    }
+
+    .enc-table-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 9px;
+    }
+
+    .enc-table-wrap {
+      width: 100%;
+      overflow: auto;
+    }
+
+    .enc-table {
+      width: 100%;
+      min-width: 1080px;
+      border-collapse: collapse;
+    }
+
+    .enc-table th,
+    .enc-table td {
+      padding: 9px 10px;
+      border-bottom: 1px solid #e3e6eb;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .enc-table thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: #f6f8fb;
+      font-size: .78rem;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .enc-table td.right,
+    .enc-table th.right {
+      text-align: right;
+    }
+
+    .enc-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 5px;
+      white-space: nowrap;
+    }
+
+    .enc-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3px 8px;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      font-size: .76rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .enc-badge.borrador {
+      color: #4b5563;
+      background: #f1f3f5;
+      border-color: #d8dde3;
+    }
+
+    .enc-badge.programada {
+      color: #765000;
+      background: #fff6dc;
+      border-color: #ecd796;
+    }
+
+    .enc-badge.activa {
+      color: #126038;
+      background: #eaf8f0;
+      border-color: #b9e0c8;
+    }
+
+    .enc-badge.cerrada {
+      color: #5c2a2a;
+      background: #f9eded;
+      border-color: #e6c4c4;
+    }
+
+    .enc-badge.anulada {
+      color: #fff;
+      background: var(--enc-danger);
+      border-color: var(--enc-danger);
+    }
+
+    .enc-progress-track {
+      width: 110px;
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e7eaf0;
+    }
+
+    .enc-progress-value {
+      width: 0;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--enc-success);
+    }
+
+    .enc-progress-label {
+      margin-top: 3px;
+      color: var(--enc-muted);
+      font-size: .75rem;
+    }
+
+    /* =====================================================
+       MODAL
+    ===================================================== */
+
+    .enc-modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      align-items: center;
+      justify-content: center;
+      padding: 14px;
+      background: rgba(0, 0, 0, .52);
+    }
+
+    .enc-modal-backdrop.open {
+      display: flex;
+    }
+
+    .enc-modal {
+      display: flex;
+      flex-direction: column;
+      width: min(1240px, 98vw);
+      height: min(92vh, 920px);
+      overflow: hidden;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 20px 55px rgba(0, 0, 0, .28);
+    }
+
+    .enc-modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex: 0 0 auto;
+      gap: 14px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--enc-border);
+      background: #f7f8fa;
+    }
+
+    .enc-modal-head h3 {
+      margin: 0;
+      font-size: 1.08rem;
+    }
+
+    .enc-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      color: #fff !important;
+      background: var(--enc-primary);
+      cursor: pointer;
+      font-size: 20px;
+    }
+
+    .enc-modal-body {
+      flex: 1 1 auto;
+      overflow: auto;
+      padding: 14px 16px 20px;
+    }
+
+    .enc-modal-footer {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border-top: 1px solid var(--enc-border);
+      background: #fff;
+    }
+
+    .enc-modal-footer .spacer {
+      flex: 1;
+    }
+
+    .enc-group-summary {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(130px, 1fr));
+      gap: 8px;
+      margin-bottom: 13px;
+    }
+
+    .enc-summary-item {
+      padding: 9px 10px;
+      border: 1px solid var(--enc-border);
+      border-radius: 8px;
+      background: #fafbfc;
+    }
+
+    .enc-summary-item .label {
+      color: var(--enc-muted);
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .enc-summary-item .value {
+      margin-top: 3px;
+      font-weight: 700;
+    }
+
+    .enc-tabs {
+      display: flex;
+      gap: 6px;
+      padding-bottom: 9px;
+      margin-bottom: 12px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--enc-border);
+    }
+
+    .enc-tab {
+      padding: 7px 11px;
+      border: 1px solid #cfd5df;
+      border-radius: 7px;
+      color: #333;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .enc-tab.active {
+      color: #fff;
+      background: var(--enc-primary);
+      border-color: var(--enc-primary);
+    }
+
+    .enc-panel {
+      display: none;
+    }
+
+    .enc-panel.active {
+      display: block;
+    }
+
+    .enc-section {
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid var(--enc-border);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    .enc-section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .enc-section-head h4 {
+      margin: 0;
+    }
+
+    .enc-config-grid {
+      display: grid;
+      grid-template-columns:
+        minmax(190px, 1fr)
+        minmax(190px, 1fr)
+        minmax(190px, 1fr);
+      gap: 10px;
+    }
+
+    .enc-activities-table {
+      width: 100%;
+      min-width: 920px;
+      border-collapse: collapse;
+    }
+
+    .enc-activities-table th,
+    .enc-activities-table td {
+      padding: 8px 9px;
+      border-bottom: 1px solid #e5e7eb;
+      vertical-align: middle;
+    }
+
+    .enc-activities-table th {
+      background: #f7f8fa;
+      font-size: .76rem;
+      text-transform: uppercase;
+    }
+
+    .enc-activities-table select {
+      width: 100%;
+      min-width: 135px;
+      padding: 7px 8px;
+      border: 1px solid #cfd5df;
+      border-radius: 7px;
+      background: #fff;
+    }
+
+    .enc-origin {
+      color: var(--enc-muted);
+      font-size: .78rem;
+    }
+
+    .enc-link-box {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+    }
+
+    .enc-link-box input {
+      flex: 1;
+      min-width: 0;
+      padding: 9px 10px;
+      border: 1px solid #cfd5df;
+      border-radius: 8px;
+      background: #f8fafc;
+    }
+
+    .enc-follow-kpis {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(140px, 1fr));
+      gap: 9px;
+      margin-bottom: 12px;
+    }
+
+    .enc-follow-card {
+      padding: 11px;
+      border: 1px solid var(--enc-border);
+      border-radius: 9px;
+      background: #fafbfc;
+    }
+
+    .enc-follow-card .number {
+      font-size: 1.45rem;
+      font-weight: 800;
+    }
+
+    .enc-follow-card .text {
+      color: var(--enc-muted);
+      font-size: .8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .enc-result-card {
+      padding: 12px;
+      margin-bottom: 10px;
+      border: 1px solid var(--enc-border);
+      border-radius: 9px;
+    }
+
+    .enc-result-card h5 {
+      margin: 0 0 9px;
+      font-size: .96rem;
+    }
+
+    .enc-result-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(90px, 1fr));
+      gap: 7px;
+    }
+
+    .enc-result-value {
+      padding: 8px;
+      border-radius: 7px;
+      background: #f6f7f9;
+      text-align: center;
+    }
+
+    .enc-result-value strong {
+      display: block;
+      font-size: 1.05rem;
+    }
+
+    .enc-result-value span {
+      color: var(--enc-muted);
+      font-size: .72rem;
+    }
+
+    .enc-comment {
+      padding: 9px 11px;
+      margin-bottom: 7px;
+      border-left: 4px solid var(--enc-primary);
+      border-radius: 5px;
+      background: #f7f9fc;
+      white-space: pre-wrap;
+    }
+
+    .enc-empty {
+      padding: 24px 12px;
+      color: var(--enc-muted);
+      text-align: center;
+    }
+
+    @media (max-width: 1100px) {
+      .enc-filter-grid {
+        grid-template-columns:
+          repeat(3, minmax(170px, 1fr));
+      }
+
+      .enc-kpis {
+        grid-template-columns:
+          repeat(3, minmax(150px, 1fr));
+      }
+
+      .enc-group-summary {
+        grid-template-columns:
+          repeat(3, minmax(130px, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .enc-filter-grid,
+      .enc-config-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .enc-kpis,
+      .enc-follow-kpis,
+      .enc-result-grid,
+      .enc-group-summary {
+        grid-template-columns:
+          repeat(2, minmax(0, 1fr));
+      }
+
+      .enc-toolbar .spacer,
+      .enc-modal-footer .spacer {
+        display: none;
+      }
+
+      .enc-toolbar,
+      .enc-modal-footer {
+        align-items: stretch;
+      }
+
+      .enc-btn {
+        flex: 1 1 auto;
+      }
+
+      .enc-modal-backdrop {
+        padding: 0;
+      }
+
+      .enc-modal {
+        width: 100vw;
+        height: 100vh;
+        border-radius: 0;
+      }
+    }
+  </style>
+
+  <script
+    src="./assets/rai-progress.js"
+  ></script>
+
+  <script
+    type="module"
+    src="./encuestas.js"
+  ></script>
+</head>
+
+<body class="encuestas-page">
+
+  <!-- Encabezado común del sistema -->
+  <div id="encabezado"></div>
+
+  <script type="module">
+    (async () => {
+      const html =
+        await (
+          await fetch("encabezado.html")
+        ).text();
+
+      document
+        .getElementById("encabezado")
+        .innerHTML = html;
+
+      await import("./firebase-init.js");
+      await import("./script.js");
+    })();
+  </script>
+
+  <main class="main fullwidth">
+
+    <h2 class="enc-page-title">
+      ENCUESTAS DE VIAJE
+    </h2>
+
+    <div
+      id="encMensaje"
+      class="enc-alert"
+    ></div>
+
+    <!-- ===================================================
+         FILTROS
+    ==================================================== -->
+
+    <section class="card enc-filters">
+
+      <div class="enc-filter-grid">
+
+        <div class="enc-field">
+          <label for="fGrupo">
+            Grupo
+          </label>
+
+          <input
+            id="fGrupo"
+            type="text"
+            placeholder="Colegio, curso o nombre del grupo"
+          >
+        </div>
+
+        <div class="enc-field">
+          <label for="fCodigo">
+            Número de negocio
+          </label>
+
+          <input
+            id="fCodigo"
+            type="text"
+            placeholder="Ej.: 1549"
+          >
+        </div>
+
+        <div class="enc-field">
+          <label for="fAno">
+            Año de viaje
+          </label>
+
+          <select id="fAno">
+            <option value="">
+              Todos
+            </option>
+          </select>
+        </div>
+
+        <div class="enc-field">
+          <label for="fDestino">
+            Destino
+          </label>
+
+          <select id="fDestino">
+            <option value="">
+              Todos
+            </option>
+          </select>
+        </div>
+
+        <div class="enc-field">
+          <label for="fEstado">
+            Estado encuesta
+          </label>
+
+          <select id="fEstado">
+            <option value="">
+              Todos
+            </option>
+
+            <option value="sin_crear">
+              Sin crear
+            </option>
+
+            <option value="borrador">
+              Borrador
+            </option>
+
+            <option value="programada">
+              Programada
+            </option>
+
+            <option value="activa">
+              Activa
+            </option>
+
+            <option value="cerrada">
+              Cerrada
+            </option>
+
+            <option value="anulada">
+              Anulada
+            </option>
+          </select>
+        </div>
+
+        <div class="enc-field">
+          <label for="fFechaInicio">
+            Viajes desde
+          </label>
+
+          <input
+            id="fFechaInicio"
+            type="date"
+          >
+        </div>
+
+      </div>
+
+      <div class="enc-toolbar">
+
+        <button
+          id="btnBuscar"
+          type="button"
+          class="enc-btn primary"
+        >
+          Buscar
+        </button>
+
+        <button
+          id="btnLimpiar"
+          type="button"
+          class="enc-btn secondary"
+        >
+          Limpiar
+        </button>
+
+        <div class="spacer"></div>
+
+        <button
+          id="btnConfigGlobal"
+          type="button"
+          class="enc-btn secondary"
+        >
+          Configuración global
+        </button>
+
+        <button
+          id="btnActualizar"
+          type="button"
+          class="enc-btn secondary"
+        >
+          Actualizar
+        </button>
+
+        <span
+          id="encProgress"
+          class="enc-muted"
+        ></span>
+
+      </div>
+
+    </section>
+
+    <!-- ===================================================
+         INDICADORES GENERALES
+    ==================================================== -->
+
+    <section class="enc-kpis">
+
+      <article class="enc-kpi">
+        <div class="enc-kpi-label">
+          Grupos encontrados
+        </div>
+
+        <div
+          id="kpiGrupos"
+          class="enc-kpi-value"
+        >
+          0
+        </div>
+      </article>
+
+      <article class="enc-kpi">
+        <div class="enc-kpi-label">
+          Encuestas activas
+        </div>
+
+        <div
+          id="kpiActivas"
+          class="enc-kpi-value"
+        >
+          0
+        </div>
+      </article>
+
+      <article class="enc-kpi">
+        <div class="enc-kpi-label">
+          Programadas
+        </div>
+
+        <div
+          id="kpiProgramadas"
+          class="enc-kpi-value"
+        >
+          0
+        </div>
+      </article>
+
+      <article class="enc-kpi">
+        <div class="enc-kpi-label">
+          Respuestas
+        </div>
+
+        <div
+          id="kpiRespuestas"
+          class="enc-kpi-value"
+        >
+          0
+        </div>
+      </article>
+
+      <article class="enc-kpi">
+        <div class="enc-kpi-label">
+          Avance general
+        </div>
+
+        <div
+          id="kpiAvance"
+          class="enc-kpi-value"
+        >
+          0%
+        </div>
+      </article>
+
+    </section>
+
+    <!-- ===================================================
+         TABLA DE GRUPOS
+    ==================================================== -->
+
+    <section class="card enc-table-card">
+
+      <div class="enc-table-top">
+
+        <div
+          id="countHint"
+          class="enc-muted"
+        >
+          Selecciona filtros y presiona Buscar.
+        </div>
+
+        <div
+          id="ultimaActualizacion"
+          class="enc-muted"
+        ></div>
+
+      </div>
+
+      <div class="enc-table-wrap">
+
+        <table class="enc-table">
+
+          <thead>
+            <tr>
+              <th>
+                Inicio
+              </th>
+
+              <th>
+                Año
+              </th>
+
+              <th>
+                Grupo
+              </th>
+
+              <th>
+                Negocio
+              </th>
+
+              <th>
+                Destino
+              </th>
+
+              <th>
+                Estado
+              </th>
+
+              <th>
+                Respuestas
+              </th>
+
+              <th>
+                Avance
+              </th>
+
+              <th class="right">
+                Acciones
+              </th>
+            </tr>
+          </thead>
+
+          <tbody id="tbodyEncuestas">
+
+            <tr>
+              <td
+                colspan="9"
+                class="enc-empty"
+              >
+                Todavía no se ha realizado una búsqueda.
+              </td>
+            </tr>
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- =====================================================
+       MODAL DE GESTIÓN DE UN GRUPO
+  ====================================================== -->
+
+  <div
+    id="modalEncuesta"
+    class="enc-modal-backdrop"
+    aria-hidden="true"
+  >
+
+    <div class="enc-modal">
+
+      <div class="enc-modal-head">
+
+        <div>
+          <h3 id="modalEncuestaTitulo">
+            Gestionar encuesta
+          </h3>
+
+          <div
+            id="modalEncuestaSubtitulo"
+            class="enc-muted"
+          ></div>
+        </div>
+
+        <button
+          id="btnCerrarModalEncuesta"
+          type="button"
+          class="enc-close"
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+
+      </div>
+
+      <div class="enc-modal-body">
+
+        <div
+          id="modalMensaje"
+          class="enc-alert"
+        ></div>
+
+        <div class="enc-group-summary">
+
+          <div class="enc-summary-item">
+            <div class="label">
+              Grupo
+            </div>
+
+            <div
+              id="resumenGrupo"
+              class="value"
+            >
+              —
+            </div>
+          </div>
+
+          <div class="enc-summary-item">
+            <div class="label">
+              Negocio
+            </div>
+
+            <div
+              id="resumenNegocio"
+              class="value"
+            >
+              —
+            </div>
+          </div>
+
+          <div class="enc-summary-item">
+            <div class="label">
+              Destino
+            </div>
+
+            <div
+              id="resumenDestino"
+              class="value"
+            >
+              —
+            </div>
+          </div>
+
+          <div class="enc-summary-item">
+            <div class="label">
+              Fecha de inicio
+            </div>
+
+            <div
+              id="resumenInicio"
+              class="value"
+            >
+              —
+            </div>
+          </div>
+
+          <div class="enc-summary-item">
+            <div class="label">
+              Fecha de regreso
+            </div>
+
+            <div
+              id="resumenFin"
+              class="value"
+            >
+              —
+            </div>
+          </div>
+
+          <div class="enc-summary-item">
+            <div class="label">
+              Estado
+            </div>
+
+            <div
+              id="resumenEstado"
+              class="value"
+            >
+              —
+            </div>
+          </div>
+
+        </div>
+
+        <div class="enc-tabs">
+
+          <button
+            type="button"
+            class="enc-tab active"
+            data-panel="configuracion"
+          >
+            Configuración
+          </button>
+
+          <button
+            type="button"
+            class="enc-tab"
+            data-panel="actividades"
+          >
+            Actividades
+          </button>
+
+          <button
+            type="button"
+            class="enc-tab"
+            data-panel="servicios"
+          >
+            Hotel, transporte y coordinadores
+          </button>
+
+          <button
+            type="button"
+            class="enc-tab"
+            data-panel="seguimiento"
+          >
+            Seguimiento
+          </button>
+
+          <button
+            type="button"
+            class="enc-tab"
+            data-panel="resultados"
+          >
+            Resultados
+          </button>
+
+        </div>
+
+        <!-- ===============================================
+             PANEL CONFIGURACIÓN
+        ================================================ -->
+
+        <section
+          id="panel-configuracion"
+          class="enc-panel active"
+        >
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Configuración de la encuesta
+              </h4>
+            </div>
+
+            <div class="enc-config-grid">
+
+              <div class="enc-field">
+                <label for="cantidadAleatorias">
+                  Actividades aleatorias por pasajero
+                </label>
+
+                <input
+                  id="cantidadAleatorias"
+                  type="number"
+                  min="0"
+                  max="20"
+                  value="3"
+                >
+              </div>
+
+              <div class="enc-field">
+                <label for="disponibleDesde">
+                  Disponible desde
+                </label>
+
+                <input
+                  id="disponibleDesde"
+                  type="datetime-local"
+                >
+              </div>
+
+              <div class="enc-field">
+                <label for="disponibleHasta">
+                  Disponible hasta
+                </label>
+
+                <input
+                  id="disponibleHasta"
+                  type="datetime-local"
+                >
+              </div>
+
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Resumen de preguntas
+              </h4>
+            </div>
+
+            <div class="enc-follow-kpis">
+
+              <div class="enc-follow-card">
+                <div
+                  id="cantidadObligatorias"
+                  class="number"
+                >
+                  0
+                </div>
+
+                <div class="text">
+                  Obligatorias
+                </div>
+              </div>
+
+              <div class="enc-follow-card">
+                <div
+                  id="cantidadAleatorias"
+                  class="number"
+                >
+                  0
+                </div>
+
+                <div class="text">
+                  Aleatorias
+                </div>
+              </div>
+
+              <div class="enc-follow-card">
+                <div
+                  id="cantidadExcluidas"
+                  class="number"
+                >
+                  0
+                </div>
+
+                <div class="text">
+                  Excluidas
+                </div>
+              </div>
+
+              <div class="enc-follow-card">
+                <div
+                  id="cantidadSinConfigurar"
+                  class="number"
+                >
+                  0
+                </div>
+
+                <div class="text">
+                  Sin configurar
+                </div>
+              </div>
+
+            </div>
+
+            <div
+              id="resumenCargaPasajero"
+              class="enc-alert info open"
+            >
+              Configura las actividades para calcular cuántas
+              preguntas recibirá cada pasajero.
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Enlace público del grupo
+              </h4>
+            </div>
+
+            <div class="enc-link-box">
+
+              <input
+                id="enlaceEncuesta"
+                type="text"
+                readonly
+                placeholder="El enlace se generará al publicar"
+              >
+
+              <button
+                id="btnCopiarEnlace"
+                type="button"
+                class="enc-btn secondary"
+                disabled
+              >
+                Copiar enlace
+              </button>
+
+              <button
+                id="btnAbrirEnlace"
+                type="button"
+                class="enc-btn secondary"
+                disabled
+              >
+                Abrir
+              </button>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ===============================================
+             PANEL ACTIVIDADES
+        ================================================ -->
+
+        <section
+          id="panel-actividades"
+          class="enc-panel"
+        >
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+
+              <div>
+                <h4>
+                  Actividades detectadas
+                </h4>
+
+                <div class="enc-muted">
+                  La regla del grupo tiene prioridad sobre destino y global.
+                </div>
+              </div>
+
+              <button
+                id="btnAplicarAleatoriaTodas"
+                type="button"
+                class="enc-btn secondary small"
+              >
+                Marcar pendientes como aleatorias
+              </button>
+
+            </div>
+
+            <div class="enc-table-wrap">
+
+              <table class="enc-activities-table">
+
+                <thead>
+                  <tr>
+                    <th>
+                      Fecha
+                    </th>
+
+                    <th>
+                      Actividad
+                    </th>
+
+                    <th>
+                      Proveedor
+                    </th>
+
+                    <th>
+                      Regla efectiva
+                    </th>
+
+                    <th>
+                      Origen
+                    </th>
+
+                    <th>
+                      Guardar regla para
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody id="tbodyActividades">
+
+                  <tr>
+                    <td
+                      colspan="6"
+                      class="enc-empty"
+                    >
+                      Selecciona un grupo.
+                    </td>
+                  </tr>
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ===============================================
+             PANEL OTROS SERVICIOS
+        ================================================ -->
+
+        <section
+          id="panel-servicios"
+          class="enc-panel"
+        >
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Hoteles
+              </h4>
+            </div>
+
+            <div id="listaHoteles">
+              <div class="enc-empty">
+                Sin hoteles detectados.
+              </div>
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Transportes ya evaluables
+              </h4>
+            </div>
+
+            <div id="listaTransportes">
+              <div class="enc-empty">
+                Sin transportes detectados.
+              </div>
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Coordinadores
+              </h4>
+            </div>
+
+            <div id="listaCoordinadores">
+              <div class="enc-empty">
+                Sin coordinadores detectados.
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ===============================================
+             PANEL SEGUIMIENTO
+        ================================================ -->
+
+        <section
+          id="panel-seguimiento"
+          class="enc-panel"
+        >
+
+          <div class="enc-follow-kpis">
+
+            <div class="enc-follow-card">
+              <div
+                id="seguimientoTotal"
+                class="number"
+              >
+                0
+              </div>
+
+              <div class="text">
+                Nómina habilitada
+              </div>
+            </div>
+
+            <div class="enc-follow-card">
+              <div
+                id="seguimientoRespondieron"
+                class="number"
+              >
+                0
+              </div>
+
+              <div class="text">
+                Respondieron
+              </div>
+            </div>
+
+            <div class="enc-follow-card">
+              <div
+                id="seguimientoPendientes"
+                class="number"
+              >
+                0
+              </div>
+
+              <div class="text">
+                Pendientes
+              </div>
+            </div>
+
+            <div class="enc-follow-card">
+              <div
+                id="seguimientoPorcentaje"
+                class="number"
+              >
+                0%
+              </div>
+
+              <div class="text">
+                Avance
+              </div>
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+
+              <h4>
+                Integrantes de la nómina
+              </h4>
+
+              <div class="enc-field">
+                <select id="filtroSeguimiento">
+                  <option value="">
+                    Todos
+                  </option>
+
+                  <option value="respondida">
+                    Respondieron
+                  </option>
+
+                  <option value="pendiente">
+                    Pendientes
+                  </option>
+
+                  <option value="estudiante">
+                    Estudiantes
+                  </option>
+
+                  <option value="adulto">
+                    Adultos
+                  </option>
+                </select>
+              </div>
+
+            </div>
+
+            <div class="enc-table-wrap">
+
+              <table class="enc-activities-table">
+
+                <thead>
+                  <tr>
+                    <th>
+                      Pasajero
+                    </th>
+
+                    <th>
+                      RUT
+                    </th>
+
+                    <th>
+                      Tipo
+                    </th>
+
+                    <th>
+                      Estado
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody id="tbodySeguimiento">
+
+                  <tr>
+                    <td
+                      colspan="4"
+                      class="enc-empty"
+                    >
+                      La encuesta todavía no tiene participantes registrados.
+                    </td>
+                  </tr>
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ===============================================
+             PANEL RESULTADOS
+        ================================================ -->
+
+        <section
+          id="panel-resultados"
+          class="enc-panel"
+        >
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Resultados anónimos
+              </h4>
+            </div>
+
+            <div
+              id="listaResultados"
+              class="enc-empty"
+            >
+              Todavía no existen respuestas.
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Lo mejor del viaje
+              </h4>
+            </div>
+
+            <div
+              id="comentariosPositivos"
+              class="enc-empty"
+            >
+              Sin comentarios.
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Oportunidades de mejora
+              </h4>
+            </div>
+
+            <div
+              id="comentariosMejoras"
+              class="enc-empty"
+            >
+              Sin comentarios.
+            </div>
+
+          </div>
+
+          <div class="enc-section">
+
+            <div class="enc-section-head">
+              <h4>
+                Comentarios generales
+              </h4>
+            </div>
+
+            <div
+              id="comentariosGenerales"
+              class="enc-empty"
+            >
+              Sin comentarios.
+            </div>
+
+          </div>
+
+        </section>
+
+      </div>
+
+      <div class="enc-modal-footer">
+
+        <button
+          id="btnGuardarBorrador"
+          type="button"
+          class="enc-btn primary"
+        >
+          Guardar borrador
+        </button>
+
+        <button
+          id="btnPublicarEncuesta"
+          type="button"
+          class="enc-btn success"
+        >
+          Publicar
+        </button>
+
+        <button
+          id="btnCerrarEncuesta"
+          type="button"
+          class="enc-btn warning hidden"
+        >
+          Cerrar encuesta
+        </button>
+
+        <button
+          id="btnReabrirEncuesta"
+          type="button"
+          class="enc-btn success hidden"
+        >
+          Reabrir
+        </button>
+
+        <div class="spacer"></div>
+
+        <button
+          id="btnCerrarModalAbajo"
+          type="button"
+          class="enc-btn secondary"
+        >
+          Cerrar
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- =====================================================
+       MODAL CONFIGURACIÓN GLOBAL / DESTINO
+  ====================================================== -->
+
+  <div
+    id="modalConfigGlobal"
+    class="enc-modal-backdrop"
+    aria-hidden="true"
+  >
+
+    <div
+      class="enc-modal"
+      style="width:min(1050px,98vw);height:min(88vh,820px);"
+    >
+
+      <div class="enc-modal-head">
+
+        <div>
+          <h3>
+            Configuración general de actividades
+          </h3>
+
+          <div class="enc-muted">
+            Define reglas reutilizables para todas las encuestas.
+          </div>
+        </div>
+
+        <button
+          id="btnCerrarConfigGlobal"
+          type="button"
+          class="enc-close"
+          aria-label="Cerrar"
+        >
+          ×
+        </button>
+
+      </div>
+
+      <div class="enc-modal-body">
+
+        <div
+          id="configGlobalMensaje"
+          class="enc-alert"
+        ></div>
+
+        <div class="enc-section">
+
+          <div class="enc-config-grid">
+
+            <div class="enc-field">
+              <label for="configNivel">
+                Nivel
+              </label>
+
+              <select id="configNivel">
+
+                <option value="global">
+                  Todos los destinos
+                </option>
+
+                <option value="destino">
+                  Un destino específico
+                </option>
+
+              </select>
+            </div>
+
+            <div
+              id="configDestinoWrap"
+              class="enc-field hidden"
+            >
+              <label for="configDestino">
+                Destino
+              </label>
+
+              <select id="configDestino">
+                <option value="">
+                  Seleccionar
+                </option>
+              </select>
+            </div>
+
+            <div class="enc-field">
+              <label>
+                Buscar actividad
+              </label>
+
+              <input
+                id="configBuscarActividad"
+                type="text"
+                placeholder="Ej.: rafting"
+              >
+            </div>
+
+          </div>
+
+        </div>
+
+        <div class="enc-section">
+
+          <div class="enc-table-wrap">
+
+            <table class="enc-activities-table">
+
+              <thead>
+                <tr>
+                  <th>
+                    Actividad
+                  </th>
+
+                  <th>
+                    Destino
+                  </th>
+
+                  <th>
+                    Modalidad
+                  </th>
+
+                  <th>
+                    Actualización
+                  </th>
+
+                  <th class="right">
+                    Acción
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody id="tbodyConfigGlobal">
+
+                <tr>
+                  <td
+                    colspan="5"
+                    class="enc-empty"
+                  >
+                    No existen reglas configuradas.
+                  </td>
+                </tr>
+
+              </tbody>
+
+            </table>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="enc-modal-footer">
+
+        <button
+          id="btnNuevaRegla"
+          type="button"
+          class="enc-btn primary"
+        >
+          Nueva regla
+        </button>
+
+        <div class="spacer"></div>
+
+        <button
+          id="btnCerrarConfigGlobalAbajo"
+          type="button"
+          class="enc-btn secondary"
+        >
+          Cerrar
+        </button>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</body>
+</html>
