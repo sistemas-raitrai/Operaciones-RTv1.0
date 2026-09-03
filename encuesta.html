@@ -1,0 +1,1156 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, viewport-fit=cover"
+  >
+
+  <meta
+    name="theme-color"
+    content="#004080"
+  >
+
+  <title>
+    Encuesta de Viaje | Turismo Rai Trai
+  </title>
+
+  <link
+    rel="icon"
+    type="image/png"
+    href="Logo Raitrai.png"
+  >
+
+  <style>
+    :root {
+      color-scheme: light;
+
+      --primary: #004080;
+      --primary-dark: #002d5c;
+      --primary-soft: #eaf3fc;
+
+      --success: #16834b;
+      --success-soft: #eaf8f0;
+
+      --warning: #a36200;
+      --warning-soft: #fff5dc;
+
+      --danger: #b42318;
+      --danger-soft: #fff0ef;
+
+      --text: #18212f;
+      --muted: #667085;
+      --border: #d8dee8;
+      --background: #f4f6f8;
+      --card: #ffffff;
+
+      --shadow:
+        0 8px 26px rgba(15, 23, 42, .08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-height: 100%;
+      background: var(--background);
+      color-scheme: light;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0;
+
+      padding:
+        env(safe-area-inset-top)
+        env(safe-area-inset-right)
+        env(safe-area-inset-bottom)
+        env(safe-area-inset-left);
+
+      color: var(--text);
+      background: var(--background);
+
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
+
+      font-size: 16px;
+      line-height: 1.45;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      touch-action: manipulation;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .public-header {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      min-height: 66px;
+      padding: 8px 16px;
+
+      color: #fff;
+      background: var(--primary);
+
+      box-shadow:
+        0 2px 12px rgba(0, 0, 0, .13);
+    }
+
+    .public-header img {
+      display: block;
+      width: auto;
+      max-width: 120px;
+      max-height: 49px;
+      object-fit: contain;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 15px 12px 42px;
+    }
+
+    .screen {
+      display: block;
+      width: 100%;
+    }
+
+    .card {
+      width: 100%;
+      padding: 20px 16px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--card);
+      box-shadow: var(--shadow);
+    }
+
+    .card + .card {
+      margin-top: 13px;
+    }
+
+    .center {
+      text-align: center;
+    }
+
+    .hero-logo {
+      display: block;
+      width: auto;
+      max-width: 165px;
+      max-height: 100px;
+      margin: 0 auto 13px;
+      object-fit: contain;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      overflow-wrap: anywhere;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      color: var(--primary);
+      font-size: clamp(1.55rem, 7vw, 2.15rem);
+      line-height: 1.12;
+    }
+
+    h2 {
+      margin: 0 0 8px;
+      font-size: 1.24rem;
+      line-height: 1.2;
+    }
+
+    h3 {
+      margin: 0 0 7px;
+      font-size: 1.03rem;
+      line-height: 1.25;
+    }
+
+    p {
+      margin: 7px 0;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .intro {
+      margin-bottom: 17px;
+      color: var(--muted);
+    }
+
+    .group-box {
+      display: grid;
+      gap: 4px;
+      padding: 12px;
+      margin: 14px 0;
+      border: 1px solid #c9dff5;
+      border-radius: 11px;
+      background: var(--primary-soft);
+      text-align: left;
+    }
+
+    .group-box strong {
+      color: var(--primary);
+    }
+
+    .notice {
+      padding: 13px;
+      margin: 14px 0;
+      border: 1px solid #bcd8f2;
+      border-radius: 11px;
+      color: #173f64;
+      background: #edf6ff;
+      text-align: left;
+    }
+
+    .notice strong {
+      color: var(--primary-dark);
+    }
+
+    .notice.success {
+      color: #155f38;
+      background: var(--success-soft);
+      border-color: #b7dfc8;
+    }
+
+    .notice.warning {
+      color: #725000;
+      background: var(--warning-soft);
+      border-color: #ead18f;
+    }
+
+    .notice.error {
+      color: #8f1c14;
+      background: var(--danger-soft);
+      border-color: #efbbb6;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      margin-top: 15px;
+      text-align: left;
+    }
+
+    .field label {
+      font-weight: 750;
+    }
+
+    .field-hint {
+      color: var(--muted);
+      font-size: .88rem;
+    }
+
+    .rut-grid {
+      display: grid;
+      grid-template-columns:
+        minmax(0, 1fr)
+        74px;
+      gap: 9px;
+      align-items: end;
+    }
+
+    .input {
+      width: 100%;
+      min-height: 50px;
+      padding: 11px 12px;
+
+      border: 1.5px solid #bfc8d6;
+      border-radius: 10px;
+
+      color: var(--text);
+      background: #fff;
+
+      font-size: 1.05rem;
+      outline: none;
+    }
+
+    .input:focus {
+      border-color: var(--primary);
+      box-shadow:
+        0 0 0 4px rgba(0, 64, 128, .11);
+    }
+
+    .input.input-error {
+      border-color: var(--danger);
+      box-shadow:
+        0 0 0 4px rgba(180, 35, 24, .09);
+    }
+
+    textarea.input {
+      min-height: 112px;
+      resize: vertical;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+
+      width: 100%;
+      min-height: 52px;
+      padding: 11px 15px;
+      margin-top: 16px;
+
+      border: 0;
+      border-radius: 11px;
+
+      color: #fff;
+      background: var(--primary);
+
+      cursor: pointer;
+      font-weight: 800;
+      text-align: center;
+      text-decoration: none;
+
+      transition:
+        transform .08s ease,
+        background .15s ease,
+        opacity .15s ease;
+    }
+
+    .button:active {
+      transform: scale(.985);
+    }
+
+    .button:hover {
+      background: var(--primary-dark);
+    }
+
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: .58;
+      transform: none;
+    }
+
+    .button.secondary {
+      color: var(--primary);
+      background: var(--primary-soft);
+      border: 1px solid #bdd5ed;
+    }
+
+    .button.success {
+      color: #fff;
+      background: var(--success);
+    }
+
+    .loading-wrap {
+      min-height: 260px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 13px;
+    }
+
+    .spinner {
+      width: 45px;
+      height: 45px;
+      border: 5px solid #dce7f2;
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* =====================================================
+       ENCUESTA
+    ===================================================== */
+
+    .survey-header {
+      margin-bottom: 13px;
+    }
+
+    .survey-header h1 {
+      font-size: 1.55rem;
+    }
+
+    .welcome-name {
+      margin-bottom: 4px;
+      color: var(--primary);
+      font-size: 1.2rem;
+      font-weight: 800;
+    }
+
+    .progress-sticky {
+      position: sticky;
+      top: 66px;
+      z-index: 20;
+
+      padding: 9px 0 11px;
+      margin-bottom: 3px;
+
+      background:
+        linear-gradient(
+          to bottom,
+          var(--background) 84%,
+          rgba(244, 246, 248, 0)
+        );
+    }
+
+    .progress-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: .84rem;
+      font-weight: 700;
+    }
+
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #dfe5ec;
+    }
+
+    .progress-value {
+      width: 0;
+      height: 100%;
+      border-radius: 999px;
+      background: var(--success);
+      transition: width .2s ease;
+    }
+
+    .section-title {
+      padding: 13px 2px 6px;
+      color: var(--primary);
+      font-size: 1.1rem;
+      font-weight: 850;
+    }
+
+    .question-card {
+      padding: 17px 14px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: #fff;
+      box-shadow:
+        0 4px 14px rgba(15, 23, 42, .055);
+    }
+
+    .question-card.has-error {
+      border-color: var(--danger);
+      box-shadow:
+        0 0 0 3px rgba(180, 35, 24, .07);
+    }
+
+    .question-number {
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: .76rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .question-title {
+      margin: 0 0 4px;
+      color: var(--text);
+      font-size: 1.04rem;
+      font-weight: 800;
+    }
+
+    .question-meta {
+      margin-bottom: 12px;
+      color: var(--muted);
+      font-size: .84rem;
+    }
+
+    .rating-grid {
+      display: grid;
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .rating-option {
+      position: relative;
+      display: block;
+      min-width: 0;
+    }
+
+    .rating-option input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .rating-option span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      min-height: 48px;
+      padding: 8px 6px;
+
+      border: 1.5px solid #c9d0dc;
+      border-radius: 10px;
+
+      color: #344054;
+      background: #fff;
+
+      cursor: pointer;
+      font-size: .9rem;
+      font-weight: 760;
+      text-align: center;
+
+      transition:
+        background .12s ease,
+        border-color .12s ease,
+        color .12s ease,
+        transform .08s ease;
+    }
+
+    .rating-option span:active {
+      transform: scale(.98);
+    }
+
+    .rating-option input:focus-visible + span {
+      outline:
+        3px solid rgba(0, 64, 128, .19);
+      outline-offset: 2px;
+    }
+
+    .rating-option input:checked + span {
+      color: #fff;
+      background: var(--primary);
+      border-color: var(--primary);
+    }
+
+    .rating-option.very-good input:checked + span {
+      background: #117a45;
+      border-color: #117a45;
+    }
+
+    .rating-option.good input:checked + span {
+      background: #397b32;
+      border-color: #397b32;
+    }
+
+    .rating-option.regular input:checked + span {
+      background: #a36200;
+      border-color: #a36200;
+    }
+
+    .rating-option.bad input:checked + span {
+      background: #b42318;
+      border-color: #b42318;
+    }
+
+    .comments-card {
+      padding: 17px 14px;
+      margin-top: 13px;
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      background: #fff;
+    }
+
+    .comments-card .field:first-child {
+      margin-top: 0;
+    }
+
+    .optional {
+      color: var(--muted);
+      font-size: .79rem;
+      font-weight: 500;
+    }
+
+    .submit-wrap {
+      position: sticky;
+      bottom: 0;
+      z-index: 25;
+
+      padding:
+        13px 0
+        calc(13px + env(safe-area-inset-bottom));
+
+      background:
+        linear-gradient(
+          to top,
+          var(--background) 78%,
+          rgba(244, 246, 248, 0)
+        );
+    }
+
+    .submit-wrap .button {
+      margin-top: 0;
+      min-height: 56px;
+      box-shadow:
+        0 6px 20px rgba(0, 64, 128, .22);
+    }
+
+    .error-summary {
+      display: none;
+      padding: 12px;
+      margin: 10px 0;
+      border: 1px solid #efbbb6;
+      border-radius: 10px;
+      color: #8f1c14;
+      background: var(--danger-soft);
+    }
+
+    .error-summary.open {
+      display: block;
+    }
+
+    .check-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+
+      width: 76px;
+      height: 76px;
+      margin: 0 auto 16px;
+
+      border-radius: 50%;
+
+      color: #fff;
+      background: var(--success);
+
+      font-size: 42px;
+      font-weight: 900;
+    }
+
+    .privacy-list {
+      padding-left: 20px;
+      margin: 10px 0 0;
+    }
+
+    .privacy-list li {
+      margin: 7px 0;
+    }
+
+    .footer-note {
+      padding: 20px 12px 0;
+      color: var(--muted);
+      font-size: .78rem;
+      text-align: center;
+    }
+
+    /* =====================================================
+       TABLET / ESCRITORIO
+    ===================================================== */
+
+    @media (min-width: 600px) {
+      .page {
+        padding: 24px 18px 55px;
+      }
+
+      .card {
+        padding: 27px 25px;
+      }
+
+      .rating-grid {
+        grid-template-columns:
+          repeat(4, minmax(0, 1fr));
+      }
+
+      .question-card {
+        padding: 20px;
+      }
+
+      .rating-option span {
+        min-height: 52px;
+      }
+    }
+
+    @media (min-width: 900px) {
+      .public-header {
+        min-height: 74px;
+      }
+
+      .public-header img {
+        max-width: 145px;
+        max-height: 56px;
+      }
+
+      .progress-sticky {
+        top: 74px;
+      }
+
+      .page {
+        max-width: 800px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+
+      *,
+      *::before,
+      *::after {
+        animation-duration: .01ms !important;
+        transition-duration: .01ms !important;
+      }
+    }
+  </style>
+
+  <!--
+    Esta página es pública.
+
+    No importa firebase-init.js porque ese archivo
+    enviaría al pasajero a login.html.
+
+    encuesta.js se comunica únicamente con las
+    Cloud Functions públicas protegidas.
+  -->
+  <script
+    type="module"
+    src="./encuesta.js"
+  ></script>
+</head>
+
+<body>
+
+  <header class="public-header">
+    <img
+      src="Logo Raitrai.png"
+      alt="Turismo Rai Trai"
+    >
+  </header>
+
+  <main class="page">
+
+    <!-- ===================================================
+         CARGANDO
+    ==================================================== -->
+
+    <section
+      id="pantallaCargando"
+      class="screen"
+    >
+      <div class="card loading-wrap">
+
+        <div
+          class="spinner"
+          aria-label="Cargando"
+        ></div>
+
+        <strong>
+          Preparando encuesta...
+        </strong>
+
+        <div
+          id="textoCarga"
+          class="muted center"
+        >
+          Verificando el enlace.
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ===================================================
+         ERROR DE ENLACE O ESTADO
+    ==================================================== -->
+
+    <section
+      id="pantallaError"
+      class="screen hidden"
+    >
+      <div class="card center">
+
+        <img
+          class="hero-logo"
+          src="Logo Raitrai.png"
+          alt="Turismo Rai Trai"
+        >
+
+        <h1 id="errorTitulo">
+          Encuesta no disponible
+        </h1>
+
+        <div
+          id="errorMensaje"
+          class="notice error"
+        >
+          No fue posible abrir esta encuesta.
+        </div>
+
+        <div
+          id="errorFecha"
+          class="notice warning hidden"
+        ></div>
+
+        <p class="muted">
+          Si consideras que esto es incorrecto,
+          comunícate con el encargado de tu grupo.
+        </p>
+
+      </div>
+    </section>
+
+    <!-- ===================================================
+         IDENTIFICACIÓN POR RUT
+    ==================================================== -->
+
+    <section
+      id="pantallaAcceso"
+      class="screen hidden"
+    >
+      <div class="card">
+
+        <div class="center">
+
+          <img
+            class="hero-logo"
+            src="Logo Raitrai.png"
+            alt="Turismo Rai Trai"
+          >
+
+          <h1>
+            Encuesta de viaje
+          </h1>
+
+          <p class="intro">
+            Queremos conocer tu experiencia para
+            seguir mejorando nuestros viajes.
+          </p>
+
+        </div>
+
+        <div
+          id="accesoGrupo"
+          class="group-box hidden"
+        ></div>
+
+        <div class="notice">
+
+          <strong>
+            Tus respuestas son anónimas.
+          </strong>
+
+          <ul class="privacy-list">
+
+            <li>
+              El RUT se utiliza solamente para comprobar
+              que perteneces a la nómina.
+            </li>
+
+            <li>
+              También nos permite registrar que ya
+              completaste la encuesta.
+            </li>
+
+            <li>
+              Tus evaluaciones se guardan separadamente,
+              sin tu nombre ni tu RUT.
+            </li>
+
+          </ul>
+
+        </div>
+
+        <div
+          id="accesoMensaje"
+          class="notice error hidden"
+          role="alert"
+        ></div>
+
+        <form
+          id="formAcceso"
+          novalidate
+        >
+
+          <div class="field">
+
+            <label>
+              Ingresa tu RUT
+            </label>
+
+            <div class="rut-grid">
+
+              <div>
+                <input
+                  id="rutNumero"
+                  class="input"
+                  type="tel"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  maxlength="10"
+                  placeholder="12.345.678"
+                  aria-label="Número de RUT"
+                >
+              </div>
+
+              <div>
+                <input
+                  id="rutDv"
+                  class="input"
+                  type="text"
+                  inputmode="text"
+                  autocomplete="off"
+                  autocapitalize="characters"
+                  maxlength="1"
+                  placeholder="9"
+                  aria-label="Dígito verificador"
+                >
+              </div>
+
+            </div>
+
+            <div
+              id="rutHint"
+              class="field-hint"
+            >
+              Ingresa el número y el dígito verificador.
+            </div>
+
+          </div>
+
+          <button
+            id="btnIngresar"
+            class="button"
+            type="submit"
+          >
+            Ingresar a la encuesta
+          </button>
+
+        </form>
+
+      </div>
+
+      <div class="footer-note">
+        Turismo Rai Trai · Encuesta de experiencia
+      </div>
+    </section>
+
+    <!-- ===================================================
+         ENCUESTA
+    ==================================================== -->
+
+    <section
+      id="pantallaEncuesta"
+      class="screen hidden"
+    >
+
+      <div class="card survey-header">
+
+        <div
+          id="saludoPasajero"
+          class="welcome-name"
+        >
+          Hola
+        </div>
+
+        <h1>
+          Cuéntanos tu experiencia
+        </h1>
+
+        <div
+          id="datosEncuesta"
+          class="group-box"
+        ></div>
+
+        <div class="notice">
+          Tus respuestas se guardarán de forma anónima.
+          Debes responder todas las evaluaciones antes
+          de enviar.
+        </div>
+
+      </div>
+
+      <div class="progress-sticky">
+
+        <div class="progress-row">
+
+          <span>
+            Progreso
+          </span>
+
+          <span id="progresoTexto">
+            0 de 0
+          </span>
+
+        </div>
+
+        <div
+          class="progress-track"
+          aria-hidden="true"
+        >
+          <div
+            id="progresoValor"
+            class="progress-value"
+          ></div>
+        </div>
+
+      </div>
+
+      <form
+        id="formEncuesta"
+        novalidate
+      >
+
+        <div id="contenedorPreguntas"></div>
+
+        <div class="comments-card">
+
+          <h2>
+            Comentarios
+          </h2>
+
+          <p class="muted">
+            Estas preguntas son opcionales y también
+            se almacenan anónimamente.
+          </p>
+
+          <div class="field">
+
+            <label for="comentarioPositivo">
+              ¿Qué fue lo mejor del viaje?
+              <span class="optional">
+                (opcional)
+              </span>
+            </label>
+
+            <textarea
+              id="comentarioPositivo"
+              class="input"
+              maxlength="2000"
+              placeholder="Cuéntanos qué destacarías..."
+            ></textarea>
+
+          </div>
+
+          <div class="field">
+
+            <label for="comentarioMejora">
+              ¿Qué podríamos mejorar?
+              <span class="optional">
+                (opcional)
+              </span>
+            </label>
+
+            <textarea
+              id="comentarioMejora"
+              class="input"
+              maxlength="2000"
+              placeholder="Cuéntanos qué mejorarías..."
+            ></textarea>
+
+          </div>
+
+          <div class="field">
+
+            <label for="comentarioGeneral">
+              ¿Quieres agregar algo más?
+              <span class="optional">
+                (opcional)
+              </span>
+            </label>
+
+            <textarea
+              id="comentarioGeneral"
+              class="input"
+              maxlength="2000"
+              placeholder="Comentario general..."
+            ></textarea>
+
+          </div>
+
+        </div>
+
+        <div
+          id="resumenErrores"
+          class="error-summary"
+          role="alert"
+        >
+          Debes responder todas las evaluaciones.
+        </div>
+
+        <div class="submit-wrap">
+
+          <button
+            id="btnEnviarEncuesta"
+            class="button success"
+            type="submit"
+          >
+            Enviar encuesta
+          </button>
+
+        </div>
+
+      </form>
+
+    </section>
+
+    <!-- ===================================================
+         RESPUESTA ENVIADA
+    ==================================================== -->
+
+    <section
+      id="pantallaFinal"
+      class="screen hidden"
+    >
+      <div class="card center">
+
+        <div class="check-icon">
+          ✓
+        </div>
+
+        <h1 id="finalTitulo">
+          ¡Muchas gracias!
+        </h1>
+
+        <p id="finalMensaje">
+          Tu respuesta fue registrada de manera anónima.
+        </p>
+
+        <div class="notice success">
+          El sistema registró que completaste la encuesta,
+          pero tus respuestas no están asociadas a tu
+          nombre ni a tu RUT.
+        </div>
+
+        <p class="muted">
+          Ya puedes cerrar esta página.
+        </p>
+
+      </div>
+    </section>
+
+  </main>
+
+</body>
+</html>
