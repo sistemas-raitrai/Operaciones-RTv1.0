@@ -6182,8 +6182,13 @@ function buildFinanzasDoc(
   const totalPax =
     datosOperativos.totalPax;
 
+  const coordinadoresAsignados =
+    Array.isArray(coords)
+      ? coords.filter(Boolean)
+      : [];
+
   const totalCoordinadores =
-    datosOperativos.cantidadCoordinadores;
+    coordinadoresAsignados.length;
 
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
@@ -6540,18 +6545,24 @@ async function buildFinanzasHTML(
   // 5. CONTROL DE COORDINADORES
   // ============================================================
 
-  const cantidadOficial =
-    g.datosOperativos
-      .cantidadCoordinadores;
+  const cantidadConfigurada =
+    Number(
+      g.cantidadCoordinadores || 0
+    );
 
   const cantidadAsignada =
     Array.isArray(coords)
-      ? coords.length
+      ? coords.filter(Boolean).length
       : 0;
 
+  /*
+    cantidadCoordinadores puede indicar una cantidad planificada,
+    pero para el documento manda la asignación efectiva recuperada
+    desde coordinadorId/coordinadorIds.
+  */
   if (
-    cantidadOficial !==
-    cantidadAsignada
+    cantidadConfigurada > 0 &&
+    cantidadConfigurada !== cantidadAsignada
   ) {
     console.warn(
       '[DOCUMENTOS][COORDINADORES_INCONSISTENTES]',
@@ -6563,11 +6574,13 @@ async function buildFinanzasHTML(
           g.numeroNegocio ||
           null,
 
-        cantidadCoordinadores:
-          cantidadOficial,
+        cantidadConfigurada,
 
-        coordinadoresAsignados:
-          cantidadAsignada,
+        cantidadAsignada,
+
+        coordinadorId:
+          g.coordinadorId ||
+          null,
 
         coordinadorIds:
           Array.isArray(g.coordinadorIds)
