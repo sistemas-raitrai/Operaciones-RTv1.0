@@ -8373,66 +8373,747 @@ function resetSwap() {
 // —————————————————————————————————
 /** Editar fecha base (recalcula el rango) + historial **/
 // —————————————————————————————————
-async function handleDateEdit(oldFecha) {
-  const nuevaInicio = prompt("Nueva fecha de inicio del itinerario (YYYY-MM-DD):", oldFecha);
-  if (!nuevaInicio) return;
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(nuevaInicio)) {
-    alert("Fecha inválida. Usa formato YYYY-MM-DD.");
+// ======================================================
+// CANTIDAD OFICIAL DE DÍAS DEL VIAJE
+//
+// PRIORIDAD:
+// 1. cantidadDias / dias / cantidadDeDias
+// 2. cantidadNoches / noches / cantidadNochesViaje + 1
+// 3. fechaInicio → fechaFin
+// 4. largo actual del itinerario como último respaldo
+//
+// Esto evita que restos antiguos del itinerario
+// determinen artificialmente la duración del viaje.
+// ======================================================
+
+function getCantidadDiasOficialItinerario(
+  g,
+  fallbackItinerario = null
+) {
+  const candidatosDias = [
+    g?.cantidadDias,
+    g?.dias,
+    g?.cantidadDeDias
+  ];
+
+  for (const value of candidatosDias) {
+    const n =
+      parseInt(
+        value,
+        10
+      );
+
+    if (
+      Number.isFinite(n) &&
+      n > 0
+    ) {
+      return n;
+    }
+  }
+
+  const candidatosNoches = [
+    g?.cantidadNoches,
+    g?.noches,
+    g?.cantidadNochesViaje
+  ];
+
+  for (const value of candidatosNoches) {
+    const n =
+      parseInt(
+        value,
+        10
+      );
+
+    if (
+      Number.isFinite(n) &&
+      n > 0
+    ) {
+      return n + 1;
+    }
+  }
+
+  const rangoOficial =
+    getDateRange(
+      g?.fechaInicio,
+      g?.fechaFin
+    );
+
+  if (
+    rangoOficial.length
+  ) {
+    return rangoOficial.length;
+  }
+
+  const IT =
+    fallbackItinerario ||
+    g?.itinerario ||
+    {};
+
+  const cantidadActual =
+    Object.keys(IT)
+      .length;
+
+  return Math.max(
+    1,
+    cantidadActual
+  );
+}
+
+
+// ======================================================
+// DEJAR UNA ACTIVIDAD COMO NUEVA REVISIÓN
+//
+// Conserva el contenido de la actividad,
+// pero NO conserva la revisión de una versión anterior
+// del itinerario.
+//
+// Esto es deliberado:
+// cambiar estructuralmente las fechas invalida el OK /
+// rechazo anterior.
+//
+// El rechazo histórico NO se pierde:
+// sigue estando en Historial y Alertas resueltas.
+// ======================================================
+
+function limpiarRevisionActividadPorCambioEstructural(
+  actividad
+) {
+  if (!actividad) {
+    return actividad;
+  }
+
+  const out = {
+    ...actividad,
+
+    revision:
+      'pendiente',
+
+    revisionObservacion:
+      '',
+
+    revisionUsuario:
+      '',
+
+    revisionTimestamp:
+      null,
+
+    rechazoMotivo:
+      '',
+
+    revisionMotivoOriginal:
+      ''
+  };
+
+  return out;
+}
+
+
+// ======================================================
+// INVALIDAR REVISIÓN VIGENTE POR CAMBIO ESTRUCTURAL
+//
+// Se utiliza cuando las fechas / estructura del viaje
+// cambian.
+//
+// Hace cuatro cosas:
+//
+// 1. revisionDias vuelve a vacío.
+// 2. revisión general vuelve a PENDIENTE.
+// 3. alertas activas de revisión quedan RESUELTAS,
+//    pero NO se borran.
+// 4. guarda un evento en Historial explicando por qué.
+//
+// De esta manera:
+// - no reaparecen rechazos de una versión antigua;
+// - no perdemos evidencia histórica.
+// ======================================================
+
+async function invalidarRevisionPorCambioEstructural(
+  grupoId,
+  g,
+  opciones = {}
+) {
+  const motivo =
+    (
+      opciones.motivo ||
+      'El itinerario cambió estructuralmente y requiere una nueva revisión.'
+    )
+      .toString()
+      .trim();
+
+  const antesFechas =
+    Array.isArray(
+      opciones.antesFechas
+    )
+      ? opciones.antesFechas
+      : Object.keys(
+          g?.itinerario ||
+          {}
+        ).sort(
+          sortDiasItinerario
+        );
+
+  const despuesFechas =
+    Array.isArray(
+      opciones.despuesFechas
+    )
+      ? opciones.despuesFechas
+      : [];
+
+  const usuario =
+    auth.currentUser?.email ||
+    '';
+
+  const ahora =
+    new Date();
+
+  const refGrupo =
+    doc(
+      db,
+      'grupos',
+      grupoId
+    );
+
+  // --------------------------------------------------
+  // ALERTAS ACTIVAS
+  // --------------------------------------------------
+
+  let alertasResueltas =
+    0;
+
+  try {
+    const snapAlertas =
+      await getDocs(
+        collection(
+          db,
+          'grupos',
+          grupoId,
+          'alertas'
+        )
+      );
+
+    const activas =
+      snapAlertas.docs.filter(
+        d => {
+          const a =
+            d.data() ||
+            {};
+
+          // Modelo nuevo
+          if (
+            a.resuelta !==
+            undefined
+          ) {
+            return (
+              a.resuelta !==
+              true
+            );
+          }
+
+          // Modelo antiguo
+          return !a.visto;
+        }
+      );
+
+    if (
+      activas.length
+    ) {
+      await Promise.all(
+        activas.map(
+          d =>
+            updateDoc(
+              doc(
+                db,
+                'grupos',
+                grupoId,
+                'alertas',
+                d.id
+              ),
+              {
+                resuelta:
+                  true,
+
+                resueltaPor:
+                  usuario,
+
+                resueltaEn:
+                  ahora,
+
+                resueltaMotivo:
+                  motivo,
+
+                visto:
+                  true,
+
+                leidoPor:
+                  usuario,
+
+                leidoEn:
+                  ahora,
+
+                invalidadaPorCambioItinerario:
+                  true
+              }
+            )
+        )
+      );
+
+      alertasResueltas =
+        activas.length;
+    }
+
+  } catch (error) {
+    console.warn(
+      'No se pudieron invalidar las alertas antiguas:',
+      error
+    );
+  }
+
+  // --------------------------------------------------
+  // ESTADO ACTUAL DE REVISIÓN
+  // --------------------------------------------------
+
+  await updateDoc(
+    refGrupo,
+    {
+      revisionDias:
+        {},
+
+      revisionGrupo: {
+        estado:
+          'pendiente',
+
+        observacion:
+          motivo,
+
+        usuario,
+
+        timestamp:
+          ahora
+      },
+
+      estadoRevisionItinerario:
+        'PENDIENTE'
+    }
+  );
+
+  // --------------------------------------------------
+  // HISTORIAL
+  // --------------------------------------------------
+
+  await logHist(
+    grupoId,
+    'INVALIDAR REVISION POR CAMBIO DE ITINERARIO',
+    {
+      _group:
+        g,
+
+      categoria:
+        'REVISION',
+
+      tipoRevision:
+        'grupo',
+
+      anterior:
+        `Revisión anterior invalidada · ${antesFechas.length} días`,
+
+      nuevo:
+        `Nueva revisión pendiente · ${despuesFechas.length || '—'} días`,
+
+      estadoAnterior:
+        getRevisionGrupo(
+          g
+        ).estado,
+
+      estadoNuevo:
+        'pendiente',
+
+      motivo,
+
+      detalle:
+        [
+          `Fechas anteriores: ${antesFechas.join(', ') || '—'}`,
+          `Fechas nuevas: ${despuesFechas.join(', ') || '—'}`,
+          `Alertas históricas cerradas: ${alertasResueltas}`
+        ].join(
+          ' | '
+        )
+    }
+  );
+
+  return {
+    ok:
+      true,
+
+    alertasResueltas
+  };
+}
+
+// —————————————————————————————————
+/** Editar fecha base
+ *
+ * REGLA NUEVA:
+ *
+ * - La duración NO la determina un itinerario viejo contaminado.
+ * - Se usa la duración oficial del grupo.
+ * - Las actividades se trasladan por número de día.
+ * - Las actividades sobrantes desaparecen de la versión vigente.
+ * - Toda revisión anterior queda invalidada.
+ * - Alertas/rechazos antiguos NO se borran:
+ *   quedan como RESUELTOS por cambio estructural.
+ **/
+// —————————————————————————————————
+
+async function handleDateEdit(
+  oldFecha
+) {
+  const nuevaInicio =
+    prompt(
+      "Nueva fecha de inicio del itinerario (YYYY-MM-DD):",
+      oldFecha
+    );
+
+  if (!nuevaInicio) {
     return;
   }
 
-  const grupoId = selectNum.value;
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(
+      nuevaInicio
+    )
+  ) {
+    alert(
+      "Fecha inválida. Usa formato YYYY-MM-DD."
+    );
+
+    return;
+  }
+
+  const grupoId =
+    selectNum.value;
+
   if (!grupoId) {
-    alert("Selecciona primero un grupo.");
+    alert(
+      "Selecciona primero un grupo."
+    );
+
     return;
   }
 
-  const snapG = await getDoc(doc(db, 'grupos', grupoId));
-  const g = snapG.data() || {};
+  const snapG =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
 
-  const IT = g.itinerario || {};
-  const fechasActuales = Object.keys(IT).sort(sortDiasItinerario);
-  const diasCount = fechasActuales.length || 1;
-
-  const nuevoRango = [];
-  const [yy, mm, dd] = nuevaInicio.split("-").map(Number);
-
-  for (let i = 0; i < diasCount; i++) {
-    const d = new Date(yy, mm - 1, dd);
-    d.setDate(d.getDate() + i);
-
-    const yyyy = d.getFullYear();
-    const m2 = String(d.getMonth() + 1).padStart(2, "0");
-    const d2 = String(d.getDate()).padStart(2, "0");
-
-    nuevoRango.push(`${yyyy}-${m2}-${d2}`);
+  if (
+    !snapG.exists()
+  ) {
+    return alert(
+      'No se encontró el grupo.'
+    );
   }
 
-  const nuevoItinerario = {};
+  const g =
+    snapG.data() ||
+    {};
 
-  nuevoRango.forEach((fechaNueva, idx) => {
-    const fechaAnterior = fechasActuales[idx];
-    nuevoItinerario[fechaNueva] = fechaAnterior ? (IT[fechaAnterior] || []) : [];
-  });
+  const IT =
+    g.itinerario ||
+    {};
 
-  const nuevaFechaFin = nuevoRango[nuevoRango.length - 1];
+  const fechasActuales =
+    Object.keys(
+      IT
+    ).sort(
+      sortDiasItinerario
+    );
 
-  await updateDoc(doc(db, 'grupos', grupoId), {
-    fechaInicio: nuevaInicio,
-    fechaFin: nuevaFechaFin,
-    itinerario: nuevoItinerario
-  });
+  // ==================================================
+  // 1. DURACIÓN OFICIAL
+  //
+  // MUY IMPORTANTE:
+  // ya NO usamos:
+  //
+  // fechasActuales.length
+  //
+  // como fuente principal.
+  //
+  // Si había 14 días basura y el viaje oficialmente
+  // es 8 días, solamente construiremos 8.
+  // ==================================================
 
-  await logHist(grupoId, 'EDITAR FECHAS E ITINERARIO', {
-    _group: g,
-    anterior: fechasActuales.join(', '),
-    nuevo: nuevoRango.join(', '),
-    detalle: `fechaInicio: ${nuevaInicio} | fechaFin: ${nuevaFechaFin}`
-  });
+  const diasCount =
+    getCantidadDiasOficialItinerario(
+      g,
+      IT
+    );
 
-  await updateEstadoRevisionAndBadge(grupoId, nuevoItinerario);
-  renderItinerario();
+  if (
+    !diasCount
+  ) {
+    return alert(
+      'No se pudo determinar la cantidad de días del viaje.'
+    );
+  }
+
+  // ==================================================
+  // 2. CONFIRMACIÓN SI ESTAMOS RECORTANDO
+  // ==================================================
+
+  if (
+    fechasActuales.length >
+    diasCount
+  ) {
+    const sobrantes =
+      fechasActuales.length -
+      diasCount;
+
+    const continuar =
+      confirm(
+        `El itinerario actual tiene ${fechasActuales.length} días, ` +
+        `pero el viaje está configurado con ${diasCount} días.\n\n` +
+        `Se eliminarán de la versión VIGENTE ${sobrantes} día(s) sobrante(s).\n\n` +
+        `La revisión y los rechazos anteriores NO se borrarán del historial; ` +
+        `quedarán archivados/resueltos por cambio de itinerario.\n\n` +
+        `¿Continuar?`
+      );
+
+    if (!continuar) {
+      return;
+    }
+  }
+
+  // ==================================================
+  // 3. CREAR RANGO NUEVO
+  // ==================================================
+
+  const nuevoRango =
+    [];
+
+  const [
+    yy,
+    mm,
+    dd
+  ] =
+    nuevaInicio
+      .split("-")
+      .map(Number);
+
+  for (
+    let i = 0;
+    i < diasCount;
+    i++
+  ) {
+    const d =
+      new Date(
+        yy,
+        mm - 1,
+        dd
+      );
+
+    d.setDate(
+      d.getDate() +
+      i
+    );
+
+    const yyyy =
+      d.getFullYear();
+
+    const m2 =
+      String(
+        d.getMonth() +
+        1
+      ).padStart(
+        2,
+        "0"
+      );
+
+    const d2 =
+      String(
+        d.getDate()
+      ).padStart(
+        2,
+        "0"
+      );
+
+    nuevoRango.push(
+      `${yyyy}-${m2}-${d2}`
+    );
+  }
+
+  // ==================================================
+  // 4. CONSTRUIR ITINERARIO NUEVO
+  //
+  // Día 1 antiguo → Día 1 nuevo
+  // Día 2 antiguo → Día 2 nuevo...
+  //
+  // Pero toda revisión queda PENDIENTE.
+  // ==================================================
+
+  const nuevoItinerario =
+    {};
+
+  nuevoRango.forEach(
+    (
+      fechaNueva,
+      idx
+    ) => {
+      const fechaAnterior =
+        fechasActuales[
+          idx
+        ];
+
+      const actividadesAnteriores =
+        fechaAnterior
+          ? (
+              IT[
+                fechaAnterior
+              ] ||
+              []
+            )
+          : [];
+
+      nuevoItinerario[
+        fechaNueva
+      ] =
+        actividadesAnteriores.map(
+          act =>
+            limpiarRevisionActividadPorCambioEstructural(
+              act
+            )
+        );
+    }
+  );
+
+  const nuevaFechaFin =
+    nuevoRango[
+      nuevoRango.length -
+      1
+    ];
+
+  const inicioAnterior =
+    normalizarFechaISO(
+      g.fechaInicio
+    );
+
+  const finAnterior =
+    normalizarFechaISO(
+      g.fechaFin
+    );
+
+  // ==================================================
+  // 5. GUARDAR NUEVA ESTRUCTURA
+  // ==================================================
+
+  await updateDoc(
+    doc(
+      db,
+      'grupos',
+      grupoId
+    ),
+    {
+      fechaInicio:
+        nuevaInicio,
+
+      fechaFin:
+        nuevaFechaFin,
+
+      itinerario:
+        nuevoItinerario
+    }
+  );
+
+  // ==================================================
+  // 6. HISTORIAL DEL CAMBIO DE FECHAS
+  // ==================================================
+
+  await logHist(
+    grupoId,
+    'EDITAR FECHAS E ITINERARIO',
+    {
+      _group:
+        g,
+
+      categoria:
+        'FECHAS',
+
+      anterior:
+        [
+          `${inicioAnterior || '—'} → ${finAnterior || '—'}`,
+          `${fechasActuales.length} días`
+        ].join(
+          ' · '
+        ),
+
+      nuevo:
+        [
+          `${nuevaInicio} → ${nuevaFechaFin}`,
+          `${nuevoRango.length} días`
+        ].join(
+          ' · '
+        ),
+
+      detalle:
+        `Itinerario realineado por número de día. ` +
+        `Antes: ${fechasActuales.join(', ') || '—'} | ` +
+        `Después: ${nuevoRango.join(', ')}`
+    }
+  );
+
+  // ==================================================
+  // 7. INVALIDAR REVISIÓN ANTERIOR
+  //
+  // Esto elimina revisionDias como estado VIGENTE,
+  // vuelve el grupo a pendiente y resuelve las alertas
+  // antiguas SIN borrarlas.
+  // ==================================================
+
+  await invalidarRevisionPorCambioEstructural(
+    grupoId,
+    g,
+    {
+      motivo:
+        `La fecha/estructura del itinerario cambió de ` +
+        `${inicioAnterior || '—'}–${finAnterior || '—'} ` +
+        `a ${nuevaInicio}–${nuevaFechaFin}. ` +
+        `La revisión anterior quedó archivada y se requiere una nueva revisión.`,
+
+      antesFechas:
+        fechasActuales,
+
+      despuesFechas:
+        nuevoRango
+    }
+  );
+
+  // ==================================================
+  // 8. REFRESCAR
+  // ==================================================
+
+  resetRevisionDraft();
+
+  resetSwap();
+
+  setEstadoBadge(
+    'PENDIENTE'
+  );
+
+  await refreshAlertasCounts(
+    grupoId
+  );
+
+  await renderItinerario();
+
+  alert(
+    `Fechas actualizadas correctamente.\n\n` +
+    `Itinerario vigente: ${nuevoRango.length} días\n` +
+    `${nuevaInicio} → ${nuevaFechaFin}\n\n` +
+    `La revisión anterior quedó archivada y el itinerario volvió a PENDIENTE.`
+  );
 }
 
 // —————————————————————————————————
@@ -10503,3 +11184,347 @@ async function(opts = {}) {
     reporte
   };
 };
+
+// ======================================================
+// REPARAR ITINERARIO ACTUAL SEGÚN DURACIÓN OFICIAL
+//
+// USO:
+//
+// 1. Primero:
+// await repararDuracionItinerarioGrupo({ dryRun: true });
+//
+// 2. Si se ve correcto:
+// await repararDuracionItinerarioGrupo({ dryRun: false });
+//
+// Trabaja sobre el grupo actualmente seleccionado.
+// ======================================================
+
+window.repararDuracionItinerarioGrupo =
+  async function(
+    opts = {}
+  ) {
+    const dryRun =
+      opts.dryRun !==
+      undefined
+        ? !!opts.dryRun
+        : true;
+
+    const grupoId =
+      selectNum.value;
+
+    if (!grupoId) {
+      throw new Error(
+        'Selecciona primero el grupo.'
+      );
+    }
+
+    const ref =
+      doc(
+        db,
+        'grupos',
+        grupoId
+      );
+
+    const snap =
+      await getDoc(
+        ref
+      );
+
+    if (!snap.exists()) {
+      throw new Error(
+        'No se encontró el grupo.'
+      );
+    }
+
+    const g =
+      snap.data() ||
+      {};
+
+    const IT =
+      g.itinerario ||
+      {};
+
+    const fechasActuales =
+      Object.keys(
+        IT
+      ).sort(
+        sortDiasItinerario
+      );
+
+    const cantidadOficial =
+      getCantidadDiasOficialItinerario(
+        g,
+        IT
+      );
+
+    const inicio =
+      normalizarFechaISO(
+        g.fechaInicio
+      ) ||
+      fechasActuales[0] ||
+      '';
+
+    if (!inicio) {
+      throw new Error(
+        'No se pudo determinar la fecha de inicio.'
+      );
+    }
+
+    const [
+      y,
+      m,
+      d
+    ] =
+      inicio
+        .split('-')
+        .map(Number);
+
+    const rangoCorrecto =
+      [];
+
+    for (
+      let i = 0;
+      i < cantidadOficial;
+      i++
+    ) {
+      const fecha =
+        new Date(
+          y,
+          m - 1,
+          d
+        );
+
+      fecha.setDate(
+        fecha.getDate() +
+        i
+      );
+
+      const yyyy =
+        fecha.getFullYear();
+
+      const mm =
+        String(
+          fecha.getMonth() +
+          1
+        ).padStart(
+          2,
+          '0'
+        );
+
+      const dd =
+        String(
+          fecha.getDate()
+        ).padStart(
+          2,
+          '0'
+        );
+
+      rangoCorrecto.push(
+        `${yyyy}-${mm}-${dd}`
+      );
+    }
+
+    const nuevoItinerario =
+      {};
+
+    rangoCorrecto.forEach(
+      (
+        fechaNueva,
+        idx
+      ) => {
+        const fechaVieja =
+          fechasActuales[
+            idx
+          ];
+
+        nuevoItinerario[
+          fechaNueva
+        ] =
+          (
+            fechaVieja
+              ? (
+                  IT[
+                    fechaVieja
+                  ] ||
+                  []
+                )
+              : []
+          ).map(
+            act =>
+              limpiarRevisionActividadPorCambioEstructural(
+                act
+              )
+          );
+      }
+    );
+
+    const reporte = {
+      dryRun,
+
+      grupoId,
+
+      numeroNegocio:
+        g.numeroNegocio ||
+        '',
+
+      nombreGrupo:
+        g.nombreGrupo ||
+        '',
+
+      cantidadDiasActual:
+        fechasActuales.length,
+
+      cantidadDiasOficial:
+        cantidadOficial,
+
+      fechaInicio:
+        inicio,
+
+      fechaFinActual:
+        normalizarFechaISO(
+          g.fechaFin
+        ),
+
+      fechaFinCorrecta:
+        rangoCorrecto[
+          rangoCorrecto.length -
+          1
+        ],
+
+      diasQueDesaparecen:
+        fechasActuales.slice(
+          cantidadOficial
+        ),
+
+      fechasActuales,
+
+      fechasCorrectas:
+        rangoCorrecto
+    };
+
+    console.log(
+      dryRun
+        ? '===== DRY RUN ====='
+        : '===== REPARACIÓN REAL ====='
+    );
+
+    console.table([
+      {
+        grupo:
+          reporte.numeroNegocio,
+
+        diasActuales:
+          reporte.cantidadDiasActual,
+
+        diasOficiales:
+          reporte.cantidadDiasOficial,
+
+        inicio:
+          reporte.fechaInicio,
+
+        finActual:
+          reporte.fechaFinActual,
+
+        finCorrecto:
+          reporte.fechaFinCorrecta,
+
+        diasSobrantes:
+          reporte.diasQueDesaparecen.length
+      }
+    ]);
+
+    console.log(
+      'Días que desaparecerán:',
+      reporte.diasQueDesaparecen
+    );
+
+    console.log(
+      'Rango correcto:',
+      reporte.fechasCorrectas
+    );
+
+    if (dryRun) {
+      console.log(
+        'DRY RUN: NO se modificó Firestore.'
+      );
+
+      return reporte;
+    }
+
+    const nuevaFechaFin =
+      rangoCorrecto[
+        rangoCorrecto.length -
+        1
+      ];
+
+    await updateDoc(
+      ref,
+      {
+        fechaInicio:
+          inicio,
+
+        fechaFin:
+          nuevaFechaFin,
+
+        itinerario:
+          nuevoItinerario
+      }
+    );
+
+    await logHist(
+      grupoId,
+      'REPARAR DURACION ITINERARIO',
+      {
+        _group:
+          g,
+
+        categoria:
+          'FECHAS',
+
+        anterior:
+          `${fechasActuales.length} días`,
+
+        nuevo:
+          `${cantidadOficial} días`,
+
+        motivo:
+          'Se eliminaron días residuales pertenecientes a una versión anterior del itinerario.',
+
+        detalle:
+          `Días retirados de la versión vigente: ` +
+          `${
+            reporte.diasQueDesaparecen.join(', ') ||
+            'ninguno'
+          }`
+      }
+    );
+
+    await invalidarRevisionPorCambioEstructural(
+      grupoId,
+      g,
+      {
+        motivo:
+          'Se reparó la duración del itinerario. ' +
+          'Los estados de revisión anteriores quedaron archivados porque correspondían a otra estructura de viaje.',
+
+        antesFechas:
+          fechasActuales,
+
+        despuesFechas:
+          rangoCorrecto
+      }
+    );
+
+    resetRevisionDraft();
+
+    resetSwap();
+
+    await renderItinerario();
+
+    console.log(
+      '✅ REPARACIÓN TERMINADA',
+      reporte
+    );
+
+    return reporte;
+  };
