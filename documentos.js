@@ -6168,11 +6168,19 @@ function buildFinanzasDoc(
     </div>
   `;
 
+  // ============================================================
+  // CANTIDADES OPERATIVAS OFICIALES
+  // ============================================================
+
   const datosOperativos =
     obtenerDatosOperativosGrupo(
       grupo
     );
 
+  /*
+    Los pasajeros se obtienen desde los campos finales
+    guardados por grupos.js.
+  */
   const totalEst =
     datosOperativos.estudiantes;
 
@@ -6182,6 +6190,11 @@ function buildFinanzasDoc(
   const totalPax =
     datosOperativos.totalPax;
 
+  /*
+    Para los documentos manda la cantidad de coordinadores
+    efectivamente asignados y recuperados desde coordinadorIds
+    o coordinadorId.
+  */
   const coordinadoresAsignados =
     Array.isArray(coords)
       ? coords.filter(Boolean)
@@ -6190,34 +6203,65 @@ function buildFinanzasDoc(
   const totalCoordinadores =
     coordinadoresAsignados.length;
 
+  /*
+    Total físico de personas que participan en el viaje.
+    Los coordinadores se incluyen aquí, pero no en los tickets.
+  */
+  const totalPersonasViaje =
+    totalPax + totalCoordinadores;
+
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
-      <div class="sec-title">III. ACTIVIDADES CON TICKETS</div>
+      <div class="sec-title">
+        III. ACTIVIDADES CON TICKETS
+      </div>
+
       ${
         tickets.length
-          ? `<ul class="itinerario">
-              ${tickets.map(v => `
-                <li class="it-day">
-                  <div>
-                    <strong>
-                      ${v.fechaActividadISO ? `${formatShortDayMonth(v.fechaActividadISO)}: ` : ''}
-                      ${v.nombre}
-                    </strong>
-                  </div>
-                  <div>
-                    ${totalEst} tickets estudiantes,
-                    ${totalAd} tickets adultos acompañantes,
-                    ${textoTicketsCoordinadores(totalCoordinadores)}
-                  </div>
-                  ${
-                    v.nota
-                      ? `<div class="ticket-note">Nota: ${v.nota}</div>`
-                      : ''
-                  }
-                </li>
-              `).join('')}
-            </ul>`
-          : `<div class="note">— Sin actividades con ticket registradas —</div>`
+          ? `
+            <ul class="itinerario">
+              ${
+                tickets
+                  .map(v => `
+                    <li class="it-day">
+                      <div>
+                        <strong>
+                          ${
+                            v.fechaActividadISO
+                              ? `${formatShortDayMonth(v.fechaActividadISO)}: `
+                              : ''
+                          }
+
+                          ${v.nombre}
+                        </strong>
+                      </div>
+
+                      <div>
+                        ${totalEst} tickets estudiantes ·
+                        ${totalAd} tickets adultos acompañantes ·
+                        Total tickets: ${totalPax}
+                      </div>
+
+                      ${
+                        v.nota
+                          ? `
+                            <div class="ticket-note">
+                              Nota: ${v.nota}
+                            </div>
+                          `
+                          : ''
+                      }
+                    </li>
+                  `)
+                  .join('')
+              }
+            </ul>
+          `
+          : `
+            <div class="note">
+              — Sin actividades con ticket registradas —
+            </div>
+          `
       }
     </div>
   `;
@@ -6232,13 +6276,6 @@ function buildFinanzasDoc(
           <div class="finanzas-title">RESUMEN OPERATIVO</div>
           <div class="finanzas-subtitle">${safe(lineaPrincipal, '')}</div>
           <div class="finanzas-meta">
-
-            ${
-              programa
-                ? `<span>PROGRAMA: ${programa}</span>`
-                : ''
-            }
-
             ${
               fechaInicioISO
                 ? `<span>INICIO: ${fechaInicioTxt}</span>`
@@ -6256,14 +6293,17 @@ function buildFinanzasDoc(
                 ? `<span>AÑO VIAJE: ${ano}</span>`
                 : ''
             }
-
           </div>
+
           <div class="finanzas-meta">
-            <span>CANTIDAD DE PASAJEROS:</span>
+            <span>PASAJEROS: ${totalPax}</span>
             <span>ESTUDIANTES: ${totalEst}</span>
             <span>ADULTOS ACOMPAÑANTES: ${totalAd}</span>
-            <span>TOTAL PAX: ${totalPax}</span>
-            <span>COORDINADORES: ${totalCoordinadores}</span>
+          </div>
+
+          <div class="finanzas-meta">
+            <span>COORDINADORES RAI TRAI: ${totalCoordinadores}</span>
+            <span>TOTAL PERSONAS EN VIAJE: ${totalPersonasViaje}</span>
           </div>
           <div class="finanzas-meta">
           TELÉFONOS DE OPERACIONES: +569 5011 7289 // +569 8341 5663
