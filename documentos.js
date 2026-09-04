@@ -5497,6 +5497,137 @@ async function fetchCoordinadorPrincipal(
   }
 }
 
+function obtenerDatosOperativosGrupo(grupo = {}) {
+  const numeroSeguro = valor => {
+    const numero = Number(valor);
+
+    return Number.isFinite(numero)
+      ? numero
+      : 0;
+  };
+
+  /*
+    Estos son los campos oficiales guardados por grupos.js.
+
+    No se calcula cantidadgrupo sumando adultos + estudiantes.
+    No se utilizan nombres alternativos.
+  */
+  const totalPax =
+    numeroSeguro(
+      grupo.cantidadgrupo
+    );
+
+  const adultos =
+    numeroSeguro(
+      grupo.adultos
+    );
+
+  const estudiantes =
+    numeroSeguro(
+      grupo.estudiantes
+    );
+
+  const cantidadCoordinadores =
+    numeroSeguro(
+      grupo.cantidadCoordinadores
+    );
+
+  const paxCoincide =
+    totalPax ===
+    adultos + estudiantes;
+
+  if (!paxCoincide) {
+    console.warn(
+      '[DOCUMENTOS][PAX_INCONSISTENTE]',
+      {
+        grupoId:
+          grupo.id ||
+          null,
+
+        numeroNegocio:
+          grupo.numeroNegocio ||
+          null,
+
+        cantidadgrupo:
+          totalPax,
+
+        adultos,
+
+        estudiantes,
+
+        sumaAdultosEstudiantes:
+          adultos + estudiantes
+      }
+    );
+  }
+
+  return {
+    totalPax,
+    adultos,
+    estudiantes,
+    cantidadCoordinadores,
+    paxCoincide
+  };
+}
+
+
+function prepararGrupoParaDocumentos(
+  grupo = {}
+) {
+  const operacion =
+    obtenerDatosOperativosGrupo(
+      grupo
+    );
+
+  /*
+    Dejamos también los alias utilizados por algunos documentos
+    antiguos, pero todos reciben el valor desde el campo oficial.
+
+    Esto evita que cada documento aplique una fórmula diferente.
+  */
+  return {
+    ...grupo,
+
+    cantidadgrupo:
+      operacion.totalPax,
+
+    cantidadGrupo:
+      operacion.totalPax,
+
+    adultos:
+      operacion.adultos,
+
+    cantidadAdultos:
+      operacion.adultos,
+
+    estudiantes:
+      operacion.estudiantes,
+
+    cantidadEstudiantes:
+      operacion.estudiantes,
+
+    cantidadCoordinadores:
+      operacion.cantidadCoordinadores,
+
+    datosOperativos:
+      operacion
+  };
+}
+
+
+function textoTicketsCoordinadores(
+  cantidad
+) {
+  const total =
+    Number(cantidad || 0);
+
+  if (total === 1) {
+    return '1 ticket coordinador(a)';
+  }
+
+  return `${total} tickets coordinadores`;
+}
+
 async function fetchCoordinadoresGrupo(
   grupo
 ){
@@ -6037,8 +6168,22 @@ function buildFinanzasDoc(
     </div>
   `;
 
-  const totalEst = Number(grupo.estudiantes || grupo.cantidadEstudiantes || 0) || 0;
-  const totalAd  = Number(grupo.adultos || grupo.cantidadAdultos || 0) || 0;
+  const datosOperativos =
+    obtenerDatosOperativosGrupo(
+      grupo
+    );
+
+  const totalEst =
+    datosOperativos.estudiantes;
+
+  const totalAd =
+    datosOperativos.adultos;
+
+  const totalPax =
+    datosOperativos.totalPax;
+
+  const totalCoordinadores =
+    datosOperativos.cantidadCoordinadores;
 
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
@@ -6054,7 +6199,11 @@ function buildFinanzasDoc(
                       ${v.nombre}
                     </strong>
                   </div>
-                  <div>${totalEst} tickets estudiantes, ${totalAd} tickets adultos, 1 ticket coordinador(a)</div>
+                  <div>
+                    ${totalEst} tickets estudiantes,
+                    ${totalAd} tickets adultos acompañantes,
+                    ${textoTicketsCoordinadores(totalCoordinadores)}
+                  </div>
                   ${
                     v.nota
                       ? `<div class="ticket-note">Nota: ${v.nota}</div>`
@@ -6106,9 +6255,10 @@ function buildFinanzasDoc(
           </div>
           <div class="finanzas-meta">
             <span>CANTIDAD DE PASAJEROS:</span>
-            ${grupo ? `<span>ESTUDIANTES: ${grupo.estudiantes}</span>` : ''}
-            ${grupo ? `<span>ADULTOS: ${grupo.adultos}</span>` : ''}
-            ${grupo ? `<span>TOTAL: ${grupo.cantidadGrupo}</span>` : ''}
+            <span>ESTUDIANTES: ${totalEst}</span>
+            <span>ADULTOS ACOMPAÑANTES: ${totalAd}</span>
+            <span>TOTAL PAX: ${totalPax}</span>
+            <span>COORDINADORES: ${totalCoordinadores}</span>
           </div>
           <div class="finanzas-meta">
           TELÉFONOS DE OPERACIONES: +569 5011 7289 // +569 8341 5663
@@ -6194,14 +6344,22 @@ function buildVouchersDoc(grupo, vouchersData){
     return nombreOperacional || num || '';
   })();
 
-  const totalEst = Number(grupo.estudiantes || grupo.cantidadEstudiantes || 0) || 0;
-  const totalAd  = Number(grupo.adultos || grupo.cantidadAdultos || 0) || 0;
-  const totalGrupo = (() => {
-    const base =
-      Number(grupo.cantidadGrupo || grupo.cantidadgrupo || grupo.pax || 0) ||
-      (totalEst + totalAd);
-    return base || '';
-  })();
+  const datosOperativos =
+    obtenerDatosOperativosGrupo(
+      grupo
+    );
+
+  const totalEst =
+    datosOperativos.estudiantes;
+
+  const totalAd =
+    datosOperativos.adultos;
+
+  const totalGrupo =
+    datosOperativos.totalPax;
+
+  const totalCoordinadores =
+    datosOperativos.cantidadCoordinadores;
 
   const { fisicos = [] } = vouchersData || {};
 
@@ -6251,13 +6409,14 @@ function buildVouchersDoc(grupo, vouchersData){
             <span class="lbl">Pax planificados:</span>
             ${
               totalGrupo
-                ? `${totalGrupo} pax${
-                    (totalEst || totalAd)
-                      ? ` (Estudiantes: ${totalEst || 0} · Adultos: ${totalAd || 0})`
-                      : ''
-                  }`
+                ? `${totalGrupo} pax (Estudiantes: ${totalEst} · Adultos acompañantes: ${totalAd})`
                 : '________________'
             }
+          </div>
+
+          <div class="voucher-row">
+            <span class="lbl">Coordinadores Rai Trai:</span>
+            ${totalCoordinadores}
           </div>
 
           <div class="voucher-row">
@@ -6310,8 +6469,11 @@ function buildVouchersDoc(grupo, vouchersData){
 // ──────────────────────────────────────────────────────────────
 async function buildFinanzasHTML(
   grupoId
-){
-  // 1) GRUPO
+) {
+  // ============================================================
+  // 1. GRUPO OFICIAL
+  // ============================================================
+
   const d =
     await getDoc(
       doc(
@@ -6321,29 +6483,42 @@ async function buildFinanzasHTML(
       )
     );
 
-  if (
-    !d.exists()
-  ) {
+  if (!d.exists()) {
+    console.error(
+      '[DOCUMENTOS][RESUMEN_GRUPO_NO_ENCONTRADO]',
+      grupoId
+    );
+
     return '';
   }
 
+  /*
+    Esta es la ficha operativa final guardada por grupos.js.
+    No volvemos a consultar Sistema de Pagos.
+  */
+  const g =
+    prepararGrupoParaDocumentos({
+      id:
+        d.id,
 
-  const g = {
-    id:
-      d.id,
-
-    ...d.data()
-  };
+      ...d.data()
+    });
 
 
-  // 2) ABONOS
+  // ============================================================
+  // 2. ABONOS
+  // ============================================================
+
   const abonosRaw =
     await fetchFinanzasAbonos(
       grupoId
     );
 
 
-  // 3) FECHAS ITINERARIO
+  // ============================================================
+  // 3. FECHAS DEL ITINERARIO
+  // ============================================================
+
   const abonos =
     enrichAbonosWithItinerario(
       g,
@@ -6351,21 +6526,72 @@ async function buildFinanzasHTML(
     );
 
 
-  // 4) TODOS LOS COORDINADORES
+  // ============================================================
+  // 4. COORDINADORES ASIGNADOS
+  // ============================================================
+
   const coords =
     await fetchCoordinadoresGrupo(
       g
     );
 
 
-  // 5) VOUCHERS
+  // ============================================================
+  // 5. CONTROL DE COORDINADORES
+  // ============================================================
+
+  const cantidadOficial =
+    g.datosOperativos
+      .cantidadCoordinadores;
+
+  const cantidadAsignada =
+    Array.isArray(coords)
+      ? coords.length
+      : 0;
+
+  if (
+    cantidadOficial !==
+    cantidadAsignada
+  ) {
+    console.warn(
+      '[DOCUMENTOS][COORDINADORES_INCONSISTENTES]',
+      {
+        grupoId:
+          g.id,
+
+        numeroNegocio:
+          g.numeroNegocio ||
+          null,
+
+        cantidadCoordinadores:
+          cantidadOficial,
+
+        coordinadoresAsignados:
+          cantidadAsignada,
+
+        coordinadorIds:
+          Array.isArray(g.coordinadorIds)
+            ? g.coordinadorIds
+            : []
+      }
+    );
+  }
+
+
+  // ============================================================
+  // 6. VOUCHERS Y TICKETS
+  // ============================================================
+
   const vouchersData =
     await collectVoucherActivities(
       g
     );
 
 
-  // 6) DOCUMENTO
+  // ============================================================
+  // 7. CONSTRUIR DOCUMENTO
+  // ============================================================
+
   return buildFinanzasDoc(
     g,
     abonos,
@@ -6374,17 +6600,61 @@ async function buildFinanzasHTML(
   );
 }
 
-async function buildVouchersHTML(grupoId){
-  // 1) Traer datos del grupo
-  const d = await getDoc(doc(db,'grupos', grupoId));
-  if (!d.exists()) return '';
-  const g = { id:d.id, ...d.data() };
+async function buildVouchersHTML(
+  grupoId
+) {
+  // ============================================================
+  // 1. GRUPO OFICIAL
+  // ============================================================
 
-  // 2) Armar listas de vouchers (físicos y ticket) cruzando con Servicios/Proveedores
-  const vouchersData = await collectVoucherActivities(g);
+  const d =
+    await getDoc(
+      doc(
+        db,
+        'grupos',
+        grupoId
+      )
+    );
 
-  // 3) Construir HTML de vouchers físicos (NO imprimir aquí)
-  return buildVouchersDoc(g, vouchersData);
+  if (!d.exists()) {
+    console.error(
+      '[DOCUMENTOS][VOUCHERS_GRUPO_NO_ENCONTRADO]',
+      grupoId
+    );
+
+    return '';
+  }
+
+  /*
+    Usamos los datos finales guardados por grupos.js.
+  */
+  const g =
+    prepararGrupoParaDocumentos({
+      id:
+        d.id,
+
+      ...d.data()
+    });
+
+
+  // ============================================================
+  // 2. VOUCHERS
+  // ============================================================
+
+  const vouchersData =
+    await collectVoucherActivities(
+      g
+    );
+
+
+  // ============================================================
+  // 3. CONSTRUIR DOCUMENTO
+  // ============================================================
+
+  return buildVouchersDoc(
+    g,
+    vouchersData
+  );
 }
 
 function buildItinerarioDoc(grupo){
