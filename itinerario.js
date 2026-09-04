@@ -8460,316 +8460,374 @@ function getCantidadDiasOficialItinerario(
   );
 }
 
-
 // ======================================================
-// DEJAR UNA ACTIVIDAD COMO NUEVA REVISIÓN
-//
-// Conserva el contenido de la actividad,
-// pero NO conserva la revisión de una versión anterior
-// del itinerario.
-//
-// Esto es deliberado:
-// cambiar estructuralmente las fechas invalida el OK /
-// rechazo anterior.
-//
-// El rechazo histórico NO se pierde:
-// sigue estando en Historial y Alertas resueltas.
+// CREAR RANGO DE FECHAS DESDE UN INICIO + CANTIDAD DÍAS
 // ======================================================
 
-function limpiarRevisionActividadPorCambioEstructural(
-  actividad
+function crearRangoItinerarioDesdeInicio(
+  fechaInicio,
+  cantidadDias
 ) {
-  if (!actividad) {
-    return actividad;
+  const inicio =
+    normalizarFechaISO(
+      fechaInicio
+    );
+
+  const total =
+    parseInt(
+      cantidadDias,
+      10
+    );
+
+  if (
+    !inicio ||
+    !Number.isFinite(total) ||
+    total <= 0
+  ) {
+    return [];
   }
 
-  const out = {
-    ...actividad,
+  const [
+    y,
+    m,
+    d
+  ] =
+    inicio
+      .split('-')
+      .map(Number);
 
-    revision:
-      'pendiente',
+  const out =
+    [];
 
-    revisionObservacion:
-      '',
+  for (
+    let i = 0;
+    i < total;
+    i++
+  ) {
+    const fecha =
+      new Date(
+        y,
+        m - 1,
+        d
+      );
 
-    revisionUsuario:
-      '',
+    fecha.setDate(
+      fecha.getDate() +
+      i
+    );
 
-    revisionTimestamp:
-      null,
+    const yyyy =
+      fecha.getFullYear();
 
-    rechazoMotivo:
-      '',
+    const mm =
+      String(
+        fecha.getMonth() + 1
+      ).padStart(
+        2,
+        '0'
+      );
 
-    revisionMotivoOriginal:
-      ''
-  };
+    const dd =
+      String(
+        fecha.getDate()
+      ).padStart(
+        2,
+        '0'
+      );
+
+    out.push(
+      `${yyyy}-${mm}-${dd}`
+    );
+  }
 
   return out;
 }
 
 
 // ======================================================
-// INVALIDAR REVISIÓN VIGENTE POR CAMBIO ESTRUCTURAL
+// REALINEAR REVISIONES DE DÍA POR POSICIÓN
 //
-// Se utiliza cuando las fechas / estructura del viaje
-// cambian.
+// Ejemplo:
 //
-// Hace cuatro cosas:
+// fechasAntes:
+// 14/12, 15/12, 16/12...
 //
-// 1. revisionDias vuelve a vacío.
-// 2. revisión general vuelve a PENDIENTE.
-// 3. alertas activas de revisión quedan RESUELTAS,
-//    pero NO se borran.
-// 4. guarda un evento en Historial explicando por qué.
+// fechasDespues:
+// 05/12, 06/12, 07/12...
 //
-// De esta manera:
-// - no reaparecen rechazos de una versión antigua;
-// - no perdemos evidencia histórica.
+// revisionDias["15/12"]
+// pasa a
+// revisionDias["06/12"]
+//
+// No cambia:
+// - estado
+// - observación
+// - usuario
+// - timestamp
 // ======================================================
 
-async function invalidarRevisionPorCambioEstructural(
-  grupoId,
-  g,
-  opciones = {}
+function realinearRevisionDiasPorIndice(
+  revisionDiasOriginal,
+  fechasAntes,
+  fechasDespues
 ) {
-  const motivo =
-    (
-      opciones.motivo ||
-      'El itinerario cambió estructuralmente y requiere una nueva revisión.'
-    )
-      .toString()
-      .trim();
+  const originales =
+    revisionDiasOriginal &&
+    typeof revisionDiasOriginal ===
+      'object'
+      ? revisionDiasOriginal
+      : {};
 
-  const antesFechas =
-    Array.isArray(
-      opciones.antesFechas
-    )
-      ? opciones.antesFechas
-      : Object.keys(
-          g?.itinerario ||
-          {}
-        ).sort(
-          sortDiasItinerario
-        );
+  const nuevo =
+    {};
 
-  const despuesFechas =
-    Array.isArray(
-      opciones.despuesFechas
-    )
-      ? opciones.despuesFechas
-      : [];
+  const movimientos =
+    [];
 
-  const usuario =
-    auth.currentUser?.email ||
-    '';
-
-  const ahora =
-    new Date();
-
-  const refGrupo =
-    doc(
-      db,
-      'grupos',
-      grupoId
+  const total =
+    Math.min(
+      fechasAntes.length,
+      fechasDespues.length
     );
 
-  // --------------------------------------------------
-  // ALERTAS ACTIVAS
-  // --------------------------------------------------
+  for (
+    let i = 0;
+    i < total;
+    i++
+  ) {
+    const fechaAnterior =
+      fechasAntes[i];
 
-  let alertasResueltas =
-    0;
+    const fechaNueva =
+      fechasDespues[i];
 
-  try {
-    const snapAlertas =
-      await getDocs(
-        collection(
-          db,
-          'grupos',
-          grupoId,
-          'alertas'
-        )
-      );
+    const revision =
+      originales[
+        fechaAnterior
+      ];
 
-    const activas =
-      snapAlertas.docs.filter(
-        d => {
-          const a =
-            d.data() ||
-            {};
-
-          // Modelo nuevo
-          if (
-            a.resuelta !==
-            undefined
-          ) {
-            return (
-              a.resuelta !==
-              true
-            );
-          }
-
-          // Modelo antiguo
-          return !a.visto;
-        }
-      );
-
-    if (
-      activas.length
-    ) {
-      await Promise.all(
-        activas.map(
-          d =>
-            updateDoc(
-              doc(
-                db,
-                'grupos',
-                grupoId,
-                'alertas',
-                d.id
-              ),
-              {
-                resuelta:
-                  true,
-
-                resueltaPor:
-                  usuario,
-
-                resueltaEn:
-                  ahora,
-
-                resueltaMotivo:
-                  motivo,
-
-                visto:
-                  true,
-
-                leidoPor:
-                  usuario,
-
-                leidoEn:
-                  ahora,
-
-                invalidadaPorCambioItinerario:
-                  true
-              }
-            )
-        )
-      );
-
-      alertasResueltas =
-        activas.length;
+    if (!revision) {
+      continue;
     }
 
-  } catch (error) {
-    console.warn(
-      'No se pudieron invalidar las alertas antiguas:',
-      error
-    );
-  }
+    nuevo[
+      fechaNueva
+    ] = {
+      ...revision
+    };
 
-  // --------------------------------------------------
-  // ESTADO ACTUAL DE REVISIÓN
-  // --------------------------------------------------
+    movimientos.push({
+      dia:
+        i + 1,
 
-  await updateDoc(
-    refGrupo,
-    {
-      revisionDias:
-        {},
+      fechaAnterior,
 
-      revisionGrupo: {
-        estado:
-          'pendiente',
+      fechaNueva,
 
-        observacion:
-          motivo,
-
-        usuario,
-
-        timestamp:
-          ahora
-      },
-
-      estadoRevisionItinerario:
-        'PENDIENTE'
-    }
-  );
-
-  // --------------------------------------------------
-  // HISTORIAL
-  // --------------------------------------------------
-
-  await logHist(
-    grupoId,
-    'INVALIDAR REVISION POR CAMBIO DE ITINERARIO',
-    {
-      _group:
-        g,
-
-      categoria:
-        'REVISION',
-
-      tipoRevision:
-        'grupo',
-
-      anterior:
-        `Revisión anterior invalidada · ${antesFechas.length} días`,
-
-      nuevo:
-        `Nueva revisión pendiente · ${despuesFechas.length || '—'} días`,
-
-      estadoAnterior:
-        getRevisionGrupo(
-          g
-        ).estado,
-
-      estadoNuevo:
+      estado:
+        revision.estado ||
         'pendiente',
 
-      motivo,
-
-      detalle:
-        [
-          `Fechas anteriores: ${antesFechas.join(', ') || '—'}`,
-          `Fechas nuevas: ${despuesFechas.join(', ') || '—'}`,
-          `Alertas históricas cerradas: ${alertasResueltas}`
-        ].join(
-          ' | '
-        )
-    }
-  );
+      observacion:
+        revision.observacion ||
+        revision.motivo ||
+        ''
+    });
+  }
 
   return {
-    ok:
-      true,
+    revisionDias:
+      nuevo,
 
-    alertasResueltas
+    movimientos
   };
 }
 
-// —————————————————————————————————
-/** Editar fecha base
- *
- * REGLA NUEVA:
- *
- * - La duración NO la determina un itinerario viejo contaminado.
- * - Se usa la duración oficial del grupo.
- * - Las actividades se trasladan por número de día.
- * - Las actividades sobrantes desaparecen de la versión vigente.
- * - Toda revisión anterior queda invalidada.
- * - Alertas/rechazos antiguos NO se borran:
- *   quedan como RESUELTOS por cambio estructural.
- **/
-// —————————————————————————————————
+
+// ======================================================
+// REALINEAR ALERTAS EXISTENTES
+//
+// IMPORTANTE:
+// NO resuelve alertas.
+// NO crea alertas nuevas.
+// NO borra alertas.
+//
+// Solamente cambia la fecha de la alerta para mantener
+// el mismo número de día después del cambio de fechas.
+//
+// También corrige:
+//
+// tipo "dia":
+// actividad: DÍA 2026-12-15
+//
+// a:
+//
+// actividad: DÍA 2026-12-06
+// ======================================================
+
+async function realinearAlertasRevisionPorIndice(
+  grupoId,
+  fechasAntes,
+  fechasDespues,
+  opciones = {}
+) {
+  const dryRun =
+    opciones.dryRun ===
+    true;
+
+  const mapaFechas =
+    new Map();
+
+  const total =
+    Math.min(
+      fechasAntes.length,
+      fechasDespues.length
+    );
+
+  for (
+    let i = 0;
+    i < total;
+    i++
+  ) {
+    mapaFechas.set(
+      fechasAntes[i],
+      fechasDespues[i]
+    );
+  }
+
+  const snap =
+    await getDocs(
+      collection(
+        db,
+        'grupos',
+        grupoId,
+        'alertas'
+      )
+    );
+
+  const movimientos =
+    [];
+
+  for (
+    const alertaDoc
+    of snap.docs
+  ) {
+    const alerta =
+      alertaDoc.data() ||
+      {};
+
+    const fechaAnterior =
+      alerta.fecha ||
+      '';
+
+    if (
+      !fechaAnterior ||
+      !mapaFechas.has(
+        fechaAnterior
+      )
+    ) {
+      continue;
+    }
+
+    const fechaNueva =
+      mapaFechas.get(
+        fechaAnterior
+      );
+
+    if (
+      fechaNueva ===
+      fechaAnterior
+    ) {
+      continue;
+    }
+
+    const cambios = {
+      fecha:
+        fechaNueva
+    };
+
+    if (
+      (
+        alerta.tipo ||
+        'actividad'
+      ) ===
+      'dia'
+    ) {
+      cambios.actividad =
+        `DÍA ${fechaNueva}`;
+    }
+
+    movimientos.push({
+      alertaId:
+        alertaDoc.id,
+
+      tipo:
+        alerta.tipo ||
+        'actividad',
+
+      fechaAnterior,
+
+      fechaNueva,
+
+      actividad:
+        alerta.actividad ||
+        '',
+
+      motivo:
+        alerta.motivo ||
+        '',
+
+      resuelta:
+        alerta.resuelta ===
+        true
+    });
+
+    if (!dryRun) {
+      await updateDoc(
+        doc(
+          db,
+          'grupos',
+          grupoId,
+          'alertas',
+          alertaDoc.id
+        ),
+        cambios
+      );
+    }
+  }
+
+  return movimientos;
+}
+
+// ======================================================
+// EDITAR FECHA BASE DEL ITINERARIO
+//
+// REGLA:
+//
+// Día 1 anterior -> Día 1 nuevo
+// Día 2 anterior -> Día 2 nuevo
+// Día 3 anterior -> Día 3 nuevo
+//
+// Se trasladan juntos:
+//
+// - actividades
+// - revisión de actividades
+// - revisión del día
+// - observación del día
+// - alertas de revisión
+//
+// NO se pierde ninguna observación.
+//
+// La única revisión que vuelve a PENDIENTE es
+// la REVISIÓN GENERAL DEL GRUPO.
+// ======================================================
 
 async function handleDateEdit(
   oldFecha
 ) {
   const nuevaInicio =
     prompt(
-      "Nueva fecha de inicio del itinerario (YYYY-MM-DD):",
+      'Nueva fecha de inicio del itinerario (YYYY-MM-DD):',
       oldFecha
     );
 
@@ -8782,36 +8840,33 @@ async function handleDateEdit(
       nuevaInicio
     )
   ) {
-    alert(
-      "Fecha inválida. Usa formato YYYY-MM-DD."
+    return alert(
+      'Fecha inválida. Usa formato YYYY-MM-DD.'
     );
-
-    return;
   }
 
   const grupoId =
     selectNum.value;
 
   if (!grupoId) {
-    alert(
-      "Selecciona primero un grupo."
+    return alert(
+      'Selecciona primero un grupo.'
     );
-
-    return;
   }
+
+  const refGrupo =
+    doc(
+      db,
+      'grupos',
+      grupoId
+    );
 
   const snapG =
     await getDoc(
-      doc(
-        db,
-        'grupos',
-        grupoId
-      )
+      refGrupo
     );
 
-  if (
-    !snapG.exists()
-  ) {
+  if (!snapG.exists()) {
     return alert(
       'No se encontró el grupo.'
     );
@@ -8832,126 +8887,88 @@ async function handleDateEdit(
       sortDiasItinerario
     );
 
+  if (!fechasActuales.length) {
+    return alert(
+      'El grupo no tiene itinerario.'
+    );
+  }
+
   // ==================================================
-  // 1. DURACIÓN OFICIAL
-  //
-  // MUY IMPORTANTE:
-  // ya NO usamos:
-  //
-  // fechasActuales.length
-  //
-  // como fuente principal.
-  //
-  // Si había 14 días basura y el viaje oficialmente
-  // es 8 días, solamente construiremos 8.
+  // DURACIÓN OFICIAL
   // ==================================================
 
-  const diasCount =
+  const cantidadDias =
     getCantidadDiasOficialItinerario(
       g,
       IT
     );
 
+  const nuevoRango =
+    crearRangoItinerarioDesdeInicio(
+      nuevaInicio,
+      cantidadDias
+    );
+
+  if (!nuevoRango.length) {
+    return alert(
+      'No se pudo construir el nuevo rango de fechas.'
+    );
+  }
+
+  // ==================================================
+  // IMPORTANTE
+  //
+  // En un grupo sano las fechas actuales deberían tener
+  // exactamente la duración oficial.
+  //
+  // Si tiene más días, NO intentamos adivinar:
+  // primero debe repararse.
+  // ==================================================
+
   if (
-    !diasCount
+    fechasActuales.length !==
+    cantidadDias
   ) {
     return alert(
-      'No se pudo determinar la cantidad de días del viaje.'
+      `Este itinerario tiene ${fechasActuales.length} días guardados, ` +
+      `pero el viaje está configurado con ${cantidadDias} días.\n\n` +
+      `Primero debes ejecutar la reparación del itinerario.`
     );
   }
 
-  // ==================================================
-  // 2. CONFIRMACIÓN SI ESTAMOS RECORTANDO
-  // ==================================================
+  const continuar =
+    confirm(
+      `Se cambiarán las fechas del itinerario.\n\n` +
 
-  if (
-    fechasActuales.length >
-    diasCount
-  ) {
-    const sobrantes =
-      fechasActuales.length -
-      diasCount;
+      `${fechasActuales[0]} → ${nuevoRango[0]}\n` +
+      `${fechasActuales[fechasActuales.length - 1]} → ` +
+      `${nuevoRango[nuevoRango.length - 1]}\n\n` +
 
-    const continuar =
-      confirm(
-        `El itinerario actual tiene ${fechasActuales.length} días, ` +
-        `pero el viaje está configurado con ${diasCount} días.\n\n` +
-        `Se eliminarán de la versión VIGENTE ${sobrantes} día(s) sobrante(s).\n\n` +
-        `La revisión y los rechazos anteriores NO se borrarán del historial; ` +
-        `quedarán archivados/resueltos por cambio de itinerario.\n\n` +
-        `¿Continuar?`
-      );
+      `Las actividades, revisiones, rechazos y observaciones ` +
+      `se mantendrán en el mismo NÚMERO DE DÍA.\n\n` +
 
-    if (!continuar) {
-      return;
-    }
+      `¿Continuar?`
+    );
+
+  if (!continuar) {
+    return;
   }
 
   // ==================================================
-  // 3. CREAR RANGO NUEVO
-  // ==================================================
-
-  const nuevoRango =
-    [];
-
-  const [
-    yy,
-    mm,
-    dd
-  ] =
-    nuevaInicio
-      .split("-")
-      .map(Number);
-
-  for (
-    let i = 0;
-    i < diasCount;
-    i++
-  ) {
-    const d =
-      new Date(
-        yy,
-        mm - 1,
-        dd
-      );
-
-    d.setDate(
-      d.getDate() +
-      i
-    );
-
-    const yyyy =
-      d.getFullYear();
-
-    const m2 =
-      String(
-        d.getMonth() +
-        1
-      ).padStart(
-        2,
-        "0"
-      );
-
-    const d2 =
-      String(
-        d.getDate()
-      ).padStart(
-        2,
-        "0"
-      );
-
-    nuevoRango.push(
-      `${yyyy}-${m2}-${d2}`
-    );
-  }
-
-  // ==================================================
-  // 4. CONSTRUIR ITINERARIO NUEVO
+  // 1. ITINERARIO
   //
-  // Día 1 antiguo → Día 1 nuevo
-  // Día 2 antiguo → Día 2 nuevo...
+  // IMPORTANTE:
+  // copiamos las actividades completas.
   //
-  // Pero toda revisión queda PENDIENTE.
+  // NO tocamos:
+  // revision
+  // revisionObservacion
+  // revisionUsuario
+  // revisionTimestamp
+  // rechazoMotivo
+  //
+  // porque la actividad continúa siendo el mismo día
+  // lógico del viaje.
   // ==================================================
 
   const nuevoItinerario =
@@ -8967,54 +8984,79 @@ async function handleDateEdit(
           idx
         ];
 
-      const actividadesAnteriores =
-        fechaAnterior
-          ? (
-              IT[
-                fechaAnterior
-              ] ||
-              []
-            )
-          : [];
-
       nuevoItinerario[
         fechaNueva
       ] =
-        actividadesAnteriores.map(
-          act =>
-            limpiarRevisionActividadPorCambioEstructural(
-              act
-            )
+        (
+          IT[
+            fechaAnterior
+          ] ||
+          []
+        ).map(
+          act => ({
+            ...act
+          })
         );
     }
   );
 
+  // ==================================================
+  // 2. REVISIONES DE DÍA
+  // ==================================================
+
+  const resultadoRevision =
+    realinearRevisionDiasPorIndice(
+      g.revisionDias ||
+        {},
+      fechasActuales,
+      nuevoRango
+    );
+
+  const revisionDiasNueva =
+    resultadoRevision.revisionDias;
+
+  // ==================================================
+  // 3. REVISIÓN GENERAL
+  // ==================================================
+
+  const revisionGeneralAnterior =
+    getRevisionGrupo(
+      g
+    );
+
+  const usuario =
+    auth.currentUser?.email ||
+    '';
+
+  const ahora =
+    new Date();
+
+  const revisionGrupoNueva = {
+    estado:
+      'pendiente',
+
+    observacion:
+      'Las fechas del itinerario fueron modificadas. ' +
+      'Las revisiones de días y actividades se conservaron por número de día. ' +
+      'Se requiere una nueva aprobación general.',
+
+    usuario,
+
+    timestamp:
+      ahora
+  };
+
+  // ==================================================
+  // 4. GUARDAR GRUPO
+  // ==================================================
+
   const nuevaFechaFin =
     nuevoRango[
-      nuevoRango.length -
-      1
+      nuevoRango.length - 1
     ];
 
-  const inicioAnterior =
-    normalizarFechaISO(
-      g.fechaInicio
-    );
-
-  const finAnterior =
-    normalizarFechaISO(
-      g.fechaFin
-    );
-
-  // ==================================================
-  // 5. GUARDAR NUEVA ESTRUCTURA
-  // ==================================================
-
   await updateDoc(
-    doc(
-      db,
-      'grupos',
-      grupoId
-    ),
+    refGrupo,
     {
       fechaInicio:
         nuevaInicio,
@@ -9023,17 +9065,51 @@ async function handleDateEdit(
         nuevaFechaFin,
 
       itinerario:
-        nuevoItinerario
+        nuevoItinerario,
+
+      revisionDias:
+        revisionDiasNueva,
+
+      revisionGrupo:
+        revisionGrupoNueva,
+
+      estadoRevisionItinerario:
+        'PENDIENTE'
     }
   );
 
   // ==================================================
-  // 6. HISTORIAL DEL CAMBIO DE FECHAS
+  // 5. REALINEAR ALERTAS
+  //
+  // Las alertas continúan con exactamente el mismo:
+  //
+  // - motivo
+  // - estado
+  // - correcciones
+  // - creadoPor
+  // - creadoEn
+  //
+  // solamente cambia la FECHA.
+  // ==================================================
+
+  const movimientosAlertas =
+    await realinearAlertasRevisionPorIndice(
+      grupoId,
+      fechasActuales,
+      nuevoRango,
+      {
+        dryRun:
+          false
+      }
+    );
+
+  // ==================================================
+  // 6. HISTORIAL
   // ==================================================
 
   await logHist(
     grupoId,
-    'EDITAR FECHAS E ITINERARIO',
+    'REALINEAR FECHAS ITINERARIO',
     {
       _group:
         g,
@@ -9042,56 +9118,57 @@ async function handleDateEdit(
         'FECHAS',
 
       anterior:
-        [
-          `${inicioAnterior || '—'} → ${finAnterior || '—'}`,
-          `${fechasActuales.length} días`
-        ].join(
-          ' · '
-        ),
+        `${fechasActuales[0]} → ` +
+        `${fechasActuales[fechasActuales.length - 1]}`,
 
       nuevo:
-        [
-          `${nuevaInicio} → ${nuevaFechaFin}`,
-          `${nuevoRango.length} días`
-        ].join(
-          ' · '
-        ),
+        `${nuevoRango[0]} → ${nuevaFechaFin}`,
 
       detalle:
-        `Itinerario realineado por número de día. ` +
-        `Antes: ${fechasActuales.join(', ') || '—'} | ` +
-        `Después: ${nuevoRango.join(', ')}`
+        `Se mantuvieron las actividades y revisiones por número de día. ` +
+        `Revisiones de día trasladadas: ` +
+        `${resultadoRevision.movimientos.length}. ` +
+        `Alertas trasladadas: ${movimientosAlertas.length}.`
     }
   );
 
+  if (
+    revisionGeneralAnterior.estado !==
+    'pendiente'
+  ) {
+    await logHist(
+      grupoId,
+      'GRUPO VUELVE A PENDIENTE',
+      {
+        _group:
+          g,
+
+        categoria:
+          'REVISION',
+
+        tipoRevision:
+          'grupo',
+
+        anterior:
+          revisionGeneralAnterior.estado,
+
+        nuevo:
+          'pendiente',
+
+        estadoAnterior:
+          revisionGeneralAnterior.estado,
+
+        estadoNuevo:
+          'pendiente',
+
+        motivo:
+          revisionGrupoNueva.observacion
+      }
+    );
+  }
+
   // ==================================================
-  // 7. INVALIDAR REVISIÓN ANTERIOR
-  //
-  // Esto elimina revisionDias como estado VIGENTE,
-  // vuelve el grupo a pendiente y resuelve las alertas
-  // antiguas SIN borrarlas.
-  // ==================================================
-
-  await invalidarRevisionPorCambioEstructural(
-    grupoId,
-    g,
-    {
-      motivo:
-        `La fecha/estructura del itinerario cambió de ` +
-        `${inicioAnterior || '—'}–${finAnterior || '—'} ` +
-        `a ${nuevaInicio}–${nuevaFechaFin}. ` +
-        `La revisión anterior quedó archivada y se requiere una nueva revisión.`,
-
-      antesFechas:
-        fechasActuales,
-
-      despuesFechas:
-        nuevoRango
-    }
-  );
-
-  // ==================================================
-  // 8. REFRESCAR
+  // 7. TERMINAR
   // ==================================================
 
   resetRevisionDraft();
@@ -9110,9 +9187,9 @@ async function handleDateEdit(
 
   alert(
     `Fechas actualizadas correctamente.\n\n` +
-    `Itinerario vigente: ${nuevoRango.length} días\n` +
-    `${nuevaInicio} → ${nuevaFechaFin}\n\n` +
-    `La revisión anterior quedó archivada y el itinerario volvió a PENDIENTE.`
+    `${nuevoRango[0]} → ${nuevaFechaFin}\n\n` +
+    `Las revisiones y observaciones se conservaron por número de día.\n` +
+    `La revisión general quedó PENDIENTE.`
   );
 }
 
@@ -11186,17 +11263,51 @@ async function(opts = {}) {
 };
 
 // ======================================================
-// REPARAR ITINERARIO ACTUAL SEGÚN DURACIÓN OFICIAL
+// REPARAR ITINERARIO DESFASADO POR CAMBIO DE FECHAS
 //
-// USO:
+// CASO TÍPICO:
 //
-// 1. Primero:
-// await repararDuracionItinerarioGrupo({ dryRun: true });
+// viaje original:
+// 14/12 → 21/12
 //
-// 2. Si se ve correcto:
-// await repararDuracionItinerarioGrupo({ dryRun: false });
+// luego se cambió a:
+// 05/12 → 12/12
 //
-// Trabaja sobre el grupo actualmente seleccionado.
+// itinerario quedó:
+// 05/12 → 21/12
+//
+// mientras revisionDias siguió:
+// 14/12 → 21/12
+//
+// Esta reparación:
+//
+// 1. deja solamente la duración oficial;
+// 2. NO toca las actividades válidas actuales;
+// 3. busca el rango antiguo de revisionDias;
+// 4. mueve Día 1 antiguo → Día 1 actual;
+// 5. mueve alertas con la misma lógica;
+// 6. conserva estados/comentarios;
+// 7. deja revisión general PENDIENTE.
+//
+// USAR SIEMPRE PRIMERO:
+//
+// await repararDuracionItinerarioGrupo({
+//   dryRun: true
+// });
+//
+// Y solamente después:
+//
+// await repararDuracionItinerarioGrupo({
+//   dryRun: false
+// });
+//
+// Si la detección automática del inicio viejo no fuera
+// correcta se puede indicar:
+//
+// await repararDuracionItinerarioGrupo({
+//   dryRun: true,
+//   inicioRevisionAnterior: '2026-12-14'
+// });
 // ======================================================
 
 window.repararDuracionItinerarioGrupo =
@@ -11218,26 +11329,40 @@ window.repararDuracionItinerarioGrupo =
       );
     }
 
-    const ref =
+    const refGrupo =
       doc(
         db,
         'grupos',
         grupoId
       );
 
-    const snap =
-      await getDoc(
-        ref
-      );
+    const [
+      snapGrupo,
+      snapAlertas
+    ] =
+      await Promise.all([
+        getDoc(
+          refGrupo
+        ),
 
-    if (!snap.exists()) {
+        getDocs(
+          collection(
+            db,
+            'grupos',
+            grupoId,
+            'alertas'
+          )
+        )
+      ]);
+
+    if (!snapGrupo.exists()) {
       throw new Error(
         'No se encontró el grupo.'
       );
     }
 
     const g =
-      snap.data() ||
+      snapGrupo.data() ||
       {};
 
     const IT =
@@ -11247,9 +11372,19 @@ window.repararDuracionItinerarioGrupo =
     const fechasActuales =
       Object.keys(
         IT
-      ).sort(
-        sortDiasItinerario
+      )
+        .filter(
+          isFechaReal
+        )
+        .sort(
+          sortDiasItinerario
+        );
+
+    if (!fechasActuales.length) {
+      throw new Error(
+        'El itinerario no tiene fechas reales.'
       );
+    }
 
     const cantidadOficial =
       getCantidadDiasOficialItinerario(
@@ -11257,29 +11392,205 @@ window.repararDuracionItinerarioGrupo =
         IT
       );
 
-    const inicio =
+    const inicioActual =
       normalizarFechaISO(
         g.fechaInicio
       ) ||
-      fechasActuales[0] ||
-      '';
+      fechasActuales[0];
 
-    if (!inicio) {
+    const rangoCorrecto =
+      crearRangoItinerarioDesdeInicio(
+        inicioActual,
+        cantidadOficial
+      );
+
+    if (!rangoCorrecto.length) {
       throw new Error(
-        'No se pudo determinar la fecha de inicio.'
+        'No se pudo construir el rango correcto.'
       );
     }
 
-    const [
-      y,
-      m,
-      d
-    ] =
-      inicio
-        .split('-')
-        .map(Number);
+    // ==================================================
+    // 1. DETECTAR FECHAS DONDE EXISTEN REVISIONES DE DÍA
+    // ==================================================
 
-    const rangoCorrecto =
+    const revisionDiasOriginal =
+      g.revisionDias &&
+      typeof g.revisionDias ===
+        'object'
+        ? g.revisionDias
+        : {};
+
+    const fechasRevision =
+      Object.keys(
+        revisionDiasOriginal
+      )
+        .filter(
+          isFechaReal
+        )
+        .sort(
+          sortDiasItinerario
+        );
+
+    // ==================================================
+    // 2. DETERMINAR INICIO DE LA REVISIÓN ANTIGUA
+    //
+    // Preferimos un valor manual si lo entregamos.
+    //
+    // Si no, usamos la primera fecha real existente
+    // en revisionDias.
+    // ==================================================
+
+    const inicioRevisionAnterior =
+      normalizarFechaISO(
+        opts.inicioRevisionAnterior
+      ) ||
+      fechasRevision[0] ||
+      '';
+
+    if (!inicioRevisionAnterior) {
+      throw new Error(
+        'No pude detectar la fecha de inicio de la revisión anterior. ' +
+        'Puedes indicarla con inicioRevisionAnterior.'
+      );
+    }
+
+    const rangoRevisionAnterior =
+      crearRangoItinerarioDesdeInicio(
+        inicioRevisionAnterior,
+        cantidadOficial
+      );
+
+    // ==================================================
+    // 3. ITINERARIO CORRECTO
+    //
+    // IMPORTANTE:
+    //
+    // En este caso NO movemos nuevamente las actividades.
+    //
+    // El itinerario ya comienza correctamente en 05/12.
+    // Solamente quitamos los días residuales posteriores.
+    // ==================================================
+
+    const nuevoItinerario =
+      {};
+
+    rangoCorrecto.forEach(
+      fecha => {
+        nuevoItinerario[
+          fecha
+        ] =
+          (
+            IT[
+              fecha
+            ] ||
+            []
+          ).map(
+            act => ({
+              ...act
+            })
+          );
+      }
+    );
+
+    // ==================================================
+    // 4. REALINEAR REVISIONES DE DÍA
+    // ==================================================
+
+    const resultadoRevision =
+      realinearRevisionDiasPorIndice(
+        revisionDiasOriginal,
+        rangoRevisionAnterior,
+        rangoCorrecto
+      );
+
+    const revisionDiasNueva =
+      resultadoRevision.revisionDias;
+
+    // ==================================================
+    // 5. PREPARAR MOVIMIENTOS DE ALERTAS
+    // ==================================================
+
+    const mapaFechas =
+      new Map();
+
+    for (
+      let i = 0;
+      i < cantidadOficial;
+      i++
+    ) {
+      mapaFechas.set(
+        rangoRevisionAnterior[i],
+        rangoCorrecto[i]
+      );
+    }
+
+    const alertasMover =
+      [];
+
+    snapAlertas.docs.forEach(
+      alertaDoc => {
+        const alerta =
+          alertaDoc.data() ||
+          {};
+
+        const fechaAnterior =
+          alerta.fecha ||
+          '';
+
+        if (
+          !fechaAnterior ||
+          !mapaFechas.has(
+            fechaAnterior
+          )
+        ) {
+          return;
+        }
+
+        const fechaNueva =
+          mapaFechas.get(
+            fechaAnterior
+          );
+
+        if (
+          fechaAnterior ===
+          fechaNueva
+        ) {
+          return;
+        }
+
+        alertasMover.push({
+          alertaId:
+            alertaDoc.id,
+
+          tipo:
+            alerta.tipo ||
+            'actividad',
+
+          fechaAnterior,
+
+          fechaNueva,
+
+          actividad:
+            alerta.actividad ||
+            '',
+
+          motivo:
+            alerta.motivo ||
+            '',
+
+          resuelta:
+            alerta.resuelta ===
+            true
+        });
+      }
+    );
+
+    // ==================================================
+    // 6. REPORTE DE REVISIONES
+    // ==================================================
+
+    const reporteRevision =
       [];
 
     for (
@@ -11287,75 +11598,120 @@ window.repararDuracionItinerarioGrupo =
       i < cantidadOficial;
       i++
     ) {
-      const fecha =
-        new Date(
-          y,
-          m - 1,
-          d
-        );
+      const fechaAnterior =
+        rangoRevisionAnterior[i];
 
-      fecha.setDate(
-        fecha.getDate() +
-        i
-      );
+      const fechaNueva =
+        rangoCorrecto[i];
 
-      const yyyy =
-        fecha.getFullYear();
+      const rev =
+        revisionDiasOriginal[
+          fechaAnterior
+        ];
 
-      const mm =
-        String(
-          fecha.getMonth() +
-          1
-        ).padStart(
-          2,
-          '0'
-        );
+      reporteRevision.push({
+        dia:
+          i + 1,
 
-      const dd =
-        String(
-          fecha.getDate()
-        ).padStart(
-          2,
-          '0'
-        );
+        fechaRevisionAnterior:
+          fechaAnterior,
 
-      rangoCorrecto.push(
-        `${yyyy}-${mm}-${dd}`
-      );
+        fechaCorrecta:
+          fechaNueva,
+
+        tieneRevision:
+          !!rev,
+
+        estado:
+          rev?.estado ||
+          '—',
+
+        observacion:
+          rev?.observacion ||
+          rev?.motivo ||
+          ''
+      });
     }
 
-    const nuevoItinerario =
-      {};
+    const diasQueDesaparecen =
+      fechasActuales.filter(
+        fecha =>
+          !rangoCorrecto.includes(
+            fecha
+          )
+      );
 
-    rangoCorrecto.forEach(
-      (
-        fechaNueva,
-        idx
-      ) => {
-        const fechaVieja =
-          fechasActuales[
-            idx
-          ];
+    // ==================================================
+    // 7. MOSTRAR DRY RUN
+    // ==================================================
 
-        nuevoItinerario[
-          fechaNueva
-        ] =
-          (
-            fechaVieja
-              ? (
-                  IT[
-                    fechaVieja
-                  ] ||
-                  []
-                )
-              : []
-          ).map(
-            act =>
-              limpiarRevisionActividadPorCambioEstructural(
-                act
-              )
-          );
+    console.log(
+      dryRun
+        ? '===== DRY RUN REPARACIÓN ====='
+        : '===== REPARACIÓN REAL ====='
+    );
+
+    console.table([
+      {
+        grupo:
+          g.numeroNegocio ||
+          grupoId,
+
+        diasActuales:
+          fechasActuales.length,
+
+        diasOficiales:
+          cantidadOficial,
+
+        inicioItinerario:
+          inicioActual,
+
+        finCorrecto:
+          rangoCorrecto[
+            rangoCorrecto.length - 1
+          ],
+
+        inicioRevisionDetectado:
+          inicioRevisionAnterior,
+
+        finRevisionDetectado:
+          rangoRevisionAnterior[
+            rangoRevisionAnterior.length - 1
+          ],
+
+        revisionesDiaAMover:
+          resultadoRevision.movimientos.length,
+
+        alertasAMover:
+          alertasMover.length,
+
+        diasSobrantes:
+          diasQueDesaparecen.length
       }
+    ]);
+
+    console.log(
+      '===== REALINEACIÓN DE REVISIONES ====='
+    );
+
+    console.table(
+      reporteRevision
+    );
+
+    console.log(
+      '===== ALERTAS QUE CAMBIARÁN DE FECHA ====='
+    );
+
+    console.table(
+      alertasMover
+    );
+
+    console.log(
+      '===== DÍAS QUE SALDRÁN DEL ITINERARIO ====='
+    );
+
+    console.log(
+      diasQueDesaparecen
     );
 
     const reporte = {
@@ -11377,71 +11733,21 @@ window.repararDuracionItinerarioGrupo =
       cantidadDiasOficial:
         cantidadOficial,
 
-      fechaInicio:
-        inicio,
+      inicioActual,
 
-      fechaFinActual:
-        normalizarFechaISO(
-          g.fechaFin
-        ),
+      rangoCorrecto,
 
-      fechaFinCorrecta:
-        rangoCorrecto[
-          rangoCorrecto.length -
-          1
-        ],
+      inicioRevisionAnterior,
 
-      diasQueDesaparecen:
-        fechasActuales.slice(
-          cantidadOficial
-        ),
+      rangoRevisionAnterior,
 
-      fechasActuales,
+      revisionesMover:
+        resultadoRevision.movimientos,
 
-      fechasCorrectas:
-        rangoCorrecto
+      alertasMover,
+
+      diasQueDesaparecen
     };
-
-    console.log(
-      dryRun
-        ? '===== DRY RUN ====='
-        : '===== REPARACIÓN REAL ====='
-    );
-
-    console.table([
-      {
-        grupo:
-          reporte.numeroNegocio,
-
-        diasActuales:
-          reporte.cantidadDiasActual,
-
-        diasOficiales:
-          reporte.cantidadDiasOficial,
-
-        inicio:
-          reporte.fechaInicio,
-
-        finActual:
-          reporte.fechaFinActual,
-
-        finCorrecto:
-          reporte.fechaFinCorrecta,
-
-        diasSobrantes:
-          reporte.diasQueDesaparecen.length
-      }
-    ]);
-
-    console.log(
-      'Días que desaparecerán:',
-      reporte.diasQueDesaparecen
-    );
-
-    console.log(
-      'Rango correcto:',
-      reporte.fechasCorrectas
-    );
 
     if (dryRun) {
       console.log(
@@ -11451,73 +11757,199 @@ window.repararDuracionItinerarioGrupo =
       return reporte;
     }
 
-    const nuevaFechaFin =
-      rangoCorrecto[
-        rangoCorrecto.length -
-        1
-      ];
+    // ==================================================
+    // 8. CONFIRMACIÓN DE SEGURIDAD
+    // ==================================================
+
+    const confirmar =
+      confirm(
+        `REPARACIÓN DEL GRUPO ${g.numeroNegocio || grupoId}\n\n` +
+
+        `Itinerario:\n` +
+        `${fechasActuales.length} días → ${cantidadOficial} días\n\n` +
+
+        `Revisión antigua detectada:\n` +
+        `${rangoRevisionAnterior[0]} → ` +
+        `${rangoRevisionAnterior[rangoRevisionAnterior.length - 1]}\n\n` +
+
+        `Se moverán:\n` +
+        `• ${resultadoRevision.movimientos.length} revisiones de día\n` +
+        `• ${alertasMover.length} alertas\n\n` +
+
+        `Los comentarios y estados NO se perderán.\n\n` +
+
+        `¿Continuar?`
+      );
+
+    if (!confirmar) {
+      console.log(
+        'Reparación cancelada.'
+      );
+
+      return {
+        ...reporte,
+
+        cancelado:
+          true
+      };
+    }
+
+    const usuario =
+      auth.currentUser?.email ||
+      '';
+
+    const ahora =
+      new Date();
+
+    // ==================================================
+    // 9. GUARDAR GRUPO
+    // ==================================================
+
+    const revisionGrupoAnterior =
+      getRevisionGrupo(
+        g
+      );
+
+    const revisionGrupoNueva = {
+      estado:
+        'pendiente',
+
+      observacion:
+        'Se realinearon las fechas de revisión con el itinerario vigente. ' +
+        'Los estados y observaciones de días y actividades fueron conservados. ' +
+        'Se requiere nueva aprobación general.',
+
+      usuario,
+
+      timestamp:
+        ahora
+    };
 
     await updateDoc(
-      ref,
+      refGrupo,
       {
         fechaInicio:
-          inicio,
+          rangoCorrecto[0],
 
         fechaFin:
-          nuevaFechaFin,
+          rangoCorrecto[
+            rangoCorrecto.length - 1
+          ],
 
         itinerario:
-          nuevoItinerario
+          nuevoItinerario,
+
+        revisionDias:
+          revisionDiasNueva,
+
+        revisionGrupo:
+          revisionGrupoNueva,
+
+        estadoRevisionItinerario:
+          'PENDIENTE'
       }
     );
 
+    // ==================================================
+    // 10. ACTUALIZAR ALERTAS
+    // ==================================================
+
+    await realinearAlertasRevisionPorIndice(
+      grupoId,
+      rangoRevisionAnterior,
+      rangoCorrecto,
+      {
+        dryRun:
+          false
+      }
+    );
+
+    // ==================================================
+    // 11. HISTORIAL
+    // ==================================================
+
     await logHist(
       grupoId,
-      'REPARAR DURACION ITINERARIO',
+      'REPARAR DESFASE REVISION ITINERARIO',
       {
         _group:
           g,
 
         categoria:
-          'FECHAS',
+          'REVISION',
+
+        tipoRevision:
+          'grupo',
 
         anterior:
-          `${fechasActuales.length} días`,
+          `${fechasActuales.length} días · ` +
+          `revisión desde ${rangoRevisionAnterior[0]}`,
 
         nuevo:
-          `${cantidadOficial} días`,
+          `${cantidadOficial} días · ` +
+          `revisión realineada desde ${rangoCorrecto[0]}`,
 
         motivo:
-          'Se eliminaron días residuales pertenecientes a una versión anterior del itinerario.',
+          'La revisión había quedado asociada a las fechas anteriores del viaje.',
 
         detalle:
-          `Días retirados de la versión vigente: ` +
-          `${
-            reporte.diasQueDesaparecen.join(', ') ||
-            'ninguno'
-          }`
+          `Revisiones de día realineadas: ` +
+          `${resultadoRevision.movimientos.length}. ` +
+          `Alertas realineadas: ${alertasMover.length}. ` +
+          `Días residuales eliminados: ${diasQueDesaparecen.length}.`
       }
     );
 
-    await invalidarRevisionPorCambioEstructural(
-      grupoId,
-      g,
-      {
-        motivo:
-          'Se reparó la duración del itinerario. ' +
-          'Los estados de revisión anteriores quedaron archivados porque correspondían a otra estructura de viaje.',
+    if (
+      revisionGrupoAnterior.estado !==
+      'pendiente'
+    ) {
+      await logHist(
+        grupoId,
+        'GRUPO VUELVE A PENDIENTE',
+        {
+          _group:
+            g,
 
-        antesFechas:
-          fechasActuales,
+          categoria:
+            'REVISION',
 
-        despuesFechas:
-          rangoCorrecto
-      }
-    );
+          tipoRevision:
+            'grupo',
+
+          anterior:
+            revisionGrupoAnterior.estado,
+
+          nuevo:
+            'pendiente',
+
+          estadoAnterior:
+            revisionGrupoAnterior.estado,
+
+          estadoNuevo:
+            'pendiente',
+
+          motivo:
+            revisionGrupoNueva.observacion
+        }
+      );
+    }
+
+    // ==================================================
+    // 12. REFRESCAR
+    // ==================================================
 
     resetRevisionDraft();
 
     resetSwap();
+
+    setEstadoBadge(
+      'PENDIENTE'
+    );
+
+    await refreshAlertasCounts(
+      grupoId
+    );
 
     await renderItinerario();
 
@@ -11526,5 +11958,10 @@ window.repararDuracionItinerarioGrupo =
       reporte
     );
 
-    return reporte;
+    return {
+      ...reporte,
+
+      reparado:
+        true
+    };
   };
