@@ -742,6 +742,73 @@
     #listaHoteles .enc-result-card:nth-child(even) {
       border-left-color: var(--enc-yellow);
     }
+
+    .enc-follow-kpis {
+      grid-template-columns:
+        repeat(5, minmax(140px, 1fr));
+    }
+    
+    .enc-service-config {
+      display: grid;
+      grid-template-columns:
+        minmax(0, 1fr)
+        minmax(155px, 190px);
+      align-items: center;
+      gap: 14px;
+    }
+    
+    .enc-service-config select,
+    .enc-service-pending select {
+      width: 100%;
+      padding: 8px 9px;
+      border: 1px solid #cfd5df;
+      border-radius: 7px;
+      color: #111;
+      background: #fff;
+      font: inherit;
+    }
+    
+    .enc-service-pending {
+      display: grid;
+      grid-template-columns:
+        minmax(0, 1fr)
+        minmax(155px, 190px);
+      align-items: center;
+      gap: 14px;
+      padding: 12px;
+      border: 1px solid var(--enc-border);
+      border-radius: 9px;
+      background: #fafbfc;
+    }
+    
+    .enc-service-name {
+      display: block;
+      color: var(--enc-primary);
+      text-transform: uppercase;
+      line-height: 1.3;
+    }
+    
+    #tbodyActividades strong {
+      color: var(--enc-primary);
+      text-transform: uppercase;
+    }
+    
+    #listaTransportes .enc-result-card,
+    #listaHoteles .enc-result-card,
+    #listaCoordinadores .enc-result-card {
+      border-left: 5px solid var(--enc-primary-medium);
+    }
+    
+    #listaHoteles .enc-result-card:nth-child(even) {
+      border-left-color: var(--enc-yellow);
+    }
+    
+    @media (max-width: 720px) {
+      .enc-service-config,
+      .enc-service-pending {
+        grid-template-columns: 1fr;
+      }
+    }
     
     @media (max-width: 720px) {
       .enc-result-grid {
@@ -1603,63 +1670,161 @@
 
         <!-- ===============================================
              PANEL OTROS SERVICIOS
-        ================================================ -->
-
+        =============================================== -->
+        
         <section
           id="panel-servicios"
           class="enc-panel"
         >
-
+        
           <div class="enc-section">
-
+        
             <div class="enc-section-head">
-              <h4>
-                Hoteles
-              </h4>
+              <div>
+                <h4>
+                  Hoteles
+                </h4>
+        
+                <div class="enc-muted">
+                  Cada hotel puede generar una evaluación general
+                  y otra de comidas.
+                </div>
+              </div>
             </div>
-
+        
             <div id="listaHoteles">
               <div class="enc-empty">
                 Sin hoteles detectados.
               </div>
             </div>
-
+        
           </div>
-
+        
           <div class="enc-section">
-
+        
             <div class="enc-section-head">
-              <h4>
-                Transportes ya evaluables
-              </h4>
+              <div>
+                <h4>
+                  Transportes evaluables
+                </h4>
+        
+                <div class="enc-muted">
+                  La encuesta mostrará la experiencia general con
+                  cada aerolínea, sin mencionar ida o regreso.
+                </div>
+              </div>
             </div>
-
+        
             <div id="listaTransportes">
               <div class="enc-empty">
                 Sin transportes detectados.
               </div>
             </div>
-
+        
           </div>
-
+        
           <div class="enc-section">
-
+        
             <div class="enc-section-head">
-              <h4>
-                Coordinadores
-              </h4>
+              <div>
+                <h4>
+                  Coordinadores
+                </h4>
+        
+                <div class="enc-muted">
+                  El coordinador puede actualizarse mientras la
+                  encuesta todavía no tenga respuestas.
+                </div>
+              </div>
             </div>
-
+        
+            <div
+              id="avisoCoordinadorPendiente"
+              class="enc-alert info"
+            >
+              Coordinador aún no asignado. La encuesta puede
+              configurarse y publicarse igualmente. Cuando exista
+              una asignación, el sistema leerá al coordinador vigente
+              antes de recibir respuestas.
+            </div>
+        
+            <div
+              id="configCoordinadorPendiente"
+              class="enc-service-pending hidden"
+            >
+              <div>
+                <strong>
+                  Modalidad para el futuro coordinador
+                </strong>
+        
+                <div class="enc-muted">
+                  Esta modalidad se aplicará cuando se asigne.
+                </div>
+              </div>
+        
+              <select id="modalidadCoordinadorPendiente">
+                <option value="obligatoria">
+                  Obligatoria
+                </option>
+        
+                <option value="excluida">
+                  Excluida
+                </option>
+              </select>
+            </div>
+        
             <div id="listaCoordinadores">
               <div class="enc-empty">
                 Sin coordinadores detectados.
               </div>
             </div>
-
+        
           </div>
-
+        
+          <div class="enc-section">
+        
+            <div class="enc-section-head">
+              <div>
+                <h4>
+                  Asistencia médica
+                </h4>
+        
+                <div class="enc-muted">
+                  Si se incluye, todos deberán indicar si utilizaron
+                  la asistencia. La evaluación solamente aparecerá
+                  para quien declare que la utilizó.
+                </div>
+              </div>
+            </div>
+        
+            <div class="enc-service-pending">
+        
+              <div>
+                <strong>
+                  Pregunta sobre asistencia médica
+                </strong>
+        
+                <div class="enc-muted">
+                  La calificación y el comentario serán condicionales.
+                </div>
+              </div>
+        
+              <select id="modalidadAsistenciaMedica">
+                <option value="obligatoria">
+                  Obligatoria
+                </option>
+        
+                <option value="excluida">
+                  Excluida
+                </option>
+              </select>
+        
+            </div>
+        
+          </div>
+        
         </section>
-
+        
         <!-- ===============================================
              PANEL SEGUIMIENTO
         ================================================ -->
@@ -1832,6 +1997,78 @@
               Todavía no existen respuestas.
             </div>
 
+          </div>
+
+          <div
+            id="resultadosAsistenciaMedica"
+            class="enc-section hidden"
+          >
+          
+            <div class="enc-section-head">
+              <h4>
+                Asistencia médica
+              </h4>
+            </div>
+          
+            <div class="enc-follow-kpis">
+          
+              <div class="enc-follow-card">
+                <div
+                  id="asistenciaUtilizaron"
+                  class="number"
+                >
+                  0
+                </div>
+          
+                <div class="text">
+                  Utilizaron asistencia
+                </div>
+              </div>
+          
+              <div class="enc-follow-card">
+                <div
+                  id="asistenciaEvaluaron"
+                  class="number"
+                >
+                  0
+                </div>
+          
+                <div class="text">
+                  Evaluaron
+                </div>
+              </div>
+          
+              <div class="enc-follow-card">
+                <div
+                  id="asistenciaPromedio"
+                  class="number"
+                >
+                  —
+                </div>
+          
+                <div class="text">
+                  Promedio
+                </div>
+              </div>
+          
+            </div>
+          
+            <div
+              id="distribucionAsistencia"
+              class="enc-result-grid"
+            ></div>
+          
+            <h5>
+              Comentarios sobre la asistencia
+            </h5>
+          
+            <div
+              id="comentariosAsistencia"
+              class="enc-empty"
+            >
+              Sin comentarios.
+            </div>
+          
           </div>
 
           <div class="enc-section">
