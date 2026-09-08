@@ -1970,7 +1970,10 @@ function actualizarProgreso() {
   $("progresoValor").style.width =
     `${porcentaje}%`;
 
-  $(".progress-track")
+  document
+    .querySelector(
+      ".progress-track"
+    )
     ?.setAttribute(
       "aria-valuenow",
       String(porcentaje)
@@ -1982,9 +1985,16 @@ function actualizarProgreso() {
     mantiene la seguridad final.
   */
   if (btnEnviarEncuesta) {
-    btnEnviarEncuesta.disabled =
+    const incompleta =
       total > 0 &&
       respondidas < total;
+  
+    btnEnviarEncuesta.setAttribute(
+      "aria-disabled",
+      incompleta
+        ? "true"
+        : "false"
+    );
   }
 }
 
