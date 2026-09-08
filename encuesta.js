@@ -983,11 +983,12 @@ function construirEncuesta() {
 
   const asistenciaIncluida =
     modalidadAsistencia ===
-    "obligatoria";
+    "OBLIGATORIA";
 
   state.asistenciaMedica = {
     incluida:
-      asistenciaIncluida,
+      modalidadAsistencia ===
+      "OBLIGATORIA",
 
     utilizo:
       null,
@@ -998,7 +999,7 @@ function construirEncuesta() {
     puntuacion:
       0
   };
-
+  
   limpiarFormularioAsistenciaMedica();
   renderPreguntas();
 
