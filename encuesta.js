@@ -1277,25 +1277,33 @@ function getNombreEvaluacion(
     "hotel"
   ) {
     if (
-      subtipo.includes("ALIMENT") ||
-      subtipo.includes("COMIDA")
+      subtipo.includes(
+        "ALIMENT"
+      ) ||
+      subtipo.includes(
+        "COMIDA"
+      )
     ) {
       if (
-        /^ALIMENTACION\s+EN\b/.test(
-          normalizarTexto(nombre)
+        /^COMIDAS\s+EN\b/.test(
+          normalizarTexto(
+            nombre
+          )
         )
       ) {
         return nombreUpper;
       }
 
       return nombre
-        ? `ALIMENTACIÓN EN ${nombreUpper}`
-        : "ALIMENTACIÓN EN EL HOTEL";
+        ? `COMIDAS EN ${nombreUpper}`
+        : "COMIDAS EN EL HOTEL";
     }
 
     if (
       /^EXPERIENCIA\s+GENERAL\s+EN\b/.test(
-        normalizarTexto(nombre)
+        normalizarTexto(
+          nombre
+        )
       )
     ) {
       return nombreUpper;
@@ -1312,7 +1320,9 @@ function getNombreEvaluacion(
   ) {
     if (
       /^COORDINACION\b/.test(
-        normalizarTexto(nombre)
+        normalizarTexto(
+          nombre
+        )
       )
     ) {
       return nombreUpper;
@@ -1323,6 +1333,10 @@ function getNombreEvaluacion(
       : "COORDINACIÓN DEL VIAJE";
   }
 
+  /*
+    Actividades y transportes quedan visualmente
+    uniformados en mayúsculas.
+  */
   return nombreUpper;
 }
 
