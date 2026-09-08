@@ -62,6 +62,14 @@ const state = {
   transportes: [],
   coordinadores: [],
 
+  modalidadCoordinadorPendiente:
+    "obligatoria",
+
+  asistenciaMedica: {
+    modalidad:
+      "obligatoria"
+  },
+
   reglasGlobales: new Map(),
   reglasDestino: new Map(),
 
@@ -1069,9 +1077,11 @@ function getMotivoOmisionAutomatica(
     "desayuno hotel",
     "desayuno en hotel",
     "desayuno en el hotel",
+
     "almuerzo hotel",
     "almuerzo en hotel",
     "almuerzo en el hotel",
+
     "cena hotel",
     "cena en hotel",
     "cena en el hotel"
@@ -1087,8 +1097,8 @@ function getMotivoOmisionAutomatica(
     )
   ) {
     return (
-      "Se evaluará dentro del ítem general " +
-      "de alimentación del hotel."
+      "Se evaluará dentro de la pregunta " +
+      "de comidas del hotel."
     );
   }
 
@@ -1099,8 +1109,9 @@ function getMotivoOmisionAutomatica(
     )
   ) {
     return (
-      "Se evaluará dentro del ítem general " +
-      "de buses o transporte del viaje."
+      (
+      "Se evaluará dentro de la pregunta " +
+      "general de transporte."
     );
   }
 
@@ -1111,8 +1122,20 @@ function getMotivoOmisionAutomatica(
     )
   ) {
     return (
-      "Se evaluará dentro del ítem general " +
-      "de buses o transporte del viaje."
+      "Es un registro operativo y no corresponde " +
+      "a una evaluación independiente."
+    );
+  }
+
+  if (
+    comienzaConPalabra(
+      texto,
+      "viaje a"
+    )
+  ) {
+    return (
+      "Es un registro operativo del desplazamiento " +
+      "y no corresponde a una evaluación independiente."
     );
   }
 
@@ -2453,11 +2476,249 @@ async function cargarCoordinadores(grupo) {
    ABRIR GESTIÓN
 ========================================================= */
 
-async function abrirGestionGrupo(grupoId) {
+function normalizarModalidadServicio(
+  value = ""
+) {
+  return normalizarTexto(value) ===
+    "excluida"
+      ? "excluida"
+      : "obligatoria";
+}
+
+function prepararServicioEvaluable(
+  item = {},
+  modalidadDefault =
+    "obligatoria"
+) {
+  const modalidad =
+    normalizarModalidadServicio(
+      item.modalidad ||
+      (
+        item.obligatorio === false
+          ? "excluida"
+          : modalidadDefault
+      )
+    );
+
+  return {
+    ...item,
+
+    modalidad,
+
+    obligatorio:
+      modalidad ===
+      "obligatoria"
+  };
+}
+
+function getClaveServicio(
+  item = {}
+) {
+  const id =
+    cleanText(
+      item.id
+    );
+
+  if (id) {
+    return id;
+  }
+
+  return [
+    slug(item.tipo),
+    slug(item.subtipo),
+    slug(item.nombre)
+  ]
+    .filter(Boolean)
+    .join("|");
+}
+
+function getClaveAlternativaServicio(
+  item = {}
+) {
+  return [
+    slug(item.tipo),
+    slug(item.subtipo),
+    slug(item.nombre)
+  ]
+    .filter(Boolean)
+    .join("|");
+}
+
+function combinarServiciosDetectados(
+  detectados = [],
+  guardados = []
+) {
+  const configuracionPorId =
+    new Map();
+
+  const configuracionPorNombre =
+    new Map();
+
+  (
+    Array.isArray(guardados)
+      ? guardados
+      : []
+  ).forEach(
+    item => {
+      const preparado =
+        prepararServicioEvaluable(
+          item
+        );
+
+      const keyId =
+        getClaveServicio(
+          preparado
+        );
+
+      const keyNombre =
+        getClaveAlternativaServicio(
+          preparado
+        );
+
+      if (keyId) {
+        configuracionPorId.set(
+          keyId,
+          preparado
+        );
+      }
+
+      if (keyNombre) {
+        configuracionPorNombre.set(
+          keyNombre,
+          preparado
+        );
+      }
+    }
+  );
+
+  const resultado =
+    (
+      Array.isArray(detectados)
+        ? detectados
+        : []
+    ).map(
+      item => {
+        const keyId =
+          getClaveServicio(
+            item
+          );
+
+        const keyNombre =
+          getClaveAlternativaServicio(
+            item
+          );
+
+        const guardado =
+          configuracionPorId.get(
+            keyId
+          ) ||
+          configuracionPorNombre.get(
+            keyNombre
+          );
+
+        return prepararServicioEvaluable({
+          ...item,
+
+          modalidad:
+            guardado?.modalidad ||
+            item.modalidad,
+
+          obligatorio:
+            guardado
+              ? guardado.obligatorio
+              : item.obligatorio
+        });
+      }
+    );
+
+  const vistos =
+    new Set(
+      resultado.flatMap(
+        item => [
+          getClaveServicio(item),
+          getClaveAlternativaServicio(
+            item
+          )
+        ].filter(Boolean)
+      )
+    );
+
+  /*
+    Conservamos elementos históricos que ya estaban
+    guardados solamente cuando no existe un equivalente
+    actualmente detectado.
+  */
+  (
+    Array.isArray(guardados)
+      ? guardados
+      : []
+  ).forEach(
+    item => {
+      const keyId =
+        getClaveServicio(
+          item
+        );
+
+      const keyNombre =
+        getClaveAlternativaServicio(
+          item
+        );
+
+      if (
+        vistos.has(keyId) ||
+        vistos.has(keyNombre)
+      ) {
+        return;
+      }
+
+      resultado.push(
+        prepararServicioEvaluable(
+          item
+        )
+      );
+
+      if (keyId) {
+        vistos.add(keyId);
+      }
+
+      if (keyNombre) {
+        vistos.add(keyNombre);
+      }
+    }
+  );
+
+  return resultado;
+}
+
+function contarServiciosPorModalidad(
+  lista = [],
+  modalidad = "obligatoria"
+) {
+  return (
+    Array.isArray(lista)
+      ? lista
+      : []
+  ).filter(
+    item =>
+      normalizarModalidadServicio(
+        item.modalidad ||
+        (
+          item.obligatorio === false
+            ? "excluida"
+            : "obligatoria"
+        )
+      ) === modalidad
+  ).length;
+}
+
+async function abrirGestionGrupo(
+  grupoId
+) {
   const grupo =
     state.grupos.find(
       item =>
-        item.id === grupoId
+        item.id ===
+        grupoId
     );
 
   if (!grupo) {
@@ -2479,12 +2740,33 @@ async function abrirGestionGrupo(grupoId) {
         grupo.id
       );
 
-    state.seguimiento = null;
-    state.resultados = {};
+    state.seguimiento =
+      null;
+
+    state.resultados =
+      {};
+
     state.comentarios = {
       positivos: [],
       mejoras: [],
       generales: []
+    };
+
+    state.modalidadCoordinadorPendiente =
+      normalizarModalidadServicio(
+        state.encuestaActual
+          ?.modalidadCoordinadorPendiente ||
+        "obligatoria"
+      );
+
+    state.asistenciaMedica = {
+      modalidad:
+        normalizarModalidadServicio(
+          state.encuestaActual
+            ?.asistenciaMedica
+            ?.modalidad ||
+          "obligatoria"
+        )
     };
 
     await cargarReglas(
@@ -2509,14 +2791,35 @@ async function abrirGestionGrupo(grupoId) {
       );
 
     const [
-      hoteles,
+      hotelesDetectados,
       vuelos,
-      coordinadores
+      coordinadoresDetectados
     ] = await Promise.all([
       cargarHoteles(grupo),
       cargarVuelosGrupo(grupo),
       cargarCoordinadores(grupo)
     ]);
+
+    const transportesDetectados =
+      construirTransportes(
+        vuelos
+      );
+
+    state.hoteles =
+      combinarServiciosDetectados(
+        hotelesDetectados,
+        state.encuestaActual
+          ?.hoteles ||
+        []
+      );
+
+    state.transportes =
+      combinarServiciosDetectados(
+        transportesDetectados,
+        state.encuestaActual
+          ?.transportes ||
+        []
+      );
 
     const tieneRespuestas =
       Number(
@@ -2524,42 +2827,50 @@ async function abrirGestionGrupo(grupoId) {
           ?.totalRespuestas ||
         0
       ) > 0;
-    
+
     /*
-      Si todavía no hay respuestas usamos la detección
-      actualizada. Si ya existen respuestas preservamos
-      exactamente las preguntas publicadas.
+      Mientras no haya respuestas usamos la asignación
+      vigente. Cuando ya existen respuestas mantenemos
+      la fotografía guardada para no mezclar resultados
+      de coordinadores diferentes.
     */
-    state.hoteles =
-      tieneRespuestas &&
-      Array.isArray(
-        state.encuestaActual?.hoteles
-      )
-        ? state.encuestaActual.hoteles
-        : hoteles;
-    
-    state.transportes =
-      tieneRespuestas &&
-      Array.isArray(
-        state.encuestaActual?.transportes
-      )
-        ? state.encuestaActual.transportes
-        : construirTransportes(
-            vuelos
-          );
-    
     state.coordinadores =
-      tieneRespuestas &&
-      Array.isArray(
-        state.encuestaActual?.coordinadores
-      )
-        ? state.encuestaActual.coordinadores
-        : coordinadores;
+      tieneRespuestas
+        ? combinarServiciosDetectados(
+            state.encuestaActual
+              ?.coordinadores ||
+            [],
+            state.encuestaActual
+              ?.coordinadores ||
+            []
+          )
+        : combinarServiciosDetectados(
+            coordinadoresDetectados,
+            state.encuestaActual
+              ?.coordinadores ||
+            []
+          );
+
+    /*
+      Un coordinador nuevo usa la modalidad definida
+      cuando aún no existía una asignación.
+    */
+    state.coordinadores =
+      state.coordinadores.map(
+        item =>
+          prepararServicioEvaluable(
+            item,
+            state
+              .modalidadCoordinadorPendiente
+          )
+      );
 
     configurarModalGrupo();
 
     modalEncuesta
-      .classList.add("open");
+      .classList.add(
+        "open"
+      );
 
     modalEncuesta
       .setAttribute(
@@ -2578,9 +2889,13 @@ async function abrirGestionGrupo(grupoId) {
     );
 
   } catch (error) {
-    console.error(error);
+    console.error(
+      error
+    );
 
-    progressError(error);
+    progressError(
+      error
+    );
 
     mostrarMensaje(
       "error",
@@ -3082,38 +3397,74 @@ function actualizarResumenPreguntas() {
       aleatorias
     );
 
-  /*
-    Hoteles ya contiene dos evaluaciones:
-      experiencia + alimentación.
-  */
+  const hotelesIncluidos =
+    contarServiciosPorModalidad(
+      state.hoteles,
+      "obligatoria"
+    );
+
+  const transportesIncluidos =
+    contarServiciosPorModalidad(
+      state.transportes,
+      "obligatoria"
+    );
+
+  const coordinadoresIncluidos =
+    contarServiciosPorModalidad(
+      state.coordinadores,
+      "obligatoria"
+    );
+
+  const asistenciaIncluida =
+    state.asistenciaMedica
+      .modalidad ===
+      "obligatoria";
+
   const evaluacionesServicios =
-    state.hoteles.length +
-    state.transportes.length +
-    state.coordinadores.length;
+    hotelesIncluidos +
+    transportesIncluidos +
+    coordinadoresIncluidos;
 
   /*
-    Se suma 1 por EL VIAJE EN GENERAL.
+    Se suma:
+      1 por EL VIAJE EN GENERAL;
+      1 por la pregunta inicial de asistencia, si está incluida.
+
+    La calificación médica es condicional, por eso no
+    se suma como evaluación fija.
   */
   const total =
     obligatorias +
     aleatoriasReales +
     evaluacionesServicios +
-    1;
+    1 +
+    (
+      asistenciaIncluida
+        ? 1
+        : 0
+    );
 
   $("resumenCargaPasajero").textContent =
     sinConfigurar
       ? (
           `Quedan ${sinConfigurar} actividades sin configurar. ` +
+          `Se omitieron automáticamente ${omitidas}. ` +
           "No se puede publicar todavía."
         )
       : (
           `Cada pasajero responderá aproximadamente ${total} ` +
-          `evaluaciones: ${obligatorias} actividades obligatorias, ` +
-          `${aleatoriasReales} aleatorias, ${evaluacionesServicios} ` +
-          "evaluaciones de hotel, alimentación, transporte o " +
-          "coordinación, y la evaluación general del viaje."
+          `preguntas: ${obligatorias} actividades obligatorias, ` +
+          `${aleatoriasReales} aleatorias, ${hotelesIncluidos} ` +
+          `evaluaciones de hotel, ${transportesIncluidos} de ` +
+          `transporte y ${coordinadoresIncluidos} de coordinación. ` +
+          (
+            asistenciaIncluida
+              ? "También deberá indicar si utilizó asistencia médica."
+              : "La asistencia médica está excluida."
+          )
         );
 }
+
 /* =========================================================
    SERVICIOS
 ========================================================= */
@@ -3144,7 +3495,7 @@ function renderListaServicio(
   container.innerHTML =
     elementos
       .map(
-        item => {
+        (item, index) => {
           const nombreBase =
             cleanText(
               item.nombre ||
@@ -3161,22 +3512,20 @@ function renderListaServicio(
             nombreBase;
 
           if (
-            categoria === "hotel"
+            categoria ===
+            "hotel"
           ) {
-            if (
-              subtipo.includes(
-                "aliment"
-              ) ||
-              subtipo.includes(
-                "comida"
+            nombreMostrar =
+              (
+                subtipo.includes(
+                  "aliment"
+                ) ||
+                subtipo.includes(
+                  "comida"
+                )
               )
-            ) {
-              nombreMostrar =
-                `COMIDAS EN ${nombreBase}`;
-            } else {
-              nombreMostrar =
-                `EXPERIENCIA GENERAL EN ${nombreBase}`;
-            }
+                ? `COMIDAS EN ${nombreBase}`
+                : `EXPERIENCIA GENERAL EN ${nombreBase}`;
           }
 
           if (
@@ -3188,70 +3537,175 @@ function renderListaServicio(
           }
 
           return `
-            <div class="enc-result-card">
+            <div
+              class="enc-result-card enc-service-config"
+              data-service-index="${index}"
+            >
 
-              <strong class="enc-service-name">
-                ${escapeHtml(
-                  nombreMostrar
-                    .toUpperCase()
-                )}
-              </strong>
+              <div>
+                <strong class="enc-service-name">
+                  ${escapeHtml(
+                    nombreMostrar
+                      .toUpperCase()
+                  )}
+                </strong>
 
-              ${
-                item.recordatorio
-                  ? `
-                    <div class="enc-muted">
-                      ${escapeHtml(
-                        item.recordatorio
-                      )}
-                    </div>
-                  `
-                  : ""
-              }
+                ${
+                  item.recordatorio
+                    ? `
+                      <div class="enc-muted">
+                        ${escapeHtml(
+                          item.recordatorio
+                        )}
+                      </div>
+                    `
+                    : ""
+                }
 
-              ${
-                item.fechaInicio ||
-                item.checkIn
-                  ? `
-                    <div class="enc-muted">
-                      ${
-                        formatDate(
-                          item.fechaInicio ||
-                          item.checkIn
-                        )
-                      }
-                      ${
-                        item.fechaFin ||
-                        item.checkOut
-                          ? ` al ${
-                              formatDate(
-                                item.fechaFin ||
-                                item.checkOut
-                              )
-                            }`
-                          : ""
-                      }
-                    </div>
-                  `
-                  : (
-                      item.fecha
-                        ? `
-                          <div class="enc-muted">
-                            ${formatDate(item.fecha)}
-                          </div>
-                        `
-                        : ""
-                    )
-              }
+                ${
+                  item.fechaInicio ||
+                  item.checkIn
+                    ? `
+                      <div class="enc-muted">
+                        ${
+                          formatDate(
+                            item.fechaInicio ||
+                            item.checkIn
+                          )
+                        }
+                        ${
+                          item.fechaFin ||
+                          item.checkOut
+                            ? ` al ${
+                                formatDate(
+                                  item.fechaFin ||
+                                  item.checkOut
+                                )
+                              }`
+                            : ""
+                        }
+                      </div>
+                    `
+                    : ""
+                }
+              </div>
+
+              <select
+                class="servicioModalidad"
+                aria-label="Modalidad de ${escapeHtml(nombreMostrar)}"
+              >
+                <option
+                  value="obligatoria"
+                  ${
+                    normalizarModalidadServicio(
+                      item.modalidad
+                    ) ===
+                    "obligatoria"
+                      ? "selected"
+                      : ""
+                  }
+                >
+                  Obligatoria
+                </option>
+
+                <option
+                  value="excluida"
+                  ${
+                    normalizarModalidadServicio(
+                      item.modalidad
+                    ) ===
+                    "excluida"
+                      ? "selected"
+                      : ""
+                  }
+                >
+                  Excluida
+                </option>
+              </select>
 
             </div>
           `;
         }
       )
       .join("");
+
+  container
+    .querySelectorAll(
+      "[data-service-index]"
+    )
+    .forEach(
+      card => {
+        const index =
+          Number(
+            card.dataset
+              .serviceIndex
+          );
+
+        const select =
+          card.querySelector(
+            ".servicioModalidad"
+          );
+
+        select?.addEventListener(
+          "change",
+          () => {
+            const item =
+              elementos[index];
+
+            if (!item) {
+              return;
+            }
+
+            item.modalidad =
+              normalizarModalidadServicio(
+                select.value
+              );
+
+            item.obligatorio =
+              item.modalidad ===
+              "obligatoria";
+
+            actualizarResumenPreguntas();
+          }
+        );
+      }
+    );
 }
 
 function renderServicios() {
+  const sinCoordinadores =
+    !state.coordinadores.length;
+
+  $("avisoCoordinadorPendiente")
+    ?.classList.toggle(
+      "open",
+      sinCoordinadores
+    );
+
+  $("configCoordinadorPendiente")
+    ?.classList.toggle(
+      "hidden",
+      !sinCoordinadores
+    );
+
+  if (
+    $("modalidadCoordinadorPendiente")
+  ) {
+    $("modalidadCoordinadorPendiente")
+      .value =
+      state
+        .modalidadCoordinadorPendiente;
+  }
+
+  if (
+    $("modalidadAsistenciaMedica")
+  ) {
+    $("modalidadAsistenciaMedica")
+      .value =
+      state.asistenciaMedica
+        .modalidad;
+  }
+
   renderListaServicio(
     "listaHoteles",
     state.hoteles,
@@ -3416,7 +3870,8 @@ function construirPayloadEncuesta() {
           "grupo",
 
         omitidaAutomaticamente:
-          !!item.omitidaAutomaticamente,
+          !!item
+            .omitidaAutomaticamente,
 
         motivoOmision:
           item.motivoOmision ||
@@ -3429,10 +3884,24 @@ function construirPayloadEncuesta() {
       item =>
         item.guardarEn ===
           "grupo" &&
-        !item.omitidaAutomaticamente &&
+        !item
+          .omitidaAutomaticamente &&
         item.modalidad !==
           "sin_configurar"
     );
+
+  const prepararLista =
+    lista =>
+      (
+        Array.isArray(lista)
+          ? lista
+          : []
+      ).map(
+        item =>
+          prepararServicioEvaluable(
+            item
+          )
+      );
 
   return {
     encuestaId:
@@ -3509,17 +3978,34 @@ function construirPayloadEncuesta() {
       excepcionesGrupo,
 
     hoteles:
-      state.hoteles,
+      prepararLista(
+        state.hoteles
+      ),
 
     transportes:
-      state.transportes,
+      prepararLista(
+        state.transportes
+      ),
 
     coordinadores:
-      state.coordinadores,
+      prepararLista(
+        state.coordinadores
+      ),
+
+    modalidadCoordinadorPendiente:
+      state
+        .modalidadCoordinadorPendiente,
+
+    asistenciaMedica: {
+      modalidad:
+        state.asistenciaMedica
+          .modalidad
+    },
 
     escalaEvaluacion: {
       minimo: 1,
       maximo: 5,
+
       etiquetas: {
         1: "Muy malo",
         2: "Malo",
@@ -4204,6 +4690,33 @@ function actualizarBotonesEstado() {
       element.disabled =
         tieneRespuestas;
     });
+
+  document
+    .querySelectorAll(
+      ".servicioModalidad"
+    )
+    .forEach(
+      element => {
+        element.disabled =
+          tieneRespuestas;
+      }
+    );
+
+  if (
+    $("modalidadCoordinadorPendiente")
+  ) {
+    $("modalidadCoordinadorPendiente")
+      .disabled =
+      tieneRespuestas;
+  }
+
+  if (
+    $("modalidadAsistenciaMedica")
+  ) {
+    $("modalidadAsistenciaMedica")
+      .disabled =
+      tieneRespuestas;
+  }
 }
 
 /* =========================================================
@@ -5388,6 +5901,35 @@ function conectarEventos() {
     ?.addEventListener(
       "click",
       nuevaRegla
+    );
+
+  $("modalidadCoordinadorPendiente")
+    ?.addEventListener(
+      "change",
+      event => {
+        state
+          .modalidadCoordinadorPendiente =
+          normalizarModalidadServicio(
+            event.target.value
+          );
+
+        actualizarResumenPreguntas();
+      }
+    );
+
+  $("modalidadAsistenciaMedica")
+    ?.addEventListener(
+      "change",
+      event => {
+        state.asistenciaMedica = {
+          modalidad:
+            normalizarModalidadServicio(
+              event.target.value
+            )
+        };
+
+        actualizarResumenPreguntas();
+      }
     );
 }
 
