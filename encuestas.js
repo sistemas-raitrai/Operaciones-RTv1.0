@@ -3385,6 +3385,7 @@ function actualizarBotonesEstado() {
         tieneRespuestas;
     });
 }
+
 /* =========================================================
    SEGUIMIENTO Y RESULTADOS
 ========================================================= */
