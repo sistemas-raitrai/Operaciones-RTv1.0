@@ -3365,7 +3365,7 @@ function actualizarResumenPreguntas() {
     state.actividades.filter(
       item =>
         item.modalidad ===
-        "sin_configurar"
+          "sin_configurar"
     ).length;
 
   const omitidas =
@@ -3434,49 +3434,99 @@ function actualizarResumenPreguntas() {
       .modalidad ===
       "obligatoria";
 
-  const evaluacionesServicios =
-    hotelesIncluidos +
-    transportesIncluidos +
-    coordinadoresIncluidos;
-
   /*
-    Se suma:
-      1 por EL VIAJE EN GENERAL;
-      1 por la pregunta inicial de asistencia, si está incluida.
+    Preguntas fijas para todos:
 
-    La calificación médica es condicional, por eso no
-    se suma como evaluación fija.
+    - 1 evaluación general del viaje.
+    - Actividades obligatorias.
+    - Actividades aleatorias asignadas.
+    - Hoteles y alimentación.
+    - Transportes.
+    - Coordinadores.
+    - 1 pregunta inicial de asistencia médica,
+      cuando está incluida.
+
+    La evaluación de la atención médica es
+    condicional y no se suma como pregunta fija.
   */
+  const evaluacionGeneral =
+    1;
+
+  const preguntasAsistencia =
+    asistenciaIncluida
+      ? 1
+      : 0;
+
   const total =
+    evaluacionGeneral +
     obligatorias +
     aleatoriasReales +
-    evaluacionesServicios +
-    1 +
-    (
-      asistenciaIncluida
-        ? 1
-        : 0
-    );
+    hotelesIncluidos +
+    transportesIncluidos +
+    coordinadoresIncluidos +
+    preguntasAsistencia;
+
+  if (sinConfigurar) {
+    $("resumenCargaPasajero").textContent =
+      (
+        `Quedan ${sinConfigurar} actividades sin configurar. ` +
+        `Se omitieron automáticamente ${omitidas}. ` +
+        "No se puede publicar todavía."
+      );
+
+    return;
+  }
+
+  const desglose = [
+    `${evaluacionGeneral} evaluación general`,
+
+    `${obligatorias} ${
+      obligatorias === 1
+        ? "actividad obligatoria"
+        : "actividades obligatorias"
+    }`,
+
+    `${aleatoriasReales} ${
+      aleatoriasReales === 1
+        ? "actividad aleatoria"
+        : "actividades aleatorias"
+    }`,
+
+    `${hotelesIncluidos} ${
+      hotelesIncluidos === 1
+        ? "evaluación de hotel o alimentación"
+        : "evaluaciones de hotel o alimentación"
+    }`,
+
+    `${transportesIncluidos} ${
+      transportesIncluidos === 1
+        ? "evaluación de transporte"
+        : "evaluaciones de transporte"
+    }`,
+
+    `${coordinadoresIncluidos} ${
+      coordinadoresIncluidos === 1
+        ? "evaluación de coordinación"
+        : "evaluaciones de coordinación"
+    }`,
+
+    `${preguntasAsistencia} ${
+      preguntasAsistencia === 1
+        ? "pregunta inicial de asistencia médica"
+        : "preguntas de asistencia médica"
+    }`
+  ];
 
   $("resumenCargaPasajero").textContent =
-    sinConfigurar
-      ? (
-          `Quedan ${sinConfigurar} actividades sin configurar. ` +
-          `Se omitieron automáticamente ${omitidas}. ` +
-          "No se puede publicar todavía."
-        )
-      : (
-          `Cada pasajero responderá aproximadamente ${total} ` +
-          `preguntas: ${obligatorias} actividades obligatorias, ` +
-          `${aleatoriasReales} aleatorias, ${hotelesIncluidos} ` +
-          `evaluaciones de hotel, ${transportesIncluidos} de ` +
-          `transporte y ${coordinadoresIncluidos} de coordinación. ` +
-          (
-            asistenciaIncluida
-              ? "También deberá indicar si utilizó asistencia médica."
-              : "La asistencia médica está excluida."
-          )
-        );
+    (
+      `Cada pasajero responderá inicialmente ${total} preguntas: ` +
+      `${desglose.join(", ")}. ` +
+      (
+        asistenciaIncluida
+          ? "Si utilizó la asistencia médica y desea evaluarla, se habilitará la evaluación de la atención recibida."
+          : "La asistencia médica está excluida."
+      )
+    );
 }
 
 /* =========================================================
