@@ -1034,7 +1034,102 @@ function renderTabla(filas) {
    ITINERARIO Y ACTIVIDADES
 ========================================================= */
 
-function extraerActividadesGrupo(grupo) {
+function comienzaConPalabra(
+  textoNormalizado,
+  prefijo
+) {
+  return (
+    textoNormalizado === prefijo ||
+    textoNormalizado.startsWith(
+      `${prefijo} `
+    ) ||
+    textoNormalizado.startsWith(
+      `${prefijo}:`
+    ) ||
+    textoNormalizado.startsWith(
+      `${prefijo} -`
+    ) ||
+    textoNormalizado.startsWith(
+      `${prefijo} –`
+    )
+  );
+}
+
+function getMotivoOmisionAutomatica(
+  nombre = ""
+) {
+  const texto =
+    normalizarTexto(nombre);
+
+  if (!texto) {
+    return "";
+  }
+
+  const comidasHotel = [
+    "desayuno hotel",
+    "desayuno en hotel",
+    "desayuno en el hotel",
+    "almuerzo hotel",
+    "almuerzo en hotel",
+    "almuerzo en el hotel",
+    "cena hotel",
+    "cena en hotel",
+    "cena en el hotel"
+  ];
+
+  if (
+    comidasHotel.some(
+      prefijo =>
+        comienzaConPalabra(
+          texto,
+          prefijo
+        )
+    )
+  ) {
+    return (
+      "Se evaluará dentro del ítem general " +
+      "de alimentación del hotel."
+    );
+  }
+
+  if (
+    comienzaConPalabra(
+      texto,
+      "traslado"
+    )
+  ) {
+    return (
+      "Se evaluará dentro del ítem general " +
+      "de buses o transporte del viaje."
+    );
+  }
+
+  if (
+    comienzaConPalabra(
+      texto,
+      "salida"
+    )
+  ) {
+    return (
+      "Se evaluará dentro del ítem general " +
+      "de buses o transporte del viaje."
+    );
+  }
+
+  return "";
+}
+
+function esActividadOmitidaAutomaticamente(
+  nombre = ""
+) {
+  return !!getMotivoOmisionAutomatica(
+    nombre
+  );
+}
+
+function extraerActividadesGrupo(
+  grupo
+) {
   const itinerario =
     grupo?.itinerario &&
     typeof grupo.itinerario === "object"
@@ -1051,89 +1146,117 @@ function extraerActividadesGrupo(grupo) {
           toISO(b)
         )
     )
-    .forEach(([fechaRaw, raw]) => {
-      const fecha =
-        toISO(fechaRaw);
+    .forEach(
+      ([fechaRaw, raw]) => {
+        const fecha =
+          toISO(fechaRaw);
 
-      const items =
-        Array.isArray(raw)
-          ? raw
-          : (
-              raw &&
-              typeof raw === "object"
-                ? Object.values(raw)
-                : []
+        const items =
+          Array.isArray(raw)
+            ? raw
+            : (
+                raw &&
+                typeof raw === "object"
+                  ? Object.values(raw)
+                  : []
+              );
+
+        items.forEach(
+          (item, index) => {
+            if (!item) {
+              return;
+            }
+
+            const nombre =
+              cleanText(
+                item.actividad ||
+                item.servicio ||
+                item.nombre ||
+                item.titulo ||
+                ""
+              );
+
+            if (!nombre) {
+              return;
+            }
+
+            const actividadSlug =
+              slug(nombre);
+
+            if (
+              !actividadSlug ||
+              vistos.has(
+                actividadSlug
+              )
+            ) {
+              return;
+            }
+
+            vistos.add(
+              actividadSlug
             );
 
-      items.forEach((item, index) => {
-        if (!item) return;
+            const motivoOmision =
+              getMotivoOmisionAutomatica(
+                nombre
+              );
 
-        const nombre =
-          cleanText(
-            item.actividad ||
-            item.servicio ||
-            item.nombre ||
-            item.titulo ||
-            ""
-          );
+            const omitida =
+              !!motivoOmision;
 
-        if (!nombre) return;
+            actividades.push({
+              id:
+                cleanText(item.id) ||
+                `actividad_${actividadSlug}`,
 
-        const actividadSlug =
-          slug(nombre);
+              slug:
+                actividadSlug,
 
-        /*
-          Una misma actividad se pregunta una sola vez,
-          aunque aparezca repetida en varios días.
-        */
-        if (
-          vistos.has(actividadSlug)
-        ) {
-          return;
-        }
+              nombre,
 
-        vistos.add(actividadSlug);
+              fecha,
 
-        actividades.push({
-          id:
-            cleanText(item.id) ||
-            `actividad_${actividadSlug}`,
+              horaInicio:
+                cleanText(
+                  item.horaInicio ||
+                  item.hora ||
+                  ""
+                ),
 
-          slug:
-            actividadSlug,
+              proveedor:
+                cleanText(
+                  item.proveedor ||
+                  ""
+                ),
 
-          nombre,
+              modalidad:
+                omitida
+                  ? "omitida_automatica"
+                  : "sin_configurar",
 
-          fecha,
+              origenRegla:
+                omitida
+                  ? "automatica"
+                  : "sin_configurar",
 
-          horaInicio:
-            cleanText(
-              item.horaInicio ||
-              item.hora ||
-              ""
-            ),
+              guardarEn:
+                omitida
+                  ? "ninguno"
+                  : "grupo",
 
-          proveedor:
-            cleanText(
-              item.proveedor ||
-              ""
-            ),
+              omitidaAutomaticamente:
+                omitida,
 
-          modalidad:
-            "sin_configurar",
+              motivoOmision,
 
-          origenRegla:
-            "sin_configurar",
-
-          guardarEn:
-            "grupo",
-
-          orden:
-            actividades.length +
-            index
-        });
-      });
-    });
+              orden:
+                actividades.length +
+                index
+            });
+          }
+        );
+      }
+    );
 
   return actividades;
 }
@@ -1325,74 +1448,143 @@ function aplicarReglas(
       (
         encuesta?.actividades ||
         []
-      ).map(item => [
-        slug(
-          item.slug ||
-          item.nombre
-        ),
-        item
-      ])
+      )
+        .filter(
+          item =>
+            (
+              item.origenRegla ===
+                "grupo" ||
+              item.guardarEn ===
+                "grupo"
+            )
+        )
+        .map(
+          item => [
+            slug(
+              item.slug ||
+              item.nombre
+            ),
+            item
+          ]
+        )
     );
 
-  return actividades.map(item => {
-    const key =
-      item.slug;
+  return actividades.map(
+    item => {
+      /*
+        Las omisiones automáticas tienen prioridad
+        sobre cualquier regla antigua guardada.
+      */
+      if (
+        item.omitidaAutomaticamente
+      ) {
+        return {
+          ...item,
+          modalidad:
+            "omitida_automatica",
+          origenRegla:
+            "automatica",
+          guardarEn:
+            "ninguno"
+        };
+      }
 
-    const grupoRegla =
-      configuracionGrupo.get(key);
+      const key =
+        item.slug;
 
-    if (grupoRegla) {
-      return {
-        ...item,
-        ...grupoRegla,
-        slug: key,
-        origenRegla:
-          grupoRegla.origenRegla ||
-          "grupo",
-        guardarEn: "grupo"
-      };
-    }
+      const grupoRegla =
+        configuracionGrupo.get(
+          key
+        );
 
-    const destinoRegla =
-      state.reglasDestino.get(key);
+      if (grupoRegla) {
+        return {
+          ...item,
+          ...grupoRegla,
+          slug: key,
+          omitidaAutomaticamente:
+            false,
+          motivoOmision: "",
+          origenRegla:
+            "grupo",
+          guardarEn:
+            "grupo"
+        };
+      }
 
-    if (destinoRegla) {
+      const destinoRegla =
+        state.reglasDestino.get(
+          key
+        );
+
+      if (destinoRegla) {
+        return {
+          ...item,
+          modalidad:
+            destinoRegla.modalidad,
+          origenRegla:
+            "destino",
+          guardarEn:
+            "destino"
+        };
+      }
+
+      const globalRegla =
+        state.reglasGlobales.get(
+          key
+        );
+
+      if (globalRegla) {
+        return {
+          ...item,
+          modalidad:
+            globalRegla.modalidad,
+          origenRegla:
+            "global",
+          guardarEn:
+            "global"
+        };
+      }
+
       return {
         ...item,
         modalidad:
-          destinoRegla.modalidad,
+          "sin_configurar",
         origenRegla:
-          "destino",
+          "sin_configurar",
         guardarEn:
-          "destino"
+          "grupo"
       };
     }
-
-    const globalRegla =
-      state.reglasGlobales.get(key);
-
-    if (globalRegla) {
-      return {
-        ...item,
-        modalidad:
-          globalRegla.modalidad,
-        origenRegla:
-          "global",
-        guardarEn:
-          "global"
-      };
-    }
-
-    return item;
-  });
+  );
 }
 
 /* =========================================================
    HOTELES
 ========================================================= */
 
-async function cargarHoteles(grupo) {
-  const asignaciones = [];
+async function cargarHoteles(
+  grupo
+) {
+  const asignacionesMap =
+    new Map();
+
+  function agregarAsignaciones(
+    snap
+  ) {
+    snap.forEach(
+      documento => {
+        asignacionesMap.set(
+          documento.id,
+          {
+            id:
+              documento.id,
+            ...documento.data()
+          }
+        );
+      }
+    );
+  }
 
   try {
     const snap =
@@ -1410,12 +1602,9 @@ async function cargarHoteles(grupo) {
         )
       );
 
-    snap.forEach(d => {
-      asignaciones.push({
-        id: d.id,
-        ...d.data()
-      });
-    });
+    agregarAsignaciones(
+      snap
+    );
   } catch (error) {
     console.warn(
       "Búsqueda hotel por grupoId",
@@ -1424,7 +1613,7 @@ async function cargarHoteles(grupo) {
   }
 
   if (
-    !asignaciones.length &&
+    !asignacionesMap.size &&
     getNumeroNegocio(grupo)
   ) {
     try {
@@ -1443,12 +1632,9 @@ async function cargarHoteles(grupo) {
           )
         );
 
-      snap.forEach(d => {
-        asignaciones.push({
-          id: d.id,
-          ...d.data()
-        });
-      });
+      agregarAsignaciones(
+        snap
+      );
     } catch (error) {
       console.warn(
         "Búsqueda hotel por negocio",
@@ -1457,10 +1643,13 @@ async function cargarHoteles(grupo) {
     }
   }
 
-  const hoteles = [];
-  const vistos = new Set();
+  const hotelesAgrupados =
+    new Map();
 
-  for (const asignacion of asignaciones) {
+  for (
+    const asignacion of
+    asignacionesMap.values()
+  ) {
     let hotelData = null;
 
     const hotelId =
@@ -1484,12 +1673,17 @@ async function cargarHoteles(grupo) {
 
         if (snap.exists()) {
           hotelData = {
-            id: snap.id,
+            id:
+              snap.id,
             ...snap.data()
           };
         }
-      } catch {
-        hotelData = null;
+      } catch (error) {
+        console.warn(
+          "No se pudo leer hotel",
+          hotelId,
+          error
+        );
       }
     }
 
@@ -1505,39 +1699,158 @@ async function cargarHoteles(grupo) {
       hotelId ||
       slug(nombre);
 
-    if (vistos.has(key)) {
+    const checkIn =
+      toISO(
+        asignacion.checkIn
+      );
+
+    const checkOut =
+      toISO(
+        asignacion.checkOut
+      );
+
+    const anterior =
+      hotelesAgrupados.get(
+        key
+      );
+
+    if (!anterior) {
+      hotelesAgrupados.set(
+        key,
+        {
+          key,
+          hotelId,
+          nombre,
+          checkIn,
+          checkOut
+        }
+      );
+
       continue;
     }
 
-    vistos.add(key);
+    if (
+      checkIn &&
+      (
+        !anterior.checkIn ||
+        checkIn < anterior.checkIn
+      )
+    ) {
+      anterior.checkIn =
+        checkIn;
+    }
 
-    hoteles.push({
-      id:
-        `hotel_${slug(key)}`,
-
-      nombre,
-
-      proveedor:
-        nombre,
-
-      tipo:
-        "hotel",
-
-      checkIn:
-        toISO(
-          asignacion.checkIn
-        ),
-
-      checkOut:
-        toISO(
-          asignacion.checkOut
-        ),
-
-      obligatorio: true
-    });
+    if (
+      checkOut &&
+      (
+        !anterior.checkOut ||
+        checkOut > anterior.checkOut
+      )
+    ) {
+      anterior.checkOut =
+        checkOut;
+    }
   }
 
-  return hoteles;
+  const preguntas = [];
+
+  hotelesAgrupados.forEach(
+    hotel => {
+      let noches = 0;
+
+      if (
+        hotel.checkIn &&
+        hotel.checkOut
+      ) {
+        noches =
+          Math.max(
+            0,
+            Math.round(
+              (
+                new Date(
+                  `${hotel.checkOut}T12:00:00`
+                ) -
+                new Date(
+                  `${hotel.checkIn}T12:00:00`
+                )
+              ) /
+              86400000
+            )
+          );
+      }
+
+      const baseSlug =
+        slug(
+          hotel.hotelId ||
+          hotel.nombre
+        );
+
+      preguntas.push({
+        id:
+          `hotel_experiencia_${baseSlug}`,
+
+        nombre:
+          hotel.nombre,
+
+        tipo:
+          "hotel",
+
+        subtipo:
+          "experiencia_general",
+
+        checkIn:
+          hotel.checkIn,
+
+        checkOut:
+          hotel.checkOut,
+
+        fechaInicio:
+          hotel.checkIn,
+
+        fechaFin:
+          hotel.checkOut,
+
+        noches,
+
+        obligatorio: true
+      });
+
+      preguntas.push({
+        id:
+          `hotel_alimentacion_${baseSlug}`,
+
+        nombre:
+          hotel.nombre,
+
+        tipo:
+          "hotel",
+
+        subtipo:
+          "alimentacion",
+
+        checkIn:
+          hotel.checkIn,
+
+        checkOut:
+          hotel.checkOut,
+
+        fechaInicio:
+          hotel.checkIn,
+
+        fechaFin:
+          hotel.checkOut,
+
+        noches,
+
+        recordatorio:
+          "Desayunos, almuerzos y cenas durante la estadía",
+
+        obligatorio: true
+      });
+    }
+  );
+
+  return preguntas;
 }
 
 /* =========================================================
@@ -1621,176 +1934,398 @@ async function cargarVuelosGrupo(grupo) {
   return [...encontrados.values()];
 }
 
-function construirTransportes(vuelos) {
+function construirTransportes(
+  vuelos
+) {
+  const lista =
+    Array.isArray(vuelos)
+      ? vuelos
+      : [];
+
+  const piernasAereas = [];
+  let existeAereo = false;
+  let existeTerrestrePrincipal = false;
+
+  function esVerdadero(
+    value
+  ) {
+    return (
+      value === true ||
+      value === 1 ||
+      cleanText(value)
+        .toLowerCase() ===
+        "true"
+    );
+  }
+
+  function agregarPiernaAerea({
+    aerolinea,
+    sentido,
+    fecha
+  }) {
+    piernasAereas.push({
+      aerolinea:
+        cleanText(aerolinea) ||
+        "Aerolínea",
+
+      sentido:
+        normalizarTexto(sentido),
+
+      fecha:
+        toISO(fecha)
+    });
+  }
+
+  lista.forEach(
+    vuelo => {
+      const esTransfer =
+        esVerdadero(
+          vuelo.isTransfer
+        ) ||
+        [
+          "ida",
+          "vuelta",
+          "ida+vuelta"
+        ].includes(
+          normalizarTexto(
+            vuelo.transferLeg
+          )
+        );
+
+      /*
+        Los transfers no se convierten en preguntas
+        individuales. Quedarán representados por
+        BUSES DURANTE EL VIAJE.
+      */
+      if (esTransfer) {
+        return;
+      }
+
+      const tipoTransporte =
+        normalizarTexto(
+          vuelo.tipoTransporte ||
+          "aereo"
+        );
+
+      if (
+        tipoTransporte &&
+        tipoTransporte !== "aereo"
+      ) {
+        existeTerrestrePrincipal =
+          true;
+
+        return;
+      }
+
+      existeAereo = true;
+
+      const proveedorPrincipal =
+        cleanText(
+          vuelo.proveedor ||
+          vuelo.aerolinea ||
+          vuelo.empresa ||
+          ""
+        );
+
+      if (
+        Array.isArray(
+          vuelo.tramos
+        ) &&
+        vuelo.tramos.length
+      ) {
+        vuelo.tramos.forEach(
+          tramo => {
+            const aerolinea =
+              cleanText(
+                tramo.aerolinea ||
+                tramo.proveedor ||
+                proveedorPrincipal
+              );
+
+            const tipoTramo =
+              normalizarTexto(
+                tramo.tipoTramo
+              );
+
+            const fechaIda =
+              toISO(
+                tramo.fechaIda
+              );
+
+            const fechaVuelta =
+              toISO(
+                tramo.fechaVuelta
+              );
+
+            if (
+              tipoTramo === "ida" ||
+              tipoTramo === "ida+vuelta" ||
+              (
+                !tipoTramo &&
+                fechaIda
+              )
+            ) {
+              agregarPiernaAerea({
+                aerolinea,
+                sentido:
+                  "ida",
+                fecha:
+                  fechaIda
+              });
+            }
+
+            if (
+              tipoTramo === "vuelta" ||
+              tipoTramo === "ida+vuelta" ||
+              (
+                !tipoTramo &&
+                fechaVuelta
+              )
+            ) {
+              agregarPiernaAerea({
+                aerolinea,
+                sentido:
+                  "vuelta",
+                fecha:
+                  fechaVuelta
+              });
+            }
+          }
+        );
+
+        return;
+      }
+
+      if (
+        toISO(
+          vuelo.fechaIda
+        )
+      ) {
+        agregarPiernaAerea({
+          aerolinea:
+            proveedorPrincipal,
+          sentido:
+            "ida",
+          fecha:
+            vuelo.fechaIda
+        });
+      }
+
+      if (
+        toISO(
+          vuelo.fechaVuelta
+        )
+      ) {
+        agregarPiernaAerea({
+          aerolinea:
+            proveedorPrincipal,
+          sentido:
+            "vuelta",
+          fecha:
+            vuelo.fechaVuelta
+        });
+      }
+    }
+  );
+
   const resultados = [];
-  const vistos = new Set();
 
-  function agregar(item) {
-    const key =
-      [
-        item.tipo,
-        item.nombre,
-        item.fecha
-      ].join("|");
+  if (existeAereo) {
+    const aerolineas =
+      new Map();
 
-    if (
-      vistos.has(key)
-    ) {
-      return;
+    piernasAereas.forEach(
+      pierna => {
+        const key =
+          slug(
+            pierna.aerolinea
+          ) ||
+          "aerolinea";
+
+        if (
+          !aerolineas.has(key)
+        ) {
+          aerolineas.set(
+            key,
+            {
+              key,
+              nombre:
+                pierna.aerolinea,
+              sentidos:
+                new Set(),
+              fechas:
+                []
+            }
+          );
+        }
+
+        const registro =
+          aerolineas.get(key);
+
+        if (pierna.sentido) {
+          registro.sentidos.add(
+            pierna.sentido
+          );
+        }
+
+        if (pierna.fecha) {
+          registro.fechas.push(
+            pierna.fecha
+          );
+        }
+      }
+    );
+
+    /*
+      Si no se detectó la aerolínea, igualmente
+      generamos una evaluación aérea general.
+    */
+    if (!aerolineas.size) {
+      aerolineas.set(
+        "aerolinea",
+        {
+          key:
+            "aerolinea",
+          nombre:
+            "Aerolínea",
+          sentidos:
+            new Set([
+              "ida",
+              "vuelta"
+            ]),
+          fechas: []
+        }
+      );
     }
 
-    vistos.add(key);
+    aerolineas.forEach(
+      aerolinea => {
+        const tieneIda =
+          aerolinea.sentidos.has(
+            "ida"
+          );
 
+        const tieneVuelta =
+          aerolinea.sentidos.has(
+            "vuelta"
+          );
+
+        let subtipo =
+          "aereo_general";
+
+        let nombre =
+          `Vuelos con ${aerolinea.nombre}`;
+
+        let recordatorio =
+          "Experiencia general con la aerolínea";
+
+        if (
+          tieneIda &&
+          tieneVuelta
+        ) {
+          subtipo =
+            "ida_y_vuelta";
+
+          nombre =
+            `Vuelos con ${aerolinea.nombre}`;
+
+          recordatorio =
+            "Viaje de ida y regreso";
+        } else if (tieneIda) {
+          subtipo =
+            "vuelo_ida";
+
+          nombre =
+            `Vuelo de ida con ${aerolinea.nombre}`;
+
+          recordatorio =
+            "Viaje de ida";
+        } else if (tieneVuelta) {
+          subtipo =
+            "vuelo_regreso";
+
+          nombre =
+            `Vuelo de regreso con ${aerolinea.nombre}`;
+
+          recordatorio =
+            "Viaje de regreso";
+        }
+
+        resultados.push({
+          id:
+            `transporte_aereo_${aerolinea.key}`,
+
+          tipo:
+            "aereo",
+
+          subtipo,
+
+          nombre,
+
+          aerolinea:
+            aerolinea.nombre,
+
+          fecha:
+            aerolinea.fechas
+              .filter(Boolean)
+              .sort()[0] ||
+            "",
+
+          recordatorio,
+
+          obligatorio: true
+        });
+      }
+    );
+
+    /*
+      En todo viaje aéreo agregamos la evaluación
+      general de los buses internos.
+    */
     resultados.push({
       id:
-        `transporte_${slug(key)}`,
+        "transporte_buses_durante_viaje",
 
-      ...item,
+      tipo:
+        "bus",
+
+      subtipo:
+        "buses_durante_viaje",
+
+      nombre:
+        "Buses durante el viaje",
+
+      recordatorio:
+        "Traslados realizados en el destino",
+
+      obligatorio: true
+    });
+
+    return resultados;
+  }
+
+  if (
+    existeTerrestrePrincipal
+  ) {
+    resultados.push({
+      id:
+        "transporte_bus_principal",
+
+      tipo:
+        "terrestre",
+
+      subtipo:
+        "bus_principal",
+
+      nombre:
+        "Bus principal",
+
+      recordatorio:
+        "Viaje de ida, recorrido principal y regreso",
 
       obligatorio: true
     });
   }
-
-  vuelos.forEach(vuelo => {
-    const tipoTransporte =
-      normalizarTexto(
-        vuelo.tipoTransporte ||
-        "aereo"
-      );
-
-    const proveedor =
-      cleanText(
-        vuelo.proveedor ||
-        vuelo.aerolinea ||
-        vuelo.empresa ||
-        ""
-      );
-
-    const esTransfer =
-      vuelo.isTransfer === true;
-
-    /*
-      La encuesta se entrega el penúltimo día.
-      Solo cargamos la ida y traslados que ya pudieron ocurrir.
-      La vuelta se excluye de esta primera encuesta.
-    */
-    if (
-      Array.isArray(vuelo.tramos) &&
-      vuelo.tramos.length
-    ) {
-      vuelo.tramos.forEach(tramo => {
-        const tipoTramo =
-          normalizarTexto(
-            tramo.tipoTramo
-          );
-
-        if (
-          tipoTramo === "vuelta"
-        ) {
-          return;
-        }
-
-        const fecha =
-          toISO(
-            tramo.fechaIda
-          );
-
-        if (!fecha) return;
-
-        const empresa =
-          cleanText(
-            tramo.aerolinea ||
-            proveedor
-          );
-
-        const ruta =
-          [
-            tramo.origen ||
-            vuelo.origen,
-            tramo.destino ||
-            vuelo.destino
-          ]
-            .filter(Boolean)
-            .join(" → ");
-
-        agregar({
-          tipo:
-            esTransfer
-              ? "traslado"
-              : "aereo",
-
-          nombre:
-            [
-              esTransfer
-                ? "Traslado de ida"
-                : "Vuelo de ida",
-              empresa,
-              ruta
-            ]
-              .filter(Boolean)
-              .join(" · "),
-
-          proveedor:
-            empresa,
-
-          fecha
-        });
-      });
-
-      return;
-    }
-
-    const fechaIda =
-      toISO(vuelo.fechaIda);
-
-    if (!fechaIda) {
-      return;
-    }
-
-    const ruta =
-      [
-        vuelo.origen,
-        vuelo.destino
-      ]
-        .filter(Boolean)
-        .join(" → ");
-
-    let tipo =
-      "aereo";
-
-    let titulo =
-      "Vuelo de ida";
-
-    if (esTransfer) {
-      tipo = "traslado";
-      titulo =
-        "Traslado de ida";
-    } else if (
-      tipoTransporte === "terrestre"
-    ) {
-      tipo = "terrestre";
-      titulo =
-        "Transporte terrestre de ida";
-    }
-
-    agregar({
-      tipo,
-
-      nombre:
-        [
-          titulo,
-          proveedor,
-          ruta
-        ]
-          .filter(Boolean)
-          .join(" · "),
-
-      proveedor,
-
-      fecha:
-        fechaIda
-    });
-  });
 
   return resultados;
 }
@@ -1983,17 +2518,43 @@ async function abrirGestionGrupo(grupoId) {
       cargarCoordinadores(grupo)
     ]);
 
+    const tieneRespuestas =
+      Number(
+        state.encuestaActual
+          ?.totalRespuestas ||
+        0
+      ) > 0;
+    
+    /*
+      Si todavía no hay respuestas usamos la detección
+      actualizada. Si ya existen respuestas preservamos
+      exactamente las preguntas publicadas.
+    */
     state.hoteles =
-      state.encuestaActual?.hoteles ||
-      hoteles;
-
+      tieneRespuestas &&
+      Array.isArray(
+        state.encuestaActual?.hoteles
+      )
+        ? state.encuestaActual.hoteles
+        : hoteles;
+    
     state.transportes =
-      state.encuestaActual?.transportes ||
-      construirTransportes(vuelos);
-
+      tieneRespuestas &&
+      Array.isArray(
+        state.encuestaActual?.transportes
+      )
+        ? state.encuestaActual.transportes
+        : construirTransportes(
+            vuelos
+          );
+    
     state.coordinadores =
-      state.encuestaActual?.coordinadores ||
-      coordinadores;
+      tieneRespuestas &&
+      Array.isArray(
+        state.encuestaActual?.coordinadores
+      )
+        ? state.encuestaActual.coordinadores
+        : coordinadores;
 
     configurarModalGrupo();
 
@@ -2167,14 +2728,17 @@ function renderActividades() {
   const tbody =
     $("tbodyActividades");
 
-  if (!state.actividades.length) {
+  if (
+    !state.actividades.length
+  ) {
     tbody.innerHTML = `
       <tr>
         <td
           colspan="6"
           class="enc-empty"
         >
-          El grupo no tiene actividades registradas en el itinerario.
+          El grupo no tiene actividades registradas
+          en el itinerario.
         </td>
       </tr>
     `;
@@ -2184,217 +2748,299 @@ function renderActividades() {
 
   tbody.innerHTML =
     state.actividades
-      .map((item, index) => `
-        <tr data-index="${index}">
+      .map(
+        (item, index) => {
+          const omitida =
+            item.modalidad ===
+              "omitida_automatica" ||
+            item.omitidaAutomaticamente;
 
-          <td>
-            ${formatDate(item.fecha)}
-          </td>
+          return `
+            <tr
+              data-index="${index}"
+              class="${
+                omitida
+                  ? "enc-activity-omitted"
+                  : ""
+              }"
+            >
 
-          <td>
-            <strong>
-              ${escapeHtml(item.nombre)}
-            </strong>
-          </td>
+              <td>
+                ${formatDate(item.fecha)}
+              </td>
 
-          <td>
-            ${escapeHtml(item.proveedor || "—")}
-          </td>
+              <td>
+                <strong>
+                  ${escapeHtml(item.nombre)}
+                </strong>
 
-          <td>
-            <select class="actividadModalidad">
-
-              <option
-                value="sin_configurar"
                 ${
-                  item.modalidad ===
-                  "sin_configurar"
-                    ? "selected"
+                  omitida &&
+                  item.motivoOmision
+                    ? `
+                      <div class="enc-origin">
+                        ${escapeHtml(item.motivoOmision)}
+                      </div>
+                    `
                     : ""
                 }
-              >
-                Sin configurar
-              </option>
+              </td>
 
-              <option
-                value="obligatoria"
+              <td>
+                ${escapeHtml(item.proveedor || "—")}
+              </td>
+
+              <td>
                 ${
-                  item.modalidad ===
-                  "obligatoria"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Obligatoria
-              </option>
+                  omitida
+                    ? `
+                      <span class="enc-auto-rule">
+                        Omitida automáticamente
+                      </span>
+                    `
+                    : `
+                      <select class="actividadModalidad">
 
-              <option
-                value="aleatoria"
+                        <option
+                          value="sin_configurar"
+                          ${
+                            item.modalidad ===
+                            "sin_configurar"
+                              ? "selected"
+                              : ""
+                          }
+                        >
+                          Sin configurar
+                        </option>
+
+                        <option
+                          value="obligatoria"
+                          ${
+                            item.modalidad ===
+                            "obligatoria"
+                              ? "selected"
+                              : ""
+                          }
+                        >
+                          Obligatoria
+                        </option>
+
+                        <option
+                          value="aleatoria"
+                          ${
+                            item.modalidad ===
+                            "aleatoria"
+                              ? "selected"
+                              : ""
+                          }
+                        >
+                          Aleatoria
+                        </option>
+
+                        <option
+                          value="excluida"
+                          ${
+                            item.modalidad ===
+                            "excluida"
+                              ? "selected"
+                              : ""
+                          }
+                        >
+                          Excluida
+                        </option>
+
+                      </select>
+                    `
+                }
+              </td>
+
+              <td>
+                <span class="enc-origin">
+                  ${
+                    omitida
+                      ? "Automática"
+                      : escapeHtml(
+                          item.origenRegla ||
+                          "—"
+                        )
+                  }
+                </span>
+              </td>
+
+              <td>
                 ${
-                  item.modalidad ===
-                  "aleatoria"
-                    ? "selected"
-                    : ""
+                  omitida
+                    ? `
+                      <span class="enc-origin">
+                        No requiere configuración
+                      </span>
+                    `
+                    : `
+                      <select class="actividadGuardarEn">
+
+                        <option
+                          value="grupo"
+                          ${
+                            item.guardarEn ===
+                            "grupo"
+                              ? "selected"
+                              : ""
+                          }
+                        >
+                          Solo este grupo
+                        </option>
+
+                        <option
+                          value="destino"
+                          ${
+                            item.guardarEn ===
+                            "destino"
+                              ? "selected"
+                              : ""
+                          }
+                        >
+                          ${
+                            escapeHtml(
+                              getDestino(
+                                state.grupoActual
+                              ) ||
+                              "Destino"
+                            )
+                          }
+                        </option>
+
+                        <option
+                          value="global"
+                          ${
+                            item.guardarEn ===
+                            "global"
+                              ? "selected"
+                              : ""
+                          }
+                        >
+                          Todos los destinos
+                        </option>
+
+                      </select>
+                    `
                 }
-              >
-                Aleatoria
-              </option>
+              </td>
 
-              <option
-                value="excluida"
-                ${
-                  item.modalidad ===
-                  "excluida"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Excluida
-              </option>
-
-            </select>
-          </td>
-
-          <td>
-            <span class="enc-origin">
-              ${escapeHtml(item.origenRegla || "—")}
-            </span>
-          </td>
-
-          <td>
-            <select class="actividadGuardarEn">
-
-              <option
-                value="grupo"
-                ${
-                  item.guardarEn === "grupo"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Solo este grupo
-              </option>
-
-              <option
-                value="destino"
-                ${
-                  item.guardarEn === "destino"
-                    ? "selected"
-                    : ""
-                }
-              >
-                ${escapeHtml(getDestino(state.grupoActual) || "Destino")}
-              </option>
-
-              <option
-                value="global"
-                ${
-                  item.guardarEn === "global"
-                    ? "selected"
-                    : ""
-                }
-              >
-                Todos los destinos
-              </option>
-
-            </select>
-          </td>
-
-        </tr>
-      `)
+            </tr>
+          `;
+        }
+      )
       .join("");
 
   tbody
-    .querySelectorAll("tr")
-    .forEach(tr => {
-      const index =
-        Number(
-          tr.dataset.index
-        );
+    .querySelectorAll(
+      "tr[data-index]"
+    )
+    .forEach(
+      tr => {
+        const index =
+          Number(
+            tr.dataset.index
+          );
 
-      const modalidad =
-        tr.querySelector(
-          ".actividadModalidad"
-        );
+        const item =
+          state.actividades[index];
 
-      const guardarEn =
-        tr.querySelector(
-          ".actividadGuardarEn"
-        );
+        if (
+          !item ||
+          item.omitidaAutomaticamente
+        ) {
+          return;
+        }
 
-      modalidad.addEventListener(
-        "change",
-        () => {
-          state.actividades[index]
-            .modalidad =
-            modalidad.value;
+        const modalidad =
+          tr.querySelector(
+            ".actividadModalidad"
+          );
 
-          /*
-            Al modificar una regla heredada, por defecto
-            pasa a ser una excepción de este grupo.
-          */
-          if (
-            state.actividades[index]
-              .origenRegla !== "grupo"
-          ) {
-            guardarEn.value =
-              "grupo";
+        const guardarEn =
+          tr.querySelector(
+            ".actividadGuardarEn"
+          );
 
-            state.actividades[index]
-              .guardarEn =
-              "grupo";
+        modalidad?.addEventListener(
+          "change",
+          () => {
+            item.modalidad =
+              modalidad.value;
+
+            /*
+              Si el usuario cambia una regla heredada,
+              inicialmente la consideramos excepción
+              particular del grupo.
+            */
+            if (
+              item.origenRegla !==
+              "grupo"
+            ) {
+              guardarEn.value =
+                "grupo";
+
+              item.guardarEn =
+                "grupo";
+            }
+
+            item.origenRegla =
+              item.guardarEn;
+
+            actualizarResumenPreguntas();
           }
+        );
 
-          state.actividades[index]
-            .origenRegla =
-            guardarEn.value;
+        guardarEn?.addEventListener(
+          "change",
+          () => {
+            item.guardarEn =
+              guardarEn.value;
 
-          actualizarResumenPreguntas();
-        }
-      );
-
-      guardarEn.addEventListener(
-        "change",
-        () => {
-          state.actividades[index]
-            .guardarEn =
-            guardarEn.value;
-
-          state.actividades[index]
-            .origenRegla =
-            guardarEn.value;
-        }
-      );
-    });
+            item.origenRegla =
+              guardarEn.value;
+          }
+        );
+      }
+    );
 }
 
 function actualizarResumenPreguntas() {
   const obligatorias =
     state.actividades.filter(
-      x =>
-        x.modalidad ===
+      item =>
+        item.modalidad ===
         "obligatoria"
     ).length;
 
   const aleatorias =
     state.actividades.filter(
-      x =>
-        x.modalidad ===
+      item =>
+        item.modalidad ===
         "aleatoria"
     ).length;
 
   const excluidas =
     state.actividades.filter(
-      x =>
-        x.modalidad ===
+      item =>
+        item.modalidad ===
         "excluida"
     ).length;
 
   const sinConfigurar =
     state.actividades.filter(
-      x =>
-        x.modalidad ===
+      item =>
+        item.modalidad ===
         "sin_configurar"
+    ).length;
+
+  const omitidas =
+    state.actividades.filter(
+      item =>
+        item.modalidad ===
+          "omitida_automatica" ||
+        item.omitidaAutomaticamente
     ).length;
 
   $("cantidadObligatorias").textContent =
@@ -2409,14 +3055,18 @@ function actualizarResumenPreguntas() {
   $("cantidadSinConfigurar").textContent =
     sinConfigurar;
 
+  if (
+    $("cantidadOmitidas")
+  ) {
+    $("cantidadOmitidas").textContent =
+      omitidas;
+  }
+
   const cantidadPorPersona =
     Math.max(
       0,
       Number(
-        document
-          .querySelector(
-            "#panel-configuracion input#cantidadAleatorias"
-          )
+        $("cantidadAleatorias")
           ?.value ||
         0
       )
@@ -2428,20 +3078,38 @@ function actualizarResumenPreguntas() {
       aleatorias
     );
 
+  /*
+    Hoteles ya contiene dos evaluaciones:
+      experiencia + alimentación.
+  */
+  const evaluacionesServicios =
+    state.hoteles.length +
+    state.transportes.length +
+    state.coordinadores.length;
+
+  /*
+    Se suma 1 por EL VIAJE EN GENERAL.
+  */
   const total =
     obligatorias +
     aleatoriasReales +
-    state.hoteles.length +
-    state.transportes.length +
-    state.coordinadores.length +
+    evaluacionesServicios +
     1;
 
   $("resumenCargaPasajero").textContent =
     sinConfigurar
-      ? `Quedan ${sinConfigurar} actividades sin configurar. No se puede publicar todavía.`
-      : `Cada pasajero responderá aproximadamente ${total} evaluaciones: ${obligatorias} actividades obligatorias, ${aleatoriasReales} aleatorias y los servicios generales del grupo.`;
+      ? (
+          `Quedan ${sinConfigurar} actividades sin configurar. ` +
+          "No se puede publicar todavía."
+        )
+      : (
+          `Cada pasajero responderá aproximadamente ${total} ` +
+          `evaluaciones: ${obligatorias} actividades obligatorias, ` +
+          `${aleatoriasReales} aleatorias, ${evaluacionesServicios} ` +
+          "evaluaciones de hotel, alimentación, transporte o " +
+          "coordinación, y la evaluación general del viaje."
+        );
 }
-
 /* =========================================================
    SERVICIOS
 ========================================================= */
@@ -2528,19 +3196,27 @@ async function guardarReglasSeleccionadas() {
       actividad.modalidad;
 
     if (
+      actividad.omitidaAutomaticamente ||
       modalidad ===
-      "sin_configurar"
+        "omitida_automatica" ||
+      modalidad ===
+        "sin_configurar"
     ) {
       continue;
     }
 
     const key =
       actividad.slug ||
-      slug(actividad.nombre);
+      slug(
+        actividad.nombre
+      );
 
     const data = {
       nombre:
         actividad.nombre,
+
+      slug:
+        key,
 
       modalidad,
 
@@ -2600,7 +3276,7 @@ async function guardarReglasSeleccionadas() {
     }
   }
 
-  if (operaciones) {
+  if (operaciones > 0) {
     await batch.commit();
   }
 }
@@ -2612,6 +3288,58 @@ async function guardarReglasSeleccionadas() {
 function construirPayloadEncuesta() {
   const grupo =
     state.grupoActual;
+
+  const actividadesEvaluables =
+    state.actividades.map(
+      item => ({
+        id:
+          item.id,
+
+        slug:
+          item.slug,
+
+        nombre:
+          item.nombre,
+
+        fecha:
+          item.fecha,
+
+        horaInicio:
+          item.horaInicio,
+
+        proveedor:
+          item.proveedor,
+
+        modalidad:
+          item.modalidad,
+
+        origenRegla:
+          item.guardarEn ||
+          item.origenRegla ||
+          "grupo",
+
+        guardarEn:
+          item.guardarEn ||
+          "grupo",
+
+        omitidaAutomaticamente:
+          !!item.omitidaAutomaticamente,
+
+        motivoOmision:
+          item.motivoOmision ||
+          ""
+      })
+    );
+
+  const excepcionesGrupo =
+    actividadesEvaluables.filter(
+      item =>
+        item.guardarEn ===
+          "grupo" &&
+        !item.omitidaAutomaticamente &&
+        item.modalidad !==
+          "sin_configurar"
+    );
 
   return {
     encuestaId:
@@ -2631,7 +3359,9 @@ function construirPayloadEncuesta() {
       ),
 
     numeroNegocio:
-      getNumeroNegocio(grupo),
+      getNumeroNegocio(
+        grupo
+      ),
 
     colegio:
       cleanText(
@@ -2646,7 +3376,9 @@ function construirPayloadEncuesta() {
       ),
 
     destino:
-      getDestino(grupo),
+      getDestino(
+        grupo
+      ),
 
     programa:
       cleanText(
@@ -2671,34 +3403,17 @@ function construirPayloadEncuesta() {
       Math.max(
         0,
         Number(
-          document
-            .querySelector(
-              "#panel-configuracion input#cantidadAleatorias"
-            )
+          $("cantidadAleatorias")
             ?.value ||
           0
         )
       ),
 
     actividades:
-      state.actividades.map(
-        item => ({
-          id: item.id,
-          slug: item.slug,
-          nombre: item.nombre,
-          fecha: item.fecha,
-          horaInicio:
-            item.horaInicio,
-          proveedor:
-            item.proveedor,
-          modalidad:
-            item.modalidad,
-          origenRegla:
-            item.guardarEn ||
-            item.origenRegla ||
-            "grupo"
-        })
-      ),
+      actividadesEvaluables,
+
+    excepcionesActividades:
+      excepcionesGrupo,
 
     hoteles:
       state.hoteles,
@@ -2707,7 +3422,19 @@ function construirPayloadEncuesta() {
       state.transportes,
 
     coordinadores:
-      state.coordinadores
+      state.coordinadores,
+
+    escalaEvaluacion: {
+      minimo: 1,
+      maximo: 5,
+      etiquetas: {
+        1: "Muy malo",
+        2: "Malo",
+        3: "Regular",
+        4: "Bueno",
+        5: "Excelente"
+      }
+    }
   };
 }
 
@@ -3490,14 +4217,20 @@ function renderSeguimiento() {
   }
 
   if (
-    filtro === "estudiante" ||
-    filtro === "adulto"
+    [
+      "estudiante",
+      "adulto",
+      "profesor"
+    ].includes(
+      filtro
+    )
   ) {
     participantes =
       participantes.filter(
-        x =>
-          x.tipoPasajero ===
-          filtro
+        participante =>
+          normalizarTexto(
+            participante.tipoPasajero
+          ) === filtro
       );
   }
 
@@ -3566,18 +4299,35 @@ function renderSeguimiento() {
     `).join("");
 }
 
-function getPreguntaNombre(preguntaId) {
+function getPreguntaNombre(
+  preguntaId
+) {
   if (
     preguntaId ===
     "general:viaje"
   ) {
-    return "Evaluación general del viaje";
+    return (
+      "Evaluación general del viaje"
+    );
   }
 
-  const [
-    tipo,
-    id
-  ] = preguntaId.split(":");
+  const separador =
+    preguntaId.indexOf(":");
+
+  const tipo =
+    separador >= 0
+      ? preguntaId.slice(
+          0,
+          separador
+        )
+      : "";
+
+  const id =
+    separador >= 0
+      ? preguntaId.slice(
+          separador + 1
+        )
+      : preguntaId;
 
   const listas = {
     actividad:
@@ -3594,11 +4344,44 @@ function getPreguntaNombre(preguntaId) {
   };
 
   const item =
-    listas[tipo]?.find(
-      x => x.id === id
-    );
+    listas[tipo]
+      ?.find(
+        registro =>
+          registro.id === id ||
+          registro.preguntaId ===
+            preguntaId
+      );
 
-  return item?.nombre ||
+  if (!item) {
+    return preguntaId;
+  }
+
+  if (
+    tipo === "hotel" &&
+    (
+      item.subtipo ===
+        "alimentacion" ||
+      normalizarTexto(
+        item.subtipo
+      ).includes(
+        "comida"
+      )
+    )
+  ) {
+    return (
+      `Alimentación en ${item.nombre}`
+    );
+  }
+
+  if (
+    tipo === "hotel"
+  ) {
+    return (
+      `Experiencia general en ${item.nombre}`
+    );
+  }
+
+  return item.nombre ||
     preguntaId;
 }
 
@@ -3618,50 +4401,160 @@ function renderResultados() {
 
     container.textContent =
       "Todavía no existen respuestas.";
-
   } else {
     container.className = "";
 
     container.innerHTML =
       entries.map(
-        ([preguntaId, data]) => `
-          <div class="enc-result-card">
+        ([preguntaId, dataRaw]) => {
+          const data =
+            dataRaw ||
+            {};
 
-            <h5>
-              ${escapeHtml(getPreguntaNombre(preguntaId))}
-            </h5>
+          /*
+            Compatibilidad:
+            - Backend nuevo: data["1"] ... data["5"]
+            - Backend alternativo: data.puntuaciones
+            - Respuestas antiguas de cuatro opciones
+          */
+          const puntuaciones =
+            data.puntuaciones ||
+            {};
 
-            <div class="enc-result-grid">
+          const valor1 =
+            Number(
+              puntuaciones["1"] ??
+              data["1"] ??
+              data.uno ??
+              data.muy_malo ??
+              0
+            );
 
-              ${resultadoCelda(
-                "Muy bueno",
-                data.muy_bueno
-              )}
+          const valor2 =
+            Number(
+              puntuaciones["2"] ??
+              data["2"] ??
+              data.dos ??
+              data.malo ??
+              0
+            );
 
-              ${resultadoCelda(
-                "Bueno",
-                data.bueno
-              )}
+          const valor3 =
+            Number(
+              puntuaciones["3"] ??
+              data["3"] ??
+              data.tres ??
+              data.regular ??
+              0
+            );
 
-              ${resultadoCelda(
-                "Regular",
-                data.regular
-              )}
+          const valor4 =
+            Number(
+              puntuaciones["4"] ??
+              data["4"] ??
+              data.cuatro ??
+              data.bueno ??
+              0
+            );
 
-              ${resultadoCelda(
-                "Malo",
-                data.malo
-              )}
+          const valor5 =
+            Number(
+              puntuaciones["5"] ??
+              data["5"] ??
+              data.cinco ??
+              data.excelente ??
+              data.muy_bueno ??
+              0
+            );
 
-              ${resultadoCelda(
-                "Total",
-                data.total
-              )}
+          const total =
+            Number(
+              data.total
+            ) ||
+            (
+              valor1 +
+              valor2 +
+              valor3 +
+              valor4 +
+              valor5
+            );
+
+          const promedioCalculado =
+            total
+              ? (
+                  (
+                    valor1 * 1 +
+                    valor2 * 2 +
+                    valor3 * 3 +
+                    valor4 * 4 +
+                    valor5 * 5
+                  ) /
+                  total
+                )
+              : 0;
+
+          const promedio =
+            Number(
+              data.promedio ??
+              promedioCalculado
+            );
+
+          return `
+            <div class="enc-result-card">
+
+              <h5>
+                ${escapeHtml(
+                  getPreguntaNombre(
+                    preguntaId
+                  )
+                )}
+              </h5>
+
+              <div class="enc-stars-summary">
+                ${
+                  promedio
+                    ? `${promedio.toFixed(1)} ★`
+                    : "Sin promedio"
+                }
+              </div>
+
+              <div class="enc-result-grid">
+
+                ${resultadoCelda(
+                  "1 estrella",
+                  valor1
+                )}
+
+                ${resultadoCelda(
+                  "2 estrellas",
+                  valor2
+                )}
+
+                ${resultadoCelda(
+                  "3 estrellas",
+                  valor3
+                )}
+
+                ${resultadoCelda(
+                  "4 estrellas",
+                  valor4
+                )}
+
+                ${resultadoCelda(
+                  "5 estrellas",
+                  valor5
+                )}
+
+                ${resultadoCelda(
+                  "Total",
+                  total
+                )}
+
+              </div>
 
             </div>
-
-          </div>
-        `
+          `;
+        }
       ).join("");
   }
 
@@ -4288,19 +5181,23 @@ function conectarEventos() {
           state.actividades.map(
             item =>
               item.modalidad ===
-              "sin_configurar"
+                "sin_configurar" &&
+              !item.omitidaAutomaticamente
                 ? {
                     ...item,
+        
                     modalidad:
                       "aleatoria",
+        
                     origenRegla:
                       "grupo",
+        
                     guardarEn:
                       "grupo"
                   }
                 : item
           );
-
+        
         renderActividades();
         actualizarResumenPreguntas();
       }
