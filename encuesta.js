@@ -24,12 +24,14 @@ const state = {
   participante: null,
   encuesta: null,
   preguntas: [],
-
-  /*
-    Map:
-      preguntaId → puntuación 1 a 5
-  */
-  respuestas: new Map()
+  respuestas: new Map(),
+  asistenciaMedica: {
+    incluida: false,
+    utilizo: null,
+    deseaEvaluar: null,
+    puntuacion: 0
+  },
+  enviando: false
 };
 
 /* =========================================================
@@ -972,8 +974,519 @@ function construirEncuesta() {
       {}
     );
 
+  const modalidadAsistencia =
+    normalizarTexto(
+      encuesta.asistenciaMedica
+        ?.modalidad ||
+      "excluida"
+    );
+
+  state.asistenciaMedica = {
+    incluida:
+      modalidadAsistencia ===
+      "obligatoria",
+
+    utilizo:
+      null,
+
+    deseaEvaluar:
+      null,
+
+    puntuacion:
+      0
+  };
+
+  limpiarFormularioAsistenciaMedica();
   renderPreguntas();
+  renderAsistenciaMedica();
   actualizarProgreso();
+}
+
+function limpiarRadiosPorNombre(
+  nombre
+) {
+  document
+    .querySelectorAll(
+      `input[name="${nombre}"]`
+    )
+    .forEach(
+      input => {
+        input.checked =
+          false;
+      }
+    );
+}
+
+function limpiarFormularioAsistenciaMedica() {
+  limpiarRadiosPorNombre(
+    "usoAsistenciaMedica"
+  );
+
+  limpiarRadiosPorNombre(
+    "evaluarAsistenciaMedica"
+  );
+
+  state.asistenciaMedica.utilizo =
+    null;
+
+  state.asistenciaMedica
+    .deseaEvaluar =
+    null;
+
+  state.asistenciaMedica.puntuacion =
+    0;
+
+  if (
+    $("comentarioAsistenciaMedica")
+  ) {
+    $("comentarioAsistenciaMedica")
+      .value =
+      "";
+  }
+
+  $("evaluacionAsistenciaWrap")
+    ?.classList.add(
+      "hidden"
+    );
+
+  $("detalleEvaluacionAsistencia")
+    ?.classList.add(
+      "hidden"
+    );
+
+  $("errorAsistenciaMedica")
+    ?.classList.remove(
+      "open"
+    );
+
+  if (
+    $("errorAsistenciaMedica")
+  ) {
+    $("errorAsistenciaMedica")
+      .textContent =
+      "";
+  }
+
+  pintarEstrellasAsistenciaMedica();
+}
+
+function renderAsistenciaMedica() {
+  const section =
+    $("seccionAsistenciaMedica");
+
+  if (!section) {
+    return;
+  }
+
+  section.classList.toggle(
+    "hidden",
+    !state.asistenciaMedica
+      .incluida
+  );
+
+  if (
+    !state.asistenciaMedica
+      .incluida
+  ) {
+    return;
+  }
+
+  construirEstrellasAsistenciaMedica();
+  actualizarVistaAsistenciaMedica();
+}
+
+function construirEstrellasAsistenciaMedica() {
+  const container =
+    $("estrellasAsistenciaMedica");
+
+  if (!container) {
+    return;
+  }
+
+  container.innerHTML =
+    [1, 2, 3, 4, 5]
+      .map(
+        valor => `
+          <button
+            type="button"
+            class="star-button"
+            data-medical-star="${valor}"
+            aria-label="${valor} ${
+              valor === 1
+                ? "estrella"
+                : "estrellas"
+            }"
+            aria-pressed="false"
+          >
+            ★
+          </button>
+        `
+      )
+      .join("");
+
+  container
+    .querySelectorAll(
+      "[data-medical-star]"
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          "click",
+          () => {
+            seleccionarPuntuacionAsistenciaMedica(
+              Number(
+                button.dataset
+                  .medicalStar
+              )
+            );
+          }
+        );
+
+        button.addEventListener(
+          "mouseenter",
+          () => {
+            pintarEstrellasAsistenciaMedica(
+              Number(
+                button.dataset
+                  .medicalStar
+              )
+            );
+          }
+        );
+
+        button.addEventListener(
+          "mouseleave",
+          () => {
+            pintarEstrellasAsistenciaMedica();
+          }
+        );
+
+        button.addEventListener(
+          "keydown",
+          event => {
+            if (
+              ![
+                "ArrowLeft",
+                "ArrowRight"
+              ].includes(
+                event.key
+              )
+            ) {
+              return;
+            }
+
+            event.preventDefault();
+
+            const actual =
+              Number(
+                button.dataset
+                  .medicalStar
+              );
+
+            const siguiente =
+              event.key ===
+                "ArrowRight"
+                ? Math.min(
+                    5,
+                    actual + 1
+                  )
+                : Math.max(
+                    1,
+                    actual - 1
+                  );
+
+            seleccionarPuntuacionAsistenciaMedica(
+              siguiente
+            );
+
+            container
+              .querySelector(
+                `[data-medical-star="${siguiente}"]`
+              )
+              ?.focus();
+          }
+        );
+      }
+    );
+
+  pintarEstrellasAsistenciaMedica();
+}
+
+function seleccionarPuntuacionAsistenciaMedica(
+  valor
+) {
+  const puntuacion =
+    Math.max(
+      1,
+      Math.min(
+        5,
+        Number(valor) ||
+        0
+      )
+    );
+
+  state.asistenciaMedica.puntuacion =
+    puntuacion;
+
+  pintarEstrellasAsistenciaMedica();
+
+  $("errorAsistenciaMedica")
+    ?.classList.remove(
+      "open"
+    );
+
+  actualizarProgreso();
+}
+
+function pintarEstrellasAsistenciaMedica(
+  preview = null
+) {
+  const puntuacion =
+    preview === null
+      ? Number(
+          state.asistenciaMedica
+            .puntuacion ||
+          0
+        )
+      : Number(preview);
+
+  document
+    .querySelectorAll(
+      "[data-medical-star]"
+    )
+    .forEach(
+      button => {
+        const valor =
+          Number(
+            button.dataset
+              .medicalStar
+          );
+
+        const seleccionada =
+          valor <= puntuacion;
+
+        button.classList.toggle(
+          "selected",
+          seleccionada
+        );
+
+        button.setAttribute(
+          "aria-pressed",
+          valor ===
+            state.asistenciaMedica
+              .puntuacion
+            ? "true"
+            : "false"
+        );
+      }
+    );
+
+  const label =
+    $("etiquetaAsistenciaMedica");
+
+  if (label) {
+    label.textContent =
+      puntuacion
+        ? getDescripcionPuntuacion(
+            puntuacion
+          )
+        : "Selecciona de 1 a 5 estrellas";
+  }
+}
+
+function actualizarVistaAsistenciaMedica() {
+  const utilizo =
+    state.asistenciaMedica
+      .utilizo;
+
+  const deseaEvaluar =
+    state.asistenciaMedica
+      .deseaEvaluar;
+
+  $("evaluacionAsistenciaWrap")
+    ?.classList.toggle(
+      "hidden",
+      utilizo !== true
+    );
+
+  $("detalleEvaluacionAsistencia")
+    ?.classList.toggle(
+      "hidden",
+      utilizo !== true ||
+      deseaEvaluar !== true
+    );
+
+  if (
+    utilizo !== true
+  ) {
+    state.asistenciaMedica
+      .deseaEvaluar =
+      null;
+
+    state.asistenciaMedica
+      .puntuacion =
+      0;
+
+    limpiarRadiosPorNombre(
+      "evaluarAsistenciaMedica"
+    );
+
+    if (
+      $("comentarioAsistenciaMedica")
+    ) {
+      $("comentarioAsistenciaMedica")
+        .value =
+        "";
+    }
+  }
+
+  if (
+    deseaEvaluar !== true
+  ) {
+    state.asistenciaMedica
+      .puntuacion =
+      0;
+
+    if (
+      $("comentarioAsistenciaMedica")
+    ) {
+      $("comentarioAsistenciaMedica")
+        .value =
+        "";
+    }
+  }
+
+  pintarEstrellasAsistenciaMedica();
+  actualizarProgreso();
+}
+
+function getEstadoValidacionAsistenciaMedica() {
+  if (
+    !state.asistenciaMedica
+      .incluida
+  ) {
+    return {
+      completa: true,
+      mensaje: ""
+    };
+  }
+
+  if (
+    typeof state.asistenciaMedica
+      .utilizo !==
+    "boolean"
+  ) {
+    return {
+      completa: false,
+
+      mensaje:
+        "Indica si utilizaste la asistencia médica durante el viaje."
+    };
+  }
+
+  if (
+    state.asistenciaMedica
+      .utilizo === false
+  ) {
+    return {
+      completa: true,
+      mensaje: ""
+    };
+  }
+
+  if (
+    typeof state.asistenciaMedica
+      .deseaEvaluar !==
+    "boolean"
+  ) {
+    return {
+      completa: false,
+
+      mensaje:
+        "Indica si deseas evaluar la asistencia médica recibida."
+    };
+  }
+
+  if (
+    state.asistenciaMedica
+      .deseaEvaluar === false
+  ) {
+    return {
+      completa: true,
+      mensaje: ""
+    };
+  }
+
+  if (
+    !Number.isInteger(
+      state.asistenciaMedica
+        .puntuacion
+    ) ||
+    state.asistenciaMedica
+      .puntuacion < 1 ||
+    state.asistenciaMedica
+      .puntuacion > 5
+  ) {
+    return {
+      completa: false,
+
+      mensaje:
+        "Selecciona una calificación para la asistencia médica."
+    };
+  }
+
+  return {
+    completa: true,
+    mensaje: ""
+  };
+}
+
+function construirRespuestaAsistenciaMedica() {
+  if (
+    !state.asistenciaMedica
+      .incluida
+  ) {
+    return null;
+  }
+
+  return {
+    incluida: true,
+
+    utilizo:
+      state.asistenciaMedica
+        .utilizo === true,
+
+    deseaEvaluar:
+      state.asistenciaMedica
+        .utilizo === true &&
+      state.asistenciaMedica
+        .deseaEvaluar === true,
+
+    puntuacion:
+      state.asistenciaMedica
+        .utilizo === true &&
+      state.asistenciaMedica
+        .deseaEvaluar === true
+        ? Number(
+            state.asistenciaMedica
+              .puntuacion
+          )
+        : 0,
+
+    comentario:
+      state.asistenciaMedica
+        .utilizo === true &&
+      state.asistenciaMedica
+        .deseaEvaluar === true
+        ? cleanText(
+            $("comentarioAsistenciaMedica")
+              ?.value
+          ).slice(
+            0,
+            2000
+          )
+        : ""
+  };
 }
 
 /* =========================================================
@@ -1959,16 +2472,38 @@ function actualizarProgreso() {
   const obligatorias =
     getPreguntasObligatorias();
 
-  const total =
+  const totalPreguntas =
     obligatorias.length;
 
-  const respondidas =
+  const respondidasPreguntas =
     obligatorias.filter(
       pregunta =>
         state.respuestas.has(
           pregunta.preguntaId
         )
     ).length;
+
+  const asistencia =
+    getEstadoValidacionAsistenciaMedica();
+
+  const total =
+    totalPreguntas +
+    (
+      state.asistenciaMedica
+        .incluida
+        ? 1
+        : 0
+    );
+
+  const respondidas =
+    respondidasPreguntas +
+    (
+      state.asistenciaMedica
+        .incluida &&
+      asistencia.completa
+        ? 1
+        : 0
+    );
 
   const porcentaje =
     total
@@ -1994,16 +2529,11 @@ function actualizarProgreso() {
       String(porcentaje)
     );
 
-  /*
-    Queda visualmente desactivado mientras falten
-    respuestas, pero validarEncuestaCompleta()
-    mantiene la seguridad final.
-  */
   if (btnEnviarEncuesta) {
     const incompleta =
       total > 0 &&
       respondidas < total;
-  
+
     btnEnviarEncuesta.setAttribute(
       "aria-disabled",
       incompleta
@@ -2058,18 +2588,56 @@ function validarEncuestaCompleta() {
       "open"
     );
 
-    /*
-      Si el botón estaba desactivado, normalmente
-      no se llega aquí. Esta validación también cubre
-      envíos por teclado o cambios inesperados.
-    */
     primeraPendiente.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
+      behavior:
+        "smooth",
+
+      block:
+        "center"
     });
 
     return false;
   }
+
+  const validacionAsistencia =
+    getEstadoValidacionAsistenciaMedica();
+
+  const errorAsistencia =
+    $("errorAsistenciaMedica");
+
+  if (
+    !validacionAsistencia
+      .completa
+  ) {
+    if (errorAsistencia) {
+      errorAsistencia.textContent =
+        validacionAsistencia
+          .mensaje;
+
+      errorAsistencia.classList.add(
+        "open"
+      );
+    }
+
+    resumen?.classList.add(
+      "open"
+    );
+
+    $("seccionAsistenciaMedica")
+      ?.scrollIntoView({
+        behavior:
+          "smooth",
+
+        block:
+          "center"
+      });
+
+    return false;
+  }
+
+  errorAsistencia?.classList.remove(
+    "open"
+  );
 
   resumen?.classList.remove(
     "open"
@@ -2139,34 +2707,22 @@ async function enviarEncuesta(
     return;
   }
 
-  if (!state.sesion) {
-    mostrarErrorGeneral(
-      "Sesión vencida",
-      "Debes ingresar nuevamente tu RUT para continuar."
-    );
-
-    return;
-  }
-
   if (
-    !confirm(
-      "¿Enviar definitivamente tu encuesta? Después de enviarla no podrás modificarla."
-    )
+    state.enviando
   ) {
     return;
   }
 
+  state.enviando =
+    true;
+
   setButtonLoading(
     btnEnviarEncuesta,
     true,
-    "Enviando...",
-    "Enviar encuesta"
+    "Enviando..."
   );
 
   try {
-    const respuestas =
-      getRespuestasSeleccionadas();
-
     const respuesta =
       await postPublico(
         FUNCTION_URLS.enviar,
@@ -2174,7 +2730,11 @@ async function enviarEncuesta(
           sesion:
             state.sesion,
 
-          respuestas,
+          respuestas:
+            getRespuestasSeleccionadas(),
+
+          asistenciaMedica:
+            construirRespuestaAsistenciaMedica(),
 
           comentarioPositivo:
             cleanText(
@@ -2196,69 +2756,29 @@ async function enviarEncuesta(
         }
       );
 
-    /*
-      Nunca guardamos el RUT en localStorage.
-    */
-    state.sesion = "";
-    state.participante = null;
-    state.encuesta = null;
-    state.preguntas = [];
-    state.respuestas = new Map();
-
     mostrarFinal(
-      "¡Gracias por responder!",
       respuesta.message ||
       "Tu encuesta fue enviada correctamente."
     );
+
   } catch (error) {
-    if (
-      error.code ===
-        "SESION_INVALIDA" ||
-      error.code ===
-        "SESION_VENCIDA"
-    ) {
-      mostrarErrorGeneral(
-        "Sesión vencida",
-        error.message ||
-        "Debes ingresar nuevamente tu RUT."
-      );
+    console.error(
+      error
+    );
 
-      return;
-    }
-
-    if (
-      error.code ===
-      "YA_RESPONDIO"
-    ) {
-      mostrarFinal(
-        "¡Muchas gracias!",
-        error.message ||
-        "Tu participación ya había sido registrada."
-      );
-
-      return;
-    }
-
-    alert(
+    mostrarErrorGeneral(
       error.message ||
       "No fue posible enviar la encuesta."
     );
-  } finally {
-    if (
-      !pantallaFinal ||
-      pantallaFinal.classList.contains(
-        "hidden"
-      )
-    ) {
-      setButtonLoading(
-        btnEnviarEncuesta,
-        false,
-        "Enviando...",
-        "Enviar encuesta"
-      );
 
-      actualizarProgreso();
-    }
+  } finally {
+    state.enviando =
+      false;
+
+    setButtonLoading(
+      btnEnviarEncuesta,
+      false
+    );
   }
 }
 
@@ -2346,6 +2866,56 @@ function conectarEventos() {
     ?.addEventListener(
       "click",
       alternarComentarios
+    );
+
+  document
+    .querySelectorAll(
+      'input[name="usoAsistenciaMedica"]'
+    )
+    .forEach(
+      input => {
+        input.addEventListener(
+          "change",
+          () => {
+            state.asistenciaMedica
+              .utilizo =
+              input.value ===
+              "si";
+
+            $("errorAsistenciaMedica")
+              ?.classList.remove(
+                "open"
+              );
+
+            actualizarVistaAsistenciaMedica();
+          }
+        );
+      }
+    );
+
+  document
+    .querySelectorAll(
+      'input[name="evaluarAsistenciaMedica"]'
+    )
+    .forEach(
+      input => {
+        input.addEventListener(
+          "change",
+          () => {
+            state.asistenciaMedica
+              .deseaEvaluar =
+              input.value ===
+              "si";
+
+            $("errorAsistenciaMedica")
+              ?.classList.remove(
+                "open"
+              );
+
+            actualizarVistaAsistenciaMedica();
+          }
+        );
+      }
     );
 }
 
