@@ -963,6 +963,136 @@
       text-align: center;
     }
 
+    .medical-section {
+      padding: 18px;
+      margin-bottom: 18px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: #fff;
+    }
+    
+    .medical-fieldset {
+      padding: 0;
+      margin: 0 0 16px;
+      border: 0;
+    }
+    
+    .medical-fieldset legend {
+      padding: 0;
+      margin-bottom: 12px;
+      color: var(--primary);
+      font-size: 1rem;
+      font-weight: 800;
+      line-height: 1.45;
+    }
+    
+    .medical-options {
+      display: grid;
+      grid-template-columns:
+        repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    
+    .medical-option {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 46px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      background: #fff;
+      cursor: pointer;
+      font-weight: 800;
+    }
+    
+    .medical-option:hover {
+      border-color: var(--primary-medium);
+      background: var(--primary-light);
+    }
+    
+    .medical-option:has(input:checked) {
+      color: var(--primary);
+      border-color: var(--yellow-dark);
+      background: #fffbea;
+    }
+    
+    .medical-option input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      accent-color: var(--primary);
+    }
+    
+    .medical-rating {
+      padding: 14px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #f8f9fc;
+    }
+    
+    .medical-rating-title {
+      margin-bottom: 10px;
+      color: var(--primary);
+      font-weight: 800;
+    }
+    
+    .medical-notice {
+      padding: 11px 13px;
+      margin-top: 12px;
+      border-left: 5px solid var(--yellow);
+      border-radius: 8px;
+      color: var(--primary);
+      background: #fffbea;
+      font-size: .9rem;
+      line-height: 1.5;
+    }
+    
+    .medical-section textarea {
+      width: 100%;
+      min-height: 110px;
+      box-sizing: border-box;
+      padding: 11px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: #111;
+      background: #fff;
+      font: inherit;
+      resize: vertical;
+    }
+    
+    .medical-section textarea:focus {
+      border-color: var(--primary-medium);
+      outline: 3px solid rgba(86, 109, 168, .16);
+    }
+    
+    .medical-error {
+      display: none;
+      padding: 10px 12px;
+      margin-top: 12px;
+      border: 1px solid #efc0bc;
+      border-radius: 8px;
+      color: #8c1d18;
+      background: #fff0ef;
+      line-height: 1.45;
+    }
+    
+    .medical-error.open {
+      display: block;
+    }
+    
+    @media (max-width: 600px) {
+      .medical-options {
+        grid-template-columns: 1fr;
+      }
+    
+      .medical-section {
+        padding: 14px;
+        border-radius: 13px;
+      }
+    }
+
     /* =====================================================
        TABLET Y ESCRITORIO
     ===================================================== */
@@ -1359,6 +1489,146 @@
       >
 
         <div id="contenedorPreguntas"></div>
+
+        <section
+          id="seccionAsistenciaMedica"
+          class="medical-section hidden"
+        >
+        
+          <h3 class="section-title">
+            ASISTENCIA MÉDICA
+          </h3>
+        
+          <fieldset class="medical-fieldset">
+        
+            <legend>
+              ¿Tuviste alguna situación médica en la que activaste
+              la asistencia durante el viaje?
+            </legend>
+        
+            <div class="medical-options">
+        
+              <label class="medical-option">
+                <input
+                  type="radio"
+                  name="usoAsistenciaMedica"
+                  value="si"
+                >
+        
+                <span>
+                  Sí
+                </span>
+              </label>
+        
+              <label class="medical-option">
+                <input
+                  type="radio"
+                  name="usoAsistenciaMedica"
+                  value="no"
+                >
+        
+                <span>
+                  No
+                </span>
+              </label>
+        
+            </div>
+        
+          </fieldset>
+        
+          <div
+            id="evaluacionAsistenciaWrap"
+            class="hidden"
+          >
+        
+            <fieldset class="medical-fieldset">
+        
+              <legend>
+                ¿Deseas evaluar la asistencia médica recibida?
+              </legend>
+        
+              <div class="medical-options">
+        
+                <label class="medical-option">
+                  <input
+                    type="radio"
+                    name="evaluarAsistenciaMedica"
+                    value="si"
+                  >
+        
+                  <span>
+                    Sí
+                  </span>
+                </label>
+        
+                <label class="medical-option">
+                  <input
+                    type="radio"
+                    name="evaluarAsistenciaMedica"
+                    value="no"
+                  >
+        
+                  <span>
+                    No
+                  </span>
+                </label>
+        
+              </div>
+        
+            </fieldset>
+        
+            <div
+              id="detalleEvaluacionAsistencia"
+              class="hidden"
+            >
+        
+              <div class="medical-rating">
+        
+                <div class="medical-rating-title">
+                  Califica la asistencia recibida
+                </div>
+        
+                <div
+                  id="estrellasAsistenciaMedica"
+                  class="star-rating"
+                  role="radiogroup"
+                  aria-label="Calificación de la asistencia médica"
+                ></div>
+        
+                <div
+                  id="etiquetaAsistenciaMedica"
+                  class="rating-label"
+                ></div>
+        
+              </div>
+        
+              <label for="comentarioAsistenciaMedica">
+                Cuéntanos sobre la situación y la atención recibida
+              </label>
+        
+              <textarea
+                id="comentarioAsistenciaMedica"
+                maxlength="2000"
+                placeholder="Puedes contarnos qué ocurrió y cómo fue la atención."
+              ></textarea>
+        
+              <div class="medical-notice">
+                La asistencia médica es prestada por una empresa
+                externa. Los comentarios registrados podrán enviarse
+                a la empresa correspondiente para mejorar el servicio.
+              </div>
+        
+            </div>
+        
+          </div>
+        
+          <div
+            id="errorAsistenciaMedica"
+            class="medical-error"
+            role="alert"
+          ></div>
+        
+        </section>
 
         <!-- ===============================================
              COMENTARIOS DESPLEGABLES
