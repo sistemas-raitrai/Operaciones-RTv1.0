@@ -79,7 +79,22 @@ const state = {
     positivos: [],
     mejoras: [],
     generales: []
-  }
+  },
+  resultadosAsistenciaMedica: {
+    utilizaron: 0,
+    evaluaron: 0,
+    puntuaciones: {
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0
+    },
+    total: 0,
+    suma: 0,
+    promedio: 0,
+    comentarios: []
+  }  
 };
 
 /* =========================================================
@@ -4746,6 +4761,23 @@ async function cargarGestionActual() {
     state.resultados =
       respuesta.resultados || {};
 
+    state.resultadosAsistenciaMedica =
+      respuesta.asistenciaMedica || {
+        utilizaron: 0,
+        evaluaron: 0,
+        puntuaciones: {
+          1: 0,
+          2: 0,
+          3: 0,
+          4: 0,
+          5: 0
+        },
+        total: 0,
+        suma: 0,
+        promedio: 0,
+        comentarios: []
+      };
+
     state.comentarios =
       respuesta.comentarios || {
         positivos: [],
@@ -5012,6 +5044,128 @@ function getPreguntaNombre(
   ).toUpperCase();
 }
 
+function renderResultadosAsistenciaMedica() {
+  const section =
+    $("resultadosAsistenciaMedica");
+
+  if (!section) {
+    return;
+  }
+
+  const configuracionIncluida =
+    state.asistenciaMedica
+      ?.modalidad ===
+    "obligatoria";
+
+  const data =
+    state.resultadosAsistenciaMedica ||
+    {};
+
+  const tieneDatos =
+    Number(
+      data.utilizaron ||
+      0
+    ) > 0 ||
+    Number(
+      data.evaluaron ||
+      0
+    ) > 0 ||
+    (
+      Array.isArray(
+        data.comentarios
+      ) &&
+      data.comentarios.length >
+      0
+    );
+
+  section.classList.toggle(
+    "hidden",
+    !configuracionIncluida &&
+    !tieneDatos
+  );
+
+  if (
+    $("asistenciaUtilizaron")
+  ) {
+    $("asistenciaUtilizaron")
+      .textContent =
+      Number(
+        data.utilizaron ||
+        0
+      );
+  }
+
+  if (
+    $("asistenciaEvaluaron")
+  ) {
+    $("asistenciaEvaluaron")
+      .textContent =
+      Number(
+        data.evaluaron ||
+        0
+      );
+  }
+
+  if (
+    $("asistenciaPromedio")
+  ) {
+    $("asistenciaPromedio")
+      .textContent =
+      Number(
+        data.evaluaron ||
+        0
+      )
+        ? `${
+            Number(
+              data.promedio ||
+              0
+            ).toFixed(2)
+          } ★`
+        : "—";
+  }
+
+  const distribucion =
+    $("distribucionAsistencia");
+
+  if (
+    distribucion
+  ) {
+    distribucion.innerHTML =
+      [1, 2, 3, 4, 5]
+        .map(
+          valor => `
+            <div class="enc-result-value">
+              <strong>
+                ${
+                  Number(
+                    data
+                      .puntuaciones
+                      ?.[valor] ||
+                    0
+                  )
+                }
+              </strong>
+
+              <span>
+                ${valor} ${
+                  valor === 1
+                    ? "estrella"
+                    : "estrellas"
+                }
+              </span>
+            </div>
+          `
+        )
+        .join("");
+  }
+
+  renderComentarios(
+    "comentariosAsistencia",
+    data.comentarios ||
+    []
+  );
+}
+
 function renderResultados() {
   const container =
     $("listaResultados");
@@ -5202,6 +5356,8 @@ function renderResultados() {
     state.comentarios
       ?.generales
   );
+
+  renderResultadosAsistenciaMedica();
 }
 
 function resultadoCelda(
