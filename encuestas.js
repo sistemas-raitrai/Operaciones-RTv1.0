@@ -1124,7 +1124,6 @@ function getMotivoOmisionAutomatica(
     )
   ) {
     return (
-      (
       "Se evaluará dentro de la pregunta " +
       "general de transporte."
     );
