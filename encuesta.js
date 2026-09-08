@@ -981,10 +981,13 @@ function construirEncuesta() {
       "excluida"
     );
 
+  const asistenciaIncluida =
+    modalidadAsistencia ===
+    "obligatoria";
+
   state.asistenciaMedica = {
     incluida:
-      modalidadAsistencia ===
-      "obligatoria",
+      asistenciaIncluida,
 
     utilizo:
       null,
@@ -998,6 +1001,30 @@ function construirEncuesta() {
 
   limpiarFormularioAsistenciaMedica();
   renderPreguntas();
+
+  /*
+    Se muestra explícitamente la sección cuando el
+    backend indica que la asistencia está incluida.
+  */
+  const seccionAsistencia =
+    $("seccionAsistenciaMedica");
+
+  if (seccionAsistencia) {
+    if (asistenciaIncluida) {
+      seccionAsistencia.classList.remove(
+        "hidden"
+      );
+    } else {
+      seccionAsistencia.classList.add(
+        "hidden"
+      );
+    }
+  } else {
+    console.error(
+      "[ENCUESTA] No existe #seccionAsistenciaMedica en encuesta.html"
+    );
+  }
+
   renderAsistenciaMedica();
   actualizarProgreso();
 }
