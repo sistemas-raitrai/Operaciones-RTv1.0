@@ -3642,11 +3642,7 @@ function actualizarResumenPreguntas() {
     (
       `Cada pasajero responderá inicialmente ${total} preguntas: ` +
       `${desglose.join(", ")}. ` +
-      (
-        asistenciaIncluida
-          ? "Si utilizó la asistencia médica y desea evaluarla, se habilitará la evaluación de la atención recibida."
-          : "La asistencia médica está excluida."
-      )
+      ( )
     );
 }
 
