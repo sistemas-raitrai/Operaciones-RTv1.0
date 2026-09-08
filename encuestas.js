@@ -2371,31 +2371,58 @@ function construirTransportes(
    COORDINADORES
 ========================================================= */
 
-async function cargarCoordinadores(grupo) {
+async function cargarCoordinadores(
+  grupo = {}
+) {
+  const grupoSeguro =
+    grupo &&
+    typeof grupo === "object"
+      ? grupo
+      : {};
+
   let ids =
     Array.isArray(
-      grupo.coordinadorIds
+      grupoSeguro.coordinadorIds
     )
-      ? grupo.coordinadorIds
-          .map(cleanText)
+      ? grupoSeguro
+          .coordinadorIds
+          .map(
+            item =>
+              cleanText(item)
+          )
           .filter(Boolean)
       : [];
 
   if (
     !ids.length &&
-    grupo.coordinadorId
+    cleanText(
+      grupoSeguro.coordinadorId
+    )
   ) {
     ids = [
       cleanText(
-        grupo.coordinadorId
+        grupoSeguro.coordinadorId
       )
     ];
   }
 
-  const coordinadores = [];
-  const vistos = new Set();
+  /*
+    Evitamos consultar dos veces un mismo ID.
+  */
+  ids = [
+    ...new Set(ids)
+  ];
 
-  for (const id of ids) {
+  const coordinadores =
+    [];
+
+  const vistos =
+    new Set();
+
+  for (
+    const id of
+    ids
+  ) {
     try {
       const snap =
         await getDoc(
@@ -2406,83 +2433,177 @@ async function cargarCoordinadores(grupo) {
           )
         );
 
-      if (!snap.exists()) {
+      if (
+        !snap.exists()
+      ) {
         continue;
       }
 
       const data =
-        snap.data() || {};
+        snap.data() ||
+        {};
+
+      const nombre =
+        cleanText(
+          data.nombre ||
+          data.nombreCompleto ||
+          data.name ||
+          snap.id
+        );
+
+      if (!nombre) {
+        continue;
+      }
+
+      const key =
+        normalizarTexto(
+          nombre
+        );
+
+      if (
+        vistos.has(key)
+      ) {
+        continue;
+      }
+
+      vistos.add(
+        key
+      );
 
       coordinadores.push({
         id:
           `coordinador_${snap.id}`,
 
-        nombre:
-          cleanText(
-            data.nombre ||
-            data.nombreCompleto ||
-            snap.id
-          ),
+        coordinadorId:
+          snap.id,
+
+        idOriginal:
+          snap.id,
+
+        nombre,
 
         tipo:
           "coordinador",
 
-        obligatorio: true
+        subtipo:
+          "coordinador",
+
+        modalidad:
+          "obligatoria",
+
+        obligatorio:
+          true
       });
 
-      vistos.add(
-        normalizarTexto(
-          data.nombre ||
-          data.nombreCompleto
-        )
+    } catch (error) {
+      console.warn(
+        "No se pudo leer el coordinador",
+        id,
+        error
       );
-    } catch {
-      // Se aplica respaldo por nombre.
     }
   }
 
-  const nombresLegacy = [
-    ...(Array.isArray(grupo.coordinadores)
-      ? grupo.coordinadores
-      : []),
+  /*
+    Compatibilidad con estructuras antiguas donde
+    se guardaba el coordinador completo o solamente
+    su nombre dentro del documento del grupo.
 
-    grupo.coordinador
-  ]
-    .map(item =>
-      typeof item === "object"
-        ? cleanText(
-            item.nombre ||
-            item.name
-          )
-        : cleanText(item)
-    )
-    .filter(Boolean);
+    Primero eliminamos null, undefined y strings vacíos.
+  */
+  const valoresLegacy = [
+    ...(
+      Array.isArray(
+        grupoSeguro.coordinadores
+      )
+        ? grupoSeguro.coordinadores
+        : []
+    ),
 
-  nombresLegacy.forEach(nombre => {
-    const key =
-      normalizarTexto(nombre);
+    grupoSeguro.coordinador
+  ].filter(
+    item =>
+      item !== null &&
+      item !== undefined &&
+      (
+        typeof item === "object" ||
+        cleanText(item)
+      )
+  );
 
-    if (
-      vistos.has(key)
-    ) {
-      return;
+  const nombresLegacy =
+    valoresLegacy
+      .map(
+        item => {
+          if (
+            item &&
+            typeof item ===
+              "object"
+          ) {
+            return cleanText(
+              item.nombre ||
+              item.nombreCompleto ||
+              item.name ||
+              ""
+            );
+          }
+
+          return cleanText(
+            item
+          );
+        }
+      )
+      .filter(Boolean);
+
+  nombresLegacy.forEach(
+    nombre => {
+      const key =
+        normalizarTexto(
+          nombre
+        );
+
+      if (
+        !key ||
+        vistos.has(key)
+      ) {
+        return;
+      }
+
+      vistos.add(
+        key
+      );
+
+      coordinadores.push({
+        id:
+          `coordinador_${slug(nombre)}`,
+
+        coordinadorId:
+          "",
+
+        idOriginal:
+          "",
+
+        nombre,
+
+        tipo:
+          "coordinador",
+
+        subtipo:
+          "coordinador",
+
+        modalidad:
+          "obligatoria",
+
+        obligatorio:
+          true
+      });
     }
+  );
 
-    vistos.add(key);
-
-    coordinadores.push({
-      id:
-        `coordinador_${slug(nombre)}`,
-
-      nombre,
-
-      tipo:
-        "coordinador",
-
-      obligatorio: true
-    });
-  });
-
+  /*
+    Si no existe ninguna asignación, devolvemos [].
+    Esto NO es un error y NO bloquea la encuesta.
+  */
   return coordinadores;
 }
 
