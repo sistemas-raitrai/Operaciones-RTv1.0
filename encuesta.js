@@ -1005,18 +1005,18 @@ function crearPreguntaDesdeItem(
       ) ||
       `${tipo}:${idBase}`,
 
-    tipo:
-      cleanText(
-        item.tipo ||
-        tipo
-      ) ||
-      tipo,
+    /*
+      Debe mandar el tipo de la sección:
+      actividad, hotel, transporte, etc.
+    */
+    tipo,
 
     subtipo:
       cleanText(
         item.subtipo ||
         item.tipoPregunta ||
         item.categoria ||
+        item.tipo ||
         ""
       ),
 
@@ -1072,7 +1072,8 @@ function crearPreguntaDesdeItem(
       ),
 
     obligatoria:
-      item.obligatoria !== false
+      item.obligatoria !== false &&
+      item.obligatorio !== false
   };
 }
 
