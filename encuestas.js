@@ -2217,7 +2217,7 @@ function construirTransportes(
           `Vuelos con ${aerolinea.nombre}`;
 
         let recordatorio =
-          "Experiencia general con la aerolínea";
+          "Experiencia con la aerolínea";
 
         if (
           tieneIda &&
@@ -3116,12 +3116,18 @@ function actualizarResumenPreguntas() {
 
 function renderListaServicio(
   containerId,
-  lista
+  lista,
+  categoria = ""
 ) {
   const container =
     $(containerId);
 
-  if (!lista.length) {
+  const elementos =
+    Array.isArray(lista)
+      ? lista
+      : [];
+
+  if (!elementos.length) {
     container.innerHTML = `
       <div class="enc-empty">
         Sin información registrada.
@@ -3132,49 +3138,132 @@ function renderListaServicio(
   }
 
   container.innerHTML =
-    lista.map(item => `
-      <div class="enc-result-card">
-        <strong>
-          ${escapeHtml(item.nombre)}
-        </strong>
+    elementos
+      .map(
+        item => {
+          const nombreBase =
+            cleanText(
+              item.nombre ||
+              "—"
+            );
 
-        ${
-          item.proveedor
-            ? `
-              <div class="enc-muted">
-                ${escapeHtml(item.proveedor)}
-              </div>
-            `
-            : ""
-        }
+          const subtipo =
+            normalizarTexto(
+              item.subtipo ||
+              ""
+            );
 
-        ${
-          item.fecha
-            ? `
-              <div class="enc-muted">
-                ${formatDate(item.fecha)}
-              </div>
-            `
-            : ""
+          let nombreMostrar =
+            nombreBase;
+
+          if (
+            categoria === "hotel"
+          ) {
+            if (
+              subtipo.includes(
+                "aliment"
+              ) ||
+              subtipo.includes(
+                "comida"
+              )
+            ) {
+              nombreMostrar =
+                `COMIDAS EN ${nombreBase}`;
+            } else {
+              nombreMostrar =
+                `EXPERIENCIA GENERAL EN ${nombreBase}`;
+            }
+          }
+
+          if (
+            categoria ===
+            "coordinador"
+          ) {
+            nombreMostrar =
+              `COORDINACIÓN DE ${nombreBase}`;
+          }
+
+          return `
+            <div class="enc-result-card">
+
+              <strong class="enc-service-name">
+                ${escapeHtml(
+                  nombreMostrar
+                    .toUpperCase()
+                )}
+              </strong>
+
+              ${
+                item.recordatorio
+                  ? `
+                    <div class="enc-muted">
+                      ${escapeHtml(
+                        item.recordatorio
+                      )}
+                    </div>
+                  `
+                  : ""
+              }
+
+              ${
+                item.fechaInicio ||
+                item.checkIn
+                  ? `
+                    <div class="enc-muted">
+                      ${
+                        formatDate(
+                          item.fechaInicio ||
+                          item.checkIn
+                        )
+                      }
+                      ${
+                        item.fechaFin ||
+                        item.checkOut
+                          ? ` al ${
+                              formatDate(
+                                item.fechaFin ||
+                                item.checkOut
+                              )
+                            }`
+                          : ""
+                      }
+                    </div>
+                  `
+                  : (
+                      item.fecha
+                        ? `
+                          <div class="enc-muted">
+                            ${formatDate(item.fecha)}
+                          </div>
+                        `
+                        : ""
+                    )
+              }
+
+            </div>
+          `;
         }
-      </div>
-    `).join("");
+      )
+      .join("");
 }
 
 function renderServicios() {
   renderListaServicio(
     "listaHoteles",
-    state.hoteles
+    state.hoteles,
+    "hotel"
   );
 
   renderListaServicio(
     "listaTransportes",
-    state.transportes
+    state.transportes,
+    "transporte"
   );
 
   renderListaServicio(
     "listaCoordinadores",
-    state.coordinadores
+    state.coordinadores,
+    "coordinador"
   );
 }
 
@@ -4377,7 +4466,7 @@ function getPreguntaNombre(
     tipo === "hotel"
   ) {
     return (
-      `Experiencia general en ${item.nombre}`
+      `Experiencia en ${item.nombre}`
     );
   }
 
