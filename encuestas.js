@@ -3486,7 +3486,7 @@ function actualizarResumenPreguntas() {
     state.actividades.filter(
       item =>
         item.modalidad ===
-          "sin_configurar"
+        "sin_configurar"
     ).length;
 
   const omitidas =
@@ -3509,9 +3509,7 @@ function actualizarResumenPreguntas() {
   $("cantidadSinConfigurar").textContent =
     sinConfigurar;
 
-  if (
-    $("cantidadOmitidas")
-  ) {
+  if ($("cantidadOmitidas")) {
     $("cantidadOmitidas").textContent =
       omitidas;
   }
@@ -3552,26 +3550,10 @@ function actualizarResumenPreguntas() {
 
   const asistenciaIncluida =
     state.asistenciaMedica
-      .modalidad ===
+      ?.modalidad ===
       "obligatoria";
 
-  /*
-    Preguntas fijas para todos:
-
-    - 1 evaluación general del viaje.
-    - Actividades obligatorias.
-    - Actividades aleatorias asignadas.
-    - Hoteles y alimentación.
-    - Transportes.
-    - Coordinadores.
-    - 1 pregunta inicial de asistencia médica,
-      cuando está incluida.
-
-    La evaluación de la atención médica es
-    condicional y no se suma como pregunta fija.
-  */
-  const evaluacionGeneral =
-    1;
+  const evaluacionGeneral = 1;
 
   const preguntasAsistencia =
     asistenciaIncluida
@@ -3633,16 +3615,15 @@ function actualizarResumenPreguntas() {
 
     `${preguntasAsistencia} ${
       preguntasAsistencia === 1
-        ? "pregunta inicial de asistencia médica"
+        ? "pregunta de asistencia médica"
         : "preguntas de asistencia médica"
     }`
   ];
 
   $("resumenCargaPasajero").textContent =
     (
-      `Cada pasajero responderá inicialmente ${total} preguntas: ` +
-      `${desglose.join(", ")}. ` +
-      ( )
+      `Cada pasajero responderá aproximadamente ${total} preguntas: ` +
+      `${desglose.join(", ")}.`
     );
 }
 
