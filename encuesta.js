@@ -1,5 +1,5 @@
 // encuesta.js
-// Encuesta pública de viaje
+// Encuesta pública de viaje.
 // No consulta Firestore directamente.
 // Toda validación se realiza mediante Cloud Functions.
 
@@ -11,6 +11,9 @@ const FUNCTION_URLS = Object.freeze({
     "https://enviarrespuestaencuesta-r3llfis4wa-tl.a.run.app"
 });
 
+const GOOGLE_REVIEW_URL =
+  "https://search.google.com/local/writereview?placeid=ChIJYW1DLmTPYpYRM2pq8d2KVZc";
+
 /* =========================================================
    ESTADO
 ========================================================= */
@@ -20,7 +23,13 @@ const state = {
   sesion: "",
   participante: null,
   encuesta: null,
-  preguntas: []
+  preguntas: [],
+
+  /*
+    Map:
+      preguntaId → puntuación 1 a 5
+  */
+  respuestas: new Map()
 };
 
 /* =========================================================
@@ -77,6 +86,13 @@ function cleanText(value = "") {
   return String(value ?? "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizarTexto(value = "") {
+  return cleanText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
 }
 
 function escapeHtml(value = "") {
@@ -177,7 +193,90 @@ function getRutCompleto() {
   return `${numero}-${dv}`;
 }
 
-function formatDate(value = "") {
+function toISODate(value = "") {
+  const texto =
+    cleanText(value);
+
+  if (!texto) {
+    return "";
+  }
+
+  if (
+    /^\d{4}-\d{2}-\d{2}$/.test(
+      texto
+    )
+  ) {
+    return texto;
+  }
+
+  const fecha =
+    new Date(texto);
+
+  if (
+    Number.isNaN(
+      fecha.getTime()
+    )
+  ) {
+    return "";
+  }
+
+  return fecha
+    .toISOString()
+    .slice(0, 10);
+}
+
+function crearFechaLocal(
+  iso = ""
+) {
+  const fechaISO =
+    toISODate(iso);
+
+  if (!fechaISO) {
+    return null;
+  }
+
+  const partes =
+    fechaISO
+      .split("-")
+      .map(Number);
+
+  if (
+    partes.length !== 3 ||
+    partes.some(
+      parte => !parte
+    )
+  ) {
+    return null;
+  }
+
+  const [
+    year,
+    month,
+    day
+  ] = partes;
+
+  const fecha =
+    new Date(
+      year,
+      month - 1,
+      day,
+      12,
+      0,
+      0
+    );
+
+  if (
+    Number.isNaN(
+      fecha.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return fecha;
+}
+
+function formatDateTime(value = "") {
   if (!value) {
     return "";
   }
@@ -205,6 +304,127 @@ function formatDate(value = "") {
   );
 }
 
+function formatActivityDate(
+  value = ""
+) {
+  const fecha =
+    crearFechaLocal(value);
+
+  if (!fecha) {
+    return "";
+  }
+
+  const texto =
+    fecha.toLocaleDateString(
+      "es-CL",
+      {
+        weekday: "long",
+        day: "numeric",
+        month: "long"
+      }
+    );
+
+  return texto
+    ? texto.charAt(0).toUpperCase() +
+      texto.slice(1)
+    : "";
+}
+
+function getNumeroDiaViaje(
+  fechaRaw = ""
+) {
+  const fechaISO =
+    toISODate(fechaRaw);
+
+  const inicioISO =
+    toISODate(
+      state.encuesta?.fechaInicio ||
+      state.encuesta?.inicio ||
+      ""
+    );
+
+  if (
+    !fechaISO ||
+    !inicioISO
+  ) {
+    return 0;
+  }
+
+  const fecha =
+    crearFechaLocal(fechaISO);
+
+  const inicio =
+    crearFechaLocal(inicioISO);
+
+  if (
+    !fecha ||
+    !inicio
+  ) {
+    return 0;
+  }
+
+  const diferencia =
+    Math.round(
+      (
+        fecha.getTime() -
+        inicio.getTime()
+      ) /
+      86400000
+    );
+
+  return diferencia >= 0
+    ? diferencia + 1
+    : 0;
+}
+
+function getDescripcionDiaViaje(
+  fechaRaw = ""
+) {
+  const fechaTexto =
+    formatActivityDate(
+      fechaRaw
+    );
+
+  const numeroDia =
+    getNumeroDiaViaje(
+      fechaRaw
+    );
+
+  const partes = [];
+
+  if (fechaTexto) {
+    partes.push(
+      fechaTexto
+    );
+  }
+
+  if (numeroDia > 0) {
+    partes.push(
+      numeroDia === 1
+        ? "Primer día del viaje"
+        : `Día ${numeroDia} del viaje`
+    );
+  }
+
+  return partes.join(" · ");
+}
+
+function getDescripcionPuntuacion(
+  valor
+) {
+  const labels = {
+    1: "Muy malo",
+    2: "Malo",
+    3: "Regular",
+    4: "Bueno",
+    5: "Excelente"
+  };
+
+  return labels[
+    Number(valor)
+  ] || "";
+}
+
 function mostrarPantalla(nombre) {
   const pantallas = {
     cargando:
@@ -224,12 +444,14 @@ function mostrarPantalla(nombre) {
   };
 
   Object.entries(pantallas)
-    .forEach(([key, element]) => {
-      element?.classList.toggle(
-        "hidden",
-        key !== nombre
-      );
-    });
+    .forEach(
+      ([key, element]) => {
+        element?.classList.toggle(
+          "hidden",
+          key !== nombre
+        );
+      }
+    );
 
   window.scrollTo({
     top: 0,
@@ -255,7 +477,7 @@ function mostrarErrorGeneral(
 
   if (disponibleDesde) {
     const fechaTexto =
-      formatDate(
+      formatDateTime(
         disponibleDesde
       );
 
@@ -287,6 +509,10 @@ function mostrarMensajeAcceso(
   const box =
     $("accesoMensaje");
 
+  if (!box) {
+    return;
+  }
+
   box.className =
     `notice ${tipo}`;
 
@@ -302,6 +528,10 @@ function ocultarMensajeAcceso() {
   const box =
     $("accesoMensaje");
 
+  if (!box) {
+    return;
+  }
+
   box.textContent = "";
 
   box.className =
@@ -314,7 +544,9 @@ function setButtonLoading(
   textLoading,
   textNormal
 ) {
-  if (!button) return;
+  if (!button) {
+    return;
+  }
 
   button.disabled =
     loading;
@@ -347,7 +579,7 @@ async function postPublico(
             JSON.stringify(body)
         }
       );
-  } catch (error) {
+  } catch {
     throw {
       status: 0,
       code: "NETWORK_ERROR",
@@ -395,7 +627,10 @@ async function postPublico(
 ========================================================= */
 
 function normalizarInputRut() {
-  if (!rutNumero || !rutDv) {
+  if (
+    !rutNumero ||
+    !rutDv
+  ) {
     return;
   }
 
@@ -413,7 +648,9 @@ function normalizarInputRut() {
       .slice(0, 1);
 
   rutNumero.value =
-    formatearRutNumero(numero);
+    formatearRutNumero(
+      numero
+    );
 
   rutDv.value =
     dv;
@@ -421,36 +658,36 @@ function normalizarInputRut() {
   const completo =
     getRutCompleto();
 
-  rutNumero.classList.toggle(
-    "input-error",
+  const tieneError =
     !!numero &&
     numero.length >= 7 &&
     !!dv &&
-    !completo
+    !completo;
+
+  rutNumero.classList.toggle(
+    "input-error",
+    tieneError
   );
 
   rutDv.classList.toggle(
     "input-error",
-    !!numero &&
-    numero.length >= 7 &&
-    !!dv &&
-    !completo
+    tieneError
   );
 
-  if (!numero || !dv) {
+  if (
+    !numero ||
+    !dv
+  ) {
     rutHint.textContent =
       "Ingresa el número y el dígito verificador.";
 
     return;
   }
 
-  if (completo) {
-    rutHint.textContent =
-      "RUT válido ✓";
-  } else {
-    rutHint.textContent =
-      "El RUT ingresado no es válido.";
-  }
+  rutHint.textContent =
+    completo
+      ? "RUT válido ✓"
+      : "El RUT ingresado no es válido.";
 }
 
 /* =========================================================
@@ -472,15 +709,15 @@ async function identificarParticipante(
       "Debes ingresar un RUT válido."
     );
 
-    rutNumero.classList.add(
+    rutNumero?.classList.add(
       "input-error"
     );
 
-    rutDv.classList.add(
+    rutDv?.classList.add(
       "input-error"
     );
 
-    rutNumero.focus();
+    rutNumero?.focus();
 
     return;
   }
@@ -526,7 +763,9 @@ async function identificarParticipante(
     }
 
     state.sesion =
-      respuesta.sesion;
+      cleanText(
+        respuesta.sesion
+      );
 
     state.participante =
       respuesta.participante ||
@@ -536,17 +775,18 @@ async function identificarParticipante(
       respuesta.encuesta ||
       {};
 
+    state.respuestas =
+      new Map();
+
     construirEncuesta();
 
     mostrarPantalla(
       "encuesta"
     );
-
   } catch (error) {
     manejarErrorAcceso(
       error
     );
-
   } finally {
     setButtonLoading(
       btnIngresar,
@@ -557,7 +797,9 @@ async function identificarParticipante(
   }
 }
 
-function manejarErrorAcceso(error = {}) {
+function manejarErrorAcceso(
+  error = {}
+) {
   const code =
     error.code ||
     "";
@@ -576,7 +818,8 @@ function manejarErrorAcceso(error = {}) {
   }
 
   if (
-    code === "ENCUESTA_CERRADA"
+    code ===
+    "ENCUESTA_CERRADA"
   ) {
     mostrarErrorGeneral(
       "Encuesta cerrada",
@@ -587,8 +830,10 @@ function manejarErrorAcceso(error = {}) {
   }
 
   if (
-    code === "ENCUESTA_NO_DISPONIBLE" ||
-    code === "ENLACE_INVALIDO"
+    code ===
+      "ENCUESTA_NO_DISPONIBLE" ||
+    code ===
+      "ENLACE_INVALIDO"
   ) {
     mostrarErrorGeneral(
       "Encuesta no disponible",
@@ -599,7 +844,8 @@ function manejarErrorAcceso(error = {}) {
   }
 
   if (
-    code === "RUT_NO_PERTENECE"
+    code ===
+    "RUT_NO_PERTENECE"
   ) {
     mostrarMensajeAcceso(
       "No encontramos este RUT en la nómina correspondiente a este enlace. Revisa el número ingresado."
@@ -627,8 +873,81 @@ function manejarErrorAcceso(error = {}) {
 }
 
 /* =========================================================
-   CONSTRUIR ENCUESTA
+   CONSTRUIR CABECERA
 ========================================================= */
+
+function construirDatosGrupoHTML() {
+  const encuesta =
+    state.encuesta ||
+    {};
+
+  const colegio =
+    cleanText(
+      encuesta.colegio ||
+      encuesta.grupo ||
+      ""
+    );
+
+  const curso =
+    cleanText(
+      encuesta.curso ||
+      ""
+    );
+
+  const destino =
+    cleanText(
+      encuesta.destino ||
+      ""
+    );
+
+  if (
+    !colegio &&
+    !curso &&
+    !destino
+  ) {
+    return `
+      <div class="group-main-line">
+        <span>VIAJE DE ESTUDIOS</span>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="group-main-line">
+
+      ${
+        colegio
+          ? `
+            <span class="group-school">
+              ${escapeHtml(colegio)}
+            </span>
+          `
+          : ""
+      }
+
+      ${
+        curso
+          ? `
+            <span class="group-course">
+              ${escapeHtml(curso)}
+            </span>
+          `
+          : ""
+      }
+
+    </div>
+
+    ${
+      destino
+        ? `
+          <div class="group-destination">
+            ${escapeHtml(destino)}
+          </div>
+        `
+        : ""
+    }
+  `;
+}
 
 function construirEncuesta() {
   const participante =
@@ -644,30 +963,8 @@ function construirEncuesta() {
       ? `Hola, ${participante.nombre}`
       : "Hola";
 
-  const datos = [
-    encuesta.colegio,
-    encuesta.curso,
-    encuesta.destino,
-    encuesta.programa
-  ]
-    .map(cleanText)
-    .filter(Boolean);
-
   $("datosEncuesta").innerHTML =
-    datos.length
-      ? datos
-          .map(
-            (item, index) =>
-              index === 0
-                ? `<strong>${escapeHtml(item)}</strong>`
-                : `<span>${escapeHtml(item)}</span>`
-          )
-          .join("")
-      : `
-          <strong>
-            Viaje de estudios
-          </strong>
-        `;
+    construirDatosGrupoHTML();
 
   state.preguntas =
     construirPreguntas(
@@ -679,10 +976,164 @@ function construirEncuesta() {
   actualizarProgreso();
 }
 
+/* =========================================================
+   CONSTRUIR PREGUNTAS
+========================================================= */
+
+function crearPreguntaDesdeItem(
+  item = {},
+  tipo = "",
+  seccion = ""
+) {
+  const idBase =
+    cleanText(
+      item.preguntaId ||
+      item.id ||
+      item.key ||
+      item.nombre ||
+      ""
+    );
+
+  if (!idBase) {
+    return null;
+  }
+
+  return {
+    preguntaId:
+      cleanText(
+        item.preguntaId
+      ) ||
+      `${tipo}:${idBase}`,
+
+    tipo:
+      cleanText(
+        item.tipo ||
+        tipo
+      ) ||
+      tipo,
+
+    subtipo:
+      cleanText(
+        item.subtipo ||
+        item.tipoPregunta ||
+        item.categoria ||
+        ""
+      ),
+
+    seccion:
+      cleanText(
+        item.seccion ||
+        seccion
+      ) ||
+      seccion,
+
+    nombre:
+      cleanText(
+        item.nombre ||
+        item.etiqueta ||
+        item.titulo ||
+        ""
+      ),
+
+    fecha:
+      toISODate(
+        item.fecha ||
+        item.fechaActividad ||
+        item.fechaISO ||
+        ""
+      ),
+
+    fechaInicio:
+      toISODate(
+        item.fechaInicio ||
+        item.checkIn ||
+        ""
+      ),
+
+    fechaFin:
+      toISODate(
+        item.fechaFin ||
+        item.checkOut ||
+        ""
+      ),
+
+    noches:
+      Number(
+        item.noches ||
+        0
+      ) || 0,
+
+    recordatorio:
+      cleanText(
+        item.recordatorio ||
+        item.meta ||
+        item.descripcion ||
+        ""
+      ),
+
+    obligatoria:
+      item.obligatoria !== false
+  };
+}
+
 function construirPreguntas(
   preguntasBackend = {}
 ) {
   const preguntas = [];
+
+  /*
+    La evaluación general siempre es la primera.
+    Si el backend ya la entrega, evitamos duplicarla.
+  */
+  const generalesBackend =
+    Array.isArray(
+      preguntasBackend.generales
+    )
+      ? preguntasBackend.generales
+      : [];
+
+  if (generalesBackend.length) {
+    generalesBackend.forEach(
+      item => {
+        const pregunta =
+          crearPreguntaDesdeItem(
+            item,
+            "general",
+            "Evaluación general"
+          );
+
+        if (pregunta) {
+          preguntas.push(
+            pregunta
+          );
+        }
+      }
+    );
+  } else {
+    preguntas.push({
+      preguntaId:
+        "general:viaje",
+
+      tipo:
+        "general",
+
+      subtipo:
+        "viaje_general",
+
+      seccion:
+        "Evaluación general",
+
+      nombre:
+        "El viaje en general",
+
+      fecha: "",
+      fechaInicio: "",
+      fechaFin: "",
+      noches: 0,
+      recordatorio: "",
+      obligatoria: true
+    });
+  }
 
   function agregarLista(
     lista,
@@ -693,31 +1144,22 @@ function construirPreguntas(
       Array.isArray(lista)
         ? lista
         : []
-    ).forEach(item => {
-      preguntas.push({
-        preguntaId:
-          `${tipo}:${item.id}`,
+    ).forEach(
+      item => {
+        const pregunta =
+          crearPreguntaDesdeItem(
+            item,
+            tipo,
+            seccion
+          );
 
-        tipo,
-
-        seccion,
-
-        nombre:
-          cleanText(
-            item.nombre
-          ),
-
-        proveedor:
-          cleanText(
-            item.proveedor
-          ),
-
-        fecha:
-          cleanText(
-            item.fecha
-          )
-      });
-    });
+        if (pregunta) {
+          preguntas.push(
+            pregunta
+          );
+        }
+      }
+    );
   }
 
   agregarLista(
@@ -726,10 +1168,14 @@ function construirPreguntas(
     "Actividades"
   );
 
+  /*
+    El backend final podrá entregar hoteles normales
+    y alimentación como elementos separados.
+  */
   agregarLista(
     preguntasBackend.hoteles,
     "hotel",
-    "Hotel"
+    "Hoteles y alimentación"
   );
 
   agregarLista(
@@ -741,106 +1187,330 @@ function construirPreguntas(
   agregarLista(
     preguntasBackend.coordinadores,
     "coordinador",
-    "Coordinadores"
+    "Coordinación"
   );
 
-  preguntas.push({
-    preguntaId:
-      "general:viaje",
+  /*
+    Preguntas específicas para adultos/profesores.
+  */
+  agregarLista(
+    preguntasBackend.organizacion,
+    "organizacion",
+    "Organización y seguridad"
+  );
 
-    tipo:
-      "general",
+  /*
+    Compatibilidad con un arreglo único futuro.
+  */
+  agregarLista(
+    preguntasBackend.adicionales,
+    "adicional",
+    "Otras evaluaciones"
+  );
 
-    seccion:
-      "Evaluación general",
+  /*
+    Eliminamos cualquier duplicado por preguntaId.
+  */
+  const unicas =
+    new Map();
 
-    nombre:
-      "¿Cómo evaluarías el viaje en general?",
+  preguntas.forEach(
+    pregunta => {
+      if (
+        !unicas.has(
+          pregunta.preguntaId
+        )
+      ) {
+        unicas.set(
+          pregunta.preguntaId,
+          pregunta
+        );
+      }
+    }
+  );
 
-    proveedor: "",
-    fecha: ""
-  });
-
-  return preguntas;
+  return [
+    ...unicas.values()
+  ];
 }
 
-function getTituloPregunta(
-  pregunta
+/* =========================================================
+   TÍTULOS Y RECORDATORIOS
+========================================================= */
+
+function getSubtipoPregunta(
+  pregunta = {}
 ) {
+  return normalizarTexto(
+    pregunta.subtipo
+  );
+}
+
+function getNombreEvaluacion(
+  pregunta = {}
+) {
+  const nombre =
+    cleanText(
+      pregunta.nombre
+    );
+
+  const nombreUpper =
+    nombre.toUpperCase();
+
+  const subtipo =
+    getSubtipoPregunta(
+      pregunta
+    );
+
   if (
     pregunta.tipo ===
-    "actividad"
+    "general"
   ) {
-    return `¿Cómo evaluarías ${pregunta.nombre}?`;
+    return nombre
+      ? nombreUpper
+      : "EL VIAJE EN GENERAL";
   }
 
   if (
     pregunta.tipo ===
     "hotel"
   ) {
-    return `¿Cómo evaluarías el hotel ${pregunta.nombre}?`;
-  }
+    if (
+      subtipo.includes("ALIMENT") ||
+      subtipo.includes("COMIDA")
+    ) {
+      if (
+        /^ALIMENTACION\s+EN\b/.test(
+          normalizarTexto(nombre)
+        )
+      ) {
+        return nombreUpper;
+      }
 
-  if (
-    pregunta.tipo ===
-    "transporte"
-  ) {
-    return `¿Cómo evaluarías ${pregunta.nombre}?`;
+      return nombre
+        ? `ALIMENTACIÓN EN ${nombreUpper}`
+        : "ALIMENTACIÓN EN EL HOTEL";
+    }
+
+    if (
+      /^EXPERIENCIA\s+GENERAL\s+EN\b/.test(
+        normalizarTexto(nombre)
+      )
+    ) {
+      return nombreUpper;
+    }
+
+    return nombre
+      ? `EXPERIENCIA GENERAL EN ${nombreUpper}`
+      : "EXPERIENCIA GENERAL EN EL HOTEL";
   }
 
   if (
     pregunta.tipo ===
     "coordinador"
   ) {
-    return `¿Cómo evaluarías al coordinador(a) ${pregunta.nombre}?`;
+    if (
+      /^COORDINACION\b/.test(
+        normalizarTexto(nombre)
+      )
+    ) {
+      return nombreUpper;
+    }
+
+    return nombre
+      ? `COORDINACIÓN DE ${nombreUpper}`
+      : "COORDINACIÓN DEL VIAJE";
   }
 
-  return pregunta.nombre;
+  return nombreUpper;
 }
 
-function getMetaPregunta(
-  pregunta
+function getRecordatorioHotel(
+  pregunta = {}
 ) {
-  const partes = [];
+  if (pregunta.recordatorio) {
+    return pregunta.recordatorio;
+  }
 
-  if (pregunta.fecha) {
-    const fecha =
-      new Date(
-        `${pregunta.fecha}T12:00:00`
+  const subtipo =
+    getSubtipoPregunta(
+      pregunta
+    );
+
+  if (
+    subtipo.includes("ALIMENT") ||
+    subtipo.includes("COMIDA")
+  ) {
+    return "Desayunos, almuerzos y cenas durante la estadía";
+  }
+
+  const inicio =
+    pregunta.fechaInicio;
+
+  const fin =
+    pregunta.fechaFin;
+
+  const diaInicio =
+    getNumeroDiaViaje(
+      inicio
+    );
+
+  const diaFin =
+    getNumeroDiaViaje(
+      fin
+    );
+
+  const noches =
+    pregunta.noches ||
+    (
+      diaInicio > 0 &&
+      diaFin > diaInicio
+        ? diaFin - diaInicio
+        : 0
+    );
+
+  if (
+    diaInicio === 1 &&
+    diaFin > 1
+  ) {
+    const fechaFinViaje =
+      toISODate(
+        state.encuesta?.fechaFin ||
+        ""
       );
 
     if (
-      !Number.isNaN(
-        fecha.getTime()
-      )
+      fechaFinViaje &&
+      fechaFinViaje === fin
     ) {
-      partes.push(
-        fecha.toLocaleDateString(
-          "es-CL",
-          {
-            day: "2-digit",
-            month: "long"
-          }
-        )
-      );
+      return "Todas las noches del viaje";
     }
   }
 
-  if (pregunta.proveedor) {
-    partes.push(
-      pregunta.proveedor
+  if (
+    diaInicio > 0 &&
+    diaFin > 0
+  ) {
+    const rango =
+      diaInicio === diaFin
+        ? `Día ${diaInicio} del viaje`
+        : `Del día ${diaInicio} al día ${diaFin}`;
+
+    return noches > 0
+      ? `${rango} · ${noches} ${
+          noches === 1
+            ? "noche"
+            : "noches"
+        }`
+      : rango;
+  }
+
+  return "";
+}
+
+function getMetaPregunta(
+  pregunta = {}
+) {
+  if (pregunta.recordatorio) {
+    return pregunta.recordatorio;
+  }
+
+  if (
+    pregunta.tipo ===
+    "actividad"
+  ) {
+    return getDescripcionDiaViaje(
+      pregunta.fecha
     );
   }
 
-  return partes.join(" · ");
+  if (
+    pregunta.tipo ===
+    "hotel"
+  ) {
+    return getRecordatorioHotel(
+      pregunta
+    );
+  }
+
+  if (
+    pregunta.tipo ===
+    "transporte"
+  ) {
+    const subtipo =
+      getSubtipoPregunta(
+        pregunta
+      );
+
+    if (
+      subtipo.includes("BUS_INTERNO") ||
+      subtipo.includes("BUSES_DURANTE")
+    ) {
+      return "Traslados realizados en el destino";
+    }
+
+    if (
+      subtipo.includes("BUS_PRINCIPAL") ||
+      subtipo === "TERRESTRE"
+    ) {
+      return "Viaje de ida, recorrido principal y regreso";
+    }
+
+    if (
+      subtipo.includes("IDA_Y_VUELTA") ||
+      subtipo.includes("IDA_VUELTA")
+    ) {
+      return "Viaje de ida y regreso";
+    }
+
+    if (
+      subtipo === "IDA" ||
+      subtipo.includes("VUELO_IDA")
+    ) {
+      return pregunta.fecha
+        ? getDescripcionDiaViaje(
+            pregunta.fecha
+          )
+        : "Viaje de ida";
+    }
+
+    if (
+      subtipo === "VUELTA" ||
+      subtipo.includes("REGRESO")
+    ) {
+      return pregunta.fecha
+        ? getDescripcionDiaViaje(
+            pregunta.fecha
+          )
+        : "Viaje de regreso";
+    }
+
+    return pregunta.fecha
+      ? getDescripcionDiaViaje(
+          pregunta.fecha
+        )
+      : "";
+  }
+
+  return pregunta.fecha
+    ? getDescripcionDiaViaje(
+        pregunta.fecha
+      )
+    : "";
 }
+
+/* =========================================================
+   RENDERIZAR PREGUNTAS
+========================================================= */
 
 function renderPreguntas() {
   if (!contenedorPreguntas) {
     return;
   }
 
-  if (!state.preguntas.length) {
+  if (
+    !state.preguntas.length
+  ) {
     contenedorPreguntas.innerHTML = `
       <div class="card center">
         No existen preguntas disponibles.
@@ -854,208 +1524,436 @@ function renderPreguntas() {
 
   contenedorPreguntas.innerHTML =
     state.preguntas
-      .map((pregunta, index) => {
-        let tituloSeccion = "";
+      .map(
+        (pregunta, index) => {
+          let tituloSeccion = "";
 
-        if (
-          pregunta.seccion !==
-          seccionAnterior
-        ) {
-          seccionAnterior =
-            pregunta.seccion;
+          if (
+            pregunta.seccion !==
+            seccionAnterior
+          ) {
+            seccionAnterior =
+              pregunta.seccion;
 
-          tituloSeccion = `
-            <div class="section-title">
-              ${escapeHtml(pregunta.seccion)}
-            </div>
-          `;
-        }
+            tituloSeccion = `
+              <div class="section-title">
+                ${escapeHtml(pregunta.seccion)}
+              </div>
+            `;
+          }
 
-        const meta =
-          getMetaPregunta(
-            pregunta
-          );
-
-        return `
-          ${tituloSeccion}
-
-          <article
-            class="question-card"
-            data-pregunta-id="${escapeHtml(pregunta.preguntaId)}"
-          >
-
-            <div class="question-number">
-              Pregunta ${index + 1} de ${state.preguntas.length}
-            </div>
-
-            <div class="question-title">
-              ${escapeHtml(getTituloPregunta(pregunta))}
-            </div>
-
-            ${
-              meta
-                ? `
-                  <div class="question-meta">
-                    ${escapeHtml(meta)}
-                  </div>
-                `
-                : ""
-            }
-
-            <div
-              class="rating-grid"
-              role="radiogroup"
-              aria-label="${escapeHtml(getTituloPregunta(pregunta))}"
-            >
-
-              ${crearOpcionEvaluacion({
-                preguntaId:
-                  pregunta.preguntaId,
-
-                valor:
-                  "muy_bueno",
-
-                etiqueta:
-                  "Muy bueno",
-
-                clase:
-                  "very-good"
-              })}
-
-              ${crearOpcionEvaluacion({
-                preguntaId:
-                  pregunta.preguntaId,
-
-                valor:
-                  "bueno",
-
-                etiqueta:
-                  "Bueno",
-
-                clase:
-                  "good"
-              })}
-
-              ${crearOpcionEvaluacion({
-                preguntaId:
-                  pregunta.preguntaId,
-
-                valor:
-                  "regular",
-
-                etiqueta:
-                  "Regular",
-
-                clase:
-                  "regular"
-              })}
-
-              ${crearOpcionEvaluacion({
-                preguntaId:
-                  pregunta.preguntaId,
-
-                valor:
-                  "malo",
-
-                etiqueta:
-                  "Malo",
-
-                clase:
-                  "bad"
-              })}
-
-            </div>
-
-          </article>
-        `;
-      })
-      .join("");
-
-  contenedorPreguntas
-    .querySelectorAll(
-      'input[type="radio"]'
-    )
-    .forEach(input => {
-      input.addEventListener(
-        "change",
-        () => {
-          const card =
-            input.closest(
-              ".question-card"
+          const nombre =
+            getNombreEvaluacion(
+              pregunta
             );
 
-          card?.classList.remove(
-            "has-error"
-          );
+          const meta =
+            getMetaPregunta(
+              pregunta
+            );
 
-          actualizarProgreso();
+          return `
+            ${tituloSeccion}
+
+            <article
+              class="
+                question-card
+                ${
+                  pregunta.tipo === "general"
+                    ? "general-question"
+                    : ""
+                }
+              "
+              data-pregunta-id="${escapeHtml(pregunta.preguntaId)}"
+            >
+
+              <div class="question-number">
+                Pregunta ${index + 1} de ${state.preguntas.length}
+              </div>
+
+              <div class="question-prefix">
+                ¿Cómo evaluarías?
+              </div>
+
+              <div class="question-title">
+                ${escapeHtml(nombre)}
+              </div>
+
+              ${
+                meta
+                  ? `
+                    <div class="question-meta">
+                      ${escapeHtml(meta)}
+                    </div>
+                  `
+                  : ""
+              }
+
+              ${crearSelectorEstrellas(
+                pregunta
+              )}
+
+            </article>
+          `;
         }
-      );
-    });
+      )
+      .join("");
+
+  conectarEventosEstrellas();
 }
 
-function crearOpcionEvaluacion({
-  preguntaId,
-  valor,
-  etiqueta,
-  clase
-}) {
-  const name =
-    `respuesta_${preguntaId}`;
+/* =========================================================
+   ESTRELLAS
+========================================================= */
 
-  const id =
-    `${name}_${valor}`
-      .replace(/[^a-zA-Z0-9_-]/g, "_");
+function crearSelectorEstrellas(
+  pregunta
+) {
+  const botones = [];
+
+  for (
+    let valor = 1;
+    valor <= 5;
+    valor++
+  ) {
+    botones.push(`
+      <button
+        class="star-button"
+        type="button"
+        role="radio"
+        aria-checked="false"
+        aria-label="${valor} de 5: ${escapeHtml(getDescripcionPuntuacion(valor))}"
+        data-pregunta-id="${escapeHtml(pregunta.preguntaId)}"
+        data-valor="${valor}"
+      >
+        ★
+      </button>
+    `);
+  }
 
   return `
-    <label
-      class="rating-option ${escapeHtml(clase)}"
-      for="${escapeHtml(id)}"
+    <div
+      class="star-rating"
+      role="radiogroup"
+      aria-label="Puntuación de 1 a 5 estrellas"
+      data-star-group="${escapeHtml(pregunta.preguntaId)}"
     >
+      ${botones.join("")}
+    </div>
 
-      <input
-        id="${escapeHtml(id)}"
-        type="radio"
-        name="${escapeHtml(name)}"
-        value="${escapeHtml(valor)}"
-        data-pregunta-id="${escapeHtml(preguntaId)}"
-        required
-      >
-
-      <span>
-        ${escapeHtml(etiqueta)}
-      </span>
-
-    </label>
+    <div
+      class="rating-description"
+      data-rating-description="${escapeHtml(pregunta.preguntaId)}"
+      aria-live="polite"
+    >
+      Selecciona de 1 a 5 estrellas
+    </div>
   `;
+}
+
+function seleccionarPuntuacion(
+  preguntaId,
+  valor
+) {
+  const puntuacion =
+    Number(valor);
+
+  if (
+    !preguntaId ||
+    puntuacion < 1 ||
+    puntuacion > 5
+  ) {
+    return;
+  }
+
+  state.respuestas.set(
+    preguntaId,
+    puntuacion
+  );
+
+  const card =
+    contenedorPreguntas
+      ?.querySelector(
+        `[data-pregunta-id="${CSS.escape(preguntaId)}"]`
+      );
+
+  card?.classList.remove(
+    "has-error"
+  );
+
+  pintarEstrellas(
+    preguntaId,
+    puntuacion
+  );
+
+  actualizarProgreso();
+}
+
+function pintarEstrellas(
+  preguntaId,
+  valor
+) {
+  const grupo =
+    contenedorPreguntas
+      ?.querySelector(
+        `[data-star-group="${CSS.escape(preguntaId)}"]`
+      );
+
+  if (!grupo) {
+    return;
+  }
+
+  grupo
+    .querySelectorAll(
+      ".star-button"
+    )
+    .forEach(
+      boton => {
+        const valorBoton =
+          Number(
+            boton.dataset.valor
+          );
+
+        const seleccionada =
+          valorBoton <= valor;
+
+        boton.classList.toggle(
+          "selected",
+          seleccionada
+        );
+
+        boton.setAttribute(
+          "aria-checked",
+          valorBoton === valor
+            ? "true"
+            : "false"
+        );
+      }
+    );
+
+  const descripcion =
+    contenedorPreguntas
+      ?.querySelector(
+        `[data-rating-description="${CSS.escape(preguntaId)}"]`
+      );
+
+  if (descripcion) {
+    descripcion.textContent =
+      `${valor} de 5 · ${
+        getDescripcionPuntuacion(
+          valor
+        )
+      }`;
+  }
+}
+
+function mostrarVistaPreviaEstrellas(
+  preguntaId,
+  valor
+) {
+  const grupo =
+    contenedorPreguntas
+      ?.querySelector(
+        `[data-star-group="${CSS.escape(preguntaId)}"]`
+      );
+
+  if (!grupo) {
+    return;
+  }
+
+  grupo
+    .querySelectorAll(
+      ".star-button"
+    )
+    .forEach(
+      boton => {
+        const valorBoton =
+          Number(
+            boton.dataset.valor
+          );
+
+        boton.classList.toggle(
+          "preview",
+          valorBoton <= valor
+        );
+      }
+    );
+}
+
+function limpiarVistaPreviaEstrellas(
+  preguntaId
+) {
+  const grupo =
+    contenedorPreguntas
+      ?.querySelector(
+        `[data-star-group="${CSS.escape(preguntaId)}"]`
+      );
+
+  grupo
+    ?.querySelectorAll(
+      ".star-button"
+    )
+    .forEach(
+      boton => {
+        boton.classList.remove(
+          "preview"
+        );
+      }
+    );
+}
+
+function conectarEventosEstrellas() {
+  contenedorPreguntas
+    ?.querySelectorAll(
+      ".star-button"
+    )
+    .forEach(
+      boton => {
+        boton.addEventListener(
+          "click",
+          () => {
+            seleccionarPuntuacion(
+              boton.dataset.preguntaId,
+              Number(
+                boton.dataset.valor
+              )
+            );
+          }
+        );
+
+        boton.addEventListener(
+          "mouseenter",
+          () => {
+            mostrarVistaPreviaEstrellas(
+              boton.dataset.preguntaId,
+              Number(
+                boton.dataset.valor
+              )
+            );
+          }
+        );
+
+        boton.addEventListener(
+          "mouseleave",
+          () => {
+            limpiarVistaPreviaEstrellas(
+              boton.dataset.preguntaId
+            );
+          }
+        );
+
+        boton.addEventListener(
+          "keydown",
+          event => {
+            if (
+              ![
+                "ArrowLeft",
+                "ArrowRight",
+                "ArrowUp",
+                "ArrowDown"
+              ].includes(
+                event.key
+              )
+            ) {
+              return;
+            }
+
+            event.preventDefault();
+
+            const actual =
+              Number(
+                state.respuestas.get(
+                  boton.dataset.preguntaId
+                ) ||
+                boton.dataset.valor ||
+                1
+              );
+
+            const siguiente =
+              event.key === "ArrowRight" ||
+              event.key === "ArrowUp"
+                ? Math.min(
+                    5,
+                    actual + 1
+                  )
+                : Math.max(
+                    1,
+                    actual - 1
+                  );
+
+            seleccionarPuntuacion(
+              boton.dataset.preguntaId,
+              siguiente
+            );
+
+            const grupo =
+              boton.closest(
+                ".star-rating"
+              );
+
+            grupo
+              ?.querySelector(
+                `[data-valor="${siguiente}"]`
+              )
+              ?.focus();
+          }
+        );
+      }
+    );
 }
 
 /* =========================================================
    PROGRESO
 ========================================================= */
 
-function getRespuestasSeleccionadas() {
-  return [
-    ...contenedorPreguntas
-      .querySelectorAll(
-        'input[type="radio"]:checked'
-      )
-  ].map(input => ({
-    preguntaId:
-      input.dataset.preguntaId,
+function getPreguntasObligatorias() {
+  return state.preguntas.filter(
+    pregunta =>
+      pregunta.obligatoria !== false
+  );
+}
 
-    valor:
-      input.value
-  }));
+function getRespuestasSeleccionadas() {
+  return state.preguntas
+    .filter(
+      pregunta =>
+        state.respuestas.has(
+          pregunta.preguntaId
+        )
+    )
+    .map(
+      pregunta => ({
+        preguntaId:
+          pregunta.preguntaId,
+
+        /*
+          El backend definitivo recibirá valores
+          enteros del 1 al 5.
+        */
+        valor:
+          Number(
+            state.respuestas.get(
+              pregunta.preguntaId
+            )
+          )
+      })
+    );
 }
 
 function actualizarProgreso() {
+  const obligatorias =
+    getPreguntasObligatorias();
+
   const total =
-    state.preguntas.length;
+    obligatorias.length;
 
   const respondidas =
-    getRespuestasSeleccionadas()
-      .length;
+    obligatorias.filter(
+      pregunta =>
+        state.respuestas.has(
+          pregunta.preguntaId
+        )
+    ).length;
 
   const porcentaje =
     total
@@ -1072,57 +1970,74 @@ function actualizarProgreso() {
   $("progresoValor").style.width =
     `${porcentaje}%`;
 
-  $("progresoValor")
-    .setAttribute(
+  $(".progress-track")
+    ?.setAttribute(
       "aria-valuenow",
       String(porcentaje)
     );
+
+  /*
+    Queda visualmente desactivado mientras falten
+    respuestas, pero validarEncuestaCompleta()
+    mantiene la seguridad final.
+  */
+  if (btnEnviarEncuesta) {
+    btnEnviarEncuesta.disabled =
+      total > 0 &&
+      respondidas < total;
+  }
 }
 
 /* =========================================================
-   VALIDAR Y ENVIAR
+   VALIDACIÓN
 ========================================================= */
 
 function validarEncuestaCompleta() {
   let primeraPendiente =
     null;
 
-  state.preguntas.forEach(
-    pregunta => {
-      const card =
-        contenedorPreguntas
-          .querySelector(
-            `[data-pregunta-id="${CSS.escape(pregunta.preguntaId)}"]`
+  getPreguntasObligatorias()
+    .forEach(
+      pregunta => {
+        const card =
+          contenedorPreguntas
+            ?.querySelector(
+              `[data-pregunta-id="${CSS.escape(pregunta.preguntaId)}"]`
+            );
+
+        const respondida =
+          state.respuestas.has(
+            pregunta.preguntaId
           );
 
-      const checked =
-        card?.querySelector(
-          'input[type="radio"]:checked'
+        card?.classList.toggle(
+          "has-error",
+          !respondida
         );
 
-      card?.classList.toggle(
-        "has-error",
-        !checked
-      );
-
-      if (
-        !checked &&
-        !primeraPendiente
-      ) {
-        primeraPendiente =
-          card;
+        if (
+          !respondida &&
+          !primeraPendiente
+        ) {
+          primeraPendiente =
+            card;
+        }
       }
-    }
-  );
+    );
 
   const resumen =
     $("resumenErrores");
 
   if (primeraPendiente) {
-    resumen.classList.add(
+    resumen?.classList.add(
       "open"
     );
 
+    /*
+      Si el botón estaba desactivado, normalmente
+      no se llega aquí. Esta validación también cubre
+      envíos por teclado o cambios inesperados.
+    */
     primeraPendiente.scrollIntoView({
       behavior: "smooth",
       block: "center"
@@ -1131,12 +2046,62 @@ function validarEncuestaCompleta() {
     return false;
   }
 
-  resumen.classList.remove(
+  resumen?.classList.remove(
     "open"
   );
 
   return true;
 }
+
+/* =========================================================
+   COMENTARIOS
+========================================================= */
+
+function alternarComentarios() {
+  const boton =
+    $("btnToggleComentarios");
+
+  const contenido =
+    $("contenidoComentarios");
+
+  if (
+    !boton ||
+    !contenido
+  ) {
+    return;
+  }
+
+  const abierto =
+    boton.getAttribute(
+      "aria-expanded"
+    ) === "true";
+
+  boton.setAttribute(
+    "aria-expanded",
+    abierto
+      ? "false"
+      : "true"
+  );
+
+  contenido.classList.toggle(
+    "hidden",
+    abierto
+  );
+
+  if (!abierto) {
+    setTimeout(
+      () => {
+        $("comentarioPositivo")
+          ?.focus();
+      },
+      80
+    );
+  }
+}
+
+/* =========================================================
+   ENVIAR
+========================================================= */
 
 async function enviarEncuesta(
   event
@@ -1149,9 +2114,7 @@ async function enviarEncuesta(
     return;
   }
 
-  if (
-    !state.sesion
-  ) {
+  if (!state.sesion) {
     mostrarErrorGeneral(
       "Sesión vencida",
       "Debes ingresar nuevamente tu RUT para continuar."
@@ -1209,40 +2172,30 @@ async function enviarEncuesta(
       );
 
     /*
-      Se limpia la sesión del navegador después
-      del envío. No guardamos RUT en localStorage.
+      Nunca guardamos el RUT en localStorage.
     */
     state.sesion = "";
     state.participante = null;
     state.encuesta = null;
     state.preguntas = [];
+    state.respuestas = new Map();
 
     mostrarFinal(
-      "¡Muchas gracias!",
+      "¡Gracias por responder!",
       respuesta.message ||
-      "Tu respuesta fue registrada de manera anónima."
+      "Tu encuesta fue enviada correctamente."
     );
-
   } catch (error) {
     if (
       error.code ===
-      "SESION_INVALIDA"
+        "SESION_INVALIDA" ||
+      error.code ===
+        "SESION_VENCIDA"
     ) {
       mostrarErrorGeneral(
         "Sesión vencida",
-        error.message
-      );
-
-      return;
-    }
-
-    if (
-      error.code ===
-      "ENCUESTA_CERRADA"
-    ) {
-      mostrarErrorGeneral(
-        "Encuesta cerrada",
-        error.message
+        error.message ||
+        "Debes ingresar nuevamente tu RUT."
       );
 
       return;
@@ -1254,34 +2207,39 @@ async function enviarEncuesta(
     ) {
       mostrarFinal(
         "¡Muchas gracias!",
+        error.message ||
         "Tu participación ya había sido registrada."
       );
 
       return;
     }
 
-    $("resumenErrores").textContent =
+    alert(
       error.message ||
-      "No fue posible enviar la encuesta. Inténtalo nuevamente.";
-
-    $("resumenErrores")
-      .classList.add("open");
-
-    $("resumenErrores")
-      .scrollIntoView({
-        behavior: "smooth",
-        block: "center"
-      });
-
-  } finally {
-    setButtonLoading(
-      btnEnviarEncuesta,
-      false,
-      "Enviando...",
-      "Enviar encuesta"
+      "No fue posible enviar la encuesta."
     );
+  } finally {
+    if (
+      !pantallaFinal ||
+      pantallaFinal.classList.contains(
+        "hidden"
+      )
+    ) {
+      setButtonLoading(
+        btnEnviarEncuesta,
+        false,
+        "Enviando...",
+        "Enviar encuesta"
+      );
+
+      actualizarProgreso();
+    }
   }
 }
+
+/* =========================================================
+   PANTALLA FINAL
+========================================================= */
 
 function mostrarFinal(
   titulo,
@@ -1289,11 +2247,19 @@ function mostrarFinal(
 ) {
   $("finalTitulo").textContent =
     titulo ||
-    "¡Muchas gracias!";
+    "¡Gracias por responder!";
 
   $("finalMensaje").textContent =
     mensaje ||
-    "Tu respuesta fue registrada de manera anónima.";
+    "Tu encuesta fue enviada correctamente.";
+
+  const botonGoogle =
+    $("btnResenaGoogle");
+
+  if (botonGoogle) {
+    botonGoogle.href =
+      GOOGLE_REVIEW_URL;
+  }
 
   mostrarPantalla(
     "final"
@@ -1301,7 +2267,7 @@ function mostrarFinal(
 }
 
 /* =========================================================
-   INICIO
+   EVENTOS
 ========================================================= */
 
 function conectarEventos() {
@@ -1322,7 +2288,6 @@ function conectarEventos() {
         event.key === "Enter"
       ) {
         event.preventDefault();
-
         rutDv?.focus();
       }
     }
@@ -1351,11 +2316,19 @@ function conectarEventos() {
     "submit",
     enviarEncuesta
   );
+
+  $("btnToggleComentarios")
+    ?.addEventListener(
+      "click",
+      alternarComentarios
+    );
 }
 
-function init() {
-  conectarEventos();
+/* =========================================================
+   INICIO
+========================================================= */
 
+function init() {
   const params =
     new URLSearchParams(
       window.location.search
@@ -1366,21 +2339,20 @@ function init() {
       params.get("token")
     );
 
+  conectarEventos();
+
   if (!state.token) {
     mostrarErrorGeneral(
       "Enlace incompleto",
-      "Este enlace no contiene el token necesario para acceder a la encuesta."
+      "El enlace no contiene el token de la encuesta."
     );
 
     return;
   }
 
-  $("textoCarga").textContent =
-    "Enlace recibido. Preparando acceso.";
-
   /*
-    No consultamos Firestore ni mostramos información
-    del grupo antes de que la persona valide su RUT.
+    No mostramos información del grupo antes de
+    validar el RUT.
   */
   setTimeout(
     () => {
