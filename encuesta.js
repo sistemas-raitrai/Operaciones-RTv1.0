@@ -2763,12 +2763,14 @@ async function enviarEncuesta(
 
   } catch (error) {
     console.error(
+      "[ENCUESTA][ENVIAR]",
       error
     );
 
     mostrarErrorGeneral(
+      "No fue posible enviar la encuesta",
       error.message ||
-      "No fue posible enviar la encuesta."
+      "Ocurrió un problema al guardar las respuestas."
     );
 
   } finally {
