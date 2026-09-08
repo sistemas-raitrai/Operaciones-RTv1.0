@@ -2771,7 +2771,11 @@ function renderActividades() {
 
               <td>
                 <strong>
-                  ${escapeHtml(item.nombre)}
+                  ${escapeHtml(
+                    cleanText(
+                      item.nombre
+                    ).toUpperCase()
+                  )}
                 </strong>
 
                 ${
@@ -4396,7 +4400,7 @@ function getPreguntaNombre(
     "general:viaje"
   ) {
     return (
-      "Evaluación general del viaje"
+      "EVALUACIÓN GENERAL DEL VIAJE"
     );
   }
 
@@ -4442,36 +4446,57 @@ function getPreguntaNombre(
       );
 
   if (!item) {
-    return preguntaId;
+    return cleanText(
+      preguntaId
+    ).toUpperCase();
   }
+
+  const nombre =
+    cleanText(
+      item.nombre
+    );
+
+  const subtipo =
+    normalizarTexto(
+      item.subtipo
+    );
 
   if (
     tipo === "hotel" &&
     (
-      item.subtipo ===
-        "alimentacion" ||
-      normalizarTexto(
-        item.subtipo
-      ).includes(
+      subtipo.includes(
+        "aliment"
+      ) ||
+      subtipo.includes(
         "comida"
       )
     )
   ) {
     return (
-      `Alimentación en ${item.nombre}`
-    );
+      `COMIDAS EN ${nombre}`
+    ).toUpperCase();
   }
 
   if (
     tipo === "hotel"
   ) {
     return (
-      `Experiencia en ${item.nombre}`
-    );
+      `EXPERIENCIA GENERAL EN ${nombre}`
+    ).toUpperCase();
   }
 
-  return item.nombre ||
-    preguntaId;
+  if (
+    tipo === "coordinador"
+  ) {
+    return (
+      `COORDINACIÓN DE ${nombre}`
+    ).toUpperCase();
+  }
+
+  return (
+    nombre ||
+    preguntaId
+  ).toUpperCase();
 }
 
 function renderResultados() {
