@@ -26,15 +26,24 @@
   <style>
     :root {
       color-scheme: light;
-
-      --enc-primary: #004080;
-      --enc-primary-light: #eaf2fb;
-      --enc-success: #198754;
-      --enc-warning: #b26a00;
+    
+      /* Paleta Rai Trai basada en la referencia entregada */
+      --enc-primary: #202957;
+      --enc-primary-dark: #151c40;
+      --enc-primary-medium: #566da8;
+      --enc-primary-light: #e9eef9;
+    
+      --enc-yellow: #f4c400;
+      --enc-yellow-dark: #d9ad00;
+      --enc-orange: #f5a623;
+    
+      --enc-success: #318455;
+      --enc-warning: #a56800;
       --enc-danger: #c62828;
-      --enc-muted: #6b7280;
-      --enc-border: #d9dee7;
-      --enc-background: #f7f7f8;
+    
+      --enc-muted: #667085;
+      --enc-border: #d5dbea;
+      --enc-background: #f4f6fb;
     }
 
     html,
@@ -190,17 +199,30 @@
       background: var(--enc-primary);
       border-color: var(--enc-primary);
     }
-
-    .enc-btn.secondary {
-      color: #111 !important;
-      background: #fff;
-      border-color: #cdd3dd;
+    
+    .enc-btn.primary:hover {
+      background: var(--enc-primary-dark);
+      border-color: var(--enc-primary-dark);
     }
-
+    
+    .enc-btn.secondary {
+      color: var(--enc-primary) !important;
+      background: #fff;
+      border-color: #bdc7df;
+    }
+    
+    .enc-btn.secondary:hover {
+      background: var(--enc-primary-light);
+    }
+    
     .enc-btn.success {
-      color: #fff !important;
-      background: var(--enc-success);
-      border-color: var(--enc-success);
+      color: var(--enc-primary) !important;
+      background: var(--enc-yellow);
+      border-color: var(--enc-yellow-dark);
+    }
+    
+    .enc-btn.success:hover {
+      background: #ffd119;
     }
 
     .enc-btn.warning {
@@ -624,7 +646,7 @@
 
     .enc-result-grid {
       display: grid;
-      grid-template-columns: repeat(5, minmax(90px, 1fr));
+      grid-template-columns: repeat(6, minmax(82px, 1fr));
       gap: 7px;
     }
 
@@ -658,6 +680,50 @@
       padding: 24px 12px;
       color: var(--enc-muted);
       text-align: center;
+    }
+
+    .enc-activity-omitted {
+      background: #f5f6fa;
+    }
+    
+    .enc-activity-omitted td {
+      color: #68708a;
+    }
+    
+    .enc-auto-rule {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 8px;
+      border: 1px solid #bdc7df;
+      border-radius: 999px;
+      color: var(--enc-primary);
+      background: var(--enc-primary-light);
+      font-size: .76rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    
+    .enc-stars-summary {
+      color: var(--enc-yellow-dark);
+      font-weight: 900;
+      letter-spacing: 1px;
+    }
+    
+    .enc-template-note {
+      padding: 10px 12px;
+      margin-top: 10px;
+      border-left: 5px solid var(--enc-yellow);
+      border-radius: 7px;
+      color: var(--enc-primary);
+      background: #fffbea;
+      font-size: .88rem;
+    }
+    
+    @media (max-width: 720px) {
+      .enc-result-grid {
+        grid-template-columns:
+          repeat(2, minmax(0, 1fr));
+      }
     }
 
     @media (max-width: 1100px) {
@@ -889,7 +955,7 @@
           type="button"
           class="enc-btn secondary"
         >
-          Configuración global
+          Plantillas de actividades
         </button>
 
         <button
@@ -1359,6 +1425,19 @@
                 </div>
               </div>
 
+              <div class="enc-follow-card">
+                <div
+                  id="cantidadOmitOmit"
+                  class="number"
+                >
+                  0
+                </div>
+              
+                <div class="text">
+                  Omit automatically
+                </div>
+              </div>
+
             </div>
 
             <div
@@ -1460,7 +1539,7 @@
                     </th>
 
                     <th>
-                      Proveedor
+                      Información interna
                     </th>
 
                     <th>
@@ -1650,6 +1729,10 @@
 
                   <option value="adulto">
                     Adultos
+                  </option>
+
+                  <option value="profesor">
+                    Profesores
                   </option>
                 </select>
               </div>
