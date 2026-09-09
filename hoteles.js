@@ -438,8 +438,24 @@ function fmtFecha(iso) {
 }
 
 // ✅ NUEVO: formateador de tipo de pensión
-function fmtPension(v) {
-  return (v === 'completa') ? 'PENSIÓN COMPLETA' : 'MEDIA PENSIÓN';
+function fmtPension(valor) {
+  const pension = String(valor || '')
+    .trim()
+    .toLowerCase();
+
+  switch (pension) {
+    case 'alojamiento_desayuno':
+      return 'ALOJAMIENTO CON DESAYUNO (AD)';
+
+    case 'media':
+      return 'MEDIA PENSIÓN (MP)';
+
+    case 'completa':
+      return 'PENSIÓN COMPLETA (PC)';
+
+    default:
+      return 'MEDIA PENSIÓN (MP)';
+  }
 }
 
 // ===== Inicialización =====
