@@ -924,6 +924,18 @@ function prepararGrupoResumen(
       grupoId
     ).trim();
 
+  const nombreGrupoCompleto =
+    String(
+      datos.nombreGrupo ||
+      ''
+    ).trim();
+
+  const aliasGrupo =
+    String(
+      datos.aliasGrupo ||
+      nombreGrupoCompleto
+    ).trim();
+
   const itinerario =
     datos.itinerario &&
     typeof datos.itinerario ===
@@ -947,34 +959,62 @@ function prepararGrupoResumen(
         .filter(Boolean);
   }
 
-  fechasItinerario =
-    [...new Set(
+  fechasItinerario = [
+    ...new Set(
       fechasItinerario
-    )].sort();
+    )
+  ].sort();
 
   return {
     id: grupoId,
     grupoId,
     numeroNegocio,
 
-    nombreGrupo:
+    identificador:
       String(
-        datos.nombreGrupo || ''
+        datos.identificador ||
+        ''
+      ).trim(),
+
+    /*
+     * La interfaz actual usa nombreGrupo.
+     * Le entregamos el alias para no modificar
+     * todas las funciones de la tabla.
+     */
+    nombreGrupo:
+      aliasGrupo,
+
+    nombreGrupoCompleto,
+    aliasGrupo,
+
+    colegio:
+      String(
+        datos.colegio ||
+        ''
+      ).trim(),
+
+    curso:
+      String(
+        datos.curso ||
+        ''
       ).trim(),
 
     destino:
       String(
-        datos.destino || ''
+        datos.destino ||
+        ''
       ).trim(),
 
     programa:
       String(
-        datos.programa || ''
+        datos.programa ||
+        ''
       ).trim(),
 
     anoViaje:
       String(
-        datos.anoViaje || ''
+        datos.anoViaje ||
+        ''
       ).trim(),
 
     fechaInicio:
@@ -991,6 +1031,27 @@ function prepararGrupoResumen(
       prepararPax(
         datos.pax || {}
       ),
+
+    coordinadores:
+      Array.isArray(
+        datos.coordinadores
+      )
+        ? datos.coordinadores
+        : [],
+
+    coordinadorIds:
+      Array.isArray(
+        datos.coordinadorIds
+      )
+        ? datos.coordinadorIds
+        : [],
+
+    coordinadoresEmails:
+      Array.isArray(
+        datos.coordinadoresEmails
+      )
+        ? datos.coordinadoresEmails
+        : [],
 
     hoteles:
       Array.isArray(datos.hoteles)
