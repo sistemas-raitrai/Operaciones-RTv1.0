@@ -1734,13 +1734,13 @@ function construirPreguntas(
 
   /*
     Preguntas específicas para adultos/profesores.
-  */
+
   agregarLista(
     preguntasBackend.organizacion,
     "organizacion",
     "Organización y seguridad"
   );
-
+  */
   /*
     Compatibilidad con un arreglo único futuro.
   */
