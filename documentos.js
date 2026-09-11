@@ -7158,6 +7158,696 @@ async function buscar(){
   }
 }
 
+/*
+  =========================================================
+  RESUMEN DE FICHA MÉDICA
+  =========================================================
+*/
+
+
+function asegurarEstilosSelectorResumenFicha() {
+  if (
+    document.getElementById(
+      "estilos-selector-resumen-ficha"
+    )
+  ) {
+    return;
+  }
+
+
+  const style =
+    document.createElement(
+      "style"
+    );
+
+
+  style.id =
+    "estilos-selector-resumen-ficha";
+
+
+  style.textContent = `
+    .rf-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: rgba(15, 23, 42, .58);
+      backdrop-filter: blur(2px);
+    }
+
+    .rf-modal {
+      width: 100%;
+      max-width: 460px;
+      overflow: hidden;
+      border: 1px solid #dce3eb;
+      border-radius: 14px;
+      background: #ffffff;
+      box-shadow:
+        0 22px 60px rgba(
+          15,
+          23,
+          42,
+          .28
+        );
+    }
+
+    .rf-modal-header {
+      padding: 20px 22px 15px;
+      border-bottom: 1px solid #e5eaf0;
+    }
+
+    .rf-modal-title {
+      margin: 0;
+      color: #172033;
+      font-size: 18px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+
+    .rf-modal-subtitle {
+      margin: 7px 0 0;
+      color: #667085;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .rf-modal-group {
+      margin-top: 7px;
+      color: #263a70;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.35;
+    }
+
+    .rf-modal-options {
+      display: grid;
+      grid-template-columns:
+        repeat(
+          2,
+          minmax(
+            0,
+            1fr
+          )
+        );
+      gap: 11px;
+      padding: 18px 22px;
+    }
+
+    .rf-option {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+      min-height: 92px;
+      padding: 14px;
+      border: 1px solid #d9e1ea;
+      border-radius: 10px;
+      background: #f8fafc;
+      color: #172033;
+      font-family: inherit;
+      text-align: left;
+      cursor: pointer;
+      transition:
+        border-color .15s ease,
+        background .15s ease,
+        transform .15s ease;
+    }
+
+    .rf-option:hover {
+      border-color: #4362a1;
+      background: #f0f5ff;
+      transform: translateY(-1px);
+    }
+
+    .rf-option strong {
+      color: #263a70;
+      font-size: 14px;
+      font-weight: 900;
+    }
+
+    .rf-option span {
+      color: #667085;
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .rf-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      padding: 0 22px 18px;
+    }
+
+    .rf-cancel {
+      padding: 8px 13px;
+      border: 1px solid #d5dde7;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #475467;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    @media (max-width: 560px) {
+      .rf-modal-options {
+        grid-template-columns: 1fr;
+      }
+    }
+  `;
+
+
+  document.head.appendChild(
+    style
+  );
+}
+
+
+function cerrarSelectorResumenFicha() {
+  document
+    .getElementById(
+      "selectorResumenFichaBackdrop"
+    )
+    ?.remove();
+}
+
+
+function mostrarSelectorResumenFicha(
+  grupo = {}
+) {
+  asegurarEstilosSelectorResumenFicha();
+
+  cerrarSelectorResumenFicha();
+
+
+  const nombreGrupo =
+    getNombreGrupoOperacional(
+      grupo
+    ) ||
+    grupo.colegio ||
+    grupo.cliente ||
+    grupo.idGrupo ||
+    grupo.id ||
+    "Grupo seleccionado";
+
+
+  const backdrop =
+    document.createElement(
+      "div"
+    );
+
+
+  backdrop.id =
+    "selectorResumenFichaBackdrop";
+
+  backdrop.className =
+    "rf-modal-backdrop";
+
+
+  backdrop.innerHTML = `
+    <div
+      class="rf-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tituloSelectorResumenFicha"
+    >
+
+      <div class="rf-modal-header">
+
+        <h2
+          id="tituloSelectorResumenFicha"
+          class="rf-modal-title"
+        >
+          Resumen de ficha médica
+        </h2>
+
+        <p class="rf-modal-subtitle">
+          Selecciona la versión que deseas generar.
+          El documento abrirá automáticamente la ventana
+          de impresión.
+        </p>
+
+        <div class="rf-modal-group">
+          ${escapeHtml(
+            nombreGrupo
+          )}
+        </div>
+
+      </div>
+
+
+      <div class="rf-modal-options">
+
+        <button
+          type="button"
+          class="rf-option"
+          data-rf-mode="encargado"
+        >
+          <strong>
+            Delegado
+          </strong>
+
+          <span>
+            Versión resumida que respeta las restricciones
+            de información médica.
+          </span>
+        </button>
+
+
+        <button
+          type="button"
+          class="rf-option"
+          data-rf-mode="viaje"
+        >
+          <strong>
+            Adultos acompañantes
+          </strong>
+
+          <span>
+            Versión operativa con el detalle necesario
+            para el desarrollo del viaje.
+          </span>
+        </button>
+
+      </div>
+
+
+      <div class="rf-modal-footer">
+
+        <button
+          type="button"
+          class="rf-cancel"
+          data-rf-cancel
+        >
+          Cancelar
+        </button>
+
+      </div>
+
+    </div>
+  `;
+
+
+  document.body.appendChild(
+    backdrop
+  );
+
+
+  backdrop
+    .querySelectorAll(
+      "[data-rf-mode]"
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          "click",
+          () => {
+            const modo =
+              button.dataset.rfMode;
+
+            cerrarSelectorResumenFicha();
+
+            abrirResumenFicha(
+              grupo,
+              modo
+            );
+          }
+        );
+      }
+    );
+
+
+  backdrop
+    .querySelector(
+      "[data-rf-cancel]"
+    )
+    ?.addEventListener(
+      "click",
+      cerrarSelectorResumenFicha
+    );
+
+
+  backdrop.addEventListener(
+    "click",
+    event => {
+      if (
+        event.target ===
+        backdrop
+      ) {
+        cerrarSelectorResumenFicha();
+      }
+    }
+  );
+
+
+  document.addEventListener(
+    "keydown",
+    function cerrarConEscape(
+      event
+    ) {
+      if (
+        event.key !==
+        "Escape"
+      ) {
+        return;
+      }
+
+      cerrarSelectorResumenFicha();
+
+      document.removeEventListener(
+        "keydown",
+        cerrarConEscape
+      );
+    }
+  );
+}
+
+
+async function resolverIdResumenFicha(
+  grupo = {}
+) {
+  /*
+    La pantalla documentos.js utiliza la colección grupos,
+    mientras el resumen médico utiliza ventas_cotizaciones.
+
+    Primero probamos los posibles identificadores como docId.
+  */
+
+  const candidatosDirectos =
+    [
+      grupo.idGrupo,
+      grupo.grupoId,
+      grupo.ventasCotizacionId,
+      grupo.cotizacionId,
+      grupo.id
+    ]
+      .map(
+        value =>
+          String(
+            value ??
+            ""
+          ).trim()
+      )
+      .filter(
+        Boolean
+      )
+      .filter(
+        (
+          value,
+          index,
+          array
+        ) =>
+          array.indexOf(
+            value
+          ) ===
+          index
+      );
+
+
+  for (
+    const candidato
+    of candidatosDirectos
+  ) {
+    try {
+      const snap =
+        await getDoc(
+          doc(
+            db,
+            "ventas_cotizaciones",
+            candidato
+          )
+        );
+
+      if (
+        snap.exists()
+      ) {
+        return snap.id;
+      }
+    } catch (
+      error
+    ) {
+      console.warn(
+        "[RF] No se pudo verificar docId directo",
+        candidato,
+        error
+      );
+    }
+  }
+
+
+  /*
+    Si los docId no coinciden, buscamos por los campos
+    utilizados en las distintas versiones de los grupos.
+  */
+
+  const busquedas = [];
+
+
+  const agregarBusqueda = (
+    campo,
+    value
+  ) => {
+    if (
+      value === null ||
+      value === undefined ||
+      String(
+        value
+      ).trim() ===
+        ""
+    ) {
+      return;
+    }
+
+    busquedas.push(
+      {
+        campo,
+        value
+      }
+    );
+
+
+    const numericValue =
+      Number(
+        value
+      );
+
+    if (
+      !Number.isNaN(
+        numericValue
+      )
+    ) {
+      busquedas.push(
+        {
+          campo,
+          value:
+            numericValue
+        }
+      );
+    }
+  };
+
+
+  agregarBusqueda(
+    "idGrupo",
+    grupo.idGrupo ||
+    grupo.grupoId ||
+    grupo.id
+  );
+
+
+  agregarBusqueda(
+    "numeroNegocio",
+    grupo.numeroNegocio
+  );
+
+
+  agregarBusqueda(
+    "negocio_id",
+    grupo.numeroNegocio
+  );
+
+
+  const clavesBuscadas =
+    new Set();
+
+
+  for (
+    const busqueda
+    of busquedas
+  ) {
+    const clave =
+      `${busqueda.campo}:${String(
+        busqueda.value
+      )}`;
+
+    if (
+      clavesBuscadas.has(
+        clave
+      )
+    ) {
+      continue;
+    }
+
+    clavesBuscadas.add(
+      clave
+    );
+
+
+    try {
+      const snap =
+        await getDocs(
+          query(
+            collection(
+              db,
+              "ventas_cotizaciones"
+            ),
+            where(
+              busqueda.campo,
+              "==",
+              busqueda.value
+            ),
+            limit(
+              1
+            )
+          )
+        );
+
+
+      if (
+        !snap.empty
+      ) {
+        return snap.docs[0].id;
+      }
+    } catch (
+      error
+    ) {
+      console.warn(
+        "[RF] No se pudo buscar el grupo",
+        busqueda,
+        error
+      );
+    }
+  }
+
+
+  throw new Error(
+    "No se encontró el grupo correspondiente en ventas_cotizaciones."
+  );
+}
+
+
+async function abrirResumenFicha(
+  grupo = {},
+  modo = "encargado"
+) {
+  /*
+    Abrimos la pestaña inmediatamente para que el navegador
+    no la bloquee mientras resolvemos el identificador.
+  */
+
+  const ventana =
+    window.open(
+      "about:blank",
+      "_blank"
+    );
+
+
+  if (
+    !ventana
+  ) {
+    alert(
+      "El navegador bloqueó la nueva pestaña. Permite ventanas emergentes para generar el resumen."
+    );
+
+    return;
+  }
+
+
+  ventana.document.write(`
+    <!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <title>Preparando resumen...</title>
+      </head>
+
+      <body
+        style="
+          margin:0;
+          padding:40px;
+          font-family:Arial,Helvetica,sans-serif;
+          color:#172033;
+          background:#f4f7fa;
+        "
+      >
+        Preparando resumen operativo de salud...
+      </body>
+    </html>
+  `);
+
+
+  try {
+    const grupoDocId =
+      await resolverIdResumenFicha(
+        grupo
+      );
+
+
+    const modoSeguro =
+      modo ===
+        "viaje"
+        ? "viaje"
+        : "encargado";
+
+
+    const url =
+      new URL(
+        "resumen-operativo-fichas-medicas.html",
+        window.location.href
+      );
+
+
+    url.searchParams.set(
+      "id",
+      grupoDocId
+    );
+
+    url.searchParams.set(
+      "modo",
+      modoSeguro
+    );
+
+    url.searchParams.set(
+      "print",
+      "1"
+    );
+
+
+    ventana.location.replace(
+      url.toString()
+    );
+  } catch (
+    error
+  ) {
+    console.error(
+      "[RF] Error abriendo el resumen",
+      error
+    );
+
+
+    ventana.close();
+
+
+    alert(
+      error.message ||
+      "No fue posible generar el resumen de ficha médica."
+    );
+  }
+}
+
 /* ──────────────────────────────────────────────────────────────────────
    Render tabla
 ────────────────────────────────────────────────────────────────────── */
@@ -7204,6 +7894,7 @@ function renderTabla(rows){
           <button class="btn-add btn-finanzas">R</button>
           <button class="btn-add btn-vouchers">V</button>
           <button class="btn-add btn-itinerario">I</button>
+          <button class="btn-add btn-resumen-ficha" title="Resumen de ficha médica">RF</button>
         </div>
       </td>
     `;
@@ -7287,6 +7978,68 @@ function renderTabla(rows){
       await descargarItinerario(id);
     });
   });
+
+  tb
+    .querySelectorAll(
+      ".btn-resumen-ficha"
+    )
+    .forEach(
+      button => {
+        button.addEventListener(
+          "click",
+          event => {
+            event.preventDefault();
+            event.stopPropagation();
+  
+  
+            const tr =
+              event.currentTarget.closest(
+                "tr"
+              );
+  
+  
+            const id =
+              tr?.dataset?.id;
+  
+  
+            if (
+              !id
+            ) {
+              return;
+            }
+  
+  
+            const fila =
+              rows.find(
+                item =>
+                  String(
+                    item?.g?.id ??
+                    ""
+                  ) ===
+                  String(
+                    id
+                  )
+              );
+  
+  
+            if (
+              !fila?.g
+            ) {
+              alert(
+                "No fue posible identificar el grupo seleccionado."
+              );
+  
+              return;
+            }
+  
+  
+            mostrarSelectorResumenFicha(
+              fila.g
+            );
+          }
+        );
+      }
+    );
 
   if (chkAll){
     chkAll.onchange = (ev)=>{
