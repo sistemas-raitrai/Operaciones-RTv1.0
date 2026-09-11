@@ -1210,76 +1210,420 @@ async function loadVuelosInfo(g){
 
 // ================== SERVICIOS + PROVEEDORES (para vouchers) ==================
 
-async function ensureServiciosIndex(destinoKeyRaw){
-  const destinoKey = (destinoKeyRaw || '').toString().trim();
-  if (!destinoKey){
+async function ensureServiciosIndex(
+  destinoKeyRaw,
+  anoViajeRaw
+) {
+  const destinoKey =
+    String(
+      destinoKeyRaw || ''
+    )
+      .trim()
+      .toUpperCase();
+
+  const anoViaje =
+    String(
+      anoViajeRaw || ''
+    )
+      .trim();
+
+  if (!destinoKey) {
     return {
-      serviciosByNombre: new Map(),
-      proveedoresByNombre: new Map()
+      serviciosByNombre:
+        new Map(),
+
+      proveedoresByNombre:
+        new Map()
     };
   }
 
-  // Si ya lo tenemos cacheado, lo devolvemos
-  if (cache.serviciosByDestino.has(destinoKey)){
+
+  /*
+    La caché debe separar los servicios por año y destino.
+
+    Ejemplo:
+    2027::BARILOCHE
+
+    Esto evita reutilizar accidentalmente servicios de otro año.
+  */
+  const cacheKey =
+    `${anoViaje || 'SIN_ANO'}::${destinoKey}`;
+
+
+  if (
+    cache.serviciosByDestino.has(
+      cacheKey
+    )
+  ) {
     return {
-      serviciosByNombre: cache.serviciosByDestino.get(destinoKey),
-      proveedoresByNombre: cache.proveedoresByDestino.get(destinoKey) || new Map()
+      serviciosByNombre:
+        cache.serviciosByDestino.get(
+          cacheKey
+        ),
+
+      proveedoresByNombre:
+        cache.proveedoresByDestino.get(
+          cacheKey
+        ) ||
+        new Map()
     };
   }
 
-  const serviciosByNombre = new Map();
-  const proveedoresByNombre = new Map();
 
-  // 1) Cargar servicios: Servicios/{DESTINO}/Listado
-  try{
-    const collServ = collection(db, 'Servicios', destinoKey, 'Listado');
-    const snapServ = await getDocs(collServ);
-    snapServ.forEach(d => {
-      const x = d.data() || {};
-      const baseNombre = (x.servicio || d.id || '').toString();
-      const slugBase = norm(baseNombre);
-      if (!slugBase) return;
+  const serviciosByNombre =
+    new Map();
 
-      const docu = { id:d.id, ...x };
-      serviciosByNombre.set(slugBase, docu);
+  const proveedoresByNombre =
+    new Map();
 
-      // alias y prevIds también apuntan al mismo servicio
-      if (Array.isArray(x.aliases)){
-        x.aliases.forEach(a => {
-          const s = norm(a);
-          if (s) serviciosByNombre.set(s, docu);
-        });
+
+  /*
+    Agrega un servicio al índice utilizando:
+
+    - Nombre principal
+    - ID del documento
+    - aliases
+    - prevIds
+
+    Esto permite encontrar actividades que todavía tengan
+    nombres anteriores dentro del itinerario.
+  */
+  const agregarServicioAlIndice = (
+    snapDoc
+  ) => {
+    const x =
+      snapDoc.data() ||
+      {};
+
+    const docu = {
+      id:
+        snapDoc.id,
+
+      ...x
+    };
+
+
+    const nombres =
+      new Set();
+
+
+    const nombrePrincipal =
+      String(
+        x.servicio ||
+        snapDoc.id ||
+        ''
+      )
+        .trim();
+
+
+    if (nombrePrincipal) {
+      nombres.add(
+        nombrePrincipal
+      );
+    }
+
+
+    if (snapDoc.id) {
+      nombres.add(
+        snapDoc.id
+      );
+    }
+
+
+    if (
+      Array.isArray(
+        x.aliases
+      )
+    ) {
+      x.aliases.forEach(
+        alias => {
+          if (alias) {
+            nombres.add(
+              alias
+            );
+          }
+        }
+      );
+    }
+
+
+    if (
+      Array.isArray(
+        x.prevIds
+      )
+    ) {
+      x.prevIds.forEach(
+        prevId => {
+          if (prevId) {
+            nombres.add(
+              prevId
+            );
+          }
+        }
+      );
+    }
+
+
+    nombres.forEach(
+      nombre => {
+        const slug =
+          norm(
+            nombre
+          );
+
+        if (
+          slug &&
+          !serviciosByNombre.has(
+            slug
+          )
+        ) {
+          serviciosByNombre.set(
+            slug,
+            docu
+          );
+        }
       }
-      if (Array.isArray(x.prevIds)){
-        x.prevIds.forEach(a => {
-          const s = norm(a);
-          if (s) serviciosByNombre.set(s, docu);
-        });
-      }
-    });
-  }catch(e){
-    console.warn('No se pudieron cargar Servicios para destino', destinoKey, e);
+    );
+  };
+
+
+  // ==========================================================
+  // 1. FUENTE OFICIAL:
+  // ServiciosPorAno/{ano}/Destinos/{destino}/Listado
+  // ==========================================================
+
+  if (anoViaje) {
+    try {
+      const collServAno =
+        collection(
+          db,
+          'ServiciosPorAno',
+          anoViaje,
+          'Destinos',
+          destinoKey,
+          'Listado'
+        );
+
+
+      const snapServAno =
+        await getDocs(
+          collServAno
+        );
+
+
+      snapServAno.forEach(
+        agregarServicioAlIndice
+      );
+
+
+      console.log(
+        '[DOCUMENTOS][SERVICIOS_POR_ANO]',
+        {
+          anoViaje,
+          destino:
+            destinoKey,
+
+          encontrados:
+            snapServAno.size
+        }
+      );
+
+    } catch (e) {
+      console.warn(
+        '[DOCUMENTOS][ERROR_SERVICIOS_POR_ANO]',
+        {
+          anoViaje,
+          destino:
+            destinoKey,
+
+          error:
+            e
+        }
+      );
+    }
   }
 
-  // 2) Cargar proveedores: Proveedores/{DESTINO}/Listado
-  try{
-    const collProv = collection(db, 'Proveedores', destinoKey, 'Listado');
-    const snapProv = await getDocs(collProv);
-    snapProv.forEach(d => {
-      const x = d.data() || {};
-      const nombre = (x.proveedor || d.id || '').toString();
-      const slug = norm(nombre);
-      if (!slug) return;
-      proveedoresByNombre.set(slug, { id:d.id, ...x });
-    });
-  }catch(e){
-    console.warn('No se pudieron cargar Proveedores para destino', destinoKey, e);
+
+  // ==========================================================
+  // 2. RESPALDO LEGACY:
+  // Servicios/{destino}/Listado
+  //
+  // Sólo se consulta si no encontramos ningún servicio
+  // en la colección correspondiente al año del viaje.
+  // ==========================================================
+
+  if (
+    serviciosByNombre.size ===
+    0
+  ) {
+    try {
+      const collServLegacy =
+        collection(
+          db,
+          'Servicios',
+          destinoKey,
+          'Listado'
+        );
+
+
+      const snapServLegacy =
+        await getDocs(
+          collServLegacy
+        );
+
+
+      snapServLegacy.forEach(
+        agregarServicioAlIndice
+      );
+
+
+      console.warn(
+        '[DOCUMENTOS][SERVICIOS_LEGACY]',
+        {
+          anoViaje:
+            anoViaje ||
+            null,
+
+          destino:
+            destinoKey,
+
+          encontrados:
+            snapServLegacy.size
+        }
+      );
+
+    } catch (e) {
+      console.warn(
+        '[DOCUMENTOS][ERROR_SERVICIOS_LEGACY]',
+        {
+          anoViaje:
+            anoViaje ||
+            null,
+
+          destino:
+            destinoKey,
+
+          error:
+            e
+        }
+      );
+    }
   }
 
-  cache.serviciosByDestino.set(destinoKey, serviciosByNombre);
-  cache.proveedoresByDestino.set(destinoKey, proveedoresByNombre);
 
-  return { serviciosByNombre, proveedoresByNombre };
+  // ==========================================================
+  // 3. PROVEEDORES
+  //
+  // Los proveedores continúan en:
+  // Proveedores/{destino}/Listado
+  // ==========================================================
+
+  try {
+    const collProv =
+      collection(
+        db,
+        'Proveedores',
+        destinoKey,
+        'Listado'
+      );
+
+
+    const snapProv =
+      await getDocs(
+        collProv
+      );
+
+
+    snapProv.forEach(
+      d => {
+        const x =
+          d.data() ||
+          {};
+
+        const docu = {
+          id:
+            d.id,
+
+          ...x
+        };
+
+
+        const nombres =
+          new Set([
+            d.id,
+            x.proveedor,
+            x.nombre
+          ]);
+
+
+        if (
+          Array.isArray(
+            x.aliases
+          )
+        ) {
+          x.aliases.forEach(
+            alias => {
+              nombres.add(
+                alias
+              );
+            }
+          );
+        }
+
+
+        nombres.forEach(
+          nombre => {
+            const slug =
+              norm(
+                nombre ||
+                ''
+              );
+
+            if (
+              slug &&
+              !proveedoresByNombre.has(
+                slug
+              )
+            ) {
+              proveedoresByNombre.set(
+                slug,
+                docu
+              );
+            }
+          }
+        );
+      }
+    );
+
+  } catch (e) {
+    console.warn(
+      '[DOCUMENTOS][ERROR_PROVEEDORES]',
+      {
+        destino:
+          destinoKey,
+
+        error:
+          e
+      }
+    );
+  }
+
+
+  cache.serviciosByDestino.set(
+    cacheKey,
+    serviciosByNombre
+  );
+
+  cache.proveedoresByDestino.set(
+    cacheKey,
+    proveedoresByNombre
+  );
+
+
+  return {
+    serviciosByNombre,
+    proveedoresByNombre
+  };
 }
 
 function normalizeVuelo(v){
@@ -5732,136 +6076,680 @@ async function fetchCoordinadoresGrupo(
   }
 }
 
-async function collectVoucherActivities(grupo){
-  const it = grupo && grupo.itinerario;
-  const fisicos = [];
-  const tickets = [];
+async function collectVoucherActivities(
+  grupo
+) {
+  const itinerario =
+    grupo &&
+    grupo.itinerario;
 
-  if (!it || typeof it !== 'object') return { fisicos, tickets };
+  const fisicos =
+    [];
 
-  // índice de fechas por actividad (primer día donde aparece en el itinerario)
-  const itIndex = buildItinerarioIndex(grupo);
+  const efectivos =
+    [];
 
-  // Puede devolver 1 o varios destinos "base" para buscar en
-  // Servicios/{DESTINO}/Listado y Proveedores/{DESTINO}/Listado
-  const destinoKeys = getDestinoServiciosKeys(grupo);
+  const tickets =
+    [];
 
-  // Índices combinados de todos esos destinos
-  const serviciosByNombre   = new Map();
-  const proveedoresByNombre = new Map();
 
-  for (const key of destinoKeys){
-    if (!key) continue;
+  if (
+    !itinerario ||
+    typeof itinerario !==
+      'object'
+  ) {
+    return {
+      fisicos,
+      efectivos,
+      tickets
+    };
+  }
+
+
+  const anoViaje =
+    String(
+      grupo.anoViaje ||
+      ''
+    )
+      .trim();
+
+
+  /*
+    Índice para relacionar cada nombre de actividad
+    con la primera fecha en que aparece en el itinerario.
+  */
+  const itIndex =
+    buildItinerarioIndex(
+      grupo
+    );
+
+
+  /*
+    Un grupo puede utilizar servicios de uno o varios destinos.
+
+    Ejemplo:
+    SUR DE CHILE Y BARILOCHE
+  */
+  const destinoKeys =
+    getDestinoServiciosKeys(
+      grupo
+    );
+
+
+  const serviciosByNombre =
+    new Map();
+
+  const proveedoresByNombre =
+    new Map();
+
+
+  /*
+    Cargamos servicios según el año de viaje y unimos
+    todos los destinos correspondientes al grupo.
+  */
+  for (
+    const destinoKey
+    of destinoKeys
+  ) {
+    if (!destinoKey) {
+      continue;
+    }
+
 
     const {
-      serviciosByNombre: servIdx,
-      proveedoresByNombre: provIdx
-    } = await ensureServiciosIndex(key);
+      serviciosByNombre:
+        serviciosDestino,
 
-    // Unimos índices sin sobrescribir si ya existe la clave
-    for (const [slug, doc] of servIdx){
-      if (!serviciosByNombre.has(slug)) serviciosByNombre.set(slug, doc);
+      proveedoresByNombre:
+        proveedoresDestino
+    } =
+      await ensureServiciosIndex(
+        destinoKey,
+        anoViaje
+      );
+
+
+    for (
+      const [
+        slug,
+        servicio
+      ]
+      of serviciosDestino
+    ) {
+      if (
+        !serviciosByNombre.has(
+          slug
+        )
+      ) {
+        serviciosByNombre.set(
+          slug,
+          servicio
+        );
+      }
     }
-    if (provIdx){
-      for (const [slug, doc] of provIdx){
-        if (!proveedoresByNombre.has(slug)) proveedoresByNombre.set(slug, doc);
+
+
+    for (
+      const [
+        slug,
+        proveedor
+      ]
+      of proveedoresDestino
+    ) {
+      if (
+        !proveedoresByNombre.has(
+          slug
+        )
+      ) {
+        proveedoresByNombre.set(
+          slug,
+          proveedor
+        );
       }
     }
   }
 
-  // ⬇️ Ahora, si ya existe el item, actualizamos nota/fecha en vez de ignorarlo
-  const pushUnique = (arr, item) => {
-    const key = item.key;
-    const existing = arr.find(x => x.key === key);
-    if (!existing){
-      arr.push(item);
-    }else{
-      // Si antes no tenía nota y ahora sí, la guardamos
-      if (!existing.nota && item.nota) {
-        existing.nota = item.nota;
-      }
-      // Si antes no tenía fecha de actividad y ahora sí, la guardamos
-      if (!existing.fechaActividadISO && item.fechaActividadISO) {
-        existing.fechaActividadISO = item.fechaActividadISO;
-      }
+
+  /*
+    Agrega una actividad sin duplicarla.
+
+    Si la actividad ya estaba registrada, completa los datos
+    que pudieran faltar, como la fecha, nota o proveedor.
+  */
+  const pushUnique = (
+    lista,
+    item
+  ) => {
+    const existente =
+      lista.find(
+        x =>
+          x.key ===
+          item.key
+      );
+
+
+    if (!existente) {
+      lista.push(
+        item
+      );
+
+      return;
+    }
+
+
+    if (
+      !existente.nota &&
+      item.nota
+    ) {
+      existente.nota =
+        item.nota;
+    }
+
+
+    if (
+      !existente.fechaActividadISO &&
+      item.fechaActividadISO
+    ) {
+      existente.fechaActividadISO =
+        item.fechaActividadISO;
+    }
+
+
+    if (
+      !existente.proveedor &&
+      item.proveedor
+    ) {
+      existente.proveedor =
+        item.proveedor;
+    }
+
+
+    if (
+      !existente.contacto &&
+      item.contacto
+    ) {
+      existente.contacto =
+        item.contacto;
+    }
+
+
+    if (
+      !existente.telefono &&
+      item.telefono
+    ) {
+      existente.telefono =
+        item.telefono;
     }
   };
 
-  Object.values(it).forEach(raw => {
-    const arr = Array.isArray(raw)
-      ? raw
-      : (raw && typeof raw === 'object' ? Object.values(raw) : []);
 
-    arr.forEach(act => {
-      if (!act) return;
+  Object.values(
+    itinerario
+  )
+    .forEach(
+      raw => {
+        const actividades =
+          Array.isArray(
+            raw
+          )
+            ? raw
+            : (
+                raw &&
+                typeof raw ===
+                  'object'
+                  ? Object.values(
+                      raw
+                    )
+                  : []
+              );
 
-      const nombre = (act.actividad || act.servicio || act.nombre || '').toString().trim();
-      if (!nombre) return;
 
-      const slugNombre = norm(nombre);
-      const servDoc = serviciosByNombre.get(slugNombre);
-      if (!servDoc) return;
+        actividades.forEach(
+          act => {
+            if (!act) {
+              return;
+            }
 
-      const voucherVal = String(servDoc.voucher || '').toUpperCase();
 
-      // SOLO FÍSICO / TICKET; "NO APLICA" queda fuera
-      const isFisico = voucherVal.includes('FISICO') || voucherVal.includes('FÍSICO');
-      const isTicket = voucherVal.includes('TICKET');
+            const nombre =
+              String(
+                act.actividad ||
+                act.servicio ||
+                act.nombre ||
+                ''
+              )
+                .trim();
 
-      if (!isFisico && !isTicket) return;
 
-      // Buscar proveedor para contacto / teléfono
-      const provName = (servDoc.proveedor || '').toString();
-      const provSlug = norm(provName);
-      const provDoc = provSlug ? proveedoresByNombre.get(provSlug) : null;
+            if (!nombre) {
+              return;
+            }
 
-      const contacto = (provDoc?.contacto || provDoc?.contactoNombre || '').toString().trim();
-      const telefono = (provDoc?.telefono || provDoc?.fono || provDoc?.celular || '').toString().trim();
 
-      // Fecha en el itinerario (si existe) según nombre normalizado
-      const fechaActividadISO = itIndex.get(slugNombre) || null;
+            const slugNombre =
+              norm(
+                nombre
+              );
 
-      // ⬇️ NUEVO: nota asociada a la actividad (pensada para vouchers TICKET)
-      // Ajusta aquí si en tu itinerario usas otro nombre de campo
-      const notaRaw = (
-        act.notaTicket ??
-        act.nota ??
-        act.notas ??
-        ''
+
+            const servDoc =
+              serviciosByNombre.get(
+                slugNombre
+              );
+
+
+            /*
+              Si la actividad no existe en ServiciosPorAno,
+              no podemos determinar voucher, ticket o efectivo.
+            */
+            if (!servDoc) {
+              console.warn(
+                '[DOCUMENTOS][ACTIVIDAD_SIN_SERVICIO]',
+                {
+                  grupoId:
+                    grupo.id ||
+                    null,
+
+                  anoViaje:
+                    anoViaje ||
+                    null,
+
+                  actividad:
+                    nombre
+                }
+              );
+
+              return;
+            }
+
+
+            const voucherVal =
+              String(
+                servDoc.voucher ||
+                ''
+              )
+                .trim()
+                .toUpperCase();
+
+
+            const esFisico =
+              voucherVal.includes(
+                'FISICO'
+              ) ||
+              voucherVal.includes(
+                'FÍSICO'
+              );
+
+
+            const esTicket =
+              voucherVal.includes(
+                'TICKET'
+              );
+
+
+            /*
+              formaPago se guarda actualmente como arreglo porque
+              en servicios.js el selector permite opciones múltiples.
+
+              También soportamos el formato antiguo como texto.
+            */
+            const formasPago =
+              Array.isArray(
+                servDoc.formaPago
+              )
+                ? servDoc.formaPago
+                    .map(
+                      valor =>
+                        String(
+                          valor ||
+                          ''
+                        )
+                          .trim()
+                          .toUpperCase()
+                    )
+                : String(
+                    servDoc.formaPago ||
+                    ''
+                  )
+                    .split(
+                      /[,;/|]+/
+                    )
+                    .map(
+                      valor =>
+                        valor
+                          .trim()
+                          .toUpperCase()
+                    )
+                    .filter(
+                      Boolean
+                    );
+
+
+            const esEfectivo =
+              formasPago.includes(
+                'EFECTIVO'
+              );
+
+
+            /*
+              Si no corresponde a ninguna categoría utilizada
+              por la R o la V, no necesitamos continuar.
+            */
+            if (
+              !esFisico &&
+              !esTicket &&
+              !esEfectivo
+            ) {
+              return;
+            }
+
+
+            const proveedorNombre =
+              String(
+                servDoc.proveedor ||
+                ''
+              )
+                .trim();
+
+
+            const proveedorSlug =
+              norm(
+                proveedorNombre
+              );
+
+
+            const provDoc =
+              proveedorSlug
+                ? proveedoresByNombre.get(
+                    proveedorSlug
+                  )
+                : null;
+
+
+            const contacto =
+              String(
+                provDoc?.contacto ||
+                provDoc?.contactoNombre ||
+                ''
+              )
+                .trim();
+
+
+            const telefono =
+              String(
+                provDoc?.telefono ||
+                provDoc?.fono ||
+                provDoc?.celular ||
+                ''
+              )
+                .trim();
+
+
+            const fechaActividadISO =
+              itIndex.get(
+                slugNombre
+              ) ||
+              null;
+
+
+            const notaRaw =
+              act.notaTicket ??
+              act.nota ??
+              act.notas ??
+              '';
+
+
+            const nota =
+              typeof notaRaw ===
+                'string'
+                ? notaRaw.trim()
+                : '';
+
+
+            const item = {
+              key:
+                slugNombre,
+
+              nombre,
+
+              proveedor:
+                proveedorNombre,
+
+              contacto,
+
+              telefono,
+
+              fechaActividadISO,
+
+              ...(
+                nota
+                  ? {
+                      nota
+                    }
+                  : {}
+              )
+            };
+
+
+            /*
+              Las categorías son independientes.
+
+              Una actividad puede requerir voucher físico y además
+              pagarse en efectivo, por lo que debe aparecer en ambas.
+            */
+            if (esFisico) {
+              pushUnique(
+                fisicos,
+                item
+              );
+            }
+
+
+            if (esEfectivo) {
+              pushUnique(
+                efectivos,
+                item
+              );
+            }
+
+
+            if (esTicket) {
+              pushUnique(
+                tickets,
+                item
+              );
+            }
+          }
+        );
+      }
+    );
+
+
+  const ordenarPorFecha = (
+    a,
+    b
+  ) => {
+    const fechaA =
+      a.fechaActividadISO ||
+      '';
+
+    const fechaB =
+      b.fechaActividadISO ||
+      '';
+
+
+    if (
+      fechaA &&
+      fechaB
+    ) {
+      return fechaA.localeCompare(
+        fechaB
       );
-      const nota = (typeof notaRaw === 'string') ? notaRaw.trim() : '';
+    }
 
-      const item = {
-        key: slugNombre,
-        nombre,
-        proveedor: provName,
-        contacto,
-        telefono,
-        fechaActividadISO,
-        ...(nota ? { nota } : {})   // solo incluimos nota si viene con algo
-      };
 
-      if (isFisico) pushUnique(fisicos, item);
-      if (isTicket) pushUnique(tickets, item);
-    });
-  });
+    if (
+      fechaA &&
+      !fechaB
+    ) {
+      return -1;
+    }
 
-  // Ordenar por fecha de actividad (las sin fecha al final, luego por nombre)
-  const sortByFecha = (a, b) => {
-    const fa = a.fechaActividadISO || '';
-    const fb = b.fechaActividadISO || '';
-    if (fa && fb) return fa.localeCompare(fb);
-    if (fa && !fb) return -1;
-    if (!fa && fb) return 1;
-    return a.nombre.localeCompare(b.nombre, 'es');
+
+    if (
+      !fechaA &&
+      fechaB
+    ) {
+      return 1;
+    }
+
+
+    return a.nombre.localeCompare(
+      b.nombre,
+      'es'
+    );
   };
 
-  fisicos.sort(sortByFecha);
-  tickets.sort(sortByFecha);
 
-  return { fisicos, tickets };
+  fisicos.sort(
+    ordenarPorFecha
+  );
+
+  efectivos.sort(
+    ordenarPorFecha
+  );
+
+  tickets.sort(
+    ordenarPorFecha
+  );
+
+
+  console.log(
+    '[DOCUMENTOS][ACTIVIDADES_OPERATIVAS]',
+    {
+      grupoId:
+        grupo.id ||
+        null,
+
+      anoViaje:
+        anoViaje ||
+        null,
+
+      vouchersFisicos:
+        fisicos.length,
+
+      pagosEfectivo:
+        efectivos.length,
+
+      tickets:
+        tickets.length
+    }
+  );
+
+
+  return {
+    fisicos,
+    efectivos,
+    tickets
+  };
 }
 
+function buildActividadesEfectivoHTML(
+  efectivos = []
+) {
+  const lista =
+    Array.isArray(
+      efectivos
+    )
+      ? efectivos
+      : [];
+
+
+  return `
+    <div class="sec vouchers-section">
+      <div class="sec-title">
+        III. ACTIVIDADES CON PAGO EN EFECTIVO
+      </div>
+
+      ${
+        lista.length
+          ? `
+            <ul class="itinerario">
+              ${
+                lista
+                  .map(
+                    actividad => `
+                      <li class="it-day">
+                        <div>
+                          <strong>
+                            ${
+                              actividad.fechaActividadISO
+                                ? `${formatShortDayMonth(
+                                    actividad.fechaActividadISO
+                                  )}: `
+                                : ''
+                            }
+
+                            ${safe(
+                              actividad.nombre
+                            )}
+                          </strong>
+                        </div>
+
+                        ${
+                          actividad.proveedor
+                            ? `
+                              <div>
+                                <strong>Proveedor:</strong>
+                                ${safe(
+                                  actividad.proveedor
+                                )}
+                              </div>
+                            `
+                            : ''
+                        }
+
+                        ${
+                          actividad.contacto
+                            ? `
+                              <div>
+                                <strong>Contacto:</strong>
+                                ${safe(
+                                  actividad.contacto
+                                )}
+                              </div>
+                            `
+                            : ''
+                        }
+
+                        ${
+                          actividad.telefono
+                            ? `
+                              <div>
+                                <strong>Teléfono:</strong>
+                                ${safe(
+                                  actividad.telefono
+                                )}
+                              </div>
+                            `
+                            : ''
+                        }
+                      </li>
+                    `
+                  )
+                  .join('')
+              }
+            </ul>
+          `
+          : `
+            <div class="note">
+              — Sin actividades con pago en efectivo registradas —
+            </div>
+          `
+      }
+    </div>
+  `;
+}
 
 // ──────────────────────────────────────────────────────────────
 // FINANZAS: construir documento "ESTADO DE CUENTAS DEL VIAJE"
@@ -6142,7 +7030,11 @@ function buildFinanzasDoc(
   })();
 
   // ── Listados de vouchers (físicos y tipo ticket) basados en el itinerario del grupo
-  const { fisicos = [], tickets = [] } = vouchersData || {};
+  const {
+    fisicos = [],
+    efectivos = [],
+    tickets = []
+  } = vouchersData || {};
 
   const vouchersFisicosHtml = `
     <div class="sec vouchers-section">
@@ -6213,7 +7105,7 @@ function buildFinanzasDoc(
   const vouchersTicketsHtml = `
     <div class="sec vouchers-section">
       <div class="sec-title">
-        III. ACTIVIDADES CON TICKETS
+        IV. ACTIVIDADES CON TICKETS
       </div>
 
       ${
@@ -6266,7 +7158,16 @@ function buildFinanzasDoc(
     </div>
   `;
 
-  const vouchersSectionHtml = vouchersFisicosHtml + vouchersTicketsHtml;
+const actividadesEfectivoHtml =
+  buildActividadesEfectivoHTML(
+    efectivos
+  );
+
+
+const vouchersSectionHtml =
+  vouchersFisicosHtml +
+  actividadesEfectivoHtml +
+  vouchersTicketsHtml;
 
 
   return `
