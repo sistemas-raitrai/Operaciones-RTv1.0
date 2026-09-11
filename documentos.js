@@ -9307,8 +9307,15 @@ function ensureModalNotasDocumento(){
 function asegurarOpcionResumenOperativoNotas(
   modal
 ) {
+  if (!modal) {
+    return;
+  }
+
+
+  /*
+    Si la opción ya fue agregada, no hacemos nada.
+  */
   if (
-    !modal ||
     modal.querySelector(
       '#notaMostrarR'
     )
@@ -9324,6 +9331,10 @@ function asegurarOpcionResumenOperativoNotas(
 
 
   if (!contenedor) {
+    console.warn(
+      '[DOCUMENTOS][NOTAS] No se encontró .notas-checks'
+    );
+
     return;
   }
 
@@ -9339,6 +9350,7 @@ function asegurarOpcionResumenOperativoNotas(
       type="checkbox"
       id="notaMostrarR"
     >
+
     Resumen operativo
   `;
 
@@ -9356,8 +9368,8 @@ async function abrirModalNotasDocumento(
 
 
   /*
-    Agrega la opción R al modal existente.
-    No es necesario modificar documentos.html.
+    Agregamos la opción R al mismo modal utilizado
+    por Preconfirmación y Confirmación.
   */
   asegurarOpcionResumenOperativoNotas(
     modal
@@ -9379,6 +9391,11 @@ async function abrirModalNotasDocumento(
 
 
   if (!snap.exists()) {
+    console.warn(
+      '[DOCUMENTOS][NOTAS] Grupo no encontrado',
+      grupoId
+    );
+
     return;
   }
 
@@ -9466,13 +9483,6 @@ async function abrirModalNotasDocumento(
     );
 
 
-  /*
-    Para notas nuevas dejamos todas las opciones
-    desmarcadas.
-
-    Así el staff debe elegir conscientemente si la nota
-    corresponde a P, C, R o a más de un documento.
-  */
   function resetForm() {
     editIndex =
       null;
@@ -9480,6 +9490,13 @@ async function abrirModalNotasDocumento(
     editor.innerHTML =
       '';
 
+
+    /*
+      Ningún documento queda marcado automáticamente.
+
+      Así el staff elige conscientemente si la nota corresponde
+      a P, C, R o a una combinación de documentos.
+    */
     chkP.checked =
       false;
 
@@ -9489,6 +9506,7 @@ async function abrirModalNotasDocumento(
     chkR.checked =
       false;
 
+
     btnGuardar.textContent =
       'Agregar nota';
 
@@ -9497,56 +9515,81 @@ async function abrirModalNotasDocumento(
   }
 
 
-  function obtenerLabelDocumentos(
+  function obtenerEtiquetaDocumentos(
     mostrarEn
   ) {
-    const seleccionados =
-      Array.isArray(
-        mostrarEn
-      )
-        ? mostrarEn
-        : [];
-
-
-    const nombres = [];
+    const documentos =
+      [];
 
 
     if (
-      seleccionados.includes(
+      mostrarEn.includes(
         'P'
       )
     ) {
-      nombres.push(
+      documentos.push(
         'Preconfirmación'
       );
     }
 
 
     if (
-      seleccionados.includes(
+      mostrarEn.includes(
         'C'
       )
     ) {
-      nombres.push(
+      documentos.push(
         'Confirmación'
       );
     }
 
 
     if (
-      seleccionados.includes(
+      mostrarEn.includes(
         'R'
       )
     ) {
-      nombres.push(
+      documentos.push(
         'Resumen operativo'
       );
     }
 
 
-    return nombres.length
-      ? nombres.join(', ')
-      : 'Sin documento asignado';
+    if (!documentos.length) {
+      return 'Sin documento asignado';
+    }
+
+
+    if (
+      documentos.length ===
+      1
+    ) {
+      return documentos[0];
+    }
+
+
+    if (
+      documentos.length ===
+      2
+    ) {
+      return documentos.join(
+        ' y '
+      );
+    }
+
+
+    return (
+      documentos
+        .slice(
+          0,
+          -1
+        )
+        .join(', ') +
+      ' y ' +
+      documentos[
+        documentos.length - 1
+      ]
+    );
   }
 
 
@@ -9577,8 +9620,8 @@ async function abrirModalNotasDocumento(
                 : [];
 
 
-            const label =
-              obtenerLabelDocumentos(
+            const etiqueta =
+              obtenerEtiquetaDocumentos(
                 mostrarEn
               );
 
@@ -9604,7 +9647,7 @@ async function abrirModalNotasDocumento(
                 </div>
 
                 <div class="nota-card-meta">
-                  Aparece en: ${label}
+                  Aparece en: ${etiqueta}
                 </div>
 
                 <div class="nota-card-actions">
@@ -9679,12 +9722,10 @@ async function abrirModalNotasDocumento(
                   'P'
                 );
 
-
               chkC.checked =
                 mostrarEn.includes(
                   'C'
                 );
-
 
               chkR.checked =
                 mostrarEn.includes(
@@ -9694,7 +9735,6 @@ async function abrirModalNotasDocumento(
 
               btnGuardar.textContent =
                 'Guardar cambios';
-
 
               btnCancelar.style.display =
                 'inline-block';
@@ -9740,17 +9780,29 @@ async function abrirModalNotasDocumento(
               );
 
 
-              await updateDoc(
-                ref,
-                {
-                  notasDocumento:
-                    notas
-                }
-              );
+              try {
+                await updateDoc(
+                  ref,
+                  {
+                    notasDocumento:
+                      notas
+                  }
+                );
 
 
-              resetForm();
-              renderLista();
+                resetForm();
+                renderLista();
+
+              } catch (e) {
+                console.error(
+                  '[DOCUMENTOS][NOTAS] Error eliminando nota',
+                  e
+                );
+
+                alert(
+                  'No fue posible eliminar la nota.'
+                );
+              }
             }
           );
         }
@@ -9846,17 +9898,37 @@ async function abrirModalNotasDocumento(
       }
 
 
-      await updateDoc(
-        ref,
-        {
-          notasDocumento:
-            notas
-        }
-      );
+      btnGuardar.disabled =
+        true;
 
 
-      resetForm();
-      renderLista();
+      try {
+        await updateDoc(
+          ref,
+          {
+            notasDocumento:
+              notas
+          }
+        );
+
+
+        resetForm();
+        renderLista();
+
+      } catch (e) {
+        console.error(
+          '[DOCUMENTOS][NOTAS] Error guardando nota',
+          e
+        );
+
+        alert(
+          'No fue posible guardar la nota.'
+        );
+
+      } finally {
+        btnGuardar.disabled =
+          false;
+      }
     };
 
 
@@ -9875,9 +9947,9 @@ async function abrirModalNotasDocumento(
 
 
   modal.onclick =
-    evento => {
+    ev => {
       if (
-        evento.target ===
+        ev.target ===
         modal
       ) {
         modal.classList.remove(
