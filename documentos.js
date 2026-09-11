@@ -7238,10 +7238,13 @@ const vouchersSectionHtml =
         </table>
       </div>
 
-
-       ${vouchersSectionHtml}
-
-      <!-- ITEM IV: DECLARACIÓN -->
+      ${vouchersSectionHtml}
+      
+      ${getNotasResumenOperativoHTML(
+        grupo
+      )}
+      
+      <!-- DECLARACIÓN -->
       <div class="finanzas-footnote finanzas-footnote-main">
       DECLARO HABER RECIBIDO A CONFORMIDAD LOS ABONOS INDICADOS, LOS VOUCHERS Y LOS TICKETS SEÑALADOS EN ESTE DOCUMENTO.
       </div>
@@ -9016,6 +9019,81 @@ function getNotasDocumentoHTML(grupo, tipoDoc){
   `;
 }
 
+function getNotasResumenOperativoHTML(
+  grupo
+) {
+  const notas =
+    Array.isArray(
+      grupo.notasDocumento
+    )
+      ? grupo.notasDocumento
+      : [];
+
+
+  const visibles =
+    notas.filter(
+      nota =>
+        nota &&
+        (
+          nota.html ||
+          nota.texto
+        ) &&
+        Array.isArray(
+          nota.mostrarEn
+        ) &&
+        nota.mostrarEn.includes(
+          'R'
+        )
+    );
+
+
+  /*
+    Si no hay notas seleccionadas para la R,
+    no mostramos el título ni una sección vacía.
+  */
+  if (!visibles.length) {
+    return '';
+  }
+
+
+  const itemsHtml =
+    visibles
+      .map(
+        nota => {
+          const contenido =
+            nota.html
+              ? sanitizeNotaHtml(
+                  nota.html
+                )
+              : escapeHtml(
+                  nota.texto ||
+                  ''
+                );
+
+
+          return `
+            <li>
+              ${contenido}
+            </li>
+          `;
+        }
+      )
+      .join('');
+
+
+  return `
+    <div class="sec finanzas-informacion-adicional">
+      <div class="sec-title">
+        V. INFORMACIÓN ADICIONAL
+      </div>
+
+      <ul class="itinerario">
+        ${itemsHtml}
+      </ul>
+    </div>
+  `;
+}
+
 function ensureModalNotasDocumento(){
   let modal = document.getElementById('modalNotasDocumento');
   if (modal) return modal;
@@ -9226,155 +9304,595 @@ function ensureModalNotasDocumento(){
   return modal;
 }
 
-async function abrirModalNotasDocumento(grupoId){
-  const modal = ensureModalNotasDocumento();
-
-  const ref = doc(db, 'grupos', grupoId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return;
-
-  const grupo = { id:snap.id, ...snap.data() };
-  let notas = Array.isArray(grupo.notasDocumento)
-    ? [...grupo.notasDocumento]
-    : [];
-
-  let editIndex = null;
-
-  const editor = modal.querySelector('#notaDocumentoEditor');
-  const chkP = modal.querySelector('#notaMostrarP');
-  const chkC = modal.querySelector('#notaMostrarC');
-  const lista = modal.querySelector('#listaNotasDocumento');
-  const btnGuardar = modal.querySelector('#btnGuardarNotaDocumento');
-  const btnCancelar = modal.querySelector('#btnCancelarEdicionNota');
-  const btnCerrar = modal.querySelector('#btnCerrarNotasDocumento');
-
-  modal.querySelectorAll('.notas-toolbar button').forEach(b=>{
-    b.onclick = ()=>{
-      editor.focus();
-      document.execCommand(b.dataset.cmd, false, null);
-    };
-  });
-
-  function resetForm(){
-    editIndex = null;
-    editor.innerHTML = '';
-    chkP.checked = true;
-    chkC.checked = true;
-    btnGuardar.textContent = 'Agregar nota';
-    btnCancelar.style.display = 'none';
+function asegurarOpcionResumenOperativoNotas(
+  modal
+) {
+  if (
+    !modal ||
+    modal.querySelector(
+      '#notaMostrarR'
+    )
+  ) {
+    return;
   }
 
-  function renderLista(){
-    if (!notas.length){
-      lista.innerHTML = `<div class="note">No hay notas registradas para este grupo.</div>`;
-      return;
+
+  const contenedor =
+    modal.querySelector(
+      '.notas-checks'
+    );
+
+
+  if (!contenedor) {
+    return;
+  }
+
+
+  const label =
+    document.createElement(
+      'label'
+    );
+
+
+  label.innerHTML = `
+    <input
+      type="checkbox"
+      id="notaMostrarR"
+    >
+    Resumen operativo
+  `;
+
+
+  contenedor.appendChild(
+    label
+  );
+}
+
+async function abrirModalNotasDocumento(
+  grupoId
+) {
+  const modal =
+    ensureModalNotasDocumento();
+
+
+  /*
+    Agrega la opción R al modal existente.
+    No es necesario modificar documentos.html.
+  */
+  asegurarOpcionResumenOperativoNotas(
+    modal
+  );
+
+
+  const ref =
+    doc(
+      db,
+      'grupos',
+      grupoId
+    );
+
+
+  const snap =
+    await getDoc(
+      ref
+    );
+
+
+  if (!snap.exists()) {
+    return;
+  }
+
+
+  const grupo = {
+    id:
+      snap.id,
+
+    ...snap.data()
+  };
+
+
+  let notas =
+    Array.isArray(
+      grupo.notasDocumento
+    )
+      ? [
+          ...grupo.notasDocumento
+        ]
+      : [];
+
+
+  let editIndex =
+    null;
+
+
+  const editor =
+    modal.querySelector(
+      '#notaDocumentoEditor'
+    );
+
+  const chkP =
+    modal.querySelector(
+      '#notaMostrarP'
+    );
+
+  const chkC =
+    modal.querySelector(
+      '#notaMostrarC'
+    );
+
+  const chkR =
+    modal.querySelector(
+      '#notaMostrarR'
+    );
+
+  const lista =
+    modal.querySelector(
+      '#listaNotasDocumento'
+    );
+
+  const btnGuardar =
+    modal.querySelector(
+      '#btnGuardarNotaDocumento'
+    );
+
+  const btnCancelar =
+    modal.querySelector(
+      '#btnCancelarEdicionNota'
+    );
+
+  const btnCerrar =
+    modal.querySelector(
+      '#btnCerrarNotasDocumento'
+    );
+
+
+  modal
+    .querySelectorAll(
+      '.notas-toolbar button'
+    )
+    .forEach(
+      boton => {
+        boton.onclick =
+          () => {
+            editor.focus();
+
+            document.execCommand(
+              boton.dataset.cmd,
+              false,
+              null
+            );
+          };
+      }
+    );
+
+
+  /*
+    Para notas nuevas dejamos todas las opciones
+    desmarcadas.
+
+    Así el staff debe elegir conscientemente si la nota
+    corresponde a P, C, R o a más de un documento.
+  */
+  function resetForm() {
+    editIndex =
+      null;
+
+    editor.innerHTML =
+      '';
+
+    chkP.checked =
+      false;
+
+    chkC.checked =
+      false;
+
+    chkR.checked =
+      false;
+
+    btnGuardar.textContent =
+      'Agregar nota';
+
+    btnCancelar.style.display =
+      'none';
+  }
+
+
+  function obtenerLabelDocumentos(
+    mostrarEn
+  ) {
+    const seleccionados =
+      Array.isArray(
+        mostrarEn
+      )
+        ? mostrarEn
+        : [];
+
+
+    const nombres = [];
+
+
+    if (
+      seleccionados.includes(
+        'P'
+      )
+    ) {
+      nombres.push(
+        'Preconfirmación'
+      );
     }
 
-    lista.innerHTML = notas.map((n, idx)=>{
-      const mostrar = Array.isArray(n.mostrarEn) ? n.mostrarEn : [];
-      const label = mostrar.includes('P') && mostrar.includes('C')
-        ? 'Preconfirmación y Confirmación'
-        : mostrar.includes('P')
-          ? 'Sólo Preconfirmación'
-          : mostrar.includes('C')
-            ? 'Sólo Confirmación'
-            : 'Sin documento asignado';
 
-      return `
-        <div class="nota-card" data-idx="${idx}">
-          <div class="nota-card-texto">${n.html ? sanitizeNotaHtml(n.html) : escapeHtml(n.texto || '')}</div>
-          <div class="nota-card-meta">Aparece en: ${label}</div>
-          <div class="nota-card-actions">
-            <button type="button" class="btnEditarNota">Editar</button>
-            <button type="button" class="btnEliminarNota">Eliminar</button>
-          </div>
+    if (
+      seleccionados.includes(
+        'C'
+      )
+    ) {
+      nombres.push(
+        'Confirmación'
+      );
+    }
+
+
+    if (
+      seleccionados.includes(
+        'R'
+      )
+    ) {
+      nombres.push(
+        'Resumen operativo'
+      );
+    }
+
+
+    return nombres.length
+      ? nombres.join(', ')
+      : 'Sin documento asignado';
+  }
+
+
+  function renderLista() {
+    if (!notas.length) {
+      lista.innerHTML = `
+        <div class="note">
+          No hay notas registradas para este grupo.
         </div>
       `;
-    }).join('');
 
-    lista.querySelectorAll('.btnEditarNota').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const card = btn.closest('.nota-card');
-        const idx = Number(card.dataset.idx);
-        const n = notas[idx];
+      return;
+    }
 
-        editIndex = idx;
-        editor.innerHTML = n.html || escapeHtml(n.texto || '');
-        chkP.checked = Array.isArray(n.mostrarEn) && n.mostrarEn.includes('P');
-        chkC.checked = Array.isArray(n.mostrarEn) && n.mostrarEn.includes('C');
-        btnGuardar.textContent = 'Guardar cambios';
-        btnCancelar.style.display = 'inline-block';
-      });
-    });
 
-    lista.querySelectorAll('.btnEliminarNota').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const card = btn.closest('.nota-card');
-        const idx = Number(card.dataset.idx);
+    lista.innerHTML =
+      notas
+        .map(
+          (
+            nota,
+            idx
+          ) => {
+            const mostrarEn =
+              Array.isArray(
+                nota.mostrarEn
+              )
+                ? nota.mostrarEn
+                : [];
 
-        if (!confirm('¿Eliminar esta nota?')) return;
 
-        notas.splice(idx, 1);
-        await updateDoc(ref, { notasDocumento: notas });
-        resetForm();
-        renderLista();
-      });
-    });
+            const label =
+              obtenerLabelDocumentos(
+                mostrarEn
+              );
+
+
+            const contenido =
+              nota.html
+                ? sanitizeNotaHtml(
+                    nota.html
+                  )
+                : escapeHtml(
+                    nota.texto ||
+                    ''
+                  );
+
+
+            return `
+              <div
+                class="nota-card"
+                data-idx="${idx}"
+              >
+                <div class="nota-card-texto">
+                  ${contenido}
+                </div>
+
+                <div class="nota-card-meta">
+                  Aparece en: ${label}
+                </div>
+
+                <div class="nota-card-actions">
+                  <button
+                    type="button"
+                    class="btnEditarNota"
+                  >
+                    Editar
+                  </button>
+
+                  <button
+                    type="button"
+                    class="btnEliminarNota"
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+        )
+        .join('');
+
+
+    lista
+      .querySelectorAll(
+        '.btnEditarNota'
+      )
+      .forEach(
+        boton => {
+          boton.addEventListener(
+            'click',
+            () => {
+              const card =
+                boton.closest(
+                  '.nota-card'
+                );
+
+
+              const idx =
+                Number(
+                  card.dataset.idx
+                );
+
+
+              const nota =
+                notas[idx];
+
+
+              const mostrarEn =
+                Array.isArray(
+                  nota.mostrarEn
+                )
+                  ? nota.mostrarEn
+                  : [];
+
+
+              editIndex =
+                idx;
+
+
+              editor.innerHTML =
+                nota.html ||
+                escapeHtml(
+                  nota.texto ||
+                  ''
+                );
+
+
+              chkP.checked =
+                mostrarEn.includes(
+                  'P'
+                );
+
+
+              chkC.checked =
+                mostrarEn.includes(
+                  'C'
+                );
+
+
+              chkR.checked =
+                mostrarEn.includes(
+                  'R'
+                );
+
+
+              btnGuardar.textContent =
+                'Guardar cambios';
+
+
+              btnCancelar.style.display =
+                'inline-block';
+            }
+          );
+        }
+      );
+
+
+    lista
+      .querySelectorAll(
+        '.btnEliminarNota'
+      )
+      .forEach(
+        boton => {
+          boton.addEventListener(
+            'click',
+            async () => {
+              const card =
+                boton.closest(
+                  '.nota-card'
+                );
+
+
+              const idx =
+                Number(
+                  card.dataset.idx
+                );
+
+
+              if (
+                !confirm(
+                  '¿Eliminar esta nota?'
+                )
+              ) {
+                return;
+              }
+
+
+              notas.splice(
+                idx,
+                1
+              );
+
+
+              await updateDoc(
+                ref,
+                {
+                  notasDocumento:
+                    notas
+                }
+              );
+
+
+              resetForm();
+              renderLista();
+            }
+          );
+        }
+      );
   }
 
-  btnGuardar.onclick = async ()=>{
-    const html = sanitizeNotaHtml(editor.innerHTML);
-    const texto = notaPlainText(html);
-    const mostrarEn = [];
-    if (chkP.checked) mostrarEn.push('P');
-    if (chkC.checked) mostrarEn.push('C');
 
-    if (!texto){
-      alert('Escribe una nota.');
-      return;
-    }
+  btnGuardar.onclick =
+    async () => {
+      const html =
+        sanitizeNotaHtml(
+          editor.innerHTML
+        );
 
-    if (!mostrarEn.length){
-      alert('Selecciona si la nota irá en Preconfirmación, Confirmación o ambas.');
-      return;
-    }
 
-    const item = {
-      html,
-      texto,
-      mostrarEn,
-      actualizadoEl: new Date().toISOString()
+      const texto =
+        notaPlainText(
+          html
+        );
+
+
+      const mostrarEn =
+        [];
+
+
+      if (chkP.checked) {
+        mostrarEn.push(
+          'P'
+        );
+      }
+
+
+      if (chkC.checked) {
+        mostrarEn.push(
+          'C'
+        );
+      }
+
+
+      if (chkR.checked) {
+        mostrarEn.push(
+          'R'
+        );
+      }
+
+
+      if (!texto) {
+        alert(
+          'Escribe una nota.'
+        );
+
+        return;
+      }
+
+
+      if (!mostrarEn.length) {
+        alert(
+          'Selecciona al menos un documento donde aparecerá la nota.'
+        );
+
+        return;
+      }
+
+
+      const item = {
+        html,
+        texto,
+        mostrarEn,
+
+        actualizadoEl:
+          new Date()
+            .toISOString()
+      };
+
+
+      if (
+        editIndex ===
+        null
+      ) {
+        notas.push(
+          item
+        );
+
+      } else {
+        notas[editIndex] = {
+          ...(
+            notas[editIndex] ||
+            {}
+          ),
+
+          ...item
+        };
+      }
+
+
+      await updateDoc(
+        ref,
+        {
+          notasDocumento:
+            notas
+        }
+      );
+
+
+      resetForm();
+      renderLista();
     };
 
-    if (editIndex === null){
-      notas.push(item);
-    }else{
-      notas[editIndex] = {
-        ...(notas[editIndex] || {}),
-        ...item
-      };
-    }
 
-    await updateDoc(ref, { notasDocumento: notas });
-    resetForm();
-    renderLista();
-  };
+  btnCancelar.onclick =
+    () => {
+      resetForm();
+    };
 
-  btnCancelar.onclick = ()=>{
-    resetForm();
-  };
 
-  btnCerrar.onclick = ()=>{
-    modal.classList.remove('open');
-  };
+  btnCerrar.onclick =
+    () => {
+      modal.classList.remove(
+        'open'
+      );
+    };
 
-  modal.onclick = (ev)=>{
-    if (ev.target === modal) modal.classList.remove('open');
-  };
+
+  modal.onclick =
+    evento => {
+      if (
+        evento.target ===
+        modal
+      ) {
+        modal.classList.remove(
+          'open'
+        );
+      }
+    };
+
 
   resetForm();
   renderLista();
-  modal.classList.add('open');
+
+  modal.classList.add(
+    'open'
+  );
 }
 
 const DOC_LABELS = {
