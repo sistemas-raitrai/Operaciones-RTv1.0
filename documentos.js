@@ -7805,8 +7805,7 @@ async function abrirResumenFicha(
 
     const url =
       new URL(
-        "resumen-operativo-fichas-medicas.html",
-        window.location.href
+        "https://ventas-rt.vercel.app/resumen-operativo-fichas-medicas.html"
       );
 
 
