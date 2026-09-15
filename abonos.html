@@ -1899,6 +1899,177 @@
         border-radius: 0;
       }
     }
+
+    /* =========================================================
+       SOLICITUDES: DESTINATARIOS, PRIVACIDAD Y PAGO EN DÓLARES
+       ========================================================= */
+    
+    #abonoModal .privacidad-monto-box {
+      padding: .8rem .9rem;
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      border-radius: 10px;
+    }
+    
+    #abonoModal .privacidad-monto-box .checkbox-line {
+      margin: 0;
+      padding: 0;
+      background: transparent;
+      border: 0;
+    }
+    
+    #abonoModal .privacidad-monto-box .checkbox-line label {
+      color: #9a3412;
+      font-size: .82rem;
+    }
+    
+    #abonoModal .privacidad-monto-box p {
+      margin: .45rem 0 0;
+      color: #7c2d12;
+      font-size: .78rem;
+      line-height: 1.45;
+    }
+    
+    #solicitudPagoModal .solicitud-configuracion {
+      margin: 0 0 1rem;
+      padding: .85rem;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+    }
+    
+    #solicitudPagoModal .solicitud-configuracion h3 {
+      margin: 0 0 .25rem;
+      color: #0f172a;
+      font-size: .92rem;
+    }
+    
+    #solicitudPagoModal .solicitud-configuracion-texto {
+      margin: 0 0 .7rem;
+      color: #64748b;
+      font-size: .8rem;
+      line-height: 1.4;
+    }
+    
+    #solicitudPagoModal .destinatarios-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: .65rem;
+    }
+    
+    #solicitudPagoModal .destinatario-option {
+      display: flex;
+      align-items: center;
+      gap: .65rem;
+      min-width: 0;
+      padding: .7rem .75rem;
+      background: #fff;
+      border: 1px solid #d1d5db;
+      border-radius: 9px;
+      cursor: pointer;
+      text-transform: none;
+    }
+    
+    #solicitudPagoModal .destinatario-option:has(input:checked) {
+      background: #f0f9ff;
+      border-color: #38bdf8;
+    }
+    
+    #solicitudPagoModal .destinatario-option input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      flex: 0 0 auto;
+    }
+    
+    #solicitudPagoModal .destinatario-option span {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    
+    #solicitudPagoModal .destinatario-option strong {
+      color: #0f172a;
+      font-size: .84rem;
+    }
+    
+    #solicitudPagoModal .destinatario-option small {
+      margin-top: .1rem;
+      color: #64748b;
+      font-size: .75rem;
+      font-weight: 500;
+      text-transform: none;
+    }
+    
+    #solicitudPagoModal .copia-solicitante {
+      display: flex;
+      align-items: center;
+      gap: .45rem;
+      margin-top: .7rem;
+      padding: .55rem .65rem;
+      color: #166534;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 8px;
+      font-size: .78rem;
+    }
+    
+    #solicitudPagoModal .copia-solicitante .material-symbols-outlined {
+      font-size: 19px;
+    }
+    
+    #solicitudPagoModal .solicitud-error {
+      margin: .65rem 0 0;
+      color: #b91c1c;
+      font-size: .78rem;
+      font-weight: 700;
+    }
+    
+    #solicitudPagoModal .solicitud-aviso {
+      margin: 0 0 .85rem;
+      padding: .65rem .75rem;
+      border-radius: 8px;
+      font-size: .8rem;
+      line-height: 1.4;
+    }
+    
+    #solicitudPagoModal .solicitud-aviso.dolar {
+      color: #854d0e;
+      background: #fefce8;
+      border: 1px solid #fde68a;
+    }
+    
+    #confirmarPagoModal .checkbox-line.copia-ejecutor {
+      min-height: 39px;
+      display: flex;
+      align-items: center;
+      gap: .55rem;
+      padding: .55rem .65rem;
+      background: #f8fafc;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+    }
+    
+    #confirmarPagoModal .checkbox-line.copia-ejecutor input {
+      width: 18px;
+      height: 18px;
+      margin: 0;
+      flex: 0 0 auto;
+    }
+    
+    #confirmarPagoModal .checkbox-line.copia-ejecutor label {
+      margin: 0;
+      color: #334155;
+      font-size: .78rem;
+      text-transform: none;
+    }
+    
+    @media (max-width: 700px) {
+      #solicitudPagoModal .destinatarios-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
   </style>
 </head>
 
@@ -2458,6 +2629,7 @@
                 <option value="transferencia">Transferencia</option>
                 <option value="afex">AFEX</option>
                 <option value="efectivo">Efectivo</option>
+                <option value="transferencia_dolares">Transferencia USD</option>
                 <option value="cheque">Cheque</option>
               </select>
             </div>
@@ -2486,6 +2658,24 @@
                 rows="2"
                 placeholder="Detalle adicional opcional"
               ></textarea>
+            </div>
+
+            <div
+              id="abPrivacidadMontoWrap"
+              class="field full hidden"
+            >
+              <div class="privacidad-monto-box">
+                <div class="checkbox-line">
+                  <input
+                    id="abMontoPrivado"
+                    type="checkbox"
+                  />
+            
+                  <label for="abMontoPrivado">
+                    Movimiento Privado
+                  </label>
+                </div>
+              </div>
             </div>
 
             <div
@@ -2654,6 +2844,67 @@
           id="solicitudTipoEjecucion"
           class="solicitud-tipo"
         ></div>
+
+        <section class="solicitud-configuracion">
+          <h3>
+            Envío de la solicitud
+          </h3>
+        
+          <p class="solicitud-configuracion-texto">
+            Selecciona quiénes recibirán esta solicitud.
+          </p>
+        
+          <div
+            class="destinatarios-grid"
+            role="group"
+            aria-label="Destinatarios de la solicitud"
+          >
+            <label class="destinatario-option">
+              <input
+                id="spEnviarFacturacion"
+                type="checkbox"
+                value="facturacion@raitrai.cl"
+              />
+        
+              <span>
+                <strong>Facturación</strong>
+                <small>facturacion@raitrai.cl</small>
+              </span>
+            </label>
+        
+            <label class="destinatario-option">
+              <input
+                id="spEnviarAnaMaria"
+                type="checkbox"
+                value="anamaria@raitrai.cl"
+              />
+        
+              <span>
+                <strong>Ana María</strong>
+                <small>anamaria@raitrai.cl</small>
+              </span>
+            </label>
+          </div>
+        
+          <div class="copia-solicitante">
+            <span class="material-symbols-outlined">
+              forward_to_inbox
+            </span>
+        
+            <span>
+              Se enviará copia automáticamente a
+              <strong id="spCorreoSolicitante">—</strong>
+            </span>
+          </div>
+        
+          <p
+            id="spErrorDestinatarios"
+            class="solicitud-error hidden"
+            role="alert"
+          >
+            Debes seleccionar al menos un destinatario.
+          </p>
+        </section>
   
         <!-- ==========================================
              TRANSFERENCIA
@@ -2794,6 +3045,184 @@
               />
             </div>
   
+          </div>
+        </div>
+
+        <!-- ==========================================
+             TRANSFERENCIA EN DÓLARES
+             ========================================== -->
+        
+        <div
+          id="solicitudTransferenciaDolares"
+          class="solicitud-tipo-wrap hidden"
+        >
+          <div class="solicitud-aviso dolar">
+            Esta transferencia se realizará manualmente desde
+            otro banco. No se generará un archivo Excel bancario.
+          </div>
+        
+          <div class="solicitud-grid">
+        
+            <div class="field">
+              <label for="spDolarMoneda">
+                Moneda
+              </label>
+        
+              <select id="spDolarMoneda">
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+              </select>
+            </div>
+        
+            <div class="field">
+              <label for="spDolarMonto">
+                Monto
+              </label>
+        
+              <input
+                id="spDolarMonto"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarPais">
+                País beneficiario
+              </label>
+        
+              <input
+                id="spDolarPais"
+                type="text"
+              />
+            </div>
+        
+            <div class="field full">
+              <label for="spDolarBancoBeneficiario">
+                Banco beneficiario
+              </label>
+        
+              <input
+                id="spDolarBancoBeneficiario"
+                type="text"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarSwift">
+                SWIFT / BIC
+              </label>
+        
+              <input
+                id="spDolarSwift"
+                type="text"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarCodigoBanco">
+                ABA / Routing / Código banco
+              </label>
+        
+              <input
+                id="spDolarCodigoBanco"
+                type="text"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarNombreBeneficiario">
+                Nombre beneficiario
+              </label>
+        
+              <input
+                id="spDolarNombreBeneficiario"
+                type="text"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarIdentificacionBeneficiario">
+                RUT / identificación
+              </label>
+        
+              <input
+                id="spDolarIdentificacionBeneficiario"
+                type="text"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarCuentaBeneficiario">
+                Cuenta beneficiario
+              </label>
+        
+              <input
+                id="spDolarCuentaBeneficiario"
+                type="text"
+              />
+            </div>
+        
+            <div class="field full">
+              <label for="spDolarDireccionBeneficiario">
+                Dirección beneficiario
+              </label>
+        
+              <input
+                id="spDolarDireccionBeneficiario"
+                type="text"
+              />
+            </div>
+        
+            <div class="field full">
+              <label for="spDolarBancoIntermediario">
+                Banco intermediario
+              </label>
+        
+              <input
+                id="spDolarBancoIntermediario"
+                type="text"
+                placeholder="Opcional"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarSwiftIntermediario">
+                SWIFT banco intermediario
+              </label>
+        
+              <input
+                id="spDolarSwiftIntermediario"
+                type="text"
+                placeholder="Opcional"
+              />
+            </div>
+        
+            <div class="field">
+              <label for="spDolarCuentaIntermediario">
+                Cuenta banco intermediario
+              </label>
+        
+              <input
+                id="spDolarCuentaIntermediario"
+                type="text"
+                placeholder="Opcional"
+              />
+            </div>
+        
+            <div class="field full">
+              <label for="spDolarReferencia">
+                Referencia / instrucciones
+              </label>
+        
+              <textarea
+                id="spDolarReferencia"
+                rows="3"
+                placeholder="Información necesaria para efectuar el pago manual"
+              ></textarea>
+            </div>
+        
           </div>
         </div>
   
@@ -3172,7 +3601,7 @@
   
   
         <div class="solicitud-actions">
-  
+        
           <button
             id="btnDescargarSolicitud"
             class="btn excel"
@@ -3181,10 +3610,12 @@
             <span class="material-symbols-outlined">
               download
             </span>
-  
-            Descargar XLS
+        
+            <span id="textoBtnDescargarSolicitud">
+              Descargar XLS
+            </span>
           </button>
-  
+        
           <button
             id="btnCambiarEstadoSolicitud"
             class="btn pagada hidden"
@@ -3193,24 +3624,30 @@
             <span class="material-symbols-outlined">
               task_alt
             </span>
-  
-            Cambiar estado
+        
+            Registrar pago
           </button>
-  
+        
           <button
             id="btnGuardarSolicitudPago"
             class="btn primary"
             type="button"
           >
             <span class="material-symbols-outlined">
-              save
+              send
             </span>
-  
-            Guardar solicitud
+        
+            <span id="textoBtnGuardarSolicitudPago">
+              Guardar y enviar solicitud
+            </span>
           </button>
-  
+        
+          <span
+            id="estadoEnvioSolicitud"
+            class="form-state"
+          ></span>
+        
         </div>
-  
       </div>
     </div>
   </div>
@@ -3323,14 +3760,32 @@
   
           <div class="field">
             <label for="pagoArchivo">
-              Archivo
+              Comprobante de pago
             </label>
-  
+          
             <input
               id="pagoArchivo"
               type="file"
-              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
+              accept="image/*,.pdf,.xls,.xlsx"
             />
+          </div>
+          
+          <div class="field">
+            <label>
+              Notificación
+            </label>
+          
+            <div class="checkbox-line copia-ejecutor">
+              <input
+                id="pagoEnviarCopiaEjecutor"
+                type="checkbox"
+                checked
+              />
+          
+              <label for="pagoEnviarCopiaEjecutor">
+                Enviarme una copia del correo
+              </label>
+            </div>
           </div>
   
           <div
