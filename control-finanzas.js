@@ -26,9 +26,10 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const esc = valor => String(valor ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const num = valor => Number(valor || 0);
 const norm = valor => String(valor || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toUpperCase();
-const moneda = valor => ['CLP','USD','BRL','ARS'].includes(norm(valor)) ? norm(valor) : 'CLP';
+const moneda = valor => ['CLP','USD','BRL','ARS','SIN_DEFINIR'].includes(norm(valor)) ? norm(valor) : 'CLP';
 const fmtNum = valor => num(valor).toLocaleString('es-CL', { maximumFractionDigits: 2 });
 const fmtMoney = (valor, codigo) => {
+  if (moneda(codigo) === 'SIN_DEFINIR') return 'PENDIENTE';
   const prefijos = { CLP: '$', USD: 'US$', BRL: 'R$', ARS: 'AR$' };
   return `${prefijos[moneda(codigo)]} ${fmtNum(valor)}`;
 };
@@ -95,9 +96,11 @@ function renderDestinos() {
   $('#destinos').innerHTML = destinos.map(dest => {
     const items = lista.filter(r => norm(r.destinoFinanciero) === dest);
     const saldos = totalesPorMoneda(items, 'saldoPendiente');
+    const sinTarifa = items.reduce((suma, item) => suma + num(item.obligacionesSinTarifa), 0);
     const lineas = MONEDAS_ORDEN.filter(m => Object.prototype.hasOwnProperty.call(saldos, m))
       .map(m => `<span class="cf-destination-balance">Por pagar: ${fmtMoney(saldos[m], m)}</span>`).join('');
-    return `<button class="cf-destination ${dest === state.destino ? 'active' : ''}" data-destino="${esc(dest)}" type="button"><span class="cf-destination-name">${esc(dest)}</span>${lineas || '<span class="cf-muted">Sin obligaciones</span>'}</button>`;
+    const alertaHotel = sinTarifa ? `<span class="cf-destination-balance">⚠ ${sinTarifa} alojamiento(s) sin tarifa</span>` : '';
+    return `<button class="cf-destination ${dest === state.destino ? 'active' : ''}" data-destino="${esc(dest)}" type="button"><span class="cf-destination-name">${esc(dest)}</span>${lineas || (sinTarifa ? '' : '<span class="cf-muted">Sin obligaciones</span>')}${alertaHotel}</button>`;
   }).join('');
   $$('.cf-destination').forEach(btn => btn.addEventListener('click', () => {
     state.destino = btn.dataset.destino; renderDestinos(); renderProveedores();
@@ -117,16 +120,22 @@ function renderProveedores() {
   const tbody = $('#tablaProveedores tbody');
   tbody.innerHTML = items.map(r => {
     const saldo = num(r.saldoPendiente);
-    const revision = num(r.abonosPendientesRevision) > 0
+    const sinTarifa = num(r.obligacionesSinTarifa);
+    const revision = sinTarifa > 0
+      ? `<span class="cf-badge pending">Falta tarifa (${sinTarifa})</span>`
+      : num(r.abonosPendientesRevision) > 0
       ? `<span class="cf-badge pending">${num(r.abonosPendientesRevision)} pendiente(s)</span>`
       : '<span class="cf-badge reviewed">Al día</span>';
+    const valorObligacion = r.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(r.totalObligacion, r.monedaObligacion);
+    const valorAplicado = r.requiereConfiguracion ? '—' : fmtMoney(r.totalAplicado, r.monedaObligacion);
+    const valorSaldo = r.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(saldo, r.monedaObligacion);
     return `<tr data-key="${esc(claveProveedor(r))}">
       <td><strong>${esc(r.proveedorNombre || r.proveedorId || 'Sin proveedor')}</strong></td>
-      <td>${esc(norm(r.tipo || 'ACTIVIDAD'))}</td><td>${esc(moneda(r.monedaObligacion))}</td>
-      <td class="num">${fmtMoney(r.totalObligacion, r.monedaObligacion)}</td>
+      <td>${esc(norm(r.tipo || 'ACTIVIDAD'))}</td><td>${r.requiereConfiguracion ? 'SIN DEFINIR' : esc(moneda(r.monedaObligacion))}</td>
+      <td class="num">${valorObligacion}</td>
       <td class="num multi-money">${dineroEnviadoTexto(r)}</td>
-      <td class="num">${fmtMoney(r.totalAplicado, r.monedaObligacion)}</td>
-      <td class="num ${saldo > 0 ? 'saldo' : 'ok'}">${fmtMoney(saldo, r.monedaObligacion)}</td>
+      <td class="num">${valorAplicado}</td>
+      <td class="num ${r.requiereConfiguracion || saldo > 0 ? 'saldo' : 'ok'}">${valorSaldo}</td>
       <td>${revision}</td><td><button class="cf-btn btn-detalle" type="button">Ver detalle</button></td>
     </tr>`;
   }).join('');
@@ -178,9 +187,10 @@ function fechaMillis(v) { return typeof v?.toMillis === 'function' ? v.toMillis(
 function renderMetricas() {
   const r = state.proveedor;
   const enviado = Object.entries(r.totalEnviadoPorMoneda || {}).filter(([,v]) => num(v)).map(([m,v]) => fmtMoney(v,m)).join('<br>') || '—';
+  const pendiente = !!r.requiereConfiguracion;
   $('#metricasProveedor').innerHTML = [
-    ['OBLIGACIÓN', fmtMoney(r.totalObligacion, r.monedaObligacion)], ['DINERO ENVIADO', enviado],
-    ['APLICADO', fmtMoney(r.totalAplicado, r.monedaObligacion)], ['SALDO', fmtMoney(r.saldoPendiente, r.monedaObligacion)]
+    ['OBLIGACIÓN', pendiente ? 'PENDIENTE DE TARIFA' : fmtMoney(r.totalObligacion, r.monedaObligacion)], ['DINERO ENVIADO', enviado],
+    ['APLICADO', pendiente ? '—' : fmtMoney(r.totalAplicado, r.monedaObligacion)], ['SALDO', pendiente ? 'PENDIENTE' : fmtMoney(r.saldoPendiente, r.monedaObligacion)]
   ].map(([l,v]) => `<div class="cf-metric"><span class="cf-metric-label">${l}</span><span class="cf-metric-value">${v}</span></div>`).join('');
 }
 
@@ -188,7 +198,7 @@ function renderDetalle() { renderObligaciones(); renderAbonos(); renderReglas();
 
 function renderObligaciones() {
   const rows = [...state.obligaciones].sort((a,b) => String(a.fechaServicio || '').localeCompare(String(b.fechaServicio || '')));
-  $('#panel-obligaciones').innerHTML = `<div class="cf-section-head"><h3>Detalle de obligaciones</h3><span class="cf-muted">${rows.length} movimiento(s)</span></div><div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Fecha</th><th>Grupo</th><th>Servicio</th><th class="num">PAX</th><th class="num">Liberados</th><th class="num">Cobrables</th><th class="num">Tarifa</th><th class="num">Total</th><th>Estado</th></tr></thead><tbody>${rows.map(o => `<tr><td>${fechaTexto(o.fechaServicio)}</td><td>${esc(o.numeroNegocio || '')} · ${esc(o.nombreGrupo || '')}</td><td>${esc(o.servicioNombre || o.hotelNombre || '')}</td><td class="num">${fmtNum(o.paxReales ?? o.paxReservados)}</td><td class="num">${fmtNum(o.liberados)}</td><td class="num">${fmtNum(o.unidadesCobrables)}</td><td class="num">${fmtMoney(o.tarifaBase, o.monedaObligacion)}</td><td class="num">${fmtMoney(o.totalObligacion, o.monedaObligacion)}</td><td>${esc(norm(o.estadoRealizacion || 'PROGRAMADO'))}</td></tr>`).join('')}</tbody></table></div>${rows.length ? '' : '<div class="cf-empty">No hay obligaciones registradas.</div>'}`;
+  $('#panel-obligaciones').innerHTML = `<div class="cf-section-head"><h3>Detalle de obligaciones</h3><span class="cf-muted">${rows.length} movimiento(s)</span></div><div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Fecha</th><th>Grupo</th><th>Servicio</th><th class="num">PAX</th><th class="num">Noches</th><th class="num">Liberados</th><th class="num">Cobrables</th><th class="num">Tarifa</th><th class="num">Total</th><th>Estado</th></tr></thead><tbody>${rows.map(o => `<tr><td>${fechaTexto(o.fechaServicio)}</td><td>${esc(o.numeroNegocio || '')} · ${esc(o.nombreGrupo || '')}</td><td>${esc(o.servicioNombre || o.hotelNombre || '')}</td><td class="num">${fmtNum(o.paxReales ?? o.paxReservados)}</td><td class="num">${o.tipo === 'HOTEL' ? fmtNum(o.noches) : '—'}</td><td class="num">${fmtNum(o.liberados)}</td><td class="num">${fmtNum(o.unidadesCobrables)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.tarifaBase, o.monedaObligacion)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.totalObligacion, o.monedaObligacion)}</td><td>${o.requiereConfiguracion ? '<span class="cf-badge pending">SIN TARIFA</span>' : esc(norm(o.estadoFinanciero || o.estadoRealizacion || 'PROGRAMADO'))}</td></tr>`).join('')}</tbody></table></div>${rows.length ? '' : '<div class="cf-empty">No hay obligaciones registradas.</div>'}`;
 }
 
 function renderAbonos() {
