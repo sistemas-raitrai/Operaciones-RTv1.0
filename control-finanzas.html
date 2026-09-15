@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Finanzas | Rai Trai</title>
+  <link rel="icon" type="image/png" href="Logo Raitrai.png">
+  <link rel="stylesheet" href="estilos.css">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --cf-bg: #f4f6f9;
+      --cf-card: #ffffff;
+      --cf-text: #182132;
+      --cf-muted: #667085;
+      --cf-border: #e2e7ee;
+      --cf-dark: #172033;
+      --cf-blue: #2563eb;
+      --cf-red: #b42334;
+      --cf-green: #147a50;
+      --cf-yellow: #9a6700;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--cf-bg); color: var(--cf-text); font-family: Arial, sans-serif; }
+    body.modal-open { overflow: hidden; }
+    .cf-shell { width: min(1600px, 96vw); margin: 0 auto; padding: 22px 0 40px; }
+    .cf-header, .cf-row, .cf-toolbar, .cf-modal-head, .cf-section-head { display: flex; align-items: center; gap: 12px; }
+    .cf-header, .cf-modal-head, .cf-section-head { justify-content: space-between; }
+    .cf-header { margin-bottom: 18px; flex-wrap: wrap; }
+    .cf-header h1 { margin: 0; font-size: 1.7rem; }
+    .cf-subtitle, .cf-muted { color: var(--cf-muted); }
+    .cf-toolbar { background: var(--cf-card); border: 1px solid var(--cf-border); border-radius: 12px; padding: 14px; margin-bottom: 15px; flex-wrap: wrap; }
+    .cf-field { display: grid; gap: 5px; min-width: 170px; }
+    .cf-field label { font-size: .82rem; font-weight: 700; color: var(--cf-muted); }
+    .cf-field select, .cf-field input, .cf-field textarea { width: 100%; border: 1px solid #cfd6df; border-radius: 8px; padding: 9px 10px; background: #fff; font: inherit; }
+    .cf-btn { border: 1px solid var(--cf-border); background: #fff; color: var(--cf-text); border-radius: 8px; padding: 9px 13px; font-weight: 700; cursor: pointer; }
+    .cf-btn:hover { filter: brightness(.97); }
+    .cf-btn.primary { background: var(--cf-dark); color: #fff; border-color: var(--cf-dark); }
+    .cf-btn.blue { background: var(--cf-blue); color: #fff; border-color: var(--cf-blue); }
+    .cf-btn.danger { color: var(--cf-red); }
+    .cf-btn:disabled { opacity: .5; cursor: wait; }
+    .cf-spacer { flex: 1; }
+    .cf-status { min-height: 22px; margin: 8px 0; color: var(--cf-muted); }
+    .cf-status.error { color: var(--cf-red); font-weight: 700; }
+    .cf-destinations { display: grid; grid-template-columns: repeat(4, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .cf-destination { text-align: left; padding: 15px; border: 1px solid var(--cf-border); border-radius: 12px; background: var(--cf-card); cursor: pointer; min-height: 115px; }
+    .cf-destination.active { border-color: var(--cf-dark); box-shadow: inset 0 0 0 1px var(--cf-dark); }
+    .cf-destination-name { display: block; font-size: 1.04rem; font-weight: 800; margin-bottom: 9px; }
+    .cf-destination-balance { display: block; margin-top: 4px; font-weight: 700; color: var(--cf-red); }
+    .cf-card { background: var(--cf-card); border: 1px solid var(--cf-border); border-radius: 12px; padding: 16px; }
+    .cf-section-head { margin-bottom: 12px; flex-wrap: wrap; }
+    .cf-section-head h2, .cf-section-head h3 { margin: 0; }
+    .cf-table-wrap { overflow-x: auto; }
+    .cf-table { width: 100%; border-collapse: collapse; }
+    .cf-table th, .cf-table td { border-bottom: 1px solid #edf0f4; padding: 10px 9px; text-align: left; vertical-align: middle; }
+    .cf-table th { font-size: .8rem; color: var(--cf-muted); background: #fafbfc; white-space: nowrap; }
+    .cf-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .cf-table .saldo { color: var(--cf-red); font-weight: 800; }
+    .cf-table .ok { color: var(--cf-green); font-weight: 800; }
+    .cf-table .multi-money span { display: block; }
+    .cf-empty { padding: 38px 15px; text-align: center; color: var(--cf-muted); }
+    .cf-badge { display: inline-block; padding: 4px 8px; border-radius: 999px; background: #edf2ff; color: #294d9b; font-size: .76rem; font-weight: 800; }
+    .cf-badge.pending { background: #fff4d6; color: var(--cf-yellow); }
+    .cf-badge.reviewed { background: #def7eb; color: var(--cf-green); }
+    .cf-backdrop { position: fixed; inset: 0; display: none; background: rgba(16, 24, 40, .62); z-index: 3000; padding: 18px; }
+    .cf-backdrop.open { display: block; }
+    .cf-modal { width: min(1450px, 98vw); max-height: calc(100vh - 36px); overflow: auto; margin: 0 auto; background: #fff; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,.28); }
+    .cf-modal-head { position: sticky; top: 0; z-index: 4; background: #fff; padding: 15px 18px; border-bottom: 1px solid var(--cf-border); }
+    .cf-modal-head h2 { margin: 0; }
+    .cf-modal-body { padding: 18px; }
+    .cf-metrics { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
+    .cf-metric { background: #f6f8fb; border-radius: 10px; padding: 13px; }
+    .cf-metric-label { display: block; font-size: .77rem; font-weight: 800; color: var(--cf-muted); margin-bottom: 6px; }
+    .cf-metric-value { font-size: 1.05rem; font-weight: 800; }
+    .cf-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--cf-border); margin-bottom: 15px; overflow-x: auto; }
+    .cf-tab { border: 0; background: transparent; padding: 11px 13px; color: var(--cf-muted); font-weight: 800; cursor: pointer; border-bottom: 3px solid transparent; }
+    .cf-tab.active { color: var(--cf-text); border-bottom-color: var(--cf-text); }
+    .cf-tab-panel[hidden] { display: none; }
+    .cf-form-grid { display: grid; grid-template-columns: repeat(2, minmax(220px, 1fr)); gap: 12px; }
+    .cf-form-grid .wide { grid-column: 1 / -1; }
+    .cf-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 15px; }
+    dialog { width: min(680px, 94vw); border: 0; border-radius: 12px; padding: 0; box-shadow: 0 22px 65px rgba(0,0,0,.28); }
+    dialog::backdrop { background: rgba(16,24,40,.6); }
+    .cf-dialog-head { padding: 15px 17px; border-bottom: 1px solid var(--cf-border); }
+    .cf-dialog-head h3 { margin: 0; }
+    .cf-dialog-body { padding: 17px; }
+    @media (max-width: 950px) { .cf-destinations { grid-template-columns: repeat(2, 1fr); } .cf-metrics { grid-template-columns: repeat(2,1fr); } }
+    @media (max-width: 560px) { .cf-shell { width: 94vw; } .cf-destinations, .cf-metrics, .cf-form-grid { grid-template-columns: 1fr; } .cf-form-grid .wide { grid-column: auto; } .cf-btn { min-height: 42px; } }
+  </style>
+</head>
+<body>
+  <main class="cf-shell">
+    <header class="cf-header">
+      <div>
+        <h1>CONTROL FINANZAS</h1>
+        <div class="cf-subtitle">Pagos pendientes por destino y proveedor</div>
+      </div>
+      <div class="cf-row">
+        <span id="usuarioConectado" class="cf-muted"></span>
+        <a class="cf-btn" href="index.html">Volver</a>
+        <button id="btnExportarTodo" class="cf-btn primary" type="button">Exportar todo a Excel</button>
+      </div>
+    </header>
+
+    <section class="cf-toolbar" aria-label="Filtros">
+      <div class="cf-field">
+        <label for="filtroAno">Año de viaje</label>
+        <select id="filtroAno"></select>
+      </div>
+      <div class="cf-field">
+        <label for="filtroTipo">Mostrar</label>
+        <select id="filtroTipo">
+          <option value="TODOS">Actividades y hoteles</option>
+          <option value="ACTIVIDAD">Solo actividades</option>
+          <option value="HOTEL">Solo hoteles</option>
+        </select>
+      </div>
+      <div class="cf-spacer"></div>
+      <button id="btnRecargar" class="cf-btn" type="button">Actualizar información</button>
+    </section>
+
+    <div id="estadoCarga" class="cf-status" role="status" aria-live="polite"></div>
+    <section id="destinos" class="cf-destinations" aria-label="Destinos"></section>
+
+    <section class="cf-card">
+      <div class="cf-section-head">
+        <div>
+          <h2 id="tituloDestino">Seleccione un destino</h2>
+          <div id="subtituloDestino" class="cf-muted">Los saldos se mantienen separados por moneda.</div>
+        </div>
+        <button id="btnExportarDestino" class="cf-btn" type="button" disabled>Exportar destino</button>
+      </div>
+      <div class="cf-table-wrap">
+        <table id="tablaProveedores" class="cf-table">
+          <thead>
+            <tr>
+              <th>Proveedor</th><th>Tipo</th><th>Moneda deuda</th>
+              <th class="num">Obligación</th><th class="num">Enviado</th>
+              <th class="num">Aplicado</th><th class="num">Saldo</th><th>Revisión</th><th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+          <tfoot></tfoot>
+        </table>
+      </div>
+      <div id="sinProveedores" class="cf-empty" hidden>No hay proveedores para esta selección.</div>
+    </section>
+  </main>
+
+  <div id="detalleBackdrop" class="cf-backdrop" aria-hidden="true">
+    <section class="cf-modal" role="dialog" aria-modal="true" aria-labelledby="detalleTitulo">
+      <header class="cf-modal-head">
+        <div><h2 id="detalleTitulo">Detalle del proveedor</h2><div id="detalleSubtitulo" class="cf-muted"></div></div>
+        <div class="cf-row"><button id="btnExportarProveedor" class="cf-btn" type="button">Exportar proveedor</button><button id="btnCerrarDetalle" class="cf-btn" type="button">Cerrar</button></div>
+      </header>
+      <div class="cf-modal-body">
+        <div id="detalleEstado" class="cf-status" role="status"></div>
+        <section id="metricasProveedor" class="cf-metrics"></section>
+        <nav class="cf-tabs" aria-label="Secciones del proveedor">
+          <button class="cf-tab active" data-tab="obligaciones" type="button">Obligaciones</button>
+          <button class="cf-tab" data-tab="abonos" type="button">Abonos</button>
+          <button class="cf-tab" data-tab="reglas" type="button">Reglas</button>
+          <button class="cf-tab" data-tab="historial" type="button">Historial</button>
+        </nav>
+        <section id="panel-obligaciones" class="cf-tab-panel"></section>
+        <section id="panel-abonos" class="cf-tab-panel" hidden></section>
+        <section id="panel-reglas" class="cf-tab-panel" hidden></section>
+        <section id="panel-historial" class="cf-tab-panel" hidden></section>
+      </div>
+    </section>
+  </div>
+
+  <dialog id="dialogEditarAbono">
+    <div class="cf-dialog-head"><h3>Revisar aplicación del abono</h3></div>
+    <form id="formEditarAbono" class="cf-dialog-body">
+      <input id="abonoId" type="hidden">
+      <div class="cf-form-grid">
+        <div class="cf-field"><label for="abMonedaEnviada">Moneda enviada</label><input id="abMonedaEnviada" readonly></div>
+        <div class="cf-field"><label for="abMontoEnviado">Monto enviado</label><input id="abMontoEnviado" type="number" readonly></div>
+        <div class="cf-field"><label for="abMonedaAplicada">Moneda aplicada</label><select id="abMonedaAplicada"><option>CLP</option><option>USD</option><option>BRL</option><option>ARS</option></select></div>
+        <div class="cf-field"><label for="abTipoCambio">Tipo de cambio aplicado</label><input id="abTipoCambio" type="number" min="0" step="0.0001"></div>
+        <div class="cf-field"><label for="abMontoAplicado">Monto reconocido/aplicado</label><input id="abMontoAplicado" type="number" min="0" step="0.01" required></div>
+        <div class="cf-field"><label for="abUnidadesCubiertas">Ingresos o cupos cubiertos</label><input id="abUnidadesCubiertas" type="number" min="0" step="1"></div>
+        <div class="cf-field wide"><label for="abMotivo">Motivo u observación de la revisión</label><textarea id="abMotivo" rows="3" required></textarea></div>
+      </div>
+      <div id="errorEditarAbono" class="cf-status error"></div>
+      <div class="cf-form-actions"><button id="btnCancelarEdicion" class="cf-btn" type="button">Cancelar</button><button class="cf-btn blue" type="submit">Guardar revisión</button></div>
+    </form>
+  </dialog>
+
+  <script type="module" src="control-finanzas.js"></script>
+</body>
+</html>
