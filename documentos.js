@@ -4294,6 +4294,213 @@ function renderTransfersPreconfirmacion(vuelosNorm){
   `;
 }
 
+function renderTransfersConfirmacion(vuelosNorm){
+  const transfers =
+    (vuelosNorm || []).filter(
+      esTransferReal
+    );
+
+  if (!transfers.length) {
+    return '';
+  }
+
+  const items = [];
+  const vistos = new Set();
+
+  const addItem = ({
+    tramo,
+    origen,
+    destino,
+    fecha,
+    hora
+  }) => {
+    if (!fecha) {
+      return;
+    }
+
+    const desde =
+      origen ||
+      'Origen por informar';
+
+    const hasta =
+      destino ||
+      'Destino por informar';
+
+    const horaNormalizada =
+      normTime(
+        hora ||
+        ''
+      );
+
+    const key = [
+      tramo,
+      desde,
+      hasta,
+      fecha,
+      horaNormalizada
+    ].join('__');
+
+    if (vistos.has(key)) {
+      return;
+    }
+
+    vistos.add(key);
+
+    const horaHTML =
+      horaNormalizada
+        ? ` · ${hrs(horaNormalizada)}`
+        : '';
+
+    items.push(`
+      <li>
+        <strong>${desde} → ${hasta}:</strong>
+        ${formatShortDate(fecha)}${horaHTML}
+      </li>
+    `);
+  };
+
+  transfers.forEach(v => {
+    const leg =
+      String(
+        v.transferLeg ||
+        ''
+      ).toLowerCase();
+
+    if (leg === 'ida') {
+      const ruta =
+        getRutaTransfer(
+          v,
+          'ida'
+        );
+
+      addItem({
+        tramo: 'IDA',
+        origen: ruta.desde,
+        destino: ruta.hasta,
+        fecha: v.fechaIda,
+        hora:
+          v.idaHora ||
+          v.vueloIdaHora
+      });
+
+      return;
+    }
+
+    if (leg === 'vuelta') {
+      const ruta =
+        getRutaTransfer(
+          v,
+          'vuelta'
+        );
+
+      addItem({
+        tramo: 'VUELTA',
+        origen: ruta.desde,
+        destino: ruta.hasta,
+        fecha: v.fechaVuelta,
+        hora:
+          v.vueltaHora ||
+          v.vueloVueltaHora
+      });
+
+      return;
+    }
+
+    if (leg === 'ida+vuelta') {
+      const rutaIda =
+        getRutaTransfer(
+          v,
+          'ida'
+        );
+
+      const rutaVuelta =
+        getRutaTransfer(
+          v,
+          'vuelta'
+        );
+
+      addItem({
+        tramo: 'IDA',
+        origen: rutaIda.desde,
+        destino: rutaIda.hasta,
+        fecha: v.fechaIda,
+        hora:
+          v.idaHora ||
+          v.vueloIdaHora
+      });
+
+      addItem({
+        tramo: 'VUELTA',
+        origen: rutaVuelta.desde,
+        destino: rutaVuelta.hasta,
+        fecha: v.fechaVuelta,
+        hora:
+          v.vueltaHora ||
+          v.vueloVueltaHora
+      });
+
+      return;
+    }
+
+    /*
+      Respaldo para traslados antiguos
+      que todavía no tengan transferLeg.
+    */
+    if (v.fechaIda) {
+      const rutaIda =
+        getRutaTransfer(
+          v,
+          'ida'
+        );
+
+      addItem({
+        tramo: 'IDA',
+        origen: rutaIda.desde,
+        destino: rutaIda.hasta,
+        fecha: v.fechaIda,
+        hora:
+          v.idaHora ||
+          v.vueloIdaHora
+      });
+    }
+
+    if (v.fechaVuelta) {
+      const rutaVuelta =
+        getRutaTransfer(
+          v,
+          'vuelta'
+        );
+
+      addItem({
+        tramo: 'VUELTA',
+        origen: rutaVuelta.desde,
+        destino: rutaVuelta.hasta,
+        fecha: v.fechaVuelta,
+        hora:
+          v.vueltaHora ||
+          v.vueloVueltaHora
+      });
+    }
+  });
+
+  if (!items.length) {
+    return '';
+  }
+
+  return `
+    <div
+      class="note"
+      style="margin-top:1.5mm;"
+    >
+      <strong>Traslado(s):</strong>
+
+      <ul style="margin-top:1mm;">
+        ${items.join('')}
+      </ul>
+    </div>
+  `;
+}
+
 function renderTransportesPreconfirmacion(vuelosNorm){
   const rows = [];
   const vistos = new Set();
@@ -4569,60 +4776,177 @@ function renderTransportesPreconfirmacion(vuelosNorm){
 }
 
 function renderTransportesConfirmacion(vuelosNorm){
-  const { idaLegsPlan, vueltaLegsPlan } = particionarVuelos(vuelosNorm);
-
-  const terrestres = (vuelosNorm || []).filter(v =>
-    norm(v.tipoTransporte || '') === 'terrestre' && !v.isTransfer
+  const {
+    idaLegsPlan,
+    vueltaLegsPlan
+  } = particionarVuelos(
+    vuelosNorm
   );
 
-  const transfers = (vuelosNorm || []).filter(v => !!v.isTransfer);
+  /*
+    Transportes terrestres principales.
+
+    Los traslados locales quedan fuera de esta tabla
+    y se muestran después en un bloque independiente.
+  */
+  const terrestres =
+    (vuelosNorm || []).filter(v =>
+      norm(
+        v.tipoTransporte ||
+        ''
+      ) === 'terrestre' &&
+      !esTransferReal(v)
+    );
 
   const rows = [];
 
+  /*
+    VUELOS DE IDA
+  */
   idaLegsPlan.forEach(v => {
     rows.push(`
       <tr>
-        <td><strong>AÉREO</strong></td>
+        <td>
+          <strong>AÉREO</strong>
+        </td>
+
         <td>IDA</td>
-        <td>${[v.aerolinea, v.numero].filter(Boolean).join(' ') || '—'}</td>
-        <td>${formatShortDate(v.fechaIda || v.fecha)}</td>
-        <td>${v.origen || '—'}</td>
-        <td>${hrs(v.presentacionIda)}</td>
-        <td>${hrs(v.salidaIda)}</td>
-        <td>${v.destino || '—'}</td>
-        <td>${hrs(v.arriboIda)}</td>
+
+        <td>
+          ${
+            [
+              v.aerolinea,
+              v.numero
+            ]
+              .filter(Boolean)
+              .join(' ') ||
+            '—'
+          }
+        </td>
+
+        <td>
+          ${
+            formatShortDate(
+              v.fechaIda ||
+              v.fecha
+            )
+          }
+        </td>
+
+        <td>
+          ${v.origen || '—'}
+        </td>
+
+        <td>
+          ${hrs(v.presentacionIda)}
+        </td>
+
+        <td>
+          ${hrs(v.salidaIda)}
+        </td>
+
+        <td>
+          ${v.destino || '—'}
+        </td>
+
+        <td>
+          ${hrs(v.arriboIda)}
+        </td>
       </tr>
     `);
   });
 
+  /*
+    VUELOS DE VUELTA
+  */
   vueltaLegsPlan.forEach(v => {
     rows.push(`
       <tr>
-        <td><strong>AÉREO</strong></td>
+        <td>
+          <strong>AÉREO</strong>
+        </td>
+
         <td>VUELTA</td>
-        <td>${[v.aerolinea, v.numero].filter(Boolean).join(' ') || '—'}</td>
-        <td>${formatShortDate(v.fechaVuelta || v.fecha)}</td>
-        <td>${v.origen || '—'}</td>
-        <td>${hrs(v.presentacionVuelta)}</td>
-        <td>${hrs(v.salidaVuelta)}</td>
-        <td>${v.destino || '—'}</td>
-        <td>${hrs(v.arriboVuelta)}</td>
+
+        <td>
+          ${
+            [
+              v.aerolinea,
+              v.numero
+            ]
+              .filter(Boolean)
+              .join(' ') ||
+            '—'
+          }
+        </td>
+
+        <td>
+          ${
+            formatShortDate(
+              v.fechaVuelta ||
+              v.fecha
+            )
+          }
+        </td>
+
+        <td>
+          ${v.origen || '—'}
+        </td>
+
+        <td>
+          ${hrs(v.presentacionVuelta)}
+        </td>
+
+        <td>
+          ${hrs(v.salidaVuelta)}
+        </td>
+
+        <td>
+          ${v.destino || '—'}
+        </td>
+
+        <td>
+          ${hrs(v.arriboVuelta)}
+        </td>
       </tr>
     `);
   });
 
+  /*
+    TRANSPORTES TERRESTRES PRINCIPALES
+  */
   terrestres.forEach(v => {
     if (v.fechaIda) {
       rows.push(`
         <tr>
-          <td><strong>TERRESTRE</strong></td>
+          <td>
+            <strong>TERRESTRE</strong>
+          </td>
+
           <td>IDA</td>
-          <td>${v.proveedor || '—'}</td>
-          <td>${formatShortDate(v.fechaIda)}</td>
-          <td>${v.origen || '—'}</td>
+
+          <td>
+            ${v.proveedor || '—'}
+          </td>
+
+          <td>
+            ${formatShortDate(v.fechaIda)}
+          </td>
+
+          <td>
+            ${v.origen || '—'}
+          </td>
+
           <td>—</td>
-          <td>${hrs(v.idaHora)}</td>
-          <td>${v.destino || '—'}</td>
+
+          <td>
+            ${hrs(v.idaHora)}
+          </td>
+
+          <td>
+            ${v.destino || '—'}
+          </td>
+
           <td>—</td>
         </tr>
       `);
@@ -4631,127 +4955,84 @@ function renderTransportesConfirmacion(vuelosNorm){
     if (v.fechaVuelta) {
       rows.push(`
         <tr>
-          <td><strong>TERRESTRE</strong></td>
+          <td>
+            <strong>TERRESTRE</strong>
+          </td>
+
           <td>VUELTA</td>
-          <td>${v.proveedor || '—'}</td>
-          <td>${formatShortDate(v.fechaVuelta)}</td>
-          <td>${v.destino || '—'}</td>
+
+          <td>
+            ${v.proveedor || '—'}
+          </td>
+
+          <td>
+            ${formatShortDate(v.fechaVuelta)}
+          </td>
+
+          <td>
+            ${v.destino || '—'}
+          </td>
+
           <td>—</td>
-          <td>${hrs(v.vueltaHora)}</td>
-          <td>${v.origen || '—'}</td>
+
+          <td>
+            ${hrs(v.vueltaHora)}
+          </td>
+
+          <td>
+            ${v.origen || '—'}
+          </td>
+
           <td>—</td>
         </tr>
       `);
     }
   });
 
-  transfers.forEach(v => {
-    const leg = String(v.transferLeg || '').toLowerCase();
-    const origen = v.origen || '—';
-    const destino = v.destino || '—';
-  
-    const addTransferRow = ({ tramo, fecha, desde, hasta, hora }) => {
-      if (!fecha) return;
-  
-      rows.push(`
-        <tr>
-          <td><strong>TRASLADO</strong></td>
-          <td>${tramo}</td>
-          <td>${v.proveedor || '—'}</td>
-          <td>${formatShortDate(fecha)}</td>
-          <td>${desde || '—'}</td>
-          <td>—</td>
-          <td>${hrs(hora)}</td>
-          <td>${hasta || '—'}</td>
-          <td>—</td>
-        </tr>
-      `);
-    };
-  
-    if (leg === 'ida') {
-      addTransferRow({
-        tramo: 'IDA',
-        fecha: v.fechaIda,
-        desde: origen,
-        hasta: destino,
-        hora: v.idaHora || v.vueloIdaHora
-      });
-      return;
-    }
-  
-    if (leg === 'vuelta') {
-      addTransferRow({
-        tramo: 'VUELTA',
-        fecha: v.fechaVuelta,
-        desde: destino,
-        hasta: origen,
-        hora: v.vueltaHora || v.vueloVueltaHora
-      });
-      return;
-    }
-  
-    if (leg === 'ida+vuelta') {
-      addTransferRow({
-        tramo: 'IDA',
-        fecha: v.fechaIda,
-        desde: origen,
-        hasta: destino,
-        hora: v.idaHora || v.vueloIdaHora
-      });
-  
-      addTransferRow({
-        tramo: 'VUELTA',
-        fecha: v.fechaVuelta,
-        desde: destino,
-        hasta: origen,
-        hora: v.vueltaHora || v.vueloVueltaHora
-      });
-      return;
-    }
-  
-    // Respaldo para datos antiguos sin transferLeg
-    if (v.fechaIda) {
-      addTransferRow({
-        tramo: 'IDA',
-        fecha: v.fechaIda,
-        desde: origen,
-        hasta: destino,
-        hora: v.idaHora || v.vueloIdaHora
-      });
-    }
-  
-    if (v.fechaVuelta) {
-      addTransferRow({
-        tramo: 'VUELTA',
-        fecha: v.fechaVuelta,
-        desde: destino,
-        hasta: origen,
-        hora: v.vueltaHora || v.vueloVueltaHora
-      });
-    }
-  });
+  const tablaPrincipal =
+    rows.length
+      ? `
+        <table class="confirm-flight-table">
+          <thead>
+            <tr>
+              <th>Tipo</th>
+              <th>Tramo</th>
+              <th>Proveedor</th>
+              <th>Fecha</th>
+              <th>Origen</th>
+              <th>Presentación</th>
+              <th>Salida</th>
+              <th>Destino</th>
+              <th>Arribo</th>
+            </tr>
+          </thead>
 
-  if (!rows.length) {
-    return `<div class="note">— Sin transportes registrados —</div>`;
+          <tbody>
+            ${rows.join('')}
+          </tbody>
+        </table>
+      `
+      : '';
+
+  const trasladosHTML =
+    renderTransfersConfirmacion(
+      vuelosNorm
+    );
+
+  if (
+    !tablaPrincipal &&
+    !trasladosHTML
+  ) {
+    return `
+      <div class="note">
+        — Sin transportes registrados —
+      </div>
+    `;
   }
 
   return `
-    <table class="confirm-flight-table">
-      <thead>
-        <tr>
-          <th>Tipo</th>
-          <th>Tramo</th>
-          <th>Proveedor</th>
-          <th>Fecha</th>
-          <th>Origen</th>
-          <th>Presentación</th>
-          <th>Salida</th>
-          <th>Destino</th>
-          <th>Arribo</th>
-        </tr>
-      </thead>
-      <tbody>${rows.join('')}</tbody>
-    </table>
+    ${tablaPrincipal}
+    ${trasladosHTML}
   `;
 }
 
