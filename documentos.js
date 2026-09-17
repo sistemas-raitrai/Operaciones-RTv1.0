@@ -354,12 +354,118 @@ function injectPageLightStyles(){
         grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
       }
     }
+
+      /* =========================================================
+         TABLA DE TRANSPORTES — SOLO CONFIRMACIÓN C
+         Evita que las últimas columnas se salgan del documento
+      ========================================================= */
+    
+      .confirm-doc:not(.preconfirm-doc) .confirm-flight-table{
+        width:100% !important;
+        max-width:100% !important;
+        border-collapse:collapse !important;
+        table-layout:fixed !important;
+        margin:1.5mm 0 !important;
+        font-size:7.2pt !important;
+        line-height:1.15 !important;
+      }
+    
+      .confirm-doc:not(.preconfirm-doc) .confirm-flight-table th,
+      .confirm-doc:not(.preconfirm-doc) .confirm-flight-table td{
+        box-sizing:border-box !important;
+        padding:1mm 0.7mm !important;
+        vertical-align:top !important;
+        text-align:left !important;
+        white-space:normal !important;
+        overflow-wrap:anywhere !important;
+        word-break:normal !important;
+      }
+    
+      .confirm-doc:not(.preconfirm-doc) .confirm-flight-table th{
+        font-size:6.6pt !important;
+        line-height:1.05 !important;
+        text-transform:uppercase;
+      }
+    
+      /* TIPO */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(1),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(1){
+        width:7%;
+      }
+    
+      /* TRAMO */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(2),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(2){
+        width:8%;
+      }
+    
+      /* PROVEEDOR */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(3),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(3){
+        width:17%;
+      }
+    
+      /* FECHA */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(4),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(4){
+        width:12%;
+      }
+    
+      /* ORIGEN */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(5),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(5){
+        width:14%;
+      }
+    
+      /* PRESENTACIÓN */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(6),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(6){
+        width:12%;
+      }
+    
+      /* SALIDA */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(7),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(7){
+        width:10%;
+      }
+    
+      /* DESTINO */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(8),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(8){
+        width:12%;
+      }
+    
+      /* ARRIBO */
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table th:nth-child(9),
+      .confirm-doc:not(.preconfirm-doc)
+      .confirm-flight-table td:nth-child(9){
+        width:8%;
+      }
   `;
   const s = document.createElement('style');
   s.id = 'light-ui-overrides';
   s.textContent = css;
   document.head.appendChild(s);
 }
+
+
 
 injectPageLightStyles();
 
