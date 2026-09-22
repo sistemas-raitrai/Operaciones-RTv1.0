@@ -28,6 +28,12 @@ const campos = [
 // Secciones por destino; `null` representa la sección "OTRO"
 const destinos = ['BRASIL','BARILOCHE','SUR DE CHILE','NORTE DE CHILE', null];
 
+const DESTINOS_FIJOS = new Set(
+  destinos
+    .filter(Boolean)
+    .map(destino => destino.toUpperCase())
+);
+
 let ANO_TARIFA_ACTIVO = String(new Date().getFullYear());
 
 function getAnoTarifaActivo() {
@@ -235,177 +241,368 @@ function setupSearch(){
    ========================================================== */
 function createSection(destFijo){
   const isOtro = destFijo === null;
-  let destActivo = destFijo;
 
-  // ——— contenedor de sección
+  /* =====================================================
+     1) Crear contenedor de la sección
+     ===================================================== */
   const sec = document.createElement('div');
   sec.className = 'section';
   sec.innerHTML = `<h3>${isOtro ? 'OTRO' : destFijo}</h3>`;
   document.getElementById('secciones').appendChild(sec);
 
-  // ——— controles (incluye exportar por sección)
+  /* =====================================================
+     2) Controles
+     ===================================================== */
   const ctrl = document.createElement('div');
   ctrl.className = 'controls';
+
   [
-    ['➕ Nueva fila',        add],
-    ['➕➕ Agregar 10 filas', ()=>[...Array(10)].forEach(add)],
-    ['💾 Guardar todo',      saveAll],
+    ['➕ Nueva fila', add],
+    ['➕➕ Agregar 10 filas', () => {
+      [...Array(10)].forEach(() => add());
+    }],
+    ['💾 Guardar todo', saveAll],
     ['💾 Guardar seleccionadas', saveSelected],
     ['🗑️ Eliminar seleccionadas', deleteSelected],
-    ['⬇️ Exportar Excel',    exportExcel]    // ⬅️ POR SECCIÓN
+    ['⬇️ Exportar Excel', exportExcel]
   ].forEach(([txt, fn]) => {
     const b = document.createElement('button');
     b.textContent = txt;
     b.onclick = fn;
     ctrl.appendChild(b);
   });
+
   sec.appendChild(ctrl);
 
-  // ——— tabla
+  /* =====================================================
+     3) Tabla
+     ===================================================== */
   const wrap = document.createElement('div');
   wrap.className = 'table-wrapper';
+
   const tbl = document.createElement('table');
 
-  // ——— cabecera
+  if (isOtro) {
+    tbl.classList.add('tbl-servicios-otro');
+  }
+
   const thead = document.createElement('thead');
-  const trh   = document.createElement('tr');
-  const headerTitles = [
-    '', 'No',
-    'Servicio','Tipo Servicio','Categoría','Ciudad',
-    'Restricciones','Proveedor',
-    'Indicaciones',              // NUEVA
-    'Voucher',                   // NUEVA
-    'Clave',                     // NUEVA
-    'Tipo Cobro','Moneda','Valor Servicio','Forma de Pago'
-  ];
+  const trh = document.createElement('tr');
+
+  /*
+    En OTRO agregamos Destino después de No.
+    En destinos fijos se mantiene exactamente el orden anterior.
+  */
+  const headerTitles = isOtro
+    ? [
+        '',
+        'No',
+        'Destino',
+        'Servicio',
+        'Tipo Servicio',
+        'Categoría',
+        'Ciudad',
+        'Restricciones',
+        'Proveedor',
+        'Indicaciones',
+        'Voucher',
+        'Clave',
+        'Tipo Cobro',
+        'Moneda',
+        'Valor Servicio',
+        'Forma de Pago'
+      ]
+    : [
+        '',
+        'No',
+        'Servicio',
+        'Tipo Servicio',
+        'Categoría',
+        'Ciudad',
+        'Restricciones',
+        'Proveedor',
+        'Indicaciones',
+        'Voucher',
+        'Clave',
+        'Tipo Cobro',
+        'Moneda',
+        'Valor Servicio',
+        'Forma de Pago'
+      ];
+
   headerTitles.forEach(txt => {
     const th = document.createElement('th');
     th.textContent = txt;
     trh.appendChild(th);
   });
+
   thead.appendChild(trh);
   tbl.appendChild(thead);
 
-  // ——— cuerpo
   const tbody = document.createElement('tbody');
   tbl.appendChild(tbody);
+
   wrap.appendChild(tbl);
   sec.appendChild(wrap);
 
-  // ——— Claves únicas por sección (evitar colisiones locales)
+  /* =====================================================
+     4) Estado de la sección
+     ===================================================== */
   const clavesUsadas = new Set();
+
+  /*
+    Para OTRO agregamos destino al comienzo.
+    Para los destinos fijos se mantienen los campos originales.
+  */
+  const camposSeccion = isOtro
+    ? ['destino', ...campos]
+    : [...campos];
+
+  const rows = [];
+  const serviceChanges = [];
+
   function generarClaveUnica(){
     const ABC = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let code = '';
+
     do {
-      code = Array.from({length:12}, () => ABC[Math.floor(Math.random()*ABC.length)]).join('');
+      code = Array.from(
+        { length: 12 },
+        () => ABC[Math.floor(Math.random() * ABC.length)]
+      ).join('');
     } while (clavesUsadas.has(code));
+
     clavesUsadas.add(code);
     return code;
   }
 
-  // Estructura de filas en memoria
-  const rows = []; // { inputs:[], ref?, checkbox:HTMLInputElement }
-  const serviceChanges = [];  // ← acumulamos cambios para propagar a itinerarios
-
-  // ——— carga de datos existentes para destinos fijos
-  if(!isOtro){
-    (async () => {
-      const snap = await getDocs(query(
-        collection(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destFijo, 'Listado'),
-        orderBy('servicio','asc')
-      ));
-      for(let d of snap.docs){
-        const o = d.data();
-        o.servicio = d.id;
-        if (o.clave) clavesUsadas.add(o.clave);
-        await add(o, doc(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destFijo, 'Listado', d.id));
-      }
-    })();
+  function normalizarDestino(valor){
+    return (valor || '')
+      .toString()
+      .trim()
+      .toUpperCase();
   }
 
-  /* -----------------------
-     Helpers internos
-     ----------------------- */
-  async function loadProvs(tr, selProv){
-    const sel = tr.querySelector('select[data-campo=proveedor]');
+  /* =====================================================
+     5) Cargar proveedores según el destino de cada fila
+     ===================================================== */
+  async function loadProvs(tr, destinoFila, proveedorSeleccionado = ''){
+    const sel = tr.querySelector('select[data-campo="proveedor"]');
+
+    if (!sel) return;
+
+    const destino = normalizarDestino(destinoFila);
+    const proveedorActual = (
+      proveedorSeleccionado ||
+      sel.value ||
+      ''
+    ).toString().trim().toUpperCase();
+
     sel.innerHTML = '<option value="">—</option>';
-    if(!destActivo) return;
-    const snap = await getDocs(query(
-      collection(db,'Proveedores',destActivo,'Listado'),
-      orderBy('proveedor','asc')
-    ));
-    snap.forEach(d => sel.appendChild(new Option(d.id,d.id)));
-    if(selProv) sel.value = selProv;
+
+    if (!destino) {
+      if (proveedorActual) {
+        sel.appendChild(
+          new Option(proveedorActual, proveedorActual, true, true)
+        );
+      }
+      return;
+    }
+
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, 'Proveedores', destino, 'Listado'),
+          orderBy('proveedor', 'asc')
+        )
+      );
+
+      snap.forEach(docSnap => {
+        const data = docSnap.data() || {};
+        const nombre = (
+          data.proveedor ||
+          docSnap.id ||
+          ''
+        ).toString().trim().toUpperCase();
+
+        if (!nombre) return;
+
+        sel.appendChild(new Option(nombre, nombre));
+      });
+
+      /*
+        Si el servicio tenía un proveedor que ya no aparece en el catálogo,
+        no lo eliminamos de la fila.
+      */
+      if (
+        proveedorActual &&
+        ![...sel.options].some(opt => opt.value === proveedorActual)
+      ) {
+        sel.appendChild(
+          new Option(
+            `${proveedorActual} (NO ESTÁ EN CATÁLOGO)`,
+            proveedorActual
+          )
+        );
+      }
+
+      sel.value = proveedorActual;
+    } catch (error) {
+      console.error(
+        `No se pudieron cargar proveedores de ${destino}:`,
+        error
+      );
+
+      if (proveedorActual) {
+        sel.appendChild(
+          new Option(proveedorActual, proveedorActual, true, true)
+        );
+      }
+    }
   }
 
+  /* =====================================================
+     6) Numeración
+     ===================================================== */
   function updateRowNumbers(){
-    rows.forEach((r,i) => {
-      r.checkbox.closest('tr').children[1].textContent = i + 1;
+    rows.forEach((r, index) => {
+      const tr = r.checkbox.closest('tr');
+      if (tr) tr.children[1].textContent = index + 1;
     });
   }
 
-  // Añadir fila
+  /* =====================================================
+     7) Agregar una fila
+     ===================================================== */
   async function add(prefill = {}, ref = null){
     const tr = document.createElement('tr');
     const inputs = [];
 
-    // checkbox
+    // Checkbox
     const tdChk = document.createElement('td');
-    const chk   = document.createElement('input');
-    chk.type    = 'checkbox';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
     tdChk.appendChild(chk);
     tr.appendChild(tdChk);
 
-    // número de fila
+    // Número de fila
     const tdNum = document.createElement('td');
     tr.appendChild(tdNum);
 
-    // celdas en orden de `campos`
-    for(let c of campos){
+    for (const campo of camposSeccion) {
       const td = document.createElement('td');
       let inp;
 
-      if(c === 'proveedor'){
-        inp = document.createElement('select');
-        inp.dataset.campo = c;
+      /* -----------------------------------------------
+         Destino personalizado
+         ----------------------------------------------- */
+      if (campo === 'destino') {
+        inp = document.createElement('input');
+        inp.dataset.campo = campo;
+        inp.placeholder = 'EJ.: MENDOZA';
+        inp.value = normalizarDestino(prefill.destino);
+
+        inp.addEventListener('input', () => {
+          inp.value = normalizarDestino(inp.value);
+          inp.title = inp.value;
+        });
       }
-      else if (c === 'voucher'){
+
+      /* -----------------------------------------------
+         Proveedor
+         ----------------------------------------------- */
+      else if (campo === 'proveedor') {
         inp = document.createElement('select');
-        inp.dataset.campo = c;
-        opciones.voucher.forEach(v => inp.appendChild(new Option(v, v)));
-        if (prefill[c]) {
-          const opt = [...inp.options].find(o => o.value === prefill[c]);
+        inp.dataset.campo = campo;
+      }
+
+      /* -----------------------------------------------
+         Voucher
+         ----------------------------------------------- */
+      else if (campo === 'voucher') {
+        inp = document.createElement('select');
+        inp.dataset.campo = campo;
+
+        opciones.voucher.forEach(valor => {
+          inp.appendChild(new Option(valor, valor));
+        });
+
+        if (prefill[campo]) {
+          const valor = prefill[campo]
+            .toString()
+            .trim()
+            .toUpperCase();
+
+          const opt = [...inp.options].find(o => o.value === valor);
           if (opt) opt.selected = true;
         }
       }
-      else if (c === 'clave'){
+
+      /* -----------------------------------------------
+         Clave electrónica
+         ----------------------------------------------- */
+      else if (campo === 'clave') {
         inp = document.createElement('input');
-        inp.dataset.campo = c;
+        inp.dataset.campo = campo;
         inp.readOnly = true;
-        inp.value = prefill[c] || '';
+        inp.value = prefill[campo] || '';
         inp.title = inp.value;
+
         if (inp.value) clavesUsadas.add(inp.value);
       }
-      else if(opciones[c]){
+
+      /* -----------------------------------------------
+         Selectores de catálogos
+         ----------------------------------------------- */
+      else if (opciones[campo]) {
         inp = document.createElement('select');
-        inp.dataset.campo = c;
-        if(c === 'categoria' || c === 'formaPago') inp.multiple = true;
-        opciones[c].forEach(o => inp.appendChild(new Option(o,o)));
-        if(prefill[c]){
-          const arr = Array.isArray(prefill[c]) ? prefill[c] : [prefill[c]];
-          arr.forEach(v => {
-            const opt = [...inp.options].find(x => x.value === v);
-            if(opt) opt.selected = true;
+        inp.dataset.campo = campo;
+
+        if (campo === 'categoria' || campo === 'formaPago') {
+          inp.multiple = true;
+        }
+
+        opciones[campo].forEach(valor => {
+          inp.appendChild(new Option(valor, valor));
+        });
+
+        if (prefill[campo]) {
+          const valores = Array.isArray(prefill[campo])
+            ? prefill[campo]
+            : [prefill[campo]];
+
+          valores.forEach(valorOriginal => {
+            const valor = (valorOriginal || '')
+              .toString()
+              .trim()
+              .toUpperCase();
+
+            const opt = [...inp.options].find(o => o.value === valor);
+            if (opt) opt.selected = true;
           });
         }
-      } else {
+      }
+
+      /* -----------------------------------------------
+         Inputs de texto
+         ----------------------------------------------- */
+      else {
         inp = document.createElement('input');
-        inp.value = prefill[c] || '';
-        if(c !== 'valorServicio') inp.oninput = ()=> inp.value = (inp.value || '').toString().toUpperCase();
-        inp.dataset.campo = c;
-        inp.onfocus = ()=> showFloatingEditor(inp);
-        inp.title   = inp.value;
+        inp.dataset.campo = campo;
+        inp.value = prefill[campo] || '';
+        inp.title = inp.value;
+
+        if (campo !== 'valorServicio') {
+          inp.addEventListener('input', () => {
+            inp.value = (inp.value || '')
+              .toString()
+              .toUpperCase();
+
+            inp.title = inp.value;
+          });
+        }
+
+        inp.onfocus = () => showFloatingEditor(inp);
       }
 
       td.appendChild(inp);
@@ -413,254 +610,684 @@ function createSection(destFijo){
       inputs.push(inp);
     }
 
-    if(!isOtro){
-      destActivo = destFijo;
-      await loadProvs(tr, prefill.proveedor);
-    }
+    /*
+      Insertamos la fila antes de hacer consultas para que el usuario
+      la vea inmediatamente.
+    */
+    tbody.insertBefore(tr, tbody.firstChild);
 
-    // Voucher ↔ Clave
-    const voucherSel = tr.querySelector('select[data-campo="voucher"]');
-    const claveInp   = tr.querySelector('input[data-campo="clave"]');
-    if (voucherSel && claveInp){
-      const ensureClave = () => {
-        const v = voucherSel.value;
-        if (v === 'ELECTRONICO'){
-          if (!claveInp.value) claveInp.value = generarClaveUnica();
-        } else {
-          if (claveInp.value) claveInp.value = '';
-        }
-        claveInp.title = claveInp.value;
-      };
-      voucherSel.addEventListener('change', ensureClave);
-      if (voucherSel.value === 'ELECTRONICO' && !claveInp.value){
-        claveInp.value = generarClaveUnica();
-        claveInp.title = claveInp.value;
+    const rowData = {
+      inputs,
+      ref,
+      checkbox: chk
+    };
+
+    rows.unshift(rowData);
+    updateRowNumbers();
+
+    /* -----------------------------------------------
+       Cargar proveedores
+       ----------------------------------------------- */
+    const destinoInicial = isOtro
+      ? normalizarDestino(prefill.destino)
+      : destFijo;
+
+    await loadProvs(
+      tr,
+      destinoInicial,
+      prefill.proveedor || ''
+    );
+
+    /*
+      En OTRO, cuando cambia el destino, se recarga el catálogo
+      de proveedores correspondiente.
+    */
+    if (isOtro) {
+      const destinoInp = tr.querySelector(
+        'input[data-campo="destino"]'
+      );
+
+      if (destinoInp) {
+        destinoInp.addEventListener('change', async () => {
+          const proveedorSel = tr.querySelector(
+            'select[data-campo="proveedor"]'
+          );
+
+          const proveedorAnterior = proveedorSel?.value || '';
+
+          await loadProvs(
+            tr,
+            destinoInp.value,
+            proveedorAnterior
+          );
+
+          applySearch();
+        });
       }
     }
 
-    // Insertar y registrar
-    tbody.insertBefore(tr, tbody.firstChild);
-    rows.unshift({ inputs, ref, checkbox: chk });
-    updateRowNumbers();
+    /* -----------------------------------------------
+       Voucher electrónico y clave
+       ----------------------------------------------- */
+    const voucherSel = tr.querySelector(
+      'select[data-campo="voucher"]'
+    );
 
-    // Evitar pegados masivos
+    const claveInp = tr.querySelector(
+      'input[data-campo="clave"]'
+    );
+
+    if (voucherSel && claveInp) {
+      const ensureClave = () => {
+        if (voucherSel.value === 'ELECTRONICO') {
+          if (!claveInp.value) {
+            claveInp.value = generarClaveUnica();
+          }
+        } else {
+          claveInp.value = '';
+        }
+
+        claveInp.title = claveInp.value;
+      };
+
+      voucherSel.addEventListener('change', ensureClave);
+      ensureClave();
+    }
+
     inputs.forEach(inp => {
-      inp.addEventListener('paste', e => e.stopPropagation());
+      inp.addEventListener('paste', e => {
+        e.stopPropagation();
+      });
     });
 
-    applySearch(); // si hay filtro activo
+    applySearch();
   }
 
-  // Guardar fila -> Firestore (y detectar cambios para propagar)
+  /* =====================================================
+     8) Cargar servicios del año
+     ===================================================== */
+  async function cargarServicios(){
+    try {
+      /*
+        Destino fijo: solo carga la colección de ese destino.
+      */
+      if (!isOtro) {
+        const snap = await getDocs(
+          query(
+            collection(
+              db,
+              'ServiciosPorAno',
+              getAnoTarifaActivo(),
+              'Destinos',
+              destFijo,
+              'Listado'
+            ),
+            orderBy('servicio', 'asc')
+          )
+        );
+
+        for (const docSnap of snap.docs) {
+          const data = docSnap.data() || {};
+
+          const prefill = {
+            ...data,
+            servicio: data.servicio || docSnap.id,
+            destino: destFijo
+          };
+
+          if (prefill.clave) {
+            clavesUsadas.add(prefill.clave);
+          }
+
+          await add(
+            prefill,
+            doc(
+              db,
+              'ServiciosPorAno',
+              getAnoTarifaActivo(),
+              'Destinos',
+              destFijo,
+              'Listado',
+              docSnap.id
+            )
+          );
+        }
+
+        return;
+      }
+
+      /*
+        OTRO:
+        1. Lee todos los documentos de Destinos.
+        2. Excluye los destinos fijos.
+        3. Carga sus servicios.
+      */
+      const destinosSnap = await getDocs(
+        collection(
+          db,
+          'ServiciosPorAno',
+          getAnoTarifaActivo(),
+          'Destinos'
+        )
+      );
+
+      const destinosPersonalizados = destinosSnap.docs
+        .map(docSnap => normalizarDestino(docSnap.id))
+        .filter(destino => {
+          return (
+            destino &&
+            destino !== 'OTRO' &&
+            !DESTINOS_FIJOS.has(destino)
+          );
+        })
+        .sort((a, b) => a.localeCompare(b, 'es'));
+
+      for (const destino of destinosPersonalizados) {
+        const serviciosSnap = await getDocs(
+          query(
+            collection(
+              db,
+              'ServiciosPorAno',
+              getAnoTarifaActivo(),
+              'Destinos',
+              destino,
+              'Listado'
+            ),
+            orderBy('servicio', 'asc')
+          )
+        );
+
+        for (const docSnap of serviciosSnap.docs) {
+          const data = docSnap.data() || {};
+
+          const prefill = {
+            ...data,
+            destino,
+            servicio: data.servicio || docSnap.id
+          };
+
+          if (prefill.clave) {
+            clavesUsadas.add(prefill.clave);
+          }
+
+          await add(
+            prefill,
+            doc(
+              db,
+              'ServiciosPorAno',
+              getAnoTarifaActivo(),
+              'Destinos',
+              destino,
+              'Listado',
+              docSnap.id
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error(
+        `Error cargando servicios de ${isOtro ? 'OTRO' : destFijo}:`,
+        error
+      );
+
+      alert(
+        `No se pudieron cargar los servicios de ${
+          isOtro ? 'OTRO' : destFijo
+        }.\n\n${error.message}`
+      );
+    }
+  }
+
+  /* =====================================================
+     9) Guardar una fila
+     ===================================================== */
   async function commit(r, idx){
-    // 1) Leer datos de la fila
     const data = {};
-    r.inputs.forEach(i => {
-      data[i.dataset.campo] = i.multiple
-        ? [...i.selectedOptions].map(o=>o.value)
-        : (i.value ?? '').toString().trim().toUpperCase();
+
+    r.inputs.forEach(input => {
+      data[input.dataset.campo] = input.multiple
+        ? [...input.selectedOptions].map(opt => opt.value)
+        : (input.value ?? '').toString().trim().toUpperCase();
     });
-  
-    // 2) Validaciones mínimas
-    const destino = (destActivo && !isOtro) ? destActivo : data.destino;
-    if(!destino)        throw new Error(`F${idx}: Falta Destino`);
-    if(!data.servicio)  throw new Error(`F${idx}: Falta Servicio`);
-    if(!data.proveedor) throw new Error(`F${idx}: Falta Proveedor`);
-  
-    // Asegura la "carpeta" de destino
-    await setDoc(doc(db, 'ServiciosPorAno', getAnoTarifaActivo()), { _created: true }, { merge: true });
-    await setDoc(doc(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destino), { _created: true }, { merge: true });
-  
-    // Doc objetivo
-    const targetId = data.servicio; // usamos el nombre como id de doc
-    const newRef = doc(db, 'ServiciosPorAno', getAnoTarifaActivo(), 'Destinos', destino, 'Listado', targetId);
-  
-    // Helpers para visibilidad
-    const newVisible = _visibleSvc(data, targetId);
-  
+
+    const destino = normalizarDestino(
+      isOtro ? data.destino : destFijo
+    );
+
+    const servicio = (
+      data.servicio ||
+      ''
+    ).toString().trim().toUpperCase();
+
+    const proveedor = (
+      data.proveedor ||
+      ''
+    ).toString().trim().toUpperCase();
+
+    if (!destino) {
+      throw new Error(`F${idx}: Falta Destino`);
+    }
+
+    if (!servicio) {
+      throw new Error(`F${idx}: Falta Servicio`);
+    }
+
+    if (!proveedor) {
+      throw new Error(`F${idx}: Falta Proveedor`);
+    }
+
+    /*
+      Evita guardar un destino fijo accidentalmente dentro de OTRO.
+    */
+    if (isOtro && DESTINOS_FIJOS.has(destino)) {
+      throw new Error(
+        `F${idx}: ${destino} ya tiene una sección propia. ` +
+        `Guarda el servicio en la sección ${destino}.`
+      );
+    }
+
+    /*
+      Guardamos el destino también dentro del documento.
+      La ruta sigue siendo la fuente principal, pero este campo facilita
+      exportaciones, diagnósticos y futuras consultas.
+    */
+    const payload = {
+      ...data,
+      destino,
+      destinoTarifa: destino,
+      anoTarifa: Number(getAnoTarifaActivo()),
+      servicio,
+      proveedor
+    };
+
+    await setDoc(
+      doc(
+        db,
+        'ServiciosPorAno',
+        getAnoTarifaActivo()
+      ),
+      {
+        _created: true,
+        anoTarifa: Number(getAnoTarifaActivo())
+      },
+      { merge: true }
+    );
+
+    await setDoc(
+      doc(
+        db,
+        'ServiciosPorAno',
+        getAnoTarifaActivo(),
+        'Destinos',
+        destino
+      ),
+      {
+        _created: true,
+        destino,
+        anoTarifa: Number(getAnoTarifaActivo())
+      },
+      { merge: true }
+    );
+
+    const targetId = servicio;
+
+    const newRef = doc(
+      db,
+      'ServiciosPorAno',
+      getAnoTarifaActivo(),
+      'Destinos',
+      destino,
+      'Listado',
+      targetId
+    );
+
+    const newVisible = _visibleSvc(payload, targetId);
+
     if (r.ref) {
-      // Teníamos doc original
-    const parts = r.ref.path.split('/');
-    // ServiciosPorAno/{ano}/Destinos/{dest}/Listado/{id}
-    const oldDest = parts[3];
-    const oldId   = parts[5];
+      const parts = r.ref.path.split('/');
+
+      /*
+        ServiciosPorAno/{ano}/Destinos/{destino}/Listado/{servicio}
+      */
+      const oldDest = normalizarDestino(parts[3]);
+      const oldId = parts[5];
+
       const destChanged = oldDest !== destino;
-      const idChanged   = oldId !== targetId;
-  
-      // Leemos el doc viejo (para comparar nombre visible y aliases previos)
+      const idChanged = oldId !== targetId;
+
       let oldData = null;
+
       try {
         const oldSnap = await getDoc(r.ref);
-        if (oldSnap.exists()) oldData = oldSnap.data();
-      } catch(_) {}
+        if (oldSnap.exists()) {
+          oldData = oldSnap.data();
+        }
+      } catch (error) {
+        console.warn(
+          'No se pudo leer la versión anterior del servicio:',
+          error
+        );
+      }
+
       const oldVisible = _visibleSvc(oldData, oldId);
-  
+
       if (!destChanged && !idChanged) {
-        // ✅ Mismo doc → actualizar en sitio
-        // Si cambió el "visible", guardamos alias viejo para no perder referencias antiguas
-        const willAddAlias = oldVisible && oldVisible !== newVisible;
+        const willAddAlias =
+          oldVisible &&
+          oldVisible !== newVisible;
+
         const merged = willAddAlias
-          ? { ...data, aliases: Array.from(new Set([...(oldData?.aliases || []), oldVisible])) }
-          : data;
-  
+          ? {
+              ...payload,
+              aliases: Array.from(
+                new Set([
+                  ...(oldData?.aliases || []),
+                  oldVisible
+                ])
+              )
+            }
+          : payload;
+
         await setDoc(r.ref, merged, { merge: true });
-  
+
         if (willAddAlias) {
           serviceChanges.push({
             destino,
-            oldId: oldId,
+            oldId,
             newId: targetId,
             oldVisible,
             newVisible,
             aliases: [oldVisible]
           });
-        } else {
-          // No propagamos cambios de tarifa/moneda/proveedor/etc.
-          // Solo se propaga si cambió el nombre visible o el ID del servicio.
         }
       } else {
-        // 🔁 Cambió ID y/o destino → crear nuevo y borrar el viejo, preservando historial/aliases
-        const aliasSet = new Set((oldData?.aliases || []).map(a => _U(a)));
-        const oldIdU   = _U(oldId);
-        const oldVisU  = _U(oldVisible);
-        if (oldIdU)   aliasSet.add(oldIdU);
-        if (oldVisU)  aliasSet.add(oldVisU);
-        aliasSet.delete(newVisible); // no dupliques el nuevo visible
-  
+        /*
+          Cambió el nombre o el destino:
+          crea el documento nuevo y elimina la ubicación anterior.
+        */
+        const aliasSet = new Set(
+          (oldData?.aliases || []).map(alias => _U(alias))
+        );
+
+        const oldIdU = _U(oldId);
+        const oldVisibleU = _U(oldVisible);
+
+        if (oldIdU) aliasSet.add(oldIdU);
+        if (oldVisibleU) aliasSet.add(oldVisibleU);
+
+        aliasSet.delete(newVisible);
+
         const merged = {
-          ...data,
+          ...payload,
           aliases: Array.from(aliasSet),
-          prevIds: Array.from(new Set([...(oldData?.prevIds || []), oldId]))
+          prevIds: Array.from(
+            new Set([
+              ...(oldData?.prevIds || []),
+              oldId
+            ])
+          ),
+          destinoAnterior: oldDest
         };
-  
+
         await setDoc(newRef, merged, { merge: true });
-        try { await deleteDoc(r.ref); } catch(_) {}
-  
-        // Registrar cambio para propagación
+
+        try {
+          await deleteDoc(r.ref);
+        } catch (error) {
+          console.warn(
+            'El servicio nuevo se guardó, pero no se pudo eliminar la ubicación anterior:',
+            error
+          );
+        }
+
         serviceChanges.push({
           destino,
+          oldDestino: oldDest,
           oldId,
           newId: targetId,
           oldVisible: oldVisible || oldId,
           newVisible,
           aliases: Array.from(aliasSet)
         });
-  
-        r.ref = newRef; // importante para futuras ediciones
+
+        r.ref = newRef;
       }
     } else {
-      // Fila nueva
-      await setDoc(newRef, data, { merge: true });
+      await setDoc(newRef, payload, { merge: true });
       r.ref = newRef;
-
-      // No propagamos filas nuevas automáticamente.
-      // El itinerario solo debe cambiar cuando una actividad ya existente cambia de nombre/ID.
     }
   }
-  
+
+  /* =====================================================
+     10) Guardar todo
+     ===================================================== */
   async function saveAll(){
-    const errs = [];
-    for(let i=0;i<rows.length;i++){
-      try{ await commit(rows[i], i+1) }
-      catch(e){ errs.push(e.message) }
+    const errores = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        await commit(rows[i], i + 1);
+      } catch (error) {
+        errores.push(error.message);
+      }
     }
+
     updateRowNumbers();
-  
-    // ⬇️ NUEVO: propagar si hay cambios
-    if (serviceChanges.length){
-      await propagarCambiosASItinerarios(serviceChanges, { ask: true });
-      serviceChanges.length = 0; // limpiar
+
+    if (serviceChanges.length) {
+      await propagarCambiosASItinerarios(
+        serviceChanges,
+        { ask: true }
+      );
+
+      serviceChanges.length = 0;
     }
-  
-    alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Todos guardados');
-  }
-  
-  async function saveSelected(){
-    const sel = rows.filter(r=>r.checkbox.checked);
-    if(sel.length === 0){
-      alert('❗ No hay filas seleccionadas');
-      return;
-    }
-    const errs = [];
-    for(let r of sel){
-      const idx = rows.indexOf(r) + 1;
-      try{ await commit(r, idx) }
-      catch(e){ errs.push(e.message) }
-    }
-    updateRowNumbers();
-  
-    // ⬇️ NUEVO: propagar si hay cambios
-    if (serviceChanges.length){
-      await propagarCambiosASItinerarios(serviceChanges, { ask: true });
-      serviceChanges.length = 0; // limpiar
-    }
-  
-    alert(errs.length ? '⚠️ Errores:\n' + errs.join('\n') : '✅ Seleccionadas guardadas');
+
+    alert(
+      errores.length
+        ? `⚠️ Errores:\n${errores.join('\n')}`
+        : '✅ Todos guardados'
+    );
   }
 
-  async function deleteSelected(){
-    const sel = rows.filter(r=>r.checkbox.checked);
-    if(sel.length === 0){
+  /* =====================================================
+     11) Guardar seleccionadas
+     ===================================================== */
+  async function saveSelected(){
+    const seleccionadas = rows.filter(
+      row => row.checkbox.checked
+    );
+
+    if (!seleccionadas.length) {
       alert('❗ No hay filas seleccionadas');
       return;
     }
-    for(let r of sel){
-      if(r.ref) await deleteDoc(r.ref);
-      r.checkbox.closest('tr').remove();
+
+    const errores = [];
+
+    for (const row of seleccionadas) {
+      const idx = rows.indexOf(row) + 1;
+
+      try {
+        await commit(row, idx);
+      } catch (error) {
+        errores.push(error.message);
+      }
     }
-    // Mantener solo las no marcadas
-    const restantes = rows.filter(r=>!r.checkbox.checked);
+
+    updateRowNumbers();
+
+    if (serviceChanges.length) {
+      await propagarCambiosASItinerarios(
+        serviceChanges,
+        { ask: true }
+      );
+
+      serviceChanges.length = 0;
+    }
+
+    alert(
+      errores.length
+        ? `⚠️ Errores:\n${errores.join('\n')}`
+        : '✅ Seleccionadas guardadas'
+    );
+  }
+
+  /* =====================================================
+     12) Eliminar seleccionadas
+     ===================================================== */
+  async function deleteSelected(){
+    const seleccionadas = rows.filter(
+      row => row.checkbox.checked
+    );
+
+    if (!seleccionadas.length) {
+      alert('❗ No hay filas seleccionadas');
+      return;
+    }
+
+    const confirmar = confirm(
+      `¿Eliminar ${seleccionadas.length} servicio(s) seleccionado(s)?`
+    );
+
+    if (!confirmar) return;
+
+    const errores = [];
+
+    for (const row of seleccionadas) {
+      try {
+        if (row.ref) {
+          await deleteDoc(row.ref);
+        }
+
+        row.checkbox.closest('tr')?.remove();
+      } catch (error) {
+        errores.push(error.message);
+        row.checkbox.checked = false;
+      }
+    }
+
+    const restantes = rows.filter(row => {
+      return !seleccionadas.includes(row) ||
+             !row.checkbox.checked;
+    });
+
     rows.splice(0, rows.length, ...restantes);
     updateRowNumbers();
-    alert('🗑️ Seleccionadas eliminadas');
+
+    alert(
+      errores.length
+        ? `⚠️ Algunos servicios no pudieron eliminarse:\n${errores.join('\n')}`
+        : '🗑️ Servicios eliminados'
+    );
   }
 
-  /* ===========================
-     Exportación POR SECCIÓN
-     =========================== */
+  /* =====================================================
+     13) Filas visibles para exportación
+     ===================================================== */
   function rowsVisibles(){
-    return rows.filter(r => {
-      const tr = r.checkbox.closest('tr');
-      return tr && tr.offsetParent !== null && tr.style.display !== 'none';
+    return rows.filter(row => {
+      const tr = row.checkbox.closest('tr');
+
+      return (
+        tr &&
+        tr.offsetParent !== null &&
+        tr.style.display !== 'none'
+      );
     });
   }
 
+  /* =====================================================
+     14) Construir datos para Excel
+     ===================================================== */
   function toAOA(){
-    // Cabeceras: tomamos del thead (omitimos '' y 'No')
-    const headers = ['No', ...headerTitles.slice(2)];
-    const body = rowsVisibles().map(r => {
-      const row = [];
-      row.push(rows.indexOf(r) + 1); // No
-      r.inputs.forEach(inp => {
-        if (inp.multiple) row.push([...inp.selectedOptions].map(o=>o.value).join(' | '));
-        else row.push((inp.value ?? '').toString());
+    const headers = [
+      'No',
+      ...headerTitles.slice(2)
+    ];
+
+    const body = rowsVisibles().map(row => {
+      const result = [
+        rows.indexOf(row) + 1
+      ];
+
+      row.inputs.forEach(input => {
+        if (input.multiple) {
+          result.push(
+            [...input.selectedOptions]
+              .map(opt => opt.value)
+              .join(' | ')
+          );
+        } else {
+          result.push(
+            (input.value ?? '').toString()
+          );
+        }
       });
-      return row;
+
+      return result;
     });
-    return [headers, ...body];
+
+    return [
+      headers,
+      ...body
+    ];
   }
 
+  /* =====================================================
+     15) Exportar sección
+     ===================================================== */
   async function exportExcel(){
     const aoa = toAOA();
-    const nombre = `Servicios_${getAnoTarifaActivo()}_${isOtro ? 'OTRO' : destFijo}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    const nombreSeccion = isOtro ? 'OTRO' : destFijo;
+    const fecha = new Date().toISOString().slice(0, 10);
+
+    const nombre =
+      `Servicios_${getAnoTarifaActivo()}_` +
+      `${nombreSeccion}_${fecha}.xlsx`;
+
     try {
       const XLSX = await loadXLSX();
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.aoa_to_sheet(aoa);
-      XLSX.utils.book_append_sheet(wb, ws, (isOtro ? 'OTRO' : destFijo).slice(0,31));
+
+      XLSX.utils.book_append_sheet(
+        wb,
+        ws,
+        nombreSeccion.slice(0, 31)
+      );
+
       XLSX.writeFile(wb, nombre);
-    } catch {
+    } catch (error) {
       const csv = aoaToCSV(aoa);
-      downloadBlob(new Blob([csv], {type:'text/csv;charset=utf-8'}), nombre.replace(/\.xlsx$/i,'.csv'));
-      alert('No se pudo cargar XLSX. Se exportó CSV (abre en Excel).');
+
+      downloadBlob(
+        new Blob(
+          [csv],
+          { type: 'text/csv;charset=utf-8' }
+        ),
+        nombre.replace(/\.xlsx$/i, '.csv')
+      );
+
+      alert(
+        'No se pudo cargar XLSX. ' +
+        'Se exportó CSV para abrirlo en Excel.'
+      );
     }
   }
 
-  // 👉 Registrar esta sección para el EXPORT GLOBAL
+  /* =====================================================
+     16) Registrar sección para exportación global
+     ===================================================== */
   allSections.push({
-    name: (isOtro ? 'OTRO' : destFijo),
+    name: isOtro ? 'OTRO' : destFijo,
     getAOA: toAOA
   });
+
+  /* =====================================================
+     17) Iniciar carga
+     ===================================================== */
+  cargarServicios();
 }
 
 /* =========================================================
