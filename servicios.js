@@ -147,6 +147,93 @@ function limpiarCacheProveedores(destino = ''){
 window.limpiarCacheProveedores =
   limpiarCacheProveedores;
 
+async function refrescarProveedoresEnTablas(){
+  limpiarCacheProveedores();
+
+  const filas = [
+    ...document.querySelectorAll(
+      '#secciones tbody tr'
+    )
+  ];
+
+  const catalogosPorDestino = new Map();
+
+  for (const tr of filas) {
+    const proveedorSel = tr.querySelector(
+      'select[data-campo="proveedor"]'
+    );
+
+    if (!proveedorSel) continue;
+
+    const destinoInput = tr.querySelector(
+      'input[data-campo="destino"]'
+    );
+
+    const section = tr.closest('.section');
+
+    const destino = normalizarProveedor(
+      destinoInput?.value ||
+      section?.querySelector('h3')?.textContent ||
+      ''
+    );
+
+    if (
+      !destino ||
+      destino === 'OTRO'
+    ) {
+      continue;
+    }
+
+    const proveedorActual =
+      proveedorSel.value;
+
+    let catalogo =
+      catalogosPorDestino.get(destino);
+
+    if (!catalogo) {
+      catalogo = await cargarProveedoresDestino(
+        destino,
+        { forzar: true }
+      );
+
+      catalogosPorDestino.set(
+        destino,
+        catalogo
+      );
+    }
+
+    proveedorSel.innerHTML =
+      '<option value="">—</option>';
+
+    for (const [nombre] of catalogo) {
+      proveedorSel.appendChild(
+        new Option(nombre, nombre)
+      );
+    }
+
+    if (
+      proveedorActual &&
+      !catalogo.has(proveedorActual)
+    ) {
+      proveedorSel.appendChild(
+        new Option(
+          `${proveedorActual} (NO ESTÁ EN CATÁLOGO)`,
+          proveedorActual
+        )
+      );
+    }
+
+    proveedorSel.value =
+      proveedorActual;
+
+    tr._catalogoProveedores =
+      catalogo;
+  }
+}
+
+window.refrescarProveedoresEnTablas =
+  refrescarProveedoresEnTablas;
+
 // Carga perezosa de SheetJS
 function loadScript(src){
   return new Promise((resolve, reject) => {
@@ -806,7 +893,14 @@ function createSection(destFijo){
       Para una fila nueva que ya viene con proveedor pero sin
       datos propios, completar únicamente los campos vacíos.
     */
-    if (!ref && prefill.proveedor) {
+    /*
+      Tanto en servicios nuevos como existentes:
+      completa únicamente los campos vacíos desde el proveedor.
+    
+      Si el servicio ya tiene un contacto, teléfono o dirección
+      personalizados, se conservan.
+    */
+    if (prefill.proveedor) {
       copiarDatosProveedorEnFila(
         tr,
         prefill.proveedor,
@@ -1659,10 +1753,25 @@ function openProveedores(){
   document.getElementById('backdrop-prov').style.display='block';
   document.getElementById('modal-prov').style.display='block';
 }
-function closeProveedores(){
-  document.getElementById('iframe-prov').src='';
-  document.getElementById('backdrop-prov').style.display='none';
-  document.getElementById('modal-prov').style.display='none';
+async function closeProveedores(){
+  document.getElementById('iframe-prov').src = '';
+
+  document.getElementById(
+    'backdrop-prov'
+  ).style.display = 'none';
+
+  document.getElementById(
+    'modal-prov'
+  ).style.display = 'none';
+
+  try {
+    await refrescarProveedoresEnTablas();
+  } catch (error) {
+    console.error(
+      'No se pudieron actualizar los proveedores:',
+      error
+    );
+  }
 }
 
 /* =====================================================
