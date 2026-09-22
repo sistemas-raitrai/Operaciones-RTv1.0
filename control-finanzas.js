@@ -112,36 +112,100 @@ function proveedoresDestino() {
     .sort((a,b) => num(b.saldoPendiente) - num(a.saldoPendiente) || String(a.proveedorNombre).localeCompare(String(b.proveedorNombre), 'es'));
 }
 
+function estadoFinancieroResumen(resumen) {
+  if (num(resumen.obligacionesSinTarifa) > 0 || resumen.requiereConfiguracion) {
+    return { texto: 'Sin tarifa', clase: 'warning' };
+  }
+  if (num(resumen.abonosPendientesRevision) > 0) {
+    return { texto: 'Requiere revisión', clase: 'warning' };
+  }
+  const costo = num(resumen.totalObligacion);
+  const aplicado = num(resumen.totalAplicado);
+  const saldo = num(resumen.saldoPendiente);
+  if (saldo < 0) return { texto: 'Saldo a favor', clase: 'credit' };
+  if (costo > 0 && saldo <= 0) return { texto: 'Pagado', clase: 'paid' };
+  if (aplicado > 0) return { texto: 'Pago parcial', clase: 'partial' };
+  return { texto: 'Por pagar', clase: 'payable' };
+}
+
+function agruparPorTipoYMoneda(items) {
+  const tipos = ['ACTIVIDAD', 'HOTEL'];
+  return tipos.map(tipo => {
+    const delTipo = items.filter(item => norm(item.tipo) === tipo);
+    const monedasEncontradas = [...new Set(delTipo.map(item => moneda(item.monedaObligacion)))];
+    const monedas = [...MONEDAS_ORDEN, 'SIN_DEFINIR']
+      .filter((m, indice, lista) => monedasEncontradas.includes(m) && lista.indexOf(m) === indice);
+    return {
+      tipo,
+      items: delTipo,
+      monedas: monedas.map(codigo => ({
+        codigo,
+        items: delTipo.filter(item => moneda(item.monedaObligacion) === codigo)
+      }))
+    };
+  }).filter(grupo => grupo.items.length);
+}
+
+function filaProveedor(resumen) {
+  const saldo = num(resumen.saldoPendiente);
+  const pendiente = !!resumen.requiereConfiguracion;
+  const estado = estadoFinancieroResumen(resumen);
+  const avisos = [];
+  if (num(resumen.obligacionesSinTarifa)) avisos.push(`${num(resumen.obligacionesSinTarifa)} sin tarifa`);
+  if (num(resumen.abonosPendientesRevision)) avisos.push(`${num(resumen.abonosPendientesRevision)} abono(s) por revisar`);
+  return `<tr data-key="${esc(claveProveedor(resumen))}">
+    <td class="cf-provider-name">
+      <strong>${esc(resumen.proveedorNombre || resumen.proveedorId || 'Sin proveedor')}</strong>
+      ${avisos.length ? `<small>${esc(avisos.join(' · '))}</small>` : ''}
+    </td>
+    <td class="num">${pendiente ? 'PENDIENTE' : fmtMoney(resumen.totalObligacion, resumen.monedaObligacion)}</td>
+    <td class="num multi-money">${dineroEnviadoTexto(resumen)}</td>
+    <td class="num">${pendiente ? '—' : fmtMoney(resumen.totalAplicado, resumen.monedaObligacion)}</td>
+    <td class="num ${saldo > 0 || pendiente ? 'saldo' : 'ok'}">${pendiente ? 'PENDIENTE' : fmtMoney(saldo, resumen.monedaObligacion)}</td>
+    <td><span class="cf-state ${estado.clase}">${estado.texto}</span></td>
+    <td><button class="cf-btn btn-detalle" type="button">Ver detalle</button></td>
+  </tr>`;
+}
+
+function bloqueMoneda(grupo, codigo) {
+  const items = codigo.items;
+  const costo = items.reduce((suma, item) => suma + num(item.totalObligacion), 0);
+  const aplicado = items.reduce((suma, item) => suma + num(item.totalAplicado), 0);
+  const saldo = items.reduce((suma, item) => suma + num(item.saldoPendiente), 0);
+  const etiqueta = codigo.codigo === 'SIN_DEFINIR' ? 'SIN MONEDA' : codigo.codigo;
+  return `<section class="cf-currency-group">
+    <header class="cf-currency-head">
+      <div class="cf-currency-name"><span class="cf-currency-pill">${esc(etiqueta)}</span> Proveedores pagados en ${esc(etiqueta)}</div>
+      <div class="cf-currency-totals">Costo: <strong>${fmtMoney(costo, codigo.codigo)}</strong> · Abonos: <strong>${fmtMoney(aplicado, codigo.codigo)}</strong> · Por pagar: <strong>${fmtMoney(saldo, codigo.codigo)}</strong></div>
+    </header>
+    <div class="cf-table-wrap">
+      <table class="cf-table cf-provider-table">
+        <thead><tr><th>Proveedor</th><th class="num">Costo total</th><th class="num">Monto enviado</th><th class="num">Abonos aplicados</th><th class="num">Saldo por pagar</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${items.map(filaProveedor).join('')}</tbody>
+        <tfoot><tr><th>Subtotal ${esc(etiqueta)}</th><th class="num">${fmtMoney(costo, codigo.codigo)}</th><th></th><th class="num">${fmtMoney(aplicado, codigo.codigo)}</th><th class="num saldo">${fmtMoney(saldo, codigo.codigo)}</th><th colspan="2"></th></tr></tfoot>
+      </table>
+    </div>
+  </section>`;
+}
+
 function renderProveedores() {
   const items = proveedoresDestino();
   $('#tituloDestino').textContent = state.destino || 'Seleccione un destino';
   $('#btnExportarDestino').disabled = !items.length;
   $('#sinProveedores').hidden = !!items.length;
-  const tbody = $('#tablaProveedores tbody');
-  tbody.innerHTML = items.map(r => {
-    const saldo = num(r.saldoPendiente);
-    const sinTarifa = num(r.obligacionesSinTarifa);
-    const revision = sinTarifa > 0
-      ? `<span class="cf-badge pending">Falta tarifa (${sinTarifa})</span>`
-      : num(r.abonosPendientesRevision) > 0
-      ? `<span class="cf-badge pending">${num(r.abonosPendientesRevision)} pendiente(s)</span>`
-      : '<span class="cf-badge reviewed">Al día</span>';
-    const valorObligacion = r.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(r.totalObligacion, r.monedaObligacion);
-    const valorAplicado = r.requiereConfiguracion ? '—' : fmtMoney(r.totalAplicado, r.monedaObligacion);
-    const valorSaldo = r.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(saldo, r.monedaObligacion);
-    return `<tr data-key="${esc(claveProveedor(r))}">
-      <td><strong>${esc(r.proveedorNombre || r.proveedorId || 'Sin proveedor')}</strong></td>
-      <td>${esc(norm(r.tipo || 'ACTIVIDAD'))}</td><td>${r.requiereConfiguracion ? 'SIN DEFINIR' : esc(moneda(r.monedaObligacion))}</td>
-      <td class="num">${valorObligacion}</td>
-      <td class="num multi-money">${dineroEnviadoTexto(r)}</td>
-      <td class="num">${valorAplicado}</td>
-      <td class="num ${r.requiereConfiguracion || saldo > 0 ? 'saldo' : 'ok'}">${valorSaldo}</td>
-      <td>${revision}</td><td><button class="cf-btn btn-detalle" type="button">Ver detalle</button></td>
-    </tr>`;
+  const contenedor = $('#gruposFinancieros');
+  const grupos = agruparPorTipoYMoneda(items);
+  contenedor.innerHTML = grupos.map(grupo => {
+    const esHotel = grupo.tipo === 'HOTEL';
+    return `<article class="cf-service-block ${esHotel ? 'hotel' : 'activity'}">
+      <header class="cf-service-title">
+        <div><h3>${esHotel ? 'HOTELES' : 'ACTIVIDADES'}</h3><p>${esHotel ? 'Alojamientos agrupados por moneda de cobro.' : 'Servicios y actividades agrupados por moneda de cobro.'}</p></div>
+        <span class="cf-badge">${grupo.items.length} proveedor(es)</span>
+      </header>
+      ${grupo.monedas.map(codigo => bloqueMoneda(grupo, codigo)).join('')}
+    </article>`;
   }).join('');
-  const totales = totalesPorMoneda(items, 'saldoPendiente');
-  $('#tablaProveedores tfoot').innerHTML = items.length ? `<tr><th colspan="6">TOTAL PENDIENTE ${esc(state.destino)}</th><th class="num saldo">${MONEDAS_ORDEN.filter(m => totales[m] !== undefined).map(m => fmtMoney(totales[m], m)).join('<br>')}</th><th colspan="2"></th></tr>` : '';
-  $$('.btn-detalle', tbody).forEach(btn => btn.addEventListener('click', () => {
+  $$('.btn-detalle', contenedor).forEach(btn => btn.addEventListener('click', () => {
     const key = btn.closest('tr').dataset.key;
     const resumen = items.find(r => claveProveedor(r) === key);
     if (resumen) abrirDetalle(resumen);
@@ -189,16 +253,41 @@ function renderMetricas() {
   const enviado = Object.entries(r.totalEnviadoPorMoneda || {}).filter(([,v]) => num(v)).map(([m,v]) => fmtMoney(v,m)).join('<br>') || '—';
   const pendiente = !!r.requiereConfiguracion;
   $('#metricasProveedor').innerHTML = [
-    ['OBLIGACIÓN', pendiente ? 'PENDIENTE DE TARIFA' : fmtMoney(r.totalObligacion, r.monedaObligacion)], ['DINERO ENVIADO', enviado],
-    ['APLICADO', pendiente ? '—' : fmtMoney(r.totalAplicado, r.monedaObligacion)], ['SALDO', pendiente ? 'PENDIENTE' : fmtMoney(r.saldoPendiente, r.monedaObligacion)]
+    ['COSTO TOTAL', pendiente ? 'PENDIENTE DE TARIFA' : fmtMoney(r.totalObligacion, r.monedaObligacion)], ['MONTO ENVIADO', enviado],
+    ['ABONOS APLICADOS', pendiente ? '—' : fmtMoney(r.totalAplicado, r.monedaObligacion)], ['SALDO POR PAGAR', pendiente ? 'PENDIENTE' : fmtMoney(r.saldoPendiente, r.monedaObligacion)]
   ].map(([l,v]) => `<div class="cf-metric"><span class="cf-metric-label">${l}</span><span class="cf-metric-value">${v}</span></div>`).join('');
 }
 
 function renderDetalle() { renderObligaciones(); renderAbonos(); renderReglas(); renderHistorial(); }
 
+function valorPaxReal(obligacion) {
+  const valor = obligacion.paxReales;
+  return valor === null || valor === undefined || valor === ''
+    ? '<span class="cf-badge pending">Pendiente</span>'
+    : fmtNum(valor);
+}
+
+function estadoCosto(obligacion) {
+  if (obligacion.requiereConfiguracion) return '<span class="cf-state warning">Sin tarifa</span>';
+  if (obligacion.paxReales === null || obligacion.paxReales === undefined || obligacion.paxReales === '') {
+    return '<span class="cf-state warning">Pax por revisar</span>';
+  }
+  return `<span class="cf-state payable">${esc(norm(obligacion.estadoFinanciero || obligacion.estadoRealizacion || 'PROGRAMADO'))}</span>`;
+}
+
+function renderCostosActividades(rows) {
+  return `<div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Fecha</th><th>Grupo</th><th>Servicio</th><th class="num">Pax acordados</th><th class="num">Pax reales</th><th class="num">Pax cobrados</th><th>Forma de cobro</th><th class="num">Valor unitario</th><th class="num">Costo total</th><th>Estado</th></tr></thead><tbody>${rows.map(o => `<tr><td>${fechaTexto(o.fechaServicio)}</td><td>${esc(o.numeroNegocio || '')} · ${esc(o.nombreGrupo || '')}</td><td>${esc(o.servicioNombre || '')}</td><td class="num">${fmtNum(o.paxAcordados ?? o.paxReservados)}</td><td class="num">${valorPaxReal(o)}</td><td class="num">${o.paxCobrados === null || o.paxCobrados === undefined ? '—' : fmtNum(o.paxCobrados)}</td><td>${esc(norm(o.tipoCobro || 'POR_GRUPO').replaceAll('_', ' '))}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.tarifaBase, o.monedaObligacion)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.totalObligacion, o.monedaObligacion)}</td><td>${estadoCosto(o)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function renderCostosHoteles(rows) {
+  return `<div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Estadía</th><th>Grupo</th><th>Hotel</th><th class="num">Noches</th><th class="num">Pax acordados</th><th class="num">Pax reales</th><th class="num">Pax cobrados</th><th>Modalidad de cobro</th><th class="num">Tarifa</th><th class="num">Costo total</th><th>Estado</th></tr></thead><tbody>${rows.map(o => `<tr><td>${fechaTexto(o.checkIn)} – ${fechaTexto(o.checkOut)}</td><td>${esc(o.numeroNegocio || '')} · ${esc(o.nombreGrupo || '')}</td><td>${esc(o.servicioNombre || o.hotelNombre || '')}</td><td class="num">${fmtNum(o.noches)}</td><td class="num">${fmtNum(o.paxAcordados ?? o.paxReservados)}</td><td class="num">${valorPaxReal(o)}</td><td class="num">${o.paxCobrados === null || o.paxCobrados === undefined ? '—' : fmtNum(o.paxCobrados)}</td><td>${esc(norm(o.tipoCobro || '').replaceAll('_', ' '))}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.tarifaBase, o.monedaObligacion)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.totalObligacion, o.monedaObligacion)}</td><td>${estadoCosto(o)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
 function renderObligaciones() {
   const rows = [...state.obligaciones].sort((a,b) => String(a.fechaServicio || '').localeCompare(String(b.fechaServicio || '')));
-  $('#panel-obligaciones').innerHTML = `<div class="cf-section-head"><h3>Detalle de obligaciones</h3><span class="cf-muted">${rows.length} movimiento(s)</span></div><div class="cf-table-wrap"><table class="cf-table"><thead><tr><th>Fecha</th><th>Grupo</th><th>Servicio</th><th class="num">PAX</th><th class="num">Noches</th><th class="num">Liberados</th><th class="num">Cobrables</th><th class="num">Tarifa</th><th class="num">Total</th><th>Estado</th></tr></thead><tbody>${rows.map(o => `<tr><td>${fechaTexto(o.fechaServicio)}</td><td>${esc(o.numeroNegocio || '')} · ${esc(o.nombreGrupo || '')}</td><td>${esc(o.servicioNombre || o.hotelNombre || '')}</td><td class="num">${fmtNum(o.paxReales ?? o.paxReservados)}</td><td class="num">${o.tipo === 'HOTEL' ? fmtNum(o.noches) : '—'}</td><td class="num">${fmtNum(o.liberados)}</td><td class="num">${fmtNum(o.unidadesCobrables)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.tarifaBase, o.monedaObligacion)}</td><td class="num">${o.requiereConfiguracion ? 'PENDIENTE' : fmtMoney(o.totalObligacion, o.monedaObligacion)}</td><td>${o.requiereConfiguracion ? '<span class="cf-badge pending">SIN TARIFA</span>' : esc(norm(o.estadoFinanciero || o.estadoRealizacion || 'PROGRAMADO'))}</td></tr>`).join('')}</tbody></table></div>${rows.length ? '' : '<div class="cf-empty">No hay obligaciones registradas.</div>'}`;
+  const tipo = norm(state.proveedor?.tipo);
+  const tabla = tipo === 'HOTEL' ? renderCostosHoteles(rows) : renderCostosActividades(rows);
+  $('#panel-obligaciones').innerHTML = `<div class="cf-section-head"><div><h3>${tipo === 'HOTEL' ? 'Detalle de costos de hotel' : 'Detalle de costos de actividades'}</h3><div class="cf-muted">Pax acordados, reales y cobrados se conservan como datos independientes.</div></div><span class="cf-muted">${rows.length} registro(s)</span></div>${tabla}${rows.length ? '' : '<div class="cf-empty">No hay costos registrados.</div>'}`;
 }
 
 function renderAbonos() {
@@ -276,7 +365,7 @@ async function guardarRevisionAbono(event) {
 }
 
 function filasResumenes(lista) {
-  return lista.map(r => ({ Año: r.anoViaje, Destino: r.destinoFinanciero, Proveedor: r.proveedorNombre, Tipo: r.tipo, 'Moneda deuda': r.monedaObligacion, Obligación: num(r.totalObligacion), Aplicado: num(r.totalAplicado), Saldo: num(r.saldoPendiente), 'Enviado CLP': num(r.totalEnviadoPorMoneda?.CLP), 'Enviado USD': num(r.totalEnviadoPorMoneda?.USD), 'Enviado BRL': num(r.totalEnviadoPorMoneda?.BRL), 'Enviado ARS': num(r.totalEnviadoPorMoneda?.ARS), 'Pendientes revisión': num(r.abonosPendientesRevision) }));
+  return lista.map(r => ({ Año: r.anoViaje, Destino: r.destinoFinanciero, Proveedor: r.proveedorNombre, Tipo: r.tipo, 'Moneda de cobro': r.monedaObligacion, 'Costo total': num(r.totalObligacion), 'Abonos aplicados': num(r.totalAplicado), 'Saldo por pagar': num(r.saldoPendiente), 'Enviado CLP': num(r.totalEnviadoPorMoneda?.CLP), 'Enviado USD': num(r.totalEnviadoPorMoneda?.USD), 'Enviado BRL': num(r.totalEnviadoPorMoneda?.BRL), 'Enviado ARS': num(r.totalEnviadoPorMoneda?.ARS), 'Pendientes de revisión': num(r.abonosPendientesRevision), 'Servicios sin tarifa': num(r.obligacionesSinTarifa) }));
 }
 
 function descargarExcel(nombre, hojas) {
@@ -286,13 +375,22 @@ function descargarExcel(nombre, hojas) {
   XLSX.writeFile(libro, nombre);
 }
 
-function exportarTodo() { descargarExcel(`control_finanzas_${state.ano}.xlsx`, { Resumen: filasResumenes(resumenesFiltrados()) }); }
-function exportarDestino() { descargarExcel(`control_finanzas_${state.ano}_${norm(state.destino).replace(/\s+/g,'_')}.xlsx`, { Resumen: filasResumenes(proveedoresDestino()) }); }
+function hojasResumen(lista) {
+  return {
+    Resumen: filasResumenes(lista),
+    Actividades: filasResumenes(lista.filter(r => norm(r.tipo) === 'ACTIVIDAD')),
+    Hoteles: filasResumenes(lista.filter(r => norm(r.tipo) === 'HOTEL')),
+    'Pendientes revisión': filasResumenes(lista.filter(r => num(r.abonosPendientesRevision) || num(r.obligacionesSinTarifa)))
+  };
+}
+
+function exportarTodo() { descargarExcel(`control_finanzas_${state.ano}.xlsx`, hojasResumen(resumenesFiltrados())); }
+function exportarDestino() { descargarExcel(`control_finanzas_${state.ano}_${norm(state.destino).replace(/\s+/g,'_')}.xlsx`, hojasResumen(proveedoresDestino())); }
 function exportarProveedor() {
   const r = state.proveedor;
   descargarExcel(`control_finanzas_${state.ano}_${String(r.proveedorNombre || r.proveedorId).replace(/[^a-z0-9]+/gi,'_')}.xlsx`, {
     Resumen: filasResumenes([r]),
-    Obligaciones: state.obligaciones.map(o => ({ Fecha:o.fechaServicio, Negocio:o.numeroNegocio, Grupo:o.nombreGrupo, Servicio:o.servicioNombre || o.hotelNombre, PAX:o.paxReales ?? o.paxReservados, Liberados:o.liberados, Cobrables:o.unidadesCobrables, Tarifa:o.tarifaBase, Moneda:o.monedaObligacion, Total:o.totalObligacion, Estado:o.estadoRealizacion })),
+    Costos: state.obligaciones.map(o => ({ Fecha:o.fechaServicio, CheckIn:o.checkIn, CheckOut:o.checkOut, Noches:o.noches, Negocio:o.numeroNegocio, Grupo:o.nombreGrupo, Servicio:o.servicioNombre || o.hotelNombre, 'Pax acordados':o.paxAcordados ?? o.paxReservados, 'Pax reales':o.paxReales, 'Pax cobrados':o.paxCobrados, 'Forma de cobro':o.tipoCobro, 'Valor unitario':o.tarifaBase, Moneda:o.monedaObligacion, 'Costo total':o.totalObligacion, Estado:o.estadoFinanciero || o.estadoRealizacion })),
     Abonos: state.abonos.map(a => ({ Fecha:a.fecha, 'Moneda enviada':a.monedaEnviada, 'Monto enviado':a.montoEnviado, 'Tipo de cambio':a.tipoCambioAplicado, 'Moneda aplicada':a.monedaAplicada, 'Monto aplicado':a.montoAplicado, 'Unidades cubiertas':a.unidadesCubiertas, Estado:a.estadoRevision, Observación:a.nota, Comprobante:a.comprobanteURL })),
     Reglas: state.reglas.map(rg => ({ Alcance:rg.servicioId ? 'Servicio' : 'Proveedor', Servicio:rg.servicioNombre, Año:rg.anoViaje, Tipo:rg.tipoRegla, Descripción:rg.descripcion, Activa:rg.activa !== false })),
     Historial: state.historial.map(h => ({ Fecha:fechaTexto(h.creadoAt), Acción:h.accion, Usuario:h.usuarioEmail, Motivo:h.motivo, Antes:resumenCambio(h.antes), Después:resumenCambio(h.despues) }))
