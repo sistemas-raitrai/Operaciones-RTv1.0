@@ -48,6 +48,27 @@
     .cf-destination-name { display: block; font-size: 1.04rem; font-weight: 800; margin-bottom: 9px; }
     .cf-destination-balance { display: block; margin-top: 4px; font-weight: 700; color: var(--cf-red); }
     .cf-card { background: var(--cf-card); border: 1px solid var(--cf-border); border-radius: 12px; padding: 16px; }
+    .cf-financial-groups { display: grid; gap: 20px; }
+    .cf-service-block { border: 1px solid var(--cf-border); border-radius: 14px; overflow: hidden; background: #fff; }
+    .cf-service-block.hotel { border-color: #c7d7f2; box-shadow: 0 8px 24px rgba(37,99,235,.07); }
+    .cf-service-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 15px 17px; background: #f8fafc; border-bottom: 1px solid var(--cf-border); }
+    .cf-service-block.hotel .cf-service-title { background: #edf4ff; border-bottom-color: #c7d7f2; }
+    .cf-service-title h3 { margin: 0; font-size: 1rem; }
+    .cf-service-title p { margin: 3px 0 0; color: var(--cf-muted); font-size: .82rem; }
+    .cf-currency-group + .cf-currency-group { border-top: 1px solid var(--cf-border); }
+    .cf-currency-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 11px 17px; background: #fcfcfd; }
+    .cf-currency-name { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; }
+    .cf-currency-pill { display: inline-flex; min-width: 42px; justify-content: center; padding: 4px 8px; border-radius: 7px; background: var(--cf-dark); color: #fff; font-size: .74rem; }
+    .cf-currency-totals { color: var(--cf-muted); font-size: .82rem; text-align: right; }
+    .cf-currency-totals strong { color: var(--cf-text); }
+    .cf-provider-name small { display: block; margin-top: 3px; color: var(--cf-muted); font-weight: 400; }
+    .cf-table tfoot th { background: #f8fafc; }
+    .cf-state { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: .75rem; font-weight: 800; white-space: nowrap; }
+    .cf-state.payable { color: #344054; background: #eef1f5; }
+    .cf-state.partial { color: #175cd3; background: #eaf2ff; }
+    .cf-state.paid { color: var(--cf-green); background: #def7eb; }
+    .cf-state.warning { color: var(--cf-yellow); background: #fff4d6; }
+    .cf-state.credit { color: #6941c6; background: #f1ebff; }
     .cf-section-head { margin-bottom: 12px; flex-wrap: wrap; }
     .cf-section-head h2, .cf-section-head h3 { margin: 0; }
     .cf-table-wrap { overflow-x: auto; }
@@ -130,19 +151,7 @@
         </div>
         <button id="btnExportarDestino" class="cf-btn" type="button" disabled>Exportar destino</button>
       </div>
-      <div class="cf-table-wrap">
-        <table id="tablaProveedores" class="cf-table">
-          <thead>
-            <tr>
-              <th>Proveedor</th><th>Tipo</th><th>Moneda deuda</th>
-              <th class="num">Obligación</th><th class="num">Enviado</th>
-              <th class="num">Aplicado</th><th class="num">Saldo</th><th>Revisión</th><th></th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-          <tfoot></tfoot>
-        </table>
-      </div>
+      <div id="gruposFinancieros" class="cf-financial-groups"></div>
       <div id="sinProveedores" class="cf-empty" hidden>No hay proveedores para esta selección.</div>
     </section>
   </main>
@@ -157,7 +166,7 @@
         <div id="detalleEstado" class="cf-status" role="status"></div>
         <section id="metricasProveedor" class="cf-metrics"></section>
         <nav class="cf-tabs" aria-label="Secciones del proveedor">
-          <button class="cf-tab active" data-tab="obligaciones" type="button">Obligaciones</button>
+          <button class="cf-tab active" data-tab="obligaciones" type="button">Costos</button>
           <button class="cf-tab" data-tab="abonos" type="button">Abonos</button>
           <button class="cf-tab" data-tab="reglas" type="button">Reglas</button>
           <button class="cf-tab" data-tab="historial" type="button">Historial</button>
