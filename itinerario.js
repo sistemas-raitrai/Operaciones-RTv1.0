@@ -3742,154 +3742,206 @@ function renderListaAlertasRevision(
     ).join('');
 }
 
-async function openAlertasPanel(
-  modo = 'grupo'
-) {
-  const grupoId =
-    selectNum.value;
+function escapeHTMLAlertas(value) {
+  return (value ?? '')
+    .toString()
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
 
-  if (!grupoId) {
-    return alert(
-      "Selecciona un grupo"
-    );
+function agruparAlertasRevisionPorGrupo(alertas) {
+  const grupos = new Map();
+
+  for (const alerta of alertas) {
+    const grupoId = String(alerta.grupoId || '');
+    if (!grupoId) continue;
+
+    if (!grupos.has(grupoId)) {
+      grupos.set(grupoId, {
+        grupoId,
+        numeroNegocio: alerta.numeroNegocio || grupoId,
+        nombreGrupo: alerta.nombreGrupo || '',
+        alertas: [],
+        ultimaAlerta: alerta.creadoEn || null
+      });
+    }
+
+    grupos.get(grupoId).alertas.push(alerta);
   }
 
-  if (!modalAlertas) {
+  return [...grupos.values()].sort((a, b) => {
+    return ordenarAlertasDesc(
+      { creadoEn: a.ultimaAlerta },
+      { creadoEn: b.ultimaAlerta }
+    );
+  });
+}
+
+function renderGruposAlertasRevision(
+  contenedor,
+  grupos,
+  tipo,
+  alVerDetalle
+) {
+  if (!contenedor) return;
+
+  if (!grupos.length) {
+    contenedor.innerHTML = `
+      <li class="alert-item">
+        <div class="meta">
+          ${
+            tipo === 'resueltas'
+              ? '— Sin grupos con rechazos resueltos —'
+              : '— Sin grupos con rechazos activos —'
+          }
+        </div>
+      </li>
+    `;
     return;
   }
 
-  alertasModo =
-    modo;
+  contenedor.innerHTML = grupos.map(grupo => {
+    const cantidad = grupo.alertas.length;
+    const sustantivo = cantidad === 1 ? 'rechazo' : 'rechazos';
 
-  modalAlertas.style.display =
-    "block";
+    return `
+      <li class="alert-item" style="margin-bottom:10px">
+        <div style="padding:10px">
+          <strong>
+            #${escapeHTMLAlertas(grupo.numeroNegocio)}
+            ·
+            ${escapeHTMLAlertas(
+              grupo.nombreGrupo.toString().toUpperCase()
+            )}
+          </strong>
 
-  if (modalBg) {
-    modalBg.style.display =
-      "block";
+          <div class="meta" style="margin:6px 0 10px">
+            ${
+              tipo === 'resueltas'
+                ? '✅'
+                : '❌'
+            }
+            ${cantidad}
+            ${sustantivo}
+            ${
+              tipo === 'resueltas'
+                ? 'resueltos'
+                : 'activos'
+            }
+          </div>
+
+          <button
+            type="button"
+            data-grupo-alertas="${escapeHTMLAlertas(grupo.grupoId)}"
+            style="
+              padding:6px 10px;
+              border:0;
+              border-radius:5px;
+              background:#1d4ed8;
+              color:white;
+              font-weight:700;
+              cursor:pointer;
+            "
+          >
+            Ver detalle
+          </button>
+        </div>
+      </li>
+    `;
+  }).join('');
+
+  contenedor.querySelectorAll('[data-grupo-alertas]')
+    .forEach(boton => {
+      boton.addEventListener('click', () => {
+        alVerDetalle(boton.dataset.grupoAlertas);
+      });
+    });
+}
+
+async function openAlertasPanel(modo = 'grupo') {
+  const grupoIdActual = selectNum.value;
+
+  if (modo === 'grupo' && !grupoIdActual) {
+    alert('Selecciona un grupo');
+    return;
   }
 
-  document.body.classList.add(
-    'modal-open'
-  );
+  if (!modalAlertas) return;
 
-  // Las secciones antiguas ya no participan.
+  alertasModo = modo;
+  modalAlertas.style.display = 'block';
+
+  if (modalBg) {
+    modalBg.style.display = 'block';
+  }
+
+  document.body.classList.add('modal-open');
+
   if (listAlertasOtros) {
-    listAlertasOtros.style.display =
-      'none';
+    listAlertasOtros.style.display = 'none';
   }
 
   if (listAlertasPend) {
-    listAlertasPend.style.display =
-      'none';
+    listAlertasPend.style.display = 'none';
   }
 
   if (listAlertasActual) {
     listAlertasActual.innerHTML =
-      `<li class="alert-item">
-        Cargando…
-      </li>`;
+      '<li class="alert-item">Cargando…</li>';
   }
 
   if (listAlertasLeidas) {
-    listAlertasLeidas.innerHTML =
-      '';
+    listAlertasLeidas.innerHTML = '';
   }
 
-  // ==================================================
-  // ESTE GRUPO
-  // ==================================================
-  if (
-    modo ===
-    'grupo'
-  ) {
+  // ---------------------------------------------
+  // ESTE GRUPO: conserva el detalle individual
+  // ---------------------------------------------
+  if (modo === 'grupo') {
     try {
-      const [
-        grupoSnap,
-        alertasSnap
-      ] =
-        await Promise.all([
-          getDoc(
-            doc(
-              db,
-              'grupos',
-              grupoId
-            )
-          ),
+      const [grupoSnap, alertasSnap] = await Promise.all([
+        getDoc(doc(db, 'grupos', grupoIdActual)),
+        getDocs(
+          collection(db, 'grupos', grupoIdActual, 'alertas')
+        )
+      ]);
 
-          getDocs(
-            collection(
-              db,
-              'grupos',
-              grupoId,
-              'alertas'
-            )
-          )
-        ]);
+      const g = grupoSnap.data() || {};
 
-      const g =
-        grupoSnap.data() ||
-        {};
+      const todas = alertasSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .sort(ordenarAlertasDesc);
 
-      const todas =
-        alertasSnap.docs
-          .map(d => ({
-            id:
-              d.id,
+      const activas = [];
+      const resueltas = [];
 
-            ...d.data()
-          }))
-          .sort(
-            ordenarAlertasDesc
-          );
-
-      const activas =
-        [];
-
-      const resueltas =
-        [];
-
-      todas.forEach(a => {
-        if (
-          alertaRevisionEstaActiva(
-            a,
-            g
-          )
-        ) {
-          activas.push(a);
-
+      for (const alerta of todas) {
+        if (alertaRevisionEstaActiva(alerta, g)) {
+          activas.push(alerta);
         } else {
-          resueltas.push(a);
+          resueltas.push(alerta);
         }
-      });
+      }
 
-      if (
-        alertasEncabezado
-      ) {
+      if (alertasEncabezado) {
         alertasEncabezado.innerHTML = `
           <strong>
-            #${g.numeroNegocio || grupoId}
+            #${escapeHTMLAlertas(
+              g.numeroNegocio || grupoIdActual
+            )}
             ·
-            ${
-              (
-                g.nombreGrupo ||
-                ''
-              )
-                .toString()
-                .toUpperCase()
-            }
+            ${escapeHTMLAlertas(
+              (g.nombreGrupo || '').toString().toUpperCase()
+            )}
           </strong>
 
-          <div
-            style="
-              margin-top:4px;
-            "
-          >
+          <div style="margin-top:4px">
             ❌ Rechazos activos:
             <b>${activas.length}</b>
-
             ·
-
             ✅ Resueltos:
             <b>${resueltas.length}</b>
           </div>
@@ -3899,40 +3951,24 @@ async function openAlertasPanel(
       renderListaAlertasRevision(
         listAlertasActual,
         activas,
-        {
-          mostrarGrupo:
-            false,
-
-          resueltas:
-            false
-        }
+        { mostrarGrupo: false, resueltas: false }
       );
 
       renderListaAlertasRevision(
         listAlertasLeidas,
         resueltas,
-        {
-          mostrarGrupo:
-            false,
-
-          resueltas:
-            true
-        }
+        { mostrarGrupo: false, resueltas: true }
       );
 
-      await refreshAlertasCounts(
-        grupoId
-      );
+      await refreshAlertasCounts(grupoIdActual);
 
-    } catch (e) {
+    } catch (error) {
       console.error(
         'Error cargando alertas del grupo:',
-        e
+        error
       );
 
-      if (
-        listAlertasActual
-      ) {
+      if (listAlertasActual) {
         listAlertasActual.innerHTML = `
           <li class="alert-item">
             Error al cargar las alertas.
@@ -3944,148 +3980,200 @@ async function openAlertasPanel(
     return;
   }
 
-  // ==================================================
-  // GENERAL DEL AÑO OPERATIVO
-  // ==================================================
+  // ---------------------------------------------
+  // GENERAL: una tarjeta por grupo
+  // ---------------------------------------------
   try {
-    const grupos =
-      await getGruposAnoOperativo();
+    const grupos = await getGruposAnoOperativo();
 
-    const resultados =
-      await Promise.all(
-        grupos.map(
-          async g => {
-            try {
-              const snap =
-                await getDocs(
-                  collection(
-                    db,
-                    'grupos',
-                    g.id,
-                    'alertas'
-                  )
-                );
+    const resultados = await Promise.all(
+      grupos.map(async g => {
+        try {
+          const snap = await getDocs(
+            collection(db, 'grupos', g.id, 'alertas')
+          );
 
-              return snap.docs.map(
-                d => ({
-                  id:
-                    d.id,
+          return snap.docs.map(d => ({
+            id: d.id,
+            ...d.data(),
+            grupoId: g.id,
+            numeroNegocio: g.numeroNegocio || g.id,
+            nombreGrupo: g.nombreGrupo || '',
+            _grupo: g
+          }));
 
-                  ...d.data(),
+        } catch (error) {
+          console.warn(
+            `No se pudieron cargar alertas del grupo ${g.id}:`,
+            error
+          );
+          return [];
+        }
+      })
+    );
 
-                  grupoId:
-                    g.id,
+    const todas = resultados
+      .flat()
+      .sort(ordenarAlertasDesc);
 
-                  numeroNegocio:
-                    g.numeroNegocio ||
-                    g.id,
+    const activas = [];
+    const resueltas = [];
 
-                  nombreGrupo:
-                    g.nombreGrupo ||
-                    '',
-
-                  _grupo:
-                    g
-                })
-              );
-
-            } catch (_) {
-              return [];
-            }
-          }
-        )
-      );
-
-    const todas =
-      resultados
-        .flat()
-        .sort(
-          ordenarAlertasDesc
-        );
-
-    const activas =
-      [];
-
-    const resueltas =
-      [];
-
-    todas.forEach(a => {
+    for (const alerta of todas) {
       if (
         alertaRevisionEstaActiva(
-          a,
-          a._grupo
+          alerta,
+          alerta._grupo
         )
       ) {
-        activas.push(a);
-
+        activas.push(alerta);
       } else {
-        resueltas.push(a);
+        resueltas.push(alerta);
       }
-    });
-
-    if (
-      alertasEncabezado
-    ) {
-      alertasEncabezado.innerHTML = `
-        <strong>
-          ALERTAS GENERALES
-          ${getAnoViajeOperativoActual()}
-        </strong>
-
-        <div
-          style="
-            margin-top:4px;
-          "
-        >
-          Grupos revisados:
-          <b>${grupos.length}</b>
-
-          ·
-
-          ❌ Rechazos activos:
-          <b>${activas.length}</b>
-
-          ·
-
-          ✅ Rechazos resueltos:
-          <b>${resueltas.length}</b>
-        </div>
-      `;
     }
 
-    renderListaAlertasRevision(
-      listAlertasActual,
-      activas,
-      {
-        mostrarGrupo:
-          true,
+    const gruposActivos =
+      agruparAlertasRevisionPorGrupo(activas);
 
-        resueltas:
-          false
+    const gruposResueltos =
+      agruparAlertasRevisionPorGrupo(resueltas);
+
+    // Guardamos la posición al entrar en el detalle.
+    let posicionLista = 0;
+
+    const volverALista = () => {
+      alertasModo = 'general';
+
+      if (alertasEncabezado) {
+        alertasEncabezado.innerHTML = encabezadoGeneral;
       }
-    );
 
-    renderListaAlertasRevision(
-      listAlertasLeidas,
-      resueltas,
-      {
-        mostrarGrupo:
-          true,
+      renderGruposAlertasRevision(
+        listAlertasActual,
+        gruposActivos,
+        'activas',
+        mostrarDetalle
+      );
 
-        resueltas:
-          true
+      renderGruposAlertasRevision(
+        listAlertasLeidas,
+        gruposResueltos,
+        'resueltas',
+        mostrarDetalle
+      );
+
+      modalAlertas.scrollTop = posicionLista;
+    };
+
+    const mostrarDetalle = grupoId => {
+      const activasGrupo = activas.filter(
+        a => String(a.grupoId) === String(grupoId)
+      );
+
+      const resueltasGrupo = resueltas.filter(
+        a => String(a.grupoId) === String(grupoId)
+      );
+
+      const primera = activasGrupo[0] ||
+        resueltasGrupo[0];
+
+      if (!primera) return;
+
+      posicionLista = modalAlertas.scrollTop;
+      alertasModo = 'general_detalle';
+
+      if (alertasEncabezado) {
+        alertasEncabezado.innerHTML = `
+          <button
+            type="button"
+            id="volver-grupos-alertas"
+            style="
+              margin-bottom:10px;
+              padding:6px 10px;
+              border:0;
+              border-radius:5px;
+              background:#e5e7eb;
+              cursor:pointer;
+            "
+          >
+            ← Volver a grupos
+          </button>
+
+          <div>
+            <strong>
+              #${escapeHTMLAlertas(
+                primera.numeroNegocio || grupoId
+              )}
+              ·
+              ${escapeHTMLAlertas(
+                (primera.nombreGrupo || '')
+                  .toString()
+                  .toUpperCase()
+              )}
+            </strong>
+          </div>
+
+          <div style="margin-top:4px">
+            ❌ Rechazos activos:
+            <b>${activasGrupo.length}</b>
+            ·
+            ✅ Resueltos:
+            <b>${resueltasGrupo.length}</b>
+          </div>
+        `;
+
+        document
+          .getElementById('volver-grupos-alertas')
+          ?.addEventListener('click', volverALista);
       }
-    );
 
-  } catch (e) {
+      renderListaAlertasRevision(
+        listAlertasActual,
+        activasGrupo,
+        { mostrarGrupo: false, resueltas: false }
+      );
+
+      renderListaAlertasRevision(
+        listAlertasLeidas,
+        resueltasGrupo,
+        { mostrarGrupo: false, resueltas: true }
+      );
+
+      modalAlertas.scrollTop = 0;
+    };
+
+    const encabezadoGeneral = `
+      <strong>
+        ALERTAS GENERALES
+        ${getAnoViajeOperativoActual()}
+      </strong>
+
+      <div style="margin-top:4px">
+        Grupos consultados:
+        <b>${grupos.length}</b>
+        ·
+        Grupos con rechazos activos:
+        <b>${gruposActivos.length}</b>
+      </div>
+
+      <div style="margin-top:4px">
+        ❌ Rechazos activos:
+        <b>${activas.length}</b>
+        ·
+        ✅ Rechazos resueltos:
+        <b>${resueltas.length}</b>
+      </div>
+    `;
+
+    volverALista();
+
+  } catch (error) {
     console.error(
       'Error cargando alertas generales:',
-      e
+      error
     );
 
-    if (
-      listAlertasActual
-    ) {
+    if (listAlertasActual) {
       listAlertasActual.innerHTML = `
         <li class="alert-item">
           Error al cargar las alertas generales.
