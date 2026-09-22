@@ -17,27 +17,85 @@
     .controls button{ padding:.35rem .8rem; border:none; background:#0055A4; color:#fff; border-radius:4px; cursor:pointer }
 
     /* ====== Tabla ====== */
-    .table-wrapper { overflow-x:auto }
-    table { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:.25rem }
-    thead th { position:sticky; top:0; background:#f9f9f9; z-index:2 }
-    th, td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; text-align:left }
-
-    /* Anchos en secciones FIJAS (sin columna Destino) */
-    .tbl-fixed th:nth-child(1), .tbl-fixed td:nth-child(1){ width:28% } /* Proveedor */
-    .tbl-fixed th:nth-child(2), .tbl-fixed td:nth-child(2){ width:22% } /* Contacto  */
-    .tbl-fixed th:nth-child(3), .tbl-fixed td:nth-child(3){ width:16% } /* Teléfono  */
-    .tbl-fixed th:nth-child(4), .tbl-fixed td:nth-child(4){ width:24% } /* Correo    */
-    .tbl-fixed th:nth-child(5), .tbl-fixed td:nth-child(5){ width:5% }  /* 💾        */
-    .tbl-fixed th:nth-child(6), .tbl-fixed td:nth-child(6){ width:5% }  /* 🗑️        */
-
-    /* Anchos en sección OTRO (con columna Destino) */
-    .tbl-otro th:nth-child(1), .tbl-otro td:nth-child(1){ width:18% }   /* Destino   */
-    .tbl-otro th:nth-child(2), .tbl-otro td:nth-child(2){ width:26% }   /* Proveedor */
-    .tbl-otro th:nth-child(3), .tbl-otro td:nth-child(3){ width:20% }   /* Contacto  */
-    .tbl-otro th:nth-child(4), .tbl-otro td:nth-child(4){ width:12% }   /* Teléfono  */
-    .tbl-otro th:nth-child(5), .tbl-otro td:nth-child(5){ width:18% }   /* Correo    */
-    .tbl-otro th:nth-child(6), .tbl-otro td:nth-child(6){ width:3% }    /* 💾        */
-    .tbl-otro th:nth-child(7), .tbl-otro td:nth-child(7){ width:3% }    /* 🗑️        */
+    /* Proveedores de destinos fijos */
+    .tbl-fixed {
+      width: max-content;
+      min-width: 1250px;
+    }
+    
+    .tbl-fixed th:nth-child(1),
+    .tbl-fixed td:nth-child(1) { width:260px; } /* Proveedor */
+    
+    .tbl-fixed th:nth-child(2),
+    .tbl-fixed td:nth-child(2) { width:220px; } /* Contacto */
+    
+    .tbl-fixed th:nth-child(3),
+    .tbl-fixed td:nth-child(3) { width:160px; } /* Teléfono */
+    
+    .tbl-fixed th:nth-child(4),
+    .tbl-fixed td:nth-child(4) { width:280px; } /* Correo */
+    
+    .tbl-fixed th:nth-child(5),
+    .tbl-fixed td:nth-child(5) { width:260px; } /* Dirección */
+    
+    .tbl-fixed th:nth-child(6),
+    .tbl-fixed td:nth-child(6) { width:55px; } /* Guardar */
+    
+    .tbl-fixed th:nth-child(7),
+    .tbl-fixed td:nth-child(7) { width:55px; } /* Eliminar */
+    
+    /* Proveedores de destinos personalizados */
+    .tbl-otro {
+      width: max-content;
+      min-width: 1450px;
+    }
+    
+    .tbl-otro th:nth-child(1),
+    .tbl-otro td:nth-child(1) { width:190px; } /* Destino */
+    
+    .tbl-otro th:nth-child(2),
+    .tbl-otro td:nth-child(2) { width:250px; } /* Proveedor */
+    
+    .tbl-otro th:nth-child(3),
+    .tbl-otro td:nth-child(3) { width:210px; } /* Contacto */
+    
+    .tbl-otro th:nth-child(4),
+    .tbl-otro td:nth-child(4) { width:160px; } /* Teléfono */
+    
+    .tbl-otro th:nth-child(5),
+    .tbl-otro td:nth-child(5) { width:270px; } /* Correo */
+    
+    .tbl-otro th:nth-child(6),
+    .tbl-otro td:nth-child(6) { width:260px; } /* Dirección */
+    
+    .tbl-otro th:nth-child(7),
+    .tbl-otro td:nth-child(7) { width:55px; } /* Guardar */
+    
+    .tbl-otro th:nth-child(8),
+    .tbl-otro td:nth-child(8) { width:55px; } /* Eliminar */
+    
+    .table-wrapper {
+      width:100%;
+      max-height:70vh;
+      overflow:auto;
+      position:relative;
+    }
+    
+    .table-wrapper table {
+      table-layout:fixed;
+    }
+    
+    .table-wrapper thead th {
+      position:sticky;
+      top:0;
+      z-index:3;
+      background:#f9f9f9;
+    }
+    
+    .table-wrapper input {
+      width:100%;
+      box-sizing:border-box;
+    }
 
     /* ====== BLOQUE DE FILTROS (igual a servicios.html) ====== */
     .filters{
@@ -271,6 +329,7 @@
                 'Nombre Contacto',
                 'Teléfono',
                 'Correo electrónico',
+                'Dirección',
                 '💾',
                 '🗑️'
               ]
@@ -279,6 +338,7 @@
                 'Nombre Contacto',
                 'Teléfono',
                 'Correo electrónico',
+                'Dirección',
                 '💾',
                 '🗑️'
               ];
@@ -342,7 +402,8 @@
                   'proveedor',
                   'contacto',
                   'telefono',
-                  'correo'
+                  'correo',
+                  'direccion'
                 ].forEach((campo, i) => {
                   obj[campo] = vals[i] || '';
                 });
@@ -351,7 +412,8 @@
                   'proveedor',
                   'contacto',
                   'telefono',
-                  'correo'
+                  'correo',
+                  'direccion'
                 ].forEach((campo, i) => {
                   obj[campo] = vals[i] || '';
                 });
@@ -400,7 +462,8 @@
               'proveedor',
               'contacto',
               'telefono',
-              'correo'
+              'correo',
+              'direccion'
             ];
         
             fields.forEach(field => {
@@ -569,115 +632,107 @@
           /* =====================================================
              7) Guardar fila
              ===================================================== */
-          async function guardarFila(rowData){
-            const data = {};
-        
-            rowData.inputs.forEach(inp => {
-              const campo = inp.dataset.campo;
-        
-              data[campo] =
-                campo === 'correo'
-                  ? inp.value.trim()
-                  : normalizar(inp.value);
-            });
-        
-            const destino = isOtro
-              ? normalizar(data.destino)
-              : normalizar(destFijo);
-        
-            const proveedor = normalizar(data.proveedor);
-        
-            if (!destino) {
-              throw new Error('Falta Destino');
-            }
-        
-            if (!proveedor) {
-              throw new Error('Falta Proveedor');
-            }
-        
-            if (
-              isOtro &&
-              DESTINOS_FIJOS_SET.has(destino)
-            ) {
-              throw new Error(
-                `${destino} ya tiene una sección propia. ` +
-                `Guarda el proveedor en la sección ${destino}.`
-              );
-            }
-        
-            /*
-              Crear o actualizar el documento padre del destino.
-              Esto permite que posteriormente OTRO pueda descubrirlo.
-            */
-            const destinoDoc = doc(
-              db,
-              'Proveedores',
-              destino
-            );
-        
-            await setDoc(
-              destinoDoc,
-              {
-                _created: true,
-                destino
-              },
-              { merge: true }
-            );
-        
-            const provDoc = doc(
-              db,
-              'Proveedores',
-              destino,
-              'Listado',
-              proveedor
-            );
-        
-            const payload = {
-              destino,
-              proveedor,
-              contacto: normalizar(data.contacto),
-              telefono: normalizar(data.telefono),
-              correo: (data.correo || '').trim()
-            };
-        
-            /*
-              Si se cambió el nombre del proveedor o el destino,
-              debemos moverlo a la ruta nueva.
-            */
-            if (
-              rowData.ref &&
-              rowData.ref.path !== provDoc.path
-            ) {
-              await setDoc(
-                provDoc,
-                payload,
-                { merge: true }
-              );
-        
-              try {
-                await deleteDoc(rowData.ref);
-              } catch (error) {
-                console.warn(
-                  'El proveedor se guardó en su nueva ubicación, ' +
-                  'pero no se pudo borrar la ubicación anterior:',
-                  error
+            async function guardarFila(rowData){
+              const data = {};
+            
+              rowData.inputs.forEach(input => {
+                const campo = input.dataset.campo;
+            
+                data[campo] =
+                  campo === 'correo'
+                    ? input.value.trim()
+                    : normalizar(input.value);
+              });
+            
+              const destino = isOtro
+                ? normalizar(data.destino)
+                : normalizar(destFijo);
+            
+              const proveedor = normalizar(data.proveedor);
+            
+              if (!destino) {
+                throw new Error('Falta Destino');
+              }
+            
+              if (!proveedor) {
+                throw new Error('Falta Proveedor');
+              }
+            
+              if (
+                isOtro &&
+                DESTINOS_FIJOS_SET.has(destino)
+              ) {
+                throw new Error(
+                  `${destino} ya tiene una sección propia. ` +
+                  `Guarda el proveedor en la sección ${destino}.`
                 );
               }
-            } else {
+            
+              const destinoDoc = doc(
+                db,
+                'Proveedores',
+                destino
+              );
+            
               await setDoc(
-                provDoc,
-                payload,
+                destinoDoc,
+                {
+                  _created: true,
+                  destino
+                },
                 { merge: true }
               );
+            
+              const provDoc = doc(
+                db,
+                'Proveedores',
+                destino,
+                'Listado',
+                proveedor
+              );
+            
+              const payload = {
+                destino,
+                proveedor,
+                contacto: normalizar(data.contacto),
+                telefono: normalizar(data.telefono),
+                correo: (data.correo || '').trim(),
+                direccion: normalizar(data.direccion)
+              };
+            
+              /*
+                Si cambió el nombre o destino, guardar en la nueva ruta
+                y eliminar la anterior.
+              */
+              if (
+                rowData.ref &&
+                rowData.ref.path !== provDoc.path
+              ) {
+                await setDoc(
+                  provDoc,
+                  payload,
+                  { merge: true }
+                );
+            
+                try {
+                  await deleteDoc(rowData.ref);
+                } catch (error) {
+                  console.warn(
+                    'El proveedor quedó guardado en su nueva ubicación, ' +
+                    'pero no se pudo eliminar la ubicación anterior:',
+                    error
+                  );
+                }
+              } else {
+                await setDoc(
+                  provDoc,
+                  payload,
+                  { merge: true }
+                );
+              }
+            
+              rowData.ref = provDoc;
             }
-        
-            /*
-              Actualizamos el ref real de la fila.
-              De esta forma los próximos guardados y eliminaciones
-              usan la ubicación correcta.
-            */
-            rowData.ref = provDoc;
-          }
         
           /* =====================================================
              8) Guardar todas las filas
@@ -732,17 +787,21 @@
                     proveedor:
                       data.proveedor ||
                       docSnap.id,
-        
+                
                     contacto:
                       data.contacto ||
                       '',
-        
+                
                     telefono:
                       data.telefono ||
                       '',
-        
+                
                     correo:
                       data.correo ||
+                      '',
+                
+                    direccion:
+                      data.direccion ||
                       ''
                   },
                   doc(
@@ -799,20 +858,25 @@
                 addRow(
                   {
                     destino,
+                
                     proveedor:
                       data.proveedor ||
                       docSnap.id,
-        
+                
                     contacto:
                       data.contacto ||
                       '',
-        
+                
                     telefono:
                       data.telefono ||
                       '',
-        
+                
                     correo:
                       data.correo ||
+                      '',
+                
+                    direccion:
+                      data.direccion ||
                       ''
                   },
                   doc(
