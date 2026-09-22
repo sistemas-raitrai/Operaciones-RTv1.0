@@ -188,69 +188,657 @@
       secciones.push(createSection(DEST_OTRO)); // “OTRO”
 
       for (const sec of secciones) {
-        if (sec.isOtro) continue;
         await sec.cargarDesdeFirestore();
       }
 
       /* =========================================================
          5) Factoría de secciones (cada destino maneja su tabla)
          ========================================================= */
-      function createSection(destFijo){
-        const isOtro = destFijo === null;
-        const titulo = isOtro ? 'OTRO' : destFijo;
-
-        const sec = document.createElement('div');
-        sec.className = 'section';
-        sec.innerHTML = `<h3>${titulo}</h3>`;
-        seccionesWrap.appendChild(sec);
-
-        const ctrl = document.createElement('div');
-        ctrl.className = 'controls';
-        const btnNueva   = mkBtn('➕ Nueva fila', () => addRow());
-        const btnDiez    = mkBtn('➕➕ Agregar 10 filas', () => { for(let i=0;i<10;i++) addRow(); });
-        const btnSaveAll = mkBtn('💾 Guardar todo', saveAll);
-        ctrl.append(btnNueva, btnDiez, btnSaveAll);
-        sec.appendChild(ctrl);
-
-        const wrap = document.createElement('div');
-        wrap.className = 'table-wrapper';
-        const tbl = document.createElement('table');
-        tbl.className = isOtro ? 'tbl-otro' : 'tbl-fixed';
-
-        const thead = document.createElement('thead');
-        const trh   = document.createElement('tr');
-        const headers = isOtro
-          ? ['Destino','Proveedor','Nombre Contacto','Teléfono','Correo electrónico','💾','🗑️']
-          : ['Proveedor','Nombre Contacto','Teléfono','Correo electrónico','💾','🗑️'];
-        headers.forEach(t => { const th=document.createElement('th'); th.textContent=t; trh.appendChild(th); });
-        thead.appendChild(trh);
-        tbl.appendChild(thead);
-
-        const tbody = document.createElement('tbody');
-        tbl.appendChild(tbody);
-        wrap.appendChild(tbl);
-        sec.appendChild(wrap);
-
-        const rows = []; // { inputs:[], ref?, tr }
-
-        /* Pegado MASIVO por sección (tipo Excel) */
-        tbody.addEventListener('paste', e => {
-          const ae = document.activeElement;
-          if (ae && /^(INPUT|TEXTAREA|SELECT)$/i.test(ae.tagName)) return;
-          e.preventDefault();
-          const lines = (e.clipboardData.getData('text/plain') || '')
-            .trim().split(/\r?\n/);
-          for (const line of lines) {
-            const vals = line.split('\t');
-            const obj = {};
-            if (isOtro) {
-              ['destino','proveedor','contacto','telefono','correo'].forEach((c,i)=>obj[c]=vals[i]||'');
-            } else {
-              ['proveedor','contacto','telefono','correo'].forEach((c,i)=>obj[c]=vals[i]||'');
+        function createSection(destFijo){
+          const isOtro = destFijo === null;
+          const titulo = isOtro ? 'OTRO' : destFijo;
+        
+          const DESTINOS_FIJOS_SET = new Set(
+            DESTINOS_FIJOS.map(destino => destino.toUpperCase())
+          );
+        
+          const normalizar = valor => {
+            return (valor || '')
+              .toString()
+              .trim()
+              .toUpperCase();
+          };
+        
+          /* =====================================================
+             1) Contenedor
+             ===================================================== */
+          const sec = document.createElement('div');
+          sec.className = 'section';
+          sec.innerHTML = `<h3>${titulo}</h3>`;
+          seccionesWrap.appendChild(sec);
+        
+          /* =====================================================
+             2) Controles
+             ===================================================== */
+          const ctrl = document.createElement('div');
+          ctrl.className = 'controls';
+        
+          const btnNueva = mkBtn(
+            '➕ Nueva fila',
+            () => addRow()
+          );
+        
+          const btnDiez = mkBtn(
+            '➕➕ Agregar 10 filas',
+            () => {
+              for (let i = 0; i < 10; i++) {
+                addRow();
+              }
             }
-            addRow(obj);
+          );
+        
+          const btnSaveAll = mkBtn(
+            '💾 Guardar todo',
+            saveAll
+          );
+        
+          ctrl.append(
+            btnNueva,
+            btnDiez,
+            btnSaveAll
+          );
+        
+          sec.appendChild(ctrl);
+        
+          /* =====================================================
+             3) Tabla
+             ===================================================== */
+          const wrap = document.createElement('div');
+          wrap.className = 'table-wrapper';
+        
+          const tbl = document.createElement('table');
+          tbl.className = isOtro
+            ? 'tbl-otro'
+            : 'tbl-fixed';
+        
+          const thead = document.createElement('thead');
+          const trh = document.createElement('tr');
+        
+          const headers = isOtro
+            ? [
+                'Destino',
+                'Proveedor',
+                'Nombre Contacto',
+                'Teléfono',
+                'Correo electrónico',
+                '💾',
+                '🗑️'
+              ]
+            : [
+                'Proveedor',
+                'Nombre Contacto',
+                'Teléfono',
+                'Correo electrónico',
+                '💾',
+                '🗑️'
+              ];
+        
+          headers.forEach(texto => {
+            const th = document.createElement('th');
+            th.textContent = texto;
+            trh.appendChild(th);
+          });
+        
+          thead.appendChild(trh);
+          tbl.appendChild(thead);
+        
+          const tbody = document.createElement('tbody');
+          tbl.appendChild(tbody);
+        
+          wrap.appendChild(tbl);
+          sec.appendChild(wrap);
+        
+          /*
+            Cada elemento tendrá:
+            {
+              inputs,
+              ref,
+              tr
+            }
+          */
+          const rows = [];
+        
+          /* =====================================================
+             4) Pegado masivo
+             ===================================================== */
+          tbody.addEventListener('paste', e => {
+            const activo = document.activeElement;
+        
+            if (
+              activo &&
+              /^(INPUT|TEXTAREA|SELECT)$/i.test(activo.tagName)
+            ) {
+              return;
+            }
+        
+            e.preventDefault();
+        
+            const texto = (
+              e.clipboardData.getData('text/plain') ||
+              ''
+            ).trim();
+        
+            if (!texto) return;
+        
+            const lines = texto.split(/\r?\n/);
+        
+            for (const line of lines) {
+              const vals = line.split('\t');
+              const obj = {};
+        
+              if (isOtro) {
+                [
+                  'destino',
+                  'proveedor',
+                  'contacto',
+                  'telefono',
+                  'correo'
+                ].forEach((campo, i) => {
+                  obj[campo] = vals[i] || '';
+                });
+              } else {
+                [
+                  'proveedor',
+                  'contacto',
+                  'telefono',
+                  'correo'
+                ].forEach((campo, i) => {
+                  obj[campo] = vals[i] || '';
+                });
+              }
+        
+              addRow(obj);
+            }
+          });
+        
+          /* =====================================================
+             5) Agregar fila
+             ===================================================== */
+          function addRow(prefill = {}, ref = null){
+            const tr = document.createElement('tr');
+            const inputs = [];
+        
+            /*
+              Creamos primero el registro para evitar que los botones
+              conserven un ref antiguo.
+            */
+            const rowData = {
+              inputs,
+              ref,
+              tr
+            };
+        
+            if (isOtro) {
+              const tdDestino = document.createElement('td');
+              const inpDestino = document.createElement('input');
+        
+              inpDestino.placeholder = 'Destino';
+              inpDestino.value = normalizar(prefill.destino);
+              inpDestino.dataset.campo = 'destino';
+        
+              inpDestino.addEventListener('input', () => {
+                inpDestino.value = normalizar(inpDestino.value);
+                applySearch();
+              });
+        
+              tdDestino.appendChild(inpDestino);
+              tr.appendChild(tdDestino);
+              inputs.push(inpDestino);
+            }
+        
+            const fields = [
+              'proveedor',
+              'contacto',
+              'telefono',
+              'correo'
+            ];
+        
+            fields.forEach(field => {
+              const td = document.createElement('td');
+              const inp = document.createElement('input');
+        
+              inp.value = prefill[field] || '';
+              inp.dataset.campo = field;
+        
+              if (field !== 'correo') {
+                inp.value = normalizar(inp.value);
+        
+                inp.addEventListener('input', () => {
+                  inp.value = normalizar(inp.value);
+                  applySearch();
+                });
+              } else {
+                inp.addEventListener('input', applySearch);
+              }
+        
+              td.appendChild(inp);
+              tr.appendChild(td);
+              inputs.push(inp);
+            });
+        
+            /* -----------------------------------------------
+               Guardar fila
+               ----------------------------------------------- */
+            const tdGuardar = document.createElement('td');
+        
+            const btnGuardar = mkBtn('💾', async () => {
+              try {
+                await guardarFila(rowData);
+                alert('Proveedor guardado ✅');
+              } catch (error) {
+                console.error(error);
+                alert(`Error: ${error.message}`);
+              }
+            });
+        
+            tdGuardar.appendChild(btnGuardar);
+            tr.appendChild(tdGuardar);
+        
+            /* -----------------------------------------------
+               Eliminar fila
+               ----------------------------------------------- */
+            const tdEliminar = document.createElement('td');
+        
+            const btnEliminar = mkBtn('🗑️', async () => {
+              const proveedor = obtenerValor(
+                rowData,
+                'proveedor'
+              );
+        
+              const confirmar = confirm(
+                `¿Eliminar el proveedor${
+                  proveedor ? ` "${proveedor}"` : ''
+                }?`
+              );
+        
+              if (!confirmar) return;
+        
+              try {
+                if (rowData.ref) {
+                  await deleteDoc(rowData.ref);
+                }
+        
+                tr.remove();
+        
+                const idx = rows.indexOf(rowData);
+                if (idx >= 0) {
+                  rows.splice(idx, 1);
+                }
+        
+                alert('Proveedor eliminado ✅');
+              } catch (error) {
+                console.error(error);
+                alert(`No se pudo eliminar: ${error.message}`);
+              }
+            });
+        
+            tdEliminar.appendChild(btnEliminar);
+            tr.appendChild(tdEliminar);
+        
+            /* -----------------------------------------------
+               Pegado horizontal desde Excel
+               ----------------------------------------------- */
+            inputs.forEach((inp, startIdx) => {
+              inp.addEventListener('paste', e => {
+                const dt =
+                  e.clipboardData ||
+                  window.clipboardData;
+        
+                const text =
+                  (dt && dt.getData('text')) ||
+                  '';
+        
+                const hasGrid =
+                  text.includes('\t') ||
+                  /\r?\n/.test(text);
+        
+                if (!hasGrid) {
+                  setTimeout(() => {
+                    if (inp.dataset.campo !== 'correo') {
+                      inp.value = normalizar(inp.value);
+                    }
+        
+                    applySearch();
+                  }, 0);
+        
+                  return;
+                }
+        
+                e.preventDefault();
+        
+                const tokens = text
+                  .replace(/\r\n/g, '\n')
+                  .split(/\t|\n/)
+                  .filter(token => token.length);
+        
+                for (
+                  let k = 0;
+                  k < tokens.length &&
+                  startIdx + k < inputs.length;
+                  k++
+                ) {
+                  const target = inputs[startIdx + k];
+                  const raw = tokens[k].trim();
+        
+                  target.value =
+                    target.dataset.campo === 'correo'
+                      ? raw
+                      : normalizar(raw);
+        
+                  target.dispatchEvent(
+                    new Event('input', {
+                      bubbles: true
+                    })
+                  );
+                }
+        
+                applySearch();
+              });
+            });
+        
+            tbody.appendChild(tr);
+            rows.push(rowData);
+            applySearch();
+        
+            return rowData;
           }
-        });
+        
+          /* =====================================================
+             6) Obtener valor de una fila
+             ===================================================== */
+          function obtenerValor(rowData, campo){
+            const input = rowData.inputs.find(
+              item => item.dataset.campo === campo
+            );
+        
+            return input
+              ? input.value.trim()
+              : '';
+          }
+        
+          /* =====================================================
+             7) Guardar fila
+             ===================================================== */
+          async function guardarFila(rowData){
+            const data = {};
+        
+            rowData.inputs.forEach(inp => {
+              const campo = inp.dataset.campo;
+        
+              data[campo] =
+                campo === 'correo'
+                  ? inp.value.trim()
+                  : normalizar(inp.value);
+            });
+        
+            const destino = isOtro
+              ? normalizar(data.destino)
+              : normalizar(destFijo);
+        
+            const proveedor = normalizar(data.proveedor);
+        
+            if (!destino) {
+              throw new Error('Falta Destino');
+            }
+        
+            if (!proveedor) {
+              throw new Error('Falta Proveedor');
+            }
+        
+            if (
+              isOtro &&
+              DESTINOS_FIJOS_SET.has(destino)
+            ) {
+              throw new Error(
+                `${destino} ya tiene una sección propia. ` +
+                `Guarda el proveedor en la sección ${destino}.`
+              );
+            }
+        
+            /*
+              Crear o actualizar el documento padre del destino.
+              Esto permite que posteriormente OTRO pueda descubrirlo.
+            */
+            const destinoDoc = doc(
+              db,
+              'Proveedores',
+              destino
+            );
+        
+            await setDoc(
+              destinoDoc,
+              {
+                _created: true,
+                destino
+              },
+              { merge: true }
+            );
+        
+            const provDoc = doc(
+              db,
+              'Proveedores',
+              destino,
+              'Listado',
+              proveedor
+            );
+        
+            const payload = {
+              destino,
+              proveedor,
+              contacto: normalizar(data.contacto),
+              telefono: normalizar(data.telefono),
+              correo: (data.correo || '').trim()
+            };
+        
+            /*
+              Si se cambió el nombre del proveedor o el destino,
+              debemos moverlo a la ruta nueva.
+            */
+            if (
+              rowData.ref &&
+              rowData.ref.path !== provDoc.path
+            ) {
+              await setDoc(
+                provDoc,
+                payload,
+                { merge: true }
+              );
+        
+              try {
+                await deleteDoc(rowData.ref);
+              } catch (error) {
+                console.warn(
+                  'El proveedor se guardó en su nueva ubicación, ' +
+                  'pero no se pudo borrar la ubicación anterior:',
+                  error
+                );
+              }
+            } else {
+              await setDoc(
+                provDoc,
+                payload,
+                { merge: true }
+              );
+            }
+        
+            /*
+              Actualizamos el ref real de la fila.
+              De esta forma los próximos guardados y eliminaciones
+              usan la ubicación correcta.
+            */
+            rowData.ref = provDoc;
+          }
+        
+          /* =====================================================
+             8) Guardar todas las filas
+             ===================================================== */
+          async function saveAll(){
+            const errores = [];
+        
+            for (let i = 0; i < rows.length; i++) {
+              try {
+                await guardarFila(rows[i]);
+              } catch (error) {
+                errores.push(
+                  `Fila ${i + 1}: ${error.message}`
+                );
+              }
+            }
+        
+            alert(
+              errores.length
+                ? `⚠️ Algunos proveedores no se guardaron:\n${errores.join('\n')}`
+                : 'Todos los proveedores fueron guardados ✅'
+            );
+          }
+        
+          /* =====================================================
+             9) Cargar desde Firestore
+             ===================================================== */
+          async function cargarDesdeFirestore(){
+            /*
+              Destino fijo: mantiene el comportamiento normal.
+            */
+            if (!isOtro) {
+              const colRef = collection(
+                db,
+                'Proveedores',
+                destFijo,
+                'Listado'
+              );
+        
+              const q = query(
+                colRef,
+                orderBy('proveedor', 'asc')
+              );
+        
+              const snap = await getDocs(q);
+        
+              snap.forEach(docSnap => {
+                const data = docSnap.data() || {};
+        
+                addRow(
+                  {
+                    proveedor:
+                      data.proveedor ||
+                      docSnap.id,
+        
+                    contacto:
+                      data.contacto ||
+                      '',
+        
+                    telefono:
+                      data.telefono ||
+                      '',
+        
+                    correo:
+                      data.correo ||
+                      ''
+                  },
+                  doc(
+                    db,
+                    'Proveedores',
+                    destFijo,
+                    'Listado',
+                    docSnap.id
+                  )
+                );
+              });
+        
+              return;
+            }
+        
+            /*
+              OTRO:
+              Lee todos los documentos padre de Proveedores y excluye
+              los destinos que ya tienen una sección propia.
+            */
+            const destinosSnap = await getDocs(
+              collection(db, 'Proveedores')
+            );
+        
+            const destinosPersonalizados = destinosSnap.docs
+              .map(docSnap => normalizar(docSnap.id))
+              .filter(destino => {
+                return (
+                  destino &&
+                  destino !== 'OTRO' &&
+                  !DESTINOS_FIJOS_SET.has(destino)
+                );
+              })
+              .sort((a, b) => {
+                return a.localeCompare(b, 'es');
+              });
+        
+            for (const destino of destinosPersonalizados) {
+              const proveedoresSnap = await getDocs(
+                query(
+                  collection(
+                    db,
+                    'Proveedores',
+                    destino,
+                    'Listado'
+                  ),
+                  orderBy('proveedor', 'asc')
+                )
+              );
+        
+              proveedoresSnap.forEach(docSnap => {
+                const data = docSnap.data() || {};
+        
+                addRow(
+                  {
+                    destino,
+                    proveedor:
+                      data.proveedor ||
+                      docSnap.id,
+        
+                    contacto:
+                      data.contacto ||
+                      '',
+        
+                    telefono:
+                      data.telefono ||
+                      '',
+        
+                    correo:
+                      data.correo ||
+                      ''
+                  },
+                  doc(
+                    db,
+                    'Proveedores',
+                    destino,
+                    'Listado',
+                    docSnap.id
+                  )
+                );
+              });
+            }
+          }
+        
+          function mkBtn(txt, fn){
+            const button = document.createElement('button');
+            button.textContent = txt;
+            button.onclick = fn;
+            return button;
+          }
+        
+          return {
+            isOtro,
+            cargarDesdeFirestore
+          };
+        }
 
         function addRow(prefill = {}, ref = null){
           const tr = document.createElement('tr');
