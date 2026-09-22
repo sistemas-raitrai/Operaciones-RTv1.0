@@ -18,29 +18,170 @@
     .section h3{ margin:.5rem 0 }
     .table-wrapper { overflow-x:auto }
 
-    /* ——— Tabla ——— */
-    table { width:100%; border-collapse:collapse; table-layout:fixed }
-    thead th { position:sticky; top:0; background:#f9f9f9; z-index:2 }
-    th, td { border:1px solid #ccc; padding:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0 }
-
-    /* ——— Anchos (actualizados a 15 columnas) ——— */
-    /* 1: chk | 2: No | 3: Servicio | 4: Tipo Serv | 5: Categoría (oculta) | 6: Ciudad | 7: Restricciones | 8: Proveedor | 9: Indicaciones | 10: Voucher | 11: Clave | 12: Tipo Cobro | 13: Moneda | 14: Valor | 15: Forma de Pago */
-    th:nth-child(1),  td:nth-child(1)  { width:5% }
-    th:nth-child(2),  td:nth-child(2)  { width:5% }
-    th:nth-child(3),  td:nth-child(3)  { width:20% }
-    th:nth-child(4),  td:nth-child(4)  { width:12% }
-    th:nth-child(5),  td:nth-child(5)  { width:12% } /* Oculta abajo */
-    th:nth-child(6),  td:nth-child(6)  { width:10% }
-    th:nth-child(7),  td:nth-child(7)  { width:20% }
-    th:nth-child(8),  td:nth-child(8)  { width:12% }
-    th:nth-child(9),  td:nth-child(9)  { width:18% }  /* Indicaciones */
-    th:nth-child(10), td:nth-child(10) { width:10% }  /* Voucher */
-    th:nth-child(11), td:nth-child(11) { width:12% }  /* Clave */
-    th:nth-child(12), td:nth-child(12) { width:10% }  /* Tipo Cobro */
-    th:nth-child(13), td:nth-child(13) { width:8% }   /* Moneda */
-    th:nth-child(14), td:nth-child(14) { width:10% }  /* Valor Servicio */
-    th:nth-child(15), td:nth-child(15) { width:auto } /* Forma de Pago */
-
+    /* =====================================================
+       TABLA DE SERVICIOS
+       ===================================================== */
+    
+    .table-wrapper {
+      width:100%;
+      max-height:72vh;
+      overflow:auto;
+      position:relative;
+      border:1px solid #ccc;
+    }
+    
+    table {
+      width:max-content;
+      min-width:2750px;
+      border-collapse:collapse;
+      table-layout:fixed;
+    }
+    
+    thead th {
+      position:sticky;
+      top:0;
+      background:#f9f9f9;
+      z-index:4;
+    }
+    
+    th,
+    td {
+      border:1px solid #ccc;
+      padding:4px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    
+    td input,
+    td select {
+      width:100%;
+      box-sizing:border-box;
+    }
+    
+    /* Destinos fijos: 18 columnas */
+    table:not(.tbl-servicios-otro) th:nth-child(1),
+    table:not(.tbl-servicios-otro) td:nth-child(1) { width:45px; }
+    
+    table:not(.tbl-servicios-otro) th:nth-child(2),
+    table:not(.tbl-servicios-otro) td:nth-child(2) { width:50px; }
+    
+    table:not(.tbl-servicios-otro) th:nth-child(3),
+    table:not(.tbl-servicios-otro) td:nth-child(3) { width:230px; }
+    
+    table:not(.tbl-servicios-otro) th:nth-child(4),
+    table:not(.tbl-servicios-otro) td:nth-child(4) { width:130px; }
+    
+    /* Categoría: columna 5, oculta */
+    table:not(.tbl-servicios-otro) th:nth-child(5),
+    table:not(.tbl-servicios-otro) td:nth-child(5) {
+      display:none;
+    }
+    
+    table:not(.tbl-servicios-otro) th:nth-child(6),
+    table:not(.tbl-servicios-otro) td:nth-child(6) { width:150px; } /* Ciudad */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(7),
+    table:not(.tbl-servicios-otro) td:nth-child(7) { width:290px; } /* Dirección */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(8),
+    table:not(.tbl-servicios-otro) td:nth-child(8) { width:260px; } /* Restricciones */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(9),
+    table:not(.tbl-servicios-otro) td:nth-child(9) { width:220px; } /* Proveedor */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(10),
+    table:not(.tbl-servicios-otro) td:nth-child(10) { width:210px; } /* Contacto */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(11),
+    table:not(.tbl-servicios-otro) td:nth-child(11) { width:170px; } /* Teléfono */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(12),
+    table:not(.tbl-servicios-otro) td:nth-child(12) { width:270px; } /* Indicaciones */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(13),
+    table:not(.tbl-servicios-otro) td:nth-child(13) { width:130px; } /* Voucher */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(14),
+    table:not(.tbl-servicios-otro) td:nth-child(14) { width:160px; } /* Clave */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(15),
+    table:not(.tbl-servicios-otro) td:nth-child(15) { width:150px; } /* Tipo cobro */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(16),
+    table:not(.tbl-servicios-otro) td:nth-child(16) { width:140px; } /* Moneda */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(17),
+    table:not(.tbl-servicios-otro) td:nth-child(17) { width:130px; } /* Valor */
+    
+    table:not(.tbl-servicios-otro) th:nth-child(18),
+    table:not(.tbl-servicios-otro) td:nth-child(18) { width:170px; } /* Forma pago */
+    
+    /* OTRO: agrega Destino como columna 3 */
+    table.tbl-servicios-otro {
+      min-width:2950px;
+    }
+    
+    table.tbl-servicios-otro th:nth-child(1),
+    table.tbl-servicios-otro td:nth-child(1) { width:45px; }
+    
+    table.tbl-servicios-otro th:nth-child(2),
+    table.tbl-servicios-otro td:nth-child(2) { width:50px; }
+    
+    table.tbl-servicios-otro th:nth-child(3),
+    table.tbl-servicios-otro td:nth-child(3) { width:190px; } /* Destino */
+    
+    table.tbl-servicios-otro th:nth-child(4),
+    table.tbl-servicios-otro td:nth-child(4) { width:230px; } /* Servicio */
+    
+    table.tbl-servicios-otro th:nth-child(5),
+    table.tbl-servicios-otro td:nth-child(5) { width:130px; } /* Tipo */
+    
+    /* Categoría: columna 6, oculta */
+    table.tbl-servicios-otro th:nth-child(6),
+    table.tbl-servicios-otro td:nth-child(6) {
+      display:none;
+    }
+    
+    table.tbl-servicios-otro th:nth-child(7),
+    table.tbl-servicios-otro td:nth-child(7) { width:150px; } /* Ciudad */
+    
+    table.tbl-servicios-otro th:nth-child(8),
+    table.tbl-servicios-otro td:nth-child(8) { width:290px; } /* Dirección */
+    
+    table.tbl-servicios-otro th:nth-child(9),
+    table.tbl-servicios-otro td:nth-child(9) { width:260px; } /* Restricciones */
+    
+    table.tbl-servicios-otro th:nth-child(10),
+    table.tbl-servicios-otro td:nth-child(10) { width:220px; } /* Proveedor */
+    
+    table.tbl-servicios-otro th:nth-child(11),
+    table.tbl-servicios-otro td:nth-child(11) { width:210px; } /* Contacto */
+    
+    table.tbl-servicios-otro th:nth-child(12),
+    table.tbl-servicios-otro td:nth-child(12) { width:170px; } /* Teléfono */
+    
+    table.tbl-servicios-otro th:nth-child(13),
+    table.tbl-servicios-otro td:nth-child(13) { width:270px; } /* Indicaciones */
+    
+    table.tbl-servicios-otro th:nth-child(14),
+    table.tbl-servicios-otro td:nth-child(14) { width:130px; } /* Voucher */
+    
+    table.tbl-servicios-otro th:nth-child(15),
+    table.tbl-servicios-otro td:nth-child(15) { width:160px; } /* Clave */
+    
+    table.tbl-servicios-otro th:nth-child(16),
+    table.tbl-servicios-otro td:nth-child(16) { width:150px; } /* Tipo cobro */
+    
+    table.tbl-servicios-otro th:nth-child(17),
+    table.tbl-servicios-otro td:nth-child(17) { width:140px; } /* Moneda */
+    
+    table.tbl-servicios-otro th:nth-child(18),
+    table.tbl-servicios-otro td:nth-child(18) { width:130px; } /* Valor */
+    
+    table.tbl-servicios-otro th:nth-child(19),
+    table.tbl-servicios-otro td:nth-child(19) { width:170px; } /* Forma pago */
+    
     /* ——— Controles ——— */
     .controls{ margin:.5rem 0; display:flex; gap:.5rem; flex-wrap:wrap }
     .controls button{ padding:.3rem .8rem; border:none; background:#0055A4; color:#fff; border-radius:4px; cursor:pointer }
