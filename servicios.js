@@ -21,8 +21,22 @@ const opciones = {
 
 // Orden y nombres de campos (mismo orden visual y de guardado)
 const campos = [
-  'servicio','tipoServicio','categoria','ciudad','restricciones',
-  'proveedor','indicaciones','voucher','clave','tipoCobro','moneda','valorServicio','formaPago'
+  'servicio',
+  'tipoServicio',
+  'categoria',
+  'ciudad',
+  'direccion',
+  'restricciones',
+  'proveedor',
+  'contacto',
+  'telefono',
+  'indicaciones',
+  'voucher',
+  'clave',
+  'tipoCobro',
+  'moneda',
+  'valorServicio',
+  'formaPago'
 ];
 
 // Secciones por destino; `null` representa la sección "OTRO"
@@ -45,6 +59,93 @@ function getAnoTarifaActivo() {
    =========================== */
 // Registro de secciones para exportación global
 const allSections = []; // { name:string, getAOA:()=>string[][] }
+
+/* =====================================================
+   CACHÉ DE PROVEEDORES
+
+   Cada destino consulta Firestore una sola vez.
+   Todas las filas reutilizan la información cargada.
+   ===================================================== */
+
+const proveedoresCache = new Map();
+
+function normalizarProveedor(valor){
+  return (valor || '')
+    .toString()
+    .trim()
+    .toUpperCase();
+}
+
+async function cargarProveedoresDestino(
+  destino,
+  { forzar = false } = {}
+){
+  const destinoNormalizado = normalizarProveedor(destino);
+
+  if (!destinoNormalizado) {
+    return new Map();
+  }
+
+  if (
+    !forzar &&
+    proveedoresCache.has(destinoNormalizado)
+  ) {
+    return proveedoresCache.get(destinoNormalizado);
+  }
+
+  const proveedores = new Map();
+
+  const snap = await getDocs(
+    query(
+      collection(
+        db,
+        'Proveedores',
+        destinoNormalizado,
+        'Listado'
+      ),
+      orderBy('proveedor', 'asc')
+    )
+  );
+
+  snap.forEach(docSnap => {
+    const data = docSnap.data() || {};
+
+    const nombre = normalizarProveedor(
+      data.proveedor ||
+      docSnap.id
+    );
+
+    if (!nombre) return;
+
+    proveedores.set(nombre, {
+      proveedor: nombre,
+      contacto: normalizarProveedor(data.contacto),
+      telefono: (data.telefono || '').toString().trim(),
+      correo: (data.correo || '').toString().trim(),
+      direccion: normalizarProveedor(data.direccion)
+    });
+  });
+
+  proveedoresCache.set(
+    destinoNormalizado,
+    proveedores
+  );
+
+  return proveedores;
+}
+
+function limpiarCacheProveedores(destino = ''){
+  if (destino) {
+    proveedoresCache.delete(
+      normalizarProveedor(destino)
+    );
+  } else {
+    proveedoresCache.clear();
+  }
+}
+
+window.limpiarCacheProveedores =
+  limpiarCacheProveedores;
 
 // Carga perezosa de SheetJS
 function loadScript(src){
@@ -302,8 +403,11 @@ function createSection(destFijo){
         'Tipo Servicio',
         'Categoría',
         'Ciudad',
+        'Dirección',
         'Restricciones',
         'Proveedor',
+        'Nombre Contacto',
+        'Teléfono',
         'Indicaciones',
         'Voucher',
         'Clave',
@@ -319,8 +423,11 @@ function createSection(destFijo){
         'Tipo Servicio',
         'Categoría',
         'Ciudad',
+        'Dirección',
         'Restricciones',
         'Proveedor',
+        'Nombre Contacto',
+        'Teléfono',
         'Indicaciones',
         'Voucher',
         'Clave',
@@ -386,79 +493,107 @@ function createSection(destFijo){
   /* =====================================================
      5) Cargar proveedores según el destino de cada fila
      ===================================================== */
-  async function loadProvs(tr, destinoFila, proveedorSeleccionado = ''){
-    const sel = tr.querySelector('select[data-campo="proveedor"]');
-
-    if (!sel) return;
-
-    const destino = normalizarDestino(destinoFila);
-    const proveedorActual = (
+  async function loadProvs(
+    tr,
+    destinoFila,
+    proveedorSeleccionado = '',
+    catalogoPrecargado = null
+  ){
+    const sel = tr.querySelector(
+      'select[data-campo="proveedor"]'
+    );
+  
+    if (!sel) return new Map();
+  
+    const destino = normalizarProveedor(destinoFila);
+  
+    const seleccionado = normalizarProveedor(
       proveedorSeleccionado ||
-      sel.value ||
-      ''
-    ).toString().trim().toUpperCase();
-
+      sel.value
+    );
+  
     sel.innerHTML = '<option value="">—</option>';
-
+  
     if (!destino) {
-      if (proveedorActual) {
-        sel.appendChild(
-          new Option(proveedorActual, proveedorActual, true, true)
-        );
-      }
-      return;
+      tr._catalogoProveedores = new Map();
+      return tr._catalogoProveedores;
     }
-
-    try {
-      const snap = await getDocs(
-        query(
-          collection(db, 'Proveedores', destino, 'Listado'),
-          orderBy('proveedor', 'asc')
+  
+    const catalogo =
+      catalogoPrecargado instanceof Map
+        ? catalogoPrecargado
+        : await cargarProveedoresDestino(destino);
+  
+    for (const [nombre] of catalogo) {
+      sel.appendChild(
+        new Option(nombre, nombre)
+      );
+    }
+  
+    /*
+      Si el proveedor guardado ya no está en el catálogo,
+      se conserva para no perder información histórica.
+    */
+    if (
+      seleccionado &&
+      !catalogo.has(seleccionado)
+    ) {
+      sel.appendChild(
+        new Option(
+          `${seleccionado} (NO ESTÁ EN CATÁLOGO)`,
+          seleccionado
         )
       );
-
-      snap.forEach(docSnap => {
-        const data = docSnap.data() || {};
-        const nombre = (
-          data.proveedor ||
-          docSnap.id ||
-          ''
-        ).toString().trim().toUpperCase();
-
-        if (!nombre) return;
-
-        sel.appendChild(new Option(nombre, nombre));
-      });
-
-      /*
-        Si el servicio tenía un proveedor que ya no aparece en el catálogo,
-        no lo eliminamos de la fila.
-      */
-      if (
-        proveedorActual &&
-        ![...sel.options].some(opt => opt.value === proveedorActual)
-      ) {
-        sel.appendChild(
-          new Option(
-            `${proveedorActual} (NO ESTÁ EN CATÁLOGO)`,
-            proveedorActual
-          )
-        );
-      }
-
-      sel.value = proveedorActual;
-    } catch (error) {
-      console.error(
-        `No se pudieron cargar proveedores de ${destino}:`,
-        error
-      );
-
-      if (proveedorActual) {
-        sel.appendChild(
-          new Option(proveedorActual, proveedorActual, true, true)
-        );
-      }
     }
+  
+    sel.value = seleccionado;
+    tr._catalogoProveedores = catalogo;
+  
+    return catalogo;
+  }
+
+  function copiarDatosProveedorEnFila(
+    tr,
+    proveedorNombre,
+    {
+      sobrescribir = true
+    } = {}
+  ){
+    const proveedor = normalizarProveedor(
+      proveedorNombre
+    );
+  
+    const catalogo =
+      tr._catalogoProveedores ||
+      new Map();
+  
+    const data = catalogo.get(proveedor);
+  
+    if (!data) return;
+  
+    const valores = {
+      contacto: data.contacto || '',
+      telefono: data.telefono || '',
+      direccion: data.direccion || ''
+    };
+  
+    Object.entries(valores).forEach(
+      ([campo, valor]) => {
+        const input = tr.querySelector(
+          `[data-campo="${campo}"]`
+        );
+  
+        if (!input) return;
+  
+        if (
+          sobrescribir ||
+          !input.value.trim()
+        ) {
+          input.value = valor;
+          input.title = valor;
+        }
+      }
+    );
   }
 
   /* =====================================================
@@ -474,271 +609,348 @@ function createSection(destFijo){
   /* =====================================================
      7) Agregar una fila
      ===================================================== */
-  async function add(prefill = {}, ref = null){
+  async function add(
+    prefill = {},
+    ref = null,
+    catalogoPrecargado = null,
+    {
+      aplicarBusqueda = true
+    } = {}
+  ){
     const tr = document.createElement('tr');
     const inputs = [];
-
-    // Checkbox
+  
+    /* Checkbox */
     const tdChk = document.createElement('td');
     const chk = document.createElement('input');
     chk.type = 'checkbox';
     tdChk.appendChild(chk);
     tr.appendChild(tdChk);
-
-    // Número de fila
+  
+    /* Número */
     const tdNum = document.createElement('td');
     tr.appendChild(tdNum);
-
+  
     for (const campo of camposSeccion) {
       const td = document.createElement('td');
       let inp;
-
-      /* -----------------------------------------------
-         Destino personalizado
-         ----------------------------------------------- */
+  
       if (campo === 'destino') {
         inp = document.createElement('input');
         inp.dataset.campo = campo;
         inp.placeholder = 'EJ.: MENDOZA';
-        inp.value = normalizarDestino(prefill.destino);
-
+        inp.value = normalizarProveedor(
+          prefill.destino
+        );
+  
         inp.addEventListener('input', () => {
-          inp.value = normalizarDestino(inp.value);
+          inp.value = normalizarProveedor(
+            inp.value
+          );
+  
           inp.title = inp.value;
         });
       }
-
-      /* -----------------------------------------------
-         Proveedor
-         ----------------------------------------------- */
+  
       else if (campo === 'proveedor') {
         inp = document.createElement('select');
         inp.dataset.campo = campo;
       }
-
-      /* -----------------------------------------------
-         Voucher
-         ----------------------------------------------- */
+  
       else if (campo === 'voucher') {
         inp = document.createElement('select');
         inp.dataset.campo = campo;
-
+  
         opciones.voucher.forEach(valor => {
-          inp.appendChild(new Option(valor, valor));
+          inp.appendChild(
+            new Option(valor, valor)
+          );
         });
-
+  
         if (prefill[campo]) {
-          const valor = prefill[campo]
-            .toString()
-            .trim()
-            .toUpperCase();
-
-          const opt = [...inp.options].find(o => o.value === valor);
+          const valor = normalizarProveedor(
+            prefill[campo]
+          );
+  
+          const opt = [...inp.options].find(
+            option => option.value === valor
+          );
+  
           if (opt) opt.selected = true;
         }
       }
-
-      /* -----------------------------------------------
-         Clave electrónica
-         ----------------------------------------------- */
+  
       else if (campo === 'clave') {
         inp = document.createElement('input');
         inp.dataset.campo = campo;
         inp.readOnly = true;
         inp.value = prefill[campo] || '';
         inp.title = inp.value;
-
-        if (inp.value) clavesUsadas.add(inp.value);
+  
+        if (inp.value) {
+          clavesUsadas.add(inp.value);
+        }
       }
-
-      /* -----------------------------------------------
-         Selectores de catálogos
-         ----------------------------------------------- */
+  
       else if (opciones[campo]) {
         inp = document.createElement('select');
         inp.dataset.campo = campo;
-
-        if (campo === 'categoria' || campo === 'formaPago') {
+  
+        if (
+          campo === 'categoria' ||
+          campo === 'formaPago'
+        ) {
           inp.multiple = true;
         }
-
+  
         opciones[campo].forEach(valor => {
-          inp.appendChild(new Option(valor, valor));
+          inp.appendChild(
+            new Option(valor, valor)
+          );
         });
-
+  
         if (prefill[campo]) {
-          const valores = Array.isArray(prefill[campo])
+          const valores = Array.isArray(
+            prefill[campo]
+          )
             ? prefill[campo]
             : [prefill[campo]];
-
+  
           valores.forEach(valorOriginal => {
-            const valor = (valorOriginal || '')
-              .toString()
-              .trim()
-              .toUpperCase();
-
-            const opt = [...inp.options].find(o => o.value === valor);
+            const valor = normalizarProveedor(
+              valorOriginal
+            );
+  
+            const opt = [...inp.options].find(
+              option => option.value === valor
+            );
+  
             if (opt) opt.selected = true;
           });
         }
       }
-
-      /* -----------------------------------------------
-         Inputs de texto
-         ----------------------------------------------- */
+  
       else {
         inp = document.createElement('input');
         inp.dataset.campo = campo;
         inp.value = prefill[campo] || '';
         inp.title = inp.value;
-
+  
         if (campo !== 'valorServicio') {
           inp.addEventListener('input', () => {
-            inp.value = (inp.value || '')
-              .toString()
-              .toUpperCase();
-
+            inp.value = normalizarProveedor(
+              inp.value
+            );
+  
             inp.title = inp.value;
           });
         }
-
-        inp.onfocus = () => showFloatingEditor(inp);
+  
+        inp.onfocus = () => {
+          showFloatingEditor(inp);
+        };
       }
-
+  
       td.appendChild(inp);
       tr.appendChild(td);
       inputs.push(inp);
     }
-
-    /*
-      Insertamos la fila antes de hacer consultas para que el usuario
-      la vea inmediatamente.
-    */
-    tbody.insertBefore(tr, tbody.firstChild);
-
+  
+    tbody.appendChild(tr);
+  
     const rowData = {
       inputs,
       ref,
       checkbox: chk
     };
-
-    rows.unshift(rowData);
+  
+    rows.push(rowData);
     updateRowNumbers();
-
-    /* -----------------------------------------------
-       Cargar proveedores
-       ----------------------------------------------- */
-    const destinoInicial = isOtro
-      ? normalizarDestino(prefill.destino)
+  
+    const destinoFila = isOtro
+      ? normalizarProveedor(prefill.destino)
       : destFijo;
-
+  
     await loadProvs(
       tr,
-      destinoInicial,
-      prefill.proveedor || ''
+      destinoFila,
+      prefill.proveedor || '',
+      catalogoPrecargado
     );
-
+  
+    const proveedorSel = tr.querySelector(
+      'select[data-campo="proveedor"]'
+    );
+  
     /*
-      En OTRO, cuando cambia el destino, se recarga el catálogo
-      de proveedores correspondiente.
+      Solo copia automáticamente cuando el usuario cambia
+      deliberadamente el proveedor.
+  
+      Al cargar una fila existente se respetan los datos
+      personalizados guardados en el servicio.
+    */
+    proveedorSel?.addEventListener(
+      'change',
+      () => {
+        copiarDatosProveedorEnFila(
+          tr,
+          proveedorSel.value,
+          { sobrescribir: true }
+        );
+  
+        applySearch();
+      }
+    );
+  
+    /*
+      Para una fila nueva que ya viene con proveedor pero sin
+      datos propios, completar únicamente los campos vacíos.
+    */
+    if (!ref && prefill.proveedor) {
+      copiarDatosProveedorEnFila(
+        tr,
+        prefill.proveedor,
+        { sobrescribir: false }
+      );
+    }
+  
+    /*
+      En OTRO, cambiar destino recarga el catálogo correspondiente.
     */
     if (isOtro) {
       const destinoInp = tr.querySelector(
         'input[data-campo="destino"]'
       );
-
-      if (destinoInp) {
-        destinoInp.addEventListener('change', async () => {
-          const proveedorSel = tr.querySelector(
-            'select[data-campo="proveedor"]'
-          );
-
-          const proveedorAnterior = proveedorSel?.value || '';
-
+  
+      destinoInp?.addEventListener(
+        'change',
+        async () => {
+          const destinoNuevo =
+            normalizarProveedor(
+              destinoInp.value
+            );
+  
+          proveedorSel.value = '';
+  
           await loadProvs(
             tr,
-            destinoInp.value,
-            proveedorAnterior
+            destinoNuevo,
+            ''
           );
-
+  
+          const contactoInp = tr.querySelector(
+            '[data-campo="contacto"]'
+          );
+  
+          const telefonoInp = tr.querySelector(
+            '[data-campo="telefono"]'
+          );
+  
+          const direccionInp = tr.querySelector(
+            '[data-campo="direccion"]'
+          );
+  
+          if (contactoInp) contactoInp.value = '';
+          if (telefonoInp) telefonoInp.value = '';
+          if (direccionInp) direccionInp.value = '';
+  
           applySearch();
-        });
-      }
+        }
+      );
     }
-
-    /* -----------------------------------------------
-       Voucher electrónico y clave
-       ----------------------------------------------- */
+  
+    /* Voucher y clave */
     const voucherSel = tr.querySelector(
       'select[data-campo="voucher"]'
     );
-
+  
     const claveInp = tr.querySelector(
       'input[data-campo="clave"]'
     );
-
+  
     if (voucherSel && claveInp) {
       const ensureClave = () => {
         if (voucherSel.value === 'ELECTRONICO') {
           if (!claveInp.value) {
-            claveInp.value = generarClaveUnica();
+            claveInp.value =
+              generarClaveUnica();
           }
         } else {
           claveInp.value = '';
         }
-
+  
         claveInp.title = claveInp.value;
       };
-
-      voucherSel.addEventListener('change', ensureClave);
+  
+      voucherSel.addEventListener(
+        'change',
+        ensureClave
+      );
+  
       ensureClave();
     }
-
-    inputs.forEach(inp => {
-      inp.addEventListener('paste', e => {
-        e.stopPropagation();
-      });
+  
+    inputs.forEach(input => {
+      input.addEventListener(
+        'paste',
+        event => event.stopPropagation()
+      );
     });
-
-    applySearch();
+  
+    if (aplicarBusqueda) {
+      applySearch();
+    }
+  
+    return rowData;
   }
-
   /* =====================================================
      8) Cargar servicios del año
      ===================================================== */
   async function cargarServicios(){
     try {
       /*
-        Destino fijo: solo carga la colección de ese destino.
+        DESTINO FIJO
+  
+        Servicios y proveedores se consultan en paralelo.
+        El catálogo de proveedores se reutiliza en todas las filas.
       */
       if (!isOtro) {
-        const snap = await getDocs(
-          query(
-            collection(
-              db,
-              'ServiciosPorAno',
-              getAnoTarifaActivo(),
-              'Destinos',
-              destFijo,
-              'Listado'
-            ),
-            orderBy('servicio', 'asc')
-          )
-        );
-
-        for (const docSnap of snap.docs) {
+        const [
+          serviciosSnap,
+          catalogoProveedores
+        ] = await Promise.all([
+          getDocs(
+            query(
+              collection(
+                db,
+                'ServiciosPorAno',
+                getAnoTarifaActivo(),
+                'Destinos',
+                destFijo,
+                'Listado'
+              ),
+              orderBy('servicio', 'asc')
+            )
+          ),
+  
+          cargarProveedoresDestino(destFijo)
+        ]);
+  
+        for (const docSnap of serviciosSnap.docs) {
           const data = docSnap.data() || {};
-
+  
           const prefill = {
             ...data,
-            servicio: data.servicio || docSnap.id,
-            destino: destFijo
+            destino: destFijo,
+            servicio:
+              data.servicio ||
+              docSnap.id
           };
-
+  
           if (prefill.clave) {
             clavesUsadas.add(prefill.clave);
           }
-
+  
           await add(
             prefill,
             doc(
@@ -749,18 +961,23 @@ function createSection(destFijo){
               destFijo,
               'Listado',
               docSnap.id
-            )
+            ),
+            catalogoProveedores,
+            {
+              aplicarBusqueda: false
+            }
           );
         }
-
+  
+        applySearch();
         return;
       }
-
+  
       /*
-        OTRO:
-        1. Lee todos los documentos de Destinos.
-        2. Excluye los destinos fijos.
-        3. Carga sus servicios.
+        OTRO
+  
+        Descubre los destinos personalizados y carga servicios y
+        proveedores una vez por cada destino.
       */
       const destinosSnap = await getDocs(
         collection(
@@ -770,46 +987,62 @@ function createSection(destFijo){
           'Destinos'
         )
       );
-
-      const destinosPersonalizados = destinosSnap.docs
-        .map(docSnap => normalizarDestino(docSnap.id))
-        .filter(destino => {
-          return (
-            destino &&
-            destino !== 'OTRO' &&
-            !DESTINOS_FIJOS.has(destino)
-          );
-        })
-        .sort((a, b) => a.localeCompare(b, 'es'));
-
+  
+      const destinosPersonalizados =
+        destinosSnap.docs
+          .map(docSnap => {
+            return normalizarProveedor(
+              docSnap.id
+            );
+          })
+          .filter(destino => {
+            return (
+              destino &&
+              destino !== 'OTRO' &&
+              !DESTINOS_FIJOS.has(destino)
+            );
+          })
+          .sort((a, b) => {
+            return a.localeCompare(b, 'es');
+          });
+  
       for (const destino of destinosPersonalizados) {
-        const serviciosSnap = await getDocs(
-          query(
-            collection(
-              db,
-              'ServiciosPorAno',
-              getAnoTarifaActivo(),
-              'Destinos',
-              destino,
-              'Listado'
-            ),
-            orderBy('servicio', 'asc')
-          )
-        );
-
+        const [
+          serviciosSnap,
+          catalogoProveedores
+        ] = await Promise.all([
+          getDocs(
+            query(
+              collection(
+                db,
+                'ServiciosPorAno',
+                getAnoTarifaActivo(),
+                'Destinos',
+                destino,
+                'Listado'
+              ),
+              orderBy('servicio', 'asc')
+            )
+          ),
+  
+          cargarProveedoresDestino(destino)
+        ]);
+  
         for (const docSnap of serviciosSnap.docs) {
           const data = docSnap.data() || {};
-
+  
           const prefill = {
             ...data,
             destino,
-            servicio: data.servicio || docSnap.id
+            servicio:
+              data.servicio ||
+              docSnap.id
           };
-
+  
           if (prefill.clave) {
             clavesUsadas.add(prefill.clave);
           }
-
+  
           await add(
             prefill,
             doc(
@@ -820,16 +1053,24 @@ function createSection(destFijo){
               destino,
               'Listado',
               docSnap.id
-            )
+            ),
+            catalogoProveedores,
+            {
+              aplicarBusqueda: false
+            }
           );
         }
       }
+  
+      applySearch();
     } catch (error) {
       console.error(
-        `Error cargando servicios de ${isOtro ? 'OTRO' : destFijo}:`,
+        `Error cargando servicios de ${
+          isOtro ? 'OTRO' : destFijo
+        }:`,
         error
       );
-
+  
       alert(
         `No se pudieron cargar los servicios de ${
           isOtro ? 'OTRO' : destFijo
