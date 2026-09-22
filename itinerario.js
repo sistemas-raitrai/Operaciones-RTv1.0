@@ -2117,36 +2117,98 @@ actualizarUIEstadoModos();
 // —————————————————————————————————
 // Autocomplete de actividades
 // —————————————————————————————————
+const DESTINOS_FIJOS_SERVICIOS = new Set([
+  'BRASIL',
+  'BARILOCHE',
+  'SUR DE CHILE',
+  'NORTE DE CHILE'
+]);
+
+async function obtenerDestinosServiciosItinerario(destinoStr, grupo = null) {
+  const partes = (destinoStr || '')
+    .toString()
+    .split(/\s+Y\s+/i)
+    .map(s => s.trim().toUpperCase())
+    .filter(Boolean);
+
+  if (!partes.includes('OTRO')) {
+    return [...new Set(partes)];
+  }
+
+  const anoTarifa = getAnoTarifaGrupo(grupo);
+
+  const snap = await getDocs(
+    collection(
+      db,
+      'ServiciosPorAno',
+      anoTarifa,
+      'Destinos'
+    )
+  );
+
+  const personalizados = snap.docs
+    .map(ds => ds.id.trim().toUpperCase())
+    .filter(destino =>
+      destino &&
+      destino !== 'OTRO' &&
+      !DESTINOS_FIJOS_SERVICIOS.has(destino)
+    );
+
+  return [...new Set([
+    ...partes.filter(destino => destino !== 'OTRO'),
+    ...personalizados
+  ])];
+}
+
 async function obtenerActividadesPorDestino(destino, grupo = null) {
   if (!destino) return [];
 
   const anoTarifa = getAnoTarifaGrupo(grupo);
-  const partes = destino.toString()
-    .split(/\s+Y\s+/i)
-    .map(s => s.trim().toUpperCase());
 
-  const todas = [];
+  const destinos = await obtenerDestinosServiciosItinerario(
+    destino,
+    grupo
+  );
 
-  for (const parte of partes) {
-    try {
-      const ref = collection(
-        db,
-        'ServiciosPorAno',
-        anoTarifa,
-        'Destinos',
-        parte,
-        'Listado'
-      );
+  const resultados = await Promise.all(
+    destinos.map(async destinoServicio => {
+      try {
+        const snap = await getDocs(
+          collection(
+            db,
+            'ServiciosPorAno',
+            anoTarifa,
+            'Destinos',
+            destinoServicio,
+            'Listado'
+          )
+        );
 
-      const snap = await getDocs(ref);
+        return snap.docs.map(ds =>
+          (
+            ds.data().nombre ||
+            ds.data().servicio ||
+            ds.id ||
+            ''
+          ).toString().trim().toUpperCase()
+        );
+      } catch (error) {
+        console.warn(
+          `No se pudieron cargar actividades de ${destinoServicio}:`,
+          error
+        );
+        return [];
+      }
+    })
+  );
 
-      snap.docs.forEach(ds =>
-        todas.push(((ds.data().nombre || ds.data().servicio || ds.id) || '').toString().toUpperCase())
-      );
-    } catch (_) {}
-  }
-
-  return [...new Set(todas)].sort();
+  return [
+    ...new Set(
+      resultados
+        .flat()
+        .filter(Boolean)
+    )
+  ].sort((a, b) => a.localeCompare(b, 'es'));
 }
 
 async function prepararCampoActividad(inputId, destino, grupo = null) {
@@ -2227,57 +2289,127 @@ function aplicarFiltroHistorial() {
 async function getServiciosMaps(destinoStr, grupo = null) {
   const anoTarifa = getAnoTarifaGrupo(grupo);
 
-  const partes = destinoStr
-    ? destinoStr.toString().split(/\s+Y\s+/i).map(s => s.trim().toUpperCase())
-    : [];
+  const destinos = await obtenerDestinosServiciosItinerario(
+    destinoStr,
+    grupo
+  );
 
   const byId = new Map();
   const byName = new Map();
   const packs = [];
 
-  for (const parte of partes) {
-    try {
-      const snap = await getDocs(collection(
-        db,
-        'ServiciosPorAno',
-        anoTarifa,
-        'Destinos',
-        parte,
-        'Listado'
-      ));
+  // Si el mismo ID o nombre aparece en destinos diferentes,
+  // no se elige uno arbitrariamente.
+  const idsAmbiguos = new Set();
+  const nombresAmbiguos = new Set();
 
-      snap.forEach(ds => {
-        const id   = ds.id;
-        const data = ds.data() || {};
-        const visible = ((data.nombre || data.servicio || id) || '').toString();
+  const resultados = await Promise.all(
+    destinos.map(async destinoServicio => {
+      try {
+        const snap = await getDocs(
+          collection(
+            db,
+            'ServiciosPorAno',
+            anoTarifa,
+            'Destinos',
+            destinoServicio,
+            'Listado'
+          )
+        );
 
-        const pack = {
-          id,
-          anoTarifa,
-          destino: parte,
-          nombre: visible.toUpperCase(),
-          nombreK: K(visible),
-          data
+        return {
+          destino: destinoServicio,
+          docs: snap.docs
         };
+      } catch (error) {
+        console.warn(
+          `No se pudieron cargar servicios de ${destinoServicio}:`,
+          error
+        );
 
-        byId.set(id, pack);
-        packs.push(pack);
-        byName.set(pack.nombreK, pack);
-        byName.set(K(id), pack);
+        return {
+          destino: destinoServicio,
+          docs: []
+        };
+      }
+    })
+  );
 
-        if (data.servicio) byName.set(K(data.servicio), pack);
+  function agregarClave(mapa, ambiguos, clave, pack) {
+    if (!clave || ambiguos.has(clave)) return;
 
-        if (Array.isArray(data.aliases)) {
-          data.aliases.forEach(a => {
-            const key = K(a);
-            if (key) byName.set(key, pack);
-          });
-        }
-      });
-    } catch (_) {}
+    if (mapa.has(clave)) {
+      const anterior = mapa.get(clave);
+
+      if (
+        anterior.id !== pack.id ||
+        anterior.destino !== pack.destino
+      ) {
+        mapa.delete(clave);
+        ambiguos.add(clave);
+      }
+
+      return;
+    }
+
+    mapa.set(clave, pack);
   }
 
-  return { byId, byName, packs };
+  for (const resultado of resultados) {
+    for (const ds of resultado.docs) {
+      const id = ds.id;
+      const data = ds.data() || {};
+
+      const visible = (
+        data.nombre ||
+        data.servicio ||
+        id
+      ).toString().trim();
+
+      const pack = {
+        id,
+        anoTarifa,
+        destino: resultado.destino,
+        nombre: visible.toUpperCase(),
+        nombreK: K(visible),
+        data
+      };
+
+      packs.push(pack);
+
+      agregarClave(byId, idsAmbiguos, id, pack);
+      agregarClave(byName, nombresAmbiguos, pack.nombreK, pack);
+      agregarClave(byName, nombresAmbiguos, K(id), pack);
+
+      if (data.servicio) {
+        agregarClave(
+          byName,
+          nombresAmbiguos,
+          K(data.servicio),
+          pack
+        );
+      }
+
+      if (Array.isArray(data.aliases)) {
+        for (const alias of data.aliases) {
+          agregarClave(
+            byName,
+            nombresAmbiguos,
+            K(alias),
+            pack
+          );
+        }
+      }
+    }
+  }
+
+  return {
+    byId,
+    byName,
+    packs,
+    idsAmbiguos,
+    nombresAmbiguos
+  };
 }
 
 // ===================================================================
