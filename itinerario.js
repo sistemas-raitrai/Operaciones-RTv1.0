@@ -2925,147 +2925,275 @@ function renderPendientes(
 }
 
 
-async function openPendientesPanel(
-  modo = 'grupo'
-) {
-  const grupoId =
-    selectNum.value;
+async function openPendientesPanel(modo = 'grupo') {
+  const grupoIdActual = selectNum.value;
 
-  if (!grupoId) {
-    return alert(
-      'Selecciona un grupo'
-    );
-  }
-
-  if (!modalPendientes) {
+  if (modo === 'grupo' && !grupoIdActual) {
+    alert('Selecciona un grupo');
     return;
   }
 
-  modalPendientes.style.display =
-    'block';
-
-  if (modalBg) {
-    modalBg.style.display =
-      'block';
+  if (!modalPendientes || !pendientesList) {
+    return;
   }
 
-  document.body.classList.add(
-    'modal-open'
-  );
+  modalPendientes.style.display = 'block';
 
-  pendientesList.innerHTML =
-    `<li class="alert-item">
-      Cargando…
-    </li>`;
+  if (modalBg) {
+    modalBg.style.display = 'block';
+  }
+
+  document.body.classList.add('modal-open');
+
+  pendientesList.innerHTML = `
+    <li class="alert-item">Cargando…</li>
+  `;
+
+  const escapar = value =>
+    (value ?? '')
+      .toString()
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
 
   // ==============================================
   // ESTE GRUPO
   // ==============================================
-  if (
-    modo ===
-    'grupo'
-  ) {
-    const snap =
-      await getDoc(
-        doc(
-          db,
-          'grupos',
-          grupoId
-        )
+  if (modo === 'grupo') {
+    try {
+      const snap = await getDoc(
+        doc(db, 'grupos', grupoIdActual)
       );
 
-    const g =
-      snap.data() ||
-      {};
+      const g = snap.data() || {};
 
-    if (
-      pendientesEncabezado
-    ) {
-      pendientesEncabezado.innerHTML = `
-        <strong>
-          #${g.numeroNegocio || grupoId}
-          ·
-          ${
-            (
-              g.nombreGrupo ||
-              ''
-            )
-              .toString()
-              .toUpperCase()
-          }
-        </strong>
+      if (pendientesEncabezado) {
+        pendientesEncabezado.innerHTML = `
+          <strong>
+            #${escapar(g.numeroNegocio || grupoIdActual)}
+            ·
+            ${escapar(
+              (g.nombreGrupo || '').toString().toUpperCase()
+            )}
+          </strong>
 
-        <div>
-          Pendientes actuales del grupo.
-        </div>
+          <div>
+            Pendientes actuales del grupo.
+          </div>
+        `;
+      }
+
+      renderPendientes(
+        obtenerPendientesGrupo(g),
+        false
+      );
+
+    } catch (error) {
+      console.error(
+        'Error cargando pendientes del grupo:',
+        error
+      );
+
+      pendientesList.innerHTML = `
+        <li class="alert-item">
+          Error al cargar los pendientes.
+        </li>
       `;
     }
-
-    const rows =
-      obtenerPendientesGrupo(
-        g
-      );
-
-    renderPendientes(
-      rows,
-      false
-    );
 
     return;
   }
 
   // ==============================================
-  // GENERAL
+  // GENERAL: LISTA DE GRUPOS
   // ==============================================
-  const grupos =
-    await getGruposAnoOperativo();
+  try {
+    const grupos = await getGruposAnoOperativo();
 
-  const rows =
-    [];
+    const gruposConPendientes = grupos
+      .map(g => ({
+        grupoId: String(g.id),
+        numeroNegocio: g.numeroNegocio || g.id,
+        nombreGrupo: g.nombreGrupo || '',
+        pendientes: obtenerPendientesGrupo(g)
+      }))
+      .filter(g => g.pendientes.length > 0)
+      .sort((a, b) => {
+        return String(a.numeroNegocio).localeCompare(
+          String(b.numeroNegocio),
+          'es',
+          { numeric: true }
+        );
+      });
 
-  grupos.forEach(g => {
-    const pendientes =
-      obtenerPendientesGrupo(g);
-
-    pendientes.forEach(
-      item => {
-        rows.push({
-          ...item,
-
-          grupoId:
-            g.id,
-
-          numeroNegocio:
-            g.numeroNegocio ||
-            g.id,
-
-          nombreGrupo:
-            g.nombreGrupo ||
-            ''
-        });
-      }
+    const totalPendientes = gruposConPendientes.reduce(
+      (total, g) => total + g.pendientes.length,
+      0
     );
-  });
 
-  if (
-    pendientesEncabezado
-  ) {
-    pendientesEncabezado.innerHTML = `
+    let posicionLista = 0;
+
+    const encabezadoGeneral = `
       <strong>
         PENDIENTES GENERALES
         ${getAnoViajeOperativoActual()}
       </strong>
 
-      <div>
-        Pendientes actuales de todos los grupos.
+      <div style="margin-top:4px">
+        Grupos con pendientes:
+        <b>${gruposConPendientes.length}</b>
+        ·
+        Pendientes totales:
+        <b>${totalPendientes}</b>
       </div>
     `;
-  }
 
-  renderPendientes(
-    rows,
-    true
-  );
+    const mostrarDetalle = grupoId => {
+      const grupo = gruposConPendientes.find(
+        g => g.grupoId === String(grupoId)
+      );
+
+      if (!grupo) return;
+
+      posicionLista = modalPendientes.scrollTop;
+
+      if (pendientesEncabezado) {
+        pendientesEncabezado.innerHTML = `
+          <button
+            type="button"
+            id="volver-grupos-pendientes"
+            style="
+              margin-bottom:10px;
+              padding:6px 10px;
+              border:0;
+              border-radius:5px;
+              background:#e5e7eb;
+              cursor:pointer;
+            "
+          >
+            ← Volver a grupos
+          </button>
+
+          <div>
+            <strong>
+              #${escapar(grupo.numeroNegocio)}
+              ·
+              ${escapar(
+                grupo.nombreGrupo.toString().toUpperCase()
+              )}
+            </strong>
+          </div>
+
+          <div style="margin-top:4px">
+            Pendientes actuales:
+            <b>${grupo.pendientes.length}</b>
+          </div>
+        `;
+
+        document
+          .getElementById('volver-grupos-pendientes')
+          ?.addEventListener('click', mostrarLista);
+      }
+
+      renderPendientes(grupo.pendientes, false);
+
+      modalPendientes.scrollTop = 0;
+    };
+
+    const mostrarLista = () => {
+      if (pendientesEncabezado) {
+        pendientesEncabezado.innerHTML = encabezadoGeneral;
+      }
+
+      if (!gruposConPendientes.length) {
+        pendientesList.innerHTML = `
+          <li class="alert-item">
+            — No existen grupos con pendientes —
+          </li>
+        `;
+
+        return;
+      }
+
+      pendientesList.innerHTML = gruposConPendientes
+        .map(grupo => {
+          const cantidad = grupo.pendientes.length;
+
+          return `
+            <li
+              class="alert-item"
+              style="margin-bottom:10px"
+            >
+              <div style="padding:10px">
+                <strong>
+                  #${escapar(grupo.numeroNegocio)}
+                  ·
+                  ${escapar(
+                    grupo.nombreGrupo.toString().toUpperCase()
+                  )}
+                </strong>
+
+                <div
+                  class="meta"
+                  style="margin:6px 0 10px"
+                >
+                  🕒
+                  ${cantidad}
+                  ${
+                    cantidad === 1
+                      ? 'pendiente'
+                      : 'pendientes'
+                  }
+                </div>
+
+                <button
+                  type="button"
+                  data-grupo-pendientes="${escapar(grupo.grupoId)}"
+                  style="
+                    padding:6px 10px;
+                    border:0;
+                    border-radius:5px;
+                    background:#1d4ed8;
+                    color:white;
+                    font-weight:700;
+                    cursor:pointer;
+                  "
+                >
+                  Ver detalle
+                </button>
+              </div>
+            </li>
+          `;
+        })
+        .join('');
+
+      pendientesList
+        .querySelectorAll('[data-grupo-pendientes]')
+        .forEach(boton => {
+          boton.addEventListener('click', () => {
+            mostrarDetalle(boton.dataset.grupoPendientes);
+          });
+        });
+
+      modalPendientes.scrollTop = posicionLista;
+    };
+
+    mostrarLista();
+
+  } catch (error) {
+    console.error(
+      'Error cargando pendientes generales:',
+      error
+    );
+
+    pendientesList.innerHTML = `
+      <li class="alert-item">
+        Error al cargar los pendientes generales.
+      </li>
+    `;
+  }
 }
 
 // —————————————————————————————————
