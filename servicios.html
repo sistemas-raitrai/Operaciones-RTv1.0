@@ -62,19 +62,64 @@
     /* ——— Floating editor ——— */
     .floating-editor{ position:absolute; z-index:200; width:300px; height:80px; resize:both; box-sizing:border-box }
 
-    /* Ocultar columna Categoría (5ª columna) */
-    /* Mantén oculta SOLO la 5ª (Categoría) */
-    table th:nth-child(5),
-    table td:nth-child(5) {
+    /* =====================================================
+       CATEGORÍA OCULTA
+       ===================================================== */
+    
+    /*
+      Destinos fijos:
+      1 chk
+      2 No
+      3 Servicio
+      4 Tipo Servicio
+      5 Categoría
+    */
+    table:not(.tbl-servicios-otro) th:nth-child(5),
+    table:not(.tbl-servicios-otro) td:nth-child(5) {
       display: none;
     }
     
-    /* FORMA DE PAGO (columna 15): visibilidad + ancho mínimo */
-    table th:nth-child(15),
-    table td:nth-child(15) {
+    /*
+      Sección OTRO:
+      1 chk
+      2 No
+      3 Destino
+      4 Servicio
+      5 Tipo Servicio
+      6 Categoría
+    */
+    table.tbl-servicios-otro th:nth-child(6),
+    table.tbl-servicios-otro td:nth-child(6) {
+      display: none;
+    }
+    
+    /* En OTRO, la columna 5 corresponde a Tipo Servicio y debe verse */
+    table.tbl-servicios-otro th:nth-child(5),
+    table.tbl-servicios-otro td:nth-child(5) {
       display: table-cell !important;
-      width: 12% !important;     /* o 10% / 140px si prefieres */
+    }
+    
+    /* Forma de pago en destinos fijos: columna 15 */
+    table:not(.tbl-servicios-otro) th:nth-child(15),
+    table:not(.tbl-servicios-otro) td:nth-child(15) {
+      display: table-cell !important;
+      width: 12% !important;
       min-width: 140px !important;
+    }
+    
+    /* Forma de pago en OTRO: columna 16 */
+    table.tbl-servicios-otro th:nth-child(16),
+    table.tbl-servicios-otro td:nth-child(16) {
+      display: table-cell !important;
+      width: 12% !important;
+      min-width: 140px !important;
+    }
+    
+    /* Columna Destino de la sección OTRO */
+    table.tbl-servicios-otro th:nth-child(3),
+    table.tbl-servicios-otro td:nth-child(3) {
+      width: 14% !important;
+      min-width: 180px !important;
     }
 
     .filters{
