@@ -8,7 +8,7 @@ import { getAuth, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-auth.js';
 import {
   collection, query, where, getDocs,
-  doc, getDoc, updateDoc, addDoc
+  doc, getDoc, updateDoc, addDoc, runTransaction
 } from 'https://www.gstatic.com/firebasejs/11.7.3/firebase-firestore.js';
 
 const auth = getAuth(app);
@@ -503,25 +503,14 @@ async function guardarRevisionDia(
       }
     );
 
-  } else {
-    // IMPORTANTE:
-    // aquí sí estamos guardando una revisión explícita
-    // de ESTE día.
-    //
-    // Por eso ahora sí corresponde resolver
-    // cualquier rechazo activo del mismo día.
+  } else if (nuevoEstado === 'ok') {
     await resolverAlertasRevision(
       grupoId,
       {
-        tipo:
-          'dia',
-
+        tipo: 'dia',
         fecha
       },
-      nuevoEstado ===
-        'ok'
-          ? 'Día revisado y aprobado'
-          : 'Día revisado y dejado pendiente'
+      'Día revisado y aprobado'
     );
   }
 
@@ -1053,6 +1042,251 @@ async function registrarCorreccionAlertaRevision(
   }
 }
 
+function fechaMillisRevision(valor) {
+  if (typeof valor?.toMillis === 'function') {
+    return valor.toMillis();
+  }
+
+  const fecha = new Date(valor || 0);
+  return Number.isNaN(fecha.getTime())
+    ? 0
+    : fecha.getTime();
+}
+
+function buscarActividadDeAlertaRevision(grupo, alerta) {
+  const actividades =
+    grupo.itinerario?.[alerta.fecha] || [];
+
+  if (
+    Number.isInteger(alerta.idx) &&
+    actividades[alerta.idx]
+  ) {
+    return alerta.idx;
+  }
+
+  const coincidencias = actividades
+    .map((actividad, idx) => ({
+      actividad,
+      idx
+    }))
+    .filter(item =>
+      K(item.actividad?.actividad) ===
+      K(alerta.actividad)
+    );
+
+  return coincidencias.length === 1
+    ? coincidencias[0].idx
+    : -1;
+}
+
+/**
+ * Quien corrige responde a UN rechazo concreto.
+ * No marca la alerta como resuelta: queda esperando el OK.
+ */
+async function responderAlertaRevision(
+  grupoId,
+  alertaId,
+  respuesta
+) {
+  const texto = String(respuesta || '').trim();
+
+  if (!grupoId || !alertaId || !texto) {
+    throw new Error(
+      'Selecciona un rechazo y escribe cómo fue atendido.'
+    );
+  }
+
+  const grupoRef = doc(
+    db,
+    'grupos',
+    String(grupoId)
+  );
+
+  const alertaRef = doc(
+    db,
+    'grupos',
+    String(grupoId),
+    'alertas',
+    String(alertaId)
+  );
+
+  const usuario = auth.currentUser?.email || '';
+  const ahora = new Date();
+
+  const resultado = await runTransaction(
+    db,
+    async transaction => {
+      const [grupoSnap, alertaSnap] =
+        await Promise.all([
+          transaction.get(grupoRef),
+          transaction.get(alertaRef)
+        ]);
+
+      if (!grupoSnap.exists()) {
+        throw new Error('El grupo ya no existe.');
+      }
+
+      if (!alertaSnap.exists()) {
+        throw new Error('El rechazo ya no existe.');
+      }
+
+      const grupo = grupoSnap.data() || {};
+      const alerta = alertaSnap.data() || {};
+
+      if (
+        alerta.resuelta === true ||
+        !alertaRevisionEstaActiva(alerta, grupo)
+      ) {
+        throw new Error(
+          'Este rechazo ya fue resuelto. Recarga las alertas.'
+        );
+      }
+
+      if (
+        alerta.estadoCorreccion ===
+        'enviado_revision'
+      ) {
+        throw new Error(
+          'Esta respuesta ya fue enviada a revisión.'
+        );
+      }
+
+      const tipo = alerta.tipo || 'actividad';
+      const cambiosGrupo = {};
+
+      if (tipo === 'actividad') {
+        const idx = buscarActividadDeAlertaRevision(
+          grupo,
+          alerta
+        );
+
+        if (idx < 0) {
+          throw new Error(
+            'No pude identificar una única actividad para este rechazo. Revísala antes de responder.'
+          );
+        }
+
+        const actividades = (
+          grupo.itinerario?.[alerta.fecha] || []
+        ).map(actividad => ({ ...actividad }));
+
+        if (
+          actividades[idx].revision === 'ok'
+        ) {
+          throw new Error(
+            'La actividad ya figura aprobada. Recarga la revisión.'
+          );
+        }
+
+        actividades[idx] = {
+          ...actividades[idx],
+          revision: 'pendiente',
+          revisionObservacion: texto,
+          revisionUsuario: usuario,
+          revisionTimestamp: ahora
+        };
+
+        cambiosGrupo[
+          `itinerario.${alerta.fecha}`
+        ] = actividades;
+
+      } else if (tipo === 'dia') {
+        if (!grupo.itinerario?.[alerta.fecha]) {
+          throw new Error(
+            'El día rechazado ya no existe en el itinerario.'
+          );
+        }
+
+        cambiosGrupo.revisionDias = {
+          ...(grupo.revisionDias || {}),
+          [alerta.fecha]: {
+            estado: 'pendiente',
+            observacion: texto,
+            usuario,
+            timestamp: ahora
+          }
+        };
+
+      } else if (tipo === 'grupo') {
+        cambiosGrupo.revisionGrupo = {
+          estado: 'pendiente',
+          observacion: texto,
+          usuario,
+          timestamp: ahora
+        };
+
+        cambiosGrupo.estadoRevisionItinerario =
+          'PENDIENTE';
+
+      } else {
+        throw new Error(
+          `Tipo de rechazo desconocido: ${tipo}`
+        );
+      }
+
+      const respuestas = Array.isArray(
+        alerta.respuestasRevision
+      )
+        ? alerta.respuestasRevision.slice()
+        : [];
+
+      respuestas.push({
+        numero: respuestas.length + 1,
+        texto,
+        usuario,
+        timestamp: ahora
+      });
+
+      transaction.update(grupoRef, cambiosGrupo);
+
+      transaction.update(alertaRef, {
+        respuestasRevision: respuestas,
+        respuestaRevision: texto,
+        respondidaPor: usuario,
+        respondidaEn: ahora,
+        estadoCorreccion: 'enviado_revision'
+        // resuelta permanece false: falta el OK.
+      });
+
+      return {
+        grupo,
+        alerta,
+        tipo
+      };
+    }
+  );
+
+  await logHist(
+    String(grupoId),
+    'RESPONDER RECHAZO',
+    {
+      _group: resultado.grupo,
+      categoria: 'REVISION',
+      tipoRevision: resultado.tipo,
+      fecha: resultado.alerta.fecha || '',
+      fechaActividad:
+        resultado.alerta.fecha || '',
+      idx: Number.isInteger(
+        resultado.alerta.idx
+      )
+        ? resultado.alerta.idx
+        : null,
+      actividad:
+        resultado.alerta.actividad || '',
+      motivo: texto,
+      detalle:
+        'Corrección enviada; pendiente de revisión',
+      alertaId: String(alertaId)
+    }
+  );
+
+  return {
+    ok: true,
+    grupoId: String(grupoId),
+    alertaId: String(alertaId)
+  };
+}
+
 
 // ======================================================
 // OBTENER CAMBIOS REALES DE CONTENIDO
@@ -1371,24 +1605,13 @@ async function guardarRevisionGrupo(
       }
     );
 
-  } else {
-    // IMPORTANTE:
-    //
-    // El rechazo general solamente se resuelve aquí,
-    // porque alguien está guardando explícitamente
-    // una nueva REVISIÓN GENERAL.
-    //
-    // Una edición previa del itinerario NO lo resolvió.
+  } else if (nuevoEstado === 'ok') {
     await resolverAlertasRevision(
       grupoId,
       {
-        tipo:
-          'grupo'
+        tipo: 'grupo'
       },
-      nuevoEstado ===
-        'ok'
-          ? 'Revisión general aprobada'
-          : 'Revisión general dejada pendiente'
+      'Revisión general aprobada'
     );
   }
 
@@ -3916,6 +4139,149 @@ function renderListaAlertasRevision(
         `;
       }
     ).join('');
+
+  agregarBotonesRespuestaAlertas(
+    contenedor,
+    alertas,
+    opciones
+  );
+}
+function agregarBotonesRespuestaAlertas(
+  contenedor,
+  alertas,
+  opciones = {}
+) {
+  if (
+    !contenedor ||
+    opciones.resueltas ||
+    !Array.isArray(alertas)
+  ) {
+    return;
+  }
+
+  const tarjetas = [
+    ...contenedor.querySelectorAll(
+      'li.alert-item'
+    )
+  ];
+
+  alertas.forEach((alerta, indice) => {
+    const tarjeta = tarjetas[indice];
+
+    if (
+      !tarjeta ||
+      !alerta.id ||
+      alerta.resuelta === true
+    ) {
+      return;
+    }
+
+    const grupoId =
+      alerta.grupoId ||
+      selectNum.value;
+
+    if (
+      alerta.estadoCorreccion ===
+      'enviado_revision'
+    ) {
+      const estado = document.createElement(
+        'div'
+      );
+
+      estado.className = 'meta';
+      estado.style.marginTop = '10px';
+
+      estado.textContent =
+        `📤 Enviado a revisión: ${
+          alerta.respuestaRevision || ''
+        }`;
+
+      tarjeta.appendChild(estado);
+      return;
+    }
+
+    const boton = document.createElement(
+      'button'
+    );
+
+    boton.type = 'button';
+    boton.textContent =
+      'Responder rechazo';
+
+    boton.style.cssText = `
+      margin:10px 0 0 10px;
+      padding:6px 10px;
+      border:0;
+      border-radius:5px;
+      background:#1d4ed8;
+      color:#fff;
+      font-weight:700;
+      cursor:pointer;
+    `;
+
+    boton.addEventListener(
+      'click',
+      async () => {
+        const respuesta = prompt(
+          'Explica qué corregiste o por qué la observación ya quedó atendida:',
+          ''
+        );
+
+        if (respuesta === null) return;
+
+        if (!respuesta.trim()) {
+          alert(
+            'Escribe una respuesta antes de enviarla.'
+          );
+          return;
+        }
+
+        boton.disabled = true;
+        boton.textContent = 'Enviando…';
+
+        try {
+          await responderAlertaRevision(
+            grupoId,
+            alerta.id,
+            respuesta
+          );
+
+          alerta.estadoCorreccion =
+            'enviado_revision';
+
+          alerta.respuestaRevision =
+            respuesta.trim();
+
+          renderListaAlertasRevision(
+            contenedor,
+            alertas,
+            opciones
+          );
+
+          alert(
+            'Respuesta enviada. Quedó pendiente del OK del revisor.'
+          );
+
+        } catch (error) {
+          console.error(
+            'Error respondiendo rechazo:',
+            error
+          );
+
+          alert(
+            error.message ||
+            'No se pudo enviar la respuesta.'
+          );
+
+          boton.disabled = false;
+          boton.textContent =
+            'Responder rechazo';
+        }
+      }
+    );
+
+    tarjeta.appendChild(boton);
+  });
 }
 
 function escapeHTMLAlertas(value) {
@@ -6774,48 +7140,20 @@ async function guardarRevisionActividad(
           observacion
       }
     );
-
-  } else {
-    // ==================================================
-    // RESOLUCIÓN EXPLÍCITA
-    //
-    // Estamos guardando una revisión concreta de ESTA
-    // actividad. Solamente ahora se resuelve la alerta.
-    //
-    // Puede venir de:
-    //
-    // RECHAZADA -> OK
-    //
-    // o:
-    //
-    // RECHAZADA
-    // -> actividad editada
-    // -> PENDIENTE
-    // -> revisión explícita
-    // -> OK
-    //
-    // En ambos casos corresponde cerrar el rechazo.
-    // ==================================================
-
+    
+  } else if (nuevoEstado === 'ok') {
     await resolverAlertasRevision(
       grupoId,
       {
-        tipo:
-          'actividad',
-
+        tipo: 'actividad',
         fecha,
-
         idx,
-
         actividad:
           beforeObj.actividad ||
           updated.actividad ||
           ''
       },
-      nuevoEstado ===
-        'ok'
-          ? 'Actividad revisada y aprobada'
-          : 'Actividad revisada y dejada pendiente'
+      'Actividad revisada y aprobada'
     );
   }
 
@@ -7744,13 +8082,10 @@ async function guardarRevisionCompleta(
             observacion
         });
 
-      } else {
-
+      } else if (nuevoEstado === 'ok') {
         programarResolucionAlertas(
           filtroAlerta,
-          nuevoEstado === 'ok'
-            ? 'Actividad revisada y aprobada'
-            : 'Actividad revisada y dejada pendiente'
+          'Actividad revisada y aprobada'
         );
       }
     }
@@ -7864,13 +8199,10 @@ async function guardarRevisionCompleta(
             observacion
         });
 
-      } else {
-
+      } else if (nuevoEstado === 'ok') {
         programarResolucionAlertas(
           filtroAlerta,
-          nuevoEstado === 'ok'
-            ? 'Día revisado y aprobado'
-            : 'Día revisado y dejado pendiente'
+          'Día revisado y aprobado'
         );
       }
     }
@@ -8118,16 +8450,12 @@ async function guardarRevisionCompleta(
             observacion
         });
 
-      } else {
-
+      } else if (nuevoEstado === 'ok') {
         programarResolucionAlertas(
           {
-            tipo:
-              'grupo'
+            tipo: 'grupo'
           },
-          nuevoEstado === 'ok'
-            ? 'Revisión general aprobada'
-            : 'Revisión general dejada pendiente'
+          'Revisión general aprobada'
         );
       }
     }
@@ -12502,4 +12830,174 @@ window.repararDuracionItinerarioGrupo =
       reparado:
         true
     };
+  };
+
+
+window.diagnosticarRechazosAnteriores =
+  async function diagnosticarRechazosAnteriores(
+    grupoId
+  ) {
+    const id = String(
+      grupoId || selectNum.value || ''
+    );
+
+    if (!id) {
+      throw new Error(
+        'Indica el idGrupo o selecciona un grupo.'
+      );
+    }
+
+    const [grupoSnap, alertasSnap, historialSnap] =
+      await Promise.all([
+        getDoc(doc(db, 'grupos', id)),
+
+        getDocs(
+          collection(
+            db,
+            'grupos',
+            id,
+            'alertas'
+          )
+        ),
+
+        getDocs(
+          query(
+            collection(db, 'historial'),
+            where('grupoId', '==', id)
+          )
+        )
+      ]);
+
+    if (!grupoSnap.exists()) {
+      throw new Error(
+        `No existe el grupo ${id}.`
+      );
+    }
+
+    const grupo = grupoSnap.data() || {};
+
+    const historial = historialSnap.docs
+      .map(d => ({
+        id: d.id,
+        ...d.data()
+      }));
+
+    const resultados = alertasSnap.docs
+      .map(d => ({
+        id: d.id,
+        ...d.data()
+      }))
+      .filter(alerta =>
+        alertaRevisionEstaActiva(
+          alerta,
+          grupo
+        )
+      )
+      .map(alerta => {
+        const inicio =
+          fechaMillisRevision(
+            alerta.creadoEn
+          );
+
+        const candidatos = historial
+          .filter(h =>
+            fechaMillisRevision(
+              h.timestamp
+            ) > inicio
+          )
+          .filter(h =>
+            !alerta.fecha ||
+            (
+              h.fechaActividad ||
+              h.fecha ||
+              ''
+            ) === alerta.fecha
+          )
+          .filter(h => {
+            const accion = String(
+              h.accion || ''
+            ).toUpperCase();
+
+            return [
+              'MODIFICAR ACTIVIDAD',
+              'CREAR ACTIVIDAD',
+              'CAMBIAR REVISION DIA',
+              'GRUPO VUELVE A PENDIENTE'
+            ].includes(accion);
+          })
+          .map(h => ({
+            historialId: h.id,
+            accion: h.accion,
+            actividad: h.actividad || '',
+            fecha:
+              h.fechaActividad ||
+              h.fecha ||
+              '',
+            idx:
+              Number.isInteger(h.idx)
+                ? h.idx
+                : null,
+            usuario: h.usuario || '',
+            timestamp: h.timestamp || null,
+            cambios:
+              h.cambiosCorreccion || []
+          }));
+
+        const exactos = candidatos.filter(
+          h =>
+            alerta.tipo === 'actividad' &&
+            h.accion ===
+              'MODIFICAR ACTIVIDAD' &&
+            Number.isInteger(
+              alerta.idx
+            ) &&
+            h.idx === alerta.idx
+        );
+
+        return {
+          alertaId: alerta.id,
+          tipo:
+            alerta.tipo ||
+            'actividad',
+          fecha: alerta.fecha || '',
+          idx:
+            Number.isInteger(
+              alerta.idx
+            )
+              ? alerta.idx
+              : null,
+          actividad:
+            alerta.actividad || '',
+          motivo:
+            alerta.motivo || '',
+          estadoActual:
+            alerta.estadoCorreccion ||
+            'requiere_correccion',
+          coincidenciasExactas:
+            exactos.length,
+          candidatos:
+            candidatos.length,
+          propuesta:
+            exactos.length === 1
+              ? 'REVISAR CAMBIO EXACTO'
+              : candidatos.length
+                ? 'REVISAR MANUALMENTE'
+                : 'SIN EVIDENCIA EN HISTORIAL',
+          detalle:
+            candidatos
+        };
+      });
+
+    console.table(
+      resultados.map(
+        ({ detalle, ...fila }) => fila
+      )
+    );
+
+    console.log(
+      'Diagnóstico sin escrituras:',
+      resultados
+    );
+
+    return resultados;
   };
