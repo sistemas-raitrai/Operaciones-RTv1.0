@@ -613,123 +613,74 @@ async function resolverAlertasRevision(
   motivoResolucion = ''
 ) {
   try {
-    const qs =
-      await getDocs(
-        collection(
-          db,
-          'grupos',
-          grupoId,
-          'alertas'
-        )
-      );
+    const qs = await getDocs(
+      collection(
+        db,
+        'grupos',
+        grupoId,
+        'alertas'
+      )
+    );
 
-    const docs =
-      qs.docs.filter(d => {
-        const a =
-          d.data() || {};
+    const docs = qs.docs.filter(d => {
+      const alerta = d.data() || {};
 
-        // ==========================================
-        // 1. YA ESTÁ RESUELTA
-        // ==========================================
-        if (
-          a.resuelta ===
-          true
-        ) {
-          return false;
-        }
+      if (alerta.resuelta === true) {
+        return false;
+      }
 
-        // ==========================================
-        // 2. TIPO
-        // ==========================================
-        const tipoAlerta =
-          a.tipo ||
-          'actividad';
+      const tipoAlerta =
+        alerta.tipo ||
+        'actividad';
 
-        if (
-          filtro.tipo &&
-          tipoAlerta !==
-            filtro.tipo
-        ) {
-          return false;
-        }
+      if (
+        filtro.tipo &&
+        tipoAlerta !== filtro.tipo
+      ) {
+        return false;
+      }
 
-        // ==========================================
-        // 3. FECHA
-        // ==========================================
-        if (
-          filtro.fecha &&
-          a.fecha !==
-            filtro.fecha
-        ) {
-          return false;
-        }
+      if (
+        filtro.fecha &&
+        alerta.fecha !== filtro.fecha
+      ) {
+        return false;
+      }
 
-        // ==========================================
-        // 4. ACTIVIDAD
-        //
-        // Para registros NUEVOS usamos idx.
-        //
-        // Para registros antiguos que no tengan idx,
-        // usamos nombre de actividad como respaldo.
-        // ==========================================
-        if (
-          filtro.tipo ===
-          'actividad'
-        ) {
-          if (
-            Number.isInteger(
-              filtro.idx
-            )
-          ) {
-            if (
-              Number.isInteger(
-                a.idx
-              )
-            ) {
-              if (
-                a.idx !==
-                filtro.idx
-              ) {
-                return false;
-              }
-
-            } else {
-              // Alerta antigua sin idx:
-              // sólo aceptamos si además coincide
-              // exactamente la actividad.
-              if (
-                filtro.actividad &&
-                (
-                  a.actividad ||
-                  ''
-                ) !==
-                  filtro.actividad
-              ) {
-                return false;
-              }
+      if (filtro.tipo === 'actividad') {
+        if (Number.isInteger(filtro.idx)) {
+          if (Number.isInteger(alerta.idx)) {
+            if (alerta.idx !== filtro.idx) {
+              return false;
             }
 
           } else if (
             filtro.actividad &&
-            (
-              a.actividad ||
-              ''
-            ) !==
+            (alerta.actividad || '') !==
               filtro.actividad
           ) {
             return false;
           }
-        }
 
-        return true;
-      });
+        } else if (
+          filtro.actividad &&
+          (alerta.actividad || '') !==
+            filtro.actividad
+        ) {
+          return false;
+        }
+      }
+
+      return true;
+    });
 
     if (!docs.length) {
       return 0;
     }
 
-    const ahora =
-      new Date();
+    const ahora = new Date();
+    const usuario =
+      auth.currentUser?.email || '';
 
     await Promise.all(
       docs.map(d =>
@@ -742,41 +693,82 @@ async function resolverAlertasRevision(
             d.id
           ),
           {
-            resuelta:
-              true,
-
-            resueltaPor:
-              auth.currentUser?.email ||
-              '',
-
-            resueltaEn:
-              ahora,
+            resuelta: true,
+            resueltaPor: usuario,
+            resueltaEn: ahora,
 
             resueltaMotivo:
               motivoResolucion ||
               'Revisión resuelta',
 
-            // Compatibilidad antigua
-            visto:
-              true,
-
-            leidoPor:
-              auth.currentUser?.email ||
-              '',
-
-            leidoEn:
-              ahora
+            // Compatibilidad con registros anteriores.
+            visto: true,
+            leidoPor: usuario,
+            leidoEn: ahora
           }
         )
       )
     );
 
+    // Las alertas ya quedaron resueltas.
+    // Quitamos sus fichas del listado Pendientes.
+    try {
+      const grupoRef = doc(
+        db,
+        'grupos',
+        grupoId
+      );
+
+      const grupoSnap =
+        await getDoc(grupoRef);
+
+      const pendientes =
+        grupoSnap.data()
+          ?.pendientesRechazosHistoricos ||
+        [];
+
+      const idsResueltos = new Set(
+        docs.map(d => d.id)
+      );
+
+      if (
+        pendientes.some(
+          item =>
+            idsResueltos.has(
+              item.alertaId
+            )
+        )
+      ) {
+        await updateDoc(
+          grupoRef,
+          {
+            pendientesRechazosHistoricos:
+              pendientes.filter(
+                item =>
+                  !idsResueltos.has(
+                    item.alertaId
+                  )
+              )
+          }
+        );
+      }
+
+    } catch (error) {
+      // La resolución de la alerta ya se guardó.
+      // Un fallo al limpiar la ficha se informa
+      // sin fingir que la revisión fracasó.
+      console.warn(
+        'La alerta se resolvió, pero no se pudo retirar su ficha de Pendientes:',
+        error
+      );
+    }
+
     return docs.length;
 
-  } catch (e) {
+  } catch (error) {
     console.warn(
       'No se pudieron resolver alertas:',
-      e
+      error
     );
 
     return 0;
@@ -1237,7 +1229,62 @@ async function responderAlertaRevision(
         timestamp: ahora
       });
 
-      transaction.update(grupoRef, cambiosGrupo);
+      const anteriores =
+        Array.isArray(
+          grupo.pendientesRechazosHistoricos
+        )
+          ? grupo.pendientesRechazosHistoricos
+          : [];
+      
+      const vinculo = {
+        alertaId:
+          String(alertaId),
+      
+        tipo,
+      
+        fecha:
+          alerta.fecha || '',
+      
+        idx:
+          Number.isInteger(alerta.idx)
+            ? alerta.idx
+            : null,
+      
+        actividad:
+          alerta.actividad || '',
+      
+        motivo:
+          alerta.motivo || '',
+      
+        respuesta:
+          texto,
+      
+        advertencia:
+          'Comprobar que la respuesta atienda la observación original.',
+      
+        cambios:
+          anteriores.find(
+            item =>
+              item.alertaId ===
+              String(alertaId)
+          )?.cambios || []
+      };
+      
+      cambiosGrupo
+        .pendientesRechazosHistoricos = [
+          ...anteriores.filter(
+            item =>
+              item.alertaId !==
+              String(alertaId)
+          ),
+      
+          vinculo
+        ];
+      
+      transaction.update(
+        grupoRef,
+        cambiosGrupo
+      );
 
       transaction.update(alertaRef, {
         respuestasRevision: respuestas,
@@ -3048,9 +3095,15 @@ function renderPendientes(
   rows,
   mostrarGrupo = false
 ) {
-  if (!pendientesList) {
-    return;
-  }
+  if (!pendientesList) return;
+
+  const esc = valor =>
+    String(valor ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
 
   if (!rows.length) {
     pendientesList.innerHTML = `
@@ -3063,90 +3116,285 @@ function renderPendientes(
   }
 
   pendientesList.innerHTML =
-    rows.map(item => `
-      <li class="alert-item">
-        <div>
+    rows.map((item, indice) => {
+      if (item.alertaId) {
+        const cambios = (
+          item.cambios || []
+        )
+          .map(cambio => `
+            <li>
+              ${esc(cambio.accion)}:
+              ${esc(
+                cambio.actividad ||
+                '(revisión)'
+              )}
 
+              <small>
+                ${esc(cambio.usuario)}
+                ·
+                ${
+                  cambio.timestamp
+                    ? esc(
+                        fmtTS(
+                          cambio.timestamp
+                        )
+                      )
+                    : ''
+                }
+              </small>
+            </li>
+          `)
+          .join('');
+
+        return `
+          <li
+            class="alert-item"
+            style="
+              padding:10px;
+              margin-bottom:10px
+            "
+          >
+            ${
+              mostrarGrupo
+                ? `
+                    <strong>
+                      #${esc(
+                        item.numeroNegocio
+                      )}
+                      ·
+                      ${esc(
+                        item.nombreGrupo
+                      )}
+                    </strong>
+                    <br>
+                  `
+                : ''
+            }
+
+            <strong>
+              🔎 CORRECCIÓN POR REVISAR
+              ·
+              ${esc(
+                item.tipoAlerta
+              ).toUpperCase()}
+            </strong>
+
+            <div>
+              ${esc(item.fecha)}
+              ·
+              ${esc(item.actividad)}
+            </div>
+
+            <div>
+              <b>Se pidió:</b>
+              ${esc(item.motivo)}
+            </div>
+
+            ${
+              item.respuesta
+                ? `
+                    <div>
+                      <b>Respuesta:</b>
+                      ${esc(item.respuesta)}
+                    </div>
+                  `
+                : ''
+            }
+
+            <div>
+              <b>Se hizo:</b>
+
+              <ul>
+                ${
+                  cambios ||
+                  '<li>Respuesta registrada; revisar el itinerario.</li>'
+                }
+              </ul>
+            </div>
+
+            <div
+              style="color:#92400e"
+            >
+              <b>
+                ⚠️ Advertencia:
+              </b>
+
+              ${esc(
+                item.advertencia
+              )}
+            </div>
+
+            <button
+              type="button"
+              data-revision-historica="${indice}"
+              data-estado="ok"
+            >
+              Aprobar ${esc(
+                item.tipoAlerta
+              )}
+            </button>
+
+            <button
+              type="button"
+              data-revision-historica="${indice}"
+              data-estado="rechazado"
+            >
+              Volver a rechazar
+            </button>
+          </li>
+        `;
+      }
+
+      return `
+        <li
+          class="alert-item"
+          style="padding:10px"
+        >
           ${
             mostrarGrupo
               ? `
-                  <div>
-                    <strong>
-                      #${item.numeroNegocio || '—'}
-                      ·
-                      ${
-                        (
-                          item.nombreGrupo ||
-                          ''
-                        )
-                          .toString()
-                          .toUpperCase()
-                      }
-                    </strong>
-                  </div>
+                  <strong>
+                    #${esc(
+                      item.numeroNegocio
+                    )}
+                    ·
+                    ${esc(
+                      item.nombreGrupo
+                    )}
+                  </strong>
+                  <br>
                 `
               : ''
           }
 
-          <div>
-            <strong>
-              🕒 ${item.tipo}
-              ·
-              ${item.actividad}
-            </strong>
-          </div>
+          <strong>
+            🕒
+            ${esc(item.tipo)}
+            ·
+            ${esc(
+              item.actividad
+            )}
+          </strong>
 
           ${
             item.fecha
               ? `
-                  <small>
-                    ${item.fecha}
-                  </small>
+                  <div>
+                    <small>
+                      ${esc(item.fecha)}
+                    </small>
+                  </div>
                 `
               : ''
           }
 
-          ${
-            item.observacion
-              ? `
-                  <div class="motivo">
+          <div class="motivo">
+            ${
+              item.observacion
+                ? `
                     Observación:
-                    ${item.observacion}
-                  </div>
-                `
-              : `
-                  <div
-                    class="meta"
-                    style="opacity:.65;"
-                  >
-                    Sin observación.
-                  </div>
-                `
-          }
+                    ${esc(
+                      item.observacion
+                    )}
+                  `
+                : 'Sin observación.'
+            }
+          </div>
 
           ${
             item.usuario
               ? `
-                  <div
-                    class="meta"
-                    style="opacity:.7;"
-                  >
-                    ${item.usuario}
+                  <div class="meta">
+                    ${esc(
+                      item.usuario
+                    )}
+
                     ${
                       item.timestamp
-                        ? ` · ${fmtTS(item.timestamp)}`
+                        ? `
+                            ·
+                            ${esc(
+                              fmtTS(
+                                item.timestamp
+                              )
+                            )}
+                          `
                         : ''
                     }
                   </div>
                 `
               : ''
           }
+        </li>
+      `;
+    })
+      .join('');
 
-        </div>
-      </li>
-    `).join('');
+  pendientesList
+    .querySelectorAll(
+      '[data-revision-historica]'
+    )
+    .forEach(boton => {
+      boton.addEventListener(
+        'click',
+        async () => {
+          const item =
+            rows[
+              Number(
+                boton.dataset
+                  .revisionHistorica
+              )
+            ];
+
+          const grupoId =
+            item.grupoId ||
+            modalPendientes
+              .dataset
+              .exportarGrupo;
+
+          if (!grupoId) {
+            alert(
+              'No se pudo identificar el grupo.'
+            );
+            return;
+          }
+
+          boton.disabled = true;
+
+          try {
+            const guardado =
+              await decidirRechazoDesdePendientes(
+                grupoId,
+                item,
+                boton.dataset.estado
+              );
+
+            if (guardado) {
+              await openPendientesPanel(
+                modalPendientes
+                  .dataset
+                  .exportarGrupo ===
+                  selectNum.value
+                  ? 'grupo'
+                  : 'general'
+              );
+            }
+
+          } catch (error) {
+            console.error(error);
+
+            alert(
+              error.message ||
+              'No se pudo guardar la revisión.'
+            );
+
+          } finally {
+            boton.disabled = false;
+          }
+        }
+      );
+    });
 }
-
 
 async function openPendientesPanel(modo = 'grupo') {
   const grupoIdActual = selectNum.value;
@@ -3190,7 +3438,10 @@ async function openPendientesPanel(modo = 'grupo') {
         doc(db, 'grupos', grupoIdActual)
       );
 
-      const g = snap.data() || {};
+      const g = {
+        id: grupoIdActual,
+        ...(snap.data() || {})
+      };
 
       if (pendientesEncabezado) {
         pendientesEncabezado.innerHTML = `
@@ -3209,7 +3460,7 @@ async function openPendientesPanel(modo = 'grupo') {
       }
 
       renderPendientes(
-        obtenerPendientesGrupo(g),
+        pendientesConCorreccionesHistoricas(g),
         false
       );
 
@@ -3243,7 +3494,7 @@ async function openPendientesPanel(modo = 'grupo') {
         destino: g.destino || '',
         fechaInicio: g.fechaInicio || '',
         itinerario: g.itinerario || {},
-        pendientes: obtenerPendientesGrupo(g)
+        pendientes: pendientesConCorreccionesHistoricas(g)
       }))
       .filter(g => g.pendientes.length > 0)
       .sort(ordenarGruposRevision);
@@ -3277,7 +3528,10 @@ async function openPendientesPanel(modo = 'grupo') {
       </div>
     `;
 
+    
     const mostrarDetalle = grupoId => {
+      modalPendientes.dataset.exportarGrupo =
+        grupoId;
       const grupo = gruposConPendientes.find(
         g => g.grupoId === String(grupoId)
       );
@@ -3334,6 +3588,8 @@ async function openPendientesPanel(modo = 'grupo') {
     };
 
     const mostrarLista = () => {
+      modalPendientes.dataset.exportarGrupo =
+        '';
       if (pendientesEncabezado) {
         pendientesEncabezado.innerHTML =
           encabezadoGeneral;
@@ -4564,6 +4820,26 @@ async function openAlertasPanel(modo = 'grupo') {
 
   document.body.classList.add('modal-open');
 
+  modalAlertas.dataset.exportarGrupo =
+    modo === 'grupo'
+      ? grupoIdActual
+      : '';
+  
+  instalarExportacionRevision(
+    modalAlertas,
+    'alertas'
+  );
+
+  modalPendientes.dataset.exportarGrupo =
+    modo === 'grupo'
+      ? grupoIdActual
+      : '';
+  
+  instalarExportacionRevision(
+    modalPendientes,
+    'pendientes'
+  );
+
   if (listAlertasOtros) {
     listAlertasOtros.style.display = 'none';
   }
@@ -4726,6 +5002,8 @@ async function openAlertasPanel(modo = 'grupo') {
     let posicionLista = 0;
 
     const volverALista = () => {
+      modalAlertas.dataset.exportarGrupo =
+        '';
       alertasModo = 'general';
 
       if (alertasEncabezado) {
@@ -4765,6 +5043,8 @@ async function openAlertasPanel(modo = 'grupo') {
 
       posicionLista = modalAlertas.scrollTop;
       alertasModo = 'general_detalle';
+      modalAlertas.dataset.exportarGrupo =
+        grupoId;
 
       if (alertasEncabezado) {
         alertasEncabezado.innerHTML = `
@@ -8673,7 +8953,6 @@ async function guardarRevisionCompleta(
       }
     );
 
-
     if (
       tareas.length
     ) {
@@ -8682,10 +8961,52 @@ async function guardarRevisionCompleta(
       );
     }
 
+    // Retirar de Pendientes las fichas históricas
+    // de las alertas resueltas en este guardado.
+    if (
+      alertasResolver.size
+    ) {
+      try {
+        const grupoActual =
+          await getDoc(refGrupo);
 
-    // ==================================================
-    // 11. TERMINAR
-    // ==================================================
+        const pendientes =
+          grupoActual.data()
+            ?.pendientesRechazosHistoricos ||
+          [];
+
+        if (
+          pendientes.some(
+            item =>
+              alertasResolver.has(
+                item.alertaId
+              )
+          )
+        ) {
+          await updateDoc(
+            refGrupo,
+            {
+              pendientesRechazosHistoricos:
+                pendientes.filter(
+                  item =>
+                    !alertasResolver.has(
+                      item.alertaId
+                    )
+                )
+            }
+          );
+        }
+
+      } catch (error) {
+        // Las decisiones y alertas ya se guardaron.
+        console.warn(
+          'La revisión se guardó, pero no se pudo retirar una ficha de Pendientes:',
+          error
+        );
+      }
+    }
+
+
     // ==================================================
     // 11. TERMINAR — REFRESCO RÁPIDO
     //
@@ -12831,6 +13152,767 @@ window.repararDuracionItinerarioGrupo =
         true
     };
   };
+
+function avisoCorrespondenciaRevision(motivo, cambios) {
+  const pedido = K(motivo);
+  const hechos = K(
+    cambios.map(c => c.actividad).join(' ')
+  );
+
+  const avisos = [];
+
+  if (
+    pedido.includes('REGRES') &&
+    hechos.includes('SALIDA') &&
+    !hechos.includes('REGRES')
+  ) {
+    avisos.push(
+      'Se pidió un regreso; los cambios encontrados mencionan salida, pero no regreso.'
+    );
+  }
+
+  if (
+    pedido.includes('TAMBO VIEJO') &&
+    hechos.includes('REBENQUE') &&
+    !hechos.includes('TAMBO VIEJO')
+  ) {
+    avisos.push(
+      'La observación menciona Tambo Viejo; los cambios encontrados siguen mencionando Rebenque.'
+    );
+  }
+
+  if (
+    pedido.includes('TRASLAD') &&
+    !/TRASLAD|BUS|TRANSFER|TRANSPORTE/.test(hechos)
+  ) {
+    avisos.push(
+      'Se pidieron traslados; los nombres de los cambios no permiten identificarlos.'
+    );
+  }
+
+  return avisos.join(' ') ||
+    'Comprobar que los cambios atiendan la observación original.';
+}
+
+
+window.vincularRechazosAnteriores2026 =
+  async function vincularRechazosAnteriores2026({
+    confirmar = false,
+    numeroNegocio = null
+  } = {}) {
+    const diagnostico =
+      await window.diagnosticarRechazosAnteriores(
+        numeroNegocio
+      );
+
+    const grupos = diagnostico.grupos || [];
+    const porGrupo = new Map();
+
+    for (const alerta of diagnostico.alertas || []) {
+      if (!alerta.detalle?.length) continue;
+
+      if (!porGrupo.has(alerta.idGrupo)) {
+        porGrupo.set(alerta.idGrupo, []);
+      }
+
+      porGrupo.get(alerta.idGrupo).push(alerta);
+    }
+
+    const propuestas = [];
+    const errores = [];
+
+    for (const grupoResumen of grupos) {
+      const casos =
+        porGrupo.get(grupoResumen.idGrupo) || [];
+
+      if (!casos.length) continue;
+
+      try {
+        const refGrupo = doc(
+          db,
+          'grupos',
+          grupoResumen.idGrupo
+        );
+
+        const snap = await getDoc(refGrupo);
+
+        if (!snap.exists()) continue;
+
+        const grupo = snap.data() || {};
+
+        const anteriores = Array.isArray(
+          grupo.pendientesRechazosHistoricos
+        )
+          ? grupo.pendientesRechazosHistoricos
+          : [];
+
+        const idsAnteriores = new Set(
+          anteriores.map(item => item.alertaId)
+        );
+
+        // Solo crea vínculos para alertas que todavía
+        // no tienen uno. Permite ejecutar la función
+        // nuevamente sin duplicarlos.
+        const nuevos = casos
+          .filter(
+            alerta =>
+              !idsAnteriores.has(
+                alerta.alertaId
+              )
+          )
+          .map(alerta => ({
+            alertaId:
+              alerta.alertaId,
+
+            tipo:
+              alerta.tipo,
+
+            fecha:
+              alerta.fecha,
+
+            idx:
+              alerta.idx,
+
+            actividad:
+              alerta.actividad,
+
+            motivo:
+              alerta.motivo,
+
+            advertencia:
+              avisoCorrespondenciaRevision(
+                alerta.motivo,
+                alerta.detalle
+              ),
+
+            cambios:
+              alerta.detalle.map(cambio => ({
+                historialId:
+                  cambio.historialId,
+
+                accion:
+                  cambio.accion,
+
+                actividad:
+                  cambio.actividad,
+
+                fecha:
+                  cambio.fecha,
+
+                usuario:
+                  cambio.usuario,
+
+                timestamp:
+                  cambio.timestamp || null
+              }))
+          }));
+
+        propuestas.push({
+          numeroNegocio:
+            grupoResumen.numeroNegocio,
+
+          idGrupo:
+            grupoResumen.idGrupo,
+
+          nuevas:
+            nuevos.length,
+
+          existentes:
+            casos.length - nuevos.length,
+
+          detalles:
+            nuevos.map(item => ({
+              motivo:
+                item.motivo,
+
+              cambios:
+                item.cambios
+                  .map(c => c.actividad)
+                  .join(' | '),
+
+              advertencia:
+                item.advertencia
+            }))
+        });
+
+        if (!confirmar || !nuevos.length) {
+          continue;
+        }
+
+        // Esto vincula evidencia al rechazo.
+        // NO aprueba ni resuelve la alerta.
+        await updateDoc(refGrupo, {
+          pendientesRechazosHistoricos: [
+            ...anteriores,
+            ...nuevos
+          ]
+        });
+
+        for (const nuevo of nuevos) {
+          try {
+            await updateDoc(
+              doc(
+                db,
+                'grupos',
+                grupoResumen.idGrupo,
+                'alertas',
+                nuevo.alertaId
+              ),
+              {
+                estadoCorreccion:
+                  'cambios_detectados'
+              }
+            );
+          } catch (error) {
+            errores.push({
+              numeroNegocio:
+                grupoResumen.numeroNegocio,
+
+              alertaId:
+                nuevo.alertaId,
+
+              error:
+                'Se guardó el vínculo; falló el estado visual: ' +
+                error.message
+            });
+          }
+        }
+      } catch (error) {
+        errores.push({
+          numeroNegocio:
+            grupoResumen.numeroNegocio,
+
+          idGrupo:
+            grupoResumen.idGrupo,
+
+          error:
+            error.message
+        });
+      }
+    }
+
+    console.table(
+      propuestas.map(
+        ({ detalles, ...fila }) => fila
+      )
+    );
+
+    console.log(
+      confirmar
+        ? 'Vínculos registrados:'
+        : 'VISTA PREVIA, SIN ESCRITURAS:',
+      propuestas
+    );
+
+    if (errores.length) {
+      console.warn('Errores:', errores);
+    }
+
+    return {
+      confirmar,
+      propuestas,
+      errores
+    };
+  };
+
+
+async function decidirRechazoDesdePendientes(
+  grupoId,
+  pendiente,
+  estado
+) {
+  if (
+    !pendiente?.alertaId ||
+    !['ok', 'rechazado'].includes(estado)
+  ) {
+    return false;
+  }
+
+  const refGrupo = doc(
+    db,
+    'grupos',
+    String(grupoId)
+  );
+
+  const snapGrupo = await getDoc(refGrupo);
+
+  if (!snapGrupo.exists()) {
+    throw new Error(
+      'El grupo ya no existe.'
+    );
+  }
+
+  const grupo = snapGrupo.data() || {};
+
+  const snapAlerta = await getDoc(
+    doc(
+      db,
+      'grupos',
+      String(grupoId),
+      'alertas',
+      pendiente.alertaId
+    )
+  );
+
+  if (
+    !snapAlerta.exists() ||
+    !alertaRevisionEstaActiva(
+      snapAlerta.data(),
+      grupo
+    )
+  ) {
+    throw new Error(
+      'Este rechazo ya no está activo. Recarga Pendientes.'
+    );
+  }
+
+  const idx = pendiente.idx;
+
+  if (pendiente.tipo === 'actividad') {
+    const actual =
+      grupo.itinerario?.[pendiente.fecha]?.[idx];
+
+    // No usar ciegamente un índice antiguo si
+    // se reordenaron o reemplazaron actividades.
+    if (
+      !actual ||
+      K(actual.actividad) !==
+        K(pendiente.actividad)
+    ) {
+      throw new Error(
+        'La actividad cambió de posición o nombre. ' +
+        'Resuélvela desde Activar revisión para identificarla correctamente.'
+      );
+    }
+  }
+
+  if (
+    estado === 'ok' &&
+    !confirm(
+      `¿Aprobar ${pendiente.tipo} y cerrar el rechazo original?`
+    )
+  ) {
+    return false;
+  }
+
+  const observacion =
+    estado === 'rechazado'
+      ? prompt(
+          'Escribe el nuevo motivo del rechazo:',
+          ''
+        )
+      : '';
+
+  if (
+    estado === 'rechazado' &&
+    !observacion?.trim()
+  ) {
+    return false;
+  }
+
+  let guardado;
+
+  if (pendiente.tipo === 'actividad') {
+    guardado =
+      await guardarRevisionActividad(
+        grupoId,
+        pendiente.fecha,
+        idx,
+        estado,
+        observacion
+      );
+
+  } else if (pendiente.tipo === 'dia') {
+    guardado =
+      await guardarRevisionDia(
+        grupoId,
+        pendiente.fecha,
+        estado,
+        observacion
+      );
+
+  } else if (pendiente.tipo === 'grupo') {
+    guardado =
+      await guardarRevisionGrupo(
+        grupoId,
+        estado,
+        observacion
+      );
+
+  } else {
+    throw new Error(
+      'Tipo de rechazo desconocido.'
+    );
+  }
+
+  if (guardado !== true) {
+    return false;
+  }
+
+  // Se retira la ficha solo después de guardar
+  // la decisión del revisor.
+  const actualizado = await getDoc(refGrupo);
+
+  const lista =
+    actualizado.data()
+      ?.pendientesRechazosHistoricos || [];
+
+  await updateDoc(refGrupo, {
+    pendientesRechazosHistoricos:
+      lista.filter(
+        item =>
+          item.alertaId !==
+          pendiente.alertaId
+      )
+  });
+
+  return true;
+}
+
+
+function pendientesConCorreccionesHistoricas(grupo) {
+  const pendientesNormales =
+    obtenerPendientesGrupo(grupo);
+
+  const historicos = Array.isArray(
+    grupo.pendientesRechazosHistoricos
+  )
+    ? grupo.pendientesRechazosHistoricos
+    : [];
+
+  return [
+    ...pendientesNormales,
+
+    ...historicos.map(item => ({
+      tipo:
+        'CORRECCIÓN POR REVISAR',
+
+      tipoAlerta:
+        item.tipo,
+
+      alertaId:
+        item.alertaId,
+
+      fecha:
+        item.fecha,
+
+      idx:
+        item.idx,
+
+      actividad:
+        item.actividad,
+
+      motivo:
+        item.motivo,
+
+      respuesta:
+        item.respuesta || '',
+
+      advertencia:
+        item.advertencia,
+
+      cambios:
+        item.cambios || [],
+
+      observacion:
+        item.motivo,
+
+      grupoId:
+        grupo.id ||
+        grupo.idGrupo ||
+        ''
+    }))
+  ];
+}
+
+
+function instalarExportacionRevision(
+  modal,
+  tipo
+) {
+  if (!modal) return;
+
+  let boton = modal.querySelector(
+    `[data-exportar-revision="${tipo}"]`
+  );
+
+  if (boton) return;
+
+  boton = document.createElement('button');
+  boton.type = 'button';
+  boton.dataset.exportarRevision = tipo;
+  boton.textContent = '📗 Exportar XLS';
+
+  boton.style.cssText = `
+    margin:8px;
+    padding:6px 10px;
+    background:#187c48;
+    color:white;
+    border:0;
+    border-radius:5px;
+    cursor:pointer
+  `;
+
+  modal.insertBefore(
+    boton,
+    modal.firstChild
+  );
+
+  boton.addEventListener(
+    'click',
+    async () => {
+      try {
+        boton.disabled = true;
+
+        const grupoId =
+          modal.dataset.exportarGrupo || '';
+
+        const grupos = grupoId
+          ? [
+              await getDoc(
+                doc(
+                  db,
+                  'grupos',
+                  grupoId
+                )
+              )
+            ]
+              .filter(snap => snap.exists())
+              .map(snap => ({
+                id: snap.id,
+                ...snap.data()
+              }))
+
+          : await getGruposAnoOperativo();
+
+        const filas = [];
+
+        for (
+          const grupo
+          of grupos.sort(
+            ordenarGruposRevision
+          )
+        ) {
+          const datos =
+            tipo === 'pendientes'
+              ? pendientesConCorreccionesHistoricas(
+                  grupo
+                )
+
+              : (
+                  await getDocs(
+                    collection(
+                      db,
+                      'grupos',
+                      grupo.id,
+                      'alertas'
+                    )
+                  )
+                ).docs.map(snap => ({
+                  id: snap.id,
+                  ...snap.data(),
+
+                  estadoAlerta:
+                    alertaRevisionEstaActiva(
+                      snap.data(),
+                      grupo
+                    )
+                      ? 'ACTIVA'
+                      : 'RESUELTA'
+                }));
+
+          for (const dato of datos) {
+            const vinculo =
+              tipo === 'alertas'
+                ? (
+                    grupo
+                      .pendientesRechazosHistoricos ||
+                    []
+                  ).find(
+                    item =>
+                      item.alertaId ===
+                      dato.id
+                  )
+                : null;
+
+            filas.push({
+              'N° negocio':
+                grupo.numeroNegocio ||
+                grupo.id,
+
+              'Grupo':
+                grupo.nombreGrupo || '',
+
+              'Destino':
+                grupo.destino || '',
+
+              'Inicio':
+                String(
+                  grupo.fechaInicio ||
+                  ''
+                ),
+
+              'Tipo':
+                dato.tipo || '',
+
+              'Fecha':
+                dato.fecha || '',
+
+              'Actividad':
+                dato.actividad || '',
+
+              'Estado':
+                dato.estadoAlerta ||
+                dato.tipo ||
+                '',
+
+              'Solicitado / motivo':
+                dato.motivo ||
+                dato.observacion ||
+                '',
+
+              'Cambios realizados':
+                (
+                  dato.cambios ||
+                  vinculo?.cambios ||
+                  dato.correcciones ||
+                  []
+                )
+                  .map(
+                    cambio =>
+                      `${cambio.accion || cambio.campo || ''}: ` +
+                      `${cambio.actividad || cambio.nuevo || ''}`
+                  )
+                  .join(' | '),
+
+              'Respuesta':
+                dato.respuestaRevision ||
+                vinculo?.respuesta ||
+                '',
+
+              'Advertencia':
+                dato.advertencia ||
+                vinculo?.advertencia ||
+                ''
+            });
+          }
+        }
+
+        exportarFilasRevisionXls(
+          filas,
+          `${tipo}_${
+            grupoId ||
+            getAnoViajeOperativoActual()
+          }.xls`
+        );
+
+      } catch (error) {
+        console.error(
+          'Error exportando revisión:',
+          error
+        );
+
+        alert(
+          error.message ||
+          'No se pudo exportar la revisión.'
+        );
+
+      } finally {
+        boton.disabled = false;
+      }
+    }
+  );
+}
+
+
+function exportarFilasRevisionXls(
+  filas,
+  nombreArchivo
+) {
+  const columnas = [
+    'N° negocio',
+    'Grupo',
+    'Destino',
+    'Inicio',
+    'Tipo',
+    'Fecha',
+    'Actividad',
+    'Estado',
+    'Solicitado / motivo',
+    'Cambios realizados',
+    'Respuesta',
+    'Advertencia'
+  ];
+
+  const xml = valor =>
+    String(valor ?? '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;');
+
+  const fila = valores => `
+    <Row>
+      ${valores.map(
+        valor => `
+          <Cell>
+            <Data ss:Type="String">
+              ${xml(valor)}
+            </Data>
+          </Cell>
+        `
+      ).join('')}
+    </Row>
+  `;
+
+  const contenido = `<?xml version="1.0" encoding="UTF-8"?>
+    <Workbook
+      xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+      xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+    >
+      <Worksheet ss:Name="Revisión">
+        <Table>
+          ${fila(columnas)}
+
+          ${filas.map(
+            item =>
+              fila(
+                columnas.map(
+                  columna =>
+                    item[columna]
+                )
+              )
+            ).join('')}
+        </Table>
+      </Worksheet>
+    </Workbook>
+  `;
+
+  const url = URL.createObjectURL(
+    new Blob(
+      [contenido],
+      {
+        type:
+          'application/vnd.ms-excel;charset=utf-8'
+      }
+    )
+  );
+
+  const enlace =
+    document.createElement('a');
+
+  enlace.href = url;
+  enlace.download = nombreArchivo;
+
+  document.body.append(enlace);
+  enlace.click();
+  enlace.remove();
+
+  setTimeout(
+    () => URL.revokeObjectURL(url),
+    30000
+  );
+}
 
 
 window.diagnosticarRechazosAnteriores =
