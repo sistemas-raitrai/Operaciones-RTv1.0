@@ -4824,20 +4824,10 @@ async function openAlertasPanel(modo = 'grupo') {
     modo === 'grupo'
       ? grupoIdActual
       : '';
-  
+
   instalarExportacionRevision(
     modalAlertas,
     'alertas'
-  );
-
-  modalPendientes.dataset.exportarGrupo =
-    modo === 'grupo'
-      ? grupoIdActual
-      : '';
-  
-  instalarExportacionRevision(
-    modalPendientes,
-    'pendientes'
   );
 
   if (listAlertasOtros) {
@@ -4857,29 +4847,48 @@ async function openAlertasPanel(modo = 'grupo') {
     listAlertasLeidas.innerHTML = '';
   }
 
-  // ---------------------------------------------
-  // ESTE GRUPO: conserva el detalle individual
-  // ---------------------------------------------
+  // ESTE GRUPO
   if (modo === 'grupo') {
     try {
-      const [grupoSnap, alertasSnap] = await Promise.all([
-        getDoc(doc(db, 'grupos', grupoIdActual)),
-        getDocs(
-          collection(db, 'grupos', grupoIdActual, 'alertas')
-        )
-      ]);
+      const [grupoSnap, alertasSnap] =
+        await Promise.all([
+          getDoc(
+            doc(
+              db,
+              'grupos',
+              grupoIdActual
+            )
+          ),
+
+          getDocs(
+            collection(
+              db,
+              'grupos',
+              grupoIdActual,
+              'alertas'
+            )
+          )
+        ]);
 
       const g = grupoSnap.data() || {};
 
       const todas = alertasSnap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
+        .map(d => ({
+          id: d.id,
+          ...d.data()
+        }))
         .sort(ordenarAlertasDesc);
 
       const activas = [];
       const resueltas = [];
 
       for (const alerta of todas) {
-        if (alertaRevisionEstaActiva(alerta, g)) {
+        if (
+          alertaRevisionEstaActiva(
+            alerta,
+            g
+          )
+        ) {
           activas.push(alerta);
         } else {
           resueltas.push(alerta);
@@ -4890,11 +4899,17 @@ async function openAlertasPanel(modo = 'grupo') {
         alertasEncabezado.innerHTML = `
           <strong>
             #${escapeHTMLAlertas(
-              g.numeroNegocio || grupoIdActual
+              g.numeroNegocio ||
+              grupoIdActual
             )}
             ·
             ${escapeHTMLAlertas(
-              (g.nombreGrupo || '').toString().toUpperCase()
+              (
+                g.nombreGrupo ||
+                ''
+              )
+                .toString()
+                .toUpperCase()
             )}
           </strong>
 
@@ -4911,16 +4926,24 @@ async function openAlertasPanel(modo = 'grupo') {
       renderListaAlertasRevision(
         listAlertasActual,
         activas,
-        { mostrarGrupo: false, resueltas: false }
+        {
+          mostrarGrupo: false,
+          resueltas: false
+        }
       );
 
       renderListaAlertasRevision(
         listAlertasLeidas,
         resueltas,
-        { mostrarGrupo: false, resueltas: true }
+        {
+          mostrarGrupo: false,
+          resueltas: true
+        }
       );
 
-      await refreshAlertasCounts(grupoIdActual);
+      await refreshAlertasCounts(
+        grupoIdActual
+      );
 
     } catch (error) {
       console.error(
@@ -4940,37 +4963,47 @@ async function openAlertasPanel(modo = 'grupo') {
     return;
   }
 
-  // ---------------------------------------------
   // GENERAL: una tarjeta por grupo
-  // ---------------------------------------------
   try {
-    const grupos = await getGruposAnoOperativo();
+    const grupos =
+      await getGruposAnoOperativo();
 
-    const resultados = await Promise.all(
-      grupos.map(async g => {
-        try {
-          const snap = await getDocs(
-            collection(db, 'grupos', g.id, 'alertas')
-          );
+    const resultados =
+      await Promise.all(
+        grupos.map(async g => {
+          try {
+            const snap = await getDocs(
+              collection(
+                db,
+                'grupos',
+                g.id,
+                'alertas'
+              )
+            );
 
-          return snap.docs.map(d => ({
-            id: d.id,
-            ...d.data(),
-            grupoId: g.id,
-            numeroNegocio: g.numeroNegocio || g.id,
-            nombreGrupo: g.nombreGrupo || '',
-            _grupo: g
-          }));
+            return snap.docs.map(d => ({
+              id: d.id,
+              ...d.data(),
+              grupoId: g.id,
+              numeroNegocio:
+                g.numeroNegocio ||
+                g.id,
+              nombreGrupo:
+                g.nombreGrupo ||
+                '',
+              _grupo: g
+            }));
 
-        } catch (error) {
-          console.warn(
-            `No se pudieron cargar alertas del grupo ${g.id}:`,
-            error
-          );
-          return [];
-        }
-      })
-    );
+          } catch (error) {
+            console.warn(
+              `No se pudieron cargar alertas del grupo ${g.id}:`,
+              error
+            );
+
+            return [];
+          }
+        })
+      );
 
     const todas = resultados
       .flat()
@@ -4993,21 +5026,26 @@ async function openAlertasPanel(modo = 'grupo') {
     }
 
     const gruposActivos =
-      agruparAlertasRevisionPorGrupo(activas);
+      agruparAlertasRevisionPorGrupo(
+        activas
+      );
 
     const gruposResueltos =
-      agruparAlertasRevisionPorGrupo(resueltas);
+      agruparAlertasRevisionPorGrupo(
+        resueltas
+      );
 
-    // Guardamos la posición al entrar en el detalle.
     let posicionLista = 0;
 
     const volverALista = () => {
       modalAlertas.dataset.exportarGrupo =
         '';
+
       alertasModo = 'general';
 
       if (alertasEncabezado) {
-        alertasEncabezado.innerHTML = encabezadoGeneral;
+        alertasEncabezado.innerHTML =
+          encabezadoGeneral;
       }
 
       renderGruposAlertasRevision(
@@ -5024,25 +5062,37 @@ async function openAlertasPanel(modo = 'grupo') {
         mostrarDetalle
       );
 
-      modalAlertas.scrollTop = posicionLista;
+      modalAlertas.scrollTop =
+        posicionLista;
     };
 
     const mostrarDetalle = grupoId => {
-      const activasGrupo = activas.filter(
-        a => String(a.grupoId) === String(grupoId)
-      );
+      const activasGrupo =
+        activas.filter(
+          a =>
+            String(a.grupoId) ===
+            String(grupoId)
+        );
 
-      const resueltasGrupo = resueltas.filter(
-        a => String(a.grupoId) === String(grupoId)
-      );
+      const resueltasGrupo =
+        resueltas.filter(
+          a =>
+            String(a.grupoId) ===
+            String(grupoId)
+        );
 
-      const primera = activasGrupo[0] ||
+      const primera =
+        activasGrupo[0] ||
         resueltasGrupo[0];
 
       if (!primera) return;
 
-      posicionLista = modalAlertas.scrollTop;
-      alertasModo = 'general_detalle';
+      posicionLista =
+        modalAlertas.scrollTop;
+
+      alertasModo =
+        'general_detalle';
+
       modalAlertas.dataset.exportarGrupo =
         grupoId;
 
@@ -5066,11 +5116,15 @@ async function openAlertasPanel(modo = 'grupo') {
           <div>
             <strong>
               #${escapeHTMLAlertas(
-                primera.numeroNegocio || grupoId
+                primera.numeroNegocio ||
+                grupoId
               )}
               ·
               ${escapeHTMLAlertas(
-                (primera.nombreGrupo || '')
+                (
+                  primera.nombreGrupo ||
+                  ''
+                )
                   .toString()
                   .toUpperCase()
               )}
@@ -5087,20 +5141,31 @@ async function openAlertasPanel(modo = 'grupo') {
         `;
 
         document
-          .getElementById('volver-grupos-alertas')
-          ?.addEventListener('click', volverALista);
+          .getElementById(
+            'volver-grupos-alertas'
+          )
+          ?.addEventListener(
+            'click',
+            volverALista
+          );
       }
 
       renderListaAlertasRevision(
         listAlertasActual,
         activasGrupo,
-        { mostrarGrupo: false, resueltas: false }
+        {
+          mostrarGrupo: false,
+          resueltas: false
+        }
       );
 
       renderListaAlertasRevision(
         listAlertasLeidas,
         resueltasGrupo,
-        { mostrarGrupo: false, resueltas: true }
+        {
+          mostrarGrupo: false,
+          resueltas: true
+        }
       );
 
       modalAlertas.scrollTop = 0;
